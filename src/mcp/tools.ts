@@ -2,7 +2,9 @@ import type { ProjectDocument } from "../project-model/types";
 import type { Command } from "../commands/types";
 import { routeIntentText, type RoutedIntent } from "../intent/route";
 import { applyFaderIntent, applyTempoIntent } from "../intent/conversation";
-import { applyBypassIntent, applyEffectIntent, applySendIntent } from "../intent/mix";
+import { applyBypassIntent, applyEffectIntent, applySendIntent, bypassReadback, effectReadback } from "../intent/mix";
+import { applyCompoundIntent } from "../intent/compound";
+import { productionReadback } from "../intent/production";
 import {
   applyAutomateIntent,
   applyGrooveIntent,
@@ -21,6 +23,7 @@ import {
   addMarker,
   applyExactIntentCommand,
   applyGenerationResultCommand,
+  applyProductionIntentCommand,
   createDrumTrack,
   createInstrumentTrack,
   deleteTrack,
@@ -33,9 +36,9 @@ import {
 } from "../commands/commands";
 
 /**
- * KYX MCP — TOOL SURFACE (docs/INTENT-MCP-EXPANSION-PLAN.md Phase D1).
+ * KYX MCP — TOOL SURFACE (docs/INTENT-MCP-EXPANSION-PLAN.md Phase D).
  *
- * Five tools expose the intent engine + project state to an external MCP
+ * Thirteen tools expose the intent engine + project state to an external MCP
  * client. The GOLDEN RULE: the MCP layer is a TRANSPORT, never a bypass —
  * every tool goes through the same deterministic command layer (clamps,
  * strict target resolution, one-undo snapshots) that the intent bar uses,
@@ -46,8 +49,8 @@ import {
  * (ProjectStore-backed context).
  *
  * v1 explicit non-goals (returned as honest errors, never guessed):
- * pattern/song generation (needs candidate auditioning in the app),
- * save/export/record (window-local), mic takes.
+ * pattern/song proposal flows that need in-app auditioning (revise,
+ * loudness/mix loops, section production), save/record, mic takes.
  */
 
 export interface McpToolDef {
@@ -128,8 +131,9 @@ export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_export",
     description:
-      "Request a bounce of the current project (WAV/MP3). v1 returns " +
-      "started:true and the download happens in the KYX app window.",
+      "Request a bounce of the current project (WAV/MP3). The render + " +
+      "download run in the KYX app window; the tool reports that the bounce " +
+      "started (completion is not verifiable over MCP v1).",
     inputSchema: {
       type: "object",
       properties: { format: { type: "string", enum: ["wav", "mp3"] } },
@@ -211,7 +215,8 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "kyx_fx",
     description:
       "Structured effect operation on a track family: more/less turn the " +
-      "primary knob, remove deletes instances, bypass/enable flags them.",
+      "primary knob (percent = relative step size), remove deletes instances " +
+      "(destructive-gated), bypass/enable flag instances without deleting them.",
     inputSchema: {
       type: "object",
       properties: {
@@ -234,6 +239,12 @@ export const MCP_TOOLS: McpToolDef[] = [
         },
         family: { type: "string", enum: ["drums", "bass", "chords", "lead", "vocal"] },
         action: { type: "string", enum: ["more", "less", "remove", "bypass", "enable"] },
+        percent: {
+          type: "number",
+          minimum: 0,
+          maximum: 100,
+          description: "Relative step size for more/less, as % of the knob's range (default: fixed calibrated step)",
+        },
       },
       required: ["effect", "family", "action"],
     },
@@ -351,6 +362,10 @@ export interface McpToolContext {
     pause(): void;
     setLoop(enabled: boolean, start: number, end: number): void;
     setMetronome(enabled: boolean): void;
+    /** Current loop bounds (ticks) — present on the live transport; used to
+     * PRESERVE the user's loop range when MCP only toggles loop on. */
+    loopStart?: number;
+    loopEnd?: number;
   };
   /** Present when the KYX window can render/downloads (browser relay). */
   export?: (format: "wav" | "mp3") => Promise<string>;
@@ -366,6 +381,9 @@ export interface McpToolResult {
   text: string;
   /** true when the project document changed (undoable). */
   mutated: boolean;
+  /** Explicit failure marker — honored by the transports so a caught error
+   * never masquerades as a successful call (e.g. relay crash guard). */
+  isError?: boolean;
 }
 
 const TICKS_PER_BAR = 4 * 480;
@@ -378,6 +396,27 @@ function destructiveRefusal(): McpToolResult {
       "in the KYX MCP chip (undoable edits still work)",
     mutated: false,
   };
+}
+
+/** Shared transport dispatch (kyx_transport + intent-routed transport
+ * asks). loopOn PRESERVES the user's loop range when the live transport
+ * exposes it — same contract as the in-app intent bar; only a project with
+ * no loop falls back to the first 4 bars. */
+function dispatchTransport(ctx: McpToolContext, action: string): McpToolResult {
+  const transport = ctx.transport;
+  if (action === "play") transport.play();
+  else if (action === "stop") transport.stop();
+  else if (action === "pause") transport.pause();
+  else if (action === "metronomeOn") transport.setMetronome(true);
+  else if (action === "metronomeOff") transport.setMetronome(false);
+  else if (action === "loopOn") {
+    const currentStart = transport.loopStart ?? 0;
+    const currentEnd = transport.loopEnd ?? 0;
+    const end = currentEnd > currentStart ? currentEnd : currentStart + TICKS_PER_BAR * 4;
+    transport.setLoop(true, currentStart, end);
+  } else if (action === "loopOff") transport.setLoop(false, 0, 0);
+  else return { text: `unknown transport action: ${action}`, mutated: false };
+  return { text: `transport: ${action}`, mutated: false };
 }
 
 export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown): McpToolResult {
@@ -404,23 +443,17 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
         const before = ctx.undoStackLength();
         if (action === "undo") ctx.undo();
         else ctx.redo();
-        if (ctx.undoStackLength() === before && action === "undo") break;
+        // A real undo/redo always moves the undo stack (undo pops it, redo
+        // pushes it); an unchanged length means the stack ran out — stop
+        // counting so the read-back never reports steps that did not happen.
+        if (ctx.undoStackLength() === before) break;
         done += 1;
       }
       return { text: `${action} ×${done}`, mutated: done > 0 };
     }
     case "kyx_transport": {
       const action = String(record.action ?? "");
-      const transport = ctx.transport;
-      if (action === "play") transport.play();
-      else if (action === "stop") transport.stop();
-      else if (action === "pause") transport.pause();
-      else if (action === "metronomeOn") transport.setMetronome(true);
-      else if (action === "metronomeOff") transport.setMetronome(false);
-      else if (action === "loopOn") transport.setLoop(true, 0, TICKS_PER_BAR * 4);
-      else if (action === "loopOff") transport.setLoop(false, 0, 0);
-      else return { text: `unknown transport action: ${action}`, mutated: false };
-      return { text: `transport: ${action}`, mutated: false };
+      return dispatchTransport(ctx, action);
     }
     case "kyx_export": {
       if (ctx.export == null) {
@@ -430,8 +463,13 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
         };
       }
       const format = record.format === "mp3" ? "mp3" : "wav";
-      void ctx.export(format);
-      return { text: `export ${format.toUpperCase()} started in the KYX window`, mutated: false };
+      void ctx.export(format).catch(() => {});
+      return {
+        text:
+          `export ${format.toUpperCase()} started in the KYX window (render + download run there; ` +
+          "completion is reported in the app, not verifiable over MCP v1)",
+        mutated: false,
+      };
     }
     case "kyx_intent":
       return executeIntentTool(ctx, String(record.instruction ?? ""));
@@ -485,27 +523,67 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
       return { text: scoped.label, mutated: true };
     }
     case "kyx_fx": {
-      const command = applyEffectIntent(ctx.getDoc(), {
-        effectType: record.effect,
-        targets: [record.family],
-        direction:
-          record.action === "remove" || record.action === "bypass"
-            ? "remove"
-            : record.action === "enable"
-              ? "more"
-              : record.action,
-        ...(typeof record.percent === "number" ? { percent: record.percent } : {}),
-        detected: ["MCP"],
-      } as unknown as Parameters<typeof applyEffectIntent>[1]);
-      ctx.execute(command);
-      return { text: command.label, mutated: true };
+      const action = String(record.action ?? "");
+      const effect = String(record.effect ?? "");
+      const family = String(record.family ?? "");
+      if (action === "remove" && ctx.allowDestructive?.() !== true) return destructiveRefusal();
+      try {
+        const before = ctx.getDoc();
+        // bypass/enable flip the BYPASS FLAG (never delete the instance);
+        // more/less turn the primary knob; remove deletes (D4-gated).
+        if (action === "bypass" || action === "enable") {
+          const command = applyBypassIntent(ctx.getDoc(), {
+            effectType: effect,
+            target: family,
+            bypassed: action === "bypass",
+          } as unknown as Parameters<typeof applyBypassIntent>[1]);
+          ctx.execute(command);
+          const readback = bypassReadback(ctx.getDoc(), {
+            effectType: effect,
+            target: family,
+            bypassed: action === "bypass",
+          } as Parameters<typeof applyBypassIntent>[1]);
+          return { text: `${command.label}${readback ? ` — ${readback}` : ""} (one undo step)`, mutated: true };
+        }
+        const intent = {
+          effectType: effect,
+          targets: [family],
+          direction: action === "remove" ? "remove" : action,
+          amount: "medium",
+          ...(typeof record.percent === "number" ? { percent: record.percent } : {}),
+          detected: ["MCP"],
+        } as unknown as Parameters<typeof applyEffectIntent>[1];
+        const command = applyEffectIntent(ctx.getDoc(), intent);
+        ctx.execute(command);
+        // Wave-8 verification: report the knob's ACTUAL landing value read
+        // from the post-execution document (clamps included).
+        const readback = effectReadback(before, ctx.getDoc(), intent);
+        return { text: `${command.label}${readback ? ` — ${readback}` : ""} (one undo step)`, mutated: true };
+      } catch (error) {
+        // The intent appliers throw on no-target / no-change — over MCP that
+        // must surface as an honest failure result, never a relay hang.
+        return {
+          text: `fx op failed: ${error instanceof Error ? error.message : String(error)}`,
+          mutated: false,
+        };
+      }
     }
     case "kyx_sections": {
       if (String(record.op ?? "") === "remove" && ctx.allowDestructive?.() !== true) return destructiveRefusal();
-      const command = sectionCommand(record, ctx.getDoc());
-      if (!command) return { text: "section op not resolvable — check the role exists", mutated: false };
-      ctx.execute(command);
-      return { text: command.label, mutated: true };
+      try {
+        const command = sectionCommand(record, ctx.getDoc());
+        if (!command) return { text: "section op not resolvable — check the role exists", mutated: false };
+        ctx.execute(command);
+        return { text: `${command.label} (one undo step)`, mutated: true };
+      } catch (error) {
+        // Arrange primitives throw on invariant violations (e.g. a resize
+        // that would overlap the neighbouring clip) — honest failure over
+        // MCP, never a thrown crash into the relay.
+        return {
+          text: `section op failed: ${error instanceof Error ? error.message : String(error)}`,
+          mutated: false,
+        };
+      }
     }
     case "kyx_markers": {
       const op = String(record.op ?? "add");
@@ -551,8 +629,12 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
         if (ctx.getDoc().tracks.length - ids.length < 1) {
           return { text: "declined: cannot remove the last track", mutated: false };
         }
-        for (const id of ids) ctx.execute(deleteTrack(ctx.getDoc(), id));
-        return { text: `removed ${ids.length} track(s) (${family})`, mutated: true };
+        // ONE snapshot for the whole family removal — N separate deleteTrack
+        // commands would leave N undo steps for a single MCP call.
+        let next = ctx.getDoc();
+        for (const id of ids) next = deleteTrack(next, id).execute(next);
+        ctx.execute(snapshot("mcpRemoveTracks", `MCP: remove ${family} tracks ×${ids.length}`, ctx.getDoc(), next));
+        return { text: `removed ${ids.length} track(s) (${family}) — one undo step`, mutated: true };
       }
       return { text: `unknown track op: ${op}`, mutated: false };
     }
@@ -662,7 +744,21 @@ function stateSnapshot(
   }
   if (subject === "key") return doc.key ?? "key unset";
   if (subject === "tracks") {
-    return doc.tracks.map((t) => `${t.name} (${t.kind}${t.mute ? ", muted" : ""})`).join(", ");
+    // Mixer values included so an AI that can SET gain/pan/mute/solo can
+    // also READ them back — write-only faders would make it operate blind.
+    return (
+      doc.tracks
+        .map((t) => {
+          const bits: string[] = [t.kind];
+          if (t.kind === "instrument") bits.push(`inst=${t.instrument}`);
+          bits.push(`gain ${t.gain.toFixed(2)} (${(20 * Math.log10(Math.max(t.gain, 1e-4))).toFixed(1)} dB)`);
+          bits.push(`pan ${t.pan.toFixed(2)}`);
+          if (t.mute) bits.push("muted");
+          if (t.solo) bits.push("solo");
+          return `${t.name} (${bits.join(", ")})`;
+        })
+        .join("\n") || "no tracks"
+    );
   }
   if (subject === "markers") {
     return doc.markers.length > 0
@@ -684,7 +780,10 @@ function stateSnapshot(
       const chain = track.effects.map((fx) => `${fx.type}${fx.bypassed ? " (bypassed)" : ""}`).join(", ");
       lines.push(`${track.name}: ${chain || "no FX"}`);
     }
-    return lines.slice(0, 8).join("\n") || "no tracks";
+    // Silent truncation would hand the AI an incomplete map of the mix —
+    // say how much was cut instead.
+    if (lines.length > 8) return `${lines.slice(0, 8).join("\n")}\n… and ${lines.length - 8} more track(s)`;
+    return lines.join("\n") || "no tracks";
   }
   if (subject === "pattern") {
     const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
@@ -849,6 +948,31 @@ function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>):
   };
 }
 
+/** D4 gate, intent edition: natural-language phrasing must not bypass the
+ * destructive-op consent flag. Mirrors the structured tools (tracks/sections
+ * remove) — track removal (exact), scene removal (arrange), clip deletion,
+ * FX-instance removal (effect) and the compound clauses carrying them. */
+function routeIsDestructive(route: RoutedIntent): boolean {
+  switch (route.kind) {
+    case "exact":
+      return route.plan.ops.some((op) => op.kind === "removeTrack");
+    case "arrange":
+      return route.ops.some((op) => op.op === "remove");
+    case "clips":
+      return route.ops.some((op) => op.op === "deleteClip");
+    case "effectIntent":
+      return route.intent.direction === "remove";
+    case "compound":
+      return route.parts.some(
+        (part) =>
+          (part.kind === "effect" && part.intent.direction === "remove") ||
+          (part.kind === "exact" && part.plan.ops.some((op) => op.kind === "removeTrack")),
+      );
+    default:
+      return false;
+  }
+}
+
 function executeIntentTool(ctx: McpToolContext, instruction: string): McpToolResult {
   const trimmed = instruction.trim();
   if (trimmed.length === 0) return { text: "empty instruction", mutated: false };
@@ -873,21 +997,85 @@ function executeIntentTool(ctx: McpToolContext, instruction: string): McpToolRes
   if (route.kind === "save" || route.kind === "export" || route.kind === "record") {
     return { text: "save/export/record run in the KYX window — not available over MCP v1", mutated: false };
   }
+  if (route.kind === "transport") {
+    // Bare transport words ("stop", "loop on") — same dispatch as the
+    // structured tool, including loop-range preservation.
+    return dispatchTransport(ctx, route.action);
+  }
+  if (route.kind === "queryIntent") {
+    // Read-only questions answered from the live doc — never a mutation.
+    const q = route.intent;
+    if (q.subject === "lastAction") {
+      const labels = ctx.historyLabels();
+      return {
+        text: labels.length > 0 ? `last action: ${labels[labels.length - 1]}` : "no actions yet",
+        mutated: false,
+      };
+    }
+    const subject =
+      q.subject === "tempo" ||
+      q.subject === "key" ||
+      q.subject === "tracks" ||
+      q.subject === "markers" ||
+      q.subject === "groove"
+        ? q.subject
+        : "fxChain";
+    return {
+      text: stateSnapshot(ctx.getDoc(), subject, "target" in q ? String(q.target) : undefined, () =>
+        ctx.historyLabels(),
+      ),
+      mutated: false,
+    };
+  }
   if (route.kind === "undoIntent") {
-    // Route-layer undo asks are honored through the store hooks.
+    // Session control through the store hooks — the SAME guards as the
+    // structured kyx_undo (mic pin + honest step counting).
+    if (route.intent.kind === "undo" && ctx.isMicRecordingActive()) {
+      return { text: "declined: a mic take is recording — stop it before undo", mutated: false };
+    }
+    let done = 0;
     for (let i = 0; i < route.intent.steps; i++) {
+      const before = ctx.undoStackLength();
       if (route.intent.kind === "undo") ctx.undo();
       else ctx.redo();
+      if (ctx.undoStackLength() === before) break;
+      done += 1;
     }
-    return { text: `${route.intent.kind} ×${route.intent.steps}`, mutated: true };
+    return { text: `${route.intent.kind} ×${done}`, mutated: done > 0 };
+  }
+  if (routeIsDestructive(route) && ctx.allowDestructive?.() !== true) return destructiveRefusal();
+
+  // Route kinds whose executors need window-local state (audition players,
+  // loudness render loop, mix brief/reference patches) or are UI state —
+  // refuse HONESTLY instead of pretending nothing changed.
+  if (
+    route.kind === "loudness" ||
+    route.kind === "mix" ||
+    route.kind === "sectionProduction" ||
+    route.kind === "sectionFlow" ||
+    route.kind === "complaintIntent" ||
+    route.kind === "select"
+  ) {
+    return {
+      text: `"${route.kind}" requests run inside the KYX app (they need in-app auditioning/rendering) — not available over MCP v1`,
+      mutated: false,
+    };
   }
 
-  const command = intentCommand(ctx.getDoc(), route);
-  if (command == null) {
-    return { text: "intent understood but nothing changed (already matches or no target)", mutated: false };
+  try {
+    const before = ctx.getDoc();
+    const command = intentCommand(before, route);
+    if (command == null) {
+      return { text: "intent understood but nothing changed (already matches or no target)", mutated: false };
+    }
+    ctx.execute(command);
+    const extra = route.kind === "production" ? ` — ${productionReadback(before, ctx.getDoc(), route.intent)}` : "";
+    return { text: `${command.label}${extra} — verification: applied, one undo step in KYX`, mutated: true };
+  } catch (error) {
+    // The intent appliers throw on no-target / already-matches — surface as
+    // an honest failure instead of letting it kill the relay round-trip.
+    return { text: `intent failed: ${error instanceof Error ? error.message : String(error)}`, mutated: false };
   }
-  ctx.execute(command);
-  return { text: `${command.label} — verification: applied, one undo step in KYX`, mutated: true };
 }
 
 function intentCommand(doc: ProjectDocument, route: RoutedIntent): Command | null {
@@ -922,6 +1110,10 @@ function intentCommand(doc: ProjectDocument, route: RoutedIntent): Command | nul
       return applySoundSwapIntent(doc, route.intent);
     case "stepEditIntent":
       return applyStepEditIntent(doc, route.intent);
+    case "compound":
+      return applyCompoundIntent(doc, route.parts);
+    case "production":
+      return applyProductionIntentCommand(doc, route.intent);
     default:
       return null;
   }

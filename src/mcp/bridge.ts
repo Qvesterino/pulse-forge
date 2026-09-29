@@ -114,7 +114,19 @@ export class McpBridge {
       export: this.deps.export,
       allowDestructive: mcpAllowDestructive,
     };
-    const result = executeMcpTool(ctx, record.tool, record.args ?? {});
+    // A throwing tool must still ANSWER — without this catch the relay would
+    // never receive an mcp-result and the server-side call would hang until
+    // its 15 s timeout (desktop host has the same guard).
+    let result;
+    try {
+      result = executeMcpTool(ctx, record.tool, record.args ?? {});
+    } catch (error) {
+      result = {
+        text: `tool crashed: ${error instanceof Error ? error.message : String(error)}`,
+        mutated: false,
+        isError: true,
+      };
+    }
     this.socket?.send(JSON.stringify({ type: "mcp-result", id: record.id, result }));
   }
 }

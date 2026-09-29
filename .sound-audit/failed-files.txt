@@ -1,0 +1,107 @@
+ FAIL  .sft/llama.cpp/tools/ui/src/lib/services/parameter-sync.service.spec.ts [ .sft/llama.cpp/tools/ui/src/lib/services/parameter-sync.service.spec.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/client/agentic-stream.perf.svelte.test.ts [ .sft/llama.cpp/tools/ui/tests/client/agentic-stream.perf.svelte.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/client/apikey-splash.svelte.test.ts [ .sft/llama.cpp/tools/ui/tests/client/apikey-splash.svelte.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/client/cap-img-size.svelte.test.ts [ .sft/llama.cpp/tools/ui/tests/client/cap-img-size.svelte.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/client/chat-form-enter-code-block.svelte.test.ts [ .sft/llama.cpp/tools/ui/tests/client/chat-form-enter-code-block.svelte.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/client/chat-form-input-rich-blocks.svelte.test.ts [ .sft/llama.cpp/tools/ui/tests/client/chat-form-input-rich-blocks.svelte.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/client/chat-form-input-rich-undo.svelte.test.ts [ .sft/llama.cpp/tools/ui/tests/client/chat-form-input-rich-undo.svelte.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/client/chat-form-input-rich.svelte.test.ts [ .sft/llama.cpp/tools/ui/tests/client/chat-form-input-rich.svelte.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/client/chat-form-mention-picker-gate.svelte.test.ts [ .sft/llama.cpp/tools/ui/tests/client/chat-form-mention-picker-gate.svelte.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/client/chat-form-slash-commands.svelte.test.ts [ .sft/llama.cpp/tools/ui/tests/client/chat-form-slash-commands.svelte.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/client/collapsible-lazy-body.svelte.test.ts [ .sft/llama.cpp/tools/ui/tests/client/collapsible-lazy-body.svelte.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/client/conversation-import-db.svelte.test.ts [ .sft/llama.cpp/tools/ui/tests/client/conversation-import-db.svelte.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/client/mcp-display-name.svelte.test.ts [ .sft/llama.cpp/tools/ui/tests/client/mcp-display-name.svelte.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/client/mcp-server-form.svelte.test.ts [ .sft/llama.cpp/tools/ui/tests/client/mcp-server-form.svelte.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/client/page.svelte.test.ts [ .sft/llama.cpp/tools/ui/tests/client/page.svelte.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/client/picker-list-scroll.svelte.test.ts [ .sft/llama.cpp/tools/ui/tests/client/picker-list-scroll.svelte.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/client/sandbox.service.svelte.test.ts [ .sft/llama.cpp/tools/ui/tests/client/sandbox.service.svelte.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/client/settings-registry-invariants.svelte.test.ts [ .sft/llama.cpp/tools/ui/tests/client/settings-registry-invariants.svelte.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/client/settings-render-keys-migration.svelte.test.ts [ .sft/llama.cpp/tools/ui/tests/client/settings-render-keys-migration.svelte.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/client/ui-settings-sync.svelte.test.ts [ .sft/llama.cpp/tools/ui/tests/client/ui-settings-sync.svelte.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/client/update-message-in-place.svelte.test.ts [ .sft/llama.cpp/tools/ui/tests/client/update-message-in-place.svelte.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/abort.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/abort.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/agentic-sections.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/agentic-sections.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/agentic-strip.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/agentic-strip.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/assistant-raw-output.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/assistant-raw-output.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/branching.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/branching.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/chat-activity.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/chat-activity.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/chat-form-input-rich-tokenizer.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/chat-form-input-rich-tokenizer.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/chat-form-input-rich-word-jump.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/chat-form-input-rich-word-jump.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/classify-tool-result.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/classify-tool-result.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/clipboard.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/clipboard.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/code.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/code.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/command-token.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/command-token.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/compute-line-diff.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/compute-line-diff.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/continue-intent.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/continue-intent.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/conversation-export.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/conversation-export.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/conversation-import.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/conversation-import.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/conversations-store.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/conversations-store.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/favicon-colorize.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/favicon-colorize.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/glob-search-children.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/glob-search-children.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/headers.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/headers.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/jpeg-orientation.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/jpeg-orientation.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/latex-protection.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/latex-protection.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/mcp-default-overrides-merge.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/mcp-default-overrides-merge.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/mcp-servers-default.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/mcp-servers-default.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/mcp-service.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/mcp-service.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/mention-badge.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/mention-badge.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/mention-segments.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/mention-segments.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/mention-token.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/mention-token.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/model-id-parser.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/model-id-parser.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/model-names.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/model-names.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/parse-exec-shell-status.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/parse-exec-shell-status.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/parse-mcp-server-settings.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/parse-mcp-server-settings.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/parse-toolcalls-memo.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/parse-toolcalls-memo.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/partial-tool-call-cleanup.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/partial-tool-call-cleanup.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/pwa.spec.ts [ .sft/llama.cpp/tools/ui/tests/unit/pwa.spec.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/reasoning-context.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/reasoning-context.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/redact.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/redact.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/request-helpers.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/request-helpers.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/sanitize-headers.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/sanitize-headers.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/search-results-fixture.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/search-results-fixture.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/search-results.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/search-results.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/settings-private-fields.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/settings-private-fields.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/source-history.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/source-history.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/sse.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/sse.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/stream-discovery.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/stream-discovery.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/stream-resume.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/stream-resume.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/tool-call-meta.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/tool-call-meta.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/tool-calls.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/tool-calls.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/uri-template.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/uri-template.test.ts ]
+ FAIL  .sft/llama.cpp/tools/ui/tests/unit/working-directory.test.ts [ .sft/llama.cpp/tools/ui/tests/unit/working-directory.test.ts ]
+ FAIL  tests/ai-baseline.test.ts > AI baseline harness > matches the frozen correctness-1 hashes and metrics
+ FAIL  tests/ai/bridge/compressor.test.ts > AI bridge — punchier drums recipe > compressor params survive normalizeProject (whitelist round-trip)
+ FAIL  tests/boombap.test.ts > boom bap promotion (the six-school genre) > all six schools exist as real grooves with unique ids and 16-step rows
+ FAIL  tests/boombap.test.ts > boom bap promotion (the six-school genre) > each school resolves through resolveGroove by id and by name
+ FAIL  tests/candidate-search.test.ts > Producer DNA candidate search lanes > chooses only same-genre grooves in the direction of explicit syncopation preference
+ FAIL  tests/commands.test.ts > automation, lfo and macros > macro mappings can be sourced from the scene-intensity signal (VISION §11)
+ FAIL  tests/drone.test.ts > drone/neo-classical promotion (the texture-over-beat genre) > all six schools exist as real grooves with unique ids and 16-step rows
+ FAIL  tests/drone.test.ts > drone/neo-classical promotion (the texture-over-beat genre) > every school resolves through resolveGroove by id and by name
+ FAIL  tests/drone.test.ts > drone/neo-classical promotion (the texture-over-beat genre) > kit colouring + feel + mix character land on real assets
+ FAIL  tests/drone.test.ts > drone/neo-classical promotion (the texture-over-beat genre) > parser routes the genre and school phrases
+ FAIL  tests/drone.test.ts > drone/neo-classical promotion (the texture-over-beat genre) > the school tree is populated by real artists
+ FAIL  tests/drum-rr-declick.test.ts > genre feel (humanize defaults) > every genre in the feel map gets modest, non-flat humanize
+ FAIL  tests/fx-tempo-sync.test.ts > offline scene-BPM seam (timestamped syncBpm) > every AudioParam-backed runtime honors when (falls back to ctx.currentTime live)
+ FAIL  tests/invariants.test.ts > AGENTS.md invariant #7 — AudioNode creation outside AudioEngine.useContext > no AudioNode factory calls under src/scheduler/
+ FAIL  tests/melodic-embedding-conditioning.test.ts > provider melodic v2 path > flag off → straight to v1 (no v2 attempt)
+ FAIL  tests/metric-accent.test.ts > metric accent end to end — the musical claim > does not flatten a groove written on the off-beats (house)
+ FAIL  tests/multi-tap-delay.test.ts > multiTapDelay live parameter synchronization > re-centers active taps when the tap count changes and updates spread live
+ FAIL  tests/multi-tap-delay.test.ts > multiTapDelay live parameter synchronization > retains the latest note division when tempo changes
+ FAIL  tests/multi-tap-delay.test.ts > multiTapDelay live parameter synchronization > schedules tap-count and division automation at the requested audio time
+ FAIL  tests/postrock.test.ts > postrock promotion (the quiet-loud crescendo genre) > all six schools exist as real grooves with unique ids and 16-step rows
+ FAIL  tests/postrock.test.ts > postrock promotion (the quiet-loud crescendo genre) > every school resolves through resolveGroove by id and by name
+ FAIL  tests/preset-loudness-audit.test.ts > preset loudness coverage > every instrument/drumsynth preset is measured, with no orphans
+ FAIL  tests/preset-normalization.test.ts > preset loudness normalization > the generated map covers every factory preset within the clamp
+ FAIL  tests/sound-quality-pass.test.ts > genre song references — per-genre loudness trim (sound-quality wave 4) > applySongCommand trims every genre toward the -14 LUFS target (clamped ±6)
+ FAIL  tests/sound-quality-pass.test.ts > genre song references — per-genre loudness trim (sound-quality wave 4) > generated table covers every genre with MEASURED, plausible values
+ FAIL  tests/sound-quality-pass.test.ts > master tilt EQ consumption (sound-quality wave 3) > engine source pins: shelf pair wired DC→low→high→glue, clamped ±4 in applyMasterConfig
+ FAIL  tests/symbolic-melodic.test.ts > melodic prior sampling in the provider > falls back to template melody when multi-voice and the prior are unavailable
+ FAIL  tests/symbolic-melodic.test.ts > melodic prior sampling in the provider > produces prior-sampled notes that are in-key by construction
+ FAIL  tests/symbolic-prior.test.ts > semantic conditioning gate > falls back to the template for the same groove when no embedding is available
+ FAIL  tests/symbolic-prior.test.ts > symbolic prior provider > applies the shared search-lane policy while retaining the original intent provenance
+ FAIL  tests/symbolic-prior.test.ts > symbolic prior provider > degrades an in-genre but out-of-vocabulary groove to template instead of guessing
+ FAIL  tests/symbolic-prior.test.ts > symbolic prior provider > uses the selected alternate groove for symbolic candidates without changing validation provenance
+ FAIL  tests/three-family-wave.test.ts > three-family wave — genre registration > each genre owns six real grooves with unique ids
+ FAIL  tests/ultina-core-hardening.test.ts > AudioEngine: automation resolves group-bus chains > scheduleDeviceAutomation reaches an fx runtime on a group track
+ FAIL  tests/wav-bwf.test.ts > WAV BWF bext chunk (EBU Tech 3285) > createBextMetadata fills KYX defaults and formats the EBU clock
+ FAIL  tests/wav-bwf.test.ts > WAV BWF bext chunk (EBU Tech 3285) > fixed-width fields are truncated and non-ASCII is replaced with '?'

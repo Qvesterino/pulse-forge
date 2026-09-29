@@ -134,7 +134,8 @@ import { takeIntentPrefill, takeRegenFlag } from "../landing/handoff";
 import { freshRegenSeed, intentSnapshotOfDoc, promptFromIntent } from "../gallery/intentCarry";
 import { PublishToGalleryButton } from "../gallery/PublishButton";
 import { renderProject } from "../rendering/renderer";
-import { sanitizeFilename, downloadWav, encodeWav, encodeWavAsync, type WavBitDepth } from "../rendering/wav";
+import { sanitizeFilename, encodeWav } from "../rendering/wav";
+import { quickBounceDownload } from "../export/quick-bounce";
 import { canExportVideo, recordVideo } from "../export/video";
 import { downloadBlob } from "../export/download";
 import { encodeShareCode, shareAppUrl } from "../export/shareCode";
@@ -2241,29 +2242,14 @@ export function IntentPanel() {
           setError(err instanceof Error ? err.message : String(err));
         }
       } else if (route.kind === "export") {
-        // "export wav" / "export mp3" — the SAME render+encode+download
-        // pipeline the export panel drives (dynamic renderer import keeps
-        // the landing bundle clean). Async, cancellable by re-routing.
+        // "export wav" / "export mp3" — the shared quick-bounce pipeline
+        // (also what the MCP kyx_export tool drives). Async, cancellable by
+        // re-routing.
         stopAudition();
         const fmt = route.format;
         setStatus(`⏳ exporting ${fmt.toUpperCase()}…`);
         try {
-          const baseName = sanitizeFilename(doc.name);
-          const { renderProject } = await import("../rendering/renderer");
-          const buffer = await renderProject(doc, services.bank, { mode: "song", sampleRate: 44100 });
-          if (fmt === "mp3") {
-            const { encodeMp3 } = await import("../export/mp3");
-            const blob = await encodeMp3(buffer, { kbps: 320 });
-            downloadBlob(blob, `${baseName}-320.mp3`);
-            setStatus(`✓ MP3 exported (${buffer.duration.toFixed(1)}s, 320 kbps, ${(blob.size / 1e6).toFixed(2)} MB)`);
-          } else {
-            const bitDepth: WavBitDepth = 16;
-            const wavBytes = await encodeWavAsync(buffer, bitDepth, {});
-            downloadWav(wavBytes, `${baseName}-master.wav`);
-            setStatus(
-              `✓ WAV exported (${buffer.duration.toFixed(1)}s, 16-bit, ${(wavBytes.byteLength / 1e6).toFixed(2)} MB)`,
-            );
-          }
+          setStatus(`✓ ${await quickBounceDownload(doc, services.bank, fmt)}`);
         } catch (err) {
           setError(err instanceof Error ? `export failed: ${err.message}` : String(err));
         }

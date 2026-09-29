@@ -16,8 +16,12 @@ import type { ProjectDocument } from "../src/project-model/types";
 
 function makeCtx(doc: ProjectDocument, options: { allowDestructive?: boolean } = {}): McpToolContext {
   let current = doc;
-  const undoStack: Array<() => ProjectDocument> = [];
-  const redoStack: Array<() => ProjectDocument> = [];
+  // Mirrors the REAL ProjectStore stacks: undo pops the undo stack, redo
+  // pops the redo stack AND pushes the undo stack back — so the stack length
+  // moves on every successful step and stays put on a no-op (the kyx_undo
+  // counting relies on exactly this contract).
+  const undoStack: Array<{ undo: () => ProjectDocument; redo: () => ProjectDocument }> = [];
+  const redoStack: Array<{ undo: () => ProjectDocument; redo: () => ProjectDocument }> = [];
   const labels: string[] = [];
   return {
     getDoc: () => current,
@@ -25,19 +29,22 @@ function makeCtx(doc: ProjectDocument, options: { allowDestructive?: boolean } =
       const prev = current;
       current = command.execute(current);
       labels.push(command.label);
-      undoStack.push(() => command.undo(prev));
+      undoStack.push({ undo: () => command.undo(prev), redo: () => command.execute(current) });
       redoStack.length = 0;
     },
     undo: () => {
-      const restore = undoStack.pop();
-      if (restore) {
-        redoStack.length = 0;
-        current = restore();
+      const entry = undoStack.pop();
+      if (entry) {
+        current = entry.undo();
+        redoStack.push(entry);
       }
     },
     redo: () => {
-      const restore = redoStack.pop();
-      if (restore) current = restore();
+      const entry = redoStack.pop();
+      if (entry) {
+        current = entry.redo();
+        undoStack.push(entry);
+      }
     },
     undoStackLength: () => undoStack.length,
     historyLabels: () => [...labels],
@@ -205,14 +212,43 @@ describe("mcp structured tools", () => {
     expect(store.doc.groove?.swing ?? 0).toBe(0);
   });
 
-  it("kyx_fx more reverb on the lead adds the instance; remove deletes it", () => {
+  it("kyx_fx more reverb on the lead adds the instance; remove deletes it (D4-gated)", () => {
     const store = new ProjectStore(withLead());
-    executeMcpTool(storeCtx(store), "kyx_fx", { effect: "reverb", family: "lead", action: "more" });
+    const locked = storeCtx(store);
+    // more/less/knob ops are NOT destructive — allowed with the gate off
+    executeMcpTool(locked, "kyx_fx", { effect: "reverb", family: "lead", action: "more" });
     const withFx = store.doc.tracks.find((t) => t.kind === "instrument" && t.name === "Lead")!;
     expect(withFx.effects.some((fx) => fx.type === "reverb")).toBe(true);
-    executeMcpTool(storeCtx(store), "kyx_fx", { effect: "reverb", family: "lead", action: "remove" });
+    // remove IS destructive — locked without the user's allow flag
+    const refusal = executeMcpTool(locked, "kyx_fx", { effect: "reverb", family: "lead", action: "remove" });
+    expect(refusal.mutated).toBe(false);
+    expect(refusal.text).toContain("locked");
+    expect(store.doc.tracks.find((t) => t.name === "Lead")!.effects.length).toBe(1);
+    const allowed = storeCtx(store, { allowDestructive: true });
+    executeMcpTool(allowed, "kyx_fx", { effect: "reverb", family: "lead", action: "remove" });
     expect(store.doc.tracks.find((t) => t.name === "Lead")!.effects.length).toBe(0);
     expect(store.undoStackLength).toBe(2);
+  });
+
+  it("kyx_fx bypass FLAGS the instance (never deletes); enable clears the flag", () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    executeMcpTool(ctx, "kyx_fx", { effect: "reverb", family: "lead", action: "more" });
+    executeMcpTool(ctx, "kyx_fx", { effect: "reverb", family: "lead", action: "bypass" });
+    const flagged = store.doc.tracks.find((t) => t.name === "Lead")!.effects.find((fx) => fx.type === "reverb")!;
+    expect(flagged.bypassed).toBe(true); // instance still present
+    const enabled = executeMcpTool(ctx, "kyx_fx", { effect: "reverb", family: "lead", action: "enable" });
+    expect(enabled.mutated).toBe(true);
+    expect(store.doc.tracks.find((t) => t.name === "Lead")!.effects.find((fx) => fx.type === "reverb")!.bypassed).toBe(
+      false,
+    );
+  });
+
+  it("kyx_fx failures are honest results (no target), never thrown", () => {
+    const store = new ProjectStore(datasetDoc()); // no vocal track
+    const result = executeMcpTool(storeCtx(store), "kyx_fx", { effect: "reverb", family: "vocal", action: "more" });
+    expect(result.mutated).toBe(false);
+    expect(result.text).toContain("fx op failed");
   });
 
   it("kyx_sections add/remove named sections through the arrange layer", () => {
@@ -397,5 +433,151 @@ describe("mcp model-drivability wave", () => {
     const pattern = store.doc.patterns[store.doc.patterns.length - 1];
     expect(pattern.stepCount).toBe(32);
     expect(result.text).toContain("2 bar");
+  });
+});
+
+// ─── AUDIT REPAIRS — D4 gate reach, honest failures, atomicity, read-back ───
+
+describe("mcp audit repairs", () => {
+  it("kyx_undo redo counts honestly: empty redo stack → ×0, never ×N", () => {
+    const doc = datasetDoc();
+    const ctx = makeCtx(doc);
+    const result = executeMcpTool(ctx, "kyx_undo", { action: "redo", steps: 5 });
+    expect(result.text).toBe("redo ×0");
+    expect(result.mutated).toBe(false);
+  });
+
+  it("kyx_undo undo stops at the stack bottom (1 entry, ask 5 → ×1)", () => {
+    const ctx = makeCtx(datasetDoc());
+    executeMcpTool(ctx, "kyx_intent", { instruction: "set tempo to 140" });
+    const result = executeMcpTool(ctx, "kyx_undo", { action: "undo", steps: 5 });
+    expect(result.text).toBe("undo ×1");
+  });
+
+  it("D4 gate: intent PHRASING cannot bypass the destructive lock", () => {
+    const doc = datasetDoc();
+    const locked = makeCtx(doc);
+    const trackRefusal = executeMcpTool(locked, "kyx_intent", { instruction: "delete the drums track" });
+    expect(trackRefusal.mutated).toBe(false);
+    expect(trackRefusal.text).toContain("locked");
+    expect(locked.getDoc().tracks.length).toBe(datasetDoc().tracks.length);
+
+    // FX-instance removal phrased naturally is equally gated
+    const fxLocked = makeCtx(withLead());
+    executeMcpTool(fxLocked, "kyx_intent", { instruction: "more reverb on the lead" });
+    const fxRefusal = executeMcpTool(fxLocked, "kyx_intent", { instruction: "remove the reverb from the lead" });
+    expect(fxRefusal.text).toContain("locked");
+    expect(fxLocked.getDoc().tracks.some((t) => t.effects.some((fx) => fx.type === "reverb"))).toBe(true);
+  });
+
+  it("kyx_intent bare transport words dispatch to the transport", () => {
+    const doc = datasetDoc();
+    const stopped: string[] = [];
+    const ctx = makeCtx(doc);
+    // reuse the ctx but observe the transport — rebuild with a recording stop
+    const observing: McpToolContext = {
+      ...ctx,
+      transport: {
+        play: () => {},
+        stop: () => stopped.push("stop"),
+        pause: () => {},
+        setLoop: () => {},
+        setMetronome: () => {},
+      },
+    };
+    const result = executeMcpTool(observing, "kyx_intent", { instruction: "stop" });
+    expect(stopped).toEqual(["stop"]);
+    expect(result.mutated).toBe(false);
+  });
+
+  it("kyx_intent queries read back without mutating", () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const result = executeMcpTool(ctx, "kyx_intent", { instruction: "what tempo" });
+    expect(result.mutated).toBe(false);
+    expect(result.text).toContain("BPM");
+    expect(store.undoStackLength).toBe(0);
+  });
+
+  it("kyx_intent undo counting is honest (2 asked, 1 available → ×1)", () => {
+    const ctx = makeCtx(datasetDoc());
+    executeMcpTool(ctx, "kyx_intent", { instruction: "set tempo to 140" });
+    const result = executeMcpTool(ctx, "kyx_intent", { instruction: "undo two steps" });
+    expect(result.text).toBe("undo ×1");
+    expect(result.mutated).toBe(true);
+  });
+
+  it("kyx_intent applier failures return honest text instead of throwing", () => {
+    const store = new ProjectStore(datasetDoc()); // no vocal track
+    const result = executeMcpTool(storeCtx(store), "kyx_intent", {
+      instruction: "more reverb on the vocal",
+    });
+    expect(result.mutated).toBe(false);
+    expect(result.text).toContain("intent failed");
+  });
+
+  it("kyx_tracks remove folds N deletions into ONE undo step", () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store, { allowDestructive: true });
+    executeMcpTool(ctx, "kyx_tracks", { op: "addDrum" }); // → 2 drum tracks
+    const drumCount = store.doc.tracks.filter((t) => t.kind === "drum").length;
+    expect(drumCount).toBeGreaterThanOrEqual(2);
+    const before = store.doc.tracks.length;
+
+    const result = executeMcpTool(ctx, "kyx_tracks", { op: "remove", family: "drums" });
+    expect(result.mutated).toBe(true);
+    expect(result.text).toContain("one undo step");
+    expect(store.doc.tracks.length).toBe(before - drumCount);
+
+    store.undo(); // ONE undo restores every removed drum track
+    expect(store.doc.tracks.length).toBe(before);
+  });
+
+  it("kyx_state tracks includes mixer values (gain/pan/mute/solo) for read-after-write", () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    executeMcpTool(ctx, "kyx_intent", { instruction: "mute the drums" });
+    const state = executeMcpTool(ctx, "kyx_state", { subject: "tracks" });
+    expect(state.text).toContain("gain");
+    expect(state.text).toContain("pan");
+    expect(state.text).toContain("muted");
+  });
+
+  it("kyx_transport loopOn PRESERVES the existing loop range", () => {
+    const loopCalls: Array<[boolean, number, number]> = [];
+    const ctx = makeCtx(datasetDoc());
+    const observing: McpToolContext = {
+      ...ctx,
+      transport: {
+        play: () => {},
+        stop: () => {},
+        pause: () => {},
+        setLoop: (enabled, start, end) => loopCalls.push([enabled, start, end]),
+        setMetronome: () => {},
+        loopStart: 1920,
+        loopEnd: 7680,
+      },
+    };
+    executeMcpTool(observing, "kyx_transport", { action: "loopOn" });
+    expect(loopCalls).toEqual([[true, 1920, 7680]]); // not the 0..4-bar reset
+  });
+
+  it("kyx_transport loopOn falls back to 4 bars when no loop exists", () => {
+    const loopCalls: Array<[boolean, number, number]> = [];
+    const ctx = makeCtx(datasetDoc());
+    const observing: McpToolContext = {
+      ...ctx,
+      transport: {
+        play: () => {},
+        stop: () => {},
+        pause: () => {},
+        setLoop: (enabled, start, end) => loopCalls.push([enabled, start, end]),
+        setMetronome: () => {},
+        loopStart: 0,
+        loopEnd: 0,
+      },
+    };
+    executeMcpTool(observing, "kyx_transport", { action: "loopOn" });
+    expect(loopCalls).toEqual([[true, 0, 4 * 4 * 480]]);
   });
 });

@@ -1,6 +1,7 @@
 // @ts-expect-error — plain .mjs server module without declarations
 import { createMcpHub, handleMcpRequest, isValidToken, parseRpc, MCP_TOOL_DEFS } from "../server/mcp-core.mjs";
 import { describe, it, expect } from "vitest";
+import { MCP_TOOLS } from "../src/mcp/tools";
 
 /**
  * KYX MCP SERVER CORE — JSON-RPC framing, auth, session relay. The gate:
@@ -139,5 +140,30 @@ describe("mcp core — protocol with an authenticated session", () => {
       "kyx_pattern",
       "kyx_steps",
     ]);
+  });
+
+  it("server tool defs are a VERBATIM mirror of src/mcp/tools.ts (anti-drift pin)", () => {
+    // The 2026-09-29 audit found the server list had silently drifted (3
+    // missing kyx_state subjects, missing kyx_generate bars/replaceMode) —
+    // names-only pinning was not enough. Deep-pin names + descriptions +
+    // input schemas: change the surface in tools.ts, then mirror it here.
+    expect(MCP_TOOL_DEFS).toEqual(MCP_TOOLS);
+  });
+
+  it("an isError result from the session reaches the MCP client as isError (not a fake success)", async () => {
+    const { hub, delivered } = makeHub() as { hub: any; delivered: unknown[] };
+    const promise = handleMcpRequest(
+      hub,
+      TOKEN,
+      TOKEN,
+      rpc("tools/call", { name: "kyx_fx", arguments: { effect: "reverb", family: "vocal", action: "more" } }, 12),
+    );
+    hub.handleSessionMessage({
+      type: "mcp-result",
+      id: (delivered[0] as { id: number }).id,
+      result: { text: "fx op failed: no tracks match the target", mutated: false, isError: true },
+    });
+    const response = await promise;
+    expect((response.result as { isError: boolean }).isError).toBe(true);
   });
 });

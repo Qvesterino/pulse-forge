@@ -802,8 +802,12 @@ function sub808(): Builder {
     const t0 = ctx.currentTime;
     const osc = ctx.createOscillator();
     osc.type = "sine";
+    // Glide rests on D#1 (sound-library audit 2026-09-29: sub-family glide
+    // targets snapped to exact semitones — 30–70c off-key 808s beat against
+    // tuned melodic content and give the sampler no honest root to transpose
+    // from).
     osc.frequency.setValueAtTime(160, t0);
-    osc.frequency.exponentialRampToValueAtTime(38, t0 + 0.4);
+    osc.frequency.exponentialRampToValueAtTime(38.89, t0 + 0.4);
     const g = ctx.createGain();
     g.gain.setValueAtTime(1, t0);
     g.gain.setTargetAtTime(0.0005, t0 + 0.1, 0.28);
@@ -1961,9 +1965,10 @@ export const BUILDERS: Record<string, Builder> = {
   // family (drive/pure/drill), the vintage pair (phonk/lofi), and the
   // club/heritage punches (jersey/dnb/knock/909). Each targets a distinct
   // spectral+decay pocket so a beat can actually pick between them.
+  // 808 glide rests on exact semitones (audit 2026-09-29): D1 / C#1 / E1.
   "factory.kick.808drive": sub808Drive({
     startHz: 150,
-    endHz: 36,
+    endHz: 36.71,
     dropSec: 0.5,
     tailSec: 0.12,
     tau: 0.32,
@@ -1973,7 +1978,7 @@ export const BUILDERS: Record<string, Builder> = {
   }),
   "factory.kick.808pure": sub808Drive({
     startHz: 140,
-    endHz: 34,
+    endHz: 34.65,
     dropSec: 0.45,
     tailSec: 0.14,
     tau: 0.42,
@@ -1983,7 +1988,7 @@ export const BUILDERS: Record<string, Builder> = {
   }),
   "factory.kick.drill": sub808Drive({
     startHz: 175,
-    endHz: 42,
+    endHz: 41.2,
     dropSec: 0.06,
     tailSec: 0.1,
     tau: 0.16,

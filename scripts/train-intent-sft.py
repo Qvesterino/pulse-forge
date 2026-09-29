@@ -46,7 +46,7 @@ DEFAULT_OUT = Path("D:/pulse-forge/.sft/work")
 DEFAULT_BASE = "LiquidAI/LFM2-1.2B"
 
 SEED = 0x5EED
-MAX_LEN = 768
+MAX_LEN = 1024
 STRIP_KEYS = {"detected", "sourceText", "matchedBy"}
 WRAPPER_KEYS = ("intent", "preset", "parse")
 
@@ -155,12 +155,14 @@ def main() -> None:
     parser.add_argument("--accum", type=int, default=4)
     parser.add_argument("--lr", type=float, default=2e-4)
     parser.add_argument("--val-limit", type=int, default=60)
+    parser.add_argument("--sft-dir", default=str(SFT_DIR), help="corpus dir (train.jsonl/val.jsonl/prompt.txt)")
     args = parser.parse_args()
 
     random.seed(SEED)
     torch.manual_seed(SEED)
 
-    system = (SFT_DIR / "prompt.txt").read_text(encoding="utf8")
+    sft_dir = Path(args.sft_dir)
+    system = (sft_dir / "prompt.txt").read_text(encoding="utf8")
     if not system.strip():
         raise SystemExit("prompt.txt is empty — run scripts/write-intent-sft-prompt.mts first")
 
@@ -184,8 +186,8 @@ def main() -> None:
     model = get_peft_model(model, peft_config)
     model.print_trainable_parameters()
 
-    train_rows = load_rows(SFT_DIR / "train.jsonl")
-    val_rows = load_rows(SFT_DIR / "val.jsonl")
+    train_rows = load_rows(sft_dir / "train.jsonl")
+    val_rows = load_rows(sft_dir / "val.jsonl")
     examples = []
     for row in train_rows:
         target = flatten_action(row["response"])

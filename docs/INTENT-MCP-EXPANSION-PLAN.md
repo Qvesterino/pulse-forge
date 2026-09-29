@@ -205,6 +205,16 @@ disable/answer`), pending-call map + 10 s timeout per forwarded call
   flags
 - `?server=`/remote-origin rules keep using `isAllowedServerUrl`
   (collabShared.ts) — the MCP endpoint inherits the same allowlist
+- **AUDIT 2026-09-29 (`MCP_AI_CONTROL_MATRIX.md`)**: the gate now covers
+  EVERY removal path — structured (`kyx_tracks`/`kyx_sections`/`kyx_fx`
+  remove) AND natural-language phrasings through `kyx_intent`
+  (`routeIsDestructive`: exact removeTrack, arrange remove, clips
+  deleteClip, effect remove, compound clauses carrying them). Throwing
+  appliers (fx no-target, arrange-overlap) surface as honest failure
+  results end-to-end (`isError` honored), the web relay has a crash guard,
+  `kyx_fx bypass/enable` flag instances (never delete), `kyx_export` rides
+  the real quick-bounce pipeline, and the three tool-def copies are pinned
+  verbatim (server + desktop mirrors)
 
 ### D5. Files
 

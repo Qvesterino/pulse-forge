@@ -11,10 +11,11 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_intent",
     description:
-      "Drive the KYX DAW with a natural-language producer instruction (EN/SK): " +
-      '"mute the drums", "zníž basu", "set tempo to 140", "more reverb send on the lead", ' +
-      '"more swing in the drop". Executes through the deterministic command layer ' +
-      "(one undo step) and returns a verification read-back of the resulting state. " +
+      "Drive the KYX DAW with a natural-language producer instruction " +
+      '(EN/SK): "mute the drums", "zníž basu", "set tempo to 140", ' +
+      '"more reverb send on the lead", "more swing in the drop". ' +
+      "Executes through the deterministic command layer (one undo step) " +
+      "and returns a verification read-back of the resulting state. " +
       "Generation requests are refused (candidates need in-app auditioning).",
     inputSchema: {
       type: "object",
@@ -25,9 +26,9 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_state",
     description:
-      "Read-only project snapshot: tempo, key, time signature, track list, markers, " +
-      "groove, the ACTIVE pattern's step grid, the arrangement scenes, the undo " +
-      "history, or the FX chain of one family. Never mutates.",
+      "Read-only project snapshot: tempo, key, time signature, track list, " +
+      "markers, groove, the ACTIVE pattern's step grid, the arrangement " +
+      "scenes, the undo history, or the FX chain of one family. Never mutates.",
     inputSchema: {
       type: "object",
       properties: {
@@ -47,7 +48,7 @@ const MCP_TOOL_DEFS = [
   },
   {
     name: "kyx_undo",
-    description: "Undo or redo the last N document commands (default 1). Declined while a mic take is recording.",
+    description: "Undo or redo the last N document commands (default 1). Declined " + "while a mic take is recording.",
     inputSchema: {
       type: "object",
       properties: {
@@ -74,8 +75,9 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_export",
     description:
-      "Request a bounce of the current project (WAV/MP3). v1 returns started:true " +
-      "and the download happens in the KYX app window.",
+      "Request a bounce of the current project (WAV/MP3). The render + " +
+      "download run in the KYX app window; the tool reports that the bounce " +
+      "started (completion is not verifiable over MCP v1).",
     inputSchema: {
       type: "object",
       properties: { format: { type: "string", enum: ["wav", "mp3"] } },
@@ -85,8 +87,8 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_generate",
     description:
-      "Generate a new pattern from an intent spec (deterministic engine, one undo " +
-      "step). Returns the pattern name and resolved BPM.",
+      "Generate a new pattern from an intent spec (deterministic engine, " +
+      "one undo step). Returns the pattern name and resolved BPM.",
     inputSchema: {
       type: "object",
       properties: {
@@ -156,8 +158,9 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_fx",
     description:
-      "Structured effect operation on a track family: more/less turn the primary " +
-      "knob, remove deletes instances, bypass/enable flags them.",
+      "Structured effect operation on a track family: more/less turn the " +
+      "primary knob (percent = relative step size), remove deletes instances " +
+      "(destructive-gated), bypass/enable flag instances without deleting them.",
     inputSchema: {
       type: "object",
       properties: {
@@ -180,6 +183,12 @@ const MCP_TOOL_DEFS = [
         },
         family: { type: "string", enum: ["drums", "bass", "chords", "lead", "vocal"] },
         action: { type: "string", enum: ["more", "less", "remove", "bypass", "enable"] },
+        percent: {
+          type: "number",
+          minimum: 0,
+          maximum: 100,
+          description: "Relative step size for more/less, as % of the knob's range (default: fixed calibrated step)",
+        },
       },
       required: ["effect", "family", "action"],
     },
@@ -187,8 +196,8 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_sections",
     description:
-      "Arrangement operations: add/remove/duplicate/reorder/resize named sections " +
-      "(intro/build/chorus/verse/bridge/drop/break/outro/fill).",
+      "Arrangement operations: add/remove/duplicate/reorder/resize named " +
+      "sections (intro/build/chorus/verse/bridge/drop/break/outro/fill).",
     inputSchema: {
       type: "object",
       properties: {
@@ -218,8 +227,8 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_tracks",
     description:
-      "Track CRUD: add a drum or instrument track, remove/rename an existing one " +
-      "by family. Removing the last track is declined.",
+      "Track CRUD: add a drum or instrument track, remove/rename an " +
+      "existing one by family. Removing the last track is declined.",
     inputSchema: {
       type: "object",
       properties: {

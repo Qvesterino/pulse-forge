@@ -1,0 +1,15 @@
+[36m [2m❯[22m tests/ai/bridge/compressor.test.ts:[2m162:46[22m[39m
+    [90m160| [39m    [90m// Only canonical ids — the whitelist is the whole point of this t[39m…
+    [90m161| [39m    [35mfor[39m ([35mconst[39m key [35mof[39m [33mObject[39m[33m.[39m[34mkeys[39m(comp[33m?.[39mparams [33m??[39m {})) {
+    [90m162| [39m      [34mexpect[39m([33mObject[39m[33m.[39m[34mkeys[39m([33mCOMPRESSOR_RANGES[39m))[33m.[39m[34mtoContain[39m(key)[33m;[39m
+    [90m   | [39m                                             [31m^[39m
+    [90m163| [39m    }
+    [90m164| [39m    [90m// Assert the invariants rather than re-deriving the recipe's inte[39m…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[38/107]⎯[22m[39m
+
+[2m Test Files [22m [1m[31m92 failed[39m[22m[2m | [22m[1m[32m654 passed[39m[22m[90m (746)[39m
+[2m      Tests [22m [1m[31m36 failed[39m[22m[2m | [22m[1m[32m7497 passed[39m[22m[2m | [22m[33m117 skipped[39m[90m (7650)[39m
+[2m   Start at [22m 00:11:51
+[2m   Duration [22m 540.45s[2m (transform 105.68s, setup 741.57s, collect 559.45s, tests 1511.68s, environment 3779.60s, prepare 222.07s)[22m
+

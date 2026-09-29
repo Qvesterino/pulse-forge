@@ -365,6 +365,12 @@ describe("AGENTS.md §7 gotcha — `?server=` URL param must be gated by isAllow
     for (const f of listFiles("src")) {
       const ls = lines(f);
       for (let i = 0; i < ls.length; i++) {
+        // Skip comment lines. A JSDoc block that merely NAMES the override
+        // (e.g. "binds McpBridge against the ACTIVE collab server
+        // (?server= override)") is documentation, not a read site, and must
+        // not count as a violation. Only executable lines are scanned.
+        const trimmed = ls[i].trimStart();
+        if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
         const matches = ls[i].match(RE_SERVER_GET);
         if (matches) {
           for (const _ of matches) sites.push({ file: f.replace(/\\/g, "/"), line: i + 1, text: ls[i].trim() });

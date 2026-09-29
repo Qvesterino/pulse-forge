@@ -152,4 +152,32 @@ describe("web mcp bridge lifecycle", () => {
     expect(FakeWebSocket.instances[1]!.closed).toBe(false);
     stopB();
   });
+
+  it("a tool that CRASHES still answers mcp-result (no relay hang) and is marked isError", () => {
+    const services = fakeServices();
+    // Force a crash inside the tool execution path — the bridge must catch
+    // it and answer, otherwise the server-side call hangs until timeout.
+    const originalGetDoc = services.store.getDoc.bind(services.store);
+    services.store.getDoc = () => {
+      throw new Error("boom");
+    };
+    setMcpRelayToken("tok");
+    setMcpRelayEnabled(true);
+    const stop = startMcpWebBridgeIfEnabled(services);
+    const socket = FakeWebSocket.instances[0]!;
+    socket.onopen?.();
+
+    socket.onmessage?.({
+      data: JSON.stringify({ type: "mcp-call", id: 11, tool: "kyx_state", args: { subject: "overview" } }),
+    });
+    const raw = socket.sent
+      .map((entry) => JSON.parse(entry) as { type: string; id?: number; result?: { text?: string; isError?: boolean } })
+      .find((message) => message.type === "mcp-result");
+    expect(raw?.id).toBe(11);
+    expect(raw?.result?.text).toContain("tool crashed: boom");
+    expect(raw?.result?.isError).toBe(true);
+
+    services.store.getDoc = originalGetDoc;
+    stop();
+  });
 });
