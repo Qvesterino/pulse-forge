@@ -114,6 +114,18 @@ mapping complaints to measurements and the measured fix to an action.
   proposal; proposal execution goes through existing revise/production
   commands
 
+**ABX validation harness (SHIPPED)** — the N=1 answer: `npm run
+listening:abx` generates a forced-choice ABX page (listening/abx/): the
+listener hears X, then A and B in random order, and must decide which one
+X was. Chance = 50 %, so repeated trials give a real binomial p-value —
+18/20 correct is p ≈ 0.0002 even with a single listener. Trials append to
+`listening/abx/trials.jsonl` (POST /api/abx-trial in serve-listening);
+`src/listening/abx-stats.ts` aggregates (two-sided exact binomial, haste
+filter < 1.5 s, per-lane breakdown, JSONL tolerant parsing — tested in
+tests/abx-stats.test.ts). Every Phase C complaint-fix and every
+sound-quality wave can ship its before/after pair as an ABX lane: "the
+difference is audible" becomes a measured claim, not a taste opinion.
+
 **Gate C:** complaint → diagnosis → proposal → apply → read-back full loop
 green under a fake metrics provider; no new audio worklets.
 

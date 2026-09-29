@@ -99,6 +99,7 @@
     "references:genres": "node scripts/measure-genre-references.mjs",
     "listening:morph": "vite-node scripts/render-morph-listening.mjs",
     "listening:serve": "node scripts/serve-listening.mjs",
+    "listening:abx": "vite-node scripts/generate-abx-listening.mts",
     "listening:room": "vite-node scripts/render-listening-room.mjs",
     "listening:ingest": "node scripts/ingest-listening-verdicts.mjs",
     "taste:train": "node scripts/train-my-taste.mjs",

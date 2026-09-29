@@ -57,6 +57,48 @@ const server = createServer(async (req, res) => {
       res.end(JSON.stringify({ ok: true, count: verdicts.length }));
       return;
     }
+    // ABX forced-choice trials (listening/abx/trials.jsonl) — appended by
+    // the abx page, aggregated by src/listening/abx-stats.ts via the ingest.
+    if (url.pathname === "/api/abx-trial" && req.method === "POST") {
+      let body = "";
+      for await (const chunk of req) body += chunk;
+      let trial;
+      try {
+        trial = JSON.parse(body);
+      } catch {
+        res.writeHead(400).end('{"error":"invalid trial"}');
+        return;
+      }
+      if (
+        trial == null ||
+        typeof trial !== "object" ||
+        typeof trial.lane !== "string" ||
+        (trial.xWas !== "A" && trial.xWas !== "B") ||
+        (trial.answer !== "A" && trial.answer !== "B")
+      ) {
+        res.writeHead(400).end('{"error":"invalid abx trial"}');
+        return;
+      }
+      const trialsPath = path.join(SERVE_ROOT, "abx", "trials.jsonl");
+      mkdirSync(path.dirname(trialsPath), { recursive: true });
+      const { appendFile } = await import("node:fs/promises");
+      await appendFile(trialsPath, JSON.stringify({ ...trial, receivedAt: Date.now() }) + "\n");
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (url.pathname === "/api/abx-trials" && req.method === "GET") {
+      const trialsPath = path.join(SERVE_ROOT, "abx", "trials.jsonl");
+      let content = "";
+      try {
+        content = await readFile(trialsPath, "utf8");
+      } catch {
+        content = "";
+      }
+      res.writeHead(200, { "content-type": "application/x-ndjson" });
+      res.end(content);
+      return;
+    }
     // Dice ★ packs from the app (dice tray ⬇★ export can POST here) —
     // everything lands in listening/dice-packs/ for train-my-taste.
     if (url.pathname === "/api/favorites" && req.method === "POST") {
