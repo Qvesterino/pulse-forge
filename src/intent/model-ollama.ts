@@ -5,6 +5,7 @@ import {
   type IntentModelProvider,
 } from "./model-resolver";
 import { toJsonObjectSchema } from "./model-schema";
+void toJsonObjectSchema; // kept exported for the manifest grammar pin + tests
 import type { ProjectDocument } from "../project-model/types";
 
 /**
@@ -168,7 +169,11 @@ async function generate(instruction: string, _doc: ProjectDocument): Promise<str
       body: JSON.stringify({
         model,
         stream: false,
-        format: toJsonObjectSchema(),
+        // NO format constraint: measured 2026-09-29 — the JSON-schema grammar
+        // FLIPS the SFT'd model's kind distribution (fader→clarify, 90%
+        // in-process greedy collapsing to 2-9% through the schema path).
+        // The fine-tune already emits valid teacher-shaped JSON greedily;
+        // validateModelAction downstream remains the legality gate.
         options: { temperature: 0, num_predict: 256 },
         messages: [
           { role: "system", content: systemPromptInternal() },
