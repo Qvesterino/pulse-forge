@@ -183,9 +183,7 @@ describe("level 3 — planned params survive normalizeProject", () => {
     } as ProjectDocument;
 
     const normalized = normalizeProject(withEffect);
-    const survived = normalized.tracks
-      .find((t) => t.id === trackId)
-      ?.effects.find((fx) => fx.type === effectType);
+    const survived = normalized.tracks.find((t) => t.id === trackId)?.effects.find((fx) => fx.type === effectType);
     expect(survived, `${text} -> ${effectType} must exist after normalize`).toBeDefined();
     expect(
       survived!.params[key],
@@ -200,12 +198,8 @@ describe("level 3 — planned params survive normalizeProject", () => {
 
 describe("level 3 — the degree ladder reaches the new concepts", () => {
   it("a stronger ask cuts a lower filter", () => {
-    const gentle = actionsFor("add a slight autofilter to the lead")!.actions.find(
-      (a) => a.type === "svFilter",
-    )!;
-    const hard = actionsFor("add a much stronger autofilter to the lead")!.actions.find(
-      (a) => a.type === "svFilter",
-    )!;
+    const gentle = actionsFor("add a slight autofilter to the lead")!.actions.find((a) => a.type === "svFilter")!;
+    const hard = actionsFor("add a much stronger autofilter to the lead")!.actions.find((a) => a.type === "svFilter")!;
     expect(hard.params.cutoff).toBeLessThan(gentle.params.cutoff);
   });
 
@@ -258,7 +252,6 @@ describe("level 3 — the new concepts stay distinct from the old ones", () => {
   });
 });
 
-
 describe("notch concept (surgical EQ, plugin-audit follow-up)", () => {
   it("parses 'odstran rezonanciu na 347 hz' → notch concept with targetHz", async () => {
     const { parseProductionIntent } = await import("../src/intent/production");
@@ -287,8 +280,8 @@ describe("notch concept (surgical EQ, plugin-audit follow-up)", () => {
     const store = new ProjectStore(doc);
     store.execute(applyProductionIntentCommand(doc, intent!));
     const after = store.getDoc();
-    const eq = after
-      .tracks.flatMap((t) => (t.kind === "instrument" ? t.effects : []))
+    const eq = after.tracks
+      .flatMap((t) => (t.kind === "instrument" ? t.effects : []))
       .find((f) => f.type === "eq" && f.params.free1Type === 1);
     if (eq) {
       expect(eq.params.free1Freq).toBe(347);
