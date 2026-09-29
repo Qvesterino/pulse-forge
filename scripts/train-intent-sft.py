@@ -48,6 +48,22 @@ DEFAULT_BASE = "LiquidAI/LFM2-1.2B"
 SEED = 0x5EED
 MAX_LEN = 768
 STRIP_KEYS = {"detected", "sourceText", "matchedBy"}
+WRAPPER_KEYS = ("intent", "preset", "parse")
+
+
+def flatten_action(action: dict) -> dict:
+    """The runtime contract is FLAT: Ollama's JSON schema (toJsonObjectSchema)
+    and the resolver adapters read root-level slots, and the SFT prompt's
+    few-shot examples are flat. The corpus stores the canonical teacher form
+    (nested {kind, intent}) — flatten here so the model TRAINES on the shape
+    it must EMIT (tests/intent-model-resolver.test.ts pins flat fakes)."""
+    if not isinstance(action, dict):
+        return action
+    for key in WRAPPER_KEYS:
+        nested = action.get(key)
+        if isinstance(nested, dict):
+            return {"kind": action.get("kind"), **nested}
+    return action
 
 
 def canonical(value):
@@ -121,7 +137,7 @@ def val_exact(model, tokenizer, system: str, rows: list[dict], limit: int = 60) 
             parsed = json.loads(re.sub(r"^[^[{]*", "", text))
         except Exception:
             continue
-        truth = row["response"]
+        truth = flatten_action(row["response"])
         if parsed.get("kind") == truth.get("kind"):
             kind_ok += 1
         if canonical(parsed) == canonical(truth):
@@ -172,7 +188,8 @@ def main() -> None:
     val_rows = load_rows(SFT_DIR / "val.jsonl")
     examples = []
     for row in train_rows:
-        example = build_example(tokenizer, system, row["instruction"], json.dumps(row["response"], ensure_ascii=False))
+        target = flatten_action(row["response"])
+        example = build_example(tokenizer, system, row["instruction"], json.dumps(target, ensure_ascii=False))
         if example is not None:
             examples.append(example)
     print(f"train examples: {len(examples)}/{len(train_rows)} (skipped over {MAX_LEN} tokens)")

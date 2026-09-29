@@ -341,6 +341,20 @@ export async function tryModelRoute(instruction: string, doc: ProjectDocument): 
   } catch {
     return null;
   }
+  // NESTED-UNWRAP GUARD: the SFT corpus teaches the compact teacher form
+  // ({kind, intent:{...}} for wrapper kinds), while the adapters read FLAT
+  // records. A nested emission used to pass validation (the validator
+  // checks the nested payload) and then adapt against the EMPTY root — a
+  // silent all-slots-missing action. Unwrap to flat before both.
+  if (parsed != null && typeof parsed === "object") {
+    const record = parsed as ModelAction;
+    const nestedKey = ["intent", "preset", "parse"].find(
+      (key) => record[key] != null && typeof record[key] === "object",
+    );
+    if (nestedKey != null) {
+      parsed = { kind: record.kind, ...(record[nestedKey] as ModelAction) };
+    }
+  }
   const validation = validateModelAction(parsed);
   if (!validation.valid) return null;
   const record = parsed as ModelAction;

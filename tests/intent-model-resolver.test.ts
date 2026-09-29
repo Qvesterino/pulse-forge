@@ -74,6 +74,29 @@ describe("model resolver — happy paths", () => {
     expect(bass.gain).toBeLessThan(doc.tracks.find((t) => t.kind === "instrument")!.gain);
   });
 
+  it("NESTED teacher-form emission unwraps to flat before adaptation (SFT corpus shape)", async () => {
+    const doc = datasetDoc();
+    // the SFT corpus stores {kind, intent:{...}} (compactIntentResponse) — a
+    // fine-tuned model reproduces that shape; the adapters read FLAT records.
+    // Before the unwrap guard this passed validation and adapted against the
+    // empty root — a silent all-slots-missing fader.
+    setIntentModelProvider(
+      fakeProvider({
+        "quiet down that bass a touch": {
+          kind: "fader",
+          intent: { targets: ["bass"], pads: [], direction: "down", amount: "subtle" },
+        },
+      }),
+    );
+    const route = await tryModelRoute("quiet down that bass a touch", doc);
+    expect(route?.kind).toBe("fader");
+    if (route?.kind !== "fader") throw new Error("expected fader");
+    expect(route.intent).toMatchObject({ targets: ["bass"], direction: "down", amount: "subtle" });
+    const next = applyFaderIntent(doc, route.intent)!.execute(doc);
+    const bass = next.tracks.find((t) => t.kind === "instrument")!;
+    expect(bass.gain).toBeLessThan(doc.tracks.find((t) => t.kind === "instrument")!.gain);
+  });
+
   it("model percent is an integer; the adapter keeps engine semantics (50 → 0.75)", async () => {
     const doc = datasetDoc();
     setIntentModelProvider(
