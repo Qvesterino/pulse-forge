@@ -283,10 +283,9 @@ describe("notch concept (surgical EQ, plugin-audit follow-up)", () => {
     const { createProjectFromTemplate } = await import("../src/project-model/templates");
     const { ProjectStore } = await import("../src/store/ProjectStore");
     const doc = createProjectFromTemplate("house");
-    const inst = doc.tracks.find((t) => t.kind === "instrument")!;
     const intent = parseProductionIntent(`odstran rezonanciu na 347 hz`);
     const store = new ProjectStore(doc);
-    store.execute(applyProductionIntentCommand(doc, intent));
+    store.execute(applyProductionIntentCommand(doc, intent!));
     const after = store.getDoc();
     const eq = after
       .tracks.flatMap((t) => (t.kind === "instrument" ? t.effects : []))
