@@ -81,6 +81,23 @@ circuit breaker, heuristic fallback. Whisper (STT) and the intent model are
 two manifests over the same infrastructure. Both are offline-capable and
 downloadable on demand; neither is in the web bundle's critical path.
 
+### 2.2 Ollama provider — the DESKTOP path (live 2026-09-29)
+
+For machines with Ollama installed, `src/intent/model-ollama.ts` bridges the
+local server into the SAME injectable provider contract: opt-in flag
+`localStorage["pf:intent-model-ollama"] = "on"`, model name via
+`pf:intent-model-ollama-model` (default
+`hf.co/LiquidAI/LFM2-1.2B-GGUF:Q4_K_M`, 730 MB), probe `/api/tags`, then
+`/api/chat` with **structured outputs from `toJsonObjectSchema()`** (the
+JSON-Schema twin of the GBNF grammar) and a few-shot system prompt built
+from golden corpus pairs. Registration goes through `setIntentModelProvider`
+— validation, adapters and executors are shared with every other backend.
+Base-model reality check (scripts/smoke-ollama-intent.mts, lfm2-1.2b Q4_K_M
+on an RTX 3060): schema-legal 8/8 — the constraint holds; expected-kind 3/8 —
+the BASE model guesses, which is exactly what the SFT fine-tune (§4) fixes.
+This is the desktop convenience path; the web-offline path stays the
+artifact loader (ONNX now / wllama-GGUF later).
+
 ## 3. Why a 1.2B model is enough — the four simplifications
 
 1. **Pre-filter (biggest win).** The cheap deterministic layer runs FIRST.

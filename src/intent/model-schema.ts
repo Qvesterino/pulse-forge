@@ -516,3 +516,59 @@ export function validateModelOutputForDoc(action: unknown, _doc: ProjectDocument
   // schema-level check is doc-independent by design
   return validateModelAction(action);
 }
+
+// ── JSON Schema (Ollama structured outputs / JSON-schema runtimes) ──────────
+
+type JsonObjectSchema = Record<string, unknown>;
+
+function slotToJsonSchema(slot: Slot): JsonObjectSchema {
+  switch (slot.type) {
+    case "enum":
+      return { type: "string", enum: [...(slot.values ?? [])] };
+    case "enumArray":
+      return { type: "array", items: { type: "string", enum: [...(slot.values ?? [])] } };
+    case "int":
+      return { type: "integer", minimum: slot.min ?? -1e9, maximum: slot.max ?? 1e9 };
+    case "number":
+      return { type: "number", minimum: slot.min ?? -1e9, maximum: slot.max ?? 1e9 };
+    case "scalar":
+      return { anyOf: [{ type: "boolean" }, { type: "number", minimum: slot.min ?? -1e9, maximum: slot.max ?? 1e9 }] };
+    case "string":
+      return { type: "string" };
+    case "stringArray":
+      return { type: "array", items: { type: "string" } };
+    case "partsArray":
+      // sub-actions as JSON-encoded strings (mirrors the GBNF string-array form)
+      return { type: "array", items: { type: "string" } };
+    case "bool":
+      return { type: "boolean" };
+    case "objArray": {
+      const properties: Record<string, JsonObjectSchema> = {};
+      for (const sub of slot.slots ?? []) properties[sub.name] = slotToJsonSchema(sub);
+      return { type: "array", items: { type: "object", properties, additionalProperties: false } };
+    }
+  }
+}
+
+/**
+ * The model-facing action schema as a JSON Schema (discriminated anyOf, one
+ * branch per kind) — the input format for Ollama structured outputs and
+ * other JSON-schema-constrained runtimes. GBNF (`toGbnfGrammar`) and this
+ * function express the SAME MODEL_ACTIONS; a vocab change moves both with
+ * the same commit. Flat per-kind objects — the resolver adapters read flat
+ * records, and `validateModelAction` accepts flat wrapper kinds too.
+ */
+export function toJsonObjectSchema(): JsonObjectSchema {
+  const branches: JsonObjectSchema[] = [];
+  for (const kind of VOCAB.kind) {
+    const spec = MODEL_ACTIONS[kind];
+    const properties: Record<string, JsonObjectSchema> = { kind: { const: kind } };
+    const required: string[] = ["kind"];
+    for (const slot of spec.slots) {
+      properties[slot.name] = slotToJsonSchema(slot);
+      if (slot.required) required.push(slot.name);
+    }
+    branches.push({ type: "object", properties, required, additionalProperties: false });
+  }
+  return { anyOf: branches };
+}

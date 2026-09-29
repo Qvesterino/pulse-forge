@@ -105,3 +105,4 @@ scripts/data/augmented-drum-dataset.json
 # family instead of listing each wave dir by hand
 lane-listening/
 *-listening/
+.sft/
