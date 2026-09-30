@@ -660,7 +660,7 @@ no local `Escape` are all dismissible: `OnboardingTour` is a non-modal
 `.tour-card` with a native `SKIP` button (`:82`) and correctly omits
 `aria-modal`; `CollabPanel` and `HumToMelody` expose native buttons.
 
-**Two false positives this section's own scans produced, recorded because the
+**Three false positives this section's own scans produced, recorded because the
 same traps are waiting for the next audit:**
 
 1. A line-based filter for "clickable div without a11y affordances" returned
@@ -670,4 +670,16 @@ same traps are waiting for the next audit:**
 2. A 4 000-character window around each dialog found no `Escape` in any of
    the 14, which looked like "no modal is keyboard-dismissible" until the
    global cascade in `App.tsx` explained all 14 at once. A scan that does not
-   know the architecture will report the handler's absence, not the defect.
+   know the architecture reports the handler's absence, not the defect.
+3. Re-verifying my own §5/§6 citations, I grepped `SliceLab.tsx` for
+   `store.execute(` between lines 620 and 670, found **nothing**, and was about
+   to conclude the per-keystroke claim had been fixed by someone else. The
+   cited lines 637/648 are `onChange` handlers that call
+   `updateSelectedStart` / `updateSelectedEnd`, which reach `execute` further
+   up the file. The claim was correct; the predicate was wrong. A second
+   search, for the handler the citation actually names, confirmed it.
+
+The general rule these three share: **the predicate is part of the claim.**
+Three of the strongest-looking results in this audit — a clean a11y sweep, an
+unrelated global handler, a silently-fixed defect — were the scan's error, not
+the code's. Each cost a measurement to catch, which is the minimum.
