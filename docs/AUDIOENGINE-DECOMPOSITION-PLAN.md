@@ -1,6 +1,6 @@
 # AudioEngine decomposition plan (Robustness Wave 4)
 
-> Status: IN PROGRESS — **4a MeteringRig SHIPPED** (`d81090f1`, 2026-09-30; AudioEngine 6140 → 5905 lines, MeteringRig 365). Next: 4b MasterChain. Owner: pro-DAW robustness campaign (Waves 1–3 shipped:
+> Status: IN PROGRESS — **4a MeteringRig SHIPPED** (`d81090f1`; AudioEngine 6140 → 5905) + **4b MasterChain SHIPPED** (absorbed `d4659fad`/`00bb9811`; AudioEngine → 5 134, MasterChain 841, liveContext helper). Next: 4c PreviewDeck. Owner: pro-DAW robustness campaign (Waves 1–3 shipped:
 > crash journal, PDC export parity, audio-clock scheduler driver).
 > Measured against the working tree on 2026-09-29 (commit `0bb5670f` era).
 
@@ -80,7 +80,7 @@ the analyser fields. Read-mostly, no scheduling interaction, existing sibling
 `metering.ts` shows the shape, browser-checks already assert master meters.
 Gates: existing metering checks green + new unit pins for snapshot caching.
 
-### Wave 4b — MasterChain (risk: medium, biggest single win)
+### Wave 4b — MasterChain (risk: medium, biggest single win) — SHIPPED (absorbed `d4659fad` + fixes `00bb9811`)
 
 `buildMaster` + config/upgrade paths + the ~25 `master*` fields. The master chain
 is the most self-contained graph island (input gain → devices → taps →
