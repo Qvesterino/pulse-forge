@@ -122,7 +122,8 @@ the tool result prove the state change?
 | Capability | Read | Write | Validation | Undo | Verification | Status | Missing |
 |---|---|---|---|---|---|---|---|
 | Channel gain/pan/mute/solo | full **[REPAIRED]** | nl | clamps | ✅ | label (+ fader readback in-app) | PARTIALLY EXPOSED | structured setters, per-ID |
-| Sends | none | nl | clamp + return-exists | ✅ | in-app readback | PARTIALLY EXPOSED, near WRITE-ONLY | send READ tool **(P0 — see roadmap)** |
+| Sends | full (`kyx_state sends` **[P1]: returns with id/gain/fx + every track's level into each**) | nl | clamp + return-exists | ✅ | `sends` read-back verifies the landing | FULLY EXPOSED (levels) | structured send SETTER (NL-only today); return/bus create; group routing |
+| Returns / buses | returns line in `kyx_state sends` **[P1]** (ids, gains, fx) | none | — | — | — | READ-ONLY | create/adjust return buses (P2) |
 | Master (gain, tilt, trim) | none | nl (target "mix"/"master"; loudness NL runs in-app only, refused over MCP) | clamps | ✅ | label | PARTIALLY EXPOSED / WRITE-ONLY | master read; loudness loop over MCP |
 | Metering (peak/RMS/LUFS) | none | n/a | — | — | — | NOT EXPOSED | engine has MeterRing + loudness measurement — no MCP surface **(P0)** |
 
@@ -149,9 +150,9 @@ the tool result prove the state change?
 
 | Capability | Read | Write | Validation | Undo | Verification | Status | Missing |
 |---|---|---|---|---|---|---|---|
-| Play/stop/pause/metronome | none (dispatch echo only) | full (tool + NL bare words **[REPAIRED: NL "stop"/"loop on" now dispatch instead of no-op'ing]**) | enum | n/a (runtime state) | echo — no position readback | PARTIALLY EXPOSED | playing-state read **(P1)** |
-| Loop on/off | none | full — **[REPAIRED: loopOn PRESERVES the user's loop range (was: silent reset to bars 1–4)]** | — | n/a | echo | PARTIALLY EXPOSED | set loop region by bars; loop-state read |
-| Seek / position | none | none | — | — | — | NOT EXPOSED | seek + playhead read **(P1)** |
+| Play/stop/pause/metronome | full (`state` + every action's read-back ends with the resulting state **[P1]**) | full (tool + NL bare words) | enum | n/a (runtime state) | state read-back | FULLY EXPOSED | — |
+| Loop on/off + region | full (`state` shows region in bars; `loopEnd=0` → "to end of content" **[P1]**) | full — loopOn PRESERVES the range; **`loopRegion startBar/endBar` sets it by inclusive 1-based bars [P1]** | endBar > startBar enforced | n/a | region read-back | FULLY EXPOSED | — |
+| Seek / position | full (`position` → bar/beat/tick **[P1]**) | full — **`seek bar` (+ optional beat) [P1]** | bar ≥ 1, beat 1–4; Transport's own non-finite/negative guard | n/a | position read-back | FULLY EXPOSED | sub-beat/tick addressing (P2, trivial to add) |
 | Record arm | — | honestly refused (window-local take lifecycle) | — | — | refusal | NOT EXPOSED (intentional v1) | — |
 
 ### Automation
@@ -229,9 +230,9 @@ Can a fresh LLM answer…?
 | What FX are inserted (per family)? | ✅ `kyx_state fxChain` (types + bypass); **param values via `kyx_plugin_param` list [P0]** |
 | What plugins/effects/instruments EXIST to add? | ✅ **`kyx_catalog` [P0]** — 47 effect types with knob markers, 22 instrument kinds |
 | What parameters does plugin X expose + valid values? | ✅ **`kyx_catalog` subject:effect [P0]** — min/max/default/unit/taper/options |
-| What buses/sends/routing exist? | ❌ |
+| What buses/sends/routing exist? | ✅ **`kyx_state sends` [P1]** — return buses (id/gain/fx) + every track's send level |
 | What clips are on this track? | ❌ |
-| What is selected / playing / playhead position? | ❌ (audio levels: ✅ `kyx_meter` [P0]) |
+| What is selected? | ❌ (playhead position + playing state: ✅ `kyx_transport state` [P1]; audio levels: ✅ `kyx_meter` [P0]) |
 | What can I control right now? | ✅ tool schemas + catalog (def copies pinned verbatim) |
 
 ## 6. Sound-control gap scenarios (§7)
@@ -305,9 +306,19 @@ fields would be sturdier (P2).
 
 ### P1 — HIGH VALUE (next wave)
 
-5. Transport reads + seek: `kyx_transport seek <bar>`, `position` readback, loop-region set by
-   bars; playing-state.
-6. Send-level reads (`kyx_state sends`) — close the send write-only gap.
+5. ✅ **Transport reads + seek [SHIPPED 2026-09-29, same day]**: `kyx_transport` gained
+   `state` (read-only position bar/beat/tick, playing/paused, loop region, metronome),
+   `seek` (1-based bar + optional beat, verified by a state read-back), and
+   `loopRegion` (inclusive 1-based bars → ticks). All base actions now end their
+   read-back with the resulting state (verify-by-read); bare test fakes degrade
+   honestly. Found + fixed en route (defect #13): extracting `transport.seek` into a
+   local dropped `this` and would crash the real Transport — the real-class harness
+   caught what the fake-based tests could not.
+6. ✅ **Send-level reads [SHIPPED 2026-09-29, same day]**: `kyx_state subject:sends` —
+   the full routing map (return buses with ids/gains/fx + every track's send level
+   into each, zeros included, group tracks included) with the fxChain family-filter
+   conventions and truncation note. A "more reverb send" loop can now VERIFY its
+   landing (`808: Reverb 0.15`).
 7. Automation surface: read lanes, add/delete points, target FX params (rides P0-2).
 8. Structured mixer setters (`set_gain_db/set_pan/set_mute/set_solo` with absolute values +
    read-back) — NL works but is unverifiable-by-construction for absolute asks.
@@ -350,6 +361,7 @@ P1 items are the same shape.
 | 10 | NL intents no-op'd with a misleading message for transport/query/compound/production; loudness/mix/etc. pretended "nothing changed" | `intentCommand` switch missed route kinds | transport dispatch, query read-backs, compound + production execution; honest not-over-MCP refusals | intent-route tests |
 | 11 | `kyx_fx` result echoed the label only | no verification | wave-8 `effectReadback`/`bypassReadback` appended (landed native values) | readback in fx tests |
 | 12 | `kyx_fx` schema advertised `effect:"eq"` but `EFFECT_KNOB.eq` never existed — every such call threw "no knob mapped" | enum copied from the intent vocabulary, not the knob map | eq removed from the knob-tool enum; explicit honest refusal pointing at `kyx_catalog`+`kyx_plugin_param` | eq-refusal test |
+| 13 | Extracting `transport.seek` into a local dropped `this` — the REAL Transport crashed on `playing_` (fake-based tests passed) | unbound-method call in `transportSeek` | method call on the transport object + a real-`Transport` verification harness (position/seek/loop E2E) | real-class harness, P1 tests |
 
 ---
 
@@ -362,12 +374,12 @@ addressing, no catalog discovery, family-only addressing — are now **CLOSED**
 (`kyx_meter`, `kyx_plugin_param`, `kyx_catalog`, `trackId` on writes; 16 tools, all mirrors
 pinned, 75 specs green).
 
-**What still stands between an AI agent and full DAW control** (the P1 wave, all thin
-wrappers over existing APIs): transport reads/seek, send-level reads, automation
-read/edit/point-ops, structured absolute mixer setters with read-back, clip tools,
-awaited export with stems/settings, and the loudness/mix loops over MCP. After those, the
-remaining P2 items (machine-readable result envelopes, batch/transaction tool, routing
-graph, per-pad addressing) are convenience and depth, not capability walls.
+**What still stands between an AI agent and full DAW control** (the rest of P1, all thin
+wrappers over existing APIs): automation read/edit/point-ops, structured absolute mixer
+setters with read-back, clip tools, awaited export with stems/settings, and the loudness/mix
+loops over MCP. After those, the remaining P2 items (machine-readable result envelopes,
+batch/transaction tool, routing-graph writes, per-pad addressing) are convenience and depth,
+not capability walls.
 
 **Smallest practical path from here**: P1-5..P1-8 in one wave (evening-scale each), then
 re-run this matrix — the surface then covers every domain a mixing/producing agent needs

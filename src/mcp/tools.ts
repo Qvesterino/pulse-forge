@@ -94,19 +94,32 @@ export const MCP_TOOLS: McpToolDef[] = [
     description:
       "Read-only project snapshot: tempo, key, time signature, track list, " +
       "markers, groove, the ACTIVE pattern's step grid, the arrangement " +
-      "scenes, the undo history, or the FX chain of one family. Never mutates.",
+      "scenes, the send routing map (returns + per-track send levels), the " +
+      "undo history, or the FX chain of one family. Never mutates.",
     inputSchema: {
       type: "object",
       properties: {
         subject: {
           type: "string",
-          enum: ["overview", "tempo", "key", "tracks", "markers", "groove", "fxChain", "pattern", "scenes", "history"],
+          enum: [
+            "overview",
+            "tempo",
+            "key",
+            "tracks",
+            "markers",
+            "groove",
+            "fxChain",
+            "sends",
+            "pattern",
+            "scenes",
+            "history",
+          ],
           description: "Which part of the project state to return",
         },
         family: {
           type: "string",
           enum: ["kick", "snare", "clap", "hat", "perc", "tom", "bass", "lead", "chords", "drums"],
-          description: "Optional track family filter for fxChain",
+          description: "Optional track family filter for fxChain and sends",
         },
       },
       required: ["subject"],
@@ -609,19 +622,21 @@ function describeTransport(transport: McpToolContext["transport"]): string {
 
 /** kyx_transport seek — absolute position by 1-based bar (+ optional beat). */
 function transportSeek(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
-  const seek = ctx.transport.seek;
-  if (seek == null) {
+  const transport = ctx.transport;
+  if (transport.seek == null) {
     return { text: "seek is not available over this MCP transport (no seek-capable transport bound)", mutated: false };
   }
   const rawBar = Number(record.bar);
   if (!Number.isFinite(rawBar) || Math.round(rawBar) < 1) {
-    return { text: "seek needs a 1-based bar (e.g. { action: \"seek\", bar: 5 })", mutated: false };
+    return { text: 'seek needs a 1-based bar (e.g. { action: "seek", bar: 5 })', mutated: false };
   }
   const bar = Math.round(rawBar);
   const rawBeat = typeof record.beat === "number" ? record.beat : 1;
   const beat = Math.min(4, Math.max(1, Math.round(Number.isFinite(rawBeat) ? rawBeat : 1)));
   const tick = (bar - 1) * TICKS_PER_BAR + (beat - 1) * (TICKS_PER_BAR / 4);
-  seek(tick);
+  // Method CALL on the transport object — extracting `transport.seek` into a
+  // local would drop `this` and crash the real Transport (unbound playing_).
+  transport.seek(tick);
   return {
     text: `seek → bar ${bar}${beat > 1 ? ` beat ${beat}` : ""} (tick ${tick}) · ${describeTransport(ctx.transport)}`,
     mutated: false,
@@ -634,7 +649,7 @@ function transportLoopRegion(ctx: McpToolContext, record: Record<string, unknown
   const endBar = Math.round(Number(record.endBar));
   if (!Number.isFinite(startBar) || !Number.isFinite(endBar) || startBar < 1 || endBar <= startBar) {
     return {
-      text: "loopRegion needs { startBar >= 1, endBar > startBar } (1-based, inclusive) — e.g. { action: \"loopRegion\", startBar: 5, endBar: 9 }",
+      text: 'loopRegion needs { startBar >= 1, endBar > startBar } (1-based, inclusive) — e.g. { action: "loopRegion", startBar: 5, endBar: 9 }',
       mutated: false,
     };
   }
@@ -1264,6 +1279,34 @@ function stateSnapshot(
     // say how much was cut instead.
     if (lines.length > 8) return `${lines.slice(0, 8).join("\n")}\n… and ${lines.length - 8} more track(s)`;
     return lines.join("\n") || "no tracks";
+  }
+  if (subject === "sends") {
+    // The full send routing map: the return buses (with their faders) and
+    // every track's send level into each — the read half of the NL send
+    // intents, so a "more reverb send" loop can VERIFY its landing.
+    const lines: string[] = [];
+    if (doc.returns.length === 0) {
+      return "returns: none (no send buses exist — the NL send intents would refuse too)";
+    }
+    lines.push(
+      `returns: ${doc.returns
+        .map(
+          (ret) =>
+            `${ret.name} (id=${ret.id}, gain ${ret.gain.toFixed(2)}, fx: ${ret.effects.map((fx) => fx.type).join(", ") || "none"})`,
+        )
+        .join(" · ")}`,
+    );
+    const wanted = family != null ? new RegExp(`\\b${family}\\b`, "i") : null;
+    const level = (value: number): number => Math.round(value * 1000) / 1000;
+    for (const track of doc.tracks) {
+      if (wanted != null && !wanted.test(track.name) && track.kind !== "drum") continue;
+      const levels = doc.returns.map((ret) => `${ret.name} ${level(track.sends?.[ret.id] ?? 0)}`);
+      lines.push(`${track.name} (id=${track.id}): ${levels.join(" · ")}`);
+    }
+    if (wanted == null && lines.length > 9) {
+      return `${lines.slice(0, 9).join("\n")}\n… and ${lines.length - 9} more track(s) (filter with family)`;
+    }
+    return lines.join("\n");
   }
   if (subject === "pattern") {
     const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);

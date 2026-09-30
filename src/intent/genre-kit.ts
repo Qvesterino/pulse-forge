@@ -150,7 +150,13 @@ export const GENRE_KIT_SWAPS: Partial<Record<GenerateOptions["genre"], GenrePadS
     { index: 0, assetId: "factory.kick.techno" },
     { index: 1, assetId: "factory.kick.punch" },
     { index: 8, assetId: "factory.hat.closed" },
-    { index: 10, assetId: "factory.hat.open" },
+    // The offbeat mask is a WASH — the long hat rings across the beat
+    // (the genre's signature bloom) and varies like the other groove hats.
+    {
+      index: 10,
+      assetId: "factory.hat.wash",
+      layers: roundRobinLayers(["factory.hat.wash", "factory.hat.wash.rr2", "factory.hat.wash.rr3"]),
+    },
   ],
   detroit: [
     // The machine-funk kit: the 808 pure kick (the Belleville low end), the

@@ -329,6 +329,46 @@ function hatMetallic(opts: {
   };
 }
 
+/** Long open-hat wash (library gap: 4/4 offbeat sizzle) — every other bank
+ * hat decays ≤ 97 ms, so an offbeat open hat can only tick where house and
+ * trance grooves want it to BLOOM. The wash: two inharmonic square pings
+ * through tight bandpasses (the metallic "ting" that keeps it a HAT — a
+ * crash has no ping) over a long highpassed noise tail that darkens as it
+ * decays, the way real cymbal wash absorbs. The tail env runs ~0.9 s so the
+ * AUDIBLE ring (to −20 dB) spans the offbeat's full ~250 ms at 124 BPM. */
+function hatWash(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    for (const [hz, level] of [
+      [6400, 0.3],
+      [8400, 0.22],
+    ] as [number, number][]) {
+      const ping = ctx.createOscillator();
+      ping.type = "square";
+      ping.frequency.value = hz;
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = hz;
+      bp.Q.value = 9;
+      ping
+        .connect(bp)
+        .connect(env(ctx, t0, level, 0.12))
+        .connect(dest);
+      ping.start(t0);
+      ping.stop(t0 + 0.16);
+    }
+    const noise = noiseSource(ctx, 131, 1.0, t0);
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.setValueAtTime(6800, t0);
+    hp.frequency.exponentialRampToValueAtTime(4200, t0 + 0.7);
+    noise
+      .connect(hp)
+      .connect(env(ctx, t0, 0.6, 0.9))
+      .connect(dest);
+  };
+}
+
 function clap(): Builder {
   return (ctx, dest) => {
     const t0 = ctx.currentTime;
@@ -1505,6 +1545,45 @@ function fxReverse(): Builder {
   };
 }
 
+/** Sub-drop FX (library gap: drill/trap transitions) — the pitch-falling sub
+ * the riser/downlifter family lacks: a sine drops two octaves (C3 → C1, the
+ * rest semitone-clean like the 808 bank) and lands LOUD, then fades. A soft
+ * tanh edge keeps the glide readable on small speakers, and a whisper of
+ * falling band-passed air gives the drop a ceiling. Sustained sub + the FX
+ * tape drive would square (the 808pure failure), so the seed script runs
+ * this slot at near-unity tape drive. */
+function fxSubDrop(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(130.81, t0); // C3
+    osc.frequency.exponentialRampToValueAtTime(32.7, t0 + 0.55); // C1 rest
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(0.95, t0 + 0.015);
+    g.gain.setValueAtTime(0.95, t0 + 0.45);
+    g.gain.exponentialRampToValueAtTime(0.0005, t0 + 1.35);
+    const shaper = ctx.createWaveShaper();
+    const curve = new Float32Array(257);
+    for (let i = 0; i < 257; i++) {
+      const x = i / 128 - 1;
+      curve[i] = Math.tanh(1.6 * x);
+    }
+    shaper.curve = curve;
+    osc.connect(g).connect(shaper).connect(dest);
+    osc.start(t0);
+    osc.stop(t0 + 1.4);
+    const air = noiseSource(ctx, 137, 0.6, t0);
+    const airBp = ctx.createBiquadFilter();
+    airBp.type = "bandpass";
+    airBp.frequency.setValueAtTime(2400, t0);
+    airBp.frequency.exponentialRampToValueAtTime(500, t0 + 0.6);
+    airBp.Q.value = 1.2;
+    air.connect(airBp).connect(env(ctx, t0, 0.12, 0.55)).connect(dest);
+  };
+}
+
 function fxNoise(): Builder {
   return (ctx, dest) => {
     const t0 = ctx.currentTime;
@@ -2129,6 +2208,9 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.hat.jersey": hatMetallic({ decay: 0.055, hpHz: 8200, level: 0.55, pingHz: 6400, ping: 0.3, seed: 61 }),
   "factory.hat.dnb": hatMetallic({ decay: 0.04, hpHz: 9600, level: 0.5, pingHz: 7100, ping: 0.24, seed: 67 }),
   "factory.hat.open.cup": hatMetallic({ decay: 0.28, hpHz: 5200, level: 0.42, pingHz: 4600, ping: 0.22, seed: 71 }),
+  // Hat wash (library-gap wave): the long offbeat bloom — pings + darkening
+  // noise wash (the only bank hat past 100 ms decay).
+  "factory.hat.wash": hatWash(),
   "factory.clap.main": clap(),
   "factory.clap.soft": clapSoft(),
   "factory.shaker.soft": shaker(),
@@ -2162,6 +2244,9 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.fx.sweep": fxSweep(),
   "factory.fx.reverse": fxReverse(),
   "factory.fx.noise": fxNoise(),
+  // Sub-drop (library-gap wave): the drill/trap transition staple — a two-
+  // octave pitch fall landing on a semitone-clean C1.
+  "factory.fx.subdrop": fxSubDrop(),
   "factory.tonal.pluck": pluck(),
   "factory.tonal.stab": stab(),
   "factory.tonal.keys": keys(),
@@ -2292,6 +2377,7 @@ export const DURATIONS: Record<string, number> = {
   "factory.hat.jersey": 0.12,
   "factory.hat.dnb": 0.1,
   "factory.hat.open.cup": 0.32,
+  "factory.hat.wash": 0.9,
   "factory.clap.main": 0.3,
   "factory.clap.soft": 0.36,
   "factory.shaker.soft": 0.2,
@@ -2324,6 +2410,7 @@ export const DURATIONS: Record<string, number> = {
   "factory.fx.sweep": 1.5,
   "factory.fx.reverse": 1.25,
   "factory.fx.noise": 0.35,
+  "factory.fx.subdrop": 1.5,
   "factory.tonal.pluck": 0.5,
   "factory.tonal.stab": 0.5,
   "factory.tonal.keys": 1.1,
@@ -2446,6 +2533,12 @@ export const RR_VARIATIONS: Record<string, Array<{ rate: number; gain: number }>
   "factory.snare.room": [
     { rate: 1.011, gain: 1.03 },
     { rate: 0.99, gain: 0.96 },
+  ],
+  // Hat wash: the offbeat mask repeats every 2 steps in 4/4 — same
+  // machine-gun exposure as the other groove hats.
+  "factory.hat.wash": [
+    { rate: 1.016, gain: 1.04 },
+    { rate: 0.986, gain: 0.95 },
   ],
 };
 

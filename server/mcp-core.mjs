@@ -91,19 +91,32 @@ export const MCP_TOOL_DEFS = [
     description:
       "Read-only project snapshot: tempo, key, time signature, track list, " +
       "markers, groove, the ACTIVE pattern's step grid, the arrangement " +
-      "scenes, the undo history, or the FX chain of one family. Never mutates.",
+      "scenes, the send routing map (returns + per-track send levels), the " +
+      "undo history, or the FX chain of one family. Never mutates.",
     inputSchema: {
       type: "object",
       properties: {
         subject: {
           type: "string",
-          enum: ["overview", "tempo", "key", "tracks", "markers", "groove", "fxChain", "pattern", "scenes", "history"],
+          enum: [
+            "overview",
+            "tempo",
+            "key",
+            "tracks",
+            "markers",
+            "groove",
+            "fxChain",
+            "sends",
+            "pattern",
+            "scenes",
+            "history",
+          ],
           description: "Which part of the project state to return",
         },
         family: {
           type: "string",
           enum: ["kick", "snare", "clap", "hat", "perc", "tom", "bass", "lead", "chords", "drums"],
-          description: "Optional track family filter for fxChain",
+          description: "Optional track family filter for fxChain and sends",
         },
       },
       required: ["subject"],
@@ -123,13 +136,42 @@ export const MCP_TOOL_DEFS = [
   },
   {
     name: "kyx_transport",
-    description: "Transport control: play, stop, pause, loop on/off, metronome on/off.",
+    description:
+      "Transport control AND reads: play, stop, pause, loop on/off, " +
+      "metronome on/off — or seek to a 1-based bar (optional beat), set the " +
+      "loop region in bars (loopRegion), or state: a read-only read-back of " +
+      "the playhead position (bar/beat/tick), playing state, loop region and " +
+      "metronome. Position is 4/4-based (1920 ticks per bar, 480 per beat).",
     inputSchema: {
       type: "object",
       properties: {
         action: {
           type: "string",
-          enum: ["play", "stop", "pause", "loopOn", "loopOff", "metronomeOn", "metronomeOff"],
+          enum: [
+            "play",
+            "stop",
+            "pause",
+            "loopOn",
+            "loopOff",
+            "metronomeOn",
+            "metronomeOff",
+            "seek",
+            "loopRegion",
+            "state",
+          ],
+        },
+        bar: { type: "integer", minimum: 1, description: "For seek — 1-based destination bar" },
+        beat: {
+          type: "integer",
+          minimum: 1,
+          maximum: 4,
+          description: "For seek — 1-based beat within the bar (default 1)",
+        },
+        startBar: { type: "integer", minimum: 1, description: "For loopRegion — first looped bar (1-based)" },
+        endBar: {
+          type: "integer",
+          minimum: 2,
+          description: "For loopRegion — last looped bar (inclusive; must be > startBar)",
         },
       },
       required: ["action"],

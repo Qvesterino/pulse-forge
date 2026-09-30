@@ -152,8 +152,15 @@ bar. Nothing bypasses the domain layer.
 > registry-clamped, one undo), `trackId` addressing on fx/tracks/param writes
 > (id-passthrough in `trackIdsForTarget`), `kyx_meter` (live true peak/RMS/LUFS/clip via
 > `src/mcp/meters.ts`), and the `eq`-enum defect fix (no primary knob → honest refusal).
-> Next: the P1 wave — transport reads/seek, send reads, automation, structured mixer
-> setters, clip tools, awaited export.
+> **P1-5 shipped same day**: `kyx_transport` reads (`state`: position bar/beat/tick,
+> playing/paused, loop region, metronome), `seek bar` (+beat), `loopRegion` by inclusive
+> 1-based bars — every transport read-back ends with the resulting state; verified
+> against the REAL Transport class (caught an unbound-method `seek` bug the fakes missed).
+> **P1-6 shipped same day**: `kyx_state subject:sends` — the full send routing map
+> (return buses with id/gain/fx + per-track send levels, zeros included), closing the
+> send write-only gap.
+> Next: P1-7..P1-8 — automation surface, structured mixer setters, clip tools,
+> awaited export.
 
 | Tool            | Input                              | Behavior                                                                                                       |
 | --------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------- |

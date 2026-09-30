@@ -319,6 +319,14 @@ export const FACTORY_ASSETS: FactoryAsset[] = [
     tags: ["hat", "open", "cup"],
     mood: ["clean", "dark"],
   },
+  {
+    id: "factory.hat.wash",
+    name: "Hat Wash",
+    category: "Hat",
+    character: "Long, Washy",
+    tags: ["hat", "open", "wash", "sizzle"],
+    mood: ["clean", "atmosphere"],
+  },
 
   /* ---------------- Cymbals / Crashes ---------------- */
   {
@@ -518,6 +526,14 @@ export const FACTORY_ASSETS: FactoryAsset[] = [
     character: "Short noise burst",
     tags: ["fx", "noise", "hit"],
     mood: ["aggressive", "bright"],
+  },
+  {
+    id: "factory.fx.subdrop",
+    name: "Sub Drop",
+    category: "FX",
+    character: "Pitch fall, 2 octaves",
+    tags: ["fx", "drop", "sub", "transition"],
+    mood: ["deep", "dark"],
   },
 
   /* ---------------- Tonal ---------------- */

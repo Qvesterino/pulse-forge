@@ -156,13 +156,13 @@ describe("transition cue assets (T3 wave 2)", () => {
     expect(clamped[0]).toMatchObject({ startBar: 15, lengthBars: 1 });
   });
 
-  it("drop fires impact + downlifter at the seam; break sweeps under the silence", () => {
+  it("drop fires impact + sub-drop at the seam; break sweeps under the silence", () => {
     const drop = buildTransitionCueClips(
       [{ id: "d1", type: "drop", seamBar: 20, outgoingStartBar: 12 }],
       140,
       "track-fx",
     );
-    expect(drop.map((c) => c.bufferId).sort()).toEqual(["factory.fx.downlifter", "factory.fx.impact"]);
+    expect(drop.map((c) => c.bufferId).sort()).toEqual(["factory.fx.impact", "factory.fx.subdrop"]);
     for (const clip of drop) expect(clip.startBar).toBe(20);
 
     const brk = buildTransitionCueClips(
@@ -216,11 +216,11 @@ describe("applySongCommand — cue lane + genre kit (one undo step)", () => {
     expect(fxTrack!.kind).toBe("instrument");
 
     const cueClips = (next.arrangement.audioClips ?? []).filter((c) => c.trackId === fxTrack!.id);
-    // riser + (impact + downlifter) = 3 cue clips
+    // riser + (impact + sub-drop) = 3 cue clips
     expect(cueClips.map((c) => c.bufferId).sort()).toEqual([
-      "factory.fx.downlifter",
       "factory.fx.impact",
       "factory.fx.riser",
+      "factory.fx.subdrop",
     ]);
     // cueAssetId metadata now real
     const transitions = next.arrangement.transitions ?? [];

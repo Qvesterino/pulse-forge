@@ -56,6 +56,10 @@ const CATEGORY_TREATMENT = {
  */
 const ASSET_TREATMENT_OVERRIDE = {
   "factory.kick.808pure": { tapeDrive: 0.05 },
+  // The sub-drop is a sustained falling sine — the FX category drive (~3.2x)
+  // would square it into the limiter before the trim ever sees it (same
+  // failure the 808pure fix removed). Its own tanh edge (1.6x) is baked in.
+  "factory.fx.subdrop": { tapeDrive: 0.04 },
 };
 
 const server = await createServer({

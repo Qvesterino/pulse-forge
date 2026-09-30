@@ -816,3 +816,185 @@ describe("mcp P0 wave — self-description + precision", () => {
     expect(masterOnly.text).not.toContain("Drums (id=t1)");
   });
 });
+
+// ─── P1 WAVE — transport reads, seek, loop region ───────────────────────────
+
+describe("mcp P1 transport — reads + seek + loop region", () => {
+  /** A transport fake carrying the FULL live-read surface. */
+  function fullTransport(overrides: Partial<McpToolContext["transport"]> = {}): McpToolContext["transport"] {
+    return {
+      play: () => {},
+      stop: () => {},
+      pause: () => {},
+      setLoop: () => {},
+      setMetronome: () => {},
+      position: 2 * 1920 + 480, // bar 3, beat 2
+      playing: true,
+      paused: false,
+      loopEnabled: true,
+      loopStart: 1920,
+      loopEnd: 7680,
+      metronome: false,
+      seek: () => {},
+      ...overrides,
+    };
+  }
+
+  it("kyx_transport state reads position/playing/loop/metronome read-only", () => {
+    const ctx = makeCtx(datasetDoc());
+    const observing: McpToolContext = { ...ctx, transport: fullTransport() };
+    const result = executeMcpTool(observing, "kyx_transport", { action: "state" });
+    expect(result.mutated).toBe(false);
+    expect(result.text).toContain("position bar 3 beat 2 (tick 4320)");
+    expect(result.text).toContain("playing");
+    expect(result.text).toContain("loop on (bars 2–4)");
+    expect(result.text).toContain("metronome off");
+  });
+
+  it("kyx_transport state degrades honestly on a bare fake (no read accessors)", () => {
+    const ctx = makeCtx(datasetDoc()); // minimal transport fake
+    const result = executeMcpTool(ctx, "kyx_transport", { action: "state" });
+    expect(result.mutated).toBe(false);
+    expect(result.text).toBe("position unknown"); // the complete honest output
+  });
+
+  it("kyx_transport seek jumps by 1-based bar (+ optional beat) and reports the landing", () => {
+    const seeks: number[] = [];
+    const ctx = makeCtx(datasetDoc());
+    const observing: McpToolContext = {
+      ...ctx,
+      transport: fullTransport({ seek: (tick) => seeks.push(tick), playing: false }),
+    };
+    const result = executeMcpTool(observing, "kyx_transport", { action: "seek", bar: 5 });
+    expect(seeks).toEqual([4 * 1920]);
+    expect(result.text).toContain("seek → bar 5 (tick 7680)");
+
+    const withBeat = executeMcpTool(observing, "kyx_transport", { action: "seek", bar: 2, beat: 3 });
+    expect(seeks).toEqual([4 * 1920, 1920 + 2 * 480]);
+    expect(withBeat.text).toContain("bar 2 beat 3");
+    expect(withBeat.text).toContain("stopped");
+  });
+
+  it("kyx_transport seek validates input and refuses without a seek-capable transport", () => {
+    const ctx = makeCtx(datasetDoc());
+    const missing = executeMcpTool(ctx, "kyx_transport", { action: "seek", bar: 5 });
+    expect(missing.mutated).toBe(false);
+    expect(missing.text).toContain("seek is not available");
+
+    const full = makeCtx(datasetDoc());
+    const observing: McpToolContext = { ...full, transport: fullTransport() };
+    for (const bad of [{}, { bar: 0 }, { bar: -3 }, { bar: "quantum" }]) {
+      const refused = executeMcpTool(observing, "kyx_transport", { action: "seek", ...bad });
+      expect(refused.mutated).toBe(false);
+      expect(refused.text).toContain("1-based bar");
+    }
+  });
+
+  it("kyx_transport loopRegion sets the loop by inclusive 1-based bars", () => {
+    const loopCalls: Array<[boolean, number, number]> = [];
+    let loop: [number, number] = [1920, 7680];
+    const ctx = makeCtx(datasetDoc());
+    const observing: McpToolContext = {
+      ...ctx,
+      transport: {
+        ...fullTransport(),
+        get loopStart() {
+          return loop[0];
+        },
+        get loopEnd() {
+          return loop[1];
+        },
+        setLoop: (enabled, start, end) => {
+          loopCalls.push([enabled, start, end]);
+          loop = [start, end];
+        },
+      },
+    };
+    const result = executeMcpTool(observing, "kyx_transport", { action: "loopRegion", startBar: 5, endBar: 9 });
+    expect(result.mutated).toBe(false);
+    expect(loopCalls).toEqual([[true, 4 * 1920, 9 * 1920]]);
+    expect(result.text).toContain("loop region: bars 5–9");
+    expect(result.text).toContain("loop on (bars 5–9)");
+
+    for (const bad of [{}, { startBar: 3 }, { startBar: 5, endBar: 5 }, { startBar: 9, endBar: 5 }]) {
+      const refused = executeMcpTool(observing, "kyx_transport", { action: "loopRegion", ...bad });
+      expect(refused.mutated).toBe(false);
+      expect(refused.text).toContain("loopRegion needs");
+    }
+  });
+
+  it("base transport actions end their read-back with the resulting state (verify-by-read)", () => {
+    const ctx = makeCtx(datasetDoc());
+    const observing: McpToolContext = { ...ctx, transport: fullTransport() };
+    const result = executeMcpTool(observing, "kyx_transport", { action: "metronomeOn" });
+    expect(result.text).toMatch(/^transport: metronomeOn · /);
+    expect(result.text).toContain("position bar 3 beat 2");
+  });
+
+  it("loop-end-of-content semantics: loopEnd <= start reads as 'to end of content'", () => {
+    const ctx = makeCtx(datasetDoc());
+    const observing: McpToolContext = {
+      ...ctx,
+      transport: fullTransport({ loopStart: 1920, loopEnd: 0 }),
+    };
+    const result = executeMcpTool(observing, "kyx_transport", { action: "state" });
+    expect(result.text).toContain("loop on (to end of content)");
+  });
+});
+
+// ─── P1 WAVE — send-level reads (kyx_state sends) ───────────────────────────
+
+describe("mcp P1 sends — the read half of the send routing", () => {
+  it("kyx_state sends lists returns (id/gain/fx) and per-track send levels", () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const result = executeMcpTool(ctx, "kyx_state", { subject: "sends" });
+    expect(result.mutated).toBe(false);
+    // default returns with their faders + fx
+    expect(result.text).toMatch(/returns: Reverb \(id=return-[\w-]+, gain 0\.90, fx: reverb\)/);
+    expect(result.text).toContain("Delay");
+    expect(result.text).toContain("NY Comp");
+    // every track maps into every return, zeros included (a "send X" loop
+    // must see the 0 it is about to raise)
+    expect(result.text).toMatch(/Drums \(id=[\w-]+\): Reverb 0 · Delay 0 · NY Comp 0/);
+  });
+
+  it("send round-trip: NL send intent lands, kyx_state sends verifies the level", () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    executeMcpTool(ctx, "kyx_intent", { instruction: "more reverb send on the lead" });
+    const result = executeMcpTool(ctx, "kyx_state", { subject: "sends", family: "lead" });
+    // the send the intent raised is visible with its landed value
+    expect(result.text).toMatch(/Lead \(id=track-lead-x\): Reverb 0\.1/);
+    // drum tracks always pass the family filter (fxChain convention — the
+    // kit carries the pad families)
+    expect(result.text).toContain("Drums");
+  });
+
+  it("sends read includes group tracks (routing state, not just mixer members)", () => {
+    const doc = datasetDoc();
+    const group = doc.tracks.find((t) => t.kind === "group");
+    if (!group) return; // template without a group — nothing to pin
+    const store = new ProjectStore(doc);
+    const result = executeMcpTool(storeCtx(store), "kyx_state", { subject: "sends" });
+    expect(result.text).toContain(`${group.name} (id=${group.id}):`);
+  });
+
+  it("a project without returns reads honestly", () => {
+    const doc = datasetDoc();
+    const bare = { ...doc, returns: [] };
+    const result = executeMcpTool(makeCtx(bare), "kyx_state", { subject: "sends" });
+    expect(result.mutated).toBe(false);
+    expect(result.text).toContain("returns: none");
+    expect(result.text).toContain("no send buses");
+  });
+
+  it("unfiltered reads past 8 tracks carry a truncation note", () => {
+    const doc = datasetDoc();
+    const base = doc.tracks.find((t) => t.kind === "instrument")!;
+    const extra = Array.from({ length: 8 }, (_, i) => ({ ...base, id: `track-x-${i}`, name: `Pad ${i}` }));
+    const fat = { ...doc, tracks: [...doc.tracks, ...extra] };
+    const result = executeMcpTool(makeCtx(fat), "kyx_state", { subject: "sends" });
+    expect(result.text).toContain("more track(s) (filter with family)");
+  });
+});

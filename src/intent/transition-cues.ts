@@ -23,6 +23,7 @@ export const CUE_ASSET_SECONDS: Record<string, number> = {
   "factory.fx.sweep": 1.5,
   "factory.fx.reverse": 1.25,
   "factory.fx.noise": 0.35,
+  "factory.fx.subdrop": 1.5,
 };
 
 interface CueSpec {
@@ -50,7 +51,9 @@ const TRANSITION_CUES: Partial<Record<ArrangementTransitionType, CueSpec[]>> = {
   ],
   drop: [
     { assetId: "factory.fx.impact", place: "at-seam" },
-    { assetId: "factory.fx.downlifter", place: "at-seam", gain: 0.8 },
+    // The drill/trap staple: a sub pitch-fall under the incoming section
+    // (replaces the generic downlifter air sweep).
+    { assetId: "factory.fx.subdrop", place: "at-seam", gain: 0.9 },
   ],
   break: [{ assetId: "factory.fx.sweep", place: "before-seam", gain: 0.55 }],
   custom: [{ assetId: "factory.fx.noise", place: "at-seam", gain: 0.5 }],
