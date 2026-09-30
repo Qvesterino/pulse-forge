@@ -18,23 +18,6 @@ import type { TriggerEngineDeps } from "../src/audio-engine/triggerEngine";
 const ENGINE = resolve(process.cwd(), "src/audio-engine/AudioEngine.ts");
 const TRIGGER = resolve(process.cwd(), "src/audio-engine/triggerEngine.ts");
 
-function makeDeps(overrides: Partial<TriggerEngineDeps> = {}): TriggerEngineDeps {
-  return {
-    ctx: () => null,
-    doc: () => null,
-    bank: () => null,
-    currentTime: () => 0,
-    trackNodes: new Map(),
-    groupNodes: new Map(),
-    instrumentStates: new Map(),
-    warp: { isFrozen: () => false } as never,
-    trackOneShot: () => {},
-    releaseOneShot: () => {},
-    missAsset: () => {},
-    ...overrides,
-  };
-}
-
 describe("TriggerEngine (Wave 4f — final)", () => {
   it("facade law: never imports AudioEngine", () => {
     const src = readFileSync(TRIGGER, "utf8");
