@@ -451,7 +451,7 @@ export type TransportAction = "play" | "pause" | "stop" | "metronomeOn" | "metro
  */
 export function parseTransportIntent(text: string): TransportAction | null {
   if (
-    !/^\s*(?:please\s+|prosím\s+|prosim\s+)?(?:play|stop|pause|hraj|hrať|start|štart|pauza|pauzu|zastav|stoj|(?:metronome|metronom)(?:\s+(?:on|off|zapni|vypni))?|(?:loop|cykluj)(?:\s+(?:on|off|zapni|vypni))?)\s*(?:please|prosím|prosim)?\s*[.!]?\s*$/i.test(
+    !/^\s*(?:please\s+|prosím\s+|prosim\s+)?(?:play|stop|pause|hraj|hrať|start|štart|pauza|pauzu|zastav|stoj|(?:metronome|metronom)(?:\s+(?:on|off|zapni|vypni))?|(?:loop|cykluj|cyklus)(?:\s+(?:on|off|zapni|vypni))?|(?:zapni|vypni)\s+(?:loop|cyklus))\s*(?:please|prosím|prosim)?\s*[.!]?\s*$/i.test(
       text,
     )
   ) {
@@ -465,14 +465,20 @@ export function parseTransportIntent(text: string): TransportAction | null {
     // catch-all and STOPPED playback instead)
     .replace(/^(?:please|prosím|prosim)\s+/, "")
     .replace(/\s+(?:please|prosím|prosim)$/, "");
+  // the SK verb-first loop form carries its direction in the stripped verb —
+  // read on/off BEFORE stripping ("zapni loop" → loopOn)
+  const onWord = /\bon\b|\bzapni/.test(lower);
+  const offWord = /\boff\b|\bvypni/.test(lower);
+  const verbFirstLoop = /^(?:zapni|vypni)\s+(?:loop|cyklus)/.test(lower);
+  if (verbFirstLoop) return onWord ? "loopOn" : "loopOff";
   if (/^metronom/.test(lower)) {
-    if (/\bon\b|\bzapni|\bstart/.test(lower)) return "metronomeOn";
-    if (/\boff\b|\bvypni/.test(lower)) return "metronomeOff";
+    if (onWord) return "metronomeOn";
+    if (offWord) return "metronomeOff";
     return null; // bare "metronome" — on or off? decline
   }
-  if (/^(?:loop|cykluj)/.test(lower)) {
-    if (/\bon\b|\bzapni/.test(lower)) return "loopOn";
-    if (/\boff\b|\bvypni/.test(lower)) return "loopOff";
+  if (/^(?:loop|cykluj|cyklus)/.test(lower)) {
+    if (onWord) return "loopOn";
+    if (offWord) return "loopOff";
     return null; // bare "loop" — on or off? decline
   }
   if (/^(?:play|hraj|hrať|start|štart)/.test(lower)) return "play";

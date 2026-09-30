@@ -3,7 +3,7 @@ import type { RoutedIntent } from "./route";
 import { routeIntentText } from "./route";
 import { validateModelAction } from "./model-schema";
 import { resolvePresetByName } from "./preset-intent";
-import type { PresetTargetFamily } from "./preset-intent";
+import type { PresetTargetFamily, PresetIntent } from "./preset-intent";
 import { resolveClipRef, resolveSceneTarget, type ArrangeOp, type ClipArrangeOp } from "./arrangeWords";
 import type { FaderIntent, TempoIntent } from "./conversation";
 import type { EffectIntent, SendIntent, BypassIntent } from "./mix";

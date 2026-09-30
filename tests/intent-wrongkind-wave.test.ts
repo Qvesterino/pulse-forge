@@ -90,7 +90,7 @@ describe("wrongkind wave — teacher routing", () => {
     const expectGoal = (q: string, target: string, concept: string) => {
       const r = compactIntentResponse(routeIntentText(q, doc));
       expect(r.kind, q).toBe("production");
-      const intent = (r as { intent: { targets: string[]; goals: Array<{ concept: string }> } }).intent;
+      const intent = (r as unknown as { intent: { targets: string[]; goals: Array<{ concept: string }> } }).intent;
       expect(intent.targets[0], q).toBe(target);
       expect(intent.goals[0]?.concept, q).toBe(concept);
     };

@@ -58,7 +58,7 @@ interface MixParse {
 }
 
 const MIX_NOUN_VERB =
-  /\breverb\b|\bdelay\b|\bcompress(?:ion|or)?\b|\bsaturat|\bpunch(?:ier|y)?\b|\bsidechain\b|\bpump\b|\bdry\b|\bdrier\b|\bwet\b|\bwetter\b|\beq\b|\bmix\b|\bdozvuk|\bozven|\bkompres|\bsaturac|\bpump|\bsuch/;
+  /\breverb|\bdelay\b|\bcompress(?:ion|or)?\b|\bsaturat|\bpunch(?:ier|y)?\b|\bsidechain\b|\bpump\b|\bdry\b|\bdrier\b|\bwet\b|\bwetter\b|\beq\b|\bmix\b|\bdozvuk|\bozven|\bkompres|\bsaturac|\bpump|\bsuch/;
 const COMPARATIVE =
   /\bdarker\b|\bbrighter\b|\bwarmer\b|\bcolder\b|\btmavsi|\bsvetlejsi|\bteplejsi|\bstudenlejsi|\brazantnejsi/;
 
@@ -76,7 +76,7 @@ export function parseMixIntent(text: string): MixParse {
   const overrides: MixOverrides = {};
   const detected: string[] = [];
 
-  if (/\bhuge (?:reverb|space)\b|\bobri dozvuk/.test(lower)) {
+  if (/\bhuge (?:reverb|space)\b|\bobr[a-z]* dozvuk/.test(lower)) {
     overrides.reverb = "huge";
     detected.push("huge reverb");
   } else if (

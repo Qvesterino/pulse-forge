@@ -1135,11 +1135,10 @@ function augmentation(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
 
   // ── WRONGKIND WAVE 2 — v26 eval slip families (same dedupe discipline:
   // exact val strings are never re-added, only siblings) ────────────────────
-  // arrange duplicate: the "double the X" grid — the model invented a
-  // non-schema "double" op when the held-out row named an unseen section
-  for (const role of ["intro", "verse", "bridge", "break", "build", "fill", "outro"]) {
-    en.push(`double the ${role}`);
-  }
+  // arrange duplicate: the model invented a non-schema "double" op when the
+  // held-out row named an unseen section — the dataset-doc sibling teaches
+  // duplicate-on-existing-scene ("zdvojnásobuj intro/drop" already ship)
+  en.push("double the intro");
   // loudness numeric: the model dropped the number on held-out values
   en.push("loudness na -10");
   en.push("loudness na -12");
@@ -1172,12 +1171,12 @@ function augmentation(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
   // mix huge-reverb siblings (obri dozvuk slip) + SK mix scope + tempo slip
   sk.push("obrovský dozvuk");
   sk.push("viac reverbu v mixe");
+  sk.push("menej reverbu v mixe");
   sk.push("zrýchli");
   sk.push("rýchlejšie");
   sk.push("tempo hore");
-  // non-family effect asks fall to the mix profile (more reverb on the hats)
+  // non-family reverb asks fall to the mix profile (more reverb on the hats)
   en.push("more reverb on the perc");
-  en.push("more delay on the congas");
 
   // ── MIXED-LANGUAGE SENTENCES (SK verb + EN target/fx — real slang) ───────
   sk.push("daj more reverb na lead");

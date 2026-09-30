@@ -679,7 +679,7 @@ const EFFECT_WORDS: ReadonlyArray<readonly [RegExp, EffectType]> = [
   // ("reverbu", "delayu", "chorusu"…). Anchor \b at the start only.
   [/\breverb|\bdozvuk|\bozven/, "reverb"],
   [/\bdelay|\bdekou/, "delay"],
-  [/\bdistort|\bsaturat|\bdriv/, "saturation"],
+  [/\bdistort|\bsaturat|\bsaturac|\bdriv/, "saturation"],
   [/\bchorus|\bkorus/, "chorus"],
   [/\bflanger/, "flanger"],
   [/\bphaser|\bfazer/, "phaser"],
