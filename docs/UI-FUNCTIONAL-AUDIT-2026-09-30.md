@@ -14,14 +14,14 @@ must be reproducible from the working tree.
 
 Static extraction over `src/ui/**.tsx` (script: `.zcode/ui-wiring-scan2.mjs`):
 
-| Control kind          | Count |
-| --------------------- | ----- |
-| `<button>`            | 313   |
-| `<select>`            | 70    |
-| `<input>`             | 46    |
-| interactive `<div>`/`<span>` | 5 |
-| shared `<Slider>`     | 78    |
-| shared `<DragNumber>` | 30    |
+| Control kind                 | Count |
+| ---------------------------- | ----- |
+| `<button>`                   | 313   |
+| `<select>`                   | 70    |
+| `<input>`                    | 46    |
+| interactive `<div>`/`<span>` | 5     |
+| shared `<Slider>`            | 78    |
+| shared `<DragNumber>`        | 30    |
 
 Plus 313 buttons' `onClick`, 70 selects' option sets, context menus,
 keyboard shortcuts, drag handles and editor gestures.
@@ -33,7 +33,41 @@ in the product.
 
 ---
 
-## 2. REPAIRED — 13 confirmed defects
+## 2. REPAIRED — 14 confirmed defects
+
+### WAVE 4 — found by real-browser verification (not static inspection)
+
+**14. The flagship PRISM and VLYX editors rendered at ZERO height in the
+devices dock (CRITICAL).**
+`src/styles/15-command-palette-2.css:14-30`. This one is invisible to jsdom
+tests, unit tests and typecheck — it only appears when a browser lays the page
+out, which is why the audit's final browser pass found it.
+
+Measured in Chromium, replaying the `tests/e2e/06-plugin-workflow` steps:
+
+| Element                    | Height    | Laid-out children        |
+| -------------------------- | --------- | ------------------------ |
+| `.devices-panel`           | 413 px    | —                        |
+| `.fx-device-content`       | 164 px    | —                        |
+| `.fxeq-panel.prism-docked` | **0 px**  | 187 px across 6 children |
+| `.vlyx-docked` (VLYX)      | **10 px** | 160 px across 5 children |
+
+Root cause: `.fx-device-content` is a column flex box with a definite 164 px,
+and its fixed sibling rows total **245 px** (preset 59 + sidechain 45 + pager
+24 + params 77 + trim 40). The docked panel was the only child allowed to
+shrink (`flex: 1 1 0`), so it absorbed the whole 81 px of negative free space
+and collapsed to nothing while `overflow: hidden` hid its 187 px of perfectly
+laid-out content. The plugin surface was in the DOM, focusable, and completely
+invisible — the "renders but has no effect" class in its most literal form.
+
+Note the failed hypothesis, recorded because it is the obvious one: changing
+`flex: 1 1 0` to `flex: 1 1 auto` did **not** help. With a content basis the
+container overflows further and shrink still wins. The fix is a `min-height`
+floor so the panel cannot be crushed below a usable height.
+
+Verified: PRISM 0 → 200 px, VLYX 10 → 200 px, both `VISIBLE=true`, and
+`tests/e2e/06-plugin-workflow` went from failing after 58 retries to passing
+in 9.4 s.
 
 ### WAVE 1
 
@@ -114,7 +148,7 @@ value could request ~300 000 bars. The arrangement view allocates
 `Array.from({ length: totalBars })` bar-grid nodes
 (`src/ui/ArrangementPanel.tsx:3263`) plus ruler marks (`:3084`), so that
 demand froze the tab. Introduced `MAX_ARRANGEMENT_CLIP_BARS = 8192`
-(~5.7 hours in 4/4) as a *rendering* invariant, not a musical limit.
+(~5.7 hours in 4/4) as a _rendering_ invariant, not a musical limit.
 
 ### WAVE 3
 
@@ -243,6 +277,15 @@ test failed until the normalizer filter was re-applied.
 
 ## 6. REMAINING RISKS
 
+- **The devices dock is still 81 px too short for its content.** The `min-height`
+  floor makes the flagship panel usable, but the surrounding fixed rows plus the
+  panel now overflow `.fx-device-content` (164 px) — the overflow is clipped by
+  `overflow: hidden`, so the bottom rows (`fx-output-trim-row`, part of the
+  parameter list) can be pushed out of view on a short dock. The proper answer is
+  a product decision: make `.fx-device-content` scroll, or give the devices dock
+  a taller default. That changes layout for all 44 effect devices, so it was left
+  for the owner rather than made unilaterally. **Measure the dock at your target
+  window size before shipping.**
 - **`npm run build` FAILS its bundle budget, and did so before this audit.**
   Measured, not assumed: DAW JS is **3314 KB with this audit's source
   changes fully reverted** vs **3315 KB with them applied** (budget 3170 KB).
@@ -256,6 +299,9 @@ test failed until the normalizer filter was re-applied.
   multi-tap-delay, boombap, …). Verified unrelated: the identical subset
   produces the identical 18 files / 32 tests with this audit's changes
   reverted to HEAD.
+- **Browser verification is Chromium-only.** The Playwright run covers the
+  layout defect in Chromium; the `min-height` floor is plain CSS with no
+  engine-specific syntax, but no Firefox/WebKit layout pass was run for it.
 - **`prettier --check src tests` reports 71 dirty files.** None of them are
   files this audit touched (checked by name); they belong to other in-flight
   work.
@@ -268,6 +314,8 @@ test failed until the normalizer filter was re-applied.
   `ReferenceMapPanel.tsx`, `FxEqPanel.tsx` (crossover). Audited by delegated
   pass but not personally verified line-by-line: `IntentPanel.tsx`
   (163 KB), `App.tsx` keyboard table, `TopBar.tsx`, `PianoRoll.tsx`.
-- **No real-browser verification was run** for the repaired controls
-  (`npm run test:browser` / `test:e2e`). Every repair here is covered by
-  jsdom tests against the real command/store layer, not by a browser.
+- **No real-browser verification was run** for most of the repaired controls
+  (`npm run test:browser` / `test:e2e`). Every repair in waves 1–3 is covered by
+  jsdom tests against the real command/store layer. Wave 4 came from the
+  Chromium Playwright pass and is browser-verified; see §6 for what that pass
+  still does not cover.

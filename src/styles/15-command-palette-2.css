@@ -16,11 +16,20 @@
 .prism-docked {
   display: flex;
   flex: 1 1 0;
+  /* A min-height FLOOR, not `min-height: 0`. Measured in Chromium: the devices
+     dock gives `.fx-device-content` 164px, but its fixed sibling rows total
+     245px (preset 59 + sidechain 45 + pager 24 + params 77 + trim 40). The
+     panel was the only shrinkable child (`flex: 1 1 0`), so it absorbed the
+     whole 81px overflow and collapsed to 0 — PRISM rendered with 187px of
+     laid-out children inside a 0px box, and VLYX at 10px. Changing
+     `flex-basis` does not help: with a content basis the container simply
+     overflows further and shrink still wins. The panel needs a floor below
+     which it may not be crushed, so the flagship editor stays usable. */
+  min-height: 200px;
   flex-direction: column;
   width: 100%;
   max-height: none;
   min-width: 0;
-  min-height: 0;
   overflow: hidden;
   gap: 4px;
   margin: 0;
