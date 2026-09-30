@@ -113,3 +113,7 @@ console.log(
 );
 console.log(`\n===== ${failures.length} FAILURES =====`);
 for (const f of failures) console.log(f + "\n");
+// summary LAST so a tail-capped log still carries the gate numbers
+console.log(
+  `SUMMARY attempted-exact: ${exact}/${attempted} (${pct}%)  wrongKind: ${wrongKind}  abstain: ${abstain}/${rows.length}`,
+);
