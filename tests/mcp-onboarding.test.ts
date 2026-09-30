@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { executeMcpTool, MCP_RESOURCES, type McpToolContext } from "../src/mcp/tools";
-import { MCP_PLAYBOOK_TEXT, MCP_VOCAB_TEXT } from "../src/mcp/onboarding";
+import { MCP_VOCAB_TEXT } from "../src/mcp/onboarding";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { isMixIntentText, parseMixIntent } from "../src/intent/route";
