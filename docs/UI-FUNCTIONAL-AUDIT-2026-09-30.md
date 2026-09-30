@@ -487,6 +487,29 @@ restored and `git diff` confirmed clean.
 
 ## 6. REMAINING RISKS
 
+- **Real-browser verification: 281/294 checks pass, and the failures are
+  outside this audit's diff.** Run in Chromium, Firefox and WebKit via
+  `npm run test:browser` against the final tree. The check this audit owns
+  passes in all three engines: `[PASS] plugin workflow: add flagship effect,
+collapse, bypass, undo, macro nudge, play/stop` — that is the wave-4
+  zero-height defect (#14/#15) confirmed fixed in a real engine, after failing
+  with 58 retries. Failures seen include 2 × PDC look-ahead / export alignment
+  and the `app boot` check. None touch a file this audit changed.
+
+  The `app boot` failure is a **stale assertion, not a product defect**, and
+  it is worth naming precisely because it reads like a regression:
+  `scripts/verify-browser.mjs:236` requires the project export download to end
+  in `.kyx.json`, and the app now produces `House-Beat.kyx`. That change is
+  deliberate — `src/export/project-io.ts:11-13` documents it: _"New files use
+  the short public brand '.kyx' — brand-coherent with the [KYX] name … so
+  legacy '.kyx.json' and '.pulseforge.json' sessions remain [readable]"_ — and
+  it stays backward-compatible for reading. The verifier was not updated with
+  it. **Not repaired here:** this audit never touched `src/export/` or
+  `scripts/`, another session is actively working in `scripts/` (recent
+  `feat(tooling): verify-all` commits), and the assertion encodes a product
+  decision their side should confirm rather than have an audit silently relax.
+  It needs a one-line change to accept `.kyx`.
+
 - **The dock is shorter than a device's content — now scrollable, not clipped.**
   The `min-height` floor alone would have been a half fix: it made the
   flagship panel visible but left the overflow silently discarded by
