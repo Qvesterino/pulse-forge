@@ -108,7 +108,7 @@ function withLead(): ProjectDocument {
 }
 
 describe("mcp tools — headless execution", () => {
-  it("tool surface: the 21 documented tools", () => {
+  it("tool surface: the 25 documented tools", () => {
     expect(MCP_TOOLS.map((tool) => tool.name)).toEqual([
       "kyx_intent",
       "kyx_state",
@@ -131,6 +131,10 @@ describe("mcp tools — headless execution", () => {
       "kyx_batch",
       "kyx_loudness",
       "kyx_checkpoint",
+      "kyx_mix",
+      "kyx_arrange",
+      "kyx_routing",
+      "kyx_takes",
     ]);
   });
 
@@ -1357,7 +1361,7 @@ describe("mcp P1 clips — structured arrangement edits", () => {
 describe("mcp P1 export — the awaited completion report", () => {
   it("executeMcpToolAsync awaits the export hook and returns the report", async () => {
     const ctx = makeCtx(datasetDoc());
-    const observing: McpToolContext = { ...ctx, export: async (format) => `fake-export-${format} (12.3s, 2.05 MB)` };
+    const observing: McpToolContext = { ...ctx, export: async (request) => `fake-export-${request.format} (12.3s, 2.05 MB)` };
     const result = await executeMcpToolAsync(observing, "kyx_export", { format: "wav" });
     expect(result.mutated).toBe(false);
     expect(result.text).toContain("export WAV complete — fake-export-wav (12.3s, 2.05 MB)");

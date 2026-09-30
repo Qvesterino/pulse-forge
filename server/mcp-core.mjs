@@ -91,22 +91,25 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_intent",
     description:
-      'Drive the KYX DAW with a natural-language producer instruction (EN/SK): "mute the drums", "zníž basu", "set tempo to 140", "more reverb send on the lead", "more swing in the drop". Executes through the deterministic command layer (one undo step) and returns a verification read-back of the resulting state. Generation requests are refused (candidates need in-app auditioning).',
+      "Drive the KYX DAW with a natural-language producer instruction " +
+      '(EN/SK): "mute the drums", "zníž basu", "set tempo to 140", ' +
+      '"more reverb send on the lead", "more swing in the drop". ' +
+      "Executes through the deterministic command layer (one undo step) " +
+      "and returns a verification read-back of the resulting state. " +
+      "Generation requests are refused (candidates need in-app auditioning).",
     inputSchema: {
       type: "object",
-      properties: {
-        instruction: {
-          type: "string",
-          description: "Producer instruction, EN or SK",
-        },
-      },
+      properties: { instruction: { type: "string", description: "Producer instruction, EN or SK" } },
       required: ["instruction"],
     },
   },
   {
     name: "kyx_state",
     description:
-      "Read-only project snapshot: tempo, key, time signature, track list, markers, groove, the ACTIVE pattern's step grid, the arrangement scenes, the send routing map (returns + per-track send levels), the undo history, or the FX chain of one family. Never mutates.",
+      "Read-only project snapshot: tempo, key, time signature, track list, " +
+      "markers, groove, the ACTIVE pattern's step grid, the arrangement " +
+      "scenes, the send routing map (returns + per-track send levels), the " +
+      "undo history, or the FX chain of one family. Never mutates.",
     inputSchema: {
       type: "object",
       properties: {
@@ -138,20 +141,12 @@ export const MCP_TOOL_DEFS = [
   },
   {
     name: "kyx_undo",
-    description: "Undo or redo the last N document commands (default 1). Declined while a mic take is recording.",
+    description: "Undo or redo the last N document commands (default 1). Declined " + "while a mic take is recording.",
     inputSchema: {
       type: "object",
       properties: {
-        action: {
-          type: "string",
-          enum: ["undo", "redo"],
-        },
-        steps: {
-          type: "integer",
-          minimum: 1,
-          maximum: 20,
-          description: "Default 1",
-        },
+        action: { type: "string", enum: ["undo", "redo"] },
+        steps: { type: "integer", minimum: 1, maximum: 20, description: "Default 1" },
       },
       required: ["action"],
     },
@@ -159,7 +154,11 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_transport",
     description:
-      "Transport control AND reads: play, stop, pause, loop on/off, metronome on/off — or seek to a 1-based bar (optional beat), set the loop region in bars (loopRegion), or state: a read-only read-back of the playhead position (bar/beat/tick), playing state, loop region and metronome. Position is 4/4-based (1920 ticks per bar, 480 per beat).",
+      "Transport control AND reads: play, stop, pause, loop on/off, " +
+      "metronome on/off — or seek to a 1-based bar (optional beat), set the " +
+      "loop region in bars (loopRegion), or state: a read-only read-back of " +
+      "the playhead position (bar/beat/tick), playing state, loop region and " +
+      "metronome. Position is 4/4-based (1920 ticks per bar, 480 per beat).",
     inputSchema: {
       type: "object",
       properties: {
@@ -178,22 +177,14 @@ export const MCP_TOOL_DEFS = [
             "state",
           ],
         },
-        bar: {
-          type: "integer",
-          minimum: 1,
-          description: "For seek — 1-based destination bar",
-        },
+        bar: { type: "integer", minimum: 1, description: "For seek — 1-based destination bar" },
         beat: {
           type: "integer",
           minimum: 1,
           maximum: 4,
           description: "For seek — 1-based beat within the bar (default 1)",
         },
-        startBar: {
-          type: "integer",
-          minimum: 1,
-          description: "For loopRegion — first looped bar (1-based)",
-        },
+        startBar: { type: "integer", minimum: 1, description: "For loopRegion — first looped bar (1-based)" },
         endBar: {
           type: "integer",
           minimum: 2,
@@ -206,13 +197,22 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_export",
     description:
-      "Bounce the current project (WAV 16-bit / MP3 320). The render runs in the KYX window and the tool AWAITS it — the result carries the completion report (duration, size). Long renders may exceed the transport timeout (15 s relay / 10 s desktop); the download still lands in the app.",
+      "Bounce the current project: full mix (WAV 16/24/32-bit, MP3 320) or a STEMS zip " +
+      "(stems: all | drums | bass | music — stem projects bypass the master chain, same as " +
+      "the ExportPanel stem flow). sampleRate selects the render rate. The render runs in " +
+      "the KYX window and the tool AWAITS it — the result carries the completion report " +
+      "(duration, size). Long renders may exceed the transport timeout (15 s relay / 10 s " +
+      "desktop); the download still lands in the app.",
     inputSchema: {
       type: "object",
       properties: {
-        format: {
+        format: { type: "string", enum: ["wav", "mp3"] },
+        sampleRate: { type: "number", enum: [44100, 48000, 96000], description: "Render sample rate (default 44100)" },
+        bitDepth: { type: "number", enum: [16, 24, 32], description: "WAV bit depth (default 16; ignored for mp3)" },
+        stems: {
           type: "string",
-          enum: ["wav", "mp3"],
+          enum: ["all", "drums", "bass", "music"],
+          description: "Render stem groups into one zip instead of the full mix",
         },
       },
       required: ["format"],
@@ -221,7 +221,8 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_generate",
     description:
-      "Generate a new pattern from an intent spec (deterministic engine, one undo step). Returns the pattern name and resolved BPM.",
+      "Generate a new pattern from an intent spec (deterministic engine, " +
+      "one undo step). Returns the pattern name and resolved BPM.",
     inputSchema: {
       type: "object",
       properties: {
@@ -245,25 +246,10 @@ export const MCP_TOOL_DEFS = [
             "latin",
           ],
         },
-        seed: {
-          type: "string",
-          description: "Deterministic seed (same seed = same pattern)",
-        },
-        energy: {
-          type: "number",
-          minimum: 0,
-          maximum: 1,
-        },
-        density: {
-          type: "number",
-          minimum: 0,
-          maximum: 1,
-        },
-        bpm: {
-          type: "integer",
-          minimum: 40,
-          maximum: 220,
-        },
+        seed: { type: "string", description: "Deterministic seed (same seed = same pattern)" },
+        energy: { type: "number", minimum: 0, maximum: 1 },
+        density: { type: "number", minimum: 0, maximum: 1 },
+        bpm: { type: "integer", minimum: 40, maximum: 220 },
         bars: {
           type: "integer",
           minimum: 1,
@@ -277,10 +263,7 @@ export const MCP_TOOL_DEFS = [
         },
         roles: {
           type: "array",
-          items: {
-            type: "string",
-            enum: ["drums", "bass", "chords", "lead"],
-          },
+          items: { type: "string", enum: ["drums", "bass", "chords", "lead"] },
           description: "Which roles the pattern plays (default all)",
         },
       },
@@ -290,25 +273,18 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_groove",
     description:
-      "Groove/swing control. Global (no section) adjusts project swing; section-scoped bakes microtiming into that section's pattern.",
+      "Groove/swing control. Global (no section) adjusts project swing; " +
+      "section-scoped bakes microtiming into that section's pattern.",
     inputSchema: {
       type: "object",
       properties: {
-        direction: {
-          type: "string",
-          enum: ["more", "less", "tighter", "set"],
-        },
+        direction: { type: "string", enum: ["more", "less", "tighter", "set"] },
         section: {
           type: "string",
           enum: ["intro", "build", "chorus", "verse", "bridge", "drop", "break", "outro", "fill"],
           description: "Omit = global groove",
         },
-        percent: {
-          type: "integer",
-          minimum: 0,
-          maximum: 100,
-          description: "Only for direction 'set'",
-        },
+        percent: { type: "integer", minimum: 0, maximum: 100, description: "Only for direction 'set'" },
       },
       required: ["direction"],
     },
@@ -316,7 +292,14 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_fx",
     description:
-      "Structured effect operation on a track family or ONE exact track: more/less turn the effect's PRIMARY knob (percent = relative step size), remove deletes instances (destructive-gated), bypass/enable flag instances without deleting them. Effect types are the knob-mapped subset — eq and other no-knob effects are refused; use kyx_plugin_param for their parameters.",
+      "Structured effect operation on a track family or ONE exact track: " +
+      "more/less turn the effect's PRIMARY knob (percent = relative step " +
+      "size), remove deletes instances (destructive-gated), bypass/enable " +
+      "flag them, reorder moves ONE instance through the chain (direction " +
+      "or position). instance scopes remove/bypass/enable/reorder to the " +
+      "Nth same-type instance. Effect types are the knob-mapped subset for " +
+      "more/less — eq and other no-knob effects are refused there; use " +
+      "kyx_plugin_param for their parameters.",
     inputSchema: {
       type: "object",
       properties: {
@@ -345,15 +328,24 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           description: "Exact track id (from kyx_state tracks) — overrides family when present",
         },
-        action: {
-          type: "string",
-          enum: ["more", "less", "remove", "bypass", "enable"],
-        },
+        action: { type: "string", enum: ["more", "less", "remove", "bypass", "enable", "reorder"] },
         percent: {
           type: "number",
           minimum: 0,
           maximum: 100,
           description: "Relative step size for more/less, as % of the knob's range (default: fixed calibrated step)",
+          instance: {
+            type: "integer",
+            minimum: 1,
+            description:
+              "1-based same-type instance — scopes remove/bypass/enable/reorder to ONE instance (default: all instances of the type)",
+          },
+          direction: {
+            type: "string",
+            enum: ["earlier", "later"],
+            description: "For reorder — move the instance one slot toward the input (earlier) or output (later)",
+          },
+          position: { type: "integer", minimum: 1, description: "For reorder — 1-based final slot in the chain" },
         },
       },
       required: ["effect", "action"],
@@ -362,24 +354,17 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_sections",
     description:
-      "Arrangement operations: add/remove/duplicate/reorder/resize named sections (intro/build/chorus/verse/bridge/drop/break/outro/fill).",
+      "Arrangement operations: add/remove/duplicate/reorder/resize named " +
+      "sections (intro/build/chorus/verse/bridge/drop/break/outro/fill).",
     inputSchema: {
       type: "object",
       properties: {
-        op: {
-          type: "string",
-          enum: ["add", "remove", "duplicate", "reorder", "resize"],
-        },
+        op: { type: "string", enum: ["add", "remove", "duplicate", "reorder", "resize"] },
         role: {
           type: "string",
           enum: ["intro", "build", "chorus", "verse", "bridge", "drop", "break", "outro", "fill"],
         },
-        bars: {
-          type: "integer",
-          minimum: 1,
-          maximum: 64,
-          description: "For resize",
-        },
+        bars: { type: "integer", minimum: 1, maximum: 64, description: "For resize" },
       },
       required: ["op", "role"],
     },
@@ -390,19 +375,9 @@ export const MCP_TOOL_DEFS = [
     inputSchema: {
       type: "object",
       properties: {
-        op: {
-          type: "string",
-          enum: ["add", "remove"],
-        },
-        bar: {
-          type: "integer",
-          minimum: 1,
-          description: "1-based bar",
-        },
-        name: {
-          type: "string",
-          description: "Optional marker name",
-        },
+        op: { type: "string", enum: ["add", "remove", "rename"] },
+        bar: { type: "integer", minimum: 1, description: "1-based bar" },
+        name: { type: "string", description: "Optional marker name" },
       },
       required: ["op", "bar"],
     },
@@ -410,7 +385,12 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_tracks",
     description:
-      "Track CRUD + absolute mixer setters: add a drum or instrument track, remove/rename by family or exact trackId (group tracks are not addressable here — removing the last track is declined), or set mixer values with verify-by-read: setGain (absolute gainDb −60..+3.5 or linear gain 0..1.5), setPan (−1..1), setMute/setSolo (value boolean). set* ops apply to every track the family resolves to.",
+      "Track CRUD + absolute mixer setters: add a drum or instrument " +
+      "track, remove/rename by family or exact trackId (group tracks are " +
+      "not addressable here — removing the last track is declined), or set " +
+      "mixer values with verify-by-read: setGain (absolute gainDb −60..+3.5 " +
+      "or linear gain 0..1.5), setPan (−1..1), setMute/setSolo (value " +
+      "boolean). set* ops apply to every track the family resolves to.",
     inputSchema: {
       type: "object",
       properties: {
@@ -432,32 +412,11 @@ export const MCP_TOOL_DEFS = [
           enum: ["analog", "bass", "808", "keys", "pluck", "acid", "reese", "brass", "flute", "sampler"],
           description: "For addInstrument — the full kind catalog is in kyx_catalog subject:instruments",
         },
-        name: {
-          type: "string",
-          description: "New name for rename",
-        },
-        gainDb: {
-          type: "number",
-          minimum: -60,
-          maximum: 3.5,
-          description: "For setGain — absolute fader value in dB",
-        },
-        gain: {
-          type: "number",
-          minimum: 0,
-          maximum: 1.5,
-          description: "For setGain — linear alternative to gainDb",
-        },
-        pan: {
-          type: "number",
-          minimum: -1,
-          maximum: 1,
-          description: "For setPan — −1 left, 0 center, 1 right",
-        },
-        value: {
-          type: "boolean",
-          description: "For setMute/setSolo — true = on",
-        },
+        name: { type: "string", description: "New name for rename" },
+        gainDb: { type: "number", minimum: -60, maximum: 3.5, description: "For setGain — absolute fader value in dB" },
+        gain: { type: "number", minimum: 0, maximum: 1.5, description: "For setGain — linear alternative to gainDb" },
+        pan: { type: "number", minimum: -1, maximum: 1, description: "For setPan — −1 left, 0 center, 1 right" },
+        value: { type: "boolean", description: "For setMute/setSolo — true = on" },
       },
       required: ["op"],
     },
@@ -465,14 +424,12 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_pattern",
     description:
-      "List the project's patterns or switch the ACTIVE pattern (step edits and generation act on the active one). Select by 1-based index or name.",
+      "List the project's patterns or switch the ACTIVE pattern (step edits " +
+      "and generation act on the active one). Select by 1-based index or name.",
     inputSchema: {
       type: "object",
       properties: {
-        op: {
-          type: "string",
-          enum: ["list", "select"],
-        },
+        op: { type: "string", enum: ["list", "select"] },
         pattern: {
           type: "string",
           description: "1-based index or pattern name (for select)",
@@ -484,33 +441,22 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_steps",
     description:
-      "Structured step-grid edit on the ACTIVE pattern's drum pads (16 steps per bar, 1-based indexes across the whole pattern). add sets velocity, remove clears, toggle flips, ghost places a soft probabilistic hit, clearPad empties the whole family. Returns a verification read-back with the family's before → after step counts.",
+      "Structured step-grid edit on the ACTIVE pattern's drum pads (16 steps " +
+      "per bar, 1-based indexes across the whole pattern). add sets velocity, " +
+      "remove clears, toggle flips, ghost places a soft probabilistic hit, " +
+      "clearPad empties the whole family. Returns a verification read-back " +
+      "with the family's before → after step counts.",
     inputSchema: {
       type: "object",
       properties: {
-        op: {
-          type: "string",
-          enum: ["add", "remove", "toggle", "ghost", "clearPad"],
-        },
-        family: {
-          type: "string",
-          enum: ["kick", "snare", "clap", "hat", "perc", "tom"],
-        },
+        op: { type: "string", enum: ["add", "remove", "toggle", "ghost", "clearPad"] },
+        family: { type: "string", enum: ["kick", "snare", "clap", "hat", "perc", "tom"] },
         steps: {
           type: "array",
-          items: {
-            type: "integer",
-            minimum: 1,
-            maximum: 256,
-          },
+          items: { type: "integer", minimum: 1, maximum: 256 },
           description: "1-based 16th-step indexes within the pattern (16 per bar). Not used by clearPad.",
         },
-        velocity: {
-          type: "number",
-          minimum: 0.05,
-          maximum: 1,
-          description: "For add (default 0.8)",
-        },
+        velocity: { type: "number", minimum: 0.05, maximum: 1, description: "For add (default 0.8)" },
       },
       required: ["op", "family"],
     },
@@ -518,14 +464,15 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_catalog",
     description:
-      "Discovery — what the DAW can do, machine-readable: list every effect type with its category and primary knob, the FULL parameter table of one effect (id, label, min, max, default, unit, kind, taper), or the instrument kind catalog. Read-only; use it before kyx_plugin_param instead of guessing ranges.",
+      "Discovery — what the DAW can do, machine-readable: list every effect " +
+      "type with its category and primary knob, the FULL parameter table of " +
+      "one effect (id, label, min, max, default, unit, kind, taper), or the " +
+      "instrument kind catalog. Read-only; use it before kyx_plugin_param " +
+      "instead of guessing ranges.",
     inputSchema: {
       type: "object",
       properties: {
-        subject: {
-          type: "string",
-          enum: ["effects", "effect", "instruments"],
-        },
+        subject: { type: "string", enum: ["effects", "effect", "instruments"] },
         effect: {
           type: "string",
           description: "Effect type for subject:effect (e.g. reverb, eq, compressor) — see subject:effects",
@@ -537,18 +484,18 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_plugin_param",
     description:
-      "Precise plugin control on inserted FX instances: set ONE parameter to an absolute NATIVE value (clamped to the registry range; see kyx_catalog subject:effect for min/max/default/unit) or list the current values of every parameter on the targeted tracks' chains. Targets a trackId or a family; instance picks 1-based among same-type instances (default 1). Missing instances are reported honestly — nothing is auto-inserted (use kyx_fx more for that).",
+      "Precise plugin control on inserted FX instances: set ONE parameter to " +
+      "an absolute NATIVE value (clamped to the registry range; see " +
+      "kyx_catalog subject:effect for min/max/default/unit) or list the " +
+      "current values of every parameter on the targeted tracks' chains. " +
+      "Targets a trackId or a family; instance picks 1-based among same-type " +
+      "instances (default 1). Missing instances are reported honestly — " +
+      "nothing is auto-inserted (use kyx_fx more for that).",
     inputSchema: {
       type: "object",
       properties: {
-        op: {
-          type: "string",
-          enum: ["list", "set"],
-        },
-        trackId: {
-          type: "string",
-          description: "Exact track id — overrides family when present",
-        },
+        op: { type: "string", enum: ["list", "set"] },
+        trackId: { type: "string", description: "Exact track id — overrides family when present" },
         family: {
           type: "string",
           enum: ["drums", "bass", "chords", "lead", "vocal"],
@@ -563,10 +510,7 @@ export const MCP_TOOL_DEFS = [
           minimum: 1,
           description: "1-based index among same-type instances in chain order (default 1)",
         },
-        param: {
-          type: "string",
-          description: "Parameter id for set (e.g. mix, decay, freq) — see kyx_catalog",
-        },
+        param: { type: "string", description: "Parameter id for set (e.g. mix, decay, freq) — see kyx_catalog" },
         value: {
           type: "number",
           description: "Absolute NATIVE value for set (NOT normalized 0..1 unless the param's range is 0..1)",
@@ -578,15 +522,15 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_meter",
     description:
-      "Live audio meters — the AI's ears: master true peak, RMS, LUFS (momentary/short-term/integrated), stereo correlation, clip flags, plus per-track peak/RMS. Read-only snapshot of the RUNNING engine; honestly refused when no engine/audio context is live. LUFS-I needs a few seconds of playback to stabilize.",
+      "Live audio meters — the AI's ears: master true peak, RMS, LUFS " +
+      "(momentary/short-term/integrated), stereo correlation, clip flags, " +
+      "plus per-track peak/RMS. Read-only snapshot of the RUNNING engine; " +
+      "honestly refused when no engine/audio context is live. LUFS-I needs " +
+      "a few seconds of playback to stabilize.",
     inputSchema: {
       type: "object",
       properties: {
-        scope: {
-          type: "string",
-          enum: ["master", "tracks", "all"],
-          description: "Default all",
-        },
+        scope: { type: "string", enum: ["master", "tracks", "all"], description: "Default all" },
       },
       required: [],
     },
@@ -594,18 +538,19 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_automation",
     description:
-      "Automation lanes on the project timeline: add a point (lane is created on demand — one undo step for both), delete the point nearest a bar, clear a lane, or remove a lane (clear/remove are destructive-gated). Targets: trackId or family + param — 'gain' or 'pan' for track lanes, or effect+param for FX-parameter lanes (see kyx_catalog for ranges). Values are NATIVE (gain 0..1.5, pan -1..1, fx params per their registry range); out-of-range values are clamped. Read the lanes first via kyx_state subject:automation.",
+      "Automation lanes on the project timeline: add a point (lane is " +
+      "created on demand — one undo step for both), delete the point nearest " +
+      "a bar, clear a lane, or remove a lane (clear/remove are " +
+      "destructive-gated). Targets: trackId or family + param — 'gain' or " +
+      "'pan' for track lanes, or effect+param for FX-parameter lanes (see " +
+      "kyx_catalog for ranges). Values are NATIVE (gain 0..1.5, pan -1..1, " +
+      "fx params per their registry range); out-of-range values are clamped. " +
+      "Read the lanes first via kyx_state subject:automation.",
     inputSchema: {
       type: "object",
       properties: {
-        op: {
-          type: "string",
-          enum: ["addPoint", "movePoint", "deletePoint", "clearLane", "removeLane"],
-        },
-        trackId: {
-          type: "string",
-          description: "Exact track id — overrides family when present",
-        },
+        op: { type: "string", enum: ["addPoint", "movePoint", "deletePoint", "clearLane", "removeLane"] },
+        trackId: { type: "string", description: "Exact track id — overrides family when present" },
         family: {
           type: "string",
           enum: ["drums", "bass", "chords", "lead", "vocal"],
@@ -619,37 +564,21 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           description: "Effect type for fxParam lanes — resolves to the track's 1-based instance (default 1)",
         },
-        instance: {
-          type: "integer",
-          minimum: 1,
-          description: "1-based same-type instance index (default 1)",
-        },
+        instance: { type: "integer", minimum: 1, description: "1-based same-type instance index (default 1)" },
         bar: {
           type: "integer",
           minimum: 1,
           description: "1-based bar — position for addPoint, anchor for movePoint/deletePoint",
         },
-        newBar: {
-          type: "integer",
-          minimum: 1,
-          description: "For movePoint — 1-based destination bar",
-        },
-        newBeat: {
-          type: "integer",
-          minimum: 1,
-          maximum: 4,
-          description: "For movePoint — 1-based destination beat",
-        },
+        newBar: { type: "integer", minimum: 1, description: "For movePoint — 1-based destination bar" },
+        newBeat: { type: "integer", minimum: 1, maximum: 4, description: "For movePoint — 1-based destination beat" },
         beat: {
           type: "integer",
           minimum: 1,
           maximum: 4,
           description: "Optional 1-based beat within the bar (default 1)",
         },
-        value: {
-          type: "number",
-          description: "NATIVE value for addPoint (clamped into the target's range)",
-        },
+        value: { type: "number", description: "NATIVE value for addPoint (clamped into the target's range)" },
       },
       required: ["op"],
     },
@@ -657,7 +586,13 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_clips",
     description:
-      "Arrangement AND audio clips: list scene clips (with ids + an audio summary), audioList the track-lane waveforms in detail, or edit — scene ops move/resize/duplicate/delete target the clip COVERING an anchor bar (delete D4-gated); audio ops audioMove/audioSplit/audioUpdate (gain, fadeIn, fadeOut, reverse, loop)/audioDelete (D4) address a track (trackId or family) + the anchor bar its clip covers. Values are native (gain linear, fades in seconds).",
+      "Arrangement AND audio clips: list scene clips (with ids + an audio " +
+      "summary), audioList the track-lane waveforms in detail, or edit — " +
+      "scene ops move/resize/duplicate/delete target the clip COVERING an " +
+      "anchor bar (delete D4-gated); audio ops audioMove/audioSplit/" +
+      "audioUpdate (gain, fadeIn, fadeOut, reverse, loop)/audioDelete (D4) " +
+      "address a track (trackId or family) + the anchor bar its clip " +
+      "covers. Values are native (gain linear, fades in seconds).",
     inputSchema: {
       type: "object",
       properties: {
@@ -676,55 +611,20 @@ export const MCP_TOOL_DEFS = [
             "audioDelete",
           ],
         },
-        bar: {
-          type: "integer",
-          minimum: 1,
-          description: "1-based anchor bar — the clip covering it is the target",
-        },
-        toBar: {
-          type: "integer",
-          minimum: 1,
-          description: "For move/audioMove — 1-based destination start bar",
-        },
-        bars: {
-          type: "integer",
-          minimum: 1,
-          maximum: 64,
-          description: "For resize — new length in bars",
-        },
-        trackId: {
-          type: "string",
-          description: "For audio ops — exact track id",
-        },
+        bar: { type: "integer", minimum: 1, description: "1-based anchor bar — the clip covering it is the target" },
+        toBar: { type: "integer", minimum: 1, description: "For move/audioMove — 1-based destination start bar" },
+        bars: { type: "integer", minimum: 1, maximum: 64, description: "For resize — new length in bars" },
+        trackId: { type: "string", description: "For audio ops — exact track id" },
         family: {
           type: "string",
           enum: ["drums", "bass", "chords", "lead", "vocal"],
           description: "For audio ops — family alternative to trackId",
         },
-        gain: {
-          type: "number",
-          minimum: 0,
-          maximum: 2,
-          description: "For audioUpdate — linear clip gain",
-        },
-        fadeIn: {
-          type: "number",
-          minimum: 0,
-          description: "For audioUpdate — fade-in seconds",
-        },
-        fadeOut: {
-          type: "number",
-          minimum: 0,
-          description: "For audioUpdate — fade-out seconds",
-        },
-        reverse: {
-          type: "boolean",
-          description: "For audioUpdate — play the clip backwards",
-        },
-        loop: {
-          type: "boolean",
-          description: "For audioUpdate — loop the trimmed content over the clip length",
-        },
+        gain: { type: "number", minimum: 0, maximum: 2, description: "For audioUpdate — linear clip gain" },
+        fadeIn: { type: "number", minimum: 0, description: "For audioUpdate — fade-in seconds" },
+        fadeOut: { type: "number", minimum: 0, description: "For audioUpdate — fade-out seconds" },
+        reverse: { type: "boolean", description: "For audioUpdate — play the clip backwards" },
+        loop: { type: "boolean", description: "For audioUpdate — loop the trimmed content over the clip length" },
       },
       required: ["op"],
     },
@@ -732,7 +632,12 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_batch",
     description:
-      "Run up to 10 tool calls in ONE submitted batch: calls: [{tool, args}…]. When the host supports undo frames, every mutation folds into a SINGLE undo entry (the result reports which contract applied); each call still returns its own read-back, and per-call failures never abort the batch. Async tools (kyx_export, kyx_loudness) and nested batches are refused — run those standalone.",
+      "Run up to 10 tool calls in ONE submitted batch: calls: [{tool, args}…" +
+      "]. When the host supports undo frames, every mutation folds into a " +
+      "SINGLE undo entry (the result reports which contract applied); each " +
+      "call still returns its own read-back, and per-call failures never " +
+      "abort the batch. Async tools (kyx_export, kyx_loudness) and nested " +
+      "batches are refused — run those standalone.",
     inputSchema: {
       type: "object",
       properties: {
@@ -747,10 +652,7 @@ export const MCP_TOOL_DEFS = [
                 type: "string",
                 description: "One of the kyx_* tool names (not kyx_batch/kyx_export/kyx_loudness)",
               },
-              args: {
-                type: "object",
-                description: "The tool's arguments object",
-              },
+              args: { type: "object", description: "The tool's arguments object" },
             },
             required: ["tool"],
           },
@@ -762,14 +664,16 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_loudness",
     description:
-      "Loudness loop (render-backed BS.1770): measure reports the CURRENT mix's integrated LUFS read-only; match runs measure→trim→verify toward an explicit targetDb (e.g. −14 for streaming) or a ±nudge in the given direction, landing the trim on the master config in one undo step. Runs in the KYX window; honestly refused where no render context is bound.",
+      "Loudness loop (render-backed BS.1770): measure reports the CURRENT " +
+      "mix's integrated LUFS read-only; match runs measure→trim→verify " +
+      "toward an explicit targetDb (e.g. −14 for streaming) or a ±nudge in " +
+      "the given direction, landing the trim on the master config in one " +
+      "undo step. Runs in the KYX window; honestly refused where no render " +
+      "context is bound.",
     inputSchema: {
       type: "object",
       properties: {
-        op: {
-          type: "string",
-          enum: ["measure", "match"],
-        },
+        op: { type: "string", enum: ["measure", "match"] },
         targetDb: {
           type: "number",
           minimum: -24,
@@ -788,18 +692,155 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_checkpoint",
     description:
-      "Named project checkpoints for agent experiments: save the current state, list checkpoints with how many steps have passed since each, restore one (ONE undo step back to the pre-restore state), or delete. Session-scoped (last 8 kept); destructive ops auto-save auto-before-<tool> checkpoints when allowed.",
+      "Named project checkpoints for agent experiments: save the current " +
+      "state, list checkpoints with how many steps have passed since each, " +
+      "restore one (ONE undo step back to the pre-restore state), or delete. " +
+      "Session-scoped (last 8 kept); destructive ops auto-save " +
+      "auto-before-<tool> checkpoints when allowed.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["save", "list", "restore", "delete"] },
+        name: { type: "string", description: "Checkpoint name (required for save/restore/delete)" },
+      },
+      required: ["op"],
+    },
+  },
+  {
+    name: "kyx_mix",
+    description:
+      "PRODUCER MOVE - apply the measured genre mix profile in ONE undo " +
+      "step: tone tilt, punch, sidechain pump and space decisions derived " +
+      "from the genre/mood, refined by explicit overrides. Returns the " +
+      "decision summary as the read-back.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        genre: {
+          type: "string",
+          enum: [
+            "house",
+            "techno",
+            "trap",
+            "ambient",
+            "drill",
+            "phonk",
+            "jersey",
+            "dnb",
+            "ukg",
+            "amapiano",
+            "postrock",
+            "drone",
+            "chiptune",
+            "eurodance",
+            "latin",
+          ],
+        },
+        mood: { type: "string", description: "Optional mood (dark, chill, warm, aggressive...)" },
+        energy: { type: "number", minimum: 0, maximum: 1 },
+        tone: { type: "string", enum: ["dark", "bright", "warm", "cold"] },
+        reverb: { type: "string", enum: ["more", "less", "huge"] },
+        punch: { type: "string", enum: ["more", "less"] },
+        pump: { type: "string", enum: ["on", "off"] },
+      },
+      required: ["genre"],
+    },
+  },
+  {
+    name: "kyx_arrange",
+    description:
+      "PRODUCER MOVE - lay out the genre song form as scenes + clips + " +
+      "cue markers (intro/build/drop/... with per-section intensity) in ONE " +
+      "undo step. Refused when the arrangement already has clips: use " +
+      "kyx_sections/kyx_clips for surgical edits on an existing arrangement.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        genre: {
+          type: "string",
+          enum: [
+            "house",
+            "techno",
+            "trap",
+            "ambient",
+            "drill",
+            "phonk",
+            "jersey",
+            "dnb",
+            "ukg",
+            "amapiano",
+            "postrock",
+            "drone",
+            "chiptune",
+            "eurodance",
+            "latin",
+          ],
+        },
+        energy: { type: "number", minimum: 0, maximum: 1 },
+        length: {
+          type: "string",
+          enum: ["short", "standard", "radio", "extended", "epic"],
+          description: "Scales the form core cycles (default: genre standard)",
+        },
+      },
+      required: ["genre"],
+    },
+  },
+  {
+    name: "kyx_routing",
+    description:
+      "The group routing graph AND send buses: list every track's destination (its " +
+      "group or master) with a structured envelope, create a group bus, route " +
+      "tracks into it (addToGroup) or back to master (removeFromGroup). The " +
+      "model is FLAT — one group per track, no group-into-group — so routing " +
+      "cycles are impossible by construction. setSend/setReturnGain/ " +
+      "createReturn cover the send-bus mixer.",
     inputSchema: {
       type: "object",
       properties: {
         op: {
           type: "string",
-          enum: ["save", "list", "restore", "delete"],
+          enum: ["list", "createGroup", "addToGroup", "removeFromGroup", "setSend", "setReturnGain", "createReturn"],
         },
+        trackId: { type: "string", description: "Exact track id — overrides family when present" },
+        family: {
+          type: "string",
+          enum: ["drums", "bass", "chords", "lead", "vocal"],
+          description: "Family alternative to trackId (applies to every resolved track)",
+        },
+        groupId: { type: "string", description: "For addToGroup — the group track id (op:list)" },
+        groupName: { type: "string", description: "For addToGroup — group name alternative to groupId" },
         name: {
           type: "string",
-          description: "Checkpoint name (required for save/restore/delete)",
+          description: "For createGroup/createReturn — optional name (default: Group N / Return N)",
         },
+        returnId: { type: "string", description: "For setSend/setReturnGain — the return bus id (op:list)" },
+        returnName: { type: "string", description: "Return bus name alternative to returnId" },
+        level: {
+          type: "number",
+          minimum: 0,
+          maximum: 1.5,
+          description: "For setSend — linear send level (1.0 = unity)",
+        },
+        gain: { type: "number", minimum: 0, maximum: 1.5, description: "For setReturnGain — linear return fader" },
+      },
+      required: ["op"],
+    },
+  },
+  {
+    name: "kyx_takes",
+    description:
+      "Take groups (comp workflow): list every group with its track, the " +
+      "ACTIVE take and the alternatives (clips per take), or activate a " +
+      "take — the comp pick that decides which alternative is heard. " +
+      "Reversible (one undo step); the domain validates the take has clips. " +
+      "deleteTake (destructive-gated) removes every clip of one take.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["list", "activate", "deleteTake"] },
+        groupId: { type: "string", description: "For activate/deleteTake — the take group id (op:list)" },
+        takeId: { type: "string", description: "The take id to activate or delete" },
       },
       required: ["op"],
     },

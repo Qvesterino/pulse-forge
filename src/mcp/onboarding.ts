@@ -32,20 +32,24 @@ WORKFLOW: BEAT FROM SCRATCH
   3. kyx_steps {op: add/remove/toggle/ghost/clearPad, family, steps} —
      exact 16th edits (steps are 1-based ACROSS the pattern, 16 per bar).
   4. kyx_groove {direction} — swing/humanize; section-scoped when asked.
-  5. kyx_mix {genre, ...overrides} (or kyx_intent "make it punchier") —
-     the measured mix profile in one undo.
-  6. kyx_sections + kyx_clips — arrangement; kyx_markers as cues.
+  5. kyx_mix {genre, tone?, reverb?, punch?, pump?} (or kyx_intent
+     "make it punchier") — the MEASURED genre mix profile in one undo.
+  6. kyx_arrange {genre, length?} — the whole song form as scenes + clips +
+     cue markers in one undo (empty arrangement only); kyx_sections +
+     kyx_clips for surgical edits afterwards.
   7. kyx_loudness {op: match, targetDb} — land near -14 LUFS.
 
 WORKFLOW: MIX PASS ON EXISTING MATERIAL
-  kyx_state {subject: fxChain} -> kyx_fx (more/less/remove/bypass per
-  family) or kyx_intent with production concepts ("make the bass deeper")
-  -> kyx_meter / kyx_loudness to verify with numbers, not vibes.
+  kyx_state {subject: fxChain} -> kyx_mix for the whole-gesture profile
+  (or kyx_fx per family: more/less/remove/bypass) or kyx_intent with
+  production concepts ("make the bass deeper") -> kyx_meter / kyx_loudness
+  to verify with numbers, not vibes.
 
 WORKFLOW: ARRANGEMENT PASS
-  kyx_state {subject: scenes} -> kyx_sections {op: add/duplicate/resize/
-  reorder, role, bars?} -> kyx_clips {op: move/resize/duplicate, anchor
-  bar} -> kyx_markers {op: add, bar, name}.
+  On an EMPTY arrangement start with kyx_arrange {genre, length?} (whole
+  form in one undo), then refine with kyx_sections {op: add/duplicate/
+  resize/reorder, role, bars?} -> kyx_clips {op: move/resize/duplicate,
+  anchor bar} -> kyx_markers {op: add, bar, name}.
 
 TOKEN ECONOMY (your context is finite)
 - Prefer the structured tools over free-text kyx_intent: typed arguments

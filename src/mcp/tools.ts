@@ -6,10 +6,14 @@ import {
   applyBypassIntent,
   applyEffectIntent,
   applySendIntent,
+  applyMixIntent,
   bypassReadback,
   effectReadback,
   EFFECT_KNOB,
+  planMixProfile,
+  type MixOverrides,
 } from "../intent/mix";
+import { planSongForm, type SongSectionSpec } from "../intent/song";
 import { applyCompoundIntent } from "../intent/compound";
 import { productionReadback } from "../intent/production";
 import {
@@ -30,29 +34,45 @@ import { applyPresetIntentCommand } from "../intent/preset-intent";
 import {
   addAutomationLane,
   addAutomationPoint,
+  addToGroup,
+  createGroupTrack,
+  createReturnTrack,
   addMarker,
+  addArrangementClip,
   applyExactIntentCommand,
   applyGenerationResultCommand,
   applyProductionIntentCommand,
   createDrumTrack,
   createInstrumentTrack,
+  createScene,
   deleteArrangementClip,
   deleteAutomationPoint,
   deleteTrack,
   moveAutomationPoint,
+  moveEffect,
+  moveEffectToIndex,
   deleteAudioClip,
   duplicateArrangementClip,
   moveArrangementClip,
   moveAudioClip,
   removeAutomationLane,
+  removeEffect,
+  removeFromGroup,
   removeMarker,
+  renameMarker,
   resizeArrangementClip,
+  setActiveAudioTake,
+  setReturnGain,
   setActivePattern,
+  setSceneIntensity,
+  setSceneRole,
+  setTrackSend,
   setEffectParam,
   setStepMeta,
   setStepVelocityCommand,
   setTrackParams,
   snapshot,
+  toggleEffectBypass,
   splitAudioClipAtTick,
   updateAudioClip,
 } from "../commands/commands";
@@ -198,14 +218,24 @@ export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_export",
     description:
-      "Bounce the current project (WAV 16-bit / MP3 320). The render runs " +
-      "in the KYX window and the tool AWAITS it — the result carries the " +
-      "completion report (duration, size). Long renders may exceed the " +
-      "transport timeout (15 s relay / 10 s desktop); the download still " +
-      "lands in the app.",
+      "Bounce the current project: full mix (WAV 16/24/32-bit, MP3 320) or a STEMS zip " +
+      "(stems: all | drums | bass | music — stem projects bypass the master chain, same as " +
+      "the ExportPanel stem flow). sampleRate selects the render rate. The render runs in " +
+      "the KYX window and the tool AWAITS it — the result carries the completion report " +
+      "(duration, size). Long renders may exceed the transport timeout (15 s relay / 10 s " +
+      "desktop); the download still lands in the app.",
     inputSchema: {
       type: "object",
-      properties: { format: { type: "string", enum: ["wav", "mp3"] } },
+      properties: {
+        format: { type: "string", enum: ["wav", "mp3"] },
+        sampleRate: { type: "number", enum: [44100, 48000, 96000], description: "Render sample rate (default 44100)" },
+        bitDepth: { type: "number", enum: [16, 24, 32], description: "WAV bit depth (default 16; ignored for mp3)" },
+        stems: {
+          type: "string",
+          enum: ["all", "drums", "bass", "music"],
+          description: "Render stem groups into one zip instead of the full mix",
+        },
+      },
       required: ["format"],
     },
   },
@@ -286,8 +316,10 @@ export const MCP_TOOLS: McpToolDef[] = [
       "Structured effect operation on a track family or ONE exact track: " +
       "more/less turn the effect's PRIMARY knob (percent = relative step " +
       "size), remove deletes instances (destructive-gated), bypass/enable " +
-      "flag instances without deleting them. Effect types are the " +
-      "knob-mapped subset — eq and other no-knob effects are refused; use " +
+      "flag them, reorder moves ONE instance through the chain (direction " +
+      "or position). instance scopes remove/bypass/enable/reorder to the " +
+      "Nth same-type instance. Effect types are the knob-mapped subset for " +
+      "more/less — eq and other no-knob effects are refused there; use " +
       "kyx_plugin_param for their parameters.",
     inputSchema: {
       type: "object",
@@ -317,12 +349,24 @@ export const MCP_TOOLS: McpToolDef[] = [
           type: "string",
           description: "Exact track id (from kyx_state tracks) — overrides family when present",
         },
-        action: { type: "string", enum: ["more", "less", "remove", "bypass", "enable"] },
+        action: { type: "string", enum: ["more", "less", "remove", "bypass", "enable", "reorder"] },
         percent: {
           type: "number",
           minimum: 0,
           maximum: 100,
           description: "Relative step size for more/less, as % of the knob's range (default: fixed calibrated step)",
+          instance: {
+            type: "integer",
+            minimum: 1,
+            description:
+              "1-based same-type instance — scopes remove/bypass/enable/reorder to ONE instance (default: all instances of the type)",
+          },
+          direction: {
+            type: "string",
+            enum: ["earlier", "later"],
+            description: "For reorder — move the instance one slot toward the input (earlier) or output (later)",
+          },
+          position: { type: "integer", minimum: 1, description: "For reorder — 1-based final slot in the chain" },
         },
       },
       required: ["effect", "action"],
@@ -352,7 +396,7 @@ export const MCP_TOOLS: McpToolDef[] = [
     inputSchema: {
       type: "object",
       properties: {
-        op: { type: "string", enum: ["add", "remove"] },
+        op: { type: "string", enum: ["add", "remove", "rename"] },
         bar: { type: "integer", minimum: 1, description: "1-based bar" },
         name: { type: "string", description: "Optional marker name" },
       },
@@ -683,7 +727,154 @@ export const MCP_TOOLS: McpToolDef[] = [
       required: ["op"],
     },
   },
-];;
+  {
+    name: "kyx_mix",
+    description:
+      "PRODUCER MOVE - apply the measured genre mix profile in ONE undo " +
+      "step: tone tilt, punch, sidechain pump and space decisions derived " +
+      "from the genre/mood, refined by explicit overrides. Returns the " +
+      "decision summary as the read-back.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        genre: {
+          type: "string",
+          enum: [
+            "house",
+            "techno",
+            "trap",
+            "ambient",
+            "drill",
+            "phonk",
+            "jersey",
+            "dnb",
+            "ukg",
+            "amapiano",
+            "postrock",
+            "drone",
+            "chiptune",
+            "eurodance",
+            "latin",
+          ],
+        },
+        mood: { type: "string", description: "Optional mood (dark, chill, warm, aggressive...)" },
+        energy: { type: "number", minimum: 0, maximum: 1 },
+        tone: { type: "string", enum: ["dark", "bright", "warm", "cold"] },
+        reverb: { type: "string", enum: ["more", "less", "huge"] },
+        punch: { type: "string", enum: ["more", "less"] },
+        pump: { type: "string", enum: ["on", "off"] },
+      },
+      required: ["genre"],
+    },
+  },
+  {
+    name: "kyx_arrange",
+    description:
+      "PRODUCER MOVE - lay out the genre song form as scenes + clips + " +
+      "cue markers (intro/build/drop/... with per-section intensity) in ONE " +
+      "undo step. Refused when the arrangement already has clips: use " +
+      "kyx_sections/kyx_clips for surgical edits on an existing arrangement.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        genre: {
+          type: "string",
+          enum: [
+            "house",
+            "techno",
+            "trap",
+            "ambient",
+            "drill",
+            "phonk",
+            "jersey",
+            "dnb",
+            "ukg",
+            "amapiano",
+            "postrock",
+            "drone",
+            "chiptune",
+            "eurodance",
+            "latin",
+          ],
+        },
+        energy: { type: "number", minimum: 0, maximum: 1 },
+        length: {
+          type: "string",
+          enum: ["short", "standard", "radio", "extended", "epic"],
+          description: "Scales the form core cycles (default: genre standard)",
+        },
+      },
+      required: ["genre"],
+    },
+  },
+  {
+    name: "kyx_routing",
+    description:
+      "The group routing graph AND send buses: list every track's destination (its " +
+      "group or master) with a structured envelope, create a group bus, route " +
+      "tracks into it (addToGroup) or back to master (removeFromGroup). The " +
+      "model is FLAT — one group per track, no group-into-group — so routing " +
+      "cycles are impossible by construction. setSend/setReturnGain/ " +
+      "createReturn cover the send-bus mixer.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: {
+          type: "string",
+          enum: ["list", "createGroup", "addToGroup", "removeFromGroup", "setSend", "setReturnGain", "createReturn"],
+        },
+        trackId: { type: "string", description: "Exact track id — overrides family when present" },
+        family: {
+          type: "string",
+          enum: ["drums", "bass", "chords", "lead", "vocal"],
+          description: "Family alternative to trackId (applies to every resolved track)",
+        },
+        groupId: { type: "string", description: "For addToGroup — the group track id (op:list)" },
+        groupName: { type: "string", description: "For addToGroup — group name alternative to groupId" },
+        name: {
+          type: "string",
+          description: "For createGroup/createReturn — optional name (default: Group N / Return N)",
+        },
+        returnId: { type: "string", description: "For setSend/setReturnGain — the return bus id (op:list)" },
+        returnName: { type: "string", description: "Return bus name alternative to returnId" },
+        level: {
+          type: "number",
+          minimum: 0,
+          maximum: 1.5,
+          description: "For setSend — linear send level (1.0 = unity)",
+        },
+        gain: { type: "number", minimum: 0, maximum: 1.5, description: "For setReturnGain — linear return fader" },
+      },
+      required: ["op"],
+    },
+  },
+  {
+    name: "kyx_takes",
+    description:
+      "Take groups (comp workflow): list every group with its track, the " +
+      "ACTIVE take and the alternatives (clips per take), or activate a " +
+      "take — the comp pick that decides which alternative is heard. " +
+      "Reversible (one undo step); the domain validates the take has clips. " +
+      "deleteTake (destructive-gated) removes every clip of one take.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["list", "activate", "deleteTake"] },
+        groupId: { type: "string", description: "For activate/deleteTake — the take group id (op:list)" },
+        takeId: { type: "string", description: "The take id to activate or delete" },
+      },
+      required: ["op"],
+    },
+  },
+];
+
+/** The kyx_export request: full-mix bounce or a stems zip, with render options. */
+export interface McpExportRequest {
+  format: "wav" | "mp3";
+  sampleRate?: number;
+  bitDepth?: 16 | 24 | 32;
+  stems?: "all" | "drums" | "bass" | "music";
+}
 
 /** Live metering snapshot the kyx_meter tool reads (present only when the
  * host has a running engine — headless contexts honestly refuse). */
@@ -731,7 +922,7 @@ export interface McpToolContext {
     seek?: (tick: number) => void;
   };
   /** Present when the KYX window can render/downloads (browser relay). */
-  export?: (format: "wav" | "mp3") => Promise<string>;
+  export?: (request: McpExportRequest) => Promise<string>;
   /** Present when a live engine can be metered (kyx_meter). Null/absent →
    * the tool refuses honestly instead of inventing numbers. */
   meters?: () => McpMeterSnapshot | null;
@@ -958,7 +1149,20 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
       // Sync callers get the fire-and-forget contract; the transports go
       // through executeMcpToolAsync, which AWAITS the same hook and returns
       // the completion report (duration/size).
-      void ctx.export(format).catch(() => {});
+      void ctx
+        .export({
+          format,
+          ...(record.sampleRate === 44100 || record.sampleRate === 48000 || record.sampleRate === 96000
+            ? { sampleRate: record.sampleRate }
+            : {}),
+          ...(record.bitDepth === 16 || record.bitDepth === 24 || record.bitDepth === 32
+            ? { bitDepth: record.bitDepth }
+            : {}),
+          ...(typeof record.stems === "string" && ["all", "drums", "bass", "music"].includes(record.stems)
+            ? { stems: record.stems as McpExportRequest["stems"] }
+            : {}),
+        })
+        .catch(() => {});
       return {
         text: `export ${format.toUpperCase()} started in the KYX window`,
         mutated: false,
@@ -1020,18 +1224,135 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
       const effect = String(record.effect ?? "");
       const targets = explicitTargets(record);
       if (typeof targets === "string") return { text: targets, mutated: false };
+      if (action === "reorder") {
+        // Per-instance chain reorder: direction moves ±1, position is the
+        // 1-based final slot. Uses the domain's moveEffect/moveEffectToIndex.
+        const reorderIndex = Math.max(1, Math.round(Number(record.instance ?? 1)));
+        const direction = record.direction === "earlier" ? -1 : record.direction === "later" ? 1 : 0;
+        const position = typeof record.position === "number" ? Math.round(record.position) : null;
+        if (direction === 0 && position == null) {
+          return { text: "reorder needs direction (earlier | later) or position (1-based final slot)", mutated: false };
+        }
+        try {
+          const before = ctx.getDoc();
+          const targetIds = targets.length === 1 ? tracksInFamily(before, targets[0]) : targets;
+          let next = before;
+          const parts: string[] = [];
+          let moved = 0;
+          for (const targetId of targetIds) {
+            const track = next.tracks.find((t) => t.id === targetId);
+            if (!track) {
+              parts.push(`${targetId}: no such track`);
+              continue;
+            }
+            const instances = track.effects.filter((fx) => fx.type === effect);
+            if (instances.length === 0) {
+              parts.push(`${track.name}: no ${effect} instance`);
+              continue;
+            }
+            if (instances.length < reorderIndex) {
+              parts.push(
+                `${track.name}: ${effect} instance #${reorderIndex} does not exist (chain has ${instances.length})`,
+              );
+              continue;
+            }
+            const fx = instances[reorderIndex - 1];
+            const movedFxId = fx.id;
+            if (position != null) {
+              next = moveEffectToIndex(next, track.id, movedFxId, position - 1).execute(next);
+            } else {
+              next = moveEffect(next, track.id, movedFxId, direction as -1 | 1).execute(next);
+            }
+            moved += 1;
+            const chain = next.tracks
+              .find((t) => t.id === track.id)!
+              .effects.map((f, index) => `${index + 1}.${f.type}${f.id === movedFxId ? "*" : ""}`)
+              .join(" ");
+            parts.push(`${track.name}: ${chain}`);
+          }
+          if (moved === 0) {
+            return { text: `reorder failed — ${parts.join("; ")}`, mutated: false, isError: true };
+          }
+          ctx.execute(snapshot("mcpFxReorder", `MCP: reorder ${effect}#${reorderIndex}`, before, next));
+          return { text: `reorder ${effect}#${reorderIndex}: ${parts.join("; ")} — one undo step`, mutated: true };
+        } catch (error) {
+          return {
+            text: `fx op failed: ${error instanceof Error ? error.message : String(error)}`,
+            mutated: false,
+            isError: true,
+          };
+        }
+      }
+      const perInstance = record.instance != null && action !== "more" && action !== "less";
+      const instanceWanted = Math.max(1, Math.round(Number(record.instance ?? 1)));
       if (action === "remove" && ctx.allowDestructive?.() !== true) return destructiveRefusal();
       // eq (and any knob-less effect) has no single "primary knob" — never
       // pretend: point at kyx_plugin_param instead of throwing deep inside
-      // the applier (the pre-audit schema advertised eq here although every
-      // such call failed).
-      if (!(effect in EFFECT_KNOB)) {
+      // the applier. remove/bypass/reorder do NOT need a knob.
+      if (!perInstance && action !== "remove" && !(effect in EFFECT_KNOB)) {
         return {
           text:
             `fx op failed: "${effect}" has no single primary knob for more/less — ` +
             `list its parameters with kyx_catalog subject:effect, then set them via kyx_plugin_param`,
           mutated: false,
         };
+      }
+      if (perInstance) {
+        // Instance-scoped remove/bypass/enable: the Nth same-type instance
+        // per targeted track, folded into ONE undo snapshot.
+        try {
+          const before = ctx.getDoc();
+          const targetIds = targets.length === 1 ? tracksInFamily(before, targets[0]) : targets;
+          let next = before;
+          const parts: string[] = [];
+          let touched = 0;
+          for (const targetId of targetIds) {
+            const track = before.tracks.find((t) => t.id === targetId);
+            if (!track) {
+              parts.push(`${targetId}: no such track`);
+              continue;
+            }
+            const instances = track.effects.filter((fx) => fx.type === effect);
+            if (instances.length === 0) {
+              parts.push(`${track.name}: no ${effect} instance`);
+              continue;
+            }
+            if (instances.length < instanceWanted) {
+              parts.push(
+                `${track.name}: ${effect} instance #${instanceWanted} does not exist (chain has ${instances.length})`,
+              );
+              continue;
+            }
+            const fx = instances[instanceWanted - 1];
+            if (action === "remove") {
+              next = removeEffect(next, track.id, fx.id).execute(next);
+              parts.push(`${track.name}: removed ${effect}#${instanceWanted}`);
+              touched += 1;
+            } else {
+              const bypassed = action === "bypass";
+              if (fx.bypassed === bypassed) {
+                parts.push(
+                  `${track.name}: ${effect}#${instanceWanted} already ${action === "bypass" ? "bypassed" : "enabled"}`,
+                );
+                continue;
+              }
+              next = toggleEffectBypass(next, track.id, fx.id).execute(next);
+              parts.push(`${track.name}: ${effect}#${instanceWanted} ${bypassed ? "bypassed" : "enabled"}`);
+              touched += 1;
+            }
+          }
+          if (touched === 0) {
+            return { text: `nothing changed — ${parts.join("; ")}`, mutated: false };
+          }
+          ctx.execute(snapshot("mcpFxInstance", `MCP: ${action} ${effect}#${instanceWanted}`, before, next));
+          return { text: `${parts.join("; ")} — one undo step`, mutated: true };
+        } catch (error) {
+          return {
+            text: `fx op failed: ${error instanceof Error ? error.message : String(error)}`,
+            mutated: false,
+            isError: true,
+          };
+        }
       }
       try {
         const before = ctx.getDoc();
@@ -1107,6 +1428,13 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
       }
       const nearest = ctx.getDoc().markers.find((marker) => Math.abs(marker.tick - tick) < TICKS_PER_BAR);
       if (nearest == null) return { text: `no marker near bar ${bar}`, mutated: false };
+      if (op === "rename") {
+        const name = typeof record.name === "string" ? record.name.trim().slice(0, 40) : "";
+        if (name === "") return { text: "rename needs a name (bar anchors the nearest match)", mutated: false };
+        const previous = nearest.name;
+        ctx.execute(renameMarker(ctx.getDoc(), nearest.id, name));
+        return { text: `renamed marker "${previous}" → "${name}" — one undo step`, mutated: true };
+      }
       ctx.execute(removeMarker(ctx.getDoc(), nearest.id));
       return { text: `marker "${nearest.name}" removed`, mutated: true };
     }
@@ -1258,6 +1586,10 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
       return executeAutomationTool(ctx, record);
     case "kyx_clips":
       return executeClipsTool(ctx, record);
+    case "kyx_routing":
+      return executeRoutingTool(ctx, record);
+    case "kyx_takes":
+      return executeTakesTool(ctx, record);
     case "kyx_batch":
       return executeBatchTool(ctx, record);
     case "kyx_loudness":
@@ -1297,6 +1629,10 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
       }
       return { text: lines.join("\n"), mutated: false, data: snapshotMeters };
     }
+    case "kyx_mix":
+      return executeMixTool(ctx, record);
+    case "kyx_arrange":
+      return executeArrangeTool(ctx, record);
     case "kyx_checkpoint":
       return executeCheckpointTool(ctx, record);
     case "__kyx_resource":
@@ -1405,7 +1741,131 @@ export function readMcpResource(ctx: McpToolContext, uri: string): McpToolResult
   }
 }
 
-/** ── CHECKPOINTS (agent time machine, docs/AGENTIC-DAW-PLAN.md Fáza C) ──────
+/** ── PRODUCER MOVES (docs/AGENTIC-DAW-PLAN.md Phase D) ---------------------------
+ * One-call, whole-gesture operations over the EXISTING domain planners:
+ * kyx_mix wraps planMixProfile + applyMixIntent (the measured mix engine),
+ * kyx_arrange wraps planSongForm into a deterministic scenes+clips+markers
+ * skeleton. Both fold into ONE snapshot so agent tokens stay on decisions. */
+
+const MIX_GENRES = [
+  "house",
+  "techno",
+  "trap",
+  "ambient",
+  "drill",
+  "phonk",
+  "jersey",
+  "dnb",
+  "ukg",
+  "amapiano",
+  "postrock",
+  "drone",
+  "chiptune",
+  "eurodance",
+  "latin",
+] as const;
+
+function executeMixTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
+  const genre = String(record.genre ?? "");
+  if (!MIX_GENRES.includes(genre as (typeof MIX_GENRES)[number])) {
+    return { text: `unknown genre "${genre}" - one of: ${MIX_GENRES.join(", ")}`, mutated: false, isError: true };
+  }
+  const spec = normalizeIntent({
+    genre: genre as never,
+    ...(typeof record.mood === "string" && record.mood.trim() !== "" ? { mood: record.mood.trim() } : {}),
+    ...(typeof record.energy === "number" ? { energy: record.energy } : {}),
+  });
+  const overrides: MixOverrides = {};
+  if (record.tone === "dark" || record.tone === "bright" || record.tone === "warm" || record.tone === "cold") {
+    overrides.tone = record.tone;
+  }
+  if (record.reverb === "more" || record.reverb === "less" || record.reverb === "huge") {
+    overrides.reverb = record.reverb;
+  }
+  if (record.punch === "more" || record.punch === "less") overrides.punch = record.punch;
+  if (record.pump === "on" || record.pump === "off") overrides.pump = record.pump;
+
+  const profile = planMixProfile(spec, overrides);
+  if (profile.decisions.length === 0) {
+    return {
+      text: "mix profile is neutral for this genre/mood (no decisions) - nothing to apply",
+      mutated: false,
+    };
+  }
+  try {
+    const command = applyMixIntent(ctx.getDoc(), profile);
+    ctx.execute(command);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/changed nothing/i.test(message)) {
+      return { text: "mix already matches the profile - changed nothing", mutated: false };
+    }
+    return { text: `mix failed: ${message}`, mutated: false, isError: true };
+  }
+  return {
+    text: `mix applied (${profile.decisions.length} decisions): ${profile.summary.join(" | ")} - one undo step`,
+    mutated: true,
+  };
+}
+
+function executeArrangeTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
+  const genre = String(record.genre ?? "");
+  if (!MIX_GENRES.includes(genre as (typeof MIX_GENRES)[number])) {
+    return { text: `unknown genre "${genre}" - one of: ${MIX_GENRES.join(", ")}`, mutated: false, isError: true };
+  }
+  const doc = ctx.getDoc();
+  if (doc.arrangement.clips.length > 0) {
+    return {
+      text:
+        "arrangement already has clips - kyx_arrange lays out a WHOLE form; " +
+        "use kyx_sections / kyx_clips for surgical edits, or clear the arrangement first",
+      mutated: false,
+      isError: true,
+    };
+  }
+  const spec = normalizeIntent({
+    genre: genre as never,
+    ...(typeof record.energy === "number" ? { energy: record.energy } : {}),
+  });
+  const lengthKind = ["short", "standard", "radio", "extended", "epic"].find((kind) => kind === record.length);
+  const length =
+    lengthKind != null
+      ? { kind: lengthKind as "short" | "standard" | "radio" | "extended" | "epic", label: lengthKind }
+      : null;
+  const planned: SongSectionSpec[] = planSongForm(spec, undefined, length).sections;
+  if (planned.length === 0) {
+    return { text: "the genre produced an empty form - nothing to arrange", mutated: false };
+  }
+
+  let next = doc;
+  let bar = 1; // human 1-based
+  const rows: string[] = [];
+  for (const section of planned) {
+    next = createScene(next, section.label).execute(next);
+    const scene = next.scenes[next.scenes.length - 1];
+    if (!scene) return { text: "scene creation failed mid-form", mutated: false, isError: true };
+    next = setSceneRole(next, scene.id, section.role).execute(next);
+    next = setSceneIntensity(next, scene.id, section.intensity).execute(next);
+    next = addArrangementClip(next, scene.id, (bar - 1) * 4, section.bars).execute(next);
+    next = addMarker(next, { tick: (bar - 1) * TICKS_PER_BAR, name: section.label }).execute(next);
+    rows.push(`${section.role} ${section.bars}bar@${bar}`);
+    bar += section.bars;
+  }
+  const totalBars = bar - 1;
+  const command = snapshot(
+    "mcpArrange",
+    `MCP: arrange '${genre}' form (${planned.length} sections, ${totalBars} bars)`,
+    doc,
+    next,
+  );
+  ctx.execute(command);
+  return {
+    text: `arranged '${genre}' form: ${rows.join(" · ")} - ${planned.length} scenes, ${totalBars} bars, cue markers at every section (one undo step)`,
+    mutated: true,
+  };
+}
+
+/** ── CHECKPOINTS (agent time machine, docs/AGENTIC-DAW-PLAN.md Phase C) ----------, docs/AGENTIC-DAW-PLAN.md Fáza C) ──────
  * Named full-document snapshots for explore/rollback loops. Session-scoped
  * by design (agents are live sessions); the last 8 are kept. Restore is a
  * plain snapshot command — ONE undo step returns to the pre-restore state.
@@ -1493,7 +1953,11 @@ function executeCheckpointTool(ctx: McpToolContext, record: Record<string, unkno
     };
   }
   if (name === "")
-    return { text: `checkpoint ${op} needs a name — kyx_checkpoint {op: list} shows them`, mutated: false, isError: true };
+    return {
+      text: `checkpoint ${op} needs a name — kyx_checkpoint {op: list} shows them`,
+      mutated: false,
+      isError: true,
+    };
   const cp = checkpoints.get(name);
   if (!cp) {
     return {
@@ -1542,8 +2006,20 @@ export async function executeMcpToolAsync(ctx: McpToolContext, name: string, arg
       };
     }
     const format = exportFormatOf(record);
+    const request: McpExportRequest = {
+      format,
+      ...(record.sampleRate === 44100 || record.sampleRate === 48000 || record.sampleRate === 96000
+        ? { sampleRate: record.sampleRate }
+        : {}),
+      ...(record.bitDepth === 16 || record.bitDepth === 24 || record.bitDepth === 32
+        ? { bitDepth: record.bitDepth }
+        : {}),
+      ...(typeof record.stems === "string" && ["all", "drums", "bass", "music"].includes(record.stems)
+        ? { stems: record.stems as McpExportRequest["stems"] }
+        : {}),
+    };
     try {
-      const report = await ctx.export(format);
+      const report = await ctx.export(request);
       return { text: `export ${format.toUpperCase()} complete — ${report}`, mutated: false };
     } catch (error) {
       return {
@@ -2126,6 +2602,307 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
       isError: true,
     };
   }
+}
+
+/** Resolve a return bus from the record: returnId (exact) or returnName
+ * (case-insensitive). Null when nothing matches — the caller reports. */
+function resolveReturnId(doc: ProjectDocument, record: Record<string, unknown>): string | null {
+  const returnId = typeof record.returnId === "string" ? record.returnId.trim() : "";
+  if (returnId !== "") return doc.returns.some((r) => r.id === returnId) ? returnId : null;
+  const returnName = typeof record.returnName === "string" ? record.returnName.trim().toLowerCase() : "";
+  if (returnName === "") return null;
+  return doc.returns.find((r) => r.name.toLowerCase() === returnName)?.id ?? null;
+}
+
+/** kyx_routing — the group routing graph. The model is FLAT (a track joins
+ * at most one group; addToGroup refuses group-into-group), so routing
+ * cycles are impossible by construction — the domain IS the cycle check. */
+function executeRoutingTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
+  const op = String(record.op ?? "list");
+  const doc = ctx.getDoc();
+  const resolveGroup = (): string | null => {
+    const groupId = typeof record.groupId === "string" ? record.groupId.trim() : "";
+    if (groupId !== "") {
+      return doc.tracks.some((t) => t.id === groupId && t.kind === "group") ? groupId : null;
+    }
+    const groupName = typeof record.groupName === "string" ? record.groupName.trim() : "";
+    if (groupName !== "") {
+      const match = doc.tracks.find((t) => t.kind === "group" && t.name.toLowerCase() === groupName.toLowerCase());
+      return match?.id ?? null;
+    }
+    return null;
+  };
+
+  if (op === "list") {
+    const groups = doc.tracks.filter((t) => t.kind === "group");
+    const lines: string[] = [];
+    for (const track of doc.tracks) {
+      if (track.kind === "group") continue;
+      const route = "groupId" in track && track.groupId ? track.groupId : "master";
+      const groupName = route === "master" ? "master" : ownerNameOf(doc, route);
+      lines.push(`${track.name} (id=${track.id}) → ${groupName}${route !== "master" ? ` (id=${route})` : ""}`);
+    }
+    for (const group of groups) {
+      const members = doc.tracks.filter((t) => t.kind !== "group" && "groupId" in t && t.groupId === group.id);
+      lines.push(
+        `group ${group.name} (id=${group.id}): ${members.length} member(s) — ${members.map((m) => m.name).join(", ") || "empty"}`,
+      );
+    }
+    if (doc.returns.length > 0) {
+      lines.push(`returns (send buses → master): ${doc.returns.map((r) => r.name).join(", ")}`);
+    }
+    return {
+      text: lines.join("\n") || "no tracks",
+      mutated: false,
+      data: {
+        routes: doc.tracks
+          .filter((t) => t.kind !== "group")
+          .map((t) => ({
+            trackId: t.id,
+            track: t.name,
+            destination: "groupId" in t && t.groupId ? t.groupId : "master",
+          })),
+        groups: groups.map((g) => ({ id: g.id, name: g.name })),
+      },
+    };
+  }
+
+  try {
+    if (op === "createGroup") {
+      const command = createGroupTrack(doc);
+      ctx.execute(command);
+      const groups = ctx.getDoc().tracks.filter((t) => t.kind === "group");
+      const groupId = groups[groups.length - 1]?.id;
+      const name = typeof record.name === "string" ? record.name.trim().slice(0, 40) : "";
+      if (name !== "" && groupId != null) {
+        ctx.execute(setTrackParams(ctx.getDoc(), groupId, { name }));
+        return { text: `created group "${name}" (id=${groupId}) — one undo step`, mutated: true };
+      }
+      return { text: `created group (id=${groupId}) — one undo step`, mutated: true };
+    }
+    if (op === "addToGroup") {
+      const ids = explicitTrackIds(doc, record);
+      if (typeof ids === "string") return { text: ids, mutated: false };
+      if (ids.length === 0) return { text: `no track matches family "${String(record.family ?? "")}"`, mutated: false };
+      const groupId = resolveGroup();
+      if (groupId == null) {
+        return {
+          text: "target group not found — pass groupId (from op:list) or the exact groupName",
+          mutated: false,
+        };
+      }
+      let next = doc;
+      const parts: string[] = [];
+      for (const id of ids) {
+        next = addToGroup(next, id, groupId).execute(next);
+        parts.push(`${ownerNameOf(doc, id)} → ${ownerNameOf(doc, groupId)}`);
+      }
+      ctx.execute(snapshot("mcpRouting", `MCP: route ${ids.length} track(s) into group`, doc, next));
+      return { text: `${parts.join("; ")} — one undo step`, mutated: true };
+    }
+    if (op === "removeFromGroup") {
+      const ids = explicitTrackIds(doc, record);
+      if (typeof ids === "string") return { text: ids, mutated: false };
+      if (ids.length === 0) return { text: `no track matches family "${String(record.family ?? "")}"`, mutated: false };
+      let next = doc;
+      const parts: string[] = [];
+      let changed = false;
+      for (const id of ids) {
+        const track = next.tracks.find((t) => t.id === id);
+        if (!track || !("groupId" in track) || track.groupId == null) {
+          parts.push(`${ownerNameOf(doc, id)}: not in a group`);
+          continue;
+        }
+        next = removeFromGroup(next, id).execute(next);
+        parts.push(`${track.name} → master`);
+        changed = true;
+      }
+      if (!changed) return { text: `nothing changed — ${parts.join("; ")}`, mutated: false };
+      ctx.execute(snapshot("mcpRouting", `MCP: unroute ${ids.length} track(s)`, doc, next));
+      return { text: `${parts.join("; ")} — one undo step`, mutated: true };
+    }
+    if (op === "setSend" || op === "setReturnGain" || op === "createReturn") {
+      // Structured send-bus writes — the last NL-only corner of the mixer.
+      if (op === "createReturn") {
+        try {
+          const name = typeof record.name === "string" ? record.name.trim().slice(0, 40) : "";
+          const command = createReturnTrack(ctx.getDoc(), name !== "" ? name : undefined);
+          ctx.execute(command);
+          const created = ctx.getDoc().returns[ctx.getDoc().returns.length - 1];
+          return { text: `created return bus "${created.name}" (id=${created.id}) — one undo step`, mutated: true };
+        } catch (error) {
+          return {
+            text: `routing op failed: ${error instanceof Error ? error.message : String(error)}`,
+            mutated: false,
+            isError: true,
+          };
+        }
+      }
+      const levelField = op === "setSend" ? "level" : "gain";
+      const targetLevel = Number(record[levelField]);
+      if (record[levelField] == null || !Number.isFinite(targetLevel)) {
+        return {
+          text:
+            op === "setSend"
+              ? "setSend needs level (linear 0..1.5; 1.0 = unity, 1.5 = +3.5 dB into the bus)"
+              : "setReturnGain needs gain (linear 0..1.5)",
+          mutated: false,
+        };
+      }
+      const clamped = Math.min(1.5, Math.max(0, targetLevel));
+      const returnId = resolveReturnId(ctx.getDoc(), record);
+      if (returnId == null) {
+        return {
+          text: "no return bus matches — pass returnId or returnName (op:list shows the buses)",
+          mutated: false,
+        };
+      }
+      try {
+        if (op === "setSend") {
+          const ids = explicitTrackIds(ctx.getDoc(), record);
+          if (typeof ids === "string") return { text: ids, mutated: false };
+          if (ids.length === 0)
+            return { text: `no track matches family "${String(record.family ?? "")}"`, mutated: false };
+          let next = ctx.getDoc();
+          const parts: string[] = [];
+          for (const id of ids) {
+            next = setTrackSend(next, id, returnId, clamped).execute(next);
+            const track = next.tracks.find((t) => t.id === id)!;
+            parts.push(`${track.name} → ${ownerNameOf(next, returnId)} ${clamped}`);
+          }
+          ctx.execute(snapshot("mcpSends", `MCP: set send ×${ids.length}`, ctx.getDoc(), next));
+          return { text: `${parts.join("; ")} — one undo step`, mutated: true };
+        }
+        ctx.execute(setReturnGain(ctx.getDoc(), returnId, clamped));
+        const ret = ctx.getDoc().returns.find((r) => r.id === returnId)!;
+        return { text: `${ret.name}: return gain ${ret.gain.toFixed(2)} — one undo step`, mutated: true };
+      } catch (error) {
+        return {
+          text: `routing op failed: ${error instanceof Error ? error.message : String(error)}`,
+          mutated: false,
+          isError: true,
+        };
+      }
+    }
+    return {
+      text: `unknown op: ${op} (list | createGroup | addToGroup | removeFromGroup | setSend | setReturnGain | createReturn)`,
+      mutated: false,
+    };
+  } catch (error) {
+    return {
+      text: `routing op failed: ${error instanceof Error ? error.message : String(error)}`,
+      mutated: false,
+      isError: true,
+    };
+  }
+}
+
+/** kyx_takes — the comp workflow over arrangement take groups: list the
+ * alternatives and activate (comp pick) one; the domain validates that the
+ * take actually has clips in the group. */
+function executeTakesTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
+  const op = String(record.op ?? "list");
+  const doc = ctx.getDoc();
+  const groups = doc.arrangement.takeGroups ?? [];
+  const clipsOf = (
+    groupId: string,
+  ): Array<{ takeId: string | undefined; id: string; startBar: number; lengthBars: number }> =>
+    (doc.arrangement.audioClips ?? [])
+      .filter((clip) => clip.takeGroupId === groupId)
+      .map((clip) => ({ takeId: clip.takeId, id: clip.id, startBar: clip.startBar, lengthBars: clip.lengthBars }));
+
+  if (op === "list") {
+    if (groups.length === 0)
+      return { text: "no take groups (takes appear when a lane holds alternative passes)", mutated: false };
+    const lines: string[] = [];
+    const data: Array<{ id: string; track: string; activeTakeId: string; takes: Record<string, number> }> = [];
+    for (const group of groups) {
+      const clips = clipsOf(group.id);
+      const perTake: Record<string, number> = {};
+      for (const clip of clips) {
+        const key = clip.takeId ?? "(none)";
+        perTake[key] = (perTake[key] ?? 0) + 1;
+      }
+      lines.push(
+        `${ownerNameOf(doc, group.trackId)} (group id=${group.id}): ACTIVE take ${group.activeTakeId} · ${Object.entries(
+          perTake,
+        )
+          .map(([take, count]) => `take ${take} ×${count} clip(s)`)
+          .join(", ")}${group.compTakeId ? ` · comp: ${group.compTakeId}` : ""}`,
+      );
+      data.push({
+        id: group.id,
+        track: ownerNameOf(doc, group.trackId),
+        activeTakeId: group.activeTakeId,
+        takes: perTake,
+      });
+    }
+    return { text: lines.join("\n"), mutated: false, data: { groups: data } };
+  }
+
+  if (op === "activate") {
+    const groupId = typeof record.groupId === "string" ? record.groupId.trim() : "";
+    const takeId = typeof record.takeId === "string" ? record.takeId.trim() : "";
+    if (groupId === "" || takeId === "") {
+      return { text: "activate needs groupId AND takeId — read them via op:list", mutated: false };
+    }
+    try {
+      const group = groups.find((item) => item.id === groupId);
+      if (!group) return { text: `no take group "${groupId}" — op:list for the groups`, mutated: false };
+      if (group.activeTakeId === takeId) {
+        return { text: `take ${takeId} is already the active comp of group ${groupId}`, mutated: false };
+      }
+      ctx.execute(setActiveAudioTake(doc, groupId, takeId));
+      const clipCount = clipsOf(groupId).filter((clip) => clip.takeId === takeId).length;
+      return {
+        text: `comp pick: take ${takeId} is now ACTIVE in group ${groupId} (${clipCount} clip(s)) — one undo step`,
+        mutated: true,
+      };
+    } catch (error) {
+      return {
+        text: `take op failed: ${error instanceof Error ? error.message : String(error)}`,
+        mutated: false,
+        isError: true,
+      };
+    }
+  }
+
+  if (op === "deleteTake") {
+    if (ctx.allowDestructive?.() !== true) return destructiveRefusal();
+    const groupId = typeof record.groupId === "string" ? record.groupId.trim() : "";
+    const takeId = typeof record.takeId === "string" ? record.takeId.trim() : "";
+    if (groupId === "" || takeId === "")
+      return { text: "deleteTake needs groupId AND takeId — op:list for the groups", mutated: false };
+    const group = groups.find((item) => item.id === groupId);
+    if (!group) return { text: `no take group "${groupId}"`, mutated: false };
+    if (group.activeTakeId === takeId) {
+      return {
+        text: "refused: that take is the ACTIVE comp — activate another take first",
+        mutated: false,
+        isError: true,
+      };
+    }
+    const doomed = (doc.arrangement.audioClips ?? []).filter(
+      (clip) => clip.takeGroupId === groupId && clip.takeId === takeId,
+    );
+    if (doomed.length === 0) return { text: `no clips for take ${takeId} in group ${groupId}`, mutated: false };
+    let next = doc;
+    for (const clip of doomed) next = deleteAudioClip(next, clip.id).execute(next);
+    // prune the group when no clip of ANY take remains
+    const remaining = (next.arrangement.audioClips ?? []).filter((clip) => clip.takeGroupId === groupId);
+    const prunedGroups =
+      remaining.length === 0
+        ? (next.arrangement.takeGroups ?? []).filter((item) => item.id !== groupId)
+        : next.arrangement.takeGroups;
+    next = { ...next, arrangement: { ...next.arrangement, takeGroups: prunedGroups } };
+    ctx.execute(snapshot("mcpTakeDelete", `MCP: delete take ${takeId} (${doomed.length} clip(s))`, doc, next));
+    return {
+      text: `deleted take ${takeId} (${doomed.length} clip(s)) from group ${groupId} — one undo step`,
+      mutated: true,
+    };
+  }
+
+  return { text: `unknown op: ${op} (list | activate | deleteTake)`, mutated: false };
 }
 
 /** kyx_batch — sequential multi-call with optional ONE-undo-frame folding.
