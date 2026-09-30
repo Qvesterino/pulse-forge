@@ -210,4 +210,94 @@ describe("soloAudibility (group solo semantics)", () => {
     const solo = soloAudibility(soloProjectDoc());
     expect(solo.audible("nope")).toBe(false);
   });
+
+  /**
+   * MULTIPLE SIMULTANEOUS SOLOS (audit 2026-09-30).
+   *
+   * Every case above drives the audibility matrix with a SINGLE solo. Real
+   * sessions solo two buses at once ("let me hear drums and bass"), which is
+   * the case the objective calls out explicitly. `soloAudibility` derives
+   * `anySolo` plus two Sets (soloed groups, groups with a soloed child) and
+   * answers per track, so the risk is that the union is computed from one solo
+   * rather than all of them — a bug that would leave the second soloed bus
+   * silent while the UI showed both buttons lit.
+   */
+  describe("multiple simultaneous solos", () => {
+    const soloIds = (ids: string[]) => {
+      const doc = soloProjectDoc();
+      return soloAudibility({ ...doc, tracks: doc.tracks.map((t) => (ids.includes(t.id) ? { ...t, solo: true } : t)) });
+    };
+
+    it("two groups soloed at once: both buses and all members stay audible", () => {
+      const solo = soloIds(["grp-a", "grp-b"]);
+      expect(solo.anySolo).toBe(true);
+      for (const id of ["grp-a", "grp-b", "t-drum", "t-inst", "t-inst-b"]) {
+        expect(solo.audible(id), `${id} must survive two simultaneous group solos`).toBe(true);
+      }
+    });
+
+    it("a soloed child in each group: both groups pass their own child through", () => {
+      const solo = soloIds(["t-drum", "t-inst-b"]);
+      expect(solo.audible("grp-a"), "group A must pass its soloed child through").toBe(true);
+      expect(solo.audible("grp-b"), "group B must pass its soloed child through").toBe(true);
+      expect(solo.audible("t-drum")).toBe(true);
+      expect(solo.audible("t-inst-b")).toBe(true);
+      // The sibling in the soloed group is NOT resurrected by its neighbour.
+      expect(solo.audible("t-inst"), "an unsoloed sibling stays muted").toBe(false);
+    });
+
+    it("a group plus a loose child: the loose solo does not silence the soloed group", () => {
+      const doc = soloProjectDoc();
+      const solo = soloAudibility({
+        ...doc,
+        tracks: doc.tracks.map((t) => {
+          if (t.id === "grp-a") return { ...t, solo: true };
+          if (t.id === "t-inst-b") return { ...t, solo: true };
+          return t;
+        }),
+      });
+      expect(solo.audible("grp-a")).toBe(true);
+      expect(solo.audible("t-drum")).toBe(true);
+      expect(solo.audible("t-inst")).toBe(true);
+      expect(solo.audible("t-inst-b")).toBe(true);
+      // grp-b is NOT soloed, but it carries the soloed child t-inst-b, and the
+      // documented rule is that a group is audible when it — or any of its
+      // members — is soloed. It must pass the signal through, or the soloed
+      // child would be inaudible (the pre-fix "soloing a child muted the
+      // group" regression).
+      expect(solo.audible("grp-b"), "a group must pass through its soloed child").toBe(true);
+    });
+
+    it("clearing ONE of two solos restores only that bus's material", () => {
+      const doc = soloProjectDoc();
+      const both = soloAudibility({
+        ...doc,
+        tracks: doc.tracks.map((t) => (t.id === "grp-a" || t.id === "grp-b" ? { ...t, solo: true } : t)),
+      });
+      expect(both.audible("t-inst-b")).toBe(true);
+
+      // Release grp-b; its member must fall silent again while grp-a holds.
+      const one = soloAudibility({
+        ...doc,
+        tracks: doc.tracks.map((t) => (t.id === "grp-a" ? { ...t, solo: true } : t)),
+      });
+      expect(one.audible("t-inst-b"), "releasing a solo must restore the global mute").toBe(false);
+      expect(one.audible("t-drum")).toBe(true);
+      expect(one.audible("grp-a")).toBe(true);
+    });
+
+    it("a group mute still silences its members under a simultaneous solo elsewhere", () => {
+      const doc = soloProjectDoc();
+      const solo = soloAudibility({
+        ...doc,
+        tracks: doc.tracks.map((t) => {
+          if (t.id === "grp-a") return { ...t, mute: true };
+          if (t.id === "t-inst-b") return { ...t, solo: true };
+          return t;
+        }),
+      });
+      expect(solo.audible("t-drum"), "a muted group stays muted while another bus is soloed").toBe(false);
+      expect(solo.audible("t-inst-b"), "the other solo still passes through").toBe(true);
+    });
+  });
 });

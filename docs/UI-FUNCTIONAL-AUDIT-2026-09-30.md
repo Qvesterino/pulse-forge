@@ -297,6 +297,22 @@ removed id. One-line fix matching the convention already in the file.
   when the decoder returns null.
 - **The mixer's typed fader value** (`Mixer.tsx:758`) validates with
   `Number.isFinite` and clamps gain `0..1.5`, pan `-1..1`, sends `0..1.5`.
+- **The transport LOOP button is not a second source of truth (§5).** It keeps
+  its value in local React state (`TopBar.tsx:109`), which is the exact §10
+  anti-pattern — but a shared rAF bus re-reads `transport.loopEnabled` every
+  frame (`TopBar.tsx:178-191`), and the file carries the reason: other surfaces
+  (Hum-to-Melody) call `transport.setMetronome` directly, and without the poll
+  the CLICK button showed a stale value. The sync only works if that bus runs
+  while the transport is **stopped**, which was the open question: the bus in
+  `services/rafLoop.ts` is self-sustaining while any callback is registered
+  (it is not playback-gated) and additionally drops a throwing consumer
+  instead of letting one bad callback kill the chain for every meter. Verified
+  by `tests/ui/TopBar.loop-sync.test.tsx`, which drives `setLoop` /
+  `clearLoop` externally with nothing playing and asserts `aria-pressed`
+  follows in both directions; both tests were confirmed failing when the
+  three mirroring calls are commented out. The `L` shortcut routes through the
+  same `toggleLoop()` (so it writes the transport, not just local state) and is
+  key-repeat guarded.
 - **Engine clamps what the UI under-constrains**: over-long fades are
   bounded in `AudioEngine.ts:1966,1970` (`Math.min(fadeIn, dur/2)`), so the
   SliceLab fade fields' unenforced upper `max` is cosmetic, not corrupting.

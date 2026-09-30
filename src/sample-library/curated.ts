@@ -27,15 +27,12 @@ export interface CuratedSample {
 
 /**
  * Full-kit curation (factory-content pass 2026-09): every factory asset gets
- * a curated file except the three mallet slots, which intentionally remain
- * synthesis-only. The curated layer carries the mastering glue and the
- * per-category loudness balance (see scripts/render-curated-seeds.mjs).
+ * a curated file — the three mallet slots joined when the sound-library gate
+ * closed the last loudness inconsistency (they measured ~10 dB above the
+ * mastered kit as synthesis-only). The curated layer carries the mastering
+ * glue and the per-category loudness balance (see
+ * scripts/render-curated-seeds.mjs), locked by tests/sound-library-gate.
  */
-export const SYNTHESIS_ONLY_ASSET_IDS = [
-  "factory.mallet.vibes",
-  "factory.mallet.marimba",
-  "factory.mallet.celesta",
-] as const;
 
 export const CURATED_SAMPLES: CuratedSample[] = [
   { id: "factory.kick.deep", file: "factory.kick.deep.wav" },
@@ -136,6 +133,11 @@ export const CURATED_SAMPLES: CuratedSample[] = [
   { id: "factory.perc.shaker.pop", file: "factory.perc.shaker.pop.wav" },
   { id: "factory.mallet.kalimba", file: "factory.mallet.kalimba.wav" },
   { id: "factory.mallet.musicbox", file: "factory.mallet.musicbox.wav" },
+  // Mallet trio mastered (library-gate wave): the last synthesis-only slots
+  // — as curated WAVs they land on the Tonal loudness target like the kit.
+  { id: "factory.mallet.vibes", file: "factory.mallet.vibes.wav" },
+  { id: "factory.mallet.marimba", file: "factory.mallet.marimba.wav" },
+  { id: "factory.mallet.celesta", file: "factory.mallet.celesta.wav" },
 ];
 
 /** Concurrency cap for parallel fetch+decode. */

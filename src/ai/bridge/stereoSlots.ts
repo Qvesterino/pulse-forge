@@ -20,24 +20,22 @@
  *    cannot catch a bad choice — it is an editorial decision. The bridge only
  *    ever writes 0.
  *
- * 2. `msEq.soloLow` / `soloMid` / `soloHigh` — a solo mutes two of the three
- *    bands, so the effect becomes a band-pass test rather than an EQ. Every
- *    solo is a solo with 0/1 params, so it is indistinguishable from a valid
- *    "reduce the low band" intent. The bridge only ever writes 0.
+ *    (The sibling hazard — the `msEq.soloLow/Mid/High` band solos — no longer
+ *    exists. The 4-band M/S redesign removed the solos entirely; they were
+ *    previously written as 0 by construction.)
  *
  * Both are enforced in the `*Spec` constructors below AND asserted in the
  * tests, because "the bridge quietly set a solo" is the kind of change a
  * user undoes without understanding why it sounded like a filter sweep.
  *
  * ---------------------------------------------------------------------------
- * `msEq` CROSSOVER ORDERING
+ * `msEq` BAND ORDERING
  * ---------------------------------------------------------------------------
  *
- * `lowFreq` is 80…800 Hz and `highFreq` is 800…8000 Hz. They share a boundary
- * at 800 Hz, so a recipe that asks for low=800 / high=800 produces a
- * degenerate crossover with a zero-width mid band. `msEqSpec` enforces
- * `highFreq > lowFreq` and reports it, rather than writing a value the
- * splitter cannot render.
+ * Each channel carries a low band (40…500 Hz) and a high band (1500…16000 Hz),
+ * so the two are separated by the registry ranges themselves and a zero-width
+ * band is structurally unreachable. `midSideSpec` still clamps every centre
+ * into its own window, and the validator re-checks the pair.
  */
 
 export type StereoWidth = "subtle" | "wide" | "huge";
@@ -57,26 +55,36 @@ export const HAAS_RANGES = {
   feedback: { min: 0, max: 0.6, default: 0 },
 } as const;
 
-/** `msEqParams`. */
+/**
+ * `msEqParams`.
+ *
+ * NOTE (audit 2026-09-30): the `msEq` effect was redesigned from a 3-band
+ * crossover layout into a 4-band M/S EQ (a low band and a high band on the MID
+ * channel, and the same two bands on the SIDE channel). This table used to hold
+ * the old ids — lowFreq / highFreq / lowGain / midGain / highGain / comp /
+ * soloLow / soloMid / soloHigh / mix — which are all DEAD KEYS on the current
+ * effect. Because `applyMidSideEq` seeds from `defaultParamsOf("msEq")` and then
+ * overwrites with the old names, every musically meaningful value the intent
+ * computed was stripped by `normalizeEffects` and the user received a default,
+ * silent-to-the-request M/S EQ. The bridge is now mapped onto the real surface.
+ */
 export const MSEQ_RANGES = {
-  /** Low/mid crossover, Hz. */
-  lowFreq: { min: 80, max: 800, default: 200 },
-  /** Mid/high crossover, Hz. Must be > lowFreq. */
-  highFreq: { min: 800, max: 8000, default: 2000 },
-  /** dB on the low band. */
-  lowGain: { min: -12, max: 12, default: 0 },
-  /** dB on the mid band. */
-  midGain: { min: -12, max: 12, default: 0 },
-  /** dB on the high band. */
-  highGain: { min: -12, max: 12, default: 0 },
-  /** 0…1 downward band compression. */
-  comp: { min: 0, max: 1, default: 0 },
-  /** 0/1 band solo. The bridge NEVER sets 1 — see the file header. */
-  soloLow: { min: 0, max: 1, default: 0 },
-  soloMid: { min: 0, max: 1, default: 0 },
-  soloHigh: { min: 0, max: 1, default: 0 },
-  /** Dry/wet. */
-  mix: { min: 0, max: 1, default: 1 },
+  /** MID-channel low band centre, Hz. */
+  midLowFreq: { min: 40, max: 500, default: 120 },
+  /** MID-channel low band gain, dB. */
+  midLowGain: { min: -15, max: 15, default: 0 },
+  /** MID-channel high band centre, Hz. */
+  midHighFreq: { min: 1500, max: 16000, default: 6000 },
+  /** MID-channel high band gain, dB. */
+  midHighGain: { min: -15, max: 15, default: 0 },
+  /** SIDE-channel low band centre, Hz. */
+  sideLowFreq: { min: 40, max: 500, default: 120 },
+  /** SIDE-channel low band gain, dB. */
+  sideLowGain: { min: -15, max: 15, default: 0 },
+  /** SIDE-channel high band centre, Hz. */
+  sideHighFreq: { min: 1500, max: 16000, default: 6000 },
+  /** SIDE-channel high band gain, dB. */
+  sideHighGain: { min: -15, max: 15, default: 0 },
 } as const;
 
 export interface HaasSpec {
@@ -89,17 +97,14 @@ export interface HaasSpec {
 }
 
 export interface MidSideSpec {
-  readonly lowFreqHz: number;
-  readonly highFreqHz: number;
-  readonly lowGainDb: number;
-  readonly midGainDb: number;
-  readonly highGainDb: number;
-  readonly comp: number;
-  /** Always 0 from the bridge. */
-  readonly soloLow: 0;
-  readonly soloMid: 0;
-  readonly soloHigh: 0;
-  readonly mix: number;
+  readonly midLowFreqHz: number;
+  readonly midLowGainDb: number;
+  readonly midHighFreqHz: number;
+  readonly midHighGainDb: number;
+  readonly sideLowFreqHz: number;
+  readonly sideLowGainDb: number;
+  readonly sideHighFreqHz: number;
+  readonly sideHighGainDb: number;
 }
 
 /**
@@ -139,82 +144,85 @@ export function haasSpec(width: StereoWidth, intensity: number): HaasSpec | null
 /**
  * Shape intent → mid/side EQ numbers.
  *
- *   - SCOOPED: low cut, mid cut, high lift — the modern "wide and thin" mix.
- *   - VOCAL-FOCUS: low cut, mid BOOST, high cut. Puts the mid band forward
- *     and keeps the sibilance out, which is what a vocal actually needs.
- *   - BRIGHT: high lift only, mid slightly down so the lift does not turn
- *     into harshness.
- *   - BALANCED: crossover moves with no gain change — a way to re-focus the
- *     bands without touching the tone, useful as a neutral starting point.
+ * Mapped onto the CURRENT 4-band M/S surface (two bands per channel), which is
+ * what makes this worth an M/S EQ rather than a plain one: the MID channel
+ * carries the tone shaping and the SIDE channel carries the width intent, so a
+ * "scooped" mix can be tight in the centre AND airy at the edges — a decision a
+ * mono-summed EQ cannot express.
  *
- * The crossover pair is forced apart by MIN_CROSSOVER_GAP so the mid band can
- * never be given zero width.
+ *   - SCOOPED: centre low cut + side high lift — the modern "wide and thin" mix.
+ *   - VOCAL-FOCUS: low cut on both channels, side high cut — puts the centre
+ *     forward and keeps sibilance out of the sides, which is what a vocal needs.
+ *   - BRIGHT: centre high lift, side low cut — air without harsh low-mid buildup.
+ *   - BALANCED: the crossovers move, no gain change — a neutral way to re-focus
+ *     the bands without touching tone.
+ *
+ * Band CENTRES are ordered by construction: the registry's low bands top out at
+ * 500 Hz and the high bands start at 1500 Hz, so a zero-width band is
+ * unreachable. `MIN_CROSSOVER_GAP` is still asserted below as a guard.
  */
 export function midSideSpec(shape: MidSideShape, intensity: number): MidSideSpec | null {
   const t = Math.min(1, Math.max(0, intensity));
   const base: Record<MidSideShape, MidSideSpec> = {
     scooped: {
-      lowFreqHz: 240,
-      highFreqHz: 2400,
-      lowGainDb: -3,
-      midGainDb: -2,
-      highGainDb: 2,
-      comp: 0.2,
-      soloLow: 0,
-      soloMid: 0,
-      soloHigh: 0,
-      mix: 1,
+      midLowFreqHz: 240,
+      midLowGainDb: -3,
+      midHighFreqHz: 2400,
+      midHighGainDb: 0,
+      sideLowFreqHz: 240,
+      sideLowGainDb: 0,
+      sideHighFreqHz: 2400,
+      sideHighGainDb: 3,
     },
     "vocal-focus": {
-      lowFreqHz: 180,
-      highFreqHz: 3200,
-      lowGainDb: -4,
-      midGainDb: 2.5,
-      highGainDb: -2,
-      comp: 0.3,
-      soloLow: 0,
-      soloMid: 0,
-      soloHigh: 0,
-      mix: 1,
+      midLowFreqHz: 180,
+      midLowGainDb: -4,
+      midHighFreqHz: 3200,
+      midHighGainDb: 0,
+      sideLowFreqHz: 180,
+      sideLowGainDb: -2,
+      sideHighFreqHz: 3200,
+      sideHighGainDb: -3,
     },
     bright: {
-      lowFreqHz: 200,
-      highFreqHz: 2000,
-      lowGainDb: 0,
-      midGainDb: -1,
-      highGainDb: 3,
-      comp: 0.1,
-      soloLow: 0,
-      soloMid: 0,
-      soloHigh: 0,
-      mix: 1,
+      midLowFreqHz: 200,
+      midLowGainDb: 0,
+      midHighFreqHz: 2000,
+      midHighGainDb: 3,
+      sideLowFreqHz: 200,
+      sideLowGainDb: -1.5,
+      sideHighFreqHz: 2000,
+      sideHighGainDb: 1,
     },
     balanced: {
-      lowFreqHz: 200,
-      highFreqHz: 2000,
-      lowGainDb: 0,
-      midGainDb: 0,
-      highGainDb: 0,
-      comp: 0,
-      soloLow: 0,
-      soloMid: 0,
-      soloHigh: 0,
-      mix: 1,
+      midLowFreqHz: 200,
+      midLowGainDb: 0,
+      midHighFreqHz: 2000,
+      midHighGainDb: 0,
+      sideLowFreqHz: 200,
+      sideLowGainDb: 0,
+      sideHighFreqHz: 2000,
+      sideHighGainDb: 0,
     },
   };
   const s = base[shape];
   if (!s) return null;
   const scale = (db: number): number => round2(db * (1 + 0.35 * t));
-  const lowFreqHz = round2(s.lowFreqHz * (1 - 0.15 * t));
-  const highFreqHz = Math.max(MSEQ_RANGES.highFreq.min, round2(s.highFreqHz * (1 + 0.15 * t)));
+  // Intensity opens the band centres apart (a more decisive focus) while the
+  // registry clamp keeps each centre inside its own window.
+  const lowHz = (hz: number): number =>
+    Math.min(MSEQ_RANGES.midLowFreq.max, Math.max(MSEQ_RANGES.midLowFreq.min, round2(hz * (1 - 0.15 * t))));
+  const highHz = (hz: number): number =>
+    Math.min(MSEQ_RANGES.midHighFreq.max, Math.max(MSEQ_RANGES.midHighFreq.min, round2(hz * (1 + 0.15 * t))));
   return {
-    ...s,
-    lowGainDb: scale(s.lowGainDb),
-    midGainDb: scale(s.midGainDb),
-    highGainDb: scale(s.highGainDb),
-    lowFreqHz,
-    // Enforce ordering — the splitter cannot render a zero-width mid band.
-    highFreqHz: Math.max(highFreqHz, lowFreqHz + MIN_CROSSOVER_GAP),
+    midLowFreqHz: lowHz(s.midLowFreqHz),
+    midLowGainDb: scale(s.midLowGainDb),
+    midHighFreqHz: highHz(s.midHighFreqHz),
+    midHighGainDb: scale(s.midHighGainDb),
+    sideLowFreqHz: lowHz(s.sideLowFreqHz),
+    sideLowGainDb: scale(s.sideLowGainDb),
+    sideHighFreqHz: highHz(s.sideHighFreqHz),
+    sideHighGainDb: scale(s.sideHighGainDb),
   };
 }
 

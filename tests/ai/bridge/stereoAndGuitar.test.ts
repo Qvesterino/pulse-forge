@@ -104,31 +104,53 @@ describe("AI bridge — stereo slots", () => {
     expect(haas("subtle", 0).crossfeed).toBeGreaterThan(haas("huge", 0).crossfeed);
   });
 
-  it("mid/side crossovers are always ordered and inside their windows", () => {
+  it("mid/side band centres stay inside their windows and never collapse", () => {
     for (const shape of SHAPES) {
       for (const intensity of [0, 0.5, 1]) {
         const s = msEq(shape, intensity);
-        expect(s.lowFreqHz).toBeGreaterThanOrEqual(MSEQ_RANGES.lowFreq.min);
-        expect(s.lowFreqHz).toBeLessThanOrEqual(MSEQ_RANGES.lowFreq.max);
-        expect(s.highFreqHz).toBeGreaterThanOrEqual(MSEQ_RANGES.highFreq.min);
-        expect(s.highFreqHz).toBeLessThanOrEqual(MSEQ_RANGES.highFreq.max);
-        // The degenerate case: a zero-width mid band the splitter cannot render.
-        expect(s.highFreqHz).toBeGreaterThan(s.lowFreqHz);
-        expect(s.highFreqHz - s.lowFreqHz).toBeGreaterThanOrEqual(MIN_CROSSOVER_GAP);
-        for (const db of [s.lowGainDb, s.midGainDb, s.highGainDb]) {
-          expect(db).toBeGreaterThanOrEqual(MSEQ_RANGES.lowGain.min);
-          expect(db).toBeLessThanOrEqual(MSEQ_RANGES.highGain.max);
+        // Two bands per channel on the CURRENT 4-band M/S surface. These ids
+        // used to be the removed 3-band crossover set (lowFreq/highFreq/…),
+        // which made every assertion below vacuous — see the D-3 note in
+        // stereoSlots.ts and tests/ai/bridge/msEq-param-drift.test.ts.
+        for (const hz of [s.midLowFreqHz, s.sideLowFreqHz]) {
+          expect(hz).toBeGreaterThanOrEqual(MSEQ_RANGES.midLowFreq.min);
+          expect(hz).toBeLessThanOrEqual(MSEQ_RANGES.midLowFreq.max);
+        }
+        for (const hz of [s.midHighFreqHz, s.sideHighFreqHz]) {
+          expect(hz).toBeGreaterThanOrEqual(MSEQ_RANGES.midHighFreq.min);
+          expect(hz).toBeLessThanOrEqual(MSEQ_RANGES.midHighFreq.max);
+        }
+        // A zero-width band the splitter cannot render.
+        expect(s.midHighFreqHz).toBeGreaterThan(s.midLowFreqHz);
+        expect(s.sideHighFreqHz).toBeGreaterThan(s.sideLowFreqHz);
+        for (const db of [s.midLowGainDb, s.midHighGainDb, s.sideLowGainDb, s.sideHighGainDb]) {
+          expect(db).toBeGreaterThanOrEqual(MSEQ_RANGES.midLowGain.min);
+          expect(db).toBeLessThanOrEqual(MSEQ_RANGES.midHighGain.max);
         }
       }
     }
   });
 
-  it("mid/side NEVER sets a solo — a solo is a filter sweep, not an EQ", () => {
+  it("mid/side NEVER collapses the side channel into the mid channel's gain pattern", () => {
+    // The band solos this used to guard (`soloLow/Mid/High`) were removed by
+    // the 4-band redesign, so the surviving hazard is a shape that flattens the
+    // SIDE channel — the whole reason to reach for an M/S EQ. Every shape except
+    // the deliberately neutral `balanced` must move at least one side gain.
     for (const shape of SHAPES) {
       const s = msEq(shape, 0.5);
-      expect(s.soloLow).toBe(0);
-      expect(s.soloMid).toBe(0);
-      expect(s.soloHigh).toBe(0);
+      if (shape === "balanced") continue;
+      expect(
+        s.sideLowGainDb !== 0 || s.sideHighGainDb !== 0,
+        `"${shape}" left the SIDE channel flat — the intent would be a plain mono EQ`,
+      ).toBe(true);
+    }
+  });
+
+  it("MIN_CROSSOVER_GAP still holds on the redesigned surface", () => {
+    for (const shape of SHAPES) {
+      const s = msEq(shape, 1);
+      expect(s.midHighFreqHz - s.midLowFreqHz).toBeGreaterThanOrEqual(MIN_CROSSOVER_GAP);
+      expect(s.sideHighFreqHz - s.sideLowFreqHz).toBeGreaterThanOrEqual(MIN_CROSSOVER_GAP);
     }
   });
 

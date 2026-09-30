@@ -37,7 +37,7 @@ import { MAX_SENSIBLE_DUCK_DB, SIDECHAIN_RANGES, duckDepthToRatio } from "./side
 import { COMPRESSOR_CHARACTERS, COMPRESSOR_RANGES, tuneCharacter } from "./compressorSlots";
 import { TRANSIENT_RANGES } from "./transientSlots";
 import { REVERB_RANGES, DELAY_RANGES, reverbSpec, delaySpec } from "./spaceSlots";
-import { haasSpec, midSideSpec } from "./stereoSlots";
+import { haasSpec, midSideSpec, MSEQ_RANGES } from "./stereoSlots";
 import { distortionSpec } from "./distortionSlots";
 import { generateBatch } from "./mockProvider";
 import { withTrack } from "../../project-model/transform";
@@ -368,13 +368,26 @@ function validateCommand(doc: { tracks: readonly Track[] }, cmd: BridgeCommand):
           hint: "Valid shapes: scooped, vocal-focus, bright, balanced.",
         };
       }
-      // A zero-width mid band is a degenerate splitter — reject rather than
-      // write a value the crossover cannot render.
-      if (probe.highFreqHz <= probe.lowFreqHz) {
+      // A zero-width band is a degenerate splitter — reject rather than write a
+      // value the crossover cannot render. Structurally unreachable on the
+      // current surface (low bands cap at 500 Hz, high bands start at 1500 Hz),
+      // but kept as a cheap guard against a future range change.
+      const bands: Array<[string, number, number]> = [
+        ["midLowFreq", probe.midLowFreqHz, MSEQ_RANGES.midLowFreq.max],
+        ["sideLowFreq", probe.sideLowFreqHz, MSEQ_RANGES.midLowFreq.max],
+        ["midHighFreq", probe.midHighFreqHz, MSEQ_RANGES.midHighFreq.max],
+        ["sideHighFreq", probe.sideHighFreqHz, MSEQ_RANGES.midHighFreq.max],
+      ];
+      for (const [id, hz, max] of bands) {
+        if (!Number.isFinite(hz) || hz <= 0 || hz > max) {
+          return paramRange(id, hz, 0, max);
+        }
+      }
+      if (probe.midHighFreqHz <= probe.midLowFreqHz || probe.sideHighFreqHz <= probe.sideLowFreqHz) {
         return {
           ok: false,
           code: "validation-failed",
-          message: `crossover pair collapsed: low ${probe.lowFreqHz} Hz >= high ${probe.highFreqHz} Hz`,
+          message: `band pair collapsed: low >= high (mid ${probe.midLowFreqHz}/${probe.midHighFreqHz} Hz, side ${probe.sideLowFreqHz}/${probe.sideHighFreqHz} Hz)`,
         };
       }
       return { ok: true };
@@ -760,24 +773,26 @@ function applyStereoWidth(doc: ProjectDocument, targetId: ID, cmd: HaasWidenerCo
 }
 
 /**
- * Insert or retune a Mid/Side EQ. All three solos are written as 0
- * unconditionally — see stereoSlots.ts for why a solo is never inferred.
+ * Insert or retune a Mid/Side EQ.
+ *
+ * Writes the CURRENT 4-band M/S surface (two bands per channel). This used to
+ * write the old 3-band crossover ids, which `normalizeEffects` now strips as
+ * dead keys — the intent inserted a correctly-typed msEq that did nothing. See
+ * the D-3 note in stereoSlots.ts.
  */
 function applyMidSideEq(doc: ProjectDocument, targetId: ID, cmd: MidSideEqCommand): ProjectDocument {
   const s = midSideSpec(cmd.shape, cmd.intensity);
   if (!s) throw new Error(`applyMidSideEq: unknown shape "${cmd.shape}"`);
   const params: Record<string, number> = {
     ...defaultParamsOf("msEq"),
-    lowFreq: s.lowFreqHz,
-    highFreq: s.highFreqHz,
-    lowGain: s.lowGainDb,
-    midGain: s.midGainDb,
-    highGain: s.highGainDb,
-    comp: s.comp,
-    soloLow: 0,
-    soloMid: 0,
-    soloHigh: 0,
-    mix: s.mix,
+    midLowFreq: s.midLowFreqHz,
+    midLowGain: s.midLowGainDb,
+    midHighFreq: s.midHighFreqHz,
+    midHighGain: s.midHighGainDb,
+    sideLowFreq: s.sideLowFreqHz,
+    sideLowGain: s.sideLowGainDb,
+    sideHighFreq: s.sideHighFreqHz,
+    sideHighGain: s.sideHighGainDb,
   };
   return withTrack(doc, targetId, (t) => upsertEffect(t, "msEq", params));
 }
@@ -1017,6 +1032,23 @@ export function __validateBridgeCommandForTest(
   cmd: BridgeCommand,
 ): { ok: true } | { ok: false; code: BridgeExecutionError["code"]; message: string; hint?: string } {
   return validateCommand(doc, cmd);
+}
+
+/**
+ * TEST-ONLY: expose the per-command applier so the bridge specs can assert the
+ * document a single command actually produces — not just that it validates.
+ *
+ * This exists because several command kinds are reachable only through a recipe
+ * (or through no recipe at all, like `ms-eq`), and asserting against the
+ * `*_RANGES` mirror instead of the real effect let a whole param-surface rename
+ * ship green: the specs checked the bridge's own table while the ids it wrote
+ * were dead keys that `normalizeEffects` strips. Same
+ * `__snapshotVerificationFallbacks` test-hook convention as above.
+ *
+ * Applies one command to a copy; never mutates the caller's document.
+ */
+export function applyBridgeCommandForTest(doc: ProjectDocument, cmd: BridgeCommand): ProjectDocument {
+  return applyCommand(doc, cmd);
 }
 
 function failureFromProviderReason(

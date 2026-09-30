@@ -33,7 +33,18 @@
  */
 
 export type CompressorParamId =
-  "threshold" | "ratio" | "attack" | "release" | "knee" | "detector" | "scHpf" | "autoRelease" | "makeup" | "mix";
+  | "threshold"
+  | "ratio"
+  | "attack"
+  | "release"
+  | "knee"
+  | "detector"
+  | "scHpf"
+  | "scMode"
+  | "scBandHz"
+  | "autoRelease"
+  | "makeup"
+  | "mix";
 
 /** Legal ranges mirrored from `compressorParams` in src/effects/definitions.ts. */
 export const COMPRESSOR_RANGES = {
@@ -51,6 +62,15 @@ export const COMPRESSOR_RANGES = {
   detector: { min: 0, max: 1, default: 0 },
   /** Sidechain detector high-pass in Hz (detector path only). */
   scHpf: { min: 20, max: 500, default: 20 },
+  /**
+   * DE-ESS detector mode (added with the scMode/scBandHz feature): 0 = the
+   * scHpf high-pass detector, 1 = a band-pass detector centred on scBandHz.
+   * Registry default is 0, so a bridge-written compressor keeps the classic
+   * sidechain behaviour unless a recipe explicitly opts into de-essing.
+   */
+  scMode: { min: 0, max: 1, default: 0 },
+  /** DE-ESS band centre in Hz. Mirrors the `scBandHz` registry def (2000…12000). */
+  scBandHz: { min: 2000, max: 12000, default: 6500 },
   /** 0 = fixed release, 1 = program-dependent. */
   autoRelease: { min: 0, max: 1, default: 0 },
   /** Makeup gain in dB (registry unit; the worklet converts to linear). */

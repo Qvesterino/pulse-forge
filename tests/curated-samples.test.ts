@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   CURATED_SAMPLES,
-  SYNTHESIS_ONLY_ASSET_IDS,
   curatedReadyWithin,
   ensureCuratedLayer,
   loadCuratedLayer,
@@ -146,15 +145,12 @@ describe("loadCuratedLayer — same-id override with synthesized fallback", () =
 });
 
 describe("curated coverage — full-kit contract", () => {
-  it("CURATED_SAMPLES covers every curated asset exactly once and leaves only the mallets synthesis-only", async () => {
+  it("CURATED_SAMPLES covers EVERY factory asset exactly once (full-kit contract)", async () => {
     const { FACTORY_ASSETS } = await import("../src/sample-library/manifest");
     const ids = CURATED_SAMPLES.map((sample) => sample.id);
     expect(new Set(ids).size).toBe(ids.length);
     const assetIds = FACTORY_ASSETS.map((asset) => asset.id).sort();
-    const synthOnly = new Set<string>(SYNTHESIS_ONLY_ASSET_IDS);
-    const curatedIds = [...ids].sort();
-    expect(assetIds.filter((id) => !curatedIds.includes(id))).toEqual([...synthOnly].sort());
-    expect(curatedIds).toEqual(assetIds.filter((id) => !synthOnly.has(id)));
+    expect([...ids].sort()).toEqual(assetIds);
   });
 
   it("every curated file exists on disk", async () => {

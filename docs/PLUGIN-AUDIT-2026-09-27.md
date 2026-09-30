@@ -12,93 +12,93 @@
 
 ## Method (evidence per column)
 
-| Column | Evidence |
-| --- | --- |
-| Loads | Constructs in a real context + full engine offline render finite (`hostFinite`), param sweep ran without throwing |
-| Processes Audio | ≥1 parameter moves the measured output by >2% at an extreme (`responsive`) AND the fingerprinted engine render differs from bypass (`hostProcesses`); effects whose minimal host doc cannot exercise them by design (sidechain/vocoder need a key/modulator track) are evidenced by the factory sweep with a modulator feed (`hostExemptReason`) |
-| Parameter Ranges Valid | All min/max renders finite, no runaway gain (peak > 40 ≙ runaway, not mere headroom), rapid min↔max swing render finite, all factory presets finite (`unstableParams`, `rapidSwingFinite`, presets) |
-| (note) | Params listed as <2%-delta are measured with all OTHER params at defaults — band frequency/Q params of zero-gain EQ bands are inert by design, and legacy alias ids (eq lowGain…) are consumed by the command layer, not the raw runtime |
-| State Restore | JSON round-trip + normalizeProject renders the original mix back (RMS diff ≤ 1%; the restored render is compared against BOTH of the doc's stable render variants — see known issues) |
-| Automation | An engine automation lane stepping the strongest param mid-pattern audibly changes the rendered output vs the same doc WITHOUT the lane (delta > 2%), and stays finite; sidechain/vocoder are exempt (the minimal host doc has no key/modulator track) |
+| Column                 | Evidence                                                                                                                                                                                                                                                                                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Loads                  | Constructs in a real context + full engine offline render finite (`hostFinite`), param sweep ran without throwing                                                                                                                                                                                                                                |
+| Processes Audio        | ≥1 parameter moves the measured output by >2% at an extreme (`responsive`) AND the fingerprinted engine render differs from bypass (`hostProcesses`); effects whose minimal host doc cannot exercise them by design (sidechain/vocoder need a key/modulator track) are evidenced by the factory sweep with a modulator feed (`hostExemptReason`) |
+| Parameter Ranges Valid | All min/max renders finite, no runaway gain (peak > 40 ≙ runaway, not mere headroom), rapid min↔max swing render finite, all factory presets finite (`unstableParams`, `rapidSwingFinite`, presets)                                                                                                                                              |
+| (note)                 | Params listed as <2%-delta are measured with all OTHER params at defaults — band frequency/Q params of zero-gain EQ bands are inert by design, and legacy alias ids (eq lowGain…) are consumed by the command layer, not the raw runtime                                                                                                         |
+| State Restore          | JSON round-trip + normalizeProject renders the original mix back (RMS diff ≤ 1%; the restored render is compared against BOTH of the doc's stable render variants — see known issues)                                                                                                                                                            |
+| Automation             | An engine automation lane stepping the strongest param mid-pattern audibly changes the rendered output vs the same doc WITHOUT the lane (delta > 2%), and stays finite; sidechain/vocoder are exempt (the minimal host doc has no key/modulator track)                                                                                           |
 
 ## Effect matrix
 
-| Plugin | Loads | Processes Audio | Parameter Ranges Valid | State Restore | Automation | Known Issues |
-| --- | --- | --- | --- | --- | --- | --- |
-| EQ (`eq`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: lpFreq, lowShelfFreq, lowMidFreq, lowMidQ, highMidFreq, highMidQ, highShelfFreq, lowGain, lowFreq, midGain, midFreq, midQ, highGain, highFreq; bypass vs removed renders differ above 1e-3 (render jitter class) |
-| M/S EQ (`msEq`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: midLowFreq, midHighFreq, sideLowFreq, sideHighFreq |
-| Multiband (`multiband`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: lowFreq, highFreq, soloLow, soloMid, soloHigh, mix |
-| Compressor (`compressor`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: scHpf |
-| Saturation (`saturation`) | PASS | PASS | PASS | PASS | PASS | — |
-| Tape Sat (`tapeSat`) | PASS | PASS | PASS | PASS | PASS | bypass vs removed renders differ above 1e-3 (render jitter class) |
-| Clipper (`clipper`) | PASS | PASS | PASS | PASS | PASS | bypass vs removed renders differ above 1e-3 (render jitter class) |
-| Limiter (`limiter`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: threshold, release, link, mix |
-| Step Gate (`stepGate`) | PASS | PASS | PASS | PASS | PASS | — |
-| SV Filter (`svFilter`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: mode |
-| Flanger (`flanger`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: spread |
-| Tremolo (`tremolo`) | PASS | PASS | PASS | PASS | PASS | bypass vs removed renders differ above 1e-3 (render jitter class) |
-| Autowah (`autowah`) | PASS | PASS | PASS | PASS | PASS | — |
-| Stutter (`stutter`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: smooth |
-| Comb (`comb`) | PASS | PASS | PASS | PASS | PASS | — |
-| Vowel (`vowel`) | PASS | PASS | PASS | PASS | PASS | — |
-| Vocoder (`vocoder`) | PASS | PASS | PASS | PASS | PASS | host exempt: host has no modulator track — carrier passthrough is correct; sweep carries the processing evidence |
-| Reverse Swell (`reverseSwell`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: time, reach, curve, tone, level, mix |
-| Granular Freeze (`granularFreeze`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: window, position, drift, grainMs, scatter, pitch, tone, level, mix |
-| Duck Delay (`duckDelay`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: feedback, pingpong |
-| RYFT (`kaskada`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: pingPong, feedback, drive, unmask, unmaskSens, unmaskAtk, unmaskRel |
-| Multi-Tap (`multiTapDelay`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: t4Div; bypass vs removed renders differ above 1e-3 (render jitter class) |
-| Reverb (`reverb`) | PASS | PASS | PASS | PASS | PASS | — |
-| Delay (`delay`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: feedback, tone |
-| Pump (`pump`) | PASS | PASS | PASS | PASS | PASS | — |
-| Distortion (`distortion`) | PASS | PASS | PASS | PASS | PASS | bypass vs removed renders differ above 1e-3 (render jitter class) |
-| Bitcrusher (`bitcrusher`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: mix |
-| Chorus (`chorus`) | PASS | PASS | PASS | PASS | PASS | — |
-| Phaser (`phaser`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: sync, spread; bypass vs removed renders differ above 1e-3 (render jitter class) |
-| Haas Widener (`haasWidener`) | PASS | PASS | PASS | PASS | PASS | — |
-| Sidechain (`sidechain`) | PASS | PASS | PASS | PASS | PASS | host exempt: host has no key track — dry path is correct; sweep carries the processing evidence |
-| Transient Shaper (`transient`) | PASS | PASS | PASS | PASS | PASS | — |
-| Drum Buss (`drumBuss`) | PASS | PASS | PASS | PASS | PASS | restore maxDiff 3.2e-3 |
-| Bass Buss (`bassBuss`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: subOsc |
-| Utility (`utility`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: phaseLeft, phaseRight, dcBlock; bypass vs removed renders differ above 1e-3 (render jitter class) |
-| Shimmer (`shimmer`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: shift |
-| PRISM (`fxeq`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: bandCount |
-| VLYX (`ultina`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: global.mix, transient.enabled, exciter.enabled, unmask.enabled, unmask.ecosystemEnabled, unmask.amount |
-| VØID (`ozvena`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: global.quality |
-| MORPH (`morphdynamics`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: macro.texture |
-| Ring Mod (`ringMod`) | PASS | PASS | PASS | PASS | PASS | — |
-| Tape Stop (`tapeStop`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: time, curve, spin, mix |
-| Freq Shift (`freqShifter`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: side, lfoRate, sync, delayTime, spread |
-| Pitch Shift (`pitchShift`) | PASS | PASS | PASS | PASS | PASS | — |
-| Vinyl Suite (`vinyl`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: crackle, crackleTone, crackleDecay, hiss, hissTone, rumble, rumbleTone; bypass vs removed renders differ above 1e-3 (render jitter class) |
-| Beat Mangler (`beatMangler`) | PASS | PASS | PASS | PASS | PASS | ALL parameters inert at both extremes; bypass vs removed renders differ above 1e-3 (render jitter class) |
-| Gate (`gate`) | PASS | PASS | PASS | PASS | PASS | <2% delta at extremes with siblings at defaults: hysteresis, attack, hold, release, range, lookahead, mix; bypass vs removed renders differ above 1e-3 (render jitter class); restore maxDiff 2.4e-3 |
+| Plugin                             | Loads | Processes Audio | Parameter Ranges Valid | State Restore | Automation | Known Issues                                                                                                                                                                                                                                                      |
+| ---------------------------------- | ----- | --------------- | ---------------------- | ------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| EQ (`eq`)                          | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: lpFreq, lowShelfFreq, lowMidFreq, lowMidQ, highMidFreq, highMidQ, highShelfFreq, lowGain, lowFreq, midGain, midFreq, midQ, highGain, highFreq; bypass vs removed renders differ above 1e-3 (render jitter class) |
+| M/S EQ (`msEq`)                    | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: midLowFreq, midHighFreq, sideLowFreq, sideHighFreq                                                                                                                                                               |
+| Multiband (`multiband`)            | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: lowFreq, highFreq, soloLow, soloMid, soloHigh, mix                                                                                                                                                               |
+| Compressor (`compressor`)          | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: scHpf                                                                                                                                                                                                            |
+| Saturation (`saturation`)          | PASS  | PASS            | PASS                   | PASS          | PASS       | —                                                                                                                                                                                                                                                                 |
+| Tape Sat (`tapeSat`)               | PASS  | PASS            | PASS                   | PASS          | PASS       | bypass vs removed renders differ above 1e-3 (render jitter class)                                                                                                                                                                                                 |
+| Clipper (`clipper`)                | PASS  | PASS            | PASS                   | PASS          | PASS       | bypass vs removed renders differ above 1e-3 (render jitter class)                                                                                                                                                                                                 |
+| Limiter (`limiter`)                | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: threshold, release, link, mix                                                                                                                                                                                    |
+| Step Gate (`stepGate`)             | PASS  | PASS            | PASS                   | PASS          | PASS       | —                                                                                                                                                                                                                                                                 |
+| SV Filter (`svFilter`)             | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: mode                                                                                                                                                                                                             |
+| Flanger (`flanger`)                | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: spread                                                                                                                                                                                                           |
+| Tremolo (`tremolo`)                | PASS  | PASS            | PASS                   | PASS          | PASS       | bypass vs removed renders differ above 1e-3 (render jitter class)                                                                                                                                                                                                 |
+| Autowah (`autowah`)                | PASS  | PASS            | PASS                   | PASS          | PASS       | —                                                                                                                                                                                                                                                                 |
+| Stutter (`stutter`)                | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: smooth                                                                                                                                                                                                           |
+| Comb (`comb`)                      | PASS  | PASS            | PASS                   | PASS          | PASS       | —                                                                                                                                                                                                                                                                 |
+| Vowel (`vowel`)                    | PASS  | PASS            | PASS                   | PASS          | PASS       | —                                                                                                                                                                                                                                                                 |
+| Vocoder (`vocoder`)                | PASS  | PASS            | PASS                   | PASS          | PASS       | host exempt: host has no modulator track — carrier passthrough is correct; sweep carries the processing evidence                                                                                                                                                  |
+| Reverse Swell (`reverseSwell`)     | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: time, reach, curve, tone, level, mix                                                                                                                                                                             |
+| Granular Freeze (`granularFreeze`) | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: window, position, drift, grainMs, scatter, pitch, tone, level, mix                                                                                                                                               |
+| Duck Delay (`duckDelay`)           | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: feedback, pingpong                                                                                                                                                                                               |
+| RYFT (`kaskada`)                   | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: pingPong, feedback, drive, unmask, unmaskSens, unmaskAtk, unmaskRel                                                                                                                                              |
+| Multi-Tap (`multiTapDelay`)        | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: t4Div; bypass vs removed renders differ above 1e-3 (render jitter class)                                                                                                                                         |
+| Reverb (`reverb`)                  | PASS  | PASS            | PASS                   | PASS          | PASS       | —                                                                                                                                                                                                                                                                 |
+| Delay (`delay`)                    | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: feedback, tone                                                                                                                                                                                                   |
+| Pump (`pump`)                      | PASS  | PASS            | PASS                   | PASS          | PASS       | —                                                                                                                                                                                                                                                                 |
+| Distortion (`distortion`)          | PASS  | PASS            | PASS                   | PASS          | PASS       | bypass vs removed renders differ above 1e-3 (render jitter class)                                                                                                                                                                                                 |
+| Bitcrusher (`bitcrusher`)          | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: mix                                                                                                                                                                                                              |
+| Chorus (`chorus`)                  | PASS  | PASS            | PASS                   | PASS          | PASS       | —                                                                                                                                                                                                                                                                 |
+| Phaser (`phaser`)                  | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: sync, spread; bypass vs removed renders differ above 1e-3 (render jitter class)                                                                                                                                  |
+| Haas Widener (`haasWidener`)       | PASS  | PASS            | PASS                   | PASS          | PASS       | —                                                                                                                                                                                                                                                                 |
+| Sidechain (`sidechain`)            | PASS  | PASS            | PASS                   | PASS          | PASS       | host exempt: host has no key track — dry path is correct; sweep carries the processing evidence                                                                                                                                                                   |
+| Transient Shaper (`transient`)     | PASS  | PASS            | PASS                   | PASS          | PASS       | —                                                                                                                                                                                                                                                                 |
+| Drum Buss (`drumBuss`)             | PASS  | PASS            | PASS                   | PASS          | PASS       | restore maxDiff 3.2e-3                                                                                                                                                                                                                                            |
+| Bass Buss (`bassBuss`)             | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: subOsc                                                                                                                                                                                                           |
+| Utility (`utility`)                | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: phaseLeft, phaseRight, dcBlock; bypass vs removed renders differ above 1e-3 (render jitter class)                                                                                                                |
+| Shimmer (`shimmer`)                | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: shift                                                                                                                                                                                                            |
+| PRISM (`fxeq`)                     | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: bandCount                                                                                                                                                                                                        |
+| VLYX (`ultina`)                    | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: global.mix, transient.enabled, exciter.enabled, unmask.enabled, unmask.ecosystemEnabled, unmask.amount                                                                                                           |
+| VØID (`ozvena`)                    | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: global.quality                                                                                                                                                                                                   |
+| MORPH (`morphdynamics`)            | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: macro.texture                                                                                                                                                                                                    |
+| Ring Mod (`ringMod`)               | PASS  | PASS            | PASS                   | PASS          | PASS       | —                                                                                                                                                                                                                                                                 |
+| Tape Stop (`tapeStop`)             | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: time, curve, spin, mix                                                                                                                                                                                           |
+| Freq Shift (`freqShifter`)         | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: side, lfoRate, sync, delayTime, spread                                                                                                                                                                           |
+| Pitch Shift (`pitchShift`)         | PASS  | PASS            | PASS                   | PASS          | PASS       | —                                                                                                                                                                                                                                                                 |
+| Vinyl Suite (`vinyl`)              | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: crackle, crackleTone, crackleDecay, hiss, hissTone, rumble, rumbleTone; bypass vs removed renders differ above 1e-3 (render jitter class)                                                                        |
+| Beat Mangler (`beatMangler`)       | PASS  | PASS            | PASS                   | PASS          | PASS       | ALL parameters inert at both extremes; bypass vs removed renders differ above 1e-3 (render jitter class)                                                                                                                                                          |
+| Gate (`gate`)                      | PASS  | PASS            | PASS                   | PASS          | PASS       | <2% delta at extremes with siblings at defaults: hysteresis, attack, hold, release, range, lookahead, mix; bypass vs removed renders differ above 1e-3 (render jitter class); restore maxDiff 2.4e-3                                                              |
 
 ## Instrument matrix
 
-| Instrument | Loads / Sounds | Param Extremes Finite | Params Wired | Known Issues |
-| --- | --- | --- | --- | --- |
-| Analog Synth (`analog`) | PASS | PASS | 21/34 | below-metric at extremes (siblings at defaults): filterEnv, spread, lfoRate, lfoSync, lfoDepth, aShape, rShape, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate |
-| Bass Synth (`bass`) | PASS | PASS | 16/24 | below-metric at extremes (siblings at defaults): glide, spread, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate |
-| Keys (`keys`) | PASS | PASS | 16/26 | below-metric at extremes (siblings at defaults): spread, lfoRate, lfoSync, lfoDepth, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate |
-| Organ (`organ`) | PASS | PASS | 10/12 | below-metric at extremes (siblings at defaults): click, glide |
-| Strings (`strings`) | PASS | PASS | 7/10 | below-metric at extremes (siblings at defaults): vibrato, vibRate, vibDelay |
-| Bell (`bell`) | PASS | PASS | 5/7 | below-metric at extremes (siblings at defaults): shimmer, strike |
-| Reese (`reese`) | PASS | PASS | 7/10 | below-metric at extremes (siblings at defaults): movement, moveRate, glide |
-| Acid 303 (`acid`) | PASS | PASS | 7/9 | below-metric at extremes (siblings at defaults): envMod, glide |
-| Synth Brass (`brass`) | PASS | PASS | 6/9 | below-metric at extremes (siblings at defaults): bite, sweep, sweepTime |
-| FM (`fm`) | PASS | PASS | 12/13 | below-metric at extremes (siblings at defaults): fbDecay |
-| Pluck Synth (`pluck`) | PASS | PASS | 12/18 | below-metric at extremes (siblings at defaults): modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate |
-| Flute (`flute`) | PASS | PASS | 9/15 | below-metric at extremes (siblings at defaults): breath, breathTone, vibrato, vibRate, vibDelay, glide |
-| 808 Synth (`808`) | PASS | PASS | 9/18 | below-metric at extremes (siblings at defaults): click, glide, mono, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate |
-| Log Drum (`logdrum`) | PASS | PASS | 10/17 | below-metric at extremes (siblings at defaults): glide, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate |
-| Drum Synth (`drumsynth`) | PASS | PASS | 7/8 | below-metric at extremes (siblings at defaults): snap |
-| Sampler (`sampler`) | PASS | PASS | 12/28 | below-metric at extremes (siblings at defaults): decay, pitchDecayT, resonance, keytrack, velFlt, loop, loopXfade, loopStart, loopEnd, modASrc, modADst, modAAmt, modBSrc, modBDst, modBAmt, modLfoRate |
-| Texture Synth (`texture`) | PASS | PASS | 10/23 | below-metric at extremes (siblings at defaults): space, chaos, hold, gate, release, diffuse, modASrc, modADst, modAAmt, modBSrc, modBDst, modBAmt, modLfoRate |
-| Wavetable Synth (`wavetable`) | PASS | PASS | 13/23 | below-metric at extremes (siblings at defaults): morphRate, morphDepth, spread, keytrack, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate |
-| Granular Synth (`granular`) | PASS | PASS | 15/15 | — |
-| Clavinet (`clav`) | FAIL | PASS | 0/9 | below-metric at extremes (siblings at defaults): pick, pickupType, damp, click, growl, cutoff, resonance, release, level |
-| Spectral Pad (`spectral`) | FAIL | PASS | 10/22 | below-metric at extremes (siblings at defaults): profile, skew, release, level, motionRate, motionSync, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate |
-| Vocal Chop (`vocalchop`) | PASS | PASS | 10/20 | below-metric at extremes (siblings at defaults): shift, sharp, morph, modASrc, modADst, modAAmt, modBSrc, modBDst, modBAmt, modLfoRate |
+| Instrument                    | Loads / Sounds | Param Extremes Finite | Params Wired | Known Issues                                                                                                                                                                                            |
+| ----------------------------- | -------------- | --------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Analog Synth (`analog`)       | PASS           | PASS                  | 21/34        | below-metric at extremes (siblings at defaults): filterEnv, spread, lfoRate, lfoSync, lfoDepth, aShape, rShape, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate                                 |
+| Bass Synth (`bass`)           | PASS           | PASS                  | 16/24        | below-metric at extremes (siblings at defaults): glide, spread, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate                                                                                 |
+| Keys (`keys`)                 | PASS           | PASS                  | 16/26        | below-metric at extremes (siblings at defaults): spread, lfoRate, lfoSync, lfoDepth, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate                                                            |
+| Organ (`organ`)               | PASS           | PASS                  | 10/12        | below-metric at extremes (siblings at defaults): click, glide                                                                                                                                           |
+| Strings (`strings`)           | PASS           | PASS                  | 7/10         | below-metric at extremes (siblings at defaults): vibrato, vibRate, vibDelay                                                                                                                             |
+| Bell (`bell`)                 | PASS           | PASS                  | 5/7          | below-metric at extremes (siblings at defaults): shimmer, strike                                                                                                                                        |
+| Reese (`reese`)               | PASS           | PASS                  | 7/10         | below-metric at extremes (siblings at defaults): movement, moveRate, glide                                                                                                                              |
+| Acid 303 (`acid`)             | PASS           | PASS                  | 7/9          | below-metric at extremes (siblings at defaults): envMod, glide                                                                                                                                          |
+| Synth Brass (`brass`)         | PASS           | PASS                  | 6/9          | below-metric at extremes (siblings at defaults): bite, sweep, sweepTime                                                                                                                                 |
+| FM (`fm`)                     | PASS           | PASS                  | 12/13        | below-metric at extremes (siblings at defaults): fbDecay                                                                                                                                                |
+| Pluck Synth (`pluck`)         | PASS           | PASS                  | 12/18        | below-metric at extremes (siblings at defaults): modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate                                                                                                |
+| Flute (`flute`)               | PASS           | PASS                  | 9/15         | below-metric at extremes (siblings at defaults): breath, breathTone, vibrato, vibRate, vibDelay, glide                                                                                                  |
+| 808 Synth (`808`)             | PASS           | PASS                  | 9/18         | below-metric at extremes (siblings at defaults): click, glide, mono, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate                                                                            |
+| Log Drum (`logdrum`)          | PASS           | PASS                  | 10/17        | below-metric at extremes (siblings at defaults): glide, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate                                                                                         |
+| Drum Synth (`drumsynth`)      | PASS           | PASS                  | 7/8          | below-metric at extremes (siblings at defaults): snap                                                                                                                                                   |
+| Sampler (`sampler`)           | PASS           | PASS                  | 12/28        | below-metric at extremes (siblings at defaults): decay, pitchDecayT, resonance, keytrack, velFlt, loop, loopXfade, loopStart, loopEnd, modASrc, modADst, modAAmt, modBSrc, modBDst, modBAmt, modLfoRate |
+| Texture Synth (`texture`)     | PASS           | PASS                  | 10/23        | below-metric at extremes (siblings at defaults): space, chaos, hold, gate, release, diffuse, modASrc, modADst, modAAmt, modBSrc, modBDst, modBAmt, modLfoRate                                           |
+| Wavetable Synth (`wavetable`) | PASS           | PASS                  | 13/23        | below-metric at extremes (siblings at defaults): morphRate, morphDepth, spread, keytrack, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate                                                       |
+| Granular Synth (`granular`)   | PASS           | PASS                  | 15/15        | —                                                                                                                                                                                                       |
+| Clavinet (`clav`)             | FAIL           | PASS                  | 0/9          | below-metric at extremes (siblings at defaults): pick, pickupType, damp, click, growl, cutoff, resonance, release, level                                                                                |
+| Spectral Pad (`spectral`)     | FAIL           | PASS                  | 10/22        | below-metric at extremes (siblings at defaults): profile, skew, release, level, motionRate, motionSync, modASrc, modADst, modAAmt, modBSrc, modBDst, modLfoRate                                         |
+| Vocal Chop (`vocalchop`)      | PASS           | PASS                  | 10/20        | below-metric at extremes (siblings at defaults): shift, sharp, morph, modASrc, modADst, modAAmt, modBSrc, modBDst, modBAmt, modLfoRate                                                                  |
 
 ## Interaction block
 
@@ -113,6 +113,7 @@
 ## Findings & repairs
 
 Per-plugin notes are listed in the matrix above; root causes and repairs are recorded in the audit summary below.
+
 - Instrument `analog`: inert filterEnv, inert spread, inert lfoRate, inert lfoSync, inert lfoDepth, inert aShape, inert rShape, inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modLfoRate
 - Instrument `bass`: inert glide, inert spread, inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modLfoRate
 - Instrument `keys`: inert spread, inert lfoRate, inert lfoSync, inert lfoDepth, inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modLfoRate
@@ -134,6 +135,57 @@ Per-plugin notes are listed in the matrix above; root causes and repairs are rec
 - Instrument `clav`: inert pick, inert pickupType, inert damp, inert click, inert growl, inert cutoff, inert resonance, inert release, inert level
 - Instrument `spectral`: inert profile, inert skew, inert release, inert level, inert motionRate, inert motionSync, inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modLfoRate
 - Instrument `vocalchop`: inert shift, inert sharp, inert morph, inert modASrc, inert modADst, inert modAAmt, inert modBSrc, inert modBDst, inert modBAmt, inert modLfoRate
+
+## Delta since this run (2026-09-30, intent/mixer audit)
+
+This matrix is the evidence of record for the 47 effect types and 22 instrument kinds,
+but the run window closed on **2026-09-27** and two surfaces moved afterwards. Stated
+explicitly rather than left implicit, because "verified" must never outlive its evidence.
+
+1. **`compressor` — `scMode` / `scBandHz` are NOT in THIS matrix's render sweep.** The
+   DE-ESS feature landed **2026-09-28** (`aa2957be`), one day after the run window closed,
+   so the Compressor row above predates the two new params and cannot speak to them. They
+   are _not_ unevidenced, though — the evidence is simply held elsewhere:
+   - **Real DSP, processor level:** `tests/compressor-deess.test.ts` (5 tests, passing)
+     instantiates the actual `compressor-processor.js` worklet and calls `process()` on
+     real `Float32Array` buffers, measuring settled RMS. It pins the contract that
+     actually matters — with `scMode=1` a 6.5 kHz tone is ducked ≥3× more than a 150 Hz
+     tone at the identical level (_discrimination_, not absolute gain). Note the
+     discriminator is band-vs-band **within** one mode; a cross-mode HPF comparison would
+     be wrong, because the HPF detector is a 20 Hz high-pass and passes 6.5 kHz in full.
+   - **Model level:** `tests/plugin-functional-audit.test.ts` sweeps parameter metadata
+     across all 47 surfaces (passing).
+     What was absent from _this_ matrix is **host/engine-level** evidence: that a
+     Compressor instance carrying these params renders differently through the production factory.
+     That is now covered by a real-browser gate added 2026-09-30: `"compressor: DE-ESS mode
+ducks the sibilance band, not the low band (host)"` in `src/browser-checks.ts`, which
+     renders through `EFFECT_DEFS.compressor.factory` — not a direct `process()` call — and
+     asserts (a) in-band discrimination, a 6.5 kHz tone ducked far more than a 150 Hz tone at
+     the identical level, and (b) that moving `scBandHz` off the probe **releases** it. (b) is
+     the assertion that would catch a wrapper silently dropping the parameter — the msEq
+     failure mode. Measured (Chromium, 44.1 kHz): duck 0.3112 in-band vs 0.2743 with the band
+     moved, sibilant/low ratio 0.120.
+
+   Writing that gate earned its keep: its first two drafts were wrong and only a real run
+   caught them. One reused a single `OfflineAudioContext` for three probes
+   (`startRendering` cannot be called twice — it throws "stopped state"); the other asserted
+   that HPF mode should _spare_ the sibilance band, which is false, because a 20 Hz
+   high-pass detector passes 6.5 kHz in full and compresses it just as hard. The model-level
+   and processor-level tests could not have caught either, because both live below the host.
+
+2. **`msEq` — the matrix is CORRECT and the AI bridge was wrong.** The 4-band M/S
+   redesign (`midLowFreq`/`midLowGain`/`midHighFreq`/`midHighGain` + the `side*`
+   quartet) landed **2026-09-21**, six days _before_ this run — which is why the M/S EQ
+   row above already lists `midLowFreq, midHighFreq, sideLowFreq, sideHighFreq` as the
+   sub-2%-delta params and reports PASS across every column. Meanwhile
+   `src/ai/bridge/stereoSlots.ts` still described the **old** 3-band crossover layout,
+   so the `ms-eq` intent was writing dead keys for 9 days (audit D-3 in
+   `docs/INTENT-VERIFICATION-2026-09-30.md`, now fixed). Worth recording as a
+   cross-check: the plugin sweep and the intent mirror disagreed, and the plugin sweep
+   was the side that was right. A single _consumer_ of a renamed param surface — not the
+   effect itself — was the only thing that broke.
+3. Row counts in this document are still accurate as of 2026-09-30: `EFFECT_DEFS`
+   resolves to the same 47 effect types, and the instrument registry to 22 kinds.
 
 ## Repairs shipped with this audit
 

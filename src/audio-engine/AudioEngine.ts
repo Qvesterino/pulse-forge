@@ -1704,6 +1704,19 @@ export class AudioEngine {
     const live = new Set(Object.keys(sends).filter((returnId) => this.returnNodes.has(returnId)));
     for (const [returnId, sendGain] of [...nodes.sends]) {
       if (!live.has(returnId)) {
+        // A send is a two-edge tap: modMacroPan ─▶ sendGain ─▶ sendDelay ─▶
+        // return.input. `sendGain.disconnect()` only severs edges LEAVING
+        // sendGain, so the upstream edge stayed wired and the tap node was
+        // never collected — every send that was switched off and later re-added
+        // left another live GainNode + DelayNode pair hanging off the channel
+        // output. Full-channel teardown (disposeTrackNodes /
+        // disposeGroupNodes) disconnects modMacroPan wholesale and was always
+        // safe; this per-send path has to drop its own edge explicitly.
+        try {
+          nodes.modMacroPan.disconnect(sendGain);
+        } catch {
+          /* prior edge was already disconnected */
+        }
         sendGain.disconnect();
         nodes.sends.delete(returnId);
         nodes.sendDelays.get(returnId)?.disconnect();

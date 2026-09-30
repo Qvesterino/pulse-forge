@@ -4356,6 +4356,97 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     check("compressor: worklet compresses hot input and reports GR", false, String(error));
   }
 
+  // DE-ESS mode (scMode/scBandHz) at HOST level.
+  //
+  // `tests/compressor-deess.test.ts` pins the processor's discrimination with a
+  // direct `process()` call, but that bypasses the factory, the wrapper and the
+  // worklet descriptor — so it cannot catch a wrapper that drops the params
+  // before they reach the DSP (exactly the failure the AI bridge had with
+  // msEq). This renders through `EFFECT_DEFS.compressor.factory`, i.e. the same
+  // path the real graph uses, and asserts the band discrimination survives:
+  // a sibilance-band tone must be ducked substantially more than a low tone at
+  // the identical level, and the HPF mode must leave the sibilance band alone.
+  try {
+    const ctx = new OfflineAudioContext(2, SR, SR);
+    await loadAllWorklets(ctx);
+    if (!isWorkletReady("compressor", ctx)) {
+      check("compressor: DE-ESS mode ducks the sibilance band, not the low band (host)", false, "worklet modules not ready");
+    } else {
+      const rmsThrough = async (params: Record<string, number>, hz: number): Promise<number> => {
+        // Each probe needs a FRESH context — startRendering closes it, so a
+        // shared context throws "cannot call startRendering ... in a stopped
+        // state" on the second variant.
+        const ctx = new OfflineAudioContext(2, SR, SR);
+        await loadAllWorklets(ctx);
+        const osc = ctx.createOscillator();
+        osc.type = "sine";
+        osc.frequency.value = hz;
+        const gain = ctx.createGain();
+        // Same level for both probes, so the only variable is the band.
+        gain.gain.value = 0.5;
+        const rt = EFFECT_DEFS.compressor.factory(
+          ctx,
+          { id: "chk-deess", type: "compressor", bypassed: false, params },
+          { bpm: 124 },
+        );
+        osc.connect(gain).connect(rt.input);
+        rt.output.connect(ctx.destination);
+        osc.start(0);
+        const out = (await ctx.startRendering()).getChannelData(0);
+        rt.dispose();
+        // Settle the attack/release before measuring.
+        const from = Math.floor(out.length * 0.4);
+        let sum = 0;
+        for (let i = from; i < out.length; i++) sum += out[i] * out[i];
+        return Math.sqrt(sum / (out.length - from));
+      };
+
+      const deEss = {
+        threshold: -35,
+        ratio: 8,
+        attack: 0.001,
+        release: 0.08,
+        knee: 2,
+        makeup: 0,
+        mix: 1,
+        detector: 1,
+        scHpf: 20,
+        scBandHz: 6500,
+      };
+      const essMode = { ...deEss, scMode: 1 };
+      // Same probe tone, detector band moved below the probe: the duck must
+      // collapse. This is the host-level assertion that actually protects the
+      // plugin — if the factory/wrapper ever dropped scBandHz, both numbers
+      // would be identical and the feature would silently do nothing (the exact
+      // failure the AI bridge had with msEq). A cross-mode HPF comparison is
+      // NOT a valid discriminator: the HPF detector is a 20 Hz high-pass, so it
+      // passes a 6.5 kHz tone in full and compresses it just as hard.
+      const outOfBand = { ...deEss, scMode: 1, scBandHz: 300 };
+      const baseline = 0.5 / Math.SQRT2;
+
+      const sibilantEss = await rmsThrough(essMode, 6500);
+      const lowEss = await rmsThrough(essMode, 150);
+      const sibilantOutOfBand = await rmsThrough(outOfBand, 6500);
+
+      const duckEss = baseline - sibilantEss;
+      const duckOutOfBand = baseline - sibilantOutOfBand;
+      // Discrimination inside the band: sibilance ducked far more than the low tone.
+      const bandRatio = lowEss > 0 ? sibilantEss / lowEss : Infinity;
+      // Moving the detector band OFF the probe must release it. `duck` is
+      // baseline-minus-rms, so a bigger duck means quieter output — releasing
+      // the tone means the in-band duck is the LARGER of the two.
+      const released = duckEss - duckOutOfBand;
+      check(
+        "compressor: DE-ESS mode ducks the sibilance band, not the low band (host)",
+        duckEss > 0.02 && bandRatio < 0.6 && released > 0.01,
+        `duck(6500Hz, band=6500)=${duckEss.toFixed(4)} duck(6500Hz, band=300)=${duckOutOfBand.toFixed(4)} ` +
+          `released=${released.toFixed(4)} sibilant/low=${bandRatio.toFixed(3)} baseline=${baseline.toFixed(4)}`,
+      );
+    }
+  } catch (error) {
+    check("compressor: DE-ESS mode ducks the sibilance band, not the low band (host)", false, String(error));
+  }
+
   // Sidechain HPF: a sub-only detector drives compression when the HPF is off
   // and is rejected once the HPF sits above the sub band — the reason this is
   // a worklet and not the native node.
