@@ -21,6 +21,7 @@ import {
 import { applyClipArrangeOps, applyArrangeOps } from "../intent/arrangeWords";
 import { applySoundSwapIntent, applyStepEditIntent } from "../intent/sound-words";
 import { generateLocalResult } from "../intent/pipeline";
+import { MCP_PLAYBOOK_TEXT, MCP_VOCAB_TEXT } from "./onboarding";
 import { normalizeIntent } from "../intent/normalize";
 import { resolveSceneTarget } from "../intent/arrangeWords";
 import { inferPadRole } from "../ai/pad-roles";
@@ -1330,6 +1331,22 @@ export const MCP_RESOURCES: McpResourceDef[] = [
     description: "The most recent document commands (undo targets).",
     mimeType: "text/plain",
   },
+  {
+    uri: "kyx://playbook",
+    name: "Producer playbook",
+    description:
+      "The agent manual: workflows (beat/mix/arrangement), the read-act-verify loop, " +
+      "token economy and how to react to honest refusals.",
+    mimeType: "text/plain",
+  },
+  {
+    uri: "kyx://vocab",
+    name: "Intent vocabulary",
+    description:
+      "What free-text kyx_intent understands (EN + SK) per category, with the " +
+      "rule of thumb for structured-vs-free-text choices.",
+    mimeType: "text/plain",
+  },
 ];
 
 export function readMcpResource(ctx: McpToolContext, uri: string): McpToolResult {
@@ -1359,6 +1376,10 @@ export function readMcpResource(ctx: McpToolContext, uri: string): McpToolResult
       };
     case "kyx://project/history":
       return { text: stateSnapshot(ctx.getDoc(), "history", undefined, labels), mutated: false };
+    case "kyx://playbook":
+      return { text: MCP_PLAYBOOK_TEXT, mutated: false };
+    case "kyx://vocab":
+      return { text: MCP_VOCAB_TEXT, mutated: false };
     default:
       return { text: `unknown resource: ${uri} — see resources/list`, mutated: false, isError: true };
   }

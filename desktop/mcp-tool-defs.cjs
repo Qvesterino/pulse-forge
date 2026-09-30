@@ -205,8 +205,10 @@ const MCP_TOOL_DEFS = [
       "Structured effect operation on a track family or ONE exact track: " +
       "more/less turn the effect's PRIMARY knob (percent = relative step " +
       "size), remove deletes instances (destructive-gated), bypass/enable " +
-      "flag instances without deleting them. Effect types are the " +
-      "knob-mapped subset — eq and other no-knob effects are refused; use " +
+      "flag them, reorder moves ONE instance through the chain (direction " +
+      "or position). instance scopes remove/bypass/enable/reorder to the " +
+      "Nth same-type instance. Effect types are the knob-mapped subset for " +
+      "more/less — eq and other no-knob effects are refused there; use " +
       "kyx_plugin_param for their parameters.",
     inputSchema: {
       type: "object",
@@ -236,12 +238,24 @@ const MCP_TOOL_DEFS = [
           type: "string",
           description: "Exact track id (from kyx_state tracks) — overrides family when present",
         },
-        action: { type: "string", enum: ["more", "less", "remove", "bypass", "enable"] },
+        action: { type: "string", enum: ["more", "less", "remove", "bypass", "enable", "reorder"] },
         percent: {
           type: "number",
           minimum: 0,
           maximum: 100,
           description: "Relative step size for more/less, as % of the knob's range (default: fixed calibrated step)",
+          instance: {
+            type: "integer",
+            minimum: 1,
+            description:
+              "1-based same-type instance — scopes remove/bypass/enable/reorder to ONE instance (default: all instances of the type)",
+          },
+          direction: {
+            type: "string",
+            enum: ["earlier", "later"],
+            description: "For reorder — move the instance one slot toward the input (earlier) or output (later)",
+          },
+          position: { type: "integer", minimum: 1, description: "For reorder — 1-based final slot in the chain" },
         },
       },
       required: ["effect", "action"],
@@ -585,6 +599,48 @@ const MCP_TOOL_DEFS = [
       required: ["op"],
     },
   },
+  {
+    name: "kyx_routing",
+    description:
+      "The group routing graph: list every track's destination (its group " +
+      "or master) with a structured envelope, create a group bus, route " +
+      "tracks into it (addToGroup) or back to master (removeFromGroup). " +
+      "The model is FLAT — one group per track, no group-into-group — so " +
+      "routing cycles are impossible by construction.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["list", "createGroup", "addToGroup", "removeFromGroup"] },
+        trackId: { type: "string", description: "For addToGroup/removeFromGroup — exact track id" },
+        family: {
+          type: "string",
+          enum: ["drums", "bass", "chords", "lead", "vocal"],
+          description: "Family alternative to trackId (applies to every resolved track)",
+        },
+        groupId: { type: "string", description: "For addToGroup — the group track id (op:list)" },
+        groupName: { type: "string", description: "For addToGroup — group name alternative to groupId" },
+        name: { type: "string", description: "For createGroup — optional group name (default: Group N)" },
+      },
+      required: ["op"],
+    },
+  },
+  {
+    name: "kyx_takes",
+    description:
+      "Take groups (comp workflow): list every group with its track, the " +
+      "ACTIVE take and the alternatives (clips per take), or activate a " +
+      "take — the comp pick that decides which alternative is heard. " +
+      "Reversible (one undo step); the domain validates the take has clips.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["list", "activate"] },
+        groupId: { type: "string", description: "For activate — the take group id (op:list)" },
+        takeId: { type: "string", description: "For activate — the take id to make active" },
+      },
+      required: ["op"],
+    },
+  },
 ];
 
 /** VERBATIM MIRROR of MCP_RESOURCES in src/mcp/tools.ts — pinned by
@@ -619,6 +675,23 @@ const MCP_RESOURCE_DEFS = [
     uri: "kyx://project/history",
     name: "Undo history",
     description: "The most recent document commands (undo targets).",
+    mimeType: "text/plain",
+  },
+
+  {
+    uri: "kyx://playbook",
+    name: "Producer playbook",
+    description:
+      "The agent manual: workflows (beat/mix/arrangement), the read-act-verify loop, " +
+      "token economy and how to react to honest refusals.",
+    mimeType: "text/plain",
+  },
+  {
+    uri: "kyx://vocab",
+    name: "Intent vocabulary",
+    description:
+      "What free-text kyx_intent understands (EN + SK) per category, with the " +
+      "rule of thumb for structured-vs-free-text choices.",
     mimeType: "text/plain",
   },
 ];
