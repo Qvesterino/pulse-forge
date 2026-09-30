@@ -2723,7 +2723,15 @@ export function ArrangementPanel() {
               type="button"
               className="btn btn-small btn-danger"
               disabled={!selectedClipId}
-              onClick={() => selectedClipId && execute(deleteArrangementClip(services.store.doc, selectedClipId))}
+              onClick={() => {
+                if (!selectedClipId) return;
+                execute(deleteArrangementClip(services.store.doc, selectedClipId));
+                // The clip is gone; so is the selection. The context-menu
+                // delete path already does this (ArrangementPanel.tsx:1898) —
+                // without it DEL stayed enabled over a dead id and every
+                // further press re-issued the delete for the same clip.
+                setSelectedClipId(null);
+              }}
             >
               DEL
             </button>
