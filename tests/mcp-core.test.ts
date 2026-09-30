@@ -111,6 +111,13 @@ describe("mcp core — protocol with an authenticated session", () => {
     });
     const response = await promise;
     const content = (response.result as { content: Array<{ text: string }> }).content;
+    // Live E2E 2025 regression: the relay frame to the window must be
+    // { type: mcp-call, id, tool, args } — NOT the raw JSON-RPC envelope.
+    // The two dialects once drifted apart and no unit test noticed.
+    const frame = delivered[0] as { type?: string; tool?: string; args?: unknown };
+    expect(frame.type).toBe("mcp-call");
+    expect(frame.tool).toBe("kyx_intent");
+    expect(frame.args).toEqual({ instruction: "mute the drums" });
     expect(content[0].text).toContain("Drums mute ✓");
   });
 

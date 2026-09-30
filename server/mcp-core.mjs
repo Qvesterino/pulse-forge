@@ -927,7 +927,8 @@ export function createMcpHub({ token, sendToSession, callTimeoutMs = CALL_TIMEOU
     async callTool(name, args) {
       if (!sessionConnected) throw new Error("KYX session not connected — open KYX and enable MCP");
       const id = nextCallId++;
-      const payload = { jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args ?? {} } };
+            // Relay frame — the browser bridge expects { type: "mcp-call", id, tool, args }, NOT the raw JSON-RPC envelope (a live E2E caught these halves speaking different dialects).
+      const payload = { type: "mcp-call", id, tool: name, args: args ?? {} };
       const promise = new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
           pendingCalls.delete(id);

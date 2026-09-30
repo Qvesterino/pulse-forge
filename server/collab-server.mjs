@@ -758,6 +758,11 @@ export function createCollabServer({
       }
       wss.handleUpgrade(request, socket, head, (conn) => {
         mcpRelaySocket = conn;
+        conn.isAlive = true;
+        conn.on("pong", () => {
+          conn.isAlive = true;
+        });
+        mcpHub.connectSession(); // the window IS the tool-executor session — without this every tools/call answers -32002
         conn.on("message", (raw) => {
           try {
             mcpHub.handleSessionMessage(JSON.parse(String(raw)));
@@ -766,7 +771,10 @@ export function createCollabServer({
           }
         });
         conn.on("close", () => {
-          if (mcpRelaySocket === conn) mcpRelaySocket = null;
+          if (mcpRelaySocket === conn) {
+            mcpRelaySocket = null;
+            mcpHub.disconnectSession(); // reject pending calls instead of letting them hang to timeout
+          }
         });
       });
       return;
@@ -838,6 +846,15 @@ export function createCollabServer({
   });
 
   wss.on("connection", (conn, request, roomIdArg) => {
+    // MCP relay sockets join NO room — they are the tool-executor channel.
+    // Without this guard the yjs sync frames get broadcast at them.
+    if ((request.url ?? "").startsWith("/mcp-relay")) {
+      conn.isAlive = true;
+      conn.on("pong", () => {
+        conn.isAlive = true;
+      });
+      return;
+    }
     const roomId = roomIdArg ?? "default";
     const room = getRoom(roomId);
     metrics.activeConnections += 1;
