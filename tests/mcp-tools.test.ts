@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { executeMcpTool, executeMcpToolAsync, MCP_TOOLS, type McpToolContext } from "../src/mcp/tools";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";
-import { addArrangementClip, createScene, setSceneRole, snapshot } from "../src/commands/commands";
+import { addArrangementClip, addEffectToTracks, createScene, setSceneRole, snapshot } from "../src/commands/commands";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { inferPadRole } from "../src/ai/pad-roles";
 import type { ProjectDocument } from "../src/project-model/types";
@@ -1361,7 +1361,10 @@ describe("mcp P1 clips — structured arrangement edits", () => {
 describe("mcp P1 export — the awaited completion report", () => {
   it("executeMcpToolAsync awaits the export hook and returns the report", async () => {
     const ctx = makeCtx(datasetDoc());
-    const observing: McpToolContext = { ...ctx, export: async (request) => `fake-export-${request.format} (12.3s, 2.05 MB)` };
+    const observing: McpToolContext = {
+      ...ctx,
+      export: async (request) => `fake-export-${request.format} (12.3s, 2.05 MB)`,
+    };
     const result = await executeMcpToolAsync(observing, "kyx_export", { format: "wav" });
     expect(result.mutated).toBe(false);
     expect(result.text).toContain("export WAV complete — fake-export-wav (12.3s, 2.05 MB)");
@@ -1751,5 +1754,314 @@ describe("mcp P2 loudness — the render-backed loop", () => {
     const failed = await executeMcpToolAsync(failing, "kyx_loudness", { op: "match", direction: "louder" });
     expect(failed.isError).toBe(true);
     expect(failed.text).toContain("too quiet");
+  });
+});
+
+// ─── MODEL-LEVEL WAVE — routing, takes, per-instance FX + reorder ───────────
+
+describe("mcp routing — the group graph", () => {
+  it("list maps every track to its destination with a structured envelope", () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const result = executeMcpTool(ctx, "kyx_routing", { op: "list" });
+    expect(result.mutated).toBe(false);
+    expect(result.text).toMatch(/Drums \(id=[\w-]+\) → master/);
+    expect(result.text).toContain("returns (send buses → master)");
+    const data = result.data as {
+      routes: Array<{ track: string; destination: string }>;
+      groups: Array<{ name: string }>;
+    };
+    expect(data.routes.length).toBe(store.doc.tracks.filter((t) => t.kind !== "group").length);
+  });
+
+  it("createGroup (with name) + addToGroup + removeFromGroup round-trip in one undo each", () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const created = executeMcpTool(ctx, "kyx_routing", { op: "createGroup", name: "Drum Bus" });
+    expect(created.mutated).toBe(true);
+    expect(created.text).toContain('created group "Drum Bus"');
+    const group = store.doc.tracks.find((t) => t.kind === "group" && t.name === "Drum Bus")!;
+    expect(group).toBeTruthy();
+
+    const added = executeMcpTool(ctx, "kyx_routing", { op: "addToGroup", family: "drums", groupName: "Drum Bus" });
+    expect(added.mutated).toBe(true);
+    expect(added.text).toContain("Drums → Drum Bus");
+    const drums = store.doc.tracks.find((t) => t.kind === "drum")!;
+    expect(drums.groupId).toBe(group.id);
+
+    const listed = executeMcpTool(ctx, "kyx_routing", { op: "list" });
+    expect(listed.text).toContain(`group Drum Bus (id=${group.id}): 1 member(s) — Drums`);
+
+    const removed = executeMcpTool(ctx, "kyx_routing", { op: "removeFromGroup", family: "drums" });
+    expect(removed.mutated).toBe(true);
+    expect(store.doc.tracks.find((t) => t.kind === "drum")!.groupId).toBeUndefined();
+  });
+
+  it("honest failures: unknown group, unknown group name, track not in a group", () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const noGroup = executeMcpTool(ctx, "kyx_routing", { op: "addToGroup", family: "drums", groupName: "Quantum" });
+    expect(noGroup.mutated).toBe(false);
+    expect(noGroup.text).toContain("target group not found");
+
+    const notInGroup = executeMcpTool(ctx, "kyx_routing", { op: "removeFromGroup", family: "drums" });
+    expect(notInGroup.mutated).toBe(false);
+    expect(notInGroup.text).toContain("nothing changed");
+  });
+});
+
+describe("mcp takes — the comp workflow", () => {
+  function withTakes(): ProjectDocument {
+    const doc = datasetDoc();
+    const drum = doc.tracks.find((t) => t.kind === "drum")!;
+    const mkClip = (id: string, takeId: string) => ({
+      id,
+      trackId: drum.id,
+      bufferId: `buf-${takeId}`,
+      takeGroupId: "tg-1",
+      takeId,
+      startBar: 0,
+      lengthBars: 4,
+      offsetSec: 0,
+      trimStart: 0,
+      trimEnd: 0,
+      gain: 1,
+      fadeIn: 0,
+      fadeOut: 0,
+      stretchRate: 1,
+      reverse: false,
+    });
+    return {
+      ...doc,
+      arrangement: {
+        ...doc.arrangement,
+        audioClips: [mkClip("ac-t1", "take-1"), mkClip("ac-t2", "take-2")],
+        takeGroups: [{ id: "tg-1", trackId: drum.id, activeTakeId: "take-1" }],
+      },
+    } as ProjectDocument;
+  }
+
+  it("list shows the active take and the alternatives with a structured envelope", () => {
+    const result = executeMcpTool(makeCtx(withTakes()), "kyx_takes", { op: "list" });
+    expect(result.mutated).toBe(false);
+    expect(result.text).toMatch(
+      /Drums \(group id=tg-1\): ACTIVE take take-1 · take take-1 ×1 clip\(s\), take take-2 ×1 clip\(s\)/,
+    );
+    const data = result.data as { groups: Array<{ id: string; activeTakeId: string; takes: Record<string, number> }> };
+    expect(data.groups[0].activeTakeId).toBe("take-1");
+    expect(data.groups[0].takes["take-2"]).toBe(1);
+  });
+
+  it("activate is the comp pick — reversible, validated, honest on no-ops", () => {
+    const doc = withTakes();
+    const ctx = makeCtx(doc);
+    const activated = executeMcpTool(ctx, "kyx_takes", { op: "activate", groupId: "tg-1", takeId: "take-2" });
+    expect(activated.mutated).toBe(true);
+    expect(activated.text).toContain("take take-2 is now ACTIVE");
+    expect(ctx.getDoc().arrangement.takeGroups![0].activeTakeId).toBe("take-2");
+    ctx.undo();
+    expect(ctx.getDoc().arrangement.takeGroups![0].activeTakeId).toBe("take-1");
+
+    const already = executeMcpTool(ctx, "kyx_takes", { op: "activate", groupId: "tg-1", takeId: "take-1" });
+    expect(already.mutated).toBe(false);
+    expect(already.text).toContain("already the active comp");
+
+    const unknown = executeMcpTool(ctx, "kyx_takes", { op: "activate", groupId: "tg-1", takeId: "take-quantum" });
+    expect(unknown.isError).toBe(true);
+    expect(unknown.text).toContain("take op failed");
+  });
+
+  it("deleteTake (D4) removes an inactive take's clips; the ACTIVE take is protected", () => {
+    const locked = makeCtx(withTakes());
+    const gateRefusal = executeMcpTool(locked, "kyx_takes", { op: "deleteTake", groupId: "tg-1", takeId: "take-2" });
+    expect(gateRefusal.text).toContain("locked");
+
+    const doc = withTakes();
+    const ctx = makeCtx(doc, { allowDestructive: true });
+    const activeRefusal = executeMcpTool(ctx, "kyx_takes", { op: "deleteTake", groupId: "tg-1", takeId: "take-1" });
+    expect(activeRefusal.isError).toBe(true);
+    expect(activeRefusal.text).toContain("ACTIVE comp");
+
+    executeMcpTool(ctx, "kyx_takes", { op: "deleteTake", groupId: "tg-1", takeId: "take-2" });
+    expect(ctx.getDoc().arrangement.audioClips!.some((clip) => clip.takeId === "take-2")).toBe(false);
+    expect(ctx.getDoc().arrangement.takeGroups).toHaveLength(1);
+  });
+
+  it("prunes the group when the deleted take was the last one", () => {
+    const doc = withTakes();
+    const ctx = makeCtx(doc, { allowDestructive: true });
+    executeMcpTool(ctx, "kyx_takes", { op: "activate", groupId: "tg-1", takeId: "take-2" });
+    executeMcpTool(ctx, "kyx_takes", { op: "deleteTake", groupId: "tg-1", takeId: "take-1" });
+    expect(ctx.getDoc().arrangement.audioClips!.filter((clip) => clip.takeGroupId === "tg-1")).toHaveLength(1);
+    expect(ctx.getDoc().arrangement.takeGroups).toHaveLength(1);
+  });
+});
+
+describe("mcp fx instances — per-instance ops + chain reorder", () => {
+  it("instance scopes remove to ONE instance; without it all are removed", () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store, { allowDestructive: true });
+    executeMcpTool(ctx, "kyx_fx", { effect: "delay", family: "lead", action: "more" });
+    store.execute(addEffectToTracks(store.doc, ["track-lead-x"], "delay")); // a second instance
+    executeMcpTool(ctx, "kyx_plugin_param", {
+      op: "set",
+      trackId: "track-lead-x",
+      effect: "delay",
+      instance: 2,
+      param: "mix",
+      value: 0.9,
+    });
+    expect(
+      store.doc.tracks.find((t) => t.id === "track-lead-x")!.effects.filter((fx) => fx.type === "delay"),
+    ).toHaveLength(2);
+
+    const one = executeMcpTool(ctx, "kyx_fx", { action: "remove", effect: "delay", family: "lead", instance: 1 });
+    expect(one.mutated).toBe(true);
+    expect(one.text).toContain("removed delay#1");
+    const afterOne = store.doc.tracks.find((t) => t.id === "track-lead-x")!;
+    expect(afterOne.effects.filter((fx) => fx.type === "delay")).toHaveLength(1);
+    expect(afterOne.effects.find((fx) => fx.type === "delay")!.params.mix).toBeCloseTo(0.9, 2); // instance #2 survived
+
+    executeMcpTool(ctx, "kyx_fx", { action: "remove", effect: "delay", family: "lead" });
+    expect(
+      store.doc.tracks.find((t) => t.id === "track-lead-x")!.effects.filter((fx) => fx.type === "delay"),
+    ).toHaveLength(0);
+  });
+
+  it("instance scopes bypass/enable; already-matching state is an honest no-op", () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    executeMcpTool(ctx, "kyx_fx", { effect: "reverb", family: "lead", action: "more" });
+    store.execute(addEffectToTracks(store.doc, ["track-lead-x"], "reverb"));
+    const bypassed = executeMcpTool(ctx, "kyx_fx", { action: "bypass", effect: "reverb", family: "lead", instance: 1 });
+    expect(bypassed.mutated).toBe(true);
+    expect(bypassed.text).toContain("reverb#1 bypassed");
+    expect(store.doc.tracks.find((t) => t.id === "track-lead-x")!.effects[0].bypassed).toBe(true);
+
+    const again = executeMcpTool(ctx, "kyx_fx", { action: "bypass", effect: "reverb", family: "lead", instance: 1 });
+    expect(again.mutated).toBe(false);
+    expect(again.text).toContain("already bypassed");
+
+    const enabled = executeMcpTool(ctx, "kyx_fx", { action: "enable", effect: "reverb", family: "lead", instance: 1 });
+    expect(enabled.mutated).toBe(true);
+    expect(store.doc.tracks.find((t) => t.id === "track-lead-x")!.effects[0].bypassed).toBe(false);
+  });
+
+  it("reorder moves an instance by direction and by absolute position", () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    executeMcpTool(ctx, "kyx_fx", { effect: "reverb", family: "lead", action: "more" });
+    executeMcpTool(ctx, "kyx_fx", { effect: "delay", family: "lead", action: "more" });
+    const earlier = executeMcpTool(ctx, "kyx_fx", {
+      action: "reorder",
+      effect: "delay",
+      family: "lead",
+      direction: "earlier",
+    });
+    expect(earlier.mutated).toBe(true);
+    expect(store.doc.tracks.find((t) => t.id === "track-lead-x")!.effects.map((fx) => fx.type)).toEqual([
+      "delay",
+      "reverb",
+    ]);
+
+    const positioned = executeMcpTool(ctx, "kyx_fx", {
+      action: "reorder",
+      effect: "reverb",
+      family: "lead",
+      position: 1,
+    });
+    expect(positioned.mutated).toBe(true);
+    expect(store.doc.tracks.find((t) => t.id === "track-lead-x")!.effects.map((fx) => fx.type)).toEqual([
+      "reverb",
+      "delay",
+    ]);
+
+    const missing = executeMcpTool(ctx, "kyx_fx", {
+      action: "reorder",
+      effect: "chorus",
+      family: "lead",
+      direction: "later",
+    });
+    expect(missing.isError).toBe(true);
+    expect(missing.text).toContain("no chorus instance");
+  });
+});
+
+// ─── FINISHING WAVE — export options, send buses, take delete, marker rename ─
+
+describe("mcp finishing — export render options", () => {
+  it("the async executor passes sampleRate/bitDepth/stems through the request", async () => {
+    const ctx = makeCtx(datasetDoc());
+    const seen: Array<Record<string, unknown>> = [];
+    const observing: McpToolContext = {
+      ...ctx,
+      export: async (request) => {
+        seen.push(request as unknown as Record<string, unknown>);
+        return "done";
+      },
+    };
+    await executeMcpToolAsync(observing, "kyx_export", { format: "wav", sampleRate: 48000, bitDepth: 24 });
+    expect(seen[0]).toEqual({ format: "wav", sampleRate: 48000, bitDepth: 24 });
+
+    await executeMcpToolAsync(observing, "kyx_export", { format: "wav", stems: "all" });
+    expect(seen[1]).toEqual({ format: "wav", stems: "all" });
+
+    await executeMcpToolAsync(observing, "kyx_export", { format: "mp3", stems: "quantum", sampleRate: 123 });
+    expect(seen[2]).toEqual({ format: "mp3" });
+  });
+});
+
+describe("mcp finishing — send buses over kyx_routing", () => {
+  it("createReturn + setSend + setReturnGain land real values with read-backs", () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const created = executeMcpTool(ctx, "kyx_routing", { op: "createReturn", name: "Plate" });
+    expect(created.mutated).toBe(true);
+    expect(created.text).toContain('created return bus "Plate"');
+    const plate = store.doc.returns.find((r) => r.name === "Plate")!;
+    expect(plate).toBeTruthy();
+
+    const send = executeMcpTool(ctx, "kyx_routing", {
+      op: "setSend",
+      family: "drums",
+      returnName: "Plate",
+      level: 0.6,
+    });
+    expect(send.mutated).toBe(true);
+    expect(send.text).toMatch(/Drums → Plate 0\.6/);
+    const drums = store.doc.tracks.find((t) => t.kind === "drum")!;
+    expect(drums.sends[plate.id]).toBe(0.6);
+
+    const gain = executeMcpTool(ctx, "kyx_routing", { op: "setReturnGain", returnName: "Plate", gain: 1.2 });
+    expect(gain.mutated).toBe(true);
+    expect(store.doc.returns.find((r) => r.name === "Plate")!.gain).toBe(1.2);
+  });
+
+  it("clamps and reports honestly", () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const noLevel = executeMcpTool(ctx, "kyx_routing", { op: "setSend", family: "drums", returnName: "Reverb" });
+    expect(noLevel.mutated).toBe(false);
+    expect(noLevel.text).toContain("setSend needs level");
+
+    const badReturn = executeMcpTool(ctx, "kyx_routing", { op: "setReturnGain", returnName: "Quantum", gain: 1 });
+    expect(badReturn.mutated).toBe(false);
+    expect(badReturn.text).toContain("no return bus matches");
+  });
+});
+
+describe("mcp finishing — marker rename", () => {
+  it("renames the marker nearest the anchor bar", () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    executeMcpTool(ctx, "kyx_markers", { op: "add", bar: 5, name: "Old Name" });
+    const renamed = executeMcpTool(ctx, "kyx_markers", { op: "rename", bar: 5, name: "Drop Start" });
+    expect(renamed.mutated).toBe(true);
+    expect(renamed.text).toContain('renamed marker "Old Name" → "Drop Start"');
+    expect(store.doc.markers[0].name).toBe("Drop Start");
+
+    const noName = executeMcpTool(ctx, "kyx_markers", { op: "rename", bar: 5 });
+    expect(noName.mutated).toBe(false);
+    expect(noName.text).toContain("rename needs a name");
   });
 });
