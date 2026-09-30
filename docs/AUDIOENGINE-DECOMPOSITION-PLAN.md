@@ -1,6 +1,6 @@
 # AudioEngine decomposition plan (Robustness Wave 4)
 
-> Status: IN PROGRESS — **4a MeteringRig SHIPPED** (`d81090f1`; AudioEngine 6140 → 5905) + **4b MasterChain SHIPPED** (absorbed `d4659fad`/`00bb9811`; AudioEngine → 5 134, MasterChain 841, liveContext helper). Next: 4c PreviewDeck. Owner: pro-DAW robustness campaign (Waves 1–3 shipped:
+> Status: IN PROGRESS — **4a MeteringRig SHIPPED** (`d81090f1`; AudioEngine 6140 → 5905) + **4b MasterChain SHIPPED** (absorbed `d4659fad`/`00bb9811`; AudioEngine → 5 134, MasterChain 841, liveContext helper). **4c PreviewDeck SHIPPED** (`4d8bb123`; AudioEngine → 4 823, PreviewDeck 350, declick 66). Next: 4d AutomationBridge. Owner: pro-DAW robustness campaign (Waves 1–3 shipped:
 > crash journal, PDC export parity, audio-clock scheduler driver).
 > Measured against the working tree on 2026-09-29 (commit `0bb5670f` era).
 
@@ -88,7 +88,7 @@ destination) and the most merge-contested region of the file (three sessions
 touched it in this campaign). Gate: browser-checks master section (TILT/TRIM,
 limiter, matchEq, M/S) + offline `bypassMasterChainForOfflineRender` parity.
 
-### Wave 4c — PreviewDeck (risk: medium-low)
+### Wave 4c — PreviewDeck (risk: medium-low) — SHIPPED `4d8bb123` (audition deck + declick.ts; graph-param previews deliberately stayed)
 
 All preview paths + `previewVoices` + effect-intent preview session. Fully
 lifecycle-shaped (start/stop/dispose), already partially mirrored by
