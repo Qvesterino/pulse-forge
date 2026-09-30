@@ -173,7 +173,7 @@ describe("WAV BWF bext chunk (EBU Tech 3285)", () => {
     expect(description).toBe(("Nechaj to ??bim ?? ? " + "x".repeat(300)).slice(0, 256));
     // The field is exactly full (256 bytes) — the next byte is the originator,
     // proving the writer never spills past the spec width.
-    expect(readFixed(view, body + 256, 32)).toBe("KYX (Pulse Forge)");
+    expect(readFixed(view, body + 256, 32)).toBe("KYX");
   });
 
   it("coding history is CRLF-normalized, chunk stays word-aligned, audio bytes unchanged", () => {
@@ -219,7 +219,7 @@ describe("WAV BWF bext chunk (EBU Tech 3285)", () => {
 
   it("createBextMetadata fills KYX defaults and formats the EBU clock", () => {
     const meta = createBextMetadata({ description: "d", date: FIXED_DATE });
-    expect(meta.originator).toBe("KYX (Pulse Forge)");
+    expect(meta.originator).toBe("KYX");
     expect(meta.originationDate).toBe("2026:09:26");
     expect(meta.originationTime).toBe("13:37:42");
     expect(meta.timeReference).toBe(0);

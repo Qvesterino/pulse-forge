@@ -100,11 +100,14 @@ describe("master finish chain", () => {
     engine.useContext(mockCtx() as unknown as BaseAudioContext);
     engine.setProject(masterDoc(true) as never);
     const anyEngine = engine as unknown as {
-      masterDc: { type: string; frequency: { value: number }; Q: { value: number } } | null;
+      masterChain: {
+        masterDc: { type: string; frequency: { value: number }; Q: { value: number } } | null;
+        masterGlueNative: { threshold: { value: number }; ratio: { value: number } } | null;
+      };
     };
-    expect(anyEngine.masterDc?.type).toBe("highpass");
-    expect(anyEngine.masterDc?.frequency.value).toBe(12);
-    expect(anyEngine.masterDc?.Q.value).toBe(0.5);
+    expect(anyEngine.masterChain.masterDc?.type).toBe("highpass");
+    expect(anyEngine.masterChain.masterDc?.frequency.value).toBe(12);
+    expect(anyEngine.masterChain.masterDc?.Q.value).toBe(0.5);
   });
 
   it("glue defaults ON in a fresh master config", () => {
@@ -116,17 +119,15 @@ describe("master finish chain", () => {
     const engine = new AudioEngine();
     engine.useContext(mockCtx() as unknown as BaseAudioContext);
     engine.setProject(masterDoc(true) as never);
-    const anyEngine = engine as unknown as {
-      masterGlueNative: { threshold: { value: number }; ratio: { value: number } } | null;
-    };
+    const anyEngine = engine as unknown as {};
     // No AudioWorklet in the mock → native fallback with glue settings.
-    expect(anyEngine.masterGlueNative?.threshold.value).toBe(-6);
-    expect(anyEngine.masterGlueNative?.ratio.value).toBe(2);
+    expect(anyEngine.masterChain.masterGlueNative?.threshold.value).toBe(-6);
+    expect(anyEngine.masterChain.masterGlueNative?.ratio.value).toBe(2);
     engine.setProject(masterDoc(false) as never);
     // setProject defers the graph sync through projectQueue when a previous
     // body is still settling (one microtask) — flush before asserting.
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(anyEngine.masterGlueNative?.threshold.value).toBe(0);
-    expect(anyEngine.masterGlueNative?.ratio.value).toBe(1);
+    expect(anyEngine.masterChain.masterGlueNative?.threshold.value).toBe(0);
+    expect(anyEngine.masterChain.masterGlueNative?.ratio.value).toBe(1);
   });
 });

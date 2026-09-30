@@ -10,7 +10,8 @@ import { Transport } from "../src/transport/Transport";
 
 /** Regression coverage for the final release-hardening pass. */
 
-const AUDIO_ENGINE_PATH = resolve(process.cwd(), "src/audio-engine/AudioEngine.ts");
+// Wave 4f: choke + addDrumVoice moved verbatim to TriggerEngine.
+const AUDIO_ENGINE_PATH = resolve(process.cwd(), "src/audio-engine/triggerEngine.ts");
 const SCHEDULER_PATH = resolve(process.cwd(), "src/scheduler/Scheduler.ts");
 const PROJECT_STORE_PATH = resolve(process.cwd(), "src/store/ProjectStore.ts");
 
@@ -90,10 +91,11 @@ describe("release hardening — AudioEngine lifecycle", () => {
   });
 
   it("wires role conversion cleanup into syncProject and snapshots voices during choke", () => {
-    const source = readFile(AUDIO_ENGINE_PATH);
-    const syncProject = sliceFunction(source, /syncProject\(doc:\s*ProjectDocument\)/);
+    // Wave 4f: syncProject stays engine-side; choke moved to TriggerEngine.
+    const engineSource = readFile(resolve(process.cwd(), "src/audio-engine/AudioEngine.ts"));
+    const syncProject = sliceFunction(engineSource, /syncProject\(doc:\s*ProjectDocument\)/);
     expect(syncProject).toMatch(/track\.kind\s*!==\s*"instrument"\)\s*this\.disposeInstrumentRuntime\(track\.id\)/);
-    const choke = sliceFunction(source, /choke\(trackId:\s*string/);
+    const choke = sliceFunction(readFile(AUDIO_ENGINE_PATH), /choke\(trackId:\s*string/);
     expect(choke).toMatch(/for\s*\(\s*const\s+voice\s+of\s+\[\.\.\.this\.voices\]/);
     // Frozen tracks rebuild an EMPTY effect chain (the freeze render already
     // contains the FX). The call gained an ownerId first argument when
@@ -103,7 +105,7 @@ describe("release hardening — AudioEngine lifecycle", () => {
 
   it("retires only the excess one-shot voices when the ceiling is reached", () => {
     const source = readFile(AUDIO_ENGINE_PATH);
-    const addDrumVoice = sliceFunction(source, /addDrumVoice\(voice:\s*Voice\)/);
+    const addDrumVoice = sliceFunction(source, /addDrumVoice\(voice:\s*TriggerVoice\)/);
     expect(addDrumVoice, "addDrumVoice not found in AudioEngine.ts").not.toBe("");
     expect(addDrumVoice).toMatch(/let\s+voicesToRetire\s*=\s*this\.voices\.size\s*-\s*MAX_ACTIVE_DRUM_VOICES/);
     expect(addDrumVoice).toMatch(/if\s*\(voicesToRetire--\s*<=\s*0\)\s*break/);

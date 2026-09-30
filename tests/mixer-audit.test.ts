@@ -176,7 +176,10 @@ describe("mixer signal-flow audit — preview/teardown contracts", () => {
       src.indexOf("private disposeTrackNodes("),
       src.indexOf("private disposeInstrumentRuntime("),
     );
-    expect(disposeBody, "disposeTrackNodes must call disposeFrozenSource").toMatch(/this\.disposeFrozenSource\(id\)/);
+    // Wave 4e: frozen sources live in WarpManager (de-privatized there).
+    expect(disposeBody, "disposeTrackNodes must call disposeFrozenSource").toMatch(
+      /this\.warpManager\.disposeFrozenSource\(id\)/,
+    );
   });
 
   it("send sliders are live-preview wired like gain/pan (no silent-until-release mixer control)", () => {

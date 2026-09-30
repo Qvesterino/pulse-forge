@@ -486,16 +486,21 @@ describe("master tilt EQ consumption (sound-quality wave 3)", () => {
   });
 
   it("engine source pins: shelf pair wired DC→low→high→glue, clamped ±4 in applyMasterConfig", () => {
-    const source = readFileSync(resolve(process.cwd(), "src/audio-engine/AudioEngine.ts"), "utf8");
+    // Wave 4b: the master chain (incl. applyMasterConfig + tilt shelves) lives
+    // in masterChain.ts — the wiring identifiers are verbatim.
+    const source = readFileSync(resolve(process.cwd(), "src/audio-engine/masterChain.ts"), "utf8");
     expect(source).toMatch(/masterTiltLow\.type = "lowshelf"/);
     expect(source).toMatch(/masterTiltLow\.frequency\.value = 150/);
     expect(source).toMatch(/masterTiltHigh\.type = "highshelf"/);
     expect(source).toMatch(/masterTiltHigh\.frequency\.value = 5000/);
     // Complementary wiring order (tone shapes the glue/limiter detection).
-    const wiring = source.indexOf("this.masterDc!.connect(this.masterTiltLow!)");
+    // The match-EQ wave inserted corrective stages between DC and tilt
+    // (correction first, taste last) — the pinned invariant is tilt BEFORE
+    // glue, whatever sits upstream of the shelves.
+    const tiltPair = source.indexOf("this.masterTiltLow!.connect(this.masterTiltHigh!)");
     const glueIn = source.indexOf("this.masterTiltHigh!.connect(this.masterGlue!.input)");
-    expect(wiring).toBeGreaterThan(0);
-    expect(glueIn).toBeGreaterThan(wiring);
+    expect(tiltPair).toBeGreaterThan(0);
+    expect(glueIn).toBeGreaterThan(tiltPair);
     // Clamp keeps a bad document from slamming the master.
     expect(source).toMatch(/Math\.min\(4, Math\.max\(-4, config\.tiltDb \?\? 0\)\)/);
   });
@@ -545,8 +550,11 @@ describe("genre song references — per-genre loudness trim (sound-quality wave 
   });
 
   it("engine source pin: trim rides multiplicatively on master gain, clamped ±12", () => {
-    const source = readFileSync(resolve(process.cwd(), "src/audio-engine/AudioEngine.ts"), "utf8");
-    const apply = source.slice(source.indexOf("private applyMasterConfig"), source.indexOf("if (this.masterTiltLow"));
+    const source = readFileSync(resolve(process.cwd(), "src/audio-engine/masterChain.ts"), "utf8");
+    const apply = source.slice(
+      source.indexOf("applyMasterConfig(config: MasterConfig)"),
+      source.indexOf("if (this.masterTiltLow"),
+    );
     expect(apply).toContain("const trimRaw = config.loudnessTrimDb");
     expect(apply).toMatch(/typeof trimRaw === "number" && Number\.isFinite\(trimRaw\)/);
     expect(apply).toMatch(/Math\.min\(12, Math\.max\(-12,/);

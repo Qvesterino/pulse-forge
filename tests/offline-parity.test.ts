@@ -60,7 +60,9 @@ describe("offline render / live playback — shared engine surface", () => {
     // different smoothing, or different param ramps would silently
     // diverge live from export). The structural fix is to make the
     // offline path call the same function.
-    const engine = readFileSync(resolve(process.cwd(), "src/audio-engine/AudioEngine.ts"), "utf8");
+    // Wave 4d: the modulator layer lives in AutomationBridge (verbatim move);
+    // the engine keeps a one-line delegate.
+    const engine = readFileSync(resolve(process.cwd(), "src/audio-engine/automationBridge.ts"), "utf8");
     // Find the `scheduleModulatorsOffline(` method and verify the
     // first ~300 chars after the opening paren (well inside the
     // method body) reference `this.applyModulators`. The body is a

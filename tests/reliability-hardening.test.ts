@@ -371,6 +371,9 @@ describe("renderer — export content correctness", () => {
 
 const SRC = {
   engine: resolve(process.cwd(), "src/audio-engine/AudioEngine.ts"),
+  trigger: resolve(process.cwd(), "src/audio-engine/triggerEngine.ts"),
+  deck: resolve(process.cwd(), "src/audio-engine/previewDeck.ts"),
+  warp: resolve(process.cwd(), "src/audio-engine/warpManager.ts"),
   renderer: resolve(process.cwd(), "src/rendering/renderer.ts"),
   bank: resolve(process.cwd(), "src/sample-library/factory.ts"),
   services: resolve(process.cwd(), "src/services.ts"),
@@ -463,7 +466,7 @@ describe("AudioEngine — hardening pins (source-grep)", () => {
   });
 
   it("triggerAudioClip disconnects the un-started primary source on the warp-segment path", () => {
-    const source = read(SRC.engine);
+    const source = read(SRC.trigger);
     const warp = source.indexOf("if (warpSegs) {");
     expect(warp).toBeGreaterThan(0);
     const segmentStart = source.indexOf("const segSource = ctx.createBufferSource()", warp);
@@ -472,7 +475,7 @@ describe("AudioEngine — hardening pins (source-grep)", () => {
   });
 
   it("previewAssetSynced tracks its source as a preview voice (cancellable by stopPreview/panic)", () => {
-    const body = functionBody(read(SRC.engine), /previewAssetSynced\(/);
+    const body = functionBody(read(SRC.deck), /previewAssetSynced\(/);
     expect(body).toContain("previewVoices.add(voice)");
   });
 });
@@ -561,8 +564,9 @@ describe("Resource lifecycle (GOAL 10)", () => {
     expect(source).toContain("if (!liveReturnIds.has(id)) this.disposeReturnNodes(id, nodes);");
     expect(source).toContain("if (!liveGroupIds.has(id)) this.disposeGroupNodes(id, nodes);");
     expect(source).toContain("private disposeInstrumentRuntime(");
-    // A deleted frozen track stops its playing source immediately.
-    expect(source).toContain("private disposeFrozenSource(");
+    // A deleted frozen track stops its playing source immediately. (Wave 4e:
+    // frozen playback moved to WarpManager — de-privatized there.)
+    expect(read(SRC.warp)).toContain("disposeFrozenSource(");
   });
 
   it("fxeq preset download revokes lazily and survives a browser without revokeObjectURL", () => {

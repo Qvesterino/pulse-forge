@@ -81,8 +81,11 @@ describe("audit 12 — engine lifecycle (context swap hygiene)", () => {
       engine.indexOf("useContext(ctx: BaseAudioContext): void"),
       engine.indexOf("useContext(ctx: BaseAudioContext): void") + 16_000,
     );
-    expect(ctxSwap).toContain("this.warpCache.clear();");
-    expect(ctxSwap).toContain("this.warpInflight.clear();");
-    expect(ctxSwap).toContain("this.warpEpoch++;");
+    // Wave 4e: warp caches live in WarpManager — the swap invalidates
+    // through it (clear + inflight + epoch bump in one call).
+    expect(ctxSwap).toContain("this.warpManager.invalidateForContextSwap();");
+    // In-flight claims + epoch bump ride the same manager call.
+    expect(ctxSwap).toContain("this.warpManager.invalidateForContextSwap();");
+    expect(ctxSwap).toContain("this.warpManager.invalidateForContextSwap();");
   });
 });
