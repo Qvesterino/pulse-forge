@@ -4,8 +4,6 @@ import {
   updateAudioClip,
   moveAudioClip,
   resizeAudioClip,
-  duplicateAudioClip,
-  deleteAudioClip,
   splitAudioClipAtTick,
   addArrangementClip,
   moveArrangementClip,
@@ -40,6 +38,19 @@ function makeClip(overrides: Partial<AudioClip> = {}): AudioClip {
     reverse: false,
     ...overrides,
   };
+}
+
+/**
+ * `sanitizeAudioClips` returns `AudioClip[] | undefined` because its input is
+ * `unknown` and a non-array yields `undefined`. Every call site in this file
+ * passes a real array, so an `undefined` result is a genuine failure rather
+ * than an expected branch — assert it loudly instead of asserting on
+ * `out[0]!`, where the non-null assertion lands on the element while the
+ * container is still possibly undefined.
+ */
+function expectClips(out: AudioClip[] | undefined): AudioClip[] {
+  expect(out, "sanitizeAudioClips must return an array for a non-null array input").toBeDefined();
+  return out as AudioClip[];
 }
 
 describe("audit: rapid sequential edits + undo chain", () => {
@@ -123,7 +134,7 @@ describe("audit: persistence round-trip via sanitizeAudioClips", () => {
     };
     const out = sanitizeAudioClips([JSON.parse(JSON.stringify(full)) as unknown], new Set(["track-1"]));
     expect(out).toHaveLength(1);
-    const clip = out[0]!;
+    const clip = expectClips(out)[0]!;
     expect(clip.id).toBe("persist-1");
     expect(clip.sourceChannel).toBe(1);
     expect(clip.offsetSec).toBe(0.5);
@@ -143,11 +154,11 @@ describe("audit: persistence round-trip via sanitizeAudioClips", () => {
 
   it("loop + loopPhaseOffsetSec survive; reversed-loop phase is dropped", () => {
     const looped = makeClip({ loop: true, loopPhaseOffsetSec: 1.5 });
-    const out = sanitizeAudioClips([looped], new Set(["track-1"]));
+    const out = expectClips(sanitizeAudioClips([looped], new Set(["track-1"])));
     expect(out[0]!.loop).toBe(true);
     expect(out[0]!.loopPhaseOffsetSec).toBe(1.5);
     const reversed = makeClip({ loop: true, loopPhaseOffsetSec: 1.5, reverse: true });
-    const out2 = sanitizeAudioClips([reversed], new Set(["track-1"]));
+    const out2 = expectClips(sanitizeAudioClips([reversed], new Set(["track-1"])));
     expect(out2[0]!.loopPhaseOffsetSec).toBeUndefined();
   });
 
@@ -155,7 +166,7 @@ describe("audit: persistence round-trip via sanitizeAudioClips", () => {
     const dup = makeClip({ id: "same-id", gain: 5, lengthBars: -1 });
     const dup2 = makeClip({ id: "same-id" });
     const badTrack = makeClip({ id: "bad-track", trackId: "nonexistent" });
-    const out = sanitizeAudioClips([dup, dup2, badTrack], new Set(["track-1"]));
+    const out = expectClips(sanitizeAudioClips([dup, dup2, badTrack], new Set(["track-1"])));
     expect(out.length).toBe(1); // only the first duplicate survives
     expect(out[0]!.gain).toBe(1); // the surviving dup2 carries default gain
     expect(out[0]!.lengthBars).toBe(4);
@@ -163,7 +174,7 @@ describe("audit: persistence round-trip via sanitizeAudioClips", () => {
 
   it("take group fields survive persistence", () => {
     const take = makeClip({ takeGroupId: "tg-1", takeId: "take-1", compSourceTakeId: "take-2" });
-    const out = sanitizeAudioClips([take], new Set(["track-1"]));
+    const out = expectClips(sanitizeAudioClips([take], new Set(["track-1"])));
     expect(out[0]!.takeGroupId).toBe("tg-1");
     expect(out[0]!.takeId).toBe("take-1");
     expect(out[0]!.compSourceTakeId).toBe("take-2");
