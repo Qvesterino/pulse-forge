@@ -15,10 +15,27 @@
  *    happens outside the command layer
  */
 const { createServer } = require("node:http");
-const { MCP_TOOL_DEFS } = require("./mcp-tool-defs.cjs");
+const { MCP_TOOL_DEFS, MCP_RESOURCE_DEFS } = require("./mcp-tool-defs.cjs");
 
 const MAX_BODY_BYTES = 1_000_000;
 const RPC_ERRORS = { parse: -32700, invalidRequest: -32600, methodNotFound: -32601 };
+const SUPPORTED_PROTOCOL_VERSIONS = ["2025-03-26"];
+const SERVER_INSTRUCTIONS =
+  "KYX is a browser DAW whose MCP surface executes through the deterministic " +
+  "command layer: every mutation is ONE undo step and returns a verification " +
+  "read-back of the resulting state. Read before acting (kyx_state or the " +
+  "kyx://project/* resources), prefer the structured tools over free-text " +
+  "kyx_intent, and expect honest refusals: generation-by-description is " +
+  "refused (candidates need in-app auditioning — use kyx_generate) and " +
+  "destructive ops stay locked until the user allows them in the KYX window.";
+
+/** MCP initialize version negotiation: echo the client's supported version,
+ * otherwise answer with our latest. */
+function negotiateProtocolVersion(requested) {
+  return typeof requested === "string" && SUPPORTED_PROTOCOL_VERSIONS.includes(requested)
+    ? requested
+    : SUPPORTED_PROTOCOL_VERSIONS[0];
+}
 
 function constantTimeEqual(a, b) {
   const left = Buffer.from(String(a ?? ""));
@@ -85,7 +102,12 @@ function createMcpBridgeServer({ token, executeTool, port = 0 }) {
         res.end(JSON.stringify(rpcError(null, RPC_ERRORS.parse, "Parse error")));
         return;
       }
-      if (rpc == null || typeof rpc !== "object" || rpc.jsonrpc !== "2.0" || typeof rpc.method !== "string") {
+      const isBatch = Array.isArray(rpc);
+      if (
+        rpc == null ||
+        typeof rpc !== "object" ||
+        (!isBatch && (rpc.jsonrpc !== "2.0" || typeof rpc.method !== "string"))
+      ) {
         res.writeHead(400, { "content-type": "application/json" });
         res.end(JSON.stringify(rpcError(rpc?.id ?? null, RPC_ERRORS.invalidRequest, "Invalid Request")));
         return;
@@ -109,38 +131,75 @@ function createMcpBridgeServer({ token, executeTool, port = 0 }) {
   });
 
   async function handleRpc(rpc) {
+    // JSON-RPC batch (2025-03-26): fan out; notifications yield no entry.
+    if (Array.isArray(rpc)) {
+      const responses = [];
+      for (const item of rpc) {
+        const response = await handleSingleRpc(item);
+        if (response !== undefined) responses.push(response);
+      }
+      return responses;
+    }
+    return handleSingleRpc(rpc);
+  }
+
+  async function handleSingleRpc(rpc) {
     if (rpc.method === "initialize") {
       return rpcResult(rpc.id ?? null, {
-        protocolVersion: "2025-03-26",
-        capabilities: { tools: {} },
+        protocolVersion: negotiateProtocolVersion(rpc.params?.protocolVersion),
+        capabilities: { tools: {}, resources: {} },
         serverInfo: { name: "kyx-mcp-bridge", version: "1.0.0" },
+        instructions: SERVER_INSTRUCTIONS,
       });
     }
     if (rpc.method === "notifications/initialized") return undefined;
     if (rpc.method === "ping") return rpcResult(rpc.id ?? null, {});
     if (rpc.method === "tools/list") return rpcResult(rpc.id ?? null, { tools: MCP_TOOL_DEFS });
+    if (rpc.method === "resources/list") return rpcResult(rpc.id ?? null, { resources: MCP_RESOURCE_DEFS });
+    if (rpc.method === "resources/read") {
+      const uri = String(rpc.params?.uri ?? "");
+      if (!MCP_RESOURCE_DEFS.some((resource) => resource.uri === uri)) {
+        return rpcError(rpc.id ?? null, -32602, `unknown resource: ${uri}`);
+      }
+      return callToolWrapped("__kyx_resource", { uri }, rpc.id ?? null, (payload) =>
+        rpcResult(rpc.id ?? null, {
+          contents: [{ uri, mimeType: "text/plain", text: payload }],
+        }),
+      );
+    }
     if (rpc.method === "tools/call") {
       const name = typeof rpc.params?.name === "string" ? rpc.params.name : "";
       const args = rpc.params?.arguments ?? {};
-      if (typeof toolExecutor !== "function") {
-        return rpcResult(rpc.id ?? null, {
-          content: [{ type: "text", text: "no executor attached" }],
-          isError: true,
-        });
+      if (!MCP_TOOL_DEFS.some((tool) => tool.name === name)) {
+        return rpcError(rpc.id ?? null, -32602, `unknown tool: ${name}`);
       }
-      try {
-        const result = await toolExecutor(name, args);
-        const payload = { content: [{ type: "text", text: result?.text ?? "" }] };
-        if (result?.isError === true) payload.isError = true;
-        return rpcResult(rpc.id ?? null, payload);
-      } catch (error) {
-        return rpcResult(rpc.id ?? null, {
-          content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
-          isError: true,
-        });
-      }
+      return callToolWrapped(name, args, rpc.id ?? null);
     }
     return rpcError(rpc.id ?? null, RPC_ERRORS.methodNotFound, `method not found: ${rpc.method}`);
+  }
+
+  async function callToolWrapped(name, args, id, mapResult) {
+    if (typeof toolExecutor !== "function") {
+      return rpcResult(id, {
+        content: [{ type: "text", text: "no executor attached" }],
+        isError: true,
+      });
+    }
+    try {
+      const result = await toolExecutor(name, args);
+      if (typeof mapResult === "function") return mapResult(result?.text ?? "");
+      const payload = { content: [{ type: "text", text: result?.text ?? "" }] };
+      if (result?.isError === true) payload.isError = true;
+      return rpcResult(id, payload);
+    } catch (error) {
+      if (typeof mapResult === "function") {
+        return rpcError(id, -32603, error instanceof Error ? error.message : String(error));
+      }
+      return rpcResult(id, {
+        content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
+        isError: true,
+      });
+    }
   }
 
   return {

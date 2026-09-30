@@ -480,23 +480,145 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_clips",
     description:
-      "Arrangement (scene) clips on the bar timeline: list them all, or " +
-      "move/resize/duplicate/delete the clip COVERING an anchor bar " +
-      "(clips never overlap, so the bar resolves uniquely). duplicate " +
-      "places the copy after the original; delete is destructive-gated. " +
-      "For audio/stem clips on track lanes only the summary is listed in " +
-      "this version.",
+      "Arrangement AND audio clips: list scene clips (with ids + an audio " +
+      "summary), audioList the track-lane waveforms in detail, or edit — " +
+      "scene ops move/resize/duplicate/delete target the clip COVERING an " +
+      "anchor bar (delete D4-gated); audio ops audioMove/audioSplit/" +
+      "audioUpdate (gain, fadeIn, fadeOut, reverse, loop)/audioDelete (D4) " +
+      "address a track (trackId or family) + the anchor bar its clip " +
+      "covers. Values are native (gain linear, fades in seconds).",
     inputSchema: {
       type: "object",
       properties: {
-        op: { type: "string", enum: ["list", "move", "resize", "duplicate", "delete"] },
+        op: {
+          type: "string",
+          enum: [
+            "list",
+            "move",
+            "resize",
+            "duplicate",
+            "delete",
+            "audioList",
+            "audioMove",
+            "audioSplit",
+            "audioUpdate",
+            "audioDelete",
+          ],
+        },
         bar: { type: "integer", minimum: 1, description: "1-based anchor bar — the clip covering it is the target" },
-        toBar: { type: "integer", minimum: 1, description: "For move — 1-based destination start bar" },
+        toBar: { type: "integer", minimum: 1, description: "For move/audioMove — 1-based destination start bar" },
         bars: { type: "integer", minimum: 1, maximum: 64, description: "For resize — new length in bars" },
+        trackId: { type: "string", description: "For audio ops — exact track id" },
+        family: {
+          type: "string",
+          enum: ["drums", "bass", "chords", "lead", "vocal"],
+          description: "For audio ops — family alternative to trackId",
+        },
+        gain: { type: "number", minimum: 0, maximum: 2, description: "For audioUpdate — linear clip gain" },
+        fadeIn: { type: "number", minimum: 0, description: "For audioUpdate — fade-in seconds" },
+        fadeOut: { type: "number", minimum: 0, description: "For audioUpdate — fade-out seconds" },
+        reverse: { type: "boolean", description: "For audioUpdate — play the clip backwards" },
+        loop: { type: "boolean", description: "For audioUpdate — loop the trimmed content over the clip length" },
+      },
+      required: ["op"],
+    },
+  },
+  {
+    name: "kyx_batch",
+    description:
+      "Run up to 10 tool calls in ONE submitted batch: calls: [{tool, args}…" +
+      "]. When the host supports undo frames, every mutation folds into a " +
+      "SINGLE undo entry (the result reports which contract applied); each " +
+      "call still returns its own read-back, and per-call failures never " +
+      "abort the batch. Async tools (kyx_export, kyx_loudness) and nested " +
+      "batches are refused — run those standalone.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        calls: {
+          type: "array",
+          minItems: 1,
+          maxItems: 10,
+          items: {
+            type: "object",
+            properties: {
+              tool: {
+                type: "string",
+                description: "One of the kyx_* tool names (not kyx_batch/kyx_export/kyx_loudness)",
+              },
+              args: { type: "object", description: "The tool's arguments object" },
+            },
+            required: ["tool"],
+          },
+        },
+      },
+      required: ["calls"],
+    },
+  },
+  {
+    name: "kyx_loudness",
+    description:
+      "Loudness loop (render-backed BS.1770): measure reports the CURRENT " +
+      "mix's integrated LUFS read-only; match runs measure→trim→verify " +
+      "toward an explicit targetDb (e.g. −14 for streaming) or a ±nudge in " +
+      "the given direction, landing the trim on the master config in one " +
+      "undo step. Runs in the KYX window; honestly refused where no render " +
+      "context is bound.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["measure", "match"] },
+        targetDb: {
+          type: "number",
+          minimum: -24,
+          maximum: -6,
+          description: "For match — explicit LUFS target (default: −14 ±nudge)",
+        },
+        direction: {
+          type: "string",
+          enum: ["louder", "quieter"],
+          description: "For match without targetDb — nudge direction (default louder)",
+        },
       },
       required: ["op"],
     },
   },
 ];
 
-module.exports = { MCP_TOOL_DEFS };
+/** VERBATIM MIRROR of MCP_RESOURCES in src/mcp/tools.ts — pinned by
+ * tests/desktop-mcp.test.ts. Passive reads; the content is always live
+ * from the KYX window (relayed through the hidden __kyx_resource channel). */
+const MCP_RESOURCE_DEFS = [
+  {
+    uri: "kyx://project/overview",
+    name: "Project overview",
+    description: "Tempo, key, track list, patterns, scenes and the active pattern.",
+    mimeType: "text/plain",
+  },
+  {
+    uri: "kyx://project/pattern",
+    name: "Active pattern grid",
+    description: "Per-family step map of the ACTIVE pattern with mean velocities.",
+    mimeType: "text/plain",
+  },
+  {
+    uri: "kyx://project/mix",
+    name: "Mix state",
+    description: "FX chain of every track (with bypass flags) and the groove settings.",
+    mimeType: "text/plain",
+  },
+  {
+    uri: "kyx://project/arrangement",
+    name: "Arrangement map",
+    description: "Scenes with roles/bars/intensity and the cue markers.",
+    mimeType: "text/plain",
+  },
+  {
+    uri: "kyx://project/history",
+    name: "Undo history",
+    description: "The most recent document commands (undo targets).",
+    mimeType: "text/plain",
+  },
+];
+
+module.exports = { MCP_TOOL_DEFS, MCP_RESOURCE_DEFS };

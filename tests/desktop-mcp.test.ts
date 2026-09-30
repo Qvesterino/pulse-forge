@@ -127,7 +127,7 @@ describe("desktop mcp bridge server (real HTTP)", () => {
     const { server } = bridgeModule.createMcpBridgeServer({
       token: "tok",
       executeTool: async (name, args) => {
-        if (name === "boom") throw new Error("honest failure");
+        if (name === "kyx_state") throw new Error("honest failure");
         return { text: `ran:${name}:${JSON.stringify(args)}`, mutated: true };
       },
     });
@@ -152,12 +152,93 @@ describe("desktop mcp bridge server (real HTTP)", () => {
 
     const bad = await post(
       port,
-      JSON.stringify({ jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "boom", arguments: {} } }),
+      JSON.stringify({ jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "kyx_state", arguments: {} } }),
       { token: "tok" },
     );
     const badBody = JSON.parse(bad.body) as { result: { content: Array<{ text: string }>; isError: boolean } };
     expect(badBody.result.isError).toBe(true);
     expect(badBody.result.content[0]?.text).toBe("honest failure");
+  });
+
+  it("protocol completeness: version negotiation, instructions, resources, batch, unknown-tool -32602", async () => {
+    const { server } = bridgeModule.createMcpBridgeServer({
+      token: "tok",
+      executeTool: async (name, args) => {
+        // The hidden resource channel rides tools/call — the real renderer
+        // answers through readMcpResource; the echo here pins the ROUTING.
+        if (name === "__kyx_resource") return { text: `resource:${String((args as { uri?: string }).uri)}` };
+        return { text: "ok", mutated: false };
+      },
+    });
+    const port = await listenOnEphemeralPort(server);
+    runningServers.push(server);
+
+    // negotiate: supported version echoes; unknown → our latest
+    const init = await post(
+      port,
+      JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-03-26" } }),
+      { token: "tok" },
+    );
+    const initBody = JSON.parse(init.body) as {
+      result: { protocolVersion: string; capabilities: Record<string, unknown>; instructions?: string };
+    };
+    expect(initBody.result.protocolVersion).toBe("2025-03-26");
+    expect(initBody.result.capabilities.resources).toBeDefined();
+    expect(initBody.result.instructions).toContain("deterministic command layer");
+    const future = await post(
+      port,
+      JSON.stringify({ jsonrpc: "2.0", id: 2, method: "initialize", params: { protocolVersion: "2999-01-01" } }),
+      { token: "tok" },
+    );
+    expect((JSON.parse(future.body) as { result: { protocolVersion: string } }).result.protocolVersion).toBe(
+      "2025-03-26",
+    );
+
+    // resources/list advertises the mirror; unknown read → -32602
+    const list = await post(port, JSON.stringify({ jsonrpc: "2.0", id: 3, method: "resources/list" }), {
+      token: "tok",
+    });
+    const resources = (JSON.parse(list.body) as { result: { resources: Array<{ uri: string }> } }).result.resources;
+    expect(resources.map((resource) => resource.uri)).toContain("kyx://project/overview");
+    const unknownRead = await post(
+      port,
+      JSON.stringify({ jsonrpc: "2.0", id: 4, method: "resources/read", params: { uri: "kyx://nope" } }),
+      { token: "tok" },
+    );
+    expect((JSON.parse(unknownRead.body) as { error: { code: number } }).error.code).toBe(-32602);
+
+    // resources/read rides the hidden channel and returns contents[]
+    const read = await post(
+      port,
+      JSON.stringify({ jsonrpc: "2.0", id: 5, method: "resources/read", params: { uri: "kyx://project/pattern" } }),
+      { token: "tok" },
+    );
+    const readBody = JSON.parse(read.body) as { result: { contents: Array<{ uri: string; text: string }> } };
+    expect(readBody.result.contents[0]?.uri).toBe("kyx://project/pattern");
+    expect(readBody.result.contents[0]?.text).toBe("resource:kyx://project/pattern");
+
+    // batch: two requests + one notification → two responses, in order
+    const batch = await post(
+      port,
+      JSON.stringify([
+        { jsonrpc: "2.0", id: 10, method: "ping" },
+        { jsonrpc: "2.0", method: "notifications/initialized" },
+        { jsonrpc: "2.0", id: 11, method: "tools/list" },
+      ]),
+      { token: "tok" },
+    );
+    const batchBody = JSON.parse(batch.body) as Array<{ id: number }>;
+    expect(batchBody.map((entry) => entry.id)).toEqual([10, 11]);
+
+    // unknown tool over tools/call is a PROTOCOL error (-32602), not content
+    const unknownTool = await post(
+      port,
+      JSON.stringify({ jsonrpc: "2.0", id: 12, method: "tools/call", params: { name: "boom", arguments: {} } }),
+      { token: "tok" },
+    );
+    const unknownBody = JSON.parse(unknownTool.body) as { error?: { code: number }; result?: unknown };
+    expect(unknownBody.error?.code).toBe(-32602);
+    expect(unknownBody.result).toBeUndefined();
   });
 
   it("auth + transport guards: wrong token 401, GET 404, parse error 400, unknown method -32601, oversize 413", async () => {
