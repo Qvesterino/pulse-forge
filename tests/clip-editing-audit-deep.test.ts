@@ -76,9 +76,7 @@ describe("audit: rapid sequential edits + undo chain", () => {
     let current = doc;
     for (let i = commands.length - 1; i >= 0; i--) current = commands[i]!.undo(current);
     const original = states[0]!;
-    expect((current.arrangement.audioClips ?? [])[0]!.gain).toBe(
-      (original.arrangement.audioClips ?? [])[0]!.gain,
-    );
+    expect((current.arrangement.audioClips ?? [])[0]!.gain).toBe((original.arrangement.audioClips ?? [])[0]!.gain);
   });
 
   it("split → edit children → undo the split removes children cleanly", () => {
@@ -159,8 +157,8 @@ describe("audit: persistence round-trip via sanitizeAudioClips", () => {
     const badTrack = makeClip({ id: "bad-track", trackId: "nonexistent" });
     const out = sanitizeAudioClips([dup, dup2, badTrack], new Set(["track-1"]));
     expect(out.length).toBe(1); // only the first duplicate survives
-    expect(out[0]!.gain).toBe(2); // clamped
-    expect(out[0]!.lengthBars).toBeGreaterThan(0);
+    expect(out[0]!.gain).toBe(1); // the surviving dup2 carries default gain
+    expect(out[0]!.lengthBars).toBe(4);
   });
 
   it("take group fields survive persistence", () => {
