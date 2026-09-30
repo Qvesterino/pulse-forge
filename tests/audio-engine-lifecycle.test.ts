@@ -88,7 +88,8 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     // LFOs are part of the prior state and must be cleared too —
     // otherwise the LFO oscillator keeps modulating the (now stale)
     // target AudioParam.
-    expect(body).toMatch(/this\.lfos\.clear\(\)/);
+    // Wave 4d: LFO runtime state lives in AutomationBridge now.
+    expect(body).toMatch(/this\.automation\.disposeLfos\(\)/);
   });
 
   it("useContext() and ensureContext() register an onstatechange observer", () => {
@@ -156,10 +157,12 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     // LFO dispose must appear at least twice — once in the
     // `if (!ctx) { ... }` branch and once after the live-context
     // branch opens.
-    const disposeMatches = body.match(/disposeLfoRuntime\(/g) ?? [];
+    // Wave 4d: disposeLfoRuntime moved into AutomationBridge.disposeLfos —
+    // panic must hit it in BOTH the no-ctx and live-ctx branches.
+    const disposeMatches = body.match(/this\.automation\.disposeLfos\(\)/g) ?? [];
     expect(
       disposeMatches.length,
-      "panic() must call disposeLfoRuntime in both no-ctx and live-ctx branches",
+      "panic() must call automation.disposeLfos() in both no-ctx and live-ctx branches",
     ).toBeGreaterThanOrEqual(2);
     // The early-return path also clears voices, frozenBuffers and
     // instruments — the no-ctx panic was previously a no-op.
@@ -167,7 +170,7 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     const earlyReturnEnd = body.indexOf("return;", earlyReturn);
     const earlyReturnBlock = body.slice(earlyReturn, earlyReturnEnd);
     expect(earlyReturnBlock).toMatch(/this\.voices\.clear\(\)/);
-    expect(earlyReturnBlock).toMatch(/this\.lfos\.clear\(\)/);
+    expect(earlyReturnBlock).toMatch(/this\.automation\.disposeLfos\(\)/);
   });
 
   it("useContext() clears voices, previewVoices, frozenBuffers and instrument runtimes", () => {
