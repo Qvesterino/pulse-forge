@@ -69,6 +69,18 @@ Verified: PRISM 0 → 200 px, VLYX 10 → 200 px, both `VISIBLE=true`, and
 `tests/e2e/06-plugin-workflow` went from failing after 58 retries to passing
 in 9.4 s.
 
+**14b. The overflow that caused it was being silently discarded (MAJOR).**
+`src/styles/14-command-palette.css:1121`. `.device-editor
+.fx-device-content` had `overflow: hidden`, so once the panel had a floor the
+remaining overflow — the output-trim row and, on a shorter window, part of the
+parameter grid — was crushed out of reach. A visible plugin and an
+unreachable control in the same dock is still a broken dock. The content box
+now scrolls (`overflow-y: auto`, `overscroll-behavior: contain`) instead of
+clipping. Measured after the change: `clientHeight 164 / scrollHeight 491 /
+maxScroll 327`, and a sweep of both scroll ends finds **0 unreachable rows**
+of 6. The dock is still shorter than the content; growing it remains a
+product call, but nothing is lost.
+
 ### WAVE 1
 
 **1. `Slider` leaked its `disabled` state (MAJOR).**
@@ -277,15 +289,17 @@ test failed until the normalizer filter was re-applied.
 
 ## 6. REMAINING RISKS
 
-- **The devices dock is still 81 px too short for its content.** The `min-height`
-  floor makes the flagship panel usable, but the surrounding fixed rows plus the
-  panel now overflow `.fx-device-content` (164 px) — the overflow is clipped by
-  `overflow: hidden`, so the bottom rows (`fx-output-trim-row`, part of the
-  parameter list) can be pushed out of view on a short dock. The proper answer is
-  a product decision: make `.fx-device-content` scroll, or give the devices dock
-  a taller default. That changes layout for all 44 effect devices, so it was left
-  for the owner rather than made unilaterally. **Measure the dock at your target
-  window size before shipping.**
+- **The dock is shorter than a device's content — now scrollable, not clipped.**
+  The `min-height` floor alone would have been a half fix: it made the
+  flagship panel visible but left the overflow silently discarded by
+  `overflow: hidden`, so `fx-output-trim-row` (and on a shorter window, part of
+  the parameter grid) would have been unreachable. `.device-editor
+  .fx-device-content` now scrolls the overflow instead of clipping it
+  (`overflow-y: auto` + `overscroll-behavior: contain`).
+  Measured in Chromium: box `clientHeight=164 / scrollHeight=491 /
+  maxScroll=327`, and a reachability sweep over both scroll ends reports
+  **zero unreachable rows** of six. The dock itself is still shorter than the
+  content — growing it is a product decision, but nothing is lost now.
 - **`npm run build` FAILS its bundle budget, and did so before this audit.**
   Measured, not assumed: DAW JS is **3314 KB with this audit's source
   changes fully reverted** vs **3315 KB with them applied** (budget 3170 KB).

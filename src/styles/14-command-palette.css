@@ -1124,7 +1124,13 @@ button.brief-chip:hover {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  /* The dock is shorter than a device's own content (measured: 164px box vs
+     245px of fixed rows, before the flagship panel's 200px floor). `hidden`
+     therefore discarded the overflow silently. Scroll it instead: the panel
+     floor keeps the editor visible, and every row below it stays reachable. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   gap: 5px;
   padding-top: 5px;
 }
