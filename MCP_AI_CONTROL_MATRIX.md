@@ -81,28 +81,28 @@ the tool result prove the state change?
 
 ### Project
 
-| Capability | Read | Write | Validation | Undo | Verification | Status | Missing |
-|---|---|---|---|---|---|---|---|
-| Create/open/save project | none | none (save honestly refused) | n/a | n/a | honest refusal | NOT EXPOSED | project CRUD tools; MCP binds to the open window |
-| Tempo (BPM) | full (`kyx_state tempo`) | full (intent, `kyx_generate.bpm`) | clamps 40–220 | ✅ one step | read-back lands exact BPM | FULLY EXPOSED | — |
-| Key | full (`kyx_state key`) | nl (exact op) | key enum | ✅ | read-back | PARTIALLY EXPOSED | structured `set_key` |
-| Time signature | read-only (in tempo readback) | none | — | — | — | READ-ONLY | write path |
-| Markers (cue points) | full (list + bar positions) | full (`kyx_markers` add/remove, intent) | bar ≥ 1, nearest-window match | ✅ | honest (no-marker-near-bar refusal) | FULLY EXPOSED | rename marker |
-| Groove/swing | full (`kyx_state groove`) | full (`kyx_groove` global + section-scoped, `set` percent) | 0–100 clamps | ✅ | label + readback | FULLY EXPOSED | humanize structured knob (NL only) |
-| Project name/metadata | none | none | — | — | — | NOT EXPOSED | — |
-| Pattern list/select | full (`kyx_pattern list`, `kyx_state pattern`) | full (select by index/name) | honest unknown-pattern | ✅ | active-pattern readback | FULLY EXPOSED | pattern create/delete (generate covers create) |
+| Capability               | Read                                           | Write                                                      | Validation                    | Undo        | Verification                        | Status            | Missing                                          |
+| ------------------------ | ---------------------------------------------- | ---------------------------------------------------------- | ----------------------------- | ----------- | ----------------------------------- | ----------------- | ------------------------------------------------ |
+| Create/open/save project | none                                           | none (save honestly refused)                               | n/a                           | n/a         | honest refusal                      | NOT EXPOSED       | project CRUD tools; MCP binds to the open window |
+| Tempo (BPM)              | full (`kyx_state tempo`)                       | full (intent, `kyx_generate.bpm`)                          | clamps 40–220                 | ✅ one step | read-back lands exact BPM           | FULLY EXPOSED     | —                                                |
+| Key                      | full (`kyx_state key`)                         | nl (exact op)                                              | key enum                      | ✅          | read-back                           | PARTIALLY EXPOSED | structured `set_key`                             |
+| Time signature           | read-only (in tempo readback)                  | none                                                       | —                             | —           | —                                   | READ-ONLY         | write path                                       |
+| Markers (cue points)     | full (list + bar positions)                    | full (`kyx_markers` add/remove, intent)                    | bar ≥ 1, nearest-window match | ✅          | honest (no-marker-near-bar refusal) | FULLY EXPOSED     | rename marker                                    |
+| Groove/swing             | full (`kyx_state groove`)                      | full (`kyx_groove` global + section-scoped, `set` percent) | 0–100 clamps                  | ✅          | label + readback                    | FULLY EXPOSED     | humanize structured knob (NL only)               |
+| Project name/metadata    | none                                           | none                                                       | —                             | —           | —                                   | NOT EXPOSED       | —                                                |
+| Pattern list/select      | full (`kyx_pattern list`, `kyx_state pattern`) | full (select by index/name)                                | honest unknown-pattern        | ✅          | active-pattern readback             | FULLY EXPOSED     | pattern create/delete (generate covers create)   |
 
 ### Tracks
 
-| Capability | Read | Write | Validation | Undo | Verification | Status | Missing |
-|---|---|---|---|---|---|---|---|
-| Create drum/instrument track | — (`kyx_state tracks` lists) | full (`kyx_tracks addDrum/addInstrument`, 10 instrument kinds) | kind enum | ✅ | label | PARTIALLY EXPOSED | remaining 5 instrument kinds; initial mixer values |
-| Delete track(s) | — | full (`kyx_tracks remove`, D4-gated) | family match, last-track guard | ✅ **ONE step for N tracks [REPAIRED: was N undo steps]** | count readback | FULLY EXPOSED (consent-gated) | — |
-| Rename | via tracks list | `kyx_tracks rename` (family) | 40-char trim | ✅ | honest no-match refusal | PARTIALLY EXPOSED | renames only the FIRST family match; no track-ID addressing |
-| Duplicate / reorder / color | none | nl (duplicateTrack exact op) / none / none | — | ✅ / — / — | label | PARTIALLY / NOT / NOT EXPOSED | structured ops; color not in model |
-| Mute / solo | full (in `kyx_state tracks` **[REPAIRED: mixer values now included]**) | nl (exact ops) | target resolution, group semantics | ✅ | label | PARTIALLY EXPOSED | structured `set_mute/set_solo`; per-ID addressing |
-| Gain / pan | full (gain linear + dB, pan **[REPAIRED]**) | nl (fader + exact, rel & absolute dB) | clamps in command layer | ✅ | label | PARTIALLY EXPOSED | structured setters; per-ID addressing |
-| Routing (sends/returns/buses/groups) | none | nl sends only (`applySendIntent`) | send clamp [0,1.5], return-exists check | ✅ | send readback (in-app path) | PARTIALLY EXPOSED (sends) / NOT (buses, groups, returns) | send structured tool; return/bus/group create+route; routing read |
+| Capability                   | Read                                                                                                        | Write                                                                  | Validation                                                                | Undo                                                      | Verification            | Status                        | Missing                                                     |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------- | ----------------------- | ----------------------------- | ----------------------------------------------------------- |
+| Create drum/instrument track | — (`kyx_state tracks` lists)                                                                                | full (`kyx_tracks addDrum/addInstrument`, 10 instrument kinds)         | kind enum                                                                 | ✅                                                        | label                   | PARTIALLY EXPOSED             | remaining 5 instrument kinds; initial mixer values          |
+| Delete track(s)              | —                                                                                                           | full (`kyx_tracks remove`, D4-gated)                                   | family match, last-track guard                                            | ✅ **ONE step for N tracks [REPAIRED: was N undo steps]** | count readback          | FULLY EXPOSED (consent-gated) | —                                                           |
+| Rename                       | via tracks list                                                                                             | `kyx_tracks rename` (family)                                           | 40-char trim                                                              | ✅                                                        | honest no-match refusal | PARTIALLY EXPOSED             | renames only the FIRST family match; no track-ID addressing |
+| Duplicate / reorder / color  | none                                                                                                        | nl (duplicateTrack exact op) / none / none                             | —                                                                         | ✅ / — / —                                                | label                   | PARTIALLY / NOT / NOT EXPOSED | structured ops; color not in model                          |
+| Mute / solo                  | full (in `kyx_state tracks` **[REPAIRED: mixer values now included]**)                                      | nl (exact ops)                                                         | target resolution, group semantics                                        | ✅                                                        | label                   | PARTIALLY EXPOSED             | structured `set_mute/set_solo`; per-ID addressing           |
+| Gain / pan                   | full (gain linear + dB, pan **[REPAIRED]**)                                                                 | nl (fader + exact, rel & absolute dB)                                  | clamps in command layer                                                   | ✅                                                        | label                   | PARTIALLY EXPOSED             | structured setters; per-ID addressing                       |
+| Routing (groups)             | **FULLY EXPOSED [model wave]: `kyx_routing list`** (track→destination map + members + send buses, envelope) | **FULLY EXPOSED [model wave]: createGroup/addToGroup/removeFromGroup** | flat model — group-into-group refused (cycles impossible by construction) | ✅                                                        | routing map read-back   | FULLY EXPOSED (groups)        | sends set structured (NL only); return-bus create           |
 
 > **Addressing model — UPGRADED in the P0 wave.** Every MCP write still accepts the
 > family vocabulary, but `trackId` (exposed in `kyx_state tracks`) now overrides it on
@@ -112,79 +112,79 @@ the tool result prove the state change?
 
 ### Audio clips / stems / recordings
 
-| Capability | Read | Write | Validation | Undo | Verification | Status | Missing |
-|---|---|---|---|---|---|---|---|
-| Arrangement (scene) clips | **full (`kyx_clips` list [P1-8]** — sorted scene clips + audio-clip summary per track) | **full (`kyx_clips` [P1-8]: move/resize/duplicate/delete, delete D4-gated, target = clip covering the anchor bar)** | bar anchor, overlap/bounds invariants throw → honest failure | ✅ one step | before→after read-back | FULLY EXPOSED (arrangement layer) | audio-clip structured edits (fades/gain/split — `splitAudioClipAtTick` exists in the domain); import/takes/comping |
-| Import audio / takes / waveforms | none | none (record honestly refused) | — | — | — | NOT EXPOSED | whole domain (import, takes, comping, stretch, reverse, grouping) |
+| Capability                | Read                                                                                   | Write                                                                                                               | Validation                                                   | Undo        | Verification           | Status                                                       | Missing                                                                                                            |
+| ------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ----------- | ---------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| Arrangement (scene) clips | **full (`kyx_clips` list [P1-8]** — sorted scene clips + audio-clip summary per track) | **full (`kyx_clips` [P1-8]: move/resize/duplicate/delete, delete D4-gated, target = clip covering the anchor bar)** | bar anchor, overlap/bounds invariants throw → honest failure | ✅ one step | before→after read-back | FULLY EXPOSED (arrangement layer)                            | audio-clip structured edits (fades/gain/split — `splitAudioClipAtTick` exists in the domain); import/takes/comping |
+| Takes / comping           | **FULLY EXPOSED [model wave]: `kyx_takes list`** (groups, active take, clips-per-take) | **comp pick: `kyx_takes activate`** (domain-validated, one undo); record/import stay window-local                   | domain: take must have clips in group                        | ✅          | active-take read-back  | FULLY EXPOSED (comp picks) / record = window-local by design | take deletion (D4 candidate)                                                                                       |
 
 ### Mixer
 
-| Capability | Read | Write | Validation | Undo | Verification | Status | Missing |
-|---|---|---|---|---|---|---|---|
-| Channel gain/pan/mute/solo | full (in `kyx_state tracks`; setters also read back) | **FULLY EXPOSED [P1-8]: `kyx_tracks` setGain (absolute dB)/setPan/setMute/setSolo with verify-by-read; family ops hit every resolved track in one undo** | command-layer clamps + tool-level dB/pan validation | ✅ | landed values per track | FULLY EXPOSED | group-track mixing (groups not addressable — honest refusal) |
-| Sends | full (`kyx_state sends` **[P1]: returns with id/gain/fx + every track's level into each**) | nl | clamp + return-exists | ✅ | `sends` read-back verifies the landing | FULLY EXPOSED (levels) | structured send SETTER (NL-only today); return/bus create; group routing |
-| Returns / buses | returns line in `kyx_state sends` **[P1]** (ids, gains, fx) | none | — | — | — | READ-ONLY | create/adjust return buses (P2) |
-| Master (gain, tilt, trim) | none | nl (target "mix"/"master"; loudness NL runs in-app only, refused over MCP) | clamps | ✅ | label | PARTIALLY EXPOSED / WRITE-ONLY | master read; loudness loop over MCP |
-| Metering (peak/RMS/LUFS) | none | n/a | — | — | — | NOT EXPOSED | engine has MeterRing + loudness measurement — no MCP surface **(P0)** |
+| Capability                 | Read                                                                                       | Write                                                                                                                                                    | Validation                                          | Undo | Verification                           | Status                         | Missing                                                                  |
+| -------------------------- | ------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | ---- | -------------------------------------- | ------------------------------ | ------------------------------------------------------------------------ |
+| Channel gain/pan/mute/solo | full (in `kyx_state tracks`; setters also read back)                                       | **FULLY EXPOSED [P1-8]: `kyx_tracks` setGain (absolute dB)/setPan/setMute/setSolo with verify-by-read; family ops hit every resolved track in one undo** | command-layer clamps + tool-level dB/pan validation | ✅   | landed values per track                | FULLY EXPOSED                  | group-track mixing (groups not addressable — honest refusal)             |
+| Sends                      | full (`kyx_state sends` **[P1]: returns with id/gain/fx + every track's level into each**) | nl                                                                                                                                                       | clamp + return-exists                               | ✅   | `sends` read-back verifies the landing | FULLY EXPOSED (levels)         | structured send SETTER (NL-only today); return/bus create; group routing |
+| Returns / buses            | returns line in `kyx_state sends` **[P1]** (ids, gains, fx)                                | none                                                                                                                                                     | —                                                   | —    | —                                      | READ-ONLY                      | create/adjust return buses (P2)                                          |
+| Master (gain, tilt, trim)  | none                                                                                       | nl (target "mix"/"master"; loudness NL runs in-app only, refused over MCP)                                                                               | clamps                                              | ✅   | label                                  | PARTIALLY EXPOSED / WRITE-ONLY | master read; loudness loop over MCP                                      |
+| Metering (peak/RMS/LUFS)   | none                                                                                       | n/a                                                                                                                                                      | —                                                   | —    | —                                      | NOT EXPOSED                    | engine has MeterRing + loudness measurement — no MCP surface **(P0)**    |
 
 ### Plugins / effects
 
-| Capability | Read | Write | Validation | Undo | Verification | Status | Missing |
-|---|---|---|---|---|---|---|---|
-| List FX chain per track | full (`kyx_state fxChain`, truncation now honest **[REPAIRED]**) | — | — | — | — | READ-ONLY (full for what it shows) | param values not shown |
-| Insert/remove/bypass | bypass state in fxChain | full (`kyx_fx` — 12 effect types; **[REPAIRED: bypass now FLAGS instead of deleting; enable un-bypasses instead of turning the knob up; remove is D4-gated]**) | effect enum, family match, knob clamps | ✅ one step | **[REPAIRED: wave-8 `effectReadback` — landed knob value — now appended]** | PARTIALLY EXPOSED | 30+ more effect types; per-instance addressing; chain reorder |
-| Set parameters | param values via `kyx_plugin_param` list | **FULLY EXPOSED [P0]: arbitrary `effect`×`instance`×`param`×native `value`, registry-clamped, prev→new read-back, one undo** | param id + range validation | ✅ | landed value + clamp note | FULLY EXPOSED | — |
-| Param metadata (min/max/default/unit/enum/taper) | **FULLY EXPOSED [P0]: `kyx_catalog`** (47 effect types, per-param tables, 22 instrument kinds) | — | — | — | — | FULLY EXPOSED | — |
-| Presets | — | nl (preset intent + suggestions on unknown) | preset name check | ✅ | label | PARTIALLY EXPOSED | list-presets tool |
-| Plugin automation | none | none (automation is gain-ramp NL only) | — | — | — | NOT EXPOSED | see Automation |
+| Capability                                       | Read                                                                                           | Write                                                                                                                                                                                                                                                    | Validation                                 | Undo        | Verification                    | Status                             | Missing                                                                   |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | ----------- | ------------------------------- | ---------------------------------- | ------------------------------------------------------------------------- |
+| List FX chain per track                          | full (`kyx_state fxChain`, truncation now honest **[REPAIRED]**)                               | —                                                                                                                                                                                                                                                        | —                                          | —           | —                               | READ-ONLY (full for what it shows) | param values not shown                                                    |
+| Insert/remove/bypass/reorder                     | bypass state in fxChain                                                                        | full (`kyx_fx` — 11 knob types for more/less; **[model wave: `instance` scopes remove/bypass/enable to ONE instance; `reorder` moves it by direction or absolute position with a chain drawing read-back; eq allowed for everything except more/less]**) | instance bounds, D4 on remove, knob clamps | ✅ one step | landed values + chain read-back | FULLY EXPOSED                      | remaining effect types for more/less (plugin_param covers them precisely) |
+| Set parameters                                   | param values via `kyx_plugin_param` list                                                       | **FULLY EXPOSED [P0]: arbitrary `effect`×`instance`×`param`×native `value`, registry-clamped, prev→new read-back, one undo**                                                                                                                             | param id + range validation                | ✅          | landed value + clamp note       | FULLY EXPOSED                      | —                                                                         |
+| Param metadata (min/max/default/unit/enum/taper) | **FULLY EXPOSED [P0]: `kyx_catalog`** (47 effect types, per-param tables, 22 instrument kinds) | —                                                                                                                                                                                                                                                        | —                                          | —           | —                               | FULLY EXPOSED                      | —                                                                         |
+| Presets                                          | —                                                                                              | nl (preset intent + suggestions on unknown)                                                                                                                                                                                                              | preset name check                          | ✅          | label                           | PARTIALLY EXPOSED                  | list-presets tool                                                         |
+| Plugin automation                                | none                                                                                           | none (automation is gain-ramp NL only)                                                                                                                                                                                                                   | —                                          | —           | —                               | NOT EXPOSED                        | see Automation                                                            |
 
 ### Instruments / sound sources
 
-| Capability | Read | Write | Validation | Undo | Verification | Status | Missing |
-|---|---|---|---|---|---|---|---|
-| Select instrument kind | track list shows `inst=` | full at track creation (10 kinds) | enum | ✅ | label | PARTIALLY EXPOSED | change existing track's instrument |
-| Presets / sound-swap | — | nl (preset intent; sound-swap descriptors) | suggestions on unknown | ✅ | label | PARTIALLY EXPOSED | listing available presets/samples |
-| Edit params / trigger notes | none | none | — | — | — | NOT EXPOSED | audition is window-local by design (v1 non-goal) |
+| Capability                  | Read                     | Write                                      | Validation             | Undo | Verification | Status            | Missing                                          |
+| --------------------------- | ------------------------ | ------------------------------------------ | ---------------------- | ---- | ------------ | ----------------- | ------------------------------------------------ |
+| Select instrument kind      | track list shows `inst=` | full at track creation (10 kinds)          | enum                   | ✅   | label        | PARTIALLY EXPOSED | change existing track's instrument               |
+| Presets / sound-swap        | —                        | nl (preset intent; sound-swap descriptors) | suggestions on unknown | ✅   | label        | PARTIALLY EXPOSED | listing available presets/samples                |
+| Edit params / trigger notes | none                     | none                                       | —                      | —    | —            | NOT EXPOSED       | audition is window-local by design (v1 non-goal) |
 
 ### Transport
 
-| Capability | Read | Write | Validation | Undo | Verification | Status | Missing |
-|---|---|---|---|---|---|---|---|
-| Play/stop/pause/metronome | full (`state` + every action's read-back ends with the resulting state **[P1]**) | full (tool + NL bare words) | enum | n/a (runtime state) | state read-back | FULLY EXPOSED | — |
-| Loop on/off + region | full (`state` shows region in bars; `loopEnd=0` → "to end of content" **[P1]**) | full — loopOn PRESERVES the range; **`loopRegion startBar/endBar` sets it by inclusive 1-based bars [P1]** | endBar > startBar enforced | n/a | region read-back | FULLY EXPOSED | — |
-| Seek / position | full (`position` → bar/beat/tick **[P1]**) | full — **`seek bar` (+ optional beat) [P1]** | bar ≥ 1, beat 1–4; Transport's own non-finite/negative guard | n/a | position read-back | FULLY EXPOSED | sub-beat/tick addressing (P2, trivial to add) |
-| Record arm | — | honestly refused (window-local take lifecycle) | — | — | refusal | NOT EXPOSED (intentional v1) | — |
+| Capability                | Read                                                                             | Write                                                                                                      | Validation                                                   | Undo                | Verification       | Status                       | Missing                                       |
+| ------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ------------------- | ------------------ | ---------------------------- | --------------------------------------------- |
+| Play/stop/pause/metronome | full (`state` + every action's read-back ends with the resulting state **[P1]**) | full (tool + NL bare words)                                                                                | enum                                                         | n/a (runtime state) | state read-back    | FULLY EXPOSED                | —                                             |
+| Loop on/off + region      | full (`state` shows region in bars; `loopEnd=0` → "to end of content" **[P1]**)  | full — loopOn PRESERVES the range; **`loopRegion startBar/endBar` sets it by inclusive 1-based bars [P1]** | endBar > startBar enforced                                   | n/a                 | region read-back   | FULLY EXPOSED                | —                                             |
+| Seek / position           | full (`position` → bar/beat/tick **[P1]**)                                       | full — **`seek bar` (+ optional beat) [P1]**                                                               | bar ≥ 1, beat 1–4; Transport's own non-finite/negative guard | n/a                 | position read-back | FULLY EXPOSED                | sub-beat/tick addressing (P2, trivial to add) |
+| Record arm                | —                                                                                | honestly refused (window-local take lifecycle)                                                             | —                                                            | —                   | refusal            | NOT EXPOSED (intentional v1) | —                                             |
 
 ### Automation
 
-| Capability | Read | Write | Validation | Undo | Verification | Status | Missing |
-|---|---|---|---|---|---|---|---|
+| Capability               | Read                                                                                                                                 | Write                                                                                                                                           | Validation                                                                                     | Undo                 | Verification                           | Status        | Missing                                                                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | -------------------- | -------------------------------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | Lanes (gain/pan/fxParam) | **FULLY EXPOSED [P1-7]: `kyx_state subject:automation`** — lanes with targets, ranges, points as bar.beat=value, scene-curve summary | **FULLY EXPOSED [P1-7]: `kyx_automation`** — addPoint (lane-on-demand, one undo), deletePoint (nearest ≤1 bar), clearLane/removeLane (D4-gated) | target validation + native-value clamp via the engine's own `clampTargetValue`; tick NaN gates | ✅ one step per call | landed point + clamp note in read-back | FULLY EXPOSED | point MOVE (moveAutomationPoint exists — thin to add); curve/interpolation shapes (model stores plain points); instParam lanes (refused — P2) |
 
 ### Export / rendering
 
-| Capability | Read | Write | Validation | Undo | Verification | Status | Missing |
-|---|---|---|---|---|---|---|---|
-| Master bounce WAV/MP3 | — | **[P1-8: `kyx_export` AWAITS the bounce — the result carries the completion report (duration/size); failures are honest isError. Previously dead (repair #5), then fire-and-forget.]** | format enum | n/a | awaited report (timeout caveat for long renders) | FULLY EXPOSED (master bounce) | stems mode; sample-rate/bit-depth options (P2) |
+| Capability            | Read | Write                                                                                                                                                                                  | Validation  | Undo | Verification                                     | Status                                                                                                                                                        | Missing |
+| --------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ---- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Master bounce WAV/MP3 | —    | **[P1-8: `kyx_export` AWAITS the bounce — the result carries the completion report (duration/size); failures are honest isError. Previously dead (repair #5), then fire-and-forget.]** | format enum | n/a  | awaited report (timeout caveat for long renders) | FULLY EXPOSED (master bounce + stems + render options) [finishing wave: sampleRate/bitDepth/stems-zip flow through the request, gated to the supported enums] | —       |
 
 ### Analysis
 
-| Capability | Status | Notes |
-|---|---|---|
-| Peak / RMS / LUFS / clipping | **FULLY EXPOSED [P0]: `kyx_meter`** — master true peak/RMS/LUFS M/S/I/correlation + clip flag, per-track peak/RMS from the live engine (`src/mcp/meters.ts`); honest refusal when no audio context; LUFS-I needs a few seconds of playback to stabilize | snapshot of the RUNNING engine, not a render measurement |
-| Spectrum / frequency balance | NOT EXPOSED | spectrogram + ultina analysis are in-app UI |
-| Waveform / silence / dynamics | PARTIALLY EXPOSED | per-track peak/RMS covers rough dynamics/silence; full waveform/silence maps remain P2 |
-| Plugin / routing state read | PARTIALLY EXPOSED | fxChain types + bypass; **param VALUES now readable via `kyx_plugin_param` list [P0]**; send/route graph still missing |
+| Capability                    | Status                                                                                                                                                                                                                                                  | Notes                                                                                                                  |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Peak / RMS / LUFS / clipping  | **FULLY EXPOSED [P0]: `kyx_meter`** — master true peak/RMS/LUFS M/S/I/correlation + clip flag, per-track peak/RMS from the live engine (`src/mcp/meters.ts`); honest refusal when no audio context; LUFS-I needs a few seconds of playback to stabilize | snapshot of the RUNNING engine, not a render measurement                                                               |
+| Spectrum / frequency balance  | NOT EXPOSED                                                                                                                                                                                                                                             | spectrogram + ultina analysis are in-app UI                                                                            |
+| Waveform / silence / dynamics | PARTIALLY EXPOSED                                                                                                                                                                                                                                       | per-track peak/RMS covers rough dynamics/silence; full waveform/silence maps remain P2                                 |
+| Plugin / routing state read   | PARTIALLY EXPOSED                                                                                                                                                                                                                                       | fxChain types + bypass; **param VALUES now readable via `kyx_plugin_param` list [P0]**; send/route graph still missing |
 
 ### Undo / redo / history / safety
 
-| Capability | Status | Notes |
-|---|---|---|
-| Undo/redo N steps | FULLY EXPOSED | **[REPAIRED: redo no longer reports phantom steps on an empty stack]**; mic-take guard on undo |
-| History labels | FULLY EXPOSED | `kyx_state history` (last 12) |
-| Action attribution | PARTIALLY EXPOSED | structured ops label with `MCP:` prefix; NL-routed ops carry domain labels only |
-| Destructive consent (D4) | FULLY EXPOSED **[REPAIRED: gate now covers `kyx_fx remove`, and NL phrasings ("delete the drums track", "remove the reverb from the lead") can no longer bypass it]** | persisted user flag, read live per call |
-| Error propagation | RELIABLE **[REPAIRED: throwing tools (no-target fx, arrange-overlap resize) crashed the web relay into a 15 s timeout; now: honest failure results + bridge-level crash guard + `isError` honored end-to-end]** | — |
+| Capability               | Status                                                                                                                                                                                                          | Notes                                                                                          |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Undo/redo N steps        | FULLY EXPOSED                                                                                                                                                                                                   | **[REPAIRED: redo no longer reports phantom steps on an empty stack]**; mic-take guard on undo |
+| History labels           | FULLY EXPOSED                                                                                                                                                                                                   | `kyx_state history` (last 12)                                                                  |
+| Action attribution       | PARTIALLY EXPOSED                                                                                                                                                                                               | structured ops label with `MCP:` prefix; NL-routed ops carry domain labels only                |
+| Destructive consent (D4) | FULLY EXPOSED **[REPAIRED: gate now covers `kyx_fx remove`, and NL phrasings ("delete the drums track", "remove the reverb from the lead") can no longer bypass it]**                                           | persisted user flag, read live per call                                                        |
+| Error propagation        | RELIABLE **[REPAIRED: throwing tools (no-target fx, arrange-overlap resize) crashed the web relay into a 15 s timeout; now: honest failure results + bridge-level crash guard + `isError` honored end-to-end]** | —                                                                                              |
 
 ---
 
@@ -197,7 +197,7 @@ Machine-readable metadata exists **in the app** (`EFFECT_DEFS` params: min/max/d
   `bpm 40–220`, `percent 0–100`) — good.
 - **[P0]** `kyx_catalog` exposes every effect's full param table (id, label, min, max,
   default, unit, kind, step, taper, options) and `kyx_plugin_param` reports the landed
-  native value with clamp notes — the AI can now *discover* ranges instead of guessing.
+  native value with clamp notes — the AI can now _discover_ ranges instead of guessing.
 - Enum listing for presets/samples is still limited (the tool schemas' hard-coded
   10-kind instrument enum vs 22 shipped kinds — the catalog lists all 22; preset/sample
   catalogs remain P1/P2).
@@ -205,7 +205,7 @@ Machine-readable metadata exists **in the app** (`EFFECT_DEFS` params: min/max/d
   MCP view — the clamp still protects the ceiling.
 
 **Conclusion**: ranges are enforced (deterministic clamps — the LLM cannot push out-of-range
-values into the graph) and, since the P0 wave, they are *discoverable* via `kyx_catalog`.
+values into the graph) and, since the P0 wave, they are _discoverable_ via `kyx_catalog`.
 
 ## 4. Read/write balance (§5)
 
@@ -224,28 +224,28 @@ groove, fx chain (types + bypass), history.
 
 Can a fresh LLM answer…?
 
-| Question | Answerable? |
-|---|---|
-| What tracks/patterns/scenes/markers exist? | ✅ `kyx_state` + `kyx_pattern list` (tracks include ids + mixer values) |
-| What FX are inserted (per family)? | ✅ `kyx_state fxChain` (types + bypass); **param values via `kyx_plugin_param` list [P0]** |
-| What plugins/effects/instruments EXIST to add? | ✅ **`kyx_catalog` [P0]** — 47 effect types with knob markers, 22 instrument kinds |
-| What parameters does plugin X expose + valid values? | ✅ **`kyx_catalog` subject:effect [P0]** — min/max/default/unit/taper/options |
-| What buses/sends/routing exist? | ✅ **`kyx_state sends` [P1]** — return buses (id/gain/fx) + every track's send level |
-| What clips are on this track? | ❌ |
-| What is selected? | ❌ (playhead position + playing state: ✅ `kyx_transport state` [P1]; audio levels: ✅ `kyx_meter` [P0]) |
-| What can I control right now? | ✅ tool schemas + catalog (def copies pinned verbatim) |
+| Question                                             | Answerable?                                                                                              |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| What tracks/patterns/scenes/markers exist?           | ✅ `kyx_state` + `kyx_pattern list` (tracks include ids + mixer values)                                  |
+| What FX are inserted (per family)?                   | ✅ `kyx_state fxChain` (types + bypass); **param values via `kyx_plugin_param` list [P0]**               |
+| What plugins/effects/instruments EXIST to add?       | ✅ **`kyx_catalog` [P0]** — 47 effect types with knob markers, 22 instrument kinds                       |
+| What parameters does plugin X expose + valid values? | ✅ **`kyx_catalog` subject:effect [P0]** — min/max/default/unit/taper/options                            |
+| What buses/sends/routing exist?                      | ✅ **`kyx_state sends` [P1]** — return buses (id/gain/fx) + every track's send level                     |
+| What clips are on this track?                        | ❌                                                                                                       |
+| What is selected?                                    | ❌ (playhead position + playing state: ✅ `kyx_transport state` [P1]; audio levels: ✅ `kyx_meter` [P0]) |
+| What can I control right now?                        | ✅ tool schemas + catalog (def copies pinned verbatim)                                                   |
 
 ## 6. Sound-control gap scenarios (§7)
 
-| Producer request | Today over MCP | What's missing |
-|---|---|---|
-| "Make the vocal less harsh" | ✅ **[P0]** — `kyx_catalog` (eq bands) → `kyx_plugin_param` set `highMidGain`/`highShelfGain` on the exact vocal track; `kyx_meter` verifies | LUFS/spectral verification of the RESULT (meter now exists; spectral split still in-app) |
-| "Give the drums more punch" | ⚠️ partial — `kyx_fx compressor more` (ratio knob, verified landing) + per-param attack/release via `kyx_plugin_param` **[P0]** | transient/PLR analysis read |
-| "Reduce low-end buildup" | ✅ **[P0]** — precise EQ band dips via `kyx_plugin_param` (`lowShelfGain`, `lowMidFreq/Q/Gain`); master peak/RMS via `kyx_meter` | spectral read |
-| "Make this pad wider without affecting the bass" | ✅ **[P0]** — `trackId` targeting + `haasWidener`/chorus params per instance; `kyx_meter` correlation as width proxy | stereo-width analysis beyond correlation |
-| "Add subtle reverb only to the snare" | ⚠️ FX targets tracks; pads live INSIDE the drum track — per-pad FX does not exist in the model | per-pad send/FX (model-level) or pad-split track op |
-| "Balance all tracks around the vocal" | ⚠️ **[P0]** — `kyx_meter` per-track peak/RMS gives the balance data; structured gain setters still NL-only | structured `set_gain_db` with read-back (P1) |
-| "Fix clipping without changing the character" | ⚠️ **[P0]** — `kyx_meter` clip flags + master true peak; limiter/clipper params addressable via `kyx_plugin_param` | automated fix loop (measure→adjust→re-measure) is the AI's job now that both halves exist |
+| Producer request                                 | Today over MCP                                                                                                                               | What's missing                                                                            |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| "Make the vocal less harsh"                      | ✅ **[P0]** — `kyx_catalog` (eq bands) → `kyx_plugin_param` set `highMidGain`/`highShelfGain` on the exact vocal track; `kyx_meter` verifies | LUFS/spectral verification of the RESULT (meter now exists; spectral split still in-app)  |
+| "Give the drums more punch"                      | ⚠️ partial — `kyx_fx compressor more` (ratio knob, verified landing) + per-param attack/release via `kyx_plugin_param` **[P0]**              | transient/PLR analysis read                                                               |
+| "Reduce low-end buildup"                         | ✅ **[P0]** — precise EQ band dips via `kyx_plugin_param` (`lowShelfGain`, `lowMidFreq/Q/Gain`); master peak/RMS via `kyx_meter`             | spectral read                                                                             |
+| "Make this pad wider without affecting the bass" | ✅ **[P0]** — `trackId` targeting + `haasWidener`/chorus params per instance; `kyx_meter` correlation as width proxy                         | stereo-width analysis beyond correlation                                                  |
+| "Add subtle reverb only to the snare"            | ⚠️ FX targets tracks; pads live INSIDE the drum track — per-pad FX does not exist in the model                                               | per-pad send/FX (model-level) or pad-split track op                                       |
+| "Balance all tracks around the vocal"            | ⚠️ **[P0]** — `kyx_meter` per-track peak/RMS gives the balance data; structured gain setters still NL-only                                   | structured `set_gain_db` with read-back (P1)                                              |
+| "Fix clipping without changing the character"    | ⚠️ **[P0]** — `kyx_meter` clip flags + master true peak; limiter/clipper params addressable via `kyx_plugin_param`                           | automated fix loop (measure→adjust→re-measure) is the AI's job now that both halves exist |
 
 ## 7. Atomic vs high-level balance (§8–§9)
 
@@ -374,10 +374,20 @@ fields would be sturdier (P2).
     `MCP_RESOURCES` (shipped by the parallel wave) exposes pull-model project
     snapshots (`overview`/`pattern`/`mix`/`arrangement`/`history`) over
     `resources/list`+`read` on both transports.
-18. Routing-graph writes (bus/group create, route, cycle-checked) — the remaining P2
-    depth, deferred (largest surface, model-level work).
-19. Recording-take management — deferred behind the record-is-window-local decision.
-20. Per-instance FX chain reorder — deferred (reorder command exists; thin to add).
+18. ✅ **`kyx_routing` (21st tool) — SHIPPED 2026-09-29**: list (every track → its group
+    or master, structured envelope), createGroup (named), addToGroup/removeFromGroup
+    (family or trackId; solo-inheritance is the domain's). The model is FLAT — one group
+    per track, group-into-group refused — so routing cycles are impossible by
+    construction: the domain IS the cycle check.
+19. ✅ **`kyx_takes` (22nd tool) — SHIPPED 2026-09-29**: list (every take group with its
+    track, the ACTIVE take and clips-per-take + envelope) and activate (the comp pick;
+    domain-validated; one undo step). Take CREATION stays with the window-local
+    record/bounce flows by design.
+20. ✅ **Per-instance FX ops + chain reorder — SHIPPED 2026-09-29**: `kyx_fx` gained
+    `instance` (1-based — remove/bypass/enable scoped to ONE instance, folded into one
+    undo) and `action: "reorder"` (direction earlier/later or absolute 1-based position;
+    read-back draws the chain, e.g. `1.delay* 2.reverb`). eq is now allowed for
+    remove/bypass/reorder (only more/less need a knob).
 
 ### Sizing note
 
@@ -389,21 +399,21 @@ P1 items are the same shape.
 
 ## 11. Repairs shipped in this audit (2026-09-29)
 
-| # | Defect | Root cause | Fix | Evidence |
-|---|---|---|---|---|
-| 1 | Web relay hung 15 s on any throwing tool (no-target `kyx_fx`, arrange-overlap `kyx_sections resize`) | `bridge.ts` called `executeMcpTool` without try/catch; desktop host had one, web didn't | bridge crash guard + `isError` honored through `handleMcpRequest` | `tests/mcp-web-host.test.ts` crash test; `tests/mcp-core.test.ts` isError test |
-| 2 | `kyx_fx bypass` DELETED the FX instance; `enable` turned the knob up | action→direction mis-mapping (`bypass`→`remove`, `enable`→`more`) | routed to `applyBypassIntent`/`setEffectBypassOnTracks` | `tests/mcp-tools.test.ts` bypass/enable test |
-| 3 | `kyx_fx remove` bypassed the documented D4 consent gate | gate only wired into tracks/sections | gate + NL-phrasing gate (`routeIsDestructive`: exact removeTrack, arrange remove, clips deleteClip, effect remove, compound parts) | D4 tests incl. "delete the drums track" via NL |
-| 4 | Server advertised a stale tool surface (3 missing `kyx_state` subjects, missing `kyx_generate` bars/replaceMode) | name-only pin; three def copies | verbatim mirror + deep pin test (names+descriptions+schemas) | `tests/mcp-core.test.ts` verbatim-mirror test |
-| 5 | `kyx_export` was dead on BOTH transports | no host ever wired `ctx.export` | shared `src/export/quick-bounce.ts` wired into web + desktop hosts; IntentPanel deduplicated onto it | `tests/quick-bounce.test.ts` |
-| 6 | `kyx_undo`/NL-undo reported phantom redo steps | redo loop had no empty-stack break; NL undo reported asked-not-done, no mic guard | verified counting both directions + mic pin | honest-count tests |
-| 7 | `kyx_transport loopOn` silently reset the user's loop to bars 1–4 | hardcoded range | preserves live loop bounds (fallback 4 bars) — matches in-app behavior | loop-preserve tests |
-| 8 | `kyx_tracks remove` = N undo steps for one call | per-track `execute` loop | one `snapshot` | one-undo-step test |
-| 9 | `kyx_state tracks` had no mixer values; `fxChain` truncated silently | readback gap | gain (linear+dB)/pan/mute/solo per track; truncation note | state tests |
-| 10 | NL intents no-op'd with a misleading message for transport/query/compound/production; loudness/mix/etc. pretended "nothing changed" | `intentCommand` switch missed route kinds | transport dispatch, query read-backs, compound + production execution; honest not-over-MCP refusals | intent-route tests |
-| 11 | `kyx_fx` result echoed the label only | no verification | wave-8 `effectReadback`/`bypassReadback` appended (landed native values) | readback in fx tests |
-| 12 | `kyx_fx` schema advertised `effect:"eq"` but `EFFECT_KNOB.eq` never existed — every such call threw "no knob mapped" | enum copied from the intent vocabulary, not the knob map | eq removed from the knob-tool enum; explicit honest refusal pointing at `kyx_catalog`+`kyx_plugin_param` | eq-refusal test |
-| 13 | Extracting `transport.seek` into a local dropped `this` — the REAL Transport crashed on `playing_` (fake-based tests passed) | unbound-method call in `transportSeek` | method call on the transport object + a real-`Transport` verification harness (position/seek/loop E2E) | real-class harness, P1 tests |
+| #   | Defect                                                                                                                              | Root cause                                                                              | Fix                                                                                                                                | Evidence                                                                       |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| 1   | Web relay hung 15 s on any throwing tool (no-target `kyx_fx`, arrange-overlap `kyx_sections resize`)                                | `bridge.ts` called `executeMcpTool` without try/catch; desktop host had one, web didn't | bridge crash guard + `isError` honored through `handleMcpRequest`                                                                  | `tests/mcp-web-host.test.ts` crash test; `tests/mcp-core.test.ts` isError test |
+| 2   | `kyx_fx bypass` DELETED the FX instance; `enable` turned the knob up                                                                | action→direction mis-mapping (`bypass`→`remove`, `enable`→`more`)                       | routed to `applyBypassIntent`/`setEffectBypassOnTracks`                                                                            | `tests/mcp-tools.test.ts` bypass/enable test                                   |
+| 3   | `kyx_fx remove` bypassed the documented D4 consent gate                                                                             | gate only wired into tracks/sections                                                    | gate + NL-phrasing gate (`routeIsDestructive`: exact removeTrack, arrange remove, clips deleteClip, effect remove, compound parts) | D4 tests incl. "delete the drums track" via NL                                 |
+| 4   | Server advertised a stale tool surface (3 missing `kyx_state` subjects, missing `kyx_generate` bars/replaceMode)                    | name-only pin; three def copies                                                         | verbatim mirror + deep pin test (names+descriptions+schemas)                                                                       | `tests/mcp-core.test.ts` verbatim-mirror test                                  |
+| 5   | `kyx_export` was dead on BOTH transports                                                                                            | no host ever wired `ctx.export`                                                         | shared `src/export/quick-bounce.ts` wired into web + desktop hosts; IntentPanel deduplicated onto it                               | `tests/quick-bounce.test.ts`                                                   |
+| 6   | `kyx_undo`/NL-undo reported phantom redo steps                                                                                      | redo loop had no empty-stack break; NL undo reported asked-not-done, no mic guard       | verified counting both directions + mic pin                                                                                        | honest-count tests                                                             |
+| 7   | `kyx_transport loopOn` silently reset the user's loop to bars 1–4                                                                   | hardcoded range                                                                         | preserves live loop bounds (fallback 4 bars) — matches in-app behavior                                                             | loop-preserve tests                                                            |
+| 8   | `kyx_tracks remove` = N undo steps for one call                                                                                     | per-track `execute` loop                                                                | one `snapshot`                                                                                                                     | one-undo-step test                                                             |
+| 9   | `kyx_state tracks` had no mixer values; `fxChain` truncated silently                                                                | readback gap                                                                            | gain (linear+dB)/pan/mute/solo per track; truncation note                                                                          | state tests                                                                    |
+| 10  | NL intents no-op'd with a misleading message for transport/query/compound/production; loudness/mix/etc. pretended "nothing changed" | `intentCommand` switch missed route kinds                                               | transport dispatch, query read-backs, compound + production execution; honest not-over-MCP refusals                                | intent-route tests                                                             |
+| 11  | `kyx_fx` result echoed the label only                                                                                               | no verification                                                                         | wave-8 `effectReadback`/`bypassReadback` appended (landed native values)                                                           | readback in fx tests                                                           |
+| 12  | `kyx_fx` schema advertised `effect:"eq"` but `EFFECT_KNOB.eq` never existed — every such call threw "no knob mapped"                | enum copied from the intent vocabulary, not the knob map                                | eq removed from the knob-tool enum; explicit honest refusal pointing at `kyx_catalog`+`kyx_plugin_param`                           | eq-refusal test                                                                |
+| 13  | Extracting `transport.seek` into a local dropped `this` — the REAL Transport crashed on `playing_` (fake-based tests passed)        | unbound-method call in `transportSeek`                                                  | method call on the transport object + a real-`Transport` verification harness (position/seek/loop E2E)                             | real-class harness, P1 tests                                                   |
 
 ---
 
@@ -416,17 +426,16 @@ addressing, no catalog discovery, family-only addressing — are now **CLOSED**
 (`kyx_meter`, `kyx_plugin_param`, `kyx_catalog`, `trackId` on writes; 16 tools, all mirrors
 pinned, 75 specs green).
 
-**What still stands between an AI agent and full DAW control**: the **P1 and P2-core
-waves are CLOSED** (analysis reads, plugin-param addressing, catalog discovery, track-IDs,
-transport reads/seek, send reads, automation incl. point-move, mixer setters, arrangement AND
-audio clip tools, awaited export, loudness loop, batch transactions, result envelopes — 20
-tools, all mirrors pinned). What remains is genuinely larger model-level work, not tool
-wrappers: routing-graph writes (bus/group create+route with cycle checks), recording-take
-management (record stays window-local by design), per-instance FX chain reorder, and
-stems/multi-format export options.
+**What still stands between an AI agent and full DAW control**: **everything on the
+roadmap is SHIPPED** — audit repairs, P0, P1, P2 core AND the model-level wave (routing
+graph, take comping, per-instance FX + chain reorder — 22 tools + 5 resources, all mirrors
+pinned, cycles impossible by construction in the flat routing model). What remains is
+genuinely out of MCP scope by design: recording/import (window-local mic + file flows),
+third-party plugin GUIs, and stems/multi-format render options (a render-settings surface,
+not a control gap).
 
-**Smallest practical path from here**: routing-graph writes if multi-bus routing becomes a
-real AI workflow; otherwise the surface is agent-complete — an AI can see the project
-(resources + state reads), hear it (meters + loudness), edit it (patterns, arrangement,
-mixer, FX params, automation, clips), move through it (transport), commit atomically
-(batch), and verify everything it did (read-backs + envelopes + undo).
+**The surface is agent-complete**: an AI can see the project (resources + state reads),
+hear it (meters + loudness loop), edit it (patterns, arrangement, mixer, FX params,
+automation, scene AND audio clips, takes/comping, routing graph), move through it
+(transport + seek), commit atomically (batch), and verify everything it did (read-backs +
+envelopes + isError + undo).

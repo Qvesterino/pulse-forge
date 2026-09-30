@@ -174,8 +174,17 @@ bar. Nothing bypasses the domain layer.
 > measure/match loop landing the master trim), `McpToolResult.data` envelopes
 > (transport/meter/clips/batch/loudness), `isError` markers on honest tool failures,
 > automation `movePoint`, and the audio-clip surface (`audioList/audioMove/audioSplit/
-audioUpdate/audioDelete`). Remaining: routing-graph writes, take management,
-> chain reorder — model-level work, not tool wrappers.
+audioUpdate/audioDelete`). **Model-level wave shipped same day — the campaign is
+> COMPLETE**: `kyx_routing` (21st — group graph list/create/route/unroute; the flat model
+> makes cycles impossible by construction), `kyx_takes` (22nd — comp workflow: list +
+> activate), and per-instance FX ops + chain reorder on `kyx_fx` (`instance` +
+> `reorder` with direction/position). Remaining out of scope by design: recording/import
+> (window-local), plugin GUIs.
+> **Finishing wave shipped same day**: export render options (sampleRate/bitDepth/
+> stems-zip through the awaited request), structured send-bus mixer
+> (setSend/setReturnGain/createReturn on kyx_routing — the last NL-only corner),
+> take deletion (D4-gated, active-take protected) and marker rename. Every write
+> in the domain layer is now addressable over MCP.
 
 | Tool            | Input                              | Behavior                                                                                                       |
 | --------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------- |

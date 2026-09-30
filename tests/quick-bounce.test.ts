@@ -42,7 +42,7 @@ beforeEach(() => {
 describe("quick bounce (shared export pipeline)", () => {
   it("mp3: renders the song, encodes 320 kbps, downloads <name>-320.mp3, reports", async () => {
     encodeMp3.mockResolvedValue({ size: 1_500_000 });
-    const report = await quickBounceDownload(fakeDoc("My Beat"), bank, "mp3");
+    const report = await quickBounceDownload(fakeDoc("My Beat"), bank, { format: "mp3" });
     expect(renderProject).toHaveBeenCalledWith(expect.anything(), bank, { mode: "song", sampleRate: 44100 });
     expect(encodeMp3).toHaveBeenCalledWith(buffer, { kbps: 320 });
     expect(downloadBlob).toHaveBeenCalledWith(expect.anything(), "My Beat-320.mp3");
@@ -52,15 +52,15 @@ describe("quick bounce (shared export pipeline)", () => {
 
   it("wav: 16-bit encode, downloads <name>-master.wav, reports", async () => {
     encodeWavAsync.mockResolvedValue({ byteLength: 2_000_000 });
-    const report = await quickBounceDownload(fakeDoc("My Beat"), bank, "wav");
+    const report = await quickBounceDownload(fakeDoc("My Beat"), bank, { format: "wav" });
     expect(encodeWavAsync).toHaveBeenCalledWith(buffer, 16, {});
-    expect(downloadWav).toHaveBeenCalledWith({ byteLength: 2_000_000 }, "My Beat-master.wav");
+    expect(downloadWav).toHaveBeenCalledWith({ byteLength: 2_000_000 }, "My Beat-16bit.wav");
     expect(report).toContain("WAV exported");
     expect(report).toContain("16-bit");
   });
 
   it("render failures reject (the caller reports the honest error)", async () => {
     renderProject.mockRejectedValue(new Error("no audio context"));
-    await expect(quickBounceDownload(fakeDoc("x"), bank, "wav")).rejects.toThrow("no audio context");
+    await expect(quickBounceDownload(fakeDoc("x"), bank, { format: "wav" })).rejects.toThrow("no audio context");
   });
 });

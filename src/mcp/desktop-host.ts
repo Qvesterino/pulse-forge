@@ -64,7 +64,7 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
     applyLoudness: (input) => mcpApplyLoudness(services, input),
     // kyx_export rides the same render + encode + download pipeline as the
     // in-app export intent (download lands in the focused KYX window).
-    export: (format) => quickBounceDownload(services.store.getDoc(), services.bank, format),
+    export: (request) => quickBounceDownload(services.store.getDoc(), services.bank, request),
     allowDestructive: mcpAllowDestructive,
   };
 }

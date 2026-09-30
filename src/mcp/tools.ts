@@ -666,7 +666,24 @@ export const MCP_TOOLS: McpToolDef[] = [
       required: ["op"],
     },
   },
-];
+  {
+    name: "kyx_checkpoint",
+    description:
+      "Named project checkpoints for agent experiments: save the current " +
+      "state, list checkpoints with how many steps have passed since each, " +
+      "restore one (ONE undo step back to the pre-restore state), or delete. " +
+      "Session-scoped (last 8 kept); destructive ops auto-save " +
+      "auto-before-<tool> checkpoints when allowed.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["save", "list", "restore", "delete"] },
+        name: { type: "string", description: "Checkpoint name (required for save/restore/delete)" },
+      },
+      required: ["op"],
+    },
+  },
+];;
 
 /** Live metering snapshot the kyx_meter tool reads (present only when the
  * host has a running engine — headless contexts honestly refuse). */
@@ -1060,7 +1077,8 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
       }
     }
     case "kyx_sections": {
-      if (String(record.op ?? "") === "remove" && ctx.allowDestructive?.() !== true) return destructiveRefusal();
+      if (String(record.op ?? "") === "remove" && !destructiveAllowedWithCheckpoint(ctx, "kyx_sections"))
+        return destructiveRefusal();
       try {
         const command = sectionCommand(record, ctx.getDoc());
         if (!command) return { text: "section op not resolvable — check the role exists", mutated: false };
@@ -1115,7 +1133,7 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
         return { text: `renamed to "${name}"`, mutated: true };
       }
       if (op === "remove") {
-        if (ctx.allowDestructive?.() !== true) return destructiveRefusal();
+        if (!destructiveAllowedWithCheckpoint(ctx, "kyx_tracks")) return destructiveRefusal();
         const ids = explicitTrackIds(ctx.getDoc(), record);
         if (typeof ids === "string") return { text: ids, mutated: false };
         if (ids.length === 0)
@@ -1279,6 +1297,8 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
       }
       return { text: lines.join("\n"), mutated: false, data: snapshotMeters };
     }
+    case "kyx_checkpoint":
+      return executeCheckpointTool(ctx, record);
     case "__kyx_resource":
       // Hidden transport channel — the servers expose resources/list from
       // MCP_RESOURCES and route resources/read here, so every transport
@@ -1383,6 +1403,119 @@ export function readMcpResource(ctx: McpToolContext, uri: string): McpToolResult
     default:
       return { text: `unknown resource: ${uri} — see resources/list`, mutated: false, isError: true };
   }
+}
+
+/** ── CHECKPOINTS (agent time machine, docs/AGENTIC-DAW-PLAN.md Fáza C) ──────
+ * Named full-document snapshots for explore/rollback loops. Session-scoped
+ * by design (agents are live sessions); the last 8 are kept. Restore is a
+ * plain snapshot command — ONE undo step returns to the pre-restore state.
+ * Destructive ops that pass the D4 gate auto-save an
+ * auto-before-<tool>-N checkpoint first. */
+const CHECKPOINT_LIMIT = 8;
+
+interface McpCheckpoint {
+  doc: ProjectDocument;
+  stepsAtSave: number;
+  summary: string;
+  auto: boolean;
+}
+
+const checkpoints = new Map<string, McpCheckpoint>();
+let checkpointCounter = 0;
+
+/** Test hook — the store is module-level by design (per-window session). */
+export function resetMcpCheckpoints(): void {
+  checkpoints.clear();
+  checkpointCounter = 0;
+}
+
+function checkpointName(raw: string | undefined, auto: boolean): string {
+  const cleaned = String(raw ?? "")
+    .replace(/[ -<>:"/\|?*]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 40);
+  if (cleaned !== "") return cleaned;
+  checkpointCounter += 1;
+  return auto ? `auto-${checkpointCounter}` : `checkpoint-${checkpointCounter}`;
+}
+
+function saveCheckpoint(rawName: string | undefined, ctx: McpToolContext, auto: boolean): string {
+  const name = checkpointName(rawName, auto);
+  const doc = ctx.getDoc();
+  const active = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
+  checkpoints.delete(name); // re-save moves the entry to the LRU tail
+  checkpoints.set(name, {
+    doc: structuredClone(doc),
+    stepsAtSave: ctx.undoStackLength(),
+    summary: `${doc.tracks.length} tracks · active pattern "${active?.name ?? "none"}" · ${doc.scenes.length} scenes`,
+    auto,
+  });
+  while (checkpoints.size > CHECKPOINT_LIMIT) {
+    const oldest = checkpoints.keys().next().value;
+    if (oldest == null) break;
+    checkpoints.delete(oldest);
+  }
+  return name;
+}
+
+/** D4 gate WITH the auto-checkpoint side effect — use at destructive sites:
+ * returns true when allowed (after saving auto-before-<tool>), false when
+ * the caller must return the refusal. */
+function destructiveAllowedWithCheckpoint(ctx: McpToolContext, tool: string): boolean {
+  if (ctx.allowDestructive?.() !== true) return false;
+  saveCheckpoint(`auto-before-${tool}`, ctx, true);
+  return true;
+}
+
+function executeCheckpointTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
+  const op = String(record.op ?? "list");
+  if (op === "list") {
+    if (checkpoints.size === 0) {
+      return {
+        text: "no checkpoints — kyx_checkpoint {op: save, name} creates one; destructive ops auto-save when allowed",
+        mutated: false,
+      };
+    }
+    const lines: string[] = [];
+    for (const [name, cp] of checkpoints) {
+      const stepsSince = Math.max(0, ctx.undoStackLength() - cp.stepsAtSave);
+      lines.push(`${name}${cp.auto ? " (auto)" : ""} · ${cp.summary} · ${stepsSince} step(s) since`);
+    }
+    return { text: lines.join("\n"), mutated: false };
+  }
+  const name = typeof record.name === "string" ? record.name.trim() : "";
+  if (op === "save") {
+    const saved = saveCheckpoint(name === "" ? undefined : name, ctx, false);
+    return {
+      text: `checkpoint "${saved}" saved (${checkpoints.get(saved)?.summary}) — restore anytime, session-scoped, ${checkpoints.size}/${CHECKPOINT_LIMIT} used`,
+      mutated: false,
+    };
+  }
+  if (name === "")
+    return { text: `checkpoint ${op} needs a name — kyx_checkpoint {op: list} shows them`, mutated: false, isError: true };
+  const cp = checkpoints.get(name);
+  if (!cp) {
+    return {
+      text: `no checkpoint "${name}" — kyx_checkpoint {op: list} shows: ${[...checkpoints.keys()].join(", ") || "none"}`,
+      mutated: false,
+      isError: true,
+    };
+  }
+  if (op === "delete") {
+    checkpoints.delete(name);
+    return { text: `checkpoint "${name}" deleted (${checkpoints.size} left)`, mutated: false };
+  }
+  if (op === "restore") {
+    const doc = ctx.getDoc();
+    const command = snapshot("mcpCheckpointRestore", `MCP: restore checkpoint '${name}'`, doc, structuredClone(cp.doc));
+    ctx.execute(command);
+    return {
+      text: `restored "${name}" (${cp.summary}) — one undo step returns to the pre-restore state`,
+      mutated: true,
+    };
+  }
+  return { text: `unknown checkpoint op: ${op}`, mutated: false, isError: true };
 }
 
 /** "wav" | "mp3" from the tool record — anything else falls back to wav. */

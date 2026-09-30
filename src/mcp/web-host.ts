@@ -100,7 +100,7 @@ function depsFromServices(services: Services): McpBridgeDeps {
     applyLoudness: (input) => mcpApplyLoudness(services, input),
     // kyx_export rides the SAME render + encode + download pipeline as the
     // in-app "export wav/mp3" intent (the download lands in the KYX window).
-    export: (format) => quickBounceDownload(services.store.getDoc(), services.bank, format),
+    export: (request) => quickBounceDownload(services.store.getDoc(), services.bank, request),
   };
 }
 

@@ -2249,7 +2249,7 @@ export function IntentPanel() {
         const fmt = route.format;
         setStatus(`⏳ exporting ${fmt.toUpperCase()}…`);
         try {
-          setStatus(`✓ ${await quickBounceDownload(doc, services.bank, fmt)}`);
+          setStatus(`✓ ${await quickBounceDownload(doc, services.bank, { format: fmt })}`);
         } catch (err) {
           setError(err instanceof Error ? `export failed: ${err.message}` : String(err));
         }

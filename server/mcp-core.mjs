@@ -197,14 +197,24 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_export",
     description:
-      "Bounce the current project (WAV 16-bit / MP3 320). The render runs " +
-      "in the KYX window and the tool AWAITS it — the result carries the " +
-      "completion report (duration, size). Long renders may exceed the " +
-      "transport timeout (15 s relay / 10 s desktop); the download still " +
-      "lands in the app.",
+      "Bounce the current project: full mix (WAV 16/24/32-bit, MP3 320) or a STEMS zip " +
+      "(stems: all | drums | bass | music — stem projects bypass the master chain, same as " +
+      "the ExportPanel stem flow). sampleRate selects the render rate. The render runs in " +
+      "the KYX window and the tool AWAITS it — the result carries the completion report " +
+      "(duration, size). Long renders may exceed the transport timeout (15 s relay / 10 s " +
+      "desktop); the download still lands in the app.",
     inputSchema: {
       type: "object",
-      properties: { format: { type: "string", enum: ["wav", "mp3"] } },
+      properties: {
+        format: { type: "string", enum: ["wav", "mp3"] },
+        sampleRate: { type: "number", enum: [44100, 48000, 96000], description: "Render sample rate (default 44100)" },
+        bitDepth: { type: "number", enum: [16, 24, 32], description: "WAV bit depth (default 16; ignored for mp3)" },
+        stems: {
+          type: "string",
+          enum: ["all", "drums", "bass", "music"],
+          description: "Render stem groups into one zip instead of the full mix",
+        },
+      },
       required: ["format"],
     },
   },
@@ -365,7 +375,7 @@ export const MCP_TOOL_DEFS = [
     inputSchema: {
       type: "object",
       properties: {
-        op: { type: "string", enum: ["add", "remove"] },
+        op: { type: "string", enum: ["add", "remove", "rename"] },
         bar: { type: "integer", minimum: 1, description: "1-based bar" },
         name: { type: "string", description: "Optional marker name" },
       },
@@ -682,15 +692,19 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_routing",
     description:
-      "The group routing graph: list every track's destination (its group " +
+      "The group routing graph AND send buses: list every track's destination (its " +
       "or master) with a structured envelope, create a group bus, route " +
       "tracks into it (addToGroup) or back to master (removeFromGroup). " +
       "The model is FLAT — one group per track, no group-into-group — so " +
-      "routing cycles are impossible by construction.",
+      "routing cycles are impossible by construction. setSend/setReturnGain/ " +
+      "createReturn cover the send-bus mixer.",
     inputSchema: {
       type: "object",
       properties: {
-        op: { type: "string", enum: ["list", "createGroup", "addToGroup", "removeFromGroup"] },
+        op: {
+          type: "string",
+          enum: ["list", "createGroup", "addToGroup", "removeFromGroup", "setSend", "setReturnGain", "createReturn"],
+        },
         trackId: { type: "string", description: "For addToGroup/removeFromGroup — exact track id" },
         family: {
           type: "string",
@@ -699,7 +713,19 @@ export const MCP_TOOL_DEFS = [
         },
         groupId: { type: "string", description: "For addToGroup — the group track id (op:list)" },
         groupName: { type: "string", description: "For addToGroup — group name alternative to groupId" },
-        name: { type: "string", description: "For createGroup — optional group name (default: Group N)" },
+        name: {
+          type: "string",
+          description: "For createGroup/createReturn — optional name (default: Group N / Return N)",
+        },
+        returnId: { type: "string", description: "For setSend/setReturnGain — the return bus id (op:list)" },
+        returnName: { type: "string", description: "Return bus name alternative to returnId" },
+        level: {
+          type: "number",
+          minimum: 0,
+          maximum: 1.5,
+          description: "For setSend — linear send level (1.0 = unity)",
+        },
+        gain: { type: "number", minimum: 0, maximum: 1.5, description: "For setReturnGain — linear return fader" },
       },
       required: ["op"],
     },
@@ -710,13 +736,48 @@ export const MCP_TOOL_DEFS = [
       "Take groups (comp workflow): list every group with its track, the " +
       "ACTIVE take and the alternatives (clips per take), or activate a " +
       "take — the comp pick that decides which alternative is heard. " +
-      "Reversible (one undo step); the domain validates the take has clips.",
+      "Reversible (one undo step); the domain validates the take has clips. " +
+      "deleteTake (destructive-gated) removes every clip of one take.",
     inputSchema: {
       type: "object",
       properties: {
-        op: { type: "string", enum: ["list", "activate"] },
+        op: { type: "string", enum: ["list", "activate", "deleteTake"] },
         groupId: { type: "string", description: "For activate — the take group id (op:list)" },
         takeId: { type: "string", description: "For activate — the take id to make active" },
+      },
+      required: ["op"],
+    },
+  },
+  {
+    name: "kyx_checkpoint",
+    description:
+      "Named project checkpoints for agent experiments: save the current " +
+      "state, list checkpoints with how many steps have passed since each, " +
+      "restore one (ONE undo step back to the pre-restore state), or delete. " +
+      "Session-scoped (last 8 kept); destructive ops auto-save " +
+      "auto-before-<tool> checkpoints when allowed.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["save", "list", "restore", "delete"] },
+        name: { type: "string", description: "Checkpoint name (required for save/restore/delete)" },
+      },
+      required: ["op"],
+    },
+  },
+  {
+    name: "kyx_checkpoint",
+    description:
+      "Named project checkpoints for agent experiments: save the current " +
+      "state, list checkpoints with how many steps have passed since each, " +
+      "restore one (ONE undo step back to the pre-restore state), or delete. " +
+      "Session-scoped (last 8 kept); destructive ops auto-save " +
+      "auto-before-<tool> checkpoints when allowed.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["save", "list", "restore", "delete"] },
+        name: { type: "string", description: "Checkpoint name (required for save/restore/delete)" },
       },
       required: ["op"],
     },

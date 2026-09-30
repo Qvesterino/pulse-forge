@@ -1,6 +1,6 @@
 import type { ProjectDocument } from "../project-model/types";
 import type { Command } from "../commands/types";
-import { executeMcpToolAsync, type McpMeterSnapshot, type McpToolContext } from "./tools";
+import { executeMcpToolAsync, type McpExportRequest, type McpMeterSnapshot, type McpToolContext } from "./tools";
 import { mcpAllowDestructive } from "./flags";
 
 /**
@@ -29,7 +29,7 @@ export interface McpBridgeDeps {
   historyLabels(): string[];
   isMicRecordingActive(): boolean;
   transport: McpToolContext["transport"];
-  export?: (format: "wav" | "mp3") => Promise<string>;
+  export?: (request: McpExportRequest) => Promise<string>;
   meters?: () => McpMeterSnapshot | null;
   beginUndoFrame?: (label?: string) => void;
   endUndoFrame?: () => void;
