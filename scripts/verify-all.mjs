@@ -33,10 +33,15 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const REPORT_DIR = process.env.VERIFY_REPORT_DIR || resolve(root, ".zcode/verify");
+const STAMP = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 const BROWSER_PORT = process.env.VERIFY_BROWSER_PORT || "5299";
 const ENGINES = (() => {
   const raw = argValue("--engines");
-  if (raw) return raw.split(",").map((s) => s.trim()).filter(Boolean);
+  if (raw)
+    return raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
   return (process.env.KYX_BROWSER_ENGINE || "chromium").split(",");
 })();
 
@@ -132,6 +137,15 @@ function runGate(gate) {
     maxBuffer: 64 * 1024 * 1024,
   });
   const durationMs = Date.now() - started;
+  // Full output goes to disk per gate - the JSON tail is for the console,
+  // the file is for failure attribution after the fact.
+  const outPath = resolve(REPORT_DIR, `gate-${gate.id}-${STAMP}.log`);
+  try {
+    const NL = String.fromCharCode(10);
+    writeFileSync(outPath, (res.stdout || "") + NL + NL + "[stderr]" + NL + (res.stderr || ""), "utf8");
+  } catch {
+    /* disk issues must not mask the gate result */
+  }
   const timedOut = res.error && res.error.code === "ETIMEDOUT";
   const exitCode = res.status ?? (res.error ? -1 : 0);
   const tail = (res.stdout || "").split("\n").filter(Boolean).slice(-12).join("\n");
@@ -143,6 +157,7 @@ function runGate(gate) {
     status: exitCode === 0 ? "pass" : timedOut ? "timeout" : "fail",
     exitCode,
     durationMs,
+    output: outPath,
     summary: summarize(gate.id, res.stdout || "", exitCode),
     tail,
     errTail,
@@ -175,7 +190,7 @@ function fmtDuration(ms) {
 // ── main ──
 const selected = args();
 mkdirSync(REPORT_DIR, { recursive: true });
-const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+const stamp = STAMP;
 console.log(`[verify-all] ${GATES.length} gates · engines=${ENGINES.join("+")} · report → ${REPORT_DIR}`);
 console.log(`[verify-all] machine: ${process.platform} node ${process.version} · start ${stamp}\n`);
 
@@ -226,7 +241,8 @@ const md = [
   `| Gate | Status | Duration | Note |`,
   `| --- | --- | --- | --- |`,
   ...results.map(
-    (r) => `| ${r.id} | ${r.status === "pass" ? "✅" : r.blocking ? "❌" : "⚠️"} ${r.status} | ${fmtDuration(r.durationMs)} | ${r.summary || ""} |`,
+    (r) =>
+      `| ${r.id} | ${r.status === "pass" ? "✅" : r.blocking ? "❌" : "⚠️"} ${r.status} | ${fmtDuration(r.durationMs)} | ${r.summary || ""} |`,
   ),
   ``,
   ...results
@@ -237,5 +253,6 @@ const mdPath = resolve(REPORT_DIR, `verify-all-${stamp}.md`);
 writeFileSync(mdPath, md, "utf8");
 
 console.log(`[verify-all] ${report.summary.verdict} · report: ${mdPath}`);
-if (advisoryFails.length) console.log(`[verify-all] advisory (non-blocking): ${advisoryFails.map((r) => r.id).join(", ")}`);
+if (advisoryFails.length)
+  console.log(`[verify-all] advisory (non-blocking): ${advisoryFails.map((r) => r.id).join(", ")}`);
 process.exit(blockingFails.length === 0 ? 0 : 1);
