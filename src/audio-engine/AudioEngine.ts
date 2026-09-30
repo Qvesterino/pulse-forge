@@ -42,7 +42,8 @@ import { timeStretch } from "./time-stretch";
 import { connectAudioClipSourceChannel } from "./audioClipChannels";
 import { phaseVocoderWarpChannel, warpRateEnvelope, type WarpRateInterval } from "./phase-vocoder";
 import { renderWarpPreserveAsync } from "../audio-workers/warp-render-client";
-import { MeterRing } from "./MeterRing";
+import { MeteringRig, measureTruePeak as measureTruePeakImpl } from "./meteringRig";
+import type { MasterMeterSnapshot, TrackMeterSnapshot } from "./metering-types";
 import {
   lfoKind,
   lfoWave,
@@ -50,19 +51,7 @@ import {
   modulatorPointValue,
   resolveLfoTarget,
 } from "../project-model/modulators";
-import {
-  channelLevels,
-  integratedLufs,
-  lufsFromChannels,
-  monoLossDb,
-  splitChannels,
-  stereoCorrelation,
-  PeakHold,
-  toDb,
-  truePeakOversampled,
-  type Frame,
-  type ChannelLevels,
-} from "./metering";
+import type { Frame, ChannelLevels } from "./metering";
 
 /** Tick position → seconds inside a frozen loop (mod buffer duration). */
 export function frozenPlaybackOffset(positionTick: number, bpm: number, durationSec: number): number {
@@ -281,11 +270,7 @@ interface PreviewVoice {
   gain: GainNode;
 }
 
-export interface TrackMeterSnapshot {
-  level: number;
-  peakDb: number;
-  clipping: boolean;
-}
+export type { TrackMeterSnapshot, MasterMeterSnapshot } from "./metering-types";
 
 interface InstrumentPreviewVoice {
   runtime: InstrumentRuntime;
@@ -421,23 +406,28 @@ export function expandSceneLaneWindow(
 }
 
 /** Shared master-metering readout (true peak, BS.1770 loudness, GR). */
-export interface MasterMeterSnapshot {
-  left: ChannelLevels;
-  right: ChannelLevels;
-  correlation: number;
-  peakHoldDb: number;
-  truePeakDb: number;
-  lufsMomentary: number;
-  lufsShortTerm: number;
-  lufsIntegrated: number;
-  monoLossDb: number;
-  lrImbalanceDb: number;
-  gainReductionDb: number;
-  glueReductionDb: number;
-}
 
 export class AudioEngine {
   private ctx: BaseAudioContext | null = null;
+
+  /**
+   * Wave 4a (decomposition): metering/analysis owner — meters, peak hold,
+   * LUFS history and the registered master taps. Creation of the tap nodes
+   * stays in buildMaster (Wave 4b moves that); this rig owns storage, reads
+   * and teardown. See meteringRig.ts + docs/AUDIOENGINE-DECOMPOSITION-PLAN.md.
+   */
+  private metering = new MeteringRig({
+    ctx: () => this.ctx,
+    trackAnalyser: (id) => this.trackNodes.get(id)?.analyser ?? null,
+    groupAnalyser: (id) => this.groupNodes.get(id)?.analyser ?? null,
+    returnAnalyser: (id) => this.returnNodes.get(id)?.analyser ?? null,
+    masterStage: () => ({
+      limiter: this.masterLimiter,
+      limiterWorklet: this.masterLimiterWorklet,
+      glue: this.masterGlue,
+      kwMeter: this.kwMeter,
+    }),
+  });
   private liveContextListeners = new Set<(context: AudioContext | null) => void>();
   private master: GainNode | null = null;
   private masterClipper: WaveShaperNode | null = null;
@@ -445,8 +435,6 @@ export class AudioEngine {
    *  reused across commits / fader-preview frames (applyMasterConfig runs
    *  on every syncProject). */
   private masterClipperCurve: Float32Array<ArrayBuffer> | null = null;
-  /** One-frame TTL cache for getMasterMeterSnapshot (see that method). */
-  private masterMeterCache: { at: number; snapshot: MasterMeterSnapshot } | null = null;
   private masterLimiter: DynamicsCompressorNode | null = null;
   /**
    * Look-ahead limiter runtime spliced between the master clipper and the
@@ -502,7 +490,6 @@ export class AudioEngine {
     sideGain: GainNode;
     sideInv: GainNode;
   } | null = null;
-  private masterAnalyser: AnalyserNode | null = null;
   private bank: SampleBank | null = null;
   private doc: ProjectDocument | null = null;
   private effectIntentPreview: EffectIntentPreviewSession | null = null;
@@ -589,50 +576,8 @@ export class AudioEngine {
    */
   private oneShotSources = new Set<AudioScheduledSourceNode>();
   private missedAssets = new Set<string>();
-  private levelBuf = new Float32Array(1024);
-  /**
-   * True per-channel master metering. A single AnalyserNode downmixes to
-   * mono regardless of channelCount/channelCountMode (verified in Chromium),
-   * so stereo levels/correlation require a ChannelSplitter feeding two
-   * single-channel analysers.
-   */
-  private masterSplitter: ChannelSplitterNode | null = null;
-  private masterAnalyserL: AnalyserNode | null = null;
-  private masterAnalyserR: AnalyserNode | null = null;
-  /**
-   * Dedicated post-limiter sink for the spectrogram view. Kept separate from
-   * masterAnalyser so the spectrogram's larger fftSize never perturbs the
-   * spectrum-curve and goniometer consumers reading the shared 2048 node.
-   * Low/high are the multi-resolution companions: the long window (8192)
-   * resolves sub-bass down to ~5.4 Hz, the short window (1024) keeps
-   * hi-hat transients crisp in time.
-   */
-  private masterSpectrogramAnalyser: AnalyserNode | null = null;
-  private masterSpectrogramLow: AnalyserNode | null = null;
-  private masterSpectrogramHigh: AnalyserNode | null = null;
-  /**
-   * Mid/side spectrogram companions: 0.5·(L±R) matrices off the master
-   * splitter feeding dedicated sink analysers. Side = L−R makes wide-only
-   * content (reverbs, wideners, Haas) visible and centered content vanish.
-   */
-  private masterSpectrogramMid: AnalyserNode | null = null;
-  private masterSpectrogramSide: AnalyserNode | null = null;
-  private masterChBufL: Float32Array<ArrayBuffer> = new Float32Array(2048);
-  private masterChBufR: Float32Array<ArrayBuffer> = new Float32Array(2048);
-  private masterPeakHold = new PeakHold(0.4);
-  private meterProjectId: string | null = null;
   /** Project id the stretchCache entries were computed for. */
   private stretchProjectId: string | null = null;
-  // Defect B.7 (performance / memory recon): the old `number[]` rings
-  // did `push(...masterChBufL)` + `splice(0, n)` per overshoot — O(n)
-  // each plus the spread allocates a fresh array every call. Pre-allocate
-  // a Float32Array ring sized to the worst-case 3.2 s of audio at 96 kHz
-  // (307 200 samples ≈ 1.2 MiB per channel) and copy via `set()`.
-  // `push(src)` overwrites the oldest samples automatically — no splice.
-  private static readonly METER_RING_CAPACITY = Math.ceil(96000 * 3.2);
-  private meterHistoryL = new MeterRing(AudioEngine.METER_RING_CAPACITY);
-  private meterHistoryR = new MeterRing(AudioEngine.METER_RING_CAPACITY);
-  private meterLoudnessBlocks: number[] = [];
   private syncedBpm = 0;
   /** Active scene BPM override (song mode) — null = runtimes follow doc.bpm. */
   private sceneBpmOverride: number | null = null;
@@ -828,9 +773,9 @@ export class AudioEngine {
     if (!this.ctx || isLiveAudioContext(this.ctx)) {
       throw new Error("The master chain can only be bypassed for an offline render");
     }
-    if (!this.master || !this.masterAnalyser) throw new Error("The offline master graph is not initialized");
+    if (!this.master || !this.metering.masterAnalyser) throw new Error("The offline master graph is not initialized");
     this.master.disconnect();
-    this.master.connect(this.masterAnalyser);
+    this.master.connect(this.metering.masterAnalyser);
   }
 
   useContext(ctx: BaseAudioContext): void {
@@ -1137,53 +1082,9 @@ export class AudioEngine {
   private buildMaster(): void {
     const ctx = this.ctx;
     if (!ctx) return;
-    this.resetMeterHistory();
+    this.metering.resetMeterHistory();
     // Disconnect old master chain if re-invoked (e.g. useContext with new context).
-    try {
-      this.masterAnalyser?.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    try {
-      this.masterSplitter?.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    try {
-      this.masterAnalyserL?.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    try {
-      this.masterAnalyserR?.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    try {
-      this.masterSpectrogramAnalyser?.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    try {
-      this.masterSpectrogramLow?.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    try {
-      this.masterSpectrogramHigh?.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    try {
-      this.masterSpectrogramMid?.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    try {
-      this.masterSpectrogramSide?.disconnect();
-    } catch {
-      /* already disconnected */
-    }
+    this.metering.disconnectMasterTaps();
     try {
       this.masterLimiter?.disconnect();
     } catch {
@@ -1590,10 +1491,10 @@ export class AudioEngine {
     // then drives it and keeps the native node neutral while it is active.
     if (isWorkletReady("limiter", ctx)) this.attachMasterWorklet(ctx);
     this.applyMasterConfig(this.doc?.master ?? defaultMasterConfig());
-    this.masterAnalyser = ctx.createAnalyser();
-    this.masterAnalyser.fftSize = 2048;
-    this.masterAnalyser.channelCount = 2;
-    this.masterAnalyser.channelCountMode = "explicit";
+    const masterAnalyser = ctx.createAnalyser();
+    masterAnalyser.fftSize = 2048;
+    masterAnalyser.channelCount = 2;
+    masterAnalyser.channelCountMode = "explicit";
     this.master.connect(this.masterTape!.input);
     this.masterTape!.output.connect(this.masterMs!.input);
     this.masterMs!.output.connect(this.masterBassMono!.input);
@@ -1614,46 +1515,46 @@ export class AudioEngine {
     } else {
       this.masterClipper.connect(this.masterLimiter);
     }
-    this.masterLimiter.connect(this.masterAnalyser);
-    this.masterAnalyser.connect(ctx.destination);
+    this.masterLimiter.connect(masterAnalyser);
+    masterAnalyser.connect(ctx.destination);
     // Stereo tap: limiter → splitter → per-channel analysers (metering sinks).
-    this.masterSplitter = ctx.createChannelSplitter(2);
-    this.masterAnalyserL = ctx.createAnalyser();
-    this.masterAnalyserL.fftSize = 2048;
-    this.masterAnalyserL.channelCount = 1;
-    this.masterAnalyserL.channelCountMode = "explicit";
-    this.masterAnalyserR = ctx.createAnalyser();
-    this.masterAnalyserR.fftSize = 2048;
-    this.masterAnalyserR.channelCount = 1;
-    this.masterAnalyserR.channelCountMode = "explicit";
-    this.masterLimiter.connect(this.masterSplitter);
-    this.masterSplitter.connect(this.masterAnalyserL, 0);
-    this.masterSplitter.connect(this.masterAnalyserR, 1);
+    const masterSplitter = ctx.createChannelSplitter(2);
+    const masterAnalyserL = ctx.createAnalyser();
+    masterAnalyserL.fftSize = 2048;
+    masterAnalyserL.channelCount = 1;
+    masterAnalyserL.channelCountMode = "explicit";
+    const masterAnalyserR = ctx.createAnalyser();
+    masterAnalyserR.fftSize = 2048;
+    masterAnalyserR.channelCount = 1;
+    masterAnalyserR.channelCountMode = "explicit";
+    this.masterLimiter.connect(masterSplitter);
+    masterSplitter.connect(masterAnalyserL, 0);
+    masterSplitter.connect(masterAnalyserR, 1);
     // Spectrogram tap: post-limiter sink (no output connection) — the same
     // observer pattern as the stereo tap above. 4096 gives ~10.7 Hz bin
     // spacing at 44.1 kHz so sub-bass rows stay readable on the log axis;
     // smoothing 0.55 trades a little smear for a flicker-free waterfall.
-    this.masterSpectrogramAnalyser = ctx.createAnalyser();
-    this.masterSpectrogramAnalyser.fftSize = 4096;
-    this.masterSpectrogramAnalyser.smoothingTimeConstant = 0.55;
-    this.masterSpectrogramAnalyser.channelCount = 2;
-    this.masterSpectrogramAnalyser.channelCountMode = "explicit";
-    this.masterLimiter.connect(this.masterSpectrogramAnalyser);
+    const masterSpectrogramAnalyser = ctx.createAnalyser();
+    masterSpectrogramAnalyser.fftSize = 4096;
+    masterSpectrogramAnalyser.smoothingTimeConstant = 0.55;
+    masterSpectrogramAnalyser.channelCount = 2;
+    masterSpectrogramAnalyser.channelCountMode = "explicit";
+    this.masterLimiter.connect(masterSpectrogramAnalyser);
     // Multi-resolution companions (same sink pattern): the long window
     // resolves sub-bass, the short one buys transient snap. Smoothing is
     // per band — lows steadier, highs snappier.
-    this.masterSpectrogramLow = ctx.createAnalyser();
-    this.masterSpectrogramLow.fftSize = 8192;
-    this.masterSpectrogramLow.smoothingTimeConstant = 0.6;
-    this.masterSpectrogramLow.channelCount = 2;
-    this.masterSpectrogramLow.channelCountMode = "explicit";
-    this.masterLimiter.connect(this.masterSpectrogramLow);
-    this.masterSpectrogramHigh = ctx.createAnalyser();
-    this.masterSpectrogramHigh.fftSize = 1024;
-    this.masterSpectrogramHigh.smoothingTimeConstant = 0.35;
-    this.masterSpectrogramHigh.channelCount = 2;
-    this.masterSpectrogramHigh.channelCountMode = "explicit";
-    this.masterLimiter.connect(this.masterSpectrogramHigh);
+    const masterSpectrogramLow = ctx.createAnalyser();
+    masterSpectrogramLow.fftSize = 8192;
+    masterSpectrogramLow.smoothingTimeConstant = 0.6;
+    masterSpectrogramLow.channelCount = 2;
+    masterSpectrogramLow.channelCountMode = "explicit";
+    this.masterLimiter.connect(masterSpectrogramLow);
+    const masterSpectrogramHigh = ctx.createAnalyser();
+    masterSpectrogramHigh.fftSize = 1024;
+    masterSpectrogramHigh.smoothingTimeConstant = 0.35;
+    masterSpectrogramHigh.channelCount = 2;
+    masterSpectrogramHigh.channelCountMode = "explicit";
+    this.masterLimiter.connect(masterSpectrogramHigh);
     // Mid/side spectrogram matrix off the existing stereo splitter:
     // mid = 0.5·(L+R), side = 0.5·(L−R). The ±0.5 gains sum inside one
     // merge node per branch; each feeds a mono sink analyser (no output).
@@ -1663,24 +1564,37 @@ export class AudioEngine {
       const gr = ctx.createGain();
       gr.gain.value = 0.5 * sign;
       const merge = ctx.createGain();
-      this.masterSplitter!.connect(gl, 0);
-      this.masterSplitter!.connect(gr, 1);
+      masterSplitter.connect(gl, 0);
+      masterSplitter.connect(gr, 1);
       gl.connect(merge);
       gr.connect(merge);
       return merge;
     };
-    this.masterSpectrogramMid = ctx.createAnalyser();
-    this.masterSpectrogramMid.fftSize = 4096;
-    this.masterSpectrogramMid.smoothingTimeConstant = 0.55;
-    this.masterSpectrogramMid.channelCount = 1;
-    this.masterSpectrogramMid.channelCountMode = "explicit";
-    msBranch(1).connect(this.masterSpectrogramMid);
-    this.masterSpectrogramSide = ctx.createAnalyser();
-    this.masterSpectrogramSide.fftSize = 4096;
-    this.masterSpectrogramSide.smoothingTimeConstant = 0.55;
-    this.masterSpectrogramSide.channelCount = 1;
-    this.masterSpectrogramSide.channelCountMode = "explicit";
-    msBranch(-1).connect(this.masterSpectrogramSide);
+    const masterSpectrogramMid = ctx.createAnalyser();
+    masterSpectrogramMid.fftSize = 4096;
+    masterSpectrogramMid.smoothingTimeConstant = 0.55;
+    masterSpectrogramMid.channelCount = 1;
+    masterSpectrogramMid.channelCountMode = "explicit";
+    msBranch(1).connect(masterSpectrogramMid);
+    const masterSpectrogramSide = ctx.createAnalyser();
+    masterSpectrogramSide.fftSize = 4096;
+    masterSpectrogramSide.smoothingTimeConstant = 0.55;
+    masterSpectrogramSide.channelCount = 1;
+    masterSpectrogramSide.channelCountMode = "explicit";
+    msBranch(-1).connect(masterSpectrogramSide);
+    // Metering taps are OWNED by MeteringRig (Wave 4a) — creation and
+    // graph shape stay here, storage and reads moved there.
+    this.metering.attachMasterTaps({
+      analyser: masterAnalyser,
+      splitter: masterSplitter,
+      analyserL: masterAnalyserL,
+      analyserR: masterAnalyserR,
+      spectrogram: masterSpectrogramAnalyser,
+      spectrogramLow: masterSpectrogramLow,
+      spectrogramHigh: masterSpectrogramHigh,
+      spectrogramMid: masterSpectrogramMid,
+      spectrogramSide: masterSpectrogramSide,
+    });
     // K-weighted loudness meter (BS.1770) — sink branch, no audio output.
     if (isWorkletReady("kwmeter", ctx)) this.attachKwMeter(ctx);
   }
@@ -1884,8 +1798,7 @@ export class AudioEngine {
     }
     const runBody = async (target: ProjectDocument): Promise<void> => {
       this.cancelEffectIntentPreview(target, "projectChanged");
-      if (this.meterProjectId !== null && this.meterProjectId !== target.id) this.resetMeterHistory();
-      this.meterProjectId = target.id;
+      this.metering.syncProjectId(target.id);
       if (this.stretchProjectId !== target.id) {
         this.stretchProjectId = target.id;
         this.clearStretchCache();
@@ -5366,41 +5279,22 @@ export class AudioEngine {
     inst.runtime.noteOff(pitch, when);
   }
 
-  private rawPeakOf(analyser: AnalyserNode | null): number {
-    if (!analyser) return 0;
-    analyser.getFloatTimeDomainData(this.levelBuf);
-    let peak = 0;
-    for (let i = 0; i < this.levelBuf.length; i++) {
-      const v = Math.abs(this.levelBuf[i]);
-      if (v > peak) peak = v;
-    }
-    return peak;
-  }
-
-  private peakOf(analyser: AnalyserNode | null): number {
-    return Math.min(1, this.rawPeakOf(analyser));
-  }
+  // ── Metering (Wave 4a) — delegates to MeteringRig; public surface unchanged. ──
 
   getTrackLevel(trackId: string): number {
-    return this.peakOf(this.trackNodes.get(trackId)?.analyser ?? null);
+    return this.metering.getTrackLevel(trackId);
   }
 
   getReturnLevel(returnId: string): number {
-    return this.peakOf(this.returnNodes.get(returnId)?.analyser ?? null);
+    return this.metering.getReturnLevel(returnId);
   }
 
-  /** One read for the mixer channel meter: level, peak readout and clip flag.
-   * Groups are metered from their group nodes (same fallback the spectrogram
-   * source getter uses) — pre-fix, bus strips showed flat-zero forever. */
   getTrackMeterSnapshot(trackId: string): TrackMeterSnapshot {
-    const analyser = this.trackNodes.get(trackId)?.analyser ?? this.groupNodes.get(trackId)?.analyser ?? null;
-    const peak = this.rawPeakOf(analyser);
-    return { level: Math.min(1, peak), peakDb: toDb(peak), clipping: peak >= 0.9995 };
+    return this.metering.getTrackMeterSnapshot(trackId);
   }
 
   getReturnMeterSnapshot(returnId: string): TrackMeterSnapshot {
-    const peak = this.rawPeakOf(this.returnNodes.get(returnId)?.analyser ?? null);
-    return { level: Math.min(1, peak), peakDb: toDb(peak), clipping: peak >= 0.9995 };
+    return this.metering.getReturnMeterSnapshot(returnId);
   }
 
   /** Post-limiter master tap for realtime recording ("bounce what you hear"). */
@@ -5676,159 +5570,51 @@ export class AudioEngine {
   }
 
   getMasterLevel(): number {
-    return this.peakOf(this.masterAnalyser);
+    return this.metering.getMasterLevel();
   }
 
-  /** Refresh the cached master frame and return per-channel levels + correlation. */
   getMasterLevels(): { left: ChannelLevels; right: ChannelLevels; correlation: number } {
-    const out = {
-      left: { peak: 0, rms: 0, peakDb: -120, rmsDb: -120 } as ChannelLevels,
-      right: { peak: 0, rms: 0, peakDb: -120, rmsDb: -120 } as ChannelLevels,
-      correlation: 1,
-    };
-    if (!this.masterAnalyserL || !this.masterAnalyserR) return out;
-    this.masterAnalyserL.getFloatTimeDomainData(this.masterChBufL);
-    this.masterAnalyserR.getFloatTimeDomainData(this.masterChBufR);
-    const l = channelLevels(this.masterChBufL);
-    const r = channelLevels(this.masterChBufR);
-    const corr = stereoCorrelation(this.masterChBufL, this.masterChBufR);
-    this.masterPeakHold.push(Math.max(l.peakDb, r.peakDb));
-    out.left = l;
-    out.right = r;
-    out.correlation = corr;
-    return out;
+    return this.metering.getMasterLevels();
   }
 
-  /** Held peak dBFS (decays slowly). Call after getMasterLevels() to get the latest hold. */
   getMasterPeakHoldDb(): number {
-    return this.masterPeakHold.current;
+    return this.metering.getMasterPeakHoldDb();
   }
 
-  /**
-   * Current master-stage gain reduction in dB (0 = untouched). Reads the
-   * look-ahead worklet meter when available, falling back to the native
-   * DynamicsCompressorNode's reduction attribute (negative dB → normalized
-   * to positive reduction).
-   */
   getMasterGainReductionDb(): number {
-    if (this.masterLimiterWorklet) return Math.max(0, this.masterLimiterWorklet.getGainReductionDb?.() ?? 0);
-    const reduction = this.masterLimiter?.reduction ?? 0;
-    const value = typeof reduction === "number" && Number.isFinite(reduction) ? -reduction : 0;
-    return Math.max(0, value);
+    return this.metering.getMasterGainReductionDb();
   }
 
-  /** Current master-glue gain reduction in dB (0 = untouched). */
   getMasterGlueReductionDb(): number {
-    return Math.max(0, this.masterGlue?.getGainReductionDb?.() ?? 0);
+    return this.metering.getMasterGlueReductionDb();
   }
 
   resetMasterPeakHold(): void {
-    this.masterPeakHold.reset();
-  }
-
-  private resetMeterHistory(): void {
-    this.meterHistoryL.reset();
-    this.meterHistoryR.reset();
-    this.meterLoudnessBlocks = [];
-    this.masterPeakHold.reset();
+    this.metering.resetMasterPeakHold();
   }
 
   resetMasterIntegratedLufs(): void {
-    this.meterLoudnessBlocks = [];
-    this.kwMeter?.reset();
+    this.metering.resetMasterIntegratedLufs();
   }
 
   getMasterMeterSnapshot(): MasterMeterSnapshot {
-    // Three UI consumers poll this on the shared rAF bus (meter wall + stereo
-    // strip ~30 Hz, loudness history ~10 Hz). A full snapshot runs true-peak
-    // oversampling over 2×2048 samples plus ring pushes and allocations; a
-    // one-frame TTL lets same-frame consumers share one computation instead
-    // of paying it two-three times per animation frame.
-    const now = performance.now();
-    const cached = this.masterMeterCache;
-    if (cached && now - cached.at < 12) return cached.snapshot;
-    const snapshot = this.computeMasterMeterSnapshot();
-    this.masterMeterCache = { at: now, snapshot };
-    return snapshot;
+    return this.metering.getMasterMeterSnapshot();
   }
 
-  private computeMasterMeterSnapshot(): MasterMeterSnapshot {
-    const levels = this.getMasterLevels();
-    this.meterHistoryL.push(this.masterChBufL);
-    this.meterHistoryR.push(this.masterChBufR);
-    const sampleRate = this.ctx?.sampleRate ?? 44100;
-    // The ring's capacity is the worst-case ceiling; no manual trim.
-    // True peak: 4× polyphase oversampling (intersample peaks included).
-    const truePeak = Math.max(
-      AudioEngine.measureTruePeak(this.masterChBufL, 1),
-      AudioEngine.measureTruePeak(this.masterChBufR, 1),
-    );
-    // Loudness: exact BS.1770 K-weighting from the worklet when loaded;
-    // legacy flat-energy approximation otherwise.
-    if (this.kwMeter) {
-      const loudness = this.kwMeter.getLoudness();
-      return {
-        left: levels.left,
-        right: levels.right,
-        correlation: levels.correlation,
-        peakHoldDb: this.masterPeakHold.current,
-        truePeakDb: toDb(truePeak),
-        lufsMomentary: loudness.m,
-        lufsShortTerm: loudness.s,
-        lufsIntegrated: loudness.i,
-        monoLossDb: monoLossDb(this.masterChBufL, this.masterChBufR),
-        lrImbalanceDb: Math.abs(levels.left.rmsDb - levels.right.rmsDb),
-        gainReductionDb: this.getMasterGainReductionDb(),
-        glueReductionDb: this.getMasterGlueReductionDb(),
-      };
-    }
-    const window = (seconds: number): [Float32Array, Float32Array] => {
-      // MeterRing.lastN already returns a fresh Float32Array in
-      // chronological order — no slice + Float32Array.from copy.
-      const length = Math.min(this.meterHistoryL.length, Math.max(1, Math.round(seconds * sampleRate)));
-      return [this.meterHistoryL.lastN(length), this.meterHistoryR.lastN(length)];
-    };
-    const [momentaryL, momentaryR] = window(0.4);
-    const [shortL, shortR] = window(3);
-    const momentary = lufsFromChannels(momentaryL, momentaryR);
-    this.meterLoudnessBlocks.push(momentary);
-    if (this.meterLoudnessBlocks.length > 900) this.meterLoudnessBlocks.shift();
-    return {
-      left: levels.left,
-      right: levels.right,
-      correlation: levels.correlation,
-      peakHoldDb: this.masterPeakHold.current,
-      truePeakDb: toDb(truePeak),
-      lufsMomentary: momentary,
-      lufsShortTerm: lufsFromChannels(shortL, shortR),
-      lufsIntegrated: integratedLufs(this.meterLoudnessBlocks),
-      monoLossDb: monoLossDb(momentaryL, momentaryR),
-      lrImbalanceDb: Math.abs(levels.left.rmsDb - levels.right.rmsDb),
-      gainReductionDb: this.getMasterGainReductionDb(),
-      glueReductionDb: this.getMasterGlueReductionDb(),
-    };
-  }
-
-  /** 0 dBFS → 0 dB headroom (positive = peaking). */
   getMasterHeadroomDb(): number {
-    const levels = this.getMasterLevels();
-    return -Math.max(levels.left.peakDb, levels.right.peakDb);
+    return this.metering.getMasterHeadroomDb();
   }
 
-  /** Expose the master post-limiter AnalyserNode for spectrum UI (read-only observer). */
   getMasterSpectrumAnalyser(): AnalyserNode | null {
-    return this.masterAnalyser;
+    return this.metering.getMasterSpectrumAnalyser();
   }
 
-  /** Expose per-channel analysers for goniometer (read-only observer). */
   getMasterStereoAnalysers(): { l: AnalyserNode; r: AnalyserNode } | null {
-    if (!this.masterAnalyserL || !this.masterAnalyserR) return null;
-    return { l: this.masterAnalyserL, r: this.masterAnalyserR };
+    return this.metering.getMasterStereoAnalysers();
   }
 
-  /** Dedicated post-limiter analyser for the spectrogram waterfall (read-only observer). */
   getMasterSpectrogramAnalyser(): AnalyserNode | null {
-    return this.masterSpectrogramAnalyser;
+    return this.metering.getMasterSpectrogramAnalyser();
   }
 
   /** Read-only live context state for UI indicators (no side effects, no
@@ -5847,42 +5633,21 @@ export class AudioEngine {
     return () => navigator.mediaDevices?.removeEventListener("devicechange", handler);
   }
 
-  /**
-   * Multi-resolution spectrogram taps (low 8192 / mid 4096 / high 1024) off
-   * the same post-limiter sink point. Null until the master graph exists.
-   */
   getMasterSpectrogramTaps(): { low: AnalyserNode; mid: AnalyserNode; high: AnalyserNode } | null {
-    if (!this.masterSpectrogramLow || !this.masterSpectrogramAnalyser || !this.masterSpectrogramHigh) return null;
-    return { low: this.masterSpectrogramLow, mid: this.masterSpectrogramAnalyser, high: this.masterSpectrogramHigh };
+    return this.metering.getMasterSpectrogramTaps();
   }
 
-  /**
-   * Mid/side spectrogram taps (0.5·(L+R) and 0.5·(L−R)) off the master
-   * splitter. Null until the master graph exists.
-   */
   getMasterSpectrogramStereoTaps(): { mid: AnalyserNode; side: AnalyserNode } | null {
-    if (!this.masterSpectrogramMid || !this.masterSpectrogramSide) return null;
-    return { mid: this.masterSpectrogramMid, side: this.masterSpectrogramSide };
+    return this.metering.getMasterSpectrogramStereoTaps();
   }
 
-  /**
-   * Post-fader analyser branch for one track or group — the spectrogram's
-   * per-source view. Reuses the track's own metering analyser (the chain
-   * tail already feeds it), so a track view costs zero extra FFT work.
-   * Read-only observer; null for unknown ids.
-   */
   getSpectrogramTrackAnalyser(sourceId: string): AnalyserNode | null {
-    return this.trackNodes.get(sourceId)?.analyser ?? this.groupNodes.get(sourceId)?.analyser ?? null;
+    return this.metering.getSpectrogramTrackAnalyser(sourceId);
   }
 
-  /**
-   * True peak via 4× polyphase oversampling (ITU BS.1770 style) — catches
-   * intersample peaks that the old parabolic estimate missed. Delegates to
-   * the shared pure implementation in metering.ts.
-   */
+  /** True peak via 4× polyphase oversampling — pure impl lives in metering.ts. */
   static measureTruePeak(frames: Frame, channels: number): number {
-    if (frames.length === 0) return 0;
-    return truePeakOversampled(splitChannels(frames, channels));
+    return measureTruePeakImpl(frames, channels);
   }
 
   getDiagnostics(): Record<string, string | number> {
