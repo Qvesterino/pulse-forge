@@ -74,13 +74,17 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     const body = sliceFunction(readEngine(), /useContext\s*\(/);
     expect(body, "useContext not found in AudioEngine.ts").not.toBe("");
     const idxDispose = body.indexOf("disposeTrackNodes(");
-    const idxBuildMaster = body.indexOf("buildMaster(");
+    // Wave 4b: buildMaster moved to MasterChain.build(); useContext must
+    // still call it (through the collaborator) in the same order.
+    const idxBuildMaster = body.indexOf("masterChain.build(");
     expect(idxDispose, "useContext must call disposeTrackNodes to clear prior EffectRuntimes").toBeGreaterThan(-1);
-    expect(idxBuildMaster, "useContext must call buildMaster to rebuild the master chain").toBeGreaterThan(-1);
-    // Dispose must run BEFORE buildMaster — otherwise the old runtimes
+    expect(idxBuildMaster, "useContext must call masterChain.build() to rebuild the master chain").toBeGreaterThan(-1);
+    // Dispose must run BEFORE the rebuild — otherwise the old runtimes
     // would still be wired into the old master and the new master
     // would briefly double the graph.
-    expect(idxDispose, "useContext must dispose prior runtimes before buildMaster()").toBeLessThan(idxBuildMaster);
+    expect(idxDispose, "useContext must dispose prior runtimes before masterChain.build()").toBeLessThan(
+      idxBuildMaster,
+    );
     // LFOs are part of the prior state and must be cleared too —
     // otherwise the LFO oscillator keeps modulating the (now stale)
     // target AudioParam.
@@ -247,8 +251,10 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     // DynamicsCompressorNode.threshold is a dBFS AudioParam. A regression to
     // the old linear-amplitude conversion makes negative ceilings invalid,
     // causes browser warnings, and silently changes the limiter's behaviour.
-    const body = sliceFunction(readEngine(), /private\s+applyMasterConfig\s*\([^)]*\)\s*:\s*void\s*\{/);
-    expect(body, "applyMasterConfig not found in AudioEngine.ts").not.toBe("");
+    // Wave 4b: the function lives in masterChain.ts now.
+    const chainSource = readFileSync(resolve(process.cwd(), "src/audio-engine/masterChain.ts"), "utf8");
+    const body = sliceFunction(chainSource, /applyMasterConfig\s*\([^)]*\)\s*:\s*void\s*\{/);
+    expect(body, "applyMasterConfig not found in masterChain.ts").not.toBe("");
     expect(body).toMatch(/const ceilingDb\s*=\s*Math\.min\(0,\s*Math\.max\(-12,\s*config\.ceilingDb\)\)/);
     expect(body).toMatch(/this\.masterLimiter\.threshold\.value\s*=\s*ceilingDb/);
     expect(body).not.toMatch(/Math\.pow\(10,\s*config\.ceilingDb\s*\/\s*20\)/);

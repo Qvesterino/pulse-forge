@@ -1,13 +1,13 @@
 import type { EffectRuntime } from "../effects/types";
 import { createLimiterNode } from "../audio-worklets/limiter-node";
+import { createCompressorNode } from "../audio-worklets/compressor-node";
 import { createTapeNode } from "../audio-worklets/tape-node";
 import { createKwMeterNode, type KwMeterHandle } from "../audio-worklets/kwmeter-node";
 import { isWorkletReady } from "../audio-worklets/loader";
 import { defaultMasterConfig } from "../project-model/schema";
 import type { MasterConfig } from "../project-model/types";
 import { isLiveAudioContext } from "./liveContext";
-import type { MeteringRig, MasterStage } from "./meteringRig";
-import type { KwMeterHandle as KwMeterHandleT } from "../audio-worklets/kwmeter-node";
+import type { MeteringRig } from "./meteringRig";
 
 /** Master-stage handles the metering rig (and diagnostics) read. */
 export interface MasterStage {
@@ -128,11 +128,11 @@ export class MasterChain {
     if (!ctx || isLiveAudioContext(ctx)) {
       throw new Error("The master chain can only be bypassed for an offline render");
     }
-    if (!this.master || !this.deps.metering.masterAnalyser) throw new Error("The offline master graph is not initialized");
+    if (!this.master || !this.deps.metering.masterAnalyser)
+      throw new Error("The offline master graph is not initialized");
     this.master.disconnect();
-    this.master.connect(this.metering.masterAnalyser);
+    this.master.connect(this.deps.metering.masterAnalyser);
   }
-
 
   /** Build (or rebuild) the whole master chain on the current context. */
   build(): void {
@@ -640,7 +640,7 @@ export class MasterChain {
     msBranch(-1).connect(masterSpectrogramSide);
     // Metering taps are OWNED by MeteringRig (Wave 4a) — creation and
     // graph shape stay here, storage and reads moved there.
-    this.metering.attachMasterTaps({
+    this.deps.metering.attachMasterTaps({
       analyser: masterAnalyser,
       splitter: masterSplitter,
       analyserL: masterAnalyserL,
@@ -835,7 +835,6 @@ export class MasterChain {
     attached.output.connect(this.masterLimiter);
     this.applyMasterConfig(this.deps.doc()?.master ?? defaultMasterConfig());
   }
-
 }
 
 /** Re-exported for the facade's helper imports. */

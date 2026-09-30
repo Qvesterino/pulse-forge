@@ -419,6 +419,52 @@ const MCP_TOOL_DEFS = [
       required: [],
     },
   },
+  {
+    name: "kyx_automation",
+    description:
+      "Automation lanes on the project timeline: add a point (lane is " +
+      "created on demand — one undo step for both), delete the point nearest " +
+      "a bar, clear a lane, or remove a lane (clear/remove are " +
+      "destructive-gated). Targets: trackId or family + param — 'gain' or " +
+      "'pan' for track lanes, or effect+param for FX-parameter lanes (see " +
+      "kyx_catalog for ranges). Values are NATIVE (gain 0..1.5, pan -1..1, " +
+      "fx params per their registry range); out-of-range values are clamped. " +
+      "Read the lanes first via kyx_state subject:automation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["addPoint", "deletePoint", "clearLane", "removeLane"] },
+        trackId: { type: "string", description: "Exact track id — overrides family when present" },
+        family: {
+          type: "string",
+          enum: ["drums", "bass", "chords", "lead", "vocal"],
+          description: "Track family target — required unless trackId is given",
+        },
+        param: {
+          type: "string",
+          description: "'gain' or 'pan' when no effect is given; the effect's paramId when effect is given",
+        },
+        effect: {
+          type: "string",
+          description: "Effect type for fxParam lanes — resolves to the track's 1-based instance (default 1)",
+        },
+        instance: { type: "integer", minimum: 1, description: "1-based same-type instance index (default 1)" },
+        bar: {
+          type: "integer",
+          minimum: 1,
+          description: "1-based bar — position for addPoint, anchor for deletePoint",
+        },
+        beat: {
+          type: "integer",
+          minimum: 1,
+          maximum: 4,
+          description: "Optional 1-based beat within the bar (default 1)",
+        },
+        value: { type: "number", description: "NATIVE value for addPoint (clamped into the target's range)" },
+      },
+      required: ["op"],
+    },
+  },
 ];
 
 module.exports = { MCP_TOOL_DEFS };

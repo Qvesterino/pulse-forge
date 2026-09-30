@@ -44,7 +44,8 @@ describe("MeteringRig (Wave 4a)", () => {
     const ret = new FakeAnalyser(0.25);
     const rig = new MeteringRig(
       makeDeps({
-        trackAnalyser: (id) => (id === "t1" ? (track as unknown as AnalyserNode) : id === "t2" ? (hot as unknown as AnalyserNode) : null),
+        trackAnalyser: (id) =>
+          id === "t1" ? (track as unknown as AnalyserNode) : id === "t2" ? (hot as unknown as AnalyserNode) : null,
         returnAnalyser: (id) => (id === "r1" ? (ret as unknown as AnalyserNode) : null),
       }),
     );
@@ -61,6 +62,7 @@ describe("MeteringRig (Wave 4a)", () => {
     const analyserL = new FakeAnalyser(0.4);
     const analyserR = new FakeAnalyser(0.3);
     let stageReads = 0;
+    let fakeNow = 0;
     const rig = new MeteringRig(
       makeDeps({
         trackAnalyser: () => null,
@@ -68,6 +70,7 @@ describe("MeteringRig (Wave 4a)", () => {
           stageReads++;
           return { limiter: null, limiterWorklet: null, glue: null, kwMeter: null };
         },
+        now: () => fakeNow,
       }),
     );
     rig.attachMasterTaps({
@@ -85,7 +88,7 @@ describe("MeteringRig (Wave 4a)", () => {
     const readsAfterFirst = analyserL.reads;
     expect(readsAfterFirst).toBeGreaterThan(0);
     const b = rig.getMasterMeterSnapshot();
-    expect(b).toBe(a); // same object — the one-frame TTL cache
+    expect(b).toBe(a); // same object — the one-frame TTL cache (fixed clock)
     expect(analyserL.reads).toBe(readsAfterFirst);
     expect(stageReads).toBeGreaterThanOrEqual(1);
   });

@@ -402,42 +402,6 @@ export class AudioEngine {
   /**
    * Wave 4a (decomposition): metering/analysis owner — meters, peak hold,
    * LUFS history and the registered master taps. Creation of the tap nodes
-   * stays in buildMaster (Wave 4b moves that); this rig owns storage, reads
-   * and teardown. See meteringRig.ts + docs/AUDIOENGINE-DECOMPOSITION-PLAN.md.
-   */
-  /**
-   * Wave 4b (decomposition): master output chain owner — input gain, tape,
-   * M/S, bass-mono, DC, match EQ, tilt, glue, clipper, limiter and their
-   * config/upgrade paths. The graph sink is `masterChain.input` (formerly
-   * the engine's `master` field). See masterChain.ts + the plan doc.
-   */
-  private masterChain = new MasterChain({
-    ctx: () => this.ctx,
-    doc: () => this.doc,
-    metering: this.metering,
-  });
-
-  private masterChain = new MasterChain({
-    ctx: () => this.ctx,
-    doc: () => this.doc,
-    metering: this.metering,
-  });
-  private liveContextListeners = new Set<(context: AudioContext | null) => void>();
-
-  /**
-   * Wave 4b (decomposition): master output chain owner — input gain, tape,
-   * M/S, bass-mono, DC, match EQ, tilt, glue, clipper, limiter and their
-   * config/upgrade paths. The graph sink is `masterChain.input` (formerly
-   * the engine's `master` field). See masterChain.ts + the plan doc.
-   */
-  private masterChain = new MasterChain({
-    ctx: () => this.ctx,
-    doc: () => this.doc,
-    metering: this.metering,
-  });
-  /**
-   * Wave 4a (decomposition): metering/analysis owner — meters, peak hold,
-   * LUFS history and the registered master taps. Creation of the tap nodes
    * stays in MasterChain.build(); this rig owns storage, reads and teardown.
    */
   private metering = new MeteringRig({
@@ -447,6 +411,18 @@ export class AudioEngine {
     returnAnalyser: (id) => this.returnNodes.get(id)?.analyser ?? null,
     masterStage: (): MasterStage => this.masterChain.stage,
   });
+  /**
+   * Wave 4b (decomposition): master output chain owner — input gain, tape,
+   * M/S, bass-mono, DC, match EQ, tilt, glue, clipper, limiter and their
+   * config/upgrade paths. The graph sink is `masterChain.input` (formerly
+   * the engine's `master` field). See masterChain.ts + the plan doc.
+   */
+  private masterChain = new MasterChain({
+    ctx: () => this.ctx,
+    doc: () => this.doc,
+    metering: this.metering,
+  });
+  private liveContextListeners = new Set<(context: AudioContext | null) => void>();
   private bank: SampleBank | null = null;
   private doc: ProjectDocument | null = null;
   private effectIntentPreview: EffectIntentPreviewSession | null = null;
@@ -726,6 +702,11 @@ export class AudioEngine {
    * the always-on DC blocker alters phase, so a rendered clip would be
    * filtered once while consolidating and again when played in the project.
    */
+  /** Route offline-rendered track output around the fixed master chain. */
+  bypassMasterChainForOfflineRender(): void {
+    this.masterChain.bypassForOfflineRender();
+  }
+
   useContext(ctx: BaseAudioContext): void {
     this.cancelEffectIntentPreview(this.doc ?? undefined, "manual");
     const previousContext = this.ctx;
@@ -1717,7 +1698,8 @@ export class AudioEngine {
       if (track.kind === "group") continue;
       const nodes = this.trackNodes.get(track.id);
       if (!nodes) continue;
-      const nextDestination = (track.groupId ? this.groupNodes.get(track.groupId)?.input : null) ?? this.masterChain.input;
+      const nextDestination =
+        (track.groupId ? this.groupNodes.get(track.groupId)?.input : null) ?? this.masterChain.input;
       if (nodes.routeDestination === nextDestination) continue;
       try {
         nodes.modMacroPan.disconnect(nodes.routeDestination);

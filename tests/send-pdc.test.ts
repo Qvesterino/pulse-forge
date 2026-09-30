@@ -192,7 +192,7 @@ describe("engine send-PDC wiring", () => {
     engine.setProject(withBothGroups);
 
     const internals = engine as unknown as {
-      master: unknown;
+      masterChain: { input: unknown };
       trackNodes: Map<string, { modMacroPan: { connections: Set<unknown> }; routeDestination: unknown }>;
       groupNodes: Map<string, { input: unknown }>;
     };
@@ -200,7 +200,7 @@ describe("engine send-PDC wiring", () => {
     const inputA = internals.groupNodes.get(groupA.id)!.input;
     const inputB = internals.groupNodes.get(groupB.id)!.input;
     expect(output.connections.has(inputA)).toBe(true);
-    expect(output.connections.has(internals.master)).toBe(false);
+    expect(output.connections.has(internals.masterChain.input)).toBe(false);
 
     const moved = {
       ...withBothGroups,
@@ -222,7 +222,7 @@ describe("engine send-PDC wiring", () => {
     engine.setProject(ungrouped);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(output.connections.has(inputB)).toBe(false);
-    expect(output.connections.has(internals.master)).toBe(true);
-    expect(internals.trackNodes.get(trackId)!.routeDestination).toBe(internals.master);
+    expect(output.connections.has(internals.masterChain.input)).toBe(true);
+    expect(internals.trackNodes.get(trackId)!.routeDestination).toBe(internals.masterChain.input);
   });
 });

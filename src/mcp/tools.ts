@@ -24,16 +24,20 @@ import { generateLocalResult } from "../intent/pipeline";
 import { normalizeIntent } from "../intent/normalize";
 import { resolveSceneTarget } from "../intent/arrangeWords";
 import { inferPadRole } from "../ai/pad-roles";
-import type { DrumTrack, InstrumentKind, Track } from "../project-model/types";
+import type { DrumTrack, InstrumentKind, Track, AutomationTarget, AutomationLane } from "../project-model/types";
 import { applyPresetIntentCommand } from "../intent/preset-intent";
 import {
+  addAutomationLane,
+  addAutomationPoint,
   addMarker,
   applyExactIntentCommand,
   applyGenerationResultCommand,
   applyProductionIntentCommand,
   createDrumTrack,
   createInstrumentTrack,
+  deleteAutomationPoint,
   deleteTrack,
+  removeAutomationLane,
   removeMarker,
   setActivePattern,
   setEffectParam,
@@ -42,6 +46,7 @@ import {
   setTrackParams,
   snapshot,
 } from "../commands/commands";
+import { isAutomationTargetValid, targetParamDef } from "../project-model/targets";
 import { clampEffectParam, EFFECT_META, type EffectDefinitionMeta } from "../effects/definitions";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 
@@ -483,6 +488,52 @@ export const MCP_TOOLS: McpToolDef[] = [
         scope: { type: "string", enum: ["master", "tracks", "all"], description: "Default all" },
       },
       required: [],
+    },
+  },
+  {
+    name: "kyx_automation",
+    description:
+      "Automation lanes on the project timeline: add a point (lane is " +
+      "created on demand — one undo step for both), delete the point nearest " +
+      "a bar, clear a lane, or remove a lane (clear/remove are " +
+      "destructive-gated). Targets: trackId or family + param — 'gain' or " +
+      "'pan' for track lanes, or effect+param for FX-parameter lanes (see " +
+      "kyx_catalog for ranges). Values are NATIVE (gain 0..1.5, pan -1..1, " +
+      "fx params per their registry range); out-of-range values are clamped. " +
+      "Read the lanes first via kyx_state subject:automation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["addPoint", "deletePoint", "clearLane", "removeLane"] },
+        trackId: { type: "string", description: "Exact track id — overrides family when present" },
+        family: {
+          type: "string",
+          enum: ["drums", "bass", "chords", "lead", "vocal"],
+          description: "Track family target — required unless trackId is given",
+        },
+        param: {
+          type: "string",
+          description: "'gain' or 'pan' when no effect is given; the effect's paramId when effect is given",
+        },
+        effect: {
+          type: "string",
+          description: "Effect type for fxParam lanes — resolves to the track's 1-based instance (default 1)",
+        },
+        instance: { type: "integer", minimum: 1, description: "1-based same-type instance index (default 1)" },
+        bar: {
+          type: "integer",
+          minimum: 1,
+          description: "1-based bar — position for addPoint, anchor for deletePoint",
+        },
+        beat: {
+          type: "integer",
+          minimum: 1,
+          maximum: 4,
+          description: "Optional 1-based beat within the bar (default 1)",
+        },
+        value: { type: "number", description: "NATIVE value for addPoint (clamped into the target's range)" },
+      },
+      required: ["op"],
     },
   },
 ];
@@ -945,6 +996,8 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
       return catalogSnapshot(record);
     case "kyx_plugin_param":
       return executePluginParamTool(ctx, record);
+    case "kyx_automation":
+      return executeAutomationTool(ctx, record);
     case "kyx_meter": {
       if (ctx.meters == null) {
         return {
@@ -1022,6 +1075,185 @@ function explicitTrackIds(doc: ProjectDocument, record: Record<string, unknown>)
   const family = typeof record.family === "string" ? record.family.trim() : "";
   if (family === "") return "no target — pass trackId (from kyx_state tracks) or family";
   return tracksInFamily(doc, family);
+}
+
+/** kyx_automation — structured automation-lane edits over the SAME target
+ * validation the engine rides (isAutomationTargetValid / clampTargetValue
+ * inside the commands). Lane create-on-demand folds into ONE snapshot. */
+function executeAutomationTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
+  const op = String(record.op ?? "");
+  const doc = ctx.getDoc();
+  const target = resolveAutomationTarget(doc, record);
+  if (typeof target === "string") return { text: target, mutated: false };
+  if (!isAutomationTargetValid(doc, target)) {
+    return {
+      text: "invalid automation target — check the track/effect/param exists (kyx_catalog, kyx_state fxChain)",
+      mutated: false,
+    };
+  }
+  const lane = automationLaneForTarget(doc, target);
+
+  if (op === "addPoint") {
+    const position = positionFromRecord(record);
+    if (typeof position === "string") return { text: position, mutated: false };
+    if (record.value == null || !Number.isFinite(Number(record.value))) {
+      const def = targetParamDef(doc, target);
+      return {
+        text: `addPoint needs a finite NATIVE value${def ? ` (${target.paramId ?? target.kind}: ${def.min}..${def.max}, default ${def.default})` : ""}`,
+        mutated: false,
+      };
+    }
+    // ONE snapshot for lane-create + point (a fresh lane alone would leave
+    // the caller two undo steps for one call).
+    let next = doc;
+    let laneId = lane?.id;
+    if (!laneId) {
+      const laneCommand = addAutomationLane(next, target);
+      next = laneCommand.execute(next);
+      laneId = next.automation[next.automation.length - 1].id;
+    }
+    const value = Number(record.value);
+    next = addAutomationPoint(next, laneId, position, value).execute(next);
+    const landedLane = next.automation.find((candidate) => candidate.id === laneId);
+    // Last match wins: the engine samples the most recent point at a tick.
+    const landed = landedLane?.points.filter((point) => point.tick === position).pop();
+    if (!landed || landedLane == null) {
+      return { text: "automation point did not land (already present with this value?)", mutated: false };
+    }
+    const pointCount = landedLane.points.length;
+    const def = targetParamDef(doc, target);
+    const clampNote = landed.value !== value ? ` — clamped into ${def ? `${def.min}..${def.max}` : "range"}` : "";
+    ctx.execute(
+      snapshot(
+        "mcpAutomation",
+        `MCP: automation ${automationTargetLabel(doc, target)} @ ${barBeat(position)}`,
+        doc,
+        next,
+      ),
+    );
+    return {
+      text: `${automationTargetLabel(doc, target)}: point ${barBeat(landed.tick)}=${Math.round(landed.value * 1e4) / 1e4}${clampNote} — lane ${pointCount} pt(s), one undo step`,
+      mutated: true,
+    };
+  }
+
+  if (op === "deletePoint") {
+    if (!lane)
+      return {
+        text: `no automation lane for ${automationTargetLabel(doc, target)} — nothing to delete`,
+        mutated: false,
+      };
+    if (lane.points.length === 0) return { text: "the lane has no points", mutated: false };
+    const position = positionFromRecord(record);
+    if (typeof position === "string") return { text: position, mutated: false };
+    // Nearest point within one bar window (same etiquette as kyx_markers).
+    let bestIndex = -1;
+    let bestDistance = TICKS_PER_BAR;
+    lane.points.forEach((point, index) => {
+      const distance = Math.abs(point.tick - position);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = index;
+      }
+    });
+    if (bestIndex === -1) {
+      return {
+        text: `no automation point within a bar of ${barBeat(position)} — read the lane via kyx_state subject:automation`,
+        mutated: false,
+      };
+    }
+    const removed = lane.points[bestIndex];
+    ctx.execute(deleteAutomationPoint(doc, lane.id, bestIndex));
+    return {
+      text: `${automationTargetLabel(doc, target)}: removed point ${barBeat(removed!.tick)}=${Math.round(removed!.value * 1e4) / 1e4} — one undo step`,
+      mutated: true,
+    };
+  }
+
+  if (op === "clearLane" || op === "removeLane") {
+    if (ctx.allowDestructive?.() !== true) return destructiveRefusal();
+    if (!lane) return { text: `no automation lane for ${automationTargetLabel(doc, target)}`, mutated: false };
+    if (op === "removeLane") {
+      ctx.execute(removeAutomationLane(doc, lane.id));
+      return { text: `removed automation lane ${automationTargetLabel(doc, target)} — one undo step`, mutated: true };
+    }
+    if (lane.points.length === 0) return { text: "the lane already has no points", mutated: false };
+    const cleared = lane.points.length;
+    const next = {
+      ...doc,
+      automation: doc.automation.map((candidate) =>
+        candidate.id === lane.id ? { ...candidate, points: [] } : candidate,
+      ),
+    };
+    ctx.execute(
+      snapshot("mcpAutomationClear", `MCP: clear automation ${automationTargetLabel(doc, target)}`, doc, next),
+    );
+    return {
+      text: `cleared ${cleared} point(s) from ${automationTargetLabel(doc, target)} — one undo step`,
+      mutated: true,
+    };
+  }
+
+  return { text: `unknown op: ${op} (addPoint | deletePoint | clearLane | removeLane)`, mutated: false };
+}
+
+/** Resolve the tool's target fields into an AutomationTarget. Returns an
+ * error string for the caller to surface. */
+function resolveAutomationTarget(doc: ProjectDocument, record: Record<string, unknown>): AutomationTarget | string {
+  const trackId = typeof record.trackId === "string" ? record.trackId.trim() : "";
+  const family = typeof record.family === "string" ? record.family.trim() : "";
+  let ownerId: string;
+  if (trackId !== "") {
+    ownerId = trackId;
+  } else if (family !== "") {
+    const ids = tracksInFamily(doc, family);
+    if (ids.length === 0) return `no track matches family "${family}"`;
+    ownerId = ids[0];
+  } else {
+    return "no target — pass trackId (from kyx_state tracks) or family";
+  }
+  if (!doc.tracks.some((t) => t.id === ownerId) && !doc.returns.some((r) => r.id === ownerId)) {
+    return `no track or return with id "${ownerId}" — list ids via kyx_state subject:tracks`;
+  }
+  const param = typeof record.param === "string" ? record.param.trim() : "";
+  const effect = typeof record.effect === "string" ? record.effect.trim() : "";
+  if (effect !== "") {
+    const track = doc.tracks.find((t) => t.id === ownerId);
+    if (!track) return "fxParam automation needs a TRACK target (returns cannot host effect lanes here)";
+    const instanceWanted = Math.max(1, Math.round(Number(record.instance ?? 1)));
+    const instances = track.effects.filter((fx) => fx.type === effect);
+    if (instances.length === 0) return `${track.name}: no ${effect} instance (insert via kyx_fx more first)`;
+    if (instances.length < instanceWanted) {
+      return `${track.name}: ${effect} instance #${instanceWanted} does not exist (chain has ${instances.length})`;
+    }
+    const fx = instances[instanceWanted - 1];
+    if (param === "") return "fxParam automation needs param (the effect's paramId — see kyx_catalog subject:effect)";
+    return { kind: "fxParam", trackId: track.id, fxId: fx.id, paramId: param };
+  }
+  if (param === "gain") return { kind: "trackGain", trackId: ownerId };
+  if (param === "pan") return { kind: "trackPan", trackId: ownerId };
+  return "param must be 'gain' or 'pan' — or pass effect+param for an FX-parameter lane";
+}
+
+/** 4-field target equality — the same key addAutomationLane dedupes on. */
+function automationLaneForTarget(doc: ProjectDocument, target: AutomationTarget): AutomationLane | undefined {
+  return doc.automation.find(
+    (lane) =>
+      lane.target.kind === target.kind &&
+      lane.target.trackId === target.trackId &&
+      lane.target.fxId === target.fxId &&
+      lane.target.paramId === target.paramId,
+  );
+}
+
+/** bar (+ optional beat) → absolute tick; error string on bad input. */
+function positionFromRecord(record: Record<string, unknown>): number | string {
+  const rawBar = Number(record.bar);
+  if (!Number.isFinite(rawBar) || Math.round(rawBar) < 1) return "a 1-based bar is required (e.g. bar: 5)";
+  const bar = Math.round(rawBar);
+  const rawBeat = typeof record.beat === "number" && Number.isFinite(record.beat) ? record.beat : 1;
+  const beat = Math.min(4, Math.max(1, Math.round(rawBeat)));
+  return (bar - 1) * TICKS_PER_BAR + (beat - 1) * (TICKS_PER_BAR / 4);
 }
 
 /** kyx_catalog — machine-readable discovery over the registries. */
@@ -1227,6 +1459,77 @@ function sectionGrooveFrom(direction: string, percent: number | undefined, secti
   return { role: section, direction: direction === "less" ? ("swingDown" as const) : ("swingUp" as const) };
 }
 
+/** Track or return display name for an automation target owner. */
+function ownerNameOf(doc: ProjectDocument, trackId: string): string {
+  const track = doc.tracks.find((t) => t.id === trackId);
+  if (track) return track.name;
+  return doc.returns.find((r) => r.id === trackId)?.name ?? trackId;
+}
+
+/** tick → "bar.beat" (4/4, 1920 ticks per bar). */
+function barBeat(tick: number): string {
+  const bar = Math.floor(tick / TICKS_PER_BAR) + 1;
+  const beat = Math.floor((tick % TICKS_PER_BAR) / (TICKS_PER_BAR / 4)) + 1;
+  return `${bar}.${beat}`;
+}
+
+/** Human label for an automation target (mirrors automation.ts laneLabel). */
+function automationTargetLabel(doc: ProjectDocument, target: AutomationTarget): string {
+  const owner = ownerNameOf(doc, target.trackId);
+  if (target.kind === "trackGain") return `${owner} · Volume`;
+  if (target.kind === "trackPan") return `${owner} · Pan`;
+  if (target.kind === "fxParam") {
+    const owner = doc.tracks.find((t) => t.id === target.trackId) ?? doc.returns.find((r) => r.id === target.trackId);
+    const fx = owner?.effects.find((effect) => effect.id === target.fxId);
+    return `${owner} · ${fx?.type ?? "fx"} · ${target.paramId}`;
+  }
+  return `${owner} · ${target.paramId}`;
+}
+
+/** Format an automation lane's points: all when ≤ 8, else head + range summary. */
+function formatAutomationPoints(points: Array<{ tick: number; value: number }>): string {
+  const tidy = (value: number): number => Math.round(value * 1e4) / 1e4;
+  if (points.length === 0) return "no points";
+  const rendered = points.map((point) => `${barBeat(point.tick)}=${tidy(point.value)}`);
+  if (rendered.length <= 8) return rendered.join(", ");
+  const values = points.map((point) => point.value);
+  return `${rendered.slice(0, 4).join(", ")} … +${points.length - 4} more (values ${Math.min(...values)}..${Math.max(...values)})`;
+}
+
+/** kyx_state subject:automation — the lanes map + scene-curve summary. */
+function automationSnapshot(doc: ProjectDocument, family: string | undefined): string {
+  const wanted = family != null ? new RegExp(`\\b${family}\\b`, "i") : null;
+  const lines: string[] = [];
+  const lanes = doc.automation.filter((lane) => {
+    if (wanted == null) return true;
+    const owner = doc.tracks.find((t) => t.id === lane.target.trackId);
+    return owner != null && (wanted.test(owner.name) || owner.kind === "drum");
+  });
+  if (lanes.length === 0) {
+    lines.push(wanted != null ? `no automation lanes match family "${family}"` : "no automation lanes");
+  }
+  lanes.forEach((lane, index) => {
+    const def = targetParamDef(doc, lane.target);
+    const range = def ? `, range ${def.min}..${def.max}` : "";
+    lines.push(
+      `${index + 1}. ${automationTargetLabel(doc, lane.target)} (lane ${lane.id}) — ${lane.points.length} pt${lane.points.length === 1 ? "" : "s"}${range}: ${formatAutomationPoints(lane.points)}`,
+    );
+  });
+  if (doc.sceneAutomation.length > 0) {
+    const sceneName = (sceneId: string): string => doc.scenes.find((scene) => scene.id === sceneId)?.name ?? sceneId;
+    const curves = doc.sceneAutomation
+      .map(
+        (curve) =>
+          `${sceneName(curve.sceneId)} · ${automationTargetLabel(doc, curve.target)} (${curve.points.length}pt)`,
+      )
+      .join(", ");
+    lines.push(
+      `scene automation: ${doc.sceneAutomation.length} curve(s) — ${curves} (points are ticks relative to each scene's start)`,
+    );
+  }
+  return lines.join("\n");
+}
+
 function stateSnapshot(
   doc: ProjectDocument,
   subject: string,
@@ -1307,6 +1610,9 @@ function stateSnapshot(
       return `${lines.slice(0, 9).join("\n")}\n… and ${lines.length - 9} more track(s) (filter with family)`;
     }
     return lines.join("\n");
+  }
+  if (subject === "automation") {
+    return automationSnapshot(doc, family);
   }
   if (subject === "pattern") {
     const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);

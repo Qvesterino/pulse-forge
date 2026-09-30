@@ -50,6 +50,8 @@ export interface MeteringRigDeps {
   groupAnalyser: (id: string) => AnalyserNode | null;
   returnAnalyser: (id: string) => AnalyserNode | null;
   masterStage: () => MasterStageReader;
+  /** Injectable clock for the snapshot TTL (tests); defaults to performance.now. */
+  now?: () => number;
 }
 
 /** Snapshot + loudness history types moved beside their only owner. */
@@ -78,8 +80,11 @@ export class MeteringRig {
   private masterMeterCache: { at: number; snapshot: MasterMeterSnapshot } | null = null;
   private meterLoudnessBlocks: number[] = [];
   private meterProjectId: string | null = null;
+  private readonly now: () => number;
 
-  constructor(private readonly deps: MeteringRigDeps) {}
+  constructor(private readonly deps: MeteringRigDeps) {
+    this.now = deps.now ?? (() => performance.now());
+  }
 
   /**
    * Register the master-graph analysers created + connected by the engine's
@@ -241,7 +246,7 @@ export class MeteringRig {
     // oversampling over 2×2048 samples plus ring pushes and allocations; a
     // one-frame TTL lets same-frame consumers share one computation instead
     // of paying it two-three times per animation frame.
-    const now = performance.now();
+    const now = this.now();
     const cached = this.masterMeterCache;
     if (cached && now - cached.at < 12) return cached.snapshot;
     const snapshot = this.computeMasterMeterSnapshot();
