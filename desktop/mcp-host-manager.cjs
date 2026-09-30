@@ -59,9 +59,17 @@ class McpHostManager {
       token: this.enabled ? this.token : null,
       clientConfig: this.enabled
         ? {
+            // command is the ELECTRON binary (dev: electron.exe, packaged:
+            // KYX.exe) — ELECTRON_RUN_AS_NODE=1 makes it behave as plain
+            // node for the stdio forwarder, so the machine needs no global
+            // node install and the packaged app ships its own runtime.
             command: process.execPath,
             args: [this.serverScriptPath],
-            env: { KYX_MCP_BRIDGE_URL: `http://127.0.0.1:${this.bridgePort}/rpc`, KYX_MCP_TOKEN: this.token },
+            env: {
+              ELECTRON_RUN_AS_NODE: "1",
+              KYX_MCP_BRIDGE_URL: `http://127.0.0.1:${this.bridgePort}/rpc`,
+              KYX_MCP_TOKEN: this.token,
+            },
           }
         : null,
     };
@@ -107,6 +115,7 @@ class McpHostManager {
     const child = spawnProcess(process.execPath, [this.serverScriptPath], {
       env: {
         ...process.env,
+        ELECTRON_RUN_AS_NODE: "1",
         KYX_MCP_BRIDGE_URL: `http://127.0.0.1:${this.bridgePort}/rpc`,
         KYX_MCP_TOKEN: this.token,
         ...envOverrides,

@@ -290,6 +290,9 @@ describe("mcp host manager", () => {
     expect(manager.status.token).toMatch(/^[0-9a-f]{48}$/);
     expect(manager.status.clientConfig?.command).toBe(process.execPath);
     expect(manager.status.clientConfig?.env.KYX_MCP_TOKEN).toBe(manager.status.token);
+    // The desktop exe must run the stdio forwarder AS node (packaged KYX.exe
+    // would otherwise boot the whole app instead of speaking JSON-RPC).
+    expect(manager.status.clientConfig?.env.ELECTRON_RUN_AS_NODE).toBe("1");
 
     await manager.disable();
     expect(manager.status.enabled).toBe(false);
