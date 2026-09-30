@@ -354,4 +354,82 @@ export const DNB_GROOVES: GrooveData[] = decodeGrooves([
       },
     ],
   },
+// ── Atmospheric: LTJ Bukem / Good Looking. The reaction AGAINST the
+  // darkening hardstep trend, so the bass recedes and the space leads.
+  {
+    id: "dnb.atmospheric",
+    genre: "dnb",
+    name: "Atmospheric (intelligent)",
+    bpm: [165, 175],
+    swing: 0.1,
+    activePads: [0, 4, 8, 9, 15],
+    patterns: [
+      {
+        0: [0.8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        4: [0, 0, 0, 0, 0, 0, 0, 0, 0.65, 0, 0, 0, 0, 0, 0, 0],
+        8: [0.78, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        12: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.4],
+        14: [0.5, 0, 0, 0, 0, 0, 0, 0, 0.45, 0, 0, 0, 0, 0, 0, 0],
+      },
+    ],
+  },
+  // ── Drumfunk: Photek / Paradox. The break IS the track — bass and
+  // melody are stripped back so the editing reads.
+  {
+    id: "dnb.drumfunk",
+    genre: "dnb",
+    name: "Drumfunk (Photek)",
+    bpm: [170, 178],
+    swing: 0.04,
+    activePads: [0, 3, 4, 5, 8, 10, 12, 13],
+    patterns: [
+      {
+        0: [0.9, 0, 0, 0.55, 0, 0, 0, 0, 0, 0, 0, 0, 0.7, 0, 0, 0],
+        2: [0, 0, 0, 0, 0.8, 0.75, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        4: [0, 0, 0, 0, 0, 0, 0, 0, 0.85, 0, 0.6, 0, 0, 0, 0, 0],
+        8: [0.88, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.72, 0, 0, 0],
+        10: [0, 0, 0, 0, 0.78, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        14: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0],
+      },
+    ],
+  },
+  // ── Darkstep: the heavy branch between techstep and neurofunk.
+  // Aggressive breaks, distorted bass, ominous rather than clinical.
+  {
+    id: "dnb.darkstep",
+    genre: "dnb",
+    name: "Darkstep",
+    bpm: [170, 178],
+    swing: 0.05,
+    activePads: [0, 2, 4, 5, 8, 9],
+    patterns: [
+      {
+        0: [0.92, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.9, 0, 0, 0],
+        4: [0, 0, 0, 0, 0.85, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        8: [0.9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.88, 0, 0, 0],
+        12: [0, 0, 0, 0, 0, 0, 0, 0, 0.82, 0, 0, 0, 0, 0, 0, 0],
+        14: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.45, 0, 0, 0, 0, 0],
+      },
+    ],
+  },
+  // ── Forest dnb: the 1990s rootsy end. Deep, dubby, sparse — the sound
+  // dnb drifted away from before the mid-2000s rewrite.
+  {
+    id: "dnb.forest",
+    genre: "dnb",
+    name: "Forest (rootsy)",
+    bpm: [165, 174],
+    swing: 0.12,
+    activePads: [0, 3, 4, 8, 14],
+    patterns: [
+      {
+        0: [0.85, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        4: [0, 0, 0, 0, 0, 0, 0, 0, 0.6, 0, 0, 0, 0, 0, 0, 0],
+        8: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        12: [0, 0, 0, 0, 0, 0, 0, 0, 0.72, 0, 0, 0, 0, 0, 0, 0],
+        14: [0.45, 0, 0, 0, 0, 0, 0, 0, 0.4, 0, 0, 0, 0, 0, 0, 0],
+      },
+    ],
+  },
+
 ]);

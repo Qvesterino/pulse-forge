@@ -623,7 +623,7 @@ const AG_COOK: ArtistProfile = {
     "custom / bespoke Max4Live devices for PC Music workflow",
   ],
   /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
-  grooveLanes: ["progressive", "synthpop", "futurebass", "dancefloor"],
+  grooveLanes: ["progbreaks", "synthpop", "futurebass", "ukbass"],
   vibe: ["maximalist", "hyperreal", "euphoric", "glitchy", "playful", "futuristic"],
   sources: ["https://en.wikipedia.org/wiki/A._G._Cook", "https://www.residentadvisor.net/features/2942"],
   verificationStatus: "verified",
@@ -811,7 +811,7 @@ const SEVEN_LIONS: ArtistProfile = {
     "LFO Tool (sidechain + rhythmic gating)",
   ],
   /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
-  grooveLanes: ["liquid", "halftime", "roller", "neuro"],
+  grooveLanes: ["liquid", "melodic", "atmospheric", "halftime"],
   vibe: ["emotional", "ethereal", "euphoric", "cinematic", "melodic", "transcendent"],
   sources: ["https://en.wikipedia.org/wiki/Seven_Lions", "https://www.opheliarecords.com/"],
   verificationStatus: "verified",
@@ -1110,7 +1110,7 @@ const EXCISION: ArtistProfile = {
     "Valhalla VintageVerb (snare reverb tails)",
   ],
   /** Groove lanes this artist's pocket lives in (all ids exist in the groove library). */
-  grooveLanes: ["schranz", "industrial", "acid", "hard"],
+  grooveLanes: ["darkstep", "schranz", "industrial", "techstep"],
   vibe: ["aggressive", "mechanical", "heavy", "brutal", "industrial", "alien", "relentless"],
   sources: ["https://en.wikipedia.org/wiki/Excision_(DJs)", "https://www.dubstepforum.com/wiki/excision"],
   verificationStatus: "verified",

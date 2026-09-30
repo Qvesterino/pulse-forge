@@ -218,4 +218,90 @@ export const HYBRID_GROOVES: GrooveData[] = decodeGrooves([
       },
     ],
   },
+// ── Nu skool / progressive breaks, 125-140. The defining trait is
+  // that the kick is NOT on every quarter note: a swung, fragmented rhythm
+  // that bounces rather than stomps. The module's namesake crossover.
+  {
+    id: "hybrid.breaks",
+    genre: "house",
+    name: "Breaks (nu skool)",
+    bpm: [125, 140],
+    swing: 0.18,
+    activePads: [0, 4, 8, 10, 12, 14],
+    patterns: [
+      {
+        0: [0.9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        3: [0, 0, 0, 0, 0, 0, 0, 0, 0.65, 0, 0, 0, 0, 0, 0, 0],
+        6: [0.85, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        8: [0, 0, 0, 0, 0.78, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        10: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.5, 0],
+        12: [0.8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        14: [0, 0, 0, 0, 0, 0, 0, 0, 0.6, 0, 0, 0, 0, 0, 0, 0],
+      },
+    ],
+  },
+  // ── UK bass: the post-garage / post-dubstep umbrella at 120-140. Not a
+  // single rigid rhythm but a culture: sub weight, syncopated percussion,
+  // British club lineage. The most honest "hybrid" of all of them.
+  {
+    id: "hybrid.ukbass",
+    genre: "ukg",
+    name: "UK Bass (post-garage)",
+    bpm: [120, 140],
+    swing: 0.16,
+    activePads: [0, 2, 4, 8, 9, 14],
+    patterns: [
+      {
+        0: [0.88, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.85, 0, 0, 0],
+        4: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        6: [0, 0, 0, 0, 0, 0, 0, 0, 0.7, 0, 0, 0, 0, 0, 0, 0],
+        8: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        10: [0.82, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        12: [0, 0, 0, 0, 0.75, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        14: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.5, 0, 0, 0, 0, 0],
+      },
+    ],
+  },
+  // ── Progressive breaks: the long-form narrative branch, 125-135. The
+  // structure is the point — builds that keep developing rather than
+  // loop-and-drop.
+  {
+    id: "hybrid.progbreaks",
+    genre: "house",
+    name: "Progressive Breaks (narrative)",
+    bpm: [125, 135],
+    swing: 0.1,
+    activePads: [2, 4, 8, 9, 10, 15],
+    patterns: [
+      {
+        0: [0.72, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        4: [0, 0, 0, 0, 0, 0, 0, 0, 0.55, 0, 0, 0, 0, 0, 0, 0],
+        8: [0.7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        12: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.38],
+        14: [0.48, 0, 0, 0, 0, 0, 0, 0, 0.44, 0, 0, 0, 0, 0, 0, 0],
+      },
+    ],
+  },
+  // ── Moombah: 100-115, dembow rhythms carrying a halftime feel. The
+  // fourth hybrid axis: Latin/dancehall rhythm at bass-music weight.
+  {
+    id: "hybrid.moombah",
+    genre: "latin",
+    name: "Moombah (dembow)",
+    bpm: [100, 115],
+    swing: 0.14,
+    activePads: [0, 4, 8, 10, 12, 13],
+    patterns: [
+      {
+        0: [0.85, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        3: [0, 0, 0, 0, 0, 0, 0, 0, 0.75, 0, 0, 0, 0, 0, 0, 0],
+        6: [0.8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        8: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        10: [0.82, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        12: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        14: [0.7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      },
+    ],
+  },
+
 ]);
