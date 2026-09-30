@@ -1,5 +1,6 @@
 import type { Command } from "../commands/types";
 import type { ArrangementClip, ProjectDocument, Scene, SceneRole } from "../project-model/types";
+import { effectWordIn } from "./mix";
 import {
   addArrangementClip,
   autoArrangeSong,
@@ -191,6 +192,12 @@ export function parseArrangeIntent(text: string, doc: ProjectDocument): ParsedAr
     // The preposition splits the clause: left of before/after = the NEW
     // section's role, right = the anchor scene.
     if (verbHits(clause, VERBS.add)) {
+      // "add a chorus send to the bass" is mixer ROUTING, not a new song
+      // section — an add-clause naming a send belongs to the send parser
+      // (further down the route order), so the arrange claim stands down.
+      if (/\bsend\b/.test(clause) && effectWordIn(clause)) {
+        continue;
+      }
       const m = /\b(before|after|pred|za)\b/.exec(clause);
       let addPart = clause;
       let anchorPart: string | null = null;

@@ -134,8 +134,14 @@ function effectFrom(m: ModelAction): RoutedIntent {
 
 function mixFrom(m: ModelAction): RoutedIntent {
   const overrides: Record<string, string> = {};
+  // The corpus teaches the compact teacher form ({kind, overrides:{...}}) —
+  // "overrides" is not a wrapper key, so the flat-record adapters see the
+  // payload only if we look for it here. Flat emissions (schema form) read
+  // from the root as before.
+  const nested = (m.overrides as Record<string, unknown> | undefined) ?? {};
   for (const key of ["reverb", "tone", "punch", "pump"]) {
-    if (m[key] != null) overrides[key] = String(m[key]);
+    const value = nested[key] ?? m[key];
+    if (value != null) overrides[key] = String(value);
   }
   return { kind: "mix", overrides, detected: ["AI"] };
 }
@@ -162,10 +168,16 @@ function arrangeFrom(doc: ProjectDocument, m: ModelAction): RoutedIntent | null 
       continue;
     }
     const role = rawOp.role as ArrangeOp extends { role: infer R } ? R : never;
+    // addRole names the NEW section — by definition absent from the doc, so
+    // resolving it against existing scenes would refuse every (correct) route
+    if (op === "addRole") {
+      if (role == null) return null;
+      ops.push({ op, role, beforeSceneId: null });
+      continue;
+    }
     const scene = resolveSceneTarget(doc, String(rawOp.role ?? ""), [role as never]);
     if (!scene) return null; // unresolvable role — refuse the whole route
-    if (op === "addRole") ops.push({ op, role: role as never, beforeSceneId: null });
-    else if (op === "remove" || op === "duplicate")
+    if (op === "remove" || op === "duplicate")
       ops.push({ op, sceneId: scene.id, role: scene.role ?? null, name: scene.name });
     else if (op === "resize")
       ops.push({ op, sceneId: scene.id, role: scene.role ?? null, name: scene.name, bars: Number(rawOp.bars ?? 4) });
@@ -180,9 +192,20 @@ function clipsFrom(doc: ProjectDocument, m: ModelAction): RoutedIntent | null {
   const raw = (m.ops as ModelAction[]) ?? [];
   const ops: ClipArrangeOp[] = [];
   for (const rawOp of raw) {
-    const clipId = resolveClipRef(doc, String(rawOp.ref ?? ""), rawOp.atBar != null ? Number(rawOp.atBar) : undefined);
+    // Two contracts meet here: the SFT corpus teaches ENGINE-form ops (final
+    // clipId, 0-based toBar — exactly what the command layer consumes), while
+    // the model schema's ref-form (role word + 1-based bars) is what a
+    // few-shot/schema-guided model emits. Accept both: a clipId that exists
+    // in the live doc is authoritative; otherwise resolve ref/atBar — and
+    // only the ref-echo path applies the 1-based → 0-based shift.
+    const directId = typeof rawOp.clipId === "string" ? rawOp.clipId : "";
+    const direct = directId !== "" && doc.arrangement.clips.some((clip) => clip.id === directId);
+    const clipId = direct
+      ? directId
+      : resolveClipRef(doc, String(rawOp.ref ?? ""), rawOp.atBar != null ? Number(rawOp.atBar) : undefined);
     if (!clipId) return null; // clip gone / ref unresolvable — no guessing
-    const toBar = rawOp.toBar != null ? Math.max(0, Number(rawOp.toBar) - 1) : 0;
+    const rawToBar = rawOp.toBar != null ? Number(rawOp.toBar) : null;
+    const toBar = rawToBar == null ? 0 : direct ? Math.max(0, rawToBar) : Math.max(0, rawToBar - 1);
     if (rawOp.op === "copyClip") ops.push({ op: "copyClip", clipId, toBar });
     else if (rawOp.op === "moveClip") ops.push({ op: "moveClip", clipId, toBar });
     else if (rawOp.op === "resizeClip") ops.push({ op: "resizeClip", clipId, bars: Number(rawOp.bars ?? 4) });
@@ -206,7 +229,16 @@ function compoundFrom(doc: ProjectDocument, m: ModelAction, instruction: string)
       return null;
     }
     if (sub == null || typeof sub !== "object") return null;
-    const record = sub as ModelAction;
+    const rawRecord = sub as ModelAction;
+    // SAME NESTED-UNWRAP GUARD as the top-level bridge: corpus-trained parts
+    // arrive in the compact teacher form ({kind, intent:{...}}), the adapters
+    // read flat records — adapting a nested part against its root produced
+    // silently EMPTY slot bags (kind right, payload gone).
+    const wrapperKey = ["intent", "preset", "parse"].find(
+      (key) => rawRecord[key] != null && typeof rawRecord[key] === "object",
+    );
+    const record: ModelAction =
+      wrapperKey != null ? { kind: rawRecord.kind, ...(rawRecord[wrapperKey] as ModelAction) } : rawRecord;
     const kind = String(record.kind ?? "");
     if (!COMPOUNDABLE.has(kind)) return null;
     const validation = validateModelAction(record);

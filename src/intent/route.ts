@@ -58,7 +58,7 @@ interface MixParse {
 }
 
 const MIX_NOUN_VERB =
-  /\breverb\b|\bdelay\b|\bcompress(?:ion|or)?\b|\bsaturat|\bpunch(?:ier|y)?\b|\bsidechain\b|\bpump\b|\bdry\b|\bwet\b|\beq\b|\bmix\b|\bdozvuk|\bozven|\bkompres|\bsaturac|\bpumpa|\bsuch/;
+  /\breverb\b|\bdelay\b|\bcompress(?:ion|or)?\b|\bsaturat|\bpunch(?:ier|y)?\b|\bsidechain\b|\bpump\b|\bdry\b|\bdrier\b|\bwet\b|\bwetter\b|\beq\b|\bmix\b|\bdozvuk|\bozven|\bkompres|\bsaturac|\bpump|\bsuch/;
 const COMPARATIVE =
   /\bdarker\b|\bbrighter\b|\bwarmer\b|\bcolder\b|\btmavsi|\bsvetlejsi|\bteplejsi|\bstudenlejsi|\brazantnejsi/;
 
@@ -79,10 +79,12 @@ export function parseMixIntent(text: string): MixParse {
   if (/\bhuge (?:reverb|space)\b|\bobri dozvuk/.test(lower)) {
     overrides.reverb = "huge";
     detected.push("huge reverb");
-  } else if (/\bmore reverb\b|\bwetter\b|\bviac (?:dozvuk|ozven)/.test(lower)) {
+  } else if (/\bmore reverb\b|\bwetter\b|\bwet (?:it )?up\b|\bmokrejs|\bviac (?:dozvuk|ozven)/.test(lower)) {
     overrides.reverb = "more";
     detected.push("more reverb");
-  } else if (/\bless reverb\b|\bdrier\b|\bdry (?:it )?up\b|\bmenej (?:dozvuk|ozven)|\bsuchs?\b/.test(lower)) {
+  } else if (
+    /\bless reverb\b|\bdrier\b|\bdry (?:it )?up\b|\bmake it drier\b|\bsuch|\bmenej (?:dozvuk|ozven)/.test(lower)
+  ) {
     overrides.reverb = "less";
     detected.push("drier");
   }
@@ -109,10 +111,13 @@ export function parseMixIntent(text: string): MixParse {
     detected.push("softer");
   }
 
-  if (/\bno pump\b|\bwithout (?:pump|sidechain)\b|\bbez pumpy/.test(lower)) {
+  if (
+    /\bno pump\b|\bwithout (?:pump|sidechain)\b|\bbez pumpy/.test(lower) ||
+    /\bsidechain (?:off|vypni)\b|\bpump(?:a|u)? (?:off|vypni)\b|\bvypni (?:sidechain|pump(?:a|u)?)\b/.test(lower)
+  ) {
     overrides.pump = "off";
     detected.push("pump off");
-  } else if (/\b(?:sidechain|pump|duck)(?:ing)?\b/.test(lower)) {
+  } else if (/\b(?:sidechain|pump|duck)(?:ing)?\b|\bsidechain zapni\b/.test(lower)) {
     overrides.pump = "on";
     detected.push("pump on");
   }

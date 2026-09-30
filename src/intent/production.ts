@@ -143,10 +143,20 @@ export const PRODUCTION_TARGETS: readonly ProductionTarget[] = ["drums", "bass",
 
 /** Exposed for section-scoped FX parsing ("vinyl break") in intent/sections.ts. */
 export const CONCEPTS: readonly ConceptDef[] = [
+  // SK adjective boundaries: JS \b is ASCII-only (\w = [A-Za-z0-9_]), so a
+  // word ENDING in a diacritic ("hlbší") has no \b at its end and a word
+  // STARTING with one ("širšie") never matches after a space. Concepts are
+  // matched on the raw lowercase text, so the SK patterns close with an
+  // ASCII lookahead instead of \b and tolerate the deaccented stem ("sirš").
   {
     concept: "deeper",
     defaultTarget: "bass",
-    patterns: [/\bdeeper\b/, /\bhlb\u0161(ia|\u00ed|ie|\u00fd)?\b/, /\bsub-ier\b/, /\bhlb\u010d\b/],
+    patterns: [
+      /\bdeeper\b/,
+      /\bhlb\u0161(ia|\u00ed|ie|\u00fd|\u00edu|iu)?(?![a-z0-9])/,
+      /\bsub-ier\b/,
+      /\bhlb\u010d\b/,
+    ],
   },
   {
     concept: "punchier",
@@ -156,22 +166,26 @@ export const CONCEPTS: readonly ConceptDef[] = [
   {
     concept: "warmer",
     defaultTarget: "bass",
-    patterns: [/\bwarmer\b/, /\bteplej\u0161(ia|\u00ed|ie)?\b/],
+    patterns: [/\bwarmer\b/, /\bteplej\u0161(ia|\u00ed|ie|\u00fd|\u00edu|iu)?(?![a-z0-9])/],
   },
   {
     concept: "darker",
     defaultTarget: "drums",
-    patterns: [/\bdarker\b/, /\btmav\u0161(ia|\u00ed|ie)?\b/],
+    patterns: [/\bdarker\b/, /\btmav\u0161(ia|\u00ed|ie|\u00fd|\u00edu|iu)?(?![a-z0-9])/],
   },
   {
     concept: "brighter",
     defaultTarget: "drums",
-    patterns: [/\bbrighter\b/, /\bsvetlej\u0161(ia|\u00ed|ie)?\b/],
+    patterns: [
+      /\bbrighter\b/,
+      /\bsvetlej\u0161(ia|\u00ed|ie|\u00fd|\u00edu|iu)?(?![a-z0-9])/,
+      /\bjasnej\u0161(ia|\u00ed|ie|\u00fd|\u00edu|iu)?(?![a-z0-9])/,
+    ],
   },
   {
     concept: "wider",
     defaultTarget: "lead",
-    patterns: [/\bwider\b/, /\b\u0161ir\u0161(ia|\u00ed|ie)?\b/],
+    patterns: [/\bwider\b/, /(?:^|[^a-z0-9])[s\u0161]ir[s\u0161](ia|\u00ed|ie|\u00fd|\u00edu|iu)?(?![a-z0-9])/],
   },
   {
     concept: "grittier",
@@ -179,7 +193,7 @@ export const CONCEPTS: readonly ConceptDef[] = [
     patterns: [
       /\bgrittier\b/,
       /\bdirtier\b/,
-      /\b\u0161pinavej\u0161(ia|\u00ed|ie)?\b/,
+      /\b\u0161pinavej\u0161(ia|\u00ed|ie|\u00fd|\u00edu|iu)?(?![a-z0-9])/,
       /\bmore grit\b/,
       /\bviac gritu\b/,
     ],
@@ -354,8 +368,10 @@ const TARGET_PATTERNS: [RegExp, ProductionTarget][] = [
   [/((?:^|[^a-z0-9])kicks?(?:[^a-z0-9]|$))|kopák/i, "kick"],
   [/((?:^|[^a-z0-9])snares?(?:[^a-z0-9]|$))|claps?|ženír/i, "snare"],
   [/hi-?hats?|((?:^|[^a-z0-9])hats?(?:[^a-z0-9]|$))|činel/i, "hats"],
-  [/\bdrums?\b|\bbic\u00edc|\bbubny\b/i, "drums"],
-  [/\bbass\b|\b808\b|\bsub\b|\bbasa\b/i, "bass"],
+  // SK prefix + full inflections: "bicie/bicím/bubny" — the strict \bbicíc
+  // form silently dropped every post-noun SK drums row at corpus time
+  [/\bdrums?\b|\bbic|\bbubny\b/i, "drums"],
+  [/\bbass\b|\b808\b|\bsub\b|\bbas(?:a|u|y|i|ou|ov|om)?\b/i, "bass"],
   [/\blead\b|\bsynth\b|\bsynt\u00e9z/i, "lead"],
   [/\bchords?\b|\bkeys?\b|\bakord/i, "chords"],
 ];

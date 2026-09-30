@@ -35,7 +35,9 @@ export function parseLoudnessIntent(text: string): LoudnessIntentParse | null {
   // ASCII hyphen and the typographic minus (U+2212, what copy-paste and some
   // IMEs produce) are accepted.
   const targetMatch =
-    /\bloudness (?:na |to |target )?([-\u2212]?\d{1,2})\b|(?<![\d-\u2212])([-\u2212]?\d{1,2})\s*lufs\b/.exec(lower);
+    /\b(?:loudness|hlasitost) (?:na |to |target )?([-\u2212]?\d{1,2})\b|(?<![\d-\u2212])([-\u2212]?\d{1,2})\s*lufs\b/.exec(
+      lower,
+    );
   const isLouder = /\bmake it louder\b|\blouder\b|\bmore loud\b|\bhlas(?:it|ie|ej)/.test(lower);
   const isQuieter = /\bmake it quieter\b|\bquieter\b|\bquieter mix\b|\btich(?:ie|si)|\bmenej hlas|\bsofter mix\b/.test(
     lower,

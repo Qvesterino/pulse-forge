@@ -39,9 +39,9 @@ const deaccent = (value: string): string =>
     .toLowerCase();
 
 const TARGET_WORDS: ReadonlyArray<readonly [RegExp, PresetTargetFamily]> = [
-  [/\b(?:bass|808|bas[au])\b/, "bass"],
+  [/\b(?:bass|808|bas[auy])\b/, "bass"],
   [/\b(?:chords?|keys?|akord\w*)\b/, "chords"],
-  [/\b(?:lead|synth\w*|melodi\w*)\b/, "lead"],
+  [/\b(?:lead(?:e|om|u|a)?|synth\w*|melodi\w*)\b/, "lead"],
 ];
 
 const FAMILY_INSTRUMENTS: Record<PresetTargetFamily, ReadonlySet<string>> = {
@@ -63,7 +63,7 @@ const FAMILY_INSTRUMENTS: Record<PresetTargetFamily, ReadonlySet<string>> = {
 };
 
 const PRESET_ASK =
-  /\b(?:load|apply|use|nacitaj|pouzi|nahraj)\s+(?:the\s+)?(?:presets?\s+)?["']?(.+?)["']?\s*(?:presets?)?\s+(?:on|to|na)\s+(?:the\s+)?(bass|808|bas[au]|chords?|keys|akord\w*|lead|synth\w*|melodi\w*)\b/;
+  /\b(?:load|apply|use|nacitaj|pouzi|nahraj)\s+(?:the\s+)?(?:presets?\s+)?["']?(.+?)["']?\s*(?:presets?)?\s+(?:on|to|na)\s+(?:the\s+)?(bass|808|bas(?:a|u|y|i|ou)?|chords?|keys|akord\w*|lead(?:e|om|u|a)?|synth\w*|melodi\w*)\b/;
 
 export type ParsedPresetIntent =
   { ok: true; intent: PresetIntent } | { ok: false; name: string; suggestions: string[] };

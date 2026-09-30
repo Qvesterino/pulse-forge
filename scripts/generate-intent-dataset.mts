@@ -18,32 +18,12 @@
  */
 import { writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import { createProjectFromTemplate } from "../src/project-model/templates";
-import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";
-import { addArrangementClip, createScene, setSceneRole } from "../src/commands/commands";
+import { datasetDoc } from "./intent-sft-doc.mts";
 import { routeIntentText } from "../src/intent/route";
 import { compactIntentResponse } from "../src/intent/dataset";
-import type { ProjectDocument } from "../src/project-model/types";
 
 const DATASET_VERSION = 4;
 const OUT_DIR = path.join(process.cwd(), "scripts", "data", "intent-sft");
-
-/** Fixed dataset document: deterministic ids, role scenes, two clips. */
-function datasetDoc(): ProjectDocument {
-  useDeterministicIds();
-  resetDeterministicIds();
-  let doc = createProjectFromTemplate("house");
-  // the house template ships an arrangement clip at bar 0 — strip it so the
-  // dataset clips land exactly where the corpus expects them
-  doc = { ...doc, arrangement: { ...doc.arrangement, clips: [] }, markers: [] };
-  doc = createScene(doc, "Intro").execute(doc);
-  doc = setSceneRole(doc, doc.scenes[doc.scenes.length - 1].id, "intro").execute(doc);
-  doc = addArrangementClip(doc, doc.scenes[doc.scenes.length - 1].id, 0, 4).execute(doc);
-  doc = createScene(doc, "Drop").execute(doc);
-  doc = setSceneRole(doc, doc.scenes[doc.scenes.length - 1].id, "drop").execute(doc);
-  doc = addArrangementClip(doc, doc.scenes[doc.scenes.length - 1].id, 4, 4).execute(doc);
-  return doc;
-}
 
 interface Pair {
   instruction: string;
@@ -1103,11 +1083,121 @@ function augmentation(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
   // transport: SK save variant
   sk.push("ulož to");
 
+  // ── WRONGKIND WAVE — siblings of the eval-miss families (exact val strings
+  // are never duplicated: dedupe keeps the first occurrence, which would move
+  // a held-out row into train and shrink the val set by a hard row) ─────────
+  // send-vs-section contrast: adds with "send" route mixer routing, bare
+  // section adds stay arrangement — both sides of the chorus collision
+  en.push("add a chorus section");
+  en.push("add a verse after the intro");
+  en.push("wet it up");
+  en.push("make it drier");
+  en.push("sidechain on");
+  en.push("sidechain off");
+  en.push("less sidechain");
+  en.push("more pumping");
+  // production: deeper/wider family on the remaining targets (the 808/synth/
+  // keys grid above does not cover drums/bass/chords/lead)
+  en.push("make the bass deeper");
+  en.push("make the drums wider");
+  en.push("make the chords brighter");
+  en.push("make the lead warmer");
+  // preset resolution breadth (adjective → fuzzy factory match, new targets)
+  en.push("load the warm preset on the chords");
+  en.push("load the bright preset on the chords");
+  // compound payload completeness (fully-specified parts)
+  en.push("set the chords to 75% and set tempo to 132");
+  en.push("solo the lead and set the bass to 40%");
+  en.push("mute the hats and set tempo to 140");
+  // loudness numeric siblings
+  en.push("loudness to -16");
+  en.push("loudness na -8");
+  en.push("target -10 lufs");
+  // clarify: bare effect without target
+  en.push("more delay");
+  // SK mirror of the same families
+  sk.push("pridaj chorus send na bicie");
+  sk.push("pridaj reverb send na basu");
+  sk.push("pridaj chorus sekciu");
+  sk.push("pridaj verse za intro");
+  sk.push("mokrejší mix");
+  sk.push("taký suchší mix");
+  sk.push("sidechain zapni");
+  sk.push("sidechain vypni");
+  sk.push("sprav basu širšiu");
+  sk.push("sprav bicie hlbšie");
+  sk.push("sprav lead jasnejší");
+  sk.push("sprav akordy teplejšie");
+  sk.push("načítaj warm preset na leade");
+  sk.push("hlasitosť na -8");
+  sk.push("hlasitosť na -10");
+  sk.push("viac delayu");
+
   // ── MIXED-LANGUAGE SENTENCES (SK verb + EN target/fx — real slang) ───────
   sk.push("daj more reverb na lead");
   sk.push("nastav delay na bass to 25%");
   sk.push("bypass reverb na drums prosím");
   sk.push("mute the bass a zvýš lead");
+
+  // ── MINING WAVE (library-gate wave, 2026-09-30) — paraphrase siblings of
+  // the families the ONNX val mining measured as confused (mix/production →
+  // exact, transport/export/select → abstain, one-word mix descriptors).
+  // These are NEW formulations appended at the corpus end (the every-7th val
+  // split keeps its existing rows; only new indices join), each routed by the
+  // deterministic teacher like the rest of the corpus ────────────────────────
+  // one-word and short mix descriptors (the "darker"/"colder" cluster)
+  en.push("darker please");
+  en.push("a bit brighter");
+  en.push("warmer mix");
+  en.push("cold tone");
+  en.push("make it warmer");
+  en.push("make it darker");
+  // transport: the bare verbs plus explicit playback forms
+  en.push("stop playback");
+  en.push("start playback");
+  en.push("play the beat");
+  en.push("pause the beat");
+  en.push("loop on");
+  en.push("loop off");
+  en.push("metronome on");
+  en.push("turn the metronome off");
+  // export/select/tempo: short imperative forms the mining saw abstain
+  en.push("export wav");
+  en.push("export the mix as mp3");
+  en.push("select drums");
+  en.push("select the chords track");
+  en.push("speed it up to 140");
+  en.push("slow it down to 90");
+  en.push("change bpm to 128");
+  // send/bypass: the send vocabulary on more targets
+  en.push("more delay send on the vocal");
+  en.push("less reverb on the snare");
+  en.push("more reverb on the hats");
+  en.push("bypass delay on the lead");
+  en.push("enable the compressor on the bass");
+  en.push("disable reverb on the master");
+  // percent/set precision (the percent head measured weakest)
+  en.push("set the master volume to 80 percent");
+  en.push("turn the lead down by 20 percent");
+  en.push("raise the drums to 90%");
+  en.push("lower the bass to 30%");
+  // SK siblings of the confused families
+  sk.push("tmavšie");
+  sk.push("svetlejší mix");
+  sk.push("teplejšie");
+  sk.push("zastav prehrávanie");
+  sk.push("pusti beat");
+  sk.push("pauza");
+  sk.push("metronóm zapni");
+  sk.push("exportuj wav");
+  sk.push("vyber basu");
+  sk.push("zrýchli na 140");
+  sk.push("spomaľ na 90");
+  sk.push("viac delay send na vokál");
+  sk.push("menej reverbu na snare");
+  sk.push("bypass delay na leade");
+  sk.push("nastav master na 80 percent");
+  sk.push("zníž lead o 20 percent");
 
   return [
     { lang: "en", instructions: en },

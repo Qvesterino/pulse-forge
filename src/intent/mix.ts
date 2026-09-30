@@ -716,7 +716,7 @@ function deaccentLower(text: string): string {
   return ` ${text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")} `;
 }
 
-function effectWordIn(lower: string): EffectType | null {
+export function effectWordIn(lower: string): EffectType | null {
   for (const [re, type] of EFFECT_WORDS) {
     if (re.test(lower)) return type;
   }
