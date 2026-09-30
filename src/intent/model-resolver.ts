@@ -235,8 +235,27 @@ function clipsFrom(doc: ProjectDocument, m: ModelAction): RoutedIntent | null {
   return { kind: "clips", ops };
 }
 
-// Model kinds that may nest inside a compound part (strings of sub-JSON).
-const COMPOUNDABLE = new Set(["fader", "tempo", "effectIntent", "sendIntent", "bypassIntent", "preset", "exact"]);
+// Model kinds that may nest inside a compound part. The corpus teaches the
+// RoutedIntent part names (effect/send/bypass — what the compound route
+// actually carries), the schema speaks the long model kinds — accept both.
+const COMPOUNDABLE = new Set([
+  "fader",
+  "tempo",
+  "effectIntent",
+  "sendIntent",
+  "bypassIntent",
+  "preset",
+  "exact",
+  "effect",
+  "send",
+  "bypass",
+]);
+/** Part-kind aliases → the adapter's long kind names. */
+const PART_KIND_ALIAS: Record<string, string> = {
+  effect: "effectIntent",
+  send: "sendIntent",
+  bypass: "bypassIntent",
+};
 
 function compoundFrom(doc: ProjectDocument, m: ModelAction, instruction: string): RoutedIntent | null {
   const rawParts = (m.parts as unknown[]) ?? [];
@@ -260,11 +279,11 @@ function compoundFrom(doc: ProjectDocument, m: ModelAction, instruction: string)
     );
     const record: ModelAction =
       wrapperKey != null ? { kind: rawRecord.kind, ...(rawRecord[wrapperKey] as ModelAction) } : rawRecord;
-    const kind = String(record.kind ?? "");
-    if (!COMPOUNDABLE.has(kind)) return null;
-    const validation = validateModelAction(record);
+    const kind = PART_KIND_ALIAS[String(record.kind ?? "")] ?? String(record.kind ?? "");
+    if (!COMPOUNDABLE.has(String(record.kind ?? "")) && !COMPOUNDABLE.has(kind)) return null;
+    const validation = validateModelAction({ ...record, kind });
     if (!validation.valid) return null;
-    const adapted = adaptRecord(doc, record, instruction, kind);
+    const adapted = adaptRecord(doc, { ...record, kind }, instruction, kind);
     if (adapted == null) return null;
     // wrap the flat route into the compound part of the same name
     if (adapted.kind === "fader") parts.push({ kind: "fader", intent: adapted.intent });

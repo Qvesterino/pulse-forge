@@ -1178,6 +1178,36 @@ function augmentation(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
   // non-family reverb asks fall to the mix profile (more reverb on the hats)
   en.push("more reverb on the perc");
 
+  // ── WRONGKIND WAVE 3 — v27 eval residue (94.7%/wrongKind 4) ───────────────
+  // SK unknown-instrument asks stay clarify ("pridaj delay na trubky" slip)
+  sk.push("pridaj reverb na trubky");
+  sk.push("menej delayu na trubky");
+  // bare SK loudness word is a FADER clarify, not the loudness loop
+  sk.push("tichšie");
+  sk.push("hlasnejšie v mixe");
+  // "menej ozveny" is the mix profile (the model said revise density)
+  sk.push("menej ozveny prosím");
+  sk.push("menej dozvuku v mixe");
+  // auto-arrange SK family (usporiadaj do pesničky → autoArrange)
+  sk.push("usporiadaj do songu");
+  sk.push("usporiadaj pesničku");
+  // pad-family reverb asks fall to the mix profile (menej reverbu na snare)
+  en.push("more reverb on the snare");
+  sk.push("viac reverbu na kick");
+  // loudness numeric copying (the model drops the number on unseen values)
+  en.push("loudness na -11");
+  en.push("loudness na -13");
+  en.push("loudness to -15");
+  en.push("-10 lufs");
+  en.push("-13 lufs");
+  sk.push("hlasitosť na -12");
+  sk.push("hlasitosť na -14");
+  // compound payload completeness siblings (fader-set / exact+fader parts)
+  en.push("mute the chords and set the lead to 30%");
+  sk.push("stíš bicie a zvýš basu");
+  // bypass compound parts speak the short part name the route carries
+  en.push("enable the chorus on the chords and zníž basu");
+
   // ── MIXED-LANGUAGE SENTENCES (SK verb + EN target/fx — real slang) ───────
   sk.push("daj more reverb na lead");
   sk.push("nastav delay na bass to 25%");

@@ -1,60 +1,61 @@
-/** Verify wave-2 templates route to their intended kinds. */
+/** Verify wave-3 templates + compound short-part alias. */
 import { routeIntentText } from "../src/intent/route";
 import { compactIntentResponse } from "../src/intent/dataset";
 import { datasetDoc } from "./intent-sft-doc.mts";
+import { setIntentModelProvider, tryModelRoute } from "../src/intent/model-resolver";
 
 const doc = datasetDoc();
 const cases: Array<[string, string]> = [
-  ["double the intro", "arrange"],
-  ["zdvojnásob intro", "arrange"],
-  ["zdvojnásob drop", "arrange"],
-  ["loudness na -10", "loudness"],
-  ["-9 lufs", "loudness"],
-  ["-16 lufs", "loudness"],
-  ["loop vypni", "transport"],
-  ["loop zapni", "transport"],
-  ["please loop on", "transport"],
-  ["cyklus zapni", "transport"],
-  ["vypni cyklus", "transport"],
-  ["prosim hraj", "transport"],
-  ["please play", "transport"],
-  ["play please", "transport"],
-  ["please stop", "transport"],
-  ["zapni loop", "transport"],
-  ["cykluj vypni", "transport"],
-  ["pann the lead left 20", "clarify"],
-  ["soloo the drums", "clarify"],
-  ["mut the bass", "clarify"],
-  ["viac reverbu na bicie", "effectIntent"],
-  ["menej reverbu na leade", "effectIntent"],
-  ["viac delayu na basi", "effectIntent"],
-  ["viac reverbu", "mix"],
-  ["viac saturácie", "clarify"],
-  ["pridaj kompresiu na trubky", "clarify"],
-  ["viac reverbu na basi", "effectIntent"],
-  ["menej reverbu v mixe", "mix"],
-  ["viac reverbu v mixe", "mix"],
-  ["less reverb in the mix", "mix"],
-  ["hlbší kick", "production"],
-  ["teplejší bas", "production"],
-  ["jasnejšie bicie", "production"],
-  ["obrovský dozvuk", "mix"],
-  ["obri dozvuk", "mix"],
-  ["zrýchli", "tempo"],
-  ["rýchlejšie", "tempo"],
-  ["tempo hore", "tempo"],
-  ["zrýchli to", "tempo"],
-  ["more reverb on the perc", "mix"],
-  ["more reverb on the hats", "mix"],
-  ["more delay on the hats", "clarify"],
+  ["pridaj reverb na trubky", "clarify"],
+  ["menej delayu na trubky", "clarify"],
+  ["tichšie", "loudness"],
+  ["hlasnejšie v mixe", "clarify"],
+  ["hlasnejšie", "clarify"],
+  ["menej ozveny prosím", "mix"],
+  ["menej dozvuku v mixe", "mix"],
+  ["menej ozveny", "mix"],
+  ["usporiadaj do songu", "arrange"],
+  ["usporiadaj pesničku", "arrange"],
+  ["usporiadaj do pesničky", "arrange"],
+  ["more reverb on the snare", "mix"],
+  ["viac reverbu na kick", "mix"],
+  ["menej reverbu na snare", "mix"],
+  ["loudness na -11", "loudness"],
+  ["hlasitosť na -12", "loudness"],
+  ["mute the chords and set the lead to 30%", "compound"],
+  ["stíš bicie a zvýš basu", "compound"],
+  ["enable the chorus on the chords and zníž basu", "compound"],
 ];
 let bad = 0;
 for (const [q, want] of cases) {
   const r = compactIntentResponse(routeIntentText(q, doc));
-  const ok = r.kind === want;
-  if (!ok) {
+  if (r.kind !== want) {
     bad += 1;
-    console.log("FAIL", r.kind.padEnd(13), "want", want.padEnd(11), q, JSON.stringify(r).slice(0, 90));
+    console.log("FAIL", r.kind.padEnd(13), "want", want.padEnd(11), q);
   }
 }
-console.log(bad === 0 ? `ALL ${cases.length} ROUTE OK` : `${bad} FAILURES of ${cases.length}`);
+// compound short-part alias: the corpus form {kind:"bypass", intent:{...}}
+setIntentModelProvider({
+  id: "echo",
+  async generate(i: string) {
+    return i;
+  },
+});
+const r = await tryModelRoute(
+  JSON.stringify({
+    kind: "compound",
+    parts: [
+      { kind: "bypass", intent: { effectType: "delay", target: "lead", bypassed: false } },
+      { kind: "effect", intent: { effectType: "reverb", targets: ["bass"], direction: "more" } },
+      { kind: "send", intent: { effectType: "chorus", target: "drums", direction: "less" } },
+    ],
+  }),
+  doc,
+);
+setIntentModelProvider(null);
+const ok = r?.kind === "compound" && (r as { parts: unknown[] }).parts.length === 3;
+if (!ok) {
+  bad += 1;
+  console.log("FAIL compound short-parts:", JSON.stringify(r));
+}
+console.log(bad === 0 ? `ALL ${cases.length + 1} OK` : `${bad} FAILURES`);
