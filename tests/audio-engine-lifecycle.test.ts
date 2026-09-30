@@ -99,7 +99,9 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     // must wire the observer.
     const engine = readEngine();
     const useContext = sliceFunction(engine, /useContext\s*\(/);
-    const ensureContext = sliceFunction(engine, /ensureContext\s*\(/);
+    // Wave 4c: anchor to the method signature — a bare /ensureContext\(/ now
+    // matches the PreviewDeck deps closure first.
+    const ensureContext = sliceFunction(engine, /ensureContext\(\): BaseAudioContext \{/);
     expect(useContext).toMatch(/onstatechange\s*=/);
     // Context creation is centralized through useContext(), so ensureContext
     // may satisfy this contract by delegating instead of duplicating the
@@ -184,9 +186,11 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     // The cleanup must clear all four collections. Check for the
     // .clear() calls specifically — a future refactor that drops one
     // of them will surface as a missing `.clear(` substring here.
+    // Wave 4c: the audition voice sets live in PreviewDeck now — their
+    // hard dispose is previewDeck.disposeAll() (stop + disconnect + clear).
     for (const cleared of [
       "this.voices.clear()",
-      "this.previewVoices.clear()",
+      "this.previewDeck.disposeAll()",
       "this.frozenBuffers.clear()",
       "this.frozenBufferIds.clear()",
     ]) {
@@ -215,7 +219,7 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     // this best-effort resume targets (visibilitychange, first click on a
     // suspended context). An unguarded `void ctx.resume()` produced an
     // unhandled rejection on every suspended ensureContext() call.
-    const body = sliceFunction(readEngine(), /ensureContext\s*\(/);
+    const body = sliceFunction(readEngine(), /ensureContext\(\): BaseAudioContext \{/);
     expect(body, "ensureContext not found in AudioEngine.ts").not.toBe("");
     expect(body, "ensureContext() must catch a rejected resume()").toMatch(
       /ctx\.resume\(\)\.catch\(\(\)\s*=>\s*\{\}\)/,
@@ -223,7 +227,7 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
   });
 
   it("ensureContext() replaces a closed realtime context before resuming it", () => {
-    const body = sliceFunction(readEngine(), /ensureContext\s*\(/);
+    const body = sliceFunction(readEngine(), /ensureContext\(\): BaseAudioContext \{/);
     expect(body, "ensureContext not found in AudioEngine.ts").not.toBe("");
     expect(body, "ensureContext() must detect a browser-closed context").toMatch(/state\s*===\s*["']closed["']/);
     expect(body, "closed-context recovery must rebuild through useContext()").toMatch(/this\.useContext\(ctx\)/);

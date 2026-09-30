@@ -16,11 +16,10 @@ import { PPQ, BAR_TICKS } from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
 import { EFFECT_DEFS, clampEffectParam } from "../effects/registry";
 import type { EffectRuntime } from "../effects/types";
-import { clampInstrumentParam, INSTRUMENT_DEFS } from "../instruments/registry";
+import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { dbToLinear, presetNormalizationGainDb } from "../presets/normalization";
 import type { InstrumentRuntime } from "../instruments/types";
 import type { InstrumentPreset } from "../presets/types";
-import { previewCleanupDelayMs, previewNoteDuration } from "../presets/audioQuality";
 import { clampTargetValue, targetOwner, targetParamDef } from "../project-model/targets";
 import {
   ensureWorkletsForDoc,
@@ -36,6 +35,8 @@ import { connectAudioClipSourceChannel } from "./audioClipChannels";
 import { phaseVocoderWarpChannel, warpRateEnvelope, type WarpRateInterval } from "./phase-vocoder";
 import { renderWarpPreserveAsync } from "../audio-workers/warp-render-client";
 import { MeteringRig, measureTruePeak as measureTruePeakImpl } from "./meteringRig";
+import { PreviewDeck } from "./previewDeck";
+import { DECLICK_TAIL_SEC, declickFadeOut, resolveSlicePlayback } from "./declick";
 import { MasterChain } from "./masterChain";
 import type { MasterStage } from "./masterChain";
 import { isLiveAudioContext } from "./liveContext";
@@ -261,84 +262,9 @@ interface Voice {
   extras?: AudioNode[];
 }
 
-interface PreviewVoice {
-  source: AudioBufferSourceNode;
-  gain: GainNode;
-}
-
 export type { TrackMeterSnapshot, MasterMeterSnapshot } from "./metering-types";
-
-interface InstrumentPreviewVoice {
-  runtime: InstrumentRuntime;
-  gain: GainNode;
-  timer: ReturnType<typeof setTimeout> | null;
-}
-
-export interface ResolvedSlicePlayback {
-  start: number;
-  end: number;
-  duration: number;
-  offset: number;
-  rate: number;
-  fadeIn: number;
-  fadeOut: number;
-  reverse: boolean;
-}
-
-/**
- * Guaranteed de-click tail on every one-shot voice (seconds). A drum sample
- * that is still loud when its slice/source ends — a `length` p-lock cut, a
- * slice edit into a sustained body, a looped-pad stop — steps from full
- * amplitude to zero in one sample and clicks. 2 ms is short enough to be
- * inaudible on any material and long enough to kill the step. Never applied
- * to the ATTACK: a drum transient must stay instantaneous.
- */
-export const DECLICK_TAIL_SEC = 0.002;
-
-/**
- * Effective fade-out for a voice: the pad's configured fade when it is
- * longer than the de-click floor, otherwise the floor itself (bounded to a
- * quarter of the slice so a very short slice cannot be swallowed).
- */
-export function declickFadeOut(configuredFadeOut: number, sliceDuration: number): number {
-  const floor = Math.min(DECLICK_TAIL_SEC, Math.max(0, sliceDuration) / 4);
-  const configured = Number.isFinite(configuredFadeOut) ? Math.max(0, configuredFadeOut) : 0;
-  return Math.max(configured, floor);
-}
-
-export function resolveSlicePlayback(pad: DrumPad, bufferDuration: number): ResolvedSlicePlayback {
-  const duration = Math.max(0.001, Number.isFinite(bufferDuration) ? bufferDuration : 0.001);
-  let start = Number.isFinite(pad.sliceStart) ? Math.max(0, Math.min(pad.sliceStart!, duration)) : 0;
-  let end = Number.isFinite(pad.sliceEnd) ? Math.max(0, Math.min(pad.sliceEnd!, duration)) : duration;
-  if (end <= start + 0.001) {
-    start = 0;
-    end = duration;
-  }
-  const reverse = pad.sliceReverse === true;
-  const pitch = Number.isFinite(pad.pitch) ? pad.pitch : 0;
-  const rateMagnitude = Math.pow(2, pitch / 12);
-  const rate = (reverse ? -1 : 1) * rateMagnitude;
-  const outputDuration = Math.max(0.001, end - start);
-  let fadeIn = Number.isFinite(pad.sliceFadeIn) ? Math.max(0, pad.sliceFadeIn!) : 0;
-  let fadeOut = Number.isFinite(pad.sliceFadeOut) ? Math.max(0, pad.sliceFadeOut!) : 0;
-  fadeIn = Math.min(fadeIn, outputDuration);
-  fadeOut = Math.min(fadeOut, outputDuration);
-  if (fadeIn + fadeOut > outputDuration) {
-    const scale = outputDuration / Math.max(0.001, fadeIn + fadeOut);
-    fadeIn *= scale;
-    fadeOut *= scale;
-  }
-  return {
-    start,
-    end,
-    duration: outputDuration,
-    offset: reverse ? end : start,
-    rate,
-    fadeIn,
-    fadeOut,
-    reverse,
-  };
-}
+export { DECLICK_TAIL_SEC, declickFadeOut, resolveSlicePlayback } from "./declick";
+export type { ResolvedSlicePlayback } from "./declick";
 
 /**
  * Per-send PDC delay (seconds): the send tap sits post-chain-PDC, so the
@@ -410,6 +336,23 @@ export class AudioEngine {
     groupAnalyser: (id) => this.groupNodes.get(id)?.analyser ?? null,
     returnAnalyser: (id) => this.returnNodes.get(id)?.analyser ?? null,
     masterStage: (): MasterStage => this.masterChain.stage,
+  });
+  /**
+   * Wave 4c (decomposition): audition deck owner — pad/preset/slice/asset/
+   * buffer/synced previews and their voice sets. Graph-param previews
+   * (faders, FX intent) stay here; they write engine-owned nodes.
+   */
+  private previewDeck = new PreviewDeck({
+    ctx: () => this.ctx,
+    doc: () => this.doc,
+    bank: () => this.bank,
+    masterInput: () => this.masterChain.input,
+    ensureContext: () => this.ensureContext(),
+    currentTime: () => this.currentTime,
+    transportTickNow: () => this.transportTickNow(),
+    trigger: (trackId, pad, when, velocity) => this.trigger(trackId, pad, when, velocity),
+    noteOn: (trackId, pitch, velocity, when, durationSec) => this.noteOn(trackId, pitch, velocity, when, durationSec),
+    missAsset: (assetId) => this.missedAssets.add(assetId),
   });
   /**
    * Wave 4b (decomposition): master output chain owner — input gain, tape,
@@ -498,8 +441,6 @@ export class AudioEngine {
   private macroCache = new Map<string, { gain: number; pan: number }>();
   private currentSceneIntensity = 0.7;
   private voices = new Set<Voice>();
-  private previewVoices = new Set<PreviewVoice>();
-  private instrumentPreviewVoices = new Set<InstrumentPreviewVoice>();
   /**
    * One-shot scheduled sources (AudioClips, marker cues, metronome clicks).
    * These are committed up to the 120 ms horizon ahead and are NOT part of
@@ -762,38 +703,9 @@ export class AudioEngine {
     }
     this.voices.clear();
     this.stopOneShotSources();
-    for (const voice of this.instrumentPreviewVoices) {
-      if (voice.timer) clearTimeout(voice.timer);
-      try {
-        voice.runtime.panic();
-      } catch {
-        /* already stopped */
-      }
-      try {
-        voice.runtime.dispose();
-      } catch {
-        /* already disposed */
-      }
-      try {
-        voice.gain.disconnect();
-      } catch {
-        /* already disconnected */
-      }
-    }
-    this.instrumentPreviewVoices.clear();
-    for (const voice of this.previewVoices) {
-      try {
-        voice.source.stop();
-      } catch {
-        /* already stopped */
-      }
-      try {
-        voice.gain.disconnect();
-      } catch {
-        /* already */
-      }
-    }
-    this.previewVoices.clear();
+    // Audition voices belong to the PreviewDeck (Wave 4c) — hard-dispose
+    // with the context swap (no de-click tail on a dying graph).
+    this.previewDeck.disposeAll();
     for (const source of this.frozenBuffers.values()) {
       try {
         source.stop();
@@ -2503,8 +2415,7 @@ export class AudioEngine {
   }
 
   previewNote(trackId: string, pitch: number): void {
-    this.ensureContext();
-    this.noteOn(trackId, pitch, 1, this.currentTime + 0.005, 0.25);
+    this.previewDeck.previewNote(trackId, pitch);
   }
 
   private lfoFrequency(lfo: Lfo): number {
@@ -4041,262 +3952,39 @@ export class AudioEngine {
   }
 
   preview(pad: DrumPad, trackId: string, velocity = 1): void {
-    this.ensureContext();
-    this.trigger(trackId, pad, this.currentTime + 0.005, velocity);
+    this.previewDeck.preview(pad, trackId, velocity);
   }
 
-  /**
-   * Audition an instrument preset without touching the project document.
-   *
-   * PresetBrowser uses this path for a short, isolated note. The temporary
-   * runtime is connected directly to the master preview bus so a muted or
-   * silent track cannot make a valid preset audition look broken. Applying
-   * the preset remains a separate command-owned operation in the UI.
-   */
+  // ── Audition deck (Wave 4c) — delegates to PreviewDeck; public surface unchanged. ──
+
   previewInstrumentPreset(trackId: string, preset: InstrumentPreset): void {
-    this.ensureContext();
-    this.stopPreview();
-    const ctx = this.ctx;
-    const doc = this.doc;
-    const master = this.masterChain.input;
-    const track = doc?.tracks.find((candidate): candidate is InstrumentTrack => {
-      return candidate.kind === "instrument" && candidate.id === trackId;
-    });
-    if (!ctx || !master || !track || preset.instrument !== track.instrument) return;
-
-    const definition = INSTRUMENT_DEFS[track.instrument];
-    if (!definition) return;
-    const params = { ...track.params };
-    for (const [id, value] of Object.entries(preset.params)) {
-      params[id] = clampInstrumentParam(track.instrument, id, value);
-    }
-    const previewTrack: InstrumentTrack = {
-      ...track,
-      params,
-      sampleId: preset.sampleId !== undefined ? preset.sampleId : track.sampleId,
-      presetId: preset.id,
-    };
-
-    let runtime: InstrumentRuntime;
-    try {
-      runtime = definition.factory(ctx, previewTrack, {
-        bpm: doc?.bpm ?? 124,
-        getSample: (id) => this.bank?.get(id),
-      });
-    } catch {
-      return;
-    }
-
-    // The audition must represent the applied sound: the same preset
-    // normalization the live chain gets scales the fixed headroom gain.
-    const normGain = ctx.createGain();
-    normGain.gain.value = dbToLinear(presetNormalizationGainDb(preset.id));
-    runtime.output.connect(normGain);
-
-    const gain = ctx.createGain();
-    const when = ctx.currentTime + 0.01;
-    const durationSec = previewNoteDuration(params);
-    // Keep audition headroom independent from the track's current mixer gain.
-    gain.gain.setValueAtTime(0.78, when);
-    normGain.connect(gain).connect(master);
-    const voice: InstrumentPreviewVoice = { runtime, gain, timer: null };
-    this.instrumentPreviewVoices.add(voice);
-
-    try {
-      runtime.noteOn(60, 0.82, when, durationSec);
-    } catch {
-      this.disposeInstrumentPreviewVoice(voice);
-      return;
-    }
-
-    // Give envelopes a short tail before disposing the temporary runtime.
-    voice.timer = setTimeout(
-      () => this.disposeInstrumentPreviewVoice(voice),
-      previewCleanupDelayMs(params, durationSec),
-    );
+    this.previewDeck.previewInstrumentPreset(trackId, preset);
   }
 
-  private disposeInstrumentPreviewVoice(voice: InstrumentPreviewVoice): void {
-    if (voice.timer) clearTimeout(voice.timer);
-    voice.timer = null;
-    try {
-      voice.runtime.panic();
-    } catch {
-      /* already stopped */
-    }
-    try {
-      voice.runtime.dispose();
-    } catch {
-      /* already disposed */
-    }
-    try {
-      voice.gain.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    this.instrumentPreviewVoices.delete(voice);
-  }
-
-  /** Preview a source region directly through the master bus. */
   previewSlice(pad: DrumPad, loop = false): void {
-    this.ensureContext();
-    this.stopPreview();
-    const ctx = this.ctx;
-    const buffer = this.bank?.get(pad.assetId);
-    if (!ctx || !this.masterChain.input || !buffer) {
-      if (pad.assetId) this.missedAssets.add(pad.assetId);
-      return;
-    }
-    const slice = resolveSlicePlayback(pad, buffer.duration);
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.playbackRate.value = slice.rate;
-    if (loop) {
-      source.loop = true;
-      source.loopStart = slice.start;
-      source.loopEnd = slice.end;
-    }
-    const gain = ctx.createGain();
-    const peak = Math.max(0, pad.gain);
-    const when = ctx.currentTime + 0.005;
-    const endWhen = when + slice.duration;
-    // Same de-click guarantee as the trigger path: auditioning a slice must
-    // not click either, including when a p-locked length cut it short.
-    const fadeOut = declickFadeOut(slice.fadeOut, slice.duration);
-    gain.gain.setValueAtTime(slice.fadeIn > 0 ? 0 : peak, when);
-    if (slice.fadeIn > 0) gain.gain.linearRampToValueAtTime(peak, when + slice.fadeIn);
-    if (!loop && fadeOut > 0) {
-      const fadeOutAt = Math.max(when + slice.fadeIn, endWhen - fadeOut);
-      gain.gain.setValueAtTime(peak, fadeOutAt);
-      gain.gain.linearRampToValueAtTime(0, fadeOutAt + fadeOut);
-    }
-    source.connect(gain).connect(this.masterChain.input);
-    const voice: PreviewVoice = { source, gain };
-    this.previewVoices.add(voice);
-    source.onended = () => {
-      this.previewVoices.delete(voice);
-      gain.disconnect();
-      source.disconnect();
-    };
-    source.start(when, slice.offset, loop ? undefined : slice.duration);
+    this.previewDeck.previewSlice(pad, loop);
   }
 
   stopPreview(): void {
-    const ctx = this.ctx;
-    for (const voice of [...this.instrumentPreviewVoices]) this.disposeInstrumentPreviewVoice(voice);
-    for (const voice of this.previewVoices) {
-      try {
-        // De-click the stop: a 5 ms gap between "cut" and "silent" is long
-        // enough to read as a click on a sustained preview slice.
-        const stopAt = ctx ? ctx.currentTime + 0.005 : 0;
-        voice.gain.gain.cancelScheduledValues(stopAt);
-        voice.gain.gain.setTargetAtTime(0, stopAt, DECLICK_TAIL_SEC);
-        voice.source.stop(stopAt + DECLICK_TAIL_SEC * 4);
-      } catch {
-        // Already stopped.
-      }
-      try {
-        voice.gain.disconnect();
-      } catch {
-        /* already disconnected */
-      }
-      try {
-        voice.source.disconnect();
-      } catch {
-        /* already disconnected */
-      }
-    }
-    this.previewVoices.clear();
+    this.previewDeck.stopPreview();
   }
 
-  /** Preview a factory sample directly through the master bus (no track needed). */
   previewAsset(assetId: string): void {
-    this.ensureContext();
-    const ctx = this.ctx;
-    const buffer = this.bank?.get(assetId);
-    if (!ctx || !this.masterChain.input) return;
-    if (!buffer) {
-      if (assetId) this.missedAssets.add(assetId);
-      return;
-    }
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    const gain = ctx.createGain();
-    gain.gain.value = 0.9;
-    source.connect(gain).connect(this.masterChain.input);
-    const voice: PreviewVoice = { source, gain };
-    this.previewVoices.add(voice);
-    source.start(ctx.currentTime + 0.005);
-    source.onended = () => {
-      this.previewVoices.delete(voice);
-      gain.disconnect();
-      source.disconnect();
-    };
+    this.previewDeck.previewAsset(assetId);
   }
 
-  /** Preview an ephemeral buffer through the same master preview bus as bank assets. */
   previewBuffer(buffer: AudioBuffer, gainValue = 0.9, onEnded?: () => void, offsetSec = 0): void {
-    this.ensureContext();
-    const ctx = this.ctx;
-    if (!ctx || !this.masterChain.input) return;
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    const gain = ctx.createGain();
-    gain.gain.value = Math.max(0, Math.min(1, gainValue));
-    source.connect(gain).connect(this.masterChain.input);
-    const voice: PreviewVoice = { source, gain };
-    this.previewVoices.add(voice);
-    source.start(ctx.currentTime + 0.005, Math.max(0, Math.min(buffer.duration, offsetSec)));
-    source.onended = () => {
-      this.previewVoices.delete(voice);
-      gain.disconnect();
-      source.disconnect();
-      onEnded?.();
-    };
+    this.previewDeck.previewBuffer(buffer, gainValue, onEnded, offsetSec);
   }
 
-  /**
-   * Preview a sample synced to the transport (FL Browser Alt+P): the sample's
-   * first beat lands on the next bar boundary and playbackRate tempo-matches
-   * the project. `rate` is caller-computed (fileBPM/doc.bpm) — 1 = dry.
-   */
   previewAssetSynced(assetId: string, rate = 1): void {
-    this.ensureContext();
-    const ctx = this.ctx;
-    const buffer = this.bank?.get(assetId);
-    if (!ctx || !this.masterChain.input || !buffer || !this.doc) return;
-    const bpm = Math.max(1, this.doc.bpm);
-    const barSec = (60 / bpm) * 4;
-    const now = ctx.currentTime;
-    // Quantized start: next bar boundary relative to transport playhead
-    const pos = this.transportTickNow();
-    const secondsPerTick = 60 / (bpm * PPQ);
-    const nextBarSec = ((Math.floor(pos / PPQ) + 1) * PPQ - pos) * secondsPerTick;
-    const when = now + Math.max(0.005, (nextBarSec % Math.max(0.001, barSec)) + 0.005);
-    void barSec;
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.playbackRate.value = Math.min(4, Math.max(0.25, rate));
-    const gain = ctx.createGain();
-    gain.gain.value = 0.85;
-    source.connect(gain).connect(this.masterChain.input);
-    // Track it as a preview voice: stopPreview()/panic() must be able to
-    // cancel a bar-quantized start that has not fired yet — otherwise the
-    // sample sounds after the user pressed Stop.
-    const voice: PreviewVoice = { source, gain };
-    this.previewVoices.add(voice);
-    source.start(when);
-    source.onended = () => {
-      this.previewVoices.delete(voice);
-      gain.disconnect();
-      source.disconnect();
-    };
+    this.previewDeck.previewAssetSynced(assetId, rate);
   }
 
   /**
-   * Current transport tick, supplied by the service layer (the engine does
-   * not own the Transport). Used to quantize transport-synced previews to
-   * the NEXT bar relative to the live playhead; falls back to 0 when unset.
+   * Late-bound transport reader (assigned by services after construction):
+   * transport-synced previews quantize to the next bar relative to the live
+   * playhead; falls back to 0 when unset.
    */
   getTransportTick: (() => number) | null = null;
 
@@ -4374,7 +4062,7 @@ export class AudioEngine {
       // Maps must be cleared so the next play() does not dispatch into
       // stale state. A panic is a hard reset — "everything off, now".
       this.voices.clear();
-      this.previewVoices.clear();
+      this.previewDeck.disposeAll();
       this.stopOneShotSources();
       this.frozenBuffers.clear();
       this.frozenBufferIds.clear();
