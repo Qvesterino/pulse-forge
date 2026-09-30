@@ -544,10 +544,8 @@ export const MCP_TOOLS: McpToolDef[] = [
         bar: {
           type: "integer",
           minimum: 1,
-          description: "1-based bar — position for addPoint, anchor for movePoint/deletePoint",
+          description: "1-based bar — position for addPoint, anchor for deletePoint",
         },
-        newBar: { type: "integer", minimum: 1, description: "For movePoint — 1-based destination bar" },
-        newBeat: { type: "integer", minimum: 1, maximum: 4, description: "For movePoint — 1-based destination beat" },
         beat: {
           type: "integer",
           minimum: 1,
@@ -624,10 +622,7 @@ export const MCP_TOOLS: McpToolDef[] = [
           items: {
             type: "object",
             properties: {
-              tool: {
-                type: "string",
-                description: "One of the kyx_* tool names (not kyx_batch/kyx_export/kyx_loudness)",
-              },
+              tool: { type: "string", description: "One of the kyx_* tool names (not kyx_batch/kyx_export/kyx_loudness)" },
               args: { type: "object", description: "The tool's arguments object" },
             },
             required: ["tool"],
@@ -737,7 +732,10 @@ export interface McpToolContext {
    * Absent → honest refusal (headless contexts).
    */
   measureLoudness?: () => Promise<{ integrated: number; measured: boolean }>;
-  applyLoudness?: (input: { targetDb?: number; direction: "louder" | "quieter" }) => Promise<
+  applyLoudness?: (input: {
+    targetDb?: number;
+    direction: "louder" | "quieter";
+  }) => Promise<
     | {
         ok: true;
         command: Command;
@@ -906,8 +904,7 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
       if (action === "loopRegion") return transportLoopRegion(ctx, record);
       if (action === "state") {
         const t = ctx.transport;
-        const position =
-          typeof t.position === "number" && Number.isFinite(t.position) ? Math.max(0, Math.round(t.position)) : null;
+        const position = typeof t.position === "number" && Number.isFinite(t.position) ? Math.max(0, Math.round(t.position)) : null;
         const data = {
           positionTick: position,
           bar: position != null ? Math.floor(position / TICKS_PER_BAR) + 1 : null,
@@ -916,8 +913,7 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
           paused: typeof t.paused === "boolean" ? t.paused : null,
           loop: {
             enabled: typeof t.loopEnabled === "boolean" ? t.loopEnabled : null,
-            startBar:
-              t.loopEnabled && typeof t.loopStart === "number" ? Math.floor(t.loopStart / TICKS_PER_BAR) + 1 : null,
+            startBar: t.loopEnabled && typeof t.loopStart === "number" ? Math.floor(t.loopStart / TICKS_PER_BAR) + 1 : null,
             endBar:
               t.loopEnabled && typeof t.loopEnd === "number" && t.loopEnd > (t.loopStart ?? 0)
                 ? Math.ceil(t.loopEnd / TICKS_PER_BAR)
@@ -1402,19 +1398,12 @@ export async function executeMcpToolAsync(ctx: McpToolContext, name: string, arg
     const op = String(record.op ?? "measure");
     if (op === "measure") {
       if (ctx.measureLoudness == null) {
-        return {
-          text: "loudness measurement is not available over this MCP transport (no render context bound)",
-          mutated: false,
-        };
+        return { text: "loudness measurement is not available over this MCP transport (no render context bound)", mutated: false };
       }
       try {
         const reading = await ctx.measureLoudness();
         if (!reading.measured) {
-          return {
-            text: "could not measure loudness — the render was too quiet or empty",
-            mutated: false,
-            isError: true,
-          };
+          return { text: "could not measure loudness — the render was too quiet or empty", mutated: false, isError: true };
         }
         return {
           text: `current mix: ${reading.integrated.toFixed(1)} LUFS integrated (render-backed BS.1770)`,
@@ -1430,14 +1419,10 @@ export async function executeMcpToolAsync(ctx: McpToolContext, name: string, arg
       }
     }
     if (ctx.applyLoudness == null) {
-      return {
-        text: "the loudness loop is not available over this MCP transport (no render context bound)",
-        mutated: false,
-      };
+      return { text: "the loudness loop is not available over this MCP transport (no render context bound)", mutated: false };
     }
     const direction = record.direction === "quieter" ? ("quieter" as const) : ("louder" as const);
-    const targetDb =
-      typeof record.targetDb === "number" && Number.isFinite(record.targetDb) ? record.targetDb : undefined;
+    const targetDb = typeof record.targetDb === "number" && Number.isFinite(record.targetDb) ? record.targetDb : undefined;
     try {
       const outcome = await ctx.applyLoudness({ direction, ...(targetDb !== undefined ? { targetDb } : {}) });
       if (!outcome.ok) return { text: outcome.error, mutated: false, isError: true };
@@ -1448,19 +1433,10 @@ export async function executeMcpToolAsync(ctx: McpToolContext, name: string, arg
       return {
         text: `loudness: ${r.measuredBefore} → ${r.measuredAfter ?? "?"} LUFS (trim ${r.trim >= 0 ? "+" : ""}${r.trim} dB toward ${r.target}) — one undo step`,
         mutated: true,
-        data: {
-          measuredBefore: r.measuredBefore,
-          measuredAfter: r.measuredAfter,
-          trimDb: r.trim,
-          targetLufs: r.target,
-        },
+        data: { measuredBefore: r.measuredBefore, measuredAfter: r.measuredAfter, trimDb: r.trim, targetLufs: r.target },
       };
     } catch (error) {
-      return {
-        text: `loudness loop failed: ${error instanceof Error ? error.message : String(error)}`,
-        mutated: false,
-        isError: true,
-      };
+      return { text: `loudness loop failed: ${error instanceof Error ? error.message : String(error)}`, mutated: false, isError: true };
     }
   }
   return executeMcpTool(ctx, name, args);
@@ -1634,15 +1610,11 @@ function executeAutomationTool(ctx: McpToolContext, record: Record<string, unkno
     const delta: { tick?: number; value?: number } = {};
     if (hasNewPosition && newTick !== original!.tick) delta.tick = newTick;
     if (record.value != null) {
-      if (!Number.isFinite(Number(record.value)))
-        return { text: "value must be a finite NATIVE number", mutated: false };
+      if (!Number.isFinite(Number(record.value))) return { text: "value must be a finite NATIVE number", mutated: false };
       if (Number(record.value) !== original!.value) delta.value = Number(record.value);
     }
     if (delta.tick === undefined && delta.value === undefined) {
-      return {
-        text: `nothing to change — point ${barBeat(original!.tick)}=${original!.value} already matches`,
-        mutated: false,
-      };
+      return { text: `nothing to change — point ${barBeat(original!.tick)}=${original!.value} already matches`, mutated: false };
     }
     const valueChangedOnly = delta.tick === undefined;
     ctx.execute(moveAutomationPoint(doc, lane.id, bestIndex, delta));
@@ -1774,9 +1746,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
       const summary = [...byTrack.entries()]
         .map(([trackId, count]) => `${ownerNameOf(doc, trackId)} ×${count}`)
         .join(", ");
-      lines.push(
-        `audio clips on track lanes: ${audio.length} (${summary}) — op:audioList for details / op:audio* to edit`,
-      );
+      lines.push(`audio clips on track lanes: ${audio.length} (${summary}) — op:audioList for details / op:audio* to edit`);
     }
     return {
       text: lines.join("\n"),
@@ -1843,9 +1813,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
     }
     const anchor = Math.round(rawAnchor) - 1;
     const audio = doc.arrangement.audioClips ?? [];
-    const target = audio.find(
-      (clip) => clip.trackId === ownerId && anchor >= clip.startBar && anchor < clip.startBar + clip.lengthBars,
-    );
+    const target = audio.find((clip) => clip.trackId === ownerId && anchor >= clip.startBar && anchor < clip.startBar + clip.lengthBars);
     if (!target) {
       return {
         text: `no audio clip on ${ownerNameOf(doc, ownerId)} covers bar ${anchor + 1} — op:audioList to see the lanes`,
@@ -1857,8 +1825,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
     try {
       if (op === "audioMove") {
         const toBar = Math.round(Number(record.toBar));
-        if (!Number.isFinite(toBar) || toBar < 1)
-          return { text: "audioMove needs toBar (1-based destination start bar)", mutated: false };
+        if (!Number.isFinite(toBar) || toBar < 1) return { text: "audioMove needs toBar (1-based destination start bar)", mutated: false };
         ctx.execute(moveAudioClip(doc, target.id, toBar - 1));
         return { text: `moved ${describe()} → starts at bar ${toBar} — one undo step`, mutated: true };
       }
@@ -1906,10 +1873,7 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
         mutated: false,
       };
     } catch (error) {
-      return {
-        text: `audio clip op failed: ${error instanceof Error ? error.message : String(error)}`,
-        mutated: false,
-      };
+      return { text: `audio clip op failed: ${error instanceof Error ? error.message : String(error)}`, mutated: false };
     }
   }
 
@@ -2009,11 +1973,7 @@ function executeBatchTool(ctx: McpToolContext, record: Record<string, unknown>):
         if (result.mutated) mutations += 1;
         if (result.isError === true) failures += 1;
       } catch (error) {
-        results.push({
-          tool,
-          mutated: false,
-          text: `crashed: ${error instanceof Error ? error.message : String(error)}`,
-        });
+        results.push({ tool, mutated: false, text: `crashed: ${error instanceof Error ? error.message : String(error)}` });
         failures += 1;
       }
     }
@@ -2022,9 +1982,7 @@ function executeBatchTool(ctx: McpToolContext, record: Record<string, unknown>):
   }
   const summary = [
     `${calls.length} call(s): ${mutations} mutated, ${failures} failed`,
-    framed
-      ? "ONE undo step for the whole batch"
-      : "no undo-frame support on this host — each call is its own undo step",
+    framed ? "ONE undo step for the whole batch" : "no undo-frame support on this host — each call is its own undo step",
   ].join(" · ");
   return {
     text: `batch — ${summary}\n${results.map((r, i) => `${i + 1}. ${r.tool}${r.mutated ? " ✓" : ""}: ${r.text}`).join("\n")}`,

@@ -445,7 +445,7 @@ const MCP_TOOL_DEFS = [
     inputSchema: {
       type: "object",
       properties: {
-        op: { type: "string", enum: ["addPoint", "deletePoint", "clearLane", "removeLane"] },
+        op: { type: "string", enum: ["addPoint", "movePoint", "deletePoint", "clearLane", "removeLane"] },
         trackId: { type: "string", description: "Exact track id — overrides family when present" },
         family: {
           type: "string",
@@ -464,8 +464,10 @@ const MCP_TOOL_DEFS = [
         bar: {
           type: "integer",
           minimum: 1,
-          description: "1-based bar — position for addPoint, anchor for deletePoint",
+          description: "1-based bar — position for addPoint, anchor for movePoint/deletePoint",
         },
+        newBar: { type: "integer", minimum: 1, description: "For movePoint — 1-based destination bar" },
+        newBeat: { type: "integer", minimum: 1, maximum: 4, description: "For movePoint — 1-based destination beat" },
         beat: {
           type: "integer",
           minimum: 1,

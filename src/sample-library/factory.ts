@@ -1029,14 +1029,14 @@ function knock(): Builder {
     const osc = ctx.createOscillator();
     osc.type = "sine";
     osc.frequency.setValueAtTime(140, t0);
-    osc.frequency.exponentialRampToValueAtTime(55, t0 + 0.07);
+    osc.frequency.exponentialRampToValueAtTime(55.0, t0 + 0.07); // A1
     osc.connect(env(ctx, t0, 0.9, 0.32)).connect(dest);
     osc.start(t0);
     osc.stop(t0 + 0.36);
     const knocker = ctx.createOscillator();
     knocker.type = "triangle";
     knocker.frequency.setValueAtTime(192, t0);
-    knocker.frequency.exponentialRampToValueAtTime(150, t0 + 0.06);
+    knocker.frequency.exponentialRampToValueAtTime(146.83, t0 + 0.06); // D3
     const kShaper = ctx.createWaveShaper();
     const kCurve = new Float32Array(new ArrayBuffer(1024 * 4));
     for (let i = 0; i < 1024; i++) {
@@ -1100,6 +1100,55 @@ function snareTrap(): Builder {
     noise
       .connect(hp)
       .connect(env(ctx, t0, 0.85, 0.14))
+      .connect(dest);
+  };
+}
+
+/** Pop clap stack (clap.pop re-voice 2026-09-30): the shipped seed stacked
+ * clap.main + clap.soft verbatim — once mastering pulled every clap to the
+ * same target, the stack collapsed onto main (feature distance 0.051, the
+ * tightest pair left in the library). Re-voiced into what "Stacked, Crisp"
+ * always claimed: a denser 5-tap stack (a bigger room of clappers) through a
+ * brighter bandpass, a snap transient on the attack, and a SHORT bright tail
+ * that sits under a pop vocal instead of washing like the house clap. */
+function clapPopStack(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    // GATED BRIGHT register: 2000 Hz center vs main/soft at ~1100 — the
+    // crisp pop clap reads an octave of air above the house clap. Tap
+    // spacing alone proved sub-perceptual (first pass moved taps, distance
+    // stayed 0.046): register and decay are what separate claps.
+    for (let i = 0; i < 5; i++) {
+      const t = t0 + i * 0.008;
+      const noise = noiseSource(ctx, 167 + i, 0.02, t);
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = 2000;
+      bp.Q.value = 1.3;
+      noise
+        .connect(bp)
+        .connect(env(ctx, t, 0.52 - i * 0.04, 0.015))
+        .connect(dest);
+    }
+    // Snap: highpassed click for the crisp attack edge.
+    const snap = noiseSource(ctx, 173, 0.012, t0);
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 3800;
+    snap
+      .connect(hp)
+      .connect(env(ctx, t0, 0.34, 0.012))
+      .connect(dest);
+    // GATED tail: 80 ms and bright — the 80s pop clap stops on a dime
+    // instead of washing (main rings 0.16 s, soft 0.22 s).
+    const tail = noiseSource(ctx, 179, 0.2, t0 + 0.03);
+    const tailBp = ctx.createBiquadFilter();
+    tailBp.type = "bandpass";
+    tailBp.frequency.value = 1750;
+    tailBp.Q.value = 1.0;
+    tail
+      .connect(tailBp)
+      .connect(env(ctx, t0 + 0.03, 0.4, 0.08))
       .connect(dest);
   };
 }
@@ -2194,17 +2243,19 @@ function orchestraHit(): Builder {
 
 /** Exported for the content-coherence tests (tests/kick-bank.test.ts). */
 export const BUILDERS: Record<string, Builder> = {
-  "factory.kick.deep": kick(150, 46, 0.42, 0.25),
-  "factory.kick.punch": kick(210, 54, 0.28, 0.45),
-  "factory.kick.techno": kick(175, 44, 0.55, 0.3, 0.7),
+  "factory.kick.deep": kick(150, 46.25, 0.42, 0.25),
+  "factory.kick.punch": kick(210, 55.0, 0.28, 0.45),
+  "factory.kick.techno": kick(175, 43.65, 0.55, 0.3, 0.7),
   "factory.kick.sub808": sub808(),
-  "factory.kick.trap": kick(180, 48, 0.35, 0.4, 0.45),
-  "factory.kick.soft": kick(118, 44, 0.46, 0.16),
+  "factory.kick.trap": kick(180, 49.0, 0.35, 0.4, 0.45),
+  "factory.kick.soft": kick(118, 43.65, 0.46, 0.16),
   // Kick bank expansion (2026-09): genre-anchored one-shots — the 808
   // family (drive/pure/drill), the vintage pair (phonk/lofi), and the
   // club/heritage punches (jersey/dnb/knock/909). Each targets a distinct
   // spectral+decay pocket so a beat can actually pick between them.
-  // 808 glide rests on exact semitones (audit 2026-09-29): D1 / C#1 / E1.
+  // Glide rests sit on exact semitones bank-wide (audit 2026-09-29 snapped
+  // the 808s; 2026-09-30 completed the remaining kicks): F1 soft/techno,
+  // F#1 deep, G1 trap/phonk/lofi, G#1 dnb/909/pop, A1 punch/jersey/knock.
   "factory.kick.808drive": sub808Drive({
     startHz: 150,
     endHz: 36.71,
@@ -2237,7 +2288,7 @@ export const BUILDERS: Record<string, Builder> = {
   }),
   "factory.kick.phonk": vintageThump({
     startHz: 130,
-    endHz: 50,
+    endHz: 49.0,
     decay: 0.3,
     drive: 0.5,
     lpfHz: 3200,
@@ -2245,11 +2296,11 @@ export const BUILDERS: Record<string, Builder> = {
     gritGain: 0.08,
     seed: 31,
   }),
-  "factory.kick.jersey": kick(205, 56, 0.22, 0.55),
-  "factory.kick.dnb": kick(170, 52, 0.26, 0.5),
+  "factory.kick.jersey": kick(205, 55.0, 0.22, 0.55),
+  "factory.kick.dnb": kick(170, 51.91, 0.26, 0.5),
   "factory.kick.lofi": vintageThump({
     startHz: 115,
-    endHz: 48,
+    endHz: 49.0,
     decay: 0.3,
     drive: 0.25,
     lpfHz: 2600,
@@ -2258,7 +2309,7 @@ export const BUILDERS: Record<string, Builder> = {
     seed: 37,
   }),
   "factory.kick.knock": knock(),
-  "factory.kick.909": kick(290, 52, 0.3, 0.6, 0.15),
+  "factory.kick.909": kick(290, 51.91, 0.3, 0.6, 0.15),
   "factory.rim.chip": rim(),
   "factory.snare.main": snare(192, 0.11, 0.2, 1750),
   "factory.snare.tight": snare(210, 0.07, 0.11, 2000),
@@ -2302,7 +2353,12 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.hat.phonk": hat(0.07, 4200, 0.4),
   "factory.hat.jersey": hatMetallic({ decay: 0.055, hpHz: 8200, level: 0.55, pingHz: 6400, ping: 0.3, seed: 61 }),
   "factory.hat.dnb": hatMetallic({ decay: 0.04, hpHz: 9600, level: 0.5, pingHz: 7100, ping: 0.24, seed: 67 }),
-  "factory.hat.open.cup": hatMetallic({ decay: 0.28, hpHz: 5200, level: 0.42, pingHz: 4600, ping: 0.22, seed: 71 }),
+  // cup re-voice (2026-09-30): at the shipped 5200 Hz / 95 ms ring it was a
+  // near-twin of hat.open (d=0.102); a first push to 4600 Hz barely moved it
+  // (d=0.066 — the decay barely changed). The dark side has to be COMMITTED:
+  // 3800 Hz ring (half an octave below open), 0.5 s dark wash under a loud
+  // 4300 Hz ping — open keeps the bright sizzle, cup owns the dark cup voice.
+  "factory.hat.open.cup": hatMetallic({ decay: 0.5, hpHz: 3800, level: 0.42, pingHz: 4300, ping: 0.3, seed: 71 }),
   // Hat wash (library-gap wave): the long offbeat bloom — pings + darkening
   // noise wash (the only bank hat past 100 ms decay).
   "factory.hat.wash": hatWash(),
@@ -2411,11 +2467,11 @@ export const BUILDERS: Record<string, Builder> = {
   // Pop wave (vocal-first + thin-spot fill): tight pop kick, stacked pop
   // clap, bright crash, floor tom, clicky rim, driving shaker, kalimba and
   // music-box mallets. Each targets a distinct spectral/decay pocket.
-  "factory.kick.pop": kick(190, 52, 0.26, 0.5),
-  "factory.clap.pop": (ctx, dest) => {
-    clap()(ctx, dest);
-    clapSoft()(ctx, dest);
-  },
+  "factory.kick.pop": kick(190, 51.91, 0.26, 0.5),
+  // clap.pop re-voice (2026-09-30): was clap.main + clap.soft stacked
+  // verbatim — after mastering normalized both to −10.5 the stack collapsed
+  // onto main (feature distance 0.051). Now its own dense bright stack.
+  "factory.clap.pop": clapPopStack(),
   // crash.pop re-voice (2026-09-30): was the crash.main recipe on a lower
   // band (feature distance 0.025 — a duplicate). Now the short bright splash
   // the manifest always claimed.
@@ -2478,7 +2534,7 @@ export const DURATIONS: Record<string, number> = {
   "factory.hat.phonk": 0.12,
   "factory.hat.jersey": 0.12,
   "factory.hat.dnb": 0.1,
-  "factory.hat.open.cup": 0.32,
+  "factory.hat.open.cup": 0.6,
   "factory.hat.wash": 0.9,
   "factory.clap.main": 0.3,
   "factory.clap.soft": 0.36,

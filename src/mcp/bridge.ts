@@ -31,6 +31,10 @@ export interface McpBridgeDeps {
   transport: McpToolContext["transport"];
   export?: (format: "wav" | "mp3") => Promise<string>;
   meters?: () => McpMeterSnapshot | null;
+  beginUndoFrame?: (label?: string) => void;
+  endUndoFrame?: () => void;
+  measureLoudness?: () => Promise<{ integrated: number; measured: boolean }>;
+  applyLoudness?: NonNullable<McpToolContext["applyLoudness"]>;
 }
 
 export class McpBridge {
@@ -114,6 +118,10 @@ export class McpBridge {
       transport: this.deps.transport,
       export: this.deps.export,
       meters: this.deps.meters,
+      beginUndoFrame: this.deps.beginUndoFrame,
+      endUndoFrame: this.deps.endUndoFrame,
+      measureLoudness: this.deps.measureLoudness,
+      applyLoudness: this.deps.applyLoudness,
       allowDestructive: mcpAllowDestructive,
     };
     // A throwing tool must still ANSWER — without this catch the relay would

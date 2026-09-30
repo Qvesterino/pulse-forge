@@ -3,6 +3,7 @@ import { mcpAllowDestructive } from "./flags";
 import { isMicRecordingActive } from "../audio-engine/PcmMicRecorder";
 import { quickBounceDownload } from "../export/quick-bounce";
 import { mcpMeterSnapshotFromServices } from "./meters";
+import { mcpApplyLoudness, mcpMeasureLoudness } from "./loudness";
 import type { Services } from "../services";
 
 /**
@@ -57,6 +58,10 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
     transport: services.transport,
     // kyx_meter reads the LIVE engine (null when no audio context is up).
     meters: () => mcpMeterSnapshotFromServices(services),
+    beginUndoFrame: (label) => services.store.beginUndoFrame(label),
+    endUndoFrame: () => services.store.endUndoFrame(),
+    measureLoudness: () => mcpMeasureLoudness(services),
+    applyLoudness: (input) => mcpApplyLoudness(services, input),
     // kyx_export rides the same render + encode + download pipeline as the
     // in-app export intent (download lands in the focused KYX window).
     export: (format) => quickBounceDownload(services.store.getDoc(), services.bank, format),
