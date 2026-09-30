@@ -531,13 +531,26 @@ maxScroll=327`, and a reachability sweep over both scroll ends reports
   clearest §10 violation — a control that mirrors domain state into local
   React state — via a grep for `useState` flags named like domain toggles
   (`…Enabled|On|Active|Bypass|Preview|Live|Monitor`). The transport LOOP was
-  audited and verified (see §3). The other hits — `SliceLab` `bpmPreview`
-  (default `true`), `JamGate` `audioLive` (default `true`),
-  `ArrangementPanel` `micMonitoring`, `IntentPanel` `ideaMicMonitor` — are
-  view/preview state rather than mirrored domain state and were **not**
-  individually traced. A default-on preview toggle means audio the user did
-  not ask for, which is worth a look, but it is a design question and no
-  defect is claimed here.
+  audited and verified (see §3), and the two default-`true` flags the grep
+  surfaced were then traced individually. **Both hold; neither is a defect:**
+
+  - `SliceLab` `bpmPreview` (default `true`) controls _how_ a preview sounds,
+    not whether one plays. `preview()` is reachable from exactly two explicit
+    buttons — PREVIEW (`:698`) and the loop toggle (`:706`) — with no hover or
+    autoplay path, and the checkbox at `:569` is visible and one click away.
+    Auditioning at the chopped tempo is the intended result, so defaulting it
+    on is the correct choice.
+  - `JamGate` `audioLive` (default `true`) is not a user toggle at all but a
+    derived readout of the engine: `setAudioLive(state === "running")` polled
+    from `services.engine.context.state` every 400 ms (`:23-32`). It is the §10
+    mirror pattern, correctly sourced and correctly synced. The `true` default
+    is the optimistic seed that prevents a flash of the tap gate before the
+    first poll lands.
+
+  Not traced: `ArrangementPanel` `micMonitoring` and `IntentPanel`
+  `ideaMicMonitor`. Both are input-arm toggles, not mirrored domain state, and
+  neither was individually exercised.
+
 - **No real-browser verification was run** for most of the repaired controls
   (`npm run test:browser` / `test:e2e`). Every repair in waves 1–3 is covered by
   jsdom tests against the real command/store layer. Wave 4 came from the
