@@ -2458,6 +2458,13 @@ export function IntentPanel() {
         stopAudition();
         const command = applyExactIntentCommand(doc, route.plan);
         services.store.execute(command);
+        // `removeTrack` ops go through the same pure `deleteTrack` command the
+        // mixer's delete button uses, so the plan cannot reach the
+        // SelectionStore either. Reconcile it against the document that just
+        // landed: a selection naming a deleted track survives into
+        // `bounceZoneToClick`, which forwards it unfiltered and then renders
+        // silence while reporting success. No-ops when no track was removed.
+        selection.retainTracks(services.store.getDoc().tracks.map((t) => t.id));
         const readback = exactReadback(doc, services.store.getDoc(), route.plan);
         setStatus(`⚡ ${route.plan.label}${readback ? ` — ${readback}` : ""}`);
       } else if (route.kind === "effectIntent") {

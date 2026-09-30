@@ -714,7 +714,20 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
           className="btn btn-small btn-danger"
           title="Delete track"
           disabled={!canDelete}
-          onClick={() => services.store.execute(deleteTrack(doc, track.id))}
+          onClick={() => {
+            services.store.execute(deleteTrack(doc, track.id));
+            // The strip this button lives in is about to unmount, but nothing
+            // else drops the track from the selection — `deleteTrack` is a
+            // pure document command and cannot reach the SelectionStore. A dead
+            // id left behind breaks the "selection names live objects"
+            // invariant that `bounceZoneToClick` relies on: it forwards
+            // `selection.trackIds` into `buildBounceZoneDoc` unfiltered, so a
+            // zone bounced after deleting the selected track renders silence
+            // and still reports success. Same contract as the command itself
+            // stripping the track's own cross-references inside the delta so
+            // undo restores them together with the track.
+            selectionStore.pruneTrack(track.id);
+          }}
         >
           ×
         </button>

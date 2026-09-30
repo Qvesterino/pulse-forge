@@ -182,4 +182,75 @@ export class SelectionStore {
 
   isTrackSelected = (id: string): boolean => this.state.trackIds.includes(id);
   isClipSelected = (id: string): boolean => this.state.clipIds.includes(id);
+
+  /**
+   * Drop every reference to `trackId` from the selection. Called by the owner
+   * of the destructive track action (the mixer strip's delete button — the
+   * only UI call site of `deleteTrack`), because the selection is UI state
+   * that the command itself cannot reach: `deleteTrack` strips the track's own
+   * cross-references (automation lanes, audio clips) INSIDE the command so
+   * undo restores them together, and the selection must follow the same
+   * contract.
+   *
+   * The invariant this restores is "every id in the selection names a live
+   * object", and the measured consequences of breaking it are:
+   *
+   *  - Zone bounce. `ArrangementPanel.bounceZoneToClip` passes
+   *    `selection.trackIds` straight into `buildBounceZoneDoc` WITHOUT
+   *    filtering against the live tracks (`App.tsx:1186`'s keyboard shortcut
+   *    does filter — the button and the shortcut disagree). `buildBounceZoneDoc`
+   *    resolves the ids through `buildStemProject(doc, t => trackIds.includes(t.id))`,
+   *    which simply matches nothing for a dead id: no throw, no error toast,
+   *    just an empty stem doc and a silent bounce. With a single selected track
+   *    deleted, bouncing a zone returns silence while reporting success.
+   *
+   *  - Phantom pattern key. A surviving `noteSelections` entry keeps
+   *    `ContextMenu`'s `hasNotes` true, so its delete action builds
+   *    `deleteNotes(doc, <deleted id>, …)`. `activeTrackNotes` returns `[]` for
+   *    an unknown track, so nothing throws — but `withTrackNotes` still writes
+   *    `notes[<deleted id>] = []` back into the pattern, planting a phantom key
+   *    in every save.
+   *
+   * Note the mixer's batch-FX toolbar is NOT one of the consequences: it
+   * re-derives `selectedTracks` by filtering live tracks, so a dead id already
+   * yields an empty target set and its documented "or all if none selected"
+   * fallback behaves identically with or without the ghost.
+   *
+   * `stepSelection` holds pad ids, not track ids, so it is deliberately left
+   * alone: its pads are addressed by drum track and a stale pad id is a
+   * separate concern from deleting the track.
+   *
+   * No-ops without emitting when the track was not referenced, so this is safe
+   * to call on every delete attempt.
+   */
+  pruneTrack = (trackId: string): void => {
+    const trackIds = this.state.trackIds.filter((id) => id !== trackId);
+    const noteSelections = this.state.noteSelections.filter((ns) => ns.trackId !== trackId);
+    if (trackIds.length === this.state.trackIds.length && noteSelections.length === this.state.noteSelections.length)
+      return;
+    this.state = { ...this.state, trackIds, noteSelections };
+    this.emit();
+  };
+
+  /**
+   * Same invariant as `pruneTrack`, for call sites that removed an unknown
+   * number of tracks and only know the survivors — currently the intent
+   * engine's `removeTrack` op (`applyExactIntentCommand`), which deletes
+   * through the same pure `deleteTrack` command and so faces the same
+   * unreachable SelectionStore.
+   *
+   * `noteSelections` is filtered against the caller's live set rather than
+   * derived from `trackIds`: a `noteSelections` entry can name a track that
+   * was never in `trackIds` (notes selected without selecting the track), so
+   * deriving the live set from the selection would drop that entry as well.
+   */
+  retainTracks = (liveIds: string[]): void => {
+    const live = new Set(liveIds);
+    const trackIds = this.state.trackIds.filter((id) => live.has(id));
+    const noteSelections = this.state.noteSelections.filter((ns) => live.has(ns.trackId));
+    if (trackIds.length === this.state.trackIds.length && noteSelections.length === this.state.noteSelections.length)
+      return;
+    this.state = { ...this.state, trackIds, noteSelections };
+    this.emit();
+  };
 }
