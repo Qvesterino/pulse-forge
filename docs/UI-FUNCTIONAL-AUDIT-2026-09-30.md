@@ -33,7 +33,7 @@ in the product.
 
 ---
 
-## 2. REPAIRED — 14 confirmed defects
+## 2. REPAIRED - 15 confirmed defects
 
 ### WAVE 4 — found by real-browser verification (not static inspection)
 
@@ -197,6 +197,76 @@ write rejected (quota, private mode) the user was told the kit had saved
 while nothing was written and the list never refreshed. Status now moves
 into the success path, with a failure message.
 
+### WAVE 5 - §13 "deletion of the currently controlled object"
+
+This is the one objective item that had **no test coverage anywhere in the
+suite**: nothing ever deleted the object whose panel was open. All three
+object kinds were traced.
+
+**14. Deleting a track left a dead id in the selection (MAJOR).**
+`src/ui/Mixer.tsx:717` is the only UI call site of `deleteTrack`, and it never
+touched the `SelectionStore`. `deleteTrack` is a pure
+`ProjectDocument → Command` and cannot reach UI state, so the deleted track's
+id survived the delete and broke the invariant _every id in the selection
+names a live object_. Two measured consequences:
+
+- **Zone bounce renders silence and reports success.**
+  `ArrangementPanel.bounceZoneToClick` (`ArrangementPanel.tsx:2107`) forwards
+  `selection.trackIds` into `buildBounceZoneDoc` **without** filtering against
+  the live tracks; the keyboard shortcut at `App.tsx:1186` does filter, so the
+  button and the shortcut disagree. `buildBounceZoneDoc` resolves the ids
+  through `buildStemProject(doc, t => trackIds.includes(t.id))`, which matches
+  nothing for a dead id — no throw, no error, an empty stem doc, silence.
+  Deleting the only selected track and then bouncing a zone returns nothing.
+- **Phantom pattern key.** A surviving `noteSelections` entry keeps
+  `ContextMenu`'s `hasNotes` true, so its delete action builds
+  `deleteNotes(doc, <deleted id>, …)`. `activeTrackNotes` returns `[]` for an
+  unknown track so nothing throws, but `withTrackNotes` still writes
+  `notes[<deleted id>] = []` back into the pattern — a phantom key in every
+  save.
+
+Fixed with `SelectionStore.pruneTrack(id)` (single deleted track, mixer
+button) and `SelectionStore.retainTracks(liveIds)` (unknown survivor set,
+wired at `IntentPanel.tsx:2459` for the intent engine's `removeTrack` op,
+which deletes through the same command and had the same unreachable store).
+Both no-op without emitting when nothing referenced the track.
+
+**15. The arrangement DEL button kept targeting the clip it deleted (MINOR).**
+The arrangement has two clip-delete paths and they disagreed: the
+context-menu / ripple path clears the selection
+(`ArrangementPanel.tsx:1898`), the DEL button did not. The button's own
+disabled contract is `disabled={!selectedClipId}`, so a dead id left it
+enabled over a clip that no longer exists — it could never return to its
+resting state and every further press re-issued the delete for the same
+removed id. One-line fix matching the convention already in the file.
+
+### CORRECTED / WITHDRAWN CLAIMS (recorded so they are not repeated)
+
+- **The batch-FX toolbar was NOT affected by the ghost selection.** The
+  original hypothesis was that a dead `trackIds` entry emptied
+  `selectedTracks` and so triggered the documented
+  `selectedTracks.length > 0 ? … : tracks.length` "or all if none selected"
+  fallback, silently retargeting the next batch add at the whole project.
+  Wrong: `selectedTracks` is derived by filtering **live** tracks, so a dead
+  id already yields an empty set and the fallback behaves identically with or
+  without the ghost. The toolbar's behaviour is unchanged by this fix. The
+  first draft of the `SelectionStore` doc comment asserted otherwise and was
+  rewritten.
+- **The `deleteArrangementClip` no-op guard was WITHDRAWN.** A first pass also
+  added a guard clause on the theory that re-deleting a missing clip pushes a
+  dead undo entry. Measurement does not support it. `snapshot()`
+  (`commands.ts:150`) builds a _delta_ command, so
+  `execute: (d) => applyDocDelta(d, forward.ops)` returns the same document
+  object when the delta is empty and `ProjectStore.execute`'s
+  `applied === this.doc_` check (`ProjectStore.ts:220`) correctly skips the
+  push — measured: two dead deletes after a real one left the undo depth at 2. A no-op delete as the _first_ command on a fresh `createProjectFromTemplate`
+  store did push (depth 0 → 1), because that document is not
+  delta-round-trippable and `snapshot()` takes its dev-only whole-document
+  fallback (`commands.ts:169-175`). That is a property of the dev verifier,
+  not of `deleteArrangementClip`, and it was not reproducible from any state a
+  real session reaches after its first command. The guard and its test were
+  removed rather than shipped on a mechanism the measurement contradicted.
+
 ---
 
 ## 3. VERIFIED FUNCTIONAL (with evidence)
@@ -269,6 +339,46 @@ source to confirm it fails there (falsification check) — 5 Ozvena, 2
 Wavetable, 4 DragNumber and 1 Slider test failed pre-fix, and the load-bound
 test failed until the normalizer filter was re-applied.
 
+### Wave 5 coverage (§13 — deleting the object whose panel is open)
+
+New files: `tests/ui/MixerSelectionHygiene.test.tsx` (4),
+`tests/selection-store-dead-refs.test.ts` (6),
+`tests/ui/EffectRack.delete-open-device.test.tsx` (5),
+`tests/ui/ArrangementPanel.delete-selected-clip.test.tsx` (2).
+
+- deleting the selected track leaves no dead id in `trackIds` or
+  `noteSelections`; other selected tracks survive a multi-delete
+- a zone bounce after the delete resolves to a live track, not an empty stem
+- `pruneTrack` / `retainTracks` no-op without emitting when the track was not
+  referenced, and `retainTracks` filters `noteSelections` against the caller's
+  live set rather than against `trackIds`
+- deleting the explicitly expanded rack device focuses the surviving one
+  (a device explicitly collapsed stays collapsed)
+- deleting the user-selected devices-dock device falls back to a live device
+  rather than the empty state; a bus with no devices does reach the empty state
+- the arrangement DEL button returns to its disabled resting state
+
+**Falsification for wave 5.** All 4 mixer tests fail against reverted source —
+including `expected false to be true` on "the resolved bounce target exists in
+the document", which is the assertion that pins the silence mechanism rather
+than the store state alone. The DEL button test fails against the reverted
+panel.
+
+The five EffectRack tests needed a second pass. **The first drafts passed with
+the guards they were written to protect deleted outright**, so they were not
+regression guards. Two states had to be reached explicitly:
+
+- `expandedFxId` starts at `null` (auto), so deleting the auto-focused device
+  never exercises the dead-id check — the device must be focused first via
+  `.fx-device-toggle`;
+- `selectedDeviceId` is wiped to `null` by the mount effect at
+  `EffectRack.tsx:131-133`, so the dock's check is only reachable after a
+  `.device-chain-item` click.
+
+After that, each guard was removed individually and the corresponding test was
+observed failing by name (not inferred from ordering), then the source was
+restored and `git diff` confirmed clean.
+
 ---
 
 ## 5. INCOMPLETE / INTENTIONALLY NOT "FIXED"
@@ -294,10 +404,10 @@ test failed until the normalizer filter was re-applied.
   flagship panel visible but left the overflow silently discarded by
   `overflow: hidden`, so `fx-output-trim-row` (and on a shorter window, part of
   the parameter grid) would have been unreachable. `.device-editor
-  .fx-device-content` now scrolls the overflow instead of clipping it
+.fx-device-content` now scrolls the overflow instead of clipping it
   (`overflow-y: auto` + `overscroll-behavior: contain`).
   Measured in Chromium: box `clientHeight=164 / scrollHeight=491 /
-  maxScroll=327`, and a reachability sweep over both scroll ends reports
+maxScroll=327`, and a reachability sweep over both scroll ends reports
   **zero unreachable rows** of six. The dock itself is still shorter than the
   content — growing it is a product decision, but nothing is lost now.
 - **`npm run build` FAILS its bundle budget, and did so before this audit.**
@@ -333,3 +443,17 @@ test failed until the normalizer filter was re-applied.
   jsdom tests against the real command/store layer. Wave 4 came from the
   Chromium Playwright pass and is browser-verified; see §6 for what that pass
   still does not cover.
+- **Wave 5's `IntentPanel` wiring is covered only at the store level.** The
+  `retainTracks` call at `IntentPanel.tsx:2459` is exercised by
+  `tests/selection-store-dead-refs.test.ts`, not by an end-to-end render of
+  the panel driving a `removeTrack` intent. The panel is 3800 lines and was
+  not rendered for this fix.
+- **`snapshot()`'s dev-only verification fallback is an unverified lead, not a
+  confirmed defect.** It falls back to a whole-document command when the delta
+  does not round-trip (`commands.ts:169-175`), and that command returns a
+  fresh object, so it can push an undo entry for a command that changed
+  nothing. Reproduced once, on a fresh `createProjectFromTemplate` store
+  (undo depth 0 → 1 for a no-op delete), and not reproduced from any state a
+  real session reaches after its first command. It is worth a follow-up
+  because a dead undo entry is user-visible, but it was not reproduced under
+  realistic conditions and is deliberately not claimed as a fix here.
