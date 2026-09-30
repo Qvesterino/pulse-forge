@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { executeMcpTool, executeMcpToolAsync, MCP_TOOLS, type McpToolContext } from "../src/mcp/tools";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";
-import { addArrangementClip, createScene, setSceneRole } from "../src/commands/commands";
+import { addArrangementClip, createScene, setSceneRole, snapshot } from "../src/commands/commands";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { inferPadRole } from "../src/ai/pad-roles";
 import type { ProjectDocument } from "../src/project-model/types";
@@ -1418,5 +1418,333 @@ describe("mcp resources", () => {
     expect(missing.isError).toBe(true);
     expect(missing.text).toContain("unknown resource");
     expect(MCP_TOOLS.map((tool) => tool.name)).not.toContain("__kyx_resource");
+  });
+});
+
+// ─── P2 WAVE — batch, envelopes, movePoint, audio clips, loudness ───────────
+
+describe("mcp P2 batch — transactional multi-call", () => {
+  function framedCtx(store: ProjectStore, options: { allowDestructive?: boolean } = {}): McpToolContext {
+    const ctx = storeCtx(store, options);
+    return {
+      ...ctx,
+      beginUndoFrame: (label) => store.beginUndoFrame(label),
+      endUndoFrame: () => store.endUndoFrame(),
+    };
+  }
+
+  it("folds all mutations into ONE undo entry when frames are supported", () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = framedCtx(store);
+    const result = executeMcpTool(ctx, "kyx_batch", {
+      calls: [
+        { tool: "kyx_intent", args: { instruction: "set tempo to 130" } },
+        { tool: "kyx_tracks", args: { op: "setPan", family: "drums", pan: 0.4 } },
+        { tool: "kyx_groove", args: { direction: "set", percent: 55 } },
+      ],
+    });
+    expect(result.mutated).toBe(true);
+    expect(result.text).toContain("ONE undo step for the whole batch");
+    expect(store.doc.bpm).toBe(130);
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    expect(store.doc.bpm).not.toBe(130);
+    const drums = store.doc.tracks.find((t) => t.kind === "drum")!;
+    expect(drums.pan).toBe(0);
+  });
+
+  it("per-call failures never abort the batch; summary reports what landed", () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = framedCtx(store);
+    const result = executeMcpTool(ctx, "kyx_batch", {
+      calls: [
+        { tool: "kyx_intent", args: { instruction: "set tempo to 132" } },
+        { tool: "kyx_fx", args: { effect: "reverb", family: "vocal", action: "more" } },
+        { tool: "kyx_tracks", args: { op: "setMute", family: "drums", value: true } },
+      ],
+    });
+    expect(result.mutated).toBe(true);
+    expect(result.text).toContain("3 call(s): 2 mutated, 1 failed");
+    expect(store.doc.bpm).toBe(132);
+    expect(store.doc.tracks.find((t) => t.kind === "drum")!.mute).toBe(true);
+    const data = result.data as { results: Array<{ text: string }>; failures: number };
+    expect(data.failures).toBe(1);
+    expect(data.results[1].text).toContain("fx op failed");
+  });
+
+  it("without frame support it degrades honestly (per-call undo steps)", () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const result = executeMcpTool(ctx, "kyx_batch", {
+      calls: [
+        { tool: "kyx_intent", args: { instruction: "set tempo to 135" } },
+        { tool: "kyx_intent", args: { instruction: "mute the drums" } },
+      ],
+    });
+    expect(result.mutated).toBe(true);
+    expect(result.text).toContain("no undo-frame support");
+    expect(store.undoStackLength).toBe(2);
+  });
+
+  it("refuses async tools inside the batch and oversized batches", () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = framedCtx(store);
+    const withAsync = executeMcpTool(ctx, "kyx_batch", {
+      calls: [
+        { tool: "kyx_intent", args: { instruction: "set tempo to 140" } },
+        { tool: "kyx_export", args: { format: "wav" } },
+        { tool: "kyx_loudness", args: { op: "measure" } },
+      ],
+    });
+    expect(withAsync.text).toContain("runs standalone");
+
+    const oversized = executeMcpTool(ctx, "kyx_batch", {
+      calls: Array.from({ length: 11 }, (_, i) => ({
+        tool: "kyx_intent",
+        args: { instruction: `set tempo to ${100 + i}` },
+      })),
+    });
+    expect(oversized.mutated).toBe(false);
+    expect(oversized.text).toContain("capped at 10");
+  });
+});
+
+describe("mcp P2 envelopes — machine-readable results", () => {
+  it("kyx_transport state carries the structured position/loop data", () => {
+    const ctx = makeCtx(datasetDoc());
+    const observing: McpToolContext = {
+      ...ctx,
+      transport: {
+        play: () => {},
+        stop: () => {},
+        pause: () => {},
+        setLoop: () => {},
+        setMetronome: () => {},
+        position: 2 * 1920 + 480,
+        playing: true,
+        paused: false,
+        loopEnabled: true,
+        loopStart: 1920,
+        loopEnd: 7680,
+        metronome: false,
+      },
+    };
+    const result = executeMcpTool(observing, "kyx_transport", { action: "state" });
+    const data = result.data as {
+      bar: number;
+      beat: number;
+      playing: boolean;
+      loop: { startBar: number; endBar: number };
+    };
+    expect(data.bar).toBe(3);
+    expect(data.beat).toBe(2);
+    expect(data.playing).toBe(true);
+    expect(data.loop.startBar).toBe(2);
+    expect(data.loop.endBar).toBe(4);
+  });
+
+  it("kyx_meter passes the live snapshot through as data", () => {
+    const store = new ProjectStore(datasetDoc());
+    const snapshot = {
+      master: {
+        truePeakDb: -1,
+        rmsDb: -12,
+        lufsMomentary: -14,
+        lufsShortTerm: -14.2,
+        lufsIntegrated: -15,
+        correlation: 0.9,
+        clipping: false,
+      },
+      tracks: [{ id: "t1", name: "Drums", peakDb: -3, rmsDb: -11, clipping: false }],
+    };
+    const ctx: McpToolContext = { ...storeCtx(store), meters: () => snapshot };
+    const result = executeMcpTool(ctx, "kyx_meter", {});
+    expect(result.data).toEqual(snapshot);
+  });
+
+  it("kyx_clips list carries structured clip ids/bars", () => {
+    const store = new ProjectStore(datasetDoc());
+    const result = executeMcpTool(storeCtx(store), "kyx_clips", { op: "list" });
+    const data = result.data as {
+      arrangementClips: Array<{ scene: string; startBar: number; lengthBars: number }>;
+      audioClipCount: number;
+    };
+    expect(data.arrangementClips).toHaveLength(2);
+    expect(data.arrangementClips[0]).toMatchObject({ scene: "Intro", startBar: 1, lengthBars: 4 });
+  });
+});
+
+describe("mcp P2 automation movePoint", () => {
+  it("moves the nearest point by bar/beat and reports the landing", () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    executeMcpTool(ctx, "kyx_automation", {
+      op: "addPoint",
+      trackId: "track-lead-x",
+      param: "gain",
+      bar: 3,
+      value: 0.9,
+    });
+    const moved = executeMcpTool(ctx, "kyx_automation", {
+      op: "movePoint",
+      trackId: "track-lead-x",
+      param: "gain",
+      bar: 3,
+      newBar: 7,
+      newBeat: 3,
+    });
+    expect(moved.mutated).toBe(true);
+    expect(moved.text).toContain("3.1=0.9 → 7.3=0.9");
+    const lane = store.doc.automation[0];
+    expect(lane.points).toEqual([{ tick: 6 * 1920 + 2 * 480, value: 0.9 }]);
+  });
+
+  it("moves value-only and clamps honestly", () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    executeMcpTool(ctx, "kyx_automation", {
+      op: "addPoint",
+      trackId: "track-lead-x",
+      param: "gain",
+      bar: 2,
+      value: 0.5,
+    });
+    const moved = executeMcpTool(ctx, "kyx_automation", {
+      op: "movePoint",
+      trackId: "track-lead-x",
+      param: "gain",
+      bar: 2,
+      value: 99,
+    });
+    expect(moved.mutated).toBe(true);
+    expect(moved.text).toContain("value clamped into range");
+    expect(store.doc.automation[0].points[0].value).toBe(1.5);
+  });
+});
+
+describe("mcp P2 audio clips — structured track-lane edits", () => {
+  function withAudioClip(): ProjectDocument {
+    const doc = datasetDoc();
+    const drum = doc.tracks.find((t) => t.kind === "drum")!;
+    const clip = {
+      id: "audio-clip-1",
+      trackId: drum.id,
+      bufferId: "factory.kick.main",
+      startBar: 0,
+      lengthBars: 4,
+      offsetSec: 0,
+      trimStart: 0,
+      trimEnd: 0,
+      gain: 1,
+      fadeIn: 0,
+      fadeOut: 0,
+      stretchRate: 1,
+      reverse: false,
+    };
+    return { ...doc, arrangement: { ...doc.arrangement, audioClips: [clip] } } as ProjectDocument;
+  }
+
+  it("audioList details every track-lane clip with ids and values", () => {
+    const result = executeMcpTool(makeCtx(withAudioClip()), "kyx_clips", { op: "audioList" });
+    expect(result.mutated).toBe(false);
+    expect(result.text).toContain("Drums (id=audio-clip-1): bars 1–4 · gain 1.00");
+    const data = result.data as { clips: Array<{ id: string; gain: number }> };
+    expect(data.clips[0].id).toBe("audio-clip-1");
+  });
+
+  it("audioUpdate lands gain/fades on the clip covering the anchor bar", () => {
+    const doc = withAudioClip();
+    const ctx = makeCtx(doc);
+    const result = executeMcpTool(ctx, "kyx_clips", {
+      op: "audioUpdate",
+      family: "drums",
+      bar: 2,
+      gain: 0.8,
+      fadeIn: 0.05,
+      fadeOut: 0.2,
+    });
+    expect(result.mutated).toBe(true);
+    expect(result.text).toContain("gain 0.8, fadeIn 0.05, fadeOut 0.2");
+    const clip = ctx.getDoc().arrangement.audioClips![0];
+    expect(clip.gain).toBe(0.8);
+    expect(clip.fadeIn).toBe(0.05);
+  });
+
+  it("audioSplit cuts the clip at the anchor bar; audioMove relocates", () => {
+    const doc = withAudioClip();
+    const ctx = makeCtx(doc);
+    const split = executeMcpTool(ctx, "kyx_clips", { op: "audioSplit", family: "drums", bar: 3 });
+    expect(split.mutated).toBe(true);
+    expect(ctx.getDoc().arrangement.audioClips).toHaveLength(2);
+
+    const moved = executeMcpTool(ctx, "kyx_clips", { op: "audioMove", family: "drums", bar: 1, toBar: 9 });
+    expect(moved.mutated).toBe(true);
+    expect(ctx.getDoc().arrangement.audioClips!.some((c) => c.startBar === 8)).toBe(true);
+  });
+
+  it("audioDelete is D4-gated; honest failures for missing clips and bad args", () => {
+    const locked = makeCtx(withAudioClip());
+    const refused = executeMcpTool(locked, "kyx_clips", { op: "audioDelete", family: "drums", bar: 2 });
+    expect(refused.text).toContain("locked");
+
+    const noClip = executeMcpTool(makeCtx(withAudioClip()), "kyx_clips", {
+      op: "audioUpdate",
+      family: "bass",
+      bar: 2,
+      gain: 1,
+    });
+    expect(noClip.mutated).toBe(false);
+    expect(noClip.text).toContain("no audio clip on 808 covers bar 2");
+
+    const noPatch = executeMcpTool(makeCtx(withAudioClip()), "kyx_clips", {
+      op: "audioUpdate",
+      family: "drums",
+      bar: 2,
+    });
+    expect(noPatch.text).toContain("needs at least one of");
+  });
+});
+
+describe("mcp P2 loudness — the render-backed loop", () => {
+  it("measure reads integrated LUFS; match runs the loop through ctx.execute", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const observing: McpToolContext = {
+      ...ctx,
+      measureLoudness: async () => ({ integrated: -16.2, measured: true }),
+      applyLoudness: async ({ targetDb }) => ({
+        ok: true as const,
+        command: snapshot("loudnessTest", "Loudness trim", store.doc, {
+          ...store.doc,
+          master: { ...store.doc.master, loudnessTrimDb: -1.5 },
+        }),
+        report: { measuredBefore: -16.2, measuredAfter: targetDb ?? -14, trim: -1.5, target: targetDb ?? -14 },
+      }),
+    };
+    const measured = await executeMcpToolAsync(observing, "kyx_loudness", { op: "measure" });
+    expect(measured.mutated).toBe(false);
+    expect(measured.text).toContain("-16.2 LUFS");
+    expect((measured.data as { integratedLufs: number }).integratedLufs).toBe(-16.2);
+
+    const matched = await executeMcpToolAsync(observing, "kyx_loudness", { op: "match", targetDb: -14 });
+    expect(matched.mutated).toBe(true);
+    expect(matched.text).toContain("-16.2 → -14 LUFS (trim -1.5 dB");
+    expect(store.doc.master.loudnessTrimDb).toBe(-1.5);
+  });
+
+  it("honest refusals without hooks and honest failures from the loop", async () => {
+    const bare = await executeMcpToolAsync(storeCtx(new ProjectStore(datasetDoc())), "kyx_loudness", { op: "measure" });
+    expect(bare.text).toContain("not available");
+
+    const failing: McpToolContext = {
+      ...storeCtx(new ProjectStore(datasetDoc())),
+      applyLoudness: async () => ({
+        ok: false as const,
+        error: "could not measure loudness — the render was too quiet or empty",
+      }),
+    };
+    const failed = await executeMcpToolAsync(failing, "kyx_loudness", { op: "match", direction: "louder" });
+    expect(failed.isError).toBe(true);
+    expect(failed.text).toContain("too quiet");
   });
 });

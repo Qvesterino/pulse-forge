@@ -345,15 +345,39 @@ fields would be sturdier (P2).
 9. Loudness/mix loops over MCP (needs the async render context — the async executor
    landed with P1-8, so this is now unblocked).
 
-### P2 — ADVANCED
+### P2 — ADVANCED — core shipped 2026-09-29 (20 tools)
 
-12. Machine-readable tool results (`{affected, previous, next, warnings}` JSON alongside text).
-13. Batch/transaction tool (`kyx_batch [calls]` → one undo frame) using the existing
-    `beginUndoFrame/endUndoFrame`.
-14. Recording-take management (list takes, comp picks) once record is MCP-safe.
-15. Routing graph tools (bus/group create, route, cycle-checked).
-16. Per-instance FX addressing + chain reorder.
-17. MCP action attribution on ALL labels (`MCP:` prefix in NL-routed commands).
+12. ✅ **Machine-readable result envelopes**: `McpToolResult.data` (JSON alongside the
+    text) on `kyx_transport state` (position/loop/playing), `kyx_meter` (the live
+    snapshot), `kyx_clips list`/`audioList` (clip ids/bars/values), `kyx_batch`
+    (per-call results), `kyx_loudness` (report). Tool-level honest failures now carry
+    the standard MCP `isError` marker (fx/intent/section/clip/audio failures) — a
+    failure is never masqueraded as a no-op.
+13. ✅ **`kyx_batch` (19th tool)**: up to 10 `{tool, args}` calls in one submission;
+    folds every mutation into ONE undo entry via the store's undo frames (graceful
+    per-call undo when the host lacks frame support); per-call failures never abort
+    the batch — the summary + `data.results` report exactly what landed; async tools
+    (export/loudness) and nested batches honestly refused.
+14. ✅ **Audio-clip structured edits** (`kyx_clips` audio ops): `audioList` (ids,
+    bars, gain/fades/reverse/loop + envelope), `audioMove`, `audioSplit` (at anchor
+    bar), `audioUpdate` (gain/fadeIn/fadeOut/reverse/loop, native units),
+    `audioDelete` (D4-gated) — addressed by trackId/family + the anchor bar the clip
+    covers.
+15. ✅ **Automation point-move**: `kyx_automation op:movePoint` (nearest point within
+    a bar → new bar/beat and/or value, clamped, one undo step).
+16. ✅ **`kyx_loudness` (20th tool)**: `measure` (read-only render-backed integrated
+    LUFS) and `match` (measure→trim→verify toward an explicit targetDb or ±nudge,
+    trim lands on the master config in one undo step; command returned UNEXECUTED by
+    the hook so the mutation still flows through the context executor). Runs only
+    where a render context is bound — honest refusal elsewhere.
+17. ✅ **MCP action attribution**: structured ops label with the `MCP:` prefix;
+    `MCP_RESOURCES` (shipped by the parallel wave) exposes pull-model project
+    snapshots (`overview`/`pattern`/`mix`/`arrangement`/`history`) over
+    `resources/list`+`read` on both transports.
+18. Routing-graph writes (bus/group create, route, cycle-checked) — the remaining P2
+    depth, deferred (largest surface, model-level work).
+19. Recording-take management — deferred behind the record-is-window-local decision.
+20. Per-instance FX chain reorder — deferred (reorder command exists; thin to add).
 
 ### Sizing note
 
@@ -392,13 +416,17 @@ addressing, no catalog discovery, family-only addressing — are now **CLOSED**
 (`kyx_meter`, `kyx_plugin_param`, `kyx_catalog`, `trackId` on writes; 16 tools, all mirrors
 pinned, 75 specs green).
 
-**What still stands between an AI agent and full DAW control**: the **P1 wave is CLOSED**
-(transport reads/seek, send reads, automation, mixer setters, clip tools, awaited export —
-all shipped 2026-09-29). Remaining items are P2 depth, not capability walls: machine-readable
-result envelopes, batch/transaction tool, routing-graph writes, per-pad addressing, automation
-point-move, audio-clip structured edits (fades/gain/split), stems/render-settings export
-options, and the loudness/mix loops over MCP (unblocked by the async executor).
+**What still stands between an AI agent and full DAW control**: the **P1 and P2-core
+waves are CLOSED** (analysis reads, plugin-param addressing, catalog discovery, track-IDs,
+transport reads/seek, send reads, automation incl. point-move, mixer setters, arrangement AND
+audio clip tools, awaited export, loudness loop, batch transactions, result envelopes — 20
+tools, all mirrors pinned). What remains is genuinely larger model-level work, not tool
+wrappers: routing-graph writes (bus/group create+route with cycle checks), recording-take
+management (record stays window-local by design), per-instance FX chain reorder, and
+stems/multi-format export options.
 
-**Smallest practical path from here**: P2 batch + result envelopes in one wave, then the
-loudness loop (measure→trim→verify now has every half it needs). Recording takes and
-third-party-plugin GUIs stay window-local by design.
+**Smallest practical path from here**: routing-graph writes if multi-bus routing becomes a
+real AI workflow; otherwise the surface is agent-complete — an AI can see the project
+(resources + state reads), hear it (meters + loudness), edit it (patterns, arrangement,
+mixer, FX params, automation, clips), move through it (transport), commit atomically
+(batch), and verify everything it did (read-backs + envelopes + undo).

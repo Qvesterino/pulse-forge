@@ -22,7 +22,11 @@ export async function mcpApplyLoudness(
   services: Services,
   input: { targetDb?: number; direction: "louder" | "quieter" },
 ): Promise<
-  | { ok: true; command: Command; report: { measuredBefore: number; measuredAfter: number | null; trim: number; target: number } }
+  | {
+      ok: true;
+      command: Command;
+      report: { measuredBefore: number; measuredAfter: number | null; trim: number; target: number };
+    }
   | { ok: false; error: string }
 > {
   const { applyLoudnessIntent } = await import("../intent/loudness");

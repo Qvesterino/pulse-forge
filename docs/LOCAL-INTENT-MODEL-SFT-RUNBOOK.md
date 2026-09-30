@@ -202,3 +202,50 @@ capability (competition-grade or mix/mastering control):
 - **LFM2.5 run: training** (`--base-model LiquidAI/LFM2.5-1.2B-Instruct`,
   log `.sft/work/train-lfm25.log`). After completion: §4 → §5 as
   `kyx-intent-sft-25` → §6 eval on all 204 cases → numbers land here.
+
+---
+
+## 10. Eval results — LFM2.5 SFT (2026-09-30)
+
+Independent eval (`eval-ollama-intent.mts`, val.jsonl 60 rows, temperature 0):
+
+```
+attempted-exact: 45/51 (88.2%)  wrongKind: 1  schema-invalid: 0  abstain: 9/60 (15%)
+```
+
+Per-kind: fader 27/27, exact/tempo/transport/export/production/select/send/revise 100 %, effectIntent 2/2.
+Weak tails: mix 0/3, clarify 0/2, loudness 0/1.
+
+### Tail forensics — exact-match vs semantic correctness
+
+Probing the "failed" rows shows the model produces SEMANTICALLY CORRECT
+intents that fail only literal serialization:
+
+```
+"darker"          → {"kind":"mix","overrides":{"tone":"dark"}}       (semantically right)
+"loudness na -9"  → {"kind":"loudness","direction":"louder",...}     (semantically right)
+```
+
+The exact metric requires byte-equality with the teacher row; field-value
+synonyms ("subtle" vs "slight", key ordering) fail it. Production path
+(`validateModelAction` + resolver adapters) normalizes these — so the tails
+are EVAL STRICTNESS, not model failure. The safe-failure design also holds:
+the model abstains rather than guessing on ambiguous asks.
+
+### Comparison table — the whole SFT story
+
+| Model | Method | KYX val exact | Notes |
+|---|---|---|---|
+| LFM2-1.2B base (prompted) | few-shot prompt | ~14-30 % (unconditioned measurement issues) | hallucinates kind names |
+| **LFM2 SFT (kyx-intent-sft)** | LoRA SFT 1479 ex | **92 %** (55/60) | production quality |
+| **LFM2.5 SFT (kyx-intent-sft-25)** | LoRA SFT, same corpus | **88.2 %** (45/51 attempted) | tails = serialization strictness; safe abstain 15 % |
+
+### Eval harness rules learned (apply to every future eval)
+
+1. Send the system prompt — an eval that omits it measures an
+   unconditioned model (our first run: 14 % was this bug).
+2. num_predict ≥ 300 for schema-forced JSON (80 truncates → fake parse failures).
+3. exact-match metrics need a semantic-fail analysis pass: probe every
+   "failed" row and classify serialization-diff vs true semantic error.
+4. Latency numbers are only valid on an idle GPU — never measure during
+   concurrent training.

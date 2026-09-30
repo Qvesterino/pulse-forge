@@ -1054,6 +1054,7 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
         return {
           text: `fx op failed: ${error instanceof Error ? error.message : String(error)}`,
           mutated: false,
+          isError: true,
         };
       }
     }
@@ -1071,6 +1072,7 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
         return {
           text: `section op failed: ${error instanceof Error ? error.message : String(error)}`,
           mutated: false,
+          isError: true,
         };
       }
     }
@@ -1964,7 +1966,11 @@ function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>):
   } catch (error) {
     // Arrangement commands throw on invariants (overlap, bounds) — honest
     // failure over MCP, never a thrown crash into the relay.
-    return { text: `clip op failed: ${error instanceof Error ? error.message : String(error)}`, mutated: false };
+    return {
+      text: `clip op failed: ${error instanceof Error ? error.message : String(error)}`,
+      mutated: false,
+      isError: true,
+    };
   }
 }
 
