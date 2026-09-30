@@ -450,21 +450,25 @@ export type TransportAction = "play" | "pause" | "stop" | "metronomeOn" | "metro
  * project state: no command, no undo — dispatch is the whole operation.
  */
 export function parseTransportIntent(text: string): TransportAction | null {
+  // the gate runs DEACCENTED — SK keyboards lay "metronóm"/"štart" naturally
+  // and the anchored regex is ASCII ("metronóm zapni" used to miss the gate
+  // and teach the model a clarify)
+  const plain = text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   if (
-    !/^\s*(?:please\s+|prosím\s+|prosim\s+)?(?:play|stop|pause|hraj|hrať|start|štart|pauza|pauzu|zastav|stoj|(?:metronome|metronom)(?:\s+(?:on|off|zapni|vypni))?|(?:loop|cykluj|cyklus)(?:\s+(?:on|off|zapni|vypni))?|(?:zapni|vypni)\s+(?:loop|cyklus))\s*(?:please|prosím|prosim)?\s*[.!]?\s*$/i.test(
-      text,
+    !/^\s*(?:please\s+|prosim\s+)?(?:play|stop|pause|hraj|hrat|start|pauza|pauzu|zastav|stoj|(?:metronome|metronom)(?:\s+(?:on|off|zapni|vypni))?|(?:loop|cykluj|cyklus)(?:\s+(?:on|off|zapni|vypni))?|(?:zapni|vypni)\s+(?:loop|cyklus))\s*(?:please|prosim)?\s*[.!]?\s*$/i.test(
+      plain,
     )
   ) {
     return null;
   }
-  const lower = text
+  const lower = plain
     .toLowerCase()
     .trim()
     // politeness wraps the verb on either side — dispatch on the bare verb
     // ("please play" used to fall through the play branch into the stop
     // catch-all and STOPPED playback instead)
-    .replace(/^(?:please|prosím|prosim)\s+/, "")
-    .replace(/\s+(?:please|prosím|prosim)$/, "");
+    .replace(/^(?:please|prosim)\s+/, "")
+    .replace(/\s+(?:please|prosim)$/, "");
   // the SK verb-first loop form carries its direction in the stripped verb —
   // read on/off BEFORE stripping ("zapni loop" → loopOn)
   const onWord = /\bon\b|\bzapni/.test(lower);
@@ -481,7 +485,7 @@ export function parseTransportIntent(text: string): TransportAction | null {
     if (offWord) return "loopOff";
     return null; // bare "loop" — on or off? decline
   }
-  if (/^(?:play|hraj|hrať|start|štart)/.test(lower)) return "play";
+  if (/^(?:play|hraj|hrat|start)/.test(lower)) return "play";
   if (/^(?:pause|pauza|pauzu)/.test(lower)) return "pause";
   return "stop"; // stop / zastav / stoj
 }
