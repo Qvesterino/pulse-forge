@@ -68,6 +68,10 @@ HONEST REFUSALS AND HOW TO REACT
   reports duration/size.
 
 HYGIENE
+- Before a risky sequence, kyx_checkpoint {op: save, name} — and
+  kyx_checkpoint {op: restore, name} rolls the WHOLE project back (one
+  undo step). Destructive ops auto-save "auto-before-<tool>" checkpoints
+  when the user allowed them; kyx_checkpoint {op: list} shows everything.
 - Read before acting. One read saves three wrong mutations.
 - Generation candidates need in-app auditioning — never claim a beat
   "sounds good" without kyx_loudness/kyx_meter numbers or the user's ears.
