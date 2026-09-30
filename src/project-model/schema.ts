@@ -53,6 +53,20 @@ export const MAX_BPM = 300;
 export const FALLBACK_BPM = 120;
 /** stepCount used when a pattern's stepCount is invalid (0/negative/NaN). */
 export const FALLBACK_STEP_COUNT = STEPS_PER_PATTERN;
+/**
+ * Hard upper bound on an arrangement clip's length, in bars.
+ *
+ * This is a rendering invariant rather than a musical one: the arrangement
+ * view allocates one bar-grid node per bar (`Array.from({ length: totalBars })`),
+ * so an unbounded clip length can demand millions of DOM nodes. A typed
+ * length, a scripted command or an imported document could all reach that
+ * state, and the tab would stop responding.
+ *
+ * 8192 bars in 4/4 is roughly 5.7 hours of music — far beyond any real
+ * arrangement — while keeping the grid well inside a browser-friendly node
+ * budget. Resize commands clamp to it; the UI mirrors it as a field maximum.
+ */
+export const MAX_ARRANGEMENT_CLIP_BARS = 8192;
 
 function makePad(index: number, name: string, assetId: string, idPrefix: string, opts: Partial<DrumPad> = {}): DrumPad {
   return {
@@ -920,6 +934,12 @@ function normalizeTimeSignatureDomain(s: NormalizeState): void {
 const PAD_MOD_TARGETS = new Set(["pitch", "gain", "filter"]);
 const PAD_MOD_WAVES = new Set(["sine", "triangle", "square", "sawtooth"]);
 const PAD_MOD_DEPTH_MAX: Record<string, number> = { pitch: 24, gain: 1, filter: 12000 };
+/**
+ * Highest pad-LFO rate the normalizer accepts, in Hz. Exported so the Inspector
+ * slider cannot drift below the document's own clamp — the slider used to stop
+ * at 20 Hz while the model allowed 40, so half the legal range was unreachable.
+ */
+export const PAD_MOD_RATE_HZ_MAX = 40;
 
 /** Clamp a per-pad mod to a legal voice-local LFO; null = disabled. */
 /**
@@ -971,7 +991,7 @@ function sanitizePadMod(raw: unknown): import("../project-model/types").PadMod |
   const out: import("../project-model/types").PadMod = {
     target: target as import("../project-model/types").PadMod["target"],
     wave: wave as import("../project-model/types").PadMod["wave"],
-    rateHz: Math.min(40, rateHz),
+    rateHz: Math.min(PAD_MOD_RATE_HZ_MAX, rateHz),
     depth,
   };
   if (base !== undefined) out.base = base;

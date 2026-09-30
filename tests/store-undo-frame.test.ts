@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { createProjectFromTemplate } from "../src/project-model/templates";
-import { setStepVelocityCommand } from "../src/commands/commands";
+import { addEffect, setEffectParam, setStepVelocityCommand } from "../src/commands/commands";
 
 function setup() {
   const doc = createProjectFromTemplate("house");
@@ -57,5 +57,42 @@ describe("ProjectStore — undo frame", () => {
     expect(rowOf()[0]).toBe(0.8);
     store.undo();
     expect(rowOf()).toEqual(before);
+  });
+
+  it("collapses an XY pad drag (two params per pointermove) into one entry", () => {
+    // The Ozvena blend pad's exact production shape: every pointermove writes
+    // blendPad.x and then blendPad.y, bracketed by the frame hooks EffectRack
+    // passes down. Before the frame existed, a 1s drag produced ~120 history
+    // entries and one Ctrl+Z peeled back a single coordinate.
+    const doc = createProjectFromTemplate("house");
+    const track = doc.tracks.find((t) => t.kind === "instrument")!;
+    const withOzvena = addEffect(doc, track.id, "ozvena").execute(doc);
+    const store = new ProjectStore(withOzvena);
+    const fxId = withOzvena.tracks.find((t) => t.id === track.id)!.effects[0]!.id;
+    const padOf = () => {
+      const t = store.getDoc().tracks.find((tr) => tr.id === track.id)!;
+      return { x: t.effects[0]!.params["blendPad.x"] ?? 0.5, y: t.effects[0]!.params["blendPad.y"] ?? 0.5 };
+    };
+    const before = padOf();
+
+    // 30 pointermoves, each writing two params — the frame stays open.
+    store.beginUndoFrame("Blend pad");
+    for (let i = 1; i <= 30; i += 1) {
+      const v = +(0.5 + i / 100).toFixed(4);
+      store.execute(setEffectParam(store.getDoc(), track.id, fxId, "blendPad.x", v));
+      store.execute(setEffectParam(store.getDoc(), track.id, fxId, "blendPad.y", v));
+    }
+    store.endUndoFrame();
+
+    const after = padOf();
+    expect(after.x).toBe(0.8);
+    expect(after.y).toBe(0.8);
+
+    // ONE undo takes back the whole drag — both coordinates together.
+    const depth = store.undoStackLength;
+    store.undo();
+    expect(padOf()).toEqual(before);
+    // …and it really was one entry, not sixty.
+    expect(depth - 1).toBe(store.undoStackLength);
   });
 });

@@ -51,12 +51,21 @@ export function OzvenaPanel({
   onParam,
   onApplyPatch,
   docked = false,
+  onGestureStart,
+  onGestureEnd,
 }: {
   params: Record<string, number>;
   degraded?: boolean;
   onParam: (paramId: string, value: number) => void;
   onApplyPatch: (label: string, flatParams: Record<string, number>) => void;
   docked?: boolean;
+  /**
+   * Optional gesture frame hooks. A single pad drag emits two param writes per
+   * pointermove (X then Y); the host brackets the gesture so the whole drag
+   * collapses into one undo entry instead of two per frame.
+   */
+  onGestureStart?: () => void;
+  onGestureEnd?: () => void;
 }) {
   const padRef = useRef<HTMLCanvasElement | null>(null);
   const draggingRef = useRef(false);
@@ -72,6 +81,36 @@ export function OzvenaPanel({
 
   const x = Math.max(0, Math.min(1, params["blendPad.x"] ?? 0.5));
   const y = Math.max(0, Math.min(1, params["blendPad.y"] ?? 0.5));
+  // Typed field draft. Committing on every keystroke put one history entry per
+  // character (typing "85" created an entry for "8" and another for "85"), so a
+  // single Ctrl+Z snapped the field back a character. The draft commits on
+  // blur/Enter instead; Escape reverts to the stored value.
+  const [padDraft, setPadDraft] = useState<{ axis: "x" | "y"; text: string } | null>(null);
+  const commitPadField = (axis: "x" | "y", text: string) => {
+    setPadDraft(null);
+    if (text.trim() === "") return; // cleared field is a cancel, not 0%
+    const v = Number(text);
+    if (!Number.isFinite(v)) return;
+    onParam(`blendPad.${axis}`, +Math.max(0, Math.min(1, v / 100)).toFixed(4));
+  };
+  const padFieldProps = (axis: "x" | "y", current: number) => {
+    const draft = padDraft?.axis === axis ? padDraft.text : null;
+    return {
+      type: "number" as const,
+      value: draft ?? String(Math.round(current * 100)),
+      min: 0,
+      max: 100,
+      step: 1,
+      onChange: (event: React.ChangeEvent<HTMLInputElement>) => setPadDraft({ axis, text: event.target.value }),
+      onBlur: () => {
+        if (draft !== null) commitPadField(axis, draft);
+      },
+      onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => {
+        if (event.key === "Enter") commitPadField(axis, draft ?? String(Math.round(current * 100)));
+        if (event.key === "Escape") setPadDraft(null);
+      },
+    };
+  };
   const weights = blendPadToEngineWeights(x, y);
   useEffect(() => {
     setEngine2Algo(Math.max(0, Math.min(ENGINE2_ALGOS.length - 1, Math.round(params["engines.e2.algo"] ?? 0))));
@@ -181,8 +220,12 @@ export function OzvenaPanel({
     const nx = Math.max(0, Math.min(1, x + dx * step));
     const ny = Math.max(0, Math.min(1, y + dy * step));
     if (nx === x && ny === y) return;
+    // One key press is one user action: bracket the X+Y pair so a single
+    // Ctrl+Z takes back the whole step instead of one coordinate.
+    onGestureStart?.();
     onParam("blendPad.x", +nx.toFixed(4));
     onParam("blendPad.y", +ny.toFixed(4));
+    onGestureEnd?.();
   };
 
   // ── Reverb Assistant ────────────────────────────────────────────────────
@@ -269,35 +312,17 @@ export function OzvenaPanel({
             <label className="ozvena-pad-field">
               <span className="slider-label">X</span>
               <input
-                type="number"
                 className="ozvena-pad-input"
                 aria-label="Blend pad X position percent"
-                value={Math.round(x * 100)}
-                min={0}
-                max={100}
-                step={1}
-                onChange={(event) => {
-                  const v = Number(event.target.value);
-                  if (!Number.isFinite(v)) return;
-                  onParam("blendPad.x", +Math.max(0, Math.min(1, v / 100)).toFixed(4));
-                }}
+                {...padFieldProps("x", x)}
               />
             </label>
             <label className="ozvena-pad-field">
               <span className="slider-label">Y</span>
               <input
-                type="number"
                 className="ozvena-pad-input"
                 aria-label="Blend pad Y position percent"
-                value={Math.round(y * 100)}
-                min={0}
-                max={100}
-                step={1}
-                onChange={(event) => {
-                  const v = Number(event.target.value);
-                  if (!Number.isFinite(v)) return;
-                  onParam("blendPad.y", +Math.max(0, Math.min(1, v / 100)).toFixed(4));
-                }}
+                {...padFieldProps("y", y)}
               />
             </label>
           </div>
@@ -325,6 +350,7 @@ export function OzvenaPanel({
             } catch {
               // synthetic pointers have no active id — drag still tracks
             }
+            onGestureStart?.();
             onPointer(e.clientX, e.clientY, e.currentTarget);
           }}
           onPointerMove={(e) => {
@@ -332,9 +358,11 @@ export function OzvenaPanel({
           }}
           onPointerUp={() => {
             draggingRef.current = false;
+            onGestureEnd?.();
           }}
           onPointerCancel={() => {
             draggingRef.current = false;
+            onGestureEnd?.();
           }}
         />
       )}

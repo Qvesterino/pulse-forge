@@ -891,6 +891,11 @@ function Device({
                 onApplyPatch={(label, flatParams) =>
                   services.store.execute(applyOzvenaStatePatch(doc, track.id, fx.id, label, flatParams))
                 }
+                // The blend pad writes two params per gesture step. Without a
+                // frame, one drag produced two history entries per pointermove
+                // and Ctrl+Z could only peel one param back at a time.
+                onGestureStart={() => services.store.beginUndoFrame("Blend pad")}
+                onGestureEnd={() => services.store.endUndoFrame()}
               />
             )}
             {fx.type === "kaskada" && (

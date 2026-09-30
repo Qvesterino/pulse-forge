@@ -4,6 +4,7 @@ import { screen, fireEvent } from "@testing-library/react";
 import { WavetablePanel } from "../../src/ui/WavetablePanel";
 import { renderWithContext, mockServices } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
+import { modDstOptions } from "../../src/instruments/modmatrix";
 import type { InstrumentTrack, ProjectDocument } from "../../src/project-model/types";
 
 function wtDoc(): { doc: ProjectDocument; track: InstrumentTrack } {
@@ -67,14 +68,54 @@ describe("WavetablePanel", () => {
       />,
     );
 
+    // Index 1 = Cutoff, a route the wtvoice worklet actually implements.
     const dst = screen.getByRole("combobox", { name: "MOD A destination" }) as HTMLSelectElement;
-    fireEvent.change(dst, { target: { value: "2" } });
+    fireEvent.change(dst, { target: { value: "1" } });
 
     expect(services.store.execute).toHaveBeenCalled();
     const call = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
       type: string;
     };
     expect(call.type).toBe("setInstrumentParam");
+  });
+
+  it("offers only modulation destinations the engine actually implements", () => {
+    // Index 2 is reserved/unimplemented: neither the wtvoice worklet nor the
+    // offline fallback reads modADst/modBDst === 2, and modmatrix.ts documents
+    // it as such. The panel used to offer "Detune", which produced a silent
+    // dead route at any modulation amount.
+    const { doc, track } = wtDoc();
+    renderWithContext(
+      <WavetablePanel
+        track={track}
+        doc={doc}
+        services={mockServices() as Parameters<typeof WavetablePanel>[0]["services"]}
+      />,
+    );
+
+    for (const name of ["MOD A destination", "MOD B destination"]) {
+      const select = screen.getByRole("combobox", { name }) as HTMLSelectElement;
+      const values = Array.from(select.options).map((o) => o.value);
+      expect(values).toEqual(["0", "1", "3"]);
+      expect(values).not.toContain("2");
+      expect(screen.queryByText("Detune")).not.toBeInTheDocument();
+    }
+  });
+
+  it("the offered destinations match the registry's authoritative list", () => {
+    // Guards against the panel drifting from modmatrix.ts again.
+    const { doc, track } = wtDoc();
+    renderWithContext(
+      <WavetablePanel
+        track={track}
+        doc={doc}
+        services={mockServices() as Parameters<typeof WavetablePanel>[0]["services"]}
+      />,
+    );
+    const select = screen.getByRole("combobox", { name: "MOD A destination" }) as HTMLSelectElement;
+    const panelValues = Array.from(select.options).map((o) => o.value);
+    const registryValues = modDstOptions(true, true).map((o) => String(o.value));
+    expect(panelValues).toEqual(registryValues);
   });
 
   it("exposes a MOD LFO rate slider that defaults to the source's rate value", () => {

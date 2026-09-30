@@ -22,10 +22,14 @@ const SRC_OPTIONS = [
   { value: 3, label: "Press" },
 ];
 
+// Destination list must match the routes the wtvoice worklet actually
+// implements. Index 2 is reserved: `modDstOptions()` in
+// src/instruments/modmatrix.ts documents it as unimplemented, and neither the
+// worklet nor the offline fallback reads modADst/modBDst === 2. Offering it here
+// let a user build a modulation route that produced no sound at any amount.
 const DST_OPTIONS = [
   { value: 0, label: "Morph" },
   { value: 1, label: "Cutoff" },
-  { value: 2, label: "Detune" },
   { value: 3, label: "Amp" },
 ];
 

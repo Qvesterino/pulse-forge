@@ -21,7 +21,7 @@ import {
 import { FACTORY_ASSETS } from "../sample-library/manifest";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { pitchName } from "../project-model/types";
-import { ticksPerBar } from "../project-model/schema";
+import { PAD_MOD_RATE_HZ_MAX, ticksPerBar } from "../project-model/schema";
 import type { GenerativeVariation } from "../generative/resample";
 import { GENERATIVE_MACRO_NAMES } from "../generative/types";
 import { createUnavailableGenerativeProvider } from "../generative/registry";
@@ -1090,7 +1090,9 @@ function PadModSection({ pad }: { pad: DrumPad }) {
             label="Rate"
             value={mod.rateHz}
             min={0.01}
-            max={20}
+            // The document's own clamp is 40 Hz — the slider used to stop at 20,
+            // so the top half of the legal range was unreachable from the UI.
+            max={PAD_MOD_RATE_HZ_MAX}
             defaultValue={2}
             format={(v) => `${v < 1 ? v.toFixed(2) : v.toFixed(1)} Hz`}
             onCommit={(rateHz) => services.store.execute(setPadMod(doc, pad.id, { ...mod, rateHz }))}

@@ -59,7 +59,7 @@ import {
   updateAudioClip,
   sliceToPads,
 } from "../commands/commands";
-import { sceneRoleOf } from "../project-model/schema";
+import { MAX_ARRANGEMENT_CLIP_BARS, sceneRoleOf } from "../project-model/schema";
 import { sectionFxChips } from "../intent/song";
 import { effectiveSceneBpm, sceneBarsToSeconds, sceneSecondsToBars } from "../project-model/scene-time";
 import { computeSceneIntensity } from "../project-model/intensity";
@@ -1280,7 +1280,9 @@ export function ArrangementPanel() {
     if (!Number.isFinite(seconds) || seconds <= 0) return;
     const bars = Math.max(1, Math.round(sceneSecondsToBars(seconds, selectedClipBpm)));
     if (bars === selectedClip.lengthBars) return;
-    execute(resizeArrangementClip(services.store.doc, selectedClip.id, bars));
+    // The command clamps to MAX_ARRANGEMENT_CLIP_BARS; clamping here too keeps
+    // the field from silently accepting a value the document will refuse.
+    execute(resizeArrangementClip(services.store.doc, selectedClip.id, Math.min(MAX_ARRANGEMENT_CLIP_BARS, bars)));
   };
   const queuedScene = runtime.pendingPatternId
     ? scenes.find((scene) => scene.patternId === runtime.pendingPatternId)
@@ -2674,6 +2676,9 @@ export function ArrangementPanel() {
                 <input
                   type="number"
                   min={0.5}
+                  // The field is in seconds; the cap is a bar count, so convert
+                  // it at the clip's own tempo (a bar is 4 beats).
+                  max={Math.round(sceneBarsToSeconds(MAX_ARRANGEMENT_CLIP_BARS, selectedClipBpm))}
                   step={0.5}
                   aria-label="Clip length in seconds"
                   title={`${selectedClip.lengthBars} bars at ${Math.round(selectedClipBpm)} BPM — Enter resizes the clip`}

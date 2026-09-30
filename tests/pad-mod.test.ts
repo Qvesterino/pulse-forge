@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AudioEngine } from "../src/audio-engine/AudioEngine";
 import { baseDocument } from "../src/project-model/templates";
-import { normalizeProject } from "../src/project-model/schema";
+import { normalizeProject, PAD_MOD_RATE_HZ_MAX } from "../src/project-model/schema";
 import { setPadMod } from "../src/commands/commands";
 import type { DrumTrack, PadMod, ProjectDocument } from "../src/project-model/types";
 
@@ -129,6 +129,19 @@ describe("per-pad mod model + command", () => {
     const normWild = normalizeProject(JSON.parse(JSON.stringify(wild)));
     const wildPad = (normWild.tracks[0] as DrumTrack).pads[0];
     expect(wildPad.mod).toMatchObject({ target: "gain", rateHz: 40, depth: 1 });
+  });
+
+  it("the exported rate ceiling IS the normalizer's clamp (single source of truth)", () => {
+    // The Inspector's pad-LFO Rate slider is bound to this constant. It used to
+    // be a bare 20 in the UI while the model allowed 40, so half the legal range
+    // was unreachable. This pins the constant to the behaviour it describes.
+    const atLimit = makeDoc({ target: "pitch", wave: "sine", rateHz: PAD_MOD_RATE_HZ_MAX, depth: 2 });
+    const kept = (normalizeProject(JSON.parse(JSON.stringify(atLimit))).tracks[0] as DrumTrack).pads[0];
+    expect(kept.mod).toMatchObject({ rateHz: PAD_MOD_RATE_HZ_MAX });
+
+    const overLimit = makeDoc({ target: "pitch", wave: "sine", rateHz: PAD_MOD_RATE_HZ_MAX + 500, depth: 2 });
+    const clamped = (normalizeProject(JSON.parse(JSON.stringify(overLimit))).tracks[0] as DrumTrack).pads[0];
+    expect(clamped.mod).toMatchObject({ rateHz: PAD_MOD_RATE_HZ_MAX });
   });
 
   it("normalizeProject strips unknown targets and disabled mods", () => {

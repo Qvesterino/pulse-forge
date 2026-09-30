@@ -58,6 +58,7 @@ import {
   createPatternForDoc,
   drumTracksOf,
   instrumentTracksOf,
+  MAX_ARRANGEMENT_CLIP_BARS,
   MAX_BPM,
   MIN_BPM,
   normalizeProject,
@@ -2870,7 +2871,13 @@ export function resizeArrangementClip(doc: ProjectDocument, clipId: string, leng
   const clip = doc.arrangement.clips.find((c) => c.id === clipId);
   if (!clip) throw new Error(`Clip ${clipId} not found`);
   // NaN passes Math.max/round through — clamp to 1 (minimum clip length).
-  const bars = Number.isFinite(lengthBars) ? Math.max(1, Math.round(lengthBars)) : 1;
+  // The upper bound is a rendering invariant, not a musical one: the
+  // arrangement view allocates one bar-grid node PER BAR, so an unbounded
+  // length (a typed SECS value, a scripted command, an imported document)
+  // could ask for millions of DOM nodes and freeze the tab.
+  const bars = Number.isFinite(lengthBars)
+    ? Math.min(MAX_ARRANGEMENT_CLIP_BARS, Math.max(1, Math.round(lengthBars)))
+    : 1;
   if (clipsOverlap(doc.arrangement.clips, clipId, clip.startBar, bars)) {
     throw new Error(`Clip would overlap the next clip`);
   }
@@ -6286,7 +6293,8 @@ export function resizeArrangementClipRipple(doc: ProjectDocument, clipId: string
   const clip = doc.arrangement.clips.find((c) => c.id === clipId);
   if (!clip) throw new Error(`Clip ${clipId} not found`);
   if (!Number.isFinite(lengthBars)) return snapshot("resizeArrangementClipRipple", "Ripple resize (no-op)", doc, doc);
-  const bars = Math.max(1, Math.round(lengthBars));
+  // Same rendering invariant as resizeArrangementClip — see the comment there.
+  const bars = Math.min(MAX_ARRANGEMENT_CLIP_BARS, Math.max(1, Math.round(lengthBars)));
   const deltaBars = bars - clip.lengthBars;
   const oldEnd = clip.startBar + clip.lengthBars;
   const clips = doc.arrangement.clips

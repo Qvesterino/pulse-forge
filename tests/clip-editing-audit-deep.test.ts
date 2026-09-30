@@ -10,7 +10,7 @@ import {
   resizeArrangementClip,
 } from "../src/commands/commands";
 import { testDoc } from "./fixtures/doc";
-import { sanitizeAudioClips } from "../src/project-model/schema";
+import { MAX_ARRANGEMENT_CLIP_BARS, sanitizeAudioClips } from "../src/project-model/schema";
 import type { AudioClip, ProjectDocument } from "../src/project-model/types";
 
 /**
@@ -221,5 +221,45 @@ describe("audit: ArrangementClip no-overlap contract", () => {
       const toExists = next.arrangement.clips.some((c) => c.id === t.toClipId);
       expect(fromExists || toExists).toBe(true);
     }
+  });
+});
+
+describe("audit: ArrangementClip length upper bound (UI abuse / import hardening)", () => {
+  function lastClipDoc() {
+    // A single trailing clip: nothing after it, so the no-overlap guard cannot
+    // reject an absurd length — this is the shape the SECS field resizes.
+    const doc = testDoc();
+    return addArrangementClip(doc, doc.scenes[0]!.id, 0, 4).execute(doc);
+  }
+
+  it("clamps an absurd length instead of writing it to the document", () => {
+    const doc = lastClipDoc();
+    const clipId = doc.arrangement.clips[0]!.id;
+    // 600000 seconds of audio at a typical tempo is ~300k bars. The arrangement
+    // view allocates one grid node per bar, so accepting this freezes the tab.
+    const next = resizeArrangementClip(doc, clipId, 300_000).execute(doc);
+    expect(next.arrangement.clips[0]!.lengthBars).toBe(MAX_ARRANGEMENT_CLIP_BARS);
+  });
+
+  it("clamps Infinity too (a non-finite value must not become the raw length)", () => {
+    const doc = lastClipDoc();
+    const clipId = doc.arrangement.clips[0]!.id;
+    const next = resizeArrangementClip(doc, clipId, Number.POSITIVE_INFINITY).execute(doc);
+    expect(Number.isFinite(next.arrangement.clips[0]!.lengthBars)).toBe(true);
+    expect(next.arrangement.clips[0]!.lengthBars).toBeLessThanOrEqual(MAX_ARRANGEMENT_CLIP_BARS);
+  });
+
+  it("leaves realistic song lengths untouched", () => {
+    const doc = lastClipDoc();
+    const clipId = doc.arrangement.clips[0]!.id;
+    // A 10-minute arrangement at 120 BPM is ~600 bars — must pass through as-is.
+    const next = resizeArrangementClip(doc, clipId, 600).execute(doc);
+    expect(next.arrangement.clips[0]!.lengthBars).toBe(600);
+  });
+
+  it("the bound itself is sane (hours of music, not a song length)", () => {
+    // Guards the constant against being tightened into a musical limit by a
+    // future change: 8192 bars in 4/4 is ~5.7 hours at 120 BPM.
+    expect(MAX_ARRANGEMENT_CLIP_BARS).toBeGreaterThanOrEqual(2000);
   });
 });
