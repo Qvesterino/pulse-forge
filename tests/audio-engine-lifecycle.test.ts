@@ -194,8 +194,9 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     for (const cleared of [
       "this.voices.clear()",
       "this.previewDeck.disposeAll()",
-      "this.frozenBuffers.clear()",
-      "this.frozenBufferIds.clear()",
+      // Wave 4e: frozen sources live in WarpManager — the context swap
+      // hard-disposes them through the manager.
+      "this.warpManager.disposeAllFrozen()",
     ]) {
       expect(body, `useContext() must call ${cleared} to discard old-context nodes`).toMatch(cleared);
     }

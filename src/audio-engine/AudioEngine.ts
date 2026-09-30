@@ -7,7 +7,7 @@ import type {
   SampleLayer,
   SceneAutomation,
 } from "../project-model/types";
-import type { AutomationPoint } from "../project-model/types";
+import type { AudioClip, AutomationPoint } from "../project-model/types";
 import { MAX_AUDIO_CLIP_WARP_SEGMENTS, resolveWarpPinPoints } from "../project-model/audio-clip-warp";
 export { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
 import { hashString } from "../shared/rng";
@@ -28,11 +28,10 @@ import {
   type PluginWorkletType,
 } from "../audio-worklets/loader";
 import { connectAudioClipSourceChannel } from "./audioClipChannels";
-import { phaseVocoderWarpChannel, warpRateEnvelope, type WarpRateInterval } from "./phase-vocoder";
-import { renderWarpPreserveAsync } from "../audio-workers/warp-render-client";
 import { MeteringRig, measureTruePeak as measureTruePeakImpl } from "./meteringRig";
 import { PreviewDeck } from "./previewDeck";
 import { AutomationBridge } from "./automationBridge";
+import { audioClipPlayWindow, WarpManager } from "./warpManager";
 import type { TrackOrGroupView, ReturnView } from "./deviceLookup";
 import { targetOwner } from "../project-model/targets";
 import { timeStretch } from "./time-stretch";
@@ -45,12 +44,6 @@ import type { MasterMeterSnapshot, TrackMeterSnapshot } from "./metering-types";
 import type { Frame, ChannelLevels } from "./metering";
 
 /** Tick position → seconds inside a frozen loop (mod buffer duration). */
-export function frozenPlaybackOffset(positionTick: number, bpm: number, durationSec: number): number {
-  if (!Number.isFinite(durationSec) || durationSec <= 0) return 0;
-  const seconds = (Math.max(0, positionTick) / PPQ) * (60 / Math.max(1, bpm));
-  return seconds % durationSec;
-}
-
 /**
  * Solo-bus semantics for a project. Any solo anywhere mutes unsoloed
  * material; a group is audible when it — or any of its members — is soloed;
@@ -192,6 +185,7 @@ interface Voice {
 
 export type { TrackMeterSnapshot, MasterMeterSnapshot } from "./metering-types";
 export { DECLICK_TAIL_SEC, declickFadeOut, resolveSlicePlayback } from "./declick";
+export { frozenPlaybackOffset, audioClipPlayWindow } from "./warpManager";
 export { expandSceneLaneWindow } from "./automationBridge";
 export type { ResolvedSlicePlayback } from "./declick";
 
@@ -240,6 +234,18 @@ export class AudioEngine {
     trigger: (trackId, pad, when, velocity) => this.trigger(trackId, pad, when, velocity),
     noteOn: (trackId, pitch, velocity, when, durationSec) => this.noteOn(trackId, pitch, velocity, when, durationSec),
     missAsset: (assetId) => this.missedAssets.add(assetId),
+  });
+  /**
+   * Wave 4e (decomposition): warp/freeze cache owner — the time-stretch LRU,
+   * pitch-preserving warp pre-renders (in-flight claims + invalidation epoch)
+   * and frozen-track playback. The engine's trigger paths consult it; storage
+   * and lifecycle live here.
+   */
+  private warpManager = new WarpManager({
+    ctx: () => this.ctx,
+    doc: () => this.doc,
+    bank: () => this.bank,
+    trackInput: (trackId) => this.trackNodes.get(trackId)?.input ?? null,
   });
   /**
    * Wave 4b (decomposition): master output chain owner — input gain, tape,
@@ -328,20 +334,14 @@ export class AudioEngine {
     },
     this.deviceLookup,
   );
-  private frozenBuffers = new Map<string, AudioBufferSourceNode>();
   /** bufferId each frozen source is currently playing (detect re-freezes). */
-  private frozenBufferIds = new Map<string, string>();
   /** Frozen playback is transport-aware — sources only run while rolling. */
-  private frozenPlaying = false;
   /** Transport tick + ctx time at the last frozen restart, for alignment. */
-  private frozenAlign: { tick: number; ctxTime: number } | null = null;
   /**
    * LRU cache for time-stretched AudioBuffers keyed by `bufferId+rate+reverse`.
    * Lazy-computed on first triggerAudioClip with stretchMode="stretch".
    * Cleared on project swap to prevent stale references.
    */
-  private stretchCache = new Map<string, AudioBuffer>();
-  private static readonly STRETCH_CACHE_LIMIT = 48;
   /**
    * LRU cache for pitch-preserving warp renders keyed by
    * `bufferId+wallSec+pins+reverse`. Warp buffers are clip-sized (bars of
@@ -351,10 +351,6 @@ export class AudioEngine {
    * Cleared on project swap (plus an epoch bump that orphans in-flight
    * worker replies).
    */
-  private warpCache = new Map<string, AudioBuffer>();
-  private static readonly WARP_CACHE_LIMIT = 6;
-  private warpInflight = new Set<string>();
-  private warpEpoch = 0;
   private voices = new Set<Voice>();
   /**
    * One-shot scheduled sources (AudioClips, marker cues, metronome clicks).
@@ -365,8 +361,6 @@ export class AudioEngine {
    */
   private oneShotSources = new Set<AudioScheduledSourceNode>();
   private missedAssets = new Set<string>();
-  /** Project id the stretchCache entries were computed for. */
-  private stretchProjectId: string | null = null;
   private syncedBpm = 0;
   /** Active scene BPM override (song mode) — null = runtimes follow doc.bpm. */
   private sceneBpmOverride: number | null = null;
@@ -620,22 +614,7 @@ export class AudioEngine {
     // Audition voices belong to the PreviewDeck (Wave 4c) — hard-dispose
     // with the context swap (no de-click tail on a dying graph).
     this.previewDeck.disposeAll();
-    for (const source of this.frozenBuffers.values()) {
-      try {
-        source.stop();
-      } catch {
-        /* already stopped */
-      }
-      try {
-        source.disconnect();
-      } catch {
-        /* already disconnected */
-      }
-    }
-    this.frozenBuffers.clear();
-    this.frozenBufferIds.clear();
-    this.frozenPlaying = false;
-    this.frozenAlign = null;
+    this.warpManager.disposeAllFrozen();
     // Instrument runtimes own their own voices + AudioWorkletNodes. `panic()`
     // only silences voices; `dispose()` also disconnects the runtime output
     // and releases worklet-side subscriptions. Both are idempotent in the
@@ -663,17 +642,13 @@ export class AudioEngine {
     // to the context that created them and must never survive a swap, even if
     // the sample rate happens to be identical.
     this.synthNoise = null;
-    this.stretchCache.clear();
-    this.stretchProjectId = null;
     this.automation.clearMacroCache();
     this.syncedBpm = 0;
     // Warp buffers/stretches hold context-era AudioBuffers AND rate-dependent
     // pre-renders: after a device change (44.1 → 48 kHz) a stale entry would
     // play off-pitch. setProject clears these too — but a bare context swap
-    // (contextlost recovery) never runs setProject.
-    this.warpCache.clear();
-    this.warpInflight.clear();
-    this.warpEpoch++;
+    // (contextlost recovery) never runs setProject. (Wave 4e: WarpManager.)
+    this.warpManager.invalidateForContextSwap();
     this.ctx = ctx;
     this.masterChain.build();
     if (this.doc) this.syncProject(this.doc);
@@ -853,11 +828,7 @@ export class AudioEngine {
     const runBody = async (target: ProjectDocument): Promise<void> => {
       this.cancelEffectIntentPreview(target, "projectChanged");
       this.metering.syncProjectId(target.id);
-      if (this.stretchProjectId !== target.id) {
-        this.stretchProjectId = target.id;
-        this.clearStretchCache();
-        this.clearWarpCache();
-        this.warpEpoch++;
+      if (this.warpManager.syncProjectId(target.id)) {
         // Missing-asset ids belong to the project that missed them — the
         // engine outlives projects, so stale ids would accumulate forever and
         // pollute the diagnostics panel of the newly opened project.
@@ -908,46 +879,7 @@ export class AudioEngine {
    * so frozen tracks can never end up permanently silent.
    */
   restartFrozenSources(positionTick: number): void {
-    const ctx = this.ctx;
-    const doc = this.doc;
-    if (!ctx || !doc) return;
-    this.frozenPlaying = true;
-    this.frozenAlign = { tick: Math.max(0, positionTick), ctxTime: ctx.currentTime };
-    for (const track of doc.tracks) {
-      if (!("frozen" in track) || !track.frozen) continue;
-      const existing = this.frozenBuffers.get(track.id);
-      if (existing) {
-        try {
-          existing.stop();
-        } catch {
-          /* already stopped */
-        }
-        try {
-          existing.disconnect();
-        } catch {
-          /* already disconnected */
-        }
-        this.frozenBuffers.delete(track.id);
-        this.frozenBufferIds.delete(track.id);
-      }
-      const buffer = this.bank?.get(track.frozen.bufferId);
-      const nodes = this.trackNodes.get(track.id);
-      if (!buffer || !nodes) continue; // restore pending — next sync picks it up
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.loop = true;
-      source.connect(nodes.input);
-      source.start(ctx.currentTime + 0.005, frozenPlaybackOffset(positionTick, doc.bpm, buffer.duration));
-      this.frozenBuffers.set(track.id, source);
-      this.frozenBufferIds.set(track.id, track.frozen.bufferId);
-    }
-  }
-
-  /** Current transport tick estimate for frozen-loop alignment. */
-  private frozenPositionTickNow(): number {
-    if (!this.frozenAlign || !this.ctx || !this.doc) return 0;
-    const elapsed = Math.max(0, this.ctx.currentTime - this.frozenAlign.ctxTime);
-    return this.frozenAlign.tick + elapsed * (this.doc.bpm / 60) * PPQ;
+    this.warpManager.restartFrozenSources(positionTick);
   }
 
   private fxSignature(effects: EffectInstance[]): string {
@@ -1164,7 +1096,7 @@ export class AudioEngine {
     // only the unfreeze/panic paths touch it otherwise, so deleting a
     // frozen track used to leave the source running (and pinned in memory)
     // inside frozenBuffers until the next project switch.
-    this.disposeFrozenSource(id);
+    this.warpManager.disposeFrozenSource(id);
     this.setGenerativeSourceConnection(id, nodes, false);
     this.generativeSources.delete(id);
     this.connectedGenerativeSources.delete(id);
@@ -1204,23 +1136,6 @@ export class AudioEngine {
       /* already disconnected */
     }
     this.instruments.delete(id);
-  }
-
-  private disposeFrozenSource(id: string): void {
-    const source = this.frozenBuffers.get(id);
-    if (!source) return;
-    try {
-      source.stop();
-    } catch {
-      /* already stopped */
-    }
-    try {
-      source.disconnect();
-    } catch {
-      /* already disconnected */
-    }
-    this.frozenBuffers.delete(id);
-    this.frozenBufferIds.delete(id);
   }
 
   private disposeReturnNodes(id: string, nodes: ReturnNodes): void {
@@ -1457,26 +1372,12 @@ export class AudioEngine {
         // double-rendering the return FX into the frozen buffer.
         this.syncSends(track.sends, nodes);
         const bufferId = track.frozen.bufferId;
-        const existing = this.frozenBuffers.get(track.id);
-        if (existing && this.frozenBufferIds.get(track.id) === bufferId) {
-          // Same buffer — keep the source running untouched.
-        } else {
-          if (existing) this.disposeFrozenSource(track.id);
-          if (this.frozenPlaying) {
-            const buffer = this.bank?.get(bufferId);
-            if (buffer) {
-              const source = ctx.createBufferSource();
-              source.buffer = buffer;
-              source.loop = true;
-              source.connect(nodes.input);
-              source.start(
-                ctx.currentTime + 0.005,
-                frozenPlaybackOffset(this.frozenPositionTickNow(), doc.bpm, buffer.duration),
-              );
-              this.frozenBuffers.set(track.id, source);
-              this.frozenBufferIds.set(track.id, bufferId);
-            }
-          }
+        if (!this.warpManager.hasFrozenBuffer(track.id, bufferId)) {
+          this.warpManager.disposeFrozenSource(track.id);
+          // A mid-playback freeze rehydrate needs the live frozen alignment —
+          // the manager's restart path is the single creation point (Wave 4e).
+          if (this.warpManager.frozenActive)
+            this.warpManager.restartFrozenSources(this.warpManager.frozenPositionTickNow());
         }
         // Still allow live gain/pan adjustments
         const now = ctx.currentTime;
@@ -1487,7 +1388,7 @@ export class AudioEngine {
       }
 
       // Clean up frozen buffer if track was unfrozen
-      this.disposeFrozenSource(track.id);
+      this.warpManager.disposeFrozenSource(track.id);
 
       const sig = this.fxSignature(track.effects);
       if (nodes.fx.signature !== sig) {
@@ -1800,7 +1701,7 @@ export class AudioEngine {
     slideFromWhen?: number,
   ): void {
     // Frozen tracks play back a pre-rendered buffer — skip individual noteOn
-    if (this.frozenBuffers.has(trackId)) return;
+    if (this.warpManager.isFrozen(trackId)) return;
     const inst = this.instruments.get(trackId);
     if (!inst) return;
     const bendSemitones = inst.pitchBend ?? 0;
@@ -1888,7 +1789,7 @@ export class AudioEngine {
     const ctx = this.ctx;
     const doc = this.doc;
     if (!ctx || !doc) return;
-    if (this.frozenBuffers.has(clip.trackId)) return;
+    if (this.warpManager.isFrozen(clip.trackId)) return;
     const nodes = this.trackNodes.get(clip.trackId) ?? this.groupNodes.get(clip.trackId);
     if (!nodes) return;
     const srcBuffer = this.bank?.get(clip.bufferId);
@@ -1921,17 +1822,12 @@ export class AudioEngine {
       // moves the key to the newest slot; eviction drops only the oldest —
       // same policy as the sampler's pitch cache in registry.ts).
       const cacheKey = `${clip.bufferId}|${rate}|${reverse ? 1 : 0}`;
-      let stretched = this.stretchCache.get(cacheKey);
+      let stretched = this.warpManager.getStretched(cacheKey);
       if (stretched) {
-        this.stretchCache.delete(cacheKey);
-        this.stretchCache.set(cacheKey, stretched);
+        this.warpManager.storeStretched(cacheKey, stretched);
       } else {
         stretched = computeStretchedBuffer(ctx, srcBuffer, rate, reverse);
-        if (this.stretchCache.size >= AudioEngine.STRETCH_CACHE_LIMIT) {
-          const oldest = this.stretchCache.keys().next().value as string | undefined;
-          if (oldest !== undefined) this.stretchCache.delete(oldest);
-        }
-        this.stretchCache.set(cacheKey, stretched);
+        this.warpManager.storeStretched(cacheKey, stretched);
       }
       playBuffer = stretched;
       playbackRate = 1;
@@ -2027,12 +1923,12 @@ export class AudioEngine {
     // the next loop iteration is exact.
     let warpedHit: AudioBuffer | null = null;
     if (hasWarpPins && !reverse && clip.loop !== true && clip.stretchMode === "stretch") {
-      warpedHit = this.warpCache.get(this.warpCacheKey(clip, clipDurSec)) ?? null;
+      warpedHit = this.warpManager.getWarp(this.warpManager.warpCacheKey(clip, clipDurSec));
       if (warpedHit) {
         source.buffer = warpedHit;
         source.playbackRate.value = 1;
       } else {
-        this.warmWarp(clip, clipDurSec);
+        this.warpManager.warmWarp(clip, clipDurSec);
       }
     }
 
@@ -2189,156 +2085,20 @@ export class AudioEngine {
    * must never outlive their source project.
    */
   clearStretchCache(): void {
-    this.stretchCache.clear();
+    this.warpManager.clearStretchCache();
   }
 
   /** Clear pitch-preserving warp renders (project swap / bank rebuild). */
   clearWarpCache(): void {
-    this.warpCache.clear();
-    this.warpInflight.clear();
+    this.warpManager.clearWarpCache();
   }
 
-  /** Tempo-exact cache key: buffer + wall length + warp pins. */
-  private warpCacheKey(clip: import("../project-model/types").AudioClip, wallSec: number): string {
-    const pins = (clip.warpMarkers ?? []).map((m) => `${m.timeSec.toFixed(3)}@${Math.round(m.tick)}`).join(",");
-    return `${clip.bufferId}|w${wallSec.toFixed(3)}|${hashString(pins).toString(36)}`;
+  precomputeWarpSync(clip: AudioClip, wallSec: number): AudioBuffer | null {
+    return this.warpManager.precomputeWarpSync(clip, wallSec);
   }
 
-  /**
-   * Shared sync core for warp renders: bank buffer → repitch segments →
-   * pitch-preserving rate envelope → render job. Used by the synchronous
-   * offline path and (for its cheap prefix) by the async live warmer.
-   * The warp map fully determines timing here — stretchRate is bypassed
-   * (pins capture the geometry; a pin placed at the straight-playback
-   * position reproduces the legacy rate).
-   */
-  private buildWarpJob(
-    clip: import("../project-model/types").AudioClip,
-    wallSec: number,
-  ): {
-    key: string;
-    src: AudioBuffer;
-    intervals: WarpRateInterval[];
-    outLen: number;
-    sampleRate: number;
-  } | null {
-    const ctx = this.ctx;
-    const src = this.bank?.get(clip.bufferId);
-    if (!ctx || !src) return null;
-    const markers = clip.warpMarkers ?? [];
-    if (markers.length === 0 || clip.reverse || clip.loop) return null;
-    if (clip.stretchMode !== "stretch") return null;
-    if (!Number.isFinite(wallSec) || wallSec <= 0) return null;
-    const clipTicks = clip.lengthBars * BAR_TICKS;
-    if (!(clipTicks > 0)) return null;
-    const spt = wallSec / clipTicks;
-    const { playOffset, contentDur } = audioClipPlayWindow(clip, src.duration, Infinity, 1);
-    const segs = buildWarpSegments({
-      markers,
-      clipStartTick: clip.startBar * BAR_TICKS,
-      clipTicks,
-      spt,
-      contentStartSec: playOffset,
-      contentDurSec: contentDur,
-    });
-    if (!segs) return null;
-    const intervals = segs.map((s) => ({
-      startSec: s.startTick * spt,
-      endSec: s.endTick * spt,
-      rate: Math.min(
-        4,
-        Math.max(0.25, ((s.endTick - s.startTick) * spt) / Math.max(1e-6, s.bufEndSec - s.bufStartSec)),
-      ),
-    }));
-    return {
-      key: this.warpCacheKey(clip, wallSec),
-      src,
-      intervals,
-      outLen: Math.max(1, Math.round(wallSec * ctx.sampleRate)),
-      sampleRate: ctx.sampleRate,
-    };
-  }
-
-  private storeWarpBuffer(key: string, buf: AudioBuffer): void {
-    if (this.warpCache.has(key)) this.warpCache.delete(key);
-    else if (this.warpCache.size >= AudioEngine.WARP_CACHE_LIMIT) {
-      const oldest = this.warpCache.keys().next().value as string | undefined;
-      if (oldest !== undefined) this.warpCache.delete(oldest);
-    }
-    this.warpCache.set(key, buf);
-  }
-
-  /**
-   * Synchronous pitch-preserving warp render (offline/export path — no
-   * realtime pressure). Result is cached, so the live trigger hitting the
-   * same wall length plays the identical buffer.
-   */
-  precomputeWarpSync(clip: import("../project-model/types").AudioClip, wallSec: number): AudioBuffer | null {
-    const ctx = this.ctx;
-    const job = this.buildWarpJob(clip, wallSec);
-    if (!ctx || !job) return null;
-    const hit = this.warpCache.get(job.key);
-    if (hit) return hit;
-    try {
-      const rateAt = warpRateEnvelope(job.intervals);
-      const buf = ctx.createBuffer(job.src.numberOfChannels, job.outLen, job.sampleRate);
-      for (let c = 0; c < job.src.numberOfChannels; c++) {
-        buf
-          .getChannelData(c)
-          .set(phaseVocoderWarpChannel(job.src.getChannelData(c), job.sampleRate, rateAt, job.outLen));
-      }
-      this.storeWarpBuffer(job.key, buf);
-      return buf;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Project-tempo estimate for UI-driven prewarming (the exact wall follows
-   * the scene tempo at trigger; a tempo-mismatched key simply misses and
-   * re-warms). Called after warp edits so the next play is already exact.
-   */
-  warmWarpForClip(clip: import("../project-model/types").AudioClip): void {
-    const bpm = this.doc?.bpm;
-    if (!bpm || !(bpm > 0)) return;
-    this.warmWarp(clip, (clip.lengthBars * BAR_TICKS * 60) / (bpm * PPQ));
-  }
-
-  /** Background warp render into the cache (worker when worthwhile). */
-  private warmWarp(clip: import("../project-model/types").AudioClip, wallSec: number): void {
-    const job = this.buildWarpJob(clip, wallSec);
-    if (!job) return;
-    if (this.warpCache.has(job.key) || this.warpInflight.has(job.key)) return;
-    const epoch = this.warpEpoch;
-    const warmCtx = this.ctx;
-    this.warpInflight.add(job.key);
-    const channels: Float32Array[] = [];
-    for (let c = 0; c < job.src.numberOfChannels; c++) channels.push(Float32Array.from(job.src.getChannelData(c)));
-    // Audit 12 D1: ALWAYS release the in-flight claim — a rejected render
-    // (worker onerror falling into a throwing runSync) used to leave the key
-    // claimed forever, silently starving every later re-warm of this clip
-    // into repitch fallback for the rest of the session.
-    renderWarpPreserveAsync(channels, job.sampleRate, job.intervals, job.outLen)
-      .catch((error) => {
-        console.warn("[audio-engine] background warp render failed:", error);
-        return null;
-      })
-      .then((rendered) => {
-        this.warpInflight.delete(job.key);
-        if (!rendered) return;
-        const ctx = this.ctx;
-        if (rendered.length === 0 || this.warpEpoch !== epoch || !ctx || ctx !== warmCtx) return;
-        try {
-          const buf = ctx.createBuffer(rendered.length, job.outLen, job.sampleRate);
-          rendered.forEach((ch, i) => {
-            if (i < buf.numberOfChannels) buf.getChannelData(i).set(ch.subarray(0, job.outLen));
-          });
-          this.storeWarpBuffer(job.key, buf);
-        } catch {
-          /* context died mid-render */
-        }
-      });
+  warmWarpForClip(clip: AudioClip): void {
+    this.warpManager.warmWarpForClip(clip);
   }
 
   previewNote(trackId: string, pitch: number): void {
@@ -2523,7 +2283,7 @@ export class AudioEngine {
     const trackNodes = this.trackNodes.get(trackId);
     if (!ctx || !trackNodes) return;
     // Frozen tracks play back a pre-rendered buffer — skip individual triggers
-    if (this.frozenBuffers.has(trackId)) return;
+    if (this.warpManager.isFrozen(trackId)) return;
     const buffer = this.bank?.get(sampleId ?? pad.assetId ?? "");
     if (!buffer) {
       if (pad.synth) {
@@ -3200,10 +2960,7 @@ export class AudioEngine {
       this.voices.clear();
       this.previewDeck.disposeAll();
       this.stopOneShotSources();
-      this.frozenBuffers.clear();
-      this.frozenBufferIds.clear();
-      this.frozenPlaying = false;
-      this.frozenAlign = null;
+      this.warpManager.disposeAllFrozen();
       this.automation.disposeLfos();
       for (const state of this.instruments.values()) {
         try {
@@ -3247,22 +3004,7 @@ export class AudioEngine {
       }
     }
     this.voices.clear();
-    for (const source of this.frozenBuffers.values()) {
-      try {
-        source.stop(now);
-      } catch {
-        /* already stopped */
-      }
-      try {
-        source.disconnect();
-      } catch {
-        /* already disconnected */
-      }
-    }
-    this.frozenBuffers.clear();
-    this.frozenBufferIds.clear();
-    this.frozenPlaying = false;
-    this.frozenAlign = null;
+    this.warpManager.disposeAllFrozen(now);
     for (const state of this.instruments.values()) state.runtime.panic();
   }
 
@@ -3863,62 +3605,4 @@ export function warpSegmentRenders(
     const fadeOutDur = i + 1 < segs.length ? overlapOut : edgeFade;
     return { startOffsetSec, bufOffsetSec, playDurSec, fadeInAt, fadeInDur, fadeOutAt, fadeOutDur };
   });
-}
-
-/**
- * Resolve an AudioClip's playback window inside the (possibly stretched)
- * play buffer. `offsetSec`/`trimStart`/`trimEnd` are seconds in the ORIGINAL
- * sample; `timeScale` converts them into the play buffer's timeline (1 for
- * resample mode, the stretch rate for pre-stretched buffers). Pure — shared
- * reasoning for live playback and offline render.
- *
- * `contentDur` is the full trimmed content length (before capping to the
- * requested clip length) — the loop region for `clip.loop` texture beds.
- */
-export function audioClipPlayWindow(
-  clip: import("../project-model/types").AudioClip,
-  playBufferDurationSec: number,
-  requestedDurationSec: number,
-  timeScale: number,
-): {
-  /** Wall-clock duration after source-window limits are applied. */
-  duration: number;
-  /** Duration argument for AudioBufferSourceNode.start(), in buffer seconds. */
-  bufferDuration: number;
-  /** Source playhead position passed to start(). */
-  playOffset: number;
-  /** Trimmed content length in play-buffer seconds. */
-  contentDur: number;
-  /** Loop region endpoints in play-buffer seconds. */
-  loopStart: number;
-  loopEnd: number;
-} {
-  const offset = Math.max(0, ((clip.offsetSec ?? 0) + (clip.trimStart ?? 0)) * timeScale);
-  const trimEnd = Math.max(0, (clip.trimEnd ?? 0) * timeScale);
-  const maxDur = Math.max(0.01, playBufferDurationSec - offset - trimEnd);
-  const rate = Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
-  const preStretched = clip.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01 && timeScale !== 1;
-  const playbackRate = preStretched ? 1 : rate;
-  const bufferDuration = Math.min(Math.max(0, requestedDurationSec * playbackRate), maxDur);
-  const loopStart = offset;
-  const loopEnd = Math.min(playBufferDurationSec, offset + maxDur);
-  const loopContentDur = Math.max(0, loopEnd - loopStart);
-  const loopingForward = clip.loop === true && clip.reverse !== true && loopContentDur > 0.02;
-  const duration = loopingForward ? requestedDurationSec : bufferDuration / playbackRate;
-  let playOffset: number;
-  if (loopingForward) {
-    const sourceLoopDur = loopContentDur / timeScale;
-    const phase = Math.max(0, Number.isFinite(clip.loopPhaseOffsetSec) ? clip.loopPhaseOffsetSec! : 0);
-    const wrappedPhase = sourceLoopDur > 0 ? phase % sourceLoopDur : 0;
-    playOffset = loopStart + wrappedPhase * timeScale;
-  } else if (clip.reverse) {
-    // Pitch-preserving reverse uses a physically reversed stretched buffer;
-    // resample reverse uses the original buffer and a negative playbackRate.
-    playOffset = preStretched
-      ? Math.max(0, playBufferDurationSec - offset - bufferDuration)
-      : Math.min(playBufferDurationSec, offset + bufferDuration);
-  } else {
-    playOffset = offset;
-  }
-  return { duration, bufferDuration, playOffset, contentDur: maxDur, loopStart, loopEnd };
 }
