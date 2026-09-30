@@ -394,7 +394,6 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
               fallbackReason={fallbacks[selectedFx.id]}
               gainReductionDb={gainReduction[selectedFx.id]}
               expanded
-              onToggleFocus={() => {}}
               devicesMode
             />
           ) : (
@@ -496,7 +495,8 @@ function Device({
   fallbackReason?: string;
   gainReductionDb?: number;
   expanded: boolean;
-  onToggleFocus: () => void;
+  /** Omit when the host has no expand state (the devices dock's single editor). */
+  onToggleFocus?: () => void;
   devicesMode?: boolean;
 }) {
   const services = useServices();
@@ -563,17 +563,22 @@ function Device({
       className={`fx-device${devicesMode ? " device-editor" : ""}${fx.bypassed ? " bypassed" : ""}${expanded ? "" : " collapsed"}`}
     >
       <div className="fx-device-header">
-        <button
-          type="button"
-          className="fx-device-toggle"
-          aria-expanded={expanded}
-          aria-controls={contentId}
-          aria-label={`${expanded ? "Collapse" : "Expand"} ${def.name}`}
-          title={`${expanded ? "Collapse" : "Expand"} ${def.name}`}
-          onClick={onToggleFocus}
-        >
-          <span aria-hidden="true">{expanded ? "▾" : "▸"}</span>
-        </button>
+        {/* Collapse control only exists where the host owns the expand state.
+            The devices dock renders one always-expanded editor surface, so a
+            toggle there was a button that looked live and did nothing. */}
+        {onToggleFocus && (
+          <button
+            type="button"
+            className="fx-device-toggle"
+            aria-expanded={expanded}
+            aria-controls={contentId}
+            aria-label={`${expanded ? "Collapse" : "Expand"} ${def.name}`}
+            title={`${expanded ? "Collapse" : "Expand"} ${def.name}`}
+            onClick={onToggleFocus}
+          >
+            <span aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+          </button>
+        )}
         <span className="fx-device-title">
           <span className="fx-device-name">{def.name}</span>
           <span className={`fx-device-family family-${editorSpec.family}`}>{editorSpec.family.toUpperCase()}</span>

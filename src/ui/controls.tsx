@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 /**
  * Built-in value menu shared by Slider and DragNumber: right-click (mouse) or
@@ -333,10 +333,18 @@ export function Slider({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
         onContextMenu={(event) => {
+          // A disabled slider owns no interaction surface: pointer, keyboard,
+          // context menu and double-click must all stay inert, otherwise a
+          // control the user reads as locked still writes to the document
+          // (double-click reset / menu "Reset to default").
+          if (disabled) return;
           event.preventDefault();
           openMenu(event.clientX, event.clientY);
         }}
-        onDoubleClick={() => onCommit(defaultValue)}
+        onDoubleClick={() => {
+          if (disabled) return;
+          onCommit(defaultValue);
+        }}
         onKeyDown={(event) => {
           if (disabled) return;
           // Keyboard steps move in ratio domain so log knobs step musically
@@ -406,6 +414,34 @@ interface DragNumberProps {
   /** Plain-language explanation shown in the tooltip before the gesture help. */
   hint?: string;
   onCommit: (value: number) => void;
+  /**
+   * Arrow-key increment. Defaults to a range-derived step (1 unit for spans of
+   * 1+, span/100 below that) so a sub-unit control nudges by a usable amount
+   * instead of slamming to the end stop.
+   */
+  step?: number;
+}
+
+/**
+ * Numeric resolution for a DragNumber (pure — unit-tested).
+ *
+ * The previous implementation quantised to a hardcoded 1 decimal and stepped the
+ * arrow keys by a hardcoded 1 unit. On sub-unit controls that silently destroyed
+ * the precision the control advertises: HUMANIZE (0..0.5, 0.005/px drag,
+ * 2-decimal display) snapped to 0.0 / 0.1 / 0.2 — roughly 10 dead pixels of
+ * drag followed by a jump across a fifth of the range — and a single arrow press
+ * pushed the value straight to the maximum. Resolution is now derived from the
+ * range, so `decimals` can express what the drag sensitivity moves per pixel and
+ * `step` stays a fraction of the range.
+ */
+export function dragNumberResolution(min: number, max: number, step?: number): { step: number; decimals: number } {
+  const span = Math.abs(max - min);
+  if (!Number.isFinite(span) || span <= 0) return { step: 1, decimals: 1 };
+  const resolved = step !== undefined && Number.isFinite(step) && step > 0 ? step : span >= 1 ? 1 : span / 100;
+  // ~200 distinguishable positions across the range, clamped to what a human
+  // reads as a numeric field (1..4 decimals).
+  const decimals = Math.min(4, Math.max(1, Math.ceil(-Math.log10(span / 200))));
+  return { step: resolved, decimals };
 }
 
 export function DragNumber({
@@ -418,6 +454,7 @@ export function DragNumber({
   label,
   hint,
   onCommit,
+  step,
 }: DragNumberProps) {
   const [edit, setEdit] = useState<number | null>(null);
   const [typeDraft, setTypeDraft] = useState<string | null>(null);
@@ -429,8 +466,21 @@ export function DragNumber({
   const holdFired = useRef(false);
   const startY = useRef(0);
   const startValue = useRef(0);
+  const { step: stepSize, decimals } = useMemo(() => dragNumberResolution(min, max, step), [min, max, step]);
 
   const shown = edit ?? value;
+
+  // Clamp + quantise to the control's resolution. Used by drag, arrow keys and
+  // typed entry so all three resolve the same precision.
+  const quantize = (raw: number) => {
+    const factor = 10 ** decimals;
+    const snapped = Math.round(raw * factor) / factor;
+    return Math.min(max, Math.max(min, snapped));
+  };
+
+  // Commit path only — never called from pointermove (a drag previews locally
+  // and writes the document exactly once, on release).
+  const cleanCommit = (raw: number) => onCommit(quantize(raw));
 
   const clearMenuTimer = () => {
     if (menuTimer.current !== null) {
@@ -469,11 +519,8 @@ export function DragNumber({
     const anchor = menuAnchor.current;
     if (anchor && Math.abs(event.clientY - startY.current) > 6) clearMenuTimer();
     const delta = (startY.current - event.clientY) * sensitivity;
-    const raw = Math.min(max, Math.max(min, startValue.current + delta));
-    setEdit(Math.round(raw * 10) / 10);
+    setEdit(quantize(startValue.current + delta));
   };
-
-  const cleanCommit = (raw: number) => onCommit(Math.min(max, Math.max(min, Math.round(raw * 10) / 10)));
 
   const handlePointerUp = () => {
     clearMenuTimer();
@@ -482,7 +529,12 @@ export function DragNumber({
       return;
     }
     if (edit === null) return;
-    cleanCommit(edit);
+    // A zero-movement click (focus, or a long-press that never fired) must not
+    // write: committing the unchanged value pushes a no-op command into undo
+    // history and re-sends the parameter to the engine for nothing. Compare
+    // against the quantised start value so a click is a no-op even when the
+    // incoming value carries more precision than this control can express.
+    if (edit !== quantize(startValue.current)) cleanCommit(edit);
     setEdit(null);
   };
 
@@ -530,11 +582,11 @@ export function DragNumber({
         }
         if (event.key === "ArrowUp") {
           event.preventDefault();
-          cleanCommit(shown + 1);
+          cleanCommit(shown + stepSize);
         }
         if (event.key === "ArrowDown") {
           event.preventDefault();
-          cleanCommit(shown - 1);
+          cleanCommit(shown - stepSize);
         }
       }}
     >
@@ -566,7 +618,7 @@ export function DragNumber({
           }}
         />
       ) : (
-        <span className="drag-number-value">{format ? format(shown) : shown.toFixed(1)}</span>
+        <span className="drag-number-value">{format ? format(shown) : shown.toFixed(decimals)}</span>
       )}
       {menu && (
         <ValueMenu

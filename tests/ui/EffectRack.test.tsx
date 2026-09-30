@@ -36,6 +36,34 @@ describe("EffectRack", () => {
     expect(deviceNames.length).toBe(2);
   });
 
+  it("devices dock exposes no dead collapse control (audit: button did nothing)", async () => {
+    const user = userEvent.setup();
+    const { doc, track } = trackWithEffects(2);
+    renderWithContext(<EffectRack track={track} mode="devices" />, { services: mockServices(doc) });
+    // The devices dock renders one always-expanded editor surface. Before the
+    // audit it still rendered the chevron with a no-op onClick, so a visible
+    // "Collapse <device>" button silently did nothing.
+    const toggle = document.querySelector(".fx-device-toggle");
+    expect(toggle).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Collapse / })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Expand / })).toBeNull();
+    // The device content itself is present and interactive.
+    expect(document.querySelectorAll(".fx-device-name").length).toBe(1);
+    const before = document.querySelector(".fx-device")?.className ?? "";
+    await user.click(screen.getByText(EFFECT_DEFS.delay.name, { selector: ".fx-device-name" }));
+    expect(document.querySelector(".fx-device")?.className ?? "").not.toHaveLength(0);
+    expect(before).toBeTruthy();
+  });
+
+  it("classic rack still collapses a device (the real toggle is untouched)", async () => {
+    const user = userEvent.setup();
+    const { doc, track } = trackWithEffects(1);
+    renderWithContext(<EffectRack track={track} />, { services: mockServices(doc) });
+    const collapse = screen.getByRole("button", { name: "Collapse Delay" });
+    await user.click(collapse);
+    expect(screen.getByRole("button", { name: "Expand Delay" })).toBeInTheDocument();
+  });
+
   it("opens the goal-first add popover with the full device grid", () => {
     const { doc, track } = trackWithEffects(0);
     renderWithContext(<EffectRack track={track} />, { services: mockServices(doc) });
@@ -86,13 +114,14 @@ describe("EffectRack", () => {
     // execute it on the real doc and inspect the landing.
     const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls[0][0];
     const after = executed.execute(doc);
-    const fx = (after.tracks.find((t: { id: string }) => t.id === track.id) as {
-      effects: { type: string; params: Record<string, number> }[];
-    }).effects.find((f) => f.type === "vinyl")!;
+    const fx = (
+      after.tracks.find((t: { id: string }) => t.id === track.id) as {
+        effects: { type: string; params: Record<string, number> }[];
+      }
+    ).effects.find((f) => f.type === "vinyl")!;
     expect(fx.params.amount).toBe(0.45); // 808 dust, not factory 0.5
     expect(fx.params.mix).toBe(1);
   });
-
 
   it("disables move-earlier on first effect", () => {
     const { doc, track } = trackWithEffects(2);
