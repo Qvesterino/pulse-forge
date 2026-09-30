@@ -254,6 +254,19 @@ disable/answer`), pending-call map + 10 s timeout per forwarded call
   HTTP/stdio: bridge auth + guards, stdio subprocess round-trip (13 tools),
   host-manager pending-call lifecycle, tool-defs mirror pin
 
+### D6. Protocol completeness (2025-03-26) — SHIPPED (888aae9c + 2f27837)
+
+- initialize version negotiation (echo a supported client version, else the
+  latest we serve) + `instructions` field describing the read→act→verify
+  contract
+- `resources` capability: resources/list + resources/read over the five
+  `kyx://project/*` URIs (overview / pattern grid / mix / arrangement /
+  history) — live content relayed through the hidden `__kyx_resource`
+  channel shared by all transports
+- JSON-RPC batch bodies fan out per-request; notifications yield no entry
+- unknown `tools/call` names are protocol errors (-32602), and tool-layer
+  failures surface as `isError` results
+
 **Gate D:** an MCP inspector (or any stdio client) lists the 13 tools,
 `kyx_intent("mute the drums")` returns the wave-8 read-back and the doc
 state matches; two-failure breaker and auth-token rejection tested.
