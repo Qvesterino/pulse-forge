@@ -2222,8 +2222,14 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     engine.useContext(ctx);
     engine.setProject(frozenDoc);
     engine.restartFrozenSources(0); // live playback path owns frozen source creation
-    const frozenState = engine as unknown as { frozenBuffers: Map<string, AudioBufferSourceNode> };
-    const startedWhileLive = frozenState.frozenBuffers.has(drum.id);
+    // Wave 4e: frozen sources live in WarpManager — read through its surface.
+    const frozenState = engine as unknown as {
+      warpManager: {
+        isFrozen(id: string): boolean;
+        frozenBuffers: Map<string, AudioBufferSourceNode>;
+      };
+    };
+    const startedWhileLive = frozenState.warpManager.isFrozen(drum.id);
     engine.setProject({ ...frozenDoc, tracks: frozenDoc.tracks.filter((t) => t.id !== drum.id) });
     // A second synchronous setProject lands in the engine's re-entrancy
     // queue (projectPromise is still pending) — yield a macrotask so the
@@ -2231,8 +2237,8 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     await new Promise((resolve) => setTimeout(resolve, 0));
     check(
       "frozen: deleting a frozen track stops + removes its buffer source",
-      startedWhileLive && frozenState.frozenBuffers.size === 0,
-      `started=${startedWhileLive} remainingSources=${frozenState.frozenBuffers.size}`,
+      startedWhileLive && frozenState.warpManager.frozenBuffers.size === 0,
+      `started=${startedWhileLive} remainingSources=${frozenState.warpManager.frozenBuffers.size}`,
     );
   } catch (error) {
     check("frozen: deleting a frozen track stops + removes its buffer source", false, String(error));
@@ -4370,7 +4376,11 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     const ctx = new OfflineAudioContext(2, SR, SR);
     await loadAllWorklets(ctx);
     if (!isWorkletReady("compressor", ctx)) {
-      check("compressor: DE-ESS mode ducks the sibilance band, not the low band (host)", false, "worklet modules not ready");
+      check(
+        "compressor: DE-ESS mode ducks the sibilance band, not the low band (host)",
+        false,
+        "worklet modules not ready",
+      );
     } else {
       const rmsThrough = async (params: Record<string, number>, hz: number): Promise<number> => {
         // Each probe needs a FRESH context — startRendering closes it, so a
