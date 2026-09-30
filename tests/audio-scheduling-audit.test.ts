@@ -88,7 +88,9 @@ describe("MidiOutput.cancelPending (audit 03)", () => {
 
 describe("engine ratio p-lock capability check (audit 03)", () => {
   it("noteOn uses if/else instead of the void `??` fallback", () => {
-    const source = readFileSync(resolve(process.cwd(), "src/audio-engine/AudioEngine.ts"), "utf8");
+    // Wave 4f: noteOn lives in triggerEngine.ts (verbatim move — the
+    // if/else capability contract must survive with it).
+    const source = readFileSync(resolve(process.cwd(), "src/audio-engine/triggerEngine.ts"), "utf8");
     const start = source.indexOf("needsRatioLock) {", source.indexOf("noteOn("));
     const body = source.slice(start, start + 2600);
     expect(body).not.toMatch(/setParameterAt\?\([\s\S]*?\?\?/);

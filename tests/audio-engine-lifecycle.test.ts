@@ -169,7 +169,8 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     const earlyReturn = body.indexOf("if (!ctx)");
     const earlyReturnEnd = body.indexOf("return;", earlyReturn);
     const earlyReturnBlock = body.slice(earlyReturn, earlyReturnEnd);
-    expect(earlyReturnBlock).toMatch(/this\.voices\.clear\(\)/);
+    // Wave 4f: the voice set lives in TriggerEngine — hardClearVoices.
+    expect(earlyReturnBlock).toMatch(/this\.triggerEngine\.hardClearVoices\(\)/);
     expect(earlyReturnBlock).toMatch(/this\.automation\.disposeLfos\(\)/);
   });
 
@@ -192,7 +193,8 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     // Wave 4c: the audition voice sets live in PreviewDeck now — their
     // hard dispose is previewDeck.disposeAll() (stop + disconnect + clear).
     for (const cleared of [
-      "this.voices.clear()",
+      // Wave 4f: the voice set lives in TriggerEngine.
+      "this.triggerEngine.disposeVoicesForContextSwap()",
       "this.previewDeck.disposeAll()",
       // Wave 4e: frozen sources live in WarpManager — the context swap
       // hard-disposes them through the manager.
@@ -209,12 +211,16 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     // gain so the source's onended callback (which still mutates the
     // voices Set via `voices.delete(voice)`) cannot silently drop a
     // voice that belongs to the new context.
-    const voiceBlock = body.slice(
-      body.indexOf("for (const voice of this.voices)"),
-      body.indexOf("this.voices.clear()"),
+    // Wave 4f: the stop→disconnect→clear sequence moved INTO TriggerEngine
+    // (disposeVoicesForContextSwap) — pin it there instead.
+    const triggerSource = readFileSync(resolve(process.cwd(), "src/audio-engine/triggerEngine.ts"), "utf8");
+    const voiceBlock = triggerSource.slice(
+      triggerSource.indexOf("disposeVoicesForContextSwap(): void {"),
+      triggerSource.indexOf("hardClearVoices(): void {"),
     );
     expect(voiceBlock).toMatch(/voice\.source\.stop\(\)/);
     expect(voiceBlock).toMatch(/voice\.gain\.disconnect\(\)/);
+    expect(voiceBlock).toMatch(/this\.voices\.clear\(\)/);
   });
 
   it("ensureContext() swallows a rejected resume() (recovery-path hardening)", () => {
@@ -296,7 +302,8 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     // makes the badge say "0 voices" while audio still plays — confusing.
     const body = sliceFunction(readEngine(), /get\s+voiceCount\s*\(\)/);
     expect(body, "voiceCount getter not found in AudioEngine.ts").not.toBe("");
-    expect(body, "voiceCount must read from this.voices").toMatch(/this\.voices\.size/);
+    // Wave 4f: the voice set lives in TriggerEngine — the getter delegates.
+    expect(body, "voiceCount must delegate to triggerEngine").toMatch(/this\.triggerEngine\.voiceCount/);
   });
 
   it("currentTime getter falls back to 0 when no context is bound", () => {
