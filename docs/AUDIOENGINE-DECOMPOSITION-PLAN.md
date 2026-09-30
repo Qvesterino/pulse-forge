@@ -1,6 +1,6 @@
 # AudioEngine decomposition plan (Robustness Wave 4)
 
-> Status: IN PROGRESS — **4a MeteringRig SHIPPED** (`d81090f1`; AudioEngine 6140 → 5905) + **4b MasterChain SHIPPED** (absorbed `d4659fad`/`00bb9811`; AudioEngine → 5 134, MasterChain 841, liveContext helper). **4c PreviewDeck SHIPPED** (`4d8bb123`; AudioEngine → 4 823, PreviewDeck 350, declick 66). **4d AutomationBridge SHIPPED** (`badfd106`; AudioEngine → 3 910, AutomationBridge 1 001 + DeviceLookup 147; step-1 resolvers first, exactly as planned). **4e WarpManager SHIPPED** (`84db374a` + check-surface fix `1dd2c5ad`; AudioEngine → 3 608, WarpManager 500). Next: 4f TriggerEngine — the LAST wave. Owner: pro-DAW robustness campaign (Waves 1–3 shipped:
+> Status: IN PROGRESS — **4a MeteringRig SHIPPED** (`d81090f1`; AudioEngine 6140 → 5905) + **4b MasterChain SHIPPED** (absorbed `d4659fad`/`00bb9811`; AudioEngine → 5 134, MasterChain 841, liveContext helper). **4c PreviewDeck SHIPPED** (`4d8bb123`; AudioEngine → 4 823, PreviewDeck 350, declick 66). **4d AutomationBridge SHIPPED** (`badfd106`; AudioEngine → 3 910, AutomationBridge 1 001 + DeviceLookup 147; step-1 resolvers first, exactly as planned). **4e WarpManager SHIPPED** (`84db374a` + check-surface fix `1dd2c5ad`; AudioEngine → 3 608, WarpManager 500). **4f TriggerEngine SHIPPED** (`ffc55b69`; AudioEngine → **2 497 lines, −59 % at campaign end**; TriggerEngine 1 288 + warpSegmentRenders block). **DECOMPOSITION COMPLETE — 6/6 waves.** Owner: pro-DAW robustness campaign (Waves 1–3 shipped:
 > crash journal, PDC export parity, audio-clock scheduler driver).
 > Measured against the working tree on 2026-09-29 (commit `0bb5670f` era).
 
@@ -110,7 +110,7 @@ unit-shaped. Do it after 4b (frozen sources route through the graph) and before
 4f (audio-clip triggers consume warp buffers). Gate: warp cache + take-audition
 suites.
 
-### Wave 4f — TriggerEngine (risk: high, do LAST)
+### Wave 4f — TriggerEngine (risk: high, do LAST) — SHIPPED `ffc55b69` (single class; sampler+synth split proved unnecessary)
 
 `trigger`/`triggerSynth`/`noteOn`/choke/pad-mods/MIDI. This is the realtime
 performance path — extract only after 4a–4e have stabilized the seams it touches
