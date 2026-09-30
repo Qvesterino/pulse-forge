@@ -1,6 +1,6 @@
 # AudioEngine decomposition plan (Robustness Wave 4)
 
-> Status: PLAN — not started. Owner: pro-DAW robustness campaign (Waves 1–3 shipped:
+> Status: IN PROGRESS — **4a MeteringRig SHIPPED** (`d81090f1`, 2026-09-30; AudioEngine 6140 → 5905 lines, MeteringRig 365). Next: 4b MasterChain. Owner: pro-DAW robustness campaign (Waves 1–3 shipped:
 > crash journal, PDC export parity, audio-clock scheduler driver).
 > Measured against the working tree on 2026-09-29 (commit `0bb5670f` era).
 
@@ -72,7 +72,7 @@ Hard rules for every extraction:
 
 ## 3. Waves (each independently shippable, ordered by risk)
 
-### Wave 4a — MeteringRig (risk: low)
+### Wave 4a — MeteringRig (risk: low) — SHIPPED `d81090f1`
 
 Extract metering/analysis: `getTrackLevel` … `getMasterMeterSnapshot`,
 `computeMasterMeterSnapshot`, spectrogram/spectrum tap getters, meter caches and
