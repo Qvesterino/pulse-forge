@@ -8,6 +8,7 @@ import { toGbnfGrammar } from "../src/intent/model-schema";
 import { isIntentModelManifest, manifestGatePassed } from "../src/intent/model-loader-types";
 import {
   buildIntentBow,
+  expandIntentFeatures,
   canonicalModelJson,
   decodeIntentHeads,
   tokenizeIntentInstruction,
@@ -136,5 +137,30 @@ describe("intent model decoder contract", () => {
     };
     expect(decodeIntentHeads({ head_kind: one("kind", "preset") }, vocab)).toBeNull();
     expect(decodeIntentHeads({ head_kind: one("kind", "compound") }, vocab)).toBeNull();
+  });
+});
+
+describe("expandIntentFeatures (intent-features.v2)", () => {
+  it("unigrams + bigrams + char 3-grams over the padded word", () => {
+    const features = expandIntentFeatures(["turn", "down"]);
+    expect(features).toContain("turn");
+    expect(features).toContain("down");
+    expect(features).toContain("turn_down");
+    expect(features).toContain("^tu");
+    expect(features).toContain("wn$");
+  });
+
+  it("char grams carry the fuzzy read: a typo keeps most of its signature", () => {
+    const clean = new Set(expandIntentFeatures(tokenizeIntentInstruction("turn down the drums")));
+    const typo = expandIntentFeatures(tokenizeIntentInstruction("turn downn the drums"));
+    const shared = typo.filter((f) => clean.has(f)).length;
+    expect(shared / typo.length).toBeGreaterThan(0.6);
+  });
+
+  it("buildIntentBow stays binary over the expanded feature vocab", () => {
+    const tokens = expandIntentFeatures(tokenizeIntentInstruction("turn down the drums")).slice(0, 50);
+    const bow = buildIntentBow("turn DOWN the drums", tokens);
+    expect(bow.length).toBe(tokens.length);
+    for (const v of bow) expect(v === 0 || v === 1).toBe(true);
   });
 });

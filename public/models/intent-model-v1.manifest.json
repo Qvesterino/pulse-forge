@@ -9,8 +9,8 @@
   },
   "model": {
     "url": "/models/intent-model-v1.onnx",
-    "bytes": 1054773,
-    "sha256": "ac244cefc6e451a865d1d766586f800bce046c0c0fc507ae4abbf859a4a892c4"
+    "bytes": 4321856,
+    "sha256": "0aa4afb8b0af320b0d880d13a807c5eeb77a75f531b5ed933ef18a60f3da3fc3"
   },
   "prompt": {
     "system": "You map a music-production instruction to one canonical action JSON object. Output only the JSON.",
@@ -21,9 +21,9 @@
     "temperature": 0
   },
   "features": {
-    "version": "intent-features.v1",
-    "vocabSha256": "a5e258d5e8cd3adda4693257922a2857458ba0d1a098a577d27865a5a3a6c506",
-    "vocabSize": 348,
+    "version": "intent-features.v2",
+    "vocabSha256": "7fa86ae4054698d5d96e07854d5e2124988708950e095ca4c14274513b1bd4b5",
+    "vocabSize": 2474,
     "url": "/models/intent-model-v1.vocab.json",
     "inputName": "features",
     "outputNames": [
@@ -240,7 +240,9 @@
           "-16",
           "-14",
           "-12",
+          "-10",
           "-9",
+          "-8",
           "-7"
         ]
       },
@@ -528,10 +530,10 @@
   },
   "report": {
     "gatePassed": false,
-    "trainRows": 1479,
-    "valRows": 247,
+    "trainRows": 1586,
+    "valRows": 264,
     "goldenRows": 74,
-    "valHeadAccuracyMean": 0.961,
+    "valHeadAccuracyMean": 0.9784,
     "gate": "scripts/validate-intent-model.mts — attempted-exact >= 0.95, wrongKind = 0"
   }
 }

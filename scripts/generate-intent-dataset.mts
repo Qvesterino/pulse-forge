@@ -1133,6 +1133,52 @@ function augmentation(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
   sk.push("hlasitosť na -10");
   sk.push("viac delayu");
 
+  // ── WRONGKIND WAVE 2 — v26 eval slip families (same dedupe discipline:
+  // exact val strings are never re-added, only siblings) ────────────────────
+  // arrange duplicate: the "double the X" grid — the model invented a
+  // non-schema "double" op when the held-out row named an unseen section
+  for (const role of ["intro", "verse", "bridge", "break", "build", "fill", "outro"]) {
+    en.push(`double the ${role}`);
+  }
+  // loudness numeric: the model dropped the number on held-out values
+  en.push("loudness na -10");
+  en.push("loudness na -12");
+  en.push("loudness to -13");
+  en.push("-9 lufs");
+  en.push("-16 lufs");
+  // transport loop/politeness family
+  en.push("loop vypni");
+  en.push("loop zapni");
+  en.push("please loop on");
+  sk.push("cyklus zapni");
+  sk.push("vypni cyklus");
+  sk.push("prosim hraj");
+  // typo-clarify siblings (pann/mut/soloo class)
+  en.push("pann the lead left 20");
+  en.push("soloo the drums");
+  en.push("mut the bass");
+  // SK effect-with-explicit-target reinforcement (viac reverbu na basi slip —
+  // the contrast against bare "viac reverbu" → clarify is the point)
+  sk.push("viac reverbu na bicie");
+  sk.push("menej reverbu na leade");
+  sk.push("viac delayu na basi");
+  sk.push("viac reverbu");
+  sk.push("viac saturácie");
+  sk.push("pridaj kompresiu na trubky");
+  // production noun-adjective family (hlbší bas slip)
+  sk.push("hlbší kick");
+  sk.push("teplejší bas");
+  sk.push("jasnejšie bicie");
+  // mix huge-reverb siblings (obri dozvuk slip) + SK mix scope + tempo slip
+  sk.push("obrovský dozvuk");
+  sk.push("viac reverbu v mixe");
+  sk.push("zrýchli");
+  sk.push("rýchlejšie");
+  sk.push("tempo hore");
+  // non-family effect asks fall to the mix profile (more reverb on the hats)
+  en.push("more reverb on the perc");
+  en.push("more delay on the congas");
+
   // ── MIXED-LANGUAGE SENTENCES (SK verb + EN target/fx — real slang) ───────
   sk.push("daj more reverb na lead");
   sk.push("nastav delay na bass to 25%");

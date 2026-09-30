@@ -23,23 +23,36 @@ function mix(layers: Float32Array[]): Float32Array {
   return out;
 }
 
-/** Post-fix shaped mix: kick transients over a quiet sustained bed — real
- * beats carry their crest in the envelopes (constant sines crest at ~4 dB
- * and would false-flag crest-collapse, which is exactly what the doctor
- * should catch on real renders). */
+/** Post-fix shaped mix: kick transients over a quiet sustained mid bed —
+ * real beats carry their crest in the envelopes and their energy across the
+ * spectrum (a bare 55 Hz loop measures 83 % low-end and false-flags; hits
+ * must fade out or the truncation reads as DC). */
 function healthyMix(): Float32Array {
   const seconds = 2;
   const m = mix([
-    sine(220, seconds, 0.06),
-    sine(880, seconds, 0.05),
-    sine(6000, seconds, 0.03),
+    sine(220, seconds, 0.12),
+    sine(300, seconds, 0.1),
+    sine(880, seconds, 0.08),
+    sine(1500, seconds, 0.07),
+    sine(6000, seconds, 0.04),
   ]);
-  // Kick transients every 0.5 s: 55 Hz body × exp decay peaking at 0.8.
+  // Kick transients every 0.5 s: 55 Hz body × exp decay, 5 ms fade-out so
+  // the hit never truncates mid-period. The hit is mean-centered before
+  // being mixed in — an exp-decayed sine carries a systematic DC shift
+  // (envelope-weighted half-waves, ~4 mV here) that real oscillators don't.
   const hitLen = Math.floor(0.25 * SR);
+  const fade = Math.floor(0.005 * SR);
+  const hit = new Float32Array(hitLen);
+  for (let i = 0; i < hitLen; i++) {
+    const env = Math.exp(-i / (0.06 * SR)) * (i > hitLen - fade ? (hitLen - i) / fade : 1);
+    hit[i] = 0.7 * env * Math.sin((2 * Math.PI * 55 * i) / SR);
+  }
+  let hitMean = 0;
+  for (const v of hit) hitMean += v;
+  hitMean /= hitLen;
+  for (let i = 0; i < hitLen; i++) hit[i] -= hitMean;
   for (let at = 0; at + hitLen <= m.length; at += Math.floor(0.5 * SR)) {
-    for (let i = 0; i < hitLen; i++) {
-      m[at + i] += 0.8 * Math.exp(-i / (0.06 * SR)) * Math.sin((2 * Math.PI * 55 * i) / SR);
-    }
+    for (let i = 0; i < hitLen; i++) m[at + i] += hit[i];
   }
   let peak = 0;
   for (const v of m) peak = Math.max(peak, Math.abs(v));

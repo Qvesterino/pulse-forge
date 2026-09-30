@@ -119,7 +119,11 @@ describe("master finish chain", () => {
     const engine = new AudioEngine();
     engine.useContext(mockCtx() as unknown as BaseAudioContext);
     engine.setProject(masterDoc(true) as never);
-    const anyEngine = engine as unknown as {};
+    const anyEngine = engine as unknown as {
+      masterChain: {
+        masterGlueNative: { threshold: { value: number }; ratio: { value: number } } | null;
+      };
+    };
     // No AudioWorklet in the mock → native fallback with glue settings.
     expect(anyEngine.masterChain.masterGlueNative?.threshold.value).toBe(-6);
     expect(anyEngine.masterChain.masterGlueNative?.ratio.value).toBe(2);

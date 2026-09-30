@@ -51,7 +51,7 @@ SFT_DIR = ROOT / "scripts" / "data" / "intent-sft"
 MODELS_DIR = ROOT / "public" / "models"
 
 TRUNK = [384, 192]
-VOCAB_CAP = 1024
+VOCAB_CAP = 4096
 EPOCHS = 4000
 LR = 2.5e-4
 GRAD_CLIP_NORM = 1.0
@@ -153,6 +153,24 @@ def tokenize(text: str) -> list[str]:
     stripped = "".join(ch for ch in lowered if not unicodedata.combining(ch))
     cleaned = re.sub(r"[^a-z0-9%+]+", " ", stripped)
     return [token for token in cleaned.split() if token]
+
+
+def features_of(text: str) -> list[str]:
+    """Feature expansion (intent-features.v2) — MUST mirror TS
+    expandIntentFeatures in src/intent/model-decoder.ts EXACTLY: word
+    unigrams, adjacent-word bigrams (`w1_w2`), and fastText-style char
+    3-grams over the `^word$`-padded form. Separators sit outside the word
+    charset, so no collision with plain words. Any drift between the two
+    implementations craters the validate gate."""
+    words = tokenize(text)
+    features = list(words)
+    for i in range(len(words) - 1):
+        features.append(f"{words[i]}_{words[i + 1]}")
+    for word in words:
+        padded = f"^{word}$"
+        for i in range(len(padded) - 2):
+            features.append(padded[i : i + 3])
+    return features
 
 
 def softmax(values: np.ndarray) -> np.ndarray:
@@ -391,21 +409,51 @@ class MultiHeadNet:
             if head["kind"] == "softmax":
                 smooth = label_smoothing()
                 target = np.full(logit.shape, smooth / len(head["classes"]), dtype=np.float64)
+                counts: dict[int, int] = {}
                 for row in range(n):
                     cls = label_index(head, batch_labels[row])
                     if cls is not None:
                         target[row, cls] += 1.0 - smooth
+                        counts[cls] = counts.get(cls, 0) + 1
                 probs = softmax(logit)
                 truth = target.argmax(axis=1)
-                loss += -np.mean(np.log(np.clip(probs[np.arange(n), truth], 1e-9, 1.0)))
-                dlogits = (probs - target) / n
+                if head["name"] == "kind":
+                    # Log-scaled class balance on the KIND head only: the
+                    # corpus is long-tailed (exact 474 rows vs save 6) and an
+                    # unweighted CE teaches the head to vote for the majority
+                    # kind — every ambiguous mix/export/select row then reads
+                    # "exact" (the measured val confusions). sqrt-inverse
+                    # frequency lifts the rare kinds without letting a
+                    # 4-row class dominate.
+                    row_weights = np.array(
+                        [
+                            (len(batch_labels) / (len(head["classes"]) * max(1, counts.get(c, 0)))) ** 0.5
+                            for c in (label_index(head, batch_labels[row]) for row in range(n))
+                        ],
+                        dtype=np.float64,
+                    )
+                    row_weights /= row_weights.mean()
+                else:
+                    row_weights = np.ones(n, dtype=np.float64)
+                loss += -np.mean(row_weights * np.log(np.clip(probs[np.arange(n), truth], 1e-9, 1.0)))
+                dlogits = (probs - target) * row_weights[:, None] / n
             else:
                 target = np.stack([sigmoid_targets(head, batch_labels[row]) for row in range(n)])
                 probs = 1.0 / (1.0 + np.exp(-np.clip(logit, -30, 30)))
+                # Balanced positive weighting: the sigmoid heads (targets/pads)
+                # are sparse multi-label — an unweighted BCE collapses to
+                # all-False ("accurate" on paper, useless in decode: empty
+                # targets on every fader). Weight each positive by its class
+                # balance so rare targets compete with the ABSENT majority.
+                pos = target.sum(axis=0)
+                neg = n - pos
+                pos_weight = np.where(pos > 0, (pos + neg) / np.maximum(pos, 1.0), 1.0)
+                weights = np.where(target > 0.5, pos_weight, 1.0)
                 loss += -np.mean(
-                    target * np.log(np.clip(probs, 1e-9, 1.0)) + (1 - target) * np.log(np.clip(1 - probs, 1e-9, 1.0))
+                    weights
+                    * (target * np.log(np.clip(probs, 1e-9, 1.0)) + (1 - target) * np.log(np.clip(1 - probs, 1e-9, 1.0)))
                 )
-                dlogits = (probs - target) / n
+                dlogits = (weights * (probs - target)) / n
             grads_hw[index] = h2.T @ dlogits + WEIGHT_DECAY * self.head_weights[index]
             grads_hb[index] = dlogits.sum(axis=0)
             dh2 += dlogits @ self.head_weights[index].T
@@ -453,7 +501,7 @@ def main() -> None:
     # vocabulary from TRAIN instructions only
     freq: Counter[str] = Counter()
     for row in train_rows:
-        freq.update(tokenize(row["instruction"]))
+        freq.update(features_of(row["instruction"]))
     tokens = [token for token, _ in sorted(freq.items(), key=lambda item: (-item[1], item[0]))][:VOCAB_CAP]
     token_index = {token: i for i, token in enumerate(tokens)}
 
@@ -462,8 +510,8 @@ def main() -> None:
     def featurize(rows: list[dict]) -> np.ndarray:
         x = np.zeros((len(rows), len(tokens)), dtype=np.float64)
         for row_index, row in enumerate(rows):
-            for token in tokenize(row["instruction"]):
-                column = token_index.get(token)
+            for feature in features_of(row["instruction"]):
+                column = token_index.get(feature)
                 if column is not None:
                     x[row_index, column] = 1.0
         return x
@@ -597,7 +645,7 @@ def main() -> None:
         "tokens": tokens,
         "trunk": TRUNK,
         "heads": heads,
-        "tokenPattern": "lower, NFD-strip, [a-z0-9%+]+, binary presence BoW",
+        "tokenPattern": "lower, NFD-strip, [a-z0-9%+]+ words; features = unigrams + word bigrams + char 3-grams (^word$); binary presence",
     }
     (MODELS_DIR / "intent-model-v1.vocab.json").write_text(json.dumps(vocab_artifact, indent=2) + "\n", encoding="utf-8")
 

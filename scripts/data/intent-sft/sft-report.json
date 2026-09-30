@@ -1,35 +1,35 @@
 {
   "baseModel": "LiquidAI/LFM2.5-1.2B-Instruct",
-  "trainExamples": 1525,
+  "trainExamples": 1586,
   "epochs": 3,
   "valHistory": [
     {
       "rows": 60,
-      "exact": 47,
-      "kindOK": 52,
+      "exact": 41,
+      "kindOK": 48,
       "epoch": 1,
-      "trainLoss": 2.433924846118316
+      "trainLoss": 3.8742983155534603
     },
     {
       "rows": 60,
-      "exact": 47,
-      "kindOK": 52,
+      "exact": 50,
+      "kindOK": 53,
       "epoch": 2,
-      "trainLoss": 0.44531717580684926
+      "trainLoss": 1.0807726698112674
     },
     {
       "rows": 60,
       "exact": 52,
-      "kindOK": 56,
+      "kindOK": 55,
       "epoch": 3,
-      "trainLoss": 0.09287798128207214
+      "trainLoss": 0.3187493964724126
     }
   ],
   "valFinal": {
     "rows": 60,
     "exact": 52,
-    "kindOK": 56,
+    "kindOK": 55,
     "epoch": 3,
-    "trainLoss": 0.09287798128207214
+    "trainLoss": 0.3187493964724126
   }
 }

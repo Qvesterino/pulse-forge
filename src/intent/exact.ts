@@ -451,13 +451,20 @@ export type TransportAction = "play" | "pause" | "stop" | "metronomeOn" | "metro
  */
 export function parseTransportIntent(text: string): TransportAction | null {
   if (
-    !/^\s*(?:please\s+)?(?:play|stop|pause|hraj|hrať|start|štart|pauza|pauzu|zastav|stoj|(?:metronome|metronom)(?:\s+(?:on|off|zapni|vypni))?|(?:loop|cykluj)(?:\s+(?:on|off|zapni|vypni))?)\s*[.!]?\s*$/i.test(
+    !/^\s*(?:please\s+|prosím\s+|prosim\s+)?(?:play|stop|pause|hraj|hrať|start|štart|pauza|pauzu|zastav|stoj|(?:metronome|metronom)(?:\s+(?:on|off|zapni|vypni))?|(?:loop|cykluj)(?:\s+(?:on|off|zapni|vypni))?)\s*(?:please|prosím|prosim)?\s*[.!]?\s*$/i.test(
       text,
     )
   ) {
     return null;
   }
-  const lower = text.toLowerCase().trim();
+  const lower = text
+    .toLowerCase()
+    .trim()
+    // politeness wraps the verb on either side — dispatch on the bare verb
+    // ("please play" used to fall through the play branch into the stop
+    // catch-all and STOPPED playback instead)
+    .replace(/^(?:please|prosím|prosim)\s+/, "")
+    .replace(/\s+(?:please|prosím|prosim)$/, "");
   if (/^metronom/.test(lower)) {
     if (/\bon\b|\bzapni|\bstart/.test(lower)) return "metronomeOn";
     if (/\boff\b|\bvypni/.test(lower)) return "metronomeOff";

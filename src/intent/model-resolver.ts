@@ -114,10 +114,30 @@ function exactFrom(m: ModelAction): RoutedIntent {
 
 function presetFrom(m: ModelAction): RoutedIntent {
   const name = String(m.name ?? "");
-  const target = m.target as PresetTargetFamily;
-  const resolved = resolvePresetByName(name, deaccent(name).replace(/\s+/g, " ").trim(), target);
-  if (resolved.ok) return { kind: "preset", intent: resolved.intent };
-  return { kind: "presetUnknown", name, suggestions: resolved.suggestions };
+  const want = deaccent(name).replace(/\s+/g, " ").trim();
+  const target = m.target as PresetTargetFamily | undefined;
+  // The trained model frequently drops the root `target` — the engine owns
+  // the family anyway (the preset's instrument decides where it may land).
+  // With an explicit target resolve inside it; without, resolve against each
+  // family and keep the best score (the family-instrument bonus breaks ties).
+  if (target != null) {
+    const resolved = resolvePresetByName(name, want, target);
+    if (resolved.ok) return { kind: "preset", intent: resolved.intent };
+    return { kind: "presetUnknown", name, suggestions: resolved.suggestions };
+  }
+  let best: { intent: PresetIntent; rank: number } | null = null;
+  let fallbackSuggestions: string[] = [];
+  for (const family of ["bass", "chords", "lead"] as const) {
+    const resolved = resolvePresetByName(name, want, family);
+    if (resolved.ok) {
+      const rank = resolved.intent.matchedBy === "exact" ? 3 : resolved.intent.matchedBy === "prefix" ? 2 : 1;
+      if (best === null || rank > best.rank) best = { intent: resolved.intent, rank };
+    } else if (fallbackSuggestions.length === 0) {
+      fallbackSuggestions = resolved.suggestions;
+    }
+  }
+  if (best) return { kind: "preset", intent: best.intent };
+  return { kind: "presetUnknown", name, suggestions: fallbackSuggestions };
 }
 
 function effectFrom(m: ModelAction): RoutedIntent {
@@ -231,10 +251,11 @@ function compoundFrom(doc: ProjectDocument, m: ModelAction, instruction: string)
     if (sub == null || typeof sub !== "object") return null;
     const rawRecord = sub as ModelAction;
     // SAME NESTED-UNWRAP GUARD as the top-level bridge: corpus-trained parts
-    // arrive in the compact teacher form ({kind, intent:{...}}), the adapters
-    // read flat records — adapting a nested part against its root produced
-    // silently EMPTY slot bags (kind right, payload gone).
-    const wrapperKey = ["intent", "preset", "parse"].find(
+    // arrive in the compact teacher form ({kind, intent:{...}} — and exact
+    // parts as {kind, plan:{label, ops}}), the adapters read flat records —
+    // adapting a nested part against its root produced silently EMPTY slot
+    // bags (kind right, payload gone) or a validation abstain on `plan`.
+    const wrapperKey = ["intent", "preset", "parse", "plan"].find(
       (key) => rawRecord[key] != null && typeof rawRecord[key] === "object",
     );
     const record: ModelAction =

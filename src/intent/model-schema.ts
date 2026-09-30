@@ -215,7 +215,10 @@ export const MODEL_ACTIONS: Record<string, ActionSpec> = {
   export: { slots: [E("format", VOCAB.exportFormat)] },
   record: { slots: [B("arm")] },
   select: { slots: [E("target", ["bass", "lead", "chords", "drums"])] },
-  preset: { slots: [T("name"), E("target", ["bass", "lead", "chords"], true, true)] },
+  // `target` is OPTIONAL: the trained model drops it more often than it keeps
+  // it, and the engine owns the family anyway — presetFrom infers it from the
+  // matched preset's instrument family (best-scored across the three lanes).
+  preset: { slots: [T("name"), E("target", ["bass", "lead", "chords"], false, true)] },
   effectIntent: {
     slots: [
       E("effectType", VOCAB.effectType),

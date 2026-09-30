@@ -32,6 +32,7 @@ import { userSampleId, type UserSampleAsset } from "../persistence/UserSampleRep
 import { PublishToGalleryButton } from "../gallery/PublishButton";
 import { isMountedInEcosystem, prepareBeatHandoff } from "../interop/qvesterHandoff";
 import { setMasterConfig, chopSampleToPads } from "../commands/commands";
+import { analyzeMixHealthBuffer, type MixHealthReport } from "../analysis/mixDoctor";
 import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import { slicesFromOnsets } from "../audio-engine/transients";
 
@@ -118,10 +119,14 @@ export function ExportPanel({
   const [includeTrackStems, setIncludeTrackStems] = useState(true);
   const [clipSeconds, setClipSeconds] = useState(15);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
+
+  /** Mix-doctor verdikt posledného master renderu (null = ešte sa neriadilo). */
+  const [mixHealth, setMixHealth] = useState<MixHealthReport | null>(null);
   const markerCount = markers.length;
   /** Active export run — the CANCEL button aborts it (roadmap 1.4). */
   const abortRef = useRef<AbortController | null>(null);
   const beginExport = (): AbortSignal => {
+    setMixHealth(null);
     const controller = new AbortController();
     abortRef.current = controller;
     return controller.signal;
@@ -165,6 +170,7 @@ export function ExportPanel({
       });
       if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
       const summary = summarizeBuffer(buffer);
+      setMixHealth(analyzeMixHealthBuffer(buffer));
 
       if (format === "video") {
         const seconds = Math.min(clipSeconds, buffer.duration);
@@ -828,6 +834,7 @@ export function ExportPanel({
       {status.kind === "done" && (
         <ExportSummary summary={status.summary} lufsTarget={master.lufsTarget ?? -14} ceilingDb={master.ceilingDb} />
       )}
+      {status.kind === "done" && mixHealth && <MixHealthLine health={mixHealth} />}
       {status.kind === "done" && <AutoStageButton summary={status.summary} />}
 
       <div className="export-resample" role="group" aria-label="Realtime resample">
@@ -885,6 +892,27 @@ export function ExportPanel({
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * MIX CHECK line (library-gate wave): the mix-doctor verdict for the last
+ * master render — one compact line, pass or the flag list. Advisory
+ * (yellow) flags render as ○ notes, failures (red) as ⚠.
+ */
+function MixHealthLine({ health }: { health: MixHealthReport }) {
+  const red = health.flags.filter((f) => f.severity === "red");
+  const yellow = health.flags.filter((f) => f.severity === "yellow");
+  const stats = `low ${(health.lowEndShare * 100).toFixed(0)}% · crest ${health.crestDb.toFixed(1)} dB · peak −${health.headroomDb.toFixed(1)} dBFS`;
+  const notes = [...red, ...yellow]
+    .map((f) => `${f.severity === "red" ? "⚠" : "○"} ${f.check}: ${f.detail}`)
+    .join(" · ");
+  return (
+    <div className="export-resample-hint" role="status">
+      {red.length === 0 ? "MIX CHECK PASS — " : `MIX CHECK — ${red.length} ISSUE${red.length > 1 ? "S" : ""} — `}
+      {stats}
+      {notes && ` — ${notes}`}
+    </div>
   );
 }
 

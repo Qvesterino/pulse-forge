@@ -75,17 +75,17 @@ function rbjLowHigh(type: "lp" | "hp", freq: number, sampleRate: number): Biquad
   const a0 = 1 + alpha;
   if (type === "lp") {
     return {
-      b0: ((1 - cos) / 2) / a0,
+      b0: (1 - cos) / 2 / a0,
       b1: (1 - cos) / a0,
-      b2: ((1 - cos) / 2) / a0,
+      b2: (1 - cos) / 2 / a0,
       a1: (-2 * cos) / a0,
       a2: (1 - alpha) / a0,
     };
   }
   return {
-    b0: ((1 + cos) / 2) / a0,
-    b1: (-(1 + cos)) / a0,
-    b2: ((1 + cos) / 2) / a0,
+    b0: (1 + cos) / 2 / a0,
+    b1: -(1 + cos) / a0,
+    b2: (1 + cos) / 2 / a0,
     a1: (-2 * cos) / a0,
     a2: (1 - alpha) / a0,
   };
@@ -213,7 +213,8 @@ export function analyzeMixHealth(channels: readonly Float32Array[], sampleRate: 
   }
 
   // BS.1770 loudness — null when unmeasurable (short or silent).
-  const loudness = length >= Math.ceil(0.4 * sampleRate) ? analyzeLoudnessBuffer(channels as Float32Array[], sampleRate) : null;
+  const loudness =
+    length >= Math.ceil(0.4 * sampleRate) ? analyzeLoudnessBuffer(channels as Float32Array[], sampleRate) : null;
   const integratedLufs = loudness?.measured ? loudness.integrated : null;
   const momentaryMaxLufs = loudness?.measured ? loudness.momentaryMax : null;
 
@@ -221,11 +222,20 @@ export function analyzeMixHealth(channels: readonly Float32Array[], sampleRate: 
   const flags: MixHealthFlag[] = [];
   if (!finite) flags.push({ severity: "red", check: "non-finite", detail: "render contains non-finite samples" });
   if (clipped > 0) flags.push({ severity: "red", check: "clipping", detail: `${clipped} samples at/over full scale` });
-  if (peak > 1) flags.push({ severity: "red", check: "over-full-scale", detail: `peak ${(20 * Math.log10(peak)).toFixed(1)} dBFS` });
+  if (peak > 1)
+    flags.push({
+      severity: "red",
+      check: "over-full-scale",
+      detail: `peak ${(20 * Math.log10(peak)).toFixed(1)} dBFS`,
+    });
   if (Math.abs(dcOffset) >= DC_RED)
     flags.push({ severity: "red", check: "dc-offset", detail: `DC ${(dcOffset * 1000).toFixed(1)} mV` });
   if (crestDb < CREST_RED_DB)
-    flags.push({ severity: "red", check: "crest-collapse", detail: `crest ${crestDb.toFixed(1)} dB — over-compressed` });
+    flags.push({
+      severity: "red",
+      check: "crest-collapse",
+      detail: `crest ${crestDb.toFixed(1)} dB — over-compressed`,
+    });
   if (lowEndShare > LOW_END_RED)
     flags.push({
       severity: "red",
@@ -247,12 +257,20 @@ export function analyzeMixHealth(channels: readonly Float32Array[], sampleRate: 
     flags.push({
       severity: "yellow",
       check: "low-end-heavy",
-      detail: `sub+low ${(lowEndShare * 100).toFixed(0)} % — fine for trap/drill, watch the bass`, 
+      detail: `sub+low ${(lowEndShare * 100).toFixed(0)} % — fine for trap/drill, watch the bass`,
     });
   if (hfShare > HF_YELLOW)
-    flags.push({ severity: "yellow", check: "hf-heavy", detail: `high+air ${(hfShare * 100).toFixed(0)} % — harshness risk` });
+    flags.push({
+      severity: "yellow",
+      check: "hf-heavy",
+      detail: `high+air ${(hfShare * 100).toFixed(0)} % — harshness risk`,
+    });
   if (rms < SILENCE_RMS)
-    flags.push({ severity: "yellow", check: "near-silent", detail: `RMS ${(20 * Math.log10(Math.max(rms, 1e-12))).toFixed(0)} dBFS` });
+    flags.push({
+      severity: "yellow",
+      check: "near-silent",
+      detail: `RMS ${(20 * Math.log10(Math.max(rms, 1e-12))).toFixed(0)} dBFS`,
+    });
 
   return {
     durationSec: length / sampleRate,

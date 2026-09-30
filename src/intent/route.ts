@@ -79,11 +79,15 @@ export function parseMixIntent(text: string): MixParse {
   if (/\bhuge (?:reverb|space)\b|\bobri dozvuk/.test(lower)) {
     overrides.reverb = "huge";
     detected.push("huge reverb");
-  } else if (/\bmore reverb\b|\bwetter\b|\bwet (?:it )?up\b|\bmokrejs|\bviac (?:dozvuk|ozven)/.test(lower)) {
+  } else if (
+    /\bmore reverb\b|\bwetter\b|\bwet (?:it )?up\b|\bmokrejs|\bviac reverbu\b|\bviac (?:dozvuk|ozven)/.test(lower)
+  ) {
     overrides.reverb = "more";
     detected.push("more reverb");
   } else if (
-    /\bless reverb\b|\bdrier\b|\bdry (?:it )?up\b|\bmake it drier\b|\bsuch|\bmenej (?:dozvuk|ozven)/.test(lower)
+    /\bless reverb\b|\bdrier\b|\bdry (?:it )?up\b|\bmake it drier\b|\bsuch|\bmenej reverbu\b|\bmenej (?:dozvuk|ozven)/.test(
+      lower,
+    )
   ) {
     overrides.reverb = "less";
     detected.push("drier");

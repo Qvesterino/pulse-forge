@@ -75,7 +75,7 @@ const manifest = {
     temperature: 0,
   },
   features: {
-    version: "intent-features.v1",
+    version: "intent-features.v2",
     // raw file bytes — the validator hashes the file, not a re-serialization
     vocabSha256: sha256(vocabBytes),
     vocabSize: vocab.tokens.length,

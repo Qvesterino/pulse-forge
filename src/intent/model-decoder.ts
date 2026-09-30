@@ -38,13 +38,34 @@ export function tokenizeIntentInstruction(text: string): string[] {
     .filter((token) => token.length > 0);
 }
 
-/** Binary presence bag-of-words over the pinned vocab. */
+/**
+ * Feature expansion over the word tokens (intent-features.v2): the word
+ * unigrams, adjacent-word bigrams (`w1_w2`) and fastText-style char
+ * 3-grams over the `^word$`-padded form. Separators (`_`, `^`, `$`) sit
+ * outside the word charset [a-z0-9%+], so no feature string can collide
+ * with a plain word. Char grams carry the fuzzy read — a typo or an SK
+ * variant shares most of its trigrams with the canonical form, which a
+ * word-BoW cannot see ("pann the bass" now anchors to "pan the bass").
+ * MUST mirror scripts/train-intent-model.py features_of() EXACTLY — the
+ * drift gate runs the TS featurizer against real model outputs.
+ */
+export function expandIntentFeatures(words: string[]): string[] {
+  const features: string[] = [...words];
+  for (let i = 0; i + 1 < words.length; i++) features.push(`${words[i]}_${words[i + 1]}`);
+  for (const word of words) {
+    const padded = `^${word}$`;
+    for (let i = 0; i + 3 <= padded.length; i++) features.push(padded.slice(i, i + 3));
+  }
+  return features;
+}
+
+/** Binary presence bag over the pinned feature vocab (unigrams+bigrams+char 3-grams). */
 export function buildIntentBow(text: string, tokens: string[]): Float32Array {
   const index = new Map<string, number>();
   for (const [i, token] of tokens.entries()) index.set(token, i);
   const vector = new Float32Array(tokens.length);
-  for (const token of tokenizeIntentInstruction(text)) {
-    const i = index.get(token);
+  for (const feature of expandIntentFeatures(tokenizeIntentInstruction(text))) {
+    const i = index.get(feature);
     if (i !== undefined) vector[i] = 1;
   }
   return vector;
@@ -104,8 +125,11 @@ function num(head: IntentModelHead, scores: Float32Array): number | null {
 }
 
 /** Fields the ENGINE fills at runtime — stripped before exact comparison and
- * filled with stable placeholders by the decoder (model-schema contract). */
-const COMPARE_STRIP_KEYS = new Set(["detected", "sourceText", "matchedBy"]);
+ * filled with stable placeholders by the decoder (model-schema contract).
+ * `unrecognized` (arrange routes) and `reason` (clarify) are engine-owned
+ * surfaces the model path fills differently from the parser path — they say
+ * nothing about the ACTION, so comparing them punishes correct routes. */
+const COMPARE_STRIP_KEYS = new Set(["detected", "sourceText", "matchedBy", "unrecognized", "reason"]);
 
 /** Recursively canonicalize a response for byte-stable comparison: strip
  * engine-filled fields, sort arrays, sort object keys. */
@@ -131,7 +155,10 @@ export function canonicalModelJson(value: unknown): string {
 export function decodeIntentHeads(
   outputs: Record<string, Float32Array>,
   vocab: IntentModelVocab,
+  /** Optional tuning override (mining/eval tools); production uses the pin. */
+  options?: { kindMargin?: number },
 ): CompactIntentResponse | null {
+  const kindMargin = options?.kindMargin ?? INTENT_MODEL_KIND_MARGIN;
   const head = (name: string): IntentModelHead => {
     const found = vocab.heads.find((candidate) => candidate.name === name);
     if (!found) throw new Error(`vocab has no head "${name}"`);
@@ -153,7 +180,7 @@ export function decodeIntentHeads(
   const kind = cls("kind");
   if (kind === ABSENT || kind === "abstain") return null;
   // Margin abstention: an unsure kind is an abstention, never a guess.
-  if (topTwoGap(kindScores) < INTENT_MODEL_KIND_MARGIN) return null;
+  if (topTwoGap(kindScores) < kindMargin) return null;
 
   const targets = activeClasses(head("targets"), scores("targets"));
   const pads = activeClasses(head("pads"), scores("pads"));
