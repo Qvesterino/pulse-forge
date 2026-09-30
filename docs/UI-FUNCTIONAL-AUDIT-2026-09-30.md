@@ -2,8 +2,9 @@
 
 Functional (not visual) audit of the KYX / Pulse Forge UI, with repairs.
 Scope: every interactive surface in `src/ui/**` — 85 components, 1.7 MB of
-React. Five waves, **17 confirmed defects repaired** across 11 commits, each
-covered by a regression test that was proven to FAIL against the pre-fix code.
+React. Five waves, **17 confirmed defects repaired** across 17 commits, each
+source change covered by a regression test proven to FAIL against the pre-fix
+code.
 
 This file is a working report. Per `AGENTS.md` §10, any number claimed here
 must be reproducible from the working tree.
