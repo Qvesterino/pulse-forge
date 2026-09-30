@@ -535,6 +535,14 @@ export const FACTORY_ASSETS: FactoryAsset[] = [
     tags: ["fx", "drop", "sub", "transition"],
     mood: ["deep", "dark"],
   },
+  {
+    id: "factory.fx.vinyl",
+    name: "Vinyl Crackle",
+    category: "FX",
+    character: "Dusty surface bed, 4 s loop",
+    tags: ["fx", "texture", "vinyl", "lofi", "phonk"],
+    mood: ["warm", "atmosphere"],
+  },
 
   /* ---------------- Tonal ---------------- */
   {

@@ -89,7 +89,7 @@ function momentaryMaxLufs(channels, sampleRate) {
   const SR = sampleRate;
   const minSamples = Math.ceil(0.45 * SR);
   const len = channels[0].length;
-  const reps = len >= minSamples ? 1 : Math.ceil(minSamples / len);
+  const reps = len >= minSamples ? 1 : Math.max(1, Math.ceil(minSamples / Math.max(1, len)));
   const tiled = channels.map((c) => {
     if (reps === 1) return c;
     const out = new Float32Array(len * reps);

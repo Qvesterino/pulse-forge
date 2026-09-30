@@ -273,6 +273,42 @@ describe("ReferenceMapPanel — F2 structure", () => {
   });
 });
 
+describe("ReferenceMapPanel — descriptors", () => {
+  beforeEach(() => {
+    downloadSpy.mockClear();
+  });
+
+  it("shows the descriptors and the plain summary in the diagnostics tab", async () => {
+    setup(decodedStructure());
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("track.wav")] } });
+    await waitFor(() => expect(screen.getByTestId("reference-primary")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("reference-tab-diag"));
+
+    expect(screen.getByTestId("reference-descriptors")).toBeInTheDocument();
+    const summary = screen.getByTestId("reference-summary").textContent ?? "";
+    // A sentence a person can read, not a field dump.
+    expect(summary).toMatch(/BPM/);
+    expect(summary.length).toBeGreaterThan(40);
+    expect(screen.getByTestId("reference-diag").textContent).toMatch(/LUFS/);
+    expect(screen.getByTestId("reference-diag").textContent).toMatch(/centroid/i);
+  });
+
+  it("includes the descriptors in the JSON export", async () => {
+    setup(decodedStructure());
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("track.wav")] } });
+    await waitFor(() => expect(screen.getByTestId("reference-primary")).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId("reference-export"));
+
+    const payload = (await exportedJson()) as unknown as {
+      descriptors: { spectral: unknown; loudness: unknown; stereo: unknown; groove: unknown; summary: string };
+      structure: unknown;
+    };
+    expect(payload.descriptors).toBeDefined();
+    expect(payload.descriptors.summary.length).toBeGreaterThan(0);
+    expect(payload.structure).not.toBeNull();
+  });
+});
+
 describe("ReferenceMapPanel — corrections and export", () => {
   beforeEach(() => {
     downloadSpy.mockClear();

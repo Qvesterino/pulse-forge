@@ -64,6 +64,26 @@ export {
 } from "./structure";
 
 /**
+ * F2 §2.2 — descriptors: spectral balance, loudness, stereo width, groove
+ * family and a plain-language summary. Ported from beat_modifier's analysis
+ * pipeline; scipy's spectrogram/find_peaks are reimplemented over the repo's
+ * own FFT rather than added as a dependency.
+ */
+export {
+  grooveDescriptor,
+  keyLabel,
+  loudnessDescriptor,
+  plainSummary,
+  spectralDescriptor,
+  stereoDescriptor,
+  type GrooveFamily,
+  type ReferenceGroove,
+  type ReferenceLoudness,
+  type ReferenceSpectral,
+  type ReferenceStereo,
+} from "./descriptors";
+
+/**
  * Reference Map → project commands (F4-full). Pure `(doc, map) → Command`
  * functions so a panel can act on an analysis without owning any mutation
  * logic, and so the mapping is testable without React.

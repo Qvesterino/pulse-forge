@@ -38,7 +38,7 @@ describe("reference/golden", () => {
     expect(stripVolatile(result.result)).toMatchSnapshot();
     // Engine + schema version is part of the golden contract.
     expect(result.result.diagnostics.engineVersion).toBe("kyx-reference/1.0.0");
-    expect(result.result.diagnostics.schemaVersion).toBe(2);
+    expect(result.result.diagnostics.schemaVersion).toBe(3);
   });
 
   it("C sustained-note track — canonical tonal snapshot (major/minor interchangeable on synthetic fixtures)", () => {

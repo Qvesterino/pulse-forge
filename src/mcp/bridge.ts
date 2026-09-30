@@ -1,6 +1,6 @@
 import type { ProjectDocument } from "../project-model/types";
 import type { Command } from "../commands/types";
-import { executeMcpTool, type McpMeterSnapshot, type McpToolContext } from "./tools";
+import { executeMcpToolAsync, type McpMeterSnapshot, type McpToolContext } from "./tools";
 import { mcpAllowDestructive } from "./flags";
 
 /**
@@ -118,10 +118,11 @@ export class McpBridge {
     };
     // A throwing tool must still ANSWER — without this catch the relay would
     // never receive an mcp-result and the server-side call would hang until
-    // its 15 s timeout (desktop host has the same guard).
+    // its 15 s timeout (desktop host has the same guard). The async executor
+    // additionally awaits kyx_export and returns the completion report.
     let result;
     try {
-      result = executeMcpTool(ctx, record.tool, record.args ?? {});
+      result = await executeMcpToolAsync(ctx, record.tool, record.args ?? {});
     } catch (error) {
       result = {
         text: `tool crashed: ${error instanceof Error ? error.message : String(error)}`,

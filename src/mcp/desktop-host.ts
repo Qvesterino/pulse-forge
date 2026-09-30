@@ -1,4 +1,4 @@
-import { executeMcpTool, type McpToolContext } from "./tools";
+import { executeMcpToolAsync, type McpToolContext } from "./tools";
 import { mcpAllowDestructive } from "./flags";
 import { isMicRecordingActive } from "../audio-engine/PcmMicRecorder";
 import { quickBounceDownload } from "../export/quick-bounce";
@@ -75,8 +75,11 @@ export function startMcpDesktopHost(services: Services): () => void {
   return api.onCall((call) => {
     void (async () => {
       try {
-        const result = executeMcpTool(ctx, String(call?.name ?? ""), call?.args ?? {});
-        await api.answer({ id: String(call?.id ?? ""), result: { text: result.text, mutated: result.mutated } });
+        const result = await executeMcpToolAsync(ctx, String(call?.name ?? ""), call?.args ?? {});
+        await api.answer({
+          id: String(call?.id ?? ""),
+          result: { text: result.text, mutated: result.mutated, isError: result.isError },
+        });
       } catch (error) {
         await api.answer({
           id: String(call?.id ?? ""),

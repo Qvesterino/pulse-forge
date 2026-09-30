@@ -32,7 +32,6 @@ export function analyzeReferenceAsync(
   ) {
     return Promise.resolve(analyzeReference({ ...rest, onStage }));
   }
-
   return new Promise<AnalyzeReferenceOutput>((resolve) => {
     let worker: Worker;
     try {
@@ -81,11 +80,17 @@ export function analyzeReferenceAsync(
 
     try {
       const copy = new Float32Array(mono);
+      // Channels are structured-cloned, NOT transferred: the main-thread
+      // fallback path still needs them if the worker never answers, and
+      // detaching them here would silently turn every stereo file into a
+      // width-0 report on the exact machines that lack module workers.
+      const channels = rest.channels?.map((c) => new Float32Array(c));
       worker.postMessage(
         {
           type: "ANALYZE_REFERENCE",
           jobId: Date.now() & 0xffff,
           mono: copy,
+          channels,
           metadata: rest.metadata,
           options: rest.options,
         },

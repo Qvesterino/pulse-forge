@@ -2,6 +2,34 @@
 
 exports[`reference/golden > 120 BPM click track — canonical rhythm snapshot 1`] = `
 {
+  "descriptors": {
+    "groove": {
+      "drumDensity": 0.25,
+      "family": "four_on_the_floor",
+      "syncopation": 0.0022586497216605427,
+    },
+    "loudness": {
+      "clipped": true,
+      "crestFactorDb": 20.269250370243263,
+      "dynamicRangeDb": 60,
+      "integratedLufs": -20.960250369862095,
+      "peakDbfs": 8.686661818707667e-12,
+    },
+    "spectral": {
+      "brightness": 0.19999999968119633,
+      "centroidHz": 999.9999984059817,
+      "flatness": 4.6811869637957184e-11,
+      "highEnergy": 1.5368445084965546e-12,
+      "lowEnergy": 4.4971856329840926e-9,
+      "midEnergy": 0.9999999955012828,
+      "rolloffHz": 1022.8271484375,
+    },
+    "stereo": {
+      "sideEnergyRatio": 0,
+      "width": 0,
+    },
+    "summary": "Estimated around 120 BPM in C major (58% confidence). Energy averages 0.09. Structure: intro, development, breakdown, development, outro. Groove reads as four-on-the-floor (drum density 0.25, syncopation 0.00). Spectral character: warm/dark (centroid 1000 Hz). Stereo field: narrow.",
+  },
   "diagnostics": {
     "analysisSampleRate": 22050,
     "analyzedSeconds": 6,
@@ -13,7 +41,7 @@ exports[`reference/golden > 120 BPM click track — canonical rhythm snapshot 1`
     "peakAmplitude": 0,
     "processingMs": 0,
     "rmsLevel": 0,
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "tempoRange": [
       50,
       220,
@@ -249,12 +277,41 @@ exports[`reference/golden > 120 BPM click track — canonical rhythm snapshot 1`
   },
   "warnings": [
     "Short audio may produce unreliable tempo analysis.",
+    "The reference is at or near full scale — it clips. Treat its loudness reading as unreliable.",
   ],
 }
 `;
 
 exports[`reference/golden > C sustained-note track — canonical tonal snapshot (major/minor interchangeable on synthetic fixtures) 1`] = `
 {
+  "descriptors": {
+    "groove": {
+      "drumDensity": 1,
+      "family": "half_time",
+      "syncopation": 0.05713314129576045,
+    },
+    "loudness": {
+      "clipped": true,
+      "crestFactorDb": 6.66083337584508,
+      "dynamicRangeDb": 0.028263140511702256,
+      "integratedLufs": -7.351833375834963,
+      "peakDbfs": 8.686661818707667e-12,
+    },
+    "spectral": {
+      "brightness": 0.07709195278078619,
+      "centroidHz": 385.45976390393093,
+      "flatness": 5.806861146297765e-13,
+      "highEnergy": 4.227819631593867e-15,
+      "lowEnergy": 0.03536251091984,
+      "midEnergy": 0.9646374890801597,
+      "rolloffHz": 527.5634765625,
+    },
+    "stereo": {
+      "sideEnergyRatio": 0,
+      "width": 0,
+    },
+    "summary": "Estimated around 65 BPM in C minor (40% confidence). Energy averages 1.00. Structure: single-section. Groove reads as half-time (drum density 1.00, syncopation 0.06). Spectral character: warm/dark (centroid 385 Hz). Stereo field: narrow.",
+  },
   "diagnostics": {
     "analysisSampleRate": 22050,
     "analyzedSeconds": 12,
@@ -266,7 +323,7 @@ exports[`reference/golden > C sustained-note track — canonical tonal snapshot 
     "peakAmplitude": 0,
     "processingMs": 0,
     "rmsLevel": 0,
-    "schemaVersion": 2,
+    "schemaVersion": 3,
     "tempoRange": [
       50,
       220,
@@ -461,6 +518,7 @@ exports[`reference/golden > C sustained-note track — canonical tonal snapshot 
     "warning": "Low tonal confidence — the key is ambiguous.",
   },
   "warnings": [
+    "The reference is at or near full scale — it clips. Treat its loudness reading as unreliable.",
     "Low tonal confidence — the key is ambiguous.",
   ],
 }

@@ -158,6 +158,10 @@ export function ReferenceMapPanel() {
         const mono = toMono(decoded.channels);
         const output = await analyzeReferenceAsync({
           mono,
+          // Stereo width needs the ORIGINAL channels — mid/side is the
+          // difference between left and right, so the mono downmix has no
+          // side component and would report width 0 for every file.
+          channels: decoded.channels,
           metadata: {
             // Sanitized up front so the exported JSON and the download name
             // carry a safe string, not just the on-screen one.
@@ -237,6 +241,8 @@ export function ReferenceMapPanel() {
       },
       rhythm: map.rhythm,
       tonal: map.tonal,
+      structure: map.structure ?? null,
+      descriptors: map.descriptors ?? null,
       diagnostics: map.diagnostics,
       warnings: map.warnings,
     };
@@ -782,6 +788,58 @@ function DiagTab({ map, fileName }: { map: ReferenceMap; fileName: string }) {
         </dd>
         <dt>Processed in</dt>
         <dd>{d.processingMs} ms</dd>
+      </dl>
+      <Descriptors map={map} />
+    </div>
+  );
+}
+
+/**
+ * F2 §2.2 — the "what is it made of" block. Descriptors only: these describe
+ * the reference and are never presented as a mastering target or a suggested
+ * EQ curve.
+ */
+function Descriptors({ map }: { map: ReferenceMap }) {
+  const d = map.descriptors;
+  if (!d) return null;
+  const width = d.stereo.width > 0.5 ? "wide" : d.stereo.width < 0.2 ? "narrow" : "moderate";
+  const bright = d.spectral.brightness > 0.5 ? "bright" : "warm / dark";
+  return (
+    <div className="reference-descriptors" data-testid="reference-descriptors">
+      <h4>What it is made of</h4>
+      <p className="reference-summary" data-testid="reference-summary">
+        {d.summary}
+      </p>
+      <dl>
+        <dt>Character</dt>
+        <dd>
+          {bright} — centroid {d.spectral.centroidHz.toFixed(0)} Hz, rolloff {d.spectral.rolloffHz.toFixed(0)} Hz
+        </dd>
+        <dt>Balance</dt>
+        <dd>
+          low {(d.spectral.lowEnergy * 100).toFixed(0)}% · mid {(d.spectral.midEnergy * 100).toFixed(0)}% · high{" "}
+          {(d.spectral.highEnergy * 100).toFixed(0)}%
+        </dd>
+        <dt>Flatness</dt>
+        <dd>{d.spectral.flatness.toFixed(3)}</dd>
+        <dt>Loudness</dt>
+        <dd>
+          {d.loudness.integratedLufs.toFixed(1)} LUFS-ish · peak {d.loudness.peakDbfs.toFixed(1)} dBFS
+          {d.loudness.clipped && " · CLIPS"}
+        </dd>
+        <dt>Crest / range</dt>
+        <dd>
+          {d.loudness.crestFactorDb.toFixed(1)} dB · {d.loudness.dynamicRangeDb.toFixed(1)} dB
+        </dd>
+        <dt>Stereo</dt>
+        <dd>
+          {width} — width {d.stereo.width.toFixed(3)}
+        </dd>
+        <dt>Groove</dt>
+        <dd>
+          {d.groove.family.replace(/_/g, " ")} — density {d.groove.drumDensity.toFixed(2)}, syncopation{" "}
+          {d.groove.syncopation.toFixed(2)}
+        </dd>
       </dl>
     </div>
   );

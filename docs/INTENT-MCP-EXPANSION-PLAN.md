@@ -159,8 +159,17 @@ bar. Nothing bypasses the domain layer.
 > **P1-6 shipped same day**: `kyx_state subject:sends` — the full send routing map
 > (return buses with id/gain/fx + per-track send levels, zeros included), closing the
 > send write-only gap.
-> Next: P1-7..P1-8 — automation surface, structured mixer setters, clip tools,
-> awaited export.
+> **P1-7 shipped same day**: `kyx_automation` (17th tool) — automation lanes with
+> addPoint (lane-on-demand, one undo), deletePoint, clearLane/removeLane (D4-gated),
+> gain/pan/FX-param targeting with native-value clamps; `kyx_state subject:automation`
+> read-back; family filters on reads now resolve through the write-side family map
+> (bass→808, pad families→drum track — fixed fxChain/sends too).
+> **P1-8 shipped same day — the P1 wave is CLOSED**: `kyx_tracks` absolute mixer
+> setters (setGain via dB/setPan/setMute/setSolo, verify-by-read), `kyx_clips`
+> (18th tool: list/move/resize/duplicate/delete arrangement clips by anchor bar,
+> delete D4-gated), and `executeMcpToolAsync` — the transports now await `kyx_export`
+> and return the completion report (duration/size) with honest isError on failure.
+> Next: P2 — batch/transaction, machine-readable result envelopes, loudness loop.
 
 | Tool            | Input                              | Behavior                                                                                                       |
 | --------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------- |

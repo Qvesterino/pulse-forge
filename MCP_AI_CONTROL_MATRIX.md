@@ -114,14 +114,14 @@ the tool result prove the state change?
 
 | Capability | Read | Write | Validation | Undo | Verification | Status | Missing |
 |---|---|---|---|---|---|---|---|
-| Clip copy/move/trim/delete | none | nl (`applyClipArrangeOps`) | clip-at-bar resolution | ✅ | label | PARTIALLY EXPOSED (NL, no reads) | clip listing tool; structured ops |
-| Import audio / takes / waveforms | none | none (record honestly refused) | — | — | — | NOT EXPOSED | whole domain (import, takes, comping, fades, stretch, reverse, gain, grouping) |
+| Arrangement (scene) clips | **full (`kyx_clips` list [P1-8]** — sorted scene clips + audio-clip summary per track) | **full (`kyx_clips` [P1-8]: move/resize/duplicate/delete, delete D4-gated, target = clip covering the anchor bar)** | bar anchor, overlap/bounds invariants throw → honest failure | ✅ one step | before→after read-back | FULLY EXPOSED (arrangement layer) | audio-clip structured edits (fades/gain/split — `splitAudioClipAtTick` exists in the domain); import/takes/comping |
+| Import audio / takes / waveforms | none | none (record honestly refused) | — | — | — | NOT EXPOSED | whole domain (import, takes, comping, stretch, reverse, grouping) |
 
 ### Mixer
 
 | Capability | Read | Write | Validation | Undo | Verification | Status | Missing |
 |---|---|---|---|---|---|---|---|
-| Channel gain/pan/mute/solo | full **[REPAIRED]** | nl | clamps | ✅ | label (+ fader readback in-app) | PARTIALLY EXPOSED | structured setters, per-ID |
+| Channel gain/pan/mute/solo | full (in `kyx_state tracks`; setters also read back) | **FULLY EXPOSED [P1-8]: `kyx_tracks` setGain (absolute dB)/setPan/setMute/setSolo with verify-by-read; family ops hit every resolved track in one undo** | command-layer clamps + tool-level dB/pan validation | ✅ | landed values per track | FULLY EXPOSED | group-track mixing (groups not addressable — honest refusal) |
 | Sends | full (`kyx_state sends` **[P1]: returns with id/gain/fx + every track's level into each**) | nl | clamp + return-exists | ✅ | `sends` read-back verifies the landing | FULLY EXPOSED (levels) | structured send SETTER (NL-only today); return/bus create; group routing |
 | Returns / buses | returns line in `kyx_state sends` **[P1]** (ids, gains, fx) | none | — | — | — | READ-ONLY | create/adjust return buses (P2) |
 | Master (gain, tilt, trim) | none | nl (target "mix"/"master"; loudness NL runs in-app only, refused over MCP) | clamps | ✅ | label | PARTIALLY EXPOSED / WRITE-ONLY | master read; loudness loop over MCP |
@@ -159,13 +159,13 @@ the tool result prove the state change?
 
 | Capability | Read | Write | Validation | Undo | Verification | Status | Missing |
 |---|---|---|---|---|---|---|---|
-| Gain ramps | none | nl (`applyAutomateIntent`) | tick NaN gates, sorted insert | ✅ | label | PARTIALLY EXPOSED, WRITE-ONLY | automation READ; point edit/delete; FX-param targeting **(P1)** |
+| Lanes (gain/pan/fxParam) | **FULLY EXPOSED [P1-7]: `kyx_state subject:automation`** — lanes with targets, ranges, points as bar.beat=value, scene-curve summary | **FULLY EXPOSED [P1-7]: `kyx_automation`** — addPoint (lane-on-demand, one undo), deletePoint (nearest ≤1 bar), clearLane/removeLane (D4-gated) | target validation + native-value clamp via the engine's own `clampTargetValue`; tick NaN gates | ✅ one step per call | landed point + clamp note in read-back | FULLY EXPOSED | point MOVE (moveAutomationPoint exists — thin to add); curve/interpolation shapes (model stores plain points); instParam lanes (refused — P2) |
 
 ### Export / rendering
 
 | Capability | Read | Write | Validation | Undo | Verification | Status | Missing |
 |---|---|---|---|---|---|---|---|
-| Master bounce WAV/MP3 | — | **[REPAIRED: `kyx_export` was DEAD on both transports — no host ever wired `ctx.export`; now rides the same render+encode+download pipeline as the in-app export intent (`src/export/quick-bounce.ts`, shared)]** | format enum | n/a | "started" only — completion not verifiable v1 | PARTIALLY EXPOSED | awaited result with duration/size; stems; render settings (sample rate, bit depth, normalization); file path |
+| Master bounce WAV/MP3 | — | **[P1-8: `kyx_export` AWAITS the bounce — the result carries the completion report (duration/size); failures are honest isError. Previously dead (repair #5), then fire-and-forget.]** | format enum | n/a | awaited report (timeout caveat for long renders) | FULLY EXPOSED (master bounce) | stems mode; sample-rate/bit-depth options (P2) |
 
 ### Analysis
 
@@ -319,13 +319,31 @@ fields would be sturdier (P2).
    into each, zeros included, group tracks included) with the fxChain family-filter
    conventions and truncation note. A "more reverb send" loop can now VERIFY its
    landing (`808: Reverb 0.15`).
-7. Automation surface: read lanes, add/delete points, target FX params (rides P0-2).
-8. Structured mixer setters (`set_gain_db/set_pan/set_mute/set_solo` with absolute values +
-   read-back) — NL works but is unverifiable-by-construction for absolute asks.
-9. Clip tools: list clips per track, structured move/trim/split/delete (D4-gated).
-10. Export upgrade: awaited result (duration/size), stems mode, sample-rate/bit-depth options.
-11. Loudness/mix loops over MCP (execute the in-app measure→trim→verify path; needs the async
-    render context — same shape as `kyx_export` now real).
+7. ✅ **Automation surface [SHIPPED 2026-09-29, same day]**: new `kyx_automation` tool
+   (17th) — `addPoint` (lane created on demand, ONE undo step), `deletePoint` (nearest
+   within a bar), `clearLane`/`removeLane` (D4-gated); targets trackId/family +
+   `gain`/`pan` or `effect`+`param` with 1-based instance resolution; values in native
+   units clamped by the engine's own `clampTargetValue`; `kyx_state subject:automation`
+   reads lanes with points (bar.beat=value), target ranges and the scene-curve summary.
+   Family filters on reads now resolve through the WRITE-side family map (`tracksInFamily`
+   — family "bass" covers the 808 track; pad families reach the drum track) — fixed the
+   name-regex-only filters on `fxChain` and `sends` too. Model landmine documented en
+   route: the `InstrumentKind` "lead" has no `INSTRUMENT_META` entry, so normalize heals
+   any track typed "lead" to 808 (family resolvers' `instrument === "lead"` branch is
+   dead until META gains the kind).
+8. ✅ **Structured mixer setters + clip tools + awaited export [SHIPPED 2026-09-29, same
+   day — closes the P1 wave]**: `kyx_tracks` gained `setGain` (absolute `gainDb`
+   −60..+3.5 with linear fallback, clamped), `setPan` (−1..1), `setMute`/`setSolo` —
+   all verify-by-read (landed linear+dB/pan side/mute-solo state), family ops apply to
+   every resolved track in one undo step. New `kyx_clips` tool (18th): `list` (scene
+   clips + audio-clip summary), `move`/`resize`/`duplicate`/`delete` (D4-gated) targeting
+   the clip COVERING an anchor bar (non-overlapping timeline → unique resolution). The
+   transports now call `executeMcpToolAsync`: `kyx_export` AWAITS the render+encode+
+   download hook and returns the completion report (duration/size) — failures surface as
+   honest isError results (caveat documented: renders longer than the transport timeout
+   still land the download but report a timeout).
+9. Loudness/mix loops over MCP (needs the async render context — the async executor
+   landed with P1-8, so this is now unblocked).
 
 ### P2 — ADVANCED
 
@@ -374,13 +392,13 @@ addressing, no catalog discovery, family-only addressing — are now **CLOSED**
 (`kyx_meter`, `kyx_plugin_param`, `kyx_catalog`, `trackId` on writes; 16 tools, all mirrors
 pinned, 75 specs green).
 
-**What still stands between an AI agent and full DAW control** (the rest of P1, all thin
-wrappers over existing APIs): automation read/edit/point-ops, structured absolute mixer
-setters with read-back, clip tools, awaited export with stems/settings, and the loudness/mix
-loops over MCP. After those, the remaining P2 items (machine-readable result envelopes,
-batch/transaction tool, routing-graph writes, per-pad addressing) are convenience and depth,
-not capability walls.
+**What still stands between an AI agent and full DAW control**: the **P1 wave is CLOSED**
+(transport reads/seek, send reads, automation, mixer setters, clip tools, awaited export —
+all shipped 2026-09-29). Remaining items are P2 depth, not capability walls: machine-readable
+result envelopes, batch/transaction tool, routing-graph writes, per-pad addressing, automation
+point-move, audio-clip structured edits (fades/gain/split), stems/render-settings export
+options, and the loudness/mix loops over MCP (unblocked by the async executor).
 
-**Smallest practical path from here**: P1-5..P1-8 in one wave (evening-scale each), then
-re-run this matrix — the surface then covers every domain a mixing/producing agent needs
-except recording takes and third-party-plugin GUIs, which stay window-local by design.
+**Smallest practical path from here**: P2 batch + result envelopes in one wave, then the
+loudness loop (measure→trim→verify now has every half it needs). Recording takes and
+third-party-plugin GUIs stay window-local by design.

@@ -15,11 +15,13 @@ export const REFERENCE_ENGINE_VERSION = "kyx-reference/1.0.0";
 /**
  * Schema version of the persisted ReferenceMap shape. Bump + migrate on change.
  *
- * v2 (F2): added the optional `structure` block (energy curve + sections). The
- * field is optional and additive, so a v1 document still loads — it simply has
- * no structure to show, which is reported as absent rather than faked.
+ * v2 (F2): added the optional `structure` block (energy curve + sections).
+ * v3 (F2 §2.2): added the optional `descriptors` block (spectral, loudness,
+ * stereo, groove family, plain summary). Both are optional and additive, so an
+ * older document still loads — it simply has nothing to show for that part,
+ * which is reported as absent rather than faked.
  */
-export const REFERENCE_SCHEMA_VERSION = 2;
+export const REFERENCE_SCHEMA_VERSION = 3;
 
 export const PITCH_CLASSES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const;
 
@@ -127,12 +129,56 @@ export interface ReferenceStructure {
   averageEnergy: number;
 }
 
+export interface ReferenceSpectral {
+  centroidHz: number;
+  rolloffHz: number;
+  flatness: number;
+  lowEnergy: number;
+  midEnergy: number;
+  highEnergy: number;
+  brightness: number;
+}
+
+export interface ReferenceLoudness {
+  /** LUFS-ish integrated level — a descriptor of the file, never a target. */
+  integratedLufs: number;
+  peakDbfs: number;
+  crestFactorDb: number;
+  dynamicRangeDb: number;
+  /** True when any sample reaches full scale. Reported, never corrected. */
+  clipped: boolean;
+}
+
+export interface ReferenceStereo {
+  width: number;
+  sideEnergyRatio: number;
+}
+
+export type GrooveFamily = "four_on_the_floor" | "breakbeat" | "half_time" | "two_step";
+
+export interface ReferenceGroove {
+  family: GrooveFamily;
+  drumDensity: number;
+  syncopation: number;
+}
+
+export interface ReferenceDescriptors {
+  spectral: ReferenceSpectral;
+  loudness: ReferenceLoudness;
+  stereo: ReferenceStereo;
+  groove: ReferenceGroove;
+  /** One plain-language sentence; the F5 Inspiration builder's input. */
+  summary: string;
+}
+
 export interface ReferenceMap {
   metadata: ReferenceAudioMetadata;
   rhythm: ReferenceRhythm;
   tonal: ReferenceTonal;
   /** F2 — absent only when the signal was too short to segment. */
   structure?: ReferenceStructure;
+  /** F2 §2.2 — present whenever the signal was long enough to describe. */
+  descriptors?: ReferenceDescriptors;
   diagnostics: ReferenceDiagnostics;
   warnings: string[];
 }
@@ -156,7 +202,16 @@ export const DEFAULT_REFERENCE_OPTIONS: ReferenceOptions = {
 };
 
 export type ReferenceStage =
-  "decoding" | "buffer" | "transients" | "tempo" | "chroma" | "key" | "structure" | "finalizing" | "done";
+  | "decoding"
+  | "buffer"
+  | "transients"
+  | "tempo"
+  | "chroma"
+  | "key"
+  | "structure"
+  | "descriptors"
+  | "finalizing"
+  | "done";
 
 export const REFERENCE_STAGE_LABELS: Record<ReferenceStage, string> = {
   decoding: "Decoding audio",
@@ -166,6 +221,7 @@ export const REFERENCE_STAGE_LABELS: Record<ReferenceStage, string> = {
   chroma: "Analyzing pitch classes",
   key: "Estimating key",
   structure: "Mapping song structure",
+  descriptors: "Measuring spectrum and loudness",
   finalizing: "Finalizing results",
   done: "Complete",
 };
@@ -178,6 +234,7 @@ export const REFERENCE_STAGE_ORDER: ReferenceStage[] = [
   "chroma",
   "key",
   "structure",
+  "descriptors",
   "finalizing",
   "done",
 ];

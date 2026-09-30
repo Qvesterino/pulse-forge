@@ -180,9 +180,11 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_export",
     description:
-      "Request a bounce of the current project (WAV/MP3). The render + " +
-      "download run in the KYX app window; the tool reports that the bounce " +
-      "started (completion is not verifiable over MCP v1).",
+      "Bounce the current project (WAV 16-bit / MP3 320). The render runs " +
+      "in the KYX window and the tool AWAITS it — the result carries the " +
+      "completion report (duration, size). Long renders may exceed the " +
+      "transport timeout (15 s relay / 10 s desktop); the download still " +
+      "lands in the app.",
     inputSchema: {
       type: "object",
       properties: { format: { type: "string", enum: ["wav", "mp3"] } },
@@ -342,21 +344,27 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_tracks",
     description:
-      "Track CRUD: add a drum or instrument track, remove/rename an " +
-      "existing one by family or by exact trackId (group tracks are not " +
-      "addressable here). Removing the last track is declined.",
+      "Track CRUD + absolute mixer setters: add a drum or instrument " +
+      "track, remove/rename by family or exact trackId (group tracks are " +
+      "not addressable here — removing the last track is declined), or set " +
+      "mixer values with verify-by-read: setGain (absolute gainDb −60..+3.5 " +
+      "or linear gain 0..1.5), setPan (−1..1), setMute/setSolo (value " +
+      "boolean). set* ops apply to every track the family resolves to.",
     inputSchema: {
       type: "object",
       properties: {
-        op: { type: "string", enum: ["addDrum", "addInstrument", "remove", "rename"] },
+        op: {
+          type: "string",
+          enum: ["addDrum", "addInstrument", "remove", "rename", "setGain", "setPan", "setMute", "setSolo"],
+        },
         family: {
           type: "string",
           enum: ["drums", "bass", "lead", "chords", "kick", "snare", "clap", "hat", "perc", "tom"],
-          description: "For remove/rename: which family to touch — ignored when trackId is given",
+          description: "Which family to touch — ignored when trackId is given",
         },
         trackId: {
           type: "string",
-          description: "Exact track id (from kyx_state tracks) — overrides family for remove/rename",
+          description: "Exact track id (from kyx_state tracks) — overrides family",
         },
         instrument: {
           type: "string",
@@ -364,6 +372,10 @@ export const MCP_TOOL_DEFS = [
           description: "For addInstrument — the full kind catalog is in kyx_catalog subject:instruments",
         },
         name: { type: "string", description: "New name for rename" },
+        gainDb: { type: "number", minimum: -60, maximum: 3.5, description: "For setGain — absolute fader value in dB" },
+        gain: { type: "number", minimum: 0, maximum: 1.5, description: "For setGain — linear alternative to gainDb" },
+        pan: { type: "number", minimum: -1, maximum: 1, description: "For setPan — −1 left, 0 center, 1 right" },
+        value: { type: "boolean", description: "For setMute/setSolo — true = on" },
       },
       required: ["op"],
     },
@@ -524,6 +536,26 @@ export const MCP_TOOL_DEFS = [
           description: "Optional 1-based beat within the bar (default 1)",
         },
         value: { type: "number", description: "NATIVE value for addPoint (clamped into the target's range)" },
+      },
+      required: ["op"],
+    },
+  },
+  {
+    name: "kyx_clips",
+    description:
+      "Arrangement (scene) clips on the bar timeline: list them all, or " +
+      "move/resize/duplicate/delete the clip COVERING an anchor bar " +
+      "(clips never overlap, so the bar resolves uniquely). duplicate " +
+      "places the copy after the original; delete is destructive-gated. " +
+      "For audio/stem clips on track lanes only the summary is listed in " +
+      "this version.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["list", "move", "resize", "duplicate", "delete"] },
+        bar: { type: "integer", minimum: 1, description: "1-based anchor bar — the clip covering it is the target" },
+        toBar: { type: "integer", minimum: 1, description: "For move — 1-based destination start bar" },
+        bars: { type: "integer", minimum: 1, maximum: 64, description: "For resize — new length in bars" },
       },
       required: ["op"],
     },

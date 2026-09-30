@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { executeMcpTool, MCP_TOOLS, type McpToolContext } from "../src/mcp/tools";
+import { executeMcpTool, executeMcpToolAsync, MCP_TOOLS, type McpToolContext } from "../src/mcp/tools";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";
 import { addArrangementClip, createScene, setSceneRole } from "../src/commands/commands";
@@ -100,12 +100,15 @@ function withLead(): ProjectDocument {
   const doc = datasetDoc();
   const base = createProjectFromTemplate("house");
   const baseInstrument = base.tracks.find((t) => t.kind === "instrument")!;
-  const lead = { ...baseInstrument, id: "track-lead-x", name: "Lead" };
+  // instrument "pluck": family resolution (tracksInFamily) maps it to the
+  // "lead" family, and unlike the type-only "lead" kind it EXISTS in
+  // INSTRUMENT_META — normalize would heal an unknown kind to 808.
+  const lead = { ...baseInstrument, id: "track-lead-x", name: "Lead", instrument: "pluck" as const };
   return { ...doc, tracks: [...doc.tracks, lead] };
 }
 
 describe("mcp tools — headless execution", () => {
-  it("tool surface: the 17 documented tools", () => {
+  it("tool surface: the 18 documented tools", () => {
     expect(MCP_TOOLS.map((tool) => tool.name)).toEqual([
       "kyx_intent",
       "kyx_state",
@@ -123,7 +126,8 @@ describe("mcp tools — headless execution", () => {
       "kyx_catalog",
       "kyx_plugin_param",
       "kyx_meter",
-    "kyx_automation",
+      "kyx_automation",
+      "kyx_clips",
     ]);
   });
 
@@ -967,9 +971,12 @@ describe("mcp P1 sends — the read half of the send routing", () => {
     const result = executeMcpTool(ctx, "kyx_state", { subject: "sends", family: "lead" });
     // the send the intent raised is visible with its landed value
     expect(result.text).toMatch(/Lead \(id=track-lead-x\): Reverb 0\.1/);
-    // drum tracks always pass the family filter (fxChain convention — the
-    // kit carries the pad families)
-    expect(result.text).toContain("Drums");
+    // write-side family resolution: "lead" = the Lead track only (no drums)
+    expect(result.text).not.toContain("Drums (id=");
+    // family "bass" resolves through the instrument kind to the 808 track
+    const bass = executeMcpTool(ctx, "kyx_state", { subject: "sends", family: "bass" });
+    expect(bass.text).toContain("808 (id=");
+    expect(bass.text).not.toContain("Lead (id=");
   });
 
   it("sends read includes group tracks (routing state, not just mixer members)", () => {
@@ -997,5 +1004,386 @@ describe("mcp P1 sends — the read half of the send routing", () => {
     const fat = { ...doc, tracks: [...doc.tracks, ...extra] };
     const result = executeMcpTool(makeCtx(fat), "kyx_state", { subject: "sends" });
     expect(result.text).toContain("more track(s) (filter with family)");
+  });
+});
+
+// ─── P1 WAVE — automation surface (kyx_automation + subject:automation) ─────
+
+describe("mcp P1 automation — lanes, points, FX targeting", () => {
+  it("addPoint creates the lane on demand and lands the clamped native value (one undo)", () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    const result = executeMcpTool(ctx, "kyx_automation", {
+      op: "addPoint",
+      trackId: "track-lead-x",
+      param: "gain",
+      bar: 5,
+      beat: 3,
+      value: 0.4,
+    });
+    expect(result.mutated).toBe(true);
+    expect(result.text).toContain("Lead · Volume");
+    expect(result.text).toContain("5.3=0.4");
+    expect(result.text).toContain("one undo step");
+    const lead = store.doc.tracks.find((t) => t.id === "track-lead-x")!;
+    const lane = store.doc.automation.find((l) => l.target.kind === "trackGain" && l.target.trackId === lead.id)!;
+    expect(lane.points).toEqual([{ tick: 4 * 1920 + 2 * 480, value: 0.4 }]);
+    expect(store.undoStackLength).toBe(1);
+    store.undo();
+    expect(store.doc.automation).toHaveLength(0);
+  });
+
+  it("addPoint on an FX parameter targets the typed instance and clamps out-of-range", () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    executeMcpTool(ctx, "kyx_fx", { effect: "reverb", family: "lead", action: "more" });
+    const landed = executeMcpTool(ctx, "kyx_automation", {
+      op: "addPoint",
+      trackId: "track-lead-x",
+      effect: "reverb",
+      param: "decay",
+      bar: 2,
+      value: 999,
+    });
+    expect(landed.mutated).toBe(true);
+    expect(landed.text).toContain("Lead · reverb · decay");
+    expect(landed.text).toContain("clamped into 0.1..20");
+    const lane = store.doc.automation.find((l) => l.target.kind === "fxParam")!;
+    expect(lane.points[0].value).toBe(20);
+    expect(lane.target.fxId).toBe(store.doc.tracks.find((t) => t.id === "track-lead-x")!.effects[0].id);
+  });
+
+  it("kyx_state subject:automation reads lanes back with points and ranges", () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    executeMcpTool(ctx, "kyx_automation", { op: "addPoint", trackId: "track-lead-x", param: "gain", bar: 1, value: 1 });
+    executeMcpTool(ctx, "kyx_automation", {
+      op: "addPoint",
+      trackId: "track-lead-x",
+      param: "gain",
+      bar: 9,
+      value: 0.5,
+    });
+    const read = executeMcpTool(ctx, "kyx_state", { subject: "automation" });
+    expect(read.mutated).toBe(false);
+    expect(read.text).toMatch(/1\. Lead · Volume \(lane [\w-]+\) — 2 pts, range 0\.\.1\.5: 1\.1=1, 9\.1=0\.5/);
+
+    const filtered = executeMcpTool(ctx, "kyx_state", { subject: "automation", family: "bass" });
+    expect(filtered.text).toContain("no automation lanes match family");
+
+    // write-side family resolution: the 808 lane passes the "bass" filter
+    const doc = store.doc;
+    const bass808 = doc.tracks.find((t) => t.kind === "instrument" && t.instrument === "808");
+    if (bass808) {
+      executeMcpTool(ctx, "kyx_automation", { op: "addPoint", trackId: bass808.id, param: "gain", bar: 2, value: 0.9 });
+      const bassLanes = executeMcpTool(ctx, "kyx_state", { subject: "automation", family: "bass" });
+      expect(bassLanes.text).toContain(`${bass808.name} · Volume`);
+      expect(bassLanes.text).not.toContain("Lead · Volume");
+      // pad families still reach the drum track
+      executeMcpTool(ctx, "kyx_automation", { op: "addPoint", family: "drums", param: "gain", bar: 2, value: 0.9 });
+      const kitLanes = executeMcpTool(ctx, "kyx_state", { subject: "automation", family: "kick" });
+      expect(kitLanes.text).toContain("Drums · Volume");
+    }
+  });
+
+  it("deletePoint removes the point nearest the anchor bar", () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    executeMcpTool(ctx, "kyx_automation", {
+      op: "addPoint",
+      trackId: "track-lead-x",
+      param: "gain",
+      bar: 3,
+      value: 0.7,
+    });
+    executeMcpTool(ctx, "kyx_automation", {
+      op: "addPoint",
+      trackId: "track-lead-x",
+      param: "gain",
+      bar: 8,
+      value: 0.3,
+    });
+    const removed = executeMcpTool(ctx, "kyx_automation", {
+      op: "deletePoint",
+      trackId: "track-lead-x",
+      param: "gain",
+      bar: 8,
+    });
+    expect(removed.mutated).toBe(true);
+    expect(removed.text).toContain("removed point 8.1=0.3");
+    const lane = store.doc.automation[0];
+    expect(lane.points).toHaveLength(1);
+    expect(lane.points[0].tick).toBe(2 * 1920);
+  });
+
+  it("deletePoint honestly refuses when no point is within a bar", () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    executeMcpTool(ctx, "kyx_automation", {
+      op: "addPoint",
+      trackId: "track-lead-x",
+      param: "gain",
+      bar: 3,
+      value: 0.7,
+    });
+    const far = executeMcpTool(ctx, "kyx_automation", {
+      op: "deletePoint",
+      trackId: "track-lead-x",
+      param: "gain",
+      bar: 12,
+    });
+    expect(far.mutated).toBe(false);
+    expect(far.text).toContain("no automation point within a bar");
+  });
+
+  it("clearLane and removeLane are D4-gated and work once allowed", () => {
+    const store = new ProjectStore(withLead());
+    const locked = storeCtx(store);
+    executeMcpTool(storeCtx(store), "kyx_automation", {
+      op: "addPoint",
+      trackId: "track-lead-x",
+      param: "gain",
+      bar: 3,
+      value: 0.7,
+    });
+
+    const clearRefused = executeMcpTool(locked, "kyx_automation", {
+      op: "clearLane",
+      trackId: "track-lead-x",
+      param: "gain",
+    });
+    expect(clearRefused.text).toContain("locked");
+    const removeRefused = executeMcpTool(locked, "kyx_automation", {
+      op: "removeLane",
+      trackId: "track-lead-x",
+      param: "gain",
+    });
+    expect(removeRefused.text).toContain("locked");
+    expect(store.doc.automation[0].points).toHaveLength(1);
+
+    const allowed = storeCtx(store, { allowDestructive: true });
+    const cleared = executeMcpTool(allowed, "kyx_automation", {
+      op: "clearLane",
+      trackId: "track-lead-x",
+      param: "gain",
+    });
+    expect(cleared.mutated).toBe(true);
+    expect(cleared.text).toContain("cleared 1 point(s)");
+    expect(store.doc.automation).toHaveLength(1); // lane survives, points gone
+    expect(store.doc.automation[0].points).toHaveLength(0);
+
+    const removed = executeMcpTool(allowed, "kyx_automation", {
+      op: "removeLane",
+      trackId: "track-lead-x",
+      param: "gain",
+    });
+    expect(removed.mutated).toBe(true);
+    expect(store.doc.automation).toHaveLength(0);
+  });
+
+  it("honest failures: missing instance, unknown track, bad param, missing bar/value", () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    const noInstance = executeMcpTool(ctx, "kyx_automation", {
+      op: "addPoint",
+      trackId: "track-lead-x",
+      effect: "chorus",
+      param: "mix",
+      bar: 1,
+      value: 0.5,
+    });
+    expect(noInstance.mutated).toBe(false);
+    expect(noInstance.text).toContain("no chorus instance");
+
+    const badTrack = executeMcpTool(ctx, "kyx_automation", {
+      op: "addPoint",
+      trackId: "t-quantum",
+      param: "gain",
+      bar: 1,
+      value: 1,
+    });
+    expect(badTrack.text).toContain('no track or return with id "t-quantum"');
+
+    const badParam = executeMcpTool(ctx, "kyx_automation", {
+      op: "addPoint",
+      trackId: "track-lead-x",
+      param: "quantum",
+      bar: 1,
+      value: 1,
+    });
+    expect(badParam.text).toContain("param must be 'gain' or 'pan'");
+
+    const noBar = executeMcpTool(ctx, "kyx_automation", {
+      op: "addPoint",
+      trackId: "track-lead-x",
+      param: "gain",
+      value: 1,
+    });
+    expect(noBar.text).toContain("1-based bar is required");
+
+    const noValue = executeMcpTool(ctx, "kyx_automation", {
+      op: "addPoint",
+      trackId: "track-lead-x",
+      param: "gain",
+      bar: 1,
+    });
+    expect(noValue.text).toContain("finite NATIVE value");
+    expect(noValue.text).toContain("0..1.5");
+  });
+
+  it("pan lanes validate −1..1 via the shared target validation", () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    const result = executeMcpTool(ctx, "kyx_automation", {
+      op: "addPoint",
+      trackId: "track-lead-x",
+      param: "pan",
+      bar: 4,
+      value: -3,
+    });
+    expect(result.mutated).toBe(true);
+    expect(result.text).toContain("Lead · Pan");
+    expect(result.text).toContain("clamped into -1..1");
+    const lane = store.doc.automation.find((l) => l.target.kind === "trackPan")!;
+    expect(lane.points[0].value).toBe(-1);
+  });
+});
+
+// ─── P1 WAVE — mixer setters, clips, awaited export ─────────────────────────
+
+describe("mcp P1 mixer — absolute setters with verify-by-read", () => {
+  it("setGain via gainDb lands the linear value and reports dB", () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    const result = executeMcpTool(ctx, "kyx_tracks", { op: "setGain", trackId: "track-lead-x", gainDb: -6 });
+    expect(result.mutated).toBe(true);
+    expect(result.text).toMatch(/Lead: gain 0\.501 \(-6\.0 dB\)/);
+    const lead = store.doc.tracks.find((t) => t.id === "track-lead-x")!;
+    expect(lead.gain).toBeCloseTo(10 ** (-6 / 20), 3);
+  });
+
+  it("setGain accepts linear gain and clamps out-of-range", () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    executeMcpTool(ctx, "kyx_tracks", { op: "setGain", trackId: "track-lead-x", gain: 42 });
+    const lead = store.doc.tracks.find((t) => t.id === "track-lead-x")!;
+    expect(lead.gain).toBe(1.5); // 20·log10(1.5) ≈ +3.5 dB ceiling
+
+    const refused = executeMcpTool(ctx, "kyx_tracks", { op: "setGain", trackId: "track-lead-x" });
+    expect(refused.mutated).toBe(false);
+    expect(refused.text).toContain("setGain needs gainDb");
+  });
+
+  it("setPan/setMute/setSolo land and read back; family applies to all matches", () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const pan = executeMcpTool(ctx, "kyx_tracks", { op: "setPan", family: "drums", pan: 0.5 });
+    expect(pan.text).toMatch(/Drums: pan 0\.50 \(R\)/);
+    const mute = executeMcpTool(ctx, "kyx_tracks", { op: "setMute", family: "drums", value: true });
+    expect(mute.text).toContain("Drums: mute on");
+    expect(store.doc.tracks.find((t) => t.kind === "drum")!.mute).toBe(true);
+    const solo = executeMcpTool(ctx, "kyx_tracks", { op: "setSolo", trackId: store.doc.tracks[1].id, value: true });
+    expect(solo.text).toContain("solo on");
+
+    const badPan = executeMcpTool(ctx, "kyx_tracks", { op: "setPan", family: "drums" });
+    expect(badPan.mutated).toBe(false);
+    expect(badPan.text).toContain("setPan needs pan");
+  });
+
+  it("a set that changes nothing reports honestly (mutated=false)", () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const result = executeMcpTool(ctx, "kyx_tracks", { op: "setMute", family: "drums", value: false });
+    expect(result.mutated).toBe(false);
+    expect(result.text).toContain("nothing changed");
+  });
+});
+
+describe("mcp P1 clips — structured arrangement edits", () => {
+  it("list shows sorted clips with scene names and the audio summary", () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const result = executeMcpTool(ctx, "kyx_clips", { op: "list" });
+    expect(result.mutated).toBe(false);
+    expect(result.text).toContain('"Intro" bars 1–4');
+    expect(result.text).toContain('"Drop" bars 5–8');
+  });
+
+  it("move/resize/duplicate address the clip covering the anchor bar", () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const moved = executeMcpTool(ctx, "kyx_clips", { op: "move", bar: 6, toBar: 12 });
+    expect(moved.mutated).toBe(true);
+    expect(moved.text).toContain('moved "Drop" bars 5–8 → starts at bar 12');
+    const clip = store.doc.arrangement.clips.find((c) => c.startBar === 11)!;
+    expect(clip).toBeTruthy();
+
+    const resized = executeMcpTool(ctx, "kyx_clips", { op: "resize", bar: 12, bars: 8 });
+    expect(resized.mutated).toBe(true);
+    expect(store.doc.arrangement.clips.find((c) => c.startBar === 11)!.lengthBars).toBe(8);
+
+    const duplicated = executeMcpTool(ctx, "kyx_clips", { op: "duplicate", bar: 12 });
+    expect(duplicated.mutated).toBe(true);
+    expect(store.doc.arrangement.clips).toHaveLength(3);
+  });
+
+  it("delete is D4-gated; honest failures for missing clip and bad args", () => {
+    const store = new ProjectStore(datasetDoc());
+    const locked = storeCtx(store);
+    const refused = executeMcpTool(locked, "kyx_clips", { op: "delete", bar: 6 });
+    expect(refused.text).toContain("locked");
+
+    const allowed = storeCtx(new ProjectStore(datasetDoc()), { allowDestructive: true });
+    const removed = executeMcpTool(allowed, "kyx_clips", { op: "delete", bar: 6 });
+    expect(removed.mutated).toBe(true);
+    expect(removed.text).toContain('deleted "Drop" bars 5–8');
+
+    const noClip = executeMcpTool(storeCtx(new ProjectStore(datasetDoc())), "kyx_clips", {
+      op: "move",
+      bar: 50,
+      toBar: 2,
+    });
+    expect(noClip.mutated).toBe(false);
+    expect(noClip.text).toContain("no arrangement clip covers bar 50");
+
+    const noArgs = executeMcpTool(storeCtx(new ProjectStore(datasetDoc())), "kyx_clips", { op: "move", bar: 6 });
+    expect(noArgs.text).toContain("move needs toBar");
+  });
+});
+
+describe("mcp P1 export — the awaited completion report", () => {
+  it("executeMcpToolAsync awaits the export hook and returns the report", async () => {
+    const ctx = makeCtx(datasetDoc());
+    const observing: McpToolContext = { ...ctx, export: async (format) => `fake-export-${format} (12.3s, 2.05 MB)` };
+    const result = await executeMcpToolAsync(observing, "kyx_export", { format: "wav" });
+    expect(result.mutated).toBe(false);
+    expect(result.text).toContain("export WAV complete — fake-export-wav (12.3s, 2.05 MB)");
+
+    const mp3 = await executeMcpToolAsync(observing, "kyx_export", { format: "mp3" });
+    expect(mp3.text).toContain("export MP3 complete");
+  });
+
+  it("export failures surface as honest isError results", async () => {
+    const ctx = makeCtx(datasetDoc());
+    const failing: McpToolContext = {
+      ...ctx,
+      export: async () => {
+        throw new Error("no audio context");
+      },
+    };
+    const result = await executeMcpToolAsync(failing, "kyx_export", { format: "wav" });
+    expect(result.mutated).toBe(false);
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("export failed: no audio context");
+
+    const bare = await executeMcpToolAsync(makeCtx(datasetDoc()), "kyx_export", { format: "wav" });
+    expect(bare.text).toContain("not available");
+  });
+
+  it("non-export tools flow through the async wrapper unchanged", async () => {
+    const ctx = makeCtx(datasetDoc());
+    const result = await executeMcpToolAsync(ctx, "kyx_intent", { instruction: "set tempo to 141" });
+    expect(result.mutated).toBe(true);
+    expect(ctx.getDoc().bpm).toBe(141);
   });
 });

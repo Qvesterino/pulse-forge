@@ -1181,6 +1181,51 @@ function crash(bandHz: number, decay: number, level: number): Builder {
   };
 }
 
+/** Pop splash (crash.pop re-voice 2026-09-30): the shipped seed was the SAME
+ * bandpass-wash builder as crash.main with a different band — feature
+ * distance 0.025, a duplicate, and darker than main despite the manifest
+ * promising "Bright, Airy". Re-voiced into the pocket the pop lane wants:
+ * highpassed AIR-forward body (not a mid wash), a soft metallic ping for
+ * definition, and a fast decay that accents a vocal downbeat without washing
+ * over it. */
+function crashPopSplash(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    // Body: highpassed noise — air to the top of the band.
+    const noise = noiseSource(ctx, 141, 1.1, t0);
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 5500;
+    noise
+      .connect(hp)
+      .connect(env(ctx, t0, 0.5, 0.75))
+      .connect(dest);
+    // Definition ping: the metallic partial that keeps it a cymbal hit.
+    const ping = ctx.createOscillator();
+    ping.type = "square";
+    ping.frequency.value = 4300;
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 4300;
+    bp.Q.value = 8;
+    ping
+      .connect(bp)
+      .connect(env(ctx, t0, 0.28, 0.18))
+      .connect(dest);
+    ping.start(t0);
+    ping.stop(t0 + 0.25);
+    // Sparkle tail: a whisper of top-air outliving the body.
+    const air = noiseSource(ctx, 149, 1.2, t0);
+    const airHp = ctx.createBiquadFilter();
+    airHp.type = "highpass";
+    airHp.frequency.value = 10500;
+    air
+      .connect(airHp)
+      .connect(env(ctx, t0, 0.22, 0.9))
+      .connect(dest);
+  };
+}
+
 function cowbell(): Builder {
   return (ctx, dest) => {
     const t0 = ctx.currentTime;
@@ -1580,7 +1625,57 @@ function fxSubDrop(): Builder {
     airBp.frequency.setValueAtTime(2400, t0);
     airBp.frequency.exponentialRampToValueAtTime(500, t0 + 0.6);
     airBp.Q.value = 1.2;
-    air.connect(airBp).connect(env(ctx, t0, 0.12, 0.55)).connect(dest);
+    air
+      .connect(airBp)
+      .connect(env(ctx, t0, 0.12, 0.55))
+      .connect(dest);
+  };
+}
+
+/** Vinyl crackle (library gap: the lo-fi/phonk texture bed) — a dusty
+ * surface, not a one-shot: seeded dust ticks (tiny decaying impulses every
+ * few ms), rare bigger pops, over a low hiss floor. The envelope is FLAT and
+ * the process stationary, so the bed loops cleanly under a beat; deliberately
+ * mid/treble only (300 Hz HPF) — no rumble, the 808 owns the floor. */
+function fxVinyl(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const seconds = 4;
+    const buf = ctx.createBuffer(1, Math.floor(seconds * SAMPLE_RATE), SAMPLE_RATE);
+    const data = buf.getChannelData(0);
+    const rand = mulberry32(151);
+    // Hiss floor: quiet broadband dust.
+    for (let i = 0; i < data.length; i++) data[i] = (rand() * 2 - 1) * 0.012;
+    // Dust ticks: Poisson-ish arrivals, each a tiny decaying noise burst.
+    let i = 0;
+    while (i < data.length) {
+      i += Math.floor((0.004 + rand() * 0.05) * SAMPLE_RATE);
+      if (i >= data.length) break;
+      const amp = 0.05 + rand() * 0.12;
+      const len = 20 + Math.floor(rand() * 90); // 0.5–2.5 ms
+      for (let k = 0; k < len && i + k < data.length; k++) {
+        data[i + k] += (rand() * 2 - 1) * amp * (1 - k / len);
+      }
+    }
+    // Pops: rare, larger, squared decay — the speck crossing the groove.
+    for (let p = 0; p < 7; p++) {
+      const at = Math.floor(rand() * (data.length - 2000));
+      const amp = 0.3 + rand() * 0.35;
+      const len = 150 + Math.floor(rand() * 500);
+      for (let k = 0; k < len && at + k < data.length; k++) {
+        data[at + k] += (rand() * 2 - 1) * amp * (1 - k / len) ** 2;
+      }
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 300;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 8500;
+    src.connect(hp).connect(lp).connect(dest);
+    src.start(t0);
   };
 }
 
@@ -2247,6 +2342,10 @@ export const BUILDERS: Record<string, Builder> = {
   // Sub-drop (library-gap wave): the drill/trap transition staple — a two-
   // octave pitch fall landing on a semitone-clean C1.
   "factory.fx.subdrop": fxSubDrop(),
+  // Vinyl crackle (library-gap wave): the dusty texture bed under lo-fi and
+  // phonk beats — flat/stationary so it loops, mid/treble so it never fights
+  // the 808.
+  "factory.fx.vinyl": fxVinyl(),
   "factory.tonal.pluck": pluck(),
   "factory.tonal.stab": stab(),
   "factory.tonal.keys": keys(),
@@ -2317,7 +2416,10 @@ export const BUILDERS: Record<string, Builder> = {
     clap()(ctx, dest);
     clapSoft()(ctx, dest);
   },
-  "factory.crash.pop": crash(6500, 1.5, 0.55),
+  // crash.pop re-voice (2026-09-30): was the crash.main recipe on a lower
+  // band (feature distance 0.025 — a duplicate). Now the short bright splash
+  // the manifest always claimed.
+  "factory.crash.pop": crashPopSplash(),
   "factory.tom.floor": tom(130, 75),
   "factory.rim.pop": rimPop(),
   "factory.perc.shaker.pop": shakerPop(),
@@ -2411,6 +2513,7 @@ export const DURATIONS: Record<string, number> = {
   "factory.fx.reverse": 1.25,
   "factory.fx.noise": 0.35,
   "factory.fx.subdrop": 1.5,
+  "factory.fx.vinyl": 4.0,
   "factory.tonal.pluck": 0.5,
   "factory.tonal.stab": 0.5,
   "factory.tonal.keys": 1.1,
@@ -2437,7 +2540,7 @@ export const DURATIONS: Record<string, number> = {
   "factory.tonal.harp": 1.4,
   "factory.kick.pop": 0.35,
   "factory.clap.pop": 0.35,
-  "factory.crash.pop": 1.7,
+  "factory.crash.pop": 1.1,
   "factory.tom.floor": 0.45,
   "factory.rim.pop": 0.08,
   "factory.perc.shaker.pop": 0.2,

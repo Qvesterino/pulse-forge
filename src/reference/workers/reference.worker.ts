@@ -15,6 +15,13 @@ export interface ReferenceWorkerRequest {
   type: "ANALYZE_REFERENCE";
   jobId: number;
   mono: Float32Array;
+  /**
+   * Original per-channel PCM, when the caller has it. Needed for the stereo
+   * descriptor; a worker that only ever sees the mono downmix would report
+   * width 0 for every file. Validated as an array of Float32Array so a
+   * malformed payload degrades to mono rather than throwing.
+   */
+  channels?: Float32Array[];
   metadata: ReferenceAudioMetadata;
   options?: Partial<ReferenceOptions>;
 }
@@ -45,9 +52,14 @@ if (dedicated) {
     if (data.metadata.sampleRate <= 0) return;
 
     const { jobId, mono, metadata, options } = data;
+    // A malformed channels payload degrades to mono (an honest width of 0)
+    // rather than failing the whole analysis.
+    const channels =
+      Array.isArray(data.channels) && data.channels.every((c) => c instanceof Float32Array) ? data.channels : undefined;
     try {
       const payload = analyzeReference({
         mono,
+        channels,
         metadata,
         options,
         onStage: (stage) =>

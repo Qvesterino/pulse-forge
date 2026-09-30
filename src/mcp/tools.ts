@@ -35,10 +35,14 @@ import {
   applyProductionIntentCommand,
   createDrumTrack,
   createInstrumentTrack,
+  deleteArrangementClip,
   deleteAutomationPoint,
   deleteTrack,
+  duplicateArrangementClip,
+  moveArrangementClip,
   removeAutomationLane,
   removeMarker,
+  resizeArrangementClip,
   setActivePattern,
   setEffectParam,
   setStepMeta,
@@ -188,9 +192,11 @@ export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_export",
     description:
-      "Request a bounce of the current project (WAV/MP3). The render + " +
-      "download run in the KYX app window; the tool reports that the bounce " +
-      "started (completion is not verifiable over MCP v1).",
+      "Bounce the current project (WAV 16-bit / MP3 320). The render runs " +
+      "in the KYX window and the tool AWAITS it — the result carries the " +
+      "completion report (duration, size). Long renders may exceed the " +
+      "transport timeout (15 s relay / 10 s desktop); the download still " +
+      "lands in the app.",
     inputSchema: {
       type: "object",
       properties: { format: { type: "string", enum: ["wav", "mp3"] } },
@@ -350,21 +356,27 @@ export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_tracks",
     description:
-      "Track CRUD: add a drum or instrument track, remove/rename an " +
-      "existing one by family or by exact trackId (group tracks are not " +
-      "addressable here). Removing the last track is declined.",
+      "Track CRUD + absolute mixer setters: add a drum or instrument " +
+      "track, remove/rename by family or exact trackId (group tracks are " +
+      "not addressable here — removing the last track is declined), or set " +
+      "mixer values with verify-by-read: setGain (absolute gainDb −60..+3.5 " +
+      "or linear gain 0..1.5), setPan (−1..1), setMute/setSolo (value " +
+      "boolean). set* ops apply to every track the family resolves to.",
     inputSchema: {
       type: "object",
       properties: {
-        op: { type: "string", enum: ["addDrum", "addInstrument", "remove", "rename"] },
+        op: {
+          type: "string",
+          enum: ["addDrum", "addInstrument", "remove", "rename", "setGain", "setPan", "setMute", "setSolo"],
+        },
         family: {
           type: "string",
           enum: ["drums", "bass", "lead", "chords", "kick", "snare", "clap", "hat", "perc", "tom"],
-          description: "For remove/rename: which family to touch — ignored when trackId is given",
+          description: "Which family to touch — ignored when trackId is given",
         },
         trackId: {
           type: "string",
-          description: "Exact track id (from kyx_state tracks) — overrides family for remove/rename",
+          description: "Exact track id (from kyx_state tracks) — overrides family",
         },
         instrument: {
           type: "string",
@@ -372,6 +384,10 @@ export const MCP_TOOLS: McpToolDef[] = [
           description: "For addInstrument — the full kind catalog is in kyx_catalog subject:instruments",
         },
         name: { type: "string", description: "New name for rename" },
+        gainDb: { type: "number", minimum: -60, maximum: 3.5, description: "For setGain — absolute fader value in dB" },
+        gain: { type: "number", minimum: 0, maximum: 1.5, description: "For setGain — linear alternative to gainDb" },
+        pan: { type: "number", minimum: -1, maximum: 1, description: "For setPan — −1 left, 0 center, 1 right" },
+        value: { type: "boolean", description: "For setMute/setSolo — true = on" },
       },
       required: ["op"],
     },
@@ -532,6 +548,26 @@ export const MCP_TOOLS: McpToolDef[] = [
           description: "Optional 1-based beat within the bar (default 1)",
         },
         value: { type: "number", description: "NATIVE value for addPoint (clamped into the target's range)" },
+      },
+      required: ["op"],
+    },
+  },
+  {
+    name: "kyx_clips",
+    description:
+      "Arrangement (scene) clips on the bar timeline: list them all, or " +
+      "move/resize/duplicate/delete the clip COVERING an anchor bar " +
+      "(clips never overlap, so the bar resolves uniquely). duplicate " +
+      "places the copy after the original; delete is destructive-gated. " +
+      "For audio/stem clips on track lanes only the summary is listed in " +
+      "this version.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["list", "move", "resize", "duplicate", "delete"] },
+        bar: { type: "integer", minimum: 1, description: "1-based anchor bar — the clip covering it is the target" },
+        toBar: { type: "integer", minimum: 1, description: "For move — 1-based destination start bar" },
+        bars: { type: "integer", minimum: 1, maximum: 64, description: "For resize — new length in bars" },
       },
       required: ["op"],
     },
@@ -759,12 +795,13 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
           mutated: false,
         };
       }
-      const format = record.format === "mp3" ? "mp3" : "wav";
+      const format = exportFormatOf(record);
+      // Sync callers get the fire-and-forget contract; the transports go
+      // through executeMcpToolAsync, which AWAITS the same hook and returns
+      // the completion report (duration/size).
       void ctx.export(format).catch(() => {});
       return {
-        text:
-          `export ${format.toUpperCase()} started in the KYX window (render + download run there; ` +
-          "completion is reported in the app, not verifiable over MCP v1)",
+        text: `export ${format.toUpperCase()} started in the KYX window`,
         mutated: false,
       };
     }
@@ -953,6 +990,65 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
         ctx.execute(snapshot("mcpRemoveTracks", `MCP: remove tracks (${label}) ×${ids.length}`, ctx.getDoc(), next));
         return { text: `removed ${ids.length} track(s) (${label}) — one undo step`, mutated: true };
       }
+      if (op === "setGain" || op === "setPan" || op === "setMute" || op === "setSolo") {
+        // Structured absolute mixer setters — the read-back reports every
+        // landed value so the AI can verify the fader really moved.
+        const ids = explicitTrackIds(ctx.getDoc(), record);
+        if (typeof ids === "string") return { text: ids, mutated: false };
+        if (ids.length === 0)
+          return { text: `no track matches family "${String(record.family ?? "")}"`, mutated: false };
+        const before = ctx.getDoc();
+        let next = before;
+        const parts: string[] = [];
+        if (op === "setGain") {
+          const dbValue = typeof record.gainDb === "number" ? record.gainDb : undefined;
+          const linearValue = typeof record.gain === "number" ? record.gain : undefined;
+          if (dbValue === undefined && linearValue === undefined) {
+            return { text: "setGain needs gainDb (−60..+3.5, absolute) or gain (linear 0..1.5)", mutated: false };
+          }
+          let linear: number;
+          if (dbValue !== undefined) {
+            if (!Number.isFinite(dbValue)) return { text: "gainDb must be a finite number of dB", mutated: false };
+            const clampedDb = Math.min(3.5, Math.max(-60, dbValue));
+            linear = Math.min(1.5, Math.max(0, 10 ** (clampedDb / 20)));
+          } else {
+            if (!Number.isFinite(linearValue!))
+              return { text: "gain must be a finite linear value (0..1.5)", mutated: false };
+            linear = Math.min(1.5, Math.max(0, linearValue!));
+          }
+          for (const id of ids) next = setTrackParams(next, id, { gain: linear }).execute(next);
+          for (const id of ids) {
+            const track = next.tracks.find((t) => t.id === id)!;
+            parts.push(
+              `${track.name}: gain ${track.gain.toFixed(3)} (${(20 * Math.log10(Math.max(track.gain, 1e-4))).toFixed(1)} dB)`,
+            );
+          }
+        } else if (op === "setPan") {
+          const pan = Number(record.pan);
+          if (!Number.isFinite(pan))
+            return { text: "setPan needs pan in −1..1 (−1 left, 0 center, 1 right)", mutated: false };
+          const clamped = Math.min(1, Math.max(-1, pan));
+          for (const id of ids) next = setTrackParams(next, id, { pan: clamped }).execute(next);
+          for (const id of ids) {
+            const track = next.tracks.find((t) => t.id === id)!;
+            const side = track.pan < -0.001 ? "L" : track.pan > 0.001 ? "R" : "C";
+            parts.push(`${track.name}: pan ${track.pan.toFixed(2)} (${side})`);
+          }
+        } else {
+          const value = record.value === true;
+          const prop = op === "setMute" ? ("mute" as const) : ("solo" as const);
+          for (const id of ids) next = setTrackParams(next, id, { [prop]: value }).execute(next);
+          for (const id of ids) {
+            const track = next.tracks.find((t) => t.id === id)!;
+            parts.push(`${track.name}: ${prop} ${track[prop] ? "on" : "off"}`);
+          }
+        }
+        if (next === before) {
+          return { text: `nothing changed — ${parts.join("; ") || "values already match"}`, mutated: false };
+        }
+        ctx.execute(snapshot("mcpMixer", `MCP: ${op} on ${ids.length} track(s)`, before, next));
+        return { text: `${parts.join("; ")}${ids.length > 1 ? " (one undo step)" : ""}`, mutated: true };
+      }
       return { text: `unknown track op: ${op}`, mutated: false };
     }
     case "kyx_pattern": {
@@ -998,6 +1094,8 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
       return executePluginParamTool(ctx, record);
     case "kyx_automation":
       return executeAutomationTool(ctx, record);
+    case "kyx_clips":
+      return executeClipsTool(ctx, record);
     case "kyx_meter": {
       if (ctx.meters == null) {
         return {
@@ -1031,6 +1129,44 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
     default:
       return { text: `unknown tool: ${name}`, mutated: false };
   }
+}
+
+/** "wav" | "mp3" from the tool record — anything else falls back to wav. */
+function exportFormatOf(record: Record<string, unknown>): "wav" | "mp3" {
+  return record.format === "mp3" ? "mp3" : "wav";
+}
+
+/**
+ * ASYNC executor — what the transports actually call. Identical to
+ * {@link executeMcpTool} except `kyx_export`, which AWAITS the render +
+ * encode + download hook and returns the completion report (duration/size)
+ * instead of the fire-and-forget "started" echo. Render failures surface as
+ * honest isError results. Long renders may exceed the transport timeout
+ * (15 s web relay / 10 s desktop IPC) — the download still lands in the
+ * window, but the caller sees a timeout, not the report.
+ */
+export async function executeMcpToolAsync(ctx: McpToolContext, name: string, args: unknown): Promise<McpToolResult> {
+  if (name === "kyx_export") {
+    const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
+    if (ctx.export == null) {
+      return {
+        text: "export is not available over this MCP transport — use the KYX export panel",
+        mutated: false,
+      };
+    }
+    const format = exportFormatOf(record);
+    try {
+      const report = await ctx.export(format);
+      return { text: `export ${format.toUpperCase()} complete — ${report}`, mutated: false };
+    } catch (error) {
+      return {
+        text: `export failed: ${error instanceof Error ? error.message : String(error)}`,
+        mutated: false,
+        isError: true,
+      };
+    }
+  }
+  return executeMcpTool(ctx, name, args);
 }
 
 /** Strict family -> track ids for MCP ops: name/kind match only, groups and
@@ -1256,6 +1392,101 @@ function positionFromRecord(record: Record<string, unknown>): number | string {
   return (bar - 1) * TICKS_PER_BAR + (beat - 1) * (TICKS_PER_BAR / 4);
 }
 
+/** The arrangement clip covering a 1-based bar (clips never overlap). */
+function clipCoveringBar(doc: ProjectDocument, bar: number) {
+  const start = bar - 1;
+  return doc.arrangement.clips.find((clip) => start >= clip.startBar && start < clip.startBar + clip.lengthBars);
+}
+
+/** kyx_clips — structured arrangement-clip edits over the same commands the
+ * NL arrange layer uses; delete rides the D4 gate. */
+function executeClipsTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
+  const op = String(record.op ?? "");
+  const doc = ctx.getDoc();
+  const sceneName = (sceneId: string): string => doc.scenes.find((scene) => scene.id === sceneId)?.name ?? sceneId;
+  const describeClip = (clip: {
+    id: string;
+    sceneId: string;
+    startBar: number;
+    lengthBars: number;
+    loop?: boolean;
+  }): string =>
+    `"${sceneName(clip.sceneId)}" bars ${clip.startBar + 1}–${clip.startBar + clip.lengthBars}${clip.loop ? " (loop)" : ""}`;
+
+  if (op === "list") {
+    const lines: string[] = [];
+    const sorted = [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar);
+    if (sorted.length === 0) lines.push("no arrangement clips");
+    for (const clip of sorted) lines.push(describeClip(clip));
+    const audio = doc.arrangement.audioClips ?? [];
+    if (audio.length > 0) {
+      const byTrack = new Map<string, number>();
+      for (const clip of audio) byTrack.set(clip.trackId, (byTrack.get(clip.trackId) ?? 0) + 1);
+      const summary = [...byTrack.entries()]
+        .map(([trackId, count]) => `${ownerNameOf(doc, trackId)} ×${count}`)
+        .join(", ");
+      lines.push(
+        `audio clips on track lanes: ${audio.length} (${summary}) — structured audio-clip edits are not exposed yet`,
+      );
+    }
+    return { text: lines.join("\n"), mutated: false };
+  }
+
+  const rawBar = Number(record.bar);
+  if (!Number.isFinite(rawBar) || Math.round(rawBar) < 1) {
+    return {
+      text: "a 1-based anchor bar is required — the clip covering it is the target (list first)",
+      mutated: false,
+    };
+  }
+  const clip = clipCoveringBar(doc, Math.round(rawBar));
+  if (!clip) {
+    return {
+      text: `no arrangement clip covers bar ${Math.round(rawBar)} — read the layout via op:list`,
+      mutated: false,
+    };
+  }
+
+  try {
+    if (op === "move") {
+      const toBar = Math.round(Number(record.toBar));
+      if (!Number.isFinite(toBar) || toBar < 1) {
+        return { text: "move needs toBar (1-based destination start bar)", mutated: false };
+      }
+      ctx.execute(moveArrangementClip(doc, clip.id, toBar - 1));
+      return { text: `moved ${describeClip(clip)} → starts at bar ${toBar} — one undo step`, mutated: true };
+    }
+    if (op === "resize") {
+      const bars = Math.round(Number(record.bars));
+      if (!Number.isFinite(bars) || bars < 1 || bars > 64) {
+        return { text: "resize needs bars 1..64 (new clip length)", mutated: false };
+      }
+      ctx.execute(resizeArrangementClip(doc, clip.id, bars));
+      return {
+        text: `resized ${describeClip(clip)} → ${bars} bar(s) — one undo step`,
+        mutated: true,
+      };
+    }
+    if (op === "duplicate") {
+      ctx.execute(duplicateArrangementClip(doc, clip.id));
+      return {
+        text: `duplicated ${describeClip(clip)} — copy placed after the original, one undo step`,
+        mutated: true,
+      };
+    }
+    if (op === "delete") {
+      if (ctx.allowDestructive?.() !== true) return destructiveRefusal();
+      ctx.execute(deleteArrangementClip(doc, clip.id));
+      return { text: `deleted ${describeClip(clip)} — one undo step`, mutated: true };
+    }
+    return { text: `unknown op: ${op} (list | move | resize | duplicate | delete)`, mutated: false };
+  } catch (error) {
+    // Arrangement commands throw on invariants (overlap, bounds) — honest
+    // failure over MCP, never a thrown crash into the relay.
+    return { text: `clip op failed: ${error instanceof Error ? error.message : String(error)}`, mutated: false };
+  }
+}
+
 /** kyx_catalog — machine-readable discovery over the registries. */
 function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
   const subject = String(record.subject ?? "effects");
@@ -1479,8 +1710,9 @@ function automationTargetLabel(doc: ProjectDocument, target: AutomationTarget): 
   if (target.kind === "trackGain") return `${owner} · Volume`;
   if (target.kind === "trackPan") return `${owner} · Pan`;
   if (target.kind === "fxParam") {
-    const owner = doc.tracks.find((t) => t.id === target.trackId) ?? doc.returns.find((r) => r.id === target.trackId);
-    const fx = owner?.effects.find((effect) => effect.id === target.fxId);
+    const ownerNode =
+      doc.tracks.find((t) => t.id === target.trackId) ?? doc.returns.find((r) => r.id === target.trackId);
+    const fx = ownerNode?.effects.find((effect) => effect.id === target.fxId);
     return `${owner} · ${fx?.type ?? "fx"} · ${target.paramId}`;
   }
   return `${owner} · ${target.paramId}`;
@@ -1496,17 +1728,26 @@ function formatAutomationPoints(points: Array<{ tick: number; value: number }>):
   return `${rendered.slice(0, 4).join(", ")} … +${points.length - 4} more (values ${Math.min(...values)}..${Math.max(...values)})`;
 }
 
+/** Family → track-id predicate for read filters (fxChain/sends/automation).
+ * Uses the WRITE-side resolution (tracksInFamily: name + instrument kind, so
+ * family "bass" covers the 808 track) and adds drum tracks for the kit and
+ * pad families — a "kick" ask must still see the drum track's chain/sends. */
+function familyTrackFilter(doc: ProjectDocument, family: string | undefined): ((trackId: string) => boolean) | null {
+  if (family == null) return null;
+  const ids = new Set(tracksInFamily(doc, family));
+  if (family === "drums" || ["kick", "snare", "clap", "hat", "perc", "tom"].includes(family)) {
+    for (const track of doc.tracks) if (track.kind === "drum") ids.add(track.id);
+  }
+  return (trackId) => ids.has(trackId);
+}
+
 /** kyx_state subject:automation — the lanes map + scene-curve summary. */
 function automationSnapshot(doc: ProjectDocument, family: string | undefined): string {
-  const wanted = family != null ? new RegExp(`\\b${family}\\b`, "i") : null;
+  const passes = familyTrackFilter(doc, family);
   const lines: string[] = [];
-  const lanes = doc.automation.filter((lane) => {
-    if (wanted == null) return true;
-    const owner = doc.tracks.find((t) => t.id === lane.target.trackId);
-    return owner != null && (wanted.test(owner.name) || owner.kind === "drum");
-  });
+  const lanes = doc.automation.filter((lane) => passes == null || passes(lane.target.trackId));
   if (lanes.length === 0) {
-    lines.push(wanted != null ? `no automation lanes match family "${family}"` : "no automation lanes");
+    lines.push(family != null ? `no automation lanes match family "${family}"` : "no automation lanes");
   }
   lanes.forEach((lane, index) => {
     const def = targetParamDef(doc, lane.target);
@@ -1570,11 +1811,11 @@ function stateSnapshot(
     return `swing ${pct(g.swing ?? 0)}% · humanize ${pct(g.humanizeTiming ?? 0)}%`;
   }
   if (subject === "fxChain") {
-    const wanted = family != null ? new RegExp(`\\b${family}\\b`, "i") : null;
+    const passes = familyTrackFilter(doc, family);
     const lines: string[] = [];
     for (const track of doc.tracks) {
       if (track.kind === "group") continue;
-      if (wanted != null && !wanted.test(track.name) && track.kind !== "drum") continue;
+      if (passes != null && !passes(track.id)) continue;
       const chain = track.effects.map((fx) => `${fx.type}${fx.bypassed ? " (bypassed)" : ""}`).join(", ");
       lines.push(`${track.name}: ${chain || "no FX"}`);
     }
@@ -1599,14 +1840,14 @@ function stateSnapshot(
         )
         .join(" · ")}`,
     );
-    const wanted = family != null ? new RegExp(`\\b${family}\\b`, "i") : null;
+    const passes = familyTrackFilter(doc, family);
     const level = (value: number): number => Math.round(value * 1000) / 1000;
     for (const track of doc.tracks) {
-      if (wanted != null && !wanted.test(track.name) && track.kind !== "drum") continue;
+      if (passes != null && !passes(track.id)) continue;
       const levels = doc.returns.map((ret) => `${ret.name} ${level(track.sends?.[ret.id] ?? 0)}`);
       lines.push(`${track.name} (id=${track.id}): ${levels.join(" · ")}`);
     }
-    if (wanted == null && lines.length > 9) {
+    if (passes == null && lines.length > 9) {
       return `${lines.slice(0, 9).join("\n")}\n… and ${lines.length - 9} more track(s) (filter with family)`;
     }
     return lines.join("\n");

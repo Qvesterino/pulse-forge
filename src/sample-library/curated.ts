@@ -101,6 +101,7 @@ export const CURATED_SAMPLES: CuratedSample[] = [
   { id: "factory.fx.reverse", file: "factory.fx.reverse.wav" },
   { id: "factory.fx.noise", file: "factory.fx.noise.wav" },
   { id: "factory.fx.subdrop", file: "factory.fx.subdrop.wav" },
+  { id: "factory.fx.vinyl", file: "factory.fx.vinyl.wav" },
   { id: "factory.tonal.pluck", file: "factory.tonal.pluck.wav" },
   { id: "factory.tonal.stab", file: "factory.tonal.stab.wav" },
   { id: "factory.tonal.keys", file: "factory.tonal.keys.wav" },

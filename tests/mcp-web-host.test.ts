@@ -113,7 +113,7 @@ describe("web mcp bridge lifecycle", () => {
     expect(FakeWebSocket.instances).toHaveLength(0);
   });
 
-  it("opt-in + token opens the relay socket with the tokened URL; mcp-call round-trips to the store", () => {
+  it("opt-in + token opens the relay socket with the tokened URL; mcp-call round-trips to the store", async () => {
     const services = fakeServices();
     setMcpRelayToken("tok");
     setMcpRelayEnabled(true);
@@ -126,10 +126,12 @@ describe("web mcp bridge lifecycle", () => {
     expect(socket.sent).toHaveLength(1);
     expect(JSON.parse(socket.sent[0]!)).toEqual({ type: "mcp-hello" });
 
-    // hub relays a tools call → the store mutates → mcp-result answers
+    // hub relays a tools call → the store mutates → mcp-result answers.
+    // The bridge answers ASYNC (awaited executor) — flush microtasks first.
     socket.onmessage?.({
       data: JSON.stringify({ type: "mcp-call", id: 7, tool: "kyx_intent", args: { instruction: "set tempo to 140" } }),
     });
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const result = socket.sent
       .map((raw) => JSON.parse(raw) as { type: string; id?: number })
       .find((m) => m.type === "mcp-result");
@@ -153,7 +155,7 @@ describe("web mcp bridge lifecycle", () => {
     stopB();
   });
 
-  it("a tool that CRASHES still answers mcp-result (no relay hang) and is marked isError", () => {
+  it("a tool that CRASHES still answers mcp-result (no relay hang) and is marked isError", async () => {
     const services = fakeServices();
     // Force a crash inside the tool execution path — the bridge must catch
     // it and answer, otherwise the server-side call hangs until timeout.
@@ -170,6 +172,7 @@ describe("web mcp bridge lifecycle", () => {
     socket.onmessage?.({
       data: JSON.stringify({ type: "mcp-call", id: 11, tool: "kyx_state", args: { subject: "overview" } }),
     });
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const raw = socket.sent
       .map((entry) => JSON.parse(entry) as { type: string; id?: number; result?: { text?: string; isError?: boolean } })
       .find((message) => message.type === "mcp-result");
