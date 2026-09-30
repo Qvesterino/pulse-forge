@@ -427,12 +427,15 @@ maxScroll=327`, and a reachability sweep over both scroll ends reports
   **zero unreachable rows** of six. The dock itself is still shorter than the
   content — growing it is a product decision, but nothing is lost now.
 - **`npm run build` FAILS its bundle budget, and did so before this audit.**
-  Measured, not assumed: DAW JS is **3314 KB with this audit's source
-  changes fully reverted** vs **3315 KB with them applied** (budget 3170 KB).
-  The entire audit therefore accounts for **+1 KB**; the 145 KB overage comes
-  from the concurrent reference/MCP/tooling expansion. Per `AGENTS.md` §4 a
-  budget increase needs a measured justification in
-  `scripts/check-bundle-size.mjs` — that decision belongs to whoever owns
+  The build itself compiles (`✓ built in 36.85s`); the failing gate is DAW JS
+  **3317 KB against a 3170 KB budget**. Controlled measurement earlier in this
+  audit, with only its own source changes reverted: **3314 KB reverted** vs
+  **3315 KB applied** — the audit accounted for **+1 KB** at that point, and
+  the 145 KB overage came from the concurrent reference/MCP/tooling
+  expansion. The current 3317 KB reading also includes other sessions'
+  in-flight work in this shared tree, so it is not attributable to this audit
+  alone. Per `AGENTS.md` §4 a budget increase needs a measured justification
+  in `scripts/check-bundle-size.mjs` — that decision belongs to whoever owns
   that work, not to this audit.
 - **32 pre-existing test failures elsewhere in the suite**
   (sound-quality-pass, symbolic-prior, drone, curated-samples, wav-bwf,
