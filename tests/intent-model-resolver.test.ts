@@ -57,14 +57,14 @@ afterEach(() => {
 describe("model resolver — happy paths", () => {
   it("novel fader phrasing the regex layer misses routes through the model", async () => {
     const doc = datasetDoc();
-    // "quiet down that bass a touch" — nothing in the deterministic vocab
-    expect(routeIntentText("quiet down that bass a touch", doc).kind).toBe("pattern");
+    // "ease the bass down a touch" — nothing in the deterministic vocab
+    expect(routeIntentText("ease the bass down a touch", doc).kind).toBe("pattern");
     setIntentModelProvider(
       fakeProvider({
-        "quiet down that bass a touch": { kind: "fader", targets: ["bass"], direction: "down", amount: "subtle" },
+        "ease the bass down a touch": { kind: "fader", targets: ["bass"], direction: "down", amount: "subtle" },
       }),
     );
-    const route = await tryModelRoute("quiet down that bass a touch", doc);
+    const route = await tryModelRoute("ease the bass down a touch", doc);
     expect(route?.kind).toBe("fader");
     if (route?.kind !== "fader") throw new Error("expected fader");
     expect(route.intent).toMatchObject({ targets: ["bass"], direction: "down", amount: "subtle" });
@@ -82,13 +82,13 @@ describe("model resolver — happy paths", () => {
     // empty root — a silent all-slots-missing fader.
     setIntentModelProvider(
       fakeProvider({
-        "quiet down that bass a touch": {
+        "ease the bass down a touch": {
           kind: "fader",
           intent: { targets: ["bass"], pads: [], direction: "down", amount: "subtle" },
         },
       }),
     );
-    const route = await tryModelRoute("quiet down that bass a touch", doc);
+    const route = await tryModelRoute("ease the bass down a touch", doc);
     expect(route?.kind).toBe("fader");
     if (route?.kind !== "fader") throw new Error("expected fader");
     expect(route.intent).toMatchObject({ targets: ["bass"], direction: "down", amount: "subtle" });

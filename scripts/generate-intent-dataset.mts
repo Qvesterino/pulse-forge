@@ -1208,6 +1208,23 @@ function augmentation(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
   // bypass compound parts speak the short part name the route carries
   en.push("enable the chorus on the chords and zníž basu");
 
+  // ── WRONGKIND WAVE 4 — v28 residue (93.3%/wrongKind 4) ────────────────────
+  // "quiet down" was never a fader verb — the augmentation family silently
+  // dropped; now routed, give the compound grammar its rows back
+  en.push("quiet down the hats");
+  en.push("quiet down the master");
+  // menej-direction in the v-mixe scope (only the viac twin shipped in train)
+  sk.push("menej reverbu v mixi");
+  sk.push("menej dozvuku v mixi");
+  sk.push("viac reverbu v mixi");
+  // pad-family fader in the louder direction (only quieter shipped)
+  sk.push("kick hlasnejší");
+  sk.push("snare hlasnejšia");
+  sk.push("clapy hlasnejšie");
+  // bare saturation stays clarify (the val row had no train sibling)
+  sk.push("menej saturácie");
+  sk.push("viac saturácie prosím");
+
   // ── MIXED-LANGUAGE SENTENCES (SK verb + EN target/fx — real slang) ───────
   sk.push("daj more reverb na lead");
   sk.push("nastav delay na bass to 25%");

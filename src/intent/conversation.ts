@@ -56,7 +56,7 @@ export interface FaderIntent {
 
 /** ALL SK stems DE-ACCENTED — the parser strips diacritics before matching. */
 const FADER_DOWN =
-  /\bzniz|\bstis|\bnizs|\btahaj dole|\bdaj dole|\btichs|\bdole\b|\bturn down\b|\bpull down\b|\bbring down\b|\blower\b|\bdial down\b|\bquieter\b/;
+  /\bzniz|\bstis|\bnizs|\btahaj dole|\bdaj dole|\btichs|\bdole\b|\bturn down\b|\bpull down\b|\bbring down\b|\blower\b|\bdial down\b|\bquieter\b|\bquiet down\b/;
 const FADER_UP =
   /\bzvis\b|\bzvys|\bvyss\b|\btazs\w*|\bpotiahni hore|\btahaj hore|\bdaj hore|\bhlasnej|\bhlasit|\bhore\b|\bturn up\b|\bbring up\b|\braise\b|\bpush up\b|\blouder\b/;
 /** UP stems that unambiguously name a direction (loud-words excluded). */
