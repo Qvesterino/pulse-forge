@@ -169,7 +169,13 @@ bar. Nothing bypasses the domain layer.
 > (18th tool: list/move/resize/duplicate/delete arrangement clips by anchor bar,
 > delete D4-gated), and `executeMcpToolAsync` — the transports now await `kyx_export`
 > and return the completion report (duration/size) with honest isError on failure.
-> Next: P2 — batch/transaction, machine-readable result envelopes, loudness loop.
+> **P2 core shipped same day**: `kyx_batch` (19th — up to 10 calls in ONE undo
+> frame, per-call failures never abort), `kyx_loudness` (20th — render-backed
+> measure/match loop landing the master trim), `McpToolResult.data` envelopes
+> (transport/meter/clips/batch/loudness), `isError` markers on honest tool failures,
+> automation `movePoint`, and the audio-clip surface (`audioList/audioMove/audioSplit/
+audioUpdate/audioDelete`). Remaining: routing-graph writes, take management,
+> chain reorder — model-level work, not tool wrappers.
 
 | Tool            | Input                              | Behavior                                                                                                       |
 | --------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------- |
