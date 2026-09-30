@@ -454,9 +454,21 @@ maxScroll=327`, and a reachability sweep over both scroll ends reports
   SECS, transitions), `RackStrip.tsx` (import paths),
   `ModPanel.tsx` (automation + intensity), `PatternBar.tsx`,
   `Mixer.tsx` (fader menu), `SliceLab.tsx` (slice fields),
-  `ReferenceMapPanel.tsx`, `FxEqPanel.tsx` (crossover). Audited by delegated
-  pass but not personally verified line-by-line: `IntentPanel.tsx`
-  (163 KB), `App.tsx` keyboard table, `TopBar.tsx`, `PianoRoll.tsx`.
+  `ReferenceMapPanel.tsx`, `FxEqPanel.tsx` (crossover), `TopBar.tsx`
+  (transport mirrors). Audited by delegated pass but not personally verified
+  line-by-line: `IntentPanel.tsx` (163 KB), `App.tsx` keyboard table,
+  `PianoRoll.tsx`.
+- **§5 was a focused pass, not a sweep of every toggle.** It targeted the
+  clearest §10 violation — a control that mirrors domain state into local
+  React state — via a grep for `useState` flags named like domain toggles
+  (`…Enabled|On|Active|Bypass|Preview|Live|Monitor`). The transport LOOP was
+  audited and verified (see §3). The other hits — `SliceLab` `bpmPreview`
+  (default `true`), `JamGate` `audioLive` (default `true`),
+  `ArrangementPanel` `micMonitoring`, `IntentPanel` `ideaMicMonitor` — are
+  view/preview state rather than mirrored domain state and were **not**
+  individually traced. A default-on preview toggle means audio the user did
+  not ask for, which is worth a look, but it is a design question and no
+  defect is claimed here.
 - **No real-browser verification was run** for most of the repaired controls
   (`npm run test:browser` / `test:e2e`). Every repair in waves 1–3 is covered by
   jsdom tests against the real command/store layer. Wave 4 came from the
