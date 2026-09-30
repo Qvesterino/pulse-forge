@@ -248,11 +248,19 @@ export function RackStrip({
       pads: captureKitFromTrack(doc, track.id),
       createdAt: new Date().toISOString(),
     };
+    // Report success only once the write actually resolved. Firing the status
+    // unconditionally told the user a kit was saved when the IndexedDB write
+    // had rejected (quota, private mode) and the kit list never refreshed.
     void services.userKits
       .save(kit)
       .then(() => services.userKits.list())
-      .then(setUserKits);
-    setKitStatus(`Saved "${name}"`);
+      .then((kits) => {
+        setUserKits(kits);
+        setKitStatus(`Saved "${name}"`);
+      })
+      .catch((err: unknown) => {
+        setKitStatus(err instanceof Error ? `Kit save failed: ${err.message}` : "Kit save failed");
+      });
   };
 
   const applyKit = (kit: UserKit) => {
@@ -265,11 +273,18 @@ export function RackStrip({
   };
 
   const deleteKit = (kit: UserKit) => {
+    // Same contract as saveCurrentKit: no success message before the write
+    // resolves, and a failure is reported instead of swallowed.
     void services.userKits
       .remove(kit.id)
       .then(() => services.userKits.list())
-      .then(setUserKits);
-    setKitStatus(`Deleted "${kit.name}"`);
+      .then((kits) => {
+        setUserKits(kits);
+        setKitStatus(`Deleted "${kit.name}"`);
+      })
+      .catch((err: unknown) => {
+        setKitStatus(err instanceof Error ? `Kit delete failed: ${err.message}` : "Kit delete failed");
+      });
   };
 
   const copyKitCode = async (kit: UserKit) => {

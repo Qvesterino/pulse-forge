@@ -558,8 +558,9 @@ export function sanitizeAudioClips(input: unknown, trackIds: Set<string>): impor
     if (!Number.isFinite(startBar) || startBar < 0) continue;
     const lengthBars = Number(raw.lengthBars);
     // Recorded comp fragments can be shorter than the normal UI clip-size
-    // floor. A positive duration is valid; zero/negative clips cannot schedule.
-    if (!Number.isFinite(lengthBars) || lengthBars <= 0) continue;
+    // floor. A positive duration is valid; zero/negative clips cannot schedule,
+    // and an unbounded one cannot be rendered (one grid node per bar).
+    if (!Number.isFinite(lengthBars) || lengthBars <= 0 || lengthBars > MAX_ARRANGEMENT_CLIP_BARS) continue;
     const offsetSec = Math.max(0, Number.isFinite(Number(raw.offsetSec)) ? Number(raw.offsetSec) : 0);
     const trimStart = Math.max(0, Number.isFinite(Number(raw.trimStart)) ? Number(raw.trimStart) : 0);
     const trimEnd = Math.max(0, Number.isFinite(Number(raw.trimEnd)) ? Number(raw.trimEnd) : 0);
@@ -1549,7 +1550,17 @@ function normalizeArrangementDomain(s: NormalizeState): void {
   }
   const rawClips = Array.isArray(arrangement.clips) ? arrangement.clips : [];
   const sorted = [...rawClips]
-    .filter((c) => sceneIds.has(c.sceneId) && Number.isFinite(c.startBar) && c.startBar >= 0 && c.lengthBars >= 1)
+    // MAX_ARRANGEMENT_CLIP_BARS on load as well as on resize: a project file
+    // (imported, hand-edited or corrupted) could otherwise reintroduce the
+    // unbounded length that froze the arrangement view.
+    .filter(
+      (c) =>
+        sceneIds.has(c.sceneId) &&
+        Number.isFinite(c.startBar) &&
+        c.startBar >= 0 &&
+        c.lengthBars >= 1 &&
+        c.lengthBars <= MAX_ARRANGEMENT_CLIP_BARS,
+    )
     .sort((a, b) => a.startBar - b.startBar);
   const transitions = sanitizeArrangementTransitions(arrangement.transitions, sorted);
   const sanitizedAudioClips = sanitizeAudioClips(

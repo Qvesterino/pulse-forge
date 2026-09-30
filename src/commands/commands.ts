@@ -3411,6 +3411,50 @@ export function resizeAudioClip(doc: ProjectDocument, clipId: string, lengthBars
 }
 
 /**
+ * TRIM the start edge of an audio clip — ONE gesture, ONE undo entry.
+ *
+ * Trimming the left edge moves the source offset and shortens the clip at the
+ * same time. Issuing `updateAudioClip` followed by `resizeAudioClip` produced
+ * two history entries, so a single Ctrl+Z undid only the resize and left the
+ * clip playing a different region of the sample at its original length.
+ */
+export function trimAudioClipStart(
+  doc: ProjectDocument,
+  clipId: string,
+  patch: { lengthBars: number; trimStart: number; offsetSec: number },
+): Command {
+  const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
+  if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  const bars = Number.isFinite(patch.lengthBars)
+    ? Math.max(0.25, Math.round(patch.lengthBars * 100) / 100)
+    : clip.lengthBars;
+  const trimStart = Number.isFinite(patch.trimStart) ? Math.max(0, patch.trimStart) : clip.trimStart;
+  const offsetSec = Number.isFinite(patch.offsetSec) ? Math.max(0, patch.offsetSec) : clip.offsetSec;
+  // Fades must stay inside the trimmed clip (same rule as resizeAudioClip) or
+  // the fade handles desync from the clip's visual width.
+  const durSec = (bars * BAR_TICKS * 60) / (doc.bpm * PPQ);
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: {
+      ...doc.arrangement,
+      audioClips: (doc.arrangement.audioClips ?? []).map((c) =>
+        c.id === clipId
+          ? {
+              ...c,
+              lengthBars: bars,
+              trimStart,
+              offsetSec,
+              fadeIn: Math.min(c.fadeIn ?? 0, durSec),
+              fadeOut: Math.min(c.fadeOut ?? 0, durSec),
+            }
+          : c,
+      ),
+    },
+  };
+  return snapshot("trimAudioClipStart", `Trim audio clip start to ${trimStart.toFixed(3)}s`, doc, next);
+}
+
+/**
  * "Steal the groove": bake an extracted loop-groove map into a pattern.
  * Every ACTIVE step gets the loop's microtiming shift; with `applyVelocity`
  * the step velocity is also scaled by the loop's accent (steps the loop was

@@ -55,6 +55,7 @@ import {
   setActiveAudioTake,
   splitAudioClipAtTick,
   stripSilenceAudioClip,
+  trimAudioClipStart,
   updateArrangementTransition,
   updateAudioClip,
   sliceToPads,
@@ -1779,7 +1780,11 @@ export function ArrangementPanel() {
         const clips = beforeDoc.arrangement.clips
           .map((c) =>
             current.movingIds!.includes(c.id) || c.startBar >= minStart
-              ? { ...c, startBar: Math.max(0, c.startBar + delta) }
+              ? // Round like the non-ripple branch below: `delta` comes from a
+                // fractional pointer position, and a fractional startBar
+                // persists off-grid (it also makes later resizes report an
+                // overlap the user cannot see on the grid).
+                { ...c, startBar: Math.max(0, Math.round(c.startBar + delta)) }
               : c,
           )
           .sort((a, b) => a.startBar - b.startBar);
@@ -1989,15 +1994,20 @@ export function ArrangementPanel() {
         execute(stretchAudioClip(services.store.doc, cur.clipId, final.lengthBars, stretchPrev.rate));
     } else if (cur.mode === "trimStart" && final) {
       const deltaSec = ((final.startBar - cur.origStart) * BAR_TICKS * 60) / (doc.bpm * PPQ);
-      if (Math.abs(deltaSec) > 0.001)
+      const lengthChanged = final.lengthBars !== cur.origLength;
+      if (Math.abs(deltaSec) > 0.001 || lengthChanged) {
+        // ONE command for the whole trim: the source offset and the new length
+        // are the same gesture. Two commands here meant a single Ctrl+Z undid
+        // only the resize, leaving the clip playing a different region of the
+        // sample at its original length.
         execute(
-          updateAudioClip(services.store.doc, cur.clipId, {
-            trimStart: Math.max(0, cur.origTrimStart + deltaSec),
-            offsetSec: Math.max(0, (audioClips.find((c) => c.id === cur.clipId)?.offsetSec ?? 0) + deltaSec),
+          trimAudioClipStart(services.store.doc, cur.clipId, {
+            lengthBars: final.lengthBars,
+            trimStart: cur.origTrimStart + deltaSec,
+            offsetSec: (audioClips.find((c) => c.id === cur.clipId)?.offsetSec ?? 0) + deltaSec,
           }),
         );
-      if (final.lengthBars !== cur.origLength)
-        execute(resizeAudioClip(services.store.doc, cur.clipId, final.lengthBars));
+      }
     } else if (cur.mode === "fadeIn" && fadePrev && fadePrev.clipId === cur.clipId) {
       if (Math.abs(fadePrev.fadeIn - cur.origFadeIn) > 0.005)
         execute(updateAudioClip(services.store.doc, cur.clipId, { fadeIn: Math.round(fadePrev.fadeIn * 100) / 100 }));

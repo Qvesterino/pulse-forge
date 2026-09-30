@@ -8,10 +8,12 @@ import {
   addArrangementClip,
   moveArrangementClip,
   resizeArrangementClip,
+  trimAudioClipStart,
 } from "../src/commands/commands";
 import { testDoc } from "./fixtures/doc";
-import { MAX_ARRANGEMENT_CLIP_BARS, sanitizeAudioClips } from "../src/project-model/schema";
+import { MAX_ARRANGEMENT_CLIP_BARS, normalizeProject, sanitizeAudioClips } from "../src/project-model/schema";
 import type { AudioClip, ProjectDocument } from "../src/project-model/types";
+import { BAR_TICKS, PPQ } from "../src/project-model/types";
 
 /**
  * CLIP EDITING AUDIT — DEEP PASS. Layers the quick pass didn't reach:
@@ -261,5 +263,117 @@ describe("audit: ArrangementClip length upper bound (UI abuse / import hardening
     // Guards the constant against being tightened into a musical limit by a
     // future change: 8192 bars in 4/4 is ~5.7 hours at 120 BPM.
     expect(MAX_ARRANGEMENT_CLIP_BARS).toBeGreaterThanOrEqual(2000);
+  });
+
+  it("the bound also applies when a document is LOADED, not only on resize", () => {
+    // An imported / hand-edited / corrupted project JSON could reintroduce the
+    // unbounded length that froze the arrangement view, because the normalizer
+    // only ever checked the low end.
+    const doc = lastClipDoc();
+    const absurd = {
+      ...doc,
+      arrangement: {
+        ...doc.arrangement,
+        clips: doc.arrangement.clips.map((c) => ({ ...c, lengthBars: 300_000 })),
+      },
+    };
+    const normalized = normalizeProject(JSON.parse(JSON.stringify(absurd)));
+    // Every surviving clip must be renderable.
+    for (const c of normalized.arrangement.clips) {
+      expect(c.lengthBars).toBeLessThanOrEqual(MAX_ARRANGEMENT_CLIP_BARS);
+    }
+  });
+
+  it("a realistic document survives the load bound untouched", () => {
+    const doc = lastClipDoc();
+    const realistic = {
+      ...doc,
+      arrangement: {
+        ...doc.arrangement,
+        clips: doc.arrangement.clips.map((c) => ({ ...c, lengthBars: 600 })),
+      },
+    };
+    const normalized = normalizeProject(JSON.parse(JSON.stringify(realistic)));
+    expect(normalized.arrangement.clips[0]!.lengthBars).toBe(600);
+  });
+});
+
+describe("audit: one gesture = one undo entry (audio clip start trim)", () => {
+  function clipDoc() {
+    const doc = testDoc();
+    return addAudioClip(doc, doc.tracks[0]!.id, "buf-trim", 0, 8).execute(doc);
+  }
+  const clipOf = (d: ProjectDocument) => (d.arrangement.audioClips ?? [])[0]!;
+
+  it("a left-edge trim writes trim, offset and length together", () => {
+    const doc = clipDoc();
+    const next = trimAudioClipStart(doc, clipOf(doc).id, {
+      lengthBars: 4,
+      trimStart: 2,
+      offsetSec: 2,
+    }).execute(doc);
+    const after = clipOf(next);
+    expect(after.trimStart).toBe(2);
+    expect(after.offsetSec).toBe(2);
+    expect(after.lengthBars).toBe(4);
+  });
+
+  it("a single undo restores the whole trim (offset AND length together)", () => {
+    // Before the fix the panel issued updateAudioClip + resizeAudioClip, so one
+    // Ctrl+Z undid only the resize and left the clip reading a different region
+    // of the sample at its original length.
+    const doc = clipDoc();
+    const before = { ...clipOf(doc) };
+    const next = trimAudioClipStart(doc, before.id, { lengthBars: 4, trimStart: 2, offsetSec: 2 }).execute(doc);
+    const cmd = trimAudioClipStart(doc, before.id, { lengthBars: 4, trimStart: 2, offsetSec: 2 });
+    // Undo is the command's own inverse: it must return the exact prior clip.
+    const undone = cmd.undo(next);
+    const restored = clipOf(undone);
+    expect(restored.trimStart).toBe(before.trimStart);
+    expect(restored.offsetSec).toBe(before.offsetSec);
+    expect(restored.lengthBars).toBe(before.lengthBars);
+  });
+
+  it("keeps fades inside the trimmed clip", () => {
+    const doc = clipDoc();
+    const clipId = clipOf(doc).id;
+    const withFade = updateAudioClip(doc, clipId, { fadeIn: 6, fadeOut: 6 }).execute(doc);
+    const trimmed = trimAudioClipStart(withFade, clipId, {
+      lengthBars: 1,
+      trimStart: 0.5,
+      offsetSec: 0.5,
+    }).execute(withFade);
+    const after = clipOf(trimmed);
+    // Fades are seconds; the clip length is bars — same formula the command
+    // uses, so a 1-bar clip must pull both fades in from 6s to at most its
+    // own duration.
+    const durSec = (after.lengthBars * BAR_TICKS * 60) / (doc.bpm * PPQ);
+    expect(after.fadeIn).toBeLessThanOrEqual(durSec);
+    expect(after.fadeOut).toBeLessThanOrEqual(durSec);
+    expect(after.fadeIn).toBeLessThan(6);
+    expect(after.fadeOut).toBeLessThan(6);
+  });
+
+  it("rejects non-finite input instead of poisoning the document", () => {
+    const doc = clipDoc();
+    const next = trimAudioClipStart(doc, clipOf(doc).id, {
+      lengthBars: Number.NaN,
+      trimStart: Number.POSITIVE_INFINITY,
+      offsetSec: Number.NaN,
+    }).execute(doc);
+    const after = clipOf(next);
+    expect(Number.isFinite(after.lengthBars)).toBe(true);
+    expect(Number.isFinite(after.trimStart)).toBe(true);
+    expect(Number.isFinite(after.offsetSec)).toBe(true);
+  });
+
+  it("never shortens a clip below the 0.25-bar floor", () => {
+    const doc = clipDoc();
+    const next = trimAudioClipStart(doc, clipOf(doc).id, {
+      lengthBars: -5,
+      trimStart: 0,
+      offsetSec: 0,
+    }).execute(doc);
+    expect(clipOf(next).lengthBars).toBeGreaterThanOrEqual(0.25);
   });
 });
