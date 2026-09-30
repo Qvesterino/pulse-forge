@@ -1,6 +1,6 @@
 import type { ProjectDocument } from "../project-model/types";
 import type { Command } from "../commands/types";
-import { executeMcpTool, type McpToolContext } from "./tools";
+import { executeMcpTool, type McpMeterSnapshot, type McpToolContext } from "./tools";
 import { mcpAllowDestructive } from "./flags";
 
 /**
@@ -30,6 +30,7 @@ export interface McpBridgeDeps {
   isMicRecordingActive(): boolean;
   transport: McpToolContext["transport"];
   export?: (format: "wav" | "mp3") => Promise<string>;
+  meters?: () => McpMeterSnapshot | null;
 }
 
 export class McpBridge {
@@ -112,6 +113,7 @@ export class McpBridge {
       isMicRecordingActive: () => this.deps.isMicRecordingActive(),
       transport: this.deps.transport,
       export: this.deps.export,
+      meters: this.deps.meters,
       allowDestructive: mcpAllowDestructive,
     };
     // A throwing tool must still ANSWER — without this catch the relay would

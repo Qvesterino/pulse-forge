@@ -461,6 +461,9 @@ export function planMixProfile(
 
 /** Resolve a mix target to concrete track ids in THIS document. */
 function trackIdsForTarget(doc: ProjectDocument, target: MixTarget): string[] {
+  // Exact track id passthrough (MCP trackId addressing): ids are unique and
+  // can never collide with the family vocabulary below.
+  if (doc.tracks.some((track) => track.id === target)) return [target];
   if (target === "drums") {
     return doc.tracks.filter((track) => track.kind === "drum").map((track) => track.id);
   }

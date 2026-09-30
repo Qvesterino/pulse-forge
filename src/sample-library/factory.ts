@@ -149,6 +149,71 @@ function snare(toneHz: number, toneDecay: number, noiseDecay: number, noiseHz: n
   };
 }
 
+/** Roomy backbeat snare (library gap: house/boom-bap depth) — a dry crack
+ * (triangle body + weight thump + wire noise) plus a synthesized room: three
+ * discrete early-reflection taps of the dry path over a diffuse, darkened
+ * noise tail. The room path is high-passed at 240 Hz so the space adds
+ * DEPTH, not mud — a room mic's low end is what turns a backbeat into wash.
+ * The only bank snare with a tail; sits behind house and boom-bap backbeats. */
+function snareRoom(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const dry = ctx.createGain();
+    dry.connect(dest);
+    const osc = ctx.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(196, t0);
+    osc.frequency.exponentialRampToValueAtTime(122, t0 + 0.07);
+    osc.connect(env(ctx, t0, 0.75, 0.1)).connect(dry);
+    osc.start(t0);
+    osc.stop(t0 + 0.14);
+    const weight = ctx.createOscillator();
+    weight.type = "sine";
+    weight.frequency.setValueAtTime(170, t0);
+    weight.frequency.exponentialRampToValueAtTime(118, t0 + 0.05);
+    weight.connect(env(ctx, t0, 0.45, 0.09)).connect(dry);
+    weight.start(t0);
+    weight.stop(t0 + 0.12);
+    const wires = noiseSource(ctx, 113, 0.2, t0);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 1750;
+    bp.Q.value = 0.9;
+    wires
+      .connect(bp)
+      .connect(env(ctx, t0, 0.85, 0.17))
+      .connect(dry);
+    // Room path — everything past the highpass is space, not the hit.
+    const roomHp = ctx.createBiquadFilter();
+    roomHp.type = "highpass";
+    roomHp.frequency.value = 240;
+    dry.connect(roomHp);
+    // Early reflections: the discrete echoes that read as "walls".
+    for (const [ms, level] of [
+      [11, 0.38],
+      [19, 0.28],
+      [31, 0.19],
+    ] as [number, number][]) {
+      const tap = ctx.createDelay(0.06);
+      tap.delayTime.value = ms / 1000;
+      roomHp
+        .connect(tap)
+        .connect(env(ctx, t0 + ms / 1000, level, 0.05))
+        .connect(dest);
+    }
+    // Diffuse tail: absorbed (dark) noise wash that blooms just after the hit.
+    const tail = noiseSource(ctx, 127, 0.5, t0 + 0.012);
+    const tailLp = ctx.createBiquadFilter();
+    tailLp.type = "lowpass";
+    tailLp.frequency.value = 3000;
+    const tailGain = ctx.createGain();
+    tailGain.gain.setValueAtTime(0.0001, t0 + 0.012);
+    tailGain.gain.linearRampToValueAtTime(0.5, t0 + 0.028);
+    tailGain.gain.exponentialRampToValueAtTime(0.0005, t0 + 0.44);
+    tail.connect(tailLp).connect(tailGain).connect(dest);
+  };
+}
+
 /** Hard crack snare: short bright tone + hard bandpassed noise + a click
  * transient on top — the drill/jersey backbeat character (reads through a
  * dense mix at 140+ BPM where a longer snare smears). */
@@ -2055,6 +2120,10 @@ export const BUILDERS: Record<string, Builder> = {
     seed: 53,
   }),
   "factory.snare.lofi": snareDusty({ toneHz: 172, toneDecay: 0.1, noiseHz: 1300, noiseDecay: 0.17, seed: 59 }),
+  // Room snare (library-gap wave): the house/boom-bap backbeat with walls —
+  // dry crack + early reflections + dark diffuse tail (the only snare with
+  // air behind it; every other bank snare is dry/short).
+  "factory.snare.room": snareRoom(),
   "factory.hat.drill": hat(0.035, 9200, 0.5),
   "factory.hat.phonk": hat(0.07, 4200, 0.4),
   "factory.hat.jersey": hatMetallic({ decay: 0.055, hpHz: 8200, level: 0.55, pingHz: 6400, ping: 0.3, seed: 61 }),
@@ -2217,6 +2286,7 @@ export const DURATIONS: Record<string, number> = {
   "factory.snare.jersey": 0.18,
   "factory.snare.dnb": 0.28,
   "factory.snare.lofi": 0.3,
+  "factory.snare.room": 0.7,
   "factory.hat.drill": 0.1,
   "factory.hat.phonk": 0.12,
   "factory.hat.jersey": 0.12,
@@ -2371,6 +2441,11 @@ export const RR_VARIATIONS: Record<string, Array<{ rate: number; gain: number }>
   "factory.kick.phonk": [
     { rate: 1.01, gain: 1.03 },
     { rate: 0.991, gain: 0.96 },
+  ],
+  // Room snare: a backbeat voice, so it varies like the other backbeat snares.
+  "factory.snare.room": [
+    { rate: 1.011, gain: 1.03 },
+    { rate: 0.99, gain: 0.96 },
   ],
 };
 

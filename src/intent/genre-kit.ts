@@ -120,11 +120,16 @@ export const GENRE_KIT_SWAPS: Partial<Record<GenerateOptions["genre"], GenrePadS
     { index: 8, assetId: "factory.hat.closed.soft" },
   ],
   boombap: [
-    // The dusty crate: the knock kick (boom-bap tuned), cracking main snare
-    // and the soft hat for the swung 8ths. The knock was built for this lane.
+    // The dusty crate: the knock kick (boom-bap tuned), the ROOMY backbeat —
+    // a crate-digger snare has walls around it (the room snare is the only
+    // bank snare with a tail) — and the soft hat for the swung 8ths.
     { index: 0, assetId: "factory.kick.knock" },
     { index: 1, assetId: "factory.kick.deep" },
-    { index: 4, assetId: "factory.snare.main" },
+    {
+      index: 4,
+      assetId: "factory.snare.room",
+      layers: roundRobinLayers(["factory.snare.room", "factory.snare.room.rr2", "factory.snare.room.rr3"]),
+    },
     { index: 5, assetId: "factory.snare.tight" },
     { index: 8, assetId: "factory.hat.closed.soft" },
   ],
@@ -254,23 +259,23 @@ export const GENRE_FEEL: Partial<
   amapiano: { humanizeTiming: 0.09, humanizeVelocity: 0.15 },
   // Trance is the most grid-locked genre in the library — the arp and the
   // kick ARE the machine; a jittered trance read is a broken trance read.
-    trance: { humanizeTiming: 0.02, humanizeVelocity: 0.07 },
-    // Detroit rides a drum machine — near-zero jitter, the 808 timing is the
-    // composition (the "complete mistake" was a sequencer, per Derrick May).
-    detroit: { humanizeTiming: 0.03, humanizeVelocity: 0.09 },
-    postrock: { humanizeTiming: 0.18, humanizeVelocity: 0.22 },
-    // Chiptune is a SEQUENCER, not a drummer - tracker rows land exactly on
-    // the grid, and the "humanity" comes from the arpeggio, not timing.
-    chiptune: { humanizeTiming: 0.02, humanizeVelocity: 0.07 },
-    // Eurodance is programmed dance music - tight, but the offbeat mask
-    // breathes a little (the 90s hardware sequencers had slight jitter).
-    eurodance: { humanizeTiming: 0.04, humanizeVelocity: 0.09 },
-    // Latin is PLAYED by a percussion section - the highest humanize in the
-    // library alongside postrock, because the hand drums are the genre.
-    latin: { humanizeTiming: 0.14, humanizeVelocity: 0.2 },
-    // Drone keeps a steady pulse (Reich-precise) but lets the texture breathe.
-    drone: { humanizeTiming: 0.1, humanizeVelocity: 0.16 },
-  };
+  trance: { humanizeTiming: 0.02, humanizeVelocity: 0.07 },
+  // Detroit rides a drum machine — near-zero jitter, the 808 timing is the
+  // composition (the "complete mistake" was a sequencer, per Derrick May).
+  detroit: { humanizeTiming: 0.03, humanizeVelocity: 0.09 },
+  postrock: { humanizeTiming: 0.18, humanizeVelocity: 0.22 },
+  // Chiptune is a SEQUENCER, not a drummer - tracker rows land exactly on
+  // the grid, and the "humanity" comes from the arpeggio, not timing.
+  chiptune: { humanizeTiming: 0.02, humanizeVelocity: 0.07 },
+  // Eurodance is programmed dance music - tight, but the offbeat mask
+  // breathes a little (the 90s hardware sequencers had slight jitter).
+  eurodance: { humanizeTiming: 0.04, humanizeVelocity: 0.09 },
+  // Latin is PLAYED by a percussion section - the highest humanize in the
+  // library alongside postrock, because the hand drums are the genre.
+  latin: { humanizeTiming: 0.14, humanizeVelocity: 0.2 },
+  // Drone keeps a steady pulse (Reich-precise) but lets the texture breathe.
+  drone: { humanizeTiming: 0.1, humanizeVelocity: 0.16 },
+};
 /**
  * Apply a genre's feel to the document groove WITHOUT touching user values:
  * a non-zero humanize the user (or an earlier generation) already set wins,

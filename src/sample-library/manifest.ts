@@ -211,6 +211,14 @@ export const FACTORY_ASSETS: FactoryAsset[] = [
     tags: ["lofi", "dusty", "snare"],
     mood: ["warm", "dark"],
   },
+  {
+    id: "factory.snare.room",
+    name: "Snare Room",
+    category: "Snare",
+    character: "Roomy, Airy",
+    tags: ["snare", "room", "house", "boombap"],
+    mood: ["clean", "atmosphere"],
+  },
 
   /* ---------------- Claps ---------------- */
   {

@@ -19,7 +19,7 @@ const KICK_IDS = FACTORY_ASSETS.filter((a) => a.category === "Kick").map((a) => 
 const ALL_ASSET_IDS = new Set(FACTORY_ASSETS.map((a) => a.id));
 
 describe("kick bank — manifest/builder/duration/curated coherence", () => {
-  it("expanded bank: 16 kicks + 9 snares + 10 hats, each with builder + duration + curated seed", () => {
+  it("expanded bank: 16 kicks + 10 snares + 10 hats, each with builder + duration + curated seed", () => {
     expect(KICK_IDS).toEqual([
       "factory.kick.deep",
       "factory.kick.punch",
@@ -50,6 +50,7 @@ describe("kick bank — manifest/builder/duration/curated coherence", () => {
       "factory.snare.jersey",
       "factory.snare.dnb",
       "factory.snare.lofi",
+      "factory.snare.room",
     ]);
     expect(HAT_IDS).toEqual([
       "factory.hat.closed",
@@ -108,6 +109,7 @@ describe("kick bank — manifest/builder/duration/curated coherence", () => {
       "factory.kick.909",
       "factory.snare.drill",
       "factory.snare.dnb",
+      "factory.snare.room",
       "factory.hat.jersey",
       "factory.hat.dnb",
     ]) {

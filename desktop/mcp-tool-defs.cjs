@@ -158,9 +158,12 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_fx",
     description:
-      "Structured effect operation on a track family: more/less turn the " +
-      "primary knob (percent = relative step size), remove deletes instances " +
-      "(destructive-gated), bypass/enable flag instances without deleting them.",
+      "Structured effect operation on a track family or ONE exact track: " +
+      "more/less turn the effect's PRIMARY knob (percent = relative step " +
+      "size), remove deletes instances (destructive-gated), bypass/enable " +
+      "flag instances without deleting them. Effect types are the " +
+      "knob-mapped subset — eq and other no-knob effects are refused; use " +
+      "kyx_plugin_param for their parameters.",
     inputSchema: {
       type: "object",
       properties: {
@@ -178,10 +181,17 @@ const MCP_TOOL_DEFS = [
             "bitcrusher",
             "compressor",
             "pump",
-            "eq",
           ],
         },
-        family: { type: "string", enum: ["drums", "bass", "chords", "lead", "vocal"] },
+        family: {
+          type: "string",
+          enum: ["drums", "bass", "chords", "lead", "vocal"],
+          description: "Track family target — required unless trackId is given",
+        },
+        trackId: {
+          type: "string",
+          description: "Exact track id (from kyx_state tracks) — overrides family when present",
+        },
         action: { type: "string", enum: ["more", "less", "remove", "bypass", "enable"] },
         percent: {
           type: "number",
@@ -190,7 +200,7 @@ const MCP_TOOL_DEFS = [
           description: "Relative step size for more/less, as % of the knob's range (default: fixed calibrated step)",
         },
       },
-      required: ["effect", "family", "action"],
+      required: ["effect", "action"],
     },
   },
   {
@@ -228,7 +238,8 @@ const MCP_TOOL_DEFS = [
     name: "kyx_tracks",
     description:
       "Track CRUD: add a drum or instrument track, remove/rename an " +
-      "existing one by family. Removing the last track is declined.",
+      "existing one by family or by exact trackId (group tracks are not " +
+      "addressable here). Removing the last track is declined.",
     inputSchema: {
       type: "object",
       properties: {
@@ -236,12 +247,16 @@ const MCP_TOOL_DEFS = [
         family: {
           type: "string",
           enum: ["drums", "bass", "lead", "chords", "kick", "snare", "clap", "hat", "perc", "tom"],
-          description: "For remove/rename: which family to touch",
+          description: "For remove/rename: which family to touch — ignored when trackId is given",
+        },
+        trackId: {
+          type: "string",
+          description: "Exact track id (from kyx_state tracks) — overrides family for remove/rename",
         },
         instrument: {
           type: "string",
           enum: ["analog", "bass", "808", "keys", "pluck", "acid", "reese", "brass", "flute", "sampler"],
-          description: "For addInstrument",
+          description: "For addInstrument — the full kind catalog is in kyx_catalog subject:instruments",
         },
         name: { type: "string", description: "New name for rename" },
       },
@@ -286,6 +301,80 @@ const MCP_TOOL_DEFS = [
         velocity: { type: "number", minimum: 0.05, maximum: 1, description: "For add (default 0.8)" },
       },
       required: ["op", "family"],
+    },
+  },
+  {
+    name: "kyx_catalog",
+    description:
+      "Discovery — what the DAW can do, machine-readable: list every effect " +
+      "type with its category and primary knob, the FULL parameter table of " +
+      "one effect (id, label, min, max, default, unit, kind, taper), or the " +
+      "instrument kind catalog. Read-only; use it before kyx_plugin_param " +
+      "instead of guessing ranges.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        subject: { type: "string", enum: ["effects", "effect", "instruments"] },
+        effect: {
+          type: "string",
+          description: "Effect type for subject:effect (e.g. reverb, eq, compressor) — see subject:effects",
+        },
+      },
+      required: ["subject"],
+    },
+  },
+  {
+    name: "kyx_plugin_param",
+    description:
+      "Precise plugin control on inserted FX instances: set ONE parameter to " +
+      "an absolute NATIVE value (clamped to the registry range; see " +
+      "kyx_catalog subject:effect for min/max/default/unit) or list the " +
+      "current values of every parameter on the targeted tracks' chains. " +
+      "Targets a trackId or a family; instance picks 1-based among same-type " +
+      "instances (default 1). Missing instances are reported honestly — " +
+      "nothing is auto-inserted (use kyx_fx more for that).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["list", "set"] },
+        trackId: { type: "string", description: "Exact track id — overrides family when present" },
+        family: {
+          type: "string",
+          enum: ["drums", "bass", "chords", "lead", "vocal"],
+          description: "Track family target — required unless trackId is given",
+        },
+        effect: {
+          type: "string",
+          description: "Effect type (e.g. reverb, eq) — required for set, filters list when given; see kyx_catalog",
+        },
+        instance: {
+          type: "integer",
+          minimum: 1,
+          description: "1-based index among same-type instances in chain order (default 1)",
+        },
+        param: { type: "string", description: "Parameter id for set (e.g. mix, decay, freq) — see kyx_catalog" },
+        value: {
+          type: "number",
+          description: "Absolute NATIVE value for set (NOT normalized 0..1 unless the param's range is 0..1)",
+        },
+      },
+      required: ["op"],
+    },
+  },
+  {
+    name: "kyx_meter",
+    description:
+      "Live audio meters — the AI's ears: master true peak, RMS, LUFS " +
+      "(momentary/short-term/integrated), stereo correlation, clip flags, " +
+      "plus per-track peak/RMS. Read-only snapshot of the RUNNING engine; " +
+      "honestly refused when no engine/audio context is live. LUFS-I needs " +
+      "a few seconds of playback to stabilize.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scope: { type: "string", enum: ["master", "tracks", "all"], description: "Default all" },
+      },
+      required: [],
     },
   },
 ];

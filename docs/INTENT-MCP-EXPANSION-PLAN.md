@@ -144,7 +144,16 @@ tool any AI agent can drive. The command layer we hardened across 17 waves
 tool validation — an external LLM gets the same guardrails as the intent
 bar. Nothing bypasses the domain layer.
 
-### D1. Tool surface (13 tools, no new domain code)
+### D1. Tool surface (16 tools after the 2026-09-29 P0 wave, no new domain code)
+
+> **P0 wave shipped 2026-09-29** (`MCP_AI_CONTROL_MATRIX.md` §10): `kyx_catalog`
+> (effect/param/instrument discovery from `EFFECT_META`/`INSTRUMENT_DEFS`),
+> `kyx_plugin_param` (absolute native-value set + list on any inserted FX instance,
+> registry-clamped, one undo), `trackId` addressing on fx/tracks/param writes
+> (id-passthrough in `trackIdsForTarget`), `kyx_meter` (live true peak/RMS/LUFS/clip via
+> `src/mcp/meters.ts`), and the `eq`-enum defect fix (no primary knob → honest refusal).
+> Next: the P1 wave — transport reads/seek, send reads, automation, structured mixer
+> setters, clip tools, awaited export.
 
 | Tool            | Input                              | Behavior                                                                                                       |
 | --------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------- |

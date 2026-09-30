@@ -2,8 +2,19 @@
 
 > Deep audit of the MCP / AI control layer, 2026-09-29.
 > Every row is grounded in code (`src/mcp/*`, `server/mcp-core.mjs`, `desktop/mcp-*.cjs`)
-> and verified against a real `ProjectStore` headlessly (`tmp/mcp-verify.mts` harness,
-> `tests/mcp-*.test.ts`, 66 specs). Repairs shipped during this audit are marked **[REPAIRED]**.
+> and verified against a real `ProjectStore` headlessly (`tests/mcp-*.test.ts`, 75 specs).
+> Repairs shipped during this audit are marked **[REPAIRED]**.
+>
+> **P0 WAVE SHIPPED (same day, 2026-09-29)** — the four blocking gaps from §10 are CLOSED:
+> `kyx_catalog` (machine-readable effect/param/instrument discovery),
+> `kyx_plugin_param` (absolute native-value set + list on ANY inserted FX instance,
+> registry-clamped, one undo step), `trackId` addressing on `kyx_fx`/`kyx_tracks`/
+> `kyx_plugin_param` (+ ids in `kyx_state tracks`), and `kyx_meter` (live true peak,
+> RMS, LUFS M/S/I, correlation, clip flags via `src/mcp/meters.ts`). The tool surface
+> is **16 tools**, both def mirrors re-pinned. Defect #12 found + fixed: `kyx_fx`'s
+> enum advertised `eq`, but no primary knob exists — now honestly refused, pointing
+> at `kyx_plugin_param`.
+>
 > Statuses: `FULLY EXPOSED` · `PARTIALLY EXPOSED` · `READ-ONLY` · `WRITE-ONLY` · `NOT EXPOSED` · `UNSAFE / UNRELIABLE`.
 
 ---
@@ -93,10 +104,11 @@ the tool result prove the state change?
 | Gain / pan | full (gain linear + dB, pan **[REPAIRED]**) | nl (fader + exact, rel & absolute dB) | clamps in command layer | ✅ | label | PARTIALLY EXPOSED | structured setters; per-ID addressing |
 | Routing (sends/returns/buses/groups) | none | nl sends only (`applySendIntent`) | send clamp [0,1.5], return-exists check | ✅ | send readback (in-app path) | PARTIALLY EXPOSED (sends) / NOT (buses, groups, returns) | send structured tool; return/bus/group create+route; routing read |
 
-> **Addressing model — the core structural limitation.** Every MCP write targets a track
-> **family** (regex on name + instrument kind: `drums|bass|lead|chords|kick|snare|…`). Two hat
-> tracks, the 2nd snare, one pad of many — not individually addressable. Track IDs exist in the
-> model and in read-backs are NOT exposed. This caps precision across every write row above.
+> **Addressing model — UPGRADED in the P0 wave.** Every MCP write still accepts the
+> family vocabulary, but `trackId` (exposed in `kyx_state tracks`) now overrides it on
+> `kyx_fx`, `kyx_tracks` remove/rename and `kyx_plugin_param` — exact single-track
+> precision, groups honestly refused. Remaining limitation: pads inside a drum track
+> are still role-addressed only, and NL intents remain family-based.
 
 ### Audio clips / stems / recordings
 
@@ -120,8 +132,8 @@ the tool result prove the state change?
 |---|---|---|---|---|---|---|---|
 | List FX chain per track | full (`kyx_state fxChain`, truncation now honest **[REPAIRED]**) | — | — | — | — | READ-ONLY (full for what it shows) | param values not shown |
 | Insert/remove/bypass | bypass state in fxChain | full (`kyx_fx` — 12 effect types; **[REPAIRED: bypass now FLAGS instead of deleting; enable un-bypasses instead of turning the knob up; remove is D4-gated]**) | effect enum, family match, knob clamps | ✅ one step | **[REPAIRED: wave-8 `effectReadback` — landed knob value — now appended]** | PARTIALLY EXPOSED | 30+ more effect types; per-instance addressing; chain reorder |
-| Set parameters | — | PRIMARY KNOB only (`more/less` ± percent) | `clampEffectParam` per param | ✅ | landed-value readback **[REPAIRED]** | PARTIALLY EXPOSED | **arbitrary `set_plugin_parameter` (P0)** — the knob model can't reach e.g. EQ band freq |
-| Param metadata (min/max/default/unit/enum/taper) | NOT EXPOSED | — | — | — | — | NOT EXPOSED | registry (`EFFECT_DEFS`) already carries it — needs a discovery tool **(P0)** |
+| Set parameters | param values via `kyx_plugin_param` list | **FULLY EXPOSED [P0]: arbitrary `effect`×`instance`×`param`×native `value`, registry-clamped, prev→new read-back, one undo** | param id + range validation | ✅ | landed value + clamp note | FULLY EXPOSED | — |
+| Param metadata (min/max/default/unit/enum/taper) | **FULLY EXPOSED [P0]: `kyx_catalog`** (47 effect types, per-param tables, 22 instrument kinds) | — | — | — | — | FULLY EXPOSED | — |
 | Presets | — | nl (preset intent + suggestions on unknown) | preset name check | ✅ | label | PARTIALLY EXPOSED | list-presets tool |
 | Plugin automation | none | none (automation is gain-ramp NL only) | — | — | — | NOT EXPOSED | see Automation |
 
@@ -154,14 +166,14 @@ the tool result prove the state change?
 |---|---|---|---|---|---|---|---|
 | Master bounce WAV/MP3 | — | **[REPAIRED: `kyx_export` was DEAD on both transports — no host ever wired `ctx.export`; now rides the same render+encode+download pipeline as the in-app export intent (`src/export/quick-bounce.ts`, shared)]** | format enum | n/a | "started" only — completion not verifiable v1 | PARTIALLY EXPOSED | awaited result with duration/size; stems; render settings (sample rate, bit depth, normalization); file path |
 
-### Analysis (the largest gap)
+### Analysis
 
 | Capability | Status | Notes |
 |---|---|---|
-| Peak / RMS / LUFS / clipping | NOT EXPOSED | engine meters exist (`MeterRing`, loudness measure) — zero MCP surface |
+| Peak / RMS / LUFS / clipping | **FULLY EXPOSED [P0]: `kyx_meter`** — master true peak/RMS/LUFS M/S/I/correlation + clip flag, per-track peak/RMS from the live engine (`src/mcp/meters.ts`); honest refusal when no audio context; LUFS-I needs a few seconds of playback to stabilize | snapshot of the RUNNING engine, not a render measurement |
 | Spectrum / frequency balance | NOT EXPOSED | spectrogram + ultina analysis are in-app UI |
-| Waveform / silence / dynamics | NOT EXPOSED | — |
-| Plugin / routing state read | PARTIALLY EXPOSED | fxChain types + bypass; no param values, no send/route graph |
+| Waveform / silence / dynamics | PARTIALLY EXPOSED | per-track peak/RMS covers rough dynamics/silence; full waveform/silence maps remain P2 |
+| Plugin / routing state read | PARTIALLY EXPOSED | fxChain types + bypass; **param VALUES now readable via `kyx_plugin_param` list [P0]**; send/route graph still missing |
 
 ### Undo / redo / history / safety
 
@@ -182,17 +194,17 @@ Machine-readable metadata exists **in the app** (`EFFECT_DEFS` params: min/max/d
 
 - Tool JSON-Schemas carry ranges for their own args (`steps 1–256`, `velocity 0.05–1`,
   `bpm 40–220`, `percent 0–100`) — good.
-- `kyx_fx percent` is documented as "% of the knob's range" — but the AI cannot discover any
-  knob's min/max/default/unit **[REPAIRED at the result level: the read-back now reports the
-  landed native value, e.g. `mix 0.20→0.36 on Lead`]**.
-- No enum listing for presets/samples/instruments beyond the tool schemas' hard-coded 10-kind
-  instrument enum and 12-effect enum (the app ships 15 instruments / 47+ effects).
+- **[P0]** `kyx_catalog` exposes every effect's full param table (id, label, min, max,
+  default, unit, kind, step, taper, options) and `kyx_plugin_param` reports the landed
+  native value with clamp notes — the AI can now *discover* ranges instead of guessing.
+- Enum listing for presets/samples is still limited (the tool schemas' hard-coded
+  10-kind instrument enum vs 22 shipped kinds — the catalog lists all 22; preset/sample
+  catalogs remain P1/P2).
 - Mappings: percent→value is linear per-knob (native units); log-taper params are Linear from the
   MCP view — the clamp still protects the ceiling.
 
 **Conclusion**: ranges are enforced (deterministic clamps — the LLM cannot push out-of-range
-values into the graph), but they are not *discoverable*. The registry already holds the data;
-surfacing it is cheap (roadmap P0).
+values into the graph) and, since the P0 wave, they are *discoverable* via `kyx_catalog`.
 
 ## 4. Read/write balance (§5)
 
@@ -213,26 +225,26 @@ Can a fresh LLM answer…?
 
 | Question | Answerable? |
 |---|---|
-| What tracks/patterns/scenes/markers exist? | ✅ `kyx_state` + `kyx_pattern list` |
-| What FX are inserted (per family)? | ✅ `kyx_state fxChain` (types + bypass, not params) |
-| What plugins/effects/instruments/presets EXIST to add? | ❌ (only the 12+10 enum values inside tool schemas) |
-| What parameters does plugin X expose + valid values? | ❌ |
+| What tracks/patterns/scenes/markers exist? | ✅ `kyx_state` + `kyx_pattern list` (tracks include ids + mixer values) |
+| What FX are inserted (per family)? | ✅ `kyx_state fxChain` (types + bypass); **param values via `kyx_plugin_param` list [P0]** |
+| What plugins/effects/instruments EXIST to add? | ✅ **`kyx_catalog` [P0]** — 47 effect types with knob markers, 22 instrument kinds |
+| What parameters does plugin X expose + valid values? | ✅ **`kyx_catalog` subject:effect [P0]** — min/max/default/unit/taper/options |
 | What buses/sends/routing exist? | ❌ |
 | What clips are on this track? | ❌ |
-| What is selected / playing / playhead position? | ❌ |
-| What can I control right now? | partial (tool schemas; enums drift-corrected **[REPAIRED]** but still static) |
+| What is selected / playing / playhead position? | ❌ (audio levels: ✅ `kyx_meter` [P0]) |
+| What can I control right now? | ✅ tool schemas + catalog (def copies pinned verbatim) |
 
 ## 6. Sound-control gap scenarios (§7)
 
 | Producer request | Today over MCP | What's missing |
 |---|---|---|
-| "Make the vocal less harsh" | ❌ (no vocal analysis; EQ param beyond primary knob unreachable) | LUFS/spectral READ; arbitrary EQ param set; per-band EQ tool |
-| "Give the drums more punch" | ⚠️ partial — NL production intents exist in-app; over MCP only generic `kyx_fx compressor more` | transient/PLR analysis; production-intent execution over MCP; compressor attack/release |
-| "Reduce low-end buildup" | ⚠️ NL EQ intents ("darker/warmer") work; precision dip does not | spectral read; per-band EQ (freq/Q/gain) tool |
-| "Make this pad wider without affecting the bass" | ⚠️ per-family FX works; width ≠ a primary knob for most; no verification of stereo width | unison/width param addressing; stereo analysis read |
-| "Add subtle reverb only to the snare" | ⚠️ snare-family FX… but FX targets track families, and pads live INSIDE the drum track — per-pad FX does not exist in the model | per-pad send/FX (model-level) or pad-split track op |
-| "Balance all tracks around the vocal" | ❌ no level reads to balance against, no mix execution over MCP | metering read; mix-profile executor over MCP (exists in-app) |
-| "Fix clipping without changing the character" | ❌ no clipping detection over MCP | peak read + limiter params |
+| "Make the vocal less harsh" | ✅ **[P0]** — `kyx_catalog` (eq bands) → `kyx_plugin_param` set `highMidGain`/`highShelfGain` on the exact vocal track; `kyx_meter` verifies | LUFS/spectral verification of the RESULT (meter now exists; spectral split still in-app) |
+| "Give the drums more punch" | ⚠️ partial — `kyx_fx compressor more` (ratio knob, verified landing) + per-param attack/release via `kyx_plugin_param` **[P0]** | transient/PLR analysis read |
+| "Reduce low-end buildup" | ✅ **[P0]** — precise EQ band dips via `kyx_plugin_param` (`lowShelfGain`, `lowMidFreq/Q/Gain`); master peak/RMS via `kyx_meter` | spectral read |
+| "Make this pad wider without affecting the bass" | ✅ **[P0]** — `trackId` targeting + `haasWidener`/chorus params per instance; `kyx_meter` correlation as width proxy | stereo-width analysis beyond correlation |
+| "Add subtle reverb only to the snare" | ⚠️ FX targets tracks; pads live INSIDE the drum track — per-pad FX does not exist in the model | per-pad send/FX (model-level) or pad-split track op |
+| "Balance all tracks around the vocal" | ⚠️ **[P0]** — `kyx_meter` per-track peak/RMS gives the balance data; structured gain setters still NL-only | structured `set_gain_db` with read-back (P1) |
+| "Fix clipping without changing the character" | ⚠️ **[P0]** — `kyx_meter` clip flags + master true peak; limiter/clipper params addressable via `kyx_plugin_param` | automated fix loop (measure→adjust→re-measure) is the AI's job now that both halves exist |
 
 ## 7. Atomic vs high-level balance (§8–§9)
 
@@ -274,21 +286,24 @@ fields would be sturdier (P2).
 
 ## 10. MISSING CAPABILITIES ROADMAP
 
-### P0 — BLOCKING (AI cannot do core DAW work without these)
+### P0 — BLOCKING — ✅ ALL SHIPPED 2026-09-29 (16 tools, 75 specs green)
 
-1. **Analysis reads**: `kyx_meter` (peak/RMS per track + master, LUFS, clip flag) — the engine's
-   MeterRing/loudness already measure; expose last-N-window stats. Unlocks every
-   "listen and adjust" workflow.
-2. **`kyx_plugin_param`**: `set` any FX param by (track, instance, paramId, value) +
-   `kyx_state fxParams` read of current values, clamped via `clampEffectParam`. The knob-only
-   model blocks precise EQ/dynamics/reverb shaping.
-3. **Param/effect/instrument discovery**: `kyx_catalog` (effects+params with
-   min/max/default/unit, instruments, presets) straight from `EFFECT_DEFS`/`INSTRUMENT_DEFS` —
-   makes the surface self-describing instead of enum-frozen.
-4. **Track-ID addressing**: accept `trackId` (returned by reads) as an alternative to family on
-   every write — precision for multi-track families.
+1. ✅ **Analysis reads**: `kyx_meter` — master true peak/RMS/LUFS M/S/I/correlation/clip +
+   per-track peak/RMS (`src/mcp/meters.ts` over `getMasterMeterSnapshot` +
+   `getSpectrogramTrackAnalyser`; honest refusal without a live engine).
+2. ✅ **`kyx_plugin_param`**: `set`/`list` any FX param by (trackId|family, effect, 1-based
+   instance, paramId, native value) — clamped via `clampEffectParam`, prev→new read-back,
+   one undo snapshot, missing instances reported (never auto-inserted).
+3. ✅ **`kyx_catalog`**: effects (47) + per-effect param tables + instruments (22) straight
+   from `EFFECT_META`/`INSTRUMENT_DEFS` — the surface is self-describing.
+4. ✅ **Track-ID addressing**: `trackId` overrides family on `kyx_fx`/`kyx_tracks`/
+   `kyx_plugin_param` (id-passthrough in `trackIdsForTarget` benefits the NL layer too);
+   `kyx_state tracks` exposes ids; groups honestly refused on track CRUD.
+5. ✅ BONUS defect #12: `kyx_fx`'s enum advertised `eq` although `EFFECT_KNOB.eq` never
+   existed (every such call threw) — eq removed from the knob-tool enum and honestly
+   routed to `kyx_plugin_param`.
 
-### P1 — HIGH VALUE
+### P1 — HIGH VALUE (next wave)
 
 5. Transport reads + seek: `kyx_transport seek <bar>`, `position` readback, loop-region set by
    bars; playing-state.
@@ -313,9 +328,9 @@ fields would be sturdier (P2).
 
 ### Sizing note
 
-P0-1..P0-4 are all thin reads/writes over EXISTING domain APIs (registry metadata, clamps,
-MeterRing, ids) — no new DSP, no model changes. Each is an evening-scale tool + tests, exactly
-like the waves this layer already ships.
+P0-1..P0-4 shipped as thin reads/writes over EXISTING domain APIs (registry metadata, clamps,
+meter pipeline, ids) — no new DSP, no model changes, one afternoon with 9 new test specs.
+P1 items are the same shape.
 
 ---
 
@@ -334,24 +349,26 @@ like the waves this layer already ships.
 | 9 | `kyx_state tracks` had no mixer values; `fxChain` truncated silently | readback gap | gain (linear+dB)/pan/mute/solo per track; truncation note | state tests |
 | 10 | NL intents no-op'd with a misleading message for transport/query/compound/production; loudness/mix/etc. pretended "nothing changed" | `intentCommand` switch missed route kinds | transport dispatch, query read-backs, compound + production execution; honest not-over-MCP refusals | intent-route tests |
 | 11 | `kyx_fx` result echoed the label only | no verification | wave-8 `effectReadback`/`bypassReadback` appended (landed native values) | readback in fx tests |
+| 12 | `kyx_fx` schema advertised `effect:"eq"` but `EFFECT_KNOB.eq` never existed — every such call threw "no knob mapped" | enum copied from the intent vocabulary, not the knob map | eq removed from the knob-tool enum; explicit honest refusal pointing at `kyx_catalog`+`kyx_plugin_param` | eq-refusal test |
 
 ---
 
-## 12. Final answer
+## 12. Final answer (updated after the P0 wave)
 
-**What prevents comprehensive, precise, safe, verifiable AI control today?** Not the
-architecture — the relay/command-layer/verification spine is sound, opt-in, and (after this
-audit's 11 repairs) consistent and crash-safe. The blockers are four **missing surfaces**, all
-thin wrappers over existing domain code:
+**What prevented comprehensive, precise, safe, verifiable AI control** was never the
+architecture — the relay/command-layer/verification spine is sound, opt-in, crash-safe and
+(12 repairs) consistent. The four blocking gaps — no analysis reads, no plugin-param
+addressing, no catalog discovery, family-only addressing — are now **CLOSED**
+(`kyx_meter`, `kyx_plugin_param`, `kyx_catalog`, `trackId` on writes; 16 tools, all mirrors
+pinned, 75 specs green).
 
-1. **No analysis reads** — the AI is deaf (no levels, LUFS, spectrum, clipping).
-2. **No arbitrary plugin-param addressing** — one knob per effect caps sound-shaping precision.
-3. **No catalog/metadata discovery** — the DAW is not self-describing beyond static enums.
-4. **Family-level addressing only** — no track/instance IDs, so precision caps out on the first
-   ambiguous target.
+**What still stands between an AI agent and full DAW control** (the P1 wave, all thin
+wrappers over existing APIs): transport reads/seek, send-level reads, automation
+read/edit/point-ops, structured absolute mixer setters with read-back, clip tools,
+awaited export with stems/settings, and the loudness/mix loops over MCP. After those, the
+remaining P2 items (machine-readable result envelopes, batch/transaction tool, routing
+graph, per-pad addressing) are convenience and depth, not capability walls.
 
-**Smallest practical path**: ship P0-1..P0-4 (four evening-scale tools over existing APIs), then
-P1-5..P1-8 for the transport/send/automation/mixer read-write loops. That converts the MCP from
-"a remote control for the intent bar" into a genuine agent-grade control surface — measurable
-("the vocal peaks at −2 dBFS"), addressable ("track t3, instance 2, param freq"), and
-self-describing ("what can I set on this compressor?").
+**Smallest practical path from here**: P1-5..P1-8 in one wave (evening-scale each), then
+re-run this matrix — the surface then covers every domain a mixing/producing agent needs
+except recording takes and third-party-plugin GUIs, which stay window-local by design.

@@ -120,6 +120,9 @@ describe("mcp tools — headless execution", () => {
       "kyx_tracks",
       "kyx_pattern",
       "kyx_steps",
+      "kyx_catalog",
+      "kyx_plugin_param",
+      "kyx_meter",
     ]);
   });
 
@@ -579,5 +582,237 @@ describe("mcp audit repairs", () => {
     };
     executeMcpTool(observing, "kyx_transport", { action: "loopOn" });
     expect(loopCalls).toEqual([[true, 0, 4 * 4 * 480]]);
+  });
+});
+
+// ─── P0 WAVE — catalog, plugin params, trackId addressing, meters ───────────
+
+describe("mcp P0 wave — self-description + precision", () => {
+  it("kyx_catalog lists effects with knob markers; instruments list the kinds", () => {
+    const ctx = makeCtx(datasetDoc());
+    const effects = executeMcpTool(ctx, "kyx_catalog", { subject: "effects" });
+    expect(effects.mutated).toBe(false);
+    expect(effects.text).toContain("reverb — Reverb");
+    expect(effects.text).toContain("[knob: mix]");
+    expect(effects.text).toContain("eq");
+    expect(effects.text).toContain("no single knob");
+
+    const instruments = executeMcpTool(ctx, "kyx_catalog", { subject: "instruments" });
+    expect(instruments.text).toContain("808");
+    expect(instruments.text).toContain("analog");
+  });
+
+  it("kyx_catalog subject:effect exposes the full param table (min/max/default/unit)", () => {
+    const ctx = makeCtx(datasetDoc());
+    const reverb = executeMcpTool(ctx, "kyx_catalog", { subject: "effect", effect: "reverb" });
+    expect(reverb.text).toContain("primary knob (kyx_fx more/less): mix");
+    expect(reverb.text).toMatch(/mix "MIX": 0 \.\. 1, default 0\.\d+/);
+
+    const eq = executeMcpTool(ctx, "kyx_catalog", { subject: "effect", effect: "eq" });
+    expect(eq.text).toContain("no single primary knob");
+    expect(eq.text).toContain("hpFreq");
+
+    const unknown = executeMcpTool(ctx, "kyx_catalog", { subject: "effect", effect: "quantum" });
+    expect(unknown.mutated).toBe(false);
+    expect(unknown.text).toContain('unknown effect "quantum"');
+  });
+
+  it("kyx_plugin_param set lands an absolute native value with read-back (one undo)", () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    executeMcpTool(ctx, "kyx_fx", { effect: "reverb", family: "lead", action: "more" });
+    const result = executeMcpTool(ctx, "kyx_plugin_param", {
+      op: "set",
+      family: "lead",
+      effect: "reverb",
+      param: "mix",
+      value: 0.42,
+    });
+    expect(result.mutated).toBe(true);
+    expect(result.text).toContain("mix 0.");
+    expect(result.text).toContain("→ 0.42");
+    expect(result.text).toContain("one undo step");
+    const lead = store.doc.tracks.find((t) => t.name === "Lead")!;
+    expect(lead.effects.find((fx) => fx.type === "reverb")!.params.mix).toBeCloseTo(0.42, 5);
+    store.undo();
+    expect(store.undoStackLength).toBe(1); // the kyx_fx more
+  });
+
+  it("kyx_plugin_param set clamps honestly and refuses unknown params/instances", () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    executeMcpTool(ctx, "kyx_fx", { effect: "reverb", family: "lead", action: "more" });
+
+    const clamped = executeMcpTool(ctx, "kyx_plugin_param", {
+      op: "set",
+      family: "lead",
+      effect: "reverb",
+      param: "mix",
+      value: 42, // way out of 0..1
+    });
+    expect(clamped.mutated).toBe(true);
+    expect(clamped.text).toContain("clamped to 0..1");
+    expect(store.doc.tracks.find((t) => t.name === "Lead")!.effects[0].params.mix).toBe(1);
+
+    const unknownParam = executeMcpTool(ctx, "kyx_plugin_param", {
+      op: "set",
+      family: "lead",
+      effect: "reverb",
+      param: "quantum",
+      value: 1,
+    });
+    expect(unknownParam.mutated).toBe(false);
+    expect(unknownParam.text).toContain('unknown param "quantum"');
+    expect(unknownParam.text).toContain("parameters:");
+
+    const missingInstance = executeMcpTool(ctx, "kyx_plugin_param", {
+      op: "set",
+      family: "lead",
+      effect: "delay",
+      param: "mix",
+      value: 0.5,
+    });
+    expect(missingInstance.mutated).toBe(false);
+    expect(missingInstance.text).toContain("no delay instance");
+
+    executeMcpTool(ctx, "kyx_fx", { effect: "delay", family: "lead", action: "more" });
+    const missingSecond = executeMcpTool(ctx, "kyx_plugin_param", {
+      op: "set",
+      family: "lead",
+      effect: "delay",
+      instance: 2,
+      param: "mix",
+      value: 0.5,
+    });
+    expect(missingSecond.mutated).toBe(false);
+    expect(missingSecond.text).toContain("instance #2 does not exist");
+  });
+
+  it("kyx_plugin_param list reads current chain values; NaN value refused", () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    executeMcpTool(ctx, "kyx_fx", { effect: "reverb", family: "lead", action: "more" });
+    const list = executeMcpTool(ctx, "kyx_plugin_param", { op: "list", family: "lead" });
+    expect(list.mutated).toBe(false);
+    expect(list.text).toContain("reverb#1");
+    expect(list.text).toMatch(/mix=\d/);
+
+    const nan = executeMcpTool(ctx, "kyx_plugin_param", {
+      op: "set",
+      family: "lead",
+      effect: "reverb",
+      param: "mix",
+      value: "not-a-number",
+    });
+    expect(nan.mutated).toBe(false);
+    expect(nan.text).toContain("finite number");
+  });
+
+  it("trackId addressing: kyx_fx and kyx_plugin_param hit ONE exact track", () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store);
+    const state = executeMcpTool(ctx, "kyx_state", { subject: "tracks" });
+    expect(state.text).toMatch(/id=track-lead-x/); // ids in read-back
+
+    const result = executeMcpTool(ctx, "kyx_fx", {
+      effect: "delay",
+      action: "more",
+      trackId: "track-lead-x",
+    });
+    expect(result.mutated).toBe(true);
+    expect(store.doc.tracks.find((t) => t.id === "track-lead-x")!.effects.some((fx) => fx.type === "delay")).toBe(true);
+
+    const param = executeMcpTool(ctx, "kyx_plugin_param", {
+      op: "set",
+      trackId: "track-lead-x",
+      effect: "delay",
+      param: "mix",
+      value: 0.3,
+    });
+    expect(param.mutated).toBe(true);
+
+    const missing = executeMcpTool(ctx, "kyx_fx", { effect: "delay", action: "more", trackId: "t-quantum" });
+    expect(missing.mutated).toBe(false);
+    expect(missing.text).toContain("fx op failed");
+  });
+
+  it("kyx_tracks remove/rename honor trackId; groups are refused honestly", () => {
+    const store = new ProjectStore(withLead());
+    const ctx = storeCtx(store, { allowDestructive: true });
+    const renamed = executeMcpTool(ctx, "kyx_tracks", { op: "rename", trackId: "track-lead-x", name: "Syn Lead" });
+    expect(renamed.mutated).toBe(true);
+    expect(store.doc.tracks.find((t) => t.id === "track-lead-x")!.name).toBe("Syn Lead");
+
+    const removed = executeMcpTool(ctx, "kyx_tracks", { op: "remove", trackId: "track-lead-x" });
+    expect(removed.mutated).toBe(true);
+    expect(store.doc.tracks.some((t) => t.id === "track-lead-x")).toBe(false);
+    store.undo();
+    expect(store.doc.tracks.some((t) => t.id === "track-lead-x")).toBe(true);
+
+    // a group track is not addressable by kyx_tracks
+    const doc = store.doc;
+    const group = doc.tracks.find((t) => t.kind === "group");
+    if (group) {
+      const refused = executeMcpTool(ctx, "kyx_tracks", { op: "remove", trackId: group.id });
+      expect(refused.mutated).toBe(false);
+      expect(refused.text).toContain("group tracks are not addressable");
+    }
+  });
+
+  it("kyx_fx refuses knob-less effects honestly (eq never had a primary knob)", () => {
+    const store = new ProjectStore(datasetDoc());
+    const result = executeMcpTool(storeCtx(store), "kyx_fx", { effect: "eq", family: "drums", action: "more" });
+    expect(result.mutated).toBe(false);
+    expect(result.text).toContain("no single primary knob");
+    expect(result.text).toContain("kyx_plugin_param");
+  });
+
+  it("kyx_meter honestly refuses without a hook and reads a live snapshot", () => {
+    const store = new ProjectStore(datasetDoc());
+    const bare = executeMcpTool(storeCtx(store), "kyx_meter", {});
+    expect(bare.mutated).toBe(false);
+    expect(bare.text).toContain("not available");
+
+    const dead: McpToolContext = { ...storeCtx(store), meters: () => null };
+    const deadResult = executeMcpTool(dead, "kyx_meter", {});
+    expect(deadResult.text).toContain("engine is not running");
+
+    const ctx: McpToolContext = {
+      ...storeCtx(store),
+      meters: () => ({
+        master: {
+          truePeakDb: -0.5,
+          rmsDb: -14.2,
+          lufsMomentary: -15.1,
+          lufsShortTerm: -15.4,
+          lufsIntegrated: -16.0,
+          correlation: 0.87,
+          clipping: false,
+        },
+        tracks: [{ id: "t1", name: "Drums", peakDb: 0.4, rmsDb: -10.1, clipping: true }],
+      }),
+    };
+    const all = executeMcpTool(ctx, "kyx_meter", {});
+    expect(all.mutated).toBe(false);
+    expect(all.text).toContain("truePeak -0.5 dBFS");
+    expect(all.text).toContain("LUFS-M -15.1");
+    expect(all.text).not.toContain("true peak ≥ 0 dBFS"); // master NOT clipping in this fixture
+    expect(all.text).toContain("Drums (id=t1)");
+    expect(all.text).toContain("⚠ CLIPPING"); // the clipping track is flagged
+
+    const fixture = ctx.meters!();
+    const hot: McpToolContext = {
+      ...ctx,
+      meters: () => ({
+        master: { ...fixture!.master, truePeakDb: 0.6, clipping: true },
+        tracks: [],
+      }),
+    };
+    const hotResult = executeMcpTool(hot, "kyx_meter", { scope: "master" });
+    expect(hotResult.text).toContain("⚠ CLIPPING (true peak ≥ 0 dBFS)");
+
+    const masterOnly = executeMcpTool(ctx, "kyx_meter", { scope: "master" });
+    expect(masterOnly.text).toContain("master:");
+    expect(masterOnly.text).not.toContain("Drums (id=t1)");
   });
 });

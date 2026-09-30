@@ -403,7 +403,7 @@ describe("desktop mcp stdio forwarder (subprocess)", () => {
     return { child, writeLine, nextLine };
   }
 
-  it("initialize → tools/list (11 tools) → tools/call round-trips through the bridge", async () => {
+  it("initialize → tools/list (16 tools) → tools/call round-trips through the bridge", async () => {
     const { child, writeLine, nextLine } = await startChain(true);
     writeLine({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} });
     const init = JSON.parse(await nextLine()) as { id: number; result: { serverInfo: { name: string } } };

@@ -62,6 +62,7 @@ export const CURATED_SAMPLES: CuratedSample[] = [
   { id: "factory.snare.jersey", file: "factory.snare.jersey.wav" },
   { id: "factory.snare.dnb", file: "factory.snare.dnb.wav" },
   { id: "factory.snare.lofi", file: "factory.snare.lofi.wav" },
+  { id: "factory.snare.room", file: "factory.snare.room.wav" },
   { id: "factory.clap.main", file: "factory.clap.main.wav" },
   { id: "factory.clap.soft", file: "factory.clap.soft.wav" },
   { id: "factory.hat.closed", file: "factory.hat.closed.wav" },

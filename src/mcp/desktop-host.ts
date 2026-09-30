@@ -2,6 +2,7 @@ import { executeMcpTool, type McpToolContext } from "./tools";
 import { mcpAllowDestructive } from "./flags";
 import { isMicRecordingActive } from "../audio-engine/PcmMicRecorder";
 import { quickBounceDownload } from "../export/quick-bounce";
+import { mcpMeterSnapshotFromServices } from "./meters";
 import type { Services } from "../services";
 
 /**
@@ -54,6 +55,8 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
     historyLabels: () => services.store.history.map((entry) => entry.label),
     isMicRecordingActive,
     transport: services.transport,
+    // kyx_meter reads the LIVE engine (null when no audio context is up).
+    meters: () => mcpMeterSnapshotFromServices(services),
     // kyx_export rides the same render + encode + download pipeline as the
     // in-app export intent (download lands in the focused KYX window).
     export: (format) => quickBounceDownload(services.store.getDoc(), services.bank, format),

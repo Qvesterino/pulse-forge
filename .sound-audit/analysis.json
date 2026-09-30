@@ -2660,6 +2660,44 @@
   "tuning": {}
  },
  {
+  "file": "factory.snare.room",
+  "format": {
+   "sampleRate": 44100,
+   "bits": 24,
+   "encoding": "pcm24",
+   "channels": 2
+  },
+  "durationSec": 0.562,
+  "peakDb": -4.5,
+  "clipSamples": 0,
+  "dcOffset": 0.00000525,
+  "leadSilenceMs": 0.1,
+  "tailSilenceMs": 50,
+  "loudMs": 512.2,
+  "attackMs": 0.2,
+  "decayMs": 214,
+  "crestDb": 10.5,
+  "momentaryLufs": -9.5,
+  "energyFirst10ms": 0.181,
+  "limiterRuns": 0,
+  "limiterMaxRunMs": 0,
+  "bands": {
+   "sub": -24.2,
+   "low": -20.5,
+   "lowmid": -9.9,
+   "mid": -4,
+   "himid": -3.3,
+   "high": -17.2,
+   "air": -30.9,
+   "centroid": 2054
+  },
+  "stereo": {
+   "correlation": 1,
+   "sideDb": -120
+  },
+  "tuning": {}
+ },
+ {
   "file": "factory.snare.tight",
   "format": {
    "sampleRate": 44100,

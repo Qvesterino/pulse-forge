@@ -2,6 +2,7 @@ import { McpBridge, type McpBridgeDeps } from "./bridge";
 import { isMicRecordingActive } from "../audio-engine/PcmMicRecorder";
 import { collabParamsFromSearch, defaultServerUrl } from "../collab/collabShared";
 import { quickBounceDownload } from "../export/quick-bounce";
+import { mcpMeterSnapshotFromServices } from "./meters";
 import type { Services } from "../services";
 
 /**
@@ -90,6 +91,8 @@ function depsFromServices(services: Services): McpBridgeDeps {
     historyLabels: () => services.store.history.map((entry) => entry.label),
     isMicRecordingActive,
     transport: services.transport,
+    // kyx_meter reads the LIVE engine (null when no audio context is up).
+    meters: () => mcpMeterSnapshotFromServices(services),
     // kyx_export rides the SAME render + encode + download pipeline as the
     // in-app "export wav/mp3" intent (the download lands in the KYX window).
     export: (format) => quickBounceDownload(services.store.getDoc(), services.bank, format),

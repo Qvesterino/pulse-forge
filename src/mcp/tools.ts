@@ -2,7 +2,14 @@ import type { ProjectDocument } from "../project-model/types";
 import type { Command } from "../commands/types";
 import { routeIntentText, type RoutedIntent } from "../intent/route";
 import { applyFaderIntent, applyTempoIntent } from "../intent/conversation";
-import { applyBypassIntent, applyEffectIntent, applySendIntent, bypassReadback, effectReadback } from "../intent/mix";
+import {
+  applyBypassIntent,
+  applyEffectIntent,
+  applySendIntent,
+  bypassReadback,
+  effectReadback,
+  EFFECT_KNOB,
+} from "../intent/mix";
 import { applyCompoundIntent } from "../intent/compound";
 import { productionReadback } from "../intent/production";
 import {
@@ -17,7 +24,7 @@ import { generateLocalResult } from "../intent/pipeline";
 import { normalizeIntent } from "../intent/normalize";
 import { resolveSceneTarget } from "../intent/arrangeWords";
 import { inferPadRole } from "../ai/pad-roles";
-import type { DrumTrack, InstrumentKind } from "../project-model/types";
+import type { DrumTrack, InstrumentKind, Track } from "../project-model/types";
 import { applyPresetIntentCommand } from "../intent/preset-intent";
 import {
   addMarker,
@@ -29,16 +36,19 @@ import {
   deleteTrack,
   removeMarker,
   setActivePattern,
+  setEffectParam,
   setStepMeta,
   setStepVelocityCommand,
   setTrackParams,
   snapshot,
 } from "../commands/commands";
+import { clampEffectParam, EFFECT_META, type EffectDefinitionMeta } from "../effects/definitions";
+import { INSTRUMENT_DEFS } from "../instruments/registry";
 
 /**
  * KYX MCP — TOOL SURFACE (docs/INTENT-MCP-EXPANSION-PLAN.md Phase D).
  *
- * Thirteen tools expose the intent engine + project state to an external MCP
+ * Sixteen tools expose the intent engine + project state to an external MCP
  * client. The GOLDEN RULE: the MCP layer is a TRANSPORT, never a bypass —
  * every tool goes through the same deterministic command layer (clamps,
  * strict target resolution, one-undo snapshots) that the intent bar uses,
@@ -116,13 +126,42 @@ export const MCP_TOOLS: McpToolDef[] = [
   },
   {
     name: "kyx_transport",
-    description: "Transport control: play, stop, pause, loop on/off, metronome on/off.",
+    description:
+      "Transport control AND reads: play, stop, pause, loop on/off, " +
+      "metronome on/off — or seek to a 1-based bar (optional beat), set the " +
+      "loop region in bars (loopRegion), or state: a read-only read-back of " +
+      "the playhead position (bar/beat/tick), playing state, loop region and " +
+      "metronome. Position is 4/4-based (1920 ticks per bar, 480 per beat).",
     inputSchema: {
       type: "object",
       properties: {
         action: {
           type: "string",
-          enum: ["play", "stop", "pause", "loopOn", "loopOff", "metronomeOn", "metronomeOff"],
+          enum: [
+            "play",
+            "stop",
+            "pause",
+            "loopOn",
+            "loopOff",
+            "metronomeOn",
+            "metronomeOff",
+            "seek",
+            "loopRegion",
+            "state",
+          ],
+        },
+        bar: { type: "integer", minimum: 1, description: "For seek — 1-based destination bar" },
+        beat: {
+          type: "integer",
+          minimum: 1,
+          maximum: 4,
+          description: "For seek — 1-based beat within the bar (default 1)",
+        },
+        startBar: { type: "integer", minimum: 1, description: "For loopRegion — first looped bar (1-based)" },
+        endBar: {
+          type: "integer",
+          minimum: 2,
+          description: "For loopRegion — last looped bar (inclusive; must be > startBar)",
         },
       },
       required: ["action"],
@@ -214,9 +253,12 @@ export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_fx",
     description:
-      "Structured effect operation on a track family: more/less turn the " +
-      "primary knob (percent = relative step size), remove deletes instances " +
-      "(destructive-gated), bypass/enable flag instances without deleting them.",
+      "Structured effect operation on a track family or ONE exact track: " +
+      "more/less turn the effect's PRIMARY knob (percent = relative step " +
+      "size), remove deletes instances (destructive-gated), bypass/enable " +
+      "flag instances without deleting them. Effect types are the " +
+      "knob-mapped subset — eq and other no-knob effects are refused; use " +
+      "kyx_plugin_param for their parameters.",
     inputSchema: {
       type: "object",
       properties: {
@@ -234,10 +276,17 @@ export const MCP_TOOLS: McpToolDef[] = [
             "bitcrusher",
             "compressor",
             "pump",
-            "eq",
           ],
         },
-        family: { type: "string", enum: ["drums", "bass", "chords", "lead", "vocal"] },
+        family: {
+          type: "string",
+          enum: ["drums", "bass", "chords", "lead", "vocal"],
+          description: "Track family target — required unless trackId is given",
+        },
+        trackId: {
+          type: "string",
+          description: "Exact track id (from kyx_state tracks) — overrides family when present",
+        },
         action: { type: "string", enum: ["more", "less", "remove", "bypass", "enable"] },
         percent: {
           type: "number",
@@ -246,7 +295,7 @@ export const MCP_TOOLS: McpToolDef[] = [
           description: "Relative step size for more/less, as % of the knob's range (default: fixed calibrated step)",
         },
       },
-      required: ["effect", "family", "action"],
+      required: ["effect", "action"],
     },
   },
   {
@@ -284,7 +333,8 @@ export const MCP_TOOLS: McpToolDef[] = [
     name: "kyx_tracks",
     description:
       "Track CRUD: add a drum or instrument track, remove/rename an " +
-      "existing one by family. Removing the last track is declined.",
+      "existing one by family or by exact trackId (group tracks are not " +
+      "addressable here). Removing the last track is declined.",
     inputSchema: {
       type: "object",
       properties: {
@@ -292,12 +342,16 @@ export const MCP_TOOLS: McpToolDef[] = [
         family: {
           type: "string",
           enum: ["drums", "bass", "lead", "chords", "kick", "snare", "clap", "hat", "perc", "tom"],
-          description: "For remove/rename: which family to touch",
+          description: "For remove/rename: which family to touch — ignored when trackId is given",
+        },
+        trackId: {
+          type: "string",
+          description: "Exact track id (from kyx_state tracks) — overrides family for remove/rename",
         },
         instrument: {
           type: "string",
           enum: ["analog", "bass", "808", "keys", "pluck", "acid", "reese", "brass", "flute", "sampler"],
-          description: "For addInstrument",
+          description: "For addInstrument — the full kind catalog is in kyx_catalog subject:instruments",
         },
         name: { type: "string", description: "New name for rename" },
       },
@@ -344,7 +398,96 @@ export const MCP_TOOLS: McpToolDef[] = [
       required: ["op", "family"],
     },
   },
+  {
+    name: "kyx_catalog",
+    description:
+      "Discovery — what the DAW can do, machine-readable: list every effect " +
+      "type with its category and primary knob, the FULL parameter table of " +
+      "one effect (id, label, min, max, default, unit, kind, taper), or the " +
+      "instrument kind catalog. Read-only; use it before kyx_plugin_param " +
+      "instead of guessing ranges.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        subject: { type: "string", enum: ["effects", "effect", "instruments"] },
+        effect: {
+          type: "string",
+          description: "Effect type for subject:effect (e.g. reverb, eq, compressor) — see subject:effects",
+        },
+      },
+      required: ["subject"],
+    },
+  },
+  {
+    name: "kyx_plugin_param",
+    description:
+      "Precise plugin control on inserted FX instances: set ONE parameter to " +
+      "an absolute NATIVE value (clamped to the registry range; see " +
+      "kyx_catalog subject:effect for min/max/default/unit) or list the " +
+      "current values of every parameter on the targeted tracks' chains. " +
+      "Targets a trackId or a family; instance picks 1-based among same-type " +
+      "instances (default 1). Missing instances are reported honestly — " +
+      "nothing is auto-inserted (use kyx_fx more for that).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["list", "set"] },
+        trackId: { type: "string", description: "Exact track id — overrides family when present" },
+        family: {
+          type: "string",
+          enum: ["drums", "bass", "chords", "lead", "vocal"],
+          description: "Track family target — required unless trackId is given",
+        },
+        effect: {
+          type: "string",
+          description: "Effect type (e.g. reverb, eq) — required for set, filters list when given; see kyx_catalog",
+        },
+        instance: {
+          type: "integer",
+          minimum: 1,
+          description: "1-based index among same-type instances in chain order (default 1)",
+        },
+        param: { type: "string", description: "Parameter id for set (e.g. mix, decay, freq) — see kyx_catalog" },
+        value: {
+          type: "number",
+          description: "Absolute NATIVE value for set (NOT normalized 0..1 unless the param's range is 0..1)",
+        },
+      },
+      required: ["op"],
+    },
+  },
+  {
+    name: "kyx_meter",
+    description:
+      "Live audio meters — the AI's ears: master true peak, RMS, LUFS " +
+      "(momentary/short-term/integrated), stereo correlation, clip flags, " +
+      "plus per-track peak/RMS. Read-only snapshot of the RUNNING engine; " +
+      "honestly refused when no engine/audio context is live. LUFS-I needs " +
+      "a few seconds of playback to stabilize.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scope: { type: "string", enum: ["master", "tracks", "all"], description: "Default all" },
+      },
+      required: [],
+    },
+  },
 ];
+
+/** Live metering snapshot the kyx_meter tool reads (present only when the
+ * host has a running engine — headless contexts honestly refuse). */
+export interface McpMeterSnapshot {
+  master: {
+    truePeakDb: number;
+    rmsDb: number;
+    lufsMomentary: number;
+    lufsShortTerm: number;
+    lufsIntegrated: number;
+    correlation: number;
+    clipping: boolean;
+  };
+  tracks: Array<{ id: string; name: string; peakDb: number; rmsDb: number; clipping: boolean }>;
+}
 
 /** Narrow capability surface the tools need — implemented by the app's
  * services (browser relay) or by a ProjectStore wrapper (headless tests). */
@@ -366,9 +509,21 @@ export interface McpToolContext {
      * PRESERVE the user's loop range when MCP only toggles loop on. */
     loopStart?: number;
     loopEnd?: number;
+    /** Live transport reads (kyx_transport state / verification read-backs):
+     * position in ticks, playing/paused flags, loop + metronome state, and
+     * an absolute seek. Absent on bare test fakes — reads degrade honestly. */
+    position?: number;
+    playing?: boolean;
+    paused?: boolean;
+    loopEnabled?: boolean;
+    metronome?: boolean;
+    seek?: (tick: number) => void;
   };
   /** Present when the KYX window can render/downloads (browser relay). */
   export?: (format: "wav" | "mp3") => Promise<string>;
+  /** Present when a live engine can be metered (kyx_meter). Null/absent →
+   * the tool refuses honestly instead of inventing numbers. */
+  meters?: () => McpMeterSnapshot | null;
   /**
    * D4 escalation: destructive MCP ops (removing tracks/sections/FX) run
    * ONLY while the user's allow flag is on. Absent/false → honest refusal.
@@ -401,7 +556,8 @@ function destructiveRefusal(): McpToolResult {
 /** Shared transport dispatch (kyx_transport + intent-routed transport
  * asks). loopOn PRESERVES the user's loop range when the live transport
  * exposes it — same contract as the in-app intent bar; only a project with
- * no loop falls back to the first 4 bars. */
+ * no loop falls back to the first 4 bars. Every read-back ends with the
+ * resulting transport STATE so the caller can verify the landing. */
 function dispatchTransport(ctx: McpToolContext, action: string): McpToolResult {
   const transport = ctx.transport;
   if (action === "play") transport.play();
@@ -416,7 +572,79 @@ function dispatchTransport(ctx: McpToolContext, action: string): McpToolResult {
     transport.setLoop(true, currentStart, end);
   } else if (action === "loopOff") transport.setLoop(false, 0, 0);
   else return { text: `unknown transport action: ${action}`, mutated: false };
-  return { text: `transport: ${action}`, mutated: false };
+  return { text: `transport: ${action} · ${describeTransport(transport)}`, mutated: false };
+}
+
+/** Human/AI-readable transport state line; every optional read degrades to
+ * an honest "unknown" when the host's transport lacks the accessor. */
+function describeTransport(transport: McpToolContext["transport"]): string {
+  const parts: string[] = [];
+  if (typeof transport.position === "number" && Number.isFinite(transport.position)) {
+    const tick = Math.max(0, Math.round(transport.position));
+    const bar = Math.floor(tick / TICKS_PER_BAR) + 1;
+    const beat = Math.floor((tick % TICKS_PER_BAR) / (TICKS_PER_BAR / 4)) + 1;
+    parts.push(`position bar ${bar} beat ${beat} (tick ${tick})`);
+  } else {
+    parts.push("position unknown");
+  }
+  if (typeof transport.playing === "boolean") {
+    parts.push(transport.playing ? "playing" : transport.paused === true ? "paused" : "stopped");
+  }
+  if (typeof transport.loopEnabled === "boolean") {
+    if (transport.loopEnabled && typeof transport.loopStart === "number" && typeof transport.loopEnd === "number") {
+      // Transport semantics: loopEnd 0 (or <= start) = "to the end of the
+      // current content" — report it as such instead of a bogus bar number.
+      const region =
+        transport.loopEnd > transport.loopStart
+          ? `bars ${Math.floor(transport.loopStart / TICKS_PER_BAR) + 1}–${Math.ceil(transport.loopEnd / TICKS_PER_BAR)}`
+          : "to end of content";
+      parts.push(`loop on (${region})`);
+    } else {
+      parts.push("loop off");
+    }
+  }
+  if (typeof transport.metronome === "boolean") parts.push(transport.metronome ? "metronome on" : "metronome off");
+  return parts.join(" · ");
+}
+
+/** kyx_transport seek — absolute position by 1-based bar (+ optional beat). */
+function transportSeek(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
+  const seek = ctx.transport.seek;
+  if (seek == null) {
+    return { text: "seek is not available over this MCP transport (no seek-capable transport bound)", mutated: false };
+  }
+  const rawBar = Number(record.bar);
+  if (!Number.isFinite(rawBar) || Math.round(rawBar) < 1) {
+    return { text: "seek needs a 1-based bar (e.g. { action: \"seek\", bar: 5 })", mutated: false };
+  }
+  const bar = Math.round(rawBar);
+  const rawBeat = typeof record.beat === "number" ? record.beat : 1;
+  const beat = Math.min(4, Math.max(1, Math.round(Number.isFinite(rawBeat) ? rawBeat : 1)));
+  const tick = (bar - 1) * TICKS_PER_BAR + (beat - 1) * (TICKS_PER_BAR / 4);
+  seek(tick);
+  return {
+    text: `seek → bar ${bar}${beat > 1 ? ` beat ${beat}` : ""} (tick ${tick}) · ${describeTransport(ctx.transport)}`,
+    mutated: false,
+  };
+}
+
+/** kyx_transport loopRegion — set the loop by 1-based inclusive bars. */
+function transportLoopRegion(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
+  const startBar = Math.round(Number(record.startBar));
+  const endBar = Math.round(Number(record.endBar));
+  if (!Number.isFinite(startBar) || !Number.isFinite(endBar) || startBar < 1 || endBar <= startBar) {
+    return {
+      text: "loopRegion needs { startBar >= 1, endBar > startBar } (1-based, inclusive) — e.g. { action: \"loopRegion\", startBar: 5, endBar: 9 }",
+      mutated: false,
+    };
+  }
+  const startTick = (startBar - 1) * TICKS_PER_BAR;
+  const endTick = endBar * TICKS_PER_BAR;
+  ctx.transport.setLoop(true, startTick, endTick);
+  return {
+    text: `loop region: bars ${startBar}–${endBar} (ticks ${startTick}..${endTick}) · ${describeTransport(ctx.transport)}`,
+    mutated: false,
+  };
 }
 
 export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown): McpToolResult {
@@ -453,6 +681,9 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
     }
     case "kyx_transport": {
       const action = String(record.action ?? "");
+      if (action === "seek") return transportSeek(ctx, record);
+      if (action === "loopRegion") return transportLoopRegion(ctx, record);
+      if (action === "state") return { text: describeTransport(ctx.transport), mutated: false };
       return dispatchTransport(ctx, action);
     }
     case "kyx_export": {
@@ -525,29 +756,43 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
     case "kyx_fx": {
       const action = String(record.action ?? "");
       const effect = String(record.effect ?? "");
-      const family = String(record.family ?? "");
+      const targets = explicitTargets(record);
+      if (typeof targets === "string") return { text: targets, mutated: false };
       if (action === "remove" && ctx.allowDestructive?.() !== true) return destructiveRefusal();
+      // eq (and any knob-less effect) has no single "primary knob" — never
+      // pretend: point at kyx_plugin_param instead of throwing deep inside
+      // the applier (the pre-audit schema advertised eq here although every
+      // such call failed).
+      if (!(effect in EFFECT_KNOB)) {
+        return {
+          text:
+            `fx op failed: "${effect}" has no single primary knob for more/less — ` +
+            `list its parameters with kyx_catalog subject:effect, then set them via kyx_plugin_param`,
+          mutated: false,
+        };
+      }
       try {
         const before = ctx.getDoc();
         // bypass/enable flip the BYPASS FLAG (never delete the instance);
         // more/less turn the primary knob; remove deletes (D4-gated).
         if (action === "bypass" || action === "enable") {
+          const bypassed = action === "bypass";
           const command = applyBypassIntent(ctx.getDoc(), {
             effectType: effect,
-            target: family,
-            bypassed: action === "bypass",
+            target: targets[0],
+            bypassed,
           } as unknown as Parameters<typeof applyBypassIntent>[1]);
           ctx.execute(command);
           const readback = bypassReadback(ctx.getDoc(), {
             effectType: effect,
-            target: family,
-            bypassed: action === "bypass",
+            target: targets[0],
+            bypassed,
           } as Parameters<typeof applyBypassIntent>[1]);
           return { text: `${command.label}${readback ? ` — ${readback}` : ""} (one undo step)`, mutated: true };
         }
         const intent = {
           effectType: effect,
-          targets: [family],
+          targets,
           direction: action === "remove" ? "remove" : action,
           amount: "medium",
           ...(typeof record.percent === "number" ? { percent: record.percent } : {}),
@@ -615,26 +860,32 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
       }
       if (op === "rename") {
         const name = typeof record.name === "string" ? record.name.trim().slice(0, 40) : "";
-        const family = String(record.family ?? "");
-        const ids = tracksInFamily(ctx.getDoc(), family);
-        if (ids.length === 0) return { text: `no track matches family "${family}"`, mutated: false };
+        const ids = explicitTrackIds(ctx.getDoc(), record);
+        if (typeof ids === "string") return { text: ids, mutated: false };
+        if (ids.length === 0)
+          return { text: `no track matches family "${String(record.family ?? "")}"`, mutated: false };
         ctx.execute(setTrackParams(ctx.getDoc(), ids[0], { name }));
         return { text: `renamed to "${name}"`, mutated: true };
       }
       if (op === "remove") {
         if (ctx.allowDestructive?.() !== true) return destructiveRefusal();
-        const family = String(record.family ?? "");
-        const ids = tracksInFamily(ctx.getDoc(), family);
-        if (ids.length === 0) return { text: `no track matches family "${family}"`, mutated: false };
+        const ids = explicitTrackIds(ctx.getDoc(), record);
+        if (typeof ids === "string") return { text: ids, mutated: false };
+        if (ids.length === 0)
+          return { text: `no track matches family "${String(record.family ?? "")}"`, mutated: false };
         if (ctx.getDoc().tracks.length - ids.length < 1) {
           return { text: "declined: cannot remove the last track", mutated: false };
         }
-        // ONE snapshot for the whole family removal — N separate deleteTrack
+        // ONE snapshot for the whole removal — N separate deleteTrack
         // commands would leave N undo steps for a single MCP call.
         let next = ctx.getDoc();
         for (const id of ids) next = deleteTrack(next, id).execute(next);
-        ctx.execute(snapshot("mcpRemoveTracks", `MCP: remove ${family} tracks ×${ids.length}`, ctx.getDoc(), next));
-        return { text: `removed ${ids.length} track(s) (${family}) — one undo step`, mutated: true };
+        const label =
+          typeof record.trackId === "string" && record.trackId.trim() !== ""
+            ? `id ${record.trackId.trim()}`
+            : String(record.family ?? "");
+        ctx.execute(snapshot("mcpRemoveTracks", `MCP: remove tracks (${label}) ×${ids.length}`, ctx.getDoc(), next));
+        return { text: `removed ${ids.length} track(s) (${label}) — one undo step`, mutated: true };
       }
       return { text: `unknown track op: ${op}`, mutated: false };
     }
@@ -675,6 +926,40 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
     }
     case "kyx_steps":
       return executeStepsTool(ctx, record);
+    case "kyx_catalog":
+      return catalogSnapshot(record);
+    case "kyx_plugin_param":
+      return executePluginParamTool(ctx, record);
+    case "kyx_meter": {
+      if (ctx.meters == null) {
+        return {
+          text: "metering is not available over this MCP transport (no live engine bound) — start KYX with an audio context",
+          mutated: false,
+        };
+      }
+      const snapshotMeters = ctx.meters();
+      if (snapshotMeters == null) {
+        return { text: "engine is not running (no audio context) — nothing to meter yet", mutated: false };
+      }
+      const scope = String(record.scope ?? "all");
+      const db = (value: number): string => (Number.isFinite(value) ? `${value.toFixed(1)} dBFS` : "-inf");
+      const lines: string[] = [];
+      if (scope !== "tracks") {
+        const m = snapshotMeters.master;
+        lines.push(
+          `master: truePeak ${db(m.truePeakDb)} · RMS ${db(m.rmsDb)} · LUFS-M ${m.lufsMomentary.toFixed(1)} / S ${m.lufsShortTerm.toFixed(1)} / I ${m.lufsIntegrated.toFixed(1)} · corr ${m.correlation.toFixed(2)}${m.clipping ? " · ⚠ CLIPPING (true peak ≥ 0 dBFS)" : ""}`,
+        );
+      }
+      if (scope !== "master") {
+        for (const track of snapshotMeters.tracks) {
+          lines.push(
+            `${track.name} (id=${track.id}): peak ${db(track.peakDb)} · RMS ${db(track.rmsDb)}${track.clipping ? " · ⚠ CLIPPING" : ""}`,
+          );
+        }
+        if (snapshotMeters.tracks.length === 0) lines.push("no track meters live");
+      }
+      return { text: lines.join("\n"), mutated: false };
+    }
     default:
       return { text: `unknown tool: ${name}`, mutated: false };
   }
@@ -696,6 +981,200 @@ function tracksInFamily(doc: ProjectDocument, family: string): string[] {
       return false;
     })
     .map((t) => t.id);
+}
+
+/** Target resolution for writes that accept either an exact trackId or a
+ * family: trackId wins when present (and must exist), else the family must
+ * be non-empty. Returns an error string for the caller to surface. */
+function explicitTargets(record: Record<string, unknown>): string[] | string {
+  const trackId = typeof record.trackId === "string" ? record.trackId.trim() : "";
+  if (trackId !== "") return [trackId];
+  const family = typeof record.family === "string" ? record.family.trim() : "";
+  if (family !== "") return [family];
+  return "no target — pass trackId (from kyx_state tracks) or family";
+}
+
+/** Track ids for kyx_tracks remove/rename: exact trackId (single, group
+ * tracks excluded — their lifecycle is not MCP-addressable) or family. */
+function explicitTrackIds(doc: ProjectDocument, record: Record<string, unknown>): string[] | string {
+  const trackId = typeof record.trackId === "string" ? record.trackId.trim() : "";
+  if (trackId !== "") {
+    const track = doc.tracks.find((t) => t.id === trackId);
+    if (track == null) return `no track with id "${trackId}" — list ids via kyx_state subject:tracks`;
+    if (track.kind === "group") return "group tracks are not addressable by kyx_tracks — remove/rename members instead";
+    return [track.id];
+  }
+  const family = typeof record.family === "string" ? record.family.trim() : "";
+  if (family === "") return "no target — pass trackId (from kyx_state tracks) or family";
+  return tracksInFamily(doc, family);
+}
+
+/** kyx_catalog — machine-readable discovery over the registries. */
+function catalogSnapshot(record: Record<string, unknown>): McpToolResult {
+  const subject = String(record.subject ?? "effects");
+  if (subject === "instruments") {
+    const lines = Object.values(INSTRUMENT_DEFS).map(
+      (def) => `${def.kind} — ${def.name} (${def.params.length} params)`,
+    );
+    return { text: `${lines.length} instrument kinds:\n${lines.join("\n")}`, mutated: false };
+  }
+  if (subject === "effect") {
+    const type = String(record.effect ?? "").trim();
+    const meta = (EFFECT_META as Record<string, EffectDefinitionMeta | undefined>)[type];
+    if (meta == null) {
+      const known = Object.keys(EFFECT_META).slice(0, 12).join(", ");
+      return {
+        text: `unknown effect "${type}" — see kyx_catalog subject:effects (first kinds: ${known}, …)`,
+        mutated: false,
+      };
+    }
+    const knob = EFFECT_KNOB[type as keyof typeof EFFECT_KNOB];
+    const lines = [
+      `${meta.type} — ${meta.name} (${meta.category})`,
+      knob
+        ? `primary knob (kyx_fx more/less): ${knob}`
+        : "no single primary knob — set parameters via kyx_plugin_param",
+      "parameters (native units; kyx_plugin_param set clamps into these ranges):",
+      ...meta.params.map((param) => {
+        const extras = [
+          param.unit != null ? `unit ${param.unit}` : null,
+          param.kind != null ? param.kind : null,
+          param.step != null ? `step ${param.step}` : null,
+          param.taper != null ? `${param.taper} taper` : null,
+          param.options != null ? `options: ${param.options.map((o) => `${o.value}=${o.label}`).join("|")}` : null,
+        ].filter(Boolean);
+        return `  ${param.id} "${param.label}": ${param.min} .. ${param.max}, default ${param.default}${extras.length > 0 ? ` (${extras.join(", ")})` : ""}`;
+      }),
+    ];
+    return { text: lines.join("\n"), mutated: false };
+  }
+  // effects list
+  const lines = Object.values(EFFECT_META).map((meta) => {
+    const knob = EFFECT_KNOB[meta.type];
+    return `${meta.type} — ${meta.name} (${meta.category})${knob ? ` [knob: ${knob}]` : " [no single knob]"}`;
+  });
+  return {
+    text:
+      `${lines.length} effect types (kyx_fx more/less accepts the [knob] subset; ` +
+      "kyx_plugin_param sets ANY parameter of an inserted instance; " +
+      "details: kyx_catalog subject:effect + effect <type>):\n" +
+      lines.join("\n"),
+    mutated: false,
+  };
+}
+
+/** kyx_plugin_param — precise per-instance parameter control over the
+ * registry ranges (clampEffectParam), one undo snapshot per call. */
+function executePluginParamTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
+  const op = String(record.op ?? "list");
+  const doc = ctx.getDoc();
+  const effect = String(record.effect ?? "").trim();
+  const meta = effect !== "" ? (EFFECT_META as Record<string, EffectDefinitionMeta | undefined>)[effect] : undefined;
+  if (effect !== "" && meta == null) {
+    return {
+      text: `unknown effect "${effect}" — see kyx_catalog subject:effects`,
+      mutated: false,
+    };
+  }
+
+  const trackId = typeof record.trackId === "string" ? record.trackId.trim() : "";
+  const family = typeof record.family === "string" ? record.family.trim() : "";
+  let targets: Track[];
+  if (trackId !== "") {
+    const track = doc.tracks.find((t) => t.id === trackId);
+    if (track == null)
+      return { text: `no track with id "${trackId}" — list ids via kyx_state subject:tracks`, mutated: false };
+    targets = [track];
+  } else if (family !== "") {
+    targets = tracksInFamily(doc, family)
+      .map((id) => doc.tracks.find((t) => t.id === id))
+      .filter((t): t is Track => t != null);
+    if (targets.length === 0) return { text: `no track matches family "${family}"`, mutated: false };
+  } else {
+    return { text: "no target — pass trackId (from kyx_state tracks) or family", mutated: false };
+  }
+
+  if (op === "list") {
+    const lines: string[] = [];
+    for (const track of targets) {
+      const instances = track.effects.filter((fx) => effect === "" || fx.type === effect);
+      if (instances.length === 0) {
+        if (effect !== "") lines.push(`${track.name}: no ${effect} instance in the chain`);
+        else if (track.effects.length === 0) lines.push(`${track.name}: no FX`);
+        continue;
+      }
+      for (const fx of instances) {
+        const fxMeta = (EFFECT_META as Record<string, EffectDefinitionMeta | undefined>)[fx.type];
+        const params = fxMeta?.params ?? [];
+        const values = params.map((param) => {
+          const current = fx.params[param.id] ?? param.default;
+          return `${param.id}=${current} (${param.min}..${param.max}${param.unit ? ` ${param.unit}` : ""}, def ${param.default})`;
+        });
+        lines.push(
+          `${track.name}: ${fx.type}#${instances.indexOf(fx) + 1}${fx.bypassed ? " [bypassed]" : ""} ${values.join(", ") || "(no numeric params)"}`,
+        );
+      }
+    }
+    if (lines.length === 0) return { text: "no FX instances match the target", mutated: false };
+    if (lines.length > 40)
+      return {
+        text: `${lines.slice(0, 40).join("\n")}\n… and ${lines.length - 40} more instance line(s)`,
+        mutated: false,
+      };
+    return { text: lines.join("\n"), mutated: false };
+  }
+
+  if (op === "set") {
+    if (meta == null)
+      return { text: "set needs an effect type — pass effect (see kyx_catalog subject:effects)", mutated: false };
+    const paramId = String(record.param ?? "").trim();
+    const paramDef = meta.params.find((p) => p.id === paramId);
+    if (paramDef == null) {
+      return {
+        text: `unknown param "${paramId}" on ${effect} — parameters: ${meta.params.map((p) => p.id).join(", ")}`,
+        mutated: false,
+      };
+    }
+    const rawValue = Number(record.value);
+    if (record.value == null || !Number.isFinite(rawValue)) {
+      return {
+        text: `set needs a finite number in NATIVE units (${paramId}: ${paramDef.min}..${paramDef.max}${paramDef.unit ? ` ${paramDef.unit}` : ""}, default ${paramDef.default})`,
+        mutated: false,
+      };
+    }
+    const instanceWanted = Math.max(1, Math.round(Number(record.instance ?? 1)));
+    const clamped = clampEffectParam(effect as keyof typeof EFFECT_META, paramId, rawValue);
+    let next = doc;
+    const parts: string[] = [];
+    let touched = 0;
+    for (const track of targets) {
+      const instances = track.effects.filter((fx) => fx.type === effect);
+      if (instances.length === 0) {
+        parts.push(`${track.name}: no ${effect} instance (insert via kyx_fx more first)`);
+        continue;
+      }
+      if (instances.length < instanceWanted) {
+        parts.push(
+          `${track.name}: ${effect} instance #${instanceWanted} does not exist (chain has ${instances.length})`,
+        );
+        continue;
+      }
+      const fx = instances[instanceWanted - 1];
+      const prev = fx.params[paramId] ?? paramDef.default;
+      next = setEffectParam(next, track.id, fx.id, paramId, clamped).execute(next);
+      touched += 1;
+      const tidy = (value: number): number => Math.round(value * 1e4) / 1e4; // kill float noise in the read-back
+      const clampedNote = clamped !== rawValue ? ` — clamped to ${paramDef.min}..${paramDef.max}` : "";
+      parts.push(`${track.name}: ${paramId} ${tidy(prev)} → ${tidy(clamped)}${clampedNote}`);
+    }
+    if (touched === 0) {
+      return { text: `nothing changed — ${parts.join("; ")}`, mutated: false };
+    }
+    ctx.execute(snapshot("mcpPluginParam", `MCP: ${effect}.${paramId} on ${touched} track(s)`, doc, next));
+    return { text: `${parts.join("; ")} — one undo step`, mutated: true };
+  }
+
+  return { text: `unknown op: ${op} (list | set)`, mutated: false };
 }
 
 /** Section op -> arrange command via the role resolver. */
@@ -744,12 +1223,13 @@ function stateSnapshot(
   }
   if (subject === "key") return doc.key ?? "key unset";
   if (subject === "tracks") {
-    // Mixer values included so an AI that can SET gain/pan/mute/solo can
-    // also READ them back — write-only faders would make it operate blind.
+    // IDs + mixer values included so an AI that can SET gain/pan/mute/solo —
+    // or address one exact track — can also READ them back; write-only
+    // faders and family-only addressing would make it operate blind.
     return (
       doc.tracks
         .map((t) => {
-          const bits: string[] = [t.kind];
+          const bits: string[] = [`id=${t.id}`, t.kind];
           if (t.kind === "instrument") bits.push(`inst=${t.instrument}`);
           bits.push(`gain ${t.gain.toFixed(2)} (${(20 * Math.log10(Math.max(t.gain, 1e-4))).toFixed(1)} dB)`);
           bits.push(`pan ${t.pan.toFixed(2)}`);
