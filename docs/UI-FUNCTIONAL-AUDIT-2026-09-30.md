@@ -358,13 +358,14 @@ UI-honesty issue, not a state-corruption one. See §5.
   covered the record-take path; this audit reused that API rather than
   inventing a mechanism, and extended the coverage to the XY-pad shape.
 - **Number inputs are bounded and clamped** at
-  `ReferenceMapPanel.tsx:433` (MIN_BPM..MAX_BPM),
-  `FxEqPanel.tsx:825-833` (`clampSplit`),
+  `ReferenceMapPanel.tsx:264` (`Number.isFinite` + `MIN_BPM`/`MAX_BPM`, 20–400,
+  defined `:56-57`), `FxEqPanel.tsx:825-833` (`clampSplit`),
   `ArrangementPanel.tsx:3792-3800` (1..4 bars),
   `SliceLab.tsx:253-264` (`updateBoundary` clamps between neighbours).
-- **Paste-a-code fields reject garbage**: `RackStrip.tsx:284,340,404` all
-  check `if (!code) return` and surface an explicit "Invalid … code" status
-  when the decoder returns null.
+- **Paste-a-code fields reject garbage**: `RackStrip.tsx:301,357,421` all
+  check `if (!code) return` and surface an explicit status
+  (`:304` "Invalid kit code", `:360` "Invalid PACK code", `:424` "Invalid BINDS
+  code") when the decoder returns null.
 - **The mixer's typed fader value** (`Mixer.tsx:758`) validates with
   `Number.isFinite` and clamps gain `0..1.5`, pan `-1..1`, sends `0..1.5`.
 - **The transport LOOP button is not a second source of truth (§5).** It keeps
@@ -518,6 +519,16 @@ maxScroll=327`, and a reachability sweep over both scroll ends reports
 - **`prettier --check src tests` reports 71 dirty files.** None of them are
   files this audit touched (checked by name); they belong to other in-flight
   work.
+- **Line references into files other sessions are actively editing go stale,
+  and two had already.** This worktree is shared and several audit-relevant
+  files (`ReferenceMapPanel.tsx`, `sample-library/curated.ts`, `src/ai/bridge/*`)
+  are under concurrent work. Re-verified at report time: the BPM clamp cited as
+  `ReferenceMapPanel.tsx:433` is at `:264` (constants `:56-57`), and the
+  paste-a-code guards cited as `RackStrip.tsx:284,340,404` are at
+  `:301,357,421` with their status messages at `:304,:360,:424`. Both were
+  correct when written and both had drifted. Treat any `file:line` in this
+  report as a hint that must be re-checked, and re-check the ones pointing at
+  files outside the audit's own diff.
 - **Coverage is targeted, not exhaustive.** Read in full:
   `controls.tsx`, `EffectRack.tsx`, `OzvenaPanel.tsx`, `WavetablePanel.tsx`,
   `Inspector.tsx` (pad-mod section), `ArrangementPanel.tsx` (gestures,
