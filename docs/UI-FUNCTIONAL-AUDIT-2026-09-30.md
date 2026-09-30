@@ -21,6 +21,7 @@ must be reproducible from the working tree.
 | INCOMPLETE / UNSUPPORTED  | §5    |
 | REMAINING RISKS           | §6    |
 | TESTS ADDED               | §7    |
+| KEYBOARD / ACCESSIBILITY  | §8    |
 
 ---
 
@@ -608,3 +609,54 @@ DragNumber, 1 Slider, 1 load-bound, 4 mixer-selection, 1 DEL button, 2 TopBar
 loop, 1 rack-expanded, 1 devices-dock. The one group that could not be
 falsified (the `deleteArrangementClip` no-op guard) was **withdrawn** and its
 test deleted — see §2, "CORRECTED / WITHDRAWN CLAIMS".
+
+---
+
+## 8. KEYBOARD & ACCESSIBILITY (§14)
+
+A scan, not an assumption: every `<div>` / `<span>` opening tag in `src/ui`
+was parsed for an `onClick` without `role=`, `tabIndex=` or an `onKeyDown`
+sibling — i.e. an affordance that responds to the mouse and is unreachable
+from the keyboard. **Exactly one hit across 85 files.**
+
+**The one finding: the mixer channel strip is a mouse-only duplicate of track
+selection.** `Mixer.tsx:471` — `.channel-strip` carries the `onClick` that
+writes `selectionStore.setTracks(...)`, with Ctrl/Shift modifier handling, and
+has no `role`, no `tabIndex` and no key handler.
+
+It is a _duplicate_, not a dead end, and the distinction matters. The same
+selection is fully keyboard-reachable three other ways, all verified in the
+source rather than read off a tooltip:
+
+- `TrackTabs.tsx:100-108` renders real `<button role="tab" aria-selected>` —
+  natively focusable, Enter/Space activated;
+- `App.tsx:584-598` implements `selectTrack1`…`selectTrack9`;
+- `App.tsx:570-583` implements `nextTrack` / `prevTrack` (Tab cycling).
+
+The `title` attribute on the track tab advertises exactly these, so I checked
+that they exist rather than trusting the claim — they do.
+
+Not repaired, deliberately. Making every strip a tab stop would add a focus
+stop to every track in the mixer and needs a roving-tabindex decision about
+which strip owns the stop; the objective says not to redesign accessibility
+during this audit, and the core workflow is not blocked. Recorded here instead.
+
+**No keyboard traps among the 14 `role="dialog"` surfaces.** Escape is a
+global contextual cascade in `App.tsx:828-867` (capture offer → context menu →
+help → unified selection → tool → blur a typing target), not a per-dialog
+handler — which is the architecture, not an omission. The three surfaces with
+no local `Escape` are all dismissible: `OnboardingTour` is a non-modal
+`.tour-card` with a native `SKIP` button (`:82`) and correctly omits
+`aria-modal`; `CollabPanel` and `HumToMelody` expose native buttons.
+
+**Two false positives this section's own scans produced, recorded because the
+same traps are waiting for the next audit:**
+
+1. A line-based filter for "clickable div without a11y affordances" returned
+   **zero** hits, and a multiline parse of the same predicate returned one.
+   The first was simply wrong — JSX attributes wrap, and a line-based filter
+   reads a partial tag. A clean static sweep here means nothing on its own.
+2. A 4 000-character window around each dialog found no `Escape` in any of
+   the 14, which looked like "no modal is keyboard-dismissible" until the
+   global cascade in `App.tsx` explained all 14 at once. A scan that does not
+   know the architecture will report the handler's absence, not the defect.
