@@ -1,6 +1,6 @@
 # AudioEngine decomposition plan (Robustness Wave 4)
 
-> Status: IN PROGRESS — **4a MeteringRig SHIPPED** (`d81090f1`; AudioEngine 6140 → 5905) + **4b MasterChain SHIPPED** (absorbed `d4659fad`/`00bb9811`; AudioEngine → 5 134, MasterChain 841, liveContext helper). **4c PreviewDeck SHIPPED** (`4d8bb123`; AudioEngine → 4 823, PreviewDeck 350, declick 66). Next: 4d AutomationBridge. Owner: pro-DAW robustness campaign (Waves 1–3 shipped:
+> Status: IN PROGRESS — **4a MeteringRig SHIPPED** (`d81090f1`; AudioEngine 6140 → 5905) + **4b MasterChain SHIPPED** (absorbed `d4659fad`/`00bb9811`; AudioEngine → 5 134, MasterChain 841, liveContext helper). **4c PreviewDeck SHIPPED** (`4d8bb123`; AudioEngine → 4 823, PreviewDeck 350, declick 66). **4d AutomationBridge SHIPPED** (`badfd106`; AudioEngine → 3 910, AutomationBridge 1 001 + DeviceLookup 147; step-1 resolvers first, exactly as planned). Next: 4e WarpManager. Owner: pro-DAW robustness campaign (Waves 1–3 shipped:
 > crash journal, PDC export parity, audio-clock scheduler driver).
 > Measured against the working tree on 2026-09-29 (commit `0bb5670f` era).
 
@@ -95,7 +95,7 @@ lifecycle-shaped (start/stop/dispose), already partially mirrored by
 `GhostPreviewPlayer`. Gate: preview/audition browser-checks + audit suites that
 pin `stopPreview` semantics.
 
-### Wave 4d — AutomationBridge (risk: medium-high)
+### Wave 4d — AutomationBridge (risk: medium-high) — SHIPPED `badfd106` (DeviceLookup resolvers first, then the write layer)
 
 LFO/macros/modulators/scene lanes + the device target resolvers
 (`effectRuntimeForTarget`/`instrumentRuntimeForTarget`/`baseValueForTarget`).
