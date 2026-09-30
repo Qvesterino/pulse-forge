@@ -1126,8 +1126,89 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
       }
       return { text: lines.join("\n"), mutated: false };
     }
+    case "__kyx_resource":
+      // Hidden transport channel — the servers expose resources/list from
+      // MCP_RESOURCES and route resources/read here, so every transport
+      // (desktop IPC, web relay) reuses ONE live reader.
+      return readMcpResource(ctx, String(record.uri ?? ""));
     default:
-      return { text: `unknown tool: ${name}`, mutated: false };
+      return { text: `unknown tool: ${name}`, mutated: false, isError: true };
+  }
+}
+
+/** ── RESOURCES (MCP capability) — passive project reads ────────────────────
+ * Static URI surface; the CONTENT is always live from the renderer's doc.
+ * Read over the same relay channel as tools/call (hidden __kyx_resource),
+ * so the desktop and web transports share one implementation. */
+export interface McpResourceDef {
+  uri: string;
+  name: string;
+  description: string;
+  mimeType: "text/plain";
+}
+
+export const MCP_RESOURCES: McpResourceDef[] = [
+  {
+    uri: "kyx://project/overview",
+    name: "Project overview",
+    description: "Tempo, key, track list, patterns, scenes and the active pattern.",
+    mimeType: "text/plain",
+  },
+  {
+    uri: "kyx://project/pattern",
+    name: "Active pattern grid",
+    description: "Per-family step map of the ACTIVE pattern with mean velocities.",
+    mimeType: "text/plain",
+  },
+  {
+    uri: "kyx://project/mix",
+    name: "Mix state",
+    description: "FX chain of every track (with bypass flags) and the groove settings.",
+    mimeType: "text/plain",
+  },
+  {
+    uri: "kyx://project/arrangement",
+    name: "Arrangement map",
+    description: "Scenes with roles/bars/intensity and the cue markers.",
+    mimeType: "text/plain",
+  },
+  {
+    uri: "kyx://project/history",
+    name: "Undo history",
+    description: "The most recent document commands (undo targets).",
+    mimeType: "text/plain",
+  },
+];
+
+export function readMcpResource(ctx: McpToolContext, uri: string): McpToolResult {
+  const labels = () => ctx.historyLabels();
+  switch (uri) {
+    case "kyx://project/overview":
+      return { text: stateSnapshot(ctx.getDoc(), "overview", undefined, labels), mutated: false };
+    case "kyx://project/pattern":
+      return { text: stateSnapshot(ctx.getDoc(), "pattern", undefined, labels), mutated: false };
+    case "kyx://project/mix":
+      return {
+        text: [
+          stateSnapshot(ctx.getDoc(), "fxChain", undefined, labels),
+          "",
+          stateSnapshot(ctx.getDoc(), "groove", undefined, labels),
+        ].join("\n"),
+        mutated: false,
+      };
+    case "kyx://project/arrangement":
+      return {
+        text: [
+          stateSnapshot(ctx.getDoc(), "scenes", undefined, labels),
+          "",
+          `markers: ${stateSnapshot(ctx.getDoc(), "markers", undefined, labels)}`,
+        ].join("\n"),
+        mutated: false,
+      };
+    case "kyx://project/history":
+      return { text: stateSnapshot(ctx.getDoc(), "history", undefined, labels), mutated: false };
+    default:
+      return { text: `unknown resource: ${uri} — see resources/list`, mutated: false, isError: true };
   }
 }
 

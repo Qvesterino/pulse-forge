@@ -1387,3 +1387,34 @@ describe("mcp P1 export — the awaited completion report", () => {
     expect(ctx.getDoc().bpm).toBe(141);
   });
 });
+
+// ─── RESOURCES (MCP capability) — passive reads over the hidden channel ─────
+
+describe("mcp resources", () => {
+  it("the five kyx://project/* resources read live state without mutating", () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    for (const uri of [
+      "kyx://project/overview",
+      "kyx://project/pattern",
+      "kyx://project/mix",
+      "kyx://project/arrangement",
+      "kyx://project/history",
+    ]) {
+      const result = executeMcpTool(ctx, "__kyx_resource", { uri });
+      expect(result.mutated).toBe(false);
+      expect(result.isError).toBeUndefined();
+      expect(result.text.length).toBeGreaterThan(0);
+    }
+    expect(executeMcpTool(ctx, "__kyx_resource", { uri: "kyx://project/overview" }).text).toContain("BPM");
+    expect(executeMcpTool(ctx, "__kyx_resource", { uri: "kyx://project/arrangement" }).text).toContain("markers:");
+  });
+
+  it("an unknown resource is an honest isError; the channel is hidden from MCP_TOOLS", () => {
+    const ctx = makeCtx(datasetDoc());
+    const missing = executeMcpTool(ctx, "__kyx_resource", { uri: "kyx://nope" });
+    expect(missing.isError).toBe(true);
+    expect(missing.text).toContain("unknown resource");
+    expect(MCP_TOOLS.map((tool) => tool.name)).not.toContain("__kyx_resource");
+  });
+});
