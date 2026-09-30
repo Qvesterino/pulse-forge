@@ -1,9 +1,29 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { TopBar } from "../../src/ui/TopBar";
 import { renderWithContext, mockServices } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import type { Services } from "../../src/services";
+
+/** Mirrors the prop set `TopBar.test.tsx` uses — TopBar takes 14 required props. */
+function topBarProps() {
+  return {
+    onToggleDiagnostics: vi.fn(),
+    diagnosticsOpen: false,
+    onSetBottomPanel: vi.fn(),
+    splitPanel: null as "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | "dice" | null,
+    bottomPanel: null as "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | "dice" | null,
+    onToggleHelp: vi.fn(),
+    playMode: "pattern" as const,
+    onSetPlayMode: vi.fn(),
+    onOpenBrowser: vi.fn(),
+    onReplaceServices: vi.fn(),
+    scaleSnap: false,
+    onToggleScaleSnap: vi.fn(),
+    historyOpen: false,
+    onToggleHistory: vi.fn(),
+  };
+}
 
 /**
  * §5 "synchronization with external changes" + "the UI must not behave as a
@@ -48,7 +68,7 @@ function servicesWithRealLoopApi(doc: ReturnType<typeof createProjectFromTemplat
 describe("§5 TopBar loop is not a second source of truth", () => {
   it("reflects a loop change made outside the button, with the transport stopped", async () => {
     const services = servicesWithRealLoopApi(createProjectFromTemplate("house"));
-    renderWithContext(<TopBar />, { services });
+    renderWithContext(<TopBar {...topBarProps()} />, { services });
 
     const loopButton = screen.getByRole("button", { name: "Toggle loop region" });
     expect(loopButton).toHaveAttribute("aria-pressed", "false");
@@ -63,7 +83,7 @@ describe("§5 TopBar loop is not a second source of truth", () => {
 
   it("returns to false when the loop is cleared externally", async () => {
     const services = servicesWithRealLoopApi(createProjectFromTemplate("house"));
-    renderWithContext(<TopBar />, { services });
+    renderWithContext(<TopBar {...topBarProps()} />, { services });
 
     const loopButton = screen.getByRole("button", { name: "Toggle loop region" });
     services.transport.setLoop(true, 2, 6);
