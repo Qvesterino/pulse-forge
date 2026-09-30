@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { TriggerEngineDeps } from "../src/audio-engine/triggerEngine";
 
 /**
  * Wave 4f (FINAL AudioEngine decomposition) — TriggerEngine pins.
