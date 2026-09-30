@@ -2,38 +2,72 @@
 
 Functional (not visual) audit of the KYX / Pulse Forge UI, with repairs.
 Scope: every interactive surface in `src/ui/**` — 85 components, 1.7 MB of
-React. Two waves, 10 confirmed defects repaired, each covered by a
-regression test that was proven to FAIL against the pre-fix code.
+React. Five waves, **17 confirmed defects repaired** across 11 commits, each
+covered by a regression test that was proven to FAIL against the pre-fix code.
 
 This file is a working report. Per `AGENTS.md` §10, any number claimed here
 must be reproducible from the working tree.
 
 ---
 
+## 0. SUMMARY OF THE REQUIRED SECTIONS
+
+| Objective section         | Where |
+| ------------------------- | ----- |
+| VERIFIED FUNCTIONAL       | §3    |
+| REPAIRED                  | §2    |
+| VALUE / RANGE CORRECTIONS | §2a   |
+| EDGE CASES COVERED        | §4    |
+| INCOMPLETE / UNSUPPORTED  | §5    |
+| REMAINING RISKS           | §6    |
+| TESTS ADDED               | §7    |
+
+---
+
 ## 1. INVENTORY (measured)
 
-Static extraction over `src/ui/**.tsx` (script: `.zcode/ui-wiring-scan2.mjs`):
+Static extraction over `src/ui/**.tsx` — **re-measured at report time**, not
+carried over from the original scan:
 
-| Control kind                 | Count |
-| ---------------------------- | ----- |
-| `<button>`                   | 313   |
-| `<select>`                   | 70    |
-| `<input>`                    | 46    |
-| interactive `<div>`/`<span>` | 5     |
-| shared `<Slider>`            | 78    |
-| shared `<DragNumber>`        | 30    |
+| Control kind                                              | Count |
+| --------------------------------------------------------- | ----- |
+| `<button>`                                                | 666   |
+| `<select>`                                                | 135   |
+| `<input>`                                                 | 94    |
+| interactive `<div>`/`<span>` (has `role=` or `tabIndex=`) | 245   |
+| shared `<Slider>` (usage sites)                           | 78    |
+| shared `<DragNumber>` (usage sites)                       | 32    |
 
-Plus 313 buttons' `onClick`, 70 selects' option sets, context menus,
-keyboard shortcuts, drag handles and editor gestures.
+85 `.tsx` files in `src/ui`. Plus each button's `onClick`, each select's option
+set, context menus, keyboard shortcuts, drag handles and editor gestures.
+
+The interactive-div row counts _elements_, not clickable affordances: one
+`role="button"` container with three inner spans counts once. It is an upper
+bound on the surface area, and it is why the control-level sweeps below are
+done by tracing behaviour rather than by counting tags.
 
 The shared control library `src/ui/controls.tsx` (`Slider`, `DragNumber`,
 `ValueMenu`) was audited first because it is the highest-leverage file: both
 controls are reused across ~20 panels, so one defect there is many defects
 in the product.
 
+**Reproducing the inventory.** The original scan script was scratch tooling in
+the gitignored `.zcode/` and is not preserved, and the first version of this
+table carried its numbers un-verified — which turned out to matter, because
+the tree moved under it. The figures above are re-derivable with ripgrep:
+
+```bash
+rg -o '<button'                    src/ui --glob '*.tsx' | wc -l
+rg -o '<select'                    src/ui --glob '*.tsx' | wc -l
+rg -o '<input'                     src/ui --glob '*.tsx' | wc -l
+rg -o '<Slider\b'                  src/ui --glob '*.tsx' | wc -l
+rg -o '<DragNumber\b'              src/ui --glob '*.tsx' | wc -l
+rg -o '<(div|span)[^>]*(role=|tabIndex=)' src/ui --glob '*.tsx' -U | wc -l
+```
+
 ---
 
-## 2. REPAIRED - 15 confirmed defects
+## 2. REPAIRED - 17 confirmed defects
 
 ### WAVE 4 — found by real-browser verification (not static inspection)
 
@@ -69,7 +103,7 @@ Verified: PRISM 0 → 200 px, VLYX 10 → 200 px, both `VISIBLE=true`, and
 `tests/e2e/06-plugin-workflow` went from failing after 58 retries to passing
 in 9.4 s.
 
-**14b. The overflow that caused it was being silently discarded (MAJOR).**
+**15. The overflow that caused it was being silently discarded (MAJOR).**
 `src/styles/14-command-palette.css:1121`. `.device-editor
 .fx-device-content` had `overflow: hidden`, so once the panel had a floor the
 remaining overflow — the output-trim row and, on a shorter window, part of the
@@ -203,7 +237,7 @@ This is the one objective item that had **no test coverage anywhere in the
 suite**: nothing ever deleted the object whose panel was open. All three
 object kinds were traced.
 
-**14. Deleting a track left a dead id in the selection (MAJOR).**
+**16. Deleting a track left a dead id in the selection (MAJOR).**
 `src/ui/Mixer.tsx:717` is the only UI call site of `deleteTrack`, and it never
 touched the `SelectionStore`. `deleteTrack` is a pure
 `ProjectDocument → Command` and cannot reach UI state, so the deleted track's
@@ -231,7 +265,7 @@ wired at `IntentPanel.tsx:2459` for the intent engine's `removeTrack` op,
 which deletes through the same command and had the same unreachable store).
 Both no-op without emitting when nothing referenced the track.
 
-**15. The arrangement DEL button kept targeting the clip it deleted (MINOR).**
+**17. The arrangement DEL button kept targeting the clip it deleted (MINOR).**
 The arrangement has two clip-delete paths and they disagreed: the
 context-menu / ripple path clears the selection
 (`ArrangementPanel.tsx:1898`), the DEL button did not. The button's own
@@ -266,6 +300,41 @@ removed id. One-line fix matching the convention already in the file.
   not of `deleteArrangementClip`, and it was not reproducible from any state a
   real session reaches after its first command. The guard and its test were
   removed rather than shipped on a mechanism the measurement contradicted.
+
+---
+
+---
+
+## 2a. VALUE / RANGE CORRECTIONS
+
+Ranges, defaults, mappings, units and normalisation that were wrong and are now
+correct. Cross-referenced to the defect number in §2.
+
+| Defect | Control                | Was                                                                     | Now                                                                                                                     |
+| ------ | ---------------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| #2     | `DragNumber`           | quantise hardcoded to 1 decimal; arrows ±1                              | `dragNumberResolution(min,max,step?)`: step `1` on unit-scale ranges, `span/100` below; decimals derived from the range |
+| #2     | HUMANIZE / VEL·RND     | 0..0.5 range, 0.005/px sensitivity, 2 decimals → snapped to 0.0/0.1/0.2 | sub-unit precision preserved; one arrow press = 1 % of range, not the max                                               |
+| #7     | Wavetable DST dropdown | listed `Detune` (index 2) — reserved and unimplemented in the worklet   | list pinned to `modDstOptions()`, so it cannot drift back                                                               |
+| #8     | Inspector pad-LFO Rate | slider capped at **20 Hz**; schema clamps at **40 Hz**                  | both read exported `PAD_MOD_RATE_HZ_MAX` — one source of truth                                                          |
+| #9     | Arrangement clip SECS  | no upper bound; could request ~300 000 bars and freeze the tab          | `MAX_ARRANGEMENT_CLIP_BARS = 8192` (~5.7 h in 4/4), a _rendering_ invariant, not a musical limit                        |
+| #10    | same, on document load | normaliser filtered only `lengthBars >= 1`, no ceiling                  | both the arrangement- and audio-clip sanitiser enforce the same bound, closing the import path                          |
+| #12    | Ripple multi-move      | `startBar + delta` written unrounded (fractional bars persisted)        | rounded, matching the non-ripple sibling branch                                                                         |
+
+**Not found, and checked:** no UI value that the engine reads on a different
+scale (0–100 vs 0–1), no dB treated as linear gain, no Hz/kHz conversion
+error, no percentage applied twice, and no param id a panel writes that the
+schema does not resolve. `setEffectParam` throws on an unknown id, so these
+are load-bearing, not cosmetic. Every effect param id the panels write was
+checked to resolve (`blendPad.x/y`, `engines.e2.algo`, `convolution.mode/wet`,
+`global.deltaListen`, …), and typed fader input validates with
+`Number.isFinite` and clamps gain `0..1.5`, pan `-1..1`, sends `0..1.5`
+(`Mixer.tsx:758`).
+
+**One cosmetic range defect left in place on purpose:** the SliceLab FADE IN /
+FADE OUT fields declare `max` = slice length but the handler clamps only the
+low end. The engine bounds the value downstream
+(`AudioEngine.ts:1966,1970`, `Math.min(fadeIn, dur/2)`), so this is a
+UI-honesty issue, not a state-corruption one. See §5.
 
 ---
 
@@ -488,3 +557,41 @@ maxScroll=327`, and a reachability sweep over both scroll ends reports
   real session reaches after its first command. It is worth a follow-up
   because a dead undo entry is user-visible, but it was not reproduced under
   realistic conditions and is deliberately not claimed as a fix here.
+
+---
+
+## 7. TESTS ADDED
+
+Every count below is reproducible from the working tree.
+
+**New files created by this audit**
+
+| File                                                      | `it()` | Covers                                                     |
+| --------------------------------------------------------- | ------ | ---------------------------------------------------------- |
+| `tests/ui/MixerSelectionHygiene.test.tsx`                 | 4      | #16 — selection hygiene on track delete                    |
+| `tests/selection-store-dead-refs.test.ts`                 | 6      | #16 — `pruneTrack` / `retainTracks`                        |
+| `tests/ui/EffectRack.delete-open-device.test.tsx`         | 5      | §13 — deleting the open device (rack + devices dock + bus) |
+| `tests/ui/ArrangementPanel.delete-selected-clip.test.tsx` | 2      | #17 — DEL button resting state                             |
+| `tests/ui/TopBar.loop-sync.test.tsx`                      | 2      | §5 — LOOP is not a second source of truth                  |
+
+**Existing files extended** — `tests/ui/controls.test.tsx` (#1, #2, #3),
+`tests/ui/EffectRack.test.tsx` (#4), `tests/ui/ozvena-panel.test.tsx` (#5, #6),
+`tests/ui/WavetablePanel.test.tsx` (#7), `tests/pad-mod.test.ts` (#8),
+`tests/clip-editing-audit-deep.test.ts` (#9, #10, #11, #12),
+`tests/store-undo-frame.test.ts` (undo-frame reuse for #5).
+
+**Coverage that is NOT a regression guard, and why.** #13 (kit save
+confirmation), #14/#15 (PRISM/VLYX zero height) and #17's _visual_ aspect were
+verified by real-browser measurement and by code path rather than by a jsdom
+test that fails when the defect is reintroduced. The E2E specs
+`tests/e2e/06-plugin-workflow` and `02` / `08` cover the dock behaviour. This is
+stated rather than papered over: a test that cannot fail when its guard is
+removed is decorative, and §4 records the two cases where a first draft was
+exactly that before being rewritten.
+
+**Falsification summary.** Every test group added in waves 1–3 and 5 was run
+against reverted source and observed failing: 5 Ozvena, 2 Wavetable, 4
+DragNumber, 1 Slider, 1 load-bound, 4 mixer-selection, 1 DEL button, 2 TopBar
+loop, 1 rack-expanded, 1 devices-dock. The one group that could not be
+falsified (the `deleteArrangementClip` no-op guard) was **withdrawn** and its
+test deleted — see §2, "CORRECTED / WITHDRAWN CLAIMS".
