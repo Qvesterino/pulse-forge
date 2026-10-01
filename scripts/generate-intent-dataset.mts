@@ -1191,6 +1191,110 @@ function augmentation(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
   // auto-arrange SK family (usporiadaj do pesničky → autoArrange)
   sk.push("usporiadaj do songu");
   sk.push("usporiadaj pesničku");
+
+  // ── SPARSE-HEAD WAVE (2026-10-01, corpus ×2 for the part/clip/preset
+  // heads) — density for the families whose slot heads are waiting in
+  // fbaf219b: compound part decomposition, clip op grid, preset × target ×
+  // phrasing. Every line routes through the deterministic teacher like the
+  // rest of the corpus; non-routing lines drop silently. ──────────────────
+  // compound: two-command joins across the routable part vocabulary
+  en.push("mute the drums and set tempo to 90");
+  en.push("mute the bass and set tempo to 128");
+  en.push("solo the lead and set tempo to 140");
+  en.push("unsolo the drums and boost the mix by 2 dB");
+  en.push("mute the hats and raise the bass");
+  en.push("solo the bass and lower the lead");
+  en.push("set the kick to 80% and solo the drums");
+  en.push("set the bass to 70% and unmute the chords");
+  en.push("raise the drums and mute the bass");
+  en.push("lower the chords and solo the lead");
+  en.push("pan the bass left 30 and set tempo to 120");
+  en.push("mute everything and lower the mix by 1 dB");
+  en.push("load the Reese preset on the lead and set tempo to 138");
+  en.push("load the Warm Sub preset on the bass and mute the hats");
+  en.push("more delay on the lead and turn down the drums");
+  en.push("more reverb on the snare and raise the bass");
+  en.push("bypass the delay on the lead and set tempo to 132");
+  en.push("enable reverb on the vocal and raise the chords");
+  en.push("turn up the drums and turn up the bass");
+  en.push("turn down the lead and turn down the chords");
+  en.push("set tempo to 174 and solo the drums");
+  en.push("transpose the bass down 3 semitones and mute the hats");
+  sk.push("stíš bicie a nastav tempo na 90");
+  sk.push("sólo na base a zvýš tempo na 140");
+  sk.push("zníž lead a stíš master");
+  sk.push("načítaj preset reese na leade a zníž bicie");
+  sk.push("viac delayu na vokál a zníž bicie");
+  sk.push("vypni reverb na base a zvýš spev");
+  // clips: op × clip × destination/length grid
+  en.push("copy the clip at bar 1 to bar 5");
+  en.push("copy the clip at bar 5 to bar 9");
+  en.push("move the clip at bar 1 to bar 9");
+  en.push("move the clip at bar 5 to bar 13");
+  en.push("move the drop clip to bar 5");
+  en.push("move the intro clip to bar 9");
+  en.push("copy the drop clip to bar 9");
+  en.push("trim the clip at bar 1 to 4 bars");
+  en.push("trim the clip at bar 9 to 2 bars");
+  en.push("trim the drop clip to 4 bars");
+  en.push("delete the clip at bar 1");
+  en.push("delete the clip at bar 13");
+  en.push("delete the intro clip");
+  en.push("delete the drop clip");
+  sk.push("kopíruj klip na takte 1 na takt 5");
+  sk.push("presuň drop klip na takt 9");
+  sk.push("skráť klip na takte 5 na 2 takty");
+  sk.push("zmaž klip na takte 9");
+  // preset: name × target × phrasing grid (closed corpus preset set)
+  en.push("load the Deep House Bass preset on the bass");
+  en.push("load the House Pluck preset on the chords");
+  en.push("load the Bright Lead preset on the lead");
+  en.push("load the Warm Pad preset on the chords");
+  en.push("load the Warm Sustain preset on the lead");
+  en.push("load the House Chords preset on the chords");
+  en.push("load the warm sub preset on the lead");
+  en.push("load the reese preset on the bass");
+  en.push("load the house chords preset on the lead");
+  en.push("načítaj preset house chords na akordy");
+  sk.push("načítaj preset bright lead na lead");
+  sk.push("načítaj preset warm pad na akordy");
+  sk.push("načítaj preset deep house bass na basu");
+  // arrange: addRole placement + resize grid completion
+  en.push("add a build before the chorus");
+  en.push("add a drop before the outro");
+  en.push("add a verse before the bridge");
+  en.push("add a chorus before the verse");
+  en.push("add a break before the chorus");
+  en.push("add a fill before the outro");
+  en.push("shorten the chorus to 2 bars");
+  en.push("shorten the drop to 1 bar");
+  en.push("lengthen the chorus to 16 bars");
+  en.push("lengthen the bridge to 4 bars");
+  en.push("extend the drop to 16 bars");
+  en.push("extend the verse to 16 bars");
+  sk.push("pridaj build pred chorus");
+  sk.push("pridaj drop pred outro");
+
+  // ── DROP-DUPLICATE family (wrongKind tail): the val row "duplicate the
+  // drop" guessed effectIntent because the section-worded duplicate wave
+  // covered outro/fill/verse but NOT the drop — the single most
+  // effect-associated section name. Same family, new formulations
+  // (exact val strings never duplicated; dedupe keeps the first) ────────────
+  en.push("duplicate the drop section");
+  en.push("double the drop section");
+  en.push("duplicate the drop");
+  en.push("duplicate the break section");
+  en.push("duplicate the build");
+  en.push("duplicate the chorus section");
+  sk.push("duplicituj drop");
+  sk.push("zdvojnásob drop sekciu");
+  sk.push("duplicituj bridge sekciu");
+  // SK compound-and family: the second-part fader forms the mixer read
+  sk.push("viac delayu na vokál a stíš bicie");
+  sk.push("viac reverbu na spev a zvýš basu");
+  sk.push("menej delayu na leade a stíš bicie");
+  sk.push("skráti chorus na 2 takty");
+  sk.push("predĺž intro na 8 taktov");
   // pad-family reverb asks fall to the mix profile (menej reverbu na snare)
   en.push("more reverb on the snare");
   sk.push("viac reverbu na kick");
