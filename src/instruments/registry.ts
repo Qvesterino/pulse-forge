@@ -5024,6 +5024,15 @@ const clav: InstrumentDefinition = {
           pickupTail = scoop;
         }
         pickupTail.connect(amp);
+        // AUDIT 2026-10-01: this line was MISSING. The whole voice chain
+        // (oscA/oscB → panners → highpass → pickup → amp) terminated at `amp`
+        // with no edge to the instrument output, so every Clavinet note
+        // rendered silence — `defaultAudible: false`, `defaultPeak: 0` and all
+        // nine params measured "dead" in the 2026-09-27 plugin audit, which
+        // flagged it FAIL but never got a fix. The cleanup path even calls
+        // `amp.disconnect()`, which is what made the omission easy to miss.
+        // Every other voice instrument connects its amp here; see line 367.
+        amp.connect(output);
 
         // Voice v2: tangent-string body = square (bite) + saw (body warmth),
         // slightly detuned and panned for stereo; plus a TINE partial (freq×2

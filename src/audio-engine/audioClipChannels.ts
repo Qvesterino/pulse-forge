@@ -29,3 +29,34 @@ export function audioClipChannelData(buffer: AudioBuffer, sourceChannel?: number
       : 0;
   return buffer.getChannelData(channel);
 }
+
+export interface AudioClipWaveformWindow {
+  startSec: number;
+  endSec: number;
+}
+
+/**
+ * The temporal window a clip's waveform must display: the playable content
+ * between `offsetSec + trimStart` and `duration - trimEnd` — the same window
+ * `audioClipPlayWindow` plays. Drawing the whole buffer instead would misalign
+ * the envelope with playback for every recorded take (count-in head trimmed
+ * via offsetSec), loop pass and manual trim. Degenerate windows collapse to a
+ * minimal span so callers can still render something instead of crashing.
+ */
+export function audioClipWaveformWindow(
+  bufferDurationSec: number,
+  offsetSec = 0,
+  trimStartSec = 0,
+  trimEndSec = 0,
+): AudioClipWaveformWindow {
+  const duration = Number.isFinite(bufferDurationSec) ? bufferDurationSec : 0;
+  const start =
+    Math.max(0, Number.isFinite(offsetSec) ? offsetSec : 0) +
+    Math.max(0, Number.isFinite(trimStartSec) ? trimStartSec : 0);
+  const end = duration - Math.max(0, Number.isFinite(trimEndSec) ? trimEndSec : 0);
+  if (duration <= 0) return { startSec: 0, endSec: 0 };
+  if (end - start >= 0.001) return { startSec: start, endSec: Math.min(end, duration) };
+  // Offset/trims consume the entire buffer: show the last audible sliver.
+  const clampedStart = Math.min(start, duration - 0.001);
+  return { startSec: Math.max(0, clampedStart), endSec: Math.max(Math.max(0, clampedStart) + 0.001, duration) };
+}

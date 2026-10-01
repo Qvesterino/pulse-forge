@@ -1291,6 +1291,120 @@ function augmentation(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
   sk.push("nastav master na 80 percent");
   sk.push("zníž lead o 20 percent");
 
+  // ── MINING WAVE 2 (2026-10-01) — breadth pass after n-gram featurization:
+  // the char-gram featurizer eats vocabulary diversity now, so the corpus
+  // grows along the val-mined weak families — fader verb/amount variety,
+  // exact track ops, effect add/remove, send/bypass targets, loudness
+  // targets, rare transport/export/select/tempo kinds, and their SK twins ──
+  // fader: verbs and amount adverbs on the remaining targets
+  en.push("turn the drums up");
+  en.push("bring the bass down");
+  en.push("drop the lead volume");
+  en.push("lift the vocals");
+  en.push("reduce the hats");
+  en.push("trim the snare");
+  en.push("push the chords louder");
+  en.push("pull the bass quieter");
+  en.push("slightly louder drums");
+  en.push("much quieter bass");
+  en.push("a lot more lead");
+  en.push("give the chords a bit less");
+  en.push("bass up 15%");
+  en.push("drums down 20 percent");
+  en.push("give the lead 30 percent more");
+  en.push("kick at full volume");
+  en.push("master to 100 percent");
+  // exact ops: track management vocabulary
+  en.push("add another drum track");
+  en.push("remove the vocal track");
+  en.push("delete the perc track");
+  en.push("duplicate the lead track");
+  en.push("rename bass to sub bass");
+  en.push("solo the hats");
+  en.push("unmute the lead");
+  en.push("transpose the chords up 2 semitones");
+  en.push("transpose the bass down an octave");
+  en.push("set pattern length 64");
+  en.push("length to 128");
+  en.push("key of A minor");
+  en.push("set the key to E minor");
+  en.push("pan the hats left 60");
+  en.push("pan the perc 40% right");
+  // effectIntent: add/remove phrasing on more targets
+  en.push("put reverb on the vocal");
+  en.push("give the snare some delay");
+  en.push("add chorus to the keys");
+  en.push("add a phaser to the lead");
+  en.push("remove the distortion from the bass");
+  en.push("less compressor on the drums");
+  en.push("more saturation on the bass");
+  en.push("add tremolo to the keys");
+  en.push("bitcrush the lead");
+  en.push("flanger on the hats");
+  // sendIntent / bypassIntent: the routing vocabulary on more targets
+  en.push("increase reverb send on the snare");
+  en.push("lower the delay send of the hats");
+  en.push("send more reverb to the vocal");
+  en.push("turn off reverb on the vocal");
+  en.push("bypass the compressor on the master");
+  en.push("enable chorus on the lead");
+  en.push("disable the delay on the drums");
+  // loudness targets
+  en.push("set loudness to -14");
+  en.push("make the mix -9 lufs");
+  en.push("master at -12 lufs");
+  en.push("loudness target -7");
+  // rare kinds: transport / export / select / tempo
+  en.push("stop the loop");
+  en.push("start the metronome");
+  en.push("loop this");
+  en.push("pause playback");
+  en.push("export the track as wav");
+  en.push("export mp3 320");
+  en.push("pick the bass track");
+  en.push("go to the drums");
+  en.push("set the bpm to 174");
+  en.push("tempo 95");
+  // mix overrides: the reverb/tone/punch/pump vocabulary
+  en.push("more reverb in the mix");
+  en.push("less reverb overall");
+  en.push("darker tone");
+  en.push("brighter tone in the mix");
+  en.push("warm it up in the mix");
+  en.push("less punch in the mix");
+  en.push("pump on");
+  // SK siblings of the weak families
+  sk.push("ztichni bicie");
+  sk.push("pridaj hlasitost leadu");
+  sk.push("daj spev viac dopredu");
+  sk.push("zníž hi-haty");
+  sk.push("basu o 15 percent hlasiejšie");
+  sk.push("master na 100 percent");
+  sk.push("pridaj drum track");
+  sk.push("zmaž vocal track");
+  sk.push("duplicituj lead");
+  sk.push("solo na hi-haty");
+  sk.push("odmutuj spev");
+  sk.push("transponuj akordy o 2 poltóny hore");
+  sk.push("dĺžka patternu 64");
+  sk.push("tonina E mol");
+  sk.push("pan hi-haty doľava 60");
+  sk.push("daj reverb na spev");
+  sk.push("pridaj delay na snare");
+  sk.push("menej saturácie na base");
+  sk.push("vypni kompresor na mastri");
+  sk.push("zapni chorus na leade");
+  sk.push("hlasitosť na -14");
+  sk.push("master na -9 lufs");
+  sk.push("zastav sláčku");
+  sk.push("metronóm vypni");
+  sk.push("exportuj ako wav");
+  sk.push("vyber drum track");
+  sk.push("bpm na 174");
+  sk.push("viac reverbu v mixe");
+  sk.push("teplejší tón");
+  sk.push("menej puncu v mixe");
+
   return [
     { lang: "en", instructions: en },
     { lang: "sk", instructions: sk },

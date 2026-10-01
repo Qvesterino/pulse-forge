@@ -134,6 +134,15 @@ export interface PcmMicRecorderDependencies {
   inputGainDb?: number;
   /** Optional project-mixer destination for the dry software monitor; the recorder does not own its cleanup. */
   routeMonitorOutput?: (monitorOutput: AudioNode) => (() => void) | null;
+  /**
+   * Optional side-effect-free re-read of the transport position, invoked
+   * immediately before capture arms. The metadata snapshot (including
+   * startBar) predates the durable `recovery.begin()` commit; while the
+   * transport is already rolling, that IndexedDB latency would otherwise be
+   * baked into the placed clip as a per-take start-offset error. Return
+   * null/non-finite to keep the snapshot anchor.
+   */
+  refreshStartBar?: () => number | null;
 }
 
 /** Input trim clamps — must mirror the UI slider. */
@@ -567,6 +576,28 @@ export class PcmMicRecorder {
       }
       this.startedAt = ctx.currentTime;
       this.state_ = "recording";
+      // Refresh the placement anchor as late as possible: the worklet arms on
+      // the render quantum after this post (~ms), while the metadata snapshot
+      // predates the durable begin() commit (tens of ms of IndexedDB jitter
+      // that would otherwise land on the timeline when the transport rolls).
+      let refreshedStartBar: number | null = null;
+      try {
+        refreshedStartBar = this.deps.refreshStartBar?.() ?? null;
+      } catch {
+        refreshedStartBar = null;
+      }
+      if (refreshedStartBar !== null && Number.isFinite(refreshedStartBar) && refreshedStartBar >= 0) {
+        const correctedStartBar = refreshedStartBar;
+        if (correctedStartBar !== session.startBar) {
+          session.startBar = correctedStartBar;
+          this.writeTail = this.writeTail
+            .then(() => this.recovery.updateStartBar?.(session.id, correctedStartBar))
+            .catch(() => {
+              /* Non-fatal: in-memory placement stays corrected; only a later
+               * crash recovery would fall back to the earlier snapshot. */
+            });
+        }
+      }
       this.node.port.postMessage({
         type: "start",
         ...(session.loopCapture ? { loopCapture: true } : {}),

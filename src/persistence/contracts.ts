@@ -118,6 +118,9 @@ export interface IRecordingRecoveryRepository {
   appendChunk(chunk: RecordingPcmChunk): Promise<void>;
   markPunchOutReached(sessionId: string): Promise<void>;
   markRecoverable(sessionId: string): Promise<void>;
+  /** Optional (recording audit 2026-10-01): refresh the placement anchor after
+   * begin() committed — the capture-side re-read that keeps overdubs aligned. */
+  updateStartBar?(sessionId: string, startBar: number): Promise<void>;
   get(sessionId: string): Promise<RecordingSession | undefined>;
   listRecoverable(now?: number, excludeOwnerId?: string): Promise<RecordingSession[]>;
   forEachChunk(sessionId: string, visit: (chunk: RecordingPcmChunk, frameOffset: number) => void): Promise<void>;

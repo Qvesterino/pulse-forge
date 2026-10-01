@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildPaletteActions, filterActions, type PaletteAction, type PaletteDeps } from "./commandPalette";
+import { useFocusRestore } from "./useFocusRestore";
 
 interface CommandPaletteProps {
   open: boolean;
@@ -13,6 +14,7 @@ interface CommandPaletteProps {
  * shortcut handler (which skips default-prevented events) stays quiet.
  */
 export function PaletteOverlay({ open, deps, onClose }: CommandPaletteProps) {
+  const overlayRef = useFocusRestore<HTMLDivElement>(open);
   // Built inside the lazy chunk so the registry never touches the entry bundle.
   const actions = useMemo(() => buildPaletteActions(deps), [deps]);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -75,6 +77,8 @@ export function PaletteOverlay({ open, deps, onClose }: CommandPaletteProps) {
   return (
     <div
       className="palette-overlay"
+
+      ref={overlayRef}
       role="dialog"
       aria-modal="true"
       aria-label="Command palette"
@@ -128,3 +132,6 @@ export function PaletteOverlay({ open, deps, onClose }: CommandPaletteProps) {
     </div>
   );
 }
+
+
+

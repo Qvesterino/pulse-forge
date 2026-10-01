@@ -48,6 +48,7 @@ function createRecorder(
     punchCapture?: { startTick: number; endTick: number };
     estimateStorage?: () => Promise<{ quota?: number; usage?: number }>;
     routeMonitorOutput?: (monitorOutput: AudioNode) => (() => void) | null;
+    refreshStartBar?: () => number | null;
   } = {},
 ) {
   const recovery = new RecordingRecoveryRepository();
@@ -138,6 +139,7 @@ function createRecorder(
     getUserMedia,
     estimateStorage: options.estimateStorage,
     routeMonitorOutput: options.routeMonitorOutput,
+    refreshStartBar: options.refreshStartBar,
   });
   const metadata = () => ({
     projectId: "project-1",
@@ -295,6 +297,53 @@ describe("PcmMicRecorder", () => {
     await recorder.start(metadata);
 
     expect(warning).not.toHaveBeenCalled();
+    expect(recorder.state).toBe("recording");
+    await recorder.cancel();
+  });
+
+  it("re-reads the start bar after the durable begin commit so overdubs stay aligned", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    // Transport rolls while IndexedDB arms the session: the metadata snapshot
+    // says bar 2, the moment capture arms is bar 2.4. The placed clip must
+    // anchor at 2.4 — otherwise the commit latency becomes a per-take offset.
+    const refresh = vi.fn(() => 2.4);
+    const { recorder, recovery, metadata } = createRecorder({ refreshStartBar: refresh });
+
+    await recorder.start(metadata);
+    expect(refresh).toHaveBeenCalledTimes(1);
+
+    const pcm = new Float32Array([0.25, -0.5]);
+    lastNode!.emit({ type: "chunk", sequence: 0, frames: 2, channels: [pcm.buffer] });
+    await waitForAck(lastNode!);
+    const take = await recorder.stop();
+
+    expect(take?.session.startBar).toBe(2.4);
+    // stop() re-reads the persisted session — the correction must survive.
+    await expect(recovery.get(take!.session.id)).resolves.toMatchObject({ startBar: 2.4 });
+  });
+
+  it("keeps the snapshot anchor when the late start-bar re-read is unusable", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    for (const bad of [() => null, () => Number.NaN, () => -3]) {
+      const { recorder, metadata } = createRecorder({ refreshStartBar: bad });
+      await recorder.start(metadata);
+      const pcm = new Float32Array([0.25, -0.5]);
+      lastNode!.emit({ type: "chunk", sequence: 0, frames: 2, channels: [pcm.buffer] });
+      await waitForAck(lastNode!);
+      const take = await recorder.stop();
+      expect(take?.session.startBar).toBe(2);
+    }
+  });
+
+  it("does not touch the persisted anchor when the refresh throws", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const { recorder, metadata } = createRecorder({
+      refreshStartBar: () => {
+        throw new Error("transport vanished");
+      },
+    });
+
+    await recorder.start(metadata);
     expect(recorder.state).toBe("recording");
     await recorder.cancel();
   });

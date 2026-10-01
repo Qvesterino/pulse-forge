@@ -1,0 +1,14 @@
+KYX MCP AGENT DEMO — one agent session, real protocol, real command layer
+[collab] listening on ws://127.0.0.1:62842/<roomId> + gallery at http://127.0.0.1:62842/api/gallery
+   [window] relay connected
+
+── AGENT STEP 1: initialize the MCP handshake
+   [server] kyx-mcp · 2025-03-26
+
+── AGENT STEP 2: read the agent manual (kyx://playbook resource)
+   [resource] playbook: 4120 chars — workflow: generate → verify → steps → mix → arrange
+
+── AGENT STEP 3: production checkpoint: save 'before' state
+   [kyx_checkpoint] checkpoint "before-agent-session" saved (3 tracks · active pattern "Pattern A" · 1 scenes) — restore anytime, session-scoped, 1/8 used
+
+── AGENT STEP 4: generate a drill pattern (deterministic seed)

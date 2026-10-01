@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { EDITOR_SHORTCUTS, groupShortcuts, shortcutDisplayBindings } from "./shortcuts";
+import { useFocusRestore } from "./useFocusRestore";
 import { gestureMatches, gesturesByArea } from "./helpContent";
 import { ModelPacksSection } from "./ModelPackCard";
 
@@ -14,6 +15,7 @@ interface HelpOverlayProps {
  * closes with Escape or by clicking the scrim.
  */
 export function HelpOverlay({ open, onClose }: HelpOverlayProps) {
+  const overlayRef = useFocusRestore<HTMLDivElement>(open);
   const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
 
@@ -81,6 +83,8 @@ export function HelpOverlay({ open, onClose }: HelpOverlayProps) {
   return (
     <div
       className="help-overlay"
+
+      ref={overlayRef}
       role="dialog"
       aria-modal="true"
       aria-label="Help: shortcuts and gestures"
@@ -204,3 +208,6 @@ export function HelpOverlay({ open, onClose }: HelpOverlayProps) {
     </div>
   );
 }
+
+
+

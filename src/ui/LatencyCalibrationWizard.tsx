@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useLatencyCalibration, useServices } from "./context";
+import { useFocusRestore } from "./useFocusRestore";
 import { AudioLatencyCalibrationError, measureAudioRoundTrip } from "../audio-engine/latencyProbe";
 import { MAX_MIDI_REFERENCE_OFFSET_MS, MIN_MIDI_REFERENCE_OFFSET_MS } from "../audio-engine/latencyCalibration";
 import {
@@ -21,6 +22,7 @@ interface LatencyCalibrationWizardProps {
 }
 
 export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWizardProps) {
+  const overlayRef = useFocusRestore<HTMLDivElement>(open);
   const services = useServices();
   const calibration = useLatencyCalibration();
   const recordingInputOffsetMs = useSyncExternalStore(
@@ -148,6 +150,8 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
   return (
     <div
       className="latency-overlay"
+
+      ref={overlayRef}
       role="dialog"
       aria-modal="true"
       aria-label="Latency calibration"
@@ -332,3 +336,6 @@ function restorePlayback(services: ReturnType<typeof useServices>, snapshot: Pla
   services.transport.seek(Math.max(0, snapshot.position));
   if (snapshot.wasPlaying) services.playback.playPause();
 }
+
+
+

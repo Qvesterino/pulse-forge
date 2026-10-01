@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { usePatterns, useServices, useTracks } from "./context";
+import { useFocusRestore } from "./useFocusRestore";
 import { applyGenerationResultCommand } from "../commands/commands";
 import type { GenerateOptions } from "../ai/types";
 import { GENRES, DEFAULT_GENERATE_OPTIONS } from "../ai/types";
@@ -53,6 +54,7 @@ function PatternPreview({ rows, activePads }: { rows: number[][]; activePads: nu
 }
 
 export function GenerateDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const focusRef = useFocusRestore<HTMLDivElement>(open);
   const services = useServices();
   // Fine-grained selectors (GOAL 04): GenerateDialog only reads tracks (for
   // drum/instrument filter) and patterns (for the source-pattern picker).
@@ -232,7 +234,7 @@ export function GenerateDialog({ open, onClose }: { open: boolean; onClose: () =
   if (!open) return null;
 
   return (
-    <div className="generate-dialog-backdrop" role="dialog" aria-label="Generate pattern">
+    <div className="generate-dialog-backdrop" role="dialog" aria-label="Generate pattern" ref={focusRef}>
       <div className="generate-dialog" ref={dialogRef}>
         <div className="generate-dialog-header">
           <span className="generate-dialog-title">GENERATE PATTERN</span>
@@ -498,3 +500,4 @@ export function GenerateDialog({ open, onClose }: { open: boolean; onClose: () =
     </div>
   );
 }
+

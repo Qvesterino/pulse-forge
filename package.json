@@ -114,7 +114,8 @@
     "deploy:cf": "npm run build && npx wrangler pages deploy dist",
     "prompts:check": "node scripts/prompts-sync.mjs",
     "prompts:sync": "node scripts/prompts-sync.mjs --fix",
-    "prompts:build": "node scripts/prompts-sync.mjs --build"
+    "prompts:build": "node scripts/prompts-sync.mjs --build",
+    "mcp:demo": "vite-node scripts/mcp-agent-demo.mts"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

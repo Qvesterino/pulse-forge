@@ -269,6 +269,26 @@ export class RecordingRecoveryRepository {
     });
   }
 
+  /**
+   * Refresh the placement anchor after `begin()` committed. The metadata
+   * snapshot (including `startBar`) is read before the durable begin commit;
+   * when the transport is already rolling, that IndexedDB latency would
+   * otherwise be baked into the placed clip as a per-take start-offset error.
+   * `updatedAt` is intentionally untouched — this is a placement correction,
+   * not liveness evidence for cross-tab staleness detection.
+   */
+  async updateStartBar(sessionId: string, startBar: number): Promise<void> {
+    if (!Number.isFinite(startBar) || startBar < 0) throw new Error("Invalid recording start bar");
+    const db = await this.openDatabase();
+    await tx(db, STORE_RECORDING_SESSIONS, "readwrite", (store) => {
+      const request = store.get(sessionId);
+      request.onsuccess = () => {
+        const session = request.result as RecordingSession | undefined;
+        if (session) store.put({ ...session, startBar });
+      };
+    });
+  }
+
   async get(sessionId: string): Promise<RecordingSession | undefined> {
     const db = await this.openDatabase();
     return tx<RecordingSession | undefined>(db, STORE_RECORDING_SESSIONS, "readonly", (store) => store.get(sessionId));

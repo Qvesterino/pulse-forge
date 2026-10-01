@@ -1029,6 +1029,7 @@ function destructiveRefusal(): McpToolResult {
       "declined: destructive MCP ops are locked — the user must allow them " +
       "in the KYX MCP chip (undoable edits still work)",
     mutated: false,
+    isError: true,
   };
 }
 

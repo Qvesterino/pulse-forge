@@ -105,3 +105,23 @@ describe("count-in lead-in placement trim (audit 07)", () => {
     expect(panel).toContain("take.buffer.duration - (take.session.leadInSec ?? 0)");
   });
 });
+
+/* ── Recording audit 2026-10-01: overdub anchor refresh (source pins) ── */
+
+describe("overdub start-anchor refresh (recording audit 2026-10-01)", () => {
+  it("ArrangementPanel re-reads the transport position right before capture arms", () => {
+    const panel = readFileSync(resolve(process.cwd(), "src/ui/ArrangementPanel.tsx"), "utf8");
+    // The wiring: refreshStartBar derives from the LIVE transport position
+    // (punch keeps its fixed locator) so the durable begin-commit latency is
+    // not baked into the placed clip while the transport is rolling.
+    expect(panel).toContain("refreshStartBar: () => {");
+    expect(panel).toContain("punchLocators?.start ?? services.transport.position");
+  });
+
+  it("the waveform renders the clip's playable window, not the raw buffer (source pins)", () => {
+    const panel = readFileSync(resolve(process.cwd(), "src/ui/ArrangementPanel.tsx"), "utf8");
+    expect(panel).toContain("audioClipWaveformWindow(buffer.duration, offsetSec, trimStart, trimEnd)");
+    // Both call sites (main clip body + take lanes) pass the clip's window.
+    expect((panel.match(/trimEnd=\{clip\.trimEnd \?\? 0\}/g) ?? []).length).toBe(2);
+  });
+});

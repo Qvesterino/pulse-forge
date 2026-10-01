@@ -74,7 +74,7 @@ import type {
 } from "../project-model/types";
 import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { detectLoopBpm } from "../audio-engine/bpm-detect";
-import { audioClipChannelData } from "../audio-engine/audioClipChannels";
+import { audioClipChannelData, audioClipWaveformWindow } from "../audio-engine/audioClipChannels";
 import { warpBufferTimeAtTick } from "../audio-engine/AudioEngine";
 import { nearestOnset } from "../audio-workers/onset-detector";
 import { extractGroove } from "../audio-engine/groove-extract";
@@ -692,6 +692,14 @@ export function ArrangementPanel() {
         inputDeviceId: recordingInputDeviceId,
         inputGainDb,
         routeMonitorOutput: (monitorOutput) => services.engine.attachDryInputMonitor(armedTrackId, monitorOutput),
+        // Overdub anchor: re-read the transport position immediately before
+        // capture arms. The metadata snapshot predates the durable session
+        // begin commit; while the transport is rolling, that IndexedDB gap
+        // would land on the timeline as a per-take start-offset error.
+        refreshStartBar: () => {
+          const ticks = punchLocators?.start ?? services.transport.position;
+          return Number.isFinite(ticks) && ticks >= 0 ? recordingStartBar(ticks) : null;
+        },
         ...(requestedChannelCount !== null ? { requestedChannelCount } : {}),
       });
       // Publish ownership before the permission prompt/async start so an
@@ -3489,6 +3497,9 @@ export function ArrangementPanel() {
                     sourceChannel={clip.sourceChannel}
                     reverse={clip.reverse}
                     showOnsets={selected || (clip.warpMarkers?.length ?? 0) > 0}
+                    offsetSec={clip.offsetSec ?? 0}
+                    trimStart={clip.trimStart ?? 0}
+                    trimEnd={clip.trimEnd ?? 0}
                   />
                   <WarpPinsOverlay
                     clip={clip}
@@ -3751,6 +3762,9 @@ export function ArrangementPanel() {
                             sourceChannel={clip.sourceChannel}
                             reverse={clip.reverse}
                             showOnsets={false}
+                            offsetSec={clip.offsetSec ?? 0}
+                            trimStart={clip.trimStart ?? 0}
+                            trimEnd={clip.trimEnd ?? 0}
                           />
                         </button>
                       ))}
@@ -4388,12 +4402,20 @@ function AudioClipWaveform({
   sourceChannel,
   reverse,
   showOnsets,
+  offsetSec = 0,
+  trimStart = 0,
+  trimEnd = 0,
 }: {
   buffer: AudioBuffer | null;
   bufferId: string;
   sourceChannel?: number;
   reverse: boolean;
   showOnsets: boolean;
+  /** Content window — must mirror audioClipPlayWindow so the drawn envelope
+   * matches what the clip actually plays (recorded trims, loop passes). */
+  offsetSec?: number;
+  trimStart?: number;
+  trimEnd?: number;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const onsets = useOnsetDots(bufferId, sourceChannel, showOnsets && buffer !== null);
@@ -4412,7 +4434,14 @@ function AudioClipWaveform({
     ctx.clearRect(0, 0, w, h);
     const data = audioClipChannelData(buffer, sourceChannel);
     const columns = Math.min(w, 240);
-    const per = Math.floor(data.length / columns);
+    // Map columns onto the clip's playable window (offsetSec+trimStart →
+    // duration-trimEnd), not the raw buffer, so the envelope tracks playback.
+    const windowSec = audioClipWaveformWindow(buffer.duration, offsetSec, trimStart, trimEnd);
+    const windowDur = windowSec.endSec - windowSec.startSec;
+    const sampleRate = buffer.sampleRate > 0 ? buffer.sampleRate : 1;
+    const startSample = Math.max(0, Math.min(data.length - 1, Math.round(windowSec.startSec * sampleRate)));
+    const endSample = Math.max(startSample + 1, Math.min(data.length, Math.round(windowSec.endSec * sampleRate)));
+    const per = Math.max(1, Math.floor((endSample - startSample) / columns));
     const dim = getComputedStyle(canvas).getPropertyValue("--text-faint") || "#3a3d44";
     const rawAccent = getComputedStyle(canvas).getPropertyValue("--accent") || "#f59e0b";
     const baseHex = reverse ? "#f87171" : rawAccent.trim();
@@ -4429,8 +4458,9 @@ function AudioClipWaveform({
     for (let c = 0; c < columns; c++) {
       let min = 1,
         max = -1;
-      const s = c * per,
-        e = Math.min((c + 1) * per, data.length);
+      const s = startSample + c * per,
+        e = Math.min(startSample + (c + 1) * per, endSample);
+      if (s >= endSample) break;
       for (let i = s; i < e; i++) {
         const v = data[i];
         if (v < min) min = v;
@@ -4444,10 +4474,11 @@ function AudioClipWaveform({
     }
     ctx.stroke();
     // Transient ticks: where the warp magnet would grab (selected/warped clips).
-    if (onsets && onsets.length > 0 && buffer.duration > 0) {
+    if (onsets && onsets.length > 0 && windowDur > 0) {
       ctx.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.6)`;
       for (const t of onsets) {
-        const x = (t / buffer.duration) * w;
+        if (t < windowSec.startSec || t > windowSec.endSec) continue;
+        const x = ((t - windowSec.startSec) / windowDur) * w;
         if (x < 0 || x > w) continue;
         ctx.fillRect(x - 1, h - 6, 2, 5);
       }
@@ -4457,7 +4488,7 @@ function AudioClipWaveform({
     ctx.globalAlpha = 0.25;
     ctx.lineWidth = 1;
     ctx.strokeRect(0, 0, w, h);
-  }, [buffer, bufferId, sourceChannel, reverse, showOnsets, onsets]);
+  }, [buffer, bufferId, sourceChannel, reverse, showOnsets, onsets, offsetSec, trimStart, trimEnd]);
   if (!buffer) return <div className="audio-waveform-empty">no buffer</div>;
   return (
     <canvas
