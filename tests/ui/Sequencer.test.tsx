@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { Sequencer } from "../../src/ui/Sequencer";
 import { renderWithContext, mockServices } from "../helpers";
+import { createProjectFromTemplate } from "../../src/project-model/templates";
 
 const defaultProps = {
   selectedPadId: "",
@@ -227,5 +228,54 @@ describe("step drag-paint and hover audition", () => {
     fireEvent.pointerEnter(empty, { pointerType: "mouse" });
     fireEvent.pointerEnter(active, { pointerType: "mouse" });
     expect(services.engine.preview).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Sequencer — velocity actions must be honest about an all-silence selection (defect 20)", () => {
+  const selection = { padIds: ["pad-a"], from: 0, to: 7 };
+  // The step toolbar's HUMAN and the note lane's HUMAN carry the same visible
+  // label, so they are told apart by title — "selected step" vs "selected note".
+  const STEP_RND = "Randomize velocities of the selected active steps (silence stays silent)";
+  const STEP_HUMAN = "Humanize — nudge selected step velocities ±12% so the groove breathes";
+
+  function docWithRows(row: number[]) {
+    const doc = createProjectFromTemplate("house");
+    doc.patterns[0].rows = { "pad-a": row };
+    return doc;
+  }
+
+  it("disables RND VEL and HUMAN when the selection holds only silence, and enables them once a step is active", () => {
+    // Both handlers built their target list from the selection and returned
+    // early when it was empty, with no `disabled` to match — so the buttons
+    // accepted clicks that produced no command, no error and no visual
+    // change. PASTE LOCKS in the same toolbar already carries that contract
+    // (`disabled={!lockClipboard || …}`), so these two were the odd ones out.
+    const silent = renderWithContext(<Sequencer {...defaultProps} stepSelection={selection} />, {
+      services: mockServices(docWithRows(new Array(16).fill(0))),
+    });
+    expect(within(silent.container).getByTitle(STEP_RND)).toBeDisabled();
+    expect(within(silent.container).getByTitle(STEP_HUMAN)).toBeDisabled();
+    silent.unmount();
+
+    // Positive control: one active step inside the same selection makes both
+    // actionable again. Without this, an always-disabled button would pass.
+    const row = new Array(16).fill(0);
+    row[3] = 0.8;
+    const active = renderWithContext(<Sequencer {...defaultProps} stepSelection={selection} />, {
+      services: mockServices(docWithRows(row)),
+    });
+    expect(within(active.container).getByTitle(STEP_RND)).toBeEnabled();
+    expect(within(active.container).getByTitle(STEP_HUMAN)).toBeEnabled();
+  });
+
+  it("renders and does not throw when nothing is selected at all", () => {
+    // The memo that feeds `disabled` runs on every render, while the buttons
+    // themselves sit behind `{stepSelection && …}`. A null selection must not
+    // reach `.padIds`.
+    expect(() =>
+      renderWithContext(<Sequencer {...defaultProps} stepSelection={null} />, {
+        services: mockServices(docWithRows(new Array(16).fill(0))),
+      }),
+    ).not.toThrow();
   });
 });

@@ -704,6 +704,27 @@ export function Sequencer({
     [containerRef],
   );
 
+  // Active (non-silent) steps inside the current selection — the targets for
+  // RND VEL and HUMAN. Hoisted out of their click handlers so the buttons can
+  // be disabled when the selection holds only silence, instead of accepting a
+  // click that silently returns. Same contract as PASTE LOCKS above: guard in
+  // the handler AND a matching `disabled`, otherwise the control looks
+  // actionable while doing nothing at all.
+  const activeSelectionEntries = useMemo(() => {
+    // Runs on every render, including when nothing is selected — the buttons
+    // below are behind `{stepSelection && …}` but this memo is not.
+    if (!stepSelection) return [] as { padId: string; stepIndex: number; velocity: number }[];
+    const entries: { padId: string; stepIndex: number; velocity: number }[] = [];
+    for (const padId of stepSelection.padIds) {
+      const row = pattern.rows[padId] ?? [];
+      for (let s = stepSelection.from; s <= stepSelection.to; s++) {
+        const v = row[s] ?? 0;
+        if (v > 0) entries.push({ padId, stepIndex: s, velocity: v });
+      }
+    }
+    return entries;
+  }, [stepSelection, pattern.rows]);
+
   return (
     <section
       className={`sequencer${beatFocus ? " beat-focus" : ""}`}
@@ -786,22 +807,15 @@ export function Sequencer({
             type="button"
             className="btn btn-small"
             title="Randomize velocities of the selected active steps (silence stays silent)"
+            disabled={activeSelectionEntries.length === 0}
             onClick={() => {
-              const entries: { padId: string; stepIndex: number; velocity: number }[] = [];
-              for (const padId of stepSelection.padIds) {
-                const row = pattern.rows[padId] ?? [];
-                for (let s = stepSelection.from; s <= stepSelection.to; s++) {
-                  const v = row[s] ?? 0;
-                  if (v > 0) entries.push({ padId, stepIndex: s, velocity: v });
-                }
-              }
-              if (entries.length === 0) return;
-              const next = randomizeVelocities(entries.map((e) => e.velocity));
+              if (activeSelectionEntries.length === 0) return;
+              const next = randomizeVelocities(activeSelectionEntries.map((e) => e.velocity));
               services.store.execute(
                 setStepsVelocity(
                   doc,
                   pattern.id,
-                  entries.map((e, i) => ({ ...e, velocity: next[i] })),
+                  activeSelectionEntries.map((e, i) => ({ ...e, velocity: next[i] })),
                 ),
               );
             }}
@@ -812,22 +826,15 @@ export function Sequencer({
             type="button"
             className="btn btn-small"
             title="Humanize — nudge selected step velocities ±12% so the groove breathes"
+            disabled={activeSelectionEntries.length === 0}
             onClick={() => {
-              const entries: { padId: string; stepIndex: number; velocity: number }[] = [];
-              for (const padId of stepSelection.padIds) {
-                const row = pattern.rows[padId] ?? [];
-                for (let s = stepSelection.from; s <= stepSelection.to; s++) {
-                  const v = row[s] ?? 0;
-                  if (v > 0) entries.push({ padId, stepIndex: s, velocity: v });
-                }
-              }
-              if (entries.length === 0) return;
-              const next = humanizeVelocities(entries.map((e) => e.velocity));
+              if (activeSelectionEntries.length === 0) return;
+              const next = humanizeVelocities(activeSelectionEntries.map((e) => e.velocity));
               services.store.execute(
                 setStepsVelocity(
                   doc,
                   pattern.id,
-                  entries.map((e, i) => ({ ...e, velocity: next[i] })),
+                  activeSelectionEntries.map((e, i) => ({ ...e, velocity: next[i] })),
                 ),
               );
             }}
