@@ -9,8 +9,8 @@
   },
   "model": {
     "url": "/models/intent-model-v1.onnx",
-    "bytes": 6592438,
-    "sha256": "012d72cc8b718d7ed1624a43247b59c03c6b739ee8fb75517794268f969c06c4"
+    "bytes": 6511622,
+    "sha256": "5c5eb64e625307d90569e020b8f6843ec4ea20a4246733efe10b1f846dd0ec51"
   },
   "prompt": {
     "system": "You map a music-production instruction to one canonical action JSON object. Output only the JSON.",
@@ -22,7 +22,7 @@
   },
   "features": {
     "version": "intent-features.v2",
-    "vocabSha256": "0b02891771593670ea42627e329ed7605b4223208536826291c524c31d79e513",
+    "vocabSha256": "26daf6b6e4be3f76c2402939b46540786c29ec5aee52417cbeb92560e94efb2b",
     "vocabSize": 3882,
     "url": "/models/intent-model-v1.vocab.json",
     "inputName": "features",
@@ -31,19 +31,6 @@
       "head_arrangeOp",
       "head_arrangeRole",
       "head_arrangeBars",
-      "head_clipOp",
-      "head_clipToBar",
-      "head_clipBars",
-      "head_part1Direction",
-      "head_part1Target",
-      "head_part1Percent",
-      "head_part1Amount",
-      "head_part1Pads",
-      "head_part2Direction",
-      "head_part2Target",
-      "head_part2Percent",
-      "head_part2Amount",
-      "head_part2Pads",
       "head_direction",
       "head_targets",
       "head_pads",
@@ -144,184 +131,6 @@
           "4",
           "6",
           "8"
-        ]
-      },
-      {
-        "name": "clipOp",
-        "kind": "softmax",
-        "classes": [
-          "__absent__",
-          "copyClip",
-          "deleteClip",
-          "moveClip",
-          "resizeClip"
-        ]
-      },
-      {
-        "name": "clipToBar",
-        "kind": "softmax",
-        "classes": [
-          "__absent__",
-          "8",
-          "9",
-          "11",
-          "12",
-          "13",
-          "15",
-          "16"
-        ]
-      },
-      {
-        "name": "clipBars",
-        "kind": "softmax",
-        "classes": [
-          "__absent__",
-          "1",
-          "2",
-          "3",
-          "4"
-        ]
-      },
-      {
-        "name": "part1Direction",
-        "kind": "softmax",
-        "classes": [
-          "__absent__",
-          "down",
-          "less",
-          "louder",
-          "more",
-          "quieter",
-          "remove",
-          "set",
-          "up"
-        ]
-      },
-      {
-        "name": "part1Target",
-        "kind": "softmax",
-        "classes": [
-          "__absent__",
-          "bass",
-          "chords",
-          "clap",
-          "drums",
-          "hat",
-          "hats",
-          "kick",
-          "lead",
-          "master",
-          "mix",
-          "perc",
-          "snare",
-          "tom",
-          "vocal"
-        ]
-      },
-      {
-        "name": "part1Percent",
-        "kind": "softmax",
-        "classes": [
-          "__absent__",
-          "50",
-          "75",
-          "100"
-        ]
-      },
-      {
-        "name": "part1Amount",
-        "kind": "softmax",
-        "classes": [
-          "__absent__",
-          "big",
-          "full",
-          "huge",
-          "medium",
-          "normal",
-          "subtle"
-        ]
-      },
-      {
-        "name": "part1Pads",
-        "kind": "sigmoid",
-        "classes": [
-          "clap",
-          "hat",
-          "kick",
-          "perc",
-          "snare",
-          "tom"
-        ]
-      },
-      {
-        "name": "part2Direction",
-        "kind": "softmax",
-        "classes": [
-          "__absent__",
-          "down",
-          "less",
-          "louder",
-          "more",
-          "quieter",
-          "remove",
-          "set",
-          "up"
-        ]
-      },
-      {
-        "name": "part2Target",
-        "kind": "softmax",
-        "classes": [
-          "__absent__",
-          "bass",
-          "chords",
-          "clap",
-          "drums",
-          "hat",
-          "hats",
-          "kick",
-          "lead",
-          "master",
-          "mix",
-          "perc",
-          "snare",
-          "tom",
-          "vocal"
-        ]
-      },
-      {
-        "name": "part2Percent",
-        "kind": "softmax",
-        "classes": [
-          "__absent__",
-          "30",
-          "40",
-          "50"
-        ]
-      },
-      {
-        "name": "part2Amount",
-        "kind": "softmax",
-        "classes": [
-          "__absent__",
-          "big",
-          "full",
-          "huge",
-          "medium",
-          "normal",
-          "subtle"
-        ]
-      },
-      {
-        "name": "part2Pads",
-        "kind": "sigmoid",
-        "classes": [
-          "clap",
-          "hat",
-          "kick",
-          "perc",
-          "snare",
-          "tom"
         ]
       },
       {
@@ -775,11 +584,11 @@
     ]
   },
   "report": {
-    "gatePassed": false,
+    "gatePassed": true,
     "trainRows": 1705,
     "valRows": 284,
     "goldenRows": 74,
-    "valHeadAccuracyMean": 0.993,
+    "valHeadAccuracyMean": 0.9926,
     "gate": "scripts/validate-intent-model.mts — attempted-exact >= 0.95, wrongKind = 0"
   }
 }

@@ -147,6 +147,14 @@ describe("arrange decode contract (sequence-student phase 1)", () => {
   const vocab = JSON.parse(
     readFileSync(path.join(MODELS_DIR, "intent-model-v1.vocab.json"), "utf8"),
   ) as IntentModelVocab;
+  // Rolling-artifact guard (same philosophy as the decoder's head guards):
+  // the part/clip-head artifact set is not the shipped one — the sparse-head
+  // wave destabilized the shared trunk (measured: val head mean 0.9893 →
+  // 0.9303) and was reverted pending corpus growth. These tests activate
+  // only when an artifact actually trains those heads.
+  const hasPartHeads = ["part1Direction", "part2Target", "clipToBar"].every((name) =>
+    vocab.heads.some((candidate) => candidate.name === name),
+  );
   const head = (name: string) => vocab.heads.find((candidate) => candidate.name === name)!;
   const one = (name: string, cls: string) => {
     const scores = new Float32Array(head(name).classes.length);
@@ -209,7 +217,7 @@ describe("arrange decode contract (sequence-student phase 1)", () => {
     expect(canonicalModelJson(rename)).toContain('"name":"sub"');
   });
 
-  it("decodes a two-fader compound from the part heads (sequence-student phase 2)", () => {
+  it.skipIf(!hasPartHeads)("decodes a two-fader compound from the part heads (sequence-student phase 2)", () => {
     const outputs: Record<string, Float32Array> = {
       head_kind: one("kind", "compound"),
       head_targets: emptySigmoid("targets"),
@@ -236,55 +244,58 @@ describe("arrange decode contract (sequence-student phase 1)", () => {
     );
   });
 
-  it("a compound with a missing/invalid part hands off as a bare kind — never a partial apply", () => {
-    const base: Record<string, Float32Array> = {
-      head_kind: one("kind", "compound"),
-      head_targets: emptySigmoid("targets"),
-      head_pads: emptySigmoid("pads"),
-      head_part1Direction: one("part1Direction", "up"),
-      head_part1Target: one("part1Target", "lead"),
-      head_part1Percent: absent("part1Percent"),
-      head_part1Amount: one("part1Amount", "normal"),
-      head_part1Pads: emptySigmoid("part1Pads"),
-    };
-    // part2 direction absent → the second part cannot be built → bare-kind
-    // handoff (the resolver refuses the empty route; never a partial apply).
-    expect(
-      canonicalModelJson(
-        decodeIntentHeads(
-          {
-            ...base,
-            head_part2Direction: absent("part2Direction"),
-            head_part2Target: one("part2Target", "bass"),
-            head_part2Percent: absent("part2Percent"),
-            head_part2Amount: absent("part2Amount"),
-            head_part2Pads: emptySigmoid("part2Pads"),
-          },
-          vocab,
+  it.skipIf(!hasPartHeads)(
+    "a compound with a missing/invalid part hands off as a bare kind — never a partial apply",
+    () => {
+      const base: Record<string, Float32Array> = {
+        head_kind: one("kind", "compound"),
+        head_targets: emptySigmoid("targets"),
+        head_pads: emptySigmoid("pads"),
+        head_part1Direction: one("part1Direction", "up"),
+        head_part1Target: one("part1Target", "lead"),
+        head_part1Percent: absent("part1Percent"),
+        head_part1Amount: one("part1Amount", "normal"),
+        head_part1Pads: emptySigmoid("part1Pads"),
+      };
+      // part2 direction absent → the second part cannot be built → bare-kind
+      // handoff (the resolver refuses the empty route; never a partial apply).
+      expect(
+        canonicalModelJson(
+          decodeIntentHeads(
+            {
+              ...base,
+              head_part2Direction: absent("part2Direction"),
+              head_part2Target: one("part2Target", "bass"),
+              head_part2Percent: absent("part2Percent"),
+              head_part2Amount: absent("part2Amount"),
+              head_part2Pads: emptySigmoid("part2Pads"),
+            },
+            vocab,
+          ),
         ),
-      ),
-    ).toBe(canonicalModelJson({ kind: "compound" }));
-    // both amount and percent absent on part1 → a guess → bare-kind handoff.
-    expect(
-      canonicalModelJson(
-        decodeIntentHeads(
-          {
-            ...base,
-            head_part1Percent: absent("part1Percent"),
-            head_part1Amount: absent("part1Amount"),
-            head_part2Direction: one("part2Direction", "up"),
-            head_part2Target: one("part2Target", "bass"),
-            head_part2Percent: absent("part2Percent"),
-            head_part2Amount: absent("part2Amount"),
-            head_part2Pads: emptySigmoid("part2Pads"),
-          },
-          vocab,
+      ).toBe(canonicalModelJson({ kind: "compound" }));
+      // both amount and percent absent on part1 → a guess → bare-kind handoff.
+      expect(
+        canonicalModelJson(
+          decodeIntentHeads(
+            {
+              ...base,
+              head_part1Percent: absent("part1Percent"),
+              head_part1Amount: absent("part1Amount"),
+              head_part2Direction: one("part2Direction", "up"),
+              head_part2Target: one("part2Target", "bass"),
+              head_part2Percent: absent("part2Percent"),
+              head_part2Amount: absent("part2Amount"),
+              head_part2Pads: emptySigmoid("part2Pads"),
+            },
+            vocab,
+          ),
         ),
-      ),
-    ).toBe(canonicalModelJson({ kind: "compound" }));
-  });
+      ).toBe(canonicalModelJson({ kind: "compound" }));
+    },
+  );
 
-  it("decodes single-op clips (clipId is engine-resolved and stripped)", () => {
+  it.skipIf(!hasPartHeads)("decodes single-op clips (clipId is engine-resolved and stripped)", () => {
     const clips: Record<string, Float32Array> = {
       head_kind: one("kind", "clips"),
       head_targets: emptySigmoid("targets"),
@@ -297,9 +308,9 @@ describe("arrange decode contract (sequence-student phase 1)", () => {
       canonicalModelJson({ kind: "clips", ops: [{ op: "copyClip", toBar: 9 }] }),
     );
     // …and it compares equal to the ENGINE-FORM truth (clipId stripped).
-    expect(
-      canonicalModelJson({ kind: "clips", ops: [{ op: "copyClip", clipId: "clip-x", toBar: 9 }] }),
-    ).toBe(canonicalModelJson({ kind: "clips", ops: [{ op: "copyClip", toBar: 9 }] }));
+    expect(canonicalModelJson({ kind: "clips", ops: [{ op: "copyClip", clipId: "clip-x", toBar: 9 }] })).toBe(
+      canonicalModelJson({ kind: "clips", ops: [{ op: "copyClip", toBar: 9 }] }),
+    );
   });
 
   it("an older vocab without arrange heads abstains instead of throwing", () => {

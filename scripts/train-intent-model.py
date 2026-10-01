@@ -58,13 +58,6 @@ GRAD_CLIP_NORM = 1.0
 WEIGHT_DECAY = 1e-4
 SEED = 0x5EED
 
-# Per-head importance for the KIND head's CE. Phase 2 added 13 sibling slot
-# heads whose gradients flow through the shared trunk — the kind boundary's
-# share of the summed loss shrank and val kind misses reappeared (two rows
-# at wave 5). A 3× weight restores its share without touching class balance
-# inside the head (the sqrt-inverse-frequency row weights stay as they are).
-KIND_LOSS_WEIGHT = 3.0
-
 ABSENT = "__absent__"
 
 # In-scope kinds (closed heads); everything else abstains.
@@ -109,13 +102,6 @@ KINDS = [
 # reach and keep abstaining.
 ARRANGE_OPS = ["addRole", "autoArrange", "duplicate", "remove", "reorder", "resize"]
 ARRANGE_ROLES = ["intro", "build", "chorus", "verse", "bridge", "drop", "break", "outro", "fill"]
-# Sequence-student phase 2 (failure-mining wave 5): clip ops are single-op
-# across the whole corpus with engine-resolved clipId stripped by the decode
-# contract, so three closed heads cover the family. Compound emits its
-# two-fader subset through per-part closed heads (part1/part2 ×
-# direction/target/percent/amount/pads); non-fader parts and missing second
-# parts abstain — the resolver refuses kind-only compounds anyway.
-CLIP_OPS = ["copyClip", "deleteClip", "moveClip", "resizeClip"]
 
 TARGET_VALUES = sorted(
     ["drums", "bass", "chords", "lead", "master", "vocal", "mix", "kick", "snare", "clap", "hat", "hats", "perc", "tom"]
@@ -323,7 +309,7 @@ def extract_labels(row: dict) -> dict:
     labels["selectTarget"] = as_class(payload.get("target") if kind == "select" else None)
     labels["targets_one"] = as_class(
         payload.get("target")
-        if kind in ("sendIntent", "bypassIntent", "preset")
+        if kind in ("sendIntent", "bypassIntent")
         else (op or {}).get("target")
         if op
         else None
@@ -337,32 +323,6 @@ def extract_labels(row: dict) -> dict:
     labels["arrangeRole"] = as_class(arrange_first.get("role"))
     note("arrangeBars", arrange_first.get("bars"))
     labels["arrangeBars"] = as_class(arrange_first.get("bars"))
-    clip = arrange_first if kind == "clips" else {}
-    note("clipOp", clip.get("op"))
-    labels["clipOp"] = as_class(clip.get("op"))
-    note("clipToBar", clip.get("toBar"))
-    labels["clipToBar"] = as_class(clip.get("toBar"))
-    note("clipBars", clip.get("bars"))
-    labels["clipBars"] = as_class(clip.get("bars"))
-    if kind == "preset":
-        # closed-class preset identity: the corpus's own preset set is the
-        # class list (content-derived, like the numeric heads)
-        preset_obj = payload.get("preset") or {}
-        labels["presetId"] = as_class(preset_obj.get("id"))
-        labels["presetName"] = as_class(preset_obj.get("name"))
-    parts = response.get("parts") or []
-    for index in (0, 1):
-        part = parts[index] if index < len(parts) else {}
-        bag = part.get("intent") if part.get("kind") == "fader" else {}
-        prefix = f"part{index + 1}"
-        note(f"{prefix}Direction", bag.get("direction"))
-        labels[f"{prefix}Direction"] = as_class(bag.get("direction"))
-        part_targets = [t for t in (bag.get("targets") or []) if isinstance(t, str)]
-        labels[f"{prefix}Target"] = part_targets[0] if part_targets else ABSENT
-        note(f"{prefix}Percent", bag.get("percent"))
-        labels[f"{prefix}Percent"] = as_class(bag.get("percent"))
-        labels[f"{prefix}Amount"] = as_class(bag.get("amount"))
-        labels[f"{prefix}Pads"] = [p for p in (bag.get("pads") or []) if isinstance(p, str)]
     goals = payload.get("goals") or []
     goal = goals[0] if goals else {}
     labels["prodConcept"] = as_class(goal.get("concept"))
@@ -388,31 +348,11 @@ def build_head_specs(rows: list[dict]) -> list[dict]:
     amounts = sorted({v for v in numeric_field_values(rows, "prodAmount")}, key=float)
     keys = string_field_values(rows, "key")
     bars = sorted({v for v in numeric_field_values(rows, "arrangeBars")}, key=float)
-    clip_to_bar = sorted({v for v in numeric_field_values(rows, "clipToBar")}, key=float)
-    clip_bars = sorted({v for v in numeric_field_values(rows, "clipBars")}, key=float)
-    part_pcts = [
-        sorted({v for v in numeric_field_values(rows, f"part{i}Percent")}, key=float) for i in (1, 2)
-    ]
     heads = [
         {"name": "kind", "kind": "softmax", "classes": ["abstain"] + KINDS},
         {"name": "arrangeOp", "kind": "softmax", "classes": [ABSENT] + ARRANGE_OPS},
         {"name": "arrangeRole", "kind": "softmax", "classes": [ABSENT] + ARRANGE_ROLES},
         {"name": "arrangeBars", "kind": "softmax", "classes": [ABSENT] + bars},
-        {"name": "clipOp", "kind": "softmax", "classes": [ABSENT] + CLIP_OPS},
-        {"name": "presetId", "kind": "softmax", "classes": [ABSENT] + string_field_values(rows, "presetId")},
-        {"name": "presetName", "kind": "softmax", "classes": [ABSENT] + string_field_values(rows, "presetName")},
-        {"name": "clipToBar", "kind": "softmax", "classes": [ABSENT] + clip_to_bar},
-        {"name": "clipBars", "kind": "softmax", "classes": [ABSENT] + clip_bars},
-        {"name": "part1Direction", "kind": "softmax", "classes": [ABSENT] + DIRECTIONS},
-        {"name": "part1Target", "kind": "softmax", "classes": [ABSENT] + TARGET_VALUES},
-        {"name": "part1Percent", "kind": "softmax", "classes": [ABSENT] + part_pcts[0]},
-        {"name": "part1Amount", "kind": "softmax", "classes": [ABSENT] + AMOUNTS},
-        {"name": "part1Pads", "kind": "sigmoid", "classes": PAD_VALUES},
-        {"name": "part2Direction", "kind": "softmax", "classes": [ABSENT] + DIRECTIONS},
-        {"name": "part2Target", "kind": "softmax", "classes": [ABSENT] + TARGET_VALUES},
-        {"name": "part2Percent", "kind": "softmax", "classes": [ABSENT] + part_pcts[1]},
-        {"name": "part2Amount", "kind": "softmax", "classes": [ABSENT] + AMOUNTS},
-        {"name": "part2Pads", "kind": "sigmoid", "classes": PAD_VALUES},
         {"name": "direction", "kind": "softmax", "classes": [ABSENT] + DIRECTIONS},
         {"name": "targets", "kind": "sigmoid", "classes": TARGET_VALUES},
         {"name": "pads", "kind": "sigmoid", "classes": PAD_VALUES},
@@ -514,7 +454,7 @@ class MultiHeadNet:
                         counts[cls] = counts.get(cls, 0) + 1
                 probs = softmax(logit)
                 truth = target.argmax(axis=1)
-                if head["name"] in ("kind", "presetId", "presetName", "clipToBar"):
+                if head["name"] == "kind":
                     # Log-scaled class balance on the long-tailed heads
                     # (kind: exact 474 rows vs save 6; direction/percent:
                     # rare direction words and rare numeric classes). An
@@ -532,10 +472,8 @@ class MultiHeadNet:
                     row_weights /= row_weights.mean()
                 else:
                     row_weights = np.ones(n, dtype=np.float64)
-                loss += -KIND_LOSS_WEIGHT * np.mean(
-                    row_weights * np.log(np.clip(probs[np.arange(n), truth], 1e-9, 1.0))
-                )
-                dlogits = (probs - target) * row_weights[:, None] * (KIND_LOSS_WEIGHT / n)
+                loss += -np.mean(row_weights * np.log(np.clip(probs[np.arange(n), truth], 1e-9, 1.0)))
+                dlogits = (probs - target) * row_weights[:, None] / n
             else:
                 target = np.stack([sigmoid_targets(head, batch_labels[row]) for row in range(n)])
                 probs = 1.0 / (1.0 + np.exp(-np.clip(logit, -30, 30)))
