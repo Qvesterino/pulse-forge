@@ -230,7 +230,8 @@ class IntakeStore {
     try {
       if (existsSync(filePath)) {
         const parsed = JSON.parse(readFileSync(filePath, "utf-8"));
-        if (Array.isArray(parsed?.items)) this.items = parsed.items.filter((item) => item && typeof item.id === "string");
+        if (Array.isArray(parsed?.items))
+          this.items = parsed.items.filter((item) => item && typeof item.id === "string");
       }
     } catch (error) {
       console.warn("[intake] could not load store, starting empty:", String(error));
@@ -268,7 +269,9 @@ class IntakeStore {
 
   /** Feed metadata without the payload — the studio pulls bytes per id. */
   list() {
-    return [...this.items].reverse().map(({ dataB64, ...meta }) => ({ ...meta, bytes: Math.floor((dataB64.length * 3) / 4) }));
+    return [...this.items]
+      .reverse()
+      .map(({ dataB64, ...meta }) => ({ ...meta, bytes: Math.floor((dataB64.length * 3) / 4) }));
   }
 
   get(id) {
@@ -688,7 +691,9 @@ export function createCollabServer({
             sendJson(res, 400, { error: result.error });
             return;
           }
-          sendJson(res, 201, { item: { ...result.item, dataB64: undefined, bytes: Math.floor((result.item.dataB64.length * 3) / 4) } });
+          sendJson(res, 201, {
+            item: { ...result.item, dataB64: undefined, bytes: Math.floor((result.item.dataB64.length * 3) / 4) },
+          });
         } catch (error) {
           sendJson(res, 400, { error: `invalid JSON body: ${String(error)}` });
         }

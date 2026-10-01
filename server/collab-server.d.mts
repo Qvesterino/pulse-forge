@@ -13,6 +13,15 @@ export interface GalleryEntry {
   [key: string]: unknown;
 }
 
+export interface IntakeEntry {
+  id: string;
+  name: string;
+  dataB64?: string;
+  sourceUrl: string | null;
+  bytes?: number;
+  createdAt: string;
+}
+
 export interface CollabServerHandle {
   server: import("node:http").Server;
   wss: import("ws").WebSocketServer;
@@ -22,7 +31,13 @@ export interface CollabServerHandle {
     find(id: string): GalleryEntry | null;
     registerPlay(id: string): number | null;
   };
+  intake: {
+    add(input: Record<string, unknown>): { item?: IntakeEntry; error?: string };
+    list(): IntakeEntry[];
+    get(id: string): IntakeEntry | null;
+    remove(id: string): boolean;
+  };
   metrics: unknown;
 }
 
-export function createCollabServer(options?: Record<string, unknown>): CollabServerHandle;
+export function createCollabServer(options?: { intakeFile?: string; [key: string]: unknown }): CollabServerHandle;

@@ -57,7 +57,8 @@ async function sendToKyx(url, tab) {
     const response = await fetch(url, { credentials: "omit" });
     if (!response.ok) throw new Error(`source responded ${response.status}`);
     const buffer = await response.arrayBuffer();
-    if (buffer.byteLength > MAX_BYTES) throw new Error(`audio too large (${Math.round(buffer.byteLength / 1024 / 1024)} MB, cap 6 MB)`);
+    if (buffer.byteLength > MAX_BYTES)
+      throw new Error(`audio too large (${Math.round(buffer.byteLength / 1024 / 1024)} MB, cap 6 MB)`);
     const dataB64 = arrayBufferToBase64(buffer);
 
     const res = await fetch(await intakeUrl(), {

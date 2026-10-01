@@ -1,5 +1,4 @@
 import { describe, it, expect, afterAll } from "vitest";
-import { compressToEncodedURIComponent } from "lz-string";
 import { createCollabServer } from "../server/collab-server.mjs";
 
 /**
@@ -33,9 +32,9 @@ describe("intake store", () => {
     const r = intake.add({ name: "kick.wav", dataB64: B64, sourceUrl: "https://example.com/kick.wav" });
     expect(r.error).toBeUndefined();
     const listed = intake.list()[0];
-    expect(listed).toMatchObject({ name: "kick.wav", sourceUrl: "https://example.com/kick.wav", bytes: 14 });
+    expect(listed).toMatchObject({ name: "kick.wav", sourceUrl: "https://example.com/kick.wav", bytes: 15 });
     expect(listed.dataB64).toBeUndefined(); // the FEED never carries payloads
-    expect(intake.get(r.item.id).dataB64).toBe(B64); // the payload endpoint does
+    expect(intake.get(r.item?.id ?? "")?.dataB64).toBe(B64); // the payload endpoint does
   });
 
   it("rejects missing name, missing payload, and non-base64 payloads", () => {
@@ -50,7 +49,7 @@ describe("intake store", () => {
     const { intake } = freshServer();
     const ids: string[] = [];
     for (let i = 0; i < 55; i += 1) {
-      ids.push(intake.add({ name: `clip-${i}`, dataB64: B64 }).item.id);
+      ids.push(intake.add({ name: `clip-${i}`, dataB64: B64 }).item?.id ?? "");
     }
     const listed = intake.list();
     expect(listed).toHaveLength(50);

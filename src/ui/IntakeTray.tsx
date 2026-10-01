@@ -28,7 +28,13 @@ function formatBytes(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 1024))} kB`;
 }
 
-export function IntakeTray({ onImported, className }: { onImported?: (asset: UserSampleAsset) => void; className?: string }) {
+export function IntakeTray({
+  onImported,
+  className,
+}: {
+  onImported?: (asset: UserSampleAsset) => void;
+  className?: string;
+}) {
   const services = useServices();
   const [items, setItems] = useState<IntakeItem[]>([]);
   const [error, setError] = useState<string | null>(null);
