@@ -190,7 +190,7 @@ function checkGate(stats: GateStats, label: string): void {
 // source of truth, so the gate always judges the runtime the browser gets.
 const KIND_MARGIN = Number(process.env.MARGIN ?? INTENT_MODEL_KIND_MARGIN);
 const ABSTAIN_MARGIN = Number(process.env.ABSTAIN_MARGIN ?? INTENT_MODEL_ABSTAIN_MARGIN);
-if (KIND_MARGIN !== 1.0 || ABSTAIN_MARGIN !== 2.0) {
+if (KIND_MARGIN !== INTENT_MODEL_KIND_MARGIN || ABSTAIN_MARGIN !== INTENT_MODEL_ABSTAIN_MARGIN) {
   console.log(
     `[gate] running with NON-PRODUCTION margins: kindMargin=${KIND_MARGIN} abstainMargin=${ABSTAIN_MARGIN} ` +
       `(production pins are ${INTENT_MODEL_KIND_MARGIN} / ${INTENT_MODEL_ABSTAIN_MARGIN}) — if the gate passes, the pin flip must land in the same change`,
