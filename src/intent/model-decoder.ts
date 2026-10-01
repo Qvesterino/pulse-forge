@@ -153,6 +153,20 @@ const COMPARE_STRIP_KEYS = new Set(["detected", "sourceText", "matchedBy", "unre
  * op objects, never op-form ones, so this strip cannot hide a wrong rename. */
 const OP_FORM_STRIP_KEYS = new Set(["sceneId", "name", "beforeSceneId", "clipId", "dir"]);
 
+/**
+ * Recognition-and-handoff kinds (scope wave 2026-10-01): the v1 classifier's
+ * contract for open-vocabulary kinds is RECOGNITION — the resolver refuses
+ * the empty-slot route and the deterministic layer owns the content
+ * (compound decomposition, clarify questions, unknown-preset suggestions).
+ * Their content fields therefore drop from the decode-vs-truth yardstick
+ * the way engine-filled fields do; the kind itself still has to match.
+ */
+const KIND_CONTENT_STRIP_KEYS: Record<string, ReadonlySet<string>> = {
+  compound: new Set(["parts"]),
+  clarify: new Set(["suggestions"]),
+  presetUnknown: new Set(["name", "suggestions"]),
+};
+
 /** Recursively canonicalize a response for byte-stable comparison: strip
  * engine-filled fields, sort arrays, sort object keys. */
 export function canonicalModelJson(value: unknown): string {
@@ -163,8 +177,14 @@ export function canonicalModelJson(value: unknown): string {
   }
   if (value != null && typeof value === "object") {
     const opForm = typeof (value as Record<string, unknown>).op === "string";
+    const kindStrip = KIND_CONTENT_STRIP_KEYS[String((value as Record<string, unknown>).kind)];
     const keys = Object.keys(value)
-      .filter((key) => !COMPARE_STRIP_KEYS.has(key) && !(opForm && OP_FORM_STRIP_KEYS.has(key)))
+      .filter(
+        (key) =>
+          !COMPARE_STRIP_KEYS.has(key) &&
+          !(opForm && OP_FORM_STRIP_KEYS.has(key)) &&
+          !(kindStrip !== undefined && kindStrip.has(key)),
+      )
       .sort();
     return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalModelJson((value as Record<string, unknown>)[key])}`).join(",")}}`;
   }
@@ -336,6 +356,9 @@ export function decodeIntentHeads(
       const op = opt("clipOp");
       if (!op) return null;
       if (op === "copyClip" || op === "moveClip") {
+        // toBar head classes are the TRUTH values (engine 0-indexed bars) —
+        // emitted verbatim; the schema's 1-999 human-bar form is the LLM
+        // grammar's convention, not the classifier's.
         const toBar = optNum("clipToBar");
         if (toBar === null) return null;
         return { kind: "clips", ops: [{ op, toBar }] };
@@ -346,6 +369,44 @@ export function decodeIntentHeads(
         return { kind: "clips", ops: [{ op, bars }] };
       }
       return { kind: "clips", ops: [{ op }] };
+    }
+    case "compound": {
+      // Sequence-student phase 2: the corpus compound family is ALWAYS
+      // two-part, and only the two-fader subset is emittable with closed
+      // heads — a fader part is {direction, target, pads, amount|percent}.
+      // Non-fader parts (exact/tempo/preset/…) and a missing second part
+      // abstain (the resolver refuses a kind-only compound anyway — never a
+      // silent partial apply). Rolling-artifact guard as everywhere above.
+      const partHeads = [1, 2].flatMap((index) => [
+        `part${index}Direction`,
+        `part${index}Target`,
+        `part${index}Percent`,
+        `part${index}Amount`,
+        `part${index}Pads`,
+      ]);
+      if (!partHeads.every((name) => vocab.heads.some((candidate) => candidate.name === name))) {
+        // Older vocab: recognition-and-handoff — flag the kind, let the
+        // resolver refuse the empty route (deterministic layer owns it).
+        return { kind: "compound" };
+      }
+      const part = (index: 1 | 2): Record<string, unknown> | null => {
+        const direction = opt(`part${index}Direction`);
+        const target = opt(`part${index}Target`);
+        const percent = optNum(`part${index}Percent`);
+        const amount = opt(`part${index}Amount`);
+        const partPads = activeClasses(head(`part${index}Pads`), scores(`part${index}Pads`));
+        if (!direction || !target) return null;
+        // Truth fader parts carry EXACTLY one of amount/percent (measured
+        // across every split) — emitting neither or both is a guess.
+        if (percent !== null) return { kind: "fader", intent: { direction, pads: partPads, percent, targets: [target] } };
+        if (amount) return { kind: "fader", intent: { amount, direction, pads: partPads, targets: [target] } };
+        return null;
+      };
+      const first = part(1);
+      if (!first) return { kind: "compound" };
+      const second = part(2);
+      if (!second) return { kind: "compound" };
+      return { kind: "compound", parts: [first, second] };
     }
     case "effectIntent": {
       const effectType = opt("effectType");
@@ -424,10 +485,27 @@ export function decodeIntentHeads(
       if (!attribute || !direction) return null;
       return { kind: "revise", attribute, direction, detected: ["AI"], targetRole: opt("targetRole") ?? null };
     }
+    case "preset": {
+      // Rolling-artifact guard: the preset heads land in a future artifact
+      // (the vocab on disk may predate them — abstain, never throw).
+      const hasPresetHeads = ["presetId", "presetName"].every((name) =>
+        vocab.heads.some((candidate) => candidate.name === name),
+      );
+      if (!hasPresetHeads) return null;
+      const id = opt("presetId");
+      const name = opt("presetName");
+      const target = opt("targets_one");
+      if (!id || !name || !target) return null;
+      return { kind: "preset", preset: { id, name }, target };
+    }
+    case "clarify":
+    case "presetUnknown":
+      // Recognition-and-handoff: the model flags the kind, the resolver
+      // refuses the empty route and the deterministic layer owns the parts/
+      // questions/suggestions. The yardstick strips those fields
+      // (KIND_CONTENT_STRIP_KEYS), so a bare kind object is exact.
+      return { kind } as CompactIntentResponse;
     default:
-      // clips / compound / clarify / preset / presetUnknown — nested or
-      // open-vocabulary payloads stay out of the closed-head classifier's
-      // scope until the sequence student covers them.
       return null;
   }
 }
