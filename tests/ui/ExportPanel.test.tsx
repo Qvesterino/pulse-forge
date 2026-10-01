@@ -124,6 +124,27 @@ describe("ExportPanel", () => {
     expect(await screen.findByRole("button", { name: /^STAGED/ })).toBeDisabled();
   });
 
+  it("re-enables AUTO STAGE when a re-export delivers a new verdict", async () => {
+    // The staged button instructs the user to "re-export to verify", so the
+    // re-export is a documented step, not an edge case. A new render is a new
+    // verdict: if the mix changed (a track was added, a fader moved, the user
+    // undid the staged gain), the advice differs and has to be applicable
+    // again. A latch that is never reset leaves it permanently unreachable for
+    // the rest of the panel's life.
+    const user = userEvent.setup();
+    const services = mockServices();
+    renderWithContext(<ExportPanel />, { services });
+
+    await user.click(screen.getByRole("button", { name: /^EXPORT MASTER/ }));
+    await user.click(await screen.findByRole("button", { name: /^AUTO STAGE/ }));
+    expect(await screen.findByRole("button", { name: /^STAGED/ })).toBeDisabled();
+
+    // Re-export, exactly as the button's own label tells the user to.
+    await user.click(screen.getByRole("button", { name: /^EXPORT MASTER/ }));
+    const afterReexport = await screen.findByRole("button", { name: /^(AUTO STAGE|STAGED)/ });
+    expect(afterReexport).toBeEnabled();
+  });
+
   it("global quality switch defaults to Studio HQ", () => {
     renderWithContext(<ExportPanel />, { services: mockServices() });
     const quality = screen.getByLabelText("QUALITY") as HTMLSelectElement;

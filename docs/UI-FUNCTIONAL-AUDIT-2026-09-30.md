@@ -3,7 +3,10 @@
 Functional (not visual) audit of the KYX / Pulse Forge UI, with repairs.
 Scope: every interactive surface in `src/ui/**` — 85 components, 1.7 MB of
 React. Six waves, **18 confirmed defects repaired**, each source change covered
-by a regression test proven to FAIL against the pre-fix code.
+by a regression test proven to FAIL against the pre-fix code. A seventh wave
+swept §3, §7, §9, §14 and §15 and found no further defect; it is recorded
+because its two false positives and its verified-clean areas are the part a
+future audit should not have to re-derive.
 
 This file is a working report. Per `AGENTS.md` §10, any number claimed here
 must be reproducible from the working tree.
@@ -328,6 +331,84 @@ existing `dialogRef` on the inner panel, which is click-outside), `HelpOverlay.t
 focus containment, `aria-modal` correctness and a roving-tabindex decision for
 the mixer strips are a11y redesign, which §14 of the objective excludes. §8
 keeps the mixer-strip finding on the record for the same reason.
+
+### WAVE 7 — §9 / §14 / §15 sweeps that found nothing (and one that found a test, not a bug)
+
+Wave 7 produced **no new defect**. It is recorded because "found nothing" is
+only worth stating when the searches were good enough to be trusted, and
+because two of its searches produced false positives that had to be caught.
+
+**`AutoStageButton`'s "staged" latch looked permanently disabled — it is not.**
+`ExportPanel.tsx:928` latches `staged` with `useState(false)` and never resets
+it, and the button renders its label as "STAGED ✓ … — **re-export to verify**".
+The re-export therefore looks like it produces a new, unappliable verdict. The
+reproduction test **passed against the current code**, and the mechanism is in
+the code rather than in the test: `exportMaster` sets
+`setStatus({ kind: "busy" })` at `ExportPanel.tsx:163` _before_ its first
+`await`, and the button sits behind `{status.kind === "done" && …}` at line
+838 — so it unmounts on every export and mounts fresh with `staged = false`.
+The latch cannot outlive an export, which is also why it cannot double-apply the
+same advice (`computeStageAdjustment` reads the _rendered summary_, not project
+state, so a second click on the same summary would apply the delta twice).
+
+The test was kept because it pins a real invariant and was given teeth: making
+the latch module-scoped so it survived the unmount failed **exactly 1 of 12**
+tests — the new one — while the existing "button confirms and disables after
+staging" test still passed.
+
+**Fourteen of the sixteen editor shortcuts verified in one pass; the search
+that found them was wrong three times first.** The Help overlay advertises
+every shortcut, so an advertised-but-unbound binding is §15's "interactive UI
+that falsely appears functional". The first three searches returned nothing and
+each was a bad predicate, not absent code:
+
+| search                            | what it actually found                                                                 |
+| --------------------------------- | -------------------------------------------------------------------------------------- |
+| `key === "L"` etc. in `PianoRoll` | keys are compared as `const lower = e.key.toLowerCase()` then `lower === "l"`          |
+| `lower === "x"` across `src/ui`   | `App.tsx` compares inline: `event.key.toLowerCase() === "x"`                           |
+| `crossfade` across `src`          | 100 hits of DSP crossfades in worklets and the master chain, none of them the shortcut |
+
+Only the fourth search — enumerating **every** `toLowerCase() === "<letter>"`
+binding in `src/ui` and comparing that set against the advertised list — was
+sound. Result: **all 16 advertised editor shortcuts are implemented**, each
+verified at its handler: S strum `PianoRoll.tsx:1080`, Alt+S slide `:1081`,
+L legato `:1132`, Ctrl+B duplicate `:1051`, Alt+Q quantize `:1062`, Shift+C
+chord stamp `:1074`, nudge `:1025`, P locators `App.tsx:1067`, Ctrl+B bounce
+`App.tsx:1179`, X crossfade `App.tsx:1249` (it sets `fadeIn`/`fadeOut` to 0.08
+on the intersecting clips and builds transitions), Ctrl+E separate
+`App.tsx:1045`, A capture `App.tsx:889-898`, Ctrl+Shift+V / Ctrl+Shift+F
+`TopBar.tsx:340` / `:345`, D / Shift+D `DiceTray.tsx:147` / `:150`, and the
+roll history on ← → `DiceTray.tsx:153-158`.
+
+**Other areas swept and found clean** (each with the check that supports the
+claim, since "no hits" means nothing unless the predicate was right):
+
+- **§15 dead UI** — no empty `onClick`/`onChange` handlers, no
+  `TODO`/`FIXME`/`WIP` in `src/ui`, no `disabled={true}` / `readOnly` hardcoded
+  to a constant. The five `console.*` calls in `src/ui` are all `console.warn`
+  in `catch` blocks.
+- **§7 NaN / Infinity** — every numeric input that takes free text is guarded.
+  `ArrangementPanel.tsx:1289` (`Number.isFinite(seconds) && seconds > 0`),
+  `OzvenaPanel.tsx:91-93` (empty-string cancel + `isFinite` + clamp),
+  `Inspector.tsx:919` / `935` (`Number(...) || 0`), and — the one that would
+  matter most — `FxEqPanel.tsx:126-127` restores a band selection from
+  `localStorage` and rejects non-finite, out-of-range and fractional values.
+  The remaining `Number(...)` call sites are `<select>` elements, whose options
+  cannot produce `NaN`.
+- **§13 deletion of the controlled object, during a long async op** —
+  `FreezeButton` renders a track to an `AudioBuffer` across a multi-second
+  `await` and then dispatches `freezeTrack` against a `doc` captured at render
+  time. The obvious hazard is a stale-document write. It is handled by
+  construction: `freezeTrack` reads the track at build time but its `execute`
+  closure works on the document passed in by the store at dispatch time and
+  no-ops if the track is gone (`commands.ts:6734`). An orphaned buffer can
+  remain in the bank, which the file documents as GC'd.
+- **§3 duplicate execution on rapid clicks** — every async surface in
+  `ExportPanel` disables all sibling actions behind one `busy` flag and offers
+  CANCEL; `FreezeButton` guards both handlers and resets in `finally`. The
+  `UltinaPanel` preset save/rename/delete handlers are gated by `window.prompt`
+  / `window.confirm`, which block the main thread, so a second click cannot be
+  dispatched. `ThemePanel`'s clipboard write is idempotent.
 
 ### CORRECTED / WITHDRAWN CLAIMS (recorded so they are not repeated)
 
@@ -724,6 +805,7 @@ Every count below is reproducible from the working tree.
 | `tests/ui/ArrangementPanel.delete-selected-clip.test.tsx` | 2      | #17 — DEL button resting state                             |
 | `tests/ui/TopBar.loop-sync.test.tsx`                      | 2      | §5 — LOOP is not a second source of truth                  |
 | `tests/ui/useFocusRestore.test.tsx`                       | 5      | #18 — focus restore across 4 close/teardown paths          |
+| `tests/ui/ExportPanel.test.tsx` (extended)                | 1      | §9 — AUTO STAGE stays scoped to one render                 |
 
 **Existing files extended** — `tests/ui/controls.test.tsx` (#1, #2, #3),
 `tests/ui/EffectRack.test.tsx` (#4), `tests/ui/ozvena-panel.test.tsx` (#5, #6),
@@ -731,7 +813,10 @@ Every count below is reproducible from the working tree.
 `tests/clip-editing-audit-deep.test.ts` (#9, #10, #11, #12),
 `tests/store-undo-frame.test.ts` (undo-frame reuse for #5),
 `tests/ui/HelpOverlay.test.tsx` (#18 — the overlay's own call site, so the hook
-is not tested in isolation from the wiring that feeds it).
+is not tested in isolation from the wiring that feeds it),
+`tests/ui/ExportPanel.test.tsx` (§9 wave 7 — pins that the AUTO STAGE latch is
+scoped to a single render, proven by making it survive the unmount and
+observing 1 of 12 fail).
 
 **Coverage that is NOT a regression guard, and why.** #13 (kit save
 confirmation), #14/#15 (PRISM/VLYX zero height) and #17's _visual_ aspect were
