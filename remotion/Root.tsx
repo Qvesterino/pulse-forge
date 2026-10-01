@@ -7,6 +7,13 @@ import {
   AGENT_WIDTH,
   McpAgentSession,
 } from "./McpAgentSession";
+import {
+  VAGENT_DURATION_FRAMES,
+  VAGENT_FPS,
+  VAGENT_HEIGHT,
+  VAGENT_WIDTH,
+  McpAgentSessionVertical,
+} from "./McpAgentSessionVertical";
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -18,6 +25,14 @@ export const RemotionRoot: React.FC = () => {
         fps={PROMO_FPS}
         width={PROMO_WIDTH}
         height={PROMO_HEIGHT}
+      />
+      <Composition
+        id="McpAgentSessionVertical"
+        component={McpAgentSessionVertical}
+        durationInFrames={VAGENT_DURATION_FRAMES}
+        fps={VAGENT_FPS}
+        width={VAGENT_WIDTH}
+        height={VAGENT_HEIGHT}
       />
       <Composition
         id="McpAgentSession"
