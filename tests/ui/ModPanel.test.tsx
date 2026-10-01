@@ -124,18 +124,19 @@ describe("ModPanel — macro PARAM target must be honest about being mappable (d
     renderWithContext(<ModPanel />, { services: mockServices(doc) });
 
     const mapButton = () => screen.getAllByRole("button", { name: "+ MAP" })[0] as HTMLButtonElement;
+    const targetParamPicker = () => screen.getAllByLabelText("Macro target parameter")[0] as HTMLSelectElement;
 
     await user.selectOptions(screen.getAllByLabelText("Macro parameter")[0], "param");
 
     // Mappable: a device is present, so the first parameter is auto-selected.
-    expect(screen.getAllByLabelText("Macro target parameter")[0].options.length).toBeGreaterThan(1);
+    expect(targetParamPicker().options.length).toBeGreaterThan(1);
     expect(mapButton()).toBeEnabled();
 
     // Narrow the filter to nothing — the common real case is typing a search
     // string that matches no parameter on the chosen device.
     await user.type(screen.getAllByLabelText("Filter macro parameters")[0], "zzzznomatch");
 
-    expect(screen.getAllByLabelText("Macro target parameter")[0]).toHaveDisplayValue("no params");
+    expect(targetParamPicker()).toHaveDisplayValue("no params");
     expect(mapButton()).toBeDisabled();
 
     // Clearing the filter restores a real target, and with it the action.
