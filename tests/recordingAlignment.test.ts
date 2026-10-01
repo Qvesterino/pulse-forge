@@ -4,6 +4,7 @@ import {
   MIN_RECORDING_INPUT_OFFSET_MS,
   RECORDING_ALIGNMENT_STORAGE_KEY,
   RecordingAlignmentController,
+  recordingOffsetFromMeasurement,
   type RecordingAlignmentStorage,
 } from "../src/audio-engine/recordingAlignment";
 
@@ -58,5 +59,27 @@ describe("recording alignment preference", () => {
     const blocked = new RecordingAlignmentController(blockedStorage);
     expect(() => blocked.setOffsetMs(25)).not.toThrow();
     expect(blocked.getSnapshot()).toBe(25);
+  });
+});
+
+describe("measured round-trip → recording placement offset policy", () => {
+  it("rounds a stable measurement into the placement offset", () => {
+    expect(recordingOffsetFromMeasurement({ roundTripMs: 63.4, stable: true })).toBe(63);
+    expect(recordingOffsetFromMeasurement({ roundTripMs: -12.6, stable: true })).toBe(-13);
+    expect(recordingOffsetFromMeasurement({ roundTripMs: 0, stable: true })).toBe(0);
+  });
+
+  it("refuses unstable or non-finite measurements instead of misplacing takes", () => {
+    expect(recordingOffsetFromMeasurement({ roundTripMs: 63.4, stable: false })).toBeNull();
+    expect(recordingOffsetFromMeasurement({ roundTripMs: Number.NaN, stable: true })).toBeNull();
+    expect(recordingOffsetFromMeasurement({ roundTripMs: Number.POSITIVE_INFINITY, stable: true })).toBeNull();
+  });
+
+  it("the controller clamps a huge measurement to the ±500 ms placement limit", () => {
+    const alignment = new RecordingAlignmentController(memoryStorage());
+    alignment.setOffsetMs(recordingOffsetFromMeasurement({ roundTripMs: 940.2, stable: true })!);
+    expect(alignment.getSnapshot()).toBe(MAX_RECORDING_INPUT_OFFSET_MS);
+    alignment.setOffsetMs(recordingOffsetFromMeasurement({ roundTripMs: -940.2, stable: true })!);
+    expect(alignment.getSnapshot()).toBe(MIN_RECORDING_INPUT_OFFSET_MS);
   });
 });

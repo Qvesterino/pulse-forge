@@ -66,3 +66,21 @@ export class RecordingAlignmentController {
 
 /** Loaded with the lazy recording/calibration panels, not the initial DAW shell. */
 export const recordingAlignment = new RecordingAlignmentController();
+
+/** The slice of a measured audio round trip the placement policy consumes. */
+export interface MeasuredAudioRoundTrip {
+  roundTripMs: number;
+  stable: boolean;
+}
+
+/**
+ * Recording-placement policy for the latency probe's measurement: a stable,
+ * finite round trip becomes the mic recording offset (the controller clamps
+ * to ±500 ms), so takes compensate the measured output+input latency without
+ * manual slider work. Unstable measurements are refused — applying one would
+ * systematically misplace takes by an unmeasured amount.
+ */
+export function recordingOffsetFromMeasurement(measurement: MeasuredAudioRoundTrip): number | null {
+  if (!measurement || measurement.stable !== true || !Number.isFinite(measurement.roundTripMs)) return null;
+  return Math.round(measurement.roundTripMs);
+}

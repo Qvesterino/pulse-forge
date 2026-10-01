@@ -83,3 +83,34 @@ architecturally out of reach for this student** (see verdict).
    the ONNX head spec (closed-class multi-head decode) is reused unchanged.
 4. Until then the ONNX head stays **inert by design** (gatePassed=false pins it): desktop uses
    the SFT model (92.3 %), browser uses the deterministic layer — both honest, nothing guesses.
+
+## Wave 2 (2026-10-01): char 4-grams + corpus growth
+
+Added the 4-char window to both featurizers (TS + python, same contract) and a 99-pair
+breadth corpus wave (fader verb/amount variety, exact track ops, effect add/remove,
+send/bypass targets, loudness targets, rare transport/export/select/tempo kinds, SK twins).
+Corpus 1850 → 1949 pairs (1671 train / 278 val / 74 golden).
+
+Controlled A/B on the IDENTICAL corpus + val split:
+
+| arm                      | attempted-exact | abstain    | model  |
+| ------------------------ | --------------- | ---------- | ------ |
+| char 3-grams             | 67.2 %          | 29.9 %     | 4.6 MB |
+| char 3+4-grams (shipped) | **67.8 %**      | **25.2 %** | 6.4 MB |
+
+The val split grew (264 → 278) and got deliberately harder — the new val rows are wide
+paraphrase families — so absolute numbers are not comparable to wave 1. The honest
+cross-split read after this wave:
+
+- train 90.1 % attempted-exact
+- val 67.8 % (hard paraphrase rows)
+- **golden 94.7 % attempted-exact with wrongKind = 0** — the locked, production-shaped
+  subset is one point from the 95 % bar with zero wrong kinds
+- determinism byte-equal; gate still honestly FAILED on val (attempted-exact, wrongKind 6,
+  abstain 25.2 %)
+
+4-grams stay: +0.6 % exact and −4.7 % abstain for +1.8 MB is worth it while the gate's
+abstain bar is the binding constraint. Next: calibration on the rare-kind tail (wrongKind 6
+is now the hard-gate blocker, not exactness), corpus growth continued (the same lever keeps
+paying), and the sequence student only if the closed-head decode still caps exactness after
+the corpus doubles again.

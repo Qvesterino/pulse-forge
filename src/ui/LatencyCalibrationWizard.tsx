@@ -7,6 +7,7 @@ import {
   MAX_RECORDING_INPUT_OFFSET_MS,
   MIN_RECORDING_INPUT_OFFSET_MS,
   recordingAlignment,
+  recordingOffsetFromMeasurement,
 } from "../audio-engine/recordingAlignment";
 
 type WizardPhase = "intro" | "permission" | "audio" | "audio-result" | "midi" | "error";
@@ -33,6 +34,11 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
   const [phase, setPhase] = useState<WizardPhase>("intro");
   const [error, setError] = useState("");
   const [testPlaying, setTestPlaying] = useState(false);
+  /** Offset actually applied to recording placement by the last stable measurement
+   * (post-clamp); null when the current run has not applied anything. */
+  const [appliedOffsetMs, setAppliedOffsetMs] = useState<number | null>(null);
+  /** Raw (pre-clamp) measurement behind `appliedOffsetMs`, for the limited-range note. */
+  const [measuredOffsetMs, setMeasuredOffsetMs] = useState<number | null>(null);
   const playbackSnapshotRef = useRef<PlaybackSnapshot | null>(null);
   const runTokenRef = useRef(0);
   const audioAbortRef = useRef<AbortController | null>(null);
@@ -43,6 +49,8 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
     setPhase("intro");
     setError("");
     setTestPlaying(false);
+    setAppliedOffsetMs(null);
+    setMeasuredOffsetMs(null);
     playbackSnapshotRef.current = {
       wasPlaying: services.transport.playing,
       position: services.transport.position,
@@ -103,6 +111,17 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
       });
       if (token !== runTokenRef.current) return;
       services.latency.setAudioMeasurement(measurement);
+      // Feed the measured round trip into recording placement (previously
+      // display-only): a stable measurement seeds the mic recording offset,
+      // which every take compensates via compensateRecordingStartBar.
+      const measuredOffset = recordingOffsetFromMeasurement(measurement);
+      setMeasuredOffsetMs(measuredOffset);
+      if (measuredOffset !== null) {
+        recordingAlignment.setOffsetMs(measuredOffset);
+        setAppliedOffsetMs(recordingAlignment.getSnapshot());
+      } else {
+        setAppliedOffsetMs(null);
+      }
       setPhase("audio-result");
     } catch (cause) {
       if (token !== runTokenRef.current) return;
@@ -215,6 +234,7 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
         {phase === "audio-result" && (
           <div className="latency-body">
             <AudioResult calibration={calibration} />
+            <AppliedOffsetNote appliedOffsetMs={appliedOffsetMs} measuredOffsetMs={measuredOffsetMs} />
             <p className="latency-copy">
               This is an audio-path measurement, not the physical latency of a MIDI controller.
             </p>
@@ -249,6 +269,7 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
         {phase === "midi" && (
           <div className="latency-body">
             {calibration.audioRoundTripMs !== null && <AudioResult calibration={calibration} />}
+            <AppliedOffsetNote appliedOffsetMs={appliedOffsetMs} measuredOffsetMs={measuredOffsetMs} />
             <p className="latency-copy">
               Start the test loop, play a repeated MIDI note, then move the offset until the live note sits with the
               project transient.
@@ -289,8 +310,8 @@ export function LatencyCalibrationWizard({ open, onClose }: LatencyCalibrationWi
                 onChange={(event) => recordingAlignment.setOffsetMs(Number(event.target.value))}
               />
               <span className="latency-hint">
-                Manual input correction: positive values move recorded clips earlier. The round-trip test above is not
-                applied automatically.
+                Recording placement correction: positive values move recorded clips earlier. A stable audio test seeds
+                this value; nudge the slider to fine-tune.
               </span>
             </label>
             <div className="latency-actions">
@@ -327,6 +348,25 @@ function AudioResult({ calibration }: { calibration: ReturnType<typeof useLatenc
         <p>Measurement is unstable. Try quieter surroundings or a clearer acoustic return.</p>
       )}
     </div>
+  );
+}
+
+/** Confirms the measured round trip now drives recording placement (or that the ±500 ms limit clipped it). */
+function AppliedOffsetNote({
+  appliedOffsetMs,
+  measuredOffsetMs,
+}: {
+  appliedOffsetMs: number | null;
+  measuredOffsetMs: number | null;
+}) {
+  if (appliedOffsetMs === null) return null;
+  const limited = measuredOffsetMs !== null && measuredOffsetMs !== appliedOffsetMs;
+  return (
+    <p className="latency-hint" role="status">
+      Applied to mic recording placement: {appliedOffsetMs} ms
+      {limited ? ` (measured ${measuredOffsetMs} ms — limited to ±${MAX_RECORDING_INPUT_OFFSET_MS} ms)` : ""}. New takes
+      are placed earlier by this amount; the slider in the MIDI step fine-tunes it.
+    </p>
   );
 }
 

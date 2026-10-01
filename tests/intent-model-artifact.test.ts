@@ -148,6 +148,8 @@ describe("expandIntentFeatures (intent-features.v2)", () => {
     expect(features).toContain("turn_down");
     expect(features).toContain("^tu");
     expect(features).toContain("wn$");
+    expect(features).toContain("^tur");
+    expect(features).toContain("own$");
   });
 
   it("char grams carry the fuzzy read: a typo keeps most of its signature", () => {
