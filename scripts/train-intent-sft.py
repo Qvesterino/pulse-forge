@@ -154,6 +154,8 @@ def main() -> None:
     parser.add_argument("--batch", type=int, default=4)
     parser.add_argument("--accum", type=int, default=4)
     parser.add_argument("--lr", type=float, default=2e-4)
+    parser.add_argument("--lora-r", type=int, default=16, help="LoRA rank (recipe wave: 32)")
+    parser.add_argument("--lora-alpha", type=int, default=32, help="LoRA alpha (recipe wave: 64 = 2×r)")
     parser.add_argument("--val-limit", type=int, default=60)
     parser.add_argument("--sft-dir", default=str(SFT_DIR), help="corpus dir (train.jsonl/val.jsonl/prompt.txt)")
     args = parser.parse_args()
@@ -177,8 +179,8 @@ def main() -> None:
     model.gradient_checkpointing_enable()
 
     peft_config = LoraConfig(
-        r=16,
-        lora_alpha=32,
+        r=args.lora_r,
+        lora_alpha=args.lora_alpha,
         lora_dropout=0.05,
         target_modules="all-linear",
         task_type="CAUSAL_LM",
@@ -205,7 +207,14 @@ def main() -> None:
         optimizer, max_lr=args.lr, total_steps=total_steps, pct_start=0.05
     )
 
-    report = {"baseModel": args.base_model, "trainExamples": len(examples), "epochs": args.epochs}
+    report = {
+        "baseModel": args.base_model,
+        "trainExamples": len(examples),
+        "epochs": args.epochs,
+        "loraR": args.lora_r,
+        "loraAlpha": args.lora_alpha,
+        "lr": args.lr,
+    }
     step = 0
     for epoch in range(args.epochs):
         random.shuffle(examples)
