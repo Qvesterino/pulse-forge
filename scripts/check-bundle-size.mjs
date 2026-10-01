@@ -90,6 +90,14 @@ const OPTIONAL_CODEC_PREFIXES = ["mp3-"];
 // the adapter must not hide outside the SDK's separate allowance.
 const OPTIONAL_NEXUS_BUDGET_KB = 750;
 const OPTIONAL_NEXUS_PREFIXES = ["audiotool-nexus-"];
+// QMR HUD (Qvester ecosystem): the deferred chip trigger + the full panel
+// (knowledge graph, coach, ecosystem map) load only after an explicit chip
+// click / Ctrl+K — a user-triggered opt-in payload, not core DAW weight.
+// First measured landing: 88 KB chip + 992 KB panel JS from
+// @qvester/qmr-hud's 4.2 MB TS source (mounted via vite aliases from the
+// sibling monorepo). Growth beyond this cap is a conscious decision.
+const OPTIONAL_QMR_BUDGET_KB = 1600;
+const OPTIONAL_QMR_PREFIXES = ["qmr-"];
 // 150: deliberate bump (was 120 — the gate had been red since kaskada's
 // 32-band spectral DSP landed in the core bundle at ~137 KB). The de-cramped
 // stock EQ worklet pushed the measured size to 144 KB. The core bundle stays
@@ -137,6 +145,7 @@ let totalKb = 0;
 let optionalAiRuntimeKb = 0;
 let optionalCodecKb = 0;
 let optionalNexusKb = 0;
+let optionalQmrKb = 0;
 const optionalNexusFiles = [];
 for (const file of readdirSync(join(dist, "assets"))) {
   if (!file.endsWith(".js")) continue;
@@ -146,7 +155,8 @@ for (const file of readdirSync(join(dist, "assets"))) {
   else if (OPTIONAL_NEXUS_PREFIXES.some((prefix) => file.startsWith(prefix))) {
     optionalNexusKb += sizeKb;
     optionalNexusFiles.push(file);
-  } else totalKb += sizeKb;
+  } else if (OPTIONAL_QMR_PREFIXES.some((prefix) => file.startsWith(prefix))) optionalQmrKb += sizeKb;
+  else totalKb += sizeKb;
 }
 
 console.log(`[size-budget] entry: ${entryKb.toFixed(0)} KB (budget ${ENTRY_BUDGET_KB})`);
@@ -158,6 +168,7 @@ console.log(`[size-budget] optional codecs: ${optionalCodecKb.toFixed(0)} KB (bu
 console.log(
   `[size-budget] optional Audiotool Nexus: ${optionalNexusKb.toFixed(0)} KB (budget ${OPTIONAL_NEXUS_BUDGET_KB})`,
 );
+console.log(`[size-budget] optional QMR HUD: ${optionalQmrKb.toFixed(0)} KB (budget ${OPTIONAL_QMR_BUDGET_KB})`);
 console.log(
   `[size-budget] shipped JS total: ${(totalKb + optionalAiRuntimeKb + optionalCodecKb + optionalNexusKb).toFixed(0)} KB`,
 );
