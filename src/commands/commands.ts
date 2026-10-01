@@ -5239,6 +5239,13 @@ function dMap(doc: ProjectDocument, macroId: string, fn: (m: Macro) => Macro): P
 export function applyMasterMatchEqCommand(
   doc: ProjectDocument,
   curve: { low: number; lowMid: number; highMid: number; high: number } | null,
+  /**
+   * Reference loudness trim (reference conditioning wave) — the level half
+   * of "znej ako ref", derived from the reference's own BS.1770 loudness
+   * (see match-eq.referenceLoudnessTrim). Clamped ±6 like the per-genre
+   * trim; undefined leaves the existing trim untouched.
+   */
+  loudnessTrimDb?: number,
 ): Command {
   const clamp6 = (v: number): number => Math.max(-6, Math.min(6, Number.isFinite(v) ? v : 0));
   const matchEq = curve
@@ -5250,10 +5257,15 @@ export function applyMasterMatchEqCommand(
       }
     : undefined;
   const fmt = (v: number): string => `${v > 0 ? "+" : ""}${v.toFixed(1)}`;
-  const label = matchEq
-    ? `Match EQ ${fmt(matchEq.low)}/${fmt(matchEq.lowMid)}/${fmt(matchEq.highMid)}/${fmt(matchEq.high)} dB`
-    : "Match EQ off";
-  const command = setMasterConfig(doc, { matchEq });
+  const parts: string[] = [];
+  if (matchEq)
+    parts.push(`Match EQ ${fmt(matchEq.low)}/${fmt(matchEq.lowMid)}/${fmt(matchEq.highMid)}/${fmt(matchEq.high)} dB`);
+  if (loudnessTrimDb !== undefined) parts.push(`loudness ${fmt(loudnessTrimDb)} dB`);
+  const label = parts.length > 0 ? parts.join(" · ") : "Match EQ off";
+  const command = setMasterConfig(doc, {
+    ...(matchEq ? { matchEq } : {}),
+    ...(loudnessTrimDb !== undefined ? { loudnessTrimDb: clamp6(loudnessTrimDb) } : {}),
+  });
   return { ...command, label };
 }
 

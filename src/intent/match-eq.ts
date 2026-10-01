@@ -25,6 +25,8 @@
  */
 
 import { fftInPlace } from "../audio-engine/spectralEdit";
+import { analyzeLoudnessBuffer } from "../audio-engine/kweighting";
+import { SONG_LOUDNESS_TARGET_LUFS, SONG_LOUDNESS_TRIM_LIMIT_DB } from "./genre-reference.generated";
 
 /** Master chain band layout — mirrors the EQ's shelf/bell structure. */
 export interface MatchEqBands {
@@ -187,6 +189,35 @@ export function setMatchEqReference(pcm: Float32Array | null): void {
 
 export function hasMatchEqReference(): boolean {
   return referencePcm !== null && referencePcm.length > FFT_SIZE;
+}
+
+/** Plausible integrated-loudness window for a REFERENCE TRACK. Outside it
+ * the measurement says "this is not a finished song" (room tone, a mic
+ * recording of silence) and matching its level would be nonsense — the
+ * level half declines instead. */
+export const REFERENCE_LOUDNESS_PLAUSIBLE_LUFS: ReadonlyArray<number> = [-30, -5];
+
+/**
+ * REFERENCE LOUDNESS TRIM (reference conditioning wave) — the level half of
+ * "znej ako ref". The match EQ deliberately matches tonal SHAPE, never
+ * level; this derives the loudness half from the retained reference: how
+ * much louder/quieter than the streaming target the reference sits, clamped
+ * to the same ±6 dB the per-genre trim uses. Deterministic (BS.1770
+ * integrated over the whole reference); null when no reference is loaded,
+ * it is shorter than one loudness block, digital silence, or its loudness
+ * is implausible for a finished track (a −66 LUFS "reference" would ask for
+ * a −52 dB trim — declining is the only honest answer).
+ */
+export function referenceLoudnessTrim(): { trimDb: number; refLufs: number } | null {
+  if (referencePcm === null) return null;
+  const reading = analyzeLoudnessBuffer([referencePcm], 16000);
+  if (!reading.measured) return null;
+  const refLufs = reading.integrated;
+  const [lo, hi] = REFERENCE_LOUDNESS_PLAUSIBLE_LUFS;
+  if (refLufs < lo || refLufs > hi) return null;
+  const raw = refLufs - SONG_LOUDNESS_TARGET_LUFS;
+  const trimDb = Math.max(-SONG_LOUDNESS_TRIM_LIMIT_DB, Math.min(SONG_LOUDNESS_TRIM_LIMIT_DB, raw));
+  return { trimDb: Math.round(trimDb * 10) / 10, refLufs: Math.round(refLufs * 10) / 10 };
 }
 
 /**
