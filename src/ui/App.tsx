@@ -7,6 +7,7 @@ import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { startQvesterProfileBus } from "../interop/qvesterProfileBus";
 import { startMcpDesktopHost } from "../mcp/desktop-host";
 import { startMcpWebBridgeIfEnabled } from "../mcp/web-host";
+import { startQmrBridge } from "../interop/qmrBridge";
 import { SelectionStore } from "../store/SelectionStore";
 import { ToolStore } from "../store/ToolStore";
 import { SelectionContext, ServicesContext, ToolContext } from "./context";
@@ -324,6 +325,11 @@ export function App({
   // Web MCP (Phase D3): re-arm the persisted /mcp-relay bridge after a
   // project/services swap. Inert unless the user opted in with a token.
   useEffect(() => startMcpWebBridgeIfEnabled(services), [services]);
+  // QMR bridge (Qvester ecosystem): expose the KYX capability manifest +
+  // the kyx.* command contract on window.qvesterQmr so the QMR
+  // intelligence layer (or the console) can drive the validated tool
+  // layer. Cleared on unmount like every interop publisher.
+  useEffect(() => startQmrBridge(services), [services]);
   const [toolStore] = useState(() => new ToolStore());
   const tool = useSyncExternalStore(toolStore.subscribe, toolStore.getTool, toolStore.getTool);
   void tool;
