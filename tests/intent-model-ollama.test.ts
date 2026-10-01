@@ -68,7 +68,8 @@ describe("ollama provider wiring", () => {
     setIntentModelProvider(null);
   });
 
-  it("flag off → ensure() never probes and never registers", async () => {
+  it("kill switch off → ensure() never probes and never registers", async () => {
+    localStorage.setItem("pf:intent-model-ollama", "off");
     let probed = false;
     vi_stubFetch(async () => {
       probed = true;
@@ -79,20 +80,24 @@ describe("ollama provider wiring", () => {
     expect(getIntentModelProvider()).toBeNull();
   });
 
-  it("server without the model → no registration", async () => {
-    localStorage.setItem("pf:intent-model-ollama", "on");
+  it("ACTIVE BY DEFAULT: no flag + server with the SFT model → registers", async () => {
+    vi_stubFetch(async () => new Response(JSON.stringify({ models: [{ name: "kyx-intent-v30" }] }), { status: 200 }));
+    await expect(ensureOllamaIntentProvider()).resolves.toBe("kyx-intent-v30");
+    expect(getIntentModelProvider()?.id).toBe("ollama.kyx-intent-v30");
+  });
+
+  it("server without the model → no registration (the probe is the real gate)", async () => {
     vi_stubFetch(async () => new Response(JSON.stringify({ models: [{ name: "some-other:model" }] }), { status: 200 }));
     await expect(ensureOllamaIntentProvider()).resolves.toBeNull();
     expect(getIntentModelProvider()).toBeNull();
   });
 
   it("server with the model registers the provider and generate posts the schema", async () => {
-    localStorage.setItem("pf:intent-model-ollama", "on");
     const bodies: any[] = [];
     vi_stubFetch(async (_url, init) => {
       const url = String(_url);
       if (url.endsWith("/api/tags")) {
-        return new Response(JSON.stringify({ models: [{ name: "hf.co/LiquidAI/LFM2-1.2B-GGUF:Q4_K_M" }] }), { status: 200 });
+        return new Response(JSON.stringify({ models: [{ name: "kyx-intent-v30" }] }), { status: 200 });
       }
       bodies.push(JSON.parse(String(init?.body)));
       return new Response(JSON.stringify({ message: { content: '{"kind":"transport","action":"stop"}' } }), {
@@ -100,9 +105,9 @@ describe("ollama provider wiring", () => {
       });
     });
     const model = await ensureOllamaIntentProvider();
-    expect(model).toBe("hf.co/LiquidAI/LFM2-1.2B-GGUF:Q4_K_M");
+    expect(model).toBe("kyx-intent-v30");
     const provider = getIntentModelProvider();
-    expect(provider?.id).toBe("ollama.hf.co/LiquidAI/LFM2-1.2B-GGUF:Q4_K_M");
+    expect(provider?.id).toBe("ollama.kyx-intent-v30");
     const text = await provider!.generate("stop", {} as never);
     expect(JSON.parse(text)).toEqual({ kind: "transport", action: "stop" });
     // NO format constraint (measured 2026-09-29: the schema grammar flips the

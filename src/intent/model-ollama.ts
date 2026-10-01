@@ -19,22 +19,26 @@ import type { ProjectDocument } from "../project-model/types";
  *
  * This is the DESKTOP path (a native side process the user installed), not
  * the web-offline path — the browser artifact loader (ONNX now, wllama-GGUF
- * later) remains the primary source. Explicit opt-in:
- * `localStorage["pf:intent-model-ollama"] = "on"`. Structured outputs come
- * from `toJsonObjectSchema()` — the model cannot emit an action outside the
- * schema, the same guarantee GBNF gives llama.cpp-class runtimes.
+ * later) remains the primary source and wins provider ties. ACTIVE BY
+ * DEFAULT (2026-10-01): the SFT model below answers only when the local
+ * Ollama server actually has it — the probe is the real gate — and every
+ * output still passes `validateModelAction` → adapters → canonical commands.
+ * `localStorage["pf:intent-model-ollama"] = "off"` is the kill switch;
+ * a model-routed action always announces itself (🤖 status in the panel).
  *
- * The BASE model (no KYX fine-tune) runs with a few-shot prompt built from
- * golden corpus pairs; the SFT-tuned model replaces the examples later
- * without touching this module.
+ * The DEFAULT_MODEL is the SFT recipe-wave winner (LoRA r32/α64, 4 epochs on
+ * the 1906-pair corpus: 94.5% attempted-exact, wrongKind 1, abstain 0 on the
+ * 272-row val — vs the r16/α32/3ep baseline's 93.0%/5/2). The few-shot
+ * examples below are PART OF THE TRAINING PROMPT (prompt.txt is built from
+ * them) — never edit them without retraining.
  */
 
 export type OllamaIntentMode = "off" | "on";
 
 const OLLAMA_BASE = "http://127.0.0.1:11434";
-const DEFAULT_MODEL = "hf.co/LiquidAI/LFM2-1.2B-GGUF:Q4_K_M";
-const PROBE_TIMEOUT_MS = 3000; // a busy machine (training, installs) can stall the loopback probe
-const GENERATE_TIMEOUT_MS = 20_000;
+const DEFAULT_MODEL = "kyx-intent-v30";
+const PROBE_TIMEOUT_MS = 10_000; // a busy machine (training, model import, inference) can stall the loopback probe — 3s was measurably too tight
+const GENERATE_TIMEOUT_MS = 45_000; // the FIRST generate on a cold server pays the VRAM model load (2.3GB f16 ≫ 20s once); keep_alive keeps the rest fast
 
 export const OLLAMA_FLAG = "pf:intent-model-ollama";
 export const OLLAMA_MODEL_FLAG = "pf:intent-model-ollama-model";
@@ -50,16 +54,19 @@ export function setOllamaIntentModeOverride(mode: OllamaIntentMode | null): void
 export function ollamaIntentMode(): OllamaIntentMode {
   if (modeOverride) return modeOverride;
   try {
-    if (localStorage.getItem(OLLAMA_FLAG) === "on") return "on";
+    // kill switch only — the probe (server + model presence) is the real
+    // gate, so the default is ACTIVE: machines without Ollama fail the
+    // probe in milliseconds and everything falls back unchanged
+    if (localStorage.getItem(OLLAMA_FLAG) === "off") return "off";
   } catch {
     /* storage blocked — default below */
   }
-  return "off";
+  return "on";
 }
 
 export function setOllamaIntentMode(mode: OllamaIntentMode): void {
   try {
-    if (mode === "on") localStorage.setItem(OLLAMA_FLAG, "on");
+    if (mode === "off") localStorage.setItem(OLLAMA_FLAG, "off");
     else localStorage.removeItem(OLLAMA_FLAG);
   } catch {
     /* storage blocked — the in-session flip below still works */
@@ -169,6 +176,7 @@ async function generate(instruction: string, _doc: ProjectDocument): Promise<str
       body: JSON.stringify({
         model,
         stream: false,
+        keep_alive: "30m",
         // NO format constraint: measured 2026-09-29 — the JSON-schema grammar
         // FLIPS the SFT'd model's kind distribution (fader→clarify, 90%
         // in-process greedy collapsing to 2-9% through the schema path).

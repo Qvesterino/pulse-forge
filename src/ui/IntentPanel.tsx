@@ -81,7 +81,7 @@ import { patternLengthTicks } from "../midi/hum-to-notes";
 import { extractGrooveGrid, grooveRowsForPads, type GrooveExtraction } from "../intent/groove-extraction";
 import { inferPadRole } from "../ai/pad-roles";
 import { setAudioReferenceConditioning } from "../intent/semantic-conditioning";
-import { computeMasterMatchEq, setMatchEqReference } from "../intent/match-eq";
+import { computeMasterMatchEq, referenceLoudnessTrim, setMatchEqReference } from "../intent/match-eq";
 import { applyMasterMatchEqCommand } from "../commands/commands";
 import {
   planVariantIntents,
@@ -117,7 +117,7 @@ import {
   type SongSectionSuggestion,
 } from "../intent/song-audio-review";
 import { routeIntentText, REVISE_DELTA, type ReviseAttribute, type RoutedIntent } from "../intent/route";
-import { tryModelRoute } from "../intent/model-resolver";
+import { getIntentModelProvider, tryModelRoute } from "../intent/model-resolver";
 import { diagnoseComplaint } from "../intent/complaints";
 import type { SongSectionMeter } from "../intent/song-audio-review";
 import { createVoiceCapture } from "../intent/voice-capture";
@@ -312,6 +312,9 @@ export function IntentPanel() {
   // dynamic (it owns a lazily-spawned worker); when the flag is on, the
   // model starts loading in the background so the first unmatched prompt
   // finds the provider already registered. OFF (the default) costs nothing.
+  // The DESKTOP Ollama bridge (SFT model, active-by-default with probe as
+  // the real gate) warms through the same panel mount — it refuses when a
+  // provider is already registered, so the artifact loader keeps priority.
   const [modelState, setModelState] = useState<IntentModelState>("off");
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
@@ -320,6 +323,10 @@ export function IntentPanel() {
       if (disposed) return;
       loader.warmIntentModelProvider();
       unsubscribe = loader.onIntentModelStateChange((state) => setModelState(state));
+    });
+    void import("../intent/model-ollama").then((ollama) => {
+      if (disposed) return;
+      void ollama.ensureOllamaIntentProvider().catch(() => undefined);
     });
     return () => {
       disposed = true;
@@ -1357,9 +1364,13 @@ export function IntentPanel() {
         setError("🎯 match EQ: reference too short or render failed");
         return;
       }
-      const command = applyMasterMatchEqCommand(services.store.getDoc(), curve);
+      // Level half of the match: the reference's own BS.1770 loudness drives
+      // the master trim (clamped ±6), alongside the tonal curve.
+      const loudness = referenceLoudnessTrim();
+      const command = applyMasterMatchEqCommand(services.store.getDoc(), curve, loudness?.trimDb);
       services.store.execute(command);
-      setStatus(`🎯 ${command.label} — master matched to the reference`);
+      const levelNote = loudness ? ` — reference sits at ${loudness.refLufs.toFixed(1)} LUFS` : "";
+      setStatus(`🎯 ${command.label} — master matched to the reference${levelNote}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -2656,7 +2667,13 @@ export function IntentPanel() {
         // the registered intent model try the instruction before falling to
         // generation. A hit re-enters with the adapted route (one dispatch);
         // a miss (no provider / invalid output / unresolvable refs) keeps
-        // today's behavior unchanged.
+        // today's behavior unchanged. A missing provider retries registration
+        // once here: the mount-time warm can lose a race against a busy
+        // machine (probe timeout) and this is the cheapest self-heal.
+        if (!getIntentModelProvider()) {
+          const ollama = await import("../intent/model-ollama");
+          await ollama.ensureOllamaIntentProvider().catch(() => null);
+        }
         const modelRoute = await tryModelRoute(source, doc);
         if (modelRoute) {
           preRoutedRef.current = modelRoute;

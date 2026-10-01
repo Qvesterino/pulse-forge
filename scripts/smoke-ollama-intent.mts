@@ -29,10 +29,17 @@ const CASES: Array<{ instruction: string; expect: string }> = [
 
 const doc = createProjectFromTemplate("house");
 setOllamaIntentModeOverride("on");
-const model = await ensureOllamaIntentProvider();
+// registration retries: under machine load (vite transform storms, training)
+// the first probe can time out — the eval scripts have always retried, this
+// one silently didn't
+let model: string | null = null;
+for (let retry = 0; retry < 4 && !model; retry += 1) {
+  model = await ensureOllamaIntentProvider();
+  if (!model) await new Promise((resolve) => setTimeout(resolve, 1500));
+}
 if (!model) {
-  console.error("ollama not reachable or model missing — pull first:");
-  console.error("  ollama pull hf.co/LiquidAI/LFM2-1.2B-GGUF:Q4_K_M");
+  console.error("ollama not reachable or model missing — check the server and the configured model:");
+  console.error("  curl http://127.0.0.1:11434/api/tags   (default expectation: kyx-intent-v30)");
   process.exit(1);
 }
 console.log(`provider: ${getIntentModelProvider()?.id}\n`);
