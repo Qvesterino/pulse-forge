@@ -96,9 +96,17 @@ const MCP_TOOL_DEFS = [
             "metronomeOff",
             "seek",
             "loopRegion",
+            "launchScene",
             "state",
           ],
         },
+        scene: { type: "string", description: 'launchScene — scene NAME or ROLE (e.g. "drop", "chorus")' },
+        index: {
+          type: "integer",
+          minimum: 1,
+          description: "launchScene — 1-based index as kyx_state scenes lists them (alternative to scene)",
+        },
+        play: { type: "boolean", description: "launchScene — start playback after the jump (default true)" },
         bar: {
           type: "integer",
           minimum: 1,
@@ -320,8 +328,21 @@ const MCP_TOOL_DEFS = [
       properties: {
         op: {
           type: "string",
-          enum: ["add", "remove", "duplicate", "reorder", "resize"],
+          enum: ["add", "remove", "duplicate", "reorder", "resize", "intensity"],
         },
+        intensity: {
+          type: "number",
+          minimum: 0,
+          maximum: 1,
+          description: "op=intensity — target scene intensity 0..1",
+        },
+        scene: { type: "string", description: "op=intensity — scene name or role (also: index)" },
+        index: {
+          type: "integer",
+          minimum: 1,
+          description: "op=intensity — 1-based scene index (alternative to scene)",
+        },
+        value: { type: "number", minimum: 0, maximum: 1, description: "op=intensity — the target intensity 0..1" },
         role: {
           type: "string",
           enum: ["intro", "build", "chorus", "verse", "bridge", "drop", "break", "outro", "fill"],

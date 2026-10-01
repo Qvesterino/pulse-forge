@@ -29,7 +29,7 @@ import { MCP_PLAYBOOK_TEXT, MCP_VOCAB_TEXT } from "./onboarding";
 import { normalizeIntent } from "../intent/normalize";
 import { resolveSceneTarget } from "../intent/arrangeWords";
 import { inferPadRole } from "../ai/pad-roles";
-import type { DrumTrack, InstrumentKind, Track, AutomationTarget, AutomationLane } from "../project-model/types";
+import type { DrumTrack, InstrumentKind, Scene, Track, AutomationTarget, AutomationLane } from "../project-model/types";
 import {
   applyPresetIntentCommand,
   FAMILY_INSTRUMENTS as PRESET_FAMILY_INSTRUMENTS,
@@ -209,10 +209,18 @@ export const MCP_TOOLS: McpToolDef[] = [
             "metronomeOff",
             "seek",
             "loopRegion",
+            "launchScene",
             "state",
           ],
         },
         bar: { type: "integer", minimum: 1, description: "For seek — 1-based destination bar" },
+        scene: { type: "string", description: 'launchScene — scene NAME or ROLE (e.g. "drop", "chorus")' },
+        index: {
+          type: "integer",
+          minimum: 1,
+          description: "launchScene — 1-based index as kyx_state scenes lists them (alternative to scene)",
+        },
+        play: { type: "boolean", description: "launchScene — start playback after the jump (default true)" },
         beat: {
           type: "integer",
           minimum: 1,
@@ -394,7 +402,20 @@ export const MCP_TOOLS: McpToolDef[] = [
     inputSchema: {
       type: "object",
       properties: {
-        op: { type: "string", enum: ["add", "remove", "duplicate", "reorder", "resize"] },
+        op: { type: "string", enum: ["add", "remove", "duplicate", "reorder", "resize", "intensity"] },
+        intensity: {
+          type: "number",
+          minimum: 0,
+          maximum: 1,
+          description: "op=intensity — target scene intensity 0..1",
+        },
+        scene: { type: "string", description: "op=intensity — scene name or role (also: index)" },
+        index: {
+          type: "integer",
+          minimum: 1,
+          description: "op=intensity — 1-based scene index (alternative to scene)",
+        },
+        value: { type: "number", minimum: 0, maximum: 1, description: "op=intensity — the target intensity 0..1" },
         role: {
           type: "string",
           enum: ["intro", "build", "chorus", "verse", "bridge", "drop", "break", "outro", "fill"],
@@ -1213,6 +1234,68 @@ function describeTransport(transport: McpToolContext["transport"]): string {
 }
 
 /** kyx_transport seek — absolute position by 1-based bar (+ optional beat). */
+/** LIVE PERFORMANCE — resolve a scene the way kyx_state scenes lists it:
+ * 1-based index, exact/lowercase name, or role ("drop", "chorus", …).
+ * Returns the scene or an honest refusal string. */
+function resolveMcpScene(doc: ProjectDocument, record: Record<string, unknown>): Scene | string {
+  if (doc.scenes.length === 0) return "no scenes in the arrangement";
+  if (typeof record.sceneId === "string" && record.sceneId.trim() !== "") {
+    const byId = doc.scenes.find((candidate) => candidate.id === record.sceneId);
+    if (byId) return byId;
+  }
+  if (typeof record.index === "number" && Number.isFinite(record.index)) {
+    const scene = doc.scenes[Math.floor(record.index) - 1];
+    if (scene) return scene;
+    return `no scene at index ${record.index} — scenes are 1..${doc.scenes.length} (kyx_state {subject:'scenes'})`;
+  }
+  const label = typeof record.scene === "string" ? record.scene.trim().toLowerCase() : "";
+  if (label !== "") {
+    const byName = doc.scenes.find((candidate) => candidate.name.toLowerCase() === label);
+    if (byName) return byName;
+    const byRole = doc.scenes.find((candidate) => candidate.role != null && (candidate.role as string) === label);
+    if (byRole) return byRole;
+    const loose = doc.scenes.find(
+      (candidate) => candidate.name.toLowerCase().includes(label) || (candidate.role as string | null) === label,
+    );
+    if (loose) return loose;
+    return `no scene matches "${record.scene}" — kyx_state {subject:'scenes'} lists them`;
+  }
+  return "needs scene (name or role) or index (1-based, as kyx_state scenes lists them)";
+}
+
+/** Launch a scene live: seek the transport to the scene's earliest clip and
+ * (by default) play. Transport = runtime state, not document state — like
+ * seek, this never enters the undo stack. */
+function transportLaunchScene(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
+  const transport = ctx.transport;
+  if (transport.seek == null) {
+    return {
+      text: "scene launch is not available over this MCP transport (no seek-capable transport bound)",
+      mutated: false,
+    };
+  }
+  const scene = resolveMcpScene(ctx.getDoc(), record);
+  if (typeof scene === "string") return { text: scene, mutated: false };
+  const clips = ctx
+    .getDoc()
+    .arrangement.clips.filter((clip) => clip.sceneId === scene.id)
+    .sort((a, b) => a.startBar - b.startBar);
+  const startBar = clips[0]?.startBar ?? null;
+  if (startBar === null) {
+    return { text: `scene "${scene.name}" has no arrangement clip to launch`, mutated: false };
+  }
+  // Method CALL — extracting seek into a local would drop `this` and crash
+  // the real Transport (same unbound-playing_ lesson as transportSeek).
+  transport.seek(startBar * TICKS_PER_BAR);
+  const play = record.play !== false;
+  if (play) transport.play();
+  return {
+    text: `launched "${scene.name}"${scene.role ? ` (${scene.role})` : ""} at bar ${startBar + 1}${play ? " — playing" : " (transport stopped)"} · intensity ${Math.round(scene.intensity * 100)}%`,
+    mutated: false,
+    data: { sceneId: scene.id, name: scene.name, role: scene.role ?? null, startBar, playing: play },
+  };
+}
+
 function transportSeek(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
   const transport = ctx.transport;
   if (transport.seek == null) {
@@ -1349,6 +1432,7 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
     case "kyx_transport": {
       const action = String(record.action ?? "");
       if (action === "seek") return transportSeek(ctx, record);
+      if (action === "launchScene") return transportLaunchScene(ctx, record);
       if (action === "loopRegion") return transportLoopRegion(ctx, record);
       if (action === "state") {
         const t = ctx.transport;
@@ -1637,6 +1721,21 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
     case "kyx_sections": {
       if (String(record.op ?? "") === "remove" && !destructiveAllowedWithCheckpoint(ctx, "kyx_sections"))
         return destructiveRefusal();
+      if (String(record.op ?? "") === "intensity") {
+        // LIVE intensity ride on one scene — a document mutation (scene
+        // automation), so it IS undoable, one snapshot per call.
+        const scene = resolveMcpScene(ctx.getDoc(), record);
+        if (typeof scene === "string") return { text: scene, mutated: false };
+        const value = typeof record.value === "number" ? record.value : NaN;
+        if (!Number.isFinite(value) || value < 0 || value > 1) {
+          return { text: "intensity needs value 0..1 (e.g. 0.85 for the drop)", mutated: false };
+        }
+        ctx.execute(setSceneIntensity(ctx.getDoc(), scene.id, value));
+        return {
+          text: `scene "${scene.name}" intensity → ${Math.round(value * 100)}% (one undo step)`,
+          mutated: true,
+        };
+      }
       try {
         const command = sectionCommand(record, ctx.getDoc());
         if (!command) return { text: "section op not resolvable — check the role exists", mutated: false };
@@ -4045,19 +4144,18 @@ function stateSnapshot(
   }
   if (subject === "scenes") {
     if (doc.scenes.length === 0) return "no scenes (empty arrangement)";
-    const barsOf = (sceneId: string): number => {
+    const spanOf = (sceneId: string): { start: number; bars: number } => {
       const clips = doc.arrangement.clips.filter((clip) => clip.sceneId === sceneId);
-      if (clips.length === 0) return 0;
-      return (
-        Math.max(...clips.map((clip) => clip.startBar + clip.lengthBars)) -
-        Math.min(...clips.map((clip) => clip.startBar))
-      );
+      if (clips.length === 0) return { start: 0, bars: 0 };
+      const start = Math.min(...clips.map((clip) => clip.startBar));
+      return { start, bars: Math.max(...clips.map((clip) => clip.startBar + clip.lengthBars)) - start };
     };
     return doc.scenes
       .map((scene, index) => {
         const role = scene.role ?? "—";
-        const bars = barsOf(scene.id);
-        return `${index + 1}. "${scene.name}" ${role}${bars > 0 ? ` ${bars}bar` : ""} intensity ${Math.round(scene.intensity * 100)}%`;
+        const { start, bars } = spanOf(scene.id);
+        const launchable = bars > 0 ? ` @bar ${start + 1}` : " (no clip)";
+        return `${index + 1}. "${scene.name}" ${role}${launchable}${bars > 0 ? ` ${bars}bar` : ""} intensity ${Math.round(scene.intensity * 100)}%`;
       })
       .join("\n");
   }
