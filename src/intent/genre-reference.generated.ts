@@ -45,4 +45,5 @@ export const GENRE_REFERENCE: Record<string, GenreSongReference> = {
   chiptune: { integrated: -11.4, punchPlrDb: 10.4, tiltDb: 16.9, bars: 56 },
   eurodance: { integrated: -11.4, punchPlrDb: 10.4, tiltDb: 16.5, bars: 104 },
   latin: { integrated: -10.1, punchPlrDb: 9.1, tiltDb: 27.5, bars: 96 },
+  drone: { integrated: -10.4, punchPlrDb: 9.4, tiltDb: 26.4, bars: 176 },
 };

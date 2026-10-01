@@ -52,6 +52,7 @@ const GENRES = [
   "chiptune",
   "eurodance",
   "latin",
+  "drone",
 ];
 const SEEDS = ["ref-a", "ref-b"];
 

@@ -5,6 +5,8 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const port = Number(process.env.PORT) || 5221;
+// Cold vite transform of the full app graph can outgrow 60 s on a busy machine — NAV_TIMEOUT_MS overrides.
+const navTimeout = Number(process.env.NAV_TIMEOUT_MS) || 60_000;
 const server = await createServer({
   root,
   logLevel: "error",
@@ -16,7 +18,7 @@ try {
   await server.listen();
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
-  await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "domcontentloaded", timeout: navTimeout });
   const result = await page.evaluate(async () => {
     const [{ generateFactoryBank }, { auditFactoryPresetAudio }, { loadCuratedLayer }] = await Promise.all([
       import("/src/sample-library/factory.ts"),
