@@ -2,11 +2,12 @@
 
 Functional (not visual) audit of the KYX / Pulse Forge UI, with repairs.
 Scope: every interactive surface in `src/ui/**` — 85 components, 1.7 MB of
-React. Six waves, **18 confirmed defects repaired**, each source change covered
+React. Eight waves, **20 confirmed defects repaired**, each source change covered
 by a regression test proven to FAIL against the pre-fix code. A seventh wave
 swept §3, §7, §9, §14 and §15 and found no further defect; it is recorded
 because its two false positives and its verified-clean areas are the part a
-future audit should not have to re-derive.
+future audit should not have to re-derive. The eighth found two more from one
+class — buttons that accepted clicks which silently did nothing.
 
 This file is a working report. Per `AGENTS.md` §10, any number claimed here
 must be reproducible from the working tree.
@@ -71,7 +72,7 @@ rg -o '<(div|span)[^>]*(role=|tabIndex=)' src/ui --glob '*.tsx' -U | wc -l
 
 ---
 
-## 2. REPAIRED — 18 confirmed defects
+## 2. REPAIRED — 20 confirmed defects
 
 ### WAVE 4 — found by real-browser verification (not static inspection)
 
@@ -409,6 +410,54 @@ claim, since "no hits" means nothing unless the predicate was right):
   `UltinaPanel` preset save/rename/delete handlers are gated by `window.prompt`
   / `window.confirm`, which block the main thread, so a second click cannot be
   dispatched. `ThemePanel`'s clipboard write is idempotent.
+
+### WAVE 8 — §6/§9: controls that look actionable and silently do nothing
+
+Two defects from one class, found by a sweep that can be repeated: **every
+`if (…) return;` inside an `onClick` in `src/ui` with no `disabled` within the
+preceding 25 lines.** The sweep returns 24 candidates; 22 are legitimate
+(`event.button !== 0`, `signal.aborted`, event-delegation filters, and
+`window.confirm`/`window.prompt` cancels, which cannot be double-clicked anyway).
+The two that were not share an exact shape: the handler returns early for a
+**reachable** state, the button stays enabled, and nothing on screen changes.
+
+Both were decided by the file's own convention rather than by taste — in each
+case a sibling button two elements away already carried the missing contract,
+which is what makes these omissions rather than decisions.
+
+**19. `+ MAP` in the macro card was enabled with nothing to map to (MINOR).**
+`ModPanel.tsx:1231`. The `PARAM…` option resolves to a device parameter, and
+the commit handler opens with `if (!activeDeviceId || !activeParamId) return;`.
+With no resolvable target the click produced no command, no error, no visual
+change — while the picker beside it correctly showed `no params`. The MIDI
+Learn button two elements below already had
+`disabled={mapDraft.param === "param" && (!activeDeviceId || !activeParamId)}`;
+`+ MAP` simply never received it. Two ordinary ways to reach the state: a track
+with no effects that is not an instrument (no devices at all), and the common
+one — typing a filter into "Filter macro parameters" that matches nothing.
+Fix: the sibling's own condition, one attribute. The early return stays as the
+guard it already was.
+
+**20. `RND VEL` and `HUMAN` were enabled on an all-silence selection (MINOR).**
+`Sequencer.tsx:785` / `:811`. Both built their target list from the step
+selection and returned early when it was empty — selecting a range of only
+empty steps left two buttons looking actionable that changed nothing.
+`PASTE LOCKS` in the same toolbar is
+`disabled={!lockClipboard || Object.keys(lockClipboard).length === 0}` **and**
+guards its handler, so the convention was right there. The list computation was
+hoisted into a `useMemo` so `disabled` and the handler read the same thing; a
+`disabled` derived from a different expression than its own guard is how the
+two drift apart.
+
+**The mistake this wave nearly shipped.** The `useMemo` runs on every render,
+while the buttons sit behind `{stepSelection && …}` — and `stepSelection` is
+typed `StepSelection | null`. The first version of the hoist dereferenced
+`.padIds` unconditionally and would have crashed the sequencer on every mount
+with nothing selected. It was caught by checking where the buttons actually
+live before writing the memo, and is now pinned by a second test that renders
+with a null selection purely to hold that guard. Worth recording because the
+fix for a "button is enabled when it should not be" is the kind of change that
+looks purely cosmetic and carries a runtime crash.
 
 ### CORRECTED / WITHDRAWN CLAIMS (recorded so they are not repeated)
 
@@ -806,6 +855,8 @@ Every count below is reproducible from the working tree.
 | `tests/ui/TopBar.loop-sync.test.tsx`                      | 2      | §5 — LOOP is not a second source of truth                  |
 | `tests/ui/useFocusRestore.test.tsx`                       | 5      | #18 — focus restore across 4 close/teardown paths          |
 | `tests/ui/ExportPanel.test.tsx` (extended)                | 1      | §9 — AUTO STAGE stays scoped to one render                 |
+| `tests/ui/ModPanel.test.tsx` (extended)                   | 1      | #19 — `+ MAP` disabled while PARAM has no target           |
+| `tests/ui/Sequencer.test.tsx` (extended)                  | 2      | #20 — velocity actions + the null-selection guard          |
 
 **Existing files extended** — `tests/ui/controls.test.tsx` (#1, #2, #3),
 `tests/ui/EffectRack.test.tsx` (#4), `tests/ui/ozvena-panel.test.tsx` (#5, #6),
@@ -831,9 +882,9 @@ exactly that before being rewritten.
 against reverted source and observed failing: 5 Ozvena, 2 Wavetable, 4
 DragNumber, 1 Slider, 1 load-bound, 4 mixer-selection, 1 DEL button, 2 TopBar
 loop, 1 rack-expanded, 1 devices-dock, 5 focus-restore, 1 help-overlay
-call-site. The one group that could not be falsified (the
-`deleteArrangementClip` no-op guard) was **withdrawn** and its test deleted —
-see §2, "CORRECTED / WITHDRAWN CLAIMS".
+call-site, 1 macro-`+ MAP`, 2 sequencer-velocity. The one group that could not be
+falsified (the `deleteArrangementClip` no-op guard) was **withdrawn** and its
+test deleted — see §2, "CORRECTED / WITHDRAWN CLAIMS".
 
 The wave-6 run is the cleanest example of the discipline, because the
 falsification is what found the real bug in my own fix:
