@@ -104,6 +104,7 @@
     "listening:morph": "vite-node scripts/render-morph-listening.mjs",
     "listening:serve": "node scripts/serve-listening.mjs",
     "listening:abx": "vite-node scripts/generate-abx-listening.mts",
+    "intent:mine": "vite-node scripts/mine-intent-failures.mts",
     "listening:room": "vite-node scripts/render-listening-room.mjs",
     "listening:ingest": "node scripts/ingest-listening-verdicts.mjs",
     "taste:train": "node scripts/train-my-taste.mjs",
@@ -117,7 +118,8 @@
     "prompts:build": "node scripts/prompts-sync.mjs --build",
     "mcp:demo": "vite-node scripts/mcp-agent-demo.mts",
     "video:agents-vertical": "remotion render remotion/index.ts McpAgentSessionVertical out/mcp-agent-session-vertical.mp4 --codec=h264 --public-dir=./remotion/public",
-    "video:agents": "remotion render remotion/index.ts McpAgentSession out/mcp-agent-session.mp4 --codec=h264 --public-dir=./remotion/public"
+    "video:agents": "remotion render remotion/index.ts McpAgentSession out/mcp-agent-session.mp4 --codec=h264 --public-dir=./remotion/public",
+    "sound:earpass": "node scripts/render-ear-pass-listening.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
