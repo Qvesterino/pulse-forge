@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Send to KYX",
+  "version": "0.1.0",
+  "description": "Send any audio from the web straight into the KYX studio — right-click a sound, find it in your sample bank.",
+  "permissions": [
+    "contextMenus",
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html"
+}

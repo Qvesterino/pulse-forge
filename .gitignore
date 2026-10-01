@@ -106,3 +106,4 @@ scripts/data/augmented-drum-dataset.json
 lane-listening/
 *-listening/
 .sft/
+out/

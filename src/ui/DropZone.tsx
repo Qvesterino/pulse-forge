@@ -1,10 +1,9 @@
 import { useCallback, useRef, useState } from "react";
 import { useServices } from "./context";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
-import { userSampleId } from "../persistence/UserSampleRepository";
-import { detectLoopBpm } from "../audio-engine/bpm-detect";
 import { addAudioClip, fittedLoopPlacement, type FittedLoopPlacement } from "../commands/commands";
 import { BAR_TICKS } from "../project-model/types";
+import { importAudioFile } from "./sample-import";
 
 interface DropZoneProps {
   onImport: (asset: UserSampleAsset) => void;
@@ -104,45 +103,7 @@ export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) 
         }
 
         try {
-          const ctx = services.engine.context;
-          if (!ctx) {
-            setError("Audio engine not ready");
-            setImporting(false);
-            return;
-          }
-          // Read the encoded bytes once: decodeAudioData detaches the buffer
-          // it receives, so hand it a copy and keep the original for IDB.
-          const raw = await file.arrayBuffer();
-          const buffer = await ctx.decodeAudioData(raw.slice(0));
-          const id = userSampleId(file.name);
-
-          // Add to audio bank (immediately playable)
-          services.bank.add(id, buffer);
-
-          // One-time tempo detection for the "Fit to project BPM" workflow.
-          // Best-effort: a failed/absent detection just leaves `bpm` unset.
-          let bpm: number | undefined;
-          try {
-            const detected = detectLoopBpm(buffer.getChannelData(0), buffer.sampleRate);
-            if (detected) bpm = detected.bpm;
-          } catch (err) {
-            console.warn("[DropZone] bpm detection failed:", err);
-          }
-
-          // Persist metadata + encoded bytes (survives reloads since DB v5)
-          const asset: UserSampleAsset = {
-            id,
-            name: file.name.replace(/\.[^.]+$/, ""),
-            fileName: file.name,
-            category: "Custom",
-            duration: buffer.duration,
-            sampleRate: buffer.sampleRate,
-            channels: buffer.numberOfChannels,
-            createdAt: new Date().toISOString(),
-            ...(bpm !== undefined ? { bpm } : {}),
-          };
-          await services.userSamples.save(asset, raw);
-
+          const asset = await importAudioFile(services, file);
           onImport(asset);
           importedBatch.push(asset);
         } catch (err) {

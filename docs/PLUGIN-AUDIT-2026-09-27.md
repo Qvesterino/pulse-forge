@@ -173,7 +173,37 @@ ducks the sibilance band, not the low band (host)"` in `src/browser-checks.ts`, 
    high-pass detector passes 6.5 kHz in full and compresses it just as hard. The model-level
    and processor-level tests could not have caught either, because both live below the host.
 
-2. **`msEq` — the matrix is CORRECT and the AI bridge was wrong.** The 4-band M/S
+2. **`clav` — the instrument matrix row said FAIL and was RIGHT, for the wrong stated reason.**
+   The Clavinet shipped **silent for its entire life**: `src/instruments/registry.ts`'s `clav`
+   factory built a complete voice chain (square + saw → panners → highpass → bandpass pickup →
+   `amp`, plus a tine partial, growl sub and seeded tangent click) and the cleanup even called
+   `amp.disconnect()` — but **`amp.connect(output)` was missing**, so the chain dead-ended and
+   every note rendered exact silence. Fixed 2026-10-01 by the single missing line.
+   **Real-browser confirmation** (Chromium, production path, the generic
+   `"<Name>: noteOn renders signal"` loop): `PASS Clavinet: noteOn renders signal — peak=0.030`
+   (was `peak=0.000`), and the preset sweep moved from every `factory.clav.*` auditioning at
+   `peak=0.0000` to `passed=488/488`. This was the audit's **only** instrument with
+   `defaultPeak === 0`.
+   The reason the row stayed FAIL for days without a fix: the matrix's "Loads" column reported
+   PASS (the factory constructs without throwing) while the signal column reported FAIL. Nothing
+   reconciled the two.
+
+3. **`spectral` — the row says FAIL and it is almost certainly a MEASUREMENT ARTEFACT. Do not
+   chase it as a defect.** The audit recorded `defaultPeak: 0.000325` (−69.8 dB), `deadParams:
+12`, and a FAIL row. The production browser check disagrees decisively:
+   `PASS Spectral Pad: noteOn renders signal — peak=0.126` (≈ −18 dB), which is one of the
+   **louder** instruments, and it sits 37 dB above the next-lowest (`pluck`, −32.5 dB).
+   A follow-up source read also refutes the obvious mechanical cause: the suspect
+   `if (a * norm < 0.004) continue;` partial-skip is not dead-ending the chain, and the
+   `wet → output` path is correctly wired — the earlier "output connects to itself" read was a
+   regex artefact (`filter.output.connect(output)`, a BiquadFilter output, not a self-loop).
+   The likely explanation is that the audit's `defaultPeak` column was measured on its minimal
+   host doc, which is a different signal context from the production render — a caveat that
+   applies to the whole column, not just this row. Recorded as **unconfirmed**: the FAIL row is
+   not reproducible in the production path, but it has not been re-derived under the audit's
+   original conditions, so it is not marked PASS either.
+
+4. **`msEq` — the matrix is CORRECT and the AI bridge was wrong.** The 4-band M/S
    redesign (`midLowFreq`/`midLowGain`/`midHighFreq`/`midHighGain` + the `side*`
    quartet) landed **2026-09-21**, six days _before_ this run — which is why the M/S EQ
    row above already lists `midLowFreq, midHighFreq, sideLowFreq, sideHighFreq` as the
@@ -184,7 +214,7 @@ ducks the sibilance band, not the low band (host)"` in `src/browser-checks.ts`, 
    cross-check: the plugin sweep and the intent mirror disagreed, and the plugin sweep
    was the side that was right. A single _consumer_ of a renamed param surface — not the
    effect itself — was the only thing that broke.
-3. Row counts in this document are still accurate as of 2026-09-30: `EFFECT_DEFS`
+5. Row counts in this document are still accurate as of 2026-09-30: `EFFECT_DEFS`
    resolves to the same 47 effect types, and the instrument registry to 22 kinds.
 
 ## Repairs shipped with this audit

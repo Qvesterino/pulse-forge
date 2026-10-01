@@ -114,6 +114,11 @@ function rawDataToUint8Array(data) {
 // ── Beat Gallery store ──────────────────────────────────────────────────────
 
 const GALLERY_MAX_ITEMS = 500;
+const DEFAULT_INTAKE_FILE = join(dirname(fileURLToPath(import.meta.url)), "intake.json");
+const INTAKE_MAX_ITEMS = 50;
+const INTAKE_MAX_B64_CHARS = 9_000_000; // ~6.7 MB binary — decoded PCM stays well under the tab budget
+const INTAKE_NAME_MAX = 120;
+const INTAKE_URL_MAX = 500;
 const GALLERY_MAX_CODE_CHARS = 400_000; // ~ share code of a large project
 const TITLE_MAX = 64;
 const AUTHOR_MAX = 32;
@@ -211,6 +216,70 @@ export function decodeShareCodeMeta(code) {
     };
   } catch {
     return null;
+  }
+}
+
+/** SEND-TO-KYX intake — audio the browser extension (or any local tool)
+ * pushes into the running studio. Small bounded FIFO: the studio polls,
+ * imports into its user-sample bank, and removes consumed entries. */
+class IntakeStore {
+  constructor(filePath) {
+    this.filePath = filePath;
+    /** @type {Array<Record<string, unknown>>} newest last */
+    this.items = [];
+    try {
+      if (existsSync(filePath)) {
+        const parsed = JSON.parse(readFileSync(filePath, "utf-8"));
+        if (Array.isArray(parsed?.items)) this.items = parsed.items.filter((item) => item && typeof item.id === "string");
+      }
+    } catch (error) {
+      console.warn("[intake] could not load store, starting empty:", String(error));
+    }
+  }
+
+  save() {
+    try {
+      writeFileSync(this.filePath, JSON.stringify({ items: this.items }, null, 2));
+    } catch (error) {
+      console.warn("[intake] save failed:", String(error));
+    }
+  }
+
+  add(input) {
+    const name = cleanText(input?.name, INTAKE_NAME_MAX);
+    if (!name) return { error: "name is required" };
+    const dataB64 = typeof input?.dataB64 === "string" ? input.dataB64 : "";
+    if (!dataB64) return { error: "dataB64 is required" };
+    if (dataB64.length > INTAKE_MAX_B64_CHARS) return { error: "audio too large" };
+    if (!/^[A-Za-z0-9+/=\r\n]+$/.test(dataB64)) return { error: "dataB64 must be base64" };
+    const sourceUrl = cleanText(input?.sourceUrl, INTAKE_URL_MAX) || null;
+    const item = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+      name,
+      dataB64,
+      sourceUrl,
+      createdAt: new Date().toISOString(),
+    };
+    this.items.push(item);
+    if (this.items.length > INTAKE_MAX_ITEMS) this.items.splice(0, this.items.length - INTAKE_MAX_ITEMS);
+    this.save();
+    return { item };
+  }
+
+  /** Feed metadata without the payload — the studio pulls bytes per id. */
+  list() {
+    return [...this.items].reverse().map(({ dataB64, ...meta }) => ({ ...meta, bytes: Math.floor((dataB64.length * 3) / 4) }));
+  }
+
+  get(id) {
+    return this.items.find((item) => item.id === id) ?? null;
+  }
+
+  remove(id) {
+    const before = this.items.length;
+    this.items = this.items.filter((item) => item.id !== id);
+    if (this.items.length !== before) this.save();
+    return this.items.length !== before;
   }
 }
 
@@ -502,6 +571,7 @@ function createRoomRegistry() {
  */
 export function createCollabServer({
   galleryFile = process.env.GALLERY_FILE ?? DEFAULT_GALLERY_FILE,
+  intakeFile = process.env.INTAKE_FILE ?? DEFAULT_INTAKE_FILE,
   collabLimits: collabLimitOverrides = {},
   corsOrigins = process.env.CORS_ORIGIN ?? "*",
   adminToken: adminTokenOverride = process.env.GALLERY_ADMIN_TOKEN ?? "",
@@ -514,6 +584,7 @@ export function createCollabServer({
     throw new Error("production collab server requires an explicit CORS_ORIGIN allowlist");
   }
   const gallery = new GalleryStore(galleryFile);
+  const intake = new IntakeStore(intakeFile ?? DEFAULT_INTAKE_FILE);
   const allowPost = makeRateLimiter();
   // Play counters are much hotter than uploads — their own, looser window.
   const allowPlay = makeRateLimiter(60);
@@ -590,6 +661,65 @@ export function createCollabServer({
       return;
     }
 
+    // SEND-TO-KYX intake — the browser extension (or any local tool) pushes
+    // audio bytes; the studio polls the list, imports per item, and
+    // removes what it consumed. Bounded FIFO, same upload rate limit.
+    if (req.method === "POST" && url.pathname === "/api/intake") {
+      const ip = req.socket.remoteAddress ?? "unknown";
+      if (!allowPost(ip)) {
+        sendJson(res, 429, { error: "slow down — too many uploads" });
+        return;
+      }
+      let body = "";
+      let oversized = false;
+      req.on("data", (chunk) => {
+        if (body.length < INTAKE_MAX_B64_CHARS + 4_096) body += chunk;
+        else oversized = true;
+      });
+      req.on("end", () => {
+        if (oversized) {
+          sendJson(res, 413, { error: "request body too large" });
+          return;
+        }
+        try {
+          const parsed = JSON.parse(body || "{}");
+          const result = intake.add(parsed);
+          if (result.error) {
+            sendJson(res, 400, { error: result.error });
+            return;
+          }
+          sendJson(res, 201, { item: { ...result.item, dataB64: undefined, bytes: Math.floor((result.item.dataB64.length * 3) / 4) } });
+        } catch (error) {
+          sendJson(res, 400, { error: `invalid JSON body: ${String(error)}` });
+        }
+      });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/intake") {
+      sendJson(res, 200, { items: intake.list() });
+      return;
+    }
+
+    if (req.method === "GET" && /^\/api\/intake\/[\w-]+$/.test(url.pathname)) {
+      const item = intake.get(url.pathname.split("/")[3]);
+      if (!item) {
+        sendJson(res, 404, { error: "unknown intake item" });
+        return;
+      }
+      sendJson(res, 200, { item });
+      return;
+    }
+
+    if (req.method === "DELETE" && /^\/api\/intake\/[\w-]+$/.test(url.pathname)) {
+      const removed = intake.remove(url.pathname.split("/")[3]);
+      if (!removed) {
+        sendJson(res, 404, { error: "unknown intake item" });
+        return;
+      }
+      sendJson(res, 200, { ok: true });
+      return;
+    }
     if (req.method === "POST" && url.pathname === "/api/gallery") {
       const ip = req.socket.remoteAddress ?? "unknown";
       if (!allowPost(ip)) {
@@ -968,7 +1098,7 @@ export function createCollabServer({
   wss.on("close", () => clearInterval(pingTimer));
   server.on("close", () => clearInterval(pingTimer));
 
-  return { server, wss, gallery, metrics };
+  return { server, wss, gallery, intake, metrics };
 }
 
 // ── Main entry ──────────────────────────────────────────────────────────────

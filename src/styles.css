@@ -1,0 +1,46 @@
+
+/* ── SEND-TO-KYX intake tray (SampleBrowser) ────────────────────────────── */
+.intake-tray {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.45rem 0.6rem;
+  margin-bottom: 0.6rem;
+  border: 1px solid var(--pf-border, #374151);
+  border-radius: 8px;
+  background: color-mix(in srgb, #4f46e5 8%, transparent);
+  font-size: 12px;
+}
+.intake-tray-label {
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--pf-accent, #818cf8);
+}
+.intake-tray-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  background: var(--pf-surface, #1f2937);
+}
+.intake-tray-item button {
+  border: 0;
+  border-radius: 4px;
+  padding: 0.15rem 0.45rem;
+  cursor: pointer;
+  background: #4f46e5;
+  color: white;
+  font-size: 11px;
+}
+.intake-tray-item button[title*="Discard"] {
+  background: #374151;
+}
+.intake-tray-item button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.intake-tray-error {
+  color: #f87171;
+}

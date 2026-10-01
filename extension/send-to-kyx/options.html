@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Send to KYX — settings</title>
+    <style>
+      body { font: 14px system-ui, sans-serif; max-width: 30rem; margin: 2rem auto; color: #e5e7eb; background: #111827; }
+      label { display: block; margin: 1rem 0 0.25rem; }
+      input { width: 100%; padding: 0.4rem; background: #1f2937; border: 1px solid #374151; color: #e5e7eb; border-radius: 4px; }
+      button { margin-top: 1rem; padding: 0.4rem 1rem; background: #4f46e5; color: white; border: 0; border-radius: 4px; cursor: pointer; }
+      p { color: #9ca3af; }
+    </style>
+  </head>
+  <body>
+    <h1>Send to KYX</h1>
+    <p>Audio lands on YOUR machine only — the KYX collab server's intake endpoint. Default matches <code>npm run collab</code>.</p>
+    <label for="intakeUrl">Intake endpoint</label>
+    <input id="intakeUrl" placeholder="http://127.0.0.1:1234/api/intake" />
+    <button id="save">Save</button>
+    <p id="status"></p>
+    <script src="options.js"></script>
+  </body>
+</html>
