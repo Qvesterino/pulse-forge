@@ -1047,3 +1047,37 @@
   border-color: #343b48;
   transform: translateY(-2px);
 }
+
+/* ── AI co-producer section (MCP agent session video) ─────────────────── */
+
+.landing-section-sub {
+  max-width: 720px;
+  margin: 14px auto 0;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--text-secondary, rgba(235, 240, 250, 0.65));
+}
+
+.landing-video-frame {
+  max-width: 980px;
+  margin: 30px auto 34px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #05070c;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.45);
+}
+
+.landing-agent-video {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+}
+
+@media (max-width: 720px) {
+  .landing-video-frame {
+    margin: 20px auto 24px;
+    border-radius: 10px;
+  }
+}

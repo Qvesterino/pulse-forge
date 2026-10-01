@@ -213,6 +213,63 @@ export function LandingPage({ onEnterStudio }: { onEnterStudio: () => void }) {
         </div>
       </section>
 
+      <section className="landing-section landing-section-tight" aria-label="AI co-producer">
+        <div className="landing-shell">
+          <div className="landing-section-head">
+            <p className="landing-eyebrow">Meet your AI co-producer</p>
+            <h2>An agent session, replayed</h2>
+            <p className="landing-section-sub">
+              This is a real MCP session against the studio — the same read-backs your agent sees. Connect Claude or
+              any MCP-capable assistant and produce together: it reads before acting, verifies every step, and anything
+              it does can be undone.
+            </p>
+          </div>
+          <div className="landing-video-frame">
+            <video
+              src="/landing/mcp-agent-session.mp4"
+              className="landing-agent-video"
+              autoPlay
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              aria-label="Replay of an AI agent session: generate a drill pattern, edit steps, apply a measured mix, arrange the song form, then roll back an experiment via a checkpoint"
+            />
+          </div>
+          <div className="landing-grid landing-grid-3">
+            <div className="landing-card">
+              <span className="landing-card-icon">
+                <Icon>
+                  <path d="M20 6 9 17l-5-5" />
+                </Icon>
+              </span>
+              <h3>Verified, not vibes</h3>
+              <p>Every mutation returns a read-back of the resulting state — the agent proves what it did.</p>
+            </div>
+            <div className="landing-card">
+              <span className="landing-card-icon">
+                <Icon>
+                  <path d="M3 12a9 9 0 1 0 9-9" />
+                  <path d="M3 4v5h5" />
+                </Icon>
+              </span>
+              <h3>Undo everything</h3>
+              <p>Checkpoints before experiments, one-step rollbacks. The human stays the producer.</p>
+            </div>
+            <div className="landing-card">
+              <span className="landing-card-icon">
+                <Icon>
+                  <path d="M4 17l6-6-6-6" />
+                  <path d="M12 19h8" />
+                </Icon>
+              </span>
+              <h3>Open protocol (MCP)</h3>
+              <p>No proprietary lock-in — any MCP-capable client speaks to KYX. Token-authed, opt-in, relayed.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section className="landing-section landing-section-tight" aria-label="How it works">
         <div className="landing-shell">
           <div className="landing-section-head">
