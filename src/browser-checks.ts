@@ -3475,9 +3475,12 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
   }
 
   check(
-    "templates: 12 factory templates are registered",
-    TEMPLATES.length === 12,
-    TEMPLATES.map((t) => t.id).join(","),
+    "templates: factory templates are registered",
+    // The per-template loop below validates every registered template
+    // individually; the floor only guards against a silent registration
+    // drop (a hard equality went stale every time a template shipped).
+    TEMPLATES.length >= 12,
+    `${TEMPLATES.length} registered: ${TEMPLATES.map((t) => t.id).join(",")}`,
   );
 
   for (const template of TEMPLATES) {

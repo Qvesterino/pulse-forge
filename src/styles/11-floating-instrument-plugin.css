@@ -1081,3 +1081,181 @@
     border-radius: 10px;
   }
 }
+
+/* ── /agents page (MCP onboarding) ─────────────────────────────────────── */
+
+.agents-page {
+  min-height: 100vh;
+  background: #05070c;
+  color: rgba(235, 240, 250, 0.92);
+}
+
+.agents-hero {
+  padding: 110px 0 70px;
+  text-align: center;
+  background:
+    radial-gradient(1100px 560px at 50% 20%, rgba(245, 158, 11, 0.09), transparent 70%),
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size:
+    auto,
+    64px 64px,
+    64px 64px;
+}
+
+.agents-hero h1 {
+  font-size: 64px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 14px 0 18px;
+}
+
+.agents-accent {
+  color: #f59e0b;
+}
+
+.agents-lede {
+  max-width: 720px;
+  margin: 0 auto;
+  font-size: 19px;
+  line-height: 1.6;
+  color: rgba(235, 240, 250, 0.65);
+}
+
+.agents-hero-cta {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  margin-top: 34px;
+  flex-wrap: wrap;
+}
+
+.agents-tabs {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin: 34px 0 26px;
+  flex-wrap: wrap;
+}
+
+.agents-tab {
+  font-family: inherit;
+  font-size: 15px;
+  padding: 10px 22px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: rgba(235, 240, 250, 0.65);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.agents-tab:hover {
+  border-color: #343b48;
+}
+
+.agents-tab-active {
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.45);
+}
+
+.agents-step-body {
+  font-size: 15px;
+  line-height: 1.6;
+  color: rgba(235, 240, 250, 0.68);
+}
+
+.agents-step-body code {
+  font-family: "JetBrains Mono", "Cascadia Code", ui-monospace, Menlo, monospace;
+  font-size: 13px;
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.08);
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+
+.agents-config-wrap {
+  max-width: 860px;
+  margin: 26px auto 0;
+}
+
+.agents-code {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(8, 11, 18, 0.9);
+}
+
+.agents-code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  font-family: "JetBrains Mono", "Cascadia Code", ui-monospace, Menlo, monospace;
+  font-size: 14px;
+  color: rgba(235, 240, 250, 0.55);
+}
+
+.agents-copy {
+  font-family: "JetBrains Mono", "Cascadia Code", ui-monospace, Menlo, monospace;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: #f59e0b;
+  background: transparent;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 999px;
+  padding: 5px 16px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.agents-copy:hover {
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.agents-code pre {
+  margin: 0;
+  padding: 22px 24px;
+  overflow-x: auto;
+}
+
+.agents-code code {
+  font-family: "JetBrains Mono", "Cascadia Code", ui-monospace, Menlo, monospace;
+  font-size: 15px;
+  line-height: 1.65;
+  color: rgba(235, 240, 250, 0.88);
+}
+
+.agents-note {
+  max-width: 720px;
+  margin: 18px auto 0;
+  text-align: center;
+  font-size: 14.5px;
+  line-height: 1.6;
+  color: rgba(235, 240, 250, 0.55);
+}
+
+.agents-tools {
+  font-family: "JetBrains Mono", "Cascadia Code", ui-monospace, Menlo, monospace;
+  font-size: 14px;
+  line-height: 1.7;
+  color: rgba(235, 240, 250, 0.72);
+}
+
+@media (max-width: 720px) {
+  .agents-hero {
+    padding: 70px 0 46px;
+  }
+
+  .agents-hero h1 {
+    font-size: 42px;
+  }
+}
+
+.landing-agents-cta {
+  text-align: center;
+  margin-top: 26px;
+}

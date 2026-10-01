@@ -26,6 +26,7 @@ const session = await ort.InferenceSession.create(new Uint8Array(modelBytes), {
 });
 
 let MARGIN = 1.0;
+let ABSTAIN = 2.0;
 async function infer(instruction: string): Promise<Record<string, Float32Array>> {
   const bow = buildIntentBow(instruction, vocab.tokens);
   const results = (await session.run({ features: new ort.Tensor("float32", bow, [1, bow.length]) })) as Record<
@@ -38,6 +39,7 @@ async function infer(instruction: string): Promise<Record<string, Float32Array>>
 }
 
 MARGIN = Number(process.env.MARGIN ?? 1.0);
+ABSTAIN = Number(process.env.ABSTAIN_MARGIN ?? 2.0);
 const rows = readFileSync(path.join(ROOT, "scripts", "data", "intent-sft", "val.jsonl"), "utf8")
   .split("\n")
   .filter((l) => l.trim() !== "")
@@ -61,7 +63,7 @@ for (const row of rows) {
   const bucket = perKind.get(trueKind) ?? { rows: 0, attempted: 0, exact: 0 };
   bucket.rows += 1;
   const outputs = await infer(row.instruction);
-  const decoded = decodeIntentHeads(outputs, vocab, { kindMargin: MARGIN });
+  const decoded = decodeIntentHeads(outputs, vocab, { kindMargin: MARGIN, abstainMargin: ABSTAIN });
   if (decoded === null) {
     bucket.rows += 0;
     fails.push({ instruction: row.instruction, trueKind, gotKind: "abstain", kind: "abstain", lang: row.lang });

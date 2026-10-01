@@ -84,6 +84,14 @@ const ABSENT = "__absent__";
  * near zero — a mute must never become a delete (LOCAL-INTENT-MODEL.md §5).
  */
 export const INTENT_MODEL_KIND_MARGIN = 1.0;
+/**
+ * Required logit gap between the winning kind and the ABSTAIN class
+ * (calibration wave). Wider than the top-two margin: out-of-scope-kind
+ * inputs (section-worded effect phrases) produced confident in-scope
+ * guesses with the abstain logit just below — this is the honest-fallback
+ * tripwire for exactly that shape.
+ */
+export const INTENT_MODEL_ABSTAIN_MARGIN = 2.0;
 
 function topTwoGap(values: Float32Array): number {
   let best = -Infinity;
@@ -182,6 +190,16 @@ export function decodeIntentHeads(
   if (kind === ABSENT || kind === "abstain") return null;
   // Margin abstention: an unsure kind is an abstention, never a guess.
   if (topTwoGap(kindScores) < kindMargin) return null;
+  // Abstain-class margin (calibration wave): the measured wrongKind rows are
+  // out-of-scope-kind inputs ("add distortion to the drop") where the model
+  // is confident about an in-scope kind but the ABSTAIN class sits just
+  // below it. Requiring a wider gap to the abstain logit specifically turns
+  // those into honest abstentions without touching unambiguous wins.
+  const sorted = Array.from(kindScores).sort((a, b) => b - a);
+  const abstainIndex = head("kind").classes.indexOf("abstain");
+  const abstainScore = kindScores[abstainIndex];
+  const abstainGap = sorted[0] - abstainScore;
+  if (abstainGap < (options?.abstainMargin ?? INTENT_MODEL_ABSTAIN_MARGIN)) return null;
 
   const targets = activeClasses(head("targets"), scores("targets"));
   const pads = activeClasses(head("pads"), scores("pads"));

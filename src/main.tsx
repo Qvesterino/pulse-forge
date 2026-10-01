@@ -37,6 +37,7 @@ const EmbedApp = lazy(() => import("./embed/EmbedApp").then((m) => ({ default: m
 const GalleryPage = lazy(() => import("./gallery/GalleryPage").then((m) => ({ default: m.GalleryPage })));
 const LandingPage = lazy(() => import("./landing/LandingPage").then((m) => ({ default: m.LandingPage })));
 const DownloadPage = lazy(() => import("./download/DownloadPage").then((m) => ({ default: m.DownloadPage })));
+const AgentsPage = lazy(() => import("./agents/AgentsPage").then((m) => ({ default: m.AgentsPage })));
 // The studio itself is the largest UI route. Keep it out of the initial
 // project-browser/landing payload and load it only after a project opens.
 const StudioApp = lazy(() => import("./ui/App").then((m) => ({ default: m.App })));
@@ -136,6 +137,18 @@ if (/^\/embed(\/|$)/.test(PATH)) {
       <ErrorBoundary crashNote="This page hit an error. Reload to try again.">
         <Suspense fallback={ROUTE_FALLBACK}>
           <DownloadPage />
+        </Suspense>
+      </ErrorBoundary>
+    </StrictMode>,
+  );
+} else if (/^\/agents(\/|$)/.test(PATH)) {
+  // /agents — the MCP onboarding page (connect Claude Desktop & co);
+  // no studio boot — it is a docs/marketing route like /download.
+  root.render(
+    <StrictMode>
+      <ErrorBoundary crashNote="This page hit an error. Reload to try again.">
+        <Suspense fallback={ROUTE_FALLBACK}>
+          <AgentsPage />
         </Suspense>
       </ErrorBoundary>
     </StrictMode>,

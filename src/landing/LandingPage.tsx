@@ -219,9 +219,9 @@ export function LandingPage({ onEnterStudio }: { onEnterStudio: () => void }) {
             <p className="landing-eyebrow">Meet your AI co-producer</p>
             <h2>An agent session, replayed</h2>
             <p className="landing-section-sub">
-              This is a real MCP session against the studio — the same read-backs your agent sees. Connect Claude or
-              any MCP-capable assistant and produce together: it reads before acting, verifies every step, and anything
-              it does can be undone.
+              This is a real MCP session against the studio — the same read-backs your agent sees. Connect Claude or any
+              MCP-capable assistant and produce together: it reads before acting, verifies every step, and anything it
+              does can be undone.
             </p>
           </div>
           <div className="landing-video-frame">
@@ -266,6 +266,11 @@ export function LandingPage({ onEnterStudio }: { onEnterStudio: () => void }) {
               <h3>Open protocol (MCP)</h3>
               <p>No proprietary lock-in — any MCP-capable client speaks to KYX. Token-authed, opt-in, relayed.</p>
             </div>
+          </div>
+          <div className="landing-agents-cta">
+            <a className="landing-btn landing-btn-primary" href={appUrl("/agents")}>
+              Connect your AI — full setup guide →
+            </a>
           </div>
         </div>
       </section>

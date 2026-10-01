@@ -419,7 +419,7 @@ class MultiHeadNet:
                         counts[cls] = counts.get(cls, 0) + 1
                 probs = softmax(logit)
                 truth = target.argmax(axis=1)
-                if head["name"] in ("kind", "direction", "percent"):
+                if head["name"] == "kind":
                     # Log-scaled class balance on the long-tailed heads
                     # (kind: exact 474 rows vs save 6; direction/percent:
                     # rare direction words and rare numeric classes). An
@@ -518,20 +518,8 @@ def main() -> None:
                     x[row_index, column] = 1.0
         return x
 
-    # Out-of-scope abstain oversampling: rows whose true kind is outside the
-    # v1 scope are labeled kind=abstain, but their WORD SHAPE is identical to
-    # in-scope intents ("add distortion to the drop" vs "add distortion") —
-    # the measured val wrongKinds were exactly these rows guessed with high
-    # confidence. Triplicate them so the section/context tokens carry an
-    # abstain signal strong enough to compete with the effect wording.
-    oos_rows = [
-        row
-        for row in train_rows
-        if row["response"]["kind"] not in KINDS and row["response"].get("kind") is not None
-    ]
-    train_rows_effective = train_rows + oos_rows * 2
-    x_train = featurize(train_rows_effective)
-    labels_train = [extract_labels(row) for row in train_rows_effective]
+    x_train = featurize(train_rows)
+    labels_train = [extract_labels(row) for row in train_rows]
     x_val = featurize(val_rows)
     labels_val = [extract_labels(row) for row in val_rows]
 

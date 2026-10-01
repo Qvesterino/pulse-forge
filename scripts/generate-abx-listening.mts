@@ -8,6 +8,12 @@
  * in RANDOM order, and must decide which one X was. Chance is 50 %, so
  * repeated trials give a real binomial p-value (18/20 correct → p ≈ 0.0002).
  *
+ * LEVEL MATCHING (quality roadmap P4): an unmatched pair measures loudness
+ * preference, not quality — the louder file wins. Both sides are measured
+ * (BS.1770 integrated LUFS via the app's own kweighting) and played back at
+ * their MEAN loudness, so neither version is privileged. Disable with
+ * --no-match (native levels, page says so honestly).
+ *
  * Input: listening/abx/lanes.json
  *   { "lanes": [ { "lane": "groove-swing-drop", "label": "swing bake",
  *                  "fileA": "pairs/groove-before.wav",
@@ -31,6 +37,103 @@ interface Lane {
   label: string;
   fileA: string;
   fileB: string;
+}
+
+interface LaneWithMatch extends Lane {
+  gainDbA: number;
+  gainDbB: number;
+  matchNote: string;
+}
+
+/** Minimal RIFF/WAVE reader: 16/24-bit PCM + 32-bit float, de-interleaved. */
+function decodeWavChannels(file: string): { channels: Float32Array[]; sampleRate: number } {
+  const bytes = readFileSync(file);
+  if (bytes.length < 12 || bytes.toString("ascii", 0, 4) !== "RIFF" || bytes.toString("ascii", 8, 12) !== "WAVE") {
+    throw new Error("not a RIFF/WAVE file");
+  }
+  let offset = 12;
+  let channels = 1;
+  let sampleRate = 44_100;
+  let bits = 16;
+  let format = 1; // 1 = PCM, 3 = IEEE float
+  let dataStart = -1;
+  let dataLength = 0;
+  while (offset + 8 <= bytes.length) {
+    const chunkId = bytes.toString("ascii", offset, offset + 4);
+    const chunkSize = bytes.readUInt32LE(offset + 4);
+    if (chunkId === "fmt ") {
+      format = bytes.readUInt16LE(offset + 8);
+      channels = bytes.readUInt16LE(offset + 10);
+      sampleRate = bytes.readUInt32LE(offset + 12);
+      bits = bytes.readUInt16LE(offset + 22);
+    } else if (chunkId === "data") {
+      dataStart = offset + 8;
+      dataLength = Math.min(chunkSize, bytes.length - dataStart);
+      break;
+    }
+    offset += 8 + chunkSize + (chunkSize % 2);
+  }
+  const supported = (format === 1 && (bits === 16 || bits === 24)) || (format === 3 && bits === 32);
+  if (dataStart < 0 || !supported || channels < 1) {
+    throw new Error(`unsupported WAV (fmt ${format}, ${bits}-bit, ${channels}ch — need 16/24 PCM or 32f)`);
+  }
+  const bytesPer = bits / 8;
+  const frames = Math.floor(dataLength / (bytesPer * channels));
+  const out: Float32Array[] = [];
+  for (let c = 0; c < channels; c++) out.push(new Float32Array(frames));
+  for (let i = 0; i < frames; i++) {
+    for (let c = 0; c < channels; c++) {
+      const at = dataStart + (i * channels + c) * bytesPer;
+      out[c][i] =
+        bits === 16
+          ? bytes.readInt16LE(at) / 32_768
+          : bits === 24
+            ? bytes.readIntLE(at, 3) / 8_388_608
+            : bytes.readFloatLE(at);
+    }
+  }
+  return { channels: out, sampleRate };
+}
+
+function measureLufs(
+  file: string,
+  lufs: (channels: readonly Float32Array[], sampleRate: number) => number | null,
+): number | null {
+  const { channels, sampleRate } = decodeWavChannels(path.join(OUT_DIR, file));
+  return lufs(channels, sampleRate);
+}
+
+async function attachLevelMatch(lanes: Lane[], enabled: boolean): Promise<LaneWithMatch[]> {
+  if (!enabled) {
+    return lanes.map((lane) => ({
+      ...lane,
+      gainDbA: 0,
+      gainDbB: 0,
+      matchNote: "level matching disabled (--no-match)",
+    }));
+  }
+  const { integratedLufsStreaming } = await import("/src/audio-engine/kweighting.ts");
+  const { levelMatchGainsDb } = await import("/src/analysis/levelMatch.ts");
+  return lanes.map((lane) => {
+    let lufsA: number | null = null;
+    let lufsB: number | null = null;
+    try {
+      lufsA = measureLufs(lane.fileA, integratedLufsStreaming);
+    } catch (error) {
+      console.warn(
+        `abx: ${lane.lane}: A (${lane.fileA}) unreadable — ${error instanceof Error ? error.message : error}`,
+      );
+    }
+    try {
+      lufsB = measureLufs(lane.fileB, integratedLufsStreaming);
+    } catch (error) {
+      console.warn(
+        `abx: ${lane.lane}: B (${lane.fileB}) unreadable — ${error instanceof Error ? error.message : error}`,
+      );
+    }
+    const gains = levelMatchGainsDb(lufsA, lufsB);
+    return { ...lane, gainDbA: gains.gainDbA, gainDbB: gains.gainDbB, matchNote: gains.note };
+  });
 }
 
 function loadLanes(): Lane[] {
@@ -58,7 +161,7 @@ function loadLanes(): Lane[] {
   return parsed.lanes;
 }
 
-const LANES = loadLanes();
+const LANES = await attachLevelMatch(loadLanes(), !process.argv.includes("--no-match"));
 const LANES_LITERAL = JSON.stringify(LANES).replace(/</g, "\\u003c");
 
 const PAGE = `<!DOCTYPE html>
@@ -126,8 +229,34 @@ function srcFor(lane, which) {
   return which === "A" ? lane.fileA : lane.fileB;
 }
 
+// Level matching (P4): each lane's audio element routes through one gain
+// node; the gain is set per side before playback so A and B land on their
+// mean measured LUFS. WebAudio needs a user gesture — the first ▶ click
+// creates/resumes the context, before that the element plays native.
+const audioGraphs = new Map();
+function gainNodeFor(lane, audioEl) {
+  let graph = audioGraphs.get(lane.lane);
+  if (!graph) {
+    const ctx = new AudioContext();
+    const src = ctx.createMediaElementSource(audioEl);
+    const gain = ctx.createGain();
+    src.connect(gain).connect(ctx.destination);
+    graph = { ctx, gain };
+    audioGraphs.set(lane.lane, graph);
+  }
+  if (graph.ctx.state === "suspended") graph.ctx.resume();
+  return graph.gain;
+}
+
 function play(lane, which, audioEl) {
-  audioEl.src = srcFor(lane, which);
+  // X secretly IS one of A/B — it must carry that side's gain, otherwise
+  // playback level would leak the correct answer.
+  const side = which === "X" ? xFor(lane) : which;
+  const gainDb = side === "A" ? (lane.gainDbA || 0) : side === "B" ? (lane.gainDbB || 0) : 0;
+  try {
+    gainNodeFor(lane, audioEl).gain.value = Math.pow(10, gainDb / 20);
+  } catch { /* element not yet routable — native level this round */ }
+  audioEl.src = srcFor(lane, side);
   audioEl.play();
 }
 
@@ -175,6 +304,7 @@ for (const lane of LANES) {
   const div = document.createElement("div");
   div.className = "lane";
   div.innerHTML = '<h2>' + lane.lane + ' — ' + lane.label + '</h2>'
+    + '<div class="stat">' + (lane.matchNote || "no level info") + '</div>'
     + '<button data-which="X">▶ X</button>'
     + '<button data-which="A">▶ A</button>'
     + '<button data-which="B">▶ B</button>'
@@ -196,5 +326,7 @@ renderStats();
 
 mkdirSync(OUT_DIR, { recursive: true });
 writeFileSync(path.join(OUT_DIR, "index.html"), PAGE);
+const matched = LANES.filter((lane) => lane.matchNote.startsWith("level-matched")).length;
 console.log(`abx: wrote listening/abx/index.html (${LANES.length} lane(s) from lanes.json)`);
+console.log(`abx: level-matched ${matched}/${LANES.length} lane(s)`);
 console.log("serve with: npm run listening:serve  →  http://127.0.0.1:5179/abx/");

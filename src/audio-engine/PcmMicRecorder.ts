@@ -114,7 +114,13 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
       if (timer) clearTimeout(timer);
     }),
     new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(message)), ms);
+      // Clear on settle too: a promise that rejects early (permission denied)
+      // must not leave the timeout armed for the full window keeping the
+      // event loop warm with a dead rejection.
+      timer = setTimeout(() => {
+        timer = null;
+        reject(new Error(message));
+      }, ms);
     }),
   ]);
 }
