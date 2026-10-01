@@ -3559,7 +3559,7 @@ function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>):
   const op = String(record.op ?? "");
   const family = String(record.family ?? "");
   if (!["kick", "snare", "clap", "hat", "perc", "tom"].includes(family)) {
-    return { text: `unknown pad family "${family}"`, mutated: false };
+    return { text: `unknown pad family "${family}"`, mutated: false, isError: true };
   }
   const drums = doc.tracks.filter((track): track is DrumTrack => track.kind === "drum");
   if (drums.length === 0) return { text: "no drum tracks in the project", mutated: false };
@@ -3570,7 +3570,7 @@ function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>):
       if (inferPadRole(pad.name, index) === family) targets.push({ padId: pad.id, name: pad.name });
     });
   }
-  if (targets.length === 0) return { text: `no pad matches family "${family}"`, mutated: false };
+  if (targets.length === 0) return { text: `no pad matches family "${family}"`, mutated: false, isError: true };
 
   const stepCount = pattern.stepCount;
   const requested = Array.isArray(record.steps)

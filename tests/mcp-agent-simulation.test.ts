@@ -148,12 +148,16 @@ describe("agent simulation — the whole playbook in one session", () => {
   it("phase 1: beat workflow — polish, groove, fx, markers", () => {
     const result = agent.call("kyx_generate", { genre: "drill", seed: "session-beat", bars: 2 });
     expect(result.mutated).toBe(true);
-    // read-before-act: drill fills the last 16th, so MAKE an empty slot first
-    agent.call("kyx_steps", { op: "add", family: "hat", steps: [31] });
-    agent.call("kyx_steps", { op: "remove", family: "hat", steps: [31] });
-    const ghost = agent.call("kyx_steps", { op: "ghost", family: "hat", steps: [31] });
+    // read-before-act: the drill Grime kit has NO hat pad (honest refusal)
+    const hatProbe = agent.call("kyx_steps", { op: "add", family: "hat", steps: [31] });
+    expect(hatProbe.isError).toBe(true);
+    expect(hatProbe.text).toContain("no pad matches family");
+    // snare exists — make an empty slot at step 6, then ghost it
+    agent.call("kyx_steps", { op: "add", family: "snare", steps: [6] });
+    agent.call("kyx_steps", { op: "remove", family: "snare", steps: [6] });
+    const ghost = agent.call("kyx_steps", { op: "ghost", family: "snare", steps: [6] });
     expect(ghost.mutated).toBe(true);
-    expect(ghost.text).toContain("hat ghost");
+    expect(ghost.text).toContain("snare ghost");
     const groove = agent.call("kyx_groove", { direction: "more" });
     expect(groove.mutated).toBe(true);
     const fx = agent.call("kyx_fx", { effect: "reverb", family: "bass", action: "more" });
