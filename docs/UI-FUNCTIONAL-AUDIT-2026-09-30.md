@@ -2,9 +2,8 @@
 
 Functional (not visual) audit of the KYX / Pulse Forge UI, with repairs.
 Scope: every interactive surface in `src/ui/**` — 85 components, 1.7 MB of
-React. Five waves, **17 confirmed defects repaired** across 17 commits, each
-source change covered by a regression test proven to FAIL against the pre-fix
-code.
+React. Six waves, **18 confirmed defects repaired**, each source change covered
+by a regression test proven to FAIL against the pre-fix code.
 
 This file is a working report. Per `AGENTS.md` §10, any number claimed here
 must be reproducible from the working tree.
@@ -69,7 +68,7 @@ rg -o '<(div|span)[^>]*(role=|tabIndex=)' src/ui --glob '*.tsx' -U | wc -l
 
 ---
 
-## 2. REPAIRED - 17 confirmed defects
+## 2. REPAIRED — 18 confirmed defects
 
 ### WAVE 4 — found by real-browser verification (not static inspection)
 
@@ -276,6 +275,60 @@ enabled over a clip that no longer exists — it could never return to its
 resting state and every further press re-issued the delete for the same
 removed id. One-line fix matching the convention already in the file.
 
+### WAVE 6 — §14 "focus restoration after dialogs"
+
+**18. Four overlays took focus on open and never gave it back (MAJOR).**
+Measured, not inferred: `ContextMenu.tsx:36-59` and the TopBar overflow menu
+both restore focus correctly, while `GenerateDialog`, `HelpOverlay`,
+`PaletteOverlay` and `LatencyCalibrationWizard` had **zero** restore signals
+between them. Each takes focus on open (`GenerateDialog` `autoFocus`,
+`HelpOverlay.tsx:27` `searchRef.current?.focus()`, and so on) and none returned
+it. A keyboard user closing any of them landed on `document.body` and had to
+Tab back from the top of the page.
+
+Fixed with a shared hook, `src/ui/useFocusRestore.ts`, rather than four
+one-off handlers — the pattern already existed in two places and was duplicated
+in neither. It has to solve two things the naive version cannot, and both
+failures were measured here first:
+
+1. **The trigger is not observable after the commit.** Snapshotting
+   `document.activeElement` inside the open effect reads focus _after_ the
+   overlay has already focused itself, so it records the overlay's own input —
+   which is unmounted by the time the restore runs, and the result is
+   `document.activeElement === BODY` after every close. A `focusin` listener
+   attached only while open misses the same event for the same reason. So
+   focus is tracked from a listener mounted for the component's whole lifetime.
+2. **A `ref` prop cannot classify the overlay's own `autoFocus`, either.**
+   Measured with a throwaway probe in this repo's jsdom harness:
+
+   | event            | `el.isConnected` | overlay root in DOM  |
+   | ---------------- | ---------------- | -------------------- |
+   | `focusin:BUTTON` | true             | **false**            |
+   | `focusin:INPUT`  | true             | true                 |
+   | layout effect    | —                | ref assigned **now** |
+
+   React attaches the `ref` _after_ the commit that runs `autoFocus`, so at the
+   one moment the classification is needed, `overlayRef.current` is still
+   `null` and `contains()` silently answers "not inside". The hook therefore
+   reads the open flag from a ref written during render, and the restore target
+   is the **last element focused outside the overlay** — which is the trigger in
+   the ordinary case, and the control the user deliberately moved to when they
+   moved it, so one rule covers both without a second code path.
+
+   This is why the first attempt at this hook did not work, and why the
+   failure is recorded rather than quietly rewritten: it used the ref-based
+   `contains()` check, which is the idiomatic thing to write and is wrong here.
+
+Wired at all four call sites, each with the ref on the element that **contains**
+the focused input: `GenerateDialog.tsx:237` (the backdrop — distinct from the
+existing `dialogRef` on the inner panel, which is click-outside), `HelpOverlay.tsx:87`,
+`PaletteOverlay.tsx:81`, `LatencyCalibrationWizard.tsx:154`.
+
+**Deliberately not done.** This restores focus; it does not trap it. Modal
+focus containment, `aria-modal` correctness and a roving-tabindex decision for
+the mixer strips are a11y redesign, which §14 of the objective excludes. §8
+keeps the mixer-strip finding on the record for the same reason.
+
 ### CORRECTED / WITHDRAWN CLAIMS (recorded so they are not repeated)
 
 - **The batch-FX toolbar was NOT affected by the ghost selection.** The
@@ -467,6 +520,35 @@ After that, each guard was removed individually and the corresponding test was
 observed failing by name (not inferred from ordering), then the source was
 restored and `git diff` confirmed clean.
 
+**Wave 6 — closing an overlay without going through its own close button.** The
+repair for #18 only matters on the paths the real app actually takes, and three
+of them are not "user clicked the ✕":
+
+- `Escape`, handled by the global cascade in `App.tsx`, which flips the flag from
+  outside the overlay and never focuses anything;
+- a click on the non-focusable scrim;
+- teardown — a parent unmounting the panel that owns the dialog, while the
+  trigger that opened it is still on screen.
+
+Each is a distinct test rather than one, because they fail differently: the
+first two orphan the `autoFocus` input, the third orphans whatever the user had
+moved focus to. A harness built from `user.click` on an extra button would have
+covered none of them correctly — clicking a button **moves focus onto it**, so
+those tests passed for the wrong reason twice before the harness was rebuilt
+around `fireEvent.keyDown(window, …)` and a plain `<div>` scrim.
+
+The negative cases are covered too, and they are the half that is easy to get
+wrong: focus must **not** be reclaimed if the user moved it to a control outside
+the overlay, and must be left alone entirely if the overlay closed without ever
+taking focus. Stealing it back would throw a keyboard user out of whatever they
+were using.
+
+One state is deliberately **not** asserted: an overlay whose DOM vanished while
+`open` stayed true. All four call sites render `if (!open) return null`
+(verified by grep, not assumed), so the flag and the DOM cannot disagree and the
+state is unreachable. An earlier draft of the harness asserted it anyway and
+failed — a test for a state the product cannot be in.
+
 ---
 
 ## 5. INCOMPLETE / INTENTIONALLY NOT "FIXED"
@@ -540,6 +622,25 @@ maxScroll=327`, and a reachability sweep over both scroll ends reports
 - **Browser verification is Chromium-only.** The Playwright run covers the
   layout defect in Chromium; the `min-height` floor is plain CSS with no
   engine-specific syntax, but no Firefox/WebKit layout pass was run for it.
+- **`useFocusRestore` needs its owner mounted while the overlay is closed, and
+  one call site is behind a `React.lazy` boundary.** The hook captures the
+  trigger from a listener that lives for the component's whole lifetime, so a
+  component that first mounts _already open_ has no trigger to return to. All
+  four call sites render unconditionally and pass `open` as a prop — including
+  `PaletteOverlay`, which is `lazy()`-imported at `App.tsx:68` but rendered
+  unconditionally at `App.tsx:1613`, so the chunk resolves at app boot rather
+  than at the first Ctrl+K. The residual window is therefore only a real Ctrl+K
+  landing before that chunk resolves, and it was not measured in a browser.
+  If a call site ever switches to mounting the overlay only when open, this
+  silently stops working rather than failing loudly — that is the risk, and it
+  is why the call-site test in `tests/ui/HelpOverlay.test.tsx` exists.
+- **The four overlay integrations are proven by jsdom, not by a real browser.**
+  `useFocusRestore` is verified end-to-end against the real `HelpOverlay`; the
+  other three are covered only by the shared hook's tests plus a source read of
+  their refs. `GenerateDialog` additionally needs `useServices` and an audio
+  context, and `LatencyCalibrationWizard` needs Web MIDI, so neither was
+  rendered in a test. Their wiring is one line each and was read directly, but
+  "read directly" is weaker than "executed".
 - **`prettier --check src tests` reports 71 dirty files.** None of them are
   files this audit touched (checked by name); they belong to other in-flight
   work.
@@ -622,12 +723,15 @@ Every count below is reproducible from the working tree.
 | `tests/ui/EffectRack.delete-open-device.test.tsx`         | 5      | §13 — deleting the open device (rack + devices dock + bus) |
 | `tests/ui/ArrangementPanel.delete-selected-clip.test.tsx` | 2      | #17 — DEL button resting state                             |
 | `tests/ui/TopBar.loop-sync.test.tsx`                      | 2      | §5 — LOOP is not a second source of truth                  |
+| `tests/ui/useFocusRestore.test.tsx`                       | 5      | #18 — focus restore across 4 close/teardown paths          |
 
 **Existing files extended** — `tests/ui/controls.test.tsx` (#1, #2, #3),
 `tests/ui/EffectRack.test.tsx` (#4), `tests/ui/ozvena-panel.test.tsx` (#5, #6),
 `tests/ui/WavetablePanel.test.tsx` (#7), `tests/pad-mod.test.ts` (#8),
 `tests/clip-editing-audit-deep.test.ts` (#9, #10, #11, #12),
-`tests/store-undo-frame.test.ts` (undo-frame reuse for #5).
+`tests/store-undo-frame.test.ts` (undo-frame reuse for #5),
+`tests/ui/HelpOverlay.test.tsx` (#18 — the overlay's own call site, so the hook
+is not tested in isolation from the wiring that feeds it).
 
 **Coverage that is NOT a regression guard, and why.** #13 (kit save
 confirmation), #14/#15 (PRISM/VLYX zero height) and #17's _visual_ aspect were
@@ -638,12 +742,24 @@ stated rather than papered over: a test that cannot fail when its guard is
 removed is decorative, and §4 records the two cases where a first draft was
 exactly that before being rewritten.
 
-**Falsification summary.** Every test group added in waves 1–3 and 5 was run
+**Falsification summary.** Every test group added in waves 1–3, 5 and 6 was run
 against reverted source and observed failing: 5 Ozvena, 2 Wavetable, 4
 DragNumber, 1 Slider, 1 load-bound, 4 mixer-selection, 1 DEL button, 2 TopBar
-loop, 1 rack-expanded, 1 devices-dock. The one group that could not be
-falsified (the `deleteArrangementClip` no-op guard) was **withdrawn** and its
-test deleted — see §2, "CORRECTED / WITHDRAWN CLAIMS".
+loop, 1 rack-expanded, 1 devices-dock, 5 focus-restore, 1 help-overlay
+call-site. The one group that could not be falsified (the
+`deleteArrangementClip` no-op guard) was **withdrawn** and its test deleted —
+see §2, "CORRECTED / WITHDRAWN CLAIMS".
+
+The wave-6 run is the cleanest example of the discipline, because the
+falsification is what found the real bug in my own fix:
+
+- restoring the pre-fix `useFocusRestore` failed **5 / 5** — the tests caught
+  the ref-timing defect I had written into the first version of the hook;
+- breaking the wiring at the call site instead (passing `false` rather than
+  `open` in `HelpOverlay`) failed **exactly 1 of 12** — the new test and
+  nothing else, which is what a correctly-scoped regression guard looks like;
+- a temporary probe (`tests/ui/_probe2.test.tsx`) produced the ordering table
+  in §2, and was deleted in the same commit rather than left in the tree.
 
 ---
 
@@ -684,7 +800,25 @@ no local `Escape` are all dismissible: `OnboardingTour` is a non-modal
 `.tour-card` with a native `SKIP` button (`:82`) and correctly omits
 `aria-modal`; `CollabPanel` and `HumToMelody` expose native buttons.
 
-**Three false positives this section's own scans produced, recorded because the
+**Four dialogs did not restore focus (defect 18, §2 wave 6).** "No keyboard
+traps" above is about Escape; it says nothing about where focus goes afterwards,
+and the answer was "nowhere" in four of the overlays. Fixed with the shared
+`useFocusRestore` hook, proven by falsification. What it does **not** do is trap
+focus: Tab can still leave a dialog, and the restore only fires when focus was
+orphaned to `<body>`. That is deliberate — containment is a redesign, and the
+objective excludes it.
+
+**A fourth false positive, and the one that nearly cost the most.** The repair
+started from the idiomatic implementation — snapshot `document.activeElement` in
+the open effect, filter focus events with `ref.current.contains(el)`. Both halves
+are the obvious thing to write, and both are wrong here for the same underlying
+reason: **React attaches a `ref` prop after the commit that runs `autoFocus`**, so
+the ref is `null` at the one moment the classification is needed. I only found out
+because the test suite failed 3/3 against my own fix; the alternative was to
+explain the failure away and ship a hook that restores nothing. The probe that
+settled it is in §2 and was deleted in the same commit.
+
+**Four false positives this section's own scans produced, recorded because the
 same traps are waiting for the next audit:**
 
 1. A line-based filter for "clickable div without a11y affordances" returned
@@ -703,7 +837,9 @@ same traps are waiting for the next audit:**
    up the file. The claim was correct; the predicate was wrong. A second
    search, for the handler the citation actually names, confirmed it.
 
-The general rule these three share: **the predicate is part of the claim.**
-Three of the strongest-looking results in this audit — a clean a11y sweep, an
+The general rule these four share: **the predicate is part of the claim.**
+The three strongest-looking results in this audit — a clean a11y sweep, an
 unrelated global handler, a silently-fixed defect — were the scan's error, not
-the code's. Each cost a measurement to catch, which is the minimum.
+the code's, and the fourth was my own idiomatic fix, caught only because the
+tests were run against it rather than admired. Each cost a measurement to catch,
+which is the minimum.
