@@ -46,6 +46,16 @@ const IconLayers = () => (
   </Icon>
 );
 
+const IconBot = () => (
+  <Icon>
+    <rect x="4" y="8" width="16" height="12" rx="2" />
+    <path d="M12 8V4M9 4h6" />
+    <circle cx="9" cy="13" r="1" />
+    <circle cx="15" cy="13" r="1" />
+    <path d="M9 17h6" />
+  </Icon>
+);
+
 const IconUsers = () => (
   <Icon>
     <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
@@ -72,6 +82,11 @@ const IconGlobe = () => (
 );
 
 const FEATURES = [
+  {
+    icon: <IconBot />,
+    title: "AI agents produce inside KYX",
+    text: "Connect Claude or any MCP-capable assistant — it reads the project, composes, mixes and arranges, and every step is verified and undoable. An open protocol, built in.",
+  },
   {
     icon: <IconLayers />,
     title: "Type a beat into existence",
@@ -170,7 +185,8 @@ export function LandingPage({ onEnterStudio }: { onEnterStudio: () => void }) {
               </a>
             </div>
             <span className="landing-hint">
-              No install · Works offline · <a href={appUrl("/download")}>Prefer a desktop app? Download for Windows</a>
+              No install · Works offline · AI-agent ready (MCP) ·{" "}
+              <a href={appUrl("/download")}>Prefer a desktop app? Download for Windows</a>
             </span>
           </div>
           <div className="landing-hero-player-col" aria-label="Forge a beat">
