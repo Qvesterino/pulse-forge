@@ -67,9 +67,7 @@ describe("qmr bridge — runtime contract", () => {
   it("executeCommand routes kyx.<tool> through the MCP layer (real read-back, real undo)", async () => {
     const { services, store } = fakeServices();
     const stop = startQmrBridge(services);
-    const runtime =
-      (window as unknown as { qvesterQmr?: QmrRuntimeContract }).qvestErQmr ??
-      (window as unknown as { qvesterQmr: QmrRuntimeContract }).qvesterQmr;
+    const runtime = (window as unknown as { qvesterQmr: QmrRuntimeContract }).qvesterQmr;
 
     const state = await runtime.executeCommand("kyx.state", { subject: "tempo" });
     expect(state.mutated).toBe(false);
