@@ -44,7 +44,7 @@ const TARGET_WORDS: ReadonlyArray<readonly [RegExp, PresetTargetFamily]> = [
   [/\b(?:lead(?:e|om|u|a)?|synth\w*|melodi\w*)\b/, "lead"],
 ];
 
-const FAMILY_INSTRUMENTS: Record<PresetTargetFamily, ReadonlySet<string>> = {
+export const FAMILY_INSTRUMENTS: Record<PresetTargetFamily, ReadonlySet<string>> = {
   bass: new Set(["bass", "808", "logdrum"]),
   chords: new Set(["keys", "analog", "organ", "strings", "bell", "texture"]),
   lead: new Set([

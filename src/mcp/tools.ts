@@ -30,7 +30,14 @@ import { normalizeIntent } from "../intent/normalize";
 import { resolveSceneTarget } from "../intent/arrangeWords";
 import { inferPadRole } from "../ai/pad-roles";
 import type { DrumTrack, InstrumentKind, Track, AutomationTarget, AutomationLane } from "../project-model/types";
-import { applyPresetIntentCommand } from "../intent/preset-intent";
+import {
+  applyPresetIntentCommand,
+  FAMILY_INSTRUMENTS as PRESET_FAMILY_INSTRUMENTS,
+  presetReadback,
+  resolvePresetByName,
+  type PresetTargetFamily,
+} from "../intent/preset-intent";
+import { FACTORY_PRESETS } from "../presets/factory";
 import {
   addAutomationLane,
   addAutomationPoint,
@@ -423,7 +430,26 @@ export const MCP_TOOLS: McpToolDef[] = [
       properties: {
         op: {
           type: "string",
-          enum: ["addDrum", "addInstrument", "remove", "rename", "setGain", "setPan", "setMute", "setSolo"],
+          enum: [
+            "addDrum",
+            "addInstrument",
+            "loadPreset",
+            "listPresets",
+            "remove",
+            "rename",
+            "setGain",
+            "setPan",
+            "setMute",
+            "setSolo",
+          ],
+        },
+        presetName: {
+          type: "string",
+          description: 'loadPreset — factory preset name, fuzzy-matched (e.g. "Warm Sub")',
+        },
+        query: {
+          type: "string",
+          description: "listPresets — optional name/instrument filter",
         },
         family: {
           type: "string",
@@ -1634,6 +1660,66 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
         const command = createInstrumentTrack(ctx.getDoc(), kind);
         ctx.execute(command);
         return { text: command.label, mutated: true };
+      }
+      if (op === "loadPreset") {
+        // FACTORY PRESET onto a family — the same resolve + folds-over-every-
+        // track path the text layer uses ("load the Warm Sub preset on the
+        // bass"), one undo snapshot, per-track verification read-back.
+        const presetName = typeof record.presetName === "string" ? record.presetName.trim() : "";
+        if (presetName === "") return { text: "loadPreset needs presetName", mutated: false };
+        const family = (typeof record.family === "string" ? record.family : "bass") as PresetTargetFamily;
+        // resolvePresetByName expects a PRE-normalized want (deaccent + lowercase) —
+        // passing the raw name made every ask miss and fall to suggestions
+        const want = presetName.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/s+/g, " ").trim().toLowerCase();
+        const resolved = resolvePresetByName(presetName, want, family);
+        if (!resolved.ok) {
+          return {
+            text: `unknown preset "${presetName}" for ${family} — did you mean: ${resolved.suggestions.join(", ")}? (kyx_tracks {op:"listPresets", family} lists the factory bank)`,
+            mutated: false,
+          };
+        }
+        try {
+          ctx.execute(applyPresetIntentCommand(ctx.getDoc(), resolved.intent));
+          const after = ctx.getDoc();
+          const appliedTrack = after.tracks.find(
+            (t) => t.kind === "instrument" && t.presetId === resolved.intent.preset.id,
+          );
+          return {
+            text: `preset "${resolved.intent.preset.name}" applied to ${family} — ${presetReadback(after, resolved.intent)}`,
+            mutated: true,
+            data: {
+              presetId: resolved.intent.preset.id,
+              matchedBy: resolved.intent.matchedBy,
+              trackId: appliedTrack?.id ?? null,
+            },
+          };
+        } catch (error) {
+          return {
+            text: `preset failed: ${error instanceof Error ? error.message : String(error)}`,
+            mutated: false,
+            isError: true,
+          };
+        }
+      }
+      if (op === "listPresets") {
+        // Discovery for loadPreset — factory names that FIT the family's
+        // instruments first, then the rest (capped for a readable tool call).
+        const family = (typeof record.family === "string" ? record.family : "bass") as PresetTargetFamily;
+        const query = typeof record.query === "string" ? record.query.toLowerCase() : "";
+        const fitting: string[] = [];
+        const rest: string[] = [];
+        for (const preset of FACTORY_PRESETS) {
+          const line = `${preset.name} (${preset.instrument})`;
+          const fits = PRESET_FAMILY_INSTRUMENTS[family]?.has(preset.instrument) ?? false;
+          if (query !== "" && !line.toLowerCase().includes(query)) continue;
+          (fits ? fitting : rest).push(line);
+        }
+        const shown = [...fitting, ...rest].slice(0, 25);
+        return {
+          text: `${FACTORY_PRESETS.length} factory presets; for ${family}${query !== "" ? ` matching "${query}"` : ""}: ${shown.join("; ")}${fitting.length + rest.length > 25 ? " …" : ""}`,
+          mutated: false,
+          data: { family, fitting: fitting.length, total: FACTORY_PRESETS.length },
+        };
       }
       if (op === "rename") {
         const name = typeof record.name === "string" ? record.name.trim().slice(0, 40) : "";
