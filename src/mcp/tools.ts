@@ -13,7 +13,7 @@ import {
   planMixProfile,
   type MixOverrides,
 } from "../intent/mix";
-import { planSongForm, type SongSectionSpec } from "../intent/song";
+import { applySongCommand, buildSong, planSongForm, type SongSectionSpec } from "../intent/song";
 import { applyCompoundIntent } from "../intent/compound";
 import { productionReadback } from "../intent/production";
 import {
@@ -802,6 +802,57 @@ export const MCP_TOOLS: McpToolDef[] = [
           type: "string",
           enum: ["short", "standard", "radio", "extended", "epic"],
           description: "Scales the form core cycles (default: genre standard)",
+        },
+      },
+      required: ["genre"],
+    },
+  },
+  {
+    name: "kyx_song",
+    description:
+      "PRODUCER MOVE, MEGA - build the WHOLE track in one call: generate " +
+      "the genre song form (patterns per section), lay out scenes + clips " +
+      "+ markers, and apply the measured mix profile - all folded into ONE " +
+      "undo step. Optional loudness target adds a render-backed trim as a " +
+      "second undo step (needs the render context). Slow: full generation, " +
+      "may approach the transport timeout.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        genre: {
+          type: "string",
+          enum: [
+            "house",
+            "techno",
+            "trap",
+            "ambient",
+            "drill",
+            "phonk",
+            "jersey",
+            "dnb",
+            "ukg",
+            "amapiano",
+            "postrock",
+            "drone",
+            "chiptune",
+            "eurodance",
+            "latin",
+          ],
+        },
+        mood: { type: "string", description: "Optional mood (dark, chill, warm, aggressive...)" },
+        energy: { type: "number", minimum: 0, maximum: 1 },
+        length: {
+          type: "string",
+          enum: ["short", "standard", "radio", "extended", "epic"],
+          description: "Scales the form core cycles (default: genre standard)",
+        },
+        mix: {
+          type: "boolean",
+          description: "Apply the measured mix profile after the song lands (default true)",
+        },
+        loudness: {
+          type: "number",
+          description: "Target integrated LUFS - adds a render-backed loudness trim (second undo step)",
         },
       },
       required: ["genre"],
@@ -1633,6 +1684,13 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
       return executeMixTool(ctx, record);
     case "kyx_arrange":
       return executeArrangeTool(ctx, record);
+    case "kyx_song":
+      // buildSong is async - the transports call executeMcpToolAsync; the
+      // sync path answers honestly instead of silently skipping.
+      return {
+        text: "kyx_song generates the whole track (async) - it is answered by the async executor (transports)",
+        mutated: false,
+      };
     case "kyx_checkpoint":
       return executeCheckpointTool(ctx, record);
     case "__kyx_resource":
@@ -2090,6 +2148,91 @@ export async function executeMcpToolAsync(ctx: McpToolContext, name: string, arg
     } catch (error) {
       return {
         text: `loudness loop failed: ${error instanceof Error ? error.message : String(error)}`,
+        mutated: false,
+        isError: true,
+      };
+    }
+  }
+  if (name === "kyx_song") {
+    const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
+    const genre = String(record.genre ?? "");
+    if (!MIX_GENRES.includes(genre as (typeof MIX_GENRES)[number])) {
+      return { text: `unknown genre "${genre}" - one of: ${MIX_GENRES.join(", ")}`, mutated: false, isError: true };
+    }
+    const doc = ctx.getDoc();
+    if (doc.arrangement.clips.length > 0) {
+      return {
+        text:
+          "arrangement already has clips - kyx_song builds a WHOLE track; " +
+          "use kyx_sections / kyx_clips for surgical edits, or clear the arrangement first",
+        mutated: false,
+        isError: true,
+      };
+    }
+    const spec = normalizeIntent({
+      genre: genre as never,
+      ...(typeof record.mood === "string" && record.mood.trim() !== "" ? { mood: record.mood.trim() } : {}),
+      ...(typeof record.energy === "number" ? { energy: record.energy } : {}),
+    });
+    const lengthKind = ["short", "standard", "radio", "extended", "epic"].find((kind) => kind === record.length);
+    const length =
+      lengthKind != null
+        ? { kind: lengthKind as "short" | "standard" | "radio" | "extended" | "epic", label: lengthKind }
+        : null;
+    const wantMix = record.mix !== false;
+    try {
+      const build = await buildSong(doc, spec, { length, yieldBetweenSections: false });
+      let next = applySongCommand(doc, build).execute(doc);
+      let mixDecisions = 0;
+      if (wantMix) {
+        try {
+          const profile = planMixProfile(spec);
+          if (profile.decisions.length > 0) {
+            next = applyMixIntent(next, profile).execute(next);
+            mixDecisions = profile.decisions.length;
+          }
+        } catch {
+          // already at the profile - the song still lands
+        }
+      }
+      const totalBars = build.sections.reduce((sum, section) => sum + section.bars, 0);
+      ctx.execute(
+        snapshot(
+          "mcpSong",
+          `MCP: song '${genre}' (${build.sections.length} sections, ${totalBars} bars${mixDecisions > 0 ? `, mixed (${mixDecisions})` : ""})`,
+          doc,
+          next,
+        ),
+      );
+      const loudnessTarget =
+        typeof record.loudness === "number" && Number.isFinite(record.loudness) ? record.loudness : null;
+      let loudnessLine = "";
+      if (loudnessTarget != null) {
+        if (ctx.measureLoudness == null || ctx.applyLoudness == null) {
+          loudnessLine = " | loudness skipped: no render context bound";
+        } else {
+          const reading = await ctx.measureLoudness();
+          if (reading.measured) {
+            const direction = reading.integrated < loudnessTarget ? ("louder" as const) : ("quieter" as const);
+            const outcome = await ctx.applyLoudness({ direction, targetDb: loudnessTarget });
+            if (outcome.ok) {
+              ctx.execute(outcome.command);
+              loudnessLine = ` | loudness ${outcome.report.measuredBefore} -> ${outcome.report.measuredAfter ?? "?"} LUFS (second undo step)`;
+            } else {
+              loudnessLine = ` | loudness skipped: ${outcome.error}`;
+            }
+          } else {
+            loudnessLine = " | loudness skipped: render too quiet to measure";
+          }
+        }
+      }
+      return {
+        text: `song '${genre}' landed: ${build.sections.length} sections, ${totalBars} bars${mixDecisions > 0 ? `, mix profile (${mixDecisions} decisions)` : ", mix skipped"} - song+mix is ONE undo step${loudnessLine}`,
+        mutated: true,
+      };
+    } catch (error) {
+      return {
+        text: `song build failed: ${error instanceof Error ? error.message : String(error)}`,
         mutated: false,
         isError: true,
       };

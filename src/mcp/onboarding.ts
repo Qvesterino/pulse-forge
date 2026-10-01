@@ -25,6 +25,14 @@ THE CORE LOOP
   read (kyx://project/* resources or kyx_state) -> act (structured tool)
   -> verify (the read-back, then a state read when it matters)
 
+WORKFLOW: WHOLE TRACK IN ONE CALL
+  kyx_song {genre, length?, mix?, loudness?} — generates the genre form
+  (patterns per section), lays out scenes/clips/markers and applies the
+  measured mix profile in ONE undo step; loudness adds a render-backed
+  trim as a second step. Slow (full generation) but the biggest gesture
+  an agent can make. Use the fine-grained loop below when you want
+  control over individual patterns.
+
 WORKFLOW: BEAT FROM SCRATCH
   1. kyx_generate {genre, seed, bars?, bpm?} — deterministic; same seed
      reproduces the same pattern. Prefer 2-4 bars for loops.
