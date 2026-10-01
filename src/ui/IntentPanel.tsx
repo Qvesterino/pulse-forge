@@ -118,6 +118,7 @@ import {
 } from "../intent/song-audio-review";
 import { routeIntentText, REVISE_DELTA, type ReviseAttribute, type RoutedIntent } from "../intent/route";
 import { getIntentModelProvider, tryModelRoute } from "../intent/model-resolver";
+import { installIntentFailureDevtools, logIntentMiningEvent } from "../intent/failure-log";
 import { diagnoseComplaint } from "../intent/complaints";
 import type { SongSectionMeter } from "../intent/song-audio-review";
 import { createVoiceCapture } from "../intent/voice-capture";
@@ -328,6 +329,8 @@ export function IntentPanel() {
       if (disposed) return;
       void ollama.ensureOllamaIntentProvider().catch(() => undefined);
     });
+    // MINING console handle — `__kyxIntentFailures.export()` in devtools
+    installIntentFailureDevtools();
     return () => {
       disposed = true;
       unsubscribe?.();
@@ -2152,7 +2155,9 @@ export function IntentPanel() {
   // D3 unified bar: route the text to the right executor — arrange ops,
   // mix profile, or (default) candidate generation.
   const [routeBusy, setRouteBusy] = useState(false);
-  const [clarify, setClarify] = useState<{ reason: string; suggestions: string[] } | null>(null);
+  // `prompt` rides along for MINING only (which ask produced these chips) —
+  // the diagnosis path leaves it unset; picked chips log against it.
+  const [clarify, setClarify] = useState<{ reason: string; suggestions: string[]; prompt?: string } | null>(null);
   const loudnessBusyRef = useRef(false);
   // VOICE CAPTURE (pipeline [A], docs/LOCAL-INTENT-MODEL.md §6): the mic tap
   // fills the intent BAR — the transcript is text the user sees and edits
@@ -2659,8 +2664,11 @@ export function IntentPanel() {
       } else if (route.kind === "clarify") {
         // Declined intent (conflict / no target / unaddressable param) —
         // offer the nearest executable interpretations, mutate nothing.
+        // MINING: a clarify is a real sentence both layers failed on — the
+        // #1 corpus signal for the next round.
         stopAudition();
-        setClarify({ reason: route.reason, suggestions: route.suggestions });
+        setClarify({ reason: route.reason, suggestions: route.suggestions, prompt: source });
+        logIntentMiningEvent({ prompt: source, outcome: "clarify", reason: route.reason });
         setStatus(route.reason);
       } else {
         // LOCAL-MODEL FALLBACK: the deterministic layer came up empty — let
@@ -2677,10 +2685,17 @@ export function IntentPanel() {
         const modelRoute = await tryModelRoute(source, doc);
         if (modelRoute) {
           preRoutedRef.current = modelRoute;
+          // MINING: what the model caught (kind drift monitoring — a kind
+          // takeover here that users keep undoing is a wrongKind in hiding)
+          logIntentMiningEvent({ prompt: source, outcome: "model-hit", routeKind: modelRoute.kind });
           setStatus("🤖 lokálny model — akcia rozpoznaná");
           void routeAndExecute();
           return;
         }
+        // MINING: no provider answered or nothing validated — the sentence
+        // fell through to generation; that is exactly the row a corpus
+        // round (or a parser sibling) should learn from
+        logIntentMiningEvent({ prompt: source, outcome: "model-miss" });
         await generate();
       }
     } catch (err) {
@@ -2905,6 +2920,14 @@ export function IntentPanel() {
               className="intent-history-chip"
               title="Použiť túto interpretáciu"
               onClick={() => {
+                // MINING: the chip the user picked reveals what the failed
+                // ask actually meant — the strongest label in the whole log
+                logIntentMiningEvent({
+                  prompt: clarify.prompt ?? "(diagnóza)",
+                  outcome: "clarify-picked",
+                  reason: clarify.reason,
+                  pickedSuggestion: suggestion,
+                });
                 replacePrompt(suggestion, true);
                 void routeAndExecute(suggestion);
               }}
