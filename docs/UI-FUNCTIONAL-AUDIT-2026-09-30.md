@@ -571,6 +571,20 @@ UI-honesty issue, not a state-corruption one. See §5.
 - **Engine clamps what the UI under-constrains**: over-long fades are
   bounded in `AudioEngine.ts:1966,1970` (`Math.min(fadeIn, dur/2)`), so the
   SliceLab fade fields' unenforced upper `max` is cosmetic, not corrupting.
+- **§11 every persisted UI preference restores safely from corrupt storage.**
+  All eight `localStorage` keys written by `src/ui` were read individually, and
+  every load path is defensive rather than trusting the stored string:
+  `gestureHints.tsx:25-31` and `padKeys.ts:34-41` wrap `JSON.parse` in
+  `try/catch` with a default; `theme.ts:35-44` does the same and additionally
+  runs the result through `normalizeThemeState`; `dockLayout.ts` parses inside
+  `try`, normalizes both panel slots and clamps the height, and refuses a
+  `slotB` equal to `slotA`; `FxEqPanel.tsx:124-131` rejects a restored band
+  that is non-finite, fractional or outside 1–6; the write side is wrapped
+  everywhere too, so private mode cannot throw.
+  This one is worth stating because the _search_ for it cannot: a grep for
+  `localStorage.getItem` returns the `JSON.parse` line with no indication of
+  whether a `try` encloses it, and two of the first three hits looked exactly
+  like AGENTS.md violations until the surrounding lines were read.
 
 ---
 
