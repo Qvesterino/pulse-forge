@@ -32,6 +32,30 @@ export default defineConfig({
       // alias transparently (the stub is only consulted when the plugin
       // chain does not provide the virtual module).
       { find: /^virtual:pwa-register$/, replacement: virtualPwaRegisterStub },
+    // QMR HUD (Qvester ecosystem): the packages ship TS SOURCE (monorepo
+    // file:-dep style) — alias them in-place so KYX mounts the REAL chip
+    // without publishing or copying. Keep in sync with vitest.config.ts.
+    {
+      find: /^@qvester\/qmr-hud$/,
+      replacement: fileURLToPath(new URL("../QVESTER_LANDING_PAGE/packages/qmr-hud/src/index.ts", import.meta.url)),
+    },
+    {
+      find: /^@qvester\/qmr-hud\/(.*)$/,
+      replacement: fileURLToPath(new URL("../QVESTER_LANDING_PAGE/packages/qmr-hud/src/$1", import.meta.url)),
+    },
+    {
+      find: /^@qvester\/qmr-interop(.*)$/,
+      replacement: fileURLToPath(new URL("../QVESTER_LANDING_PAGE/packages/qmr-interop/src/$1", import.meta.url)),
+    },
+    {
+      find: /^@qvester\/intent-engine(.*)$/,
+      replacement: fileURLToPath(new URL("../QVESTER_LANDING_PAGE/packages/intent-engine/src/$1", import.meta.url)),
+    },
+    {
+      find: /^@qvester\/interop-types(.*)$/,
+      replacement: fileURLToPath(new URL("../QVESTER_LANDING_PAGE/packages/interop-types/src/$1", import.meta.url)),
+    },
+
     ],
   },
   // Browser ranker workers use module imports (onnxruntime-web + shared

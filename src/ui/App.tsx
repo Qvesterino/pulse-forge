@@ -8,6 +8,7 @@ import { startQvesterProfileBus } from "../interop/qvesterProfileBus";
 import { startMcpDesktopHost } from "../mcp/desktop-host";
 import { startMcpWebBridgeIfEnabled } from "../mcp/web-host";
 import { startQmrBridge } from "../interop/qmrBridge";
+import { QmrChipMount } from "../ui/QmrChipMount";
 import { SelectionStore } from "../store/SelectionStore";
 import { ToolStore } from "../store/ToolStore";
 import { SelectionContext, ServicesContext, ToolContext } from "./context";
@@ -1621,6 +1622,9 @@ export function App({
               </ErrorBoundary>
               <OnboardingHint />
               <ContextMenu state={contextMenu} onClose={() => setContextMenu(null)} />
+              {/* QMR HUD chip (Qvester ecosystem) — lazy + error-bounded, the
+                  app stays fully usable when the shared HUD chunk is slow. */}
+              <QmrChipMount services={services} />
             </div>
           </ToolContext.Provider>
         </SelectionContext.Provider>

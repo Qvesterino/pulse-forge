@@ -152,9 +152,7 @@ describe("arrange decode contract (sequence-student phase 1)", () => {
   // wave destabilized the shared trunk (measured: val head mean 0.9893 →
   // 0.9303) and was reverted pending corpus growth. These tests activate
   // only when an artifact actually trains those heads.
-  const hasPartHeads = ["part1Direction", "part2Target", "clipToBar"].every((name) =>
-    vocab.heads.some((candidate) => candidate.name === name),
-  );
+  const hasPartHeads = true; // sparse-head corpus wave returned the part/clip heads
   const head = (name: string) => vocab.heads.find((candidate) => candidate.name === name)!;
   const one = (name: string, cls: string) => {
     const scores = new Float32Array(head(name).classes.length);

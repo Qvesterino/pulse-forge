@@ -1,52 +1,38 @@
 {
   "baseModel": "LiquidAI/LFM2.5-1.2B-Instruct",
-  "trainExamples": 1700,
-  "epochs": 5,
-  "loraR": 32,
-  "loraAlpha": 64,
+  "trainExamples": 773,
+  "epochs": 3,
+  "loraR": 16,
+  "loraAlpha": 32,
   "lr": 0.0002,
   "valHistory": [
     {
       "rows": 60,
-      "exact": 47,
-      "kindOK": 53,
+      "exact": 19,
+      "kindOK": 60,
       "epoch": 1,
-      "trainLoss": 0.690459770266898
+      "trainLoss": 2.856300938874483
     },
     {
       "rows": 60,
-      "exact": 56,
+      "exact": 31,
       "kindOK": 60,
       "epoch": 2,
-      "trainLoss": 1.513921330042649
+      "trainLoss": 2.3559064706787467
     },
     {
       "rows": 60,
-      "exact": 52,
-      "kindOK": 54,
-      "epoch": 3,
-      "trainLoss": 0.4089674127935723
-    },
-    {
-      "rows": 60,
-      "exact": 59,
-      "kindOK": 59,
-      "epoch": 4,
-      "trainLoss": 0.14145413510414073
-    },
-    {
-      "rows": 60,
-      "exact": 60,
+      "exact": 34,
       "kindOK": 60,
-      "epoch": 5,
-      "trainLoss": 0.02393951196972921
+      "epoch": 3,
+      "trainLoss": 0.32437288062646985
     }
   ],
   "valFinal": {
     "rows": 60,
-    "exact": 60,
+    "exact": 34,
     "kindOK": 60,
-    "epoch": 5,
-    "trainLoss": 0.02393951196972921
+    "epoch": 3,
+    "trainLoss": 0.32437288062646985
   }
 }

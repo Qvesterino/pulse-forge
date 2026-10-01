@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyMasterMatchEqCommand } from "../src/commands/commands";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { referenceLoudnessTrim, setMatchEqReference } from "../src/intent/match-eq";
-import { SONG_LOUDNESS_TARGET_LUFS, SONG_LOUDNESS_TRIM_LIMIT_DB } from "../src/intent/genre-reference.generated";
+import { SONG_LOUDNESS_TRIM_LIMIT_DB } from "../src/intent/genre-reference.generated";
 
 /**
  * REFERENCE MIX CONDITIONING (reference conditioning wave) — the LEVEL half

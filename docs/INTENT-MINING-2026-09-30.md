@@ -356,3 +356,31 @@ Final artifact (34 heads, vocab 3882, pins 3.0/2.5):
 5/5 on golden; clarify 31/31 train; presetUnknown 2/2 — the recognition kinds converted
 cleanly. Campaign arc: 20.2 % → 77.0 % → 93.1 % → **GATE PASS** (96.5/100 with zero wrong
 kinds, deterministic).
+
+## Wave 7 (2026-10-01): corpus density REVIVED the sparse heads — gate pass on the 47-head artifact
+
+The sparse-head verdict (wave 6: "revert until the corpus grows") was put to the test: a
+100-pair corpus wave aimed at the sparse families (compound two-command joins, clip op ×
+clip × destination grid, preset × target × phrasing, drop-duplicate family for the
+wrongKind tail, SK twins — corpus 1949 → 2085) retrained the FULL sparse trainer
+(part1/part2 compound heads + clip heads + presetId/presetName, 47 heads):
+
+| split  | attempted-exact      | wrongKind | abstain    |
+| ------ | -------------------- | --------- | ---------- |
+| train  | 99.8 % (clips 30/30) | 0         | 7.8 %      |
+| val    | **95.5 %**           | **0**     | **17.0 %** |
+| golden | **100.0 %**          | 0         | 16.2 %     |
+
+**RELEASE GATE PASSED on the 47-head artifact — gatePassed=true.** The val head mean hit
+0.9943 with ZERO weak heads; compound decodes 44/44 on train and 4/4 on val; clips 30/30
+and 3/3 golden exact; presetId/presetName learned the closed preset set. The
+sqrt-inverse-frequency weighting on the sparsest numeric heads (clipToBar) plus family
+density was exactly the missing ingredient — the same heads that collapsed at 24–34 family
+rows hold at 35–58.
+
+One targeted corpus lesson: the val wrongKind was "duplicate the drop" → effectIntent —
+the drop-duplicate family was missing from the section-worded duplicate wave while every
+other role had coverage. Filled (new formulations only; val strings never duplicated).
+
+The compound part-head contract now runs end to end: two-command SK/EN joins decompose
+into part1/part2 slot heads, and the it.skipIf guards on the part-head tests are lifted.
