@@ -208,6 +208,3 @@ export function HelpOverlay({ open, onClose }: HelpOverlayProps) {
     </div>
   );
 }
-
-
-

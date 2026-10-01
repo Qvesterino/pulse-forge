@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { render as rtlRender, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -93,5 +94,34 @@ describe("HelpOverlay", () => {
       target: { value: "zzz-nothing" },
     });
     expect(await screen.findByText(/Nothing matches/)).toBeInTheDocument();
+  });
+
+  it("returns focus to the trigger when it closes (§14)", async () => {
+    // End-to-end guard for the focus-restore wiring at a real call site: the
+    // hook only works if `HelpOverlay` hands it the live `open` flag, so a
+    // refactor that passes a stale or inverted value fails here rather than
+    // silently dropping a keyboard user back on <body>.
+    const user = userEvent.setup();
+    function Shell() {
+      const [open, setOpen] = useState(false);
+      return (
+        <div>
+          <button type="button" onClick={() => setOpen(true)}>
+            trigger
+          </button>
+          <HelpOverlay open={open} onClose={() => setOpen(false)} />
+        </div>
+      );
+    }
+    rtlRender(<Shell />);
+
+    const trigger = screen.getByRole("button", { name: "trigger" });
+    await user.click(trigger);
+    // The overlay takes focus for its filter on open.
+    expect(document.activeElement).not.toBe(trigger);
+
+    await user.click(screen.getByLabelText("Close help"));
+
+    expect(document.activeElement).toBe(trigger);
   });
 });

@@ -132,6 +132,3 @@ export function PaletteOverlay({ open, deps, onClose }: CommandPaletteProps) {
     </div>
   );
 }
-
-
-

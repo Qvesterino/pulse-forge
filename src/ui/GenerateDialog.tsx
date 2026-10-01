@@ -500,4 +500,3 @@ export function GenerateDialog({ open, onClose }: { open: boolean; onClose: () =
     </div>
   );
 }
-

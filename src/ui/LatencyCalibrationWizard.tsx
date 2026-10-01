@@ -336,6 +336,3 @@ function restorePlayback(services: ReturnType<typeof useServices>, snapshot: Pla
   services.transport.seek(Math.max(0, snapshot.position));
   if (snapshot.wasPlaying) services.playback.playPause();
 }
-
-
-
