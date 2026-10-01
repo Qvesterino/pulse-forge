@@ -61,6 +61,15 @@ SEED = 0x5EED
 ABSENT = "__absent__"
 
 # In-scope kinds (closed heads); everything else abstains.
+# Failure-mining wave 3 (2026-10-01): the list now mirrors the schema's
+# MODEL_ACTIONS contract (src/intent/model-schema.ts) instead of a frozen
+# 15-kind subset — arrange/compound/clarify/clips/preset/presetUnknown rows
+# were previously relabelled to abstain at training time, so the kind head
+# had NO class for them and could only ever decode them as a wrong kind or
+# abstain (measured: val "duplicate the intro" → exact/duplicateTrack).
+# These kinds decode kind-only (their slot heads stay __absent__); the
+# resolver refuses empty-slot routes and the deterministic layer takes over,
+# so recognition is learned without any silent no-op risk.
 KINDS = [
     "fader",
     "exact",
@@ -77,7 +86,22 @@ KINDS = [
     "tempo",
     "production",
     "revise",
+    "arrange",
+    "clips",
+    "compound",
+    "clarify",
+    "preset",
+    "presetUnknown",
 ]
+
+# Arrange slot mirrors of the schema enums (src/intent/model-schema.ts VOCAB)
+# — class sets are schema, like the GBNF enums, not weights. Sequence-student
+# phase 1 (failure-mining wave 4): the arrange family is single-op in the
+# whole corpus, so three closed heads cover it exactly; nested parts
+# (compound) and engine-resolved clip refs stay out of the classifier's
+# reach and keep abstaining.
+ARRANGE_OPS = ["addRole", "autoArrange", "duplicate", "remove", "reorder", "resize"]
+ARRANGE_ROLES = ["intro", "build", "chorus", "verse", "bridge", "drop", "break", "outro", "fill"]
 
 TARGET_VALUES = sorted(
     ["drums", "bass", "chords", "lead", "master", "vocal", "mix", "kick", "snare", "clap", "hat", "hats", "perc", "tom"]
@@ -292,6 +316,13 @@ def extract_labels(row: dict) -> dict:
     )
     labels["reviseAttribute"] = as_class(payload.get("attribute"))
     labels["targetRole"] = as_class(payload.get("targetRole"))
+    arrange_first = (ops or [{}])[0] if isinstance(ops, list) and ops else {}
+    note("arrangeOp", arrange_first.get("op"))
+    labels["arrangeOp"] = as_class(arrange_first.get("op"))
+    note("arrangeRole", arrange_first.get("role"))
+    labels["arrangeRole"] = as_class(arrange_first.get("role"))
+    note("arrangeBars", arrange_first.get("bars"))
+    labels["arrangeBars"] = as_class(arrange_first.get("bars"))
     goals = payload.get("goals") or []
     goal = goals[0] if goals else {}
     labels["prodConcept"] = as_class(goal.get("concept"))
@@ -316,8 +347,12 @@ def build_head_specs(rows: list[dict]) -> list[dict]:
     steps = sorted({v for v in numeric_field_values(rows, "steps")}, key=float)
     amounts = sorted({v for v in numeric_field_values(rows, "prodAmount")}, key=float)
     keys = string_field_values(rows, "key")
+    bars = sorted({v for v in numeric_field_values(rows, "arrangeBars")}, key=float)
     heads = [
         {"name": "kind", "kind": "softmax", "classes": ["abstain"] + KINDS},
+        {"name": "arrangeOp", "kind": "softmax", "classes": [ABSENT] + ARRANGE_OPS},
+        {"name": "arrangeRole", "kind": "softmax", "classes": [ABSENT] + ARRANGE_ROLES},
+        {"name": "arrangeBars", "kind": "softmax", "classes": [ABSENT] + bars},
         {"name": "direction", "kind": "softmax", "classes": [ABSENT] + DIRECTIONS},
         {"name": "targets", "kind": "sigmoid", "classes": TARGET_VALUES},
         {"name": "pads", "kind": "sigmoid", "classes": PAD_VALUES},

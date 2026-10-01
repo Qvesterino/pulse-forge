@@ -146,3 +146,36 @@ describe("songwriting roles (A2 v2)", () => {
     expect(parsed.ops.every((op) => !("role" in op) || op.role !== "verse" || op.op === "remove")).toBe(true);
   });
 });
+
+describe("effect-word stand-down (failure-mining wave 4)", () => {
+  it("add <effect> to the <role> is an effect request, never addRole(<anchor>)", () => {
+    // The old teacher routed "add delay to the drop" as addRole(drop) — a
+    // brand-new section named after its own anchor, with the effect word
+    // silently dropped. The classifier refused to copy that; the parser
+    // now stands down so the effect/clarify parsers own the clause.
+    const doc = sceneScoreDoc();
+    for (const text of ["add delay to the drop", "add reverb to the bridge", "add compressor to the intro"]) {
+      const p = parseArrangeIntent(text, doc);
+      expect(p.ops, text).toEqual([]);
+    }
+  });
+
+  it("legit addRole phrases keep parsing when an effect word is absent", () => {
+    const doc = sceneScoreDoc();
+    for (const [text, role] of [
+      ["add a break before the drop", "break"],
+      ["add a chorus before the drop", "chorus"],
+      ["add a break", "break"],
+    ] as const) {
+      const p = parseArrangeIntent(text, doc);
+      expect(p.ops[0], text).toMatchObject({ op: "addRole", role });
+    }
+  });
+
+  it("chorus as the ADDED section still parses (chorus is role AND effect)", () => {
+    const doc = sceneScoreDoc();
+    // The effect word IS the new section here — the stand-down must not fire.
+    const p = parseArrangeIntent("add a chorus before the drop", doc);
+    expect(p.ops[0]).toMatchObject({ op: "addRole", role: "chorus" });
+  });
+});

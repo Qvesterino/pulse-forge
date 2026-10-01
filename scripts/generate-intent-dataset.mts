@@ -1405,6 +1405,141 @@ function augmentation(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
   sk.push("teplejší tón");
   sk.push("menej puncu v mixe");
 
+  // ── MINING WAVE 3 (2026-10-01) — the val-mined slot-bias families: the
+  // targets head's majority pull answers "bass" for lead/vocal/chords asks
+  // (select, send, percent faders), the export head pulls wav, EN tempo
+  // phrasings over bpm values the SK rows already teach, and the short
+  // one/two-word mix descriptors abstain. Deterministic-layer routing keeps
+  // every row honest; the every-7th split appends only new indices. ──
+  // select: non-bass targets
+  en.push("select the lead");
+  en.push("select the vocal");
+  en.push("select the chords");
+  en.push("select the drums");
+  // sendIntent: non-bass send targets
+  en.push("more reverb send on the vocal");
+  en.push("more delay send on the chords");
+  en.push("add reverb send to the vocal");
+  en.push("less reverb send on the lead");
+  // fader + percent: non-bass targets (percent head + target pull)
+  en.push("raise the lead by 15 percent");
+  en.push("raise the vocal by 20 percent");
+  en.push("raise the chords by 15 percent");
+  en.push("pull the vocal down 25 percent");
+  en.push("drums up 30 percent");
+  // export: format minority
+  en.push("export as mp3");
+  en.push("export the project as mp3");
+  // tempo: EN phrasings over taught bpm values
+  en.push("set tempo to 90 bpm");
+  en.push("set the tempo to 96 bpm");
+  en.push("set tempo to 110 bpm");
+  en.push("set the tempo to 150 bpm");
+  // mix: short descriptors
+  en.push("colder mix");
+  en.push("a bit colder");
+  en.push("warmer mix");
+  en.push("brighter mix");
+  en.push("darker mix");
+  en.push("more glue in the mix");
+  // SK siblings
+  sk.push("vyber lead");
+  sk.push("vyber spev");
+  sk.push("vyber akordy");
+  sk.push("viac reverb send na speve");
+  sk.push("viac delay send na akordoch");
+  sk.push("menej delay send na speve");
+  sk.push("bicie o 25 percent hlasiejšie");
+  sk.push("lead o 20 percent hore");
+  sk.push("master na 80 percent");
+  sk.push("master na 60 percent");
+  sk.push("exportuj mp3");
+  sk.push("tempo na 96");
+  sk.push("tempo na 110");
+  sk.push("chladnejší tón");
+
+  // ── MINING WAVE 3b (2026-10-01) — margin-1.5 re-mine of the NEW artifact:
+  // the wave-3 rows got the KIND right but the slot heads still pull to the
+  // majority class (select-the-lead → bass, exportuj mp3 → wav, C# minor →
+  // C minor, short fader descriptors abstain). Density on exactly those
+  // families, nothing else. ──
+  en.push("select lead");
+  en.push("pick the lead track");
+  en.push("select the vocal track");
+  en.push("select vocal");
+  en.push("export it as mp3");
+  en.push("export to mp3");
+  en.push("export the mix as mp3");
+  en.push("set key to C# minor");
+  en.push("set the key to F# minor");
+  en.push("key of C# minor");
+  en.push("louder lead");
+  en.push("louder vocals");
+  en.push("quieter lead");
+  sk.push("exportuj projekt ako mp3");
+  sk.push("export do mp3");
+  sk.push("tonina C# mol");
+  sk.push("hlasej lead");
+  sk.push("ztichni spev");
+
+  // ── MINING WAVE 3c (2026-10-01) — the new kind-only classes (arrange,
+  // clips, compound, clarify, preset) are margin-shy: the heads know the
+  // class but the kind gap sits under the 1.0 pin on paraphrase rows
+  // (val-mined). Density on the SAME families via NEW formulations —
+  // golden stays untouched (hold-out discipline). ──
+  en.push("duplicate the bridge");
+  en.push("duplicate the verse");
+  en.push("copy the chorus");
+  en.push("double the intro");
+  en.push("double the build");
+  en.push("shorten the verse to 4 bars");
+  en.push("shorten the chorus to 2 bars");
+  en.push("copy the chorus clip to bar 12");
+  en.push("move the intro clip to bar 16");
+  en.push("trim the clip at bar 3 to 4 bars");
+  en.push("mute the drums and set tempo to 128");
+  en.push("set tempo to 140 and mute the drums");
+  en.push("add more compression");
+  en.push("louder drums");
+  en.push("quieter bass");
+  en.push("mute the clap");
+  en.push("mute the tom");
+  en.push("add a pluck track");
+  en.push("add a wavetable track");
+  sk.push("duplicituj intro");
+  sk.push("zdvojnásob drop");
+  sk.push("skráti chorus na 2 takty");
+  sk.push("stíš bicie a zvýš lead");
+  sk.push("tempo na 128 a stíš bicie");
+  sk.push("pridaj reverb na trubky");
+
+  // ── MINING WAVE 4 (2026-10-01) — sequence-student phase 1: the arrange
+  // family got slot heads (arrangeOp/arrangeRole/arrangeBars), so this wave
+  // is arrange-paraphrase density over every op/role/bar combination the
+  // closed heads must nail (duplicate/double/addRole/resize × roles × bar
+  // counts). compound/clips stay at their current density — their payloads
+  // are nested/engine-resolved and remain out of the classifier's scope. ──
+  en.push("duplicate the outro");
+  en.push("duplicate the fill");
+  en.push("duplicate the verse");
+  en.push("double the chorus");
+  en.push("double the bridge");
+  en.push("double the break");
+  en.push("shorten the verse to 1 bar");
+  en.push("shorten the bridge to 8 bars");
+  en.push("extend the intro to 8 bars");
+  sk.push("duplicituj chorus");
+  sk.push("duplicituj bridge");
+  sk.push("zdvojnásob intro");
+  sk.push("zdvojnásob bridge");
+  sk.push("skráti verse na 4 takty");
+  sk.push("predĺž drop na 8 taktov");
+  sk.push("skráť bridge na 1 takt");
+  sk.push("pridaj outro");
+  sk.push("pridaj intro sekciu");
+  sk.push("pridaj fill za drop");
+  sk.push("usporiadaj pesničku");
+
   return [
     { lang: "en", instructions: en },
     { lang: "sk", instructions: sk },

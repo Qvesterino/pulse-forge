@@ -9,6 +9,7 @@ import {
   validateModelOutputForDoc,
 } from "../src/intent/model-schema";
 import { createProjectFromTemplate } from "../src/project-model/templates";
+import { PRODUCTION_CONCEPTS } from "../src/intent/production";
 import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";
 import { addArrangementClip, createScene, setSceneRole } from "../src/commands/commands";
 import type { ProjectDocument } from "../src/project-model/types";
@@ -116,5 +117,96 @@ describe("local intent model schema", () => {
         expect(grammar).toContain(`${kind}-${slot.name} ::=`);
       }
     }
+  });
+});
+
+describe("production concept drift guard (failure-mining 2026-10-01)", () => {
+  it("every parser concept is a valid model schema concept", () => {
+    // The production applier handles every PRODUCTION_CONCEPTS entry
+    // (exhaustive switch); the schema enum must accept all of them or a
+    // valid model action is rejected before routing. "sub" shipped only
+    // in the parser — the corpus row "more sub in the mix" validated
+    // false and was silently dropped.
+    for (const concept of PRODUCTION_CONCEPTS) {
+      const result = validateModelAction({
+        kind: "production",
+        targets: ["bass"],
+        goals: [{ concept, amount: 0.7 }],
+      });
+      expect(result.valid, `concept "${concept}" must validate`).toBe(true);
+    }
+  });
+
+  it("the schema still rejects concepts outside the applier surface", () => {
+    expect(
+      validateModelAction({
+        kind: "production",
+        targets: ["bass"],
+        goals: [{ concept: "definitely-not-a-concept", amount: 0.7 }],
+      }).valid,
+    ).toBe(false);
+  });
+
+  it("the corpus production rows all validate against the schema", () => {
+    // Miner follow-up: teacher rows the schema rejects are silent
+    // training-target corruption — pin the whole corpus clean.
+    for (const split of ["train", "val", "golden"]) {
+      const lines = readFileSync(path.join(process.cwd(), "scripts", "data", "intent-sft", `${split}.jsonl`), "utf8")
+        .split("\n")
+        .filter((l) => l.trim() !== "");
+      for (const line of lines) {
+        const row = JSON.parse(line) as { instruction: string; response: unknown };
+        const result = validateModelAction(row.response);
+        expect(result.valid, `${split}: "${row.instruction}" → ${result.errors.join("; ")}`).toBe(true);
+      }
+    }
+  });
+});
+
+describe("ONNX vocab ↔ schema drift guard (failure-mining wave 3)", () => {
+  const MODELS_DIR = path.join(process.cwd(), "public", "models");
+
+  it("every kind class the ONNX head can emit is a valid schema kind", () => {
+    // The decoder may only produce kinds the schema validates — a class in
+    // vocab but not in MODEL_ACTIONS would decode and then be rejected,
+    // silently dropping the action at runtime.
+    const vocab = JSON.parse(readFileSync(path.join(MODELS_DIR, "intent-model-v1.vocab.json"), "utf8")) as {
+      heads: Array<{ name: string; classes: string[] }>;
+    };
+    const kindHead = vocab.heads.find((head) => head.name === "kind");
+    expect(kindHead).toBeDefined();
+    for (const className of kindHead!.classes) {
+      if (className === "abstain") continue;
+      expect(Object.keys(MODEL_ACTIONS), `vocab kind "${className}" must be schema-valid`).toContain(className);
+    }
+  });
+
+  it("reports corpus-taught kinds the kind head cannot emit (visible, not failing)", () => {
+    // Structural gap detector for the trainer: rows teaching a kind the
+    // closed kind-head has no class for can only ever decode as the nearest
+    // in-vocab kind (wrongKind) or abstain — no amount of training fixes a
+    // missing class. Failure-mining wave 3 measured exactly this shape:
+    // val "duplicate the intro" (arrange) decoded as exact/duplicateTrack
+    // because the kind head lacks arrange/compound/clarify/preset classes.
+    const vocab = JSON.parse(readFileSync(path.join(MODELS_DIR, "intent-model-v1.vocab.json"), "utf8")) as {
+      heads: Array<{ name: string; classes: string[] }>;
+    };
+    const emittable = new Set(vocab.heads.find((head) => head.name === "kind")!.classes);
+    const taught = new Set<string>();
+    for (const split of ["train", "val", "golden"]) {
+      const lines = readFileSync(path.join(process.cwd(), "scripts", "data", "intent-sft", `${split}.jsonl`), "utf8")
+        .split("\n")
+        .filter((line) => line.trim() !== "");
+      for (const line of lines) taught.add(String((JSON.parse(line) as { response: { kind: string } }).response.kind));
+    }
+    const gaps = [...taught].filter((kind) => !emittable.has(kind)).sort();
+    // Warn loudly every run — the trainer decides whether the gap is
+    // contract (out-of-scope v1 kinds abstain by design) or debt.
+    if (gaps.length > 0) {
+      console.warn(
+        `[intent-vocab] kind head cannot emit ${gaps.length} corpus-taught kind(s): ${gaps.join(", ")} — rows of these kinds can only abstain or decode as a wrong kind`,
+      );
+    }
+    expect(Array.isArray(gaps)).toBe(true);
   });
 });

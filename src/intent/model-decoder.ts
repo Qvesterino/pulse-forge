@@ -83,7 +83,13 @@ const ABSENT = "__absent__";
  * of guessing. This is the rejection option that keeps wrong-kind outputs
  * near zero — a mute must never become a delete (LOCAL-INTENT-MODEL.md §5).
  */
-export const INTENT_MODEL_KIND_MARGIN = 1.0;
+/**
+ * Calibrated on the scope-expanded artifact (2026-10-01 margin sweep): 3.0
+ * clears the last wrongKind row ("more saturation" → clarify/effectIntent
+ * tail) while keeping attempted-exact at 97.1 % and abstain at 15.8 % —
+ * all three gate bars on the val split.
+ */
+export const INTENT_MODEL_KIND_MARGIN = 3.0;
 /**
  * Required logit gap between the winning kind and the ABSTAIN class
  * (calibration wave). Wider than the top-two margin: out-of-scope-kind
@@ -91,7 +97,7 @@ export const INTENT_MODEL_KIND_MARGIN = 1.0;
  * guesses with the abstain logit just below — this is the honest-fallback
  * tripwire for exactly that shape.
  */
-export const INTENT_MODEL_ABSTAIN_MARGIN = 2.0;
+export const INTENT_MODEL_ABSTAIN_MARGIN = 2.5;
 
 function topTwoGap(values: Float32Array): number {
   let best = -Infinity;
@@ -140,6 +146,13 @@ function num(head: IntentModelHead, scores: Float32Array): number | null {
  * nothing about the ACTION, so comparing them punishes correct routes. */
 const COMPARE_STRIP_KEYS = new Set(["detected", "sourceText", "matchedBy", "unrecognized", "reason"]);
 
+/** op-form objects (arrange ops: {op, role?, bars?}) carry ENGINE-RESOLVED
+ * fields the model can never know (sceneId/name/beforeSceneId/clipId/dir) —
+ * stripped contextually so the decode-vs-truth comparison rewards the
+ * model-known contract. Flat `name` slots (renameTrack) live in kind-keyed
+ * op objects, never op-form ones, so this strip cannot hide a wrong rename. */
+const OP_FORM_STRIP_KEYS = new Set(["sceneId", "name", "beforeSceneId", "clipId", "dir"]);
+
 /** Recursively canonicalize a response for byte-stable comparison: strip
  * engine-filled fields, sort arrays, sort object keys. */
 export function canonicalModelJson(value: unknown): string {
@@ -149,8 +162,9 @@ export function canonicalModelJson(value: unknown): string {
     return `[${items.join(",")}]`;
   }
   if (value != null && typeof value === "object") {
+    const opForm = typeof (value as Record<string, unknown>).op === "string";
     const keys = Object.keys(value)
-      .filter((key) => !COMPARE_STRIP_KEYS.has(key))
+      .filter((key) => !COMPARE_STRIP_KEYS.has(key) && !(opForm && OP_FORM_STRIP_KEYS.has(key)))
       .sort();
     return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalModelJson((value as Record<string, unknown>)[key])}`).join(",")}}`;
   }
@@ -165,7 +179,7 @@ export function decodeIntentHeads(
   outputs: Record<string, Float32Array>,
   vocab: IntentModelVocab,
   /** Optional tuning override (mining/eval tools); production uses the pin. */
-  options?: { kindMargin?: number },
+  options?: { kindMargin?: number; abstainMargin?: number },
 ): CompactIntentResponse | null {
   const kindMargin = options?.kindMargin ?? INTENT_MODEL_KIND_MARGIN;
   const head = (name: string): IntentModelHead => {
@@ -287,6 +301,52 @@ export function decodeIntentHeads(
       if (!target) return null;
       return { kind: "select", target };
     }
+    case "arrange": {
+      // Rolling-artifact guard: older vocabs predate the arrange heads —
+      // abstain instead of throwing (the artifact and the app deploy
+      // independently, so the decoder must tolerate artifact lag).
+      const hasArrangeHeads = ["arrangeOp", "arrangeRole", "arrangeBars"].every((name) =>
+        vocab.heads.some((candidate) => candidate.name === name),
+      );
+      if (!hasArrangeHeads) return null;
+      // Model form = the schema slots: {op, role?, bars?} — no doc ids. A
+      // missing required slot (resize without role/bars, addRole without a
+      // role) is an abstention, never a guess (same rule as fader/direction).
+      const op = opt("arrangeOp");
+      if (!op) return null;
+      const role = opt("arrangeRole");
+      const bars = optNum("arrangeBars");
+      if (op === "autoArrange") return { kind: "arrange", ops: [{ op }] };
+      if (!role) return null;
+      if (op === "resize") {
+        if (bars === null) return null;
+        return { kind: "arrange", ops: [{ op, role, bars }] };
+      }
+      return { kind: "arrange", ops: [{ op, role }] };
+    }
+    case "clips": {
+      // Same rolling-artifact guard as arrange: no trained clip heads in
+      // this vocab (the trainer's scope-expansion wave ships arrange only) —
+      // abstain instead of throwing. Full clip decode activates only when a
+      // future artifact actually trains these heads.
+      const hasClipHeads = ["clipOp", "clipToBar", "clipBars"].every((name) =>
+        vocab.heads.some((candidate) => candidate.name === name),
+      );
+      if (!hasClipHeads) return null;
+      const op = opt("clipOp");
+      if (!op) return null;
+      if (op === "copyClip" || op === "moveClip") {
+        const toBar = optNum("clipToBar");
+        if (toBar === null) return null;
+        return { kind: "clips", ops: [{ op, toBar }] };
+      }
+      if (op === "resizeClip") {
+        const bars = optNum("clipBars");
+        if (bars === null) return null;
+        return { kind: "clips", ops: [{ op, bars }] };
+      }
+      return { kind: "clips", ops: [{ op }] };
+    }
     case "effectIntent": {
       const effectType = opt("effectType");
       const direction = opt("direction");
@@ -365,8 +425,9 @@ export function decodeIntentHeads(
       return { kind: "revise", attribute, direction, detected: ["AI"], targetRole: opt("targetRole") ?? null };
     }
     default:
-      // preset / arrange / clips / compound / clarify / presetUnknown —
-      // explicitly out of the v1 classifier's scope.
+      // clips / compound / clarify / preset / presetUnknown — nested or
+      // open-vocabulary payloads stay out of the closed-head classifier's
+      // scope until the sequence student covers them.
       return null;
   }
 }

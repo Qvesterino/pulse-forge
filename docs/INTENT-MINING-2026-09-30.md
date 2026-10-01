@@ -114,3 +114,213 @@ abstain bar is the binding constraint. Next: calibration on the rare-kind tail (
 is now the hard-gate blocker, not exactness), corpus growth continued (the same lever keeps
 paying), and the sequence student only if the closed-head decode still caps exactness after
 the corpus doubles again.
+
+## Wave 3 (2026-10-01): rare-kind tail calibration
+
+Diagnostics first: every val wrongKind row is the SAME shape — an out-of-scope-kind input
+("add distortion to the drop", "duplicate the intro") guessed as an in-scope kind with HIGH
+confidence (top-1 vs abstain logit gap only 1.0–1.5), because out-of-scope rows are labeled
+`abstain` in training while their word shape is identical to in-scope intents. A consistent
+BoW solution does not exist; the fix is a decode-side tripwire.
+
+- E2 (rejected): out-of-scope oversampling ×3 + balanced CE on direction/percent heads —
+  direction collapsed (0.245), attempted-exact −33 points. Reverted, retrained.
+- **E3 (shipped): abstain-class margin** — `INTENT_MODEL_ABSTAIN_MARGIN = 2.0`: the winning
+  kind must also beat the ABSTAIN logit by 2.0 (wider than the top-two margin). Scan:
+
+| abstain margin    | attempted-exact | abstain | wrongKind |
+| ----------------- | --------------- | ------- | --------- |
+| 1.0 (old)         | 67.8 %          | 25.2 %  | 6         |
+| **2.0 (shipped)** | **69.1 %**      | 31.3 %  | **1**     |
+| 3.0               | 69.8 %          | 41.7 %  | 0         |
+
+The calibration improves BOTH numbers — the abstained rows were mostly wrong attempts, so
+turning them into honest fallbacks raises exactness while cutting harmful guesses by 83 %.
+Final cross-split: train 90.1 % (wrongKind 3), val 69.1 % (wrongKind 1), golden 94.1 %
+(wrongKind 0), determinism byte-equal. The wrongKind tail (1 row) and the abstain rate are
+now the gate blockers; both shrink with corpus growth (the abstain rows are the future
+in-scope kinds — arrange/clips land in scope as their command surface matures).
+
+## Wave 3 (2026-10-01): schema-contract repair + standing miner + decode-side calibration sweep
+
+Deliverables: the failure miner is now a standing tool (`npm run intent:mine`, `scripts/mine-intent-failures.mts`
+— split selector, optional `--json` failures dump, MARGIN/ABSTAIN_MARGIN sweep envs; still no manifest writes),
+the production-contract break from wave 1 is FIXED, and the val split was re-mined on the current artifact.
+
+### Contract repair (the "LEFT to its owner" item)
+
+`validateModelAction` rejected `concept: "sub"` because the schema's `productionConcept` enum was 13 concepts
+behind the production.ts applier (missing: filter, sidechain, notch, phaser, chorus, sharper, reverse, crunchy,
+vinyl, wide, sub, air, deess — ALL of them fully handled by the applier's exhaustive switch). The enum now
+mirrors the applier exactly, and three guards pin the surface:
+
+- every `PRODUCTION_CONCEPTS` entry validates as a production goal (would have caught the drift),
+- **the whole corpus (train+val+golden) validates against the schema** — teacher rows the schema rejects are
+  silent training-target corruption, now impossible to reintroduce,
+- the ONNX kind-head classes must stay schema-valid (vocab ↔ schema drift guard).
+- the GBNF grammar hash was re-pinned (grammarSha256 a7cde248 → 0a854e71) to follow the widened contract; the ONNX `prodConcept` head still carries only the old 15 classes — the next vocab regen from the corpus picks up `sub` (already taught) and the rest stay unemittable until taught.
+
+### Val re-mine on the current artifact (278 rows, margin 1.0 / abstain 2.0)
+
+attempted-exact 69.1 %, abstain 31.3 %, **wrongKind 1** (the wave-2 six is already down to one — the latest
+retrain did that). The one wrongKind is structural, not skill: **the kind head has no `arrange` class**
+("duplicate the intro" → nearest in-vocab kind `exact`/duplicateTrack). The vocab-guard now reports the full
+gap every test run: arrange, clarify, clips, compound, preset, presetUnknown are corpus-taught but
+unemittable — those rows can only abstain or decode wrong, no amount of training fixes a missing class.
+(TRAINER TODO: regen the kind head's class list from the corpus at the next retrain.)
+
+### Decode-side calibration sweep (MARGIN, same artifact, same val)
+
+| MARGIN    | attempted-exact | abstain | wrongKind |
+| --------- | --------------- | ------- | --------- |
+| 1.0 (pin) | 69.1 %          | 31.3 %  | 1         |
+| **1.5**   | **69.4 %**      | 33.1 %  | **0**     |
+| 2.0       | 69.0 %          | 37.4 %  | 0         |
+| 3.0       | 73.5 %          | 57.9 %  | 0         |
+
+**MARGIN=1.5 clears the wrong-kind hard-zero for free** (exactness even ticks up, +1.8 pp abstain). The
+production pin stays 1.0 until the trainer re-evaluates the gate — flipping it must be a gate decision made
+with the trainer's eval in the loop, not a runtime side-effect. Recommendation recorded for the next gate run.
+
+### Slot-bias clusters for the next corpus wave (measured, val)
+
+- **"bass default" bias, 3 rows**: the targets head answers `bass` when the true target is lead/brass
+  ("select the lead", "more reverb send on the lead", "raise the brass by 15 percent") — majority-class pull;
+  needs lead/brass target-family rows.
+- `export mp3 → wav` (format majority pull), `nastav master na 80 %` drops the percent slot (SK numerals on
+  the percent head), `set tempo to 90 bpm` abstains (tempo is a legal closed kind — rare-kind signal).
+- arrange/compound/clips/clarify/preset abstains (~30 rows) remain the by-design v1 contract, now MEASURED
+  as vocab-missing rather than assumed.
+
+## Wave 3 execution (2026-10-01, afternoon): class-list regen + corpus waves + gate re-eval
+
+The wave-3 plan was executed end-to-end: `KINDS` in `scripts/train-intent-model.py` now mirrors
+`MODEL_ACTIONS` (21 kinds — arrange/clips/compound/clarify/preset/presetUnknown learn as themselves
+instead of being relabelled to abstain; they decode kind-only, the resolver refuses empty-slot routes,
+so recognition is learned with zero silent-no-op risk), and three corpus waves landed
+(`npm run intent:dataset`, 1949 → **1983 pairs**; the every-7th split kept existing val rows in place):
+
+- **wave 3** — the val-mined slot-bias families (select/send/percent-faders on non-bass targets,
+  export mp3, EN tempo phrasings, short mix descriptors),
+- **wave 3b** — density on the families that got the KIND right but lost the slot (select-the-lead →
+  bass, exportuj mp3 → wav, C# minor → C minor, short fader descriptors),
+- **wave 3c** — density on the new kind-only classes (arrange/clips/compound/clarify paraphrases) plus
+  short fader/exact forms, driven by the val re-mine only (golden stayed untouched — hold-out discipline).
+
+Three retrains (pure numpy, deterministic seed): val head-accuracy mean 0.9940/0.9926/0.9934, no head
+below 0.95. **Gate re-eval (validate now takes MARGIN/ABSTAIN_MARGIN envs for sweeps, defaults = the
+production pins):**
+
+| arm              | val                                         | golden                                     |
+| ---------------- | ------------------------------------------- | ------------------------------------------ |
+| margin 1.0 (pin) | 95.8 % exact · wrongKind 0 · abstain 15.3 % | 100 % exact · wrongKind 0 · abstain 20.3 % |
+| margin 1.3       | 95.0 % exact · wrongKind 0 · abstain 14.8 % | 100 % exact · wrongKind 0 · abstain 20.3 % |
+| margin 1.5       | 95.0 % exact · wrongKind 0 · abstain 15.5 % | 100 % exact · wrongKind 0 · abstain 21.6 % |
+
+**The VAL gate PASSES for the first time** (attempted-exact ≥ 95 %, wrongKind 0, abstain ≤ 20 % — from
+67.8 % / wrongKind 6 / abstain 25 % two days ago). The overall gate stays honestly FAILED on ONE number:
+golden abstain 15/74 = 20.27 % vs the ≤ 20 % bar. Those 15 rows are the kind-only classes (compound ×5,
+clips ×3, arrange ×3, clarify ×2, preset ×2, presetUnknown ×1) whose kind gap sits under the margin —
+they become attempted only when the classes get slot heads (the sequence student) or much more data.
+Tuning the corpus against golden would be hold-out leakage, so the blocker is recorded, not gamed;
+`gatePassed=false` stays and the model remains inert by design.
+
+Next-session order: (1) sequence student adds the slot heads for arrange/clips/compound — the decode
+contract is already validated by the kind-only runtime; (2) when golden clears 20 %, the gate passes at
+margin 1.3–1.5 and the pin flip lands in the same change (the validator now warns on non-production
+margins for exactly this reason).
+
+## Wave 4 (2026-10-01): scope expansion — arrange in-scope, the gate is one step away
+
+The scope-expansion wave landed as a two-session collaboration: the trainer grew the kind
+list to the full schema contract with three arrange heads (op/role/bars from the schema
+enums) and a context-aware `canonicalModelJson` strip (engine op-form fields — sceneId,
+name, beforeSceneId, clipId — no longer poison the decode-vs-truth comparison); the decoder
+gained the arrange case plus a rolling-artifact guard, and the clips case stayed dormant
+behind the same guard (no clip heads trained yet — a clips kind-win abstains instead of
+throwing, which without the guard would CRASH the decode path on the seam of the two
+designs).
+
+Measured on the combined artifact (34 heads, vocab 3882):
+
+| split  | attempted-exact            | wrongKind | abstain |
+| ------ | -------------------------- | --------- | ------- |
+| train  | **99.7 %** (arrange 48/48) | 0         | 7.3 %   |
+| val    | **93.1 %** (from 69.1 %)   | 7         | 13.4 %  |
+| golden | **100.0 %**                | 0         | 16.2 %  |
+
+**Golden passes ALL THREE gate bars.** The val gate fails on two counts only: 93.1 < 95
+and wrongKind 7 — a single cluster (arrange→effectIntent on section-worded effect phrases,
+"add distortion to the drop") where 48 arrange train rows compete with 340 effectIntent
+rows. The abstain-margin scan is saturated (2.0/2.5/3.0/3.5 identical) — the fix is
+corpus mass on the arrange family, not calibration. The campaign arc: 20.2 → 77.0 →
+69.1 (calibrated) → **93.1 / golden 100**.
+
+## Wave 5 (2026-10-01): the calibration sweep — VAL GATE PASS, golden one bar away
+
+Promoting the audit tooling surfaced a seam: the validate script had its own hard-coded
+margin defaults (1.0 / 2.0) instead of mirroring the production pins — fixed by importing
+`INTENT_MODEL_KIND_MARGIN` / `INTENT_MODEL_ABSTAIN_MARGIN` (one source of truth).
+
+The margin sweep on the scope-expanded artifact (val 285 rows after the parallel corpus
+regen):
+
+| kind margin | abstain margin    | attempted-exact | wrongKind | abstain    |
+| ----------- | ----------------- | --------------- | --------- | ---------- |
+| 1.0         | 2.0 (old pins)    | 95.2 %          | 3         | 12.7 %     |
+| 3.0         | 2.0               | 97.1 %          | 0         | 15.8 %     |
+| **3.0**     | **2.5 (shipped)** | **97.1 %**      | **0**     | **15.8 %** |
+| 3.0         | 2.5 (golden)      | 100.0 %         | 0         | 25.7 %     |
+
+**The VAL gate passed all three bars for the first time** — production pins flipped to
+3.0 / 2.5. The gate still reads FAILED on exactly one count: golden abstain 25.7 % > 20 %,
+and that remainder is margin-INDEPENDENT (identical at 2.0 and 2.5) — those 19 abstentions
+are the out-of-scope-by-design rows (compound/clarify/presetUnknown/multi-op), i.e. the
+contract, not a defect. They leave the abstain column only when their kinds enter the
+in-scope scope (preset/clarify slot heads are the natural next expansion) or the corpus
+dilutes them past the bar. Golden exactness itself: 100 % with wrongKind = 0.
+
+Also learned: numpy/BLAS training is NOT bit-deterministic across runs (same byte count,
+different weights hash) — the manifest MUST be regenerated after every retrain, and the
+artifact-hash test catches exactly that.
+
+## Wave 4 (2026-10-01, evening): sequence-student phase 1 — arrange slot heads + a TEACHER bug
+
+Phase 1 of the sequence student shipped the CHEAP half: the arrange family is single-op across the
+entire corpus, so three closed slot heads (arrangeOp/arrangeRole/arrangeBars — schema-mirror enums,
+not learned weights) cover it exactly. The decode contract: kind-only-for-now kinds keep abstaining
+(clips/compound/clarify/preset stay out; the sibling session added a guarded clips case for a future
+artifact), older vocabs without the heads abstain instead of throwing (rolling-artifact guard), and
+`canonicalModelJson` now strips ENGINE-RESOLVED keys (sceneId/name/beforeSceneId/clipId/dir) from
+op-form objects so decode-vs-truth rewards the model-known contract — a flat renameTrack `name` slot
+is untouched.
+
+**The wave surfaced a deterministic-layer bug, not a model bug.** After retrain 4 the val gate
+REGRESSED (wrongKind 7) — mining showed the model refusing to copy the teacher on six rows:
+"add delay to the drop" was routed as `arrange addRole(drop)` — a brand-new section named after its
+own anchor with the effect word silently dropped. The arrange parser's add-clause handler had a
+stand-down only for `send`; it now also stands down when an effect word sits BEFORE the first role
+word (chorus-as-the-added-section still parses: "add a chorus before the drop" → addRole(chorus)).
+Regression-pinned in tests/intent/arrangeWords.test.ts (16 ✓) + the decode contract in
+tests/intent-model-artifact.test.ts (15 ✓).
+
+Corpus wave 4 (arrange paraphrase density, 1983 → 1989 pairs) + retrain #5 with the fixed teacher:
+
+| split      | result (margin 1.5)                                                                              |
+| ---------- | ------------------------------------------------------------------------------------------------ |
+| train      | 99.7 % exact · wrongKind 0 · abstain 7.5 %                                                       |
+| **val**    | **95.9 % exact · wrongKind 1 · abstain 14.8 %**                                                  |
+| **golden** | **100 % exact · wrongKind 0 · abstain 12/74 = 16.2 % — THE GOLDEN GATE NOW PASSES** (was 20.3 %) |
+
+The arrange slot heads converted 3 golden abstains into EXACT decodes and pushed golden abstain under
+the 20 % bar for the first time. The OVERALL gate still honestly fails on exactly ONE row: the last
+val wrongKind is an SK two-fader compound ("nastav basu na 50 % a zvýš lead") decoded as a single
+fader — a kind-BOUNDARY miss on the nested-payload family whose slot heads phase 2 (the real sequence
+student) will provide. A compound-density wave (3d) + retrain #6 was tried and REVERTED (94.0 % —
+each retrain is a dice roll on the other 283 rows; determinism made the rollback exact). The artifact
+ships retrain #5 (6.5 MB, 34 heads, val head-acc mean 0.9926, no head < 0.95); `gatePassed=false`
+stays — one measured row from a full pass.
+
+Next: phase 2 = compound/clips slot representation (nested parts need the sequence student proper —
+closed heads cannot emit a parts array). When that row clears, the gate passes at margin 1.3–1.5 and
+the production pin flip (1.0 → measured value) lands in the same change.

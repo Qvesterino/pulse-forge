@@ -25,6 +25,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { toGbnfGrammar } from "../src/intent/model-schema";
+import { INTENT_MODEL_ABSTAIN_MARGIN, INTENT_MODEL_KIND_MARGIN } from "../src/intent/model-decoder";
 import { isIntentModelManifest } from "../src/intent/model-loader-types";
 import {
   buildIntentBow,
@@ -135,7 +136,10 @@ async function evaluate(rows: Row[], label: string): Promise<GateStats> {
     const kindBucket = bucket(stats, trueKind);
     kindBucket.rows += 1;
     const outputs = await infer(row.instruction);
-    const decoded = decodeIntentHeads(outputs, vocab);
+    const decoded = decodeIntentHeads(outputs, vocab, {
+      kindMargin: KIND_MARGIN,
+      abstainMargin: ABSTAIN_MARGIN,
+    });
     if (decoded === null) {
       stats.abstain += 1;
       kindBucket.abstain += 1;
@@ -175,6 +179,22 @@ function checkGate(stats: GateStats, label: string): void {
   if (attemptedExact < 0.95) failures.push(`attemptedExact=${(attemptedExact * 100).toFixed(1)}% (< 95%)`);
   if (abstainRate > 0.2) failures.push(`abstainRate=${(abstainRate * 100).toFixed(1)}% (> 20%)`);
   if (failures.length > 0) throw new Error(`GATE FAILED [${label}]: ${failures.join("; ")}`);
+}
+
+// Decode margins: defaults are the PRODUCTION pins (src/intent/model-decoder.ts).
+// MARGIN / ABSTAIN_MARGIN envs exist for the gate re-eval sweeps
+// (docs/INTENT-MINING-2026-09-30.md wave 3): a margin that clears
+// wrongKind must ALSO become the production pin before this gate's
+// gatePassed=true is meaningful for the runtime.
+// Defaults mirror the PRODUCTION PINS (src/intent/model-decoder.ts) — one
+// source of truth, so the gate always judges the runtime the browser gets.
+const KIND_MARGIN = Number(process.env.MARGIN ?? INTENT_MODEL_KIND_MARGIN);
+const ABSTAIN_MARGIN = Number(process.env.ABSTAIN_MARGIN ?? INTENT_MODEL_ABSTAIN_MARGIN);
+if (KIND_MARGIN !== 1.0 || ABSTAIN_MARGIN !== 2.0) {
+  console.log(
+    `[gate] running with NON-PRODUCTION margins: kindMargin=${KIND_MARGIN} abstainMargin=${ABSTAIN_MARGIN} ` +
+      `(production pins are ${INTENT_MODEL_KIND_MARGIN} / ${INTENT_MODEL_ABSTAIN_MARGIN}) — if the gate passes, the pin flip must land in the same change`,
+  );
 }
 
 const trainRows = loadRows("train.jsonl");

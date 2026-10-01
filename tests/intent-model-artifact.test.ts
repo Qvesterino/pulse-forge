@@ -129,14 +129,97 @@ describe("intent model decoder contract", () => {
   });
 
   it("out-of-scope kinds decode to an explicit abstain", () => {
+    // Failure-mining wave 3: preset/compound/arrange/clips/clarify became
+    // IN-SCOPE (the trainer's KINDS now mirrors MODEL_ACTIONS), so the
+    // out-of-scope set is the schema kinds the corpus does not teach.
     const head = (name: string) => vocab.heads.find((candidate) => candidate.name === name)!;
     const one = (name: string, cls: string) => {
       const scores = new Float32Array(head(name).classes.length);
       scores[head(name).classes.indexOf(cls)] = 5;
       return scores;
     };
-    expect(decodeIntentHeads({ head_kind: one("kind", "preset") }, vocab)).toBeNull();
-    expect(decodeIntentHeads({ head_kind: one("kind", "compound") }, vocab)).toBeNull();
+    expect(decodeIntentHeads({ head_kind: one("kind", "stepEdit") }, vocab)).toBeNull();
+    expect(decodeIntentHeads({ head_kind: one("kind", "soundSwap") }, vocab)).toBeNull();
+  });
+});
+
+describe("arrange decode contract (sequence-student phase 1)", () => {
+  const vocab = JSON.parse(
+    readFileSync(path.join(MODELS_DIR, "intent-model-v1.vocab.json"), "utf8"),
+  ) as IntentModelVocab;
+  const head = (name: string) => vocab.heads.find((candidate) => candidate.name === name)!;
+  const one = (name: string, cls: string) => {
+    const scores = new Float32Array(head(name).classes.length);
+    scores[head(name).classes.indexOf(cls)] = 5;
+    return scores;
+  };
+  const absent = (name: string) => one(name, "__absent__");
+  // The decoder reads the shared multi-label bags before the kind switch.
+  const emptySigmoid = (name: string) => new Float32Array(head(name).classes.length).fill(-5);
+
+  it("decodes a single-op arrange resize from the arrange heads", () => {
+    const outputs: Record<string, Float32Array> = {
+      head_kind: one("kind", "arrange"),
+      head_targets: emptySigmoid("targets"),
+      head_pads: emptySigmoid("pads"),
+      head_arrangeOp: one("arrangeOp", "resize"),
+      head_arrangeRole: one("arrangeRole", "intro"),
+      head_arrangeBars: one("arrangeBars", "2"),
+    };
+    expect(canonicalModelJson(decodeIntentHeads(outputs, vocab))).toBe(
+      canonicalModelJson({ kind: "arrange", ops: [{ op: "resize", role: "intro", bars: 2 }] }),
+    );
+  });
+
+  it("autoArrange needs no role/bars; resize without bars abstains", () => {
+    const auto: Record<string, Float32Array> = {
+      head_kind: one("kind", "arrange"),
+      head_targets: emptySigmoid("targets"),
+      head_pads: emptySigmoid("pads"),
+      head_arrangeOp: one("arrangeOp", "autoArrange"),
+      head_arrangeRole: absent("arrangeRole"),
+      head_arrangeBars: absent("arrangeBars"),
+    };
+    expect(canonicalModelJson(decodeIntentHeads(auto, vocab))).toBe(
+      canonicalModelJson({ kind: "arrange", ops: [{ op: "autoArrange" }] }),
+    );
+    const noBars: Record<string, Float32Array> = {
+      head_kind: one("kind", "arrange"),
+      head_targets: emptySigmoid("targets"),
+      head_pads: emptySigmoid("pads"),
+      head_arrangeOp: one("arrangeOp", "resize"),
+      head_arrangeRole: one("arrangeRole", "drop"),
+      head_arrangeBars: absent("arrangeBars"),
+    };
+    expect(decodeIntentHeads(noBars, vocab)).toBeNull();
+  });
+
+  it("the op-form strip ignores engine-resolved fields in the truth comparison", () => {
+    // The engine fills sceneId/name/beforeSceneId when ROUTING; the model
+    // can only ever know the model-form op. canonicalModelJson strips those
+    // keys on op-form objects so decode-vs-truth rewards the contract.
+    const decoded = { kind: "arrange", ops: [{ op: "duplicate", role: "intro" }] };
+    const routed = {
+      kind: "arrange",
+      ops: [{ op: "duplicate", role: "intro", sceneId: "scene-x", name: "Intro" }],
+    };
+    expect(canonicalModelJson(decoded)).toBe(canonicalModelJson(routed));
+    // …but a flat renameTrack payload keeps its name slot.
+    const rename = { kind: "exact", ops: [{ kind: "renameTrack", target: "bass", name: "sub" }] };
+    expect(canonicalModelJson(rename)).toContain('"name":"sub"');
+  });
+
+  it("an older vocab without arrange heads abstains instead of throwing", () => {
+    const stripped = {
+      ...vocab,
+      heads: vocab.heads.filter((candidate) => !candidate.name.startsWith("arrange")),
+    };
+    const outputs: Record<string, Float32Array> = {
+      head_kind: one("kind", "arrange"),
+      head_targets: emptySigmoid("targets"),
+      head_pads: emptySigmoid("pads"),
+    };
+    expect(decodeIntentHeads(outputs, stripped as typeof vocab)).toBeNull();
   });
 });
 

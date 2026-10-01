@@ -88,6 +88,23 @@ export const VOCAB = {
     "telephone",
     "tape",
     "stutter",
+    // Level-3 device concepts — mirrors the production.ts applier switch
+    // exactly (failure-mining 2026-10-01: the enum was 13 concepts behind
+    // the parser, so a valid "more sub in the mix" teacher row was rejected
+    // by validateModelAction and dropped before the applier ever saw it).
+    "filter",
+    "sidechain",
+    "notch",
+    "phaser",
+    "chorus",
+    "sharper",
+    "reverse",
+    "crunchy",
+    "vinyl",
+    "wide",
+    "sub",
+    "air",
+    "deess",
   ] as const,
   transportAction: ["play", "pause", "stop", "metronomeOn", "metronomeOff", "loopOn", "loopOff"] as const,
   exportFormat: ["wav", "mp3"] as const,

@@ -198,6 +198,19 @@ export function parseArrangeIntent(text: string, doc: ProjectDocument): ParsedAr
       if (/\bsend\b/.test(clause) && effectWordIn(clause)) {
         continue;
       }
+      // "add delay to the drop" asks for the delay EFFECT on the drop
+      // section, not a brand-new section named by its anchor — when an
+      // effect word sits before the first role word, the add verb attaches
+      // to the effect and the arrange claim stands down (failure-mining
+      // wave 4: this exact shape was taught as addRole(<anchor>) and the
+      // classifier rightly refused to copy it).
+      const firstRoleAt = ROLE_SYNONYMS.reduce<number>((best, [, re]) => {
+        const m = re.exec(clause);
+        return m && m.index >= 0 && (best === -1 || m.index < best) ? m.index : best;
+      }, -1);
+      if (firstRoleAt > 0 && effectWordIn(clause.slice(0, firstRoleAt))) {
+        continue;
+      }
       const m = /\b(before|after|pred|za)\b/.exec(clause);
       let addPart = clause;
       let anchorPart: string | null = null;
