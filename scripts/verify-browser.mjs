@@ -233,8 +233,21 @@ try {
     const projectDownload = appPage.waitForEvent("download");
     await appPage.locator('.export-panel button:has-text("EXPORT JSON")').click();
     const download = await projectDownload;
-    if (!download.suggestedFilename().endsWith(".kyx.json")) {
-      throw new Error(`unexpected project export filename: ${download.suggestedFilename()}`);
+    // `.kyx` is the current public brand extension (project-io.ts, "New files
+    // use the short public brand .kyx — brand-coherent with the .kyxzyvo
+    // transfer format"). The importer is shape-based and never inspects the
+    // filename, so legacy `.kyx.json` still opens — which is why this assertion
+    // accepted the old form. It was NOT updated when the extension changed, and
+    // because the throw sat inside the app-boot block, the resulting failure was
+    // reported as "app boot — UI did not mount" and read as a boot regression.
+    // It is a stale expectation, not a product defect. Accept both, and name
+    // the real cause if neither matches.
+    const suggested = download.suggestedFilename();
+    if (!/\.kyx(\.json)?$/.test(suggested)) {
+      throw new Error(
+        `project export produced "${suggested}" — expected the .kyx brand extension (or legacy .kyx.json). ` +
+          `NOTE: this check runs inside the app-boot block, so a failure here is an EXPORT-NAMING problem, not a boot problem.`,
+      );
     }
     await appPage.waitForTimeout(1200); // allow autosave to settle before reload
     await appPage.reload({ waitUntil: "domcontentloaded", timeout: 120_000 });

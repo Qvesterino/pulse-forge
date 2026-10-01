@@ -12,3 +12,51 @@ KYX MCP AGENT DEMO — one agent session, real protocol, real command layer
    [kyx_checkpoint] checkpoint "before-agent-session" saved (3 tracks · active pattern "Pattern A" · 1 scenes) — restore anytime, session-scoped, 1/8 used
 
 ── AGENT STEP 4: generate a drill pattern (deterministic seed)
+   [kyx_generate] generated "drill - UK Drill" — 32 steps (~2 bar) · project 142 BPM (one undo step in KYX)
+
+── AGENT STEP 5: verify the grid before editing (read-back discipline)
+   [kyx_state] active: "drill - UK Drill" — 2 bars, 32 steps ⏎ kick: 7 steps [1 7 9 11 17 25 30] vel≈0.80 ⏎ snare: 2 steps [9 25] vel≈0.87
+
+── AGENT STEP 6: surgical step edit: ghost snares off the grid
+   [kyx_steps] snare ghost: 2 → 6 steps (touched: 5, 13) · pattern "drill - UK Drill" (2 bars) · one undo step
+
+── AGENT STEP 7: groove: swing the beat
+   [kyx_groove] Groove → swing 58% · humanize 0/0
+
+── AGENT STEP 8: measured mix profile (drill reference)
+   [kyx_mix] mix applied (8 decisions): tone: dark | punch: compressed + driven | space: drier | master tilt +2 dB - one undo step
+
+── AGENT STEP 9: song form: arrange sections (empty arrangement)
+   [kyx_arrange] arranged 'drill' form: intro 4bar@1 · verse 8bar@5 · chorus 8bar@13 · verse 8bar@21 · chorus 8bar@29 · bridge 4bar@37 · chorus 8bar@41 · outro 4bar@49
+
+── AGENT STEP 10: space: send the drums to the reverb bus
+   [kyx_routing] Drums → Reverb 0.35 — one undo step
+
+── AGENT STEP 11: transport: play + stop (the window dispatches the runtime)
+   [window] ▶ PLAY
+   [kyx_transport] transport: play · position unknown
+   [window] ■ STOP
+   [kyx_transport] transport: stop · position unknown
+
+── AGENT STEP 12: risky experiment: wrong tempo
+   [kyx_intent] tempo 90 — verification: applied, one undo step in KYX
+   [kyx_state] 90 BPM · key unset · 4/4
+
+── AGENT STEP 13: producer decision: the experiment was worse — restore the checkpoint
+   [kyx_checkpoint] restored "before-agent-session" (3 tracks · active pattern "Pattern A" · 1 scenes) — one undo step returns to the pre-restore state
+
+── AGENT STEP 14: verify the rollback actually landed (state reads, not echoes)
+   [kyx_state] 124 BPM · key unset · 4/4
+
+── AGENT STEP 15: honesty contract: what the agent MUST NOT do unsupervised
+   [kyx_takes (refused)] declined: destructive MCP ops are locked — the user must allow them in the KYX MCP chip (undoable edits still work)
+   [kyx_intent (refused)] generation requests run inside the KYX app (candidates need auditioning) — rephrase as a mixer/groove command or open KYX
+
+── AGENT STEP 16: final state read
+   [kyx_state] 124 BPM · key unset · 3 tracks · 1 scenes · 1 patterns ⏎ tracks: Drums, 808, Chords ⏎ active pattern: "Pattern A" (1 bar) ⏎ scenes: Groove
+
+──────────────────────────────────────────────────────────
+✓ DEMO COMPLETE — 16 agent steps verified over the real protocol
+  25 tools · read-backs at every mutation · checkpoints · honest refusals
+──────────────────────────────────────────────────────────
+

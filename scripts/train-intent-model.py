@@ -170,8 +170,6 @@ def features_of(text: str) -> list[str]:
         padded = f"^{word}$"
         for i in range(len(padded) - 2):
             features.append(padded[i : i + 3])
-        for i in range(len(padded) - 3):
-            features.append(padded[i : i + 4])
     return features
 
 
