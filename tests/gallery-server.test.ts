@@ -12,7 +12,6 @@ import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import WebSocket from "ws";
 import { compressToEncodedURIComponent } from "lz-string";
-// @ts-expect-error untyped .mjs server module
 import { createCollabServer } from "../server/collab-server.mjs";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 

@@ -280,10 +280,17 @@ class GalleryStore {
       parentId = input.parentId;
     }
     const author = cleanText(input?.author, AUTHOR_MAX) || "anonymous";
+    // AGENT-MADE provenance: only the exact value "agent" marks a beat as
+    // machine-made (anything else — absent, "human", junk — is human);
+    // `agent` carries the display name of the publishing agent/client.
+    const origin = input?.origin === "agent" ? "agent" : "human";
+    const agent = origin === "agent" ? cleanText(input?.agent, AUTHOR_MAX) || "unknown agent" : null;
     const item = {
       id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
       title,
       author,
+      origin,
+      agent,
       tags: cleanTags(input?.tags),
       code,
       bpm: meta.bpm,

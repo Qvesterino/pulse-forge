@@ -711,6 +711,29 @@ export const MCP_TOOLS: McpToolDef[] = [
     },
   },
   {
+    name: "kyx_publish_gallery",
+    description:
+      "Publish the CURRENT KYX project to the public beat gallery as " +
+      "AGENT-MADE (shows with the robot badge + your agent name in the " +
+      "feed). The beat is a share-code entry: instant embed player, no " +
+      "audio upload. Call when the user asks to share/publish/showcase the " +
+      "beat you built together. Requires a live KYX session (web/desktop); " +
+      "standalone servers refuse honestly.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Beat title for the gallery card (max 64 chars)" },
+        author: { type: "string", description: "Credit line (default: 'KYX agent')" },
+        tags: { type: "array", items: { type: "string" }, description: "Up to 6 free-form tags" },
+        agent: {
+          type: "string",
+          description: "Your agent display name, e.g. 'Claude (MCP)' (default: 'unknown agent')",
+        },
+      },
+      required: ["title"],
+    },
+  },
+  {
     name: "kyx_checkpoint",
     description:
       "Named project checkpoints for agent experiments: save the current " +
@@ -1005,6 +1028,13 @@ export interface McpToolContext {
       }
     | { ok: false; error: string }
   >;
+  /**
+   * AGENT-MADE gallery publishing (kyx_publish_gallery). The HOST encodes
+   * the current project into a gallery share code and POSTs it with
+   * origin:"agent" — the tool only validates input and reports back.
+   * Absent → honest refusal (standalone/headless servers cannot publish).
+   */
+  shareToGallery?: (input: { title: string; author: string; tags: string[]; agent: string }) => Promise<{ id: string }>;
 }
 
 export interface McpToolResult {
@@ -1651,6 +1681,12 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
         text: "kyx_loudness renders in the KYX window — it is answered by the async executor (transports); not available over the sync path",
         mutated: false,
       };
+    case "kyx_publish_gallery":
+      // Same async-intercept pattern: publishing is a network await.
+      return {
+        text: "kyx_publish_gallery posts to the gallery — it is answered by the async executor (transports); not available over the sync path",
+        mutated: false,
+      };
     case "kyx_meter": {
       if (ctx.meters == null) {
         return {
@@ -2149,6 +2185,40 @@ export async function executeMcpToolAsync(ctx: McpToolContext, name: string, arg
     } catch (error) {
       return {
         text: `loudness loop failed: ${error instanceof Error ? error.message : String(error)}`,
+        mutated: false,
+        isError: true,
+      };
+    }
+  }
+  if (name === "kyx_publish_gallery") {
+    const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
+    if (ctx.shareToGallery == null) {
+      return {
+        text: "gallery publishing is not available over this MCP transport — publish from a live KYX session (web or desktop)",
+        mutated: false,
+      };
+    }
+    const title = typeof record.title === "string" ? record.title.trim() : "";
+    if (!title || title.length > 64) {
+      return { text: "title is required (max 64 chars)", mutated: false, isError: true };
+    }
+    const author =
+      typeof record.author === "string" && record.author.trim() ? record.author.trim().slice(0, 32) : "KYX agent";
+    const tags = Array.isArray(record.tags)
+      ? record.tags.filter((t): t is string => typeof t === "string" && t.trim() !== "").slice(0, 6)
+      : [];
+    const agent =
+      typeof record.agent === "string" && record.agent.trim() ? record.agent.trim().slice(0, 32) : "unknown agent";
+    try {
+      const { id } = await ctx.shareToGallery({ title, author, tags, agent });
+      return {
+        text: `published to the gallery as AGENT-MADE: "${title}" (id ${id}, agent ${agent}) — it shows with the robot badge in the gallery feed`,
+        mutated: false,
+        data: { galleryId: id, origin: "agent", agent },
+      };
+    } catch (error) {
+      return {
+        text: `gallery publish failed: ${error instanceof Error ? error.message : String(error)}`,
         mutated: false,
         isError: true,
       };

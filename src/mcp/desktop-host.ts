@@ -65,6 +65,20 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
     // kyx_export rides the same render + encode + download pipeline as the
     // in-app export intent (download lands in the focused KYX window).
     export: (request) => quickBounceDownload(services.store.getDoc(), services.bank, request),
+    // kyx_publish_gallery: encode the LIVE project into a gallery share code
+    // and POST it with agent provenance (the feed shows the robot badge).
+    shareToGallery: async ({ title, author, tags, agent }) => {
+      const { encodeProjectForGallery, publishBeat } = await import("../gallery/galleryApi");
+      const item = await publishBeat({
+        title,
+        author,
+        tags,
+        code: encodeProjectForGallery(services.store.getDoc()),
+        origin: "agent",
+        agent,
+      });
+      return { id: item.id };
+    },
     allowDestructive: mcpAllowDestructive,
   };
 }

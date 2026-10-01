@@ -39,6 +39,10 @@ export interface GalleryItem {
   genre?: string | null;
   /** True when the beat carries an intent snapshot a studio can regenerate from (B1). */
   regenerable?: boolean;
+  /** "agent" = published through the MCP surface by an AI agent (🤖 badge). */
+  origin?: "human" | "agent";
+  /** Display name of the publishing agent ("Claude (MCP)"). */
+  agent?: string | null;
 }
 
 export interface PublishInput {
@@ -48,6 +52,9 @@ export interface PublishInput {
   code: string;
   /** Gallery id of the beat this was forked from (remix chain). */
   parentId?: string | null;
+  /** Agent provenance — only the MCP path sets these. */
+  origin?: "human" | "agent";
+  agent?: string;
 }
 
 const API_KEY = "pf-gallery-api";

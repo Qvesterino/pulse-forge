@@ -816,6 +816,25 @@ export const MCP_TOOL_DEFS = [
       required: ["op"],
     },
   },
+
+  {
+    name: "kyx_publish_gallery",
+    description:
+      "Publish the CURRENT KYX project to the public beat gallery as AGENT-MADE (shows with the robot badge + your agent name in the feed). The beat is a share-code entry: instant embed player, no audio upload. Call when the user asks to share/publish/showcase the beat you built together. Requires a live KYX session (web/desktop); standalone servers refuse honestly.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Beat title for the gallery card (max 64 chars)" },
+        author: { type: "string", description: "Credit line (default: 'KYX agent')" },
+        tags: { type: "array", items: { type: "string" }, description: "Up to 6 free-form tags" },
+        agent: {
+          type: "string",
+          description: "Your agent display name, e.g. 'Claude (MCP)' (default: 'unknown agent')",
+        },
+      },
+      required: ["title"],
+    },
+  },
   {
     name: "kyx_checkpoint",
     description:

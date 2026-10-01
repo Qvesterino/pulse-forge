@@ -38,6 +38,7 @@ export function GalleryPage() {
   const [feed, setFeed] = useState<FeedState>({ kind: "loading" });
   const [filter, setFilter] = useState<string | null>(null);
   const [genreFilter, setGenreFilter] = useState<string | null>(null);
+  const [agentOnly, setAgentOnly] = useState(false);
   const [query, setQuery] = useState("");
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [prefilledCode, setPrefilledCode] = useState<string | null>(null);
@@ -86,12 +87,20 @@ export function GalleryPage() {
     return [...counts.entries()].sort((a, b) => b[1] - a[1]);
   }, [feed]);
 
+  // AGENT-MADE chip — rendered only when the feed actually carries
+  // agent-published beats (legacy servers never send origin).
+  const agentCount = useMemo(
+    () => (feed.kind === "ready" ? feed.items.filter((item) => item.origin === "agent").length : 0),
+    [feed],
+  );
+
   const visible = useMemo(() => {
     if (feed.kind !== "ready") return [];
     const q = query.trim().toLowerCase();
     return feed.items.filter((item) => {
       if (filter && !item.tags.includes(filter)) return false;
       if (genreFilter && item.genre !== genreFilter) return false;
+      if (agentOnly && item.origin !== "agent") return false;
       if (!q) return true;
       return (
         item.title.toLowerCase().includes(q) ||
@@ -99,7 +108,7 @@ export function GalleryPage() {
         item.tags.some((tag) => tag.includes(q))
       );
     });
-  }, [feed, filter, genreFilter, query]);
+  }, [feed, filter, genreFilter, agentOnly, query]);
 
   return (
     <div className="gallery-root" aria-label="Beat Gallery">
@@ -135,6 +144,19 @@ export function GalleryPage() {
           </button>
         )}
       </div>
+
+      {agentCount > 0 && (
+        <div className="gallery-genrerow" aria-label="Agent-made">
+          <button
+            type="button"
+            className={"gallery-genre" + (agentOnly ? " gallery-genre-active" : "")}
+            onClick={() => setAgentOnly(!agentOnly)}
+            title="Beats published by AI agents through the KYX MCP surface"
+          >
+            🤖 AGENT-MADE <span className="gallery-tag-count">{agentCount}</span>
+          </button>
+        </div>
+      )}
 
       {genres.length > 0 && (
         <div className="gallery-genrerow" aria-label="Genres">
@@ -346,6 +368,14 @@ function GalleryCard({
         <div className="gallery-card-titlebox">
           <h3 className="gallery-card-title">
             {item.title}
+            {item.origin === "agent" && (
+              <span
+                className="gallery-you-badge"
+                title={`Made by an AI agent${item.agent ? ` (${item.agent})` : ""} through the KYX MCP surface`}
+              >
+                🤖 AGENT
+              </span>
+            )}
             {isMine && <span className="gallery-you-badge">YOU</span>}
           </h3>
           <span className="gallery-card-meta">

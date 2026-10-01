@@ -101,6 +101,20 @@ function depsFromServices(services: Services): McpBridgeDeps {
     // kyx_export rides the SAME render + encode + download pipeline as the
     // in-app "export wav/mp3" intent (the download lands in the KYX window).
     export: (request) => quickBounceDownload(services.store.getDoc(), services.bank, request),
+    // kyx_publish_gallery: encode the LIVE project into a gallery share code
+    // and POST it with agent provenance (the feed shows the robot badge).
+    shareToGallery: async ({ title, author, tags, agent }) => {
+      const { encodeProjectForGallery, publishBeat } = await import("../gallery/galleryApi");
+      const item = await publishBeat({
+        title,
+        author,
+        tags,
+        code: encodeProjectForGallery(services.store.getDoc()),
+        origin: "agent",
+        agent,
+      });
+      return { id: item.id };
+    },
   };
 }
 
