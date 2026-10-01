@@ -1231,6 +1231,11 @@ function MacroCard({ macro }: { macro: ProjectDocument["macros"][number] }) {
           <button
             type="button"
             className="btn btn-small"
+            // Same contract as MIDI Learn below: PARAM… resolves to a device
+            // parameter, and without one the commit handler returns silently —
+            // no command, no error. Disabling it keeps the control honest
+            // instead of looking actionable while doing nothing.
+            disabled={mapDraft.param === "param" && (!activeDeviceId || !activeParamId)}
             onClick={() => {
               if (mapDraft.param === "param") {
                 if (!activeDeviceId || !activeParamId) return;

@@ -103,6 +103,47 @@ describe("ModPanel — Ultina deep-parameter lane targets (phase U1)", () => {
   });
 });
 
+describe("ModPanel — macro PARAM target must be honest about being mappable (defect 19)", () => {
+  const user = userEvent.setup();
+
+  function docWithAnEffect() {
+    const doc = createProjectFromTemplate("house");
+    const track = doc.tracks[0];
+    (track as { effects: unknown[] }).effects = [{ id: "fx-u1", type: "ultina", bypassed: false, params: {} }];
+    return doc;
+  }
+
+  it("disables + MAP while PARAM… resolves to no parameter, and re-enables it once one does", async () => {
+    // `+ MAP` returns early on `!activeDeviceId || !activeParamId` (ModPanel.tsx
+    // commit handler), so with no resolvable target the click does nothing at
+    // all — no command, no error, no visual change. Its own sibling two
+    // elements down (MIDI Learn) disables itself in exactly that condition.
+    // A control that looks actionable and does nothing is §15's "interactive
+    // UI that falsely appears functional".
+    const doc = docWithAnEffect();
+    renderWithContext(<ModPanel />, { services: mockServices(doc) });
+
+    const mapButton = () => screen.getAllByRole("button", { name: "+ MAP" })[0] as HTMLButtonElement;
+
+    await user.selectOptions(screen.getAllByLabelText("Macro parameter")[0], "param");
+
+    // Mappable: a device is present, so the first parameter is auto-selected.
+    expect(screen.getAllByLabelText("Macro target parameter")[0].options.length).toBeGreaterThan(1);
+    expect(mapButton()).toBeEnabled();
+
+    // Narrow the filter to nothing — the common real case is typing a search
+    // string that matches no parameter on the chosen device.
+    await user.type(screen.getAllByLabelText("Filter macro parameters")[0], "zzzznomatch");
+
+    expect(screen.getAllByLabelText("Macro target parameter")[0]).toHaveDisplayValue("no params");
+    expect(mapButton()).toBeDisabled();
+
+    // Clearing the filter restores a real target, and with it the action.
+    await user.clear(screen.getAllByLabelText("Filter macro parameters")[0]);
+    expect(mapButton()).toBeEnabled();
+  });
+});
+
 describe("ModPanel — ScenePanel wall-clock info (Wave 2)", () => {
   it("shows the pattern loop length in wall-clock seconds", () => {
     const { container } = renderWithContext(<ModPanel />);
