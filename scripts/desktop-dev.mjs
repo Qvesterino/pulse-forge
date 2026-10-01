@@ -87,15 +87,20 @@ vite = spawnNode(["node_modules/vite/bin/vite.js", "--port", String(PORT), "--st
 });
 
 try {
-  await awaitLine(/^Local:\s+/im, 30_000, "the Vite dev server (Local: …)");
+  // vite v6 wraps the whole banner in ANSI (even the word "Local" carries
+  // reset codes: "\x1b[1mLocal\x1b[22m:") — match the bare word, not layout.
+  await awaitLine(/Local/i, 30_000, "the Vite dev server (Local: …)");
 } catch (error) {
   console.error(error.message);
   shutdown(1);
 }
 
 console.log(`\nKYX desktop → ${DEV_URL}\n`);
-electron = spawnNode([electronExe, "desktop/main.cjs"], {
-  name: "electron",
-  env: { KYX_DEV_URL: DEV_URL },
-  onExit: (code) => shutdown(code),
+// Electron is a BINARY, not a JS entry — spawn it directly (spawnNode always
+// runs process.execPath, which would try to parse the PE header as JS).
+electron = spawn(electronExe, ["desktop/main.cjs"], {
+  cwd: root,
+  env: { ...process.env, KYX_DEV_URL: DEV_URL },
+  stdio: "inherit",
 });
+electron.on("exit", (code) => shutdown(code ?? 0));

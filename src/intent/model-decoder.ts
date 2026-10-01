@@ -41,7 +41,7 @@ export function tokenizeIntentInstruction(text: string): string[] {
 /**
  * Feature expansion over the word tokens (intent-features.v2): the word
  * unigrams, adjacent-word bigrams (`w1_w2`) and fastText-style char
- * 3-grams over the `^word$`-padded form. Separators (`_`, `^`, `$`) sit
+ * 3+4-grams over the `^word$`-padded form. Separators (`_`, `^`, `$`) sit
  * outside the word charset [a-z0-9%+], so no feature string can collide
  * with a plain word. Char grams carry the fuzzy read — a typo or an SK
  * variant shares most of its trigrams with the canonical form, which a
@@ -55,6 +55,7 @@ export function expandIntentFeatures(words: string[]): string[] {
   for (const word of words) {
     const padded = `^${word}$`;
     for (let i = 0; i + 3 <= padded.length; i++) features.push(padded.slice(i, i + 3));
+    for (let i = 0; i + 4 <= padded.length; i++) features.push(padded.slice(i, i + 4));
   }
   return features;
 }

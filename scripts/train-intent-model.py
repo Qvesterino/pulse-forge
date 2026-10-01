@@ -159,7 +159,7 @@ def features_of(text: str) -> list[str]:
     """Feature expansion (intent-features.v2) — MUST mirror TS
     expandIntentFeatures in src/intent/model-decoder.ts EXACTLY: word
     unigrams, adjacent-word bigrams (`w1_w2`), and fastText-style char
-    3-grams over the `^word$`-padded form. Separators sit outside the word
+    3+4-grams over the `^word$`-padded form. Separators sit outside the word
     charset, so no collision with plain words. Any drift between the two
     implementations craters the validate gate."""
     words = tokenize(text)
@@ -170,6 +170,8 @@ def features_of(text: str) -> list[str]:
         padded = f"^{word}$"
         for i in range(len(padded) - 2):
             features.append(padded[i : i + 3])
+        for i in range(len(padded) - 3):
+            features.append(padded[i : i + 4])
     return features
 
 
