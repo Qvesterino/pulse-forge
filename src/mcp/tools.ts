@@ -35,6 +35,7 @@ import {
   addAutomationLane,
   addAutomationPoint,
   addToGroup,
+  addNote,
   createGroupTrack,
   createReturnTrack,
   addMarker,
@@ -47,14 +48,18 @@ import {
   createScene,
   deleteArrangementClip,
   deleteAutomationPoint,
+  deleteNote,
   deleteTrack,
   moveAutomationPoint,
   moveEffect,
   moveEffectToIndex,
+  moveNote,
   deleteAudioClip,
   duplicateArrangementClip,
   moveArrangementClip,
   moveAudioClip,
+  quantizePatternToGrid,
+  quantizePatternToScale,
   removeAutomationLane,
   removeEffect,
   removeFromGroup,
@@ -62,6 +67,7 @@ import {
   renameMarker,
   resizeArrangementClip,
   setActiveAudioTake,
+  setNoteVelocity,
   setReturnGain,
   setActivePattern,
   setSceneIntensity,
@@ -480,6 +486,68 @@ export const MCP_TOOLS: McpToolDef[] = [
         velocity: { type: "number", minimum: 0.05, maximum: 1, description: "For add (default 0.8)" },
       },
       required: ["op", "family"],
+    },
+  },
+  {
+    name: "kyx_notes",
+    description:
+      "Melodic COMPOSITION on the active pattern (the melodic half kyx_steps " +
+      "does not cover): list/add/move/delete notes, set velocity, quantize to " +
+      "grid or key, transpose a family's whole line. Notes are addressed by " +
+      "INDEX into the list response — call {op:'list'} first, indices are " +
+      "positions in it. Every op is one undo step through the audited command " +
+      "layer (pitch/velocity clamps, pattern-bounds fit).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: {
+          type: "string",
+          enum: ["list", "add", "move", "delete", "setVelocity", "quantize", "transpose"],
+        },
+        family: {
+          type: "string",
+          enum: ["bass", "lead", "chords"],
+          description: "Target melodic family (first matching track edits; default bass). Read-back names the track.",
+        },
+        pitch: { type: "integer", minimum: 0, maximum: 127, description: "MIDI pitch (add; move absolute)" },
+        noteName: { type: "string", description: 'Alternative to pitch: "C3", "F#4", "Bb2" (add)' },
+        index: { type: "integer", minimum: 0, description: "Position in the list response (move/delete/setVelocity)" },
+        startBeat: {
+          type: "number",
+          minimum: 0,
+          description: "Start in beats from pattern start (add; move absolute)",
+        },
+        durationBeats: { type: "number", minimum: 0.05, description: "Note length in beats (add, default 0.5)" },
+        velocity: { type: "number", minimum: 0, maximum: 1, description: "add (default 0.8) / setVelocity" },
+        pitchDelta: { type: "integer", minimum: -127, maximum: 127, description: "move relative semitones" },
+        grid: {
+          type: "string",
+          enum: ["1/4", "1/8", "1/16", "1/32", "1/8T", "1/16T"],
+          description: "quantize target grid",
+        },
+        key: { type: "string", description: 'quantize target scale, e.g. "C Major", "A Minor"' },
+        semitones: { type: "integer", minimum: -127, maximum: 127, description: "transpose shift (non-zero)" },
+      },
+      required: ["op"],
+    },
+  },
+  {
+    name: "kyx_music",
+    description:
+      "Structured MUSICAL STATE: set tempo, set musical key, change the active " +
+      "pattern's length, or transpose all melodic content. One op = ONE undo " +
+      "step through the exact-intent executor (same clamps as the text layer).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["setTempo", "setKey", "setPatternLength", "transposeAll"] },
+        bpm: { type: "integer", minimum: 20, maximum: 300, description: "setTempo" },
+        key: { type: "string", description: 'setKey — e.g. "C Major", "F# Minor", "Bb Minor"' },
+        steps: { type: "integer", minimum: 16, maximum: 256, description: "setPatternLength (16 per bar)" },
+        semitones: { type: "integer", minimum: -127, maximum: 127, description: "transposeAll shift (non-zero)" },
+        target: { type: "string", description: 'transposeAll scope: track family or "all" (default all)' },
+      },
+      required: ["op"],
     },
   },
   {
@@ -1159,6 +1227,40 @@ function transportLoopRegion(ctx: McpToolContext, record: Record<string, unknown
   };
 }
 
+// ── kyx_notes helpers — pitch naming for agents (say "C3", read "C3") ───────
+
+const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const;
+
+/** "C3" / "F#4" / "Bb2" (ASCII b only) → MIDI 0..127, or null. */
+function noteNameToMidi(name: string): number | null {
+  const match = /^([A-Ga-g])([#b]?)(-?\d{1,2})$/.exec(name.trim());
+  if (!match) return null;
+  const base = NOTE_NAMES.findIndex((n) => n.toLowerCase() === match[1].toLowerCase());
+  if (base < 0) return null;
+  const semis = match[2] === "#" ? 1 : match[2] === "b" ? -1 : 0;
+  const octave = Number(match[3]);
+  const midi = (octave + 1) * 12 + base + semis;
+  return midi >= 0 && midi <= 127 ? midi : null;
+}
+
+/** MIDI 0..127 → "C3" form (C-1 = 0). */
+function midiToNoteName(midi: number): string {
+  const clamped = Math.max(0, Math.min(127, Math.round(midi)));
+  return `${NOTE_NAMES[clamped % 12]}${Math.floor(clamped / 12) - 1}`;
+}
+
+/** Accepts pitch (number 0..127) or noteName; null when neither is usable. */
+function resolvePitch(pitch: unknown, noteName: unknown): number | null {
+  if (typeof pitch === "number" && Number.isFinite(pitch) && pitch >= 0 && pitch <= 127) {
+    return Math.round(pitch);
+  }
+  if (typeof noteName === "string") {
+    const midi = noteNameToMidi(noteName);
+    if (midi !== null) return midi;
+  }
+  return null;
+}
+
 export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown): McpToolResult {
   const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
   switch (name) {
@@ -1728,6 +1830,201 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
         text: "kyx_song generates the whole track (async) - it is answered by the async executor (transports)",
         mutated: false,
       };
+    case "kyx_notes": {
+      // MELODIC COMPOSITION — the half of the DAW kyx_steps does not cover.
+      // Notes are addressed by INDEX into the kyx_notes list response (stable
+      // within a call; list again after edits). One op = one undo step via
+      // the audited command layer (clamps, pattern-bounds fit included).
+      const record = args as Record<string, unknown>;
+      const family = typeof record.family === "string" ? record.family : "bass";
+      // agents may target by explicit trackId; family is the friendly default
+      const ids = explicitTrackIds(ctx.getDoc(), { ...(record as Record<string, unknown>), family });
+      if (typeof ids === "string") return { text: ids, mutated: false };
+      if (ids.length === 0) return { text: `no track matches family "${family}"`, mutated: false };
+      const trackId = ids[0];
+      const track = ctx.getDoc().tracks.find((t) => t.id === trackId);
+      const notesOf = (): { id: string; pitch: number; start: number; duration: number; velocity: number }[] =>
+        ctx.getDoc().patterns.find((p) => p.id === ctx.getDoc().activePatternId)?.notes?.[trackId] ?? [];
+      const op = String(record.op ?? "");
+      const beat = (ticks: number): string => (ticks / 480).toFixed(2).replace(/\.?0+$/, "");
+      const describe = (
+        note: { pitch: number; start: number; duration: number; velocity: number },
+        index: number,
+      ): string =>
+        `#${index} ${midiToNoteName(note.pitch)} @${beat(note.start)}b ×${beat(note.duration)}b v${note.velocity.toFixed(2)}`;
+
+      if (op === "list") {
+        const notes = notesOf();
+        if (notes.length === 0)
+          return { text: `track "${track?.name ?? trackId}" (${family}): no notes`, mutated: false };
+        const head = notes.slice(0, 40).map(describe).join("; ");
+        const tail = notes.length > 40 ? ` …+${notes.length - 40} more` : "";
+        return {
+          text: `track "${track?.name ?? trackId}" (${family}), ${notes.length} notes: ${head}${tail}`,
+          mutated: false,
+          data: { trackId, count: notes.length },
+        };
+      }
+      if (op === "add") {
+        const pitch = resolvePitch(record.pitch, typeof record.noteName === "string" ? record.noteName : undefined);
+        if (pitch === null) return { text: 'add needs pitch (0..127) or noteName ("C3", "F#4")', mutated: false };
+        const startBeat =
+          typeof record.startBeat === "number" && Number.isFinite(record.startBeat) ? record.startBeat : 0;
+        const durationBeats =
+          typeof record.durationBeats === "number" && Number.isFinite(record.durationBeats)
+            ? record.durationBeats
+            : 0.5;
+        const velocity = typeof record.velocity === "number" ? record.velocity : 0.8;
+        const before = notesOf().length;
+        ctx.execute(
+          addNote(ctx.getDoc(), trackId, {
+            pitch,
+            start: Math.round(startBeat * 480),
+            duration: Math.max(1, Math.round(durationBeats * 480)),
+            velocity,
+          }),
+        );
+        const after = notesOf();
+        const added = after[after.length - 1];
+        return {
+          text: `added ${midiToNoteName(added?.pitch ?? pitch)} @${beat(added?.start ?? 0)}b ×${beat(added?.duration ?? 0)}b — ${track?.name ?? trackId} now has ${after.length} notes (was ${before})`,
+          mutated: true,
+        };
+      }
+      const index = typeof record.index === "number" ? Math.floor(record.index) : -1;
+      const target = index >= 0 ? notesOf()[index] : undefined;
+      if ((op === "move" || op === "delete" || op === "setVelocity") && !target) {
+        return {
+          text: `no note at index ${record.index} — call kyx_notes {op:"list"} first; indices are positions in that response`,
+          mutated: false,
+        };
+      }
+      if (op === "move") {
+        const start = typeof record.startBeat === "number" ? Math.round(record.startBeat * 480) : undefined;
+        const pitchDelta = typeof record.pitchDelta === "number" ? Math.round(record.pitchDelta) : undefined;
+        const newPitch = typeof record.pitch === "number" ? Math.round(record.pitch) : undefined;
+        if (start === undefined && pitchDelta === undefined && newPitch === undefined) {
+          return { text: "move needs startBeat and/or pitch, or pitchDelta (semitones)", mutated: false };
+        }
+        ctx.execute(
+          moveNote(ctx.getDoc(), trackId, target!.id, {
+            ...(start !== undefined ? { start } : {}),
+            ...(newPitch !== undefined
+              ? { pitch: newPitch }
+              : pitchDelta !== undefined
+                ? { pitch: target!.pitch + pitchDelta }
+                : {}),
+          }),
+        );
+        const moved = notesOf()[index];
+        return { text: `moved: now ${describe(moved, index)}`, mutated: true };
+      }
+      if (op === "delete") {
+        ctx.execute(deleteNote(ctx.getDoc(), trackId, target!.id));
+        return { text: `deleted ${describe(target!, index)} — ${notesOf().length} notes left`, mutated: true };
+      }
+      if (op === "setVelocity") {
+        const velocity = typeof record.velocity === "number" ? record.velocity : NaN;
+        if (!Number.isFinite(velocity)) return { text: "setVelocity needs velocity 0..1", mutated: false };
+        ctx.execute(setNoteVelocity(ctx.getDoc(), trackId, target!.id, velocity));
+        return { text: `velocity: ${describe(notesOf()[index], index)}`, mutated: true };
+      }
+      if (op === "quantize") {
+        const key = typeof record.key === "string" ? record.key : null;
+        const gridName = typeof record.grid === "string" ? record.grid : null;
+        const gridTicks: Record<string, number> = {
+          "1/4": 480,
+          "1/8": 240,
+          "1/16": 120,
+          "1/32": 60,
+          "1/8T": 160,
+          "1/16T": 80,
+        };
+        if (key) {
+          ctx.execute(quantizePatternToScale(ctx.getDoc(), ctx.getDoc().activePatternId, key as never));
+          return {
+            text: `quantized to the ${key} scale — ${notesOf().length} notes on ${track?.name ?? trackId}`,
+            mutated: true,
+          };
+        }
+        if (gridName && gridTicks[gridName] !== undefined) {
+          ctx.execute(quantizePatternToGrid(ctx.getDoc(), ctx.getDoc().activePatternId, gridTicks[gridName]));
+          return {
+            text: `quantized to ${gridName} grid — ${notesOf().length} notes on ${track?.name ?? trackId}`,
+            mutated: true,
+          };
+        }
+        return {
+          text: 'quantize needs grid ("1/4"|"1/8"|"1/16"|"1/32"|"1/8T"|"1/16T") or key ("C Major", "A Minor", …)',
+          mutated: false,
+        };
+      }
+      if (op === "transpose") {
+        const semitones = typeof record.semitones === "number" ? Math.round(record.semitones) : NaN;
+        if (!Number.isFinite(semitones) || semitones === 0) {
+          return { text: "transpose needs semitones (non-zero, e.g. −3 or +5)", mutated: false };
+        }
+        for (const note of notesOf()) {
+          ctx.execute(moveNote(ctx.getDoc(), trackId, note.id, { pitch: note.pitch + semitones }));
+        }
+        return {
+          text: `transposed ${notesOf().length} notes by ${semitones > 0 ? "+" : ""}${semitones} st — use ONE undo to revert the whole shift`,
+          mutated: true,
+        };
+      }
+      return {
+        text: "unknown op — kyx_notes ops: list | add | move | delete | setVelocity | quantize | transpose",
+        mutated: false,
+      };
+    }
+    case "kyx_music": {
+      // STRUCTURED MUSICAL STATE — tempo, key, pattern length, global
+      // transpose. One op = ONE undo step through the exact-intent executor
+      // (the same clamps the text layer uses).
+      const record = args as Record<string, unknown>;
+      const op = String(record.op ?? "");
+      const plan = (ops: { kind: string; [key: string]: unknown }[]): { label: string; ops: never[] } => ({
+        label: "MCP music",
+        ops: ops as never[],
+      });
+      if (op === "setTempo") {
+        const bpm = typeof record.bpm === "number" ? Math.round(record.bpm) : NaN;
+        if (!Number.isFinite(bpm)) return { text: "setTempo needs bpm (20..300)", mutated: false };
+        ctx.execute(applyExactIntentCommand(ctx.getDoc(), plan([{ kind: "tempo", bpm }])));
+        return { text: `tempo is now ${ctx.getDoc().bpm} BPM`, mutated: true };
+      }
+      if (op === "setKey") {
+        const key = typeof record.key === "string" ? record.key : "";
+        ctx.execute(applyExactIntentCommand(ctx.getDoc(), plan([{ kind: "key", key }])));
+        return { text: `key is now ${ctx.getDoc().key}`, mutated: true };
+      }
+      if (op === "setPatternLength") {
+        const steps = typeof record.steps === "number" ? Math.round(record.steps) : NaN;
+        if (!Number.isFinite(steps)) return { text: "setPatternLength needs steps (16..256)", mutated: false };
+        ctx.execute(applyExactIntentCommand(ctx.getDoc(), plan([{ kind: "patternLength", steps }])));
+        const active = ctx.getDoc().patterns.find((p) => p.id === ctx.getDoc().activePatternId);
+        return { text: `active pattern is now ${active?.stepCount ?? "?"} steps`, mutated: true };
+      }
+      if (op === "transposeAll") {
+        const semitones = typeof record.semitones === "number" ? Math.round(record.semitones) : NaN;
+        const target = typeof record.target === "string" ? record.target : "all";
+        if (!Number.isFinite(semitones) || semitones === 0) {
+          return {
+            text: 'transposeAll needs semitones (non-zero) and optional target (family or "all")',
+            mutated: false,
+          };
+        }
+        ctx.execute(applyExactIntentCommand(ctx.getDoc(), plan([{ kind: "transpose", target, semitones }])));
+        return {
+          text: `transposed ${target} by ${semitones > 0 ? "+" : ""}${semitones} semitones — one undo step`,
+          mutated: true,
+        };
+      }
+      return {
+        text: "unknown op — kyx_music ops: setTempo | setKey | setPatternLength | transposeAll",
+        mutated: false,
+      };
+    }
     case "kyx_checkpoint":
       return executeCheckpointTool(ctx, record);
     case "__kyx_resource":
@@ -2343,7 +2640,7 @@ function explicitTargets(record: Record<string, unknown>): string[] | string {
 
 /** Track ids for kyx_tracks remove/rename: exact trackId (single, group
  * tracks excluded — their lifecycle is not MCP-addressable) or family. */
-function explicitTrackIds(doc: ProjectDocument, record: Record<string, unknown>): string[] | string {
+export function explicitTrackIds(doc: ProjectDocument, record: Record<string, unknown>): string[] | string {
   const trackId = typeof record.trackId === "string" ? record.trackId.trim() : "";
   if (trackId !== "") {
     const track = doc.tracks.find((t) => t.id === trackId);

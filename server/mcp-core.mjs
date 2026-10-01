@@ -547,6 +547,68 @@ export const MCP_TOOL_DEFS = [
     },
   },
   {
+    name: "kyx_notes",
+    description:
+      "Melodic COMPOSITION on the active pattern (the melodic half kyx_steps " +
+      "does not cover): list/add/move/delete notes, set velocity, quantize to " +
+      "grid or key, transpose a family's whole line. Notes are addressed by " +
+      "INDEX into the list response — call {op:'list'} first, indices are " +
+      "positions in it. Every op is one undo step through the audited command " +
+      "layer (pitch/velocity clamps, pattern-bounds fit).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: {
+          type: "string",
+          enum: ["list", "add", "move", "delete", "setVelocity", "quantize", "transpose"],
+        },
+        family: {
+          type: "string",
+          enum: ["bass", "lead", "chords"],
+          description: "Target melodic family (first matching track edits; default bass). Read-back names the track.",
+        },
+        pitch: { type: "integer", minimum: 0, maximum: 127, description: "MIDI pitch (add; move absolute)" },
+        noteName: { type: "string", description: 'Alternative to pitch: "C3", "F#4", "Bb2" (add)' },
+        index: { type: "integer", minimum: 0, description: "Position in the list response (move/delete/setVelocity)" },
+        startBeat: {
+          type: "number",
+          minimum: 0,
+          description: "Start in beats from pattern start (add; move absolute)",
+        },
+        durationBeats: { type: "number", minimum: 0.05, description: "Note length in beats (add, default 0.5)" },
+        velocity: { type: "number", minimum: 0, maximum: 1, description: "add (default 0.8) / setVelocity" },
+        pitchDelta: { type: "integer", minimum: -127, maximum: 127, description: "move relative semitones" },
+        grid: {
+          type: "string",
+          enum: ["1/4", "1/8", "1/16", "1/32", "1/8T", "1/16T"],
+          description: "quantize target grid",
+        },
+        key: { type: "string", description: 'quantize target scale, e.g. "C Major", "A Minor"' },
+        semitones: { type: "integer", minimum: -127, maximum: 127, description: "transpose shift (non-zero)" },
+      },
+      required: ["op"],
+    },
+  },
+  {
+    name: "kyx_music",
+    description:
+      "Structured MUSICAL STATE: set tempo, set musical key, change the active " +
+      "pattern's length, or transpose all melodic content. One op = ONE undo " +
+      "step through the exact-intent executor (same clamps as the text layer).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["setTempo", "setKey", "setPatternLength", "transposeAll"] },
+        bpm: { type: "integer", minimum: 20, maximum: 300, description: "setTempo" },
+        key: { type: "string", description: 'setKey — e.g. "C Major", "F# Minor", "Bb Minor"' },
+        steps: { type: "integer", minimum: 16, maximum: 256, description: "setPatternLength (16 per bar)" },
+        semitones: { type: "integer", minimum: -127, maximum: 127, description: "transposeAll shift (non-zero)" },
+        target: { type: "string", description: 'transposeAll scope: track family or "all" (default all)' },
+      },
+      required: ["op"],
+    },
+  },
+  {
     name: "kyx_catalog",
     description:
       "Discovery — what the DAW can do, machine-readable: list every effect type with its category and primary knob, the FULL parameter table of one effect (id, label, min, max, default, unit, kind, taper), or the instrument kind catalog. Read-only; use it before kyx_plugin_param instead of guessing ranges.",

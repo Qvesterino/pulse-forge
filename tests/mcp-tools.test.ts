@@ -108,7 +108,7 @@ function withLead(): ProjectDocument {
 }
 
 describe("mcp tools — headless execution", () => {
-  it("tool surface: the 27 documented tools", () => {
+  it("tool surface: the 29 documented tools", () => {
     expect(MCP_TOOLS.map((tool) => tool.name)).toEqual([
       "kyx_intent",
       "kyx_state",
@@ -123,6 +123,8 @@ describe("mcp tools — headless execution", () => {
       "kyx_tracks",
       "kyx_pattern",
       "kyx_steps",
+      "kyx_notes",
+      "kyx_music",
       "kyx_catalog",
       "kyx_plugin_param",
       "kyx_meter",
