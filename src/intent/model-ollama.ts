@@ -27,16 +27,18 @@ import type { ProjectDocument } from "../project-model/types";
  * a model-routed action always announces itself (🤖 status in the panel).
  *
  * The DEFAULT_MODEL is the SFT recipe-wave winner (LoRA r32/α64, 4 epochs on
- * the 1906-pair corpus: 94.5% attempted-exact, wrongKind 1, abstain 0 on the
- * 272-row val — vs the r16/α32/3ep baseline's 93.0%/5/2). The few-shot
- * examples below are PART OF THE TRAINING PROMPT (prompt.txt is built from
- * them) — never edit them without retraining.
+ * the 1906-pair corpus) in Q8_0: 95.6% attempted-exact, wrongKind 0, abstain
+ * 1/272 on the 272-row val — equal-or-better than its own f16 (94.5%/1/0)
+ * at HALF the footprint (1.16 vs 2.18 GB, ~150 ms vs seconds per ask on the
+ * 6GB card where f16 fights everything else for VRAM). The few-shot examples
+ * below are PART OF THE TRAINING PROMPT (prompt.txt is built from them) —
+ * never edit them without retraining.
  */
 
 export type OllamaIntentMode = "off" | "on";
 
 const OLLAMA_BASE = "http://127.0.0.1:11434";
-const DEFAULT_MODEL = "kyx-intent-v30";
+const DEFAULT_MODEL = "kyx-intent-v30-q8";
 const PROBE_TIMEOUT_MS = 10_000; // a busy machine (training, model import, inference) can stall the loopback probe — 3s was measurably too tight
 const GENERATE_TIMEOUT_MS = 45_000; // the FIRST generate on a cold server pays the VRAM model load (2.3GB f16 ≫ 20s once); keep_alive keeps the rest fast
 
