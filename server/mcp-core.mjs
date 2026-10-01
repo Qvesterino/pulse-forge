@@ -120,6 +120,7 @@ export const MCP_TOOL_DEFS = [
             "markers",
             "groove",
             "fxChain",
+            "mixer",
             "sends",
             "pattern",
             "scenes",
@@ -447,9 +448,23 @@ export const MCP_TOOL_DEFS = [
       properties: {
         op: {
           type: "string",
-          enum: ["addDrum", "addInstrument", "loadPreset", "listPresets", "remove", "rename", "setGain", "setPan", "setMute", "setSolo"],
+          enum: [
+            "addDrum",
+            "addInstrument",
+            "loadPreset",
+            "listPresets",
+            "remove",
+            "rename",
+            "setGain",
+            "setPan",
+            "setMute",
+            "setSolo",
+          ],
         },
-        presetName: { type: "string", description: "loadPreset — factory preset name, fuzzy-matched (e.g. \"Warm Sub\")" },
+        presetName: {
+          type: "string",
+          description: 'loadPreset — factory preset name, fuzzy-matched (e.g. "Warm Sub")',
+        },
         query: { type: "string", description: "listPresets — optional name/instrument filter" },
         family: {
           type: "string",

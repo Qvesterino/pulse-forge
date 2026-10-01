@@ -157,6 +157,7 @@ export const MCP_TOOLS: McpToolDef[] = [
             "markers",
             "groove",
             "fxChain",
+            "mixer",
             "sends",
             "pattern",
             "scenes",
@@ -1287,19 +1288,45 @@ function resolvePitch(pitch: unknown, noteName: unknown): number | null {
   return null;
 }
 
+// ── kyx_state mixer view — the structured twin of the "mixer" snapshot ──────
+
+function mixerSnapshotData(doc: ProjectDocument): Record<string, unknown> {
+  const db1 = (gain: number): number => Math.round(20 * Math.log10(Math.max(gain, 1e-4)) * 10) / 10;
+  return {
+    master: doc.master
+      ? {
+          gainDb: db1(doc.master.masterGain),
+          ...(doc.master.loudnessTrimDb !== undefined ? { loudnessTrimDb: doc.master.loudnessTrimDb } : {}),
+        }
+      : null,
+    returns: doc.returns.map((ret) => ({ id: ret.id, name: ret.name, gainDb: db1(ret.gain) })),
+    tracks: (doc.tracks.filter((t) => t.kind !== "group") as ProjectDocument["tracks"]).map((t) => ({
+      id: t.id,
+      name: t.name,
+      kind: t.kind,
+      ...(t.kind === "instrument" ? { instrument: t.instrument, presetId: t.presetId ?? null } : {}),
+      gainDb: db1(t.gain),
+      pan: Math.round(t.pan * 100) / 100,
+      mute: t.mute,
+      solo: t.solo,
+      ...((t.kind === "drum" || t.kind === "instrument") && t.groupId ? { groupId: t.groupId } : {}),
+      effects: t.effects.map((fx) => ({ type: fx.type, bypassed: fx.bypassed === true })),
+      sends: Object.fromEntries(doc.returns.map((ret) => [ret.id, Math.round((t.sends?.[ret.id] ?? 0) * 1000) / 1000])),
+    })),
+  };
+}
+
 export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown): McpToolResult {
   const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
   switch (name) {
-    case "kyx_state":
-      return {
-        text: stateSnapshot(
-          ctx.getDoc(),
-          String(record.subject ?? "overview"),
-          record.family as string | undefined,
-          () => ctx.historyLabels(),
-        ),
-        mutated: false,
-      };
+    case "kyx_state": {
+      const subject = String(record.subject ?? "overview");
+      const text = stateSnapshot(ctx.getDoc(), subject, record.family as string | undefined, () => ctx.historyLabels());
+      // the MIXER view rides with a machine-readable twin: the same board as
+      // structured rows, so a mixing agent can diff numbers without parsing
+      if (subject === "mixer") return { text, mutated: false, data: mixerSnapshotData(ctx.getDoc()) };
+      return { text, mutated: false };
+    }
     case "kyx_undo": {
       const action = record.action === "redo" ? "redo" : "undo";
       const steps = Math.max(1, Math.min(20, Number(record.steps ?? 1)));
@@ -3878,6 +3905,57 @@ function stateSnapshot(
         })
         .join("\n") || "no tracks"
     );
+  }
+  if (subject === "mixer") {
+    // THE ONE-CALL MIX BOARD for mixing agents — everything kyx_state
+    // otherwise spreads across tracks/fxChain/sends, combined per strip:
+    // fader (linear + dB), pan, mute/solo, preset, FX chain, send levels,
+    // group membership, plus master and the return bus faders. The dispatch
+    // attaches the same picture as structured `data` for machine reading.
+    const db = (gain: number): string => `${(20 * Math.log10(Math.max(gain, 1e-4))).toFixed(1)} dB`;
+    const panText = (pan: number): string =>
+      Math.abs(pan) < 0.005 ? "C" : `${pan < 0 ? "L" : "R"}${Math.round(Math.abs(pan) * 100)}`;
+    const trackName = (id: string): string => doc.tracks.find((t) => t.id === id)?.name ?? id;
+    const lines: string[] = [];
+    for (const track of doc.tracks) {
+      if (track.kind === "group") continue;
+      const bits: string[] = [];
+      if (track.kind === "instrument") {
+        bits.push(`inst=${track.instrument}`);
+        if (track.presetId) {
+          const preset = FACTORY_PRESETS.find((candidate) => candidate.id === track.presetId);
+          bits.push(`preset=${preset?.name ?? track.presetId}`);
+        }
+      }
+      bits.push(`gain ${db(track.gain)}`);
+      bits.push(`pan ${panText(track.pan)}`);
+      if (track.mute) bits.push("MUTED");
+      if (track.solo) bits.push("SOLO");
+      if ((track.kind === "drum" || track.kind === "instrument") && track.groupId)
+        bits.push(`→ group ${trackName(track.groupId)}`);
+      const fx = track.effects.map((fx) => `${fx.type}${fx.bypassed ? "!bypassed" : ""}`).join(",");
+      if (fx !== "") bits.push(`FX: ${fx}`);
+      const sends = doc.returns
+        .map((ret) => `${ret.name} ${Math.round((track.sends?.[ret.id] ?? 0) * 1000) / 1000}`)
+        .join(" · ");
+      if (doc.returns.length > 0) bits.push(`sends: ${sends}`);
+      lines.push(`${track.name} (id=${track.id}) — ${bits.join(" | ")}`);
+    }
+    for (const ret of doc.returns) {
+      lines.push(
+        `↩ return ${ret.name} (id=${ret.id}) — gain ${db(ret.gain)} | FX: ${ret.effects.map((fx) => fx.type).join(",") || "none"}`,
+      );
+    }
+    const master = doc.master;
+    if (master) {
+      const masterBits = [`gain ${db(master.masterGain)}`];
+      if (master.loudnessTrimDb !== undefined) {
+        masterBits.push(`loudnessTrim ${master.loudnessTrimDb > 0 ? "+" : ""}${master.loudnessTrimDb} dB`);
+      }
+      lines.push(`MASTER — ${masterBits.join(" | ")}`);
+    }
+    if (lines.length > 14) return `${lines.slice(0, 14).join("\n")}\n… and ${lines.length - 14} more strip(s)`;
+    return lines.join("\n") || "no tracks";
   }
   if (subject === "markers") {
     return doc.markers.length > 0
