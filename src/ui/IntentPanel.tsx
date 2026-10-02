@@ -39,7 +39,6 @@ import {
   exactReadback,
   setMasterConfig,
   duplicateTimeRange,
-  consolidateTimeRange,
 } from "../commands/commands";
 import {
   applyArrangeOps,
@@ -60,6 +59,7 @@ import {
 } from "../intent/song";
 import type { SearchLane } from "../intent/candidate-search";
 import { fxWordsForArtist } from "../intent/artists";
+import { consolidateRangeToAudio } from "../services/rangeConsolidation";
 import { artistMixProfileOf } from "../intent/artist-mix";
 import { morphPatterns } from "../intent/morph";
 import { pushGhost, listGhosts, getGhost, removeGhost, type GhostVersion } from "../intent/versions";
@@ -244,7 +244,7 @@ function selectedRangeEditDescription(
   const count = toBar - fromBar;
   return operation === "duplicate"
     ? `Duplicate bars ${fromBar + 1}–${toBar} (${count} bars), including musical and audio clips, markers, pattern notes, and drum steps; shift later clips/markers.`
-    : `Consolidate bars ${fromBar + 1}–${toBar} (${count} bars) into one arrangement clip; source notes, steps, and clips in the range will be replaced.`;
+    : `Render bars ${fromBar + 1}–${toBar} (${count} bars) to one audio print, replacing the selected arrangement and audio clips.`;
 }
 
 /** LOCAL INTENT MODEL chip tooltips per availability state. */
@@ -2300,6 +2300,7 @@ export function IntentPanel() {
   const [selectedArrangementPreview, setSelectedArrangementPreview] = useState<SelectedArrangementPromptPreview | null>(
     null,
   );
+  const [rangeConsolidating, setRangeConsolidating] = useState(false);
   // `prompt` rides along for MINING only (which ask produced these chips) —
   // the diagnosis path leaves it unset; picked chips log against it.
   const [clarify, setClarify] = useState<{ reason: string; suggestions: string[]; prompt?: string } | null>(null);
@@ -2365,7 +2366,7 @@ export function IntentPanel() {
     }
   };
 
-  const applySelectedArrangementPromptPreview = () => {
+  const applySelectedArrangementPromptPreview = async () => {
     const preview = selectedArrangementPreview;
     if (!preview) return;
     const currentDoc = services.store.getDoc();
@@ -2431,11 +2432,32 @@ export function IntentPanel() {
       setError(rangeError);
       return;
     }
+    if (preview.operation === "consolidate") {
+      setRangeConsolidating(true);
+      try {
+        const command = await consolidateRangeToAudio(services, preview.range, () => {
+          const liveRange = selection.getState().timeRange;
+          return (
+            promptInputRef.current?.value.trim() === preview.source &&
+            liveRange != null &&
+            liveRange.fromTick === preview.range.fromTick &&
+            liveRange.toTick === preview.range.toTick &&
+            parseSelectedTimeRangeIntent(promptInputRef.current?.value ?? "") === "consolidate"
+          );
+        });
+        setSelectedArrangementPreview(null);
+        setJustApplied(false);
+        setError(null);
+        setStatus(`✓ ${command.label} (one undo step)`);
+      } catch (error) {
+        setError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setRangeConsolidating(false);
+      }
+      return;
+    }
     try {
-      const command =
-        preview.operation === "duplicate"
-          ? duplicateTimeRange(currentDoc, preview.range.fromTick, preview.range.toTick)
-          : consolidateTimeRange(currentDoc, preview.range.fromTick, preview.range.toTick);
+      const command = duplicateTimeRange(currentDoc, preview.range.fromTick, preview.range.toTick);
       services.store.execute(command);
       setSelectedArrangementPreview(null);
       setJustApplied(false);
@@ -3431,13 +3453,20 @@ export function IntentPanel() {
             <>
               <div>{selectedArrangementPreview.description}</div>
               {selectedArrangementPreview.operation === "consolidate" && (
-                <div role="note">This replaces source material inside the range. Undo restores it.</div>
+                <div role="note">
+                  This renders the full mix to one audio print and replaces the source clips. Undo restores them.
+                </div>
               )}
             </>
           )}
           <div className="intent-actions">
-            <button type="button" className="btn intent-route-btn" onClick={applySelectedArrangementPromptPreview}>
-              APPLY{" "}
+            <button
+              type="button"
+              className="btn intent-route-btn"
+              disabled={rangeConsolidating}
+              onClick={() => void applySelectedArrangementPromptPreview()}
+            >
+              {rangeConsolidating ? "RENDERING PRINT…" : "APPLY "}{" "}
               {selectedArrangementPreview.kind === "clip"
                 ? "CLIP EDIT"
                 : selectedArrangementPreview.operation.toUpperCase()}{" "}
@@ -3446,6 +3475,7 @@ export function IntentPanel() {
             <button
               type="button"
               className="btn"
+              disabled={rangeConsolidating}
               onClick={() => {
                 setSelectedArrangementPreview(null);
                 setStatus("Arrangement preview cancelled; project unchanged.");

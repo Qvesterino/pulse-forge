@@ -627,12 +627,7 @@ export function parseSelectedTimeRangeIntent(text: string): SelectedTimeRangeOpe
   return duplicateCount > 0 ? "duplicate" : "consolidate";
 }
 
-/**
- * Guard the current range commands' documented limitations before exposing
- * them as Producer actions: only complete bars; duplication supports audio
- * wholly inside or after the range, but not clips crossing its boundaries;
- * consolidation still does not include audio clips.
- */
+/** Guard range operations before exposing them as Producer actions. */
 export function selectedTimeRangeIntentError(
   doc: ProjectDocument,
   range: { fromTick: number; toTick: number },
@@ -662,9 +657,26 @@ export function selectedTimeRangeIntentError(
   }
   if (
     operation === "consolidate" &&
-    audioClips.some((clip) => clip.startBar < toBar && clip.startBar + clip.lengthBars > fromBar)
+    doc.arrangement.clips.some((clip) => {
+      const overlapsRange = clip.startBar < toBar && clip.startBar + clip.lengthBars > fromBar;
+      const isWhollyInsideRange = clip.startBar >= fromBar && clip.startBar + clip.lengthBars <= toBar;
+      return overlapsRange && !isWhollyInsideRange;
+    })
   ) {
-    return "This range contains audio clips; consolidate the musical arrangement separately for now.";
+    return "An arrangement clip crosses this range boundary. Select the whole clip before consolidating.";
+  }
+  if (
+    operation === "consolidate" &&
+    audioClips.some((clip) => {
+      const overlapsRange = clip.startBar < toBar && clip.startBar + clip.lengthBars > fromBar;
+      const isWhollyInsideRange = clip.startBar >= fromBar && clip.startBar + clip.lengthBars <= toBar;
+      return overlapsRange && !isWhollyInsideRange;
+    })
+  ) {
+    return "An audio clip crosses this range boundary. Adjust the selection before consolidating.";
+  }
+  if (operation === "consolidate" && doc.tracks.some((track) => track.solo)) {
+    return "Turn off Solo before consolidating so the print does not change the rest of the mix.";
   }
   return null;
 }

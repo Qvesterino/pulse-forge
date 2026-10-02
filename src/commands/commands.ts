@@ -4451,13 +4451,9 @@ export function duplicateTimeRange(doc: ProjectDocument, fromTick: number, toTic
 }
 
 /**
- * Consolidate the timeRange into a single clip backed by a stem-project
- * filtered to the zone's contributing tracks. V1 semantics (no AudioClip yet):
- * collect notes/rows inside the zone, move them into a new pattern, create
- * a new scene+clip at the zone start, and remove the source material inside
- * the zone from all patterns plus the wholly-inside arrangement clips.
- * The stem project is built so that when AudioClip / frozen render lands the
- * track selection (including parent groups) is already correct.
+ * Legacy synchronous, musical-only range consolidation. Producer-facing
+ * selected-range actions use `consolidateTimeRangeToAudio` after rendering;
+ * this command remains for callers that explicitly want pattern material.
  */
 export function consolidateTimeRange(doc: ProjectDocument, fromTick: number, toTick: number): Command {
   const from = Math.min(fromTick, toTick);
@@ -4620,6 +4616,120 @@ export function consolidateTimeRange(doc: ProjectDocument, fromTick: number, toT
     },
   };
   return snapshot("consolidateTimeRange", `Consolidate zone ${Math.round(deltaBars * 10) / 10} bars`, doc, nextDoc);
+}
+
+/**
+ * Replace a complete arrangement range with one rendered audio clip. Empty
+ * scene clips retain the source scene tempos for the printed clip; their IDs
+ * stay stable so timeline markers and transitions remain attached. Source
+ * patterns themselves are never destructively edited.
+ */
+export function consolidateTimeRangeToAudio(
+  doc: ProjectDocument,
+  fromTick: number,
+  toTick: number,
+  bufferId: string,
+): Command {
+  const from = Math.min(fromTick, toTick);
+  const to = Math.max(fromTick, toTick);
+  if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from < 0 || to <= from) {
+    throw new Error("Select a valid, non-empty time range.");
+  }
+  if (from % BAR_TICKS !== 0 || to % BAR_TICKS !== 0) {
+    throw new Error("Consolidation requires a selection aligned to complete bars.");
+  }
+  if (!bufferId) throw new Error("A rendered audio asset is required for consolidation.");
+  if (doc.tracks.some((track) => track.solo)) {
+    throw new Error("Turn off Solo before consolidating so the print does not change the rest of the mix.");
+  }
+
+  const fromBar = from / BAR_TICKS;
+  const toBar = to / BAR_TICKS;
+  const lengthBars = toBar - fromBar;
+  const overlaps = (startBar: number, bars: number) => startBar < toBar && startBar + bars > fromBar;
+  const contained = (startBar: number, bars: number) => startBar >= fromBar && startBar + bars <= toBar;
+  const sourceClips = doc.arrangement.clips.filter((clip) => overlaps(clip.startBar, clip.lengthBars));
+  const sourceAudio = (doc.arrangement.audioClips ?? []).filter((clip) => overlaps(clip.startBar, clip.lengthBars));
+  if (sourceClips.some((clip) => !contained(clip.startBar, clip.lengthBars))) {
+    throw new Error("An arrangement clip crosses this range boundary. Select the whole clip before consolidating.");
+  }
+  if (sourceAudio.some((clip) => !contained(clip.startBar, clip.lengthBars))) {
+    throw new Error("An audio clip crosses this range boundary. Adjust the selection before consolidating.");
+  }
+
+  const groupCount = doc.tracks.filter((track) => track.kind === "group").length;
+  const printTrack = {
+    ...createGroupTrackModel(`Consolidated ${groupCount + 1}`),
+    gain: 1,
+    pan: 0,
+    mute: false,
+    solo: false,
+    effects: [],
+    sends: {},
+  };
+  const withPrintTrack: ProjectDocument = { ...doc, tracks: [...doc.tracks, printTrack] };
+  const withPrintClip = addAudioClip(withPrintTrack, printTrack.id, bufferId, fromBar, lengthBars, {
+    gain: 1,
+    stretchRate: 1,
+  }).execute(withPrintTrack);
+  const printClip = withPrintClip.arrangement.audioClips?.find(
+    (clip) => clip.trackId === printTrack.id && clip.bufferId === bufferId,
+  );
+  if (!printClip) throw new Error("The rendered audio clip could not be added to the print track.");
+
+  const tempoPatterns: Pattern[] = [];
+  const tempoScenes: Scene[] = [];
+  const tempoClipById = new Map<string, ArrangementClip>();
+  for (const clip of sourceClips) {
+    const scene = doc.scenes.find((candidate) => candidate.id === clip.sceneId);
+    const pattern = scene && doc.patterns.find((candidate) => candidate.id === scene.patternId);
+    if (!scene || !pattern) throw new Error(`Cannot preserve tempo for arrangement clip ${clip.id}.`);
+    const tempoPattern: Pattern = {
+      ...pattern,
+      id: uid("pattern"),
+      name: `${pattern.name} · print tempo`,
+      rows: {},
+      notes: {},
+      stepMeta: undefined,
+    };
+    const tempoScene: Scene = {
+      ...scene,
+      id: uid("scene"),
+      name: `Print tempo · ${scene.name}`,
+      patternId: tempoPattern.id,
+    };
+    tempoPatterns.push(tempoPattern);
+    tempoScenes.push(tempoScene);
+    tempoClipById.set(clip.id, { ...clip, sceneId: tempoScene.id });
+  }
+
+  const nextClips = doc.arrangement.clips.map((clip) => tempoClipById.get(clip.id) ?? clip);
+  const remainingAudio = (doc.arrangement.audioClips ?? []).filter(
+    (clip) => !sourceAudio.some((source) => source.id === clip.id),
+  );
+  const nextAudioClips = [...remainingAudio, printClip].sort((a, b) => a.startBar - b.startBar);
+  const liveTakeGroupIds = new Set(nextAudioClips.flatMap((clip) => (clip.takeGroupId ? [clip.takeGroupId] : [])));
+  const takeGroups = doc.arrangement.takeGroups?.filter((group) => liveTakeGroupIds.has(group.id));
+  const transitions = sanitizeArrangementTransitions(doc.arrangement.transitions, nextClips);
+
+  const nextDoc = normalizeProject({
+    ...withPrintClip,
+    patterns: [...doc.patterns, ...tempoPatterns],
+    scenes: [...doc.scenes, ...tempoScenes],
+    arrangement: {
+      ...doc.arrangement,
+      clips: nextClips,
+      audioClips: nextAudioClips,
+      ...(takeGroups ? { takeGroups } : {}),
+      ...(transitions ? { transitions } : { transitions: undefined }),
+    },
+  });
+  return snapshot(
+    "consolidateTimeRangeToAudio",
+    `Consolidate ${Math.round(lengthBars * 10) / 10} bars to audio`,
+    doc,
+    nextDoc,
+  );
 }
 
 function transitionBetween(doc: ProjectDocument, fromClipId: string, toClipId: string): void {

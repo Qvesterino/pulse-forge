@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useActivePatternId, useArrangement, useSelection, useSelectionStore, useServices } from "./context";
 import {
   clearSteps,
-  consolidateTimeRange,
   deleteArrangementClip,
   deleteAudioClip,
   deleteNote,
@@ -12,6 +11,7 @@ import {
   duplicateTimeRange,
 } from "../commands/commands";
 import { BAR_TICKS } from "../project-model/types";
+import { consolidateRangeToAudio } from "../services/rangeConsolidation";
 import {
   applyClipArrangeOps,
   parseSelectedClipArrangeIntent,
@@ -37,6 +37,7 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
   const doc = services.store.getDoc();
   const selection = useSelection();
   const menuRef = useRef<HTMLDivElement>(null);
+  const rangeEditInputRef = useRef<HTMLInputElement | null>(null);
   const [clipEditOpen, setClipEditOpen] = useState(false);
   const [clipEditText, setClipEditText] = useState("");
   const [clipEditError, setClipEditError] = useState<string | null>(null);
@@ -49,6 +50,7 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
   const [rangeEditOpen, setRangeEditOpen] = useState(false);
   const [rangeEditText, setRangeEditText] = useState("");
   const [rangeEditError, setRangeEditError] = useState<string | null>(null);
+  const [rangeEditBusy, setRangeEditBusy] = useState(false);
   const [rangeEditTarget, setRangeEditTarget] = useState<{ fromTick: number; toTick: number } | null>(null);
   const selectedArrangementClip =
     selection.clipIds.length === 1 ? arrangement.clips.find((clip) => clip.id === selection.clipIds[0]) : undefined;
@@ -115,7 +117,7 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
     const preview =
       operation === "duplicate"
         ? `Duplicate bars ${fromBar + 1}–${toBar} (${count} bars), including musical and audio clips, markers, pattern notes, and drum steps; shift later clips/markers.`
-        : `Consolidate bars ${fromBar + 1}–${toBar} (${count} bars) into one arrangement clip; source notes, steps, and clips in the range will be replaced.`;
+        : `Render bars ${fromBar + 1}–${toBar} (${count} bars) to one full-mix audio print, replacing the selected clips.`;
     return { operation, preview, error: null };
   }, [doc, rangeEditTarget, rangeEditText, selection.timeRange]);
   const closeMenu = useCallback(() => {
@@ -170,6 +172,7 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
   const hasAny = hasNotes || hasSteps || hasClips || hasTime;
 
   const handle = (action: string) => {
+    let keepOpen = false;
     switch (action) {
       case "delete": {
         if (hasNotes) {
@@ -224,15 +227,19 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
         break;
       }
       case "consolidate": {
-        if (hasTime) {
-          services.store.execute(consolidateTimeRange(doc, selection.timeRange!.fromTick, selection.timeRange!.toTick));
+        if (selection.timeRange) {
+          setRangeEditTarget(selection.timeRange);
+          setRangeEditText("consolidate selected range");
+          setRangeEditError(null);
+          setRangeEditOpen(true);
+          keepOpen = true;
         }
         break;
       }
       default:
         break;
     }
-    closeMenu();
+    if (!keepOpen) closeMenu();
   };
 
   const applySelectedClipEdit = () => {
@@ -276,7 +283,7 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
     }
   };
 
-  const applySelectedRangeEdit = () => {
+  const applySelectedRangeEdit = async () => {
     if (!rangeEditTarget || !rangeEditPlan.operation) return;
     const currentDoc = services.store.getDoc();
     const currentRange = selectionStore.getState().timeRange;
@@ -293,11 +300,29 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
       setRangeEditError("The selected range no longer supports this operation. Review the range and try again.");
       return;
     }
+    if (operation === "consolidate") {
+      setRangeEditBusy(true);
+      try {
+        await consolidateRangeToAudio(services, rangeEditTarget, () => {
+          const liveRange = selectionStore.getState().timeRange;
+          return (
+            rangeEditInputRef.current?.value.trim() === rangeEditText &&
+            liveRange != null &&
+            liveRange.fromTick === rangeEditTarget.fromTick &&
+            liveRange.toTick === rangeEditTarget.toTick &&
+            parseSelectedTimeRangeIntent(rangeEditInputRef.current?.value ?? "") === "consolidate"
+          );
+        });
+        closeMenu();
+      } catch (error) {
+        setRangeEditError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setRangeEditBusy(false);
+      }
+      return;
+    }
     try {
-      const command =
-        operation === "duplicate"
-          ? duplicateTimeRange(currentDoc, rangeEditTarget.fromTick, rangeEditTarget.toTick)
-          : consolidateTimeRange(currentDoc, rangeEditTarget.fromTick, rangeEditTarget.toTick);
+      const command = duplicateTimeRange(currentDoc, rangeEditTarget.fromTick, rangeEditTarget.toTick);
       services.store.execute(command);
       closeMenu();
     } catch (error) {
@@ -394,7 +419,9 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
               className="context-menu-edit-input"
               aria-label="Producer range instruction"
               autoFocus
+              ref={rangeEditInputRef}
               value={rangeEditText}
+              disabled={rangeEditBusy}
               placeholder="duplicate selected range"
               onChange={(event) => {
                 setRangeEditText(event.target.value);
@@ -424,6 +451,7 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
           <div className="context-menu-edit-actions">
             <button
               type="button"
+              disabled={rangeEditBusy}
               onClick={() => {
                 setRangeEditOpen(false);
                 setRangeEditText("");
@@ -435,14 +463,16 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
             </button>
             <button
               type="button"
-              disabled={!rangeEditPlan.operation || !!rangeEditPlan.error}
-              onClick={applySelectedRangeEdit}
+              disabled={!rangeEditPlan.operation || !!rangeEditPlan.error || rangeEditBusy}
+              onClick={() => void applySelectedRangeEdit()}
             >
-              {rangeEditPlan.operation === "consolidate"
-                ? "CONSOLIDATE · ONE UNDO STEP"
-                : rangeEditPlan.operation === "duplicate"
-                  ? "DUPLICATE · ONE UNDO STEP"
-                  : "APPLY · ONE UNDO STEP"}
+              {rangeEditBusy
+                ? "RENDERING PRINT…"
+                : rangeEditPlan.operation === "consolidate"
+                  ? "CONSOLIDATE · ONE UNDO STEP"
+                  : rangeEditPlan.operation === "duplicate"
+                    ? "DUPLICATE · ONE UNDO STEP"
+                    : "APPLY · ONE UNDO STEP"}
             </button>
           </div>
         </>

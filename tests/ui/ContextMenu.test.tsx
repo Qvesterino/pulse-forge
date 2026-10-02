@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { act, fireEvent, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it } from "vitest";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
+import { consolidateRangeToAudio } from "../../src/services/rangeConsolidation";
 import { ContextMenu } from "../../src/ui/ContextMenu";
 import { SelectionContext } from "../../src/ui/context";
 import { SelectionStore } from "../../src/store/SelectionStore";
@@ -8,7 +9,39 @@ import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { BAR_TICKS } from "../../src/project-model/types";
 import { mockServices, renderWithContext } from "../helpers";
 
+vi.mock("../../src/services/rangeConsolidation", () => ({
+  consolidateRangeToAudio: vi.fn(async () => ({ type: "consolidateTimeRangeToAudio", label: "Consolidate to audio" })),
+}));
+
 describe("ContextMenu", () => {
+  beforeEach(() => vi.mocked(consolidateRangeToAudio).mockClear());
+
+  it("routes direct selected-range consolidation through a preview and async audio print", async () => {
+    const project = createProjectFromTemplate("scene-score");
+    const clip = project.arrangement.clips[0]!;
+    const range = { fromTick: clip.startBar * BAR_TICKS, toTick: (clip.startBar + clip.lengthBars) * BAR_TICKS };
+    const services = mockServices(project);
+    const selection = new SelectionStore();
+    selection.setTimeRange(range);
+    renderWithContext(
+      <SelectionContext.Provider value={selection}>
+        <ContextMenu state={{ x: 0, y: 0, context: "selected bars" }} onClose={() => {}} />
+      </SelectionContext.Provider>,
+      { services },
+    );
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Consolidate" }));
+    expect(screen.getByRole("dialog", { name: "Edit selected range with Producer" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Producer range instruction" })).toHaveValue(
+      "consolidate selected range",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "CONSOLIDATE · ONE UNDO STEP" }));
+
+    await waitFor(() => expect(consolidateRangeToAudio).toHaveBeenCalledOnce());
+    expect(vi.mocked(consolidateRangeToAudio).mock.calls[0]?.[1]).toEqual(range);
+    expect(services.store.execute).not.toHaveBeenCalled();
+  });
+
   it("deletes selected arrangement and audio clips as one undoable command", () => {
     const initialServices = mockServices();
     const base = initialServices.store.doc;

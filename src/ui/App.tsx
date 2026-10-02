@@ -44,7 +44,6 @@ import {
   addArrangementTransition,
   addAudioClip,
   clearSteps,
-  consolidateTimeRange,
   deleteArrangementClip,
   deleteAudioClip,
   deleteNote,
@@ -66,6 +65,7 @@ import { userSampleId } from "../persistence/UserSampleRepository";
 import { buildBounceZoneDoc } from "../rendering/bounce";
 import { renderProject } from "../rendering/renderer";
 import { encodeWav } from "../rendering/wav";
+import { consolidateRangeToAudio } from "../services/rangeConsolidation";
 import { CommandToast } from "./CommandToast";
 // Palette lives in a lazy chunk — it loads on first Ctrl+K.
 const PaletteOverlay = lazy(() => import("./PaletteOverlay").then((m) => ({ default: m.PaletteOverlay })));
@@ -1174,11 +1174,15 @@ export function App({
         event.key.toLowerCase() === "c"
       ) {
         event.preventDefault();
-        try {
-          services.store.execute(consolidateTimeRange(doc, selection.timeRange.fromTick, selection.timeRange.toTick));
-        } catch {
-          // ignore empty zone
-        }
+        if (bouncingRange) return;
+        const range = { ...selection.timeRange };
+        setBouncingRange(true);
+        void consolidateRangeToAudio(services, range, () => {
+          const liveRange = selectionStore.getState().timeRange;
+          return liveRange != null && liveRange.fromTick === range.fromTick && liveRange.toTick === range.toTick;
+        })
+          .catch((error) => console.error("[App] range consolidation failed:", error))
+          .finally(() => setBouncingRange(false));
         return;
       }
 

@@ -16,6 +16,10 @@ export interface RenderOptions {
   mode: PlayMode;
   sampleRate: number;
   tailSeconds?: number;
+  /** Keep an otherwise silent selected timeline region at this tick length. */
+  minimumDurationTicks?: number;
+  /** In song mode, do not fall back to the active pattern when the zone has no scene clips. */
+  arrangementOnly?: boolean;
   /**
    * Bypass the complete project master chain for stem or pre-master renders.
    * Track, group and return processing stay intact; master gain, DC block,
@@ -240,7 +244,7 @@ export function computeRenderTicks(doc: ProjectDocument, mode: PlayMode): number
   return getActivePattern(doc).stepCount * STEP_TICKS;
 }
 
-function collectClipWindows(doc: ProjectDocument, mode: PlayMode): ClipWindow[] {
+function collectClipWindows(doc: ProjectDocument, mode: PlayMode, arrangementOnly = false): ClipWindow[] {
   if (mode === "song") {
     const windows: ClipWindow[] = [];
     for (const clip of [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar)) {
@@ -258,7 +262,7 @@ function collectClipWindows(doc: ProjectDocument, mode: PlayMode): ClipWindow[] 
         sceneId: clip.sceneId,
       });
     }
-    if (windows.length > 0) return windows;
+    if (windows.length > 0 || arrangementOnly) return windows;
   }
   const pattern = getActivePattern(doc);
   const patternTicks = pattern.stepCount * STEP_TICKS;
@@ -380,9 +384,10 @@ export async function renderProject(
   throwIfAborted(options.signal);
   const tail = options.tailSeconds ?? resolveRenderTailSeconds(doc);
   const secondsPerTick = 60 / (doc.bpm * PPQ);
-  const totalTicks = computeRenderTicks(doc, options.mode);
+  const durationFloor = Number.isFinite(options.minimumDurationTicks) ? Math.max(0, options.minimumDurationTicks!) : 0;
+  const totalTicks = Math.max(computeRenderTicks(doc, options.mode), durationFloor);
   const sampleRate = options.sampleRate;
-  const pendingWindows = collectClipWindows(doc, options.mode);
+  const pendingWindows = collectClipWindows(doc, options.mode, options.arrangementOnly === true);
   const tempoMap = buildTempoMap(doc, pendingWindows);
   // Duration must reach the LAST RENDERED TICK, not just the last clip
   // window's end: with audio clips past the final scene clip, totalSeconds

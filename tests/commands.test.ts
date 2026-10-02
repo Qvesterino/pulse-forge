@@ -12,6 +12,7 @@ import {
   addNote,
   clearPattern,
   consolidateAudioClips,
+  consolidateTimeRangeToAudio,
   chopSampleToPads,
   createDrumTrack,
   sliceToPads,
@@ -62,9 +63,49 @@ import {
 } from "../src/commands/commands";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { FACTORY_PRESETS } from "../src/effects/ultina-core/presets/factoryPresets";
-import { getDrumTrack } from "../src/project-model/types";
+import { BAR_TICKS, getDrumTrack } from "../src/project-model/types";
 
 describe("commands", () => {
+  it("prints a selected range to one audio clip and restores all source state with one undo", () => {
+    let doc = createDefaultProject();
+    const sourceTrack = doc.tracks.find((track) => track.kind !== "group")!;
+    const sourceScene = { ...doc.scenes[0]!, bpm: 91 };
+    const sourceClip = { id: "range-source", sceneId: sourceScene.id, startBar: 4, lengthBars: 4 };
+    doc = {
+      ...doc,
+      scenes: doc.scenes.map((scene) => (scene.id === sourceScene.id ? sourceScene : scene)),
+      arrangement: { ...doc.arrangement, clips: [sourceClip] },
+    };
+    doc = addAudioClip(doc, sourceTrack.id, "audio.inside", 5, 1).execute(doc);
+    doc = addAudioClip(doc, sourceTrack.id, "audio.outside", 8, 1).execute(doc);
+    const originalPattern = doc.patterns.find((pattern) => pattern.id === sourceScene.patternId)!;
+
+    const command = consolidateTimeRangeToAudio(doc, 4 * BAR_TICKS, 8 * BAR_TICKS, "user.print");
+    const printed = command.execute(doc);
+    const printTrack = printed.tracks.at(-1);
+    const printClip = printed.arrangement.audioClips?.find((clip) => clip.bufferId === "user.print");
+    const tempoScene = printed.scenes.find((scene) => scene.id === printed.arrangement.clips[0]?.sceneId);
+    const tempoPattern = printed.patterns.find((pattern) => pattern.id === tempoScene?.patternId);
+
+    expect(command.type).toBe("consolidateTimeRangeToAudio");
+    expect(printTrack).toMatchObject({
+      kind: "group",
+      gain: 1,
+      pan: 0,
+      mute: false,
+      solo: false,
+      effects: [],
+      sends: {},
+    });
+    expect(printClip).toMatchObject({ trackId: printTrack?.id, startBar: 4, lengthBars: 4, gain: 1 });
+    expect(printed.arrangement.audioClips?.map((clip) => clip.bufferId)).toEqual(["user.print", "audio.outside"]);
+    expect(printed.arrangement.clips).toHaveLength(1);
+    expect(tempoScene).toMatchObject({ bpm: 91, intensity: sourceScene.intensity });
+    expect(tempoPattern).toMatchObject({ rows: {}, notes: {} });
+    expect(printed.patterns.find((pattern) => pattern.id === originalPattern.id)).toEqual(originalPattern);
+    expect(command.undo(printed)).toEqual(doc);
+  });
+
   it("replaces selected clips with one rendered asset through a single undoable command", () => {
     const doc = createDefaultProject();
     const track = doc.tracks.find((candidate) => candidate.kind !== "group");

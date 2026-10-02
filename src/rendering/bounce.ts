@@ -23,11 +23,28 @@ export interface BounceZone {
   lengthBars: number;
 }
 
-export function buildBounceZoneDoc(doc: ProjectDocument, trackIds: string[], zone: BounceZone): ProjectDocument {
+export interface BounceZoneOptions {
+  /** Keep the project's mute/solo state instead of making a stem auditionable. */
+  preserveMixState?: boolean;
+}
+
+export function buildBounceZoneDoc(
+  doc: ProjectDocument,
+  trackIds: string[],
+  zone: BounceZone,
+  options: BounceZoneOptions = {},
+): ProjectDocument {
   if (trackIds.length === 0) throw new Error("Select at least one track to bounce");
   const zoneStartTick = zone.startBar * BAR_TICKS;
   const zoneEndTick = zoneStartTick + Math.max(0.25, zone.lengthBars) * BAR_TICKS;
-  const stemDoc = buildStemProject(doc, (t) => trackIds.includes(t.id));
+  const selectedTrackIds = new Set(trackIds);
+  const stemDoc = buildStemProject(doc, (t) => selectedTrackIds.has(t.id));
+  const mixDoc = options.preserveMixState
+    ? {
+        ...stemDoc,
+        tracks: stemDoc.tracks.map((track) => doc.tracks.find((source) => source.id === track.id) ?? track),
+      }
+    : stemDoc;
 
   const zoneRelativeClips: ProjectDocument["arrangement"]["clips"] = [];
   const zoneRelativeAudio: NonNullable<ProjectDocument["arrangement"]["audioClips"]> = [];
@@ -36,7 +53,7 @@ export function buildBounceZoneDoc(doc: ProjectDocument, trackIds: string[], zon
   // the source window. Reuse the renderer's piecewise tempo map so bounce,
   // offline export and scene playback agree at tempo seams.
   const tempoMap = buildTempoMap(doc, bounceTempoWindows(doc));
-  for (const clip of stemDoc.arrangement.clips) {
+  for (const clip of mixDoc.arrangement.clips) {
     const clipStart = clip.startBar * BAR_TICKS;
     const clipEnd = clipStart + clip.lengthBars * BAR_TICKS;
     const overlapStart = Math.max(clipStart, zoneStartTick);
@@ -48,7 +65,7 @@ export function buildBounceZoneDoc(doc: ProjectDocument, trackIds: string[], zon
       lengthBars: (overlapEnd - overlapStart) / BAR_TICKS,
     });
   }
-  for (const clip of stemDoc.arrangement.audioClips ?? []) {
+  for (const clip of mixDoc.arrangement.audioClips ?? []) {
     const clipStart = clip.startBar * BAR_TICKS;
     const clipEnd = clipStart + clip.lengthBars * BAR_TICKS;
     const overlapStart = Math.max(clipStart, zoneStartTick);
@@ -62,6 +79,9 @@ export function buildBounceZoneDoc(doc: ProjectDocument, trackIds: string[], zon
       offsetSec: (clip.offsetSec ?? 0) + headTrimSec,
       fadeIn: overlapStart <= clipStart ? clip.fadeIn : 0,
       fadeOut: overlapEnd >= clipEnd ? clip.fadeOut : 0,
+      ...(clip.warpMarkers
+        ? { warpMarkers: clip.warpMarkers.map((marker) => ({ ...marker, tick: marker.tick - zoneStartTick })) }
+        : {}),
     });
   }
   if (zoneRelativeClips.length === 0 && zoneRelativeAudio.length === 0) {
@@ -69,15 +89,75 @@ export function buildBounceZoneDoc(doc: ProjectDocument, trackIds: string[], zon
   }
 
   return {
-    ...stemDoc,
+    ...mixDoc,
     arrangement: {
-      ...stemDoc.arrangement,
+      ...mixDoc.arrangement,
       clips: zoneRelativeClips,
       audioClips: zoneRelativeAudio,
       transitions: [],
     },
     markers: [],
   };
+}
+
+export interface TimeRangeConsolidationPlan {
+  project: ProjectDocument;
+  startBar: number;
+  lengthBars: number;
+}
+
+/**
+ * Build a full-mix, pre-master render project for a selected arrangement
+ * range. Consolidation is deliberately limited to clips fully contained by
+ * the selection: cutting through a musical clip would restart its pattern
+ * phase, and cutting through a warped audio clip needs a destructive split.
+ */
+export function buildTimeRangeConsolidationDoc(
+  doc: ProjectDocument,
+  fromTick: number,
+  toTick: number,
+): TimeRangeConsolidationPlan {
+  const from = Math.min(fromTick, toTick);
+  const to = Math.max(fromTick, toTick);
+  if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from < 0 || to <= from) {
+    throw new Error("Select a valid, non-empty time range.");
+  }
+  if (from % BAR_TICKS !== 0 || to % BAR_TICKS !== 0) {
+    throw new Error("Consolidation requires a selection aligned to complete bars.");
+  }
+  if (doc.tracks.some((track) => track.solo)) {
+    throw new Error("Turn off Solo before consolidating so the print does not change the rest of the mix.");
+  }
+
+  const startBar = from / BAR_TICKS;
+  const endBar = to / BAR_TICKS;
+  const overlaps = (start: number, length: number) => start < endBar && start + length > startBar;
+  const contained = (start: number, length: number) => start >= startBar && start + length <= endBar;
+  if (
+    doc.arrangement.clips.some(
+      (clip) => overlaps(clip.startBar, clip.lengthBars) && !contained(clip.startBar, clip.lengthBars),
+    )
+  ) {
+    throw new Error("An arrangement clip crosses this range boundary. Select the whole clip before consolidating.");
+  }
+  if (
+    (doc.arrangement.audioClips ?? []).some(
+      (clip) => overlaps(clip.startBar, clip.lengthBars) && !contained(clip.startBar, clip.lengthBars),
+    )
+  ) {
+    throw new Error("An audio clip crosses this range boundary. Adjust the selection before consolidating.");
+  }
+
+  const project = buildBounceZoneDoc(
+    doc,
+    doc.tracks.map((track) => track.id),
+    { startBar, lengthBars: endBar - startBar },
+    { preserveMixState: true },
+  );
+  // An audio-only range (or a range in an arrangement gap) must not fall
+  // back to the active pattern during offline rendering. The renderer's
+  // arrangementOnly option keeps this zone faithful to the song timeline.
+  return { project, startBar, lengthBars: endBar - startBar };
 }
 
 export interface AudioClipConsolidationPlan {

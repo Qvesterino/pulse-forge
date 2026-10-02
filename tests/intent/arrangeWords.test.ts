@@ -212,7 +212,7 @@ describe("selected time-range intent", () => {
       arrangement: { ...doc.arrangement, audioClips: [audioClip] },
     };
     expect(selectedTimeRangeIntentError(withAudio, range, "duplicate")).toBeNull();
-    expect(selectedTimeRangeIntentError(withAudio, range, "consolidate")).toMatch(/contains audio clips/i);
+    expect(selectedTimeRangeIntentError(withAudio, range, "consolidate")).toBeNull();
     expect(
       selectedTimeRangeIntentError(withAudio, { fromTick: BAR_TICKS * 4, toTick: BAR_TICKS * 8 }, "consolidate"),
     ).toBeNull();
@@ -227,6 +227,20 @@ describe("selected time-range intent", () => {
       arrangement: { ...doc.arrangement, audioClips: [{ ...audioClip, startBar: 3, lengthBars: 2 }] },
     };
     expect(selectedTimeRangeIntentError(withBoundaryAudio, range, "duplicate")).toMatch(/crosses this range boundary/i);
+    expect(selectedTimeRangeIntentError(withBoundaryAudio, range, "consolidate")).toMatch(/audio clip crosses/i);
+
+    const withBoundaryArrangement = {
+      ...doc,
+      arrangement: {
+        ...doc.arrangement,
+        clips: [{ id: "long-range-clip", sceneId: doc.scenes[0]!.id, startBar: 0, lengthBars: 8 }],
+      },
+    };
+    expect(selectedTimeRangeIntentError(withBoundaryArrangement, range, "consolidate")).toMatch(
+      /arrangement clip crosses/i,
+    );
+    const withSolo = { ...doc, tracks: doc.tracks.map((track) => ({ ...track, solo: true })) };
+    expect(selectedTimeRangeIntentError(withSolo, range, "consolidate")).toMatch(/turn off solo/i);
   });
 });
 
