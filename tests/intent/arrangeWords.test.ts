@@ -184,7 +184,7 @@ describe("selected time-range intent", () => {
     expect(parseSelectedTimeRangeIntent("duplicate and consolidate this range")).toBeNull();
   });
 
-  it("requires complete bars, allows safely handled audio duplication, and rejects boundary clips", () => {
+  it("requires complete bars, rejects unsafe duplication, and allows audio-aware consolidation", () => {
     const doc = sceneScoreDoc();
     const range = { fromTick: 0, toTick: BAR_TICKS * 4 };
     expect(selectedTimeRangeIntentError(doc, range, "duplicate")).toBeNull();
@@ -227,7 +227,7 @@ describe("selected time-range intent", () => {
       arrangement: { ...doc.arrangement, audioClips: [{ ...audioClip, startBar: 3, lengthBars: 2 }] },
     };
     expect(selectedTimeRangeIntentError(withBoundaryAudio, range, "duplicate")).toMatch(/crosses this range boundary/i);
-    expect(selectedTimeRangeIntentError(withBoundaryAudio, range, "consolidate")).toMatch(/audio clip crosses/i);
+    expect(selectedTimeRangeIntentError(withBoundaryAudio, range, "consolidate")).toBeNull();
 
     const withBoundaryArrangement = {
       ...doc,

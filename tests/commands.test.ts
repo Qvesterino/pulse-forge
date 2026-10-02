@@ -106,6 +106,79 @@ describe("commands", () => {
     expect(command.undo(printed)).toEqual(doc);
   });
 
+  it("preserves audio on both sides when the selected range cuts through a clip", () => {
+    let doc = createDefaultProject();
+    doc = { ...doc, arrangement: { ...doc.arrangement, clips: [] } };
+    const track = doc.tracks.find((candidate) => candidate.kind !== "group")!;
+    doc = addAudioClip(doc, track.id, "audio.crossing", 1, 8, {
+      offsetSec: 2,
+      trimStart: 0.5,
+      fadeIn: 0.1,
+      fadeOut: 0.2,
+    }).execute(doc);
+
+    const command = consolidateTimeRangeToAudio(doc, 3 * BAR_TICKS, 6 * BAR_TICKS, "user.print");
+    const printed = command.execute(doc);
+    const sourceFragments = (printed.arrangement.audioClips ?? [])
+      .filter((clip) => clip.bufferId === "audio.crossing")
+      .sort((a, b) => a.startBar - b.startBar);
+
+    expect(sourceFragments).toHaveLength(2);
+    expect(sourceFragments[0]).toMatchObject({ startBar: 1, lengthBars: 2, offsetSec: 2, trimStart: 0.5, fadeIn: 0.1 });
+    expect(sourceFragments[1]).toMatchObject({ startBar: 6, lengthBars: 3, fadeOut: 0.2 });
+    expect(sourceFragments[1]?.offsetSec).toBeCloseTo(2 + 1200 / doc.bpm);
+    expect(sourceFragments[0]?.fadeOut).toBeCloseTo(0.003);
+    expect(sourceFragments[1]?.fadeIn).toBeCloseTo(0.003);
+    expect(printed.arrangement.audioClips?.find((clip) => clip.bufferId === "user.print")).toMatchObject({
+      startBar: 3,
+      lengthBars: 3,
+      fadeIn: 0.003,
+      fadeOut: 0.003,
+    });
+    expect(command.undo(printed)).toEqual(doc);
+  });
+
+  it("preserves short boundary slivers and requires decoded duration for warped boundary splits", () => {
+    const initial = createDefaultProject();
+    const base = { ...initial, arrangement: { ...initial.arrangement, clips: [] } };
+    const track = base.tracks.find((candidate) => candidate.kind !== "group")!;
+    const shortClip = addAudioClip(base, track.id, "audio.short", 3.99, 0.25).execute(base);
+    const shortPrint = consolidateTimeRangeToAudio(shortClip, 4 * BAR_TICKS, 5 * BAR_TICKS, "user.short-print").execute(
+      shortClip,
+    );
+    const shortFragment = shortPrint.arrangement.audioClips?.find((clip) => clip.bufferId === "audio.short");
+    expect(shortFragment?.startBar).toBeCloseTo(3.99);
+    expect(shortFragment?.lengthBars).toBeCloseTo(0.01);
+
+    const warped = addAudioClip(base, track.id, "audio.warped", 1, 8, {
+      offsetSec: 1,
+      trimStart: 0.5,
+      trimEnd: 0.5,
+      warpMarkers: [
+        { timeSec: 1.5, tick: BAR_TICKS },
+        { timeSec: 19.5, tick: 9 * BAR_TICKS },
+      ],
+    }).execute(base);
+    expect(() => consolidateTimeRangeToAudio(warped, 3 * BAR_TICKS, 6 * BAR_TICKS, "user.warped-print")).toThrow(
+      /load the source audio.*warped clip/i,
+    );
+
+    const warpedPrint = consolidateTimeRangeToAudio(
+      warped,
+      3 * BAR_TICKS,
+      6 * BAR_TICKS,
+      "user.warped-print",
+      new Map([["audio.warped", 20]]),
+    ).execute(warped);
+    const warpedFragments = (warpedPrint.arrangement.audioClips ?? [])
+      .filter((clip) => clip.bufferId === "audio.warped")
+      .sort((a, b) => a.startBar - b.startBar);
+    expect(warpedFragments).toHaveLength(2);
+    expect(warpedFragments[0]?.warpMarkers?.some((marker) => marker.tick === 3 * BAR_TICKS)).toBe(true);
+    expect(warpedFragments[1]?.warpMarkers?.some((marker) => marker.tick === 6 * BAR_TICKS)).toBe(true);
+    expect(warpedFragments[1]?.offsetSec).toBeGreaterThan(warpedFragments[0]?.offsetSec ?? 0);
+  });
+
   it("replaces selected clips with one rendered asset through a single undoable command", () => {
     const doc = createDefaultProject();
     const track = doc.tracks.find((candidate) => candidate.kind !== "group");

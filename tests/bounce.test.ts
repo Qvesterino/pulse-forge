@@ -69,9 +69,9 @@ describe("buildBounceZoneDoc", () => {
 
     const bounced = buildBounceZoneDoc(doc, [doc.tracks[0].id], { startBar: 2, lengthBars: 4 });
     const clip = bounced.arrangement.audioClips![0];
-    // offsetSec remains in original source seconds. The renderer will apply
-    // stretchRate when indexing the pre-stretched buffer later.
-    expect(clip.offsetSec).toBeCloseTo(2 * BAR_TICKS * (60 / (62 * PPQ)), 4);
+    // Resampled playback consumes source time at stretchRate; the cropped
+    // offset must match the clip-split path's source-time accounting.
+    expect(clip.offsetSec).toBeCloseTo(2 * BAR_TICKS * (60 / (62 * PPQ)) * 2, 4);
     expect(clip.stretchRate).toBe(2);
   });
 
@@ -118,7 +118,7 @@ describe("buildBounceZoneDoc", () => {
     expect(plan.project.arrangement.audioClips?.[0]).toMatchObject({ startBar: 1, lengthBars: 1 });
   });
 
-  it("rejects ranges crossing clip boundaries and ranges rendered with Solo active", () => {
+  it("rejects crossing arrangement clips but renders cross-boundary audio and rejects Solo", () => {
     const base = createDefaultProject();
     const scene = base.scenes[0]!;
     const crossingClip = {
@@ -134,12 +134,95 @@ describe("buildBounceZoneDoc", () => {
 
     const track = base.tracks.find((candidate) => candidate.kind !== "group")!;
     const crossingAudio = addAudioClip(base, track.id, "audio.crossing", 2, 4).execute(base);
-    expect(() => buildTimeRangeConsolidationDoc(crossingAudio, BAR_TICKS * 4, BAR_TICKS * 8)).toThrow(
-      /audio clip crosses/u,
-    );
+    const plan = buildTimeRangeConsolidationDoc(crossingAudio, BAR_TICKS * 4, BAR_TICKS * 8);
+    expect(plan.project.arrangement.audioClips).toHaveLength(1);
+    expect(plan.project.arrangement.audioClips?.[0]).toMatchObject({ startBar: 0, lengthBars: 2 });
+    expect(plan.project.arrangement.audioClips?.[0]?.offsetSec).toBeCloseTo(480 / base.bpm);
+
+    const shortOverlap = addAudioClip(base, track.id, "audio.short-overlap", 3.76, 0.25).execute(base);
+    const shortPlan = buildTimeRangeConsolidationDoc(shortOverlap, BAR_TICKS * 4, BAR_TICKS * 5);
+    expect(shortPlan.project.arrangement.audioClips).toHaveLength(1);
+    expect(shortPlan.project.arrangement.audioClips?.[0]?.lengthBars).toBeCloseTo(0.01);
 
     const solo = { ...base, tracks: base.tracks.map((candidate) => ({ ...candidate, solo: true })) };
     expect(() => buildTimeRangeConsolidationDoc(solo, BAR_TICKS * 2, BAR_TICKS * 4)).toThrow(/turn off solo/i);
+  });
+
+  it("keeps boundary audio in the range plan when only a tiny fragment overlaps", () => {
+    const base = createDefaultProject();
+    const track = base.tracks.find((candidate) => candidate.kind !== "group")!;
+    const audio = addAudioClip(base, track.id, "audio.tiny", 4.99, 0.25).execute(base);
+    const plan = buildTimeRangeConsolidationDoc(audio, BAR_TICKS * 4, BAR_TICKS * 5);
+    expect(plan.project.arrangement.audioClips?.[0]?.startBar).toBeCloseTo(0.99);
+    expect(plan.project.arrangement.audioClips?.[0]?.lengthBars).toBeCloseTo(0.01);
+  });
+
+  it("keeps loop phase, reverse source windows, and warped source mapping when cropping audio", () => {
+    const initial = createDefaultProject();
+    const base = { ...initial, arrangement: { ...initial.arrangement, clips: [] } };
+    const track = base.tracks.find((candidate) => candidate.kind !== "group")!;
+    const loop = addAudioClip(base, track.id, "audio.loop", 2, 4, {
+      loop: true,
+      loopPhaseOffsetSec: 0.25,
+      offsetSec: 2,
+      trimStart: 0.5,
+    }).execute(base);
+    const reversed = addAudioClip(loop, track.id, "audio.reverse", 2, 4, {
+      reverse: true,
+      offsetSec: 1,
+      trimStart: 0.25,
+    }).execute(loop);
+    const loopAndReverse = buildTimeRangeConsolidationDoc(reversed, 3 * BAR_TICKS, 5 * BAR_TICKS);
+    const loopClip = loopAndReverse.project.arrangement.audioClips?.find((clip) => clip.bufferId === "audio.loop");
+    const reverseClip = loopAndReverse.project.arrangement.audioClips?.find(
+      (clip) => clip.bufferId === "audio.reverse",
+    );
+    const oneBarSeconds = 240 / base.bpm;
+    expect(loopClip).toMatchObject({ startBar: 0, lengthBars: 2, offsetSec: 2, trimStart: 0.5 });
+    expect(loopClip?.loopPhaseOffsetSec).toBeCloseTo(0.25 + oneBarSeconds);
+    expect(reverseClip).toMatchObject({ startBar: 0, lengthBars: 2, trimStart: 0.25 });
+    expect(reverseClip?.offsetSec).toBeCloseTo(1 + oneBarSeconds);
+
+    const warped = addAudioClip(base, track.id, "audio.warped-plan", 2, 4, {
+      offsetSec: 0.5,
+      trimStart: 0.5,
+      trimEnd: 1,
+      warpMarkers: [
+        { timeSec: 1, tick: 2 * BAR_TICKS },
+        { timeSec: 9, tick: 6 * BAR_TICKS },
+      ],
+    }).execute(base);
+    expect(() => buildTimeRangeConsolidationDoc(warped, 3 * BAR_TICKS, 5 * BAR_TICKS)).toThrow(
+      /load the source audio for warped clip/i,
+    );
+    const warpedPlan = buildTimeRangeConsolidationDoc(
+      warped,
+      3 * BAR_TICKS,
+      5 * BAR_TICKS,
+      new Map([["audio.warped-plan", 10]]),
+    );
+    expect(warpedPlan.project.arrangement.audioClips?.[0]).toMatchObject({
+      startBar: 0,
+      lengthBars: 2,
+      offsetSec: 3,
+      trimStart: 0,
+      trimEnd: 3,
+    });
+  });
+
+  it("still rejects a musical arrangement clip crossing the range boundary", () => {
+    const base = createDefaultProject();
+    const scene = base.scenes[0]!;
+    const crossingClip = {
+      ...base,
+      arrangement: {
+        ...base.arrangement,
+        clips: [{ id: "crossing", sceneId: scene.id, startBar: 0, lengthBars: 8 }],
+      },
+    };
+    expect(() => buildTimeRangeConsolidationDoc(crossingClip, BAR_TICKS * 4, BAR_TICKS * 8)).toThrow(
+      /arrangement clip crosses/u,
+    );
   });
 
   it("filters tracks to the selection plus parent groups", () => {
@@ -220,17 +303,25 @@ describe("buildAudioClipConsolidationDoc", () => {
 describe("consolidateRangeToAudio", () => {
   it("renders, persists, and applies the range print as one undoable command", async () => {
     const initial = createDefaultProject();
-    const sourceDoc = {
+    const sourceTrack = initial.tracks.find((track) => track.kind !== "group")!;
+    const noArrangement = {
       ...initial,
-      arrangement: {
-        ...initial.arrangement,
-        clips: [{ id: "print-source", sceneId: initial.scenes[0]!.id, startBar: 0, lengthBars: 1 }],
-      },
+      arrangement: { ...initial.arrangement, clips: [] },
+    };
+    const withCrossingAudio = addAudioClip(noArrangement, sourceTrack.id, "audio.crossing", 0, 3).execute(
+      noArrangement,
+    );
+    const sourceDoc = {
+      ...withCrossingAudio,
     };
     let currentDoc = sourceDoc;
     const buffer = fakeAudioBuffer();
     const render = vi.fn<typeof renderProject>().mockResolvedValue(buffer);
-    const bank = { add: vi.fn(), remove: vi.fn() };
+    const bank = {
+      add: vi.fn(),
+      remove: vi.fn(),
+      get: vi.fn(() => ({ duration: 6 }) as AudioBuffer),
+    };
     const userSamples = { save: vi.fn(async () => {}), remove: vi.fn(async () => {}) };
     const runtime = {
       store: {
@@ -244,7 +335,12 @@ describe("consolidateRangeToAudio", () => {
       userSamples: userSamples as never,
     };
 
-    const command = await consolidateRangeToAudio(runtime, { fromTick: 0, toTick: BAR_TICKS }, () => true, render);
+    const command = await consolidateRangeToAudio(
+      runtime,
+      { fromTick: BAR_TICKS, toTick: BAR_TICKS * 2 },
+      () => true,
+      render,
+    );
 
     expect(render).toHaveBeenCalledOnce();
     expect(render.mock.calls[0]?.[2]).toMatchObject({
@@ -255,10 +351,23 @@ describe("consolidateRangeToAudio", () => {
       minimumDurationTicks: BAR_TICKS,
       arrangementOnly: true,
     });
+    expect(render.mock.calls[0]?.[0].arrangement.audioClips).toHaveLength(1);
+    expect(render.mock.calls[0]?.[0].arrangement.audioClips?.[0]).toMatchObject({ startBar: 0, lengthBars: 1 });
     expect(userSamples.save).toHaveBeenCalledOnce();
     expect(bank.add).toHaveBeenCalledOnce();
     expect(runtime.store.execute).toHaveBeenCalledOnce();
-    expect(currentDoc.arrangement.audioClips).toHaveLength(1);
+    expect(currentDoc.arrangement.audioClips).toHaveLength(3);
+    const preservedAudio = (currentDoc.arrangement.audioClips ?? [])
+      .filter((clip) => clip.bufferId === "audio.crossing")
+      .sort((a, b) => a.startBar - b.startBar);
+    expect(preservedAudio).toMatchObject([
+      { startBar: 0, lengthBars: 1 },
+      { startBar: 2, lengthBars: 1 },
+    ]);
+    expect(currentDoc.arrangement.audioClips?.find((clip) => clip.bufferId !== "audio.crossing")).toMatchObject({
+      startBar: 1,
+      lengthBars: 1,
+    });
     expect(command.undo(currentDoc)).toEqual(sourceDoc);
   });
 

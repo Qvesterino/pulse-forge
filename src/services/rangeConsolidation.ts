@@ -39,7 +39,18 @@ export async function consolidateRangeToAudio(
   try {
     if (!isSelectionCurrent()) throw new Error("The time selection changed. Review the range and try again.");
     const sourceDoc = store.getDoc();
-    const plan = buildTimeRangeConsolidationDoc(sourceDoc, range.fromTick, range.toTick);
+    const fromBar = Math.min(range.fromTick, range.toTick) / BAR_TICKS;
+    const toBar = Math.max(range.fromTick, range.toTick) / BAR_TICKS;
+    const sourceDurationsByBufferId = new Map<string, number>();
+    for (const clip of sourceDoc.arrangement.audioClips ?? []) {
+      if (clip.startBar >= toBar || clip.startBar + clip.lengthBars <= fromBar) continue;
+      const sourceBuffer = runtime.bank.get(clip.bufferId);
+      if (!sourceBuffer) {
+        throw new Error(`Load the source audio for clip ${clip.id} before consolidating this range.`);
+      }
+      sourceDurationsByBufferId.set(clip.bufferId, sourceBuffer.duration);
+    }
+    const plan = buildTimeRangeConsolidationDoc(sourceDoc, range.fromTick, range.toTick, sourceDurationsByBufferId);
     const sampleRate = runtime.engine.getLiveAudioContext()?.sampleRate ?? 44100;
     const durationTicks = plan.lengthBars * BAR_TICKS;
     const buffer = await render(plan.project, runtime.bank, {
@@ -56,8 +67,6 @@ export async function consolidateRangeToAudio(
     }
     assertUsablePrint(buffer);
 
-    const fromBar = Math.min(range.fromTick, range.toTick) / BAR_TICKS;
-    const toBar = Math.max(range.fromTick, range.toTick) / BAR_TICKS;
     bufferId = userSampleId(`consolidated-range-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`);
     saveAttempted = true;
     await runtime.userSamples.save(
@@ -79,7 +88,13 @@ export async function consolidateRangeToAudio(
     if (store.getDoc() !== sourceDoc || !isSelectionCurrent()) {
       throw new Error("The project or time selection changed while saving. The rendered print was discarded.");
     }
-    const command = consolidateTimeRangeToAudio(sourceDoc, range.fromTick, range.toTick, bufferId);
+    const command = consolidateTimeRangeToAudio(
+      sourceDoc,
+      range.fromTick,
+      range.toTick,
+      bufferId,
+      sourceDurationsByBufferId,
+    );
     try {
       store.execute(command);
       committed = true;

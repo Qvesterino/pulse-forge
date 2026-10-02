@@ -3996,15 +3996,28 @@ export function splitAudioClipAtTick(
   /** Decoded source duration enables exact split-window preservation for warped clips. */
   sourceDurationSec?: number,
 ): Command {
+  return splitAudioClipAtTickWithMinimumFragment(doc, clipId, splitTick, sourceDurationSec, 0.05);
+}
+
+function splitAudioClipAtTickWithMinimumFragment(
+  doc: ProjectDocument,
+  clipId: string,
+  splitTick: number,
+  sourceDurationSec: number | undefined,
+  minimumFragmentBars: number,
+): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
   if (!Number.isFinite(splitTick)) throw new Error("Split point must be a finite arrangement tick");
+  if (!Number.isFinite(minimumFragmentBars) || minimumFragmentBars < 0) {
+    throw new Error("Minimum split fragment must be a finite non-negative bar length");
+  }
   const startTick = clip.startBar * BAR_TICKS;
   const endTick = startTick + clip.lengthBars * BAR_TICKS;
   if (splitTick <= startTick || splitTick >= endTick) throw new Error("Split point outside clip");
   const leftBars = (splitTick - startTick) / BAR_TICKS;
   const rightBars = clip.lengthBars - leftBars;
-  if (leftBars < 0.05 || rightBars < 0.05) throw new Error("Split too close to edge");
+  if (leftBars < minimumFragmentBars || rightBars < minimumFragmentBars) throw new Error("Split too close to edge");
   // Piecewise bars→seconds at the scenes' effective tempos: the scheduler runs
   // each arrangement span at its scene's BPM pin (gaps at the project tempo),
   // so a split under a pinned scene must consume source at THAT tempo. Plain
@@ -4622,13 +4635,86 @@ export function consolidateTimeRange(doc: ProjectDocument, fromTick: number, toT
  * Replace a complete arrangement range with one rendered audio clip. Empty
  * scene clips retain the source scene tempos for the printed clip; their IDs
  * stay stable so timeline markers and transitions remain attached. Source
- * patterns themselves are never destructively edited.
+ * patterns themselves are never destructively edited. Audio clips crossing a
+ * range edge are split at the exact boundary, leaving their outside segments
+ * intact while replacing only the rendered middle.
  */
+interface SplitAudioRangeResult {
+  project: ProjectDocument;
+  removedClipIds: Set<string>;
+}
+
+function splitAudioClipsForConsolidationRange(
+  doc: ProjectDocument,
+  clips: AudioClip[],
+  fromTick: number,
+  toTick: number,
+  sourceDurationsByBufferId: ReadonlyMap<string, number>,
+): SplitAudioRangeResult {
+  let project = doc;
+  const removedClipIds = new Set<string>();
+
+  for (const sourceClip of clips) {
+    const sourceDuration = sourceDurationsByBufferId.get(sourceClip.bufferId);
+    const crossesRangeBoundary =
+      sourceClip.startBar * BAR_TICKS < fromTick || (sourceClip.startBar + sourceClip.lengthBars) * BAR_TICKS > toTick;
+    if (
+      crossesRangeBoundary &&
+      sourceClip.warpMarkers?.length &&
+      (!Number.isFinite(sourceDuration) || sourceDuration! <= 0)
+    ) {
+      throw new Error(`Load the source audio for warped clip ${sourceClip.id} before consolidating its range.`);
+    }
+
+    let rangeClipId = sourceClip.id;
+    const currentClip = () => project.arrangement.audioClips?.find((clip) => clip.id === rangeClipId);
+    const initial = currentClip();
+    if (!initial) throw new Error(`AudioClip ${sourceClip.id} disappeared during range consolidation.`);
+
+    const splitAt = (clipId: string, tick: number): AudioClip[] => {
+      const priorIds = new Set((project.arrangement.audioClips ?? []).map((clip) => clip.id));
+      project = splitAudioClipAtTickWithMinimumFragment(project, clipId, tick, sourceDuration, 0).execute(project);
+      const pieces = (project.arrangement.audioClips ?? []).filter(
+        (clip) =>
+          !priorIds.has(clip.id) && clip.bufferId === sourceClip.bufferId && clip.trackId === sourceClip.trackId,
+      );
+      if (pieces.length !== 2)
+        throw new Error(`Could not preserve the source segments for audio clip ${sourceClip.id}.`);
+      return pieces;
+    };
+
+    if (initial.startBar * BAR_TICKS < fromTick) {
+      const rangeFragment = splitAt(rangeClipId, fromTick).find(
+        (clip) => Math.abs(clip.startBar * BAR_TICKS - fromTick) < 1e-6,
+      );
+      if (!rangeFragment) throw new Error(`Could not preserve the left audio fragment for clip ${sourceClip.id}.`);
+      rangeClipId = rangeFragment.id;
+    }
+
+    const middle = currentClip();
+    if (!middle) throw new Error(`AudioClip ${sourceClip.id} disappeared during range consolidation.`);
+    if ((middle.startBar + middle.lengthBars) * BAR_TICKS > toTick) {
+      const rangeFragment = splitAt(rangeClipId, toTick).find(
+        (clip) =>
+          clip.startBar * BAR_TICKS >= fromTick - 1e-6 &&
+          (clip.startBar + clip.lengthBars) * BAR_TICKS <= toTick + 1e-6 &&
+          (clip.startBar + clip.lengthBars) * BAR_TICKS > fromTick,
+      );
+      if (!rangeFragment) throw new Error(`Could not isolate the selected audio range for clip ${sourceClip.id}.`);
+      rangeClipId = rangeFragment.id;
+    }
+    removedClipIds.add(rangeClipId);
+  }
+
+  return { project, removedClipIds };
+}
+
 export function consolidateTimeRangeToAudio(
   doc: ProjectDocument,
   fromTick: number,
   toTick: number,
   bufferId: string,
+  sourceDurationsByBufferId: ReadonlyMap<string, number> = new Map(),
 ): Command {
   const from = Math.min(fromTick, toTick);
   const to = Math.max(fromTick, toTick);
@@ -4653,11 +4739,10 @@ export function consolidateTimeRangeToAudio(
   if (sourceClips.some((clip) => !contained(clip.startBar, clip.lengthBars))) {
     throw new Error("An arrangement clip crosses this range boundary. Select the whole clip before consolidating.");
   }
-  if (sourceAudio.some((clip) => !contained(clip.startBar, clip.lengthBars))) {
-    throw new Error("An audio clip crosses this range boundary. Adjust the selection before consolidating.");
-  }
 
-  const groupCount = doc.tracks.filter((track) => track.kind === "group").length;
+  const splitAudio = splitAudioClipsForConsolidationRange(doc, sourceAudio, from, to, sourceDurationsByBufferId);
+
+  const groupCount = splitAudio.project.tracks.filter((track) => track.kind === "group").length;
   const printTrack = {
     ...createGroupTrackModel(`Consolidated ${groupCount + 1}`),
     gain: 1,
@@ -4667,10 +4752,15 @@ export function consolidateTimeRangeToAudio(
     effects: [],
     sends: {},
   };
-  const withPrintTrack: ProjectDocument = { ...doc, tracks: [...doc.tracks, printTrack] };
+  const withPrintTrack: ProjectDocument = {
+    ...splitAudio.project,
+    tracks: [...splitAudio.project.tracks, printTrack],
+  };
   const withPrintClip = addAudioClip(withPrintTrack, printTrack.id, bufferId, fromBar, lengthBars, {
     gain: 1,
     stretchRate: 1,
+    fadeIn: 0.003,
+    fadeOut: 0.003,
   }).execute(withPrintTrack);
   const printClip = withPrintClip.arrangement.audioClips?.find(
     (clip) => clip.trackId === printTrack.id && clip.bufferId === bufferId,
@@ -4704,10 +4794,9 @@ export function consolidateTimeRangeToAudio(
   }
 
   const nextClips = doc.arrangement.clips.map((clip) => tempoClipById.get(clip.id) ?? clip);
-  const remainingAudio = (doc.arrangement.audioClips ?? []).filter(
-    (clip) => !sourceAudio.some((source) => source.id === clip.id),
-  );
-  const nextAudioClips = [...remainingAudio, printClip].sort((a, b) => a.startBar - b.startBar);
+  const nextAudioClips = (withPrintClip.arrangement.audioClips ?? [])
+    .filter((clip) => !splitAudio.removedClipIds.has(clip.id))
+    .sort((a, b) => a.startBar - b.startBar);
   const liveTakeGroupIds = new Set(nextAudioClips.flatMap((clip) => (clip.takeGroupId ? [clip.takeGroupId] : [])));
   const takeGroups = doc.arrangement.takeGroups?.filter((group) => liveTakeGroupIds.has(group.id));
   const transitions = sanitizeArrangementTransitions(doc.arrangement.transitions, nextClips);
@@ -4717,7 +4806,7 @@ export function consolidateTimeRangeToAudio(
     patterns: [...doc.patterns, ...tempoPatterns],
     scenes: [...doc.scenes, ...tempoScenes],
     arrangement: {
-      ...doc.arrangement,
+      ...withPrintClip.arrangement,
       clips: nextClips,
       audioClips: nextAudioClips,
       ...(takeGroups ? { takeGroups } : {}),

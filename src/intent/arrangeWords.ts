@@ -665,16 +665,6 @@ export function selectedTimeRangeIntentError(
   ) {
     return "An arrangement clip crosses this range boundary. Select the whole clip before consolidating.";
   }
-  if (
-    operation === "consolidate" &&
-    audioClips.some((clip) => {
-      const overlapsRange = clip.startBar < toBar && clip.startBar + clip.lengthBars > fromBar;
-      const isWhollyInsideRange = clip.startBar >= fromBar && clip.startBar + clip.lengthBars <= toBar;
-      return overlapsRange && !isWhollyInsideRange;
-    })
-  ) {
-    return "An audio clip crosses this range boundary. Adjust the selection before consolidating.";
-  }
   if (operation === "consolidate" && doc.tracks.some((track) => track.solo)) {
     return "Turn off Solo before consolidating so the print does not change the rest of the mix.";
   }

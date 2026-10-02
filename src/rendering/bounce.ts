@@ -2,6 +2,7 @@ import { buildStemProject } from "./stems";
 import { buildTempoMap, type ClipWindow } from "./renderer";
 import type { ProjectDocument } from "../project-model/types";
 import { BAR_TICKS } from "../project-model/types";
+import { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
 
 /**
  * Real bounce: offline-render the selected tracks (with their FX, groups,
@@ -26,6 +27,10 @@ export interface BounceZone {
 export interface BounceZoneOptions {
   /** Keep the project's mute/solo state instead of making a stem auditionable. */
   preserveMixState?: boolean;
+  /** Include audio fragments shorter than the normal 1/4-bar bounce threshold. */
+  includeSubQuarterAudioClips?: boolean;
+  /** Decoded source durations allow exact cropping through warped audio clips. */
+  sourceDurationsByBufferId?: ReadonlyMap<string, number>;
 }
 
 export function buildBounceZoneDoc(
@@ -70,13 +75,73 @@ export function buildBounceZoneDoc(
     const clipEnd = clipStart + clip.lengthBars * BAR_TICKS;
     const overlapStart = Math.max(clipStart, zoneStartTick);
     const overlapEnd = Math.min(clipEnd, zoneEndTick);
-    if (overlapEnd - overlapStart < BAR_TICKS * 0.25) continue;
+    if (
+      overlapEnd <= overlapStart ||
+      (!options.includeSubQuarterAudioClips && overlapEnd - overlapStart < BAR_TICKS * 0.25)
+    ) {
+      continue;
+    }
+    const clipTicks = clipEnd - clipStart;
     const headTrimSec = Math.max(0, tempoMap.timeAt(overlapStart) - tempoMap.timeAt(clipStart));
+    const tailTrimSec = Math.max(0, tempoMap.timeAt(clipEnd) - tempoMap.timeAt(overlapEnd));
+    const stretchRate = Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
+    const pitchPreservingStretch = clip.stretchMode === "stretch" && Math.abs(stretchRate - 1) >= 0.01;
+    const sourceSecondsPerWallSecond = pitchPreservingStretch ? 1 / stretchRate : stretchRate;
+    const sourceHeadAdvanceSec = headTrimSec * sourceSecondsPerWallSecond;
+    const sourceTailAdvanceSec = tailTrimSec * sourceSecondsPerWallSecond;
+    const sourceDuration = options.sourceDurationsByBufferId?.get(clip.bufferId);
+    let offsetSec = clip.offsetSec ?? 0;
+    let trimStart = clip.trimStart ?? 0;
+    let trimEnd = clip.trimEnd ?? 0;
+    let loopPhaseOffsetSec = clip.loopPhaseOffsetSec ?? 0;
+
+    if (clip.warpMarkers?.length && !clip.reverse && clip.loop !== true && Number.isFinite(sourceDuration)) {
+      const contentStartSec = offsetSec + trimStart;
+      const contentDurSec = sourceDuration! - contentStartSec - trimEnd;
+      const clipWallSeconds = tempoMap.timeAt(clipEnd) - tempoMap.timeAt(clipStart);
+      const secondsPerTick = clipTicks > 0 ? clipWallSeconds / clipTicks : 0;
+      const mappedStart = warpBufferTimeAtTick({
+        markers: clip.warpMarkers,
+        clipStartTick: clipStart,
+        clipTicks,
+        tick: overlapStart,
+        spt: secondsPerTick,
+        contentStartSec,
+        contentDurSec,
+        stretchRate,
+        stretchMode: clip.stretchMode,
+      });
+      const mappedEnd = warpBufferTimeAtTick({
+        markers: clip.warpMarkers,
+        clipStartTick: clipStart,
+        clipTicks,
+        tick: overlapEnd,
+        spt: secondsPerTick,
+        contentStartSec,
+        contentDurSec,
+        stretchRate,
+        stretchMode: clip.stretchMode,
+      });
+      if (mappedStart !== null && mappedEnd !== null && mappedEnd > mappedStart) {
+        offsetSec = mappedStart;
+        trimStart = 0;
+        trimEnd = Math.max(0, sourceDuration! - mappedEnd);
+      }
+    } else if (clip.loop === true && !clip.reverse) {
+      loopPhaseOffsetSec += sourceHeadAdvanceSec;
+    } else if (clip.reverse) {
+      offsetSec += sourceTailAdvanceSec;
+    } else {
+      offsetSec += sourceHeadAdvanceSec;
+    }
     zoneRelativeAudio.push({
       ...clip,
       startBar: (overlapStart - zoneStartTick) / BAR_TICKS,
       lengthBars: (overlapEnd - overlapStart) / BAR_TICKS,
-      offsetSec: (clip.offsetSec ?? 0) + headTrimSec,
+      offsetSec,
+      trimStart,
+      trimEnd,
+      ...(clip.loop === true && !clip.reverse ? { loopPhaseOffsetSec } : {}),
       fadeIn: overlapStart <= clipStart ? clip.fadeIn : 0,
       fadeOut: overlapEnd >= clipEnd ? clip.fadeOut : 0,
       ...(clip.warpMarkers
@@ -108,14 +173,15 @@ export interface TimeRangeConsolidationPlan {
 
 /**
  * Build a full-mix, pre-master render project for a selected arrangement
- * range. Consolidation is deliberately limited to clips fully contained by
- * the selection: cutting through a musical clip would restart its pattern
- * phase, and cutting through a warped audio clip needs a destructive split.
+ * range. Musical clips must be fully contained: cutting through one would
+ * restart its pattern phase. Audio clips are rendered from their exact
+ * overlap with the range and split when the print commits.
  */
 export function buildTimeRangeConsolidationDoc(
   doc: ProjectDocument,
   fromTick: number,
   toTick: number,
+  sourceDurationsByBufferId: ReadonlyMap<string, number> = new Map(),
 ): TimeRangeConsolidationPlan {
   const from = Math.min(fromTick, toTick);
   const to = Math.max(fromTick, toTick);
@@ -140,19 +206,27 @@ export function buildTimeRangeConsolidationDoc(
   ) {
     throw new Error("An arrangement clip crosses this range boundary. Select the whole clip before consolidating.");
   }
-  if (
-    (doc.arrangement.audioClips ?? []).some(
-      (clip) => overlaps(clip.startBar, clip.lengthBars) && !contained(clip.startBar, clip.lengthBars),
-    )
-  ) {
-    throw new Error("An audio clip crosses this range boundary. Adjust the selection before consolidating.");
+  const boundaryWarpedAudio = (doc.arrangement.audioClips ?? []).find(
+    (clip) =>
+      overlaps(clip.startBar, clip.lengthBars) &&
+      !contained(clip.startBar, clip.lengthBars) &&
+      clip.warpMarkers?.length &&
+      !clip.reverse &&
+      clip.loop !== true,
+  );
+  if (boundaryWarpedAudio) {
+    const sourceDuration = sourceDurationsByBufferId.get(boundaryWarpedAudio.bufferId);
+    if (!Number.isFinite(sourceDuration) || sourceDuration! <= 0) {
+      throw new Error(
+        `Load the source audio for warped clip ${boundaryWarpedAudio.id} before consolidating its range.`,
+      );
+    }
   }
-
   const project = buildBounceZoneDoc(
     doc,
     doc.tracks.map((track) => track.id),
     { startBar, lengthBars: endBar - startBar },
-    { preserveMixState: true },
+    { preserveMixState: true, includeSubQuarterAudioClips: true, sourceDurationsByBufferId },
   );
   // An audio-only range (or a range in an arrangement gap) must not fall
   // back to the active pattern during offline rendering. The renderer's
