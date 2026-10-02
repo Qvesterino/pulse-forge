@@ -139,6 +139,48 @@ export function applyAssistPatchToStepSelection(
 }
 
 /**
+ * Thin only selected drum cells by removing the softest selected off-beat
+ * hits. Quarter-note anchors (steps divisible by four) are preserved. Removed
+ * hits also lose their step locks/metadata; all other cells remain untouched.
+ */
+export function thinStepSelection(pattern: Pattern, selection: StepSelectionScope, amount = 0.4): Pattern {
+  if (!Number.isFinite(amount) || amount <= 0 || pattern.stepCount <= 0) return pattern;
+  const from = Math.min(selection.from, selection.to);
+  const to = Math.max(selection.from, selection.to);
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to >= pattern.stepCount) return pattern;
+  const strength = Math.min(1, amount);
+  const padIds = [...new Set(selection.padIds)].filter((padId) => pattern.rows[padId] !== undefined);
+  if (padIds.length === 0) return pattern;
+
+  const rows = { ...pattern.rows };
+  const stepMeta: Record<string, Record<number, StepMeta>> = Object.fromEntries(
+    Object.entries(pattern.stepMeta ?? {}).map(([padId, entries]) => [padId, { ...entries }]),
+  );
+  let changed = false;
+  for (const padId of padIds) {
+    const row = pattern.rows[padId]!;
+    const candidates = Array.from({ length: to - from + 1 }, (_, offset) => from + offset)
+      .filter((step) => step % 4 !== 0 && step < row.length && row[step]! > 0)
+      .sort((a, b) => row[a]! - row[b]! || b - a);
+    const removeCount = candidates.length > 0 ? Math.max(1, Math.floor(candidates.length * strength)) : 0;
+    if (removeCount === 0) continue;
+
+    const nextRow = [...row];
+    const nextMeta = { ...(stepMeta[padId] ?? {}) };
+    for (const step of candidates.slice(0, removeCount)) {
+      nextRow[step] = 0;
+      delete nextMeta[step];
+    }
+    rows[padId] = nextRow;
+    if (Object.keys(nextMeta).length > 0) stepMeta[padId] = nextMeta;
+    else delete stepMeta[padId];
+    changed = true;
+  }
+
+  return changed ? { ...pattern, rows, stepMeta: Object.keys(stepMeta).length > 0 ? stepMeta : undefined } : pattern;
+}
+
+/**
  * Humanize only selected melodic notes. Pitch, duration, id, locks, every
  * unselected note, and every other pattern field remain untouched. Invalid
  * or stale selections are rejected atomically instead of partially applied.

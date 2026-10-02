@@ -9,19 +9,44 @@ import {
   useTracks,
 } from "./context";
 import { assistBuild, assistFill, assistReplace, assistVary } from "../commands/commands";
-import { assistVaryNoteSelectionCommand, assistVarySelectionCommand } from "../commands/assistSelectionCommands";
+import {
+  assistThinSelectionCommand,
+  assistVaryNoteSelectionCommand,
+  assistVarySelectionCommand,
+} from "../commands/assistSelectionCommands";
 import {
   applyAssistPatchToStepSelection,
+  classifyPads,
   humanizeNoteSelection,
   styleNames,
+  thinStepSelection,
   type NoteSelectionScope,
   type ReplaceTarget,
+  type StepSelectionScope,
 } from "../assist/patternOps";
+import { parseSelectedStepIntent, type SelectedStepIntent } from "../assist/selected-step-intent";
 import { buildAssistPatch } from "../assist/pipeline";
 import { ASSIST_ENGINE_VERSION, type AssistOperation } from "../assist/types";
 import { getActivePattern, getDrumTrack } from "../project-model/types";
 import { nextSeed } from "../shared/dice";
 import { applyArrangeOps, parseArrangeIntent, type ParsedArrange } from "../intent/arrangeWords";
+
+interface SelectedStepChange {
+  padId: string;
+  padName: string;
+  step: number;
+  before: number;
+  after: number;
+}
+
+interface SelectedStepInstructionPlan {
+  intent: SelectedStepIntent | null;
+  scope: StepSelectionScope | null;
+  changes: SelectedStepChange[];
+  beforeHits: number;
+  afterHits: number;
+  error: string | null;
+}
 
 function randomSeed(prev?: string): string {
   return nextSeed(prev ?? String(Date.now()), "assist");
@@ -95,6 +120,7 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
   const [style, setStyle] = useState("house");
   const [previewOperation, setPreviewOperation] = useState<AssistOperation>("vary");
   const [flash, setFlash] = useState<string | null>(null);
+  const [selectedStepText, setSelectedStepText] = useState("");
   const [arrangeText, setArrangeText] = useState("");
   const arrangeParsed: ParsedArrange | null = arrangeText.trim() ? parseArrangeIntent(arrangeText, doc) : null;
   const [arrangeApplied, setArrangeApplied] = useState<string | null>(null);
@@ -134,6 +160,106 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
     });
     return applyAssistPatchToStepSelection(pattern, patch, selectedStepScope);
   }, [pattern, selectedDrumTrack, selectedStepScope, seed, amount, bars, target, style]);
+  const selectedStepInstructionPlan = useMemo((): SelectedStepInstructionPlan => {
+    if (!selectedStepText.trim()) {
+      return { intent: null, scope: null, changes: [], beforeHits: 0, afterHits: 0, error: null };
+    }
+    if (!selectedStepScope || !selectedDrumTrack) {
+      return {
+        intent: null,
+        scope: null,
+        changes: [],
+        beforeHits: 0,
+        afterHits: 0,
+        error: "Reselect valid drum cells before describing a scoped edit.",
+      };
+    }
+    const intent = parseSelectedStepIntent(selectedStepText);
+    if (!intent) {
+      return {
+        intent: null,
+        scope: null,
+        changes: [],
+        beforeHits: 0,
+        afterHits: 0,
+        error: "Try “make selected hats sparser” or “humanize these steps”.",
+      };
+    }
+
+    const selectedPadIds = new Set(selectedStepScope.padIds);
+    const targetPads = intent.target ? classifyPads(selectedDrumTrack.pads)[intent.target] : selectedDrumTrack.pads;
+    const padIds = targetPads.filter((pad) => selectedPadIds.has(pad.id)).map((pad) => pad.id);
+    if (padIds.length === 0) {
+      return {
+        intent,
+        scope: null,
+        changes: [],
+        beforeHits: 0,
+        afterHits: 0,
+        error: `The current step selection contains no ${intent.target ?? "usable"} drum rows.`,
+      };
+    }
+
+    const scope: StepSelectionScope = { ...selectedStepScope, padIds };
+    const previewPattern =
+      intent.operation === "thin"
+        ? thinStepSelection(pattern, scope)
+        : applyAssistPatchToStepSelection(
+            pattern,
+            buildAssistPatch(pattern, selectedDrumTrack.pads, {
+              operation: "vary",
+              seed,
+              amount,
+              bars,
+              target,
+              style,
+            }),
+            scope,
+          );
+    if (previewPattern === pattern) {
+      return {
+        intent,
+        scope,
+        changes: [],
+        beforeHits: 0,
+        afterHits: 0,
+        error:
+          intent.operation === "thin"
+            ? "The selected rows have no off-beat hits to thin."
+            : "This instruction would not change the selected cells; try a new seed or a wider selection.",
+      };
+    }
+
+    const from = Math.min(scope.from, scope.to);
+    const to = Math.max(scope.from, scope.to);
+    const changes: SelectedStepChange[] = [];
+    let beforeHits = 0;
+    let afterHits = 0;
+    for (const padId of scope.padIds) {
+      const padName = selectedDrumTrack.pads.find((pad) => pad.id === padId)?.name ?? "selected row";
+      const before = pattern.rows[padId] ?? [];
+      const after = previewPattern.rows[padId] ?? [];
+      for (let step = from; step <= to; step++) {
+        const beforeVelocity = before[step] ?? 0;
+        const afterVelocity = after[step] ?? 0;
+        if (beforeVelocity > 0) beforeHits++;
+        if (afterVelocity > 0) afterHits++;
+        if (beforeVelocity !== afterVelocity)
+          changes.push({ padId, padName, step, before: beforeVelocity, after: afterVelocity });
+      }
+    }
+    if (changes.length === 0) {
+      return {
+        intent,
+        scope,
+        changes,
+        beforeHits,
+        afterHits,
+        error: "This instruction would not change the selected cells; try a new seed or a wider selection.",
+      };
+    }
+    return { intent, scope, changes, beforeHits, afterHits, error: null };
+  }, [selectedStepText, selectedStepScope, selectedDrumTrack, pattern, seed, amount, bars, target, style]);
   const selectedNoteVariation = useMemo(
     () => (selectedNoteScope ? humanizeNoteSelection(pattern, selectedNoteScope, seed, amount) : null),
     [pattern, selectedNoteScope, seed, amount],
@@ -197,6 +323,50 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
         assistVarySelectionCommand(currentDoc, pattern.id, selectedDrumTrack.id, selectedStepScope, seed, amount),
       ),
     );
+  };
+
+  const applySelectedStepInstruction = () => {
+    const plan = selectedStepInstructionPlan;
+    if (!plan.intent || !plan.scope || plan.error || !selectedStepScope || !selectedDrumTrack) return;
+    const currentDoc = services.store.getDoc();
+    const currentPattern = currentDoc.patterns.find((candidate) => candidate.id === pattern.id);
+    const currentTrack = currentDoc.tracks.find((track) => track.kind === "drum" && track.id === selectedDrumTrack.id);
+    const currentSelection = selectionStore.getState().stepSelection;
+    const sameSelection = Boolean(
+      currentSelection &&
+      currentSelection.from === selectedStepScope.from &&
+      currentSelection.to === selectedStepScope.to &&
+      currentSelection.padIds.length === selectedStepScope.padIds.length &&
+      currentSelection.padIds.every((padId, index) => padId === selectedStepScope.padIds[index]),
+    );
+    const currentIntent = parseSelectedStepIntent(selectedStepText);
+    if (
+      currentPattern !== pattern ||
+      currentDoc.activePatternId !== pattern.id ||
+      currentTrack !== selectedDrumTrack ||
+      !sameSelection ||
+      currentIntent?.operation !== plan.intent.operation ||
+      currentIntent?.target !== plan.intent.target
+    ) {
+      setFlash("Pattern, step selection, or instruction changed — review the scoped preview before applying.");
+      return;
+    }
+
+    try {
+      const command =
+        plan.intent.operation === "thin"
+          ? assistThinSelectionCommand(currentDoc, pattern.id, selectedDrumTrack.id, plan.scope)
+          : assistVarySelectionCommand(currentDoc, pattern.id, selectedDrumTrack.id, plan.scope, seed, amount);
+      const targetLabel = plan.scope.padIds
+        .map((padId) => selectedDrumTrack.pads.find((pad) => pad.id === padId)?.name)
+        .filter((name): name is string => Boolean(name))
+        .join(" + ");
+      apply(`${plan.intent.operation === "thin" ? "Thinned" : "Humanized"} ${targetLabel} · ${seed}`, () =>
+        services.store.execute(command),
+      );
+    } catch (error) {
+      setFlash(error instanceof Error ? error.message : String(error));
+    }
   };
 
   const applySelectedNoteVariation = () => {
@@ -350,6 +520,63 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
               );
             })}
           </div>
+          <label className="collab-field">
+            <span>PRODUCER EDIT · DESCRIBE ONE CHANGE TO THESE CELLS</span>
+            <input
+              className="preset-save-input"
+              value={selectedStepText}
+              placeholder="make selected hats sparser"
+              aria-label="Producer selected-step instruction"
+              spellCheck={false}
+              onChange={(event) => setSelectedStepText(event.target.value)}
+              onKeyDown={(event) => {
+                if (
+                  event.key === "Enter" &&
+                  selectedStepInstructionPlan.intent &&
+                  selectedStepInstructionPlan.scope &&
+                  !selectedStepInstructionPlan.error
+                ) {
+                  event.preventDefault();
+                  applySelectedStepInstruction();
+                }
+              }}
+            />
+          </label>
+          {selectedStepText.trim() &&
+            (selectedStepInstructionPlan.error ? (
+              <div className="collab-hint" role="alert">
+                {selectedStepInstructionPlan.error}
+              </div>
+            ) : (
+              <div className="collab-hint" role="region" aria-label="Producer step edit preview">
+                <strong>
+                  {selectedStepInstructionPlan.intent?.operation.toUpperCase()} ·{" "}
+                  {selectedStepInstructionPlan.changes.length} cell changes · {selectedStepInstructionPlan.beforeHits} →{" "}
+                  {selectedStepInstructionPlan.afterHits} hits
+                </strong>
+                {selectedStepInstructionPlan.changes.slice(0, 6).map((change) => (
+                  <div key={`${change.padId}-${change.step}`}>
+                    Step {change.step + 1} · {change.padName} · {Math.round(change.before * 100)}% →{" "}
+                    {Math.round(change.after * 100)}%
+                  </div>
+                ))}
+                {selectedStepInstructionPlan.changes.length > 6 && (
+                  <div>+ {selectedStepInstructionPlan.changes.length - 6} more cell changes</div>
+                )}
+              </div>
+            ))}
+          <button
+            type="button"
+            className="btn btn-export"
+            disabled={
+              !selectedStepInstructionPlan.intent ||
+              !selectedStepInstructionPlan.scope ||
+              !!selectedStepInstructionPlan.error
+            }
+            onClick={applySelectedStepInstruction}
+          >
+            APPLY PRODUCER STEP EDIT · ONE UNDO STEP
+          </button>
           <button type="button" className="btn btn-export" onClick={applySelectedVariation}>
             VARY SELECTED STEPS
           </button>

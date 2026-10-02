@@ -3,6 +3,7 @@ import {
   applyAssistPatchToStepSelection,
   classifyPads,
   humanizeNoteSelection,
+  thinStepSelection,
   varyPattern,
   expandWithBuild,
   replaceRows,
@@ -10,7 +11,12 @@ import {
   styleNames,
 } from "../src/assist/patternOps";
 import { assistBuild, assistFill, assistReplace, assistVary } from "../src/commands/commands";
-import { assistVaryNoteSelectionCommand, assistVarySelectionCommand } from "../src/commands/assistSelectionCommands";
+import {
+  assistThinSelectionCommand,
+  assistVaryNoteSelectionCommand,
+  assistVarySelectionCommand,
+} from "../src/commands/assistSelectionCommands";
+import { parseSelectedStepIntent } from "../src/assist/selected-step-intent";
 import { createDefaultProject } from "../src/project-model/schema";
 import { getActivePattern, getDrumTrack } from "../src/project-model/types";
 import type { Pattern } from "../src/project-model/types";
@@ -99,6 +105,58 @@ describe("selection-scoped assist", () => {
         to: withMeta.stepCount + 4,
       }),
     ).toBe(withMeta);
+  });
+
+  it("parses scoped humanize/thin actions in English and Slovak and rejects mixed requests", () => {
+    expect(parseSelectedStepIntent("make selected hats sparser")).toEqual({ operation: "thin", target: "hats" });
+    expect(parseSelectedStepIntent("redšie vybrané haty")).toEqual({ operation: "thin", target: "hats" });
+    expect(parseSelectedStepIntent("make selected hats less dense")).toEqual({ operation: "thin", target: "hats" });
+    expect(parseSelectedStepIntent("humanize these steps")).toEqual({ operation: "humanize", target: null });
+    expect(parseSelectedStepIntent("thin hats and snares, then move the drop")).toBeNull();
+    expect(parseSelectedStepIntent("make selected hats brighter")).toBeNull();
+    expect(parseSelectedStepIntent("make it sparser")).toBeNull();
+  });
+
+  it("thins only selected off-beat cells, preserves anchors, and removes metadata for deleted hits", () => {
+    const { doc, pattern, track, kickPad } = setup();
+    const hatPad = classifyPads(track.pads).hats[0]!;
+    const hatRow = Array.from({ length: pattern.stepCount }, (_, step) =>
+      step < 8 ? (step % 4 === 0 ? 0.9 : 0.4 + step * 0.02) : 0,
+    );
+    const source: Pattern = {
+      ...pattern,
+      rows: { ...pattern.rows, [hatPad.id]: hatRow },
+      stepMeta: {
+        [hatPad.id]: {
+          1: { microtiming: 0.1 },
+          2: { locks: { pitch: 3 } },
+          10: { microtiming: -0.1 },
+        },
+      },
+    };
+    const scope = { padIds: [hatPad.id], from: 0, to: 7 };
+    const thinned = thinStepSelection(source, scope);
+
+    expect(thinned.rows[hatPad.id]?.[0]).toBe(0.9);
+    expect(thinned.rows[hatPad.id]?.[4]).toBe(0.9);
+    expect(thinned.rows[hatPad.id]?.filter((velocity, step) => step < 8 && velocity > 0)).toHaveLength(6);
+    expect(thinned.rows[kickPad.id]).toEqual(source.rows[kickPad.id]);
+    expect(thinned.rows[hatPad.id]?.slice(8)).toEqual(source.rows[hatPad.id]?.slice(8));
+    expect(thinned.stepMeta?.[hatPad.id]?.[1]).toBeUndefined();
+    expect(thinned.stepMeta?.[hatPad.id]?.[2]).toBeUndefined();
+    expect(thinned.stepMeta?.[hatPad.id]?.[10]).toEqual(source.stepMeta?.[hatPad.id]?.[10]);
+
+    const withSource: typeof doc = {
+      ...doc,
+      patterns: doc.patterns.map((candidate) => (candidate.id === pattern.id ? source : candidate)),
+    };
+    const command = assistThinSelectionCommand(withSource, pattern.id, track.id, scope);
+    const next = command.execute(withSource);
+    expect(command.type).toBe("assistThinSelection");
+    expect(command.undo(next)).toEqual(withSource);
+    expect(next.patterns.find((candidate) => candidate.id === pattern.id)?.rows[hatPad.id]).toEqual(
+      thinned.rows[hatPad.id],
+    );
   });
 
   it("humanizes only selected notes and preserves every other note field and track", () => {
