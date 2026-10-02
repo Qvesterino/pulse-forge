@@ -47,17 +47,63 @@ WORKFLOW: BEAT FROM SCRATCH
      kyx_clips for surgical edits afterwards.
   7. kyx_loudness {op: match, targetDb} — land near -14 LUFS.
 
+WORKFLOW: MELODIC COMPOSITION (basslines, leads, chords — kyx_steps
+covers DRUMS only)
+  kyx_pattern {op:'select'} picks the ACTIVE pattern; kyx_notes
+  {op:'list', family} FIRST — the indices it returns address every edit.
+  add by pitch or name ("C3"), move (startBeat/pitchDelta),
+  setVelocity, quantize to grid ("1/16") or key ("A Minor"), transpose a
+  whole line. kyx_music for song state: setTempo / setKey /
+  setPatternLength / transposeAll. Every op = one undo step.
+
+WORKFLOW: SOUND SELECTION
+  kyx_tracks {op:'listPresets', family, query?} — the 488-preset factory
+  bank, family-fitting first. kyx_tracks {op:'loadPreset', presetName,
+  family} folds the preset over EVERY track of the family (one undo) and
+  verifies per-track with ✓. Unknown names return suggestions — never
+  guess ids.
+
 WORKFLOW: MIX PASS ON EXISTING MATERIAL
-  kyx_state {subject: fxChain} -> kyx_mix for the whole-gesture profile
-  (or kyx_fx per family: more/less/remove/bypass) or kyx_intent with
-  production concepts ("make the bass deeper") -> kyx_meter / kyx_loudness
+  kyx_state {subject: mixer} — the WHOLE board in one call (faders, pan,
+  mute/solo, presets, FX, sends, master) with a machine-readable data
+  twin. kyx_mix for the whole-gesture profile, kyx_fx per family,
+  kyx_tracks {op: setGain/setPan} for surgical fader moves, or kyx_intent
+  with production concepts ("make the bass deeper") — free-text asks that
+  the deterministic layer misses fall to the LOCAL INTENT MODEL (answers
+  arrive prefixed 🤖; trust them like read-backs). kyx_meter / kyx_loudness
   to verify with numbers, not vibes.
+
+WORKFLOW: LIVE PERFORMANCE + PUBLISHING
+  kyx_state {subject: scenes} lists launchable scenes with @bar N.
+  kyx_transport {action:'launchScene', scene:"drop"} seeks + plays
+  (RUNTIME state — never undo). kyx_sections {op:'intensity', scene,
+  value: 0..1} rides the energy (undoable). When the set is done:
+  kyx_checkpoint {op:'save'} first, then kyx_publish_gallery {title,
+  agent} — the beat ships to the public gallery with your agent badge.
 
 WORKFLOW: ARRANGEMENT PASS
   On an EMPTY arrangement start with kyx_arrange {genre, length?} (whole
   form in one undo), then refine with kyx_sections {op: add/duplicate/
   resize/reorder, role, bars?} -> kyx_clips {op: move/resize/duplicate,
   anchor bar} -> kyx_markers {op: add, bar, name}.
+
+TOOL INDEX (all 29 — grouped by job)
+  read:        kyx_state (subjects incl. mixer) · kyx_meter · kyx_catalog
+               (effects/instruments) · kyx://project/* resources
+  compose:     kyx_generate (seedable) · kyx_notes (melodic) ·
+               kyx_steps (drum grid) · kyx_groove · kyx_music (tempo/key)
+  edit:        kyx_tracks (CRUD + setGain/Pan/Mute/Solo + loadPreset/
+               listPresets) · kyx_fx · kyx_plugin_param · kyx_routing
+               (groups/sends) · kyx_automation · kyx_clips · kyx_steps ·
+               kyx_markers
+  arrange:     kyx_sections (add/remove/duplicate/reorder/resize/
+               intensity) · kyx_arrange · kyx_song (whole track) ·
+               kyx_clips
+  perform:     kyx_transport (incl. action:launchScene) · kyx_checkpoint
+  finish:      kyx_mix · kyx_loudness (BS.1770) · kyx_export ·
+               kyx_publish_gallery (agent badge)
+  control:     kyx_intent (EN/SK; 🤖 model fallback) · kyx_batch (10 in
+               one undo) · kyx_undo · kyx_takes (vocal comps)
 
 TOKEN ECONOMY (your context is finite)
 - Prefer the structured tools over free-text kyx_intent: typed arguments

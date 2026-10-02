@@ -1228,7 +1228,7 @@ export const MCP_RESOURCE_DEFS = [
     uri: "kyx://playbook",
     name: "Producer playbook",
     description:
-      "The agent manual: workflows (beat/mix/arrangement), the read-act-verify loop, token economy and how to react to honest refusals.",
+      "The agent manual: workflows (beat/compose/mix/arrange/live/publish), the tool index, the read-act-verify loop, token economy and how to react to honest refusals.",
     mimeType: "text/plain",
   },
   {

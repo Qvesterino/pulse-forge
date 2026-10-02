@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { executeMcpTool, MCP_RESOURCES, type McpToolContext } from "../src/mcp/tools";
+import { executeMcpTool, MCP_RESOURCES, MCP_TOOLS, type McpToolContext } from "../src/mcp/tools";
 import { MCP_VOCAB_TEXT } from "../src/mcp/onboarding";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { createProjectFromTemplate } from "../src/project-model/templates";
@@ -61,6 +61,17 @@ describe("agent onboarding resources", () => {
     // compactness contract: the agent loads these EVERY session
     expect(playbook.text.length).toBeLessThan(8000);
     expect(vocab.text.length).toBeLessThan(8000);
+  });
+
+  it("ROT GUARD: every registered tool is documented in playbook+vocab", () => {
+    // future waves MUST update the agent manual when they add a tool — the
+    // test fails until the new tool appears in the onboarding text
+    const ctx = makeCtx();
+    const playbook = executeMcpTool(ctx, "__kyx_resource", { uri: "kyx://playbook" });
+    const vocab = executeMcpTool(ctx, "__kyx_resource", { uri: "kyx://vocab" });
+    const docs = playbook.text + "\n" + vocab.text;
+    const missing = MCP_TOOLS.filter((tool) => !docs.includes(tool.name)).map((tool) => tool.name);
+    expect(missing).toEqual([]);
   });
 
   it("desktop mirror resource defs match the TS source exactly", () => {
