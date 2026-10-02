@@ -10,6 +10,7 @@ import { useServices } from "./context";
 export function CommandToast() {
   const services = useServices();
   const [label, setLabel] = useState<string | null>(null);
+  const [detail, setDetail] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -22,6 +23,7 @@ export function CommandToast() {
       if (current && count !== lastSeen) {
         lastSeen = count;
         setLabel(current);
+        setDetail(services.store.lastCommandDetail);
         setVisible(true);
       } else if (!current) {
         lastSeen = -1;
@@ -46,6 +48,7 @@ export function CommandToast() {
       title="Last command"
     >
       {label}
+      {detail && <span className="command-toast-detail">{detail}</span>}
     </div>
   );
 }

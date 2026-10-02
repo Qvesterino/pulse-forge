@@ -997,6 +997,14 @@
   transform: translateY(0);
 }
 
+/* Consequence note (Command.detail) — dimmer than the label, reads as
+   what the system did on the user's behalf. */
+.command-toast-detail {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-faint);
+}
+
 /* Song-mode guard chip (TopBar) — floats under the transport cluster so the
    topbar layout does not jump while the warning is up. Amber left border to
    read as a caution, not an error. */

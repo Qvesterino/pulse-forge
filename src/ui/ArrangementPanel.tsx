@@ -11,6 +11,7 @@ import {
   useServices,
   useTracks,
 } from "./context";
+import { notifyOnboardingProgress } from "./OnboardingHint";
 import { useActivePatternId } from "./context";
 import { SpectralEditPanel } from "./SpectralEditPanel";
 import {
@@ -845,6 +846,8 @@ export function ArrangementPanel() {
       setRecSeconds(0);
       setLastCaptureInfo(recorder.captureInfo ?? null);
       setRecState("recording");
+      // First real take — the onboarding journey is complete.
+      notifyOnboardingProgress("recorded");
       void refreshRecordingInputs();
       if (loopTakeCapture && typeof services.scheduler.subscribeLoopBoundaries === "function") {
         loopBoundaryUnsubscribeRef.current = services.scheduler.subscribeLoopBoundaries((boundary) => {

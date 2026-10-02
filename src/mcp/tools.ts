@@ -2757,16 +2757,21 @@ async function executeArrangeTool(ctx: McpToolContext, record: Record<string, un
   };
 }
 
-/** ── CHECKPOINTS (agent time machine, docs/AGENTIC-DAW-PLAN.md Phase C) ----------, docs/AGENTIC-DAW-PLAN.md Fáza C) ──────
- * Named full-document snapshots for explore/rollback loops. Session-scoped
- * by design (agents are live sessions); the last 8 are kept. Restore is a
- * plain snapshot command — ONE undo step returns to the pre-restore state.
- * Destructive ops that pass the D4 gate auto-save an
+/** ── CHECKPOINTS (agent time machine, docs/AGENTIC-DAW-PLAN.md Phase C + C7) ──
+ * Named full-document snapshots for explore/rollback loops. The in-memory
+ * map is the live state; C7 adds a best-effort DURABLE copy per project
+ * (own tiny IDB database, src/persistence/McpCheckpointRepository.ts) that
+ * is hydrated on first checkpoint use of a project and written through on
+ * every save/delete. Persistence is strictly best-effort: any failure
+ * degrades to session-only, reported honestly in the read-back. Restore is
+ * a plain snapshot command — ONE undo step returns to the pre-restore
+ * state. Destructive ops that pass the D4 gate auto-save an
  * auto-before-<tool>-N checkpoint first. */
 const CHECKPOINT_LIMIT = 8;
 
 interface McpCheckpoint {
   doc: ProjectDocument;
+  projectId: string;
   stepsAtSave: number;
   summary: string;
   auto: boolean;
@@ -2774,6 +2779,46 @@ interface McpCheckpoint {
 
 const checkpoints = new Map<string, McpCheckpoint>();
 let checkpointCounter = 0;
+/** Projects whose durable checkpoints were already merged into the map. */
+const hydratedProjects = new Set<string>();
+
+export interface CheckpointRepoLike {
+  put(record: {
+    key: string;
+    projectId: string;
+    name: string;
+    label: string;
+    auto: boolean;
+    savedAt: string;
+    doc: ProjectDocument;
+  }): Promise<void>;
+  list(projectId: string): Promise<
+    Array<{
+      key: string;
+      projectId: string;
+      name: string;
+      label: string;
+      auto: boolean;
+      savedAt: string;
+      doc: ProjectDocument;
+    }>
+  >;
+  remove(projectId: string, name: string): Promise<void>;
+}
+
+/** Test/persistence injection. Null until the lazy default repo resolves;
+ * a failed resolution memoizes session-only mode. */
+let checkpointRepo: CheckpointRepoLike | null = null;
+let checkpointRepoResolved = false;
+let checkpointRepoPromise: Promise<CheckpointRepoLike | null> | null = null;
+
+/** Test hook — inject a repository (e.g. fake-indexeddb backed). Pass null
+ * to force session-only behavior. */
+export function setMcpCheckpointRepository(repo: CheckpointRepoLike | null): void {
+  checkpointRepo = repo;
+  checkpointRepoResolved = true;
+  checkpointRepoPromise = null;
+}
 
 /** Test hook — the store is module-level by design (per-window session). */
 export function resetMcpCheckpoints(): void {
@@ -2781,9 +2826,30 @@ export function resetMcpCheckpoints(): void {
   checkpointCounter = 0;
 }
 
+async function getCheckpointRepo(): Promise<CheckpointRepoLike | null> {
+  if (checkpointRepoResolved) return checkpointRepo;
+  checkpointRepoPromise ??= (async () => {
+    if (typeof indexedDB === "undefined") {
+      checkpointRepo = null;
+      checkpointRepoResolved = true;
+      return null;
+    }
+    const { McpCheckpointRepository } = await import("../persistence/McpCheckpointRepository");
+    checkpointRepo = new McpCheckpointRepository();
+    return checkpointRepo;
+  })();
+  try {
+    return await checkpointRepoPromise;
+  } catch {
+    checkpointRepo = null;
+    checkpointRepoResolved = true;
+    return null;
+  }
+}
+
 function checkpointName(raw: string | undefined, auto: boolean): string {
   const cleaned = String(raw ?? "")
-    .replace(/[\u0000-\u001f<>:"/\|?*]/g, "")
+    .replace(/[\u0000-\u001f<>:"/\\|?*]/g, "")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 40);
@@ -2792,13 +2858,46 @@ function checkpointName(raw: string | undefined, auto: boolean): string {
   return auto ? `auto-${checkpointCounter}` : `checkpoint-${checkpointCounter}`;
 }
 
+/** C7: merge the project's durable checkpoints into the live map (once per
+ * project, first checkpoint use). Persisted entries restart their
+ * steps-since counter at the current stack depth — reload resets that
+ * relationship by definition. */
+async function hydrateCheckpoints(ctx: McpToolContext, projectId: string): Promise<void> {
+  if (hydratedProjects.has(projectId)) return;
+  hydratedProjects.add(projectId);
+  try {
+    const repo = await getCheckpointRepo();
+    if (repo == null) return;
+    const persisted = await repo.list(projectId);
+    for (const record of [...persisted].reverse()) {
+      if (checkpoints.has(record.name)) continue;
+      checkpoints.set(record.name, {
+        doc: record.doc,
+        projectId,
+        stepsAtSave: ctx.undoStackLength(),
+        summary: record.label,
+        auto: record.auto,
+      });
+    }
+  } catch {
+    // persistence unavailable — session-only mode, already recorded
+  }
+}
+
+function checkpointProjectId(ctx: McpToolContext): string {
+  const doc = ctx.getDoc();
+  return doc.id !== "" ? doc.id : `unnamed:${doc.name}`;
+}
+
 function saveCheckpoint(rawName: string | undefined, ctx: McpToolContext, auto: boolean): string {
   const name = checkpointName(rawName, auto);
   const doc = ctx.getDoc();
+  const projectId = checkpointProjectId(ctx);
   const active = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
   checkpoints.delete(name); // re-save moves the entry to the LRU tail
   checkpoints.set(name, {
     doc: structuredClone(doc),
+    projectId,
     stepsAtSave: ctx.undoStackLength(),
     summary: `${doc.tracks.length} tracks · active pattern "${active?.name ?? "none"}" · ${doc.scenes.length} scenes`,
     auto,
@@ -2806,7 +2905,12 @@ function saveCheckpoint(rawName: string | undefined, ctx: McpToolContext, auto: 
   while (checkpoints.size > CHECKPOINT_LIMIT) {
     const oldest = checkpoints.keys().next().value;
     if (oldest == null) break;
+    const evicted = checkpoints.get(oldest);
     checkpoints.delete(oldest);
+    if (evicted)
+      void getCheckpointRepo()
+        .then((repo) => repo?.remove(evicted.projectId, oldest))
+        .catch(() => {});
   }
   return name;
 }
@@ -2820,7 +2924,11 @@ function destructiveAllowedWithCheckpoint(ctx: McpToolContext, tool: string): bo
   return true;
 }
 
-function executeCheckpointTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
+async function executeCheckpointTool(ctx: McpToolContext, record: Record<string, unknown>): Promise<McpToolResult> {
+  const projectId = checkpointProjectId(ctx);
+  await hydrateCheckpoints(ctx, projectId);
+  const repo = await getCheckpointRepo();
+
   const op = String(record.op ?? "list");
   if (op === "list") {
     if (checkpoints.size === 0) {
@@ -2832,24 +2940,44 @@ function executeCheckpointTool(ctx: McpToolContext, record: Record<string, unkno
     const lines: string[] = [];
     for (const [name, cp] of checkpoints) {
       const stepsSince = Math.max(0, ctx.undoStackLength() - cp.stepsAtSave);
-      lines.push(`${name}${cp.auto ? " (auto)" : ""} · ${cp.summary} · ${stepsSince} step(s) since`);
+      const scope = cp.projectId === projectId ? "" : " (other project)";
+      lines.push(`${name}${cp.auto ? " (auto)" : ""} · ${cp.summary} · ${stepsSince} step(s) since${scope}`);
     }
     return { text: lines.join("\n"), mutated: false };
   }
   const name = typeof record.name === "string" ? record.name.trim() : "";
   if (op === "save") {
     const saved = saveCheckpoint(name === "" ? undefined : name, ctx, false);
+    const entry = checkpoints.get(saved)!;
+    let durable = "session only";
+    if (repo != null) {
+      try {
+        await repo.put({
+          key: `${entry.projectId}::${saved}`,
+          projectId: entry.projectId,
+          name: saved,
+          label: entry.summary,
+          auto: entry.auto,
+          savedAt: new Date().toISOString(),
+          doc: entry.doc,
+        });
+        durable = "persisted";
+      } catch {
+        durable = "session only (persistence unavailable)";
+      }
+    }
     return {
-      text: `checkpoint "${saved}" saved (${checkpoints.get(saved)?.summary}) — restore anytime, session-scoped, ${checkpoints.size}/${CHECKPOINT_LIMIT} used`,
+      text: `checkpoint "${saved}" saved (${entry.summary}) — ${durable}, ${checkpoints.size}/${CHECKPOINT_LIMIT} in memory`,
       mutated: false,
     };
   }
-  if (name === "")
+  if (name === "") {
     return {
       text: `checkpoint ${op} needs a name — kyx_checkpoint {op: list} shows them`,
       mutated: false,
       isError: true,
     };
+  }
   const cp = checkpoints.get(name);
   if (!cp) {
     return {
@@ -2860,6 +2988,7 @@ function executeCheckpointTool(ctx: McpToolContext, record: Record<string, unkno
   }
   if (op === "delete") {
     checkpoints.delete(name);
+    if (repo != null) void repo.remove(projectId, name).catch(() => {});
     return { text: `checkpoint "${name}" deleted (${checkpoints.size} left)`, mutated: false };
   }
   if (op === "restore") {
@@ -2873,6 +3002,7 @@ function executeCheckpointTool(ctx: McpToolContext, record: Record<string, unkno
   }
   return { text: `unknown checkpoint op: ${op}`, mutated: false, isError: true };
 }
+
 
 /** "wav" | "mp3" from the tool record — anything else falls back to wav. */
 function exportFormatOf(record: Record<string, unknown>): "wav" | "mp3" {

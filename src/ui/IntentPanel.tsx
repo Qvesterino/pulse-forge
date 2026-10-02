@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useSelectionStore, useServices } from "./context";
+import { notifyOnboardingProgress } from "./OnboardingHint";
 import { parseIntentText, styleCandidatesForPrompt } from "../intent/text-parser";
 import { generateAsyncResult, resultForCandidate } from "../intent/pipeline";
 import { parseChaseIntent } from "../intent/chaseIntent";
@@ -656,6 +657,8 @@ export function IntentPanel() {
       setError(BRIEF_CONFLICT_BLOCK_MESSAGE);
       return;
     }
+    // User actually used the AI path — the onboarding hint can advance.
+    notifyOnboardingProgress("intent-generated");
     setBusy(true);
     setError(null);
     setStatus(null);

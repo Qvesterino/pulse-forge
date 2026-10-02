@@ -3,6 +3,13 @@ import type { ProjectDocument } from "../project-model/types";
 export interface Command {
   readonly type: string;
   readonly label: string;
+  /**
+   * Optional consequence note shown by the command toast under the label —
+   * for silent cleanups the command performs beyond what the user asked
+   * ("Removed effect — 3 automation/modulation references cleaned up").
+   * Undefined when the command did exactly what its label says.
+   */
+  readonly detail?: string;
   execute(doc: ProjectDocument): ProjectDocument;
   undo(doc: ProjectDocument): ProjectDocument;
   /**

@@ -1,0 +1,7 @@
+
+[2m Test Files [22m [1m[31m34 failed[39m[22m[2m | [22m[1m[32m698 passed[39m[22m[90m (732)[39m
+[2m      Tests [22m [1m[31m51 failed[39m[22m[2m | [22m[1m[32m8092 passed[39m[22m[2m | [22m[33m152 skipped[39m[90m (8295)[39m
+[2m   Start at [22m 11:11:18
+[2m   Duration [22m 2203.91s[2m (transform 618.96s, setup 3013.39s, collect 2232.07s, tests 5538.88s, environment 18086.01s, prepare 1005.81s)[22m
+
+vitest exit: 0

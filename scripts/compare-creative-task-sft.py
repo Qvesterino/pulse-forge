@@ -30,6 +30,94 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def request_failure_codes(prediction: Any, request: dict[str, Any]) -> list[str]:
+    if not TRAINER.validate_output(prediction):
+        return ["invalid-schema"]
+    if TRAINER.valid_for_request(prediction, request):
+        return []
+
+    failures: list[str] = []
+    if prediction["status"] == "proposal" and request.get("conflicts"):
+        failures.append("proposal-with-unresolved-conflict")
+
+    suggestions = prediction["suggestions"]
+    if prediction["status"] == "proposal":
+        requirements = request.get("requirements", {})
+        preferences = request.get("preferences", {})
+        for field, known in (
+            ("bpmRange", requirements.get("bpmRange")),
+            ("key", requirements.get("key")),
+            ("lengthSteps", requirements.get("lengthSteps")),
+            ("genre", preferences.get("genre")),
+            ("style", preferences.get("style")),
+            ("mood", preferences.get("mood")),
+            ("energy", preferences.get("energy")),
+            ("density", preferences.get("density")),
+            ("complexity", preferences.get("complexity")),
+            ("variation", preferences.get("variation")),
+        ):
+            if known is not None and field in suggestions and suggestions[field] != known:
+                failures.append(f"changed-explicit:{field}")
+
+        order = TRAINER.ROLE_ORDER
+        ordered_roles = lambda roles: [role for role in order if role in roles]
+        targets = ordered_roles(suggestions.get("targetRoles", []))
+        requested_targets = ordered_roles(requirements.get("targetRoles", []))
+        request_preserved = set(request.get("preserveRoles", []))
+        request_prohibited = set(request.get("prohibitedRoles", []))
+        suggested_preserved = set(suggestions.get("preserveRoles", []))
+        suggested_prohibited = set(suggestions.get("prohibitedRoles", []))
+        if set(targets) & (request_preserved | request_prohibited | suggested_preserved | suggested_prohibited):
+            failures.append("target-role-conflicts-with-preserve-or-prohibit")
+        if suggested_preserved & (request_prohibited | suggested_prohibited):
+            failures.append("preserved-role-is-prohibited")
+        if suggested_prohibited & request_preserved:
+            failures.append("prohibited-role-is-preserved")
+        if "targetRoles" in suggestions and requested_targets and targets != requested_targets:
+            failures.append("requested-target-role-mismatch")
+
+        available_roles = ordered_roles(request.get("projectContext", {}).get("availableRoles", []))
+        if available_roles and any(role not in available_roles for role in targets):
+            failures.append("target-role-unavailable-in-project")
+
+    return failures or ["request-context-rejected"]
+
+
+def prediction_mismatch_codes(prediction: dict[str, Any], expected: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    if prediction.get("status") != expected.get("status"):
+        failures.append("status-mismatch")
+
+    predicted_suggestions = prediction.get("suggestions", {})
+    expected_suggestions = expected.get("suggestions", {})
+    for field in sorted(set(predicted_suggestions) | set(expected_suggestions)):
+        if field not in expected_suggestions:
+            failures.append(f"unexpected-suggestion:{field}")
+        elif field not in predicted_suggestions:
+            failures.append(f"missing-suggestion:{field}")
+        elif TRAINER.canonical(predicted_suggestions[field]) != TRAINER.canonical(expected_suggestions[field]):
+            failures.append(f"value-mismatch:{field}")
+    for field in ("unknownFields", "question"):
+        if prediction.get(field) != expected.get(field):
+            failures.append(f"value-mismatch:{field}")
+    return failures
+
+
+def build_case_diagnostic(row: dict[str, Any], prediction: Any, failure_codes: list[str]) -> dict[str, Any]:
+    predicted_status = prediction.get("status") if isinstance(prediction, dict) else None
+    return {
+        "caseKey": sha256_file_value(str(row["id"])),
+        "language": row["language"],
+        "expectedStatus": row["response"].get("status"),
+        "predictedStatus": predicted_status if isinstance(predicted_status, str) else None,
+        "failureCodes": sorted(set(failure_codes)),
+    }
+
+
+def sha256_file_value(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+
+
 def read_report(path: Path) -> dict[str, Any]:
     try:
         raw = path.read_bytes()
@@ -108,6 +196,108 @@ def preflight(training_report_path: Path, adapter_dir: Path, corpus_dir: Path) -
     return checks, validation_rows, system_prompt
 
 
+@torch.no_grad()
+def evaluate_with_diagnostics(
+    model: Any,
+    tokenizer: Any,
+    system_prompt: str,
+    rows: list[dict[str, Any]],
+    limit: int,
+    include_case_diagnostics: bool,
+) -> dict[str, Any]:
+    model.eval()
+    selected = rows if limit == 0 else rows[:limit]
+    valid = exact = status_correct = role_safety_failures = 0
+    by_language: dict[str, dict[str, int]] = {}
+    failure_code_counts: dict[str, int] = {}
+    case_diagnostics: list[dict[str, Any]] = []
+
+    for index, row in enumerate(selected, start=1):
+        if index % 8 == 1 or index == len(selected):
+            print(f"validation inference {index}/{len(selected)}", flush=True)
+        language_metrics = by_language.setdefault(
+            row["language"], {"rows": 0, "valid": 0, "exact": 0, "statusCorrect": 0}
+        )
+        language_metrics["rows"] += 1
+        prompt = tokenizer.apply_chat_template(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": row["instruction"]},
+            ],
+            add_generation_prompt=True,
+            tokenize=False,
+        )
+        prompt_ids = tokenizer(prompt, add_special_tokens=False).input_ids
+        inputs = torch.tensor([prompt_ids], dtype=torch.long, device=model.device)
+        generated = model.generate(
+            inputs,
+            max_new_tokens=TRAINER.MAX_GENERATION_TOKENS,
+            do_sample=False,
+            pad_token_id=tokenizer.eos_token_id,
+        )
+        text = tokenizer.decode(generated[0][len(prompt_ids):], skip_special_tokens=True).strip()
+        prediction = None
+        request: dict[str, Any] = {}
+        failure_codes: list[str]
+        if len(text) > 16_384:
+            failure_codes = ["output-too-large"]
+        else:
+            try:
+                prediction = json.loads(text)
+                request = json.loads(row["instruction"])
+                failure_codes = request_failure_codes(prediction, request)
+            except json.JSONDecodeError:
+                failure_codes = ["invalid-json"]
+
+        if failure_codes:
+            if isinstance(prediction, dict) and isinstance(prediction.get("suggestions"), dict):
+                targets = set(prediction["suggestions"].get("targetRoles", []))
+                protected = set(request.get("preserveRoles", [])) | set(request.get("prohibitedRoles", []))
+                if targets & protected:
+                    role_safety_failures += 1
+        else:
+            valid += 1
+            language_metrics["valid"] += 1
+            failure_codes = prediction_mismatch_codes(prediction, row["response"])
+            if prediction.get("status") == row["response"].get("status"):
+                status_correct += 1
+                language_metrics["statusCorrect"] += 1
+            if TRAINER.canonical(prediction) == TRAINER.canonical(row["response"]):
+                exact += 1
+                language_metrics["exact"] += 1
+
+        for code in failure_codes:
+            failure_code_counts[code] = failure_code_counts.get(code, 0) + 1
+        if include_case_diagnostics:
+            case_diagnostics.append(build_case_diagnostic(row, prediction, failure_codes))
+
+    model.train()
+    total = len(selected)
+    metrics: dict[str, Any] = {
+        "rows": total,
+        "schemaAndSafetyValid": valid,
+        "validRate": valid / total if total else 0.0,
+        "exact": exact,
+        "exactRate": exact / total if total else 0.0,
+        "statusCorrect": status_correct,
+        "statusAccuracy": status_correct / total if total else 0.0,
+        "roleSafetyFailures": role_safety_failures,
+        "byLanguage": {
+            language: {
+                **language_metrics,
+                "validRate": language_metrics["valid"] / language_metrics["rows"] if language_metrics["rows"] else 0.0,
+                "exactRate": language_metrics["exact"] / language_metrics["rows"] if language_metrics["rows"] else 0.0,
+            }
+            for language, language_metrics in sorted(by_language.items())
+        },
+        "failureCodeCounts": dict(sorted(failure_code_counts.items())),
+        "syntheticOnly": True,
+    }
+    if include_case_diagnostics:
+        metrics["caseDiagnostics"] = case_diagnostics
+    return metrics
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Compare the exact base LFM and its creative-task LoRA on the same split.")
     parser.add_argument("--training-report", required=True, help="Pinned report.json from creative-task SFT training.")
@@ -115,6 +305,11 @@ def main() -> None:
     parser.add_argument("--corpus-dir", default=str(TRAINER.DEFAULT_CORPUS))
     parser.add_argument("--report-out", help="Optional JSON report path; existing files are never overwritten.")
     parser.add_argument("--limit", type=int, default=0, help="Optional partial smoke; 0 evaluates the complete held-out split.")
+    parser.add_argument(
+        "--include-case-diagnostics",
+        action="store_true",
+        help="Include hashed case keys and failure codes only; raw prompts and model outputs are never written.",
+    )
     parser.add_argument("--preflight-only", action="store_true", help="Verify all pins without loading weights or using the GPU.")
     args = parser.parse_args()
     if args.limit < 0:
@@ -157,17 +352,33 @@ def main() -> None:
     base_model.eval()
     evaluation_limit = args.limit
     print(f"base model inference: {evaluation_limit or len(validation_rows)} validation cases", flush=True)
-    base_metrics = TRAINER.evaluate(base_model, tokenizer, system_prompt, validation_rows, evaluation_limit)
+    base_metrics = evaluate_with_diagnostics(
+        base_model,
+        tokenizer,
+        system_prompt,
+        validation_rows,
+        evaluation_limit,
+        include_case_diagnostics=args.include_case_diagnostics,
+    )
 
     tuned_model = PeftModel.from_pretrained(base_model, str(adapter_dir), is_trainable=False, local_files_only=True)
     tuned_model.eval()
     print(f"LoRA inference: {evaluation_limit or len(validation_rows)} validation cases", flush=True)
-    tuned_metrics = TRAINER.evaluate(tuned_model, tokenizer, system_prompt, validation_rows, evaluation_limit)
+    tuned_metrics = evaluate_with_diagnostics(
+        tuned_model,
+        tokenizer,
+        system_prompt,
+        validation_rows,
+        evaluation_limit,
+        include_case_diagnostics=args.include_case_diagnostics,
+    )
 
     result = {
-        "comparisonVersion": 1,
+        "comparisonVersion": 2,
         "task": "creative-task-v1",
         "taskBoundary": "synthetic creative-brief interpretation only; not musical-quality evaluation",
+        "caseDiagnosticsIncluded": args.include_case_diagnostics,
+        "caseDiagnosticsPrivacy": "hashed case key, language, statuses and reason codes only; no prompts or model outputs",
         "preflight": checks,
         "evaluation": {
             "requestedCases": evaluation_limit or len(validation_rows),

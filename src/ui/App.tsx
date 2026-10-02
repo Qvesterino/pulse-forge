@@ -70,7 +70,7 @@ import { CommandToast } from "./CommandToast";
 // Palette lives in a lazy chunk — it loads on first Ctrl+K.
 const PaletteOverlay = lazy(() => import("./PaletteOverlay").then((m) => ({ default: m.PaletteOverlay })));
 import { HelpOverlay } from "./HelpOverlay";
-import { OnboardingHint } from "./OnboardingHint";
+import { notifyOnboardingProgress, OnboardingHint } from "./OnboardingHint";
 import { DiceProvider } from "./DiceContext";
 
 import {
@@ -377,6 +377,7 @@ export function App({
   };
   const setBottomPanel = (panel: BottomPanel) => {
     const target = panel === "fx" || panel === "plugin" ? "devices" : panel;
+    notifyOnboardingProgress("panel-opened");
     setDock(bumpPanelHeight(openInSlotA(dock, target), target));
     // A click that asks for a panel must expand a collapsed dock — landing
     // on a thin hidden bar reads as "the button is broken".

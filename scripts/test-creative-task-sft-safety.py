@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+from types import SimpleNamespace
 import unittest
 from pathlib import Path
 
@@ -12,6 +14,12 @@ if SPEC is None or SPEC.loader is None:
     raise RuntimeError(f"Could not import creative SFT trainer: {TRAINER_PATH}")
 TRAINER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(TRAINER)
+COMPARISON_PATH = ROOT / "scripts" / "compare-creative-task-sft.py"
+COMPARISON_SPEC = importlib.util.spec_from_file_location("creative_task_sft_comparison", COMPARISON_PATH)
+if COMPARISON_SPEC is None or COMPARISON_SPEC.loader is None:
+    raise RuntimeError(f"Could not import creative SFT comparison: {COMPARISON_PATH}")
+COMPARISON = importlib.util.module_from_spec(COMPARISON_SPEC)
+COMPARISON_SPEC.loader.exec_module(COMPARISON)
 
 
 def request_fixture() -> dict:
@@ -61,6 +69,7 @@ class CreativeTaskRequestSafetyTests(unittest.TestCase):
                 output = proposal_fixture()
                 output["suggestions"][field] = value
                 self.assertFalse(TRAINER.valid_for_request(output, request))
+                self.assertIn(f"changed-explicit:{field}", COMPARISON.request_failure_codes(output, request))
 
     def test_protected_and_prohibited_roles_cannot_be_targeted(self) -> None:
         request = request_fixture()
@@ -82,6 +91,10 @@ class CreativeTaskRequestSafetyTests(unittest.TestCase):
         request = request_fixture()
         request["conflicts"] = [{"role": "bass", "kind": "preserve-vs-addition"}]
         self.assertFalse(TRAINER.valid_for_request(proposal_fixture(), request))
+        self.assertEqual(
+            COMPARISON.request_failure_codes(proposal_fixture(), request),
+            ["proposal-with-unresolved-conflict"],
+        )
         clarification = {
             "version": 1,
             "status": "clarify",
@@ -90,6 +103,106 @@ class CreativeTaskRequestSafetyTests(unittest.TestCase):
             "question": "Should the bass stay or should I add a new one?",
         }
         self.assertTrue(TRAINER.valid_for_request(clarification, request))
+
+    def test_protected_role_failure_has_a_specific_diagnostic(self) -> None:
+        output = proposal_fixture()
+        output["suggestions"]["targetRoles"] = ["bass"]
+        output["suggestions"].pop("preserveRoles")
+        self.assertEqual(
+            COMPARISON.request_failure_codes(output, request_fixture()),
+            ["target-role-conflicts-with-preserve-or-prohibit"],
+        )
+
+    def test_prediction_differences_are_reported_by_field(self) -> None:
+        prediction = proposal_fixture()
+        expected = proposal_fixture()
+        prediction["suggestions"]["mood"] = "bright"
+        prediction["suggestions"].pop("genre")
+        prediction["suggestions"]["style"] = "west coast"
+        prediction["status"] = "clarify"
+        self.assertEqual(
+            COMPARISON.prediction_mismatch_codes(prediction, expected),
+            ["status-mismatch", "missing-suggestion:genre", "unexpected-suggestion:style", "value-mismatch:mood"],
+        )
+
+    def test_case_diagnostic_hashes_identity_and_never_includes_prompt_or_output(self) -> None:
+        row = {
+            "id": "fixture-case-id",
+            "language": "sk",
+            "instruction": "private synthetic prompt fixture",
+            "response": proposal_fixture(),
+        }
+        diagnostic = COMPARISON.build_case_diagnostic(row, proposal_fixture(), [])
+        serialized = str(diagnostic)
+        self.assertEqual(len(diagnostic["caseKey"]), 16)
+        self.assertNotIn(row["id"], serialized)
+        self.assertNotIn(row["instruction"], serialized)
+        self.assertNotIn("suggestions", diagnostic)
+        self.assertEqual(diagnostic["failureCodes"], [])
+
+    def test_evaluator_reports_reason_codes_without_recording_raw_briefs(self) -> None:
+        request = request_fixture()
+        conflicting_request = request_fixture()
+        conflicting_request["conflicts"] = [{"role": "bass", "kind": "preserve-vs-addition"}]
+        expected_clarification = {
+            "version": 1,
+            "status": "clarify",
+            "suggestions": {},
+            "unknownFields": ["roles"],
+            "question": "Should the bass stay or should I add a new one?",
+        }
+
+        class FakeModel:
+            device = "cpu"
+
+            def eval(self) -> None:
+                pass
+
+            def train(self) -> None:
+                pass
+
+            def generate(self, *_args, **_kwargs) -> list[list[int]]:
+                return [[1, 2, 3]]
+
+        class FakeTokenizer:
+            eos_token_id = 0
+
+            def __init__(self) -> None:
+                self.outputs = [json.dumps(proposal_fixture()), json.dumps(proposal_fixture())]
+
+            def apply_chat_template(self, *_args, **_kwargs) -> str:
+                return "private brief must not appear in diagnostics"
+
+            def __call__(self, *_args, **_kwargs) -> SimpleNamespace:
+                return SimpleNamespace(input_ids=[1, 2])
+
+            def decode(self, *_args, **_kwargs) -> str:
+                return self.outputs.pop(0)
+
+        rows = [
+            {
+                "id": "synthetic-good",
+                "language": "en",
+                "instruction": json.dumps(request),
+                "response": proposal_fixture(),
+            },
+            {
+                "id": "synthetic-conflict",
+                "language": "sk",
+                "instruction": json.dumps(conflicting_request),
+                "response": expected_clarification,
+            },
+        ]
+        metrics = COMPARISON.evaluate_with_diagnostics(
+            FakeModel(), FakeTokenizer(), "system", rows, 0, include_case_diagnostics=True
+        )
+
+        self.assertEqual(metrics["schemaAndSafetyValid"], 1)
+        self.assertEqual(metrics["exact"], 1)
+        self.assertEqual(metrics["failureCodeCounts"], {"proposal-with-unresolved-conflict": 1})
+        self.assertEqual(len(metrics["caseDiagnostics"]), 2)
+        self.assertNotIn("private brief must not appear", json.dumps(metrics["caseDiagnostics"]))
+        self.assertNotIn("instruction", metrics["caseDiagnostics"][0])
 
 
 if __name__ == "__main__":

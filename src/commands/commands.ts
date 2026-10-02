@@ -1438,7 +1438,9 @@ export function deleteTrack(doc: ProjectDocument, trackId: string): Command {
     ...(doc.sceneAutomation ? { sceneAutomation } : {}),
     ...(doc.macros ? { macros } : {}),
   };
-  return snapshot("deleteTrack", `Delete track ${target.name}`, doc, next);
+  const command = snapshot("deleteTrack", `Delete track ${target.name}`, doc, next);
+  const detail = cleanupDetail(doc, next);
+  return detail ? { ...command, detail } : command;
 }
 
 export function duplicateTrack(doc: ProjectDocument, trackId: string): Command {
@@ -1769,7 +1771,14 @@ export function removeEffectFromTracks(doc: ProjectDocument, trackIds: string[],
       .filter((r) => unique.has(r.id))
       .reduce((n, r) => n + r.effects.filter((f) => f.type === type).length, 0);
   if (removed === 0) throw new Error(`No ${EFFECT_META[type].name} instances on the selected tracks`);
-  return snapshot("removeEffectFromTracks", `Remove ${EFFECT_META[type].name} from ${unique.size} tracks`, doc, pruned);
+  const command = snapshot(
+    "removeEffectFromTracks",
+    `Remove ${EFFECT_META[type].name} from ${unique.size} tracks`,
+    doc,
+    pruned,
+  );
+  const detail = cleanupDetail(doc, pruned);
+  return detail ? { ...command, detail } : command;
 }
 
 /** Clear SOLO on every track and group — one command, one undo. */
@@ -5487,6 +5496,32 @@ export function addEffect(
  * the device back while its routings were permanently gone (the exact
  * deleteTrack bug class).
  */
+/**
+ * Consequence note for the command toast (audit: silent fixes must be seen):
+ * how many automation/modulation references a command cleaned up beyond what
+ * the user asked for. Pure before/after counts — 0 means "nothing extra
+ * happened" and the toast stays single-line.
+ */
+export function countReferenceCleanups(before: ProjectDocument, after: ProjectDocument): number {
+  let count = 0;
+  count += Math.max(0, (before.automation?.length ?? 0) - (after.automation?.length ?? 0));
+  count += Math.max(0, (before.sceneAutomation?.length ?? 0) - (after.sceneAutomation?.length ?? 0));
+  count += Math.max(0, (before.lfos?.length ?? 0) - (after.lfos?.length ?? 0));
+  const beforeMappings = before.macros?.reduce((n, m) => n + m.mappings.length, 0) ?? 0;
+  const afterMappings = after.macros?.reduce((n, m) => n + m.mappings.length, 0) ?? 0;
+  count += Math.max(0, beforeMappings - afterMappings);
+  count += Math.max(0, (before.midi?.ccMappings.length ?? 0) - (after.midi?.ccMappings.length ?? 0));
+  if (before.midi?.aftertouchTarget && !after.midi?.aftertouchTarget) count += 1;
+  return count;
+}
+
+function cleanupDetail(before: ProjectDocument, after: ProjectDocument): string | undefined {
+  const cleaned = countReferenceCleanups(before, after);
+  return cleaned > 0
+    ? `${cleaned} automation/modulation reference${cleaned === 1 ? "" : "s"} cleaned up`
+    : undefined;
+}
+
 function stripDanglingEffectReferences(doc: ProjectDocument, removed: Set<string>): ProjectDocument {
   const keyOf = (target: import("../project-model/types").AutomationTarget | undefined | null): string =>
     target?.fxId ? `${String(target.trackId)}|${String(target.fxId)}` : "";
@@ -5529,7 +5564,9 @@ export function removeEffect(doc: ProjectDocument, trackId: string, fxId: string
   );
   // Whole-command delta (no partial applyToYDoc): the collab fallback
   // applies execute() on peers, which propagates the reference pruning too.
-  return snapshot("removeEffect", `Remove ${EFFECT_META[target.type].name}`, doc, next);
+  const command = snapshot("removeEffect", `Remove ${EFFECT_META[target.type].name}`, doc, next);
+  const detail = cleanupDetail(doc, next);
+  return detail ? { ...command, detail } : command;
 }
 
 /**
