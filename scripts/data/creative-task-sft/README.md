@@ -13,7 +13,9 @@ npm run creative-task:sft-validate   # verify deterministic bytes, hashes, schem
 
 The separate trainer does not inherit the action model's base model or report. It requires an explicit model ID/path, pinned model revision, `--allow-synthetic-bootstrap`, CUDA, and at least 4 GiB free VRAM. Missing model files are **not downloaded by default**; `--allow-model-download` is a separate explicit opt-in. It saves only a LoRA adapter and an experimental report under the caller-selected output directory; there is no automatic merge, Ollama import, runtime registration, or promotion.
 
-The current local Hugging Face cache has the LFM2.5 tokenizer/config but not its weight shards. No model download or training run has been started; do not enable downloads without checking disk/network constraints and the training-data gate.
+**Pilot status (2026-10-02):** one isolated run trained the pinned `LiquidAI/LFM2.5-1.2B-Instruct` snapshot for three epochs on the 32-row synthetic train split with downloads disabled. The adapter's 32-row validation result is in `bootstrap-evaluation-2026-10-02-v2.json`; the complete paired base-vs-adapter score is in `base-vs-adapter-2026-10-02.json`; per-case, prompt-free failure codes are in `base-vs-adapter-diagnostics-2026-10-02.json`. The adapter passed 25/32 schema/context checks, but all 24 expected creative proposals failed to produce an accepted proposal (17 abstentions; 7 rejected proposals), while its four exact matches were out-of-scope abstentions. It is not promotion-eligible and must not be routed in the UI. These are synthetic interpretation metrics, not human usefulness or musical-quality results.
+
+The local SFT weight snapshot was available for that pinned run and `modelDownloadAllowed` is false in its report. That historical result replaces the earlier setup note that said only tokenizer/config files were cached and training had not started. Do not download another model or start another synthetic-only training run as a substitute for the human-review gate.
 
 ```powershell
 npm run creative-task:sft-train -- `
@@ -23,4 +25,4 @@ npm run creative-task:sft-train -- `
   --allow-synthetic-bootstrap
 ```
 
-Do not use the bootstrap report as a release gate. A release candidate requires consented, human-reviewed SK/EN data and a separate blind-listening evaluation; keep those examples out of this synthetic set and the model's training split.
+Do not use the bootstrap report as a release gate. The local human-review format, rubric and read-only validator are documented in `docs/CREATIVE-TASK-HUMAN-EVALUATION.md`; real examples must stay under the Git-ignored `.sft/creative-human-review/` directory and must never be added to this synthetic corpus. The validator does not export or train reviewed data; a separate consent-preserving training path and blinded listening study are still required.

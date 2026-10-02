@@ -570,10 +570,12 @@ Toto je dôkaz, že samotná JSON schéma nestačí; konfliktné návrhy nesmú 
 úplný syntetický diagnostický baseline action-only
 `kyx-intent-v30-q8:latest`, nie creative model, reprezentatívny ľudský holdout ani hodnotenie hudby; tento provider sa
 nesmie routovať na tvorivé briefy.
-**Otvorené:** consented human-reviewed holdout s rubrikou, analýza zlyhaní a opakovateľné porovnanie deterministic
-brief baseline vs. samostatný creative model na tom istom splite, blind listening, UI pre clarify/approve a splnenie
-release gates. Syntetický SFT bootstrap adapter ostáva nepromovaný; action-only LFM sa nesmie považovať za hotový
-creative compiler.
+**Otvorené:** získať consented human-reviewed príklady, vykonať nezávislé anotovanie/adjudikáciu podľa
+`docs/CREATIVE-TASK-HUMAN-EVALUATION.md` a potom na rovnakom splite porovnať deterministic brief baseline so
+samostatným creative modelom. Rubrika aj read-only validator pre lokálny private intake už existujú, ale zatiaľ
+neboli pridané ani vymyslené žiadne reálne príklady. Blind listening, UI pre clarify/approve a release gates ostávajú
+otvorené. Syntetický SFT bootstrap adapter ostáva nepromovaný; action-only LFM sa nesmie považovať za hotový creative
+compiler.
 
 **Izolovaný creative-task SFT bootstrap pilot (2026-10-02):** pinned výsledok je v
 `scripts/data/creative-task-sft/bootstrap-evaluation-2026-10-02-v2.json`; nepromovaný lokálny adapter je v

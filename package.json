@@ -36,6 +36,7 @@
     "creative-task:sft-compare": "node scripts/run-creative-task-sft-compare.mjs",
     "creative-task:sft-self-test": "node scripts/run-creative-task-sft-self-test.mjs",
     "creative-task:sft-train": "node scripts/run-creative-task-sft.mjs",
+    "creative-task:human-review-validate": "vite-node scripts/validate-creative-task-human-corpus.mts",
     "deploy:cf": "npm run build && npx wrangler pages deploy dist",
     "desktop:build": "node scripts/desktop-package.mjs",
     "desktop:build:mac:mrt2": "node scripts/desktop-package-mrt2-mac.mjs",

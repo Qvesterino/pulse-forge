@@ -7,6 +7,7 @@
 - The expected output is a field-level interpretation target. Preference strings and clarification examples need human review before any release claim.
 - Hard-field compliance, soft-preference extraction, clarification decisions and unresolved fields are reported separately. The evaluator does not score whether generated music sounds good.
 - Real-creator prompts may be added only after explicit consent and privacy review; do not ingest project audio, vocals, lyrics or raw transcripts by default.
+- For two-reviewer annotation, adjudication, local-only storage and the read-only human-corpus validator, follow [`docs/CREATIVE-TASK-HUMAN-EVALUATION.md`](../../docs/CREATIVE-TASK-HUMAN-EVALUATION.md). The existing set remains synthetic and held out.
 
 Given provider predictions as JSONL rows of `{ "id": "<golden id>", "output": <CreativeTaskOutputV1> }`, run:
 
