@@ -527,9 +527,9 @@ pattern brief a vocalist-led zadanie mimo action-only LFM routy. `IntentPanel` p
 existujúceho generation workflow bez Ollama probe; `tryModelRoute` opakuje ochranu pre ďalších callerov; MCP preskočí
 action model pri kreatívnom brief-e aj pri už deterministicky rozpoznanom revise. Akčné parafrázy, ktoré parser
 nepozná, ostávajú kandidátom na modelový fallback a prechádzajú pôvodným schema/adapter/executor reťazcom. Overené UI,
-resolver a MCP regresiami. Toto **ešte nie je creative LFM compiler**: hoci bezpečnostná hranica, v1 task contract
-a syntetický eval scaffold už vznikli, provider/model tréning, reprezentatívny human-reviewed holdout, modelový
-uncertainty/clarify eval a UI integrácia sú stále otvorené.
+resolver a MCP regresiami. Toto **ešte nie je creative LFM compiler**: bezpečnostná hranica, v1 task contract,
+syntetický eval scaffold aj izolovaný creative-SFT pilot s base-vs-adapter meraním už vznikli; reprezentatívny
+human-reviewed holdout, uncertainty/clarify evaluácia a UI integrácia sú stále otvorené.
 
 **Stav (2026-10-02): creative-task kontrakt v1 a opt-in provider implementované; UI/model rollout ostáva otvorený.**
 `src/intent/creative-task-contract.ts` skladá dočasný request z hard požiadaviek, preferencií, preserve/avoid,
@@ -570,9 +570,10 @@ Toto je dôkaz, že samotná JSON schéma nestačí; konfliktné návrhy nesmú 
 úplný syntetický diagnostický baseline action-only
 `kyx-intent-v30-q8:latest`, nie creative model, reprezentatívny ľudský holdout ani hodnotenie hudby; tento provider sa
 nesmie routovať na tvorivé briefy.
-**Otvorené:** samostatné creative-task SFT dáta/model, opakovateľná eval po platných odpovediach na celom holdoute,
-consented human-reviewed holdout, rubric/blind listening, UI pre clarify/approve a až po release gates napojenie
-trénovaného creative modelu. Action-only LFM sa nesmie považovať za hotový creative compiler.
+**Otvorené:** consented human-reviewed holdout s rubrikou, analýza zlyhaní a opakovateľné porovnanie deterministic
+brief baseline vs. samostatný creative model na tom istom splite, blind listening, UI pre clarify/approve a splnenie
+release gates. Syntetický SFT bootstrap adapter ostáva nepromovaný; action-only LFM sa nesmie považovať za hotový
+creative compiler.
 
 **Izolovaný creative-task SFT bootstrap pilot (2026-10-02):** pinned výsledok je v
 `scripts/data/creative-task-sft/bootstrap-evaluation-2026-10-02-v2.json`; nepromovaný lokálny adapter je v
@@ -772,4 +773,4 @@ FL Studio je latka pre úplnosť a rýchlosť beatmaking workflow, nie marketing
 17. release bar
 ```
 
-**Fáza 9 je čiastočne hotová:** ONNX action-model baseline má reprodukovateľný report, ktorý pinne model/vocab/grammar, eval corpus a hashe evaluátora; experimentálne decoder margins nesmú nastaviť release `gatePassed`. Aktuálny LFM má samostatný runtime report pre presný lokálny model a 298-riadkový validation split, ale meria iba action routing a release gates nespĺňa. Ešte treba (a) doplniť overiteľnú provenienciu tréningového corpusu pri ďalšom tréningu — existujúci artefakt nesmie dostať spätne vymyslené hashe, (b) vytvoriť candidate/family-disjoint holdout, (c) zjednotiť budúce porovnanie ONNX/LFM/baseline na rovnakých taskoch bez zamieňania ich úloh a (d) oddeliť single-call latenciu od kvalitatívneho eval-u. Najbližší krok je odstrániť chyby podľa triedy a uzavrieť tieto dôkazy, nie spúšťať ďalšie epochy naslepo. Potom pokračovať v kontrakte fázy 10 a napojiť LFM na creative brief compiler; UI sa môže stavať paralelne bez zmeny output schema.
+**Fáza 9 je čiastočne hotová:** ONNX action-model baseline má reprodukovateľný report, ktorý pinne model/vocab/grammar, eval corpus a hashe evaluátora; experimentálne decoder margins nesmú nastaviť release `gatePassed`. Aktuálny LFM má samostatný runtime report pre presný lokálny model a 298-riadkový validation split, ale meria iba action routing a release gates nespĺňa. Ešte treba (a) doplniť overiteľnú provenienciu tréningového corpusu pri ďalšom tréningu — existujúci artefakt nesmie dostať spätne vymyslené hashe, (b) vytvoriť candidate/family-disjoint holdout, (c) zjednotiť budúce porovnanie ONNX/LFM/baseline na rovnakých taskoch bez zamieňania ich úloh a (d) oddeliť single-call latenciu od kvalitatívneho eval-u. Najbližší krok je odstrániť chyby podľa triedy a uzavrieť tieto dôkazy, nie spúšťať ďalšie epochy naslepo. Creative-task LFM ostáva mimo routing, kým dedicated model neprejde human-reviewed gates; UI sa môže stavať paralelne proti schválenému contractu bez aktivácie neovereného modelu.
