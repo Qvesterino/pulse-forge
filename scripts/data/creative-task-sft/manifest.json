@@ -1,0 +1,62 @@
+{
+  "formatVersion": 1,
+  "task": "creative-task-v1",
+  "purpose": "synthetic output-contract and extraction bootstrap; not a production-quality corpus",
+  "synthetic": true,
+  "humanReviewed": false,
+  "eligibleForModelPromotion": false,
+  "prompt": {
+    "path": "prompt.txt",
+    "sha256": "6d4614a97b95957704cde0fbe9dd8fb777cb93681ad897872115e6cb39688f8b"
+  },
+  "splits": {
+    "train": {
+      "path": "train.jsonl",
+      "rows": 32,
+      "families": [
+        "amapiano-sunrise-vocal-bed",
+        "cinematic-drill-energy",
+        "conflicting-lead-revision",
+        "liquid-dnb-wide-texture",
+        "lyrics-writing-out-of-scope",
+        "percussive-trap-pocket",
+        "revision-mood-preserves-arrangement",
+        "two-step-garage-chord-preservation"
+      ],
+      "sha256": "ccc7a05669759c31f6da777f8442abfe4afb87258e67b08d2b0d95153f7e1166"
+    },
+    "validation": {
+      "path": "validation.jsonl",
+      "rows": 32,
+      "families": [
+        "arcade-chiptune-keyed-loop",
+        "cinematic-drone-suspense",
+        "eurodance-chorus-lift",
+        "industrial-techno-pressure",
+        "latin-reggaeton-pocket",
+        "postrock-build-preserving-drums",
+        "press-release-out-of-scope",
+        "underspecified-contemporary-style"
+      ],
+      "sha256": "af7b9aa0ab628b4f981ba2f10675c57c2ac56ea395d5a073f7d28c642e31b816"
+    }
+  },
+  "heldOutGolden": {
+    "path": "../creative-task-v1-golden.jsonl",
+    "rows": 21,
+    "sha256": "c14384799666b47d4118ee033d91ff485932acaf9a8bf5e50b5312df02bf1f07",
+    "familyOverlap": [],
+    "exactPromptOverlap": false
+  },
+  "sourceHashes": {
+    "scripts/generate-creative-task-sft.mts": "1f69ce8a9b70485c7d69f27fe354df6ea2b6ee6c31b44da236fe57f62f308568",
+    "scripts/run-creative-task-sft.mjs": "d8e8b9e74696771e66ebd76ede8175c50bba057ecda3416a35898a5ebc98be26",
+    "scripts/train-creative-task-sft.py": "24836ba1eeefee4991a031d3bf7ab1c90e7e7ea2a1a36eaad3d607a14b504cb9",
+    "src/ai/types.ts": "72aa46b1e1ea692bc8c8085b379613df627d532f1be276050a2f41e481f22c0d",
+    "src/intent/creative-task-contract.ts": "a5b5bac5bc4a8eab1f942b32bd7ce35fc5a178969c6708c14883385423deee4a",
+    "src/intent/creative-task-ollama.ts": "44c50153eb95e9a51406e5daaa6bab00fcf24e773fa600b8b268d5c9fdac91f1",
+    "src/intent/brief-contract.ts": "4a5277ef4a1663779f33c2610cd3f5481d909c9b9a126ce10723f175225f2b49",
+    "src/intent/text-parser.ts": "aedd78692dde6777e686aba3dec10f1a447d7e3966fa0900917cce76a9ce2f7a",
+    "src/project-model/types.ts": "ac4201ef1341f9129ec425f6dc0810c2867159d9c2055faf632e9993ab3f9cd3"
+  }
+}

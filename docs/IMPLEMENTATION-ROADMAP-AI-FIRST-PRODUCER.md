@@ -573,6 +573,19 @@ trénovaného creative modelu. Action-only LFM sa nesmie považovať za hotový 
 
 **Kód/nástroje:** `scripts/train-intent-sft.py`, `scripts/eval-ollama-intent.mts`, `scripts/data/intent-sft/`, `docs/INTENT-DATASET-TEMPLATES.md`, `tests/intent-model-*`, `src/intent/model-ollama.ts`.
 
+**Prvá oddelená creative-SFT fáza (2026-10-02):** `scripts/data/creative-task-sft/` je samostatný
+synthetic-bootstrap corpus; action goldens ani creative held-out golden sa nepoužívajú ako tréningové riadky.
+`scripts/generate-creative-task-sft.mts` volá presný runtime brief parser/request builder, pripína inference system
+prompt, kontroluje teacher hard-fakty, chránené roly, hash-e zdrojov, train/validation family-disjoint split a presný
+leakage check proti 21 held-out prípadom. Aktuálne ide o 32 train + 32 validation promptov, 8 rodín na split,
+SK/EN a proposal/clarify/abstain príklady. Je to výhradne syntetický format/extraction bootstrap, **nie** consented ani
+human-reviewed dataset a **nie** dôkaz producentovho porozumenia. Oddelený `scripts/train-creative-task-sft.py`
+vyžaduje explicitný model aj pinned revision, explicitné potvrdenie syntetických dát, CUDA a minimálne voľné VRAM;
+meria creative-schema validity, exact/status accuracy a role-safety, ukladá len adapter a nevie nič registrovať ani
+promovať. Tréning zatiaľ nebol spustený: na spoločnej GPU bežal iný verify job a tento malý bootstrap ešte nie je
+tréningovo reprezentatívny. Zostáva rozšíriť ho consented/human-reviewed podľa rubricy, evalovať akčný baseline vs.
+nový samostatný creative model na golden holdoute, vykonať blind listening a splniť release gates.
+
 **Hotovo, keď:** jeden kandidátny model prejde rovnaký pinned evaluator opakovateľne, porazí relevantný baseline na držaných-out parafrázach a neporuší safety gates; report je oddelený od hudobnej blind-evaluácie.
 
 ### 6.5 Fáza 12 — prvý skutočný AI Producer vertical slice

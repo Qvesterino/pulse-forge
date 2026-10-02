@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
@@ -17,6 +18,7 @@ import { createCreativeTaskOllamaProvider, creativeTaskOllamaSystemPrompt } from
 
 const CREATIVE_GOLDEN_PATH = path.join(process.cwd(), "scripts", "data", "creative-task-v1-golden.jsonl");
 const ACTION_GOLDEN_PATH = path.join(process.cwd(), "scripts", "data", "intent-sft", "golden.jsonl");
+const CREATIVE_SFT_DIR = path.join(process.cwd(), "scripts", "data", "creative-task-sft");
 
 function readCreativeGolden(): CreativeTaskGoldenCaseV1[] {
   return readFileSync(CREATIVE_GOLDEN_PATH, "utf8")
@@ -25,7 +27,130 @@ function readCreativeGolden(): CreativeTaskGoldenCaseV1[] {
     .map((line) => JSON.parse(line) as CreativeTaskGoldenCaseV1);
 }
 
+function readJsonl<T>(bytes: Buffer): T[] {
+  return bytes
+    .toString("utf8")
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length > 0)
+    .map((line) => JSON.parse(line) as T);
+}
+
+function sha256(value: Buffer | string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function normalizePrompt(prompt: string): string {
+  return prompt.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("en-US");
+}
+
 describe("creative task contract v1", () => {
+  it("keeps the creative SFT bootstrap pinned, family-disjoint, and outside both held-out datasets", () => {
+    const manifest = JSON.parse(readFileSync(path.join(CREATIVE_SFT_DIR, "manifest.json"), "utf8")) as {
+      humanReviewed: boolean;
+      eligibleForModelPromotion: boolean;
+      prompt: { sha256: string };
+      splits: Record<string, { path: string; rows: number; families: string[]; sha256: string }>;
+      heldOutGolden: {
+        path: string;
+        rows: number;
+        sha256: string;
+        familyOverlap: string[];
+        exactPromptOverlap: boolean;
+      };
+      sourceHashes: Record<string, string>;
+    };
+    const promptBytes = readFileSync(path.join(CREATIVE_SFT_DIR, "prompt.txt"));
+    const trainBytes = readFileSync(path.join(CREATIVE_SFT_DIR, "train.jsonl"));
+    const validationBytes = readFileSync(path.join(CREATIVE_SFT_DIR, "validation.jsonl"));
+    const train = readJsonl<{
+      id: string;
+      family: string;
+      split: string;
+      language: "en" | "sk";
+      source: string;
+      operation: "generate" | "revise";
+      prompt: string;
+      instruction: string;
+      response: unknown;
+    }>(trainBytes);
+    const validation = readJsonl<(typeof train)[number]>(validationBytes);
+    const golden = readCreativeGolden();
+    const actionGoldens = readFileSync(ACTION_GOLDEN_PATH, "utf8")
+      .split(/\r?\n/)
+      .filter((line) => line.trim().length > 0)
+      .map((line) => JSON.parse(line) as { instruction: string });
+    const trainingFamilies = new Set(train.map((row) => row.family));
+    const validationFamilies = new Set(validation.map((row) => row.family));
+    const heldOutFamilies = new Set(golden.map((row) => row.family));
+    const heldOutIds = new Set(golden.map((row) => row.id));
+    const heldOutPrompts = new Set(golden.map((row) => normalizePrompt(row.prompt)));
+    const ids = new Set<string>();
+    const prompts = new Set<string>();
+    const languages = new Set<string>();
+    const statuses = new Set<string>();
+
+    expect(manifest.humanReviewed).toBe(false);
+    expect(manifest.eligibleForModelPromotion).toBe(false);
+    expect(promptBytes.toString("utf8")).toBe(creativeTaskOllamaSystemPrompt());
+    expect(manifest.prompt.sha256).toBe(sha256(promptBytes));
+    expect(manifest.splits.train.sha256).toBe(sha256(trainBytes));
+    expect(manifest.splits.validation.sha256).toBe(sha256(validationBytes));
+    expect(manifest.splits.train.rows).toBe(train.length);
+    expect(manifest.splits.validation.rows).toBe(validation.length);
+    expect([...trainingFamilies].sort()).toEqual(manifest.splits.train.families);
+    expect([...validationFamilies].sort()).toEqual(manifest.splits.validation.families);
+    expect([...trainingFamilies].some((family) => validationFamilies.has(family))).toBe(false);
+    expect([...trainingFamilies, ...validationFamilies].some((family) => heldOutFamilies.has(family))).toBe(false);
+    expect(manifest.heldOutGolden.sha256).toBe(sha256(readFileSync(CREATIVE_GOLDEN_PATH)));
+    expect(manifest.heldOutGolden.rows).toBe(golden.length);
+    expect(manifest.heldOutGolden.familyOverlap).toEqual([]);
+    expect(manifest.heldOutGolden.exactPromptOverlap).toBe(false);
+
+    for (const [relativePath, expectedHash] of Object.entries(manifest.sourceHashes)) {
+      expect(sha256(readFileSync(path.join(process.cwd(), relativePath)))).toBe(expectedHash);
+    }
+    for (const [split, rows] of [
+      ["train", train],
+      ["validation", validation],
+    ] as const) {
+      for (const row of rows) {
+        const prompt = normalizePrompt(row.prompt);
+        const request = JSON.parse(row.instruction) as {
+          version: number;
+          operation: string;
+          prompt: string;
+          preserveRoles: string[];
+          prohibitedRoles: string[];
+        };
+        const checked = validateCreativeTaskOutput(row.response);
+        expect(row.split).toBe(split);
+        expect(row.source).toBe("synthetic-author-authored-v1");
+        expect(heldOutIds.has(row.id)).toBe(false);
+        expect(heldOutPrompts.has(prompt)).toBe(false);
+        expect(
+          actionGoldens.some((item) => item.instruction.toLocaleLowerCase() === row.prompt.toLocaleLowerCase()),
+        ).toBe(false);
+        expect(ids.has(row.id)).toBe(false);
+        expect(prompts.has(prompt)).toBe(false);
+        expect(request).toMatchObject({ version: 1, operation: row.operation, prompt: row.prompt });
+        expect(checked.ok).toBe(true);
+        if (checked.ok) {
+          statuses.add(checked.output.status);
+          const targets = checked.output.suggestions.targetRoles ?? [];
+          expect(targets.some((role) => request.preserveRoles.includes(role))).toBe(false);
+          expect(targets.some((role) => request.prohibitedRoles.includes(role))).toBe(false);
+        }
+        ids.add(row.id);
+        prompts.add(prompt);
+        languages.add(row.language);
+      }
+    }
+    expect(train.length).toBeGreaterThanOrEqual(24);
+    expect(validation.length).toBeGreaterThanOrEqual(24);
+    expect(languages).toEqual(new Set(["en", "sk"]));
+    expect(statuses).toEqual(new Set(["proposal", "clarify", "abstain"]));
+  });
+
   it("locks a held-out SK/EN interpretation set separate from command-action goldens", () => {
     const golden = readCreativeGolden();
     const actionGoldens = readFileSync(ACTION_GOLDEN_PATH, "utf8")
