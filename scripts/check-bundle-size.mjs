@@ -82,7 +82,17 @@ const ENTRY_BUDGET_KB = 1070;
 // removal or feature regression would. The eager BOOT graph DID shrink this
 // wave (song planner + handoff sender went on-demand). Next big feature
 // wave must offset here, not bump again.
-const TOTAL_BUDGET_KB = 3500;
+// 3500 (2026-09-30) held for two days of parallel waves. Measured 3532 KB on
+// 2026-10-02 — bumped to 3560 with the wave inventory: the ONNX intent student
+// went LIVE in the browser (n-gram featurizer + multi-head decoder now in the
+// eager graph; gate passed), the recording pipeline gained reliability/latency
+// wiring, the intent range-edit wave landed (selection-locked edits, duplicate
+// with audio), the MCP agent surface grew, and the UX discoverability layers
+// shipped (session state indicator, 5-step onboarding, slider tooltip
+// plumbing). 28 KB headroom; the standing rule applies harder than ever —
+// the next wave offsets or splits, and the two ~800 KB eager anchors
+// (App, commands) are the first candidates for a measured diet.
+const TOTAL_BUDGET_KB = 3560;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, and ONNX Runtime for the
 // symbolic/ranker workers. Keep these optional runtimes under one existing
