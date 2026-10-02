@@ -109,7 +109,9 @@ def build_case_diagnostic(row: dict[str, Any], prediction: Any, failure_codes: l
         "caseKey": sha256_file_value(str(row["id"])),
         "language": row["language"],
         "expectedStatus": row["response"].get("status"),
-        "predictedStatus": predicted_status if isinstance(predicted_status, str) else None,
+        "predictedStatus": predicted_status
+        if isinstance(predicted_status, str) and predicted_status in {"proposal", "clarify", "abstain"}
+        else None,
         "failureCodes": sorted(set(failure_codes)),
     }
 

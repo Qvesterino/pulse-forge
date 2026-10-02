@@ -1,0 +1,726 @@
+{
+  "comparisonVersion": 2,
+  "task": "creative-task-v1",
+  "taskBoundary": "synthetic creative-brief interpretation only; not musical-quality evaluation",
+  "caseDiagnosticsIncluded": true,
+  "caseDiagnosticsPrivacy": "hashed case key, language, statuses and reason codes only; no prompts or model outputs",
+  "preflight": {
+    "trainingReport": "9fa5c35aaf7fe02bbce7b2fbad953074129eecbf968a6033759d096d95c66ada",
+    "corpusManifest": "6ee6c0b1069527794d9bcb5df4f5fbba541905e810c7fd7c6a6bc74d828adcd7",
+    "trainRows": 32,
+    "validationRows": 32,
+    "systemPromptSha256": "6d4614a97b95957704cde0fbe9dd8fb777cb93681ad897872115e6cb39688f8b",
+    "baseModel": "LiquidAI/LFM2.5-1.2B-Instruct",
+    "baseModelRevision": "0f604ada3f766f9f257460c4c9f0b5d6f69d431b",
+    "adapterModelSha256": "c3536b6580f4db7373df9dafbf97975b9ecf27bc84e0455f3a1bb50463978e89",
+    "syntheticOnly": true,
+    "modelDownloadAllowed": false
+  },
+  "evaluation": {
+    "requestedCases": 32,
+    "totalValidationCases": 32,
+    "completeRun": true,
+    "maxNewTokens": 160,
+    "base": {
+      "rows": 32,
+      "schemaAndSafetyValid": 0,
+      "validRate": 0.0,
+      "exact": 0,
+      "exactRate": 0.0,
+      "statusCorrect": 0,
+      "statusAccuracy": 0.0,
+      "roleSafetyFailures": 0,
+      "byLanguage": {
+        "en": {
+          "rows": 16,
+          "valid": 0,
+          "exact": 0,
+          "statusCorrect": 0,
+          "validRate": 0.0,
+          "exactRate": 0.0
+        },
+        "sk": {
+          "rows": 16,
+          "valid": 0,
+          "exact": 0,
+          "statusCorrect": 0,
+          "validRate": 0.0,
+          "exactRate": 0.0
+        }
+      },
+      "failureCodeCounts": {
+        "invalid-schema": 32
+      },
+      "syntheticOnly": true,
+      "caseDiagnostics": [
+        {
+          "caseKey": "08c707712e428a5a",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "d9907d67125a42ec",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "5ff2d6d705b62354",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "4ffaff9466b8849f",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "4c0cc1fa135277df",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "66ba85c19d6262dd",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "b8f9a4734173f3d1",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "4cc7ed90068d51b0",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "325831d9ba652006",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "1904ac067ddc54b3",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "858139f7e903c971",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "e8ccd622500b39f1",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "4d6d03e12e63187b",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "500a9dba3958eb20",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "473365fe18535160",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "34581a69226c2d56",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "01a87209032a52d5",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "17632ce215353897",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "8e214dca52766d9b",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "328cd3c99e0a05a7",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "a6ab75d824f622d0",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "be4f8cd76d944c95",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "059236a4ddc4740c",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "f68529a3657f3972",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "f6dd8587dc52eea0",
+          "language": "en",
+          "expectedStatus": "clarify",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "1c4b1f7290d96c94",
+          "language": "en",
+          "expectedStatus": "clarify",
+          "predictedStatus": "clarify",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "8d39411d19939ef9",
+          "language": "sk",
+          "expectedStatus": "clarify",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "81645853a07ce810",
+          "language": "sk",
+          "expectedStatus": "clarify",
+          "predictedStatus": "clarify",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "222dd37617b8ca86",
+          "language": "en",
+          "expectedStatus": "abstain",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "59f6af392b633601",
+          "language": "en",
+          "expectedStatus": "abstain",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "04b7eb0b45b0f4c9",
+          "language": "sk",
+          "expectedStatus": "abstain",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "f9e39b5219c5bf6a",
+          "language": "sk",
+          "expectedStatus": "abstain",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        }
+      ]
+    },
+    "creativeSft": {
+      "rows": 32,
+      "schemaAndSafetyValid": 25,
+      "validRate": 0.78125,
+      "exact": 4,
+      "exactRate": 0.125,
+      "statusCorrect": 4,
+      "statusAccuracy": 0.125,
+      "roleSafetyFailures": 0,
+      "byLanguage": {
+        "en": {
+          "rows": 16,
+          "valid": 11,
+          "exact": 2,
+          "statusCorrect": 2,
+          "validRate": 0.6875,
+          "exactRate": 0.125
+        },
+        "sk": {
+          "rows": 16,
+          "valid": 14,
+          "exact": 2,
+          "statusCorrect": 2,
+          "validRate": 0.875,
+          "exactRate": 0.125
+        }
+      },
+      "failureCodeCounts": {
+        "changed-explicit:complexity": 1,
+        "changed-explicit:mood": 1,
+        "changed-explicit:style": 2,
+        "invalid-schema": 4,
+        "missing-suggestion:bpmRange": 13,
+        "missing-suggestion:complexity": 3,
+        "missing-suggestion:density": 13,
+        "missing-suggestion:energy": 13,
+        "missing-suggestion:genre": 17,
+        "missing-suggestion:key": 1,
+        "missing-suggestion:lengthSteps": 13,
+        "missing-suggestion:mood": 17,
+        "missing-suggestion:preserveRoles": 4,
+        "missing-suggestion:prohibitedRoles": 4,
+        "missing-suggestion:style": 17,
+        "missing-suggestion:targetRoles": 2,
+        "missing-suggestion:variation": 8,
+        "status-mismatch": 21,
+        "value-mismatch:question": 4,
+        "value-mismatch:unknownFields": 4
+      },
+      "syntheticOnly": true,
+      "caseDiagnostics": [
+        {
+          "caseKey": "08c707712e428a5a",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["changed-explicit:style"]
+        },
+        {
+          "caseKey": "d9907d67125a42ec",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "abstain",
+          "failureCodes": [
+            "missing-suggestion:bpmRange",
+            "missing-suggestion:density",
+            "missing-suggestion:energy",
+            "missing-suggestion:genre",
+            "missing-suggestion:lengthSteps",
+            "missing-suggestion:mood",
+            "missing-suggestion:style",
+            "missing-suggestion:variation",
+            "status-mismatch"
+          ]
+        },
+        {
+          "caseKey": "5ff2d6d705b62354",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "4ffaff9466b8849f",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "abstain",
+          "failureCodes": [
+            "missing-suggestion:bpmRange",
+            "missing-suggestion:density",
+            "missing-suggestion:energy",
+            "missing-suggestion:genre",
+            "missing-suggestion:lengthSteps",
+            "missing-suggestion:mood",
+            "missing-suggestion:style",
+            "missing-suggestion:variation",
+            "status-mismatch"
+          ]
+        },
+        {
+          "caseKey": "4c0cc1fa135277df",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "66ba85c19d6262dd",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["changed-explicit:mood", "changed-explicit:style"]
+        },
+        {
+          "caseKey": "b8f9a4734173f3d1",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "abstain",
+          "failureCodes": [
+            "missing-suggestion:bpmRange",
+            "missing-suggestion:complexity",
+            "missing-suggestion:density",
+            "missing-suggestion:energy",
+            "missing-suggestion:genre",
+            "missing-suggestion:lengthSteps",
+            "missing-suggestion:mood",
+            "missing-suggestion:style",
+            "missing-suggestion:variation",
+            "status-mismatch"
+          ]
+        },
+        {
+          "caseKey": "4cc7ed90068d51b0",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "abstain",
+          "failureCodes": [
+            "missing-suggestion:bpmRange",
+            "missing-suggestion:complexity",
+            "missing-suggestion:density",
+            "missing-suggestion:energy",
+            "missing-suggestion:genre",
+            "missing-suggestion:lengthSteps",
+            "missing-suggestion:mood",
+            "missing-suggestion:style",
+            "missing-suggestion:variation",
+            "status-mismatch"
+          ]
+        },
+        {
+          "caseKey": "325831d9ba652006",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "1904ac067ddc54b3",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["invalid-schema"]
+        },
+        {
+          "caseKey": "858139f7e903c971",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "proposal",
+          "failureCodes": ["changed-explicit:complexity"]
+        },
+        {
+          "caseKey": "e8ccd622500b39f1",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "abstain",
+          "failureCodes": [
+            "missing-suggestion:bpmRange",
+            "missing-suggestion:complexity",
+            "missing-suggestion:density",
+            "missing-suggestion:energy",
+            "missing-suggestion:genre",
+            "missing-suggestion:key",
+            "missing-suggestion:lengthSteps",
+            "missing-suggestion:mood",
+            "missing-suggestion:style",
+            "status-mismatch"
+          ]
+        },
+        {
+          "caseKey": "4d6d03e12e63187b",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "abstain",
+          "failureCodes": [
+            "missing-suggestion:bpmRange",
+            "missing-suggestion:density",
+            "missing-suggestion:energy",
+            "missing-suggestion:genre",
+            "missing-suggestion:lengthSteps",
+            "missing-suggestion:mood",
+            "missing-suggestion:style",
+            "missing-suggestion:variation",
+            "status-mismatch"
+          ]
+        },
+        {
+          "caseKey": "500a9dba3958eb20",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "abstain",
+          "failureCodes": [
+            "missing-suggestion:bpmRange",
+            "missing-suggestion:density",
+            "missing-suggestion:energy",
+            "missing-suggestion:genre",
+            "missing-suggestion:lengthSteps",
+            "missing-suggestion:mood",
+            "missing-suggestion:style",
+            "missing-suggestion:variation",
+            "status-mismatch"
+          ]
+        },
+        {
+          "caseKey": "473365fe18535160",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "abstain",
+          "failureCodes": [
+            "missing-suggestion:bpmRange",
+            "missing-suggestion:density",
+            "missing-suggestion:energy",
+            "missing-suggestion:genre",
+            "missing-suggestion:lengthSteps",
+            "missing-suggestion:mood",
+            "missing-suggestion:style",
+            "missing-suggestion:variation",
+            "status-mismatch"
+          ]
+        },
+        {
+          "caseKey": "34581a69226c2d56",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "abstain",
+          "failureCodes": [
+            "missing-suggestion:bpmRange",
+            "missing-suggestion:density",
+            "missing-suggestion:energy",
+            "missing-suggestion:genre",
+            "missing-suggestion:lengthSteps",
+            "missing-suggestion:mood",
+            "missing-suggestion:style",
+            "missing-suggestion:variation",
+            "status-mismatch"
+          ]
+        },
+        {
+          "caseKey": "01a87209032a52d5",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "abstain",
+          "failureCodes": [
+            "missing-suggestion:bpmRange",
+            "missing-suggestion:density",
+            "missing-suggestion:energy",
+            "missing-suggestion:genre",
+            "missing-suggestion:lengthSteps",
+            "missing-suggestion:mood",
+            "missing-suggestion:prohibitedRoles",
+            "missing-suggestion:style",
+            "missing-suggestion:targetRoles",
+            "status-mismatch"
+          ]
+        },
+        {
+          "caseKey": "17632ce215353897",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "abstain",
+          "failureCodes": [
+            "missing-suggestion:bpmRange",
+            "missing-suggestion:density",
+            "missing-suggestion:energy",
+            "missing-suggestion:genre",
+            "missing-suggestion:lengthSteps",
+            "missing-suggestion:mood",
+            "missing-suggestion:prohibitedRoles",
+            "missing-suggestion:style",
+            "status-mismatch"
+          ]
+        },
+        {
+          "caseKey": "8e214dca52766d9b",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "abstain",
+          "failureCodes": [
+            "missing-suggestion:bpmRange",
+            "missing-suggestion:density",
+            "missing-suggestion:energy",
+            "missing-suggestion:genre",
+            "missing-suggestion:lengthSteps",
+            "missing-suggestion:mood",
+            "missing-suggestion:prohibitedRoles",
+            "missing-suggestion:style",
+            "missing-suggestion:targetRoles",
+            "status-mismatch"
+          ]
+        },
+        {
+          "caseKey": "328cd3c99e0a05a7",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "abstain",
+          "failureCodes": [
+            "missing-suggestion:bpmRange",
+            "missing-suggestion:density",
+            "missing-suggestion:energy",
+            "missing-suggestion:genre",
+            "missing-suggestion:lengthSteps",
+            "missing-suggestion:mood",
+            "missing-suggestion:prohibitedRoles",
+            "missing-suggestion:style",
+            "status-mismatch"
+          ]
+        },
+        {
+          "caseKey": "a6ab75d824f622d0",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "abstain",
+          "failureCodes": [
+            "missing-suggestion:genre",
+            "missing-suggestion:mood",
+            "missing-suggestion:preserveRoles",
+            "missing-suggestion:style",
+            "status-mismatch"
+          ]
+        },
+        {
+          "caseKey": "be4f8cd76d944c95",
+          "language": "en",
+          "expectedStatus": "proposal",
+          "predictedStatus": "abstain",
+          "failureCodes": [
+            "missing-suggestion:genre",
+            "missing-suggestion:mood",
+            "missing-suggestion:preserveRoles",
+            "missing-suggestion:style",
+            "status-mismatch"
+          ]
+        },
+        {
+          "caseKey": "059236a4ddc4740c",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "abstain",
+          "failureCodes": [
+            "missing-suggestion:genre",
+            "missing-suggestion:mood",
+            "missing-suggestion:preserveRoles",
+            "missing-suggestion:style",
+            "status-mismatch"
+          ]
+        },
+        {
+          "caseKey": "f68529a3657f3972",
+          "language": "sk",
+          "expectedStatus": "proposal",
+          "predictedStatus": "abstain",
+          "failureCodes": [
+            "missing-suggestion:genre",
+            "missing-suggestion:mood",
+            "missing-suggestion:preserveRoles",
+            "missing-suggestion:style",
+            "status-mismatch"
+          ]
+        },
+        {
+          "caseKey": "f6dd8587dc52eea0",
+          "language": "en",
+          "expectedStatus": "clarify",
+          "predictedStatus": "abstain",
+          "failureCodes": ["status-mismatch", "value-mismatch:question", "value-mismatch:unknownFields"]
+        },
+        {
+          "caseKey": "1c4b1f7290d96c94",
+          "language": "en",
+          "expectedStatus": "clarify",
+          "predictedStatus": "abstain",
+          "failureCodes": ["status-mismatch", "value-mismatch:question", "value-mismatch:unknownFields"]
+        },
+        {
+          "caseKey": "8d39411d19939ef9",
+          "language": "sk",
+          "expectedStatus": "clarify",
+          "predictedStatus": "abstain",
+          "failureCodes": ["status-mismatch", "value-mismatch:question", "value-mismatch:unknownFields"]
+        },
+        {
+          "caseKey": "81645853a07ce810",
+          "language": "sk",
+          "expectedStatus": "clarify",
+          "predictedStatus": "abstain",
+          "failureCodes": ["status-mismatch", "value-mismatch:question", "value-mismatch:unknownFields"]
+        },
+        {
+          "caseKey": "222dd37617b8ca86",
+          "language": "en",
+          "expectedStatus": "abstain",
+          "predictedStatus": "abstain",
+          "failureCodes": []
+        },
+        {
+          "caseKey": "59f6af392b633601",
+          "language": "en",
+          "expectedStatus": "abstain",
+          "predictedStatus": "abstain",
+          "failureCodes": []
+        },
+        {
+          "caseKey": "04b7eb0b45b0f4c9",
+          "language": "sk",
+          "expectedStatus": "abstain",
+          "predictedStatus": "abstain",
+          "failureCodes": []
+        },
+        {
+          "caseKey": "f9e39b5219c5bf6a",
+          "language": "sk",
+          "expectedStatus": "abstain",
+          "predictedStatus": "abstain",
+          "failureCodes": []
+        }
+      ]
+    },
+    "delta": {
+      "schemaAndSafetyValid": 25,
+      "exact": 4,
+      "statusCorrect": 4,
+      "roleSafetyFailures": 0
+    }
+  },
+  "eligibleForModelPromotion": false
+}

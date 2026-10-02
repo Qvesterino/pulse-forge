@@ -105,11 +105,13 @@ class CreativeTaskRequestSafetyTests(unittest.TestCase):
         self.assertTrue(TRAINER.valid_for_request(clarification, request))
 
     def test_protected_role_failure_has_a_specific_diagnostic(self) -> None:
+        request = request_fixture()
+        request["requirements"]["targetRoles"] = []
         output = proposal_fixture()
         output["suggestions"]["targetRoles"] = ["bass"]
         output["suggestions"].pop("preserveRoles")
         self.assertEqual(
-            COMPARISON.request_failure_codes(output, request_fixture()),
+            COMPARISON.request_failure_codes(output, request),
             ["target-role-conflicts-with-preserve-or-prohibit"],
         )
 
@@ -122,7 +124,7 @@ class CreativeTaskRequestSafetyTests(unittest.TestCase):
         prediction["status"] = "clarify"
         self.assertEqual(
             COMPARISON.prediction_mismatch_codes(prediction, expected),
-            ["status-mismatch", "missing-suggestion:genre", "unexpected-suggestion:style", "value-mismatch:mood"],
+            ["status-mismatch", "missing-suggestion:genre", "value-mismatch:mood", "unexpected-suggestion:style"],
         )
 
     def test_case_diagnostic_hashes_identity_and_never_includes_prompt_or_output(self) -> None:
@@ -139,6 +141,13 @@ class CreativeTaskRequestSafetyTests(unittest.TestCase):
         self.assertNotIn(row["instruction"], serialized)
         self.assertNotIn("suggestions", diagnostic)
         self.assertEqual(diagnostic["failureCodes"], [])
+        malformed = COMPARISON.build_case_diagnostic(
+            row,
+            {"status": "private model output with prompt details"},
+            ["invalid-schema"],
+        )
+        self.assertIsNone(malformed["predictedStatus"])
+        self.assertNotIn("private model output", json.dumps(malformed))
 
     def test_evaluator_reports_reason_codes_without_recording_raw_briefs(self) -> None:
         request = request_fixture()

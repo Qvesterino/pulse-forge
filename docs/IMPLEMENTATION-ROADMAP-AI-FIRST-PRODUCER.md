@@ -596,6 +596,18 @@ pričom exact zhoda aj správny status ostali iba `4/32` (12,5 %) a role-safety 
 užitočnosti návrhov ani hudobnej kvality. Adapter preto ostáva nepromovaný; ďalší tréning vyžaduje výrazne širší,
 ľudsky kontrolovaný a so súhlasom získaný holdout, nie viac epoch na aktuálnom minikorpuse.
 
+**Failure diagnostics (2026-10-02):** druhý úplný beh v
+`scripts/data/creative-task-sft/base-vs-adapter-diagnostics-2026-10-02.json` zopakoval totožné skóre pri rovnakom
+base revision, adapter a corpus hashoch. Z 24 prípadov očakávajúcich návrh adapter 17-krát zvolil `abstain`;
+zvyšných 7 výstupov v stave `proposal` všetkých
+odmietol request gate (4 neplatné schémy, 3 návrhy menili explicitné fakty). **Nevznikol ani jeden prijateľný
+creative proposal.** Všetky štyri presné zhody boli správne `abstain` pre
+out-of-scope príklady; štyri prípady vyžadujúce `clarify` model takisto nesprávne odmietol. Base model vytvoril
+32/32 schema-invalid výstupov. Report uchováva len krátke hash-e ID prípadov, jazyky, statusy a failure kódy — nie
+prompt ani generovaný text. Táto diagnostika vyvracia interpretáciu `25/32 valid` ako prakticky použiteľného
+zlepšenia: model sa naučil bezpečne odmietať, nie tvoriť. Priorita je širší family-diverse, človekom kontrolovaný
+dataset a lepšie označenie proposal-vs-clarify hranice; pilot sa nesmie napojiť na workflow.
+
 ### 6.4 Fáza 11 — LFM tréning, ktorý generalizuje bez nebezpečných zámen
 
 **Cieľ:** preukázať, že fine-tuned LFM2.5 prináša merateľné zlepšenie nad deterministickým parserom na presne tej úlohe, na ktorú sa má používať.
