@@ -574,6 +574,19 @@ nesmie routovať na tvorivé briefy.
 consented human-reviewed holdout, rubric/blind listening, UI pre clarify/approve a až po release gates napojenie
 trénovaného creative modelu. Action-only LFM sa nesmie považovať za hotový creative compiler.
 
+**Izolovaný creative-task SFT bootstrap pilot (2026-10-02):** pinned výsledok je v
+`scripts/data/creative-task-sft/bootstrap-evaluation-2026-10-02-v2.json`; nepromovaný lokálny adapter je v
+`.sft/creative/exp-creative-task-bootstrap-20261002-run5/adapter` a jeho súborový SHA-256 je v reporte. Lokálny
+`LiquidAI/LFM2.5-1.2B-Instruct` snapshot `0f604ada3f766f9f257460c4c9f0b5d6f69d431b`, bez sťahovania,
+trénoval samostatný LoRA adapter tri epochy na 32 syntetických train riadkoch; validácia bola 32 riadkov z ôsmich
+odlišných rodín. Train loss klesla `1.316 → 0.601 → 0.392`, no na held-out syntetickom splite bolo iba 25/32
+výstupov schema+context-safe, exact zhoda 4/32 (12,5 %), správny status 4/32 (12,5 %) a 0 role-safety únikov.
+Experiment neexportuje ani neregistruje model a má explicitne
+`eligibleForModelPromotion: false`. Výsledok je pod akýmkoľvek použiteľným release gate: malý syntetický corpus
+nevytvára generalizujúceho AI producenta a tento adapter sa nesmie zapojiť do UI. Najbližší hodnotný krok je
+rozšíriť označené SK/EN dáta na viac nezávislých producentových zámerov a získať consented human-reviewed holdout;
+nie zvyšovať epochy na týchto 64 riadkoch.
+
 ### 6.4 Fáza 11 — LFM tréning, ktorý generalizuje bez nebezpečných zámen
 
 **Cieľ:** preukázať, že fine-tuned LFM2.5 prináša merateľné zlepšenie nad deterministickým parserom na presne tej úlohe, na ktorú sa má používať.

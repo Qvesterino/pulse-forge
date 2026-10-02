@@ -1,0 +1,74 @@
+{
+  "reportVersion": 2,
+  "task": "creative-task-v1",
+  "baseModel": "LiquidAI/LFM2.5-1.2B-Instruct",
+  "baseRevision": "local",
+  "baseModelResolvedRevision": "0f604ada3f766f9f257460c4c9f0b5d6f69d431b",
+  "modelDownloadAllowed": false,
+  "corpusManifestSha256": "6ee6c0b1069527794d9bcb5df4f5fbba541905e810c7fd7c6a6bc74d828adcd7",
+  "trainJsonlSha256": "ccc7a05669759c31f6da777f8442abfe4afb87258e67b08d2b0d95153f7e1166",
+  "validationJsonlSha256": "af7b9aa0ab628b4f981ba2f10675c57c2ac56ea395d5a073f7d28c642e31b816",
+  "systemPromptSha256": "6d4614a97b95957704cde0fbe9dd8fb777cb93681ad897872115e6cb39688f8b",
+  "dtype": "torch.bfloat16",
+  "validationMaxNewTokens": 160,
+  "syntheticOnly": true,
+  "humanReviewed": false,
+  "eligibleForModelPromotion": false,
+  "trainRows": 32,
+  "validationRows": 32,
+  "trainExamples": 32,
+  "epochs": 3,
+  "loraR": 16,
+  "loraAlpha": 32,
+  "learningRate": 0.0001,
+  "trainingHistory": [
+    {
+      "epoch": 1,
+      "meanTrainLoss": 1.3156431373208761
+    },
+    {
+      "epoch": 2,
+      "meanTrainLoss": 0.6009747232310474
+    },
+    {
+      "epoch": 3,
+      "meanTrainLoss": 0.39241975668119267
+    }
+  ],
+  "validationFinal": {
+    "rows": 32,
+    "schemaAndSafetyValid": 25,
+    "validRate": 0.78125,
+    "exact": 4,
+    "exactRate": 0.125,
+    "statusCorrect": 4,
+    "statusAccuracy": 0.125,
+    "roleSafetyFailures": 0,
+    "byLanguage": {
+      "en": {
+        "rows": 16,
+        "valid": 11,
+        "exact": 2,
+        "statusCorrect": 2,
+        "validRate": 0.6875,
+        "exactRate": 0.125
+      },
+      "sk": {
+        "rows": 16,
+        "valid": 14,
+        "exact": 2,
+        "statusCorrect": 2,
+        "validRate": 0.875,
+        "exactRate": 0.125
+      }
+    },
+    "syntheticOnly": true,
+    "afterEpoch": 3
+  },
+  "notes": [
+    "Synthetic bootstrap validation is not evidence of real-producer understanding or musical quality.",
+    "No action resolver/UI registration, model promotion, or merged model export is performed.",
+    "Promotion requires a consented human-reviewed held-out set, blind listening, and separate release gates."
+  ],
+  "adapterModelSha256": "c3536b6580f4db7373df9dafbf97975b9ecf27bc84e0455f3a1bb50463978e89"
+}

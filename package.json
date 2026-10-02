@@ -33,6 +33,7 @@
     "creative-task:sft-data": "vite-node scripts/generate-creative-task-sft.mts",
     "creative-task:sft-data-validate": "node scripts/run-creative-task-sft.mjs --validate-only",
     "creative-task:sft-validate": "vite-node scripts/generate-creative-task-sft.mts --check",
+    "creative-task:sft-self-test": "node scripts/run-creative-task-sft-self-test.mjs",
     "creative-task:sft-train": "node scripts/run-creative-task-sft.mjs",
     "deploy:cf": "npm run build && npx wrangler pages deploy dist",
     "desktop:build": "node scripts/desktop-package.mjs",

@@ -62,11 +62,19 @@ SOURCE_PATHS = (
 )
 MAX_CORPUS_BYTES = 8 * 1024 * 1024
 MAX_SEQUENCE_LENGTH = 1_024
+MAX_GENERATION_TOKENS = 160
 SEED = 0xC7EA71
 
 
 def sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
+
+
+def one_cycle_warmup_fraction(total_steps: int) -> float:
+    """Keep OneCycleLR's warm-up and decay phases non-zero on tiny corpora."""
+    if type(total_steps) is not int or total_steps < 1:
+        raise ValueError("total_steps must be a positive integer")
+    return min(0.9, max(0.3, 2.0 / total_steps))
 
 
 def read_json(path: Path) -> Any:
@@ -257,9 +265,50 @@ def canonical(value: Any, field: str | None = None) -> Any:
 def valid_for_request(prediction: Any, request: dict[str, Any]) -> bool:
     if not validate_output(prediction):
         return False
+    if prediction["status"] == "proposal" and request.get("conflicts"):
+        return False
+
     suggestions = prediction["suggestions"]
-    request_protected = set(request.get("preserveRoles", [])) | set(request.get("prohibitedRoles", []))
-    return not (set(suggestions.get("targetRoles", [])) & request_protected)
+    if prediction["status"] != "proposal":
+        return True
+
+    requirements = request.get("requirements", {})
+    preferences = request.get("preferences", {})
+    for field, known in (
+        ("bpmRange", requirements.get("bpmRange")),
+        ("key", requirements.get("key")),
+        ("lengthSteps", requirements.get("lengthSteps")),
+        ("genre", preferences.get("genre")),
+        ("style", preferences.get("style")),
+        ("mood", preferences.get("mood")),
+        ("energy", preferences.get("energy")),
+        ("density", preferences.get("density")),
+        ("complexity", preferences.get("complexity")),
+        ("variation", preferences.get("variation")),
+    ):
+        if known is not None and field in suggestions and suggestions[field] != known:
+            return False
+
+    ordered_roles = lambda roles: [role for role in ROLE_ORDER if role in roles]
+    targets = ordered_roles(suggestions.get("targetRoles", []))
+    requested_targets = ordered_roles(requirements.get("targetRoles", []))
+    request_preserved = set(request.get("preserveRoles", []))
+    request_prohibited = set(request.get("prohibitedRoles", []))
+    suggested_preserved = set(suggestions.get("preserveRoles", []))
+    suggested_prohibited = set(suggestions.get("prohibitedRoles", []))
+    if set(targets) & (request_preserved | request_prohibited | suggested_preserved | suggested_prohibited):
+        return False
+    if suggested_preserved & (request_prohibited | suggested_prohibited):
+        return False
+    if suggested_prohibited & request_preserved:
+        return False
+    if "targetRoles" in suggestions and requested_targets and targets != requested_targets:
+        return False
+
+    available_roles = ordered_roles(request.get("projectContext", {}).get("availableRoles", []))
+    if available_roles and any(role not in available_roles for role in targets):
+        return False
+    return True
 
 
 def collate(batch: list[dict[str, list[int]]], pad_id: int) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -300,7 +349,9 @@ def evaluate(model: Any, tokenizer: Any, system: str, rows: list[dict[str, Any]]
     selected = rows if eval_limit == 0 else rows[:eval_limit]
     valid = exact = status_correct = role_safety_failures = 0
     by_language: dict[str, dict[str, int]] = {}
-    for row in selected:
+    for index, row in enumerate(selected, start=1):
+        if index % 8 == 1 or index == len(selected):
+            print(f"validation inference {index}/{len(selected)}", flush=True)
         language_metrics = by_language.setdefault(row["language"], {"rows": 0, "valid": 0, "exact": 0, "statusCorrect": 0})
         language_metrics["rows"] += 1
         prompt = tokenizer.apply_chat_template(
@@ -315,7 +366,7 @@ def evaluate(model: Any, tokenizer: Any, system: str, rows: list[dict[str, Any]]
         inputs = torch.tensor([prompt_ids], dtype=torch.long, device=model.device)
         generated = model.generate(
             inputs,
-            max_new_tokens=320,
+            max_new_tokens=MAX_GENERATION_TOKENS,
             do_sample=False,
             pad_token_id=tokenizer.eos_token_id,
         )
@@ -370,6 +421,7 @@ def main() -> None:
     parser.add_argument("--base-model", help="Explicit Hugging Face model ID or local model path; never inferred from the action model.")
     parser.add_argument("--base-revision", help="Pinned model revision/commit (use 'local' for an immutable local snapshot).")
     parser.add_argument("--out-dir", help="Adapter output directory; choose a location with enough free disk.")
+    parser.add_argument("--report-out", help="Optional additional path for a pinned JSON report; existing files are never overwritten.")
     parser.add_argument("--corpus-dir", default=str(DEFAULT_CORPUS))
     parser.add_argument("--allow-synthetic-bootstrap", action="store_true", help="Acknowledge the current corpus is synthetic and not promotion-ready.")
     parser.add_argument("--validate-only", action="store_true", help="Verify corpus, prompt/source pins and leakage without loading a model or using the GPU.")
@@ -416,6 +468,9 @@ def main() -> None:
     output_dir = Path(args.out_dir).resolve()
     if output_dir.exists() and any(output_dir.iterdir()):
         raise SystemExit(f"Output directory is not empty; refusing to overwrite user data: {output_dir}")
+    report_out = Path(args.report_out).resolve() if args.report_out else None
+    if report_out is not None and report_out.exists():
+        raise SystemExit(f"Report output already exists; refusing to overwrite user data: {report_out}")
     output_dir.mkdir(parents=True, exist_ok=True)
     dtype = torch.bfloat16 if args.dtype == "bf16" or (args.dtype == "auto" and torch.cuda.is_bf16_supported()) else torch.float16
     tokenizer = AutoTokenizer.from_pretrained(
@@ -450,7 +505,11 @@ def main() -> None:
     validation_examples = [row for row in validation_rows if build_example(tokenizer, system, row) is not None]
     if len(examples) < 8 or len(validation_examples) < 4:
         raise SystemExit("Too few examples fit the model context; increase data quality or sequence budget before training.")
-    print(f"synthetic examples: train={len(examples)}/{len(train_rows)}, validation={len(validation_examples)}/{len(validation_rows)}")
+    print(
+        f"synthetic examples: train={len(examples)}/{len(train_rows)}, validation={len(validation_examples)}/{len(validation_rows)}; "
+        f"validation max_new_tokens={MAX_GENERATION_TOKENS}",
+        flush=True,
+    )
 
     pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
     trainable = [parameter for parameter in model.parameters() if parameter.requires_grad]
@@ -461,19 +520,21 @@ def main() -> None:
         optimizer,
         max_lr=args.lr,
         total_steps=steps_per_epoch * args.epochs,
-        pct_start=min(0.1, max(0.01, 1 / (steps_per_epoch * args.epochs))),
+        pct_start=one_cycle_warmup_fraction(steps_per_epoch * args.epochs),
     )
     report: dict[str, Any] = {
-        "reportVersion": 1,
+        "reportVersion": 2,
         "task": "creative-task-v1",
         "baseModel": args.base_model,
         "baseRevision": args.base_revision,
+        "baseModelResolvedRevision": getattr(model.config, "_commit_hash", None),
         "modelDownloadAllowed": args.allow_model_download,
         "corpusManifestSha256": sha256_bytes((corpus_dir / "manifest.json").read_bytes()),
         "trainJsonlSha256": _manifest["splits"]["train"]["sha256"],
         "validationJsonlSha256": _manifest["splits"]["validation"]["sha256"],
         "systemPromptSha256": _manifest["prompt"]["sha256"],
         "dtype": str(dtype),
+        "validationMaxNewTokens": MAX_GENERATION_TOKENS,
         "syntheticOnly": True,
         "humanReviewed": False,
         "eligibleForModelPromotion": False,
@@ -484,7 +545,7 @@ def main() -> None:
         "loraR": args.lora_r,
         "loraAlpha": args.lora_alpha,
         "learningRate": args.lr,
-        "validationHistory": [],
+        "trainingHistory": [],
     }
 
     for epoch in range(args.epochs):
@@ -492,7 +553,7 @@ def main() -> None:
         model.train()
         total_loss = 0.0
         batches = 0
-        for group_start in range(0, len(examples), effective_batch):
+        for step_index, group_start in enumerate(range(0, len(examples), effective_batch), start=1):
             group = examples[group_start : group_start + effective_batch]
             micro_batches = [group[start : start + args.batch] for start in range(0, len(group), args.batch)]
             optimizer.zero_grad(set_to_none=True)
@@ -509,26 +570,34 @@ def main() -> None:
             torch.nn.utils.clip_grad_norm_(trainable, 1.0)
             optimizer.step()
             scheduler.step()
+            print(f"epoch {epoch + 1}/{args.epochs} train step {step_index}/{steps_per_epoch}", flush=True)
 
-        metrics = evaluate(model, tokenizer, system, validation_rows, args.eval_limit)
-        metrics["epoch"] = epoch + 1
-        metrics["meanTrainLoss"] = total_loss / max(1, batches)
-        report["validationHistory"].append(metrics)
-        print(f"epoch {epoch + 1}/{args.epochs}: {json.dumps(metrics, sort_keys=True)}")
+        epoch_result = {"epoch": epoch + 1, "meanTrainLoss": total_loss / max(1, batches)}
+        report["trainingHistory"].append(epoch_result)
+        print(f"epoch {epoch_result['epoch']}/{args.epochs}: {json.dumps(epoch_result, sort_keys=True)}", flush=True)
 
-    report["validationFinal"] = report["validationHistory"][-1]
+    validation = evaluate(model, tokenizer, system, validation_rows, args.eval_limit)
+    validation["afterEpoch"] = args.epochs
+    report["validationFinal"] = validation
     report["notes"] = [
         "Synthetic bootstrap validation is not evidence of real-producer understanding or musical quality.",
         "No action resolver/UI registration, model promotion, or merged model export is performed.",
         "Promotion requires a consented human-reviewed held-out set, blind listening, and separate release gates.",
     ]
     adapter_dir = output_dir / "adapter"
-    model.save_pretrained(str(adapter_dir))
+    model.save_pretrained(str(adapter_dir), save_embedding_layers=False)
     tokenizer.save_pretrained(str(adapter_dir))
+    report["adapterModelSha256"] = sha256_bytes((adapter_dir / "adapter_model.safetensors").read_bytes())
     report_path = output_dir / "report.json"
-    report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    serialized_report = json.dumps(report, indent=2) + "\n"
+    report_path.write_text(serialized_report, encoding="utf-8")
+    if report_out is not None:
+        report_out.parent.mkdir(parents=True, exist_ok=True)
+        report_out.write_text(serialized_report, encoding="utf-8")
     print(f"adapter: {adapter_dir}")
     print(f"report: {report_path}")
+    if report_out is not None:
+        print(f"pinned report: {report_out}")
     print("This experiment is not promotion-eligible.")
 
 
