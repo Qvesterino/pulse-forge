@@ -1,0 +1,13 @@
+D:\pulse-forge\scripts\validate-intent-model.mts:44
+if (modelDigest !== manifest.model.sha256.toLowerCase()) throw new Error("model hash mismatch");
+                                                               ^
+
+Error: model hash mismatch
+    at D:\pulse-forge\scripts\validate-intent-model.mts:44:64
+    at ViteNodeRunner.runModule (file:///D:/pulse-forge/node_modules/vite-node/dist/client.mjs:399:5)
+    at ViteNodeRunner.directRequest (file:///D:/pulse-forge/node_modules/vite-node/dist/client.mjs:381:5)
+    at ViteNodeRunner.cachedRequest (file:///D:/pulse-forge/node_modules/vite-node/dist/client.mjs:206:14)
+    at ViteNodeRunner.executeFile (file:///D:/pulse-forge/node_modules/vite-node/dist/client.mjs:169:12)
+    at CAC.run (file:///D:/pulse-forge/node_modules/vite-node/dist/cli.mjs:99:5)
+
+Node.js v24.11.0

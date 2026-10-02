@@ -9,8 +9,8 @@
   },
   "model": {
     "url": "/models/intent-model-v1.onnx",
-    "bytes": 6752198,
-    "sha256": "0c0b29bfcffd26746ab186ad687bc0879bd955431d4518f3f7d688b37d739d1c"
+    "bytes": 6799814,
+    "sha256": "1d44f70bc639087cd2dfa1ca92ab277bdd82ba39b94ae1660ecef95dd51488e0"
   },
   "prompt": {
     "system": "You map a music-production instruction to one canonical action JSON object. Output only the JSON.",
@@ -22,8 +22,8 @@
   },
   "features": {
     "version": "intent-features.v2",
-    "vocabSha256": "ca638ecb02999100e84cc966daee7f7cb2491a9f54befe13694f1019fc513486",
-    "vocabSize": 3984,
+    "vocabSha256": "050535f922f8acadd9ea5f45c3db9d9bb55daa4567d41d73c9a5d78925cc4d2a",
+    "vocabSize": 4015,
     "url": "/models/intent-model-v1.vocab.json",
     "inputName": "features",
     "outputNames": [
@@ -780,12 +780,21 @@
   },
   "report": {
     "gatePassed": true,
-    "trainRows": 1761,
-    "valRows": 294,
+    "trainRows": 1790,
+    "valRows": 298,
     "goldenRows": 74,
-    "valHeadAccuracyMean": 0.9943,
+    "valHeadAccuracyMean": 0.9949,
+    "trainingDataContentHashPinned": true,
+    "trainingInputs": {
+      "datasetVersion": 4,
+      "datasetManifestSha256": "16154fd979be875e7e24dabb01d44f2b5a323da788ab0d8d4c2bce19c372649c",
+      "trainSha256": "e4dd10ef4783a331d872770de52c7cb88185fbbc4eb1ad959f2a7e42171bb25e",
+      "valSha256": "5b33d956c242fcbc6340e94a67dcbff5d0ba82b8416617dcfbaf7c87bf55887f",
+      "goldenSha256": "321785b46c371c78c76f8c19f078f7927593ff5273debaa11709e9a52db227c5",
+      "trainerSha256": "0f0da00a911276fa9b2d6b6689899db7003d1d08cb2698efdd54f68987561a7d"
+    },
     "gate": "scripts/validate-intent-model.mts — attempted-exact >= 0.95, wrongKind = 0",
     "validationReportPath": "scripts/data/intent-model-validation-report.json",
-    "validationReportSha256": "638fa907d8477d370f3f73323d673da066144c1efff6a26dd311a1c3210b9373"
+    "validationReportSha256": "7e6a98278c0cecc2ddb7ec393bbff60b8af9daa4de0637fa6deb52b7ee42257c"
   }
 }

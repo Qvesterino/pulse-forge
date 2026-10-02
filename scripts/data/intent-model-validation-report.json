@@ -2,21 +2,28 @@
   "schemaVersion": 1,
   "kind": "intent-action-model-validation",
   "taskBoundary": "Closed-set action/slot decoding only; not a creative-brief or musical-quality evaluation.",
-  "generatedAt": "2026-10-02T07:34:04.374Z",
+  "generatedAt": "2026-10-02T07:54:56.815Z",
   "model": {
     "version": "intent-model.v1",
     "runtime": "onnxruntime-web@1.29.0/wasm",
-    "modelBytes": 6752198,
-    "modelSha256": "0c0b29bfcffd26746ab186ad687bc0879bd955431d4518f3f7d688b37d739d1c",
-    "vocabularySha256": "ca638ecb02999100e84cc966daee7f7cb2491a9f54befe13694f1019fc513486",
+    "modelBytes": 6799814,
+    "modelSha256": "1d44f70bc639087cd2dfa1ca92ab277bdd82ba39b94ae1660ecef95dd51488e0",
+    "vocabularySha256": "050535f922f8acadd9ea5f45c3db9d9bb55daa4567d41d73c9a5d78925cc4d2a",
     "grammarSha256": "0a854e71e3ef2f5e83776cebf5a218eb43036b0a1c7c0edef7398737ea54d810",
     "trainingReport": {
-      "trainRows": 1761,
-      "valRows": 294,
+      "trainRows": 1790,
+      "valRows": 298,
       "goldenRows": 74,
-      "valHeadAccuracyMean": 0.9943,
-      "trainingDataContentHashPinned": false,
-      "trainingInputs": null
+      "valHeadAccuracyMean": 0.9949,
+      "trainingDataContentHashPinned": true,
+      "trainingInputs": {
+        "datasetVersion": 4,
+        "datasetManifestSha256": "16154fd979be875e7e24dabb01d44f2b5a323da788ab0d8d4c2bce19c372649c",
+        "trainSha256": "e4dd10ef4783a331d872770de52c7cb88185fbbc4eb1ad959f2a7e42171bb25e",
+        "valSha256": "5b33d956c242fcbc6340e94a67dcbff5d0ba82b8416617dcfbaf7c87bf55887f",
+        "goldenSha256": "321785b46c371c78c76f8c19f078f7927593ff5273debaa11709e9a52db227c5",
+        "trainerSha256": "0f0da00a911276fa9b2d6b6689899db7003d1d08cb2698efdd54f68987561a7d"
+      }
     }
   },
   "evaluationDataset": {
@@ -44,11 +51,11 @@
       "goldenIsIndependentHoldout": false,
       "candidateFamilyDisjointnessVerified": false
     },
-    "trainingReportRowCountsMatch": false
+    "trainingReportRowCountsMatch": true
   },
   "evaluator": {
     "validatorSha256": "501861bd36a23749c2cfc90bc322034865e3e31bb78afe32744a410e96270989",
-    "decoderSha256": "c95f1baeb31b0b4b823e2bbc4204df617ac2b27dbb51fda4d5f8fed4e1649259",
+    "decoderSha256": "350c5dfbb152712a0255378800924da3b0c0c24b462577cc94ba8b33484e8567",
     "schemaSourceSha256": "d33464716990662d8af7a2942633bd36513b567ed32b4206a82a4bc07d927cbc",
     "environment": {
       "platform": "win32",
@@ -59,26 +66,26 @@
     "wasmThreads": 1
   },
   "decode": {
-    "kindMargin": 3,
-    "abstainMargin": 2.5,
+    "kindMargin": 2.5,
+    "abstainMargin": 2,
     "productionMargins": true
   },
   "metrics": {
     "train": {
       "rows": 1790,
-      "attempted": 1619,
-      "exact": 1608,
-      "attemptedExactRate": 0.993206,
-      "wrongKind": 1,
-      "abstain": 171,
-      "abstainRate": 0.095531,
+      "attempted": 1675,
+      "exact": 1665,
+      "attemptedExactRate": 0.99403,
+      "wrongKind": 0,
+      "abstain": 115,
+      "abstainRate": 0.064246,
       "perKind": {
         "arrange": {
           "rows": 54,
-          "attempted": 49,
-          "exact": 47,
+          "attempted": 52,
+          "exact": 52,
           "wrongKind": 0,
-          "abstain": 5
+          "abstain": 2
         },
         "bypassIntent": {
           "rows": 32,
@@ -89,10 +96,10 @@
         },
         "clarify": {
           "rows": 36,
-          "attempted": 30,
-          "exact": 30,
+          "attempted": 29,
+          "exact": 29,
           "wrongKind": 0,
-          "abstain": 6
+          "abstain": 7
         },
         "clips": {
           "rows": 30,
@@ -103,24 +110,24 @@
         },
         "compound": {
           "rows": 51,
-          "attempted": 42,
-          "exact": 42,
+          "attempted": 49,
+          "exact": 49,
           "wrongKind": 0,
-          "abstain": 9
+          "abstain": 2
         },
         "effectIntent": {
           "rows": 319,
-          "attempted": 293,
-          "exact": 292,
-          "wrongKind": 1,
-          "abstain": 26
+          "attempted": 306,
+          "exact": 306,
+          "wrongKind": 0,
+          "abstain": 13
         },
         "exact": {
           "rows": 486,
-          "attempted": 446,
-          "exact": 442,
+          "attempted": 459,
+          "exact": 450,
           "wrongKind": 0,
-          "abstain": 40
+          "abstain": 27
         },
         "export": {
           "rows": 8,
@@ -131,24 +138,24 @@
         },
         "fader": {
           "rows": 361,
-          "attempted": 322,
-          "exact": 322,
+          "attempted": 335,
+          "exact": 335,
           "wrongKind": 0,
-          "abstain": 39
+          "abstain": 26
         },
         "loudness": {
           "rows": 49,
-          "attempted": 41,
-          "exact": 38,
+          "attempted": 47,
+          "exact": 47,
           "wrongKind": 0,
-          "abstain": 8
+          "abstain": 2
         },
         "mix": {
           "rows": 66,
-          "attempted": 61,
-          "exact": 61,
+          "attempted": 59,
+          "exact": 59,
           "wrongKind": 0,
-          "abstain": 5
+          "abstain": 7
         },
         "preset": {
           "rows": 27,
@@ -166,10 +173,10 @@
         },
         "production": {
           "rows": 94,
-          "attempted": 92,
+          "attempted": 93,
           "exact": 92,
           "wrongKind": 0,
-          "abstain": 2
+          "abstain": 1
         },
         "record": {
           "rows": 7,
@@ -194,10 +201,10 @@
         },
         "select": {
           "rows": 8,
-          "attempted": 7,
-          "exact": 7,
+          "attempted": 8,
+          "exact": 8,
           "wrongKind": 0,
-          "abstain": 1
+          "abstain": 0
         },
         "sendIntent": {
           "rows": 69,
@@ -208,15 +215,15 @@
         },
         "tempo": {
           "rows": 20,
-          "attempted": 17,
-          "exact": 17,
+          "attempted": 19,
+          "exact": 19,
           "wrongKind": 0,
-          "abstain": 3
+          "abstain": 1
         },
         "transport": {
           "rows": 21,
           "attempted": 21,
-          "exact": 20,
+          "exact": 21,
           "wrongKind": 0,
           "abstain": 0
         }
@@ -224,19 +231,19 @@
     },
     "val": {
       "rows": 298,
-      "attempted": 259,
-      "exact": 249,
-      "attemptedExactRate": 0.96139,
+      "attempted": 252,
+      "exact": 245,
+      "attemptedExactRate": 0.972222,
       "wrongKind": 0,
-      "abstain": 39,
-      "abstainRate": 0.130872,
+      "abstain": 46,
+      "abstainRate": 0.154362,
       "perKind": {
         "arrange": {
           "rows": 10,
-          "attempted": 5,
-          "exact": 5,
+          "attempted": 4,
+          "exact": 4,
           "wrongKind": 0,
-          "abstain": 5
+          "abstain": 6
         },
         "bypassIntent": {
           "rows": 6,
@@ -247,38 +254,38 @@
         },
         "clarify": {
           "rows": 7,
-          "attempted": 5,
-          "exact": 5,
+          "attempted": 4,
+          "exact": 4,
           "wrongKind": 0,
-          "abstain": 2
+          "abstain": 3
         },
         "clips": {
           "rows": 5,
-          "attempted": 4,
-          "exact": 3,
+          "attempted": 5,
+          "exact": 4,
           "wrongKind": 0,
-          "abstain": 1
+          "abstain": 0
         },
         "compound": {
           "rows": 7,
-          "attempted": 6,
-          "exact": 6,
+          "attempted": 3,
+          "exact": 3,
           "wrongKind": 0,
-          "abstain": 1
+          "abstain": 4
         },
         "effectIntent": {
           "rows": 51,
-          "attempted": 46,
-          "exact": 46,
+          "attempted": 44,
+          "exact": 44,
           "wrongKind": 0,
-          "abstain": 5
+          "abstain": 7
         },
         "exact": {
           "rows": 78,
-          "attempted": 71,
-          "exact": 68,
+          "attempted": 72,
+          "exact": 69,
           "wrongKind": 0,
-          "abstain": 7
+          "abstain": 6
         },
         "export": {
           "rows": 3,
@@ -289,24 +296,24 @@
         },
         "fader": {
           "rows": 61,
-          "attempted": 54,
-          "exact": 54,
+          "attempted": 55,
+          "exact": 55,
           "wrongKind": 0,
-          "abstain": 7
+          "abstain": 6
         },
         "loudness": {
           "rows": 8,
           "attempted": 8,
-          "exact": 3,
+          "exact": 7,
           "wrongKind": 0,
           "abstain": 0
         },
         "mix": {
           "rows": 12,
-          "attempted": 9,
-          "exact": 9,
+          "attempted": 8,
+          "exact": 8,
           "wrongKind": 0,
-          "abstain": 3
+          "abstain": 4
         },
         "preset": {
           "rows": 4,
@@ -317,10 +324,10 @@
         },
         "production": {
           "rows": 16,
-          "attempted": 16,
-          "exact": 16,
+          "attempted": 15,
+          "exact": 15,
           "wrongKind": 0,
-          "abstain": 0
+          "abstain": 1
         },
         "revise": {
           "rows": 8,
@@ -332,7 +339,7 @@
         "select": {
           "rows": 2,
           "attempted": 2,
-          "exact": 1,
+          "exact": 0,
           "wrongKind": 0,
           "abstain": 0
         },
@@ -345,28 +352,28 @@
         },
         "tempo": {
           "rows": 4,
-          "attempted": 3,
-          "exact": 3,
-          "wrongKind": 0,
-          "abstain": 1
-        },
-        "transport": {
-          "rows": 4,
           "attempted": 1,
           "exact": 1,
           "wrongKind": 0,
           "abstain": 3
+        },
+        "transport": {
+          "rows": 4,
+          "attempted": 2,
+          "exact": 2,
+          "wrongKind": 0,
+          "abstain": 2
         }
       }
     },
     "goldenRegressionSuite": {
       "rows": 74,
-      "attempted": 62,
-      "exact": 62,
+      "attempted": 63,
+      "exact": 63,
       "attemptedExactRate": 1,
       "wrongKind": 0,
-      "abstain": 12,
-      "abstainRate": 0.162162,
+      "abstain": 11,
+      "abstainRate": 0.148649,
       "perKind": {
         "arrange": {
           "rows": 2,
@@ -384,10 +391,10 @@
         },
         "clarify": {
           "rows": 2,
-          "attempted": 2,
-          "exact": 2,
+          "attempted": 1,
+          "exact": 1,
           "wrongKind": 0,
-          "abstain": 0
+          "abstain": 1
         },
         "clips": {
           "rows": 3,
@@ -398,10 +405,10 @@
         },
         "compound": {
           "rows": 5,
-          "attempted": 4,
-          "exact": 4,
+          "attempted": 5,
+          "exact": 5,
           "wrongKind": 0,
-          "abstain": 1
+          "abstain": 0
         },
         "effectIntent": {
           "rows": 6,
@@ -489,10 +496,10 @@
         },
         "select": {
           "rows": 2,
-          "attempted": 1,
-          "exact": 1,
+          "attempted": 2,
+          "exact": 2,
           "wrongKind": 0,
-          "abstain": 1
+          "abstain": 0
         },
         "sendIntent": {
           "rows": 4,
@@ -503,17 +510,17 @@
         },
         "tempo": {
           "rows": 2,
-          "attempted": 2,
-          "exact": 2,
+          "attempted": 1,
+          "exact": 1,
           "wrongKind": 0,
-          "abstain": 0
+          "abstain": 1
         },
         "transport": {
           "rows": 4,
-          "attempted": 3,
-          "exact": 3,
+          "attempted": 4,
+          "exact": 4,
           "wrongKind": 0,
-          "abstain": 1
+          "abstain": 0
         }
       }
     }

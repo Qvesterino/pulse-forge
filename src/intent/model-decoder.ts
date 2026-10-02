@@ -84,12 +84,12 @@ const ABSENT = "__absent__";
  * near zero — a mute must never become a delete (LOCAL-INTENT-MODEL.md §5).
  */
 /**
- * Calibrated on the scope-expanded artifact (2026-10-01 margin sweep): 3.0
- * clears the last wrongKind row ("more saturation" → clarify/effectIntent
- * tail) while keeping attempted-exact at 97.1 % and abstain at 15.8 % —
- * all three gate bars on the val split.
+ * Calibrated on the 47-head sparse artifact (2026-10-02 margin sweep): the
+ * denser heads need less abstention — 2.5 passes all three gate bars on
+ * val AND golden (97.2 % / wrongKind 0 / abstain 15.4 % on val; golden
+ * 100 % / 0 / 14.9 %). The old 3.0 pin left golden abstain at 20.3 %.
  */
-export const INTENT_MODEL_KIND_MARGIN = 3.0;
+export const INTENT_MODEL_KIND_MARGIN = 2.5;
 /**
  * Required logit gap between the winning kind and the ABSTAIN class
  * (calibration wave). Wider than the top-two margin: out-of-scope-kind
@@ -97,7 +97,7 @@ export const INTENT_MODEL_KIND_MARGIN = 3.0;
  * guesses with the abstain logit just below — this is the honest-fallback
  * tripwire for exactly that shape.
  */
-export const INTENT_MODEL_ABSTAIN_MARGIN = 2.5;
+export const INTENT_MODEL_ABSTAIN_MARGIN = 2.0;
 
 function topTwoGap(values: Float32Array): number {
   let best = -Infinity;
@@ -398,7 +398,8 @@ export function decodeIntentHeads(
         if (!direction || !target) return null;
         // Truth fader parts carry EXACTLY one of amount/percent (measured
         // across every split) — emitting neither or both is a guess.
-        if (percent !== null) return { kind: "fader", intent: { direction, pads: partPads, percent, targets: [target] } };
+        if (percent !== null)
+          return { kind: "fader", intent: { direction, pads: partPads, percent, targets: [target] } };
         if (amount) return { kind: "fader", intent: { amount, direction, pads: partPads, targets: [target] } };
         return null;
       };

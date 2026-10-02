@@ -118,3 +118,7 @@ Error: Port 5199 is already in use
 [2m09:30:00[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/IntentPanel.tsx[22m
 [2m09:30:20[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/QmrChipMount.tsx, /src/ui/App.tsx, /src/ui/IntentPanel.tsx[22m
 [2m09:31:38[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/QmrChipMount.tsx, /src/ui/App.tsx, /src/ui/IntentPanel.tsx[22m
+[2m09:35:33[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/QmrChipMount.tsx, /src/ui/App.tsx, /src/ui/IntentPanel.tsx[22m
+[2m09:43:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/QmrChipMount.tsx, /src/ui/App.tsx, /src/ui/IntentPanel.tsx[22m
+[2m09:54:37[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/intent/model-decoder.ts[22m
+[2m09:56:14[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/intent/model-decoder.ts[22m
