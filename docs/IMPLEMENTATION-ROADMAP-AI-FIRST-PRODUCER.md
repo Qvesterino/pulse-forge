@@ -34,6 +34,24 @@ Rozdiel oproti „Suno, ale s kontrolou“ má byť konkrétny:
 - Každé prijatie je projektová zmena cez command systém s undo/redo. Modely nikdy priamo nemenia projekt ani audio callback.
 - Základný beatmaker funguje lokálne a offline aj bez voliteľných veľkých modelov. MRT2 je samostatný, voliteľný generatívny performer — nie podmienka fungovania DAW.
 
+### Produktová hranica: KYX a ZYVO sú špecialisti
+
+KYX sa sústreďuje na beatmaking a inštrumentály: groove, bicie, bass, harmóniu, melodické roly, aranžmán a beatový
+mix. ZYVO sa sústreďuje na vokálovú produkciu: nahrávanie, správu take-ov, comping, úpravy vokálu a vokálovo
+orientovaný mix. Obe aplikácie zdieľajú princíp AI producenta — porozumieť zámeru, rešpektovať chránený materiál,
+navrhnúť ohraničenú zmenu a nechať tvorcu výsledok vypočuť a potvrdiť — nie povinnosť zlievať sa do jedného
+preplneného DAW.
+
+Pre KYX to znamená, že vokál môže byť vstupným kontextom na vytvorenie priestoru pre spev alebo na prispôsobenie
+inštrumentálu, no kompletné vokálové nahrávacie štúdio nie je podmienkou úspechu tejto roadmapy. Prenos medzi
+produktmi je samostatná, neskoršia fáza: prenáša sa len používateľom schválený Producer Brief a výslovne vybrané
+médiá, nie automaticky celý projekt, vokály ani texty.
+
+**Praktická postupnosť:** najprv spoľahlivo oddeliť príkazový model od kreatívneho briefu; potom preukázať kvalitu
+modelu na držaných-out dátach; dodať kompletný KYX beatmaking loop od briefu cez audition po undoable apply; až
+následne odstrániť developer-only setup lokálneho modelu, učiť sa výslovné preferencie producenta a stabilizovať
+prenos briefu do ZYVO. Podrobné fázy, závislosti a release gates sú v §6.
+
 ## 2. Čo už dnešný kód poskytuje
 
 Toto je plán nad existujúcou infraštruktúrou, nie návrh na jej nahradenie.
@@ -509,8 +527,18 @@ pattern brief a vocalist-led zadanie mimo action-only LFM routy. `IntentPanel` p
 existujúceho generation workflow bez Ollama probe; `tryModelRoute` opakuje ochranu pre ďalších callerov; MCP preskočí
 action model pri kreatívnom brief-e aj pri už deterministicky rozpoznanom revise. Akčné parafrázy, ktoré parser
 nepozná, ostávajú kandidátom na modelový fallback a prechádzajú pôvodným schema/adapter/executor reťazcom. Overené UI,
-resolver a MCP regresiami. Toto **ešte nie je creative LFM compiler**: verzovaný creative-task output, jeho model/tréning,
-uncertainty/clarify eval a context snapshot sú stále otvorené.
+resolver a MCP regresiami. Toto **ešte nie je creative LFM compiler**: hoci bezpečnostná hranica a v1 task contract
+už vznikli, provider/model tréning, creative golden suite, uncertainty/clarify eval a UI integrácia sú stále otvorené.
+
+**Stav (2026-10-02): creative-task kontrakt v1 implementovaný, provider integrácia otvorená.**
+`src/intent/creative-task-contract.ts` skladá dočasný request z hard požiadaviek, preferencií, preserve/avoid,
+unknown/conflict a proveniencie; projektový kontext znižuje na tempo, tóninu, dostupné roly a existenciu aktívneho
+patternu bez interných ID či názvov trackov. Modelový JSON má samostatnú verziu, allowlist polí a limity
+hodnôt/veľkosti. Výstup je len návrh: čistý resolver aplikuje iba používateľom schválené polia, nemení už určené fakty
+a atomicky odmieta konfliktný rozsah. Pokryté je SK briefové vstupné mapovanie, malformed/oversized výstup, schema
+drift, role konflikty a approve-only správanie.
+**Otvorené:** samostatný creative provider/prompt, golden a held-out eval, UI pre clarify/approve a až po ich bránach
+napojenie trénovaného modelu. Action-only LFM sa nesmie považovať za hotový creative compiler.
 
 ### 6.4 Fáza 11 — LFM tréning, ktorý generalizuje bez nebezpečných zámen
 
