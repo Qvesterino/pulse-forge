@@ -1,0 +1,88 @@
+{
+  "comparisonVersion": 1,
+  "task": "creative-task-v1",
+  "taskBoundary": "synthetic creative-brief interpretation only; not musical-quality evaluation",
+  "preflight": {
+    "trainingReport": "9fa5c35aaf7fe02bbce7b2fbad953074129eecbf968a6033759d096d95c66ada",
+    "corpusManifest": "6ee6c0b1069527794d9bcb5df4f5fbba541905e810c7fd7c6a6bc74d828adcd7",
+    "trainRows": 32,
+    "validationRows": 32,
+    "systemPromptSha256": "6d4614a97b95957704cde0fbe9dd8fb777cb93681ad897872115e6cb39688f8b",
+    "baseModel": "LiquidAI/LFM2.5-1.2B-Instruct",
+    "baseModelRevision": "0f604ada3f766f9f257460c4c9f0b5d6f69d431b",
+    "adapterModelSha256": "c3536b6580f4db7373df9dafbf97975b9ecf27bc84e0455f3a1bb50463978e89",
+    "syntheticOnly": true,
+    "modelDownloadAllowed": false
+  },
+  "evaluation": {
+    "requestedCases": 32,
+    "totalValidationCases": 32,
+    "completeRun": true,
+    "maxNewTokens": 160,
+    "base": {
+      "rows": 32,
+      "schemaAndSafetyValid": 0,
+      "validRate": 0.0,
+      "exact": 0,
+      "exactRate": 0.0,
+      "statusCorrect": 0,
+      "statusAccuracy": 0.0,
+      "roleSafetyFailures": 0,
+      "byLanguage": {
+        "en": {
+          "rows": 16,
+          "valid": 0,
+          "exact": 0,
+          "statusCorrect": 0,
+          "validRate": 0.0,
+          "exactRate": 0.0
+        },
+        "sk": {
+          "rows": 16,
+          "valid": 0,
+          "exact": 0,
+          "statusCorrect": 0,
+          "validRate": 0.0,
+          "exactRate": 0.0
+        }
+      },
+      "syntheticOnly": true
+    },
+    "creativeSft": {
+      "rows": 32,
+      "schemaAndSafetyValid": 25,
+      "validRate": 0.78125,
+      "exact": 4,
+      "exactRate": 0.125,
+      "statusCorrect": 4,
+      "statusAccuracy": 0.125,
+      "roleSafetyFailures": 0,
+      "byLanguage": {
+        "en": {
+          "rows": 16,
+          "valid": 11,
+          "exact": 2,
+          "statusCorrect": 2,
+          "validRate": 0.6875,
+          "exactRate": 0.125
+        },
+        "sk": {
+          "rows": 16,
+          "valid": 14,
+          "exact": 2,
+          "statusCorrect": 2,
+          "validRate": 0.875,
+          "exactRate": 0.125
+        }
+      },
+      "syntheticOnly": true
+    },
+    "delta": {
+      "schemaAndSafetyValid": 25,
+      "exact": 4,
+      "statusCorrect": 4,
+      "roleSafetyFailures": 0
+    }
+  },
+  "eligibleForModelPromotion": false
+}

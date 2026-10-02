@@ -587,6 +587,14 @@ nevytvára generalizujúceho AI producenta a tento adapter sa nesmie zapojiť do
 rozšíriť označené SK/EN dáta na viac nezávislých producentových zámerov a získať consented human-reviewed holdout;
 nie zvyšovať epochy na týchto 64 riadkoch.
 
+**Base-vs-adapter paired eval (2026-10-02):** `scripts/data/creative-task-sft/base-vs-adapter-2026-10-02.json`
+pinne úplný inference run nad rovnakými 32 validačnými príkladmi, tokenizerom, system promptom a limitom generovania.
+Bez sťahovania modelu dosiahol base model `0/32` schema+context-safe výstupov; LoRA dosiahla `25/32` (78,1 %),
+pričom exact zhoda aj správny status ostali iba `4/32` (12,5 %) a role-safety únikov bolo `0`. Platnosť bola
+`11/16` EN a `14/16` SK. Je to merateľný format/safety posun na syntetickom holdoute, nie dôkaz porozumenia briefu,
+užitočnosti návrhov ani hudobnej kvality. Adapter preto ostáva nepromovaný; ďalší tréning vyžaduje výrazne širší,
+ľudsky kontrolovaný a so súhlasom získaný holdout, nie viac epoch na aktuálnom minikorpuse.
+
 ### 6.4 Fáza 11 — LFM tréning, ktorý generalizuje bez nebezpečných zámen
 
 **Cieľ:** preukázať, že fine-tuned LFM2.5 prináša merateľné zlepšenie nad deterministickým parserom na presne tej úlohe, na ktorú sa má používať.
@@ -619,11 +627,10 @@ SK/EN a proposal/clarify/abstain príklady. Je to výhradne syntetický format/e
 human-reviewed dataset a **nie** dôkaz producentovho porozumenia. Oddelený `scripts/train-creative-task-sft.py`
 vyžaduje explicitný model aj pinned revision, explicitné potvrdenie syntetických dát, CUDA a minimálne voľné VRAM;
 meria creative-schema validity, exact/status accuracy a role-safety, ukladá len adapter a nevie nič registrovať ani
-promovať. Tréning zatiaľ nebol spustený: bootstrap nie je tréningovo reprezentatívny, modelové weighty LFM2.5 nie sú
-v lokálnej cache (je tam iba config/tokenizer) a na spoločnej GPU bežal iný verify job. Chýbajúce modelové súbory sa
-nestiahnu bez explicitného `--allow-model-download`. Zostáva rozšíriť corpus consented/human-reviewed podľa rubricy,
-evalovať akčný baseline vs.
-nový samostatný creative model na golden holdoute, vykonať blind listening a splniť release gates.
+promovať. Pilotný tréning aj úplné base-vs-adapter vyhodnotenie už prebehli a sú pripnuté v dvoch reportoch vyššie;
+samotný evaluator pri chýbajúcich modelových súboroch odmieta download bez explicitného `--allow-model-download`.
+Zostáva rozšíriť corpus podľa rubriky na consented/human-reviewed príklady, porovnať deterministic brief baseline a
+nový creative model na tom istom ľudskom holdoute, vykonať slepú produkčnú/hudobnú evaluáciu a splniť release gates.
 
 **Hotovo, keď:** jeden kandidátny model prejde rovnaký pinned evaluator opakovateľne, porazí relevantný baseline na držaných-out parafrázach a neporuší safety gates; report je oddelený od hudobnej blind-evaluácie.
 
