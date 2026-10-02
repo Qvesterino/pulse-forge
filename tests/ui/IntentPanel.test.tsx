@@ -1,10 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
-import { screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { screen, fireEvent, waitFor, within, render } from "@testing-library/react";
 import { IntentPanel } from "../../src/ui/IntentPanel";
-import { renderWithContext } from "../helpers";
+import { mockServices, renderWithContext } from "../helpers";
+import { SelectionContext, ServicesContext } from "../../src/ui/context";
+import { SelectionStore } from "../../src/store/SelectionStore";
 import { normalizeIntent } from "../../src/intent/normalize";
 import { setIntentModelProvider } from "../../src/intent/model-resolver";
 import { lastGeneration, rememberGeneration } from "../../src/intent/session-context";
+import { createProjectFromTemplate } from "../../src/project-model/templates";
+import { getActivePattern, getDrumTrack } from "../../src/project-model/types";
+import { classifyPads } from "../../src/assist/patternOps";
 import type { SongBuild } from "../../src/intent/song";
 import type { ProjectDocument } from "../../src/project-model/types";
 
@@ -41,6 +46,64 @@ vi.mock("../../src/intent/song", async (importOriginal) => {
 });
 
 describe("IntentPanel", () => {
+  it("routes vocal-space through the shared scoped preview and applies it as one undoable command", async () => {
+    const doc = createProjectFromTemplate("house");
+    const pattern = getActivePattern(doc);
+    const drum = getDrumTrack(doc);
+    const hat = classifyPads(drum.pads).hats[0]!;
+    const kick = classifyPads(drum.pads).kicks[0]!;
+    const hatRow = Array.from({ length: pattern.stepCount }, (_, step) =>
+      step < 8 ? (step % 4 === 0 ? 0.9 : 0.4 + step * 0.02) : 0,
+    );
+    const selectedPattern = {
+      ...pattern,
+      rows: { ...pattern.rows, [hat.id]: hatRow },
+      stepMeta: { [hat.id]: { 1: { microtiming: 0.1 }, 2: { microtiming: -0.1 } } },
+    };
+    const project = {
+      ...doc,
+      patterns: doc.patterns.map((candidate) => (candidate.id === pattern.id ? selectedPattern : candidate)),
+    };
+    const selection = new SelectionStore();
+    selection.setStepSelection({ padIds: [hat.id, kick.id], from: 0, to: 7 });
+    const services = mockServices(project);
+    render(
+      <ServicesContext.Provider value={services}>
+        <SelectionContext.Provider value={selection}>
+          <IntentPanel />
+        </SelectionContext.Provider>
+      </ServicesContext.Provider>,
+    );
+
+    fireEvent.change(screen.getByLabelText(/Intent description/i), { target: { value: "open space for vocal" } });
+    fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+
+    const preview = await screen.findByRole("region", { name: "Selected-cell intent preview" });
+    expect(preview).toHaveTextContent(`VOCAL SPACE · HATS-ONLY THIN`);
+    expect(preview).toHaveTextContent(`${drum.name} · bar 1, steps 1–8 · 8 → 6 hits`);
+    expect(preview).toHaveTextContent(`${hat.name} · 42% → 0%`);
+    expect(services.store.execute).not.toHaveBeenCalled();
+
+    selection.setStepSelection({ padIds: [kick.id], from: 0, to: 7 });
+    fireEvent.click(within(preview).getByRole("button", { name: /APPLY · ONE UNDO STEP/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/step selection changed/i);
+    expect(services.store.execute).not.toHaveBeenCalled();
+
+    selection.setStepSelection({ padIds: [hat.id, kick.id], from: 0, to: 7 });
+    fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+    const refreshedPreview = await screen.findByRole("region", { name: "Selected-cell intent preview" });
+
+    fireEvent.click(within(refreshedPreview).getByRole("button", { name: /APPLY · ONE UNDO STEP/i }));
+    const command = vi.mocked(services.store.execute).mock.calls[0]?.[0];
+    expect(command?.type).toBe("assistThinSelection");
+    const changed = command!.execute(project);
+    const changedPattern = changed.patterns.find((candidate) => candidate.id === pattern.id)!;
+    expect(command!.undo(changed)).toEqual(project);
+    expect(changedPattern.rows[hat.id]?.filter((velocity, step) => step < 8 && velocity > 0)).toHaveLength(6);
+    expect(changedPattern.rows[hat.id]?.[0]).toBe(0.9);
+    expect(changedPattern.rows[kick.id]).toEqual(selectedPattern.rows[kick.id]);
+  });
+
   it("renders the textarea and disabled GENERATE button initially", () => {
     renderWithContext(<IntentPanel />);
     const textarea = screen.getByLabelText(/Intent description/i);

@@ -68,6 +68,29 @@ describe("mix profile planner (D1)", () => {
   });
 });
 
+describe("selected-step producer routing", () => {
+  it("shares the fail-closed Assist language only while a sequencer selection is active", () => {
+    const doc = testDoc();
+    expect(routeIntentText("open space for vocal", doc, { hasSelectedStepSelection: true })).toEqual({
+      kind: "selectedStepAssist",
+      intent: { operation: "thin", target: "hats", reason: "vocal-space" },
+    });
+    expect(routeIntentText("make selected hats sparser", doc, { hasSelectedStepSelection: true })).toEqual({
+      kind: "selectedStepAssist",
+      intent: { operation: "thin", target: "hats" },
+    });
+    expect(routeIntentText("humanize these steps", doc, { hasSelectedStepSelection: true })).toEqual({
+      kind: "selectedStepAssist",
+      intent: { operation: "humanize", target: null },
+    });
+    expect(routeIntentText("open space for vocal", doc).kind).not.toBe("selectedStepAssist");
+    expect(
+      routeIntentText("thin selected hats and snares, then move the drop", doc, { hasSelectedStepSelection: true })
+        .kind,
+    ).not.toBe("selectedStepAssist");
+  });
+});
+
 describe("applyMixIntent (D1)", () => {
   it("adds effects, clamps params and wires sidechain as ONE undo step", () => {
     const doc = deterministicTestDoc();

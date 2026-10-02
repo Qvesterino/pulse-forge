@@ -66,6 +66,10 @@ import {
   markerReadback,
 } from "../intent/studio-words";
 import { applySoundSwapIntent, applyStepEditIntent, soundSwapReadback } from "../intent/sound-words";
+import { assistThinSelectionCommand, assistVarySelectionCommand } from "../commands/assistSelectionCommands";
+import { planSelectedStepInstruction, type SelectedStepInstructionPlan } from "../assist/selected-step-plan";
+import { parseSelectedStepIntent, type SelectedStepIntent } from "../assist/selected-step-intent";
+import type { StepSelection } from "../store/SelectionStore";
 import { applyPresetIntentCommand, presetReadback } from "../intent/preset-intent";
 import { analyzeAudioReference } from "../intent/audio-reference";
 import { analyzeVoiceIdea } from "../intent/voice-idea";
@@ -109,6 +113,7 @@ import { compileIteration } from "../intent/iteration";
 import { BriefContractSummary } from "./BriefContractSummary";
 import { ProjectProducerBriefManager } from "./ProjectProducerBriefManager";
 import { downmixToMono, resampleLinear } from "../sample-library/audio-index";
+import { hashString } from "../shared/rng";
 import {
   applyBypassIntent,
   applyEffectIntent,
@@ -156,7 +161,7 @@ import { encodeShareCode, shareAppUrl } from "../export/shareCode";
 import { funnelEvent } from "../services/funnel";
 import type { Command } from "../commands/types";
 import type { GenerationResult, RankedCandidate } from "../intent/types";
-import type { Pattern, ProjectDocument } from "../project-model/types";
+import type { DrumTrack, Pattern, ProjectDocument } from "../project-model/types";
 import { ProducerDnaCompare } from "./ProducerDnaCompare";
 import { CandidateLaneReceipt } from "./CandidateLaneReceipt";
 
@@ -183,6 +188,17 @@ const AudiotoolNexusExport = lazy(() =>
 let regenAutoRan = false;
 const BRIEF_CONFLICT_BLOCK_MESSAGE =
   "Zadanie si protirečí. Uprav konfliktné požiadavky v texte alebo odstráň ochranný čip pred generovaním.";
+
+interface SelectedStepPromptPreview {
+  source: string;
+  intent: SelectedStepIntent;
+  pattern: Pattern;
+  drumTrack: DrumTrack;
+  selection: StepSelection;
+  plan: SelectedStepInstructionPlan;
+  seed: string;
+  amount: number;
+}
 
 /** LOCAL INTENT MODEL chip tooltips per availability state. */
 const INTENT_MODEL_CHIP_TITLES: Record<IntentModelState, string> = {
@@ -2233,6 +2249,7 @@ export function IntentPanel() {
   // D3 unified bar: route the text to the right executor — arrange ops,
   // mix profile, or (default) candidate generation.
   const [routeBusy, setRouteBusy] = useState(false);
+  const [selectedStepPreview, setSelectedStepPreview] = useState<SelectedStepPromptPreview | null>(null);
   // `prompt` rides along for MINING only (which ask produced these chips) —
   // the diagnosis path leaves it unset; picked chips log against it.
   const [clarify, setClarify] = useState<{ reason: string; suggestions: string[]; prompt?: string } | null>(null);
@@ -2242,6 +2259,61 @@ export function IntentPanel() {
   // before anything routes. No auto-execution, by design.
   const voiceCaptureRef = useRef<ReturnType<typeof createVoiceCapture> | null>(null);
   const [voiceState, setVoiceState] = useState<"idle" | "recording" | "transcribing">("idle");
+
+  const applySelectedStepPromptPreview = () => {
+    const preview = selectedStepPreview;
+    if (!preview) return;
+    const currentDoc = services.store.getDoc();
+    const currentPattern = currentDoc.patterns.find((candidate) => candidate.id === preview.pattern.id);
+    const currentDrumTrack = currentDoc.tracks.find(
+      (track): track is DrumTrack => track.kind === "drum" && track.id === preview.drumTrack.id,
+    );
+    const currentSelection = selection.getState().stepSelection;
+    const currentIntent = parseSelectedStepIntent(text);
+    const sameSelection = Boolean(
+      currentSelection &&
+      currentSelection.from === preview.selection.from &&
+      currentSelection.to === preview.selection.to &&
+      currentSelection.padIds.length === preview.selection.padIds.length &&
+      currentSelection.padIds.every((padId, index) => padId === preview.selection.padIds[index]),
+    );
+    if (
+      text.trim() !== preview.source ||
+      currentDoc.activePatternId !== preview.pattern.id ||
+      currentPattern !== preview.pattern ||
+      currentDrumTrack !== preview.drumTrack ||
+      !sameSelection ||
+      currentIntent?.operation !== preview.intent.operation ||
+      currentIntent?.target !== preview.intent.target ||
+      currentIntent?.reason !== preview.intent.reason ||
+      !preview.plan.scope
+    ) {
+      setSelectedStepPreview(null);
+      setError("Project, prompt, or step selection changed — run DO IT again to review a fresh preview.");
+      return;
+    }
+
+    try {
+      const command =
+        preview.intent.operation === "thin"
+          ? assistThinSelectionCommand(currentDoc, preview.pattern.id, preview.drumTrack.id, preview.plan.scope)
+          : assistVarySelectionCommand(
+              currentDoc,
+              preview.pattern.id,
+              preview.drumTrack.id,
+              preview.plan.scope,
+              preview.seed,
+              preview.amount,
+            );
+      services.store.execute(command);
+      setSelectedStepPreview(null);
+      setJustApplied(false);
+      setError(null);
+      setStatus(`✓ ${command.label} (one undo step)`);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   const toggleVoiceCapture = async () => {
     if (voiceState === "recording") {
@@ -2273,13 +2345,18 @@ export function IntentPanel() {
     const source = (override ?? text).trim();
     if (!source || routeBusy) return;
     setRouteBusy(true);
+    setSelectedStepPreview(null);
     setError(null);
     setJustApplied(false);
     setClarify(null);
     try {
       // Pre-routed entry: the local-model fallback (below) re-enters with an
       // adapted route so the big dispatch chain runs exactly once.
-      const route = preRoutedRef.current ?? routeIntentText(source, doc);
+      const route =
+        preRoutedRef.current ??
+        routeIntentText(source, doc, {
+          hasSelectedStepSelection: Boolean(selection.getState().stepSelection),
+        });
       preRoutedRef.current = null;
       if (route.kind === "revise" && rejectUnresolvedBriefConflicts()) return;
       if (lastGeneration() && resolveProducerFollowUp(source, lastGeneration()?.intent ?? null)) {
@@ -2452,6 +2529,65 @@ export function IntentPanel() {
         }
         services.store.execute(command);
         setStatus(`🥁 ${command.label} (one undo step)`);
+      } else if (route.kind === "selectedStepAssist") {
+        const currentDoc = services.store.getDoc();
+        const selected = selection.getState().stepSelection;
+        const pattern = currentDoc.patterns.find((candidate) => candidate.id === currentDoc.activePatternId) ?? null;
+        const drumTrack =
+          selected && selected.padIds.length > 0
+            ? (currentDoc.tracks.find(
+                (track): track is DrumTrack =>
+                  track.kind === "drum" && selected.padIds.every((padId) => track.pads.some((pad) => pad.id === padId)),
+              ) ?? null)
+            : null;
+        const selectionSnapshot = selected
+          ? { padIds: [...selected.padIds], from: selected.from, to: selected.to }
+          : null;
+        const selectedRows =
+          pattern && selectionSnapshot
+            ? selectionSnapshot.padIds.map((padId) => `${padId}:${(pattern.rows[padId] ?? []).join(",")}`).join("|")
+            : "no-valid-pattern";
+        const amount = 0.6;
+        const seed = `producer-step-${hashString(
+          `${pattern?.id ?? "missing"}|${route.intent.operation}|${route.intent.target ?? "all"}|${
+            selectionSnapshot?.from ?? "?"
+          }:${selectionSnapshot?.to ?? "?"}|${selectedRows}`,
+        ).toString(36)}`;
+        const plan = planSelectedStepInstruction({
+          text: source,
+          pattern,
+          drumTrack,
+          selection: selectionSnapshot,
+          seed,
+          amount,
+          bars: 4,
+          target: route.intent.target ?? "hats",
+          style: "house",
+        });
+        if (
+          plan.error ||
+          !plan.scope ||
+          !pattern ||
+          !drumTrack ||
+          !selectionSnapshot ||
+          plan.intent?.operation !== route.intent.operation ||
+          plan.intent?.target !== route.intent.target ||
+          plan.intent?.reason !== route.intent.reason
+        ) {
+          setError(plan.error ?? "Could not prepare a safe selected-step preview.");
+          return;
+        }
+        setSelectedStepPreview({
+          source,
+          intent: route.intent,
+          pattern,
+          drumTrack,
+          selection: selectionSnapshot,
+          plan,
+          seed,
+          amount,
+        });
+        setStatus("Preview ready — inspect the exact selected-cell changes, then apply or cancel.");
       } else if (route.kind === "stepEditIntent") {
         // "remove the kick on beat 3 of bar 2" — per-step edit folded into
         // one snapshot; out-of-range bars fail explicitly.
@@ -2912,7 +3048,11 @@ export function IntentPanel() {
         title="Describe the beat you want — genre, mood, tempo, bars, instruments, arrangement. Ctrl/Cmd+Enter generates."
         placeholder="dark rolling techno at 140 with lead… · tmavé rolujúce techno na 140, 8 taktov…"
         value={text}
-        onChange={(e) => replacePrompt(e.target.value)}
+        onChange={(e) => {
+          replacePrompt(e.target.value);
+          if (selectedStepPreview) setStatus(null);
+          setSelectedStepPreview(null);
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void generate();
         }}
@@ -3035,6 +3175,46 @@ export function IntentPanel() {
       {error && (
         <div className="intent-error" role="alert">
           {error}
+        </div>
+      )}
+      {selectedStepPreview && (
+        <div className="intent-history" role="region" aria-label="Selected-cell intent preview">
+          <span className="intent-history-label">
+            {selectedStepPreview.intent.reason === "vocal-space"
+              ? "VOCAL SPACE · HATS-ONLY THIN"
+              : `SELECTED STEPS · ${selectedStepPreview.intent.operation.toUpperCase()}`}
+          </span>
+          <div>
+            {selectedStepPreview.drumTrack.name} · bar{" "}
+            {Math.floor(Math.min(selectedStepPreview.selection.from, selectedStepPreview.selection.to) / 16) + 1}, steps{" "}
+            {Math.min(selectedStepPreview.selection.from, selectedStepPreview.selection.to) + 1}–
+            {Math.max(selectedStepPreview.selection.from, selectedStepPreview.selection.to) + 1} ·{" "}
+            {selectedStepPreview.plan.beforeHits} → {selectedStepPreview.plan.afterHits} hits
+          </div>
+          {selectedStepPreview.plan.changes.slice(0, 8).map((change) => (
+            <div key={`${change.padId}-${change.step}`}>
+              Step {change.step + 1} · {change.padName} · {Math.round(change.before * 100)}% →{" "}
+              {Math.round(change.after * 100)}%
+            </div>
+          ))}
+          {selectedStepPreview.plan.changes.length > 8 && (
+            <div>+ {selectedStepPreview.plan.changes.length - 8} more cell changes</div>
+          )}
+          <div className="intent-actions">
+            <button type="button" className="btn intent-route-btn" onClick={applySelectedStepPromptPreview}>
+              APPLY · ONE UNDO STEP
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setSelectedStepPreview(null);
+                setStatus("Selected-step preview cancelled; project unchanged.");
+              }}
+            >
+              CANCEL
+            </button>
+          </div>
         </div>
       )}
       {clarify && clarify.suggestions.length > 0 && (

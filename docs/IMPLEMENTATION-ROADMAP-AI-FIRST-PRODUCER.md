@@ -711,6 +711,8 @@ Toto je prvá trvalá pamäť AI producenta a súčasť vertical slice-u; nesmie
 
 **Additional progress (2026-10-02, sequencer context):** the selected-cell Assist workflow now accepts a small fail-closed natural-language subset: “humanize these steps”, “make selected hats sparser” (including Slovak “redšie vybrané haty”), and “open space for vocal” / “otvor priestor pre vokál”. Vocal-space shorthand is shown transparently as hats-only thinning; it is refused when no selected hat row exists. Preview lists exact cell changes, respects the visible step range and any named pad family, preserves beat anchors when thinning, and applies through one undoable command. This is a deterministic local action path, not general language understanding or the LFM creative provider; broader musical edits and prompt/context golden-task parity remain open.
 
+**Additional progress (2026-10-02, unified prompt/context parity):** the main intent bar now routes that same fail-closed selected-step vocabulary through the shared preview planner when a sequencer step selection is active. It shows the exact hat/cell diff and requires explicit apply or cancel; apply revalidates the prompt, active pattern, drum track, and selection before issuing one undoable command. Without a step selection, the same words remain a creative generation prompt. Focused tests cover shared routing, preview-before-apply, stale-selection rejection, and undo. This closes parity for the bounded selected-step golden cases only; it does not close the broader Phase 13 open items above.
+
 ### 6.7 Fáza 14 — downloadable lokálny runtime bez skrytého setupu
 
 **Cieľ:** AI v KYX Studio je použiteľná pre bežného producenta, nie iba pre developera, ktorý už má ručne nakonfigurovaný Ollama server.

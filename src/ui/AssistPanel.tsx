@@ -16,37 +16,19 @@ import {
 } from "../commands/assistSelectionCommands";
 import {
   applyAssistPatchToStepSelection,
-  classifyPads,
   humanizeNoteSelection,
   styleNames,
-  thinStepSelection,
   type NoteSelectionScope,
   type ReplaceTarget,
-  type StepSelectionScope,
 } from "../assist/patternOps";
-import { parseSelectedStepIntent, type SelectedStepIntent } from "../assist/selected-step-intent";
+import { planSelectedStepInstruction } from "../assist/selected-step-plan";
+import { parseSelectedStepIntent } from "../assist/selected-step-intent";
+import type { SelectedStepInstructionPlan } from "../assist/selected-step-plan";
 import { buildAssistPatch } from "../assist/pipeline";
 import { ASSIST_ENGINE_VERSION, type AssistOperation } from "../assist/types";
 import { getActivePattern, getDrumTrack } from "../project-model/types";
 import { nextSeed } from "../shared/dice";
 import { applyArrangeOps, parseArrangeIntent, type ParsedArrange } from "../intent/arrangeWords";
-
-interface SelectedStepChange {
-  padId: string;
-  padName: string;
-  step: number;
-  before: number;
-  after: number;
-}
-
-interface SelectedStepInstructionPlan {
-  intent: SelectedStepIntent | null;
-  scope: StepSelectionScope | null;
-  changes: SelectedStepChange[];
-  beforeHits: number;
-  afterHits: number;
-  error: string | null;
-}
 
 function randomSeed(prev?: string): string {
   return nextSeed(prev ?? String(Date.now()), "assist");
@@ -161,104 +143,17 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
     return applyAssistPatchToStepSelection(pattern, patch, selectedStepScope);
   }, [pattern, selectedDrumTrack, selectedStepScope, seed, amount, bars, target, style]);
   const selectedStepInstructionPlan = useMemo((): SelectedStepInstructionPlan => {
-    if (!selectedStepText.trim()) {
-      return { intent: null, scope: null, changes: [], beforeHits: 0, afterHits: 0, error: null };
-    }
-    if (!selectedStepScope || !selectedDrumTrack) {
-      return {
-        intent: null,
-        scope: null,
-        changes: [],
-        beforeHits: 0,
-        afterHits: 0,
-        error: "Reselect valid drum cells before describing a scoped edit.",
-      };
-    }
-    const intent = parseSelectedStepIntent(selectedStepText);
-    if (!intent) {
-      return {
-        intent: null,
-        scope: null,
-        changes: [],
-        beforeHits: 0,
-        afterHits: 0,
-        error: "Try “make selected hats sparser” or “humanize these steps”.",
-      };
-    }
-
-    const selectedPadIds = new Set(selectedStepScope.padIds);
-    const targetPads = intent.target ? classifyPads(selectedDrumTrack.pads)[intent.target] : selectedDrumTrack.pads;
-    const padIds = targetPads.filter((pad) => selectedPadIds.has(pad.id)).map((pad) => pad.id);
-    if (padIds.length === 0) {
-      return {
-        intent,
-        scope: null,
-        changes: [],
-        beforeHits: 0,
-        afterHits: 0,
-        error: `The current step selection contains no ${intent.target ?? "usable"} drum rows.`,
-      };
-    }
-
-    const scope: StepSelectionScope = { ...selectedStepScope, padIds };
-    const previewPattern =
-      intent.operation === "thin"
-        ? thinStepSelection(pattern, scope)
-        : applyAssistPatchToStepSelection(
-            pattern,
-            buildAssistPatch(pattern, selectedDrumTrack.pads, {
-              operation: "vary",
-              seed,
-              amount,
-              bars,
-              target,
-              style,
-            }),
-            scope,
-          );
-    if (previewPattern === pattern) {
-      return {
-        intent,
-        scope,
-        changes: [],
-        beforeHits: 0,
-        afterHits: 0,
-        error:
-          intent.operation === "thin"
-            ? "The selected rows have no off-beat hits to thin."
-            : "This instruction would not change the selected cells; try a new seed or a wider selection.",
-      };
-    }
-
-    const from = Math.min(scope.from, scope.to);
-    const to = Math.max(scope.from, scope.to);
-    const changes: SelectedStepChange[] = [];
-    let beforeHits = 0;
-    let afterHits = 0;
-    for (const padId of scope.padIds) {
-      const padName = selectedDrumTrack.pads.find((pad) => pad.id === padId)?.name ?? "selected row";
-      const before = pattern.rows[padId] ?? [];
-      const after = previewPattern.rows[padId] ?? [];
-      for (let step = from; step <= to; step++) {
-        const beforeVelocity = before[step] ?? 0;
-        const afterVelocity = after[step] ?? 0;
-        if (beforeVelocity > 0) beforeHits++;
-        if (afterVelocity > 0) afterHits++;
-        if (beforeVelocity !== afterVelocity)
-          changes.push({ padId, padName, step, before: beforeVelocity, after: afterVelocity });
-      }
-    }
-    if (changes.length === 0) {
-      return {
-        intent,
-        scope,
-        changes,
-        beforeHits,
-        afterHits,
-        error: "This instruction would not change the selected cells; try a new seed or a wider selection.",
-      };
-    }
-    return { intent, scope, changes, beforeHits, afterHits, error: null };
+    return planSelectedStepInstruction({
+      text: selectedStepText,
+      pattern,
+      drumTrack: selectedDrumTrack ?? null,
+      selection: selectedStepScope,
+      seed,
+      amount,
+      bars,
+      target,
+      style,
+    });
   }, [selectedStepText, selectedStepScope, selectedDrumTrack, pattern, seed, amount, bars, target, style]);
   const selectedNoteVariation = useMemo(
     () => (selectedNoteScope ? humanizeNoteSelection(pattern, selectedNoteScope, seed, amount) : null),

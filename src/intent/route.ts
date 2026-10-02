@@ -41,6 +41,7 @@ import { parseComplaintIntent, type ComplaintIntent } from "./complaints";
 import { parsePresetIntent, type PresetIntent } from "./preset-intent";
 import { typoCorrections } from "./typo";
 import { parseSectionRequests } from "./sections";
+import { parseSelectedStepIntent, type SelectedStepIntent } from "../assist/selected-step-intent";
 
 /**
  * Mix-intent vocabulary (INTENT_ENGINE.md D1): words that mean "change the
@@ -242,6 +243,7 @@ export type RoutedIntent =
   | { kind: "automateIntent"; intent: AutomateIntent }
   | { kind: "markerIntent"; intent: MarkerIntent }
   | { kind: "stepEditIntent"; intent: StepEditIntent }
+  | { kind: "selectedStepAssist"; intent: SelectedStepIntent }
   | { kind: "soundSwapIntent"; intent: SoundSwapIntent }
   | { kind: "select"; target: ExactTarget }
   | { kind: "preset"; intent: PresetIntent }
@@ -298,7 +300,11 @@ export type RoutedIntent =
  * ops only fire when they parse cleanly; mix only on explicit mix vocabulary;
  * revise only on comparative + attribute pairs.
  */
-export function routeIntentText(text: string, doc: ProjectDocument): RoutedIntent {
+export function routeIntentText(
+  text: string,
+  doc: ProjectDocument,
+  context: { hasSelectedStepSelection?: boolean } = {},
+): RoutedIntent {
   // TRANSPORT — bare-word runtime commands ("stop", "play", "pauza",
   // "metronome on"). Anchored to the WHOLE text: "stop the beat" is a
   // generation prompt, never a transport command. Transport is runtime
@@ -340,6 +346,13 @@ export function routeIntentText(text: string, doc: ProjectDocument): RoutedInten
   const queryIntent = parseQueryIntent(text);
   if (queryIntent) {
     return { kind: "queryIntent", intent: queryIntent };
+  }
+  // A sequencer selection is an explicit musical context. Reuse Assist's
+  // narrow parser here only when such a selection exists; the same language
+  // without one remains an ordinary generation prompt.
+  if (context.hasSelectedStepSelection) {
+    const selectedStepIntent = parseSelectedStepIntent(text);
+    if (selectedStepIntent) return { kind: "selectedStepAssist", intent: selectedStepIntent };
   }
   // COMPLAINT — the listening loop ("drop pôsobí prázdno", "the lead is
   // harsh"): measured diagnosis + executable bounded proposals as clarify
