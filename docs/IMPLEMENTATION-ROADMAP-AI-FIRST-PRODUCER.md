@@ -546,12 +546,22 @@ iba creative schema validátorom; nič neregistruje ani nemení v UI/projekte. P
 `invalid-suggestion`, druhá `invalid-shape`; breaker bezpečne preskočil zvyšných 19 prípadov. Z týchto dvoch nebol
 ani jeden použiteľný návrh. Je to negatívny kompatibilitný smoke test action-SFT modelu, nie kompletný benchmark,
 úspech creative modelu ani hodnotenie hudobnej kvality.
-**Structured-output hardening (2026-10-02):** provider teraz posiela do Ollama `format` JSON Schema odvodenú z
-`CreativeTaskOutputV1` (allowlist polí, žánre/tóniny, rozsahy, role arrays); existujúci runtime validator stále
-rozhoduje o statusových a sémantických safety pravidlách. Eval runner má `--limit` na explicitný čiastočný smoke a
-reportuje `requestedCases`/`completeRun`, aby sa jedna inference nemohla vydávať za holdout pass. Mocked provider test
-overuje odoslaný schema contract; po tejto zmene ešte neprebehol skutočný Ollama inference smoke, keďže na zdieľanej
-GPU beží iný verify job.
+**Structured-output + evaluation-runner hardening (2026-10-02):** provider posiela do Ollama `format` JSON Schema
+odvodenú z `CreativeTaskOutputV1` (allowlist polí, žánre/tóniny, rozsahy, role arrays); runtime validator stále
+rozhoduje o statusových a sémantických safety pravidlách. Eval runner má `--limit` pre explicitný čiastočný smoke,
+vytvára izolovaný provider pre každý prípad (produkčný circuit breaker tak nevynechá zvyšok offline sady) a na
+poslednej požiadavke uvoľní model. Report v2 rozlišuje spracované prípady, odoslané požiadavky, odpovede,
+provider-failures a `completeRun`. Cielené contract + runner testy: 35/35.
+**Plný action-model creative baseline (2026-10-02):** pinned report
+`creative-task-v1-action-lfm-v30q8-report-2026-10-02.json` viaže modelový digest
+`0fe23ac7a9dd43797fada070b43f76cd5faecf777d8b4e07f9fa99e382e4bb41`, prompt a všetky evaluator/parser zdroje;
+prediction JSONL má samostatný SHA-256 v reporte. Všetkých 21/21 prípadov dostalo požiadavku a odpoveď, bez circuit-open
+skipov. Iba 9 odpovedí prešlo creative runtime validátorom; 12 bolo odmietnutých (8 role/protection rozporov,
+1 `unknownFields` chyba, 3 neplatné clarification odpovede). Hard-, protection- aj preference-field exact rate boli
+0/21; decision accuracy 9/21 (42,86 %). Nula prijatých role-safety porušení znamená, že ich runtime validator
+odmietol — nie to, že model rešpektuje ochranu. Výsledok je úplný syntetický diagnostický baseline action-only
+`kyx-intent-v30-q8:latest`, nie creative model, reprezentatívny ľudský holdout ani hodnotenie hudby; tento provider sa
+nesmie routovať na tvorivé briefy.
 **Otvorené:** samostatné creative-task SFT dáta/model, opakovateľná eval po platných odpovediach na celom holdoute,
 consented human-reviewed holdout, rubric/blind listening, UI pre clarify/approve a až po release gates napojenie
 trénovaného creative modelu. Action-only LFM sa nesmie považovať za hotový creative compiler.

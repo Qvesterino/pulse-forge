@@ -1,0 +1,163 @@
+{
+  "reportVersion": 2,
+  "taskBoundary": "creative brief interpretation only; not musical-quality evaluation",
+  "provider": {
+    "kind": "local-ollama",
+    "id": "ollama.creative.kyx-intent-v30-q8:latest",
+    "version": "creative-task-v1",
+    "model": "kyx-intent-v30-q8:latest",
+    "modelDigest": "0fe23ac7a9dd43797fada070b43f76cd5faecf777d8b4e07f9fa99e382e4bb41",
+    "promptSha256": "6d4614a97b95957704cde0fbe9dd8fb777cb93681ad897872115e6cb39688f8b"
+  },
+  "dataset": {
+    "path": "scripts\\data\\creative-task-v1-golden.jsonl",
+    "sha256": "c14384799666b47d4118ee033d91ff485932acaf9a8bf5e50b5312df02bf1f07",
+    "cases": 21,
+    "requestedCases": 21,
+    "completeRun": true,
+    "split": "synthetic-held-out"
+  },
+  "evaluationRun": {
+    "processedCases": 21,
+    "modelRequestsAttempted": 21,
+    "modelResponses": 21,
+    "circuitOpenSkips": 0
+  },
+  "sources": {
+    "providerSha256": "df08f91781adcad93fd50735d59a40e6bb93f686fd849a27ab3512cb1d9dedc1",
+    "runnerSha256": "b327ff5ca7383eba19f2ddbde55fcf8b57a7d2f621aa8111e7a8603455c39e59",
+    "evaluationRunnerSha256": "b8765ad2d50f067862c0da1e801407699510cb4fb2c95e93e34aa7cf4c3a3af2",
+    "contractSha256": "599aefa99f579968c0bd75c13450c3259cbd654fcc33e519bce146aec0c2c666",
+    "evaluatorSha256": "ec841a26de0cd6f14b327b1bb8cfcdb084780e60fb3e16fe185b7b4adffe7338",
+    "parserSha256": "aedd78692dde6777e686aba3dec10f1a447d7e3966fa0900917cce76a9ce2f7a",
+    "briefCompilerSha256": "4a5277ef4a1663779f33c2610cd3f5481d909c9b9a126ce10723f175225f2b49"
+  },
+  "predictions": {
+    "path": "scripts\\data\\creative-task-v1-action-lfm-v30q8-predictions-2026-10-02.jsonl",
+    "sha256": "2bae568301735a1417ea6d78b04d9e1c5f7a8bc62e3e768634cb31085a2a3a50",
+    "count": 21,
+    "providerFailures": [
+      {
+        "id": "en-detroit-no-chords",
+        "error": "invalid-output",
+        "outputError": "contradictory-suggestion"
+      },
+      {
+        "id": "sk-boombap-no-drums",
+        "error": "invalid-output",
+        "outputError": "contradictory-suggestion"
+      },
+      {
+        "id": "en-piano-house-preserve-drums",
+        "error": "invalid-output",
+        "outputError": "contradictory-suggestion"
+      },
+      {
+        "id": "en-key-preserve-bass",
+        "error": "invalid-output",
+        "outputError": "invalid-unknown-field"
+      },
+      {
+        "id": "sk-tempo-preserve-drums",
+        "error": "invalid-output",
+        "outputError": "contradictory-suggestion"
+      },
+      {
+        "id": "sk-vocal-friendly-hook",
+        "error": "invalid-output",
+        "outputError": "contradictory-suggestion"
+      },
+      {
+        "id": "en-revise-darker",
+        "error": "invalid-output",
+        "outputError": "contradictory-suggestion"
+      },
+      {
+        "id": "en-ambiguous-space",
+        "error": "invalid-output",
+        "outputError": "contradictory-suggestion"
+      },
+      {
+        "id": "en-conflicting-role",
+        "error": "invalid-output",
+        "outputError": "contradictory-suggestion"
+      },
+      {
+        "id": "sk-conflicting-preserve",
+        "error": "invalid-output",
+        "outputError": "invalid-clarification"
+      },
+      {
+        "id": "en-unsupported-lyrics",
+        "error": "invalid-output",
+        "outputError": "invalid-clarification"
+      },
+      {
+        "id": "sk-vague-current",
+        "error": "invalid-output",
+        "outputError": "invalid-clarification"
+      }
+    ]
+  },
+  "evaluation": {
+    "evaluatorVersion": 1,
+    "taskBoundary": "creative-brief interpretation only; not musical-quality evaluation",
+    "cases": 21,
+    "predictions": 21,
+    "missingPredictions": 0,
+    "unexpectedPredictions": 0,
+    "duplicatePredictionIds": 0,
+    "validPredictions": 9,
+    "invalidPredictions": 12,
+    "decisionAccuracy": 0.4286,
+    "hardFieldExactRate": 0,
+    "protectionFieldExactRate": 0,
+    "preferenceFieldExactRate": 0,
+    "hardFields": {
+      "truePositive": 0,
+      "falsePositive": 9,
+      "falseNegative": 36,
+      "precision": 0,
+      "recall": 0,
+      "f1": 0
+    },
+    "protectionFields": {
+      "truePositive": 0,
+      "falsePositive": 9,
+      "falseNegative": 13,
+      "precision": 0,
+      "recall": 0,
+      "f1": 0
+    },
+    "preferenceFields": {
+      "truePositive": 5,
+      "falsePositive": 13,
+      "falseNegative": 20,
+      "precision": 0.2778,
+      "recall": 0.2,
+      "f1": 0.2326
+    },
+    "criticalUnknownFields": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 8,
+      "precision": null,
+      "recall": 0,
+      "f1": null
+    },
+    "criticalUnknownCases": 5,
+    "roleSafetyFailures": 0,
+    "byLanguage": {
+      "en": {
+        "cases": 12,
+        "decisionAccuracy": 0.4167,
+        "hardFieldExactRate": 0
+      },
+      "sk": {
+        "cases": 9,
+        "decisionAccuracy": 0.4444,
+        "hardFieldExactRate": 0
+      }
+    }
+  }
+}

@@ -9,11 +9,8 @@ import {
   type CreativeTaskRequestV1,
 } from "../src/intent/creative-task-contract";
 import { evaluateCreativeTaskPredictions, type CreativeTaskGoldenCaseV1 } from "../src/intent/creative-task-evaluation";
-import {
-  createCreativeTaskOllamaProvider,
-  creativeTaskOllamaSystemPrompt,
-  type CreativeTaskProviderError,
-} from "../src/intent/creative-task-ollama";
+import { runCreativeTaskEvaluation } from "../src/intent/creative-task-evaluation-runner";
+import { createCreativeTaskOllamaProvider, creativeTaskOllamaSystemPrompt } from "../src/intent/creative-task-ollama";
 import { parseIntentText } from "../src/intent/text-parser";
 
 const MAX_INPUT_BYTES = 4 * 1024 * 1024;
@@ -153,31 +150,40 @@ try {
   const model = await localModelMetadata(modelArg);
   // Evaluation may cold-load a local multi-gigabyte model; production callers
   // can choose the shorter provider default when they surface this capability.
-  const provider = createCreativeTaskOllamaProvider({
+  const firstProvider = createCreativeTaskOllamaProvider({
     model: model.name,
     timeoutMs: 120_000,
     unloadAfterRequest: evaluationCases.length === 1,
   });
-  const predictions: Array<{ id: string; output: unknown }> = [];
-  const providerFailures: Array<{ id: string; error: CreativeTaskProviderError; outputError?: string }> = [];
-
-  for (const [index, entry] of evaluationCases.entries()) {
-    process.stderr.write(`[${index + 1}/${evaluationCases.length}] ${entry.id}: requesting\n`);
-    const result = await provider.interpret(makeRequest(entry));
-    if (result.ok) {
-      predictions.push({ id: entry.id, output: result.output });
-      process.stderr.write(`[${index + 1}/${evaluationCases.length}] ${entry.id}: valid output\n`);
-    } else {
-      // Keep malformed model completions as invalid rows, but do not fabricate
-      // a prediction for timeouts, transport errors, or circuit-open skips.
-      if (result.error === "invalid-output") predictions.push({ id: entry.id, output: null });
+  const run = await runCreativeTaskEvaluation({
+    cases: evaluationCases,
+    createProvider: (index) =>
+      index === 0
+        ? firstProvider
+        : createCreativeTaskOllamaProvider({
+            model: model.name,
+            timeoutMs: 120_000,
+            unloadAfterRequest: index === evaluationCases.length - 1,
+          }),
+    makeRequest,
+    onCaseStart: (entry, index, total) => process.stderr.write(`[${index + 1}/${total}] ${entry.id}: requesting\n`),
+    onCaseResult: (entry, result, index, total) => {
+      if (result.ok) {
+        process.stderr.write(`[${index + 1}/${total}] ${entry.id}: valid output\n`);
+        return;
+      }
       const outputError = result.error === "invalid-output" ? result.outputError : undefined;
-      providerFailures.push({ id: entry.id, error: result.error, ...(outputError ? { outputError } : {}) });
       process.stderr.write(
-        `[${index + 1}/${evaluationCases.length}] ${entry.id}: ${result.error}${outputError ? ` (${outputError})` : ""}\n`,
+        `[${index + 1}/${total}] ${entry.id}: ${result.error}${outputError ? ` (${outputError})` : ""}\n`,
       );
-    }
-  }
+    },
+  });
+  const { predictions, providerFailures } = run;
+  const completeRun =
+    evaluationCases.length === golden.length &&
+    run.processedCases === golden.length &&
+    run.modelRequestsAttempted === golden.length &&
+    run.modelResponses === golden.length;
 
   const predictionBytes = Buffer.from(`${predictions.map((row) => JSON.stringify(row)).join("\n")}\n`, "utf8");
   const predictionPath = path.resolve(predictionsArg);
@@ -186,12 +192,12 @@ try {
     throw new Error("Prediction, report and golden paths must be distinct.");
   }
   const report = {
-    reportVersion: 1,
+    reportVersion: 2,
     taskBoundary: "creative brief interpretation only; not musical-quality evaluation",
     provider: {
       kind: "local-ollama",
-      id: provider.id,
-      version: provider.version,
+      id: firstProvider.id,
+      version: firstProvider.version,
       model: model.name,
       modelDigest: model.digest,
       promptSha256: sha256(creativeTaskOllamaSystemPrompt()),
@@ -201,12 +207,19 @@ try {
       sha256: sha256(goldenFile.bytes),
       cases: golden.length,
       requestedCases: evaluationCases.length,
-      completeRun: evaluationCases.length === golden.length,
+      completeRun,
       split: "synthetic-held-out",
+    },
+    evaluationRun: {
+      processedCases: run.processedCases,
+      modelRequestsAttempted: run.modelRequestsAttempted,
+      modelResponses: run.modelResponses,
+      circuitOpenSkips: providerFailures.filter((failure) => failure.error === "circuit-open").length,
     },
     sources: {
       providerSha256: sourceHash("../src/intent/creative-task-ollama.ts"),
       runnerSha256: sourceHash("./evaluate-creative-task-ollama.mts"),
+      evaluationRunnerSha256: sourceHash("../src/intent/creative-task-evaluation-runner.ts"),
       contractSha256: sourceHash("../src/intent/creative-task-contract.ts"),
       evaluatorSha256: sourceHash("../src/intent/creative-task-evaluation.ts"),
       parserSha256: sourceHash("../src/intent/text-parser.ts"),
@@ -224,7 +237,18 @@ try {
   writeFileSync(predictionPath, predictionBytes);
   writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
   process.stdout.write(
-    `${JSON.stringify({ model: model.name, digest: model.digest, cases: golden.length, requestedCases: evaluationCases.length, completeRun: evaluationCases.length === golden.length, failures: providerFailures.length, report: reportPath })}\n`,
+    `${JSON.stringify({
+      model: model.name,
+      digest: model.digest,
+      cases: golden.length,
+      requestedCases: evaluationCases.length,
+      processedCases: run.processedCases,
+      modelRequestsAttempted: run.modelRequestsAttempted,
+      modelResponses: run.modelResponses,
+      completeRun,
+      failures: providerFailures.length,
+      report: reportPath,
+    })}\n`,
     () => process.exit(0),
   );
 } catch (error) {
