@@ -11,8 +11,10 @@ afterEach(() => setIntentModelProvider(null));
 describe("action-model fallback boundary", () => {
   it.each([
     "dark trap at 142",
+    "make me a darker beat",
     "make me an instrumental to sing over",
     "I have a vocal; build a beat that leaves room for the singer",
+    "give me something to sing over",
     "chcem niečo pod vokál a miesto pre hlas",
   ])("keeps creative brief out of the command model: %s", (text) => {
     const route = routeIntentText(text, doc);
@@ -40,6 +42,14 @@ describe("action-model fallback boundary", () => {
     expect((await tryModelRoute(text, doc, route))?.kind).toBe("fader");
     expect(generate).toHaveBeenCalledOnce();
   });
+
+  it.each(["give me that warm sub sound on the low end", "fix the drums maybe?"])(
+    "does not mistake an unparsed action for a creative brief: %s",
+    (text) => {
+      const route = routeIntentText(text, doc);
+      expect(isCreativeBriefRoute(text, route)).toBe(false);
+    },
+  );
 
   it("treats a comparative beat edit as an action, not a new creative brief", () => {
     const text = "make the beat louder";

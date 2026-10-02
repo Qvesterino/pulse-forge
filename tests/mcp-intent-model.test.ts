@@ -90,6 +90,22 @@ describe("kyx_intent model fallback over MCP", () => {
     expect(events[0]).toMatchObject({ outcome: "model-hit", routeKind: "fader" });
   });
 
+  it("a creative beat brief bypasses the command model", async () => {
+    let consulted = false;
+    setIntentModelProvider({
+      id: "spy",
+      version: "test",
+      async generate() {
+        consulted = true;
+        return JSON.stringify({ kind: "fader", targets: ["bass"], pads: [], direction: "down" });
+      },
+    });
+    const ctx = makeCtx(createProjectFromTemplate("house"));
+    const result = await executeMcpToolAsync(ctx, "kyx_intent", { instruction: "dark trap at 142" });
+    expect(consulted).toBe(false);
+    expect(result.text).not.toContain("🤖");
+  });
+
   it("model-miss falls back to the deterministic answer and logs the miss", async () => {
     setIntentModelProvider(fakeProvider({})); // everything throws
     const ctx = makeCtx(createProjectFromTemplate("house"));

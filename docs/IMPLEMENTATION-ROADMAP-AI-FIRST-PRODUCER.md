@@ -504,6 +504,14 @@ Prvý tok má modelový resolver už dnes. Druhý vyžaduje kvalitnú a testovan
 
 **Hotovo, keď:** command intent a creative Producer Brief majú odlišné golden suites, ale zdieľajú tú istú validáciu, context snapshot, proposal/audition a command/undo hranicu. Všetky hard constraints prejdú gate-om pred kandidátmi.
 
+**Stav (2026-10-02): prvá bezpečnostná hranica dodaná; fáza pokračuje.** `model-fallback-policy.ts` drží rozpoznaný
+pattern brief a vocalist-led zadanie mimo action-only LFM routy. `IntentPanel` posiela kreatívny brief priamo do
+existujúceho generation workflow bez Ollama probe; `tryModelRoute` opakuje ochranu pre ďalších callerov; MCP preskočí
+action model pri kreatívnom brief-e aj pri už deterministicky rozpoznanom revise. Akčné parafrázy, ktoré parser
+nepozná, ostávajú kandidátom na modelový fallback a prechádzajú pôvodným schema/adapter/executor reťazcom. Overené UI,
+resolver a MCP regresiami. Toto **ešte nie je creative LFM compiler**: verzovaný creative-task output, jeho model/tréning,
+uncertainty/clarify eval a context snapshot sú stále otvorené.
+
 ### 6.4 Fáza 11 — LFM tréning, ktorý generalizuje bez nebezpečných zámen
 
 **Cieľ:** preukázať, že fine-tuned LFM2.5 prináša merateľné zlepšenie nad deterministickým parserom na presne tej úlohe, na ktorú sa má používať.

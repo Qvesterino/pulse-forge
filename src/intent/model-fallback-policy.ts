@@ -6,11 +6,15 @@ const MUSICAL_OBJECT =
 const COMPOSITION_VERB =
   /\b(?:create|generate|compose|build|write|produce|sprav(?:i|te)?|urob(?:i|te)?|vytvor(?:i|te)?|zloz(?:i|te)?|skladaj|napis(?:i|te)?)\b|\bmake\s+(?:me|us|a|an|some|another)\b/;
 const ACTION_VERB =
-  /\b(?:mute|solo|delete|remove|move|copy|duplicate|rename|select|load|bypass|export|save|record|transpose|pan|set|turn|lower|raise|increase|decrease|automate|insert|ease|park|shove|calm|tame|nudge|pull|push|lift|drop|stis(?:i|te)?|zni[zž](?:i|te)?|zv[yý]s(?:i|te)?|odstr[aá]n(?:i|te)?|pres[uú]n(?:i|te)?|premenuj|vyber|na[cč][ií]taj|vypni|zapni|oto[cč](?:i|te)?|pos[uú]n(?:i|te)?|pridaj|uber|zme[nň](?:i|te)?)\b/;
+  /\b(?:mute|solo|delete|remove|move|copy|duplicate|rename|select|load|bypass|export|save|record|transpose|pan|set|turn|lower|raise|increase|decrease|automate|insert|fix|ease|park|shove|calm|tame|nudge|pull|push|lift|drop|stis(?:i|te)?|zni[zž](?:i|te)?|zv[yý]s(?:i|te)?|odstr[aá]n(?:i|te)?|pres[uú]n(?:i|te)?|premenuj|vyber|na[cč][ií]taj|vypni|zapni|oto[cč](?:i|te)?|pos[uú]n(?:i|te)?|pridaj|uber|zme[nň](?:i|te)?)\b/;
 const EDIT_COMPARATIVE =
   /\b(?:louder|quieter|softer|darker|brighter|wider|narrower|warmer|colder|drier|wetter|punchier|harder|energetic|energic|busier|denser|sparser|hlasnejsi|tichsi|tmavsi|svetlejsi|sirsi|uzsi|teplejsi|suchsi|mokrejsi|razantnejsi|hustejsi|riedsi|energickejsi)\b/;
 const VOCAL_CONTEXT =
   /\b(?:for|under|over|around|space|room|leave|leaves|sing|vocal|vocals|vocalist|singer|spev|hlas|pod|pre|miesto|priestor|spev[aá]k|spev[aá]ck)\b/;
+const PRESET_LOOKUP =
+  /\b(?:give|get|find|choose|pick)\s+(?:me|us|the|a|an|that)?\s*[^.]{0,32}\b(?:preset|patch|sound|tone|kit)\b/;
+const EXISTING_SOUND_EDIT =
+  /\b(?:make|let|help)\s+(?:the|my|this|that)?\s*(?:low end|sub|bass|drums?|lead|chords?)\b.{0,28}\b(?:feel|sound|sit|land|hit)\b/;
 
 function normalizedText(value: string): string {
   return value
@@ -20,15 +24,7 @@ function normalizedText(value: string): string {
 }
 
 function hasStructuredCreativeBrief(input: IntentInput): boolean {
-  return Boolean(
-    input.genre ||
-    input.style ||
-    input.artist ||
-    input.key ||
-    input.bpmRange ||
-    input.length ||
-      input.fx,
-  );
+  return Boolean(input.genre || input.style || input.artist || input.key || input.bpmRange || input.length || input.fx);
 }
 
 /**
@@ -45,22 +41,30 @@ export function isCreativeBriefRoute(text: string, route: RoutedIntent): boolean
   const normalized = normalizedText(text);
   const hasMusicalObject = MUSICAL_OBJECT.test(normalized);
   const hasActionVerb = ACTION_VERB.test(normalized);
+  if (PRESET_LOOKUP.test(normalized) || EXISTING_SOUND_EDIT.test(normalized)) return false;
+
+  // An explicit composition request is stronger than incidental parser
+  // matches such as “bass” being read as a generation role.
+  if (COMPOSITION_VERB.test(normalized) && hasMusicalObject) return true;
+
+  // A well-formed musical brief already carries stronger evidence than an
+  // incidental edit verb inside the same sentence (“dark trap, remove hats”).
+  if (route.kind === "pattern" && hasStructuredCreativeBrief(route.input)) return true;
+
+  // Clear edit verbs take precedence over incidental parser fields.
+  if (hasActionVerb || EDIT_COMPARATIVE.test(normalized)) return false;
+
   if (route.kind === "pattern") {
-    if (hasStructuredCreativeBrief(route.input)) return true;
-    if ((route.input.roles || route.input.preserve) && !hasActionVerb && !EDIT_COMPARATIVE.test(normalized)) return true;
+    if (route.input.roles || route.input.preserve) return true;
   }
   if (!hasMusicalObject) return false;
 
-  // A creation verb wins over generic music nouns, except an unmistakable
-  // comparative edit such as “make the beat louder”.
-  if (COMPOSITION_VERB.test(normalized) && !EDIT_COMPARATIVE.test(normalized)) return true;
-
   // Singer-led prompts are often indirect (“something I can sing over”);
   // keep them out of the action schema even without “make me a beat”.
-  if (VOCAL_CONTEXT.test(normalized) && !hasActionVerb) return true;
+  if (VOCAL_CONTEXT.test(normalized)) return true;
 
   // Music nouns alone are enough to classify an otherwise non-command brief.
-  return !hasActionVerb && !EDIT_COMPARATIVE.test(normalized);
+  return true;
 }
 
 /** True only for the unmatched route where a command model could be useful. */

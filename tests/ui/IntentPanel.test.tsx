@@ -3,6 +3,7 @@ import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { IntentPanel } from "../../src/ui/IntentPanel";
 import { renderWithContext } from "../helpers";
 import { normalizeIntent } from "../../src/intent/normalize";
+import { setIntentModelProvider } from "../../src/intent/model-resolver";
 import { lastGeneration, rememberGeneration } from "../../src/intent/session-context";
 import type { SongBuild } from "../../src/intent/song";
 import type { ProjectDocument } from "../../src/project-model/types";
@@ -65,6 +66,22 @@ describe("IntentPanel", () => {
     expect(detected.textContent).not.toBeNull();
     expect(detected.textContent!.length).toBeGreaterThan(0);
   });
+
+  it("routes a creative DO IT brief to generation without consulting the action model", async () => {
+    const generate = vi.fn(async () => JSON.stringify({ kind: "fader", targets: ["bass"], direction: "down" }));
+    setIntentModelProvider({ id: "test-action-model", version: "1", generate });
+    try {
+      renderWithContext(<IntentPanel />);
+      fireEvent.change(screen.getByLabelText(/Intent description/i), { target: { value: "dark trap at 142" } });
+      fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+
+      await screen.findAllByRole("button", { name: /^USE$/ }, { timeout: 20000 });
+      expect(generate).not.toHaveBeenCalled();
+      expect(lastGeneration()?.intent.genre).toBe("trap");
+    } finally {
+      setIntentModelProvider(null);
+    }
+  }, 40000);
 
   it("updates the understood brief and generation input after an inline BPM correction", async () => {
     renderWithContext(<IntentPanel />);
