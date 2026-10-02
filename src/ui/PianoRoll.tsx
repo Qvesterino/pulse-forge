@@ -20,6 +20,7 @@ import {
 import { clamp, uid } from "../shared/ids";
 import { getScalePitchesInRange, isInScale, snapToScale, scaleDegreeLabel } from "../project-model/scales";
 import { usePublishCursor, useRemoteCursors } from "./remoteCursors";
+import { usePointerDragGuard } from "./usePointerDragGuard";
 import { MELODIC_OFFSETS, melodicKeys } from "./melodicKeys";
 import { humanizeVelocities, randomizeVelocities } from "../shared/velocityFx";
 import { HumToMelodyPanel } from "./HumToMelody";
@@ -48,9 +49,18 @@ type DragState =
       dSteps: number;
       dPitch: number;
       altDuplicate?: boolean;
-      duplicatedIds?: string[];
+      /** Alt-duplicate not yet committed — materialized on the first content-changing move. */
+      pendingDupSrcIds?: string[];
     }
-  | { mode: "resize"; noteId: string; baseStart: number; baseDurSteps: number; durSteps: number }
+  | {
+      mode: "resize";
+      noteId: string;
+      baseStart: number;
+      baseDurSteps: number;
+      durSteps: number;
+      altDuplicate?: boolean;
+      pendingDupSrcIds?: string[];
+    }
   | { mode: "noteVelocity"; noteId: string; startY: number; startVels: Record<string, number> };
 
 /** Per-note visual state derived from an active drag (null = not dragging this note). */
@@ -286,6 +296,10 @@ export function PianoRollTrack({
   const gridRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
+  // Window fallback for gestures whose captured element unmounts mid-drag
+  // (undo/collab delete of the dragged note): the element's own pointerup
+  // never fires. Handlers are wired below, once all cancel paths exist.
+  const noteDragGuard = usePointerDragGuard();
   const [drag, setDrag] = useState<DragState | null>(null);
   const notes = pattern.notes?.[track.id] ?? [];
   const patternTicks = STEP_TICKS * pattern.stepCount;
@@ -576,49 +590,24 @@ export function PianoRollTrack({
       setDrag(state as unknown as DragState);
       return;
     }
-    // Alt+drag duplicates selection (or this note if not in selection) before dragging — like FL
+    // Alt+drag duplicates selection (or this note if not in selection) before
+    // dragging — like FL. The duplicate commits on the FIRST CONTENT-CHANGING
+    // move, not here: materializing at pointerdown made a plain Alt+click
+    // (press, release, no move) plant an invisible duplicate exactly on top
+    // of the original — content the user never asked for, plus a dead undo
+    // step.
     const isDuplicate = smartMode === "duplicate" || isAlt;
     let dragNoteId = note.id;
-    let altDuplicatedIds: string[] | undefined;
+    let pendingDupSrcIds: string[] | undefined;
     if (isDuplicate) {
       const sel = selectedNote?.trackId === track.id ? selectedNote.noteIds : [];
-      const idsToDup = sel.includes(note.id) && sel.length > 0 ? sel : [note.id];
-      const dups: NoteEvent[] = [];
-      for (const nid of idsToDup) {
-        const src = notes.find((n) => n.id === nid);
-        if (!src) continue;
-        dups.push({ ...src, id: uid("note") });
-      }
-      if (dups.length > 0) {
-        const prev = [...notes];
-        const next = [...notes, ...dups].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
-        const newIds = dups.map((n) => n.id);
-        altDuplicatedIds = newIds;
-        services.store.execute({
-          type: "altDragDuplicate",
-          label: `Duplicate ${dups.length} notes`,
-          execute: (d: any) => ({
-            ...d,
-            patterns: d.patterns.map((p: any) =>
-              p.id === pattern.id ? { ...p, notes: { ...(p.notes ?? {}), [track.id]: next } } : p,
-            ),
-          }),
-          undo: (d: any) => ({
-            ...d,
-            patterns: d.patterns.map((p: any) =>
-              p.id === pattern.id ? { ...p, notes: { ...(p.notes ?? {}), [track.id]: prev } } : p,
-            ),
-          }),
-        } as any);
-        onSelectNote({ trackId: track.id, noteIds: newIds });
-        dragNoteId = newIds[0] ?? note.id;
-      }
+      pendingDupSrcIds = sel.includes(note.id) && sel.length > 0 ? sel : [note.id];
     }
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch {}
     const { stepF } = posFromEvent(event);
-    const refNote = notes.find((n) => n.id === dragNoteId) ?? notes.find((n) => n.id === note.id) ?? note;
+    const refNote = notes.find((n) => n.id === dragNoteId) ?? note;
     const noteStartSteps = refNote.start / STEP_TICKS;
     const noteDurSteps = refNote.duration / STEP_TICKS;
     const isEdge = isRightEdge || stepF - noteStartSteps > Math.max(noteDurSteps - 0.35, 0.65);
@@ -630,6 +619,8 @@ export function PianoRollTrack({
         baseStart: refNote.start,
         baseDurSteps: noteDurSteps,
         durSteps: noteDurSteps,
+        altDuplicate: isDuplicate,
+        pendingDupSrcIds,
       };
       dragRef.current = state;
       setDrag(state);
@@ -643,11 +634,12 @@ export function PianoRollTrack({
         dSteps: 0,
         dPitch: 0,
         altDuplicate: isDuplicate,
-        duplicatedIds: altDuplicatedIds,
+        pendingDupSrcIds,
       };
       dragRef.current = state;
       setDrag(state);
     }
+    noteDragGuard.arm();
   };
 
   const onNotePointerMove = (event: React.PointerEvent) => {
@@ -674,24 +666,64 @@ export function PianoRollTrack({
     }
     const { stepF, pitch } = posFromEvent(event);
     if (current.mode === "move") {
-      const next: DragState = {
-        ...current,
-        dSteps: Math.round(stepF - current.grabStep - current.baseStart / STEP_TICKS),
-        dPitch: pitch - current.basePitch,
-      };
+      const dSteps = Math.round(stepF - current.grabStep - current.baseStart / STEP_TICKS);
+      const dPitch = pitch - current.basePitch;
+      let next: DragState = { ...current, dSteps, dPitch };
+      if (next.pendingDupSrcIds && (dSteps !== 0 || dPitch !== 0)) next = materializeAltDuplicate(next);
       dragRef.current = next;
       setDrag(next);
     } else {
-      const next: DragState = {
-        ...current,
-        durSteps: Math.max(1, Math.round(stepF - current.baseStart / STEP_TICKS)),
-      };
+      const durSteps = Math.max(1, Math.round(stepF - current.baseStart / STEP_TICKS));
+      let next: DragState = { ...current, durSteps };
+      if (next.pendingDupSrcIds && durSteps !== current.baseDurSteps) next = materializeAltDuplicate(next);
       dragRef.current = next;
       setDrag(next);
     }
   };
 
+  /**
+   * Commit the alt-drag duplicate once the gesture actually changes content.
+   * Reads the LIVE document (the render-scope `notes` can be stale by the
+   * time the first move lands) and re-points the drag at the duplicate, which
+   * starts at the same position, so the existing base/delta math is unchanged.
+   */
+  const materializeAltDuplicate = (state: DragState): DragState => {
+    if (state.mode === "noteVelocity") return state;
+    const srcIds = state.pendingDupSrcIds;
+    if (!srcIds || srcIds.length === 0) return state;
+    const live = services.store.doc.patterns.find((p) => p.id === pattern.id)?.notes?.[track.id] ?? [];
+    const dups: NoteEvent[] = [];
+    for (const nid of srcIds) {
+      const src = live.find((n) => n.id === nid);
+      if (!src) continue;
+      dups.push({ ...src, id: uid("note") });
+    }
+    if (dups.length === 0) return { ...state, altDuplicate: false, pendingDupSrcIds: undefined };
+    const prev = [...live];
+    const next = [...live, ...dups].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+    const newIds = dups.map((n) => n.id);
+    services.store.execute({
+      type: "altDragDuplicate",
+      label: `Duplicate ${dups.length} notes`,
+      execute: (d: any) => ({
+        ...d,
+        patterns: d.patterns.map((p: any) =>
+          p.id === pattern.id ? { ...p, notes: { ...(p.notes ?? {}), [track.id]: next } } : p,
+        ),
+      }),
+      undo: (d: any) => ({
+        ...d,
+        patterns: d.patterns.map((p: any) =>
+          p.id === pattern.id ? { ...p, notes: { ...(p.notes ?? {}), [track.id]: prev } } : p,
+        ),
+      }),
+    } as any);
+    onSelectNote({ trackId: track.id, noteIds: newIds });
+    return { ...state, noteId: newIds[0] ?? state.noteId, altDuplicate: false, pendingDupSrcIds: undefined };
+  };
+
   const onNotePointerUp = (event?: React.PointerEvent) => {
+    noteDragGuard.disarm();
     // The hold already opened the note menu — releasing must not commit a move.
     if (noteMenuTimer.current !== null) {
       window.clearTimeout(noteMenuTimer.current);
@@ -751,6 +783,7 @@ export function PianoRollTrack({
 
   // Interrupted drag (touch takeover, autoscroll, …) — abort without committing.
   const onNotePointerCancel = () => {
+    noteDragGuard.disarm();
     if (noteMenuTimer.current !== null) {
       window.clearTimeout(noteMenuTimer.current);
       noteMenuTimer.current = null;
@@ -788,6 +821,7 @@ export function PianoRollTrack({
       } catch {
         /* no capture */
       }
+      noteDragGuard.arm();
       event.preventDefault();
       return;
     }
@@ -802,6 +836,7 @@ export function PianoRollTrack({
       } catch {
         /* no capture */
       }
+      noteDragGuard.arm();
       return;
     }
     const { stepF, pitch } = posFromEvent(event);
@@ -818,6 +853,7 @@ export function PianoRollTrack({
     setMarquee({ startStep: s.startStep, startPitch: s.startPitch, endStep: stepF, endPitch: pitch });
   };
   const onGridPointerUp = () => {
+    noteDragGuard.disarm();
     if (!marqueeRef.current || !marquee) return;
     const { startStep, startPitch, endStep, endPitch } = marquee;
     const minStep = Math.min(startStep, endStep);
@@ -836,6 +872,7 @@ export function PianoRollTrack({
   };
   // Interrupted marquee — drop the selection rectangle without selecting.
   const onGridPointerCancel = () => {
+    noteDragGuard.disarm();
     marqueeRef.current = null;
     setMarquee(null);
   };
@@ -880,6 +917,7 @@ export function PianoRollTrack({
     } catch {
       /* no capture */
     }
+    noteDragGuard.arm();
     const isInSel = selectedNote?.trackId === track.id && selectedNote.noteIds.includes(note.id);
     if (isInSel && selectedNote!.noteIds.length > 1) {
       const map: Record<string, number> = {};
@@ -903,6 +941,7 @@ export function PianoRollTrack({
     }
   };
   const onVelPointerUp = (e: React.PointerEvent) => {
+    noteDragGuard.disarm();
     if (!velDrag) return;
     const delta = velDrag.startY - e.clientY;
     const velocities: Record<string, number> = {};
@@ -920,12 +959,35 @@ export function PianoRollTrack({
   };
   // Interrupted velocity drag — abort and restore the lane previews.
   const onVelPointerCancel = () => {
+    noteDragGuard.disarm();
     if (!velDrag) return;
     for (const [nid, startVel] of Object.entries(velDrag.startVels)) {
       const el = document.querySelector(`[data-vel="${nid}"]`) as HTMLElement | null;
       if (el) el.style.height = `${startVel * 100}%`;
     }
     setVelDrag(null);
+  };
+
+  // Window fallback wiring: element-unmount mid-gesture (the dragged note is
+  // deleted by undo or a collab peer) otherwise leaves dragRef/velDrag set
+  // with no event ever ending them. Idempotent with the element paths —
+  // whichever fires first clears the ref, the second is a no-op.
+  noteDragGuard.handlers.current = {
+    // Note drags commit from drag-state (no event needed). A velocity drag
+    // whose element died mid-gesture has no knowable final pointer position —
+    // restore, never guess a commit.
+    onEnd: () => {
+      if (dragRef.current) onNotePointerUp();
+      if (velDrag) onVelPointerCancel();
+    },
+    onCancel: () => {
+      if (dragRef.current) onNotePointerCancel();
+      if (velDrag) onVelPointerCancel();
+      if (marqueeRef.current) {
+        marqueeRef.current = null;
+        setMarquee(null);
+      }
+    },
   };
 
   // Drag + hover cursor preview for one note (extracted from JSX so the
@@ -959,7 +1021,16 @@ export function PianoRollTrack({
   };
   const pasteNotesClipboard = () => {
     if (!noteClipboard || noteClipboard.length === 0) return;
-    const newNotes = noteClipboard.map((n) => ({ ...n, id: uid("note") }));
+    // Clamp into the pattern at paste time. Copies taken from a longer (or
+    // later-switched) pattern could land past `patternTicks`, where they
+    // never sound and only normalizeProject's silent drop removed them —
+    // content that vanished on the next unrelated edit. Same clamp the model
+    // enforces elsewhere (moveNote's apply-time fit), applied visibly here.
+    const newNotes = noteClipboard.map((n) => {
+      const duration = Math.max(1, Math.min(n.duration, patternTicks));
+      const start = Math.max(0, Math.min(n.start, patternTicks - duration));
+      return { ...n, id: uid("note"), start, duration };
+    });
     const prev = [...notes];
     const next = [...notes, ...newNotes].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
     const newIds = newNotes.map((n) => n.id);

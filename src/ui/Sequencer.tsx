@@ -25,6 +25,7 @@ import { PianoRollTrack } from "./PianoRoll";
 import type { SelectedNote } from "./PianoRoll";
 import { trackBadge } from "./TrackTabs";
 import { useLongPress } from "./useLongPress";
+import { usePointerDragGuard } from "./usePointerDragGuard";
 import { clamp } from "../shared/ids";
 import { DragNumber, Slider } from "./controls";
 import { cursorsAt, usePublishCursor, useRemoteCursors } from "./remoteCursors";
@@ -160,6 +161,10 @@ export function Sequencer({
   const pattern = patterns.find((p) => p.id === activePatternId) ?? patterns[0];
   const playheadStep = usePlayheadStep(services.transport, doc);
   const dragRef = useRef<DragState | null>(null);
+  // Window fallback for gestures whose captured cell unmounts mid-drag
+  // (virtualization scrolling the row out, undo/collab step edits): the
+  // cell's own pointerup never fires. Wired after endStepInteraction exists.
+  const stepDragGuard = usePointerDragGuard();
   const [dragPreview, setDragPreview] = useState<{
     padId: string;
     stepIndex: number;
@@ -294,6 +299,7 @@ export function Sequencer({
         paintValue: false,
         painted: new Set(),
       };
+      stepDragGuard.arm();
       event.preventDefault();
       return;
     }
@@ -319,6 +325,7 @@ export function Sequencer({
         paintValue: false,
         painted: new Set(),
       };
+      stepDragGuard.arm();
       onSelectSteps(selectionFromDrag(padId, stepIndex, padId, stepIndex));
       return;
     }
@@ -343,6 +350,7 @@ export function Sequencer({
       paintValue: (pattern.rows[padId]?.[stepIndex] ?? 0) <= 0,
       painted: new Set([`${padId}:${stepIndex}`]),
     };
+    stepDragGuard.arm();
   };
 
   const moveStepInteraction = (event: React.PointerEvent) => {
@@ -409,6 +417,7 @@ export function Sequencer({
   };
 
   const endStepInteraction = () => {
+    stepDragGuard.disarm();
     const drag = dragRef.current;
     dragRef.current = null;
     if (!drag) return;
@@ -509,6 +518,15 @@ export function Sequencer({
     }
     setDragPreview(null);
     setPaintPreview(null);
+  };
+
+  // Window fallback wiring. A cancelled gesture (touch takeover, lost
+  // capture) ENDS the step interaction — the documented semantic: the value
+  // the user saw previewed is the value that commits, and the drag state is
+  // always cleared either way.
+  stepDragGuard.handlers.current = {
+    onEnd: endStepInteraction,
+    onCancel: endStepInteraction,
   };
 
   // Horizontal zoom (Ctrl+wheel) — scales the minimum column width; the

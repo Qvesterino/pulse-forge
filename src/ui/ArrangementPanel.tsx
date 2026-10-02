@@ -2901,12 +2901,13 @@ export function ArrangementPanel() {
               disabled={!selectedClipId}
               onClick={() => {
                 if (!selectedClipId) return;
-                execute(deleteArrangementClip(services.store.doc, selectedClipId));
-                // The clip is gone; so is the selection. The context-menu
-                // delete path already does this (ArrangementPanel.tsx:1898) —
-                // without it DEL stayed enabled over a dead id and every
-                // further press re-issued the delete for the same clip.
-                setSelectedClipId(null);
+                // The SHARED delete path (context menu / long-press): one
+                // undoable gesture, the delete toast, ripple-mode support,
+                // and SelectionStore pruning. This header button used to
+                // execute deleteArrangementClip directly and cleared only the
+                // panel-local mirror — selectionStore.clipIds kept the dead
+                // id (third copy of the same stale-selection hole).
+                deleteClipsWithToast([selectedClipId]);
               }}
             >
               DEL
