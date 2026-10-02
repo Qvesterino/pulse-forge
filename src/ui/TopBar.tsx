@@ -824,6 +824,7 @@ export function TopBar({
             <>
               <DragNumber
                 label="IN"
+                hint="Loop start locator (bar.beat) — playback wraps here; doubles as the punch-in point for punch recording"
                 value={loopStart}
                 min={0}
                 max={loopEnd > 0 ? loopEnd : Number.MAX_SAFE_INTEGER}
@@ -834,6 +835,7 @@ export function TopBar({
               />
               <DragNumber
                 label="OUT"
+                hint="Loop end locator (bar.beat) — playback wraps here; punch recording trims the take at this exact frame"
                 value={loopEnd}
                 min={loopStart}
                 max={Number.MAX_SAFE_INTEGER}
@@ -846,6 +848,7 @@ export function TopBar({
           )}
           <DragNumber
             label="BPM"
+            hint="Project tempo in beats per minute (20–300) — drives the scheduler, pattern length and every export"
             value={doc.bpm}
             min={20}
             max={300}

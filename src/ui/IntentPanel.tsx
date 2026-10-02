@@ -129,6 +129,7 @@ import {
 } from "../intent/song-audio-review";
 import { routeIntentText, REVISE_DELTA, type ReviseAttribute, type RoutedIntent } from "../intent/route";
 import { getIntentModelProvider, tryModelRoute } from "../intent/model-resolver";
+import { isCreativeBriefRoute } from "../intent/model-fallback-policy";
 import { installIntentFailureDevtools, logIntentMiningEvent } from "../intent/failure-log";
 import { diagnoseComplaint } from "../intent/complaints";
 import type { SongSectionMeter } from "../intent/song-audio-review";
@@ -570,7 +571,7 @@ export function IntentPanel() {
   const [videoBusy, setVideoBusy] = useState(false);
   const videoSupported = useMemo(() => canExportVideo(), []);
 
-  const runGeneration = async (intentInput: IntentInput, controller: AbortController) => {
+  const runGeneration = async (intentInput: IntentInput, controller: AbortController, promptText = text) => {
     try {
       const result: GenerationResult = await generateAsyncResult(
         doc,
@@ -595,7 +596,7 @@ export function IntentPanel() {
       // Session context (vibe-code wave 2): the bank stays addressable —
       // "that second one, darker" resolves against it next prompt.
       rememberGeneration({
-        text: intentInput.seed ? text.trim() || intentInput.seed : text.trim(),
+        text: intentInput.seed ? promptText.trim() || intentInput.seed : promptText.trim(),
         intent: intentInput,
         candidates: (result.bank ?? []).map((entry, index) => ({
           index,
@@ -606,14 +607,14 @@ export function IntentPanel() {
         docId: doc.id,
         at: Date.now(),
       });
-      rememberPrompt(text);
+      rememberPrompt(promptText);
       setHistoryTick((tick) => tick + 1);
       setBankResult(result);
       // Fáza 2 stale guard: the preview belongs to THIS document revision.
       // Any command applied afterwards makes the bank stale — USE must not
       // write a preview computed against an older project.
       previewDocRef.current = doc;
-      recordIntentDecisions(intentInput, text);
+      recordIntentDecisions(intentInput, promptText);
       bumpGenerationCount();
       setSessionTick((tick) => tick + 1);
       const count = result.bank?.length ?? 0;
@@ -630,9 +631,31 @@ export function IntentPanel() {
     }
   };
 
-  const generate = async () => {
-    if ((!text.trim() && !activeProjectBrief) || busy) return;
-    if (rejectUnresolvedBriefConflicts()) return;
+  const generate = async (requestedText = text) => {
+    const promptText = requestedText.trim();
+    const promptParsed = promptText === text.trim() ? parsed : promptText ? parseIntentText(promptText) : null;
+    const promptCorrections = promptText === text.trim() ? briefFixes : {};
+    const promptProjectCorrections = projectBriefCorrectionsFor(promptParsed, activeProjectBrief);
+    const promptBriefInput: IntentInput = {
+      ...(promptParsed?.input ?? {}),
+      ...promptProjectCorrections,
+      ...promptCorrections,
+    };
+    const promptBriefContract =
+      promptText === text.trim()
+        ? briefContract
+        : compileBriefContract(promptParsed, {
+            project: doc,
+            session: producerSessionState(),
+            projectBrief: activeProjectBrief,
+            defaultRoles: ["drums", "bass"],
+            corrections: promptCorrections,
+          });
+    if ((!promptText && !activeProjectBrief) || busy) return;
+    if (promptBriefContract.conflicts.length > 0) {
+      setError(BRIEF_CONFLICT_BLOCK_MESSAGE);
+      return;
+    }
     setBusy(true);
     setError(null);
     setStatus(null);
@@ -661,7 +684,7 @@ export function IntentPanel() {
     // apply the referenced candidate from the last generation, then run the
     // residual words through the normal pipeline (production/verbs/song).
     const last = lastGeneration();
-    const reference = last ? resolveSessionReference(text, last.candidates) : null;
+    const reference = last ? resolveSessionReference(promptText, last.candidates) : null;
     if (reference && last) {
       if (last.docId !== doc.id) {
         setError("Tento session kandidát patrí inému projektu. Vygeneruj kandidátov znova v aktuálnom projekte.");
@@ -673,9 +696,9 @@ export function IntentPanel() {
       // audition first, USE applies (one undo). Scope is stated in the
       // summary, never implicit. A pure reference ("ten druhý") keeps the
       // instant re-apply below.
-      const iteration = compileIteration(text, last, doc);
+      const iteration = compileIteration(promptText, last, doc);
       if (iteration) {
-        rememberPrompt(text);
+        rememberPrompt(promptText);
         if (!iteration.result.proposal) {
           setError(iteration.result.diagnostics.errors[0] ?? "Návrh iterácie neprešiel kontrolou briefu.");
           setBusy(false);
@@ -690,7 +713,7 @@ export function IntentPanel() {
       }
       const candidate = last.candidates[reference.index];
       services.store.execute(applySessionCandidateCommand(doc, candidate.pattern));
-      rememberPrompt(text);
+      rememberPrompt(promptText);
       let statusText = `✓ candidate #${reference.index + 1} re-applied from session context`;
       const residualText = reference.rest;
       if (residualText) {
@@ -711,7 +734,7 @@ export function IntentPanel() {
     // TONE VERB (ADR 0016/0018 intent surface): "play the tone" / "tune
     // tone to 880" / "stop the tone" — the CLAP tone fixture through the
     // EXT PCM chain (shared controller: the chip reflects it).
-    const toneIntent = parseToneIntent(text);
+    const toneIntent = parseToneIntent(promptText);
     if (toneIntent) {
       services.engine.ensureContext();
       const ctx = services.engine.getLiveAudioContext();
@@ -738,7 +761,7 @@ export function IntentPanel() {
     // PLUGIN FINDER VERB (ADR 0016 intent surface): "aké clapy mám?" runs
     // the desktop crash-isolated CLAP scan; the web build answers honestly
     // that plugins live behind the desktop shell.
-    const pluginFinder = parsePluginFinderIntent(text);
+    const pluginFinder = parsePluginFinderIntent(promptText);
     if (pluginFinder) {
       const desktop = (
         window as unknown as {
@@ -786,7 +809,7 @@ export function IntentPanel() {
     // "sleduj timecode" arms the chaser, "go to 1:23" seeks the playhead to
     // a timecode position at the current BPM. Transport-domain action (like
     // clock sync) — immediate, not an undoable document command.
-    const chaseIntent = parseChaseIntent(text);
+    const chaseIntent = parseChaseIntent(promptText);
     if (chaseIntent) {
       const chaser = services.mtcChaser;
       if (chaseIntent.kind === "arm") {
@@ -817,10 +840,10 @@ export function IntentPanel() {
     // (or section vocabulary) flips the same FX words into generation-time
     // FX instead: "wobbly drill" GENERATES with the mangler, it doesn't
     // re-tune the old pattern.
-    const production = parseProductionIntent(text);
-    const sectionParse = parseSectionRequests(text);
-    const remainingFxText = sectionParse?.remainingText ?? text;
-    const genreSignal = Boolean(briefInput.genre || parsed?.detected.some((chip) => chip.startsWith("♪")));
+    const production = parseProductionIntent(promptText);
+    const sectionParse = parseSectionRequests(promptText);
+    const remainingFxText = sectionParse?.remainingText ?? promptText;
+    const genreSignal = Boolean(promptBriefInput.genre || promptParsed?.detected.some((chip) => chip.startsWith("♪")));
     if (production && !genreSignal && !sectionParse) {
       try {
         const cmd = applyProductionIntentCommand(doc, production);
@@ -844,9 +867,9 @@ export function IntentPanel() {
     abortRef.current?.abort();
     abortRef.current = controller;
     const intentInput = {
-      ...briefInput,
+      ...promptBriefInput,
       ...(refPatch ?? {}),
-      ...briefFixes,
+      ...promptCorrections,
       ...(consumeOneShotPatch() ?? {}),
     };
     // Wave 1 — FX words remaining after section parsing ride WITH the
@@ -863,9 +886,9 @@ export function IntentPanel() {
     // curated reference. Confident keyword parses skip it — zero latency
     // cost when the parser already understands.
     let finalInput = intentInput;
-    if (text.trim() && !intentInput.genre && !parsed?.detected.some((chip) => chip.startsWith("♪"))) {
+    if (promptText && !intentInput.genre && !promptParsed?.detected.some((chip) => chip.startsWith("♪"))) {
       setStatus("🧠 semantic…");
-      const match = await semanticIntentFor(text);
+      const match = await semanticIntentFor(promptText);
       if (controller.signal.aborted) return;
       if (match) {
         finalInput = { ...intentInput, ...match.input };
@@ -877,7 +900,7 @@ export function IntentPanel() {
       setSemanticChip(null);
     }
     if (effectiveFx) finalInput = { ...finalInput, fx: effectiveFx };
-    await runGeneration(finalInput, controller);
+    await runGeneration(finalInput, controller, promptText);
   };
 
   useEffect(() => {
@@ -2727,6 +2750,14 @@ export function IntentPanel() {
         logIntentMiningEvent({ prompt: source, outcome: "clarify", reason: route.reason });
         setStatus(route.reason);
       } else {
+        // The registered local model is trained for editor actions, not for
+        // composing music. Keep creative briefs on the generation path and
+        // avoid probing/starting Ollama for a request the action schema cannot
+        // represent.
+        if (isCreativeBriefRoute(source, route)) {
+          await generate(source);
+          return;
+        }
         // LOCAL-MODEL FALLBACK: the deterministic layer came up empty — let
         // the registered intent model try the instruction before falling to
         // generation. A hit re-enters with the adapted route (one dispatch);
@@ -2738,7 +2769,7 @@ export function IntentPanel() {
           const ollama = await import("../intent/model-ollama");
           await ollama.ensureOllamaIntentProvider().catch(() => null);
         }
-        const modelRoute = await tryModelRoute(source, doc);
+        const modelRoute = await tryModelRoute(source, doc, route);
         if (modelRoute) {
           preRoutedRef.current = modelRoute;
           // MINING: what the model caught (kind drift monitoring — a kind

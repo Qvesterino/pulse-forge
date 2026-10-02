@@ -4,6 +4,8 @@
 > Produktový cieľ: lokálny AI producent, ktorý rozumie zámeru, tvorí kvalitné a upraviteľné návrhy a nemení používateľovi projekt poza chrbát.  
 > Vzťah k ostatným plánom: tento dokument skladá Intent Engine, song production a MRT2 do jedného používateľského workflow. Nenahrádza `INTENT_ENGINE.md`, `docs/intent-engine-roadmap.md`, `docs/intent-engine-ai-ranker-goal.md` ani `docs/IMPLEMENTATION-ROADMAP-MRT2-GENERATIVE-TRACKS.md`.
 
+> **Aktualizácia 2026-10-02:** normatívne správanie produktu definuje `docs/AI-PRODUCER-CONTRACT.md`. Historické fázy 0–8 nižšie zachovávajú pôvodný vývojový záznam; aktuálnu ďalšiu exekučnú sekvenciu, závislosti a brány definuje §6. Staršie výsledky testov ani historické bundle limity nie sú tvrdením o stave dnešného `HEAD`.
+
 ## 1. Produktová predstava
 
 KYX má pôsobiť ako producent a zvukár, ktorému poviem, čo chcem dosiahnuť, a ktorý mi pomôže ten výsledok reálne vyrobiť. Nie ako promptové tlačidlo, ktoré vygeneruje hotový súbor bez možnosti rozumieť alebo rozhodovať o tom, čo sa zmenilo.
@@ -438,3 +440,227 @@ Tento míľnik preverí najdôležitejšiu produktovú hypotézu: či KYX vie po
 6. **ONNX zlepšenie sa dokazuje ľudskými preferenciami a splnením briefu.** Zhoda s vlastnou heuristikou nestačí.
 7. **MRT2 capability je platformovo špecifická.** Samotný provider adapter nie je dôkaz realtime podpory.
 8. **Každá release claim musí mať test alebo reprodukovateľný listening/benchmark dôkaz.**
+
+## 6. AI Producer Contract — aktuálna exekučná roadmapa (2026-10-02)
+
+Táto sekcia prevádza `docs/AI-PRODUCER-CONTRACT.md` na poradie implementácie. Jej fázy začínajú tam, kde je aktuálne repo, nie od nuly. `KYX Web` si zachová deterministický, lokálny beatmaking ako plnohodnotnú cestu; cieľom nie je vložiť LFM do browserového bundle. LFM2.5 má byť voliteľná lokálna schopnosť downloadable `KYX Studio`, nie podmienka otvorenia alebo prehratia projektu.
+
+### 6.1 Východiskový stav — čo už existuje a čo to ešte nedokazuje
+
+| Oblasť                     | Overiteľný základ v repozitári                                                                              | Hranica, ktorú roadmapa rešpektuje                                                                                                                                                                                                                                                                         |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Deterministické smerovanie | `src/intent/route.ts`, parsery, `brief-contract.ts`, `IntentSpec`, `plan.ts`, `providers/local.ts`          | Zostáva primárnou cestou pre browser aj fallback; presné príkazy sa nesmú zhoršiť kvôli LLM.                                                                                                                                                                                                               |
+| Bezpečný beatmaking        | `brief-gate.ts`, `preserved-content.ts`, `candidate-bank.ts`, `audition.ts`, `commands/`                    | Hard požiadavky a chránený obsah sa overujú pred rankingom a pri apply; model ich nemôže prehlasovať.                                                                                                                                                                                                      |
+| Konverzačný základ         | `session-context.ts`, `producer-session.ts`, `conversation.ts`, `iteration.ts`                              | Existujú follow-upy a krátky kontext, nie ešte plný, dlhodobý multi-project producentov graf.                                                                                                                                                                                                              |
+| Pamäť projektu             | `src/project-model/{types,schema}.ts`, `src/intent/brief-contract.ts`, `src/intent/session-context.ts`, `src/collab/YDocAdapter.ts` | Session kontext je dočasný; projektový, štruktúrovaný Producer Brief je samostatná persistencia, nie archív promptov. Treba ho verziovať, sanitizovať, explicitne ukladať a pokryť migráciou/undo/collab roundtripom. |
+| Modelové príkazy           | `model-schema.ts`, `model-resolver.ts`, `model-decoder.ts`                                                  | Ide o uzavretý action/slot kontrakt pre príkazy a ohraničené produkčné zásahy. Nie je to generátor audia ani plnohodnotný parser voľného kreatívneho briefu.                                                                                                                                               |
+| Browserový malý model      | `model-loader.ts` + `public/models/intent-model-v1.*`                                                       | Približne 6,75 MB multi-head ONNX slot-filler, oddelený od LFM2.5. Jeho action gate ani `valHeadAccuracyMean` nie sú skóre celého AI producenta alebo hudobnej kvality. `scripts/data/intent-model-validation-report.json` teraz viaže namerané výsledky na presné modelové, datasetové a evaluator hashe. |
+| Lokálny LFM                | `model-ollama.ts`, `scripts/train-intent-sft.py`, `scripts/eval-ollama-intent.mts`                          | Ollama provider existuje. Vyžaduje dostupný lokálny server/model; to samo osebe ešte nie je bezproblémová self-contained AI inštalácia KYX Studio.                                                                                                                                                         |
+| Hudobné výstupy            | `src/ai/generator.ts`, `src/intent/pipeline.ts`, `compose.ts`, `song.ts`, `candidate-bank.ts`, `rendering/` | Hudbu vytvára existujúci generátor a audio engine. LFM môže preložiť zámer na validný plán; nesmie byť opisovaný ako audio/MIDI generátor.                                                                                                                                                                 |
+| Referencie a posluch       | `audio-reference.ts`, `reference/`, `audio-feedback.ts`, `listening/`                                       | Merania sú konkrétny dôkaz, nie automatická umelecká známka. Hudobné tvrdenia vyžadujú posluchovú evaluáciu.                                                                                                                                                                                               |
+| Personalizácia             | `preference-ledger.ts`, `personal-ranker.ts`, `preference-evaluation.ts`, `docs/PRODUCER-DNA-ROADMAP.md`    | Základ pre explicitné voľby existuje; nemožno tvrdiť, že vkus je naučený len na základe aktívneho rankera alebo počtu generácií.                                                                                                                                                                           |
+
+**Modelové reporty sa najprv musia zosúladiť.** Manifest ONNX stále odkazuje na tréningový report 1 761 train / 294 val / 74 golden a priemernú head accuracy 0,9943; pinned evaluátor teraz meria aktuálny corpus 1 790 / 298 / 74, takže manifest nepotvrdzuje presnú tréningovú sadu a jej obsahový hash zatiaľ chýba. Tréner a manifest writer sa teraz upravujú tak, aby ďalší ONNX artefakt niesol SHA-256 datasetu aj tréningového kódu a aby sa publikovanie odmietlo pri zmene vstupov alebo zastaranom reporte; existujúci artefakt tým spätne nepreznačujeme. Reálny action-level beh dosiahol val 249/259 attempted-exact (96,1 %), 0 wrong-kind, 39/298 abstain (13,1 %), golden-regression 62/62 attempted-exact a deterministický výstup na val subsete. Tento run **nepreukazuje generalizáciu**: pri NFKC + whitespace normalization + case-folding sa `golden.jsonl` prekrýva s train o 64 a s val o 10 promptov; report preto klasifikuje golden iba ako regresnú sadu, nie independent holdout. Samostatný candidate/family-disjoint holdout ešte chýba.
+
+`docs/LOCAL-INTENT-MODEL.md` zároveň opisuje Ollama `kyx-intent-v30-q8` s výsledkom 95,6 % attempted-exact, 0 wrong-kind a 1 abstain z 272; aktuálne uložený `scripts/data/intent-sft/sft-report.json` zachytáva ďalší beh s 773 train príkladmi a 34/60 exact pri 60/60 kindOK. Tieto záznamy môžu patriť odlišným verziám a evaluátorom — **nesmú sa zlúčiť do jedného tvrdenia o aktuálnom LFM**.
+
+Rovnako treba zachovať hranicu medzi dvoma úlohami modelu:
+
+1. **Command/action intent:** „stíš basu“, „presuň klip“, „pridaj fill“ → existujúci uzavretý action schema → validátor/adaptér → existujúci executor/command.
+2. **Creative Producer Brief:** „temný, ale nie smutný beat; hook nech rastie; 808 nechaj“ → hard požiadavky, preferencie, zákazy, preserve, target a neistota → existujúci `IntentSpec`/composition pipeline → kandidáti a audition.
+
+Prvý tok má modelový resolver už dnes. Druhý vyžaduje kvalitnú a testovanú kompiláciu kreatívneho zámeru do composer pipeline. Ani jeden tok neposiela model priamo do project modelu alebo audio callbacku.
+
+### 6.2 Fáza 9 — jeden pravdivý modelový a eval baseline
+
+**Cieľ:** vedieť presne, ktorý model, dataset, prompt, runtime a evaluator stoja za každým číslom; zamedziť omylu medzi malým ONNX slot-fillerom a LFM2.5.
+
+**Práca:**
+
+1. Vygenerovať jeden release report pre každý artefakt: provider, model/base revision, quantization, runtime, model hash, tokenizer/vocabulary hash, grammar/schema hash, dataset manifest/hash, split, evaluator commit, hardvér a presné metriky.
+2. Znovu spustiť `npm run intent-model:validate` pre browserový ONNX model a `npm run intent-model:sft-eval -- --model <presný-tag>` pre presný LFM Ollama tag; výstup zaviazať ku konkrétnemu artefaktu, nie k pohyblivému aliasu.
+3. Oddeliť `head accuracy`, exact action accuracy, wrong-kind, schema-invalid, abstain, per-kind/SK-EN výsledky, latenciu a používateľský úspech. Head accuracy ani zhoda s učiteľom nie sú skóre hudobnej kvality.
+4. Zosúladiť `docs/LOCAL-INTENT-MODEL.md`, runbook, `sft-report.json`, manifesty a tvrdenia v tejto roadmap-e. Každý starý report označiť ako historický, ak mu nemožno reprodukovať zdrojový model a split.
+5. Založiť oddelený candidate-disjoint holdout pre paraprázy, zložené požiadavky, explicitné preserve/avoid, nejednoznačné a out-of-scope prompty; zahrnúť slovenčinu aj angličtinu.
+
+**Kód/nástroje:** `scripts/validate-intent-model.mts`, `scripts/eval-ollama-intent.mts`, `scripts/data/intent-sft/`, `scripts/train-intent-sft.py`, `docs/LOCAL-INTENT-MODEL-SFT-RUNBOOK.md`, model manifest writers a príslušné golden testy.
+
+**Hotovo, keď:** z čistého checkoutu je možné zopakovať čísla z jedného pinned reportu na konkrétnom artefakte; reporty LFM a ONNX si neprotirečia; baseline a limity sú uložené pred ďalším tréningom.
+
+### 6.3 Fáza 10 — oddeliť príkazový model od kreatívneho briefu
+
+**Cieľ:** LFM pomáha pochopiť požiadavku, ale hudbu vytvára a mení overená KYX pipeline.
+
+**Práca:**
+
+- Zachovať existujúci `model-schema.ts` action contract ako samostatný, verzovaný príkazový slovník. Zmena jeho enumov/grammar invaliduje pinned grammar hash a vyžaduje zodpovedajúcu validáciu/model refresh.
+- Nad existujúcim `brief-contract.ts` a `IntentSpec` zadefinovať a otestovať creative task request: brief, projektový kontext, selection/target, hard constraints, preferencie, preserve/avoid, evidence origin, confidence a unknown/clarify stav.
+- Zadefinovať explicitné routing pravidlá: jednoznačné deterministické príkazy sa vykonajú existujúcou cestou; creative request smeruje do brief compileru; nebezpečná nejednoznačnosť sa opýta alebo abstainuje. Žiadny „pattern default“ nesmie potichu premeniť príkaz typu mute/delete na generovanie alebo naopak.
+- Prijať iba validovaný modelový JSON. Resolver dopĺňa project ID/track ID a jednotky; model nemôže sám vyrábať interné ID, odvodené readback údaje ani command zápisy.
+- Brief nesmie načítať celý projekt do promptu bez potreby. Kontext sa skladá selektívne z aktívnej sekcie, relevantných trackov/rolí, tempa/tóniny, existujúcich ochranných pravidiel a dôkazov z dostupnej analýzy.
+- Pri rozpore „sprav nové bicie, ale bicie nemeň“ musí UI ukázať konflikt a neaplikovať tichý kompromis.
+
+**Kód:** `src/intent/{model-schema,model-resolver,brief-contract,types,normalize,schema,plan,route}.ts`, `src/ui/IntentPanel.tsx`, `src/commands/`.
+
+**Hotovo, keď:** command intent a creative Producer Brief majú odlišné golden suites, ale zdieľajú tú istú validáciu, context snapshot, proposal/audition a command/undo hranicu. Všetky hard constraints prejdú gate-om pred kandidátmi.
+
+### 6.4 Fáza 11 — LFM tréning, ktorý generalizuje bez nebezpečných zámen
+
+**Cieľ:** preukázať, že fine-tuned LFM2.5 prináša merateľné zlepšenie nad deterministickým parserom na presne tej úlohe, na ktorú sa má používať.
+
+**Práca:**
+
+1. Nezmiešať action slot-filling a creative brief compilation do jednej neoznačenej accuracy metriky. Každý task má svoj split, golden set a chyby podľa triedy.
+2. Udržať teacher-verification: command targety generuje a kontroluje deterministický executor; creative briefy majú kurátorované očakávania extrahovaných faktov, nie vymyslené „správne beaty“ vytvorené druhým LLM.
+3. Rozšíriť dáta o prirodzené SK/EN formulácie, hovorený štýl, vokalistické briefy, follow-upy („druhý, ale…“), viac-klauzulové pokyny, negácie, preserve, conflicts a adversarial/injection text. Splitovať podľa rodiny/template/parafrázovej skupiny, nie náhodne po takmer identických riadkoch.
+4. Porovnať deterministic baseline, súčasný SFT artifact a nový LoRA run na rovnakom holdoute. Testovať aspoň aktuálny LFM2.5 Instruct model a quantization určenú pre cieľové zariadenia; meniť jeden faktor naraz.
+5. Zachovať constrained output, validátor, abstain/clarify cestu a post-decode enforcement. Grammar legality nie je sémantická správnosť.
+6. Pri zlyhaní logovať anonymizovateľný, lokálny failure record až po súhlase; korekcie používateľa sa nestanú tréningovým štítkom bez jasného signálu.
+
+**Pracovné release gates:** najmenej 95 % exact na predregistrovanom holdoute pre podporované triedy, 100 % correct-kind na akceptovaných akciách a nula nebezpečných/destruktívnych zámen. Creative brief eval osobitne reportuje správnosť hard/preserve polí, neistotu a human-rated užitočnosť. Chýbajúci model musí abstainovať/fallbackovať, nie hádať.
+
+**Aktuálny LFM runtime výsledok (2026-10-02):** `scripts/data/intent-sft/lfm-runtime-evaluation-2026-10-02.json` pinne tag aj Ollama digest/blob, celý validation split a relevantné source hashe. Na všetkých 298 riadkoch dosiahol 274/295 exact (92,9 % attempted), 6 wrong-kind, 15 wrong-slot, 3 abstencie a 0 schema-invalid. Release gate zatiaľ **neprešiel**: exact je pod pracovnými 95 % a correct-kind nie je 100 %. Najslabšie malé triedy sú `preset` 0/4 a `loudness` 1/8; `effectIntent` má 6 wrong-kind. Je to iba akčná/slotová zhoda, nie hodnotenie beatov. Evaluator navyše robí priamy aj routovaný inference call, preto z tohto behu nemožno vyvodzovať single-call latenciu. Tréningový corpus starého artefaktu stále nemá úplnú hashovanú provenienciu; report preto dokladá eval vstupy a presný lokálny model, nie reprodukovateľnosť jeho tréningu.
+
+**Kód/nástroje:** `scripts/train-intent-sft.py`, `scripts/eval-ollama-intent.mts`, `scripts/data/intent-sft/`, `docs/INTENT-DATASET-TEMPLATES.md`, `tests/intent-model-*`, `src/intent/model-ollama.ts`.
+
+**Hotovo, keď:** jeden kandidátny model prejde rovnaký pinned evaluator opakovateľne, porazí relevantný baseline na držaných-out parafrázach a neporuší safety gates; report je oddelený od hudobnej blind-evaluácie.
+
+### 6.5 Fáza 12 — prvý skutočný AI Producer vertical slice
+
+**Cieľ:** zrozumiteľne ukázať rozdiel medzi AI, ktorá len vykoná príkaz, a producentom, ktorý pomôže vytvoriť a iterovať beat.
+
+**Scenár:** „Sprav mi 16-taktový temný trap, nech nie je smutný; môj kick a 808 nechaj. Hook má mať viac energie.“ KYX zobrazí interpretáciu, odlíši isté fakty od odhadov, vyrobí niekoľko hudobne odlišných kandidátov cez existujúci generator, uplatní hard gates, prehrá ich v kontexte projektu, nechá vybrať presný variant a umožní follow-up typu „druhý, ale vzdušnejší lead“. Prijatie je jedna zrozumiteľná undo jednotka; discard nemení projekt.
+
+**Práca:**
+
+- Napájať creative brief výhradne do existujúceho `planGeneration` / `generateAsyncResult` / `candidate-bank` a song/section toolingu; model neskladá priamo MIDI, PCM ani projektový strom.
+- Preniesť brief dôsledne aj cez `buildSong` a sekčné generovanie; zachovať targety, preserve, seed/provenance a kontext naprieč všetkými sekciami.
+- Pred apply porovnať source project/selection revision. Stale návrh sa zahodí a vyžiada nové preview.
+- Zobraziť candidate differences, hard-constraint compliance, fallback/repair a metriky, ktoré sú skutočne zmerané.
+- Pokryť prázdny projekt, existujúci beat, iba vocal reference, chránený bass/kick, konfliktný prompt, model off/timeout, cancel, undo/redo a re-open/export.
+
+**Kód/testy:** `src/intent/{pipeline,candidate-bank,audition,compose,song,section-production,brief-gate}.ts`, `src/ui/IntentPanel.tsx`, `src/commands/`; golden brief suite + Vitest, E2E end-to-end a render parity.
+
+**Hotovo, keď:** používateľ bez znalosti hudobnej teórie vie úspešne vytvoriť, vypočuť, spresniť a exportovať beat; presne vypočutý variant sa aplikuje, preserve hashe ostanú rovnaké a celý workflow funguje aj bez LFM.
+
+### 6.5.1 Míľnik 12a — bezpečný Producer Brief uložený v projekte
+
+Toto je prvá trvalá pamäť AI producenta a súčasť vertical slice-u; nesmie sa zamieňať so session historiou ani s osobným Producer DNA.
+
+**Rozsah v1:** ukladať len malé, štruktúrované a allowlistované hudobné fakty, ktoré používateľ výslovne potvrdil alebo opravil (napr. žáner/mood, rozsah BPM, tóninu, dĺžku, roly, energiu/hustotu/komplexitu/variáciu, zachovať a nevytvárať). Každý fakt nesie pôvod a confidence. Neistý odhad sa nestáva uloženým faktom bez potvrdenia.
+
+**Implementačné poradie:**
+
+1. Zafixovať model `ProjectProducerBriefV1` nezávislý od LFM/ONNX outputu; sanitizovať pri načítaní/importovaní, zahadzovať neznáme polia, limitovať počet a dĺžku hodnôt.
+2. Pridať schema migration a serializačný roundtrip; synchronizovať len tento explicitný JSON field cez existujúcu Y.Doc hranicu.
+3. Uložiť/zmazať brief cez command systém s undo/redo. Žiadny autosave skrytého promptu ani priama mutácia project modelu z React/modelu.
+4. V UI ukázať, kedy sa projektový brief používa; používateľ ho môže vypnúť pre jednu session, prezrieť, doplniť, vymazať a vrátiť cez Undo.
+5. Kompilovať uložené fakty ako predvolené projektové preferencie; aktuálny explicitný pokyn ich môže prepísať, ale rozpor s uloženým preserve/hard constraintom vyžaduje viditeľné potvrdenie.
+6. Nikdy neukladať raw prompt, konverzačný transcript, skrytý chain-of-thought, audio, vokály ani lyrics. Uložený brief sa neprenáša do iného projektu ani ZYVO mimo explicitného exportu projektu/briefu.
+
+**Testovacia brána:** legacy project migration; malformed/unknown import sanitization; save/load a persistence roundtrip; Y.Doc drift/roundtrip; undo/redo save aj clear; project switch bez úniku; aktuálny prompt má prioritu nad mäkkými saved preferences; hard-conflict je viditeľný; vypnutý brief nemení generation; test, že prompt/transcript polia v schéme neexistujú.
+
+**Hotovo, keď:** používateľ znovu otvorí projekt a KYX si pamätá len potvrdené projektové fakty, nie jeho surové formulácie; správanie je reprodukovateľné, undoable a funguje bez LFM. Implementačné zmeny v pracovnom strome samy osebe nie sú release dôkazom — všetky brány vyššie musia prejsť.
+
+### 6.6 Fáza 13 — AI priamo v práci, nie iba v chate
+
+**Cieľ:** producent vie reagovať na aktuálnu hudobnú selection, nie len na voľný prompt v jednom paneli.
+
+**Práca:**
+
+- Kontextové vstupy nad označenými taktmi, patternom, trackom, clipom, arrangement sekciou a referenčným audio. Každá požiadavka zdedí iba relevantný context snapshot.
+- Rýchle úlohy („fill sem“, „redšie hats“, „otvor priestor pre vokál“) aj plný brief editor so sekciami POVINNÉ/PREFERENCIE/ZÁKAZY/ZACHOVAŤ/NEISTÉ.
+- Zobraziť before/after a presný target diff; prompt nie je jediný spôsob ovládania a AI nie je jediná cesta k funkcii.
+- Oddeliť rýchle deterministic preview od dlhšieho lokálneho modelu. Zrušenie a pokračujúci playback musia byť bezpečné; React ani inference nevlastnia audio clock.
+- Rozšíriť session graph: kandidáti, vybraná vetva, predchádzajúci brief, follow-up a project revision. Táto session vrstva ostáva bounded a dočasná; trvalé projektové fakty patria výhradne do míľnika 12a a dlhodobý vkus do fázy 15.
+
+**Kód:** `src/ui/IntentPanel.tsx`, `AssistPanel.tsx`, `ArrangementPanel.tsx`, `Sequencer.tsx`, selection stores, `session-context.ts`, `producer-session.ts`, `iteration.ts`.
+
+**Hotovo, keď:** tie isté golden úlohy sú ovládateľné promptom aj contextual action; výber targetu a jeho ochrana sú viditeľné; chat nikdy neobíde priamy piano-roll/sequencer/arrangement workflow.
+
+### 6.7 Fáza 14 — downloadable lokálny runtime bez skrytého setupu
+
+**Cieľ:** AI v KYX Studio je použiteľná pre bežného producenta, nie iba pre developera, ktorý už má ručne nakonfigurovaný Ollama server.
+
+**Práca:**
+
+1. Rozhodnúť runtime po benchmarku: spravovaný Ollama/sidecar alebo vlastný lokálny runtime. Kritériá sú čistá inštalácia, update/rollback, Windows support, procesová izolácia, cold/warm latency, RAM/VRAM a licenčná/distribučná kompatibilita.
+2. Model weights ponúknuť ako samostatný opt-in download s jasnou veľkosťou, SHA-256, verziou, storage umiestnením, progress/cancel/retry/remove a validáciou po stiahnutí. Neskrývať model v installer-i ani v browser bundle.
+3. Podporovať explicitný OFF/fallback stav, chýbajúci model, poškodený cache, timeout, runtime crash, update bez poškodenia pracovného projektu a bezpečné vypnutie background procesu.
+4. Dokumentovať referenčný hardvér a reálne cold-start, prvý prompt, warm p50/p95, RAM/VRAM a thermal/soak výsledky pre podporované stroje. Neodvodzovať latenciu z počtu parametrov alebo GPU modelu.
+5. Pred redistribúciou overiť presnú LFM license verziu, model checkpoint, quantization/conversion a distribučný model KYX. Technicky stiahnuteľné neznamená automaticky redistribuovateľné.
+
+**Hotovo, keď:** používateľ stiahne/odstráni AI bez ručného terminálového setupu; offline inference zostane lokálna; KYX bez modelu naďalej bootuje, tvorí deterministicky a exportuje.
+
+### 6.8 Fáza 15 — producentov vkus a hudobný feedback loop
+
+**Cieľ:** zvyšovať užitočnosť a hudobnú kvalitu bez zamieňania popularity, model score a skutočného posluchu.
+
+**Práca:**
+
+- Rozlíšiť „najlepšie splnil brief“ od „toto sa mi páči“. Zbierať explicitné A/B/favorite/reject + dôvod ako samostatné signály; samotné použitie návrhu nie je automaticky preference label.
+- Integrácia Producer DNA musí byť lokálna, opt-in, prehliadnuteľná, opraviteľná, resetovateľná a context-aware podľa žánru, úlohy a hudobnej roly. Používateľ môže pokračovať bez pamäte.
+- Kandidáti SAFE/PERSONAL/EXPERIMENTAL musia byť počuteľne rozdielni už pri generovaní; všetky prechádzajú rovnakým brief gate. PERSONAL bez dôkazu prizná cold-start.
+- Porovnávať audio cez rovnaký `AudioEngine`/offline renderer a controlled loudness A/B. Listening sets musia pokryť beatmakerov, spevákov, viac žánrov a aj negatívne výsledky.
+- Pri reference audio používateľ volí donor osi (groove/timbre/harmónia/forma); vypnutá os nesmie ovplyvniť conditioning a raw reference sa bez súhlasu neukladá do vkusového profilu.
+- MRT2 ostáva voliteľným performerom/resampling zdrojom. Nie je podmienkou tohto vertical slice a jeho realtime capability sa dokazuje pre každú platformu samostatne.
+
+**Kód:** `preference-ledger*.ts`, `personal-ranker.ts`, `candidate-diversity.ts`, `candidate-search.ts`, `audio-reference.ts`, `reference/`, `audio-feedback.ts`, `listening/`, `src/generative/`.
+
+**Oddelenie od ostatných pamätí:** Producer DNA je globálny soft preference profil, nie uložený project brief. Do ledgeru idú len explicitné signály (favorite, porovnanie A/B, reject s dôvodom); `apply`/preview/generate nie sú štítky samy osebe. Jeho vypnutie alebo reset nesmie meniť project briefy ani transient session context.
+
+**Hotovo, keď:** vopred registrovaná blind evaluácia ukáže, v ktorých úlohách AI oproti deterministickej baseline pomáha, neškodí alebo ešte nie je pripravená; výsledok sa reportuje per úloha/žáner a nie iba jediným súhrnným score.
+
+### 6.9 Fáza 16 — prenosný Producer Brief KYX ↔ ZYVO
+
+**Cieľ:** dve špecializované DAW-y zdieľajú producentov jazyk, ale nestanú sa jedným preplneným produktom.
+
+**Práca:**
+
+- Najprv zafixovať `Producer Brief v1` ako versionovaný modelovo neutrálny interchange: intent, tempo/key iba s pôvodom/confidence, sekčná mapa, track-role labels, hard constraints, preferences, preserve/avoid, uncertainty a provenance.
+- Oddeliť metadata od audio assets. Prenášať iba používateľom vybrané stems/clipy s integrity info; žiadne raw vocals, lyrics ani celé projekty automaticky.
+- V KYX spraviť export/import preview, schema/version validation, unknown-field policy, permission prompts, file-size caps a no-write-until-confirmed cestu.
+- Otestovať doprednú aj spätnú kompatibilitu cez fixture ZYVO contract. Pri absencii ZYVO source repo implementovať iba KYX adapter a spoločnú špecifikáciu; žiadne tvrdenie o hotovej integrácii druhej DAW.
+
+**Kód (po rozhodnutí o umiestnení kontraktu):** `src/intent/` + `src/export/`/import layer a tests; produktová špecifikácia v `docs/AI-PRODUCER-CONTRACT.md`. Konkrétny shared package sa zvolí až po kontrole oboch repo hraníc.
+
+**Hotovo, keď:** brief prejde medzi aplikáciami bez väzby na LFM alebo project schema; používateľ vidí a schváli presne prenášaný obsah; obe DAW-y vedia ďalej samostatne upraviť svoje projekty.
+
+### 6.10 Fáza 17 — release bar: AI producent aj konkurenčná beatmaking DAW
+
+Release tvrdenie sa povolí až keď súčasne platí:
+
+- **Model:** presný downloadable artifact prejde pinned action a creative-brief evalmi, manifest/hash/license/runtime sedí a model vie bezpečne abstainovať.
+- **Hudba:** hard constraints 100 % v release golden suite; human blind listening preukáže vopred definovaný prínos pre podporované beatmaking úlohy oproti baseline.
+- **Workflow:** prvý beat od nového používateľa, iterácia „ten druhý, ale…“, vocal-space prompt, targeted section edit, preview/apply/undo/redo, save/reopen/export — všetko end-to-end.
+- **DAW:** step sequencer, piano roll, samples, instruments, arrangement, mixer, automation, recording/export a project recovery zostávajú priamo dostupné a regresne testované. AI nemaskuje chýbajúcu alebo nestabilnú základnú funkciu.
+- **Platforma:** web bez LFM zostáva plnohodnotne použiteľný; Studio model absent/offline/crash fallback prejde; browser/downloadable support claims zodpovedajú ich test matrix.
+- **Reliability:** typecheck, relevant Vitest + E2E/browser audio tests, production build/bundle limits, live/offline parity, privacy/license/security review a release checklist sú zelené. Nesúvisiace chyby sa reportujú, nikdy nepreznačia na PASS.
+
+FL Studio je latka pre úplnosť a rýchlosť beatmaking workflow, nie marketingové tvrdenie o parity. Benchmarkovať treba dokončenie reprezentatívnych úloh, čas k prvému použiteľnému a následne upraviteľnému beatu, spoľahlivosť a posluchové hodnotenie.
+
+### 6.11 Kritická cesta a najbližší míľnik
+
+```text
+9. pravdivý baseline
+        ↓
+10. command intent ≠ creative Producer Brief
+        ↓
+11. LFM held-out kvalita
+        ↓
+12. beatmaker vertical slice
+        ↓
+12a. project-local Producer Brief memory
+        ↓
+13. inline UX + bounded session context
+        ↓
+14. downloadable runtime
+        ↓
+15. opt-in Producer DNA + blind hudobná evaluácia
+        ↓
+16. prenosný brief do ZYVO (po stabilizácii v1 contractu)
+        ↓
+17. release bar
+```
+
+**Fáza 9 je čiastočne hotová:** ONNX action-model baseline má reprodukovateľný report, ktorý pinne model/vocab/grammar, eval corpus a hashe evaluátora; experimentálne decoder margins nesmú nastaviť release `gatePassed`. Aktuálny LFM má samostatný runtime report pre presný lokálny model a 298-riadkový validation split, ale meria iba action routing a release gates nespĺňa. Ešte treba (a) doplniť overiteľnú provenienciu tréningového corpusu pri ďalšom tréningu — existujúci artefakt nesmie dostať spätne vymyslené hashe, (b) vytvoriť candidate/family-disjoint holdout, (c) zjednotiť budúce porovnanie ONNX/LFM/baseline na rovnakých taskoch bez zamieňania ich úloh a (d) oddeliť single-call latenciu od kvalitatívneho eval-u. Najbližší krok je odstrániť chyby podľa triedy a uzavrieť tieto dôkazy, nie spúšťať ďalšie epochy naslepo. Potom pokračovať v kontrakte fázy 10 a napojiť LFM na creative brief compiler; UI sa môže stavať paralelne bez zmeny output schema.

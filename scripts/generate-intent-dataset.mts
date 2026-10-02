@@ -1509,6 +1509,90 @@ function augmentation(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
   sk.push("teplejší tón");
   sk.push("menej puncu v mixe");
 
+  // ── MINING WAVE 8 (2026-10-01) — SFT-eval miss families, dumped by
+  // eval-ollama-intent --dump-fails. Each block mirrors a measured miss
+  // FAMILY with sibling phrasings (exact val strings never duplicated) so
+  // the next SFT fine-tune teaches the convention, not the string. ────────
+  // loudness: the numeric targets the eval missed (-7/-8/-13/-16) across
+  // every surface form the family already owns
+  en.push("loudness to -7");
+  en.push("loudness to -8");
+  en.push("loudness to -13");
+  en.push("loudness to -16");
+  en.push("loudness na -7");
+  en.push("loudness na -8");
+  en.push("loudness na -13");
+  en.push("loudness na -16");
+  en.push("-7 lufs");
+  en.push("-8 lufs");
+  en.push("-13 lufs");
+  en.push("-16 lufs");
+  en.push("make the mix -7 lufs");
+  en.push("make the mix -13 lufs");
+  en.push("make the mix -16 lufs");
+  sk.push("hlasitosť na -7");
+  sk.push("hlasitosť na -8");
+  sk.push("hlasitosť na -13");
+  sk.push("hlasitosť na -16");
+  // one-word loudness (the "tichšie"/"hlasej lead" tails)
+  en.push("louder");
+  en.push("quieter");
+  en.push("louder mix");
+  en.push("quieter mix");
+  sk.push("hlasnejšie");
+  sk.push("tichšie to");
+  // preset: grid across the full closed preset set the router resolves,
+  // all targets, exact + SK phrasings (the eval's 0/3 was id/name exactness)
+  en.push("load the Warm Sub preset on the master");
+  en.push("load the Bright Lead preset on the bass");
+  en.push("load the Deep House Bass preset on the bass");
+  en.push("load the Warm Pad preset on the lead");
+  en.push("load the House Pluck preset on the chords");
+  en.push("load the Warm Sustain preset on the chords");
+  en.push("put the Warm Sub preset on the bass");
+  en.push("put the Reese preset on the lead");
+  en.push("use the House Chords preset on the chords");
+  en.push("use the Deep House Bass preset on the bass");
+  sk.push("načítaj preset warm sub na base");
+  sk.push("načítaj preset house chords na akordy");
+  sk.push("načítaj preset reese na base");
+  sk.push("načítaj preset warm pad na leade");
+  sk.push("preset bright lead na basu");
+  sk.push("preset deep house bass na spev");
+  // effectIntent × SECTION words (the measured effectIntent→arrange
+  // wrongKind cluster: "add X to the drop" is an EFFECT on the drop, not an
+  // arrangement edit — the family needs density so the SFT learns the
+  // split): every closed effect × the section roles, more/less phrasing
+  en.push("add reverb to the drop");
+  en.push("add delay to the drop section");
+  en.push("add distortion to the drop");
+  en.push("add saturation to the drop section");
+  en.push("add compressor to the drop");
+  en.push("add eq to the drop section");
+  en.push("add chorus to the intro");
+  en.push("add phaser to the intro");
+  en.push("add tremolo to the build");
+  en.push("add bitcrusher to the outro");
+  en.push("add pump to the chorus");
+  en.push("add flanger to the verse");
+  sk.push("pridaj reverb na drop");
+  sk.push("pridaj delay na intro");
+  sk.push("pridaj saturáciu na chorus");
+  sk.push("pridaj kompresor na outro");
+  // clips: toBar convention density (the off-by-one/kind cluster)
+  en.push("copy the chorus clip to bar 12");
+  en.push("copy the clip at bar 9 to bar 13");
+  en.push("copy the clip at bar 13 to bar 5");
+  en.push("move the clip at bar 9 to bar 17");
+  en.push("move the clip at bar 13 to bar 5");
+  sk.push("kopíruj klip na takte 9 na takt 13");
+  sk.push("presuň klip na takte 5 na takt 9");
+  // unmute/claps target + SK typo tails
+  en.push("unmute the claps");
+  en.push("unmute the clap");
+  sk.push("hlbší kick");
+  sk.push("hlasnejší lead");
+
   // ── MINING WAVE 3 (2026-10-01) — the val-mined slot-bias families: the
   // targets head's majority pull answers "bass" for lead/vocal/chords asks
   // (select, send, percent faders), the export head pulls wav, EN tempo

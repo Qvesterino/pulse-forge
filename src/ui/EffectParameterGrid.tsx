@@ -49,6 +49,7 @@ export function EffectParameterGrid({
             key={param.id}
             compact
             label={param.label}
+            hint={`Sweeps ${param.min} … ${param.max} — double-click resets to the factory default (${param.format ? param.format(param.default) : param.default})`}
             value={values[param.id] ?? param.default}
             min={param.min}
             max={param.max}

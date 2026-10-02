@@ -1,0 +1,93 @@
+{
+  "reportVersion": 1,
+  "createdAt": "2026-10-02",
+  "status": "measured-action-routing-validation-not-release-qualification",
+  "scope": {
+    "task": "intent action/slot routing against the labeled validation corpus",
+    "notEvaluated": [
+      "musical or beat quality",
+      "creative brief interpretation beyond the labeled action schema",
+      "candidate-family-disjoint generalization",
+      "human preference or usability"
+    ],
+    "protocol": "scripts/eval-ollama-intent.mts; per row the script calls provider.generate for a schema parse check and then tryModelRoute, which performs the routed provider call",
+    "comparison": "canonical routed action JSON compared exactly with the labeled response; clips bar indexing is normalized by the evaluator"
+  },
+  "model": {
+    "requestedTag": "kyx-intent-v31:latest",
+    "ollamaDigest": "1d771a57c5da37f6508ae2ec01508384f7105cda1587d91d3b81ea45e19ed7d0",
+    "underlyingBlobSha256": "19628fcd1f86481900d8243228bf9bcf695d583e7126deb3d734f43a53a54a59",
+    "architecture": "lfm2",
+    "parameters": "1.2B",
+    "quantization": "F16",
+    "configuredDefaultDuringRun": "kyx-intent-v30-q8"
+  },
+  "dataset": {
+    "version": 4,
+    "split": "val",
+    "rows": 298,
+    "manifestSha256": "16154fd979be875e7e24dabb01d44f2b5a323da788ab0d8d4c2bce19c372649c",
+    "validationSplitSha256": "5b33d956c242fcbc6340e94a67dcbff5d0ba82b8416617dcfbaf7c87bf55887f",
+    "promptSha256": "79e7d97868150217ee878ca0b77076ea6ac31578870bbc70d9819148c7830efb",
+    "manifestCounts": {
+      "train": 1790,
+      "val": 298,
+      "golden": 74
+    }
+  },
+  "runtime": {
+    "node": "v24.11.0",
+    "ollama": "0.34.4",
+    "gpu": "NVIDIA GeForce RTX 3060 Laptop GPU",
+    "gpuDriver": "610.88",
+    "gpuExecutionObserved": true
+  },
+  "metrics": {
+    "rows": 298,
+    "attempted": 295,
+    "exact": 274,
+    "attemptedExactRate": 0.9288135593,
+    "wrongKind": 6,
+    "wrongSlots": 15,
+    "abstain": 3,
+    "abstainRate": 0.0100671141,
+    "schemaInvalid": 0,
+    "perKind": {
+      "arrange": { "rows": 10, "attempted": 10, "exact": 10, "wrongKind": 0, "abstain": 0 },
+      "bypassIntent": { "rows": 6, "attempted": 6, "exact": 6, "wrongKind": 0, "abstain": 0 },
+      "clarify": { "rows": 7, "attempted": 7, "exact": 7, "wrongKind": 0, "abstain": 0 },
+      "clips": { "rows": 5, "attempted": 5, "exact": 3, "wrongKind": 0, "abstain": 0 },
+      "compound": { "rows": 7, "attempted": 7, "exact": 7, "wrongKind": 0, "abstain": 0 },
+      "effectIntent": { "rows": 51, "attempted": 51, "exact": 44, "wrongKind": 6, "abstain": 0 },
+      "exact": { "rows": 78, "attempted": 77, "exact": 77, "wrongKind": 0, "abstain": 1 },
+      "export": { "rows": 3, "attempted": 3, "exact": 3, "wrongKind": 0, "abstain": 0 },
+      "fader": { "rows": 61, "attempted": 59, "exact": 59, "wrongKind": 0, "abstain": 2 },
+      "loudness": { "rows": 8, "attempted": 8, "exact": 1, "wrongKind": 0, "abstain": 0 },
+      "mix": { "rows": 12, "attempted": 12, "exact": 12, "wrongKind": 0, "abstain": 0 },
+      "preset": { "rows": 4, "attempted": 4, "exact": 0, "wrongKind": 0, "abstain": 0 },
+      "production": { "rows": 16, "attempted": 16, "exact": 16, "wrongKind": 0, "abstain": 0 },
+      "revise": { "rows": 8, "attempted": 8, "exact": 8, "wrongKind": 0, "abstain": 0 },
+      "select": { "rows": 2, "attempted": 2, "exact": 2, "wrongKind": 0, "abstain": 0 },
+      "sendIntent": { "rows": 12, "attempted": 12, "exact": 12, "wrongKind": 0, "abstain": 0 },
+      "tempo": { "rows": 4, "attempted": 4, "exact": 4, "wrongKind": 0, "abstain": 0 },
+      "transport": { "rows": 4, "attempted": 4, "exact": 3, "wrongKind": 0, "abstain": 0 }
+    }
+  },
+  "sourceHashes": {
+    "scripts/eval-ollama-intent.mts": "0b81e1e166ff00bc4eb1fa86ffbdb63245b440ca1f809adc2184a0316228d371",
+    "scripts/intent-sft-doc.mts": "e0c772ccf9118174b8f34eb92fa4e936eec82f05ae72d414671fee6f4966a5d2",
+    "scripts/data/intent-sft/manifest.json": "16154fd979be875e7e24dabb01d44f2b5a323da788ab0d8d4c2bce19c372649c",
+    "scripts/data/intent-sft/val.jsonl": "5b33d956c242fcbc6340e94a67dcbff5d0ba82b8416617dcfbaf7c87bf55887f",
+    "scripts/data/intent-sft/prompt.txt": "79e7d97868150217ee878ca0b77076ea6ac31578870bbc70d9819148c7830efb",
+    "src/intent/model-ollama.ts": "d65b089634d78d26b723c4b55f544b97b15ac2e841da09ddac7f9eb9c4907e09",
+    "src/intent/model-resolver.ts": "d63db2dd96b8142b22d855ec4406ac4b37114024e6cba6a3b39b85f4154a59ba",
+    "src/intent/model-decoder.ts": "c95f1baeb31b0b4b823e2bbc4204df617ac2b27dbb51fda4d5f8fed4e1649259",
+    "src/intent/model-schema.ts": "d33464716990662d8af7a2942633bd36513b567ed32b4206a82a4bc07d927cbc"
+  },
+  "limitations": [
+    "The validation split measures labeled action routing only; exact-match does not establish musical usefulness.",
+    "The evaluator makes a direct provider call and a routed provider call per row, so runtime is not a single-call latency benchmark.",
+    "The small preset and loudness slices are weak: preset exact match is 0/4 and loudness exact match is 1/8.",
+    "This report does not replace the separately versioned ONNX evaluation or historical SFT training reports."
+  ]
+}

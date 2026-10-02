@@ -21,12 +21,18 @@ import { datasetDoc } from "./intent-sft-doc.mts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+function trueLang(instruction: string): string {
+  return /[äôúľščťžýáíé]/i.test(instruction.normalize("NFD")) ? "sk" : "en";
+}
+
 function arg(name: string): string | null {
   const index = process.argv.indexOf(`--${name}`);
   return index >= 0 ? (process.argv[index + 1] ?? null) : null;
 }
 
 const limit = Number(arg("limit") ?? 60);
+const dumpFails = process.argv.includes("--dump-fails");
+const fails: Array<{ instruction: string; trueKind: string; gotKind: string; reason: string; detail: string }> = [];
 const requestedModel = arg("model");
 if (requestedModel) setOllamaIntentModel(requestedModel);
 setOllamaIntentModeOverride("on");
@@ -99,6 +105,13 @@ for (const row of rows) {
   if (route.kind !== trueKind) {
     wrongKind += 1;
     bucket.wrongKind += 1;
+    fails.push({
+      instruction: row.instruction,
+      trueKind,
+      gotKind: route.kind,
+      reason: "wrongKind",
+      detail: JSON.stringify(route).slice(0, 220),
+    });
     continue;
   }
   // The resolver wraps "exact" actions into a plan ({kind, plan:{label, ops}})
@@ -128,6 +141,16 @@ for (const row of rows) {
   if (canonicalModelJson(comparable) === canonicalModelJson(truth)) {
     exact += 1;
     bucket.exact += 1;
+  } else {
+    const want = JSON.stringify(truth).slice(0, 220);
+    const got = JSON.stringify(comparable).slice(0, 220);
+    fails.push({
+      instruction: row.instruction,
+      trueKind,
+      gotKind: route.kind,
+      reason: "wrongSlots",
+      detail: `want=${want} got=${got}`,
+    });
   }
 }
 
@@ -136,6 +159,12 @@ console.log(
     `wrongKind: ${wrongKind}  abstain: ${abstain}/${rows.length} (${((abstain / rows.length) * 100).toFixed(1)}%)  ` +
     `schema-invalid: ${schemaInvalid}`,
 );
+if (dumpFails) {
+  for (const fail of fails) {
+    console.log(`FAIL [${fail.reason}] (${trueLang(fail.instruction)}) ${JSON.stringify(fail.instruction)} ${fail.trueKind} → ${fail.gotKind}
+   ${fail.detail}`);
+  }
+}
 for (const [kind, bucket] of [...perKind.entries()].sort()) {
   console.log(
     `  ${kind.padEnd(14)} rows=${bucket.rows} exact=${bucket.exact}/${bucket.attempted} wrongKind=${bucket.wrongKind} abstain=${bucket.abstain}`,

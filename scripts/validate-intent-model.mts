@@ -36,10 +36,26 @@ import {
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MODELS_DIR = path.join(ROOT, "public", "models");
+const DATA_DIR = path.join(ROOT, "scripts", "data", "intent-sft");
+const VALIDATION_REPORT_PATH = path.join(ROOT, "scripts", "data", "intent-model-validation-report.json");
+const MANIFEST_PATH = path.join(MODELS_DIR, "intent-model-v1.manifest.json");
+const MODEL_SCHEMA_PATH = path.join(ROOT, "src", "intent", "model-schema.ts");
+const MODEL_DECODER_PATH = path.join(ROOT, "src", "intent", "model-decoder.ts");
+const VALIDATOR_SOURCE_PATH = path.join(ROOT, "scripts", "validate-intent-model.mts");
 
-const manifest = JSON.parse(readFileSync(path.join(MODELS_DIR, "intent-model-v1.manifest.json"), "utf8")) as unknown;
+const sha256 = (data: string | Uint8Array): string => createHash("sha256").update(data).digest("hex");
+const rate = (numerator: number, denominator: number): number =>
+  denominator === 0 ? 0 : Number((numerator / denominator).toFixed(6));
+
+const manifestBytes = readFileSync(MANIFEST_PATH);
+const manifest = JSON.parse(manifestBytes.toString("utf8")) as unknown;
 if (!isIntentModelManifest(manifest)) throw new Error("manifest malformed");
 if (manifest.features === undefined) throw new Error("manifest has no features pin");
+const validatorSourceBytes = readFileSync(VALIDATOR_SOURCE_PATH);
+const decoderSourceBytes = readFileSync(MODEL_DECODER_PATH);
+const schemaSourceBytes = readFileSync(MODEL_SCHEMA_PATH);
+const modelPath = path.join(MODELS_DIR, path.basename(manifest.model.url));
+const vocabPath = path.join(MODELS_DIR, "intent-model-v1.vocab.json");
 
 const grammarDigest = createHash("sha256").update(toGbnfGrammar()).digest("hex");
 if (grammarDigest !== manifest.grammarSha256.toLowerCase()) {
@@ -48,16 +64,23 @@ if (grammarDigest !== manifest.grammarSha256.toLowerCase()) {
   );
 }
 
-const modelBytes = readFileSync(path.join(MODELS_DIR, path.basename(manifest.model.url)));
+const modelBytes = readFileSync(modelPath);
 const modelDigest = createHash("sha256").update(modelBytes).digest("hex");
 if (modelDigest !== manifest.model.sha256.toLowerCase()) throw new Error("model hash mismatch");
 if (modelBytes.byteLength !== manifest.model.bytes) throw new Error("model byte size mismatch");
 
-const vocabBytes = readFileSync(path.join(MODELS_DIR, "intent-model-v1.vocab.json"));
+const vocabBytes = readFileSync(vocabPath);
 const vocab = JSON.parse(vocabBytes.toString("utf8")) as IntentModelVocab;
 const vocabDigest = createHash("sha256").update(vocabBytes.toString("utf8")).digest("hex");
 if (vocabDigest !== manifest.features.vocabSha256.toLowerCase()) throw new Error("vocab hash mismatch");
 if (vocab.tokens.length !== manifest.features.vocabSize) throw new Error("vocab size mismatch");
+
+const ortPackage = JSON.parse(
+  readFileSync(path.join(ROOT, "node_modules", "onnxruntime-web", "package.json"), "utf8"),
+) as {
+  version?: string;
+};
+if (typeof ortPackage.version !== "string") throw new Error("onnxruntime-web package version is unavailable");
 
 // Browser-compatible runtime on a node host — same pattern as
 // validate-intent-ranker.mjs; the wasm binaries stay local node_modules.
@@ -96,11 +119,15 @@ interface Row {
   response: unknown;
 }
 
-const loadRows = (file: string): Row[] =>
-  readFileSync(path.join(ROOT, "scripts", "data", "intent-sft", file), "utf8")
+const loadRows = (file: string): { bytes: Buffer; rows: Row[] } => {
+  const bytes = readFileSync(path.join(DATA_DIR, file));
+  const rows = bytes
+    .toString("utf8")
     .split("\n")
     .filter((line) => line.trim() !== "")
     .map((line) => JSON.parse(line) as Row);
+  return { bytes, rows };
+};
 
 interface GateStats {
   rows: number;
@@ -113,6 +140,47 @@ interface GateStats {
 
 function emptyStats(): GateStats {
   return { rows: 0, attempted: 0, exact: 0, wrongKind: 0, abstain: 0, perKind: new Map() };
+}
+
+function reportStats(stats: GateStats) {
+  const perKind: Record<
+    string,
+    { rows: number; attempted: number; exact: number; wrongKind: number; abstain: number }
+  > = {};
+  for (const [kind, entry] of [...stats.perKind.entries()].sort()) perKind[kind] = { ...entry };
+  return {
+    rows: stats.rows,
+    attempted: stats.attempted,
+    exact: stats.exact,
+    attemptedExactRate: rate(stats.exact, stats.attempted),
+    wrongKind: stats.wrongKind,
+    abstain: stats.abstain,
+    abstainRate: rate(stats.abstain, stats.rows),
+    perKind,
+  };
+}
+
+function gateFailures(stats: GateStats, label: string): string[] {
+  const failures: string[] = [];
+  const attemptedExact = stats.attempted === 0 ? 0 : stats.exact / stats.attempted;
+  const abstainRate = stats.abstain / Math.max(1, stats.rows);
+  if (stats.wrongKind !== 0) failures.push(label + ": wrongKind=" + stats.wrongKind + " (must be 0)");
+  if (attemptedExact < 0.95)
+    failures.push(label + ": attemptedExact=" + (attemptedExact * 100).toFixed(1) + "% (< 95%)");
+  if (abstainRate > 0.2) failures.push(label + ": abstainRate=" + (abstainRate * 100).toFixed(1) + "% (> 20%)");
+  return failures;
+}
+
+function instructionKeys(rows: Row[]): Set<string> {
+  return new Set(
+    rows.map((row) => row.instruction.normalize("NFKC").trim().replace(/\s+/gu, " ").toLocaleLowerCase("en-US")),
+  );
+}
+
+function overlapCount(a: Set<string>, b: Set<string>): number {
+  let overlap = 0;
+  for (const key of a) if (b.has(key)) overlap += 1;
+  return overlap;
 }
 
 function bucket(stats: GateStats, kind: string) {
@@ -197,9 +265,27 @@ if (KIND_MARGIN !== INTENT_MODEL_KIND_MARGIN || ABSTAIN_MARGIN !== INTENT_MODEL_
   );
 }
 
-const trainRows = loadRows("train.jsonl");
-const valRows = loadRows("val.jsonl");
-const goldenRows = loadRows("golden.jsonl");
+const trainData = loadRows("train.jsonl");
+const valData = loadRows("val.jsonl");
+const goldenData = loadRows("golden.jsonl");
+const trainRows = trainData.rows;
+const valRows = valData.rows;
+const goldenRows = goldenData.rows;
+const datasetManifestPath = path.join(DATA_DIR, "manifest.json");
+const datasetManifestBytes = readFileSync(datasetManifestPath);
+const datasetManifest = JSON.parse(datasetManifestBytes.toString("utf8")) as {
+  datasetVersion?: number;
+  train?: number;
+  val?: number;
+  golden?: number;
+};
+if (
+  datasetManifest.train !== trainRows.length ||
+  datasetManifest.val !== valRows.length ||
+  datasetManifest.golden !== goldenRows.length
+) {
+  throw new Error("intent SFT dataset manifest row counts do not match the split files");
+}
 
 const trainStats = await evaluate(trainRows, "train");
 const valStats = await evaluate(valRows, "val");
@@ -218,8 +304,120 @@ for (const row of valRows.slice(0, 16)) {
 }
 console.log("determinism: val subset byte-equal across two runs ✓");
 
-checkGate(valStats, "val");
-checkGate(goldenStats, "golden");
+const valFailures = gateFailures(valStats, "val");
+const goldenFailures = gateFailures(goldenStats, "golden regression suite");
+const productionMargins = KIND_MARGIN === INTENT_MODEL_KIND_MARGIN && ABSTAIN_MARGIN === INTENT_MODEL_ABSTAIN_MARGIN;
+const allGateFailures = [...valFailures, ...goldenFailures];
+if (!productionMargins) {
+  allGateFailures.push("non-production decoder margins: exploratory results cannot set manifest gatePassed=true");
+}
+const releaseGatePassed = allGateFailures.length === 0;
+const trainKeys = instructionKeys(trainRows);
+const valKeys = instructionKeys(valRows);
+const goldenKeys = instructionKeys(goldenRows);
+const exactInstructionOverlap = {
+  normalization: "NFKC + trim + collapse whitespace + lowercase (en-US)",
+  trainVal: overlapCount(trainKeys, valKeys),
+  trainGolden: overlapCount(trainKeys, goldenKeys),
+  valGolden: overlapCount(valKeys, goldenKeys),
+  goldenIsIndependentHoldout: false,
+  candidateFamilyDisjointnessVerified: false,
+};
+const pinnedInputs = [
+  { label: "model manifest", path: MANIFEST_PATH, sha256: sha256(manifestBytes) },
+  { label: "ONNX model", path: modelPath, sha256: modelDigest },
+  { label: "model vocabulary", path: vocabPath, sha256: vocabDigest },
+  { label: "dataset manifest", path: datasetManifestPath, sha256: sha256(datasetManifestBytes) },
+  { label: "train split", path: path.join(DATA_DIR, "train.jsonl"), sha256: sha256(trainData.bytes) },
+  { label: "validation split", path: path.join(DATA_DIR, "val.jsonl"), sha256: sha256(valData.bytes) },
+  { label: "golden split", path: path.join(DATA_DIR, "golden.jsonl"), sha256: sha256(goldenData.bytes) },
+  { label: "validator source", path: VALIDATOR_SOURCE_PATH, sha256: sha256(validatorSourceBytes) },
+  { label: "decoder source", path: MODEL_DECODER_PATH, sha256: sha256(decoderSourceBytes) },
+  { label: "action schema source", path: MODEL_SCHEMA_PATH, sha256: sha256(schemaSourceBytes) },
+];
+for (const input of pinnedInputs) {
+  if (sha256(readFileSync(input.path)) !== input.sha256) {
+    throw new Error(
+      input.label + " changed while evaluating; no report or gate verdict was written — rerun after edits settle",
+    );
+  }
+}
+const validationReport = {
+  schemaVersion: 1,
+  kind: "intent-action-model-validation",
+  taskBoundary: "Closed-set action/slot decoding only; not a creative-brief or musical-quality evaluation.",
+  generatedAt: new Date().toISOString(),
+  model: {
+    version: manifest.intentModelVersion,
+    runtime: "onnxruntime-web@" + ortPackage.version + "/wasm",
+    modelBytes: modelBytes.byteLength,
+    modelSha256: modelDigest,
+    vocabularySha256: vocabDigest,
+    grammarSha256: grammarDigest,
+    trainingReport: {
+      trainRows: manifest.report?.["trainRows"] ?? null,
+      valRows: manifest.report?.["valRows"] ?? null,
+      goldenRows: manifest.report?.["goldenRows"] ?? null,
+      valHeadAccuracyMean: manifest.report?.["valHeadAccuracyMean"] ?? null,
+      trainingDataContentHashPinned: manifest.report?.["trainingDataContentHashPinned"] === true,
+      trainingInputs: manifest.report?.["trainingInputs"] ?? null,
+    },
+  },
+  evaluationDataset: {
+    version: datasetManifest.datasetVersion ?? null,
+    manifestSha256: sha256(datasetManifestBytes),
+    splits: {
+      train: { rows: trainRows.length, sha256: sha256(trainData.bytes) },
+      val: { rows: valRows.length, sha256: sha256(valData.bytes) },
+      golden: { rows: goldenRows.length, sha256: sha256(goldenData.bytes) },
+    },
+    exactInstructionOverlap,
+    trainingReportRowCountsMatch:
+      manifest.report?.["trainRows"] === trainRows.length &&
+      manifest.report?.["valRows"] === valRows.length &&
+      manifest.report?.["goldenRows"] === goldenRows.length,
+  },
+  evaluator: {
+    validatorSha256: sha256(validatorSourceBytes),
+    decoderSha256: sha256(decoderSourceBytes),
+    schemaSourceSha256: sha256(schemaSourceBytes),
+    environment: { platform: process.platform, arch: process.arch, node: process.version },
+    executionProvider: "wasm",
+    wasmThreads: 1,
+  },
+  decode: { kindMargin: KIND_MARGIN, abstainMargin: ABSTAIN_MARGIN, productionMargins },
+  metrics: {
+    train: reportStats(trainStats),
+    val: reportStats(valStats),
+    goldenRegressionSuite: reportStats(goldenStats),
+  },
+  gate: {
+    criteria: { attemptedExactRateMin: 0.95, wrongKindMax: 0, abstainRateMax: 0.2 },
+    valPassed: valFailures.length === 0,
+    goldenRegressionSuitePassed: goldenFailures.length === 0,
+    determinismPassed: true,
+    deterministicValRows: Math.min(16, valRows.length),
+    releaseGateEligible: productionMargins,
+    passed: releaseGatePassed,
+    failures: allGateFailures,
+  },
+  claims: {
+    actionIntentOnly: true,
+    independentGeneralizationEvidence: false,
+    musicalQualityEvidence: false,
+  },
+};
+const validationReportBytes = Buffer.from(JSON.stringify(validationReport, null, 2) + "\n", "utf8");
+writeFileSync(VALIDATION_REPORT_PATH, validationReportBytes);
+console.log(
+  "exact-instruction overlap: train↔val=" +
+    exactInstructionOverlap.trainVal +
+    ", train↔golden=" +
+    exactInstructionOverlap.trainGolden +
+    ", val↔golden=" +
+    exactInstructionOverlap.valGolden +
+    "; golden is a regression suite, not an independent holdout",
+);
 console.log(
   `train attemptedExact=${((trainStats.exact / Math.max(1, trainStats.attempted)) * 100).toFixed(1)}% (informational, not gated)`,
 );
@@ -227,13 +425,28 @@ console.log(
 // register this artifact (read → patch → write, pins untouched).
 const manifestPath = path.join(MODELS_DIR, "intent-model-v1.manifest.json");
 const patched = JSON.parse(readFileSync(manifestPath, "utf8")) as typeof manifest;
-patched.report = { ...patched.report, gatePassed: true };
+patched.report = {
+  ...patched.report,
+  gatePassed: releaseGatePassed,
+  validationReportPath: "scripts/data/intent-model-validation-report.json",
+  validationReportSha256: sha256(validationReportBytes),
+};
 if (!isIntentModelManifest(patched)) throw new Error("patched manifest malformed — refusing to write");
 writeFileSync(
   manifestPath,
   `${JSON.stringify(patched, null, 2)}
 `,
 );
+if (!releaseGatePassed) {
+  if (valFailures.length > 0) checkGate(valStats, "val");
+  if (goldenFailures.length > 0) checkGate(goldenStats, "golden regression suite");
+  throw new Error(
+    "RELEASE GATE FAILED — " +
+      allGateFailures.join("; ") +
+      "; report saved to scripts/data/intent-model-validation-report.json",
+  );
+}
 console.log(
-  "RELEASE GATE PASSED — attempted-exact >= 95%, wrongKind = 0, abstain <= 20% on val + golden; manifest gatePassed=true",
+  "RELEASE GATE PASSED — attempted-exact >= 95%, wrongKind = 0, abstain <= 20% on val + golden regression suite; " +
+    "manifest gatePassed=true",
 );

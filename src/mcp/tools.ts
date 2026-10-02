@@ -1,6 +1,7 @@
 import type { ProjectDocument } from "../project-model/types";
 import type { Command } from "../commands/types";
 import { routeIntentText, type RoutedIntent } from "../intent/route";
+import { isCreativeBriefRoute } from "../intent/model-fallback-policy";
 import { applyFaderIntent, applyTempoIntent } from "../intent/conversation";
 import {
   applyBypassIntent,
@@ -1444,12 +1445,15 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
     const trimmed = instruction.trim();
     if (trimmed !== "") {
       const deterministic = routeIntentText(trimmed, ctx.getDoc());
-      if (deterministic.kind === "pattern" || deterministic.kind === "clarify" || deterministic.kind === "revise") {
+      if (
+        !isCreativeBriefRoute(trimmed, deterministic) &&
+        (deterministic.kind === "pattern" || deterministic.kind === "clarify")
+      ) {
         if (getIntentModelProvider() == null) {
           const ollama = await import("../intent/model-ollama");
           await ollama.ensureOllamaIntentProvider().catch(() => null);
         }
-        const modelRoute = await tryModelRoute(trimmed, ctx.getDoc());
+        const modelRoute = await tryModelRoute(trimmed, ctx.getDoc(), deterministic);
         if (modelRoute != null) {
           logIntentMiningEvent({ prompt: trimmed, outcome: "model-hit", routeKind: modelRoute.kind });
           const result = executeRoutedIntent(ctx, modelRoute);

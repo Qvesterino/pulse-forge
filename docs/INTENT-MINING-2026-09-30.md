@@ -412,3 +412,27 @@ baseline). Full 294-row val: **92.5 % attempted-exact / wrongKind 8 / abstain 0.
 the grown corpus — arrange 13/13, compound 6/6, clarify 6/6 exact (the alignment holds
 where it aimed). The next mining targets, measured: loudness 1/8 (+1 wk — the family
 ×2.7'd in wave 2), preset 0/3, effectIntent 42/48 with the largest wrongKind cluster (6).
+
+## Wave 8 (2026-10-02): SFT-miss mining + corpus wave — release holds, sparse retrain deferred
+
+`eval-ollama-intent --dump-fails` (new) dumps every missed val row; the full sweep surfaced
+22 misses in four families: loudness numeric targets outside the train corpus (−7/−8/−13/−16
+across surface forms), preset id/name exactness, the effectIntent→arrange section-word
+cluster ("add X to the drop"), and clips toBar conventions. Corpus wave: +100 targeted
+pairs (1949 → 2088; loudness ×1.27, preset ×1.24) — this is the SFT curriculum for the
+next GPU fine-tune (their lane; .sft/venv is gone so the GPU trainer needs a fresh setup).
+
+The ONNX retrain on the enriched corpus was attempted under heavy co-tenant load and the
+11 GB numpy run died before publishing (OOM), so the SHIPPED artifact remains the 34-head
+release — verified gate-passed against the NEW corpus (val 96.1 % / 0 / 13.1, golden
+100 % / 0 / 16.2, `gatePassed: true`, hash-restored from git).
+
+Sparse retrain playbook (when the box is quiet, ~30 min):
+
+1. `cp .sound-audit/trainer-sparse-heads-backup-2026-10-01.py scripts/train-intent-model.py`
+   (part1/part2 + clip + presetId/presetName heads, 49-head spec)
+2. `npx vite-node scripts/generate-intent-dataset.mts` (already includes the wave-8 rows)
+3. `python scripts/train-intent-model.py && npm run intent-model:manifest`
+4. `npx vite-node scripts/validate-intent-model.mts` — PASS keeps it, FAIL:
+   `git checkout HEAD -- public/models/ scripts/data/intent-model-report.json`
+5. Watch RAM: the run wants ~11 GB; under co-tenant load it OOMs before publishing.

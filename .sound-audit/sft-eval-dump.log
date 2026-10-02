@@ -1,0 +1,66 @@
+evaluating: ollama.kyx-intent-v30-q8 (config default: kyx-intent-v30-q8)
+rows: 294 from val.jsonl
+
+attempted-exact: 270/292 (92.5%)  wrongKind: 8  abstain: 2/294 (0.7%)  schema-invalid: 0
+FAIL [wrongSlots] (en) "copy the intro clip to bar 9" clips → clips
+   want={"kind":"clips","ops":[{"op":"copyClip","clipId":"clip-test-0010","toBar":8}]} got={"kind":"clips","ops":[{"op":"copyClip","clipId":"clip-test-0010","toBar":7}]}
+FAIL [wrongSlots] (en) "loudness na -9" loudness → loudness
+   want={"kind":"loudness","parse":{"direction":"louder","targetDb":-9,"detected":["loudness -9 LUFS"]}} got={"kind":"loudness","parse":{"direction":"louder","detected":["AI"]}}
+FAIL [wrongSlots] (en) "unmute the claps" exact → exact
+   want={"kind":"exact","ops":[{"kind":"mute","target":"snare","value":false}]} got={"kind":"exact","ops":[{"kind":"mute","target":"mix","value":false}]}
+FAIL [wrongSlots] (en) "load the Reese preset on the bass" preset → preset
+   want={"kind":"preset","preset":{"id":"factory.bass.techno.reese","name":"Reese"},"target":"bass","matchedBy":"exact"} got={"kind":"preset","intent":{"preset":{"id":"factory.bass.techno.reese","name":"Reese","instrument":"bass","genre":"techno","mood":["dark","aggressive"],"tags":["reese","wide","moving"],"params":{"sub":0.65,"body":0.72,"pu
+FAIL [wrongKind] (en) "add delay to the drop" effectIntent → arrange
+   {"kind":"arrange","ops":[{"op":"addRole","role":"drop","beforeSceneId":null}],"unrecognized":[]}
+FAIL [wrongKind] (en) "add distortion to the drop" effectIntent → arrange
+   {"kind":"arrange","ops":[{"op":"addRole","role":"drop","beforeSceneId":null}],"unrecognized":[]}
+FAIL [wrongKind] (en) "add saturation to the drop" effectIntent → arrange
+   {"kind":"arrange","ops":[{"op":"addRole","role":"drop","beforeSceneId":null}],"unrecognized":[]}
+FAIL [wrongKind] (en) "add compressor to the drop" effectIntent → arrange
+   {"kind":"arrange","ops":[{"op":"addRole","role":"drop","beforeSceneId":null}],"unrecognized":[]}
+FAIL [wrongKind] (en) "add eq to the drop" effectIntent → arrange
+   {"kind":"arrange","ops":[{"op":"addRole","role":"drop","beforeSceneId":null}],"unrecognized":[]}
+FAIL [wrongSlots] (en) "-7 lufs" loudness → loudness
+   want={"kind":"loudness","parse":{"direction":"louder","targetDb":-7,"detected":["loudness -7 LUFS"]}} got={"kind":"loudness","parse":{"direction":"louder","detected":["AI"]}}
+FAIL [wrongSlots] (en) "more pumping" mix → mix
+   want={"kind":"mix","overrides":{"pump":"on"},"detected":["pump on"]} got={"kind":"mix","overrides":{"pump":"more"},"detected":["AI"]}
+FAIL [wrongSlots] (en) "loudness na -8" loudness → loudness
+   want={"kind":"loudness","parse":{"direction":"louder","targetDb":-8,"detected":["loudness -8 LUFS"]}} got={"kind":"loudness","parse":{"direction":"louder","detected":["AI"]}}
+FAIL [wrongSlots] (en) "copy the clip at bar 1 to bar 5" clips → clips
+   want={"kind":"clips","ops":[{"op":"copyClip","clipId":"clip-test-0010","toBar":4}]} got={"kind":"clips","ops":[{"op":"copyClip","clipId":"clip-test-0010","toBar":3}]}
+FAIL [wrongSlots] (en) "load the Warm Pad preset on the chords" preset → preset
+   want={"kind":"preset","preset":{"id":"factory.texture.techno.warmpad","name":"Warm Pad"},"target":"chords","matchedBy":"exact"} got={"kind":"preset","intent":{"preset":{"id":"factory.texture.techno.warmpad","name":"Warm Pad","instrument":"texture","genre":"techno","mood":["warm","clean"],"tags":["pad","warm","clean"],"params":{"color":0.55,"motion":0
+FAIL [wrongSlots] (en) "-13 lufs" loudness → loudness
+   want={"kind":"loudness","parse":{"direction":"louder","targetDb":-13,"detected":["loudness -13 LUFS"]}} got={"kind":"loudness","parse":{"direction":"louder","detected":["AI"]}}
+FAIL [wrongSlots] (en) "make the mix -9 lufs" loudness → loudness
+   want={"kind":"loudness","parse":{"direction":"louder","targetDb":-9,"detected":["loudness -9 LUFS"]}} got={"kind":"loudness","parse":{"direction":"louder","detected":["AI"]}}
+FAIL [wrongKind] (en) "copy the chorus clip to bar 12" effectIntent → clips
+   {"kind":"clips","ops":[{"op":"copyClip","clipId":"clip-test-0010","toBar":11}]}
+FAIL [wrongSlots] (en) "loudness na -16" loudness → loudness
+   want={"kind":"loudness","parse":{"direction":"louder","targetDb":-16,"detected":["loudness -16 LUFS"]}} got={"kind":"loudness","parse":{"direction":"louder","detected":["AI"]}}
+FAIL [wrongSlots] (en) "hlbší kick" production → production
+   want={"kind":"production","intent":{"targets":["kick"],"goals":[{"concept":"deeper","amount":0.7}],"sourceText":"hlbší kick","padTargets":["kick"]}} got={"kind":"production","intent":{"targets":["kick"],"goals":[{"concept":"deeper","amount":0.7}],"sourceText":"hlbší kick"}}
+FAIL [wrongKind] (en) "sólo na base a zvýš tempo na 140" fader → compound
+   {"kind":"compound","parts":[{"kind":"fader","intent":{"targets":["bass"],"pads":[],"direction":"up","amount":"normal"}},{"kind":"tempo","intent":{"direction":"up"}}]}
+FAIL [wrongSlots] (en) "načítaj preset deep house bass na basu" preset → preset
+   want={"kind":"preset","preset":{"id":"factory.bass.house.deep","name":"Deep House Bass"},"target":"bass","matchedBy":"exact"} got={"kind":"preset","intent":{"preset":{"id":"factory.bass.house.deep","name":"Deep House Bass","instrument":"bass","genre":"house","mood":["deep","warm"],"tags":["deep","warm","round"],"params":{"sub":0.7,"body":0.7,"punch
+FAIL [wrongKind] (en) "hlasej lead" loudness → clarify
+   {"kind":"clarify","reason":"AI navrhuje — vyber:","suggestions":["zvýš basu","hlasnejšie bicie","zvýš lead","zvýš master"]}
+  arrange        rows=13 exact=13/13 wrongKind=0 abstain=0
+  bypassIntent   rows=6 exact=6/6 wrongKind=0 abstain=0
+  clarify        rows=6 exact=6/6 wrongKind=0 abstain=0
+  clips          rows=5 exact=3/5 wrongKind=0 abstain=0
+  compound       rows=6 exact=6/6 wrongKind=0 abstain=0
+  effectIntent   rows=48 exact=42/48 wrongKind=6 abstain=0
+  exact          rows=79 exact=77/78 wrongKind=0 abstain=1
+  export         rows=3 exact=3/3 wrongKind=0 abstain=0
+  fader          rows=63 exact=61/62 wrongKind=1 abstain=1
+  loudness       rows=8 exact=1/8 wrongKind=1 abstain=0
+  mix            rows=10 exact=9/10 wrongKind=0 abstain=0
+  preset         rows=3 exact=0/3 wrongKind=0 abstain=0
+  production     rows=17 exact=16/17 wrongKind=0 abstain=0
+  revise         rows=6 exact=6/6 wrongKind=0 abstain=0
+  select         rows=2 exact=2/2 wrongKind=0 abstain=0
+  sendIntent     rows=11 exact=11/11 wrongKind=0 abstain=0
+  tempo          rows=3 exact=3/3 wrongKind=0 abstain=0
+  transport      rows=5 exact=5/5 wrongKind=0 abstain=0

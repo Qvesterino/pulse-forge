@@ -267,6 +267,7 @@ function MasterStrip() {
           <Slider
             compact
             label="IN"
+            hint="Master input gain in dB — the trim the export verdict's gain-staging advice applies to"
             value={master.masterGain}
             min={0}
             max={1.5}
@@ -279,6 +280,7 @@ function MasterStrip() {
           <Slider
             compact
             label="CEIL"
+            hint="Limiter true-peak ceiling in dBTP — 0 is transparent, -1 to -3 leaves streaming headroom"
             value={master.ceilingDb}
             min={-12}
             max={0}
@@ -394,6 +396,7 @@ function MasterStrip() {
           <Slider
             compact
             label="TILT"
+            hint="Master tilt EQ in dB — negative darkens the balance, positive brightens it; character genres bake a tilt at generation"
             value={master.tiltDb ?? 0}
             min={-4}
             max={4}
@@ -407,6 +410,7 @@ function MasterStrip() {
           <Slider
             compact
             label="TRIM"
+            hint="Loudness trim in dB before the limiter — auto-written per genre so exports land near the LUFS target; drag to offset further"
             value={master.loudnessTrimDb ?? 0}
             min={-6}
             max={6}
@@ -608,6 +612,7 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
           )}
           <Slider
             label="VOL"
+            hint="Channel fader in dB, post-FX pre-master — 0.9 (0 dB) is the default level"
             value={track.gain}
             min={0}
             max={1.5}
@@ -620,6 +625,7 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
           />
           <Slider
             label="PAN"
+            hint="Stereo position — L100 hard left, C centre, R100 hard right"
             value={track.pan}
             min={-1}
             max={1}
@@ -648,6 +654,7 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
               <Slider
                 compact
                 label={`→ ${ret.name.toUpperCase()}`}
+                hint={`How much of this track feeds the ${ret.name} return's FX — OFF is dry, 100% fully wet (up to 150% for pushes)`}
                 value={track.sends[ret.id] ?? 0}
                 min={0}
                 max={1.5}

@@ -1,0 +1,80 @@
+[train] rows=1790 attempted=1623 exact=1616 attemptedExact=99.6% wrongKind=0 abstain=167 (9.3%)
+    arrange        rows=54 exact=51/51 wrongKind=0 abstain=3
+    bypassIntent   rows=32 exact=32/32 wrongKind=0 abstain=0
+    clarify        rows=36 exact=31/31 wrongKind=0 abstain=5
+    clips          rows=30 exact=0/0 wrongKind=0 abstain=30
+    compound       rows=51 exact=44/44 wrongKind=0 abstain=7
+    effectIntent   rows=319 exact=297/297 wrongKind=0 abstain=22
+    exact          rows=486 exact=455/462 wrongKind=0 abstain=24
+    export         rows=8 exact=8/8 wrongKind=0 abstain=0
+    fader          rows=361 exact=322/322 wrongKind=0 abstain=39
+    loudness       rows=49 exact=47/47 wrongKind=0 abstain=2
+    mix            rows=66 exact=61/61 wrongKind=0 abstain=5
+    preset         rows=27 exact=0/0 wrongKind=0 abstain=27
+    presetUnknown  rows=2 exact=2/2 wrongKind=0 abstain=0
+    production     rows=94 exact=92/92 wrongKind=0 abstain=2
+    record         rows=7 exact=7/7 wrongKind=0 abstain=0
+    revise         rows=43 exact=43/43 wrongKind=0 abstain=0
+    save           rows=7 exact=7/7 wrongKind=0 abstain=0
+    select         rows=8 exact=8/8 wrongKind=0 abstain=0
+    sendIntent     rows=69 exact=69/69 wrongKind=0 abstain=0
+    tempo          rows=20 exact=19/19 wrongKind=0 abstain=1
+    transport      rows=21 exact=21/21 wrongKind=0 abstain=0
+[val] rows=298 attempted=243 exact=237 attemptedExact=97.5% wrongKind=0 abstain=55 (18.5%)
+    arrange        rows=10 exact=4/4 wrongKind=0 abstain=6
+    bypassIntent   rows=6 exact=6/6 wrongKind=0 abstain=0
+    clarify        rows=7 exact=2/2 wrongKind=0 abstain=5
+    clips          rows=5 exact=0/0 wrongKind=0 abstain=5
+    compound       rows=7 exact=3/3 wrongKind=0 abstain=4
+    effectIntent   rows=51 exact=43/43 wrongKind=0 abstain=8
+    exact          rows=78 exact=70/73 wrongKind=0 abstain=5
+    export         rows=3 exact=3/3 wrongKind=0 abstain=0
+    fader          rows=61 exact=55/55 wrongKind=0 abstain=6
+    loudness       rows=8 exact=6/7 wrongKind=0 abstain=1
+    mix            rows=12 exact=9/9 wrongKind=0 abstain=3
+    preset         rows=4 exact=0/0 wrongKind=0 abstain=4
+    production     rows=16 exact=14/14 wrongKind=0 abstain=2
+    revise         rows=8 exact=8/8 wrongKind=0 abstain=0
+    select         rows=2 exact=0/2 wrongKind=0 abstain=0
+    sendIntent     rows=12 exact=12/12 wrongKind=0 abstain=0
+    tempo          rows=4 exact=1/1 wrongKind=0 abstain=3
+    transport      rows=4 exact=1/1 wrongKind=0 abstain=3
+[golden] rows=74 attempted=59 exact=58 attemptedExact=98.3% wrongKind=0 abstain=15 (20.3%)
+    arrange        rows=2 exact=2/2 wrongKind=0 abstain=0
+    bypassIntent   rows=2 exact=2/2 wrongKind=0 abstain=0
+    clarify        rows=2 exact=2/2 wrongKind=0 abstain=0
+    clips          rows=3 exact=0/0 wrongKind=0 abstain=3
+    compound       rows=5 exact=4/4 wrongKind=0 abstain=1
+    effectIntent   rows=6 exact=4/4 wrongKind=0 abstain=2
+    exact          rows=15 exact=13/14 wrongKind=0 abstain=1
+    export         rows=2 exact=2/2 wrongKind=0 abstain=0
+    fader          rows=9 exact=5/5 wrongKind=0 abstain=4
+    loudness       rows=3 exact=3/3 wrongKind=0 abstain=0
+    mix            rows=2 exact=1/1 wrongKind=0 abstain=1
+    preset         rows=1 exact=0/0 wrongKind=0 abstain=1
+    presetUnknown  rows=1 exact=1/1 wrongKind=0 abstain=0
+    production     rows=3 exact=3/3 wrongKind=0 abstain=0
+    record         rows=2 exact=2/2 wrongKind=0 abstain=0
+    revise         rows=3 exact=3/3 wrongKind=0 abstain=0
+    save           rows=1 exact=1/1 wrongKind=0 abstain=0
+    select         rows=2 exact=2/2 wrongKind=0 abstain=0
+    sendIntent     rows=4 exact=4/4 wrongKind=0 abstain=0
+    tempo          rows=2 exact=1/1 wrongKind=0 abstain=1
+    transport      rows=4 exact=3/3 wrongKind=0 abstain=1
+determinism: val subset byte-equal across two runs ✓
+exact-instruction overlap: train↔val=0, train↔golden=64, val↔golden=10; golden is a regression suite, not an independent holdout
+train attemptedExact=99.6% (informational, not gated)
+D:\pulse-forge\scripts\validate-intent-model.mts:184
+  if (failures.length > 0) throw new Error(`GATE FAILED [${label}]: ${failures.join("; ")}`);
+                                 ^
+
+Error: GATE FAILED [golden regression suite]: abstainRate=20.3% (> 20%)
+    at checkGate (D:\pulse-forge\scripts\validate-intent-model.mts:184:34)
+    at D:\pulse-forge\scripts\validate-intent-model.mts:343:34
+    at ViteNodeRunner.runModule (file:///D:/pulse-forge/node_modules/vite-node/dist/client.mjs:399:5)
+    at ViteNodeRunner.directRequest (file:///D:/pulse-forge/node_modules/vite-node/dist/client.mjs:381:5)
+    at ViteNodeRunner.cachedRequest (file:///D:/pulse-forge/node_modules/vite-node/dist/client.mjs:206:14)
+    at ViteNodeRunner.executeFile (file:///D:/pulse-forge/node_modules/vite-node/dist/client.mjs:169:12)
+    at CAC.run (file:///D:/pulse-forge/node_modules/vite-node/dist/cli.mjs:99:5)
+
+Node.js v24.11.0

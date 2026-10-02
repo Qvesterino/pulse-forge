@@ -1,19 +1,28 @@
-# LOCAL INTENT MODEL — voice & text control with a downloadable LLM
+# LOCAL INTENT MODEL — voice & text control with optional local models
 
 > Expansion plan (undo/query intents, step-level + sound-swap vocab, listening
 > loop, KYX as an MCP server): see docs/INTENT-MCP-EXPANSION-PLAN.md.
 
-> Status: loader INTEGRATED (2026-09-28) — `src/intent/model-loader.ts`
-> (client: `pf:intent-model` flag, default OFF; availability probe; lazy
-> worker; cold/warm timeouts; circuit breaker) + `src/intent/model-worker.ts`
-> (manifest validation, grammar-drift pin, SHA-256 weight verification,
-> pack-cache-aware fetch, pluggable runtime adapter) + the manifest contract
-> in `src/intent/model-loader-types.ts`. The IntentPanel chip is the only
-> toggle. NOT YET PRESENT: the trained artifact (LFM-2.5 1.2B Q4 GGUF) and
-> the vendored runtime module it declares — an origin without them serves a
-> manifest 404, the loader reports unavailable and the deterministic
-> parsers remain the engine, byte-identical to today. Candidate: LFM-2.5
-> 1.2B (Q4 GGUF ≈ 700 MB), class floor ~0.5B with constrained decoding.
+> **Verified snapshot (2026-10-02).** KYX Web currently has a 6.75 MB
+> multi-head ONNX **action/slot-filling** model. Its provider is registered
+> only while the pinned manifest gate passes; deterministic routing remains
+> the fallback. The measured report is
+> `scripts/data/intent-model-validation-report.json`: current-corpus
+> validation 249/259 attempted-exact (96.1%), 0 wrong-kind, 39/298 abstain
+> (13.1%); golden regression 62/62 attempted-exact. This is not an independent
+> generalization set or a musical-quality evaluation: golden overlaps train
+> on 64 exact prompts and val on 10.
+>
+> This ONNX model is **not LFM2.5**, not a free-form creative-brief model and
+> not an audio/MIDI generator. The local LFM path is the separate Ollama
+> provider and requires a local Ollama server/model; it is not yet a
+> self-contained Studio runtime. Browser builds do not bundle LFM weights.
+> The current ONNX training report still says 1,761/294/74 rows while the
+> evaluated corpus is 1,790/298/74, and the historical artifact has no
+> training-input content hashes. The next trainer run will pin those hashes;
+> do not backfill them onto the existing model. LFM/SFT figures below are
+> historical measurements from different eval paths until reproduced by one
+> pinned report.
 
 ## 1. The one-paragraph idea
 
@@ -75,8 +84,10 @@ vocab artifact (manifest `features.url`), creates the ORT-wasm session in
 the worker (the ranker worker's exact single-threaded setup) and decodes
 head outputs through the canonical TS decoder — the action JSON text
 contract is identical for both backends, so the resolver bridge cannot tell
-them apart. Until the release gate passes, the loader refuses to register
-either backend and nothing about the deterministic path changes.
+them apart. The current ONNX manifest passes its action-level gate and can
+register; that gate does not establish LFM quality, creative-brief
+understanding, or musical quality. The deterministic path remains the
+fallback and is usable without model availability.
 
 **[A] and [C] share the same drawer**: `src/ai/` already ships the local-model
 pattern — worker isolation, manifest (modelHash, versions), load timeout,
@@ -136,41 +147,49 @@ artifact loader (ONNX now / wllama-GGUF later).
   templates — regenerate and the golden diff shows exactly what moved.
 - **Lock**: `tests/intent-sft-golden.test.ts` — parser changes move the
   training target visibly; model re-trains against the new teacher.
-- **v1 student (TRAINED, 2026-09-28)**: `npm run intent-model:all` —
+- **v1 student (ONNX action model)**: `npm run intent-model:all` —
   `scripts/train-intent-model.py` trains a numpy multi-head slot-filling MLP
-  (binary BoW trunk 384→192 + 30 closed-class heads; classes ARE the
+  (binary BoW trunk 384→192 + 47 closed-class heads; classes ARE the
   constraint a GBNF grammar gives the future LLM) over the corpus and
   exports one ONNX graph (per-head outputs). Out-of-scope kinds decode to an
   explicit abstain — never a guess. The manifest is written by
   `scripts/write-intent-model-manifest.mts`, which pins
   `grammarSha256 = sha256(toGbnfGrammar())` from the LIVE TypeScript grammar
-  (python cannot produce it) plus model/vocab SHA-256s.
-- **Gate**: `scripts/validate-intent-model.mts` runs EVERY corpus row
+  (python cannot produce it) plus model/vocab SHA-256s. The committed ONNX
+  training report records 1,761/294/74 rows, while the current evaluation
+  corpus is 1,790/298/74; this historical artifact does not pin its original
+  training-input hashes.
+- **Action gate**: `scripts/validate-intent-model.mts` runs EVERY corpus row
   through the real ORT graph + the canonical TS decoder
   (`src/intent/model-decoder.ts`) and enforces attempted-exact ≥ 95 %,
-  wrongKind = 0, abstain ≤ 20 % on val + golden, plus determinism. On pass
-  it patches `report.gatePassed = true`; the loader REFUSES models without
-  that pin. STATUS: gate NOT passed yet (corpus v4 = 1726 pairs gives
-  val attempted-exact ~22–40 % depending on split, wrongKind = 0 on val +
-  golden — safe but not exact enough; the ceiling is the classifier's
-  joint-slot coherence, not the corpus), so the committed artifact
-  is inert by construction; the deterministic layer is the engine.
-  Path to activation: (a) keep expanding templates per
-  `docs/INTENT-DATASET-TEMPLATES.md` — the SAME corpus feeds the LLM
-  fine-tune, so the work carries over — or (b) the GGUF runtime adapter
-  (GBNF constrained decoding solves joint-slot coherence natively).
-- **SFT (LIVE 2026-09-29)**: `scripts/train-intent-sft.py` — LoRA
+  wrongKind = 0, abstain ≤ 20 % on val + golden regression suite, plus
+  determinism. The latest pinned run reports val 249/259 attempted-exact
+  (96.1 %), 0 wrong-kind, 39/298 abstain (13.1 %), and golden regression
+  62/62 attempted-exact. Exact model, data-split and evaluator hashes are in
+  `scripts/data/intent-model-validation-report.json`; golden overlaps train
+  (64 prompts) and val (10), so it is not generalization evidence. The
+  manifest gate enables this closed-set action model only; it says nothing
+  about creative briefs or musical quality.
+- **Training provenance hardening**: the Python trainer now snapshots and
+  hashes the dataset manifest, train/val/golden files and trainer source,
+  aborting if they change before artifact publication. The manifest writer
+  verifies the report hashes against the current corpus. The existing model
+  report predates this pin and is intentionally refused by the writer until
+  the model is retrained; its provenance is not fabricated retroactively.
+- **SFT (historical reports; not a current release verdict)**:
+  `scripts/train-intent-sft.py` — LoRA
   (r16/α32, all-linear, bf16, 3 epochs) on the corpus with the EXACT
   Ollama system prompt (`prompt.txt`, pinned by
   tests/intent-model-sft-prompt.test.ts). Targets are FLATTENED
   ({kind, intent} → root slots) — the runtime adapters and the eval
-  compare flat. Measured on val (60 rows, live Ollama, RTX 3060 6 GB,
-  ~35 min train): BASE model attempted-exact 1.7 % (wrongKind 42) →
-  **SFT model 92.3 % (48/52), wrongKind 3, schema-invalid 0** — via the
-  resolver's NESTED-UNWRAP GUARD (model-resolver.ts), which makes the
-  adapter accept the compact teacher shape the corpus teaches. Deployment:
-  merge → convert_hf_to_gguf → `ollama create kyx-intent-v1`. The
-  evaluator: `npm run intent-model:sft-eval [--model <tag>] [--limit N]`.
+  compare flat. The committed LFM2.5 report records 773 training examples
+  and 34/60 raw teacher-exact after epoch 3; a separate historical runtime
+  eval reported 45/51 attempted-exact, 1 wrong-kind and 9/60 abstain. Those
+  metrics use different scoring paths and are not merged or claimed as a
+  reproducible current LFM result. The LFM candidate, quantized artifact,
+  tokenizer, training data and evaluator still need one pinned report.
+  Deployment: merge → convert_hf_to_gguf → `ollama create <model-tag>`.
+  The evaluator entry point is `npm run intent-model:sft-eval`.
   NOTE (2026-09-29, f27406b9): the Ollama request sends NO JSON-schema
   constraint — the schema grammar flipped the tuned model's kinds; output
   validity stays with validateModelAction.
@@ -182,9 +201,16 @@ artifact loader (ONNX now / wllama-GGUF later).
 
 - `npm run intent:eval <predictions.jsonl>` — exact / kindOK / miss per kind
   against the teacher. Teacher self-eval = 100% exact (verified).
-- **Release gate**: exact ≥ 95% overall AND 100% kindOK (wrong-kind is a
-  hard fail — a mute must never become a delete) on val.jsonl before a model
-  ships into `public/models/`.
+- **ONNX action-model gate**: attempted-exact ≥ 95 %, wrong-kind = 0 and
+  abstain ≤ 20 % on validation plus the golden regression suite; outputs
+  must also be deterministic. The current report is pinned to the exact
+  evaluated corpus and source hashes. It does **not** claim independent
+  generalization because candidate-family disjointness is not yet verified.
+- **LFM gate**: separate from the ONNX gate. It requires a pinned LFM model
+  and tokenizer/quantization, training dataset hashes, independent
+  candidate-disjoint prompts, per-class and wrong-kind metrics, abstention,
+  latency and explicit creative-brief tests. No historical SFT number in
+  this document alone authorizes an LFM release.
 - The deterministic layer remains the DEFAULT; the model is opt-in
   (settings toggle, downloadable model). No network calls at inference.
 
@@ -193,8 +219,10 @@ artifact loader (ONNX now / wllama-GGUF later).
 Whisper-base/small quantized (GGML/ONNX) as manifest #2 in the same loader:
 mic capture → 16 kHz mono chunks → transcribe → the text re-enters the
 pipeline at [B]. Latency budget: whisper-base Q5 ≈ real-time×0.3 on desktop
-CPU; LFM-2.5 Q4 1.2B ≈ 30–80 ms/action on desktop CPU. Voice adds no new
-action kinds — it is a text source, and [B]–[E] are shared unchanged.
+CPU. The older LFM-2.5 Q4 estimate of 30–80 ms/action is an unverified
+target, not a measured release claim; downloadable runtime latency must be
+benchmarked on supported hardware. Voice adds no new action kinds — it is a
+text source, and [B]–[E] are shared unchanged.
 Mic capture itself stays with the existing recording infrastructure.
 
 ## 6b. STT drawer (manifest #2) — IMPLEMENTED

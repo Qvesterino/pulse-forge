@@ -32,15 +32,74 @@ import {
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MODELS_DIR = path.join(ROOT, "public", "models");
+const SFT_DATA_DIR = path.join(ROOT, "scripts", "data", "intent-sft");
+const VALIDATION_REPORT_PATH = path.join(ROOT, "scripts", "data", "intent-model-validation-report.json");
 
 const sha256 = (data: string | Uint8Array): string => createHash("sha256").update(data).digest("hex");
+
+interface ValidationReport {
+  schemaVersion: number;
+  kind: string;
+  taskBoundary: string;
+  model: {
+    modelSha256: string;
+    vocabularySha256: string;
+    grammarSha256: string;
+    trainingReport: {
+      trainRows: number | null;
+      valRows: number | null;
+      goldenRows: number | null;
+      trainingDataContentHashPinned: boolean;
+      trainingInputs: unknown;
+    };
+  };
+  evaluationDataset: {
+    manifestSha256: string;
+    splits: Record<string, { rows: number; sha256: string }>;
+    exactInstructionOverlap: {
+      trainVal: number;
+      trainGolden: number;
+      valGolden: number;
+      goldenIsIndependentHoldout: boolean;
+      candidateFamilyDisjointnessVerified: boolean;
+    };
+    trainingReportRowCountsMatch: boolean;
+  };
+  evaluator: { validatorSha256: string; decoderSha256: string; schemaSourceSha256: string };
+  metrics: {
+    val: { rows: number; attempted: number; exact: number; wrongKind: number; abstain: number };
+    goldenRegressionSuite: { rows: number; attempted: number; exact: number; wrongKind: number; abstain: number };
+  };
+  gate: { passed: boolean; releaseGateEligible: boolean };
+  claims: { actionIntentOnly: boolean; independentGeneralizationEvidence: boolean; musicalQualityEvidence: boolean };
+}
+
+function instructionKeys(file: string): Set<string> {
+  return new Set(
+    readFileSync(path.join(SFT_DATA_DIR, file), "utf8")
+      .split(/\r?\n/u)
+      .filter((line) => line.trim() !== "")
+      .map((line) => {
+        const row = JSON.parse(line) as { instruction: string };
+        return row.instruction.normalize("NFKC").trim().replace(/\s+/gu, " ").toLocaleLowerCase("en-US");
+      }),
+  );
+}
+
+function overlapCount(a: Set<string>, b: Set<string>): number {
+  let overlap = 0;
+  for (const key of a) if (b.has(key)) overlap += 1;
+  return overlap;
+}
 
 describe("intent model artifact lock", () => {
   const manifestPath = path.join(MODELS_DIR, "intent-model-v1.manifest.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as ReturnType<typeof JSON.parse> & {
     features: { vocabSha256: string; vocabSize: number; inputName: string; outputNames: string[] };
-    report: { gatePassed: boolean };
+    report: { gatePassed: boolean; validationReportPath: string; validationReportSha256: string };
   };
+  const validationReportBytes = readFileSync(VALIDATION_REPORT_PATH);
+  const validationReport = JSON.parse(validationReportBytes.toString("utf8")) as ValidationReport;
 
   it("the manifest is schema-valid and pins THIS build's grammar (the drift guard)", () => {
     expect(isIntentModelManifest(manifest)).toBe(true);
@@ -64,6 +123,61 @@ describe("intent model artifact lock", () => {
   it("the release-gate verdict is explicit (loader refuses models without it)", () => {
     expect(typeof manifest.report.gatePassed).toBe("boolean");
     expect(manifestGatePassed(manifest)).toBe(manifest.report.gatePassed === true);
+  });
+
+  it("pins validation metrics to the exact model, dataset splits, decoder, and evaluator", () => {
+    expect(validationReport.schemaVersion).toBe(1);
+    expect(validationReport.kind).toBe("intent-action-model-validation");
+    expect(validationReport.taskBoundary).toContain("not a creative-brief or musical-quality evaluation");
+    expect(validationReport.model.modelSha256).toBe(manifest.model.sha256);
+    expect(validationReport.model.vocabularySha256).toBe(manifest.features.vocabSha256);
+    expect(validationReport.model.grammarSha256).toBe(manifest.grammarSha256);
+    expect(validationReport.evaluator.validatorSha256).toBe(
+      sha256(readFileSync(path.join(ROOT, "scripts", "validate-intent-model.mts"))),
+    );
+    expect(validationReport.evaluator.decoderSha256).toBe(
+      sha256(readFileSync(path.join(ROOT, "src", "intent", "model-decoder.ts"))),
+    );
+    expect(validationReport.evaluator.schemaSourceSha256).toBe(
+      sha256(readFileSync(path.join(ROOT, "src", "intent", "model-schema.ts"))),
+    );
+    expect(validationReport.evaluationDataset.manifestSha256).toBe(
+      sha256(readFileSync(path.join(SFT_DATA_DIR, "manifest.json"))),
+    );
+    for (const split of ["train", "val", "golden"]) {
+      expect(validationReport.evaluationDataset.splits[split].sha256).toBe(
+        sha256(readFileSync(path.join(SFT_DATA_DIR, split + ".jsonl"))),
+      );
+    }
+    expect(validationReport.model.trainingReport.trainRows).toBe(manifest.report.trainRows);
+    expect(validationReport.model.trainingReport.valRows).toBe(manifest.report.valRows);
+    expect(validationReport.model.trainingReport.goldenRows).toBe(manifest.report.goldenRows);
+    expect(validationReport.model.trainingReport.trainingDataContentHashPinned).toBe(
+      manifest.report.trainingDataContentHashPinned === true,
+    );
+    expect(validationReport.model.trainingReport.trainingInputs).toEqual(manifest.report.trainingInputs ?? null);
+    expect(validationReport.evaluationDataset.trainingReportRowCountsMatch).toBe(
+      manifest.report.trainRows === validationReport.evaluationDataset.splits.train.rows &&
+        manifest.report.valRows === validationReport.evaluationDataset.splits.val.rows &&
+        manifest.report.goldenRows === validationReport.evaluationDataset.splits.golden.rows,
+    );
+    expect(manifest.report.validationReportPath).toBe("scripts/data/intent-model-validation-report.json");
+    expect(manifest.report.validationReportSha256).toBe(sha256(validationReportBytes));
+    expect(manifest.report.gatePassed).toBe(validationReport.gate.passed && validationReport.gate.releaseGateEligible);
+  });
+
+  it("labels overlapping golden prompts as regression coverage, never generalization evidence", () => {
+    const train = instructionKeys("train.jsonl");
+    const val = instructionKeys("val.jsonl");
+    const golden = instructionKeys("golden.jsonl");
+    expect(validationReport.evaluationDataset.exactInstructionOverlap.trainVal).toBe(overlapCount(train, val));
+    expect(validationReport.evaluationDataset.exactInstructionOverlap.trainGolden).toBe(overlapCount(train, golden));
+    expect(validationReport.evaluationDataset.exactInstructionOverlap.valGolden).toBe(overlapCount(val, golden));
+    expect(validationReport.evaluationDataset.exactInstructionOverlap.goldenIsIndependentHoldout).toBe(false);
+    expect(validationReport.evaluationDataset.exactInstructionOverlap.candidateFamilyDisjointnessVerified).toBe(false);
+    expect(validationReport.claims.actionIntentOnly).toBe(true);
+    expect(validationReport.claims.independentGeneralizationEvidence).toBe(false);
+    expect(validationReport.claims.musicalQualityEvidence).toBe(false);
   });
 
   it("the ONNX graph input/output names match the manifest", async () => {

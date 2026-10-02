@@ -1,4 +1,5 @@
 import type { ProjectDocument } from "../project-model/types";
+import { isCreativeBriefRoute } from "./model-fallback-policy";
 import type { RoutedIntent } from "./route";
 import { routeIntentText } from "./route";
 import { validateModelAction } from "./model-schema";
@@ -398,9 +399,19 @@ function adaptRecord(
  * caller falls back to today's behavior (clarify/generation) unchanged.
  * Never throws: a provider failure is a miss, not a crash.
  */
-export async function tryModelRoute(instruction: string, doc: ProjectDocument): Promise<RoutedIntent | null> {
+export async function tryModelRoute(
+  instruction: string,
+  doc: ProjectDocument,
+  deterministicRoute?: RoutedIntent,
+): Promise<RoutedIntent | null> {
   const active = provider;
   if (!active) return null;
+  // Defense in depth: the action schema is not a creative brief schema. Do
+  // not even ask an action-tuned LFM to reinterpret a clear beat-generation
+  // request; callers may pass their already-computed route to avoid parsing
+  // it twice.
+  const route = deterministicRoute ?? routeIntentText(instruction, doc);
+  if (isCreativeBriefRoute(instruction, route)) return null;
   let raw: string;
   try {
     raw = await active.generate(instruction, doc);

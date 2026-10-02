@@ -784,6 +784,8 @@
     "valRows": 294,
     "goldenRows": 74,
     "valHeadAccuracyMean": 0.9943,
-    "gate": "scripts/validate-intent-model.mts — attempted-exact >= 0.95, wrongKind = 0"
+    "gate": "scripts/validate-intent-model.mts — attempted-exact >= 0.95, wrongKind = 0",
+    "validationReportPath": "scripts/data/intent-model-validation-report.json",
+    "validationReportSha256": "638fa907d8477d370f3f73323d673da066144c1efff6a26dd311a1c3210b9373"
   }
 }

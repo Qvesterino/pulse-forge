@@ -6,10 +6,16 @@
 > [`LOCAL-INTENT-MODEL.md`](./LOCAL-INTENT-MODEL.md). This file is the
 > hands-on runbook: exact commands, completion markers, verified pitfalls.
 >
-> Proven: **LFM2-1.2B base → LoRA SFT → 92 % exact** on the KYX intent
-> corpus (1479 examples, 3 epochs, RTX 3060 6 GB, bf16 LoRA). Current run:
-> **LFM2.5-1.2B-Instruct** (newer generation — see §8 for the base-model
-> pitfall that motivated this runbook).
+> **Historical runbook; current release status is in
+> `docs/LOCAL-INTENT-MODEL.md` and
+> `docs/IMPLEMENTATION-ROADMAP-AI-FIRST-PRODUCER.md`.** The LFM2 92 %
+> result and the LFM2.5 numbers in §10 came from different checkpoints and
+> eval paths. The latest committed LFM2.5 training report records
+> 773 examples and 34/60 raw exact after epoch 3; a separate historical
+> Ollama runtime eval reported 45/51 attempted-exact, 1 wrong-kind and
+> 9/60 abstain. Neither number set is a current pinned release verdict.
+> Re-run the exact model artifact against a candidate-disjoint holdout
+> before claiming generalization or producer quality.
 
 ---
 
@@ -88,12 +94,12 @@ language in reasoning fields); `-Base` when you want the chat prior gone.
 
 ### How to know training is done (any of these)
 
-| Marker | Where |
-|---|---|
-| Val results printed + report written | `scripts/data/intent-sft/sft-report.json` (mtime updates) |
-| Final log line | `merged:  <dir>  (next: convert_hf_to_gguf → ollama create)` |
-| GPU utilization drops | 95 % → ~7 % (desktop baseline) |
-| Artifacts updated | `.sft/work/adapter/` + `.sft/work/merged/` mtimes |
+| Marker                               | Where                                                        |
+| ------------------------------------ | ------------------------------------------------------------ |
+| Val results printed + report written | `scripts/data/intent-sft/sft-report.json` (mtime updates)    |
+| Final log line                       | `merged:  <dir>  (next: convert_hf_to_gguf → ollama create)` |
+| GPU utilization drops                | 95 % → ~7 % (desktop baseline)                               |
+| Artifacts updated                    | `.sft/work/adapter/` + `.sft/work/merged/` mtimes            |
 
 Heads-up: with redirected output the progress bars are **buffered** — run
 with `PYTHONUNBUFFERED=1` to watch live steps, or just watch the GPU.
@@ -182,30 +188,38 @@ capability (competition-grade or mix/mastering control):
 
 ## 8. Verified pitfalls (each one cost real time)
 
-| Pitfall | Detail | Fix |
-|---|---|---|
-| **Base-model default** | `DEFAULT_BASE = LiquidAI/LFM2-1.2B` (old generation) — a run without `--base-model` silently trains the wrong model | Always pass `--base-model` explicitly; check the log's model line |
-| **Two python PIDs** | venv `python.exe` is a launcher shim that execs the base `Python312\python.exe` — two PIDs, ONE training. Not a double-launch | Check command lines, not process count |
-| **Buffered progress** | Redirected output hides training steps until flush | `PYTHONUNBUFFERED=1`, or watch the GPU (95 % = training) |
-| **Grammar responses need tokens** | `num_predict 80` truncates schema-forced JSON (`done_reason=length`) → parse failures masquerading as model failures | ≥ 300 for structured intent responses |
-| **HF unauthenticated throttle** | ~380 KB/s without a token (2.4 GB ≈ 1.5 h) | `HF_TOKEN` if available; otherwise start early, cache persists across restarts |
-| **Venv on C:** | torch + checkpoints don't fit | venv lives on D: |
-| **`causal_conv1d` fallback** | Reference PyTorch conv = training works but slower | Optional: install `causal_conv1d` for the optimized kernel |
-| **Eval harness OOM** | ~900-file vitest suite OOMs CI runners | `NODE_OPTIONS=--max-old-space-size=4096` + `--maxWorkers=2` |
+| Pitfall                           | Detail                                                                                                                        | Fix                                                                            |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| **Base-model default**            | `DEFAULT_BASE = LiquidAI/LFM2-1.2B` (old generation) — a run without `--base-model` silently trains the wrong model           | Always pass `--base-model` explicitly; check the log's model line              |
+| **Two python PIDs**               | venv `python.exe` is a launcher shim that execs the base `Python312\python.exe` — two PIDs, ONE training. Not a double-launch | Check command lines, not process count                                         |
+| **Buffered progress**             | Redirected output hides training steps until flush                                                                            | `PYTHONUNBUFFERED=1`, or watch the GPU (95 % = training)                       |
+| **Grammar responses need tokens** | `num_predict 80` truncates schema-forced JSON (`done_reason=length`) → parse failures masquerading as model failures          | ≥ 300 for structured intent responses                                          |
+| **HF unauthenticated throttle**   | ~380 KB/s without a token (2.4 GB ≈ 1.5 h)                                                                                    | `HF_TOKEN` if available; otherwise start early, cache persists across restarts |
+| **Venv on C:**                    | torch + checkpoints don't fit                                                                                                 | venv lives on D:                                                               |
+| **`causal_conv1d` fallback**      | Reference PyTorch conv = training works but slower                                                                            | Optional: install `causal_conv1d` for the optimized kernel                     |
+| **Eval harness OOM**              | ~900-file vitest suite OOMs CI runners                                                                                        | `NODE_OPTIONS=--max-old-space-size=4096` + `--maxWorkers=2`                    |
 
 ---
 
-## 9. Current status (2026-09-27)
+## 9. Historical status note (2026-09-27; superseded)
 
-- LFM2 run (baseline): done — report 55/60 exact, model in Ollama as
+- LFM2 run (baseline): historical report 55/60 exact, model in Ollama as
   `kyx-intent-sft:latest`.
-- **LFM2.5 run: training** (`--base-model LiquidAI/LFM2.5-1.2B-Instruct`,
-  log `.sft/work/train-lfm25.log`). After completion: §4 → §5 as
-  `kyx-intent-sft-25` → §6 eval on all 204 cases → numbers land here.
+- LFM2.5 training and conversion were subsequently completed; the committed
+  report and later runtime-eval snapshots are in §10. Do not interpret this
+  dated status as a currently running training job or as proof of a shippable
+  self-contained KYX Studio model.
 
 ---
 
-## 10. Eval results — LFM2.5 SFT (2026-09-30)
+## 10. Historical eval snapshots — LFM2.5 SFT (2026-09-30)
+
+These are checkpoint-specific historical measurements, not the pinned
+release baseline. The SFT trainer's raw teacher-exact score (34/60) and this
+runtime evaluator's attempted-exact score (45/51) are different metrics.
+The repository currently lacks a single machine-readable report that binds
+both to one exact GGUF/model hash, tokenizer, quantization, dataset hashes
+and evaluator revision.
 
 Independent eval (`eval-ollama-intent.mts`, val.jsonl 60 rows, temperature 0):
 
@@ -218,8 +232,8 @@ Weak tails: mix 0/3, clarify 0/2, loudness 0/1.
 
 ### Tail forensics — exact-match vs semantic correctness
 
-Probing the "failed" rows shows the model produces SEMANTICALLY CORRECT
-intents that fail only literal serialization:
+Probing some "failed" rows showed semantically plausible intents that fail
+literal serialization:
 
 ```
 "darker"          → {"kind":"mix","overrides":{"tone":"dark"}}       (semantically right)
@@ -227,18 +241,20 @@ intents that fail only literal serialization:
 ```
 
 The exact metric requires byte-equality with the teacher row; field-value
-synonyms ("subtle" vs "slight", key ordering) fail it. Production path
-(`validateModelAction` + resolver adapters) normalizes these — so the tails
-are EVAL STRICTNESS, not model failure. The safe-failure design also holds:
-the model abstains rather than guessing on ambiguous asks.
+synonyms ("subtle" vs "slight", key ordering) fail it. Some mismatches may
+be normalized by `validateModelAction` and resolver adapters, but this does
+not prove all misses are harmless. Every miss needs an output diff and
+classification as serialization-only, semantic error, wrong-kind,
+abstention or schema failure. The 1 wrong-kind in this snapshot remains a
+real failure signal even though many ambiguous asks abstained.
 
 ### Comparison table — the whole SFT story
 
-| Model | Method | KYX val exact | Notes |
-|---|---|---|---|
-| LFM2-1.2B base (prompted) | few-shot prompt | ~14-30 % (unconditioned measurement issues) | hallucinates kind names |
-| **LFM2 SFT (kyx-intent-sft)** | LoRA SFT 1479 ex | **92 %** (55/60) | production quality |
-| **LFM2.5 SFT (kyx-intent-sft-25)** | LoRA SFT, same corpus | **88.2 %** (45/51 attempted) | tails = serialization strictness; safe abstain 15 % |
+| Model                              | Method                                               | KYX val exact                               | Notes                                                                                          |
+| ---------------------------------- | ---------------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| LFM2-1.2B base (prompted)          | few-shot prompt                                      | ~14-30 % (unconditioned measurement issues) | hallucinates kind names                                                                        |
+| **LFM2 SFT (kyx-intent-sft)**      | Historical LoRA run, 1,479 examples                  | **92 %** (55/60)                            | Old evaluator/checkpoint; not a current release verdict                                        |
+| **LFM2.5 SFT (kyx-intent-sft-25)** | Historical LoRA run; trainer report has 773 examples | **88.2 %** (45/51 attempted)                | Separate runtime eval; 1 wrong-kind, 9/60 abstain; not a creative-brief or music-quality score |
 
 ### Eval harness rules learned (apply to every future eval)
 
