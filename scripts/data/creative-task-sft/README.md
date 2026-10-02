@@ -11,7 +11,9 @@ npm run creative-task:sft-data       # regenerate from checked-in authored scena
 npm run creative-task:sft-validate   # verify deterministic bytes, hashes, schema, splits and leakage
 ```
 
-The separate trainer does not inherit the action model's base model or report. It requires an explicit model ID/path, pinned model revision, `--allow-synthetic-bootstrap`, CUDA, and at least 4 GiB free VRAM. It saves only a LoRA adapter and an experimental report under the caller-selected output directory; there is no automatic merge, Ollama import, runtime registration, or promotion.
+The separate trainer does not inherit the action model's base model or report. It requires an explicit model ID/path, pinned model revision, `--allow-synthetic-bootstrap`, CUDA, and at least 4 GiB free VRAM. Missing model files are **not downloaded by default**; `--allow-model-download` is a separate explicit opt-in. It saves only a LoRA adapter and an experimental report under the caller-selected output directory; there is no automatic merge, Ollama import, runtime registration, or promotion.
+
+The current local Hugging Face cache has the LFM2.5 tokenizer/config but not its weight shards. No model download or training run has been started; do not enable downloads without checking disk/network constraints and the training-data gate.
 
 ```powershell
 npm run creative-task:sft-train -- `

@@ -373,6 +373,7 @@ def main() -> None:
     parser.add_argument("--corpus-dir", default=str(DEFAULT_CORPUS))
     parser.add_argument("--allow-synthetic-bootstrap", action="store_true", help="Acknowledge the current corpus is synthetic and not promotion-ready.")
     parser.add_argument("--validate-only", action="store_true", help="Verify corpus, prompt/source pins and leakage without loading a model or using the GPU.")
+    parser.add_argument("--allow-model-download", action="store_true", help="Explicitly permit Transformers to download missing model/tokenizer files; off by default.")
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--batch", type=int, default=1)
     parser.add_argument("--accum", type=int, default=8)
@@ -417,12 +418,17 @@ def main() -> None:
         raise SystemExit(f"Output directory is not empty; refusing to overwrite user data: {output_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
     dtype = torch.bfloat16 if args.dtype == "bf16" or (args.dtype == "auto" and torch.cuda.is_bf16_supported()) else torch.float16
-    tokenizer = AutoTokenizer.from_pretrained(args.base_model, revision=None if args.base_revision == "local" else args.base_revision)
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.base_model,
+        revision=None if args.base_revision == "local" else args.base_revision,
+        local_files_only=not args.allow_model_download,
+    )
     model = AutoModelForCausalLM.from_pretrained(
         args.base_model,
         revision=None if args.base_revision == "local" else args.base_revision,
         torch_dtype=dtype,
         attn_implementation="sdpa",
+        local_files_only=not args.allow_model_download,
     ).to("cuda")
     model.config.use_cache = False
     model.gradient_checkpointing_enable()
@@ -462,6 +468,7 @@ def main() -> None:
         "task": "creative-task-v1",
         "baseModel": args.base_model,
         "baseRevision": args.base_revision,
+        "modelDownloadAllowed": args.allow_model_download,
         "corpusManifestSha256": sha256_bytes((corpus_dir / "manifest.json").read_bytes()),
         "trainJsonlSha256": _manifest["splits"]["train"]["sha256"],
         "validationJsonlSha256": _manifest["splits"]["validation"]["sha256"],

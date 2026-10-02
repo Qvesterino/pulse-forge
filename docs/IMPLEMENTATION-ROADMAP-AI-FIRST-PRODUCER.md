@@ -582,8 +582,10 @@ SK/EN a proposal/clarify/abstain príklady. Je to výhradne syntetický format/e
 human-reviewed dataset a **nie** dôkaz producentovho porozumenia. Oddelený `scripts/train-creative-task-sft.py`
 vyžaduje explicitný model aj pinned revision, explicitné potvrdenie syntetických dát, CUDA a minimálne voľné VRAM;
 meria creative-schema validity, exact/status accuracy a role-safety, ukladá len adapter a nevie nič registrovať ani
-promovať. Tréning zatiaľ nebol spustený: na spoločnej GPU bežal iný verify job a tento malý bootstrap ešte nie je
-tréningovo reprezentatívny. Zostáva rozšíriť ho consented/human-reviewed podľa rubricy, evalovať akčný baseline vs.
+promovať. Tréning zatiaľ nebol spustený: bootstrap nie je tréningovo reprezentatívny, modelové weighty LFM2.5 nie sú
+v lokálnej cache (je tam iba config/tokenizer) a na spoločnej GPU bežal iný verify job. Chýbajúce modelové súbory sa
+nestiahnu bez explicitného `--allow-model-download`. Zostáva rozšíriť corpus consented/human-reviewed podľa rubricy,
+evalovať akčný baseline vs.
 nový samostatný creative model na golden holdoute, vykonať blind listening a splniť release gates.
 
 **Hotovo, keď:** jeden kandidátny model prejde rovnaký pinned evaluator opakovateľne, porazí relevantný baseline na držaných-out parafrázach a neporuší safety gates; report je oddelený od hudobnej blind-evaluácie.
