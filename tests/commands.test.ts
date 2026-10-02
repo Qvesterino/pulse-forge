@@ -871,17 +871,20 @@ describe("automation, lfo and macros", () => {
     expect(store.doc.macros[0].mappings).toHaveLength(beforeIntensity);
     expect(store.doc.macros[0].mappings.at(-1)!.source).toBeUndefined();
 
-    // Generic FX/inst targets take the source too.
+    // Generic FX/inst targets take the source too. The param id must be a
+    // REAL id of the target effect or `isAutomationTargetValid` rejects the
+    // mapping — the EQ's low-shelf gain is `lowShelfGain` (there is no bare
+    // `lowGain` on `eq`; that id belongs to the M/S EQ definition).
     store.execute(addEffect(store.doc, trackId, "eq"));
     const fxId = getDrumTrack(store.doc).effects[0].id;
     store.execute(
-      addMacroTargetMapping(store.doc, macro.id, { kind: "fxParam", trackId, fxId, paramId: "lowGain" }, 0.5, {
+      addMacroTargetMapping(store.doc, macro.id, { kind: "fxParam", trackId, fxId, paramId: "lowShelfGain" }, 0.5, {
         source: "intensity",
       }),
     );
     const targetMapping = store.doc.macros[0].mappings.at(-1)!;
     expect(targetMapping.source).toBe("intensity");
-    expect(targetMapping.target).toEqual({ kind: "fxParam", trackId, fxId, paramId: "lowGain" });
+    expect(targetMapping.target).toEqual({ kind: "fxParam", trackId, fxId, paramId: "lowShelfGain" });
   });
 });
 

@@ -12,6 +12,7 @@ import { QmrChipMount } from "../ui/QmrChipMount";
 import { SelectionStore } from "../store/SelectionStore";
 import { ToolStore } from "../store/ToolStore";
 import { SelectionContext, ServicesContext, ToolContext } from "./context";
+import { useClipSelectionInvariant } from "./useClipSelectionInvariant";
 import { peekRegenFlag } from "../landing/handoff";
 import { ContextMenu, deriveContext, type ContextMenuState } from "./ContextMenu";
 import { TopBar } from "./TopBar";
@@ -317,37 +318,13 @@ export function App({
     selectionStore.clear();
   }, [services, selectionStore]);
   // SELECTION INVARIANT: every id in the selection names a live object.
-  //
-  // Commands are pure `ProjectDocument → Command` and cannot see the UI
-  // selection, so a destructive clip action would have to prune its own ids at
-  // its own call site. The track half of that contract exists
-  // (`SelectionStore.pruneTrack`); the clip half did not — App.tsx's keyboard
-  // Delete called `selectionStore.clear()`, but the context menu, the DEL
-  // buttons and `deleteClipsWithToast` cleared only the panel's local
-  // `selectedClipId` / `selectedAudioClipId`, leaving `clipIds` naming a clip
-  // that was gone. That produced dead undo entries (the next Delete matched no
-  // live id yet still executed its `deleteClips` command) and kept the context
-  // menu's clip actions enabled over a dead selection.
-  //
-  // Pruning once here covers EVERY mutation source — buttons, context menu,
-  // keyboard, MCP, the intent engine, collab and undo/redo — because
-  // `ProjectStore.subscribe` fires on all of them. A clip id only ever leaves
-  // this set when its clip stops existing, which is exactly the defect.
-  useEffect(() => {
-    const store = services.store;
-    if (!store || typeof store.subscribe !== "function") return;
-    const pruneClipSelection = (): void => {
-      if (selectionStore.getState().clipIds.length === 0) return;
-      const live = store.getDoc();
-      selectionStore.retainClips([
-        ...live.arrangement.clips.map((c) => c.id),
-        ...(live.arrangement.audioClips ?? []).map((c) => c.id),
-      ]);
-    };
-    // Prune once on mount too: a project can arrive already selected.
-    pruneClipSelection();
-    return store.subscribe(pruneClipSelection);
-  }, [services, selectionStore]);
+  // Commands are pure and cannot see the UI selection, so the clip half of
+  // this contract is enforced here — the component that OWNS the
+  // SelectionStore — rather than at each destructive call site. See
+  // useClipSelectionInvariant for the measured consequences of the gap this
+  // closes (dead undo entries, context-menu actions enabled over a dead
+  // selection) and why it covers every mutation source at once.
+  useClipSelectionInvariant(services.store, selectionStore);
   // Qvester ecosystem: while we play, publish the bounded live-analysis
   // window on channel pulse_forge so sibling audio-reactive apps can loop
   // our curves. Cleared on unmount (the documented publisher sign-out).

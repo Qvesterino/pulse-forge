@@ -3586,6 +3586,7 @@ export function ArrangementPanel() {
                   />
                   <WarpPinsOverlay
                     clip={clip}
+                    cancelEpoch={overlayCancelEpoch}
                     disabledReason={
                       clip.reverse
                         ? "Warp needs forward playback — switch off Reverse"
@@ -3679,6 +3680,7 @@ export function ArrangementPanel() {
                 totalBars={totalBars}
                 transport={services.transport}
                 barWidth={barWidth}
+                cancelEpoch={overlayCancelEpoch}
                 onEdit={(sceneId, curve) => execute(setSceneIntensityCurve(services.store.doc, sceneId, curve))}
               />
             )}
@@ -4825,13 +4827,6 @@ function IntensityLane({
   cancelEpoch?: number;
 }) {
   const laneRef = useRef<HTMLDivElement>(null);
-  // A dragged intensity point must not survive Escape or a focus loss —
-  // otherwise it still writes its curve on release after the user cancelled.
-  useEffect(() => {
-    if (cancelEpoch === 0) return;
-    dragRef.current = null;
-    setLive(null);
-  }, [cancelEpoch]);
   const dragRef = useRef<{
     sceneId: string;
     index: number;
@@ -4842,6 +4837,13 @@ function IntensityLane({
     originAbsTick: number;
   } | null>(null);
   const [live, setLive] = useState<{ sceneId: string; index: number; absTick: number; value: number } | null>(null);
+  // A dragged intensity point must not survive Escape or a focus loss —
+  // otherwise it still writes its curve on release after the user cancelled.
+  useEffect(() => {
+    if (cancelEpoch === 0) return;
+    dragRef.current = null;
+    setLive(null);
+  }, [cancelEpoch]);
   const width = totalBars * barWidth;
   const pxPerTick = barWidth / BAR_TICKS;
   const yFor = (value: number) => INTENSITY_LANE_HEIGHT - value * INTENSITY_LANE_HEIGHT;
