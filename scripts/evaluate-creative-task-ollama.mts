@@ -153,7 +153,11 @@ try {
   const model = await localModelMetadata(modelArg);
   // Evaluation may cold-load a local multi-gigabyte model; production callers
   // can choose the shorter provider default when they surface this capability.
-  const provider = createCreativeTaskOllamaProvider({ model: model.name, timeoutMs: 120_000 });
+  const provider = createCreativeTaskOllamaProvider({
+    model: model.name,
+    timeoutMs: 120_000,
+    unloadAfterRequest: evaluationCases.length === 1,
+  });
   const predictions: Array<{ id: string; output: unknown }> = [];
   const providerFailures: Array<{ id: string; error: CreativeTaskProviderError; outputError?: string }> = [];
 

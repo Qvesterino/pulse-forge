@@ -46,6 +46,8 @@ export interface CreativeTaskOllamaOptions {
   /** Required: the action-only default model is deliberately not selected implicitly. */
   model: string;
   timeoutMs?: number;
+  /** Release model memory immediately after a one-shot diagnostic request. */
+  unloadAfterRequest?: boolean;
   fetchImpl?: typeof fetch;
 }
 
@@ -132,7 +134,7 @@ export function createCreativeTaskOllamaProvider(options: CreativeTaskOllamaOpti
         const body = {
           model: options.model,
           stream: false,
-          keep_alive: "30m",
+          keep_alive: options.unloadAfterRequest ? "0" : "30m",
           options: { temperature: 0, num_predict: 512 },
           format: CREATIVE_TASK_OUTPUT_JSON_SCHEMA,
           messages: [

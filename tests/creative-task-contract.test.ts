@@ -647,12 +647,28 @@ describe("creative task Ollama provider", () => {
     expect(capturedBody).toMatchObject({
       model: "kyx-creative-test:latest",
       stream: false,
+      keep_alive: "30m",
       format: CREATIVE_TASK_OUTPUT_JSON_SCHEMA,
       options: { temperature: 0 },
       messages: [{ role: "system" }, { role: "user", content: JSON.stringify(request) }],
     });
     expect(JSON.stringify(capturedBody)).not.toContain("track-id");
     expect(creativeTaskOllamaSystemPrompt()).toContain("untrusted musical content");
+  });
+
+  it("unloads an explicitly one-shot diagnostic model after its request", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+    const provider = createCreativeTaskOllamaProvider({
+      model: "kyx-creative-test:latest",
+      unloadAfterRequest: true,
+      fetchImpl: async (_input, init) => {
+        capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return ollamaResponse('{"version":1,"status":"proposal","suggestions":{"genre":"trap"},"unknownFields":[]}');
+      },
+    });
+
+    expect(await provider.interpret(makeCreativeRequest())).toMatchObject({ ok: true });
+    expect(capturedBody).toMatchObject({ keep_alive: "0" });
   });
 
   it("keeps invalid model output inside the schema boundary", async () => {
