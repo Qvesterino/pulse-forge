@@ -384,3 +384,31 @@ other role had coverage. Filled (new formulations only; val strings never duplic
 
 The compound part-head contract now runs end to end: two-command SK/EN joins decompose
 into part1/part2 slot heads, and the it.skipIf guards on the part-head tests are lifted.
+
+## Wave 8 (2026-10-01): ACTIVATION + SFT eval alignment — the model is live in the browser
+
+**Activation.** The loader's default flipped to ON: `intentModelMode()` returns "on"
+unless an explicit `pf:intent-model=off` is stored (the opt-out now persists — with the
+default ON, the old removeItem() would have silently re-enabled on the next boot). The
+stale "hundreds-of-MB" comment corrected (the shipped artifact is a 6.75 MB ONNX head);
+LOCAL-INTENT-MODEL.md §2.1 documents the activation bar: manifest `gatePassed === true`
+pins registration, lazy fetch, chip OFF = explicit opt-out. The deterministic parsers
+remain the DEFAULT — the model is the resolver's fallback provider, unchanged.
+
+**E2E confirmation** (`tests/e2e/14-intent-model-chip.spec.ts`, chromium, 2/2): default
+boot → the IntentPanel chip reaches `data-state="ready"` (manifest probe → worker load →
+provider registration) in ~8 s; explicit OFF → chip stays dark. The INTENT toggle lives
+in the topbar's ⋯ overflow at e2e viewports (visibility-probed, not presence-counted —
+a hidden match clicks nothing).
+
+**SFT eval alignment** (`scripts/eval-ollama-intent.mts`): the LLM eval already compared
+through `canonicalModelJson`, so the engine-field and recognition-kind strips applied for
+free; the remaining gap was the clips CONVENTION — the LLM grammar speaks 1-indexed human
+bars with optional ref/atBar slots while the corpus truth is the engine form (0-indexed
+toBar). The eval now normalizes the MODEL side onto the truth form (toBar −1, drop
+ref/atBar) — the same contract the ONNX decoder documents. First 60 val rows:
+**96.7 % attempted-exact, wrongKind 0, abstain 0** (up from the 92.3 % pre-alignment
+baseline). Full 294-row val: **92.5 % attempted-exact / wrongKind 8 / abstain 0.7 %** on
+the grown corpus — arrange 13/13, compound 6/6, clarify 6/6 exact (the alignment holds
+where it aimed). The next mining targets, measured: loudness 1/8 (+1 wk — the family
+×2.7'd in wave 2), preset 0/3, effectIntent 42/48 with the largest wrongKind cluster (6).

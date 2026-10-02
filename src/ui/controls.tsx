@@ -90,6 +90,8 @@ interface SliderProps {
   max: number;
   defaultValue: number;
   format?: (value: number) => string;
+  /** Plain-language explanation shown in the tooltip before the gesture help (mirrors DragNumber's hint). */
+  hint?: string;
   onCommit: (value: number) => void; /**
    * Fire-and-forget live preview while dragging (open plugin panels push the
    * value straight to the audio runtime so the knob is audible DURING the
@@ -139,6 +141,7 @@ export function ratioToTaper(min: number, max: number, ratio: number, taper: Sli
 
 export function Slider({
   label,
+  hint,
   value,
   min,
   max,
@@ -311,7 +314,10 @@ export function Slider({
   const percent = Math.min(100, Math.max(0, taperToRatio(min, max, shown, taper) * 100));
 
   return (
-    <div className={`slider${compact ? " slider-compact" : ""}${disabled ? " slider-disabled" : ""}`}>
+    <div
+      className={`slider${compact ? " slider-compact" : ""}${disabled ? " slider-disabled" : ""}`}
+      title={`${label}${hint ? ` — ${hint}` : ""} — drag to change, right-click for exact values, double-click to reset`}
+    >
       <div className="slider-header">
         <span className="slider-label">{label}</span>
         <span className="slider-value">{format ? format(shown) : shown.toFixed(2)}</span>
