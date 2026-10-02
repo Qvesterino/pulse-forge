@@ -1,5 +1,5 @@
 import { GENRES, type Genre } from "../ai/types";
-import { isMusicalKey, type MusicalKey, type ProjectDocument } from "../project-model/types";
+import { isMusicalKey, MUSICAL_KEYS, type MusicalKey, type ProjectDocument } from "../project-model/types";
 import type { BriefConfidence, BriefContract, BriefOrigin, BriefSection } from "./brief-contract";
 import type { ParsedIntentConflictKind } from "./text-parser";
 import type { IntentInput, IntentRole } from "./types";
@@ -102,6 +102,70 @@ export interface CreativeTaskOutputV1 {
   unknownFields: CreativeTaskField[];
   question?: string;
 }
+
+/**
+ * JSON-Schema grammar sent to providers that support constrained decoding.
+ * The runtime validator below remains authoritative for status-dependent
+ * rules and semantic role conflicts that this portable schema cannot express.
+ */
+export const CREATIVE_TASK_OUTPUT_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["version", "status", "suggestions", "unknownFields"],
+  properties: {
+    version: { type: "integer", enum: [CREATIVE_TASK_OUTPUT_VERSION] },
+    status: { type: "string", enum: ["proposal", "clarify", "abstain"] },
+    suggestions: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        genre: { type: "string", enum: [...GENRES] },
+        style: { type: "string", minLength: 1, maxLength: 80 },
+        mood: { type: "string", minLength: 1, maxLength: 80 },
+        bpmRange: {
+          type: "array",
+          minItems: 2,
+          maxItems: 2,
+          items: { type: "integer", minimum: 40, maximum: 240 },
+        },
+        key: { type: "string", enum: [...MUSICAL_KEYS] },
+        lengthSteps: { type: "integer", minimum: 16, maximum: 256, multipleOf: 16 },
+        energy: { type: "number", minimum: 0, maximum: 1 },
+        density: { type: "number", minimum: 0, maximum: 1 },
+        complexity: { type: "number", minimum: 0, maximum: 1 },
+        variation: { type: "number", minimum: 0, maximum: 1 },
+        targetRoles: {
+          type: "array",
+          minItems: 1,
+          maxItems: ROLES.length,
+          uniqueItems: true,
+          items: { type: "string", enum: [...ROLES] },
+        },
+        preserveRoles: {
+          type: "array",
+          minItems: 1,
+          maxItems: ROLES.length,
+          uniqueItems: true,
+          items: { type: "string", enum: [...ROLES] },
+        },
+        prohibitedRoles: {
+          type: "array",
+          minItems: 1,
+          maxItems: ROLES.length,
+          uniqueItems: true,
+          items: { type: "string", enum: [...ROLES] },
+        },
+      },
+    },
+    unknownFields: {
+      type: "array",
+      maxItems: CREATIVE_FIELDS.length,
+      uniqueItems: true,
+      items: { type: "string", enum: [...CREATIVE_FIELDS] },
+    },
+    question: { type: "string", maxLength: 240 },
+  },
+} as const;
 
 export type CreativeTaskOutputError =
   | "invalid-json"

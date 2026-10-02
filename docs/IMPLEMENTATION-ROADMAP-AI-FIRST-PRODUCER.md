@@ -546,6 +546,12 @@ iba creative schema validátorom; nič neregistruje ani nemení v UI/projekte. P
 `invalid-suggestion`, druhá `invalid-shape`; breaker bezpečne preskočil zvyšných 19 prípadov. Z týchto dvoch nebol
 ani jeden použiteľný návrh. Je to negatívny kompatibilitný smoke test action-SFT modelu, nie kompletný benchmark,
 úspech creative modelu ani hodnotenie hudobnej kvality.
+**Structured-output hardening (2026-10-02):** provider teraz posiela do Ollama `format` JSON Schema odvodenú z
+`CreativeTaskOutputV1` (allowlist polí, žánre/tóniny, rozsahy, role arrays); existujúci runtime validator stále
+rozhoduje o statusových a sémantických safety pravidlách. Eval runner má `--limit` na explicitný čiastočný smoke a
+reportuje `requestedCases`/`completeRun`, aby sa jedna inference nemohla vydávať za holdout pass. Mocked provider test
+overuje odoslaný schema contract; po tejto zmene ešte neprebehol skutočný Ollama inference smoke, keďže na zdieľanej
+GPU beží iný verify job.
 **Otvorené:** samostatné creative-task SFT dáta/model, opakovateľná eval po platných odpovediach na celom holdoute,
 consented human-reviewed holdout, rubric/blind listening, UI pre clarify/approve a až po release gates napojenie
 trénovaného creative modelu. Action-only LFM sa nesmie považovať za hotový creative compiler.

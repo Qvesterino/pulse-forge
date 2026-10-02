@@ -1,4 +1,5 @@
 import {
+  CREATIVE_TASK_OUTPUT_JSON_SCHEMA,
   parseCreativeTaskOutputJson,
   type CreativeTaskOutputError,
   type CreativeTaskOutputV1,
@@ -133,6 +134,7 @@ export function createCreativeTaskOllamaProvider(options: CreativeTaskOllamaOpti
           stream: false,
           keep_alive: "30m",
           options: { temperature: 0, num_predict: 512 },
+          format: CREATIVE_TASK_OUTPUT_JSON_SCHEMA,
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
             { role: "user", content: JSON.stringify(request) },

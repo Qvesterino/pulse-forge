@@ -53,8 +53,8 @@
     "scripts/run-creative-task-sft.mjs": "d8e8b9e74696771e66ebd76ede8175c50bba057ecda3416a35898a5ebc98be26",
     "scripts/train-creative-task-sft.py": "458476795e31c4f56cc5e483133e94b31de077f8b7006dd12cf6f819f57f3727",
     "src/ai/types.ts": "72aa46b1e1ea692bc8c8085b379613df627d532f1be276050a2f41e481f22c0d",
-    "src/intent/creative-task-contract.ts": "a5b5bac5bc4a8eab1f942b32bd7ce35fc5a178969c6708c14883385423deee4a",
-    "src/intent/creative-task-ollama.ts": "44c50153eb95e9a51406e5daaa6bab00fcf24e773fa600b8b268d5c9fdac91f1",
+    "src/intent/creative-task-contract.ts": "599aefa99f579968c0bd75c13450c3259cbd654fcc33e519bce146aec0c2c666",
+    "src/intent/creative-task-ollama.ts": "7406b09f2636b86955ca47ed700f3d98393640f47dc0462a1206ebc8bdc95d10",
     "src/intent/brief-contract.ts": "4a5277ef4a1663779f33c2610cd3f5481d909c9b9a126ce10723f175225f2b49",
     "src/intent/text-parser.ts": "aedd78692dde6777e686aba3dec10f1a447d7e3966fa0900917cce76a9ce2f7a",
     "src/project-model/types.ts": "ac4201ef1341f9129ec425f6dc0810c2867159d9c2055faf632e9993ab3f9cd3"

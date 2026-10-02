@@ -126,28 +126,43 @@ try {
   const modelArg = cliValue(args, "--model");
   const predictionsArg = cliValue(args, "--predictions-out");
   const reportArg = cliValue(args, "--report-out");
-  const allowed = ["--model", modelArg, "--predictions-out", predictionsArg, "--report-out", reportArg];
+  const limitArg = cliValue(args, "--limit");
+  const allowed = [
+    "--model",
+    modelArg,
+    "--predictions-out",
+    predictionsArg,
+    "--report-out",
+    reportArg,
+    "--limit",
+    limitArg,
+  ];
   if (!modelArg || !predictionsArg || !reportArg || args.some((arg) => !allowed.includes(arg))) {
     throw new Error(
-      "Usage: npx vite-node scripts/evaluate-creative-task-ollama.mts --model <ollama-tag> --predictions-out <predictions.jsonl> --report-out <report.json>",
+      "Usage: npx vite-node scripts/evaluate-creative-task-ollama.mts --model <ollama-tag> --predictions-out <predictions.jsonl> --report-out <report.json> [--limit <1..21>]",
     );
   }
 
-  const model = await localModelMetadata(modelArg);
   const goldenFile = readJsonl(GOLDEN_PATH);
   const golden = parseGolden(goldenFile.rows);
+  const limit = limitArg === null ? golden.length : Number(limitArg);
+  if (!Number.isInteger(limit) || limit < 1 || limit > golden.length) {
+    throw new Error(`--limit must be an integer from 1 to ${golden.length}.`);
+  }
+  const evaluationCases = golden.slice(0, limit);
+  const model = await localModelMetadata(modelArg);
   // Evaluation may cold-load a local multi-gigabyte model; production callers
   // can choose the shorter provider default when they surface this capability.
   const provider = createCreativeTaskOllamaProvider({ model: model.name, timeoutMs: 120_000 });
   const predictions: Array<{ id: string; output: unknown }> = [];
   const providerFailures: Array<{ id: string; error: CreativeTaskProviderError; outputError?: string }> = [];
 
-  for (const [index, entry] of golden.entries()) {
-    process.stderr.write(`[${index + 1}/${golden.length}] ${entry.id}: requesting\n`);
+  for (const [index, entry] of evaluationCases.entries()) {
+    process.stderr.write(`[${index + 1}/${evaluationCases.length}] ${entry.id}: requesting\n`);
     const result = await provider.interpret(makeRequest(entry));
     if (result.ok) {
       predictions.push({ id: entry.id, output: result.output });
-      process.stderr.write(`[${index + 1}/${golden.length}] ${entry.id}: valid output\n`);
+      process.stderr.write(`[${index + 1}/${evaluationCases.length}] ${entry.id}: valid output\n`);
     } else {
       // Keep malformed model completions as invalid rows, but do not fabricate
       // a prediction for timeouts, transport errors, or circuit-open skips.
@@ -155,7 +170,7 @@ try {
       const outputError = result.error === "invalid-output" ? result.outputError : undefined;
       providerFailures.push({ id: entry.id, error: result.error, ...(outputError ? { outputError } : {}) });
       process.stderr.write(
-        `[${index + 1}/${golden.length}] ${entry.id}: ${result.error}${outputError ? ` (${outputError})` : ""}\n`,
+        `[${index + 1}/${evaluationCases.length}] ${entry.id}: ${result.error}${outputError ? ` (${outputError})` : ""}\n`,
       );
     }
   }
@@ -181,6 +196,8 @@ try {
       path: path.relative(process.cwd(), GOLDEN_PATH),
       sha256: sha256(goldenFile.bytes),
       cases: golden.length,
+      requestedCases: evaluationCases.length,
+      completeRun: evaluationCases.length === golden.length,
       split: "synthetic-held-out",
     },
     sources: {
@@ -203,7 +220,7 @@ try {
   writeFileSync(predictionPath, predictionBytes);
   writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
   process.stdout.write(
-    `${JSON.stringify({ model: model.name, digest: model.digest, cases: golden.length, failures: providerFailures.length, report: reportPath })}\n`,
+    `${JSON.stringify({ model: model.name, digest: model.digest, cases: golden.length, requestedCases: evaluationCases.length, completeRun: evaluationCases.length === golden.length, failures: providerFailures.length, report: reportPath })}\n`,
     () => process.exit(0),
   );
 } catch (error) {

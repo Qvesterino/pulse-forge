@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { compileBriefContract } from "../src/intent/brief-contract";
 import {
+  CREATIVE_TASK_OUTPUT_JSON_SCHEMA,
   createCreativeTaskRequestV1,
   MAX_CREATIVE_TASK_OUTPUT_LENGTH,
   MAX_CREATIVE_TASK_PROMPT_LENGTH,
@@ -44,6 +45,33 @@ function normalizePrompt(prompt: string): string {
 }
 
 describe("creative task contract v1", () => {
+  it("derives the Ollama constrained-output grammar from the creative contract", () => {
+    const schema = CREATIVE_TASK_OUTPUT_JSON_SCHEMA;
+    expect(schema).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["version", "status", "suggestions", "unknownFields"],
+    });
+    expect(schema.properties.suggestions).toMatchObject({ type: "object", additionalProperties: false });
+    expect(schema.properties.suggestions.properties.bpmRange).toMatchObject({
+      type: "array",
+      minItems: 2,
+      maxItems: 2,
+      items: { type: "integer", minimum: 40, maximum: 240 },
+    });
+    expect(schema.properties.suggestions.properties.lengthSteps).toMatchObject({
+      type: "integer",
+      minimum: 16,
+      maximum: 256,
+      multipleOf: 16,
+    });
+    expect(schema.properties.suggestions.properties.targetRoles).toMatchObject({
+      minItems: 1,
+      maxItems: 4,
+      uniqueItems: true,
+    });
+  });
+
   it("keeps the creative SFT bootstrap pinned, family-disjoint, and outside both held-out datasets", () => {
     const manifest = JSON.parse(readFileSync(path.join(CREATIVE_SFT_DIR, "manifest.json"), "utf8")) as {
       humanReviewed: boolean;
@@ -619,6 +647,7 @@ describe("creative task Ollama provider", () => {
     expect(capturedBody).toMatchObject({
       model: "kyx-creative-test:latest",
       stream: false,
+      format: CREATIVE_TASK_OUTPUT_JSON_SCHEMA,
       options: { temperature: 0 },
       messages: [{ role: "system" }, { role: "user", content: JSON.stringify(request) }],
     });
