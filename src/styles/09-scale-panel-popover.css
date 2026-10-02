@@ -1,5 +1,3 @@
-
-
 /* ---------- Scale panel popover ---------- */
 
 .scale-popover {
@@ -944,6 +942,11 @@
 
 .assist-preview-cell.active {
   background: var(--accent);
+}
+
+.assist-preview-cell.selected {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
 }
 
 .assist-ops {

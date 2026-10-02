@@ -73,6 +73,65 @@ export type RowsPatch = {
   stepCount?: number;
 };
 
+export interface StepSelectionScope {
+  padIds: readonly string[];
+  from: number;
+  to: number;
+}
+
+/**
+ * Apply only the row/step-metadata cells inside a sequencer selection.
+ * Everything outside the selected pads and inclusive step range is copied
+ * from the source pattern byte-for-byte; notes and pattern length are never
+ * part of this operation.
+ */
+export function applyAssistPatchToStepSelection(
+  pattern: Pattern,
+  patch: Pick<RowsPatch, "rows" | "stepMeta">,
+  selection: StepSelectionScope,
+): Pattern {
+  if (!Number.isFinite(selection.from) || !Number.isFinite(selection.to) || pattern.stepCount <= 0) return pattern;
+  const from = Math.min(selection.from, selection.to);
+  const to = Math.max(selection.from, selection.to);
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to >= pattern.stepCount) return pattern;
+  const padIds = [...new Set(selection.padIds)].filter(
+    (padId) => pattern.rows[padId] !== undefined && patch.rows[padId] !== undefined,
+  );
+  if (padIds.length === 0) return pattern;
+
+  const rows = { ...pattern.rows };
+  const stepMeta: Record<string, Record<number, StepMeta>> = Object.fromEntries(
+    Object.entries(pattern.stepMeta ?? {}).map(([padId, entries]) => [padId, { ...entries }]),
+  );
+
+  for (const padId of padIds) {
+    const nextRow = [...pattern.rows[padId]!];
+    const proposedRow = patch.rows[padId]!;
+    for (let step = from; step <= to; step++) {
+      if (step < nextRow.length && step < proposedRow.length) nextRow[step] = proposedRow[step]!;
+    }
+    rows[padId] = nextRow;
+
+    const nextPadMeta = { ...(stepMeta[padId] ?? {}) };
+    for (const rawStep of Object.keys(nextPadMeta)) {
+      const step = Number(rawStep);
+      if (step >= from && step <= to) delete nextPadMeta[step];
+    }
+    for (const [rawStep, meta] of Object.entries(patch.stepMeta?.[padId] ?? {})) {
+      const step = Number(rawStep);
+      if (Number.isInteger(step) && step >= from && step <= to) nextPadMeta[step] = { ...meta };
+    }
+    if (Object.keys(nextPadMeta).length > 0) stepMeta[padId] = nextPadMeta;
+    else delete stepMeta[padId];
+  }
+
+  return {
+    ...pattern,
+    rows,
+    stepMeta: Object.keys(stepMeta).length > 0 ? stepMeta : undefined,
+  };
+}
+
 // ─── VARY ─────────────────────────────────────────────────────────────────
 
 export function varyPattern(pattern: Pattern, pads: DrumPad[], seed: string, amount = 0.6): RowsPatch {

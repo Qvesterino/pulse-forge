@@ -1,7 +1,16 @@
 import { useMemo, useState } from "react";
-import { useScenes, useServices } from "./context";
+import {
+  useActivePatternId,
+  usePatterns,
+  useScenes,
+  useSelection,
+  useSelectionStore,
+  useServices,
+  useTracks,
+} from "./context";
 import { assistBuild, assistFill, assistReplace, assistVary } from "../commands/commands";
-import { styleNames, type ReplaceTarget } from "../assist/patternOps";
+import { assistVarySelectionCommand } from "../commands/assistSelectionCommands";
+import { applyAssistPatchToStepSelection, styleNames, type ReplaceTarget } from "../assist/patternOps";
 import { buildAssistPatch } from "../assist/pipeline";
 import { ASSIST_ENGINE_VERSION, type AssistOperation } from "../assist/types";
 import { getActivePattern, getDrumTrack } from "../project-model/types";
@@ -26,8 +35,34 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
   // parseArrangeIntent). A plain getter gives us the doc; the scenes
   // subscription powers the conditional render of the scene-asser UI.
   const scenes = useScenes();
+  const tracks = useTracks();
+  const patterns = usePatterns();
+  const activePatternId = useActivePatternId();
+  const selection = useSelection();
+  const selectionStore = useSelectionStore();
   const doc = services.store.getDoc();
-  const pattern = getActivePattern(doc);
+  const pattern = patterns.find((candidate) => candidate.id === activePatternId) ?? getActivePattern(doc);
+  const drumTracks = tracks.filter((track) => track.kind === "drum");
+  const stepSelection = selection.stepSelection;
+  const selectedDrumTrack = stepSelection
+    ? drumTracks.find(
+        (track) =>
+          stepSelection.padIds.length > 0 &&
+          stepSelection.padIds.every((padId) => track.pads.some((pad) => pad.id === padId)),
+      )
+    : undefined;
+  const selectedStepScope =
+    stepSelection &&
+    selectedDrumTrack &&
+    Number.isInteger(stepSelection.from) &&
+    Number.isInteger(stepSelection.to) &&
+    Math.min(stepSelection.from, stepSelection.to) >= 0 &&
+    Math.max(stepSelection.from, stepSelection.to) < pattern.stepCount &&
+    stepSelection.padIds.every((padId) => pattern.rows[padId] !== undefined)
+      ? stepSelection
+      : null;
+  const drumTrack = drumTracks[0] ?? getDrumTrack(doc);
+  const drumPads = drumTrack.pads;
   const [seed, setSeed] = useState(randomSeed);
   const [amount, setAmount] = useState(0.6);
   const [bars, setBars] = useState(4);
@@ -47,7 +82,6 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
   };
 
   const stylesForTarget = styleNames(target);
-  const drumPads = getDrumTrack(doc).pads;
   const previewPatch = useMemo(
     () =>
       buildAssistPatch(pattern, drumPads, {
@@ -63,6 +97,35 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
   const previewPad =
     drumPads.find((pad) => (previewPatch.rows[pad.id] ?? []).some((value) => value > 0)) ?? drumPads[0];
   const previewRow = previewPad ? (previewPatch.rows[previewPad.id] ?? []) : [];
+  const selectedVariationPattern = useMemo(() => {
+    if (!selectedStepScope || !selectedDrumTrack) return null;
+    const patch = buildAssistPatch(pattern, selectedDrumTrack.pads, {
+      operation: "vary",
+      seed,
+      amount,
+      bars,
+      target,
+      style,
+    });
+    return applyAssistPatchToStepSelection(pattern, patch, selectedStepScope);
+  }, [pattern, selectedDrumTrack, selectedStepScope, seed, amount, bars, target, style]);
+  const selectedPreviewPad = selectedStepScope
+    ? selectedDrumTrack?.pads.find((pad) => pad.id === selectedStepScope.padIds[0])
+    : undefined;
+  const selectedPreviewRow = selectedPreviewPad ? (selectedVariationPattern?.rows[selectedPreviewPad.id] ?? []) : [];
+  const selectedPreviewFrom = selectedStepScope
+    ? Math.max(0, Math.min(pattern.stepCount - 1, Math.floor(Math.min(selectedStepScope.from, selectedStepScope.to))))
+    : 0;
+  const selectedPreviewTo = selectedStepScope
+    ? Math.max(0, Math.min(pattern.stepCount - 1, Math.floor(Math.max(selectedStepScope.from, selectedStepScope.to))))
+    : 0;
+  const selectedPreviewBarStart = Math.floor(selectedPreviewFrom / 16) * 16;
+  const selectedPreviewHitCount = selectedVariationPattern
+    ? Object.values(selectedVariationPattern.rows).reduce(
+        (total, row) => total + row.filter((velocity) => velocity > 0).length,
+        0,
+      )
+    : 0;
   const beforeHits = Object.values(pattern.rows).reduce(
     (total, row) => total + row.filter((value) => value > 0).length,
     0,
@@ -71,6 +134,30 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
     (total, row) => total + row.filter((value) => value > 0).length,
     0,
   );
+
+  const applySelectedVariation = () => {
+    if (!selectedStepScope || !selectedDrumTrack || !selectedVariationPattern) return;
+    const currentDoc = services.store.getDoc();
+    const currentPattern = currentDoc.patterns.find((candidate) => candidate.id === pattern.id);
+    const currentTrack = currentDoc.tracks.find((track) => track.kind === "drum" && track.id === selectedDrumTrack.id);
+    const currentSelection = selectionStore.getState().stepSelection;
+    const sameSelection = Boolean(
+      currentSelection &&
+      currentSelection.from === selectedStepScope.from &&
+      currentSelection.to === selectedStepScope.to &&
+      currentSelection.padIds.length === selectedStepScope.padIds.length &&
+      currentSelection.padIds.every((padId, index) => padId === selectedStepScope.padIds[index]),
+    );
+    if (currentPattern !== pattern || currentTrack !== selectedDrumTrack || !sameSelection) {
+      setFlash("Pattern or step selection changed — review the selected-step preview before applying.");
+      return;
+    }
+    apply(`Varied selected steps · ${seed}`, () =>
+      services.store.execute(
+        assistVarySelectionCommand(currentDoc, pattern.id, selectedDrumTrack.id, selectedStepScope, seed, amount),
+      ),
+    );
+  };
 
   return (
     <div className="collab-panel assist-panel" role="dialog" aria-label="Pattern assist">
@@ -125,6 +212,47 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
           ))}
         </div>
       </div>
+
+      {stepSelection && !selectedStepScope && (
+        <div className="collab-hint" role="alert">
+          The step selection no longer matches this pattern or its drum track. Reselect steps before using a scoped
+          assist.
+        </div>
+      )}
+
+      {selectedStepScope && selectedDrumTrack && selectedVariationPattern && (
+        <div className="assist-preview" aria-label="Selected step range assist preview">
+          <div className="assist-preview-header">
+            <span>SELECTED CELLS · VARY</span>
+            <span className="assist-engine">SCOPE LOCKED</span>
+          </div>
+          <div className="assist-preview-meta">
+            {selectedDrumTrack.name} · {selectedPreviewPad?.name ?? "selected pad"} · bar{" "}
+            {Math.floor(selectedPreviewFrom / 16) + 1}, steps {selectedPreviewFrom + 1}–{selectedPreviewTo + 1} ·{" "}
+            {beforeHits} → {selectedPreviewHitCount} hits
+          </div>
+          <div className="assist-preview-grid" role="img" aria-label="vary selected steps preview">
+            {Array.from({ length: 16 }, (_, step) => {
+              const absoluteStep = selectedPreviewBarStart + step;
+              const selected = absoluteStep >= selectedPreviewFrom && absoluteStep <= selectedPreviewTo;
+              return (
+                <span
+                  key={step}
+                  className={`assist-preview-cell${(selectedPreviewRow[absoluteStep] ?? 0) > 0 ? " active" : ""}${step % 4 === 0 ? " beat" : ""}${selected ? " selected" : ""}`}
+                  style={
+                    (selectedPreviewRow[absoluteStep] ?? 0) > 0
+                      ? { opacity: 0.3 + selectedPreviewRow[absoluteStep]! * 0.7 }
+                      : undefined
+                  }
+                />
+              );
+            })}
+          </div>
+          <button type="button" className="btn btn-export" onClick={applySelectedVariation}>
+            VARY SELECTED STEPS
+          </button>
+        </div>
+      )}
 
       {scenes.length > 0 && (
         <div className="assist-arrange" role="group" aria-label="Arrange by words">

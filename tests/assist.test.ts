@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyAssistPatchToStepSelection,
   classifyPads,
   varyPattern,
   expandWithBuild,
@@ -8,6 +9,7 @@ import {
   styleNames,
 } from "../src/assist/patternOps";
 import { assistBuild, assistFill, assistReplace, assistVary } from "../src/commands/commands";
+import { assistVarySelectionCommand } from "../src/commands/assistSelectionCommands";
 import { createDefaultProject } from "../src/project-model/schema";
 import { getActivePattern, getDrumTrack } from "../src/project-model/types";
 import type { Pattern } from "../src/project-model/types";
@@ -61,6 +63,61 @@ describe("varyPattern", () => {
       if (original[i] > 0)
         expect(after[i]).toBeGreaterThan(0); // never removes kicks (non-snare)
       else if (after[i] > 0) expect(after[i]).toBeLessThanOrEqual(0.35); // only ghost-level additions
+    }
+  });
+});
+
+describe("selection-scoped assist", () => {
+  it("changes only selected pad cells and retains step metadata outside the selection", () => {
+    const { pattern, track, kickPad, snarePad } = setup();
+    const withMeta: Pattern = {
+      ...pattern,
+      stepMeta: {
+        [kickPad.id]: { 1: { microtiming: 0.1 }, 8: { microtiming: -0.1 } },
+        [snarePad.id]: { 5: { microtiming: 0.05 } },
+      },
+    };
+    const patch = varyPattern(withMeta, track.pads, "selected-seed", 0.6);
+    const scope = { padIds: [kickPad.id], from: 0, to: 3 };
+    const scoped = applyAssistPatchToStepSelection(withMeta, patch, scope);
+
+    for (const pad of track.pads) {
+      for (let step = 0; step < withMeta.stepCount; step++) {
+        const selected = pad.id === kickPad.id && step >= scope.from && step <= scope.to;
+        expect(scoped.rows[pad.id]?.[step]).toBe(selected ? patch.rows[pad.id]?.[step] : withMeta.rows[pad.id]?.[step]);
+      }
+    }
+    expect(scoped.stepMeta?.[kickPad.id]?.[8]).toEqual(withMeta.stepMeta?.[kickPad.id]?.[8]);
+    expect(scoped.stepMeta?.[snarePad.id]).toEqual(withMeta.stepMeta?.[snarePad.id]);
+    expect(scoped.notes).toEqual(withMeta.notes);
+    expect(scoped.stepCount).toBe(withMeta.stepCount);
+    expect(
+      applyAssistPatchToStepSelection(withMeta, patch, {
+        padIds: [kickPad.id],
+        from: withMeta.stepCount,
+        to: withMeta.stepCount + 4,
+      }),
+    ).toBe(withMeta);
+  });
+
+  it("round-trips the scoped variation through one command and leaves other roles untouched", () => {
+    const { doc, pattern, track, kickPad, snarePad } = setup();
+    const command = assistVarySelectionCommand(
+      doc,
+      pattern.id,
+      track.id,
+      { padIds: [kickPad.id], from: 0, to: 3 },
+      "selected-command-seed",
+      0.6,
+    );
+    const changed = command.execute(doc);
+    const changedPattern = changed.patterns.find((candidate) => candidate.id === pattern.id)!;
+
+    expect(command.type).toBe("assistVarySelection");
+    expect(command.undo(changed)).toEqual(doc);
+    expect(changedPattern.rows[snarePad.id]).toEqual(pattern.rows[snarePad.id]);
+    for (let step = 4; step < pattern.stepCount; step++) {
+      expect(changedPattern.rows[kickPad.id]?.[step]).toBe(pattern.rows[kickPad.id]?.[step]);
     }
   });
 });
