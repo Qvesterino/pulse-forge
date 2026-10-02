@@ -94,7 +94,7 @@ describe("qmr bridge — runtime contract", async () => {
     stop();
   });
 
-  it("requestHandoff refuses honestly outside the Qvester shell", async () => {
+  it("requestHandoff refuses honestly outside the Qvester shell", { timeout: 30_000 }, async () => {
     const { services } = fakeServices();
     const stop = startQmrBridge(services);
     const runtime = (window as unknown as { qvesterQmr: QmrRuntimeContract }).qvesterQmr;

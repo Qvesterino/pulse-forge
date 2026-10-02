@@ -1,4 +1,5 @@
 import { executeMcpToolAsync, type McpToolContext } from "./tools";
+import { withAgentAttribution } from "./attribution";
 import { mcpAllowDestructive } from "./flags";
 import { isMicRecordingActive } from "../audio-engine/PcmMicRecorder";
 import { quickBounceDownload } from "../export/quick-bounce";
@@ -93,7 +94,8 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
 export function startMcpDesktopHost(services: Services): () => void {
   const api = getDesktopMcpApi();
   if (!api) return () => {};
-  const ctx = mcpToolContextFromServices(services);
+  // every mutation executed for external stdio clients is attributed
+  const ctx = withAgentAttribution(mcpToolContextFromServices(services), "desktop-stdio");
   return api.onCall((call) => {
     void (async () => {
       try {

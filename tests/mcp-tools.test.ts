@@ -266,7 +266,11 @@ describe("mcp structured tools", async () => {
 
   it("kyx_fx failures are honest results (no target), never thrown", async () => {
     const store = new ProjectStore(datasetDoc()); // no vocal track
-    const result = await executeMcpTool(storeCtx(store), "kyx_fx", { effect: "reverb", family: "vocal", action: "more" });
+    const result = await executeMcpTool(storeCtx(store), "kyx_fx", {
+      effect: "reverb",
+      family: "vocal",
+      action: "more",
+    });
     expect(result.mutated).toBe(false);
     expect(result.text).toContain("fx op failed");
   });
@@ -471,7 +475,8 @@ describe("mcp audit repairs", async () => {
     const ctx = makeCtx(datasetDoc());
     await executeMcpTool(ctx, "kyx_intent", { instruction: "set tempo to 140" });
     const result = await executeMcpTool(ctx, "kyx_undo", { action: "undo", steps: 5 });
-    expect(result.text).toBe("undo ×1");
+    // the read-back names what was reverted (C6 attribution observability)
+    expect(result.text).toContain("undo ×1");
   });
 
   it("D4 gate: intent PHRASING cannot bypass the destructive lock", async () => {
@@ -756,7 +761,11 @@ describe("mcp P0 wave — self-description + precision", async () => {
   it("kyx_tracks remove/rename honor trackId; groups are refused honestly", async () => {
     const store = new ProjectStore(withLead());
     const ctx = storeCtx(store, { allowDestructive: true });
-    const renamed = await executeMcpTool(ctx, "kyx_tracks", { op: "rename", trackId: "track-lead-x", name: "Syn Lead" });
+    const renamed = await executeMcpTool(ctx, "kyx_tracks", {
+      op: "rename",
+      trackId: "track-lead-x",
+      name: "Syn Lead",
+    });
     expect(renamed.mutated).toBe(true);
     expect(store.doc.tracks.find((t) => t.id === "track-lead-x")!.name).toBe("Syn Lead");
 
@@ -1068,7 +1077,13 @@ describe("mcp P1 automation — lanes, points, FX targeting", async () => {
   it("kyx_state subject:automation reads lanes back with points and ranges", async () => {
     const store = new ProjectStore(withLead());
     const ctx = storeCtx(store);
-    await executeMcpTool(ctx, "kyx_automation", { op: "addPoint", trackId: "track-lead-x", param: "gain", bar: 1, value: 1 });
+    await executeMcpTool(ctx, "kyx_automation", {
+      op: "addPoint",
+      trackId: "track-lead-x",
+      param: "gain",
+      bar: 1,
+      value: 1,
+    });
     await executeMcpTool(ctx, "kyx_automation", {
       op: "addPoint",
       trackId: "track-lead-x",
@@ -1087,12 +1102,24 @@ describe("mcp P1 automation — lanes, points, FX targeting", async () => {
     const doc = store.doc;
     const bass808 = doc.tracks.find((t) => t.kind === "instrument" && t.instrument === "808");
     if (bass808) {
-      await executeMcpTool(ctx, "kyx_automation", { op: "addPoint", trackId: bass808.id, param: "gain", bar: 2, value: 0.9 });
+      await executeMcpTool(ctx, "kyx_automation", {
+        op: "addPoint",
+        trackId: bass808.id,
+        param: "gain",
+        bar: 2,
+        value: 0.9,
+      });
       const bassLanes = await executeMcpTool(ctx, "kyx_state", { subject: "automation", family: "bass" });
       expect(bassLanes.text).toContain(`${bass808.name} · Volume`);
       expect(bassLanes.text).not.toContain("Lead · Volume");
       // pad families still reach the drum track
-      await executeMcpTool(ctx, "kyx_automation", { op: "addPoint", family: "drums", param: "gain", bar: 2, value: 0.9 });
+      await executeMcpTool(ctx, "kyx_automation", {
+        op: "addPoint",
+        family: "drums",
+        param: "gain",
+        bar: 2,
+        value: 0.9,
+      });
       const kitLanes = await executeMcpTool(ctx, "kyx_state", { subject: "automation", family: "kick" });
       expect(kitLanes.text).toContain("Drums · Volume");
     }
@@ -1294,7 +1321,11 @@ describe("mcp P1 mixer — absolute setters with verify-by-read", async () => {
     const mute = await executeMcpTool(ctx, "kyx_tracks", { op: "setMute", family: "drums", value: true });
     expect(mute.text).toContain("Drums: mute on");
     expect(store.doc.tracks.find((t) => t.kind === "drum")!.mute).toBe(true);
-    const solo = await executeMcpTool(ctx, "kyx_tracks", { op: "setSolo", trackId: store.doc.tracks[1].id, value: true });
+    const solo = await executeMcpTool(ctx, "kyx_tracks", {
+      op: "setSolo",
+      trackId: store.doc.tracks[1].id,
+      value: true,
+    });
     expect(solo.text).toContain("solo on");
 
     const badPan = await executeMcpTool(ctx, "kyx_tracks", { op: "setPan", family: "drums" });
@@ -1422,7 +1453,9 @@ describe("mcp resources", async () => {
       expect(result.text.length).toBeGreaterThan(0);
     }
     expect((await executeMcpTool(ctx, "__kyx_resource", { uri: "kyx://project/overview" })).text).toContain("BPM");
-    expect((await executeMcpTool(ctx, "__kyx_resource", { uri: "kyx://project/arrangement" })).text).toContain("markers:");
+    expect((await executeMcpTool(ctx, "__kyx_resource", { uri: "kyx://project/arrangement" })).text).toContain(
+      "markers:",
+    );
   });
 
   it("an unknown resource is an honest isError; the channel is hidden from MCP_TOOLS", async () => {
@@ -1788,7 +1821,11 @@ describe("mcp routing — the group graph", async () => {
     const group = store.doc.tracks.find((t) => t.kind === "group" && t.name === "Drum Bus")!;
     expect(group).toBeTruthy();
 
-    const added = await executeMcpTool(ctx, "kyx_routing", { op: "addToGroup", family: "drums", groupName: "Drum Bus" });
+    const added = await executeMcpTool(ctx, "kyx_routing", {
+      op: "addToGroup",
+      family: "drums",
+      groupName: "Drum Bus",
+    });
     expect(added.mutated).toBe(true);
     expect(added.text).toContain("Drums → Drum Bus");
     const drums = store.doc.tracks.find((t) => t.kind === "drum")!;
@@ -1805,7 +1842,11 @@ describe("mcp routing — the group graph", async () => {
   it("honest failures: unknown group, unknown group name, track not in a group", async () => {
     const store = new ProjectStore(datasetDoc());
     const ctx = storeCtx(store);
-    const noGroup = await executeMcpTool(ctx, "kyx_routing", { op: "addToGroup", family: "drums", groupName: "Quantum" });
+    const noGroup = await executeMcpTool(ctx, "kyx_routing", {
+      op: "addToGroup",
+      family: "drums",
+      groupName: "Quantum",
+    });
     expect(noGroup.mutated).toBe(false);
     expect(noGroup.text).toContain("target group not found");
 
@@ -1878,12 +1919,20 @@ describe("mcp takes — the comp workflow", async () => {
 
   it("deleteTake (D4) removes an inactive take's clips; the ACTIVE take is protected", async () => {
     const locked = makeCtx(withTakes());
-    const gateRefusal = await executeMcpTool(locked, "kyx_takes", { op: "deleteTake", groupId: "tg-1", takeId: "take-2" });
+    const gateRefusal = await executeMcpTool(locked, "kyx_takes", {
+      op: "deleteTake",
+      groupId: "tg-1",
+      takeId: "take-2",
+    });
     expect(gateRefusal.text).toContain("locked");
 
     const doc = withTakes();
     const ctx = makeCtx(doc, { allowDestructive: true });
-    const activeRefusal = await executeMcpTool(ctx, "kyx_takes", { op: "deleteTake", groupId: "tg-1", takeId: "take-1" });
+    const activeRefusal = await executeMcpTool(ctx, "kyx_takes", {
+      op: "deleteTake",
+      groupId: "tg-1",
+      takeId: "take-1",
+    });
     expect(activeRefusal.isError).toBe(true);
     expect(activeRefusal.text).toContain("ACTIVE comp");
 
@@ -1938,16 +1987,31 @@ describe("mcp fx instances — per-instance ops + chain reorder", async () => {
     const ctx = storeCtx(store);
     await executeMcpTool(ctx, "kyx_fx", { effect: "reverb", family: "lead", action: "more" });
     store.execute(addEffectToTracks(store.doc, ["track-lead-x"], "reverb"));
-    const bypassed = await executeMcpTool(ctx, "kyx_fx", { action: "bypass", effect: "reverb", family: "lead", instance: 1 });
+    const bypassed = await executeMcpTool(ctx, "kyx_fx", {
+      action: "bypass",
+      effect: "reverb",
+      family: "lead",
+      instance: 1,
+    });
     expect(bypassed.mutated).toBe(true);
     expect(bypassed.text).toContain("reverb#1 bypassed");
     expect(store.doc.tracks.find((t) => t.id === "track-lead-x")!.effects[0].bypassed).toBe(true);
 
-    const again = await executeMcpTool(ctx, "kyx_fx", { action: "bypass", effect: "reverb", family: "lead", instance: 1 });
+    const again = await executeMcpTool(ctx, "kyx_fx", {
+      action: "bypass",
+      effect: "reverb",
+      family: "lead",
+      instance: 1,
+    });
     expect(again.mutated).toBe(false);
     expect(again.text).toContain("already bypassed");
 
-    const enabled = await executeMcpTool(ctx, "kyx_fx", { action: "enable", effect: "reverb", family: "lead", instance: 1 });
+    const enabled = await executeMcpTool(ctx, "kyx_fx", {
+      action: "enable",
+      effect: "reverb",
+      family: "lead",
+      instance: 1,
+    });
     expect(enabled.mutated).toBe(true);
     expect(store.doc.tracks.find((t) => t.id === "track-lead-x")!.effects[0].bypassed).toBe(false);
   });

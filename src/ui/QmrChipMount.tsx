@@ -2,6 +2,7 @@ import { Component, lazy, Suspense, useEffect, type ComponentType, type ReactNod
 import { listenForCommands } from "@qvester/qmr-hud/command-bus.ts";
 import { executeMcpToolAsync, type McpToolContext } from "../mcp/tools";
 import { mcpToolContextFromServices } from "../mcp/desktop-host";
+import { withAgentAttribution } from "../mcp/attribution";
 import { QMR_KYX_MANIFEST } from "../interop/qmrBridge";
 import type { Services } from "../services";
 
@@ -60,9 +61,10 @@ export function qmrCommandToToolCall(type: string): { tool: string; args?: Recor
   return null;
 }
 
-export function createQmrCommandHandler(
-  ctx: McpToolContext,
-): (command: { type: string; [key: string]: unknown }) => Promise<{
+export function createQmrCommandHandler(ctx: McpToolContext): (command: {
+  type: string;
+  [key: string]: unknown;
+}) => Promise<{
   ok: boolean;
   unsupported?: boolean;
   message?: string;
@@ -80,7 +82,8 @@ export function createQmrCommandHandler(
 }
 
 export function QmrChipMount({ services }: { services: Services }): ReactNode {
-  const ctx = mcpToolContextFromServices(services);
+  // QMR-driven mutations are attributed so the shared undo history stays legible
+  const ctx = withAgentAttribution(mcpToolContextFromServices(services), "qmr");
   useEffect(() => {
     // Host side of the QMR command bus: the panel dispatches, we execute
     // through the MCP layer and ack with the outcome.

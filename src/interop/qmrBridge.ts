@@ -1,5 +1,6 @@
 import { executeMcpToolAsync, type McpToolContext } from "../mcp/tools";
 import { mcpToolContextFromServices } from "../mcp/desktop-host";
+import { withAgentAttribution } from "../mcp/attribution";
 import type { Services } from "../services";
 
 /**
@@ -128,7 +129,7 @@ export interface QmrRuntimeContract {
 }
 
 export function startQmrBridge(services: Services): () => void {
-  const ctx: McpToolContext = mcpToolContextFromServices(services);
+  const ctx: McpToolContext = withAgentAttribution(mcpToolContextFromServices(services), "qmr");
   const runtime: QmrRuntimeContract = {
     appId: QMR_APP_ID,
     version: QMR_BRIDGE_VERSION,
@@ -150,9 +151,7 @@ export function startQmrBridge(services: Services): () => void {
       // rides the same dynamic import: a static line here once pulled the
       // whole sender cluster back into the eager boot graph (boot-graph
       // gate catches exactly that).
-      const { buildAudioCanvasHandoffUrl, isMountedInEcosystem, prepareBeatHandoff } = await import(
-        "./qvesterHandoff",
-      );
+      const { buildAudioCanvasHandoffUrl, isMountedInEcosystem, prepareBeatHandoff } = await import("./qvesterHandoff");
       if (!isMountedInEcosystem()) {
         return {
           error:

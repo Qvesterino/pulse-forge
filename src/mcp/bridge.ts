@@ -2,6 +2,7 @@ import type { ProjectDocument } from "../project-model/types";
 import type { Command } from "../commands/types";
 import { executeMcpToolAsync, type McpExportRequest, type McpMeterSnapshot, type McpToolContext } from "./tools";
 import { mcpAllowDestructive } from "./flags";
+import { withAgentAttribution } from "./attribution";
 
 /**
  * KYX MCP — BROWSER-SIDE RELAY BRIDGE (the execution half of the MCP
@@ -109,25 +110,29 @@ export class McpBridge {
     const record = message as { type?: string; id?: number; tool?: string; args?: unknown };
     if (record.type !== "mcp-call" || typeof record.id !== "number" || typeof record.tool !== "string") return;
 
-    const ctx: McpToolContext = {
-      getDoc: () => this.deps.getDoc(),
-      execute: (command) => this.deps.execute(command),
-      undo: () => this.deps.undo(),
-      redo: () => this.deps.redo(),
-      undoStackLength: () => this.deps.undoStackLength(),
-      historyLabels: () => this.deps.historyLabels(),
-      isMicRecordingActive: () => this.deps.isMicRecordingActive(),
-      transport: this.deps.transport,
-      export: this.deps.export,
-      meters: this.deps.meters,
-      beginUndoFrame: this.deps.beginUndoFrame,
-      endUndoFrame: this.deps.endUndoFrame,
-      measureLoudness: this.deps.measureLoudness,
-      applyLoudness: this.deps.applyLoudness,
-      shareToGallery: this.deps.shareToGallery,
-      renderSummary: this.deps.renderSummary,
-      allowDestructive: mcpAllowDestructive,
-    };
+    // every mutation executed for web-relay clients is attributed
+    const ctx: McpToolContext = withAgentAttribution(
+      {
+        getDoc: () => this.deps.getDoc(),
+        execute: (command) => this.deps.execute(command),
+        undo: () => this.deps.undo(),
+        redo: () => this.deps.redo(),
+        undoStackLength: () => this.deps.undoStackLength(),
+        historyLabels: () => this.deps.historyLabels(),
+        isMicRecordingActive: () => this.deps.isMicRecordingActive(),
+        transport: this.deps.transport,
+        export: this.deps.export,
+        meters: this.deps.meters,
+        beginUndoFrame: this.deps.beginUndoFrame,
+        endUndoFrame: this.deps.endUndoFrame,
+        measureLoudness: this.deps.measureLoudness,
+        applyLoudness: this.deps.applyLoudness,
+        shareToGallery: this.deps.shareToGallery,
+        renderSummary: this.deps.renderSummary,
+        allowDestructive: mcpAllowDestructive,
+      },
+      "web-relay",
+    );
     // A throwing tool must still ANSWER — without this catch the relay would
     // never receive an mcp-result and the server-side call would hang until
     // its 15 s timeout (desktop host has the same guard). The async executor

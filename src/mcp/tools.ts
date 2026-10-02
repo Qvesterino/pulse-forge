@@ -1,4 +1,5 @@
 import type { ProjectDocument } from "../project-model/types";
+import { isForeignWork, labelsRevertedBy } from "./attribution";
 import type { Command } from "../commands/types";
 import { routeIntentText, type RoutedIntent } from "../intent/route";
 import { isCreativeBriefRoute } from "../intent/model-fallback-policy";
@@ -1137,6 +1138,9 @@ export interface McpToolContext {
   };
   /** Present when the KYX window can render/downloads (browser relay). */
   export?: (request: McpExportRequest) => Promise<string>;
+  /** C6 attribution: which automation surface drives this context (absent
+   * for the human working the UI directly / headless tests). */
+  agentId?: string;
   /** Present when a live engine can be metered (kyx_meter). Null/absent →
    * the tool refuses honestly instead of inventing numbers. */
   meters?: () => McpMeterSnapshot | null;
@@ -1484,6 +1488,11 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
       if (ctx.isMicRecordingActive()) {
         return { text: "declined: a mic take is recording — stop it before undo", mutated: false };
       }
+      // C6 attribution: name what this undo/redo reverts and flag when an
+      // agent reverts work that was not its own (another agent's prefix, or
+      // the human's unlabeled edits). Global LIFO stays the truth — this
+      // makes the interleaving legible instead of hidden.
+      const reverted = labelsRevertedBy(ctx, action, steps);
       let done = 0;
       for (let i = 0; i < steps; i++) {
         const before = ctx.undoStackLength();
@@ -1495,7 +1504,23 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
         if (ctx.undoStackLength() === before) break;
         done += 1;
       }
-      return { text: `${action} ×${done}`, mutated: done > 0 };
+      let text = `${action} ×${done}`;
+      if (done > 0 && reverted.length > 0) {
+        const shown = reverted
+          .slice(0, done)
+          .map((label) => `"${label}"`)
+          .join(", ");
+        text += ` — reverts: ${shown}`;
+      }
+      if (
+        done > 0 &&
+        action === "undo" &&
+        ctx.agentId != null &&
+        reverted.slice(0, done).some((label) => isForeignWork(label, ctx.agentId))
+      ) {
+        text += " ⚠ reverts work not made by this agent — verify before redoing";
+      }
+      return { text, mutated: done > 0 };
     }
     case "kyx_transport": {
       const action = String(record.action ?? "");
@@ -1527,7 +1552,7 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
       }
       return dispatchTransport(ctx, action);
     }
-        case "kyx_intent":
+    case "kyx_intent":
       return executeIntentTool(ctx, String(record.instruction ?? ""));
     case "kyx_generate": {
       const bars = typeof record.bars === "number" ? Math.max(1, Math.min(16, Math.round(record.bars))) : undefined;
@@ -2260,250 +2285,250 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
       // MCP_RESOURCES and route resources/read here, so every transport
       // (desktop IPC, web relay) reuses ONE live reader.
       return readMcpResource(ctx, String(record.uri ?? ""));
-case "kyx_export": {
-    const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
-    if (ctx.export == null) {
-      return {
-        text: "export is not available over this MCP transport — use the KYX export panel",
-        mutated: false,
-      };
-    }
-    const format = exportFormatOf(record);
-    const request: McpExportRequest = {
-      format,
-      ...(record.sampleRate === 44100 || record.sampleRate === 48000 || record.sampleRate === 96000
-        ? { sampleRate: record.sampleRate }
-        : {}),
-      ...(record.bitDepth === 16 || record.bitDepth === 24 || record.bitDepth === 32
-        ? { bitDepth: record.bitDepth }
-        : {}),
-      ...(typeof record.stems === "string" && ["all", "drums", "bass", "music"].includes(record.stems)
-        ? { stems: record.stems as McpExportRequest["stems"] }
-        : {}),
-    };
-    try {
-      const report = await ctx.export(request);
-      return { text: `export ${format.toUpperCase()} complete — ${report}`, mutated: false };
-    } catch (error) {
-      return {
-        text: `export failed: ${error instanceof Error ? error.message : String(error)}`,
-        mutated: false,
-        isError: true,
-      };
-    }
-  }
-case "kyx_loudness": {
-    const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
-    const op = String(record.op ?? "measure");
-    if (op === "measure") {
-      if (ctx.measureLoudness == null) {
+    case "kyx_export": {
+      const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
+      if (ctx.export == null) {
         return {
-          text: "loudness measurement is not available over this MCP transport (no render context bound)",
+          text: "export is not available over this MCP transport — use the KYX export panel",
           mutated: false,
         };
       }
+      const format = exportFormatOf(record);
+      const request: McpExportRequest = {
+        format,
+        ...(record.sampleRate === 44100 || record.sampleRate === 48000 || record.sampleRate === 96000
+          ? { sampleRate: record.sampleRate }
+          : {}),
+        ...(record.bitDepth === 16 || record.bitDepth === 24 || record.bitDepth === 32
+          ? { bitDepth: record.bitDepth }
+          : {}),
+        ...(typeof record.stems === "string" && ["all", "drums", "bass", "music"].includes(record.stems)
+          ? { stems: record.stems as McpExportRequest["stems"] }
+          : {}),
+      };
       try {
-        const reading = await ctx.measureLoudness();
-        if (!reading.measured) {
-          return {
-            text: "could not measure loudness — the render was too quiet or empty",
-            mutated: false,
-            isError: true,
-          };
-        }
-        return {
-          text: `current mix: ${reading.integrated.toFixed(1)} LUFS integrated (render-backed BS.1770)`,
-          mutated: false,
-          data: { integratedLufs: reading.integrated },
-        };
+        const report = await ctx.export(request);
+        return { text: `export ${format.toUpperCase()} complete — ${report}`, mutated: false };
       } catch (error) {
         return {
-          text: `loudness render failed: ${error instanceof Error ? error.message : String(error)}`,
+          text: `export failed: ${error instanceof Error ? error.message : String(error)}`,
           mutated: false,
           isError: true,
         };
       }
     }
-    if (ctx.applyLoudness == null) {
-      return {
-        text: "the loudness loop is not available over this MCP transport (no render context bound)",
-        mutated: false,
-      };
-    }
-    const direction = record.direction === "quieter" ? ("quieter" as const) : ("louder" as const);
-    const targetDb =
-      typeof record.targetDb === "number" && Number.isFinite(record.targetDb) ? record.targetDb : undefined;
-    try {
-      const outcome = await ctx.applyLoudness({ direction, ...(targetDb !== undefined ? { targetDb } : {}) });
-      if (!outcome.ok) return { text: outcome.error, mutated: false, isError: true };
-      // The hook returns the UNEXECUTED command so the mutation still flows
-      // through this context's executor (same store, same undo semantics).
-      ctx.execute(outcome.command);
-      const r = outcome.report;
-      return {
-        text: `loudness: ${r.measuredBefore} → ${r.measuredAfter ?? "?"} LUFS (trim ${r.trim >= 0 ? "+" : ""}${r.trim} dB toward ${r.target}) — one undo step`,
-        mutated: true,
-        data: {
-          measuredBefore: r.measuredBefore,
-          measuredAfter: r.measuredAfter,
-          trimDb: r.trim,
-          targetLufs: r.target,
-        },
-      };
-    } catch (error) {
-      return {
-        text: `loudness loop failed: ${error instanceof Error ? error.message : String(error)}`,
-        mutated: false,
-        isError: true,
-      };
-    }
-  }
-case "kyx_publish_gallery": {
-    const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
-    if (ctx.shareToGallery == null) {
-      return {
-        text: "gallery publishing is not available over this MCP transport — publish from a live KYX session (web or desktop)",
-        mutated: false,
-      };
-    }
-    const title = typeof record.title === "string" ? record.title.trim() : "";
-    if (!title || title.length > 64) {
-      return { text: "title is required (max 64 chars)", mutated: false, isError: true };
-    }
-    const author =
-      typeof record.author === "string" && record.author.trim() ? record.author.trim().slice(0, 32) : "KYX agent";
-    const tags = Array.isArray(record.tags)
-      ? record.tags.filter((t): t is string => typeof t === "string" && t.trim() !== "").slice(0, 6)
-      : [];
-    const agent =
-      typeof record.agent === "string" && record.agent.trim() ? record.agent.trim().slice(0, 32) : "unknown agent";
-    try {
-      const { id } = await ctx.shareToGallery({ title, author, tags, agent });
-      return {
-        text: `published to the gallery as AGENT-MADE: "${title}" (id ${id}, agent ${agent}) — it shows with the robot badge in the gallery feed`,
-        mutated: false,
-        data: { galleryId: id, origin: "agent", agent },
-      };
-    } catch (error) {
-      return {
-        text: `gallery publish failed: ${error instanceof Error ? error.message : String(error)}`,
-        mutated: false,
-        isError: true,
-      };
-    }
-  }
-case "kyx_arrange": {
-    return executeArrangeTool(ctx, (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>);
-  }
-case "kyx_song": {
-    const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
-    const genre = String(record.genre ?? "");
-    if (!MIX_GENRES.includes(genre as (typeof MIX_GENRES)[number])) {
-      return { text: `unknown genre "${genre}" - one of: ${MIX_GENRES.join(", ")}`, mutated: false, isError: true };
-    }
-    const doc = ctx.getDoc();
-    if (doc.arrangement.clips.length > 0) {
-      return {
-        text:
-          "arrangement already has clips - kyx_song builds a WHOLE track; " +
-          "use kyx_sections / kyx_clips for surgical edits, or clear the arrangement first",
-        mutated: false,
-        isError: true,
-      };
-    }
-    const spec = normalizeIntent({
-      genre: genre as never,
-      ...(typeof record.mood === "string" && record.mood.trim() !== "" ? { mood: record.mood.trim() } : {}),
-      ...(typeof record.energy === "number" ? { energy: record.energy } : {}),
-    });
-    const lengthKind = ["short", "standard", "radio", "extended", "epic"].find((kind) => kind === record.length);
-    const length =
-      lengthKind != null
-        ? { kind: lengthKind as "short" | "standard" | "radio" | "extended" | "epic", label: lengthKind }
-        : null;
-    const wantMix = record.mix !== false;
-    try {
-      const { applySongCommand, buildSong } = await import("../intent/song");
-      const build = await buildSong(doc, spec, { length, yieldBetweenSections: false });
-      let next = applySongCommand(doc, build).execute(doc);
-      let mixDecisions = 0;
-      if (wantMix) {
+    case "kyx_loudness": {
+      const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
+      const op = String(record.op ?? "measure");
+      if (op === "measure") {
+        if (ctx.measureLoudness == null) {
+          return {
+            text: "loudness measurement is not available over this MCP transport (no render context bound)",
+            mutated: false,
+          };
+        }
         try {
-          const profile = planMixProfile(spec);
-          if (profile.decisions.length > 0) {
-            next = applyMixIntent(next, profile).execute(next);
-            mixDecisions = profile.decisions.length;
-          }
-        } catch {
-          // already at the profile - the song still lands
-        }
-      }
-      const totalBars = build.sections.reduce((sum, section) => sum + section.bars, 0);
-      ctx.execute(
-        snapshot(
-          "mcpSong",
-          `MCP: song '${genre}' (${build.sections.length} sections, ${totalBars} bars${mixDecisions > 0 ? `, mixed (${mixDecisions})` : ""})`,
-          doc,
-          next,
-        ),
-      );
-      const loudnessTarget =
-        typeof record.loudness === "number" && Number.isFinite(record.loudness) ? record.loudness : null;
-      let loudnessLine = "";
-      if (loudnessTarget != null) {
-        if (ctx.measureLoudness == null || ctx.applyLoudness == null) {
-          loudnessLine = " | loudness skipped: no render context bound";
-        } else {
           const reading = await ctx.measureLoudness();
-          if (reading.measured) {
-            const direction = reading.integrated < loudnessTarget ? ("louder" as const) : ("quieter" as const);
-            const outcome = await ctx.applyLoudness({ direction, targetDb: loudnessTarget });
-            if (outcome.ok) {
-              ctx.execute(outcome.command);
-              loudnessLine = ` | loudness ${outcome.report.measuredBefore} -> ${outcome.report.measuredAfter ?? "?"} LUFS (second undo step)`;
-            } else {
-              loudnessLine = ` | loudness skipped: ${outcome.error}`;
-            }
-          } else {
-            loudnessLine = " | loudness skipped: render too quiet to measure";
+          if (!reading.measured) {
+            return {
+              text: "could not measure loudness — the render was too quiet or empty",
+              mutated: false,
+              isError: true,
+            };
           }
+          return {
+            text: `current mix: ${reading.integrated.toFixed(1)} LUFS integrated (render-backed BS.1770)`,
+            mutated: false,
+            data: { integratedLufs: reading.integrated },
+          };
+        } catch (error) {
+          return {
+            text: `loudness render failed: ${error instanceof Error ? error.message : String(error)}`,
+            mutated: false,
+            isError: true,
+          };
         }
       }
-      return {
-        text: `song '${genre}' landed: ${build.sections.length} sections, ${totalBars} bars${mixDecisions > 0 ? `, mix profile (${mixDecisions} decisions)` : ", mix skipped"} - song+mix is ONE undo step${loudnessLine}`,
-        mutated: true,
-      };
-    } catch (error) {
-      return {
-        text: `song build failed: ${error instanceof Error ? error.message : String(error)}`,
-        mutated: false,
-        isError: true,
-      };
+      if (ctx.applyLoudness == null) {
+        return {
+          text: "the loudness loop is not available over this MCP transport (no render context bound)",
+          mutated: false,
+        };
+      }
+      const direction = record.direction === "quieter" ? ("quieter" as const) : ("louder" as const);
+      const targetDb =
+        typeof record.targetDb === "number" && Number.isFinite(record.targetDb) ? record.targetDb : undefined;
+      try {
+        const outcome = await ctx.applyLoudness({ direction, ...(targetDb !== undefined ? { targetDb } : {}) });
+        if (!outcome.ok) return { text: outcome.error, mutated: false, isError: true };
+        // The hook returns the UNEXECUTED command so the mutation still flows
+        // through this context's executor (same store, same undo semantics).
+        ctx.execute(outcome.command);
+        const r = outcome.report;
+        return {
+          text: `loudness: ${r.measuredBefore} → ${r.measuredAfter ?? "?"} LUFS (trim ${r.trim >= 0 ? "+" : ""}${r.trim} dB toward ${r.target}) — one undo step`,
+          mutated: true,
+          data: {
+            measuredBefore: r.measuredBefore,
+            measuredAfter: r.measuredAfter,
+            trimDb: r.trim,
+            targetLufs: r.target,
+          },
+        };
+      } catch (error) {
+        return {
+          text: `loudness loop failed: ${error instanceof Error ? error.message : String(error)}`,
+          mutated: false,
+          isError: true,
+        };
+      }
     }
-  }
-case "kyx_render_summary": {
-    // THE AGENT'S EARS: offline render → per-strip LUFS/peak/crest + master
-    // vs the streaming reference. Evidence for mixing decisions — numbers,
-    // never vibes. Render-bound transport only; refusal is honest elsewhere.
-    const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
-    if (ctx.renderSummary == null) {
-      return {
-        text: "render summary is not available over this MCP transport (no render context bound) — use kyx_meter for live levels",
-        mutated: false,
-      };
+    case "kyx_publish_gallery": {
+      const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
+      if (ctx.shareToGallery == null) {
+        return {
+          text: "gallery publishing is not available over this MCP transport — publish from a live KYX session (web or desktop)",
+          mutated: false,
+        };
+      }
+      const title = typeof record.title === "string" ? record.title.trim() : "";
+      if (!title || title.length > 64) {
+        return { text: "title is required (max 64 chars)", mutated: false, isError: true };
+      }
+      const author =
+        typeof record.author === "string" && record.author.trim() ? record.author.trim().slice(0, 32) : "KYX agent";
+      const tags = Array.isArray(record.tags)
+        ? record.tags.filter((t): t is string => typeof t === "string" && t.trim() !== "").slice(0, 6)
+        : [];
+      const agent =
+        typeof record.agent === "string" && record.agent.trim() ? record.agent.trim().slice(0, 32) : "unknown agent";
+      try {
+        const { id } = await ctx.shareToGallery({ title, author, tags, agent });
+        return {
+          text: `published to the gallery as AGENT-MADE: "${title}" (id ${id}, agent ${agent}) — it shows with the robot badge in the gallery feed`,
+          mutated: false,
+          data: { galleryId: id, origin: "agent", agent },
+        };
+      } catch (error) {
+        return {
+          text: `gallery publish failed: ${error instanceof Error ? error.message : String(error)}`,
+          mutated: false,
+          isError: true,
+        };
+      }
     }
-    const scope = record.scope === "master" || record.scope === "tracks" ? record.scope : "all";
-    try {
-      const data = await ctx.renderSummary({ scope });
-      return { text: formatRenderSummary(data), mutated: false, data };
-    } catch (error) {
-      return {
-        text: `render summary failed: ${error instanceof Error ? error.message : String(error)}`,
-        mutated: false,
-        isError: true,
-      };
+    case "kyx_arrange": {
+      return executeArrangeTool(ctx, (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>);
     }
-  }
+    case "kyx_song": {
+      const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
+      const genre = String(record.genre ?? "");
+      if (!MIX_GENRES.includes(genre as (typeof MIX_GENRES)[number])) {
+        return { text: `unknown genre "${genre}" - one of: ${MIX_GENRES.join(", ")}`, mutated: false, isError: true };
+      }
+      const doc = ctx.getDoc();
+      if (doc.arrangement.clips.length > 0) {
+        return {
+          text:
+            "arrangement already has clips - kyx_song builds a WHOLE track; " +
+            "use kyx_sections / kyx_clips for surgical edits, or clear the arrangement first",
+          mutated: false,
+          isError: true,
+        };
+      }
+      const spec = normalizeIntent({
+        genre: genre as never,
+        ...(typeof record.mood === "string" && record.mood.trim() !== "" ? { mood: record.mood.trim() } : {}),
+        ...(typeof record.energy === "number" ? { energy: record.energy } : {}),
+      });
+      const lengthKind = ["short", "standard", "radio", "extended", "epic"].find((kind) => kind === record.length);
+      const length =
+        lengthKind != null
+          ? { kind: lengthKind as "short" | "standard" | "radio" | "extended" | "epic", label: lengthKind }
+          : null;
+      const wantMix = record.mix !== false;
+      try {
+        const { applySongCommand, buildSong } = await import("../intent/song");
+        const build = await buildSong(doc, spec, { length, yieldBetweenSections: false });
+        let next = applySongCommand(doc, build).execute(doc);
+        let mixDecisions = 0;
+        if (wantMix) {
+          try {
+            const profile = planMixProfile(spec);
+            if (profile.decisions.length > 0) {
+              next = applyMixIntent(next, profile).execute(next);
+              mixDecisions = profile.decisions.length;
+            }
+          } catch {
+            // already at the profile - the song still lands
+          }
+        }
+        const totalBars = build.sections.reduce((sum, section) => sum + section.bars, 0);
+        ctx.execute(
+          snapshot(
+            "mcpSong",
+            `MCP: song '${genre}' (${build.sections.length} sections, ${totalBars} bars${mixDecisions > 0 ? `, mixed (${mixDecisions})` : ""})`,
+            doc,
+            next,
+          ),
+        );
+        const loudnessTarget =
+          typeof record.loudness === "number" && Number.isFinite(record.loudness) ? record.loudness : null;
+        let loudnessLine = "";
+        if (loudnessTarget != null) {
+          if (ctx.measureLoudness == null || ctx.applyLoudness == null) {
+            loudnessLine = " | loudness skipped: no render context bound";
+          } else {
+            const reading = await ctx.measureLoudness();
+            if (reading.measured) {
+              const direction = reading.integrated < loudnessTarget ? ("louder" as const) : ("quieter" as const);
+              const outcome = await ctx.applyLoudness({ direction, targetDb: loudnessTarget });
+              if (outcome.ok) {
+                ctx.execute(outcome.command);
+                loudnessLine = ` | loudness ${outcome.report.measuredBefore} -> ${outcome.report.measuredAfter ?? "?"} LUFS (second undo step)`;
+              } else {
+                loudnessLine = ` | loudness skipped: ${outcome.error}`;
+              }
+            } else {
+              loudnessLine = " | loudness skipped: render too quiet to measure";
+            }
+          }
+        }
+        return {
+          text: `song '${genre}' landed: ${build.sections.length} sections, ${totalBars} bars${mixDecisions > 0 ? `, mix profile (${mixDecisions} decisions)` : ", mix skipped"} - song+mix is ONE undo step${loudnessLine}`,
+          mutated: true,
+        };
+      } catch (error) {
+        return {
+          text: `song build failed: ${error instanceof Error ? error.message : String(error)}`,
+          mutated: false,
+          isError: true,
+        };
+      }
+    }
+    case "kyx_render_summary": {
+      // THE AGENT'S EARS: offline render → per-strip LUFS/peak/crest + master
+      // vs the streaming reference. Evidence for mixing decisions — numbers,
+      // never vibes. Render-bound transport only; refusal is honest elsewhere.
+      const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
+      if (ctx.renderSummary == null) {
+        return {
+          text: "render summary is not available over this MCP transport (no render context bound) — use kyx_meter for live levels",
+          mutated: false,
+        };
+      }
+      const scope = record.scope === "master" || record.scope === "tracks" ? record.scope : "all";
+      try {
+        const data = await ctx.renderSummary({ scope });
+        return { text: formatRenderSummary(data), mutated: false, data };
+      } catch (error) {
+        return {
+          text: `render summary failed: ${error instanceof Error ? error.message : String(error)}`,
+          mutated: false,
+          isError: true,
+        };
+      }
+    }
     default:
       return { text: `unknown tool: ${name}`, mutated: false, isError: true };
   }
@@ -2863,7 +2888,6 @@ function exportFormatOf(record: Record<string, unknown>): "wav" | "mp3" {
  * (15 s web relay / 10 s desktop IPC) — the download still lands in the
  * window, but the caller sees a timeout, not the report.
  */
-
 
 /** Strict family -> track ids for MCP ops: name/kind match only, groups and
  * non-matching families return empty (the caller reports honestly). */
