@@ -32,6 +32,7 @@ import { inferPadRole } from "../ai/pad-roles";
 import type { DrumTrack, InstrumentKind, Scene, Track, AutomationTarget, AutomationLane } from "../project-model/types";
 import { getIntentModelProvider, tryModelRoute } from "../intent/model-resolver";
 import { logIntentMiningEvent } from "../intent/failure-log";
+import { formatRenderSummary } from "./render-summary";
 import {
   applyPresetIntentCommand,
   FAMILY_INSTRUMENTS as PRESET_FAMILY_INSTRUMENTS,
@@ -852,6 +853,26 @@ export const MCP_TOOLS: McpToolDef[] = [
     },
   },
   {
+    name: "kyx_render_summary",
+    description:
+      "THE AGENT'S EARS — offline-render the current project and report per-strip " +
+      "evidence: integrated LUFS (BS.1770-4), peak dBFS, crest factor " +
+      "(peak−RMS = punchiness) and duration, plus the master vs the −14 " +
+      "streaming reference and relative deltas against the loudest strip. " +
+      "Use before/after mix moves so decisions cite numbers, not vibes. " +
+      "Slow (N+1 offline renders); render-bound transports only.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scope: {
+          type: "string",
+          enum: ["all", "tracks", "master"],
+          description: "all = strips + master (default); tracks/master limit the pass",
+        },
+      },
+    },
+  },
+  {
     name: "kyx_checkpoint",
     description:
       "Named project checkpoints for agent experiments: save the current " +
@@ -1153,6 +1174,14 @@ export interface McpToolContext {
    * Absent → honest refusal (standalone/headless servers cannot publish).
    */
   shareToGallery?: (input: { title: string; author: string; tags: string[]; agent: string }) => Promise<{ id: string }>;
+  /**
+   * THE AGENT'S EARS (kyx_render_summary): offline-render the project and
+   * report per-strip evidence (LUFS/peak/crest/duration) + the master vs
+   * the streaming reference. Absent → honest refusal (headless contexts).
+   */
+  renderSummary?: (request: {
+    scope?: "master" | "tracks" | "all";
+  }) => Promise<import("./render-summary").RenderSummaryData>;
 }
 
 export interface McpToolResult {
@@ -1997,6 +2026,12 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
         text: "kyx_loudness renders in the KYX window — it is answered by the async executor (transports); not available over the sync path",
         mutated: false,
       };
+    case "kyx_render_summary":
+      // Async-intercept pattern: the render is awaited by the async executor.
+      return {
+        text: "kyx_render_summary renders offline — it is answered by the async executor (transports); not available over the sync path",
+        mutated: false,
+      };
     case "kyx_publish_gallery":
       // Same async-intercept pattern: publishing is a network await.
       return {
@@ -2826,6 +2861,29 @@ export async function executeMcpToolAsync(ctx: McpToolContext, name: string, arg
     } catch (error) {
       return {
         text: `song build failed: ${error instanceof Error ? error.message : String(error)}`,
+        mutated: false,
+        isError: true,
+      };
+    }
+  }
+  if (name === "kyx_render_summary") {
+    // THE AGENT'S EARS: offline render → per-strip LUFS/peak/crest + master
+    // vs the streaming reference. Evidence for mixing decisions — numbers,
+    // never vibes. Render-bound transport only; refusal is honest elsewhere.
+    const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
+    if (ctx.renderSummary == null) {
+      return {
+        text: "render summary is not available over this MCP transport (no render context bound) — use kyx_meter for live levels",
+        mutated: false,
+      };
+    }
+    const scope = record.scope === "master" || record.scope === "tracks" ? record.scope : "all";
+    try {
+      const data = await ctx.renderSummary({ scope });
+      return { text: formatRenderSummary(data), mutated: false, data };
+    } catch (error) {
+      return {
+        text: `render summary failed: ${error instanceof Error ? error.message : String(error)}`,
         mutated: false,
         isError: true,
       };

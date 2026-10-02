@@ -2,6 +2,7 @@ import { McpBridge, type McpBridgeDeps } from "./bridge";
 import { isMicRecordingActive } from "../audio-engine/PcmMicRecorder";
 import { collabParamsFromSearch, defaultServerUrl } from "../collab/collabShared";
 import { quickBounceDownload } from "../export/quick-bounce";
+import { mcpRenderSummary } from "../mcp/render-summary";
 import { mcpMeterSnapshotFromServices } from "./meters";
 import { mcpApplyLoudness, mcpMeasureLoudness } from "./loudness";
 import type { Services } from "../services";
@@ -115,6 +116,8 @@ function depsFromServices(services: Services): McpBridgeDeps {
       });
       return { id: item.id };
     },
+    // kyx_render_summary: the offline render + BS.1770 evidence pass.
+    renderSummary: (request) => mcpRenderSummary(services, request),
   };
 }
 

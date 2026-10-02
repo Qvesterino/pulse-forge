@@ -70,8 +70,11 @@ WORKFLOW: MIX PASS ON EXISTING MATERIAL
   kyx_tracks {op: setGain/setPan} for surgical fader moves, or kyx_intent
   with production concepts ("make the bass deeper") — free-text asks that
   the deterministic layer misses fall to the LOCAL INTENT MODEL (answers
-  arrive prefixed 🤖; trust them like read-backs). kyx_meter / kyx_loudness
-  to verify with numbers, not vibes.
+  arrive prefixed 🤖; trust them like read-backs). THEN EVIDENCE, NOT
+  VIBES: kyx_render_summary — per-strip LUFS/peak/crest + master vs the
+  −14 streaming reference + relative deltas. Make ONE move, re-run the
+  summary, compare the numbers. kyx_meter / kyx_loudness for live or
+  target-landing checks.
 
 WORKFLOW: LIVE PERFORMANCE + PUBLISHING
   kyx_state {subject: scenes} lists launchable scenes with @bar N.
@@ -100,7 +103,8 @@ TOOL INDEX (all 29 — grouped by job)
                intensity) · kyx_arrange · kyx_song (whole track) ·
                kyx_clips
   perform:     kyx_transport (incl. action:launchScene) · kyx_checkpoint
-  finish:      kyx_mix · kyx_loudness (BS.1770) · kyx_export ·
+  finish:      kyx_mix · kyx_loudness (BS.1770) · kyx_render_summary (per-strip
+               LUFS/peak/crest — the agent's ears) · kyx_export ·
                kyx_publish_gallery (agent badge)
   control:     kyx_intent (EN/SK; 🤖 model fallback) · kyx_batch (10 in
                one undo) · kyx_undo · kyx_takes (vocal comps)

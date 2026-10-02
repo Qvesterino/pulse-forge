@@ -856,6 +856,26 @@ const MCP_TOOL_DEFS = [
     },
   },
   {
+    name: "kyx_render_summary",
+    description:
+      "THE AGENT'S EARS — offline-render the current project and report per-strip " +
+      "evidence: integrated LUFS (BS.1770-4), peak dBFS, crest factor " +
+      "(peak−RMS = punchiness) and duration, plus the master vs the −14 " +
+      "streaming reference and relative deltas against the loudest strip. " +
+      "Use before/after mix moves so decisions cite numbers, not vibes. " +
+      "Slow (N+1 offline renders); render-bound transports only.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scope: {
+          type: "string",
+          enum: ["all", "tracks", "master"],
+          description: "all = strips + master (default); tracks/master limit the pass",
+        },
+      },
+    },
+  },
+  {
     name: "kyx_checkpoint",
     description:
       "Named project checkpoints for agent experiments: save the current state, list checkpoints with how many steps have passed since each, restore one (ONE undo step back to the pre-restore state), or delete. Session-scoped (last 8 kept); destructive ops auto-save auto-before-<tool> checkpoints when allowed.",

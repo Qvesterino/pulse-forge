@@ -36,6 +36,7 @@ export interface McpBridgeDeps {
   measureLoudness?: () => Promise<{ integrated: number; measured: boolean }>;
   applyLoudness?: NonNullable<McpToolContext["applyLoudness"]>;
   shareToGallery?: NonNullable<McpToolContext["shareToGallery"]>;
+  renderSummary?: NonNullable<McpToolContext["renderSummary"]>;
 }
 
 export class McpBridge {
@@ -124,6 +125,7 @@ export class McpBridge {
       measureLoudness: this.deps.measureLoudness,
       applyLoudness: this.deps.applyLoudness,
       shareToGallery: this.deps.shareToGallery,
+      renderSummary: this.deps.renderSummary,
       allowDestructive: mcpAllowDestructive,
     };
     // A throwing tool must still ANSWER — without this catch the relay would
