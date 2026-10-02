@@ -262,7 +262,7 @@ describe("agent simulation — the whole playbook in one session", () => {
 });
 
 describe("agent simulation — destructive-locked variant", () => {
-  it("a locked agent still completes the creative workflow (no destructive ops needed)", () => {
+  it("a locked agent still completes the creative workflow (no destructive ops needed)", async () => {
     const locked = spawnAgent({ allowDestructive: false });
     const gen = locked.call("kyx_generate", { genre: "house", seed: "locked" });
     expect(gen.mutated).toBe(true);
@@ -271,7 +271,7 @@ describe("agent simulation — destructive-locked variant", () => {
     expect(removed.text).toContain("locked");
     const mixed = locked.call("kyx_mix", { genre: "house" });
     expect(mixed.mutated).toBe(true);
-    const arranged = locked.call("kyx_arrange", { genre: "house", length: "short" });
+    const arranged = await locked.callAsync("kyx_arrange", { genre: "house", length: "short" });
     expect(arranged.mutated).toBe(true);
     expect(locked.store.doc.arrangement.clips.length).toBeGreaterThanOrEqual(4);
     assertFiniteDoc(locked);

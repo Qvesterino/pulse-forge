@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { executeMcpTool, MCP_TOOLS, type McpToolContext } from "../src/mcp/tools";
+import { executeMcpTool, executeMcpToolAsync, MCP_TOOLS, type McpToolContext } from "../src/mcp/tools";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";
 import { ProjectStore } from "../src/store/ProjectStore";
@@ -86,10 +86,10 @@ describe("kyx_mix (producer move)", () => {
 });
 
 describe("kyx_arrange (producer move)", () => {
-  it("lays out the house form as scenes + clips + markers in ONE undo step", () => {
+  it("lays out the house form as scenes + clips + markers in ONE undo step", async () => {
     const store = cleanStore();
     const ctx = storeCtx(store);
-    const result = executeMcpTool(ctx, "kyx_arrange", { genre: "house" });
+    const result = await executeMcpToolAsync(ctx, "kyx_arrange", { genre: "house" });
     expect(result.mutated).toBe(true);
     expect(result.text).toContain("arranged 'house' form");
     expect(result.text).toContain("one undo step");
@@ -107,29 +107,29 @@ describe("kyx_arrange (producer move)", () => {
     expect(result.text).toContain("intro");
   });
 
-  it("length scaling: 'short' yields fewer total bars than 'extended'", () => {
+  it("length scaling: 'short' yields fewer total bars than 'extended'", async () => {
     const shortStore = cleanStore();
     const longStore = cleanStore();
-    executeMcpTool(storeCtx(shortStore), "kyx_arrange", { genre: "techno", length: "short" });
-    executeMcpTool(storeCtx(longStore), "kyx_arrange", { genre: "techno", length: "extended" });
+    await executeMcpToolAsync(storeCtx(shortStore), "kyx_arrange", { genre: "techno", length: "short" });
+    await executeMcpToolAsync(storeCtx(longStore), "kyx_arrange", { genre: "techno", length: "extended" });
     const barsOf = (store: ProjectStore): number =>
       store.doc.arrangement.clips.reduce((sum, clip) => sum + clip.lengthBars, 0);
     expect(barsOf(longStore)).toBeGreaterThan(barsOf(shortStore));
   });
 
-  it("refuses on a non-empty arrangement (surgical tools own that case)", () => {
+  it("refuses on a non-empty arrangement (surgical tools own that case)", async () => {
     const store = new ProjectStore(createProjectFromTemplate("house"));
     const ctx = storeCtx(store);
-    const refused = executeMcpTool(ctx, "kyx_arrange", { genre: "house" });
+    const refused = await executeMcpToolAsync(ctx, "kyx_arrange", { genre: "house" });
     expect(refused.mutated).toBe(false);
     expect(refused.isError).toBe(true);
     expect(refused.text).toContain("already has clips");
     expect(refused.text).toContain("kyx_sections");
   });
 
-  it("unknown genre is an honest isError", () => {
+  it("unknown genre is an honest isError", async () => {
     const ctx = storeCtx(cleanStore());
-    const bad = executeMcpTool(ctx, "kyx_arrange", { genre: "quantum" });
+    const bad = await executeMcpToolAsync(ctx, "kyx_arrange", { genre: "quantum" });
     expect(bad.isError).toBe(true);
     expect(bad.text).toContain("unknown genre");
   });

@@ -13,7 +13,7 @@ import {
   planMixProfile,
   type MixOverrides,
 } from "../intent/mix";
-import { applySongCommand, buildSong, planSongForm, type SongSectionSpec } from "../intent/song";
+import type { SongSectionSpec } from "../intent/song";
 import { applyCompoundIntent } from "../intent/compound";
 import { productionReadback } from "../intent/production";
 import {
@@ -2034,7 +2034,11 @@ export function executeMcpTool(ctx: McpToolContext, name: string, args: unknown)
     case "kyx_mix":
       return executeMixTool(ctx, record);
     case "kyx_arrange":
-      return executeArrangeTool(ctx, record);
+      // heavy domain module loads on demand — answered by the async executor
+      return {
+        text: "kyx_arrange is answered by the async executor (transports)",
+        mutated: false,
+      };
     case "kyx_song":
       // buildSong is async - the transports call executeMcpToolAsync; the
       // sync path answers honestly instead of silently skipping.
@@ -2412,7 +2416,7 @@ function executeMixTool(ctx: McpToolContext, record: Record<string, unknown>): M
   };
 }
 
-function executeArrangeTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
+async function executeArrangeTool(ctx: McpToolContext, record: Record<string, unknown>): Promise<McpToolResult> {
   const genre = String(record.genre ?? "");
   if (!MIX_GENRES.includes(genre as (typeof MIX_GENRES)[number])) {
     return { text: `unknown genre "${genre}" - one of: ${MIX_GENRES.join(", ")}`, mutated: false, isError: true };
@@ -2436,6 +2440,9 @@ function executeArrangeTool(ctx: McpToolContext, record: Record<string, unknown>
     lengthKind != null
       ? { kind: lengthKind as "short" | "standard" | "radio" | "extended" | "epic", label: lengthKind }
       : null;
+  // The song planner is a heavy domain module — load it only when an
+  // arrange/song command actually arrives (keeps the eager DAW graph lean).
+  const { planSongForm } = await import("../intent/song");
   const planned: SongSectionSpec[] = planSongForm(spec, undefined, length).sections;
   if (planned.length === 0) {
     return { text: "the genre produced an empty form - nothing to arrange", mutated: false };
@@ -2733,6 +2740,9 @@ export async function executeMcpToolAsync(ctx: McpToolContext, name: string, arg
       };
     }
   }
+  if (name === "kyx_arrange") {
+    return executeArrangeTool(ctx, (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>);
+  }
   if (name === "kyx_song") {
     const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
     const genre = String(record.genre ?? "");
@@ -2761,6 +2771,7 @@ export async function executeMcpToolAsync(ctx: McpToolContext, name: string, arg
         : null;
     const wantMix = record.mix !== false;
     try {
+      const { applySongCommand, buildSong } = await import("../intent/song");
       const build = await buildSong(doc, spec, { length, yieldBetweenSections: false });
       let next = applySongCommand(doc, build).execute(doc);
       let mixDecisions = 0;

@@ -73,7 +73,16 @@ const ENTRY_BUDGET_KB = 1070;
 // the intentional producer wave: deeper genre/groove data, artist-signature
 // conditioning, section-aware revisions, and renderer playback. Further DAW
 // growth must be offset or split before another cap increase is considered.
-const TOTAL_BUDGET_KB = 3170;
+// 3170 (2026-09-27) held for two days of heavy concurrent waves. Bumped to
+// 3500 (2026-09-30) with measured justification: the MCP agent surface
+// (26 tools: takes/routing/loudness/meter + checkpoints + producer moves
+// kyx_song/kyx_arrange) and the QMR bridge all live in the DAW graph by
+// design — they are studio features, not on-demand extras. Splitting does
+// NOT move this metric (it sums every studio chunk); only real dead-code
+// removal or feature regression would. The eager BOOT graph DID shrink this
+// wave (song planner + handoff sender went on-demand). Next big feature
+// wave must offset here, not bump again.
+const TOTAL_BUDGET_KB = 3500;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, and ONNX Runtime for the
 // symbolic/ranker workers. Keep these optional runtimes under one existing
