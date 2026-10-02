@@ -3,6 +3,7 @@ import { buildTempoMap, type ClipWindow } from "./renderer";
 import type { ProjectDocument } from "../project-model/types";
 import { BAR_TICKS } from "../project-model/types";
 import { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
+import { patternPhaseOffsetAtTick, sceneOffsetAtTick } from "../project-model/events";
 
 /**
  * Real bounce: offline-render the selected tracks (with their FX, groups,
@@ -11,9 +12,8 @@ import { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
  *
  * Surgery rules:
  *  - tracks: stem filter (selected + parent groups), mutes preserved
- *  - scene clips overlapping the zone are kept and clipped zone-relative —
- *    a pattern restarts from step 0 at its clip start, which is what a
- *    bounce of that clip alone would sound like
+ *  - scene clips overlapping the zone are clipped zone-relative while their
+ *    source pattern phase continues from the original arrangement position
  *  - audio clips overlapping the zone keep sample-exact alignment via
  *    offsetSec (audio is absolute, unlike patterns)
  *  - transitions/markers are dropped: they reference the original clip ids
@@ -29,6 +29,8 @@ export interface BounceZoneOptions {
   preserveMixState?: boolean;
   /** Include audio fragments shorter than the normal 1/4-bar bounce threshold. */
   includeSubQuarterAudioClips?: boolean;
+  /** Include any positive arrangement-clip overlap, however short. */
+  includeSubQuarterArrangementClips?: boolean;
   /** Decoded source durations allow exact cropping through warped audio clips. */
   sourceDurationsByBufferId?: ReadonlyMap<string, number>;
 }
@@ -63,11 +65,25 @@ export function buildBounceZoneDoc(
     const clipEnd = clipStart + clip.lengthBars * BAR_TICKS;
     const overlapStart = Math.max(clipStart, zoneStartTick);
     const overlapEnd = Math.min(clipEnd, zoneEndTick);
-    if (overlapEnd - overlapStart < BAR_TICKS * 0.25) continue;
+    if (
+      overlapEnd <= overlapStart ||
+      (!options.includeSubQuarterArrangementClips && overlapEnd - overlapStart < BAR_TICKS * 0.25)
+    ) {
+      continue;
+    }
+    const scene = doc.scenes.find((candidate) => candidate.id === clip.sceneId);
+    const pattern = scene ? doc.patterns.find((candidate) => candidate.id === scene.patternId) : undefined;
+    const phaseOffsetTicks = pattern
+      ? patternPhaseOffsetAtTick(clip, pattern, overlapStart)
+      : (clip.phaseOffsetTicks ?? 0);
+    const sceneOffsetTicks = sceneOffsetAtTick(clip, overlapStart);
+    const { phaseOffsetTicks: _oldPhaseOffset, sceneOffsetTicks: _oldSceneOffset, ...clipWithoutPhase } = clip;
     zoneRelativeClips.push({
-      ...clip,
+      ...clipWithoutPhase,
       startBar: (overlapStart - zoneStartTick) / BAR_TICKS,
       lengthBars: (overlapEnd - overlapStart) / BAR_TICKS,
+      ...(phaseOffsetTicks > 1e-9 ? { phaseOffsetTicks } : {}),
+      ...(sceneOffsetTicks > 1e-9 ? { sceneOffsetTicks } : {}),
     });
   }
   for (const clip of mixDoc.arrangement.audioClips ?? []) {
@@ -199,13 +215,6 @@ export function buildTimeRangeConsolidationDoc(
   const endBar = to / BAR_TICKS;
   const overlaps = (start: number, length: number) => start < endBar && start + length > startBar;
   const contained = (start: number, length: number) => start >= startBar && start + length <= endBar;
-  if (
-    doc.arrangement.clips.some(
-      (clip) => overlaps(clip.startBar, clip.lengthBars) && !contained(clip.startBar, clip.lengthBars),
-    )
-  ) {
-    throw new Error("An arrangement clip crosses this range boundary. Select the whole clip before consolidating.");
-  }
   const boundaryWarpedAudio = (doc.arrangement.audioClips ?? []).find(
     (clip) =>
       overlaps(clip.startBar, clip.lengthBars) &&
@@ -226,7 +235,12 @@ export function buildTimeRangeConsolidationDoc(
     doc,
     doc.tracks.map((track) => track.id),
     { startBar, lengthBars: endBar - startBar },
-    { preserveMixState: true, includeSubQuarterAudioClips: true, sourceDurationsByBufferId },
+    {
+      preserveMixState: true,
+      includeSubQuarterAudioClips: true,
+      includeSubQuarterArrangementClips: true,
+      sourceDurationsByBufferId,
+    },
   );
   // An audio-only range (or a range in an arrangement gap) must not fall
   // back to the active pattern during offline rendering. The renderer's

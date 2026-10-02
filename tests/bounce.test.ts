@@ -118,7 +118,7 @@ describe("buildBounceZoneDoc", () => {
     expect(plan.project.arrangement.audioClips?.[0]).toMatchObject({ startBar: 1, lengthBars: 1 });
   });
 
-  it("rejects crossing arrangement clips but renders cross-boundary audio and rejects Solo", () => {
+  it("renders crossing arrangement clips and audio while rejecting Solo", () => {
     const base = createDefaultProject();
     const scene = base.scenes[0]!;
     const crossingClip = {
@@ -128,9 +128,8 @@ describe("buildBounceZoneDoc", () => {
         clips: [{ id: "crossing", sceneId: scene.id, startBar: 0, lengthBars: 8 }],
       },
     };
-    expect(() => buildTimeRangeConsolidationDoc(crossingClip, BAR_TICKS * 4, BAR_TICKS * 8)).toThrow(
-      /arrangement clip crosses/u,
-    );
+    const crossingPlan = buildTimeRangeConsolidationDoc(crossingClip, BAR_TICKS * 4, BAR_TICKS * 8);
+    expect(crossingPlan.project.arrangement.clips[0]).toMatchObject({ startBar: 0, lengthBars: 4 });
 
     const track = base.tracks.find((candidate) => candidate.kind !== "group")!;
     const crossingAudio = addAudioClip(base, track.id, "audio.crossing", 2, 4).execute(base);
@@ -210,19 +209,47 @@ describe("buildBounceZoneDoc", () => {
     });
   });
 
-  it("still rejects a musical arrangement clip crossing the range boundary", () => {
+  it("preserves pattern and scene phase when cropping a musical arrangement clip", () => {
     const base = createDefaultProject();
     const scene = base.scenes[0]!;
     const crossingClip = {
       ...base,
       arrangement: {
         ...base.arrangement,
-        clips: [{ id: "crossing", sceneId: scene.id, startBar: 0, lengthBars: 8 }],
+        clips: [
+          {
+            id: "crossing",
+            sceneId: scene.id,
+            startBar: 0,
+            lengthBars: 8,
+            phaseOffsetTicks: 60,
+            sceneOffsetTicks: 120,
+          },
+        ],
       },
     };
-    expect(() => buildTimeRangeConsolidationDoc(crossingClip, BAR_TICKS * 4, BAR_TICKS * 8)).toThrow(
-      /arrangement clip crosses/u,
-    );
+    const plan = buildTimeRangeConsolidationDoc(crossingClip, BAR_TICKS * 4, BAR_TICKS * 8);
+    expect(plan.project.arrangement.clips[0]).toMatchObject({
+      startBar: 0,
+      lengthBars: 4,
+      phaseOffsetTicks: 60,
+      sceneOffsetTicks: 4 * BAR_TICKS + 120,
+    });
+  });
+
+  it("includes sub-quarter musical slivers in a consolidation render", () => {
+    const base = createDefaultProject();
+    const scene = base.scenes[0]!;
+    const doc = {
+      ...base,
+      arrangement: {
+        ...base.arrangement,
+        clips: [{ id: "sliver", sceneId: scene.id, startBar: 4.99, lengthBars: 0.25 }],
+      },
+    };
+    const plan = buildTimeRangeConsolidationDoc(doc, 4 * BAR_TICKS, 5 * BAR_TICKS);
+    expect(plan.project.arrangement.clips[0]?.startBar).toBeCloseTo(0.99);
+    expect(plan.project.arrangement.clips[0]?.lengthBars).toBeCloseTo(0.01);
   });
 
   it("filters tracks to the selection plus parent groups", () => {

@@ -5,7 +5,7 @@ import type { SampleBank } from "../sample-library/factory";
 import type { AutomationPoint, Pattern, PlayMode, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS, PPQ, STEP_TICKS, getActivePattern } from "../project-model/types";
 import { drumHitsInWindow } from "../project-model/groove";
-import { noteEventsInWindow } from "../project-model/events";
+import { noteEventsInWindow, patternBaseTickForClip, sceneBaseTickForClip } from "../project-model/events";
 import { computeSceneIntensity } from "../project-model/intensity";
 import { ensureWorkletsForDoc } from "../audio-worklets/loader";
 import { audioClipsForPlayback } from "../project-model/audio-takes";
@@ -219,9 +219,12 @@ export function resolveRenderTailSeconds(doc: ProjectDocument, fallback = 2): nu
 
 export interface ClipWindow {
   pattern: Pattern;
+  /** Pattern event origin; may predate the visible window when phase continues. */
   base: number;
   from: number;
   to: number;
+  /** Scene-relative origin; may predate the visible window when phase continues. */
+  sceneBase?: number;
   /** Scene tempo for this window (falls back to the project BPM). */
   bpm?: number;
   /** Owning scene (song mode only) — drives offline sceneAutomation rendering. */
@@ -252,12 +255,15 @@ function collectClipWindows(doc: ProjectDocument, mode: PlayMode, arrangementOnl
       if (!scene) continue;
       const pattern = doc.patterns.find((p) => p.id === scene.patternId);
       if (!pattern) continue;
-      const base = clip.startBar * BAR_TICKS;
+      const visibleStart = clip.startBar * BAR_TICKS;
+      const sceneBase = sceneBaseTickForClip(clip);
+      const base = patternBaseTickForClip(clip);
       windows.push({
         pattern,
         base,
-        from: base,
-        to: base + clip.lengthBars * BAR_TICKS,
+        from: visibleStart,
+        to: visibleStart + clip.lengthBars * BAR_TICKS,
+        sceneBase,
         bpm: scene.bpm ?? doc.bpm,
         sceneId: clip.sceneId,
       });
@@ -266,7 +272,7 @@ function collectClipWindows(doc: ProjectDocument, mode: PlayMode, arrangementOnl
   }
   const pattern = getActivePattern(doc);
   const patternTicks = pattern.stepCount * STEP_TICKS;
-  return [{ pattern, base: 0, from: 0, to: patternTicks, bpm: doc.bpm }];
+  return [{ pattern, base: 0, from: 0, to: patternTicks, sceneBase: 0, bpm: doc.bpm }];
 }
 
 export interface TempoSegment {
@@ -568,14 +574,15 @@ export function buildSceneIntensityPoints(
     }
 
     if (window.sceneId) {
-      points.push({ tick: window.from, value: computeSceneIntensity(scene, window.base, window.from) });
+      const sceneBase = window.sceneBase ?? window.base;
+      points.push({ tick: window.from, value: computeSceneIntensity(scene, sceneBase, window.from) });
       for (const curvePoint of scene.intensityCurve ?? []) {
-        const absoluteTick = window.base + curvePoint.offset;
+        const absoluteTick = sceneBase + curvePoint.offset;
         if (absoluteTick > window.from && absoluteTick < window.to) {
-          points.push({ tick: absoluteTick, value: computeSceneIntensity(scene, window.base, absoluteTick) });
+          points.push({ tick: absoluteTick, value: computeSceneIntensity(scene, sceneBase, absoluteTick) });
         }
       }
-      points.push({ tick: window.to, value: computeSceneIntensity(scene, window.base, window.to) });
+      points.push({ tick: window.to, value: computeSceneIntensity(scene, sceneBase, window.to) });
     } else {
       // Pattern-mode live playback intentionally uses the scene's static
       // intensity; a curve belongs to an arrangement clip context.
@@ -681,8 +688,9 @@ export function scheduleSceneAutomation(
     if (lane.points.length === 0) continue;
     for (const window of windows) {
       if (window.sceneId !== lane.sceneId) continue;
-      const fromLocal = Math.max(0, window.from - window.base);
-      const toLocal = window.to - window.base;
+      const sceneBase = window.sceneBase ?? window.base;
+      const fromLocal = Math.max(0, window.from - sceneBase);
+      const toLocal = window.to - sceneBase;
       if (toLocal <= fromLocal) continue;
       // Boundary values first, then every interior lane point.
       const expanded: AutomationPoint[] = [
@@ -690,7 +698,7 @@ export function scheduleSceneAutomation(
         { tick: window.to, value: valueAtLocal(lane.points, toLocal) },
       ];
       for (const point of lane.points) {
-        const absoluteTick = window.base + point.tick;
+        const absoluteTick = sceneBase + point.tick;
         if (absoluteTick > window.from && absoluteTick < window.to) {
           expanded.push({ tick: absoluteTick, value: point.value });
         }
@@ -788,12 +796,13 @@ export function expandAutomationAcrossWindows(points: AutomationPoint[], windows
     const patternTicks = window.pattern.stepCount * STEP_TICKS;
     const windowTicks = window.to - window.from;
     if (patternTicks <= 0 || windowTicks <= 0) continue;
-    const cycles = Math.max(1, Math.ceil(windowTicks / patternTicks));
-    for (let cycle = 0; cycle < cycles; cycle++) {
-      const cycleBase = window.from + cycle * patternTicks;
+    const firstCycle = Math.floor((window.from - window.base) / patternTicks);
+    const lastCycle = Math.ceil((window.to - window.base) / patternTicks);
+    for (let cycle = firstCycle; cycle <= lastCycle; cycle++) {
+      const cycleBase = window.base + cycle * patternTicks;
       for (const point of points) {
         const absoluteTick = cycleBase + point.tick;
-        if (absoluteTick >= window.to) continue;
+        if (absoluteTick < window.from || absoluteTick >= window.to) continue;
         expanded.push({ tick: absoluteTick, value: point.value });
       }
     }

@@ -438,16 +438,74 @@ describe("migrateProject", () => {
     expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
   });
 
-  it("upgrades schema v8 loop clips and preserves valid v9 phase offsets", () => {
+  it("upgrades schema v8 loop clips and preserves valid audio loop offsets", () => {
     const base = createDefaultProject();
     const trackId = base.tracks[0]!.id;
     const legacyLoop = addAudioClip(base, trackId, "loop", 0, 4, { loop: true }).execute(base);
     const migrated = migrateProject({ ...legacyLoop, schemaVersion: 8 });
-    expect(migrated.schemaVersion).toBe(9);
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
     expect(migrated.arrangement.audioClips?.[0]?.loopPhaseOffsetSec).toBeUndefined();
 
     const phased = addAudioClip(base, trackId, "loop", 0, 4, { loop: true, loopPhaseOffsetSec: 2.25 }).execute(base);
     expect(migrateProject(phased)).toEqual(phased);
+  });
+
+  it("normalizes arrangement pattern and scene offsets while retaining short positive clips", () => {
+    const base = createDefaultProject();
+    const scene = base.scenes[0]!;
+    const pattern = base.patterns.find((candidate) => candidate.id === scene.patternId)!;
+    const periodTicks = 32 * STEP_TICKS;
+    const project: ProjectDocument = {
+      ...base,
+      patterns: base.patterns.map((candidate) =>
+        candidate.id === pattern.id ? { ...candidate, stepCount: 32 } : candidate,
+      ),
+      arrangement: {
+        ...base.arrangement,
+        clips: [
+          {
+            id: "phase-clip",
+            sceneId: scene.id,
+            startBar: 2,
+            lengthBars: 0.01,
+            phaseOffsetTicks: periodTicks * 2 + STEP_TICKS,
+            sceneOffsetTicks: STEP_TICKS * 2,
+          },
+        ],
+      },
+    };
+
+    const normalized = normalizeProject(project);
+    expect(normalized.arrangement.clips[0]).toMatchObject({
+      startBar: 2,
+      lengthBars: 0.01,
+      phaseOffsetTicks: STEP_TICKS,
+      sceneOffsetTicks: STEP_TICKS * 2,
+    });
+    expect(normalizeProject(normalized)).toBe(normalized);
+  });
+
+  it("drops invalid arrangement offsets and zero offsets", () => {
+    const base = createDefaultProject();
+    const scene = base.scenes[0]!;
+    const malformed = {
+      ...base,
+      arrangement: {
+        ...base.arrangement,
+        clips: [
+          {
+            id: "invalid-phase-clip",
+            sceneId: scene.id,
+            startBar: 0,
+            lengthBars: 0.5,
+            phaseOffsetTicks: Number.NaN,
+            sceneOffsetTicks: -1,
+          },
+        ],
+      },
+    } as ProjectDocument;
+    expect(normalizeProject(malformed).arrangement.clips[0]).not.toHaveProperty("phaseOffsetTicks");
+    expect(normalizeProject(malformed).arrangement.clips[0]).not.toHaveProperty("sceneOffsetTicks");
   });
 
   it("throws on a schemaVersion newer than supported", () => {

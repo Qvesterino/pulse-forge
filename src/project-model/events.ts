@@ -1,6 +1,37 @@
-import type { NoteEvent, Pattern, ProjectDocument } from "./types";
-import { STEP_TICKS } from "./types";
+import type { ArrangementClip, NoteEvent, Pattern, ProjectDocument } from "./types";
+import { BAR_TICKS, STEP_TICKS } from "./types";
 import { drumHitsInWindow, type DrumHit } from "./groove";
+
+/** Resolve the absolute tick origin shared by live and offline pattern events. */
+export function patternBaseTickForClip(clip: Pick<ArrangementClip, "startBar" | "phaseOffsetTicks">): number {
+  const phaseOffset = Number.isFinite(clip.phaseOffsetTicks) ? (clip.phaseOffsetTicks ?? 0) : 0;
+  return clip.startBar * BAR_TICKS - phaseOffset;
+}
+
+/** Resolve the absolute tick origin for scene-relative automation and intensity. */
+export function sceneBaseTickForClip(clip: Pick<ArrangementClip, "startBar" | "sceneOffsetTicks">): number {
+  const sceneOffset = Number.isFinite(clip.sceneOffsetTicks) ? (clip.sceneOffsetTicks ?? 0) : 0;
+  return clip.startBar * BAR_TICKS - sceneOffset;
+}
+
+/** Pattern phase at an absolute arrangement tick, wrapped to the source pattern's loop. */
+export function patternPhaseOffsetAtTick(
+  clip: Pick<ArrangementClip, "startBar" | "phaseOffsetTicks">,
+  pattern: Pick<Pattern, "stepCount">,
+  tick: number,
+): number {
+  const patternTicks = pattern.stepCount * STEP_TICKS;
+  const phaseOffset = Number.isFinite(clip.phaseOffsetTicks) ? (clip.phaseOffsetTicks ?? 0) : 0;
+  const elapsed = phaseOffset + tick - clip.startBar * BAR_TICKS;
+  if (patternTicks <= 0) return Math.max(0, elapsed);
+  return ((elapsed % patternTicks) + patternTicks) % patternTicks;
+}
+
+/** Scene-relative time at an absolute tick; unlike pattern phase, it does not loop. */
+export function sceneOffsetAtTick(clip: Pick<ArrangementClip, "startBar" | "sceneOffsetTicks">, tick: number): number {
+  const sceneOffset = Number.isFinite(clip.sceneOffsetTicks) ? (clip.sceneOffsetTicks ?? 0) : 0;
+  return Math.max(0, sceneOffset + tick - clip.startBar * BAR_TICKS);
+}
 
 // GOAL 08/B6: notes arrays are immutable (untouched patterns keep the same
 // reference across normalizes), so the per-track sort memoizes by reference

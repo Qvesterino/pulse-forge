@@ -29,7 +29,7 @@ without a friendly message.
 
 | Store                    | Owner repo                  | Record shape (essentials)                                                                                                                                                                                                                     | Versioning                                                                                      | Read sanitize                                                                                 | Binary                                    | Id scheme                                                             |
 | ------------------------ | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------- | --------------------------------------------------------------------- |
-| `projects`               | ProjectRepository           | full `ProjectDocument` + `updatedAt` re-stamped on save                                                                                                                                                                                       | **explicit** `schemaVersion` (SCHEMA_VERSION 6); future rows quarantined via `listIncompatible` | `validateProjectShape` → `migrateProject` → `normalizeProject`; bad rows skipped, never fatal | — (audio by ref)                          | `uid("project")`                                                      |
+| `projects`               | ProjectRepository           | full `ProjectDocument` + `updatedAt` re-stamped on save                                                                                                                                                                                       | **explicit** `schemaVersion` (v11); future incompatible rows quarantined via `listIncompatible` | `validateProjectShape` → `migrateProject` → `normalizeProject`; bad rows skipped, never fatal | — (audio by ref)                          | `uid("project")`                                                      |
 | `meta`                   | ProjectRepository           | KV: `"recentProjectId"` → string                                                                                                                                                                                                              | unversioned                                                                                     | n/a (string)                                                                                  | —                                         | project id                                                            |
 | `presets`                | PresetRepository            | `InstrumentPreset` (+ forced `user:true`, legacy `metadata?`)                                                                                                                                                                                 | unversioned                                                                                     | light filter (string id/name/instrument, `mood ?? []`), else raw cast                         | —                                         | `uid("preset")`                                                       |
 | `library`                | LibraryRepository           | single row `"library-state"`: favorite/recent id arrays (cap 24)                                                                                                                                                                              | unversioned                                                                                     | per-field Array+string filter; load failure → EMPTY                                           | —                                         | fixed key                                                             |
@@ -68,11 +68,13 @@ cleanly.
 `ProjectRepository.save()` stamps `updatedAt` only — validation lives on
 READ (`validateProjectShape → migrateProject → normalizeProject`); the
 domain normalizer is the authoritative repair. `SCHEMA_VERSION` is currently
-6: v3–v6 add lineage, source-channel routing, non-destructive take groups and
-production-profile provenance. These additions remain optional for older
-projects; `migrateProject` advances the version and normalization preserves
-playability. A future incompatible shape change must add an explicit
-version-specific transformation instead of relying on normalization alone.
+11: v3–v6 add lineage, source-channel routing, non-destructive take groups and
+production-profile provenance; v7–v11 add take-comp provenance, velocity
+layers, audio-loop phase, the Producer Brief, and arrangement pattern/scene
+phase offsets. These additions remain optional for older projects;
+`migrateProject` advances the version and normalization preserves playability.
+A future incompatible shape change must add an explicit version-specific
+transformation instead of relying on normalization alone.
 
 ## 2. Web storage — 35 localStorage + 4 sessionStorage keys
 

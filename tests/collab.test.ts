@@ -46,6 +46,35 @@ describe("YDocAdapter — round-trip conversion", () => {
     expect(restored.scenes.length).toBe(doc.scenes.length);
   });
 
+  it("round-trips both arrangement phase origins through Y.Doc", () => {
+    const base = createProjectFromTemplate("house");
+    const scene = base.scenes[0]!;
+    const doc = {
+      ...base,
+      arrangement: {
+        ...base.arrangement,
+        clips: [
+          {
+            id: "phase-clip",
+            sceneId: scene.id,
+            startBar: 4,
+            lengthBars: 2,
+            phaseOffsetTicks: 120,
+            sceneOffsetTicks: 360,
+          },
+        ],
+      },
+    };
+    const yDoc = new Y.Doc();
+    const yMap = yDoc.getMap("project");
+    projectToYDoc(doc, yMap);
+
+    expect(yDocToProject(yMap).arrangement.clips[0]).toMatchObject({
+      phaseOffsetTicks: 120,
+      sceneOffsetTicks: 360,
+    });
+  });
+
   it("preserves track structure", () => {
     const doc = createProjectFromTemplate("house");
     const yDoc = new Y.Doc();

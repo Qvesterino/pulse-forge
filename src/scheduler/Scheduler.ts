@@ -2,7 +2,7 @@ import type { DrumTrack, Pattern, PlayMode, ProjectDocument } from "../project-m
 import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { ticksPerBar, ticksPerBeat } from "../project-model/schema";
 import { drumHitsInWindow } from "../project-model/groove";
-import { noteEventsInWindow } from "../project-model/events";
+import { noteEventsInWindow, patternBaseTickForClip, sceneBaseTickForClip } from "../project-model/events";
 import { computeSceneIntensity } from "../project-model/intensity";
 import { audioClipsForPlayback } from "../project-model/audio-takes";
 import type { Transport } from "../transport/Transport";
@@ -290,7 +290,13 @@ export class Scheduler {
    * immutably, so a stable ref means "no edit since last tick").
    */
   private songCacheProject: ProjectDocument | null = null;
-  private songClipsCache: { sceneId: string; startBar: number; lengthBars: number }[] = [];
+  private songClipsCache: {
+    sceneId: string;
+    startBar: number;
+    lengthBars: number;
+    phaseOffsetTicks?: number;
+    sceneOffsetTicks?: number;
+  }[] = [];
   private songScenesByIdCache = new Map<string, ProjectDocument["scenes"][number]>();
   private songPatternsByIdCache = new Map<string, ProjectDocument["patterns"][number]>();
   private tracksByIdProject: ProjectDocument | null = null;
@@ -861,7 +867,13 @@ export class Scheduler {
       // sorted clips + id Maps are still valid. This turns a 25 ms
       // allocation triplet (array + spread + sort + 2 new Map) into
       // a 25 ms no-op on a stable project.
-      let clips: { sceneId: string; startBar: number; lengthBars: number }[];
+      let clips: {
+        sceneId: string;
+        startBar: number;
+        lengthBars: number;
+        phaseOffsetTicks?: number;
+        sceneOffsetTicks?: number;
+      }[];
       let scenesById: Map<string, ProjectDocument["scenes"][number]>;
       let patternsById: Map<string, ProjectDocument["patterns"][number]>;
       if (this.songCacheProject === doc) {
@@ -894,7 +906,7 @@ export class Scheduler {
           const scene = scenesById.get(clip.sceneId);
           if (scene) {
             activeScene = scene;
-            activeClipStart = clipStart;
+            activeClipStart = sceneBaseTickForClip(clip);
           }
           break;
         }
@@ -983,9 +995,10 @@ export class Scheduler {
         const pattern = patternsById.get(scene.patternId);
         if (!pattern) continue;
         const patternTicks = STEP_TICKS * pattern.stepCount;
-        this.schedulePatternWindow(pattern, clipStart, s, e, tempoSplit ? timeAtForWindow : undefined);
+        const patternBase = patternBaseTickForClip(clip);
+        this.schedulePatternWindow(pattern, patternBase, s, e, tempoSplit ? timeAtForWindow : undefined);
         if (!automationCtx && contentWindowStart >= clipStart) {
-          automationCtx = { base: clipStart, patternTicks };
+          automationCtx = { base: patternBase, patternTicks };
         }
       }
       if (!automationCtx) {
@@ -997,7 +1010,7 @@ export class Scheduler {
           const scene = scenesById.get(covering.sceneId);
           const pattern = scene ? patternsById.get(scene.patternId) : undefined;
           const patternTicks = pattern ? STEP_TICKS * pattern.stepCount : STEP_TICKS * 16;
-          automationCtx = { base: covering.startBar * BAR_TICKS, patternTicks };
+          automationCtx = { base: patternBaseTickForClip(covering), patternTicks };
         }
       }
       // Marker firing: queue cues for any marker whose tick falls within the
@@ -1211,7 +1224,7 @@ export class Scheduler {
 }
 
 function sceneIntensityPointsForWindow(
-  clips: { sceneId: string; startBar: number; lengthBars: number }[],
+  clips: { sceneId: string; startBar: number; lengthBars: number; sceneOffsetTicks?: number }[],
   scenesById: Map<string, ProjectDocument["scenes"][number]>,
   fromTick: number,
   toTick: number,
@@ -1229,12 +1242,13 @@ function sceneIntensityPointsForWindow(
     if (!scene) {
       points.push({ tick: from, value: 0.7 }, { tick: to, value: 0.7 });
     } else {
-      points.push({ tick: from, value: computeSceneIntensity(scene, clipStart, from) });
+      const sceneBase = sceneBaseTickForClip(clip);
+      points.push({ tick: from, value: computeSceneIntensity(scene, sceneBase, from) });
       for (const curvePoint of scene.intensityCurve ?? []) {
-        const tick = clipStart + curvePoint.offset;
-        if (tick > from && tick < to) points.push({ tick, value: computeSceneIntensity(scene, clipStart, tick) });
+        const tick = sceneBase + curvePoint.offset;
+        if (tick > from && tick < to) points.push({ tick, value: computeSceneIntensity(scene, sceneBase, tick) });
       }
-      points.push({ tick: to, value: computeSceneIntensity(scene, clipStart, to) });
+      points.push({ tick: to, value: computeSceneIntensity(scene, sceneBase, to) });
     }
     cursor = Math.max(cursor, to);
   }

@@ -1,4 +1,5 @@
 import type { Scene } from "./types";
+import type { ArrangementClip } from "./types";
 
 /**
  * Compute the scene's intensity value at a given scene-local tick. Uses a
@@ -43,7 +44,7 @@ function clamp01(v: number): number {
 export function intensitySignalAt(
   doc: {
     scenes: Scene[];
-    arrangement: { clips: { id: string; sceneId: string; startBar: number; lengthBars: number }[] };
+    arrangement: { clips: Pick<ArrangementClip, "id" | "sceneId" | "startBar" | "lengthBars" | "sceneOffsetTicks">[] };
   },
   activePatternId: string,
   tick: number,
@@ -55,7 +56,10 @@ export function intensitySignalAt(
     if (tick >= start && tick < end) {
       const scene =
         doc.scenes.find((s) => s.patternId === activePatternId) ?? doc.scenes.find((s) => s.id === clip.sceneId);
-      if (scene) return computeSceneIntensity(scene, start, tick);
+      if (scene) {
+        const sceneOffset = Number.isFinite(clip.sceneOffsetTicks) ? (clip.sceneOffsetTicks ?? 0) : 0;
+        return computeSceneIntensity(scene, start - sceneOffset, tick);
+      }
     }
   }
   // Pattern-mode fallback: use the active scene (if any) at offset 0.

@@ -525,6 +525,39 @@ describe("scheduler", () => {
     scheduler.stop();
   });
 
+  it("starts a cropped song clip at its persisted pattern phase", () => {
+    const base = createDefaultProject();
+    const scene = base.scenes[0]!;
+    const kick = getDrumTrack(base).pads[0]!;
+    const sourcePattern = base.patterns.find((candidate) => candidate.id === scene.patternId)!;
+    const pattern = {
+      ...sourcePattern,
+      rows: {
+        ...sourcePattern.rows,
+        [kick.id]: Array.from({ length: sourcePattern.stepCount }, (_, step) => (step === 1 ? 1 : 0)),
+      },
+    };
+    const phased: ProjectDocument = {
+      ...base,
+      patterns: base.patterns.map((candidate) => (candidate.id === pattern.id ? pattern : candidate)),
+      arrangement: {
+        ...base.arrangement,
+        clips: [{ id: "phased-clip", sceneId: scene.id, startBar: 0, lengthBars: 1, phaseOffsetTicks: STEP_TICKS }],
+      },
+    };
+    const { events, transport, scheduler, advance } = makeHarness(phased, "song");
+    transport.play(0);
+    scheduler.start();
+    for (let i = 0; i < 8; i++) {
+      advance(0.025);
+      scheduler["tick"]();
+    }
+
+    const kickTimes = events.filter((event) => event.padId === kick.id).map((event) => event.when);
+    expect(kickTimes[0]).toBeCloseTo(10, 3);
+    scheduler.stop();
+  });
+
   it("automation hook is called once per window in pattern mode", () => {
     const doc = createDefaultProject();
     const { automationCalls, transport, scheduler, advance } = makeHarness(doc);

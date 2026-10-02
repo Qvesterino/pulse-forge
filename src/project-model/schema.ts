@@ -16,6 +16,7 @@ import type {
   MacroMapping,
   Marker,
   MasterConfig,
+  ArrangementClip,
   Pattern,
   ProjectDocument,
   ProjectLineage,
@@ -28,7 +29,7 @@ import type {
   StepMeta,
   AutomationTarget,
 } from "./types";
-import { PPQ, STEPS_PER_PATTERN, isMusicalKey } from "./types";
+import { BAR_TICKS, PPQ, STEP_TICKS, STEPS_PER_PATTERN, isMusicalKey } from "./types";
 import { sanitizeProjectProducerBrief } from "./producer-brief";
 import { sanitizeGateSteps, sanitizeLfo, sanitizeManglerSteps } from "./modulators";
 import { uid } from "../shared/ids";
@@ -45,7 +46,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -1542,6 +1543,8 @@ function normalizeScenesDomain(s: NormalizeState): void {
 function normalizeArrangementDomain(s: NormalizeState): void {
   const doc = s.doc;
   const sceneIds = new Set(doc.scenes.map((sc) => sc.id));
+  const scenesById = new Map(doc.scenes.map((scene) => [scene.id, scene] as const));
+  const patternsById = new Map(doc.patterns.map((pattern) => [pattern.id, pattern] as const));
   const trackIds = new Set(doc.tracks.map((t) => t.id));
   let arrangement = doc.arrangement;
   if (arrangement === undefined || arrangement === null) {
@@ -1559,9 +1562,33 @@ function normalizeArrangementDomain(s: NormalizeState): void {
         sceneIds.has(c.sceneId) &&
         Number.isFinite(c.startBar) &&
         c.startBar >= 0 &&
-        c.lengthBars >= 1 &&
+        Number.isFinite(c.lengthBars) &&
+        c.lengthBars > 0 &&
         c.lengthBars <= MAX_ARRANGEMENT_CLIP_BARS,
     )
+    .map((clip) => {
+      const scene = scenesById.get(clip.sceneId);
+      const pattern = scene ? patternsById.get(scene.patternId) : undefined;
+      const patternTicks = pattern ? pattern.stepCount * STEP_TICKS : 0;
+      const source = clip as ArrangementClip & { phaseOffsetTicks?: unknown; sceneOffsetTicks?: unknown };
+      const rawPhase = source.phaseOffsetTicks;
+      const rawSceneOffset = source.sceneOffsetTicks;
+      const phase = typeof rawPhase === "number" && Number.isFinite(rawPhase) && rawPhase >= 0 ? rawPhase : 0;
+      const normalizedPhase = patternTicks > 0 ? phase % patternTicks : phase;
+      const sceneOffset =
+        typeof rawSceneOffset === "number" && Number.isFinite(rawSceneOffset) && rawSceneOffset >= 0
+          ? Math.min(rawSceneOffset, MAX_ARRANGEMENT_CLIP_BARS * BAR_TICKS)
+          : 0;
+      const phaseChanged = normalizedPhase > 1e-9 ? rawPhase !== normalizedPhase : rawPhase !== undefined;
+      const sceneOffsetChanged = sceneOffset > 1e-9 ? rawSceneOffset !== sceneOffset : rawSceneOffset !== undefined;
+      if (!phaseChanged && !sceneOffsetChanged) return clip;
+      const normalized: ArrangementClip = { ...clip };
+      if (normalizedPhase > 1e-9) normalized.phaseOffsetTicks = normalizedPhase;
+      else delete normalized.phaseOffsetTicks;
+      if (sceneOffset > 1e-9) normalized.sceneOffsetTicks = sceneOffset;
+      else delete normalized.sceneOffsetTicks;
+      return normalized;
+    })
     .sort((a, b) => a.startBar - b.startBar);
   const transitions = sanitizeArrangementTransitions(arrangement.transitions, sorted);
   const sanitizedAudioClips = sanitizeAudioClips(
@@ -2490,7 +2517,8 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // v7 adds take-comp provenance and permits short, positive AudioClip ranges;
   // v8 adds optional per-pad round-robin / velocity layers (`DrumPad.layers`);
   // v9 adds `AudioClip.loopPhaseOffsetSec` for phase-preserving loop splits;
-  // v10 adds the opt-in, structured project Producer Brief (no raw prompts/audio).
+  // v10 adds the opt-in, structured project Producer Brief (no raw prompts/audio);
+  // v11 adds ArrangementClip pattern/scene phase offsets (missing means phase 0).
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

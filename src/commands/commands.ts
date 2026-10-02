@@ -50,6 +50,7 @@ import { setStepVelocityInPattern, withPad, withTrack } from "../project-model/t
 import { getYDocHelpers } from "./yDocBridge";
 import { insertPointSorted } from "../project-model/automation";
 import { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
+import { patternPhaseOffsetAtTick, sceneOffsetAtTick } from "../project-model/events";
 import {
   clampUnit,
   createDrumTrackModel,
@@ -2930,6 +2931,8 @@ export function duplicateArrangementClip(doc: ProjectDocument, clipId: string): 
     sceneId: clip.sceneId,
     startBar,
     lengthBars: clip.lengthBars,
+    ...(clip.phaseOffsetTicks !== undefined ? { phaseOffsetTicks: clip.phaseOffsetTicks } : {}),
+    ...(clip.sceneOffsetTicks !== undefined ? { sceneOffsetTicks: clip.sceneOffsetTicks } : {}),
     ...(clip.loop ? { loop: clip.loop } : {}),
   };
   const next: ProjectDocument = {
@@ -4733,12 +4736,8 @@ export function consolidateTimeRangeToAudio(
   const toBar = to / BAR_TICKS;
   const lengthBars = toBar - fromBar;
   const overlaps = (startBar: number, bars: number) => startBar < toBar && startBar + bars > fromBar;
-  const contained = (startBar: number, bars: number) => startBar >= fromBar && startBar + bars <= toBar;
   const sourceClips = doc.arrangement.clips.filter((clip) => overlaps(clip.startBar, clip.lengthBars));
   const sourceAudio = (doc.arrangement.audioClips ?? []).filter((clip) => overlaps(clip.startBar, clip.lengthBars));
-  if (sourceClips.some((clip) => !contained(clip.startBar, clip.lengthBars))) {
-    throw new Error("An arrangement clip crosses this range boundary. Select the whole clip before consolidating.");
-  }
 
   const splitAudio = splitAudioClipsForConsolidationRange(doc, sourceAudio, from, to, sourceDurationsByBufferId);
 
@@ -4769,7 +4768,7 @@ export function consolidateTimeRangeToAudio(
 
   const tempoPatterns: Pattern[] = [];
   const tempoScenes: Scene[] = [];
-  const tempoClipById = new Map<string, ArrangementClip>();
+  const tempoSceneByClipId = new Map<string, Scene>();
   for (const clip of sourceClips) {
     const scene = doc.scenes.find((candidate) => candidate.id === clip.sceneId);
     const pattern = scene && doc.patterns.find((candidate) => candidate.id === scene.patternId);
@@ -4790,10 +4789,56 @@ export function consolidateTimeRangeToAudio(
     };
     tempoPatterns.push(tempoPattern);
     tempoScenes.push(tempoScene);
-    tempoClipById.set(clip.id, { ...clip, sceneId: tempoScene.id });
+    tempoSceneByClipId.set(clip.id, tempoScene);
   }
 
-  const nextClips = doc.arrangement.clips.map((clip) => tempoClipById.get(clip.id) ?? clip);
+  const sourceClipIds = new Set(sourceClips.map((clip) => clip.id));
+  const nextClips: ArrangementClip[] = [];
+  for (const clip of doc.arrangement.clips) {
+    if (!sourceClipIds.has(clip.id)) {
+      nextClips.push(clip);
+      continue;
+    }
+    const tempoScene = tempoSceneByClipId.get(clip.id);
+    const scene = doc.scenes.find((candidate) => candidate.id === clip.sceneId);
+    const pattern = scene && doc.patterns.find((candidate) => candidate.id === scene.patternId);
+    if (!tempoScene || !pattern) throw new Error(`Cannot preserve tempo for arrangement clip ${clip.id}.`);
+
+    const clipEndBar = clip.startBar + clip.lengthBars;
+    const overlapStartBar = Math.max(clip.startBar, fromBar);
+    const overlapEndBar = Math.min(clipEndBar, toBar);
+    const hasLeftRemainder = clip.startBar < overlapStartBar;
+    const hasRightRemainder = overlapEndBar < clipEndBar;
+    const isPartial = hasLeftRemainder || hasRightRemainder;
+
+    if (hasLeftRemainder) {
+      nextClips.push({ ...clip, lengthBars: overlapStartBar - clip.startBar });
+    }
+
+    if (hasRightRemainder) {
+      const rightStartTick = overlapEndBar * BAR_TICKS;
+      nextClips.push({
+        ...clip,
+        id: hasLeftRemainder ? uid("clip") : clip.id,
+        startBar: overlapEndBar,
+        lengthBars: clipEndBar - overlapEndBar,
+        phaseOffsetTicks: patternPhaseOffsetAtTick(clip, pattern, rightStartTick),
+        sceneOffsetTicks: sceneOffsetAtTick(clip, rightStartTick),
+      });
+    }
+
+    const placeholder: ArrangementClip = {
+      ...clip,
+      id: isPartial ? uid("clip") : clip.id,
+      sceneId: tempoScene.id,
+      startBar: overlapStartBar,
+      lengthBars: overlapEndBar - overlapStartBar,
+    };
+    delete placeholder.phaseOffsetTicks;
+    delete placeholder.sceneOffsetTicks;
+    nextClips.push(placeholder);
+  }
+  nextClips.sort((a, b) => a.startBar - b.startBar);
   const nextAudioClips = (withPrintClip.arrangement.audioClips ?? [])
     .filter((clip) => !splitAudio.removedClipIds.has(clip.id))
     .sort((a, b) => a.startBar - b.startBar);

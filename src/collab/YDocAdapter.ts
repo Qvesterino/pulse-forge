@@ -291,6 +291,8 @@ function yMapToClip(m: unknown): ArrangementClip {
     sceneId: map.get("sceneId") as string,
     startBar: map.get("startBar") as number,
     lengthBars: map.get("lengthBars") as number,
+    ...(map.has("phaseOffsetTicks") ? { phaseOffsetTicks: map.get("phaseOffsetTicks") as number } : {}),
+    ...(map.has("sceneOffsetTicks") ? { sceneOffsetTicks: map.get("sceneOffsetTicks") as number } : {}),
     loop: map.get("loop") as boolean | undefined,
   };
 }
@@ -588,7 +590,7 @@ const PAD_SCALARS = [
 const EFFECT_SCALARS = ["type", "bypassed", "sidechainTrackId"];
 const NOTE_SCALARS = ["pitch", "start", "duration", "velocity"];
 const SCENE_SCALARS = ["name", "patternId", "intensity", "loop", "role", "bpm"];
-const CLIP_SCALARS = ["sceneId", "startBar", "lengthBars", "loop"];
+const CLIP_SCALARS = ["sceneId", "startBar", "lengthBars", "phaseOffsetTicks", "sceneOffsetTicks", "loop"];
 const TRANSITION_SCALARS = ["fromClipId", "toClipId", "type", "lengthBars", "cueAssetId"];
 const MARKER_SCALARS = ["name", "type", "tick", "linkedClipId", "customId"];
 const MACRO_SCALARS = ["name", "value"];
@@ -1135,6 +1137,8 @@ function clipToYMap(c: ArrangementClip): Y.Map<unknown> {
   m.set("sceneId", c.sceneId);
   m.set("startBar", c.startBar);
   m.set("lengthBars", c.lengthBars);
+  if (c.phaseOffsetTicks !== undefined) m.set("phaseOffsetTicks", c.phaseOffsetTicks);
+  if (c.sceneOffsetTicks !== undefined) m.set("sceneOffsetTicks", c.sceneOffsetTicks);
   if (c.loop !== undefined) m.set("loop", c.loop);
   return m;
 }

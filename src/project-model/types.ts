@@ -658,6 +658,10 @@ export interface ArrangementClip {
   sceneId: ID;
   startBar: number;
   lengthBars: number;
+  /** Pattern-relative tick already elapsed when this clip's visible range begins; absent means 0. */
+  phaseOffsetTicks?: number;
+  /** Scene-automation/intensity tick already elapsed when this clip's visible range begins; absent means 0. */
+  sceneOffsetTicks?: number;
   /** Per-clip loop flag. Falls back to the referenced scene's `loop` if absent. */
   loop?: boolean;
 }

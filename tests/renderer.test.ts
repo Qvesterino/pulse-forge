@@ -1,7 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { expandAutomationAcrossWindows } from "../src/rendering/renderer";
+import { describe, expect, it, vi } from "vitest";
+import {
+  buildSceneIntensityPoints,
+  expandAutomationAcrossWindows,
+  scheduleSceneAutomation,
+} from "../src/rendering/renderer";
 import type { AutomationPoint, Pattern } from "../src/project-model/types";
 import { BAR_TICKS, STEP_TICKS } from "../src/project-model/types";
+import { createDefaultProject } from "../src/project-model/schema";
 
 function makePattern(stepCount: number): Pattern {
   return {
@@ -53,6 +58,78 @@ describe("expandAutomationAcrossWindows", () => {
       { tick: clipStart, value: 0.2 },
       { tick: clipStart + STEP_TICKS * 4, value: 0.6 },
     ]);
+  });
+
+  it("keeps pattern automation on pattern phase while scene intensity uses its own origin", () => {
+    const doc = createDefaultProject();
+    const scene = doc.scenes[0]!;
+    const pattern = doc.patterns.find((candidate) => candidate.id === scene.patternId)!;
+    const phasedScene = {
+      ...doc,
+      scenes: doc.scenes.map((candidate) =>
+        candidate.id === scene.id
+          ? {
+              ...candidate,
+              intensityCurve: [
+                { offset: 0, value: 0.2 },
+                { offset: STEP_TICKS * 2, value: 0.8 },
+              ],
+            }
+          : candidate,
+      ),
+    };
+    const window = {
+      pattern,
+      base: -STEP_TICKS / 2,
+      sceneBase: -STEP_TICKS,
+      from: 0,
+      to: BAR_TICKS,
+      sceneId: scene.id,
+    };
+    const patternPoints = expandAutomationAcrossWindows([{ tick: STEP_TICKS / 2, value: 0.5 }], [window]);
+    const scenePoints = buildSceneIntensityPoints(phasedScene, [window], BAR_TICKS);
+
+    expect(patternPoints[0]).toEqual({ tick: 0, value: 0.5 });
+    expect(scenePoints.find((point) => point.tick === 0)?.value).toBeCloseTo(0.5);
+  });
+
+  it("evaluates scene automation at the persisted scene-relative offset", () => {
+    const doc = createDefaultProject();
+    const scene = doc.scenes[0]!;
+    const track = doc.tracks.find((candidate) => candidate.kind !== "group")!;
+    const lane = {
+      id: "scene-lane",
+      sceneId: scene.id,
+      target: { kind: "trackGain" as const, trackId: track.id },
+      points: [
+        { tick: 0, value: 0.2 },
+        { tick: STEP_TICKS * 2, value: 0.8 },
+      ],
+    };
+    const scheduleTrackAutomation = vi.fn();
+    const engine = { scheduleTrackAutomation };
+    const window = {
+      pattern: doc.patterns[0]!,
+      base: -STEP_TICKS,
+      sceneBase: -STEP_TICKS,
+      from: 0,
+      to: BAR_TICKS,
+      sceneId: scene.id,
+    };
+    const timeAt = (tick: number) => tick;
+
+    scheduleSceneAutomation({ ...doc, sceneAutomation: [lane] }, [window], timeAt, engine as never);
+
+    expect(scheduleTrackAutomation).toHaveBeenCalledWith(
+      track.id,
+      "gain",
+      [
+        { tick: 0, value: 0.5 },
+        { tick: STEP_TICKS, value: 0.8 },
+        { tick: BAR_TICKS, value: 0.8 },
+      ],
+      timeAt,
+    );
   });
 
   it("uses the per-window pattern size, not a hard-coded length", () => {

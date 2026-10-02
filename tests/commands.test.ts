@@ -63,7 +63,7 @@ import {
 } from "../src/commands/commands";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { FACTORY_PRESETS } from "../src/effects/ultina-core/presets/factoryPresets";
-import { BAR_TICKS, getDrumTrack } from "../src/project-model/types";
+import { BAR_TICKS, STEP_TICKS, getDrumTrack } from "../src/project-model/types";
 
 describe("commands", () => {
   it("prints a selected range to one audio clip and restores all source state with one undo", () => {
@@ -177,6 +177,68 @@ describe("commands", () => {
     expect(warpedFragments[0]?.warpMarkers?.some((marker) => marker.tick === 3 * BAR_TICKS)).toBe(true);
     expect(warpedFragments[1]?.warpMarkers?.some((marker) => marker.tick === 6 * BAR_TICKS)).toBe(true);
     expect(warpedFragments[1]?.offsetSec).toBeGreaterThan(warpedFragments[0]?.offsetSec ?? 0);
+  });
+
+  it("splits crossing musical clips while preserving pattern and scene phase with one undo", () => {
+    const base = createDefaultProject();
+    const sourceScene = base.scenes[0]!;
+    const sourcePattern = base.patterns.find((pattern) => pattern.id === sourceScene.patternId)!;
+    const sourceClip = {
+      id: "musical-source",
+      sceneId: sourceScene.id,
+      startBar: 2,
+      lengthBars: 8,
+      phaseOffsetTicks: STEP_TICKS,
+      sceneOffsetTicks: STEP_TICKS * 2,
+      loop: true,
+    };
+    const doc = {
+      ...base,
+      patterns: base.patterns.map((pattern) =>
+        pattern.id === sourcePattern.id ? { ...pattern, stepCount: 32 } : pattern,
+      ),
+      arrangement: { ...base.arrangement, clips: [sourceClip] },
+    };
+    const command = consolidateTimeRangeToAudio(doc, 3 * BAR_TICKS, 5 * BAR_TICKS, "user.music-print");
+    const printed = command.execute(doc);
+    const sourceFragments = printed.arrangement.clips.filter((clip) => clip.sceneId === sourceScene.id);
+    const placeholder = printed.arrangement.clips.find((clip) => clip.sceneId !== sourceScene.id);
+    const left = sourceFragments.find((clip) => clip.startBar === 2);
+    const right = sourceFragments.find((clip) => clip.startBar === 5);
+
+    expect(left).toMatchObject({
+      id: "musical-source",
+      lengthBars: 1,
+      phaseOffsetTicks: STEP_TICKS,
+      sceneOffsetTicks: STEP_TICKS * 2,
+      loop: true,
+    });
+    expect(right).toMatchObject({
+      lengthBars: 5,
+      phaseOffsetTicks: STEP_TICKS + 3 * BAR_TICKS - 2 * BAR_TICKS,
+      sceneOffsetTicks: STEP_TICKS * 2 + 3 * BAR_TICKS,
+      loop: true,
+    });
+    expect(placeholder).toMatchObject({ startBar: 3, lengthBars: 2 });
+    expect(placeholder?.id).not.toBe(sourceClip.id);
+    expect(placeholder).not.toHaveProperty("phaseOffsetTicks");
+    expect(placeholder).not.toHaveProperty("sceneOffsetTicks");
+    expect(printed.arrangement.audioClips?.find((clip) => clip.bufferId === "user.music-print")).toMatchObject({
+      startBar: 3,
+      lengthBars: 2,
+    });
+    expect(command.undo(printed)).toEqual(doc);
+  });
+
+  it("retains a sub-bar musical remainder created at a consolidation boundary", () => {
+    const base = createDefaultProject();
+    const scene = base.scenes[0]!;
+    const clip = { id: "sliver-source", sceneId: scene.id, startBar: 2.999, lengthBars: 3.001 };
+    const doc = { ...base, arrangement: { ...base.arrangement, clips: [clip] } };
+    const printed = consolidateTimeRangeToAudio(doc, 3 * BAR_TICKS, 5 * BAR_TICKS, "user.sliver-print").execute(doc);
+    const left = printed.arrangement.clips.find((candidate) => candidate.id === clip.id);
+    expect(left?.startBar).toBeCloseTo(2.999);
+    expect(left?.lengthBars).toBeCloseTo(0.001);
   });
 
   it("replaces selected clips with one rendered asset through a single undoable command", () => {
@@ -859,12 +921,25 @@ describe("scenes and arrangement", () => {
   });
 
   it("duplicateArrangementClip places the copy after the original at first free space", () => {
-    const doc = createDefaultProject();
+    const base = createDefaultProject();
+    const doc = {
+      ...base,
+      arrangement: {
+        ...base.arrangement,
+        clips: base.arrangement.clips.map((clip, index) =>
+          index === 0 ? { ...clip, phaseOffsetTicks: STEP_TICKS, sceneOffsetTicks: STEP_TICKS * 2 } : clip,
+        ),
+      },
+    };
     const store = new ProjectStore(doc);
     const clipId = doc.arrangement.clips[0].id;
     store.execute(duplicateArrangementClip(store.doc, clipId));
     expect(store.doc.arrangement.clips).toHaveLength(2);
     expect(store.doc.arrangement.clips[1].startBar).toBe(4);
+    expect(store.doc.arrangement.clips[1]).toMatchObject({
+      phaseOffsetTicks: STEP_TICKS,
+      sceneOffsetTicks: STEP_TICKS * 2,
+    });
     store.execute(duplicateArrangementClip(store.doc, clipId));
     expect(store.doc.arrangement.clips[2].startBar).toBe(8);
     store.execute(deleteArrangementClip(store.doc, clipId));
