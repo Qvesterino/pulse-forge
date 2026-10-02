@@ -193,7 +193,6 @@
   }
 }
 
-
 /* ── Audio reference chip (T4: "sprav to ako tento WAV") ─────────────── */
 .intent-ref-chip {
   display: flex;
@@ -264,6 +263,72 @@
 .intent-history-chip:hover {
   border-color: var(--accent, #f59e0b);
   color: var(--accent, #f59e0b);
+}
+
+/* Project-scoped AI memory — inspectable even when generation use is off. */
+.project-brief-manager {
+  margin: 4px 0;
+  border: 1px solid color-mix(in srgb, var(--accent, #f59e0b) 20%, var(--border, #333));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg-raise, #222) 72%, transparent);
+  font: 9px var(--mono, monospace);
+}
+
+.project-brief-manager > summary {
+  padding: 5px 8px;
+  color: var(--text-dim, #aaa);
+  cursor: pointer;
+  letter-spacing: 0.08em;
+  list-style-position: inside;
+}
+
+.project-brief-fact-list {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0 6px 5px;
+  list-style: none;
+}
+
+.project-brief-fact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-radius: 4px;
+  padding: 4px 6px;
+  background: color-mix(in srgb, var(--bg, #111) 72%, transparent);
+}
+
+.project-brief-fact-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.project-brief-fact-copy strong {
+  color: var(--accent, #f59e0b);
+  font-weight: 500;
+}
+
+.project-brief-fact-copy > span {
+  color: var(--text, #ddd);
+  overflow-wrap: anywhere;
+}
+
+.project-brief-fact-copy small {
+  color: var(--text-faint, #777);
+}
+
+.project-brief-forget,
+.project-brief-clear-all {
+  flex: 0 0 auto;
+  font-size: 8px;
+}
+
+.project-brief-clear-all {
+  margin: 0 8px 7px;
+  color: #fca5a5;
 }
 
 /* ── Vocal take card (V-roadmap V1: "producer listens") ─────────────── */

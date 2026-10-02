@@ -2,6 +2,7 @@ import "fake-indexeddb/auto";
 import { describe, expect, it } from "vitest";
 import {
   clearProjectProducerBriefCommand,
+  removeProjectProducerBriefFactCommand,
   saveProjectProducerBriefCommand,
 } from "../src/commands/producerBriefCommands";
 import { ProjectRepository } from "../src/persistence/ProjectRepository";
@@ -233,5 +234,25 @@ describe("project Producer Brief persistence", () => {
     const cleared = clear.execute(saved);
     expect(cleared).not.toHaveProperty("producerBrief");
     expect(clear.undo(cleared)).toEqual(saved);
+  });
+
+  it("forgets one field with undo and removes the memory container when the last fact is removed", () => {
+    const doc = createProjectFromTemplate("house");
+    const saved = saveProjectProducerBriefCommand(doc, savedBrief()).execute(doc);
+    const forgetMood = removeProjectProducerBriefFactCommand(saved, "mood");
+    const withoutMood = forgetMood.execute(saved);
+    expect(withoutMood.producerBrief?.facts.some((fact) => fact.field === "mood")).toBe(false);
+    expect(withoutMood.producerBrief?.facts.some((fact) => fact.field === "bpmRange")).toBe(true);
+    expect(forgetMood.undo(withoutMood)).toEqual(saved);
+
+    const oneFact: ProjectProducerBriefV1 = {
+      version: 1,
+      savedAt: "2026-10-02T10:00:00.000Z",
+      facts: [{ field: "mood", section: "preference", value: "dark", origin: "user", confidence: "confirmed" }],
+    };
+    const onlyMood = { ...doc, producerBrief: oneFact };
+    expect(removeProjectProducerBriefFactCommand(onlyMood, "mood").execute(onlyMood)).not.toHaveProperty(
+      "producerBrief",
+    );
   });
 });

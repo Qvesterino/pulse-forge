@@ -100,4 +100,23 @@ describe("IntentPanel — project Producer Brief", () => {
     });
     expect(screen.getByRole("button", { name: "GENERATE" })).toBeDisabled();
   });
+
+  it("lets the creator inspect and forget one saved fact while memory is off", () => {
+    const doc = projectWithBrief();
+    const services = mockServices(doc);
+    renderWithContext(<IntentPanel />, { services });
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Use saved project Producer Brief for generation" }));
+    fireEvent.click(screen.getByText(/PROJECT MEMORY · 4 FACTS/));
+    expect(screen.getByText("trap")).toBeInTheDocument();
+    expect(screen.getByText("140 BPM")).toBeInTheDocument();
+    expect(screen.getAllByText("potvrdené tebou · confirmed")).toHaveLength(4);
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove saved project brief fact: mood" }));
+    const command = vi.mocked(services.store.execute).mock.calls[0]?.[0];
+    expect(command?.type).toBe("removeProjectProducerBriefFact");
+    const updated = command!.execute(doc);
+    expect(updated.producerBrief?.facts.some((fact) => fact.field === "mood")).toBe(false);
+    expect(updated.producerBrief?.facts.some((fact) => fact.field === "preserve")).toBe(true);
+  });
 });

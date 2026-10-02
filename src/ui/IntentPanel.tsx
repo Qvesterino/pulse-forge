@@ -98,10 +98,15 @@ import {
   mergeProjectProducerBrief,
   projectBriefCorrectionsFor,
 } from "../intent/project-brief";
-import { clearProjectProducerBriefCommand, saveProjectProducerBriefCommand } from "../commands/producerBriefCommands";
+import {
+  clearProjectProducerBriefCommand,
+  removeProjectProducerBriefFactCommand,
+  saveProjectProducerBriefCommand,
+} from "../commands/producerBriefCommands";
 import { evaluateBriefCompliance } from "../intent/brief-gate";
 import { compileIteration } from "../intent/iteration";
 import { BriefContractSummary } from "./BriefContractSummary";
+import { ProjectProducerBriefManager } from "./ProjectProducerBriefManager";
 import { downmixToMono, resampleLinear } from "../sample-library/audio-index";
 import {
   applyBypassIntent,
@@ -2893,29 +2898,24 @@ export function IntentPanel() {
         </button>
       </div>
       {doc.producerBrief && (
-        <div className="intent-history" aria-label="Project Producer Brief memory">
-          <label className="intent-history-label">
-            <input
-              type="checkbox"
-              checked={useProjectBrief}
-              onChange={(event) => setUseProjectBrief(event.target.checked)}
-              aria-label="Use saved project Producer Brief for generation"
-            />
-            PROJECT BRIEF {useProjectBrief ? "ON" : "OFF"}
-          </label>
-          <span className="intent-history-label">
-            {doc.producerBrief.facts.length} structured facts · saved{" "}
-            {new Date(doc.producerBrief.savedAt).toLocaleDateString()}
-          </span>
-          <button
-            type="button"
-            className="btn btn-small"
-            onClick={clearSavedProjectBrief}
-            title="Remove the saved project brief; undo restores it"
-          >
-            CLEAR
-          </button>
-        </div>
+        <>
+          <div className="intent-history" aria-label="Project Producer Brief memory">
+            <label className="intent-history-label">
+              <input
+                type="checkbox"
+                checked={useProjectBrief}
+                onChange={(event) => setUseProjectBrief(event.target.checked)}
+                aria-label="Use saved project Producer Brief for generation"
+              />
+              PROJECT BRIEF {useProjectBrief ? "ON" : "OFF"}
+            </label>
+          </div>
+          <ProjectProducerBriefManager
+            brief={doc.producerBrief}
+            onRemove={(field) => services.store.execute(removeProjectProducerBriefFactCommand(doc, field))}
+            onClear={clearSavedProjectBrief}
+          />
+        </>
       )}
       {historyTick >= 0 && promptHistory().length > 0 && (
         <div className="intent-history" aria-label="Prompt history">
