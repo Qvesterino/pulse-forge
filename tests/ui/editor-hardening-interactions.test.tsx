@@ -224,6 +224,83 @@ describe("alt+click must not plant a hidden duplicate", () => {
   });
 });
 
+describe("alt-drag is ONE undo transaction", () => {
+  const stubRects = (noteEl: HTMLElement, container: HTMLElement) => {
+    vi.spyOn(noteEl, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 32,
+      height: 16,
+      right: 32,
+      bottom: 16,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    const gridEl = container.querySelector<HTMLElement>(".pianoroll-grid") ?? noteEl;
+    vi.spyOn(gridEl, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      width: 160,
+      height: 240,
+      right: 160,
+      bottom: 240,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+    return gridEl;
+  };
+
+  it("one Ctrl+Z removes the duplicate AND its move", () => {
+    // Pitch 84 = the grid row the stubbed pointer touches, so the drag is
+    // purely horizontal.
+    const note: NoteEvent = { id: "n1", pitch: 84, start: STEP_TICKS, duration: STEP_TICKS, velocity: 0.8 };
+    const { project, track, container } = renderLiveRoll(note);
+    const noteEl = container.querySelector<HTMLElement>(`[data-note-id="n1"]`)!;
+    stubRects(noteEl, container);
+
+    fireEvent.pointerDown(noteEl, { button: 0, altKey: true, clientX: 4, clientY: 2, pointerId: 1 });
+    fireEvent.pointerMove(noteEl, { clientX: 36, clientY: 2, pointerId: 1 });
+    fireEvent.pointerUp(noteEl, { pointerId: 1 });
+    expect(noteIn(project, track.id)).toHaveLength(2);
+
+    // The gesture created exactly ONE history entry: a single undo returns
+    // to the pristine pre-gesture state (duplicate removed AND the move
+    // reverted — pre-fix this needed two presses, leaving the copy stacked
+    // on the original after the first).
+    act(() => {
+      project.undo();
+    });
+    const notes = noteIn(project, track.id);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.id).toBe("n1");
+    expect(notes[0]!.start).toBe(note.start);
+    expect(project.canUndo).toBe(false);
+  });
+
+  it("cancel after materialization keeps the duplicate as its own single entry", () => {
+    const note: NoteEvent = { id: "n1", pitch: 84, start: STEP_TICKS, duration: STEP_TICKS, velocity: 0.8 };
+    const { project, track, container } = renderLiveRoll(note);
+    const noteEl = container.querySelector<HTMLElement>(`[data-note-id="n1"]`)!;
+    stubRects(noteEl, container);
+
+    fireEvent.pointerDown(noteEl, { button: 0, altKey: true, clientX: 4, clientY: 2, pointerId: 1 });
+    fireEvent.pointerMove(noteEl, { clientX: 36, clientY: 2, pointerId: 1 });
+    // Interrupted after the duplicate committed but before the move — the
+    // frame closes with a single command and must NOT swallow it.
+    fireEvent.pointerCancel(noteEl, { pointerId: 1 });
+    expect(noteIn(project, track.id)).toHaveLength(2);
+
+    act(() => {
+      project.undo();
+    });
+    const notes = noteIn(project, track.id);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]!.id).toBe("n1");
+  });
+});
+
 describe("paste clamps into the pattern", () => {
   it("notes beyond patternTicks land inside it", () => {
     // The clipboard note starts at step 25 — far past the 8-step pattern the

@@ -80,6 +80,12 @@ export class ProjectStore {
     return this.undoStack.length > 0 ? this.undoStack[this.undoStack.length - 1].label : null;
   }
 
+  /** Consequence note of the most recent command, when it silently cleaned
+   * something up beyond what its label says (see Command.detail). */
+  get lastCommandDetail(): string | null {
+    return this.undoStack.length > 0 ? (this.undoStack[this.undoStack.length - 1].detail ?? null) : null;
+  }
+
   /** Last N history entries (most recent last). For the undo history panel. */
   get history(): HistoryEntry[] {
     const n = Math.min(this.undoStack.length, 20);
@@ -240,15 +246,24 @@ export class ProjectStore {
   }
 
   /**
-   * Undo frame: collapse a multi-command live pass (MIDI record take) into
-   * ONE history entry. While a frame is open every execute() still applies
-   * live (the pattern updates as you play); endUndoFrame() swaps the frame's
-   * per-command undo entries for a single compound command, so one Ctrl+Z
-   * removes the whole take. Nested begin calls keep the open frame; an empty
-   * frame (nothing recorded) leaves no history entry at all.
+   * Undo frame: collapse a multi-command live pass (MIDI record take, an
+   * editor gesture that must commit several commands) into ONE history
+   * entry. While a frame is open every execute() still applies live;
+   * endUndoFrame() swaps the frame's per-command undo entries for a single
+   * compound command, so one Ctrl+Z removes the whole take. Nested begin
+   * calls keep the open frame; an empty frame (nothing recorded) leaves no
+   * history entry at all.
+   *
+   * Returns whether THIS call opened the frame — false means a frame was
+   * already open (nested begin kept the outer one). Component callers that
+   * bracket a gesture MUST track this return and only call endUndoFrame()
+   * when it was true: an unowned endUndoFrame would seal a foreign frame
+   * (e.g. a live MIDI record take) at the wrong moment, and an ownerless
+   * open frame would absorb every later command into a compound nobody
+   * ever closes.
    */
-  beginUndoFrame(label?: string): void {
-    if (this.frameCommands) return;
+  beginUndoFrame(label?: string): boolean {
+    if (this.frameCommands) return false;
     this.frameCommands = [];
     this.frameLabel = label ?? "Recorded take";
     this.frameOpenDepth = this.undoStack.length;
@@ -259,6 +274,7 @@ export class ProjectStore {
       // disabled-looking-enabled control is still wrong UI).
       this.emit();
     }
+    return true;
   }
 
   endUndoFrame(): void {

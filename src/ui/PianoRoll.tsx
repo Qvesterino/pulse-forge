@@ -687,6 +687,21 @@ export function PianoRollTrack({
    * time the first move lands) and re-points the drag at the duplicate, which
    * starts at the same position, so the existing base/delta math is unchanged.
    */
+  /**
+   * Undo-frame ownership for the alt-drag gesture: the duplicate and the
+   * move are ONE gesture, so they collapse into ONE history entry. The flag
+   * is true only when THIS component opened the frame (a live MIDI record
+   * frame makes the nested begin a no-op — then the gestures stay inside the
+   * record take's compound and the flag stays false, so our close never
+   * seals a foreign frame).
+   */
+  const altDragFrameRef = useRef(false);
+  const closeAltDragFrame = () => {
+    if (!altDragFrameRef.current) return;
+    altDragFrameRef.current = false;
+    services.store.endUndoFrame();
+  };
+
   const materializeAltDuplicate = (state: DragState): DragState => {
     if (state.mode === "noteVelocity") return state;
     const srcIds = state.pendingDupSrcIds;
@@ -702,6 +717,12 @@ export function PianoRollTrack({
     const prev = [...live];
     const next = [...live, ...dups].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
     const newIds = dups.map((n) => n.id);
+    // Bracket duplicate + the upcoming move into one undoable transaction.
+    // Grew===1 at close (cancel with no move, or a no-op move) leaves the
+    // duplicate as its own entry — the committed half of a dead gesture.
+    // `=== true`: the services union includes a void no-op stand-in, and a
+    // frame we did not open must never be closed by us.
+    altDragFrameRef.current = services.store.beginUndoFrame(`Duplicate ${dups.length} notes (drag)`) === true;
     services.store.execute({
       type: "altDragDuplicate",
       label: `Duplicate ${dups.length} notes`,
@@ -733,6 +754,7 @@ export function PianoRollTrack({
       noteLongPressFired.current = false;
       dragRef.current = null;
       setDrag(null);
+      closeAltDragFrame();
       return;
     }
     const current = dragRef.current;
@@ -779,6 +801,10 @@ export function PianoRollTrack({
         resizeNote(services.store.doc, track.id, current.noteId, clamp(current.durSteps, 1, maxDur) * STEP_TICKS),
       );
     }
+    // The duplicate + move were one gesture — collapse their undo entries.
+    // A no-op move (note vanished mid-drag) leaves grew===1, and endUndoFrame
+    // keeps that single duplicate entry as-is.
+    closeAltDragFrame();
   };
 
   // Interrupted drag (touch takeover, autoscroll, …) — abort without committing.
@@ -801,6 +827,9 @@ export function PianoRollTrack({
         if (noteEl) noteEl.style.opacity = String(0.35 + startVel * 0.65);
       }
     }
+    // If the alt-duplicate already materialized, the frame closes with grew===1
+    // and the committed duplicate stays as its own (single) undo entry.
+    closeAltDragFrame();
   };
 
   const [marquee, setMarquee] = useState<{
