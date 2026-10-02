@@ -1,5 +1,11 @@
 import type { Command } from "../commands/types";
-import type { ArrangementClip, ProjectDocument, Scene, SceneRole } from "../project-model/types";
+import {
+  BAR_TICKS,
+  type ArrangementClip,
+  type ProjectDocument,
+  type Scene,
+  type SceneRole,
+} from "../project-model/types";
 import { effectWordIn } from "./mix";
 import {
   addArrangementClip,
@@ -565,6 +571,94 @@ export function parseSelectedClipArrangeIntent(
   );
   const scopedOps = parseClipArrangeIntent(scopedText, scopedDoc);
   return scopedOps?.length === 1 && scopedOps[0]!.clipId === selectedClipId ? scopedOps : null;
+}
+
+export type SelectedTimeRangeOperation = "duplicate" | "consolidate";
+
+/** Parse an explicit natural-language action whose target is the selected tick range. */
+export function parseSelectedTimeRangeIntent(text: string): SelectedTimeRangeOperation | null {
+  const normalized = deaccent(text);
+  if (/\d/.test(normalized)) return null; // keep any explicit bar-number target from overriding the selection
+  const words = normalized.match(/[a-z]+/g) ?? [];
+  const duplicateVerb = /^(duplicate|copy|double|duplikuj\w*|zdvoj\w*|skopir\w*)$/;
+  const consolidateVerb = /^(consolidate|merge|combine|spoj\w*|zjednot\w*)$/;
+  const duplicateCount = words.filter((word) => duplicateVerb.test(word)).length;
+  const consolidateCount = words.filter((word) => consolidateVerb.test(word)).length;
+  if (duplicateCount + consolidateCount !== 1) return null;
+
+  const rangeNouns = new Set([
+    "range",
+    "zone",
+    "section",
+    "bars",
+    "bar",
+    "takt",
+    "takty",
+    "taktov",
+    "rozsah",
+    "usek",
+    "useku",
+  ]);
+  const rangeQualifiers = new Set([
+    "selected",
+    "selection",
+    "this",
+    "these",
+    "that",
+    "vyber",
+    "vybrany",
+    "vybrana",
+    "vybrate",
+    "vybratu",
+    "tento",
+    "tuto",
+    "tieto",
+  ]);
+  const fillerWords = new Set(["the", "a", "an", "whole", "entire", "current", "please", "just"]);
+  const verbs = duplicateCount > 0 ? duplicateVerb : consolidateVerb;
+  if (!words.some((word) => rangeNouns.has(word))) return null;
+  if (
+    words.some(
+      (word) => !verbs.test(word) && !rangeNouns.has(word) && !rangeQualifiers.has(word) && !fillerWords.has(word),
+    )
+  ) {
+    return null;
+  }
+  return duplicateCount > 0 ? "duplicate" : "consolidate";
+}
+
+/**
+ * Guard the current range commands' documented limitations before exposing
+ * them as Producer actions: only complete bars, and no audio clips that the
+ * commands would fail to copy/shift or include in the consolidation.
+ */
+export function selectedTimeRangeIntentError(
+  doc: ProjectDocument,
+  range: { fromTick: number; toTick: number },
+  operation: SelectedTimeRangeOperation,
+): string | null {
+  const fromTick = Math.min(range.fromTick, range.toTick);
+  const toTick = Math.max(range.fromTick, range.toTick);
+  if (!Number.isInteger(fromTick) || !Number.isInteger(toTick) || fromTick < 0 || toTick <= fromTick) {
+    return "Select a valid, non-empty time range.";
+  }
+  if (fromTick % BAR_TICKS !== 0 || toTick % BAR_TICKS !== 0) {
+    return "Producer range edits currently require a selection aligned to complete bars.";
+  }
+
+  const fromBar = fromTick / BAR_TICKS;
+  const toBar = toTick / BAR_TICKS;
+  const audioClips = doc.arrangement.audioClips ?? [];
+  if (operation === "duplicate" && audioClips.some((clip) => clip.startBar + clip.lengthBars > fromBar)) {
+    return "Audio clips in or after this range are not yet supported by time-range duplication.";
+  }
+  if (
+    operation === "consolidate" &&
+    audioClips.some((clip) => clip.startBar < toBar && clip.startBar + clip.lengthBars > fromBar)
+  ) {
+    return "This range contains audio clips; consolidate the musical arrangement separately for now.";
+  }
+  return null;
 }
 
 /**

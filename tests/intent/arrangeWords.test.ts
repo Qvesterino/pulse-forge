@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
+import { BAR_TICKS } from "../../src/project-model/types";
 import {
   applyArrangeOps,
   parseArrangeIntent,
   parseSelectedClipArrangeIntent,
+  parseSelectedTimeRangeIntent,
   resolveSceneTarget,
+  selectedTimeRangeIntentError,
 } from "../../src/intent/arrangeWords";
 
 /** Scene roles live on names in the scene-score template — mirror the engine. */
@@ -165,6 +168,59 @@ describe("selected clip intent", () => {
 
   it("fails closed for a deleted selected clip", () => {
     expect(parseSelectedClipArrangeIntent("delete selected clip", sceneScoreDoc(), "missing-clip")).toBeNull();
+  });
+});
+
+describe("selected time-range intent", () => {
+  it("parses only explicit duplicate/consolidate requests that name the selected range", () => {
+    expect(parseSelectedTimeRangeIntent("duplicate this range")).toBe("duplicate");
+    expect(parseSelectedTimeRangeIntent("duplikuj vybraný rozsah")).toBe("duplicate");
+    expect(parseSelectedTimeRangeIntent("consolidate these bars")).toBe("consolidate");
+    expect(parseSelectedTimeRangeIntent("make this range more energetic")).toBeNull();
+    expect(parseSelectedTimeRangeIntent("double the energy of this range")).toBeNull();
+    expect(parseSelectedTimeRangeIntent("duplicate selected")).toBeNull();
+    expect(parseSelectedTimeRangeIntent("duplicate bars 1 to 8")).toBeNull();
+    expect(parseSelectedTimeRangeIntent("duplicate and consolidate this range")).toBeNull();
+  });
+
+  it("requires complete bars and rejects audio clips the range commands cannot preserve", () => {
+    const doc = sceneScoreDoc();
+    const range = { fromTick: 0, toTick: BAR_TICKS * 4 };
+    expect(selectedTimeRangeIntentError(doc, range, "duplicate")).toBeNull();
+    expect(selectedTimeRangeIntentError(doc, { fromTick: 1, toTick: BAR_TICKS * 4 }, "duplicate")).toMatch(
+      /complete bars/i,
+    );
+
+    const audioClip = {
+      id: "range-audio",
+      trackId: doc.tracks.find((track) => track.kind !== "group")!.id,
+      bufferId: "user.range-audio",
+      startBar: 2,
+      lengthBars: 1,
+      offsetSec: 0,
+      trimStart: 0,
+      trimEnd: 0,
+      gain: 1,
+      fadeIn: 0,
+      fadeOut: 0,
+      stretchRate: 1,
+      reverse: false,
+    };
+    const withAudio = {
+      ...doc,
+      arrangement: { ...doc.arrangement, audioClips: [audioClip] },
+    };
+    expect(selectedTimeRangeIntentError(withAudio, range, "duplicate")).toMatch(/audio clips/i);
+    expect(selectedTimeRangeIntentError(withAudio, range, "consolidate")).toMatch(/contains audio clips/i);
+    expect(
+      selectedTimeRangeIntentError(withAudio, { fromTick: BAR_TICKS * 4, toTick: BAR_TICKS * 8 }, "consolidate"),
+    ).toBeNull();
+    const withLaterAudio = {
+      ...doc,
+      arrangement: { ...doc.arrangement, audioClips: [{ ...audioClip, startBar: 4 }] },
+    };
+    expect(selectedTimeRangeIntentError(withLaterAudio, range, "duplicate")).toMatch(/audio clips/i);
+    expect(selectedTimeRangeIntentError(withLaterAudio, range, "consolidate")).toBeNull();
   });
 });
 

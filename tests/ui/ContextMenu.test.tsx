@@ -5,6 +5,7 @@ import { ContextMenu } from "../../src/ui/ContextMenu";
 import { SelectionContext } from "../../src/ui/context";
 import { SelectionStore } from "../../src/store/SelectionStore";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
+import { BAR_TICKS } from "../../src/project-model/types";
 import { mockServices, renderWithContext } from "../helpers";
 
 describe("ContextMenu", () => {
@@ -132,6 +133,67 @@ describe("ContextMenu", () => {
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "APPLY · ONE UNDO STEP" }));
     expect(screen.getByRole("alert")).toHaveTextContent(/selected clip changed/i);
+    expect(services.store.execute).not.toHaveBeenCalled();
+  });
+
+  it("previews and duplicates the exact selected bar range as one undo step", () => {
+    const project = createProjectFromTemplate("scene-score");
+    const clip = [...project.arrangement.clips].sort((a, b) => a.startBar - b.startBar)[0]!;
+    const range = {
+      fromTick: clip.startBar * BAR_TICKS,
+      toTick: (clip.startBar + clip.lengthBars) * BAR_TICKS,
+    };
+    const services = mockServices(project);
+    const selection = new SelectionStore();
+    selection.setTimeRange(range);
+    renderWithContext(
+      <SelectionContext.Provider value={selection}>
+        <ContextMenu state={{ x: 0, y: 0, context: "selected bars" }} onClose={() => {}} />
+      </SelectionContext.Provider>,
+      { services },
+    );
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Producer edit selected range…" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Producer range instruction" }), {
+      target: { value: "duplicate this range" },
+    });
+    expect(screen.getByRole("region", { name: "Selected range edit preview" })).toHaveTextContent(
+      `Duplicate bars ${clip.startBar + 1}–${clip.startBar + clip.lengthBars}`,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "DUPLICATE · ONE UNDO STEP" }));
+
+    const command = vi.mocked(services.store.execute).mock.calls[0]?.[0];
+    expect(command?.type).toBe("duplicateTimeRange");
+    const changed = command!.execute(project);
+    expect(changed.arrangement.clips).toHaveLength(project.arrangement.clips.length + 1);
+    expect(command!.undo(changed)).toEqual(project);
+  });
+
+  it("blocks a range edit when the time selection changes before apply", () => {
+    const project = createProjectFromTemplate("scene-score");
+    const clip = [...project.arrangement.clips].sort((a, b) => a.startBar - b.startBar)[0]!;
+    const range = {
+      fromTick: clip.startBar * BAR_TICKS,
+      toTick: (clip.startBar + clip.lengthBars) * BAR_TICKS,
+    };
+    const services = mockServices(project);
+    const selection = new SelectionStore();
+    selection.setTimeRange(range);
+    renderWithContext(
+      <SelectionContext.Provider value={selection}>
+        <ContextMenu state={{ x: 0, y: 0, context: "selected bars" }} onClose={() => {}} />
+      </SelectionContext.Provider>,
+      { services },
+    );
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Producer edit selected range…" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Producer range instruction" }), {
+      target: { value: "duplicate selected range" },
+    });
+    act(() => selection.setTimeRange({ fromTick: range.fromTick + BAR_TICKS, toTick: range.toTick + BAR_TICKS }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/time selection changed/i);
+    expect(screen.getByRole("button", { name: "APPLY · ONE UNDO STEP" })).toBeDisabled();
     expect(services.store.execute).not.toHaveBeenCalled();
   });
 

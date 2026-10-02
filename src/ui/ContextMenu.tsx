@@ -11,7 +11,13 @@ import {
   duplicatePattern,
   duplicateTimeRange,
 } from "../commands/commands";
-import { applyClipArrangeOps, parseSelectedClipArrangeIntent } from "../intent/arrangeWords";
+import { BAR_TICKS } from "../project-model/types";
+import {
+  applyClipArrangeOps,
+  parseSelectedClipArrangeIntent,
+  parseSelectedTimeRangeIntent,
+  selectedTimeRangeIntentError,
+} from "../intent/arrangeWords";
 
 export interface ContextMenuState {
   x: number;
@@ -40,6 +46,10 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
     startBar: number;
     lengthBars: number;
   } | null>(null);
+  const [rangeEditOpen, setRangeEditOpen] = useState(false);
+  const [rangeEditText, setRangeEditText] = useState("");
+  const [rangeEditError, setRangeEditError] = useState<string | null>(null);
+  const [rangeEditTarget, setRangeEditTarget] = useState<{ fromTick: number; toTick: number } | null>(null);
   const selectedArrangementClip =
     selection.clipIds.length === 1 ? arrangement.clips.find((clip) => clip.id === selection.clipIds[0]) : undefined;
   const editorClip = clipEditTarget ? arrangement.clips.find((clip) => clip.id === clipEditTarget.id) : undefined;
@@ -74,11 +84,49 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
     });
     return { ops, preview, error: null };
   }, [clipEditText, clipEditTarget, doc, editorClip]);
+  const rangeEditPlan = useMemo(() => {
+    if (!rangeEditText.trim()) return { operation: null, preview: null, error: null };
+    if (!rangeEditTarget) return { operation: null, preview: null, error: "Select a time range first." };
+    const currentRange = selection.timeRange;
+    if (
+      !currentRange ||
+      currentRange.fromTick !== rangeEditTarget.fromTick ||
+      currentRange.toTick !== rangeEditTarget.toTick
+    ) {
+      return {
+        operation: null,
+        preview: null,
+        error: "The time selection changed. Close this editor and select the range again.",
+      };
+    }
+    const operation = parseSelectedTimeRangeIntent(rangeEditText);
+    if (!operation) {
+      return {
+        operation: null,
+        preview: null,
+        error: "Try “duplicate selected range” or “consolidate this range”.",
+      };
+    }
+    const rangeError = selectedTimeRangeIntentError(doc, rangeEditTarget, operation);
+    if (rangeError) return { operation: null, preview: null, error: rangeError };
+    const fromBar = rangeEditTarget.fromTick / BAR_TICKS;
+    const toBar = rangeEditTarget.toTick / BAR_TICKS;
+    const count = toBar - fromBar;
+    const preview =
+      operation === "duplicate"
+        ? `Duplicate bars ${fromBar + 1}–${toBar} (${count} bars), including clips, markers, pattern notes, and drum steps; shift later musical clips/markers.`
+        : `Consolidate bars ${fromBar + 1}–${toBar} (${count} bars) into one arrangement clip; source notes, steps, and clips in the range will be replaced.`;
+    return { operation, preview, error: null };
+  }, [doc, rangeEditTarget, rangeEditText, selection.timeRange]);
   const closeMenu = useCallback(() => {
     setClipEditOpen(false);
     setClipEditText("");
     setClipEditError(null);
     setClipEditTarget(null);
+    setRangeEditOpen(false);
+    setRangeEditText("");
+    setRangeEditError(null);
+    setRangeEditTarget(null);
     onClose();
   }, [onClose]);
   // Keyboard users must be able to reach the menu: focus the first item on
@@ -228,15 +276,50 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
     }
   };
 
+  const applySelectedRangeEdit = () => {
+    if (!rangeEditTarget || !rangeEditPlan.operation) return;
+    const currentDoc = services.store.getDoc();
+    const currentRange = selectionStore.getState().timeRange;
+    if (
+      !currentRange ||
+      currentRange.fromTick !== rangeEditTarget.fromTick ||
+      currentRange.toTick !== rangeEditTarget.toTick
+    ) {
+      setRangeEditError("The time selection changed. Close this editor and select the range again.");
+      return;
+    }
+    const operation = parseSelectedTimeRangeIntent(rangeEditText);
+    if (!operation || selectedTimeRangeIntentError(currentDoc, rangeEditTarget, operation)) {
+      setRangeEditError("The selected range no longer supports this operation. Review the range and try again.");
+      return;
+    }
+    try {
+      const command =
+        operation === "duplicate"
+          ? duplicateTimeRange(currentDoc, rangeEditTarget.fromTick, rangeEditTarget.toTick)
+          : consolidateTimeRange(currentDoc, rangeEditTarget.fromTick, rangeEditTarget.toTick);
+      services.store.execute(command);
+      closeMenu();
+    } catch (error) {
+      setRangeEditError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   return (
     <div
       ref={menuRef}
       className="context-menu"
-      role={clipEditOpen ? "dialog" : "menu"}
-      aria-label={clipEditOpen ? "Edit selected clip with Producer" : "Context menu"}
+      role={clipEditOpen || rangeEditOpen ? "dialog" : "menu"}
+      aria-label={
+        clipEditOpen
+          ? "Edit selected clip with Producer"
+          : rangeEditOpen
+            ? "Edit selected range with Producer"
+            : "Context menu"
+      }
       style={{
-        left: Math.max(8, Math.min(state.x, window.innerWidth - (clipEditOpen ? 360 : 220))),
-        top: Math.max(8, Math.min(state.y, window.innerHeight - (clipEditOpen ? 280 : 160))),
+        left: Math.max(8, Math.min(state.x, window.innerWidth - (clipEditOpen || rangeEditOpen ? 360 : 220))),
+        top: Math.max(8, Math.min(state.y, window.innerHeight - (clipEditOpen || rangeEditOpen ? 280 : 160))),
       }}
       onMouseDown={(e) => e.stopPropagation()}
     >
@@ -295,6 +378,74 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
             </button>
           </div>
         </>
+      ) : rangeEditOpen ? (
+        <>
+          <div className="context-menu-header">PRODUCER EDIT · SELECTED RANGE</div>
+          <div className="context-menu-edit-target">
+            {rangeEditTarget
+              ? `Target locked · bars ${rangeEditTarget.fromTick / BAR_TICKS + 1}–${rangeEditTarget.toTick / BAR_TICKS} · ${
+                  (rangeEditTarget.toTick - rangeEditTarget.fromTick) / BAR_TICKS
+                } bars`
+              : "Target unavailable"}
+          </div>
+          <label className="context-menu-edit-label">
+            Describe one range operation
+            <input
+              className="context-menu-edit-input"
+              aria-label="Producer range instruction"
+              autoFocus
+              value={rangeEditText}
+              placeholder="duplicate selected range"
+              onChange={(event) => {
+                setRangeEditText(event.target.value);
+                setRangeEditError(null);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && rangeEditPlan.operation && !rangeEditPlan.error) applySelectedRangeEdit();
+              }}
+            />
+          </label>
+          {rangeEditPlan.preview && (
+            <div className="context-menu-edit-preview" role="region" aria-label="Selected range edit preview">
+              <strong>PREVIEW · ALL MUSICAL TRACKS</strong>
+              <div>{rangeEditPlan.preview}</div>
+            </div>
+          )}
+          {rangeEditPlan.operation === "consolidate" && (
+            <div className="context-menu-edit-error" role="note">
+              This replaces the source material inside the selection. Undo restores it.
+            </div>
+          )}
+          {(rangeEditError ?? rangeEditPlan.error) && (
+            <div className="context-menu-edit-error" role="alert">
+              {rangeEditError ?? rangeEditPlan.error}
+            </div>
+          )}
+          <div className="context-menu-edit-actions">
+            <button
+              type="button"
+              onClick={() => {
+                setRangeEditOpen(false);
+                setRangeEditText("");
+                setRangeEditError(null);
+                setRangeEditTarget(null);
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={!rangeEditPlan.operation || !!rangeEditPlan.error}
+              onClick={applySelectedRangeEdit}
+            >
+              {rangeEditPlan.operation === "consolidate"
+                ? "CONSOLIDATE · ONE UNDO STEP"
+                : rangeEditPlan.operation === "duplicate"
+                  ? "DUPLICATE · ONE UNDO STEP"
+                  : "APPLY · ONE UNDO STEP"}
+            </button>
+          </div>
+        </>
       ) : (
         <>
           <div className="context-menu-header">{state.context}</div>
@@ -335,6 +486,22 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
               }
             >
               Producer edit selected clip…
+            </button>
+          )}
+          {hasTime && (
+            <button
+              type="button"
+              role="menuitem"
+              aria-haspopup="dialog"
+              onClick={() => {
+                setRangeEditText("");
+                setRangeEditError(null);
+                setRangeEditTarget(selection.timeRange ? { ...selection.timeRange } : null);
+                setRangeEditOpen(true);
+              }}
+              title="Describe a duplicate or consolidate action; complete bars only and audio clips are protected"
+            >
+              Producer edit selected range…
             </button>
           )}
         </>
