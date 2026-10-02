@@ -11,7 +11,8 @@
  *                    not);
  *   - `prohibited` — drum-row content while drums are excluded, unless the
  *                    caller explicitly identifies those rows as protected
- *                    source content. Melodic notes are not role-attributable.
+ *                    source content; and melodic notes on an unambiguous
+ *                    instrument lane whose role is outside the generation set.
  *
  * Every gate runs AFTER the invariant/repair pass, so a candidate that
  * could not be repaired into brief compliance is dropped, never ranked —
@@ -20,7 +21,7 @@
  * `evaluateBriefCompliance` is the truthful UI mirror: per-fact ✓/✗ for
  * what a pattern can prove, `null` ("·") for what only the plan enforces.
  */
-import { drumTrackForTarget, instrumentTrackForRole } from "../ai/role-targets";
+import { drumTrackForTarget, instrumentTrackForRole, type MelodicRole } from "../ai/role-targets";
 import type { NoteEvent, Pattern, ProjectDocument } from "../project-model/types";
 import type { GenerationPlan, GenerationResult, IntentRole } from "./types";
 
@@ -41,6 +42,32 @@ export function hasNoteContent(pattern: Pattern): boolean {
   return Object.values(pattern.notes ?? {}).some((notes) => Array.isArray(notes) && notes.length > 0);
 }
 
+const MELODIC_TARGET: Readonly<Partial<Record<IntentRole, MelodicRole>>> = {
+  bass: "bass",
+  chords: "chord",
+  lead: "lead",
+};
+
+function melodicRoleTracks(project: ProjectDocument, plan: GenerationPlan): Map<IntentRole, string> {
+  const tracks = new Map<IntentRole, string>();
+  for (const [role, target] of Object.entries(MELODIC_TARGET) as [IntentRole, MelodicRole][]) {
+    const track = instrumentTrackForRole(project, target, plan.options.instrumentTrackIds);
+    if (track) tracks.set(role, track.id);
+  }
+  return tracks;
+}
+
+function melodicTrackOwners(tracks: ReadonlyMap<IntentRole, string>): Map<string, IntentRole[]> {
+  const owners = new Map<string, IntentRole[]>();
+  for (const [role, trackId] of tracks) owners.set(trackId, [...(owners.get(trackId) ?? []), role]);
+  return owners;
+}
+
+function hasTrackNotes(pattern: Pattern, trackId: string): boolean {
+  const notes = pattern.notes?.[trackId];
+  return Array.isArray(notes) && notes.length > 0;
+}
+
 /**
  * Hard brief violations of one candidate pattern. Pure — runs on the
  * already-invariant-clean (or repaired) candidate. `preservedRoles` is only
@@ -50,7 +77,7 @@ export function hasNoteContent(pattern: Pattern): boolean {
 export function briefGateViolations(
   pattern: Pattern,
   plan: GenerationPlan,
-  options: { preservedRoles?: readonly IntentRole[] } = {},
+  options: { preservedRoles?: readonly IntentRole[]; project?: ProjectDocument } = {},
 ): BriefViolation[] {
   const violations: BriefViolation[] = [];
   if (pattern.stepCount !== plan.options.stepCount) {
@@ -65,6 +92,39 @@ export function briefGateViolations(
       id: "prohibited-drums",
       detail: "drum rows carry content while drums are excluded",
     });
+  }
+  if (options.project) {
+    const roleTracks = melodicRoleTracks(options.project, plan);
+    const ownersByTrack = melodicTrackOwners(roleTracks);
+    const allowedRoles = new Set([...generationRoles, ...(options.preservedRoles ?? plan.intent.preserve ?? [])]);
+    for (const [trackId, notes] of Object.entries(pattern.notes ?? {})) {
+      if (!Array.isArray(notes) || notes.length === 0) continue;
+      const track = options.project.tracks.find((candidate) => candidate.id === trackId);
+      if (!track || track.kind !== "instrument") {
+        violations.push({
+          id: "unexpected-note-track",
+          detail: `notes target a non-instrument or unknown track ${trackId}`,
+        });
+        continue;
+      }
+      const owners = ownersByTrack.get(trackId) ?? [];
+      const allowedOwners = owners.filter((role) => allowedRoles.has(role));
+      if (allowedOwners.length > 0) continue;
+      if (owners.length === 1) {
+        violations.push({
+          id: `unexpected-role-${owners[0]}`,
+          detail: `track ${trackId} contains ${owners[0]} notes outside the generation/preserve scope`,
+        });
+      } else {
+        violations.push({
+          id: "unexpected-role-content",
+          detail:
+            owners.length > 1
+              ? `track ${trackId} contains notes for excluded roles ${owners.join(", ")}`
+              : `track ${trackId} is not mapped to a generated or preserved melodic role`,
+        });
+      }
+    }
   }
   if (!hasRowContent(pattern) && !hasNoteContent(pattern)) {
     violations.push({ id: "empty", detail: "candidate has no drum or note content" });
@@ -203,10 +263,50 @@ export function evaluateBriefCompliance(
   );
 
   const generationRoles = result.plan.options.roles ?? [];
+  const roleDetails: string[] = [];
+  let roleCompliance: boolean | null = pattern ? true : null;
+  if (pattern && generationRoles.length === 0) {
+    roleCompliance = null;
+    roleDetails.push("nič sa negeneruje; zachovaný obsah sa kontroluje samostatne");
+  } else if (pattern && sourceProject) {
+    const roleTracks = melodicRoleTracks(sourceProject, result.plan);
+    const ownersByTrack = melodicTrackOwners(roleTracks);
+    const checks = generationRoles.map((role) => {
+      if (role === "drums") {
+        const drumTrack = drumTrackForTarget(sourceProject, result.plan.options.drumTrackId);
+        const hasTargetRows =
+          drumTrack?.pads.some((pad) =>
+            pattern.rows[pad.id]?.some((velocity) => Number.isFinite(velocity) && velocity > 0),
+          ) ?? false;
+        roleDetails.push(`bicie ${hasTargetRows ? "✓" : "✗"}`);
+        return hasTargetRows;
+      }
+      const trackId = roleTracks.get(role);
+      if (!trackId) {
+        roleDetails.push(`${role} — track chýba`);
+        return false;
+      }
+      if ((ownersByTrack.get(trackId)?.length ?? 0) > 1) {
+        roleDetails.push(`${role} — zdieľaný track, nemožno samostatne overiť`);
+        return null;
+      }
+      const hasNotes = hasTrackNotes(pattern, trackId);
+      roleDetails.push(`${role} ${hasNotes ? "✓" : "✗"}`);
+      return hasNotes;
+    });
+    roleCompliance = checks.some((check) => check === false)
+      ? false
+      : checks.some((check) => check === null)
+        ? null
+        : true;
+  } else if (pattern) {
+    roleCompliance = null;
+  }
   items.push({
     id: "roles",
     label: `generovať: ${generationRoles.join(", ")}`,
-    satisfied: pattern ? hasRowContent(pattern) || hasNoteContent(pattern) : null,
+    satisfied: roleCompliance,
+    ...(roleDetails.length > 0 ? { detail: roleDetails.join(" · ") } : {}),
   });
 
   const drumsPreserved = intent.preserve?.includes("drums") ?? false;

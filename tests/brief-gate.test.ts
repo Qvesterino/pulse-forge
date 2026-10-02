@@ -6,6 +6,7 @@ import { planGeneration } from "../src/intent/plan";
 import { briefGateViolations, evaluateBriefCompliance } from "../src/intent/brief-gate";
 import { evaluateCandidate } from "../src/intent/providers/candidate";
 import { generatePattern } from "../src/ai/generator";
+import { instrumentTrackForRole } from "../src/ai/role-targets";
 
 /**
  * FÁZA 2 (AI-first producer): hard brief gating BEFORE ranking + truthful
@@ -64,6 +65,33 @@ describe("briefGateViolations (per-candidate hard facts)", () => {
     expect(violations.filter((v) => v.id === "prohibited-drums")).toEqual([]);
     expect(violations.filter((v) => v.id === "empty")).toEqual([]);
   });
+
+  it("rejects notes on an unrequested, uniquely mapped melodic role", () => {
+    const doc = testDoc();
+    const plan = planGeneration(
+      normalizeIntent({ genre: "house", seed: "gate-unrequested-chords", roles: ["drums", "bass"] }),
+      doc,
+    );
+    const allRoles = generatePattern(doc, { ...plan.options, roles: ["drums", "bass", "chords"] });
+
+    expect(instrumentTrackForRole(doc, "chord")?.id).not.toBe(instrumentTrackForRole(doc, "bass")?.id);
+    expect(allRoles.notes[instrumentTrackForRole(doc, "chord")!.id]?.length).toBeGreaterThan(0);
+    expect(briefGateViolations(allRoles, plan, { project: doc }).map((violation) => violation.id)).toContain(
+      "unexpected-role-chords",
+    );
+  });
+
+  it("does not mislabel content on a track shared by generated roles", () => {
+    const doc = testDoc();
+    const plan = planGeneration(
+      normalizeIntent({ genre: "house", seed: "gate-shared-lane", roles: ["drums", "bass"] }),
+      doc,
+    );
+    const candidate = generatePattern(doc, plan.options);
+
+    expect(instrumentTrackForRole(doc, "bass")?.id).toBe(instrumentTrackForRole(doc, "lead")?.id);
+    expect(briefGateViolations(candidate, plan, { project: doc })).toEqual([]);
+  });
 });
 
 describe("evaluateCandidate drops brief violations (after invariant/repair)", () => {
@@ -86,6 +114,19 @@ describe("evaluateCandidate drops brief violations (after invariant/repair)", ()
     const withDrums = generatePattern(doc, { ...plan.options, roles: ["drums", "bass"] });
     expect(evaluateCandidate(withDrums, plan, { project: doc, mode: "apply" }, reasons)).toBeNull();
     expect(reasons).toContain("brief-gate:prohibited-drums");
+  });
+
+  it("out-of-scope melodic content is dropped before ranking", () => {
+    const doc = testDoc();
+    const plan = planGeneration(
+      normalizeIntent({ genre: "house", seed: "gate-prohibited-chords", roles: ["drums", "bass"] }),
+      doc,
+    );
+    const candidate = generatePattern(doc, { ...plan.options, roles: ["drums", "bass", "chords"] });
+    const reasons: string[] = [];
+
+    expect(evaluateCandidate(candidate, plan, { project: doc, mode: "apply" }, reasons)).toBeNull();
+    expect(reasons).toContain("brief-gate:unexpected-role-chords");
   });
 
   it("a valid candidate still passes (gate does not over-drop)", () => {
@@ -138,6 +179,42 @@ describe("evaluateBriefCompliance (truthful UI mirror)", () => {
     expect(byId("key")?.satisfied).toBeNull();
     expect(byId("roles")?.satisfied).toBe(true);
     expect(byId("no-drums")).toBeUndefined(); // drums ARE in the set — no prohibition row
+  });
+
+  it("role compliance checks every uniquely mapped requested lane, not any content", () => {
+    const doc = testDoc();
+    const result = generateLocalResult(
+      doc,
+      normalizeIntent({ genre: "house", seed: "compliance-role-scope", roles: ["drums", "bass", "chords"] }),
+      "apply",
+    );
+    const chordTrackId = instrumentTrackForRole(doc, "chord")!.id;
+    const missingChords = {
+      ...result,
+      proposal: result.proposal
+        ? {
+            ...result.proposal,
+            pattern: { ...result.proposal.pattern, notes: { ...result.proposal.pattern.notes, [chordTrackId]: [] } },
+          }
+        : undefined,
+    };
+    const roles = evaluateBriefCompliance(missingChords, doc).find((item) => item.id === "roles");
+
+    expect(roles?.satisfied).toBe(false);
+    expect(roles?.detail).toContain("chords ✗");
+  });
+
+  it("reports role compliance as unverified when one track represents multiple roles", () => {
+    const doc = testDoc();
+    const result = generateLocalResult(
+      doc,
+      normalizeIntent({ genre: "house", seed: "compliance-shared-role", roles: ["drums", "bass"] }),
+      "apply",
+    );
+    const roles = evaluateBriefCompliance(result, doc).find((item) => item.id === "roles");
+
+    expect(roles?.satisfied).toBeNull();
+    expect(roles?.detail).toContain("zdieľaný track, nemožno samostatne overiť");
   });
 
   it("preserved drums are not mislabeled as a no-drums request", () => {

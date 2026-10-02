@@ -86,7 +86,10 @@ export function evaluateCandidate(
     key: effectiveKey,
   });
   if (report.ok) {
-    const violations = briefGateViolations(attached, plan, { preservedRoles: plan.intent.preserve });
+    const violations = briefGateViolations(attached, plan, {
+      preservedRoles: plan.intent.preserve,
+      project: context.project,
+    });
     if (violations.length > 0) {
       for (const violation of violations) reasons?.push(`brief-gate:${violation.id}`);
       return null;
@@ -103,7 +106,10 @@ export function evaluateCandidate(
     key: effectiveKey,
   });
   if (!repairedReport.ok) return null;
-  const violations = briefGateViolations(repairedPattern, plan, { preservedRoles: plan.intent.preserve });
+  const violations = briefGateViolations(repairedPattern, plan, {
+    preservedRoles: plan.intent.preserve,
+    project: context.project,
+  });
   if (violations.length > 0) {
     for (const violation of violations) reasons?.push(`brief-gate:${violation.id}`);
     return null;

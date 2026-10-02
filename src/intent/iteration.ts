@@ -269,7 +269,10 @@ export function compileIteration(
   composed = withFreshIdentityIfAlreadyApplied(composed, doc);
   const measured = refreshPatternQuality(sourceDoc, composed, generated.plan.options);
   const finalPattern = refreshPatternOutputHash(sourceDoc, measured);
-  const violations = briefGateViolations(finalPattern, generated.plan, { preservedRoles: preserve });
+  const violations = briefGateViolations(finalPattern, generated.plan, {
+    preservedRoles: preserve,
+    project: sourceDoc,
+  });
   if (violations.length > 0) {
     const reason = violations.map((violation) => `${violation.id}: ${violation.detail}`).join("; ");
     return {
