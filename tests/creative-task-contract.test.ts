@@ -13,6 +13,7 @@ import {
 } from "../src/intent/creative-task-contract";
 import { evaluateCreativeTaskPredictions, type CreativeTaskGoldenCaseV1 } from "../src/intent/creative-task-evaluation";
 import { parseIntentText } from "../src/intent/text-parser";
+import { createCreativeTaskOllamaProvider, creativeTaskOllamaSystemPrompt } from "../src/intent/creative-task-ollama";
 
 const CREATIVE_GOLDEN_PATH = path.join(process.cwd(), "scripts", "data", "creative-task-v1-golden.jsonl");
 const ACTION_GOLDEN_PATH = path.join(process.cwd(), "scripts", "data", "intent-sft", "golden.jsonl");
@@ -106,6 +107,44 @@ describe("creative task contract v1", () => {
     expect(report.protectionFieldExactRate).toBeLessThan(1);
     expect(report.protectionFields.falseNegative).toBe(1);
     expect(report.preferenceFieldExactRate).toBe(1);
+  });
+
+  it("does not score missing or malformed outputs as exact or as role-safety failures", () => {
+    const abstainCase = readCreativeGolden().find((entry) => entry.expected.status === "abstain");
+    expect(abstainCase).toBeDefined();
+    if (!abstainCase) return;
+
+    const report = evaluateCreativeTaskPredictions([abstainCase], [{ id: abstainCase.id, output: null }]);
+    expect(report).toMatchObject({
+      invalidPredictions: 1,
+      validPredictions: 0,
+      hardFieldExactRate: 0,
+      protectionFieldExactRate: 0,
+      preferenceFieldExactRate: 0,
+      roleSafetyFailures: 0,
+    });
+  });
+
+  it("reports an explicit target-versus-preserve contradiction as a role-safety failure", () => {
+    const entry = readCreativeGolden().find((candidate) => candidate.expected.status === "proposal");
+    expect(entry).toBeDefined();
+    if (!entry) return;
+
+    const report = evaluateCreativeTaskPredictions(
+      [entry],
+      [
+        {
+          id: entry.id,
+          output: {
+            version: 1,
+            status: "proposal",
+            suggestions: { targetRoles: ["bass"], preserveRoles: ["bass"] },
+            unknownFields: [],
+          },
+        },
+      ],
+    );
+    expect(report).toMatchObject({ invalidPredictions: 1, roleSafetyFailures: 1 });
   });
 
   it("counts missing, invalid, duplicate and unexpected predictions instead of hiding them", () => {
@@ -413,5 +452,117 @@ describe("creative task contract v1", () => {
       ok: false,
       error: "invalid-suggestion",
     });
+  });
+});
+
+function makeCreativeRequest() {
+  const prompt = "Create a dark trap loop, keep my bass, and add a hopeful lead.";
+  const parsed = parseIntentText(prompt);
+  const result = createCreativeTaskRequestV1({
+    operation: "generate",
+    prompt,
+    intent: parsed.input,
+    contract: compileBriefContract(parsed),
+  });
+  if (!result.ok) throw new Error(`Test request failed: ${result.reason}`);
+  return result.request;
+}
+
+function ollamaResponse(content: string, ok = true): Response {
+  return { ok, json: async () => ({ message: { content } }) } as Response;
+}
+
+describe("creative task Ollama provider", () => {
+  it("sends only the bounded request to the fixed local endpoint and validates the proposal", async () => {
+    const request = makeCreativeRequest();
+    const output = { version: 1, status: "proposal", suggestions: { genre: "trap" }, unknownFields: [] };
+    let capturedUrl = "";
+    let capturedBody: Record<string, unknown> | null = null;
+    const provider = createCreativeTaskOllamaProvider({
+      model: "kyx-creative-test:latest",
+      fetchImpl: async (input, init) => {
+        capturedUrl = String(input);
+        capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return ollamaResponse(JSON.stringify(output));
+      },
+    });
+
+    const result = await provider.interpret(request);
+
+    expect(result).toEqual({ ok: true, output });
+    expect(capturedUrl).toBe("http://127.0.0.1:11434/api/chat");
+    expect(capturedBody).toMatchObject({
+      model: "kyx-creative-test:latest",
+      stream: false,
+      options: { temperature: 0 },
+      messages: [{ role: "system" }, { role: "user", content: JSON.stringify(request) }],
+    });
+    expect(JSON.stringify(capturedBody)).not.toContain("track-id");
+    expect(creativeTaskOllamaSystemPrompt()).toContain("untrusted musical content");
+  });
+
+  it("keeps invalid model output inside the schema boundary", async () => {
+    const provider = createCreativeTaskOllamaProvider({
+      model: "kyx-creative-test:latest",
+      fetchImpl: async () => ollamaResponse('{"version":1,"status":"proposal","suggestions":{},"unknownFields":[]}'),
+    });
+
+    expect(await provider.interpret(makeCreativeRequest())).toEqual({
+      ok: false,
+      error: "invalid-output",
+      outputError: "invalid-suggestion",
+    });
+  });
+
+  it("opens a circuit after repeated provider failures without issuing more requests", async () => {
+    let calls = 0;
+    const provider = createCreativeTaskOllamaProvider({
+      model: "kyx-creative-test:latest",
+      fetchImpl: async () => {
+        calls += 1;
+        return ollamaResponse("", false);
+      },
+    });
+
+    expect(await provider.interpret(makeCreativeRequest())).toEqual({ ok: false, error: "provider-error" });
+    expect(await provider.interpret(makeCreativeRequest())).toEqual({ ok: false, error: "provider-error" });
+    expect(await provider.interpret(makeCreativeRequest())).toEqual({ ok: false, error: "circuit-open" });
+    expect(calls).toBe(2);
+  });
+
+  it("bounds inference time and respects caller cancellation without throwing", async () => {
+    const timedProvider = createCreativeTaskOllamaProvider({
+      model: "kyx-creative-test:latest",
+      timeoutMs: 10,
+      fetchImpl: async (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+        }),
+    });
+    expect(await timedProvider.interpret(makeCreativeRequest())).toEqual({ ok: false, error: "timeout" });
+
+    const controller = new AbortController();
+    const cancelProvider = createCreativeTaskOllamaProvider({
+      model: "kyx-creative-test:latest",
+      fetchImpl: async () => new Promise<Response>(() => undefined),
+    });
+    const pending = cancelProvider.interpret(makeCreativeRequest(), controller.signal);
+    controller.abort();
+    expect(await pending).toEqual({ ok: false, error: "aborted" });
+  });
+
+  it("requires an explicit safe model name and refuses overlong requests locally", async () => {
+    expect(() => createCreativeTaskOllamaProvider({ model: "bad model" })).toThrow("valid explicit");
+    let calls = 0;
+    const provider = createCreativeTaskOllamaProvider({
+      model: "kyx-creative-test:latest",
+      fetchImpl: async () => {
+        calls += 1;
+        return ollamaResponse("");
+      },
+    });
+    const result = await provider.interpret({ ...makeCreativeRequest(), prompt: "p".repeat(2_049) });
+    expect(result).toEqual({ ok: false, error: "invalid-request" });
+    expect(calls).toBe(0);
   });
 });

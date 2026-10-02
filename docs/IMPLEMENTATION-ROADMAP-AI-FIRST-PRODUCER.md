@@ -531,16 +531,24 @@ resolver a MCP regresiami. Toto **ešte nie je creative LFM compiler**: hoci bez
 a syntetický eval scaffold už vznikli, provider/model tréning, reprezentatívny human-reviewed holdout, modelový
 uncertainty/clarify eval a UI integrácia sú stále otvorené.
 
-**Stav (2026-10-02): creative-task kontrakt v1 implementovaný, provider integrácia otvorená.**
+**Stav (2026-10-02): creative-task kontrakt v1 a opt-in provider implementované; UI/model rollout ostáva otvorený.**
 `src/intent/creative-task-contract.ts` skladá dočasný request z hard požiadaviek, preferencií, preserve/avoid,
 unknown/conflict a proveniencie; projektový kontext znižuje na tempo, tóninu, dostupné roly a existenciu aktívneho
 patternu bez interných ID či názvov trackov. Modelový JSON má samostatnú verziu, allowlist polí a limity
 hodnôt/veľkosti. Výstup je len návrh: čistý resolver aplikuje iba používateľom schválené polia, nemení už určené fakty
 a atomicky odmieta konfliktný rozsah. Pokryté je SK briefové vstupné mapovanie, malformed/oversized výstup, schema
 drift, role konflikty a approve-only správanie.
-**Otvorené:** samostatný creative provider/prompt, eval reálneho provider outputu, consented human-reviewed holdout,
-UI pre clarify/approve a až po ich bránach napojenie trénovaného modelu. Action-only LFM sa nesmie považovať za hotový
-creative compiler.
+**Aktualizácia (2026-10-02):** samostatný local Ollama creative provider/prompt aj opt-in eval runner sú implementované
+v `src/intent/creative-task-ollama.ts` a `scripts/evaluate-creative-task-ollama.mts`. Provider je oddelený od action
+resolvera, vyžaduje explicitný model tag, je pripnutý na loopback, má timeout/cancel/circuit breaker a výstup prejde
+iba creative schema validátorom; nič neregistruje ani nemení v UI/projekte. Prvý pinned zero-shot snapshot presného
+`kyx-intent-v30-q8:latest` artefaktu (digest v report JSON) dokončil iba 2 inferencie: prvá bola
+`invalid-suggestion`, druhá `invalid-shape`; breaker bezpečne preskočil zvyšných 19 prípadov. Z týchto dvoch nebol
+ani jeden použiteľný návrh. Je to negatívny kompatibilitný smoke test action-SFT modelu, nie kompletný benchmark,
+úspech creative modelu ani hodnotenie hudobnej kvality.
+**Otvorené:** samostatné creative-task SFT dáta/model, opakovateľná eval po platných odpovediach na celom holdoute,
+consented human-reviewed holdout, rubric/blind listening, UI pre clarify/approve a až po release gates napojenie
+trénovaného creative modelu. Action-only LFM sa nesmie považovať za hotový creative compiler.
 
 ### 6.4 Fáza 11 — LFM tréning, ktorý generalizuje bez nebezpečných zámen
 
@@ -559,7 +567,9 @@ creative compiler.
 
 **Aktuálny LFM runtime výsledok (2026-10-02):** `scripts/data/intent-sft/lfm-runtime-evaluation-2026-10-02.json` pinne tag aj Ollama digest/blob, celý validation split a relevantné source hashe. Na všetkých 298 riadkoch dosiahol 274/295 exact (92,9 % attempted), 6 wrong-kind, 15 wrong-slot, 3 abstencie a 0 schema-invalid. Release gate zatiaľ **neprešiel**: exact je pod pracovnými 95 % a correct-kind nie je 100 %. Najslabšie malé triedy sú `preset` 0/4 a `loudness` 1/8; `effectIntent` má 6 wrong-kind. Je to iba akčná/slotová zhoda, nie hodnotenie beatov. Evaluator navyše robí priamy aj routovaný inference call, preto z tohto behu nemožno vyvodzovať single-call latenciu. Tréningový corpus starého artefaktu stále nemá úplnú hashovanú provenienciu; report preto dokladá eval vstupy a presný lokálny model, nie reprodukovateľnosť jeho tréningu.
 
-**Creative-brief eval scaffold (2026-10-02):** `scripts/data/creative-task-v1-golden.jsonl` obsahuje 21 ručne kurátorovaných syntetických SK/EN prípadov v oddelenom `held-out` súbore; action goldens sa nekopírujú. `src/intent/creative-task-evaluation.ts` reportuje osobitne hard polia, preserve/avoid/target safety, preferences, kritické unknowns/clarify, validitu schémy a výsledky podľa jazyka; `scripts/evaluate-creative-task.mts` pinne SHA-256 golden a prediction súborov. Zatiaľ neexistuje provider prediction report ani release threshold. Táto syntetická sada netvrdí, že model rozumie reálnym producentom, a nehodnotí hudobnú kvalitu; pred release treba consented/human-reviewed holdout a blind listening.
+**Creative-brief eval scaffold (2026-10-02):** `scripts/data/creative-task-v1-golden.jsonl` obsahuje 21 ručne kurátorovaných syntetických SK/EN prípadov v oddelenom `held-out` súbore; action goldens sa nekopírujú. `src/intent/creative-task-evaluation.ts` reportuje osobitne hard polia, preserve/avoid/target safety, preferences, kritické unknowns/clarify, validitu schémy a výsledky podľa jazyka; `scripts/evaluate-creative-task.mts` pinne SHA-256 golden a prediction súborov. Samotný scaffold neurčuje release threshold; prvý lokálny provider smoke je zdokumentovaný nižšie. Táto syntetická sada netvrdí, že model rozumie reálnym producentom, a nehodnotí hudobnú kvalitu; pred release treba consented/human-reviewed holdout a blind listening.
+
+**Prvý lokálny creative-provider smoke (2026-10-02):** `scripts/data/creative-task-v1-report.json` pinne modelový digest, provider prompt, golden/evaluator/parser/compiler zdroje a výstupný JSONL hash. Z `kyx-intent-v30-q8:latest` boli vykonané 2 completions; obe odmietla schema (`invalid-suggestion`, `invalid-shape`), preto sa circuit breaker otvoril a 19 zvyšných promptov nebolo odoslaných. Evaluator ich vedie ako 2 invalidné a 19 missing, nie ako platné predikcie; presné odpovede sa kvôli ochrane dát nelogujú. Výsledok potvrdzuje, že súčasný action model zatiaľ nemožno routovať na voľné creative briefy. Je to iba diagnostický smoke, nie plný 21-prompt score ani hudobná kvalita.
 
 **Kód/nástroje:** `scripts/train-intent-sft.py`, `scripts/eval-ollama-intent.mts`, `scripts/data/intent-sft/`, `docs/INTENT-DATASET-TEMPLATES.md`, `tests/intent-model-*`, `src/intent/model-ollama.ts`.
 

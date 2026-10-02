@@ -106,9 +106,10 @@ function exactFields(
   actual: Record<string, unknown> | null,
   fields: readonly string[],
 ) {
+  if (actual === null) return false;
   return fields.every((field) => {
     const expectedHas = owns(expected, field);
-    const actualHas = actual !== null && owns(actual, field);
+    const actualHas = owns(actual, field);
     return expectedHas === actualHas && (!expectedHas || same(expected[field], actual?.[field]));
   });
 }
@@ -211,7 +212,7 @@ export function evaluateCreativeTaskPredictions(
     }
 
     if (prediction && hasRoleConflict(prediction) && prediction.status !== "clarify") roleSafetyFailures += 1;
-    if (!prediction && rows.length > 0) roleSafetyFailures += 1;
+    if (validation && !validation.ok && validation.error === "contradictory-suggestion") roleSafetyFailures += 1;
   }
 
   const metric = finishMetrics(counts.hard);

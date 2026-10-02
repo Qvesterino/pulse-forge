@@ -1,0 +1,180 @@
+{
+  "reportVersion": 1,
+  "taskBoundary": "creative brief interpretation only; not musical-quality evaluation",
+  "provider": {
+    "kind": "local-ollama",
+    "id": "ollama.creative.kyx-intent-v30-q8:latest",
+    "version": "creative-task-v1",
+    "model": "kyx-intent-v30-q8:latest",
+    "modelDigest": "0fe23ac7a9dd43797fada070b43f76cd5faecf777d8b4e07f9fa99e382e4bb41",
+    "promptSha256": "6d4614a97b95957704cde0fbe9dd8fb777cb93681ad897872115e6cb39688f8b"
+  },
+  "dataset": {
+    "path": "scripts\\data\\creative-task-v1-golden.jsonl",
+    "sha256": "c14384799666b47d4118ee033d91ff485932acaf9a8bf5e50b5312df02bf1f07",
+    "cases": 21,
+    "split": "synthetic-held-out"
+  },
+  "sources": {
+    "providerSha256": "44c50153eb95e9a51406e5daaa6bab00fcf24e773fa600b8b268d5c9fdac91f1",
+    "runnerSha256": "84609837c39d5a8010b1c098e83686ac3c91272e0a872230f8eaa1fa5ed6c158",
+    "contractSha256": "a5b5bac5bc4a8eab1f942b32bd7ce35fc5a178969c6708c14883385423deee4a",
+    "evaluatorSha256": "ec841a26de0cd6f14b327b1bb8cfcdb084780e60fb3e16fe185b7b4adffe7338",
+    "parserSha256": "aedd78692dde6777e686aba3dec10f1a447d7e3966fa0900917cce76a9ce2f7a",
+    "briefCompilerSha256": "4a5277ef4a1663779f33c2610cd3f5481d909c9b9a126ce10723f175225f2b49"
+  },
+  "predictions": {
+    "path": "scripts\\data\\creative-task-v1-predictions.jsonl",
+    "sha256": "313885137490df60428772200076d9c7ab7b1186cc7456abd58a5931c1032733",
+    "count": 2,
+    "providerFailures": [
+      {
+        "id": "en-trap-explicit",
+        "error": "invalid-output",
+        "outputError": "invalid-suggestion"
+      },
+      {
+        "id": "sk-trap-explicit",
+        "error": "invalid-output",
+        "outputError": "invalid-shape"
+      },
+      {
+        "id": "en-detroit-no-chords",
+        "error": "circuit-open"
+      },
+      {
+        "id": "sk-boombap-no-drums",
+        "error": "circuit-open"
+      },
+      {
+        "id": "en-phonk-no-lead",
+        "error": "circuit-open"
+      },
+      {
+        "id": "sk-jersey-preserve-chords",
+        "error": "circuit-open"
+      },
+      {
+        "id": "en-piano-house-preserve-drums",
+        "error": "circuit-open"
+      },
+      {
+        "id": "sk-dnb-no-chords",
+        "error": "circuit-open"
+      },
+      {
+        "id": "en-key-preserve-bass",
+        "error": "circuit-open"
+      },
+      {
+        "id": "sk-tempo-preserve-drums",
+        "error": "circuit-open"
+      },
+      {
+        "id": "en-warm-house",
+        "error": "circuit-open"
+      },
+      {
+        "id": "sk-dark-not-sad",
+        "error": "circuit-open"
+      },
+      {
+        "id": "en-dark-not-sad",
+        "error": "circuit-open"
+      },
+      {
+        "id": "en-vocal-friendly-hook",
+        "error": "circuit-open"
+      },
+      {
+        "id": "sk-vocal-friendly-hook",
+        "error": "circuit-open"
+      },
+      {
+        "id": "en-revise-darker",
+        "error": "circuit-open"
+      },
+      {
+        "id": "en-ambiguous-space",
+        "error": "circuit-open"
+      },
+      {
+        "id": "en-conflicting-role",
+        "error": "circuit-open"
+      },
+      {
+        "id": "sk-conflicting-preserve",
+        "error": "circuit-open"
+      },
+      {
+        "id": "en-unsupported-lyrics",
+        "error": "circuit-open"
+      },
+      {
+        "id": "sk-vague-current",
+        "error": "circuit-open"
+      }
+    ]
+  },
+  "evaluation": {
+    "evaluatorVersion": 1,
+    "taskBoundary": "creative-brief interpretation only; not musical-quality evaluation",
+    "cases": 21,
+    "predictions": 2,
+    "missingPredictions": 19,
+    "unexpectedPredictions": 0,
+    "duplicatePredictionIds": 0,
+    "validPredictions": 0,
+    "invalidPredictions": 2,
+    "decisionAccuracy": 0,
+    "hardFieldExactRate": 0,
+    "protectionFieldExactRate": 0,
+    "preferenceFieldExactRate": 0,
+    "hardFields": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 36,
+      "precision": null,
+      "recall": 0,
+      "f1": null
+    },
+    "protectionFields": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 13,
+      "precision": null,
+      "recall": 0,
+      "f1": null
+    },
+    "preferenceFields": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 25,
+      "precision": null,
+      "recall": 0,
+      "f1": null
+    },
+    "criticalUnknownFields": {
+      "truePositive": 0,
+      "falsePositive": 0,
+      "falseNegative": 8,
+      "precision": null,
+      "recall": 0,
+      "f1": null
+    },
+    "criticalUnknownCases": 5,
+    "roleSafetyFailures": 0,
+    "byLanguage": {
+      "en": {
+        "cases": 12,
+        "decisionAccuracy": 0,
+        "hardFieldExactRate": 0
+      },
+      "sk": {
+        "cases": 9,
+        "decisionAccuracy": 0,
+        "hardFieldExactRate": 0
+      }
+    }
+  }
+}
