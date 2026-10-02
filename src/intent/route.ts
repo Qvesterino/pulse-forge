@@ -1,5 +1,13 @@
 import type { ProjectDocument, SceneRole } from "../project-model/types";
-import { parseArrangeIntent, parseClipArrangeIntent, type ArrangeOp, type ClipArrangeOp } from "./arrangeWords";
+import {
+  parseArrangeIntent,
+  parseClipArrangeIntent,
+  parseSelectedClipArrangeIntent,
+  parseSelectedTimeRangeIntent,
+  type ArrangeOp,
+  type ClipArrangeOp,
+  type SelectedTimeRangeOperation,
+} from "./arrangeWords";
 import { parseIntentText, type ParsedIntent } from "./text-parser";
 import { parseEffectIntent, parseSendIntent, parseBypassIntent } from "./mix";
 import { parseLoudnessIntent } from "./loudness";
@@ -244,6 +252,12 @@ export type RoutedIntent =
   | { kind: "markerIntent"; intent: MarkerIntent }
   | { kind: "stepEditIntent"; intent: StepEditIntent }
   | { kind: "selectedStepAssist"; intent: SelectedStepIntent }
+  | { kind: "selectedClipArrange"; clipId: string; ops: ClipArrangeOp[] }
+  | {
+      kind: "selectedRangeArrange";
+      range: { fromTick: number; toTick: number };
+      operation: SelectedTimeRangeOperation;
+    }
   | { kind: "soundSwapIntent"; intent: SoundSwapIntent }
   | { kind: "select"; target: ExactTarget }
   | { kind: "preset"; intent: PresetIntent }
@@ -303,7 +317,11 @@ export type RoutedIntent =
 export function routeIntentText(
   text: string,
   doc: ProjectDocument,
-  context: { hasSelectedStepSelection?: boolean } = {},
+  context: {
+    hasSelectedStepSelection?: boolean;
+    selectedClipId?: string | null;
+    selectedRange?: { fromTick: number; toTick: number } | null;
+  } = {},
 ): RoutedIntent {
   // TRANSPORT — bare-word runtime commands ("stop", "play", "pauza",
   // "metronome on"). Anchored to the WHOLE text: "stop the beat" is a
@@ -353,6 +371,14 @@ export function routeIntentText(
   if (context.hasSelectedStepSelection) {
     const selectedStepIntent = parseSelectedStepIntent(text);
     if (selectedStepIntent) return { kind: "selectedStepAssist", intent: selectedStepIntent };
+  }
+  if (context.selectedClipId) {
+    const ops = parseSelectedClipArrangeIntent(text, doc, context.selectedClipId);
+    if (ops) return { kind: "selectedClipArrange", clipId: context.selectedClipId, ops };
+  }
+  if (context.selectedRange) {
+    const operation = parseSelectedTimeRangeIntent(text);
+    if (operation) return { kind: "selectedRangeArrange", range: context.selectedRange, operation };
   }
   // COMPLAINT — the listening loop ("drop pôsobí prázdno", "the lead is
   // harsh"): measured diagnosis + executable bounded proposals as clarify

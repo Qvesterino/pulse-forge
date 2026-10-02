@@ -38,8 +38,18 @@ import {
   applyProductionIntentCommand,
   exactReadback,
   setMasterConfig,
+  duplicateTimeRange,
+  consolidateTimeRange,
 } from "../commands/commands";
-import { applyArrangeOps, applyClipArrangeOps } from "../intent/arrangeWords";
+import {
+  applyArrangeOps,
+  applyClipArrangeOps,
+  parseSelectedClipArrangeIntent,
+  parseSelectedTimeRangeIntent,
+  selectedTimeRangeIntentError,
+  type ClipArrangeOp,
+  type SelectedTimeRangeOperation,
+} from "../intent/arrangeWords";
 import {
   reviseSection,
   reviseSectionFlow,
@@ -145,7 +155,7 @@ import type { IntentModelState } from "../intent/model-loader-types";
 import { normalizeIntent } from "../intent/normalize";
 import type { IntentInput } from "../intent/types";
 import type { NoteEvent } from "../project-model/types";
-import { PPQ } from "../project-model/types";
+import { BAR_TICKS, PPQ } from "../project-model/types";
 import { rankerMode } from "../ai/ranking/ranker-client";
 import { playAuditionBuffer, renderAuditionBuffer, renderSongAuditionBuffer, stopAudition } from "../intent/audition";
 import { semanticIntentFor } from "../intent/semantic";
@@ -161,7 +171,7 @@ import { encodeShareCode, shareAppUrl } from "../export/shareCode";
 import { funnelEvent } from "../services/funnel";
 import type { Command } from "../commands/types";
 import type { GenerationResult, RankedCandidate } from "../intent/types";
-import type { DrumTrack, Pattern, ProjectDocument } from "../project-model/types";
+import type { ArrangementClip, DrumTrack, Pattern, ProjectDocument } from "../project-model/types";
 import { ProducerDnaCompare } from "./ProducerDnaCompare";
 import { CandidateLaneReceipt } from "./CandidateLaneReceipt";
 
@@ -198,6 +208,43 @@ interface SelectedStepPromptPreview {
   plan: SelectedStepInstructionPlan;
   seed: string;
   amount: number;
+}
+
+type SelectedArrangementPromptPreview =
+  | {
+      kind: "clip";
+      source: string;
+      clip: ArrangementClip;
+      ops: ClipArrangeOp[];
+      lines: string[];
+    }
+  | {
+      kind: "range";
+      source: string;
+      range: { fromTick: number; toTick: number };
+      operation: SelectedTimeRangeOperation;
+      description: string;
+    };
+
+function selectedClipEditPreviewLines(clip: ArrangementClip, ops: ClipArrangeOp[]): string[] {
+  return ops.map((op) => {
+    if (op.op === "copyClip") return `Copy from bar ${clip.startBar + 1} to bar ${op.toBar + 1}`;
+    if (op.op === "moveClip") return `Move from bar ${clip.startBar + 1} to bar ${op.toBar + 1}`;
+    if (op.op === "resizeClip") return `Resize from ${clip.lengthBars} to ${op.bars} bars`;
+    return `Delete clip at bar ${clip.startBar + 1}`;
+  });
+}
+
+function selectedRangeEditDescription(
+  range: { fromTick: number; toTick: number },
+  operation: SelectedTimeRangeOperation,
+): string {
+  const fromBar = Math.min(range.fromTick, range.toTick) / BAR_TICKS;
+  const toBar = Math.max(range.fromTick, range.toTick) / BAR_TICKS;
+  const count = toBar - fromBar;
+  return operation === "duplicate"
+    ? `Duplicate bars ${fromBar + 1}–${toBar} (${count} bars), including musical and audio clips, markers, pattern notes, and drum steps; shift later clips/markers.`
+    : `Consolidate bars ${fromBar + 1}–${toBar} (${count} bars) into one arrangement clip; source notes, steps, and clips in the range will be replaced.`;
 }
 
 /** LOCAL INTENT MODEL chip tooltips per availability state. */
@@ -2250,6 +2297,9 @@ export function IntentPanel() {
   // mix profile, or (default) candidate generation.
   const [routeBusy, setRouteBusy] = useState(false);
   const [selectedStepPreview, setSelectedStepPreview] = useState<SelectedStepPromptPreview | null>(null);
+  const [selectedArrangementPreview, setSelectedArrangementPreview] = useState<SelectedArrangementPromptPreview | null>(
+    null,
+  );
   // `prompt` rides along for MINING only (which ask produced these chips) —
   // the diagnosis path leaves it unset; picked chips log against it.
   const [clarify, setClarify] = useState<{ reason: string; suggestions: string[]; prompt?: string } | null>(null);
@@ -2315,6 +2365,87 @@ export function IntentPanel() {
     }
   };
 
+  const applySelectedArrangementPromptPreview = () => {
+    const preview = selectedArrangementPreview;
+    if (!preview) return;
+    const currentDoc = services.store.getDoc();
+    if (preview.kind === "clip") {
+      const currentClipSelection = selection.getState().clipIds;
+      const liveClip = currentDoc.arrangement.clips.find((clip) => clip.id === preview.clip.id);
+      const currentOps = parseSelectedClipArrangeIntent(preview.source, currentDoc, preview.clip.id);
+      if (
+        text.trim() !== preview.source ||
+        currentClipSelection.length !== 1 ||
+        currentClipSelection[0] !== preview.clip.id ||
+        !liveClip ||
+        liveClip.sceneId !== preview.clip.sceneId ||
+        liveClip.startBar !== preview.clip.startBar ||
+        liveClip.lengthBars !== preview.clip.lengthBars ||
+        !currentOps ||
+        JSON.stringify(currentOps) !== JSON.stringify(preview.ops)
+      ) {
+        setSelectedArrangementPreview(null);
+        setError("Project, prompt, or clip selection changed — run DO IT again to review a fresh preview.");
+        return;
+      }
+      try {
+        const command = applyClipArrangeOps(currentDoc, currentOps);
+        if (!command) {
+          setError("The selected clip is no longer available.");
+          return;
+        }
+        services.store.execute(command);
+        if (currentOps.some((op) => op.op === "deleteClip")) {
+          const updated = services.store.getDoc();
+          selection.retainClips([
+            ...updated.arrangement.clips.map((clip) => clip.id),
+            ...(updated.arrangement.audioClips ?? []).map((clip) => clip.id),
+          ]);
+        }
+        setSelectedArrangementPreview(null);
+        setJustApplied(false);
+        setError(null);
+        setStatus(`✓ ${command.label} (one undo step)`);
+      } catch (error) {
+        setError(error instanceof Error ? error.message : String(error));
+      }
+      return;
+    }
+
+    const currentRange = selection.getState().timeRange;
+    const currentOperation = parseSelectedTimeRangeIntent(preview.source);
+    if (
+      text.trim() !== preview.source ||
+      !currentRange ||
+      currentRange.fromTick !== preview.range.fromTick ||
+      currentRange.toTick !== preview.range.toTick ||
+      currentOperation !== preview.operation
+    ) {
+      setSelectedArrangementPreview(null);
+      setError("Project, prompt, or time selection changed — run DO IT again to review a fresh preview.");
+      return;
+    }
+    const rangeError = selectedTimeRangeIntentError(currentDoc, preview.range, preview.operation);
+    if (rangeError) {
+      setSelectedArrangementPreview(null);
+      setError(rangeError);
+      return;
+    }
+    try {
+      const command =
+        preview.operation === "duplicate"
+          ? duplicateTimeRange(currentDoc, preview.range.fromTick, preview.range.toTick)
+          : consolidateTimeRange(currentDoc, preview.range.fromTick, preview.range.toTick);
+      services.store.execute(command);
+      setSelectedArrangementPreview(null);
+      setJustApplied(false);
+      setError(null);
+      setStatus(`✓ ${command.label} (one undo step)`);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   const toggleVoiceCapture = async () => {
     if (voiceState === "recording") {
       setVoiceState("transcribing");
@@ -2346,16 +2477,20 @@ export function IntentPanel() {
     if (!source || routeBusy) return;
     setRouteBusy(true);
     setSelectedStepPreview(null);
+    setSelectedArrangementPreview(null);
     setError(null);
     setJustApplied(false);
     setClarify(null);
     try {
       // Pre-routed entry: the local-model fallback (below) re-enters with an
       // adapted route so the big dispatch chain runs exactly once.
+      const routeSelection = selection.getState();
       const route =
         preRoutedRef.current ??
         routeIntentText(source, doc, {
-          hasSelectedStepSelection: Boolean(selection.getState().stepSelection),
+          hasSelectedStepSelection: Boolean(routeSelection.stepSelection),
+          selectedClipId: routeSelection.clipIds.length === 1 ? routeSelection.clipIds[0] : null,
+          selectedRange: routeSelection.timeRange,
         });
       preRoutedRef.current = null;
       if (route.kind === "revise" && rejectUnresolvedBriefConflicts()) return;
@@ -2588,6 +2723,55 @@ export function IntentPanel() {
           amount,
         });
         setStatus("Preview ready — inspect the exact selected-cell changes, then apply or cancel.");
+      } else if (route.kind === "selectedClipArrange") {
+        const currentDoc = services.store.getDoc();
+        const currentClipSelection = selection.getState().clipIds;
+        const clip = currentDoc.arrangement.clips.find((candidate) => candidate.id === route.clipId);
+        const ops = clip ? parseSelectedClipArrangeIntent(source, currentDoc, clip.id) : null;
+        if (
+          currentClipSelection.length !== 1 ||
+          currentClipSelection[0] !== route.clipId ||
+          !clip ||
+          !ops ||
+          JSON.stringify(ops) !== JSON.stringify(route.ops)
+        ) {
+          setError("The selected clip changed or the request no longer resolves. Review the selection and try again.");
+          return;
+        }
+        setSelectedArrangementPreview({
+          kind: "clip",
+          source,
+          clip,
+          ops,
+          lines: selectedClipEditPreviewLines(clip, ops),
+        });
+        setStatus("Clip preview ready — inspect the exact arrangement change, then apply or cancel.");
+      } else if (route.kind === "selectedRangeArrange") {
+        const currentDoc = services.store.getDoc();
+        const currentRange = selection.getState().timeRange;
+        const operation = parseSelectedTimeRangeIntent(source);
+        if (
+          !currentRange ||
+          currentRange.fromTick !== route.range.fromTick ||
+          currentRange.toTick !== route.range.toTick ||
+          operation !== route.operation
+        ) {
+          setError("The time selection changed or the request no longer resolves. Review the range and try again.");
+          return;
+        }
+        const rangeError = selectedTimeRangeIntentError(currentDoc, route.range, operation);
+        if (rangeError) {
+          setError(rangeError);
+          return;
+        }
+        setSelectedArrangementPreview({
+          kind: "range",
+          source,
+          range: { ...route.range },
+          operation,
+          description: selectedRangeEditDescription(route.range, operation),
+        });
+        setStatus("Range preview ready — inspect the source and destination, then apply or cancel.");
       } else if (route.kind === "stepEditIntent") {
         // "remove the kick on beat 3 of bar 2" — per-step edit folded into
         // one snapshot; out-of-range bars fail explicitly.
@@ -3050,8 +3234,9 @@ export function IntentPanel() {
         value={text}
         onChange={(e) => {
           replacePrompt(e.target.value);
-          if (selectedStepPreview) setStatus(null);
+          if (selectedStepPreview || selectedArrangementPreview) setStatus(null);
           setSelectedStepPreview(null);
+          setSelectedArrangementPreview(null);
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) void generate();
@@ -3210,6 +3395,60 @@ export function IntentPanel() {
               onClick={() => {
                 setSelectedStepPreview(null);
                 setStatus("Selected-step preview cancelled; project unchanged.");
+              }}
+            >
+              CANCEL
+            </button>
+          </div>
+        </div>
+      )}
+      {selectedArrangementPreview && (
+        <div
+          className="intent-history"
+          role="region"
+          aria-label={
+            selectedArrangementPreview.kind === "clip"
+              ? "Selected clip intent preview"
+              : "Selected range intent preview"
+          }
+        >
+          <span className="intent-history-label">
+            {selectedArrangementPreview.kind === "clip"
+              ? "ARRANGEMENT · SELECTED CLIP"
+              : `ARRANGEMENT · SELECTED RANGE · ${selectedArrangementPreview.operation.toUpperCase()}`}
+          </span>
+          {selectedArrangementPreview.kind === "clip" ? (
+            <>
+              <div>
+                Target locked · bar {selectedArrangementPreview.clip.startBar + 1} ·{" "}
+                {selectedArrangementPreview.clip.lengthBars} bars
+              </div>
+              {selectedArrangementPreview.lines.map((line, index) => (
+                <div key={`${index}-${line}`}>{line}</div>
+              ))}
+            </>
+          ) : (
+            <>
+              <div>{selectedArrangementPreview.description}</div>
+              {selectedArrangementPreview.operation === "consolidate" && (
+                <div role="note">This replaces source material inside the range. Undo restores it.</div>
+              )}
+            </>
+          )}
+          <div className="intent-actions">
+            <button type="button" className="btn intent-route-btn" onClick={applySelectedArrangementPromptPreview}>
+              APPLY{" "}
+              {selectedArrangementPreview.kind === "clip"
+                ? "CLIP EDIT"
+                : selectedArrangementPreview.operation.toUpperCase()}{" "}
+              · ONE UNDO STEP
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setSelectedArrangementPreview(null);
+                setStatus("Arrangement preview cancelled; project unchanged.");
               }}
             >
               CANCEL

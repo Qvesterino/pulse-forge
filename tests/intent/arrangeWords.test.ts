@@ -9,6 +9,7 @@ import {
   resolveSceneTarget,
   selectedTimeRangeIntentError,
 } from "../../src/intent/arrangeWords";
+import { routeIntentText } from "../../src/intent/route";
 
 /** Scene roles live on names in the scene-score template — mirror the engine. */
 const roleOf = (s: { role?: string | null; name: string }): string | null =>
@@ -226,6 +227,27 @@ describe("selected time-range intent", () => {
       arrangement: { ...doc.arrangement, audioClips: [{ ...audioClip, startBar: 3, lengthBars: 2 }] },
     };
     expect(selectedTimeRangeIntentError(withBoundaryAudio, range, "duplicate")).toMatch(/crosses this range boundary/i);
+  });
+});
+
+describe("selected arrangement context routing", () => {
+  it("routes clip and range language only when the matching context is present", () => {
+    const doc = sceneScoreDoc();
+    const clip = [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar)[1]!;
+    const range = { fromTick: clip.startBar * BAR_TICKS, toTick: (clip.startBar + clip.lengthBars) * BAR_TICKS };
+
+    expect(routeIntentText("move this clip to bar 32", doc, { selectedClipId: clip.id })).toEqual({
+      kind: "selectedClipArrange",
+      clipId: clip.id,
+      ops: [{ op: "moveClip", clipId: clip.id, toBar: 31 }],
+    });
+    expect(routeIntentText("duplicate this range", doc, { selectedRange: range })).toEqual({
+      kind: "selectedRangeArrange",
+      range,
+      operation: "duplicate",
+    });
+    expect(routeIntentText("move this clip to bar 32", doc).kind).not.toBe("selectedClipArrange");
+    expect(routeIntentText("duplicate this range", doc).kind).not.toBe("selectedRangeArrange");
   });
 });
 

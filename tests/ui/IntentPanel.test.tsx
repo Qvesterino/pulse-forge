@@ -8,7 +8,7 @@ import { normalizeIntent } from "../../src/intent/normalize";
 import { setIntentModelProvider } from "../../src/intent/model-resolver";
 import { lastGeneration, rememberGeneration } from "../../src/intent/session-context";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
-import { getActivePattern, getDrumTrack } from "../../src/project-model/types";
+import { BAR_TICKS, getActivePattern, getDrumTrack } from "../../src/project-model/types";
 import { classifyPads } from "../../src/assist/patternOps";
 import type { SongBuild } from "../../src/intent/song";
 import type { ProjectDocument } from "../../src/project-model/types";
@@ -102,6 +102,80 @@ describe("IntentPanel", () => {
     expect(changedPattern.rows[hat.id]?.filter((velocity, step) => step < 8 && velocity > 0)).toHaveLength(6);
     expect(changedPattern.rows[hat.id]?.[0]).toBe(0.9);
     expect(changedPattern.rows[kick.id]).toEqual(selectedPattern.rows[kick.id]);
+  });
+
+  it("routes a selected clip edit through preview and rejects a changed clip selection", async () => {
+    const project = createProjectFromTemplate("scene-score");
+    const clips = [...project.arrangement.clips].sort((a, b) => a.startBar - b.startBar);
+    const selected = clips[1]!;
+    const other = clips[0]!;
+    const selection = new SelectionStore();
+    selection.setClips([selected.id]);
+    const services = mockServices(project);
+    render(
+      <ServicesContext.Provider value={services}>
+        <SelectionContext.Provider value={selection}>
+          <IntentPanel />
+        </SelectionContext.Provider>
+      </ServicesContext.Provider>,
+    );
+
+    fireEvent.change(screen.getByLabelText(/Intent description/i), {
+      target: { value: "move this clip to bar 32" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+    const preview = await screen.findByRole("region", { name: "Selected clip intent preview" });
+    expect(preview).toHaveTextContent(`Target locked · bar ${selected.startBar + 1} · ${selected.lengthBars} bars`);
+    expect(preview).toHaveTextContent(`Move from bar ${selected.startBar + 1} to bar 32`);
+    expect(services.store.execute).not.toHaveBeenCalled();
+
+    selection.setClips([other.id]);
+    fireEvent.click(within(preview).getByRole("button", { name: /APPLY CLIP EDIT · ONE UNDO STEP/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/clip selection changed/i);
+    expect(services.store.execute).not.toHaveBeenCalled();
+
+    selection.setClips([selected.id]);
+    fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+    const refreshedPreview = await screen.findByRole("region", { name: "Selected clip intent preview" });
+    fireEvent.click(within(refreshedPreview).getByRole("button", { name: /APPLY CLIP EDIT · ONE UNDO STEP/i }));
+    const command = vi.mocked(services.store.execute).mock.calls[0]?.[0];
+    expect(command?.type).toBe("clipWords");
+    const changed = command!.execute(project);
+    expect(changed.arrangement.clips.find((clip) => clip.id === selected.id)?.startBar).toBe(31);
+    expect(command!.undo(changed)).toEqual(project);
+  });
+
+  it("routes selected-range duplication through an audio-aware preview and one undo step", async () => {
+    const project = createProjectFromTemplate("scene-score");
+    const clip = [...project.arrangement.clips].sort((a, b) => a.startBar - b.startBar)[0]!;
+    const range = {
+      fromTick: clip.startBar * BAR_TICKS,
+      toTick: (clip.startBar + clip.lengthBars) * BAR_TICKS,
+    };
+    const selection = new SelectionStore();
+    selection.setTimeRange(range);
+    const services = mockServices(project);
+    render(
+      <ServicesContext.Provider value={services}>
+        <SelectionContext.Provider value={selection}>
+          <IntentPanel />
+        </SelectionContext.Provider>
+      </ServicesContext.Provider>,
+    );
+
+    fireEvent.change(screen.getByLabelText(/Intent description/i), { target: { value: "duplicate this range" } });
+    fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+    const preview = await screen.findByRole("region", { name: "Selected range intent preview" });
+    expect(preview).toHaveTextContent(`Duplicate bars ${clip.startBar + 1}–${clip.startBar + clip.lengthBars}`);
+    expect(preview).toHaveTextContent(/including musical and audio clips/i);
+    expect(services.store.execute).not.toHaveBeenCalled();
+
+    fireEvent.click(within(preview).getByRole("button", { name: /APPLY DUPLICATE · ONE UNDO STEP/i }));
+    const command = vi.mocked(services.store.execute).mock.calls[0]?.[0];
+    expect(command?.type).toBe("duplicateTimeRange");
+    const changed = command!.execute(project);
+    expect(changed.arrangement.clips).toHaveLength(project.arrangement.clips.length + 1);
+    expect(command!.undo(changed)).toEqual(project);
   });
 
   it("renders the textarea and disabled GENERATE button initially", () => {
