@@ -85,12 +85,7 @@ describe("Slider — double-click reset suppression (audit 04)", () => {
 describe("Mixer — live fader preview wiring (audit 04 #6)", () => {
   it("engine exposes the preview API and the mixer routes onPreview to it", () => {
     const engine = readFileSync(resolve(process.cwd(), "src/audio-engine/AudioEngine.ts"), "utf8");
-    for (const method of [
-      "previewTrackGain(",
-      "previewTrackPan(",
-      "previewReturnGain(",
-      "previewMasterGain(",
-    ]) {
+    for (const method of ["previewTrackGain(", "previewTrackPan(", "previewReturnGain(", "previewMasterGain("]) {
       expect(engine).toContain(method);
     }
     const mixer = readFileSync(resolve(process.cwd(), "src/ui/Mixer.tsx"), "utf8");
@@ -99,5 +94,43 @@ describe("Mixer — live fader preview wiring (audit 04 #6)", () => {
     expect(mixer).toContain("previewTrackGain(track.id, gain)");
     expect(mixer).toContain("previewReturnGain(ret.id, gain)");
     expect(mixer).toContain("previewMasterGain(masterGain)");
+  });
+});
+
+describe("Slider hover tooltip (hint plumbing)", () => {
+  it("shows label + gesture help on hover, enriched by hint when provided", () => {
+    const { container } = render(
+      <Slider
+        label="GAIN"
+        hint="Track level in dB — drag for coarse, right-click to type"
+        value={0.5}
+        min={-24}
+        max={12}
+        defaultValue={0}
+        onCommit={() => {}}
+      />,
+    );
+    const wrapper = container.querySelector(".slider") as HTMLElement;
+    expect(wrapper.getAttribute("title")).toBe(
+      "GAIN — Track level in dB — drag for coarse, right-click to type — drag to change, right-click for exact values, double-click to reset",
+    );
+  });
+
+  it("falls back to label + gesture help without a hint", () => {
+    const { container } = render(
+      <Slider label="PAN" value={0} min={-1} max={1} defaultValue={0} onCommit={() => {}} />,
+    );
+    const wrapper = container.querySelector(".slider") as HTMLElement;
+    expect(wrapper.getAttribute("title")).toBe(
+      "PAN — drag to change, right-click for exact values, double-click to reset",
+    );
+  });
+
+  it("mirrors DragNumber's hint contract (source pin)", () => {
+    // The two shared controls must keep the same tooltip shape — a hint
+    // reads the same whether the caller reached for a Slider or a DragNumber.
+    const controls = readFileSync(resolve(process.cwd(), "src/ui/controls.tsx"), "utf8");
+    const titles = controls.match(/title=\{`\$\{label\}\$\{hint \? ` — \$\{hint\}` : ""\} — [^`]+`\}/g) ?? [];
+    expect(titles.length).toBe(2);
   });
 });

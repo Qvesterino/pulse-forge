@@ -2765,7 +2765,7 @@ export function IntentPanel() {
             onClick={() => {
               void navigator.clipboard?.writeText(webMcpConfigText).catch(() => {});
             }}
-            title="Skopíruj streamable-HTTP config pre externého MCP klienta"
+            title="Copy the streamable-HTTP config for an external MCP client"
           >
             KOPIÍROVAŤ
           </button>
@@ -2794,7 +2794,7 @@ export function IntentPanel() {
             onClick={() => {
               void navigator.clipboard?.writeText(mcpConfigText).catch(() => {});
             }}
-            title="Skopíruj konfiguráciu do MCP klienta (Claude Desktop & co.)"
+            title="Copy the config to your MCP client (Claude Desktop & co.)"
           >
             KOPIÍROVAŤ
           </button>
@@ -2819,6 +2819,7 @@ export function IntentPanel() {
       <textarea
         ref={promptInputRef}
         className="intent-textarea"
+        title="Describe the beat you want — genre, mood, tempo, bars, instruments, arrangement. Ctrl/Cmd+Enter generates."
         placeholder="dark rolling techno at 140 with lead… · tmavé rolujúce techno na 140, 8 taktov…"
         value={text}
         onChange={(e) => replacePrompt(e.target.value)}
@@ -2833,7 +2834,7 @@ export function IntentPanel() {
           type="button"
           className={`btn intent-voice-btn${voiceState === "recording" ? " intent-voice-rec" : ""}`}
           disabled={voiceState === "transcribing"}
-          title={voiceState === "recording" ? "Stop + prepísať" : "Hlasový vstup — hovor a prepíš"}
+          title={voiceState === "recording" ? "Stop and transcribe" : "Voice input — speak and transcribe"}
           aria-label={voiceState === "recording" ? "Stop voice capture" : "Start voice capture"}
           onClick={() => void toggleVoiceCapture()}
         >
@@ -2918,7 +2919,7 @@ export function IntentPanel() {
               key={suggestion}
               type="button"
               className="intent-history-chip"
-              title="Použiť túto interpretáciu"
+              title="Apply this interpretation"
               onClick={() => {
                 // MINING: the chip the user picked reveals what the failed
                 // ask actually meant — the strongest label in the whole log
@@ -3305,7 +3306,7 @@ export function IntentPanel() {
               type="button"
               className="btn btn-small"
               onClick={dismissSectionProposal}
-              title="Odmietnuť — nič sa nezmení"
+              title="Decline — nothing changes"
             >
               ✗
             </button>
@@ -3599,7 +3600,7 @@ export function IntentPanel() {
                   className="btn btn-small"
                   disabled={songRendering}
                   onClick={declineLoudnessTrim}
-                  title="USE nainštaluje netrimnutú verziu"
+                  title="USE installs the untrimmed version"
                 >
                   ✗
                 </button>

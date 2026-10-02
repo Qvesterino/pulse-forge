@@ -268,6 +268,7 @@ export function MasterMeter() {
                 services.store.execute(setMasterConfig(services.store.getDoc(), { lufsTarget: Number(e.target.value) }))
               }
               aria-label="LUFS target"
+              title="Streaming loudness target the master verdict judges against — -14 Spotify, -12 YouTube, -9 club, -7 loud. The Δ chip shows how far the current mix sits from it."
             >
               <option value="-14">-14 LUFS (Spotify)</option>
               <option value="-12">-12 LUFS (YouTube)</option>

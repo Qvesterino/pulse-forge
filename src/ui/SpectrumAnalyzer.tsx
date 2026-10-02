@@ -164,6 +164,7 @@ export function SpectrumAnalyzer({
     <canvas
       ref={canvasRef}
       className="spectrum-analyzer"
+      title="Spectrum analyzer — energy per frequency (log scale, 20 Hz → 20 kHz). Bright line = now, dim tail = peak hold: where the kick, bass and hats actually live."
       style={
         fillHeight ? { width: "100%", height: "100%", display: "block" } : { width: "100%", height, display: "block" }
       }

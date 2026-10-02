@@ -1156,6 +1156,7 @@ function StepEditor({
           value={meta.ratchet ?? 1}
           onChange={(event) => set({ ratchet: Number(event.target.value) })}
           aria-label="Ratchet count"
+          title="Ratchet count — repeats the step N times inside its slot for rolls and fills (1× = off). Pairs with the amount bar below."
         >
           {[1, 2, 3, 4, 6, 8].map((n) => (
             <option key={n} value={n}>

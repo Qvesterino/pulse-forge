@@ -54,6 +54,7 @@ export function ModMatrixRow({
         <select
           className="wt-mod-select"
           aria-label={`${label} source`}
+          title={`${label} source — the signal that drives this route (LFO, envelope, macro…)`}
           value={srcVal}
           onChange={(e) => commit(srcId, Number(e.target.value))}
         >
@@ -67,6 +68,7 @@ export function ModMatrixRow({
         <select
           className="wt-mod-select"
           aria-label={`${label} destination`}
+          title={`${label} destination — the parameter this route moves (depth sets how far)`}
           value={dstVal}
           onChange={(e) => commit(dstId, Number(e.target.value))}
         >

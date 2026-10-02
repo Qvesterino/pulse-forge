@@ -145,6 +145,7 @@ export function Goniometer({
       <canvas
         ref={canvasRef}
         className="goniometer"
+        title="Stereo vectorscope — L/R plotted as a lissajous: a wide blob is a wide stereo field, a vertical line is mono, tilt shows L/R balance. Rotate 45°: low energy drifts to the bottom."
         style={{ width: resolved, height: resolved, display: "block", borderRadius: 4 }}
         width={resolved * 2}
         height={resolved * 2}

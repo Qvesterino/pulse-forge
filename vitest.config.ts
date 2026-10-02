@@ -79,6 +79,11 @@ export default defineConfig({
       // collects ~189 duplicate spec files from the old checkout, roughly
       // doubles wall clock, and flakes on hook timeouts under co-tenant load.
       "**/.kilo/**",
+      // `.sft/**` hosts the LFM2 SFT training workspace (venv, llama.cpp
+      // checkout, training corpora) — a co-tenant tooling tree, not KYX test
+      // surface. Without this a full run collects ~90 foreign svelte/vitest
+      // specs and drowns the real suite in red noise.
+      "**/.sft/**",
       "tests/e2e/**",
     ],
     coverage: {

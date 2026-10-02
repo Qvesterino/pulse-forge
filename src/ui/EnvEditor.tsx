@@ -146,6 +146,7 @@ export function EnvEditor({
       onClick={() => cycleShape(param, value)}
       role="button"
       aria-label={`Cycle ${label} shape`}
+      title={`Click to cycle the ${label} curve shape (linear / exponential curves)`}
     >
       {label}·{shapeLabel(value)}
     </text>
@@ -193,6 +194,7 @@ export function EnvEditor({
           onClick={cycleLoop}
           role="button"
           aria-label="Cycle decay loop"
+          title="Decay loop count — how many times the decay stage repeats before reaching sustain. 0 = single decay."
         >
           {`LOOP·${Math.round(p.dLoop ?? 0)}×`}
         </text>

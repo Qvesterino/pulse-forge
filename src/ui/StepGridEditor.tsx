@@ -62,6 +62,7 @@ export function StepGridEditor({
         className="mod-step-grid"
         style={{ height }}
         role="slider"
+        title={`${ariaLabel} — drag to paint values across the steps, click a step to set it. Values commit on release.`}
         aria-label={`${ariaLabel}, ${current.length} steps`}
         aria-valuenow={Math.round(((current.reduce((s, v) => s + v, 0) / current.length - min) / range) * 100)}
         aria-valuemin={0}

@@ -8,7 +8,7 @@
 
 ## 1. Repo pre-flight (USER — ~10 min na GitHub.com)
 
-- [ ] **Description** (pod názvom repa): `KYX / Pulse Forge — browser-first DAW with a built-in MCP control surface: AI agents (Claude, Cursor, …) drive the studio through 27 deterministic tools. Local-first, no cloud.`
+- [ ] **Description** (pod názvom repa): `KYX / Pulse Forge — browser-first DAW with a built-in MCP control surface: AI agents (Claude, Cursor, …) drive the studio through 29 deterministic tools. Local-first, no cloud.`
 - [ ] **Website** pole: URL deployu (po wrangler login — ťah z deploy kampane)
 - [ ] **Topics**: `mcp` `mcp-server` `model-context-protocol` `daw` `webaudio` `ai-agents` `music-production` `typescript`
 - [ ] **LICENSE súbor** — rozhodnutie usera (pozri `docs/LAUNCH-HN-REDDIT.md` §pre-flight): MIT/Apache-2.0 ak chceš komunitu a PR akceptovaný; inak "source-available" vetu do README. **PR bez licence maintaineri nereviewujú.**
@@ -20,7 +20,7 @@ music/audio (pri otvorení PR skontroluj aktuálne názvy sekcií — zoznam
 sa mení; KYX patrí k audio/music alebo creativity, podľa čoho tam už je).
 
 ```markdown
-- [KYX](https://github.com/Qvesterino/pulse-forge) — Browser-first DAW driven by AI agents: 27 MCP tools (transport, mixer, FX, arrangement, song builder, export) over a deterministic command layer — every action one undo step, verification read-backs, zero cloud. ![Open Source](https://img.shields.io/badge/license-TBD-green)
+- [KYX](https://github.com/Qvesterino/pulse-forge) — Browser-first DAW driven by AI agents: 29 MCP tools (transport, mixer, FX, arrangement, song builder, export) over a deterministic command layer — every action one undo step, verification read-backs, zero cloud. ![Open Source](https://img.shields.io/badge/license-TBD-green)
 ```
 
 ⚠ Počet toolov (27) = `server/mcp-core.mjs MCP_TOOL_DEFS.length` po
@@ -42,7 +42,7 @@ pred odoslaním.
 >
 > ### Why it belongs here
 >
-> - **27 tools, one contract**: transport, mixer, FX rack, arrangement
+> - **29 tools, one contract**: transport, mixer, FX rack, arrangement
 >   editing, song builder, loudness (BS.1770 render-backed), WAV/MP3 export,
 >   gallery publishing — every mutation flows through the same deterministic
 >   command layer the UI uses, so every agent action is exactly one undo

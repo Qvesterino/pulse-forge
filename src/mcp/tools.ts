@@ -30,6 +30,8 @@ import { normalizeIntent } from "../intent/normalize";
 import { resolveSceneTarget } from "../intent/arrangeWords";
 import { inferPadRole } from "../ai/pad-roles";
 import type { DrumTrack, InstrumentKind, Scene, Track, AutomationTarget, AutomationLane } from "../project-model/types";
+import { getIntentModelProvider, tryModelRoute } from "../intent/model-resolver";
+import { logIntentMiningEvent } from "../intent/failure-log";
 import {
   applyPresetIntentCommand,
   FAMILY_INSTRUMENTS as PRESET_FAMILY_INSTRUMENTS,
@@ -2829,6 +2831,37 @@ export async function executeMcpToolAsync(ctx: McpToolContext, name: string, arg
       };
     }
   }
+  if (name === "kyx_intent") {
+    // THE INTENT MODEL SERVES MCP TOO — the deterministic layer answers
+    // first; exactly the asks it cannot execute (generation asks, parser
+    // declines) fall to the registered local model, the same fallback point
+    // the IntentPanel uses. Registration self-heals (a panel-less session
+    // warms the bridge on first ask). Every hit/miss/clarify feeds the
+    // failure-mining log — agent asks grow the next corpus round.
+    const instruction = String((args != null && typeof args === "object" ? (args as Record<string, unknown>).instruction : "") ?? "");
+    const trimmed = instruction.trim();
+    if (trimmed !== "") {
+      const deterministic = routeIntentText(trimmed, ctx.getDoc());
+      if (deterministic.kind === "pattern" || deterministic.kind === "clarify" || deterministic.kind === "revise") {
+        if (getIntentModelProvider() == null) {
+          const ollama = await import("../intent/model-ollama");
+          await ollama.ensureOllamaIntentProvider().catch(() => null);
+        }
+        const modelRoute = await tryModelRoute(trimmed, ctx.getDoc());
+        if (modelRoute != null) {
+          logIntentMiningEvent({ prompt: trimmed, outcome: "model-hit", routeKind: modelRoute.kind });
+          const result = executeRoutedIntent(ctx, modelRoute, trimmed);
+          return { ...result, text: `🤖 local model — ${result.text}` };
+        }
+        if (deterministic.kind === "clarify") {
+          logIntentMiningEvent({ prompt: trimmed, outcome: "clarify", reason: deterministic.reason });
+        } else {
+          logIntentMiningEvent({ prompt: trimmed, outcome: "model-miss" });
+        }
+      }
+    }
+    return executeMcpTool(ctx, name, args);
+  }
   return executeMcpTool(ctx, name, args);
 }
 
@@ -4313,8 +4346,13 @@ function routeIsDestructive(route: RoutedIntent): boolean {
 function executeIntentTool(ctx: McpToolContext, instruction: string): McpToolResult {
   const trimmed = instruction.trim();
   if (trimmed.length === 0) return { text: "empty instruction", mutated: false };
-  const route = routeIntentText(trimmed, ctx.getDoc());
+  return executeRoutedIntent(ctx, routeIntentText(trimmed, ctx.getDoc()), trimmed);
+}
 
+/** Execute a resolved route over MCP — the deterministic path AND the local
+ * model fallback land here, so the destructive gate, the UI-local refusals
+ * and the verification read-back apply to BOTH brains identically. */
+function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent, trimmed: string): McpToolResult {
   // Generation kinds are proposals, not commands — honest refusal over MCP
   // (candidates need in-app auditioning).
   if (route.kind === "pattern" || route.kind === "revise") {
