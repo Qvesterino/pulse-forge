@@ -7,7 +7,7 @@ import { userSampleId } from "../persistence/UserSampleRepository";
 import type { SampleBank } from "../sample-library/factory";
 import { encodeWav } from "../rendering/wav";
 import { buildTimeRangeConsolidationDoc } from "../rendering/bounce";
-import { renderProject } from "../rendering/renderer";
+import { buildTempoMap, renderProject, resolveRenderTailSeconds } from "../rendering/renderer";
 
 export interface RangeConsolidationRuntime {
   store: {
@@ -53,10 +53,31 @@ export async function consolidateRangeToAudio(
     const plan = buildTimeRangeConsolidationDoc(sourceDoc, range.fromTick, range.toTick, sourceDurationsByBufferId);
     const sampleRate = runtime.engine.getLiveAudioContext()?.sampleRate ?? 44100;
     const durationTicks = plan.lengthBars * BAR_TICKS;
+    const tailSeconds = resolveRenderTailSeconds(plan.project);
+    const rangeStartTick = Math.min(range.fromTick, range.toTick);
+    const rangeEndTick = Math.max(range.fromTick, range.toTick);
+    const sourceTempoMap = buildTempoMap(
+      sourceDoc,
+      sourceDoc.arrangement.clips.flatMap((clip) => {
+        const scene = sourceDoc.scenes.find((candidate) => candidate.id === clip.sceneId);
+        return scene
+          ? [
+              {
+                from: clip.startBar * BAR_TICKS,
+                to: (clip.startBar + clip.lengthBars) * BAR_TICKS,
+                bpm: scene.bpm ?? sourceDoc.bpm,
+              },
+            ]
+          : [];
+      }),
+    );
+    const printEndTick = sourceTempoMap.tickAt(sourceTempoMap.timeAt(rangeEndTick) + tailSeconds);
+    const printLengthBars =
+      Math.ceil(Math.max(plan.lengthBars, (printEndTick - rangeStartTick) / BAR_TICKS) * 100) / 100;
     const buffer = await render(plan.project, runtime.bank, {
       mode: "song",
       sampleRate,
-      tailSeconds: 0,
+      tailSeconds,
       masterProcessing: false,
       minimumDurationTicks: durationTicks,
       arrangementOnly: true,
@@ -94,6 +115,7 @@ export async function consolidateRangeToAudio(
       range.toTick,
       bufferId,
       sourceDurationsByBufferId,
+      printLengthBars,
     );
     try {
       store.execute(command);

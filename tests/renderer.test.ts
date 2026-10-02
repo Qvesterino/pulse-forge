@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   buildSceneIntensityPoints,
+  buildTempoMap,
   expandAutomationAcrossWindows,
   scheduleSceneAutomation,
 } from "../src/rendering/renderer";
-import type { AutomationPoint, Pattern } from "../src/project-model/types";
+import type { AutomationPoint, Pattern, ProjectDocument } from "../src/project-model/types";
 import { BAR_TICKS, STEP_TICKS } from "../src/project-model/types";
 import { createDefaultProject } from "../src/project-model/schema";
 
@@ -195,5 +196,18 @@ describe("expandAutomationAcrossWindows", () => {
     const pattern = makePattern(0);
     const points: AutomationPoint[] = [{ tick: 0, value: 0 }];
     expect(expandAutomationAcrossWindows(points, [{ pattern, base: 0, from: 0, to: 100 }])).toEqual([]);
+  });
+});
+
+describe("buildTempoMap inverse", () => {
+  it("converts tail wall time back to ticks across scene tempos and project-tempo gaps", () => {
+    const map = buildTempoMap({ bpm: 120 } as ProjectDocument, [
+      { from: 0, to: BAR_TICKS, bpm: 60 },
+      { from: 2 * BAR_TICKS, to: 3 * BAR_TICKS, bpm: 180 },
+    ]);
+
+    expect(map.tickAt(map.timeAt(3 * BAR_TICKS) + 2)).toBeCloseTo(4 * BAR_TICKS);
+    expect(map.tickAt(map.timeAt(BAR_TICKS) + 1)).toBeCloseTo(1.5 * BAR_TICKS);
+    expect(buildTempoMap({ bpm: 120 } as ProjectDocument, []).tickAt(2)).toBeCloseTo(BAR_TICKS);
   });
 });

@@ -333,6 +333,8 @@ describe("consolidateRangeToAudio", () => {
     const sourceTrack = initial.tracks.find((track) => track.kind !== "group")!;
     const noArrangement = {
       ...initial,
+      tracks: initial.tracks.map((track) => ({ ...track, effects: [] })),
+      returns: initial.returns.map((send) => ({ ...send, effects: [] })),
       arrangement: { ...initial.arrangement, clips: [] },
     };
     const withCrossingAudio = addAudioClip(noArrangement, sourceTrack.id, "audio.crossing", 0, 3).execute(
@@ -373,7 +375,7 @@ describe("consolidateRangeToAudio", () => {
     expect(render.mock.calls[0]?.[2]).toMatchObject({
       mode: "song",
       sampleRate: 48000,
-      tailSeconds: 0,
+      tailSeconds: 2,
       masterProcessing: false,
       minimumDurationTicks: BAR_TICKS,
       arrangementOnly: true,
@@ -391,11 +393,50 @@ describe("consolidateRangeToAudio", () => {
       { startBar: 0, lengthBars: 1 },
       { startBar: 2, lengthBars: 1 },
     ]);
-    expect(currentDoc.arrangement.audioClips?.find((clip) => clip.bufferId !== "audio.crossing")).toMatchObject({
-      startBar: 1,
-      lengthBars: 1,
-    });
+    const printClip = currentDoc.arrangement.audioClips?.find((clip) => clip.bufferId !== "audio.crossing");
+    expect(printClip?.startBar).toBe(1);
+    expect(printClip?.lengthBars).toBe(Math.ceil((1 + (2 * sourceDoc.bpm) / 240) * 100) / 100);
     expect(command.undo(currentDoc)).toEqual(sourceDoc);
+  });
+
+  it("extends the print through its tail at the source timeline tempo after the selection", async () => {
+    const base = createDefaultProject();
+    const firstScene = { ...base.scenes[0]!, bpm: 80 };
+    const nextScene = { ...firstScene, id: "next-tempo-scene", name: "Next Tempo", bpm: 160 };
+    const sourceDoc = {
+      ...base,
+      tracks: base.tracks.map((track) => ({ ...track, effects: [] })),
+      returns: base.returns.map((send) => ({ ...send, effects: [] })),
+      scenes: base.scenes.map((scene) => (scene.id === firstScene.id ? firstScene : scene)).concat(nextScene),
+      arrangement: {
+        ...base.arrangement,
+        clips: [
+          { id: "selected-scene", sceneId: firstScene.id, startBar: 0, lengthBars: 1 },
+          { id: "following-scene", sceneId: nextScene.id, startBar: 1, lengthBars: 4 },
+        ],
+        audioClips: [],
+      },
+    };
+    let currentDoc: typeof base = sourceDoc;
+    const render = vi.fn<typeof renderProject>().mockResolvedValue(fakeAudioBuffer());
+    const runtime = {
+      store: {
+        getDoc: () => currentDoc,
+        execute: vi.fn((command: import("../src/commands/types").Command) => {
+          currentDoc = command.execute(currentDoc);
+        }),
+      },
+      engine: { getLiveAudioContext: () => null },
+      bank: { add: vi.fn(), remove: vi.fn(), get: vi.fn() } as never,
+      userSamples: { save: vi.fn(async () => {}), remove: vi.fn(async () => {}) } as never,
+    };
+
+    await consolidateRangeToAudio(runtime, { fromTick: 0, toTick: BAR_TICKS }, () => true, render);
+
+    expect(render.mock.calls[0]?.[2]).toMatchObject({ tailSeconds: 2, minimumDurationTicks: BAR_TICKS });
+    const printClip = currentDoc.arrangement.audioClips?.find((clip) => clip.bufferId.startsWith("user."));
+    const expectedLengthBars = Math.ceil((1 + (2 * nextScene.bpm!) / 240) * 100) / 100;
+    expect(printClip?.lengthBars).toBeCloseTo(expectedLengthBars);
   });
 
   it("discards a completed render if the project changes before the commit", async () => {

@@ -4718,6 +4718,7 @@ export function consolidateTimeRangeToAudio(
   toTick: number,
   bufferId: string,
   sourceDurationsByBufferId: ReadonlyMap<string, number> = new Map(),
+  printLengthBars?: number,
 ): Command {
   const from = Math.min(fromTick, toTick);
   const to = Math.max(fromTick, toTick);
@@ -4735,6 +4736,14 @@ export function consolidateTimeRangeToAudio(
   const fromBar = from / BAR_TICKS;
   const toBar = to / BAR_TICKS;
   const lengthBars = toBar - fromBar;
+  const renderedLengthBars = printLengthBars ?? lengthBars;
+  if (
+    !Number.isFinite(renderedLengthBars) ||
+    renderedLengthBars < lengthBars ||
+    renderedLengthBars > MAX_ARRANGEMENT_CLIP_BARS
+  ) {
+    throw new Error("The rendered print duration must cover the selected range and stay within the clip limit.");
+  }
   const overlaps = (startBar: number, bars: number) => startBar < toBar && startBar + bars > fromBar;
   const sourceClips = doc.arrangement.clips.filter((clip) => overlaps(clip.startBar, clip.lengthBars));
   const sourceAudio = (doc.arrangement.audioClips ?? []).filter((clip) => overlaps(clip.startBar, clip.lengthBars));
@@ -4755,7 +4764,7 @@ export function consolidateTimeRangeToAudio(
     ...splitAudio.project,
     tracks: [...splitAudio.project.tracks, printTrack],
   };
-  const withPrintClip = addAudioClip(withPrintTrack, printTrack.id, bufferId, fromBar, lengthBars, {
+  const withPrintClip = addAudioClip(withPrintTrack, printTrack.id, bufferId, fromBar, renderedLengthBars, {
     gain: 1,
     stretchRate: 1,
     fadeIn: 0.003,

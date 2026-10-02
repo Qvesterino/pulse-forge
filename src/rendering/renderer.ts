@@ -178,41 +178,85 @@ export function renderQualityBumps(doc: ProjectDocument): {
 
 /**
  * Roadmap O7 / 2026-09-19 audit: derive the render tail from the longest
- * VØID decay actually in the document instead of a fixed 2 s. VØID E3 hall
+ * time-based effect tail actually in the document instead of a fixed 2 s. VØID E3 hall
  * supports up to a 24 s T60 and the core reports it via getTailSamples();
  * a 2 s tail audibly truncates exactly the flagship use case (long hall
- * pads). Capped so a pathological decay cannot balloon an export: the
- * tail is the deepest reverb's time, bounded to [2, 12] s. Bypassed
- * instances and explicit 0 are ignored. Returns the fallback for documents
- * without a VØID reverb.
+ * pads). Feedback delays use their longest active tap and a conservative
+ * repeat count down to -80 dB. Capped so pathological decay/feedback cannot
+ * balloon an export. Bypassed instances are ignored. Returns the fallback
+ * when no supported effect tail is present.
  */
 export function resolveRenderTailSeconds(doc: ProjectDocument, fallback = 2): number {
   let maxMs = 0;
   let maxReverbDecaySec = 0;
+  let maxDelayTailSec = 0;
+  const sceneBpms = (doc.scenes ?? [])
+    .map((scene) => scene.bpm)
+    .filter((bpm): bpm is number => typeof bpm === "number" && Number.isFinite(bpm) && bpm > 0);
+  const slowestBpm = Math.max(20, Math.min(doc.bpm ?? 120, ...sceneBpms));
+  const stockDelayBeats = [0, 1, 0.5, 1 / 3, 0.25, 1 / 6];
+  const multiTapDelayBeats = [2, 4 / 3, 1, 2 / 3, 0.5, 1 / 3, 0.25, 1 / 6];
+  const delayTailSeconds = (delaySeconds: number, feedback: number, mix: number): number => {
+    if (!Number.isFinite(delaySeconds) || delaySeconds <= 0 || !Number.isFinite(mix) || mix <= 0) return 0;
+    const boundedFeedback = Number.isFinite(feedback) ? Math.max(0, Math.min(0.95, feedback)) : 0;
+    const repeats = boundedFeedback > 0 ? Math.ceil(Math.log(1e-4) / Math.log(boundedFeedback)) : 1;
+    return Math.min(12, delaySeconds * Math.max(1, repeats) + 0.5);
+  };
   const containers = [...(doc.tracks ?? []), ...(doc.returns ?? [])];
   for (const track of containers) {
     for (const fx of track.effects ?? []) {
       if (fx.bypassed) continue;
+      const params = fx.params ?? {};
       // Native reverb DECAY is expressed directly in seconds (0.1–6).
       if (fx.type === "reverb") {
-        const decay = fx.params?.["decay"];
+        const decay = params["decay"];
         if (typeof decay === "number" && Number.isFinite(decay)) {
           maxReverbDecaySec = Math.max(maxReverbDecaySec, decay);
         }
         continue;
       }
+      if (fx.type === "delay") {
+        const sync = Math.max(0, Math.min(stockDelayBeats.length - 1, Math.round(params["sync"] ?? 0)));
+        const delaySeconds =
+          sync > 0
+            ? Math.min(2, ((stockDelayBeats[sync] ?? 0) * 60) / slowestBpm)
+            : Math.max(0, Math.min(2, (params["time"] ?? 375) / 1000));
+        maxDelayTailSec = Math.max(
+          maxDelayTailSec,
+          delayTailSeconds(delaySeconds, params["feedback"] ?? 0.35, params["mix"] ?? 0.25),
+        );
+        continue;
+      }
+      if (fx.type === "multiTapDelay") {
+        const defaults = [4, 6, 2, 0];
+        const tapCount = Math.max(1, Math.min(4, Math.round(params["taps"] ?? 3)));
+        const maxBeats = Math.max(
+          ...Array.from({ length: tapCount }, (_, index) => {
+            const division = Math.max(
+              0,
+              Math.min(multiTapDelayBeats.length - 1, Math.round(params[`t${index + 1}Div`] ?? defaults[index] ?? 0)),
+            );
+            return multiTapDelayBeats[division] ?? 0;
+          }),
+        );
+        maxDelayTailSec = Math.max(
+          maxDelayTailSec,
+          delayTailSeconds((maxBeats * 60) / slowestBpm, params["feedback"] ?? 0.3, params["mix"] ?? 0.3),
+        );
+        continue;
+      }
       if (fx.type !== "ozvena") continue;
-      const g = fx.params?.["engines.e3.enabled"] ?? 1;
-      const e3Time = g >= 0.5 ? (fx.params?.["engines.e3.time"] ?? 0) : 0;
-      const e2g = fx.params?.["engines.e2.enabled"] ?? 1;
-      const e2Time = e2g >= 0.5 ? (fx.params?.["engines.e2.time"] ?? 0) : 0;
+      const g = params["engines.e3.enabled"] ?? 1;
+      const e3Time = g >= 0.5 ? (params["engines.e3.time"] ?? 0) : 0;
+      const e2g = params["engines.e2.enabled"] ?? 1;
+      const e2Time = e2g >= 0.5 ? (params["engines.e2.time"] ?? 0) : 0;
       maxMs = Math.max(maxMs, e3Time, e2Time);
     }
   }
   // Same T60 policy for the native reverb decay (seconds): 1.1x + release.
   const reverbTail = maxReverbDecaySec > 0 ? maxReverbDecaySec * 1.1 + 0.5 : 0;
   const ozvenaTail = maxMs > 0 ? (maxMs / 1000) * 1.1 + 0.5 : 0;
-  const longest = Math.max(reverbTail, ozvenaTail);
+  const longest = Math.max(reverbTail, ozvenaTail, maxDelayTailSec);
   if (longest <= 0) return fallback;
   return Math.max(fallback, Math.min(12, longest));
 }
@@ -290,11 +334,12 @@ export interface TempoSegment {
  */
 export function buildTempoMap(
   doc: ProjectDocument,
-  windows: ClipWindow[],
+  windows: readonly Pick<ClipWindow, "from" | "to" | "bpm">[],
 ): {
   segments: TempoSegment[];
   totalSeconds: number;
   timeAt: (tick: number) => number;
+  tickAt: (seconds: number) => number;
 } {
   const docSpt = 60 / (doc.bpm * PPQ);
   const sorted = [...windows].sort((a, b) => a.from - b.from);
@@ -337,7 +382,26 @@ export function buildTempoMap(
     const last = segments[segments.length - 1];
     return segmentEndTime(last) + (tick - last.to) * docSpt;
   };
-  return { segments, totalSeconds, timeAt };
+  const tickAt = (seconds: number): number => {
+    if (!Number.isFinite(seconds)) return 0;
+    if (segments.length === 0) return seconds / docSpt;
+    const segmentEndTime = (segment: TempoSegment): number =>
+      segment.startTime + (segment.to - segment.from) * (60 / (segment.bpm * PPQ));
+    for (let index = 0; index < segments.length; index++) {
+      const segment = segments[index];
+      if (seconds < segment.startTime) {
+        const previous = segments[index - 1];
+        return previous ? previous.to + (seconds - segmentEndTime(previous)) / docSpt : seconds / docSpt;
+      }
+      const endTime = segmentEndTime(segment);
+      if (seconds <= endTime) {
+        return segment.from + (seconds - segment.startTime) / (60 / (segment.bpm * PPQ));
+      }
+    }
+    const last = segments[segments.length - 1];
+    return last.to + (seconds - segmentEndTime(last)) / docSpt;
+  };
+  return { segments, totalSeconds, timeAt, tickAt };
 }
 
 /**

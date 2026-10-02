@@ -166,4 +166,56 @@ describe("VØID render tail (2026-09-19 audit)", () => {
     ]);
     expect(resolveRenderTailSeconds(bypassed)).toBe(2);
   });
+
+  it("estimates a native feedback-delay tail to -80 dB", () => {
+    const doc = {
+      bpm: 120,
+      scenes: [],
+      tracks: [
+        {
+          id: "track-1",
+          effects: [
+            { id: "delay", type: "delay", bypassed: false, params: { time: 500, sync: 0, feedback: 0.4, mix: 0.5 } },
+          ],
+        },
+      ],
+      returns: [],
+    } as unknown as ProjectDocument;
+    // ceil(log(1e-4)/log(.4)) = 11 repeats: 11 × 0.5 s + 0.5 s release.
+    expect(resolveRenderTailSeconds(doc)).toBeCloseTo(6, 5);
+  });
+
+  it("uses active multi-tap divisions and respects the global tail cap", () => {
+    const base = {
+      bpm: 120,
+      scenes: [],
+      tracks: [
+        {
+          id: "track-1",
+          effects: [
+            {
+              id: "multi-tap",
+              type: "multiTapDelay",
+              bypassed: false,
+              params: { taps: 2, t1Div: 4, t2Div: 0, feedback: 0.4, mix: 0.5 },
+            },
+          ],
+        },
+      ],
+      returns: [],
+    } as unknown as ProjectDocument;
+    expect(resolveRenderTailSeconds(base)).toBeCloseTo(11.5, 5);
+    const capped = {
+      ...base,
+      tracks: [
+        {
+          id: "track-1",
+          effects: [
+            { id: "delay", type: "delay", bypassed: false, params: { time: 2000, sync: 0, feedback: 0.9, mix: 1 } },
+          ],
+        },
+      ],
+    } as unknown as ProjectDocument;
+    expect(resolveRenderTailSeconds(capped)).toBe(12);
+  });
 });
