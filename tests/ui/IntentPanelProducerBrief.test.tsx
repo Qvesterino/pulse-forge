@@ -82,6 +82,58 @@ describe("IntentPanel — project Producer Brief", () => {
     expect(lastGeneration()?.intent.preserve).toEqual(["bass"]);
   }, 40000);
 
+  it("does not inherit saved facts after the creator turns project memory off", async () => {
+    const doc = projectWithBrief();
+    const services = mockServices(doc);
+    rememberGeneration({
+      text: "",
+      intent: normalizeIntent({}),
+      candidates: [],
+      appliedIndex: null,
+      docId: `${doc.id}-stale`,
+      at: 0,
+    });
+    renderWithContext(<IntentPanel />, { services });
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Use saved project Producer Brief for generation" }));
+    fireEvent.change(screen.getByLabelText(/Intent description/i), { target: { value: "house at 124 bpm" } });
+    fireEvent.click(screen.getByRole("button", { name: "GENERATE" }));
+
+    await waitFor(() => expect(lastGeneration()?.docId).toBe(doc.id), { timeout: 20000 });
+    expect(lastGeneration()?.intent.genre).toBe("house");
+    expect(lastGeneration()?.intent.bpmRange).toEqual([124, 124]);
+    expect(lastGeneration()?.intent.mood).not.toBe("dark");
+    expect(lastGeneration()?.intent.preserve ?? []).not.toContain("bass");
+  }, 40000);
+
+  it("blocks generation when the current prompt violates the saved preserve rule", () => {
+    const doc = projectWithBrief();
+    const services = mockServices(doc);
+    rememberGeneration({
+      text: "",
+      intent: normalizeIntent({}),
+      candidates: [],
+      appliedIndex: null,
+      docId: `${doc.id}-stale`,
+      at: 0,
+    });
+    renderWithContext(<IntentPanel />, { services });
+
+    fireEvent.change(screen.getByLabelText(/Intent description/i), { target: { value: "add bass" } });
+    expect(screen.getByRole("alert", { name: "Rozpory v zadaní" })).toHaveTextContent(
+      /zachovať basu a zároveň pridať/i,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "GENERATE" }));
+
+    expect(
+      screen.getByText(
+        "Zadanie si protirečí. Uprav konfliktné požiadavky v texte alebo odstráň ochranný čip pred generovaním.",
+      ),
+    ).toBeInTheDocument();
+    expect(lastGeneration()?.docId).toBe(`${doc.id}-stale`);
+    expect(services.store.execute).not.toHaveBeenCalled();
+  });
+
   it("does not carry the active-memory toggle into a different project", async () => {
     const firstDoc = projectWithBrief();
     const rendered = renderWithContext(<IntentPanel />, { services: mockServices(firstDoc) });

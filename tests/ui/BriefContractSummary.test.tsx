@@ -5,6 +5,7 @@ import { compileBriefContract, type BriefContract } from "../../src/intent/brief
 import { parseIntentText } from "../../src/intent/text-parser";
 import { producerSessionState, resetProducerSession, recordDecision } from "../../src/intent/producer-session";
 import type { IntentInput } from "../../src/intent/types";
+import type { ProjectProducerBriefV1 } from "../../src/project-model/types";
 
 /**
  * Fáza 1 UI contract: the "TOTO SOM POCHOPIL" box renders the compiled
@@ -84,6 +85,51 @@ describe("BriefContractSummary", () => {
         (badge) => badge.dataset.origin === "user" && badge.textContent === "tvoja oprava · potvrdené",
       ),
     ).toBe(true);
+  });
+
+  it("identifies inherited project facts separately from prompt facts", () => {
+    const projectBrief: ProjectProducerBriefV1 = {
+      version: 1,
+      savedAt: "2026-10-02T12:00:00.000Z",
+      facts: [{ field: "genre", section: "preference", value: "trap", origin: "user", confidence: "confirmed" }],
+    };
+    const parsed = parseIntentText("nejaký beat");
+    const contract = compileBriefContract(parsed, { projectBrief });
+    const rendered = render(
+      <BriefContractSummary
+        contract={contract}
+        input={{ ...parsed.input, genre: "trap" }}
+        fixes={{}}
+        onPatch={vi.fn()}
+      />,
+    );
+    const projectBadge = rendered.container.querySelector<HTMLElement>(
+      '.brief-provenance[data-origin="project"][data-confidence="confirmed"]',
+    );
+    expect(projectBadge?.textContent).toBe("projekt · potvrdené");
+    expect(projectBadge?.getAttribute("aria-label")).toBe("Pôvod: projekt; istota: potvrdené");
+  });
+
+  it("surfaces a saved preserve conflict before the creator can generate", () => {
+    const projectBrief: ProjectProducerBriefV1 = {
+      version: 1,
+      savedAt: "2026-10-02T12:00:00.000Z",
+      facts: [{ field: "preserve", section: "preserve", value: ["bass"], origin: "user", confidence: "confirmed" }],
+    };
+    const parsed = parseIntentText("add bass");
+    const contract = compileBriefContract(parsed, { projectBrief });
+    render(
+      <BriefContractSummary
+        contract={contract}
+        input={{ ...parsed.input, preserve: ["bass"] }}
+        fixes={{}}
+        onPatch={vi.fn()}
+      />,
+    );
+
+    const conflict = screen.getByRole("alert", { name: "Rozpory v zadaní" });
+    expect(conflict).toHaveTextContent(/zachovať basu a zároveň pridať/i);
+    expect(conflict).toHaveTextContent(/generovanie čaká/i);
   });
 
   it("shows an actionable warning for conflicting role instructions", () => {

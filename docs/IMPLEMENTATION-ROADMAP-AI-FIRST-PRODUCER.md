@@ -689,6 +689,8 @@ Toto je prvá trvalá pamäť AI producenta a súčasť vertical slice-u; nesmie
 
 **Hotovo, keď:** používateľ znovu otvorí projekt a KYX si pamätá len potvrdené projektové fakty, nie jeho surové formulácie; správanie je reprodukovateľné, undoable a funguje bez LFM. Implementačné zmeny v pracovnom strome samy osebe nie sú release dôkazom — všetky brány vyššie musia prejsť.
 
+**Stav implementácie (2026-10-02): základ míľnika 12a je dodaný a jeho cielené regresné brány prešli.** Producer Brief je verzovaný a sanitizovaný v project modeli, migruje sa spolu so schémou, prežíva IndexedDB/Y.Doc roundtrip a ukladá/maže/odstraňuje jednotlivé fakty cez undoable commands. UI odlišuje prompt, session, project, default a user-correction pôvod aj confidence; vypnutie project memory skutočne vylúči uložené fakty z ďalšej generácie, project switch ich neprelieva a konflikt s uloženým preserve pravidlom sa zobrazí a zablokuje generovanie. Cielené regresné pokrytie v `tests/brief-contract.test.ts`, `tests/producer-brief-project.test.ts`, `tests/collab-ydoc-drift.test.ts`, `tests/ui/BriefContractSummary.test.tsx` a `tests/ui/IntentPanelProducerBrief.test.tsx` je zelené (92 testov v cielených behoch). Toto uzatvára implementačný základ míľnika, nie celú AI Producer release bránu: creative LFM zostáva mimo routingu, kým neprejde human-reviewed evalom; celý Vitest, typecheck, build a release-level platform testy sa týmto netvrdia ako zelené.
+
 ### 6.6 Fáza 13 — AI priamo v práci, nie iba v chate
 
 **Cieľ:** producent vie reagovať na aktuálnu hudobnú selection, nie len na voľný prompt v jednom paneli.
