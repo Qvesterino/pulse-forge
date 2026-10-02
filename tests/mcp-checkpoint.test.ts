@@ -41,7 +41,8 @@ describe("kyx_checkpoint", async () => {
     const saved = await executeMcpTool(ctx, "kyx_checkpoint", { op: "save", name: "clean-house" });
     expect(saved.mutated).toBe(false);
     expect(saved.text).toContain('"clean-house"');
-    expect(saved.text).toContain("1/8 used");
+    expect(saved.text).toMatch(/persisted|session only/);
+    expect(saved.text).toContain("1/8 in memory");
 
     await executeMcpTool(ctx, "kyx_generate", { genre: "techno", seed: "mutate-1" });
     await executeMcpTool(ctx, "kyx_generate", { genre: "trap", seed: "mutate-2" });

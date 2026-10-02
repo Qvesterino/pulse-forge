@@ -2824,6 +2824,7 @@ export function setMcpCheckpointRepository(repo: CheckpointRepoLike | null): voi
 export function resetMcpCheckpoints(): void {
   checkpoints.clear();
   checkpointCounter = 0;
+  hydratedProjects.clear();
 }
 
 async function getCheckpointRepo(): Promise<CheckpointRepoLike | null> {
@@ -3002,7 +3003,6 @@ async function executeCheckpointTool(ctx: McpToolContext, record: Record<string,
   }
   return { text: `unknown checkpoint op: ${op}`, mutated: false, isError: true };
 }
-
 
 /** "wav" | "mp3" from the tool record — anything else falls back to wav. */
 function exportFormatOf(record: Record<string, unknown>): "wav" | "mp3" {

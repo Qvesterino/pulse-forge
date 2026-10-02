@@ -93,4 +93,3 @@ export class McpCheckpointRepository {
     await this.withStore("readwrite", (store) => void store.delete(checkpointKey(projectId, name)));
   }
 }
-
