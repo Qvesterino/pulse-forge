@@ -26,10 +26,10 @@ function makeCtx(doc: ProjectDocument): McpToolContext {
   };
 }
 
-describe("kyx_tracks preset loading", () => {
-  it("loadPreset resolves a fuzzy name and lands the preset on the family's tracks", () => {
+describe("kyx_tracks preset loading", async () => {
+  it("loadPreset resolves a fuzzy name and lands the preset on the family's tracks", async () => {
     const ctx = makeCtx(createProjectFromTemplate("house"));
-    const r = executeMcpTool(ctx, "kyx_tracks", { op: "loadPreset", presetName: "Warm Sub", family: "bass" });
+    const r = await executeMcpTool(ctx, "kyx_tracks", { op: "loadPreset", presetName: "Warm Sub", family: "bass" });
     expect(r.mutated).toBe(true);
     expect(r.text).toContain("Warm Sub");
     expect(r.text).toContain("✓"); // per-track verification read-back
@@ -37,10 +37,10 @@ describe("kyx_tracks preset loading", () => {
     expect(instrument?.presetId).toContain("warmsub");
   });
 
-  it("unknown preset answers with suggestions instead of guessing", () => {
+  it("unknown preset answers with suggestions instead of guessing", async () => {
     const ctx = makeCtx(createProjectFromTemplate("house"));
     const before = ctx.getDoc();
-    const r = executeMcpTool(ctx, "kyx_tracks", { op: "loadPreset", presetName: "zzzblorp", family: "bass" });
+    const r = await executeMcpTool(ctx, "kyx_tracks", { op: "loadPreset", presetName: "zzzblorp", family: "bass" });
     expect(r.mutated).toBe(false);
     expect(r.text).toContain("unknown preset");
     expect(r.text).toContain("did you mean");
@@ -48,16 +48,16 @@ describe("kyx_tracks preset loading", () => {
     expect(ctx.getDoc()).toBe(before); // nothing mutated
   });
 
-  it("missing presetName is an honest validation error", () => {
+  it("missing presetName is an honest validation error", async () => {
     const ctx = makeCtx(createProjectFromTemplate("house"));
-    const r = executeMcpTool(ctx, "kyx_tracks", { op: "loadPreset", family: "bass" });
+    const r = await executeMcpTool(ctx, "kyx_tracks", { op: "loadPreset", family: "bass" });
     expect(r.text).toContain("needs presetName");
     expect(r.mutated).toBe(false);
   });
 
-  it("listPresets lists the factory bank, family-fitting entries ordered first", () => {
+  it("listPresets lists the factory bank, family-fitting entries ordered first", async () => {
     const ctx = makeCtx(createProjectFromTemplate("house"));
-    const bass = executeMcpTool(ctx, "kyx_tracks", { op: "listPresets", family: "bass" });
+    const bass = await executeMcpTool(ctx, "kyx_tracks", { op: "listPresets", family: "bass" });
     expect(bass.mutated).toBe(false);
     expect(bass.text).toMatch(/\d+ factory presets/);
     // the fitting count is real: bass-fitting presets exist and lead the listing
@@ -70,9 +70,9 @@ describe("kyx_tracks preset loading", () => {
     expect(first).toMatch(/\((?:bass|808|logdrum)\)$/);
   });
 
-  it("listPresets query filters the listing", () => {
+  it("listPresets query filters the listing", async () => {
     const ctx = makeCtx(createProjectFromTemplate("house"));
-    const r = executeMcpTool(ctx, "kyx_tracks", { op: "listPresets", family: "bass", query: "warm" });
+    const r = await executeMcpTool(ctx, "kyx_tracks", { op: "listPresets", family: "bass", query: "warm" });
     expect(r.text.toLowerCase()).toContain("warm");
     expect((r.data as { total: number }).total).toBeGreaterThan(0);
   });

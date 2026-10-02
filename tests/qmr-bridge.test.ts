@@ -30,8 +30,8 @@ afterEach(() => {
   delete (window as unknown as { qvesterQmr?: unknown }).qvesterQmr;
 });
 
-describe("qmr bridge — manifest", () => {
-  it("declares Audio Canvas as the PRIMARY handoff (the H53 edge)", () => {
+describe("qmr bridge — manifest", async () => {
+  it("declares Audio Canvas as the PRIMARY handoff (the H53 edge)", async () => {
     expect(QMR_KYX_MANIFEST.appId).toBe(QMR_APP_ID);
     expect(QMR_APP_ID).toBe("pulse_forge");
     const primary = QMR_KYX_MANIFEST.handoffOut.find((handoff) => handoff.primary);
@@ -39,7 +39,7 @@ describe("qmr bridge — manifest", () => {
     expect(primary?.intent).toBe("send_beat_to_audio_canvas");
   });
 
-  it("every customCommand type maps onto a REAL MCP tool (no bypass surface)", () => {
+  it("every customCommand type maps onto a REAL MCP tool (no bypass surface)", async () => {
     const toolNames = new Set(MCP_TOOLS.map((tool) => tool.name));
     expect(QMR_KYX_MANIFEST.customCommands.length).toBeGreaterThan(3);
     for (const command of QMR_KYX_MANIFEST.customCommands) {
@@ -53,8 +53,8 @@ describe("qmr bridge — manifest", () => {
   });
 });
 
-describe("qmr bridge — runtime contract", () => {
-  it("startQmrBridge exposes window.qvesterQmr; stop clears it", () => {
+describe("qmr bridge — runtime contract", async () => {
+  it("startQmrBridge exposes window.qvesterQmr; stop clears it", async () => {
     const { services } = fakeServices();
     const stop = startQmrBridge(services);
     const runtime = (window as unknown as { qvesterQmr?: QmrRuntimeContract }).qvesterQmr;
@@ -106,7 +106,7 @@ describe("qmr bridge — runtime contract", () => {
   });
 });
 
-describe("qmr bridge — parity with the MCP surface", () => {
+describe("qmr bridge — parity with the MCP surface", async () => {
   it("the bridge executes through the same layer (spot-check one real mutation)", async () => {
     const { services, store } = fakeServices();
     const stop = startQmrBridge(services);
@@ -123,7 +123,7 @@ describe("qmr bridge — parity with the MCP surface", () => {
       markers: [],
       scenes: [],
     });
-    executeMcpTool(
+    await executeMcpTool(
       {
         getDoc: () => store2.doc,
         execute: (c) => store2.execute(c),

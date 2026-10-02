@@ -49,8 +49,8 @@ const SUMMARY: RenderSummaryData = {
   master: { lufs: -13.9, peakDb: -1.2, crestDb: 8.8, durationSec: 9.8 },
 };
 
-describe("render summary evidence layer", () => {
-  it("analyzeBufferMetrics: peak and crest from known samples; silence is unmeasurable LUFS", () => {
+describe("render summary evidence layer", async () => {
+  it("analyzeBufferMetrics: peak and crest from known samples; silence is unmeasurable LUFS", async () => {
     const loud = analyzeBufferMetrics(fakeBuffer([0, 0.5, -0.5, 0.25, 0, -0.25, 0.1]));
     expect(loud.peakDb).toBeCloseTo(-6.02, 1); // 0.5 peak
     expect(loud.crestDb).toBeGreaterThan(0);
@@ -61,13 +61,13 @@ describe("render summary evidence layer", () => {
     expect(silence.peakDb).toBe(-80);
   });
 
-  it("buildRelativeLines: every other strip gets its delta vs the loudest", () => {
+  it("buildRelativeLines: every other strip gets its delta vs the loudest", async () => {
     const lines = buildRelativeLines(SUMMARY);
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("808 is -2.9 LU vs loudest (Drums)");
   });
 
-  it("formatRenderSummary: strips, deltas and the streaming-target verdict", () => {
+  it("formatRenderSummary: strips, deltas and the streaming-target verdict", async () => {
     const text = formatRenderSummary(SUMMARY);
     expect(text).toContain("Drums — -8.3 LUFS");
     expect(text).toContain("808 is -2.9 LU vs loudest (Drums)");
@@ -77,7 +77,7 @@ describe("render summary evidence layer", () => {
   });
 });
 
-describe("kyx_render_summary transport contract", () => {
+describe("kyx_render_summary transport contract", async () => {
   it("refuses honestly without the render hook", async () => {
     const r = await executeMcpToolAsync(makeCtx(), "kyx_render_summary", {});
     expect(r.text).toContain("not available over this MCP transport");
@@ -106,9 +106,10 @@ describe("kyx_render_summary transport contract", () => {
     expect(r.text).toContain("audio engine not ready");
   });
 
-  it("sync path answers with the async-intercept notice", () => {
-    const r = executeMcpTool(makeCtx(), "kyx_render_summary", {});
-    expect(r.text).toContain("async executor");
+  it("single executor: the call routes to the real render path (no dual-path stub)", async () => {
+    const r = await executeMcpTool(makeCtx(), "kyx_render_summary", {});
+    // no dual-path stub anymore — the tool runs its real (honest-refusal) path
+    expect(r.text).not.toContain("async executor");
     expect(r.mutated).toBe(false);
   });
 });

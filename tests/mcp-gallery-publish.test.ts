@@ -21,7 +21,7 @@ function baseCtx(hook?: NonNullable<McpToolContext["shareToGallery"]>): McpToolC
   };
 }
 
-describe("kyx_publish_gallery", () => {
+describe("kyx_publish_gallery", async () => {
   it("refuses honestly when no host hook is bound (standalone server)", async () => {
     const result = await executeMcpToolAsync(baseCtx(), "kyx_publish_gallery", { title: "x" });
     expect(result.text).toContain("not available over this MCP transport");
@@ -70,13 +70,12 @@ describe("kyx_publish_gallery", () => {
     expect(result.text).toContain("gallery server unreachable");
   });
 
-  it("sync path answers with the async-intercept notice", () => {
-    const result = executeMcpTool(
+  it("single executor: the call runs the real publish path (no dual-path stub)", async () => {
+    const result = await executeMcpTool(
       baseCtx(async () => ({ id: "x" })),
       "kyx_publish_gallery",
       { title: "x" },
     );
-    expect(result.text).toContain("async executor");
-    expect(result.mutated).toBe(false);
+    expect(result.text).not.toContain("async executor");
   });
 });

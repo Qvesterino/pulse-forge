@@ -35,7 +35,7 @@ function emptyArrangementStore(): ProjectStore {
   return new ProjectStore(doc);
 }
 
-describe("kyx_song (mega producer move)", () => {
+describe("kyx_song (mega producer move)", async () => {
   it("builds the whole track: sections land with patterns + mix, ONE undo step", async () => {
     const store = emptyArrangementStore();
     const ctx = storeCtx(store);
@@ -114,10 +114,10 @@ describe("kyx_song (mega producer move)", () => {
     expect(bad.text).toContain("unknown genre");
   }, 60_000);
 
-  it("the sync path answers honestly instead of silently skipping", () => {
+  it("single executor: the same entry serves sync-style callers (no dual-path stub)", async () => {
     const ctx = storeCtx(emptyArrangementStore());
-    const sync = executeMcpTool(ctx, "kyx_song", { genre: "techno" });
-    expect(sync.mutated).toBe(false);
-    expect(sync.text).toContain("async executor");
-  });
+    const result = await executeMcpTool(ctx, "kyx_song", { genre: "techno" });
+    expect(result.text).not.toContain("async executor");
+    expect(result.mutated).toBe(true); // the real song build ran
+  }, 60_000);
 });

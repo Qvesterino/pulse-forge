@@ -35,11 +35,11 @@ function cleanStore(): ProjectStore {
   return new ProjectStore(doc);
 }
 
-describe("kyx_mix (producer move)", () => {
-  it("applies the dark techno profile: eq/pump decisions land, ONE undo step", () => {
+describe("kyx_mix (producer move)", async () => {
+  it("applies the dark techno profile: eq/pump decisions land, ONE undo step", async () => {
     const store = cleanStore();
     const ctx = storeCtx(store);
-    const result = executeMcpTool(ctx, "kyx_mix", { genre: "techno", energy: 0.8 });
+    const result = await executeMcpTool(ctx, "kyx_mix", { genre: "techno", energy: 0.8 });
     expect(result.mutated).toBe(true);
     expect(result.text).toContain("mix applied");
     expect(result.text).toContain("one undo step");
@@ -52,40 +52,40 @@ describe("kyx_mix (producer move)", () => {
     expect(store.undoStackLength).toBe(1);
   });
 
-  it("overrides steer the profile (huge reverb, pump off)", () => {
+  it("overrides steer the profile (huge reverb, pump off)", async () => {
     const store = cleanStore();
     const ctx = storeCtx(store);
-    const result = executeMcpTool(ctx, "kyx_mix", { genre: "house", reverb: "huge", pump: "off" });
+    const result = await executeMcpTool(ctx, "kyx_mix", { genre: "house", reverb: "huge", pump: "off" });
     expect(result.mutated).toBe(true);
     expect(result.text.toLowerCase()).toContain("reverb");
     const instruments = store.doc.tracks.filter((t) => t.kind === "instrument");
     expect(instruments.some((t) => t.effects.some((fx) => fx.type === "pump"))).toBe(false);
   });
 
-  it("second identical apply is an honest no-op; unknown genre is isError", () => {
+  it("second identical apply is an honest no-op; unknown genre is isError", async () => {
     const store = cleanStore();
     const ctx = storeCtx(store);
-    executeMcpTool(ctx, "kyx_mix", { genre: "techno", energy: 0.8 });
-    const again = executeMcpTool(ctx, "kyx_mix", { genre: "techno", energy: 0.8 });
+    await executeMcpTool(ctx, "kyx_mix", { genre: "techno", energy: 0.8 });
+    const again = await executeMcpTool(ctx, "kyx_mix", { genre: "techno", energy: 0.8 });
     expect(again.mutated).toBe(false);
     expect(again.isError).toBeUndefined();
     expect(again.text).toContain("changed nothing");
 
-    const bad = executeMcpTool(ctx, "kyx_mix", { genre: "quantum" });
+    const bad = await executeMcpTool(ctx, "kyx_mix", { genre: "quantum" });
     expect(bad.isError).toBe(true);
     expect(bad.text).toContain("unknown genre");
   });
 
-  it("undo restores the pristine mix (zero effects)", () => {
+  it("undo restores the pristine mix (zero effects)", async () => {
     const store = cleanStore();
     const ctx = storeCtx(store);
-    executeMcpTool(ctx, "kyx_mix", { genre: "drill" });
+    await executeMcpTool(ctx, "kyx_mix", { genre: "drill" });
     store.undo();
     expect(store.doc.tracks.every((t) => t.effects.length === 0)).toBe(true);
   });
 });
 
-describe("kyx_arrange (producer move)", () => {
+describe("kyx_arrange (producer move)", async () => {
   it("lays out the house form as scenes + clips + markers in ONE undo step", async () => {
     const store = cleanStore();
     const ctx = storeCtx(store);
@@ -135,8 +135,8 @@ describe("kyx_arrange (producer move)", () => {
   });
 });
 
-describe("producer moves surface", () => {
-  it("both tools are documented in MCP_TOOLS with genre enums", () => {
+describe("producer moves surface", async () => {
+  it("both tools are documented in MCP_TOOLS with genre enums", async () => {
     const mix = MCP_TOOLS.find((tool) => tool.name === "kyx_mix");
     const arrange = MCP_TOOLS.find((tool) => tool.name === "kyx_arrange");
     expect(mix?.inputSchema.required).toEqual(["genre"]);

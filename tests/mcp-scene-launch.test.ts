@@ -53,15 +53,15 @@ function makeCtx(doc: ProjectDocument): { ctx: McpToolContext; transport: FakeTr
   return { ctx, transport };
 }
 
-describe("kyx_transport launchScene", () => {
-  it("launches by name: seeks to the scene's first clip bar and plays", () => {
+describe("kyx_transport launchScene", async () => {
+  it("launches by name: seeks to the scene's first clip bar and plays", async () => {
     const doc = createProjectFromTemplate("house");
     const drop = doc.scenes.find((s) => s.role === "drop") ?? doc.scenes[doc.scenes.length - 1];
     const dropClip = doc.arrangement.clips
       .filter((clip) => clip.sceneId === drop.id)
       .sort((a, b) => a.startBar - b.startBar)[0];
     const { ctx, transport } = makeCtx(doc);
-    const r = executeMcpTool(ctx, "kyx_transport", { action: "launchScene", scene: drop.name });
+    const r = await executeMcpTool(ctx, "kyx_transport", { action: "launchScene", scene: drop.name });
     expect(r.mutated).toBe(false); // runtime state, never undo
     expect(transport.seeks).toEqual([dropClip.startBar * 1920]);
     expect(transport.plays).toBe(1);
@@ -69,66 +69,66 @@ describe("kyx_transport launchScene", () => {
     expect(r.text).toContain("playing");
   });
 
-  it("launches by role and by 1-based index; play=false jumps stopped", () => {
+  it("launches by role and by 1-based index; play=false jumps stopped", async () => {
     const doc = createProjectFromTemplate("house");
     const intro = doc.scenes.find((s) => s.role === "intro") ?? doc.scenes[0];
     const introClip = doc.arrangement.clips.find((clip) => clip.sceneId === intro.id);
     const { ctx, transport } = makeCtx(doc);
     if (intro.role) {
-      const byRole = executeMcpTool(ctx, "kyx_transport", { action: "launchScene", scene: intro.role, play: false });
+      const byRole = await executeMcpTool(ctx, "kyx_transport", { action: "launchScene", scene: intro.role, play: false });
       expect(byRole.text).toContain("transport stopped");
       expect(transport.seeks).toEqual([introClip ? introClip.startBar * 1920 : 0]);
       expect(transport.plays).toBe(0);
     }
-    const byIndex = executeMcpTool(ctx, "kyx_transport", { action: "launchScene", index: 1 });
+    const byIndex = await executeMcpTool(ctx, "kyx_transport", { action: "launchScene", index: 1 });
     expect(byIndex.mutated).toBe(false);
     expect(transport.seeks.length).toBeGreaterThanOrEqual(1);
   });
 
-  it("refuses honestly without a seek-capable transport and for unknown scenes", () => {
+  it("refuses honestly without a seek-capable transport and for unknown scenes", async () => {
     const doc = createProjectFromTemplate("house");
     const noSeekCtx = makeCtx(doc).ctx;
     const bare: McpToolContext = {
       ...noSeekCtx,
       transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
     };
-    const refused = executeMcpTool(bare, "kyx_transport", { action: "launchScene", scene: "drop" });
+    const refused = await executeMcpTool(bare, "kyx_transport", { action: "launchScene", scene: "drop" });
     expect(refused.text).toContain("not available over this MCP transport");
     expect(refused.mutated).toBe(false);
 
     const { ctx } = makeCtx(doc);
-    const unknown = executeMcpTool(ctx, "kyx_transport", { action: "launchScene", scene: "nonexistent-groove" });
+    const unknown = await executeMcpTool(ctx, "kyx_transport", { action: "launchScene", scene: "nonexistent-groove" });
     expect(unknown.text).toContain("no scene matches");
     expect(unknown.text).toContain("kyx_state");
   });
 
-  it("scenes read-back carries the launch address (@bar N)", () => {
+  it("scenes read-back carries the launch address (@bar N)", async () => {
     const doc = createProjectFromTemplate("house");
     const { ctx } = makeCtx(doc);
-    const r = executeMcpTool(ctx, "kyx_state", { subject: "scenes" });
+    const r = await executeMcpTool(ctx, "kyx_state", { subject: "scenes" });
     expect(r.text).toMatch(/@bar \d+/);
     expect(r.text).toMatch(/\d+\. "/);
   });
 });
 
-describe("kyx_sections intensity", () => {
-  it("rides a scene's intensity — document mutation, one undo step", () => {
+describe("kyx_sections intensity", async () => {
+  it("rides a scene's intensity — document mutation, one undo step", async () => {
     const doc = createProjectFromTemplate("house");
     const drop = doc.scenes.find((s) => s.role === "drop") ?? doc.scenes[doc.scenes.length - 1];
     const { ctx } = makeCtx(doc);
-    const r = executeMcpTool(ctx, "kyx_sections", { op: "intensity", index: doc.scenes.indexOf(drop) + 1, value: 0.9 });
+    const r = await executeMcpTool(ctx, "kyx_sections", { op: "intensity", index: doc.scenes.indexOf(drop) + 1, value: 0.9 });
     expect(r.mutated).toBe(true);
     expect(ctx.getDoc().scenes.find((s) => s.id === drop.id)?.intensity).toBeCloseTo(0.9);
     expect(r.text).toContain("90%");
   });
 
-  it("validates the 0..1 range and unknown scenes", () => {
+  it("validates the 0..1 range and unknown scenes", async () => {
     const doc = createProjectFromTemplate("house");
     const { ctx } = makeCtx(doc);
     const real = doc.scenes[0];
-    const range = executeMcpTool(ctx, "kyx_sections", { op: "intensity", scene: real.name, value: 1.5 });
+    const range = await executeMcpTool(ctx, "kyx_sections", { op: "intensity", scene: real.name, value: 1.5 });
     expect(range.text).toContain("0..1");
-    const ghost = executeMcpTool(ctx, "kyx_sections", { op: "intensity", scene: "phantom-groove", value: 0.5 });
+    const ghost = await executeMcpTool(ctx, "kyx_sections", { op: "intensity", scene: "phantom-groove", value: 0.5 });
     expect(ghost.text).toContain("no scene matches");
   });
 });

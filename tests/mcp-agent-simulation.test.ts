@@ -31,7 +31,7 @@ interface FakeAgent {
   transportCalls: string[];
   exportRequests: Array<{ format: string }>;
   loudnessTrims: Array<{ targetDb?: number; direction: string }>;
-  call(name: string, args?: unknown): McpToolResult;
+  call(name: string, args?: unknown): Promise<McpToolResult>;
   callAsync(name: string, args?: unknown): Promise<McpToolResult>;
 }
 
@@ -48,9 +48,9 @@ function spawnAgent(options: { allowDestructive?: boolean } = {}): FakeAgent {
     transportCalls: [],
     exportRequests: [],
     loudnessTrims: [],
-    call(name, args = {}) {
+    async call(name, args = {}) {
       agent.calls += 1;
-      return executeMcpTool(ctx, name, args);
+      return await executeMcpTool(ctx, name, args);
     },
     async callAsync(name, args = {}) {
       agent.calls += 1;
@@ -117,84 +117,84 @@ beforeAll(() => {
   agent = spawnAgent({ allowDestructive: true });
 });
 
-describe("agent simulation — the whole playbook in one session", () => {
-  it("phase 0: session onboarding reads the manual + hello-KYX checklist", () => {
+describe("agent simulation — the whole playbook in one session", async () => {
+  it("phase 0: session onboarding reads the manual + hello-KYX checklist", async () => {
     // an agent reads kyx://playbook + kyx://vocab FIRST (token economy)
-    const playbook = agent.call("__kyx_resource", { uri: "kyx://playbook" });
+    const playbook = await agent.call("__kyx_resource", { uri: "kyx://playbook" });
     expect(playbook.text).toContain("PRODUCER PLAYBOOK");
-    const vocab = agent.call("__kyx_resource", { uri: "kyx://vocab" });
+    const vocab = await agent.call("__kyx_resource", { uri: "kyx://vocab" });
     expect(vocab.text).toContain("INTENT VOCABULARY");
 
     // hello-KYX: read → generate → step edit → verify → undo → verify
-    const overview = agent.call("kyx_state", { subject: "overview" });
+    const overview = await agent.call("kyx_state", { subject: "overview" });
     expect(overview.text).toContain("BPM");
-    const generated = agent.call("kyx_generate", { genre: "techno", seed: "hello" });
+    const generated = await agent.call("kyx_generate", { genre: "techno", seed: "hello" });
     expect(generated.mutated).toBe(true);
-    const stepped = agent.call("kyx_steps", { op: "add", family: "kick", steps: [5] });
+    const stepped = await agent.call("kyx_steps", { op: "add", family: "kick", steps: [5] });
     expect(stepped.mutated).toBe(true);
-    const gridProbe = agent.call("kyx_state", { subject: "pattern" });
+    const gridProbe = await agent.call("kyx_state", { subject: "pattern" });
     expect(gridProbe.text).toContain("kick:");
-    const gridBefore = agent.call("kyx_state", { subject: "pattern" });
+    const gridBefore = await agent.call("kyx_state", { subject: "pattern" });
     expect(gridBefore.text).toContain("active:");
-    agent.call("kyx_steps", { op: "add", family: "clap", steps: [13] });
-    const gridEdited = agent.call("kyx_state", { subject: "pattern" });
+    await agent.call("kyx_steps", { op: "add", family: "clap", steps: [13] });
+    const gridEdited = await agent.call("kyx_state", { subject: "pattern" });
     expect(gridEdited.text).not.toBe(gridBefore.text);
-    agent.call("kyx_undo", { action: "undo", steps: 1 });
-    const gridAfter = agent.call("kyx_state", { subject: "pattern" });
+    await agent.call("kyx_undo", { action: "undo", steps: 1 });
+    const gridAfter = await agent.call("kyx_state", { subject: "pattern" });
     expect(gridAfter.text).toBe(gridBefore.text);
     assertFiniteDoc(agent);
   });
 
-  it("phase 1: beat workflow — polish, groove, fx, markers", () => {
-    const result = agent.call("kyx_generate", { genre: "drill", seed: "session-beat", bars: 2 });
+  it("phase 1: beat workflow — polish, groove, fx, markers", async () => {
+    const result = await agent.call("kyx_generate", { genre: "drill", seed: "session-beat", bars: 2 });
     expect(result.mutated).toBe(true);
     // read-before-act: the drill Grime kit has NO hat pad (honest refusal)
-    const hatProbe = agent.call("kyx_steps", { op: "add", family: "hat", steps: [31] });
+    const hatProbe = await agent.call("kyx_steps", { op: "add", family: "hat", steps: [31] });
     expect(hatProbe.isError).toBe(true);
     expect(hatProbe.text).toContain("no pad matches family");
     // snare exists — make an empty slot at step 6, then ghost it
-    agent.call("kyx_steps", { op: "add", family: "snare", steps: [6] });
-    agent.call("kyx_steps", { op: "remove", family: "snare", steps: [6] });
-    const ghost = agent.call("kyx_steps", { op: "ghost", family: "snare", steps: [6] });
+    await agent.call("kyx_steps", { op: "add", family: "snare", steps: [6] });
+    await agent.call("kyx_steps", { op: "remove", family: "snare", steps: [6] });
+    const ghost = await agent.call("kyx_steps", { op: "ghost", family: "snare", steps: [6] });
     expect(ghost.mutated).toBe(true);
     expect(ghost.text).toContain("snare ghost");
-    const groove = agent.call("kyx_groove", { direction: "more" });
+    const groove = await agent.call("kyx_groove", { direction: "more" });
     expect(groove.mutated).toBe(true);
-    const fx = agent.call("kyx_fx", { effect: "reverb", family: "bass", action: "more" });
+    const fx = await agent.call("kyx_fx", { effect: "reverb", family: "bass", action: "more" });
     expect(fx.mutated).toBe(true);
-    const marker = agent.call("kyx_markers", { op: "add", bar: 9, name: "Agent drop" });
+    const marker = await agent.call("kyx_markers", { op: "add", bar: 9, name: "Agent drop" });
     expect(marker.mutated).toBe(true);
     expect(agent.store.doc.markers[0]?.name).toBe("Agent drop");
-    const tracks = agent.call("kyx_tracks", { op: "addInstrument", instrument: "808" });
+    const tracks = await agent.call("kyx_tracks", { op: "addInstrument", instrument: "808" });
     expect(tracks.mutated).toBe(true);
     assertFiniteDoc(agent);
   });
 
-  it("phase 2: checkpoint experiment — save, destructive remove, restore", () => {
+  it("phase 2: checkpoint experiment — save, destructive remove, restore", async () => {
     const tracksBefore = agent.store.doc.tracks.length;
-    const saved = agent.call("kyx_checkpoint", { op: "save", name: "before-experiment" });
+    const saved = await agent.call("kyx_checkpoint", { op: "save", name: "before-experiment" });
     expect(saved.text).toContain('"before-experiment"');
 
-    const removed = agent.call("kyx_tracks", { op: "remove", family: "drums" });
+    const removed = await agent.call("kyx_tracks", { op: "remove", family: "drums" });
     expect(removed.mutated).toBe(true);
     expect(agent.store.doc.tracks.length).toBeLessThan(tracksBefore);
 
-    const restored = agent.call("kyx_checkpoint", { op: "restore", name: "before-experiment" });
+    const restored = await agent.call("kyx_checkpoint", { op: "restore", name: "before-experiment" });
     expect(restored.mutated).toBe(true);
     expect(agent.store.doc.tracks.length).toBe(tracksBefore);
 
-    const list = agent.call("kyx_checkpoint", { op: "list" });
+    const list = await agent.call("kyx_checkpoint", { op: "list" });
     expect(list.text).toContain("before-experiment");
     assertFiniteDoc(agent);
   });
 
-  it("phase 3: producer moves — mix profile, then a 10-call batch", () => {
-    const mixed = agent.call("kyx_mix", { genre: "techno", energy: 0.75 });
+  it("phase 3: producer moves — mix profile, then a 10-call batch", async () => {
+    const mixed = await agent.call("kyx_mix", { genre: "techno", energy: 0.75 });
     expect(mixed.mutated).toBe(true);
     expect(mixed.text).toContain("mix applied");
     const decisionsBefore = agent.store.doc.tracks.reduce((sum, t) => sum + t.effects.length, 0);
 
-    const batch = agent.call("kyx_batch", {
+    const batch = await agent.call("kyx_batch", {
       calls: [
         { tool: "kyx_steps", args: { op: "add", family: "clap", steps: [5] } },
         { tool: "kyx_steps", args: { op: "add", family: "hat", steps: [3, 7, 11, 15] } },
@@ -213,14 +213,14 @@ describe("agent simulation — the whole playbook in one session", () => {
   });
 
   it("phase 4: transport + read-back state + hooks (export, loudness measure/match)", async () => {
-    const playing = agent.call("kyx_transport", { action: "play" });
+    const playing = await agent.call("kyx_transport", { action: "play" });
     expect(playing.mutated).toBe(false);
     expect(agent.transportCalls).toContain("play");
-    const state = agent.call("kyx_transport", { action: "state" });
+    const state = await agent.call("kyx_transport", { action: "state" });
     expect(state.mutated).toBe(false);
     expect(state.text.length).toBeGreaterThan(0);
 
-    const meters = agent.call("kyx_meter", { scope: "master" });
+    const meters = await agent.call("kyx_meter", { scope: "master" });
     expect(meters.isError).toBeUndefined(); // no live engine headless — honest refusal is fine too
     const measured = await agent.callAsync("kyx_loudness", { op: "measure" });
     expect(measured.text).toContain("LUFS");
@@ -249,7 +249,7 @@ describe("agent simulation — the whole playbook in one session", () => {
     assertFiniteDoc(agent);
   });
 
-  it("phase 6: session hygiene — history is coherent and the doc serializes", () => {
+  it("phase 6: session hygiene — history is coherent and the doc serializes", async () => {
     const labels = agent.store.history.map((entry) => entry.label);
     expect(labels.length).toBeGreaterThan(3);
     expect(labels.every((label) => typeof label === "string" && label.length > 0)).toBe(true);
@@ -261,15 +261,15 @@ describe("agent simulation — the whole playbook in one session", () => {
   });
 });
 
-describe("agent simulation — destructive-locked variant", () => {
+describe("agent simulation — destructive-locked variant", async () => {
   it("a locked agent still completes the creative workflow (no destructive ops needed)", async () => {
     const locked = spawnAgent({ allowDestructive: false });
-    const gen = locked.call("kyx_generate", { genre: "house", seed: "locked" });
+    const gen = await locked.call("kyx_generate", { genre: "house", seed: "locked" });
     expect(gen.mutated).toBe(true);
-    const removed = locked.call("kyx_tracks", { op: "remove", family: "drums" });
+    const removed = await locked.call("kyx_tracks", { op: "remove", family: "drums" });
     expect(removed.isError).toBe(true);
     expect(removed.text).toContain("locked");
-    const mixed = locked.call("kyx_mix", { genre: "house" });
+    const mixed = await locked.call("kyx_mix", { genre: "house" });
     expect(mixed.mutated).toBe(true);
     const arranged = await locked.callAsync("kyx_arrange", { genre: "house", length: "short" });
     expect(arranged.mutated).toBe(true);

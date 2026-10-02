@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 import { MCP_TOOLS, MCP_RESOURCES } from "../src/mcp/tools";
+// @ts-expect-error — the ESM mirror ships no .d.ts; its DATA shape is the
+// very thing this gate asserts against the TS source.
 import { MCP_TOOL_DEFS as HUB_TOOL_DEFS, MCP_RESOURCE_DEFS as HUB_RESOURCE_DEFS } from "../server/mcp-core.mjs";
 
 /**
@@ -59,7 +60,9 @@ describe("mcp mirror sync gate", () => {
       desktopModule.MCP_RESOURCE_DEFS,
       HUB_RESOURCE_DEFS,
     ]) {
-      const names = list.map((entry) => ("name" in entry ? entry.name : entry.uri));
+      const names = (list as Array<Record<string, unknown>>).map((entry) =>
+        typeof entry.name === "string" ? entry.name : String(entry.uri),
+      );
       expect(new Set(names).size).toBe(names.length);
     }
   });

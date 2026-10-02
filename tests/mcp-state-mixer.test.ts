@@ -26,10 +26,10 @@ function makeCtx(doc: ProjectDocument): McpToolContext {
   };
 }
 
-describe("kyx_state mixer snapshot", () => {
-  it("lists every strip with fader, pan and id in one call", () => {
+describe("kyx_state mixer snapshot", async () => {
+  it("lists every strip with fader, pan and id in one call", async () => {
     const ctx = makeCtx(createProjectFromTemplate("house"));
-    const r = executeMcpTool(ctx, "kyx_state", { subject: "mixer" });
+    const r = await executeMcpTool(ctx, "kyx_state", { subject: "mixer" });
     expect(r.mutated).toBe(false);
     const doc = ctx.getDoc();
     for (const track of doc.tracks) {
@@ -40,18 +40,18 @@ describe("kyx_state mixer snapshot", () => {
     expect(r.text).toContain("pan C");
   });
 
-  it("reflects mutations — a setGain then setMute show up in the next read", () => {
+  it("reflects mutations — a setGain then setMute show up in the next read", async () => {
     const ctx = makeCtx(createProjectFromTemplate("house"));
-    executeMcpTool(ctx, "kyx_tracks", { op: "setGain", family: "bass", gainDb: -6 });
-    executeMcpTool(ctx, "kyx_tracks", { op: "setMute", family: "bass", value: true });
-    const r = executeMcpTool(ctx, "kyx_state", { subject: "mixer" });
+    await executeMcpTool(ctx, "kyx_tracks", { op: "setGain", family: "bass", gainDb: -6 });
+    await executeMcpTool(ctx, "kyx_tracks", { op: "setMute", family: "bass", value: true });
+    const r = await executeMcpTool(ctx, "kyx_state", { subject: "mixer" });
     expect(r.text).toMatch(/-6\.0 dB/);
     expect(r.text).toContain("MUTED");
   });
 
-  it("carries the structured data twin with numbers, not text", () => {
+  it("carries the structured data twin with numbers, not text", async () => {
     const ctx = makeCtx(createProjectFromTemplate("house"));
-    const r = executeMcpTool(ctx, "kyx_state", { subject: "mixer" });
+    const r = await executeMcpTool(ctx, "kyx_state", { subject: "mixer" });
     const data = r.data as {
       master: { gainDb: number } | null;
       returns: Array<{ id: string; gainDb: number }>;
@@ -68,10 +68,10 @@ describe("kyx_state mixer snapshot", () => {
     }
   });
 
-  it("shows presets on strips that carry one", () => {
+  it("shows presets on strips that carry one", async () => {
     const ctx = makeCtx(createProjectFromTemplate("house"));
-    executeMcpTool(ctx, "kyx_tracks", { op: "loadPreset", presetName: "Warm Sub", family: "bass" });
-    const r = executeMcpTool(ctx, "kyx_state", { subject: "mixer" });
+    await executeMcpTool(ctx, "kyx_tracks", { op: "loadPreset", presetName: "Warm Sub", family: "bass" });
+    const r = await executeMcpTool(ctx, "kyx_state", { subject: "mixer" });
     expect(r.text).toContain("preset=Warm Sub");
     const data = r.data as { tracks: Array<{ presetId?: string | null }> };
     expect(data.tracks.some((t) => t.presetId !== null && t.presetId !== undefined)).toBe(true);
