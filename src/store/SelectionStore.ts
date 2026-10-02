@@ -253,4 +253,40 @@ export class SelectionStore {
     this.state = { ...this.state, trackIds, noteSelections };
     this.emit();
   };
+
+  /**
+   * Same invariant as `retainTracks`, for clip ids.
+   *
+   * A clip selection is reachable from two clip systems — arrangement clips
+   * (`arrangement.clips`) and audio clips (`arrangement.audioClips`) — and both
+   * delete paths existed: the keyboard Delete in `App.tsx` calls
+   * `selectionStore.clear()`, but the context menu, the DEL buttons and
+   * `deleteClipsWithToast` cleared only the panel's local `selectedClipId` /
+   * `selectedAudioClipId`. `clipIds` therefore kept naming a clip that was
+   * gone.
+   *
+   * The measured consequences of leaving the ghost:
+   *
+   *  - Dead undo entries. The next Delete maps `selection.clipIds` through the
+   *    live id sets and matches nothing, so the loop leaves the document
+   *    untouched — but the caller still executes its `deleteClips` command with
+   *    `execute: () => newDoc` where `newDoc === doc`. That is a no-op history
+   *    entry the user has to press Ctrl+Z through.
+   *  - The context menu keeps reporting `hasClips` for a deleted clip, so
+   *    Duplicate / Consolidate / Split stay enabled over a dead selection and
+   *    route to commands that resolve nothing.
+   *
+   * `timeRange` is deliberately untouched: it is a tick range, not an object
+   * reference, so it cannot name a dead clip.
+   *
+   * Call with the union of BOTH live clip id sets. No-ops without emitting
+   * when every selected id is still live.
+   */
+  retainClips = (liveIds: Iterable<string>): void => {
+    const live = new Set(liveIds);
+    const clipIds = this.state.clipIds.filter((id) => live.has(id));
+    if (clipIds.length === this.state.clipIds.length) return;
+    this.state = { ...this.state, clipIds };
+    this.emit();
+  };
 }

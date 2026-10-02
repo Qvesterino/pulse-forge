@@ -3326,6 +3326,52 @@ export function deleteAudioClip(doc: ProjectDocument, clipId: string): Command {
   return snapshot("deleteAudioClip", "Delete audio clip", doc, next);
 }
 
+/**
+ * Timeline duration of a clip, in seconds.
+ *
+ * Single source of truth for "how long is this clip", so the fade clamp below
+ * and every caller that needs the duration agree on one formula.
+ */
+export function audioClipDurationSec(doc: ProjectDocument, lengthBars: number): number {
+  const bars = Number.isFinite(lengthBars) ? lengthBars : 0;
+  return (bars * BAR_TICKS * 60) / (doc.bpm * PPQ);
+}
+
+/**
+ * INVARIANT: a clip's fade must never outlive the clip itself.
+ *
+ *   0 <= fadeIn  <= duration(clip)
+ *   0 <= fadeOut <= duration(clip)
+ *
+ * This is not cosmetic. The engine clamps an out-of-bounds fade audibly, so a
+ * fade that outlasts its clip makes the stored document disagree with both what
+ * the user hears and where the fade handles are drawn — the visual/state
+ * mismatch the editor audit calls out as P2.
+ *
+ * Every command that REWRITES a clip's length must run the inherited fades back
+ * through here. The structural fragment builders (split, slice, strip-silence)
+ * derive their fragments by spreading `...clip` and overwriting only the
+ * geometry, so without this they hand a multi-second parent fade to a fragment
+ * that can be orders of magnitude shorter — a 4s fadeIn on a 0.1s clip.
+ *
+ * Pass the clip's STORED length (post-rounding, post-clamp) as `lengthBars`: the
+ * bound has to match the length that actually lands in the document.
+ */
+export function clampClipFades(
+  doc: ProjectDocument,
+  clip: Pick<AudioClip, "fadeIn" | "fadeOut">,
+  lengthBars: number,
+): { fadeIn: number; fadeOut: number } {
+  const durSec = audioClipDurationSec(doc, lengthBars);
+  const bound = Number.isFinite(durSec) && durSec > 0 ? durSec : 0;
+  const fadeIn = Number.isFinite(clip.fadeIn) ? (clip.fadeIn as number) : 0;
+  const fadeOut = Number.isFinite(clip.fadeOut) ? (clip.fadeOut as number) : 0;
+  return {
+    fadeIn: Math.min(Math.max(0, fadeIn), bound),
+    fadeOut: Math.min(Math.max(0, fadeOut), bound),
+  };
+}
+
 export function moveAudioClip(doc: ProjectDocument, clipId: string, startBar: number): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
@@ -3372,9 +3418,8 @@ export function stretchAudioClip(
   if (!Number.isFinite(lengthBars)) return snapshot("stretchAudioClip", "Stretch audio clip (no-op)", doc, doc);
   const bars = Math.max(0.25, Math.round(lengthBars * 100) / 100);
   const rate = Number.isFinite(stretchRate) ? Math.round(Math.min(4, Math.max(0.25, stretchRate)) * 100) / 100 : 1;
-  const durSec = (bars * BAR_TICKS * 60) / (doc.bpm * PPQ);
-  const fadeIn = Math.min(clip.fadeIn ?? 0, durSec);
-  const fadeOut = Math.min(clip.fadeOut ?? 0, durSec);
+  // Fades must stay inside the clip (clampClipFades) — same rule as resize.
+  const { fadeIn, fadeOut } = clampClipFades(doc, clip, bars);
   const next: ProjectDocument = {
     ...doc,
     arrangement: {
@@ -3395,9 +3440,7 @@ export function resizeAudioClip(doc: ProjectDocument, clipId: string, lengthBars
   // Fades must stay inside the resized clip (audit §8): the engine clamps
   // audibly, but out-of-bounds state desyncs the fade handles from the
   // visual clip width.
-  const durSec = (bars * BAR_TICKS * 60) / (doc.bpm * PPQ);
-  const fadeIn = Math.min(clip.fadeIn ?? 0, durSec);
-  const fadeOut = Math.min(clip.fadeOut ?? 0, durSec);
+  const { fadeIn, fadeOut } = clampClipFades(doc, clip, bars);
   const next: ProjectDocument = {
     ...doc,
     arrangement: {
@@ -3431,8 +3474,10 @@ export function trimAudioClipStart(
   const trimStart = Number.isFinite(patch.trimStart) ? Math.max(0, patch.trimStart) : clip.trimStart;
   const offsetSec = Number.isFinite(patch.offsetSec) ? Math.max(0, patch.offsetSec) : clip.offsetSec;
   // Fades must stay inside the trimmed clip (same rule as resizeAudioClip) or
-  // the fade handles desync from the clip's visual width.
-  const durSec = (bars * BAR_TICKS * 60) / (doc.bpm * PPQ);
+  // the fade handles desync from the clip's visual width. Note `clip` is the
+  // PARENT: the parent fadeIn rides along and has to be re-bounded by the
+  // trimmed length.
+  const { fadeIn, fadeOut } = clampClipFades(doc, clip, bars);
   const next: ProjectDocument = {
     ...doc,
     arrangement: {
@@ -3444,8 +3489,8 @@ export function trimAudioClipStart(
               lengthBars: bars,
               trimStart,
               offsetSec,
-              fadeIn: Math.min(c.fadeIn ?? 0, durSec),
-              fadeOut: Math.min(c.fadeOut ?? 0, durSec),
+              fadeIn,
+              fadeOut,
             }
           : c,
       ),
@@ -3861,14 +3906,20 @@ export function sliceAudioClipToArrangement(doc: ProjectDocument, clipId: string
   for (const seg of segments) {
     const segDurationSec = seg.endSec - seg.startSec;
     const segBars = Math.max(0.25, segDurationSec / secPerBar);
+    const storedBars = Math.round(segBars * 100) / 100;
+    // A slice is typically far shorter than the clip it came from, so the
+    // parent's fades are re-bounded by the slice's own STORED length.
+    const { fadeIn, fadeOut } = clampClipFades(doc, clip, storedBars);
     newClips.push({
       ...clip,
       id: uid("audioClip"),
       startBar: currentBar,
-      lengthBars: Math.round(segBars * 100) / 100,
+      lengthBars: storedBars,
       offsetSec: (clip.offsetSec ?? 0) + seg.startSec,
       trimStart: 0,
       trimEnd: 0,
+      fadeIn,
+      fadeOut,
       warpMarkers: undefined,
     });
     currentBar += segBars + 0.25;
@@ -4012,6 +4063,12 @@ export function splitAudioClipAtTick(
   };
   const leftWarpMarkers = splitWarpMarkers(startTick, splitTick);
   const rightWarpMarkers = splitWarpMarkers(splitTick, endTick);
+  // Each fragment is bounded by its OWN length, not the parent's: the left
+  // fragment keeps the parent's fadeIn and the right keeps the parent's
+  // fadeOut, and either fragment can be arbitrarily shorter than the clip it
+  // came from. Without this a 4s fadeIn survives on a 0.1s left fragment.
+  const leftFades = clampClipFades(doc, clip, leftLength);
+  const rightFades = clampClipFades(doc, clip, rightLength);
   const leftClip: import("../project-model/types").AudioClip = {
     ...clip,
     ...(leftWarpMarkers ? { warpMarkers: leftWarpMarkers } : copyWarps()),
@@ -4022,7 +4079,10 @@ export function splitAudioClipAtTick(
     ...(preserveWarpAcrossSplit && sourceDurationSec !== undefined && warpSplitTimeSec !== null
       ? { trimEnd: sourceDurationSec - warpSplitTimeSec }
       : {}),
-    fadeOut: splitDeclickFadeSec,
+    // Declick fade is applied last so the split seam is still suppressed, but
+    // bounded by the fragment's own duration like any other fade.
+    fadeIn: leftFades.fadeIn,
+    fadeOut: Math.min(splitDeclickFadeSec, audioClipDurationSec(doc, leftLength)),
   };
   const rightClip: import("../project-model/types").AudioClip = {
     ...clip,
@@ -4039,7 +4099,8 @@ export function splitAudioClipAtTick(
       ? { loopPhaseOffsetSec: (clip.loopPhaseOffsetSec ?? 0) + leftSourceSec }
       : {}),
     ...(preserveWarpAcrossSplit ? { trimStart: 0 } : {}),
-    fadeIn: splitDeclickFadeSec,
+    fadeIn: Math.min(splitDeclickFadeSec, audioClipDurationSec(doc, rightLength)),
+    fadeOut: rightFades.fadeOut,
   };
   const nextClips = (doc.arrangement.audioClips ?? [])
     .filter((c) => c.id !== clipId)
@@ -4070,14 +4131,20 @@ export function stripSilenceAudioClip(
     const segDurSec = seg.endSec - seg.startSec;
     const segBars = segDurSec / secondsPerTick / BAR_TICKS;
     const segStartTick = startTick + (seg.startSec - (clip.offsetSec ?? 0)) / secondsPerTick;
+    const storedBars = Math.max(0.05, Math.round(segBars * 100) / 100);
+    // Stripped segments are by definition much shorter than the source clip —
+    // a 4s fadeIn cannot survive on a 0.1s blip.
+    const { fadeIn, fadeOut } = clampClipFades(doc, clip, storedBars);
     return {
       ...clip,
       id: uid("audioClip"),
       startBar: segStartTick / BAR_TICKS,
-      lengthBars: Math.max(0.05, Math.round(segBars * 100) / 100),
+      lengthBars: storedBars,
       offsetSec: seg.startSec,
       trimStart: 0,
       trimEnd: 0,
+      fadeIn,
+      fadeOut,
     } as import("../project-model/types").AudioClip;
   });
   // Keep original clip's track/color but replace single with many

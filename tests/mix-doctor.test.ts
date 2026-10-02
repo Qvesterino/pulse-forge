@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyzeMixHealth } from "../src/analysis/mixDoctor";
+import { analyzeMixHealth, deriveMixAutoFix } from "../src/analysis/mixDoctor";
 
 /**
  * MIX DOCTOR — pure analyzer contract. Fixtures are numeric (jsdom has no
@@ -154,5 +154,37 @@ describe("mix doctor — purity and degenerate inputs", () => {
     expect(() => analyzeMixHealth([], SR)).not.toThrow();
     expect(() => analyzeMixHealth([new Float32Array(1)], 0)).not.toThrow();
     expect(() => analyzeMixHealth([new Float32Array(0), new Float32Array(5)], SR)).not.toThrow();
+  });
+});
+
+describe("mix doctor — auto-fix derivation", () => {
+  it("healthy mix → no fix offered (null, never a no-op button)", () => {
+    expect(deriveMixAutoFix(analyzeMixHealth([healthyMix()], SR))).toBeNull();
+  });
+
+  it("low-end dominance → dark tilt proportional to the excess, clipped at 4", () => {
+    const m = new Float32Array(SR * 2);
+    for (let i = 0; i < m.length; i++) m[i] = 0.4 * Math.sin((2 * Math.PI * 45 * i) / SR);
+    const report = analyzeMixHealth([m], SR);
+    expect(report.lowEndShare).toBeGreaterThan(0.74);
+    const fix = deriveMixAutoFix(report);
+    expect(fix).not.toBeNull();
+    expect(fix!.tiltDb).toBeGreaterThan(0);
+    expect(fix!.tiltDb).toBeLessThanOrEqual(4);
+    expect(fix!.masterGain).toBe(1);
+    expect(fix!.label).toContain("tilt");
+  });
+
+  it("clipped mix → master gain pulling the peak to −1 dBFS", () => {
+    const report = analyzeMixHealth([brokenTrapMix()], SR);
+    const fix = deriveMixAutoFix(report);
+    expect(fix).not.toBeNull();
+    expect(fix!.masterGain).toBeLessThan(1);
+    expect(Math.abs(20 * Math.log10(report.peak * fix!.masterGain) + 1)).toBeLessThan(0.01);
+  });
+
+  it("deterministic", () => {
+    const r = analyzeMixHealth([brokenTrapMix()], SR);
+    expect(deriveMixAutoFix(r)).toEqual(deriveMixAutoFix(r));
   });
 });

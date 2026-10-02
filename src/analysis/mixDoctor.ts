@@ -295,3 +295,56 @@ export function analyzeMixHealthBuffer(buffer: AudioBuffer): MixHealthReport {
   for (let c = 0; c < buffer.numberOfChannels; c++) channels.push(buffer.getChannelData(c));
   return analyzeMixHealth(channels, buffer.sampleRate);
 }
+
+/* ── Auto-fix derivation (wave: mix-doctor auto-fix) ─────────────────────── */
+
+export interface MixAutoFix {
+  /** Tilt to install on the master (clamped ±4 — the applyMasterConfig clamp). */
+  tiltDb: number;
+  /** Master gain delta in linear terms (for clipping/over-hot mixes). */
+  masterGain: number;
+  /** Human-readable summary of what the fix does. */
+  label: string;
+}
+
+/**
+ * PURE derivation of a conservative one-click fix from a mix report. Only
+ * the two mechanically-safe problems are corrected:
+ *   - low-end dominance → dark tilt (energy moves below the muddiness line
+ *     is what a human engineer does first: tilt down the lows, not scoop);
+ *   - clipping / over-full-scale → master IN gain so the peak lands at
+ *     −1 dBFS (the AutoStageButton convention).
+ * Everything else (crest collapse, phase, DC, HF harshness) is REPORTED,
+ * never auto-corrected — those need an ear, not a formula. Deterministic,
+ * no state; the caller decides whether to apply. Returns null when the
+ * report has no mechanical fix to offer.
+ */
+export function deriveMixAutoFix(report: MixHealthReport): MixAutoFix | null {
+  const fixes: string[] = [];
+  let tiltDb = 0;
+  let masterGain = 1;
+
+  // Low-end dominance: tilt toward dark in proportion to the excess over the
+  // 74 % advisory line, 1 dB tilt per 3 % of excess, capped at −4 dB total
+  // (the master tilt clamp). Only when the report is otherwise playable.
+  if (report.lowEndShare > 0.74 && report.clippedSamples === 0) {
+    tiltDb = Math.min(4, (report.lowEndShare - 0.74) / 0.03);
+    fixes.push(`tilt ${tiltDb.toFixed(1)} dB`);
+  }
+
+  // Clipping / over-full-scale: master IN so the peak sits at −1 dBFS.
+  if (report.clippedSamples > 0 || report.peak > 1) {
+    masterGain = Math.pow(10, -1 / 20) / Math.max(report.peak, 1e-6);
+    fixes.push("master gain to −1 dBFS");
+  } else if (report.peak > 0.991) {
+    masterGain = Math.pow(10, -1 / 20) / report.peak;
+    fixes.push("master gain to −1 dBFS");
+  }
+
+  if (fixes.length === 0) return null;
+  return {
+    tiltDb: Math.round(tiltDb * 10) / 10,
+    masterGain: Math.round(masterGain * 1000) / 1000,
+    label: fixes.join(" + "),
+  };
+}

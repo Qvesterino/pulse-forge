@@ -342,6 +342,14 @@ export function ArrangementPanel() {
   const [compCrossfadeTicks, setCompCrossfadeTicks] = useState(120);
   const [audioTakeLaneRange, setAudioTakeLaneRange] = useState<AudioTakeLaneRange | null>(null);
   const audioTakeLaneDragRef = useRef<AudioTakeLaneDrag | null>(null);
+  /**
+   * Bumped by the global gesture terminator (Escape / window blur) so the
+   * overlay drags that live in CHILD components — warp pins and scene
+   * intensity points — learn a cancel happened. They own their own refs and
+   * this panel cannot reach into them, so a monotonically increasing token is
+   * the contract: each child resets its drag when the token changes.
+   */
+  const [overlayCancelEpoch, setOverlayCancelEpoch] = useState(0);
   const suppressTakeLaneClickRef = useRef(false);
   const [audioTakeAudition, setAudioTakeAudition] = useState<AudioTakeAudition | null>(null);
   const audioTakeAuditionRef = useRef<AudioTakeAuditionRequest | null>(null);
@@ -2037,6 +2045,81 @@ export function ArrangementPanel() {
     setAudioGainPreview(null);
     setAudioStretchPreview(null);
   };
+
+  /**
+   * GLOBAL GESTURE TERMINATOR (§20 cancel and recovery).
+   *
+   * Every drag machine in this panel wired exactly two terminals:
+   * `onPointerUp` (commit) and `onPointerCancel` (abort). Escape and
+   * window-blur are neither — and this panel registers no `window` pointerup
+   * or blur listener, unlike its siblings `Sequencer.tsx:1766-1768` and
+   * `App.tsx:422-423`.
+   *
+   * The consequence was destructive, not cosmetic: pressing Escape mid-drag
+   * did NOT cancel. `dragRef.current` still held the `movingIds` captured at
+   * gesture start, so releasing the mouse afterwards COMMITTED the move —
+   * after the user pressed the cancel key. Worse, `App.tsx`'s contextual
+   * Escape handler calls `selectionStore.clear()` at that same moment, so the
+   * selection visibly vanished while the clip slid anyway.
+   *
+   * Losing window focus had the second half of the same bug: no pointercancel
+   * is delivered, so the preview stayed latched — the clip painted at a drag
+   * offset with no gesture behind it, until an unrelated re-render cleared it.
+   *
+   * One listener set, fanned out to every ref, closes both. It deliberately
+   * does NOT stopPropagation: `App.tsx` still owns contextual Escape
+   * (close menu → close help → clear selection → reset tool → blur input),
+   * and cancelling a gesture is independent of that cascade.
+   *
+   * `pointercancel` is registered too: when the browser DOES deliver it to
+   * the window (rather than the captured element) this is a backstop, and
+   * both paths are idempotent.
+   */
+  const cancelAllArrangementGestures = useCallback(() => {
+    dragRef.current = null;
+    setDrag(null);
+    setMultiDrag(null);
+    audioDragRef.current = null;
+    setAudioDrag(null);
+    setAudioFadePreview(null);
+    setAudioGainPreview(null);
+    setAudioStretchPreview(null);
+    marqueeStartRef.current = null;
+    setMarquee(null);
+    setTimeDrag(null);
+    audioTakeLaneDragRef.current = null;
+    setAudioTakeLaneRange(null);
+    // Overlay drags (warp pins, scene-intensity points) live in child
+    // components with their own refs. Bumping the epoch is how they learn a
+    // cancel happened without this panel reaching into their internals.
+    setOverlayCancelEpoch((n) => n + 1);
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      // Only act when a gesture is actually live — otherwise Escape stays
+      // entirely with the app-level cascade.
+      const live =
+        dragRef.current !== null ||
+        audioDragRef.current !== null ||
+        marqueeStartRef.current !== null ||
+        timeDrag !== null ||
+        audioTakeLaneDragRef.current !== null;
+      if (!live) return;
+      cancelAllArrangementGestures();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("blur", cancelAllArrangementGestures);
+    window.addEventListener("pointercancel", cancelAllArrangementGestures);
+    // Unmount mid-gesture (panel closed, project switched) must not leave the
+    // child overlays armed against a parent that no longer exists.
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("blur", cancelAllArrangementGestures);
+      window.removeEventListener("pointercancel", cancelAllArrangementGestures);
+    };
+  }, [cancelAllArrangementGestures, timeDrag]);
   const [bouncingZone, setBouncingZone] = useState(false);
   const [consolidatingAudio, setConsolidatingAudio] = useState(false);
   const consolidatingAudioRef = useRef(false);
@@ -4537,14 +4620,28 @@ function WarpPinsOverlay({
   clip,
   disabledReason,
   onCommit,
+  cancelEpoch = 0,
 }: {
   clip: AudioClip;
   disabledReason: string | null;
   onCommit: (markers: { timeSec: number; tick: number }[]) => void;
+  /**
+   * Bumped by the panel's global gesture terminator (Escape / window blur).
+   * This overlay owns its own drag ref, so the parent cannot cancel it
+   * directly — the epoch is how it learns it must abort.
+   */
+  cancelEpoch?: number;
 }) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ index: number; originTick: number; startX: number; moved: boolean } | null>(null);
   const [dragTick, setDragTick] = useState<number | null>(null);
+  // A warp-pin drag must not survive Escape or a focus loss either — otherwise
+  // the pin still commits on release after the user cancelled.
+  useEffect(() => {
+    if (cancelEpoch === 0) return;
+    dragRef.current = null;
+    setDragTick(null);
+  }, [cancelEpoch]);
   const markers = clip.warpMarkers ?? [];
   if (markers.length === 0) return null;
   const clipStartTick = clip.startBar * BAR_TICKS;
@@ -4712,6 +4809,7 @@ function IntensityLane({
   transport,
   barWidth,
   onEdit,
+  cancelEpoch = 0,
 }: {
   scenes: ProjectDocument["scenes"];
   clips: ArrangementClip[];
@@ -4719,8 +4817,21 @@ function IntensityLane({
   transport: Transport;
   barWidth: number;
   onEdit: (sceneId: string, curve: IntensityPoint[]) => void;
+  /**
+   * Bumped by the panel's global gesture terminator (Escape / window blur).
+   * This lane owns its own drag ref, so the parent cancels it by token rather
+   * than by reaching into its internals.
+   */
+  cancelEpoch?: number;
 }) {
   const laneRef = useRef<HTMLDivElement>(null);
+  // A dragged intensity point must not survive Escape or a focus loss —
+  // otherwise it still writes its curve on release after the user cancelled.
+  useEffect(() => {
+    if (cancelEpoch === 0) return;
+    dragRef.current = null;
+    setLive(null);
+  }, [cancelEpoch]);
   const dragRef = useRef<{
     sceneId: string;
     index: number;

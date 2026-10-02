@@ -1,0 +1,38 @@
+
+> pulse-forge@0.1.0 predev
+> npm run build:core-worklets && npm run build:fxeq && npm run build:ultina && npm run build:ozvena && npm run build:morph-dynamics
+
+
+> pulse-forge@0.1.0 build:core-worklets
+> node scripts/build-core-worklets.mjs
+
+[core-worklets] bundles written to public/bitcrusher-worklet.js and public/core-worklet.js
+
+> pulse-forge@0.1.0 build:fxeq
+> node scripts/build-fxeq-worklet.mjs
+
+[fxeq] worklet bundle written to public/fxeq-worklet.js
+
+> pulse-forge@0.1.0 build:ultina
+> node scripts/build-ultina-worklet.mjs
+
+[ultina] worklet bundle written to public/ultina-worklet.js
+
+> pulse-forge@0.1.0 build:ozvena
+> node scripts/build-ozvena-worklet.mjs
+
+[ozvena] worklet bundle written to public/ozvena-worklet.js
+
+> pulse-forge@0.1.0 build:morph-dynamics
+> node scripts/build-morph-dynamics-worklet.mjs
+
+[morph-dynamics] worklet bundle written to public/morph-dynamics-worklet.js
+
+> pulse-forge@0.1.0 dev
+> vite --host 127.0.0.1 --port 5199 --strictPort
+
+[31merror when starting dev server:
+Error: Port 5199 is already in use
+    at Server.onError (file:///D:/pulse-forge/node_modules/vite/dist/node/chunks/dep-Dm0[2m03:54:17[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/AudioUnlock.tsx, /src/ui/UndoHistoryPanel.tsx, /src/ui/TrackTabs.tsx, /src/ui/ContextMenu.tsx, /src/ui/OnboardingHint.tsx, /src/ui/Inspector.tsx, /src/ui/TopBar.tsx, /src/ui/CommandToast.tsx, /src/ui/OnboardingTour.tsx, /src/ui/RackStrip.tsx, /src/ui/EffectRack.tsx, /src/ui/PatternBar.tsx, /src/ui/Diagnostics.tsx, /src/ui/Sequencer.tsx, /src/ui/WavetablePreview.tsx, /src/ui/SampleBrowser.tsx, /src/ui/AudioStatusChips.tsx, /src/ui/ScalePanel.tsx, /src/ui/AssistPanel.tsx, /src/ui/CollabPanel.tsx, /src/ui/FxIntentBar.tsx, /src/ui/EffectIntentAssistant.tsx, /src/ui/FloatingPlugin.tsx, /src/ui/BeatManglerEditor.tsx, /src/ui/SceneLauncher.tsx, /src/ui/GenerateDialog.tsx, /src/ui/PianoRoll.tsx, /src/ui/IntakeTray.tsx, /src/ui/DropZone.tsx, /src/ui/FreesoundSection.tsx, /src/ui/HumToMelody.tsx, /src/ui/Mixer.tsx, /src/ui/MacroPerformanceBar.tsx, /src/ui/FreezeButton.tsx, /src/ui/MasterMeter.tsx, /src/ui/LoudnessHistory.tsx, /src/ui/IntentPanel.tsx, /src/gallery/PublishButton.tsx[22m
+[2m03:54:17[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx, /src/ui/AudioUnlock.tsx, /src/ui/UndoHistoryPanel.tsx, /src/ui/TrackTabs.tsx, /src/ui/ContextMenu.tsx, /src/ui/OnboardingHint.tsx, /src/ui/Inspector.tsx, /src/ui/TopBar.tsx, /src/ui/CommandToast.tsx, /src/ui/OnboardingTour.tsx, /src/ui/RackStrip.tsx, /src/ui/EffectRack.tsx, /src/ui/PatternBar.tsx, /src/ui/Diagnostics.tsx, /src/ui/Sequencer.tsx, /src/ui/WavetablePreview.tsx, /src/ui/SampleBrowser.tsx, /src/ui/AudioStatusChips.tsx, /src/ui/ScalePanel.tsx, /src/ui/AssistPanel.tsx, /src/ui/CollabPanel.tsx, /src/ui/FxIntentBar.tsx, /src/ui/EffectIntentAssistant.tsx, /src/ui/FloatingPlugin.tsx, /src/ui/BeatManglerEditor.tsx, /src/ui/SceneLauncher.tsx, /src/ui/GenerateDialog.tsx, /src/ui/PianoRoll.tsx, /src/ui/IntakeTray.tsx, /src/ui/DropZone.tsx, /src/ui/FreesoundSection.tsx, /src/ui/HumToMelody.tsx, /src/ui/Mixer.tsx, /src/ui/MacroPerformanceBar.tsx, /src/ui/FreezeButton.tsx, /src/ui/MasterMeter.tsx, /src/ui/LoudnessHistory.tsx, /src/ui/IntentPanel.tsx, /src/gallery/PublishButton.tsx[22m
+[2m03:55:16[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/ui/App.tsx[22m

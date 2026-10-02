@@ -146,8 +146,9 @@ export function EnvEditor({
       onClick={() => cycleShape(param, value)}
       role="button"
       aria-label={`Cycle ${label} shape`}
-      title={`Click to cycle the ${label} curve shape (linear / exponential curves)`}
     >
+      {/* SVG tooltips are a <title> child, not an attribute. */}
+      <title>{`Click to cycle the ${label} curve shape (linear / exponential curves)`}</title>
       {label}·{shapeLabel(value)}
     </text>
   );
@@ -194,8 +195,10 @@ export function EnvEditor({
           onClick={cycleLoop}
           role="button"
           aria-label="Cycle decay loop"
-          title="Decay loop count — how many times the decay stage repeats before reaching sustain. 0 = single decay."
         >
+          <title>
+            Decay loop count — how many times the decay stage repeats before reaching sustain. 0 = single decay.
+          </title>
           {`LOOP·${Math.round(p.dLoop ?? 0)}×`}
         </text>
         {handle(pts.delayEnd, "delay", dragging === "delay")}

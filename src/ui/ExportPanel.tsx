@@ -32,7 +32,7 @@ import { userSampleId, type UserSampleAsset } from "../persistence/UserSampleRep
 import { PublishToGalleryButton } from "../gallery/PublishButton";
 import { isMountedInEcosystem, prepareBeatHandoff } from "../interop/qvesterHandoff";
 import { setMasterConfig, chopSampleToPads } from "../commands/commands";
-import { analyzeMixHealthBuffer, type MixHealthReport } from "../analysis/mixDoctor";
+import { analyzeMixHealthBuffer, deriveMixAutoFix, type MixHealthReport } from "../analysis/mixDoctor";
 import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import { slicesFromOnsets } from "../audio-engine/transients";
 
@@ -835,6 +835,7 @@ export function ExportPanel({
         <ExportSummary summary={status.summary} lufsTarget={master.lufsTarget ?? -14} ceilingDb={master.ceilingDb} />
       )}
       {status.kind === "done" && mixHealth && <MixHealthLine health={mixHealth} />}
+      {status.kind === "done" && mixHealth && <MixAutoFixButton health={mixHealth} />}
       {status.kind === "done" && <AutoStageButton summary={status.summary} />}
 
       <div className="export-resample" role="group" aria-label="Realtime resample">
@@ -913,6 +914,38 @@ function MixHealthLine({ health }: { health: MixHealthReport }) {
       {stats}
       {notes && ` — ${notes}`}
     </div>
+  );
+}
+
+/**
+ * MIX-DOCTOR AUTO FIX (mix-doctor auto-fix wave): a one-click, one-undo
+ * correction for the two mechanically-safe problems the doctor flags —
+ * low-end dominance (dark tilt) and clipping (master IN). Everything else
+ * stays report-only. Hidden when the derivation has nothing to offer.
+ */
+function MixAutoFixButton({ health }: { health: MixHealthReport }) {
+  const services = useServices();
+  const [applied, setApplied] = useState<string | null>(null);
+  const fix = deriveMixAutoFix(health);
+  if (!fix) return null;
+  return (
+    <button
+      type="button"
+      className="btn btn-export"
+      disabled={applied !== null}
+      title="Apply the mix-doctor fix as one undoable step (tilt + master IN) — re-export to verify"
+      onClick={() => {
+        services.store.execute(
+          setMasterConfig(services.store.getDoc(), {
+            ...(fix.tiltDb !== 0 ? { tiltDb: -fix.tiltDb } : {}),
+            ...(fix.masterGain !== 1 ? { masterGain: fix.masterGain } : {}),
+          }),
+        );
+        setApplied(fix.label);
+      }}
+    >
+      {applied !== null ? `MIX FIX STAGED ✓ ${applied} — re-export to verify` : `MIX FIX (${fix.label})`}
+    </button>
   );
 }
 

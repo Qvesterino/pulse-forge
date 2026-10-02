@@ -13,30 +13,29 @@ export default defineConfig({
       // graph would otherwise fail to resolve the import in src/sw-update.ts.
       // Mirror the alias from vite.config.ts so tests, dev, and prod agree.
       { find: /^virtual:pwa-register$/, replacement: virtualPwaRegisterStub },
-    // QMR HUD (Qvester ecosystem): the packages ship TS SOURCE (monorepo
-    // file:-dep style) — alias them in-place so KYX mounts the REAL chip
-    // without publishing or copying. Keep in sync with vitest.config.ts.
-    {
-      find: /^@qvester\/qmr-hud$/,
-      replacement: fileURLToPath(new URL("../QVESTER_LANDING_PAGE/packages/qmr-hud/src/index.ts", import.meta.url)),
-    },
-    {
-      find: /^@qvester\/qmr-hud\/(.*)$/,
-      replacement: fileURLToPath(new URL("../QVESTER_LANDING_PAGE/packages/qmr-hud/src/$1", import.meta.url)),
-    },
-    {
-      find: /^@qvester\/qmr-interop(.*)$/,
-      replacement: fileURLToPath(new URL("../QVESTER_LANDING_PAGE/packages/qmr-interop/src/$1", import.meta.url)),
-    },
-    {
-      find: /^@qvester\/intent-engine(.*)$/,
-      replacement: fileURLToPath(new URL("../QVESTER_LANDING_PAGE/packages/intent-engine/src/$1", import.meta.url)),
-    },
-    {
-      find: /^@qvester\/interop-types(.*)$/,
-      replacement: fileURLToPath(new URL("../QVESTER_LANDING_PAGE/packages/interop-types/src/$1", import.meta.url)),
-    },
-
+      // QMR HUD (Qvester ecosystem): the packages ship TS SOURCE (monorepo
+      // file:-dep style) — alias them in-place so KYX mounts the REAL chip
+      // without publishing or copying. Keep in sync with vitest.config.ts.
+      {
+        find: /^@qvester\/qmr-hud$/,
+        replacement: fileURLToPath(new URL("../QVESTER_LANDING_PAGE/packages/qmr-hud/src/index.ts", import.meta.url)),
+      },
+      {
+        find: /^@qvester\/qmr-hud\/(.*)$/,
+        replacement: fileURLToPath(new URL("../QVESTER_LANDING_PAGE/packages/qmr-hud/src/$1", import.meta.url)),
+      },
+      {
+        find: /^@qvester\/qmr-interop(.*)$/,
+        replacement: fileURLToPath(new URL("../QVESTER_LANDING_PAGE/packages/qmr-interop/src/$1", import.meta.url)),
+      },
+      {
+        find: /^@qvester\/intent-engine(.*)$/,
+        replacement: fileURLToPath(new URL("../QVESTER_LANDING_PAGE/packages/intent-engine/src/$1", import.meta.url)),
+      },
+      {
+        find: /^@qvester\/interop-types(.*)$/,
+        replacement: fileURLToPath(new URL("../QVESTER_LANDING_PAGE/packages/interop-types/src/$1", import.meta.url)),
+      },
     ],
   },
   test: {
