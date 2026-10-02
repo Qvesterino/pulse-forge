@@ -242,7 +242,7 @@ describe("Producer DNA candidate search lanes", () => {
 
   it("chooses only same-genre grooves in the direction of explicit syncopation preference", () => {
     const negativeBias = { ...bias, motifRepetition: 0, grooveSyncopation: -0.12 };
-    const baseGroove = getGroovesForGenre(plan.intent.genre).find((groove) => groove.id === plan.groove.id)!;
+    const grooves = getGroovesForGenre(plan.intent.genre);
     const score = (groove: GrooveData) => {
       let hits = 0;
       let syncopated = 0;
@@ -258,27 +258,43 @@ describe("Producer DNA candidate search lanes", () => {
       return hits > 0 ? syncopated / hits : 0;
     };
 
-    const moreSyncopated = candidateSearchVariant(plan, "personal-syncopated", 1, bias);
-    const lessSyncopated = candidateSearchVariant(plan, "personal-straight", 1, negativeBias);
+    // The module-level plan's rendezvous seed can land on an extreme groove
+    // with no available candidate in one preference direction. Select a
+    // deterministic seed whose baseline has both higher- and lower-syncopated
+    // same-genre alternatives, so this test exercises both search directions
+    // instead of requiring the fallback to invent an unavailable groove.
+    const searchablePlan = Array.from({ length: 512 }, (_, index) =>
+      planGeneration(normalizeIntent({ ...plan.intent, seed: `groove-direction-fixture-${index}` }), doc),
+    ).find((candidatePlan) => {
+      const baseline = grooves.find((groove) => groove.id === candidatePlan.groove.id);
+      if (!baseline) return false;
+      const baselineScore = score(baseline);
+      return (
+        grooves.some((groove) => score(groove) >= baselineScore + 0.02) &&
+        grooves.some((groove) => score(groove) <= baselineScore - 0.02)
+      );
+    });
+    if (!searchablePlan)
+      throw new Error("trap groove fixture needs same-genre alternatives in both syncopation directions");
+    const baseGroove = grooves.find((groove) => groove.id === searchablePlan.groove.id)!;
+
+    const moreSyncopated = candidateSearchVariant(searchablePlan, "personal-syncopated", 1, bias);
+    const lessSyncopated = candidateSearchVariant(searchablePlan, "personal-straight", 1, negativeBias);
     expect(moreSyncopated.search.family).toBe("personal-groove");
     expect(lessSyncopated.search.family).toBe("personal-groove");
-    const moreGroove = getGroovesForGenre(plan.intent.genre).find(
-      (groove) => groove.id === moreSyncopated.search.grooveId,
-    );
-    const lessGroove = getGroovesForGenre(plan.intent.genre).find(
-      (groove) => groove.id === lessSyncopated.search.grooveId,
-    );
+    const moreGroove = grooves.find((groove) => groove.id === moreSyncopated.search.grooveId);
+    const lessGroove = grooves.find((groove) => groove.id === lessSyncopated.search.grooveId);
     expect(moreGroove).toBeDefined();
     expect(lessGroove).toBeDefined();
-    expect(moreGroove?.genre).toBe(plan.intent.genre);
-    expect(lessGroove?.genre).toBe(plan.intent.genre);
+    expect(moreGroove?.genre).toBe(searchablePlan.intent.genre);
+    expect(lessGroove?.genre).toBe(searchablePlan.intent.genre);
     expect(score(moreGroove!)).toBeGreaterThan(score(baseGroove));
     expect(score(lessGroove!)).toBeLessThan(score(baseGroove));
 
     // The template proxy is not enough: make sure the selected lane changes
     // the actual generated drum pattern in the same measured direction.
-    const seed = plan.intent.seed;
-    const safeVariant = candidateSearchVariant(plan, seed, 0, null);
+    const seed = searchablePlan.intent.seed;
+    const safeVariant = candidateSearchVariant(searchablePlan, seed, 0, null);
     const safePattern = evaluateCandidate(
       generatePattern(doc, safeVariant.generationPlan.options),
       safeVariant.validationPlan,
@@ -299,7 +315,7 @@ describe("Producer DNA candidate search lanes", () => {
     const safeSyncopation = measuredSyncopation(safePattern, safeVariant);
     const selectAndMeasure = (personalBias: PersonalSearchBias) =>
       selectPersonalGrooveCandidate({
-        plan,
+        plan: searchablePlan,
         seed,
         candidateIndex: 1,
         personalBias,
