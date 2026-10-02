@@ -24,8 +24,8 @@ function renderBox(text: string, fixes: IntentInput = {}, session: Record<string
     corrections: fixes,
   });
   const input: IntentInput = { ...parseIntentText(text).input, ...fixes };
-  render(<BriefContractSummary contract={contract} input={input} fixes={fixes} onPatch={onPatch} />);
-  return { onPatch };
+  const rendered = render(<BriefContractSummary contract={contract} input={input} fixes={fixes} onPatch={onPatch} />);
+  return { onPatch, ...rendered };
 }
 
 describe("BriefContractSummary", () => {
@@ -39,6 +39,51 @@ describe("BriefContractSummary", () => {
     expect(screen.getByText("NEISTÉ")).toBeTruthy();
     expect(screen.getByText("142 BPM")).toBeTruthy();
     expect(screen.getByText(/žiadne bicie/)).toBeTruthy();
+  });
+
+  it("shows where each interpretation came from and whether it was parsed, inferred, or left unknown", () => {
+    const { container } = renderBox("dark trap");
+    const badges = Array.from(container.querySelectorAll<HTMLElement>(".brief-provenance"));
+
+    expect(
+      badges.some(
+        (badge) =>
+          badge.textContent === "zadanie · rozpoznané" &&
+          badge.getAttribute("aria-label") === "Pôvod: zadanie; istota: rozpoznané",
+      ),
+    ).toBe(true);
+    expect(
+      badges.some(
+        (badge) =>
+          badge.dataset.origin === "default" &&
+          badge.dataset.confidence === "unknown" &&
+          badge.textContent === "predvolené · nezadané",
+      ),
+    ).toBe(true);
+    expect(
+      badges.some(
+        (badge) =>
+          badge.dataset.origin === "default" &&
+          badge.dataset.confidence === "inferred" &&
+          badge.textContent === "predvolené · odhad",
+      ),
+    ).toBe(true);
+  });
+
+  it("marks a session suggestion as an estimate and a correction as user-confirmed", () => {
+    const session = renderBox("nejaký beat", {}, { bpm: "120" });
+    expect(
+      Array.from(session.container.querySelectorAll<HTMLElement>(".brief-provenance")).some(
+        (badge) => badge.dataset.origin === "session" && badge.textContent === "session · odhad",
+      ),
+    ).toBe(true);
+
+    const corrected = renderBox("dark trap at 142", { bpmRange: [128, 128] });
+    expect(
+      Array.from(corrected.container.querySelectorAll<HTMLElement>(".brief-provenance")).some(
+        (badge) => badge.dataset.origin === "user" && badge.textContent === "tvoja oprava · potvrdené",
+      ),
+    ).toBe(true);
   });
 
   it("shows an actionable warning for conflicting role instructions", () => {

@@ -2,7 +2,9 @@ import { useState } from "react";
 import {
   BRIEF_SECTION_LABELS,
   unprotectRole,
+  type BriefConfidence,
   type BriefContract,
+  type BriefOrigin,
   type BriefSection,
   type BriefStatement,
 } from "../intent/brief-contract";
@@ -23,6 +25,35 @@ const ROLE_TOGGLE_LABELS: Readonly<Record<IntentRole, string>> = {
   chords: "akordy",
   lead: "lead",
 };
+const ORIGIN_LABELS: Readonly<Record<BriefOrigin, string>> = {
+  prompt: "zadanie",
+  session: "session",
+  project: "projekt",
+  default: "predvolené",
+  user: "tvoja oprava",
+};
+const CONFIDENCE_LABELS: Readonly<Record<BriefConfidence, string>> = {
+  parsed: "rozpoznané",
+  inferred: "odhad",
+  unknown: "nezadané",
+  confirmed: "potvrdené",
+};
+
+function BriefProvenance({ statement }: { statement: BriefStatement }) {
+  const origin = ORIGIN_LABELS[statement.origin];
+  const confidence = CONFIDENCE_LABELS[statement.confidence];
+  return (
+    <span
+      className="brief-provenance"
+      data-origin={statement.origin}
+      data-confidence={statement.confidence}
+      aria-label={`Pôvod: ${origin}; istota: ${confidence}`}
+      title={`Pôvod: ${origin}; istota: ${confidence}`}
+    >
+      {origin} · {confidence}
+    </span>
+  );
+}
 
 interface BriefContractSummaryProps {
   contract: BriefContract;
@@ -112,6 +143,7 @@ export function BriefContractSummary({
               </button>
             );
           })}
+          <BriefProvenance statement={statement} />
         </div>
       );
     }
@@ -126,8 +158,8 @@ export function BriefContractSummary({
           title="Použiť tento návrh"
           onClick={() => onPatch(statement.patch ?? {})}
         >
-          {"+ "}
-          {statement.label}
+          <span className="brief-statement-label">+ {statement.label}</span>
+          <BriefProvenance statement={statement} />
         </button>
       );
     }
@@ -135,7 +167,8 @@ export function BriefContractSummary({
     if (statement.section === "preserve" && statement.role) {
       return (
         <span key={statement.id} className="brief-chip brief-keep">
-          {statement.label}
+          <span className="brief-statement-label">{statement.label}</span>
+          <BriefProvenance statement={statement} />
           <button
             type="button"
             className="brief-unkeep"
@@ -178,6 +211,7 @@ export function BriefContractSummary({
               if (e.key === "Escape") setEditing(null);
             }}
           />
+          <BriefProvenance statement={statement} />
         </span>
       );
     }
@@ -206,7 +240,8 @@ export function BriefContractSummary({
             : undefined
         }
       >
-        {statement.label}
+        <span className="brief-statement-label">{statement.label}</span>
+        <BriefProvenance statement={statement} />
         {corrected ? " ✓" : fixed ? " ✎" : ""}
       </button>
     );

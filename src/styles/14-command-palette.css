@@ -546,6 +546,10 @@ a.brand:hover .brand-mark {
   align-items: center;
 }
 .brief-chip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
   font: inherit;
   font-size: 10px;
   color: #ccc;
@@ -554,6 +558,31 @@ a.brand:hover .brand-mark {
   border-radius: 4px;
   padding: 2px 7px;
   cursor: default;
+}
+.brief-provenance {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, #aaa 22%, transparent);
+  border-radius: 999px;
+  padding: 0 4px;
+  color: #aaa;
+  font-size: 8px;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: nowrap;
+  cursor: help;
+}
+.brief-provenance[data-confidence="inferred"],
+.brief-provenance[data-confidence="unknown"] {
+  color: #a9bde8;
+  border-color: color-mix(in srgb, #7aa2f7 32%, transparent);
+}
+.brief-provenance[data-confidence="confirmed"] {
+  color: #8bd5ad;
+  border-color: color-mix(in srgb, #4ade80 32%, transparent);
+}
+.brief-statement-label {
+  display: inline;
 }
 button.brief-chip {
   cursor: pointer;
