@@ -111,8 +111,24 @@ describe("selection-scoped assist", () => {
     expect(parseSelectedStepIntent("make selected hats sparser")).toEqual({ operation: "thin", target: "hats" });
     expect(parseSelectedStepIntent("redšie vybrané haty")).toEqual({ operation: "thin", target: "hats" });
     expect(parseSelectedStepIntent("make selected hats less dense")).toEqual({ operation: "thin", target: "hats" });
+    expect(parseSelectedStepIntent("open space for vocal")).toEqual({
+      operation: "thin",
+      target: "hats",
+      reason: "vocal-space",
+    });
+    expect(parseSelectedStepIntent("otvor priestor pre vokál")).toEqual({
+      operation: "thin",
+      target: "hats",
+      reason: "vocal-space",
+    });
+    expect(parseSelectedStepIntent("viac priestoru pre vokál")).toEqual({
+      operation: "thin",
+      target: "hats",
+      reason: "vocal-space",
+    });
     expect(parseSelectedStepIntent("humanize these steps")).toEqual({ operation: "humanize", target: null });
     expect(parseSelectedStepIntent("thin hats and snares, then move the drop")).toBeNull();
+    expect(parseSelectedStepIntent("humanize these steps to open space for vocal")).toBeNull();
     expect(parseSelectedStepIntent("make selected hats brighter")).toBeNull();
     expect(parseSelectedStepIntent("make it sparser")).toBeNull();
   });

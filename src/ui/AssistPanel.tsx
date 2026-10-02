@@ -550,9 +550,14 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
             ) : (
               <div className="collab-hint" role="region" aria-label="Producer step edit preview">
                 <strong>
-                  {selectedStepInstructionPlan.intent?.operation.toUpperCase()} ·{" "}
-                  {selectedStepInstructionPlan.changes.length} cell changes · {selectedStepInstructionPlan.beforeHits} →{" "}
-                  {selectedStepInstructionPlan.afterHits} hits
+                  {selectedStepInstructionPlan.intent?.reason === "vocal-space"
+                    ? `VOCAL SPACE · THIN ${selectedStepInstructionPlan.scope?.padIds
+                        .map((padId) => selectedDrumTrack?.pads.find((pad) => pad.id === padId)?.name)
+                        .filter((name): name is string => Boolean(name))
+                        .join(" + ")}`
+                    : selectedStepInstructionPlan.intent?.operation.toUpperCase()}{" "}
+                  · {selectedStepInstructionPlan.changes.length} cell changes · {selectedStepInstructionPlan.beforeHits}{" "}
+                  → {selectedStepInstructionPlan.afterHits} hits
                 </strong>
                 {selectedStepInstructionPlan.changes.slice(0, 6).map((change) => (
                   <div key={`${change.padId}-${change.step}`}>

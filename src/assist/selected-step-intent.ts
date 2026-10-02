@@ -4,11 +4,16 @@ export interface SelectedStepIntent {
   operation: "humanize" | "thin";
   /** Null means the user referred to the visible step selection as a whole. */
   target: AssistTarget | null;
+  /** Expose the musical inference behind a shorthand producer request. */
+  reason?: "vocal-space";
 }
 
 const HUMANIZE_WORDS = new Set(["humanize", "humanise", "vary", "randomize", "randomise", "humanizuj", "varuj"]);
 const THIN_WORDS = new Set(["thin", "sparse", "sparser", "sparsify", "redsie", "redsi", "uber", "zredukuj"]);
 const DENSITY_WORDS = new Set(["dense", "density", "hustota", "hustotu"]);
+const SPACE_WORDS = new Set(["space", "room", "priestor", "priestoru", "miesto"]);
+const VOCAL_WORDS = new Set(["vocal", "vocals", "vokal", "vokalu", "spev", "spevu", "voice", "voices"]);
+const OPEN_SPACE_WORDS = new Set(["open", "create", "make", "leave", "otvor", "otvorit", "urob", "vytvor"]);
 const SCOPE_WORDS = new Set([
   "selected",
   "selection",
@@ -36,8 +41,28 @@ const SCOPE_WORDS = new Set([
   "uder",
   "udery",
   "bunky",
+  "krokoch",
 ]);
-const FILLER_WORDS = new Set(["a", "an", "the", "my", "our", "please", "make", "some", "less", "more", "hi", "z"]);
+const FILLER_WORDS = new Set([
+  "a",
+  "an",
+  "the",
+  "my",
+  "our",
+  "please",
+  "make",
+  "some",
+  "less",
+  "more",
+  "viac",
+  "hi",
+  "z",
+  "for",
+  "pre",
+  "in",
+  "v",
+  "tychto",
+]);
 
 const TARGET_WORDS: Record<AssistTarget, ReadonlySet<string>> = {
   hats: new Set(["hat", "hats", "haty", "hihat", "hihats", "hihatky", "cymbal", "cymbals", "cinely"]),
@@ -61,7 +86,12 @@ export function parseSelectedStepIntent(text: string): SelectedStepIntent | null
   const humanize = words.some((word) => HUMANIZE_WORDS.has(word));
   const explicitThin = words.some((word) => THIN_WORDS.has(word));
   const densityDown = words.includes("less") && words.some((word) => DENSITY_WORDS.has(word));
-  if (Number(humanize) + Number(explicitThin || densityDown) !== 1) return null;
+  const hasVocalSpace = words.some((word) => SPACE_WORDS.has(word)) && words.some((word) => VOCAL_WORDS.has(word));
+  const vocalSpace =
+    hasVocalSpace &&
+    (words.some((word) => OPEN_SPACE_WORDS.has(word)) || words.some((word) => word === "more" || word === "viac"));
+  const thin = explicitThin || densityDown || vocalSpace;
+  if (Number(humanize) + Number(thin) !== 1) return null;
 
   const targets = (Object.entries(TARGET_WORDS) as Array<[AssistTarget, ReadonlySet<string>]>)
     .filter(([, aliases]) => words.some((word) => aliases.has(word)))
@@ -69,12 +99,15 @@ export function parseSelectedStepIntent(text: string): SelectedStepIntent | null
   if (targets.length > 1) return null;
 
   const hasScope = words.some((word) => SCOPE_WORDS.has(word));
-  if (!hasScope && targets.length === 0) return null;
+  if (!hasScope && targets.length === 0 && !vocalSpace) return null;
 
   const allowedWords = new Set([
     ...HUMANIZE_WORDS,
     ...THIN_WORDS,
     ...DENSITY_WORDS,
+    ...SPACE_WORDS,
+    ...VOCAL_WORDS,
+    ...OPEN_SPACE_WORDS,
     ...SCOPE_WORDS,
     ...FILLER_WORDS,
     ...Object.values(TARGET_WORDS).flatMap((aliases) => [...aliases]),
@@ -83,6 +116,7 @@ export function parseSelectedStepIntent(text: string): SelectedStepIntent | null
 
   return {
     operation: humanize ? "humanize" : "thin",
-    target: targets[0] ?? null,
+    target: targets[0] ?? (vocalSpace ? "hats" : null),
+    ...(vocalSpace ? { reason: "vocal-space" as const } : {}),
   };
 }

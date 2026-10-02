@@ -61,7 +61,7 @@ describe("AssistPanel", () => {
     }
   });
 
-  it("turns a natural-language selected-hat request into a previewed, selection-locked edit", async () => {
+  it("turns a vocal-space request into a previewed, hats-only selected-cell edit", async () => {
     const user = userEvent.setup();
     const doc = createProjectFromTemplate("house");
     const basePattern = getActivePattern(doc);
@@ -93,10 +93,10 @@ describe("AssistPanel", () => {
 
     await user.type(
       screen.getByRole("textbox", { name: "Producer selected-step instruction" }),
-      "make selected hats sparser",
+      "open space for vocal",
     );
     expect(screen.getByRole("region", { name: "Producer step edit preview" })).toHaveTextContent(
-      "THIN · 2 cell changes · 8 → 6 hits",
+      `VOCAL SPACE · THIN ${hat.name} · 2 cell changes · 8 → 6 hits`,
     );
     await user.click(screen.getByRole("button", { name: "APPLY PRODUCER STEP EDIT · ONE UNDO STEP" }));
 
@@ -114,7 +114,7 @@ describe("AssistPanel", () => {
     expect(changedPattern.stepMeta?.[hat.id]?.[2]).toBeUndefined();
   });
 
-  it("does not broaden a family-targeted instruction beyond the selected rows", async () => {
+  it("refuses vocal-space inference when the selected rows contain no hats", async () => {
     const user = userEvent.setup();
     const doc = createProjectFromTemplate("house");
     const drum = getDrumTrack(doc);
@@ -132,7 +132,7 @@ describe("AssistPanel", () => {
 
     await user.type(
       screen.getByRole("textbox", { name: "Producer selected-step instruction" }),
-      "make selected hats sparser",
+      "open space for vocal",
     );
     expect(screen.getByRole("alert")).toHaveTextContent(/selection contains no hats drum rows/i);
     expect(screen.getByRole("button", { name: "APPLY PRODUCER STEP EDIT · ONE UNDO STEP" })).toBeDisabled();
