@@ -1,6 +1,5 @@
 import { executeMcpToolAsync, type McpToolContext } from "../mcp/tools";
 import { mcpToolContextFromServices } from "../mcp/desktop-host";
-import { isMountedInEcosystem } from "./qvesterHandoff";
 import type { Services } from "../services";
 
 /**
@@ -146,15 +145,20 @@ export function startQmrBridge(services: Services): () => void {
       return executeMcpToolAsync(ctx, tool, args);
     },
     async requestHandoff() {
+      // The handoff sender drags the render/stems/wav cluster — load it
+      // only when a handoff is actually requested. isMountedInEcosystem
+      // rides the same dynamic import: a static line here once pulled the
+      // whole sender cluster back into the eager boot graph (boot-graph
+      // gate catches exactly that).
+      const { buildAudioCanvasHandoffUrl, isMountedInEcosystem, prepareBeatHandoff } = await import(
+        "./qvesterHandoff",
+      );
       if (!isMountedInEcosystem()) {
         return {
           error:
             "KYX is not mounted in the Qvester shell (standalone deployment) — the handoff medium is same-origin only",
         };
       }
-      // The handoff sender drags the render/stems/wav cluster — load it
-      // only when a handoff is actually requested.
-      const { buildAudioCanvasHandoffUrl, prepareBeatHandoff } = await import("./qvesterHandoff");
       const result = await prepareBeatHandoff(ctx.getDoc(), services.bank, {
         mode: "song",
         sampleRate: 44100,
