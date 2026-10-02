@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { HumanCorpusValidationError, validateCreativeTaskHumanCorpus } from "../scripts/creative-task-human-corpus";
+import {
+  compileCreativeTaskHumanTrainingCorpus,
+  HumanCorpusValidationError,
+  validateCreativeTaskHumanCorpus,
+} from "../scripts/creative-task-human-corpus";
 
 type HumanRow = {
   version: number;
@@ -168,6 +172,45 @@ describe("consented creative-task human corpus gate", () => {
     const error = captureValidationError(corpusBytes([row]));
 
     expect(error.message).toContain("adjudicated-output-violates-request-context");
+  });
+
+  it("compiles only training and validation rows while excluding held-out prompts", () => {
+    const train = reviewedRow();
+    const validation = reviewedRow({
+      id: "case-1123456789abcdef0123456789abcdef",
+      family: "consented-brief-beta",
+      split: "validation",
+      prompt: "Make a warm house loop.",
+      genre: "house",
+      mood: "warm",
+    });
+    const heldOut = reviewedRow({
+      id: "case-2123456789abcdef0123456789abcdef",
+      family: "consented-brief-gamma",
+      split: "held-out",
+      prompt: "Make a dark trap groove.",
+    });
+    const compiled = compileCreativeTaskHumanTrainingCorpus(corpusBytes([train, validation, heldOut]));
+    const serialized = JSON.stringify({ manifest: compiled, rows: compiled.rows });
+
+    expect(compiled.rows.train).toHaveLength(1);
+    expect(compiled.rows.validation).toHaveLength(1);
+    expect(compiled.rows.train[0]).toMatchObject({
+      id: train.id,
+      split: "train",
+      source: "consented-human-adjudicated-v1",
+      consentPurpose: "model-training",
+    });
+    expect(compiled.rows.validation[0]).toMatchObject({
+      id: validation.id,
+      split: "validation",
+      consentPurpose: "evaluation",
+    });
+    expect(compiled.heldOutRowsExcluded).toBe(1);
+    expect(compiled.splits.train.caseIds).toEqual([train.id]);
+    expect(serialized).not.toContain(heldOut.id);
+    expect(serialized).not.toContain(heldOut.prompt);
+    expect(compiled.eligibleForModelPromotion).toBe(false);
   });
 
   it("rejects arbitrary metadata that could carry participant identity or raw review text", () => {

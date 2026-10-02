@@ -19,7 +19,9 @@ import hashlib
 import json
 import math
 import random
+import re
 import unicodedata
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -64,6 +66,18 @@ MAX_CORPUS_BYTES = 8 * 1024 * 1024
 MAX_SEQUENCE_LENGTH = 1_024
 MAX_GENERATION_TOKENS = 160
 SEED = 0xC7EA71
+HUMAN_SOURCE_PATHS = (
+    "scripts/creative-task-human-corpus.ts",
+    "scripts/compile-creative-task-human-corpus.mts",
+    "scripts/train-creative-task-sft.py",
+    "src/intent/brief-contract.ts",
+    "src/intent/creative-task-contract.ts",
+    "src/intent/creative-task-ollama.ts",
+    "src/intent/text-parser.ts",
+)
+CASE_ID_PATTERN = re.compile(r"^case-[0-9a-f]{32}$")
+FAMILY_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+){1,7}$")
+SHA256_PATTERN = re.compile(r"^[a-f0-9]{64}$")
 
 
 def sha256_bytes(value: bytes) -> str:
@@ -251,6 +265,136 @@ def validate_corpus(corpus_dir: Path) -> tuple[list[dict[str, Any]], list[dict[s
     return splits["train"], splits["validation"], prompt_bytes.decode("utf-8"), manifest
 
 
+def validate_human_reviewed_corpus(
+    corpus_dir: Path,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str, dict[str, Any]]:
+    """Validate a private human-reviewed corpus compiled by the TypeScript gate."""
+    manifest = read_json(corpus_dir / "manifest.json")
+    if (
+        not isinstance(manifest, dict)
+        or manifest.get("formatVersion") != 1
+        or manifest.get("task") != "creative-task-v1"
+        or manifest.get("synthetic") is not False
+        or manifest.get("humanReviewed") is not True
+        or manifest.get("eligibleForModelPromotion") is not False
+    ):
+        raise SystemExit("Unsupported human-reviewed corpus manifest; promotion eligibility must remain false.")
+    if not isinstance(manifest.get("sourceCorpusSha256"), str) or not SHA256_PATTERN.fullmatch(manifest["sourceCorpusSha256"]):
+        raise SystemExit("Human-reviewed corpus is missing its source corpus hash.")
+    if type(manifest.get("sourceRows")) is not int or type(manifest.get("heldOutRowsExcluded")) is not int:
+        raise SystemExit("Human-reviewed corpus row provenance is malformed.")
+    if manifest["sourceRows"] < 1 or not 0 <= manifest["heldOutRowsExcluded"] < manifest["sourceRows"]:
+        raise SystemExit("Human-reviewed corpus has invalid source/held-out counts.")
+
+    source_hashes = manifest.get("sourceHashes")
+    if not isinstance(source_hashes, dict) or set(source_hashes) != set(HUMAN_SOURCE_PATHS):
+        raise SystemExit("Human-reviewed corpus source hash allowlist is incomplete or unexpected.")
+    for relative_path in HUMAN_SOURCE_PATHS:
+        try:
+            actual = sha256_bytes((ROOT / relative_path).read_bytes())
+        except OSError as error:
+            raise SystemExit(f"Cannot verify human-corpus source: {relative_path}") from error
+        if source_hashes.get(relative_path) != actual:
+            raise SystemExit(f"Human-reviewed corpus is stale for source: {relative_path}; recompile it.")
+
+    prompt_bytes = (corpus_dir / "prompt.txt").read_bytes()
+    prompt_entry = manifest.get("prompt")
+    if (
+        not isinstance(prompt_entry, dict)
+        or prompt_entry.get("path") != "prompt.txt"
+        or prompt_entry.get("sha256") != sha256_bytes(prompt_bytes)
+    ):
+        raise SystemExit("Human-reviewed system prompt hash mismatch.")
+
+    splits: dict[str, list[dict[str, Any]]] = {}
+    ids: set[str] = set()
+    prompts: set[str] = set()
+    family_by_split: dict[str, set[str]] = {"train": set(), "validation": set()}
+    expected_keys = {
+        "version", "id", "family", "split", "language", "source", "operation", "prompt", "instruction",
+        "response", "consentPurpose", "consentReceiptSha256", "consentRecordedAt",
+    }
+    split_manifest = manifest.get("splits")
+    if not isinstance(split_manifest, dict) or set(split_manifest) != {"train", "validation"}:
+        raise SystemExit("Human-reviewed corpus must contain train and validation metadata only; held-out is excluded.")
+
+    for split in ("train", "validation"):
+        entry = split_manifest.get(split)
+        expected_path = f"{split}.jsonl"
+        if not isinstance(entry, dict) or entry.get("path") != expected_path:
+            raise SystemExit(f"Invalid human-reviewed {split} split path.")
+        rows, raw = read_jsonl(corpus_dir / expected_path)
+        if len(rows) != entry.get("rows") or sha256_bytes(raw) != entry.get("sha256"):
+            raise SystemExit(f"Human-reviewed {split} split count/hash mismatch; recompile the private corpus.")
+        splits[split] = rows
+        for row in rows:
+            if set(row) != expected_keys or row.get("version") != 1 or row.get("split") != split:
+                raise SystemExit(f"Human-reviewed row has an invalid shape/split in {split}.")
+            if (
+                not isinstance(row.get("id"), str)
+                or not CASE_ID_PATTERN.fullmatch(row["id"])
+                or not isinstance(row.get("family"), str)
+                or not FAMILY_ID_PATTERN.fullmatch(row["family"])
+            ):
+                raise SystemExit("Human-reviewed row has invalid pseudonymous identity metadata.")
+            if row.get("source") != "consented-human-adjudicated-v1" or row.get("language") not in {"en", "sk"}:
+                raise SystemExit(f"Human-reviewed row has unexpected source/language metadata: {row['id']}")
+            expected_purpose = "model-training" if split == "train" else "evaluation"
+            if row.get("consentPurpose") != expected_purpose:
+                raise SystemExit(f"Human-reviewed row has consent purpose inconsistent with {split}: {row['id']}")
+            if not isinstance(row.get("consentReceiptSha256"), str) or not SHA256_PATTERN.fullmatch(row["consentReceiptSha256"]):
+                raise SystemExit(f"Human-reviewed row is missing its consent receipt hash: {row['id']}")
+            recorded_at = row.get("consentRecordedAt")
+            if not isinstance(recorded_at, str):
+                raise SystemExit(f"Human-reviewed row has invalid consent timestamp: {row['id']}")
+            try:
+                parsed_timestamp = datetime.fromisoformat(recorded_at.replace("Z", "+00:00"))
+            except ValueError as error:
+                raise SystemExit(f"Human-reviewed row has invalid consent timestamp: {row['id']}") from error
+            if parsed_timestamp.tzinfo is None:
+                raise SystemExit(f"Human-reviewed consent timestamp must include a timezone: {row['id']}")
+            if (
+                not isinstance(row.get("prompt"), str)
+                or not row["prompt"].strip()
+                or len(row["prompt"]) > 2_048
+                or not isinstance(row.get("instruction"), str)
+                or row.get("operation") not in {"generate", "revise"}
+                or not validate_output(row.get("response"))
+            ):
+                raise SystemExit(f"Human-reviewed example is malformed: {row['id']}")
+            try:
+                request = json.loads(row["instruction"])
+            except json.JSONDecodeError as error:
+                raise SystemExit(f"Human-reviewed request JSON is invalid: {row['id']}") from error
+            if (
+                not isinstance(request, dict)
+                or request.get("version") != 1
+                or request.get("operation") != row["operation"]
+                or request.get("prompt") != row["prompt"]
+                or not valid_for_request(row["response"], request)
+            ):
+                raise SystemExit(f"Human-reviewed target violates its pinned request context: {row['id']}")
+            normalized = " ".join(unicodedata.normalize("NFKC", row["prompt"]).casefold().split())
+            if row["id"] in ids or normalized in prompts:
+                raise SystemExit("Duplicate human-reviewed case ID or normalized prompt across splits.")
+            ids.add(row["id"])
+            prompts.add(normalized)
+            family_by_split[split].add(row["family"])
+
+        if entry.get("caseIds") != sorted(row["id"] for row in rows):
+            raise SystemExit(f"Human-reviewed {split} case ID provenance mismatch.")
+        if entry.get("families") != sorted(family_by_split[split]):
+            raise SystemExit(f"Human-reviewed {split} family provenance mismatch.")
+
+    if family_by_split["train"] & family_by_split["validation"]:
+        raise SystemExit("Human-reviewed train/validation family leakage.")
+    if len(ids) + manifest["heldOutRowsExcluded"] != manifest["sourceRows"]:
+        raise SystemExit("Human-reviewed source counts do not reconcile with exported splits and excluded held-out rows.")
+    if not splits["train"] or not splits["validation"]:
+        raise SystemExit("Human-reviewed training requires non-empty train and validation splits.")
+    return splits["train"], splits["validation"], prompt_bytes.decode("utf-8"), manifest
+
+
 def canonical(value: Any, field: str | None = None) -> Any:
     if isinstance(value, dict):
         return {key: canonical(value[key], key) for key in sorted(value)}
@@ -344,7 +488,14 @@ def build_example(tokenizer: Any, system: str, row: dict[str, Any]) -> dict[str,
 
 
 @torch.no_grad()
-def evaluate(model: Any, tokenizer: Any, system: str, rows: list[dict[str, Any]], eval_limit: int) -> dict[str, Any]:
+def evaluate(
+    model: Any,
+    tokenizer: Any,
+    system: str,
+    rows: list[dict[str, Any]],
+    eval_limit: int,
+    human_reviewed: bool = False,
+) -> dict[str, Any]:
     model.eval()
     selected = rows if eval_limit == 0 else rows[:eval_limit]
     valid = exact = status_correct = role_safety_failures = 0
@@ -412,8 +563,20 @@ def evaluate(model: Any, tokenizer: Any, system: str, rows: list[dict[str, Any]]
             }
             for language, metrics in sorted(by_language.items())
         },
-        "syntheticOnly": True,
+        "syntheticOnly": not human_reviewed,
+        "humanReviewed": human_reviewed,
     }
+
+
+def require_path_within(path: Path, root: Path, label: str) -> Path:
+    resolved = path.resolve()
+    try:
+        resolved.relative_to(root.resolve())
+    except ValueError as error:
+        raise SystemExit(f"{label} must remain inside the ignored private human-review directory.") from error
+    if resolved == root.resolve():
+        raise SystemExit(f"{label} must be a file/directory below the private human-review directory.")
+    return resolved
 
 
 def main() -> None:
@@ -422,8 +585,10 @@ def main() -> None:
     parser.add_argument("--base-revision", help="Pinned model revision/commit (use 'local' for an immutable local snapshot).")
     parser.add_argument("--out-dir", help="Adapter output directory; choose a location with enough free disk.")
     parser.add_argument("--report-out", help="Optional additional path for a pinned JSON report; existing files are never overwritten.")
-    parser.add_argument("--corpus-dir", default=str(DEFAULT_CORPUS))
+    parser.add_argument("--corpus-dir", help="Synthetic bootstrap corpus directory; the default is the checked-in synthetic corpus.")
+    parser.add_argument("--human-reviewed-corpus-dir", help="Compiled private, consented human corpus directory from the human-training compiler.")
     parser.add_argument("--allow-synthetic-bootstrap", action="store_true", help="Acknowledge the current corpus is synthetic and not promotion-ready.")
+    parser.add_argument("--allow-human-reviewed-training", action="store_true", help="Explicitly acknowledge training on consented private human-reviewed examples.")
     parser.add_argument("--validate-only", action="store_true", help="Verify corpus, prompt/source pins and leakage without loading a model or using the GPU.")
     parser.add_argument("--allow-model-download", action="store_true", help="Explicitly permit Transformers to download missing model/tokenizer files; off by default.")
     parser.add_argument("--epochs", type=int, default=3)
@@ -432,11 +597,22 @@ def main() -> None:
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--lora-r", type=int, default=16)
     parser.add_argument("--lora-alpha", type=int, default=32)
-    parser.add_argument("--eval-limit", type=int, default=0, help="0 evaluates the entire synthetic validation split.")
+    parser.add_argument("--eval-limit", type=int, default=0, help="0 evaluates the entire validation split.")
     parser.add_argument("--dtype", choices=("auto", "bf16", "fp16"), default="auto")
     args = parser.parse_args()
-    if not args.allow_synthetic_bootstrap and not args.validate_only:
-        raise SystemExit("Refusing to train synthetic-only labels without --allow-synthetic-bootstrap.")
+    human_reviewed = bool(args.human_reviewed_corpus_dir)
+    if args.human_reviewed_corpus_dir and args.corpus_dir:
+        raise SystemExit("Choose either --corpus-dir or --human-reviewed-corpus-dir, not both.")
+    if human_reviewed:
+        if args.allow_synthetic_bootstrap:
+            raise SystemExit("--allow-synthetic-bootstrap cannot be used with a human-reviewed corpus.")
+        if not args.allow_human_reviewed_training and not args.validate_only:
+            raise SystemExit("Refusing human-reviewed training without --allow-human-reviewed-training.")
+    else:
+        if args.allow_human_reviewed_training:
+            raise SystemExit("--allow-human-reviewed-training requires --human-reviewed-corpus-dir.")
+        if not args.allow_synthetic_bootstrap and not args.validate_only:
+            raise SystemExit("Refusing to train synthetic-only labels without --allow-synthetic-bootstrap.")
     if not args.validate_only and (not args.base_model or not args.base_model.strip() or not args.base_revision or not args.base_revision.strip()):
         raise SystemExit("Training requires both --base-model and --base-revision; neither is inferred from the action model.")
     if not args.validate_only and (not args.out_dir or not args.out_dir.strip()):
@@ -446,13 +622,22 @@ def main() -> None:
     if not math.isfinite(args.lr) or not 0 < args.lr <= 1e-2:
         raise SystemExit("--lr must be finite and in (0, 0.01].")
 
-    corpus_dir = Path(args.corpus_dir).resolve()
-    train_rows, validation_rows, system, _manifest = validate_corpus(corpus_dir)
+    private_review_root = (ROOT / ".sft" / "creative-human-review").resolve()
+    private_derived_root = private_review_root / "derived"
+    corpus_dir = Path(args.human_reviewed_corpus_dir or args.corpus_dir or DEFAULT_CORPUS).resolve()
+    if human_reviewed:
+        corpus_dir = require_path_within(corpus_dir, private_derived_root, "Human-reviewed corpus input")
+        train_rows, validation_rows, system, _manifest = validate_human_reviewed_corpus(corpus_dir)
+    else:
+        train_rows, validation_rows, system, _manifest = validate_corpus(corpus_dir)
     if args.validate_only:
+        kind = "consented human-reviewed" if human_reviewed else "synthetic bootstrap"
+        held_out_note = f"; held-out rows excluded={_manifest['heldOutRowsExcluded']}" if human_reviewed else "; held-out leakage checks passed"
         print(
-            f"Creative SFT trainer validation passed: train={len(train_rows)} rows/{len(_manifest['splits']['train']['families'])} families, "
-            f"validation={len(validation_rows)} rows/{len(_manifest['splits']['validation']['families'])} families; "
-            "prompt/source pins and held-out leakage checks passed; no model/GPU loaded."
+            f"Creative SFT trainer validation passed ({kind}): train={len(train_rows)} rows/"
+            f"{len(_manifest['splits']['train']['families'])} families, validation={len(validation_rows)} rows/"
+            f"{len(_manifest['splits']['validation']['families'])} families; prompt/source pins"
+            f"{held_out_note}; no model/GPU loaded."
         )
         return
     if not torch.cuda.is_available():
@@ -466,9 +651,13 @@ def main() -> None:
     random.seed(SEED)
     torch.manual_seed(SEED)
     output_dir = Path(args.out_dir).resolve()
+    if human_reviewed:
+        output_dir = require_path_within(output_dir, private_derived_root, "Human-reviewed adapter output")
     if output_dir.exists() and any(output_dir.iterdir()):
         raise SystemExit(f"Output directory is not empty; refusing to overwrite user data: {output_dir}")
     report_out = Path(args.report_out).resolve() if args.report_out else None
+    if human_reviewed and report_out is not None:
+        report_out = require_path_within(report_out, private_derived_root, "Human-reviewed report output")
     if report_out is not None and report_out.exists():
         raise SystemExit(f"Report output already exists; refusing to overwrite user data: {report_out}")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -506,7 +695,8 @@ def main() -> None:
     if len(examples) < 8 or len(validation_examples) < 4:
         raise SystemExit("Too few examples fit the model context; increase data quality or sequence budget before training.")
     print(
-        f"synthetic examples: train={len(examples)}/{len(train_rows)}, validation={len(validation_examples)}/{len(validation_rows)}; "
+        f"{('human-reviewed' if human_reviewed else 'synthetic')} examples: "
+        f"train={len(examples)}/{len(train_rows)}, validation={len(validation_examples)}/{len(validation_rows)}; "
         f"validation max_new_tokens={MAX_GENERATION_TOKENS}",
         flush=True,
     )
@@ -523,7 +713,8 @@ def main() -> None:
         pct_start=one_cycle_warmup_fraction(steps_per_epoch * args.epochs),
     )
     report: dict[str, Any] = {
-        "reportVersion": 2,
+        "reportVersion": 3,
+        "datasetKind": "consented-human-reviewed" if human_reviewed else "synthetic-bootstrap",
         "task": "creative-task-v1",
         "baseModel": args.base_model,
         "baseRevision": args.base_revision,
@@ -535,8 +726,8 @@ def main() -> None:
         "systemPromptSha256": _manifest["prompt"]["sha256"],
         "dtype": str(dtype),
         "validationMaxNewTokens": MAX_GENERATION_TOKENS,
-        "syntheticOnly": True,
-        "humanReviewed": False,
+        "syntheticOnly": not human_reviewed,
+        "humanReviewed": human_reviewed,
         "eligibleForModelPromotion": False,
         "trainRows": len(train_rows),
         "validationRows": len(validation_rows),
@@ -547,6 +738,19 @@ def main() -> None:
         "learningRate": args.lr,
         "trainingHistory": [],
     }
+    if human_reviewed:
+        report.update(
+            {
+                "sourceCorpusSha256": _manifest["sourceCorpusSha256"],
+                "heldOutRowsExcluded": _manifest["heldOutRowsExcluded"],
+                "trainCaseIds": sorted(row["id"] for row in train_rows),
+                "validationCaseIds": sorted(row["id"] for row in validation_rows),
+                "trainingConsentPurpose": "model-training",
+                "validationConsentPurpose": "evaluation",
+                "heldOutUsed": False,
+                "rawPromptsLogged": False,
+            }
+        )
 
     for epoch in range(args.epochs):
         random.shuffle(examples)
@@ -576,14 +780,21 @@ def main() -> None:
         report["trainingHistory"].append(epoch_result)
         print(f"epoch {epoch_result['epoch']}/{args.epochs}: {json.dumps(epoch_result, sort_keys=True)}", flush=True)
 
-    validation = evaluate(model, tokenizer, system, validation_rows, args.eval_limit)
+    validation = evaluate(model, tokenizer, system, validation_rows, args.eval_limit, human_reviewed=human_reviewed)
     validation["afterEpoch"] = args.epochs
     report["validationFinal"] = validation
-    report["notes"] = [
-        "Synthetic bootstrap validation is not evidence of real-producer understanding or musical quality.",
-        "No action resolver/UI registration, model promotion, or merged model export is performed.",
-        "Promotion requires a consented human-reviewed held-out set, blind listening, and separate release gates.",
-    ]
+    if human_reviewed:
+        report["notes"] = [
+            "Human-reviewed validation interpretation scores do not measure musical quality or prove production usefulness.",
+            "The held-out split was not exported to this training corpus; validation rows are evaluation-only and never optimized as targets.",
+            "No action resolver/UI registration, model promotion, or merged model export is performed; release still requires held-out human evaluation and blind listening.",
+        ]
+    else:
+        report["notes"] = [
+            "Synthetic bootstrap validation is not evidence of real-producer understanding or musical quality.",
+            "No action resolver/UI registration, model promotion, or merged model export is performed.",
+            "Promotion requires a consented human-reviewed held-out set, blind listening, and separate release gates.",
+        ]
     adapter_dir = output_dir / "adapter"
     model.save_pretrained(str(adapter_dir), save_embedding_layers=False)
     tokenizer.save_pretrained(str(adapter_dir))

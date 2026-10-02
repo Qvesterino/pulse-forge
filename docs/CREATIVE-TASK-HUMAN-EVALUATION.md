@@ -8,7 +8,7 @@ This protocol prepares a **local, consented, human-reviewed** interpretation set
 - Obtain explicit, recorded consent for the exact intended use before the brief enters the review corpus. Training and evaluation consent are separate: `train` rows require `model-training`; `validation` and `held-out` rows require `evaluation` only.
 - Review and redact the brief for personal or confidential details before annotation. `privacyReviewed` and `promptRedacted` are human attestations; the validator cannot detect every identifying detail or prove that consent was legally sufficient.
 - Keep the consent receipt and the mapping needed to honor withdrawal outside the repository. The row contains only the receipt SHA-256, a random case key, and pseudonymous reviewer keys. Do not put the receipt, participant identity, or mapping in Git.
-- Store input only under `.sft/creative-human-review/`, which is Git-ignored. Validation is local and read-only; it prints aggregate counts and the corpus hash, never examples. It does not upload, train, export, or promote a model.
+- Store input only under `.sft/creative-human-review/`, which is Git-ignored. Validation is local and read-only; it prints aggregate counts and the corpus hash, never examples. It does not upload, train, or promote a model.
 - If consent is withdrawn, use the private receipt mapping to remove the case from source and derived splits, rerun reports, and invalidate adapters/checkpoints trained from it. Keep no raw prompt in telemetry or application logs.
 
 ## Annotation procedure
@@ -89,4 +89,30 @@ New-Item -ItemType Directory -Force .sft/creative-human-review
 npm run creative-task:human-review-validate -- --input .sft/creative-human-review/reviewed.jsonl
 ```
 
-The command prints only corpus/file hashes and row/family/language counts. It does not create a report file. Human-reviewed data are **not yet accepted by the synthetic-only bootstrap trainer**; a later, separately reviewed training/export path must preserve split and consent metadata and must not reuse held-out rows.
+The command prints only corpus/file hashes and row/family/language counts. It does not create a report file.
+
+## Compile an isolated training input
+
+Compilation is a separate, explicit operation. It copies only `train` and `validation` rows into a new directory under the ignored `.sft/creative-human-review/derived/` tree; `held-out` rows and their prompts/labels are omitted. Each exported row retains its split, pseudonymous case/family keys, consent purpose, consent receipt hash, and timestamp. The manifest pins source hashes and remains `eligibleForModelPromotion: false`.
+
+```powershell
+npm run creative-task:human-training-compile -- `
+  --input .sft/creative-human-review/reviewed.jsonl `
+  --name reviewed-run-01 `
+  --confirm-training-consent
+```
+
+The compiler refuses inputs outside the private root and refuses to overwrite an existing run. It prints only the relative private output path, hashes, and counts—not examples. Training is a separate, explicit GPU operation; use a pinned model revision, keep the adapter/report under the private derived directory, and do not enable model downloads implicitly:
+
+```powershell
+npm run creative-task:sft-train -- `
+  --human-reviewed-corpus-dir .sft/creative-human-review/derived/reviewed-run-01 `
+  --allow-human-reviewed-training `
+  --base-model <explicit-model-id-or-local-path> `
+  --base-revision <pinned-revision-or-local> `
+  --out-dir .sft/creative-human-review/derived/reviewed-run-01/adapter-run-01
+```
+
+The trainer verifies per-split consent purpose, row and source hashes, family separation, request safety and held-out exclusion before loading a model. It requires CUDA and explicit consent acknowledgements, never trains on `validation` or `held-out`, and does not register or promote the adapter. No real human corpus is currently present; do not run this recipe against synthetic examples.
+
+The synthetic-only bootstrap trainer still accepts only the checked-in synthetic corpus. The explicit compiler/trainer path above is the only path for reviewed human data and it keeps the held-out split out of training artifacts.

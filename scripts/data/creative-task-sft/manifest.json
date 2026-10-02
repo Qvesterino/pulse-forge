@@ -51,7 +51,7 @@
   "sourceHashes": {
     "scripts/generate-creative-task-sft.mts": "1f69ce8a9b70485c7d69f27fe354df6ea2b6ee6c31b44da236fe57f62f308568",
     "scripts/run-creative-task-sft.mjs": "d8e8b9e74696771e66ebd76ede8175c50bba057ecda3416a35898a5ebc98be26",
-    "scripts/train-creative-task-sft.py": "74c22a185b074c173e5efa84bd17572baa942aa12d2dbc8a5849ce17bb2117de",
+    "scripts/train-creative-task-sft.py": "d73430e0c3687361f96f2f53d975288dee7f342e516b30daf74c36e4d154030c",
     "src/ai/types.ts": "72aa46b1e1ea692bc8c8085b379613df627d532f1be276050a2f41e481f22c0d",
     "src/intent/creative-task-contract.ts": "58844175f81279407def019ae5309adeb8d98ccf4316557ad1b2c24315a95840",
     "src/intent/creative-task-ollama.ts": "b2411211ce95b95e427e66acbed1b378f13d8cb4315277acd7c7fd882d7e4601",

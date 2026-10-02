@@ -13,6 +13,7 @@ import {
 } from "../src/intent/creative-task-contract";
 import { compileBriefContract } from "../src/intent/brief-contract";
 import { parseIntentText } from "../src/intent/text-parser";
+import { creativeTaskOllamaSystemPrompt } from "../src/intent/creative-task-ollama";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const GOLDEN_PATH = path.join(ROOT, "scripts", "data", "creative-task-v1-golden.jsonl");
@@ -35,6 +36,15 @@ const ADJUDICATION_REASONS = [
   "parser-disagreement",
   "out-of-scope",
   "other",
+] as const;
+const HUMAN_TRAINING_SOURCE_PATHS = [
+  "scripts/creative-task-human-corpus.ts",
+  "scripts/compile-creative-task-human-corpus.mts",
+  "scripts/train-creative-task-sft.py",
+  "src/intent/brief-contract.ts",
+  "src/intent/creative-task-contract.ts",
+  "src/intent/creative-task-ollama.ts",
+  "src/intent/text-parser.ts",
 ] as const;
 
 type ReviewSplit = (typeof SPLITS)[number];
@@ -83,6 +93,47 @@ export interface HumanCorpusSummary {
   consentedHumanReviewed: true;
   examplesPrinted: false;
   trainingExported: false;
+}
+
+export interface HumanTrainingRow {
+  version: 1;
+  id: string;
+  family: string;
+  split: "train" | "validation";
+  language: ReviewLanguage;
+  source: "consented-human-adjudicated-v1";
+  operation: CreativeTaskOperation;
+  prompt: string;
+  instruction: string;
+  response: CreativeTaskOutputV1;
+  consentPurpose: "model-training" | "evaluation";
+  consentReceiptSha256: string;
+  consentRecordedAt: string;
+}
+
+export interface HumanTrainingCorpus {
+  formatVersion: 1;
+  task: "creative-task-v1";
+  synthetic: false;
+  humanReviewed: true;
+  eligibleForModelPromotion: false;
+  sourceCorpusSha256: string;
+  sourceRows: number;
+  heldOutRowsExcluded: number;
+  sourceHashes: Record<string, string>;
+  prompt: { path: "prompt.txt"; sha256: string };
+  splits: Record<
+    "train" | "validation",
+    {
+      path: "train.jsonl" | "validation.jsonl";
+      rows: number;
+      sha256: string;
+      families: string[];
+      caseIds: string[];
+    }
+  >;
+  rows: Record<"train" | "validation", HumanTrainingRow[]>;
+  systemPrompt: string;
 }
 
 interface ValidationIssue {
@@ -422,5 +473,87 @@ export function validateCreativeTaskHumanCorpus(bytes: Uint8Array): HumanCorpusS
     consentedHumanReviewed: true,
     examplesPrinted: false,
     trainingExported: false,
+  };
+}
+
+/**
+ * Compile only consented train and evaluation-validation rows for an isolated
+ * local SFT run. The held-out split is deliberately omitted from both outputs.
+ */
+export function compileCreativeTaskHumanTrainingCorpus(bytes: Uint8Array): HumanTrainingCorpus {
+  const summary = validateCreativeTaskHumanCorpus(bytes);
+  const source = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  const reviewedRows = source
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length > 0)
+    .map((line) => JSON.parse(line) as ReviewedCase);
+  const systemPrompt = creativeTaskOllamaSystemPrompt();
+  const rows: HumanTrainingCorpus["rows"] = { train: [], validation: [] };
+
+  for (const row of reviewedRows) {
+    if (row.split === "held-out") continue;
+    const parsed = parseIntentText(row.prompt);
+    const contract = compileBriefContract(parsed);
+    const request = createCreativeTaskRequestV1({
+      operation: row.operation,
+      prompt: row.prompt,
+      intent: parsed.input,
+      contract,
+    });
+    if (!request.ok) throw new Error("Validated human corpus could not be compiled into a creative-task request.");
+    rows[row.split].push({
+      version: 1,
+      id: row.id,
+      family: row.family,
+      split: row.split,
+      language: row.language,
+      source: "consented-human-adjudicated-v1",
+      operation: row.operation,
+      prompt: row.prompt,
+      instruction: JSON.stringify(request.request),
+      response: row.adjudication.output,
+      consentPurpose: row.split === "train" ? "model-training" : "evaluation",
+      consentReceiptSha256: row.consent.receiptSha256,
+      consentRecordedAt: row.consent.recordedAt,
+    });
+  }
+
+  const sourceHashes = Object.fromEntries(
+    HUMAN_TRAINING_SOURCE_PATHS.map((relativePath) => [
+      relativePath,
+      hash(readFileSync(path.join(ROOT, relativePath))),
+    ]),
+  );
+  const manifestSplits = Object.fromEntries(
+    (["train", "validation"] as const).map((split) => {
+      const splitRows = rows[split];
+      const jsonl = `${splitRows.map((row) => JSON.stringify(row)).join("\n")}\n`;
+      return [
+        split,
+        {
+          path: `${split}.jsonl`,
+          rows: splitRows.length,
+          sha256: hash(jsonl),
+          families: [...new Set(splitRows.map((row) => row.family))].sort(),
+          caseIds: splitRows.map((row) => row.id).sort(),
+        },
+      ];
+    }),
+  ) as HumanTrainingCorpus["splits"];
+
+  return {
+    formatVersion: 1,
+    task: "creative-task-v1",
+    synthetic: false,
+    humanReviewed: true,
+    eligibleForModelPromotion: false,
+    sourceCorpusSha256: summary.inputSha256,
+    sourceRows: summary.rows,
+    heldOutRowsExcluded: summary.bySplit["held-out"].rows,
+    sourceHashes,
+    prompt: { path: "prompt.txt", sha256: hash(systemPrompt) },
+    splits: manifestSplits,
+    rows,
+    systemPrompt,
   };
 }

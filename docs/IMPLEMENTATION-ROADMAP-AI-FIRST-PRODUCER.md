@@ -570,10 +570,13 @@ Toto je dôkaz, že samotná JSON schéma nestačí; konfliktné návrhy nesmú 
 úplný syntetický diagnostický baseline action-only
 `kyx-intent-v30-q8:latest`, nie creative model, reprezentatívny ľudský holdout ani hodnotenie hudby; tento provider sa
 nesmie routovať na tvorivé briefy.
-**Otvorené:** získať consented human-reviewed príklady, vykonať nezávislé anotovanie/adjudikáciu podľa
+**Ďalší krok (2026-10-02):** získať consented human-reviewed príklady, vykonať nezávislé anotovanie/adjudikáciu podľa
 `docs/CREATIVE-TASK-HUMAN-EVALUATION.md` a potom na rovnakom splite porovnať deterministic brief baseline so
-samostatným creative modelom. Rubrika aj read-only validator pre lokálny private intake už existujú, ale zatiaľ
-neboli pridané ani vymyslené žiadne reálne príklady. Blind listening, UI pre clarify/approve a release gates ostávajú
+samostatným creative modelom. Rubrika, read-only intake validator aj oddelený compiler/trainer path sú pripravené:
+compiler exportuje iba consented `train` a `validation`, held-out riadky vylúči, trainer kontroluje provenance a
+request-safety, vyžaduje explicitný opt-in, pinned model revíziu, CUDA a ukladá adapter/report iba pod Git-ignored
+private derived path. Testované sú split/consent/leakage odmietnutia; reálne príklady zatiaľ neboli pridané ani
+vymyslené a žiadny human-data tréning neprebehol. Blind listening, UI pre clarify/approve a release gates ostávajú
 otvorené. Syntetický SFT bootstrap adapter ostáva nepromovaný; action-only LFM sa nesmie považovať za hotový creative
 compiler.
 
