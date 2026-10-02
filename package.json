@@ -113,6 +113,7 @@
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:smoke": "playwright test 01-landing-to-studio 02-panel-toggles 03-generate-flow 04-persistence-roundtrip",
     "typecheck": "tsc --noEmit",
+    "gen:mcp-mirrors": "npx -y tsx scripts/generate-mcp-mirrors.mts",
     "typecheck:clean": "node -e \"try{require('fs').unlinkSync('tsconfig.tsbuildinfo')}catch{try{require('fs').unlinkSync('./tsconfig.tsbuildinfo')}catch{}}\" && tsc --noEmit --incremental false",
     "vendor:asio": "node scripts/vendor-asio.mjs",
     "verify:all": "node scripts/verify-all.mjs",

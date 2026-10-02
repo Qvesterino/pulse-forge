@@ -189,6 +189,11 @@ The dev server must be on port 5199 with `--strictPort` (the playwright.config.t
 - **AudioWorklet DSP boundary**: AudioWorklets receive raw AudioWorkletProcessor messages — never trust `event.data` shape. The canonical pattern is in `src/audio-workers/onset-detector.ts:96` and `src/audio-workers/warp-render.ts:30-49`. Apply the same defense-in-depth to any new worker you add.
 - **`noUnusedLocals` is strict.** A line like `import type { ReactElement }` that's not referenced will fail `tsc --noEmit`. Run `npm run typecheck` before any non-trivial PR.
 - **Vitest specs under `tests/e2e/`** are run by Playwright, not vitest — `vitest.config.ts` excludes that directory explicitly to avoid double-execution. New E2E scenarios go in `tests/e2e/` and `playwright.config.ts`.
+- **MCP mirrors are GENERATED**: the tool/resource surface lives in
+  `src/mcp/tools.ts`; `desktop/mcp-tool-defs.cjs` and
+  `server/mcp-core.mjs` are mirrors (locked in place by
+  `tests/mcp-mirror-sync.test.ts`). After changing the tool surface run
+  `npm run gen:mcp-mirrors` and commit — never hand-edit a mirror.
 - **Schema versioning**: any change to the on-disk project shape must bump `SCHEMA_VERSION` in `src/project-model/schema.ts` and add a migration in `migrateProject`. Loading code rejects unknown future versions.
 - **Bundle budgets**: `npm run build` enforces entry 1070 KB, DAW JS 3500 KB, optional lazy AI runtimes 650 KB, core worklets 150 KB. `scripts/check-bundle-size.mjs` reports physical shipped JS separately. Any budget increase needs a measured justification and a script update.
 - **Live and offline render parity**: the renderer hands the same `AudioEngine` an `OfflineAudioContext`. If a feature only works in one path, that's a bug. Verify by exporting the project and listening to the result.
