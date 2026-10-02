@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyAssistPatchToStepSelection,
   classifyPads,
+  humanizeNoteSelection,
   varyPattern,
   expandWithBuild,
   replaceRows,
@@ -9,7 +10,7 @@ import {
   styleNames,
 } from "../src/assist/patternOps";
 import { assistBuild, assistFill, assistReplace, assistVary } from "../src/commands/commands";
-import { assistVarySelectionCommand } from "../src/commands/assistSelectionCommands";
+import { assistVaryNoteSelectionCommand, assistVarySelectionCommand } from "../src/commands/assistSelectionCommands";
 import { createDefaultProject } from "../src/project-model/schema";
 import { getActivePattern, getDrumTrack } from "../src/project-model/types";
 import type { Pattern } from "../src/project-model/types";
@@ -98,6 +99,59 @@ describe("selection-scoped assist", () => {
         to: withMeta.stepCount + 4,
       }),
     ).toBe(withMeta);
+  });
+
+  it("humanizes only selected notes and preserves every other note field and track", () => {
+    const { doc, pattern } = setup();
+    const targetTrack = doc.tracks.find((track) => track.kind !== "group")!;
+    const otherTrack = doc.tracks.find((track) => track.id !== targetTrack.id)!;
+    const selectedNote = {
+      id: "selected-note",
+      pitch: 64,
+      start: 480,
+      duration: 180,
+      velocity: 0.72,
+      locks: { cutoff: 0.4 },
+    };
+    const unselectedNote = { id: "unselected-note", pitch: 67, start: 720, duration: 120, velocity: 0.6 };
+    const otherTrackNote = { id: "other-track-note", pitch: 48, start: 240, duration: 240, velocity: 0.8 };
+    const withNotes: Pattern = {
+      ...pattern,
+      notes: {
+        ...pattern.notes,
+        [targetTrack.id]: [unselectedNote, selectedNote],
+        [otherTrack.id]: [otherTrackNote],
+      },
+    };
+    const scope = [{ trackId: targetTrack.id, noteIds: [selectedNote.id] }];
+    const varied = humanizeNoteSelection(withNotes, scope, "note-scope-seed", 0.8);
+    const repeated = humanizeNoteSelection(withNotes, scope, "note-scope-seed", 0.8);
+    const changed = varied.notes[targetTrack.id]!.find((note) => note.id === selectedNote.id)!;
+
+    expect(varied).toEqual(repeated);
+    expect(changed).toMatchObject({
+      id: selectedNote.id,
+      pitch: selectedNote.pitch,
+      duration: selectedNote.duration,
+      locks: selectedNote.locks,
+    });
+    expect(varied.notes[targetTrack.id]![0]).toEqual(unselectedNote);
+    expect(varied.notes[otherTrack.id]).toEqual([otherTrackNote]);
+    expect(humanizeNoteSelection(withNotes, [{ trackId: targetTrack.id, noteIds: ["stale-id"] }], "seed")).toBe(
+      withNotes,
+    );
+
+    const withDoc: typeof doc = {
+      ...doc,
+      patterns: doc.patterns.map((candidate) => (candidate.id === pattern.id ? withNotes : candidate)),
+    };
+    const command = assistVaryNoteSelectionCommand(withDoc, pattern.id, scope, "note-scope-seed", 0.8);
+    const next = command.execute(withDoc);
+    expect(command.type).toBe("assistVaryNoteSelection");
+    expect(command.undo(next)).toEqual(withDoc);
+    expect(next.patterns.find((candidate) => candidate.id === pattern.id)?.notes[targetTrack.id]).toEqual(
+      varied.notes[targetTrack.id],
+    );
   });
 
   it("round-trips the scoped variation through one command and leaves other roles untouched", () => {

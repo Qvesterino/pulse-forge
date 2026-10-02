@@ -9,8 +9,14 @@ import {
   useTracks,
 } from "./context";
 import { assistBuild, assistFill, assistReplace, assistVary } from "../commands/commands";
-import { assistVarySelectionCommand } from "../commands/assistSelectionCommands";
-import { applyAssistPatchToStepSelection, styleNames, type ReplaceTarget } from "../assist/patternOps";
+import { assistVaryNoteSelectionCommand, assistVarySelectionCommand } from "../commands/assistSelectionCommands";
+import {
+  applyAssistPatchToStepSelection,
+  humanizeNoteSelection,
+  styleNames,
+  type NoteSelectionScope,
+  type ReplaceTarget,
+} from "../assist/patternOps";
 import { buildAssistPatch } from "../assist/pipeline";
 import { ASSIST_ENGINE_VERSION, type AssistOperation } from "../assist/types";
 import { getActivePattern, getDrumTrack } from "../project-model/types";
@@ -61,6 +67,25 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
     stepSelection.padIds.every((padId) => pattern.rows[padId] !== undefined)
       ? stepSelection
       : null;
+  const selectedNoteScope = useMemo((): NoteSelectionScope[] | null => {
+    if (selection.noteSelections.length === 0) return null;
+    const scoped: NoteSelectionScope[] = [];
+    for (const noteSelection of selection.noteSelections) {
+      const noteIds = [...new Set(noteSelection.noteIds)];
+      const trackExists = tracks.some((track) => track.id === noteSelection.trackId);
+      const notes = pattern.notes[noteSelection.trackId];
+      if (
+        !trackExists ||
+        noteIds.length === 0 ||
+        !notes ||
+        noteIds.some((noteId) => !notes.some((note) => note.id === noteId))
+      ) {
+        return null;
+      }
+      scoped.push({ trackId: noteSelection.trackId, noteIds });
+    }
+    return scoped;
+  }, [pattern, selection.noteSelections, tracks]);
   const drumTrack = drumTracks[0] ?? getDrumTrack(doc);
   const drumPads = drumTrack.pads;
   const [seed, setSeed] = useState(randomSeed);
@@ -109,6 +134,21 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
     });
     return applyAssistPatchToStepSelection(pattern, patch, selectedStepScope);
   }, [pattern, selectedDrumTrack, selectedStepScope, seed, amount, bars, target, style]);
+  const selectedNoteVariation = useMemo(
+    () => (selectedNoteScope ? humanizeNoteSelection(pattern, selectedNoteScope, seed, amount) : null),
+    [pattern, selectedNoteScope, seed, amount],
+  );
+  const selectedNoteChanges = useMemo(() => {
+    if (!selectedNoteScope || !selectedNoteVariation) return [];
+    return selectedNoteScope.flatMap((scope) => {
+      const selectedIds = new Set(scope.noteIds);
+      const before = pattern.notes[scope.trackId] ?? [];
+      const afterById = new Map((selectedNoteVariation.notes[scope.trackId] ?? []).map((note) => [note.id, note]));
+      return before
+        .filter((note) => selectedIds.has(note.id))
+        .map((note) => ({ before: note, after: afterById.get(note.id) ?? note }));
+    });
+  }, [pattern, selectedNoteScope, selectedNoteVariation]);
   const selectedPreviewPad = selectedStepScope
     ? selectedDrumTrack?.pads.find((pad) => pad.id === selectedStepScope.padIds[0])
     : undefined;
@@ -157,6 +197,34 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
         assistVarySelectionCommand(currentDoc, pattern.id, selectedDrumTrack.id, selectedStepScope, seed, amount),
       ),
     );
+  };
+
+  const applySelectedNoteVariation = () => {
+    if (!selectedNoteScope || !selectedNoteVariation) return;
+    const currentDoc = services.store.getDoc();
+    const currentPattern = currentDoc.patterns.find((candidate) => candidate.id === pattern.id);
+    const currentSelection = selectionStore.getState().noteSelections;
+    const sameSelection =
+      currentSelection.length === selection.noteSelections.length &&
+      currentSelection.every((current, index) => {
+        const expected = selection.noteSelections[index];
+        return (
+          expected !== undefined &&
+          current.trackId === expected.trackId &&
+          current.noteIds.length === expected.noteIds.length &&
+          current.noteIds.every((noteId, noteIndex) => noteId === expected.noteIds[noteIndex])
+        );
+      });
+    if (currentPattern !== pattern || !sameSelection) {
+      setFlash("Pattern or note selection changed — review the selected-note preview before applying.");
+      return;
+    }
+    try {
+      const command = assistVaryNoteSelectionCommand(currentDoc, pattern.id, selectedNoteScope, seed, amount);
+      apply(`Humanized ${selectedNoteChanges.length} selected notes · ${seed}`, () => services.store.execute(command));
+    } catch (error) {
+      setFlash(error instanceof Error ? error.message : String(error));
+    }
   };
 
   return (
@@ -217,6 +285,40 @@ export function AssistPanel({ onClose }: { onClose: () => void }) {
         <div className="collab-hint" role="alert">
           The step selection no longer matches this pattern or its drum track. Reselect steps before using a scoped
           assist.
+        </div>
+      )}
+
+      {selection.noteSelections.length > 0 && !selectedNoteScope && (
+        <div className="collab-hint" role="alert">
+          The note selection no longer matches this pattern or its tracks. Reselect notes before using a scoped assist.
+        </div>
+      )}
+
+      {selectedNoteScope && selectedNoteVariation && (
+        <div className="assist-preview" aria-label="Selected note assist preview">
+          <div className="assist-preview-header">
+            <span>SELECTED NOTES · HUMANIZE</span>
+            <span className="assist-engine">SCOPE LOCKED</span>
+          </div>
+          <div className="assist-preview-meta">
+            {selectedNoteChanges.length} notes ·{" "}
+            {[...new Set(selectedNoteScope.map((scope) => tracks.find((track) => track.id === scope.trackId)?.name))]
+              .filter((name): name is string => Boolean(name))
+              .join(" + ")}{" "}
+            · timing ±{Math.round(10 * amount)} ticks · velocity ±{Math.round(12 * amount)}%
+          </div>
+          <div className="collab-hint" role="list" aria-label="Selected note changes preview">
+            {selectedNoteChanges.slice(0, 6).map(({ before, after }) => (
+              <div key={before.id} role="listitem">
+                MIDI {before.pitch}: tick {before.start} → {after.start}, velocity {Math.round(before.velocity * 127)} →{" "}
+                {Math.round(after.velocity * 127)}
+              </div>
+            ))}
+            {selectedNoteChanges.length > 6 && <div>+ {selectedNoteChanges.length - 6} more selected notes</div>}
+          </div>
+          <button type="button" className="btn btn-export" onClick={applySelectedNoteVariation}>
+            VARY SELECTED NOTES
+          </button>
         </div>
       )}
 

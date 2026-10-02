@@ -1,5 +1,11 @@
 import type { DrumTrack, ProjectDocument } from "../project-model/types";
-import { applyAssistPatchToStepSelection, varyPattern, type StepSelectionScope } from "../assist/patternOps";
+import {
+  applyAssistPatchToStepSelection,
+  humanizeNoteSelection,
+  varyPattern,
+  type NoteSelectionScope,
+  type StepSelectionScope,
+} from "../assist/patternOps";
 import { snapshot } from "./commands";
 import type { Command } from "./types";
 
@@ -42,4 +48,24 @@ export function assistVarySelectionCommand(
     patterns: doc.patterns.map((candidate) => (candidate.id === patternId ? nextPattern : candidate)),
   };
   return snapshot("assistVarySelection", `Vary selected steps in ${pattern.name}`, doc, nextDoc);
+}
+
+/** Create one undoable, deterministic humanization limited to selected notes. */
+export function assistVaryNoteSelectionCommand(
+  doc: ProjectDocument,
+  patternId: string,
+  selection: readonly NoteSelectionScope[],
+  seed: string,
+  amount: number,
+): Command {
+  const pattern = doc.patterns.find((candidate) => candidate.id === patternId);
+  if (!pattern) throw new Error(`Pattern ${patternId} not found`);
+  const nextPattern = humanizeNoteSelection(pattern, selection, seed, amount);
+  if (nextPattern === pattern) throw new Error("Selected notes are no longer available in this pattern");
+
+  const nextDoc: ProjectDocument = {
+    ...doc,
+    patterns: doc.patterns.map((candidate) => (candidate.id === patternId ? nextPattern : candidate)),
+  };
+  return snapshot("assistVaryNoteSelection", `Humanize selected notes in ${pattern.name}`, doc, nextDoc);
 }

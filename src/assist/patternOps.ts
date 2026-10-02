@@ -23,6 +23,7 @@ import {
 } from "../project-model/types";
 import { buildPhrasePlan } from "../ai/phrase";
 import type { AssistTarget } from "./types";
+import { humanizeNotes } from "../midi/creative";
 
 /** Pad families by name — factory kit and sensible user kits classify cleanly. */
 export interface PadFamilies {
@@ -79,6 +80,11 @@ export interface StepSelectionScope {
   to: number;
 }
 
+export interface NoteSelectionScope {
+  trackId: string;
+  noteIds: readonly string[];
+}
+
 /**
  * Apply only the row/step-metadata cells inside a sequencer selection.
  * Everything outside the selected pads and inclusive step range is copied
@@ -130,6 +136,61 @@ export function applyAssistPatchToStepSelection(
     rows,
     stepMeta: Object.keys(stepMeta).length > 0 ? stepMeta : undefined,
   };
+}
+
+/**
+ * Humanize only selected melodic notes. Pitch, duration, id, locks, every
+ * unselected note, and every other pattern field remain untouched. Invalid
+ * or stale selections are rejected atomically instead of partially applied.
+ */
+export function humanizeNoteSelection(
+  pattern: Pattern,
+  selection: readonly NoteSelectionScope[],
+  seed: string,
+  amount = 0.6,
+): Pattern {
+  if (pattern.stepCount <= 0 || selection.length === 0 || !Number.isFinite(amount) || amount <= 0) return pattern;
+
+  const idsByTrack = new Map<string, Set<string>>();
+  for (const scope of selection) {
+    if (!scope.trackId || scope.noteIds.length === 0 || scope.noteIds.some((id) => !id)) return pattern;
+    const ids = idsByTrack.get(scope.trackId) ?? new Set<string>();
+    for (const id of scope.noteIds) ids.add(id);
+    idsByTrack.set(scope.trackId, ids);
+  }
+
+  const selectedNotes: Array<{ trackId: string; note: NoteEvent }> = [];
+  for (const [trackId, ids] of idsByTrack) {
+    const notes = pattern.notes[trackId];
+    if (!notes) return pattern;
+    const matches = notes.filter((note) => ids.has(note.id));
+    // Fail closed when even one requested id is stale or ambiguous.
+    if (matches.length !== ids.size) return pattern;
+    selectedNotes.push(...matches.map((note) => ({ trackId, note })));
+  }
+  if (selectedNotes.length === 0) return pattern;
+
+  const strength = Math.min(1, amount);
+  const varied = humanizeNotes(
+    selectedNotes.map(({ note }) => note),
+    { seed, timingTicks: Math.round(10 * strength), velocityAmount: 0.12 * strength },
+    pattern.stepCount * STEP_TICKS,
+  );
+  const updates = new Map<string, Map<string, NoteEvent>>();
+  for (let index = 0; index < selectedNotes.length; index++) {
+    const { trackId, note: original } = selectedNotes[index]!;
+    const humanized = varied[index]!;
+    const next = { ...original, start: humanized.start, velocity: humanized.velocity };
+    const trackUpdates = updates.get(trackId) ?? new Map<string, NoteEvent>();
+    trackUpdates.set(original.id, next);
+    updates.set(trackId, trackUpdates);
+  }
+
+  const notes = { ...pattern.notes };
+  for (const [trackId, trackUpdates] of updates) {
+    notes[trackId] = pattern.notes[trackId]!.map((note) => trackUpdates.get(note.id) ?? note);
+  }
+  return { ...pattern, notes };
 }
 
 // ─── VARY ─────────────────────────────────────────────────────────────────

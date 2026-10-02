@@ -60,6 +60,56 @@ describe("AssistPanel", () => {
     }
   });
 
+  it("previews and applies a one-undo humanization scoped to selected notes", async () => {
+    const user = userEvent.setup();
+    const doc = createProjectFromTemplate("house");
+    const basePattern = getActivePattern(doc);
+    const targetTrack = doc.tracks.find((track) => track.kind !== "group")!;
+    const otherTrack = doc.tracks.find((track) => track.id !== targetTrack.id)!;
+    const selectedNote = { id: "assist-selected-note", pitch: 60, start: 480, duration: 180, velocity: 0.72 };
+    const untouchedNote = { id: "assist-untouched-note", pitch: 64, start: 720, duration: 120, velocity: 0.6 };
+    const otherTrackNote = { id: "assist-other-track-note", pitch: 48, start: 240, duration: 240, velocity: 0.8 };
+    const pattern = {
+      ...basePattern,
+      notes: {
+        ...basePattern.notes,
+        [targetTrack.id]: [selectedNote, untouchedNote],
+        [otherTrack.id]: [otherTrackNote],
+      },
+    };
+    const project = {
+      ...doc,
+      patterns: doc.patterns.map((candidate) => (candidate.id === pattern.id ? pattern : candidate)),
+    };
+    const selection = new SelectionStore();
+    selection.setNotes({ trackId: targetTrack.id, noteIds: [selectedNote.id] });
+    const services = mockServices(project);
+    render(
+      <ServicesContext.Provider value={services}>
+        <SelectionContext.Provider value={selection}>
+          <AssistPanel onClose={() => {}} />
+        </SelectionContext.Provider>
+      </ServicesContext.Provider>,
+    );
+
+    expect(screen.getByRole("list", { name: "Selected note changes preview" })).toHaveTextContent("MIDI 60");
+    expect(screen.getByText(/timing ±6 ticks · velocity ±7%/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "VARY SELECTED NOTES" }));
+
+    const command = vi.mocked(services.store.execute).mock.calls[0]?.[0];
+    expect(command?.type).toBe("assistVaryNoteSelection");
+    const changed = command!.execute(project);
+    const changedPattern = changed.patterns.find((candidate) => candidate.id === pattern.id)!;
+    expect(command!.undo(changed)).toEqual(project);
+    expect(changedPattern.notes[targetTrack.id]![0]).toMatchObject({
+      id: selectedNote.id,
+      pitch: selectedNote.pitch,
+      duration: selectedNote.duration,
+    });
+    expect(changedPattern.notes[targetTrack.id]![1]).toEqual(untouchedNote);
+    expect(changedPattern.notes[otherTrack.id]).toEqual([otherTrackNote]);
+  });
+
   it("refuses a stale selection that falls beyond the current pattern length", () => {
     const doc = createProjectFromTemplate("house");
     const pattern = getActivePattern(doc);
