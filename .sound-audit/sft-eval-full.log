@@ -1,0 +1,24 @@
+
+> pulse-forge@0.1.0 intent-model:sft-eval
+> vite-node scripts/eval-ollama-intent.mts --limit=294
+
+evaluating: ollama.kyx-intent-v30-q8 (config default: kyx-intent-v30-q8)
+rows: 60 from val.jsonl
+
+attempted-exact: 58/60 (96.7%)  wrongKind: 0  abstain: 0/60 (0.0%)  schema-invalid: 0
+  arrange        rows=4 exact=4/4 wrongKind=0 abstain=0
+  bypassIntent   rows=1 exact=1/1 wrongKind=0 abstain=0
+  clarify        rows=2 exact=2/2 wrongKind=0 abstain=0
+  clips          rows=1 exact=0/1 wrongKind=0 abstain=0
+  compound       rows=1 exact=1/1 wrongKind=0 abstain=0
+  effectIntent   rows=2 exact=2/2 wrongKind=0 abstain=0
+  exact          rows=4 exact=4/4 wrongKind=0 abstain=0
+  export         rows=2 exact=2/2 wrongKind=0 abstain=0
+  fader          rows=29 exact=29/29 wrongKind=0 abstain=0
+  loudness       rows=1 exact=0/1 wrongKind=0 abstain=0
+  mix            rows=5 exact=5/5 wrongKind=0 abstain=0
+  production     rows=3 exact=3/3 wrongKind=0 abstain=0
+  select         rows=1 exact=1/1 wrongKind=0 abstain=0
+  sendIntent     rows=1 exact=1/1 wrongKind=0 abstain=0
+  tempo          rows=1 exact=1/1 wrongKind=0 abstain=0
+  transport      rows=2 exact=2/2 wrongKind=0 abstain=0

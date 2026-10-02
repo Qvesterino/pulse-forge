@@ -25,26 +25,31 @@ export type { IntentModelMode, IntentModelState } from "./model-loader-types";
  * deterministic parsers stay the DEFAULT and the engine (clamps, strict
  * targets, undo) is untouched.
  *
- * Opt-in by design (docs/LOCAL-INTENT-MODEL.md §5): the flag
- * `localStorage["pf:intent-model"]` defaults to OFF because the artifact
- * is a hundreds-of-MB download class. Without the flag — or without the
- * trained model on the origin — this module costs one 404 and nothing else.
+ * DEFAULT ON since the 2026-10-01 release gate pass (docs/LOCAL-INTENT-
+ * MODEL.md §5 activation bar): the artifact is a 6.75 MB ONNX head fetched
+ * lazily on first use, the manifest pin `report.gatePassed === true` gates
+ * registration (a candidate artifact never activates), and the chip's OFF
+ * click stores an explicit opt-out. Without a gate-passed artifact on the
+ * origin this module still costs one 404 and nothing else.
  */
 
-/** Feature flag: localStorage `pf:intent-model` = on|off (default off). */
+/** Feature flag: localStorage `pf:intent-model` = on|off (default on; the
+ * manifest's gatePassed pin is the real gate — this only toggles intent). */
 export function intentModelMode(): IntentModelMode {
   try {
-    if (localStorage.getItem("pf:intent-model") === "on") return "on";
+    if (localStorage.getItem("pf:intent-model") === "off") return "off";
   } catch {
     /* storage blocked — default below */
   }
-  return "off";
+  return "on";
 }
 
 export function setIntentModelMode(mode: IntentModelMode): void {
   try {
-    if (mode === "on") localStorage.setItem("pf:intent-model", "on");
-    else localStorage.removeItem("pf:intent-model");
+    // Explicit "off": with the default ON, removing the key would silently
+    // re-enable on the next boot — the opt-out must persist.
+    if (mode === "off") localStorage.setItem("pf:intent-model", "off");
+    else localStorage.setItem("pf:intent-model", "on");
   } catch {
     /* storage blocked — the in-session state below still flips */
   }

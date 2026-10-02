@@ -128,7 +128,11 @@ describe("manifest contract", () => {
 });
 
 describe("loader flag + probe", () => {
-  it("the model is OFF by default and ensure() costs nothing", async () => {
+  it("the model is ON by default (gate-passed activation); explicit off persists and costs nothing", async () => {
+    // Default ON since the 2026-10-01 release gate pass — the manifest's
+    // gatePassed pin is the real gate; the flag only toggles intent.
+    expect(intentModelMode()).toBe("on");
+    setIntentModelMode("off");
     expect(intentModelMode()).toBe("off");
     const factory = vi.fn(() => null);
     setIntentModelWorkerFactoryForTests(factory);
@@ -261,6 +265,7 @@ describe("loader registration + timeouts + breaker", () => {
 
   it("state transitions are observable for the panel chip", async () => {
     const states: string[] = [];
+    setIntentModelMode("off");
     const unsubscribe = onIntentModelStateChange((state) => states.push(state));
     expect(states.at(-1)).toBe("off");
     setIntentModelMode("on");

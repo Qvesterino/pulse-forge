@@ -55,7 +55,10 @@ everything else.
 ### 2.1 Loader (integrated 2026-09-28)
 
 `src/intent/model-loader.ts` owns [C]→[D] wiring: flag `pf:intent-model`
-(default **off** — a hundreds-of-MB download class is explicit opt-in),
+(default **on** since the 2026-10-01 release gate pass — the shipped
+artifact is a 6.75 MB ONNX head fetched lazily, the manifest's
+`report.gatePassed === true` pin gates registration, and the chip's OFF
+click stores an explicit `pf:intent-model=off` opt-out),
 a one-404 availability probe against `/models/intent-model-v1.manifest.json`,
 lazy module worker, cold (120 s, breaker-exempt) and warm (8 s) budgets, a
 2-failure circuit breaker, and registration into `setIntentModelProvider` —

@@ -104,10 +104,27 @@ for (const row of rows) {
   // The resolver wraps "exact" actions into a plan ({kind, plan:{label, ops}})
   // — the engine-generated label is not model output, so the comparison
   // flattens to the ops the teacher carries.
-  const comparable =
+  let comparable: unknown =
     route.kind === "exact" && route.plan && Array.isArray((route.plan as { ops?: unknown }).ops)
       ? { kind: route.kind, ops: (route.plan as { ops: unknown[] }).ops }
       : route;
+  // Clips convention alignment (the ONNX decoder's documented contract):
+  // the LLM grammar speaks 1-indexed human bars and may carry the ref/atBar
+  // slots the schema allows, while the corpus truth is the engine form
+  // (0-indexed toBar, no ref/atBar — clipId is engine-stripped by the
+  // canonical comparison). Normalize the MODEL side onto the truth form so
+  // the off-by-one is a convention, never a miss.
+  if (route.kind === "clips" && Array.isArray((route as { ops?: unknown }).ops)) {
+    comparable = {
+      kind: "clips",
+      ops: (route as { ops: Array<Record<string, unknown>> }).ops.map((op) => {
+        const { ref, atBar, ...rest } = op;
+        void ref;
+        void atBar;
+        return typeof rest.toBar === "number" ? { ...rest, toBar: rest.toBar - 1 } : rest;
+      }),
+    };
+  }
   if (canonicalModelJson(comparable) === canonicalModelJson(truth)) {
     exact += 1;
     bucket.exact += 1;

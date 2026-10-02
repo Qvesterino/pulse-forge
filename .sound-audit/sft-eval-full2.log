@@ -1,0 +1,3 @@
+evaluating: ollama.kyx-intent-v30-q8 (config default: kyx-intent-v30-q8)
+rows: 60 from val.jsonl
+
