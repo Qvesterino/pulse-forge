@@ -456,3 +456,27 @@ standard wave-3 procedure):
 un-skipped and green (69/69).** The compound part-decode, clips decode and preset decode
 are live. Campaign arc complete: 20.2 % → 77.0 % → 93.1 % → 97.2 % with golden at 100 %
 zero wrongKind, three waves of which shipped to the browser.
+
+## Wave 8b (2026-10-02): SFT v32 (LFM2.5 on the wave-8 corpus) — honest A/B, no flip
+
+Trained kyx-intent-v32 (LFM2.5-1.2B-Instruct, LoRA r16/α32, 3 epochs, 1790 examples) on
+the wave-8 corpus and ran both models on the IDENTICAL 294-row val:
+
+| model                       | corpus | attempted-exact | wrongKind | abstain   |
+| --------------------------- | ------ | --------------- | --------- | --------- |
+| v31 (prev corpus)           | 1949   | 91.9 %          | 6         | 19.7 %    |
+| **v32 (wave-8 corpus)**     | 2088   | **91.0 %**      | **4**     | 20.4 %    |
+| v30-q8 (production default) | —      | **92.5 %**      | 8         | **0.7 %** |
+
+Verdict: **remíza s miernejším chybami** — v32 −0.9 % exact vs v31 but −2 wrongKind
+(safer kinds), and the production default v30-q8 still leads attempted-exact AND has the
+best abstain profile by two orders of magnitude. **No default flip** — v30-q8 stays.
+The wave-8 corpus teaches the conventions (loudness numeric targets, preset grid,
+effectIntent × sections) and the next SFT generation trains on it, but LFM2.5-1.2B
+generalization on these families is base-model-limited, not corpus-limited — density
+alone does not move the LLM needle the way it moved the ONNX head.
+
+Handoff for the SFT lane: v32 artifacts preserved (.sft/work-v32/, ollama
+kyx-intent-v32); the eval dump-fails list is the curriculum; the loudness/preset
+families need either a convention change (skill/tool output instead of JSON mimicry)
+or a bigger base.

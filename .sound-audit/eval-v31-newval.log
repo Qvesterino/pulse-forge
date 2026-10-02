@@ -1,0 +1,22 @@
+evaluating: ollama.kyx-intent-v31 (config default: kyx-intent-v30-q8)
+rows: 294 from val.jsonl
+
+attempted-exact: 217/236 (91.9%)  wrongKind: 6  abstain: 58/294 (19.7%)  schema-invalid: 0
+  arrange        rows=10 exact=8/8 wrongKind=0 abstain=2
+  bypassIntent   rows=6 exact=3/3 wrongKind=0 abstain=3
+  clarify        rows=7 exact=5/5 wrongKind=0 abstain=2
+  clips          rows=5 exact=3/5 wrongKind=0 abstain=0
+  compound       rows=6 exact=6/6 wrongKind=0 abstain=0
+  effectIntent   rows=50 exact=19/25 wrongKind=6 abstain=25
+  exact          rows=78 exact=66/66 wrongKind=0 abstain=12
+  export         rows=3 exact=3/3 wrongKind=0 abstain=0
+  fader          rows=61 exact=58/58 wrongKind=0 abstain=3
+  loudness       rows=6 exact=0/6 wrongKind=0 abstain=0
+  mix            rows=12 exact=12/12 wrongKind=0 abstain=0
+  preset         rows=4 exact=0/4 wrongKind=0 abstain=0
+  production     rows=16 exact=11/11 wrongKind=0 abstain=5
+  revise         rows=8 exact=8/8 wrongKind=0 abstain=0
+  select         rows=2 exact=2/2 wrongKind=0 abstain=0
+  sendIntent     rows=12 exact=6/6 wrongKind=0 abstain=6
+  tempo          rows=4 exact=4/4 wrongKind=0 abstain=0
+  transport      rows=4 exact=3/4 wrongKind=0 abstain=0
