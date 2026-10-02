@@ -4307,6 +4307,53 @@ export function duplicateTimeRange(doc: ProjectDocument, fromTick: number, toTic
     },
   };
 
+  // Audio clips use a free-overlap lane, so only clips wholly contained in
+  // the selected range can be copied safely. A clip crossing either range
+  // edge would need a destructive split; fail closed rather than leave it
+  // straddling the inserted section. Clips at/after the insertion point move
+  // with the timeline, including their absolute warp-pin ticks.
+  const fromBar = from / BAR_TICKS;
+  const toBar = to / BAR_TICKS;
+  const audioClips = doc.arrangement.audioClips ?? [];
+  const overlapsRange = (clip: AudioClip) => clip.startBar < toBar && clip.startBar + clip.lengthBars > fromBar;
+  const isWhollyInsideRange = (clip: AudioClip) => clip.startBar >= fromBar && clip.startBar + clip.lengthBars <= toBar;
+  if (audioClips.some((clip) => overlapsRange(clip) && !isWhollyInsideRange(clip))) {
+    throw new Error("Cannot duplicate a time range when an audio clip crosses its boundary; adjust the range first.");
+  }
+  const shiftWarpPins = (clip: AudioClip): AudioClip["warpMarkers"] =>
+    clip.warpMarkers?.map((marker) => ({ ...marker, tick: marker.tick + delta }));
+  const nextAudioClips = audioClips
+    .flatMap((clip) => {
+      if (isWhollyInsideRange(clip)) {
+        return [
+          {
+            ...clip,
+            id: uid("audioClip"),
+            startBar: clip.startBar + deltaBars,
+            ...(clip.warpMarkers ? { warpMarkers: shiftWarpPins(clip) } : {}),
+          },
+          clip,
+        ];
+      }
+      if (clip.startBar >= toBar) {
+        return [
+          {
+            ...clip,
+            startBar: clip.startBar + deltaBars,
+            ...(clip.warpMarkers ? { warpMarkers: shiftWarpPins(clip) } : {}),
+          },
+        ];
+      }
+      return [clip];
+    })
+    .sort((a, b) => a.startBar - b.startBar);
+  if (doc.arrangement.audioClips !== undefined) {
+    nextDoc = {
+      ...nextDoc,
+      arrangement: { ...nextDoc.arrangement, audioClips: nextAudioClips },
+    };
+  }
+
   // Markers inside zone are duplicated; trailing markers are shifted
   const nextMarkers = doc.markers.flatMap((m) => {
     if (m.tick >= from && m.tick < to) {
@@ -5517,9 +5564,7 @@ export function countReferenceCleanups(before: ProjectDocument, after: ProjectDo
 
 function cleanupDetail(before: ProjectDocument, after: ProjectDocument): string | undefined {
   const cleaned = countReferenceCleanups(before, after);
-  return cleaned > 0
-    ? `${cleaned} automation/modulation reference${cleaned === 1 ? "" : "s"} cleaned up`
-    : undefined;
+  return cleaned > 0 ? `${cleaned} automation/modulation reference${cleaned === 1 ? "" : "s"} cleaned up` : undefined;
 }
 
 function stripDanglingEffectReferences(doc: ProjectDocument, removed: Set<string>): ProjectDocument {

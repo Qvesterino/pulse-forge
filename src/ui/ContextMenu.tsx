@@ -114,7 +114,7 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
     const count = toBar - fromBar;
     const preview =
       operation === "duplicate"
-        ? `Duplicate bars ${fromBar + 1}–${toBar} (${count} bars), including clips, markers, pattern notes, and drum steps; shift later musical clips/markers.`
+        ? `Duplicate bars ${fromBar + 1}–${toBar} (${count} bars), including musical and audio clips, markers, pattern notes, and drum steps; shift later clips/markers.`
         : `Consolidate bars ${fromBar + 1}–${toBar} (${count} bars) into one arrangement clip; source notes, steps, and clips in the range will be replaced.`;
     return { operation, preview, error: null };
   }, [doc, rangeEditTarget, rangeEditText, selection.timeRange]);
@@ -407,7 +407,7 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
           </label>
           {rangeEditPlan.preview && (
             <div className="context-menu-edit-preview" role="region" aria-label="Selected range edit preview">
-              <strong>PREVIEW · ALL MUSICAL TRACKS</strong>
+              <strong>PREVIEW · MUSICAL + AUDIO</strong>
               <div>{rangeEditPlan.preview}</div>
             </div>
           )}
@@ -499,7 +499,7 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
                 setRangeEditTarget(selection.timeRange ? { ...selection.timeRange } : null);
                 setRangeEditOpen(true);
               }}
-              title="Describe a duplicate or consolidate action; complete bars only and audio clips are protected"
+              title="Describe a duplicate or consolidate action; complete bars only, with audio boundary clips protected"
             >
               Producer edit selected range…
             </button>

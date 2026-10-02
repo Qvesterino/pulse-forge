@@ -137,8 +137,27 @@ describe("ContextMenu", () => {
   });
 
   it("previews and duplicates the exact selected bar range as one undo step", () => {
-    const project = createProjectFromTemplate("scene-score");
-    const clip = [...project.arrangement.clips].sort((a, b) => a.startBar - b.startBar)[0]!;
+    const sourceProject = createProjectFromTemplate("scene-score");
+    const clip = [...sourceProject.arrangement.clips].sort((a, b) => a.startBar - b.startBar)[0]!;
+    const audioClip = {
+      id: "range-audio-inside",
+      trackId: sourceProject.tracks.find((track) => track.kind !== "group")!.id,
+      bufferId: "user.range-audio-inside",
+      startBar: clip.startBar,
+      lengthBars: clip.lengthBars,
+      offsetSec: 0,
+      trimStart: 0,
+      trimEnd: 0,
+      gain: 1,
+      fadeIn: 0,
+      fadeOut: 0,
+      stretchRate: 1,
+      reverse: false,
+    };
+    const project = {
+      ...sourceProject,
+      arrangement: { ...sourceProject.arrangement, audioClips: [audioClip] },
+    };
     const range = {
       fromTick: clip.startBar * BAR_TICKS,
       toTick: (clip.startBar + clip.lengthBars) * BAR_TICKS,
@@ -160,12 +179,21 @@ describe("ContextMenu", () => {
     expect(screen.getByRole("region", { name: "Selected range edit preview" })).toHaveTextContent(
       `Duplicate bars ${clip.startBar + 1}–${clip.startBar + clip.lengthBars}`,
     );
+    expect(screen.getByRole("region", { name: "Selected range edit preview" })).toHaveTextContent(
+      /including musical and audio clips/i,
+    );
+    expect(screen.getByText("PREVIEW · MUSICAL + AUDIO")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "DUPLICATE · ONE UNDO STEP" }));
 
     const command = vi.mocked(services.store.execute).mock.calls[0]?.[0];
     expect(command?.type).toBe("duplicateTimeRange");
     const changed = command!.execute(project);
     expect(changed.arrangement.clips).toHaveLength(project.arrangement.clips.length + 1);
+    expect(changed.arrangement.audioClips).toHaveLength(2);
+    expect(changed.arrangement.audioClips!.find((candidate) => candidate.id === audioClip.id)).toEqual(audioClip);
+    expect(changed.arrangement.audioClips!.find((candidate) => candidate.id !== audioClip.id)?.startBar).toBe(
+      audioClip.startBar + clip.lengthBars,
+    );
     expect(command!.undo(changed)).toEqual(project);
   });
 

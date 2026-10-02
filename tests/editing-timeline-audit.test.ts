@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { normalizeProject } from "../src/project-model/schema";
-import { STEP_TICKS } from "../src/project-model/types";
+import { BAR_TICKS, STEP_TICKS } from "../src/project-model/types";
 import { ProjectStore } from "../src/store/ProjectStore";
 import {
   addArrangementClip,
@@ -10,6 +10,7 @@ import {
   clearPattern,
   consolidateTimeRange,
   duplicateArrangementClip,
+  duplicateTimeRange,
   moveArrangementClip,
   moveNote,
   pastePattern,
@@ -127,6 +128,59 @@ describe("arrangement scene clips — validity + provenance (audit 01)", () => {
     s.execute(consolidateTimeRange(s.getDoc(), 0, 4 * 480));
     const audio = s.getDoc().arrangement.audioClips ?? [];
     expect(audio.length).toBe(1);
+  });
+
+  it("duplicates enclosed audio and shifts later clips plus their warp pins as one undoable edit", () => {
+    const base = createProjectFromTemplate("house");
+    const trackId = base.tracks.find((track) => track.kind === "instrument")!.id;
+    const store = new ProjectStore(base);
+    store.execute(
+      addAudioClip(base, trackId, "audio-inside", 1, 1, {
+        gain: 0.72,
+        warpMarkers: [{ timeSec: 0.5, tick: BAR_TICKS + 240 }],
+      }),
+    );
+    store.execute(
+      addAudioClip(store.getDoc(), trackId, "audio-after", 6, 1, {
+        warpMarkers: [{ timeSec: 0.25, tick: 6 * BAR_TICKS + 120 }],
+      }),
+    );
+    const before = store.getDoc();
+    const [inside, trailing] = before.arrangement.audioClips!;
+
+    store.execute(duplicateTimeRange(before, 0, 4 * BAR_TICKS));
+
+    const after = store.getDoc();
+    const copies = after.arrangement.audioClips!.filter((clip) => clip.id !== inside!.id && clip.id !== trailing!.id);
+    const copiedInside = copies.find((clip) => clip.bufferId === "audio-inside")!;
+    const shiftedTrailing = after.arrangement.audioClips!.find((clip) => clip.id === trailing!.id)!;
+    expect(copiedInside).toMatchObject({
+      trackId,
+      bufferId: "audio-inside",
+      startBar: 5,
+      lengthBars: 1,
+      gain: 0.72,
+      warpMarkers: [{ timeSec: 0.5, tick: 5 * BAR_TICKS + 240 }],
+    });
+    expect(copiedInside.id).not.toBe(inside!.id);
+    expect(after.arrangement.audioClips!.find((clip) => clip.id === inside!.id)).toEqual(inside);
+    expect(shiftedTrailing).toMatchObject({
+      startBar: 10,
+      warpMarkers: [{ timeSec: 0.25, tick: 10 * BAR_TICKS + 120 }],
+    });
+    store.undo();
+    expect(store.getDoc()).toEqual(before);
+  });
+
+  it("refuses to duplicate a time range through an audio clip boundary", () => {
+    const base = createProjectFromTemplate("house");
+    const trackId = base.tracks.find((track) => track.kind === "instrument")!.id;
+    const store = new ProjectStore(base);
+    store.execute(addAudioClip(base, trackId, "audio-crossing", 3, 2));
+    const before = store.getDoc();
+
+    expect(() => duplicateTimeRange(before, 0, 4 * BAR_TICKS)).toThrow(/audio clip crosses its boundary/i);
+    expect(store.getDoc()).toEqual(before);
   });
 });
 

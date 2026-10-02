@@ -629,8 +629,9 @@ export function parseSelectedTimeRangeIntent(text: string): SelectedTimeRangeOpe
 
 /**
  * Guard the current range commands' documented limitations before exposing
- * them as Producer actions: only complete bars, and no audio clips that the
- * commands would fail to copy/shift or include in the consolidation.
+ * them as Producer actions: only complete bars; duplication supports audio
+ * wholly inside or after the range, but not clips crossing its boundaries;
+ * consolidation still does not include audio clips.
  */
 export function selectedTimeRangeIntentError(
   doc: ProjectDocument,
@@ -649,8 +650,15 @@ export function selectedTimeRangeIntentError(
   const fromBar = fromTick / BAR_TICKS;
   const toBar = toTick / BAR_TICKS;
   const audioClips = doc.arrangement.audioClips ?? [];
-  if (operation === "duplicate" && audioClips.some((clip) => clip.startBar + clip.lengthBars > fromBar)) {
-    return "Audio clips in or after this range are not yet supported by time-range duplication.";
+  if (
+    operation === "duplicate" &&
+    audioClips.some((clip) => {
+      const overlapsRange = clip.startBar < toBar && clip.startBar + clip.lengthBars > fromBar;
+      const isWhollyInsideRange = clip.startBar >= fromBar && clip.startBar + clip.lengthBars <= toBar;
+      return overlapsRange && !isWhollyInsideRange;
+    })
+  ) {
+    return "An audio clip crosses this range boundary. Adjust the selection so every affected clip is fully inside or outside.";
   }
   if (
     operation === "consolidate" &&
