@@ -20,6 +20,12 @@ export interface CreativeTaskPredictionV1 {
   output: unknown;
 }
 
+export interface CreativeTaskEvaluationFailureV1 {
+  id: string;
+  error: string;
+  outputError?: string;
+}
+
 export interface BinaryFieldMetrics {
   truePositive: number;
   falsePositive: number;
@@ -114,11 +120,16 @@ function exactFields(
   });
 }
 
-function hasRoleConflict(output: CreativeTaskOutputV1): boolean {
+function hasRoleConflict(output: CreativeTaskOutputV1, expected: CreativeTaskOutputV1["suggestions"]): boolean {
   const { targetRoles = [], preserveRoles = [], prohibitedRoles = [] } = output.suggestions;
+  const expectedPreserve = expected.preserveRoles ?? [];
+  const expectedProhibited = expected.prohibitedRoles ?? [];
   return (
     targetRoles.some((role) => preserveRoles.includes(role) || prohibitedRoles.includes(role)) ||
-    preserveRoles.some((role) => prohibitedRoles.includes(role))
+    preserveRoles.some((role) => prohibitedRoles.includes(role)) ||
+    targetRoles.some((role) => expectedPreserve.includes(role) || expectedProhibited.includes(role)) ||
+    preserveRoles.some((role) => expectedProhibited.includes(role)) ||
+    prohibitedRoles.some((role) => expectedPreserve.includes(role))
   );
 }
 
@@ -130,6 +141,7 @@ function hasRoleConflict(output: CreativeTaskOutputV1): boolean {
 export function evaluateCreativeTaskPredictions(
   golden: readonly CreativeTaskGoldenCaseV1[],
   predictions: readonly CreativeTaskPredictionV1[],
+  providerFailures: readonly CreativeTaskEvaluationFailureV1[] = [],
 ): CreativeTaskEvaluationReportV1 {
   const goldenById = new Map(golden.map((entry) => [entry.id, entry]));
   const grouped = new Map<string, CreativeTaskPredictionV1[]>();
@@ -141,6 +153,11 @@ export function evaluateCreativeTaskPredictions(
   const duplicates = [...grouped.values()].filter((entries) => entries.length > 1).length;
   const unexpectedPredictions = predictions.filter((prediction) => !goldenById.has(prediction.id)).length;
   const missingPredictions = golden.filter((entry) => !grouped.has(entry.id)).length;
+  const rejectedRoleSafetyFailures = new Set(
+    providerFailures
+      .filter((failure) => failure.outputError === "contradictory-suggestion")
+      .map((failure) => failure.id),
+  );
   const counts = {
     hard: emptyCounts(),
     protection: emptyCounts(),
@@ -211,7 +228,12 @@ export function evaluateCreativeTaskPredictions(
       counts.unknown.falsePositive += predictedUnknown.filter((field) => !expectedUnknown.includes(field)).length;
     }
 
-    if (prediction && hasRoleConflict(prediction) && prediction.status !== "clarify") roleSafetyFailures += 1;
+    if (
+      (prediction && prediction.status !== "clarify" && hasRoleConflict(prediction, entry.expected.suggestions)) ||
+      rejectedRoleSafetyFailures.has(entry.id)
+    ) {
+      roleSafetyFailures += 1;
+    }
     if (validation && !validation.ok && validation.error === "contradictory-suggestion") roleSafetyFailures += 1;
   }
 

@@ -231,7 +231,7 @@ try {
       count: predictions.length,
       providerFailures,
     },
-    evaluation: evaluateCreativeTaskPredictions(golden, predictions),
+    evaluation: evaluateCreativeTaskPredictions(golden, predictions, providerFailures),
   };
 
   writeFileSync(predictionPath, predictionBytes);

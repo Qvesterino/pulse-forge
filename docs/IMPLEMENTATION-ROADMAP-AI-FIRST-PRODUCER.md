@@ -557,9 +557,11 @@ provider-failures a `completeRun`. Cielené contract + runner testy: 35/35.
 `0fe23ac7a9dd43797fada070b43f76cd5faecf777d8b4e07f9fa99e382e4bb41`, prompt a všetky evaluator/parser zdroje;
 prediction JSONL má samostatný SHA-256 v reporte. Všetkých 21/21 prípadov dostalo požiadavku a odpoveď, bez circuit-open
 skipov. Iba 9 odpovedí prešlo creative runtime validátorom; 12 bolo odmietnutých (8 role/protection rozporov,
-1 `unknownFields` chyba, 3 neplatné clarification odpovede). Hard-, protection- aj preference-field exact rate boli
-0/21; decision accuracy 9/21 (42,86 %). Nula prijatých role-safety porušení znamená, že ich runtime validator
-odmietol — nie to, že model rešpektuje ochranu. Výsledok je úplný syntetický diagnostický baseline action-only
+1 `unknownFields` chyba, 3 neplatné clarification odpovede). Kontextový evaluator navyše identifikoval spolu 12
+role-safety zlyhaní: osem modelom emitovaných vnútorných rozporov a štyri schémou-validné návrhy, ktoré cielili rolu
+chránenú pôvodným briefom. Hard-, protection- aj preference-field exact rate boli 0/21; decision accuracy 9/21
+(42,86 %). Toto je dôkaz, že samotná JSON schéma nestačí; konfliktné návrhy nesmú dostať apply cestu. Výsledok je
+úplný syntetický diagnostický baseline action-only
 `kyx-intent-v30-q8:latest`, nie creative model, reprezentatívny ľudský holdout ani hodnotenie hudby; tento provider sa
 nesmie routovať na tvorivé briefy.
 **Otvorené:** samostatné creative-task SFT dáta/model, opakovateľná eval po platných odpovediach na celom holdoute,

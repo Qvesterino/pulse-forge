@@ -300,6 +300,50 @@ describe("creative task contract v1", () => {
     expect(report).toMatchObject({ invalidPredictions: 1, roleSafetyFailures: 1 });
   });
 
+  it("counts proposals that target roles protected by the brief even when the model omits that protection", () => {
+    const golden = readCreativeGolden();
+    const preserveCase = golden.find((entry) => entry.expected.suggestions.preserveRoles?.length);
+    const prohibitedCase = golden.find((entry) => entry.expected.suggestions.prohibitedRoles?.length);
+    expect(preserveCase && prohibitedCase).toBeDefined();
+    if (!preserveCase || !prohibitedCase) return;
+
+    const outputTargeting = (roles: string[]) => ({
+      version: 1,
+      status: "proposal",
+      suggestions: { targetRoles: roles },
+      unknownFields: [],
+    });
+    const report = evaluateCreativeTaskPredictions(
+      [preserveCase, prohibitedCase],
+      [
+        {
+          id: preserveCase.id,
+          output: outputTargeting(preserveCase.expected.suggestions.preserveRoles ?? []),
+        },
+        {
+          id: prohibitedCase.id,
+          output: outputTargeting(prohibitedCase.expected.suggestions.prohibitedRoles ?? []),
+        },
+      ],
+    );
+
+    expect(report).toMatchObject({ validPredictions: 2, roleSafetyFailures: 2 });
+  });
+
+  it("counts role conflicts rejected by the provider validator even when raw output is not retained", () => {
+    const entry = readCreativeGolden().find((candidate) => candidate.expected.status === "proposal");
+    expect(entry).toBeDefined();
+    if (!entry) return;
+
+    const report = evaluateCreativeTaskPredictions(
+      [entry],
+      [{ id: entry.id, output: null }],
+      [{ id: entry.id, error: "invalid-output", outputError: "contradictory-suggestion" }],
+    );
+
+    expect(report).toMatchObject({ invalidPredictions: 1, roleSafetyFailures: 1 });
+  });
+
   it("counts missing, invalid, duplicate and unexpected predictions instead of hiding them", () => {
     const [first, second, third, fourth] = readCreativeGolden();
     expect(first && second && third && fourth).toBeDefined();

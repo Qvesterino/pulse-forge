@@ -25,10 +25,10 @@
   },
   "sources": {
     "providerSha256": "df08f91781adcad93fd50735d59a40e6bb93f686fd849a27ab3512cb1d9dedc1",
-    "runnerSha256": "b327ff5ca7383eba19f2ddbde55fcf8b57a7d2f621aa8111e7a8603455c39e59",
+    "runnerSha256": "b73d574b49f832a72051db66d2501dad82428ab7e945dd3de979219dd88b0d6e",
     "evaluationRunnerSha256": "b8765ad2d50f067862c0da1e801407699510cb4fb2c95e93e34aa7cf4c3a3af2",
     "contractSha256": "599aefa99f579968c0bd75c13450c3259cbd654fcc33e519bce146aec0c2c666",
-    "evaluatorSha256": "ec841a26de0cd6f14b327b1bb8cfcdb084780e60fb3e16fe185b7b4adffe7338",
+    "evaluatorSha256": "2132f9443449bb87b9985392227fe2d1de4aae2cf1f7214521b68b6a8d857746",
     "parserSha256": "aedd78692dde6777e686aba3dec10f1a447d7e3966fa0900917cce76a9ce2f7a",
     "briefCompilerSha256": "4a5277ef4a1663779f33c2610cd3f5481d909c9b9a126ce10723f175225f2b49"
   },
@@ -146,7 +146,7 @@
       "f1": null
     },
     "criticalUnknownCases": 5,
-    "roleSafetyFailures": 0,
+    "roleSafetyFailures": 12,
     "byLanguage": {
       "en": {
         "cases": 12,
