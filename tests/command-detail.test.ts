@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultProject } from "../src/project-model/schema";
+import type { ProjectDocument } from "../src/project-model/types";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { addEffect, deleteTrack, removeEffect } from "../src/commands/commands";
 
@@ -17,7 +18,9 @@ describe("Command.detail — consequence notes", () => {
     const withFx = {
       ...doc,
       tracks: doc.tracks.map((t) =>
-        t.id === trackId ? { ...t, effects: [...(t.effects ?? []), { id: fxId, type: "eq" as const, bypassed: false, params: {} }] } : t,
+        t.id === trackId
+          ? { ...t, effects: [...(t.effects ?? []), { id: fxId, type: "eq" as const, bypassed: false, params: {} }] }
+          : t,
       ),
       // A dangling automation lane + LFO pointing at the effect.
       automation: [
@@ -25,7 +28,7 @@ describe("Command.detail — consequence notes", () => {
       ],
       lfos: [{ id: "lfo-1", trackId, target: { kind: "fxParam" as const, trackId, fxId, paramId: "hpFreq" }, rate: 1 }],
     };
-    const command = removeEffect(withFx, trackId, fxId);
+    const command = removeEffect(withFx as unknown as ProjectDocument, trackId, fxId);
     expect(command.detail).toBe("2 automation/modulation references cleaned up");
   });
 
@@ -40,11 +43,9 @@ describe("Command.detail — consequence notes", () => {
     const trackId = doc.tracks[0].id;
     const withLane = {
       ...doc,
-      automation: [
-        { id: "lane-t", target: { kind: "volume" as const, trackId }, points: [] },
-      ],
+      automation: [{ id: "lane-t", target: { kind: "volume" as const, trackId }, points: [] }],
     };
-    const command = deleteTrack(withLane, trackId);
+    const command = deleteTrack(withLane as unknown as ProjectDocument, trackId);
     // The template itself carries additional references on the track — the
     // exact count is template-dependent, the consequence note is not.
     expect(command.detail).toBeDefined();
@@ -53,20 +54,21 @@ describe("Command.detail — consequence notes", () => {
 
   it("ProjectStore surfaces lastCommandDetail for the toast", () => {
     const doc = createDefaultProject();
-    const store = new ProjectStore(doc);
     const trackId = doc.tracks[0].id;
     const fxId = "fx-detail-store";
     const withFx = {
       ...doc,
       tracks: doc.tracks.map((t) =>
-        t.id === trackId ? { ...t, effects: [...(t.effects ?? []), { id: fxId, type: "eq" as const, bypassed: false, params: {} }] } : t,
+        t.id === trackId
+          ? { ...t, effects: [...(t.effects ?? []), { id: fxId, type: "eq" as const, bypassed: false, params: {} }] }
+          : t,
       ),
       automation: [
         { id: "lane-2", target: { kind: "fxParam" as const, trackId, fxId, paramId: "hpFreq" }, points: [] },
       ],
     };
     const store2 = new ProjectStore(withFx);
-    store2.execute(removeEffect(store2.doc, trackId, fxId));
+    store2.execute(removeEffect(store2.doc as unknown as ProjectDocument, trackId, fxId));
     expect(store2.lastCommandLabel).toContain("Remove");
     expect(store2.lastCommandDetail).toBe("1 automation/modulation reference cleaned up");
     // A command without a consequence clears the detail (the toast goes

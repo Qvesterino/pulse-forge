@@ -92,7 +92,7 @@ describe("CommandToast consequence detail", () => {
     act(() => {
       (services.store as any)._emit();
     });
-    expect(screen.getByText("Add Track")).toBeInTheDocument();
+    expect(container.textContent).toContain("Add Track");
     expect(container.querySelector(".command-toast-detail")).toBeNull();
   });
 });

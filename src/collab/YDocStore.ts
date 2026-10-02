@@ -254,6 +254,12 @@ export class YDocStore {
     return (top?.meta.get("label") as string | undefined) ?? null;
   }
 
+  /** Consequence notes (Command.detail) are a local-undo-stack concept —
+   * collab entries have none today; the toast simply renders single-line. */
+  get lastCommandDetail(): string | null {
+    return null;
+  }
+
   /** Last N undo entries (for the history panel), matching ProjectStore. */
   get history(): HistoryEntry[] {
     const stack = this.undoManager.undoStack;

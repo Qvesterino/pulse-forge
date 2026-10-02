@@ -12,6 +12,7 @@ import {
   useTracks,
 } from "./context";
 import { notifyOnboardingProgress } from "./OnboardingHint";
+import { publishSessionRecordingState, IDLE_SESSION_STATE } from "./sessionStateSurface";
 import { useActivePatternId } from "./context";
 import { SpectralEditPanel } from "./SpectralEditPanel";
 import {
@@ -351,6 +352,27 @@ export function ArrangementPanel() {
   const laneRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const [drag, setDrag] = useState<{ startBar: number; lengthBars: number } | null>(null);
+  // Live drag position mirrored out of state (audit 16).
+  //
+  // `pointermove` is a CONTINUOUS event in React 18: its setState is scheduled
+  // at ContinuousEventPriority and flushed from a Scheduler macrotask, not
+  // synchronously at the end of the event. A fast flick can release before the
+  // last move commits, and `onClipPointerUp` — a DISCRETE handler — would then
+  // read the PREVIOUS render's `drag`/`multiDrag` and commit a bar the pointer
+  // never reached. The refs are the authority at release time; state stays the
+  // render source for the live preview. Same reasoning the warp-pin drag below
+  // already documents, and the shape `PianoRoll` already uses (dragRef deltas).
+  const dragLiveRef = useRef<{ startBar: number; lengthBars: number } | null>(null);
+  const multiDragLiveRef = useRef<number | null>(null);
+  /** Record the live clip-drag position in BOTH the ref and state. */
+  const setClipDrag = (next: { startBar: number; lengthBars: number } | null) => {
+    dragLiveRef.current = next;
+    setDrag(next);
+  };
+  const setClipMultiDrag = (next: number | null) => {
+    multiDragLiveRef.current = next;
+    setMultiDrag(next);
+  };
   // Window fallback for gestures whose captured element unmounts mid-drag
   // (undo/collab delete): the element's own pointerup never fires. Handlers
   // are wired to the global terminator below, once both exist.
@@ -420,6 +442,40 @@ export function ArrangementPanel() {
   const [recordingInputListError, setRecordingInputListError] = useState(false);
   const [lastCaptureInfo, setLastCaptureInfo] = useState<PcmCaptureInfo | null>(null);
   const routingChannelCount = Math.min(8, requestedChannelCount ?? lastCaptureInfo?.capturedChannels ?? 2);
+  // Publish the recording-adjacent axes to the global session state surface
+  // (footer indicator) — other views must see what is armed/hot. Publish
+  // merges shallowly and skips no-op notifications.
+  useEffect(() => {
+    const names = [armedTrackId, armedSecondTrackId, ...armedAdditionalTrackIds]
+      .filter(Boolean)
+      .map((id) => doc.tracks.find((t) => t.id === id)?.name ?? "?");
+    publishSessionRecordingState({
+      armedTrackNames: names,
+      recState,
+      punchRange: punchCapture
+        ? `${(services.transport.loopStart / BAR_TICKS).toFixed(1)} → ${(
+            services.transport.loopEnd / BAR_TICKS
+          ).toFixed(1)}`
+        : null,
+      loopTakes: loopTakeCapture,
+      takeModeLabel: recordingTakeMode ? (recordingTakeMode === "new" ? "NEW TAKE GROUP" : "TAKE GROUP") : null,
+    });
+  }, [
+    armedTrackId,
+    armedSecondTrackId,
+    armedAdditionalTrackIds.join(","),
+    recState,
+    punchCapture,
+    loopTakeCapture,
+    recordingTakeMode,
+    doc.tracks,
+  ]);
+  // Leaving the arrangement view resets the surface — a stale ARMED chip on a
+  // panel that can no longer record would be a lie.
+  useEffect(() => {
+    return () => publishSessionRecordingState(IDLE_SESSION_STATE);
+  }, []);
+
   const [inputGainDb, setInputGainDb] = useState<number>(() => clampInputGainDb(loadRecordingInputGainDb()));
   /** Live input level (peak 0..1) polled from the recorder while wiring exists. */
   const [micPeak, setMicPeak] = useState(0);
@@ -1243,6 +1299,45 @@ export function ArrangementPanel() {
     null,
   );
   const [audioGainPreview, setAudioGainPreview] = useState<{ clipId: string; gain: number } | null>(null);
+  // Live audio-drag values mirrored out of state (audit 16) — see the
+  // dragLiveRef note above. `onAudioPointerUp` is a DISCRETE handler that
+  // commits move / resize / stretch / trim / fade / gain from these values.
+  // Read from state instead, a release landing in the same batch as the final
+  // move committed the previous frame's geometry; and for the fade and gain
+  // modes the `> 0.005` staleness guard then compared the ORIGINAL value with
+  // itself, turning a real gesture into no commit at all.
+  const audioDragLiveRef = useRef<{ startBar: number; lengthBars: number } | null>(null);
+  const audioFadeLiveRef = useRef<{ clipId: string; fadeIn: number; fadeOut: number } | null>(null);
+  const audioGainLiveRef = useRef<{ clipId: string; gain: number } | null>(null);
+  const audioStretchLiveRef = useRef<{ clipId: string; rate: number } | null>(null);
+  /** Write-through setters: the ref is the event authority, state the render. */
+  const setAudioDragLive = (next: { startBar: number; lengthBars: number } | null) => {
+    audioDragLiveRef.current = next;
+    setAudioDrag(next);
+  };
+  const setAudioFadeLive = (next: { clipId: string; fadeIn: number; fadeOut: number } | null) => {
+    audioFadeLiveRef.current = next;
+    setAudioFadePreview(next);
+  };
+  const setAudioGainLive = (next: { clipId: string; gain: number } | null) => {
+    audioGainLiveRef.current = next;
+    setAudioGainPreview(next);
+  };
+  const setAudioStretchLive = (next: { clipId: string; rate: number } | null) => {
+    audioStretchLiveRef.current = next;
+    setAudioStretchPreview(next);
+  };
+  /** Clear every live audio-drag value — used by all three abort paths. */
+  const clearAudioDragLive = () => {
+    audioDragLiveRef.current = null;
+    audioFadeLiveRef.current = null;
+    audioGainLiveRef.current = null;
+    audioStretchLiveRef.current = null;
+    setAudioDrag(null);
+    setAudioFadePreview(null);
+    setAudioGainPreview(null);
+    setAudioStretchPreview(null);
+  };
   const [audioMenu, setAudioMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);
   const clipLongPressTargetRef = useRef<string | null>(null);
   const audioLongPressTargetRef = useRef<{ clipId: string; x: number; y: number } | null>(null);
@@ -1778,8 +1873,8 @@ export function ArrangementPanel() {
         movingIds,
         origStarts,
       };
-      setDrag({ startBar: clip.startBar, lengthBars: clip.lengthBars });
-      setMultiDrag(0);
+      setClipDrag({ startBar: clip.startBar, lengthBars: clip.lengthBars });
+      setClipMultiDrag(0);
       dragGuard.arm();
       return;
     }
@@ -1792,7 +1887,7 @@ export function ArrangementPanel() {
       origLength: clip.lengthBars,
       grabBar: barFromEvent(event),
     };
-    setDrag({ startBar: clip.startBar, lengthBars: clip.lengthBars });
+    setClipDrag({ startBar: clip.startBar, lengthBars: clip.lengthBars });
     dragGuard.arm();
   };
 
@@ -1802,24 +1897,27 @@ export function ArrangementPanel() {
     const bar = barFromEvent(event);
     if (current.movingIds) {
       const delta = Math.max(bar - current.grabBar, -Math.min(...Object.values(current.origStarts ?? { 0: 0 })));
-      setMultiDrag(delta);
+      setClipMultiDrag(delta);
       return;
     }
     if (current.mode === "move") {
-      setDrag({ startBar: Math.max(0, current.origStart + bar - current.grabBar), lengthBars: current.origLength });
+      setClipDrag({ startBar: Math.max(0, current.origStart + bar - current.grabBar), lengthBars: current.origLength });
     } else {
-      setDrag({ startBar: current.origStart, lengthBars: Math.max(1, bar - current.origStart + 1) });
+      setClipDrag({ startBar: current.origStart, lengthBars: Math.max(1, bar - current.origStart + 1) });
     }
   };
 
   const onClipPointerUp = () => {
     dragGuard.disarm();
     const current = dragRef.current;
-    const finalDrag = drag;
-    const delta = multiDrag;
+    // The refs, not the state: a release that lands in the same batch as the
+    // final move would otherwise commit the previous frame's bar (see the
+    // dragLiveRef note).
+    const finalDrag = dragLiveRef.current;
+    const delta = multiDragLiveRef.current;
     dragRef.current = null;
-    setDrag(null);
-    setMultiDrag(null);
+    setClipDrag(null);
+    setClipMultiDrag(null);
     if (!current || !finalDrag) return;
     if (current.movingIds) {
       if (!delta) return;
@@ -1915,8 +2013,8 @@ export function ArrangementPanel() {
   const onClipPointerCancel = () => {
     dragGuard.disarm();
     dragRef.current = null;
-    setDrag(null);
-    setMultiDrag(null);
+    setClipDrag(null);
+    setClipMultiDrag(null);
   };
 
   // Ripple mode (arrangement-as-a-tool): moves/resizes/deletes shift every
@@ -2007,9 +2105,9 @@ export function ArrangementPanel() {
     };
     dragGuard.arm();
     if (mode === "fadeIn" || mode === "fadeOut")
-      setAudioFadePreview({ clipId, fadeIn: clip.fadeIn ?? 0, fadeOut: clip.fadeOut ?? 0 });
-    if (mode === "gain") setAudioGainPreview({ clipId, gain: clip.gain ?? 1 });
-    setAudioDrag({ startBar: clip.startBar, lengthBars: clip.lengthBars });
+      setAudioFadeLive({ clipId, fadeIn: clip.fadeIn ?? 0, fadeOut: clip.fadeOut ?? 0 });
+    if (mode === "gain") setAudioGainLive({ clipId, gain: clip.gain ?? 1 });
+    setAudioDragLive({ startBar: clip.startBar, lengthBars: clip.lengthBars });
   };
   const onAudioPointerMove = (event: React.PointerEvent) => {
     const cur = audioDragRef.current;
@@ -2017,51 +2115,53 @@ export function ArrangementPanel() {
     const bar = audioBarFromEvent(event);
     const delta = bar - cur.grabBar;
     const secPerBar = cur.secPerBar;
-    if (cur.mode === "move") setAudioDrag({ startBar: Math.max(0, cur.origStart + delta), lengthBars: cur.origLength });
+    if (cur.mode === "move")
+      setAudioDragLive({ startBar: Math.max(0, cur.origStart + delta), lengthBars: cur.origLength });
     else if (cur.mode === "resize")
-      setAudioDrag({ startBar: cur.origStart, lengthBars: Math.max(0.25, cur.origLength + delta) });
+      setAudioDragLive({ startBar: cur.origStart, lengthBars: Math.max(0.25, cur.origLength + delta) });
     else if (cur.mode === "trimStart") {
       const newStart = Math.max(0, cur.origStart + delta);
       const newLen = Math.max(0.25, cur.origLength - delta);
-      setAudioDrag({ startBar: newStart, lengthBars: newLen });
+      setAudioDragLive({ startBar: newStart, lengthBars: newLen });
     } else if (cur.mode === "stretch") {
       // Alt+drag: length follows the pointer like resize/trim, the rate
       // follows the length ratio (previewStretchRate) — the content keeps
       // filling the clip. Right edge pins the start, left edge pins the end.
       const newLen = Math.max(0.25, cur.edge === "right" ? cur.origLength + delta : cur.origLength - delta);
       const newStart = cur.edge === "right" ? cur.origStart : Math.max(0, cur.origStart + delta);
-      setAudioDrag({ startBar: newStart, lengthBars: newLen });
-      setAudioStretchPreview({ clipId: cur.clipId, rate: previewStretchRate(cur.origRate, cur.origLength, newLen) });
+      setAudioDragLive({ startBar: newStart, lengthBars: newLen });
+      setAudioStretchLive({ clipId: cur.clipId, rate: previewStretchRate(cur.origRate, cur.origLength, newLen) });
     } else if (cur.mode === "fadeIn") {
       const deltaSec = delta * secPerBar;
       const clipSec = cur.origLength * secPerBar;
       const maxFade = Math.min(2, clipSec * 0.5);
       const next = Math.max(0, Math.min(maxFade, cur.origFadeIn + deltaSec));
-      setAudioFadePreview({ clipId: cur.clipId, fadeIn: next, fadeOut: cur.origFadeOut });
+      setAudioFadeLive({ clipId: cur.clipId, fadeIn: next, fadeOut: cur.origFadeOut });
     } else if (cur.mode === "fadeOut") {
       const deltaSec = delta * secPerBar;
       const clipSec = cur.origLength * secPerBar;
       const maxFade = Math.min(2, clipSec * 0.5);
       const next = Math.max(0, Math.min(maxFade, cur.origFadeOut - deltaSec));
-      setAudioFadePreview({ clipId: cur.clipId, fadeIn: cur.origFadeIn, fadeOut: next });
+      setAudioFadeLive({ clipId: cur.clipId, fadeIn: cur.origFadeIn, fadeOut: next });
     } else if (cur.mode === "gain") {
       const deltaY = cur.grabY - event.clientY;
       const nextGain = Math.max(0, Math.min(2, cur.origGain + deltaY / 80));
-      setAudioGainPreview({ clipId: cur.clipId, gain: nextGain });
+      setAudioGainLive({ clipId: cur.clipId, gain: nextGain });
     }
   };
   const onAudioPointerUp = (event?: React.PointerEvent) => {
     dragGuard.disarm();
     const cur = audioDragRef.current;
-    const final = audioDrag;
-    const fadePrev = audioFadePreview;
-    const gainPrev = audioGainPreview;
-    const stretchPrev = audioStretchPreview;
+    // The refs, not the state: a release that lands in the same batch as the
+    // final move would otherwise commit the previous frame's geometry — and
+    // for the fade/gain modes the staleness guard would swallow the commit
+    // entirely (see the audioDragLiveRef note).
+    const final = audioDragLiveRef.current;
+    const fadePrev = audioFadeLiveRef.current;
+    const gainPrev = audioGainLiveRef.current;
+    const stretchPrev = audioStretchLiveRef.current;
     audioDragRef.current = null;
-    setAudioDrag(null);
-    setAudioFadePreview(null);
-    setAudioGainPreview(null);
-    setAudioStretchPreview(null);
+    clearAudioDragLive();
     if (!cur) return;
     if (cur.mode === "move" && final && final.startBar !== cur.origStart)
       execute(moveAudioClip(services.store.doc, cur.clipId, final.startBar));
@@ -2114,10 +2214,7 @@ export function ArrangementPanel() {
   const onAudioPointerCancel = () => {
     dragGuard.disarm();
     audioDragRef.current = null;
-    setAudioDrag(null);
-    setAudioFadePreview(null);
-    setAudioGainPreview(null);
-    setAudioStretchPreview(null);
+    clearAudioDragLive();
   };
 
   /**
@@ -2151,9 +2248,19 @@ export function ArrangementPanel() {
    */
   const cancelAllArrangementGestures = useCallback(() => {
     dragRef.current = null;
+    // Live drag refs are cleared directly rather than through the
+    // write-through setters: this callback has an empty dep array, and only
+    // refs + setState are identity-stable. A stale live ref would otherwise
+    // survive the cancel and leak into the NEXT drag's release commit.
+    dragLiveRef.current = null;
+    multiDragLiveRef.current = null;
     setDrag(null);
     setMultiDrag(null);
     audioDragRef.current = null;
+    audioDragLiveRef.current = null;
+    audioFadeLiveRef.current = null;
+    audioGainLiveRef.current = null;
+    audioStretchLiveRef.current = null;
     setAudioDrag(null);
     setAudioFadePreview(null);
     setAudioGainPreview(null);

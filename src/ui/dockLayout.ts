@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Bottom dock layout — panel slots, dock height and their persistence.
@@ -110,14 +110,72 @@ export function ensurePanelVisible(state: DockState, panel: BottomPanel): DockSt
   return toggleSlot(state, panel, 0);
 }
 
-/** React binding: persisted dock state + effect that saves on change. */
+/** How long the layout must be still before it is written to storage. */
+const PERSIST_DEBOUNCE_MS = 200;
+
+/**
+ * React binding: persisted dock state + effect that saves on change.
+ *
+ * The save is DEBOUNCED (audit 16). `localStorage.setItem` is synchronous and
+ * main-thread blocking, and the dock height changes on every `pointermove` of
+ * a resize drag — a 120 Hz mouse performed ~120 serialising writes per second
+ * on the same thread that renders the DAW. The state itself still updates on
+ * every move (the drag must track the pointer with no dropped frames); only
+ * the side effect settles.
+ *
+ * A pending write is flushed on unmount and on `pagehide`, so closing the tab
+ * mid-debounce cannot silently drop the user's last layout.
+ */
 export function useDockLayout(maxInner: number): [DockState, (next: DockState) => void] {
   const [state, setState] = useState<DockState>(() => {
     if (typeof localStorage === "undefined") return loadDockLayout(null, maxInner);
     return loadDockLayout(localStorage.getItem(DOCK_STORAGE_KEY), maxInner);
   });
+  const pendingRef = useRef<DockState | null>(null);
+  const timerRef = useRef<number | null>(null);
+
   useEffect(() => {
-    persistDockLayout(state);
+    pendingRef.current = state;
+    if (timerRef.current !== null) return;
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null;
+      const pending = pendingRef.current;
+      pendingRef.current = null;
+      if (pending) persistDockLayout(pending);
+    }, PERSIST_DEBOUNCE_MS);
   }, [state]);
+
+  // Never lose the last layout: an unmount (project close, panel teardown) or
+  // a tab close during the debounce window must still land the write.
+  useEffect(() => {
+    const flush = () => {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      const pending = pendingRef.current;
+      pendingRef.current = null;
+      if (pending) persistDockLayout(pending);
+    };
+    window.addEventListener("pagehide", flush);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      flush();
+    };
+  }, []);
+
+  // A dock persisted on a tall display must not outlive the viewport: the
+  // ceiling is a function of `window.innerHeight`, and it only ran at load
+  // time, so shrinking the window left a 560 px dock on a 600 px screen and
+  // starved the sequencer above it. Re-clamp whenever the ceiling changes.
+  // Deliberately one-way: the clamp shrinks to fit, and a later grow does NOT
+  // restore the old size (the shrunken value becomes the user's new setting).
+  useEffect(() => {
+    setState((prev) => {
+      const height = clampDockHeight(prev.height, maxInner);
+      return height === prev.height ? prev : { ...prev, height };
+    });
+  }, [maxInner]);
+
   return [state, setState];
 }

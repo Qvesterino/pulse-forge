@@ -875,3 +875,43 @@ button {
 .statusbar {
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+/* ---------- Session state indicator (footer) ---------- */
+
+.session-state {
+  display: flex;
+  align-items: center;
+}
+
+.session-state-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.session-state-chip {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.6px;
+  color: var(--text);
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 7px;
+}
+
+.session-state-rec {
+  color: #ff5d5d;
+  border-color: #ff5d5d;
+  font-weight: 600;
+}
+
+.session-state-rec.starting {
+  color: #e0b040;
+  border-color: #e0b040;
+}

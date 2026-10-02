@@ -71,6 +71,7 @@ import { CommandToast } from "./CommandToast";
 const PaletteOverlay = lazy(() => import("./PaletteOverlay").then((m) => ({ default: m.PaletteOverlay })));
 import { HelpOverlay } from "./HelpOverlay";
 import { notifyOnboardingProgress, OnboardingHint } from "./OnboardingHint";
+import { SessionStateIndicator } from "./SessionStateIndicator";
 import { DiceProvider } from "./DiceContext";
 
 import {
@@ -353,7 +354,18 @@ export function App({
     doc.tracks[0]?.kind === "drum" ? (doc.tracks[0].pads[0]?.id ?? "") : "",
   );
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
-  const viewportMax = typeof window === "undefined" ? 800 : window.innerHeight * 0.7;
+  // The dock ceiling is a function of the live viewport, so it has to be
+  // state and not a render-time read: a browser resize must re-clamp a dock
+  // that was sized on a taller window (audit 16). Reading `innerHeight` during
+  // render alone only re-evaluated on the next unrelated re-render.
+  const [viewportMax, setViewportMax] = useState(() =>
+    typeof window === "undefined" ? 800 : window.innerHeight * 0.7,
+  );
+  useEffect(() => {
+    const onResize = () => setViewportMax(window.innerHeight * 0.7);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   const [dock, setDock] = useDockLayout(viewportMax);
   const bottomPanel = dock.slotA;
   const splitPanel = dock.slotB;
@@ -1576,6 +1588,7 @@ export function App({
                 </ErrorBoundary>
               )}
               <footer className="statusbar">
+                <SessionStateIndicator onOpenArrangement={() => setBottomPanel("arr")} />
                 <span>
                   SPACE play · CTRL+K commands · ALT+1–6 panels · ? help · Ctrl+Z undo ·{" "}
                   <kbd className="statusbar-kbd">1</kbd>–<kbd className="statusbar-kbd">9</kbd> tracks · TOOL{" "}

@@ -157,6 +157,20 @@ export function Slider({
 }: SliderProps) {
   const [dragValue, setDragValue] = useState<number | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+  // Live drag value, mirrored out of state (audit 16).
+  //
+  // `pointermove` is a CONTINUOUS event in React 18: its setState is scheduled
+  // at ContinuousEventPriority and flushed from a Scheduler macrotask, NOT
+  // synchronously at the end of the event. `pointerup` is DISCRETE. A fast
+  // flick can therefore release before the final move has committed, and the
+  // release handler closure still holds the PREVIOUS render's value — the
+  // document then receives a value the pointer never reached, or (when the
+  // press itself is still pending) the `dragValue === null` guard swallows the
+  // whole gesture and nothing is written at all.
+  //
+  // The ref is the authority for "where is the pointer right now" during a
+  // drag; state stays the render source for the visual.
+  const dragValueRef = useRef<number | null>(null);
   // Preview coalescing: pointermove can fire faster than frames — schedule at
   // most one preview per frame, always carrying the LATEST value.
   const previewRaf = useRef<number | null>(null);
@@ -203,6 +217,13 @@ export function Slider({
     }
   };
 
+  /** Record the live pointer value in BOTH the ref (event authority) and
+   * state (render authority) — see the dragValueRef note above. */
+  const setDrag = (v: number | null) => {
+    dragValueRef.current = v;
+    setDragValue(v);
+  };
+
   const positionToValue = (clientX: number): number => {
     const track = trackRef.current;
     if (!track) return value;
@@ -219,7 +240,7 @@ export function Slider({
       // no active pointer (synthetic dispatch) — drag continues without capture
     }
     const v = positionToValue(event.clientX);
-    setDragValue(v);
+    setDrag(v);
     firePreview(v);
     // Touch/pen long-press opens the same menu as right-click (the browser
     // never produces a contextmenu from a slider drag on touch). The hold
@@ -237,7 +258,7 @@ export function Slider({
         menuTimer.current = null;
         holdFired.current = true;
         cancelPreview();
-        setDragValue(null);
+        setDrag(null);
         onCancel?.();
         const anchor = menuAnchor.current;
         if (anchor) openMenu(anchor.x, anchor.y);
@@ -256,7 +277,9 @@ export function Slider({
 
   const handlePointerMove = (event: React.PointerEvent) => {
     if (holdFired.current) return;
-    if (dragValue === null) return;
+    // The ref, not the state: a move that lands in the same batch as the press
+    // has not re-rendered yet, and the state guard would drop it.
+    if (dragValueRef.current === null) return;
     // Movement past the slop cancels the pending hold: this is a drag, not a
     // long-press.
     const start = dragStart.current;
@@ -264,7 +287,7 @@ export function Slider({
     const anchor = downPos.current;
     if (anchor && Math.hypot(event.clientX - anchor.x, event.clientY - anchor.y) > 4) movedSinceDown.current = true;
     const v = positionToValue(event.clientX);
-    setDragValue(v);
+    setDrag(v);
     firePreview(v);
   };
 
@@ -276,7 +299,8 @@ export function Slider({
     }
     clearMenuTimer();
     downPos.current = null;
-    if (dragValue === null) return;
+    const final = dragValueRef.current;
+    if (final === null) return;
     // Kill a pending preview so a stale frame can't land after the commit.
     cancelPreview();
     if (!movedSinceDown.current) {
@@ -288,15 +312,15 @@ export function Slider({
       const isSecondClick = now - lastClickAt.current < 300;
       lastClickAt.current = isSecondClick ? 0 : now;
       if (isSecondClick) {
-        setDragValue(null);
+        setDrag(null);
         onCancel?.();
         return;
       }
     } else {
       lastClickAt.current = 0;
     }
-    onCommit(dragValue);
-    setDragValue(null);
+    onCommit(final);
+    setDrag(null);
   };
 
   // Interrupted drag (touch gesture takeover, autoscroll, …) — abort, never
@@ -307,7 +331,7 @@ export function Slider({
     holdFired.current = false;
     downPos.current = null;
     cancelPreview();
-    setDragValue(null);
+    setDrag(null);
     onCancel?.();
   };
 
@@ -472,9 +496,21 @@ export function DragNumber({
   const holdFired = useRef(false);
   const startY = useRef(0);
   const startValue = useRef(0);
+  // Live drag value mirrored out of state — see the Slider's dragValueRef note.
+  // Without it a release that lands in the same batch as the final move
+  // commits the previous frame's value (or, with the press still pending, the
+  // `edit === null` guard swallows the drag and writes nothing at all).
+  const editRef = useRef<number | null>(null);
   const { step: stepSize, decimals } = useMemo(() => dragNumberResolution(min, max, step), [min, max, step]);
 
   const shown = edit ?? value;
+
+  /** Record the live pointer value in BOTH the ref (event authority) and
+   * state (render authority). */
+  const setEditValue = (v: number | null) => {
+    editRef.current = v;
+    setEdit(v);
+  };
 
   // Clamp + quantise to the control's resolution. Used by drag, arrow keys and
   // typed entry so all three resolve the same precision.
@@ -505,14 +541,14 @@ export function DragNumber({
     }
     startY.current = event.clientY;
     startValue.current = shown;
-    setEdit(shown);
+    setEditValue(shown);
     holdFired.current = false;
     if (event.pointerType !== "mouse") {
       menuAnchor.current = { x: event.clientX, y: event.clientY };
       menuTimer.current = window.setTimeout(() => {
         menuTimer.current = null;
         holdFired.current = true;
-        setEdit(null);
+        setEditValue(null);
         const anchor = menuAnchor.current;
         if (anchor) setMenu(anchor);
       }, 450);
@@ -521,11 +557,12 @@ export function DragNumber({
 
   const handlePointerMove = (event: React.PointerEvent) => {
     if (holdFired.current) return;
-    if (edit === null) return;
+    // The ref, not the state — see the Slider's dragValueRef note.
+    if (editRef.current === null) return;
     const anchor = menuAnchor.current;
     if (anchor && Math.abs(event.clientY - startY.current) > 6) clearMenuTimer();
     const delta = (startY.current - event.clientY) * sensitivity;
-    setEdit(quantize(startValue.current + delta));
+    setEditValue(quantize(startValue.current + delta));
   };
 
   const handlePointerUp = () => {
@@ -534,21 +571,22 @@ export function DragNumber({
       holdFired.current = false;
       return;
     }
-    if (edit === null) return;
+    const final = editRef.current;
+    if (final === null) return;
     // A zero-movement click (focus, or a long-press that never fired) must not
     // write: committing the unchanged value pushes a no-op command into undo
     // history and re-sends the parameter to the engine for nothing. Compare
     // against the quantised start value so a click is a no-op even when the
     // incoming value carries more precision than this control can express.
-    if (edit !== quantize(startValue.current)) cleanCommit(edit);
-    setEdit(null);
+    if (final !== quantize(startValue.current)) cleanCommit(final);
+    setEditValue(null);
   };
 
   // Interrupted drag — abort without committing (see Slider).
   const handlePointerCancel = () => {
     clearMenuTimer();
     holdFired.current = false;
-    setEdit(null);
+    setEditValue(null);
   };
 
   const commitTypeDraft = () => {
