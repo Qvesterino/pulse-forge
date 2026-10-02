@@ -32,6 +32,7 @@ import type {
   PatternPhraseBar,
   ProjectDocument,
   ProjectLineage,
+  ProjectProducerBriefV1,
   ReturnTrack,
   SampleLayer,
   Scene,
@@ -96,6 +97,9 @@ function yMapToProject(m: Y.Map<unknown>): ProjectDocument {
     groove: m.has("groove") ? (plainValue(m.get("groove")) as unknown as Partial<GrooveSettings>) : undefined,
     midi: m.has("midi") ? (plainValue(m.get("midi")) as unknown as MidiConfig) : undefined,
     lineage: m.has("lineage") ? (plainValue(m.get("lineage")) as unknown as ProjectLineage) : undefined,
+    ...(m.has("producerBrief")
+      ? { producerBrief: plainValue(m.get("producerBrief")) as unknown as ProjectProducerBriefV1 }
+      : {}),
     createdAt: (m.get("createdAt") as string) ?? "",
     updatedAt: (m.get("updatedAt") as string) ?? "",
   };
@@ -913,6 +917,10 @@ export function applyProjectToYMap(_oldDoc: ProjectDocument, newDoc: ProjectDocu
   } else if (yMap.has("lineage")) {
     yMap.delete("lineage");
   }
+
+  // Producer Brief is an explicit project field, shared only with the project
+  // session; keep its source/confidence alongside the structured facts.
+  syncPlainJsonField(yMap, "producerBrief", newDoc.producerBrief);
 }
 
 export function projectToYDoc(doc: ProjectDocument, yMap: Y.Map<unknown>): void {

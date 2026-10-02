@@ -132,6 +132,16 @@ KYX may learn a local, user-controlled preference profile to make suggestions fe
 
 Preference memory must be contextual (genre, role, task and project where relevant), must not silently train on raw project audio, vocals or lyrics, and must not transfer to ZYVO or another device without an explicit user action. Turning it off must leave the core DAW and deterministic Intent Engine fully usable.
 
+### 4.6 Three separate kinds of producer memory
+
+“Memory” is not one undifferentiated transcript or hidden profile. KYX must keep these scopes separate because they answer different questions and have different persistence and consent rules:
+
+1. **Session context — what are we working on right now?** Recent prompts, candidate references (“the second one”), audition state and follow-up context may live in a bounded in-memory session. It is temporary and may be forgotten on reload; it must not silently become a durable training or taste signal.
+2. **Project Producer Brief — what should this project sound like or preserve?** A project may store a small, versioned set of structured, allowlisted musical facts and explicit corrections, with source/confidence metadata. Saving and clearing it are deliberate, undoable project actions. It is project-local and may travel only with an explicitly saved/shared/exported project. It is not a raw prompt archive: raw prompts, conversation transcripts, chain-of-thought, audio, vocals and lyrics are not part of this brief.
+3. **Producer DNA — what kinds of results does this creator tend to prefer?** This is a separate, optional local profile based on sufficiently clear user signals such as an explicit favorite or deliberate A/B choice. It is a soft preference, never a project instruction or hard constraint. Previewing, generating, or applying a candidate alone does not teach taste.
+
+The active request has priority over remembered soft preferences. A saved project constraint that conflicts with a new request must be shown as a conflict and resolved explicitly; KYX must not silently choose. Producer DNA may rank only candidates that have already passed the active brief and safety gates. Each layer needs its own inspect/clear controls and tests proving that project switches, session resets and DNA opt-out do not leak or erase another layer.
+
 ## 5. Musical quality contract
 
 Technical validity is necessary and is not the same as musical quality. KYX must not call a beat “professional”, “radio-ready” or “high quality” solely because it passes schema checks, a ranker score, loudness measurements or a synthetic test.
@@ -262,6 +272,7 @@ This contract extends the architecture already in the repository; it does not au
 | Generate, gate, repair and rank candidates | `src/ai/generator.ts`, `invariants.ts`, `src/intent/quality.ts`, candidate/ranking modules |
 | Audition and compare                       | `src/intent/audition.ts`, `candidate-bank.ts`, relevant UI                                 |
 | Apply with undo/redo                       | `src/commands/` and the project model                                                      |
+| Separate session/project/taste memory      | `src/intent/session-context.ts`, `src/intent/project-brief.ts`, `src/project-model/producer-brief.ts`, `src/commands/producerBriefCommands.ts`, `src/intent/preference-ledger.ts` |
 | Render and evaluate audio                  | `src/audio-engine/`, `src/rendering/`, `src/intent/audio-feedback.ts`                      |
 | Optional generative performer              | `src/generative/` and MRT2 provider adapters                                               |
 | Local model safety and portability         | `src/ai/` workers/clients, `src/intent/providers/`, desktop model/runtime boundary         |

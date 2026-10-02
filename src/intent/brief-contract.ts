@@ -16,16 +16,17 @@
  *     the prompt;
  *   - pure and deterministic: same parsed brief + context → same contract.
  *
- * TRANSIENT layer by design: nothing here is serialized into the project —
- * enforcement travels through the normalized IntentSpec (bpmRange/key/
- * roles/preserve), so the project schema is untouched.
+ * The compiled contract itself is transient. A separate, explicit project
+ * save may retain only allowlisted structured facts; raw prompt text and the
+ * contract's UI labels are never serialized.
  */
 import { DEFAULT_GENERATE_OPTIONS, GENRES } from "../ai/types";
 import { drumTrackForTarget, instrumentTrackForRole } from "../ai/role-targets";
-import { isMusicalKey, type ProjectDocument } from "../project-model/types";
+import { isMusicalKey, type ProjectDocument, type ProjectProducerBriefV1 } from "../project-model/types";
 import type { ProducerSessionState } from "./producer-session";
 import type { ParsedIntent, ParsedIntentConflictKind } from "./text-parser";
 import type { IntentInput, IntentRole } from "./types";
+import { projectBriefConflictsFor, projectBriefCorrectionsFor } from "./project-brief";
 
 export type BriefSection = "hard" | "preference" | "prohibition" | "preserve" | "unknown";
 export type BriefOrigin = "prompt" | "session" | "project" | "default" | "user";
@@ -139,6 +140,7 @@ function preservationEvidence(
 export interface BriefContractContext {
   project?: ProjectDocument | null;
   session?: ProducerSessionState | null;
+  projectBrief?: ProjectProducerBriefV1 | null;
   /** Default generation set when the brief names no roles (panel default). */
   defaultRoles?: readonly IntentRole[];
   /** Explicit corrections made in the brief UI; these override parser output. */
@@ -166,8 +168,12 @@ function percent(value: number): string {
 export function compileBriefContract(parsed: ParsedIntent | null, context: BriefContractContext = {}): BriefContract {
   const statements: BriefStatement[] = [];
   const corrections = context.corrections ?? {};
-  const input = { ...(parsed?.input ?? {}), ...corrections };
-  const prohibitedRoles = parsed?.prohibitedRoles ?? [];
+  const projectBrief = context.projectBrief ?? null;
+  const projectCorrections = projectBriefCorrectionsFor(parsed, projectBrief);
+  const input = { ...(parsed?.input ?? {}), ...projectCorrections, ...corrections };
+  const projectProhibitions = projectBrief?.facts.find((fact) => fact.field === "prohibitedRoles")?.value ?? [];
+  const promptProhibitions = parsed?.prohibitedRoles ?? [];
+  const prohibitedRoles = [...new Set([...projectProhibitions, ...promptProhibitions])];
   const session = context.session ?? null;
   const project = context.project ?? null;
   const sourcePatternId =
@@ -180,7 +186,13 @@ export function compileBriefContract(parsed: ParsedIntent | null, context: Brief
   ): Pick<BriefStatement, "origin" | "confidence"> =>
     fields.some((field) => Object.prototype.hasOwnProperty.call(corrections, field))
       ? { origin: "user", confidence: "confirmed" }
-      : fallback;
+      : fields.some(
+            (field) =>
+              Object.prototype.hasOwnProperty.call(projectCorrections, field) &&
+              !Object.prototype.hasOwnProperty.call(parsed?.input ?? {}, field),
+          )
+        ? { origin: "project", confidence: "confirmed" }
+        : fallback;
 
   // ── HARD — exact requirements the brief stated ──────────────────────────
   const sessionBpm = session?.decisions.bpm ? Number(session.decisions.bpm.value) : NaN;
@@ -356,13 +368,14 @@ export function compileBriefContract(parsed: ParsedIntent | null, context: Brief
     });
   }
 
-  for (const role of parsed?.prohibitedRoles ?? []) {
+  for (const role of prohibitedRoles) {
+    const fromProject = projectProhibitions.includes(role) && !promptProhibitions.includes(role);
     statements.push({
       id: `no-${role}`,
       section: "prohibition",
       label: ROLE_PROHIBITION_LABEL[role],
-      origin: "prompt",
-      confidence: "parsed",
+      origin: fromProject ? "project" : "prompt",
+      confidence: fromProject ? "confirmed" : "parsed",
       patch: null,
       role,
     });
@@ -383,7 +396,7 @@ export function compileBriefContract(parsed: ParsedIntent | null, context: Brief
     });
   }
 
-  const conflicts = (parsed?.conflicts ?? [])
+  const conflicts = [...(parsed?.conflicts ?? []), ...projectBriefConflictsFor(parsed, projectBrief)]
     .filter((conflict) => {
       const preserveWasCorrected = Object.prototype.hasOwnProperty.call(corrections, "preserve");
       const roleIsNoLongerPreserved = !(input.preserve ?? []).includes(conflict.role);

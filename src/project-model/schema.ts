@@ -29,6 +29,7 @@ import type {
   AutomationTarget,
 } from "./types";
 import { PPQ, STEPS_PER_PATTERN, isMusicalKey } from "./types";
+import { sanitizeProjectProducerBrief } from "./producer-brief";
 import { sanitizeGateSteps, sanitizeLfo, sanitizeManglerSteps } from "./modulators";
 import { uid } from "../shared/ids";
 import { jsonEqual } from "../shared/jsonEqual";
@@ -44,7 +45,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -1929,6 +1930,23 @@ function normalizeLineageDomain(s: NormalizeState): void {
   }
 }
 
+function normalizeProducerBriefDomain(s: NormalizeState): void {
+  const doc = s.doc;
+  if (doc.producerBrief === undefined) return;
+  const cleaned = sanitizeProjectProducerBrief(doc.producerBrief);
+  if (cleaned === undefined) {
+    const rest = { ...doc };
+    delete rest.producerBrief;
+    s.doc = rest;
+    s.changed = true;
+    return;
+  }
+  if (!jsonEqual(cleaned, doc.producerBrief)) {
+    s.doc = { ...doc, producerBrief: cleaned };
+    s.changed = true;
+  }
+}
+
 function normalizeMarkersDomain(s: NormalizeState): void {
   const doc = s.doc;
   // Markers are NAVIGATION points, not arrangement content. Normalize used
@@ -2435,6 +2453,7 @@ const NORMALIZE_DOMAINS: ((s: NormalizeState) => void)[] = [
   normalizeSceneDetailsDomain,
   normalizeKeyAndTagsDomain,
   normalizeLineageDomain,
+  normalizeProducerBriefDomain,
   normalizeMarkersDomain,
   normalizeSceneAutomationDomain,
   normalizeTimestampsDomain,
@@ -2470,7 +2489,8 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // v6 adds an optional production profile to generated-pattern provenance;
   // v7 adds take-comp provenance and permits short, positive AudioClip ranges;
   // v8 adds optional per-pad round-robin / velocity layers (`DrumPad.layers`);
-  // v9 adds `AudioClip.loopPhaseOffsetSec` for phase-preserving loop splits.
+  // v9 adds `AudioClip.loopPhaseOffsetSec` for phase-preserving loop splits;
+  // v10 adds the opt-in, structured project Producer Brief (no raw prompts/audio).
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);
@@ -2512,6 +2532,7 @@ export function validateProjectShape(doc: unknown): doc is ProjectDocument {
   if (doc.master !== undefined && !isObject(doc.master)) return false;
   if (doc.groove !== undefined && !isObject(doc.groove)) return false;
   if (doc.midi !== undefined && !isObject(doc.midi)) return false;
+  if (doc.producerBrief !== undefined && sanitizeProjectProducerBrief(doc.producerBrief) === undefined) return false;
   if (doc.arrangement !== undefined) {
     if (!isObject(doc.arrangement) || !Array.isArray(doc.arrangement.clips)) return false;
   }

@@ -1062,6 +1062,40 @@ export interface ProjectLineage {
   seed: string | null;
 }
 
+/** A creator-approved, project-local brief. Raw prompts, audio and lyrics are never stored here. */
+export type ProjectBriefRole = "drums" | "bass" | "chords" | "lead";
+export type ProjectBriefOrigin = "prompt" | "user";
+export type ProjectBriefConfidence = "parsed" | "confirmed";
+export type ProjectBriefSection = "hard" | "preference" | "preserve" | "prohibition";
+
+interface ProjectBriefFactMetadata {
+  origin: ProjectBriefOrigin;
+  confidence: ProjectBriefConfidence;
+}
+
+export type ProjectProducerBriefFact = ProjectBriefFactMetadata &
+  (
+    | { field: "genre" | "style" | "mood"; section: "preference"; value: string }
+    | { field: "bpmRange"; section: "hard"; value: [number, number] }
+    | { field: "key"; section: "hard"; value: MusicalKey }
+    | { field: "length"; section: "hard"; value: number }
+    | { field: "roles"; section: "hard"; value: ProjectBriefRole[] }
+    | { field: "energy" | "density" | "complexity" | "variation"; section: "preference"; value: number }
+    | { field: "preserve"; section: "preserve"; value: ProjectBriefRole[] }
+    | { field: "prohibitedRoles"; section: "prohibition"; value: ProjectBriefRole[] }
+  );
+
+/**
+ * Project-persistent creative context. Facts are stored only after an
+ * explicit save action, retain their source/confidence, and exclude raw
+ * prompt text, audio, lyrics, model state and candidate payloads.
+ */
+export interface ProjectProducerBriefV1 {
+  version: 1;
+  savedAt: string;
+  facts: ProjectProducerBriefFact[];
+}
+
 export interface ProjectDocument {
   schemaVersion: number;
   id: ID;
@@ -1074,6 +1108,8 @@ export interface ProjectDocument {
   tags?: string[];
   /** Optional Remix-DNA family link (schema v3). Absent = pre-lineage beat. */
   lineage?: ProjectLineage;
+  /** Optional user-saved creative context for this project (schema v10). */
+  producerBrief?: ProjectProducerBriefV1;
   tracks: Track[];
   patterns: Pattern[];
   activePatternId: ID;

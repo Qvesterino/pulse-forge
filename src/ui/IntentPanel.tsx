@@ -93,6 +93,12 @@ import {
   resetProducerSession,
 } from "../intent/producer-session";
 import { compileBriefContract } from "../intent/brief-contract";
+import {
+  createProjectBriefFromContract,
+  mergeProjectProducerBrief,
+  projectBriefCorrectionsFor,
+} from "../intent/project-brief";
+import { clearProjectProducerBriefCommand, saveProjectProducerBriefCommand } from "../commands/producerBriefCommands";
 import { evaluateBriefCompliance } from "../intent/brief-gate";
 import { compileIteration } from "../intent/iteration";
 import { BriefContractSummary } from "./BriefContractSummary";
@@ -186,6 +192,7 @@ export function IntentPanel() {
   const selection = useSelectionStore();
   const doc = services.store.getDoc();
   const [text, setText] = useState("");
+  const [useProjectBrief, setUseProjectBrief] = useState(() => Boolean(doc.producerBrief));
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -496,6 +503,11 @@ export function IntentPanel() {
     return parseIntentText(text);
   }, [text]);
 
+  const savedBriefAt = doc.producerBrief?.savedAt ?? null;
+  useEffect(() => {
+    setUseProjectBrief(Boolean(doc.producerBrief));
+  }, [doc.id, savedBriefAt]);
+
   // Fáza 1 brief contract: "TOTO SOM POCHOPIL" — confirmable reading of the
   // prompt. User fixes ride in their own patch state; a NEW prompt invalidates
   // them (they described the previous reading, not this one).
@@ -503,17 +515,30 @@ export function IntentPanel() {
   useEffect(() => {
     setBriefFixes({});
   }, [text]);
+  const activeProjectBrief = useProjectBrief ? (doc.producerBrief ?? null) : null;
+  const projectBriefCorrections = useMemo(
+    () => projectBriefCorrectionsFor(parsed, activeProjectBrief),
+    [parsed, activeProjectBrief],
+  );
   const briefContract = useMemo(
     () =>
       compileBriefContract(parsed, {
         project: doc,
         session: producerSessionState(),
+        projectBrief: activeProjectBrief,
         defaultRoles: ["drums", "bass"],
         corrections: briefFixes,
       }),
-    [parsed, doc, briefFixes],
+    [parsed, doc, briefFixes, activeProjectBrief],
   );
-  const briefInput = useMemo<IntentInput>(() => ({ ...(parsed?.input ?? {}), ...briefFixes }), [parsed, briefFixes]);
+  const briefInput = useMemo<IntentInput>(
+    () => ({ ...(parsed?.input ?? {}), ...projectBriefCorrections, ...briefFixes }),
+    [parsed, projectBriefCorrections, briefFixes],
+  );
+  const canSaveProjectBrief = useMemo(
+    () => createProjectBriefFromContract(briefContract, briefInput, "2026-10-02T00:00:00.000Z") !== null,
+    [briefContract, briefInput],
+  );
   const rejectUnresolvedBriefConflicts = () => {
     if (briefContract.conflicts.length === 0) return false;
     setError(BRIEF_CONFLICT_BLOCK_MESSAGE);
@@ -601,7 +626,7 @@ export function IntentPanel() {
   };
 
   const generate = async () => {
-    if (!text.trim() || busy) return;
+    if ((!text.trim() && !activeProjectBrief) || busy) return;
     if (rejectUnresolvedBriefConflicts()) return;
     setBusy(true);
     setError(null);
@@ -790,7 +815,7 @@ export function IntentPanel() {
     const production = parseProductionIntent(text);
     const sectionParse = parseSectionRequests(text);
     const remainingFxText = sectionParse?.remainingText ?? text;
-    const genreSignal = Boolean(parsed?.input.genre || parsed?.detected.some((chip) => chip.startsWith("♪")));
+    const genreSignal = Boolean(briefInput.genre || parsed?.detected.some((chip) => chip.startsWith("♪")));
     if (production && !genreSignal && !sectionParse) {
       try {
         const cmd = applyProductionIntentCommand(doc, production);
@@ -814,7 +839,7 @@ export function IntentPanel() {
     abortRef.current?.abort();
     abortRef.current = controller;
     const intentInput = {
-      ...(parsed?.input ?? {}),
+      ...briefInput,
       ...(refPatch ?? {}),
       ...briefFixes,
       ...(consumeOneShotPatch() ?? {}),
@@ -833,7 +858,7 @@ export function IntentPanel() {
     // curated reference. Confident keyword parses skip it — zero latency
     // cost when the parser already understands.
     let finalInput = intentInput;
-    if (!intentInput.genre && !parsed?.detected.some((chip) => chip.startsWith("♪"))) {
+    if (text.trim() && !intentInput.genre && !parsed?.detected.some((chip) => chip.startsWith("♪"))) {
       setStatus("🧠 semantic…");
       const match = await semanticIntentFor(text);
       if (controller.signal.aborted) return;
@@ -1279,6 +1304,28 @@ export function IntentPanel() {
     setBriefFixes((previous) => ({ ...previous, ...patch }));
   };
 
+  const saveCurrentProjectBrief = () => {
+    const draft = createProjectBriefFromContract(briefContract, briefInput);
+    if (!draft) {
+      setStatus("Nothing explicit to save — defaults and guesses stay out of the project brief.");
+      return;
+    }
+    try {
+      const merged = mergeProjectProducerBrief(doc.producerBrief, draft);
+      services.store.execute(saveProjectProducerBriefCommand(doc, merged));
+      setUseProjectBrief(true);
+      setStatus(`✓ Project Producer Brief saved (${merged.facts.length} facts; one undo step).`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const clearSavedProjectBrief = () => {
+    services.store.execute(clearProjectProducerBriefCommand(doc));
+    setUseProjectBrief(false);
+    setStatus("Project Producer Brief cleared (one undo step).");
+  };
+
   const replacePrompt = (nextText: string, replay = false) => {
     invalidateBriefResults();
     setBriefFixes((previous) => (Object.keys(previous).length > 0 ? {} : previous));
@@ -1699,7 +1746,7 @@ export function IntentPanel() {
     const buildToken = ++songTokenRef.current;
     try {
       const baseDoc = services.store.getDoc();
-      const intentInput = { ...(parsed?.input ?? {}), ...(refPatch ?? {}), ...briefFixes, ...(reviseInput ?? {}) };
+      const intentInput = { ...briefInput, ...(refPatch ?? {}), ...briefFixes, ...(reviseInput ?? {}) };
       const globalFx = reviseInput?.fx ?? parseProductionIntent(sections?.remainingText ?? text);
       const result = await composeFullTrack(baseDoc, songTextRef.current || text, {
         ...(sections ? { sections } : {}),
@@ -1906,7 +1953,7 @@ export function IntentPanel() {
     await buildSongDraft(sections);
   };
   const generateSong = async () => {
-    if (!text.trim() || songBusy || busy) return;
+    if ((!text.trim() && !activeProjectBrief) || songBusy || busy) return;
     if (rejectUnresolvedBriefConflicts()) return;
     setSongBusy(true);
     try {
@@ -2655,9 +2702,13 @@ export function IntentPanel() {
         } else {
           // Nothing generated yet — apply the attribute to the parsed intent.
           const intentInput: IntentInput = {
-            ...{ ...(parsed?.input ?? {}), ...(refPatch ?? {}), ...briefFixes, ...(consumeOneShotPatch() ?? {}) },
+            ...briefInput,
+            ...(refPatch ?? {}),
+            ...briefFixes,
+            ...(consumeOneShotPatch() ?? {}),
           };
-          intentInput[route.attribute] = fallbackDefaults[route.attribute] + delta;
+          const current = intentInput[route.attribute] ?? fallbackDefaults[route.attribute];
+          intentInput[route.attribute] = Math.max(0, Math.min(1, current + delta));
           await runGeneration(intentInput, controller);
           setStatus(`⚡ ${route.attribute} → ${intentInput[route.attribute]?.toFixed(2)} (fresh pattern)`);
         }
@@ -2841,6 +2892,31 @@ export function IntentPanel() {
           {voiceState === "recording" ? "⏺ REC" : voiceState === "transcribing" ? "…prepisujem" : "🎙 HOVOR"}
         </button>
       </div>
+      {doc.producerBrief && (
+        <div className="intent-history" aria-label="Project Producer Brief memory">
+          <label className="intent-history-label">
+            <input
+              type="checkbox"
+              checked={useProjectBrief}
+              onChange={(event) => setUseProjectBrief(event.target.checked)}
+              aria-label="Use saved project Producer Brief for generation"
+            />
+            PROJECT BRIEF {useProjectBrief ? "ON" : "OFF"}
+          </label>
+          <span className="intent-history-label">
+            {doc.producerBrief.facts.length} structured facts · saved{" "}
+            {new Date(doc.producerBrief.savedAt).toLocaleDateString()}
+          </span>
+          <button
+            type="button"
+            className="btn btn-small"
+            onClick={clearSavedProjectBrief}
+            title="Remove the saved project brief; undo restores it"
+          >
+            CLEAR
+          </button>
+        </div>
+      )}
       {historyTick >= 0 && promptHistory().length > 0 && (
         <div className="intent-history" aria-label="Prompt history">
           <span className="intent-history-label">RECENT</span>
@@ -2892,14 +2968,30 @@ export function IntentPanel() {
           </div>
         );
       })()}
-      {text.trim() !== "" && (
-        <BriefContractSummary
-          contract={briefContract}
-          input={briefInput}
-          fixes={briefFixes}
-          defaultRoles={["drums", "bass"]}
-          onPatch={applyBriefPatch}
-        />
+      {(text.trim() !== "" || activeProjectBrief) && (
+        <>
+          <BriefContractSummary
+            contract={briefContract}
+            input={briefInput}
+            fixes={briefFixes}
+            defaultRoles={["drums", "bass"]}
+            onPatch={applyBriefPatch}
+          />
+          <div className="intent-history" aria-label="Save structured Producer Brief">
+            <span className="intent-history-label">
+              SAVES ONLY EXPLICIT FACTS + YOUR CORRECTIONS — NO RAW PROMPT, LYRICS OR AUDIO
+            </span>
+            <button
+              type="button"
+              className="btn btn-small"
+              disabled={!canSaveProjectBrief}
+              onClick={saveCurrentProjectBrief}
+              title="Save or update this project-local brief as one undoable change"
+            >
+              {doc.producerBrief ? "UPDATE PROJECT BRIEF" : "SAVE TO PROJECT"}
+            </button>
+          </div>
+        </>
       )}
       {semanticChip && (
         <div className="intent-detected" aria-label="Semantic match">
@@ -2972,15 +3064,16 @@ export function IntentPanel() {
         <button
           type="button"
           className="btn intent-generate-btn"
-          disabled={!text.trim() || busy || songBusy}
+          disabled={(!text.trim() && !activeProjectBrief) || busy || songBusy}
           onClick={() => void generate()}
+          title={activeProjectBrief && !text.trim() ? "Generate from the saved project brief" : undefined}
         >
           {busy ? "GENERATING…" : "GENERATE"}
         </button>
         <button
           type="button"
           className="btn intent-song-btn"
-          disabled={!text.trim() || busy || songBusy}
+          disabled={(!text.trim() && !activeProjectBrief) || busy || songBusy}
           onClick={() => void generateSong()}
           title="Build a full arranged song from this intent (intro → build → drop → break → drop → outro)"
         >

@@ -32,6 +32,7 @@ const ALL_TOP_LEVEL_KEYS: Record<keyof ProjectDocument, true> = {
   key: true,
   tags: true,
   lineage: true,
+  producerBrief: true,
   tracks: true,
   patterns: true,
   activePatternId: true,
@@ -93,6 +94,23 @@ describe("YDocAdapter drift pin (GOAL 05)", () => {
     });
     const restored = roundTrip(doc);
     expect(restored.lineage).toEqual(doc.lineage);
+  });
+
+  it("round-trips the user-saved project Producer Brief through collab", () => {
+    const doc = normalizeProject({
+      ...createProjectFromTemplate("drill"),
+      producerBrief: {
+        version: 1,
+        savedAt: "2026-10-02T10:00:00.000Z",
+        facts: [
+          { field: "genre", section: "preference", value: "trap", origin: "prompt", confidence: "parsed" },
+          { field: "preserve", section: "preserve", value: ["bass"], origin: "user", confidence: "confirmed" },
+        ],
+      },
+    });
+    const restored = roundTrip(doc);
+    expect(restored.producerBrief).toEqual(doc.producerBrief);
+    expect(restored).toEqual(doc);
   });
 
   it("preserves every master/track/pad scalar key (the historical silent-loss class)", () => {
