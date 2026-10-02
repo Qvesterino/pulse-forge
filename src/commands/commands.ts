@@ -32,6 +32,7 @@ import type {
   Track,
 } from "../project-model/types";
 import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
+import { arrangementSecondsBetweenTicks, tempoAtTick } from "../project-model/scene-time";
 import { buildStemProject } from "../rendering/stems";
 import {
   DEFAULT_GATE_PATTERN,
@@ -3995,9 +3996,16 @@ export function splitAudioClipAtTick(
   const leftBars = (splitTick - startTick) / BAR_TICKS;
   const rightBars = clip.lengthBars - leftBars;
   if (leftBars < 0.05 || rightBars < 0.05) throw new Error("Split too close to edge");
-  const secondsPerTick = 60 / (doc.bpm * PPQ);
-  const leftSec = (splitTick - startTick) * secondsPerTick;
-  const rightSec = (endTick - splitTick) * secondsPerTick;
+  // Piecewise bars→seconds at the scenes' effective tempos: the scheduler runs
+  // each arrangement span at its scene's BPM pin (gaps at the project tempo),
+  // so a split under a pinned scene must consume source at THAT tempo. Plain
+  // doc.bpm math wrote the right half's offsetSec against a wall clock the
+  // transport never ran at — the split point skipped or repeated source.
+  // secondsPerTick stays for the warp branch, whose mapping the engine derives
+  // from the clip's start tempo (triggerEngine's clipDurSec/clipTicks).
+  const leftSec = arrangementSecondsBetweenTicks(doc.arrangement.clips, doc.scenes, startTick, splitTick, doc.bpm);
+  const rightSec = arrangementSecondsBetweenTicks(doc.arrangement.clips, doc.scenes, splitTick, endTick, doc.bpm);
+  const secondsPerTick = 60 / (tempoAtTick(doc.arrangement.clips, doc.scenes, startTick, doc.bpm) * PPQ);
   const rate = Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
   const preservingStretch = clip.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01;
   const sourceSecondsPerWallSecond = preservingStretch ? 1 / rate : rate;

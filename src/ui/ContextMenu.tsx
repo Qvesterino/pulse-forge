@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useActivePatternId, useArrangement, useServices, useSelection } from "./context";
+import { useActivePatternId, useArrangement, useSelection, useSelectionStore, useServices } from "./context";
 import {
   clearSteps,
   consolidateTimeRange,
@@ -26,6 +26,7 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
   // re-renders this menu on every unrelated edit.
   const arrangement = useArrangement();
   const activePatternId = useActivePatternId();
+  const selectionStore = useSelectionStore();
   const doc = services.store.getDoc();
   const selection = useSelection();
   const menuRef = useRef<HTMLDivElement>(null);
@@ -99,6 +100,13 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
               execute: () => next,
               undo: () => doc,
             });
+            // Same ownership as pruneTrack: the deleted ids must not survive
+            // in the selection, or the menu header keeps counting them and
+            // `P` (locators to loop) silently does nothing over dead ids.
+            selectionStore.retainClips([
+              ...next.arrangement.clips.map((clip) => clip.id),
+              ...(next.arrangement.audioClips ?? []).map((clip) => clip.id),
+            ]);
           }
         }
         break;

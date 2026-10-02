@@ -62,7 +62,14 @@ import {
 } from "../commands/commands";
 import { MAX_ARRANGEMENT_CLIP_BARS, sceneRoleOf } from "../project-model/schema";
 import { sectionFxChips } from "../intent/song";
-import { effectiveSceneBpm, sceneBarsToSeconds, sceneSecondsToBars } from "../project-model/scene-time";
+import {
+  arrangementSecondsBetweenTicks,
+  effectiveSceneBpm,
+  sceneBarsToSeconds,
+  sceneSecondsToBars,
+  tempoAtTick,
+} from "../project-model/scene-time";
+import { usePointerDragGuard } from "./usePointerDragGuard";
 import { computeSceneIntensity } from "../project-model/intensity";
 import type {
   ArrangementClip,
@@ -133,6 +140,8 @@ const LANE_HEIGHT = 56;
  */
 const warpOnsetCache = new Map<string, number[]>();
 const warpOnsetInflight = new Set<string>();
+/** FIFO bound on cached onset arrays (see getWarpOnsets). */
+const WARP_ONSET_CACHE_LIMIT = 96;
 /** Grab radius of the transient magnet around the pointed sample time. */
 const WARP_SNAP_SEC = 0.06;
 /** Shared in-flight onset renders so parallel warmers/hooks never double-detect. */
@@ -206,6 +215,14 @@ function getWarpOnsets(
   const p = detectTransientsAsync(audioClipChannelData(buf, sourceChannel), buf.sampleRate).then(
     (times) => {
       warpOnsetCache.set(key, times);
+      // FIFO bound (Map preserves insertion order), mirroring the engine's
+      // STRETCH_CACHE_LIMIT discipline: a long session importing many samples
+      // must not grow this map forever.
+      while (warpOnsetCache.size > WARP_ONSET_CACHE_LIMIT) {
+        const oldest = warpOnsetCache.keys().next().value;
+        if (oldest === undefined) break;
+        warpOnsetCache.delete(oldest);
+      }
       warpOnsetPromises.delete(key);
       warpOnsetInflight.delete(key);
       return times;
@@ -333,6 +350,10 @@ export function ArrangementPanel() {
   const laneRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   const [drag, setDrag] = useState<{ startBar: number; lengthBars: number } | null>(null);
+  // Window fallback for gestures whose captured element unmounts mid-drag
+  // (undo/collab delete): the element's own pointerup never fires. Handlers
+  // are wired to the global terminator below, once both exist.
+  const dragGuard = usePointerDragGuard();
   const selection = useSelection();
   const selectionStore = useSelectionStore();
   const [timeDrag, setTimeDrag] = useState<{ startBar: number; currentBar: number } | null>(null);
@@ -1205,6 +1226,13 @@ export function ArrangementPanel() {
     grabBar: number;
     grabX: number;
     grabY: number;
+    /**
+     * Wall-clock seconds per bar averaged over THIS clip's span, at the
+     * scenes' effective tempos (scheduler contract: a pinned scene runs at
+     * its own bpm, gaps at the project tempo). doc.bpm here made fade and
+     * trim sensitivity disagree with what the transport actually plays.
+     */
+    secPerBar: number;
   } | null>(null);
   const [audioStretchPreview, setAudioStretchPreview] = useState<{ clipId: string; rate: number } | null>(null);
   const [audioDrag, setAudioDrag] = useState<{ startBar: number; lengthBars: number } | null>(null);
@@ -1602,7 +1630,10 @@ export function ArrangementPanel() {
     const clipTicks = clip.lengthBars * BAR_TICKS;
     const rel = tick - clipStartTick;
     if (!(rel > 0) || !(rel < clipTicks)) return;
-    const spt = 60 / (doc.bpm * PPQ);
+    // The engine derives its warp mapping from the clip's START tempo
+    // (durationSec is scheduled at the covering scene's effective bpm) — pin
+    // placement must divide ticks by the same spt or pins land off-transient.
+    const spt = 60 / (tempoAtTick(clips, scenes, clipStartTick, doc.bpm) * PPQ);
     const contentStart = (clip.offsetSec ?? 0) + (clip.trimStart ?? 0);
     const contentDur = Math.max(0.01, buf.duration - contentStart - (clip.trimEnd ?? 0));
     const contentEnd = contentStart + contentDur;
@@ -1746,6 +1777,7 @@ export function ArrangementPanel() {
       };
       setDrag({ startBar: clip.startBar, lengthBars: clip.lengthBars });
       setMultiDrag(0);
+      dragGuard.arm();
       return;
     }
     if (!selectionStore.isClipSelected(clipId)) selectionStore.setClips([clipId]);
@@ -1758,6 +1790,7 @@ export function ArrangementPanel() {
       grabBar: barFromEvent(event),
     };
     setDrag({ startBar: clip.startBar, lengthBars: clip.lengthBars });
+    dragGuard.arm();
   };
 
   const onClipPointerMove = (event: React.PointerEvent) => {
@@ -1777,6 +1810,7 @@ export function ArrangementPanel() {
   };
 
   const onClipPointerUp = () => {
+    dragGuard.disarm();
     const current = dragRef.current;
     const finalDrag = drag;
     const delta = multiDrag;
@@ -1786,16 +1820,21 @@ export function ArrangementPanel() {
     if (!current || !finalDrag) return;
     if (current.movingIds) {
       if (!delta) return;
+      const beforeDoc = services.store.doc;
+      // A clip in the block can be deleted mid-drag (undo/collab). Moving a
+      // dead id wrote a target from its stale startBar and could false-trip
+      // the overlap guard with length 0 — drag only what is still live.
+      const movingIds = current.movingIds.filter((id) => beforeDoc.arrangement.clips.some((c) => c.id === id));
+      if (movingIds.length === 0) return;
       if (rippleMode) {
         // RIPPLE multi-move: the block and every later clip slide by the
         // same delta — gaps after the strip stay exactly as before. No
         // collision guard: layering the strip past a stationary clip is
         // the ripple contract (later clips move WITH the block).
-        const beforeDoc = services.store.doc;
-        const minStart = Math.min(...Object.values(current.origStarts ?? { 0: 0 }));
+        const minStart = Math.min(...movingIds.map((id) => current.origStarts?.[id] ?? 0));
         const clips = beforeDoc.arrangement.clips
           .map((c) =>
-            current.movingIds!.includes(c.id) || c.startBar >= minStart
+            movingIds.includes(c.id) || c.startBar >= minStart
               ? // Round like the non-ripple branch below: `delta` comes from a
                 // fractional pointer position, and a fractional startBar
                 // persists off-grid (it also makes later resizes report an
@@ -1821,13 +1860,12 @@ export function ArrangementPanel() {
       // `moveArrangementClip` would validate overlaps against INTERMEDIATE
       // states (moving adjacent clips by the same delta collides mid-way
       // even though the final layout is clean). Only stationary clips guard.
-      const beforeDoc = services.store.doc;
       const target = (id: string) => Math.max(0, Math.round((current.origStarts?.[id] ?? 0) + delta));
-      for (const id of current.movingIds) {
+      for (const id of movingIds) {
         const start = target(id);
         const length = beforeDoc.arrangement.clips.find((c) => c.id === id)?.lengthBars ?? 0;
         const collides = beforeDoc.arrangement.clips.some(
-          (c) => !current.movingIds!.includes(c.id) && c.startBar < start + length && c.startBar + c.lengthBars > start,
+          (c) => !movingIds.includes(c.id) && c.startBar < start + length && c.startBar + c.lengthBars > start,
         );
         if (collides) {
           setActionError("Clips would overlap — move cancelled");
@@ -1839,13 +1877,13 @@ export function ArrangementPanel() {
         arrangement: {
           ...beforeDoc.arrangement,
           clips: beforeDoc.arrangement.clips
-            .map((c) => (current.movingIds!.includes(c.id) ? { ...c, startBar: target(c.id) } : c))
+            .map((c) => (movingIds.includes(c.id) ? { ...c, startBar: target(c.id) } : c))
             .sort((a, b) => a.startBar - b.startBar),
         },
       };
       services.store.execute({
         type: "moveClips",
-        label: `Move ${current.movingIds.length} clips`,
+        label: `Move ${movingIds.length} clips`,
         execute: () => nextDoc,
         undo: () => beforeDoc,
       });
@@ -1872,6 +1910,7 @@ export function ArrangementPanel() {
 
   // Interrupted clip drag — abort without moving/resizing.
   const onClipPointerCancel = () => {
+    dragGuard.disarm();
     dragRef.current = null;
     setDrag(null);
     setMultiDrag(null);
@@ -1912,6 +1951,13 @@ export function ArrangementPanel() {
     const label = ids.length === 1 ? `Deleted "${firstName}"` : `Deleted ${ids.length} clips`;
     services.store.execute({ type: "deleteClips", label, execute: () => nextDoc, undo: () => beforeDoc });
     if (selectedClipId && ids.includes(selectedClipId)) setSelectedClipId(null);
+    // The multi-selection store is UI state the command cannot reach (same
+    // ownership as pruneTrack) — dead ids here leaked into the context-menu
+    // header count and left `P` locators-to-loop silently dead.
+    selectionStore.retainClips([
+      ...nextDoc.arrangement.clips.map((c) => c.id),
+      ...(nextDoc.arrangement.audioClips ?? []).map((c) => c.id),
+    ]);
     setDeleteToast({ label });
   };
 
@@ -1928,6 +1974,17 @@ export function ArrangementPanel() {
     event.currentTarget.setPointerCapture(event.pointerId);
     setSelectedAudioClipId(clipId);
     setSelectedClipId(null);
+    // Wall-clock sensitivity for THIS clip's span at the scenes' effective
+    // tempos (average sec/bar). doc.bpm alone disagreed with playback whenever
+    // a scene pinned a different tempo — the fade handle moved at the wrong
+    // rate and trim wrote offsets against a wall clock nothing runs at.
+    const clipWallSec = arrangementSecondsBetweenTicks(
+      clips,
+      scenes,
+      clip.startBar * BAR_TICKS,
+      (clip.startBar + clip.lengthBars) * BAR_TICKS,
+      doc.bpm,
+    );
     audioDragRef.current = {
       clipId,
       mode,
@@ -1943,7 +2000,9 @@ export function ArrangementPanel() {
       grabBar: audioBarFromEvent(event),
       grabX: event.clientX,
       grabY: event.clientY,
+      secPerBar: clip.lengthBars > 0 ? clipWallSec / clip.lengthBars : (BAR_TICKS * 60) / (doc.bpm * PPQ),
     };
+    dragGuard.arm();
     if (mode === "fadeIn" || mode === "fadeOut")
       setAudioFadePreview({ clipId, fadeIn: clip.fadeIn ?? 0, fadeOut: clip.fadeOut ?? 0 });
     if (mode === "gain") setAudioGainPreview({ clipId, gain: clip.gain ?? 1 });
@@ -1954,7 +2013,7 @@ export function ArrangementPanel() {
     if (!cur) return;
     const bar = audioBarFromEvent(event);
     const delta = bar - cur.grabBar;
-    const secPerBar = (BAR_TICKS * 60) / (doc.bpm * PPQ);
+    const secPerBar = cur.secPerBar;
     if (cur.mode === "move") setAudioDrag({ startBar: Math.max(0, cur.origStart + delta), lengthBars: cur.origLength });
     else if (cur.mode === "resize")
       setAudioDrag({ startBar: cur.origStart, lengthBars: Math.max(0.25, cur.origLength + delta) });
@@ -1989,6 +2048,7 @@ export function ArrangementPanel() {
     }
   };
   const onAudioPointerUp = (event?: React.PointerEvent) => {
+    dragGuard.disarm();
     const cur = audioDragRef.current;
     const final = audioDrag;
     const fadePrev = audioFadePreview;
@@ -2009,7 +2069,17 @@ export function ArrangementPanel() {
       if (final.lengthBars !== cur.origLength || rateChanged)
         execute(stretchAudioClip(services.store.doc, cur.clipId, final.lengthBars, stretchPrev.rate));
     } else if (cur.mode === "trimStart" && final) {
-      const deltaSec = ((final.startBar - cur.origStart) * BAR_TICKS * 60) / (doc.bpm * PPQ);
+      // Source-time delta of the drag, integrated at the scenes' effective
+      // tempos (signed: a leftward trim goes negative). doc.bpm here wrote
+      // trim/offset against a wall clock nothing plays at under a pinned
+      // scene — the trim handle and the audible skip disagreed.
+      const deltaSec = arrangementSecondsBetweenTicks(
+        clips,
+        scenes,
+        cur.origStart * BAR_TICKS,
+        final.startBar * BAR_TICKS,
+        doc.bpm,
+      );
       const lengthChanged = final.lengthBars !== cur.origLength;
       if (Math.abs(deltaSec) > 0.001 || lengthChanged) {
         // ONE command for the whole trim: the source offset and the new length
@@ -2039,6 +2109,7 @@ export function ArrangementPanel() {
 
   // Interrupted audio drag — abort; previews clear with the drag state.
   const onAudioPointerCancel = () => {
+    dragGuard.disarm();
     audioDragRef.current = null;
     setAudioDrag(null);
     setAudioFadePreview(null);
@@ -2120,6 +2191,20 @@ export function ArrangementPanel() {
       window.removeEventListener("pointercancel", cancelAllArrangementGestures);
     };
   }, [cancelAllArrangementGestures, timeDrag]);
+  // The terminator above covers Escape / blur / window pointercancel. The one
+  // case it cannot see: the captured CLIP ELEMENT unmounts mid-drag (its
+  // delete command raced the gesture, via undo or a collab peer) — no
+  // pointerup is delivered anywhere. The guard's window listener routes that
+  // orphaned pointerup to the same commit handlers, and an unmount of this
+  // panel to the same cancel. Handlers must stay latest-ref: the commit reads
+  // the drag preview state, which moves on every pointermove re-render.
+  dragGuard.handlers.current = {
+    onEnd: () => {
+      if (dragRef.current) onClipPointerUp();
+      if (audioDragRef.current) onAudioPointerUp();
+    },
+    onCancel: cancelAllArrangementGestures,
+  };
   const [bouncingZone, setBouncingZone] = useState(false);
   const [consolidatingAudio, setConsolidatingAudio] = useState(false);
   const consolidatingAudioRef = useRef(false);
@@ -3519,6 +3604,20 @@ export function ArrangementPanel() {
               const effFadeIn = audioFadePreview?.clipId === clip.id ? audioFadePreview.fadeIn : (clip.fadeIn ?? 0);
               const effFadeOut = audioFadePreview?.clipId === clip.id ? audioFadePreview.fadeOut : (clip.fadeOut ?? 0);
               const effGain = audioGainPreview?.clipId === clip.id ? audioGainPreview.gain : (clip.gain ?? 1);
+              // Fade overlay widths use the clip's OWN wall duration (scene
+              // tempo aware, matching the drag sensitivity in beginAudioDrag),
+              // not doc.bpm — under a pinned scene the handle sat at the
+              // wrong fraction of the clip.
+              const clipSecPerBar =
+                lengthBars > 0
+                  ? arrangementSecondsBetweenTicks(
+                      clips,
+                      scenes,
+                      startBar * BAR_TICKS,
+                      (startBar + lengthBars) * BAR_TICKS,
+                      doc.bpm,
+                    ) / lengthBars
+                  : (BAR_TICKS * 60) / (doc.bpm * PPQ);
               return (
                 <div
                   key={clip.id}
@@ -3649,23 +3748,13 @@ export function ArrangementPanel() {
                       <span
                         className="arr-audio-fade in"
                         style={{
-                          width: Math.min(
-                            24,
-                            (effFadeIn / ((clip.lengthBars * BAR_TICKS * 60) / (doc.bpm * PPQ))) *
-                              lengthBars *
-                              barWidth,
-                          ),
+                          width: Math.min(24, (effFadeIn / (clipSecPerBar * lengthBars)) * lengthBars * barWidth),
                         }}
                       />
                       <span
                         className="arr-audio-fade out"
                         style={{
-                          width: Math.min(
-                            24,
-                            (effFadeOut / ((clip.lengthBars * BAR_TICKS * 60) / (doc.bpm * PPQ))) *
-                              lengthBars *
-                              barWidth,
-                          ),
+                          width: Math.min(24, (effFadeOut / (clipSecPerBar * lengthBars)) * lengthBars * barWidth),
                         }}
                       />
                     </div>
@@ -4543,9 +4632,12 @@ function AudioClipWaveform({
     for (let c = 0; c < columns; c++) {
       let min = 1,
         max = -1;
-      const s = startSample + c * per,
-        e = Math.min(startSample + (c + 1) * per, endSample);
-      if (s >= endSample) break;
+      // Reversed playback consumes the window END-first: column c must show
+      // the mirrored slice, or the envelope does not represent the content
+      // that actually plays (the fade handles already sit on wall-time edges).
+      const s = reverse ? Math.max(startSample, endSample - (c + 1) * per) : startSample + c * per;
+      const e = reverse ? endSample - c * per : Math.min(startSample + (c + 1) * per, endSample);
+      if (s >= e) break;
       for (let i = s; i < e; i++) {
         const v = data[i];
         if (v < min) min = v;
@@ -4563,7 +4655,7 @@ function AudioClipWaveform({
       ctx.fillStyle = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.6)`;
       for (const t of onsets) {
         if (t < windowSec.startSec || t > windowSec.endSec) continue;
-        const x = ((t - windowSec.startSec) / windowDur) * w;
+        const x = ((reverse ? windowSec.endSec - t : t - windowSec.startSec) / windowDur) * w;
         if (x < 0 || x > w) continue;
         ctx.fillRect(x - 1, h - 6, 2, 5);
       }
