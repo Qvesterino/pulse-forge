@@ -2838,7 +2838,9 @@ export async function executeMcpToolAsync(ctx: McpToolContext, name: string, arg
     // the IntentPanel uses. Registration self-heals (a panel-less session
     // warms the bridge on first ask). Every hit/miss/clarify feeds the
     // failure-mining log — agent asks grow the next corpus round.
-    const instruction = String((args != null && typeof args === "object" ? (args as Record<string, unknown>).instruction : "") ?? "");
+    const instruction = String(
+      (args != null && typeof args === "object" ? (args as Record<string, unknown>).instruction : "") ?? "",
+    );
     const trimmed = instruction.trim();
     if (trimmed !== "") {
       const deterministic = routeIntentText(trimmed, ctx.getDoc());
@@ -2850,7 +2852,7 @@ export async function executeMcpToolAsync(ctx: McpToolContext, name: string, arg
         const modelRoute = await tryModelRoute(trimmed, ctx.getDoc());
         if (modelRoute != null) {
           logIntentMiningEvent({ prompt: trimmed, outcome: "model-hit", routeKind: modelRoute.kind });
-          const result = executeRoutedIntent(ctx, modelRoute, trimmed);
+          const result = executeRoutedIntent(ctx, modelRoute);
           return { ...result, text: `🤖 local model — ${result.text}` };
         }
         if (deterministic.kind === "clarify") {
@@ -4346,13 +4348,13 @@ function routeIsDestructive(route: RoutedIntent): boolean {
 function executeIntentTool(ctx: McpToolContext, instruction: string): McpToolResult {
   const trimmed = instruction.trim();
   if (trimmed.length === 0) return { text: "empty instruction", mutated: false };
-  return executeRoutedIntent(ctx, routeIntentText(trimmed, ctx.getDoc()), trimmed);
+  return executeRoutedIntent(ctx, routeIntentText(trimmed, ctx.getDoc()));
 }
 
 /** Execute a resolved route over MCP — the deterministic path AND the local
  * model fallback land here, so the destructive gate, the UI-local refusals
  * and the verification read-back apply to BOTH brains identically. */
-function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent, trimmed: string): McpToolResult {
+function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolResult {
   // Generation kinds are proposals, not commands — honest refusal over MCP
   // (candidates need in-app auditioning).
   if (route.kind === "pattern" || route.kind === "revise") {
