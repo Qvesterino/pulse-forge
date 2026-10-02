@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
-import { applyArrangeOps, parseArrangeIntent, resolveSceneTarget } from "../../src/intent/arrangeWords";
+import {
+  applyArrangeOps,
+  parseArrangeIntent,
+  parseSelectedClipArrangeIntent,
+  resolveSceneTarget,
+} from "../../src/intent/arrangeWords";
 
 /** Scene roles live on names in the scene-score template — mirror the engine. */
 const roleOf = (s: { role?: string | null; name: string }): string | null =>
@@ -120,6 +125,46 @@ describe("applyArrangeOps", () => {
     const drop = doc.scenes.find((s) => roleOf(s) === "drop")!;
     expect(resolveSceneTarget(doc, "the drop", ["drop"])!.id).toBe(drop.id);
     expect(resolveSceneTarget(doc, "midnight wire", [])).toBeNull();
+  });
+});
+
+describe("selected clip intent", () => {
+  it("locks generic clip language to the selected clip", () => {
+    const doc = sceneScoreDoc();
+    const clips = [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar);
+    const selected = clips[1]!;
+    const parsed = parseSelectedClipArrangeIntent("move the selected clip to bar 32", doc, selected.id);
+
+    expect(parsed).toEqual([{ op: "moveClip", clipId: selected.id, toBar: 31 }]);
+  });
+
+  it("supports copy, resize, and delete without widening the selected target", () => {
+    const doc = sceneScoreDoc();
+    const selected = [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar)[1]!;
+    expect(parseSelectedClipArrangeIntent("copy selected clip to bar 32", doc, selected.id)).toEqual([
+      { op: "copyClip", clipId: selected.id, toBar: 31 },
+    ]);
+    expect(parseSelectedClipArrangeIntent("resize selected clip to 2 bars", doc, selected.id)).toEqual([
+      { op: "resizeClip", clipId: selected.id, bars: 2 },
+    ]);
+    expect(parseSelectedClipArrangeIntent("delete selected clip", doc, selected.id)).toEqual([
+      { op: "deleteClip", clipId: selected.id },
+    ]);
+  });
+
+  it("rejects an explicit reference that conflicts with the selection", () => {
+    const doc = sceneScoreDoc();
+    const clips = [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar);
+    const [other, selected] = clips;
+    expect(other).toBeDefined();
+    expect(selected).toBeDefined();
+    expect(
+      parseSelectedClipArrangeIntent(`move clip at bar ${other!.startBar + 1} to bar 32`, doc, selected!.id),
+    ).toBeNull();
+  });
+
+  it("fails closed for a deleted selected clip", () => {
+    expect(parseSelectedClipArrangeIntent("delete selected clip", sceneScoreDoc(), "missing-clip")).toBeNull();
   });
 });
 

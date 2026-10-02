@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useActivePatternId, useArrangement, useSelection, useSelectionStore, useServices } from "./context";
 import {
   clearSteps,
@@ -11,6 +11,7 @@ import {
   duplicatePattern,
   duplicateTimeRange,
 } from "../commands/commands";
+import { applyClipArrangeOps, parseSelectedClipArrangeIntent } from "../intent/arrangeWords";
 
 export interface ContextMenuState {
   x: number;
@@ -30,6 +31,56 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
   const doc = services.store.getDoc();
   const selection = useSelection();
   const menuRef = useRef<HTMLDivElement>(null);
+  const [clipEditOpen, setClipEditOpen] = useState(false);
+  const [clipEditText, setClipEditText] = useState("");
+  const [clipEditError, setClipEditError] = useState<string | null>(null);
+  const [clipEditTarget, setClipEditTarget] = useState<{
+    id: string;
+    sceneId: string;
+    startBar: number;
+    lengthBars: number;
+  } | null>(null);
+  const selectedArrangementClip =
+    selection.clipIds.length === 1 ? arrangement.clips.find((clip) => clip.id === selection.clipIds[0]) : undefined;
+  const editorClip = clipEditTarget ? arrangement.clips.find((clip) => clip.id === clipEditTarget.id) : undefined;
+  const clipEditPlan = useMemo(() => {
+    if (!clipEditText.trim()) return { ops: null, preview: [], error: null };
+    if (!clipEditTarget || !editorClip)
+      return { ops: null, preview: [], error: "The selected clip is no longer available." };
+    if (
+      editorClip.sceneId !== clipEditTarget.sceneId ||
+      editorClip.startBar !== clipEditTarget.startBar ||
+      editorClip.lengthBars !== clipEditTarget.lengthBars
+    ) {
+      return {
+        ops: null,
+        preview: [],
+        error: "The selected clip changed. Close this editor and review the new selection.",
+      };
+    }
+    const ops = parseSelectedClipArrangeIntent(clipEditText, doc, clipEditTarget.id);
+    if (!ops) {
+      return {
+        ops: null,
+        preview: [],
+        error: "No supported change found. Try “move selected clip to bar 8” or “resize selected clip to 4 bars”.",
+      };
+    }
+    const preview = ops.map((op) => {
+      if (op.op === "copyClip") return `Copy from bar ${editorClip.startBar + 1} to bar ${op.toBar + 1}`;
+      if (op.op === "moveClip") return `Move from bar ${editorClip.startBar + 1} to bar ${op.toBar + 1}`;
+      if (op.op === "resizeClip") return `Resize from ${editorClip.lengthBars} to ${op.bars} bars`;
+      return `Delete clip at bar ${editorClip.startBar + 1}`;
+    });
+    return { ops, preview, error: null };
+  }, [clipEditText, clipEditTarget, doc, editorClip]);
+  const closeMenu = useCallback(() => {
+    setClipEditOpen(false);
+    setClipEditText("");
+    setClipEditError(null);
+    setClipEditTarget(null);
+    onClose();
+  }, [onClose]);
   // Keyboard users must be able to reach the menu: focus the first item on
   // open and hand focus back to whatever was focused before.
   const previousFocus = useRef<HTMLElement | null>(null);
@@ -37,15 +88,17 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
   useEffect(() => {
     if (!state) return;
     previousFocus.current = (document.activeElement as HTMLElement | null) ?? null;
-    menuRef.current?.querySelector<HTMLButtonElement>('button[role="menuitem"]:not(:disabled)')?.focus();
+    menuRef.current
+      ?.querySelector<HTMLElement>('button[role="menuitem"]:not(:disabled), input:not(:disabled)')
+      ?.focus();
     const restoreFocus = previousFocus.current;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") closeMenu();
     };
     const click = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
       if (target?.closest(".context-menu")) return;
-      onClose();
+      closeMenu();
     };
     window.addEventListener("keydown", handler);
     window.addEventListener("mousedown", click);
@@ -58,7 +111,7 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
         restoreFocus?.focus?.();
       }
     };
-  }, [state, onClose]);
+  }, [state, closeMenu]);
 
   if (!state) return null;
 
@@ -131,31 +184,161 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
       default:
         break;
     }
-    onClose();
+    closeMenu();
+  };
+
+  const applySelectedClipEdit = () => {
+    if (!clipEditTarget || !clipEditPlan.ops) return;
+    const currentDoc = services.store.getDoc();
+    const currentSelection = selectionStore.getState().clipIds;
+    const liveClip = currentDoc.arrangement.clips.find((clip) => clip.id === clipEditTarget.id);
+    if (
+      currentSelection.length !== 1 ||
+      currentSelection[0] !== clipEditTarget.id ||
+      !liveClip ||
+      liveClip.sceneId !== clipEditTarget.sceneId ||
+      liveClip.startBar !== clipEditTarget.startBar ||
+      liveClip.lengthBars !== clipEditTarget.lengthBars
+    ) {
+      setClipEditError("The selected clip changed. Close this editor and review the new selection.");
+      return;
+    }
+    const currentOps = parseSelectedClipArrangeIntent(clipEditText, currentDoc, liveClip.id);
+    if (!currentOps) {
+      setClipEditError("The clip edit no longer resolves against the current arrangement.");
+      return;
+    }
+    try {
+      const command = applyClipArrangeOps(currentDoc, currentOps);
+      if (!command) {
+        setClipEditError("The selected clip is no longer available.");
+        return;
+      }
+      services.store.execute(command);
+      if (currentOps.some((op) => op.op === "deleteClip")) {
+        const updated = services.store.getDoc();
+        selectionStore.retainClips([
+          ...updated.arrangement.clips.map((clip) => clip.id),
+          ...(updated.arrangement.audioClips ?? []).map((clip) => clip.id),
+        ]);
+      }
+      closeMenu();
+    } catch (error) {
+      setClipEditError(error instanceof Error ? error.message : String(error));
+    }
   };
 
   return (
     <div
       ref={menuRef}
       className="context-menu"
-      role="menu"
-      aria-label="Context menu"
+      role={clipEditOpen ? "dialog" : "menu"}
+      aria-label={clipEditOpen ? "Edit selected clip with Producer" : "Context menu"}
       style={{
-        left: Math.min(state.x, window.innerWidth - 220),
-        top: Math.min(state.y, window.innerHeight - 160),
+        left: Math.max(8, Math.min(state.x, window.innerWidth - (clipEditOpen ? 360 : 220))),
+        top: Math.max(8, Math.min(state.y, window.innerHeight - (clipEditOpen ? 280 : 160))),
       }}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <div className="context-menu-header">{state.context}</div>
-      <button type="button" role="menuitem" onClick={() => handle("delete")} disabled={!hasAny}>
-        Delete
-      </button>
-      <button type="button" role="menuitem" onClick={() => handle("duplicate")} disabled={!hasAny}>
-        Duplicate
-      </button>
-      <button type="button" role="menuitem" onClick={() => handle("consolidate")} disabled={!hasTime}>
-        Consolidate
-      </button>
+      {clipEditOpen ? (
+        <>
+          <div className="context-menu-header">PRODUCER EDIT · SELECTED CLIP</div>
+          <div className="context-menu-edit-target">
+            {editorClip
+              ? `Target locked · bar ${editorClip.startBar + 1} · ${editorClip.lengthBars} bars`
+              : "Target unavailable"}
+          </div>
+          <label className="context-menu-edit-label">
+            Describe one arrangement change
+            <input
+              className="context-menu-edit-input"
+              aria-label="Producer clip instruction"
+              autoFocus
+              value={clipEditText}
+              placeholder="move selected clip to bar 8"
+              onChange={(event) => {
+                setClipEditText(event.target.value);
+                setClipEditError(null);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && clipEditPlan.ops && !clipEditPlan.error) applySelectedClipEdit();
+              }}
+            />
+          </label>
+          {clipEditPlan.preview.length > 0 && (
+            <div className="context-menu-edit-preview" role="region" aria-label="Selected clip edit preview">
+              <strong>PREVIEW · {clipEditPlan.ops?.length} operation(s)</strong>
+              {clipEditPlan.preview.map((line, index) => (
+                <div key={`${index}-${line}`}>{line}</div>
+              ))}
+            </div>
+          )}
+          {(clipEditError ?? clipEditPlan.error) && (
+            <div className="context-menu-edit-error" role="alert">
+              {clipEditError ?? clipEditPlan.error}
+            </div>
+          )}
+          <div className="context-menu-edit-actions">
+            <button
+              type="button"
+              onClick={() => {
+                setClipEditOpen(false);
+                setClipEditText("");
+                setClipEditError(null);
+                setClipEditTarget(null);
+              }}
+            >
+              Cancel
+            </button>
+            <button type="button" disabled={!clipEditPlan.ops || !!clipEditPlan.error} onClick={applySelectedClipEdit}>
+              APPLY · ONE UNDO STEP
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="context-menu-header">{state.context}</div>
+          <button type="button" role="menuitem" onClick={() => handle("delete")} disabled={!hasAny}>
+            Delete
+          </button>
+          <button type="button" role="menuitem" onClick={() => handle("duplicate")} disabled={!hasAny}>
+            Duplicate
+          </button>
+          <button type="button" role="menuitem" onClick={() => handle("consolidate")} disabled={!hasTime}>
+            Consolidate
+          </button>
+          {hasClips && (
+            <button
+              type="button"
+              role="menuitem"
+              aria-haspopup="dialog"
+              onClick={() => {
+                setClipEditText("");
+                setClipEditError(null);
+                setClipEditTarget(
+                  selectedArrangementClip
+                    ? {
+                        id: selectedArrangementClip.id,
+                        sceneId: selectedArrangementClip.sceneId,
+                        startBar: selectedArrangementClip.startBar,
+                        lengthBars: selectedArrangementClip.lengthBars,
+                      }
+                    : null,
+                );
+                setClipEditOpen(true);
+              }}
+              disabled={!selectedArrangementClip}
+              title={
+                selectedArrangementClip
+                  ? "Describe a change for this clip; target stays locked to the selection"
+                  : "Select exactly one arrangement clip"
+              }
+            >
+              Producer edit selected clip…
+            </button>
+          )}
+        </>
+      )}
     </div>
   );
 }

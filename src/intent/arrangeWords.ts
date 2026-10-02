@@ -82,7 +82,7 @@ const ORDINALS: Array<[number, RegExp]> = [
 const VERBS = {
   resizeShorter: /\b(shorten|tighten|trim|shorter|skrat)/,
   resizeLonger: /\b(extend|lengthen|stretch|longer|grow|predlz|rozsir)/,
-  makeSize: /\b(make|set|turn)/,
+  makeSize: /\b(make|set|turn|resize)/,
   add: /\b(add|insert|put|pridaj|prida|vloz|daj)\b/,
   remove: /\b(remove|delete|take out|strip|odstra|odstran|vymaz|vyhod)\b/,
   duplicate: /\b(duplicate|double|copy|zdvoj|skopir|opakuj)\b/,
@@ -533,6 +533,38 @@ export function parseClipArrangeIntent(text: string, doc: ProjectDocument): Clip
     }
   }
   return ops.length > 0 ? ops : null;
+}
+
+/**
+ * Parse an arrangement edit initiated from one selected clip. Generic clip
+ * references ("move this clip to bar 8") are locked to that selection; an
+ * explicit reference to some other clip is rejected instead of overriding
+ * the user's visible target.
+ */
+export function parseSelectedClipArrangeIntent(
+  text: string,
+  doc: ProjectDocument,
+  selectedClipId: string,
+): ClipArrangeOp[] | null {
+  const selectedClip = doc.arrangement.clips.find((clip) => clip.id === selectedClipId);
+  if (!selectedClip) return null;
+
+  const explicitOps = parseClipArrangeIntent(text, doc);
+  if (explicitOps) return explicitOps.length === 1 && explicitOps[0]!.clipId === selectedClipId ? explicitOps : null;
+
+  const genericClipReference = /\b(?:(?:selected|this|the)\s+)?(?:arrangement\s+)?(?:clip|klip)\b/i;
+  if (!genericClipReference.test(text)) return null;
+
+  const scopedDoc: ProjectDocument = {
+    ...doc,
+    arrangement: { ...doc.arrangement, clips: [selectedClip] },
+  };
+  const scopedText = text.replace(
+    /\b(?:(?:selected|this|the)\s+)?(?:arrangement\s+)?(?:clip|klip)\b/gi,
+    `clip at bar ${selectedClip.startBar + 1}`,
+  );
+  const scopedOps = parseClipArrangeIntent(scopedText, scopedDoc);
+  return scopedOps?.length === 1 && scopedOps[0]!.clipId === selectedClipId ? scopedOps : null;
 }
 
 /**

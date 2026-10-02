@@ -270,6 +270,66 @@ html {
   letter-spacing: 0.5px;
 }
 
+.context-menu[role="dialog"] {
+  width: min(340px, calc(100vw - 16px));
+}
+
+.context-menu-edit-target,
+.context-menu-edit-preview,
+.context-menu-edit-error {
+  padding: 4px 8px;
+  color: var(--text-dim, #8a8f98);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.context-menu-edit-label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 4px 8px;
+  color: var(--text-dim, #8a8f98);
+  font-size: 11px;
+}
+
+.context-menu-edit-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-raise);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.context-menu-edit-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border-top: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.context-menu-edit-preview strong {
+  color: var(--accent);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+}
+
+.context-menu-edit-error {
+  color: var(--danger, #f87171);
+}
+
+.context-menu-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 4px;
+}
+
 .context-menu button {
   text-align: left;
   padding: 6px 10px;
