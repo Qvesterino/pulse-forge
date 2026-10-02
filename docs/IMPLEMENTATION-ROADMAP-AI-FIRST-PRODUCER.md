@@ -552,15 +552,21 @@ rozhoduje o statusových a sémantických safety pravidlách. Eval runner má `-
 vytvára izolovaný provider pre každý prípad (produkčný circuit breaker tak nevynechá zvyšok offline sady) a na
 poslednej požiadavke uvoľní model. Report v2 rozlišuje spracované prípady, odoslané požiadavky, odpovede,
 provider-failures a `completeRun`. Cielené contract + runner testy: 35/35.
-**Plný action-model creative baseline (2026-10-02):** pinned report
+**Request-context safety + obnovený action-model creative baseline (2026-10-02):** runtime provider teraz
+kontroluje návrh aj voči explicitným faktom a scope briefu, preserve/prohibited rolám, nevyriešeným konfliktom
+a dostupným rolám cieľového projektu. Schéma-valid návrh, ktorý tieto pravidlá poruší, sa odmietne ešte pred
+odovzdaním volajúcej vrstve. Cielené contract + runner testy: 39/39; creative SFT manifest/dáta prešli
+validáciou (32 train + 32 validation, 8 rodín v každom splite).
+Pinned report
 `creative-task-v1-action-lfm-v30q8-report-2026-10-02.json` viaže modelový digest
 `0fe23ac7a9dd43797fada070b43f76cd5faecf777d8b4e07f9fa99e382e4bb41`, prompt a všetky evaluator/parser zdroje;
 prediction JSONL má samostatný SHA-256 v reporte. Všetkých 21/21 prípadov dostalo požiadavku a odpoveď, bez circuit-open
-skipov. Iba 9 odpovedí prešlo creative runtime validátorom; 12 bolo odmietnutých (8 role/protection rozporov,
-1 `unknownFields` chyba, 3 neplatné clarification odpovede). Kontextový evaluator navyše identifikoval spolu 12
-role-safety zlyhaní: osem modelom emitovaných vnútorných rozporov a štyri schémou-validné návrhy, ktoré cielili rolu
-chránenú pôvodným briefom. Hard-, protection- aj preference-field exact rate boli 0/21; decision accuracy 9/21
-(42,86 %). Toto je dôkaz, že samotná JSON schéma nestačí; konfliktné návrhy nesmú dostať apply cestu. Výsledok je
+skipov. Iba 5 odpovedí prešlo creative runtime aj request-context validáciou; 16 bolo odmietnutých (8 vnútorných
+rozporov, 4 request-role konfliktov, 1 `unknownFields` chyba a 3 neplatné clarification odpovede). Evaluator eviduje
+12 role-safety zlyhaní (8 vnútorných rozporov + 4 konflikty s rolami chránenými briefom). Hard-, protection- aj
+preference-field exact rate zostali 0/21; decision accuracy je 5/21 (23,81 %). Kontekstový gate zlepšuje bezpečné
+odmietnutie návrhov, ale odhalené slabé skóre znamená, že tento model nie je pripravený na routovanie do creative tasku.
+Toto je dôkaz, že samotná JSON schéma nestačí; konfliktné návrhy nesmú dostať apply cestu. Výsledok je
 úplný syntetický diagnostický baseline action-only
 `kyx-intent-v30-q8:latest`, nie creative model, reprezentatívny ľudský holdout ani hodnotenie hudby; tento provider sa
 nesmie routovať na tvorivé briefy.

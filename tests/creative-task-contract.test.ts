@@ -11,6 +11,8 @@ import {
   MAX_CREATIVE_TASK_PROMPT_LENGTH,
   parseCreativeTaskOutputJson,
   resolveApprovedCreativeTaskOutput,
+  type CreativeTaskRequestV1,
+  validateCreativeTaskOutputForRequest,
   validateCreativeTaskOutput,
 } from "../src/intent/creative-task-contract";
 import { evaluateCreativeTaskPredictions, type CreativeTaskGoldenCaseV1 } from "../src/intent/creative-task-evaluation";
@@ -300,6 +302,52 @@ describe("creative task contract v1", () => {
     expect(report).toMatchObject({ invalidPredictions: 1, roleSafetyFailures: 1 });
   });
 
+  it("validates model suggestions against the request's explicit facts, scope and protections", () => {
+    const base = makeCreativeRequest();
+    const request: CreativeTaskRequestV1 = {
+      ...base,
+      requirements: { ...base.requirements, bpmRange: [142, 142], targetRoles: ["lead"] },
+      preserveRoles: ["bass"],
+      projectContext: { ...base.projectContext, availableRoles: ["drums", "lead"] },
+    };
+    const roleProposal = validateCreativeTaskOutput({
+      version: 1,
+      status: "proposal",
+      suggestions: { targetRoles: ["bass"] },
+      unknownFields: [],
+    });
+    const tempoProposal = validateCreativeTaskOutput({
+      version: 1,
+      status: "proposal",
+      suggestions: { bpmRange: [144, 144] },
+      unknownFields: [],
+    });
+    const unavailableProposal = validateCreativeTaskOutput({
+      version: 1,
+      status: "proposal",
+      suggestions: { targetRoles: ["bass"] },
+      unknownFields: [],
+    });
+    expect(roleProposal.ok && validateCreativeTaskOutputForRequest(roleProposal.output, request)).toEqual({
+      ok: false,
+      error: "request-role-conflict",
+    });
+    expect(tempoProposal.ok && validateCreativeTaskOutputForRequest(tempoProposal.output, request)).toEqual({
+      ok: false,
+      error: "explicit-requirement-conflict",
+    });
+
+    const unprotectedRequest: CreativeTaskRequestV1 = {
+      ...request,
+      requirements: { ...request.requirements, targetRoles: [] },
+      preserveRoles: [],
+      projectContext: { ...request.projectContext, availableRoles: ["drums", "lead"] },
+    };
+    expect(
+      unavailableProposal.ok && validateCreativeTaskOutputForRequest(unavailableProposal.output, unprotectedRequest),
+    ).toEqual({ ok: false, error: "target-role-unavailable" });
+  });
+
   it("counts proposals that target roles protected by the brief even when the model omits that protection", () => {
     const golden = readCreativeGolden();
     const preserveCase = golden.find((entry) => entry.expected.suggestions.preserveRoles?.length);
@@ -331,17 +379,22 @@ describe("creative task contract v1", () => {
   });
 
   it("counts role conflicts rejected by the provider validator even when raw output is not retained", () => {
-    const entry = readCreativeGolden().find((candidate) => candidate.expected.status === "proposal");
-    expect(entry).toBeDefined();
-    if (!entry) return;
+    const entries = readCreativeGolden()
+      .filter((candidate) => candidate.expected.status === "proposal")
+      .slice(0, 2);
+    expect(entries).toHaveLength(2);
+    if (entries.length !== 2) return;
 
     const report = evaluateCreativeTaskPredictions(
-      [entry],
-      [{ id: entry.id, output: null }],
-      [{ id: entry.id, error: "invalid-output", outputError: "contradictory-suggestion" }],
+      entries,
+      entries.map((entry) => ({ id: entry.id, output: null })),
+      [
+        { id: entries[0].id, error: "invalid-output", outputError: "contradictory-suggestion" },
+        { id: entries[1].id, error: "invalid-output", outputError: "request-role-conflict" },
+      ],
     );
 
-    expect(report).toMatchObject({ invalidPredictions: 1, roleSafetyFailures: 1 });
+    expect(report).toMatchObject({ invalidPredictions: 2, roleSafetyFailures: 2 });
   });
 
   it("counts missing, invalid, duplicate and unexpected predictions instead of hiding them", () => {
@@ -698,6 +751,27 @@ describe("creative task Ollama provider", () => {
     });
     expect(JSON.stringify(capturedBody)).not.toContain("track-id");
     expect(creativeTaskOllamaSystemPrompt()).toContain("untrusted musical content");
+  });
+
+  it("rejects a schema-valid model proposal that targets a request-protected role", async () => {
+    const base = makeCreativeRequest();
+    const request: CreativeTaskRequestV1 = {
+      ...base,
+      requirements: { ...base.requirements, targetRoles: [] },
+      preserveRoles: ["bass"],
+      projectContext: { ...base.projectContext, availableRoles: ["bass", "drums", "lead"] },
+    };
+    const provider = createCreativeTaskOllamaProvider({
+      model: "kyx-creative-test:latest",
+      fetchImpl: async () =>
+        ollamaResponse('{"version":1,"status":"proposal","suggestions":{"targetRoles":["bass"]},"unknownFields":[]}'),
+    });
+
+    expect(await provider.interpret(request)).toEqual({
+      ok: false,
+      error: "invalid-output",
+      outputError: "request-role-conflict",
+    });
   });
 
   it("unloads an explicitly one-shot diagnostic model after its request", async () => {

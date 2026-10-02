@@ -1,6 +1,7 @@
 import {
   CREATIVE_TASK_OUTPUT_JSON_SCHEMA,
   parseCreativeTaskOutputJson,
+  validateCreativeTaskOutputForRequest,
   type CreativeTaskOutputError,
   type CreativeTaskOutputV1,
   type CreativeTaskRequestV1,
@@ -184,7 +185,12 @@ export function createCreativeTaskOllamaProvider(options: CreativeTaskOllamaOpti
               finish({ ...recordFailure("invalid-output"), outputError: parsed.error });
               return;
             }
-            finish({ ok: true, output: parsed.output }, true);
+            const contextual = validateCreativeTaskOutputForRequest(parsed.output, request);
+            if (!contextual.ok) {
+              finish({ ...recordFailure("invalid-output"), outputError: contextual.error });
+              return;
+            }
+            finish({ ok: true, output: contextual.output }, true);
           })
           .catch(() => {
             if (settled) return;

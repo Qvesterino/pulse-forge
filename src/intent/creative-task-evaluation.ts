@@ -155,7 +155,10 @@ export function evaluateCreativeTaskPredictions(
   const missingPredictions = golden.filter((entry) => !grouped.has(entry.id)).length;
   const rejectedRoleSafetyFailures = new Set(
     providerFailures
-      .filter((failure) => failure.outputError === "contradictory-suggestion")
+      .filter(
+        (failure) =>
+          failure.outputError === "contradictory-suggestion" || failure.outputError === "request-role-conflict",
+      )
       .map((failure) => failure.id),
   );
   const counts = {

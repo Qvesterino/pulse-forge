@@ -176,7 +176,11 @@ export type CreativeTaskOutputError =
   | "invalid-suggestion"
   | "invalid-unknown-field"
   | "invalid-clarification"
-  | "contradictory-suggestion";
+  | "contradictory-suggestion"
+  | "request-role-conflict"
+  | "explicit-requirement-conflict"
+  | "target-role-unavailable"
+  | "unresolved-request-conflict";
 
 export type CreativeTaskOutputResult =
   { ok: true; output: CreativeTaskOutputV1 } | { ok: false; error: CreativeTaskOutputError };
@@ -523,6 +527,70 @@ function sameValue(left: unknown, right: unknown): boolean {
     return left.length === right.length && left.every((value, index) => value === right[index]);
   }
   return left === right;
+}
+
+/**
+ * Add the request/project context checks that JSON Schema cannot express.
+ * Model output is rejected if it contradicts explicit facts, protected roles,
+ * requested scope, or the roles actually available in the target project.
+ */
+export function validateCreativeTaskOutputForRequest(
+  output: CreativeTaskOutputV1,
+  request: CreativeTaskRequestV1,
+): CreativeTaskOutputResult {
+  if (request.conflicts.length > 0 && output.status === "proposal") {
+    return { ok: false, error: "unresolved-request-conflict" };
+  }
+
+  const { suggestions } = output;
+  const explicitRequirements: Array<[unknown, unknown]> = [
+    [request.requirements.bpmRange, suggestions.bpmRange],
+    [request.requirements.key, suggestions.key],
+    [request.requirements.lengthSteps, suggestions.lengthSteps],
+    [request.preferences.genre, suggestions.genre],
+    [request.preferences.style, suggestions.style],
+    [request.preferences.mood, suggestions.mood],
+    [request.preferences.energy, suggestions.energy],
+    [request.preferences.density, suggestions.density],
+    [request.preferences.complexity, suggestions.complexity],
+    [request.preferences.variation, suggestions.variation],
+  ];
+  if (
+    explicitRequirements.some(
+      ([known, proposed]) => known !== null && proposed !== undefined && !sameValue(known, proposed),
+    )
+  ) {
+    return { ok: false, error: "explicit-requirement-conflict" };
+  }
+
+  const targetRoles = suggestions.targetRoles ?? [];
+  const requestedRoles = request.requirements.targetRoles;
+  const preservedRoles = request.preserveRoles;
+  const prohibitedRoles = request.prohibitedRoles;
+  const suggestedPreserved = suggestions.preserveRoles ?? [];
+  const suggestedProhibited = suggestions.prohibitedRoles ?? [];
+  if (
+    targetRoles.some(
+      (role) =>
+        preservedRoles.includes(role) ||
+        prohibitedRoles.includes(role) ||
+        suggestedPreserved.includes(role) ||
+        suggestedProhibited.includes(role),
+    ) ||
+    suggestedPreserved.some((role) => prohibitedRoles.includes(role) || suggestedProhibited.includes(role)) ||
+    suggestedProhibited.some((role) => preservedRoles.includes(role))
+  ) {
+    return { ok: false, error: "request-role-conflict" };
+  }
+  if (suggestions.targetRoles && requestedRoles.length > 0 && !sameValue(suggestions.targetRoles, requestedRoles)) {
+    return { ok: false, error: "explicit-requirement-conflict" };
+  }
+  const availableRoles = request.projectContext.availableRoles;
+  if (availableRoles.length > 0 && targetRoles.some((role) => !availableRoles.includes(role))) {
+    return { ok: false, error: "target-role-unavailable" };
+  }
+
+  return { ok: true, output };
 }
 
 /**

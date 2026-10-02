@@ -24,19 +24,29 @@
     "circuitOpenSkips": 0
   },
   "sources": {
-    "providerSha256": "df08f91781adcad93fd50735d59a40e6bb93f686fd849a27ab3512cb1d9dedc1",
+    "providerSha256": "b2411211ce95b95e427e66acbed1b378f13d8cb4315277acd7c7fd882d7e4601",
     "runnerSha256": "b73d574b49f832a72051db66d2501dad82428ab7e945dd3de979219dd88b0d6e",
     "evaluationRunnerSha256": "b8765ad2d50f067862c0da1e801407699510cb4fb2c95e93e34aa7cf4c3a3af2",
-    "contractSha256": "599aefa99f579968c0bd75c13450c3259cbd654fcc33e519bce146aec0c2c666",
-    "evaluatorSha256": "2132f9443449bb87b9985392227fe2d1de4aae2cf1f7214521b68b6a8d857746",
+    "contractSha256": "58844175f81279407def019ae5309adeb8d98ccf4316557ad1b2c24315a95840",
+    "evaluatorSha256": "f627b7c8806af63c00c9ec6866e99d3186066c1c5c09182331491bc1fcf27083",
     "parserSha256": "aedd78692dde6777e686aba3dec10f1a447d7e3966fa0900917cce76a9ce2f7a",
     "briefCompilerSha256": "4a5277ef4a1663779f33c2610cd3f5481d909c9b9a126ce10723f175225f2b49"
   },
   "predictions": {
     "path": "scripts\\data\\creative-task-v1-action-lfm-v30q8-predictions-2026-10-02.jsonl",
-    "sha256": "2bae568301735a1417ea6d78b04d9e1c5f7a8bc62e3e768634cb31085a2a3a50",
+    "sha256": "122436635c7a6d3885a3483bf676945b79eccf8d0092315a04fdcf802ce1c068",
     "count": 21,
     "providerFailures": [
+      {
+        "id": "en-trap-explicit",
+        "error": "invalid-output",
+        "outputError": "request-role-conflict"
+      },
+      {
+        "id": "sk-trap-explicit",
+        "error": "invalid-output",
+        "outputError": "request-role-conflict"
+      },
       {
         "id": "en-detroit-no-chords",
         "error": "invalid-output",
@@ -46,6 +56,11 @@
         "id": "sk-boombap-no-drums",
         "error": "invalid-output",
         "outputError": "contradictory-suggestion"
+      },
+      {
+        "id": "sk-jersey-preserve-chords",
+        "error": "invalid-output",
+        "outputError": "request-role-conflict"
       },
       {
         "id": "en-piano-house-preserve-drums",
@@ -61,6 +76,11 @@
         "id": "sk-tempo-preserve-drums",
         "error": "invalid-output",
         "outputError": "contradictory-suggestion"
+      },
+      {
+        "id": "en-vocal-friendly-hook",
+        "error": "invalid-output",
+        "outputError": "request-role-conflict"
       },
       {
         "id": "sk-vocal-friendly-hook",
@@ -107,15 +127,15 @@
     "missingPredictions": 0,
     "unexpectedPredictions": 0,
     "duplicatePredictionIds": 0,
-    "validPredictions": 9,
-    "invalidPredictions": 12,
-    "decisionAccuracy": 0.4286,
+    "validPredictions": 5,
+    "invalidPredictions": 16,
+    "decisionAccuracy": 0.2381,
     "hardFieldExactRate": 0,
     "protectionFieldExactRate": 0,
     "preferenceFieldExactRate": 0,
     "hardFields": {
       "truePositive": 0,
-      "falsePositive": 9,
+      "falsePositive": 5,
       "falseNegative": 36,
       "precision": 0,
       "recall": 0,
@@ -123,19 +143,19 @@
     },
     "protectionFields": {
       "truePositive": 0,
-      "falsePositive": 9,
+      "falsePositive": 5,
       "falseNegative": 13,
       "precision": 0,
       "recall": 0,
       "f1": 0
     },
     "preferenceFields": {
-      "truePositive": 5,
-      "falsePositive": 13,
-      "falseNegative": 20,
-      "precision": 0.2778,
-      "recall": 0.2,
-      "f1": 0.2326
+      "truePositive": 2,
+      "falsePositive": 8,
+      "falseNegative": 23,
+      "precision": 0.2,
+      "recall": 0.08,
+      "f1": 0.1143
     },
     "criticalUnknownFields": {
       "truePositive": 0,
@@ -150,12 +170,12 @@
     "byLanguage": {
       "en": {
         "cases": 12,
-        "decisionAccuracy": 0.4167,
+        "decisionAccuracy": 0.25,
         "hardFieldExactRate": 0
       },
       "sk": {
         "cases": 9,
-        "decisionAccuracy": 0.4444,
+        "decisionAccuracy": 0.2222,
         "hardFieldExactRate": 0
       }
     }

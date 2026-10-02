@@ -1,9 +1,9 @@
-{"id":"en-trap-explicit","output":{"version":1,"status":"proposal","suggestions":{"mood":"dark","variation":0.35,"targetRoles":["bass"]},"unknownFields":["density","complexity","energy","mood","genre","style"]}}
-{"id":"sk-trap-explicit","output":{"version":1,"status":"proposal","suggestions":{"mood":"dark","variation":0.35,"targetRoles":["bass"]},"unknownFields":["density","complexity","energy","mood","preserve"]}}
+{"id":"en-trap-explicit","output":null}
+{"id":"sk-trap-explicit","output":null}
 {"id":"en-detroit-no-chords","output":null}
 {"id":"sk-boombap-no-drums","output":null}
 {"id":"en-phonk-no-lead","output":{"version":1,"status":"proposal","suggestions":{"mood":"dark","variation":0.35,"targetRoles":["drums","bass","chords"]},"unknownFields":["key","density","complexity","energy","length"]}}
-{"id":"sk-jersey-preserve-chords","output":{"version":1,"status":"proposal","suggestions":{"mood":"energetic","variation":0.8,"targetRoles":["drums","bass","chords","lead"]},"unknownFields":["key"]}}
+{"id":"sk-jersey-preserve-chords","output":null}
 {"id":"en-piano-house-preserve-drums","output":null}
 {"id":"sk-dnb-no-chords","output":{"version":1,"status":"proposal","suggestions":{"mood":"energetické","variation":0.7,"targetRoles":["drums","bass","lead"]},"unknownFields":["key","density","complexity","energy","mood"]}}
 {"id":"en-key-preserve-bass","output":null}
@@ -11,7 +11,7 @@
 {"id":"en-warm-house","output":{"version":1,"status":"proposal","suggestions":{"mood":"warm","variation":0.35,"targetRoles":["drums","bass","chords","lead"]},"unknownFields":["key","length"]}}
 {"id":"sk-dark-not-sad","output":{"version":1,"status":"proposal","suggestions":{"mood":"dark","variation":0.35,"targetRoles":["drums","bass","chords","lead"]},"unknownFields":["key","length"]}}
 {"id":"en-dark-not-sad","output":{"version":1,"status":"proposal","suggestions":{"mood":"dark","variation":0.35,"targetRoles":["drums","bass","chords","lead"]},"unknownFields":["key","length"]}}
-{"id":"en-vocal-friendly-hook","output":{"version":1,"status":"proposal","suggestions":{"mood":"hopeful","variation":0.35,"targetRoles":["chords"]},"unknownFields":["key","density"]}}
+{"id":"en-vocal-friendly-hook","output":null}
 {"id":"sk-vocal-friendly-hook","output":null}
 {"id":"en-revise-darker","output":null}
 {"id":"en-ambiguous-space","output":null}
