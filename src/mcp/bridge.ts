@@ -38,6 +38,7 @@ export interface McpBridgeDeps {
   applyLoudness?: NonNullable<McpToolContext["applyLoudness"]>;
   shareToGallery?: NonNullable<McpToolContext["shareToGallery"]>;
   renderSummary?: NonNullable<McpToolContext["renderSummary"]>;
+  diagnoseMix?: NonNullable<McpToolContext["diagnoseMix"]>;
 }
 
 export class McpBridge {
@@ -129,6 +130,7 @@ export class McpBridge {
         applyLoudness: this.deps.applyLoudness,
         shareToGallery: this.deps.shareToGallery,
         renderSummary: this.deps.renderSummary,
+        diagnoseMix: this.deps.diagnoseMix,
         allowDestructive: mcpAllowDestructive,
       },
       "web-relay",

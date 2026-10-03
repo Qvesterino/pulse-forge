@@ -118,6 +118,9 @@ function depsFromServices(services: Services): McpBridgeDeps {
     },
     // kyx_render_summary: the offline render + BS.1770 evidence pass.
     renderSummary: (request) => mcpRenderSummary(services, request),
+    // kyx_diagnose_mix: the interpretation layer — attributed findings + fixes.
+    // Lazy: loads with the first diagnose call, not on boot (bundle budget).
+    diagnoseMix: (request) => import("../mcp/mix-diagnosis").then((m) => m.mcpDiagnoseMix(services, request)),
   };
 }
 

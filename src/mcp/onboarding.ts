@@ -73,7 +73,11 @@ WORKFLOW: MIX PASS ON EXISTING MATERIAL
   arrive prefixed 🤖; trust them like read-backs). THEN EVIDENCE, NOT
   VIBES: kyx_render_summary — per-strip LUFS/peak/crest + master vs the
   −14 streaming reference + relative deltas. Make ONE move, re-run the
-  summary, compare the numbers. kyx_meter / kyx_loudness for live or
+  summary, compare the numbers. FOR THE WHY, not just the numbers:
+  kyx_diagnose_mix returns attributed findings (who owns the low end,
+  which strip is buried or over-compressed, sub collision, clipping)
+  WITH a suggestedActions list of ready tool calls — apply them, re-run
+  the diagnosis, compare. kyx_meter / kyx_loudness for live or
   target-landing checks.
 
 WORKFLOW: LIVE PERFORMANCE + PUBLISHING
@@ -90,7 +94,7 @@ WORKFLOW: ARRANGEMENT PASS
   resize/reorder, role, bars?} -> kyx_clips {op: move/resize/duplicate,
   anchor bar} -> kyx_markers {op: add, bar, name}.
 
-TOOL INDEX (all 29 — grouped by job)
+TOOL INDEX (all 31 — grouped by job)
   read:        kyx_state (subjects incl. mixer) · kyx_meter · kyx_catalog
                (effects/instruments) · kyx://project/* resources
   compose:     kyx_generate (seedable) · kyx_notes (melodic) ·
@@ -104,7 +108,8 @@ TOOL INDEX (all 29 — grouped by job)
                kyx_clips
   perform:     kyx_transport (incl. action:launchScene) · kyx_checkpoint
   finish:      kyx_mix · kyx_loudness (BS.1770) · kyx_render_summary (per-strip
-               LUFS/peak/crest — the agent's ears) · kyx_export ·
+               LUFS/peak/crest) · kyx_diagnose_mix (attributed findings +
+               callable fixes — ears v2) · kyx_export ·
                kyx_publish_gallery (agent badge)
   control:     kyx_intent (EN/SK; 🤖 model fallback) · kyx_batch (10 in
                one undo) · kyx_undo · kyx_takes (vocal comps)
