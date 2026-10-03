@@ -1,6 +1,7 @@
 import type { ProjectDocument } from "../project-model/types";
 import { isForeignWork, labelsRevertedBy } from "./attribution";
 import { hasMatchEqReference, referenceLoudnessTrim } from "../intent/match-eq";
+import { planBlindPairGains, recordBlindAbTrial, resetBlindAbTrials, summarizeBlindAb } from "./blind-ab";
 import type { Command } from "../commands/types";
 import { routeIntentText, type RoutedIntent } from "../intent/route";
 import { isCreativeBriefRoute } from "../intent/model-fallback-policy";
@@ -1102,6 +1103,28 @@ export const MCP_TOOLS: McpToolDef[] = [
         op: { type: "string", enum: ["list", "activate", "deleteTake"] },
         groupId: { type: "string", description: "For activate/deleteTake — the take group id (op:list)" },
         takeId: { type: "string", description: "The take id to activate or delete" },
+      },
+      required: ["op"],
+    },
+  },
+  {
+    name: "kyx_blind_ab",
+    description:
+      "Blind A/B listening loop: derive symmetric LUFS level-matching gains " +
+      "for two mix variants (so neither side is privileged), record the " +
+      "human listener's forced-choice trials, and get the two-sided binomial " +
+      "verdict (chance 0.5) over the accumulated evidence. The agent plans " +
+      "and counts; the human listens.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["plan", "record", "verdict", "reset"] },
+        lufsA: { type: "number", description: "For plan — measured integrated LUFS of variant A" },
+        lufsB: { type: "number", description: "For plan — measured integrated LUFS of variant B" },
+        lane: { type: "string", description: "Trial lane name (record/verdict), e.g. 'tilt-vs-flat'" },
+        xWas: { type: "string", enum: ["A", "B"], description: "For record — which side was X" },
+        answer: { type: "string", enum: ["A", "B"], description: "For record — what the listener answered" },
+        reactionMs: { type: "integer", description: "For record — milliseconds from first playback" },
       },
       required: ["op"],
     },
@@ -2587,6 +2610,59 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
           isError: true,
         };
       }
+    }
+    case "kyx_blind_ab": {
+      // IN-APP BLIND A/B (P4 completion): level-matched comparison planning
+      // + a binomial verdict over accumulated listening trials. The agent
+      // prepares statistically honest comparisons; the HUMAN still listens.
+      const op = String(record.op ?? "plan");
+      if (op === "plan") {
+        const lufsA = typeof record.lufsA === "number" ? record.lufsA : null;
+        const lufsB = typeof record.lufsB === "number" ? record.lufsB : null;
+        const plan = planBlindPairGains(lufsA, lufsB);
+        return {
+          text: `${plan.note} — apply these playback gains before the comparison so neither side is privileged`,
+          mutated: false,
+          data: { gains: plan.gains },
+        };
+      }
+      if (op === "record") {
+        if (record.xWas !== "A" && record.xWas !== "B") {
+          return { text: "trial needs xWas: A|B (which side was X)", mutated: false, isError: true };
+        }
+        if (record.answer !== "A" && record.answer !== "B") {
+          return { text: "trial needs answer: A|B (what the listener picked)", mutated: false, isError: true };
+        }
+        const entry = recordBlindAbTrial({
+          lane: String(record.lane ?? "default"),
+          xWas: record.xWas,
+          answer: record.answer,
+          ...(typeof record.reactionMs === "number" ? { reactionMs: record.reactionMs } : {}),
+        });
+        return {
+          text: `trial recorded: ${entry.correct ? "correct" : "incorrect"} (lane "${entry.lane}")`,
+          mutated: false,
+        };
+      }
+      if (op === "verdict") {
+        const summary = summarizeBlindAb(String(record.lane ?? "default"));
+        if (summary == null) {
+          return {
+            text: "no trials recorded for this lane yet — record trials with op:record (the human listens, you count)",
+            mutated: false,
+          };
+        }
+        return {
+          text: `blind A/B "${summary.lane}": ${summary.correct}/${summary.total} correct (p = ${summary.pValue.toFixed(4)}${summary.hastyExcluded > 0 ? `, ${summary.hastyExcluded} hasty excluded` : ""}) — ${summary.verdict}`,
+          mutated: false,
+          data: { total: summary.total, correct: summary.correct, pValue: summary.pValue },
+        };
+      }
+      if (op === "reset") {
+        resetBlindAbTrials();
+        return { text: "blind A/B trial log cleared", mutated: false };
+      }
+      return { text: `unknown blind_ab op: ${op} (plan | record | verdict | reset)`, mutated: false, isError: true };
     }
     default:
       return { text: `unknown tool: ${name}`, mutated: false, isError: true };

@@ -1213,6 +1213,47 @@ const MCP_TOOL_DEFS = [
       required: ["op"],
     },
   },
+  {
+    name: "kyx_blind_ab",
+    description:
+      "Blind A/B listening loop: derive symmetric LUFS level-matching gains for two mix variants (so neither side is privileged), record the human listener's forced-choice trials, and get the two-sided binomial verdict (chance 0.5) over the accumulated evidence. The agent plans and counts; the human listens.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: {
+          type: "string",
+          enum: ["plan", "record", "verdict", "reset"],
+        },
+        lufsA: {
+          type: "number",
+          description: "For plan — measured integrated LUFS of variant A",
+        },
+        lufsB: {
+          type: "number",
+          description: "For plan — measured integrated LUFS of variant B",
+        },
+        lane: {
+          type: "string",
+          description: "Trial lane name (record/verdict), e.g. 'tilt-vs-flat'",
+        },
+        xWas: {
+          type: "string",
+          enum: ["A", "B"],
+          description: "For record — which side was X",
+        },
+        answer: {
+          type: "string",
+          enum: ["A", "B"],
+          description: "For record — what the listener answered",
+        },
+        reactionMs: {
+          type: "integer",
+          description: "For record — milliseconds from first playback",
+        },
+      },
+      required: ["op"],
+    },
+  },
 ];
 
 /** VERBATIM MIRROR of MCP_RESOURCES in src/mcp/tools.ts — pinned by

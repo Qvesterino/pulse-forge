@@ -46,6 +46,13 @@ WORKFLOW: BEAT FROM SCRATCH
      cue markers in one undo (empty arrangement only); kyx_sections +
      kyx_clips for surgical edits afterwards.
   7. kyx_loudness {op: match, targetDb} — land near -14 LUFS.
+  8. kyx_blind_ab — the listening loop for mix decisions: op:plan derives
+     symmetric LUFS level-matching gains (lufsA + lufsB measured via
+     kyx_render_summary / export MIX CHECK), the HUMAN listens to the two
+     variants and you op:record their forced-choice answers (xWas/answer/
+     reactionMs), then op:verdict gives the two-sided binomial p-value —
+     real evidence, not vibes. Level-matching is mandatory: the louder
+     variant always wins otherwise.
 
 WORKFLOW: MELODIC COMPOSITION (basslines, leads, chords — kyx_steps
 covers DRUMS only)
