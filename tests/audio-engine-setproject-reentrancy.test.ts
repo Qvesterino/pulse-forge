@@ -38,6 +38,10 @@ type Internals = {
   clearWarpCache: ReturnType<typeof vi.fn>;
   syncProject: ReturnType<typeof vi.fn>;
   cancelEffectIntentPreview: ReturnType<typeof vi.fn>;
+  /** Decomposition collaborators the setProject body reads (class fields on
+   * the real engine; the bare Object.create instance needs explicit stubs). */
+  metering: { syncProjectId: ReturnType<typeof vi.fn> };
+  warpManager: { syncProjectId: ReturnType<typeof vi.fn> };
 };
 
 function makeBareEngine() {
@@ -60,6 +64,11 @@ function makeBareEngine() {
   internals.clearWarpCache = vi.fn();
   internals.syncProject = vi.fn();
   internals.cancelEffectIntentPreview = vi.fn(() => true);
+  // The setProject body reads the decomposition collaborators directly —
+  // class fields never ran on this Object.create instance, so both need
+  // explicit stubs (syncProjectId is all the body touches on either).
+  internals.metering = { syncProjectId: vi.fn() };
+  internals.warpManager = { syncProjectId: vi.fn(() => false) };
   // The constructor's class-field initializers don't run for Object.create
   // instances, so setProperty-related fields aren't required here, but
   // keeping meterHistory + peakHold real so a future code-path that touches
