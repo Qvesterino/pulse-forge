@@ -17,17 +17,32 @@
  *
  * 3. SHIFT: the same COLA dual-voice granular engine as the pitch
  *    shifter, reading at the correction ratio (1.0 = in tune = bit-clean
- *    passthrough of the granular sum). The ratio is smoothed with a per-sample
+ *    passthrough of the granular sum). The two taps' read offsets are
+ *    PHASE-LOCKED to whole multiples of the detected period at every snap
+ *    (inaudible, window-zero) — for periodic input the crossfade reads
+ *    phase-aligned copies and adds transparently instead of combing. The
+ *    ratio is smoothed with a per-sample
  *    one-pole whose coefficient is computed ONCE per block with the block-rate
  *    formula (checklist #4: `1 - exp(-blockLen / (tc * sr))`).
  *
  * Determinism: no randomness anywhere — identical inputs render identical
  * outputs (offline parity contract).
  *
+ * CPU budget (measured, worst case = noise through every loop): one
+ * detection pass costs ~0.87 ms direct-time (O(windowW·maxLag) ≈ 1.4M
+ * MACs); at the HOP=1024 cadence that is ~4 % of one core @48 kHz, spent
+ * inside the render block that triggers it (~33 % of one 128-sample
+ * quantum every ~21 ms). The FFT-based difference function (≈2–3× less)
+ * is the known follow-up if weak-hardware profiling ever demands it —
+ * not taken now because float drift would perturb detection decisions,
+ * and silence never reaches the hot loops (the RMS gate exits first).
+ *
  * NOTE: served as part of core-worklet.js — plain JavaScript only.
  */
 
-const ANALYSIS_W = 2048; // 42.7 ms @48k — several periods of a 70 Hz voice
+const ANALYSIS_W = 2048; // 42.7 ms @48k — several periods of a 70 Hz voice;
+// the FLOOR — the constructor scales the window above 48 kHz so MIN_HZ stays
+// reachable at high sample rates (96k/192k sessions)
 const HOP = 1024; // detection update every ~21 ms
 const MIN_HZ = 70;
 const MAX_HZ = 800;
@@ -197,9 +212,14 @@ class PitchCorrectProcessor extends AudioWorkletProcessor {
     // Detection scratch, sized with the same formula detectPitch derives
     // maxLag from — one allocation per processor lifetime, reused every
     // detection pass (no GC churn on the audio thread).
-    const maxLag = Math.min(Math.floor(sr / MIN_HZ), ANALYSIS_W - 64);
+    // The window is the 2048 constant at shipping rates (≤ 48 kHz — the
+    // exact original detector), but scales above 48 kHz: the lag ceiling is
+    // windowW − 64, so a fixed 2048 window silently narrowed tracking to
+    // ≥ ~97 Hz at 96 kHz and made the MIN_HZ=70 floor unreachable at 192 kHz.
+    this.analysisW = sr <= 48000 ? ANALYSIS_W : Math.max(ANALYSIS_W, Math.ceil((sr * 43) / 1000));
+    const maxLag = Math.min(Math.floor(sr / MIN_HZ), this.analysisW - 64);
     this.detectScratch = {
-      x: new Float32Array(ANALYSIS_W),
+      x: new Float32Array(this.analysisW),
       d: new Float32Array(maxLag + 1),
       nd: new Float32Array(maxLag + 1),
     };
@@ -216,6 +236,9 @@ class PitchCorrectProcessor extends AudioWorkletProcessor {
     // ITS OWN grain start, where its Hann window is zero — snaps are inaudible.
     this.tapDelay = [2 * this.grainHalf, 4 * this.grainHalf];
     this.grainIndex = [-1, -1];
+    // Detected input period in samples (0 = nothing tracked yet). Keeps the
+    // two taps' read offsets locked to whole periods — see the snap logic.
+    this.periodSamples = 0;
     this.writePos = 0;
     this.blocksSinceDetect = HOP; // detect on the very first block
     this.detectedHz = 0;
@@ -279,7 +302,7 @@ class PitchCorrectProcessor extends AudioWorkletProcessor {
         this.bufferLen,
         this.writePos,
         sr,
-        ANALYSIS_W,
+        this.analysisW,
         MIN_HZ,
         MAX_HZ,
         this.detectScratch,
@@ -292,6 +315,7 @@ class PitchCorrectProcessor extends AudioWorkletProcessor {
       if (result.clarity >= 0.75 && result.hz > 0) {
         this.detectedHz = result.hz;
         this.clarity = result.clarity;
+        this.periodSamples = sr / result.hz;
         this.untrackedPasses = 0;
       } else {
         this.untrackedPasses += 1;
@@ -350,12 +374,35 @@ class PitchCorrectProcessor extends AudioWorkletProcessor {
         const v = g & 1;
         if (this.grainIndex[v] !== g) {
           // This tap's grain just started — its Hann window is at zero, the
-          // only inaudible moment to snap. Receded too far behind the write
-          // line → jump toward it; ran up to it → jump back. Between snaps
-          // the continuous delay slope is what carries the transposition.
+          // only inaudible moment to snap. The delay is out of bounds, so
+          // jump — but land on the integer multiple of the DETECTED PERIOD
+          // nearest the other tap's delay (phase-locked crossfade, the PSOLA
+          // trick): between snaps the inter-tap offset stays exactly m·T, so
+          // for periodic input both windows read phase-aligned copies and
+          // the crossfade is transparent instead of combing (an unquantized
+          // offset wander put specific pitches into deep comb notches).
+          // Falls back to the directional snap when no period is known.
           const d = this.tapDelay[v];
-          if (d > dMax) this.tapDelay[v] = dMin;
-          else if (d < dMin) this.tapDelay[v] = dMax;
+          if (d > dMax || d < dMin) {
+            const T = this.periodSamples;
+            let target = d > dMax ? dMin : dMax;
+            if (T > 0) {
+              const other = this.tapDelay[1 - v];
+              const lo = Math.ceil((dMin - other) / T - 1e-9);
+              const hi = Math.floor((dMax - other) / T + 1e-9);
+              let bestErr = Infinity;
+              for (let m = lo; m <= hi; m++) {
+                const cand = other + m * T;
+                if (cand < dMin || cand > dMax) continue;
+                const err = Math.abs(cand - d);
+                if (err < bestErr) {
+                  bestErr = err;
+                  target = cand;
+                }
+              }
+            }
+            this.tapDelay[v] = target;
+          }
           this.grainIndex[v] = g;
         }
         const window = 0.5 * (1 - Math.cos(Math.PI * u));

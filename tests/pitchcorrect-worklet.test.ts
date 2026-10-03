@@ -358,6 +358,136 @@ describe("pitch correct — processor block simulation (detect → snap → shif
   });
 });
 
+describe("pitch correct — phase-locked snaps (deferred-risk closure)", () => {
+  // Regression for the comb-dip risk: with unquantized snapping the
+  // inter-tap offset wandered, and specific pitch/offset combinations put
+  // the crossfade into deep comb notches (worst measured case went INVERTED:
+  // the input bin carried 2.5x the target's energy, and steady-state output
+  // RMS lost up to 2.5 dB depending on pitch). Snaps now land on whole
+  // multiples of the detected period, so for periodic input the two windows
+  // read phase-aligned copies and the crossfade is transparent.
+  function goertzel(buf: Float32Array, hz: number): number {
+    const k = (2 * Math.PI * hz) / SR;
+    const coeff = 2 * Math.cos(k);
+    let s1 = 0;
+    let s2 = 0;
+    for (let i = 0; i < buf.length; i++) {
+      const s0 = buf[i] + coeff * s1 - s2;
+      s2 = s1;
+      s1 = s0;
+    }
+    return Math.sqrt(s1 * s1 + s2 * s2 - coeff * s1 * s2) / (buf.length / 2);
+  }
+
+  const sweepCases = [
+    { name: "A4-30c chromatic", inHz: 440 * Math.pow(2, -30 / 1200), target: 440, root: 9, mode: 0 },
+    { name: "Eb4 -> D4 (C major)", inHz: 311.13, target: 293.66, root: 0, mode: 1 },
+    { name: "A#4 -> A4 (A major)", inHz: 466.16, target: 440, root: 9, mode: 1 },
+    { name: "F#4 -> F4 (C major)", inHz: 369.99, target: 349.23, root: 0, mode: 1 },
+  ];
+
+  for (const c of sweepCases) {
+    it(`corrects ${c.name}: target bin dominant and unity gain held`, () => {
+      const { out } = renderProcessor(
+        1200,
+        PARAMS(1, 1, c.root, c.mode, 1),
+        ((hz: number) => {
+          let phase = 0;
+          return () => 0.5 * Math.sin((2 * Math.PI * hz * phase++) / SR);
+        })(c.inHz),
+      );
+      const tail = out.subarray(out.length - 16384);
+      const dominance = goertzel(tail, c.target) / Math.max(goertzel(tail, c.inHz), 1e-9);
+      expect(dominance).toBeGreaterThan(3); // measured 9.6x-144x; 3x guards the contract
+      // gain consistency: the crossfade must not absorb energy (it did
+      // before the phase lock, pitch-dependently, up to -2.5 dB)
+      let sum = 0;
+      for (let i = 0; i < tail.length; i++) sum += tail[i] * tail[i];
+      const rms = Math.sqrt(sum / tail.length);
+      expect(rms).toBeGreaterThan(0.3); // input RMS is 0.354; measured 0.3533-0.3537
+      expect(rms).toBeLessThan(0.4);
+    });
+  }
+});
+
+describe("pitch correct — high sample rates (scaled analysis window)", () => {
+  function bootAt(sr: number): any {
+    const s: Record<string, unknown> = {
+      AudioWorkletProcessor: class {},
+      registerProcessor: (_n: string, p: unknown) => {
+        s.__registered = p;
+      },
+      sampleRate: sr,
+      currentFrame: 0,
+      currentTime: 0,
+    };
+    s.globalThis = s;
+    runInNewContext(readFileSync("src/audio-worklets/pitchcorrect-processor.js", "utf8"), s);
+    return s.__registered;
+  }
+
+  it("keeps the 2048 window at shipping rates (detector bit-identical to the original)", () => {
+    expect(new (bootAt(44_100) as any)().analysisW).toBe(2048);
+    expect(new (bootAt(48_000) as any)().analysisW).toBe(2048);
+  });
+
+  it("scales the window above 48 kHz so MIN_HZ stays reachable", () => {
+    // The lag ceiling is windowW - 64: a fixed 2048 window capped tracking
+    // at ~97 Hz for 96k and ~97 Hz-class rates left MIN_HZ=70 unreachable
+    // at 192k entirely.
+    expect(new (bootAt(88_200) as any)().analysisW).toBe(3793);
+    expect(new (bootAt(96_000) as any)().analysisW).toBe(4128);
+    expect(new (bootAt(192_000) as any)().analysisW).toBe(8256);
+  });
+
+  it("detects an 80 Hz tone at 192 kHz (impossible with the fixed window)", () => {
+    const W = 8256;
+    const buf = new Float32Array(W * 4);
+    for (let i = buf.length - W; i < buf.length; i++) buf[i] = 0.5 * Math.sin((2 * Math.PI * 80 * i) / 192_000);
+    const r = detectPitch(buf, buf.length, buf.length, 192_000, W, 70, 800);
+    expect(r.hz).toBeGreaterThan(78);
+    expect(r.hz).toBeLessThan(82);
+    expect(r.clarity).toBeGreaterThan(0.75);
+  });
+
+  it("corrects end-to-end at 96 kHz", () => {
+    const Proc96 = bootAt(96_000) as new () => {
+      process(inputs: Float32Array[][], outputs: Float32Array[][], parameters: Record<string, number[]>): boolean;
+    };
+    const SR96 = 96_000;
+    const inHz = 440 * Math.pow(2, -30 / 1200);
+    const proc = new Proc96();
+    const tail = new Float32Array(16384);
+    let phase = 0;
+    const blocks = 2400; // 3.2 s at 96k — same wall-time coverage as the 48k sweeps
+    for (let b = 0; b < blocks; b++) {
+      const inL = new Float32Array(128);
+      for (let i = 0; i < 128; i++) inL[i] = 0.5 * Math.sin((2 * Math.PI * inHz * phase++) / SR96);
+      const o = new Float32Array(128);
+      const oR = new Float32Array(128);
+      proc.process([[inL]], [[o, oR]], PARAMS(1, 1, 9, 0, 1));
+      if (b >= blocks - 128) tail.set(o, (b - (blocks - 128)) * 128);
+    }
+    const target = goertzelLocal(tail, 440);
+    const input = goertzelLocal(tail, inHz);
+    expect(target).toBeGreaterThan(input);
+    expect(target).toBeGreaterThan(0.05);
+  });
+
+  function goertzelLocal(buf: Float32Array, hz: number): number {
+    const k = (2 * Math.PI * hz) / 96_000;
+    const coeff = 2 * Math.cos(k);
+    let s1 = 0;
+    let s2 = 0;
+    for (let i = 0; i < buf.length; i++) {
+      const s0 = buf[i] + coeff * s1 - s2;
+      s2 = s1;
+      s1 = s0;
+    }
+    return Math.sqrt(s1 * s1 + s2 * s2 - coeff * s1 * s2) / (buf.length / 2);
+  }
+});
+
 describe("pitch correct — real-time allocation gate", () => {
   it("steady-state processing allocates zero Float32Arrays (scratch reuse)", () => {
     // Regression: detectPitch allocated x/d/nd (≈13 KB) on the audio thread
