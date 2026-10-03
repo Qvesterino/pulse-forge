@@ -1,12 +1,14 @@
 import type { DrumSynthPreset, InstrumentPreset } from "./types";
 
 import { REAL_PIANO_PRESET } from "./piano-pack";
+import { vscoPackPresets } from "./vsco-pack";
 /**
  * Factory presets are pure data, curated by genre and mood. Parameter values
  * stay inside each instrument's defined ranges so they clamp cleanly.
  */
 export const FACTORY_PRESETS: InstrumentPreset[] = [
   REAL_PIANO_PRESET,
+  ...vscoPackPresets(),
   /* ================= Bass Synth ================= */
   {
     id: "factory.bass.house.pluck",

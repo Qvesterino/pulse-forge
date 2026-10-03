@@ -75,6 +75,11 @@ const MCP_TOOL_DEFS = [
           maximum: 20,
           description: "Default 1",
         },
+        allowForeign: {
+          type: "boolean",
+          description:
+            "Attributed agents only: consent to revert work made by OTHERS (another agent or the human). Refused without it when the top of history is foreign work.",
+        },
       },
       required: ["action"],
     },
@@ -976,11 +981,11 @@ const MCP_TOOL_DEFS = [
       properties: {
         op: {
           type: "string",
-          enum: ["save", "list", "restore", "delete"],
+          enum: ["save", "list", "diff", "restore", "delete"],
         },
         name: {
           type: "string",
-          description: "Checkpoint name (required for save/restore/delete)",
+          description: "Checkpoint name (required for diff/restore/delete)",
         },
       },
       required: ["op"],

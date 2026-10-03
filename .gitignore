@@ -111,3 +111,6 @@ scripts/data/augmented-drum-dataset.json
 /*-listening/
 .sft/
 out/
+# Sample packs (CC0/CC-BY) — regenerated locally: scripts/convert-salamander.mjs / convert-vsco2.mjs
+public/samples/piano/
+public/samples/vsco/

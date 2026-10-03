@@ -200,8 +200,8 @@ function main() {
         if (chR) chR[i] = right[src] * gain * fade;
       }
       const pc = ((midi % 12) + 12) % 12;
-      const id = `factory.piano.${NOTE_NAMES[pc].replace("#", "s")}${Math.floor(midi / 12) - 1}.z${z + 1}`
-        .toLowerCase();
+      const id =
+        `factory.piano.${NOTE_NAMES[pc].replace("#", "s")}${Math.floor(midi / 12) - 1}.z${z + 1}`.toLowerCase();
       writeFileSync(path.join(OUT_DIR, `${id}.wav`), encodeWav16(chR ? [chL, chR] : [chL]));
       const velMin = z / VELOCITY_ZONES;
       const velMax = z === VELOCITY_ZONES - 1 ? 1 : (z + 1) / VELOCITY_ZONES;

@@ -192,6 +192,11 @@ export const MCP_TOOLS: McpToolDef[] = [
       properties: {
         action: { type: "string", enum: ["undo", "redo"] },
         steps: { type: "integer", minimum: 1, maximum: 20, description: "Default 1" },
+        allowForeign: {
+          type: "boolean",
+          description:
+            "Attributed agents only: consent to revert work made by OTHERS (another agent or the human). Refused without it when the top of history is foreign work.",
+        },
       },
       required: ["action"],
     },
@@ -914,8 +919,8 @@ export const MCP_TOOLS: McpToolDef[] = [
     inputSchema: {
       type: "object",
       properties: {
-        op: { type: "string", enum: ["save", "list", "restore", "delete"] },
-        name: { type: "string", description: "Checkpoint name (required for save/restore/delete)" },
+        op: { type: "string", enum: ["save", "list", "diff", "restore", "delete"] },
+        name: { type: "string", description: "Checkpoint name (required for diff/restore/delete)" },
       },
       required: ["op"],
     },
@@ -1554,6 +1559,26 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
       // the human's unlabeled edits). Global LIFO stays the truth — this
       // makes the interleaving legible instead of hidden.
       const reverted = labelsRevertedBy(ctx, action, steps);
+      // C6.2-light guard: an ATTRIBUTED agent must consent before undoing
+      // foreign work (another agent's prefix, or the human's unlabeled
+      // edits). Human/local contexts revert freely — that is their normal
+      // mode. The consent is one explicit argument, not a remembered flag.
+      if (
+        action === "undo" &&
+        ctx.agentId != null &&
+        !record.allowForeign &&
+        reverted.length > 0 &&
+        reverted.some((label) => isForeignWork(label, ctx.agentId))
+      ) {
+        const top = reverted[0];
+        return {
+          text:
+            `declined: the top of history is foreign work (${top}) — ` +
+            "pass allowForeign: true to revert it anyway (the human may have made these edits)",
+          mutated: false,
+          isError: true,
+        };
+      }
       let done = 0;
       for (let i = 0; i < steps; i++) {
         const before = ctx.undoStackLength();
@@ -1573,13 +1598,8 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
           .join(", ");
         text += ` — reverts: ${shown}`;
       }
-      if (
-        done > 0 &&
-        action === "undo" &&
-        ctx.agentId != null &&
-        reverted.slice(0, done).some((label) => isForeignWork(label, ctx.agentId))
-      ) {
-        text += " ⚠ reverts work not made by this agent — verify before redoing";
+      if (done > 0 && action === "undo" && record.allowForeign) {
+        text += " (foreign work reverted by explicit consent)";
       }
       return { text, mutated: done > 0 };
     }
@@ -3131,6 +3151,54 @@ async function executeCheckpointTool(ctx: McpToolContext, record: Record<string,
     checkpoints.delete(name);
     if (repo != null) void repo.remove(projectId, name).catch(() => {});
     return { text: `checkpoint "${name}" deleted (${checkpoints.size} left)`, mutated: false };
+  }
+  if (op === "diff") {
+    // C7.5: WHAT changed since the checkpoint — the agent decides whether to
+    // restore with knowledge instead of blind-rolling the whole document.
+    const doc = ctx.getDoc();
+    const delta: string[] = [];
+    const docTracks = new Map(doc.tracks.map((t) => [t.id, t]));
+    const cpTracks = new Map(cp.doc.tracks.map((t) => [t.id, t]));
+    let added = 0;
+    let removed = 0;
+    let renamed = 0;
+    for (const t of docTracks.values()) {
+      if (!cpTracks.has(t.id)) {
+        added += 1;
+        delta.push(`+ track "${t.name}" (${t.kind})`);
+      } else if (cpTracks.get(t.id)?.name !== t.name) {
+        renamed += 1;
+        delta.push(`~ track renamed: "${cpTracks.get(t.id)?.name}" -> "${t.name}"`);
+      }
+    }
+    for (const t of cpTracks.values()) {
+      if (!docTracks.has(t.id)) {
+        removed += 1;
+        delta.push(`- track "${t.name}" (${t.kind})`);
+      }
+    }
+    if (doc.bpm !== cp.doc.bpm) delta.push(`~ tempo ${cp.doc.bpm} -> ${doc.bpm} BPM`);
+    if (doc.patterns.length !== cp.doc.patterns.length) {
+      delta.push(`~ patterns: ${cp.doc.patterns.length} -> ${doc.patterns.length}`);
+    }
+    if (doc.arrangement.clips.length !== cp.doc.arrangement.clips.length) {
+      delta.push(`~ clips: ${cp.doc.arrangement.clips.length} -> ${doc.arrangement.clips.length}`);
+    }
+    const fxThen = cp.doc.tracks.reduce((sum, t) => sum + t.effects.length, 0);
+    const fxNow = doc.tracks.reduce((sum, t) => sum + t.effects.length, 0);
+    if (fxThen !== fxNow) delta.push(`~ FX instances: ${fxThen} -> ${fxNow}`);
+    if (delta.length === 0) {
+      return { text: `checkpoint "${name}": no differences — the document matches the checkpoint`, mutated: false };
+    }
+    return {
+      text:
+        `checkpoint "${name}" diff (${delta.length} change(s) since save):` +
+        "\n" +
+        delta.slice(0, 12).join("\n") +
+        (delta.length > 12 ? `\n... and ${delta.length - 12} more` : "") +
+        "\nrestore replaces ALL of this in one undo step.",
+      mutated: false,
+    };
   }
   if (op === "restore") {
     const doc = ctx.getDoc();

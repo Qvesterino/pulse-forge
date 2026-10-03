@@ -69,7 +69,13 @@ const measurements = await page.evaluate(async () => {
   // preset measures its actual sound (the pack lives in public/samples/
   // piano/, served by the same dev server — ~120 files, fetched once).
   const pianoPack = await import("/src/presets/piano-pack.generated.ts");
-  const packIds = [...new Set(pianoPack.PIANO_PACK_LAYERS.map((l) => l.sampleId))];
+  const vscoPack = await import("/src/presets/vsco-pack.generated.ts");
+  const packIds = [
+    ...new Set([
+      ...pianoPack.PIANO_PACK_LAYERS.map((l) => l.sampleId),
+      ...vscoPack.VSCO_PACK_LAYERS.map((l) => l.sampleId),
+    ]),
+  ];
   await Promise.all(
     packIds.map(async (id) => {
       try {
@@ -137,6 +143,7 @@ const measurements = await page.evaluate(async () => {
     const readings = [];
     const tiltReadings = [];
     let peak = 0;
+    let lastError = null;
     for (let pass = 0; pass < 3; pass++) {
       const ctx = new OfflineAudioContext(2, Math.ceil(SR * (durationSec + 0.25)), SR);
       const previewGain = ctx.createGain();
@@ -158,6 +165,8 @@ const measurements = await page.evaluate(async () => {
         tiltReadings.push(tiltOf(channels, SR));
         const metrics = quality.measurePreviewAudio(channels);
         peak = Math.max(peak, metrics.peak);
+      } catch (passError) {
+        lastError = String(passError?.message ?? passError).slice(0, 160);
       } finally {
         try {
           runtime?.dispose();
@@ -187,11 +196,15 @@ const measurements = await page.evaluate(async () => {
         spread: Math.round(spread * 10) / 10,
       });
     } else {
-      out.push({ id: preset.id, useCase, measured: false, error: "all renders failed" });
+      console.warn(`[preset-loudness] UNMEASURED ${preset.id}: ${lastError ?? "silent output (no readings)"}`);
+      out.push({ id: preset.id, useCase, measured: false, error: `all renders failed (last: ${lastError ?? "silent output"})` });
     }
   }
   return out;
 });
+for (const failed of measurements.filter((m) => !m.measured)) {
+  console.warn(`[preset-loudness] UNMEASURED ${failed.id}: ${failed.error}`);
+}
 
 await browser.close();
 await server.close();

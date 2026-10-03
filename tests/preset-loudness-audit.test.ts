@@ -28,9 +28,17 @@ import { PRESET_GAIN_DB_LIMIT } from "../src/presets/normalization";
 
 describe("preset loudness coverage", () => {
   it("every instrument/drumsynth preset is measured, with no orphans", () => {
+    // PACK presets (real piano, VSCO orchestral) load their samples from
+    // public/samples/piano|vsco — git-ignored, regenerated locally by the
+    // converters. The measurement harness has no pack on a fresh checkout,
+    // so pack ids are exempt from the measured-set contract (they render at
+    // unity gain until the pack lands; see scripts/convert-*.mjs).
+    const PACK_PREFIXES = ["factory.piano.", "factory.vsco."];
+    const isPackPreset = (id: string) => PACK_PREFIXES.some((prefix) => id.startsWith(prefix));
     const ids = new Set(FACTORY_PRESETS.map((p) => p.id));
     expect(ids.size).toBe(FACTORY_PRESETS.length); // no duplicate ids
     for (const id of ids) {
+      if (isPackPreset(id)) continue; // pack presets: unity gain until measured
       expect(FACTORY_PRESET_LOUDNESS[id], `${id} missing loudness`).toBeDefined();
       expect(FACTORY_PRESET_GAIN_DB[id], `${id} missing gain`).toBeDefined();
     }
@@ -64,6 +72,16 @@ describe("preset gain sanity", () => {
     // This pin forces that work (or a preset fix) to update the inventory
     // explicitly instead of silently growing the capped set.
     const KNOWN_CLAMPED = [
+      // clavinet re-voice (2026-10-01) shifted the WHOLE clav family above
+      // the family median — the fixed-window probe measures the attack
+      // transient; the sustained-loudness probe is the real fix.
+      "factory.clav.boombap.bounce",
+      "factory.clav.dnb.tight",
+      "factory.clav.drill.ice",
+      "factory.clav.funk.wahpair",
+      "factory.clav.gfunk.stab",
+      "factory.clav.memphis.lead",
+      "factory.clav.techno.bitewave",
       "factory.drumsynth.ambient.softclap",
       "factory.drumsynth.drill.tickhat",
       "factory.drumsynth.jersey.hat",
@@ -87,16 +105,6 @@ describe("preset gain sanity", () => {
       "factory.keys.house.crystal",
       "factory.keys.house.flute",
       "factory.keys.house.fmbell",
-      // clavinet re-voice (2026-10-01) shifted the WHOLE clav family above
-      // the family median — the fixed-window probe measures the attack
-      // transient; the sustained-loudness probe is the real fix.
-      "factory.clav.boombap.bounce",
-      "factory.clav.dnb.tight",
-      "factory.clav.drill.ice",
-      "factory.clav.funk.wahpair",
-      "factory.clav.gfunk.stab",
-      "factory.clav.memphis.lead",
-      "factory.clav.techno.bitewave",
       "factory.keys.house.groovekeys",
       // pop wave — same fixed-window probe artifact as the keys/pluck siblings
       "factory.keys.house.poppiano",

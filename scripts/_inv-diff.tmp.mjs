@@ -1,0 +1,10 @@
+import { readFileSync } from "node:fs";
+const gen = readFileSync("src/presets/preset-loudness.generated.ts", "utf8");
+const test = readFileSync("tests/preset-loudness-audit.test.ts", "utf8");
+const gains = {};
+for (const m of gen.matchAll(/"([^"]+)": (-?[\d.]+)/g)) gains[m[1]] = Number(m[2]);
+const inv = test.match(/const KNOWN_CLAMPED = \[([\s\S]*?)\];/)[1];
+const known = [...inv.matchAll(/"([^"]+)"/g)].map((m) => m[1]).sort();
+const actual = Object.entries(gains).filter(([, g]) => Math.abs(g) >= 18).map(([id]) => id).sort();
+console.log("in known, not actual:", known.filter((id) => !actual.includes(id)));
+console.log("in actual, not known:", actual.filter((id) => !known.includes(id)));

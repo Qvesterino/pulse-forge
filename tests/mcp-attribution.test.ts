@@ -73,27 +73,39 @@ describe("kyx_undo read-back — reverts naming + foreign-work warning", () => {
     expect(reverted.indexOf("house")).toBeLessThan(reverted.indexOf("techno"));
   });
 
-  it("an agent reverting ANOTHER agent's work gets the foreign-work warning", async () => {
+  it("an agent reverting ANOTHER agent's work is REFUSED without consent (C6.2 guard)", async () => {
     const base = makeCtx();
     const qmr = withAgentAttribution(base, "qmr");
     const claude = withAgentAttribution(base, "desktop-stdio");
     await executeMcpTool(qmr, "kyx_generate", { genre: "techno", seed: "qmr-work" });
     await executeMcpTool(claude, "kyx_generate", { genre: "house", seed: "claude-work" });
-    // qmr undoes one step — the top entry is CLAUDE's work
-    const result = await executeMcpTool(qmr, "kyx_undo", { action: "undo", steps: 1 });
-    expect(result.text).toContain("desktop-stdio");
-    expect(result.text).toContain("⚠ reverts work not made by this agent");
+    // qmr undoes one step — the top entry is CLAUDE's work: REFUSED
+    const refused = await executeMcpTool(qmr, "kyx_undo", { action: "undo", steps: 1 });
+    expect(refused.isError).toBe(true);
+    expect(refused.mutated).toBe(false);
+    expect(refused.text).toContain("foreign work");
+    expect(refused.text).toContain("allowForeign: true");
+    // with explicit consent it goes through and says so
+    const consented = await executeMcpTool(qmr, "kyx_undo", { action: "undo", steps: 1, allowForeign: true });
+    expect(consented.mutated).toBe(true);
+    expect(consented.text).toContain("foreign work reverted by explicit consent");
   });
 
-  it("an agent reverting its OWN work then the human's unlabeled work warns too", async () => {
+  it("an agent reverting its OWN work is free; crossing into the human's edits needs consent", async () => {
     const base = makeCtx();
     await executeMcpTool(base, "kyx_generate", { genre: "techno", seed: "human-unlabeled" });
     const qmr = withAgentAttribution(base, "qmr");
     await executeMcpTool(qmr, "kyx_generate", { genre: "house", seed: "qmr-work" });
-    // qmr undoes its own step, then the NEXT step is the human's unlabeled
-    // work — a 2-step undo crosses into foreign territory
-    const result = await executeMcpTool(qmr, "kyx_undo", { action: "undo", steps: 2 });
-    expect(result.text).toContain("⚠ reverts work not made by this agent");
+    // own work: free
+    const own = await executeMcpTool(qmr, "kyx_undo", { action: "undo", steps: 1 });
+    expect(own.mutated).toBe(true);
+    expect(own.text).not.toContain("foreign work");
+    // 2-step undo crosses into the human's unlabeled edit: REFUSED
+    const crossed = await executeMcpTool(qmr, "kyx_undo", { action: "undo", steps: 1, allowForeign: false });
+    expect(crossed.isError).toBe(true);
+    expect(crossed.text).toContain("foreign work");
+    const consented = await executeMcpTool(qmr, "kyx_undo", { action: "undo", steps: 1, allowForeign: true });
+    expect(consented.mutated).toBe(true);
   });
 
   it("a human-context (unattributed) undo of its own work carries no warning", async () => {

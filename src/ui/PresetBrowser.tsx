@@ -119,10 +119,8 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
     // Pack presets (real piano): fetch the samples BEFORE the command —
     // an apply with unloaded zones would leave the sampler silent.
     const packLoad =
-      preset.velocityLayers?.some((l) => isPianoPackSample(l.sampleId)) ?? false
-        ? ensurePianoPackLoaded(services.bank, [
-            ...new Set(preset.velocityLayers?.map((l) => l.sampleId ?? "") ?? []),
-          ])
+      (preset.velocityLayers?.some((l) => isPianoPackSample(l.sampleId)) ?? false)
+        ? ensurePianoPackLoaded(services.bank, [...new Set(preset.velocityLayers?.map((l) => l.sampleId ?? "") ?? [])])
         : Promise.resolve();
     void packLoad;
     services.store.execute(applyInstrumentPreset(doc, track.id, preset));

@@ -69,6 +69,15 @@ export interface PackCredits {
 
 export const PACK_CREDITS: PackCredits[] = [
   {
+    pack: "VSCO 2 Community Edition (orchestral subset)",
+    license: "cc0",
+    credits: [
+      "Orchestral instruments (strings, winds, mallets, harp) — Versilian Studios VSCO 2 Community Edition.",
+      "CC0 1.0 Universal — dedicated to the public domain (see LICENSE in the pack).",
+    ],
+    sourceUrl: "https://archive.org/details/vsco-2-ce-sfz",
+  },
+  {
     pack: "Salamander Grand Piano V3 (44.1kHz 16-bit close)",
     license: "cc-by-3.0",
     credits: [

@@ -21,7 +21,8 @@ describe("sample license gate", () => {
   it("every imported factory asset carries a redistributable license + source", () => {
     for (const asset of FACTORY_ASSETS) {
       if (!asset.source) continue; // first-party synthesized — no license needed
-      expect(LICENSES[asset.license ?? ""]?.redistributable, `${asset.id}: license must be registry-listed`).toBe(true);
+      const registry = LICENSES as Record<string, { redistributable: boolean } | undefined>;
+      expect(registry[asset.license ?? ""]?.redistributable, `${asset.id}: license must be registry-listed`).toBe(true);
       expect(asset.source.length, `${asset.id}: source must name the pack`).toBeGreaterThan(0);
     }
   });
