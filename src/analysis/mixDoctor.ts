@@ -348,3 +348,27 @@ export function deriveMixAutoFix(report: MixHealthReport): MixAutoFix | null {
     label: fixes.join(" + "),
   };
 }
+
+/**
+ * The ONE-LINE verdict for an export read-back (per-render mix-doctor):
+ * pass/issues summary, the numbers an agent can act on (integrated LUFS,
+ * low-end share, crest, headroom), flagged issues by severity, and the
+ * derived auto-fix when one exists. Deterministic from the report — the
+ * same report always yields the same line, in tests and in transports.
+ */
+export function buildMixCheckVerdict(report: MixHealthReport): string {
+  const red = report.flags.filter((f) => f.severity === "red");
+  const yellow = report.flags.filter((f) => f.severity === "yellow");
+  const head =
+    red.length === 0
+      ? "MIX CHECK PASS"
+      : `MIX CHECK — ${red.length} ISSUE${red.length > 1 ? "S" : ""} —`;
+  const lufs = report.integratedLufs != null ? `${report.integratedLufs.toFixed(1)} LUFS` : "LUFS n/a";
+  const stats = `${lufs} · low ${(report.lowEndShare * 100).toFixed(0)}% · crest ${report.crestDb.toFixed(1)} dB · peak −${report.headroomDb.toFixed(1)} dBFS`;
+  const notes = [...red, ...yellow].map((f) => `${f.severity === "red" ? "⚠" : "○"} ${f.check}: ${f.detail}`);
+  const fix = deriveMixAutoFix(report);
+  const parts = [head, stats];
+  if (notes.length > 0) parts.push(notes.join(" · "));
+  if (fix != null) parts.push(`suggested fix: ${fix.label} (apply via master config, then re-export to verify)`);
+  return parts.join(" — ");
+}

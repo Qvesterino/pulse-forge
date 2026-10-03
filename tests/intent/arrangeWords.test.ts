@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
-import { BAR_TICKS } from "../../src/project-model/types";
+import { createDefaultProject } from "../../src/project-model/schema";
+import { BAR_TICKS, type ProjectDocument } from "../../src/project-model/types";
 import {
   applyArrangeOps,
+  applyClipArrangeOps,
   parseArrangeIntent,
   parseSelectedClipArrangeIntent,
   parseSelectedTimeRangeIntent,
   resolveSceneTarget,
+  selectedClipGrooveChangeCount,
   selectedTimeRangeIntentError,
 } from "../../src/intent/arrangeWords";
 import { routeIntentText } from "../../src/intent/route";
@@ -17,6 +20,35 @@ const roleOf = (s: { role?: string | null; name: string }): string | null =>
 
 function sceneScoreDoc() {
   return createProjectFromTemplate("scene-score");
+}
+
+function sharedSceneDrumClips(): { doc: ProjectDocument; clipId: string; otherClipId: string; patternId: string } {
+  const base = createDefaultProject();
+  const scene = base.scenes[0]!;
+  const sourcePattern = base.patterns.find((pattern) => pattern.id === scene.patternId)!;
+  const drum = base.tracks.find((track) => track.kind === "drum");
+  if (!drum || drum.kind !== "drum") throw new Error("fixture requires a drum track");
+  const pad = drum.pads[0]!;
+  const rows = Object.fromEntries(
+    drum.pads.map((candidate) => [candidate.id, new Array(sourcePattern.stepCount).fill(0)]),
+  );
+  rows[pad.id] = new Array(sourcePattern.stepCount).fill(0).map((_, step) => (step % 2 === 1 ? 0.8 : 0));
+  const pattern = { ...sourcePattern, rows, stepMeta: undefined };
+  const clipId = "selected-shared-scene-clip";
+  const otherClipId = "other-shared-scene-clip";
+  const doc: ProjectDocument = {
+    ...base,
+    patterns: base.patterns.map((candidate) => (candidate.id === pattern.id ? pattern : candidate)),
+    arrangement: {
+      ...base.arrangement,
+      clips: [
+        { id: clipId, sceneId: scene.id, startBar: 0, lengthBars: 4 },
+        { id: otherClipId, sceneId: scene.id, startBar: 4, lengthBars: 4 },
+      ],
+      audioClips: [],
+    },
+  };
+  return { doc, clipId, otherClipId, patternId: pattern.id };
 }
 
 describe("parseArrangeIntent", () => {
@@ -170,6 +202,57 @@ describe("selected clip intent", () => {
   it("fails closed for a deleted selected clip", () => {
     expect(parseSelectedClipArrangeIntent("delete selected clip", sceneScoreDoc(), "missing-clip")).toBeNull();
   });
+
+  it("parses clip-scoped swing requests and rejects compound or ambiguous edits", () => {
+    const { doc, clipId } = sharedSceneDrumClips();
+    expect(parseSelectedClipArrangeIntent("more swing on this selected clip", doc, clipId)).toEqual([
+      { op: "clipGroove", clipId, direction: "swingUp" },
+    ]);
+    expect(parseSelectedClipArrangeIntent("viac swingu na tomto klipe", doc, clipId)).toEqual([
+      { op: "clipGroove", clipId, direction: "swingUp" },
+    ]);
+    expect(parseSelectedClipArrangeIntent("nastav swing na 65% na tomto klipe", doc, clipId)).toEqual([
+      { op: "clipGroove", clipId, direction: "set", swingPercent: 65 },
+    ]);
+    expect(parseSelectedClipArrangeIntent("more swing in the drop", doc, clipId)).toBeNull();
+    expect(parseSelectedClipArrangeIntent("move this clip to bar 12 and add more swing", doc, clipId)).toBeNull();
+    expect(parseSelectedClipArrangeIntent("humanize this selected clip", doc, clipId)).toBeNull();
+  });
+
+  it("creates a copy-on-write groove variation for only the selected clip as one undo step", () => {
+    const { doc, clipId, otherClipId, patternId } = sharedSceneDrumClips();
+    const sourceSceneId = doc.arrangement.clips.find((clip) => clip.id === clipId)!.sceneId;
+    const sourcePattern = doc.patterns.find((pattern) => pattern.id === patternId)!;
+    const op = { op: "clipGroove" as const, clipId, direction: "swingUp" as const };
+
+    expect(selectedClipGrooveChangeCount(doc, clipId, op)).toBe(8);
+    const command = applyClipArrangeOps(doc, [op]);
+    expect(command?.type).toBe("clipWords");
+    expect(command?.label).toContain("8 offbeat steps");
+    const changed = command!.execute(doc);
+    const selectedClip = changed.arrangement.clips.find((clip) => clip.id === clipId)!;
+    const otherClip = changed.arrangement.clips.find((clip) => clip.id === otherClipId)!;
+    const variation = changed.scenes.find((scene) => scene.id === selectedClip.sceneId)!;
+    const variedPattern = changed.patterns.find((pattern) => pattern.id === variation.patternId)!;
+
+    expect(selectedClip.sceneId).not.toBe(sourceSceneId);
+    expect(otherClip.sceneId).toBe(sourceSceneId);
+    expect(variedPattern.stepMeta?.[Object.keys(sourcePattern.rows)[0]!]?.[1]?.microtiming).toBeCloseTo(1 / 6);
+    expect(changed.patterns.find((pattern) => pattern.id === patternId)).toEqual(sourcePattern);
+    expect(command!.undo(changed)).toEqual(doc);
+  });
+
+  it("routes unsupported or compound groove edits to clarification instead of a partial clip mutation", () => {
+    const { doc, clipId } = sharedSceneDrumClips();
+    expect(routeIntentText("more swing on this selected clip", doc, { selectedClipId: clipId })).toMatchObject({
+      kind: "selectedClipArrange",
+      clipId,
+      ops: [{ op: "clipGroove", clipId, direction: "swingUp" }],
+    });
+    expect(routeIntentText("move this clip to bar 12 and add more swing", doc, { selectedClipId: clipId }).kind).toBe(
+      "clarify",
+    );
+  });
 });
 
 describe("selected time-range intent", () => {
@@ -236,9 +319,8 @@ describe("selected time-range intent", () => {
         clips: [{ id: "long-range-clip", sceneId: doc.scenes[0]!.id, startBar: 0, lengthBars: 8 }],
       },
     };
-    expect(selectedTimeRangeIntentError(withBoundaryArrangement, range, "consolidate")).toMatch(
-      /arrangement clip crosses/i,
-    );
+    // Musical arrangement clips can now cross a consolidation boundary; phase offsets preserve their continuation.
+    expect(selectedTimeRangeIntentError(withBoundaryArrangement, range, "consolidate")).toBeNull();
     const withSolo = { ...doc, tracks: doc.tracks.map((track) => ({ ...track, solo: true })) };
     expect(selectedTimeRangeIntentError(withSolo, range, "consolidate")).toMatch(/turn off solo/i);
   });

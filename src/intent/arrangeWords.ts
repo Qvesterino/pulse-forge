@@ -16,9 +16,12 @@ import {
   duplicateSceneAsVariation,
   moveArrangementClip,
   resizeArrangementClip,
+  setArrangementClipScene,
+  setStepMeta,
   setSceneRole,
   snapshot,
 } from "../commands/commands";
+import { canonicalizePattern, contentHash } from "../ai/evaluation";
 
 /**
  * ARRANGE WORDS — natural-language arrangement editing over an EXISTING beat.
@@ -447,7 +450,170 @@ export type ClipArrangeOp =
   | { op: "copyClip"; clipId: string; toBar: number }
   | { op: "moveClip"; clipId: string; toBar: number }
   | { op: "resizeClip"; clipId: string; bars: number }
-  | { op: "deleteClip"; clipId: string };
+  | { op: "deleteClip"; clipId: string }
+  | {
+      op: "clipGroove";
+      clipId: string;
+      direction: "swingUp" | "swingDown" | "tighter" | "set";
+      swingPercent?: number;
+    };
+
+const SWING_TO_MICRO = 5 / 3;
+const CLIP_GROOVE_STEP = 1 / 6;
+
+function clipGrooveTarget(current: number, op: Extract<ClipArrangeOp, { op: "clipGroove" }>): number {
+  const target =
+    op.direction === "set"
+      ? ((op.swingPercent ?? 0) / 100) * SWING_TO_MICRO
+      : current +
+        (op.direction === "swingUp"
+          ? CLIP_GROOVE_STEP
+          : op.direction === "swingDown"
+            ? -CLIP_GROOVE_STEP
+            : -CLIP_GROOVE_STEP * 2.5);
+  return Math.round(Math.max(-1, Math.min(1, target)) * 1000) / 1000;
+}
+
+/** Number of audible offbeat drum steps a clip-scoped swing edit will change. */
+export function selectedClipGrooveChangeCount(
+  doc: ProjectDocument,
+  clipId: string,
+  op: Extract<ClipArrangeOp, { op: "clipGroove" }>,
+): number {
+  const clip = doc.arrangement.clips.find((candidate) => candidate.id === clipId);
+  const scene = clip && doc.scenes.find((candidate) => candidate.id === clip.sceneId);
+  const pattern = scene && doc.patterns.find((candidate) => candidate.id === scene.patternId);
+  if (!pattern) return 0;
+  let changed = 0;
+  for (const track of doc.tracks) {
+    if (track.kind !== "drum") continue;
+    for (const pad of track.pads) {
+      const row = pattern.rows[pad.id] ?? [];
+      for (let step = 1; step < pattern.stepCount; step += 2) {
+        if ((row[step] ?? 0) <= 0) continue;
+        const current = pattern.stepMeta?.[pad.id]?.[step]?.microtiming ?? 0;
+        if (Math.abs(clipGrooveTarget(current, op) - current) >= 0.001) changed += 1;
+      }
+    }
+  }
+  return changed;
+}
+
+function selectedClipGrooveIntent(text: string, clipId: string): Extract<ClipArrangeOp, { op: "clipGroove" }> | null {
+  const normalized = deaccent(text);
+  const clipTarget =
+    /\b(?:selected|this|the|tomto|vybranom|vybrany|vybrana|vybrate)\s+(?:arrangement\s+)?(?:clip|klip\w*)\b/;
+  if (!clipTarget.test(normalized)) return null;
+  if (/\b(?:humaniz\w*|randomiz\w*)\b/.test(normalized)) return null;
+  const allowedWords = new Set([
+    "selected",
+    "this",
+    "the",
+    "tomto",
+    "vybranom",
+    "vybrany",
+    "vybrana",
+    "vybrate",
+    "arrangement",
+    "clip",
+    "klip",
+    "swing",
+    "swung",
+    "groove",
+    "na",
+    "more",
+    "increase",
+    "viac",
+    "zvys",
+    "less",
+    "decrease",
+    "menej",
+    "zniz",
+    "tighter",
+    "tighten",
+    "pevnejsi",
+    "pevnejsie",
+    "to",
+    "na",
+    "in",
+    "on",
+    "by",
+    "set",
+    "nastav",
+    "make",
+    "a",
+    "please",
+  ]);
+  const words = normalized.match(/[a-z]+|\d+/g) ?? [];
+  const allowedInflection = (word: string): boolean => /^(?:klip\w*|swing\w*|groov\w*)$/.test(word);
+  if (words.some((word) => !allowedWords.has(word) && !allowedInflection(word) && !/^\d{1,3}$/.test(word))) return null;
+  const absolute = /\b(?:swing\w*|groov\w*)\s*(?:to|=|na)?\s*(\d{1,3})(?:\s*%)?(?!\d)/.exec(normalized);
+  const tighter = /\b(?:tighter|tighten|pevnejsi|pevnejsie)\b/.test(normalized);
+  const more = /\b(?:more|increase|viac|zvys\w*)\b/.test(normalized);
+  const less = /\b(?:less|decrease|menej|zniz\w*)\b/.test(normalized);
+  if (Number(Boolean(absolute)) + Number(tighter) + Number(more) + Number(less) !== 1) return null;
+  if (absolute) {
+    return {
+      op: "clipGroove",
+      clipId,
+      direction: "set",
+      swingPercent: Math.max(0, Math.min(100, Number(absolute[1]))),
+    };
+  }
+  if (tighter) return { op: "clipGroove", clipId, direction: "tighter" };
+  if (more && /\b(?:swing\w*|groov\w*|swung)\b/.test(normalized)) {
+    return { op: "clipGroove", clipId, direction: "swingUp" };
+  }
+  if (less && /\b(?:swing\w*|groov\w*|swung)\b/.test(normalized)) {
+    return { op: "clipGroove", clipId, direction: "swingDown" };
+  }
+  return null;
+}
+
+function applySelectedClipGroove(
+  doc: ProjectDocument,
+  clip: ArrangementClip,
+  op: Extract<ClipArrangeOp, { op: "clipGroove" }>,
+): { project: ProjectDocument; sceneName: string; changedSteps: number } | null {
+  const sourceScene = doc.scenes.find((scene) => scene.id === clip.sceneId);
+  const sourcePattern = sourceScene && doc.patterns.find((pattern) => pattern.id === sourceScene.patternId);
+  const changedSteps = selectedClipGrooveChangeCount(doc, clip.id, op);
+  if (!sourceScene || !sourcePattern || changedSteps === 0) return null;
+
+  let project = duplicateSceneAsVariation(doc, sourceScene.id).execute(doc);
+  const variation = project.scenes[project.scenes.length - 1];
+  if (!variation || variation.id === sourceScene.id) return null;
+  project = setArrangementClipScene(project, clip.id, variation.id).execute(project);
+  for (const track of project.tracks) {
+    if (track.kind !== "drum") continue;
+    for (const pad of track.pads) {
+      const row = sourcePattern.rows[pad.id] ?? [];
+      for (let step = 1; step < sourcePattern.stepCount; step += 2) {
+        if ((row[step] ?? 0) <= 0) continue;
+        const current = sourcePattern.stepMeta?.[pad.id]?.[step]?.microtiming ?? 0;
+        const next = clipGrooveTarget(current, op);
+        if (Math.abs(next - current) < 0.001) continue;
+        project = setStepMeta(project, variation.patternId, pad.id, step, { microtiming: next }).execute(project);
+      }
+    }
+  }
+
+  const variationPattern = project.patterns.find((pattern) => pattern.id === variation.patternId);
+  if (!variationPattern) return null;
+  const outputHash = contentHash(canonicalizePattern(project, variationPattern));
+  const hashedPattern = {
+    ...variationPattern,
+    ...(variationPattern.generation
+      ? { generation: { ...variationPattern.generation, outputContentHash: outputHash } }
+      : {}),
+    ...(variationPattern.assist ? { assist: { ...variationPattern.assist, outputContentHash: outputHash } } : {}),
+  };
+  project = {
+    ...project,
+    patterns: project.patterns.map((pattern) => (pattern.id === hashedPattern.id ? hashedPattern : pattern)),
+  };
+  return { project, sceneName: variation.name, changedSteps };
+}
 
 const CLIP_WORD = /\bclips?\b|\bklip/;
 
@@ -554,6 +720,16 @@ export function parseSelectedClipArrangeIntent(
 ): ClipArrangeOp[] | null {
   const selectedClip = doc.arrangement.clips.find((clip) => clip.id === selectedClipId);
   if (!selectedClip) return null;
+
+  const normalized = deaccent(text);
+  const grooveIntent = selectedClipGrooveIntent(text, selectedClipId);
+  const namesSelectedClip =
+    /\b(?:selected|this|the|tomto|vybranom|vybrany|vybrana|vybrate)\s+(?:arrangement\s+)?(?:clip|klip\w*)\b/.test(
+      normalized,
+    );
+  const namesGrooveEdit = /\b(?:swing\w*|groov\w*|humaniz\w*)\b/.test(normalized);
+  if (namesSelectedClip && namesGrooveEdit) return grooveIntent ? [grooveIntent] : null;
+  if (grooveIntent) return [grooveIntent];
 
   const explicitOps = parseClipArrangeIntent(text, doc);
   if (explicitOps) return explicitOps.length === 1 && explicitOps[0]!.clipId === selectedClipId ? explicitOps : null;
@@ -674,7 +850,12 @@ export function applyClipArrangeOps(doc: ProjectDocument, ops: ClipArrangeOp[]):
   for (const op of ops) {
     const clip = cursor.arrangement.clips.find((c) => c.id === op.clipId);
     if (!clip) return null; // arrangement changed under the request — refuse
-    if (op.op === "copyClip") {
+    if (op.op === "clipGroove") {
+      const result = applySelectedClipGroove(cursor, clip, op);
+      if (!result) return null;
+      cursor = result.project;
+      labels.push(`isolated ${result.sceneName} variation · ${result.changedSteps} offbeat steps`);
+    } else if (op.op === "copyClip") {
       cursor = addArrangementClip(cursor, clip.sceneId, op.toBar, clip.lengthBars).execute(cursor);
       labels.push(`copy → bar ${op.toBar + 1}`);
     } else if (op.op === "moveClip") {

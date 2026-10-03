@@ -45,6 +45,7 @@ import {
   applyClipArrangeOps,
   parseSelectedClipArrangeIntent,
   parseSelectedTimeRangeIntent,
+  selectedClipGrooveChangeCount,
   selectedTimeRangeIntentError,
   type ClipArrangeOp,
   type SelectedTimeRangeOperation,
@@ -217,6 +218,7 @@ type SelectedArrangementPromptPreview =
       clip: ArrangementClip;
       ops: ClipArrangeOp[];
       lines: string[];
+      sourcePatternHash?: string | null;
     }
   | {
       kind: "range";
@@ -226,8 +228,27 @@ type SelectedArrangementPromptPreview =
       description: string;
     };
 
-function selectedClipEditPreviewLines(clip: ArrangementClip, ops: ClipArrangeOp[]): string[] {
+function selectedClipPatternHash(doc: ProjectDocument, clip: ArrangementClip): string | null {
+  const scene = doc.scenes.find((candidate) => candidate.id === clip.sceneId);
+  const pattern = scene && doc.patterns.find((candidate) => candidate.id === scene.patternId);
+  return pattern ? hashString(JSON.stringify(pattern)).toString(36) : null;
+}
+
+function selectedClipEditPreviewLines(doc: ProjectDocument, clip: ArrangementClip, ops: ClipArrangeOp[]): string[] {
   return ops.map((op) => {
+    if (op.op === "clipGroove") {
+      const count = selectedClipGrooveChangeCount(doc, clip.id, op);
+      const description =
+        op.direction === "set"
+          ? `set swing to ${op.swingPercent}%`
+          : op.direction === "swingUp"
+            ? "increase swing"
+            : op.direction === "swingDown"
+              ? "reduce swing"
+              : "tighten the groove";
+      const sceneName = doc.scenes.find((scene) => scene.id === clip.sceneId)?.name ?? "source scene";
+      return `Create an isolated variation of “${sceneName}” for this clip only; ${description} on ${count} offbeat drum hits.`;
+    }
     if (op.op === "copyClip") return `Copy from bar ${clip.startBar + 1} to bar ${op.toBar + 1}`;
     if (op.op === "moveClip") return `Move from bar ${clip.startBar + 1} to bar ${op.toBar + 1}`;
     if (op.op === "resizeClip") return `Resize from ${clip.lengthBars} to ${op.bars} bars`;
@@ -2374,6 +2395,8 @@ export function IntentPanel() {
       const currentClipSelection = selection.getState().clipIds;
       const liveClip = currentDoc.arrangement.clips.find((clip) => clip.id === preview.clip.id);
       const currentOps = parseSelectedClipArrangeIntent(preview.source, currentDoc, preview.clip.id);
+      const hasGrooveEdit = preview.ops.some((op) => op.op === "clipGroove");
+      const livePatternHash = hasGrooveEdit && liveClip ? selectedClipPatternHash(currentDoc, liveClip) : undefined;
       if (
         text.trim() !== preview.source ||
         currentClipSelection.length !== 1 ||
@@ -2382,6 +2405,7 @@ export function IntentPanel() {
         liveClip.sceneId !== preview.clip.sceneId ||
         liveClip.startBar !== preview.clip.startBar ||
         liveClip.lengthBars !== preview.clip.lengthBars ||
+        (hasGrooveEdit && livePatternHash !== preview.sourcePatternHash) ||
         !currentOps ||
         JSON.stringify(currentOps) !== JSON.stringify(preview.ops)
       ) {
@@ -2760,12 +2784,18 @@ export function IntentPanel() {
           setError("The selected clip changed or the request no longer resolves. Review the selection and try again.");
           return;
         }
+        const grooveOp = ops.find((op): op is Extract<ClipArrangeOp, { op: "clipGroove" }> => op.op === "clipGroove");
+        if (grooveOp && selectedClipGrooveChangeCount(currentDoc, clip.id, grooveOp) === 0) {
+          setError("This clip has no offbeat drum hits that can be changed by that groove request.");
+          return;
+        }
         setSelectedArrangementPreview({
           kind: "clip",
           source,
           clip,
           ops,
-          lines: selectedClipEditPreviewLines(clip, ops),
+          lines: selectedClipEditPreviewLines(currentDoc, clip, ops),
+          ...(grooveOp ? { sourcePatternHash: selectedClipPatternHash(currentDoc, clip) } : {}),
         });
         setStatus("Clip preview ready — inspect the exact arrangement change, then apply or cancel.");
       } else if (route.kind === "selectedRangeArrange") {

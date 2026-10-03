@@ -145,6 +145,70 @@ describe("IntentPanel", () => {
     expect(command!.undo(changed)).toEqual(project);
   });
 
+  it("previews a clip-scoped groove copy-on-write and rejects a changed source pattern", async () => {
+    const base = createProjectFromTemplate("house");
+    const scene = base.scenes[0]!;
+    const sourcePattern = base.patterns.find((candidate) => candidate.id === scene.patternId)!;
+    const drum = base.tracks.find((track) => track.kind === "drum");
+    if (!drum || drum.kind !== "drum") throw new Error("fixture requires a drum track");
+    const pad = drum.pads[0]!;
+    const rows = Object.fromEntries(
+      drum.pads.map((candidate) => [candidate.id, new Array(sourcePattern.stepCount).fill(0)]),
+    );
+    rows[pad.id] = new Array(sourcePattern.stepCount).fill(0).map((_, step) => (step % 2 === 1 ? 0.8 : 0));
+    const pattern = { ...sourcePattern, rows, stepMeta: undefined };
+    const clip = { id: "groove-selected", sceneId: scene.id, startBar: 0, lengthBars: 4 };
+    const otherClip = { id: "groove-other", sceneId: scene.id, startBar: 4, lengthBars: 4 };
+    const project: ProjectDocument = {
+      ...base,
+      patterns: base.patterns.map((candidate) => (candidate.id === pattern.id ? pattern : candidate)),
+      arrangement: { ...base.arrangement, clips: [clip, otherClip], audioClips: [] },
+    };
+    let liveDoc = project;
+    const selection = new SelectionStore();
+    selection.setClips([clip.id]);
+    const services = mockServices(project);
+    services.store.getDoc = () => liveDoc;
+    render(
+      <ServicesContext.Provider value={services}>
+        <SelectionContext.Provider value={selection}>
+          <IntentPanel />
+        </SelectionContext.Provider>
+      </ServicesContext.Provider>,
+    );
+
+    fireEvent.change(screen.getByLabelText(/Intent description/i), {
+      target: { value: "more swing on this selected clip" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+    const preview = await screen.findByRole("region", { name: "Selected clip intent preview" });
+    expect(preview).toHaveTextContent(/isolated variation.*for this clip only/i);
+    expect(preview).toHaveTextContent(`${Math.floor(sourcePattern.stepCount / 2)} offbeat drum hits`);
+    expect(services.store.execute).not.toHaveBeenCalled();
+
+    const changedSourcePattern = { ...pattern, rows: { ...pattern.rows, [pad.id]: [...(pattern.rows[pad.id] ?? [])] } };
+    changedSourcePattern.rows[pad.id]![1] = 0.4;
+    liveDoc = {
+      ...project,
+      patterns: project.patterns.map((candidate) => (candidate.id === pattern.id ? changedSourcePattern : candidate)),
+    };
+    fireEvent.click(within(preview).getByRole("button", { name: /APPLY CLIP EDIT · ONE UNDO STEP/i }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(/project, prompt, or clip selection changed/i);
+    expect(services.store.execute).not.toHaveBeenCalled();
+
+    liveDoc = project;
+    fireEvent.click(screen.getByRole("button", { name: /DO IT/i }));
+    const refreshedPreview = await screen.findByRole("region", { name: "Selected clip intent preview" });
+    fireEvent.click(within(refreshedPreview).getByRole("button", { name: /APPLY CLIP EDIT · ONE UNDO STEP/i }));
+    const command = vi.mocked(services.store.execute).mock.calls[0]?.[0];
+    expect(command?.type).toBe("clipWords");
+    const changed = command!.execute(project);
+    const changedSelected = changed.arrangement.clips.find((candidate) => candidate.id === clip.id)!;
+    expect(changedSelected.sceneId).not.toBe(scene.id);
+    expect(changed.arrangement.clips.find((candidate) => candidate.id === otherClip.id)?.sceneId).toBe(scene.id);
+    expect(command!.undo(changed)).toEqual(project);
+  });
+
   it("routes selected-range duplication through an audio-aware preview and one undo step", async () => {
     const project = createProjectFromTemplate("scene-score");
     const clip = [...project.arrangement.clips].sort((a, b) => a.startBar - b.startBar)[0]!;

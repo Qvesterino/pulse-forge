@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { act, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { OnboardingHint, notifyOnboardingProgress } from "../../src/ui/OnboardingHint";
@@ -54,13 +54,6 @@ describe("OnboardingHint", () => {
 });
 
 describe("OnboardingHint journey events (5 steps)", () => {
-  function toStep(seed: number, services?: ReturnType<typeof mockServices>) {
-    localStorage.setItem("pulse-forge.onboarding.done.v1", "");
-    // Rebuild with step state directly: the component starts at 0 unless the
-    // storage key exists. Advance through the first steps via the real path.
-    return renderWithContext(<OnboardingHint />, services ? { services } : undefined);
-  }
-
   it("advances step 3→4 on a panel-opened progress event", async () => {
     vi.useFakeTimers();
     const services = mockServices();
@@ -73,7 +66,7 @@ describe("OnboardingHint journey events (5 steps)", () => {
     renderWithContext(<OnboardingHint />, { services });
     (services.transport as any).playing = true;
     await vi.advanceTimersByTimeAsync(500);
-    const changedDoc = { ...(services.store as { doc: unknown }).doc, edited: true };
+    const changedDoc = { ...(services.store as unknown as { doc: Record<string, unknown> }).doc, edited: true };
     Object.defineProperty(services.store, "doc", { get: () => changedDoc, configurable: true });
     if (state.subCb) state.subCb(); // 1→2 (display 3/5)
     await act(async () => {});
@@ -97,7 +90,7 @@ describe("OnboardingHint journey events (5 steps)", () => {
     // Jump to step 3 through the real gates:
     (services.transport as any).playing = true;
     await new Promise((r) => setTimeout(r, 300));
-    const changedDoc = { ...(services.store as { doc: unknown }).doc, edited: true };
+    const changedDoc = { ...(services.store as unknown as { doc: Record<string, unknown> }).doc, edited: true };
     Object.defineProperty(services.store, "doc", { get: () => changedDoc, configurable: true });
     if (state.subCb) state.subCb(); // 1→2 (display 3/5)
     await act(async () => {});
@@ -129,7 +122,7 @@ describe("OnboardingHint journey events (5 steps)", () => {
     renderWithContext(<OnboardingHint />, { services });
     (services.transport as any).playing = true;
     await new Promise((r) => setTimeout(r, 300));
-    const changedDoc = { ...(services.store as { doc: unknown }).doc, edited: true };
+    const changedDoc = { ...(services.store as unknown as { doc: Record<string, unknown> }).doc, edited: true };
     Object.defineProperty(services.store, "doc", { get: () => changedDoc, configurable: true });
     if (state.subCb) state.subCb(); // 1→2 (display 3/5)
     await act(async () => {});

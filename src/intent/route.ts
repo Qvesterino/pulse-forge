@@ -1,5 +1,6 @@
 import type { ProjectDocument, SceneRole } from "../project-model/types";
 import {
+  deaccent,
   parseArrangeIntent,
   parseClipArrangeIntent,
   parseSelectedClipArrangeIntent,
@@ -375,6 +376,23 @@ export function routeIntentText(
   if (context.selectedClipId) {
     const ops = parseSelectedClipArrangeIntent(text, doc, context.selectedClipId);
     if (ops) return { kind: "selectedClipArrange", clipId: context.selectedClipId, ops };
+    const normalized = deaccent(text);
+    if (
+      /\b(?:selected|this|the|tomto|vybranom|vybrany|vybrana|vybrate)\s+(?:arrangement\s+)?(?:clip|klip\w*)\b/.test(
+        normalized,
+      ) &&
+      /\b(?:swing\w*|groov\w*|humaniz\w*)\b/.test(normalized)
+    ) {
+      return {
+        kind: "clarify",
+        reason: "That selected-clip groove request is ambiguous or combines unsupported actions; nothing was changed.",
+        suggestions: [
+          "more swing on this selected clip",
+          "less swing on this selected clip",
+          "set swing to 60% on this selected clip",
+        ],
+      };
+    }
   }
   if (context.selectedRange) {
     const operation = parseSelectedTimeRangeIntent(text);

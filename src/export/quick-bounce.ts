@@ -2,6 +2,7 @@ import type { ProjectDocument } from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
 import { sanitizeFilename, downloadWav, encodeWavAsync, type WavBitDepth } from "../rendering/wav";
 import { downloadBlob } from "../export/download";
+import { analyzeMixHealthBuffer, buildMixCheckVerdict } from "../analysis/mixDoctor";
 
 /**
  * QUICK BOUNCE — the shared render + encode + download pipeline behind
@@ -54,14 +55,18 @@ export async function quickBounceDownload(
   }
 
   const buffer = await renderProject(doc, bank, { mode: "song", sampleRate });
+  // Per-render mix-doctor: every full-mix export carries the mix check in
+  // its read-back so an agent (or the human reading the panel) can react —
+  // the analysis is the same one the ExportPanel verdict line shows.
+  const mixCheck = buildMixCheckVerdict(analyzeMixHealthBuffer(buffer));
   if (options.format === "mp3") {
     const { encodeMp3 } = await import("../export/mp3");
     const blob = await encodeMp3(buffer, { kbps: 320 });
     downloadBlob(blob, `${baseName}-320.mp3`);
-    return `MP3 exported (${buffer.duration.toFixed(1)}s, 320 kbps, ${(blob.size / 1e6).toFixed(2)} MB)`;
+    return `MP3 exported (${buffer.duration.toFixed(1)}s, 320 kbps, ${(blob.size / 1e6).toFixed(2)} MB) — ${mixCheck}`;
   }
   const bitDepth: WavBitDepth = options.bitDepth ?? 16;
   const wavBytes = await encodeWavAsync(buffer, bitDepth, {});
   downloadWav(wavBytes, `${baseName}-${bitDepth}bit.wav`);
-  return `WAV exported (${buffer.duration.toFixed(1)}s, ${bitDepth}-bit @ ${sampleRate} Hz, ${(wavBytes.byteLength / 1e6).toFixed(2)} MB)`;
+  return `WAV exported (${buffer.duration.toFixed(1)}s, ${bitDepth}-bit @ ${sampleRate} Hz, ${(wavBytes.byteLength / 1e6).toFixed(2)} MB) — ${mixCheck}`;
 }
