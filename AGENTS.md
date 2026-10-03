@@ -180,6 +180,7 @@ The dev server must be on port 5199 with `--strictPort` (the playwright.config.t
 
 ## 7. Common gotchas (read before opening a PR)
 
+- **Multiple agent sessions share one working tree.** Commit early (untracked files get absorbed by concurrent commits without their dependencies), stage only files you authored, never `git stash pop` here, and run clean verifications in a `git worktree` at HEAD. Full protocol with incident history: `docs/MULTI-AGENT-GUARDRAILS.md`.
 - **`useContext(ctx)` is the only path that creates `AudioNode`s.** Creating nodes directly via `ctx.createGain()` etc. without going through `AudioEngine.useContext()` will leave them attached to the wrong context (silent in live, broken in offline). See `ARCHITECTURE.md` §Engine.
 - **`?server=` overrides must pass `isAllowedServerUrl`.** Bypassing that helper is a security regression — a crafted link pointing at `wss://evil` would silently relay the victim's whole project through an attacker host.
 - **`URL.createObjectURL` requires `URL.revokeObjectURL`** — but only after the browser has fired the click. The codebase uses a 5-second timeout as a safety net; do not shorten it without a reason.
