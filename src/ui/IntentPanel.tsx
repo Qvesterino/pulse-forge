@@ -6,18 +6,14 @@ import { generateAsyncResult, resultForCandidate } from "../intent/pipeline";
 import { parseChaseIntent } from "../intent/chaseIntent";
 import { parsePluginFinderIntent } from "../intent/pluginFinderIntent";
 import { parseToneIntent } from "../intent/toneIntent";
-import { getDesktopMcpApi, type McpDesktopStatus } from "../mcp/desktop-host";
 import { mcpAllowDestructive, setMcpAllowDestructive } from "../mcp/flags";
-import {
-  mcpHttpEndpoint,
-  mcpRelayEnabled,
-  mcpRelayServerUrl,
-  mcpWebBridgeConnected,
-  setMcpRelayEnabled,
-  setMcpRelayToken,
-  startMcpWebBridge,
-  stopMcpWebBridge,
-} from "../mcp/web-host";
+import { mcpRelayEnabled, mcpRelayServerUrl, setMcpRelayEnabled, setMcpRelayToken } from "../mcp/relayConfig";
+import type { McpDesktopStatus } from "../mcp/desktop-host";
+import type { DesktopMcpApi } from "../mcp/desktop-host";
+// Lazy MCP bridge: the whole web-host module (and the 31-tool surface it
+// carries) loads on first toggle — an opt-in feature has no business in the
+// studio boot graph. The config helper, connected-poll and start/stop all
+// read the module through the same lazy accessor below.
 import { getSharedPcmPlayback } from "../audio-engine/pcmPlayback";
 import { formatSmpTe } from "../midi/smpte";
 import { parseProductionIntent, productionReadback, resolveProductionTargets } from "../intent/production";
@@ -458,7 +454,20 @@ export function IntentPanel() {
   // main and reveals the client config (Claude Desktop & co. point their MCP
   // config at it); forwarded calls execute through startMcpDesktopHost —
   // the same deterministic command layer as every intent in this panel.
-  const desktopMcp = useMemo(() => getDesktopMcpApi(), []);
+  // Lazy desktop accessor: `getDesktopMcpApi` lives in the desktop-host
+  // module (which carries the whole MCP surface) — resolve it after load so
+  // the opt-in bridge stays out of the boot graph. Null until then (and on
+  // web forever), which is the chip's hidden state anyway.
+  const [desktopMcp, setDesktopMcp] = useState<DesktopMcpApi | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void import("../mcp/desktop-host").then((m) => {
+      if (!cancelled) setDesktopMcp(m.getDesktopMcpApi());
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [mcpStatus, setMcpStatus] = useState<McpDesktopStatus | null>(null);
   const [mcpDestructive, setMcpDestructive] = useState(() => mcpAllowDestructive());
   const mcpConfigText = useMemo(
@@ -494,26 +503,43 @@ export function IntentPanel() {
   const [webMcpConnected, setWebMcpConnected] = useState(false);
   const [webTokenDraft, setWebTokenDraft] = useState("");
   const webMcpServer = useMemo(() => mcpRelayServerUrl(), []);
-  const webMcpConfigText = useMemo(
-    () =>
-      JSON.stringify({ url: mcpHttpEndpoint(webMcpServer), headers: { authorization: "Bearer <MCP_TOKEN>" } }, null, 2),
-    [webMcpServer],
-  );
+  const [webMcpConfigText, setWebMcpConfigText] = useState("");
+  // One shared lazy accessor — every bridge touch goes through here, so the
+  // module (and its 31-tool surface) stays out of the eager chunk.
+  const webHost = useMemo(() => import("../mcp/web-host"), []);
+  useEffect(() => {
+    let cancelled = false;
+    void webHost.then((m) => {
+      if (!cancelled) setWebMcpConfigText(m.mcpConfigText(webMcpServer));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [webHost, webMcpServer]);
   useEffect(() => {
     if (!webMcpEnabled) return;
-    const poll = setInterval(() => setWebMcpConnected(mcpWebBridgeConnected()), 1500);
-    return () => clearInterval(poll);
-  }, [webMcpEnabled]);
-  const toggleWebMcp = () => {
+    let stopped = false;
+    const poll = setInterval(() => {
+      void webHost.then((m) => {
+        if (!stopped) setWebMcpConnected(m.mcpWebBridgeConnected());
+      });
+    }, 1500);
+    return () => {
+      stopped = true;
+      clearInterval(poll);
+    };
+  }, [webMcpEnabled, webHost]);
+  const toggleWebMcp = async () => {
+    const m = await webHost;
     if (webMcpEnabled) {
       setMcpRelayEnabled(false);
-      stopMcpWebBridge();
+      m.stopMcpWebBridge();
       setWebMcpEnabled(false);
       setWebMcpConnected(false);
       return;
     }
     if (webTokenDraft.trim() !== "") setMcpRelayToken(webTokenDraft);
-    const started = startMcpWebBridge(services);
+    const started = m.startMcpWebBridge(services);
     if (!started) return; // no token yet — the config row asks for it
     setMcpRelayEnabled(true);
     setWebMcpEnabled(true);
@@ -524,7 +550,7 @@ export function IntentPanel() {
     setMcpRelayToken(webTokenDraft);
     setWebTokenDraft("");
     if (webMcpEnabled) {
-      startMcpWebBridge(services); // restart with the new token
+      void webHost.then((m) => m.startMcpWebBridge(services)); // restart with the new token
     }
   };
 

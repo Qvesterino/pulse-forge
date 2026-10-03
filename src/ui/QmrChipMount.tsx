@@ -1,8 +1,6 @@
-import { Component, lazy, Suspense, useEffect, type ComponentType, type ReactNode } from "react";
+import { Component, lazy, Suspense, useEffect, useState, type ComponentType, type ReactNode } from "react";
 import { listenForCommands } from "@qvester/qmr-hud/command-bus.ts";
-import { executeMcpToolAsync, type McpToolContext } from "../mcp/tools";
-import { mcpToolContextFromServices } from "../mcp/desktop-host";
-import { withAgentAttribution } from "../mcp/attribution";
+import type { McpToolContext } from "../mcp/tools";
 import { QMR_KYX_MANIFEST } from "../interop/qmrBridge";
 import type { Services } from "../services";
 
@@ -72,6 +70,9 @@ export function createQmrCommandHandler(ctx: McpToolContext): (command: {
   return async (command) => {
     const call = qmrCommandToToolCall(command.type);
     if (call == null) return { ok: false, unsupported: true };
+    // The MCP surface loads on first QMR command — the chip renders eager,
+    // the 31-tool execution layer does not (bundle-boot diet).
+    const { executeMcpToolAsync } = await import("../mcp/tools");
     try {
       const result = await executeMcpToolAsync(ctx, call.tool, { ...(call.args ?? {}), ...command });
       return { ok: result.isError !== true, message: result.text.slice(0, 240) };
@@ -83,8 +84,18 @@ export function createQmrCommandHandler(ctx: McpToolContext): (command: {
 
 export function QmrChipMount({ services }: { services: Services }): ReactNode {
   // QMR-driven mutations are attributed so the shared undo history stays legible
-  const ctx = withAgentAttribution(mcpToolContextFromServices(services), "qmr");
+  const [ctx, setCtx] = useState<McpToolContext | null>(null);
   useEffect(() => {
+    let cancelled = false;
+    void Promise.all([import("../mcp/desktop-host"), import("../mcp/attribution")]).then(([host, attribution]) => {
+      if (!cancelled) setCtx(attribution.withAgentAttribution(host.mcpToolContextFromServices(services), "qmr"));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [services]);
+  useEffect(() => {
+    if (!ctx) return;
     // Host side of the QMR command bus: the panel dispatches, we execute
     // through the MCP layer and ack with the outcome.
     return listenForCommands("pulse_forge", createQmrCommandHandler(ctx));

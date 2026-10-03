@@ -1,12 +1,9 @@
 import { useEffect, useState } from "react";
 import { useServices } from "./context";
-import {
-  collectPerformanceReport,
-  measureRenderTime,
-  measureSongRender,
-  type PerformanceReport,
-} from "../benchmark/performance";
-import { evaluateReport } from "../benchmark/index";
+// Lazy benchmark stack: Diagnostics is the only consumer and every call site
+// is user-triggered — the eager import parked the whole measurement harness
+// in the studio boot graph for a panel most sessions never open.
+import type { PerformanceReport } from "../benchmark/performance";
 
 type DiagTab = "engine" | "memory" | "performance";
 
@@ -26,7 +23,11 @@ export function Diagnostics() {
     return () => clearInterval(timer);
   }, [services]);
 
-  const refreshPerf = () => {
+  const refreshPerf = async () => {
+    const [{ collectPerformanceReport }, { evaluateReport }] = await Promise.all([
+      import("../benchmark/performance"),
+      import("../benchmark/index"),
+    ]);
     const report = collectPerformanceReport(services.engine, services.scheduler, 0, services.bank.size);
     if (perfReport) report.startupMs = perfReport.startupMs;
     setPerfReport(report);
@@ -44,6 +45,7 @@ export function Diagnostics() {
   const measureRender = async (mode: "pattern" | "song") => {
     setRenderStatus("Measuring render...");
     try {
+      const { measureRenderTime, measureSongRender } = await import("../benchmark/performance");
       const doc = services.store.doc;
       if (mode === "pattern") {
         const r = await measureRenderTime(doc, services.bank);

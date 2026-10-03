@@ -5,8 +5,6 @@ import { formatSmpTe } from "../midi/smpte";
 import { getSharedPcmPlayback, PcmPlaybackUnavailableError, type PcmPlaybackState } from "../audio-engine/pcmPlayback";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
 import { startQvesterProfileBus } from "../interop/qvesterProfileBus";
-import { startMcpDesktopHost } from "../mcp/desktop-host";
-import { startMcpWebBridgeIfEnabled } from "../mcp/web-host";
 import { startQmrBridge } from "../interop/qmrBridge";
 import { QmrChipMount } from "../ui/QmrChipMount";
 import { SelectionStore } from "../store/SelectionStore";
@@ -332,10 +330,16 @@ export function App({
   useEffect(() => startQvesterProfileBus(services).stop, [services]);
   // Desktop MCP (Phase D2): relay main-forwarded tool calls into the
   // deterministic command layer. Browser is a noop (web relay instead).
-  useEffect(() => startMcpDesktopHost(services), [services]);
+  // Desktop MCP + web relay load lazily: the MCP surface (31 tools) is an
+  // opt-in feature and must not sit in the studio boot graph.
+  useEffect(() => {
+    void import("../mcp/desktop-host").then((m) => m.startMcpDesktopHost(services));
+  }, [services]);
   // Web MCP (Phase D3): re-arm the persisted /mcp-relay bridge after a
   // project/services swap. Inert unless the user opted in with a token.
-  useEffect(() => startMcpWebBridgeIfEnabled(services), [services]);
+  useEffect(() => {
+    void import("../mcp/web-host").then((m) => m.startMcpWebBridgeIfEnabled(services));
+  }, [services]);
   // QMR bridge (Qvester ecosystem): expose the KYX capability manifest +
   // the kyx.* command contract on window.qvesterQmr so the QMR
   // intelligence layer (or the console) can drive the validated tool

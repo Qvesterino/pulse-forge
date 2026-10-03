@@ -1,10 +1,14 @@
 import { McpBridge, type McpBridgeDeps } from "./bridge";
 import { isMicRecordingActive } from "../audio-engine/PcmMicRecorder";
-import { collabParamsFromSearch, defaultServerUrl } from "../collab/collabShared";
 import { quickBounceDownload } from "../export/quick-bounce";
 import { mcpRenderSummary } from "../mcp/render-summary";
 import { mcpMeterSnapshotFromServices } from "./meters";
 import { mcpApplyLoudness, mcpMeasureLoudness } from "./loudness";
+// Relay CONFIG lives in the tiny eager module (the IntentPanel reads the
+// enabled flag while mounting); the heavy bridge module re-exports it and
+// imports it for local use.
+import { mcpRelayEnabled, mcpRelayToken, mcpRelayServerUrl } from "./relayConfig";
+export { mcpRelayEnabled, setMcpRelayEnabled, mcpRelayToken, setMcpRelayToken, mcpRelayServerUrl } from "./relayConfig";
 import type { Services } from "../services";
 
 /**
@@ -21,42 +25,6 @@ import type { Services } from "../services";
  * the operator's MCP_TOKEN.
  */
 
-const ENABLED_KEY = "pf:mcp-relay-enabled";
-const TOKEN_KEY = "pf:mcp-relay-token";
-
-function readFlag(key: string): string {
-  try {
-    return localStorage.getItem(key) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function writeFlag(key: string, value: string | null): void {
-  try {
-    if (value == null) localStorage.removeItem(key);
-    else localStorage.setItem(key, value);
-  } catch {
-    /* private mode — the flag stays session-scoped off */
-  }
-}
-
-export function mcpRelayEnabled(): boolean {
-  return readFlag(ENABLED_KEY) === "1";
-}
-
-export function setMcpRelayEnabled(on: boolean): void {
-  writeFlag(ENABLED_KEY, on ? "1" : null);
-}
-
-export function mcpRelayToken(): string {
-  return readFlag(TOKEN_KEY);
-}
-
-export function setMcpRelayToken(token: string): void {
-  writeFlag(TOKEN_KEY, token.trim() === "" ? null : token.trim());
-}
-
 /** Append the relay path — pure so tests can pin the encoding. */
 export function buildRelayUrl(serverUrl: string, token: string): string {
   const base = serverUrl.endsWith("/") ? serverUrl.slice(0, -1) : serverUrl;
@@ -70,10 +38,10 @@ export function mcpHttpEndpoint(serverUrl: string): string {
   return base.replace(/^ws:/, "http:").replace(/^wss:/, "https:") + "/mcp";
 }
 
-/** The MCP relay rides the ACTIVE collab server: the ?server= override when
- * present (already allow-listed by collabParamsFromSearch), else the default. */
-export function mcpRelayServerUrl(search: string = typeof location !== "undefined" ? location.search : ""): string {
-  return collabParamsFromSearch(search)?.serverUrl ?? defaultServerUrl();
+/** The paste-ready MCP client config for a relay URL (IntentPanel config
+ * row) — lives here so the lazy consumer needs no second module. */
+export function mcpConfigText(serverUrl: string): string {
+  return JSON.stringify({ url: mcpHttpEndpoint(serverUrl), headers: { authorization: "Bearer <MCP_TOKEN>" } }, null, 2);
 }
 
 let activeBridge: McpBridge | null = null;

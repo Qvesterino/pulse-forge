@@ -1,7 +1,5 @@
-import { executeMcpToolAsync, type McpToolContext } from "../mcp/tools";
-import { mcpToolContextFromServices } from "../mcp/desktop-host";
-import { withAgentAttribution } from "../mcp/attribution";
 import type { Services } from "../services";
+import type { McpToolContext } from "../mcp/tools";
 
 /**
  * QMR BRIDGE — KYX as a QMR organ (Qvester Studio's ecosystem command
@@ -129,7 +127,16 @@ export interface QmrRuntimeContract {
 }
 
 export function startQmrBridge(services: Services): () => void {
-  const ctx: McpToolContext = withAgentAttribution(mcpToolContextFromServices(services), "qmr");
+  // The MCP execution layer (31-tool surface) resolves lazily on the first
+  // command — the bridge registration itself is boot-cheap. Cached per
+  // arming; a services swap re-arms the bridge and rebuilds the context.
+  let ctxPromise: Promise<McpToolContext> | null = null;
+  const resolveCtx = (): Promise<McpToolContext> => {
+    ctxPromise ??= Promise.all([import("../mcp/desktop-host"), import("../mcp/attribution")]).then(
+      ([host, attribution]) => attribution.withAgentAttribution(host.mcpToolContextFromServices(services), "qmr"),
+    );
+    return ctxPromise;
+  };
   const runtime: QmrRuntimeContract = {
     appId: QMR_APP_ID,
     version: QMR_BRIDGE_VERSION,
@@ -143,7 +150,8 @@ export function startQmrBridge(services: Services): () => void {
           isError: true,
         };
       }
-      return executeMcpToolAsync(ctx, tool, args);
+      const { executeMcpToolAsync } = await import("../mcp/tools");
+      return executeMcpToolAsync(await resolveCtx(), tool, args);
     },
     async requestHandoff() {
       // The handoff sender drags the render/stems/wav cluster — load it
@@ -158,6 +166,7 @@ export function startQmrBridge(services: Services): () => void {
             "KYX is not mounted in the Qvester shell (standalone deployment) — the handoff medium is same-origin only",
         };
       }
+      const ctx = await resolveCtx();
       const result = await prepareBeatHandoff(ctx.getDoc(), services.bank, {
         mode: "song",
         sampleRate: 44100,
