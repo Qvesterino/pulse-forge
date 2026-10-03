@@ -14,6 +14,7 @@
  * Run: npm run sound:earpass
  */
 import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
+import { execSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { decodeWav } from "../.sound-audit/lib.mjs";
@@ -31,7 +32,24 @@ const BARS = 2;
 const TAIL = 1.2 * SR;
 
 const sampleCache = new Map();
+const LEGACY_COMMIT = "378ab368"; // last pre-campaign mastering state (old bank)
+const legacyCache = new Map();
 function sample(id) {
+  if (id.startsWith("legacy.")) {
+    const bankId = `factory.${id.slice("legacy.".length)}`;
+    if (!legacyCache.has(bankId)) {
+      // Extract the PRE-CAMPAIGN artifact straight from git history — the
+      // shipped bank has long been overwritten by the mastering re-render.
+      const wav = decodeWav(
+        execSync(`git show ${LEGACY_COMMIT}:public/samples/${bankId}.wav`, {
+          cwd: path.join(here, ".."),
+          maxBuffer: 32 * 1024 * 1024,
+        }),
+      );
+      legacyCache.set(bankId, wav.channels[0]);
+    }
+    return legacyCache.get(bankId);
+  }
   if (!sampleCache.has(id)) {
     const wav = decodeWav(readFileSync(path.join(samplesDir, `factory.${id}.wav`)));
     sampleCache.set(id, wav.channels[0]); // mono voice
@@ -117,14 +135,8 @@ const LANES = [
     fileA: "pairs/snare-main.wav",
     fileB: "pairs/snare-room.wav",
     label: "NEW snare.room — the only bank snare with a room tail (A = dry snare.main)",
-    render: () => [
-      ...bed.map((e) => [...e]),
-      ...BACKBEATS.map((s) => ["snare.main", s, 0.8]),
-    ],
-    renderB: () => [
-      ...bed.map((e) => [...e]),
-      ...BACKBEATS.map((s) => ["snare.room", s, 0.8]),
-    ],
+    render: () => [...bed.map((e) => [...e]), ...BACKBEATS.map((s) => ["snare.main", s, 0.8])],
+    renderB: () => [...bed.map((e) => [...e]), ...BACKBEATS.map((s) => ["snare.room", s, 0.8])],
   },
   {
     lane: "hat-wash-vs-open",
@@ -173,6 +185,43 @@ const LANES = [
     label: "NEW fx.vinyl — dust texture as a bed (A = clean beat, B = same + vinyl @0.5)",
     render: () => bed.map((e) => [...e]),
     renderB: () => [...bed.map((e) => [...e]), ["fx.vinyl", 0, 0.5]],
+  },
+  // ── LEGACY PAIRS (mastering wave): the OLD bank extracted from git
+  // (commit 378ab368 — before the mastering convergence re-render). A =
+  // pre-fix artifact, B = shipped. The exact rows the audit measured:
+  // 808pure at −2.4 LUFS pinned on the limiter, off-semitone tuning rests.
+  {
+    lane: "legacy-kick-808pure",
+    fileA: "pairs/legacy-kick-808pure.wav",
+    fileB: "pairs/legacy-kick-808pure-new.wav",
+    label:
+      "MASTERING kick.808pure — OLD shipped at −2.4 LUFS (limiter-pinned) vs NEW on the −8 target. Which is cleaner?",
+    render: () => [["legacy.kick.808pure", 0, 1]],
+    renderB: () => [["kick.808pure", 0, 1]],
+  },
+  {
+    lane: "legacy-kick-trap",
+    fileA: "pairs/legacy-kick-trap.wav",
+    fileB: "pairs/legacy-kick-trap-new.wav",
+    label:
+      "MASTERING + TUNING kick.trap — OLD pre-campaign (off-semitone rest, hot) vs NEW (G1 rest, on-target). Same groove both sides.",
+    render: () => [
+      ["legacy.kick.trap", 0, 1],
+      ["legacy.kick.trap", 16, 0.95],
+    ],
+    renderB: () => [
+      ["kick.trap", 0, 1],
+      ["kick.trap", 16, 0.95],
+    ],
+  },
+  {
+    lane: "legacy-kick-808drive",
+    fileA: "pairs/legacy-kick-808drive.wav",
+    fileB: "pairs/legacy-kick-808drive-new.wav",
+    label:
+      "MASTERING kick.808drive — OLD hot ride vs NEW clean D1 rest. The flagship before/after of the mastering convergence.",
+    render: () => [["legacy.kick.808drive", 0, 1]],
+    renderB: () => [["kick.808drive", 0, 1]],
   },
 ];
 

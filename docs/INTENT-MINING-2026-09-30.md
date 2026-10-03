@@ -480,3 +480,26 @@ Handoff for the SFT lane: v32 artifacts preserved (.sft/work-v32/, ollama
 kyx-intent-v32); the eval dump-fails list is the curriculum; the loudness/preset
 families need either a convention change (skill/tool output instead of JSON mimicry)
 or a bigger base.
+
+## Wave 8c: EAR-PASS harness extended — the listening verdict is yours
+
+`npm run sound:earpass` now builds **10 ABX lanes** (was 7): the three mastering
+before/after pairs joined — the PRE-campaign bank extracted straight from git history
+(commit 378ab368, the last pre-convergence state: 808pure at −2.4 LUFS pinned on the
+limiter, off-semitone tuning rests) level-matched by `listening:abx` against the shipped
+artifacts.
+
+**The listening session (owner, ~15 min):**
+
+```
+npm run sound:earpass      # rebuild pairs (done)
+npm run listening:serve    # → http://127.0.0.1:5179/abx/index.html
+```
+
+Forced-choice ABX per lane (X is always A or B; keyboard-driven). Your trials append to
+`listening/abx/trials.jsonl` — that file IS the verdict (aggregated by
+`src/listening/abx-stats.ts` via `npm run listening:ingest`).
+
+Priority lanes for the ear: `legacy-*` (did the mastering convergence actually improve
+808s?), `snare-room-vs-main` (does the room snare sit?), `fx-vinyl-bed` (does the dust
+help or annoy?), `hat-wash-vs-open`.
