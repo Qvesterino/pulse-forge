@@ -87,7 +87,7 @@ import { snapshot } from "./core";
 import { setMasterConfig } from "./master";
 // docOps is plumbing shared by several domains and is NOT re-exported wholesale; only the one
 // name that was already public goes back out, so the barrel's surface is unchanged.
-import { trackEffectsOf, withTrackEffects } from "./docOps";
+import { cloneStepMeta, markerClampPatch, trackEffectsOf, withTrackEffects } from "./docOps";
 export { __resetSnapshotVerificationFallbacks, __snapshotVerificationFallbacks, snapshot } from "./core";
 export { trackEffectsOf } from "./docOps";
 
@@ -515,18 +515,6 @@ export function duplicatePatternForScene(doc: ProjectDocument, sceneId: string):
     activePatternId: copy.id,
   };
   return snapshot("duplicatePatternForScene", `Make ${scene.name} independent`, doc, next);
-}
-
-function cloneStepMeta(meta: Pattern["stepMeta"]): Pattern["stepMeta"] {
-  if (!meta) return undefined;
-  return Object.fromEntries(
-    Object.entries(meta).map(([padId, steps]) => [
-      padId,
-      Object.fromEntries(
-        Object.entries(steps).map(([step, m]) => [step, { ...m, ...(m.locks ? { locks: { ...m.locks } } : {}) }]),
-      ),
-    ]),
-  );
 }
 
 export function deletePattern(doc: ProjectDocument, patternId: string): Command {
@@ -1845,33 +1833,6 @@ export function setScenePattern(doc: ProjectDocument, sceneId: string, patternId
     execute: (d) => apply(d, patternId),
     undo: (d) => apply(d, prev),
   };
-}
-
-/**
- * Audit 08 D3: mirror normalize's marker clamp so an arrangement shrink
- * records marker moves INSIDE the command delta — otherwise undo of the
- * shrink restored the clips but the markers stayed clamped to the shrunken
- * end. Returns a `{ markers }` patch only when something actually moved.
- */
-function markerClampPatch(
-  markers: Marker[],
-  scenes: ProjectDocument["scenes"],
-  patterns: ProjectDocument["patterns"],
-  arrangement: ProjectDocument["arrangement"],
-): Partial<ProjectDocument> {
-  if (markers.length === 0) return {};
-  const totalProjectTicks = Math.max(
-    0,
-    ...scenes.map((sc) => (patterns.find((p) => p.id === sc.patternId)?.stepCount ?? 0) * STEP_TICKS),
-    ...(arrangement.clips?.map((c) => (c.startBar + c.lengthBars) * BAR_TICKS) ?? []),
-  );
-  let changed = false;
-  const clamped = markers.map((m) => {
-    if (m.tick <= totalProjectTicks) return m;
-    changed = true;
-    return { ...m, tick: totalProjectTicks };
-  });
-  return changed ? { markers: clamped } : {};
 }
 
 export function deleteScene(doc: ProjectDocument, sceneId: string): Command {

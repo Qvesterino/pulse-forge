@@ -1,4 +1,5 @@
-import type { EffectInstance, ProjectDocument } from "../project-model/types";
+import type { EffectInstance, Marker, Pattern, ProjectDocument } from "../project-model/types";
+import { BAR_TICKS, STEP_TICKS } from "../project-model/types";
 
 /**
  * Document-shape helpers shared by more than one command domain.
@@ -29,4 +30,51 @@ export function withTrackEffects(
 export function trackEffectsOf(doc: ProjectDocument, trackId: string): EffectInstance[] {
   const track = doc.tracks.find((t) => t.id === trackId);
   return track && "effects" in track ? track.effects : [];
+}
+
+/**
+ * Deep-copy a pattern's per-step metadata.
+ *
+ * A StepMeta entry is a two-level record (pad -> step -> meta), so a shallow
+ * `{ ...meta }` would leave lanes sharing nested lock objects with the pattern
+ * they were cloned from. Shared locks would then be mutated by two commands at
+ * once and undo would only half-restore.
+ */
+export function cloneStepMeta(meta: Pattern["stepMeta"]): Pattern["stepMeta"] {
+  if (!meta) return undefined;
+  return Object.fromEntries(
+    Object.entries(meta).map(([padId, steps]) => [
+      padId,
+      Object.fromEntries(
+        Object.entries(steps).map(([step, m]) => [step, { ...m, ...(m.locks ? { locks: { ...m.locks } } : {}) }]),
+      ),
+    ]),
+  );
+}
+
+/**
+ * Audit 08 D3: mirror normalize's marker clamp so an arrangement shrink
+ * records marker moves INSIDE the command delta - otherwise undo of the
+ * shrink restored the clips but the markers stayed clamped to the shrunken
+ * end. Returns a `{ markers }` patch only when something actually moved.
+ */
+export function markerClampPatch(
+  markers: Marker[],
+  scenes: ProjectDocument["scenes"],
+  patterns: ProjectDocument["patterns"],
+  arrangement: ProjectDocument["arrangement"],
+): Partial<ProjectDocument> {
+  if (markers.length === 0) return {};
+  const totalProjectTicks = Math.max(
+    0,
+    ...scenes.map((sc) => (patterns.find((p) => p.id === sc.patternId)?.stepCount ?? 0) * STEP_TICKS),
+    ...(arrangement.clips?.map((c) => (c.startBar + c.lengthBars) * BAR_TICKS) ?? []),
+  );
+  let changed = false;
+  const clamped = markers.map((m) => {
+    if (m.tick <= totalProjectTicks) return m;
+    changed = true;
+    return { ...m, tick: totalProjectTicks };
+  });
+  return changed ? { markers: clamped } : {};
 }
