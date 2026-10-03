@@ -48,6 +48,8 @@ describe("quick bounce (shared export pipeline)", () => {
     expect(downloadBlob).toHaveBeenCalledWith(expect.anything(), "My Beat-320.mp3");
     expect(report).toContain("MP3 exported");
     expect(report).toContain("320 kbps");
+    // per-render mix-doctor: the read-back carries the mix check verdict
+    expect(report).toContain("MIX CHECK");
   });
 
   it("wav: 16-bit encode, downloads <name>-master.wav, reports", async () => {
@@ -57,6 +59,7 @@ describe("quick bounce (shared export pipeline)", () => {
     expect(downloadWav).toHaveBeenCalledWith({ byteLength: 2_000_000 }, "My Beat-16bit.wav");
     expect(report).toContain("WAV exported");
     expect(report).toContain("16-bit");
+    expect(report).toContain("MIX CHECK");
   });
 
   it("render failures reject (the caller reports the honest error)", async () => {

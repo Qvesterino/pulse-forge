@@ -359,10 +359,7 @@ export function deriveMixAutoFix(report: MixHealthReport): MixAutoFix | null {
 export function buildMixCheckVerdict(report: MixHealthReport): string {
   const red = report.flags.filter((f) => f.severity === "red");
   const yellow = report.flags.filter((f) => f.severity === "yellow");
-  const head =
-    red.length === 0
-      ? "MIX CHECK PASS"
-      : `MIX CHECK — ${red.length} ISSUE${red.length > 1 ? "S" : ""} —`;
+  const head = red.length === 0 ? "MIX CHECK PASS" : `MIX CHECK — ${red.length} ISSUE${red.length > 1 ? "S" : ""} —`;
   const lufs = report.integratedLufs != null ? `${report.integratedLufs.toFixed(1)} LUFS` : "LUFS n/a";
   const stats = `${lufs} · low ${(report.lowEndShare * 100).toFixed(0)}% · crest ${report.crestDb.toFixed(1)} dB · peak −${report.headroomDb.toFixed(1)} dBFS`;
   const notes = [...red, ...yellow].map((f) => `${f.severity === "red" ? "⚠" : "○"} ${f.check}: ${f.detail}`);
