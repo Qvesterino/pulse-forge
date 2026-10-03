@@ -707,11 +707,15 @@ function rhodes(): Builder {
     body.connect(bodyG).connect(dest);
     body.start(t0);
     body.stop(t0 + 1.6);
+    // Stable tine (sound-library audit 2026-10): the original partial glided
+    // 3.98× → 3.02× (−32 %) across 250 ms, smearing the bell attack into an
+    // audible downward chirp at −36…−40 dB (barely a tine at all). A Rhodes
+    // tine rings AT a pitch — hold it at 4.02× so the attack reads as the
+    // characteristic bright ping over the warm body.
     const tine = ctx.createOscillator();
     tine.type = "sine";
-    tine.frequency.setValueAtTime(C4 * 3.98, t0);
-    tine.frequency.exponentialRampToValueAtTime(C4 * 3.02, t0 + 0.25);
-    const tineG = env(ctx, t0, 0.3, 0.3);
+    tine.frequency.value = C4 * 4.02;
+    const tineG = env(ctx, t0, 0.26, 0.3);
     tine.connect(tineG).connect(dest);
     tine.start(t0);
     tine.stop(t0 + 0.5);
@@ -1374,27 +1378,47 @@ function cowbellScream(): Builder {
 function cowbellDrill(): Builder {
   return (ctx, dest) => {
     const t0 = ctx.currentTime;
+    // Tight steel (sound-library audit 2026-10): the original ran the stock
+    // 545/810 pair under a mere 400 Hz HPF and measured 0.916 waveform-
+    // correlated with factory.perc.cowbell — a copy, not a second voice. The
+    // drill cowbell now lives an octave up (1090/1620 = the same classic
+    // ratio), with a short metallic ping that gives it a tight steel edge.
     const hpf = ctx.createBiquadFilter();
     hpf.type = "highpass";
-    hpf.frequency.value = 400;
+    hpf.frequency.value = 700;
     hpf.connect(dest);
-    for (const [freq, level] of [
-      [545, 0.5],
-      [810, 0.32],
-    ] as [number, number][]) {
+    for (const [freq, level, ping] of [
+      [1090, 0.5, 0],
+      [1620, 0.3, 0.22],
+    ] as [number, number, number][]) {
       const osc = ctx.createOscillator();
       osc.type = "square";
       osc.frequency.value = freq;
       const bp = ctx.createBiquadFilter();
       bp.type = "bandpass";
       bp.frequency.value = freq;
-      bp.Q.value = 2.4;
+      bp.Q.value = 2.6;
       osc
         .connect(bp)
-        .connect(env(ctx, t0, level, 0.16))
+        .connect(env(ctx, t0, level, 0.11))
         .connect(hpf);
       osc.start(t0);
-      osc.stop(t0 + 0.2);
+      osc.stop(t0 + 0.16);
+      if (ping > 0) {
+        const ring = ctx.createOscillator();
+        ring.type = "square";
+        ring.frequency.value = freq * 2.02;
+        const ringBp = ctx.createBiquadFilter();
+        ringBp.type = "bandpass";
+        ringBp.frequency.value = freq * 2.02;
+        ringBp.Q.value = 9;
+        ring
+          .connect(ringBp)
+          .connect(env(ctx, t0, ping, 0.05))
+          .connect(hpf);
+        ring.start(t0);
+        ring.stop(t0 + 0.08);
+      }
     }
   };
 }
@@ -2431,15 +2455,22 @@ export const BUILDERS: Record<string, Builder> = {
     clickLevel: 0.25,
     lpfHz: 6500,
   }),
+  // Celesta re-voice (sound-library audit 2026-10): it shipped with the exact
+  // music-box 1:3:6 partial table (only the decay differed) — the two files
+  // measured 0.999 waveform-correlated, one voice sold twice. A real celesta
+  // is the soft, pure bell: near-inharmonic bright partials (1 : 2.76 : 5.4)
+  // an octave up from the music box, with a gentler strike and no 3× sparkle.
   "factory.mallet.celesta": mallet({
     fundamental: 1046.5, // C6 — celesta reads an octave above the keyboard
     partials: [
       [1, 0.5],
-      [3, 0.2],
-      [6, 0.08],
+      [2.76, 0.16],
+      [5.4, 0.05],
     ],
     decay: 1.6,
     attack: 0.002,
+    clickLevel: 0.12,
+    lpfHz: 9000,
   }),
   "factory.tonal.wurli": wurli(),
   "factory.tonal.organ": organ(),
