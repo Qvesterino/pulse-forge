@@ -97,6 +97,9 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
 export function startMcpDesktopHost(services: Services): () => void {
   const api = getDesktopMcpApi();
   if (!api) return () => {};
+  // The preset bank rides the same lazy discipline — warm it so the intent
+  // route's sync preset parsers read a present bank when agents ask.
+  void import("../presets/factory-loader").then((m) => m.warmFactoryPresets());
   // every mutation executed for external stdio clients is attributed
   const ctx = withAgentAttribution(mcpToolContextFromServices(services), "desktop-stdio");
   return api.onCall((call) => {

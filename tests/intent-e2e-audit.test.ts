@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { routeIntentText } from "../src/intent/route";
+import { warmFactoryPresets } from "../src/presets/factory-loader";
 import { parseLoudnessIntent, recommendLoudnessTrim } from "../src/intent/loudness";
 import {
   applyBypassIntent,
@@ -91,6 +92,12 @@ function executeRouted(doc: ProjectDocument, text: string, store?: ProjectStore)
 }
 
 // ─── 1. FADER — named-track gain, one undo entry, explicit failures ─────────
+
+// The factory preset bank is a lazy chunk now — the sync preset parsers
+// read it only after the warm. One await covers every describe below.
+beforeAll(async () => {
+  await warmFactoryPresets();
+});
 
 describe("E2E fader: route → state → undo", () => {
   it("zníž basu lowers the 808 track and ONE undo restores it", () => {

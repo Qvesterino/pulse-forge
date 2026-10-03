@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, beforeAll } from "vitest";
 import {
   setIntentModelProvider,
   tryModelRoute,
@@ -21,6 +21,12 @@ import type { ProjectDocument } from "../src/project-model/types";
  * the standard executors consume. Safety paths (invalid output, unresolvable
  * refs, destructive ops through applier guards) are first-class cases.
  */
+
+// The factory preset bank is a lazy chunk — preset asks need the warm.
+beforeAll(async () => {
+  const { warmFactoryPresets } = await import("../src/presets/factory-loader");
+  await warmFactoryPresets();
+});
 
 function datasetDoc(): ProjectDocument {
   useDeterministicIds();

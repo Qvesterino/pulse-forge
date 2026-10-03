@@ -97,6 +97,9 @@ function depsFromServices(services: Services): McpBridgeDeps {
 export function startMcpWebBridge(services: Services): McpBridge | null {
   const token = mcpRelayToken();
   if (token === "") return null;
+  // The preset bank rides the same lazy discipline — warm it so the intent
+  // route's sync preset parsers read a present bank when agents ask.
+  void import("../presets/factory-loader").then((m) => m.warmFactoryPresets());
   stopMcpWebBridge();
   activeBridge = new McpBridge(depsFromServices(services), buildRelayUrl(mcpRelayServerUrl(), token));
   activeBridge.start();

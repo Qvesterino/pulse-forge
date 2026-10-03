@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useSelectionStore, useServices } from "./context";
 import { notifyOnboardingProgress } from "./OnboardingHint";
+import { warmFactoryPresets } from "../presets/factory-loader";
 import { parseIntentText, styleCandidatesForPrompt } from "../intent/text-parser";
 import { generateAsyncResult, resultForCandidate } from "../intent/pipeline";
 import { parseChaseIntent } from "../intent/chaseIntent";
@@ -412,6 +413,10 @@ export function IntentPanel() {
   // provider is already registered, so the artifact loader keeps priority.
   const [modelState, setModelState] = useState<IntentModelState>("off");
   useEffect(() => {
+    // Warm the factory preset bank (a lazy ~130 KB chunk): this panel is one
+    // of the few surfaces a preset ask can enter, and the sync preset
+    // parsers read the bank only after the warm resolves.
+    void warmFactoryPresets();
     let unsubscribe: (() => void) | null = null;
     let disposed = false;
     void import("../intent/model-loader").then((loader) => {

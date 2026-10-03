@@ -1,7 +1,7 @@
 import type { Command } from "../commands/types";
 import type { InstrumentTrack, ProjectDocument } from "../project-model/types";
 import { applyInstrumentPreset, resolveExactTargetTracks, snapshot } from "../commands/commands";
-import { FACTORY_PRESETS } from "../presets/factory";
+import { factoryPresets } from "../presets/factory-loader";
 import type { InstrumentPreset } from "../presets/types";
 import type { ExactTarget } from "./exact";
 
@@ -92,7 +92,7 @@ export function resolvePresetByName(
   targetFamily: PresetTargetFamily,
 ): ParsedPresetIntent {
   let best: { preset: InstrumentPreset; score: number; matchedBy: PresetIntent["matchedBy"] } | null = null;
-  for (const preset of FACTORY_PRESETS) {
+  for (const preset of factoryPresets()) {
     const name = deaccent(preset.name);
     let score = 0;
     let matchedBy: PresetIntent["matchedBy"] = "includes";
@@ -114,7 +114,8 @@ export function resolvePresetByName(
   if (best) {
     return { ok: true, intent: { preset: best.preset, target: targetFamily, matchedBy: best.matchedBy } };
   }
-  const suggestions = FACTORY_PRESETS.filter((p) => FAMILY_INSTRUMENTS[targetFamily].has(p.instrument))
+  const suggestions = factoryPresets()
+    .filter((p) => FAMILY_INSTRUMENTS[targetFamily].has(p.instrument))
     .slice(0, 3)
     .map((p) => p.name);
   return { ok: false, name: displayName, suggestions };
