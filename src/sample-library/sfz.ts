@@ -37,6 +37,10 @@ const num = (v: string | undefined, fallback: number): number => {
 export function parseSfz(text: string): SfzDocument {
   const bs = String.fromCharCode(92);
   let defaultPath = "";
+  // The value may contain spaces ("Cello Section") — capture to EOL.
+  for (const m of text.matchAll(/default_path\s*=\s*(.+?)\s*$/gm)) {
+    defaultPath = m[1].split(bs).join("/");
+  }
   const regions: SfzRegion[] = [];
   let ops: Record<string, string> = {};
   let current: "control" | "global" | "group" | "region" | null = null;

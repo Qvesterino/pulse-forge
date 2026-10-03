@@ -554,6 +554,100 @@ function tick(): Builder {
   };
 }
 
+/**
+ * PERCUSSION FLAVOR PACK (percussion pack wave) — four voices that fill the
+ * wooden/clicky gap between conga (low, long) and tick (high, shortest):
+ * woodblock = resonant WOOD cavity (two close modes), clave = the dry 3-2
+ * son click (higher, shorter, sharper), snapstack = finger snaps in a
+ * staggered roll (not palm claps — higher, thinner), shaker.long = the
+ * slow-groove seed shaker (soft attack, long tail).
+ */
+
+/** Woodblock: two close resonant modes (980/1540 Hz) over a fast strike —
+ * the wooden CAVITY rings, so it's tonal-ish, not a click. */
+function woodblock(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    for (const [hz, level, decay] of [
+      [980, 0.6, 0.07],
+      [1540, 0.42, 0.045],
+    ] as [number, number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = hz;
+      osc.connect(env(ctx, t0, level, decay)).connect(dest);
+      osc.start(t0);
+      osc.stop(t0 + decay + 0.05);
+    }
+    const strike = noiseSource(ctx, 191, 0.008, t0);
+    strike.connect(env(ctx, t0, 0.3, 0.006)).connect(dest);
+  };
+}
+
+/** Clave: the son clave — DRY, HIGH, SHARP. Two modes (2210/2960), decay
+ * under 40 ms, no resonance tail. The anti-woodblock: all attack, no cavity. */
+function clave(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    for (const [hz, level, decay] of [
+      [2210, 0.6, 0.032],
+      [2960, 0.4, 0.022],
+    ] as [number, number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = hz;
+      osc.connect(env(ctx, t0, level, decay)).connect(dest);
+      osc.start(t0);
+      osc.stop(t0 + decay + 0.03);
+    }
+    const click = noiseSource(ctx, 197, 0.006, t0);
+    click.connect(env(ctx, t0, 0.24, 0.005)).connect(dest);
+  };
+}
+
+/** Snap stack: three finger snaps in a staggered roll (+0/+45/+90 ms) —
+ * each snap is a high bandpassed click (~2800 Hz, <25 ms), quieter as the
+ * roll falls off. NOT palm claps (those are the clap family's broad band). */
+function snapstack(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    for (const [ms, level] of [
+      [0, 0.5],
+      [45, 0.4],
+      [90, 0.3],
+    ] as [number, number][]) {
+      const t = t0 + ms / 1000;
+      const snap = noiseSource(ctx, 211 + ms, 0.018, t);
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = 2800;
+      bp.Q.value = 1.6;
+      snap
+        .connect(bp)
+        .connect(env(ctx, t, level, 0.02))
+        .connect(dest);
+    }
+  };
+}
+
+/** Long shaker: the slow-groove seed shaker — soft 12 ms attack ramp (the
+ * seeds SWISH, not tick) and a 0.4 s tail for ballad/neo-soul 16ths. */
+function shakerLong(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const noise = noiseSource(ctx, 223, 0.45, t0);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 4600;
+    bp.Q.value = 0.8;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(0.5, t0 + 0.012); // soft swish attack
+    g.gain.exponentialRampToValueAtTime(0.0005, t0 + 0.42);
+    noise.connect(bp).connect(g).connect(dest);
+  };
+}
+
 const C4 = 261.63;
 
 function pluck(): Builder {
@@ -2194,14 +2288,34 @@ function mallet(opts: {
       // Strike transient: short band-passed noise at the mallet-contact
       // frequency (default 4× fundamental), dry (pre-motor) — reads as the
       // mallet contact.
+      //
+      // STRIKE FIX (library-quality audit 2026-10-04, bug #1). This path used to
+      // read as "inert": a strike at 0.34 and one at 1.1 rendered seeds measuring
+      // identical in every band, envelope point, peak and crest. It was never
+      // inert — a Q-1 band-pass passes only ~1/Q of a white-noise burst, so the
+      // raw clickLevel landed ~14 dB *below* the bar's own attack ramp and stayed
+      // there after normalization (probe, builder output before mastering: a 0.34
+      // strike measured -25.1 dBFS in its first millisecond against a -4.5 dBFS
+      // marimba bar — masked in all five voices, and celesta/kalimba shipped at
+      // 0.12/0.2). Two changes make clickLevel mean what it says — the strike's
+      // level at the mallet contact, on the same scale as the partial levels
+      // above:
+      //  - the white-noise band-pass gain sqrt(π·f0 / (2·Q·fs)) is compensated, so
+      //    one number holds at any contact frequency or Q;
+      //  - the burst decays in 1.2 ms instead of 4 ms — a mallet contact is a
+      //    click, and a burst shorter than the measurement window keeps its whole
+      //    level inside the first millisecond where the attack reads.
+      const hz = opts.clickHz ?? opts.fundamental * 4;
+      const q = opts.clickQ ?? 1;
+      const bpGain = Math.sqrt((Math.PI * hz) / (2 * q * ctx.sampleRate));
       const click = noiseSource(ctx, 8, 0.02, t0);
       const bp = ctx.createBiquadFilter();
       bp.type = "bandpass";
-      bp.frequency.value = opts.clickHz ?? opts.fundamental * 4;
-      bp.Q.value = opts.clickQ ?? 1;
+      bp.frequency.value = hz;
+      bp.Q.value = q;
       click
         .connect(bp)
-        .connect(env(ctx, t0, opts.clickLevel, 0.004))
+        .connect(env(ctx, t0, opts.clickLevel / Math.max(bpGain, 0.05), 0.0012))
         .connect(dest);
     }
   };
@@ -2791,6 +2905,11 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.tonal.erhu": erhu(),
   "factory.perc.conga": conga(),
   "factory.perc.tambourine": tambourine(),
+  // Percussion flavor pack (percussion pack wave)
+  "factory.perc.woodblock": woodblock(),
+  "factory.perc.clave": clave(),
+  "factory.perc.snapstack": snapstack(),
+  "factory.shaker.long": shakerLong(),
   "factory.fx.riser": fxRiser(),
   "factory.fx.downlifter": fxDownlifter(),
   "factory.fx.impact": fxImpact(),
@@ -2822,6 +2941,12 @@ export const BUILDERS: Record<string, Builder> = {
     ],
     decay: 2.6,
     attack: 0.005,
+    // Softest contact of the family (rubber mallets on metal) — tuned so the
+    // strike is the loudest millisecond of the voice without turning the vibes
+    // into a woodblock. See the strike-fix note in mallet().
+    clickLevel: 0.8,
+    clickHz: 2600,
+    clickQ: 0.9,
     tremoloHz: 5.2,
     tremoloDepth: 0.55,
   }),
@@ -2833,12 +2958,10 @@ export const BUILDERS: Record<string, Builder> = {
   // knock sits at a real wood-contact frequency with a broad (Q 0.8) band, and
   // the resonator's 2nd/3rd partials carry more of the bar — the tape stage
   // squares them into the 2–6 kHz region (+5.7 dB) that a 131 Hz bar cannot reach.
-  // clickLevel is deliberately left at its default: the strike-noise path in
-  // mallet() measured inert in the rendered seeds (0.34 → 1.1, +10 dB, changed no
-  // band, envelope point, file size, peak or crest — every mallet voice's first
-  // millisecond is quieter than its own body, unlike any noise-struck one-shot in
-  // the bank). Raising it is not what makes this voice audible — see the library
-  // audit entry in AGENT_WORK_LOG.md for the reproduce-it-yourself measurements.
+  // The strike itself is the strongest of the family (rosewood on a low rosewood
+  // bar) and is now actually rendered — the "inert strike" this voice was
+  // diagnosed with turned out to be 14 dB of band-pass loss on the strike path,
+  // fixed in mallet().
   "factory.mallet.marimba": mallet({
     fundamental: 131, // C3 — marimba lives an octave below the vibes
     partials: [
@@ -2848,6 +2971,7 @@ export const BUILDERS: Record<string, Builder> = {
     ],
     decay: 0.9,
     attack: 0.002,
+    clickLevel: 1.2,
     clickHz: 2400,
     clickQ: 0.8,
     lpfHz: 6500,
@@ -2866,7 +2990,10 @@ export const BUILDERS: Record<string, Builder> = {
     ],
     decay: 1.6,
     attack: 0.002,
-    clickLevel: 0.12,
+    // Felt hammer on a small steel bar: the gentlest contact of the family —
+    // a click you hear once, never a knock. (0.12 shipped ~20 dB under the
+    // bar's own attack ramp; see the strike-fix note in mallet().)
+    clickLevel: 0.7,
     lpfHz: 9000,
   }),
   "factory.tonal.wurli": wurli(),
@@ -2929,7 +3056,9 @@ export const BUILDERS: Record<string, Builder> = {
     ],
     decay: 0.7,
     attack: 0.002,
-    clickLevel: 0.2,
+    // Thumb on a metal tine: bright and immediate, softer than the marimba's
+    // rosewood knock.
+    clickLevel: 0.9,
     lpfHz: 7000,
   }),
   "factory.mallet.musicbox": mallet({
@@ -2941,6 +3070,9 @@ export const BUILDERS: Record<string, Builder> = {
     ],
     decay: 2.0,
     attack: 0.002,
+    // Plucked comb tooth: bright contact, level with the celesta's — the same
+    // register kept apart by timbre (inharmonic 1:3:6 comb vs pure bell).
+    clickLevel: 0.8,
   }),
 };
 
@@ -3004,6 +3136,10 @@ export const DURATIONS: Record<string, number> = {
   "factory.tonal.erhu": 1.9,
   "factory.perc.conga": 0.32,
   "factory.perc.tambourine": 0.3,
+  "factory.perc.woodblock": 0.3,
+  "factory.perc.clave": 0.3,
+  "factory.perc.snapstack": 0.3,
+  "factory.shaker.long": 0.6,
   "factory.fx.riser": 2.0,
   "factory.fx.downlifter": 2.0,
   "factory.fx.impact": 1.1,

@@ -487,6 +487,38 @@ export const FACTORY_ASSETS: FactoryAsset[] = [
     tags: ["perc", "tambourine"],
     mood: ["bright", "atmosphere"],
   },
+  {
+    id: "factory.perc.woodblock",
+    name: "Woodblock",
+    category: "Percussion",
+    character: "Resonant wooden cavity",
+    tags: ["perc", "woodblock", "wooden", "latin"],
+    mood: ["bright", "clean"],
+  },
+  {
+    id: "factory.perc.clave",
+    name: "Clave",
+    category: "Percussion",
+    character: "Dry 3-2 son click",
+    tags: ["perc", "clave", "latin", "sharp"],
+    mood: ["bright", "clean"],
+  },
+  {
+    id: "factory.perc.snapstack",
+    name: "Snap Stack",
+    category: "Percussion",
+    character: "Staggered finger snaps",
+    tags: ["perc", "snap", "fingers", "roll"],
+    mood: ["bright", "clean"],
+  },
+  {
+    id: "factory.shaker.long",
+    name: "Shaker Long",
+    category: "Percussion",
+    character: "Slow-groove seed swish",
+    tags: ["shaker", "long", "slow", "swish"],
+    mood: ["warm", "atmosphere"],
+  },
 
   /* ---------------- Bass (library-completion wave: the empty category) ---------------- */
   {

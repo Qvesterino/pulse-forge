@@ -61,6 +61,24 @@
       "fileB": "pairs/beat-vinyl.wav"
     },
     {
+      "lane": "woodblock-vs-clave",
+      "label": "PERC PACK — woodblock (resonant wooden cavity) vs clave (dry sharp son click). The two wooden voices, opposite ends.",
+      "fileA": "pairs/perc-woodblock.wav",
+      "fileB": "pairs/perc-clave.wav"
+    },
+    {
+      "lane": "snapstack-vs-clap",
+      "label": "PERC PACK — snap stack (finger snaps, thin + high) vs palm clap (broad + body). Different instruments, same backbeat slot.",
+      "fileA": "pairs/clap-main.wav",
+      "fileB": "pairs/perc-snapstack.wav"
+    },
+    {
+      "lane": "shaker-long-vs-soft",
+      "label": "PERC PACK — shaker.long: soft 12 ms swish attack + 0.4 s tail (A = shaker.soft tick). For slow 16ths.",
+      "fileA": "pairs/shaker-soft.wav",
+      "fileB": "pairs/shaker-long.wav"
+    },
+    {
       "lane": "legacy-kick-808pure",
       "label": "MASTERING kick.808pure — OLD shipped at −2.4 LUFS (limiter-pinned) vs NEW on the −8 target. Which is cleaner?",
       "fileA": "pairs/legacy-kick-808pure.wav",

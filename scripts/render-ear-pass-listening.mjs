@@ -215,6 +215,54 @@ const LANES = [
   // pre-fix artifact, B = shipped. The exact rows the audit measured:
   // 808pure at −2.4 LUFS pinned on the limiter, off-semitone tuning rests.
   {
+    lane: "woodblock-vs-clave",
+    fileA: "pairs/perc-woodblock.wav",
+    fileB: "pairs/perc-clave.wav",
+    label:
+      "PERC PACK — woodblock (resonant wooden cavity) vs clave (dry sharp son click). The two wooden voices, opposite ends.",
+    render: () => [
+      ["perc.woodblock", 0, 1],
+      ["perc.woodblock", 8, 0.9],
+    ],
+    renderB: () => [
+      ["perc.clave", 0, 1],
+      ["perc.clave", 8, 0.9],
+    ],
+  },
+  {
+    lane: "snapstack-vs-clap",
+    fileA: "pairs/clap-main.wav",
+    fileB: "pairs/perc-snapstack.wav",
+    label:
+      "PERC PACK — snap stack (finger snaps, thin + high) vs palm clap (broad + body). Different instruments, same backbeat slot.",
+    render: () => [
+      ["clap.main", 0, 1],
+      ["clap.main", 8, 0.9],
+    ],
+    renderB: () => [
+      ["perc.snapstack", 0, 1],
+      ["perc.snapstack", 8, 0.9],
+    ],
+  },
+  {
+    lane: "shaker-long-vs-soft",
+    fileA: "pairs/shaker-soft.wav",
+    fileB: "pairs/shaker-long.wav",
+    label: "PERC PACK — shaker.long: soft 12 ms swish attack + 0.4 s tail (A = shaker.soft tick). For slow 16ths.",
+    render: () => [
+      ["shaker.soft", 2, 0.7],
+      ["shaker.soft", 6, 0.5],
+      ["shaker.soft", 10, 0.7],
+      ["shaker.soft", 14, 0.5],
+    ],
+    renderB: () => [
+      ["shaker.long", 2, 0.7],
+      ["shaker.long", 6, 0.5],
+      ["shaker.long", 10, 0.7],
+      ["shaker.long", 14, 0.5],
+    ],
+  },
+  {
     lane: "legacy-kick-808pure",
     fileA: "pairs/legacy-kick-808pure.wav",
     fileB: "pairs/legacy-kick-808pure-new.wav",
@@ -242,7 +290,8 @@ const LANES = [
     lane: "kick-trio-dedup",
     fileA: "pairs/kick-punch.wav",
     fileB: "pairs/kick-jersey.wav",
-    label: "DE-DUP kick trio — punch (full G#1) vs pop (tight A1) vs jersey (high-bounce B1): three roles, not three clones. C = pop",
+    label:
+      "DE-DUP kick trio — punch (full G#1) vs pop (tight A1) vs jersey (high-bounce B1): three roles, not three clones. C = pop",
     render: () => [["kick.punch", 0, 1]],
     renderB: () => [["kick.pop", 0, 1]],
   },
