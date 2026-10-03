@@ -106,7 +106,15 @@ const ENTRY_BUDGET_KB = 1070;
 // gate is fine), the worklet-node wrapper, params and the five registration
 // surfaces. The sibling instrument wave shares this overage. One-line bump;
 // the App/commands anchor diet remains the outstanding debt.
-const TOTAL_BUDGET_KB = 3585;
+// 3585 (2026-10-03) held for hours — then the ANCHOR DIET ITSELF landed
+// (perf(bundle): the MCP surface + benchmark harness went on-demand):
+// measured 3594 KB clean at 5a7f9244, bumped to 3600. The eager boot
+// payload (App chunk) dropped 845.4 → 517.6 KB (−328 KB, −39 % — the
+// actual startup parse/eval a user waits on), while this SUM metric grew
+// +9 KB from the wrapper overhead of the new lazy chunk boundaries it
+// counts but cannot reward. First entry where the debt line above is PAID:
+// the diet happened, and the +15 KB total bought a −39 % boot chunk.
+const TOTAL_BUDGET_KB = 3600;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, and ONNX Runtime for the
 // symbolic/ranker workers. Keep these optional runtimes under one existing
