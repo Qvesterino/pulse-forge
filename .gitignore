@@ -45,10 +45,13 @@ tsconfig.tsbuildinfo*
 # Semantic embedding model (T1 krok 2) — one-time fetch via npm run semantic:fetch
 public/models/semantic/
 
-# Golden review pack (human listening) — local-only, not served
+# Golden review pack (human listening) — local-only, not served.
+# ROOT-ANCHORED on purpose: an unanchored `listening/` silently swallowed
+# src/listening/ (real source) and HEAD shipped a broken import — see
+# docs/MULTI-AGENT-GUARDRAILS.md §1.
 golden-review/
-listening/
-v1v3-listening/
+/listening/
+/v1v3-listening/
 
 # Local browser profiling artifacts. Browser profiles can contain cookies,
 # IndexedDB projects, local preferences and cache data; never commit them.
@@ -102,8 +105,9 @@ scripts/data/augmented-drum-dataset.json
 .preview*.err
 
 # Local listening-lab lanes (per-wave generated audio) — pattern-match the
-# family instead of listing each wave dir by hand
-lane-listening/
-*-listening/
+# family instead of listing each wave dir by hand. ROOT-ANCHORED (see the
+# golden-review note above — unanchored patterns swallow real source dirs).
+/lane-listening/
+/*-listening/
 .sft/
 out/
