@@ -20,16 +20,18 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { readCommandLines } from "./helpers/commandSources";
 
 const LAYER_FILE = resolve(process.cwd(), "src/commands/layerCommands.ts");
-const COMMANDS_FILE = resolve(process.cwd(), "src/commands/commands.ts");
 
 let layerLines: string[] = [];
 let commandsLines: string[] = [];
 
 beforeAll(() => {
   layerLines = readFileSync(LAYER_FILE, "utf8").split(/\r?\n/);
-  commandsLines = readFileSync(COMMANDS_FILE, "utf8").split(/\r?\n/);
+  // The command engine barrel plus its domain modules — `snapshot` now lives in
+  // ./core, so grepping commands.ts alone would report the helper as missing.
+  commandsLines = readCommandLines();
 });
 
 function findExportFn(lines: string[], name: string): number | null {

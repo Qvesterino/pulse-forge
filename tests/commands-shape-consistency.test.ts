@@ -1,5 +1,9 @@
 // Source-grep regression for Command shape consistency in src/commands/commands.ts.
 //
+// `commands.ts` is the barrel for the domain modules behind it, so the guard
+// reads the whole command engine (see helpers/commandSources) rather than the
+// single file.
+//
 // Three guards:
 //
 //   1. PINNED mutating factories must declare a `Command` return type.
@@ -14,15 +18,14 @@
 // subset keeps this regression deterministic — no time-based, no flaky patterns.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
-const COMMANDS_FILE = resolve(process.cwd(), "src/commands/commands.ts");
+import { readCommandLines } from "./helpers/commandSources";
 
 let lines: string[] = [];
 
 beforeAll(() => {
-  lines = readFileSync(COMMANDS_FILE, "utf8").split(/\r?\n/);
+  // The barrel plus every domain module it re-exports: a command's declaration
+  // is no longer necessarily inside commands.ts itself.
+  lines = readCommandLines();
 });
 
 /** 0-indexed line of `export function NAME(`, or null. */

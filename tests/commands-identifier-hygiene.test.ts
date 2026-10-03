@@ -24,8 +24,7 @@
  * regex over `^export function \w+`. Total runtime stays sub-50 ms.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readCommandExportNames } from "./helpers/commandSources";
 
 const CONVENTIONAL_PREFIXES = [
   "set",
@@ -45,8 +44,9 @@ const CONVENTIONAL_PREFIXES = [
 ] as const;
 
 function loadCommandExportNames(): string[] {
-  const src = readFileSync(resolve(process.cwd(), "src/commands/commands.ts"), "utf8");
-  return Array.from(src.matchAll(/^export\s+function\s+(\w+)/gm), (m) => m[1]);
+  // Barrel + domain modules: a split of the engine must not shrink the measured
+  // vocabulary, or the ratio guards would silently pass on fewer commands.
+  return readCommandExportNames();
 }
 
 describe("commands.ts identifier hygiene — conventional verb-prefix coverage", () => {
