@@ -58,13 +58,13 @@ describe("mcp core — protocol with an authenticated session", () => {
     return { hub, delivered };
   }
 
-  it("initialize returns capabilities + serverInfo; tools/list returns the 30 tools", async () => {
+  it("initialize returns capabilities + serverInfo; tools/list returns the 31 tools", async () => {
     const { hub } = makeHub();
     const init = await handleMcpRequest(hub, TOKEN, TOKEN, rpc("initialize", {}, 1));
     expect(init.result.protocolVersion).toBe("2025-03-26");
     expect(init.result.capabilities.tools).toBeDefined();
     const list = await handleMcpRequest(hub as any, TOKEN, TOKEN, rpc("tools/list", {}, 2));
-    expect((list.result as { tools: Array<{ name: string }> }).tools).toHaveLength(30);
+    expect((list.result as { tools: Array<{ name: string }> }).tools).toHaveLength(31);
     expect((list.result as { tools: Array<{ name: string }> }).tools.map((t) => t.name)).toEqual([
       "kyx_intent",
       "kyx_state",
@@ -90,6 +90,7 @@ describe("mcp core — protocol with an authenticated session", () => {
       "kyx_loudness",
       "kyx_publish_gallery",
       "kyx_render_summary",
+      "kyx_diagnose_mix",
       "kyx_checkpoint",
       "kyx_mix",
       "kyx_arrange",
@@ -148,7 +149,7 @@ describe("mcp core — protocol with an authenticated session", () => {
     expect(delivered).toHaveLength(1);
   });
 
-  it("tool definitions match the KYX surface (30 tools, known names)", () => {
+  it("tool definitions match the KYX surface (31 tools, known names)", () => {
     expect(MCP_TOOL_DEFS.map((tool: { name: string }) => tool.name)).toEqual([
       "kyx_intent",
       "kyx_state",
@@ -174,6 +175,7 @@ describe("mcp core — protocol with an authenticated session", () => {
       "kyx_loudness",
       "kyx_publish_gallery",
       "kyx_render_summary",
+      "kyx_diagnose_mix",
       "kyx_checkpoint",
       "kyx_mix",
       "kyx_arrange",

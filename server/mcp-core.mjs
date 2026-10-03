@@ -125,6 +125,7 @@ export const MCP_TOOL_DEFS = [
             "pattern",
             "scenes",
             "history",
+            "reference",
           ],
           description: "Which part of the project state to return",
         },
@@ -180,17 +181,23 @@ export const MCP_TOOL_DEFS = [
             "state",
           ],
         },
-        scene: { type: "string", description: 'launchScene — scene NAME or ROLE (e.g. "drop", "chorus")' },
+        bar: {
+          type: "integer",
+          minimum: 1,
+          description: "For seek — 1-based destination bar",
+        },
+        scene: {
+          type: "string",
+          description: 'launchScene — scene NAME or ROLE (e.g. "drop", "chorus")',
+        },
         index: {
           type: "integer",
           minimum: 1,
           description: "launchScene — 1-based index as kyx_state scenes lists them (alternative to scene)",
         },
-        play: { type: "boolean", description: "launchScene — start playback after the jump (default true)" },
-        bar: {
-          type: "integer",
-          minimum: 1,
-          description: "For seek — 1-based destination bar",
+        play: {
+          type: "boolean",
+          description: "launchScene — start playback after the jump (default true)",
         },
         beat: {
           type: "integer",
@@ -416,13 +423,21 @@ export const MCP_TOOL_DEFS = [
           maximum: 1,
           description: "op=intensity — target scene intensity 0..1",
         },
-        scene: { type: "string", description: "op=intensity — scene name or role (also: index)" },
+        scene: {
+          type: "string",
+          description: "op=intensity — scene name or role (also: index)",
+        },
         index: {
           type: "integer",
           minimum: 1,
           description: "op=intensity — 1-based scene index (alternative to scene)",
         },
-        value: { type: "number", minimum: 0, maximum: 1, description: "op=intensity — the target intensity 0..1" },
+        value: {
+          type: "number",
+          minimum: 0,
+          maximum: 1,
+          description: "op=intensity — the target intensity 0..1",
+        },
         role: {
           type: "string",
           enum: ["intro", "build", "chorus", "verse", "bridge", "drop", "break", "outro", "fill"],
@@ -486,7 +501,10 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           description: 'loadPreset — factory preset name, fuzzy-matched (e.g. "Warm Sub")',
         },
-        query: { type: "string", description: "listPresets — optional name/instrument filter" },
+        query: {
+          type: "string",
+          description: "listPresets — optional name/instrument filter",
+        },
         family: {
           type: "string",
           enum: ["drums", "bass", "lead", "chords", "kick", "snare", "clap", "hat", "perc", "tom"],
@@ -587,12 +605,7 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_notes",
     description:
-      "Melodic COMPOSITION on the active pattern (the melodic half kyx_steps " +
-      "does not cover): list/add/move/delete notes, set velocity, quantize to " +
-      "grid or key, transpose a family's whole line. Notes are addressed by " +
-      "INDEX into the list response — call {op:'list'} first, indices are " +
-      "positions in it. Every op is one undo step through the audited command " +
-      "layer (pitch/velocity clamps, pattern-bounds fit).",
+      "Melodic COMPOSITION on the active pattern (the melodic half kyx_steps does not cover): list/add/move/delete notes, set velocity, quantize to grid or key, transpose a family's whole line. Notes are addressed by INDEX into the list response — call {op:'list'} first, indices are positions in it. Every op is one undo step through the audited command layer (pitch/velocity clamps, pattern-bounds fit).",
     inputSchema: {
       type: "object",
       properties: {
@@ -605,24 +618,58 @@ export const MCP_TOOL_DEFS = [
           enum: ["bass", "lead", "chords"],
           description: "Target melodic family (first matching track edits; default bass). Read-back names the track.",
         },
-        pitch: { type: "integer", minimum: 0, maximum: 127, description: "MIDI pitch (add; move absolute)" },
-        noteName: { type: "string", description: 'Alternative to pitch: "C3", "F#4", "Bb2" (add)' },
-        index: { type: "integer", minimum: 0, description: "Position in the list response (move/delete/setVelocity)" },
+        pitch: {
+          type: "integer",
+          minimum: 0,
+          maximum: 127,
+          description: "MIDI pitch (add; move absolute)",
+        },
+        noteName: {
+          type: "string",
+          description: 'Alternative to pitch: "C3", "F#4", "Bb2" (add)',
+        },
+        index: {
+          type: "integer",
+          minimum: 0,
+          description: "Position in the list response (move/delete/setVelocity)",
+        },
         startBeat: {
           type: "number",
           minimum: 0,
           description: "Start in beats from pattern start (add; move absolute)",
         },
-        durationBeats: { type: "number", minimum: 0.05, description: "Note length in beats (add, default 0.5)" },
-        velocity: { type: "number", minimum: 0, maximum: 1, description: "add (default 0.8) / setVelocity" },
-        pitchDelta: { type: "integer", minimum: -127, maximum: 127, description: "move relative semitones" },
+        durationBeats: {
+          type: "number",
+          minimum: 0.05,
+          description: "Note length in beats (add, default 0.5)",
+        },
+        velocity: {
+          type: "number",
+          minimum: 0,
+          maximum: 1,
+          description: "add (default 0.8) / setVelocity",
+        },
+        pitchDelta: {
+          type: "integer",
+          minimum: -127,
+          maximum: 127,
+          description: "move relative semitones",
+        },
         grid: {
           type: "string",
           enum: ["1/4", "1/8", "1/16", "1/32", "1/8T", "1/16T"],
           description: "quantize target grid",
         },
-        key: { type: "string", description: 'quantize target scale, e.g. "C Major", "A Minor"' },
-        semitones: { type: "integer", minimum: -127, maximum: 127, description: "transpose shift (non-zero)" },
+        key: {
+          type: "string",
+          description: 'quantize target scale, e.g. "C Major", "A Minor"',
+        },
+        semitones: {
+          type: "integer",
+          minimum: -127,
+          maximum: 127,
+          description: "transpose shift (non-zero)",
+        },
       },
       required: ["op"],
     },
@@ -630,18 +677,40 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_music",
     description:
-      "Structured MUSICAL STATE: set tempo, set musical key, change the active " +
-      "pattern's length, or transpose all melodic content. One op = ONE undo " +
-      "step through the exact-intent executor (same clamps as the text layer).",
+      "Structured MUSICAL STATE: set tempo, set musical key, change the active pattern's length, or transpose all melodic content. One op = ONE undo step through the exact-intent executor (same clamps as the text layer).",
     inputSchema: {
       type: "object",
       properties: {
-        op: { type: "string", enum: ["setTempo", "setKey", "setPatternLength", "transposeAll"] },
-        bpm: { type: "integer", minimum: 20, maximum: 300, description: "setTempo" },
-        key: { type: "string", description: 'setKey — e.g. "C Major", "F# Minor", "Bb Minor"' },
-        steps: { type: "integer", minimum: 16, maximum: 256, description: "setPatternLength (16 per bar)" },
-        semitones: { type: "integer", minimum: -127, maximum: 127, description: "transposeAll shift (non-zero)" },
-        target: { type: "string", description: 'transposeAll scope: track family or "all" (default all)' },
+        op: {
+          type: "string",
+          enum: ["setTempo", "setKey", "setPatternLength", "transposeAll"],
+        },
+        bpm: {
+          type: "integer",
+          minimum: 20,
+          maximum: 300,
+          description: "setTempo",
+        },
+        key: {
+          type: "string",
+          description: 'setKey — e.g. "C Major", "F# Minor", "Bb Minor"',
+        },
+        steps: {
+          type: "integer",
+          minimum: 16,
+          maximum: 256,
+          description: "setPatternLength (16 per bar)",
+        },
+        semitones: {
+          type: "integer",
+          minimum: -127,
+          maximum: 127,
+          description: "transposeAll shift (non-zero)",
+        },
+        target: {
+          type: "string",
+          description: 'transposeAll scope: track family or "all" (default all)',
+        },
       },
       required: ["op"],
     },
@@ -916,7 +985,6 @@ export const MCP_TOOL_DEFS = [
       required: ["op"],
     },
   },
-
   {
     name: "kyx_publish_gallery",
     description:
@@ -924,9 +992,21 @@ export const MCP_TOOL_DEFS = [
     inputSchema: {
       type: "object",
       properties: {
-        title: { type: "string", description: "Beat title for the gallery card (max 64 chars)" },
-        author: { type: "string", description: "Credit line (default: 'KYX agent')" },
-        tags: { type: "array", items: { type: "string" }, description: "Up to 6 free-form tags" },
+        title: {
+          type: "string",
+          description: "Beat title for the gallery card (max 64 chars)",
+        },
+        author: {
+          type: "string",
+          description: "Credit line (default: 'KYX agent')",
+        },
+        tags: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+          description: "Up to 6 free-form tags",
+        },
         agent: {
           type: "string",
           description: "Your agent display name, e.g. 'Claude (MCP)' (default: 'unknown agent')",
@@ -938,12 +1018,7 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_render_summary",
     description:
-      "THE AGENT'S EARS — offline-render the current project and report per-strip " +
-      "evidence: integrated LUFS (BS.1770-4), peak dBFS, crest factor " +
-      "(peak−RMS = punchiness) and duration, plus the master vs the −14 " +
-      "streaming reference and relative deltas against the loudest strip. " +
-      "Use before/after mix moves so decisions cite numbers, not vibes. " +
-      "Slow (N+1 offline renders); render-bound transports only.",
+      "THE AGENT'S EARS — offline-render the current project and report per-strip evidence: integrated LUFS (BS.1770-4), peak dBFS, crest factor (peak−RMS = punchiness) and duration, plus the master vs the −14 streaming reference and relative deltas against the loudest strip. Use before/after mix moves so decisions cite numbers, not vibes. Slow (N+1 offline renders); render-bound transports only.",
     inputSchema: {
       type: "object",
       properties: {
@@ -951,6 +1026,21 @@ export const MCP_TOOL_DEFS = [
           type: "string",
           enum: ["all", "tracks", "master"],
           description: "all = strips + master (default); tracks/master limit the pass",
+        },
+      },
+    },
+  },
+  {
+    name: "kyx_diagnose_mix",
+    description:
+      "THE AGENT'S EARS v2 — a MIX DIAGNOSIS, not just numbers: offline-renders the master and every strip, runs mix-health analysis (band shares, clipping, crest collapse, stereo correlation, BS.1770 loudness) and returns attributed findings (who owns the low end, which strip is buried, which is over-compressed, sub collision) each mapped to a fix you can call (kyx_tracks setGain, kyx_fx more/less, kyx_loudness match). Apply the suggested moves, re-run this tool, compare — the full diagnose→fix→verify loop. Slower than kyx_render_summary (N+1 renders + analysis); render-bound transports only.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scope: {
+          type: "string",
+          enum: ["all", "master"],
+          description: "all = master + per-strip attribution (default); master = master findings only (1 render)",
         },
       },
     },

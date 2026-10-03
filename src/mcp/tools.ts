@@ -1,5 +1,6 @@
 import type { ProjectDocument } from "../project-model/types";
 import { isForeignWork, labelsRevertedBy } from "./attribution";
+import { hasMatchEqReference, referenceLoudnessTrim } from "../intent/match-eq";
 import type { Command } from "../commands/types";
 import { routeIntentText, type RoutedIntent } from "../intent/route";
 import { isCreativeBriefRoute } from "../intent/model-fallback-policy";
@@ -167,6 +168,7 @@ export const MCP_TOOLS: McpToolDef[] = [
             "pattern",
             "scenes",
             "history",
+            "reference",
           ],
           description: "Which part of the project state to return",
         },
@@ -875,6 +877,29 @@ export const MCP_TOOLS: McpToolDef[] = [
     },
   },
   {
+    name: "kyx_diagnose_mix",
+    description:
+      "THE AGENT'S EARS v2 — a MIX DIAGNOSIS, not just numbers: offline-renders " +
+      "the master and every strip, runs mix-health analysis (band shares, " +
+      "clipping, crest collapse, stereo correlation, BS.1770 loudness) and " +
+      "returns attributed findings (who owns the low end, which strip is " +
+      "buried, which is over-compressed, sub collision) each mapped to a fix " +
+      "you can call (kyx_tracks setGain, kyx_fx more/less, kyx_loudness " +
+      "match). Apply the suggested moves, re-run this tool, compare — the " +
+      "full diagnose→fix→verify loop. Slower than kyx_render_summary " +
+      "(N+1 renders + analysis); render-bound transports only.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        scope: {
+          type: "string",
+          enum: ["all", "master"],
+          description: "all = master + per-strip attribution (default); master = master findings only (1 render)",
+        },
+      },
+    },
+  },
+  {
     name: "kyx_checkpoint",
     description:
       "Named project checkpoints for agent experiments: save the current " +
@@ -1187,6 +1212,14 @@ export interface McpToolContext {
   renderSummary?: (request: {
     scope?: "master" | "tracks" | "all";
   }) => Promise<import("./render-summary").RenderSummaryData>;
+
+  /**
+   * THE AGENT'S EARS v2 (kyx_diagnose_mix): offline-render master + strips,
+   * run mix-health analysis, return attributed findings with callable fix
+   * suggestions. Absent → honest refusal (headless contexts), same as
+   * renderSummary.
+   */
+  diagnoseMix?: (request: { scope?: "master" | "all" }) => Promise<import("./mix-diagnosis").MixDiagnosisData>;
 }
 
 export interface McpToolResult {
@@ -2524,6 +2557,32 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
       } catch (error) {
         return {
           text: `render summary failed: ${error instanceof Error ? error.message : String(error)}`,
+          mutated: false,
+          isError: true,
+        };
+      }
+    }
+    case "kyx_diagnose_mix": {
+      // EARS v2: the INTERPRETATION layer on top of the render evidence —
+      // attributed findings + callable fixes, so an agent can run the loop
+      // diagnose → fix → re-diagnose without a human ear in the middle.
+      const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
+      if (ctx.diagnoseMix == null) {
+        return {
+          text: "mix diagnosis is not available over this MCP transport (no render context bound) — use kyx_render_summary for numbers only",
+          mutated: false,
+        };
+      }
+      const scope = record.scope === "master" ? "master" : "all";
+      try {
+        // Lazy module: the diagnosis layer (analysis + formatting) stays off
+        // the eager DAW graph — it loads on the first diagnose call.
+        const { formatMixDiagnosis } = await import("./mix-diagnosis");
+        const data = await ctx.diagnoseMix({ scope });
+        return { text: formatMixDiagnosis(data), mutated: false, data };
+      } catch (error) {
+        return {
+          text: `mix diagnosis failed: ${error instanceof Error ? error.message : String(error)}`,
           mutated: false,
           isError: true,
         };
@@ -4356,6 +4415,21 @@ function stateSnapshot(
         return `${index + 1}. "${scene.name}" ${role}${launchable}${bars > 0 ? ` ${bars}bar` : ""} intensity ${Math.round(scene.intensity * 100)}%`;
       })
       .join("\n");
+  }
+  if (subject === "reference") {
+    // Complement to the reference-mix wave: the MATCH REF conditioning
+    // lives in the match-eq module — agents could not see it until this
+    // read-back. Read-only; never mutates the conditioning.
+    if (!hasMatchEqReference()) {
+      return "no reference loaded — load a reference track in the intent panel and click MATCH REF to condition tone + loudness";
+    }
+    const trim = referenceLoudnessTrim();
+    const tone = "MATCH EQ curve installed (tonal shape toward the reference)";
+    const level =
+      trim != null
+        ? `loudness trim ${trim.trimDb > 0 ? "+" : ""}${trim.trimDb} dB (reference at ${trim.refLufs} LUFS)`
+        : "loudness trim declined (reference loudness implausible or too short)";
+    return `reference conditioning installed — ${tone} · ${level}`;
   }
   if (subject === "history") {
     const labels = historyLabels();
