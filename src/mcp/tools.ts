@@ -1,5 +1,6 @@
 import type { ProjectDocument } from "../project-model/types";
 import { isForeignWork, labelsRevertedBy } from "./attribution";
+import { setMasterConfig } from "../commands/master";
 import { hasMatchEqReference, referenceLoudnessTrim } from "../intent/match-eq";
 import { topIntentMisses } from "../intent/failure-log";
 import { planBlindPairGains, recordBlindAbTrial, resetBlindAbTrials, summarizeBlindAb } from "./blind-ab";
@@ -1193,7 +1194,11 @@ export interface McpToolContext {
     seek?: (tick: number) => void;
   };
   /** Present when the KYX window can render/downloads (browser relay). */
-  export?: (request: McpExportRequest) => Promise<string>;
+  export?: (
+    request: McpExportRequest,
+  ) => Promise<
+    string | { report: string; health: unknown; fix: { tiltDb: number; masterGain: number; label: string } | null }
+  >;
   /** C6 attribution: which automation surface drives this context (absent
    * for the human working the UI directly / headless tests). */
   agentId?: string;
@@ -2388,8 +2393,41 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
           : {}),
       };
       try {
-        const report = await ctx.export(request);
-        return { text: `export ${format.toUpperCase()} complete — ${report}`, mutated: false };
+        const exportResult = await ctx.export(request);
+        const exportReport = typeof exportResult === "string" ? exportResult : exportResult.report;
+        const exportFix =
+          typeof exportResult === "object" && exportResult != null && "fix" in exportResult
+            ? (exportResult.fix as { tiltDb: number; masterGain: number; label: string } | null)
+            : null;
+        let fixNote = "";
+        let mutated = false;
+        // Export → MIX FIX → re-export macro (autofix): the health
+        // analysis flagged a mechanically-safe problem AND the agent asked
+        // for the fix — apply it as ONE undo step, re-export to VERIFY
+        // the numbers actually moved.
+        if (record.autofix === true && exportFix != null) {
+          ctx.execute(
+            setMasterConfig(ctx.getDoc(), {
+              ...(exportFix.tiltDb !== 0 ? { tiltDb: -exportFix.tiltDb } : {}),
+              ...(exportFix.masterGain !== 1 ? { masterGain: exportFix.masterGain } : {}),
+            }),
+          );
+          mutated = true;
+          try {
+            const reResult = await ctx.export(request);
+            const reReport = typeof reResult === "string" ? reResult : reResult.report;
+            const reCheck = /MIX CHECK[^—]*/.exec(reReport)?.[0]?.trim() ?? "MIX CHECK";
+            fixNote = ` — fix applied (${exportFix.label}), re-exported: ${reCheck}`;
+          } catch {
+            fixNote = ` — fix applied (${exportFix.label}), re-export failed (verify manually)`;
+          }
+        } else if (record.autofix === true && exportFix == null) {
+          fixNote = " — no mechanical fix needed (or none is safe to auto-apply)";
+        }
+        return {
+          text: `export ${format.toUpperCase()} complete — ${exportReport}${fixNote}`,
+          mutated,
+        };
       } catch (error) {
         return {
           text: `export failed: ${error instanceof Error ? error.message : String(error)}`,

@@ -197,7 +197,12 @@ const measurements = await page.evaluate(async () => {
       });
     } else {
       console.warn(`[preset-loudness] UNMEASURED ${preset.id}: ${lastError ?? "silent output (no readings)"}`);
-      out.push({ id: preset.id, useCase, measured: false, error: `all renders failed (last: ${lastError ?? "silent output"})` });
+      out.push({
+        id: preset.id,
+        useCase,
+        measured: false,
+        error: `all renders failed (last: ${lastError ?? "silent output"})`,
+      });
     }
   }
   return out;

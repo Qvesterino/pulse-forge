@@ -69,7 +69,7 @@ function depsFromServices(services: Services): McpBridgeDeps {
     applyLoudness: (input) => mcpApplyLoudness(services, input),
     // kyx_export rides the SAME render + encode + download pipeline as the
     // in-app "export wav/mp3" intent (the download lands in the KYX window).
-    export: (request) => quickBounceDownload(services.store.getDoc(), services.bank, request),
+    export: async (request) => (await quickBounceDownload(services.store.getDoc(), services.bank, request)).report,
     // kyx_publish_gallery: encode the LIVE project into a gallery share code
     // and POST it with agent provenance (the feed shows the robot badge).
     shareToGallery: async ({ title, author, tags, agent }) => {

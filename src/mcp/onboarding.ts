@@ -44,8 +44,11 @@ WORKFLOW: BEAT FROM SCRATCH
   6. kyx_arrange {genre, length?} — the whole song form as scenes + clips +
      cue markers in one undo (empty arrangement only); kyx_sections +
      kyx_clips for surgical edits afterwards.
-  7. kyx_loudness {op: match, targetDb} — land near -14 LUFS.
-  8. kyx_blind_ab — the blind listening loop: op:plan level-matches two
+  7. kyx_export {autofix: true} — export + the mix-doctor applies its
+     mechanical fix (tilt / master IN) + re-exports in ONE call: the
+     read-back carries both MIX CHECK verdicts.
+  8. kyx_loudness {op: match, targetDb} — land near -14 LUFS.
+  9. kyx_blind_ab — the blind listening loop: op:plan level-matches two
      variants (LUFS from kyx_render_summary), the HUMAN listens and you
      op:record forced-choice answers; op:verdict gives the binomial p.
 

@@ -19,6 +19,33 @@ const { MCP_TOOL_DEFS, MCP_RESOURCE_DEFS } = require("./mcp-tool-defs.cjs");
 
 const MAX_BODY_BYTES = 1_000_000;
 const RPC_ERRORS = { parse: -32700, invalidRequest: -32600, methodNotFound: -32601 };
+// Rate limiting (C-security): a token bucket refilling at RATE_LIMIT_REFILL
+// requests/minute with a burst capacity of RATE_LIMIT_BURST. The bucket is
+// per-bridge-instance (there is exactly one bridge per KYX window) and
+// starts full. 429 tells the client to back off; this is a cheap DoS guard,
+// not a quota system — the auth token is still the primary gate.
+const RATE_LIMIT_BURST = 30;
+const RATE_LIMIT_REFILL_PER_SEC = 0.5; // 30/min sustained
+let bucketTokens = RATE_LIMIT_BURST;
+let bucketLastRefill = Date.now();
+
+function tryConsumeToken() {
+  const now = Date.now();
+  const elapsed = (now - bucketLastRefill) / 1000;
+  bucketLastRefill = now;
+  bucketTokens = Math.min(RATE_LIMIT_BURST, bucketTokens + elapsed * RATE_LIMIT_REFILL_PER_SEC);
+  if (bucketTokens >= 1) {
+    bucketTokens -= 1;
+    return true;
+  }
+  return false;
+}
+
+/** Test hook — resets the bucket to full. */
+function resetRateLimitBucket() {
+  bucketTokens = RATE_LIMIT_BURST;
+  bucketLastRefill = Date.now();
+}
 const SUPPORTED_PROTOCOL_VERSIONS = ["2025-03-26"];
 const SERVER_INSTRUCTIONS =
   "KYX is a browser DAW whose MCP surface executes through the deterministic " +
@@ -78,6 +105,11 @@ function createMcpBridgeServer({ token, executeTool, port = 0 }) {
     if (!constantTimeEqual(req.headers.authorization ?? "", `Bearer ${token}`)) {
       res.writeHead(401, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "unauthorized" }));
+      return;
+    }
+    if (!tryConsumeToken()) {
+      res.writeHead(429, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "rate limited — slow down (bucket refill: 30/min)" }));
       return;
     }
     let body = "";
@@ -210,4 +242,10 @@ function createMcpBridgeServer({ token, executeTool, port = 0 }) {
   };
 }
 
-module.exports = { createMcpBridgeServer, MCP_TOOL_DEFS };
+module.exports = {
+  createMcpBridgeServer,
+  MCP_TOOL_DEFS,
+  RATE_LIMIT_BURST,
+  RATE_LIMIT_REFILL_PER_SEC,
+  resetRateLimitBucket,
+};

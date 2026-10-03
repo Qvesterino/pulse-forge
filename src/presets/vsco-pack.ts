@@ -33,6 +33,8 @@ export function vscoPackPresets(): InstrumentPreset[] {
     byInstrument.get(inst)!.push(layer);
   }
   const names: Record<string, string> = {
+    uprightPiano: "Upright Piano",
+    gmPerc: "Real Percussion Kit",
     violinEns: "Violin Ensemble",
     celloEns: "Cello Ensemble",
     flute: "Flute",

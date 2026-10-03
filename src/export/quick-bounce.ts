@@ -2,7 +2,12 @@ import type { ProjectDocument } from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
 import { sanitizeFilename, downloadWav, encodeWavAsync, type WavBitDepth } from "../rendering/wav";
 import { downloadBlob } from "../export/download";
-import { analyzeMixHealthBuffer, buildMixCheckVerdict } from "../analysis/mixDoctor";
+import {
+  analyzeMixHealthBuffer,
+  buildMixCheckVerdict,
+  deriveMixAutoFix,
+  type MixHealthReport,
+} from "../analysis/mixDoctor";
 
 /**
  * QUICK BOUNCE — the shared render + encode + download pipeline behind
@@ -24,11 +29,20 @@ export interface QuickBounceOptions {
   stems?: "all" | "drums" | "bass" | "music";
 }
 
+export interface QuickBounceResult {
+  /** The human/agent read-back (file stats + MIX CHECK verdict). */
+  report: string;
+  /** The full health analysis of the rendered full-mix (null for stems). */
+  health: MixHealthReport | null;
+  /** The mechanically-safe fix, when the analysis offers one. */
+  fix: { tiltDb: number; masterGain: number; label: string } | null;
+}
+
 export async function quickBounceDownload(
   doc: ProjectDocument,
   bank: SampleBank,
   options: QuickBounceOptions,
-): Promise<string> {
+): Promise<QuickBounceResult> {
   const baseName = sanitizeFilename(doc.name);
   const sampleRate = options.sampleRate ?? 44100;
   const { renderProject } = await import("../rendering/renderer");
@@ -51,22 +65,28 @@ export async function quickBounceDownload(
     }
     const zip = buildZip(entries);
     downloadBlob(zip, `${baseName}-stems.zip`);
-    return `stems zip exported (${entries.length} stem(s): ${groups.map((g) => g.label).join(", ")}, ${totalSeconds.toFixed(1)}s, ${(zip.size / 1e6).toFixed(2)} MB)`;
+    const report = `stems zip exported (${entries.length} stem(s): ${groups.map((g) => g.label).join(", ")}, ${totalSeconds.toFixed(1)}s, ${(zip.size / 1e6).toFixed(2)} MB)`;
+    return { report, health: null, fix: null };
   }
 
   const buffer = await renderProject(doc, bank, { mode: "song", sampleRate });
   // Per-render mix-doctor: every full-mix export carries the mix check in
   // its read-back so an agent (or the human reading the panel) can react —
-  // the analysis is the same one the ExportPanel verdict line shows.
-  const mixCheck = buildMixCheckVerdict(analyzeMixHealthBuffer(buffer));
+  // the analysis is the same one the ExportPanel verdict line shows. The
+  // structured fix rides along for the autofix macro.
+  const health = analyzeMixHealthBuffer(buffer);
+  const mixCheck = buildMixCheckVerdict(health);
+  const fix = deriveMixAutoFix(health);
   if (options.format === "mp3") {
     const { encodeMp3 } = await import("../export/mp3");
     const blob = await encodeMp3(buffer, { kbps: 320 });
     downloadBlob(blob, `${baseName}-320.mp3`);
-    return `MP3 exported (${buffer.duration.toFixed(1)}s, 320 kbps, ${(blob.size / 1e6).toFixed(2)} MB) — ${mixCheck}`;
+    const report = `MP3 exported (${buffer.duration.toFixed(1)}s, 320 kbps, ${(blob.size / 1e6).toFixed(2)} MB) — ${mixCheck}`;
+    return { report, health, fix };
   }
   const bitDepth: WavBitDepth = options.bitDepth ?? 16;
   const wavBytes = await encodeWavAsync(buffer, bitDepth, {});
   downloadWav(wavBytes, `${baseName}-${bitDepth}bit.wav`);
-  return `WAV exported (${buffer.duration.toFixed(1)}s, ${bitDepth}-bit @ ${sampleRate} Hz, ${(wavBytes.byteLength / 1e6).toFixed(2)} MB) — ${mixCheck}`;
+  const report = `WAV exported (${buffer.duration.toFixed(1)}s, ${bitDepth}-bit @ ${sampleRate} Hz, ${(wavBytes.byteLength / 1e6).toFixed(2)} MB) — ${mixCheck}`;
+  return { report, health, fix };
 }
