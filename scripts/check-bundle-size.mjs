@@ -114,7 +114,14 @@ const ENTRY_BUDGET_KB = 1070;
 // +9 KB from the wrapper overhead of the new lazy chunk boundaries it
 // counts but cannot reward. First entry where the debt line above is PAID:
 // the diet happened, and the +15 KB total bought a −39 % boot chunk.
-const TOTAL_BUDGET_KB = 3600;
+// 3680 (2026-10-04): the real-samples wave ships generated preset pack data
+// eagerly — vsco-pack.generated.ts (+4076 lines: VSCO2 orchestra keyzones /
+// velocity layers) and piano-pack.generated.ts (+1090) join the factory
+// chunk so bank listing and chain builds see the banks without a fetch.
+// Measured 3675 KB clean at 2f740fb9. Conscious bump; the packs are the
+// next diet target — a lazy seam behind first preset access reclaims the
+// ~100 KB.
+const TOTAL_BUDGET_KB = 3680;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, and ONNX Runtime for the
 // symbolic/ranker workers. Keep these optional runtimes under one existing
