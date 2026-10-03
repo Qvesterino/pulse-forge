@@ -81,6 +81,35 @@ function childNameOf(baseName: string): string {
   return named.length > CHILD_NAME_MAX ? `${named.slice(0, CHILD_NAME_MAX - 1)}…` : named;
 }
 
+export interface ForkResult {
+  doc: ProjectDocument;
+  lineage: ProjectLineage;
+}
+
+/**
+ * Fork any decoded beat into "your take" for the studio: FRESH doc id (the
+ * join key of the gallery family tree — without this a published fork would
+ * blend into the parent's identity) and a child lineage pointing at the
+ * source doc, inheriting its root/depth/prompt/seed. The name is kept as-is:
+ * the lineage carries the link, renaming stays the user's business. Works on
+ * lineage-less sources (pre-v3 beats) — the parent becomes a tree root.
+ */
+export function forkBeat(source: ProjectDocument): ForkResult {
+  const base = ensureRootLineage(source);
+  const baseLineage = readLineage(base) ?? { parentId: null, rootId: base.id, depth: 0, prompt: null, seed: null };
+  const provenance = familyProvenance(base);
+  const now = new Date().toISOString();
+  const lineage: ProjectLineage = {
+    parentId: base.id,
+    rootId: baseLineage.rootId,
+    depth: baseLineage.depth + 1,
+    prompt: baseLineage.prompt ?? provenance.prompt,
+    seed: baseLineage.seed ?? provenance.seed,
+  };
+  const doc: ProjectDocument = { ...base, id: uid("project"), createdAt: now, updatedAt: now, lineage };
+  return { doc, lineage };
+}
+
 /**
  * Forge one deterministic child from any beat: same seed namespace with a
  * small `assistVary` variation on every pattern, fresh doc id, lineage

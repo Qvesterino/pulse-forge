@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { mutateBeat, ensureRootLineage, readLineage, familyProvenance, MUTATE_AMOUNT } from "../src/gallery/lineage";
+import {
+  mutateBeat,
+  ensureRootLineage,
+  readLineage,
+  familyProvenance,
+  forkBeat,
+  MUTATE_AMOUNT,
+} from "../src/gallery/lineage";
 import { migrateProject, normalizeProject, SCHEMA_VERSION } from "../src/project-model/schema";
 import { addAudioClip } from "../src/commands/commands";
 import { encodeShareCode, decodeShareCode } from "../src/export/shareCode";
@@ -144,5 +151,44 @@ describe("lineage persistence", () => {
     const migrated = migrateProject(old);
     expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
     expect(migrated.lineage).toBeUndefined();
+  });
+});
+
+describe("forkBeat (studio take)", () => {
+  it("fresh doc id + child lineage pointing at the source doc", () => {
+    const source = testDoc();
+    const { doc: take, lineage } = forkBeat(source);
+    expect(take.id).not.toBe(source.id);
+    expect(lineage.parentId).toBe(source.id);
+    expect(lineage.rootId).toBe(source.id);
+    expect(lineage.depth).toBe(1);
+    // The name is kept — renaming stays the user's business.
+    expect(take.name).toBe(source.name);
+  });
+
+  it("inherits root/depth through generations (fork of a mutate child)", () => {
+    const root = testDoc();
+    const child = mutateBeat(root).doc;
+    const { doc: grandchild, lineage } = forkBeat(child);
+    expect(lineage.parentId).toBe(child.id);
+    expect(lineage.rootId).toBe(root.id);
+    expect(lineage.depth).toBe(2);
+    expect(grandchild.id).not.toBe(child.id);
+  });
+
+  it("works on lineage-less sources and stays pure", () => {
+    const source = testDoc();
+    const before = source.id;
+    const { doc, lineage } = forkBeat(source);
+    expect(lineage.parentId).toBe(before);
+    expect(readLineage(source)).toBeNull(); // the source is untouched
+    expect(doc.lineage).toEqual(lineage);
+  });
+
+  it("the studio take joins the family tree after a publish round-trip", () => {
+    const parent = testDoc();
+    const take = forkBeat(parent).doc;
+    const decoded = decodeShareCode(encodeShareCode(take));
+    expect(decoded!.lineage).toEqual(take.lineage);
   });
 });

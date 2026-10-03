@@ -1,14 +1,21 @@
 import { decodeShareCode } from "../export/shareCode";
 import { encodeProjectForGallery } from "./galleryApi";
 import { assistVary, autoArrangeSong } from "../commands/commands";
+import { ensureRootLineage, readLineage, familyProvenance } from "./lineage";
 import { uid } from "../shared/ids";
 import type { ProjectDocument } from "../project-model/types";
 
 /**
  * Gallery REMIX pipeline — one call turns a published beat into "your take":
  * decode → fresh project id → auto-arrange into a full song → deterministic
- * variation on every drop-scene pattern → re-encode for publishing with
- * lineage (`parentId`). Pure document math: no store, no UI, no server.
+ * variation on every drop-scene pattern → doc lineage stamped at the source
+ * → re-encode for publishing. Pure document math: no store, no UI, no server.
+ *
+ * The lineage stamp is what joins the child into the family tree: the feed's
+ * tree builds from the schema-v3 `lineage` inside each share code
+ * (parentDocId ↔ doc.id), not from the gallery-side parentId chain — a remix
+ * without the stamp was counted as "N remixes" on the card yet stayed
+ * invisible in the 🧬 FAMILY panel.
  */
 
 /** How hard the re-roll hits the drop patterns (0..1). */
@@ -41,8 +48,13 @@ export function remixTagsOf(sourceTags: string[]): string[] {
 }
 
 export function buildRemix(source: RemixSource): RemixResult | null {
-  const base = decodeShareCode(source.code);
-  if (!base) return null;
+  const decoded = decodeShareCode(source.code);
+  if (!decoded) return null;
+  // Stamp the family link FIRST (on the untouched source): the child's
+  // parentId is the source's DOC id — the family tree's join key.
+  const base = ensureRootLineage(decoded);
+  const baseLineage = readLineage(base) ?? { parentId: null, rootId: base.id, depth: 0, prompt: null, seed: null };
+  const provenance = familyProvenance(base);
   const now = new Date().toISOString();
   let doc: ProjectDocument = {
     ...base,
@@ -50,6 +62,13 @@ export function buildRemix(source: RemixSource): RemixResult | null {
     name: remixTitleOf(source.title),
     createdAt: now,
     updatedAt: now,
+    lineage: {
+      parentId: base.id,
+      rootId: baseLineage.rootId,
+      depth: baseLineage.depth + 1,
+      prompt: baseLineage.prompt ?? provenance.prompt,
+      seed: baseLineage.seed ?? provenance.seed,
+    },
   };
   // 1) Turn the scene grid into a full arrangement (intro→build→drop→…→outro).
   doc = autoArrangeSong(doc).execute(doc);

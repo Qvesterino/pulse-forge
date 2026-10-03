@@ -256,7 +256,13 @@ function Boot() {
         const core = await createCoreServices();
         if (cancelled) return;
         if (imported) {
-          const services = await openProject(core, imported);
+          // Every share-code import is a FORK of the source, not the source:
+          // fresh doc id + child lineage stamped at the source doc. Without
+          // this the studio kept the parent's doc id and a published take
+          // blended into the parent's identity in the gallery family tree.
+          const { forkBeat } = await import("./gallery/lineage");
+          const take = forkBeat(imported).doc;
+          const services = await openProject(core, take);
           if (cancelled) return;
           clearPendingHandoff();
           // Fáza C budget: studio TTI after arriving with a beat (gallery
