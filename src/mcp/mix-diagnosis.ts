@@ -20,13 +20,17 @@ import {
  * clipping, crest collapse, stereo correlation, BS.1770 loudness), runs the
  * band character on every PER-STRIP render, attributes problems to the
  * strips that cause them (energy-weighted low-end / HF ownership), and maps
- * every finding to a fix the agent can ACTUALLY CALL — kyx_tracks setGain,
- * kyx_fx more/less, kyx_loudness match, kyx_plugin_param. The output closes
- * the loop: diagnose → fix → re-run → compare.
+ * every finding to a fix the agent can ACTUALLY CALL — kyx_tracks setGain /
+ * setMute, kyx_fx more/less, kyx_loudness match, kyx_plugin_param. Fix
+ * suggestions are DOC-AWARE: a muted strip is told to unmute (the fader
+ * cannot help it), the de-mask pump targets the non-drum participant by id,
+ * saturation advice only fires when a saturation instance exists. The output
+ * closes the loop: diagnose → fix → re-run → compare.
  *
  * Same honesty contract as render-summary: offline renders through the ONE
  * engine (ADR 0009), per-strip numbers with masterProcessing bypassed,
- * N+1 renders bounded by the strip cap. Pure read — never mutates.
+ * renders bounded by the strip cap (N+1 by default; scope:"tracks" skips
+ * the master render for the fast verify loop). Pure read — never mutates.
  */
 
 export interface DiagnosedStrip {
@@ -63,7 +67,7 @@ export interface DiagnosisFinding {
 }
 
 export interface MixDiagnosisData {
-  scope: "master" | "all";
+  scope: "master" | "tracks" | "all";
   referenceLufs: number;
   master: {
     lufs: number | null;
@@ -116,15 +120,77 @@ const QUIET_OUTLIER_LU = 6;
 const COLLISION_SHARE = 0.5;
 const COLLISION_LU = 3;
 const CREST_COLLAPSED_DB = 6;
+const HF_DOMINANT_SHARE = 0.45;
+const HF_OWNERSHIP_SHARE = 0.4;
+const NARROW_STEREO_CORRELATION = 0.98;
+
+/**
+ * Document facts the suggestion layer needs but a rendered strip cannot
+ * know: WHY a strip is silent/invisible (mute wins over the fader — setGain
+ * on a muted track does nothing) and which fix targets actually exist (the
+ * FX chain on the track). Built once per diagnose call from the doc; pure
+ * functions consume it, so tests construct fakes instead of services.
+ */
+export interface StripDocFacts {
+  /** Track ids muted at the track level (mute beats every fader move). */
+  mutedTrackIds: ReadonlySet<string>;
+  /** Does the track's chain hold a NON-bypassed instance of the effect type? */
+  hasActiveEffect: (trackId: string, type: string) => boolean;
+  /** Does the track own playable content (notes / drum rows / audio clips)? */
+  hasContent: (trackId: string) => boolean;
+}
+
+/** Neutral default: nothing muted, no FX knowledge, everything has content. */
+export const EMPTY_STRIP_FACTS: StripDocFacts = {
+  mutedTrackIds: new Set<string>(),
+  hasActiveEffect: () => false,
+  hasContent: () => true,
+};
 
 /**
  * Per-strip findings from the diagnosed strips. Deterministic rules a human
  * applies by ear: a strip ≥ QUIET_OUTLIER_LU below the loudest is a balance
  * outlier; a collapsed crest means over-compression/over-saturation ON THAT
- * strip; two hot low-end strips are colliding in the sub (kick vs bass).
+ * strip; two hot low-end strips are colliding in the sub (kick vs bass); a
+ * content-owning strip that renders SILENT is muted or broken (the fader
+ * cannot fix either); a top-end-dominant strip is the harshness suspect.
+ * Suggestions are doc-aware: unmute beats setGain on a muted track, the
+ * de-mask pump targets the non-drum participant by id.
  */
-export function buildStripFindings(strips: DiagnosedStrip[]): DiagnosisFinding[] {
+export function buildStripFindings(
+  strips: DiagnosedStrip[],
+  facts: StripDocFacts = EMPTY_STRIP_FACTS,
+): DiagnosisFinding[] {
   const findings: DiagnosisFinding[] = [];
+
+  // Silent-with-content first: this class is invisible to every
+  // loudness-based rule (BS.1770 gates silence out entirely), yet it is the
+  // single most common "where is my track" failure — muted by accident or
+  // routed nowhere. Runs even when fewer than two strips measured.
+  for (const strip of strips) {
+    if (strip.lufs !== null) continue;
+    if (!facts.hasContent(strip.id)) continue; // intentionally empty — not a finding
+    const muted = facts.mutedTrackIds.has(strip.id);
+    findings.push({
+      severity: "yellow",
+      check: "silent-strip",
+      stripId: strip.id,
+      stripName: strip.name,
+      detail: muted
+        ? `${strip.name} has content but renders silent — the track is MUTED`
+        : `${strip.name} has content but renders silent — check its routing/group (not muted)`,
+      ...(muted
+        ? {
+            suggest: {
+              tool: "kyx_tracks",
+              args: { op: "setMute", trackId: strip.id, value: false },
+              why: "unmuting is the only move that helps — mute beats every fader value",
+            },
+          }
+        : {}),
+    });
+  }
+
   const measured = strips.filter((strip) => strip.lufs !== null);
   if (measured.length < 2) return findings;
   const loudest = measured.reduce((best, strip) => ((strip.lufs ?? -99) > (best.lufs ?? -99) ? strip : best));
@@ -132,21 +198,30 @@ export function buildStripFindings(strips: DiagnosedStrip[]): DiagnosisFinding[]
   for (const strip of measured) {
     const delta = (strip.lufs ?? 0) - (loudest.lufs ?? 0);
     if (delta <= -QUIET_OUTLIER_LU) {
+      const muted = facts.mutedTrackIds.has(strip.id);
       findings.push({
         severity: "yellow",
         check: "quiet-strip",
         stripId: strip.id,
         stripName: strip.name,
-        detail: `${strip.name} is ${Math.abs(delta).toFixed(1)} LU below the loudest strip (${loudest.name}) — barely audible in the mix`,
-        suggest: {
-          tool: "kyx_tracks",
-          args: {
-            op: "setGain",
-            trackId: strip.id,
-            gainDb: Math.min(3.5, Math.round(Math.abs(delta) * 0.6 * 10) / 10),
-          },
-          why: "raising the fader closes part of the measured gap (bounded by the setGain ceiling)",
-        },
+        detail: `${strip.name} is ${Math.abs(delta).toFixed(1)} LU below the loudest strip (${loudest.name})${
+          muted ? " — and the track is muted, so the fader cannot close the gap" : " — barely audible in the mix"
+        }`,
+        suggest: muted
+          ? {
+              tool: "kyx_tracks",
+              args: { op: "setMute", trackId: strip.id, value: false },
+              why: "unmute first — setGain on a muted track changes nothing",
+            }
+          : {
+              tool: "kyx_tracks",
+              args: {
+                op: "setGain",
+                trackId: strip.id,
+                gainDb: Math.min(3.5, Math.round(Math.abs(delta) * 0.6 * 10) / 10),
+              },
+              why: "raising the fader closes part of the measured gap (bounded by the setGain ceiling)",
+            },
       });
     }
     if (strip.crestDb < CREST_COLLAPSED_DB) {
@@ -166,23 +241,57 @@ export function buildStripFindings(strips: DiagnosedStrip[]): DiagnosisFinding[]
   }
 
   // Sub collision: two DIFFERENT strips both carrying a hot low end near the
-  // loudest level — the classic kick-vs-bass mask. Fix: sidechain pump.
+  // loudest level — the classic kick-vs-bass mask. Fix: sidechain pump ON
+  // THE DUCKED ELEMENT — when one participant is the drum kit, the other is
+  // the one to duck (pumping the kick under itself is nonsense), and the
+  // exact trackId beats a family guess that may match no real track.
   const hot = measured
     .filter((strip) => strip.lowEndShare > COLLISION_SHARE)
     .filter((strip) => (strip.lufs ?? -99) > (loudest.lufs ?? -99) - COLLISION_LU);
   if (hot.length >= 2) {
     const [a, b] = [hot[0]!, hot[1]!];
+    const drum = a.kind === "drum" ? a : b.kind === "drum" ? b : null;
+    const ducked = drum != null ? (drum === a ? b : a) : b;
     findings.push({
       severity: "yellow",
       check: "low-end-collision",
-      stripId: b.id,
-      stripName: b.name,
+      stripId: ducked.id,
+      stripName: ducked.name,
       detail: `${a.name} and ${b.name} both carry >${(COLLISION_SHARE * 100).toFixed(0)}% low-end energy at comparable level — they mask each other in the sub`,
       suggest: {
         tool: "kyx_fx",
-        args: { effect: "pump", action: "more", family: "bass" },
-        why: "sidechain pump ducks the bass under the kick transient — the standard de-mask move",
+        args:
+          drum != null
+            ? { effect: "pump", action: "more", trackId: ducked.id }
+            : { effect: "pump", action: "more", family: "bass" },
+        why: `sidechain pump ducks ${ducked.name} under the transients — the standard de-mask move`,
       },
+    });
+  }
+
+  // Top-end dominance: the strip that both IS bright (own hf share) and OWNS
+  // the mix's high energy is the harshness suspect when the master reads
+  // hf-heavy. Only suggests saturation-less when a saturation instance
+  // actually exists on the track (kyx_fx less on nothing is a no-op call).
+  const hfOwned = rankBandOwnership(measured, "hfShare");
+  if (hfOwned.length > 0 && hfOwned[0]!.share >= HF_OWNERSHIP_SHARE && hfOwned[0]!.strip.hfShare > HF_DOMINANT_SHARE) {
+    const owner = hfOwned[0]!.strip;
+    const hasSaturation = facts.hasActiveEffect(owner.id, "saturation");
+    findings.push({
+      severity: "yellow",
+      check: "top-end-dominant-strip",
+      stripId: owner.id,
+      stripName: owner.name,
+      detail: `${owner.name} owns ≈${Math.round(hfOwned[0]!.share * 100)}% of the mix's high energy with ${(owner.hfShare * 100).toFixed(0)}% of its own energy up top — the harshness suspect if the master reads hf-heavy`,
+      ...(hasSaturation
+        ? {
+            suggest: {
+              tool: "kyx_fx",
+              args: { effect: "saturation", action: "less", trackId: owner.id },
+              why: "the track's saturation generates upper harmonics — turning it down softens the top end",
+            },
+          }
+        : {}),
     });
   }
   return findings;
@@ -198,6 +307,16 @@ export function buildMasterFindings(
     check: flag.check,
     detail: flag.detail,
   }));
+  // Near-mono stereo: measurable correlation pinned at the ceiling with a
+  // real signal means L≈R everywhere — the mix has no width. Reported, not
+  // auto-fixed: widening is a creative pan/side decision, not a formula.
+  if (report.stereoCorrelation !== null && report.stereoCorrelation > NARROW_STEREO_CORRELATION) {
+    findings.push({
+      severity: "yellow",
+      check: "narrow-stereo",
+      detail: `L/R correlation ${report.stereoCorrelation.toFixed(2)} — near-mono master; pan contrasting strips apart or check for a collapsed side chain`,
+    });
+  }
   const autoFix = deriveMixAutoFix(report);
   if (autoFix !== null) {
     findings.push({
@@ -282,25 +401,59 @@ export function buildSuggestedActions(findings: DiagnosisFinding[]): string[] {
 
 const STRIP_CAP = 14;
 
+/** Doc-derived suggestion facts (see StripDocFacts) — deterministic from the
+ * document: track mutes, active FX instances, and content ownership. */
+function buildStripDocFacts(doc: ProjectDocument): StripDocFacts {
+  const mutedTrackIds = new Set<string>(doc.tracks.filter((track) => track.mute === true).map((track) => track.id));
+  const hasActiveEffect = (trackId: string, type: string): boolean => {
+    const track = doc.tracks.find((candidate) => candidate.id === trackId);
+    if (!track) return false;
+    return track.effects.some((fx) => fx.type === type && !fx.bypassed);
+  };
+  const contentTracks = new Set<string>();
+  for (const pattern of doc.patterns) {
+    for (const trackId of Object.keys(pattern.notes ?? {})) {
+      if ((pattern.notes?.[trackId] ?? []).length > 0) contentTracks.add(trackId);
+    }
+    for (const padId of Object.keys(pattern.rows ?? {})) {
+      const row = pattern.rows?.[padId] ?? [];
+      if (row.some((velocity) => velocity > 0)) {
+        const padOwner = doc.tracks.find(
+          (track) => track.kind === "drum" && track.pads.some((pad) => pad.id === padId),
+        );
+        if (padOwner) contentTracks.add(padOwner.id);
+      }
+    }
+  }
+  for (const clip of doc.arrangement.audioClips ?? []) contentTracks.add(clip.trackId);
+  return { mutedTrackIds, hasActiveEffect, hasContent: (trackId) => contentTracks.has(trackId) };
+}
+
 /** The engine path: offline-render master + per-strip stems, diagnose each. */
 export async function mcpDiagnoseMix(
   services: Services,
-  request: { scope?: "master" | "all" },
+  request: { scope?: "master" | "tracks" | "all" },
 ): Promise<MixDiagnosisData> {
   const scope = request.scope ?? "all";
   const doc: ProjectDocument = services.store.getDoc();
   const { renderProject } = await import("../rendering/renderer");
   const mode = doc.arrangement.clips.length > 0 ? "song" : "pattern";
   const sampleRate = 44100 as const;
+  const facts = buildStripDocFacts(doc);
 
   // Master: FULL chain (what the listener hears) — its report drives the
-  // master findings and the auto-fix.
-  const masterBuffer = await renderProject(doc, services.bank, { mode, sampleRate, tailSeconds: 0.6 });
-  const masterChannels: Float32Array[] = [];
-  for (let channel = 0; channel < masterBuffer.numberOfChannels; channel += 1) {
-    masterChannels.push(masterBuffer.getChannelData(channel));
+  // master findings and the auto-fix. scope:"tracks" skips it entirely: the
+  // verify loop after a strip-level fix re-checks strips for N renders, not
+  // N+1.
+  let masterReport: MixHealthReport | null = null;
+  if (scope !== "tracks") {
+    const masterBuffer = await renderProject(doc, services.bank, { mode, sampleRate, tailSeconds: 0.6 });
+    const masterChannels: Float32Array[] = [];
+    for (let channel = 0; channel < masterBuffer.numberOfChannels; channel += 1) {
+      masterChannels.push(masterBuffer.getChannelData(channel));
+    }
+    masterReport = analyzeMixHealth(masterChannels, masterBuffer.sampleRate);
   }
-  const masterReport = analyzeMixHealth(masterChannels, masterBuffer.sampleRate);
 
   const strips: DiagnosedStrip[] = [];
   if (scope !== "master") {
@@ -342,27 +495,35 @@ export async function mcpDiagnoseMix(
     }
   }
 
-  const { findings: masterFindings, autoFix } = buildMasterFindings(masterReport, SONG_LOUDNESS_TARGET_LUFS);
+  const { findings: masterFindings, autoFix } =
+    masterReport !== null
+      ? buildMasterFindings(masterReport, SONG_LOUDNESS_TARGET_LUFS)
+      : { findings: [] as DiagnosisFinding[], autoFix: null };
 
   const data: MixDiagnosisData = {
     scope,
     referenceLufs: SONG_LOUDNESS_TARGET_LUFS,
-    master: {
-      lufs: masterReport.integratedLufs,
-      peakDb: round2(-20 * Math.log10(Math.max(masterReport.peak, 1e-4))),
-      crestDb: round2(masterReport.crestDb),
-      lowEndShare: round2(masterReport.lowEndShare),
-      hfShare: round2(masterReport.bandShares.high + masterReport.bandShares.air),
-      stereoCorrelation: masterReport.stereoCorrelation !== null ? round2(masterReport.stereoCorrelation) : null,
-      clippedSamples: masterReport.clippedSamples,
-      headroomDb: round2(masterReport.headroomDb),
-      lufsVsTarget:
-        masterReport.integratedLufs !== null ? round2(masterReport.integratedLufs - SONG_LOUDNESS_TARGET_LUFS) : null,
-      flags: masterReport.flags,
-      autoFix,
-    },
+    master:
+      masterReport !== null
+        ? {
+            lufs: masterReport.integratedLufs,
+            peakDb: round2(-20 * Math.log10(Math.max(masterReport.peak, 1e-4))),
+            crestDb: round2(masterReport.crestDb),
+            lowEndShare: round2(masterReport.lowEndShare),
+            hfShare: round2(masterReport.bandShares.high + masterReport.bandShares.air),
+            stereoCorrelation: masterReport.stereoCorrelation !== null ? round2(masterReport.stereoCorrelation) : null,
+            clippedSamples: masterReport.clippedSamples,
+            headroomDb: round2(masterReport.headroomDb),
+            lufsVsTarget:
+              masterReport.integratedLufs !== null
+                ? round2(masterReport.integratedLufs - SONG_LOUDNESS_TARGET_LUFS)
+                : null,
+            flags: masterReport.flags,
+            autoFix,
+          }
+        : null,
     strips,
-    findings: [...masterFindings, ...buildStripFindings(strips)],
+    findings: [...masterFindings, ...buildStripFindings(strips, facts)],
     // Band ownership attribution — only meaningful with per-strip scope.
     attributions: scope !== "master" ? formatAttributions(strips) : [],
     suggestedActions: [],

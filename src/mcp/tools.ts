@@ -894,8 +894,9 @@ export const MCP_TOOLS: McpToolDef[] = [
       properties: {
         scope: {
           type: "string",
-          enum: ["all", "master"],
-          description: "all = master + per-strip attribution (default); master = master findings only (1 render)",
+          enum: ["all", "master", "tracks"],
+          description:
+            "all = master + per-strip attribution (default); master = master findings only (1 render); tracks = strips only, master render skipped (N renders — the fast verify loop after a strip-level fix)",
         },
       },
     },
@@ -1242,7 +1243,9 @@ export interface McpToolContext {
    * suggestions. Absent → honest refusal (headless contexts), same as
    * renderSummary.
    */
-  diagnoseMix?: (request: { scope?: "master" | "all" }) => Promise<import("./mix-diagnosis").MixDiagnosisData>;
+  diagnoseMix?: (request: {
+    scope?: "master" | "tracks" | "all";
+  }) => Promise<import("./mix-diagnosis").MixDiagnosisData>;
 }
 
 export interface McpToolResult {
@@ -2596,7 +2599,7 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
           mutated: false,
         };
       }
-      const scope = record.scope === "master" ? "master" : "all";
+      const scope = record.scope === "master" || record.scope === "tracks" ? record.scope : "all";
       try {
         // Lazy module: the diagnosis layer (analysis + formatting) stays off
         // the eager DAW graph — it loads on the first diagnose call.

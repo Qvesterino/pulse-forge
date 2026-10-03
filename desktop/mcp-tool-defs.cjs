@@ -959,8 +959,9 @@ const MCP_TOOL_DEFS = [
       properties: {
         scope: {
           type: "string",
-          enum: ["all", "master"],
-          description: "all = master + per-strip attribution (default); master = master findings only (1 render)",
+          enum: ["all", "master", "tracks"],
+          description:
+            "all = master + per-strip attribution (default); master = master findings only (1 render); tracks = strips only, master render skipped (N renders — the fast verify loop after a strip-level fix)",
         },
       },
     },

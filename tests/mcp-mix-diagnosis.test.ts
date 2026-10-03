@@ -8,6 +8,7 @@ import {
   formatMixDiagnosis,
   type DiagnosedStrip,
   type MixDiagnosisData,
+  type StripDocFacts,
 } from "../src/mcp/mix-diagnosis";
 import type { MixHealthReport } from "../src/analysis/mixDoctor";
 
@@ -83,23 +84,107 @@ describe("per-strip findings", () => {
     expect(collapsed!.suggest!.args).toEqual({ effect: "compressor", action: "less", trackId: "flat" });
   });
 
-  it("two hot low-end strips → sub collision with the pump de-mask move", () => {
+  it("two hot low-end strips → sub collision; the pump targets the NON-drum participant by id", () => {
     const findings = buildStripFindings([
       strip({ id: "kick", name: "Kick", lufs: -9, lowEndShare: 0.9 }),
-      strip({ id: "bass", name: "Bass", lufs: -11, lowEndShare: 0.8 }),
+      strip({ id: "bass", name: "Bass", lufs: -11, lowEndShare: 0.8, kind: "instrument" }),
     ]);
     const collision = findings.find((finding) => finding.check === "low-end-collision");
     expect(collision).toBeDefined();
     expect(collision!.detail).toContain("Kick and Bass both carry >50% low-end");
+    expect(collision!.suggest!.args).toEqual({ effect: "pump", action: "more", trackId: "bass" });
+    expect(collision!.suggest!.why).toContain("ducks Bass");
+  });
+
+  it("collision between two non-drum strips falls back to the bass family", () => {
+    const findings = buildStripFindings([
+      strip({ id: "sub", name: "Sub", lufs: -9, lowEndShare: 0.9, kind: "instrument" }),
+      strip({ id: "pad808", name: "808 Pad", lufs: -11, lowEndShare: 0.8, kind: "instrument" }),
+    ]);
+    const collision = findings.find((finding) => finding.check === "low-end-collision");
     expect(collision!.suggest!.args).toEqual({ effect: "pump", action: "more", family: "bass" });
   });
 
   it("a healthy pair produces no findings", () => {
     const findings = buildStripFindings([
       strip({ id: "drums", name: "Drums", lufs: -8, crestDb: 11 }),
-      strip({ id: "bass", name: "Bass", lufs: -11, lowEndShare: 0.3, crestDb: 10 }),
+      strip({ id: "bass", name: "Bass", lufs: -11, lowEndShare: 0.3, crestDb: 10, kind: "instrument" }),
     ]);
     expect(findings).toEqual([]);
+  });
+});
+
+describe("doc-aware suggestions (StripDocFacts)", () => {
+  const facts = (overrides: Partial<StripDocFacts>): StripDocFacts => ({
+    mutedTrackIds: new Set<string>(),
+    hasActiveEffect: () => false,
+    hasContent: () => true,
+    ...overrides,
+  });
+
+  it("a muted strip with content that renders SILENT is told to unmute — even as the only strip", () => {
+    // Silent strips are invisible to every loudness rule (BS.1770 gates
+    // silence out) — the silent-strip check must run before the <2-measured
+    // early return that guards the balance rules.
+    const findings = buildStripFindings(
+      [strip({ id: "vox", name: "Vox", lufs: null })],
+      facts({ mutedTrackIds: new Set(["vox"]) }),
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.check).toBe("silent-strip");
+    expect(findings[0]!.detail).toContain("MUTED");
+    expect(findings[0]!.suggest!.args).toEqual({ op: "setMute", trackId: "vox", value: false });
+  });
+
+  it("silent with content but NOT muted → routing finding, no blind suggestion", () => {
+    const findings = buildStripFindings(
+      [strip({ id: "vox", name: "Vox", lufs: null }), strip({ id: "drums", name: "Drums", lufs: -9 })],
+      facts({}),
+    );
+    const silent = findings.find((finding) => finding.check === "silent-strip");
+    expect(silent).toBeDefined();
+    expect(silent!.detail).toContain("routing");
+    expect(silent!.suggest).toBeUndefined();
+  });
+
+  it("content-free silent strips are NOT flagged (intentionally empty)", () => {
+    const findings = buildStripFindings(
+      [strip({ id: "spare", name: "Spare", lufs: null }), strip({ id: "drums", name: "Drums", lufs: -9 })],
+      facts({ hasContent: () => false }),
+    );
+    expect(findings.find((finding) => finding.check === "silent-strip")).toBeUndefined();
+  });
+
+  it("a quiet MUTED strip is told to unmute — setGain on a muted track does nothing", () => {
+    const findings = buildStripFindings(
+      [
+        strip({ id: "hot", name: "Drums", lufs: -8 }),
+        strip({ id: "buried", name: "Pad", lufs: -15, kind: "instrument" }),
+      ],
+      facts({ mutedTrackIds: new Set(["buried"]) }),
+    );
+    const quiet = findings.find((finding) => finding.check === "quiet-strip");
+    expect(quiet!.suggest!.args).toEqual({ op: "setMute", trackId: "buried", value: false });
+    expect(quiet!.suggest!.why).toContain("setGain on a muted track changes nothing");
+  });
+
+  it("top-end dominance: saturation advice only when a saturation instance exists", () => {
+    const strips = [
+      strip({ id: "lead", name: "Lead", lufs: -9, hfShare: 0.55, lowEndShare: 0.05, kind: "instrument" }),
+      strip({ id: "drums", name: "Drums", lufs: -12, hfShare: 0.1 }),
+    ];
+    const without = buildStripFindings(strips, facts({}));
+    const bright = without.find((finding) => finding.check === "top-end-dominant-strip");
+    expect(bright).toBeDefined();
+    expect(bright!.stripId).toBe("lead");
+    expect(bright!.suggest).toBeUndefined();
+
+    const withSat = buildStripFindings(
+      strips,
+      facts({ hasActiveEffect: (id, type) => id === "lead" && type === "saturation" }),
+    );
+    const advised = withSat.find((finding) => finding.check === "top-end-dominant-strip")!;
+    expect(advised.suggest!.args).toEqual({ effect: "saturation", action: "less", trackId: "lead" });
   });
 });
 
@@ -145,6 +230,25 @@ describe("master findings", () => {
     const { findings, autoFix } = buildMasterFindings(fakeReport(), -14);
     expect(findings).toEqual([]);
     expect(autoFix).toBeNull();
+  });
+
+  it("near-mono stereo (correlation at the ceiling) → narrow-stereo advisory, no auto-fix", () => {
+    const { findings, autoFix } = buildMasterFindings(fakeReport({ stereoCorrelation: 0.995 }), -14);
+    const narrow = findings.find((finding) => finding.check === "narrow-stereo");
+    expect(narrow).toBeDefined();
+    expect(narrow!.detail).toContain("near-mono master");
+    expect(narrow!.suggest).toBeUndefined(); // widening is a creative decision — reported, not prescribed
+    expect(autoFix).toBeNull();
+    // The mix-doctor's negative-phase red stays a separate master flag.
+    const inverted = buildMasterFindings(
+      fakeReport({
+        stereoCorrelation: -0.4,
+        flags: [{ severity: "red", check: "stereo-phase", detail: "L/R correlation -0.40 — phase inversion" }],
+      }),
+      -14,
+    );
+    expect(inverted.findings[0]!.check).toBe("stereo-phase");
+    expect(inverted.findings.find((finding) => finding.check === "narrow-stereo")).toBeUndefined();
   });
 });
 
@@ -281,5 +385,33 @@ describe("kyx_diagnose_mix transport contract", () => {
     );
     expect(result.isError).toBe(true);
     expect(result.text).toContain("mix diagnosis failed: render exploded");
+  });
+
+  it("scope:tracks reaches the hook, renders without a MASTER line (fast verify loop)", async () => {
+    let seenScope = "";
+    const data: MixDiagnosisData = {
+      scope: "tracks",
+      referenceLufs: -14,
+      master: null,
+      strips: [
+        strip({ id: "drums", name: "Drums", lufs: -8.3, deltaVsLoudest: 0 }),
+        strip({ id: "pad", name: "Pad", lufs: -15.2, lowEndShare: 0.05, deltaVsLoudest: -6.9, kind: "instrument" }),
+      ],
+      findings: [],
+      attributions: [],
+      suggestedActions: [],
+    };
+    const result = await executeMcpToolAsync(
+      makeCtx(async (request) => {
+        seenScope = request.scope ?? "";
+        return data;
+      }),
+      "kyx_diagnose_mix",
+      { scope: "tracks" },
+    );
+    expect(seenScope).toBe("tracks");
+    expect(result.data).toEqual(data);
+    expect(result.text).not.toContain("MASTER —");
+    expect(result.text).toContain("findings:");
   });
 });
