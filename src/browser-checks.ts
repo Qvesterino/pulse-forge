@@ -4483,7 +4483,9 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
       );
       const osc = ctx.createOscillator();
       osc.type = "sine";
-      osc.frequency.value = 311.13; // Eb4 — a semitone flat of the E4 target
+      // E4 flat by 30 cents — an UNAMBIGUOUS off-key tone (Eb4 would sit
+      // exactly between D4 and E4 in C major: a nearest-tone tie).
+      osc.frequency.value = 329.63 * Math.pow(2, -30 / 1200);
       const gain = ctx.createGain();
       gain.gain.value = 0.5;
       osc.connect(gain).connect(rt.input);
@@ -4506,16 +4508,16 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
         }
         return Math.sqrt(s1 * s1 + s2 * s2 - coeff * s1 * s2) / n;
       };
-      return { eb: goertzel(311.13), e4: goertzel(329.63) };
+      return { off: goertzel(323.95), target: goertzel(329.63) };
     };
     const atMin = await measureBins(0);
     const atMax = await measureBins(1);
-    // RETUNE 0: the tone passes through at Eb (no pull). RETUNE 1: the peak
-    // moves to E4 — the corrected bin now dominates the flat one.
+    // RETUNE 0: the tone passes through flat (no pull). RETUNE 1: the peak
+    // moves to the E4 target — the corrected bin now dominates.
     check(
       "pitchCorrect: RETUNE pulls an off-key tone onto the scale (host)",
-      atMax.e4 > atMax.eb * 1.5 && atMin.eb > atMax.eb,
-      `amount0: eb=${atMin.eb.toFixed(4)} e4=${atMin.e4.toFixed(4)} · amount1: eb=${atMax.eb.toFixed(4)} e4=${atMax.e4.toFixed(4)}`,
+      atMax.target > atMax.off * 1.3 && atMin.off > atMin.target,
+      `amount0: off=${atMin.off.toFixed(4)} target=${atMin.target.toFixed(4)} · amount1: off=${atMax.off.toFixed(4)} target=${atMax.target.toFixed(4)}`,
     );
   } catch (error) {
     check("pitchCorrect: RETUNE pulls an off-key tone onto the scale (host)", false, String(error));

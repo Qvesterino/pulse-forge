@@ -95,7 +95,12 @@ function detectPitch(buf, bufLen, writePos, sampleRate, windowW, minHz, maxHz) {
 
   // YIN absolute-threshold pick: the SMALLEST lag with d' under the
   // threshold — the fundamental. Fall back to the global d' minimum.
-  const THRESHOLD = 0.15;
+  // 0.05: pure tones dip to ~0.005-0.02 at the true period, while the
+  // descending shoulder toward it crosses 0.15 two-three samples early
+  // (measured: a pure 311 Hz tone picked lag 138, nd 0.149 — 20 cents flat).
+  // Noisy live vocals may abstain at this strictness — the safe failure is
+  // passthrough, never a wrong correction.
+  const THRESHOLD = 0.05;
   let picked = -1;
   let pickedValue = Infinity;
   for (let lag = minLag; lag <= maxLag; lag++) {
@@ -117,14 +122,21 @@ function detectPitch(buf, bufLen, writePos, sampleRate, windowW, minHz, maxHz) {
   if (picked < 0) return { hz: 0, clarity: 0 };
   const clarity = Math.max(0, Math.min(1, 1 - nd[picked]));
 
-  // Parabolic interpolation over the neighbouring differences.
-  let lagF = picked;
-  if (picked > minLag && picked < maxLag) {
-    const a = d[picked - 1];
-    const b = d[picked];
-    const c = d[picked + 1];
+  // Parabolic interpolation — fitted around the LOCAL d minimum, not the
+  // threshold pick. The threshold lands systematically BEFORE the true
+  // period (a pure 330 Hz tone picked 2 samples early = −1.4 % flat);
+  // centring on the actual dip first removes that bias (caught by the
+  // golden vectors + the block simulation).
+  let center = picked;
+  if (picked > minLag && d[picked - 1] < d[picked]) center = picked - 1;
+  else if (picked < maxLag && d[picked + 1] < d[picked]) center = picked + 1;
+  let lagF = center;
+  if (center > minLag && center < maxLag) {
+    const a = d[center - 1];
+    const b = d[center];
+    const c = d[center + 1];
     const denom = 2 * (2 * b - a - c);
-    if (Math.abs(denom) > 1e-12) lagF = picked + (c - a) / denom;
+    if (Math.abs(denom) > 1e-12) lagF = center + (c - a) / denom;
   }
 
   const hz = sampleRate / lagF;
@@ -229,7 +241,10 @@ class PitchCorrectProcessor extends AudioWorkletProcessor {
       const result = detectPitch(this.bufL, this.bufferLen, this.writePos, sr, ANALYSIS_W, MIN_HZ, MAX_HZ);
       // Confidence gate: only a clear monophonic voice updates the target —
       // silence, breath and chord mush hold the previous detection.
-      if (result.clarity >= 0.85 && result.hz > 0) {
+      // 0.75: pure tones measure ~0.85, chord mush ~0.61, noise ~0.12 —
+      // the gate sits between the voices it must track and the ones it
+      // must refuse (measured, see tests/pitchcorrect-worklet.test.ts).
+      if (result.clarity >= 0.75 && result.hz > 0) {
         this.detectedHz = result.hz;
         this.clarity = result.clarity;
         this.silenceBlocks = 0;
@@ -246,7 +261,11 @@ class PitchCorrectProcessor extends AudioWorkletProcessor {
     if (this.detectedHz > 0) {
       const cents = snapCents(this.detectedHz, root, scaleMode);
       const clamped = Math.max(-CORRECT_LIMIT_CENTS, Math.min(CORRECT_LIMIT_CENTS, cents * amount));
-      targetRatio = Math.pow(2, -clamped / 1200);
+      // Positive cents = the target tone sits ABOVE the detected pitch —
+      // raising the output needs ratio > 1 (the granular read advances
+      // faster). A minus here corrects AWAY from the scale (caught by the
+      // block simulation: an E4−30c input stayed at the off-key pitch).
+      targetRatio = Math.pow(2, clamped / 1200);
     }
     // speed 0 → tc 150 ms (natural glide), speed 1 → tc 4 ms (hard tune).
     // Block-rate coefficient per checklist #4 — the per-sample one-pole

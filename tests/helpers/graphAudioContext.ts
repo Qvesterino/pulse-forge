@@ -118,7 +118,19 @@ export interface GraphSnapshot {
   terminal: Terminal;
 }
 
+/**
+ * A stand-in AudioParam. `_value` holds the LAST value written, which is what
+ * the real param's `.value` would report before rendering starts.
+ *
+ * `automated` is the load-bearing part. Once any scheduling method has been
+ * called, `_value` is the last AUTOMATION TARGET, not the level at note time —
+ * a voice envelope schedules 0.0001 → peak → 0.0001, so a naive `gain.value`
+ * read after `noteOn` sees silence for EVERY voice. Any check that reasons about
+ * signal level must therefore refuse to conclude from an automated param; it can
+ * only conclude from a param that was set once and never scheduled.
+ */
 class ParamStub {
+  automated = false;
   constructor(public _value: number) {}
   get value(): number {
     return this._value;
@@ -127,19 +139,40 @@ class ParamStub {
     this._value = v;
   }
   setValueAtTime(v: number): void {
+    this.automated = true;
     this._value = v;
   }
   linearRampToValueAtTime(v: number): void {
+    this.automated = true;
     this._value = v;
   }
   exponentialRampToValueAtTime(v: number): void {
+    this.automated = true;
     this._value = v;
   }
   setTargetAtTime(v: number): void {
+    this.automated = true;
     this._value = v;
   }
   cancelScheduledValues(): void {}
   cancelAndHoldAtTime(): void {}
+}
+
+/** A static (never-automated) gain reads as a level; an automated one does not. */
+const SILENCE_EPS = 1e-3;
+
+function staticGainOf(node: GraphNode): number | null {
+  if (node.kind !== "gain") return null;
+  const p = (node as unknown as { gain: ParamStub }).gain;
+  if (p.automated) return null;
+  return p.value;
+}
+
+/** Gain above which a path is carrying real signal. `null` = cannot tell. */
+function pathIsAudible(node: GraphNode): boolean | null {
+  const g = staticGainOf(node);
+  if (g === null) return null;
+  return g > SILENCE_EPS;
 }
 
 export class GraphAudioContext {
@@ -244,38 +277,162 @@ export function reachableFromOutput(output: GraphNode): { reachable: Set<GraphNo
 }
 
 /**
- * Classify the source nodes an instrument built.
+ * Walk FORWARD from a source over audio edges, carrying one bit of state:
+ * "is there still a live-gain path to here?".
  *
- *   audible  — reaches the output on the audio path (it makes the sound)
- *   mod      — drives a param of a node that is on the audio path (an LFO:
- *             it shapes the sound and MUST NOT be on the audio path itself)
- *   dead     — neither, i.e. it was built, started, and reaches nothing
+ * `unknown` is a real third state. A static gain of 0 mutes the path; a static
+ * gain above the floor keeps it alive; an AUTOMATED gain cannot be judged at
+ * all (see `ParamStub.automated`) and therefore counts as alive — the test is
+ * built to avoid crying wolf, so it only reports a mute when the silence is
+ * provable from values that were set once and never scheduled.
+ */
+function forwardStates(source: GraphNode, terminal: Terminal): { reachedOutput: boolean; reachedTerminal: boolean } {
+  const seen = new Set<GraphNode>([source]);
+  const stack: Array<{ node: GraphNode | Terminal; live: boolean }> = [{ node: source, live: true }];
+  let reachedOutput = false;
+  let reachedTerminal = false;
+  while (stack.length) {
+    const { node, live } = stack.pop()!;
+    if (node === terminal) {
+      if (live) reachedTerminal = true;
+      continue;
+    }
+    if (node === source || seen.has(node)) {
+      // `seen` is only used to bound the walk; continue so `output` itself is
+      // inspected below (it may already be in `seen` via another path).
+    }
+    if (node !== source) {
+      const verdict = pathIsAudible(node);
+      if (verdict === false && live) {
+        // Node proves this path is silent — do not follow it, but still let the
+        // walk continue only if some other path into the same node is alive.
+      }
+    }
+    let nextLive = live;
+    const verdict = pathIsAudible(node as GraphNode);
+    if (verdict === false) nextLive = false;
+    for (const out of node.outputs) {
+      if (out === terminal) {
+        if (nextLive) reachedTerminal = true;
+        continue;
+      }
+      if (nextLive && out.kind === "destination") reachedTerminal = true;
+      if (nextLive) reachedOutput = true;
+      if (!seen.has(out)) {
+        seen.add(out);
+        stack.push({ node: out, live: nextLive });
+      }
+    }
+  }
+  return { reachedOutput, reachedTerminal };
+}
+
+export interface SourceClassification {
+  /** Carries real signal to the instrument output. This is the good case. */
+  audible: GraphNode[];
+  /** Reaches the output only through a provably-static zero gain. A defect. */
+  silentVoices: GraphNode[];
+  /** Drives a param of a node that is on the audio path (LFO → depth → param). */
+  modulators: GraphNode[];
+  /**
+   * Reaches `ctx.destination` while bypassing the instrument output, fully
+   * muted. Ten instruments do this on purpose (see below), so it is NOT a
+   * defect — but it is tracked so the distinction is visible.
+   */
+  silentReferences: GraphNode[];
+  /**
+   * Reaches `ctx.destination` with live gain, bypassing the instrument output.
+   * A defect: it escapes the track bus, so track gain/pan/mute/solo and the
+   * whole mixer chain are skipped.
+   */
+  leaks: GraphNode[];
+  /** Reaches nothing at all — neither audio, nor a param, nor the terminal. */
+  dead: GraphNode[];
+}
+
+/**
+ * Classify every source node an instrument built.
  *
- * Only `dead` is a defect. Getting this distinction wrong flags every LFO in
- * the registry, which is what the first version of this helper did.
+ * Six outcomes, and getting the boundaries wrong is the whole hazard here —
+ * each earlier, narrower version of this helper produced false positives:
+ *
+ *   1. "not on the audio path" as a defect flags every LFO. LFO → depthGain →
+ *      param is a CONTROL chain, and the depth gain is an intermediate node, so
+ *      only a forward walk finds it.
+ *   2. The silent reference clock is a source that reaches `ctx.destination`
+ *      directly at gain 0, deliberately, as a `setTimeout`-free teardown timer
+ *      (its `onended` must fire in offline rendering too). It is infrastructure.
+ *      Ten instruments build one: pluck, flute, organ, strings, bell, reese,
+ *      acid, brass, clav, drumsynth.
+ *   3. Gain must only be judged on params that were set once. Reading
+ *      `gain.value` after `noteOn` sees 0.0001 for EVERY voice, because that is
+ *      the envelope's last scheduled target.
  */
 export function classifySources(
   output: GraphNode,
   allNodes: GraphNode[],
-): { audible: GraphNode[]; modulators: GraphNode[]; dead: GraphNode[] } {
+  terminal: Terminal,
+): SourceClassification {
   const { reachable } = reachableFromOutput(output);
-  const audible: GraphNode[] = [];
-  const modulators: GraphNode[] = [];
-  const dead: GraphNode[] = [];
+  const result: SourceClassification = {
+    audible: [],
+    silentVoices: [],
+    modulators: [],
+    silentReferences: [],
+    leaks: [],
+    dead: [],
+  };
+
   for (const n of allNodes) {
     if (n.sourceKind === null) continue;
+
+    // 1. On the audio path at all? (backward walk from the output)
     if (reachable.has(n)) {
-      audible.push(n);
+      // Reachable, but is every path through it statically muted?
+      const { reachedOutput, reachedTerminal } = forwardStates(n, terminal);
+      if (reachedOutput) result.audible.push(n);
+      else result.silentVoices.push(n);
       continue;
     }
-    const drivesLiveNode = [...n.paramTargets].some((t) => reachable.has(t));
-    if (drivesLiveNode) modulators.push(n);
-    else dead.push(n);
+
+    // 2. Control chain: does anything this source can reach drive a param of a
+    //    node that is itself on the audio path? Two hops is normal
+    //    (lfo → depthGain → bandpass.frequency).
+    const forward = new Set<GraphNode>([n]);
+    const stack = [n];
+    let drivesLiveNode = false;
+    while (stack.length && !drivesLiveNode) {
+      const cur = stack.pop()!;
+      for (const t of cur.paramTargets) {
+        if (reachable.has(t)) {
+          drivesLiveNode = true;
+          break;
+        }
+      }
+      for (const out of cur.outputs) {
+        if (out instanceof GraphNode && !forward.has(out)) {
+          forward.add(out);
+          stack.push(out);
+        }
+      }
+    }
+    if (drivesLiveNode) {
+      result.modulators.push(n);
+      continue;
+    }
+
+    // 3. Bypasses the instrument output and goes to the context destination.
+    if (forwardStates(n, terminal).reachedTerminal) {
+      result.silentReferences.push(n);
+      continue;
+    }
+
+    result.dead.push(n);
   }
-  return { audible, modulators, dead };
+  return result;
 }
 
 /** Back-compat wrapper used by the earlier probe. */
 export function orphanedSources(output: GraphNode, allNodes: GraphNode[]): GraphNode[] {
-  return classifySources(output, allNodes).dead;
+  return classifySources(output, allNodes, new Terminal()).dead;
 }

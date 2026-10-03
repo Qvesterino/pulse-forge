@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createElement, type ReactElement } from "react";
-import { act, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { ArrangementPanel } from "../../src/ui/ArrangementPanel";
 import { ProjectStore } from "../../src/store/ProjectStore";
 import { SelectionStore } from "../../src/store/SelectionStore";
@@ -83,6 +83,10 @@ const offsetOf = (doc: ProjectDocument): number => clip(doc).offsetSec;
 
 /** Drag the clip's left trim handle right by `dxPx`, releasing mid-mutation. */
 function trimWithDocChangeDuringDrag(doc: ProjectDocument, newOffsetSec: number): ProjectDocument {
+  // Each call mounts its own panel; a previous one would still be in the
+  // document, and `querySelector` would then grab the OLD panel's handle and
+  // drive a store that is no longer the subject of this measurement.
+  cleanup();
   const { project } = renderLive(doc);
   const before = project.getDoc();
   const startOffset = offsetOf(before);
@@ -119,18 +123,21 @@ describe("audio trim commits against one document", () => {
     const before = docWithOffsetClip(3);
     const startOffset = offsetOf(before);
     const after = trimWithDocChangeDuringDrag(before, 3);
-    // Control: the gesture reached the command at all, and a rightward trim
-    // moves the source start forward.
-    expect(offsetOf(after)).toBe(-11111);
+    // Control: the gesture reached the command at all.
+    expect(offsetOf(after)).toBeGreaterThan(startOffset);
   });
 
-  it("does not anchor the source offset to the pre-change value", () => {
+  it("anchors the commit to the LIVE offset, not the one the panel last rendered", () => {
     const before = docWithOffsetClip(3);
     const after = trimWithDocChangeDuringDrag(before, 10);
 
-    // The document now says 10s. The committed clip must derive from THAT
-    // value, not from the 3s the panel last rendered.
-    expect(after.arrangement.audioClips![0]!.offsetSec).toBe(-22222);
+    // The drag's own source-time delta is a property of the gesture, so
+    // measure it from the control run and require the commit to be anchored
+    // at the post-change offset (10) rather than the pre-change one (3).
+    const gestureDelta = offsetOf(trimWithDocChangeDuringDrag(docWithOffsetClip(3), 3)) - 3;
+
+    // THE DEFECT (pre-fix): committed as 3 + delta — the pre-change memo.
+    expect(offsetOf(after)).toBeCloseTo(10 + gestureDelta, 2);
   });
 
   it("leaves the clip untouched when it was deleted mid-drag", () => {
