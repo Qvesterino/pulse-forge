@@ -36,3 +36,11 @@ self.onmessage = (e: MessageEvent<{ decay: number; sampleRate: number; seed: num
   // Transfer the ArrayBuffers for zero-copy
   self.postMessage({ left, right, length }, { transfer: [left.buffer as ArrayBuffer, right.buffer as ArrayBuffer] });
 };
+
+// Without this, the file is a TypeScript *script* rather than a module, and the
+// `mulberry32` above lands in the whole program's global scope. tsc then accepts
+// `mulberry32(...)` in any file under src/ with no import at all - green
+// typecheck, ReferenceError at runtime. The worker is already instantiated with
+// `{ type: "module" }` in src/effects/registry.ts, so this changes nothing at
+// runtime; it only puts the declaration back in module scope where it belongs.
+export {};
