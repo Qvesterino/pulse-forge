@@ -22,8 +22,7 @@ MENTAL MODEL
   subject:history lists what happened.
 
 THE CORE LOOP
-  read (kyx://project/* resources or kyx_state) -> act (structured tool)
-  -> verify (the read-back, then a state read when it matters)
+  read (kyx://project/* resources or kyx_state) -> act -> verify
 
 WORKFLOW: WHOLE TRACK IN ONE CALL
   kyx_song {genre, length?, mix?, loudness?} — generates the genre form
@@ -46,13 +45,9 @@ WORKFLOW: BEAT FROM SCRATCH
      cue markers in one undo (empty arrangement only); kyx_sections +
      kyx_clips for surgical edits afterwards.
   7. kyx_loudness {op: match, targetDb} — land near -14 LUFS.
-  8. kyx_blind_ab — the listening loop for mix decisions: op:plan derives
-     symmetric LUFS level-matching gains (lufsA + lufsB measured via
-     kyx_render_summary / export MIX CHECK), the HUMAN listens to the two
-     variants and you op:record their forced-choice answers (xWas/answer/
-     reactionMs), then op:verdict gives the two-sided binomial p-value —
-     real evidence, not vibes. Level-matching is mandatory: the louder
-     variant always wins otherwise.
+  8. kyx_blind_ab — the blind listening loop: op:plan level-matches two
+     variants (LUFS from kyx_render_summary), the HUMAN listens and you
+     op:record forced-choice answers; op:verdict gives the binomial p.
 
 WORKFLOW: MELODIC COMPOSITION (basslines, leads, chords — kyx_steps
 covers DRUMS only)
@@ -140,6 +135,12 @@ HONEST REFUSALS AND HOW TO REACT
 - "export is not available over this MCP transport" -> start it in the
   KYX window; over transports WITH a render hook, kyx_export awaits and
   reports duration/size.
+
+FAILURE MINING (local, never telemetered)
+  kyx_state {subject: "model-misses"} — the producer sentences the
+  deterministic layer AND the local model both failed on, most-frequent
+  first. Feed the top rows into the next corpus round or rephrase the
+  supported vocabulary instead of guessing.
 
 HYGIENE
 - Before a risky sequence, kyx_checkpoint {op: save, name} — and

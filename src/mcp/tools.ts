@@ -1,6 +1,7 @@
 import type { ProjectDocument } from "../project-model/types";
 import { isForeignWork, labelsRevertedBy } from "./attribution";
 import { hasMatchEqReference, referenceLoudnessTrim } from "../intent/match-eq";
+import { topIntentMisses } from "../intent/failure-log";
 import { planBlindPairGains, recordBlindAbTrial, resetBlindAbTrials, summarizeBlindAb } from "./blind-ab";
 import type { Command } from "../commands/types";
 import { routeIntentText, type RoutedIntent } from "../intent/route";
@@ -170,6 +171,7 @@ export const MCP_TOOLS: McpToolDef[] = [
             "scenes",
             "history",
             "reference",
+            "model-misses",
           ],
           description: "Which part of the project state to return",
         },
@@ -4494,6 +4496,26 @@ function stateSnapshot(
         return `${index + 1}. "${scene.name}" ${role}${launchable}${bars > 0 ? ` ${bars}bar` : ""} intensity ${Math.round(scene.intensity * 100)}%`;
       })
       .join("\n");
+  }
+  if (subject === "model-misses") {
+    // Failure-mining surfacing: the producer sentences the deterministic
+    // layer AND the local model both failed on, most-frequent first. LOCAL
+    // ONLY by contract — the log never leaves the machine; this read-back
+    // runs in the host app like every other tool.
+    const misses = topIntentMisses(20);
+    if (misses.length === 0) {
+      return "no unanswered asks logged yet — clarify prompts and model-misses accumulate here as mining rows for the next corpus round";
+    }
+    const totalHits = misses.reduce((sum, miss) => sum + miss.hits, 0);
+    const lines = misses.map(
+      (miss) =>
+        `${miss.hits}× ${miss.outcome === "clarify" ? "[clarify]" : "[miss]"} "${miss.prompt}"${miss.reason ? ` (${miss.reason})` : ""}`,
+    );
+    return (
+      `${misses.length} unanswered ask(s), ${totalHits} hit(s) total — corpus-round candidates (LOCAL ONLY, never telemetered):` +
+      "\n" +
+      lines.join("\n")
+    );
   }
   if (subject === "reference") {
     // Complement to the reference-mix wave: the MATCH REF conditioning

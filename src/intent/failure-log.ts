@@ -137,3 +137,42 @@ export function installIntentFailureDevtools(): void {
     /* no window (tests/node) — the functions stay importable */
   }
 }
+
+export interface MissAggregate {
+  prompt: string;
+  outcome: "clarify" | "model-miss";
+  /** Sum of collapsed counts — how often this ask failed. */
+  hits: number;
+  /** Last time it failed (wall clock). */
+  lastTs: number;
+  reason?: string;
+}
+
+/**
+ * The mining view: CLARIFY + MODEL-MISS events aggregated by prompt (hits
+ * summed, most-frequent first). These are the producer sentences the next
+ * corpus round needs — the asks both the deterministic layer AND the local
+ * model failed on. Model-hits are excluded (they worked); clarify-picked
+ * too (the chip resolved them).
+ */
+export function topIntentMisses(limit: number = 20): MissAggregate[] {
+  const byPrompt = new Map<string, MissAggregate>();
+  for (const event of safeRead()) {
+    if (event.outcome !== "clarify" && event.outcome !== "model-miss") continue;
+    const key = `${event.outcome}::${event.prompt}`;
+    const existing = byPrompt.get(key);
+    if (existing) {
+      existing.hits += event.count ?? 1;
+      existing.lastTs = Math.max(existing.lastTs, event.ts);
+    } else {
+      byPrompt.set(key, {
+        prompt: event.prompt,
+        outcome: event.outcome,
+        hits: event.count ?? 1,
+        lastTs: event.ts,
+        ...(event.reason !== undefined ? { reason: event.reason } : {}),
+      });
+    }
+  }
+  return [...byPrompt.values()].sort((a, b) => b.hits - a.hits || b.lastTs - a.lastTs).slice(0, Math.max(1, limit));
+}

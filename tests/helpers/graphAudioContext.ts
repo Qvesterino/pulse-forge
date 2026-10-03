@@ -69,22 +69,36 @@ export class GraphNode {
     return "a-rate";
   }
 
-  connect(destination?: GraphNode | Terminal | null): this {
-    if (!destination) return this;
+  /**
+   * Returns the DESTINATION, exactly like the Web Audio spec — not `this`.
+   *
+   * This is not a detail. Real code chains constantly:
+   *   `clock.connect(clockGain).connect(ctx.destination)`
+   * Under the spec, the inner call returns `clockGain`, so the outer call wires
+   * **clockGain → destination** and the 440 Hz reference clock stays muted by its
+   * gain-0 stage. A mock that returns `this` instead wires **clock → destination**
+   * as well, bypassing the mute — and that fabricated an unmuted leak in all ten
+   * instruments that use the silent cleanup clock. Found by the leak check, not
+   * by reading the code.
+   *
+   * Connecting to an AudioParam returns `undefined`, also per spec.
+   */
+  connect(destination?: GraphNode | Terminal | null): GraphNode | Terminal | undefined {
+    if (!destination) return undefined;
     if (destination instanceof GraphNode || destination instanceof Terminal) {
       this.outputs.add(destination);
       if (destination instanceof GraphNode) destination.inputs.add(this);
-      return this;
+      return destination;
     }
     // An AudioParam (or anything else that is not a graph node) is a CONTROL
     // edge. Remember which node it belongs to so reachability can tell an LFO
     // from a dead voice.
     const owner = (destination as { __owner?: GraphNode }).__owner;
     if (owner) this.paramTargets.add(owner);
-    return this;
+    return undefined;
   }
 
-  disconnect(destination?: GraphNode | Terminal): this {
+  disconnect(destination?: GraphNode | Terminal): void {
     if (destination === undefined) {
       // Real Web Audio: clears this node's OUTGOING edges only. Inbound edges
       // are the previous node's business.
@@ -93,7 +107,7 @@ export class GraphNode {
       }
       this.outputs.clear();
       this.paramTargets.clear();
-      return this;
+      return;
     }
     if (!this.outputs.has(destination)) {
       const err = new Error("InvalidAccessError");
@@ -102,7 +116,6 @@ export class GraphNode {
     }
     this.outputs.delete(destination);
     if (destination instanceof GraphNode) destination.inputs.delete(this);
-    return this;
   }
 }
 
@@ -239,11 +252,14 @@ export class GraphAudioContext {
   }
 
   /** A plausible buffer so sampler/granular paths can attach one. */
-  createBuffer(channels: number, length: number): { length: number; numberOfChannels: number; getChannelData: (i: number) => Float32Array } {
+  createBuffer(
+    channels: number,
+    length: number,
+  ): { length: number; numberOfChannels: number; getChannelData: (i: number) => Float32Array } {
     return {
       length,
       numberOfChannels: channels,
-      getChannelData: (i: number) => new Float32Array(length),
+      getChannelData: (_i: number) => new Float32Array(length),
     };
   }
 
@@ -285,53 +301,70 @@ export function reachableFromOutput(output: GraphNode): { reachable: Set<GraphNo
  * all (see `ParamStub.automated`) and therefore counts as alive — the test is
  * built to avoid crying wolf, so it only reports a mute when the silence is
  * provable from values that were set once and never scheduled.
+ *
+ * Reaching a node is tracked with "best liveness wins": a node first seen on a
+ * muted path is re-walked if a live path into it turns up later, otherwise a
+ * source that has both a muted and a live branch would be judged by whichever
+ * branch the stack happened to pop first.
  */
-function forwardStates(source: GraphNode, terminal: Terminal): { reachedOutput: boolean; reachedTerminal: boolean } {
-  const seen = new Set<GraphNode>([source]);
-  const stack: Array<{ node: GraphNode | Terminal; live: boolean }> = [{ node: source, live: true }];
-  let reachedOutput = false;
-  let reachedTerminal = false;
+interface ForwardState {
+  outputLive: boolean;
+  outputMuted: boolean;
+  terminalLive: boolean;
+  terminalAny: boolean;
+}
+
+function forwardStates(source: GraphNode, output: GraphNode): ForwardState {
+  const state: ForwardState = { outputLive: false, outputMuted: false, terminalLive: false, terminalAny: false };
+  const best = new Map<GraphNode, boolean>([[source, true]]);
+  const stack: Array<{ node: GraphNode; live: boolean }> = [{ node: source, live: true }];
   while (stack.length) {
     const { node, live } = stack.pop()!;
-    if (node === terminal) {
-      if (live) reachedTerminal = true;
-      continue;
-    }
-    if (node === source || seen.has(node)) {
-      // `seen` is only used to bound the walk; continue so `output` itself is
-      // inspected below (it may already be in `seen` via another path).
-    }
-    if (node !== source) {
-      const verdict = pathIsAudible(node);
-      if (verdict === false && live) {
-        // Node proves this path is silent — do not follow it, but still let the
-        // walk continue only if some other path into the same node is alive.
-      }
-    }
-    let nextLive = live;
-    const verdict = pathIsAudible(node as GraphNode);
-    if (verdict === false) nextLive = false;
+    const nextLive = live && pathIsAudible(node) !== false;
     for (const out of node.outputs) {
-      if (out === terminal) {
-        if (nextLive) reachedTerminal = true;
+      // The context destination is a terminal, not a node: record that it was
+      // reached and stop. `instanceof` rather than `=== terminal` because the
+      // walk must narrow the type, and one identity check does not exclude
+      // other Terminal instances.
+      if (!(out instanceof GraphNode)) {
+        state.terminalAny = true;
+        if (nextLive) state.terminalLive = true;
         continue;
       }
-      if (nextLive && out.kind === "destination") reachedTerminal = true;
-      if (nextLive) reachedOutput = true;
-      if (!seen.has(out)) {
-        seen.add(out);
+      if (out === output) {
+        if (nextLive) state.outputLive = true;
+        else state.outputMuted = true;
+      }
+      const prior = best.get(out);
+      if (prior === undefined || (prior === false && nextLive)) {
+        best.set(out, nextLive);
         stack.push({ node: out, live: nextLive });
       }
     }
   }
-  return { reachedOutput, reachedTerminal };
+  return state;
 }
 
 export interface SourceClassification {
   /** Carries real signal to the instrument output. This is the good case. */
   audible: GraphNode[];
-  /** Reaches the output only through a provably-static zero gain. A defect. */
+  /**
+   * Reaches the output only through a provably-static zero gain AND is the only
+   * source feeding its downstream node. A defect: a built, started, wired voice
+   * that provably cannot make a sound.
+   */
   silentVoices: GraphNode[];
+  /**
+   * Reaches the output only through a provably-static zero gain, but a live
+   * sibling source feeds the SAME downstream node.
+   *
+   * This is a crossfade member, not a defect. The wavetable builds two frame
+   * sources into one `filter.input` and sets `gA = (1 - blend) * level`,
+   * `gB = blend * level` — at the default MORPH position one of them is exactly
+   * zero while the other carries the note. Structurally identical to a broken
+   * voice; distinguishable only by the sibling.
+   */
+  crossfadeMembers: GraphNode[];
   /** Drives a param of a node that is on the audio path (LFO → depth → param). */
   modulators: GraphNode[];
   /**
@@ -348,6 +381,15 @@ export interface SourceClassification {
   leaks: GraphNode[];
   /** Reaches nothing at all — neither audio, nor a param, nor the terminal. */
   dead: GraphNode[];
+}
+
+/** True when some other source reaches `node` on a live-gain path. */
+function hasLiveSibling(node: GraphNode): boolean {
+  for (const upstream of node.inputs) {
+    if (upstream.sourceKind === null) continue;
+    if (forwardStates(upstream, node).terminalAny) return true;
+  }
+  return false;
 }
 
 /**
@@ -368,15 +410,17 @@ export interface SourceClassification {
  *      `gain.value` after `noteOn` sees 0.0001 for EVERY voice, because that is
  *      the envelope's last scheduled target.
  */
-export function classifySources(
-  output: GraphNode,
-  allNodes: GraphNode[],
-  terminal: Terminal,
-): SourceClassification {
+/**
+ * The walk stops at any non-GraphNode edge target, which in this mock is exactly
+ * the context destination — so the walk itself is what proves a source escaped
+ * the instrument output, and no terminal handle has to be threaded in.
+ */
+export function classifySources(output: GraphNode, allNodes: GraphNode[]): SourceClassification {
   const { reachable } = reachableFromOutput(output);
   const result: SourceClassification = {
     audible: [],
     silentVoices: [],
+    crossfadeMembers: [],
     modulators: [],
     silentReferences: [],
     leaks: [],
@@ -385,19 +429,27 @@ export function classifySources(
 
   for (const n of allNodes) {
     if (n.sourceKind === null) continue;
+    const fwd = forwardStates(n, output);
 
-    // 1. On the audio path at all? (backward walk from the output)
-    if (reachable.has(n)) {
-      // Reachable, but is every path through it statically muted?
-      const { reachedOutput, reachedTerminal } = forwardStates(n, terminal);
-      if (reachedOutput) result.audible.push(n);
+    // 1. Reaches the instrument output. If every route there is provably muted,
+    //    the voice is wired but silent — a defect the backward walk alone
+    //    cannot see, because reachability says "connected".
+    if (fwd.outputLive) {
+      result.audible.push(n);
+      continue;
+    }
+    if (fwd.outputMuted) {
+      // Same downstream node as a live sibling => crossfade member, not a bug.
+      const sharesNode = [...n.outputs].some((o) => o instanceof GraphNode && hasLiveSibling(o));
+      if (sharesNode) result.crossfadeMembers.push(n);
       else result.silentVoices.push(n);
       continue;
     }
 
     // 2. Control chain: does anything this source can reach drive a param of a
     //    node that is itself on the audio path? Two hops is normal
-    //    (lfo → depthGain → bandpass.frequency).
+    //    (lfo → depthGain → bandpass.frequency), so a direct paramTargets check
+    //    is not enough.
     const forward = new Set<GraphNode>([n]);
     const stack = [n];
     let drivesLiveNode = false;
@@ -421,9 +473,12 @@ export function classifySources(
       continue;
     }
 
-    // 3. Bypasses the instrument output and goes to the context destination.
-    if (forwardStates(n, terminal).reachedTerminal) {
-      result.silentReferences.push(n);
+    // 3. Escapes the instrument output entirely. Muted = the deliberate silent
+    //    clock; live = it writes straight to the context destination and skips
+    //    track gain, pan, mute, solo and the entire mixer chain.
+    if (fwd.terminalAny) {
+      if (fwd.terminalLive) result.leaks.push(n);
+      else result.silentReferences.push(n);
       continue;
     }
 
@@ -434,5 +489,5 @@ export function classifySources(
 
 /** Back-compat wrapper used by the earlier probe. */
 export function orphanedSources(output: GraphNode, allNodes: GraphNode[]): GraphNode[] {
-  return classifySources(output, allNodes, new Terminal()).dead;
+  return classifySources(output, allNodes).dead;
 }
