@@ -2019,6 +2019,95 @@ function fxVinyl(): Builder {
   };
 }
 
+/**
+ * TRANSITION PACK (transition pack wave) — three quick-transition FX that
+ * sit next to (not on top of) the existing long family: impact2 is the
+ * CINEMATIC hit (impact stays the sub thump), riser-short is the 0.7 s
+ * cliff (riser is the 1.9 s long build), noise-down is the falling AIR
+ * (downlifter is the long tonal sweep).
+ */
+
+/** Cinematic impact: a 120→45 Hz thump (impact's 85→30 is subbier), a
+ * crunchy bandpassed noise hit and a short inharmonic metal ring
+ * (211/489/733 Hz — struck metal, not a chord). Reads as a trailer hit
+ * next to impact's trailer-BOTTOM. */
+function fxImpact2(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const thump = ctx.createOscillator();
+    thump.type = "sine";
+    thump.frequency.setValueAtTime(120, t0);
+    thump.frequency.exponentialRampToValueAtTime(45, t0 + 0.18);
+    thump.connect(env(ctx, t0, 0.9, 0.55)).connect(dest);
+    thump.start(t0);
+    thump.stop(t0 + 0.7);
+    const crunch = noiseSource(ctx, 141, 0.09, t0);
+    const cbp = ctx.createBiquadFilter();
+    cbp.type = "bandpass";
+    cbp.frequency.value = 1800;
+    cbp.Q.value = 0.8;
+    crunch
+      .connect(cbp)
+      .connect(env(ctx, t0, 0.5, 0.09))
+      .connect(dest);
+    for (const [hz, level, decay] of [
+      [211, 0.22, 0.6],
+      [489, 0.14, 0.42],
+      [733, 0.09, 0.3],
+    ] as [number, number, number][]) {
+      const ring = ctx.createOscillator();
+      ring.type = "sine";
+      ring.frequency.value = hz;
+      ring.connect(env(ctx, t0 + 0.005, level, decay)).connect(dest);
+      ring.start(t0);
+      ring.stop(t0 + decay + 0.1);
+    }
+  };
+}
+
+/** Short riser: a 0.7 s steep noise sweep 400→6500 with the gain shaped so
+ * the LOUDEST point is the LAST one — a cliff the drop can hang from.
+ * riser (1.9 s) is the long build; this is the "quick catch-breath". */
+function fxRiserShort(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const duration = 0.7;
+    const noise = noiseSource(ctx, 161, duration + 0.05, t0);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.Q.value = 1.1;
+    bp.frequency.setValueAtTime(400, t0);
+    bp.frequency.exponentialRampToValueAtTime(6500, t0 + duration);
+    const g = ctx.createGain();
+    // quiet start, exponential acceleration — steeper than linear toward
+    // the cliff edge so the drop after it reads BIGGER
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.85, t0 + duration);
+    g.gain.setValueAtTime(0.0001, t0 + duration + 0.02);
+    noise.connect(bp).connect(g).connect(dest);
+  };
+}
+
+/** Noise-down: 0.8 s of falling AIR — white noise through a bandpass that
+ * closes 5200→260 as the gain falls. The downlifter is the long TONAL
+ * sweep; this is the exhale between sections. */
+function fxNoiseDown(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const duration = 0.8;
+    const noise = noiseSource(ctx, 173, duration + 0.05, t0);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.Q.value = 0.9;
+    bp.frequency.setValueAtTime(5200, t0);
+    bp.frequency.exponentialRampToValueAtTime(260, t0 + duration);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.7, t0);
+    g.gain.exponentialRampToValueAtTime(0.0005, t0 + duration);
+    noise.connect(bp).connect(g).connect(dest);
+  };
+}
+
 function fxNoise(): Builder {
   return (ctx, dest) => {
     const t0 = ctx.currentTime;
@@ -2708,6 +2797,10 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.fx.sweep": fxSweep(),
   "factory.fx.reverse": fxReverse(),
   "factory.fx.noise": fxNoise(),
+  // Transition pack (transition pack wave): quick-transition siblings
+  "factory.fx.impact2": fxImpact2(),
+  "factory.fx.riser-short": fxRiserShort(),
+  "factory.fx.noise-down": fxNoiseDown(),
   // Sub-drop (library-gap wave): the drill/trap transition staple — a two-
   // octave pitch fall landing on a semitone-clean C1.
   "factory.fx.subdrop": fxSubDrop(),
@@ -2917,6 +3010,9 @@ export const DURATIONS: Record<string, number> = {
   "factory.fx.sweep": 1.5,
   "factory.fx.reverse": 1.25,
   "factory.fx.noise": 0.35,
+  "factory.fx.impact2": 0.9,
+  "factory.fx.riser-short": 0.85,
+  "factory.fx.noise-down": 0.95,
   "factory.fx.subdrop": 1.5,
   "factory.fx.vinyl": 4.0,
   "factory.tonal.pluck": 0.5,

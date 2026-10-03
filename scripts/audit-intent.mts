@@ -29,7 +29,7 @@ const session = await ort.InferenceSession.create(new Uint8Array(modelBytes), {
   graphOptimizationLevel: "all",
 });
 
-let MARGIN = 1.0;
+let MARGIN = 2.5;
 let ABSTAIN = 2.0;
 async function infer(instruction: string): Promise<Record<string, Float32Array>> {
   const bow = buildIntentBow(instruction, vocab.tokens);
@@ -42,7 +42,7 @@ async function infer(instruction: string): Promise<Record<string, Float32Array>>
   return outputs;
 }
 
-MARGIN = Number(process.env.MARGIN ?? 1.0);
+MARGIN = Number(process.env.MARGIN ?? 2.5);
 ABSTAIN = Number(process.env.ABSTAIN_MARGIN ?? 2.0);
 const rows = readFileSync(path.join(ROOT, "scripts", "data", "intent-sft", "val.jsonl"), "utf8")
   .split("\n")

@@ -603,6 +603,30 @@ export const FACTORY_ASSETS: FactoryAsset[] = [
     tags: ["fx", "texture", "vinyl", "lofi", "phonk"],
     mood: ["warm", "atmosphere"],
   },
+  {
+    id: "factory.fx.impact2",
+    name: "Impact Cinematic",
+    category: "FX",
+    character: "Metal-ring trailer hit",
+    tags: ["fx", "impact", "cinematic", "hit"],
+    mood: ["aggressive", "dark"],
+  },
+  {
+    id: "factory.fx.riser-short",
+    name: "Short Riser",
+    category: "FX",
+    character: "0.7 s cliff sweep",
+    tags: ["fx", "riser", "short", "sweep"],
+    mood: ["aggressive", "atmosphere"],
+  },
+  {
+    id: "factory.fx.noise-down",
+    name: "Noise Down",
+    category: "FX",
+    character: "Falling air exhale",
+    tags: ["fx", "noise", "down", "exhale"],
+    mood: ["atmosphere", "dark"],
+  },
 
   /* ---------------- Tonal ---------------- */
   {

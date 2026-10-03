@@ -503,3 +503,40 @@ Forced-choice ABX per lane (X is always A or B; keyboard-driven). Your trials ap
 Priority lanes for the ear: `legacy-*` (did the mastering convergence actually improve
 808s?), `snare-room-vs-main` (does the room snare sit?), `fx-vinyl-bed` (does the dust
 help or annoy?), `hat-wash-vs-open`.
+
+## Wave 9 (2026-10-04): DE-DUP pass I — kick trio + tonal de-homogenization
+
+Owner-relayed agent suggestions, measured before acting:
+
+**Kick trio (the one real dedup).** The kick family is one shape-tube by design — every
+sine-body kick shares the sub/low spectrum and differentiation lives in click/tune/decay.
+The pair actually competing in the SAME role was pop vs punch (both "pop/dance punchy",
+both G#1 after the semitone snap). Re-voiced as a three-role ladder: punch stays the
+neutral G#1 stock (velocity-layer anchor), pop moves to **A1, tight body, bright click**
+(the pop/dance bounce), jersey to **B1, shortest body, hardest click** (the jersey-club
+signature). pop/punch fell out of the top-8 nearest neighbours (was #2). knock/lofi and
+deep/soft stay as documented lane decisions. Ear-pass lanes added: `kick-trio-dedup`,
+`kick-trio-jersey` (ABX, 12 lanes total).
+
+**Tonal de-homogenization (4 builders).** keys stays the NEUTRAL sample-anchor
+(FACTORY_TONAL_KEYZONES references it). The other four got identity:
+
+- sadpiano: unison detune (±4 cents beating), darker LPF 1900 (keys: 2400), longer
+  sympathetic ring — the heartbreak shade
+- rhodes: 200A tremolo LFO on the whole voice (the electric-piano fingerprint keys
+  lacks), longer body tail — layered ON TOP of the parallel session's stable-tine fix
+- harp: inharmonic string ratios (2.004/3.02/4.11/5.34/6.79 — a harp string is not a
+  harmonic series), fastest cascade in the bank
+- pluck: gated woody pluck — body through LPF 1500, fast decay (keys rings, the pluck
+  THUMBS)
+  Tight-pair count in the family: 5+ → 1 (pluck/rhodes 0.130). All four on the −16 target,
+  gate untouched.
+
+## Wave 10 (2026-10-04): TRANSITION PACK — 3 quick-transition FX
+
+Impact2 (cinematic metal-ring hit — impact stays the sub thump), riser-short (0.7 s
+cliff sweep vs riser's 1.9 s long build), noise-down (0.8 s falling air vs downlifter's
+long tonal sweep). All three on the −13 LUFS FX target, first-pass clean (no margin
+games). Ear-pass lanes added: impact2-vs-impact, riser-short-vs-riser,
+noisedown-vs-downlifter (15 lanes total). Bank assets only — wiring into the
+transition-cue system (quick-build / exhale cues) is a follow-up.
