@@ -86,19 +86,7 @@ export function vscoPackPresets(): InstrumentPreset[] {
       }
     }
     if (rest.length > 0) words.push(rest);
-    return words.join(" ").replace(/\w/g, (c) => c.toUpperCase());
-  };
-  const names: Record<string, string> = {
-    uprightPiano: "Upright Piano",
-    gmPerc: "Real Percussion Kit",
-    violinEns: "Violin Ensemble",
-    celloEns: "Cello Ensemble",
-    flute: "Flute",
-    clarinet: "Clarinet",
-    fHorn: "French Horn",
-    harp: "Harp",
-    glockenspiel: "Glockenspiel",
-    marimba: "Marimba",
+    return words.join(" ").replace(/\b\w/g, (c) => c.toUpperCase());
   };
   const out: InstrumentPreset[] = [];
   for (const [inst, layers] of byInstrument) {

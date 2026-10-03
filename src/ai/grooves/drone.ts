@@ -159,11 +159,19 @@ export const DRONE_GROOVES: GrooveData[] = decodeGrooves([
     patterns: [
       {
         // Timpani-ish toms + a cymbal swell — the cinematic kit.
+<<<<<<< Updated upstream
         0: "g0B4B8BcB",
         4: "g4ucu",
         11: "g0d2a4d6a8daacdea",
         12: "gcq",
         13: "g2k",
+=======
+        0: [0.75, 0, 0, 0, 0.75, 0, 0, 0, 0.75, 0, 0, 0, 0.75, 0, 0, 0],
+        4: [0, 0, 0, 0, 0.6, 0, 0, 0, 0, 0, 0, 0, 0.6, 0, 0, 0],
+        11: [0.3, 0, 0.25, 0, 0.3, 0, 0.25, 0, 0.3, 0, 0.25, 0, 0.3, 0, 0.25, 0],
+        12: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.5, 0, 0, 0],
+        13: [0, 0, 0.4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+>>>>>>> Stashed changes
       },
       {
         // The crescendo fill: tom roll into the downbeat.

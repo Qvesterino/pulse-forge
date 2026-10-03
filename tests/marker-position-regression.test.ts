@@ -87,10 +87,7 @@ describe("markers — sanitizeMarkers keeps its own contract", () => {
   });
 
   it("still repairs shape (bad type, missing name)", () => {
-    const sanitized = sanitizeMarkers(
-      [{ id: "a", name: "", type: "not-a-type", tick: 10 }],
-      Number.MAX_SAFE_INTEGER,
-    );
+    const sanitized = sanitizeMarkers([{ id: "a", name: "", type: "not-a-type", tick: 10 }], Number.MAX_SAFE_INTEGER);
     expect(sanitized[0].name).toBe("Marker");
     expect(sanitized[0].type).toBe("cue");
   });

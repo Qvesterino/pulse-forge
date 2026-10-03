@@ -325,6 +325,7 @@ export function ReferenceMapPanel() {
 
   const applyMarkers = useCallback(() => {
     if (!analysis) return;
+<<<<<<< Updated upstream
     const bpm = shownBpm ?? readingBpm ?? doc.bpm;
     const label = analysis.fileName.replace(/\.[^.]+$/, "");
     const sections = analysis.map.structure?.sections ?? [];
@@ -340,6 +341,14 @@ export function ReferenceMapPanel() {
       (d) => markerCommand(d, analysis.map, { beatsPerPhrase, bpm, label }),
       "Not enough beats for a phrase marker.",
     );
+=======
+    const options: PhraseMarkerOptions = {
+      beatsPerPhrase,
+      bpm: shownBpm ?? readingBpm ?? doc.bpm,
+      label: analysis.fileName.replace(/\.[^.]+$/, ""),
+    };
+    runCommand((d) => markerCommand(d, analysis.map, options), "Not enough beats for a phrase marker.");
+>>>>>>> Stashed changes
   }, [analysis, beatsPerPhrase, shownBpm, readingBpm, doc.bpm, runCommand]);
 
   const applyGroove = useCallback(() => {

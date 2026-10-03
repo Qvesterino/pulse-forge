@@ -37,6 +37,24 @@
       "fileB": "pairs/fx-subdrop.wav"
     },
     {
+      "lane": "impact2-vs-impact",
+      "label": "NEW impact2 — cinematic metal-ring hit (A = sub-thump impact). Which lands harder?",
+      "fileA": "pairs/fx-impact.wav",
+      "fileB": "pairs/fx-impact2.wav"
+    },
+    {
+      "lane": "riser-short-vs-riser",
+      "label": "NEW riser-short — 0.7 s cliff sweep (A = 1.9 s long build). For quick catches.",
+      "fileA": "pairs/fx-riser.wav",
+      "fileB": "pairs/fx-riser-short.wav"
+    },
+    {
+      "lane": "noisedown-vs-downlifter",
+      "label": "NEW noise-down — 0.8 s falling air (A = long tonal downlifter). The exhale.",
+      "fileA": "pairs/fx-downlifter.wav",
+      "fileB": "pairs/fx-noise-down.wav"
+    },
+    {
       "lane": "fx-vinyl-bed",
       "label": "NEW fx.vinyl — dust texture as a bed (A = clean beat, B = same + vinyl @0.5)",
       "fileA": "pairs/beat-clean.wav",

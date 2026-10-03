@@ -26,10 +26,12 @@ Najväčšia per-file overená CC0 knižnica. Hľadaj `acoustic drum one shot`,
 filtruj licenciu na CC0. Sťahovanie vyžaduje bezplatný účet.
 https://freesound.org/search/?q=drum+kit&f=license:%22Creative+Commons+0%22
 
-### 2. VSCO 2 Community Edition — CC0 ✅ (už v KYX)
+### 2. VSCO 2 Community Edition — **CC0** ✅ (už v KYX, obe vlny)
 
-Orchester: sláčiky, dychy, činely, harfa, klávesy. 75 SFZ / 3168 WAVov.
-Konverzia: `scripts/convert-vsco2.mjs`. Zdroj:
+Orchester: sláčiky (ens + solo), dychy, činely, harfa, klávesy (upright piano),
+perkusia (GM kit 220 kusov s 9 velocity vrstvami + round-robiny).
+**2141 samplov / 67 inštrumentov** po oboch vlnách. Konverzia:
+`scripts/convert-vsco2.mjs` (SFZ state-machine parser). Zdroj:
 https://archive.org/details/vsco-2-ce-sfz — LICENSE súbor v balíku potvrdzuje CC0.
 
 ### 3. Salamander Grand Piano V3 — CC-BY 3.0 ✅ (už v KYX)
