@@ -90,7 +90,7 @@ import { type PadSlice, setBpm, setPadParams, setTrackParams, sliceToPads } from
 import { setGroove } from "./groove";
 // docOps is plumbing shared by several domains and is NOT re-exported wholesale; only the one
 // name that was already public goes back out, so the barrel's surface is unchanged.
-import { cloneStepMeta, markerClampPatch, trackEffectsOf, withTrackEffects } from "./docOps";
+import { cloneStepMeta, markerClampPatch, trackEffectsOf, unlinkMarkersOfClips, withTrackEffects } from "./docOps";
 export { __resetSnapshotVerificationFallbacks, __snapshotVerificationFallbacks, snapshot } from "./core";
 export { trackEffectsOf } from "./docOps";
 
@@ -520,6 +520,13 @@ export function deleteTrack(doc: ProjectDocument, trackId: string): Command {
   // normalize pass dropped them. Remove them with the track (same contract
   // as the automation lanes above).
   const audioClips = doc.arrangement.audioClips?.filter((clip) => clip.trackId !== trackId);
+  // Markers linked to the track's audio clips are cross-references held by
+  // other entities — clear them here, inside the command, not in the
+  // post-apply normalize (same contract as the sidechain/MIDI cleanup below).
+  const unlinkedMarkers = unlinkMarkersOfClips(
+    doc.markers,
+    new Set((doc.arrangement.audioClips ?? []).filter((clip) => clip.trackId === trackId).map((clip) => clip.id)),
+  );
   // Cross-references HELD BY OTHER ENTITIES must be removed here, inside the
   // command — NOT left for the post-apply normalize pass. normalizeProject
   // prunes dangling sidechainTrackId / MIDI CC targets / aftertouch targets
@@ -533,6 +540,7 @@ export function deleteTrack(doc: ProjectDocument, trackId: string): Command {
   const midi = doc.midi;
   const next: ProjectDocument = {
     ...doc,
+    ...(unlinkedMarkers !== undefined ? { markers: unlinkedMarkers } : {}),
     tracks: doc.tracks
       .filter((t) => t.id !== trackId)
       .map((t) => {
@@ -1213,13 +1221,20 @@ export function resizeArrangementClip(doc: ProjectDocument, clipId: string, leng
 
 export function deleteArrangementClip(doc: ProjectDocument, clipId: string): Command {
   const remainingClips = doc.arrangement.clips.filter((c) => c.id !== clipId);
+  // Markers linked to the deleted clip must be unlinked in-command: the
+  // stale id would survive every save (schema keeps any string) and undo
+  // could not restore the link if it were left to a post-apply normalize.
+  const unlinked = unlinkMarkersOfClips(doc.markers, new Set([clipId]));
+  const clamp = markerClampPatch(unlinked ?? doc.markers, doc.scenes, doc.patterns, {
+    ...doc.arrangement,
+    clips: remainingClips,
+  });
+  const markersPatch =
+    clamp.markers !== undefined ? { markers: clamp.markers } : unlinked !== undefined ? { markers: unlinked } : {};
   const next: ProjectDocument = {
     ...doc,
     // Audit 08 D3: markers clamp to the shrunken project end in-command.
-    ...markerClampPatch(doc.markers, doc.scenes, doc.patterns, {
-      ...doc.arrangement,
-      clips: remainingClips,
-    }),
+    ...markersPatch,
     arrangement: {
       ...doc.arrangement,
       clips: remainingClips,
@@ -1640,8 +1655,12 @@ export function compAudioTakeRange(
 }
 
 export function deleteAudioClip(doc: ProjectDocument, clipId: string): Command {
+  // Markers linked to the deleted clip are unlinked in-command (same contract
+  // as deleteArrangementClip) so no stale linkedClipId survives in saves.
+  const unlinked = unlinkMarkersOfClips(doc.markers, new Set([clipId]));
   const next: ProjectDocument = {
     ...doc,
+    ...(unlinked !== undefined ? { markers: unlinked } : {}),
     arrangement: {
       ...doc.arrangement,
       audioClips: (doc.arrangement.audioClips ?? []).filter((c) => c.id !== clipId),
@@ -2131,7 +2150,12 @@ export function updateAudioClip(
   const stretchRate = num(patch.stretchRate, 0.25, 4);
   if (stretchRate !== undefined) nextPatch.stretchRate = stretchRate;
   if (patch.stretchMode !== undefined) nextPatch.stretchMode = patch.stretchMode;
-  if (patch.warpMarkers !== undefined) nextPatch.warpMarkers = patch.warpMarkers;
+  if (patch.warpMarkers !== undefined) {
+    // Clone, never store the caller's array: addAudioClip/duplicateAudioClip
+    // deep-copy warp pins, and a shared reference here would let a later
+    // in-place edit of the caller's array silently rewrite stored history.
+    nextPatch.warpMarkers = patch.warpMarkers.map((m) => ({ timeSec: m.timeSec, tick: m.tick }));
+  }
   if (patch.reverse !== undefined) nextPatch.reverse = patch.reverse === true;
   if (patch.loop !== undefined) {
     nextPatch.loop = patch.loop === true;
@@ -2202,18 +2226,34 @@ export function fitAudioClipTempo(doc: ProjectDocument, clipId: string, detected
 }
 
 /**
- * Slice an audio clip into multiple clips at given time positions (seconds).
- * Each segment becomes a separate AudioClip in the arrangement, positioned
- * sequentially after the original. SlicerX/PT-style: transient → clip row.
+ * Slice an audio clip into multiple clips at given time positions.
+ * `sliceTimesSec` are WALL seconds measured from the clip's first audible
+ * moment (0 = clip start). Each segment becomes a separate AudioClip in the
+ * arrangement, positioned sequentially after the original.
+ * SlicerX/PT-style: transient → clip row.
  */
 export function sliceAudioClipToArrangement(doc: ProjectDocument, clipId: string, sliceTimesSec: number[]): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
   if (sliceTimesSec.length === 0) throw new Error("No slice points provided");
-  // Build segments: [0, time1), [time1, time2), ..., [last, end)
-  const sorted = [...sliceTimesSec].sort((a, b) => a - b);
-  const totalDurationSec = (clip.lengthBars * (BAR_TICKS * 60)) / (doc.bpm * PPQ);
-  const ends = [...sorted, totalDurationSec];
+  if (clip.reverse === true) throw new Error("Slice is not supported on reversed clips");
+  if (clip.loop === true) throw new Error("Slice is not supported on looping clips");
+  const startTick = clip.startBar * BAR_TICKS;
+  const endTick = startTick + clip.lengthBars * BAR_TICKS;
+  // Same discipline as splitAudioClipAtTick: wall math at the scene-pinned
+  // tempo (not doc.bpm), source advance per wall second = rate (resample) or
+  // 1/rate (pitch-preserving stretch), and the window base is
+  // offsetSec + trimStart — dropping trimStart made every slice play the
+  // wrong region of a start-trimmed clip.
+  const wallDurSec = arrangementSecondsBetweenTicks(doc.arrangement.clips, doc.scenes, startTick, endTick, doc.bpm);
+  const spt = 60 / (tempoAtTick(doc.arrangement.clips, doc.scenes, startTick, doc.bpm) * PPQ);
+  const rate = Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
+  const preservingStretch = clip.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01;
+  const sourcePerWall = preservingStretch ? 1 / rate : rate;
+  const sourceStart = (clip.offsetSec ?? 0) + (clip.trimStart ?? 0);
+  // Build segments in wall seconds: [0, t1), [t1, t2), ..., [last, end)
+  const sorted = [...sliceTimesSec].filter((t) => Number.isFinite(t) && t > 0 && t < wallDurSec).sort((a, b) => a - b);
+  const ends = [...sorted, wallDurSec];
   const starts = [0, ...sorted];
   const segments: Array<{ startSec: number; endSec: number }> = [];
   for (let i = 0; i < starts.length; i++) {
@@ -2222,14 +2262,14 @@ export function sliceAudioClipToArrangement(doc: ProjectDocument, clipId: string
     if (e - s > 0.03) segments.push({ startSec: s, endSec: e });
   }
   if (segments.length < 2) throw new Error("Slices too short or too few");
-  // Position segments sequentially after original clip's end
-  const secPerBar = (BAR_TICKS * 60) / (doc.bpm * PPQ);
+  // Position segments sequentially after original clip's end. Advance by the
+  // STORED (rounded) length so repeated slices never drift onto each other.
   const originalEndBar = clip.startBar + clip.lengthBars;
   const newClips: AudioClip[] = [];
-  let currentBar = originalEndBar + 0.5; // 0.5 bar gap after original
+  let currentBar = Math.round((originalEndBar + 0.5) * 100) / 100;
   for (const seg of segments) {
-    const segDurationSec = seg.endSec - seg.startSec;
-    const segBars = Math.max(0.25, segDurationSec / secPerBar);
+    const segWallSec = seg.endSec - seg.startSec;
+    const segBars = Math.max(0.25, segWallSec / (spt * BAR_TICKS));
     const storedBars = Math.round(segBars * 100) / 100;
     // A slice is typically far shorter than the clip it came from, so the
     // parent's fades are re-bounded by the slice's own STORED length.
@@ -2239,14 +2279,14 @@ export function sliceAudioClipToArrangement(doc: ProjectDocument, clipId: string
       id: uid("audioClip"),
       startBar: currentBar,
       lengthBars: storedBars,
-      offsetSec: (clip.offsetSec ?? 0) + seg.startSec,
+      offsetSec: Math.max(0, sourceStart + seg.startSec * sourcePerWall),
       trimStart: 0,
       trimEnd: 0,
       fadeIn,
       fadeOut,
       warpMarkers: undefined,
     });
-    currentBar += segBars + 0.25;
+    currentBar = Math.round((currentBar + storedBars + 0.25) * 100) / 100;
   }
   const next: ProjectDocument = {
     ...doc,
@@ -2454,27 +2494,73 @@ function splitAudioClipAtTickWithMinimumFragment(
   return snapshot("splitAudioClip", `Split audio clip at bar ${(splitTick / BAR_TICKS + 1).toFixed(2)}`, doc, next);
 }
 
+/**
+ * Replace one audio clip with a fragment per non-silent segment (PT-style
+ * Strip Silence). `segments` are seconds in the ORIGINAL sample — the live
+ * caller analyzes the whole decoded buffer, so this command intersects them
+ * with the clip's audible window `[offsetSec+trimStart, sourceDur-trimEnd]`
+ * (fragments outside the window are material this clip never played) and
+ * places each fragment at its wall-clock position inside the clip.
+ *
+ * Geometry follows splitAudioClipAtTick's discipline: seconds-per-tick at the
+ * clip's SCENE-pinned tempo (not doc.bpm — under a tempo-pinned scene the
+ * transport runs a different wall clock), and source advance per wall second
+ * = `rate` for resample mode / `1/rate` for pitch-preserving stretch.
+ * Reversed and looping clips invert or wrap the window — fail closed rather
+ * than emit fragments at wrong positions.
+ */
 export function stripSilenceAudioClip(
   doc: ProjectDocument,
   clipId: string,
   segments: Array<{ startSec: number; endSec: number }>,
+  /** Decoded source duration — bounds the clip's audible window (same contract as splitAudioClipAtTick). */
+  sourceDurationSec?: number,
 ): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
   if (segments.length === 0) throw new Error("No non-silent segments");
+  if (clip.reverse === true) throw new Error("Strip silence is not supported on reversed clips");
+  if (clip.loop === true) throw new Error("Strip silence is not supported on looping clips");
+  const startTick = clip.startBar * BAR_TICKS;
+  const endTick = startTick + clip.lengthBars * BAR_TICKS;
+  // Scene-pinned seconds-per-tick at the clip's start: the scheduler runs this
+  // span at its effective tempo, so plain doc.bpm places fragments against a
+  // wall clock the transport never runs at (same bug class the split fix
+  // documented).
+  const spt = 60 / (tempoAtTick(doc.arrangement.clips, doc.scenes, startTick, doc.bpm) * PPQ);
+  const rate = Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
+  const preservingStretch = clip.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01;
+  const sourcePerWall = preservingStretch ? 1 / rate : rate;
+  const windowStart = (clip.offsetSec ?? 0) + (clip.trimStart ?? 0);
+  const windowEnd =
+    Number.isFinite(sourceDurationSec) && sourceDurationSec! > windowStart
+      ? Math.max(windowStart, sourceDurationSec! - (clip.trimEnd ?? 0))
+      : Number.POSITIVE_INFINITY;
+  const fragments = segments
+    .filter((seg) => Number.isFinite(seg.startSec) && Number.isFinite(seg.endSec) && seg.endSec > seg.startSec)
+    .map((seg) => ({ start: Math.max(windowStart, seg.startSec), end: Math.min(windowEnd, seg.endSec) }))
+    .filter((seg) => seg.end - seg.start > 0.01);
+  if (fragments.length === 0) throw new Error("No audible content inside this clip's window");
+  // The clip currently plays the source span [windowStart, playedEnd]; if the
+  // fragments cover exactly that, stripping would be a no-op.
+  const playedEnd = Math.min(
+    windowEnd,
+    windowStart +
+      arrangementSecondsBetweenTicks(doc.arrangement.clips, doc.scenes, startTick, endTick, doc.bpm) * sourcePerWall,
+  );
   if (
-    segments.length === 1 &&
-    Math.abs(segments[0].startSec - (clip.offsetSec ?? 0)) < 0.001 &&
-    Math.abs(segments[0].endSec - ((clip.offsetSec ?? 0) + (clip.lengthBars * BAR_TICKS * 60) / (doc.bpm * PPQ))) < 0.1
+    fragments.length === 1 &&
+    Math.abs(fragments[0].start - windowStart) < 0.001 &&
+    Math.abs(fragments[0].end - playedEnd) < 0.1
   ) {
     throw new Error("No silence to strip");
   }
-  const secondsPerTick = 60 / (doc.bpm * PPQ);
-  const startTick = clip.startBar * BAR_TICKS;
-  const newClips: import("../project-model/types").AudioClip[] = segments.map((seg) => {
-    const segDurSec = seg.endSec - seg.startSec;
-    const segBars = segDurSec / secondsPerTick / BAR_TICKS;
-    const segStartTick = startTick + (seg.startSec - (clip.offsetSec ?? 0)) / secondsPerTick;
+  const newClips: import("../project-model/types").AudioClip[] = fragments.map((seg) => {
+    // Source span → wall span via the stretch conversion, then wall → bars at
+    // the scene-pinned tempo.
+    const wallDurSec = (seg.end - seg.start) / sourcePerWall;
+    const segBars = wallDurSec / (spt * BAR_TICKS);
+    const segStartTick = startTick + (seg.start - windowStart) / sourcePerWall / spt;
     const storedBars = Math.max(0.05, Math.round(segBars * 100) / 100);
     // Stripped segments are by definition much shorter than the source clip —
     // a 4s fadeIn cannot survive on a 0.1s blip.
@@ -2484,11 +2570,16 @@ export function stripSilenceAudioClip(
       id: uid("audioClip"),
       startBar: segStartTick / BAR_TICKS,
       lengthBars: storedBars,
-      offsetSec: seg.startSec,
+      offsetSec: seg.start,
       trimStart: 0,
       trimEnd: 0,
       fadeIn,
       fadeOut,
+      // Fragments have their own source windows — the parent's tick-anchored
+      // warp pins describe a span that no longer exists (sliceAudioClipToArrangement
+      // clears them for the same reason). Also prevents all fragments from
+      // sharing ONE array reference via the `...clip` spread.
+      warpMarkers: undefined,
     } as import("../project-model/types").AudioClip;
   });
   // Keep original clip's track/color but replace single with many
@@ -2568,11 +2659,33 @@ export function consolidateAudioClips(doc: ProjectDocument, clipIds: string[], b
  * routing (group FX preserved).
  */
 export function duplicateTimeRange(doc: ProjectDocument, fromTick: number, toTick: number): Command {
-  const from = Math.min(fromTick, toTick);
-  const to = Math.max(fromTick, toTick);
-  if (from === to) throw new Error("Cannot duplicate empty time range");
+  const rawFrom = Math.min(fromTick, toTick);
+  const rawTo = Math.max(fromTick, toTick);
+  if (rawFrom === rawTo) throw new Error("Cannot duplicate empty time range");
+  // Scene clips live on an integer-bar grid (every move/resize command rounds
+  // to whole bars) but the marquee only quantizes to ticks — a 2.4-bar drag
+  // would shift later sections to fractional startBars, which the next move
+  // command silently snaps back to an integer (position jump) and whose
+  // startBar*BAR_TICKS is not even tick-exact in floating point. Widen the
+  // zone to whole bars, never shrink it; bar-aligned ranges are unaffected.
+  const from = Math.floor(rawFrom / BAR_TICKS) * BAR_TICKS;
+  const to = Math.ceil(rawTo / BAR_TICKS) * BAR_TICKS;
   const delta = to - from;
   const deltaBars = delta / BAR_TICKS;
+  // Scene clips are a no-overlap lane: a clip crossing either zone boundary
+  // neither duplicates (not wholly inside) nor shifts (not trailing), so an
+  // inside clip's copy would land on top of it — the audio lane below refuses
+  // straddling clips for exactly this reason. Fail closed, not with an
+  // overlapping arrangement.
+  if (
+    doc.arrangement.clips.some((c) => {
+      const cFrom = c.startBar * BAR_TICKS;
+      const cTo = (c.startBar + c.lengthBars) * BAR_TICKS;
+      return (cFrom < from && cTo > from) || (cFrom < to && cTo > to);
+    })
+  ) {
+    throw new Error("Cannot duplicate a time range when a clip crosses its boundary; adjust the range first.");
+  }
   const fromStep = Math.floor(from / STEP_TICKS);
   const toStepEx = Math.ceil(to / STEP_TICKS);
   const deltaSteps = toStepEx - fromStep;
@@ -2619,7 +2732,11 @@ export function duplicateTimeRange(doc: ProjectDocument, fromTick: number, toTic
     sceneId: c.sceneId,
     startBar: c.startBar + deltaBars,
     lengthBars: c.lengthBars,
-    // Carry the per-clip loop flag — a fresh literal silently reset it.
+    // Carry the per-clip loop/phase flags — duplicateArrangementClip does; a
+    // fresh literal silently reset them, so the zone copy of a phase-shifted
+    // clip played the pattern from the wrong phase.
+    ...(c.phaseOffsetTicks !== undefined ? { phaseOffsetTicks: c.phaseOffsetTicks } : {}),
+    ...(c.sceneOffsetTicks !== undefined ? { sceneOffsetTicks: c.sceneOffsetTicks } : {}),
     ...(c.loop ? { loop: c.loop } : {}),
   }));
   const nextClips = [...baseClips, ...duplicatedClips].sort((a, b) => a.startBar - b.startBar);
@@ -4524,10 +4641,14 @@ export function deleteArrangementClipRipple(doc: ProjectDocument, clipId: string
     .filter((c) => c.id !== clipId)
     .map((c) => (c.startBar >= oldEnd ? { ...c, startBar: Math.max(0, c.startBar - clip.lengthBars) } : c))
     .sort((a, b) => a.startBar - b.startBar);
+  const unlinked = unlinkMarkersOfClips(doc.markers, new Set([clipId]));
+  const clamp = markerClampPatch(unlinked ?? doc.markers, doc.scenes, doc.patterns, { ...doc.arrangement, clips });
+  const markersPatch =
+    clamp.markers !== undefined ? { markers: clamp.markers } : unlinked !== undefined ? { markers: unlinked } : {};
   const next: ProjectDocument = {
     ...doc,
     // Audit 08 D3: markers clamp to the shrunken project end in-command.
-    ...markerClampPatch(doc.markers, doc.scenes, doc.patterns, { ...doc.arrangement, clips }),
+    ...markersPatch,
     arrangement: { ...doc.arrangement, clips, transitions: transitionsForClips(doc, clips) },
   };
   return snapshot("deleteArrangementClipRipple", `Ripple delete clip`, doc, next);

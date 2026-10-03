@@ -4585,7 +4585,7 @@ export function ArrangementPanel() {
                   return;
                 }
                 try {
-                  execute(stripSilenceAudioClip(services.store.doc, c.id, filtered));
+                  execute(stripSilenceAudioClip(services.store.doc, c.id, filtered, buf.duration));
                 } catch (err) {
                   setActionError(String(err));
                 }

@@ -217,7 +217,19 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
       }
       case "duplicate": {
         if (hasTime) {
-          services.store.execute(duplicateTimeRange(doc, selection.timeRange!.fromTick, selection.timeRange!.toTick));
+          try {
+            services.store.execute(duplicateTimeRange(doc, selection.timeRange!.fromTick, selection.timeRange!.toTick));
+          } catch (error) {
+            // Zone duplicate fails closed when a clip crosses the zone (the
+            // no-overlap contract). Route the failure to the range editor —
+            // the user can adjust the range and retry from there — instead of
+            // an unhandled throw from the click handler.
+            setRangeEditTarget(selection.timeRange!);
+            setRangeEditText("duplicate selected range");
+            setRangeEditError(error instanceof Error ? error.message : String(error));
+            setRangeEditOpen(true);
+            keepOpen = true;
+          }
         } else if (hasNotes) {
           const sel = selection.noteSelections[0];
           if (sel) services.store.execute(duplicateNotes(doc, sel.trackId, sel.noteIds));

@@ -30,6 +30,7 @@ import type {
   AutomationTarget,
 } from "./types";
 import { BAR_TICKS, PPQ, STEP_TICKS, STEPS_PER_PATTERN, isMusicalKey } from "./types";
+import { tempoAtTick } from "./scene-time";
 import { sanitizeProjectProducerBrief } from "./producer-brief";
 import { sanitizeGateSteps, sanitizeLfo, sanitizeManglerSteps } from "./modulators";
 import { uid } from "../shared/ids";
@@ -544,7 +545,19 @@ export function clampArrangementTransitionType(value: unknown): ArrangementTrans
     : "custom";
 }
 
-export function sanitizeAudioClips(input: unknown, trackIds: Set<string>): import("./types").AudioClip[] | undefined {
+export function sanitizeAudioClips(
+  input: unknown,
+  trackIds: Set<string>,
+  /** Project BPM for the fallback fade bound (normalizeBpmDomain runs before this domain). */
+  bpm?: number,
+  /**
+   * Scene-aware duration resolver: bounds fades at the tempo the clip
+   * actually plays at (its covering scene's BPM pin), not flat doc.bpm —
+   * the comp-crossfade writer sizes fades at the scene tempo and a flat
+   * project-tempo bound would clamp valid crossfades on every normalize.
+   */
+  durationSecOf?: (startBar: number, lengthBars: number) => number,
+): import("./types").AudioClip[] | undefined {
   if (!Array.isArray(input)) return undefined;
   const out: import("./types").AudioClip[] = [];
   const seen = new Set<string>();
@@ -567,8 +580,15 @@ export function sanitizeAudioClips(input: unknown, trackIds: Set<string>): impor
     const trimStart = Math.max(0, Number.isFinite(Number(raw.trimStart)) ? Number(raw.trimStart) : 0);
     const trimEnd = Math.max(0, Number.isFinite(Number(raw.trimEnd)) ? Number(raw.trimEnd) : 0);
     const gain = Math.min(2, Math.max(0, Number.isFinite(Number(raw.gain)) ? Number(raw.gain) : 1));
-    const fadeIn = Math.max(0, Number.isFinite(Number(raw.fadeIn)) ? Number(raw.fadeIn) : 0);
-    const fadeOut = Math.max(0, Number.isFinite(Number(raw.fadeOut)) ? Number(raw.fadeOut) : 0);
+    // Fades must never outlive their clip (clampClipFades invariant): on load,
+    // bound them to the clip's duration so a hand-edited/imported doc cannot
+    // carry a 4s fade on a 0.2s clip until some length-rewriting command runs.
+    const fadeBoundSec =
+      durationSecOf !== undefined
+        ? durationSecOf(startBar, lengthBars)
+        : (lengthBars * BAR_TICKS * 60) / (Math.max(1, Number.isFinite(bpm) ? bpm! : 120) * PPQ);
+    const fadeIn = Math.min(fadeBoundSec, Math.max(0, Number.isFinite(Number(raw.fadeIn)) ? Number(raw.fadeIn) : 0));
+    const fadeOut = Math.min(fadeBoundSec, Math.max(0, Number.isFinite(Number(raw.fadeOut)) ? Number(raw.fadeOut) : 0));
     let stretchRate = Number.isFinite(Number(raw.stretchRate)) ? Number(raw.stretchRate) : 1;
     stretchRate = Math.min(4, Math.max(0.25, stretchRate));
     const reverse = raw.reverse === true;
@@ -1594,6 +1614,11 @@ function normalizeArrangementDomain(s: NormalizeState): void {
   const sanitizedAudioClips = sanitizeAudioClips(
     (arrangement as unknown as Record<string, unknown>).audioClips,
     trackIds,
+    s.doc.bpm,
+    (startBar, lengthBars) => {
+      const spt = 60 / (tempoAtTick(s.doc.arrangement.clips, s.doc.scenes, startBar * BAR_TICKS, s.doc.bpm) * PPQ);
+      return lengthBars * BAR_TICKS * spt;
+    },
   );
   const takeGroups = sanitizeAudioTakeGroups(
     (arrangement as unknown as Record<string, unknown>).takeGroups,

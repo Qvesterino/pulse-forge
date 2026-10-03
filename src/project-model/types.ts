@@ -647,7 +647,7 @@ export interface Marker {
   type: "drop" | "buildup" | "riser" | "impact" | "cue" | "custom";
   /** Absolute project tick. */
   tick: number;
-  /** Optional clip the marker is tied to (moves when the clip is moved). */
+  /** Optional clip the marker is tied to (cue-preview routing; cleared when the clip is deleted). */
   linkedClipId?: ID;
   /** Optional custom payload id echoed in the exported scorepack. */
   customId?: string;

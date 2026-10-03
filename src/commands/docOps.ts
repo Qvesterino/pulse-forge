@@ -53,6 +53,27 @@ export function cloneStepMeta(meta: Pattern["stepMeta"]): Pattern["stepMeta"] {
 }
 
 /**
+ * Clear `linkedClipId` on markers whose linked clip is going away.
+ *
+ * The link promises "tied to this clip" (Marker.linkedClipId doc): after a
+ * delete the stale id survived every save (schema keeps any string) and the
+ * scheduler silently fell back to the global preview bus. Unlink INSIDE the
+ * delete command — same contract as stripDanglingEffectReferences (Audit 05
+ * D1) — so undo restores the link together with the clip. Returns undefined
+ * when nothing changed, so callers avoid needless clones.
+ */
+export function unlinkMarkersOfClips(markers: Marker[], removedClipIds: Set<string>): Marker[] | undefined {
+  if (markers.length === 0 || removedClipIds.size === 0) return undefined;
+  let changed = false;
+  const next = markers.map((m) => {
+    if (!m.linkedClipId || !removedClipIds.has(m.linkedClipId)) return m;
+    changed = true;
+    return { ...m, linkedClipId: undefined };
+  });
+  return changed ? next : undefined;
+}
+
+/**
  * Audit 08 D3: mirror normalize's marker clamp so an arrangement shrink
  * records marker moves INSIDE the command delta - otherwise undo of the
  * shrink restored the clips but the markers stayed clamped to the shrunken
