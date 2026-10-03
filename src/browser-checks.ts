@@ -4461,15 +4461,13 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
   }
 
   // PITCH CORRECT (host level) — the same factory path the real graph uses.
-  // KNOWN v1 GAP (PARKED-PITCHCORRECT): the granular rendering of near-unity
-  // corrections does not yet produce the audible shift, so the audible
-  // assertion is parked (see tests/pitchcorrect-block-sim.test.ts). THIS
-  // check verifies what v1 guarantees: the worklet loads through the
-  // factory, renders non-silent audio with the input tone present, and the
-  // detection/snap parameters are live (amount 0 vs 1 render identically —
-  // the rendering gap makes both paths passthrough-equivalent today).
+  // The v1 rendering gap (near-unity corrections rendered unshifted) is
+  // CLOSED: the two-tap granular engine transposes at the correction ratio,
+  // so the audible assertion is live — amount 1 must move spectral energy
+  // from the off-key input tone to the scale target (E4 − 30 cents in C
+  // major → E4), while amount 0 passes the input tone through untouched.
   try {
-    const renderProbe = async (amount: number): Promise<{ rms: number; tone: number }> => {
+    const renderProbe = async (amount: number): Promise<{ rms: number; input: number; target: number }> => {
       const ctx = new OfflineAudioContext(2, SR, SR);
       await loadAllWorklets(ctx);
       if (!isWorkletReady("pitchCorrect", ctx)) throw new Error("worklet modules not ready");
@@ -4498,29 +4496,31 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
       let sum = 0;
       const seg = out.subarray(from);
       for (let i = 0; i < n; i++) sum += seg[i] * seg[i];
-      // Goertzel at the input tone — the presence contract.
-      const k = (2 * Math.PI * 323.95) / SR;
-      const coeff = 2 * Math.cos(k);
-      let s1 = 0,
-        s2 = 0;
-      for (let i = 0; i < n; i++) {
-        const s0 = seg[i] + coeff * s1 - s2;
-        s2 = s1;
-        s1 = s0;
-      }
-      const tone = Math.sqrt(s1 * s1 + s2 * s2 - coeff * s1 * s2) / n;
-      return { rms: Math.sqrt(sum / n), tone };
+      // Goertzel at the input tone and at the correction target.
+      const binAt = (hz: number): number => {
+        const k = (2 * Math.PI * hz) / SR;
+        const coeff = 2 * Math.cos(k);
+        let s1 = 0,
+          s2 = 0;
+        for (let i = 0; i < n; i++) {
+          const s0 = seg[i] + coeff * s1 - s2;
+          s2 = s1;
+          s1 = s0;
+        }
+        return Math.sqrt(s1 * s1 + s2 * s2 - coeff * s1 * s2) / n;
+      };
+      return { rms: Math.sqrt(sum / n), input: binAt(323.95), target: binAt(329.63) };
     };
     const probe0 = await renderProbe(0);
     const probe1 = await renderProbe(1);
     check(
-      "pitchCorrect: worklet renders the input tone through the factory (rendering gap parked)",
-      probe0.rms > 0.05 && probe0.tone > 0.02 && Math.abs(probe0.rms - probe1.rms) < 0.05,
-      `amount0: rms=${probe0.rms.toFixed(4)} tone=${probe0.tone.toFixed(4)} · amount1: rms=${probe1.rms.toFixed(4)} tone=${probe1.tone.toFixed(4)}`,
+      "pitchCorrect: amount 0 passes the input tone through; amount 1 corrects toward the scale target",
+      probe0.rms > 0.05 && probe0.input > 0.02 && probe1.target > probe1.input && probe1.target > 0.02,
+      `amount0: rms=${probe0.rms.toFixed(4)} input=${probe0.input.toFixed(4)} · amount1: input=${probe1.input.toFixed(4)} target=${probe1.target.toFixed(4)}`,
     );
   } catch (error) {
     check(
-      "pitchCorrect: worklet renders the input tone through the factory (rendering gap parked)",
+      "pitchCorrect: amount 0 passes the input tone through; amount 1 corrects toward the scale target",
       false,
       String(error),
     );

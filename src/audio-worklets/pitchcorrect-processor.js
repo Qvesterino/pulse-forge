@@ -15,7 +15,7 @@
  *    cents, scaled by `amount`, becomes the correction. Clamped to ±CORRECT_LIMIT
  *    cents so an octave-confused detection can never grab wild intervals.
  *
- * 3. SHIFT: the same COLA-compliant dual-voice granular engine as the pitch
+ * 3. SHIFT: the same COLA dual-voice granular engine as the pitch
  *    shifter, reading at the correction ratio (1.0 = in tune = bit-clean
  *    passthrough of the granular sum). The ratio is smoothed with a per-sample
  *    one-pole whose coefficient is computed ONCE per block with the block-rate
@@ -45,16 +45,32 @@ const SCALE_MASKS = [
  * (a ring; `writePos` points past the last written sample). Returns
  * `{ hz, clarity }` — hz 0 means "no confident voice".
  *
+ * `scratch` ({x, d, nd} Float32Arrays) lets the processor reuse one set of
+ * work buffers per lifetime — detectPitch runs on the audio thread every
+ * HOP samples and per-call allocation would churn the GC inside the render
+ * callback (~640 KB/s at 48 kHz). Without scratch (the golden-vector unit
+ * tests) the buffers are allocated per call; results are identical either
+ * way — nothing below `minLag` is ever read, and every entry at or above it
+ * is rewritten before use.
+ *
  * Exposed for the golden-vector unit tests (run in a VM scope).
  */
-function detectPitch(buf, bufLen, writePos, sampleRate, windowW, minHz, maxHz) {
+function detectPitch(buf, bufLen, writePos, sampleRate, windowW, minHz, maxHz, scratch) {
   const maxLag = Math.min(Math.floor(sampleRate / minHz), windowW - 64);
   const minLag = Math.max(2, Math.ceil(sampleRate / maxHz));
   const m = windowW - maxLag; // correlation length
   if (m < 64) return { hz: 0, clarity: 0 };
 
-  // Linear read of the most recent `windowW` samples.
-  const x = new Float32Array(windowW);
+  let x, d, nd;
+  if (scratch && scratch.x.length >= windowW && scratch.d.length > maxLag && scratch.nd.length > maxLag) {
+    x = scratch.x;
+    d = scratch.d;
+    nd = scratch.nd;
+  } else {
+    x = new Float32Array(windowW);
+    d = new Float32Array(maxLag + 1);
+    nd = new Float32Array(maxLag + 1);
+  }
   let rms = 0;
   const start = writePos - windowW;
   for (let i = 0; i < windowW; i++) {
@@ -68,7 +84,6 @@ function detectPitch(buf, bufLen, writePos, sampleRate, windowW, minHz, maxHz) {
   if (rms < 1e-4) return { hz: 0, clarity: 0 }; // silence — nothing to track
 
   // YIN difference function d(lag) = Σ (x[i] - x[i+lag])², i < m.
-  const d = new Float32Array(maxLag + 1);
   let runningSum = 0;
   for (let lag = minLag; lag <= maxLag; lag++) {
     let sum = 0;
@@ -86,7 +101,6 @@ function detectPitch(buf, bufLen, writePos, sampleRate, windowW, minHz, maxHz) {
   // tone has near-zero differences at EVERY period multiple (T, 2T, …) and
   // the picker landed on the octave BELOW the true fundamental (a pure
   // 330 Hz tone detected as 165 Hz — caught by the golden vectors).
-  const nd = new Float32Array(maxLag + 1);
   let cumulative = 0;
   for (let lag = minLag; lag <= maxLag; lag++) {
     cumulative += d[lag];
@@ -180,12 +194,34 @@ class PitchCorrectProcessor extends AudioWorkletProcessor {
     this.bufferLen = sr * 2;
     this.bufL = new Float32Array(this.bufferLen);
     this.bufR = new Float32Array(this.bufferLen);
+    // Detection scratch, sized with the same formula detectPitch derives
+    // maxLag from — one allocation per processor lifetime, reused every
+    // detection pass (no GC churn on the audio thread).
+    const maxLag = Math.min(Math.floor(sr / MIN_HZ), ANALYSIS_W - 64);
+    this.detectScratch = {
+      x: new Float32Array(ANALYSIS_W),
+      d: new Float32Array(maxLag + 1),
+      nd: new Float32Array(maxLag + 1),
+    };
+    // Grain half-size for fixed 30 ms grains — depends only on the sample
+    // rate, so derive it once instead of per block.
+    this.grainHalf = Math.max(4, Math.round((30 / 1000) * sr) / 2);
+    // Two-tap granular read state (see the shift stage in process()): each
+    // tap's delay evolves CONTINUOUSLY at (1 - ratio) per output sample, so
+    // between snaps the tap reads at exactly `ratio` — a real transposition.
+    // (v1 anchored every grain with an absolute formula whose anchors advance
+    // at rate 1: no content was ever skipped or repeated, so near-unity
+    // corrections rendered unshifted — the documented v1 gap, caught by the
+    // block-sim and browser checks.) A tap snaps back into [2H, 4H] only at
+    // ITS OWN grain start, where its Hann window is zero — snaps are inaudible.
+    this.tapDelay = [2 * this.grainHalf, 4 * this.grainHalf];
+    this.grainIndex = [-1, -1];
     this.writePos = 0;
     this.blocksSinceDetect = HOP; // detect on the very first block
     this.detectedHz = 0;
     this.clarity = 0;
     this.ratioSmooth = 1;
-    this.silenceBlocks = 0;
+    this.untrackedPasses = 0;
   }
 
   static get parameterDescriptors() {
@@ -238,7 +274,16 @@ class PitchCorrectProcessor extends AudioWorkletProcessor {
     this.blocksSinceDetect += len;
     if (this.blocksSinceDetect >= HOP) {
       this.blocksSinceDetect = 0;
-      const result = detectPitch(this.bufL, this.bufferLen, this.writePos, sr, ANALYSIS_W, MIN_HZ, MAX_HZ);
+      const result = detectPitch(
+        this.bufL,
+        this.bufferLen,
+        this.writePos,
+        sr,
+        ANALYSIS_W,
+        MIN_HZ,
+        MAX_HZ,
+        this.detectScratch,
+      );
       // Confidence gate: only a clear monophonic voice updates the target —
       // silence, breath and chord mush hold the previous detection.
       // 0.75: pure tones measure ~0.85, chord mush ~0.61, noise ~0.12 —
@@ -247,12 +292,16 @@ class PitchCorrectProcessor extends AudioWorkletProcessor {
       if (result.clarity >= 0.75 && result.hz > 0) {
         this.detectedHz = result.hz;
         this.clarity = result.clarity;
-        this.silenceBlocks = 0;
+        this.untrackedPasses = 0;
       } else {
-        this.silenceBlocks += 1;
+        this.untrackedPasses += 1;
         // After ~0.5 s of untracked audio, release the correction to unity so
-        // the tail of a phrase does not hold a stale ratio.
-        if (this.silenceBlocks * 128 > sr * 0.5) this.detectedHz = 0;
+        // the tail of a phrase does not hold a stale ratio. Each failed pass
+        // covers ~HOP samples (detection fires at most once per HOP) — scale
+        // by HOP, NOT by the 128-sample render quantum: 0.5 s of failed
+        // passes is only ~24 of them, and the old `* 128` form stretched the
+        // hold to 188 passes ≈ 4 s of stale correction.
+        if (this.untrackedPasses * HOP > sr * 0.5) this.detectedHz = 0;
       }
     }
 
@@ -276,9 +325,11 @@ class PitchCorrectProcessor extends AudioWorkletProcessor {
 
     // ── shift ──
     const ratio = this.ratioSmooth;
-    const grainMs = 30; // short grains keep the correction responsive
-    const H = Math.max(4, Math.round((grainMs / 1000) * sr) / 2);
+    const H = this.grainHalf; // half-grain hop for fixed 30 ms grains
     const ratioIsUnity = Math.abs(ratio - 1) < 1e-6;
+    const dMin = 2 * H;
+    const dMax = 4 * H;
+    const dRate = 1 - ratio;
 
     for (let i = 0; i < len; i++) {
       const A = first + i;
@@ -296,18 +347,28 @@ class PitchCorrectProcessor extends AudioWorkletProcessor {
       for (let g = k; g >= k - 1; g--) {
         const u = A / H - g; // 0..2 within this grain
         if (u < 0 || u > 2) continue;
+        const v = g & 1;
+        if (this.grainIndex[v] !== g) {
+          // This tap's grain just started — its Hann window is at zero, the
+          // only inaudible moment to snap. Receded too far behind the write
+          // line → jump toward it; ran up to it → jump back. Between snaps
+          // the continuous delay slope is what carries the transposition.
+          const d = this.tapDelay[v];
+          if (d > dMax) this.tapDelay[v] = dMin;
+          else if (d < dMin) this.tapDelay[v] = dMax;
+          this.grainIndex[v] = g;
+        }
         const window = 0.5 * (1 - Math.cos(Math.PI * u));
-        const grainStart = g * H;
-        // Correct-DOWN grains read the past slower... mirror the shifter's
-        // pinning: shift-up grains end at the write line (no future reads).
-        const base = ratio >= 1 ? grainStart + 2 * H * (1 - ratio) : grainStart;
-        const readL = base + (A - grainStart) * ratio;
-        const readR = base + (A - grainStart) * ratio;
-        if (readL < 0 || readL > this.writePos || readR < 0) continue;
-        wetL += this.readAt(readL, 0) * window;
-        wetR += this.readAt(readR, 1) * window;
+        // L and R read the SAME position — correction carries no width.
+        const read = A - this.tapDelay[v];
+        if (read < 0 || read > this.writePos) continue;
+        wetL += this.readAt(read, 0) * window;
+        wetR += this.readAt(read, 1) * window;
         windowSum += window;
       }
+      // Both taps' delays evolve every output sample.
+      this.tapDelay[0] += dRate;
+      this.tapDelay[1] += dRate;
       const norm = windowSum > 1e-6 ? 1 / windowSum : 0;
       outL[i] = live * (1 - mix) + wetL * norm * mix;
       if (outR) outR[i] = liveR * (1 - mix) + wetR * norm * mix;

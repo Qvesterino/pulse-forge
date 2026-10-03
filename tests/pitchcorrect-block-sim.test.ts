@@ -7,13 +7,12 @@ import { runInNewContext } from "node:vm";
  * render rate (128-sample blocks, 44.1 kHz) — the rendering contract the
  * golden vectors cannot cover (they test the pure math on whole buffers).
  *
- * v1 STATUS: detection + snap DECISION are verified here (detectedHz ±6
- * cents on the pure-sine worst case, ratioSmooth pins the scale target).
- * The granular RENDERING of near-unity corrections is the documented v1 gap
- * (measured: the rendered spectrum stays at the input pitch — the same
- * near-unity behaviour exists in the shipped pitchShift processor, verified
- * in the same harness). The browser check for the audible correction is
- * parked with it.
+ * The v1 rendering gap (near-unity corrections rendered unshifted — the
+ * granular anchors advanced at rate 1) is CLOSED: the two-tap engine now
+ * evolves each tap's read delay continuously at (1 - ratio) per sample and
+ * snaps only at the tap's own window-zero grain start, so the correction is
+ * audible in the rendered spectrum (target bin dominates the off-key bin).
+ * The browser check for the audible correction was un-parked with it.
  */
 
 function bootProcessor(srcPath: string, scope: Record<string, unknown>): any {
@@ -84,15 +83,9 @@ describe("pitchCorrect block simulation (44100, offline-like)", () => {
     expect(proc.ratioSmooth).toBeLessThan(expectedRatio * 1.001);
   });
 
-  // KNOWN v1 GAP — the granular rendering of near-unity corrections does not
-  // yet produce the audible shift (the decision layer above is proven).
-  // Un-skip with the rendering follow-up; the browser check for the audible
-  // correction is parked with it (search PARKED-PITCHCORRECT in
-  // src/browser-checks.ts).
-  it.skip("renders the correction: the E4 target bin dominates the off-key bin", () => {
-    // KNOWN v1 GAP — skipped until the granular near-unity rendering lands.
-    // The decision layer is proven above; this assertion documents the
-    // target state for the rendering follow-up.
+  // The rendering contract (previously the KNOWN v1 GAP, skipped): the E4
+  // target bin must dominate the off-key bin in the rendered spectrum.
+  it("renders the correction: the E4 target bin dominates the off-key bin", () => {
     const scope: Record<string, unknown> = {};
     runInNewContext(
       "this.AudioWorkletProcessor = class {}; this.registerProcessor = (name, p) => { this[name] = p; };",

@@ -3,9 +3,16 @@
  *
  * Two overlapping grain voices (50% overlap, Hann window — COLA-compliant)
  * read the ring buffer at `pitchRatio`, so the signal keeps its duration but
- * moves in pitch. Grain phases derive from the absolute sample counter (NOT
- * Math.random), so identical inputs render identical outputs — the
- * offline-parity contract holds.
+ * moves in pitch. Each voice's read DELAY evolves continuously at
+ * (1 - ratio) per output sample and snaps back into [2H, 4H] only at its own
+ * grain start (its Hann window is zero there) — between snaps the read
+ * advances at exactly `ratio`, which is what makes the transposition real.
+ * (An earlier revision anchored every grain with an absolute formula whose
+ * anchors advance at rate 1: no content was ever skipped or repeated, so
+ * shifts of about a semitone and less rendered unshifted — caught by
+ * tests/pitchshift-worklet.test.ts.) Grain phases derive from the absolute
+ * sample counter (NOT Math.random), so identical inputs render identical
+ * outputs — the offline-parity contract holds.
  *
  * `width` offsets the right channel's grain phase for a wider image.
  *
@@ -23,6 +30,12 @@ class PitchShiftProcessor extends AudioWorkletProcessor {
     this.initialized = false;
     // Instance offset de-correlates stacked shifters (no common artifact).
     this.phaseOffset = Math.floor(seed % 977);
+    // Two-tap granular read state — see the header. Bounds derive from the
+    // current H each block (grainMs is a parameter); delays outside the new
+    // bounds snap at the next grain start.
+    const H0 = Math.max(4, Math.round((55 / 1000) * sr) / 2);
+    this.tapDelay = [2 * H0, 4 * H0];
+    this.grainIndex = [-1, -1];
   }
 
   static get parameterDescriptors() {
@@ -64,6 +77,13 @@ class PitchShiftProcessor extends AudioWorkletProcessor {
 
     const ratio = Math.pow(2, (semis + fine / 100) / 12);
     const H = Math.max(4, Math.round((grainMs / 1000) * sr) / 2); // half-grain hop
+    const dMin = 2 * H;
+    const dMax = 4 * H;
+    const dRate = 1 - ratio;
+    // 0 st + 0 fine must stay a bit-clean, zero-latency passthrough (the
+    // default insert state): the tap engine reads at 2H..4H delay, so short-
+    // circuit on unity instead of routing through the ring.
+    const ratioIsUnity = Math.abs(ratio - 1) < 1e-6;
     const first = this.writePos;
 
     // Fill the ring buffer for this block, then advance the absolute write
@@ -81,7 +101,7 @@ class PitchShiftProcessor extends AudioWorkletProcessor {
       const A = first + i;
       const live = inL ? inL[i] : 0;
       const liveR = inR && inR.length > i ? inR[i] : live;
-      if (!this.initialized || A < H * 2) {
+      if (ratioIsUnity || !this.initialized || A < H * 2) {
         outL[i] = live;
         if (outR) outR[i] = liveR;
         continue;
@@ -92,24 +112,35 @@ class PitchShiftProcessor extends AudioWorkletProcessor {
       let windowSum = 0;
       // Two overlapping grains of length 2H at hop H: at any instant the
       // current grain covers phase u ∈ [0,1) and the previous one u ∈ [1,2),
-      // and their Hann windows sum to unity (COLA). Each grain reads the
-      // PAST at slope `ratio` — shift-up grains are pinned to end at the
-      // write line, so no read ever crosses it (future samples don't exist).
+      // and their Hann windows sum to unity (COLA). Each voice's read delay
+      // evolves continuously at (1 - ratio) per output sample and snaps back
+      // into [2H, 4H] only at its own grain start (window zero) — between
+      // snaps the read advances at exactly `ratio` (the transposition).
       const k = Math.floor(A / H);
       const half = width * 0.5 * H; // R-channel grain offset for stereo width
       for (let g = k; g >= k - 1; g--) {
         const u = A / H - g; // 0..2 within this grain
         if (u < 0 || u > 2) continue;
+        const v = g & 1;
+        if (this.grainIndex[v] !== g) {
+          // This voice's grain just started — its Hann window is at zero,
+          // the only inaudible moment to snap the read delay into bounds.
+          const d = this.tapDelay[v];
+          if (d > dMax) this.tapDelay[v] = dMin;
+          else if (d < dMin) this.tapDelay[v] = dMax;
+          this.grainIndex[v] = g;
+        }
         const window = 0.5 * (1 - Math.cos(Math.PI * u));
-        const grainStart = g * H;
-        const base = ratio >= 1 ? grainStart + 2 * H * (1 - ratio) : grainStart;
-        const readL = base + (A - grainStart) * ratio;
-        const readR = base + (A - grainStart - half) * ratio;
+        const readL = A - this.tapDelay[v];
+        const readR = readL - half * ratio;
         if (readL < 0 || readL > this.writePos || readR < 0) continue;
         wetL += this.readAt(readL, 0) * window;
         wetR += this.readAt(readR, 1) * window;
         windowSum += window;
       }
+      // Both voices' delays evolve every output sample.
+      this.tapDelay[0] += dRate;
+      this.tapDelay[1] += dRate;
       const norm = windowSum > 1e-6 ? 1 / windowSum : 0;
 
       outL[i] = live * (1 - mix) + wetL * norm * mix;
