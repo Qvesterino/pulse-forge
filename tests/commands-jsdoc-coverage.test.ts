@@ -1,13 +1,10 @@
-// JSDoc coverage regression for src/commands/commands.ts
-// Two guards: PIN existing JSDoc, INVENTORY follow-up baseline
+// JSDoc coverage regression for the command engine in src/commands/.
+// Two guards: PIN existing JSDoc, INVENTORY follow-up baseline.
 // Risk rationale: source edits are deferred until the parallel work on
 // commands.ts stabilizes; whitelist keeps a deterministic regression now.
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
-const COMMANDS_FILE = resolve(process.cwd(), "src/commands/commands.ts");
+import { readCommandLines } from "./helpers/commandSources";
 
 function findExportLine(lines: string[], name: string): number | null {
   const re = new RegExp("^export\\s+(?:async\\s+)?function\\s+" + name + "\\b");
@@ -37,7 +34,11 @@ function hasJSDocAbove(lines: string[], exportLineIdx: number, window = 8): bool
 let lines: string[] = [];
 
 beforeAll(() => {
-  lines = readFileSync(COMMANDS_FILE, "utf8").split(/\r?\n/);
+  // Barrel + every domain module it re-exports. This MUST NOT be commands.ts alone: the
+  // follow-up inventory below skips names it cannot find, so a narrower search scope does not
+  // fail the suite — it quietly stops checking the commands that moved out, which is the same
+  // regression the guard exists to catch, one level up.
+  lines = readCommandLines();
 });
 
 const ANCHORS_WITH_JSDOC: string[] = [
@@ -96,10 +97,16 @@ describe("commands.ts JSDoc baseline", () => {
       const present: string[] = [];
       for (const name of FOLLOWUP_TARGETS) {
         const idx = findExportLine(lines, name);
-        if (idx === null) continue;
+        if (idx === null) {
+          // A target that cannot be resolved anywhere is a hole in the guard, not a pass.
+          throw new Error("Follow-up target " + name + " not found in the command engine - update the list");
+        }
         if (hasJSDocAbove(lines, idx)) present.push(name);
         else missing.push(name);
       }
+      // Every listed target must be accounted for: a shrinking denominator here means the
+      // inventory is no longer measuring what it claims to measure.
+      expect(present.length + missing.length).toBe(FOLLOWUP_TARGETS.length);
       expect(missing.length).toBeGreaterThan(0);
 
       const TRACKED_MISSING = new Set([

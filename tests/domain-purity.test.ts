@@ -117,6 +117,16 @@ describe("domain purity (GOAL 02)", () => {
       "src/project-model/schema.ts",
       "src/project-model/targets.ts",
       "src/commands/commands.ts",
+      // The command engine is split by domain behind that barrel. Listing the domain modules
+      // explicitly means a module that is NOT reachable from the barrel still gets checked, and a
+      // new one cannot quietly escape by simply not being wired up yet.
+      "src/commands/core.ts",
+      "src/commands/freeze.ts",
+      "src/commands/instrument.ts",
+      "src/commands/automation.ts",
+      "src/commands/master.ts",
+      "src/commands/notes.ts",
+      "src/commands/quantize.ts",
       "src/instruments/randomize.ts",
       "src/presets/similar.ts",
     ]) {
