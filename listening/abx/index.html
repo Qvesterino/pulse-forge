@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<title>KYX ABX — forced-choice listening</title>
+<style>
+  body { background: #14151a; color: #d9dae0; font: 15px/1.5 system-ui, sans-serif; max-width: 760px; margin: 40px auto; padding: 0 20px; }
+  h1 { font-size: 20px; letter-spacing: .08em; }
+  .lane { border: 1px solid #2c2e37; border-radius: 8px; padding: 16px 20px; margin: 14px 0; }
+  .lane h2 { font-size: 15px; margin: 0 0 8px; }
+  button { background: #2b2d36; color: #d9dae0; border: 1px solid #3d3f4a; border-radius: 6px; padding: 8px 18px; font-size: 14px; cursor: pointer; margin: 4px 6px 4px 0; }
+  button:hover { background: #363947; }
+  button.choice { background: #1d5c3f; border-color: #2e8b57; }
+  .stat { font-variant-numeric: tabular-nums; color: #9aa0ad; }
+  .ok { color: #59c98b; }
+  .sig { color: #59c98b; font-weight: 600; }
+  audio { display: block; margin: 6px 0; }
+</style>
+</head>
+<body>
+<h1>KYX ABX — forced-choice počúvanie</h1>
+<p>X = referenčný stimulus. Prehraj X, potom A a B (náhodné poradie) a rozhodni,
+ktorý bol X. Náhoda je 50 % — p-hodnota pod 0.05 znamená, že vieš rozoznať
+rozdiel aj naslepo. Každá voľba sa loguje do <span class="stat">abx/trials.jsonl</span>.</p>
+<div id="lanes"></div>
+<h2>Spolu</h2>
+<div id="summary" class="stat">—</div>
+<script>
+const LANES = [{"lane":"snare-room-vs-main","label":"NEW snare.room — the only bank snare with a room tail (A = dry snare.main)","fileA":"pairs/snare-main.wav","fileB":"pairs/snare-room.wav","gainDbA":-0.2321731621518648,"gainDbB":0.23217316215186656,"matchNote":"level-matched to -10.1 LUFS (A -0.2 dB, B +0.2 dB)"},{"lane":"hat-wash-vs-open","label":"NEW hat.wash — long offbeat wash, ping keeps it a HAT (A = hat.open)","fileA":"pairs/hat-open.wav","fileB":"pairs/hat-wash.wav","gainDbA":-0.277761518560558,"gainDbB":0.277761518560558,"matchNote":"level-matched to -12.2 LUFS (A -0.3 dB, B +0.3 dB)"},{"lane":"hat-open-cup-vs-open","label":"RE-VOICED hat.cup — dark, half-open (A = hat.open; old cup was a near-twin)","fileA":"pairs/hat-open2.wav","fileB":"pairs/hat-cup.wav","gainDbA":-0.03192240299865823,"gainDbB":0.031922402998660004,"matchNote":"level-matched to -12.0 LUFS (A -0.0 dB, B +0.0 dB)"},{"lane":"crash-pop-vs-main","label":"RE-VOICED crash.pop — bright splash, defined ping (A = wash-style old twin crash.main)","fileA":"pairs/crash-main.wav","fileB":"pairs/crash-pop.wav","gainDbA":-0.2687668901410696,"gainDbB":0.26876689014107136,"matchNote":"level-matched to -12.5 LUFS (A -0.3 dB, B +0.3 dB)"},{"lane":"clap-pop-vs-main","label":"RE-VOICED clap.pop — gated bright clap, an octave of air (A = clap.main)","fileA":"pairs/clap-main.wav","fileB":"pairs/clap-pop.wav","gainDbA":0.11909097491009746,"gainDbB":-0.11909097491009568,"matchNote":"level-matched to -10.2 LUFS (A +0.1 dB, B -0.1 dB)"},{"lane":"fx-subdrop-vs-downlifter","label":"NEW fx.subdrop — C3→C1 sub drop for transitions (A = fx.downlifter)","fileA":"pairs/fx-downlifter.wav","fileB":"pairs/fx-subdrop.wav","gainDbA":0.29031774646512076,"gainDbB":-0.290317746465119,"matchNote":"level-matched to -12.4 LUFS (A +0.3 dB, B -0.3 dB)"},{"lane":"fx-vinyl-bed","label":"NEW fx.vinyl — dust texture as a bed (A = clean beat, B = same + vinyl @0.5)","fileA":"pairs/beat-clean.wav","fileB":"pairs/beat-vinyl.wav","gainDbA":-1.4367239822585773,"gainDbB":1.4367239822585756,"matchNote":"level-matched to -12.3 LUFS (A -1.4 dB, B +1.4 dB)"},{"lane":"legacy-kick-808pure","label":"MASTERING kick.808pure — OLD shipped at −2.4 LUFS (limiter-pinned) vs NEW on the −8 target. Which is cleaner?","fileA":"pairs/legacy-kick-808pure.wav","fileB":"pairs/legacy-kick-808pure-new.wav","gainDbA":-2.874366232105106,"gainDbB":2.874366232105105,"matchNote":"level-matched to -10.8 LUFS (A -2.9 dB, B +2.9 dB)"},{"lane":"legacy-kick-trap","label":"MASTERING + TUNING kick.trap — OLD pre-campaign (off-semitone rest, hot) vs NEW (G1 rest, on-target). Same groove both sides.","fileA":"pairs/legacy-kick-trap.wav","fileB":"pairs/legacy-kick-trap-new.wav","gainDbA":-0.7239079450286425,"gainDbB":0.7239079450286425,"matchNote":"level-matched to -8.9 LUFS (A -0.7 dB, B +0.7 dB)"},{"lane":"kick-trio-dedup","label":"DE-DUP kick trio — punch (full G#1) vs pop (tight A1) vs jersey (high-bounce B1): three roles, not three clones. C = pop","fileA":"pairs/kick-punch.wav","fileB":"pairs/kick-jersey.wav","gainDbA":-0.11149477231912996,"gainDbB":0.11149477231913174,"matchNote":"level-matched to -10.6 LUFS (A -0.1 dB, B +0.1 dB)"},{"lane":"kick-trio-jersey","label":"DE-DUP kick trio pt.2 — pop (A1 tight) vs jersey (B1 high-bounce)","fileA":"pairs/kick-pop.wav","fileB":"pairs/kick-jersey.wav","gainDbA":0.004728670215509823,"gainDbB":-0.004728670215509823,"matchNote":"level-matched to -10.7 LUFS (A +0.0 dB, B -0.0 dB)"},{"lane":"legacy-kick-808drive","label":"MASTERING kick.808drive — OLD hot ride vs NEW clean D1 rest. The flagship before/after of the mastering convergence.","fileA":"pairs/legacy-kick-808drive.wav","fileB":"pairs/legacy-kick-808drive-new.wav","gainDbA":-2.904643961391157,"gainDbB":2.904643961391157,"matchNote":"level-matched to -10.0 LUFS (A -2.9 dB, B +2.9 dB)"}];
+
+// Minimal binomial two-sided p-value (mirror of src/listening/abx-stats.ts).
+function pValue(correct, total) {
+  if (total <= 0) return 1;
+  let pmf = Math.pow(0.5, total);
+  const pmfObs = (() => { let v = pmf; for (let k = 1; k <= correct; k++) v = (v * (total - k + 1)) / k; return v; })();
+  let sum = 0;
+  for (let k = 0; k <= total; k++) {
+    if (k > 0) pmf = (pmf * (total - k + 1)) / k;
+    if (pmf <= pmfObs * (1 + 1e-9)) sum += pmf;
+  }
+  return Math.min(1, sum);
+}
+
+// Per-lane X choice — re-randomized after every vote so the listener cannot
+// learn a fixed assignment.
+const xChoice = {};
+function xFor(lane) {
+  if (xChoice[lane.lane] == null) xChoice[lane.lane] = Math.random() < 0.5 ? "A" : "B";
+  return xChoice[lane.lane];
+}
+
+let trials = [];
+try { trials = JSON.parse(localStorage.getItem("abx-trials") || "[]"); } catch { trials = []; }
+
+const byLane = new Map();
+function laneTrials(laneLane) {
+  const list = byLane.get(laneLane) || [];
+  byLane.set(laneLane, list);
+  return list;
+}
+
+function srcFor(lane, which) {
+  return which === "A" ? lane.fileA : lane.fileB;
+}
+
+// Level matching (P4): each lane's audio element routes through one gain
+// node; the gain is set per side before playback so A and B land on their
+// mean measured LUFS. WebAudio needs a user gesture — the first ▶ click
+// creates/resumes the context, before that the element plays native.
+const audioGraphs = new Map();
+function gainNodeFor(lane, audioEl) {
+  let graph = audioGraphs.get(lane.lane);
+  if (!graph) {
+    const ctx = new AudioContext();
+    const src = ctx.createMediaElementSource(audioEl);
+    const gain = ctx.createGain();
+    src.connect(gain).connect(ctx.destination);
+    graph = { ctx, gain };
+    audioGraphs.set(lane.lane, graph);
+  }
+  if (graph.ctx.state === "suspended") graph.ctx.resume();
+  return graph.gain;
+}
+
+function play(lane, which, audioEl) {
+  // X secretly IS one of A/B — it must carry that side's gain, otherwise
+  // playback level would leak the correct answer.
+  const side = which === "X" ? xFor(lane) : which;
+  const gainDb = side === "A" ? (lane.gainDbA || 0) : side === "B" ? (lane.gainDbB || 0) : 0;
+  try {
+    gainNodeFor(lane, audioEl).gain.value = Math.pow(10, gainDb / 20);
+  } catch { /* element not yet routable — native level this round */ }
+  audioEl.src = srcFor(lane, side);
+  audioEl.play();
+}
+
+function vote(lane, audioEl) {
+  const xWas = xFor(lane);
+  const answer = document.getElementById("choice-" + lane.lane).value;
+  const trial = { lane: lane.lane, xWas, answer, correct: xWas === answer, reactionMs: 0, receivedAt: Date.now() };
+  trials.push(trial);
+  localStorage.setItem("abx-trials", JSON.stringify(trials));
+  // re-randomize X for the next round
+  delete xChoice[lane.lane];
+  try {
+    fetch("/api/abx-trial", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(trial),
+    });
+  } catch { /* offline listening — the localStorage copy survives */ }
+  renderStats();
+}
+
+function renderStats() {
+  const total = trials.length;
+  const correct = trials.filter((t) => t.correct).length;
+  const p = pValue(correct, total);
+  document.getElementById("summary").innerHTML =
+    total > 0
+      ? '<span class="' + (p < 0.05 ? 'sig' : 'stat') + '">' + correct + '/' + total + ' správne · p = ' + p.toFixed(4)
+        + (p < 0.05 ? ' — rozdiel je počuteľný aj naslepo' : ' — zatiaľ nerozoznateľný od náhody') + '</span>'
+      : '—';
+  // per-lane refresh
+  for (const lane of LANES) {
+    const list = laneTrials(lane.lane);
+    const correctLane = list.filter((t) => t.correct).length;
+    const el = document.getElementById("stat-" + lane.lane);
+    if (el) {
+      el.innerHTML = 'skúšky: ' + list.length + ' · správne: ' + correctLane
+        + ' · p = ' + (list.length > 0 ? pValue(correctLane, list.length).toFixed(4) : '—');
+    }
+  }
+}
+
+const root = document.getElementById("lanes");
+for (const lane of LANES) {
+  const div = document.createElement("div");
+  div.className = "lane";
+  div.innerHTML = '<h2>' + lane.lane + ' — ' + lane.label + '</h2>'
+    + '<div class="stat">' + (lane.matchNote || "no level info") + '</div>'
+    + '<button data-which="X">▶ X</button>'
+    + '<button data-which="A">▶ A</button>'
+    + '<button data-which="B">▶ B</button>'
+    + '<div class="stat" id="stat-' + lane.lane + '">skúšky: 0</div>'
+    + '<select id="choice-' + lane.lane + '"><option value="A">A</option><option value="B">B</option></select>'
+    + '<button id="vote-' + lane.lane + '">Hlasuj</button>';
+  const audio = new Audio();
+  div.querySelectorAll("[data-which]").forEach((button) => {
+    button.addEventListener("click", () => play(lane, button.getAttribute("data-which"), audio));
+  });
+  div.querySelector("#vote-" + lane.lane).addEventListener("click", () => vote(lane, audio));
+  root.appendChild(div);
+}
+renderStats();
+</script></script>
+</body>
+</html>

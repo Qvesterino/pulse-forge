@@ -1057,6 +1057,254 @@ function knock(): Builder {
   };
 }
 
+/**
+ * BASS PACK (library-completion wave 2026-10-04) — the only empty category.
+ * Five distinct bass voices, each a designed pocket a beat can pick between:
+ * pure sub, reese, FM, pluck, LFO wobble, saturated dist. Every voice is
+ * anchored on a semitone-clean root (D2 = 73.42 Hz; the sampler's root param
+ * transposes) so tuned melodic content never beats against the bank.
+ */
+
+/** Clean sub — the pure round sine body: fundamental + touch of 2nd, soft
+ * attack, long sustain. The default that always fits under an 808 or a kick. */
+function bassClean(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 73.42; // D2
+    const vca = ctx.createGain();
+    vca.gain.setValueAtTime(0, t0);
+    vca.gain.linearRampToValueAtTime(1, t0 + 0.012);
+    vca.gain.setTargetAtTime(0.0005, t0 + 0.18, 0.55);
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = 320;
+    vca.connect(lpf).connect(dest);
+    for (const [ratio, level] of [
+      [1, 0.72],
+      [2, 0.16],
+    ] as [number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = f * ratio;
+      const g = ctx.createGain();
+      g.gain.value = level;
+      osc.connect(g).connect(vca);
+      osc.start(t0);
+      osc.stop(t0 + 1.4);
+    }
+  };
+}
+
+/** Reese — the classic two-saw detune beat: a pair of saws a few cents apart
+ * under a lowpass. The growl comes from the beat frequency, not distortion,
+ * so it reads as a bass rather than mud. */
+function bassReese(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 73.42; // D2
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = 1200;
+    lpf.Q.value = 1.6;
+    const lfo = ctx.createOscillator();
+    lfo.type = "sine";
+    lfo.frequency.value = 0.28;
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.value = 320;
+    lfo.connect(lfoGain).connect(lpf.frequency);
+    lfo.start(t0);
+    lfo.stop(t0 + 1.9);
+    const vca = ctx.createGain();
+    vca.gain.setValueAtTime(0, t0);
+    vca.gain.linearRampToValueAtTime(0.9, t0 + 0.02);
+    vca.gain.setTargetAtTime(0.0005, t0 + 0.7, 0.45);
+    lpf.connect(vca).connect(dest);
+    for (const [mult, level] of [
+      [1, 0.4],
+      [1.007, 0.4],
+    ] as [number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = "sawtooth";
+      osc.frequency.value = f * mult;
+      const g = ctx.createGain();
+      g.gain.value = level;
+      osc.connect(g).connect(lpf);
+      osc.start(t0);
+      osc.stop(t0 + 1.8);
+    }
+    // Sub layer keeps the low end solid underneath the detune beat.
+    const sub = ctx.createOscillator();
+    sub.type = "sine";
+    sub.frequency.value = f;
+    sub.connect(env(ctx, t0, 0.3, 1.2)).connect(dest);
+    sub.start(t0);
+    sub.stop(t0 + 1.5);
+  };
+}
+
+/** FM bass — the metallic hollow body: carrier sine with a fast-decaying
+ * inharmonic modulator (ratio 3.5) → the bright "bell" bass of modern trap.
+ * Higher ratio + index than the dist voice's harmonic drive keeps the two
+ * spectrally apart (dist = odd-harmonic mid growl, FM = inharmonic clang). */
+function bassFM(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 73.42; // D2
+    const mod = ctx.createOscillator();
+    mod.type = "sine";
+    mod.frequency.value = f * 3.5;
+    const modGain = ctx.createGain();
+    modGain.gain.setValueAtTime(950, t0);
+    modGain.gain.exponentialRampToValueAtTime(0.5, t0 + 0.26);
+    mod.connect(modGain);
+    const car = ctx.createOscillator();
+    car.type = "sine";
+    car.frequency.value = f;
+    modGain.connect(car.frequency);
+    const vca = ctx.createGain();
+    vca.gain.setValueAtTime(0, t0);
+    vca.gain.linearRampToValueAtTime(0.85, t0 + 0.008);
+    vca.gain.setTargetAtTime(0.0005, t0 + 0.25, 0.5);
+    car.connect(vca).connect(dest);
+    car.start(t0);
+    car.stop(t0 + 1.6);
+    mod.start(t0);
+    mod.stop(t0 + 1.6);
+    // Click transient for definition on small speakers.
+    const click = noiseSource(ctx, 141, 0.012, t0);
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 2400;
+    click
+      .connect(hp)
+      .connect(env(ctx, t0, 0.16, 0.01))
+      .connect(dest);
+  };
+}
+
+/** Pluck bass — the short round house/bounce note: triangle body with a fast
+ * decay and a bright pick transient. Leaves the sustain to the kick. Sits an
+ * octave above the sub family (D3 — the classic pluck register) so the pack
+ * covers both bass octaves instead of selling the same D2 body twice. */
+function bassPluck(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 146.83; // D3
+    const vca = ctx.createGain();
+    vca.gain.setValueAtTime(0, t0);
+    vca.gain.linearRampToValueAtTime(1, t0 + 0.006);
+    vca.gain.setTargetAtTime(0.0005, t0 + 0.03, 0.12);
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = 3000;
+    lpf.Q.value = 2.4;
+    vca.connect(lpf).connect(dest);
+    for (const [ratio, level] of [
+      [1, 0.55],
+      [2, 0.22],
+      [3, 0.09],
+    ] as [number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = "triangle";
+      osc.frequency.value = f * ratio;
+      const g = ctx.createGain();
+      g.gain.value = level;
+      osc.connect(g).connect(vca);
+      osc.start(t0);
+      osc.stop(t0 + 0.5);
+    }
+    const pick = noiseSource(ctx, 143, 0.012, t0);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 2600;
+    bp.Q.value = 1.2;
+    pick
+      .connect(bp)
+      .connect(env(ctx, t0, 0.22, 0.012))
+      .connect(dest);
+  };
+}
+
+/** Wobble bass — the UKG/bassline/dubstep LFO growl: a saw+sub into a resonant
+ * lowpass driven by a synced-feel 6.2 Hz LFO with a deep sweep. The faster,
+ * deeper sweep is the genre's signature "bassline" bounce; the reese's slow
+ * 0.28 Hz drift is a different motion entirely. One-shot length keeps it
+ * loopable inside a beat. */
+function bassWobble(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 73.42; // D2
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = 420;
+    lpf.Q.value = 7.5;
+    const lfo = ctx.createOscillator();
+    lfo.type = "sine";
+    lfo.frequency.value = 6.2;
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.value = 360;
+    lfo.connect(lfoGain).connect(lpf.frequency);
+    lfo.start(t0);
+    lfo.stop(t0 + 1.9);
+    const vca = ctx.createGain();
+    vca.gain.setValueAtTime(0, t0);
+    vca.gain.linearRampToValueAtTime(0.95, t0 + 0.01);
+    vca.gain.setTargetAtTime(0.0005, t0 + 0.85, 0.4);
+    const shaper = ctx.createWaveShaper();
+    const curve = new Float32Array(257);
+    for (let i = 0; i < 257; i++) {
+      const x = i / 128 - 1;
+      curve[i] = Math.tanh(2.4 * x);
+    }
+    shaper.curve = curve;
+    lpf.connect(shaper).connect(vca).connect(dest);
+    for (const [type, mult, level] of [
+      ["sawtooth", 1, 0.5],
+      ["square", 0.5, 0.3],
+    ] as [OscillatorType, number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = type;
+      osc.frequency.value = f * mult;
+      const g = ctx.createGain();
+      g.gain.value = level;
+      osc.connect(g).connect(lpf);
+      osc.start(t0);
+      osc.stop(t0 + 1.8);
+    }
+  };
+}
+
+/** Dist bass — the saturated mid-forward voice: the same sine body driven hard
+ * into a tanh shaper with the highs rolled back, so the harmonics read in the
+ * phone band without fizzing. The phonk/drill distorted 808 companion. */
+function bassDist(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 73.42; // D2
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(f * 1.28, t0);
+    osc.frequency.exponentialRampToValueAtTime(f, t0 + 0.045);
+    const shaper = ctx.createWaveShaper();
+    const curve = new Float32Array(257);
+    for (let i = 0; i < 257; i++) {
+      const x = i / 128 - 1;
+      curve[i] = Math.tanh(4.6 * x);
+    }
+    shaper.curve = curve;
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = 1900;
+    const vca = ctx.createGain();
+    vca.gain.setValueAtTime(0, t0);
+    vca.gain.linearRampToValueAtTime(0.9, t0 + 0.008);
+    vca.gain.setTargetAtTime(0.0005, t0 + 0.32, 0.42);
+    osc.connect(shaper).connect(lpf).connect(vca).connect(dest);
+    osc.start(t0);
+    osc.stop(t0 + 1.5);
+  };
+}
+
 function snarePunch(): Builder {
   return (ctx, dest) => {
     const t0 = ctx.currentTime;
@@ -1543,8 +1791,14 @@ function conga(): Builder {
     const noise = noiseSource(ctx, 71, 0.08, t0);
     const bp = ctx.createBiquadFilter();
     bp.type = "bandpass";
-    bp.frequency.value = 900;
-    bp.Q.value = 1.5;
+    // Hand strike re-voice (library-quality audit 2026-10-04): the slap used to
+    // sit at 900 Hz / Q 1.5, inside the 160–230 Hz body's own harmonic region —
+    // the voice measured as the muddiest file in the bank (low-mid 18 dB above
+    // its mids, −45 dB in 2–6 kHz). A real conga's hand contact is broadband,
+    // centred ~1.5 kHz, so the body keeps the tone and the slap carries the
+    // attack.
+    bp.frequency.value = 1500;
+    bp.Q.value = 1.1;
     noise
       .connect(bp)
       .connect(env(ctx, t0, 0.6, 0.06))
@@ -1778,6 +2032,17 @@ function mallet(opts: {
   tremoloHz?: number;
   tremoloDepth?: number;
   clickLevel?: number;
+  /**
+   * Strike-noise centre in Hz (default 4× fundamental) and its band width.
+   * The default puts the mallet contact at 4× the bar's fundamental, which is
+   * right for the C4+ mallets (vibes/celesta/music box/kalimba all land in the
+   * 2–4 kHz attack region) but wrong for the C3 marimba: 4 × 131 Hz = 524 Hz
+   * sits inside the bar's own 2nd partial, so the "strike" read as extra body
+   * and the voice shipped with a 55 dB hole above 2 kHz (library-quality audit
+   * 2026-10-04). Low-anchored bars override these.
+   */
+  clickHz?: number;
+  clickQ?: number;
   lpfHz?: number;
 }): Builder {
   return (ctx, dest) => {
@@ -1824,12 +2089,14 @@ function mallet(opts: {
       osc.stop(t0 + opts.decay + 1);
     }
     if (opts.clickLevel) {
-      // Strike transient: short band-passed noise at 4× fundamental, dry
-      // (pre-motor) — reads as the mallet contact.
+      // Strike transient: short band-passed noise at the mallet-contact
+      // frequency (default 4× fundamental), dry (pre-motor) — reads as the
+      // mallet contact.
       const click = noiseSource(ctx, 8, 0.02, t0);
       const bp = ctx.createBiquadFilter();
       bp.type = "bandpass";
-      bp.frequency.value = opts.fundamental * 4;
+      bp.frequency.value = opts.clickHz ?? opts.fundamental * 4;
+      bp.Q.value = opts.clickQ ?? 1;
       click
         .connect(bp)
         .connect(env(ctx, t0, opts.clickLevel, 0.004))
@@ -2300,15 +2567,22 @@ export const BUILDERS: Record<string, Builder> = {
     lpfHz: 4000,
     click: 0,
   }),
+  // Drill kick re-voice (library-quality audit 2026-10-04): the shipped voice
+  // held a static 41 Hz tone at full level for 600 ms (tail 0.1 s, tau 0.16 s)
+  // through a 4× tape drive — 600 ms of clipped sub is 1.9 dB crest against a
+  // 4.7–6.2 dB bank, i.e. the one Kick whose "Tight" contract (short, snappy,
+  // growling) read as a sustained drone. The glide now snaps in 40 ms, the
+  // body decays on a 75 ms constant (0.4 s file, bank-standard tail), and the
+  // mid-forward drive is nudged up so the 808 still growls on small speakers.
   "factory.kick.drill": sub808Drive({
     startHz: 175,
     endHz: 41.2,
-    dropSec: 0.06,
-    tailSec: 0.1,
-    tau: 0.16,
-    drive: 0.4,
-    lpfHz: 5500,
-    click: 0.3,
+    dropSec: 0.04,
+    tailSec: 0.05,
+    tau: 0.075,
+    drive: 0.5,
+    lpfHz: 4500,
+    click: 0.5,
   }),
   "factory.kick.phonk": vintageThump({
     startHz: 130,
@@ -2320,7 +2594,9 @@ export const BUILDERS: Record<string, Builder> = {
     gritGain: 0.08,
     seed: 31,
   }),
-  "factory.kick.jersey": kick(205, 55.0, 0.22, 0.55),
+  // jersey kick re-voice (de-dup wave): the jersey-club signature is the
+  // HIGH bouncy pitch — B1, shortest body, hardest click of the trio.
+  "factory.kick.jersey": kick(210, 61.74, 0.2, 0.7),
   "factory.kick.dnb": kick(170, 51.91, 0.26, 0.5),
   "factory.kick.lofi": vintageThump({
     startHz: 115,
@@ -2443,16 +2719,29 @@ export const BUILDERS: Record<string, Builder> = {
     tremoloHz: 5.2,
     tremoloDepth: 0.55,
   }),
+  // Marimba re-voice (library-quality audit 2026-10-04): the C3 anchor put the
+  // default mallet strike (4 × 131 = 524 Hz) inside the bar's own 2nd partial,
+  // so the voice had no usable attack content above 2 kHz (2–6 kHz sat ~40 dB
+  // under its four sibling mallets). Two things moved the needle: the knock now
+  // sits at a real wood-contact frequency with a broad (Q 0.8) band, and the
+  // resonator's 2nd/3rd partials carry more of the bar — the tape stage squares
+  // them into the 2–6 kHz region (+5.7 dB) that the bar itself cannot reach.
+  // NOTE: the strike-noise level is NOT what made it audible. 0.34 → 1.1 (+10 dB)
+  // changed every band by ≤0.1 dB and left the 1 ms envelope identical, i.e. the
+  // mallet click path in mallet() is effectively inaudible at any level (see the
+  // audit report); 0.34 is kept only as the level of the shipped render.
   "factory.mallet.marimba": mallet({
     fundamental: 131, // C3 — marimba lives an octave below the vibes
     partials: [
       [1, 0.6],
-      [4, 0.18],
-      [10, 0.04],
+      [4, 0.24],
+      [10, 0.06],
     ],
     decay: 0.9,
     attack: 0.002,
-    clickLevel: 0.25,
+    clickLevel: 0.34,
+    clickHz: 2400,
+    clickQ: 0.8,
     lpfHz: 6500,
   }),
   // Celesta re-voice (sound-library audit 2026-10): it shipped with the exact
@@ -2495,10 +2784,24 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.tonal.padwarm": padWarm(),
   "factory.tonal.harp": harpTone(),
 
+  // Bass pack (library-completion wave 2026-10-04): the empty category,
+  // filled with five designed pockets — pure sub, reese, FM bell-bass, pluck,
+  // LFO wobble and saturated dist. Root D2 on every voice.
+  "factory.bass.clean": bassClean(),
+  "factory.bass.reese": bassReese(),
+  "factory.bass.fm": bassFM(),
+  "factory.bass.pluck": bassPluck(),
+  "factory.bass.wobble": bassWobble(),
+  "factory.bass.dist": bassDist(),
+
   // Pop wave (vocal-first + thin-spot fill): tight pop kick, stacked pop
   // clap, bright crash, floor tom, clicky rim, driving shaker, kalimba and
   // music-box mallets. Each targets a distinct spectral/decay pocket.
-  "factory.kick.pop": kick(190, 51.91, 0.26, 0.5),
+  // pop kick re-voice (de-dup wave): punch stayed the neutral G#1 stock, so
+  // pop moves to A1 with a TIGHT body + bright click — the pop/dance voice
+  // (jersey sits above it at B1 as the club bounce). Same family, three
+  // distinct roles: full-punch / tight-pop / high-bounce.
+  "factory.kick.pop": kick(195, 55.0, 0.22, 0.6),
   // clap.pop re-voice (2026-09-30): was clap.main + clap.soft stacked
   // verbatim — after mastering normalized both to −10.5 the stack collapsed
   // onto main (feature distance 0.051). Now its own dense bright stack.
@@ -2633,6 +2936,12 @@ export const DURATIONS: Record<string, number> = {
   "factory.perc.shaker.pop": 0.2,
   "factory.mallet.kalimba": 1.0,
   "factory.mallet.musicbox": 2.2,
+  "factory.bass.clean": 1.4,
+  "factory.bass.reese": 1.8,
+  "factory.bass.fm": 1.6,
+  "factory.bass.pluck": 0.5,
+  "factory.bass.wobble": 1.8,
+  "factory.bass.dist": 1.5,
 };
 
 /**

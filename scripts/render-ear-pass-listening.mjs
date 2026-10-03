@@ -215,6 +215,22 @@ const LANES = [
     ],
   },
   {
+    lane: "kick-trio-dedup",
+    fileA: "pairs/kick-punch.wav",
+    fileB: "pairs/kick-jersey.wav",
+    label: "DE-DUP kick trio — punch (full G#1) vs pop (tight A1) vs jersey (high-bounce B1): three roles, not three clones. C = pop",
+    render: () => [["kick.punch", 0, 1]],
+    renderB: () => [["kick.pop", 0, 1]],
+  },
+  {
+    lane: "kick-trio-jersey",
+    fileA: "pairs/kick-pop.wav",
+    fileB: "pairs/kick-jersey.wav",
+    label: "DE-DUP kick trio pt.2 — pop (A1 tight) vs jersey (B1 high-bounce)",
+    render: () => [["kick.pop", 0, 1]],
+    renderB: () => [["kick.jersey", 0, 1]],
+  },
+  {
     lane: "legacy-kick-808drive",
     fileA: "pairs/legacy-kick-808drive.wav",
     fileB: "pairs/legacy-kick-808drive-new.wav",
