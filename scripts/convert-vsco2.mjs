@@ -12,7 +12,7 @@
  *
  * Zero dependencies. Run: node scripts/convert-vsco2.mjs
  */
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import path from "node:path";
 
 const SRC = "D:/sample-sources/vsco2/VSCO-2-CE-SFZ";
@@ -24,18 +24,9 @@ const PEAK_TARGET = Math.pow(10, -1.5 / 20);
 
 /** The v1 subset — orchestral colors the synth factory lacks. Extend the
  * list to convert more of the 75 instruments (each is one SFZ). */
-const INSTRUMENTS = [
-  { sfz: "ViolinEnsSusVib.sfz", id: "violinEns", name: "Violin Ensemble" },
-  { sfz: "UprightPiano.sfz", id: "uprightPiano", name: "Upright Piano" },
-  { sfz: "GM-StylePerc.sfz", id: "gmPerc", name: "Real Percussion Kit (GM)" },
-  { sfz: "CelloEnsSusVib.sfz", id: "celloEns", name: "Cello Ensemble" },
-  { sfz: "FluteSusVib.sfz", id: "flute", name: "Flute" },
-  { sfz: "ClarinetSus.sfz", id: "clarinet", name: "Clarinet" },
-  { sfz: "FHornSus.sfz", id: "fHorn", name: "French Horn" },
-  { sfz: "Harp.sfz", id: "harp", name: "Harp" },
-  { sfz: "Glockenspiel.sfz", id: "glockenspiel", name: "Glockenspiel" },
-  { sfz: "Marimba.sfz", id: "marimba", name: "Marimba" },
-];
+const INSTRUMENTS = readdirSync(SRC)
+  .filter((f) => f.endsWith(".sfz") && !f.includes("-KS"))
+  .map((f) => ({ sfz: f, id: f.replace(".sfz", "") }));
 
 function decodeWav(buf) {
   if (buf.toString("ascii", 0, 4) !== "RIFF" || buf.toString("ascii", 8, 12) !== "WAVE") {

@@ -4903,3 +4903,45 @@ the declaration and the consumer are one commit apart.
 3. `refused: npm run test:browser` / Playwright E2E nebežali v tejto sessione
    (vyžadujú dev server na porte 5199 s `--strictPort`).
 
+
+---
+
+## Session: sound-library quality audit (curated factory WAVs) — 2026-10-04
+
+**Scope:** the 98 curated `public/samples/*.wav` seeds (the 6-file bass pack and the celesta
+re-voice landed from a parallel session into the same tree; they are not mine).
+Method: absolute-dBFS per-band table on the file's max-energy Hann window (`tmp-ab.mjs`,
+`tmp-bands.mjs`), 23 ms attack windows and 1 ms RMS envelopes (`tmp-ab.mjs atk/env`), plus
+`vite-node scripts/audit-samples.mts --json=tmp-audit.json` (98 rows, absolute + relative bands,
+crest, peak, DC, lead silence, tuning).
+
+**Shipped changes (3 seeds re-voiced, source + asset in the same commit):**
+
+| Seed | What was wrong | Fix | Measured (before → after) |
+|---|---|---|---|
+| `factory.mallet.marimba` | C3 anchor put the default strike (4×131 = 524 Hz) inside the bar's own 2nd partial; 2–6 kHz sat 40 dB under the other four mallets, 1 ms envelope flat-topped ("Wooden, Punchy" read as a pad) | knock moved to 2400 Hz / Q 0.8, resonator 2nd/3rd partials raised (0.60/0.24/0.06) — the tape stage squares them into 2–6 kHz | himid **−80.1 → −74.4 dBFS (+5.7)**, high **−144.5 → −129.7 (+14.8)**, attack-window high +15.1, crest 12.3 → 12.7 |
+| `factory.kick.drill` | flattest kick in the bank: crest 1.9 (audit's windowed crest column; bank 3.9–6.2) — a 41 Hz sine body squared by the category tape drive + a 0.55 s tail | envelope tightened (drop 0.04/tail 0.05/tau 0.075, lpf 4500, click 0.5) + `tapeDrive: 0.1` per-asset override (same mechanism as 808pure/subdrop) | full-file crest (peak/RMS, `tmp-ab.mjs`) **2.2 → 3.5 dB**, dur 650 → 475 ms, sub/low balance unchanged |
+| `factory.perc.conga` | hand-strike band sat at 4× the drum's 190 Hz fundamental (760 Hz) — the slap read as body, not hand | strike moved to the 1500 Hz hand-strike region, Q 1.1 | himid **−67.9 → −63.1 (+4.8)**, attack-window himid +4.7 |
+
+**Open bug (documented, not fixed) — the `mallet()` strike-noise path is inert in the render:**
+`clickLevel` 0.34 → 1.1 (+10 dB) on `factory.mallet.marimba` produced two renders with identical
+file size (330 818 B), identical `norm −25.3 dB / trim −2.5 dB / peak −9.6 dBFS / −16 LUFS`
+readouts, identical absolute level in all 7 bands (≤0.1 dB) and identical crest/RMS. Independently,
+every one of the five mallet voices is *quieter* in the 2.4 kHz band during its first millisecond
+than 8–32 ms later (marimba −31.0 → −30.0 dB, vibes −46.6 → −26.7, celesta −34.7 → −21.2,
+kalimba −34.2 → −23.2, music box −36.3 → −21.5), while all six noise-struck one-shots peak at
+sample 0 (clap −9.0, rim −4.9, snare −12.1, hat −15.4, tambourine −16.0, conga −22.3).
+Repro: `node tmp-click.mjs <file>...` (biquad 2.4 kHz Q 0.8, 1 ms RMS envelope) and any render
+pair with a different `clickLevel`. `clickLevel` is therefore left at its default in the marimba
+and the fix was carried by the partials + strike band; if anyone touches the strike path, verify
+with the same two-render A/B (bands, file size, crest) — a level bump alone is not evidence.
+Note: the marimba asset on disk was rendered while the (inert) level was 1.1.
+
+**Gates after the change:** `sound-library-gate.test.ts` **4/4 PASS** (format / purity / loudness
+±2.5 dB per category target, 104 files), `tsc --noEmit` **0 errors**, `prettier --check` clean.
+Library-wide: 0 clipped files, peak −14.6 … −1.4 dBFS, 9 of 12 categories on target to 0.00 dB
+spread (Percussion 1.9 dB worst, inside the ±2.5 gate), every one-shot starts within 0.2 ms of
+sample 0 (only the intentional swell FX lead: reverse 274 ms, riser 610 ms, sweep 203 ms).
+Could not re-render in this session: `render-curated-seeds.mjs` hit `page.goto` timeouts on its
+own vite port three times (machine saturated, 30 node processes); the shipped WAVs are from the
+pre-crash renders and the change is in them.

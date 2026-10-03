@@ -1,5 +1,5 @@
 export type AssetCategory =
-  "Kick" | "Snare" | "Clap" | "Hat" | "Cymbal" | "Crash" | "Tom" | "Rim" | "Percussion" | "Tonal" | "FX";
+  "Kick" | "Snare" | "Clap" | "Hat" | "Cymbal" | "Crash" | "Tom" | "Rim" | "Percussion" | "Bass" | "Tonal" | "FX";
 
 /** Mood/usage descriptors for curated browsing (FEATURES.md §23 character tags). */
 export type AssetMood = "dark" | "bright" | "warm" | "aggressive" | "clean" | "deep" | "atmosphere";
@@ -486,6 +486,56 @@ export const FACTORY_ASSETS: FactoryAsset[] = [
     character: "Jingly, Airy",
     tags: ["perc", "tambourine"],
     mood: ["bright", "atmosphere"],
+  },
+
+  /* ---------------- Bass (library-completion wave: the empty category) ---------------- */
+  {
+    id: "factory.bass.clean",
+    name: "Bass Clean Sub",
+    category: "Bass",
+    character: "Round, Pure Sub",
+    tags: ["bass", "sub", "deep", "clean"],
+    mood: ["deep", "clean"],
+  },
+  {
+    id: "factory.bass.reese",
+    name: "Bass Reese",
+    category: "Bass",
+    character: "Detuned, Growling",
+    tags: ["bass", "reese", "dnb", "growl"],
+    mood: ["dark", "aggressive"],
+  },
+  {
+    id: "factory.bass.fm",
+    name: "Bass FM",
+    category: "Bass",
+    character: "Metallic, Bell-Hollow",
+    tags: ["bass", "fm", "metallic", "trap"],
+    mood: ["bright", "aggressive"],
+  },
+  {
+    id: "factory.bass.pluck",
+    name: "Bass Pluck",
+    category: "Bass",
+    character: "Short, Round",
+    tags: ["bass", "pluck", "house", "bounce"],
+    mood: ["clean", "warm"],
+  },
+  {
+    id: "factory.bass.wobble",
+    name: "Bass Wobble",
+    category: "Bass",
+    character: "LFO Growl, Dubstep",
+    tags: ["bass", "wobble", "lfo", "ukg", "bassline"],
+    mood: ["aggressive", "dark"],
+  },
+  {
+    id: "factory.bass.dist",
+    name: "Bass Dist",
+    category: "Bass",
+    character: "Saturated, Mid-Forward",
+    tags: ["bass", "drive", "distorted", "phonk", "drill"],
+    mood: ["aggressive", "warm"],
   },
 
   /* ---------------- FX & transitions ---------------- */

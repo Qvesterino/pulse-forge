@@ -32,6 +32,62 @@ export function vscoPackPresets(): InstrumentPreset[] {
     if (!byInstrument.has(inst)) byInstrument.set(inst, []);
     byInstrument.get(inst)!.push(layer);
   }
+  // Display names: wave-1 instruments hand-curated; wave-2 stems auto-
+  // humanized by known fragment tokens ("bassoonsus" → "Bassoon Sus").
+  const FRAGMENTS: Array<[string, string]> = [
+    ["sviolin", "Solo Violin"],
+    ["violinens", "Violin Ens"],
+    ["violaens", "Viola Ens"],
+    ["celloens", "Cello Ens"],
+    ["fhorn", "French Horn"],
+    ["uprightpiano", "Upright Piano"],
+    ["vsupright", "VS Upright"],
+    ["glockenspiel", "Glockenspiel"],
+    ["tubularbells", "Tubular Bells"],
+    ["gmperc", "GM Percussion"],
+    ["bassoon", "Bassoon"],
+    ["clarinet", "Clarinet"],
+    ["piccolo", "Piccolo"],
+    ["marimba", "Marimba"],
+    ["xylophone", "Xylophone"],
+    ["timpani", "Timpani"],
+    ["organ", "Organ"],
+    ["trumpet", "Trumpet"],
+    ["trombone", "Trombone"],
+    ["tuba", "Tuba"],
+    ["harp", "Harp"],
+    ["flute", "Flute"],
+    ["oboe", "Oboe"],
+    ["stac", "Staccato"],
+    ["pizz", "Pizzicato"],
+    ["spic", "Spiccato"],
+    ["trem", "Tremolo"],
+    ["vib", "Vib"],
+    ["nv", "No-Vib"],
+    ["mute", "Muted"],
+    ["pedal", "Pedal"],
+    ["quiet", "Quiet"],
+    ["sus", "Sus"],
+    ["exp", "Exp"],
+  ];
+  const humanize = (inst: string): string => {
+    const words: string[] = [];
+    let rest = inst;
+    let progressed = true;
+    while (rest.length > 0 && progressed) {
+      progressed = false;
+      for (const [frag, word] of FRAGMENTS) {
+        if (rest.startsWith(frag)) {
+          words.push(word);
+          rest = rest.slice(frag.length);
+          progressed = true;
+          break;
+        }
+      }
+    }
+    if (rest.length > 0) words.push(rest);
+    return words.join(" ").replace(/\w/g, (c) => c.toUpperCase());
+  };
   const names: Record<string, string> = {
     uprightPiano: "Upright Piano",
     gmPerc: "Real Percussion Kit",
@@ -50,7 +106,7 @@ export function vscoPackPresets(): InstrumentPreset[] {
     const mid = layers[Math.floor(layers.length / 2)];
     out.push({
       id: `factory.vsco.${inst}`,
-      name: `${names[inst] ?? inst} (VSCO)`,
+      name: `${humanize(inst)} (VSCO)`,
       instrument: "sampler",
       genre: null,
       mood: ["warm", "clean"],

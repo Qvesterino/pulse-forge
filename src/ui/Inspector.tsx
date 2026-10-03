@@ -44,8 +44,10 @@ import { ModMatrixRow, isModMatrixParam } from "./ModMatrixRow";
 const PresetBrowser = lazy(() => import("./PresetBrowser").then((m) => ({ default: m.PresetBrowser })));
 const SliceLab = lazy(() => import("./SliceLab").then((m) => ({ default: m.SliceLab })));
 
-const TONAL_ASSETS = FACTORY_ASSETS.filter((a) => a.category === "Tonal");
-const DRUM_ASSETS = FACTORY_ASSETS.filter((a) => a.category !== "Tonal");
+// Pitch-anchored one-shots (Tonal + the Bass pack) are sampler/keys material;
+// unpitched percussion feeds the drum-pad picker.
+const TONAL_ASSETS = FACTORY_ASSETS.filter((a) => a.category === "Tonal" || a.category === "Bass");
+const DRUM_ASSETS = FACTORY_ASSETS.filter((a) => a.category !== "Tonal" && a.category !== "Bass");
 
 /**
  * The first screen should expose musical decisions, not every implementation

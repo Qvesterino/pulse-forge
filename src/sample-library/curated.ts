@@ -138,6 +138,13 @@ export const CURATED_SAMPLES: CuratedSample[] = [
   { id: "factory.mallet.vibes", file: "factory.mallet.vibes.wav" },
   { id: "factory.mallet.marimba", file: "factory.mallet.marimba.wav" },
   { id: "factory.mallet.celesta", file: "factory.mallet.celesta.wav" },
+  // Bass pack (library-completion wave 2026-10-04) — the empty category.
+  { id: "factory.bass.clean", file: "factory.bass.clean.wav" },
+  { id: "factory.bass.reese", file: "factory.bass.reese.wav" },
+  { id: "factory.bass.fm", file: "factory.bass.fm.wav" },
+  { id: "factory.bass.pluck", file: "factory.bass.pluck.wav" },
+  { id: "factory.bass.wobble", file: "factory.bass.wobble.wav" },
+  { id: "factory.bass.dist", file: "factory.bass.dist.wav" },
 ];
 
 /** Concurrency cap for parallel fetch+decode. */

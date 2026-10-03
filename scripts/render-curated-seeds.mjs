@@ -42,6 +42,11 @@ const CATEGORY_TREATMENT = {
   Tom: { targetLufs: -11.5, tapeDrive: 0.18, tapeTone: 10000, ceiling: -1.5 },
   Rim: { targetLufs: -13, tapeDrive: 0.15, tapeTone: 10500, ceiling: -1.8 },
   Percussion: { targetLufs: -13.5, tapeDrive: 0.15, tapeTone: 10500, ceiling: -1.8 },
+  // Bass pack (library-completion wave 2026-10-04): sustained sub voices at
+  // near-unity tape drive — the same lesson as 808pure/subdrop (the category
+  // drive squares a sustained sine past the limiter). Loudness sits under the
+  // kick target so a bass+kick stack keeps headroom.
+  Bass: { targetLufs: -12, tapeDrive: 0.06, tapeTone: 14000, ceiling: -1.6 },
   Tonal: { targetLufs: -16, tapeDrive: 0.16, tapeTone: 9500, ceiling: -1.8 },
   FX: { targetLufs: -13, tapeDrive: 0.16, tapeTone: 10500, ceiling: -1.5 },
 };
@@ -60,6 +65,15 @@ const ASSET_TREATMENT_OVERRIDE = {
   // would square it into the limiter before the trim ever sees it (same
   // failure the 808pure fix removed). Its own tanh edge (1.6x) is baked in.
   "factory.fx.subdrop": { tapeDrive: 0.04 },
+  // Drill 808 (library-quality audit 2026-10-04): the one Kick that measured
+  // flatter than the whole bank (1.9 dB crest, then 2.8 dB after its envelope
+  // was tightened to a 0.4 s body — every other kick sits at 4.7-6.2). Same
+  // mechanism as 808pure: the category drive squares a body that is a single
+  // sustained 41 Hz sine. Its "Growl" is carried by its own tanh drive (3x)
+  // and the 0.5 click, so the tape stage only has to add colour, not
+  // distortion — 0.1 (~2.4x) keeps it dirtier than the clean 808pure without
+  // double-squaring the sub.
+  "factory.kick.drill": { tapeDrive: 0.1 },
 };
 
 const server = await createServer({

@@ -12,6 +12,7 @@ const CATEGORY_COLORS: Record<AssetCategory, string> = {
   Tom: "#a78bfa",
   Rim: "#facc15",
   Percussion: "#38bdf8",
+  Bass: "#818cf8",
   Tonal: "#22d3ee",
   FX: "#e879f9",
 };

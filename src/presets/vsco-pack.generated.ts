@@ -6,44 +6,485 @@ import type { SampleLayer } from "../project-model/types";
 
 export const VSCO_PACK_LAYERS: SampleLayer[] = [
   {
-    "id": "layer.vsco.violinens.r1",
-    "sampleId": "factory.vsco.violinens.r1",
+    "id": "layer.vsco.bassoonstac.r1",
+    "sampleId": "factory.vsco.bassoonstac.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 43,
+    "maxPitch": 46,
+    "root": 45
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r2",
+    "sampleId": "factory.vsco.bassoonstac.r2",
     "min": 0,
     "max": 0.49606299212598426,
     "minPitch": 56,
-    "maxPitch": 57,
+    "maxPitch": 58,
     "root": 57
   },
   {
-    "id": "layer.vsco.violinens.r2",
-    "sampleId": "factory.vsco.violinens.r2",
+    "id": "layer.vsco.bassoonstac.r3",
+    "sampleId": "factory.vsco.bassoonstac.r3",
     "min": 0,
     "max": 0.49606299212598426,
-    "minPitch": 68,
+    "minPitch": 47,
+    "maxPitch": 49,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r4",
+    "sampleId": "factory.vsco.bassoonstac.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r5",
+    "sampleId": "factory.vsco.bassoonstac.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 70,
+    "maxPitch": 72,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r6",
+    "sampleId": "factory.vsco.bassoonstac.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 52,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r7",
+    "sampleId": "factory.vsco.bassoonstac.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r8",
+    "sampleId": "factory.vsco.bassoonstac.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 40,
+    "maxPitch": 42,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r9",
+    "sampleId": "factory.vsco.bassoonstac.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 54,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r10",
+    "sampleId": "factory.vsco.bassoonstac.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 66,
+    "maxPitch": 69,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r11",
+    "sampleId": "factory.vsco.bassoonstac.r11",
+    "min": 0,
+    "max": 1,
+    "minPitch": 34,
+    "maxPitch": 35,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r12",
+    "sampleId": "factory.vsco.bassoonstac.r12",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 43,
+    "maxPitch": 46,
+    "root": 45
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r13",
+    "sampleId": "factory.vsco.bassoonstac.r13",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r14",
+    "sampleId": "factory.vsco.bassoonstac.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 47,
+    "maxPitch": 49,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r15",
+    "sampleId": "factory.vsco.bassoonstac.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r16",
+    "sampleId": "factory.vsco.bassoonstac.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 70,
+    "maxPitch": 72,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r17",
+    "sampleId": "factory.vsco.bassoonstac.r17",
+    "min": 0,
+    "max": 1,
+    "minPitch": 50,
+    "maxPitch": 51,
+    "root": 51
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r18",
+    "sampleId": "factory.vsco.bassoonstac.r18",
+    "min": 0,
+    "max": 1,
+    "minPitch": 36,
+    "maxPitch": 39,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r19",
+    "sampleId": "factory.vsco.bassoonstac.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r20",
+    "sampleId": "factory.vsco.bassoonstac.r20",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r21",
+    "sampleId": "factory.vsco.bassoonstac.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 40,
+    "maxPitch": 42,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r22",
+    "sampleId": "factory.vsco.bassoonstac.r22",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 54,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r23",
+    "sampleId": "factory.vsco.bassoonstac.r23",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 69,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r24",
+    "sampleId": "factory.vsco.bassoonstac.r24",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 43,
+    "maxPitch": 46,
+    "root": 45
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r25",
+    "sampleId": "factory.vsco.bassoonstac.r25",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 56,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r26",
+    "sampleId": "factory.vsco.bassoonstac.r26",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 47,
+    "maxPitch": 49,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r27",
+    "sampleId": "factory.vsco.bassoonstac.r27",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r28",
+    "sampleId": "factory.vsco.bassoonstac.r28",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 70,
+    "maxPitch": 72,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r29",
+    "sampleId": "factory.vsco.bassoonstac.r29",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 52,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r30",
+    "sampleId": "factory.vsco.bassoonstac.r30",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r31",
+    "sampleId": "factory.vsco.bassoonstac.r31",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 40,
+    "maxPitch": 42,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r32",
+    "sampleId": "factory.vsco.bassoonstac.r32",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 54,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r33",
+    "sampleId": "factory.vsco.bassoonstac.r33",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 66,
+    "maxPitch": 69,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r34",
+    "sampleId": "factory.vsco.bassoonstac.r34",
+    "min": 0,
+    "max": 1,
+    "minPitch": 34,
+    "maxPitch": 35,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r35",
+    "sampleId": "factory.vsco.bassoonstac.r35",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 43,
+    "maxPitch": 46,
+    "root": 45
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r36",
+    "sampleId": "factory.vsco.bassoonstac.r36",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r37",
+    "sampleId": "factory.vsco.bassoonstac.r37",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 47,
+    "maxPitch": 49,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r38",
+    "sampleId": "factory.vsco.bassoonstac.r38",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r39",
+    "sampleId": "factory.vsco.bassoonstac.r39",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 70,
+    "maxPitch": 72,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r40",
+    "sampleId": "factory.vsco.bassoonstac.r40",
+    "min": 0,
+    "max": 1,
+    "minPitch": 50,
+    "maxPitch": 51,
+    "root": 51
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r41",
+    "sampleId": "factory.vsco.bassoonstac.r41",
+    "min": 0,
+    "max": 1,
+    "minPitch": 36,
+    "maxPitch": 39,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r42",
+    "sampleId": "factory.vsco.bassoonstac.r42",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r43",
+    "sampleId": "factory.vsco.bassoonstac.r43",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r44",
+    "sampleId": "factory.vsco.bassoonstac.r44",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 40,
+    "maxPitch": 42,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r45",
+    "sampleId": "factory.vsco.bassoonstac.r45",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 54,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.bassoonstac.r46",
+    "sampleId": "factory.vsco.bassoonstac.r46",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 69,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.bassoonsus.r1",
+    "sampleId": "factory.vsco.bassoonsus.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 34,
+    "maxPitch": 35,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.bassoonsus.r2",
+    "sampleId": "factory.vsco.bassoonsus.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 46,
+    "maxPitch": 46,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.bassoonsus.r3",
+    "sampleId": "factory.vsco.bassoonsus.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 43,
+    "maxPitch": 45,
+    "root": 45
+  },
+  {
+    "id": "layer.vsco.bassoonsus.r4",
+    "sampleId": "factory.vsco.bassoonsus.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 69,
     "maxPitch": 70,
     "root": 69
   },
   {
-    "id": "layer.vsco.violinens.r3",
-    "sampleId": "factory.vsco.violinens.r3",
+    "id": "layer.vsco.bassoonsus.r5",
+    "sampleId": "factory.vsco.bassoonsus.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 36,
+    "maxPitch": 38,
+    "root": 37
+  },
+  {
+    "id": "layer.vsco.bassoonsus.r6",
+    "sampleId": "factory.vsco.bassoonsus.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 47,
+    "maxPitch": 51,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.bassoonsus.r7",
+    "sampleId": "factory.vsco.bassoonsus.r7",
     "min": 0,
     "max": 0.49606299212598426,
     "minPitch": 58,
-    "maxPitch": 60,
-    "root": 59
+    "maxPitch": 61,
+    "root": 60
   },
   {
-    "id": "layer.vsco.violinens.r4",
-    "sampleId": "factory.vsco.violinens.r4",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 81,
-    "maxPitch": 84,
-    "root": 83
-  },
-  {
-    "id": "layer.vsco.violinens.r5",
-    "sampleId": "factory.vsco.violinens.r5",
+    "id": "layer.vsco.bassoonsus.r8",
+    "sampleId": "factory.vsco.bassoonsus.r8",
     "min": 0,
     "max": 0.49606299212598426,
     "minPitch": 71,
@@ -51,98 +492,107 @@ export const VSCO_PACK_LAYERS: SampleLayer[] = [
     "root": 72
   },
   {
-    "id": "layer.vsco.violinens.r6",
-    "sampleId": "factory.vsco.violinens.r6",
+    "id": "layer.vsco.bassoonsus.r9",
+    "sampleId": "factory.vsco.bassoonsus.r9",
     "min": 0,
     "max": 0.49606299212598426,
-    "minPitch": 61,
-    "maxPitch": 63,
-    "root": 62
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 63
   },
   {
-    "id": "layer.vsco.violinens.r7",
-    "sampleId": "factory.vsco.violinens.r7",
+    "id": "layer.vsco.bassoonsus.r10",
+    "sampleId": "factory.vsco.bassoonsus.r10",
     "min": 0,
     "max": 0.49606299212598426,
-    "minPitch": 85,
-    "maxPitch": 86,
-    "root": 86
+    "minPitch": 39,
+    "maxPitch": 42,
+    "root": 41
   },
   {
-    "id": "layer.vsco.violinens.r8",
-    "sampleId": "factory.vsco.violinens.r8",
+    "id": "layer.vsco.bassoonsus.r11",
+    "sampleId": "factory.vsco.bassoonsus.r11",
     "min": 0,
     "max": 0.49606299212598426,
-    "minPitch": 74,
-    "maxPitch": 77,
-    "root": 76
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 68
   },
   {
-    "id": "layer.vsco.violinens.r9",
-    "sampleId": "factory.vsco.violinens.r9",
+    "id": "layer.vsco.bassoonsus.r12",
+    "sampleId": "factory.vsco.bassoonsus.r12",
     "min": 0,
     "max": 0.49606299212598426,
-    "minPitch": 64,
-    "maxPitch": 67,
-    "root": 66
-  },
-  {
-    "id": "layer.vsco.violinens.r10",
-    "sampleId": "factory.vsco.violinens.r10",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 55,
-    "maxPitch": 55,
+    "minPitch": 52,
+    "maxPitch": 57,
     "root": 55
   },
   {
-    "id": "layer.vsco.violinens.r11",
-    "sampleId": "factory.vsco.violinens.r11",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 78,
-    "maxPitch": 80,
-    "root": 79
-  },
-  {
-    "id": "layer.vsco.violinens.r12",
-    "sampleId": "factory.vsco.violinens.r12",
+    "id": "layer.vsco.bassoonsus.r13",
+    "sampleId": "factory.vsco.bassoonsus.r13",
     "min": 0.49606299212598426,
     "max": 1,
-    "minPitch": 56,
-    "maxPitch": 57,
-    "root": 57
+    "minPitch": 34,
+    "maxPitch": 35,
+    "root": 34
   },
   {
-    "id": "layer.vsco.violinens.r13",
-    "sampleId": "factory.vsco.violinens.r13",
+    "id": "layer.vsco.bassoonsus.r14",
+    "sampleId": "factory.vsco.bassoonsus.r14",
     "min": 0.49606299212598426,
     "max": 1,
-    "minPitch": 68,
+    "minPitch": 46,
+    "maxPitch": 46,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.bassoonsus.r15",
+    "sampleId": "factory.vsco.bassoonsus.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 43,
+    "maxPitch": 45,
+    "root": 45
+  },
+  {
+    "id": "layer.vsco.bassoonsus.r16",
+    "sampleId": "factory.vsco.bassoonsus.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 69,
     "maxPitch": 70,
     "root": 69
   },
   {
-    "id": "layer.vsco.violinens.r14",
-    "sampleId": "factory.vsco.violinens.r14",
+    "id": "layer.vsco.bassoonsus.r17",
+    "sampleId": "factory.vsco.bassoonsus.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 36,
+    "maxPitch": 38,
+    "root": 37
+  },
+  {
+    "id": "layer.vsco.bassoonsus.r18",
+    "sampleId": "factory.vsco.bassoonsus.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 47,
+    "maxPitch": 51,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.bassoonsus.r19",
+    "sampleId": "factory.vsco.bassoonsus.r19",
     "min": 0.49606299212598426,
     "max": 1,
     "minPitch": 58,
-    "maxPitch": 60,
-    "root": 59
+    "maxPitch": 61,
+    "root": 60
   },
   {
-    "id": "layer.vsco.violinens.r15",
-    "sampleId": "factory.vsco.violinens.r15",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 81,
-    "maxPitch": 84,
-    "root": 83
-  },
-  {
-    "id": "layer.vsco.violinens.r16",
-    "sampleId": "factory.vsco.violinens.r16",
+    "id": "layer.vsco.bassoonsus.r20",
+    "sampleId": "factory.vsco.bassoonsus.r20",
     "min": 0.49606299212598426,
     "max": 1,
     "minPitch": 71,
@@ -150,44 +600,9845 @@ export const VSCO_PACK_LAYERS: SampleLayer[] = [
     "root": 72
   },
   {
-    "id": "layer.vsco.violinens.r17",
-    "sampleId": "factory.vsco.violinens.r17",
+    "id": "layer.vsco.bassoonsus.r21",
+    "sampleId": "factory.vsco.bassoonsus.r21",
     "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.bassoonsus.r22",
+    "sampleId": "factory.vsco.bassoonsus.r22",
+    "min": 0,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 75,
+    "root": 75
+  },
+  {
+    "id": "layer.vsco.bassoonsus.r23",
+    "sampleId": "factory.vsco.bassoonsus.r23",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 39,
+    "maxPitch": 42,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.bassoonsus.r24",
+    "sampleId": "factory.vsco.bassoonsus.r24",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 68
+  },
+  {
+    "id": "layer.vsco.bassoonsus.r25",
+    "sampleId": "factory.vsco.bassoonsus.r25",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 57,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.bassoonvib.r1",
+    "sampleId": "factory.vsco.bassoonvib.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 44,
+    "maxPitch": 46,
+    "root": 45
+  },
+  {
+    "id": "layer.vsco.bassoonvib.r2",
+    "sampleId": "factory.vsco.bassoonvib.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.bassoonvib.r3",
+    "sampleId": "factory.vsco.bassoonvib.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 47,
+    "maxPitch": 51,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.bassoonvib.r4",
+    "sampleId": "factory.vsco.bassoonvib.r4",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.bassoonvib.r5",
+    "sampleId": "factory.vsco.bassoonvib.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 71,
+    "maxPitch": 72,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.bassoonvib.r6",
+    "sampleId": "factory.vsco.bassoonvib.r6",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.bassoonvib.r7",
+    "sampleId": "factory.vsco.bassoonvib.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 36,
+    "maxPitch": 43,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.bassoonvib.r8",
+    "sampleId": "factory.vsco.bassoonvib.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 52,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.bassoonvib.r9",
+    "sampleId": "factory.vsco.bassoonvib.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 66,
+    "maxPitch": 67,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.bassoonvib.r10",
+    "sampleId": "factory.vsco.bassoonvib.r10",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 44,
+    "maxPitch": 46,
+    "root": 45
+  },
+  {
+    "id": "layer.vsco.bassoonvib.r11",
+    "sampleId": "factory.vsco.bassoonvib.r11",
+    "min": 0,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.bassoonvib.r12",
+    "sampleId": "factory.vsco.bassoonvib.r12",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.bassoonvib.r13",
+    "sampleId": "factory.vsco.bassoonvib.r13",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 47,
+    "maxPitch": 51,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.bassoonvib.r14",
+    "sampleId": "factory.vsco.bassoonvib.r14",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.bassoonvib.r15",
+    "sampleId": "factory.vsco.bassoonvib.r15",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.bassoonvib.r16",
+    "sampleId": "factory.vsco.bassoonvib.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 72,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.bassoonvib.r17",
+    "sampleId": "factory.vsco.bassoonvib.r17",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.bassoonvib.r18",
+    "sampleId": "factory.vsco.bassoonvib.r18",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.bassoonvib.r19",
+    "sampleId": "factory.vsco.bassoonvib.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 36,
+    "maxPitch": 43,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.bassoonvib.r20",
+    "sampleId": "factory.vsco.bassoonvib.r20",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.bassoonvib.r21",
+    "sampleId": "factory.vsco.bassoonvib.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 67,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r1",
+    "sampleId": "factory.vsco.celloenspizz.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r2",
+    "sampleId": "factory.vsco.celloenspizz.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 45,
+    "maxPitch": 48,
+    "root": 47
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r3",
+    "sampleId": "factory.vsco.celloenspizz.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 69,
+    "maxPitch": 72,
+    "root": 71
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r4",
+    "sampleId": "factory.vsco.celloenspizz.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 36,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r5",
+    "sampleId": "factory.vsco.celloenspizz.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r6",
+    "sampleId": "factory.vsco.celloenspizz.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 49,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r7",
+    "sampleId": "factory.vsco.celloenspizz.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 73,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r8",
+    "sampleId": "factory.vsco.celloenspizz.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 38,
+    "maxPitch": 41,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r9",
+    "sampleId": "factory.vsco.celloenspizz.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r10",
+    "sampleId": "factory.vsco.celloenspizz.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r11",
+    "sampleId": "factory.vsco.celloenspizz.r11",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 76,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r12",
+    "sampleId": "factory.vsco.celloenspizz.r12",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 42,
+    "maxPitch": 44,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r13",
+    "sampleId": "factory.vsco.celloenspizz.r13",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r14",
+    "sampleId": "factory.vsco.celloenspizz.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r15",
+    "sampleId": "factory.vsco.celloenspizz.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 45,
+    "maxPitch": 48,
+    "root": 47
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r16",
+    "sampleId": "factory.vsco.celloenspizz.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 69,
+    "maxPitch": 72,
+    "root": 71
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r17",
+    "sampleId": "factory.vsco.celloenspizz.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 36,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r18",
+    "sampleId": "factory.vsco.celloenspizz.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r19",
+    "sampleId": "factory.vsco.celloenspizz.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 49,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r20",
+    "sampleId": "factory.vsco.celloenspizz.r20",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 73,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r21",
+    "sampleId": "factory.vsco.celloenspizz.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 38,
+    "maxPitch": 41,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r22",
+    "sampleId": "factory.vsco.celloenspizz.r22",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r23",
+    "sampleId": "factory.vsco.celloenspizz.r23",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r24",
+    "sampleId": "factory.vsco.celloenspizz.r24",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r25",
+    "sampleId": "factory.vsco.celloenspizz.r25",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 42,
+    "maxPitch": 44,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r26",
+    "sampleId": "factory.vsco.celloenspizz.r26",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r27",
+    "sampleId": "factory.vsco.celloenspizz.r27",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r28",
+    "sampleId": "factory.vsco.celloenspizz.r28",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 45,
+    "maxPitch": 48,
+    "root": 47
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r29",
+    "sampleId": "factory.vsco.celloenspizz.r29",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 69,
+    "maxPitch": 72,
+    "root": 71
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r30",
+    "sampleId": "factory.vsco.celloenspizz.r30",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 36,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r31",
+    "sampleId": "factory.vsco.celloenspizz.r31",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r32",
+    "sampleId": "factory.vsco.celloenspizz.r32",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 49,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r33",
+    "sampleId": "factory.vsco.celloenspizz.r33",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 73,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r34",
+    "sampleId": "factory.vsco.celloenspizz.r34",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 38,
+    "maxPitch": 41,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r35",
+    "sampleId": "factory.vsco.celloenspizz.r35",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r36",
+    "sampleId": "factory.vsco.celloenspizz.r36",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r37",
+    "sampleId": "factory.vsco.celloenspizz.r37",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 76,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r38",
+    "sampleId": "factory.vsco.celloenspizz.r38",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 42,
+    "maxPitch": 44,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r39",
+    "sampleId": "factory.vsco.celloenspizz.r39",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r40",
+    "sampleId": "factory.vsco.celloenspizz.r40",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r41",
+    "sampleId": "factory.vsco.celloenspizz.r41",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 45,
+    "maxPitch": 48,
+    "root": 47
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r42",
+    "sampleId": "factory.vsco.celloenspizz.r42",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 69,
+    "maxPitch": 72,
+    "root": 71
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r43",
+    "sampleId": "factory.vsco.celloenspizz.r43",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 36,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r44",
+    "sampleId": "factory.vsco.celloenspizz.r44",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r45",
+    "sampleId": "factory.vsco.celloenspizz.r45",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 49,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r46",
+    "sampleId": "factory.vsco.celloenspizz.r46",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 73,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r47",
+    "sampleId": "factory.vsco.celloenspizz.r47",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 38,
+    "maxPitch": 41,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r48",
+    "sampleId": "factory.vsco.celloenspizz.r48",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r49",
+    "sampleId": "factory.vsco.celloenspizz.r49",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r50",
+    "sampleId": "factory.vsco.celloenspizz.r50",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r51",
+    "sampleId": "factory.vsco.celloenspizz.r51",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 42,
+    "maxPitch": 44,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.celloenspizz.r52",
+    "sampleId": "factory.vsco.celloenspizz.r52",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.celloensspic.r1",
+    "sampleId": "factory.vsco.celloensspic.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.celloensspic.r2",
+    "sampleId": "factory.vsco.celloensspic.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 45,
+    "maxPitch": 48,
+    "root": 47
+  },
+  {
+    "id": "layer.vsco.celloensspic.r3",
+    "sampleId": "factory.vsco.celloensspic.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 69,
+    "maxPitch": 72,
+    "root": 71
+  },
+  {
+    "id": "layer.vsco.celloensspic.r4",
+    "sampleId": "factory.vsco.celloensspic.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 36,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.celloensspic.r5",
+    "sampleId": "factory.vsco.celloensspic.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.celloensspic.r6",
+    "sampleId": "factory.vsco.celloensspic.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 49,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.celloensspic.r7",
+    "sampleId": "factory.vsco.celloensspic.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 73,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.celloensspic.r8",
+    "sampleId": "factory.vsco.celloensspic.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 38,
+    "maxPitch": 41,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.celloensspic.r9",
+    "sampleId": "factory.vsco.celloensspic.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.celloensspic.r10",
+    "sampleId": "factory.vsco.celloensspic.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.celloensspic.r11",
+    "sampleId": "factory.vsco.celloensspic.r11",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 76,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.celloensspic.r12",
+    "sampleId": "factory.vsco.celloensspic.r12",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 42,
+    "maxPitch": 44,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.celloensspic.r13",
+    "sampleId": "factory.vsco.celloensspic.r13",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.celloensspic.r14",
+    "sampleId": "factory.vsco.celloensspic.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.celloensspic.r15",
+    "sampleId": "factory.vsco.celloensspic.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 45,
+    "maxPitch": 48,
+    "root": 47
+  },
+  {
+    "id": "layer.vsco.celloensspic.r16",
+    "sampleId": "factory.vsco.celloensspic.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 69,
+    "maxPitch": 72,
+    "root": 71
+  },
+  {
+    "id": "layer.vsco.celloensspic.r17",
+    "sampleId": "factory.vsco.celloensspic.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 36,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.celloensspic.r18",
+    "sampleId": "factory.vsco.celloensspic.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.celloensspic.r19",
+    "sampleId": "factory.vsco.celloensspic.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 49,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.celloensspic.r20",
+    "sampleId": "factory.vsco.celloensspic.r20",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 73,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.celloensspic.r21",
+    "sampleId": "factory.vsco.celloensspic.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 38,
+    "maxPitch": 41,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.celloensspic.r22",
+    "sampleId": "factory.vsco.celloensspic.r22",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.celloensspic.r23",
+    "sampleId": "factory.vsco.celloensspic.r23",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.celloensspic.r24",
+    "sampleId": "factory.vsco.celloensspic.r24",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.celloensspic.r25",
+    "sampleId": "factory.vsco.celloensspic.r25",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 42,
+    "maxPitch": 44,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.celloensspic.r26",
+    "sampleId": "factory.vsco.celloensspic.r26",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.celloensspic.r27",
+    "sampleId": "factory.vsco.celloensspic.r27",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.celloensspic.r28",
+    "sampleId": "factory.vsco.celloensspic.r28",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 45,
+    "maxPitch": 48,
+    "root": 47
+  },
+  {
+    "id": "layer.vsco.celloensspic.r29",
+    "sampleId": "factory.vsco.celloensspic.r29",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 69,
+    "maxPitch": 72,
+    "root": 71
+  },
+  {
+    "id": "layer.vsco.celloensspic.r30",
+    "sampleId": "factory.vsco.celloensspic.r30",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 36,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.celloensspic.r31",
+    "sampleId": "factory.vsco.celloensspic.r31",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.celloensspic.r32",
+    "sampleId": "factory.vsco.celloensspic.r32",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 49,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.celloensspic.r33",
+    "sampleId": "factory.vsco.celloensspic.r33",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 73,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.celloensspic.r34",
+    "sampleId": "factory.vsco.celloensspic.r34",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 38,
+    "maxPitch": 41,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.celloensspic.r35",
+    "sampleId": "factory.vsco.celloensspic.r35",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.celloensspic.r36",
+    "sampleId": "factory.vsco.celloensspic.r36",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.celloensspic.r37",
+    "sampleId": "factory.vsco.celloensspic.r37",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 76,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.celloensspic.r38",
+    "sampleId": "factory.vsco.celloensspic.r38",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 42,
+    "maxPitch": 44,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.celloensspic.r39",
+    "sampleId": "factory.vsco.celloensspic.r39",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.celloensspic.r40",
+    "sampleId": "factory.vsco.celloensspic.r40",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.celloensspic.r41",
+    "sampleId": "factory.vsco.celloensspic.r41",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 45,
+    "maxPitch": 48,
+    "root": 47
+  },
+  {
+    "id": "layer.vsco.celloensspic.r42",
+    "sampleId": "factory.vsco.celloensspic.r42",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 69,
+    "maxPitch": 72,
+    "root": 71
+  },
+  {
+    "id": "layer.vsco.celloensspic.r43",
+    "sampleId": "factory.vsco.celloensspic.r43",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 36,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.celloensspic.r44",
+    "sampleId": "factory.vsco.celloensspic.r44",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.celloensspic.r45",
+    "sampleId": "factory.vsco.celloensspic.r45",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 49,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.celloensspic.r46",
+    "sampleId": "factory.vsco.celloensspic.r46",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 73,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.celloensspic.r47",
+    "sampleId": "factory.vsco.celloensspic.r47",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 38,
+    "maxPitch": 41,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.celloensspic.r48",
+    "sampleId": "factory.vsco.celloensspic.r48",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.celloensspic.r49",
+    "sampleId": "factory.vsco.celloensspic.r49",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.celloensspic.r50",
+    "sampleId": "factory.vsco.celloensspic.r50",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.celloensspic.r51",
+    "sampleId": "factory.vsco.celloensspic.r51",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 42,
+    "maxPitch": 44,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.celloensspic.r52",
+    "sampleId": "factory.vsco.celloensspic.r52",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.celloenssusvib-quiet.r1",
+    "sampleId": "factory.vsco.celloenssusvib-quiet.r1",
+    "min": 0,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.celloenssusvib-quiet.r2",
+    "sampleId": "factory.vsco.celloenssusvib-quiet.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 45,
+    "maxPitch": 48,
+    "root": 47
+  },
+  {
+    "id": "layer.vsco.celloenssusvib-quiet.r3",
+    "sampleId": "factory.vsco.celloenssusvib-quiet.r3",
+    "min": 0,
+    "max": 1,
+    "minPitch": 69,
+    "maxPitch": 72,
+    "root": 71
+  },
+  {
+    "id": "layer.vsco.celloenssusvib-quiet.r4",
+    "sampleId": "factory.vsco.celloenssusvib-quiet.r4",
+    "min": 0,
+    "max": 1,
+    "minPitch": 36,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.celloenssusvib-quiet.r5",
+    "sampleId": "factory.vsco.celloenssusvib-quiet.r5",
+    "min": 0,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.celloenssusvib-quiet.r6",
+    "sampleId": "factory.vsco.celloenssusvib-quiet.r6",
+    "min": 0,
+    "max": 1,
+    "minPitch": 49,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.celloenssusvib-quiet.r7",
+    "sampleId": "factory.vsco.celloenssusvib-quiet.r7",
+    "min": 0,
+    "max": 1,
+    "minPitch": 73,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.celloenssusvib-quiet.r8",
+    "sampleId": "factory.vsco.celloenssusvib-quiet.r8",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 38,
+    "maxPitch": 41,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.celloenssusvib-quiet.r9",
+    "sampleId": "factory.vsco.celloenssusvib-quiet.r9",
+    "min": 0.33070866141732286,
+    "max": 1,
+    "minPitch": 38,
+    "maxPitch": 41,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.celloenssusvib-quiet.r10",
+    "sampleId": "factory.vsco.celloenssusvib-quiet.r10",
+    "min": 0,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.celloenssusvib-quiet.r11",
+    "sampleId": "factory.vsco.celloenssusvib-quiet.r11",
+    "min": 0,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.celloenssusvib-quiet.r12",
+    "sampleId": "factory.vsco.celloenssusvib-quiet.r12",
+    "min": 0,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.celloenssusvib-quiet.r13",
+    "sampleId": "factory.vsco.celloenssusvib-quiet.r13",
+    "min": 0,
+    "max": 1,
+    "minPitch": 42,
+    "maxPitch": 44,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.celloenssusvib-quiet.r14",
+    "sampleId": "factory.vsco.celloenssusvib-quiet.r14",
+    "min": 0,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r1",
+    "sampleId": "factory.vsco.celloenssusvib.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r2",
+    "sampleId": "factory.vsco.celloenssusvib.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 45,
+    "maxPitch": 48,
+    "root": 47
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r3",
+    "sampleId": "factory.vsco.celloenssusvib.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 69,
+    "maxPitch": 72,
+    "root": 71
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r4",
+    "sampleId": "factory.vsco.celloenssusvib.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 36,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r5",
+    "sampleId": "factory.vsco.celloenssusvib.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r6",
+    "sampleId": "factory.vsco.celloenssusvib.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 49,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r7",
+    "sampleId": "factory.vsco.celloenssusvib.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 73,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r8",
+    "sampleId": "factory.vsco.celloenssusvib.r8",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 38,
+    "maxPitch": 41,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r9",
+    "sampleId": "factory.vsco.celloenssusvib.r9",
+    "min": 0.33070866141732286,
+    "max": 0.49606299212598426,
+    "minPitch": 38,
+    "maxPitch": 41,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r10",
+    "sampleId": "factory.vsco.celloenssusvib.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r11",
+    "sampleId": "factory.vsco.celloenssusvib.r11",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r12",
+    "sampleId": "factory.vsco.celloenssusvib.r12",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 76,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r13",
+    "sampleId": "factory.vsco.celloenssusvib.r13",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 42,
+    "maxPitch": 44,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r14",
+    "sampleId": "factory.vsco.celloenssusvib.r14",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r15",
+    "sampleId": "factory.vsco.celloenssusvib.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r16",
+    "sampleId": "factory.vsco.celloenssusvib.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 45,
+    "maxPitch": 48,
+    "root": 47
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r17",
+    "sampleId": "factory.vsco.celloenssusvib.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 69,
+    "maxPitch": 72,
+    "root": 71
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r18",
+    "sampleId": "factory.vsco.celloenssusvib.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 36,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r19",
+    "sampleId": "factory.vsco.celloenssusvib.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r20",
+    "sampleId": "factory.vsco.celloenssusvib.r20",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 49,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r21",
+    "sampleId": "factory.vsco.celloenssusvib.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 73,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r22",
+    "sampleId": "factory.vsco.celloenssusvib.r22",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 38,
+    "maxPitch": 41,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r23",
+    "sampleId": "factory.vsco.celloenssusvib.r23",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r24",
+    "sampleId": "factory.vsco.celloenssusvib.r24",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r25",
+    "sampleId": "factory.vsco.celloenssusvib.r25",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r26",
+    "sampleId": "factory.vsco.celloenssusvib.r26",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 42,
+    "maxPitch": 44,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.celloenssusvib.r27",
+    "sampleId": "factory.vsco.celloenssusvib.r27",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r1",
+    "sampleId": "factory.vsco.celloenstrem.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 55,
+    "maxPitch": 57,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r2",
+    "sampleId": "factory.vsco.celloenstrem.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 45,
+    "maxPitch": 48,
+    "root": 47
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r3",
+    "sampleId": "factory.vsco.celloenstrem.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 69,
+    "maxPitch": 72,
+    "root": 71
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r4",
+    "sampleId": "factory.vsco.celloenstrem.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 60,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r5",
+    "sampleId": "factory.vsco.celloenstrem.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 49,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r6",
+    "sampleId": "factory.vsco.celloenstrem.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 73,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r7",
+    "sampleId": "factory.vsco.celloenstrem.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 38,
+    "maxPitch": 41,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r8",
+    "sampleId": "factory.vsco.celloenstrem.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r9",
+    "sampleId": "factory.vsco.celloenstrem.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r10",
+    "sampleId": "factory.vsco.celloenstrem.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 76,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r11",
+    "sampleId": "factory.vsco.celloenstrem.r11",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 42,
+    "maxPitch": 44,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r12",
+    "sampleId": "factory.vsco.celloenstrem.r12",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r13",
+    "sampleId": "factory.vsco.celloenstrem.r13",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 57,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r14",
+    "sampleId": "factory.vsco.celloenstrem.r14",
+    "min": 0,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 59,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r15",
+    "sampleId": "factory.vsco.celloenstrem.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 69,
+    "maxPitch": 72,
+    "root": 71
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r16",
+    "sampleId": "factory.vsco.celloenstrem.r16",
+    "min": 0,
+    "max": 1,
+    "minPitch": 36,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r17",
+    "sampleId": "factory.vsco.celloenstrem.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 60,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r18",
+    "sampleId": "factory.vsco.celloenstrem.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 49,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r19",
+    "sampleId": "factory.vsco.celloenstrem.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 73,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r20",
+    "sampleId": "factory.vsco.celloenstrem.r20",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 38,
+    "maxPitch": 41,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r21",
+    "sampleId": "factory.vsco.celloenstrem.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r22",
+    "sampleId": "factory.vsco.celloenstrem.r22",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r23",
+    "sampleId": "factory.vsco.celloenstrem.r23",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r24",
+    "sampleId": "factory.vsco.celloenstrem.r24",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 42,
+    "maxPitch": 44,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.celloenstrem.r25",
+    "sampleId": "factory.vsco.celloenstrem.r25",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r1",
+    "sampleId": "factory.vsco.clarinetstac.r1",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r2",
+    "sampleId": "factory.vsco.clarinetstac.r2",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 68,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r3",
+    "sampleId": "factory.vsco.clarinetstac.r3",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 80,
+    "maxPitch": 83,
+    "root": 82
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r4",
+    "sampleId": "factory.vsco.clarinetstac.r4",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 50,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r5",
+    "sampleId": "factory.vsco.clarinetstac.r5",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r6",
+    "sampleId": "factory.vsco.clarinetstac.r6",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r7",
+    "sampleId": "factory.vsco.clarinetstac.r7",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 52,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r8",
+    "sampleId": "factory.vsco.clarinetstac.r8",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r9",
+    "sampleId": "factory.vsco.clarinetstac.r9",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 76,
+    "maxPitch": 79,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r10",
+    "sampleId": "factory.vsco.clarinetstac.r10",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 88,
+    "maxPitch": 89,
+    "root": 89
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r11",
+    "sampleId": "factory.vsco.clarinetstac.r11",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r12",
+    "sampleId": "factory.vsco.clarinetstac.r12",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 68,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r13",
+    "sampleId": "factory.vsco.clarinetstac.r13",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 80,
+    "maxPitch": 83,
+    "root": 82
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r14",
+    "sampleId": "factory.vsco.clarinetstac.r14",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 50,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r15",
+    "sampleId": "factory.vsco.clarinetstac.r15",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r16",
+    "sampleId": "factory.vsco.clarinetstac.r16",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r17",
+    "sampleId": "factory.vsco.clarinetstac.r17",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 84,
+    "maxPitch": 87,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r18",
+    "sampleId": "factory.vsco.clarinetstac.r18",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 52,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r19",
+    "sampleId": "factory.vsco.clarinetstac.r19",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r20",
+    "sampleId": "factory.vsco.clarinetstac.r20",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 76,
+    "maxPitch": 79,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r21",
+    "sampleId": "factory.vsco.clarinetstac.r21",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 88,
+    "maxPitch": 89,
+    "root": 89
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r22",
+    "sampleId": "factory.vsco.clarinetstac.r22",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r23",
+    "sampleId": "factory.vsco.clarinetstac.r23",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r24",
+    "sampleId": "factory.vsco.clarinetstac.r24",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 80,
+    "maxPitch": 83,
+    "root": 82
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r25",
+    "sampleId": "factory.vsco.clarinetstac.r25",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 50,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r26",
+    "sampleId": "factory.vsco.clarinetstac.r26",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r27",
+    "sampleId": "factory.vsco.clarinetstac.r27",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r28",
+    "sampleId": "factory.vsco.clarinetstac.r28",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 84,
+    "maxPitch": 87,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r29",
+    "sampleId": "factory.vsco.clarinetstac.r29",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r30",
+    "sampleId": "factory.vsco.clarinetstac.r30",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r31",
+    "sampleId": "factory.vsco.clarinetstac.r31",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 79,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r32",
+    "sampleId": "factory.vsco.clarinetstac.r32",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 88,
+    "maxPitch": 89,
+    "root": 89
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r33",
+    "sampleId": "factory.vsco.clarinetstac.r33",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r34",
+    "sampleId": "factory.vsco.clarinetstac.r34",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 68,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r35",
+    "sampleId": "factory.vsco.clarinetstac.r35",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 80,
+    "maxPitch": 83,
+    "root": 82
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r36",
+    "sampleId": "factory.vsco.clarinetstac.r36",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 50,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r37",
+    "sampleId": "factory.vsco.clarinetstac.r37",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r38",
+    "sampleId": "factory.vsco.clarinetstac.r38",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r39",
+    "sampleId": "factory.vsco.clarinetstac.r39",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 52,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r40",
+    "sampleId": "factory.vsco.clarinetstac.r40",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r41",
+    "sampleId": "factory.vsco.clarinetstac.r41",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 76,
+    "maxPitch": 79,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r42",
+    "sampleId": "factory.vsco.clarinetstac.r42",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 88,
+    "maxPitch": 89,
+    "root": 89
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r43",
+    "sampleId": "factory.vsco.clarinetstac.r43",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r44",
+    "sampleId": "factory.vsco.clarinetstac.r44",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 68,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r45",
+    "sampleId": "factory.vsco.clarinetstac.r45",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 80,
+    "maxPitch": 83,
+    "root": 82
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r46",
+    "sampleId": "factory.vsco.clarinetstac.r46",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 50,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r47",
+    "sampleId": "factory.vsco.clarinetstac.r47",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r48",
+    "sampleId": "factory.vsco.clarinetstac.r48",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r49",
+    "sampleId": "factory.vsco.clarinetstac.r49",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 84,
+    "maxPitch": 87,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r50",
+    "sampleId": "factory.vsco.clarinetstac.r50",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 52,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r51",
+    "sampleId": "factory.vsco.clarinetstac.r51",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r52",
+    "sampleId": "factory.vsco.clarinetstac.r52",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 76,
+    "maxPitch": 79,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r53",
+    "sampleId": "factory.vsco.clarinetstac.r53",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 88,
+    "maxPitch": 89,
+    "root": 89
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r54",
+    "sampleId": "factory.vsco.clarinetstac.r54",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r55",
+    "sampleId": "factory.vsco.clarinetstac.r55",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r56",
+    "sampleId": "factory.vsco.clarinetstac.r56",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 80,
+    "maxPitch": 83,
+    "root": 82
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r57",
+    "sampleId": "factory.vsco.clarinetstac.r57",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 50,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r58",
+    "sampleId": "factory.vsco.clarinetstac.r58",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r59",
+    "sampleId": "factory.vsco.clarinetstac.r59",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r60",
+    "sampleId": "factory.vsco.clarinetstac.r60",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 84,
+    "maxPitch": 87,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r61",
+    "sampleId": "factory.vsco.clarinetstac.r61",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r62",
+    "sampleId": "factory.vsco.clarinetstac.r62",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r63",
+    "sampleId": "factory.vsco.clarinetstac.r63",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 79,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.clarinetstac.r64",
+    "sampleId": "factory.vsco.clarinetstac.r64",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 88,
+    "maxPitch": 89,
+    "root": 89
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r1",
+    "sampleId": "factory.vsco.clarinetsus.r1",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r2",
+    "sampleId": "factory.vsco.clarinetsus.r2",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 68,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r3",
+    "sampleId": "factory.vsco.clarinetsus.r3",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 80,
+    "maxPitch": 83,
+    "root": 82
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r4",
+    "sampleId": "factory.vsco.clarinetsus.r4",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 50,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r5",
+    "sampleId": "factory.vsco.clarinetsus.r5",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r6",
+    "sampleId": "factory.vsco.clarinetsus.r6",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r7",
+    "sampleId": "factory.vsco.clarinetsus.r7",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 84,
+    "maxPitch": 87,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r8",
+    "sampleId": "factory.vsco.clarinetsus.r8",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 88,
+    "maxPitch": 90,
+    "root": 89
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r9",
+    "sampleId": "factory.vsco.clarinetsus.r9",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 52,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r10",
+    "sampleId": "factory.vsco.clarinetsus.r10",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r11",
+    "sampleId": "factory.vsco.clarinetsus.r11",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 76,
+    "maxPitch": 79,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r12",
+    "sampleId": "factory.vsco.clarinetsus.r12",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r13",
+    "sampleId": "factory.vsco.clarinetsus.r13",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 68,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r14",
+    "sampleId": "factory.vsco.clarinetsus.r14",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 80,
+    "maxPitch": 83,
+    "root": 82
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r15",
+    "sampleId": "factory.vsco.clarinetsus.r15",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 50,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r16",
+    "sampleId": "factory.vsco.clarinetsus.r16",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r17",
+    "sampleId": "factory.vsco.clarinetsus.r17",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r18",
+    "sampleId": "factory.vsco.clarinetsus.r18",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 84,
+    "maxPitch": 87,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r19",
+    "sampleId": "factory.vsco.clarinetsus.r19",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 88,
+    "maxPitch": 90,
+    "root": 89
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r20",
+    "sampleId": "factory.vsco.clarinetsus.r20",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 52,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r21",
+    "sampleId": "factory.vsco.clarinetsus.r21",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r22",
+    "sampleId": "factory.vsco.clarinetsus.r22",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 76,
+    "maxPitch": 79,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r23",
+    "sampleId": "factory.vsco.clarinetsus.r23",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r24",
+    "sampleId": "factory.vsco.clarinetsus.r24",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r25",
+    "sampleId": "factory.vsco.clarinetsus.r25",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 80,
+    "maxPitch": 83,
+    "root": 82
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r26",
+    "sampleId": "factory.vsco.clarinetsus.r26",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 50,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r27",
+    "sampleId": "factory.vsco.clarinetsus.r27",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r28",
+    "sampleId": "factory.vsco.clarinetsus.r28",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r29",
+    "sampleId": "factory.vsco.clarinetsus.r29",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 84,
+    "maxPitch": 87,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r30",
+    "sampleId": "factory.vsco.clarinetsus.r30",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 88,
+    "maxPitch": 90,
+    "root": 89
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r31",
+    "sampleId": "factory.vsco.clarinetsus.r31",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r32",
+    "sampleId": "factory.vsco.clarinetsus.r32",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.clarinetsus.r33",
+    "sampleId": "factory.vsco.clarinetsus.r33",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 79,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r1",
+    "sampleId": "factory.vsco.contrabasspizz.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 33,
+    "maxPitch": 34,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r2",
+    "sampleId": "factory.vsco.contrabasspizz.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 45,
+    "maxPitch": 46,
+    "root": 45
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r3",
+    "sampleId": "factory.vsco.contrabasspizz.r3",
+    "min": 0,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r4",
+    "sampleId": "factory.vsco.contrabasspizz.r4",
+    "min": 0,
+    "max": 1,
+    "minPitch": 47,
+    "maxPitch": 50,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r5",
+    "sampleId": "factory.vsco.contrabasspizz.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 35,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r6",
+    "sampleId": "factory.vsco.contrabasspizz.r6",
+    "min": 0,
+    "max": 1,
+    "minPitch": 37,
+    "maxPitch": 38,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r7",
+    "sampleId": "factory.vsco.contrabasspizz.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 24,
+    "maxPitch": 28,
+    "root": 28
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r8",
+    "sampleId": "factory.vsco.contrabasspizz.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 39,
+    "maxPitch": 40,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r9",
+    "sampleId": "factory.vsco.contrabasspizz.r9",
+    "min": 0,
+    "max": 1,
+    "minPitch": 51,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r10",
+    "sampleId": "factory.vsco.contrabasspizz.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 29,
+    "maxPitch": 30,
+    "root": 30
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r11",
+    "sampleId": "factory.vsco.contrabasspizz.r11",
+    "min": 0,
+    "max": 1,
+    "minPitch": 41,
+    "maxPitch": 42,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r12",
+    "sampleId": "factory.vsco.contrabasspizz.r12",
+    "min": 0,
+    "max": 1,
+    "minPitch": 43,
+    "maxPitch": 44,
+    "root": 44
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r13",
+    "sampleId": "factory.vsco.contrabasspizz.r13",
+    "min": 0,
+    "max": 1,
+    "minPitch": 54,
+    "maxPitch": 57,
+    "root": 56
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r14",
+    "sampleId": "factory.vsco.contrabasspizz.r14",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 31,
+    "maxPitch": 32,
+    "root": 31
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r15",
+    "sampleId": "factory.vsco.contrabasspizz.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 33,
+    "maxPitch": 34,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r16",
+    "sampleId": "factory.vsco.contrabasspizz.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 35,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r17",
+    "sampleId": "factory.vsco.contrabasspizz.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 24,
+    "maxPitch": 28,
+    "root": 28
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r18",
+    "sampleId": "factory.vsco.contrabasspizz.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 39,
+    "maxPitch": 40,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r19",
+    "sampleId": "factory.vsco.contrabasspizz.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 29,
+    "maxPitch": 30,
+    "root": 30
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r20",
+    "sampleId": "factory.vsco.contrabasspizz.r20",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 31,
+    "maxPitch": 32,
+    "root": 31
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r21",
+    "sampleId": "factory.vsco.contrabasspizz.r21",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 33,
+    "maxPitch": 34,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r22",
+    "sampleId": "factory.vsco.contrabasspizz.r22",
+    "min": 0,
+    "max": 1,
+    "minPitch": 45,
+    "maxPitch": 46,
+    "root": 45
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r23",
+    "sampleId": "factory.vsco.contrabasspizz.r23",
+    "min": 0,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r24",
+    "sampleId": "factory.vsco.contrabasspizz.r24",
+    "min": 0,
+    "max": 1,
+    "minPitch": 47,
+    "maxPitch": 50,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r25",
+    "sampleId": "factory.vsco.contrabasspizz.r25",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 35,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r26",
+    "sampleId": "factory.vsco.contrabasspizz.r26",
+    "min": 0,
+    "max": 1,
+    "minPitch": 37,
+    "maxPitch": 38,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r27",
+    "sampleId": "factory.vsco.contrabasspizz.r27",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 24,
+    "maxPitch": 28,
+    "root": 28
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r28",
+    "sampleId": "factory.vsco.contrabasspizz.r28",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 39,
+    "maxPitch": 40,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r29",
+    "sampleId": "factory.vsco.contrabasspizz.r29",
+    "min": 0,
+    "max": 1,
+    "minPitch": 51,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r30",
+    "sampleId": "factory.vsco.contrabasspizz.r30",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 29,
+    "maxPitch": 30,
+    "root": 30
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r31",
+    "sampleId": "factory.vsco.contrabasspizz.r31",
+    "min": 0,
+    "max": 1,
+    "minPitch": 41,
+    "maxPitch": 42,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r32",
+    "sampleId": "factory.vsco.contrabasspizz.r32",
+    "min": 0,
+    "max": 1,
+    "minPitch": 43,
+    "maxPitch": 44,
+    "root": 44
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r33",
+    "sampleId": "factory.vsco.contrabasspizz.r33",
+    "min": 0,
+    "max": 1,
+    "minPitch": 54,
+    "maxPitch": 57,
+    "root": 56
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r34",
+    "sampleId": "factory.vsco.contrabasspizz.r34",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 31,
+    "maxPitch": 32,
+    "root": 31
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r35",
+    "sampleId": "factory.vsco.contrabasspizz.r35",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 33,
+    "maxPitch": 34,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r36",
+    "sampleId": "factory.vsco.contrabasspizz.r36",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 35,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r37",
+    "sampleId": "factory.vsco.contrabasspizz.r37",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 24,
+    "maxPitch": 28,
+    "root": 28
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r38",
+    "sampleId": "factory.vsco.contrabasspizz.r38",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 39,
+    "maxPitch": 40,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r39",
+    "sampleId": "factory.vsco.contrabasspizz.r39",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 29,
+    "maxPitch": 30,
+    "root": 30
+  },
+  {
+    "id": "layer.vsco.contrabasspizz.r40",
+    "sampleId": "factory.vsco.contrabasspizz.r40",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 31,
+    "maxPitch": 32,
+    "root": 31
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r1",
+    "sampleId": "factory.vsco.contrabassspic.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 33,
+    "maxPitch": 34,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r2",
+    "sampleId": "factory.vsco.contrabassspic.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 45,
+    "maxPitch": 46,
+    "root": 45
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r3",
+    "sampleId": "factory.vsco.contrabassspic.r3",
+    "min": 0,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r4",
+    "sampleId": "factory.vsco.contrabassspic.r4",
+    "min": 0,
+    "max": 1,
+    "minPitch": 47,
+    "maxPitch": 50,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r5",
+    "sampleId": "factory.vsco.contrabassspic.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 35,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r6",
+    "sampleId": "factory.vsco.contrabassspic.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 37,
+    "maxPitch": 38,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r7",
+    "sampleId": "factory.vsco.contrabassspic.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 24,
+    "maxPitch": 28,
+    "root": 28
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r8",
+    "sampleId": "factory.vsco.contrabassspic.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 39,
+    "maxPitch": 40,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r9",
+    "sampleId": "factory.vsco.contrabassspic.r9",
+    "min": 0,
+    "max": 1,
+    "minPitch": 51,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r10",
+    "sampleId": "factory.vsco.contrabassspic.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 29,
+    "maxPitch": 30,
+    "root": 30
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r11",
+    "sampleId": "factory.vsco.contrabassspic.r11",
+    "min": 0,
+    "max": 1,
+    "minPitch": 41,
+    "maxPitch": 42,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r12",
+    "sampleId": "factory.vsco.contrabassspic.r12",
+    "min": 0,
+    "max": 1,
+    "minPitch": 43,
+    "maxPitch": 44,
+    "root": 44
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r13",
+    "sampleId": "factory.vsco.contrabassspic.r13",
+    "min": 0,
+    "max": 1,
+    "minPitch": 54,
+    "maxPitch": 57,
+    "root": 56
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r14",
+    "sampleId": "factory.vsco.contrabassspic.r14",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 31,
+    "maxPitch": 32,
+    "root": 31
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r15",
+    "sampleId": "factory.vsco.contrabassspic.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 33,
+    "maxPitch": 34,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r16",
+    "sampleId": "factory.vsco.contrabassspic.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 35,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r17",
+    "sampleId": "factory.vsco.contrabassspic.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 37,
+    "maxPitch": 38,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r18",
+    "sampleId": "factory.vsco.contrabassspic.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 24,
+    "maxPitch": 28,
+    "root": 28
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r19",
+    "sampleId": "factory.vsco.contrabassspic.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 39,
+    "maxPitch": 40,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r20",
+    "sampleId": "factory.vsco.contrabassspic.r20",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 29,
+    "maxPitch": 30,
+    "root": 30
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r21",
+    "sampleId": "factory.vsco.contrabassspic.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 31,
+    "maxPitch": 32,
+    "root": 31
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r22",
+    "sampleId": "factory.vsco.contrabassspic.r22",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 33,
+    "maxPitch": 34,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r23",
+    "sampleId": "factory.vsco.contrabassspic.r23",
+    "min": 0,
+    "max": 1,
+    "minPitch": 45,
+    "maxPitch": 46,
+    "root": 45
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r24",
+    "sampleId": "factory.vsco.contrabassspic.r24",
+    "min": 0,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r25",
+    "sampleId": "factory.vsco.contrabassspic.r25",
+    "min": 0,
+    "max": 1,
+    "minPitch": 47,
+    "maxPitch": 50,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r26",
+    "sampleId": "factory.vsco.contrabassspic.r26",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 35,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r27",
+    "sampleId": "factory.vsco.contrabassspic.r27",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 37,
+    "maxPitch": 38,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r28",
+    "sampleId": "factory.vsco.contrabassspic.r28",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 24,
+    "maxPitch": 28,
+    "root": 28
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r29",
+    "sampleId": "factory.vsco.contrabassspic.r29",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 39,
+    "maxPitch": 40,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r30",
+    "sampleId": "factory.vsco.contrabassspic.r30",
+    "min": 0,
+    "max": 1,
+    "minPitch": 51,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r31",
+    "sampleId": "factory.vsco.contrabassspic.r31",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 29,
+    "maxPitch": 30,
+    "root": 30
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r32",
+    "sampleId": "factory.vsco.contrabassspic.r32",
+    "min": 0,
+    "max": 1,
+    "minPitch": 41,
+    "maxPitch": 42,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r33",
+    "sampleId": "factory.vsco.contrabassspic.r33",
+    "min": 0,
+    "max": 1,
+    "minPitch": 43,
+    "maxPitch": 44,
+    "root": 44
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r34",
+    "sampleId": "factory.vsco.contrabassspic.r34",
+    "min": 0,
+    "max": 1,
+    "minPitch": 54,
+    "maxPitch": 57,
+    "root": 56
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r35",
+    "sampleId": "factory.vsco.contrabassspic.r35",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 31,
+    "maxPitch": 32,
+    "root": 31
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r36",
+    "sampleId": "factory.vsco.contrabassspic.r36",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 33,
+    "maxPitch": 34,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r37",
+    "sampleId": "factory.vsco.contrabassspic.r37",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 35,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r38",
+    "sampleId": "factory.vsco.contrabassspic.r38",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 37,
+    "maxPitch": 38,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r39",
+    "sampleId": "factory.vsco.contrabassspic.r39",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 24,
+    "maxPitch": 28,
+    "root": 28
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r40",
+    "sampleId": "factory.vsco.contrabassspic.r40",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 39,
+    "maxPitch": 40,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r41",
+    "sampleId": "factory.vsco.contrabassspic.r41",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 29,
+    "maxPitch": 30,
+    "root": 30
+  },
+  {
+    "id": "layer.vsco.contrabassspic.r42",
+    "sampleId": "factory.vsco.contrabassspic.r42",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 31,
+    "maxPitch": 32,
+    "root": 31
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r1",
+    "sampleId": "factory.vsco.contrabasssusnv.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 33,
+    "maxPitch": 34,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r2",
+    "sampleId": "factory.vsco.contrabasssusnv.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 45,
+    "maxPitch": 46,
+    "root": 45
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r3",
+    "sampleId": "factory.vsco.contrabasssusnv.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r4",
+    "sampleId": "factory.vsco.contrabasssusnv.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 47,
+    "maxPitch": 50,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r5",
+    "sampleId": "factory.vsco.contrabasssusnv.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 35,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r6",
+    "sampleId": "factory.vsco.contrabasssusnv.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 37,
+    "maxPitch": 38,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r7",
+    "sampleId": "factory.vsco.contrabasssusnv.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 24,
+    "maxPitch": 28,
+    "root": 28
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r8",
+    "sampleId": "factory.vsco.contrabasssusnv.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 39,
+    "maxPitch": 40,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r9",
+    "sampleId": "factory.vsco.contrabasssusnv.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 51,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r10",
+    "sampleId": "factory.vsco.contrabasssusnv.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 29,
+    "maxPitch": 30,
+    "root": 30
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r11",
+    "sampleId": "factory.vsco.contrabasssusnv.r11",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 41,
+    "maxPitch": 42,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r12",
+    "sampleId": "factory.vsco.contrabasssusnv.r12",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 43,
+    "maxPitch": 44,
+    "root": 44
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r13",
+    "sampleId": "factory.vsco.contrabasssusnv.r13",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 54,
+    "maxPitch": 57,
+    "root": 56
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r14",
+    "sampleId": "factory.vsco.contrabasssusnv.r14",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 31,
+    "maxPitch": 32,
+    "root": 31
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r15",
+    "sampleId": "factory.vsco.contrabasssusnv.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 33,
+    "maxPitch": 34,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r16",
+    "sampleId": "factory.vsco.contrabasssusnv.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 45,
+    "maxPitch": 46,
+    "root": 45
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r17",
+    "sampleId": "factory.vsco.contrabasssusnv.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r18",
+    "sampleId": "factory.vsco.contrabasssusnv.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 47,
+    "maxPitch": 50,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r19",
+    "sampleId": "factory.vsco.contrabasssusnv.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 35,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r20",
+    "sampleId": "factory.vsco.contrabasssusnv.r20",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 37,
+    "maxPitch": 38,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r21",
+    "sampleId": "factory.vsco.contrabasssusnv.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 24,
+    "maxPitch": 28,
+    "root": 28
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r22",
+    "sampleId": "factory.vsco.contrabasssusnv.r22",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 39,
+    "maxPitch": 40,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r23",
+    "sampleId": "factory.vsco.contrabasssusnv.r23",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 51,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r24",
+    "sampleId": "factory.vsco.contrabasssusnv.r24",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 29,
+    "maxPitch": 30,
+    "root": 30
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r25",
+    "sampleId": "factory.vsco.contrabasssusnv.r25",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 41,
+    "maxPitch": 42,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r26",
+    "sampleId": "factory.vsco.contrabasssusnv.r26",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 43,
+    "maxPitch": 44,
+    "root": 44
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r27",
+    "sampleId": "factory.vsco.contrabasssusnv.r27",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 54,
+    "maxPitch": 57,
+    "root": 56
+  },
+  {
+    "id": "layer.vsco.contrabasssusnv.r28",
+    "sampleId": "factory.vsco.contrabasssusnv.r28",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 31,
+    "maxPitch": 32,
+    "root": 31
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb-quiet.r1",
+    "sampleId": "factory.vsco.contrabasssusvb-quiet.r1",
+    "min": 0,
+    "max": 1,
+    "minPitch": 33,
+    "maxPitch": 34,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb-quiet.r2",
+    "sampleId": "factory.vsco.contrabasssusvb-quiet.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 45,
+    "maxPitch": 46,
+    "root": 45
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb-quiet.r3",
+    "sampleId": "factory.vsco.contrabasssusvb-quiet.r3",
+    "min": 0,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb-quiet.r4",
+    "sampleId": "factory.vsco.contrabasssusvb-quiet.r4",
+    "min": 0,
+    "max": 1,
+    "minPitch": 47,
+    "maxPitch": 50,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb-quiet.r5",
+    "sampleId": "factory.vsco.contrabasssusvb-quiet.r5",
+    "min": 0,
+    "max": 1,
+    "minPitch": 35,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb-quiet.r6",
+    "sampleId": "factory.vsco.contrabasssusvb-quiet.r6",
+    "min": 0,
+    "max": 1,
+    "minPitch": 37,
+    "maxPitch": 38,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb-quiet.r7",
+    "sampleId": "factory.vsco.contrabasssusvb-quiet.r7",
+    "min": 0,
+    "max": 1,
+    "minPitch": 39,
+    "maxPitch": 40,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb-quiet.r8",
+    "sampleId": "factory.vsco.contrabasssusvb-quiet.r8",
+    "min": 0,
+    "max": 1,
+    "minPitch": 51,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb-quiet.r9",
+    "sampleId": "factory.vsco.contrabasssusvb-quiet.r9",
+    "min": 0,
+    "max": 1,
+    "minPitch": 24,
+    "maxPitch": 30,
+    "root": 30
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb-quiet.r10",
+    "sampleId": "factory.vsco.contrabasssusvb-quiet.r10",
+    "min": 0,
+    "max": 1,
+    "minPitch": 41,
+    "maxPitch": 42,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb-quiet.r11",
+    "sampleId": "factory.vsco.contrabasssusvb-quiet.r11",
+    "min": 0,
+    "max": 1,
+    "minPitch": 43,
+    "maxPitch": 44,
+    "root": 44
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb-quiet.r12",
+    "sampleId": "factory.vsco.contrabasssusvb-quiet.r12",
+    "min": 0,
+    "max": 1,
+    "minPitch": 54,
+    "maxPitch": 57,
+    "root": 56
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb-quiet.r13",
+    "sampleId": "factory.vsco.contrabasssusvb-quiet.r13",
+    "min": 0,
+    "max": 1,
+    "minPitch": 31,
+    "maxPitch": 32,
+    "root": 31
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r1",
+    "sampleId": "factory.vsco.contrabasssusvb.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 33,
+    "maxPitch": 34,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r2",
+    "sampleId": "factory.vsco.contrabasssusvb.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 45,
+    "maxPitch": 46,
+    "root": 45
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r3",
+    "sampleId": "factory.vsco.contrabasssusvb.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r4",
+    "sampleId": "factory.vsco.contrabasssusvb.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 47,
+    "maxPitch": 50,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r5",
+    "sampleId": "factory.vsco.contrabasssusvb.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 35,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r6",
+    "sampleId": "factory.vsco.contrabasssusvb.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 37,
+    "maxPitch": 38,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r7",
+    "sampleId": "factory.vsco.contrabasssusvb.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 39,
+    "maxPitch": 40,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r8",
+    "sampleId": "factory.vsco.contrabasssusvb.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 51,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r9",
+    "sampleId": "factory.vsco.contrabasssusvb.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 24,
+    "maxPitch": 30,
+    "root": 30
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r10",
+    "sampleId": "factory.vsco.contrabasssusvb.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 41,
+    "maxPitch": 42,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r11",
+    "sampleId": "factory.vsco.contrabasssusvb.r11",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 43,
+    "maxPitch": 44,
+    "root": 44
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r12",
+    "sampleId": "factory.vsco.contrabasssusvb.r12",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 54,
+    "maxPitch": 57,
+    "root": 56
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r13",
+    "sampleId": "factory.vsco.contrabasssusvb.r13",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 31,
+    "maxPitch": 32,
+    "root": 31
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r14",
+    "sampleId": "factory.vsco.contrabasssusvb.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 33,
+    "maxPitch": 34,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r15",
+    "sampleId": "factory.vsco.contrabasssusvb.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 45,
+    "maxPitch": 46,
+    "root": 45
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r16",
+    "sampleId": "factory.vsco.contrabasssusvb.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r17",
+    "sampleId": "factory.vsco.contrabasssusvb.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 47,
+    "maxPitch": 50,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r18",
+    "sampleId": "factory.vsco.contrabasssusvb.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 35,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r19",
+    "sampleId": "factory.vsco.contrabasssusvb.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 37,
+    "maxPitch": 38,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r20",
+    "sampleId": "factory.vsco.contrabasssusvb.r20",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 39,
+    "maxPitch": 40,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r21",
+    "sampleId": "factory.vsco.contrabasssusvb.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 51,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r22",
+    "sampleId": "factory.vsco.contrabasssusvb.r22",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 24,
+    "maxPitch": 30,
+    "root": 30
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r23",
+    "sampleId": "factory.vsco.contrabasssusvb.r23",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 41,
+    "maxPitch": 42,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r24",
+    "sampleId": "factory.vsco.contrabasssusvb.r24",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 43,
+    "maxPitch": 44,
+    "root": 44
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r25",
+    "sampleId": "factory.vsco.contrabasssusvb.r25",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 54,
+    "maxPitch": 57,
+    "root": 56
+  },
+  {
+    "id": "layer.vsco.contrabasssusvb.r26",
+    "sampleId": "factory.vsco.contrabasssusvb.r26",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 31,
+    "maxPitch": 32,
+    "root": 31
+  },
+  {
+    "id": "layer.vsco.contrabasstrem.r1",
+    "sampleId": "factory.vsco.contrabasstrem.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.contrabasstrem.r2",
+    "sampleId": "factory.vsco.contrabasstrem.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 34,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.contrabasstrem.r3",
+    "sampleId": "factory.vsco.contrabasstrem.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 24,
+    "maxPitch": 29,
+    "root": 28
+  },
+  {
+    "id": "layer.vsco.contrabasstrem.r4",
+    "sampleId": "factory.vsco.contrabasstrem.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 38,
+    "maxPitch": 41,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.contrabasstrem.r5",
+    "sampleId": "factory.vsco.contrabasstrem.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 48,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.contrabasstrem.r6",
+    "sampleId": "factory.vsco.contrabasstrem.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 42,
+    "maxPitch": 47,
+    "root": 44
+  },
+  {
+    "id": "layer.vsco.contrabasstrem.r7",
+    "sampleId": "factory.vsco.contrabasstrem.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 54,
+    "maxPitch": 57,
+    "root": 56
+  },
+  {
+    "id": "layer.vsco.contrabasstrem.r8",
+    "sampleId": "factory.vsco.contrabasstrem.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 30,
+    "maxPitch": 33,
+    "root": 31
+  },
+  {
+    "id": "layer.vsco.contrabasstrem.r9",
+    "sampleId": "factory.vsco.contrabasstrem.r9",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.contrabasstrem.r10",
+    "sampleId": "factory.vsco.contrabasstrem.r10",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 34,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.contrabasstrem.r11",
+    "sampleId": "factory.vsco.contrabasstrem.r11",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 24,
+    "maxPitch": 29,
+    "root": 28
+  },
+  {
+    "id": "layer.vsco.contrabasstrem.r12",
+    "sampleId": "factory.vsco.contrabasstrem.r12",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 38,
+    "maxPitch": 41,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.contrabasstrem.r13",
+    "sampleId": "factory.vsco.contrabasstrem.r13",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 48,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.contrabasstrem.r14",
+    "sampleId": "factory.vsco.contrabasstrem.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 42,
+    "maxPitch": 47,
+    "root": 44
+  },
+  {
+    "id": "layer.vsco.contrabasstrem.r15",
+    "sampleId": "factory.vsco.contrabasstrem.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 54,
+    "maxPitch": 57,
+    "root": 56
+  },
+  {
+    "id": "layer.vsco.contrabasstrem.r16",
+    "sampleId": "factory.vsco.contrabasstrem.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 30,
+    "maxPitch": 33,
+    "root": 31
+  },
+  {
+    "id": "layer.vsco.fhornmute.r1",
+    "sampleId": "factory.vsco.fhornmute.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 46,
+    "maxPitch": 48,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.fhornmute.r2",
+    "sampleId": "factory.vsco.fhornmute.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 69,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.fhornmute.r3",
+    "sampleId": "factory.vsco.fhornmute.r3",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 57,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.fhornmute.r4",
+    "sampleId": "factory.vsco.fhornmute.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 49,
+    "maxPitch": 51,
+    "root": 51
+  },
+  {
+    "id": "layer.vsco.fhornmute.r5",
+    "sampleId": "factory.vsco.fhornmute.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.fhornmute.r6",
+    "sampleId": "factory.vsco.fhornmute.r6",
+    "min": 0,
+    "max": 1,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.fhornmute.r7",
+    "sampleId": "factory.vsco.fhornmute.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 52,
+    "maxPitch": 56,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.fhornmute.r8",
+    "sampleId": "factory.vsco.fhornmute.r8",
+    "min": 0,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.fhornmute.r9",
+    "sampleId": "factory.vsco.fhornmute.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 68
+  },
+  {
+    "id": "layer.vsco.fhornmute.r10",
+    "sampleId": "factory.vsco.fhornmute.r10",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 46,
+    "maxPitch": 48,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.fhornmute.r11",
+    "sampleId": "factory.vsco.fhornmute.r11",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 69,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.fhornmute.r12",
+    "sampleId": "factory.vsco.fhornmute.r12",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 57,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.fhornmute.r13",
+    "sampleId": "factory.vsco.fhornmute.r13",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 49,
+    "maxPitch": 51,
+    "root": 51
+  },
+  {
+    "id": "layer.vsco.fhornmute.r14",
+    "sampleId": "factory.vsco.fhornmute.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.fhornmute.r15",
+    "sampleId": "factory.vsco.fhornmute.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 56,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.fhornmute.r16",
+    "sampleId": "factory.vsco.fhornmute.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 68
+  },
+  {
+    "id": "layer.vsco.fhornmute.r17",
+    "sampleId": "factory.vsco.fhornmute.r17",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 57,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.fhornstac.r1",
+    "sampleId": "factory.vsco.fhornstac.r1",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 45,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.fhornstac.r2",
+    "sampleId": "factory.vsco.fhornstac.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 33,
+    "maxPitch": 34,
+    "root": 33
+  },
+  {
+    "id": "layer.vsco.fhornstac.r3",
+    "sampleId": "factory.vsco.fhornstac.r3",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.fhornstac.r4",
+    "sampleId": "factory.vsco.fhornstac.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 35,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.fhornstac.r5",
+    "sampleId": "factory.vsco.fhornstac.r5",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 59,
+    "maxPitch": 66,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.fhornstac.r6",
+    "sampleId": "factory.vsco.fhornstac.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 38,
+    "maxPitch": 40,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.fhornstac.r7",
+    "sampleId": "factory.vsco.fhornstac.r7",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.fhornstac.r8",
+    "sampleId": "factory.vsco.fhornstac.r8",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 67,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.fhornstac.r9",
+    "sampleId": "factory.vsco.fhornstac.r9",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.fhornstac.r10",
+    "sampleId": "factory.vsco.fhornstac.r10",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 76,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.fhornstac.r11",
+    "sampleId": "factory.vsco.fhornstac.r11",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 41,
+    "maxPitch": 44,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.fhornstac.r12",
+    "sampleId": "factory.vsco.fhornstac.r12",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 45,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.fhornstac.r13",
+    "sampleId": "factory.vsco.fhornstac.r13",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.fhornstac.r14",
+    "sampleId": "factory.vsco.fhornstac.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 35,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.fhornstac.r15",
+    "sampleId": "factory.vsco.fhornstac.r15",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 59,
+    "maxPitch": 66,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.fhornstac.r16",
+    "sampleId": "factory.vsco.fhornstac.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 38,
+    "maxPitch": 40,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.fhornstac.r17",
+    "sampleId": "factory.vsco.fhornstac.r17",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.fhornstac.r18",
+    "sampleId": "factory.vsco.fhornstac.r18",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 67,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.fhornstac.r19",
+    "sampleId": "factory.vsco.fhornstac.r19",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.fhornstac.r20",
+    "sampleId": "factory.vsco.fhornstac.r20",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 76,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.fhornstac.r21",
+    "sampleId": "factory.vsco.fhornstac.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 41,
+    "maxPitch": 44,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.fhornstac.r22",
+    "sampleId": "factory.vsco.fhornstac.r22",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 45,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.fhornstac.r23",
+    "sampleId": "factory.vsco.fhornstac.r23",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.fhornstac.r24",
+    "sampleId": "factory.vsco.fhornstac.r24",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 66,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.fhornstac.r25",
+    "sampleId": "factory.vsco.fhornstac.r25",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.fhornstac.r26",
+    "sampleId": "factory.vsco.fhornstac.r26",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 67,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.fhornstac.r27",
+    "sampleId": "factory.vsco.fhornstac.r27",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.fhornstac.r28",
+    "sampleId": "factory.vsco.fhornstac.r28",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.fhornstac.r29",
+    "sampleId": "factory.vsco.fhornstac.r29",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 45,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.fhornstac.r30",
+    "sampleId": "factory.vsco.fhornstac.r30",
+    "min": 0,
+    "max": 1,
+    "minPitch": 33,
+    "maxPitch": 34,
+    "root": 33
+  },
+  {
+    "id": "layer.vsco.fhornstac.r31",
+    "sampleId": "factory.vsco.fhornstac.r31",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.fhornstac.r32",
+    "sampleId": "factory.vsco.fhornstac.r32",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 35,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.fhornstac.r33",
+    "sampleId": "factory.vsco.fhornstac.r33",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 59,
+    "maxPitch": 66,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.fhornstac.r34",
+    "sampleId": "factory.vsco.fhornstac.r34",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 38,
+    "maxPitch": 40,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.fhornstac.r35",
+    "sampleId": "factory.vsco.fhornstac.r35",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.fhornstac.r36",
+    "sampleId": "factory.vsco.fhornstac.r36",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 67,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.fhornstac.r37",
+    "sampleId": "factory.vsco.fhornstac.r37",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.fhornstac.r38",
+    "sampleId": "factory.vsco.fhornstac.r38",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 76,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.fhornstac.r39",
+    "sampleId": "factory.vsco.fhornstac.r39",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 41,
+    "maxPitch": 44,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.fhornstac.r40",
+    "sampleId": "factory.vsco.fhornstac.r40",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 45,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.fhornstac.r41",
+    "sampleId": "factory.vsco.fhornstac.r41",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.fhornstac.r42",
+    "sampleId": "factory.vsco.fhornstac.r42",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 35,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.fhornstac.r43",
+    "sampleId": "factory.vsco.fhornstac.r43",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 59,
+    "maxPitch": 66,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.fhornstac.r44",
+    "sampleId": "factory.vsco.fhornstac.r44",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 38,
+    "maxPitch": 40,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.fhornstac.r45",
+    "sampleId": "factory.vsco.fhornstac.r45",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.fhornstac.r46",
+    "sampleId": "factory.vsco.fhornstac.r46",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 67,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.fhornstac.r47",
+    "sampleId": "factory.vsco.fhornstac.r47",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.fhornstac.r48",
+    "sampleId": "factory.vsco.fhornstac.r48",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.fhornstac.r49",
+    "sampleId": "factory.vsco.fhornstac.r49",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 41,
+    "maxPitch": 44,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.fhornstac.r50",
+    "sampleId": "factory.vsco.fhornstac.r50",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 45,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.fhornstac.r51",
+    "sampleId": "factory.vsco.fhornstac.r51",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.fhornstac.r52",
+    "sampleId": "factory.vsco.fhornstac.r52",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 66,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.fhornstac.r53",
+    "sampleId": "factory.vsco.fhornstac.r53",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.fhornstac.r54",
+    "sampleId": "factory.vsco.fhornstac.r54",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 67,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.fhornstac.r55",
+    "sampleId": "factory.vsco.fhornstac.r55",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.fhornsus.r1",
+    "sampleId": "factory.vsco.fhornsus.r1",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 45,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.fhornsus.r2",
+    "sampleId": "factory.vsco.fhornsus.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 33,
+    "maxPitch": 34,
+    "root": 33
+  },
+  {
+    "id": "layer.vsco.fhornsus.r3",
+    "sampleId": "factory.vsco.fhornsus.r3",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.fhornsus.r4",
+    "sampleId": "factory.vsco.fhornsus.r4",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 35,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.fhornsus.r5",
+    "sampleId": "factory.vsco.fhornsus.r5",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 59,
+    "maxPitch": 66,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.fhornsus.r6",
+    "sampleId": "factory.vsco.fhornsus.r6",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 38,
+    "maxPitch": 40,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.fhornsus.r7",
+    "sampleId": "factory.vsco.fhornsus.r7",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.fhornsus.r8",
+    "sampleId": "factory.vsco.fhornsus.r8",
+    "min": 0,
+    "max": 1,
+    "minPitch": 67,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.fhornsus.r9",
+    "sampleId": "factory.vsco.fhornsus.r9",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.fhornsus.r10",
+    "sampleId": "factory.vsco.fhornsus.r10",
+    "min": 0,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.fhornsus.r11",
+    "sampleId": "factory.vsco.fhornsus.r11",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 41,
+    "maxPitch": 44,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.fhornsus.r12",
+    "sampleId": "factory.vsco.fhornsus.r12",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 45,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.fhornsus.r13",
+    "sampleId": "factory.vsco.fhornsus.r13",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.fhornsus.r14",
+    "sampleId": "factory.vsco.fhornsus.r14",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 35,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.fhornsus.r15",
+    "sampleId": "factory.vsco.fhornsus.r15",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 59,
+    "maxPitch": 66,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.fhornsus.r16",
+    "sampleId": "factory.vsco.fhornsus.r16",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 38,
+    "maxPitch": 40,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.fhornsus.r17",
+    "sampleId": "factory.vsco.fhornsus.r17",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.fhornsus.r18",
+    "sampleId": "factory.vsco.fhornsus.r18",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.fhornsus.r19",
+    "sampleId": "factory.vsco.fhornsus.r19",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 41,
+    "maxPitch": 44,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.fhornsus.r20",
+    "sampleId": "factory.vsco.fhornsus.r20",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 45,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.fhornsus.r21",
+    "sampleId": "factory.vsco.fhornsus.r21",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.fhornsus.r22",
+    "sampleId": "factory.vsco.fhornsus.r22",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 35,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.fhornsus.r23",
+    "sampleId": "factory.vsco.fhornsus.r23",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 59,
+    "maxPitch": 66,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.fhornsus.r24",
+    "sampleId": "factory.vsco.fhornsus.r24",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 38,
+    "maxPitch": 40,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.fhornsus.r25",
+    "sampleId": "factory.vsco.fhornsus.r25",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.fhornsus.r26",
+    "sampleId": "factory.vsco.fhornsus.r26",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.fhornsus.r27",
+    "sampleId": "factory.vsco.fhornsus.r27",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 41,
+    "maxPitch": 44,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.fhornsus.r28",
+    "sampleId": "factory.vsco.fhornsus.r28",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 66,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.fhornsus.r29",
+    "sampleId": "factory.vsco.fhornsus.r29",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.fluteexpvib.r1",
+    "sampleId": "factory.vsco.fluteexpvib.r1",
+    "min": 0,
+    "max": 1,
+    "minPitch": 67,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.fluteexpvib.r2",
+    "sampleId": "factory.vsco.fluteexpvib.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 79,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.fluteexpvib.r3",
+    "sampleId": "factory.vsco.fluteexpvib.r3",
+    "min": 0,
+    "max": 1,
+    "minPitch": 91,
+    "maxPitch": 94,
+    "root": 93
+  },
+  {
+    "id": "layer.vsco.fluteexpvib.r4",
+    "sampleId": "factory.vsco.fluteexpvib.r4",
+    "min": 0,
+    "max": 1,
+    "minPitch": 60,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.fluteexpvib.r5",
+    "sampleId": "factory.vsco.fluteexpvib.r5",
+    "min": 0,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.fluteexpvib.r6",
+    "sampleId": "factory.vsco.fluteexpvib.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 83,
+    "maxPitch": 85,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.fluteexpvib.r7",
+    "sampleId": "factory.vsco.fluteexpvib.r7",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 83,
+    "maxPitch": 85,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.fluteexpvib.r8",
+    "sampleId": "factory.vsco.fluteexpvib.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 95,
+    "maxPitch": 96,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.fluteexpvib.r9",
+    "sampleId": "factory.vsco.fluteexpvib.r9",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 95,
+    "maxPitch": 96,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.fluteexpvib.r10",
+    "sampleId": "factory.vsco.fluteexpvib.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 62,
+    "maxPitch": 66,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.fluteexpvib.r11",
+    "sampleId": "factory.vsco.fluteexpvib.r11",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 66,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.fluteexpvib.r12",
+    "sampleId": "factory.vsco.fluteexpvib.r12",
+    "min": 0,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 78,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.fluteexpvib.r13",
+    "sampleId": "factory.vsco.fluteexpvib.r13",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 86,
+    "maxPitch": 90,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.fluteexpvib.r14",
+    "sampleId": "factory.vsco.fluteexpvib.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 86,
+    "maxPitch": 90,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.flutestac.r1",
+    "sampleId": "factory.vsco.flutestac.r1",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 65,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.flutestac.r2",
+    "sampleId": "factory.vsco.flutestac.r2",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 79,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.flutestac.r3",
+    "sampleId": "factory.vsco.flutestac.r3",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 91,
+    "maxPitch": 94,
+    "root": 93
+  },
+  {
+    "id": "layer.vsco.flutestac.r4",
+    "sampleId": "factory.vsco.flutestac.r4",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.flutestac.r5",
+    "sampleId": "factory.vsco.flutestac.r5",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 83,
+    "maxPitch": 85,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.flutestac.r6",
+    "sampleId": "factory.vsco.flutestac.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 95,
+    "maxPitch": 96,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.flutestac.r7",
+    "sampleId": "factory.vsco.flutestac.r7",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 74,
+    "maxPitch": 78,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.flutestac.r8",
+    "sampleId": "factory.vsco.flutestac.r8",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 86,
+    "maxPitch": 90,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.flutestac.r9",
+    "sampleId": "factory.vsco.flutestac.r9",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 65,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.flutestac.r10",
+    "sampleId": "factory.vsco.flutestac.r10",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 79,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.flutestac.r11",
+    "sampleId": "factory.vsco.flutestac.r11",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 91,
+    "maxPitch": 94,
+    "root": 93
+  },
+  {
+    "id": "layer.vsco.flutestac.r12",
+    "sampleId": "factory.vsco.flutestac.r12",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.flutestac.r13",
+    "sampleId": "factory.vsco.flutestac.r13",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 83,
+    "maxPitch": 85,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.flutestac.r14",
+    "sampleId": "factory.vsco.flutestac.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 95,
+    "maxPitch": 96,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.flutestac.r15",
+    "sampleId": "factory.vsco.flutestac.r15",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 74,
+    "maxPitch": 78,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.flutestac.r16",
+    "sampleId": "factory.vsco.flutestac.r16",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 86,
+    "maxPitch": 90,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.flutestac.r17",
+    "sampleId": "factory.vsco.flutestac.r17",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 65,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.flutestac.r18",
+    "sampleId": "factory.vsco.flutestac.r18",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 79,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.flutestac.r19",
+    "sampleId": "factory.vsco.flutestac.r19",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 91,
+    "maxPitch": 94,
+    "root": 93
+  },
+  {
+    "id": "layer.vsco.flutestac.r20",
+    "sampleId": "factory.vsco.flutestac.r20",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.flutestac.r21",
+    "sampleId": "factory.vsco.flutestac.r21",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 83,
+    "maxPitch": 85,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.flutestac.r22",
+    "sampleId": "factory.vsco.flutestac.r22",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 78,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.flutestac.r23",
+    "sampleId": "factory.vsco.flutestac.r23",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 86,
+    "maxPitch": 90,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.flutestac.r24",
+    "sampleId": "factory.vsco.flutestac.r24",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.flutestac.r25",
+    "sampleId": "factory.vsco.flutestac.r25",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 65,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.flutestac.r26",
+    "sampleId": "factory.vsco.flutestac.r26",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 79,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.flutestac.r27",
+    "sampleId": "factory.vsco.flutestac.r27",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 91,
+    "maxPitch": 94,
+    "root": 93
+  },
+  {
+    "id": "layer.vsco.flutestac.r28",
+    "sampleId": "factory.vsco.flutestac.r28",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.flutestac.r29",
+    "sampleId": "factory.vsco.flutestac.r29",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 83,
+    "maxPitch": 85,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.flutestac.r30",
+    "sampleId": "factory.vsco.flutestac.r30",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 95,
+    "maxPitch": 96,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.flutestac.r31",
+    "sampleId": "factory.vsco.flutestac.r31",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 74,
+    "maxPitch": 78,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.flutestac.r32",
+    "sampleId": "factory.vsco.flutestac.r32",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 86,
+    "maxPitch": 90,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.flutestac.r33",
+    "sampleId": "factory.vsco.flutestac.r33",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 65,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.flutestac.r34",
+    "sampleId": "factory.vsco.flutestac.r34",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 79,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.flutestac.r35",
+    "sampleId": "factory.vsco.flutestac.r35",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 91,
+    "maxPitch": 94,
+    "root": 93
+  },
+  {
+    "id": "layer.vsco.flutestac.r36",
+    "sampleId": "factory.vsco.flutestac.r36",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.flutestac.r37",
+    "sampleId": "factory.vsco.flutestac.r37",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 83,
+    "maxPitch": 85,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.flutestac.r38",
+    "sampleId": "factory.vsco.flutestac.r38",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 95,
+    "maxPitch": 96,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.flutestac.r39",
+    "sampleId": "factory.vsco.flutestac.r39",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 74,
+    "maxPitch": 78,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.flutestac.r40",
+    "sampleId": "factory.vsco.flutestac.r40",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 86,
+    "maxPitch": 90,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.flutestac.r41",
+    "sampleId": "factory.vsco.flutestac.r41",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 65,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.flutestac.r42",
+    "sampleId": "factory.vsco.flutestac.r42",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 79,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.flutestac.r43",
+    "sampleId": "factory.vsco.flutestac.r43",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 91,
+    "maxPitch": 94,
+    "root": 93
+  },
+  {
+    "id": "layer.vsco.flutestac.r44",
+    "sampleId": "factory.vsco.flutestac.r44",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.flutestac.r45",
+    "sampleId": "factory.vsco.flutestac.r45",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 83,
+    "maxPitch": 85,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.flutestac.r46",
+    "sampleId": "factory.vsco.flutestac.r46",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 78,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.flutestac.r47",
+    "sampleId": "factory.vsco.flutestac.r47",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 86,
+    "maxPitch": 90,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.flutestac.r48",
+    "sampleId": "factory.vsco.flutestac.r48",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.flutesusnv.r1",
+    "sampleId": "factory.vsco.flutesusnv.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 67,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.flutesusnv.r2",
+    "sampleId": "factory.vsco.flutesusnv.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 79,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.flutesusnv.r3",
+    "sampleId": "factory.vsco.flutesusnv.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 91,
+    "maxPitch": 94,
+    "root": 93
+  },
+  {
+    "id": "layer.vsco.flutesusnv.r4",
+    "sampleId": "factory.vsco.flutesusnv.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 60,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.flutesusnv.r5",
+    "sampleId": "factory.vsco.flutesusnv.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.flutesusnv.r6",
+    "sampleId": "factory.vsco.flutesusnv.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 83,
+    "maxPitch": 85,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.flutesusnv.r7",
+    "sampleId": "factory.vsco.flutesusnv.r7",
+    "min": 0,
+    "max": 1,
+    "minPitch": 95,
+    "maxPitch": 96,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.flutesusnv.r8",
+    "sampleId": "factory.vsco.flutesusnv.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 62,
+    "maxPitch": 66,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.flutesusnv.r9",
+    "sampleId": "factory.vsco.flutesusnv.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 74,
+    "maxPitch": 78,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.flutesusnv.r10",
+    "sampleId": "factory.vsco.flutesusnv.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 86,
+    "maxPitch": 90,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.flutesusnv.r11",
+    "sampleId": "factory.vsco.flutesusnv.r11",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 83,
+    "maxPitch": 85,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.flutesusnv.r12",
+    "sampleId": "factory.vsco.flutesusnv.r12",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 86,
+    "maxPitch": 90,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.flutesusnv.r13",
+    "sampleId": "factory.vsco.flutesusnv.r13",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 67,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.flutesusnv.r14",
+    "sampleId": "factory.vsco.flutesusnv.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 79,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.flutesusnv.r15",
+    "sampleId": "factory.vsco.flutesusnv.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 91,
+    "maxPitch": 94,
+    "root": 93
+  },
+  {
+    "id": "layer.vsco.flutesusnv.r16",
+    "sampleId": "factory.vsco.flutesusnv.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 60,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.flutesusnv.r17",
+    "sampleId": "factory.vsco.flutesusnv.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.flutesusnv.r18",
+    "sampleId": "factory.vsco.flutesusnv.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 66,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.flutesusnv.r19",
+    "sampleId": "factory.vsco.flutesusnv.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 78,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.flutesusvib.r1",
+    "sampleId": "factory.vsco.flutesusvib.r1",
+    "min": 0,
+    "max": 1,
+    "minPitch": 67,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.flutesusvib.r2",
+    "sampleId": "factory.vsco.flutesusvib.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 79,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.flutesusvib.r3",
+    "sampleId": "factory.vsco.flutesusvib.r3",
+    "min": 0,
+    "max": 1,
+    "minPitch": 91,
+    "maxPitch": 94,
+    "root": 93
+  },
+  {
+    "id": "layer.vsco.flutesusvib.r4",
+    "sampleId": "factory.vsco.flutesusvib.r4",
+    "min": 0,
+    "max": 1,
+    "minPitch": 60,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.flutesusvib.r5",
+    "sampleId": "factory.vsco.flutesusvib.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.flutesusvib.r6",
+    "sampleId": "factory.vsco.flutesusvib.r6",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.flutesusvib.r7",
+    "sampleId": "factory.vsco.flutesusvib.r7",
+    "min": 0,
+    "max": 1,
+    "minPitch": 83,
+    "maxPitch": 85,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.flutesusvib.r8",
+    "sampleId": "factory.vsco.flutesusvib.r8",
+    "min": 0,
+    "max": 1,
+    "minPitch": 95,
+    "maxPitch": 96,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.flutesusvib.r9",
+    "sampleId": "factory.vsco.flutesusvib.r9",
+    "min": 0,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 66,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.flutesusvib.r10",
+    "sampleId": "factory.vsco.flutesusvib.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 74,
+    "maxPitch": 78,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.flutesusvib.r11",
+    "sampleId": "factory.vsco.flutesusvib.r11",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 78,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.flutesusvib.r12",
+    "sampleId": "factory.vsco.flutesusvib.r12",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 86,
+    "maxPitch": 90,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.flutesusvib.r13",
+    "sampleId": "factory.vsco.flutesusvib.r13",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 86,
+    "maxPitch": 90,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.glockenspiel.r1",
+    "sampleId": "factory.vsco.glockenspiel.r1",
+    "min": 0,
+    "max": 1,
+    "minPitch": 70,
+    "maxPitch": 75,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.glockenspiel.r2",
+    "sampleId": "factory.vsco.glockenspiel.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 82,
+    "maxPitch": 87,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.glockenspiel.r3",
+    "sampleId": "factory.vsco.glockenspiel.r3",
+    "min": 0,
+    "max": 1,
+    "minPitch": 94,
+    "maxPitch": 96,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.glockenspiel.r4",
+    "sampleId": "factory.vsco.glockenspiel.r4",
+    "min": 0,
+    "max": 1,
+    "minPitch": 67,
+    "maxPitch": 69,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.glockenspiel.r5",
+    "sampleId": "factory.vsco.glockenspiel.r5",
+    "min": 0,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 81,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.glockenspiel.r6",
+    "sampleId": "factory.vsco.glockenspiel.r6",
+    "min": 0,
+    "max": 1,
+    "minPitch": 88,
+    "maxPitch": 93,
+    "root": 91
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r1",
+    "sampleId": "factory.vsco.gm-styleperc.r1",
+    "min": 0,
+    "max": 1,
+    "minPitch": 32,
+    "maxPitch": 32,
+    "root": 32
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r2",
+    "sampleId": "factory.vsco.gm-styleperc.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 33,
+    "maxPitch": 33,
+    "root": 33
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r3",
+    "sampleId": "factory.vsco.gm-styleperc.r3",
+    "min": 0,
+    "max": 1,
+    "minPitch": 34,
+    "maxPitch": 34,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r4",
+    "sampleId": "factory.vsco.gm-styleperc.r4",
+    "min": 0,
+    "max": 1,
+    "minPitch": 35,
+    "maxPitch": 35,
+    "root": 35
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r5",
+    "sampleId": "factory.vsco.gm-styleperc.r5",
+    "min": 0,
+    "max": 0.14173228346456693,
+    "minPitch": 36,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r6",
+    "sampleId": "factory.vsco.gm-styleperc.r6",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 75,
+    "maxPitch": 75,
+    "root": 75
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r7",
+    "sampleId": "factory.vsco.gm-styleperc.r7",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 63,
+    "maxPitch": 63,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r8",
+    "sampleId": "factory.vsco.gm-styleperc.r8",
+    "min": 0,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 62,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r9",
+    "sampleId": "factory.vsco.gm-styleperc.r9",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 56,
+    "maxPitch": 56,
+    "root": 56
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r10",
+    "sampleId": "factory.vsco.gm-styleperc.r10",
+    "min": 0,
+    "max": 1,
+    "minPitch": 72,
+    "maxPitch": 72,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r11",
+    "sampleId": "factory.vsco.gm-styleperc.r11",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 76,
+    "maxPitch": 76,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r12",
+    "sampleId": "factory.vsco.gm-styleperc.r12",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 77,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r13",
+    "sampleId": "factory.vsco.gm-styleperc.r13",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 61,
+    "maxPitch": 61,
+    "root": 61
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r14",
+    "sampleId": "factory.vsco.gm-styleperc.r14",
+    "min": 0,
+    "max": 1,
+    "minPitch": 60,
+    "maxPitch": 60,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r15",
+    "sampleId": "factory.vsco.gm-styleperc.r15",
+    "min": 0,
+    "max": 1,
+    "minPitch": 69,
+    "maxPitch": 69,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r16",
+    "sampleId": "factory.vsco.gm-styleperc.r16",
+    "min": 0,
+    "max": 1,
+    "minPitch": 70,
+    "maxPitch": 70,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r17",
+    "sampleId": "factory.vsco.gm-styleperc.r17",
+    "min": 0,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 71,
+    "root": 71
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r18",
+    "sampleId": "factory.vsco.gm-styleperc.r18",
+    "min": 0,
+    "max": 1,
+    "minPitch": 82,
+    "maxPitch": 82,
+    "root": 82
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r19",
+    "sampleId": "factory.vsco.gm-styleperc.r19",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 40,
+    "maxPitch": 40,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r20",
+    "sampleId": "factory.vsco.gm-styleperc.r20",
+    "min": 0,
+    "max": 0.1968503937007874,
+    "minPitch": 38,
+    "maxPitch": 38,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r21",
+    "sampleId": "factory.vsco.gm-styleperc.r21",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 41,
+    "maxPitch": 41,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r22",
+    "sampleId": "factory.vsco.gm-styleperc.r22",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 39,
+    "maxPitch": 39,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r23",
+    "sampleId": "factory.vsco.gm-styleperc.r23",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 37,
+    "maxPitch": 37,
+    "root": 37
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r24",
+    "sampleId": "factory.vsco.gm-styleperc.r24",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 54,
+    "maxPitch": 54,
+    "root": 54
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r25",
+    "sampleId": "factory.vsco.gm-styleperc.r25",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r26",
+    "sampleId": "factory.vsco.gm-styleperc.r26",
+    "min": 0,
+    "max": 1,
+    "minPitch": 53,
+    "maxPitch": 53,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r27",
+    "sampleId": "factory.vsco.gm-styleperc.r27",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 78,
+    "maxPitch": 78,
+    "root": 78
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r28",
+    "sampleId": "factory.vsco.gm-styleperc.r28",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 79,
+    "maxPitch": 79,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r29",
+    "sampleId": "factory.vsco.gm-styleperc.r29",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 80,
+    "maxPitch": 80,
+    "root": 80
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r30",
+    "sampleId": "factory.vsco.gm-styleperc.r30",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 81,
+    "maxPitch": 81,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r31",
+    "sampleId": "factory.vsco.gm-styleperc.r31",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 65,
+    "maxPitch": 65,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r32",
+    "sampleId": "factory.vsco.gm-styleperc.r32",
+    "min": 0,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 64,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r33",
+    "sampleId": "factory.vsco.gm-styleperc.r33",
+    "min": 0,
+    "max": 1,
+    "minPitch": 94,
+    "maxPitch": 94,
+    "root": 94
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r34",
+    "sampleId": "factory.vsco.gm-styleperc.r34",
+    "min": 0.14173228346456693,
+    "max": 0.28346456692913385,
+    "minPitch": 36,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r35",
+    "sampleId": "factory.vsco.gm-styleperc.r35",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 75,
+    "maxPitch": 75,
+    "root": 75
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r36",
+    "sampleId": "factory.vsco.gm-styleperc.r36",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 63,
+    "maxPitch": 63,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r37",
+    "sampleId": "factory.vsco.gm-styleperc.r37",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 56,
+    "maxPitch": 56,
+    "root": 56
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r38",
+    "sampleId": "factory.vsco.gm-styleperc.r38",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 76,
+    "maxPitch": 76,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r39",
+    "sampleId": "factory.vsco.gm-styleperc.r39",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 77,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r40",
+    "sampleId": "factory.vsco.gm-styleperc.r40",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 61,
+    "maxPitch": 61,
+    "root": 61
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r41",
+    "sampleId": "factory.vsco.gm-styleperc.r41",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 37,
+    "maxPitch": 37,
+    "root": 37
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r42",
+    "sampleId": "factory.vsco.gm-styleperc.r42",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 54,
+    "maxPitch": 54,
+    "root": 54
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r43",
+    "sampleId": "factory.vsco.gm-styleperc.r43",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r44",
+    "sampleId": "factory.vsco.gm-styleperc.r44",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 78,
+    "maxPitch": 78,
+    "root": 78
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r45",
+    "sampleId": "factory.vsco.gm-styleperc.r45",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 79,
+    "maxPitch": 79,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r46",
+    "sampleId": "factory.vsco.gm-styleperc.r46",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 80,
+    "maxPitch": 80,
+    "root": 80
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r47",
+    "sampleId": "factory.vsco.gm-styleperc.r47",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 81,
+    "maxPitch": 81,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r48",
+    "sampleId": "factory.vsco.gm-styleperc.r48",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 65,
+    "maxPitch": 65,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r49",
+    "sampleId": "factory.vsco.gm-styleperc.r49",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 88,
+    "maxPitch": 88,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r50",
+    "sampleId": "factory.vsco.gm-styleperc.r50",
+    "min": 0.28346456692913385,
+    "max": 0.4251968503937008,
+    "minPitch": 36,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r51",
+    "sampleId": "factory.vsco.gm-styleperc.r51",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 75,
+    "maxPitch": 75,
+    "root": 75
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r52",
+    "sampleId": "factory.vsco.gm-styleperc.r52",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 63,
+    "maxPitch": 63,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r53",
+    "sampleId": "factory.vsco.gm-styleperc.r53",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 56,
+    "maxPitch": 56,
+    "root": 56
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r54",
+    "sampleId": "factory.vsco.gm-styleperc.r54",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 49,
+    "maxPitch": 49,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r55",
+    "sampleId": "factory.vsco.gm-styleperc.r55",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 76,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r56",
+    "sampleId": "factory.vsco.gm-styleperc.r56",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 77,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r57",
+    "sampleId": "factory.vsco.gm-styleperc.r57",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 61,
+    "maxPitch": 61,
+    "root": 61
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r58",
+    "sampleId": "factory.vsco.gm-styleperc.r58",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 40,
+    "maxPitch": 40,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r59",
+    "sampleId": "factory.vsco.gm-styleperc.r59",
+    "min": 0.1968503937007874,
+    "max": 0.3937007874015748,
+    "minPitch": 38,
+    "maxPitch": 38,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r60",
+    "sampleId": "factory.vsco.gm-styleperc.r60",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 41,
+    "maxPitch": 41,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r61",
+    "sampleId": "factory.vsco.gm-styleperc.r61",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 39,
+    "maxPitch": 39,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r62",
+    "sampleId": "factory.vsco.gm-styleperc.r62",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 37,
+    "maxPitch": 37,
+    "root": 37
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r63",
+    "sampleId": "factory.vsco.gm-styleperc.r63",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 59,
+    "maxPitch": 59,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r64",
+    "sampleId": "factory.vsco.gm-styleperc.r64",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 51,
+    "maxPitch": 51,
+    "root": 51
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r65",
+    "sampleId": "factory.vsco.gm-styleperc.r65",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r66",
+    "sampleId": "factory.vsco.gm-styleperc.r66",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 65,
+    "maxPitch": 65,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r67",
+    "sampleId": "factory.vsco.gm-styleperc.r67",
+    "min": 0.4251968503937008,
+    "max": 0.5669291338582677,
+    "minPitch": 36,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r68",
+    "sampleId": "factory.vsco.gm-styleperc.r68",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 56,
+    "root": 56
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r69",
+    "sampleId": "factory.vsco.gm-styleperc.r69",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 37,
+    "maxPitch": 37,
+    "root": 37
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r70",
+    "sampleId": "factory.vsco.gm-styleperc.r70",
+    "min": 0.5669291338582677,
+    "max": 0.7086614173228346,
+    "minPitch": 36,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r71",
+    "sampleId": "factory.vsco.gm-styleperc.r71",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 49,
+    "maxPitch": 49,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r72",
+    "sampleId": "factory.vsco.gm-styleperc.r72",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 40,
+    "maxPitch": 40,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r73",
+    "sampleId": "factory.vsco.gm-styleperc.r73",
+    "min": 0.3937007874015748,
+    "max": 0.5984251968503937,
+    "minPitch": 38,
+    "maxPitch": 38,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r74",
+    "sampleId": "factory.vsco.gm-styleperc.r74",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 41,
+    "maxPitch": 41,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r75",
+    "sampleId": "factory.vsco.gm-styleperc.r75",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 39,
+    "maxPitch": 39,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r76",
+    "sampleId": "factory.vsco.gm-styleperc.r76",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 59,
+    "maxPitch": 59,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r77",
+    "sampleId": "factory.vsco.gm-styleperc.r77",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 51,
+    "maxPitch": 51,
+    "root": 51
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r78",
+    "sampleId": "factory.vsco.gm-styleperc.r78",
+    "min": 0.7086614173228346,
+    "max": 0.8503937007874016,
+    "minPitch": 36,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r79",
+    "sampleId": "factory.vsco.gm-styleperc.r79",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 49,
+    "maxPitch": 49,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r80",
+    "sampleId": "factory.vsco.gm-styleperc.r80",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 40,
+    "maxPitch": 40,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r81",
+    "sampleId": "factory.vsco.gm-styleperc.r81",
+    "min": 0.8503937007874016,
+    "max": 1,
+    "minPitch": 36,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r82",
+    "sampleId": "factory.vsco.gm-styleperc.r82",
+    "min": 0.5984251968503937,
+    "max": 0.7952755905511811,
+    "minPitch": 38,
+    "maxPitch": 38,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r83",
+    "sampleId": "factory.vsco.gm-styleperc.r83",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 59,
+    "maxPitch": 59,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r84",
+    "sampleId": "factory.vsco.gm-styleperc.r84",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 51,
+    "maxPitch": 51,
+    "root": 51
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r85",
+    "sampleId": "factory.vsco.gm-styleperc.r85",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 88,
+    "maxPitch": 88,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r86",
+    "sampleId": "factory.vsco.gm-styleperc.r86",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 49,
+    "maxPitch": 49,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r87",
+    "sampleId": "factory.vsco.gm-styleperc.r87",
+    "min": 0.7952755905511811,
+    "max": 1,
+    "minPitch": 38,
+    "maxPitch": 38,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r88",
+    "sampleId": "factory.vsco.gm-styleperc.r88",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 59,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r89",
+    "sampleId": "factory.vsco.gm-styleperc.r89",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 51,
+    "maxPitch": 51,
+    "root": 51
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r90",
+    "sampleId": "factory.vsco.gm-styleperc.r90",
+    "min": 0,
+    "max": 1,
+    "minPitch": 47,
+    "maxPitch": 47,
+    "root": 47
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r91",
+    "sampleId": "factory.vsco.gm-styleperc.r91",
+    "min": 0,
+    "max": 1,
+    "minPitch": 48,
+    "maxPitch": 48,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r92",
+    "sampleId": "factory.vsco.gm-styleperc.r92",
+    "min": 0,
+    "max": 1,
+    "minPitch": 50,
+    "maxPitch": 50,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r93",
+    "sampleId": "factory.vsco.gm-styleperc.r93",
+    "min": 0,
+    "max": 1,
+    "minPitch": 83,
+    "maxPitch": 83,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r94",
+    "sampleId": "factory.vsco.gm-styleperc.r94",
+    "min": 0,
+    "max": 1,
+    "minPitch": 84,
+    "maxPitch": 84,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r95",
+    "sampleId": "factory.vsco.gm-styleperc.r95",
+    "min": 0,
+    "max": 1,
+    "minPitch": 85,
+    "maxPitch": 85,
+    "root": 85
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r96",
+    "sampleId": "factory.vsco.gm-styleperc.r96",
+    "min": 0,
+    "max": 1,
+    "minPitch": 86,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r97",
+    "sampleId": "factory.vsco.gm-styleperc.r97",
+    "min": 0,
+    "max": 1,
+    "minPitch": 101,
+    "maxPitch": 101,
+    "root": 101
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r98",
+    "sampleId": "factory.vsco.gm-styleperc.r98",
+    "min": 0,
+    "max": 1,
+    "minPitch": 102,
+    "maxPitch": 102,
+    "root": 102
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r99",
+    "sampleId": "factory.vsco.gm-styleperc.r99",
+    "min": 0,
+    "max": 1,
+    "minPitch": 103,
+    "maxPitch": 103,
+    "root": 103
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r100",
+    "sampleId": "factory.vsco.gm-styleperc.r100",
+    "min": 0,
+    "max": 1,
+    "minPitch": 104,
+    "maxPitch": 104,
+    "root": 104
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r101",
+    "sampleId": "factory.vsco.gm-styleperc.r101",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 67,
+    "maxPitch": 67,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r102",
+    "sampleId": "factory.vsco.gm-styleperc.r102",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 67,
+    "maxPitch": 67,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r103",
+    "sampleId": "factory.vsco.gm-styleperc.r103",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 67,
+    "maxPitch": 67,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r104",
+    "sampleId": "factory.vsco.gm-styleperc.r104",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 68,
+    "maxPitch": 68,
+    "root": 68
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r105",
+    "sampleId": "factory.vsco.gm-styleperc.r105",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 68,
+    "maxPitch": 68,
+    "root": 68
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r106",
+    "sampleId": "factory.vsco.gm-styleperc.r106",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 68,
+    "root": 68
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r107",
+    "sampleId": "factory.vsco.gm-styleperc.r107",
+    "min": 0,
+    "max": 0.5118110236220472,
+    "minPitch": 42,
+    "maxPitch": 42,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r108",
+    "sampleId": "factory.vsco.gm-styleperc.r108",
+    "min": 0.5118110236220472,
+    "max": 1,
+    "minPitch": 42,
+    "maxPitch": 42,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r109",
+    "sampleId": "factory.vsco.gm-styleperc.r109",
+    "min": 0,
+    "max": 0.2677165354330709,
+    "minPitch": 46,
+    "maxPitch": 46,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r110",
+    "sampleId": "factory.vsco.gm-styleperc.r110",
+    "min": 0.2677165354330709,
+    "max": 0.5118110236220472,
+    "minPitch": 46,
+    "maxPitch": 46,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r111",
+    "sampleId": "factory.vsco.gm-styleperc.r111",
+    "min": 0.5118110236220472,
+    "max": 0.7716535433070866,
+    "minPitch": 46,
+    "maxPitch": 46,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r112",
+    "sampleId": "factory.vsco.gm-styleperc.r112",
+    "min": 0.7716535433070866,
+    "max": 1,
+    "minPitch": 46,
+    "maxPitch": 46,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r113",
+    "sampleId": "factory.vsco.gm-styleperc.r113",
+    "min": 0,
+    "max": 0.14173228346456693,
+    "minPitch": 36,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r114",
+    "sampleId": "factory.vsco.gm-styleperc.r114",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 75,
+    "maxPitch": 75,
+    "root": 75
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r115",
+    "sampleId": "factory.vsco.gm-styleperc.r115",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 63,
+    "maxPitch": 63,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r116",
+    "sampleId": "factory.vsco.gm-styleperc.r116",
+    "min": 0,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 62,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r117",
+    "sampleId": "factory.vsco.gm-styleperc.r117",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 56,
+    "maxPitch": 56,
+    "root": 56
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r118",
+    "sampleId": "factory.vsco.gm-styleperc.r118",
+    "min": 0,
+    "max": 1,
+    "minPitch": 72,
+    "maxPitch": 72,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r119",
+    "sampleId": "factory.vsco.gm-styleperc.r119",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 76,
+    "maxPitch": 76,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r120",
+    "sampleId": "factory.vsco.gm-styleperc.r120",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 77,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r121",
+    "sampleId": "factory.vsco.gm-styleperc.r121",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 61,
+    "maxPitch": 61,
+    "root": 61
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r122",
+    "sampleId": "factory.vsco.gm-styleperc.r122",
+    "min": 0,
+    "max": 1,
+    "minPitch": 60,
+    "maxPitch": 60,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r123",
+    "sampleId": "factory.vsco.gm-styleperc.r123",
+    "min": 0,
+    "max": 1,
+    "minPitch": 69,
+    "maxPitch": 69,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r124",
+    "sampleId": "factory.vsco.gm-styleperc.r124",
+    "min": 0,
+    "max": 1,
+    "minPitch": 70,
+    "maxPitch": 70,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r125",
+    "sampleId": "factory.vsco.gm-styleperc.r125",
+    "min": 0,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 71,
+    "root": 71
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r126",
+    "sampleId": "factory.vsco.gm-styleperc.r126",
+    "min": 0,
+    "max": 1,
+    "minPitch": 82,
+    "maxPitch": 82,
+    "root": 82
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r127",
+    "sampleId": "factory.vsco.gm-styleperc.r127",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 40,
+    "maxPitch": 40,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r128",
+    "sampleId": "factory.vsco.gm-styleperc.r128",
+    "min": 0,
+    "max": 0.1968503937007874,
+    "minPitch": 38,
+    "maxPitch": 38,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r129",
+    "sampleId": "factory.vsco.gm-styleperc.r129",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 41,
+    "maxPitch": 41,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r130",
+    "sampleId": "factory.vsco.gm-styleperc.r130",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 39,
+    "maxPitch": 39,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r131",
+    "sampleId": "factory.vsco.gm-styleperc.r131",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 37,
+    "maxPitch": 37,
+    "root": 37
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r132",
+    "sampleId": "factory.vsco.gm-styleperc.r132",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 54,
+    "maxPitch": 54,
+    "root": 54
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r133",
+    "sampleId": "factory.vsco.gm-styleperc.r133",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r134",
+    "sampleId": "factory.vsco.gm-styleperc.r134",
+    "min": 0,
+    "max": 1,
+    "minPitch": 53,
+    "maxPitch": 53,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r135",
+    "sampleId": "factory.vsco.gm-styleperc.r135",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 78,
+    "maxPitch": 78,
+    "root": 78
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r136",
+    "sampleId": "factory.vsco.gm-styleperc.r136",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 79,
+    "maxPitch": 79,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r137",
+    "sampleId": "factory.vsco.gm-styleperc.r137",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 80,
+    "maxPitch": 80,
+    "root": 80
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r138",
+    "sampleId": "factory.vsco.gm-styleperc.r138",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 81,
+    "maxPitch": 81,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r139",
+    "sampleId": "factory.vsco.gm-styleperc.r139",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 65,
+    "maxPitch": 65,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r140",
+    "sampleId": "factory.vsco.gm-styleperc.r140",
+    "min": 0,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 64,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r141",
+    "sampleId": "factory.vsco.gm-styleperc.r141",
+    "min": 0,
+    "max": 1,
+    "minPitch": 94,
+    "maxPitch": 94,
+    "root": 94
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r142",
+    "sampleId": "factory.vsco.gm-styleperc.r142",
+    "min": 0.14173228346456693,
+    "max": 0.28346456692913385,
+    "minPitch": 36,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r143",
+    "sampleId": "factory.vsco.gm-styleperc.r143",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 75,
+    "maxPitch": 75,
+    "root": 75
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r144",
+    "sampleId": "factory.vsco.gm-styleperc.r144",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 63,
+    "maxPitch": 63,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r145",
+    "sampleId": "factory.vsco.gm-styleperc.r145",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 56,
+    "maxPitch": 56,
+    "root": 56
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r146",
+    "sampleId": "factory.vsco.gm-styleperc.r146",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 76,
+    "maxPitch": 76,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r147",
+    "sampleId": "factory.vsco.gm-styleperc.r147",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 77,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r148",
+    "sampleId": "factory.vsco.gm-styleperc.r148",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 61,
+    "maxPitch": 61,
+    "root": 61
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r149",
+    "sampleId": "factory.vsco.gm-styleperc.r149",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 37,
+    "maxPitch": 37,
+    "root": 37
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r150",
+    "sampleId": "factory.vsco.gm-styleperc.r150",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 54,
+    "maxPitch": 54,
+    "root": 54
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r151",
+    "sampleId": "factory.vsco.gm-styleperc.r151",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r152",
+    "sampleId": "factory.vsco.gm-styleperc.r152",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 78,
+    "maxPitch": 78,
+    "root": 78
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r153",
+    "sampleId": "factory.vsco.gm-styleperc.r153",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 79,
+    "maxPitch": 79,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r154",
+    "sampleId": "factory.vsco.gm-styleperc.r154",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 80,
+    "maxPitch": 80,
+    "root": 80
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r155",
+    "sampleId": "factory.vsco.gm-styleperc.r155",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 81,
+    "maxPitch": 81,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r156",
+    "sampleId": "factory.vsco.gm-styleperc.r156",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 65,
+    "maxPitch": 65,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r157",
+    "sampleId": "factory.vsco.gm-styleperc.r157",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 88,
+    "maxPitch": 88,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r158",
+    "sampleId": "factory.vsco.gm-styleperc.r158",
+    "min": 0.28346456692913385,
+    "max": 0.4251968503937008,
+    "minPitch": 36,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r159",
+    "sampleId": "factory.vsco.gm-styleperc.r159",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 75,
+    "maxPitch": 75,
+    "root": 75
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r160",
+    "sampleId": "factory.vsco.gm-styleperc.r160",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 63,
+    "maxPitch": 63,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r161",
+    "sampleId": "factory.vsco.gm-styleperc.r161",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 56,
+    "maxPitch": 56,
+    "root": 56
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r162",
+    "sampleId": "factory.vsco.gm-styleperc.r162",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 49,
+    "maxPitch": 49,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r163",
+    "sampleId": "factory.vsco.gm-styleperc.r163",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 76,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r164",
+    "sampleId": "factory.vsco.gm-styleperc.r164",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 77,
+    "maxPitch": 77,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r165",
+    "sampleId": "factory.vsco.gm-styleperc.r165",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 61,
+    "maxPitch": 61,
+    "root": 61
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r166",
+    "sampleId": "factory.vsco.gm-styleperc.r166",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 40,
+    "maxPitch": 40,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r167",
+    "sampleId": "factory.vsco.gm-styleperc.r167",
+    "min": 0.1968503937007874,
+    "max": 0.3937007874015748,
+    "minPitch": 38,
+    "maxPitch": 38,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r168",
+    "sampleId": "factory.vsco.gm-styleperc.r168",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 41,
+    "maxPitch": 41,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r169",
+    "sampleId": "factory.vsco.gm-styleperc.r169",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 39,
+    "maxPitch": 39,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r170",
+    "sampleId": "factory.vsco.gm-styleperc.r170",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 37,
+    "maxPitch": 37,
+    "root": 37
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r171",
+    "sampleId": "factory.vsco.gm-styleperc.r171",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 59,
+    "maxPitch": 59,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r172",
+    "sampleId": "factory.vsco.gm-styleperc.r172",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 51,
+    "maxPitch": 51,
+    "root": 51
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r173",
+    "sampleId": "factory.vsco.gm-styleperc.r173",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r174",
+    "sampleId": "factory.vsco.gm-styleperc.r174",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 65,
+    "maxPitch": 65,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r175",
+    "sampleId": "factory.vsco.gm-styleperc.r175",
+    "min": 0.4251968503937008,
+    "max": 0.5669291338582677,
+    "minPitch": 36,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r176",
+    "sampleId": "factory.vsco.gm-styleperc.r176",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 56,
+    "root": 56
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r177",
+    "sampleId": "factory.vsco.gm-styleperc.r177",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 37,
+    "maxPitch": 37,
+    "root": 37
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r178",
+    "sampleId": "factory.vsco.gm-styleperc.r178",
+    "min": 0.5669291338582677,
+    "max": 0.7086614173228346,
+    "minPitch": 36,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r179",
+    "sampleId": "factory.vsco.gm-styleperc.r179",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 49,
+    "maxPitch": 49,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r180",
+    "sampleId": "factory.vsco.gm-styleperc.r180",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 40,
+    "maxPitch": 40,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r181",
+    "sampleId": "factory.vsco.gm-styleperc.r181",
+    "min": 0.3937007874015748,
+    "max": 0.5984251968503937,
+    "minPitch": 38,
+    "maxPitch": 38,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r182",
+    "sampleId": "factory.vsco.gm-styleperc.r182",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 41,
+    "maxPitch": 41,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r183",
+    "sampleId": "factory.vsco.gm-styleperc.r183",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 39,
+    "maxPitch": 39,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r184",
+    "sampleId": "factory.vsco.gm-styleperc.r184",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 59,
+    "maxPitch": 59,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r185",
+    "sampleId": "factory.vsco.gm-styleperc.r185",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 51,
+    "maxPitch": 51,
+    "root": 51
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r186",
+    "sampleId": "factory.vsco.gm-styleperc.r186",
+    "min": 0.7086614173228346,
+    "max": 0.8503937007874016,
+    "minPitch": 36,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r187",
+    "sampleId": "factory.vsco.gm-styleperc.r187",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 49,
+    "maxPitch": 49,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r188",
+    "sampleId": "factory.vsco.gm-styleperc.r188",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 40,
+    "maxPitch": 40,
+    "root": 40
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r189",
+    "sampleId": "factory.vsco.gm-styleperc.r189",
+    "min": 0.8503937007874016,
+    "max": 1,
+    "minPitch": 36,
+    "maxPitch": 36,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r190",
+    "sampleId": "factory.vsco.gm-styleperc.r190",
+    "min": 0.5984251968503937,
+    "max": 0.7952755905511811,
+    "minPitch": 38,
+    "maxPitch": 38,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r191",
+    "sampleId": "factory.vsco.gm-styleperc.r191",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 59,
+    "maxPitch": 59,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r192",
+    "sampleId": "factory.vsco.gm-styleperc.r192",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 51,
+    "maxPitch": 51,
+    "root": 51
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r193",
+    "sampleId": "factory.vsco.gm-styleperc.r193",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 88,
+    "maxPitch": 88,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r194",
+    "sampleId": "factory.vsco.gm-styleperc.r194",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 49,
+    "maxPitch": 49,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r195",
+    "sampleId": "factory.vsco.gm-styleperc.r195",
+    "min": 0.7952755905511811,
+    "max": 1,
+    "minPitch": 38,
+    "maxPitch": 38,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r196",
+    "sampleId": "factory.vsco.gm-styleperc.r196",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 59,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r197",
+    "sampleId": "factory.vsco.gm-styleperc.r197",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 51,
+    "maxPitch": 51,
+    "root": 51
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r198",
+    "sampleId": "factory.vsco.gm-styleperc.r198",
+    "min": 0,
+    "max": 1,
+    "minPitch": 47,
+    "maxPitch": 47,
+    "root": 47
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r199",
+    "sampleId": "factory.vsco.gm-styleperc.r199",
+    "min": 0,
+    "max": 1,
+    "minPitch": 48,
+    "maxPitch": 48,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r200",
+    "sampleId": "factory.vsco.gm-styleperc.r200",
+    "min": 0,
+    "max": 1,
+    "minPitch": 50,
+    "maxPitch": 50,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r201",
+    "sampleId": "factory.vsco.gm-styleperc.r201",
+    "min": 0,
+    "max": 1,
+    "minPitch": 83,
+    "maxPitch": 83,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r202",
+    "sampleId": "factory.vsco.gm-styleperc.r202",
+    "min": 0,
+    "max": 1,
+    "minPitch": 84,
+    "maxPitch": 84,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r203",
+    "sampleId": "factory.vsco.gm-styleperc.r203",
+    "min": 0,
+    "max": 1,
+    "minPitch": 85,
+    "maxPitch": 85,
+    "root": 85
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r204",
+    "sampleId": "factory.vsco.gm-styleperc.r204",
+    "min": 0,
+    "max": 1,
+    "minPitch": 86,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r205",
+    "sampleId": "factory.vsco.gm-styleperc.r205",
+    "min": 0,
+    "max": 1,
+    "minPitch": 101,
+    "maxPitch": 101,
+    "root": 101
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r206",
+    "sampleId": "factory.vsco.gm-styleperc.r206",
+    "min": 0,
+    "max": 1,
+    "minPitch": 102,
+    "maxPitch": 102,
+    "root": 102
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r207",
+    "sampleId": "factory.vsco.gm-styleperc.r207",
+    "min": 0,
+    "max": 1,
+    "minPitch": 103,
+    "maxPitch": 103,
+    "root": 103
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r208",
+    "sampleId": "factory.vsco.gm-styleperc.r208",
+    "min": 0,
+    "max": 1,
+    "minPitch": 104,
+    "maxPitch": 104,
+    "root": 104
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r209",
+    "sampleId": "factory.vsco.gm-styleperc.r209",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 67,
+    "maxPitch": 67,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r210",
+    "sampleId": "factory.vsco.gm-styleperc.r210",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 67,
+    "maxPitch": 67,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r211",
+    "sampleId": "factory.vsco.gm-styleperc.r211",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 67,
+    "maxPitch": 67,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r212",
+    "sampleId": "factory.vsco.gm-styleperc.r212",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 68,
+    "maxPitch": 68,
+    "root": 68
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r213",
+    "sampleId": "factory.vsco.gm-styleperc.r213",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 68,
+    "maxPitch": 68,
+    "root": 68
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r214",
+    "sampleId": "factory.vsco.gm-styleperc.r214",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 68,
+    "root": 68
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r215",
+    "sampleId": "factory.vsco.gm-styleperc.r215",
+    "min": 0,
+    "max": 0.5118110236220472,
+    "minPitch": 42,
+    "maxPitch": 42,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r216",
+    "sampleId": "factory.vsco.gm-styleperc.r216",
+    "min": 0.5118110236220472,
+    "max": 1,
+    "minPitch": 42,
+    "maxPitch": 42,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r217",
+    "sampleId": "factory.vsco.gm-styleperc.r217",
+    "min": 0,
+    "max": 0.2677165354330709,
+    "minPitch": 46,
+    "maxPitch": 46,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r218",
+    "sampleId": "factory.vsco.gm-styleperc.r218",
+    "min": 0.2677165354330709,
+    "max": 0.5118110236220472,
+    "minPitch": 46,
+    "maxPitch": 46,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r219",
+    "sampleId": "factory.vsco.gm-styleperc.r219",
+    "min": 0.5118110236220472,
+    "max": 0.7716535433070866,
+    "minPitch": 46,
+    "maxPitch": 46,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.gm-styleperc.r220",
+    "sampleId": "factory.vsco.gm-styleperc.r220",
+    "min": 0.7716535433070866,
+    "max": 1,
+    "minPitch": 46,
+    "maxPitch": 46,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.harp.r1",
+    "sampleId": "factory.vsco.harp.r1",
+    "min": 0,
+    "max": 1,
+    "minPitch": 30,
+    "maxPitch": 32,
+    "root": 31
+  },
+  {
+    "id": "layer.vsco.harp.r2",
+    "sampleId": "factory.vsco.harp.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 43,
+    "maxPitch": 46,
+    "root": 45
+  },
+  {
+    "id": "layer.vsco.harp.r3",
+    "sampleId": "factory.vsco.harp.r3",
+    "min": 0,
+    "max": 1,
+    "minPitch": 67,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.harp.r4",
+    "sampleId": "factory.vsco.harp.r4",
+    "min": 0,
+    "max": 1,
+    "minPitch": 91,
+    "maxPitch": 93,
+    "root": 93
+  },
+  {
+    "id": "layer.vsco.harp.r5",
+    "sampleId": "factory.vsco.harp.r5",
+    "min": 0,
+    "max": 1,
+    "minPitch": 33,
+    "maxPitch": 36,
+    "root": 35
+  },
+  {
+    "id": "layer.vsco.harp.r6",
+    "sampleId": "factory.vsco.harp.r6",
+    "min": 0,
+    "max": 1,
+    "minPitch": 57,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.harp.r7",
+    "sampleId": "factory.vsco.harp.r7",
+    "min": 0,
+    "max": 1,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.harp.r8",
+    "sampleId": "factory.vsco.harp.r8",
+    "min": 0,
+    "max": 1,
+    "minPitch": 94,
+    "maxPitch": 96,
+    "root": 95
+  },
+  {
+    "id": "layer.vsco.harp.r9",
+    "sampleId": "factory.vsco.harp.r9",
+    "min": 0,
+    "max": 1,
+    "minPitch": 47,
+    "maxPitch": 49,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.harp.r10",
+    "sampleId": "factory.vsco.harp.r10",
+    "min": 0,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.harp.r11",
+    "sampleId": "factory.vsco.harp.r11",
+    "min": 0,
+    "max": 1,
+    "minPitch": 37,
+    "maxPitch": 39,
+    "root": 38
+  },
+  {
+    "id": "layer.vsco.harp.r12",
+    "sampleId": "factory.vsco.harp.r12",
+    "min": 0,
     "max": 1,
     "minPitch": 61,
     "maxPitch": 63,
     "root": 62
   },
   {
-    "id": "layer.vsco.violinens.r18",
-    "sampleId": "factory.vsco.violinens.r18",
-    "min": 0.49606299212598426,
+    "id": "layer.vsco.harp.r13",
+    "sampleId": "factory.vsco.harp.r13",
+    "min": 0,
     "max": 1,
     "minPitch": 85,
-    "maxPitch": 86,
+    "maxPitch": 87,
     "root": 86
   },
   {
-    "id": "layer.vsco.violinens.r19",
-    "sampleId": "factory.vsco.violinens.r19",
-    "min": 0.49606299212598426,
+    "id": "layer.vsco.harp.r14",
+    "sampleId": "factory.vsco.harp.r14",
+    "min": 0,
+    "max": 1,
+    "minPitch": 50,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.harp.r15",
+    "sampleId": "factory.vsco.harp.r15",
+    "min": 0,
     "max": 1,
     "minPitch": 74,
     "maxPitch": 77,
     "root": 76
   },
   {
-    "id": "layer.vsco.violinens.r20",
-    "sampleId": "factory.vsco.violinens.r20",
+    "id": "layer.vsco.harp.r16",
+    "sampleId": "factory.vsco.harp.r16",
+    "min": 0,
+    "max": 1,
+    "minPitch": 40,
+    "maxPitch": 42,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.harp.r17",
+    "sampleId": "factory.vsco.harp.r17",
+    "min": 0,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 66,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.harp.r18",
+    "sampleId": "factory.vsco.harp.r18",
+    "min": 0,
+    "max": 1,
+    "minPitch": 88,
+    "maxPitch": 90,
+    "root": 89
+  },
+  {
+    "id": "layer.vsco.harp.r19",
+    "sampleId": "factory.vsco.harp.r19",
+    "min": 0,
+    "max": 1,
+    "minPitch": 54,
+    "maxPitch": 56,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.harp.r20",
+    "sampleId": "factory.vsco.harp.r20",
+    "min": 0,
+    "max": 1,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.harp.r21",
+    "sampleId": "factory.vsco.harp.r21",
+    "min": 0,
+    "max": 1,
+    "minPitch": 97,
+    "maxPitch": 99,
+    "root": 98
+  },
+  {
+    "id": "layer.vsco.harp.r22",
+    "sampleId": "factory.vsco.harp.r22",
+    "min": 0,
+    "max": 1,
+    "minPitch": 28,
+    "maxPitch": 29,
+    "root": 28
+  },
+  {
+    "id": "layer.vsco.harp.r23",
+    "sampleId": "factory.vsco.harp.r23",
+    "min": 0,
+    "max": 1,
+    "minPitch": 100,
+    "maxPitch": 101,
+    "root": 101
+  },
+  {
+    "id": "layer.vsco.marimba.r1",
+    "sampleId": "factory.vsco.marimba.r1",
+    "min": 0,
+    "max": 1,
+    "minPitch": 57,
+    "maxPitch": 61,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.marimba.r2",
+    "sampleId": "factory.vsco.marimba.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 81,
+    "maxPitch": 85,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.marimba.r3",
+    "sampleId": "factory.vsco.marimba.r3",
+    "min": 0,
+    "max": 1,
+    "minPitch": 45,
+    "maxPitch": 51,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.marimba.r4",
+    "sampleId": "factory.vsco.marimba.r4",
+    "min": 0,
+    "max": 1,
+    "minPitch": 69,
+    "maxPitch": 75,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.marimba.r5",
+    "sampleId": "factory.vsco.marimba.r5",
+    "min": 0,
+    "max": 1,
+    "minPitch": 93,
+    "maxPitch": 96,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.marimba.r6",
+    "sampleId": "factory.vsco.marimba.r6",
+    "min": 0,
+    "max": 1,
+    "minPitch": 41,
+    "maxPitch": 44,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.marimba.r7",
+    "sampleId": "factory.vsco.marimba.r7",
+    "min": 0,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 68,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.marimba.r8",
+    "sampleId": "factory.vsco.marimba.r8",
+    "min": 0,
+    "max": 1,
+    "minPitch": 86,
+    "maxPitch": 92,
+    "root": 89
+  },
+  {
+    "id": "layer.vsco.marimba.r9",
+    "sampleId": "factory.vsco.marimba.r9",
+    "min": 0,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 56,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.marimba.r10",
+    "sampleId": "factory.vsco.marimba.r10",
+    "min": 0,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.oboestac.r1",
+    "sampleId": "factory.vsco.oboestac.r1",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 58,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.oboestac.r2",
+    "sampleId": "factory.vsco.oboestac.r2",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 68,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.oboestac.r3",
+    "sampleId": "factory.vsco.oboestac.r3",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 80,
+    "maxPitch": 83,
+    "root": 82
+  },
+  {
+    "id": "layer.vsco.oboestac.r4",
+    "sampleId": "factory.vsco.oboestac.r4",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.oboestac.r5",
+    "sampleId": "factory.vsco.oboestac.r5",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.oboestac.r6",
+    "sampleId": "factory.vsco.oboestac.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 84,
+    "maxPitch": 87,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.oboestac.r7",
+    "sampleId": "factory.vsco.oboestac.r7",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.oboestac.r8",
+    "sampleId": "factory.vsco.oboestac.r8",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 76,
+    "maxPitch": 79,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.oboestac.r9",
+    "sampleId": "factory.vsco.oboestac.r9",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 88,
+    "maxPitch": 89,
+    "root": 89
+  },
+  {
+    "id": "layer.vsco.oboestac.r10",
+    "sampleId": "factory.vsco.oboestac.r10",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 58,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.oboestac.r11",
+    "sampleId": "factory.vsco.oboestac.r11",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 68,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.oboestac.r12",
+    "sampleId": "factory.vsco.oboestac.r12",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 80,
+    "maxPitch": 83,
+    "root": 82
+  },
+  {
+    "id": "layer.vsco.oboestac.r13",
+    "sampleId": "factory.vsco.oboestac.r13",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.oboestac.r14",
+    "sampleId": "factory.vsco.oboestac.r14",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.oboestac.r15",
+    "sampleId": "factory.vsco.oboestac.r15",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.oboestac.r16",
+    "sampleId": "factory.vsco.oboestac.r16",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 76,
+    "maxPitch": 79,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.oboestac.r17",
+    "sampleId": "factory.vsco.oboestac.r17",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 88,
+    "maxPitch": 89,
+    "root": 89
+  },
+  {
+    "id": "layer.vsco.oboestac.r18",
+    "sampleId": "factory.vsco.oboestac.r18",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.oboestac.r19",
+    "sampleId": "factory.vsco.oboestac.r19",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.oboestac.r20",
+    "sampleId": "factory.vsco.oboestac.r20",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 80,
+    "maxPitch": 83,
+    "root": 82
+  },
+  {
+    "id": "layer.vsco.oboestac.r21",
+    "sampleId": "factory.vsco.oboestac.r21",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.oboestac.r22",
+    "sampleId": "factory.vsco.oboestac.r22",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.oboestac.r23",
+    "sampleId": "factory.vsco.oboestac.r23",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 84,
+    "maxPitch": 87,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.oboestac.r24",
+    "sampleId": "factory.vsco.oboestac.r24",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.oboestac.r25",
+    "sampleId": "factory.vsco.oboestac.r25",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 79,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.oboestac.r26",
+    "sampleId": "factory.vsco.oboestac.r26",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 88,
+    "maxPitch": 89,
+    "root": 89
+  },
+  {
+    "id": "layer.vsco.oboestac.r27",
+    "sampleId": "factory.vsco.oboestac.r27",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 58,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.oboestac.r28",
+    "sampleId": "factory.vsco.oboestac.r28",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 68,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.oboestac.r29",
+    "sampleId": "factory.vsco.oboestac.r29",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 80,
+    "maxPitch": 83,
+    "root": 82
+  },
+  {
+    "id": "layer.vsco.oboestac.r30",
+    "sampleId": "factory.vsco.oboestac.r30",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.oboestac.r31",
+    "sampleId": "factory.vsco.oboestac.r31",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.oboestac.r32",
+    "sampleId": "factory.vsco.oboestac.r32",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 84,
+    "maxPitch": 87,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.oboestac.r33",
+    "sampleId": "factory.vsco.oboestac.r33",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.oboestac.r34",
+    "sampleId": "factory.vsco.oboestac.r34",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 76,
+    "maxPitch": 79,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.oboestac.r35",
+    "sampleId": "factory.vsco.oboestac.r35",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 88,
+    "maxPitch": 89,
+    "root": 89
+  },
+  {
+    "id": "layer.vsco.oboestac.r36",
+    "sampleId": "factory.vsco.oboestac.r36",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 58,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.oboestac.r37",
+    "sampleId": "factory.vsco.oboestac.r37",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 68,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.oboestac.r38",
+    "sampleId": "factory.vsco.oboestac.r38",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 80,
+    "maxPitch": 83,
+    "root": 82
+  },
+  {
+    "id": "layer.vsco.oboestac.r39",
+    "sampleId": "factory.vsco.oboestac.r39",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.oboestac.r40",
+    "sampleId": "factory.vsco.oboestac.r40",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.oboestac.r41",
+    "sampleId": "factory.vsco.oboestac.r41",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.oboestac.r42",
+    "sampleId": "factory.vsco.oboestac.r42",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 76,
+    "maxPitch": 79,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.oboestac.r43",
+    "sampleId": "factory.vsco.oboestac.r43",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 88,
+    "maxPitch": 89,
+    "root": 89
+  },
+  {
+    "id": "layer.vsco.oboestac.r44",
+    "sampleId": "factory.vsco.oboestac.r44",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.oboestac.r45",
+    "sampleId": "factory.vsco.oboestac.r45",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.oboestac.r46",
+    "sampleId": "factory.vsco.oboestac.r46",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 80,
+    "maxPitch": 83,
+    "root": 82
+  },
+  {
+    "id": "layer.vsco.oboestac.r47",
+    "sampleId": "factory.vsco.oboestac.r47",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.oboestac.r48",
+    "sampleId": "factory.vsco.oboestac.r48",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.oboestac.r49",
+    "sampleId": "factory.vsco.oboestac.r49",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 84,
+    "maxPitch": 87,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.oboestac.r50",
+    "sampleId": "factory.vsco.oboestac.r50",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.oboestac.r51",
+    "sampleId": "factory.vsco.oboestac.r51",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 79,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.oboestac.r52",
+    "sampleId": "factory.vsco.oboestac.r52",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 88,
+    "maxPitch": 89,
+    "root": 89
+  },
+  {
+    "id": "layer.vsco.oboesusnv.r1",
+    "sampleId": "factory.vsco.oboesusnv.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 58,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.oboesusnv.r2",
+    "sampleId": "factory.vsco.oboesusnv.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 68,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.oboesusnv.r3",
+    "sampleId": "factory.vsco.oboesusnv.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 80,
+    "maxPitch": 83,
+    "root": 82
+  },
+  {
+    "id": "layer.vsco.oboesusnv.r4",
+    "sampleId": "factory.vsco.oboesusnv.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.oboesusnv.r5",
+    "sampleId": "factory.vsco.oboesusnv.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.oboesusnv.r6",
+    "sampleId": "factory.vsco.oboesusnv.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 84,
+    "maxPitch": 87,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.oboesusnv.r7",
+    "sampleId": "factory.vsco.oboesusnv.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.oboesusnv.r8",
+    "sampleId": "factory.vsco.oboesusnv.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 76,
+    "maxPitch": 79,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.oboesusnv.r9",
+    "sampleId": "factory.vsco.oboesusnv.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 88,
+    "maxPitch": 89,
+    "root": 89
+  },
+  {
+    "id": "layer.vsco.oboesusnv.r10",
+    "sampleId": "factory.vsco.oboesusnv.r10",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.oboesusnv.r11",
+    "sampleId": "factory.vsco.oboesusnv.r11",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.oboesusnv.r12",
+    "sampleId": "factory.vsco.oboesusnv.r12",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 80,
+    "maxPitch": 83,
+    "root": 82
+  },
+  {
+    "id": "layer.vsco.oboesusnv.r13",
+    "sampleId": "factory.vsco.oboesusnv.r13",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.oboesusnv.r14",
+    "sampleId": "factory.vsco.oboesusnv.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.oboesusnv.r15",
+    "sampleId": "factory.vsco.oboesusnv.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 84,
+    "maxPitch": 87,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.oboesusnv.r16",
+    "sampleId": "factory.vsco.oboesusnv.r16",
     "min": 0.49606299212598426,
     "max": 1,
     "minPitch": 64,
     "maxPitch": 67,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.oboesusnv.r17",
+    "sampleId": "factory.vsco.oboesusnv.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 79,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.oboesusnv.r18",
+    "sampleId": "factory.vsco.oboesusnv.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 88,
+    "maxPitch": 89,
+    "root": 89
+  },
+  {
+    "id": "layer.vsco.oboesusvib.r1",
+    "sampleId": "factory.vsco.oboesusvib.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 58,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.oboesusvib.r2",
+    "sampleId": "factory.vsco.oboesusvib.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 68,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.oboesusvib.r3",
+    "sampleId": "factory.vsco.oboesusvib.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 80,
+    "maxPitch": 83,
+    "root": 82
+  },
+  {
+    "id": "layer.vsco.oboesusvib.r4",
+    "sampleId": "factory.vsco.oboesusvib.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.oboesusvib.r5",
+    "sampleId": "factory.vsco.oboesusvib.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.oboesusvib.r6",
+    "sampleId": "factory.vsco.oboesusvib.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 84,
+    "maxPitch": 87,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.oboesusvib.r7",
+    "sampleId": "factory.vsco.oboesusvib.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.oboesusvib.r8",
+    "sampleId": "factory.vsco.oboesusvib.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 76,
+    "maxPitch": 79,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.oboesusvib.r9",
+    "sampleId": "factory.vsco.oboesusvib.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 88,
+    "maxPitch": 89,
+    "root": 89
+  },
+  {
+    "id": "layer.vsco.oboesusvib.r10",
+    "sampleId": "factory.vsco.oboesusvib.r10",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.oboesusvib.r11",
+    "sampleId": "factory.vsco.oboesusvib.r11",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.oboesusvib.r12",
+    "sampleId": "factory.vsco.oboesusvib.r12",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 80,
+    "maxPitch": 83,
+    "root": 82
+  },
+  {
+    "id": "layer.vsco.oboesusvib.r13",
+    "sampleId": "factory.vsco.oboesusvib.r13",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.oboesusvib.r14",
+    "sampleId": "factory.vsco.oboesusvib.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.oboesusvib.r15",
+    "sampleId": "factory.vsco.oboesusvib.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 84,
+    "maxPitch": 87,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.oboesusvib.r16",
+    "sampleId": "factory.vsco.oboesusvib.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.oboesusvib.r17",
+    "sampleId": "factory.vsco.oboesusvib.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 79,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.oboesusvib.r18",
+    "sampleId": "factory.vsco.oboesusvib.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 88,
+    "maxPitch": 89,
+    "root": 89
+  },
+  {
+    "id": "layer.vsco.organloud.r1",
+    "sampleId": "factory.vsco.organloud.r1",
+    "min": 0,
+    "max": 1,
+    "minPitch": 36,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.organloud.r2",
+    "sampleId": "factory.vsco.organloud.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 38,
+    "maxPitch": 40,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.organloud.r3",
+    "sampleId": "factory.vsco.organloud.r3",
+    "min": 0,
+    "max": 1,
+    "minPitch": 41,
+    "maxPitch": 43,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.organloud.r4",
+    "sampleId": "factory.vsco.organloud.r4",
+    "min": 0,
+    "max": 1,
+    "minPitch": 44,
+    "maxPitch": 46,
+    "root": 45
+  },
+  {
+    "id": "layer.vsco.organloud.r5",
+    "sampleId": "factory.vsco.organloud.r5",
+    "min": 0,
+    "max": 1,
+    "minPitch": 47,
+    "maxPitch": 49,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.organloud.r6",
+    "sampleId": "factory.vsco.organloud.r6",
+    "min": 0,
+    "max": 1,
+    "minPitch": 50,
+    "maxPitch": 52,
+    "root": 51
+  },
+  {
+    "id": "layer.vsco.organloud.r7",
+    "sampleId": "factory.vsco.organloud.r7",
+    "min": 0,
+    "max": 1,
+    "minPitch": 53,
+    "maxPitch": 55,
+    "root": 54
+  },
+  {
+    "id": "layer.vsco.organloud.r8",
+    "sampleId": "factory.vsco.organloud.r8",
+    "min": 0,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.organloud.r9",
+    "sampleId": "factory.vsco.organloud.r9",
+    "min": 0,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.organloud.r10",
+    "sampleId": "factory.vsco.organloud.r10",
+    "min": 0,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 64,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.organloud.r11",
+    "sampleId": "factory.vsco.organloud.r11",
+    "min": 0,
+    "max": 1,
+    "minPitch": 65,
+    "maxPitch": 67,
     "root": 66
   },
   {
-    "id": "layer.vsco.violinens.r21",
-    "sampleId": "factory.vsco.violinens.r21",
+    "id": "layer.vsco.organloud.r12",
+    "sampleId": "factory.vsco.organloud.r12",
+    "min": 0,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.organloud.r13",
+    "sampleId": "factory.vsco.organloud.r13",
+    "min": 0,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.organloud.r14",
+    "sampleId": "factory.vsco.organloud.r14",
+    "min": 0,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 76,
+    "root": 75
+  },
+  {
+    "id": "layer.vsco.organloud.r15",
+    "sampleId": "factory.vsco.organloud.r15",
+    "min": 0,
+    "max": 1,
+    "minPitch": 77,
+    "maxPitch": 79,
+    "root": 78
+  },
+  {
+    "id": "layer.vsco.organloud.r16",
+    "sampleId": "factory.vsco.organloud.r16",
+    "min": 0,
+    "max": 1,
+    "minPitch": 80,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.organloud.r17",
+    "sampleId": "factory.vsco.organloud.r17",
+    "min": 0,
+    "max": 1,
+    "minPitch": 83,
+    "maxPitch": 85,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.organloud.r18",
+    "sampleId": "factory.vsco.organloud.r18",
+    "min": 0,
+    "max": 1,
+    "minPitch": 86,
+    "maxPitch": 88,
+    "root": 87
+  },
+  {
+    "id": "layer.vsco.organloud.r19",
+    "sampleId": "factory.vsco.organloud.r19",
+    "min": 0,
+    "max": 1,
+    "minPitch": 89,
+    "maxPitch": 91,
+    "root": 90
+  },
+  {
+    "id": "layer.vsco.organloud.r20",
+    "sampleId": "factory.vsco.organloud.r20",
+    "min": 0,
+    "max": 1,
+    "minPitch": 92,
+    "maxPitch": 94,
+    "root": 93
+  },
+  {
+    "id": "layer.vsco.organloud.r21",
+    "sampleId": "factory.vsco.organloud.r21",
+    "min": 0,
+    "max": 1,
+    "minPitch": 95,
+    "maxPitch": 96,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.organloudpedal.r1",
+    "sampleId": "factory.vsco.organloudpedal.r1",
+    "min": 0,
+    "max": 1,
+    "minPitch": 36,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.organloudpedal.r2",
+    "sampleId": "factory.vsco.organloudpedal.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 38,
+    "maxPitch": 40,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.organloudpedal.r3",
+    "sampleId": "factory.vsco.organloudpedal.r3",
+    "min": 0,
+    "max": 1,
+    "minPitch": 41,
+    "maxPitch": 43,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.organloudpedal.r4",
+    "sampleId": "factory.vsco.organloudpedal.r4",
+    "min": 0,
+    "max": 1,
+    "minPitch": 44,
+    "maxPitch": 46,
+    "root": 45
+  },
+  {
+    "id": "layer.vsco.organloudpedal.r5",
+    "sampleId": "factory.vsco.organloudpedal.r5",
+    "min": 0,
+    "max": 1,
+    "minPitch": 47,
+    "maxPitch": 49,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.organloudpedal.r6",
+    "sampleId": "factory.vsco.organloudpedal.r6",
+    "min": 0,
+    "max": 1,
+    "minPitch": 50,
+    "maxPitch": 52,
+    "root": 51
+  },
+  {
+    "id": "layer.vsco.organloudpedal.r7",
+    "sampleId": "factory.vsco.organloudpedal.r7",
+    "min": 0,
+    "max": 1,
+    "minPitch": 53,
+    "maxPitch": 55,
+    "root": 54
+  },
+  {
+    "id": "layer.vsco.organloudpedal.r8",
+    "sampleId": "factory.vsco.organloudpedal.r8",
+    "min": 0,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.organloudpedal.r9",
+    "sampleId": "factory.vsco.organloudpedal.r9",
+    "min": 0,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.organloudpedal.r10",
+    "sampleId": "factory.vsco.organloudpedal.r10",
+    "min": 0,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 64,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.organloudpedal.r11",
+    "sampleId": "factory.vsco.organloudpedal.r11",
+    "min": 0,
+    "max": 1,
+    "minPitch": 65,
+    "maxPitch": 66,
+    "root": 66
+  },
+  {
+    "id": "layer.vsco.organquiet.r1",
+    "sampleId": "factory.vsco.organquiet.r1",
+    "min": 0,
+    "max": 1,
+    "minPitch": 36,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.organquiet.r2",
+    "sampleId": "factory.vsco.organquiet.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 38,
+    "maxPitch": 40,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.organquiet.r3",
+    "sampleId": "factory.vsco.organquiet.r3",
+    "min": 0,
+    "max": 1,
+    "minPitch": 41,
+    "maxPitch": 43,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.organquiet.r4",
+    "sampleId": "factory.vsco.organquiet.r4",
+    "min": 0,
+    "max": 1,
+    "minPitch": 44,
+    "maxPitch": 46,
+    "root": 45
+  },
+  {
+    "id": "layer.vsco.organquiet.r5",
+    "sampleId": "factory.vsco.organquiet.r5",
+    "min": 0,
+    "max": 1,
+    "minPitch": 47,
+    "maxPitch": 49,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.organquiet.r6",
+    "sampleId": "factory.vsco.organquiet.r6",
+    "min": 0,
+    "max": 1,
+    "minPitch": 50,
+    "maxPitch": 52,
+    "root": 51
+  },
+  {
+    "id": "layer.vsco.organquiet.r7",
+    "sampleId": "factory.vsco.organquiet.r7",
+    "min": 0,
+    "max": 1,
+    "minPitch": 53,
+    "maxPitch": 55,
+    "root": 54
+  },
+  {
+    "id": "layer.vsco.organquiet.r8",
+    "sampleId": "factory.vsco.organquiet.r8",
+    "min": 0,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.organquiet.r9",
+    "sampleId": "factory.vsco.organquiet.r9",
+    "min": 0,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.organquiet.r10",
+    "sampleId": "factory.vsco.organquiet.r10",
+    "min": 0,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 64,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.organquiet.r11",
+    "sampleId": "factory.vsco.organquiet.r11",
+    "min": 0,
+    "max": 1,
+    "minPitch": 65,
+    "maxPitch": 67,
+    "root": 66
+  },
+  {
+    "id": "layer.vsco.organquiet.r12",
+    "sampleId": "factory.vsco.organquiet.r12",
+    "min": 0,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.organquiet.r13",
+    "sampleId": "factory.vsco.organquiet.r13",
+    "min": 0,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.organquiet.r14",
+    "sampleId": "factory.vsco.organquiet.r14",
+    "min": 0,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 76,
+    "root": 75
+  },
+  {
+    "id": "layer.vsco.organquiet.r15",
+    "sampleId": "factory.vsco.organquiet.r15",
+    "min": 0,
+    "max": 1,
+    "minPitch": 77,
+    "maxPitch": 79,
+    "root": 78
+  },
+  {
+    "id": "layer.vsco.organquiet.r16",
+    "sampleId": "factory.vsco.organquiet.r16",
+    "min": 0,
+    "max": 1,
+    "minPitch": 80,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.organquiet.r17",
+    "sampleId": "factory.vsco.organquiet.r17",
+    "min": 0,
+    "max": 1,
+    "minPitch": 83,
+    "maxPitch": 85,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.organquiet.r18",
+    "sampleId": "factory.vsco.organquiet.r18",
+    "min": 0,
+    "max": 1,
+    "minPitch": 86,
+    "maxPitch": 88,
+    "root": 87
+  },
+  {
+    "id": "layer.vsco.organquiet.r19",
+    "sampleId": "factory.vsco.organquiet.r19",
+    "min": 0,
+    "max": 1,
+    "minPitch": 89,
+    "maxPitch": 91,
+    "root": 90
+  },
+  {
+    "id": "layer.vsco.organquiet.r20",
+    "sampleId": "factory.vsco.organquiet.r20",
+    "min": 0,
+    "max": 1,
+    "minPitch": 92,
+    "maxPitch": 94,
+    "root": 93
+  },
+  {
+    "id": "layer.vsco.organquiet.r21",
+    "sampleId": "factory.vsco.organquiet.r21",
+    "min": 0,
+    "max": 1,
+    "minPitch": 95,
+    "maxPitch": 96,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.organquietpedal.r1",
+    "sampleId": "factory.vsco.organquietpedal.r1",
+    "min": 0,
+    "max": 1,
+    "minPitch": 36,
+    "maxPitch": 37,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.organquietpedal.r2",
+    "sampleId": "factory.vsco.organquietpedal.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 38,
+    "maxPitch": 40,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.organquietpedal.r3",
+    "sampleId": "factory.vsco.organquietpedal.r3",
+    "min": 0,
+    "max": 1,
+    "minPitch": 41,
+    "maxPitch": 43,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.organquietpedal.r4",
+    "sampleId": "factory.vsco.organquietpedal.r4",
+    "min": 0,
+    "max": 1,
+    "minPitch": 44,
+    "maxPitch": 46,
+    "root": 45
+  },
+  {
+    "id": "layer.vsco.organquietpedal.r5",
+    "sampleId": "factory.vsco.organquietpedal.r5",
+    "min": 0,
+    "max": 1,
+    "minPitch": 47,
+    "maxPitch": 49,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.organquietpedal.r6",
+    "sampleId": "factory.vsco.organquietpedal.r6",
+    "min": 0,
+    "max": 1,
+    "minPitch": 50,
+    "maxPitch": 52,
+    "root": 51
+  },
+  {
+    "id": "layer.vsco.organquietpedal.r7",
+    "sampleId": "factory.vsco.organquietpedal.r7",
+    "min": 0,
+    "max": 1,
+    "minPitch": 53,
+    "maxPitch": 55,
+    "root": 54
+  },
+  {
+    "id": "layer.vsco.organquietpedal.r8",
+    "sampleId": "factory.vsco.organquietpedal.r8",
+    "min": 0,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.organquietpedal.r9",
+    "sampleId": "factory.vsco.organquietpedal.r9",
+    "min": 0,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.organquietpedal.r10",
+    "sampleId": "factory.vsco.organquietpedal.r10",
+    "min": 0,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 64,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.organquietpedal.r11",
+    "sampleId": "factory.vsco.organquietpedal.r11",
+    "min": 0,
+    "max": 1,
+    "minPitch": 65,
+    "maxPitch": 66,
+    "root": 66
+  },
+  {
+    "id": "layer.vsco.piccolostac.r1",
+    "sampleId": "factory.vsco.piccolostac.r1",
+    "min": 0,
+    "max": 1,
+    "minPitch": 70,
+    "maxPitch": 74,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.piccolostac.r2",
+    "sampleId": "factory.vsco.piccolostac.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 81,
+    "maxPitch": 86,
+    "root": 82
+  },
+  {
+    "id": "layer.vsco.piccolostac.r3",
+    "sampleId": "factory.vsco.piccolostac.r3",
+    "min": 0,
+    "max": 1,
+    "minPitch": 93,
+    "maxPitch": 94,
+    "root": 94
+  },
+  {
+    "id": "layer.vsco.piccolostac.r4",
+    "sampleId": "factory.vsco.piccolostac.r4",
+    "min": 0,
+    "max": 1,
+    "minPitch": 75,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.piccolostac.r5",
+    "sampleId": "factory.vsco.piccolostac.r5",
+    "min": 0,
+    "max": 1,
+    "minPitch": 87,
+    "maxPitch": 92,
+    "root": 91
+  },
+  {
+    "id": "layer.vsco.piccolosus.r1",
+    "sampleId": "factory.vsco.piccolosus.r1",
+    "min": 0,
+    "max": 1,
+    "minPitch": 70,
+    "maxPitch": 75,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.piccolosus.r2",
+    "sampleId": "factory.vsco.piccolosus.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 82,
+    "maxPitch": 87,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.piccolosus.r3",
+    "sampleId": "factory.vsco.piccolosus.r3",
+    "min": 0,
+    "max": 1,
+    "minPitch": 67,
+    "maxPitch": 69,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.piccolosus.r4",
+    "sampleId": "factory.vsco.piccolosus.r4",
+    "min": 0,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 81,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.piccolosus.r5",
+    "sampleId": "factory.vsco.piccolosus.r5",
+    "min": 0,
+    "max": 1,
+    "minPitch": 88,
+    "maxPitch": 91,
+    "root": 91
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r1",
+    "sampleId": "factory.vsco.sviolinpizz.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 56,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r2",
+    "sampleId": "factory.vsco.sviolinpizz.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r3",
+    "sampleId": "factory.vsco.sviolinpizz.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 80,
+    "maxPitch": 84,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r4",
+    "sampleId": "factory.vsco.sviolinpizz.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r5",
+    "sampleId": "factory.vsco.sviolinpizz.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r6",
+    "sampleId": "factory.vsco.sviolinpizz.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r7",
+    "sampleId": "factory.vsco.sviolinpizz.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r8",
+    "sampleId": "factory.vsco.sviolinpizz.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r9",
+    "sampleId": "factory.vsco.sviolinpizz.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 66,
+    "maxPitch": 67,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r10",
+    "sampleId": "factory.vsco.sviolinpizz.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 78,
+    "maxPitch": 79,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r11",
+    "sampleId": "factory.vsco.sviolinpizz.r11",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r12",
+    "sampleId": "factory.vsco.sviolinpizz.r12",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r13",
+    "sampleId": "factory.vsco.sviolinpizz.r13",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 80,
+    "maxPitch": 84,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r14",
+    "sampleId": "factory.vsco.sviolinpizz.r14",
+    "min": 0,
+    "max": 1,
+    "minPitch": 91,
+    "maxPitch": 94,
+    "root": 93
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r15",
+    "sampleId": "factory.vsco.sviolinpizz.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r16",
+    "sampleId": "factory.vsco.sviolinpizz.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 75,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r17",
+    "sampleId": "factory.vsco.sviolinpizz.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r18",
+    "sampleId": "factory.vsco.sviolinpizz.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 76,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r19",
+    "sampleId": "factory.vsco.sviolinpizz.r19",
+    "min": 0,
+    "max": 1,
+    "minPitch": 85,
+    "maxPitch": 90,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r20",
+    "sampleId": "factory.vsco.sviolinpizz.r20",
     "min": 0.49606299212598426,
     "max": 1,
     "minPitch": 55,
@@ -195,13 +10446,4711 @@ export const VSCO_PACK_LAYERS: SampleLayer[] = [
     "root": 55
   },
   {
-    "id": "layer.vsco.violinens.r22",
-    "sampleId": "factory.vsco.violinens.r22",
+    "id": "layer.vsco.sviolinpizz.r21",
+    "sampleId": "factory.vsco.sviolinpizz.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 67,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r22",
+    "sampleId": "factory.vsco.sviolinpizz.r22",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 77,
+    "maxPitch": 79,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r23",
+    "sampleId": "factory.vsco.sviolinpizz.r23",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 56,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r24",
+    "sampleId": "factory.vsco.sviolinpizz.r24",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r25",
+    "sampleId": "factory.vsco.sviolinpizz.r25",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 80,
+    "maxPitch": 84,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r26",
+    "sampleId": "factory.vsco.sviolinpizz.r26",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r27",
+    "sampleId": "factory.vsco.sviolinpizz.r27",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 71,
+    "maxPitch": 75,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r28",
+    "sampleId": "factory.vsco.sviolinpizz.r28",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r29",
+    "sampleId": "factory.vsco.sviolinpizz.r29",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 76,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r30",
+    "sampleId": "factory.vsco.sviolinpizz.r30",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 66,
+    "maxPitch": 67,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r31",
+    "sampleId": "factory.vsco.sviolinpizz.r31",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 78,
+    "maxPitch": 79,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r32",
+    "sampleId": "factory.vsco.sviolinpizz.r32",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r33",
+    "sampleId": "factory.vsco.sviolinpizz.r33",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r34",
+    "sampleId": "factory.vsco.sviolinpizz.r34",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 80,
+    "maxPitch": 84,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r35",
+    "sampleId": "factory.vsco.sviolinpizz.r35",
+    "min": 0,
+    "max": 1,
+    "minPitch": 91,
+    "maxPitch": 94,
+    "root": 93
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r36",
+    "sampleId": "factory.vsco.sviolinpizz.r36",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r37",
+    "sampleId": "factory.vsco.sviolinpizz.r37",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 75,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r38",
+    "sampleId": "factory.vsco.sviolinpizz.r38",
+    "min": 0,
+    "max": 1,
+    "minPitch": 95,
+    "maxPitch": 96,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r39",
+    "sampleId": "factory.vsco.sviolinpizz.r39",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r40",
+    "sampleId": "factory.vsco.sviolinpizz.r40",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 76,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r41",
+    "sampleId": "factory.vsco.sviolinpizz.r41",
+    "min": 0,
+    "max": 1,
+    "minPitch": 85,
+    "maxPitch": 90,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r42",
+    "sampleId": "factory.vsco.sviolinpizz.r42",
+    "min": 0,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r43",
+    "sampleId": "factory.vsco.sviolinpizz.r43",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 67,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.sviolinpizz.r44",
+    "sampleId": "factory.vsco.sviolinpizz.r44",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 77,
+    "maxPitch": 79,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r1",
+    "sampleId": "factory.vsco.sviolinspic.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 56,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r2",
+    "sampleId": "factory.vsco.sviolinspic.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r3",
+    "sampleId": "factory.vsco.sviolinspic.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 80,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r4",
+    "sampleId": "factory.vsco.sviolinspic.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 92,
+    "maxPitch": 94,
+    "root": 93
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r5",
+    "sampleId": "factory.vsco.sviolinspic.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r6",
+    "sampleId": "factory.vsco.sviolinspic.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r7",
+    "sampleId": "factory.vsco.sviolinspic.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 83,
+    "maxPitch": 85,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r8",
+    "sampleId": "factory.vsco.sviolinspic.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 95,
+    "maxPitch": 96,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r9",
+    "sampleId": "factory.vsco.sviolinspic.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r10",
+    "sampleId": "factory.vsco.sviolinspic.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r11",
+    "sampleId": "factory.vsco.sviolinspic.r11",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 86,
+    "maxPitch": 89,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r12",
+    "sampleId": "factory.vsco.sviolinspic.r12",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r13",
+    "sampleId": "factory.vsco.sviolinspic.r13",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 66,
+    "maxPitch": 67,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r14",
+    "sampleId": "factory.vsco.sviolinspic.r14",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 78,
+    "maxPitch": 79,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r15",
+    "sampleId": "factory.vsco.sviolinspic.r15",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 90,
+    "maxPitch": 91,
+    "root": 91
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r16",
+    "sampleId": "factory.vsco.sviolinspic.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r17",
+    "sampleId": "factory.vsco.sviolinspic.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r18",
+    "sampleId": "factory.vsco.sviolinspic.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 80,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r19",
+    "sampleId": "factory.vsco.sviolinspic.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 92,
+    "maxPitch": 94,
+    "root": 93
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r20",
+    "sampleId": "factory.vsco.sviolinspic.r20",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r21",
+    "sampleId": "factory.vsco.sviolinspic.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r22",
+    "sampleId": "factory.vsco.sviolinspic.r22",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 83,
+    "maxPitch": 85,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r23",
+    "sampleId": "factory.vsco.sviolinspic.r23",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 95,
+    "maxPitch": 96,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r24",
+    "sampleId": "factory.vsco.sviolinspic.r24",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r25",
+    "sampleId": "factory.vsco.sviolinspic.r25",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r26",
+    "sampleId": "factory.vsco.sviolinspic.r26",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 86,
+    "maxPitch": 89,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r27",
+    "sampleId": "factory.vsco.sviolinspic.r27",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r28",
+    "sampleId": "factory.vsco.sviolinspic.r28",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 67,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r29",
+    "sampleId": "factory.vsco.sviolinspic.r29",
     "min": 0.49606299212598426,
     "max": 1,
     "minPitch": 78,
-    "maxPitch": 80,
+    "maxPitch": 79,
     "root": 79
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r30",
+    "sampleId": "factory.vsco.sviolinspic.r30",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 90,
+    "maxPitch": 91,
+    "root": 91
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r31",
+    "sampleId": "factory.vsco.sviolinspic.r31",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 56,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r32",
+    "sampleId": "factory.vsco.sviolinspic.r32",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r33",
+    "sampleId": "factory.vsco.sviolinspic.r33",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 80,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r34",
+    "sampleId": "factory.vsco.sviolinspic.r34",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 92,
+    "maxPitch": 94,
+    "root": 93
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r35",
+    "sampleId": "factory.vsco.sviolinspic.r35",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r36",
+    "sampleId": "factory.vsco.sviolinspic.r36",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r37",
+    "sampleId": "factory.vsco.sviolinspic.r37",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 83,
+    "maxPitch": 85,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r38",
+    "sampleId": "factory.vsco.sviolinspic.r38",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 95,
+    "maxPitch": 96,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r39",
+    "sampleId": "factory.vsco.sviolinspic.r39",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r40",
+    "sampleId": "factory.vsco.sviolinspic.r40",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r41",
+    "sampleId": "factory.vsco.sviolinspic.r41",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 86,
+    "maxPitch": 89,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r42",
+    "sampleId": "factory.vsco.sviolinspic.r42",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r43",
+    "sampleId": "factory.vsco.sviolinspic.r43",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 66,
+    "maxPitch": 67,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r44",
+    "sampleId": "factory.vsco.sviolinspic.r44",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 78,
+    "maxPitch": 79,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r45",
+    "sampleId": "factory.vsco.sviolinspic.r45",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 90,
+    "maxPitch": 91,
+    "root": 91
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r46",
+    "sampleId": "factory.vsco.sviolinspic.r46",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r47",
+    "sampleId": "factory.vsco.sviolinspic.r47",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r48",
+    "sampleId": "factory.vsco.sviolinspic.r48",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 80,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r49",
+    "sampleId": "factory.vsco.sviolinspic.r49",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 92,
+    "maxPitch": 94,
+    "root": 93
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r50",
+    "sampleId": "factory.vsco.sviolinspic.r50",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r51",
+    "sampleId": "factory.vsco.sviolinspic.r51",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r52",
+    "sampleId": "factory.vsco.sviolinspic.r52",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 83,
+    "maxPitch": 85,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r53",
+    "sampleId": "factory.vsco.sviolinspic.r53",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 95,
+    "maxPitch": 96,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r54",
+    "sampleId": "factory.vsco.sviolinspic.r54",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r55",
+    "sampleId": "factory.vsco.sviolinspic.r55",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r56",
+    "sampleId": "factory.vsco.sviolinspic.r56",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 86,
+    "maxPitch": 89,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r57",
+    "sampleId": "factory.vsco.sviolinspic.r57",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r58",
+    "sampleId": "factory.vsco.sviolinspic.r58",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 67,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r59",
+    "sampleId": "factory.vsco.sviolinspic.r59",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 78,
+    "maxPitch": 79,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.sviolinspic.r60",
+    "sampleId": "factory.vsco.sviolinspic.r60",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 90,
+    "maxPitch": 91,
+    "root": 91
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r1",
+    "sampleId": "factory.vsco.sviolintrem.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 56,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r2",
+    "sampleId": "factory.vsco.sviolintrem.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r3",
+    "sampleId": "factory.vsco.sviolintrem.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 80,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r4",
+    "sampleId": "factory.vsco.sviolintrem.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r5",
+    "sampleId": "factory.vsco.sviolintrem.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r6",
+    "sampleId": "factory.vsco.sviolintrem.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 83,
+    "maxPitch": 85,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r7",
+    "sampleId": "factory.vsco.sviolintrem.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r8",
+    "sampleId": "factory.vsco.sviolintrem.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r9",
+    "sampleId": "factory.vsco.sviolintrem.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 86,
+    "maxPitch": 89,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r10",
+    "sampleId": "factory.vsco.sviolintrem.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r11",
+    "sampleId": "factory.vsco.sviolintrem.r11",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 66,
+    "maxPitch": 67,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r12",
+    "sampleId": "factory.vsco.sviolintrem.r12",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 78,
+    "maxPitch": 79,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r13",
+    "sampleId": "factory.vsco.sviolintrem.r13",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 90,
+    "maxPitch": 93,
+    "root": 91
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r14",
+    "sampleId": "factory.vsco.sviolintrem.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r15",
+    "sampleId": "factory.vsco.sviolintrem.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r16",
+    "sampleId": "factory.vsco.sviolintrem.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 80,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r17",
+    "sampleId": "factory.vsco.sviolintrem.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r18",
+    "sampleId": "factory.vsco.sviolintrem.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r19",
+    "sampleId": "factory.vsco.sviolintrem.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 83,
+    "maxPitch": 85,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r20",
+    "sampleId": "factory.vsco.sviolintrem.r20",
+    "min": 0,
+    "max": 1,
+    "minPitch": 94,
+    "maxPitch": 96,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r21",
+    "sampleId": "factory.vsco.sviolintrem.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r22",
+    "sampleId": "factory.vsco.sviolintrem.r22",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r23",
+    "sampleId": "factory.vsco.sviolintrem.r23",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 86,
+    "maxPitch": 89,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r24",
+    "sampleId": "factory.vsco.sviolintrem.r24",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r25",
+    "sampleId": "factory.vsco.sviolintrem.r25",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 67,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r26",
+    "sampleId": "factory.vsco.sviolintrem.r26",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 78,
+    "maxPitch": 79,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.sviolintrem.r27",
+    "sampleId": "factory.vsco.sviolintrem.r27",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 90,
+    "maxPitch": 93,
+    "root": 91
+  },
+  {
+    "id": "layer.vsco.sviolinvib-quiet.r1",
+    "sampleId": "factory.vsco.sviolinvib-quiet.r1",
+    "min": 0,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.sviolinvib-quiet.r2",
+    "sampleId": "factory.vsco.sviolinvib-quiet.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.sviolinvib-quiet.r3",
+    "sampleId": "factory.vsco.sviolinvib-quiet.r3",
+    "min": 0,
+    "max": 1,
+    "minPitch": 80,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.sviolinvib-quiet.r4",
+    "sampleId": "factory.vsco.sviolinvib-quiet.r4",
+    "min": 0,
+    "max": 1,
+    "minPitch": 92,
+    "maxPitch": 94,
+    "root": 93
+  },
+  {
+    "id": "layer.vsco.sviolinvib-quiet.r5",
+    "sampleId": "factory.vsco.sviolinvib-quiet.r5",
+    "min": 0,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.sviolinvib-quiet.r6",
+    "sampleId": "factory.vsco.sviolinvib-quiet.r6",
+    "min": 0,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.sviolinvib-quiet.r7",
+    "sampleId": "factory.vsco.sviolinvib-quiet.r7",
+    "min": 0,
+    "max": 1,
+    "minPitch": 83,
+    "maxPitch": 85,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.sviolinvib-quiet.r8",
+    "sampleId": "factory.vsco.sviolinvib-quiet.r8",
+    "min": 0,
+    "max": 1,
+    "minPitch": 95,
+    "maxPitch": 96,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.sviolinvib-quiet.r9",
+    "sampleId": "factory.vsco.sviolinvib-quiet.r9",
+    "min": 0,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.sviolinvib-quiet.r10",
+    "sampleId": "factory.vsco.sviolinvib-quiet.r10",
+    "min": 0,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.sviolinvib-quiet.r11",
+    "sampleId": "factory.vsco.sviolinvib-quiet.r11",
+    "min": 0,
+    "max": 1,
+    "minPitch": 86,
+    "maxPitch": 89,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.sviolinvib-quiet.r12",
+    "sampleId": "factory.vsco.sviolinvib-quiet.r12",
+    "min": 0,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.sviolinvib-quiet.r13",
+    "sampleId": "factory.vsco.sviolinvib-quiet.r13",
+    "min": 0,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 67,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.sviolinvib-quiet.r14",
+    "sampleId": "factory.vsco.sviolinvib-quiet.r14",
+    "min": 0,
+    "max": 1,
+    "minPitch": 78,
+    "maxPitch": 79,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.sviolinvib-quiet.r15",
+    "sampleId": "factory.vsco.sviolinvib-quiet.r15",
+    "min": 0,
+    "max": 1,
+    "minPitch": 90,
+    "maxPitch": 91,
+    "root": 91
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r1",
+    "sampleId": "factory.vsco.sviolinvib.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 56,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r2",
+    "sampleId": "factory.vsco.sviolinvib.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r3",
+    "sampleId": "factory.vsco.sviolinvib.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 80,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r4",
+    "sampleId": "factory.vsco.sviolinvib.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 92,
+    "maxPitch": 94,
+    "root": 93
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r5",
+    "sampleId": "factory.vsco.sviolinvib.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r6",
+    "sampleId": "factory.vsco.sviolinvib.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r7",
+    "sampleId": "factory.vsco.sviolinvib.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 83,
+    "maxPitch": 85,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r8",
+    "sampleId": "factory.vsco.sviolinvib.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 95,
+    "maxPitch": 96,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r9",
+    "sampleId": "factory.vsco.sviolinvib.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r10",
+    "sampleId": "factory.vsco.sviolinvib.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r11",
+    "sampleId": "factory.vsco.sviolinvib.r11",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 86,
+    "maxPitch": 89,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r12",
+    "sampleId": "factory.vsco.sviolinvib.r12",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r13",
+    "sampleId": "factory.vsco.sviolinvib.r13",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 66,
+    "maxPitch": 67,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r14",
+    "sampleId": "factory.vsco.sviolinvib.r14",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 78,
+    "maxPitch": 79,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r15",
+    "sampleId": "factory.vsco.sviolinvib.r15",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 90,
+    "maxPitch": 91,
+    "root": 91
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r16",
+    "sampleId": "factory.vsco.sviolinvib.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r17",
+    "sampleId": "factory.vsco.sviolinvib.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r18",
+    "sampleId": "factory.vsco.sviolinvib.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 80,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r19",
+    "sampleId": "factory.vsco.sviolinvib.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 92,
+    "maxPitch": 94,
+    "root": 93
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r20",
+    "sampleId": "factory.vsco.sviolinvib.r20",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r21",
+    "sampleId": "factory.vsco.sviolinvib.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r22",
+    "sampleId": "factory.vsco.sviolinvib.r22",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 83,
+    "maxPitch": 85,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r23",
+    "sampleId": "factory.vsco.sviolinvib.r23",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 95,
+    "maxPitch": 96,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r24",
+    "sampleId": "factory.vsco.sviolinvib.r24",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 64
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r25",
+    "sampleId": "factory.vsco.sviolinvib.r25",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r26",
+    "sampleId": "factory.vsco.sviolinvib.r26",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 86,
+    "maxPitch": 89,
+    "root": 88
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r27",
+    "sampleId": "factory.vsco.sviolinvib.r27",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r28",
+    "sampleId": "factory.vsco.sviolinvib.r28",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 67,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r29",
+    "sampleId": "factory.vsco.sviolinvib.r29",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 78,
+    "maxPitch": 79,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.sviolinvib.r30",
+    "sampleId": "factory.vsco.sviolinvib.r30",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 90,
+    "maxPitch": 91,
+    "root": 91
+  },
+  {
+    "id": "layer.vsco.timpani.r1",
+    "sampleId": "factory.vsco.timpani.r1",
+    "min": 0,
+    "max": 0.6377952755905512,
+    "minPitch": 36,
+    "maxPitch": 43,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.timpani.r2",
+    "sampleId": "factory.vsco.timpani.r2",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 44,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.timpani.r3",
+    "sampleId": "factory.vsco.timpani.r3",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 48,
+    "maxPitch": 50,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.timpani.r4",
+    "sampleId": "factory.vsco.timpani.r4",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 51,
+    "maxPitch": 52,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.timpani.r5",
+    "sampleId": "factory.vsco.timpani.r5",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 53,
+    "maxPitch": 60,
+    "root": 54
+  },
+  {
+    "id": "layer.vsco.timpani.r6",
+    "sampleId": "factory.vsco.timpani.r6",
+    "min": 0.6377952755905512,
+    "max": 1,
+    "minPitch": 36,
+    "maxPitch": 43,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.timpani.r7",
+    "sampleId": "factory.vsco.timpani.r7",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 44,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.timpani.r8",
+    "sampleId": "factory.vsco.timpani.r8",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 48,
+    "maxPitch": 50,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.timpani.r9",
+    "sampleId": "factory.vsco.timpani.r9",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 51,
+    "maxPitch": 52,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.timpani.r10",
+    "sampleId": "factory.vsco.timpani.r10",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 53,
+    "maxPitch": 60,
+    "root": 54
+  },
+  {
+    "id": "layer.vsco.timpani.r11",
+    "sampleId": "factory.vsco.timpani.r11",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 44,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.timpani.r12",
+    "sampleId": "factory.vsco.timpani.r12",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 48,
+    "maxPitch": 50,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.timpani.r13",
+    "sampleId": "factory.vsco.timpani.r13",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 51,
+    "maxPitch": 52,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.timpani.r14",
+    "sampleId": "factory.vsco.timpani.r14",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 53,
+    "maxPitch": 60,
+    "root": 54
+  },
+  {
+    "id": "layer.vsco.timpani.r15",
+    "sampleId": "factory.vsco.timpani.r15",
+    "min": 0,
+    "max": 0.6377952755905512,
+    "minPitch": 36,
+    "maxPitch": 43,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.timpani.r16",
+    "sampleId": "factory.vsco.timpani.r16",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 44,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.timpani.r17",
+    "sampleId": "factory.vsco.timpani.r17",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 48,
+    "maxPitch": 50,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.timpani.r18",
+    "sampleId": "factory.vsco.timpani.r18",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 51,
+    "maxPitch": 52,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.timpani.r19",
+    "sampleId": "factory.vsco.timpani.r19",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 53,
+    "maxPitch": 60,
+    "root": 54
+  },
+  {
+    "id": "layer.vsco.timpani.r20",
+    "sampleId": "factory.vsco.timpani.r20",
+    "min": 0.6377952755905512,
+    "max": 1,
+    "minPitch": 36,
+    "maxPitch": 43,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.timpani.r21",
+    "sampleId": "factory.vsco.timpani.r21",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 44,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.timpani.r22",
+    "sampleId": "factory.vsco.timpani.r22",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 48,
+    "maxPitch": 50,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.timpani.r23",
+    "sampleId": "factory.vsco.timpani.r23",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 51,
+    "maxPitch": 52,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.timpani.r24",
+    "sampleId": "factory.vsco.timpani.r24",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 53,
+    "maxPitch": 60,
+    "root": 54
+  },
+  {
+    "id": "layer.vsco.timpani.r25",
+    "sampleId": "factory.vsco.timpani.r25",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 44,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.timpani.r26",
+    "sampleId": "factory.vsco.timpani.r26",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 48,
+    "maxPitch": 50,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.timpani.r27",
+    "sampleId": "factory.vsco.timpani.r27",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 51,
+    "maxPitch": 52,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.timpani.r28",
+    "sampleId": "factory.vsco.timpani.r28",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 53,
+    "maxPitch": 60,
+    "root": 54
+  },
+  {
+    "id": "layer.vsco.timpanirolls.r1",
+    "sampleId": "factory.vsco.timpanirolls.r1",
+    "min": 0,
+    "max": 0.6377952755905512,
+    "minPitch": 36,
+    "maxPitch": 43,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.timpanirolls.r2",
+    "sampleId": "factory.vsco.timpanirolls.r2",
+    "min": 0,
+    "max": 0.6377952755905512,
+    "minPitch": 44,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.timpanirolls.r3",
+    "sampleId": "factory.vsco.timpanirolls.r3",
+    "min": 0,
+    "max": 0.6377952755905512,
+    "minPitch": 48,
+    "maxPitch": 50,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.timpanirolls.r4",
+    "sampleId": "factory.vsco.timpanirolls.r4",
+    "min": 0,
+    "max": 0.6377952755905512,
+    "minPitch": 51,
+    "maxPitch": 52,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.timpanirolls.r5",
+    "sampleId": "factory.vsco.timpanirolls.r5",
+    "min": 0,
+    "max": 0.6377952755905512,
+    "minPitch": 53,
+    "maxPitch": 60,
+    "root": 54
+  },
+  {
+    "id": "layer.vsco.timpanirolls.r6",
+    "sampleId": "factory.vsco.timpanirolls.r6",
+    "min": 0.6377952755905512,
+    "max": 1,
+    "minPitch": 53,
+    "maxPitch": 60,
+    "root": 54
+  },
+  {
+    "id": "layer.vsco.timpanirolls.r7",
+    "sampleId": "factory.vsco.timpanirolls.r7",
+    "min": 0.6377952755905512,
+    "max": 1,
+    "minPitch": 36,
+    "maxPitch": 43,
+    "root": 42
+  },
+  {
+    "id": "layer.vsco.timpanirolls.r8",
+    "sampleId": "factory.vsco.timpanirolls.r8",
+    "min": 0.6377952755905512,
+    "max": 1,
+    "minPitch": 44,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.timpanirolls.r9",
+    "sampleId": "factory.vsco.timpanirolls.r9",
+    "min": 0.6377952755905512,
+    "max": 1,
+    "minPitch": 48,
+    "maxPitch": 50,
+    "root": 49
+  },
+  {
+    "id": "layer.vsco.timpanirolls.r10",
+    "sampleId": "factory.vsco.timpanirolls.r10",
+    "min": 0.6377952755905512,
+    "max": 1,
+    "minPitch": 51,
+    "maxPitch": 52,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.trombonestac.r1",
+    "sampleId": "factory.vsco.trombonestac.r1",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 34,
+    "maxPitch": 37,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.trombonestac.r2",
+    "sampleId": "factory.vsco.trombonestac.r2",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 44,
+    "maxPitch": 49,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.trombonestac.r3",
+    "sampleId": "factory.vsco.trombonestac.r3",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.trombonestac.r4",
+    "sampleId": "factory.vsco.trombonestac.r4",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.trombonestac.r5",
+    "sampleId": "factory.vsco.trombonestac.r5",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 38,
+    "maxPitch": 43,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.trombonestac.r6",
+    "sampleId": "factory.vsco.trombonestac.r6",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 50,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.trombonestac.r7",
+    "sampleId": "factory.vsco.trombonestac.r7",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 64,
+    "maxPitch": 70,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.trombonestac.r8",
+    "sampleId": "factory.vsco.trombonestac.r8",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 34,
+    "maxPitch": 37,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.trombonestac.r9",
+    "sampleId": "factory.vsco.trombonestac.r9",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 44,
+    "maxPitch": 49,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.trombonestac.r10",
+    "sampleId": "factory.vsco.trombonestac.r10",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.trombonestac.r11",
+    "sampleId": "factory.vsco.trombonestac.r11",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.trombonestac.r12",
+    "sampleId": "factory.vsco.trombonestac.r12",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 38,
+    "maxPitch": 43,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.trombonestac.r13",
+    "sampleId": "factory.vsco.trombonestac.r13",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 50,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.trombonestac.r14",
+    "sampleId": "factory.vsco.trombonestac.r14",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 64,
+    "maxPitch": 70,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.trombonestac.r15",
+    "sampleId": "factory.vsco.trombonestac.r15",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 34,
+    "maxPitch": 37,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.trombonestac.r16",
+    "sampleId": "factory.vsco.trombonestac.r16",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 44,
+    "maxPitch": 49,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.trombonestac.r17",
+    "sampleId": "factory.vsco.trombonestac.r17",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.trombonestac.r18",
+    "sampleId": "factory.vsco.trombonestac.r18",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.trombonestac.r19",
+    "sampleId": "factory.vsco.trombonestac.r19",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 38,
+    "maxPitch": 43,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.trombonestac.r20",
+    "sampleId": "factory.vsco.trombonestac.r20",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 50,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.trombonestac.r21",
+    "sampleId": "factory.vsco.trombonestac.r21",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 64,
+    "maxPitch": 70,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.trombonestac.r22",
+    "sampleId": "factory.vsco.trombonestac.r22",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 34,
+    "maxPitch": 37,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.trombonestac.r23",
+    "sampleId": "factory.vsco.trombonestac.r23",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 44,
+    "maxPitch": 49,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.trombonestac.r24",
+    "sampleId": "factory.vsco.trombonestac.r24",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.trombonestac.r25",
+    "sampleId": "factory.vsco.trombonestac.r25",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.trombonestac.r26",
+    "sampleId": "factory.vsco.trombonestac.r26",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 38,
+    "maxPitch": 43,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.trombonestac.r27",
+    "sampleId": "factory.vsco.trombonestac.r27",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 50,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.trombonestac.r28",
+    "sampleId": "factory.vsco.trombonestac.r28",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 70,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.trombonestac.r29",
+    "sampleId": "factory.vsco.trombonestac.r29",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 34,
+    "maxPitch": 37,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.trombonestac.r30",
+    "sampleId": "factory.vsco.trombonestac.r30",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 44,
+    "maxPitch": 49,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.trombonestac.r31",
+    "sampleId": "factory.vsco.trombonestac.r31",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.trombonestac.r32",
+    "sampleId": "factory.vsco.trombonestac.r32",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.trombonestac.r33",
+    "sampleId": "factory.vsco.trombonestac.r33",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 38,
+    "maxPitch": 43,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.trombonestac.r34",
+    "sampleId": "factory.vsco.trombonestac.r34",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 50,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.trombonestac.r35",
+    "sampleId": "factory.vsco.trombonestac.r35",
+    "min": 0,
+    "max": 0.2440944881889764,
+    "minPitch": 64,
+    "maxPitch": 70,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.trombonestac.r36",
+    "sampleId": "factory.vsco.trombonestac.r36",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 34,
+    "maxPitch": 37,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.trombonestac.r37",
+    "sampleId": "factory.vsco.trombonestac.r37",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 44,
+    "maxPitch": 49,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.trombonestac.r38",
+    "sampleId": "factory.vsco.trombonestac.r38",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.trombonestac.r39",
+    "sampleId": "factory.vsco.trombonestac.r39",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.trombonestac.r40",
+    "sampleId": "factory.vsco.trombonestac.r40",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 38,
+    "maxPitch": 43,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.trombonestac.r41",
+    "sampleId": "factory.vsco.trombonestac.r41",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 50,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.trombonestac.r42",
+    "sampleId": "factory.vsco.trombonestac.r42",
+    "min": 0.2440944881889764,
+    "max": 0.49606299212598426,
+    "minPitch": 64,
+    "maxPitch": 70,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.trombonestac.r43",
+    "sampleId": "factory.vsco.trombonestac.r43",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 34,
+    "maxPitch": 37,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.trombonestac.r44",
+    "sampleId": "factory.vsco.trombonestac.r44",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 44,
+    "maxPitch": 49,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.trombonestac.r45",
+    "sampleId": "factory.vsco.trombonestac.r45",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.trombonestac.r46",
+    "sampleId": "factory.vsco.trombonestac.r46",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.trombonestac.r47",
+    "sampleId": "factory.vsco.trombonestac.r47",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 38,
+    "maxPitch": 43,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.trombonestac.r48",
+    "sampleId": "factory.vsco.trombonestac.r48",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 50,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.trombonestac.r49",
+    "sampleId": "factory.vsco.trombonestac.r49",
+    "min": 0.49606299212598426,
+    "max": 0.7480314960629921,
+    "minPitch": 64,
+    "maxPitch": 70,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.trombonestac.r50",
+    "sampleId": "factory.vsco.trombonestac.r50",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 34,
+    "maxPitch": 37,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.trombonestac.r51",
+    "sampleId": "factory.vsco.trombonestac.r51",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 44,
+    "maxPitch": 49,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.trombonestac.r52",
+    "sampleId": "factory.vsco.trombonestac.r52",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.trombonestac.r53",
+    "sampleId": "factory.vsco.trombonestac.r53",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 38,
+    "maxPitch": 43,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.trombonestac.r54",
+    "sampleId": "factory.vsco.trombonestac.r54",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 50,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.trombonestac.r55",
+    "sampleId": "factory.vsco.trombonestac.r55",
+    "min": 0.7480314960629921,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 70,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.trombonesus.r1",
+    "sampleId": "factory.vsco.trombonesus.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 34,
+    "maxPitch": 35,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.trombonesus.r2",
+    "sampleId": "factory.vsco.trombonesus.r2",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 44,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.trombonesus.r3",
+    "sampleId": "factory.vsco.trombonesus.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 36,
+    "maxPitch": 37,
+    "root": 37
+  },
+  {
+    "id": "layer.vsco.trombonesus.r4",
+    "sampleId": "factory.vsco.trombonesus.r4",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 61,
+    "maxPitch": 61,
+    "root": 61
+  },
+  {
+    "id": "layer.vsco.trombonesus.r5",
+    "sampleId": "factory.vsco.trombonesus.r5",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 57,
+    "maxPitch": 60,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.trombonesus.r6",
+    "sampleId": "factory.vsco.trombonesus.r6",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 38,
+    "maxPitch": 39,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.trombonesus.r7",
+    "sampleId": "factory.vsco.trombonesus.r7",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 62,
+    "maxPitch": 63,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.trombonesus.r8",
+    "sampleId": "factory.vsco.trombonesus.r8",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.trombonesus.r9",
+    "sampleId": "factory.vsco.trombonesus.r9",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 40,
+    "maxPitch": 43,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.trombonesus.r10",
+    "sampleId": "factory.vsco.trombonesus.r10",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 52,
+    "maxPitch": 56,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.trombonesus.r11",
+    "sampleId": "factory.vsco.trombonesus.r11",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 64,
+    "maxPitch": 65,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.trombonesus.r12",
+    "sampleId": "factory.vsco.trombonesus.r12",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 34,
+    "maxPitch": 35,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.trombonesus.r13",
+    "sampleId": "factory.vsco.trombonesus.r13",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 44,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.trombonesus.r14",
+    "sampleId": "factory.vsco.trombonesus.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 36,
+    "maxPitch": 37,
+    "root": 37
+  },
+  {
+    "id": "layer.vsco.trombonesus.r15",
+    "sampleId": "factory.vsco.trombonesus.r15",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 61,
+    "maxPitch": 61,
+    "root": 61
+  },
+  {
+    "id": "layer.vsco.trombonesus.r16",
+    "sampleId": "factory.vsco.trombonesus.r16",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 57,
+    "maxPitch": 60,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.trombonesus.r17",
+    "sampleId": "factory.vsco.trombonesus.r17",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 38,
+    "maxPitch": 39,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.trombonesus.r18",
+    "sampleId": "factory.vsco.trombonesus.r18",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 62,
+    "maxPitch": 63,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.trombonesus.r19",
+    "sampleId": "factory.vsco.trombonesus.r19",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.trombonesus.r20",
+    "sampleId": "factory.vsco.trombonesus.r20",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 40,
+    "maxPitch": 43,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.trombonesus.r21",
+    "sampleId": "factory.vsco.trombonesus.r21",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 52,
+    "maxPitch": 56,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.trombonesus.r22",
+    "sampleId": "factory.vsco.trombonesus.r22",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 64,
+    "maxPitch": 65,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.trombonesus.r23",
+    "sampleId": "factory.vsco.trombonesus.r23",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 44,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.trombonesus.r24",
+    "sampleId": "factory.vsco.trombonesus.r24",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 61,
+    "maxPitch": 61,
+    "root": 61
+  },
+  {
+    "id": "layer.vsco.trombonesus.r25",
+    "sampleId": "factory.vsco.trombonesus.r25",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 57,
+    "maxPitch": 60,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.trombonesus.r26",
+    "sampleId": "factory.vsco.trombonesus.r26",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 38,
+    "maxPitch": 39,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.trombonesus.r27",
+    "sampleId": "factory.vsco.trombonesus.r27",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 63,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.trombonesus.r28",
+    "sampleId": "factory.vsco.trombonesus.r28",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.trombonesus.r29",
+    "sampleId": "factory.vsco.trombonesus.r29",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 40,
+    "maxPitch": 43,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.trombonesus.r30",
+    "sampleId": "factory.vsco.trombonesus.r30",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 56,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.trombonesus.r31",
+    "sampleId": "factory.vsco.trombonesus.r31",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 65,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.trombonevib.r1",
+    "sampleId": "factory.vsco.trombonevib.r1",
+    "min": 0,
+    "max": 1,
+    "minPitch": 45,
+    "maxPitch": 46,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.trombonevib.r2",
+    "sampleId": "factory.vsco.trombonevib.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 57,
+    "maxPitch": 58,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.trombonevib.r3",
+    "sampleId": "factory.vsco.trombonevib.r3",
+    "min": 0,
+    "max": 1,
+    "minPitch": 47,
+    "maxPitch": 49,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.trombonevib.r4",
+    "sampleId": "factory.vsco.trombonevib.r4",
+    "min": 0,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 60,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.trombonevib.r5",
+    "sampleId": "factory.vsco.trombonevib.r5",
+    "min": 0,
+    "max": 1,
+    "minPitch": 50,
+    "maxPitch": 51,
+    "root": 51
+  },
+  {
+    "id": "layer.vsco.trombonevib.r6",
+    "sampleId": "factory.vsco.trombonevib.r6",
+    "min": 0,
+    "max": 1,
+    "minPitch": 63,
+    "maxPitch": 67,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.trombonevib.r7",
+    "sampleId": "factory.vsco.trombonevib.r7",
+    "min": 0,
+    "max": 1,
+    "minPitch": 61,
+    "maxPitch": 62,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.trombonevib.r8",
+    "sampleId": "factory.vsco.trombonevib.r8",
+    "min": 0,
+    "max": 1,
+    "minPitch": 41,
+    "maxPitch": 42,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.trombonevib.r9",
+    "sampleId": "factory.vsco.trombonevib.r9",
+    "min": 0,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.trombonevib.r10",
+    "sampleId": "factory.vsco.trombonevib.r10",
+    "min": 0,
+    "max": 1,
+    "minPitch": 43,
+    "maxPitch": 44,
+    "root": 44
+  },
+  {
+    "id": "layer.vsco.trombonevib.r11",
+    "sampleId": "factory.vsco.trombonevib.r11",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 55,
+    "maxPitch": 56,
+    "root": 56
+  },
+  {
+    "id": "layer.vsco.trombonevib.r12",
+    "sampleId": "factory.vsco.trombonevib.r12",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 56,
+    "root": 56
+  },
+  {
+    "id": "layer.vsco.trumpetharmonmutesus.r1",
+    "sampleId": "factory.vsco.trumpetharmonmutesus.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 58,
+    "maxPitch": 58,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.trumpetharmonmutesus.r2",
+    "sampleId": "factory.vsco.trumpetharmonmutesus.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 69,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.trumpetharmonmutesus.r3",
+    "sampleId": "factory.vsco.trumpetharmonmutesus.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 79,
+    "maxPitch": 84,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.trumpetharmonmutesus.r4",
+    "sampleId": "factory.vsco.trumpetharmonmutesus.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.trumpetharmonmutesus.r5",
+    "sampleId": "factory.vsco.trumpetharmonmutesus.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.trumpetharmonmutesus.r6",
+    "sampleId": "factory.vsco.trumpetharmonmutesus.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.trumpetharmonmutesus.r7",
+    "sampleId": "factory.vsco.trumpetharmonmutesus.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 76,
+    "maxPitch": 78,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.trumpetharmonmutesus.r8",
+    "sampleId": "factory.vsco.trumpetharmonmutesus.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 68
+  },
+  {
+    "id": "layer.vsco.trumpetharmonmutesus.r9",
+    "sampleId": "factory.vsco.trumpetharmonmutesus.r9",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 58,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.trumpetharmonmutesus.r10",
+    "sampleId": "factory.vsco.trumpetharmonmutesus.r10",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 69,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.trumpetharmonmutesus.r11",
+    "sampleId": "factory.vsco.trumpetharmonmutesus.r11",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 79,
+    "maxPitch": 84,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.trumpetharmonmutesus.r12",
+    "sampleId": "factory.vsco.trumpetharmonmutesus.r12",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.trumpetharmonmutesus.r13",
+    "sampleId": "factory.vsco.trumpetharmonmutesus.r13",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 65,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.trumpetharmonmutesus.r14",
+    "sampleId": "factory.vsco.trumpetharmonmutesus.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.trumpetharmonmutesus.r15",
+    "sampleId": "factory.vsco.trumpetharmonmutesus.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 78,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.trumpetharmonmutesus.r16",
+    "sampleId": "factory.vsco.trumpetharmonmutesus.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 68
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r1",
+    "sampleId": "factory.vsco.trumpetstac.r1",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 69,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r2",
+    "sampleId": "factory.vsco.trumpetstac.r2",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r3",
+    "sampleId": "factory.vsco.trumpetstac.r3",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 79,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r4",
+    "sampleId": "factory.vsco.trumpetstac.r4",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r5",
+    "sampleId": "factory.vsco.trumpetstac.r5",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 83,
+    "maxPitch": 84,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r6",
+    "sampleId": "factory.vsco.trumpetstac.r6",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 62,
+    "maxPitch": 63,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r7",
+    "sampleId": "factory.vsco.trumpetstac.r7",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r8",
+    "sampleId": "factory.vsco.trumpetstac.r8",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r9",
+    "sampleId": "factory.vsco.trumpetstac.r9",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 64,
+    "maxPitch": 65,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r10",
+    "sampleId": "factory.vsco.trumpetstac.r10",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 76,
+    "maxPitch": 78,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r11",
+    "sampleId": "factory.vsco.trumpetstac.r11",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r12",
+    "sampleId": "factory.vsco.trumpetstac.r12",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 69,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r13",
+    "sampleId": "factory.vsco.trumpetstac.r13",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r14",
+    "sampleId": "factory.vsco.trumpetstac.r14",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 79,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r15",
+    "sampleId": "factory.vsco.trumpetstac.r15",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r16",
+    "sampleId": "factory.vsco.trumpetstac.r16",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 83,
+    "maxPitch": 84,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r17",
+    "sampleId": "factory.vsco.trumpetstac.r17",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 62,
+    "maxPitch": 63,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r18",
+    "sampleId": "factory.vsco.trumpetstac.r18",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r19",
+    "sampleId": "factory.vsco.trumpetstac.r19",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r20",
+    "sampleId": "factory.vsco.trumpetstac.r20",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 64,
+    "maxPitch": 65,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r21",
+    "sampleId": "factory.vsco.trumpetstac.r21",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 76,
+    "maxPitch": 78,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r22",
+    "sampleId": "factory.vsco.trumpetstac.r22",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r23",
+    "sampleId": "factory.vsco.trumpetstac.r23",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 69,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r24",
+    "sampleId": "factory.vsco.trumpetstac.r24",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r25",
+    "sampleId": "factory.vsco.trumpetstac.r25",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 79,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r26",
+    "sampleId": "factory.vsco.trumpetstac.r26",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r27",
+    "sampleId": "factory.vsco.trumpetstac.r27",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 83,
+    "maxPitch": 84,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r28",
+    "sampleId": "factory.vsco.trumpetstac.r28",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 63,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r29",
+    "sampleId": "factory.vsco.trumpetstac.r29",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r30",
+    "sampleId": "factory.vsco.trumpetstac.r30",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r31",
+    "sampleId": "factory.vsco.trumpetstac.r31",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 65,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r32",
+    "sampleId": "factory.vsco.trumpetstac.r32",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 78,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r33",
+    "sampleId": "factory.vsco.trumpetstac.r33",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r34",
+    "sampleId": "factory.vsco.trumpetstac.r34",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 69,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r35",
+    "sampleId": "factory.vsco.trumpetstac.r35",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r36",
+    "sampleId": "factory.vsco.trumpetstac.r36",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 79,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r37",
+    "sampleId": "factory.vsco.trumpetstac.r37",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r38",
+    "sampleId": "factory.vsco.trumpetstac.r38",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 83,
+    "maxPitch": 84,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r39",
+    "sampleId": "factory.vsco.trumpetstac.r39",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 62,
+    "maxPitch": 63,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r40",
+    "sampleId": "factory.vsco.trumpetstac.r40",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r41",
+    "sampleId": "factory.vsco.trumpetstac.r41",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r42",
+    "sampleId": "factory.vsco.trumpetstac.r42",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 64,
+    "maxPitch": 65,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r43",
+    "sampleId": "factory.vsco.trumpetstac.r43",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 76,
+    "maxPitch": 78,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r44",
+    "sampleId": "factory.vsco.trumpetstac.r44",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r45",
+    "sampleId": "factory.vsco.trumpetstac.r45",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 69,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r46",
+    "sampleId": "factory.vsco.trumpetstac.r46",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r47",
+    "sampleId": "factory.vsco.trumpetstac.r47",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 79,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r48",
+    "sampleId": "factory.vsco.trumpetstac.r48",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r49",
+    "sampleId": "factory.vsco.trumpetstac.r49",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 83,
+    "maxPitch": 84,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r50",
+    "sampleId": "factory.vsco.trumpetstac.r50",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 62,
+    "maxPitch": 63,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r51",
+    "sampleId": "factory.vsco.trumpetstac.r51",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r52",
+    "sampleId": "factory.vsco.trumpetstac.r52",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r53",
+    "sampleId": "factory.vsco.trumpetstac.r53",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 64,
+    "maxPitch": 65,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r54",
+    "sampleId": "factory.vsco.trumpetstac.r54",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 76,
+    "maxPitch": 78,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r55",
+    "sampleId": "factory.vsco.trumpetstac.r55",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r56",
+    "sampleId": "factory.vsco.trumpetstac.r56",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 69,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r57",
+    "sampleId": "factory.vsco.trumpetstac.r57",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r58",
+    "sampleId": "factory.vsco.trumpetstac.r58",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 79,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r59",
+    "sampleId": "factory.vsco.trumpetstac.r59",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r60",
+    "sampleId": "factory.vsco.trumpetstac.r60",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 83,
+    "maxPitch": 84,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r61",
+    "sampleId": "factory.vsco.trumpetstac.r61",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 63,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r62",
+    "sampleId": "factory.vsco.trumpetstac.r62",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r63",
+    "sampleId": "factory.vsco.trumpetstac.r63",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r64",
+    "sampleId": "factory.vsco.trumpetstac.r64",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 65,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r65",
+    "sampleId": "factory.vsco.trumpetstac.r65",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 78,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.trumpetstac.r66",
+    "sampleId": "factory.vsco.trumpetstac.r66",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.trumpetstraightmutesus.r1",
+    "sampleId": "factory.vsco.trumpetstraightmutesus.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 58,
+    "maxPitch": 58,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.trumpetstraightmutesus.r2",
+    "sampleId": "factory.vsco.trumpetstraightmutesus.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 69,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.trumpetstraightmutesus.r3",
+    "sampleId": "factory.vsco.trumpetstraightmutesus.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 79,
+    "maxPitch": 84,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.trumpetstraightmutesus.r4",
+    "sampleId": "factory.vsco.trumpetstraightmutesus.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 59,
+    "maxPitch": 60,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.trumpetstraightmutesus.r5",
+    "sampleId": "factory.vsco.trumpetstraightmutesus.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 61,
+    "maxPitch": 64,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.trumpetstraightmutesus.r6",
+    "sampleId": "factory.vsco.trumpetstraightmutesus.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.trumpetstraightmutesus.r7",
+    "sampleId": "factory.vsco.trumpetstraightmutesus.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 76,
+    "maxPitch": 78,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.trumpetstraightmutesus.r8",
+    "sampleId": "factory.vsco.trumpetstraightmutesus.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 65,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.trumpetstraightmutesus.r9",
+    "sampleId": "factory.vsco.trumpetstraightmutesus.r9",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 58,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.trumpetstraightmutesus.r10",
+    "sampleId": "factory.vsco.trumpetstraightmutesus.r10",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 69,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.trumpetstraightmutesus.r11",
+    "sampleId": "factory.vsco.trumpetstraightmutesus.r11",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 79,
+    "maxPitch": 84,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.trumpetstraightmutesus.r12",
+    "sampleId": "factory.vsco.trumpetstraightmutesus.r12",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 60,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.trumpetstraightmutesus.r13",
+    "sampleId": "factory.vsco.trumpetstraightmutesus.r13",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 61,
+    "maxPitch": 64,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.trumpetstraightmutesus.r14",
+    "sampleId": "factory.vsco.trumpetstraightmutesus.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.trumpetstraightmutesus.r15",
+    "sampleId": "factory.vsco.trumpetstraightmutesus.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 78,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.trumpetstraightmutesus.r16",
+    "sampleId": "factory.vsco.trumpetstraightmutesus.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 65,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.trumpetsus.r1",
+    "sampleId": "factory.vsco.trumpetsus.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 69,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.trumpetsus.r2",
+    "sampleId": "factory.vsco.trumpetsus.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.trumpetsus.r3",
+    "sampleId": "factory.vsco.trumpetsus.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 79,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.trumpetsus.r4",
+    "sampleId": "factory.vsco.trumpetsus.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.trumpetsus.r5",
+    "sampleId": "factory.vsco.trumpetsus.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 83,
+    "maxPitch": 84,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.trumpetsus.r6",
+    "sampleId": "factory.vsco.trumpetsus.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 62,
+    "maxPitch": 64,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.trumpetsus.r7",
+    "sampleId": "factory.vsco.trumpetsus.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.trumpetsus.r8",
+    "sampleId": "factory.vsco.trumpetsus.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.trumpetsus.r9",
+    "sampleId": "factory.vsco.trumpetsus.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 76,
+    "maxPitch": 78,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.trumpetsus.r10",
+    "sampleId": "factory.vsco.trumpetsus.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 65,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.trumpetsus.r11",
+    "sampleId": "factory.vsco.trumpetsus.r11",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 69,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.trumpetsus.r12",
+    "sampleId": "factory.vsco.trumpetsus.r12",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.trumpetsus.r13",
+    "sampleId": "factory.vsco.trumpetsus.r13",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 79,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.trumpetsus.r14",
+    "sampleId": "factory.vsco.trumpetsus.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.trumpetsus.r15",
+    "sampleId": "factory.vsco.trumpetsus.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 83,
+    "maxPitch": 84,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.trumpetsus.r16",
+    "sampleId": "factory.vsco.trumpetsus.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 64,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.trumpetsus.r17",
+    "sampleId": "factory.vsco.trumpetsus.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.trumpetsus.r18",
+    "sampleId": "factory.vsco.trumpetsus.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.trumpetsus.r19",
+    "sampleId": "factory.vsco.trumpetsus.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 78,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.trumpetsus.r20",
+    "sampleId": "factory.vsco.trumpetsus.r20",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 65,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.trumpetsusvib.r1",
+    "sampleId": "factory.vsco.trumpetsusvib.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 69,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.trumpetsusvib.r2",
+    "sampleId": "factory.vsco.trumpetsusvib.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.trumpetsusvib.r3",
+    "sampleId": "factory.vsco.trumpetsusvib.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 79,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.trumpetsusvib.r4",
+    "sampleId": "factory.vsco.trumpetsusvib.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.trumpetsusvib.r5",
+    "sampleId": "factory.vsco.trumpetsusvib.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 83,
+    "maxPitch": 84,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.trumpetsusvib.r6",
+    "sampleId": "factory.vsco.trumpetsusvib.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 62,
+    "maxPitch": 63,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.trumpetsusvib.r7",
+    "sampleId": "factory.vsco.trumpetsusvib.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.trumpetsusvib.r8",
+    "sampleId": "factory.vsco.trumpetsusvib.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.trumpetsusvib.r9",
+    "sampleId": "factory.vsco.trumpetsusvib.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 64,
+    "maxPitch": 65,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.trumpetsusvib.r10",
+    "sampleId": "factory.vsco.trumpetsusvib.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 76,
+    "maxPitch": 78,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.trumpetsusvib.r11",
+    "sampleId": "factory.vsco.trumpetsusvib.r11",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.trumpetsusvib.r12",
+    "sampleId": "factory.vsco.trumpetsusvib.r12",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 69,
+    "maxPitch": 71,
+    "root": 70
+  },
+  {
+    "id": "layer.vsco.trumpetsusvib.r13",
+    "sampleId": "factory.vsco.trumpetsusvib.r13",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 58,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.trumpetsusvib.r14",
+    "sampleId": "factory.vsco.trumpetsusvib.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 79,
+    "maxPitch": 82,
+    "root": 81
+  },
+  {
+    "id": "layer.vsco.trumpetsusvib.r15",
+    "sampleId": "factory.vsco.trumpetsusvib.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 59,
+    "maxPitch": 61,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.trumpetsusvib.r16",
+    "sampleId": "factory.vsco.trumpetsusvib.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 83,
+    "maxPitch": 84,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.trumpetsusvib.r17",
+    "sampleId": "factory.vsco.trumpetsusvib.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 62,
+    "maxPitch": 63,
+    "root": 63
+  },
+  {
+    "id": "layer.vsco.trumpetsusvib.r18",
+    "sampleId": "factory.vsco.trumpetsusvib.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 72,
+    "maxPitch": 75,
+    "root": 74
+  },
+  {
+    "id": "layer.vsco.trumpetsusvib.r19",
+    "sampleId": "factory.vsco.trumpetsusvib.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 54,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.trumpetsusvib.r20",
+    "sampleId": "factory.vsco.trumpetsusvib.r20",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 65,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.trumpetsusvib.r21",
+    "sampleId": "factory.vsco.trumpetsusvib.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 78,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.trumpetsusvib.r22",
+    "sampleId": "factory.vsco.trumpetsusvib.r22",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 66,
+    "maxPitch": 68,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.tubastac.r1",
+    "sampleId": "factory.vsco.tubastac.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 29,
+    "maxPitch": 36,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.tubastac.r2",
+    "sampleId": "factory.vsco.tubastac.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 44,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.tubastac.r3",
+    "sampleId": "factory.vsco.tubastac.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.tubastac.r4",
+    "sampleId": "factory.vsco.tubastac.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 37,
+    "maxPitch": 39,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.tubastac.r5",
+    "sampleId": "factory.vsco.tubastac.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.tubastac.r6",
+    "sampleId": "factory.vsco.tubastac.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 60,
+    "maxPitch": 62,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.tubastac.r7",
+    "sampleId": "factory.vsco.tubastac.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 40,
+    "maxPitch": 43,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.tubastac.r8",
+    "sampleId": "factory.vsco.tubastac.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 52,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.tubastac.r9",
+    "sampleId": "factory.vsco.tubastac.r9",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 29,
+    "maxPitch": 36,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.tubastac.r10",
+    "sampleId": "factory.vsco.tubastac.r10",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 44,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.tubastac.r11",
+    "sampleId": "factory.vsco.tubastac.r11",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.tubastac.r12",
+    "sampleId": "factory.vsco.tubastac.r12",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 37,
+    "maxPitch": 39,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.tubastac.r13",
+    "sampleId": "factory.vsco.tubastac.r13",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.tubastac.r14",
+    "sampleId": "factory.vsco.tubastac.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 60,
+    "maxPitch": 62,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.tubastac.r15",
+    "sampleId": "factory.vsco.tubastac.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 40,
+    "maxPitch": 43,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.tubastac.r16",
+    "sampleId": "factory.vsco.tubastac.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.tubastac.r17",
+    "sampleId": "factory.vsco.tubastac.r17",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 29,
+    "maxPitch": 36,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.tubastac.r18",
+    "sampleId": "factory.vsco.tubastac.r18",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 44,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.tubastac.r19",
+    "sampleId": "factory.vsco.tubastac.r19",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.tubastac.r20",
+    "sampleId": "factory.vsco.tubastac.r20",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 37,
+    "maxPitch": 39,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.tubastac.r21",
+    "sampleId": "factory.vsco.tubastac.r21",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.tubastac.r22",
+    "sampleId": "factory.vsco.tubastac.r22",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 60,
+    "maxPitch": 62,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.tubastac.r23",
+    "sampleId": "factory.vsco.tubastac.r23",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 40,
+    "maxPitch": 43,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.tubastac.r24",
+    "sampleId": "factory.vsco.tubastac.r24",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 52,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.tubastac.r25",
+    "sampleId": "factory.vsco.tubastac.r25",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 29,
+    "maxPitch": 36,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.tubastac.r26",
+    "sampleId": "factory.vsco.tubastac.r26",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 44,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.tubastac.r27",
+    "sampleId": "factory.vsco.tubastac.r27",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.tubastac.r28",
+    "sampleId": "factory.vsco.tubastac.r28",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 37,
+    "maxPitch": 39,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.tubastac.r29",
+    "sampleId": "factory.vsco.tubastac.r29",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.tubastac.r30",
+    "sampleId": "factory.vsco.tubastac.r30",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 60,
+    "maxPitch": 62,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.tubastac.r31",
+    "sampleId": "factory.vsco.tubastac.r31",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 40,
+    "maxPitch": 43,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.tubastac.r32",
+    "sampleId": "factory.vsco.tubastac.r32",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.tubastac.r33",
+    "sampleId": "factory.vsco.tubastac.r33",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 29,
+    "maxPitch": 36,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.tubastac.r34",
+    "sampleId": "factory.vsco.tubastac.r34",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 44,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.tubastac.r35",
+    "sampleId": "factory.vsco.tubastac.r35",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.tubastac.r36",
+    "sampleId": "factory.vsco.tubastac.r36",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 37,
+    "maxPitch": 39,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.tubastac.r37",
+    "sampleId": "factory.vsco.tubastac.r37",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.tubastac.r38",
+    "sampleId": "factory.vsco.tubastac.r38",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 60,
+    "maxPitch": 62,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.tubastac.r39",
+    "sampleId": "factory.vsco.tubastac.r39",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 40,
+    "maxPitch": 43,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.tubastac.r40",
+    "sampleId": "factory.vsco.tubastac.r40",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 52,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.tubastac.r41",
+    "sampleId": "factory.vsco.tubastac.r41",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 29,
+    "maxPitch": 36,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.tubastac.r42",
+    "sampleId": "factory.vsco.tubastac.r42",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 44,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.tubastac.r43",
+    "sampleId": "factory.vsco.tubastac.r43",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.tubastac.r44",
+    "sampleId": "factory.vsco.tubastac.r44",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 37,
+    "maxPitch": 39,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.tubastac.r45",
+    "sampleId": "factory.vsco.tubastac.r45",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.tubastac.r46",
+    "sampleId": "factory.vsco.tubastac.r46",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 60,
+    "maxPitch": 62,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.tubastac.r47",
+    "sampleId": "factory.vsco.tubastac.r47",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 40,
+    "maxPitch": 43,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.tubastac.r48",
+    "sampleId": "factory.vsco.tubastac.r48",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.tubastac.r49",
+    "sampleId": "factory.vsco.tubastac.r49",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 29,
+    "maxPitch": 36,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.tubastac.r50",
+    "sampleId": "factory.vsco.tubastac.r50",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 44,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.tubastac.r51",
+    "sampleId": "factory.vsco.tubastac.r51",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.tubastac.r52",
+    "sampleId": "factory.vsco.tubastac.r52",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 37,
+    "maxPitch": 39,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.tubastac.r53",
+    "sampleId": "factory.vsco.tubastac.r53",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.tubastac.r54",
+    "sampleId": "factory.vsco.tubastac.r54",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 60,
+    "maxPitch": 62,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.tubastac.r55",
+    "sampleId": "factory.vsco.tubastac.r55",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 40,
+    "maxPitch": 43,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.tubastac.r56",
+    "sampleId": "factory.vsco.tubastac.r56",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 52,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.tubastac.r57",
+    "sampleId": "factory.vsco.tubastac.r57",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 29,
+    "maxPitch": 36,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.tubastac.r58",
+    "sampleId": "factory.vsco.tubastac.r58",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 44,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.tubastac.r59",
+    "sampleId": "factory.vsco.tubastac.r59",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.tubastac.r60",
+    "sampleId": "factory.vsco.tubastac.r60",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 37,
+    "maxPitch": 39,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.tubastac.r61",
+    "sampleId": "factory.vsco.tubastac.r61",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.tubastac.r62",
+    "sampleId": "factory.vsco.tubastac.r62",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 60,
+    "maxPitch": 62,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.tubastac.r63",
+    "sampleId": "factory.vsco.tubastac.r63",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 40,
+    "maxPitch": 43,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.tubastac.r64",
+    "sampleId": "factory.vsco.tubastac.r64",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.tubasus.r1",
+    "sampleId": "factory.vsco.tubasus.r1",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 32,
+    "maxPitch": 36,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.tubasus.r2",
+    "sampleId": "factory.vsco.tubasus.r2",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 44,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.tubasus.r3",
+    "sampleId": "factory.vsco.tubasus.r3",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.tubasus.r4",
+    "sampleId": "factory.vsco.tubasus.r4",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 37,
+    "maxPitch": 39,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.tubasus.r5",
+    "sampleId": "factory.vsco.tubasus.r5",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.tubasus.r6",
+    "sampleId": "factory.vsco.tubasus.r6",
+    "min": 0,
+    "max": 1,
+    "minPitch": 60,
+    "maxPitch": 62,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.tubasus.r7",
+    "sampleId": "factory.vsco.tubasus.r7",
+    "min": 0,
+    "max": 1,
+    "minPitch": 29,
+    "maxPitch": 31,
+    "root": 29
+  },
+  {
+    "id": "layer.vsco.tubasus.r8",
+    "sampleId": "factory.vsco.tubasus.r8",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 40,
+    "maxPitch": 43,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.tubasus.r9",
+    "sampleId": "factory.vsco.tubasus.r9",
+    "min": 0,
+    "max": 0.33070866141732286,
+    "minPitch": 52,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.tubasus.r10",
+    "sampleId": "factory.vsco.tubasus.r10",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 32,
+    "maxPitch": 36,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.tubasus.r11",
+    "sampleId": "factory.vsco.tubasus.r11",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 44,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.tubasus.r12",
+    "sampleId": "factory.vsco.tubasus.r12",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.tubasus.r13",
+    "sampleId": "factory.vsco.tubasus.r13",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 37,
+    "maxPitch": 39,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.tubasus.r14",
+    "sampleId": "factory.vsco.tubasus.r14",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.tubasus.r15",
+    "sampleId": "factory.vsco.tubasus.r15",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 40,
+    "maxPitch": 43,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.tubasus.r16",
+    "sampleId": "factory.vsco.tubasus.r16",
+    "min": 0.33070866141732286,
+    "max": 0.6614173228346457,
+    "minPitch": 52,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.tubasus.r17",
+    "sampleId": "factory.vsco.tubasus.r17",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 32,
+    "maxPitch": 36,
+    "root": 34
+  },
+  {
+    "id": "layer.vsco.tubasus.r18",
+    "sampleId": "factory.vsco.tubasus.r18",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 44,
+    "maxPitch": 47,
+    "root": 46
+  },
+  {
+    "id": "layer.vsco.tubasus.r19",
+    "sampleId": "factory.vsco.tubasus.r19",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 59,
+    "root": 58
+  },
+  {
+    "id": "layer.vsco.tubasus.r20",
+    "sampleId": "factory.vsco.tubasus.r20",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 37,
+    "maxPitch": 39,
+    "root": 39
+  },
+  {
+    "id": "layer.vsco.tubasus.r21",
+    "sampleId": "factory.vsco.tubasus.r21",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 48,
+    "maxPitch": 51,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.tubasus.r22",
+    "sampleId": "factory.vsco.tubasus.r22",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 40,
+    "maxPitch": 43,
+    "root": 41
+  },
+  {
+    "id": "layer.vsco.tubasus.r23",
+    "sampleId": "factory.vsco.tubasus.r23",
+    "min": 0.6614173228346457,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 55,
+    "root": 53
+  },
+  {
+    "id": "layer.vsco.tubularbells.r1",
+    "sampleId": "factory.vsco.tubularbells.r1",
+    "min": 0,
+    "max": 1,
+    "minPitch": 75,
+    "maxPitch": 79,
+    "root": 77
+  },
+  {
+    "id": "layer.vsco.tubularbells.r2",
+    "sampleId": "factory.vsco.tubularbells.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 60,
+    "maxPitch": 63,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.tubularbells.r3",
+    "sampleId": "factory.vsco.tubularbells.r3",
+    "min": 0,
+    "max": 1,
+    "minPitch": 70,
+    "maxPitch": 74,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.tubularbells.r4",
+    "sampleId": "factory.vsco.tubularbells.r4",
+    "min": 0,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 69,
+    "root": 67
   },
   {
     "id": "layer.vsco.uprightpiano.r1",
@@ -825,2267 +15774,44 @@ export const VSCO_PACK_LAYERS: SampleLayer[] = [
     "root": 108
   },
   {
-    "id": "layer.vsco.gmperc.r1",
-    "sampleId": "factory.vsco.gmperc.r1",
+    "id": "layer.vsco.violaenspizz.r1",
+    "sampleId": "factory.vsco.violaenspizz.r1",
     "min": 0,
-    "max": 1,
-    "minPitch": 32,
-    "maxPitch": 32,
-    "root": 32
-  },
-  {
-    "id": "layer.vsco.gmperc.r2",
-    "sampleId": "factory.vsco.gmperc.r2",
-    "min": 0,
-    "max": 1,
-    "minPitch": 33,
-    "maxPitch": 33,
-    "root": 33
-  },
-  {
-    "id": "layer.vsco.gmperc.r3",
-    "sampleId": "factory.vsco.gmperc.r3",
-    "min": 0,
-    "max": 1,
-    "minPitch": 34,
-    "maxPitch": 34,
-    "root": 34
-  },
-  {
-    "id": "layer.vsco.gmperc.r4",
-    "sampleId": "factory.vsco.gmperc.r4",
-    "min": 0,
-    "max": 1,
-    "minPitch": 35,
-    "maxPitch": 35,
-    "root": 35
-  },
-  {
-    "id": "layer.vsco.gmperc.r5",
-    "sampleId": "factory.vsco.gmperc.r5",
-    "min": 0,
-    "max": 0.14173228346456693,
-    "minPitch": 36,
-    "maxPitch": 36,
-    "root": 36
-  },
-  {
-    "id": "layer.vsco.gmperc.r6",
-    "sampleId": "factory.vsco.gmperc.r6",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 75,
-    "maxPitch": 75,
-    "root": 75
-  },
-  {
-    "id": "layer.vsco.gmperc.r7",
-    "sampleId": "factory.vsco.gmperc.r7",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 63,
-    "maxPitch": 63,
-    "root": 63
-  },
-  {
-    "id": "layer.vsco.gmperc.r8",
-    "sampleId": "factory.vsco.gmperc.r8",
-    "min": 0,
-    "max": 1,
-    "minPitch": 62,
-    "maxPitch": 62,
-    "root": 62
-  },
-  {
-    "id": "layer.vsco.gmperc.r9",
-    "sampleId": "factory.vsco.gmperc.r9",
-    "min": 0,
-    "max": 0.2440944881889764,
-    "minPitch": 56,
-    "maxPitch": 56,
-    "root": 56
-  },
-  {
-    "id": "layer.vsco.gmperc.r10",
-    "sampleId": "factory.vsco.gmperc.r10",
-    "min": 0,
-    "max": 1,
-    "minPitch": 72,
-    "maxPitch": 72,
-    "root": 72
-  },
-  {
-    "id": "layer.vsco.gmperc.r11",
-    "sampleId": "factory.vsco.gmperc.r11",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 76,
-    "maxPitch": 76,
-    "root": 76
-  },
-  {
-    "id": "layer.vsco.gmperc.r12",
-    "sampleId": "factory.vsco.gmperc.r12",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 77,
-    "maxPitch": 77,
-    "root": 77
-  },
-  {
-    "id": "layer.vsco.gmperc.r13",
-    "sampleId": "factory.vsco.gmperc.r13",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 61,
-    "maxPitch": 61,
-    "root": 61
-  },
-  {
-    "id": "layer.vsco.gmperc.r14",
-    "sampleId": "factory.vsco.gmperc.r14",
-    "min": 0,
-    "max": 1,
-    "minPitch": 60,
-    "maxPitch": 60,
-    "root": 60
-  },
-  {
-    "id": "layer.vsco.gmperc.r15",
-    "sampleId": "factory.vsco.gmperc.r15",
-    "min": 0,
-    "max": 1,
-    "minPitch": 69,
-    "maxPitch": 69,
+    "max": 0.49606299212598426,
+    "minPitch": 67,
+    "maxPitch": 70,
     "root": 69
   },
   {
-    "id": "layer.vsco.gmperc.r16",
-    "sampleId": "factory.vsco.gmperc.r16",
-    "min": 0,
-    "max": 1,
-    "minPitch": 70,
-    "maxPitch": 70,
-    "root": 70
-  },
-  {
-    "id": "layer.vsco.gmperc.r17",
-    "sampleId": "factory.vsco.gmperc.r17",
-    "min": 0,
-    "max": 1,
-    "minPitch": 71,
-    "maxPitch": 71,
-    "root": 71
-  },
-  {
-    "id": "layer.vsco.gmperc.r18",
-    "sampleId": "factory.vsco.gmperc.r18",
-    "min": 0,
-    "max": 1,
-    "minPitch": 82,
-    "maxPitch": 82,
-    "root": 82
-  },
-  {
-    "id": "layer.vsco.gmperc.r19",
-    "sampleId": "factory.vsco.gmperc.r19",
-    "min": 0,
-    "max": 0.2440944881889764,
-    "minPitch": 40,
-    "maxPitch": 40,
-    "root": 40
-  },
-  {
-    "id": "layer.vsco.gmperc.r20",
-    "sampleId": "factory.vsco.gmperc.r20",
-    "min": 0,
-    "max": 0.1968503937007874,
-    "minPitch": 38,
-    "maxPitch": 38,
-    "root": 38
-  },
-  {
-    "id": "layer.vsco.gmperc.r21",
-    "sampleId": "factory.vsco.gmperc.r21",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 41,
-    "maxPitch": 41,
-    "root": 41
-  },
-  {
-    "id": "layer.vsco.gmperc.r22",
-    "sampleId": "factory.vsco.gmperc.r22",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 39,
-    "maxPitch": 39,
-    "root": 39
-  },
-  {
-    "id": "layer.vsco.gmperc.r23",
-    "sampleId": "factory.vsco.gmperc.r23",
-    "min": 0,
-    "max": 0.2440944881889764,
-    "minPitch": 37,
-    "maxPitch": 37,
-    "root": 37
-  },
-  {
-    "id": "layer.vsco.gmperc.r24",
-    "sampleId": "factory.vsco.gmperc.r24",
+    "id": "layer.vsco.violaenspizz.r2",
+    "sampleId": "factory.vsco.violaenspizz.r2",
     "min": 0,
     "max": 0.49606299212598426,
-    "minPitch": 54,
-    "maxPitch": 54,
-    "root": 54
+    "minPitch": 57,
+    "maxPitch": 60,
+    "root": 59
   },
   {
-    "id": "layer.vsco.gmperc.r25",
-    "sampleId": "factory.vsco.gmperc.r25",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 55,
-    "maxPitch": 55,
-    "root": 55
-  },
-  {
-    "id": "layer.vsco.gmperc.r26",
-    "sampleId": "factory.vsco.gmperc.r26",
-    "min": 0,
-    "max": 1,
-    "minPitch": 53,
-    "maxPitch": 53,
-    "root": 53
-  },
-  {
-    "id": "layer.vsco.gmperc.r27",
-    "sampleId": "factory.vsco.gmperc.r27",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 78,
-    "maxPitch": 78,
-    "root": 78
-  },
-  {
-    "id": "layer.vsco.gmperc.r28",
-    "sampleId": "factory.vsco.gmperc.r28",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 79,
-    "maxPitch": 79,
-    "root": 79
-  },
-  {
-    "id": "layer.vsco.gmperc.r29",
-    "sampleId": "factory.vsco.gmperc.r29",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 80,
-    "maxPitch": 80,
-    "root": 80
-  },
-  {
-    "id": "layer.vsco.gmperc.r30",
-    "sampleId": "factory.vsco.gmperc.r30",
+    "id": "layer.vsco.violaenspizz.r3",
+    "sampleId": "factory.vsco.violaenspizz.r3",
     "min": 0,
     "max": 0.49606299212598426,
     "minPitch": 81,
-    "maxPitch": 81,
-    "root": 81
-  },
-  {
-    "id": "layer.vsco.gmperc.r31",
-    "sampleId": "factory.vsco.gmperc.r31",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 65,
-    "maxPitch": 65,
-    "root": 65
-  },
-  {
-    "id": "layer.vsco.gmperc.r32",
-    "sampleId": "factory.vsco.gmperc.r32",
-    "min": 0,
-    "max": 1,
-    "minPitch": 64,
-    "maxPitch": 64,
-    "root": 64
-  },
-  {
-    "id": "layer.vsco.gmperc.r33",
-    "sampleId": "factory.vsco.gmperc.r33",
-    "min": 0,
-    "max": 1,
-    "minPitch": 94,
-    "maxPitch": 94,
-    "root": 94
-  },
-  {
-    "id": "layer.vsco.gmperc.r34",
-    "sampleId": "factory.vsco.gmperc.r34",
-    "min": 0.14173228346456693,
-    "max": 0.28346456692913385,
-    "minPitch": 36,
-    "maxPitch": 36,
-    "root": 36
-  },
-  {
-    "id": "layer.vsco.gmperc.r35",
-    "sampleId": "factory.vsco.gmperc.r35",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 75,
-    "maxPitch": 75,
-    "root": 75
-  },
-  {
-    "id": "layer.vsco.gmperc.r36",
-    "sampleId": "factory.vsco.gmperc.r36",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 63,
-    "maxPitch": 63,
-    "root": 63
-  },
-  {
-    "id": "layer.vsco.gmperc.r37",
-    "sampleId": "factory.vsco.gmperc.r37",
-    "min": 0.2440944881889764,
-    "max": 0.49606299212598426,
-    "minPitch": 56,
-    "maxPitch": 56,
-    "root": 56
-  },
-  {
-    "id": "layer.vsco.gmperc.r38",
-    "sampleId": "factory.vsco.gmperc.r38",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 76,
-    "maxPitch": 76,
-    "root": 76
-  },
-  {
-    "id": "layer.vsco.gmperc.r39",
-    "sampleId": "factory.vsco.gmperc.r39",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 77,
-    "maxPitch": 77,
-    "root": 77
-  },
-  {
-    "id": "layer.vsco.gmperc.r40",
-    "sampleId": "factory.vsco.gmperc.r40",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 61,
-    "maxPitch": 61,
-    "root": 61
-  },
-  {
-    "id": "layer.vsco.gmperc.r41",
-    "sampleId": "factory.vsco.gmperc.r41",
-    "min": 0.2440944881889764,
-    "max": 0.49606299212598426,
-    "minPitch": 37,
-    "maxPitch": 37,
-    "root": 37
-  },
-  {
-    "id": "layer.vsco.gmperc.r42",
-    "sampleId": "factory.vsco.gmperc.r42",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 54,
-    "maxPitch": 54,
-    "root": 54
-  },
-  {
-    "id": "layer.vsco.gmperc.r43",
-    "sampleId": "factory.vsco.gmperc.r43",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 55,
-    "maxPitch": 55,
-    "root": 55
-  },
-  {
-    "id": "layer.vsco.gmperc.r44",
-    "sampleId": "factory.vsco.gmperc.r44",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 78,
-    "maxPitch": 78,
-    "root": 78
-  },
-  {
-    "id": "layer.vsco.gmperc.r45",
-    "sampleId": "factory.vsco.gmperc.r45",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 79,
-    "maxPitch": 79,
-    "root": 79
-  },
-  {
-    "id": "layer.vsco.gmperc.r46",
-    "sampleId": "factory.vsco.gmperc.r46",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 80,
-    "maxPitch": 80,
-    "root": 80
-  },
-  {
-    "id": "layer.vsco.gmperc.r47",
-    "sampleId": "factory.vsco.gmperc.r47",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 81,
-    "maxPitch": 81,
-    "root": 81
-  },
-  {
-    "id": "layer.vsco.gmperc.r48",
-    "sampleId": "factory.vsco.gmperc.r48",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 65,
-    "maxPitch": 65,
-    "root": 65
-  },
-  {
-    "id": "layer.vsco.gmperc.r49",
-    "sampleId": "factory.vsco.gmperc.r49",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 88,
-    "maxPitch": 88,
-    "root": 88
-  },
-  {
-    "id": "layer.vsco.gmperc.r50",
-    "sampleId": "factory.vsco.gmperc.r50",
-    "min": 0.28346456692913385,
-    "max": 0.4251968503937008,
-    "minPitch": 36,
-    "maxPitch": 36,
-    "root": 36
-  },
-  {
-    "id": "layer.vsco.gmperc.r51",
-    "sampleId": "factory.vsco.gmperc.r51",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 75,
-    "maxPitch": 75,
-    "root": 75
-  },
-  {
-    "id": "layer.vsco.gmperc.r52",
-    "sampleId": "factory.vsco.gmperc.r52",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 63,
-    "maxPitch": 63,
-    "root": 63
-  },
-  {
-    "id": "layer.vsco.gmperc.r53",
-    "sampleId": "factory.vsco.gmperc.r53",
-    "min": 0.49606299212598426,
-    "max": 0.7480314960629921,
-    "minPitch": 56,
-    "maxPitch": 56,
-    "root": 56
-  },
-  {
-    "id": "layer.vsco.gmperc.r54",
-    "sampleId": "factory.vsco.gmperc.r54",
-    "min": 0,
-    "max": 0.2440944881889764,
-    "minPitch": 49,
-    "maxPitch": 49,
-    "root": 49
-  },
-  {
-    "id": "layer.vsco.gmperc.r55",
-    "sampleId": "factory.vsco.gmperc.r55",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 76,
-    "maxPitch": 76,
-    "root": 76
-  },
-  {
-    "id": "layer.vsco.gmperc.r56",
-    "sampleId": "factory.vsco.gmperc.r56",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 77,
-    "maxPitch": 77,
-    "root": 77
-  },
-  {
-    "id": "layer.vsco.gmperc.r57",
-    "sampleId": "factory.vsco.gmperc.r57",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 61,
-    "maxPitch": 61,
-    "root": 61
-  },
-  {
-    "id": "layer.vsco.gmperc.r58",
-    "sampleId": "factory.vsco.gmperc.r58",
-    "min": 0.2440944881889764,
-    "max": 0.49606299212598426,
-    "minPitch": 40,
-    "maxPitch": 40,
-    "root": 40
-  },
-  {
-    "id": "layer.vsco.gmperc.r59",
-    "sampleId": "factory.vsco.gmperc.r59",
-    "min": 0.1968503937007874,
-    "max": 0.3937007874015748,
-    "minPitch": 38,
-    "maxPitch": 38,
-    "root": 38
-  },
-  {
-    "id": "layer.vsco.gmperc.r60",
-    "sampleId": "factory.vsco.gmperc.r60",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 41,
-    "maxPitch": 41,
-    "root": 41
-  },
-  {
-    "id": "layer.vsco.gmperc.r61",
-    "sampleId": "factory.vsco.gmperc.r61",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 39,
-    "maxPitch": 39,
-    "root": 39
-  },
-  {
-    "id": "layer.vsco.gmperc.r62",
-    "sampleId": "factory.vsco.gmperc.r62",
-    "min": 0.49606299212598426,
-    "max": 0.7480314960629921,
-    "minPitch": 37,
-    "maxPitch": 37,
-    "root": 37
-  },
-  {
-    "id": "layer.vsco.gmperc.r63",
-    "sampleId": "factory.vsco.gmperc.r63",
-    "min": 0,
-    "max": 0.2440944881889764,
-    "minPitch": 59,
-    "maxPitch": 59,
-    "root": 59
-  },
-  {
-    "id": "layer.vsco.gmperc.r64",
-    "sampleId": "factory.vsco.gmperc.r64",
-    "min": 0,
-    "max": 0.2440944881889764,
-    "minPitch": 51,
-    "maxPitch": 51,
-    "root": 51
-  },
-  {
-    "id": "layer.vsco.gmperc.r65",
-    "sampleId": "factory.vsco.gmperc.r65",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 55,
-    "maxPitch": 55,
-    "root": 55
-  },
-  {
-    "id": "layer.vsco.gmperc.r66",
-    "sampleId": "factory.vsco.gmperc.r66",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 65,
-    "maxPitch": 65,
-    "root": 65
-  },
-  {
-    "id": "layer.vsco.gmperc.r67",
-    "sampleId": "factory.vsco.gmperc.r67",
-    "min": 0.4251968503937008,
-    "max": 0.5669291338582677,
-    "minPitch": 36,
-    "maxPitch": 36,
-    "root": 36
-  },
-  {
-    "id": "layer.vsco.gmperc.r68",
-    "sampleId": "factory.vsco.gmperc.r68",
-    "min": 0.7480314960629921,
-    "max": 1,
-    "minPitch": 56,
-    "maxPitch": 56,
-    "root": 56
-  },
-  {
-    "id": "layer.vsco.gmperc.r69",
-    "sampleId": "factory.vsco.gmperc.r69",
-    "min": 0.7480314960629921,
-    "max": 1,
-    "minPitch": 37,
-    "maxPitch": 37,
-    "root": 37
-  },
-  {
-    "id": "layer.vsco.gmperc.r70",
-    "sampleId": "factory.vsco.gmperc.r70",
-    "min": 0.5669291338582677,
-    "max": 0.7086614173228346,
-    "minPitch": 36,
-    "maxPitch": 36,
-    "root": 36
-  },
-  {
-    "id": "layer.vsco.gmperc.r71",
-    "sampleId": "factory.vsco.gmperc.r71",
-    "min": 0.2440944881889764,
-    "max": 0.49606299212598426,
-    "minPitch": 49,
-    "maxPitch": 49,
-    "root": 49
-  },
-  {
-    "id": "layer.vsco.gmperc.r72",
-    "sampleId": "factory.vsco.gmperc.r72",
-    "min": 0.49606299212598426,
-    "max": 0.7480314960629921,
-    "minPitch": 40,
-    "maxPitch": 40,
-    "root": 40
-  },
-  {
-    "id": "layer.vsco.gmperc.r73",
-    "sampleId": "factory.vsco.gmperc.r73",
-    "min": 0.3937007874015748,
-    "max": 0.5984251968503937,
-    "minPitch": 38,
-    "maxPitch": 38,
-    "root": 38
-  },
-  {
-    "id": "layer.vsco.gmperc.r74",
-    "sampleId": "factory.vsco.gmperc.r74",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 41,
-    "maxPitch": 41,
-    "root": 41
-  },
-  {
-    "id": "layer.vsco.gmperc.r75",
-    "sampleId": "factory.vsco.gmperc.r75",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 39,
-    "maxPitch": 39,
-    "root": 39
-  },
-  {
-    "id": "layer.vsco.gmperc.r76",
-    "sampleId": "factory.vsco.gmperc.r76",
-    "min": 0.2440944881889764,
-    "max": 0.49606299212598426,
-    "minPitch": 59,
-    "maxPitch": 59,
-    "root": 59
-  },
-  {
-    "id": "layer.vsco.gmperc.r77",
-    "sampleId": "factory.vsco.gmperc.r77",
-    "min": 0.2440944881889764,
-    "max": 0.49606299212598426,
-    "minPitch": 51,
-    "maxPitch": 51,
-    "root": 51
-  },
-  {
-    "id": "layer.vsco.gmperc.r78",
-    "sampleId": "factory.vsco.gmperc.r78",
-    "min": 0.7086614173228346,
-    "max": 0.8503937007874016,
-    "minPitch": 36,
-    "maxPitch": 36,
-    "root": 36
-  },
-  {
-    "id": "layer.vsco.gmperc.r79",
-    "sampleId": "factory.vsco.gmperc.r79",
-    "min": 0.49606299212598426,
-    "max": 0.7480314960629921,
-    "minPitch": 49,
-    "maxPitch": 49,
-    "root": 49
-  },
-  {
-    "id": "layer.vsco.gmperc.r80",
-    "sampleId": "factory.vsco.gmperc.r80",
-    "min": 0.7480314960629921,
-    "max": 1,
-    "minPitch": 40,
-    "maxPitch": 40,
-    "root": 40
-  },
-  {
-    "id": "layer.vsco.gmperc.r81",
-    "sampleId": "factory.vsco.gmperc.r81",
-    "min": 0.8503937007874016,
-    "max": 1,
-    "minPitch": 36,
-    "maxPitch": 36,
-    "root": 36
-  },
-  {
-    "id": "layer.vsco.gmperc.r82",
-    "sampleId": "factory.vsco.gmperc.r82",
-    "min": 0.5984251968503937,
-    "max": 0.7952755905511811,
-    "minPitch": 38,
-    "maxPitch": 38,
-    "root": 38
-  },
-  {
-    "id": "layer.vsco.gmperc.r83",
-    "sampleId": "factory.vsco.gmperc.r83",
-    "min": 0.49606299212598426,
-    "max": 0.7480314960629921,
-    "minPitch": 59,
-    "maxPitch": 59,
-    "root": 59
-  },
-  {
-    "id": "layer.vsco.gmperc.r84",
-    "sampleId": "factory.vsco.gmperc.r84",
-    "min": 0.49606299212598426,
-    "max": 0.7480314960629921,
-    "minPitch": 51,
-    "maxPitch": 51,
-    "root": 51
-  },
-  {
-    "id": "layer.vsco.gmperc.r85",
-    "sampleId": "factory.vsco.gmperc.r85",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 88,
-    "maxPitch": 88,
-    "root": 88
-  },
-  {
-    "id": "layer.vsco.gmperc.r86",
-    "sampleId": "factory.vsco.gmperc.r86",
-    "min": 0.7480314960629921,
-    "max": 1,
-    "minPitch": 49,
-    "maxPitch": 49,
-    "root": 49
-  },
-  {
-    "id": "layer.vsco.gmperc.r87",
-    "sampleId": "factory.vsco.gmperc.r87",
-    "min": 0.7952755905511811,
-    "max": 1,
-    "minPitch": 38,
-    "maxPitch": 38,
-    "root": 38
-  },
-  {
-    "id": "layer.vsco.gmperc.r88",
-    "sampleId": "factory.vsco.gmperc.r88",
-    "min": 0.7480314960629921,
-    "max": 1,
-    "minPitch": 59,
-    "maxPitch": 59,
-    "root": 59
-  },
-  {
-    "id": "layer.vsco.gmperc.r89",
-    "sampleId": "factory.vsco.gmperc.r89",
-    "min": 0.7480314960629921,
-    "max": 1,
-    "minPitch": 51,
-    "maxPitch": 51,
-    "root": 51
-  },
-  {
-    "id": "layer.vsco.gmperc.r90",
-    "sampleId": "factory.vsco.gmperc.r90",
-    "min": 0,
-    "max": 1,
-    "minPitch": 47,
-    "maxPitch": 47,
-    "root": 47
-  },
-  {
-    "id": "layer.vsco.gmperc.r91",
-    "sampleId": "factory.vsco.gmperc.r91",
-    "min": 0,
-    "max": 1,
-    "minPitch": 48,
-    "maxPitch": 48,
-    "root": 48
-  },
-  {
-    "id": "layer.vsco.gmperc.r92",
-    "sampleId": "factory.vsco.gmperc.r92",
-    "min": 0,
-    "max": 1,
-    "minPitch": 50,
-    "maxPitch": 50,
-    "root": 50
-  },
-  {
-    "id": "layer.vsco.gmperc.r93",
-    "sampleId": "factory.vsco.gmperc.r93",
-    "min": 0,
-    "max": 1,
-    "minPitch": 83,
-    "maxPitch": 83,
+    "maxPitch": 84,
     "root": 83
   },
   {
-    "id": "layer.vsco.gmperc.r94",
-    "sampleId": "factory.vsco.gmperc.r94",
-    "min": 0,
-    "max": 1,
-    "minPitch": 84,
-    "maxPitch": 84,
-    "root": 84
-  },
-  {
-    "id": "layer.vsco.gmperc.r95",
-    "sampleId": "factory.vsco.gmperc.r95",
-    "min": 0,
-    "max": 1,
-    "minPitch": 85,
-    "maxPitch": 85,
-    "root": 85
-  },
-  {
-    "id": "layer.vsco.gmperc.r96",
-    "sampleId": "factory.vsco.gmperc.r96",
-    "min": 0,
-    "max": 1,
-    "minPitch": 86,
-    "maxPitch": 86,
-    "root": 86
-  },
-  {
-    "id": "layer.vsco.gmperc.r97",
-    "sampleId": "factory.vsco.gmperc.r97",
-    "min": 0,
-    "max": 1,
-    "minPitch": 101,
-    "maxPitch": 101,
-    "root": 101
-  },
-  {
-    "id": "layer.vsco.gmperc.r98",
-    "sampleId": "factory.vsco.gmperc.r98",
-    "min": 0,
-    "max": 1,
-    "minPitch": 102,
-    "maxPitch": 102,
-    "root": 102
-  },
-  {
-    "id": "layer.vsco.gmperc.r99",
-    "sampleId": "factory.vsco.gmperc.r99",
-    "min": 0,
-    "max": 1,
-    "minPitch": 103,
-    "maxPitch": 103,
-    "root": 103
-  },
-  {
-    "id": "layer.vsco.gmperc.r100",
-    "sampleId": "factory.vsco.gmperc.r100",
-    "min": 0,
-    "max": 1,
-    "minPitch": 104,
-    "maxPitch": 104,
-    "root": 104
-  },
-  {
-    "id": "layer.vsco.gmperc.r101",
-    "sampleId": "factory.vsco.gmperc.r101",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 67,
-    "maxPitch": 67,
-    "root": 67
-  },
-  {
-    "id": "layer.vsco.gmperc.r102",
-    "sampleId": "factory.vsco.gmperc.r102",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 67,
-    "maxPitch": 67,
-    "root": 67
-  },
-  {
-    "id": "layer.vsco.gmperc.r103",
-    "sampleId": "factory.vsco.gmperc.r103",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 67,
-    "maxPitch": 67,
-    "root": 67
-  },
-  {
-    "id": "layer.vsco.gmperc.r104",
-    "sampleId": "factory.vsco.gmperc.r104",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 68,
-    "maxPitch": 68,
-    "root": 68
-  },
-  {
-    "id": "layer.vsco.gmperc.r105",
-    "sampleId": "factory.vsco.gmperc.r105",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 68,
-    "maxPitch": 68,
-    "root": 68
-  },
-  {
-    "id": "layer.vsco.gmperc.r106",
-    "sampleId": "factory.vsco.gmperc.r106",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 68,
-    "maxPitch": 68,
-    "root": 68
-  },
-  {
-    "id": "layer.vsco.gmperc.r107",
-    "sampleId": "factory.vsco.gmperc.r107",
-    "min": 0,
-    "max": 0.5118110236220472,
-    "minPitch": 42,
-    "maxPitch": 42,
-    "root": 42
-  },
-  {
-    "id": "layer.vsco.gmperc.r108",
-    "sampleId": "factory.vsco.gmperc.r108",
-    "min": 0.5118110236220472,
-    "max": 1,
-    "minPitch": 42,
-    "maxPitch": 42,
-    "root": 42
-  },
-  {
-    "id": "layer.vsco.gmperc.r109",
-    "sampleId": "factory.vsco.gmperc.r109",
-    "min": 0,
-    "max": 0.2677165354330709,
-    "minPitch": 46,
-    "maxPitch": 46,
-    "root": 46
-  },
-  {
-    "id": "layer.vsco.gmperc.r110",
-    "sampleId": "factory.vsco.gmperc.r110",
-    "min": 0.2677165354330709,
-    "max": 0.5118110236220472,
-    "minPitch": 46,
-    "maxPitch": 46,
-    "root": 46
-  },
-  {
-    "id": "layer.vsco.gmperc.r111",
-    "sampleId": "factory.vsco.gmperc.r111",
-    "min": 0.5118110236220472,
-    "max": 0.7716535433070866,
-    "minPitch": 46,
-    "maxPitch": 46,
-    "root": 46
-  },
-  {
-    "id": "layer.vsco.gmperc.r112",
-    "sampleId": "factory.vsco.gmperc.r112",
-    "min": 0.7716535433070866,
-    "max": 1,
-    "minPitch": 46,
-    "maxPitch": 46,
-    "root": 46
-  },
-  {
-    "id": "layer.vsco.gmperc.r113",
-    "sampleId": "factory.vsco.gmperc.r113",
-    "min": 0,
-    "max": 0.14173228346456693,
-    "minPitch": 36,
-    "maxPitch": 36,
-    "root": 36
-  },
-  {
-    "id": "layer.vsco.gmperc.r114",
-    "sampleId": "factory.vsco.gmperc.r114",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 75,
-    "maxPitch": 75,
-    "root": 75
-  },
-  {
-    "id": "layer.vsco.gmperc.r115",
-    "sampleId": "factory.vsco.gmperc.r115",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 63,
-    "maxPitch": 63,
-    "root": 63
-  },
-  {
-    "id": "layer.vsco.gmperc.r116",
-    "sampleId": "factory.vsco.gmperc.r116",
-    "min": 0,
-    "max": 1,
-    "minPitch": 62,
-    "maxPitch": 62,
-    "root": 62
-  },
-  {
-    "id": "layer.vsco.gmperc.r117",
-    "sampleId": "factory.vsco.gmperc.r117",
-    "min": 0,
-    "max": 0.2440944881889764,
-    "minPitch": 56,
-    "maxPitch": 56,
-    "root": 56
-  },
-  {
-    "id": "layer.vsco.gmperc.r118",
-    "sampleId": "factory.vsco.gmperc.r118",
-    "min": 0,
-    "max": 1,
-    "minPitch": 72,
-    "maxPitch": 72,
-    "root": 72
-  },
-  {
-    "id": "layer.vsco.gmperc.r119",
-    "sampleId": "factory.vsco.gmperc.r119",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 76,
-    "maxPitch": 76,
-    "root": 76
-  },
-  {
-    "id": "layer.vsco.gmperc.r120",
-    "sampleId": "factory.vsco.gmperc.r120",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 77,
-    "maxPitch": 77,
-    "root": 77
-  },
-  {
-    "id": "layer.vsco.gmperc.r121",
-    "sampleId": "factory.vsco.gmperc.r121",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 61,
-    "maxPitch": 61,
-    "root": 61
-  },
-  {
-    "id": "layer.vsco.gmperc.r122",
-    "sampleId": "factory.vsco.gmperc.r122",
-    "min": 0,
-    "max": 1,
-    "minPitch": 60,
-    "maxPitch": 60,
-    "root": 60
-  },
-  {
-    "id": "layer.vsco.gmperc.r123",
-    "sampleId": "factory.vsco.gmperc.r123",
-    "min": 0,
-    "max": 1,
-    "minPitch": 69,
-    "maxPitch": 69,
-    "root": 69
-  },
-  {
-    "id": "layer.vsco.gmperc.r124",
-    "sampleId": "factory.vsco.gmperc.r124",
-    "min": 0,
-    "max": 1,
-    "minPitch": 70,
-    "maxPitch": 70,
-    "root": 70
-  },
-  {
-    "id": "layer.vsco.gmperc.r125",
-    "sampleId": "factory.vsco.gmperc.r125",
-    "min": 0,
-    "max": 1,
-    "minPitch": 71,
-    "maxPitch": 71,
-    "root": 71
-  },
-  {
-    "id": "layer.vsco.gmperc.r126",
-    "sampleId": "factory.vsco.gmperc.r126",
-    "min": 0,
-    "max": 1,
-    "minPitch": 82,
-    "maxPitch": 82,
-    "root": 82
-  },
-  {
-    "id": "layer.vsco.gmperc.r127",
-    "sampleId": "factory.vsco.gmperc.r127",
-    "min": 0,
-    "max": 0.2440944881889764,
-    "minPitch": 40,
-    "maxPitch": 40,
-    "root": 40
-  },
-  {
-    "id": "layer.vsco.gmperc.r128",
-    "sampleId": "factory.vsco.gmperc.r128",
-    "min": 0,
-    "max": 0.1968503937007874,
-    "minPitch": 38,
-    "maxPitch": 38,
-    "root": 38
-  },
-  {
-    "id": "layer.vsco.gmperc.r129",
-    "sampleId": "factory.vsco.gmperc.r129",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 41,
-    "maxPitch": 41,
-    "root": 41
-  },
-  {
-    "id": "layer.vsco.gmperc.r130",
-    "sampleId": "factory.vsco.gmperc.r130",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 39,
-    "maxPitch": 39,
-    "root": 39
-  },
-  {
-    "id": "layer.vsco.gmperc.r131",
-    "sampleId": "factory.vsco.gmperc.r131",
-    "min": 0,
-    "max": 0.2440944881889764,
-    "minPitch": 37,
-    "maxPitch": 37,
-    "root": 37
-  },
-  {
-    "id": "layer.vsco.gmperc.r132",
-    "sampleId": "factory.vsco.gmperc.r132",
+    "id": "layer.vsco.violaenspizz.r4",
+    "sampleId": "factory.vsco.violaenspizz.r4",
     "min": 0,
     "max": 0.49606299212598426,
-    "minPitch": 54,
-    "maxPitch": 54,
-    "root": 54
-  },
-  {
-    "id": "layer.vsco.gmperc.r133",
-    "sampleId": "factory.vsco.gmperc.r133",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 55,
-    "maxPitch": 55,
-    "root": 55
-  },
-  {
-    "id": "layer.vsco.gmperc.r134",
-    "sampleId": "factory.vsco.gmperc.r134",
-    "min": 0,
-    "max": 1,
-    "minPitch": 53,
-    "maxPitch": 53,
-    "root": 53
-  },
-  {
-    "id": "layer.vsco.gmperc.r135",
-    "sampleId": "factory.vsco.gmperc.r135",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 78,
-    "maxPitch": 78,
-    "root": 78
-  },
-  {
-    "id": "layer.vsco.gmperc.r136",
-    "sampleId": "factory.vsco.gmperc.r136",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 79,
-    "maxPitch": 79,
-    "root": 79
-  },
-  {
-    "id": "layer.vsco.gmperc.r137",
-    "sampleId": "factory.vsco.gmperc.r137",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 80,
-    "maxPitch": 80,
-    "root": 80
-  },
-  {
-    "id": "layer.vsco.gmperc.r138",
-    "sampleId": "factory.vsco.gmperc.r138",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 81,
-    "maxPitch": 81,
-    "root": 81
-  },
-  {
-    "id": "layer.vsco.gmperc.r139",
-    "sampleId": "factory.vsco.gmperc.r139",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 65,
-    "maxPitch": 65,
-    "root": 65
-  },
-  {
-    "id": "layer.vsco.gmperc.r140",
-    "sampleId": "factory.vsco.gmperc.r140",
-    "min": 0,
-    "max": 1,
-    "minPitch": 64,
-    "maxPitch": 64,
-    "root": 64
-  },
-  {
-    "id": "layer.vsco.gmperc.r141",
-    "sampleId": "factory.vsco.gmperc.r141",
-    "min": 0,
-    "max": 1,
-    "minPitch": 94,
-    "maxPitch": 94,
-    "root": 94
-  },
-  {
-    "id": "layer.vsco.gmperc.r142",
-    "sampleId": "factory.vsco.gmperc.r142",
-    "min": 0.14173228346456693,
-    "max": 0.28346456692913385,
-    "minPitch": 36,
-    "maxPitch": 36,
-    "root": 36
-  },
-  {
-    "id": "layer.vsco.gmperc.r143",
-    "sampleId": "factory.vsco.gmperc.r143",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 75,
-    "maxPitch": 75,
-    "root": 75
-  },
-  {
-    "id": "layer.vsco.gmperc.r144",
-    "sampleId": "factory.vsco.gmperc.r144",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 63,
-    "maxPitch": 63,
-    "root": 63
-  },
-  {
-    "id": "layer.vsco.gmperc.r145",
-    "sampleId": "factory.vsco.gmperc.r145",
-    "min": 0.2440944881889764,
-    "max": 0.49606299212598426,
-    "minPitch": 56,
-    "maxPitch": 56,
-    "root": 56
-  },
-  {
-    "id": "layer.vsco.gmperc.r146",
-    "sampleId": "factory.vsco.gmperc.r146",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 76,
-    "maxPitch": 76,
-    "root": 76
-  },
-  {
-    "id": "layer.vsco.gmperc.r147",
-    "sampleId": "factory.vsco.gmperc.r147",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 77,
-    "maxPitch": 77,
-    "root": 77
-  },
-  {
-    "id": "layer.vsco.gmperc.r148",
-    "sampleId": "factory.vsco.gmperc.r148",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 61,
-    "maxPitch": 61,
-    "root": 61
-  },
-  {
-    "id": "layer.vsco.gmperc.r149",
-    "sampleId": "factory.vsco.gmperc.r149",
-    "min": 0.2440944881889764,
-    "max": 0.49606299212598426,
-    "minPitch": 37,
-    "maxPitch": 37,
-    "root": 37
-  },
-  {
-    "id": "layer.vsco.gmperc.r150",
-    "sampleId": "factory.vsco.gmperc.r150",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 54,
-    "maxPitch": 54,
-    "root": 54
-  },
-  {
-    "id": "layer.vsco.gmperc.r151",
-    "sampleId": "factory.vsco.gmperc.r151",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 55,
-    "maxPitch": 55,
-    "root": 55
-  },
-  {
-    "id": "layer.vsco.gmperc.r152",
-    "sampleId": "factory.vsco.gmperc.r152",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 78,
-    "maxPitch": 78,
-    "root": 78
-  },
-  {
-    "id": "layer.vsco.gmperc.r153",
-    "sampleId": "factory.vsco.gmperc.r153",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 79,
-    "maxPitch": 79,
-    "root": 79
-  },
-  {
-    "id": "layer.vsco.gmperc.r154",
-    "sampleId": "factory.vsco.gmperc.r154",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 80,
-    "maxPitch": 80,
-    "root": 80
-  },
-  {
-    "id": "layer.vsco.gmperc.r155",
-    "sampleId": "factory.vsco.gmperc.r155",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 81,
-    "maxPitch": 81,
-    "root": 81
-  },
-  {
-    "id": "layer.vsco.gmperc.r156",
-    "sampleId": "factory.vsco.gmperc.r156",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 65,
-    "maxPitch": 65,
-    "root": 65
-  },
-  {
-    "id": "layer.vsco.gmperc.r157",
-    "sampleId": "factory.vsco.gmperc.r157",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 88,
-    "maxPitch": 88,
-    "root": 88
-  },
-  {
-    "id": "layer.vsco.gmperc.r158",
-    "sampleId": "factory.vsco.gmperc.r158",
-    "min": 0.28346456692913385,
-    "max": 0.4251968503937008,
-    "minPitch": 36,
-    "maxPitch": 36,
-    "root": 36
-  },
-  {
-    "id": "layer.vsco.gmperc.r159",
-    "sampleId": "factory.vsco.gmperc.r159",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 75,
-    "maxPitch": 75,
-    "root": 75
-  },
-  {
-    "id": "layer.vsco.gmperc.r160",
-    "sampleId": "factory.vsco.gmperc.r160",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 63,
-    "maxPitch": 63,
-    "root": 63
-  },
-  {
-    "id": "layer.vsco.gmperc.r161",
-    "sampleId": "factory.vsco.gmperc.r161",
-    "min": 0.49606299212598426,
-    "max": 0.7480314960629921,
-    "minPitch": 56,
-    "maxPitch": 56,
-    "root": 56
-  },
-  {
-    "id": "layer.vsco.gmperc.r162",
-    "sampleId": "factory.vsco.gmperc.r162",
-    "min": 0,
-    "max": 0.2440944881889764,
-    "minPitch": 49,
-    "maxPitch": 49,
-    "root": 49
-  },
-  {
-    "id": "layer.vsco.gmperc.r163",
-    "sampleId": "factory.vsco.gmperc.r163",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 76,
-    "maxPitch": 76,
-    "root": 76
-  },
-  {
-    "id": "layer.vsco.gmperc.r164",
-    "sampleId": "factory.vsco.gmperc.r164",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 77,
-    "maxPitch": 77,
-    "root": 77
-  },
-  {
-    "id": "layer.vsco.gmperc.r165",
-    "sampleId": "factory.vsco.gmperc.r165",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 61,
-    "maxPitch": 61,
-    "root": 61
-  },
-  {
-    "id": "layer.vsco.gmperc.r166",
-    "sampleId": "factory.vsco.gmperc.r166",
-    "min": 0.2440944881889764,
-    "max": 0.49606299212598426,
-    "minPitch": 40,
-    "maxPitch": 40,
-    "root": 40
-  },
-  {
-    "id": "layer.vsco.gmperc.r167",
-    "sampleId": "factory.vsco.gmperc.r167",
-    "min": 0.1968503937007874,
-    "max": 0.3937007874015748,
-    "minPitch": 38,
-    "maxPitch": 38,
-    "root": 38
-  },
-  {
-    "id": "layer.vsco.gmperc.r168",
-    "sampleId": "factory.vsco.gmperc.r168",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 41,
-    "maxPitch": 41,
-    "root": 41
-  },
-  {
-    "id": "layer.vsco.gmperc.r169",
-    "sampleId": "factory.vsco.gmperc.r169",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 39,
-    "maxPitch": 39,
-    "root": 39
-  },
-  {
-    "id": "layer.vsco.gmperc.r170",
-    "sampleId": "factory.vsco.gmperc.r170",
-    "min": 0.49606299212598426,
-    "max": 0.7480314960629921,
-    "minPitch": 37,
-    "maxPitch": 37,
-    "root": 37
-  },
-  {
-    "id": "layer.vsco.gmperc.r171",
-    "sampleId": "factory.vsco.gmperc.r171",
-    "min": 0,
-    "max": 0.2440944881889764,
-    "minPitch": 59,
-    "maxPitch": 59,
-    "root": 59
-  },
-  {
-    "id": "layer.vsco.gmperc.r172",
-    "sampleId": "factory.vsco.gmperc.r172",
-    "min": 0,
-    "max": 0.2440944881889764,
-    "minPitch": 51,
-    "maxPitch": 51,
-    "root": 51
-  },
-  {
-    "id": "layer.vsco.gmperc.r173",
-    "sampleId": "factory.vsco.gmperc.r173",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 55,
-    "maxPitch": 55,
-    "root": 55
-  },
-  {
-    "id": "layer.vsco.gmperc.r174",
-    "sampleId": "factory.vsco.gmperc.r174",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 65,
-    "maxPitch": 65,
-    "root": 65
-  },
-  {
-    "id": "layer.vsco.gmperc.r175",
-    "sampleId": "factory.vsco.gmperc.r175",
-    "min": 0.4251968503937008,
-    "max": 0.5669291338582677,
-    "minPitch": 36,
-    "maxPitch": 36,
-    "root": 36
-  },
-  {
-    "id": "layer.vsco.gmperc.r176",
-    "sampleId": "factory.vsco.gmperc.r176",
-    "min": 0.7480314960629921,
-    "max": 1,
-    "minPitch": 56,
-    "maxPitch": 56,
-    "root": 56
-  },
-  {
-    "id": "layer.vsco.gmperc.r177",
-    "sampleId": "factory.vsco.gmperc.r177",
-    "min": 0.7480314960629921,
-    "max": 1,
-    "minPitch": 37,
-    "maxPitch": 37,
-    "root": 37
-  },
-  {
-    "id": "layer.vsco.gmperc.r178",
-    "sampleId": "factory.vsco.gmperc.r178",
-    "min": 0.5669291338582677,
-    "max": 0.7086614173228346,
-    "minPitch": 36,
-    "maxPitch": 36,
-    "root": 36
-  },
-  {
-    "id": "layer.vsco.gmperc.r179",
-    "sampleId": "factory.vsco.gmperc.r179",
-    "min": 0.2440944881889764,
-    "max": 0.49606299212598426,
-    "minPitch": 49,
-    "maxPitch": 49,
-    "root": 49
-  },
-  {
-    "id": "layer.vsco.gmperc.r180",
-    "sampleId": "factory.vsco.gmperc.r180",
-    "min": 0.49606299212598426,
-    "max": 0.7480314960629921,
-    "minPitch": 40,
-    "maxPitch": 40,
-    "root": 40
-  },
-  {
-    "id": "layer.vsco.gmperc.r181",
-    "sampleId": "factory.vsco.gmperc.r181",
-    "min": 0.3937007874015748,
-    "max": 0.5984251968503937,
-    "minPitch": 38,
-    "maxPitch": 38,
-    "root": 38
-  },
-  {
-    "id": "layer.vsco.gmperc.r182",
-    "sampleId": "factory.vsco.gmperc.r182",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 41,
-    "maxPitch": 41,
-    "root": 41
-  },
-  {
-    "id": "layer.vsco.gmperc.r183",
-    "sampleId": "factory.vsco.gmperc.r183",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 39,
-    "maxPitch": 39,
-    "root": 39
-  },
-  {
-    "id": "layer.vsco.gmperc.r184",
-    "sampleId": "factory.vsco.gmperc.r184",
-    "min": 0.2440944881889764,
-    "max": 0.49606299212598426,
-    "minPitch": 59,
-    "maxPitch": 59,
-    "root": 59
-  },
-  {
-    "id": "layer.vsco.gmperc.r185",
-    "sampleId": "factory.vsco.gmperc.r185",
-    "min": 0.2440944881889764,
-    "max": 0.49606299212598426,
-    "minPitch": 51,
-    "maxPitch": 51,
-    "root": 51
-  },
-  {
-    "id": "layer.vsco.gmperc.r186",
-    "sampleId": "factory.vsco.gmperc.r186",
-    "min": 0.7086614173228346,
-    "max": 0.8503937007874016,
-    "minPitch": 36,
-    "maxPitch": 36,
-    "root": 36
-  },
-  {
-    "id": "layer.vsco.gmperc.r187",
-    "sampleId": "factory.vsco.gmperc.r187",
-    "min": 0.49606299212598426,
-    "max": 0.7480314960629921,
-    "minPitch": 49,
-    "maxPitch": 49,
-    "root": 49
-  },
-  {
-    "id": "layer.vsco.gmperc.r188",
-    "sampleId": "factory.vsco.gmperc.r188",
-    "min": 0.7480314960629921,
-    "max": 1,
-    "minPitch": 40,
-    "maxPitch": 40,
-    "root": 40
-  },
-  {
-    "id": "layer.vsco.gmperc.r189",
-    "sampleId": "factory.vsco.gmperc.r189",
-    "min": 0.8503937007874016,
-    "max": 1,
-    "minPitch": 36,
-    "maxPitch": 36,
-    "root": 36
-  },
-  {
-    "id": "layer.vsco.gmperc.r190",
-    "sampleId": "factory.vsco.gmperc.r190",
-    "min": 0.5984251968503937,
-    "max": 0.7952755905511811,
-    "minPitch": 38,
-    "maxPitch": 38,
-    "root": 38
-  },
-  {
-    "id": "layer.vsco.gmperc.r191",
-    "sampleId": "factory.vsco.gmperc.r191",
-    "min": 0.49606299212598426,
-    "max": 0.7480314960629921,
-    "minPitch": 59,
-    "maxPitch": 59,
-    "root": 59
-  },
-  {
-    "id": "layer.vsco.gmperc.r192",
-    "sampleId": "factory.vsco.gmperc.r192",
-    "min": 0.49606299212598426,
-    "max": 0.7480314960629921,
-    "minPitch": 51,
-    "maxPitch": 51,
-    "root": 51
-  },
-  {
-    "id": "layer.vsco.gmperc.r193",
-    "sampleId": "factory.vsco.gmperc.r193",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 88,
-    "maxPitch": 88,
-    "root": 88
-  },
-  {
-    "id": "layer.vsco.gmperc.r194",
-    "sampleId": "factory.vsco.gmperc.r194",
-    "min": 0.7480314960629921,
-    "max": 1,
-    "minPitch": 49,
-    "maxPitch": 49,
-    "root": 49
-  },
-  {
-    "id": "layer.vsco.gmperc.r195",
-    "sampleId": "factory.vsco.gmperc.r195",
-    "min": 0.7952755905511811,
-    "max": 1,
-    "minPitch": 38,
-    "maxPitch": 38,
-    "root": 38
-  },
-  {
-    "id": "layer.vsco.gmperc.r196",
-    "sampleId": "factory.vsco.gmperc.r196",
-    "min": 0.7480314960629921,
-    "max": 1,
-    "minPitch": 59,
-    "maxPitch": 59,
-    "root": 59
-  },
-  {
-    "id": "layer.vsco.gmperc.r197",
-    "sampleId": "factory.vsco.gmperc.r197",
-    "min": 0.7480314960629921,
-    "max": 1,
-    "minPitch": 51,
-    "maxPitch": 51,
-    "root": 51
-  },
-  {
-    "id": "layer.vsco.gmperc.r198",
-    "sampleId": "factory.vsco.gmperc.r198",
-    "min": 0,
-    "max": 1,
-    "minPitch": 47,
-    "maxPitch": 47,
-    "root": 47
-  },
-  {
-    "id": "layer.vsco.gmperc.r199",
-    "sampleId": "factory.vsco.gmperc.r199",
-    "min": 0,
-    "max": 1,
     "minPitch": 48,
-    "maxPitch": 48,
+    "maxPitch": 49,
     "root": 48
   },
   {
-    "id": "layer.vsco.gmperc.r200",
-    "sampleId": "factory.vsco.gmperc.r200",
-    "min": 0,
-    "max": 1,
-    "minPitch": 50,
-    "maxPitch": 50,
-    "root": 50
-  },
-  {
-    "id": "layer.vsco.gmperc.r201",
-    "sampleId": "factory.vsco.gmperc.r201",
-    "min": 0,
-    "max": 1,
-    "minPitch": 83,
-    "maxPitch": 83,
-    "root": 83
-  },
-  {
-    "id": "layer.vsco.gmperc.r202",
-    "sampleId": "factory.vsco.gmperc.r202",
-    "min": 0,
-    "max": 1,
-    "minPitch": 84,
-    "maxPitch": 84,
-    "root": 84
-  },
-  {
-    "id": "layer.vsco.gmperc.r203",
-    "sampleId": "factory.vsco.gmperc.r203",
-    "min": 0,
-    "max": 1,
-    "minPitch": 85,
-    "maxPitch": 85,
-    "root": 85
-  },
-  {
-    "id": "layer.vsco.gmperc.r204",
-    "sampleId": "factory.vsco.gmperc.r204",
-    "min": 0,
-    "max": 1,
-    "minPitch": 86,
-    "maxPitch": 86,
-    "root": 86
-  },
-  {
-    "id": "layer.vsco.gmperc.r205",
-    "sampleId": "factory.vsco.gmperc.r205",
-    "min": 0,
-    "max": 1,
-    "minPitch": 101,
-    "maxPitch": 101,
-    "root": 101
-  },
-  {
-    "id": "layer.vsco.gmperc.r206",
-    "sampleId": "factory.vsco.gmperc.r206",
-    "min": 0,
-    "max": 1,
-    "minPitch": 102,
-    "maxPitch": 102,
-    "root": 102
-  },
-  {
-    "id": "layer.vsco.gmperc.r207",
-    "sampleId": "factory.vsco.gmperc.r207",
-    "min": 0,
-    "max": 1,
-    "minPitch": 103,
-    "maxPitch": 103,
-    "root": 103
-  },
-  {
-    "id": "layer.vsco.gmperc.r208",
-    "sampleId": "factory.vsco.gmperc.r208",
-    "min": 0,
-    "max": 1,
-    "minPitch": 104,
-    "maxPitch": 104,
-    "root": 104
-  },
-  {
-    "id": "layer.vsco.gmperc.r209",
-    "sampleId": "factory.vsco.gmperc.r209",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 67,
-    "maxPitch": 67,
-    "root": 67
-  },
-  {
-    "id": "layer.vsco.gmperc.r210",
-    "sampleId": "factory.vsco.gmperc.r210",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 67,
-    "maxPitch": 67,
-    "root": 67
-  },
-  {
-    "id": "layer.vsco.gmperc.r211",
-    "sampleId": "factory.vsco.gmperc.r211",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 67,
-    "maxPitch": 67,
-    "root": 67
-  },
-  {
-    "id": "layer.vsco.gmperc.r212",
-    "sampleId": "factory.vsco.gmperc.r212",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 68,
-    "maxPitch": 68,
-    "root": 68
-  },
-  {
-    "id": "layer.vsco.gmperc.r213",
-    "sampleId": "factory.vsco.gmperc.r213",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 68,
-    "maxPitch": 68,
-    "root": 68
-  },
-  {
-    "id": "layer.vsco.gmperc.r214",
-    "sampleId": "factory.vsco.gmperc.r214",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 68,
-    "maxPitch": 68,
-    "root": 68
-  },
-  {
-    "id": "layer.vsco.gmperc.r215",
-    "sampleId": "factory.vsco.gmperc.r215",
-    "min": 0,
-    "max": 0.5118110236220472,
-    "minPitch": 42,
-    "maxPitch": 42,
-    "root": 42
-  },
-  {
-    "id": "layer.vsco.gmperc.r216",
-    "sampleId": "factory.vsco.gmperc.r216",
-    "min": 0.5118110236220472,
-    "max": 1,
-    "minPitch": 42,
-    "maxPitch": 42,
-    "root": 42
-  },
-  {
-    "id": "layer.vsco.gmperc.r217",
-    "sampleId": "factory.vsco.gmperc.r217",
-    "min": 0,
-    "max": 0.2677165354330709,
-    "minPitch": 46,
-    "maxPitch": 46,
-    "root": 46
-  },
-  {
-    "id": "layer.vsco.gmperc.r218",
-    "sampleId": "factory.vsco.gmperc.r218",
-    "min": 0.2677165354330709,
-    "max": 0.5118110236220472,
-    "minPitch": 46,
-    "maxPitch": 46,
-    "root": 46
-  },
-  {
-    "id": "layer.vsco.gmperc.r219",
-    "sampleId": "factory.vsco.gmperc.r219",
-    "min": 0.5118110236220472,
-    "max": 0.7716535433070866,
-    "minPitch": 46,
-    "maxPitch": 46,
-    "root": 46
-  },
-  {
-    "id": "layer.vsco.gmperc.r220",
-    "sampleId": "factory.vsco.gmperc.r220",
-    "min": 0.7716535433070866,
-    "max": 1,
-    "minPitch": 46,
-    "maxPitch": 46,
-    "root": 46
-  },
-  {
-    "id": "layer.vsco.celloens.r1",
-    "sampleId": "factory.vsco.celloens.r1",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 55,
-    "maxPitch": 58,
-    "root": 57
-  },
-  {
-    "id": "layer.vsco.celloens.r2",
-    "sampleId": "factory.vsco.celloens.r2",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 45,
-    "maxPitch": 48,
-    "root": 47
-  },
-  {
-    "id": "layer.vsco.celloens.r3",
-    "sampleId": "factory.vsco.celloens.r3",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 69,
-    "maxPitch": 72,
-    "root": 71
-  },
-  {
-    "id": "layer.vsco.celloens.r4",
-    "sampleId": "factory.vsco.celloens.r4",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 36,
-    "maxPitch": 37,
-    "root": 36
-  },
-  {
-    "id": "layer.vsco.celloens.r5",
-    "sampleId": "factory.vsco.celloens.r5",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 59,
-    "maxPitch": 61,
-    "root": 60
-  },
-  {
-    "id": "layer.vsco.celloens.r6",
-    "sampleId": "factory.vsco.celloens.r6",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 49,
-    "maxPitch": 51,
-    "root": 50
-  },
-  {
-    "id": "layer.vsco.celloens.r7",
-    "sampleId": "factory.vsco.celloens.r7",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 73,
-    "maxPitch": 75,
-    "root": 74
-  },
-  {
-    "id": "layer.vsco.celloens.r8",
-    "sampleId": "factory.vsco.celloens.r8",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 38,
-    "maxPitch": 41,
-    "root": 40
-  },
-  {
-    "id": "layer.vsco.celloens.r9",
-    "sampleId": "factory.vsco.celloens.r9",
-    "min": 0.33070866141732286,
-    "max": 0.49606299212598426,
-    "minPitch": 38,
-    "maxPitch": 41,
-    "root": 40
-  },
-  {
-    "id": "layer.vsco.celloens.r10",
-    "sampleId": "factory.vsco.celloens.r10",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 62,
-    "maxPitch": 65,
-    "root": 64
-  },
-  {
-    "id": "layer.vsco.celloens.r11",
-    "sampleId": "factory.vsco.celloens.r11",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 52,
-    "maxPitch": 54,
-    "root": 53
-  },
-  {
-    "id": "layer.vsco.celloens.r12",
-    "sampleId": "factory.vsco.celloens.r12",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 76,
-    "maxPitch": 77,
-    "root": 77
-  },
-  {
-    "id": "layer.vsco.celloens.r13",
-    "sampleId": "factory.vsco.celloens.r13",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 42,
-    "maxPitch": 44,
-    "root": 43
-  },
-  {
-    "id": "layer.vsco.celloens.r14",
-    "sampleId": "factory.vsco.celloens.r14",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 66,
-    "maxPitch": 68,
-    "root": 67
-  },
-  {
-    "id": "layer.vsco.celloens.r15",
-    "sampleId": "factory.vsco.celloens.r15",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 55,
-    "maxPitch": 58,
-    "root": 57
-  },
-  {
-    "id": "layer.vsco.celloens.r16",
-    "sampleId": "factory.vsco.celloens.r16",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 45,
-    "maxPitch": 48,
-    "root": 47
-  },
-  {
-    "id": "layer.vsco.celloens.r17",
-    "sampleId": "factory.vsco.celloens.r17",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 69,
-    "maxPitch": 72,
-    "root": 71
-  },
-  {
-    "id": "layer.vsco.celloens.r18",
-    "sampleId": "factory.vsco.celloens.r18",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 36,
-    "maxPitch": 37,
-    "root": 36
-  },
-  {
-    "id": "layer.vsco.celloens.r19",
-    "sampleId": "factory.vsco.celloens.r19",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 59,
-    "maxPitch": 61,
-    "root": 60
-  },
-  {
-    "id": "layer.vsco.celloens.r20",
-    "sampleId": "factory.vsco.celloens.r20",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 49,
-    "maxPitch": 51,
-    "root": 50
-  },
-  {
-    "id": "layer.vsco.celloens.r21",
-    "sampleId": "factory.vsco.celloens.r21",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 73,
-    "maxPitch": 75,
-    "root": 74
-  },
-  {
-    "id": "layer.vsco.celloens.r22",
-    "sampleId": "factory.vsco.celloens.r22",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 38,
-    "maxPitch": 41,
-    "root": 40
-  },
-  {
-    "id": "layer.vsco.celloens.r23",
-    "sampleId": "factory.vsco.celloens.r23",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 62,
-    "maxPitch": 65,
-    "root": 64
-  },
-  {
-    "id": "layer.vsco.celloens.r24",
-    "sampleId": "factory.vsco.celloens.r24",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 52,
-    "maxPitch": 54,
-    "root": 53
-  },
-  {
-    "id": "layer.vsco.celloens.r25",
-    "sampleId": "factory.vsco.celloens.r25",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 76,
-    "maxPitch": 77,
-    "root": 77
-  },
-  {
-    "id": "layer.vsco.celloens.r26",
-    "sampleId": "factory.vsco.celloens.r26",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 42,
-    "maxPitch": 44,
-    "root": 43
-  },
-  {
-    "id": "layer.vsco.celloens.r27",
-    "sampleId": "factory.vsco.celloens.r27",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 66,
-    "maxPitch": 68,
-    "root": 67
-  },
-  {
-    "id": "layer.vsco.flute.r1",
-    "sampleId": "factory.vsco.flute.r1",
-    "min": 0,
-    "max": 1,
-    "minPitch": 67,
-    "maxPitch": 70,
-    "root": 69
-  },
-  {
-    "id": "layer.vsco.flute.r2",
-    "sampleId": "factory.vsco.flute.r2",
-    "min": 0,
-    "max": 1,
-    "minPitch": 79,
-    "maxPitch": 82,
-    "root": 81
-  },
-  {
-    "id": "layer.vsco.flute.r3",
-    "sampleId": "factory.vsco.flute.r3",
-    "min": 0,
-    "max": 1,
-    "minPitch": 91,
-    "maxPitch": 94,
-    "root": 93
-  },
-  {
-    "id": "layer.vsco.flute.r4",
-    "sampleId": "factory.vsco.flute.r4",
-    "min": 0,
-    "max": 1,
-    "minPitch": 60,
-    "maxPitch": 61,
-    "root": 60
-  },
-  {
-    "id": "layer.vsco.flute.r5",
-    "sampleId": "factory.vsco.flute.r5",
+    "id": "layer.vsco.violaenspizz.r5",
+    "sampleId": "factory.vsco.violaenspizz.r5",
     "min": 0,
     "max": 0.49606299212598426,
     "minPitch": 71,
@@ -3093,764 +15819,890 @@ export const VSCO_PACK_LAYERS: SampleLayer[] = [
     "root": 72
   },
   {
-    "id": "layer.vsco.flute.r6",
-    "sampleId": "factory.vsco.flute.r6",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 71,
-    "maxPitch": 73,
-    "root": 72
+    "id": "layer.vsco.violaenspizz.r6",
+    "sampleId": "factory.vsco.violaenspizz.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
   },
   {
-    "id": "layer.vsco.flute.r7",
-    "sampleId": "factory.vsco.flute.r7",
+    "id": "layer.vsco.violaenspizz.r7",
+    "sampleId": "factory.vsco.violaenspizz.r7",
     "min": 0,
     "max": 1,
-    "minPitch": 83,
-    "maxPitch": 85,
-    "root": 84
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
   },
   {
-    "id": "layer.vsco.flute.r8",
-    "sampleId": "factory.vsco.flute.r8",
+    "id": "layer.vsco.violaenspizz.r8",
+    "sampleId": "factory.vsco.violaenspizz.r8",
     "min": 0,
-    "max": 1,
-    "minPitch": 95,
-    "maxPitch": 96,
-    "root": 96
+    "max": 0.49606299212598426,
+    "minPitch": 50,
+    "maxPitch": 53,
+    "root": 52
   },
   {
-    "id": "layer.vsco.flute.r9",
-    "sampleId": "factory.vsco.flute.r9",
-    "min": 0,
-    "max": 1,
-    "minPitch": 62,
-    "maxPitch": 66,
-    "root": 64
-  },
-  {
-    "id": "layer.vsco.flute.r10",
-    "sampleId": "factory.vsco.flute.r10",
+    "id": "layer.vsco.violaenspizz.r9",
+    "sampleId": "factory.vsco.violaenspizz.r9",
     "min": 0,
     "max": 0.49606299212598426,
     "minPitch": 74,
-    "maxPitch": 78,
-    "root": 76
-  },
-  {
-    "id": "layer.vsco.flute.r11",
-    "sampleId": "factory.vsco.flute.r11",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 74,
-    "maxPitch": 78,
-    "root": 76
-  },
-  {
-    "id": "layer.vsco.flute.r12",
-    "sampleId": "factory.vsco.flute.r12",
-    "min": 0,
-    "max": 0.49606299212598426,
-    "minPitch": 86,
-    "maxPitch": 90,
-    "root": 88
-  },
-  {
-    "id": "layer.vsco.flute.r13",
-    "sampleId": "factory.vsco.flute.r13",
-    "min": 0.49606299212598426,
-    "max": 1,
-    "minPitch": 86,
-    "maxPitch": 90,
-    "root": 88
-  },
-  {
-    "id": "layer.vsco.clarinet.r1",
-    "sampleId": "factory.vsco.clarinet.r1",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 56,
-    "maxPitch": 59,
-    "root": 58
-  },
-  {
-    "id": "layer.vsco.clarinet.r2",
-    "sampleId": "factory.vsco.clarinet.r2",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 68,
-    "maxPitch": 71,
-    "root": 70
-  },
-  {
-    "id": "layer.vsco.clarinet.r3",
-    "sampleId": "factory.vsco.clarinet.r3",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 80,
-    "maxPitch": 83,
-    "root": 82
-  },
-  {
-    "id": "layer.vsco.clarinet.r4",
-    "sampleId": "factory.vsco.clarinet.r4",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 50,
-    "maxPitch": 51,
-    "root": 50
-  },
-  {
-    "id": "layer.vsco.clarinet.r5",
-    "sampleId": "factory.vsco.clarinet.r5",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 60,
-    "maxPitch": 63,
-    "root": 62
-  },
-  {
-    "id": "layer.vsco.clarinet.r6",
-    "sampleId": "factory.vsco.clarinet.r6",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 72,
-    "maxPitch": 75,
-    "root": 74
-  },
-  {
-    "id": "layer.vsco.clarinet.r7",
-    "sampleId": "factory.vsco.clarinet.r7",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 84,
-    "maxPitch": 87,
-    "root": 86
-  },
-  {
-    "id": "layer.vsco.clarinet.r8",
-    "sampleId": "factory.vsco.clarinet.r8",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 88,
-    "maxPitch": 90,
-    "root": 89
-  },
-  {
-    "id": "layer.vsco.clarinet.r9",
-    "sampleId": "factory.vsco.clarinet.r9",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 52,
-    "maxPitch": 55,
-    "root": 53
-  },
-  {
-    "id": "layer.vsco.clarinet.r10",
-    "sampleId": "factory.vsco.clarinet.r10",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 64,
-    "maxPitch": 67,
-    "root": 65
-  },
-  {
-    "id": "layer.vsco.clarinet.r11",
-    "sampleId": "factory.vsco.clarinet.r11",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 76,
-    "maxPitch": 79,
-    "root": 77
-  },
-  {
-    "id": "layer.vsco.clarinet.r12",
-    "sampleId": "factory.vsco.clarinet.r12",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 56,
-    "maxPitch": 59,
-    "root": 58
-  },
-  {
-    "id": "layer.vsco.clarinet.r13",
-    "sampleId": "factory.vsco.clarinet.r13",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 68,
-    "maxPitch": 71,
-    "root": 70
-  },
-  {
-    "id": "layer.vsco.clarinet.r14",
-    "sampleId": "factory.vsco.clarinet.r14",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 80,
-    "maxPitch": 83,
-    "root": 82
-  },
-  {
-    "id": "layer.vsco.clarinet.r15",
-    "sampleId": "factory.vsco.clarinet.r15",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 50,
-    "maxPitch": 51,
-    "root": 50
-  },
-  {
-    "id": "layer.vsco.clarinet.r16",
-    "sampleId": "factory.vsco.clarinet.r16",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 60,
-    "maxPitch": 63,
-    "root": 62
-  },
-  {
-    "id": "layer.vsco.clarinet.r17",
-    "sampleId": "factory.vsco.clarinet.r17",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 72,
-    "maxPitch": 75,
-    "root": 74
-  },
-  {
-    "id": "layer.vsco.clarinet.r18",
-    "sampleId": "factory.vsco.clarinet.r18",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 84,
-    "maxPitch": 87,
-    "root": 86
-  },
-  {
-    "id": "layer.vsco.clarinet.r19",
-    "sampleId": "factory.vsco.clarinet.r19",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 88,
-    "maxPitch": 90,
-    "root": 89
-  },
-  {
-    "id": "layer.vsco.clarinet.r20",
-    "sampleId": "factory.vsco.clarinet.r20",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 52,
-    "maxPitch": 55,
-    "root": 53
-  },
-  {
-    "id": "layer.vsco.clarinet.r21",
-    "sampleId": "factory.vsco.clarinet.r21",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 64,
-    "maxPitch": 67,
-    "root": 65
-  },
-  {
-    "id": "layer.vsco.clarinet.r22",
-    "sampleId": "factory.vsco.clarinet.r22",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 76,
-    "maxPitch": 79,
-    "root": 77
-  },
-  {
-    "id": "layer.vsco.clarinet.r23",
-    "sampleId": "factory.vsco.clarinet.r23",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 56,
-    "maxPitch": 59,
-    "root": 58
-  },
-  {
-    "id": "layer.vsco.clarinet.r24",
-    "sampleId": "factory.vsco.clarinet.r24",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 68,
-    "maxPitch": 71,
-    "root": 70
-  },
-  {
-    "id": "layer.vsco.clarinet.r25",
-    "sampleId": "factory.vsco.clarinet.r25",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 80,
-    "maxPitch": 83,
-    "root": 82
-  },
-  {
-    "id": "layer.vsco.clarinet.r26",
-    "sampleId": "factory.vsco.clarinet.r26",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 50,
-    "maxPitch": 51,
-    "root": 50
-  },
-  {
-    "id": "layer.vsco.clarinet.r27",
-    "sampleId": "factory.vsco.clarinet.r27",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 60,
-    "maxPitch": 63,
-    "root": 62
-  },
-  {
-    "id": "layer.vsco.clarinet.r28",
-    "sampleId": "factory.vsco.clarinet.r28",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 72,
-    "maxPitch": 75,
-    "root": 74
-  },
-  {
-    "id": "layer.vsco.clarinet.r29",
-    "sampleId": "factory.vsco.clarinet.r29",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 84,
-    "maxPitch": 87,
-    "root": 86
-  },
-  {
-    "id": "layer.vsco.clarinet.r30",
-    "sampleId": "factory.vsco.clarinet.r30",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 88,
-    "maxPitch": 90,
-    "root": 89
-  },
-  {
-    "id": "layer.vsco.clarinet.r31",
-    "sampleId": "factory.vsco.clarinet.r31",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 52,
-    "maxPitch": 55,
-    "root": 53
-  },
-  {
-    "id": "layer.vsco.clarinet.r32",
-    "sampleId": "factory.vsco.clarinet.r32",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 64,
-    "maxPitch": 67,
-    "root": 65
-  },
-  {
-    "id": "layer.vsco.clarinet.r33",
-    "sampleId": "factory.vsco.clarinet.r33",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 76,
-    "maxPitch": 79,
-    "root": 77
-  },
-  {
-    "id": "layer.vsco.fhorn.r1",
-    "sampleId": "factory.vsco.fhorn.r1",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 45,
-    "maxPitch": 47,
-    "root": 46
-  },
-  {
-    "id": "layer.vsco.fhorn.r2",
-    "sampleId": "factory.vsco.fhorn.r2",
-    "min": 0,
-    "max": 1,
-    "minPitch": 33,
-    "maxPitch": 34,
-    "root": 33
-  },
-  {
-    "id": "layer.vsco.fhorn.r3",
-    "sampleId": "factory.vsco.fhorn.r3",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 55,
-    "maxPitch": 58,
-    "root": 57
-  },
-  {
-    "id": "layer.vsco.fhorn.r4",
-    "sampleId": "factory.vsco.fhorn.r4",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 35,
-    "maxPitch": 37,
-    "root": 36
-  },
-  {
-    "id": "layer.vsco.fhorn.r5",
-    "sampleId": "factory.vsco.fhorn.r5",
-    "min": 0,
-    "max": 0.2440944881889764,
-    "minPitch": 59,
-    "maxPitch": 66,
-    "root": 60
-  },
-  {
-    "id": "layer.vsco.fhorn.r6",
-    "sampleId": "factory.vsco.fhorn.r6",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 38,
-    "maxPitch": 40,
-    "root": 39
-  },
-  {
-    "id": "layer.vsco.fhorn.r7",
-    "sampleId": "factory.vsco.fhorn.r7",
-    "min": 0,
-    "max": 0.2440944881889764,
-    "minPitch": 48,
-    "maxPitch": 51,
-    "root": 50
-  },
-  {
-    "id": "layer.vsco.fhorn.r8",
-    "sampleId": "factory.vsco.fhorn.r8",
-    "min": 0,
-    "max": 1,
-    "minPitch": 67,
-    "maxPitch": 75,
-    "root": 74
-  },
-  {
-    "id": "layer.vsco.fhorn.r9",
-    "sampleId": "factory.vsco.fhorn.r9",
-    "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 52,
-    "maxPitch": 54,
-    "root": 53
-  },
-  {
-    "id": "layer.vsco.fhorn.r10",
-    "sampleId": "factory.vsco.fhorn.r10",
-    "min": 0,
-    "max": 1,
-    "minPitch": 76,
     "maxPitch": 77,
-    "root": 77
+    "root": 76
   },
   {
-    "id": "layer.vsco.fhorn.r11",
-    "sampleId": "factory.vsco.fhorn.r11",
+    "id": "layer.vsco.violaenspizz.r10",
+    "sampleId": "factory.vsco.violaenspizz.r10",
     "min": 0,
-    "max": 0.33070866141732286,
-    "minPitch": 41,
-    "maxPitch": 44,
-    "root": 43
-  },
-  {
-    "id": "layer.vsco.fhorn.r12",
-    "sampleId": "factory.vsco.fhorn.r12",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 45,
-    "maxPitch": 47,
-    "root": 46
-  },
-  {
-    "id": "layer.vsco.fhorn.r13",
-    "sampleId": "factory.vsco.fhorn.r13",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 55,
-    "maxPitch": 58,
-    "root": 57
-  },
-  {
-    "id": "layer.vsco.fhorn.r14",
-    "sampleId": "factory.vsco.fhorn.r14",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 35,
-    "maxPitch": 37,
-    "root": 36
-  },
-  {
-    "id": "layer.vsco.fhorn.r15",
-    "sampleId": "factory.vsco.fhorn.r15",
-    "min": 0.2440944881889764,
     "max": 0.49606299212598426,
-    "minPitch": 59,
+    "minPitch": 64,
     "maxPitch": 66,
-    "root": 60
+    "root": 65
   },
   {
-    "id": "layer.vsco.fhorn.r16",
-    "sampleId": "factory.vsco.fhorn.r16",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 38,
-    "maxPitch": 40,
-    "root": 39
-  },
-  {
-    "id": "layer.vsco.fhorn.r17",
-    "sampleId": "factory.vsco.fhorn.r17",
-    "min": 0.2440944881889764,
+    "id": "layer.vsco.violaenspizz.r11",
+    "sampleId": "factory.vsco.violaenspizz.r11",
+    "min": 0,
     "max": 0.49606299212598426,
-    "minPitch": 48,
-    "maxPitch": 51,
-    "root": 50
+    "minPitch": 54,
+    "maxPitch": 56,
+    "root": 55
   },
   {
-    "id": "layer.vsco.fhorn.r18",
-    "sampleId": "factory.vsco.fhorn.r18",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 52,
-    "maxPitch": 54,
-    "root": 53
+    "id": "layer.vsco.violaenspizz.r12",
+    "sampleId": "factory.vsco.violaenspizz.r12",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
   },
   {
-    "id": "layer.vsco.fhorn.r19",
-    "sampleId": "factory.vsco.fhorn.r19",
-    "min": 0.33070866141732286,
-    "max": 0.6614173228346457,
-    "minPitch": 41,
-    "maxPitch": 44,
-    "root": 43
-  },
-  {
-    "id": "layer.vsco.fhorn.r20",
-    "sampleId": "factory.vsco.fhorn.r20",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 45,
-    "maxPitch": 47,
-    "root": 46
-  },
-  {
-    "id": "layer.vsco.fhorn.r21",
-    "sampleId": "factory.vsco.fhorn.r21",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 55,
-    "maxPitch": 58,
-    "root": 57
-  },
-  {
-    "id": "layer.vsco.fhorn.r22",
-    "sampleId": "factory.vsco.fhorn.r22",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 35,
-    "maxPitch": 37,
-    "root": 36
-  },
-  {
-    "id": "layer.vsco.fhorn.r23",
-    "sampleId": "factory.vsco.fhorn.r23",
+    "id": "layer.vsco.violaenspizz.r13",
+    "sampleId": "factory.vsco.violaenspizz.r13",
     "min": 0.49606299212598426,
-    "max": 0.7480314960629921,
-    "minPitch": 59,
-    "maxPitch": 66,
-    "root": 60
-  },
-  {
-    "id": "layer.vsco.fhorn.r24",
-    "sampleId": "factory.vsco.fhorn.r24",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 38,
-    "maxPitch": 40,
-    "root": 39
-  },
-  {
-    "id": "layer.vsco.fhorn.r25",
-    "sampleId": "factory.vsco.fhorn.r25",
-    "min": 0.49606299212598426,
-    "max": 0.7480314960629921,
-    "minPitch": 48,
-    "maxPitch": 51,
-    "root": 50
-  },
-  {
-    "id": "layer.vsco.fhorn.r26",
-    "sampleId": "factory.vsco.fhorn.r26",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 52,
-    "maxPitch": 54,
-    "root": 53
-  },
-  {
-    "id": "layer.vsco.fhorn.r27",
-    "sampleId": "factory.vsco.fhorn.r27",
-    "min": 0.6614173228346457,
-    "max": 1,
-    "minPitch": 41,
-    "maxPitch": 44,
-    "root": 43
-  },
-  {
-    "id": "layer.vsco.fhorn.r28",
-    "sampleId": "factory.vsco.fhorn.r28",
-    "min": 0.7480314960629921,
-    "max": 1,
-    "minPitch": 59,
-    "maxPitch": 66,
-    "root": 60
-  },
-  {
-    "id": "layer.vsco.fhorn.r29",
-    "sampleId": "factory.vsco.fhorn.r29",
-    "min": 0.7480314960629921,
-    "max": 1,
-    "minPitch": 48,
-    "maxPitch": 51,
-    "root": 50
-  },
-  {
-    "id": "layer.vsco.harp.r1",
-    "sampleId": "factory.vsco.harp.r1",
-    "min": 0,
-    "max": 1,
-    "minPitch": 30,
-    "maxPitch": 32,
-    "root": 31
-  },
-  {
-    "id": "layer.vsco.harp.r2",
-    "sampleId": "factory.vsco.harp.r2",
-    "min": 0,
-    "max": 1,
-    "minPitch": 43,
-    "maxPitch": 46,
-    "root": 45
-  },
-  {
-    "id": "layer.vsco.harp.r3",
-    "sampleId": "factory.vsco.harp.r3",
-    "min": 0,
     "max": 1,
     "minPitch": 67,
     "maxPitch": 70,
     "root": 69
   },
   {
-    "id": "layer.vsco.harp.r4",
-    "sampleId": "factory.vsco.harp.r4",
-    "min": 0,
-    "max": 1,
-    "minPitch": 91,
-    "maxPitch": 93,
-    "root": 93
-  },
-  {
-    "id": "layer.vsco.harp.r5",
-    "sampleId": "factory.vsco.harp.r5",
-    "min": 0,
-    "max": 1,
-    "minPitch": 33,
-    "maxPitch": 36,
-    "root": 35
-  },
-  {
-    "id": "layer.vsco.harp.r6",
-    "sampleId": "factory.vsco.harp.r6",
-    "min": 0,
+    "id": "layer.vsco.violaenspizz.r14",
+    "sampleId": "factory.vsco.violaenspizz.r14",
+    "min": 0.49606299212598426,
     "max": 1,
     "minPitch": 57,
     "maxPitch": 60,
     "root": 59
   },
   {
-    "id": "layer.vsco.harp.r7",
-    "sampleId": "factory.vsco.harp.r7",
-    "min": 0,
+    "id": "layer.vsco.violaenspizz.r15",
+    "sampleId": "factory.vsco.violaenspizz.r15",
+    "min": 0.49606299212598426,
     "max": 1,
     "minPitch": 81,
     "maxPitch": 84,
     "root": 83
   },
   {
-    "id": "layer.vsco.harp.r8",
-    "sampleId": "factory.vsco.harp.r8",
-    "min": 0,
+    "id": "layer.vsco.violaenspizz.r16",
+    "sampleId": "factory.vsco.violaenspizz.r16",
+    "min": 0.49606299212598426,
     "max": 1,
-    "minPitch": 94,
-    "maxPitch": 96,
-    "root": 95
-  },
-  {
-    "id": "layer.vsco.harp.r9",
-    "sampleId": "factory.vsco.harp.r9",
-    "min": 0,
-    "max": 1,
-    "minPitch": 47,
+    "minPitch": 48,
     "maxPitch": 49,
     "root": 48
   },
   {
-    "id": "layer.vsco.harp.r10",
-    "sampleId": "factory.vsco.harp.r10",
-    "min": 0,
+    "id": "layer.vsco.violaenspizz.r17",
+    "sampleId": "factory.vsco.violaenspizz.r17",
+    "min": 0.49606299212598426,
     "max": 1,
     "minPitch": 71,
     "maxPitch": 73,
     "root": 72
   },
   {
-    "id": "layer.vsco.harp.r11",
-    "sampleId": "factory.vsco.harp.r11",
-    "min": 0,
-    "max": 1,
-    "minPitch": 37,
-    "maxPitch": 39,
-    "root": 38
-  },
-  {
-    "id": "layer.vsco.harp.r12",
-    "sampleId": "factory.vsco.harp.r12",
-    "min": 0,
+    "id": "layer.vsco.violaenspizz.r18",
+    "sampleId": "factory.vsco.violaenspizz.r18",
+    "min": 0.49606299212598426,
     "max": 1,
     "minPitch": 61,
     "maxPitch": 63,
     "root": 62
   },
   {
-    "id": "layer.vsco.harp.r13",
-    "sampleId": "factory.vsco.harp.r13",
-    "min": 0,
-    "max": 1,
-    "minPitch": 85,
-    "maxPitch": 87,
-    "root": 86
-  },
-  {
-    "id": "layer.vsco.harp.r14",
-    "sampleId": "factory.vsco.harp.r14",
-    "min": 0,
+    "id": "layer.vsco.violaenspizz.r19",
+    "sampleId": "factory.vsco.violaenspizz.r19",
+    "min": 0.49606299212598426,
     "max": 1,
     "minPitch": 50,
     "maxPitch": 53,
     "root": 52
   },
   {
-    "id": "layer.vsco.harp.r15",
-    "sampleId": "factory.vsco.harp.r15",
+    "id": "layer.vsco.violaenspizz.r20",
+    "sampleId": "factory.vsco.violaenspizz.r20",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r21",
+    "sampleId": "factory.vsco.violaenspizz.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 66,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r22",
+    "sampleId": "factory.vsco.violaenspizz.r22",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 54,
+    "maxPitch": 56,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r23",
+    "sampleId": "factory.vsco.violaenspizz.r23",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r24",
+    "sampleId": "factory.vsco.violaenspizz.r24",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 67,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r25",
+    "sampleId": "factory.vsco.violaenspizz.r25",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 57,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r26",
+    "sampleId": "factory.vsco.violaenspizz.r26",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r27",
+    "sampleId": "factory.vsco.violaenspizz.r27",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 48,
+    "maxPitch": 49,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r28",
+    "sampleId": "factory.vsco.violaenspizz.r28",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r29",
+    "sampleId": "factory.vsco.violaenspizz.r29",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r30",
+    "sampleId": "factory.vsco.violaenspizz.r30",
+    "min": 0,
+    "max": 1,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r31",
+    "sampleId": "factory.vsco.violaenspizz.r31",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 50,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r32",
+    "sampleId": "factory.vsco.violaenspizz.r32",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r33",
+    "sampleId": "factory.vsco.violaenspizz.r33",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 64,
+    "maxPitch": 66,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r34",
+    "sampleId": "factory.vsco.violaenspizz.r34",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 54,
+    "maxPitch": 56,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r35",
+    "sampleId": "factory.vsco.violaenspizz.r35",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r36",
+    "sampleId": "factory.vsco.violaenspizz.r36",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 67,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r37",
+    "sampleId": "factory.vsco.violaenspizz.r37",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 57,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r38",
+    "sampleId": "factory.vsco.violaenspizz.r38",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r39",
+    "sampleId": "factory.vsco.violaenspizz.r39",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 48,
+    "maxPitch": 49,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r40",
+    "sampleId": "factory.vsco.violaenspizz.r40",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r41",
+    "sampleId": "factory.vsco.violaenspizz.r41",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r42",
+    "sampleId": "factory.vsco.violaenspizz.r42",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 50,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r43",
+    "sampleId": "factory.vsco.violaenspizz.r43",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r44",
+    "sampleId": "factory.vsco.violaenspizz.r44",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 66,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r45",
+    "sampleId": "factory.vsco.violaenspizz.r45",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 54,
+    "maxPitch": 56,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violaenspizz.r46",
+    "sampleId": "factory.vsco.violaenspizz.r46",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violaensspic.r1",
+    "sampleId": "factory.vsco.violaensspic.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 67,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violaensspic.r2",
+    "sampleId": "factory.vsco.violaensspic.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 57,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violaensspic.r3",
+    "sampleId": "factory.vsco.violaensspic.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violaensspic.r4",
+    "sampleId": "factory.vsco.violaensspic.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 48,
+    "maxPitch": 49,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.violaensspic.r5",
+    "sampleId": "factory.vsco.violaensspic.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violaensspic.r6",
+    "sampleId": "factory.vsco.violaensspic.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violaensspic.r7",
+    "sampleId": "factory.vsco.violaensspic.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violaensspic.r8",
+    "sampleId": "factory.vsco.violaensspic.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 50,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.violaensspic.r9",
+    "sampleId": "factory.vsco.violaensspic.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violaensspic.r10",
+    "sampleId": "factory.vsco.violaensspic.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 64,
+    "maxPitch": 66,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.violaensspic.r11",
+    "sampleId": "factory.vsco.violaensspic.r11",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 54,
+    "maxPitch": 56,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violaensspic.r12",
+    "sampleId": "factory.vsco.violaensspic.r12",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violaensspic.r13",
+    "sampleId": "factory.vsco.violaensspic.r13",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 67,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violaensspic.r14",
+    "sampleId": "factory.vsco.violaensspic.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 57,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violaensspic.r15",
+    "sampleId": "factory.vsco.violaensspic.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violaensspic.r16",
+    "sampleId": "factory.vsco.violaensspic.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 48,
+    "maxPitch": 49,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.violaensspic.r17",
+    "sampleId": "factory.vsco.violaensspic.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violaensspic.r18",
+    "sampleId": "factory.vsco.violaensspic.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violaensspic.r19",
+    "sampleId": "factory.vsco.violaensspic.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violaensspic.r20",
+    "sampleId": "factory.vsco.violaensspic.r20",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 50,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.violaensspic.r21",
+    "sampleId": "factory.vsco.violaensspic.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violaensspic.r22",
+    "sampleId": "factory.vsco.violaensspic.r22",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 66,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.violaensspic.r23",
+    "sampleId": "factory.vsco.violaensspic.r23",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 54,
+    "maxPitch": 56,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violaensspic.r24",
+    "sampleId": "factory.vsco.violaensspic.r24",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violaensspic.r25",
+    "sampleId": "factory.vsco.violaensspic.r25",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 67,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violaensspic.r26",
+    "sampleId": "factory.vsco.violaensspic.r26",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 57,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violaensspic.r27",
+    "sampleId": "factory.vsco.violaensspic.r27",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violaensspic.r28",
+    "sampleId": "factory.vsco.violaensspic.r28",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 48,
+    "maxPitch": 49,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.violaensspic.r29",
+    "sampleId": "factory.vsco.violaensspic.r29",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violaensspic.r30",
+    "sampleId": "factory.vsco.violaensspic.r30",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violaensspic.r31",
+    "sampleId": "factory.vsco.violaensspic.r31",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violaensspic.r32",
+    "sampleId": "factory.vsco.violaensspic.r32",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 50,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.violaensspic.r33",
+    "sampleId": "factory.vsco.violaensspic.r33",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violaensspic.r34",
+    "sampleId": "factory.vsco.violaensspic.r34",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 64,
+    "maxPitch": 66,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.violaensspic.r35",
+    "sampleId": "factory.vsco.violaensspic.r35",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 54,
+    "maxPitch": 56,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violaensspic.r36",
+    "sampleId": "factory.vsco.violaensspic.r36",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violaensspic.r37",
+    "sampleId": "factory.vsco.violaensspic.r37",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 67,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violaensspic.r38",
+    "sampleId": "factory.vsco.violaensspic.r38",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 57,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violaensspic.r39",
+    "sampleId": "factory.vsco.violaensspic.r39",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violaensspic.r40",
+    "sampleId": "factory.vsco.violaensspic.r40",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 48,
+    "maxPitch": 49,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.violaensspic.r41",
+    "sampleId": "factory.vsco.violaensspic.r41",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violaensspic.r42",
+    "sampleId": "factory.vsco.violaensspic.r42",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violaensspic.r43",
+    "sampleId": "factory.vsco.violaensspic.r43",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violaensspic.r44",
+    "sampleId": "factory.vsco.violaensspic.r44",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 50,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.violaensspic.r45",
+    "sampleId": "factory.vsco.violaensspic.r45",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violaensspic.r46",
+    "sampleId": "factory.vsco.violaensspic.r46",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 66,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.violaensspic.r47",
+    "sampleId": "factory.vsco.violaensspic.r47",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 54,
+    "maxPitch": 56,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violaensspic.r48",
+    "sampleId": "factory.vsco.violaensspic.r48",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violaenssusvib-quiet.r1",
+    "sampleId": "factory.vsco.violaenssusvib-quiet.r1",
+    "min": 0,
+    "max": 1,
+    "minPitch": 67,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violaenssusvib-quiet.r2",
+    "sampleId": "factory.vsco.violaenssusvib-quiet.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 57,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violaenssusvib-quiet.r3",
+    "sampleId": "factory.vsco.violaenssusvib-quiet.r3",
+    "min": 0,
+    "max": 1,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violaenssusvib-quiet.r4",
+    "sampleId": "factory.vsco.violaenssusvib-quiet.r4",
+    "min": 0,
+    "max": 1,
+    "minPitch": 48,
+    "maxPitch": 48,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.violaenssusvib-quiet.r5",
+    "sampleId": "factory.vsco.violaenssusvib-quiet.r5",
+    "min": 0,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violaenssusvib-quiet.r6",
+    "sampleId": "factory.vsco.violaenssusvib-quiet.r6",
+    "min": 0,
+    "max": 1,
+    "minPitch": 49,
+    "maxPitch": 50,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.violaenssusvib-quiet.r7",
+    "sampleId": "factory.vsco.violaenssusvib-quiet.r7",
+    "min": 0,
+    "max": 1,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violaenssusvib-quiet.r8",
+    "sampleId": "factory.vsco.violaenssusvib-quiet.r8",
+    "min": 0,
+    "max": 1,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violaenssusvib-quiet.r9",
+    "sampleId": "factory.vsco.violaenssusvib-quiet.r9",
+    "min": 0,
+    "max": 1,
+    "minPitch": 51,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.violaenssusvib-quiet.r10",
+    "sampleId": "factory.vsco.violaenssusvib-quiet.r10",
     "min": 0,
     "max": 1,
     "minPitch": 74,
@@ -3858,17 +16710,8 @@ export const VSCO_PACK_LAYERS: SampleLayer[] = [
     "root": 76
   },
   {
-    "id": "layer.vsco.harp.r16",
-    "sampleId": "factory.vsco.harp.r16",
-    "min": 0,
-    "max": 1,
-    "minPitch": 40,
-    "maxPitch": 42,
-    "root": 41
-  },
-  {
-    "id": "layer.vsco.harp.r17",
-    "sampleId": "factory.vsco.harp.r17",
+    "id": "layer.vsco.violaenssusvib-quiet.r11",
+    "sampleId": "factory.vsco.violaenssusvib-quiet.r11",
     "min": 0,
     "max": 1,
     "minPitch": 64,
@@ -3876,17 +16719,8 @@ export const VSCO_PACK_LAYERS: SampleLayer[] = [
     "root": 65
   },
   {
-    "id": "layer.vsco.harp.r18",
-    "sampleId": "factory.vsco.harp.r18",
-    "min": 0,
-    "max": 1,
-    "minPitch": 88,
-    "maxPitch": 90,
-    "root": 89
-  },
-  {
-    "id": "layer.vsco.harp.r19",
-    "sampleId": "factory.vsco.harp.r19",
+    "id": "layer.vsco.violaenssusvib-quiet.r12",
+    "sampleId": "factory.vsco.violaenssusvib-quiet.r12",
     "min": 0,
     "max": 1,
     "minPitch": 54,
@@ -3894,8 +16728,8 @@ export const VSCO_PACK_LAYERS: SampleLayer[] = [
     "root": 55
   },
   {
-    "id": "layer.vsco.harp.r20",
-    "sampleId": "factory.vsco.harp.r20",
+    "id": "layer.vsco.violaenssusvib-quiet.r13",
+    "sampleId": "factory.vsco.violaenssusvib-quiet.r13",
     "min": 0,
     "max": 1,
     "minPitch": 78,
@@ -3903,35 +16737,2483 @@ export const VSCO_PACK_LAYERS: SampleLayer[] = [
     "root": 79
   },
   {
-    "id": "layer.vsco.harp.r21",
-    "sampleId": "factory.vsco.harp.r21",
+    "id": "layer.vsco.violaenssusvib.r1",
+    "sampleId": "factory.vsco.violaenssusvib.r1",
     "min": 0,
-    "max": 1,
-    "minPitch": 97,
-    "maxPitch": 99,
-    "root": 98
+    "max": 0.49606299212598426,
+    "minPitch": 67,
+    "maxPitch": 70,
+    "root": 69
   },
   {
-    "id": "layer.vsco.harp.r22",
-    "sampleId": "factory.vsco.harp.r22",
+    "id": "layer.vsco.violaenssusvib.r2",
+    "sampleId": "factory.vsco.violaenssusvib.r2",
     "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 57,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r3",
+    "sampleId": "factory.vsco.violaenssusvib.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r4",
+    "sampleId": "factory.vsco.violaenssusvib.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 48,
+    "maxPitch": 48,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r5",
+    "sampleId": "factory.vsco.violaenssusvib.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r6",
+    "sampleId": "factory.vsco.violaenssusvib.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 49,
+    "maxPitch": 50,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r7",
+    "sampleId": "factory.vsco.violaenssusvib.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r8",
+    "sampleId": "factory.vsco.violaenssusvib.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r9",
+    "sampleId": "factory.vsco.violaenssusvib.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 51,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r10",
+    "sampleId": "factory.vsco.violaenssusvib.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r11",
+    "sampleId": "factory.vsco.violaenssusvib.r11",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 64,
+    "maxPitch": 66,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r12",
+    "sampleId": "factory.vsco.violaenssusvib.r12",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 54,
+    "maxPitch": 56,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r13",
+    "sampleId": "factory.vsco.violaenssusvib.r13",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r14",
+    "sampleId": "factory.vsco.violaenssusvib.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 67,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r15",
+    "sampleId": "factory.vsco.violaenssusvib.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 57,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r16",
+    "sampleId": "factory.vsco.violaenssusvib.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r17",
+    "sampleId": "factory.vsco.violaenssusvib.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 48,
+    "maxPitch": 48,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r18",
+    "sampleId": "factory.vsco.violaenssusvib.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r19",
+    "sampleId": "factory.vsco.violaenssusvib.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 49,
+    "maxPitch": 50,
+    "root": 50
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r20",
+    "sampleId": "factory.vsco.violaenssusvib.r20",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r21",
+    "sampleId": "factory.vsco.violaenssusvib.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r22",
+    "sampleId": "factory.vsco.violaenssusvib.r22",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 51,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r23",
+    "sampleId": "factory.vsco.violaenssusvib.r23",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r24",
+    "sampleId": "factory.vsco.violaenssusvib.r24",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 66,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r25",
+    "sampleId": "factory.vsco.violaenssusvib.r25",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 54,
+    "maxPitch": 56,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violaenssusvib.r26",
+    "sampleId": "factory.vsco.violaenssusvib.r26",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r1",
+    "sampleId": "factory.vsco.violaenstrem.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 67,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r2",
+    "sampleId": "factory.vsco.violaenstrem.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 57,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r3",
+    "sampleId": "factory.vsco.violaenstrem.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r4",
+    "sampleId": "factory.vsco.violaenstrem.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 48,
+    "maxPitch": 49,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r5",
+    "sampleId": "factory.vsco.violaenstrem.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r6",
+    "sampleId": "factory.vsco.violaenstrem.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r7",
+    "sampleId": "factory.vsco.violaenstrem.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r8",
+    "sampleId": "factory.vsco.violaenstrem.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 50,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r9",
+    "sampleId": "factory.vsco.violaenstrem.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r10",
+    "sampleId": "factory.vsco.violaenstrem.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 64,
+    "maxPitch": 66,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r11",
+    "sampleId": "factory.vsco.violaenstrem.r11",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 54,
+    "maxPitch": 56,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r12",
+    "sampleId": "factory.vsco.violaenstrem.r12",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r13",
+    "sampleId": "factory.vsco.violaenstrem.r13",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 67,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r14",
+    "sampleId": "factory.vsco.violaenstrem.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 57,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r15",
+    "sampleId": "factory.vsco.violaenstrem.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r16",
+    "sampleId": "factory.vsco.violaenstrem.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 48,
+    "maxPitch": 49,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r17",
+    "sampleId": "factory.vsco.violaenstrem.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r18",
+    "sampleId": "factory.vsco.violaenstrem.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r19",
+    "sampleId": "factory.vsco.violaenstrem.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r20",
+    "sampleId": "factory.vsco.violaenstrem.r20",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 50,
+    "maxPitch": 53,
+    "root": 52
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r21",
+    "sampleId": "factory.vsco.violaenstrem.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r22",
+    "sampleId": "factory.vsco.violaenstrem.r22",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 66,
+    "root": 65
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r23",
+    "sampleId": "factory.vsco.violaenstrem.r23",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 54,
+    "maxPitch": 56,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violaenstrem.r24",
+    "sampleId": "factory.vsco.violaenstrem.r24",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r1",
+    "sampleId": "factory.vsco.violinenspizz.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 56,
+    "maxPitch": 57,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r2",
+    "sampleId": "factory.vsco.violinenspizz.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r3",
+    "sampleId": "factory.vsco.violinenspizz.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r4",
+    "sampleId": "factory.vsco.violinenspizz.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r5",
+    "sampleId": "factory.vsco.violinenspizz.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r6",
+    "sampleId": "factory.vsco.violinenspizz.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r7",
+    "sampleId": "factory.vsco.violinenspizz.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r8",
+    "sampleId": "factory.vsco.violinenspizz.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r9",
+    "sampleId": "factory.vsco.violinenspizz.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 66
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r10",
+    "sampleId": "factory.vsco.violinenspizz.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r11",
+    "sampleId": "factory.vsco.violinenspizz.r11",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r12",
+    "sampleId": "factory.vsco.violinenspizz.r12",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 57,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r13",
+    "sampleId": "factory.vsco.violinenspizz.r13",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r14",
+    "sampleId": "factory.vsco.violinenspizz.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r15",
+    "sampleId": "factory.vsco.violinenspizz.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r16",
+    "sampleId": "factory.vsco.violinenspizz.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r17",
+    "sampleId": "factory.vsco.violinenspizz.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r18",
+    "sampleId": "factory.vsco.violinenspizz.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r19",
+    "sampleId": "factory.vsco.violinenspizz.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r20",
+    "sampleId": "factory.vsco.violinenspizz.r20",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 66
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r21",
+    "sampleId": "factory.vsco.violinenspizz.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r22",
+    "sampleId": "factory.vsco.violinenspizz.r22",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r23",
+    "sampleId": "factory.vsco.violinenspizz.r23",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 56,
+    "maxPitch": 57,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r24",
+    "sampleId": "factory.vsco.violinenspizz.r24",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r25",
+    "sampleId": "factory.vsco.violinenspizz.r25",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r26",
+    "sampleId": "factory.vsco.violinenspizz.r26",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r27",
+    "sampleId": "factory.vsco.violinenspizz.r27",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r28",
+    "sampleId": "factory.vsco.violinenspizz.r28",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r29",
+    "sampleId": "factory.vsco.violinenspizz.r29",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r30",
+    "sampleId": "factory.vsco.violinenspizz.r30",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r31",
+    "sampleId": "factory.vsco.violinenspizz.r31",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 66
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r32",
+    "sampleId": "factory.vsco.violinenspizz.r32",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r33",
+    "sampleId": "factory.vsco.violinenspizz.r33",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r34",
+    "sampleId": "factory.vsco.violinenspizz.r34",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 57,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r35",
+    "sampleId": "factory.vsco.violinenspizz.r35",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r36",
+    "sampleId": "factory.vsco.violinenspizz.r36",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r37",
+    "sampleId": "factory.vsco.violinenspizz.r37",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r38",
+    "sampleId": "factory.vsco.violinenspizz.r38",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r39",
+    "sampleId": "factory.vsco.violinenspizz.r39",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r40",
+    "sampleId": "factory.vsco.violinenspizz.r40",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r41",
+    "sampleId": "factory.vsco.violinenspizz.r41",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r42",
+    "sampleId": "factory.vsco.violinenspizz.r42",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 66
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r43",
+    "sampleId": "factory.vsco.violinenspizz.r43",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violinenspizz.r44",
+    "sampleId": "factory.vsco.violinenspizz.r44",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violinensspic.r1",
+    "sampleId": "factory.vsco.violinensspic.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 56,
+    "maxPitch": 57,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.violinensspic.r2",
+    "sampleId": "factory.vsco.violinensspic.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violinensspic.r3",
+    "sampleId": "factory.vsco.violinensspic.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violinensspic.r4",
+    "sampleId": "factory.vsco.violinensspic.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violinensspic.r5",
+    "sampleId": "factory.vsco.violinensspic.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violinensspic.r6",
+    "sampleId": "factory.vsco.violinensspic.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violinensspic.r7",
+    "sampleId": "factory.vsco.violinensspic.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violinensspic.r8",
+    "sampleId": "factory.vsco.violinensspic.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violinensspic.r9",
+    "sampleId": "factory.vsco.violinensspic.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 66
+  },
+  {
+    "id": "layer.vsco.violinensspic.r10",
+    "sampleId": "factory.vsco.violinensspic.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violinensspic.r11",
+    "sampleId": "factory.vsco.violinensspic.r11",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violinensspic.r12",
+    "sampleId": "factory.vsco.violinensspic.r12",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 57,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.violinensspic.r13",
+    "sampleId": "factory.vsco.violinensspic.r13",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violinensspic.r14",
+    "sampleId": "factory.vsco.violinensspic.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violinensspic.r15",
+    "sampleId": "factory.vsco.violinensspic.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violinensspic.r16",
+    "sampleId": "factory.vsco.violinensspic.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violinensspic.r17",
+    "sampleId": "factory.vsco.violinensspic.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violinensspic.r18",
+    "sampleId": "factory.vsco.violinensspic.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violinensspic.r19",
+    "sampleId": "factory.vsco.violinensspic.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violinensspic.r20",
+    "sampleId": "factory.vsco.violinensspic.r20",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 66
+  },
+  {
+    "id": "layer.vsco.violinensspic.r21",
+    "sampleId": "factory.vsco.violinensspic.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violinensspic.r22",
+    "sampleId": "factory.vsco.violinensspic.r22",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violinensspic.r23",
+    "sampleId": "factory.vsco.violinensspic.r23",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 56,
+    "maxPitch": 57,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.violinensspic.r24",
+    "sampleId": "factory.vsco.violinensspic.r24",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violinensspic.r25",
+    "sampleId": "factory.vsco.violinensspic.r25",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violinensspic.r26",
+    "sampleId": "factory.vsco.violinensspic.r26",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violinensspic.r27",
+    "sampleId": "factory.vsco.violinensspic.r27",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violinensspic.r28",
+    "sampleId": "factory.vsco.violinensspic.r28",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violinensspic.r29",
+    "sampleId": "factory.vsco.violinensspic.r29",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violinensspic.r30",
+    "sampleId": "factory.vsco.violinensspic.r30",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violinensspic.r31",
+    "sampleId": "factory.vsco.violinensspic.r31",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 66
+  },
+  {
+    "id": "layer.vsco.violinensspic.r32",
+    "sampleId": "factory.vsco.violinensspic.r32",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violinensspic.r33",
+    "sampleId": "factory.vsco.violinensspic.r33",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violinensspic.r34",
+    "sampleId": "factory.vsco.violinensspic.r34",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 57,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.violinensspic.r35",
+    "sampleId": "factory.vsco.violinensspic.r35",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violinensspic.r36",
+    "sampleId": "factory.vsco.violinensspic.r36",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violinensspic.r37",
+    "sampleId": "factory.vsco.violinensspic.r37",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violinensspic.r38",
+    "sampleId": "factory.vsco.violinensspic.r38",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violinensspic.r39",
+    "sampleId": "factory.vsco.violinensspic.r39",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violinensspic.r40",
+    "sampleId": "factory.vsco.violinensspic.r40",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violinensspic.r41",
+    "sampleId": "factory.vsco.violinensspic.r41",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violinensspic.r42",
+    "sampleId": "factory.vsco.violinensspic.r42",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 66
+  },
+  {
+    "id": "layer.vsco.violinensspic.r43",
+    "sampleId": "factory.vsco.violinensspic.r43",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violinensspic.r44",
+    "sampleId": "factory.vsco.violinensspic.r44",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violinenssusvib-quiet.r1",
+    "sampleId": "factory.vsco.violinenssusvib-quiet.r1",
+    "min": 0,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 57,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.violinenssusvib-quiet.r2",
+    "sampleId": "factory.vsco.violinenssusvib-quiet.r2",
+    "min": 0,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violinenssusvib-quiet.r3",
+    "sampleId": "factory.vsco.violinenssusvib-quiet.r3",
+    "min": 0,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violinenssusvib-quiet.r4",
+    "sampleId": "factory.vsco.violinenssusvib-quiet.r4",
+    "min": 0,
+    "max": 1,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violinenssusvib-quiet.r5",
+    "sampleId": "factory.vsco.violinenssusvib-quiet.r5",
+    "min": 0,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violinenssusvib-quiet.r6",
+    "sampleId": "factory.vsco.violinenssusvib-quiet.r6",
+    "min": 0,
+    "max": 1,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violinenssusvib-quiet.r7",
+    "sampleId": "factory.vsco.violinenssusvib-quiet.r7",
+    "min": 0,
+    "max": 1,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violinenssusvib-quiet.r8",
+    "sampleId": "factory.vsco.violinenssusvib-quiet.r8",
+    "min": 0,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violinenssusvib-quiet.r9",
+    "sampleId": "factory.vsco.violinenssusvib-quiet.r9",
+    "min": 0,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 66
+  },
+  {
+    "id": "layer.vsco.violinenssusvib-quiet.r10",
+    "sampleId": "factory.vsco.violinenssusvib-quiet.r10",
+    "min": 0,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violinenssusvib-quiet.r11",
+    "sampleId": "factory.vsco.violinenssusvib-quiet.r11",
+    "min": 0,
+    "max": 1,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violinenssusvib.r1",
+    "sampleId": "factory.vsco.violinenssusvib.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 56,
+    "maxPitch": 57,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.violinenssusvib.r2",
+    "sampleId": "factory.vsco.violinenssusvib.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violinenssusvib.r3",
+    "sampleId": "factory.vsco.violinenssusvib.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violinenssusvib.r4",
+    "sampleId": "factory.vsco.violinenssusvib.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violinenssusvib.r5",
+    "sampleId": "factory.vsco.violinenssusvib.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violinenssusvib.r6",
+    "sampleId": "factory.vsco.violinenssusvib.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violinenssusvib.r7",
+    "sampleId": "factory.vsco.violinenssusvib.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violinenssusvib.r8",
+    "sampleId": "factory.vsco.violinenssusvib.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violinenssusvib.r9",
+    "sampleId": "factory.vsco.violinenssusvib.r9",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 66
+  },
+  {
+    "id": "layer.vsco.violinenssusvib.r10",
+    "sampleId": "factory.vsco.violinenssusvib.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violinenssusvib.r11",
+    "sampleId": "factory.vsco.violinenssusvib.r11",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violinenssusvib.r12",
+    "sampleId": "factory.vsco.violinenssusvib.r12",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 57,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.violinenssusvib.r13",
+    "sampleId": "factory.vsco.violinenssusvib.r13",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violinenssusvib.r14",
+    "sampleId": "factory.vsco.violinenssusvib.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violinenssusvib.r15",
+    "sampleId": "factory.vsco.violinenssusvib.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violinenssusvib.r16",
+    "sampleId": "factory.vsco.violinenssusvib.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violinenssusvib.r17",
+    "sampleId": "factory.vsco.violinenssusvib.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violinenssusvib.r18",
+    "sampleId": "factory.vsco.violinenssusvib.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violinenssusvib.r19",
+    "sampleId": "factory.vsco.violinenssusvib.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violinenssusvib.r20",
+    "sampleId": "factory.vsco.violinenssusvib.r20",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 66
+  },
+  {
+    "id": "layer.vsco.violinenssusvib.r21",
+    "sampleId": "factory.vsco.violinenssusvib.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violinenssusvib.r22",
+    "sampleId": "factory.vsco.violinenssusvib.r22",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violinenstrem.r1",
+    "sampleId": "factory.vsco.violinenstrem.r1",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 56,
+    "maxPitch": 57,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.violinenstrem.r2",
+    "sampleId": "factory.vsco.violinenstrem.r2",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violinenstrem.r3",
+    "sampleId": "factory.vsco.violinenstrem.r3",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violinenstrem.r4",
+    "sampleId": "factory.vsco.violinenstrem.r4",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violinenstrem.r5",
+    "sampleId": "factory.vsco.violinenstrem.r5",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violinenstrem.r6",
+    "sampleId": "factory.vsco.violinenstrem.r6",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violinenstrem.r7",
+    "sampleId": "factory.vsco.violinenstrem.r7",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violinenstrem.r8",
+    "sampleId": "factory.vsco.violinenstrem.r8",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violinenstrem.r9",
+    "sampleId": "factory.vsco.violinenstrem.r9",
+    "min": 0,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 67,
+    "root": 66
+  },
+  {
+    "id": "layer.vsco.violinenstrem.r10",
+    "sampleId": "factory.vsco.violinenstrem.r10",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violinenstrem.r11",
+    "sampleId": "factory.vsco.violinenstrem.r11",
+    "min": 0,
+    "max": 0.49606299212598426,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.violinenstrem.r12",
+    "sampleId": "factory.vsco.violinenstrem.r12",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 56,
+    "maxPitch": 57,
+    "root": 57
+  },
+  {
+    "id": "layer.vsco.violinenstrem.r13",
+    "sampleId": "factory.vsco.violinenstrem.r13",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 68,
+    "maxPitch": 70,
+    "root": 69
+  },
+  {
+    "id": "layer.vsco.violinenstrem.r14",
+    "sampleId": "factory.vsco.violinenstrem.r14",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 60,
+    "root": 59
+  },
+  {
+    "id": "layer.vsco.violinenstrem.r15",
+    "sampleId": "factory.vsco.violinenstrem.r15",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 81,
+    "maxPitch": 84,
+    "root": 83
+  },
+  {
+    "id": "layer.vsco.violinenstrem.r16",
+    "sampleId": "factory.vsco.violinenstrem.r16",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 71,
+    "maxPitch": 73,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.violinenstrem.r17",
+    "sampleId": "factory.vsco.violinenstrem.r17",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 61,
+    "maxPitch": 63,
+    "root": 62
+  },
+  {
+    "id": "layer.vsco.violinenstrem.r18",
+    "sampleId": "factory.vsco.violinenstrem.r18",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 85,
+    "maxPitch": 86,
+    "root": 86
+  },
+  {
+    "id": "layer.vsco.violinenstrem.r19",
+    "sampleId": "factory.vsco.violinenstrem.r19",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 74,
+    "maxPitch": 77,
+    "root": 76
+  },
+  {
+    "id": "layer.vsco.violinenstrem.r20",
+    "sampleId": "factory.vsco.violinenstrem.r20",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 55,
+    "maxPitch": 55,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.violinenstrem.r21",
+    "sampleId": "factory.vsco.violinenstrem.r21",
+    "min": 0.49606299212598426,
+    "max": 1,
+    "minPitch": 78,
+    "maxPitch": 80,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.vsupright1.r1",
+    "sampleId": "factory.vsco.vsupright1.r1",
+    "min": 0,
+    "max": 0.6377952755905512,
+    "minPitch": 24,
+    "maxPitch": 27,
+    "root": 24
+  },
+  {
+    "id": "layer.vsco.vsupright1.r2",
+    "sampleId": "factory.vsco.vsupright1.r2",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 34,
+    "maxPitch": 39,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.vsupright1.r3",
+    "sampleId": "factory.vsco.vsupright1.r3",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 46,
+    "maxPitch": 51,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.vsupright1.r4",
+    "sampleId": "factory.vsco.vsupright1.r4",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 58,
+    "maxPitch": 63,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.vsupright1.r5",
+    "sampleId": "factory.vsco.vsupright1.r5",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 70,
+    "maxPitch": 75,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.vsupright1.r6",
+    "sampleId": "factory.vsco.vsupright1.r6",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 82,
+    "maxPitch": 87,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.vsupright1.r7",
+    "sampleId": "factory.vsco.vsupright1.r7",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 94,
+    "maxPitch": 99,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.vsupright1.r8",
+    "sampleId": "factory.vsco.vsupright1.r8",
+    "min": 0,
+    "max": 0.6377952755905512,
+    "minPitch": 28,
+    "maxPitch": 33,
+    "root": 31
+  },
+  {
+    "id": "layer.vsco.vsupright1.r9",
+    "sampleId": "factory.vsco.vsupright1.r9",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 40,
+    "maxPitch": 45,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.vsupright1.r10",
+    "sampleId": "factory.vsco.vsupright1.r10",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 52,
+    "maxPitch": 57,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.vsupright1.r11",
+    "sampleId": "factory.vsco.vsupright1.r11",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 64,
+    "maxPitch": 69,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.vsupright1.r12",
+    "sampleId": "factory.vsco.vsupright1.r12",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 76,
+    "maxPitch": 81,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.vsupright1.r13",
+    "sampleId": "factory.vsco.vsupright1.r13",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 88,
+    "maxPitch": 93,
+    "root": 91
+  },
+  {
+    "id": "layer.vsco.vsupright1.r14",
+    "sampleId": "factory.vsco.vsupright1.r14",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 100,
+    "maxPitch": 103,
+    "root": 103
+  },
+  {
+    "id": "layer.vsco.vsupright1.r15",
+    "sampleId": "factory.vsco.vsupright1.r15",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 34,
+    "maxPitch": 39,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.vsupright1.r16",
+    "sampleId": "factory.vsco.vsupright1.r16",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 46,
+    "maxPitch": 51,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.vsupright1.r17",
+    "sampleId": "factory.vsco.vsupright1.r17",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 58,
+    "maxPitch": 63,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.vsupright1.r18",
+    "sampleId": "factory.vsco.vsupright1.r18",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 70,
+    "maxPitch": 75,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.vsupright1.r19",
+    "sampleId": "factory.vsco.vsupright1.r19",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 82,
+    "maxPitch": 87,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.vsupright1.r20",
+    "sampleId": "factory.vsco.vsupright1.r20",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 94,
+    "maxPitch": 99,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.vsupright1.r21",
+    "sampleId": "factory.vsco.vsupright1.r21",
+    "min": 0.6377952755905512,
     "max": 1,
     "minPitch": 28,
-    "maxPitch": 29,
-    "root": 28
+    "maxPitch": 33,
+    "root": 31
   },
   {
-    "id": "layer.vsco.harp.r23",
-    "sampleId": "factory.vsco.harp.r23",
-    "min": 0,
+    "id": "layer.vsco.vsupright1.r22",
+    "sampleId": "factory.vsco.vsupright1.r22",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 40,
+    "maxPitch": 45,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.vsupright1.r23",
+    "sampleId": "factory.vsco.vsupright1.r23",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 52,
+    "maxPitch": 57,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.vsupright1.r24",
+    "sampleId": "factory.vsco.vsupright1.r24",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 64,
+    "maxPitch": 69,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.vsupright1.r25",
+    "sampleId": "factory.vsco.vsupright1.r25",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 76,
+    "maxPitch": 81,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.vsupright1.r26",
+    "sampleId": "factory.vsco.vsupright1.r26",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 88,
+    "maxPitch": 93,
+    "root": 91
+  },
+  {
+    "id": "layer.vsco.vsupright1.r27",
+    "sampleId": "factory.vsco.vsupright1.r27",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 100,
+    "maxPitch": 103,
+    "root": 103
+  },
+  {
+    "id": "layer.vsco.vsupright1.r28",
+    "sampleId": "factory.vsco.vsupright1.r28",
+    "min": 0.6377952755905512,
+    "max": 1,
+    "minPitch": 24,
+    "maxPitch": 27,
+    "root": 24
+  },
+  {
+    "id": "layer.vsco.vsupright1.r29",
+    "sampleId": "factory.vsco.vsupright1.r29",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 34,
+    "maxPitch": 39,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.vsupright1.r30",
+    "sampleId": "factory.vsco.vsupright1.r30",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 46,
+    "maxPitch": 51,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.vsupright1.r31",
+    "sampleId": "factory.vsco.vsupright1.r31",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 63,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.vsupright1.r32",
+    "sampleId": "factory.vsco.vsupright1.r32",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 70,
+    "maxPitch": 75,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.vsupright1.r33",
+    "sampleId": "factory.vsco.vsupright1.r33",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 82,
+    "maxPitch": 87,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.vsupright1.r34",
+    "sampleId": "factory.vsco.vsupright1.r34",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 94,
+    "maxPitch": 99,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.vsupright1.r35",
+    "sampleId": "factory.vsco.vsupright1.r35",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 40,
+    "maxPitch": 45,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.vsupright1.r36",
+    "sampleId": "factory.vsco.vsupright1.r36",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 57,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.vsupright1.r37",
+    "sampleId": "factory.vsco.vsupright1.r37",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 69,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.vsupright1.r38",
+    "sampleId": "factory.vsco.vsupright1.r38",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 81,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.vsupright1.r39",
+    "sampleId": "factory.vsco.vsupright1.r39",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 88,
+    "maxPitch": 93,
+    "root": 91
+  },
+  {
+    "id": "layer.vsco.vsupright1.r40",
+    "sampleId": "factory.vsco.vsupright1.r40",
+    "min": 0.8740157480314961,
     "max": 1,
     "minPitch": 100,
-    "maxPitch": 101,
-    "root": 101
+    "maxPitch": 103,
+    "root": 103
   },
   {
-    "id": "layer.vsco.glockenspiel.r1",
-    "sampleId": "factory.vsco.glockenspiel.r1",
+    "id": "layer.vsco.vsupright1.r41",
+    "sampleId": "factory.vsco.vsupright1.r41",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 24,
+    "maxPitch": 27,
+    "root": 24
+  },
+  {
+    "id": "layer.vsco.vsupright1.r42",
+    "sampleId": "factory.vsco.vsupright1.r42",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 34,
+    "maxPitch": 39,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.vsupright1.r43",
+    "sampleId": "factory.vsco.vsupright1.r43",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 46,
+    "maxPitch": 51,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.vsupright1.r44",
+    "sampleId": "factory.vsco.vsupright1.r44",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 58,
+    "maxPitch": 63,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.vsupright1.r45",
+    "sampleId": "factory.vsco.vsupright1.r45",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 70,
+    "maxPitch": 75,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.vsupright1.r46",
+    "sampleId": "factory.vsco.vsupright1.r46",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 82,
+    "maxPitch": 87,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.vsupright1.r47",
+    "sampleId": "factory.vsco.vsupright1.r47",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 94,
+    "maxPitch": 99,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.vsupright1.r48",
+    "sampleId": "factory.vsco.vsupright1.r48",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 28,
+    "maxPitch": 33,
+    "root": 31
+  },
+  {
+    "id": "layer.vsco.vsupright1.r49",
+    "sampleId": "factory.vsco.vsupright1.r49",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 40,
+    "maxPitch": 45,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.vsupright1.r50",
+    "sampleId": "factory.vsco.vsupright1.r50",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 52,
+    "maxPitch": 57,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.vsupright1.r51",
+    "sampleId": "factory.vsco.vsupright1.r51",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 64,
+    "maxPitch": 69,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.vsupright1.r52",
+    "sampleId": "factory.vsco.vsupright1.r52",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 76,
+    "maxPitch": 81,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.vsupright1.r53",
+    "sampleId": "factory.vsco.vsupright1.r53",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 88,
+    "maxPitch": 93,
+    "root": 91
+  },
+  {
+    "id": "layer.vsco.vsupright1.r54",
+    "sampleId": "factory.vsco.vsupright1.r54",
+    "min": 0,
+    "max": 0.48031496062992124,
+    "minPitch": 100,
+    "maxPitch": 103,
+    "root": 103
+  },
+  {
+    "id": "layer.vsco.vsupright1.r55",
+    "sampleId": "factory.vsco.vsupright1.r55",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 24,
+    "maxPitch": 27,
+    "root": 24
+  },
+  {
+    "id": "layer.vsco.vsupright1.r56",
+    "sampleId": "factory.vsco.vsupright1.r56",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 34,
+    "maxPitch": 39,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.vsupright1.r57",
+    "sampleId": "factory.vsco.vsupright1.r57",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 46,
+    "maxPitch": 51,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.vsupright1.r58",
+    "sampleId": "factory.vsco.vsupright1.r58",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 58,
+    "maxPitch": 63,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.vsupright1.r59",
+    "sampleId": "factory.vsco.vsupright1.r59",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 70,
+    "maxPitch": 75,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.vsupright1.r60",
+    "sampleId": "factory.vsco.vsupright1.r60",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 82,
+    "maxPitch": 87,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.vsupright1.r61",
+    "sampleId": "factory.vsco.vsupright1.r61",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 94,
+    "maxPitch": 99,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.vsupright1.r62",
+    "sampleId": "factory.vsco.vsupright1.r62",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 28,
+    "maxPitch": 33,
+    "root": 31
+  },
+  {
+    "id": "layer.vsco.vsupright1.r63",
+    "sampleId": "factory.vsco.vsupright1.r63",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 40,
+    "maxPitch": 45,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.vsupright1.r64",
+    "sampleId": "factory.vsco.vsupright1.r64",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 52,
+    "maxPitch": 57,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.vsupright1.r65",
+    "sampleId": "factory.vsco.vsupright1.r65",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 64,
+    "maxPitch": 69,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.vsupright1.r66",
+    "sampleId": "factory.vsco.vsupright1.r66",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 76,
+    "maxPitch": 81,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.vsupright1.r67",
+    "sampleId": "factory.vsco.vsupright1.r67",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 88,
+    "maxPitch": 93,
+    "root": 91
+  },
+  {
+    "id": "layer.vsco.vsupright1.r68",
+    "sampleId": "factory.vsco.vsupright1.r68",
+    "min": 0.48031496062992124,
+    "max": 0.8740157480314961,
+    "minPitch": 100,
+    "maxPitch": 103,
+    "root": 103
+  },
+  {
+    "id": "layer.vsco.vsupright1.r69",
+    "sampleId": "factory.vsco.vsupright1.r69",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 24,
+    "maxPitch": 27,
+    "root": 24
+  },
+  {
+    "id": "layer.vsco.vsupright1.r70",
+    "sampleId": "factory.vsco.vsupright1.r70",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 34,
+    "maxPitch": 39,
+    "root": 36
+  },
+  {
+    "id": "layer.vsco.vsupright1.r71",
+    "sampleId": "factory.vsco.vsupright1.r71",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 46,
+    "maxPitch": 51,
+    "root": 48
+  },
+  {
+    "id": "layer.vsco.vsupright1.r72",
+    "sampleId": "factory.vsco.vsupright1.r72",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 63,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.vsupright1.r73",
+    "sampleId": "factory.vsco.vsupright1.r73",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 70,
+    "maxPitch": 75,
+    "root": 72
+  },
+  {
+    "id": "layer.vsco.vsupright1.r74",
+    "sampleId": "factory.vsco.vsupright1.r74",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 82,
+    "maxPitch": 87,
+    "root": 84
+  },
+  {
+    "id": "layer.vsco.vsupright1.r75",
+    "sampleId": "factory.vsco.vsupright1.r75",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 94,
+    "maxPitch": 99,
+    "root": 96
+  },
+  {
+    "id": "layer.vsco.vsupright1.r76",
+    "sampleId": "factory.vsco.vsupright1.r76",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 28,
+    "maxPitch": 33,
+    "root": 31
+  },
+  {
+    "id": "layer.vsco.vsupright1.r77",
+    "sampleId": "factory.vsco.vsupright1.r77",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 40,
+    "maxPitch": 45,
+    "root": 43
+  },
+  {
+    "id": "layer.vsco.vsupright1.r78",
+    "sampleId": "factory.vsco.vsupright1.r78",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 52,
+    "maxPitch": 57,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.vsupright1.r79",
+    "sampleId": "factory.vsco.vsupright1.r79",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 64,
+    "maxPitch": 69,
+    "root": 67
+  },
+  {
+    "id": "layer.vsco.vsupright1.r80",
+    "sampleId": "factory.vsco.vsupright1.r80",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 76,
+    "maxPitch": 81,
+    "root": 79
+  },
+  {
+    "id": "layer.vsco.vsupright1.r81",
+    "sampleId": "factory.vsco.vsupright1.r81",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 88,
+    "maxPitch": 93,
+    "root": 91
+  },
+  {
+    "id": "layer.vsco.vsupright1.r82",
+    "sampleId": "factory.vsco.vsupright1.r82",
+    "min": 0.8740157480314961,
+    "max": 1,
+    "minPitch": 100,
+    "maxPitch": 103,
+    "root": 103
+  },
+  {
+    "id": "layer.vsco.xylophone.r1",
+    "sampleId": "factory.vsco.xylophone.r1",
+    "min": 0,
+    "max": 1,
+    "minPitch": 58,
+    "maxPitch": 63,
+    "root": 60
+  },
+  {
+    "id": "layer.vsco.xylophone.r2",
+    "sampleId": "factory.vsco.xylophone.r2",
     "min": 0,
     "max": 1,
     "minPitch": 70,
@@ -3939,8 +19221,8 @@ export const VSCO_PACK_LAYERS: SampleLayer[] = [
     "root": 72
   },
   {
-    "id": "layer.vsco.glockenspiel.r2",
-    "sampleId": "factory.vsco.glockenspiel.r2",
+    "id": "layer.vsco.xylophone.r3",
+    "sampleId": "factory.vsco.xylophone.r3",
     "min": 0,
     "max": 1,
     "minPitch": 82,
@@ -3948,8 +19230,8 @@ export const VSCO_PACK_LAYERS: SampleLayer[] = [
     "root": 84
   },
   {
-    "id": "layer.vsco.glockenspiel.r3",
-    "sampleId": "factory.vsco.glockenspiel.r3",
+    "id": "layer.vsco.xylophone.r4",
+    "sampleId": "factory.vsco.xylophone.r4",
     "min": 0,
     "max": 1,
     "minPitch": 94,
@@ -3957,17 +19239,26 @@ export const VSCO_PACK_LAYERS: SampleLayer[] = [
     "root": 96
   },
   {
-    "id": "layer.vsco.glockenspiel.r4",
-    "sampleId": "factory.vsco.glockenspiel.r4",
+    "id": "layer.vsco.xylophone.r5",
+    "sampleId": "factory.vsco.xylophone.r5",
     "min": 0,
     "max": 1,
-    "minPitch": 67,
+    "minPitch": 55,
+    "maxPitch": 57,
+    "root": 55
+  },
+  {
+    "id": "layer.vsco.xylophone.r6",
+    "sampleId": "factory.vsco.xylophone.r6",
+    "min": 0,
+    "max": 1,
+    "minPitch": 64,
     "maxPitch": 69,
     "root": 67
   },
   {
-    "id": "layer.vsco.glockenspiel.r5",
-    "sampleId": "factory.vsco.glockenspiel.r5",
+    "id": "layer.vsco.xylophone.r7",
+    "sampleId": "factory.vsco.xylophone.r7",
     "min": 0,
     "max": 1,
     "minPitch": 76,
@@ -3975,102 +19266,12 @@ export const VSCO_PACK_LAYERS: SampleLayer[] = [
     "root": 79
   },
   {
-    "id": "layer.vsco.glockenspiel.r6",
-    "sampleId": "factory.vsco.glockenspiel.r6",
+    "id": "layer.vsco.xylophone.r8",
+    "sampleId": "factory.vsco.xylophone.r8",
     "min": 0,
     "max": 1,
     "minPitch": 88,
     "maxPitch": 93,
     "root": 91
-  },
-  {
-    "id": "layer.vsco.marimba.r1",
-    "sampleId": "factory.vsco.marimba.r1",
-    "min": 0,
-    "max": 1,
-    "minPitch": 57,
-    "maxPitch": 61,
-    "root": 59
-  },
-  {
-    "id": "layer.vsco.marimba.r2",
-    "sampleId": "factory.vsco.marimba.r2",
-    "min": 0,
-    "max": 1,
-    "minPitch": 81,
-    "maxPitch": 85,
-    "root": 83
-  },
-  {
-    "id": "layer.vsco.marimba.r3",
-    "sampleId": "factory.vsco.marimba.r3",
-    "min": 0,
-    "max": 1,
-    "minPitch": 45,
-    "maxPitch": 51,
-    "root": 48
-  },
-  {
-    "id": "layer.vsco.marimba.r4",
-    "sampleId": "factory.vsco.marimba.r4",
-    "min": 0,
-    "max": 1,
-    "minPitch": 69,
-    "maxPitch": 75,
-    "root": 72
-  },
-  {
-    "id": "layer.vsco.marimba.r5",
-    "sampleId": "factory.vsco.marimba.r5",
-    "min": 0,
-    "max": 1,
-    "minPitch": 93,
-    "maxPitch": 96,
-    "root": 96
-  },
-  {
-    "id": "layer.vsco.marimba.r6",
-    "sampleId": "factory.vsco.marimba.r6",
-    "min": 0,
-    "max": 1,
-    "minPitch": 41,
-    "maxPitch": 44,
-    "root": 41
-  },
-  {
-    "id": "layer.vsco.marimba.r7",
-    "sampleId": "factory.vsco.marimba.r7",
-    "min": 0,
-    "max": 1,
-    "minPitch": 62,
-    "maxPitch": 68,
-    "root": 65
-  },
-  {
-    "id": "layer.vsco.marimba.r8",
-    "sampleId": "factory.vsco.marimba.r8",
-    "min": 0,
-    "max": 1,
-    "minPitch": 86,
-    "maxPitch": 92,
-    "root": 89
-  },
-  {
-    "id": "layer.vsco.marimba.r9",
-    "sampleId": "factory.vsco.marimba.r9",
-    "min": 0,
-    "max": 1,
-    "minPitch": 52,
-    "maxPitch": 56,
-    "root": 55
-  },
-  {
-    "id": "layer.vsco.marimba.r10",
-    "sampleId": "factory.vsco.marimba.r10",
-    "min": 0,
-    "max": 1,
-    "minPitch": 76,
-    "maxPitch": 80,
-    "root": 79
   }
 ];

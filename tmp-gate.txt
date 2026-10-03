@@ -1,0 +1,11 @@
+﻿
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+
+ [31m❯[39m tests/sound-library-gate.test.ts [2m([22m[2m4 tests[22m[2m | [22m[31m3 failed[39m[2m)[22m[33m 524[2mms[22m[39m
+[31m   [31m×[31m sound library gate — every curated WAV on contract[2m > [22mformat: every file is 44.1 kHz / 24-bit / dual-mono and at least 0.4 s[90m 100[2mms[22m[31m[39m
+[31m     → ENOENT: no such file or directory, open 'D:\pulse-forge\public\samples\factory.bass.clean.wav'[39m
+[31m   [31m×[31m sound library gate — every curated WAV on contract[2m > [22mpurity: no clipping, no non-finite samples, no DC, grid-aligned start[90m 135[2mms[22m[31m[39m
+[31m     → ENOENT: no such file or directory, open 'D:\pulse-forge\public\samples\factory.bass.clean.wav'[39m
+[31m   [31m×[31m sound library gate — every curated WAV on contract[2m > [22mloudness: every file within ±2.5 dB of its category target[90m 286[2mms[22m[31m[39m
+[31m     → ENOENT: no such file or directory, open 'D:\pulse-forge\public\samples\factory.bass.clean.wav'[39m
+
