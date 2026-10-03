@@ -286,10 +286,11 @@ describe("AGENTS.md invariant — leaky `as any` budget on critical layers", () 
   }
 
   it("src/audio-engine/ keeps its leaky `as any` budget stable", () => {
-    // 17 is the current count; a regression that introduces new
-    // user-facing leaks fires here without changing the source.
-    // A drop signals a refactor — update the test in the same commit.
-    expect(countAsAny("src/audio-engine")).toBe(17);
+    // 16 is the current count — one cast was refactored away and the budget
+    // follows real improvements down per this guard's own contract. A
+    // regression that introduces new user-facing leaks fires here without
+    // changing the source; another drop updates the pin in the same commit.
+    expect(countAsAny("src/audio-engine")).toBe(16);
   });
 
   it("src/commands/ keeps its leaky `as any` budget stable", () => {

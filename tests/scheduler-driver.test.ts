@@ -82,7 +82,16 @@ describe("AudioTickerSchedulerDriver", () => {
   });
 
   function makeDriver(node: FakeTickerNode, now: { t: number }) {
-    const driver = new AudioTickerSchedulerDriver(fakeCtx(), fakeNodeFactory(node), TICKER_WATCHDOG_MS, () => now.t);
+    // The mute sink comes from a managed factory (invariant #7 — the driver
+    // never creates AudioNodes itself); the fake context provides the gain.
+    const ctx = fakeCtx();
+    const driver = new AudioTickerSchedulerDriver(
+      ctx,
+      fakeNodeFactory(node),
+      TICKER_WATCHDOG_MS,
+      () => now.t,
+      () => ctx.createGain(),
+    );
     return driver;
   }
 
@@ -122,8 +131,13 @@ describe("AudioTickerSchedulerDriver", () => {
     // Date.now() under vi.useFakeTimers co-advances with advanceTimersByTime,
     // so the driver's stall math runs against the same fake clock.
     const node = new FakeTickerNode();
-    const driver = new AudioTickerSchedulerDriver(fakeCtx(), fakeNodeFactory(node), TICKER_WATCHDOG_MS, () =>
-      Date.now(),
+    const ctx = fakeCtx();
+    const driver = new AudioTickerSchedulerDriver(
+      ctx,
+      fakeNodeFactory(node),
+      TICKER_WATCHDOG_MS,
+      () => Date.now(),
+      () => ctx.createGain(),
     );
     const ticks: Array<number | null> = [];
     driver.start((t) => ticks.push(t));
@@ -165,6 +179,21 @@ describe("AudioTickerSchedulerDriver", () => {
     vi.advanceTimersByTime(TICKER_WATCHDOG_MS + 10);
     expect(ticks.length).toBeGreaterThanOrEqual(1);
     expect(ticks.every((t) => t === null)).toBe(true);
+    driver.stop();
+  });
+
+  it("no managed gain factory → same degrade path (a pulled node is useless)", () => {
+    // The mute sink is the graph pull — without an engine-managed gain the
+    // audio-ticker mode can never deliver ticks, so the driver falls back.
+    const node = new FakeTickerNode();
+    const now = { t: 0 };
+    const driver = new AudioTickerSchedulerDriver(fakeCtx(), fakeNodeFactory(node), TICKER_WATCHDOG_MS, () => now.t);
+    const ticks: Array<number | null> = [];
+    driver.start((t) => ticks.push(t));
+    expect(driver.kind).toBe("timer-fallback");
+    now.t = TICKER_WATCHDOG_MS + 1;
+    vi.advanceTimersByTime(TICKER_WATCHDOG_MS + 10);
+    expect(ticks.length).toBeGreaterThanOrEqual(1);
     driver.stop();
   });
 

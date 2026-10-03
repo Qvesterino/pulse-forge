@@ -637,7 +637,11 @@ export async function openProject(
   // driver seam simply stays unset). The driver's lifecycle is the
   // scheduler's: start()/stop() arm and tear it down with playback.
   try {
-    const schedulerDriver = createSchedulerDriver(engine.ensureContext());
+    // The mute sink comes from the ENGINE's context path (invariant #7):
+    // the driver never creates AudioNodes itself.
+    const schedulerDriver = createSchedulerDriver(engine.ensureContext(), {
+      createGain: () => engine.createContextGain(),
+    });
     if (schedulerDriver) scheduler.setDriver(schedulerDriver);
   } catch {
     // No realtime context at open (blocked embed, iOS cap) — the legacy

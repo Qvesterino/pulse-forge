@@ -793,6 +793,19 @@ export class AudioEngine {
     return ctx;
   }
 
+  /**
+   * Managed gain for external graph helpers (the scheduler's ticker driver
+   * needs a zero-gain sink so the graph pulls its worklet). Invariant #7
+   * discipline: AudioNodes are created on the engine's context path, never
+   * by consumers holding a raw context — this hands them an engine-owned
+   * node instead. Null when no live context exists yet.
+   */
+  createContextGain(): GainNode | null {
+    const ctx = this.ctx;
+    if (!ctx || ctx.state === "closed") return null;
+    return ctx.createGain();
+  }
+
   setProject(doc: ProjectDocument): void {
     // `this.doc = doc` MUST be synchronous — the offline renderer and the
     // surrounding UI read `engine.doc` immediately after this returns, so

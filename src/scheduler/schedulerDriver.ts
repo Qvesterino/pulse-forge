@@ -83,6 +83,13 @@ export class AudioTickerSchedulerDriver implements SchedulerDriver {
     private readonly createNode: TickerNodeFactory,
     private readonly watchdogMs: number = TICKER_WATCHDOG_MS,
     private readonly now: () => number = () => performance.now(),
+    /**
+     * Managed gain factory (invariant #7): the mute sink is created ON THE
+     * ENGINE's context path and handed in — the scheduler never calls node
+     * factories itself. Null factory (or a null gain) degrades to the timer
+     * fallback, same as a missing worklet module.
+     */
+    private readonly createMuteGain: (() => GainNode | null) | null = null,
   ) {}
 
   start(onTick: (audioTime: number | null) => void): void {
@@ -103,8 +110,10 @@ export class AudioTickerSchedulerDriver implements SchedulerDriver {
         this.onTick?.(msg.time);
       };
       // The node must be pulled by the graph to process at all — route its
-      // silent output through a zero gain into the destination.
-      this.mute = this.ctx.createGain();
+      // silent output through the engine-managed zero gain into the
+      // destination. No managed gain → degrade, a pulled node is useless.
+      this.mute = this.createMuteGain ? this.createMuteGain() : null;
+      if (!this.mute) throw new Error("no managed gain available");
       this.mute.gain.value = 0;
       this.node.connect(this.mute);
       this.mute.connect(this.ctx.destination);
@@ -161,18 +170,29 @@ export class AudioTickerSchedulerDriver implements SchedulerDriver {
   }
 }
 
-/** Factory used by services: returns null when there is no usable context. */
-export function createSchedulerDriver(ctx: BaseAudioContext | null | undefined): AudioTickerSchedulerDriver | null {
+/** Factory used by services: returns null when there is no usable context.
+ * `opts.createGain` is the engine-managed mute-gain factory (invariant #7) —
+ * without it the driver degrades to the timer fallback. */
+export function createSchedulerDriver(
+  ctx: BaseAudioContext | null | undefined,
+  opts?: { createGain?: () => GainNode | null },
+): AudioTickerSchedulerDriver | null {
   if (!ctx || !ctx.audioWorklet) return null;
-  return new AudioTickerSchedulerDriver(ctx, () => {
-    const node = new AudioWorkletNode(ctx, "rt-ticker-processor", {
-      numberOfInputs: 0,
-      numberOfOutputs: 1,
-      outputChannelCount: [1],
-      processorOptions: { intervalBlocks: TICKER_INTERVAL_BLOCKS },
-    });
-    // Satisfy the structural TickerNode contract (AudioWorkletNode.connect
-    // returns the destination; the seam type chains like the real one).
-    return node as unknown as TickerNode;
-  });
+  return new AudioTickerSchedulerDriver(
+    ctx,
+    () => {
+      const node = new AudioWorkletNode(ctx, "rt-ticker-processor", {
+        numberOfInputs: 0,
+        numberOfOutputs: 1,
+        outputChannelCount: [1],
+        processorOptions: { intervalBlocks: TICKER_INTERVAL_BLOCKS },
+      });
+      // Satisfy the structural TickerNode contract (AudioWorkletNode.connect
+      // returns the destination; the seam type chains like the real one).
+      return node as unknown as TickerNode;
+    },
+    TICKER_WATCHDOG_MS,
+    undefined,
+    opts?.createGain ?? null,
+  );
 }
