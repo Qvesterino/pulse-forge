@@ -84,9 +84,7 @@ import {
   clampParam as clampMorphParam,
   buildDefaultParams as buildMorphDefaults,
 } from "../effects/morph-dynamics-core/contracts/parameterSchema";
-import { INSTRUMENT_META, clampInstrumentParam, defaultInstrumentParams } from "../instruments/definitions";
 import { clampTargetValue, isAutomationTargetValid, targetOwner, targetParamDef } from "../project-model/targets";
-import type { InstrumentPreset } from "../presets/types";
 import { CORE_EFFECT_PRESETS, type EffectPreset } from "../effects/presets";
 import type { BeatmakingEffectChain } from "../effects/chains";
 import { clampFxOutputTrimDb, factoryFxChainGainDb, factoryFxPresetGainDb } from "../effects/presetLoudness";
@@ -134,6 +132,8 @@ import type { MidiCreativeOperation } from "../midi/creative";
 import { snapshot } from "./core";
 export { __resetSnapshotVerificationFallbacks, __snapshotVerificationFallbacks, snapshot } from "./core";
 
+export * from "./freeze";
+export * from "./instrument";
 export function setProjectName(doc: ProjectDocument, name: string): Command {
   const prev = doc.name;
   return {
@@ -2443,105 +2443,6 @@ export function applyMidiCreativeTool(doc: ProjectDocument, options: ApplyMidiCr
           : candidate,
       ),
     }),
-  };
-}
-
-/* ---------------- instrument params ---------------- */
-
-export function setInstrumentParam(doc: ProjectDocument, trackId: string, paramId: string, value: number): Command {
-  const track = doc.tracks.find((t): t is InstrumentTrack => t.kind === "instrument" && t.id === trackId);
-  if (!track) throw new Error(`Instrument track ${trackId} not found`);
-  const prev = track.params[paramId] ?? defaultInstrumentParams(track.instrument)[paramId];
-  const clamped = clampInstrumentParam(track.instrument, paramId, value);
-  const apply = (d: ProjectDocument, v: number): ProjectDocument => ({
-    ...d,
-    tracks: d.tracks.map((t) =>
-      t.kind === "instrument" && t.id === trackId ? { ...t, params: { ...t.params, [paramId]: v } } : t,
-    ),
-  });
-  return {
-    type: "setInstrumentParam",
-    label: `Set ${INSTRUMENT_META[track.instrument].name} ${paramId}`,
-    execute: (d) => apply(d, clamped),
-    undo: (d) => apply(d, prev),
-    applyToYDoc: (yMap) => {
-      const tracks = yMap.get("tracks") as any;
-      for (let i = 0; i < tracks.length; i++) {
-        const t = tracks.get(i);
-        if (t.get("id") === trackId) {
-          (t.get("params") as any).set(paramId, clamped);
-          break;
-        }
-      }
-    },
-  };
-}
-
-export function setInstrumentSample(doc: ProjectDocument, trackId: string, assetId: string | null): Command {
-  const track = doc.tracks.find((t): t is InstrumentTrack => t.kind === "instrument" && t.id === trackId);
-  if (!track) throw new Error(`Instrument track ${trackId} not found`);
-  const prev = track.sampleId;
-  const apply = (d: ProjectDocument, v: string | null): ProjectDocument => ({
-    ...d,
-    tracks: d.tracks.map((t) => (t.kind === "instrument" && t.id === trackId ? { ...t, sampleId: v } : t)),
-  });
-  return {
-    type: "setInstrumentSample",
-    label: `Set sample`,
-    execute: (d) => apply(d, assetId),
-    undo: (d) => apply(d, prev),
-    applyToYDoc: (yMap) => {
-      const tracks = yMap.get("tracks") as any;
-      for (let i = 0; i < tracks.length; i++) {
-        const t = tracks.get(i);
-        if (t.get("id") === trackId) {
-          t.set("sampleId", assetId);
-          break;
-        }
-      }
-    },
-  };
-}
-
-/**
- * Apply an instrument preset as a single undoable step: replaces the track's
- * parameters (instrument defaults overlaid with clamped preset overrides),
- * sampler sample, and preset id. Factory presets are intentionally sparse, so
- * omitted parameters must resolve to defaults rather than leaking the previous
- * patch into the newly selected sound.
- */
-export function applyInstrumentPreset(doc: ProjectDocument, trackId: string, preset: InstrumentPreset): Command {
-  const track = doc.tracks.find((t): t is InstrumentTrack => t.kind === "instrument" && t.id === trackId);
-  if (!track) throw new Error(`Instrument track ${trackId} not found`);
-  const prevParams = { ...track.params };
-  const prevSample = track.sampleId;
-  const prevPresetId = track.presetId ?? null;
-
-  const nextParams: Record<string, number> = defaultInstrumentParams(track.instrument);
-  for (const [key, value] of Object.entries(preset.params)) {
-    nextParams[key] = clampInstrumentParam(track.instrument, key, value);
-  }
-  const nextSample = preset.sampleId !== undefined ? preset.sampleId : track.sampleId;
-
-  const apply = (
-    d: ProjectDocument,
-    params: Record<string, number>,
-    sampleId: string | null,
-    presetId: string | null,
-  ): ProjectDocument => ({
-    ...d,
-    tracks: d.tracks.map((t) =>
-      // Copy the params map on every apply: the closure-owned next/prev maps
-      // are shared by execute and every undo/redo cycle — inserting them by
-      // reference would alias one mutable object across doc revisions.
-      t.kind === "instrument" && t.id === trackId ? { ...t, params: { ...params }, sampleId, presetId } : t,
-    ),
-  });
-  return {
-    type: "applyInstrumentPreset",
-    label: `Apply preset "${preset.name}"`,
-    execute: (d) => apply(d, nextParams, nextSample, preset.id),
-    undo: (d) => apply(d, prevParams, prevSample, prevPresetId),
   };
 }
 
@@ -7072,92 +6973,6 @@ export function setMidiClockMode(doc: ProjectDocument, clockMode: "off" | "maste
   const midi = ensureMidi(doc);
   const next: ProjectDocument = { ...doc, midi: { ...midi, clockMode } };
   return snapshot("setMidiClockMode", `Clock mode: ${clockMode}`, doc, next);
-}
-
-// ---------------------------------------------------------------------------
-// Freeze / Unfreeze
-// ---------------------------------------------------------------------------
-
-export function freezeTrack(
-  doc: ProjectDocument,
-  trackId: string,
-  bufferId: string,
-  durationSec: number,
-  sampleRate: number,
-): Command {
-  const track = doc.tracks.find((t) => t.id === trackId);
-  if (!track) throw new Error(`Track ${trackId} not found`);
-  if (track.kind === "group") {
-    // State-invariant guard: a frozen group is a persisted lie — the offline
-    // renderer includes only the (source-less) group itself, so the buffer
-    // is silence, nothing is saved, and the "FROZEN" state survives
-    // save/load. Freeze the child tracks instead.
-    throw new Error(`Group track ${track.name} cannot be frozen — freeze its child tracks instead`);
-  }
-  const label = `Freeze ${track.name}`;
-  // Freeze is dispatched AFTER a seconds-long offline render — it must apply
-  // to whatever document is current at dispatch time, not the snapshot taken
-  // when rendering started (a snapshot silently reverts concurrent edits).
-  let prevFrozen: ProjectDocument["tracks"][number]["frozen"] = undefined;
-  return {
-    type: "freezeTrack",
-    label,
-    execute: (d) => {
-      if (!d.tracks.some((t) => t.id === trackId)) return d;
-      prevFrozen = d.tracks.find((t) => t.id === trackId)?.frozen;
-      return {
-        ...d,
-        tracks: d.tracks.map((t) => (t.id === trackId ? { ...t, frozen: { bufferId, durationSec, sampleRate } } : t)),
-      };
-    },
-    undo: (d) => {
-      if (!d.tracks.some((t) => t.id === trackId)) return d;
-      return {
-        ...d,
-        tracks: d.tracks.map((t) => {
-          if (t.id !== trackId) return t;
-          if (prevFrozen === undefined) {
-            const { frozen: _, ...rest } = t as any;
-            return rest;
-          }
-          return { ...t, frozen: prevFrozen };
-        }),
-      };
-    },
-  };
-}
-
-export function unfreezeTrack(doc: ProjectDocument, trackId: string): Command {
-  const track = doc.tracks.find((t) => t.id === trackId);
-  if (!track) throw new Error(`Track ${trackId} not found`);
-  const label = `Unfreeze ${track.name}`;
-  let prevFrozen: ProjectDocument["tracks"][number]["frozen"] = undefined;
-  return {
-    type: "unfreezeTrack",
-    label,
-    execute: (d) => {
-      if (!d.tracks.some((t) => t.id === trackId)) return d;
-      prevFrozen = d.tracks.find((t) => t.id === trackId)?.frozen;
-      return {
-        ...d,
-        tracks: d.tracks.map((t) => (t.id === trackId ? { ...t, frozen: undefined } : t)),
-      };
-    },
-    undo: (d) => {
-      if (!d.tracks.some((t) => t.id === trackId)) return d;
-      return {
-        ...d,
-        tracks: d.tracks.map((t) => {
-          if (t.id !== trackId) return t;
-          if (prevFrozen === undefined) {
-            const { frozen: _, ...rest } = t as any;
-            return rest;
-          }
-          return { ...t, frozen: prevFrozen };
-        }),
-      };
-    },
-  };
 }
 
 /* ---------------- AI pattern generation ---------------- */
