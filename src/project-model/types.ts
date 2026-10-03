@@ -40,6 +40,7 @@ export type EffectType =
   | "tapeStop"
   | "freqShifter"
   | "pitchShift"
+  | "pitchCorrect"
   | "vinyl"
   | "beatMangler"
   | "msEq"

@@ -70,6 +70,7 @@ const CORE_TYPES = [
   "tapeStop",
   "freqShifter",
   "pitchShift",
+  "pitchCorrect",
   "vinyl",
   "beatMangler",
   "vocoder",

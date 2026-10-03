@@ -32,6 +32,7 @@ import { createKaskadaNode } from "../audio-worklets/kaskada-node";
 import { createRingModNode } from "../audio-worklets/ringmod-node";
 import { createTapeStopNode } from "../audio-worklets/tapestop-node";
 import { createFreqShiftNode } from "../audio-worklets/freqshifter-node";
+import { createPitchCorrectNode } from "../audio-worklets/pitchcorrect-node";
 import { createPitchShiftNode } from "../audio-worklets/pitchshift-node";
 import { createVinylNode } from "../audio-worklets/vinyl-node";
 import { createBeatManglerNode } from "../audio-worklets/beatmangler-node";
@@ -81,6 +82,7 @@ import {
   tapeStopParams,
   freqShifterParams,
   multiTapDelayParams,
+  pitchCorrectParams,
   pitchShiftParams,
   vinylParams,
   beatManglerParams,
@@ -221,6 +223,7 @@ export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded"
   ringMod: "critical",
   tapeStop: "critical",
   freqShifter: "critical",
+  pitchCorrect: "critical",
   pitchShift: "critical",
   vinyl: "critical",
   beatMangler: "critical",
@@ -3337,6 +3340,17 @@ const pitchShift: EffectDefinition = {
   },
 };
 
+const pitchCorrect: EffectDefinition = {
+  type: "pitchCorrect",
+  name: "Pitch Correct",
+  category: "character",
+  params: pitchCorrectParams,
+  factory(ctx, instance) {
+    if (isWorkletReady("pitchCorrect", ctx)) return createPitchCorrectNode(ctx, instance);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — pitch correction bypassed (1:1 signal)");
+  },
+};
+
 const vinyl: EffectDefinition = {
   type: "vinyl",
   name: "Vinyl Suite",
@@ -3475,6 +3489,7 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   tapeStop,
   freqShifter,
   pitchShift,
+  pitchCorrect,
   vinyl,
   beatMangler,
   vocoder,

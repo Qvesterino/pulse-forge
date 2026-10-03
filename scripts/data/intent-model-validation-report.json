@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "kind": "intent-action-model-validation",
   "taskBoundary": "Closed-set action/slot decoding only; not a creative-brief or musical-quality evaluation.",
-  "generatedAt": "2026-10-02T07:54:56.815Z",
+  "generatedAt": "2026-10-03T00:50:53.714Z",
   "model": {
     "version": "intent-model.v1",
     "runtime": "onnxruntime-web@1.29.0/wasm",
@@ -55,7 +55,7 @@
   },
   "evaluator": {
     "validatorSha256": "501861bd36a23749c2cfc90bc322034865e3e31bb78afe32744a410e96270989",
-    "decoderSha256": "350c5dfbb152712a0255378800924da3b0c0c24b462577cc94ba8b33484e8567",
+    "decoderSha256": "a9f16f93c114b7aa4e253f79e7506c5b1589f41f36b9f5079b8e4cb308cc3034",
     "schemaSourceSha256": "d33464716990662d8af7a2942633bd36513b567ed32b4206a82a4bc07d927cbc",
     "environment": {
       "platform": "win32",

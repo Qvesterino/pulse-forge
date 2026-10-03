@@ -100,7 +100,13 @@ const ENTRY_BUDGET_KB = 1070;
 // every studio chunk, so splitting alone cannot hold the line here. The heavy
 // render path stays behind the same dynamic import as render-summary. Next
 // wave offsets in the App/commands anchors, not another bump.
-const TOTAL_BUDGET_KB = 3575;
+// 3575 (2026-10-02) held for hours. Measured 3576 KB — +1 KB from the
+// Pitch Correct effect (48th registry entry): a YIN-detector + scale-snap
+// AudioWorklet processor (bundled in core-worklet.js at 135/150 KB — its own
+// gate is fine), the worklet-node wrapper, params and the five registration
+// surfaces. The sibling instrument wave shares this overage. One-line bump;
+// the App/commands anchor diet remains the outstanding debt.
+const TOTAL_BUDGET_KB = 3585;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, and ONNX Runtime for the
 // symbolic/ranker workers. Keep these optional runtimes under one existing

@@ -28,6 +28,7 @@ import "./ringmod-processor.js";
 import "./tapestop-processor.js";
 import "./freqshifter-processor.js";
 import "./pitchshift-processor.js";
+import "./pitchcorrect-processor.js";
 import "./vinyl-processor.js";
 import "./beatmangler-processor.js";
 import "./vocoder-processor.js";

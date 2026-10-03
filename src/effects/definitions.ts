@@ -252,6 +252,7 @@ export const EFFECT_ORDER: EffectType[] = [
   "tapeStop",
   "freqShifter",
   "pitchShift",
+  "pitchCorrect",
   "vinyl",
   "beatMangler",
 ];
@@ -525,14 +526,48 @@ export const eqParams: ParamDef[] = [
   { id: "highShelfGain", label: "HIGH SHELF", min: -15, max: 15, default: 0, unit: "dB", format: formatDb },
   // Free surgical bands — fully parametric (bell / notch), ±24 dB for
   // deep notches. Gain 0 = bypassed (transparent on old projects).
-  { id: "free1Freq", label: "FREE 1 FREQ", min: 20, max: 20000, default: 1000, unit: "Hz", format: formatHz, taper: "log" },
+  {
+    id: "free1Freq",
+    label: "FREE 1 FREQ",
+    min: 20,
+    max: 20000,
+    default: 1000,
+    unit: "Hz",
+    format: formatHz,
+    taper: "log",
+  },
   { id: "free1Gain", label: "FREE 1 GAIN", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
   { id: "free1Q", label: "FREE 1 Q", min: 0.1, max: 24, default: 2, format: (v) => v.toFixed(2) },
-  { id: "free1Type", label: "FREE 1 TYPE", min: 0, max: 1, default: 0, format: (v) => (v >= 0.5 ? "NOTCH" : "BELL"), kind: "toggle" },
-  { id: "free2Freq", label: "FREE 2 FREQ", min: 20, max: 20000, default: 3000, unit: "Hz", format: formatHz, taper: "log" },
+  {
+    id: "free1Type",
+    label: "FREE 1 TYPE",
+    min: 0,
+    max: 1,
+    default: 0,
+    format: (v) => (v >= 0.5 ? "NOTCH" : "BELL"),
+    kind: "toggle",
+  },
+  {
+    id: "free2Freq",
+    label: "FREE 2 FREQ",
+    min: 20,
+    max: 20000,
+    default: 3000,
+    unit: "Hz",
+    format: formatHz,
+    taper: "log",
+  },
   { id: "free2Gain", label: "FREE 2 GAIN", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
   { id: "free2Q", label: "FREE 2 Q", min: 0.1, max: 24, default: 2, format: (v) => v.toFixed(2) },
-  { id: "free2Type", label: "FREE 2 TYPE", min: 0, max: 1, default: 0, format: (v) => (v >= 0.5 ? "NOTCH" : "BELL"), kind: "toggle" },
+  {
+    id: "free2Type",
+    label: "FREE 2 TYPE",
+    min: 0,
+    max: 1,
+    default: 0,
+    format: (v) => (v >= 0.5 ? "NOTCH" : "BELL"),
+    kind: "toggle",
+  },
   // Legacy aliases remain in the registry so old documents and commands keep
   // working; `deprecated` keeps them out of automation target lists and UI
   // pickers (the command layer remaps them via eqLegacyMap).
@@ -1811,6 +1846,41 @@ export const pitchShiftParams: ParamDef[] = [
   { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
 ];
 
+/** Scale-snap pitch correction. `root` is a pitch class 0..11 (C..B);
+ * `scaleMode` 0 = chromatic (every semitone is a target — the classic hard
+ * tune), 1 = major, 2 = natural minor. `amount` blends the correction and
+ * `speed` shapes the retune glide (hard ↔ natural). */
+export const pitchCorrectParams: ParamDef[] = [
+  { id: "amount", label: "RETUNE", min: 0, max: 1, default: 1, format: formatPct },
+  {
+    id: "speed",
+    label: "SPEED",
+    min: 0,
+    max: 1,
+    default: 0.7,
+    format: (v) => `${Math.round((1 - v) * 146 + 4)} ms`,
+  },
+  {
+    id: "root",
+    label: "KEY",
+    min: 0,
+    max: 11,
+    default: 0,
+    step: 1,
+    format: (v) => ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"][Math.round(v)] ?? "C",
+  },
+  {
+    id: "scaleMode",
+    label: "SCALE",
+    min: 0,
+    max: 2,
+    default: 1,
+    step: 1,
+    format: (v) => ["CHROM", "MAJOR", "MINOR"][Math.round(v)] ?? "MAJOR",
+  },
+  { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+];
+
 export const vinylParams: ParamDef[] = [
   // Master macro first — the "one knob" path for people who just want AGE.
   { id: "amount", label: "AGE", min: 0, max: 1, default: 0.5, format: formatPct },
@@ -2237,6 +2307,7 @@ export const EFFECT_META: Record<EffectType, EffectDefinitionMeta> = {
   freqShifter: { type: "freqShifter", name: "Freq Shift", category: "movement", params: freqShifterParams },
   multiTapDelay: { type: "multiTapDelay", name: "Multi-Tap", category: "space", params: multiTapDelayParams },
   pitchShift: { type: "pitchShift", name: "Pitch Shift", category: "character", params: pitchShiftParams },
+  pitchCorrect: { type: "pitchCorrect", name: "Pitch Correct", category: "character", params: pitchCorrectParams },
   vinyl: { type: "vinyl", name: "Vinyl Suite", category: "character", params: vinylParams },
   beatMangler: { type: "beatMangler", name: "Beat Mangler", category: "movement", params: beatManglerParams },
   vocoder: { type: "vocoder", name: "Vocoder", category: "character", params: vocoderParams },

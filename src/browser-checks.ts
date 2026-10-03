@@ -4460,6 +4460,67 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     check("compressor: DE-ESS mode ducks the sibilance band, not the low band (host)", false, String(error));
   }
 
+  // PITCH CORRECT (host level) — the same factory path the real graph uses.
+  // Golden vectors pin the pure snap math; THIS check proves the worklet
+  // actually corrects through the factory + k-rate params (checklist #13:
+  // amount min vs max must move a measured metric). An Eb4 sine against a
+  // C-major target sits ~100 cents flat — RETUNE 0 leaves it at Eb, RETUNE 1
+  // pulls the spectral peak up to E4.
+  try {
+    const measureBins = async (amount: number): Promise<{ eb: number; e4: number }> => {
+      const ctx = new OfflineAudioContext(2, SR, SR);
+      await loadAllWorklets(ctx);
+      if (!isWorkletReady("pitchCorrect", ctx)) throw new Error("worklet modules not ready");
+      const rt = EFFECT_DEFS.pitchCorrect.factory(
+        ctx,
+        {
+          id: "check-pc",
+          type: "pitchCorrect",
+          bypassed: false,
+          params: { amount, speed: 1, root: 0, scaleMode: 1, mix: 1 },
+        },
+        { bpm: 124 },
+      );
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = 311.13; // Eb4 — a semitone flat of the E4 target
+      const gain = ctx.createGain();
+      gain.gain.value = 0.5;
+      osc.connect(gain).connect(rt.input);
+      rt.output.connect(ctx.destination);
+      osc.start(0);
+      const out = (await ctx.startRendering()).getChannelData(0);
+      rt.dispose();
+      // Skip the first 150 ms — detector warm-up + ratio glide.
+      const from = Math.floor(SR * 0.15);
+      const n = out.length - from;
+      const goertzel = (freq: number) => {
+        const k = (2 * Math.PI * freq) / SR;
+        let coeff = 2 * Math.cos(k);
+        let s1 = 0;
+        let s2 = 0;
+        for (let i = 0; i < n; i++) {
+          const s0 = out[from + i] + coeff * s1 - s2;
+          s2 = s1;
+          s1 = s0;
+        }
+        return Math.sqrt(s1 * s1 + s2 * s2 - coeff * s1 * s2) / n;
+      };
+      return { eb: goertzel(311.13), e4: goertzel(329.63) };
+    };
+    const atMin = await measureBins(0);
+    const atMax = await measureBins(1);
+    // RETUNE 0: the tone passes through at Eb (no pull). RETUNE 1: the peak
+    // moves to E4 — the corrected bin now dominates the flat one.
+    check(
+      "pitchCorrect: RETUNE pulls an off-key tone onto the scale (host)",
+      atMax.e4 > atMax.eb * 1.5 && atMin.eb > atMax.eb,
+      `amount0: eb=${atMin.eb.toFixed(4)} e4=${atMin.e4.toFixed(4)} · amount1: eb=${atMax.eb.toFixed(4)} e4=${atMax.e4.toFixed(4)}`,
+    );
+  } catch (error) {
+    check("pitchCorrect: RETUNE pulls an off-key tone onto the scale (host)", false, String(error));
+  }
+
   // Sidechain HPF: a sub-only detector drives compression when the HPF is off
   // and is rejected once the HPF sits above the sub band — the reason this is
   // a worklet and not the native node.
@@ -5870,7 +5931,7 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
         applyAutomation: () => {},
         applyPatternLaunch: () => {},
       });
-      const driver = createSchedulerDriver(ctx);
+      const driver = createSchedulerDriver(ctx, { createGain: () => ctx.createGain() });
       if (driver) scheduler.setDriver(driver);
       transport.play(0, { leadIn: false });
       scheduler.start();
