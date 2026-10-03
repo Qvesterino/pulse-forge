@@ -19,6 +19,15 @@
  *     dangling in every save.
  *  F1 sanitizeAudioClips let fades longer than the clip survive a load.
  *
+ * Follow-up wave (deferred-risk resolution):
+ *  R2 the in-command fade clamps now bound at the scene-pinned tempo too
+ *     (audioClipDurationSec/clampClipFades/updateAudioClip) — previously only
+ *     the load-time sanitize was scene-aware.
+ *  R3 fitAudioClipTempo fits against the tempo the transport runs at the
+ *     clip (scene pin), and marker cue routing semantics are pinned.
+ *  R4 strip-silence on take-lane clips keeps take identity (comp fragments
+ *     stay audible; inactive-take fragments stay silent) — pinned, not changed.
+ *
  * Plus probes for gaps found by the audit: split at the exact end tick,
  * repeated-move fixed points, and a stress chain over the new paths.
  */
@@ -26,18 +35,24 @@ import { describe, expect, it } from "vitest";
 import { createDefaultProject, normalizeProject } from "../src/project-model/schema";
 import { BAR_TICKS, PPQ } from "../src/project-model/types";
 import type { AudioClip, ProjectDocument } from "../src/project-model/types";
+import { audioClipsForPlayback } from "../src/project-model/audio-takes";
+import { markerCueTrackId } from "../src/project-model/markers";
 import {
   addArrangementClip,
   addAudioClip,
+  addAudioTakeClip,
   addMarker,
+  compAudioTakeRange,
   deleteArrangementClip,
   deleteArrangementClipRipple,
   deleteAudioClip,
   deleteTrack,
   duplicateAudioClip,
   duplicateTimeRange,
+  fitAudioClipTempo,
   moveAudioClip,
   moveArrangementClip,
+  resizeAudioClip,
   setSceneBpm,
   sliceAudioClipToArrangement,
   splitAudioClipAtTick,
@@ -419,5 +434,127 @@ describe("audit probes — boundary & repeatability gaps", () => {
     next = split.undo(next);
     next = strip.undo(next);
     expect(next).toEqual(doc);
+  });
+});
+
+/* ── deferred-risk wave: scene-aware clamps, fit target, marker routing, takes ── */
+
+describe("in-command fade clamps are scene-aware (R2)", () => {
+  function pinnedDoc() {
+    let doc = createDefaultProject();
+    doc = setSceneBpm(doc, doc.scenes[0]!.id, 60).execute(doc);
+    const trackId = doc.tracks.find((t) => t.kind !== "group")!.id;
+    doc = addAudioClip(doc, trackId, "buf-audit", 0, 1).execute(doc);
+    return { doc, clipId: doc.arrangement.audioClips![0]!.id };
+  }
+
+  it("updateAudioClip bounds fades at the scene tempo (1 bar @60bpm = 4s, not 0.97s)", () => {
+    const { doc, clipId } = pinnedDoc();
+    const next = updateAudioClip(doc, clipId, { fadeIn: 5, fadeOut: 5 }).execute(doc);
+    const clip = next.arrangement.audioClips![0]!;
+    expect(clip.fadeIn).toBeCloseTo(4, 6); // flat doc.bpm bound would say ~0.97
+    expect(clip.fadeOut).toBeCloseTo(4, 6);
+  });
+
+  it("resize re-bounds inherited fades at the scene tempo", () => {
+    const { doc, clipId } = pinnedDoc();
+    const sized = updateAudioClip(doc, clipId, { fadeIn: 4, fadeOut: 4 }).execute(doc);
+    const next = resizeAudioClip(sized, clipId, 0.5).execute(sized); // half bar @60bpm = 2s
+    const clip = next.arrangement.audioClips![0]!;
+    expect(clip.fadeIn).toBeCloseTo(2, 6);
+    expect(clip.fadeOut).toBeCloseTo(2, 6);
+  });
+
+  it("split seam declick stays at 3ms under a pinned scene (bound only ever shrinks it)", () => {
+    const { doc, clipId } = pinnedDoc();
+    const next = splitAudioClipAtTick(doc, clipId, BAR_TICKS / 2).execute(doc);
+    const right = next.arrangement.audioClips!.find((c) => c.startBar === 0.5)!;
+    expect(right.fadeIn).toBeCloseTo(0.003, 6);
+  });
+});
+
+describe("fitAudioClipTempo targets the transport tempo (R3)", () => {
+  it("fits against the scene-pinned tempo, and the label names it", () => {
+    let doc = createDefaultProject();
+    doc = setSceneBpm(doc, doc.scenes[0]!.id, 240).execute(doc);
+    const trackId = doc.tracks.find((t) => t.kind !== "group")!.id;
+    doc = addAudioClip(doc, trackId, "buf-audit", 0, 4).execute(doc);
+    const clipId = doc.arrangement.audioClips![0]!.id;
+    const command = fitAudioClipTempo(doc, clipId, 120);
+    const next = command.execute(doc);
+    const clip = next.arrangement.audioClips!.find((c) => c.id === clipId)!;
+    expect(clip.stretchRate).toBeCloseTo(0.5, 2); // 120/240 — flat doc.bpm would say ~0.97
+    expect(command.label).toMatch(/120.*240.*BPM/u);
+  });
+
+  it("stays at the project tempo when no scene pins one (regression guard)", () => {
+    const { doc, clipId } = audioDoc(4);
+    const next = fitAudioClipTempo(doc, clipId, 62).execute(doc);
+    const clip = next.arrangement.audioClips!.find((c) => c.id === clipId)!;
+    expect(clip.stretchRate).toBeCloseTo(62 / doc.bpm, 2);
+  });
+});
+
+describe("marker cue routing semantics (R3)", () => {
+  it("an audio-linked marker routes to its track; scene-linked and unlinked stay on the global bus", () => {
+    const { doc, trackId } = audioDoc(2);
+    const audioClipId = doc.arrangement.audioClips![0]!.id;
+    const sceneClipId = doc.arrangement.clips[0]!.id;
+    const withMarkers = addMarker(doc, { tick: 0, name: "A", linkedClipId: audioClipId }).execute(doc);
+    const both = addMarker(withMarkers, { tick: 10, name: "B", linkedClipId: sceneClipId }).execute(withMarkers);
+    const linked = addMarker(both, { tick: 20, name: "C" }).execute(both);
+    const [audioLinked, sceneLinked, unlinked] = linked.markers;
+    expect(markerCueTrackId(linked.arrangement.audioClips, audioLinked!)).toBe(trackId);
+    expect(markerCueTrackId(linked.arrangement.audioClips, sceneLinked!)).toBeUndefined();
+    expect(markerCueTrackId(linked.arrangement.audioClips, unlinked!)).toBeUndefined();
+  });
+});
+
+describe("strip silence keeps take-lane identity coherent (R4, pinned behavior)", () => {
+  function takeDoc() {
+    let doc = createDefaultProject();
+    const trackId = doc.tracks.find((t) => t.kind !== "group")!.id;
+    doc = addAudioTakeClip(doc, "tg-audit", "take-1", trackId, "buf-audit", 0, 2).execute(doc);
+    doc = addAudioTakeClip(doc, "tg-audit", "take-2", trackId, "buf-audit", 0, 2).execute(doc);
+    return { doc, trackId };
+  }
+
+  it("stripping the audible comp clip keeps it in the comp playback", () => {
+    const { doc } = takeDoc();
+    const comped = compAudioTakeRange(doc, "tg-audit", "take-1", 0, BAR_TICKS).execute(doc);
+    const group = comped.arrangement.takeGroups!.find((g) => g.id === "tg-audit")!;
+    const compClip = audioClipsForPlayback(comped.arrangement).find((c) => c.takeId === group.compTakeId)!;
+    expect(compClip).toBeDefined();
+    const w0 = (compClip.offsetSec ?? 0) + (compClip.trimStart ?? 0);
+    const dur = clipDurationSec(comped, compClip);
+    const next = stripSilenceAudioClip(
+      comped,
+      compClip.id,
+      [{ startSec: w0, endSec: w0 + dur / 2 }],
+      w0 + dur * 2,
+    ).execute(comped);
+    const fragment = next.arrangement.audioClips!.find(
+      (c) => c.compSourceTakeId === compClip.compSourceTakeId && c.id !== compClip.id,
+    )!;
+    expect(fragment.takeGroupId).toBe("tg-audit");
+    expect(fragment.compSourceTakeId).toBe(compClip.compSourceTakeId);
+    // Comp clips carry their source take's id; the group's activeTakeId
+    // points at the comped take, so the fragment still plays through the lane.
+    expect(fragment.takeId).toBe(compClip.takeId);
+    expect(audioClipsForPlayback(next.arrangement).some((c) => c.id === fragment.id)).toBe(true);
+  });
+
+  it("stripping an inactive take keeps the fragments out of playback", () => {
+    const { doc } = takeDoc();
+    const group = doc.arrangement.takeGroups!.find((g) => g.id === "tg-audit")!;
+    // addAudioTakeClip makes the NEWEST take active — strip one that isn't it.
+    const inactive = doc.arrangement.audioClips!.find((c) => c.takeId && c.takeId !== group.activeTakeId)!;
+    expect(audioClipsForPlayback(doc.arrangement).some((c) => c.id === inactive.id)).toBe(false);
+    const next = stripSilenceAudioClip(doc, inactive.id, [{ startSec: 0, endSec: 1 }], 4).execute(doc);
+    const fragments = next.arrangement.audioClips!.filter((c) => c.takeId === inactive.takeId);
+    expect(fragments.length).toBeGreaterThan(0);
+    for (const fragment of fragments) {
+      expect(audioClipsForPlayback(next.arrangement).some((c) => c.id === fragment.id)).toBe(false);
+    }
   });
 });

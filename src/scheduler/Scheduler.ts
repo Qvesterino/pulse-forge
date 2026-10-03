@@ -5,6 +5,7 @@ import { drumHitsInWindow } from "../project-model/groove";
 import { noteEventsInWindow, patternBaseTickForClip, sceneBaseTickForClip } from "../project-model/events";
 import { computeSceneIntensity } from "../project-model/intensity";
 import { audioClipsForPlayback } from "../project-model/audio-takes";
+import { markerCueTrackId } from "../project-model/markers";
 import type { Transport } from "../transport/Transport";
 import type { SchedulerDriver } from "./schedulerDriver";
 
@@ -1022,12 +1023,10 @@ export class Scheduler {
         this.firedMarkerIds.add(marker.id);
         const assetId = mapMarkerTypeToAsset(marker.type);
         const when = timeAtForWindow(marker.tick) + this.scheduleOffsetSec() + 0.005;
-        // linkedClipId is a CLIP id (Audit 08 D5) — resolve the clip's TRACK
-        // so the cue previews in the right track context instead of always
-        // falling back to the global preview bus.
-        const linkedClipTrackId = marker.linkedClipId
-          ? doc.arrangement.audioClips?.find((c) => c.id === marker.linkedClipId)?.trackId
-          : undefined;
+        // Audio-linked markers preview on their clip's track (Audit 08 D5);
+        // scene-linked markers span every track, so they stay on the global
+        // bus (see markerCueTrackId).
+        const linkedClipTrackId = markerCueTrackId(doc.arrangement.audioClips, marker);
         this.deps.triggerMarker?.(assetId, when, linkedClipTrackId);
       }
       // Scene automation: invoke applySceneAutomation per active clip window.

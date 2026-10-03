@@ -4687,7 +4687,7 @@ export function ArrangementPanel() {
             initialRate={stretchTarget.stretchRate ?? 1}
             initialMode={stretchTarget.stretchMode ?? "resample"}
             detectedBpm={stretchDetectedBpm}
-            projectBpm={doc.bpm}
+            projectBpm={tempoAtTick(doc.arrangement.clips, doc.scenes, stretchTarget.startBar * BAR_TICKS, doc.bpm)}
             onApply={(rate, mode) => {
               execute(updateAudioClip(services.store.doc, stretchTarget.id, { stretchRate: rate, stretchMode: mode }));
               setStretchClipId(null);

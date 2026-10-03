@@ -1673,11 +1673,15 @@ export function deleteAudioClip(doc: ProjectDocument, clipId: string): Command {
  * Timeline duration of a clip, in seconds.
  *
  * Single source of truth for "how long is this clip", so the fade clamp below
- * and every caller that needs the duration agree on one formula.
+ * and every caller that needs the duration agree on one formula. Pass
+ * `startBar` for the tempo the scheduler ACTUALLY runs the clip at — its
+ * covering scene's BPM pin (Scene Mode) — rather than flat project tempo.
  */
-export function audioClipDurationSec(doc: ProjectDocument, lengthBars: number): number {
+export function audioClipDurationSec(doc: ProjectDocument, lengthBars: number, startBar?: number): number {
   const bars = Number.isFinite(lengthBars) ? lengthBars : 0;
-  return (bars * BAR_TICKS * 60) / (doc.bpm * PPQ);
+  const bpm =
+    startBar === undefined ? doc.bpm : tempoAtTick(doc.arrangement.clips, doc.scenes, startBar * BAR_TICKS, doc.bpm);
+  return (bars * BAR_TICKS * 60) / (bpm * PPQ);
 }
 
 /**
@@ -1704,8 +1708,10 @@ export function clampClipFades(
   doc: ProjectDocument,
   clip: Pick<AudioClip, "fadeIn" | "fadeOut">,
   lengthBars: number,
+  /** Clip start bar — bounds the fade at the scene-pinned tempo (see audioClipDurationSec). */
+  startBar?: number,
 ): { fadeIn: number; fadeOut: number } {
-  const durSec = audioClipDurationSec(doc, lengthBars);
+  const durSec = audioClipDurationSec(doc, lengthBars, startBar);
   const bound = Number.isFinite(durSec) && durSec > 0 ? durSec : 0;
   const fadeIn = Number.isFinite(clip.fadeIn) ? (clip.fadeIn as number) : 0;
   const fadeOut = Number.isFinite(clip.fadeOut) ? (clip.fadeOut as number) : 0;
@@ -1762,7 +1768,7 @@ export function stretchAudioClip(
   const bars = Math.max(0.25, Math.round(lengthBars * 100) / 100);
   const rate = Number.isFinite(stretchRate) ? Math.round(Math.min(4, Math.max(0.25, stretchRate)) * 100) / 100 : 1;
   // Fades must stay inside the clip (clampClipFades) — same rule as resize.
-  const { fadeIn, fadeOut } = clampClipFades(doc, clip, bars);
+  const { fadeIn, fadeOut } = clampClipFades(doc, clip, bars, clip.startBar);
   const next: ProjectDocument = {
     ...doc,
     arrangement: {
@@ -1783,7 +1789,7 @@ export function resizeAudioClip(doc: ProjectDocument, clipId: string, lengthBars
   // Fades must stay inside the resized clip (audit §8): the engine clamps
   // audibly, but out-of-bounds state desyncs the fade handles from the
   // visual clip width.
-  const { fadeIn, fadeOut } = clampClipFades(doc, clip, bars);
+  const { fadeIn, fadeOut } = clampClipFades(doc, clip, bars, clip.startBar);
   const next: ProjectDocument = {
     ...doc,
     arrangement: {
@@ -1820,7 +1826,7 @@ export function trimAudioClipStart(
   // the fade handles desync from the clip's visual width. Note `clip` is the
   // PARENT: the parent fadeIn rides along and has to be re-bounded by the
   // trimmed length.
-  const { fadeIn, fadeOut } = clampClipFades(doc, clip, bars);
+  const { fadeIn, fadeOut } = clampClipFades(doc, clip, bars, clip.startBar);
   const next: ProjectDocument = {
     ...doc,
     arrangement: {
@@ -2142,7 +2148,7 @@ export function updateAudioClip(
   if (trimEnd !== undefined) nextPatch.trimEnd = trimEnd;
   const gain = num(patch.gain, 0, 2);
   if (gain !== undefined) nextPatch.gain = gain;
-  const clipDurSec = (clip.lengthBars * BAR_TICKS * 60) / (doc.bpm * PPQ);
+  const clipDurSec = audioClipDurationSec(doc, clip.lengthBars, clip.startBar);
   const fadeIn = num(patch.fadeIn, 0, clipDurSec);
   if (fadeIn !== undefined) nextPatch.fadeIn = fadeIn;
   const fadeOut = num(patch.fadeOut, 0, clipDurSec);
@@ -2212,7 +2218,11 @@ export function fitAudioClipTempo(doc: ProjectDocument, clipId: string, detected
   if (!Number.isFinite(detectedBpm) || detectedBpm < 40 || detectedBpm > 240) {
     throw new Error(`Detected tempo ${detectedBpm} out of range — refusing to fit`);
   }
-  const rate = Math.round(Math.min(4, Math.max(0.25, detectedBpm / doc.bpm)) * 100) / 100;
+  // Fit against the tempo the transport ACTUALLY runs at the clip — its
+  // covering scene's BPM pin — not flat doc.bpm. Fitting to the project tempo
+  // under a pinned scene left the loop locked to a clock nothing plays at.
+  const targetBpm = tempoAtTick(doc.arrangement.clips, doc.scenes, clip.startBar * BAR_TICKS, doc.bpm);
+  const rate = Math.round(Math.min(4, Math.max(0.25, detectedBpm / targetBpm)) * 100) / 100;
   const next: ProjectDocument = {
     ...doc,
     arrangement: {
@@ -2222,7 +2232,7 @@ export function fitAudioClipTempo(doc: ProjectDocument, clipId: string, detected
       ),
     },
   };
-  return snapshot("fitAudioClipTempo", `Fit loop ${Math.round(detectedBpm)}→${doc.bpm} BPM (×${rate})`, doc, next);
+  return snapshot("fitAudioClipTempo", `Fit loop ${Math.round(detectedBpm)}→${targetBpm} BPM (×${rate})`, doc, next);
 }
 
 /**
@@ -2272,8 +2282,9 @@ export function sliceAudioClipToArrangement(doc: ProjectDocument, clipId: string
     const segBars = Math.max(0.25, segWallSec / (spt * BAR_TICKS));
     const storedBars = Math.round(segBars * 100) / 100;
     // A slice is typically far shorter than the clip it came from, so the
-    // parent's fades are re-bounded by the slice's own STORED length.
-    const { fadeIn, fadeOut } = clampClipFades(doc, clip, storedBars);
+    // parent's fades are re-bounded by the slice's own STORED length, at the
+    // tempo where the slice actually sits.
+    const { fadeIn, fadeOut } = clampClipFades(doc, clip, storedBars, currentBar);
     newClips.push({
       ...clip,
       id: uid("audioClip"),
@@ -2451,8 +2462,8 @@ function splitAudioClipAtTickWithMinimumFragment(
   // fragment keeps the parent's fadeIn and the right keeps the parent's
   // fadeOut, and either fragment can be arbitrarily shorter than the clip it
   // came from. Without this a 4s fadeIn survives on a 0.1s left fragment.
-  const leftFades = clampClipFades(doc, clip, leftLength);
-  const rightFades = clampClipFades(doc, clip, rightLength);
+  const leftFades = clampClipFades(doc, clip, leftLength, clip.startBar);
+  const rightFades = clampClipFades(doc, clip, rightLength, rightStartBar);
   const leftClip: import("../project-model/types").AudioClip = {
     ...clip,
     ...(leftWarpMarkers ? { warpMarkers: leftWarpMarkers } : copyWarps()),
@@ -2466,7 +2477,7 @@ function splitAudioClipAtTickWithMinimumFragment(
     // Declick fade is applied last so the split seam is still suppressed, but
     // bounded by the fragment's own duration like any other fade.
     fadeIn: leftFades.fadeIn,
-    fadeOut: Math.min(splitDeclickFadeSec, audioClipDurationSec(doc, leftLength)),
+    fadeOut: Math.min(splitDeclickFadeSec, audioClipDurationSec(doc, leftLength, clip.startBar)),
   };
   const rightClip: import("../project-model/types").AudioClip = {
     ...clip,
@@ -2483,7 +2494,7 @@ function splitAudioClipAtTickWithMinimumFragment(
       ? { loopPhaseOffsetSec: (clip.loopPhaseOffsetSec ?? 0) + leftSourceSec }
       : {}),
     ...(preserveWarpAcrossSplit ? { trimStart: 0 } : {}),
-    fadeIn: Math.min(splitDeclickFadeSec, audioClipDurationSec(doc, rightLength)),
+    fadeIn: Math.min(splitDeclickFadeSec, audioClipDurationSec(doc, rightLength, rightStartBar)),
     fadeOut: rightFades.fadeOut,
   };
   const nextClips = (doc.arrangement.audioClips ?? [])
@@ -2563,8 +2574,9 @@ export function stripSilenceAudioClip(
     const segStartTick = startTick + (seg.start - windowStart) / sourcePerWall / spt;
     const storedBars = Math.max(0.05, Math.round(segBars * 100) / 100);
     // Stripped segments are by definition much shorter than the source clip —
-    // a 4s fadeIn cannot survive on a 0.1s blip.
-    const { fadeIn, fadeOut } = clampClipFades(doc, clip, storedBars);
+    // a 4s fadeIn cannot survive on a 0.1s blip. Bounded at the fragment's own
+    // timeline position (scene-pinned tempo may differ from the parent's).
+    const { fadeIn, fadeOut } = clampClipFades(doc, clip, storedBars, segStartTick / BAR_TICKS);
     return {
       ...clip,
       id: uid("audioClip"),

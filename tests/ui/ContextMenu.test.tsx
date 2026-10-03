@@ -266,3 +266,29 @@ describe("ContextMenu", () => {
     expect(screen.queryByRole("menuitem", { name: "Normalize" })).toBeNull();
   });
 });
+
+describe("ContextMenu — zone duplicate failure routing", () => {
+  it("opens the range editor with the refusal when a clip straddles the duplicated zone", () => {
+    // scene-score arrangement: scene clips at bars [0,4) and [4,8) — bars 2–6
+    // cuts through both, so duplicateTimeRange fails closed (no-overlap lane).
+    const project = createProjectFromTemplate("scene-score");
+    const services = mockServices(project);
+    const selection = new SelectionStore();
+    selection.setTimeRange({ fromTick: 2 * BAR_TICKS, toTick: 6 * BAR_TICKS });
+    renderWithContext(
+      <SelectionContext.Provider value={selection}>
+        <ContextMenu state={{ x: 0, y: 0, context: "selected bars" }} onClose={() => {}} />
+      </SelectionContext.Provider>,
+      { services },
+    );
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Duplicate" }));
+
+    // The failure is surfaced in the range editor (which accepts an adjusted
+    // range for retry) instead of an unhandled throw from the click handler.
+    expect(services.store.execute).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Edit selected range with Producer" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Producer range instruction" })).toHaveValue("duplicate selected range");
+    expect(screen.getByText(/crosses its boundary/i)).toBeInTheDocument();
+  });
+});
