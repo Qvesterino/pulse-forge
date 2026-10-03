@@ -437,4 +437,5 @@ export function createFill(doc: ProjectDocument, patternId: string): Command {
     patterns: [...doc.patterns, copy],
     activePatternId: copy.id,
   };
-  return snapshot("createFill", `Fill from ${source.name}`, do
+  return snapshot("createFill", `Fill from ${source.name}`, doc, next);
+}
