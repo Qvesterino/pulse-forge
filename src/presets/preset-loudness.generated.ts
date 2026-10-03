@@ -313,6 +313,7 @@ export const FACTORY_PRESET_LOUDNESS: Record<string, number> = {
   "factory.organ.score.gospel": -17.6,
   "factory.organ.techno.lead": -18.1,
   "factory.organ.trap.gfstab": -16.5,
+  "factory.piano.real": -23.6,
   "factory.pluck.ambient.flutepluck": -53.6,
   "factory.pluck.ambient.harp": -50.2,
   "factory.pluck.dnb.harp": -55.2,
@@ -523,7 +524,9 @@ export const FACTORY_PRESET_LOUDNESS: Record<string, number> = {
 };
 
 /** Probe renders scatter beyond ±0.75 LU — engines not yet render-deterministic. */
-export const NON_DETERMINISTIC_PRESETS: readonly string[] = [];
+export const NON_DETERMINISTIC_PRESETS: readonly string[] = [
+
+];
 
 export const FACTORY_PRESET_GAIN_DB: Record<string, number> = {
   "factory.808.ambient.warm": -7.0,
@@ -807,6 +810,7 @@ export const FACTORY_PRESET_GAIN_DB: Record<string, number> = {
   "factory.organ.score.gospel": -7.7,
   "factory.organ.techno.lead": -7.1,
   "factory.organ.trap.gfstab": -8.7,
+  "factory.piano.real": -1.6,
   "factory.pluck.ambient.flutepluck": 18.0,
   "factory.pluck.ambient.harp": 18.0,
   "factory.pluck.dnb.harp": 18.0,

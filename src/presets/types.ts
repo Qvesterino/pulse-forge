@@ -54,6 +54,12 @@ export interface InstrumentPreset {
   metadata?: PresetMetadata;
   params: Record<string, number>;
   sampleId?: string | null;
+  /**
+   * Multi-sample velocity/key zones (multi-sample instruments — real piano,
+   * strings). Applied to the track together with the preset; samples fetch
+   * from the pack on demand (see sample-library/piano-pack.ts).
+   */
+  velocityLayers?: import("../project-model/types").SampleLayer[];
   user?: boolean;
 }
 

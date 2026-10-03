@@ -89,7 +89,6 @@ function trimWithDocChangeDuringDrag(doc: ProjectDocument, newOffsetSec: number)
   cleanup();
   const { project } = renderLive(doc);
   const before = project.getDoc();
-  const startOffset = offsetOf(before);
 
   const handle = document.querySelector(".arr-audio-clip-handle.left");
   expect(handle, "left trim handle is rendered").not.toBeNull();

@@ -126,6 +126,7 @@ export const MCP_TOOL_DEFS = [
             "scenes",
             "history",
             "reference",
+            "model-misses",
           ],
           description: "Which part of the project state to return",
         },

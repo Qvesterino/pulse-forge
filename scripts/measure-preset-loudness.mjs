@@ -65,6 +65,25 @@ const measurements = await page.evaluate(async () => {
   // map must describe the curated sound, not the raw synth fallback.
   const bank = await factory.generateFactoryBank();
   await curated.loadCuratedLayer(bank);
+  // Real piano pack: fetch the pack WAVs into the bank so the sampler
+  // preset measures its actual sound (the pack lives in public/samples/
+  // piano/, served by the same dev server — ~120 files, fetched once).
+  const pianoPack = await import("/src/presets/piano-pack.generated.ts");
+  const packIds = [...new Set(pianoPack.PIANO_PACK_LAYERS.map((l) => l.sampleId))];
+  await Promise.all(
+    packIds.map(async (id) => {
+      try {
+        const response = await fetch(`/samples/piano/${id}.wav`);
+        if (!response.ok) return;
+        const data = await response.arrayBuffer();
+        const decoded = await import("/src/services/audio-decode.ts");
+        bank.add(id, await decoded.decodeAudioData(data));
+      } catch {
+        /* missing pack file — the preset measures its fallback silence and
+           the loudness audit will flag the coverage gap honestly */
+      }
+    }),
+  );
   const out = [];
 
   for (const preset of presets.FACTORY_PRESETS) {

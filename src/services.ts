@@ -40,6 +40,7 @@ import { MidiOutput } from "./midi/MidiOutput";
 import { MidiClock } from "./midi/MidiClock";
 import { MtcChaser, MtcReceiver } from "./midi/smpte";
 import { UserSampleRepository, restoreUserSampleAudioMemoized } from "./persistence/UserSampleRepository";
+import { ensurePianoPackLoaded, isPianoPackSample } from "./presets/piano-pack";
 import { RecordingRecoveryRepository } from "./persistence/RecordingRecoveryRepository";
 import { ensureCuratedLayer } from "./sample-library/curated";
 import { FrozenBufferRepository, restoreFrozenTracks } from "./persistence/FrozenBufferRepository";
@@ -890,6 +891,19 @@ export async function openProject(
       if (closed) return;
       for (const id of await frozenAudio.listIds()) {
         if (!referenced.has(id)) await frozenAudio.remove(id);
+      }
+      // Real piano pack: fetch lazily when the restored project references
+      // it (the pack ships out-of-band; see presets/piano-pack.ts).
+      const refsPiano = store.doc.tracks.some((t) => {
+        if (t.kind !== "instrument") return false;
+        const sampleIds = [t.sampleId, ...(t.velocityLayers ?? []).map((l) => l.sampleId)];
+        return sampleIds.some((id) => isPianoPackSample(id));
+      });
+      if (refsPiano && !closed) {
+        void ensurePianoPackLoaded(
+          bank,
+          store.doc.tracks.flatMap((t) => (t.kind === "instrument" ? [t.sampleId] : [])),
+        );
       }
     } catch (err) {
       // Restore is best-effort — never leave an unhandled rejection behind.

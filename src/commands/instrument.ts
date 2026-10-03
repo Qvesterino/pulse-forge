@@ -74,31 +74,36 @@ export function applyInstrumentPreset(doc: ProjectDocument, trackId: string, pre
   const prevParams = { ...track.params };
   const prevSample = track.sampleId;
   const prevPresetId = track.presetId ?? null;
+  const prevLayers = track.velocityLayers ?? null;
 
   const nextParams: Record<string, number> = defaultInstrumentParams(track.instrument);
   for (const [key, value] of Object.entries(preset.params)) {
     nextParams[key] = clampInstrumentParam(track.instrument, key, value);
   }
   const nextSample = preset.sampleId !== undefined ? preset.sampleId : track.sampleId;
+  const nextLayers = preset.velocityLayers !== undefined ? preset.velocityLayers : (track.velocityLayers ?? null);
 
   const apply = (
     d: ProjectDocument,
     params: Record<string, number>,
     sampleId: string | null,
     presetId: string | null,
+    velocityLayers: import("../project-model/types").SampleLayer[] | null,
   ): ProjectDocument => ({
     ...d,
     tracks: d.tracks.map((t) =>
       // Copy the params map on every apply: the closure-owned next/prev maps
       // are shared by execute and every undo/redo cycle — inserting them by
       // reference would alias one mutable object across doc revisions.
-      t.kind === "instrument" && t.id === trackId ? { ...t, params: { ...params }, sampleId, presetId } : t,
+      t.kind === "instrument" && t.id === trackId
+        ? { ...t, params: { ...params }, sampleId, presetId, ...(velocityLayers ? { velocityLayers } : {}) }
+        : t,
     ),
   });
   return {
     type: "applyInstrumentPreset",
     label: `Apply preset "${preset.name}"`,
-    execute: (d) => apply(d, nextParams, nextSample, preset.id),
-    undo: (d) => apply(d, prevParams, prevSample, prevPresetId),
+    execute: (d) => apply(d, nextParams, nextSample, preset.id, nextLayers),
+    undo: (d) => apply(d, prevParams, prevSample, prevPresetId, prevLayers),
   };
 }

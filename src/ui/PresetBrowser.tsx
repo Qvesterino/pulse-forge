@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLibrary, useServices } from "./context";
 import { applyInstrumentPreset } from "../commands/commands";
+import { ensurePianoPackLoaded, isPianoPackSample } from "../presets/piano-pack";
 import { FACTORY_PRESETS } from "../presets/factory";
 import { PRESET_ENERGIES, PRESET_USE_CASES, getPresetMetadata } from "../presets/catalog";
 import { PRESET_GENRES, PRESET_MOODS } from "../presets/types";
@@ -115,8 +116,18 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
     previewTimer.current = null;
     services.engine.stopPreview();
     setPreviewingPresetId(null);
+    // Pack presets (real piano): fetch the samples BEFORE the command —
+    // an apply with unloaded zones would leave the sampler silent.
+    const packLoad =
+      preset.velocityLayers?.some((l) => isPianoPackSample(l.sampleId)) ?? false
+        ? ensurePianoPackLoaded(services.bank, [
+            ...new Set(preset.velocityLayers?.map((l) => l.sampleId ?? "") ?? []),
+          ])
+        : Promise.resolve();
+    void packLoad;
     services.store.execute(applyInstrumentPreset(doc, track.id, preset));
     void guard(async () => {
+      await packLoad;
       await services.library.recordPreset(preset.id);
     });
   };

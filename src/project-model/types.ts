@@ -248,6 +248,13 @@ export interface SampleLayer {
   /** Inclusive MIDI note bounds — keyzones (optional, full range when absent). */
   minPitch?: number;
   maxPitch?: number;
+  /**
+   * Natural root note (MIDI) of this layer's sample — multi-sample
+   * instruments (real piano, strings): the zone's sample plays unshifted at
+   * this key and pitch-shifts by (pitch − root). Falls back to the track
+   * root when absent (single-sample behaviour, unchanged).
+   */
+  root?: number;
 }
 
 export interface InstrumentTrack {

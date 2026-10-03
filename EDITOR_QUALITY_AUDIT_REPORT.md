@@ -225,6 +225,172 @@ FX target mapping carries a `source`). 69/69 in that file pass.
 
 ---
 
+## D4 — An audio-clip trim commits against two different documents (P1, CONFIRMED)
+
+### Invariant
+
+A gesture commits against ONE document. Geometry, source offset and length must all
+come from the same live state.
+
+### Root cause
+
+`onClipPointerUp` (ArrangementPanel.tsx:1925-1929) carries an explicit guard for
+precisely this:
+
+```
+// A clip in the block can be deleted mid-drag (undo/collab). Moving a
+// dead id wrote a target from its stale startBar and could false-trip
+// the overlap guard with length 0 — drag only what is still live.
+const movingIds = current.movingIds.filter((id) => beforeDoc.arrangement.clips.some((c) => c.id === id));
+```
+
+The audio-clip trim path had no such guard, and was worse than a dead id. It called
+`trimAudioClipStart(services.store.doc, …, { offsetSec })` — a LIVE document with an
+`offsetSec` read from the render-scope `audioClips` memo. The geometry had already been
+hardened against this race (`audioDragLiveRef`); `offsetSec` had not.
+
+`trimAudioClipStart` throws on a missing clip, so a deleted id was contained. A
+_changed_ offset was not: the command succeeded, and the clip played the wrong region
+of its sample — silently.
+
+### Reproduction (measured, before the fix)
+
+Same gesture (2-bar rightward trim), document's offset changed 3 → 10 mid-drag:
+
+```
+expected 22.7741935483871 to be close to 22.7741935483871
+received  15.7741935483871     ← difference of exactly 7
+```
+
+Committed as `3 + delta` (the pre-change memo) instead of `10 + delta`. Seven seconds
+of wrong source audio, no error raised.
+
+**How this was established matters.** The first version of the test PASSED — not
+because the race was unreachable but because its assertions were too weak
+(`toBeGreaterThanOrEqual(10)` happens to be satisfied by `3 + 12.77`). Measuring the
+raw values is what exposed it: the control run and the changed run both produced
+exactly `15.774`, which is `3 + delta`, not `10 + delta`. A test that cannot fail is
+decoration, not evidence.
+
+### Fix
+
+`src/ui/ArrangementPanel.tsx` — the commit now resolves the clip from
+`services.store.doc` and returns if it is gone, mirroring the scene-clip guard:
+
+```
+const liveClip = (services.store.doc.arrangement.audioClips ?? []).find((c) => c.id === cur.clipId);
+if (!liveClip) return;
+...
+offsetSec: liveClip.offsetSec + deltaSec,
+```
+
+This also removed an unhandled `throw` escaping into the test run when a clip was
+deleted mid-drag (scenario 3 in the spec file).
+
+### Regression coverage
+
+`tests/ui/audio-trim-stale-offset.test.tsx` — 3 tests: the control, the stale-offset
+invariant, and mid-drag deletion.
+
+---
+
+## D5 — A live gesture can switch unit system mid-drag (P2, CONFIRMED)
+
+### Invariant
+
+A gesture converts pixels to bars in ONE unit system for its whole lifetime. Its
+grab and its live position must share a divisor, or the delta is a difference of
+two incompatible scales.
+
+### Root cause
+
+`beginClipDrag` captured `grabBar: barFromEvent(event)`, which divides by the
+`barWidth` in scope at pointerdown. `onClipPointerMove` recomputed `bar` through
+the same helper, dividing by the `barWidth` of _that_ render.
+
+The Ctrl+wheel zoom handler (ArrangementPanel.tsx:634-645) is registered on
+`scrollRef` with `[]` deps and gates only on `event.ctrlKey`:
+
+```
+if (!(event.ctrlKey || event.metaKey)) return;
+```
+
+It never checks whether a gesture is live. Zooming mid-drag (a trackpad pinch, or
+Ctrl+scroll while holding a clip) changes `barWidth`, React re-renders, and the
+next `pointermove` computes a bar in the new scale while `grabBar` still holds the
+old one. The clip lands somewhere the pointer never pointed at.
+
+### Reproduction (measured, before the fix)
+
+Identical 200 px gesture, the only difference being one Ctrl+wheel step in the middle:
+
+```
+control (no zoom)        → clip moved  3 bars
+with zoom mid-drag       → clip moved  7 bars
+```
+
+The baseline test also asserts `barWidthEnd !== barWidthStart`, so the second run
+provably zoomed — the difference cannot be an inert wheel event.
+
+### Fix
+
+`src/ui/ArrangementPanel.tsx`
+
+- Split the converters so the divisor is explicit: `barFromEventAt(event, width)`
+  and `audioBarFromEventAt(event, width)`.
+- `DragState` and the audio drag ref now carry `barWidth`, captured at pointerdown.
+- Both `onClipPointerMove` handlers convert with the gesture's own width.
+- The width-less `audioBarFromEvent` was deleted rather than kept: every audio
+  gesture spans a pointerdown→pointerup window, so there is no call site where
+  "the current render's width" is the right answer. (`barFromEvent` remains —
+  non-gesture callers genuinely want the live width.)
+
+Both the scene and the audio path are fixed; they shared the identical defect.
+
+### Regression coverage
+
+`tests/ui/arrangement-zoom-during-drag.test.tsx` — 2 tests, including the
+"did the zoom actually happen" guard.
+
+---
+
+## D6 — The ruler asserted non-null on a sibling's ref (Low, hardened)
+
+### Root cause
+
+The ruler (`.arr-ruler`) and the lane (`.arr-lane`) are **siblings** inside
+`.arr-lane-scroll`. Every px→bar conversion in the ruler is measured against the
+LANE's rect, and three of the ruler's handlers reached across with a non-null
+assertion:
+
+```
+const bar = Math.max(0, (event.clientX - laneRef.current!.getBoundingClientRect().left) / barWidth);
+```
+
+Meanwhile the panel's own three helpers one screen up — `barFromEvent`,
+`audioBarFromEvent`, `seekFromRulerEvent` — all guard the same ref with
+`if (!lane) return`. The helpers were hardened; the inline JSX handlers were not.
+
+### Severity, stated honestly
+
+**Low, and no user-facing consequence was demonstrated.** I checked the one path
+the earlier report claimed gated the lane (`showSkeletonPreview`,
+ArrangementPanel.tsx:3203) and it renders a _different_ region — before
+`scrollRef`, not around it. Both the ruler and the lane render unconditionally as
+siblings, so in practice `laneRef.current` is non-null whenever a pointer handler
+on either can run. This is hardening against a state I could not produce, not a
+reproduced crash. The four `laneRef.current!` uses inside the `.arr-lane`
+element's own handlers were deliberately left alone: that ref belongs to the
+element carrying the handler, so React's own invariant covers it.
+
+### Fix
+
+The three ruler handlers now resolve the lane through the same
+`if (!lane) return` guard the helpers use. Net effect: zero `laneRef.current!`
+outside the element that owns the ref.
+
+---
+
 ## Audited and found correct
 
 These were checked and are **not** defects. Stating them matters as much as the findings.
@@ -283,12 +449,12 @@ Each is a real observation with the reason it was not auto-fixed.
 
 ## Gates
 
-| Gate                                                                | Result                                              |
-| ------------------------------------------------------------------- | --------------------------------------------------- |
-| `npm run typecheck`                                                 | **EXIT 0**                                          |
-| `npm run format:check` (all touched files)                          | **All matched files use Prettier code style!**      |
-| Targeted suites (23 files, clip + selection + undo + commands + UI) | **348 passed / 0 failed**                           |
-| `npm run build`                                                     | **EXIT 0** — `✓ built in 1m 2s`, `[size-budget] OK` |
+| Gate                                                           | Result                                              |
+| -------------------------------------------------------------- | --------------------------------------------------- |
+| `npm run typecheck`                                            | **EXIT 0**                                          |
+| `npm run format:check` (all touched files)                     | **All matched files use Prettier code style!**      |
+| Targeted suites (12 files, clip + gesture + selection + audio) | **133 passed / 0 failed**                           |
+| `npm run build`                                                | **EXIT 0** — `✓ built in 1m 2s`, `[size-budget] OK` |
 
 Build budget output as measured:
 
@@ -306,3 +472,16 @@ enforcing value is `TOTAL_BUDGET_KB = 3500` in `scripts/check-bundle-size.mjs:85
 measured build is 3464 KB. The doc was stale — and stale in the dangerous direction,
 reading as though there were 290 KB of headroom that does not exist. Both occurrences
 corrected to 3500 KB.
+
+### Shared working tree — two files belong to another session
+
+`src/mcp/tools.ts` and `tests/sample-license-gate.test.ts` were being written by a
+parallel agent while this audit ran (`git status` shows `M` and `??` respectively,
+with timestamps advancing during this session's own test runs). Neither has any
+relation to any file above. `tools.ts` briefly produced a parse error mid-write (an
+unterminated template literal) which cleared once that session finished its edit;
+`sample-license-gate.test.ts:24` still reports `TS7053`.
+
+Both were left untouched — a repo-wide `tsc --noEmit` cannot pass while another
+session holds a file in a non-compiling state, and editing their work would risk
+destroying it. The typecheck row above is scoped to the files this audit changed.

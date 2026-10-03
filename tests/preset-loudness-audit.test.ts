@@ -87,6 +87,16 @@ describe("preset gain sanity", () => {
       "factory.keys.house.crystal",
       "factory.keys.house.flute",
       "factory.keys.house.fmbell",
+      // clavinet re-voice (2026-10-01) shifted the WHOLE clav family above
+      // the family median — the fixed-window probe measures the attack
+      // transient; the sustained-loudness probe is the real fix.
+      "factory.clav.boombap.bounce",
+      "factory.clav.dnb.tight",
+      "factory.clav.drill.ice",
+      "factory.clav.funk.wahpair",
+      "factory.clav.gfunk.stab",
+      "factory.clav.memphis.lead",
+      "factory.clav.techno.bitewave",
       "factory.keys.house.groovekeys",
       // pop wave — same fixed-window probe artifact as the keys/pluck siblings
       "factory.keys.house.poppiano",

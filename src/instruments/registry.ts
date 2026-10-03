@@ -1439,8 +1439,9 @@ const sampler: InstrumentDefinition = {
         // (deterministic counter). No match — or no layers — falls back to
         // the default sampleId.
         let activeId = sampleId;
+        let layerRoot: number | null = null;
         if (velocityLayers.length > 0) {
-          const cands: string[] = [];
+          const cands: Array<{ id: string; root: number | null }> = [];
           for (const layer of velocityLayers) {
             // Velocity window + optional keyzone (pitch window)
             const pitchOk =
@@ -1448,17 +1449,22 @@ const sampler: InstrumentDefinition = {
             const velocityOk =
               velocity >= layer.min && (velocity < layer.max || (layer.max >= 1 && velocity <= layer.max));
             if (pitchOk && velocityOk && env.getSample(layer.sampleId)) {
-              cands.push(layer.sampleId as string);
+              cands.push({ id: layer.sampleId as string, root: layer.root ?? null });
             }
           }
           if (cands.length > 0) {
-            activeId = cands[rrCounter % cands.length];
+            const cand = cands[rrCounter % cands.length];
+            activeId = cand.id;
+            // Multi-sample instruments: the zone's sample has its OWN natural
+            // root (a C4 piano sample plays unshifted at C4) — the track root
+            // only applies to single-sample setups.
+            layerRoot = cand.root;
             rrCounter = (rrCounter + 1) % 4096;
           }
         }
         const buffer = env.getSample(activeId);
         if (!buffer) return;
-        const root = Math.round(p.root ?? 60);
+        const root = Math.round(layerRoot ?? p.root ?? 60);
         const attack = Math.max(0.001, p.attack ?? 0.003);
         const release = Math.max(0.01, p.release ?? 0.12);
         const hold = Math.max(durationSec, attack + 0.01);

@@ -63,7 +63,7 @@ describe("factory presets", () => {
     for (const preset of FACTORY_PRESETS.filter((p) => ["sampler", "granular", "vocalchop"].includes(p.instrument))) {
       expect(preset.sampleId).toBeTruthy();
       expect(preset.sampleId).toMatch(
-        /^factory\.(tonal\.(pluck|stab|keys|bell|memphisguitar|darkstrings|rhodes|trumpet|animepluck|sadpiano|padwarm|harp|sitar|erhu|wurli|organ|acousticguitar|choirpad|cello|violin|pizzicato|nylonguitar|orchestrahit)|mallet\.(vibes|marimba|celesta|kalimba|musicbox)|perc\.(cowbell\.dark|cowbell\.scream|cowbell\.drill|cowbell\.bright))$/,
+        /^factory\.(tonal\.(pluck|stab|keys|bell|memphisguitar|darkstrings|rhodes|trumpet|animepluck|sadpiano|padwarm|harp|sitar|erhu|wurli|organ|acousticguitar|choirpad|cello|violin|pizzicato|nylonguitar|orchestrahit)|mallet\.(vibes|marimba|celesta|kalimba|musicbox)|perc\.(cowbell\.dark|cowbell\.scream|cowbell\.drill|cowbell\.bright)|piano\.[a-gs]+\d\.z[1-4])$/,
       );
     }
   });

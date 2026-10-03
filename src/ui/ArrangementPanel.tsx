@@ -259,6 +259,14 @@ interface DragState {
   origStart: number;
   origLength: number;
   grabBar: number;
+  /**
+   * px-per-bar captured when the gesture began. A live gesture must convert
+   * pixels to bars in ONE unit system: `grabBar` and every subsequent `bar`
+   * have to share a divisor, or the delta is a difference of two scales and
+   * the clip lands where the pointer never was. The Ctrl+wheel handler is live
+   * during a drag, so `barWidth` can change mid-gesture.
+   */
+  barWidth: number;
   /** Multi-select move: every selected clip id + its start when the drag began. */
   movingIds?: string[];
   origStarts?: Record<string, number>;
@@ -1278,6 +1286,8 @@ export function ArrangementPanel() {
     origLength: number;
     origRate: number;
     origTrimStart: number;
+    /** px-per-bar captured at pointerdown — see DragState.barWidth. */
+    barWidth: number;
     origTrimEnd: number;
     origFadeIn: number;
     origFadeOut: number;
@@ -1809,20 +1819,35 @@ export function ArrangementPanel() {
 
   const formatBarAsSeconds = (bar: number): string => `${barToSeconds(bar).toFixed(1)}s`;
 
-  const barFromEvent = (event: React.PointerEvent | React.DragEvent): number => {
+  /**
+   * px→bar with an EXPLICIT divisor.
+   *
+   * `barFromEvent` below closes over the render's `barWidth`, which is only
+   * correct for code that is not spanning a gesture. A drag must convert both
+   * its grab and its live position with the same captured width, so the two
+   * are always measured in the same unit system.
+   */
+  const barFromEventAt = (event: React.PointerEvent | React.DragEvent, width: number): number => {
     const lane = laneRef.current;
-    if (!lane) return 0;
+    if (!lane || !(width > 0)) return 0;
     const rect = lane.getBoundingClientRect();
-    return Math.max(0, Math.floor((event.clientX - rect.left) / barWidth));
+    return Math.max(0, Math.floor((event.clientX - rect.left) / width));
   };
+
+  const barFromEvent = (event: React.PointerEvent | React.DragEvent): number => barFromEventAt(event, barWidth);
 
   // Audio trim/move/fade gestures need sub-bar precision. Keep the snapped
   // bar helper above for scene clips, whose arrangement moves are bar-based.
-  const audioBarFromEvent = (event: React.PointerEvent): number => {
+  //
+  // Unlike `barFromEvent` this one has no `width`-less form: EVERY audio
+  // gesture spans a pointerdown→pointerup window in which Ctrl+wheel can
+  // change the zoom, so each call site must pass the width it captured for
+  // that gesture (`cur.barWidth`).
+  const audioBarFromEventAt = (event: React.PointerEvent, width: number): number => {
     const lane = laneRef.current;
-    if (!lane) return 0;
+    if (!lane || !(width > 0)) return 0;
     const rect = lane.getBoundingClientRect();
-    return Math.max(0, (event.clientX - rect.left) / barWidth);
+    return Math.max(0, (event.clientX - rect.left) / width);
   };
 
   const seekFromRulerEvent = (event: React.PointerEvent) => {
@@ -1869,7 +1894,8 @@ export function ArrangementPanel() {
         clipId,
         origStart: clip.startBar,
         origLength: clip.lengthBars,
-        grabBar: barFromEvent(event),
+        grabBar: barFromEventAt(event, barWidth),
+        barWidth,
         movingIds,
         origStarts,
       };
@@ -1885,7 +1911,8 @@ export function ArrangementPanel() {
       clipId,
       origStart: clip.startBar,
       origLength: clip.lengthBars,
-      grabBar: barFromEvent(event),
+      grabBar: barFromEventAt(event, barWidth),
+      barWidth,
     };
     setClipDrag({ startBar: clip.startBar, lengthBars: clip.lengthBars });
     dragGuard.arm();
@@ -1894,7 +1921,9 @@ export function ArrangementPanel() {
   const onClipPointerMove = (event: React.PointerEvent) => {
     const current = dragRef.current;
     if (!current) return;
-    const bar = barFromEvent(event);
+    // The gesture's OWN scale, not the render's: Ctrl+wheel can change
+    // `barWidth` mid-drag, and mixing the two scales silently mis-places the clip.
+    const bar = barFromEventAt(event, current.barWidth);
     if (current.movingIds) {
       const delta = Math.max(bar - current.grabBar, -Math.min(...Object.values(current.origStarts ?? { 0: 0 })));
       setClipMultiDrag(delta);
@@ -2098,7 +2127,9 @@ export function ArrangementPanel() {
       origFadeIn: clip.fadeIn ?? 0,
       origFadeOut: clip.fadeOut ?? 0,
       origGain: clip.gain ?? 1,
-      grabBar: audioBarFromEvent(event),
+      grabBar: audioBarFromEventAt(event, barWidth),
+      /** Same reason as the scene drag: one unit system per gesture. */
+      barWidth,
       grabX: event.clientX,
       grabY: event.clientY,
       secPerBar: clip.lengthBars > 0 ? clipWallSec / clip.lengthBars : (BAR_TICKS * 60) / (doc.bpm * PPQ),
@@ -2112,7 +2143,9 @@ export function ArrangementPanel() {
   const onAudioPointerMove = (event: React.PointerEvent) => {
     const cur = audioDragRef.current;
     if (!cur) return;
-    const bar = audioBarFromEvent(event);
+    // The gesture's own scale, not the render's — Ctrl+wheel can zoom
+    // mid-drag, and mixing scales mis-places every audio gesture.
+    const bar = audioBarFromEventAt(event, cur.barWidth);
     const delta = bar - cur.grabBar;
     const secPerBar = cur.secPerBar;
     if (cur.mode === "move")
@@ -2185,6 +2218,16 @@ export function ArrangementPanel() {
       );
       const lengthChanged = final.lengthBars !== cur.origLength;
       if (Math.abs(deltaSec) > 0.001 || lengthChanged) {
+        // The clip can be edited or deleted under this gesture (collab merge,
+        // undo). `audioClips` is a render-scope memo, so it still holds the
+        // PRE-change offsetSec here — passing that to a command that runs
+        // against the LIVE document writes the new length onto the old source
+        // position. `trimAudioClipStart` throws on a missing clip, so only a
+        // changed offset slipped through: silently, the clip played the wrong
+        // region of its sample. Same reasoning as the mid-drag dead-id filter
+        // in `onClipPointerUp`; read the live clip, never the memo.
+        const liveClip = (services.store.doc.arrangement.audioClips ?? []).find((c) => c.id === cur.clipId);
+        if (!liveClip) return;
         // ONE command for the whole trim: the source offset and the new length
         // are the same gesture. Two commands here meant a single Ctrl+Z undid
         // only the resize, leaving the clip playing a different region of the
@@ -2193,7 +2236,7 @@ export function ArrangementPanel() {
           trimAudioClipStart(services.store.doc, cur.clipId, {
             lengthBars: final.lengthBars,
             trimStart: cur.origTrimStart + deltaSec,
-            offsetSec: (audioClips.find((c) => c.id === cur.clipId)?.offsetSec ?? 0) + deltaSec,
+            offsetSec: liveClip.offsetSec + deltaSec,
           }),
         );
       }
@@ -3332,7 +3375,15 @@ export function ArrangementPanel() {
             title="Click to seek · drag to select time range · shift+click adds a marker"
             onPointerDown={(event) => {
               if (event.button !== 0) return;
-              const bar = Math.max(0, (event.clientX - laneRef.current!.getBoundingClientRect().left) / barWidth);
+              // The ruler and the lane are SIBLINGS, and every px→bar
+              // conversion here is measured against the LANE's rect. Read the
+              // lane through the same `if (!lane) return` guard the panel's
+              // own `barFromEvent` / `audioBarFromEventAt` / `seekFromRulerEvent`
+              // helpers already use — a non-null assertion on a sibling's ref
+              // turns a missing lane into a TypeError inside a pointer handler.
+              const lane = laneRef.current;
+              if (!lane) return;
+              const bar = Math.max(0, (event.clientX - lane.getBoundingClientRect().left) / barWidth);
               if (event.shiftKey) {
                 execute(addMarker(services.store.doc, { tick: Math.floor(bar * BAR_TICKS), type: "cue" }));
                 return;
@@ -3342,9 +3393,11 @@ export function ArrangementPanel() {
             }}
             onPointerMove={(event) => {
               if (!timeDrag) return;
+              const lane = laneRef.current;
+              if (!lane) return;
               const bar = Math.max(
                 0,
-                Math.min(totalBars, (event.clientX - laneRef.current!.getBoundingClientRect().left) / barWidth),
+                Math.min(totalBars, (event.clientX - lane.getBoundingClientRect().left) / barWidth),
               );
               setTimeDrag({ startBar: timeDrag.startBar, currentBar: bar });
               const from = Math.min(timeDrag.startBar, bar);
@@ -3383,7 +3436,9 @@ export function ArrangementPanel() {
             }}
             onContextMenu={(event) => {
               event.preventDefault();
-              const x = event.clientX - laneRef.current!.getBoundingClientRect().left;
+              const lane = laneRef.current;
+              if (!lane) return;
+              const x = event.clientX - lane.getBoundingClientRect().left;
               const closest = markers
                 .map((marker) => ({ id: marker.id, dist: Math.abs((marker.tick / BAR_TICKS) * barWidth - x) }))
                 .filter((marker) => marker.dist < 8)
