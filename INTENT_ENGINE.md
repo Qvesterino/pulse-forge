@@ -419,6 +419,14 @@ nota (degree + duration) a kontúra, čo príde ďalej?"
   Ide o deterministickú adaptáciu vstupných dát a retrieval, nie o online
   pretrénovanie neurónových váh; explicitný A/B ranker a osobný melodický
   tréning ostávajú samostatnými kanálmi.
+- **Pokrytie testami (2026-10-04)**: `tests/style-example-ledger.test.ts` (11,
+  validácia/dedupe/cap/DoS-guard/clear), `tests/pattern-style-example.test.ts`
+  (7, extrakcia + privacy — žiadne noty/projekt v súhrne),
+  `tests/personal-style.test.ts` (9, recency váženie + floor 3 príklady),
+  `tests/style-observation.test.ts` (7, settle okno/pattern-switch/pauza/flush),
+  `tests/project-store-user-edit.test.ts` (5, HRANICA: `executeUserEdit` fire-uje
+  observer, `execute` NIE; throwing observer nesmie zhodiť edit),
+  `tests/intent-semantic.test.ts` (+2, learned-style korpus až po 3 príkladoch).
 - **Export**: tlačidlo "⬇ ★" v dice tray stiahne pack JSON
   (`pulse-forge-favorites-<dátum>.json`).
 - **Retrain (C1+C2, jeden príkaz)**: `npm run favorites:retrain -- <pack.json>`

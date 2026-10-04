@@ -24,6 +24,7 @@ import {
 import type { EffectType, Track } from "../project-model/types";
 import { EFFECT_DEFS } from "../effects/registry";
 import { Slider } from "./controls";
+import { TextPromptDialog } from "./TextPromptDialog";
 import { Meter } from "./Meter";
 import { MasterMeter, MasterStereoMeters } from "./MasterMeter";
 import { trackBadge } from "./TrackTabs";
@@ -452,6 +453,8 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
     defaultValue: number;
     trackId: string;
   }>(null);
+  /** "Type value" dialog target — replaces the old window.prompt. */
+  const [faderType, setFaderType] = useState<null | { param: string; current: number }>(null);
   const isGroup = track.kind === "group";
   // The BUS dropdown is only meaningful once bus groups exist — before that
   // every strip just repeats a dead "UNGROUPED" select.
@@ -775,22 +778,14 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
                   : faderMenu.param === "pan"
                     ? track.pan
                     : (track.sends[faderMenu.param.slice(5)] ?? 0);
-              const raw = window.prompt(`Type value for ${faderMenu.param}:`, String(cur));
-              const n = raw ? Number(raw) : NaN;
-              if (Number.isFinite(n)) {
-                if (faderMenu.param === "gain")
-                  services.store.execute(setTrackParams(doc, track.id, { gain: Math.min(1.5, Math.max(0, n)) }));
-                else if (faderMenu.param === "pan")
-                  services.store.execute(setTrackParams(doc, track.id, { pan: Math.min(1, Math.max(-1, n)) }));
-                else if (faderMenu.param.startsWith("send:")) {
-                  const rid = faderMenu.param.slice(5);
-                  services.store.execute(setTrackSend(doc, track.id, rid, Math.min(1.5, Math.max(0, n))));
-                }
-              }
+              // Opens the shared dialog instead of window.prompt: the block
+              // is gone and the value re-seeds per open (a native prompt that
+              // the browser suppresses would silently drop the action).
+              setFaderType({ param: faderMenu.param, current: cur });
               setFaderMenu(null);
             }}
           >
-            Type value…
+            Type value
           </button>
           {macros.length > 0 ? (
             macros.slice(0, 4).map((macro) => (
@@ -839,6 +834,34 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
           </button>
         </div>
       )}
+      <TextPromptDialog
+        open={faderType !== null}
+        title="TYPE VALUE"
+        label={
+          faderType?.param === "gain"
+            ? "Linear gain (0 … 1.5)"
+            : faderType?.param === "pan"
+              ? "Pan (−1 … 1)"
+              : "Send level (0 … 1.5)"
+        }
+        initialValue={faderType ? String(faderType.current) : ""}
+        inputType="number"
+        confirmLabel="SET"
+        onSubmit={(raw) => {
+          const n = Number(raw.replace(",", "."));
+          if (!Number.isFinite(n)) return;
+          if (faderType?.param === "gain")
+            services.store.execute(setTrackParams(doc, track.id, { gain: Math.min(1.5, Math.max(0, n)) }));
+          else if (faderType?.param === "pan")
+            services.store.execute(setTrackParams(doc, track.id, { pan: Math.min(1, Math.max(-1, n)) }));
+          else if (faderType?.param.startsWith("send:")) {
+            const rid = faderType.param.slice(5);
+            services.store.execute(setTrackSend(doc, track.id, rid, Math.min(1.5, Math.max(0, n))));
+          }
+          setFaderType(null);
+        }}
+        onClose={() => setFaderType(null)}
+      />
     </div>
   );
 }

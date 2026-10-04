@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { extractAudioFeatures } from "../src/ai/audio-features";
-import { scoreAudioFit, audioTargetFor } from "../src/intent/audio-feedback";
+import { scoreAudioFit, audioTargetFor, AUDIO_TARGETS } from "../src/intent/audio-feedback";
 import { routeIntentText } from "../src/intent/route";
 import { testDoc } from "./fixtures/doc";
 
@@ -75,10 +75,28 @@ describe("genre audio targets", () => {
     }
   });
 
-  it("trap expects higher bass ratio than ambient", () => {
-    const trap = audioTargetFor("trap");
-    const ambient = audioTargetFor("ambient");
-    expect(trap.bassRange[0]).toBeGreaterThanOrEqual(ambient.bassRange[0]);
+  it("every target is a valid low<high corridor", () => {
+    for (const genre of ["house", "techno", "trap", "ambient", "dnb", "drill", "phonk", "jersey", "drone"]) {
+      const target = audioTargetFor(genre);
+      for (const range of [target.rmsRange, target.crestRange, target.zcrRange, target.bassRange]) {
+        expect(range[0]).toBeLessThanOrEqual(range[1]);
+        expect(Number.isFinite(range[0])).toBe(true);
+        expect(Number.isFinite(range[1])).toBe(true);
+      }
+    }
+  });
+
+  it("W0.1: measured targets replace the hand-written table for genre-union members", () => {
+    // The hand-written fallback (AUDIO_TARGETS) is only for out-of-union
+    // strings. A genre-union member must resolve to the MEASURED corridor —
+    // the whole point of W0.1 was to stop scoring 15 genres against house.
+    const measured = audioTargetFor("trap");
+    // The generated corridor is wider than the old hand-written [0.3, 0.8]
+    // and starts lower, because it is measured on REAL renders (bright hats
+    // dilute the sub ratio) — pinning the hand-written numbers would pin the
+    // very bug W0.1 closed.
+    expect(measured).not.toBe(AUDIO_TARGETS.house);
+    expect(measured.bassRange[1]).toBeGreaterThan(0.7);
   });
 });
 

@@ -16,6 +16,7 @@ import { decodePackCode, encodePackCode, type SharedPack } from "../export/packC
 import { getThemeSnapshot, setTheme } from "./theme";
 import { decodeKitCode, encodeKitCode } from "../export/kitCode";
 import type { UserKit } from "../persistence/KitRepository";
+import { TextPromptDialog } from "./TextPromptDialog";
 
 import { bindPadKey, getPadKeys, importPadKeys, isPadKey, resetPadKeys, usePadKeys } from "./padKeys";
 
@@ -77,6 +78,20 @@ export function RackStrip({
   const [kitMenu, setKitMenu] = useState<{ x: number; y: number } | null>(null);
   const [userKits, setUserKits] = useState<UserKit[]>([]);
   const [kitStatus, setKitStatus] = useState<string | null>(null);
+  // Code entry goes through TextPromptDialog instead of window.prompt: a
+  // PFPACK code is hundreds of characters and the native prompt is a
+  // one-line blocking box. `error` is owned here so the decoder's verdict
+  // renders next to the field and the dialog can stay re-opened for a retry.
+  const [codeDialog, setCodeDialog] = useState<null | {
+    kind: "kit" | "pack" | "binds";
+    error: string | null;
+  }>(null);
+  // Kit naming is a single-line text entry, separate from the code dialogs.
+  const [kitNameOpen, setKitNameOpen] = useState(false);
+  // Computed once per open: a per-render `new Date()` string would change the
+  // dialog's `initialValue` prop on any parent re-render and re-seed (erase)
+  // the draft while the user is typing.
+  const kitNameDefault = useRef("");
 
   // Refresh the user kit list whenever the kit menu opens.
   useEffect(() => {
@@ -236,10 +251,7 @@ export function RackStrip({
 
   // ── User kits ──────────────────────────────────────────────────────────
 
-  const saveCurrentKit = () => {
-    const fallback = `Kit ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
-    const name = window.prompt("Kit name", fallback);
-    if (!name) return;
+  const saveCurrentKit = (name: string) => {
     const kit: UserKit = {
       id: `ukit-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`,
       name,
@@ -296,14 +308,14 @@ export function RackStrip({
     }
   };
 
-  const installFromCode = () => {
-    const code = window.prompt("Paste a KYX kit code (PFKIT1:…)");
-    if (!code) return;
+  const installFromCode = (code: string) => {
     const kit = decodeKitCode(code);
     if (!kit) {
+      setCodeDialog((current) => (current ? { ...current, error: "Invalid kit code" } : current));
       setKitStatus("Invalid kit code");
       return;
     }
+    setCodeDialog(null);
     const userKit: UserKit = {
       id: `ukit-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`,
       name: kit.name,
@@ -352,14 +364,14 @@ export function RackStrip({
     }
   };
 
-  const installPackCode = () => {
-    const code = window.prompt("Paste a KYX PACK code (PFPACK1:…)");
-    if (!code) return;
+  const installPackCode = (code: string) => {
     const pack = decodePackCode(code);
     if (!pack) {
+      setCodeDialog((current) => (current ? { ...current, error: "Invalid PACK code" } : current));
       setKitStatus("Invalid PACK code");
       return;
     }
+    setCodeDialog(null);
     if (pack.binds) importPadKeys(pack.binds);
     if (pack.theme) setTheme(pack.theme);
     if (pack.grooves?.length) {
@@ -416,14 +428,14 @@ export function RackStrip({
     }
   };
 
-  const installBindsCode = () => {
-    const code = window.prompt("Paste a KYX BINDS code (PFBIND1:…)");
-    if (!code) return;
+  const installBindsCode = (code: string) => {
     const keys = decodeBindsCode(code);
     if (!keys) {
+      setCodeDialog((current) => (current ? { ...current, error: "Invalid BINDS code" } : current));
       setKeyStatus("Invalid BINDS code");
       return;
     }
+    setCodeDialog(null);
     importPadKeys(keys);
     setKeyStatus("Keymap installed");
   };
@@ -683,7 +695,15 @@ export function RackStrip({
           onPointerDown={(e) => e.stopPropagation()}
         >
           <div className="context-menu-header">USER KITS</div>
-          <button type="button" role="menuitem" onClick={saveCurrentKit}>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setKitMenu(null);
+              kitNameDefault.current = `Kit ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+              setKitNameOpen(true);
+            }}
+          >
             💾 Save current ({track.name})
           </button>
           {userKits.map((kit) => (
@@ -721,14 +741,28 @@ export function RackStrip({
             </div>
           ))}
           {userKits.length > 0 && <div className="context-menu-header">SHARE</div>}
-          <button type="button" role="menuitem" onClick={installFromCode}>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setKitMenu(null);
+              setCodeDialog({ kind: "kit", error: null });
+            }}
+          >
             Install from code…
           </button>
           <div className="context-menu-header">PACK</div>
           <button type="button" role="menuitem" onClick={() => void copyPackCode()}>
             Copy PACK (kit+keys+theme+grooves+scenes)
           </button>
-          <button type="button" role="menuitem" onClick={installPackCode}>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              setKitMenu(null);
+              setCodeDialog({ kind: "pack", error: null });
+            }}
+          >
             Install PACK…
           </button>
           {kitStatus && <div className="context-menu-header">{kitStatus}</div>}
@@ -787,7 +821,15 @@ export function RackStrip({
           >
             Copy BINDS code
           </button>
-          <button type="button" role="menuitem" title="Install a keymap from a PFBIND1 code" onClick={installBindsCode}>
+          <button
+            type="button"
+            role="menuitem"
+            title="Install a keymap from a PFBIND1 code"
+            onClick={() => {
+              setKeysMenu(null);
+              setCodeDialog({ kind: "binds", error: null });
+            }}
+          >
             Install from code…
           </button>
           <div className="context-menu-header">
@@ -797,6 +839,41 @@ export function RackStrip({
           </div>
         </div>
       )}
+      <TextPromptDialog
+        open={codeDialog !== null}
+        title={
+          codeDialog?.kind === "pack" ? "INSTALL PACK" : codeDialog?.kind === "binds" ? "INSTALL BINDS" : "INSTALL KIT"
+        }
+        label={
+          codeDialog?.kind === "pack"
+            ? "Paste a KYX PACK code (PFPACK1:…)"
+            : codeDialog?.kind === "binds"
+              ? "Paste a KYX BINDS code (PFBIND1:…)"
+              : "Paste a KYX kit code (PFKIT1:…)"
+        }
+        placeholder="PFKIT1:…"
+        multiline
+        error={codeDialog?.error ?? null}
+        confirmLabel="INSTALL"
+        onSubmit={(code) => {
+          if (codeDialog?.kind === "pack") installPackCode(code);
+          else if (codeDialog?.kind === "binds") installBindsCode(code);
+          else installFromCode(code);
+        }}
+        onClose={() => setCodeDialog(null)}
+      />
+      <TextPromptDialog
+        open={kitNameOpen}
+        title="SAVE KIT"
+        label="Kit name"
+        initialValue={kitNameDefault.current}
+        confirmLabel="SAVE"
+        onSubmit={(name) => {
+          setKitNameOpen(false);
+          saveCurrentKit(name);
+        }}
+        onClose={() => setKitNameOpen(false)}
+      />
     </section>
   );
 }

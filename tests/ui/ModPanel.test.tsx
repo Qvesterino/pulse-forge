@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ModPanel } from "../../src/ui/ModPanel";
@@ -153,5 +153,40 @@ describe("ModPanel — ScenePanel wall-clock info (Wave 2)", () => {
     const info = container.querySelector(".scene-loop-info");
     expect(info).not.toBeNull();
     expect(info?.textContent).toMatch(/^LOOP \d+\.\d+s$/);
+  });
+});
+
+describe("ModPanel — automation point fields commit on blur, not per keystroke (audit #6)", () => {
+  it("typing a point tick writes ONE command", async () => {
+    const user = userEvent.setup();
+    const doc = createProjectFromTemplate("house");
+    const track = doc.tracks.find((t) => t.kind === "drum") ?? doc.tracks[0];
+    // A trackGain lane is valid on any owner; seed points so the editor mounts.
+    doc.automation = [
+      {
+        id: "lane-audit6",
+        target: { kind: "trackGain", trackId: track.id },
+        points: [
+          { tick: 0, value: 0.5 },
+          { tick: 240, value: 0.8 },
+        ],
+      },
+    ];
+    const services = mockServices(doc);
+    renderWithContext(<ModPanel />, { services });
+    const executeSpy = vi.spyOn(services.store, "execute");
+
+    // Select the lane so the PointEditor mounts.
+    await user.click(screen.getByRole("button", { name: /pts$/ }));
+
+    const tickField = screen.getByLabelText("Point 1 tick");
+    const executesBefore = executeSpy.mock.calls.length;
+    await user.clear(tickField);
+    await user.type(tickField, "48");
+    // Typing alone must not execute one command per key: if it did, "48"
+    // would add two commands and Ctrl+Z would snap back a character.
+    expect(executeSpy.mock.calls.length).toBe(executesBefore);
+    await user.tab();
+    expect(executeSpy.mock.calls.length - executesBefore).toBe(1);
   });
 });

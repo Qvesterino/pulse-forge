@@ -212,13 +212,24 @@ export class GateModuleProcessor implements UltinaModuleProcessor {
     const closedGainLinear = dbToLinear(rangeDb);
 
     // Compute thresholds (reused arrays — audio thread)
-    // Open threshold comes from per-band params; close = open - hysteresis
     const openThresholdDb = this.openThresholdDbBuf;
     openThresholdDb[0] = params["gate.band0.openThresholdDb"] ?? -40;
     openThresholdDb[1] = params["gate.band1.openThresholdDb"] ?? -40;
     openThresholdDb[2] = params["gate.band2.openThresholdDb"] ?? -40;
     const closeThresholdDb = this.closeThresholdDbBuf;
-    closeThresholdDb[0] = params["gate.band0.closeThresholdDb"] ?? openThresholdDb[0] - hysteresisDb;
+    // Single-band mode derives close from the hysteresis knob: the
+    // buildDefaultParams() record always materializes
+    // gate.bandN.closeThresholdDb (-50), so the `?? open - hysteresis`
+    // fallback could never fire and the GATE HYSTERESIS control was dead at
+    // the default band count (2026-10-04 plugin audit; the native
+    // gate_module.cpp getValue(GATE_BANDn_CLOSE_DB, threshold−hysteresis)
+    // fallback only exists for unset params). Per-band close values stay
+    // authoritative in 2/3-band mode where they are the multiband feature.
+    // (Reconciled from Pulse Forge audit, 2026-10-04: single-band gate close threshold follows the hysteresis knob.)
+    closeThresholdDb[0] =
+      bandCount === 1
+        ? openThresholdDb[0] - hysteresisDb
+        : (params["gate.band0.closeThresholdDb"] ?? openThresholdDb[0] - hysteresisDb);
     closeThresholdDb[1] = params["gate.band1.closeThresholdDb"] ?? openThresholdDb[1] - hysteresisDb;
     closeThresholdDb[2] = params["gate.band2.closeThresholdDb"] ?? openThresholdDb[2] - hysteresisDb;
     // A close threshold ABOVE its open threshold makes the state machine

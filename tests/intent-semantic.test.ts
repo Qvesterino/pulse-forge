@@ -6,6 +6,7 @@ import {
   SEMANTIC_THRESHOLD,
 } from "../src/intent/semantic";
 import { GENRES } from "../src/ai/types";
+import type { StyleExampleV1 } from "../src/intent/style-example-ledger";
 
 /**
  * Unit tests run with an INJECTED mock embedder — no network, no model.
@@ -233,5 +234,50 @@ describe("favorite-driven corpus (D7)", () => {
     const match = await semanticIntentFor("deep house groove", { embed: mockEmbed, favorites });
     expect(match).not.toBeNull();
     expect(match!.input.genre).toBe("house");
+  });
+});
+
+describe("learned-style corpus (commit 020a721d)", () => {
+  function styleExample(overrides: Partial<StyleExampleV1> = {}): StyleExampleV1 {
+    return {
+      version: 1,
+      contentHash: "12345678",
+      savedAt: 1000,
+      genre: "techno",
+      grooveId: "techno.rolling",
+      energy: 0.75,
+      density: 0.6,
+      complexity: 0.45,
+      variation: 0.4,
+      ...overrides,
+    };
+  }
+
+  it("adds a learned-style reference only after 3 same-genre examples", () => {
+    // Two examples: below the "recurring preference" floor.
+    const few = buildSemanticCorpus(
+      [],
+      [styleExample({ contentHash: "11111111" }), styleExample({ contentHash: "22222222" })],
+    );
+    expect(few.some((entry) => entry.label.startsWith("Môj naučený štýl"))).toBe(false);
+
+    // Three: the learned profile reaches the retrieval vocabulary.
+    const enough = buildSemanticCorpus(
+      [],
+      [
+        styleExample({ contentHash: "11111111" }),
+        styleExample({ contentHash: "22222222" }),
+        styleExample({ contentHash: "33333333" }),
+      ],
+    );
+    const learned = enough.find((entry) => entry.label.startsWith("Môj naučený štýl"));
+    expect(learned).toBeDefined();
+    expect(learned!.patch.genre).toBe("techno");
+    expect(learned!.patch.energy).toBeCloseTo(0.75, 2);
+  });
+
+  it("skips invalid examples (never lets junk into the corpus)", () => {
+    const corpus = buildSemanticCorpus([], [{ version: 1, genre: "techno" } as never]);
+    expect(corpus.some((entry) => entry.label.startsWith("Môj naučený štýl"))).toBe(false);
   });
 });

@@ -120,6 +120,13 @@ export interface CompMeters {
   outputLevels: number[];
   /** Computed auto-makeup gain (dB). */
   autoMakeupDb: number;
+  /**
+   * Aggregate gain reduction (dB, positive = reduction) — the max across
+   * bands. The rack/panel GR bar reads a scalar; before this field existed
+   * it read `undefined` and the bar stayed empty on every reduction.
+   * (Reconciled from Pulse Forge audit, 2026-10-04.)
+   */
+  gainReductionDb: number;
 }
 
 // ── Compressor Module ───────────────────────────────────────
@@ -331,8 +338,16 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     }
 
     // Prepare per-band params (reused array — audio thread)
+    // Single-band mode follows the GLOBAL comp.thresholdDb knob: the
+    // buildDefaultParams() record always materializes comp.bandN.thresholdDb
+    // (-20), so a plain `?? thresholdDb` fallback can never fire and the main
+    // threshold — the one every factory preset writes — was a dead control at
+    // the default band count. Per-band overrides stay authoritative in 2/3-band
+    // mode where they are the multiband feature.
+    // (Reconciled from Pulse Forge audit, 2026-10-04: single-band comp threshold reads the global knob.)
     const bandThresholdDb = this.bandThresholdDbBuf;
-    bandThresholdDb[0] = params["comp.band0.thresholdDb"] ?? thresholdDb;
+    bandThresholdDb[0] =
+      bandCount === 1 ? thresholdDb : (params["comp.band0.thresholdDb"] ?? thresholdDb);
     bandThresholdDb[1] = params["comp.band1.thresholdDb"] ?? thresholdDb;
     bandThresholdDb[2] = params["comp.band2.thresholdDb"] ?? thresholdDb;
 
@@ -465,6 +480,7 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
         gainReduction: new Array(this.gainReduction.length).fill(0),
         outputLevels: new Array(this.outputLevels.length).fill(0),
         autoMakeupDb: 0,
+        gainReductionDb: 0,
       };
     }
     const m = this.pooledMeters;
@@ -474,6 +490,13 @@ export class CompModuleProcessor implements UltinaModuleProcessor {
     for (let i = 0; i < m.gainReduction.length; i++) m.gainReduction[i] = this.gainReduction[i];
     for (let i = 0; i < m.outputLevels.length; i++) m.outputLevels[i] = this.outputLevels[i];
     m.autoMakeupDb = this.autoMakeupDb;
+    // Max-across-bands scalar for the single GR bar (see the interface note).
+    let maxGr = 0;
+    for (let i = 0; i < this.gainReduction.length; i++) {
+      const gr = this.gainReduction[i];
+      if (gr > maxGr) maxGr = gr;
+    }
+    m.gainReductionDb = maxGr;
     return m;
   }
 

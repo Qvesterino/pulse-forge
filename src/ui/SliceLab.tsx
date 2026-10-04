@@ -5,6 +5,7 @@ import { chopSampleToPads, setPadLoop, type PadSlice } from "../commands/command
 import { gridSlicePoints, pointsToSlices, snapToGrid, zeroCrossSnap } from "../audio-engine/transients";
 import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import { fitSliceFades } from "../audio-engine/declick";
+import { NumericDraftInput } from "./NumericDraftInput";
 import type { DrumPad, DrumTrack } from "../project-model/types";
 import { FACTORY_ASSETS } from "../sample-library/manifest";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
@@ -653,49 +654,47 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
                     <div className="slice-dialog-controls">
                       <label className="slice-number">
                         <span>START</span>
-                        <input
-                          type="number"
+                        <NumericDraftInput
                           min={0}
                           max={selected.end - 0.001}
                           step={0.001}
-                          value={selected.start.toFixed(3)}
+                          format={(v) => v.toFixed(3)}
+                          value={selected.start}
                           disabled={selectedIndex === 0}
-                          onChange={(event) => updateSelectedStart(Number(event.target.value))}
+                          onCommit={(v) => updateSelectedStart(v)}
                         />
                       </label>
                       <label className="slice-number">
                         <span>END</span>
-                        <input
-                          type="number"
+                        <NumericDraftInput
                           min={selected.start + 0.001}
                           max={buffer.duration}
                           step={0.001}
-                          value={selected.end.toFixed(3)}
-                          onChange={(event) => updateSelectedEnd(Number(event.target.value))}
+                          format={(v) => v.toFixed(3)}
+                          value={selected.end}
+                          onCommit={(v) => updateSelectedEnd(v)}
                         />
                       </label>
                       <label className="slice-number">
                         <span>FADE IN</span>
-                        <input
-                          type="number"
+                        <NumericDraftInput
                           min={0}
                           max={selected.end - selected.start}
                           step={0.001}
-                          value={selected.fadeIn.toFixed(3)}
-                          onChange={(event) => updateSelected({ fadeIn: Math.max(0, Number(event.target.value) || 0) })}
+                          format={(v) => v.toFixed(3)}
+                          value={selected.fadeIn}
+                          onCommit={(v) => updateSelected({ fadeIn: Math.max(0, v) })}
                         />
                       </label>
                       <label className="slice-number">
                         <span>FADE OUT</span>
-                        <input
-                          type="number"
+                        <NumericDraftInput
                           min={0}
                           max={selected.end - selected.start}
                           step={0.001}
-                          value={selected.fadeOut.toFixed(3)}
-                          onChange={(event) =>
-                            updateSelected({ fadeOut: Math.max(0, Number(event.target.value) || 0) })
-                          }
+                          format={(v) => v.toFixed(3)}
+                          value={selected.fadeOut}
+                          onCommit={(v) => updateSelected({ fadeOut: Math.max(0, v) })}
                         />
                       </label>
                       <label className="slice-check">

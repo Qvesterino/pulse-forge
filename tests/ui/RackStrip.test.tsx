@@ -74,6 +74,41 @@ describe("RackStrip", () => {
     expect(screen.getByRole("menuitem", { name: "Install from code…" })).toBeInTheDocument();
   });
 
+  it("code install opens the in-app dialog, not a native prompt", async () => {
+    const user = userEvent.setup();
+    const promptSpy = vi.spyOn(window, "prompt").mockReturnValue(null);
+    const { doc, track } = drumTrack();
+    renderWithContext(<RackStrip track={track} selectedPadId="" onSelectPad={vi.fn()} />, {
+      services: mockServices(doc),
+    });
+
+    await user.click(screen.getByRole("button", { name: "KEYS" }));
+    await user.click(screen.getByRole("menuitem", { name: "Install from code…" }));
+
+    // The dialog is reachable from the test; the native prompt is not used.
+    expect(screen.getByRole("dialog", { name: "INSTALL BINDS" })).toBeInTheDocument();
+    expect(promptSpy).not.toHaveBeenCalled();
+    promptSpy.mockRestore();
+  });
+
+  it("saving a kit opens the naming dialog instead of a native prompt", async () => {
+    const user = userEvent.setup();
+    const promptSpy = vi.spyOn(window, "prompt").mockReturnValue(null);
+    const { doc, track } = drumTrack();
+    renderWithContext(<RackStrip track={track} selectedPadId="" onSelectPad={vi.fn()} />, {
+      services: mockServices(doc),
+    });
+
+    await user.click(screen.getByRole("button", { name: "KIT" }));
+    await user.click(screen.getByRole("menuitem", { name: /Save current/ }));
+
+    const dialog = screen.getByRole("dialog", { name: "SAVE KIT" });
+    expect(dialog).toBeInTheDocument();
+    expect((screen.getByLabelText("Kit name") as HTMLInputElement).value).toMatch(/^Kit /);
+    expect(promptSpy).not.toHaveBeenCalled();
+    promptSpy.mockRestore();
+  });
+
   it("renders the leading slot (track tabs) inside its header row", () => {
     const { doc, track } = drumTrack();
     const { container } = renderWithContext(

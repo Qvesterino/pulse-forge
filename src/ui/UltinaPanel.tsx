@@ -527,7 +527,12 @@ export function UltinaPanel({
   };
 
   // ── EQ LEARN: resonance detection from the vendored learn meters ──────
-  const [learnOn, setLearnOn] = useState(false);
+  // The LEARN toggle drives the REAL `eq.learnActive` parameter — the DSP
+  // only runs the learn analyzer (and publishes meters.learn.eq) while that
+  // param is ≥ 0.5. The old local React state never wrote it, so the button
+  // animated but the analyzer never started and no suggestion ever appeared.
+  // (Reconciled from Pulse Forge audit, 2026-10-04.)
+  const learnOn = valueOf("eq.learnActive") >= 0.5;
   const [learnSuggestions, setLearnSuggestions] = useState<
     { freqHz: number; gainDb: number; q: number; severity: number }[]
   >([]);
@@ -1019,7 +1024,7 @@ export function UltinaPanel({
               className={`btn btn-export${learnOn ? " active" : ""}`}
               aria-pressed={learnOn}
               title="Play your track — VLYX detects resonances and suggests cuts"
-              onClick={() => setLearnOn((v) => !v)}
+              onClick={() => onParam("eq.learnActive", learnOn ? 0 : 1)}
             >
               {learnOn ? "● LEARNING" : "LEARN"}
             </button>

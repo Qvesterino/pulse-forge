@@ -1,0 +1,4011 @@
+{
+  "result": {
+    "total": 1000,
+    "includes_container_logs": true,
+    "data": [
+      {
+        "ts": "2026-10-04T17:40:34.637434Z",
+        "line": "Cloning repository..."
+      },
+      {
+        "ts": "2026-10-04T17:41:36.305018Z",
+        "line": "From https://github.com/Qvesterino/Qvester_AI_STUDIO_LANDING_PAGE"
+      },
+      {
+        "ts": "2026-10-04T17:41:36.305368Z",
+        "line": " * branch              4908a6ecc3718ef162b155150e93e5857ff6e872 -\u003e FETCH_HEAD"
+      },
+      {
+        "ts": "2026-10-04T17:41:36.305504Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:41:44.377892Z",
+        "line": "HEAD is now at 4908a6ec feat(kyx): commit the vendored artifact — CI becomes self-contained for private pulse-forge"
+      },
+      {
+        "ts": "2026-10-04T17:41:44.378187Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:41:44.816888Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:41:44.817248Z",
+        "line": "Using v2 root directory strategy"
+      },
+      {
+        "ts": "2026-10-04T17:41:44.979443Z",
+        "line": "Success: Finished cloning repository files"
+      },
+      {
+        "ts": "2026-10-04T17:41:46.898732Z",
+        "line": "Checking for configuration in a Wrangler configuration file (BETA)"
+      },
+      {
+        "ts": "2026-10-04T17:41:46.899364Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:41:47.041367Z",
+        "line": "No Wrangler configuration file found. Continuing."
+      },
+      {
+        "ts": "2026-10-04T17:41:47.254992Z",
+        "line": "Detected the following tools from environment: npm@10.9.2, nodejs@22.16.0"
+      },
+      {
+        "ts": "2026-10-04T17:41:47.255374Z",
+        "line": "Installing project dependencies: npm clean-install --progress=false"
+      },
+      {
+        "ts": "2026-10-04T17:41:49.129625Z",
+        "line": "npm warn ERESOLVE overriding peer dependency"
+      },
+      {
+        "ts": "2026-10-04T17:41:49.130033Z",
+        "line": "npm warn While resolving: tsconfck@3.1.6"
+      },
+      {
+        "ts": "2026-10-04T17:41:49.130176Z",
+        "line": "npm warn Found: typescript@6.0.3"
+      },
+      {
+        "ts": "2026-10-04T17:41:49.130221Z",
+        "line": "npm warn node_modules/typescript"
+      },
+      {
+        "ts": "2026-10-04T17:41:49.130259Z",
+        "line": "npm warn   dev typescript@\"6.0.3\" from the root project"
+      },
+      {
+        "ts": "2026-10-04T17:41:49.1303Z",
+        "line": "npm warn   9 more (@typescript-eslint/eslint-plugin, ...)"
+      },
+      {
+        "ts": "2026-10-04T17:41:49.130344Z",
+        "line": "npm warn"
+      },
+      {
+        "ts": "2026-10-04T17:41:49.130376Z",
+        "line": "npm warn Could not resolve dependency:"
+      },
+      {
+        "ts": "2026-10-04T17:41:49.130405Z",
+        "line": "npm warn peerOptional typescript@\"^5.0.0\" from tsconfck@3.1.6"
+      },
+      {
+        "ts": "2026-10-04T17:41:49.130434Z",
+        "line": "npm warn node_modules/tsconfck"
+      },
+      {
+        "ts": "2026-10-04T17:41:49.130465Z",
+        "line": "npm warn   tsconfck@\"^3.0.3\" from vite-tsconfig-paths@6.1.1"
+      },
+      {
+        "ts": "2026-10-04T17:41:49.130509Z",
+        "line": "npm warn   node_modules/vite-tsconfig-paths"
+      },
+      {
+        "ts": "2026-10-04T17:41:49.130541Z",
+        "line": "npm warn"
+      },
+      {
+        "ts": "2026-10-04T17:41:49.13057Z",
+        "line": "npm warn Conflicting peer dependency: typescript@5.9.3"
+      },
+      {
+        "ts": "2026-10-04T17:41:49.130597Z",
+        "line": "npm warn node_modules/typescript"
+      },
+      {
+        "ts": "2026-10-04T17:41:49.130634Z",
+        "line": "npm warn   peerOptional typescript@\"^5.0.0\" from tsconfck@3.1.6"
+      },
+      {
+        "ts": "2026-10-04T17:41:49.130682Z",
+        "line": "npm warn   node_modules/tsconfck"
+      },
+      {
+        "ts": "2026-10-04T17:41:49.130729Z",
+        "line": "npm warn     tsconfck@\"^3.0.3\" from vite-tsconfig-paths@6.1.1"
+      },
+      {
+        "ts": "2026-10-04T17:41:49.130776Z",
+        "line": "npm warn     node_modules/vite-tsconfig-paths"
+      },
+      {
+        "ts": "2026-10-04T17:41:51.041204Z",
+        "line": "npm warn deprecated tsconfck@3.1.6: unmaintained"
+      },
+      {
+        "ts": "2026-10-04T17:41:57.862773Z",
+        "line": "npm warn deprecated recharts@2.15.4: 1.x and 2.x branches are no longer active. Bump to Recharts v3 to receive latest features and bugfixes. See https://github.com/recharts/recharts/wiki/3.0-migration-guide"
+      },
+      {
+        "ts": "2026-10-04T17:42:05.53401Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:42:05.534399Z",
+        "line": "added 891 packages in 18s"
+      },
+      {
+        "ts": "2026-10-04T17:42:05.534522Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:42:05.534612Z",
+        "line": "155 packages are looking for funding"
+      },
+      {
+        "ts": "2026-10-04T17:42:05.534662Z",
+        "line": "  run `npm fund` for details"
+      },
+      {
+        "ts": "2026-10-04T17:42:05.608686Z",
+        "line": "Executing user command: npm run build:studio"
+      },
+      {
+        "ts": "2026-10-04T17:42:05.899573Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:42:05.899822Z",
+        "line": "\u003e build:studio"
+      },
+      {
+        "ts": "2026-10-04T17:42:05.89988Z",
+        "line": "\u003e npm run build:apps \u0026\u0026 npm run build \u0026\u0026 node --use-system-ca scripts/assemble-studio-dist.mjs \u0026\u0026 node --use-system-ca scripts/render-shell-routes.mjs \u0026\u0026 npm run verify:zyvo:pages"
+      },
+      {
+        "ts": "2026-10-04T17:42:05.899944Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:42:06.078667Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:42:06.079119Z",
+        "line": "\u003e build:apps"
+      },
+      {
+        "ts": "2026-10-04T17:42:06.079278Z",
+        "line": "\u003e node --use-system-ca scripts/build-studio-apps.mjs"
+      },
+      {
+        "ts": "2026-10-04T17:42:06.079439Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:42:06.166223Z",
+        "line": "[studio] Building Sketch to Structure at /sketch-to-structure/..."
+      },
+      {
+        "ts": "2026-10-04T17:42:06.169647Z",
+        "line": "[studio] Linked 28 workspace package(s) into root node_modules."
+      },
+      {
+        "ts": "2026-10-04T17:42:06.171123Z",
+        "line": "[studio] Installing dependencies for Sketch to Structure..."
+      },
+      {
+        "ts": "2026-10-04T17:42:09.572249Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:42:09.572691Z",
+        "line": "added 203 packages in 3s"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.06212Z",
+        "line": "\u001b[36mvite v8.0.8 \u001b[32mbuilding client environment for production...\u001b[36m\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.601367Z",
+        "line": "\u001b[2K\rtransforming...✓ 2182 modules transformed."
+      },
+      {
+        "ts": "2026-10-04T17:42:10.730619Z",
+        "line": "rendering chunks..."
+      },
+      {
+        "ts": "2026-10-04T17:42:10.896119Z",
+        "line": "computing gzip size..."
+      },
+      {
+        "ts": "2026-10-04T17:42:10.910834Z",
+        "line": "dist/assets/qvx-hud-tips-CcsP5jU7.json                    8.62 kB │ gzip:   2.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.911284Z",
+        "line": "dist/index.html                                          11.07 kB │ gzip:   3.41 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.911624Z",
+        "line": "dist/assets/worker-Bs6qatam.js                           11.33 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.911674Z",
+        "line": "dist/assets/qmr-mini-chip-mount-5UbZ1kdu.css              1.22 kB │ gzip:   0.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.911726Z",
+        "line": "dist/assets/src-BcCg7KHv.css                             23.85 kB │ gzip:   4.83 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.911786Z",
+        "line": "dist/assets/index-khkCs4Bo.css                           55.23 kB │ gzip:   9.90 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.911858Z",
+        "line": "dist/assets/decision-response-bridge-BUsAsGSF.css       112.39 kB │ gzip:  18.78 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.911898Z",
+        "line": "dist/assets/dist-BT-_GZhc.js                              0.05 kB │ gzip:   0.07 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.911947Z",
+        "line": "dist/assets/projectManager-BKEgnYII.js                    0.07 kB │ gzip:   0.09 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.912041Z",
+        "line": "dist/assets/qvx-hud-tips-CXL-JJNV.js                      0.08 kB │ gzip:   0.10 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.91216Z",
+        "line": "dist/assets/jsx-runtime-DdUpNepc.js                       0.42 kB │ gzip:   0.29 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.912233Z",
+        "line": "dist/assets/correctionSession-D9vkktMo.js                 0.55 kB │ gzip:   0.28 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.912305Z",
+        "line": "dist/assets/preload-helper-CaPpUAXL.js                    1.21 kB │ gzip:   0.69 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.912369Z",
+        "line": "dist/assets/journey-replay-D15cQuV9.js                    1.49 kB │ gzip:   0.77 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.912427Z",
+        "line": "dist/assets/viewStore-CSgpKLYK.js                         2.01 kB │ gzip:   0.81 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.912554Z",
+        "line": "dist/assets/shadow-logging-Cgrw2y6H.js                    2.29 kB │ gzip:   0.94 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.912615Z",
+        "line": "dist/assets/qmr-CnsFFjsN.js                               2.51 kB │ gzip:   1.31 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.912655Z",
+        "line": "dist/assets/qmr-mini-chip-mount-DnhnZ2w-.js               2.96 kB │ gzip:   1.48 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.912684Z",
+        "line": "dist/assets/graph-BwZocbL7.js                             3.50 kB │ gzip:   1.51 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.912718Z",
+        "line": "dist/assets/react-dom-A4gHs9z0.js                         3.53 kB │ gzip:   1.33 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.912747Z",
+        "line": "dist/assets/state-bus-CkLqbnHj.js                         3.93 kB │ gzip:   1.48 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.912796Z",
+        "line": "dist/assets/consumeInboundHandoff-BOqyUFpR.js             5.34 kB │ gzip:   2.03 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.91283Z",
+        "line": "dist/assets/index-uy57jTKG.js                             7.32 kB │ gzip:   3.02 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.912857Z",
+        "line": "dist/assets/journey-page-ClaEho3u.js                      7.65 kB │ gzip:   2.25 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.912884Z",
+        "line": "dist/assets/react-BD0CQSIc.js                             8.15 kB │ gzip:   3.15 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.912915Z",
+        "line": "dist/assets/serializer-CntmWl8D.js                        8.72 kB │ gzip:   3.14 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.912947Z",
+        "line": "dist/assets/onnx-inference-CDcNaj-S.js                    9.25 kB │ gzip:   4.51 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.912977Z",
+        "line": "dist/assets/diagramPassport-DTWe6Zed.js                  10.96 kB │ gzip:   4.15 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.913078Z",
+        "line": "dist/assets/workspaceStore-CHSazCzI.js                   11.66 kB │ gzip:   4.24 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.91311Z",
+        "line": "dist/assets/src-Dct3cv27.js                              11.69 kB │ gzip:   3.96 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.913138Z",
+        "line": "dist/assets/pipeline-DRtbT77l.js                         12.11 kB │ gzip:   4.69 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.913172Z",
+        "line": "dist/assets/feature-flags-DJi3jJJR.js                    12.58 kB │ gzip:   4.11 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.913199Z",
+        "line": "dist/assets/projectManager-b5gKNIAY.js                   32.37 kB │ gzip:  10.10 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.913229Z",
+        "line": "dist/assets/dist-CHl3CIKp.js                             33.54 kB │ gzip:   9.35 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.913262Z",
+        "line": "dist/assets/qmr-panel-mount-vDYVhe_5.js                  69.27 kB │ gzip:  20.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.913298Z",
+        "line": "dist/assets/src-CNBmvyFM.js                              92.37 kB │ gzip:  23.06 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.913326Z",
+        "line": "dist/assets/shareLink-CBRkEXsU.js                       101.24 kB │ gzip:  30.84 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.913353Z",
+        "line": "dist/assets/qmr-knowledge-graph-projection-Ca_wyten.js  143.25 kB │ gzip:  38.14 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.91338Z",
+        "line": "dist/assets/client-B7bTYTGx.js                          178.30 kB │ gzip:  56.31 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.913407Z",
+        "line": "dist/assets/src-BeYKMTWW.js                             208.34 kB │ gzip:  64.32 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.913434Z",
+        "line": "dist/assets/workflow-session-store-CEaYpSKr.js          314.98 kB │ gzip:  82.94 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.916813Z",
+        "line": "dist/assets/App-BJnq2pIP.js                             324.42 kB │ gzip:  88.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.917627Z",
+        "line": "dist/assets/decision-response-bridge-DwOnOKHv.js        577.96 kB │ gzip: 152.20 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.917773Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:42:10.917851Z",
+        "line": "\u001b[32m✓ built in 849ms\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.917901Z",
+        "line": "\u001b[33m[plugin builtin:vite-reporter] "
+      },
+      {
+        "ts": "2026-10-04T17:42:10.917938Z",
+        "line": "(!) Some chunks are larger than 500 kB after minification. Consider:"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.918015Z",
+        "line": "- Using dynamic import() to code-split the application"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.918077Z",
+        "line": "- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.918125Z",
+        "line": "- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:42:10.97613Z",
+        "line": "[studio] Building Flow Draft at /flow-draft/..."
+      },
+      {
+        "ts": "2026-10-04T17:42:10.979981Z",
+        "line": "[studio] Installing dependencies for Flow Draft..."
+      },
+      {
+        "ts": "2026-10-04T17:42:17.014559Z",
+        "line": "npm warn deprecated @types/diff@8.0.0: This is a stub types definition. diff provides its own type definitions, so you do not need this installed."
+      },
+      {
+        "ts": "2026-10-04T17:42:26.460376Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:42:26.460859Z",
+        "line": "added 576 packages in 15s"
+      },
+      {
+        "ts": "2026-10-04T17:42:26.722473Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:42:26.72281Z",
+        "line": "\u003e build"
+      },
+      {
+        "ts": "2026-10-04T17:42:26.722905Z",
+        "line": "\u003e node scripts/copy-monaco.mjs \u0026\u0026 vite build"
+      },
+      {
+        "ts": "2026-10-04T17:42:26.722964Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:42:26.771487Z",
+        "line": "[copy-monaco] Copying monaco-editor into public/monaco/vs..."
+      },
+      {
+        "ts": "2026-10-04T17:42:26.804657Z",
+        "line": "[copy-monaco] Done."
+      },
+      {
+        "ts": "2026-10-04T17:42:27.231891Z",
+        "line": "\u001b[33mThe plugin \"vite-tsconfig-paths\" is detected. Vite now supports tsconfig paths resolution natively via the \u001b[1mresolve.tsconfigPaths\u001b[22m option. You can remove the plugin and set \u001b[1mresolve.tsconfigPaths: true\u001b[22m in your Vite config instead.\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:42:27.254564Z",
+        "line": "\u001b[36mvite v8.1.4 \u001b[32mbuilding client environment for production...\u001b[36m\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:42:28.585113Z",
+        "line": "\u001b[2K\rtransforming...✓ 5115 modules transformed."
+      },
+      {
+        "ts": "2026-10-04T17:42:29.074998Z",
+        "line": "rendering chunks..."
+      },
+      {
+        "ts": "2026-10-04T17:42:29.47507Z",
+        "line": "computing gzip size..."
+      },
+      {
+        "ts": "2026-10-04T17:42:29.510518Z",
+        "line": "dist/assets/diagramFidelityReview.worker-Bad7b55h.ts      4.25 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.511086Z",
+        "line": "dist/assets/qvx-hud-tips-CcsP5jU7.json                    8.62 kB │ gzip:   2.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.511205Z",
+        "line": "dist/index.html                                          12.70 kB │ gzip:   3.77 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.511316Z",
+        "line": "dist/assets/qmr-mini-chip-mount-5UbZ1kdu.css              1.22 kB │ gzip:   0.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.511372Z",
+        "line": "dist/assets/src-BcCg7KHv.css                             23.85 kB │ gzip:   4.83 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.511426Z",
+        "line": "dist/assets/DockWorkspace-D5adAaCg.css                  103.09 kB │ gzip:   8.53 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.511463Z",
+        "line": "dist/assets/decision-response-bridge-BUsAsGSF.css       112.39 kB │ gzip:  18.78 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.511511Z",
+        "line": "dist/assets/index-GoDQ3pGa.css                          160.45 kB │ gzip:  25.13 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.51155Z",
+        "line": "dist/assets/array-BifhSqXX.js                             0.10 kB │ gzip:   0.11 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.511643Z",
+        "line": "dist/assets/channel-DmFp-vOz.js                           0.11 kB │ gzip:   0.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.511716Z",
+        "line": "dist/assets/pie-LRSECV5Y-CepZ1eGk.js                      0.11 kB │ gzip:   0.11 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.511788Z",
+        "line": "dist/assets/info-J43DQDTF-DGuBH_ER.js                     0.11 kB │ gzip:   0.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.51185Z",
+        "line": "dist/assets/radar-GUYGQ44K-C3bAtUGH.js                    0.11 kB │ gzip:   0.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.511907Z",
+        "line": "dist/assets/packet-YPE3B663-BqU1bsLc.js                   0.12 kB │ gzip:   0.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.51197Z",
+        "line": "dist/assets/treemap-LRROVOQU-Bkhu3AlP.js                  0.12 kB │ gzip:   0.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.512023Z",
+        "line": "dist/assets/wardley-L42UT6IY-DwnmnnvZ.js                  0.12 kB │ gzip:   0.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.512059Z",
+        "line": "dist/assets/gitGraph-WXDBUCRP-B8BYn2Kt.js                 0.12 kB │ gzip:   0.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.512096Z",
+        "line": "dist/assets/treeView-BLDUP644-DN5qTPk1.js                 0.12 kB │ gzip:   0.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.512377Z",
+        "line": "dist/assets/check-L-FMTW6E.js                             0.12 kB │ gzip:   0.14 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.512448Z",
+        "line": "dist/assets/architecture-7EHR7CIX-DwU6MsGC.js             0.12 kB │ gzip:   0.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.512651Z",
+        "line": "dist/assets/eventmodeling-FCH6USID-CtnTKhz0.js            0.12 kB │ gzip:   0.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.512989Z",
+        "line": "dist/assets/chevron-right-DCMubuUy.js                     0.13 kB │ gzip:   0.14 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.513065Z",
+        "line": "dist/assets/circle-Ca3ghrOd.js                            0.13 kB │ gzip:   0.13 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.513466Z",
+        "line": "dist/assets/runtimePaths-B0hcCGjn.js                      0.13 kB │ gzip:   0.13 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.514302Z",
+        "line": "dist/assets/init-D6jRqBbL.js                              0.14 kB │ gzip:   0.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.514458Z",
+        "line": "dist/assets/plus-ah165emH.js                              0.15 kB │ gzip:   0.15 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.514528Z",
+        "line": "dist/assets/x-z84FyT_V.js                                 0.15 kB │ gzip:   0.15 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.514621Z",
+        "line": "dist/assets/arrow-right-CIBTJrdY.js                       0.16 kB │ gzip:   0.16 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.514762Z",
+        "line": "dist/assets/clock-CjjxYPIz.js                             0.16 kB │ gzip:   0.16 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.514838Z",
+        "line": "dist/assets/search-BGG3BSPT.js                            0.17 kB │ gzip:   0.16 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.514901Z",
+        "line": "dist/assets/chunk-QZHKN3VN-DyHR5igO.js                    0.18 kB │ gzip:   0.15 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.515082Z",
+        "line": "dist/assets/circle-dot-BIW61faN.js                        0.18 kB │ gzip:   0.15 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.515147Z",
+        "line": "dist/assets/rotate-ccw-BQhUwAO5.js                        0.20 kB │ gzip:   0.18 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.515275Z",
+        "line": "dist/assets/chevron-up-Ck5ZAr2I.js                        0.20 kB │ gzip:   0.16 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.515366Z",
+        "line": "dist/assets/info-D-CDb_GY.js                              0.20 kB │ gzip:   0.17 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.515411Z",
+        "line": "dist/assets/code-xml-DHoMSMQw.js                          0.20 kB │ gzip:   0.17 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.51548Z",
+        "line": "dist/assets/chunk-4BX2VUAB-DXGGjh1s.js                    0.21 kB │ gzip:   0.16 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.515684Z",
+        "line": "dist/assets/chunk-55IACEB6-1oNIsoPL.js                    0.22 kB │ gzip:   0.19 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.515804Z",
+        "line": "dist/assets/git-branch-CNWkcB88.js                        0.22 kB │ gzip:   0.19 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.515856Z",
+        "line": "dist/assets/download-1eWXgmVq.js                          0.23 kB │ gzip:   0.19 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.51598Z",
+        "line": "dist/assets/copy-Ck0lSGAd.js                              0.23 kB │ gzip:   0.20 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.516099Z",
+        "line": "dist/assets/history-Bz-xf6NE.js                           0.23 kB │ gzip:   0.19 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.516221Z",
+        "line": "dist/assets/dist-D1IZGUYl.js                              0.24 kB │ gzip:   0.19 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.516281Z",
+        "line": "dist/assets/link-2-CBU8yUMR.js                            0.24 kB │ gzip:   0.20 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.516359Z",
+        "line": "dist/assets/database-Din19M2E.js                          0.24 kB │ gzip:   0.20 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.516402Z",
+        "line": "dist/assets/circle-alert-BDOvvb11.js                      0.25 kB │ gzip:   0.18 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.516483Z",
+        "line": "dist/assets/zap-DRObzzzn.js                               0.26 kB │ gzip:   0.20 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.516539Z",
+        "line": "dist/assets/triangle-alert-jQL8bAM4.js                    0.26 kB │ gzip:   0.21 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.516594Z",
+        "line": "dist/assets/typeof-B5XbjTb1.js                            0.27 kB │ gzip:   0.16 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.516648Z",
+        "line": "dist/assets/shield-BHunqQNw.js                            0.27 kB │ gzip:   0.22 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.516706Z",
+        "line": "dist/assets/arrow-up-fxMvuVHZ.js                          0.27 kB │ gzip:   0.20 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.516834Z",
+        "line": "dist/assets/chunk-WU5MYG2G-Cw6RfsIP.js                    0.27 kB │ gzip:   0.23 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.516893Z",
+        "line": "dist/assets/sticky-note-Cc4IhROF.js                       0.28 kB │ gzip:   0.21 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.516933Z",
+        "line": "dist/assets/dist-CMcCiT64.js                              0.28 kB │ gzip:   0.22 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.516967Z",
+        "line": "dist/assets/git-compare-DFfIaYTe.js                       0.28 kB │ gzip:   0.20 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.517004Z",
+        "line": "dist/assets/box-GjeDWj_p.js                               0.31 kB │ gzip:   0.22 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.517092Z",
+        "line": "dist/assets/bot-CT_3eHBd.js                               0.32 kB │ gzip:   0.22 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.517141Z",
+        "line": "dist/assets/trash-2-7PmnPxAn.js                           0.32 kB │ gzip:   0.21 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.517199Z",
+        "line": "dist/assets/chunk-FMBD7UC4-yRNhElkV.js                    0.35 kB │ gzip:   0.26 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.517251Z",
+        "line": "dist/assets/undo-2-BTN_9TuB.js                            0.36 kB │ gzip:   0.23 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.517291Z",
+        "line": "dist/assets/grip-vertical-ORTvDcTh.js                     0.37 kB │ gzip:   0.19 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.517358Z",
+        "line": "dist/assets/PipelineBreadcrumbWithPassport-CuCDFFko.js    0.38 kB │ gzip:   0.28 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.517571Z",
+        "line": "dist/assets/file-text-CGhdGr5B.js                         0.38 kB │ gzip:   0.24 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.51768Z",
+        "line": "dist/assets/layers-CgojCxn7.js                            0.42 kB │ gzip:   0.24 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.517742Z",
+        "line": "dist/assets/replace-D3ZvCxuu.js                           0.43 kB │ gzip:   0.26 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.517788Z",
+        "line": "dist/assets/rocket-Jc5pt6_p.js                            0.45 kB │ gzip:   0.30 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.517834Z",
+        "line": "dist/assets/chunk-FHYWG6QK-CTq4a6m_.js                    0.45 kB │ gzip:   0.31 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.517875Z",
+        "line": "dist/assets/chunk-5DO6E6H7-BKm1JXKs.js                    0.45 kB │ gzip:   0.31 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.517911Z",
+        "line": "dist/assets/chunk-MPE355IW-Dt6KwBqF.js                    0.45 kB │ gzip:   0.31 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.517947Z",
+        "line": "dist/assets/shadow-logging-BR1ebspR.js                    0.46 kB │ gzip:   0.34 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.518021Z",
+        "line": "dist/assets/chunk-UIBZB4QT-3nb6b4Q4.js                    0.46 kB │ gzip:   0.31 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.518063Z",
+        "line": "dist/assets/sparkles-DzM1L7IS.js                          0.49 kB │ gzip:   0.28 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.518093Z",
+        "line": "dist/assets/chunk-PUPMXCY4-D6rEij9l.js                    0.50 kB │ gzip:   0.34 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.518127Z",
+        "line": "dist/assets/palette-CFf-ke7S.js                           0.51 kB │ gzip:   0.27 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.518162Z",
+        "line": "dist/assets/wand-sparkles-CW2ACwcd.js                     0.51 kB │ gzip:   0.28 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.518206Z",
+        "line": "dist/assets/chunk-2J33WTMH-B3xfgFic.js                    0.53 kB │ gzip:   0.38 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.518268Z",
+        "line": "dist/assets/textarea-DDmsCj2E.js                          0.57 kB │ gzip:   0.38 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.51839Z",
+        "line": "dist/assets/chunk-MZUSXYTE-C-M6_ZfJ.js                    0.60 kB │ gzip:   0.39 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.518468Z",
+        "line": "dist/assets/lightbulb-KmqQK-y2.js                         0.61 kB │ gzip:   0.37 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.518544Z",
+        "line": "dist/assets/infoDiagram-5YYISTIA-DXwJjXGe.js              0.61 kB │ gzip:   0.40 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.518679Z",
+        "line": "dist/assets/cpu-BxwgIU59.js                               0.64 kB │ gzip:   0.28 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.518757Z",
+        "line": "dist/assets/chunk-WCWK7LTN-DwAcqPRt.js                    0.65 kB │ gzip:   0.40 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.518836Z",
+        "line": "dist/assets/stateDiagram-v2-BHNVJYJU-uIJU2ObZ.js          0.67 kB │ gzip:   0.40 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.518887Z",
+        "line": "dist/assets/input-BCYy-sHY.js                             0.67 kB │ gzip:   0.41 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.518923Z",
+        "line": "dist/assets/types-CoazrgI_.js                             0.68 kB │ gzip:   0.26 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.518979Z",
+        "line": "dist/assets/classDiagram-4FO5ZUOK-BEKJLnKm.js             0.74 kB │ gzip:   0.43 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.519044Z",
+        "line": "dist/assets/classDiagram-v2-Q7XG4LA2-BEKJLnKm.js          0.74 kB │ gzip:   0.43 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.519088Z",
+        "line": "dist/assets/consumeDiagramReturnResult-CqVef5QQ.js        0.74 kB │ gzip:   0.41 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.519145Z",
+        "line": "dist/assets/dist-D7hk3FJl.js                              0.78 kB │ gzip:   0.45 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.519215Z",
+        "line": "dist/assets/chunk-4EGX6M5U-DKhie-lS.js                    0.90 kB │ gzip:   0.48 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.519262Z",
+        "line": "dist/assets/line-vz5145lA.js                              0.94 kB │ gzip:   0.47 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.519299Z",
+        "line": "dist/assets/chunk-L5ZTLDWV-DZP0wkii.js                    0.95 kB │ gzip:   0.58 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.519331Z",
+        "line": "dist/assets/dist-BSjnKRie.js                              1.01 kB │ gzip:   0.56 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.519361Z",
+        "line": "dist/assets/usePersistentState-B2lXSbII.js                1.04 kB │ gzip:   0.60 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.519401Z",
+        "line": "dist/assets/upload-gLQCQ7qj.js                            1.05 kB │ gzip:   0.53 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.519486Z",
+        "line": "dist/assets/feature-flags-C9TVu0Z6.js                     1.08 kB │ gzip:   0.43 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.519549Z",
+        "line": "dist/assets/ordinal-hYBb2elL.js                           1.17 kB │ gzip:   0.56 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.519586Z",
+        "line": "dist/assets/preload-helper-BqtVzjjL.js                    1.20 kB │ gzip:   0.68 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.519635Z",
+        "line": "dist/assets/rolldown-runtime-DAXXjFlN.js                  1.26 kB │ gzip:   0.70 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.519668Z",
+        "line": "dist/assets/multiDiagramRouter-Bxg6YstL.js                1.36 kB │ gzip:   0.48 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.519737Z",
+        "line": "dist/assets/chunk-BR22UD5L-_VhmQa2P.js                    1.46 kB │ gzip:   0.78 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.519792Z",
+        "line": "dist/assets/journey-replay-BCH6HlGI.js                    1.49 kB │ gzip:   0.77 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.519842Z",
+        "line": "dist/assets/useStyleClasses-DopSnPrj.js                   1.50 kB │ gzip:   0.74 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.519894Z",
+        "line": "dist/assets/chunk-N66VUXT2-DiUR31P_.js                    1.67 kB │ gzip:   0.73 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.519932Z",
+        "line": "dist/assets/cross-app-memory-bridge-Ut8oSsEq.js           1.68 kB │ gzip:   0.75 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.519963Z",
+        "line": "dist/assets/chunk-NZK2D7GU-EJ8DE8a8.js                    1.83 kB │ gzip:   0.89 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.519994Z",
+        "line": "dist/assets/chunk-ND2GUHAM-DM7mi98a.js                    1.93 kB │ gzip:   0.86 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.520024Z",
+        "line": "dist/assets/chunk-BSJP7CBP-jVK7vaaz.js                    2.09 kB │ gzip:   0.81 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.520058Z",
+        "line": "dist/assets/annotationLayer-DuV9A8Nz.js                   2.11 kB │ gzip:   0.84 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.520098Z",
+        "line": "dist/assets/ShortcutsDialog-JY0lOVPz.js                   2.14 kB │ gzip:   1.03 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.520143Z",
+        "line": "dist/assets/dist-B82-hWtw.js                              2.15 kB │ gzip:   0.96 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.520174Z",
+        "line": "dist/assets/dist-CrdG7pnv.js                              2.17 kB │ gzip:   0.97 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.520207Z",
+        "line": "dist/assets/src-BeKMRp8y.js                               2.31 kB │ gzip:   1.11 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.520242Z",
+        "line": "dist/assets/path-BWPyau1x.js                              2.31 kB │ gzip:   0.99 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.520279Z",
+        "line": "dist/assets/svgAccessibility-CHiLhhVA.js                  2.49 kB │ gzip:   1.02 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.520324Z",
+        "line": "dist/assets/switch-DwlvvXOJ.js                            2.66 kB │ gzip:   1.31 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.520447Z",
+        "line": "dist/assets/EmptyStateTryThis-BZvjbLF2.js                 2.77 kB │ gzip:   1.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.52053Z",
+        "line": "dist/assets/diagram-5GNKFQAL-C92HYzJl.js                  2.78 kB │ gzip:   1.35 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.520617Z",
+        "line": "dist/assets/diagramStats-DDpj_vbt.js                      2.90 kB │ gzip:   1.07 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.520667Z",
+        "line": "dist/assets/qmr-mini-chip-mount-DYFKvxI1.js               2.97 kB │ gzip:   1.49 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.520704Z",
+        "line": "dist/assets/useI18n-COgbc_od.js                           3.17 kB │ gzip:   1.37 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.520783Z",
+        "line": "dist/assets/MultiTypeBuilder-B33atdEr.js                  3.23 kB │ gzip:   1.33 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.520833Z",
+        "line": "dist/assets/chunk-LZXEDZCA-DjoGywM3.js                    3.36 kB │ gzip:   1.45 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.520871Z",
+        "line": "dist/assets/arc-DxS8QPrP.js                               3.47 kB │ gzip:   1.46 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.520926Z",
+        "line": "dist/assets/dist-Cie5fPV4.js                              3.48 kB │ gzip:   1.52 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.520973Z",
+        "line": "dist/assets/presentationReveal-CQRTnMPE.js                3.55 kB │ gzip:   1.52 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.521006Z",
+        "line": "dist/assets/erGraph-CaBGJS-n.js                           3.62 kB │ gzip:   1.46 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.521037Z",
+        "line": "dist/assets/ganttGraph-38g-59iq.js                        3.64 kB │ gzip:   1.38 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.521069Z",
+        "line": "dist/assets/button-B69DbALb.js                            3.69 kB │ gzip:   1.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.521137Z",
+        "line": "dist/assets/stateGraph-NP8kZQi7.js                        3.90 kB │ gzip:   1.64 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.521172Z",
+        "line": "dist/assets/cose-bilkent-S5V4N54A-D8S-1tpJ.js             4.15 kB │ gzip:   1.82 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.521238Z",
+        "line": "dist/assets/diagram-LMA3HP47-C4DhpxgW.js                  4.24 kB │ gzip:   1.83 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.521298Z",
+        "line": "dist/assets/defaultLocale-C8Fc0cco.js                     4.64 kB │ gzip:   2.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.521354Z",
+        "line": "dist/assets/mermaid-parser.core-DNGimker.js               4.71 kB │ gzip:   1.45 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.52139Z",
+        "line": "dist/assets/sequenceGraph-BbEUInHL.js                     5.04 kB │ gzip:   1.94 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.521432Z",
+        "line": "dist/assets/pieDiagram-4H26LBE5-DyOUH4XT.js               5.22 kB │ gzip:   2.27 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.521485Z",
+        "line": "dist/assets/qmrCommands-Cp6VTRV2.js                       5.24 kB │ gzip:   2.04 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.521694Z",
+        "line": "dist/assets/templates-kKxTqhKa.js                         5.35 kB │ gzip:   2.09 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.521786Z",
+        "line": "dist/assets/linear-Bpi_S9Ia.js                            5.52 kB │ gzip:   2.25 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.521843Z",
+        "line": "dist/assets/mermaidRender-tfg4xquB.js                     5.64 kB │ gzip:   2.35 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.521886Z",
+        "line": "dist/assets/PresentationPlayback-DKjO2TWR.js              5.65 kB │ gzip:   2.09 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.521921Z",
+        "line": "dist/assets/DiagramTypeIcon-CJ47NhaP.js                   5.69 kB │ gzip:   1.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.521951Z",
+        "line": "dist/assets/diagram-2AECGRRQ-bFtzazsu.js                  5.76 kB │ gzip:   2.39 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.521996Z",
+        "line": "dist/assets/GanttBuilder-CasIq1Hw.js                      7.09 kB │ gzip:   2.31 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.52204Z",
+        "line": "dist/assets/fdDiagramPassport-Qr8btQ8I.js                 7.37 kB │ gzip:   2.67 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.522077Z",
+        "line": "dist/assets/journey-page-BDvAoWt5.js                      7.66 kB │ gzip:   2.26 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.522123Z",
+        "line": "dist/assets/classGraph-lF4GxUb5.js                        7.72 kB │ gzip:   2.83 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.522181Z",
+        "line": "dist/assets/libesm-Rr3HtgCh.js                            8.20 kB │ gzip:   3.03 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.522243Z",
+        "line": "dist/assets/asyncCollab-B5KTMAvg.js                       8.50 kB │ gzip:   2.78 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.522295Z",
+        "line": "dist/assets/dialog-DIfmi9c-.js                            8.60 kB │ gzip:   3.19 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.522335Z",
+        "line": "dist/assets/ERBuilder-CSTJSj_B.js                         8.74 kB │ gzip:   2.45 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.522392Z",
+        "line": "dist/assets/parityAnalytics-BuCTXylU.js                   8.95 kB │ gzip:   3.32 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.522441Z",
+        "line": "dist/assets/onnx-inference-DGOg6kFU.js                    9.22 kB │ gzip:   4.50 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.52248Z",
+        "line": "dist/assets/es2015-CPnV7cKB.js                            9.22 kB │ gzip:   3.43 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.522517Z",
+        "line": "dist/assets/StateBuilder-CPPEp5uv.js                      9.63 kB │ gzip:   2.64 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.522553Z",
+        "line": "dist/assets/WelcomeTour-CQxcJui1.js                       9.72 kB │ gzip:   3.18 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.522585Z",
+        "line": "dist/assets/stateDiagram-AJRCARHV-CLZRJYqi.js            10.52 kB │ gzip:   3.68 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.522652Z",
+        "line": "dist/assets/diagram-KO2AKTUF-DEVaCBDl.js                 10.62 kB │ gzip:   4.11 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.522723Z",
+        "line": "dist/assets/dagre-BM42HDAG-BPhMHh-5.js                   11.26 kB │ gzip:   4.17 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.522779Z",
+        "line": "dist/assets/VersionHistoryDialog-XTkG2-pe.js             11.48 kB │ gzip:   3.37 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.522843Z",
+        "line": "dist/assets/deterministicAssistant-B3j9a4c1.js           12.11 kB │ gzip:   4.96 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.522893Z",
+        "line": "dist/assets/scroll-area-DCi1ksWZ.js                      12.58 kB │ gzip:   3.92 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.522927Z",
+        "line": "dist/assets/SequenceBuilder-9vISYoEG.js                  13.17 kB │ gzip:   3.07 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.522998Z",
+        "line": "dist/assets/IntelligencePanel-CukdSs1G.js                13.84 kB │ gzip:   3.87 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.523031Z",
+        "line": "dist/assets/diagramGraph-D4utVpcb.js                     14.28 kB │ gzip:   4.44 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.523067Z",
+        "line": "dist/assets/diagram-OG6HWLK6-BTby7g6M.js                 15.52 kB │ gzip:   5.42 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.523124Z",
+        "line": "dist/assets/tooltip-CJZR0sJr.js                          16.72 kB │ gzip:   6.31 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.523168Z",
+        "line": "dist/assets/ishikawaDiagram-YF4QCWOH-DBdwuw2t.js         17.30 kB │ gzip:   6.51 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.523235Z",
+        "line": "dist/assets/ClassBuilder-D06OsJQJ.js                     17.60 kB │ gzip:   3.79 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.52329Z",
+        "line": "dist/assets/heuristics-DXR713K-.js                       18.33 kB │ gzip:   6.60 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.523338Z",
+        "line": "dist/assets/PresentationMode-D5ztK-qz.js                 18.63 kB │ gzip:   5.69 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.523373Z",
+        "line": "dist/assets/src-B1mDM9Ir.js                              19.03 kB │ gzip:   6.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.523403Z",
+        "line": "dist/assets/en-DeFi_mm-.js                               19.59 kB │ gzip:   7.34 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.523447Z",
+        "line": "dist/assets/flowDraftHandoffAdapter-DRbzBuWu.js          20.16 kB │ gzip:   6.26 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.523514Z",
+        "line": "dist/assets/kanban-definition-UN3LZRKU-COUgyWWf.js       20.22 kB │ gzip:   7.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.523552Z",
+        "line": "dist/assets/purify-0mIYuLm6.js                           20.79 kB │ gzip:   8.66 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.523586Z",
+        "line": "dist/assets/cs-xu_OawDE.js                               21.30 kB │ gzip:   8.64 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.52364Z",
+        "line": "dist/assets/pl-D_Nynh-w.js                               21.36 kB │ gzip:   8.49 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.52368Z",
+        "line": "dist/assets/sk-BmIM5V0K.js                               21.49 kB │ gzip:   8.65 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.523712Z",
+        "line": "dist/assets/ro-CF1HnlZd.js                               21.81 kB │ gzip:   8.35 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.523744Z",
+        "line": "dist/assets/de--8g7iByh.js                               21.93 kB │ gzip:   8.30 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.523777Z",
+        "line": "dist/assets/CommandPalette-CyhQ6HZf.js                   22.30 kB │ gzip:   7.00 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.52381Z",
+        "line": "dist/assets/hu-DLz14O2s.js                               22.73 kB │ gzip:   8.68 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.523846Z",
+        "line": "dist/assets/sankeyDiagram-5OEKKPKP-CnpPH7u6.js           22.78 kB │ gzip:   8.24 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.523877Z",
+        "line": "dist/assets/journeyDiagram-JHISSGLW-lRO7QcMf.js          23.16 kB │ gzip:   8.15 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.523908Z",
+        "line": "dist/assets/mindmap-definition-RKZ34NQL-HzwFo6Pl.js      23.41 kB │ gzip:   7.96 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.523947Z",
+        "line": "dist/assets/graphlib-DS17s2tU.js                         23.90 kB │ gzip:   8.31 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.523976Z",
+        "line": "dist/assets/purify.es-DyfHsdIl.js                        24.50 kB │ gzip:   9.56 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.524007Z",
+        "line": "dist/assets/diagramIntelligence-D9A79PJp.js              25.15 kB │ gzip:   7.33 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.52404Z",
+        "line": "dist/assets/wardleyDiagram-YWT4CUSO-DpWqVftJ.js          25.18 kB │ gzip:   6.52 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.524076Z",
+        "line": "dist/assets/erDiagram-TEJ5UH35-RXk8XkEc.js               26.81 kB │ gzip:   9.32 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.524108Z",
+        "line": "dist/assets/rough.esm-CSKSodPl.js                        27.10 kB │ gzip:   8.85 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.524141Z",
+        "line": "dist/assets/createLucideIcon-zGowjne7.js                 28.86 kB │ gzip:   9.46 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.524191Z",
+        "line": "dist/assets/gitGraphDiagram-PVQCEYII-C4-cFO_N.js         28.98 kB │ gzip:   8.56 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.524259Z",
+        "line": "dist/assets/TemplatesTab-C_CsCt3O.js                     29.99 kB │ gzip:   9.30 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.524306Z",
+        "line": "dist/assets/timeline-definition-PNZ67QCA-BW7JckiH.js     30.38 kB │ gzip:   9.96 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.524365Z",
+        "line": "dist/assets/chunk-5ZQYHXKU-Rll4T6vs.js                   30.86 kB │ gzip:   8.52 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.524433Z",
+        "line": "dist/assets/requirementDiagram-4Y6WPE33-DxNPHIax.js      30.95 kB │ gzip:   9.75 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.524499Z",
+        "line": "dist/assets/dist-CxGwzf10.js                             32.63 kB │ gzip:   9.16 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.52456Z",
+        "line": "dist/assets/mermaid.core-CYd-8aAz.js                     33.24 kB │ gzip:  11.46 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.524623Z",
+        "line": "dist/assets/chunk-KSCS5N6A-Dd9EP7yD.js                   33.33 kB │ gzip:   7.06 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.524661Z",
+        "line": "dist/assets/quadrantDiagram-W4KKPZXB-DZ23R9kY.js         33.51 kB │ gzip:   9.73 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.524695Z",
+        "line": "dist/assets/chunk-AQP2D5EJ-T2aLCccS.js                   36.71 kB │ gzip:  11.86 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.524741Z",
+        "line": "dist/assets/dagre-Cljh4arJ.js                            36.86 kB │ gzip:  13.23 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.524787Z",
+        "line": "dist/assets/xychartDiagram-2RQKCTM6-3yPlLR4X.js          40.04 kB │ gzip:  11.19 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.524866Z",
+        "line": "dist/assets/vennDiagram-CIIHVFJN-DRCKADoH.js             40.62 kB │ gzip:  14.89 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.524928Z",
+        "line": "dist/assets/chunk-XPW4576I-DaKkpnas.js                   41.85 kB │ gzip:  14.22 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.525003Z",
+        "line": "dist/assets/ChatPanel-CJdJIxOY.js                        42.38 kB │ gzip:  14.53 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.525047Z",
+        "line": "dist/assets/src-CkZoYqDj.js                              45.83 kB │ gzip:  16.06 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.525105Z",
+        "line": "dist/assets/DescribeTab-DrEVzlSz.js                      48.11 kB │ gzip:  14.91 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.525177Z",
+        "line": "dist/assets/FidelityReviewPanel-qFR0SgK5.js              48.46 kB │ gzip:  11.85 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.525216Z",
+        "line": "dist/assets/chunk-727SXJPM-TwneRrkh.js                   48.60 kB │ gzip:  15.71 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.52525Z",
+        "line": "dist/assets/select-BXEy9_6E.js                           51.18 kB │ gzip:  17.59 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.525284Z",
+        "line": "dist/assets/chunk-O5CBEL6O-BgbE_EN7.js                   52.52 kB │ gzip:  17.14 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.525316Z",
+        "line": "dist/assets/flowDiagram-I6XJVG4X-DjisobGH.js             60.26 kB │ gzip:  19.55 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.525352Z",
+        "line": "dist/assets/c4Diagram-AAUBKEIU-z8tzMoQG.js               69.16 kB │ gzip:  19.32 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.525409Z",
+        "line": "dist/assets/ganttDiagram-6RSMTGT7-BaxtSW2M.js            69.25 kB │ gzip:  22.70 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.525449Z",
+        "line": "dist/assets/qmr-panel-mount-ChUdNxys.js                  72.52 kB │ gzip:  21.22 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.527275Z",
+        "line": "dist/assets/blockDiagram-GPEHLZMM-iOqXYqjg.js            72.67 kB │ gzip:  20.67 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.527357Z",
+        "line": "dist/assets/cytoscape-cose-bilkent-2mE9HqWO.js           77.36 kB │ gzip:  19.95 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.527398Z",
+        "line": "dist/assets/src-DKLiTxFC.js                              90.76 kB │ gzip:  22.36 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.527433Z",
+        "line": "dist/assets/jszip.min-CsE7HSTL.js                        95.88 kB │ gzip:  28.45 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.527491Z",
+        "line": "dist/assets/chunk-3OPIFGDE-DeO5TdJa.js                   98.84 kB │ gzip:  24.21 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.527553Z",
+        "line": "dist/assets/sequenceDiagram-3UESZ5HK-BX2ByvXl.js        115.73 kB │ gzip:  30.53 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.527625Z",
+        "line": "dist/assets/BuilderTab-icm4gn7e.js                      127.11 kB │ gzip:  33.31 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.527683Z",
+        "line": "dist/assets/qmr-knowledge-graph-projection-vk9uT_MZ.js  131.96 kB │ gzip:  34.37 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.527719Z",
+        "line": "dist/assets/architectureDiagram-3BPJPVTR-8Z8OqwIa.js    146.92 kB │ gzip:  40.29 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.52775Z",
+        "line": "dist/assets/index-BGWsOwv5.js                           151.32 kB │ gzip:  47.23 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.527835Z",
+        "line": "dist/assets/index.es-DtTUUMVc.js                        151.36 kB │ gzip:  48.90 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.527907Z",
+        "line": "dist/assets/CodeTab-C9-QKq38.js                         152.23 kB │ gzip:  42.18 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.52796Z",
+        "line": "dist/assets/react-CzX3xjIy.js                           183.51 kB │ gzip:  61.41 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.528025Z",
+        "line": "dist/assets/html2canvas-CNGsUNfu.js                     199.56 kB │ gzip:  46.78 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.52809Z",
+        "line": "dist/assets/chunk-CSCIHK7Q-B69Cj-ki.js                  202.31 kB │ gzip:  26.16 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.528144Z",
+        "line": "dist/assets/react-vendor-CPYk7U4N.js                    232.84 kB │ gzip:  73.50 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.528184Z",
+        "line": "dist/assets/katex-B7rAX3Vi.js                           258.87 kB │ gzip:  77.46 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.528216Z",
+        "line": "dist/assets/AppShell-BEg2dsKR.js                        311.77 kB │ gzip:  86.61 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.528262Z",
+        "line": "dist/assets/workflow-session-store-oyx9ixQe.js          312.91 kB │ gzip:  82.24 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.528299Z",
+        "line": "dist/assets/jspdf.es.min-BpzabY4Z.js                    341.24 kB │ gzip: 111.98 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.528374Z",
+        "line": "dist/assets/DockWorkspace-DYQy5PV-.js                   347.63 kB │ gzip:  78.75 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.528414Z",
+        "line": "dist/assets/cytoscape.esm-C0JoPriL.js                   434.16 kB │ gzip: 137.53 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.528445Z",
+        "line": "dist/assets/decision-response-bridge-Cuc0PlvE.js        537.51 kB │ gzip: 142.42 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.528488Z",
+        "line": "dist/assets/chunk-NNHCCRGN-BTUFwsUu.js                  593.70 kB │ gzip: 137.73 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.528519Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:42:29.528557Z",
+        "line": "\u001b[32m✓ built in 2.26s\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:42:29.605436Z",
+        "line": "[studio] Building DevLog AI at /devlog-ai/..."
+      },
+      {
+        "ts": "2026-10-04T17:42:29.61325Z",
+        "line": "[studio] Installing dependencies for DevLog AI..."
+      },
+      {
+        "ts": "2026-10-04T17:42:34.048863Z",
+        "line": "npm warn deprecated recharts@2.15.4: 1.x and 2.x branches are no longer active. Bump to Recharts v3 to receive latest features and bugfixes. See https://github.com/recharts/recharts/wiki/3.0-migration-guide"
+      },
+      {
+        "ts": "2026-10-04T17:42:35.937482Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:42:35.937753Z",
+        "line": "added 463 packages in 6s"
+      },
+      {
+        "ts": "2026-10-04T17:42:36.225668Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:42:36.226036Z",
+        "line": "\u003e build"
+      },
+      {
+        "ts": "2026-10-04T17:42:36.226197Z",
+        "line": "\u003e vite build"
+      },
+      {
+        "ts": "2026-10-04T17:42:36.226304Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:42:36.731528Z",
+        "line": "\u001b[33mThe plugin \"vite-tsconfig-paths\" is detected. Vite now supports tsconfig paths resolution natively via the \u001b[1mresolve.tsconfigPaths\u001b[22m option. You can remove the plugin and set \u001b[1mresolve.tsconfigPaths: true\u001b[22m in your Vite config instead.\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:42:36.749279Z",
+        "line": "\u001b[36mvite v8.1.4 \u001b[32mbuilding client environment for production...\u001b[36m\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.389036Z",
+        "line": "\u001b[2K\rtransforming...✓ 2394 modules transformed."
+      },
+      {
+        "ts": "2026-10-04T17:42:37.543857Z",
+        "line": "rendering chunks..."
+      },
+      {
+        "ts": "2026-10-04T17:42:37.684162Z",
+        "line": "computing gzip size..."
+      },
+      {
+        "ts": "2026-10-04T17:42:37.695276Z",
+        "line": "dist/assets/qvx-hud-tips-CcsP5jU7.json                    8.62 kB │ gzip:   2.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.69546Z",
+        "line": "dist/index.html                                          13.69 kB │ gzip:   3.92 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.69553Z",
+        "line": "dist/assets/qmr-mini-chip-mount-5UbZ1kdu.css              1.22 kB │ gzip:   0.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.695727Z",
+        "line": "dist/assets/src-BcCg7KHv.css                             23.85 kB │ gzip:   4.83 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.69581Z",
+        "line": "dist/assets/decision-response-bridge-BUsAsGSF.css       112.39 kB │ gzip:  18.78 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.695863Z",
+        "line": "dist/assets/index-DsDXjV4R.css                          123.21 kB │ gzip:  19.96 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.695896Z",
+        "line": "dist/assets/qvx-hud-tips-C1vaUvjU.js                      0.07 kB │ gzip:   0.09 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.695926Z",
+        "line": "dist/assets/chevron-right-Cj4blrfx.js                     0.13 kB │ gzip:   0.14 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.69596Z",
+        "line": "dist/assets/arrow-right-j_TAm2-J.js                       0.16 kB │ gzip:   0.16 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.695989Z",
+        "line": "dist/assets/clock-kAZpsPV3.js                             0.16 kB │ gzip:   0.16 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696022Z",
+        "line": "dist/assets/trending-up-DGSdx51i.js                       0.17 kB │ gzip:   0.16 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696071Z",
+        "line": "dist/assets/circle-check-DscPp1En.js                      0.17 kB │ gzip:   0.16 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696109Z",
+        "line": "dist/assets/trending-down-BWzUD96T.js                     0.17 kB │ gzip:   0.17 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696158Z",
+        "line": "dist/assets/chevron-up-CEtmhhir.js                        0.20 kB │ gzip:   0.17 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.6962Z",
+        "line": "dist/assets/circle-x-DsR5fjtz.js                          0.20 kB │ gzip:   0.17 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696243Z",
+        "line": "dist/assets/git-branch-B4dNpYkO.js                        0.22 kB │ gzip:   0.19 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696286Z",
+        "line": "dist/assets/message-circle-BWjlgQfa.js                    0.24 kB │ gzip:   0.21 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696374Z",
+        "line": "dist/assets/external-link-CAU6qSLt.js                     0.25 kB │ gzip:   0.19 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696417Z",
+        "line": "dist/assets/eye-DeGD9fgB.js                               0.25 kB │ gzip:   0.20 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696447Z",
+        "line": "dist/assets/zap-DUWV5342.js                               0.26 kB │ gzip:   0.21 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696474Z",
+        "line": "dist/assets/triangle-alert-B1JX4N76.js                    0.26 kB │ gzip:   0.21 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696502Z",
+        "line": "dist/assets/image-DauMzwHG.js                             0.26 kB │ gzip:   0.22 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696535Z",
+        "line": "dist/assets/shield-B18hggV1.js                            0.27 kB │ gzip:   0.22 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696565Z",
+        "line": "dist/assets/inbox-CrZ6o8E4.js                             0.28 kB │ gzip:   0.23 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696607Z",
+        "line": "dist/assets/shield-check-qeuqcCNh.js                      0.32 kB │ gzip:   0.25 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696653Z",
+        "line": "dist/assets/minus-MuBwCELM.js                             0.32 kB │ gzip:   0.24 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696685Z",
+        "line": "dist/assets/trash-2-NdxO06Vt.js                           0.32 kB │ gzip:   0.21 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696713Z",
+        "line": "dist/assets/file-text-B9QWm5sd.js                         0.38 kB │ gzip:   0.25 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.69674Z",
+        "line": "dist/assets/film-Dwg4gXDs.js                              0.40 kB │ gzip:   0.24 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696766Z",
+        "line": "dist/assets/mouse-pointer-click-D-brp4n0.js               0.41 kB │ gzip:   0.28 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696793Z",
+        "line": "dist/assets/rocket-H35EJxXJ.js                            0.45 kB │ gzip:   0.30 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696824Z",
+        "line": "dist/assets/sparkles-B9ucgz6T.js                          0.49 kB │ gzip:   0.28 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696903Z",
+        "line": "dist/assets/rolldown-runtime-QTnfLwEv.js                  0.69 kB │ gzip:   0.42 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696952Z",
+        "line": "dist/assets/volume-x-CsZ5UXa6.js                          0.71 kB │ gzip:   0.40 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.696983Z",
+        "line": "dist/assets/ApprovalRibbon-Bs8_Jvq1.js                    0.80 kB │ gzip:   0.53 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.697036Z",
+        "line": "dist/assets/badge-DXk2Wu-Z.js                             0.81 kB │ gzip:   0.42 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.697067Z",
+        "line": "dist/assets/config-Ccl4IX1R.js                            0.85 kB │ gzip:   0.41 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.697103Z",
+        "line": "dist/assets/label-D3uxYwNo.js                             1.02 kB │ gzip:   0.61 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.697141Z",
+        "line": "dist/assets/card-BvWpzI3E.js                              1.08 kB │ gzip:   0.41 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.697176Z",
+        "line": "dist/assets/StatusBadge-KxNqsyQa.js                       1.14 kB │ gzip:   0.51 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.697204Z",
+        "line": "dist/assets/preload-helper-BP6PAfQw.js                    1.20 kB │ gzip:   0.68 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.697237Z",
+        "line": "dist/assets/createLucideIcon-D7w8l_bK.js                  1.24 kB │ gzip:   0.71 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.697269Z",
+        "line": "dist/assets/journey-replay-xC4DJaYF.js                    1.49 kB │ gzip:   0.77 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.697297Z",
+        "line": "dist/assets/packet-builder-Dg8m6-Nh.js                    1.72 kB │ gzip:   0.86 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.69733Z",
+        "line": "dist/assets/config-CA77pHK0.js                            2.29 kB │ gzip:   0.86 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.697364Z",
+        "line": "dist/assets/shadow-logging-BGMOw9j_.js                    2.40 kB │ gzip:   1.02 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.697392Z",
+        "line": "dist/assets/QualityGateVerdict-IqGS2usX.js                2.48 kB │ gzip:   1.01 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.697429Z",
+        "line": "dist/assets/sheet-CEeQ1PMr.js                             2.56 kB │ gzip:   0.99 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.697924Z",
+        "line": "dist/assets/sourceEvents-DkR6YEqu.js                      2.78 kB │ gzip:   1.39 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.698132Z",
+        "line": "dist/assets/qmr-mini-chip-mount-DoTpuJqT.js               2.97 kB │ gzip:   1.49 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.698258Z",
+        "line": "dist/assets/textarea-0wYtNeHb.js                          3.23 kB │ gzip:   1.39 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.698336Z",
+        "line": "dist/assets/button-CyoWYT1X.js                            3.36 kB │ gzip:   1.49 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.698395Z",
+        "line": "dist/assets/state-bus-JlE5ZWAh.js                         3.95 kB │ gzip:   1.48 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.698449Z",
+        "line": "dist/assets/flow-DyQ3vXVM.js                              4.22 kB │ gzip:   1.78 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.698494Z",
+        "line": "dist/assets/useStore-CJmVrThl.js                          5.09 kB │ gzip:   2.16 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.698544Z",
+        "line": "dist/assets/OutcomeCaptureDialog-CxWwGcKZ.js              5.60 kB │ gzip:   2.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.698618Z",
+        "line": "dist/assets/AutopilotPanel-GXlk8_wg.js                    6.58 kB │ gzip:   2.00 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.69867Z",
+        "line": "dist/assets/dist-Hds9-28j.js                              6.63 kB │ gzip:   2.54 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.698704Z",
+        "line": "dist/assets/EventSelector-B5ERrniu.js                     6.97 kB │ gzip:   2.32 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.698759Z",
+        "line": "dist/assets/journey-page-DFMw7160.js                      7.67 kB │ gzip:   2.26 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.698797Z",
+        "line": "dist/assets/AnalyticsPanel-BDSsr4YA.js                    8.34 kB │ gzip:   2.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.698825Z",
+        "line": "dist/assets/recommendationEngine-Ng6J-df-.js              8.35 kB │ gzip:   3.28 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.698852Z",
+        "line": "dist/assets/onnx-inference-exHTEZq-.js                    9.21 kB │ gzip:   4.49 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.698888Z",
+        "line": "dist/assets/EventTimeline-DsM4xJoA.js                    10.55 kB │ gzip:   3.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.698917Z",
+        "line": "dist/assets/LandingPage-B4j7nUQC.js                      10.94 kB │ gzip:   3.40 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699048Z",
+        "line": "dist/assets/CalendarPage-fUcaiy_D.js                     11.36 kB │ gzip:   3.53 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699085Z",
+        "line": "dist/assets/types-Bm_fgogM.js                            11.48 kB │ gzip:   3.53 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699114Z",
+        "line": "dist/assets/feature-flags-C3yUnO77.js                    12.58 kB │ gzip:   4.11 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699144Z",
+        "line": "dist/assets/es2015-BDTROxjq.js                           13.41 kB │ gzip:   4.98 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699173Z",
+        "line": "dist/assets/CampaignsPage-C9hEsvP0.js                    14.95 kB │ gzip:   4.31 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699201Z",
+        "line": "dist/assets/publishReadiness-HeApkVmu.js                 14.95 kB │ gzip:   4.64 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699228Z",
+        "line": "dist/assets/link-CsFcaEJH.js                             17.90 kB │ gzip:   6.70 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699256Z",
+        "line": "dist/assets/qualityGateV2-DdmLawho.js                    19.78 kB │ gzip:   6.79 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699286Z",
+        "line": "dist/assets/AnalyticsPage-D4vmETPs.js                    20.09 kB │ gzip:   6.90 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699314Z",
+        "line": "dist/assets/alert-dialog-B14B89aF.js                     21.10 kB │ gzip:   6.13 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699342Z",
+        "line": "dist/assets/publishAdapters-rXxjxNSM.js                  24.55 kB │ gzip:   8.01 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699369Z",
+        "line": "dist/assets/select-9vhiZwBR.js                           25.07 kB │ gzip:   8.15 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699396Z",
+        "line": "dist/assets/dist-B7N90sDG.js                             26.96 kB │ gzip:  10.40 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699432Z",
+        "line": "dist/assets/utils-Dj9YtrFG.js                            27.85 kB │ gzip:   8.95 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699462Z",
+        "line": "dist/assets/dist-QulHpJod.js                             32.58 kB │ gzip:   9.13 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699495Z",
+        "line": "dist/assets/MissionDashboard-m2b5VMM1.js                 32.74 kB │ gzip:   8.05 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.69954Z",
+        "line": "dist/assets/DashboardPage-CllaneL7.js                    38.19 kB │ gzip:  12.29 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699573Z",
+        "line": "dist/assets/useDraftActions-CYbTJIsF.js                  45.49 kB │ gzip:  14.84 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699605Z",
+        "line": "dist/assets/SettingsPage-Ca9zz_-F.js                     46.18 kB │ gzip:  12.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699636Z",
+        "line": "dist/assets/store-Dac53xID.js                            51.08 kB │ gzip:  16.56 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.69968Z",
+        "line": "dist/assets/qmr-panel-mount-D5sN2UR9.js                  69.38 kB │ gzip:  20.15 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699747Z",
+        "line": "dist/assets/QueuePage-DGUv7IOE.js                        70.81 kB │ gzip:  20.75 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699781Z",
+        "line": "dist/assets/src-BRagsZjL.js                              94.27 kB │ gzip:  23.42 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699812Z",
+        "line": "dist/assets/qmr-knowledge-graph-projection-Dp3q6rat.js  143.25 kB │ gzip:  38.14 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699843Z",
+        "line": "dist/assets/index-Brxm36fJ.js                           190.06 kB │ gzip:  57.26 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699874Z",
+        "line": "dist/assets/react-vendor-In7jG-U_.js                    200.64 kB │ gzip:  63.51 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699909Z",
+        "line": "dist/assets/src-8jcwKJhk.js                             208.90 kB │ gzip:  64.27 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.699953Z",
+        "line": "dist/assets/workflow-session-store-umM_4l66.js          315.60 kB │ gzip:  83.15 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.700002Z",
+        "line": "dist/assets/decision-response-bridge-DVQBHkYu.js        584.64 kB │ gzip: 154.25 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:37.70005Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:42:37.700109Z",
+        "line": "\u001b[32m✓ built in 940ms\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:42:41.755419Z",
+        "line": "[qvester:pre-compress] 35 .gz + 35 .br from 2617 KiB raw in dist (recursive): gzip=27.4%, brotli=23.4% (saves 14.6% vs gzip)"
+      },
+      {
+        "ts": "2026-10-04T17:42:41.831242Z",
+        "line": "[studio] Building Runtime Insight Hub at /runtime-insight-hub/..."
+      },
+      {
+        "ts": "2026-10-04T17:42:41.834679Z",
+        "line": "[studio] Installing dependencies for Runtime Insight Hub..."
+      },
+      {
+        "ts": "2026-10-04T17:42:42.377076Z",
+        "line": "npm warn EBADENGINE Unsupported engine {"
+      },
+      {
+        "ts": "2026-10-04T17:42:42.37733Z",
+        "line": "npm warn EBADENGINE   package: '@cruglobal/js-hcl2@0.1.2',"
+      },
+      {
+        "ts": "2026-10-04T17:42:42.377381Z",
+        "line": "npm warn EBADENGINE   required: { node: '\u003e=24.0.0' },"
+      },
+      {
+        "ts": "2026-10-04T17:42:42.377483Z",
+        "line": "npm warn EBADENGINE   current: { node: 'v22.16.0', npm: '10.9.2' }"
+      },
+      {
+        "ts": "2026-10-04T17:42:42.37755Z",
+        "line": "npm warn EBADENGINE }"
+      },
+      {
+        "ts": "2026-10-04T17:42:44.746248Z",
+        "line": "npm warn deprecated @types/react-window@2.0.0: This is a stub types definition. react-window provides its own type definitions, so you do not need this installed."
+      },
+      {
+        "ts": "2026-10-04T17:42:48.624614Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:42:48.624935Z",
+        "line": "added 425 packages in 7s"
+      },
+      {
+        "ts": "2026-10-04T17:42:48.83011Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:42:48.830438Z",
+        "line": "\u003e build"
+      },
+      {
+        "ts": "2026-10-04T17:42:48.830617Z",
+        "line": "\u003e vite build"
+      },
+      {
+        "ts": "2026-10-04T17:42:48.830722Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:42:49.181759Z",
+        "line": "\u001b[33mThe plugin \"vite-tsconfig-paths\" is detected. Vite now supports tsconfig paths resolution natively via the \u001b[1mresolve.tsconfigPaths\u001b[22m option. You can remove the plugin and set \u001b[1mresolve.tsconfigPaths: true\u001b[22m in your Vite config instead.\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:42:49.197938Z",
+        "line": "\u001b[36mvite v8.1.4 \u001b[32mbuilding client environment for production...\u001b[36m\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.037572Z",
+        "line": "\u001b[2K\rtransforming...\u001b[33m[plugin rolldown:vite-resolve] Module \"path\" has been externalized for browser compatibility, imported by \"/opt/buildhome/repo/apps/runtime-insight-hub/node_modules/properties/lib/read.js\". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.037816Z",
+        "line": "\u001b[33m[plugin rolldown:vite-resolve] Module \"fs\" has been externalized for browser compatibility, imported by \"/opt/buildhome/repo/apps/runtime-insight-hub/node_modules/properties/lib/read.js\". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.037877Z",
+        "line": "\u001b[33m[plugin rolldown:vite-resolve] Module \"fs\" has been externalized for browser compatibility, imported by \"/opt/buildhome/repo/apps/runtime-insight-hub/node_modules/properties/lib/write.js\". See https://vite.dev/guide/troubleshooting.html#module-externalized-for-browser-compatibility for more details.\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.180691Z",
+        "line": "✓ 2933 modules transformed."
+      },
+      {
+        "ts": "2026-10-04T17:42:50.431261Z",
+        "line": "rendering chunks..."
+      },
+      {
+        "ts": "2026-10-04T17:42:50.620573Z",
+        "line": "computing gzip size..."
+      },
+      {
+        "ts": "2026-10-04T17:42:50.644295Z",
+        "line": "dist/assets/qvx-hud-tips-CcsP5jU7.json          8.62 kB │ gzip:   2.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.644486Z",
+        "line": "dist/index.html                                13.55 kB │ gzip:   3.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.644544Z",
+        "line": "dist/assets/pdf.worker.min-DEtVeC4l.mjs     1,255.06 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.644589Z",
+        "line": "dist/assets/Workspace--e_OpUdR.css              6.11 kB │ gzip:   1.41 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.644711Z",
+        "line": "dist/assets/index-cI2u_42M.css                107.27 kB │ gzip:  18.65 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.644778Z",
+        "line": "dist/assets/qvester-interop-BFXduT6p.css      137.47 kB │ gzip:  23.10 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.644967Z",
+        "line": "dist/assets/utils-BSE7J83O.js                   0.09 kB │ gzip:   0.10 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.645042Z",
+        "line": "dist/assets/use-transient-flag-qXLb13MG.js      0.32 kB │ gzip:   0.23 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.645098Z",
+        "line": "dist/assets/RawView-DeBl45N_.js                 0.81 kB │ gzip:   0.48 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.645149Z",
+        "line": "dist/assets/rolldown-runtime-CNC7AqOf.js        0.87 kB │ gzip:   0.50 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.645179Z",
+        "line": "dist/assets/OnboardingSamples-DkKuM-Np.js       1.97 kB │ gzip:   0.86 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.645207Z",
+        "line": "dist/assets/build-packet-C8zu0x6z.js            2.03 kB │ gzip:   0.69 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.645239Z",
+        "line": "dist/assets/FirstImportReveal-X6jWJloB.js       2.30 kB │ gzip:   0.92 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.645366Z",
+        "line": "dist/assets/BookmarksMenu-ai_WeajW.js           3.52 kB │ gzip:   1.47 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.64541Z",
+        "line": "dist/assets/GuidedTutorial-C80CcY4m.js          3.86 kB │ gzip:   1.45 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.645452Z",
+        "line": "dist/assets/GlobalSearchBar-CCsG0VMu.js         4.65 kB │ gzip:   1.68 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.645482Z",
+        "line": "dist/assets/PresentationMode-B1o8EJFE.js        5.95 kB │ gzip:   1.73 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.645549Z",
+        "line": "dist/assets/JsonTree-DHkdehzS.js                5.97 kB │ gzip:   2.37 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.645597Z",
+        "line": "dist/assets/ValidatePanel-CutOenaJ.js           5.99 kB │ gzip:   2.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.64563Z",
+        "line": "dist/assets/ConvertQuickAction-Ds9eot-j.js      6.07 kB │ gzip:   2.11 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.645658Z",
+        "line": "dist/assets/MarkdownPreview-Bm6nStO0.js         6.39 kB │ gzip:   2.03 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.645713Z",
+        "line": "dist/assets/RepairPanel-UW-7oZy1.js             6.63 kB │ gzip:   2.28 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.64577Z",
+        "line": "dist/assets/format-core-DKcDRHux.js             7.47 kB │ gzip:   2.03 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.645823Z",
+        "line": "dist/assets/AnalyzePanel-g0mJtYa3.js            7.50 kB │ gzip:   1.79 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.645877Z",
+        "line": "dist/assets/ShareMenu-DquqJAED.js               8.00 kB │ gzip:   2.40 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.64597Z",
+        "line": "dist/assets/ImportPanel-B9LCfk00.js             8.14 kB │ gzip:   2.63 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.646052Z",
+        "line": "dist/assets/DiffView-D6U4Hs0T.js                9.73 kB │ gzip:   3.04 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.646183Z",
+        "line": "dist/assets/MetadataPanels-mdT8ZROy.js         10.67 kB │ gzip:   3.01 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.646267Z",
+        "line": "dist/assets/LiveSessionPanel-DqEwr9uB.js       17.30 kB │ gzip:   4.48 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.646336Z",
+        "line": "dist/assets/PrettyView-Bag3q6bQ.js             17.83 kB │ gzip:   4.77 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.646554Z",
+        "line": "dist/assets/TraceView-C8bFTU9D.js              19.06 kB │ gzip:   5.58 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.646636Z",
+        "line": "dist/assets/react-vendor-VuATi1eN.js           19.51 kB │ gzip:   7.20 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.646691Z",
+        "line": "dist/assets/ConvertPanel-BS9SCOc0.js           22.49 kB │ gzip:   6.65 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.646729Z",
+        "line": "dist/assets/index-CgfO-GBf.js                  40.80 kB │ gzip:  12.81 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.646787Z",
+        "line": "dist/assets/Workspace-ABxhpMtr.js              56.01 kB │ gzip:  14.48 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.646854Z",
+        "line": "dist/assets/motion-vendor-BnhcSnBt.js         132.84 kB │ gzip:  43.51 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.646906Z",
+        "line": "dist/assets/vendor-DJ7dpWxa.js                189.81 kB │ gzip:  61.03 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.646947Z",
+        "line": "dist/assets/observatory-core-C52BZKYe.js      213.85 kB │ gzip:  61.52 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.646996Z",
+        "line": "dist/assets/pdf-vendor-CSp9QZIo.js            425.39 kB │ gzip: 126.99 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.647062Z",
+        "line": "dist/assets/conversion-core-BYSEpLTf.js       540.66 kB │ gzip: 169.04 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.647127Z",
+        "line": "dist/assets/qvester-interop-CKXtL3pN.js     1,277.37 kB │ gzip: 347.85 kB"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.647181Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:42:50.647261Z",
+        "line": "\u001b[33m\u001b[33m[INEFFECTIVE_DYNAMIC_IMPORT] \u001b[0m../../packages/qmr-interop/src/state-bus.ts is dynamically imported by ../../packages/qmr-hud/src/qvx-hud-pages/RecommendationsPage.tsx but also statically imported by ../../packages/qmr-hud/src/activity-recorder.ts, ../../packages/qmr-hud/src/qmr-context-builder.ts, ../../packages/qmr-hud/src/use-proactive-listener.ts, ../../packages/qmr-interop/src/index.ts, dynamic import will not move module into another chunk."
+      },
+      {
+        "ts": "2026-10-04T17:42:50.647368Z",
+        "line": "\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.647422Z",
+        "line": "\u001b[33m[plugin builtin:vite-reporter] "
+      },
+      {
+        "ts": "2026-10-04T17:42:50.64746Z",
+        "line": "(!) Some chunks are larger than 600 kB after minification. Consider:"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.647513Z",
+        "line": "- Using dynamic import() to code-split the application"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.64756Z",
+        "line": "- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.647593Z",
+        "line": "- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.647626Z",
+        "line": "\u001b[33m\u001b[33m[INEFFECTIVE_DYNAMIC_IMPORT] \u001b[0m../../packages/qmr-hud/src/shadow-logging.ts is dynamically imported by ../../packages/qmr-hud/src/qmr-panel-mount.tsx but also statically imported by ../../packages/qmr-hud/src/index.ts, ../../packages/qmr-hud/src/model-promotion.ts, ../../packages/qmr-hud/src/onnx-inference.ts, dynamic import will not move module into another chunk."
+      },
+      {
+        "ts": "2026-10-04T17:42:50.647661Z",
+        "line": "\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:42:50.64833Z",
+        "line": "\u001b[32m✓ built in 1.45s\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:42:54.142123Z",
+        "line": "[qvester:pre-compress] 18 .gz + 18 .br from 4391 KiB raw in dist (recursive): gzip=28.4%, brotli=24.3% (saves 14.3% vs gzip)"
+      },
+      {
+        "ts": "2026-10-04T17:42:54.222908Z",
+        "line": "[studio] Building ASCII Canvas Studio at /ascii-canvas-studio/..."
+      },
+      {
+        "ts": "2026-10-04T17:42:54.227342Z",
+        "line": "[studio] Installing dependencies for ASCII Canvas Studio..."
+      },
+      {
+        "ts": "2026-10-04T17:43:06.581835Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:06.58209Z",
+        "line": "added 460 packages in 12s"
+      },
+      {
+        "ts": "2026-10-04T17:43:06.812475Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:06.812823Z",
+        "line": "\u003e build"
+      },
+      {
+        "ts": "2026-10-04T17:43:06.812941Z",
+        "line": "\u003e vite build"
+      },
+      {
+        "ts": "2026-10-04T17:43:06.813017Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:07.211608Z",
+        "line": "\u001b[33mThe plugin \"vite-tsconfig-paths\" is detected. Vite now supports tsconfig paths resolution natively via the \u001b[1mresolve.tsconfigPaths\u001b[22m option. You can remove the plugin and set \u001b[1mresolve.tsconfigPaths: true\u001b[22m in your Vite config instead.\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:43:07.227517Z",
+        "line": "[glsl-resolve] LYGIA directory not found at /opt/buildhome/repo/vendor/lygia."
+      },
+      {
+        "ts": "2026-10-04T17:43:07.22772Z",
+        "line": "[glsl-resolve] Qvester shader vocabulary not found at /opt/buildhome/repo/vendor/qv-shaders."
+      },
+      {
+        "ts": "2026-10-04T17:43:07.229412Z",
+        "line": "\u001b[36mvite v8.1.4 \u001b[32mbuilding client environment for production...\u001b[36m\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.350545Z",
+        "line": "\u001b[2K\rtransforming...\u001b[33m\u001b[33m[INEFFECTIVE_DYNAMIC_IMPORT] \u001b[0msrc/lib/ascii/motion/agents/slime.ts is dynamically imported by src/lib/ascii/motion/agents/system.ts but also statically imported by src/lib/ascii/signals/slime.ts, dynamic import will not move module into another chunk."
+      },
+      {
+        "ts": "2026-10-04T17:43:08.350842Z",
+        "line": "\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.357631Z",
+        "line": "✓ 2809 modules transformed."
+      },
+      {
+        "ts": "2026-10-04T17:43:08.625762Z",
+        "line": "rendering chunks..."
+      },
+      {
+        "ts": "2026-10-04T17:43:08.833457Z",
+        "line": "computing gzip size..."
+      },
+      {
+        "ts": "2026-10-04T17:43:08.854309Z",
+        "line": "dist/assets/chladni-DMTxiUzs.js                           0.85 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.854632Z",
+        "line": "dist/assets/brians-brain-gew5Xq0d.js                      1.75 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.854742Z",
+        "line": "dist/assets/dla-Dcz0RFIV.js                               1.79 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.854814Z",
+        "line": "dist/assets/n-body-C3Z3FgeU.js                            1.81 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.854864Z",
+        "line": "dist/assets/particles-D0IaoSP8.js                         2.03 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.85492Z",
+        "line": "dist/assets/physics-Do1JbZ6L.js                           2.17 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.854975Z",
+        "line": "dist/assets/falling-sand-BlEqetL7.js                      2.53 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.85501Z",
+        "line": "dist/assets/lenia-cnSmX_tP.js                             2.79 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.855046Z",
+        "line": "dist/assets/verlet-rope-D1Ytvkf_.js                       2.98 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.855362Z",
+        "line": "dist/assets/lsystem-DMc2_Fac.js                           3.25 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.855453Z",
+        "line": "dist/assets/qvx-hud-tips-CcsP5jU7.json                    8.62 kB │ gzip:   2.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.855522Z",
+        "line": "dist/assets/boids-D0ZGWlwf.js                             8.97 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.855787Z",
+        "line": "dist/assets/gifExportWorker-DIOn7Hh1.js                  10.14 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.855869Z",
+        "line": "dist/index.html                                          15.60 kB │ gzip:   4.09 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.856117Z",
+        "line": "dist/assets/render-worker-BZMLsmtP.js                   113.35 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.856177Z",
+        "line": "dist/assets/qmr-mini-chip-mount-5UbZ1kdu.css              1.22 kB │ gzip:   0.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.856365Z",
+        "line": "dist/assets/BrandedSuspenseFallback--e_OpUdR.css          6.11 kB │ gzip:   1.41 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.856427Z",
+        "line": "dist/assets/ComposerPanel-DtxX27Jz.css                   15.41 kB │ gzip:   2.56 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.856462Z",
+        "line": "dist/assets/src-BcCg7KHv.css                             23.85 kB │ gzip:   4.83 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.856493Z",
+        "line": "dist/assets/decision-response-bridge-BUsAsGSF.css       112.39 kB │ gzip:  18.78 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.856521Z",
+        "line": "dist/assets/index-kaIPdTHB.css                          164.73 kB │ gzip:  24.51 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.856549Z",
+        "line": "dist/assets/plus-C9via76p.js                              0.13 kB │ gzip:   0.13 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.856577Z",
+        "line": "dist/assets/chevron-up-Cg_9OuJt.js                        0.18 kB │ gzip:   0.16 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.856605Z",
+        "line": "dist/assets/lovable-error-reporting-DoBUOObu.js           0.21 kB │ gzip:   0.18 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.856632Z",
+        "line": "dist/assets/zap-Bgem8c5t.js                               0.24 kB │ gzip:   0.19 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.856659Z",
+        "line": "dist/assets/asciiSettingsRef-_82PkSkB.js                  0.26 kB │ gzip:   0.17 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.856686Z",
+        "line": "dist/assets/cloudRegistry-CMDY-IOO.js                     0.41 kB │ gzip:   0.28 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.856727Z",
+        "line": "dist/assets/CopyShader-CHGAmNbz.js                        0.44 kB │ gzip:   0.27 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.856783Z",
+        "line": "dist/assets/search-DQG4fHYo.js                            0.45 kB │ gzip:   0.26 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.856813Z",
+        "line": "dist/assets/shadow-logging-Dsr2Deki.js                    0.46 kB │ gzip:   0.34 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.856844Z",
+        "line": "dist/assets/glbExport-DHOK86i5.js                         0.56 kB │ gzip:   0.37 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.856878Z",
+        "line": "dist/assets/rolldown-runtime-QTnfLwEv.js                  0.69 kB │ gzip:   0.42 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.856906Z",
+        "line": "dist/assets/Pass-O_w7kH30.js                              0.74 kB │ gzip:   0.43 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.856933Z",
+        "line": "dist/assets/chladni-DTs7mZ10.js                           0.85 kB │ gzip:   0.48 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.85696Z",
+        "line": "dist/assets/ShaderPass-DCxgl4g0.js                        0.94 kB │ gzip:   0.45 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.856986Z",
+        "line": "dist/assets/pheromone-grid-qOhnv2ov.js                    0.97 kB │ gzip:   0.46 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.857013Z",
+        "line": "dist/assets/feature-flags-C9TVu0Z6.js                     1.08 kB │ gzip:   0.43 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.857043Z",
+        "line": "dist/assets/RenderPass-OUgb8jrO.js                        1.10 kB │ gzip:   0.42 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.857071Z",
+        "line": "dist/assets/record-DWowau0h.js                            1.20 kB │ gzip:   0.69 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.857114Z",
+        "line": "dist/assets/preload-helper-CdzGmLr1.js                    1.21 kB │ gzip:   0.68 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.857169Z",
+        "line": "dist/assets/x-BytSHMSo.js                                 1.33 kB │ gzip:   0.78 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.857212Z",
+        "line": "dist/assets/directionalGlyphs-Bygns6VW.js                 1.46 kB │ gzip:   0.80 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.857241Z",
+        "line": "dist/assets/journey-replay-BogKcMtY.js                    1.49 kB │ gzip:   0.77 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.857285Z",
+        "line": "dist/assets/brians-brain-BWuiI7lk.js                      1.74 kB │ gzip:   0.84 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.857323Z",
+        "line": "dist/assets/dla-B8ywjmrW.js                               1.79 kB │ gzip:   0.84 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.857351Z",
+        "line": "dist/assets/n-body-vSZOuWVe.js                            1.80 kB │ gzip:   0.92 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.857383Z",
+        "line": "dist/assets/particles-DHjvQPbL.js                         2.02 kB │ gzip:   1.08 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.857415Z",
+        "line": "dist/assets/slime-JCtG_IvE.js                             2.05 kB │ gzip:   1.01 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.857453Z",
+        "line": "dist/assets/physics-BjgHCeJe.js                           2.17 kB │ gzip:   1.00 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.858031Z",
+        "line": "dist/assets/graphThumbnail-BeniIwvN.js                    2.47 kB │ gzip:   1.19 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.858164Z",
+        "line": "dist/assets/falling-sand-eKR3VVIz.js                      2.52 kB │ gzip:   1.03 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.858239Z",
+        "line": "dist/assets/noise-LbA1LOZI.js                             2.60 kB │ gzip:   1.17 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.858304Z",
+        "line": "dist/assets/switch-DzjoYpVB.js                            2.68 kB │ gzip:   1.34 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.858366Z",
+        "line": "dist/assets/lenia-ecYw1r3L.js                             2.80 kB │ gzip:   1.33 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.858457Z",
+        "line": "dist/assets/verlet-rope-B6A6srTL.js                       2.98 kB │ gzip:   1.46 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.858544Z",
+        "line": "dist/assets/OutputPass-CWCCPSPg.js                        3.10 kB │ gzip:   1.03 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.858686Z",
+        "line": "dist/assets/lsystem-B6PbK9OR.js                           3.25 kB │ gzip:   1.49 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.858823Z",
+        "line": "dist/assets/button-vuZp_4_L.js                            3.93 kB │ gzip:   1.73 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.858962Z",
+        "line": "dist/assets/EffectComposer-BCMM3XEt.js                    3.93 kB │ gzip:   1.21 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.859098Z",
+        "line": "dist/assets/qmr-mini-chip-mount-a9H0DYic.js               4.45 kB │ gzip:   2.24 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.859218Z",
+        "line": "dist/assets/layerTemplates-BjRpDIX-.js                    4.97 kB │ gzip:   1.46 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.860208Z",
+        "line": "dist/assets/shaderDriven-Ba7QR_vP.js                      5.32 kB │ gzip:   2.08 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.860368Z",
+        "line": "dist/assets/system-DsrBa3Cs.js                            5.50 kB │ gzip:   2.00 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.860728Z",
+        "line": "dist/assets/flowraHandoffBridge-UL46D3TP.js               5.53 kB │ gzip:   2.76 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.860813Z",
+        "line": "dist/assets/troikaPostProcessing-0ddhKs9F.js              5.79 kB │ gzip:   2.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.860875Z",
+        "line": "dist/assets/qmr-command-router-hC-w0s50.js                6.19 kB │ gzip:   2.44 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.860934Z",
+        "line": "dist/assets/export-CMKxBFVS.js                            6.52 kB │ gzip:   2.65 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.860985Z",
+        "line": "dist/assets/PreviewView-DOXLQ67n.js                       6.84 kB │ gzip:   2.89 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.861031Z",
+        "line": "dist/assets/dist-B7oIP-vj.js                              7.20 kB │ gzip:   2.55 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.861073Z",
+        "line": "dist/assets/BokehPass-C8Z8K1TA.js                         7.34 kB │ gzip:   1.63 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.861267Z",
+        "line": "dist/assets/journey-page-Jz4JHKvZ.js                      7.67 kB │ gzip:   2.26 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.861666Z",
+        "line": "dist/assets/NodeEditor-CGdRhhOS.js                        7.89 kB │ gzip:   2.75 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.861984Z",
+        "line": "dist/assets/slider-Cj1o5f94.js                            8.32 kB │ gzip:   3.38 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.862243Z",
+        "line": "dist/assets/color-BY13860i.js                             8.96 kB │ gzip:   3.13 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.862349Z",
+        "line": "dist/assets/boids-CbwG_JVm.js                             9.11 kB │ gzip:   3.77 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.862622Z",
+        "line": "dist/assets/onnx-inference-CLZLvKzv.js                    9.22 kB │ gzip:   4.50 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.862862Z",
+        "line": "dist/assets/UnrealBloomPass-CT8VHTND.js                   9.39 kB │ gzip:   2.43 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.863044Z",
+        "line": "dist/assets/BrandedSuspenseFallback-BDMz6BPb.js           9.61 kB │ gzip:   3.30 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.86333Z",
+        "line": "dist/assets/three-DxLoham3.js                            11.56 kB │ gzip:   4.90 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.86341Z",
+        "line": "dist/assets/timeline-3mC_ufeL.js                         12.26 kB │ gzip:   4.74 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.863641Z",
+        "line": "dist/assets/shareUrl-CcJA0y_8.js                         12.63 kB │ gzip:   4.68 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.863845Z",
+        "line": "dist/assets/defaults-DVmx6jJe.js                         16.30 kB │ gzip:   5.39 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.863976Z",
+        "line": "dist/assets/idb-jaXVZFLR.js                              16.62 kB │ gzip:   5.85 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.864055Z",
+        "line": "dist/assets/View3DPanel-EctUw4Cv.js                      17.07 kB │ gzip:   5.97 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.864106Z",
+        "line": "dist/assets/TrackLaneTimeline-0zPZ_OEg.js                17.38 kB │ gzip:   4.64 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.864162Z",
+        "line": "dist/assets/src-CzwDxUeb.js                              17.81 kB │ gzip:   5.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.86423Z",
+        "line": "dist/assets/registry-DHpD_fT3.js                         20.57 kB │ gzip:   6.90 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.864554Z",
+        "line": "dist/assets/LayerPanel-Dk8Ig9_1.js                       21.10 kB │ gzip:   5.49 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.864717Z",
+        "line": "dist/assets/handoffReceiver-xU7OrqKp.js                  26.37 kB │ gzip:   7.71 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.864781Z",
+        "line": "dist/assets/utils-D7Crj_T0.js                            26.88 kB │ gzip:   8.64 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.864821Z",
+        "line": "dist/assets/signals-CfhY2xEM.js                          28.69 kB │ gzip:  10.76 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.865142Z",
+        "line": "dist/assets/dist-CvKjRsoJ.js                             32.58 kB │ gzip:   9.13 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.865237Z",
+        "line": "dist/assets/qmr-action-bridge-BzPcYXhp.js                36.63 kB │ gzip:   9.18 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.865295Z",
+        "line": "dist/assets/select-3RuJiUYt.js                           60.39 kB │ gzip:  20.88 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.865521Z",
+        "line": "dist/assets/asciiCanvasRef-DQddPt2p.js                   62.19 kB │ gzip:  14.78 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.865671Z",
+        "line": "dist/assets/schema-By_YmsiC.js                           65.55 kB │ gzip:  15.49 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.865795Z",
+        "line": "dist/assets/src-UlmgetEa.js                              71.88 kB │ gzip:  17.38 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.866026Z",
+        "line": "dist/assets/qmr-panel-mount-BkSWcGfn.js                  75.03 kB │ gzip:  22.30 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.866104Z",
+        "line": "dist/assets/troika-three-text.esm-CikoyuTC.js           113.42 kB │ gzip:  41.65 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.866162Z",
+        "line": "dist/assets/qmr-knowledge-graph-projection-vk9uT_MZ.js  131.96 kB │ gzip:  34.37 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.866465Z",
+        "line": "dist/assets/src-adVliUkP.js                             135.69 kB │ gzip:  35.40 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.866538Z",
+        "line": "dist/assets/index-jHyTwL1u.js                           160.31 kB │ gzip:  50.06 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.866593Z",
+        "line": "dist/assets/ComposerPanel-Dm6d16a-.js                   186.57 kB │ gzip:  60.15 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.866639Z",
+        "line": "dist/assets/WallpaperView-DJB_r0kv.js                   186.70 kB │ gzip:  57.11 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.866686Z",
+        "line": "dist/assets/react-vendor-COv6hHbN.js                    200.64 kB │ gzip:  63.53 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.866753Z",
+        "line": "dist/assets/workflow-session-store-D3CqJKYc.js          316.32 kB │ gzip:  83.17 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.866826Z",
+        "line": "dist/assets/decision-response-bridge-CJcXUE8h.js        486.04 kB │ gzip: 127.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.866881Z",
+        "line": "dist/assets/AsciiLab-D2mojZN9.js                        582.79 kB │ gzip: 153.38 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.866934Z",
+        "line": "dist/assets/three.module-Ddpl7Het.js                    722.72 kB │ gzip: 184.42 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.867001Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:08.867055Z",
+        "line": "\u001b[32m✓ built in 1.62s\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.867118Z",
+        "line": "\u001b[33m[plugin builtin:vite-reporter] "
+      },
+      {
+        "ts": "2026-10-04T17:43:08.867182Z",
+        "line": "(!) Some chunks are larger than 600 kB after minification. Consider:"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.86724Z",
+        "line": "- Using dynamic import() to code-split the application"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.86728Z",
+        "line": "- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting"
+      },
+      {
+        "ts": "2026-10-04T17:43:08.867313Z",
+        "line": "- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:43:15.458237Z",
+        "line": "[qvester:pre-compress] 37 .gz + 37 .br from 4216 KiB raw in dist (recursive): gzip=26.9%, brotli=22.8% (saves 15.3% vs gzip)"
+      },
+      {
+        "ts": "2026-10-04T17:43:15.556628Z",
+        "line": "[studio] Building Style Lab Synthesizer at /style-lab-synthesizer/..."
+      },
+      {
+        "ts": "2026-10-04T17:43:15.559775Z",
+        "line": "[studio] Installing dependencies for Style Lab Synthesizer..."
+      },
+      {
+        "ts": "2026-10-04T17:43:20.610206Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:20.610533Z",
+        "line": "added 369 packages in 5s"
+      },
+      {
+        "ts": "2026-10-04T17:43:20.832327Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:20.832684Z",
+        "line": "\u003e prebuild"
+      },
+      {
+        "ts": "2026-10-04T17:43:20.832777Z",
+        "line": "\u003e bun run scripts/verify-codegen.ts \u0026\u0026 bun run scripts/verify-a11y.ts \u0026\u0026 bun run scripts/verify-a11y-announcer.ts \u0026\u0026 bun run scripts/verify-perf.ts \u0026\u0026 bun run scripts/verify-dna.ts \u0026\u0026 bun run scripts/verify-synthesis.ts \u0026\u0026 bun run scripts/verify-quality.ts \u0026\u0026 bun run scripts/verify-presets.ts \u0026\u0026 bun run scripts/verify-import.ts"
+      },
+      {
+        "ts": "2026-10-04T17:43:20.832835Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:21.985666Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:21.985937Z",
+        "line": "CODEGEN VERIFY  423 passed · 0 failed"
+      },
+      {
+        "ts": "2026-10-04T17:43:21.986015Z",
+        "line": "  ✓ all surface params flow into the faithful artifact"
+      },
+      {
+        "ts": "2026-10-04T17:43:21.986084Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:22.13883Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:22.139063Z",
+        "line": "verify:a11y → 27 passed · 0 failed"
+      },
+      {
+        "ts": "2026-10-04T17:43:22.318696Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:22.319063Z",
+        "line": "verify:a11y-announcer → 70 passed · 0 failed"
+      },
+      {
+        "ts": "2026-10-04T17:43:22.319146Z",
+        "line": "  ✓ announcer pipeline (label + format + throttle + paths) works"
+      },
+      {
+        "ts": "2026-10-04T17:43:22.319722Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:24.958953Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:24.961907Z",
+        "line": "verify:perf → 16 passed · 0 failed"
+      },
+      {
+        "ts": "2026-10-04T17:43:25.215233Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:25.215549Z",
+        "line": "verify:dna → 1104 passed · 0 failed"
+      },
+      {
+        "ts": "2026-10-04T17:43:25.365786Z",
+        "line": "────────────────────────────────────────────────────────────"
+      },
+      {
+        "ts": "2026-10-04T17:43:25.36607Z",
+        "line": "  Phase 5a — Prompt Synthesis Verification"
+      },
+      {
+        "ts": "2026-10-04T17:43:25.36613Z",
+        "line": "────────────────────────────────────────────────────────────"
+      },
+      {
+        "ts": "2026-10-04T17:43:25.727981Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:25.728262Z",
+        "line": "  ✅ ALL 39 CHECKS PASSED"
+      },
+      {
+        "ts": "2026-10-04T17:43:25.728354Z",
+        "line": "────────────────────────────────────────────────────────────"
+      },
+      {
+        "ts": "2026-10-04T17:43:25.886744Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:25.88705Z",
+        "line": "verify:quality → 46 passed · 0 failed"
+      },
+      {
+        "ts": "2026-10-04T17:43:25.887147Z",
+        "line": "  ✓ harmony diagnosis detects schemes + emits concrete fixes"
+      },
+      {
+        "ts": "2026-10-04T17:43:25.887215Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:26.098328Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:26.098587Z",
+        "line": "verify:presets → 85 passed · 0 failed"
+      },
+      {
+        "ts": "2026-10-04T17:43:26.098659Z",
+        "line": "  ✓ preset management (rename/duplicate/reorder/export/thumbnail) works"
+      },
+      {
+        "ts": "2026-10-04T17:43:26.098699Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:28.740754Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:28.740983Z",
+        "line": "verify:import → 89 passed · 0 failed"
+      },
+      {
+        "ts": "2026-10-04T17:43:28.74105Z",
+        "line": "  ✓ CSS import pipeline (parse → map → confidence → apply) works"
+      },
+      {
+        "ts": "2026-10-04T17:43:28.741087Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:28.746787Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:28.746958Z",
+        "line": "\u003e build"
+      },
+      {
+        "ts": "2026-10-04T17:43:28.747032Z",
+        "line": "\u003e vite build"
+      },
+      {
+        "ts": "2026-10-04T17:43:28.747074Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:29.147246Z",
+        "line": "\u001b[33mThe plugin \"vite-tsconfig-paths\" is detected. Vite now supports tsconfig paths resolution natively via the \u001b[1mresolve.tsconfigPaths\u001b[22m option. You can remove the plugin and set \u001b[1mresolve.tsconfigPaths: true\u001b[22m in your Vite config instead.\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:43:29.167397Z",
+        "line": "\u001b[36mvite v8.1.5 \u001b[32mbuilding client environment for production...\u001b[36m\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:43:29.958224Z",
+        "line": "\u001b[2K\rtransforming...✓ 2768 modules transformed."
+      },
+      {
+        "ts": "2026-10-04T17:43:30.127082Z",
+        "line": "rendering chunks..."
+      },
+      {
+        "ts": "2026-10-04T17:43:30.260777Z",
+        "line": "computing gzip size..."
+      },
+      {
+        "ts": "2026-10-04T17:43:30.285782Z",
+        "line": "dist/assets/qvx-hud-tips-CcsP5jU7.json                    8.62 kB │ gzip:   2.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.286194Z",
+        "line": "dist/index.html                                          12.67 kB │ gzip:   3.84 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.286398Z",
+        "line": "dist/assets/qmr-mini-chip-mount-5UbZ1kdu.css              1.22 kB │ gzip:   0.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.286487Z",
+        "line": "dist/assets/src-BcCg7KHv.css                             23.85 kB │ gzip:   4.83 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.286585Z",
+        "line": "dist/assets/decision-response-bridge-BUsAsGSF.css       112.39 kB │ gzip:  18.78 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.286815Z",
+        "line": "dist/assets/index-BLfFgQLQ.css                          114.33 kB │ gzip:  17.82 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.286914Z",
+        "line": "dist/assets/qvx-hud-tips-Ct5OOiwN.js                      0.08 kB │ gzip:   0.10 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.286978Z",
+        "line": "dist/assets/check-DcHTlM4p.js                             0.12 kB │ gzip:   0.14 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.287046Z",
+        "line": "dist/assets/chevron-down-t72BaKa8.js                      0.12 kB │ gzip:   0.14 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.287106Z",
+        "line": "dist/assets/x-CCouegnT.js                                 0.15 kB │ gzip:   0.15 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.287171Z",
+        "line": "dist/assets/rotate-ccw-D-gYG7Ra.js                        0.20 kB │ gzip:   0.18 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.287229Z",
+        "line": "dist/assets/moon-BpUKrN_3.js                              0.21 kB │ gzip:   0.20 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.287287Z",
+        "line": "dist/assets/eye-kGd42-Um.js                               0.25 kB │ gzip:   0.20 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.287355Z",
+        "line": "dist/assets/refresh-cw-CC1FEAbS.js                        0.32 kB │ gzip:   0.22 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.287418Z",
+        "line": "dist/assets/trash-2-DYTrhB1W.js                           0.32 kB │ gzip:   0.21 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.287467Z",
+        "line": "dist/assets/layout-grid-S7PmXD-M.js                       0.34 kB │ gzip:   0.19 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.287512Z",
+        "line": "dist/assets/file-code-corner-DpioomJj.js                  0.36 kB │ gzip:   0.25 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.287561Z",
+        "line": "dist/assets/git-compare-arrows-C8By0-bd.js                0.37 kB │ gzip:   0.25 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.287668Z",
+        "line": "dist/assets/download-Bf6XnclK.js                          0.41 kB │ gzip:   0.29 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.287753Z",
+        "line": "dist/assets/layers-C25rJytl.js                            0.42 kB │ gzip:   0.24 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.287818Z",
+        "line": "dist/assets/shuffle-B_3zM1wJ.js                           0.54 kB │ gzip:   0.31 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.287905Z",
+        "line": "dist/assets/pencil-Cus5kgB-.js                            0.73 kB │ gzip:   0.38 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.288055Z",
+        "line": "dist/assets/zoom-in-BsAU4-pl.js                           0.73 kB │ gzip:   0.40 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.288135Z",
+        "line": "dist/assets/zap-xSH9qGAM.js                               0.77 kB │ gzip:   0.40 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.288188Z",
+        "line": "dist/assets/rolldown-runtime-CNC7AqOf.js                  0.87 kB │ gzip:   0.50 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.288236Z",
+        "line": "dist/assets/wand-sparkles-CkvlcL4H.js                     1.13 kB │ gzip:   0.52 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.288281Z",
+        "line": "dist/assets/preload-helper-BDAWNkB3.js                    1.21 kB │ gzip:   0.69 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.288356Z",
+        "line": "dist/assets/createLucideIcon-hHulWVE1.js                  1.24 kB │ gzip:   0.71 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.288421Z",
+        "line": "dist/assets/sliders-vertical-DNKwG9Mg.js                  1.27 kB │ gzip:   0.54 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.288518Z",
+        "line": "dist/assets/journey-replay-Cu1ARfJ1.js                    1.49 kB │ gzip:   0.77 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.288618Z",
+        "line": "dist/assets/shadow-logging-BMLRlnSZ.js                    2.40 kB │ gzip:   1.02 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.288683Z",
+        "line": "dist/assets/qmr-mini-chip-mount-C17koYol.js               2.95 kB │ gzip:   1.47 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.288764Z",
+        "line": "dist/assets/state-bus-BdmWx6H3.js                         3.95 kB │ gzip:   1.48 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.288853Z",
+        "line": "dist/assets/variantGenerator-pGY4Y4TZ.js                  4.18 kB │ gzip:   1.44 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.288928Z",
+        "line": "dist/assets/journey-page-DLrUmtWs.js                      7.66 kB │ gzip:   2.26 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.289006Z",
+        "line": "dist/assets/ArtboardStage-Dsz3yu6Y.js                     8.67 kB │ gzip:   2.64 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.289086Z",
+        "line": "dist/assets/onnx-inference-CfPTv_-g.js                    9.21 kB │ gzip:   4.49 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.289201Z",
+        "line": "dist/assets/ComparisonStage-7yPmNK7K.js                   9.38 kB │ gzip:   3.21 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.289407Z",
+        "line": "dist/assets/feature-flags-C3yUnO77.js                    12.58 kB │ gzip:   4.11 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.289547Z",
+        "line": "dist/assets/commandPalette-D06oCOec.js                   13.56 kB │ gzip:   4.19 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.289633Z",
+        "line": "dist/assets/liveCode-DeRmZ9LW.js                         17.83 kB │ gzip:   5.88 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.289789Z",
+        "line": "dist/assets/syntaxHighlight-C9X3JZL9.js                  26.01 kB │ gzip:   7.98 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.289866Z",
+        "line": "dist/assets/utils-FckWDfJn.js                            28.16 kB │ gzip:   9.30 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.289948Z",
+        "line": "dist/assets/Surface-BreWwI7S.js                          34.57 kB │ gzip:  11.24 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.290006Z",
+        "line": "dist/assets/qmr-panel-mount-CJ6EaApy.js                  69.33 kB │ gzip:  20.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.290093Z",
+        "line": "dist/assets/src-BHcX_wlg.js                              84.45 kB │ gzip:  23.26 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.290155Z",
+        "line": "dist/assets/src-awpuDffp.js                              90.79 kB │ gzip:  22.35 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.290276Z",
+        "line": "dist/assets/react-Tlaj2PDW.js                           125.01 kB │ gzip:  40.75 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.290341Z",
+        "line": "dist/assets/qmr-knowledge-graph-projection-Dp3q6rat.js  143.25 kB │ gzip:  38.14 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.290397Z",
+        "line": "dist/assets/RightPanel-DruqKceL.js                      163.92 kB │ gzip:  40.69 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.290474Z",
+        "line": "dist/assets/index-BqzHxyv-.js                           166.49 kB │ gzip:  50.94 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.290602Z",
+        "line": "dist/assets/StyleLab-Br52OGvG.js                        195.53 kB │ gzip:  54.70 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.2907Z",
+        "line": "dist/assets/react-vendor-DknqUQ-H.js                    200.64 kB │ gzip:  63.56 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.290917Z",
+        "line": "dist/assets/VectorMotionStudio-CEivDqan.js              203.68 kB │ gzip:  55.31 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.291033Z",
+        "line": "dist/assets/store-kDN2x_ky.js                           204.17 kB │ gzip:  54.07 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.291162Z",
+        "line": "dist/assets/src-0WMo_1_v.js                             210.03 kB │ gzip:  64.74 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.291261Z",
+        "line": "dist/assets/workflow-session-store-CUci9XDV.js          315.56 kB │ gzip:  83.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.29137Z",
+        "line": "dist/assets/decision-response-bridge-BzyKtPAT.js        500.60 kB │ gzip: 130.78 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:30.291486Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:30.291565Z",
+        "line": "\u001b[32m✓ built in 1.11s\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:43:34.424892Z",
+        "line": "[qvester:pre-compress] 24 .gz + 24 .br from 2997 KiB raw in dist (recursive): gzip=26.8%, brotli=22.8% (saves 15.0% vs gzip)"
+      },
+      {
+        "ts": "2026-10-04T17:43:34.49689Z",
+        "line": "[studio] Building AI Subscription Index at /ai-subscription-index/..."
+      },
+      {
+        "ts": "2026-10-04T17:43:34.689408Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:34.689866Z",
+        "line": "\u003e ai-subscription-index@0.1.0 build"
+      },
+      {
+        "ts": "2026-10-04T17:43:34.690466Z",
+        "line": "\u003e node ../../node_modules/typescript/lib/tsc.js --noEmit \u0026\u0026 node --use-system-ca ../../node_modules/vite/bin/vite.js build"
+      },
+      {
+        "ts": "2026-10-04T17:43:34.690544Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:45.053271Z",
+        "line": "\u001b[36mvite v8.0.8 \u001b[32mbuilding client environment for production...\u001b[36m\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.242561Z",
+        "line": "\u001b[2K\rtransforming...✓ 360 modules transformed."
+      },
+      {
+        "ts": "2026-10-04T17:43:45.312327Z",
+        "line": "rendering chunks..."
+      },
+      {
+        "ts": "2026-10-04T17:43:45.418255Z",
+        "line": "computing gzip size..."
+      },
+      {
+        "ts": "2026-10-04T17:43:45.429815Z",
+        "line": "dist/assets/qvx-hud-tips-CcsP5jU7.json                    8.62 kB │ gzip:   2.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.430118Z",
+        "line": "dist/index.html                                          13.63 kB │ gzip:   3.79 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.430197Z",
+        "line": "dist/assets/src-DEGg4GAV.css                              0.84 kB │ gzip:   0.38 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.430245Z",
+        "line": "dist/assets/qmr-mini-chip-mount-5UbZ1kdu.css              1.22 kB │ gzip:   0.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.430283Z",
+        "line": "dist/assets/decision-response-bridge-Ct77gpuZ.css         6.22 kB │ gzip:   0.99 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.430314Z",
+        "line": "dist/assets/client-BKI83aNW.css                          23.01 kB │ gzip:   4.65 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.430342Z",
+        "line": "dist/assets/index-ofEWfMET.css                           59.98 kB │ gzip:  10.51 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.430374Z",
+        "line": "dist/assets/react-dom-vMfPRR0d.css                      106.17 kB │ gzip:  17.90 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.430411Z",
+        "line": "dist/assets/qvx-hud-tips-B4t3bICT.js                      0.08 kB │ gzip:   0.10 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.430472Z",
+        "line": "dist/assets/StatusBadge-DlpeJxVt.js                       0.25 kB │ gzip:   0.21 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.430527Z",
+        "line": "dist/assets/packet-builder-B4SG-gdY.js                    0.53 kB │ gzip:   0.29 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.430572Z",
+        "line": "dist/assets/jsx-runtime-D-oznMWL.js                       1.05 kB │ gzip:   0.60 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.430622Z",
+        "line": "dist/assets/preload-helper-BFf05dvn.js                    1.21 kB │ gzip:   0.69 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.430665Z",
+        "line": "dist/assets/journey-replay-C1MF2xbA.js                    1.49 kB │ gzip:   0.77 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.430727Z",
+        "line": "dist/assets/FreeRightNowPanel-Cg60KhcL.js                 2.24 kB │ gzip:   0.91 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.430767Z",
+        "line": "dist/assets/formatting-AbwnMirC.js                        2.27 kB │ gzip:   1.00 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.430803Z",
+        "line": "dist/assets/shadow-logging-Djyp2gNl.js                    2.29 kB │ gzip:   0.94 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.430859Z",
+        "line": "dist/assets/FeatureMatrix-C4t9l4st.js                     2.32 kB │ gzip:   0.80 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.430908Z",
+        "line": "dist/assets/qmr-mini-chip-mount-CeZbCNg9.js               3.01 kB │ gzip:   1.51 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.430938Z",
+        "line": "dist/assets/react-dom-BW3BwXE6.js                         3.57 kB │ gzip:   1.35 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.430968Z",
+        "line": "dist/assets/state-bus-CHUNhZR0.js                         3.94 kB │ gzip:   1.48 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.430996Z",
+        "line": "dist/assets/CompareOverlay-DcEZlEjl.js                    3.99 kB │ gzip:   1.39 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431028Z",
+        "line": "dist/assets/SourcesPanel-Cg50KOu1.js                      4.94 kB │ gzip:   1.61 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431064Z",
+        "line": "dist/assets/ProviderDrawer-B7gXraU6.js                    6.31 kB │ gzip:   1.94 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431098Z",
+        "line": "dist/assets/RecommendationPanel-C_eKeLJV.js               7.29 kB │ gzip:   2.51 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431139Z",
+        "line": "dist/assets/react-w_nMR_S8.js                             7.52 kB │ gzip:   2.88 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431185Z",
+        "line": "dist/assets/journey-page-YYgW6NQO.js                      7.65 kB │ gzip:   2.25 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431221Z",
+        "line": "dist/assets/onnx-inference-B0f3Icg8.js                    9.25 kB │ gzip:   4.51 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431252Z",
+        "line": "dist/assets/feature-flags-Dd5vXZ9R.js                    12.58 kB │ gzip:   4.11 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431285Z",
+        "line": "dist/assets/providerCatalog-DeDsir5y.js                  13.29 kB │ gzip:   3.75 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431316Z",
+        "line": "dist/assets/index-BJyqjCOD.js                            29.70 kB │ gzip:   9.19 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431347Z",
+        "line": "dist/assets/qmr-panel-mount-GACNjZ5K.js                  69.29 kB │ gzip:  20.14 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431383Z",
+        "line": "dist/assets/src-tMP4_Dx9.js                              92.33 kB │ gzip:  23.05 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431418Z",
+        "line": "dist/assets/AiSubscriptionIndexApp-CIEiCg16.js          112.04 kB │ gzip:  26.01 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431452Z",
+        "line": "dist/assets/qmr-knowledge-graph-projection-DDrpEdVc.js  143.25 kB │ gzip:  38.14 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431496Z",
+        "line": "dist/assets/client-Bz9wfSh9.js                          178.34 kB │ gzip:  56.33 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431539Z",
+        "line": "dist/assets/src-DmUjkeER.js                             208.30 kB │ gzip:  64.30 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431594Z",
+        "line": "dist/assets/workflow-session-store-CBeTKeAl.js          322.38 kB │ gzip:  84.93 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431653Z",
+        "line": "dist/assets/decision-response-bridge-UtY6GDGY.js        577.93 kB │ gzip: 152.20 kB"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431719Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431765Z",
+        "line": "\u001b[32m✓ built in 376ms\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431818Z",
+        "line": "\u001b[33m[plugin builtin:vite-reporter] "
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431858Z",
+        "line": "(!) Some chunks are larger than 400 kB after minification. Consider:"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.43189Z",
+        "line": "- Using dynamic import() to code-split the application"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431925Z",
+        "line": "- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting"
+      },
+      {
+        "ts": "2026-10-04T17:43:45.431966Z",
+        "line": "- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:43:48.043386Z",
+        "line": "[qvester:pre-compress] 15 .gz + 15 .br from 1916 KiB raw in dist (recursive): gzip=26.2%, brotli=22.1% (saves 15.6% vs gzip)"
+      },
+      {
+        "ts": "2026-10-04T17:43:48.094085Z",
+        "line": "[studio] Building Flowra at /flowra/..."
+      },
+      {
+        "ts": "2026-10-04T17:43:48.096869Z",
+        "line": "[studio] Installing dependencies for Flowra..."
+      },
+      {
+        "ts": "2026-10-04T17:43:50.179209Z",
+        "line": "npm warn deprecated boolean@3.2.0: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info."
+      },
+      {
+        "ts": "2026-10-04T17:44:06.48029Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:44:06.480842Z",
+        "line": "added 260 packages in 18s"
+      },
+      {
+        "ts": "2026-10-04T17:44:06.714214Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:44:06.714521Z",
+        "line": "\u003e flowra@0.1.0 build"
+      },
+      {
+        "ts": "2026-10-04T17:44:06.71467Z",
+        "line": "\u003e tsc \u0026\u0026 vite build"
+      },
+      {
+        "ts": "2026-10-04T17:44:06.714743Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:44:22.617024Z",
+        "line": "\u001b[33m(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:"
+      },
+      {
+        "ts": "2026-10-04T17:44:22.617354Z",
+        "line": "  - `__dirname` (vite.config.ts:38:35). Use `import.meta.dirname` instead"
+      },
+      {
+        "ts": "2026-10-04T17:44:22.61745Z",
+        "line": "  - import \"../../scripts/glsl-resolve-plugin\" without a file extension (vite.config.ts:4:35). Add the file extension"
+      },
+      {
+        "ts": "2026-10-04T17:44:22.617585Z",
+        "line": "  - `__dirname` (../../scripts/glsl-resolve-plugin.ts:5:30). Use `import.meta.dirname` instead"
+      },
+      {
+        "ts": "2026-10-04T17:44:22.617666Z",
+        "line": "Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:44:22.630575Z",
+        "line": "[glsl-resolve] LYGIA directory not found at /opt/buildhome/repo/vendor/lygia."
+      },
+      {
+        "ts": "2026-10-04T17:44:22.630821Z",
+        "line": "[glsl-resolve] Qvester shader vocabulary not found at /opt/buildhome/repo/vendor/qv-shaders."
+      },
+      {
+        "ts": "2026-10-04T17:44:22.631996Z",
+        "line": "\u001b[36mvite v8.3.0 \u001b[32mbuilding client environment for production...\u001b[36m\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:44:22.641917Z",
+        "line": "transforming..."
+      },
+      {
+        "ts": "2026-10-04T17:44:22.988986Z",
+        "line": "[glsl-resolve] File not found: /opt/buildhome/repo/vendor/qv-shaders/math/rotate.glsl (included as \"qv/math/rotate.glsl\")"
+      },
+      {
+        "ts": "2026-10-04T17:44:22.989613Z",
+        "line": "[glsl-resolve] File not found: /opt/buildhome/repo/vendor/qv-shaders/noise/hash.glsl (included as \"qv/noise/hash.glsl\")"
+      },
+      {
+        "ts": "2026-10-04T17:44:22.990227Z",
+        "line": "[glsl-resolve] File not found: /opt/buildhome/repo/vendor/qv-shaders/noise/simplex.glsl (included as \"qv/noise/simplex.glsl\")"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.169918Z",
+        "line": "✓ 639 modules transformed."
+      },
+      {
+        "ts": "2026-10-04T17:44:23.449075Z",
+        "line": "rendering chunks..."
+      },
+      {
+        "ts": "2026-10-04T17:44:23.654912Z",
+        "line": "computing gzip size..."
+      },
+      {
+        "ts": "2026-10-04T17:44:23.947575Z",
+        "line": "dist/assets/qvx-hud-tips-CcsP5jU7.json                          8.62 kB │ gzip:     2.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.947951Z",
+        "line": "dist/.vite/manifest.json                                       19.36 kB │ gzip:     2.68 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.948756Z",
+        "line": "dist/index.html                                               197.96 kB │ gzip:    28.67 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.94884Z",
+        "line": "dist/assets/ort-wasm-simd-threaded.asyncify-DMmc6YqF.wasm  23,567.05 kB │ gzip: 5,824.05 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.948894Z",
+        "line": "dist/assets/qmr-mini-chip-mount-5UbZ1kdu.css                    1.22 kB │ gzip:     0.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.948975Z",
+        "line": "dist/assets/src-BztHPOy1.css                                  136.24 kB │ gzip:    22.70 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.94905Z",
+        "line": "dist/assets/index-D9xdskmv.css                                169.05 kB │ gzip:    30.37 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.949122Z",
+        "line": "dist/assets/qvx-hud-tips-Dsra16Ae.js                            0.07 kB │ gzip:     0.09 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.949201Z",
+        "line": "dist/assets/motion-director-planner-DbYBtRF0.js                 0.08 kB │ gzip:     0.09 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.949287Z",
+        "line": "dist/assets/math-AwMxNUvc.js                                    0.09 kB │ gzip:     0.10 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.949348Z",
+        "line": "dist/assets/preset-recommender-lK0SY6cS.js                      0.16 kB │ gzip:     0.13 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.949417Z",
+        "line": "dist/assets/depth-adapter-DMNLIUs8.js                           0.38 kB │ gzip:     0.23 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.949469Z",
+        "line": "dist/assets/sliderWheelControl-BZK3tFX3.js                      0.55 kB │ gzip:     0.38 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.949578Z",
+        "line": "dist/assets/analysis-error-Dzu7hZe1.js                          0.72 kB │ gzip:     0.39 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.949646Z",
+        "line": "dist/assets/kernel-stack-1gB1TnX-.js                            0.84 kB │ gzip:     0.40 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.949763Z",
+        "line": "dist/assets/rolldown-runtime-Dd_uD5pT.js                        1.10 kB │ gzip:     0.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.949843Z",
+        "line": "dist/assets/preset-panel-hDE5nkBB.js                            1.35 kB │ gzip:     0.46 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.949904Z",
+        "line": "dist/assets/error-handler-WGAqCVra.js                           1.85 kB │ gzip:     0.80 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.949956Z",
+        "line": "dist/assets/camera-presets-BrnmAnX9.js                          1.99 kB │ gzip:     0.75 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.950021Z",
+        "line": "dist/assets/smart-assist-loader-DSmSvH4G.js                     2.30 kB │ gzip:     0.91 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.95007Z",
+        "line": "dist/assets/one-click-depth-UQWrhedv.js                         2.30 kB │ gzip:     1.13 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.950118Z",
+        "line": "dist/assets/qmr-manifest-DLuZZKb3.js                            2.59 kB │ gzip:     1.05 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.95017Z",
+        "line": "dist/assets/qmr-mini-chip-mount-DdXJjKzP.js                     2.96 kB │ gzip:     1.50 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.950227Z",
+        "line": "dist/assets/flowraHandoffAdapter-nqufqcGV.js                    3.01 kB │ gzip:     1.43 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.950351Z",
+        "line": "dist/assets/particle-hud-BpsH892T.js                            3.44 kB │ gzip:     1.38 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.950424Z",
+        "line": "dist/assets/state-bus-CxV8irKe.js                               3.94 kB │ gzip:     1.48 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.950478Z",
+        "line": "dist/assets/session-manager-BvUf2yuq.js                         4.05 kB │ gzip:     1.61 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.950527Z",
+        "line": "dist/assets/semantic-adapter-Ck_4mr77.js                        4.25 kB │ gzip:     1.67 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.950595Z",
+        "line": "dist/assets/flow-geometry-Cb87LUQf.js                           4.53 kB │ gzip:     1.78 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.950648Z",
+        "line": "dist/assets/mask-suggester-CzabAvuW.js                          4.61 kB │ gzip:     1.94 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.950711Z",
+        "line": "dist/assets/spawn-zone-panel-pv7n45F4.js                        4.69 kB │ gzip:     1.64 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.95078Z",
+        "line": "dist/assets/mask-layers-panel-C6uip5w0.js                       4.87 kB │ gzip:     1.44 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.950833Z",
+        "line": "dist/assets/instance-adapter-Wu91pt5L.js                        4.91 kB │ gzip:     2.09 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.950951Z",
+        "line": "dist/assets/model-registry-OAU0rlZA.js                          5.02 kB │ gzip:     1.96 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.951008Z",
+        "line": "dist/assets/smart-import--5trTrGk.js                            7.60 kB │ gzip:     3.15 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.95104Z",
+        "line": "dist/assets/journey-page-1qvfH_ul.js                            7.66 kB │ gzip:     2.25 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.951091Z",
+        "line": "dist/assets/runtime-support-matrix-B3sE37lI.js                  7.73 kB │ gzip:     1.74 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.951149Z",
+        "line": "dist/assets/jsx-runtime-CObvJnpU.js                             7.89 kB │ gzip:     2.99 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.951188Z",
+        "line": "dist/assets/lyric-overlay-package-CFrXzGCX.js                   8.55 kB │ gzip:     3.30 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.951249Z",
+        "line": "dist/assets/onnx-inference-CTby11Wi.js                          9.17 kB │ gzip:     4.48 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.951306Z",
+        "line": "dist/assets/assist-schema-BaOch_uZ.js                           9.86 kB │ gzip:     2.71 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.951368Z",
+        "line": "dist/assets/scene-intelligence-CJQd1PPy.js                      9.99 kB │ gzip:     3.93 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.951423Z",
+        "line": "dist/assets/arrow-suggester-BquheP1t.js                        10.26 kB │ gzip:     3.32 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.951492Z",
+        "line": "dist/assets/depth-intelligence-Ccr_tWzD.js                     11.66 kB │ gzip:     3.94 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.951571Z",
+        "line": "dist/assets/flowraDepthAI-BwtYr9Dl.js                          12.78 kB │ gzip:     4.38 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.951642Z",
+        "line": "dist/assets/weather-panel-R-qfYE8d.js                          14.35 kB │ gzip:     3.72 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.951698Z",
+        "line": "dist/assets/runner-DpkHBzBM.js                                 16.10 kB │ gzip:     5.70 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.951754Z",
+        "line": "dist/assets/chamber-look-presets-Cyu27HWk.js                   16.47 kB │ gzip:     4.95 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.951806Z",
+        "line": "dist/assets/atmosphere-profiles-BZCob3VI.js                    19.67 kB │ gzip:     5.76 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.951857Z",
+        "line": "dist/assets/index-B-LaD8Vl.js                                  22.56 kB │ gzip:     7.74 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.951908Z",
+        "line": "dist/assets/reference-motion-analyzer-CTowRdwa.js              25.28 kB │ gzip:     8.63 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.951957Z",
+        "line": "dist/assets/motion-quality-inspector-BOg88xPv.js               26.40 kB │ gzip:     9.04 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.952008Z",
+        "line": "dist/assets/layer-stack-panel-CuLLewIj.js                      30.32 kB │ gzip:     7.91 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.95206Z",
+        "line": "dist/assets/safe-runtime-D_ny6tGn.js                           40.39 kB │ gzip:    10.28 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.952114Z",
+        "line": "dist/assets/flowra-preset-manifest-zz-_kxHA.js                 43.73 kB │ gzip:     9.25 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.95217Z",
+        "line": "dist/assets/qmr-panel-mount-Beyg3aYg.js                        69.41 kB │ gzip:    20.15 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.952213Z",
+        "line": "dist/assets/editor-core-B-aGEOy9.js                            70.34 kB │ gzip:    16.53 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.952261Z",
+        "line": "dist/assets/src-BvmMBrpJ.js                                   109.97 kB │ gzip:    27.22 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.952309Z",
+        "line": "dist/assets/flow-editor-K7TdcPm4.js                           131.56 kB │ gzip:    24.41 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.952361Z",
+        "line": "dist/assets/presets-aTVdQmCY.js                               132.78 kB │ gzip:    25.71 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.952416Z",
+        "line": "dist/assets/qmr-knowledge-graph-projection-Dp3q6rat.js        143.25 kB │ gzip:    38.14 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.95247Z",
+        "line": "dist/assets/export-coordinator-Dmtwr564.js                    254.41 kB │ gzip:    67.56 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.952571Z",
+        "line": "dist/assets/workflow-session-store-lBSxYgsB.js                315.47 kB │ gzip:    83.11 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.952628Z",
+        "line": "dist/assets/transformers.web-BWgUHv_j.js                      550.59 kB │ gzip:   156.48 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.952683Z",
+        "line": "dist/assets/flow-runtime-DxC_IGox.js                          664.44 kB │ gzip:   164.75 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.952732Z",
+        "line": "dist/assets/flowra-app-CoEYfOhA.js                            957.82 kB │ gzip:   237.71 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.95278Z",
+        "line": "dist/assets/src-L-9BdzLB.js                                   986.89 kB │ gzip:   277.05 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.95283Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:44:23.952867Z",
+        "line": "\u001b[33m[plugin builtin:vite-reporter] "
+      },
+      {
+        "ts": "2026-10-04T17:44:23.952917Z",
+        "line": "(!) Some chunks are larger than 400 kB after minification. Consider:"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.952949Z",
+        "line": "- Using dynamic import() to code-split the application"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.95298Z",
+        "line": "- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.953023Z",
+        "line": "- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:44:23.953058Z",
+        "line": "\u001b[32m✓ built in 1.32s\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:44:37.169144Z",
+        "line": "[qvester:pre-compress] 34 .gz + 34 .br from 66290 KiB raw in dist (recursive): gzip=24.2%, brotli=18.2% (saves 24.9% vs gzip)"
+      },
+      {
+        "ts": "2026-10-04T17:44:37.232537Z",
+        "line": "[studio] Building Atoma Visualizer at /atoma-visualizer/..."
+      },
+      {
+        "ts": "2026-10-04T17:44:37.235506Z",
+        "line": "[studio] Installing dependencies for Atoma Visualizer..."
+      },
+      {
+        "ts": "2026-10-04T17:44:37.236283Z",
+        "line": "[studio] Pre-linked 1 workspace package(s) for Atoma Visualizer"
+      },
+      {
+        "ts": "2026-10-04T17:44:40.648754Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:44:40.648999Z",
+        "line": "added 91 packages in 3s"
+      },
+      {
+        "ts": "2026-10-04T17:44:40.873779Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:44:40.874282Z",
+        "line": "\u003e build"
+      },
+      {
+        "ts": "2026-10-04T17:44:40.874406Z",
+        "line": "\u003e vite build"
+      },
+      {
+        "ts": "2026-10-04T17:44:40.87448Z",
+        "line": ""
+      },
+      {
+        "ts": "2026-10-04T17:44:41.134886Z",
+        "line": "[glsl-resolve] LYGIA directory not found at /opt/buildhome/repo/vendor/lygia."
+      },
+      {
+        "ts": "2026-10-04T17:44:41.135405Z",
+        "line": "[glsl-resolve] Qvester shader vocabulary not found at /opt/buildhome/repo/vendor/qv-shaders."
+      },
+      {
+        "ts": "2026-10-04T17:44:41.136734Z",
+        "line": "\u001b[36mvite v8.0.9 \u001b[32mbuilding client environment for production...\u001b[36m\u001b[39m"
+      },
+      {
+        "ts": "2026-10-04T17:44:41.545594Z",
+        "line": "\u001b[2K\rtransforming...[glsl-resolve] File not found: /opt/buildhome/repo/vendor/qv-shaders/noise/hash.glsl (included as \"qv/noise/hash.glsl\")"
+      },
+      {
+        "ts": "2026-10-04T17:44:41.545808Z",
+        "line": "[glsl-resolve] File not found: /opt/buildhome/repo/vendor/qv-shaders/noise/value.glsl (included as \"qv/noise/value.glsl\")"
+      },
+      {
+        "ts": "2026-10-04T17:44:41.545854Z",
+        "line": "[glsl-resolve] File not found: /opt/buildhome/repo/vendor/qv-shaders/noise/fbm.glsl (included as \"qv/noise/fbm.glsl\")"
+      },
+      {
+        "ts": "2026-10-04T17:44:41.545889Z",
+        "line": "[glsl-resolve] File not found: /opt/buildhome/repo/vendor/qv-shaders/noise/hash.glsl (included as \"qv/noise/hash.glsl\")"
+      },
+      {
+        "ts": "2026-10-04T17:44:41.54592Z",
+        "line": "[glsl-resolve] File not found: /opt/buildhome/repo/vendor/qv-shaders/noise/value.glsl (included as \"qv/noise/value.glsl\")"
+      },
+      {
+        "ts": "2026-10-04T17:44:41.545949Z",
+        "line": "[glsl-resolve] File not found: /opt/buildhome/repo/vendor/qv-shaders/noise/fbm.glsl (included as \"qv/noise/fbm.glsl\")"
+      },
+      {
+        "ts": "2026-10-04T17:44:41.545978Z",
+        "line": "[glsl-resolve] File not found: /opt/buildhome/repo/vendor/qv-shaders/noise/hash.glsl (included as \"qv/noise/hash.glsl\")"
+      },
+      {
+        "ts": "2026-10-04T17:44:41.546007Z",
+        "line": "[glsl-resolve] File not found: /opt/buildhome/repo/vendor/qv-shaders/noise/value.glsl (included as \"qv/noise/value.glsl\")"
+      },
+      {
+        "ts": "2026-10-04T17:44:41.546035Z",
+        "line": "[glsl-resolve] File not found: /opt/buildhome/repo/vendor/qv-shaders/noise/fbm.glsl (included as \"qv/noise/fbm.glsl\")"
+      },
+      {
+        "ts": "2026-10-04T17:44:41.546078Z",
+        "line": "[glsl-resolve] File not found: /opt/buildhome/repo/vendor/qv-shaders/noise/hash.glsl (included as \"qv/noise/hash.glsl\")"
+      },
+      {
+        "ts": "2026-10-04T17:44:41.54611Z",
+        "line": "[glsl-resolve] File not found: /opt/buildhome/repo/vendor/qv-shaders/noise/value.glsl (included as \"qv/noise/value.glsl\")"
+      },
+      {
+        "ts": "2026-10-04T17:44:41.546137Z",
+        "line": "[glsl-resolve] File not found: /opt/buildhome/repo/vendor/qv-shaders/noise/fbm.glsl (included as \"qv/noise/fbm.glsl\")"
+      },
+      {
+        "ts": "2026-10-04T17:44:41.546166Z",
+        "line": "[glsl-resolve] File not found: /opt/buildhome/repo/vendor/qv-shaders/noise/hash.glsl (included as \"qv/noise/hash.glsl\")"
+      },
+      {
+        "ts": "2026-10-04T17:44:41.546195Z",
+        "line": "[glsl-resolve] File not found: /opt/buildhome/repo/vendor/qv-shaders/noise/hash.glsl (included as \"qv/noise/hash.glsl\")"
+      },
+      {
+        "ts": "2026-10-04T17:44:41.546223Z",
+        "line": "[glsl-resolve] File not found: /opt/buildhome/repo/vendor/qv-shaders/noise/value.glsl (included as \"qv/noise/value.glsl\")"
+      },
+      {
+        "ts": "2026-10-04T17:44:41.54625Z",
+        "line": "[glsl-resolve] File not found: /opt/buildhome/repo/vendor/qv-shaders/noise/fbm.glsl (included as \"qv/noise/fbm.glsl\")"
+      },
+      {
+        "ts": "2026-10-04T17:44:41.658245Z",
+        "line": "✓ 522 modules transformed."
+      },
+      {
+        "ts": "2026-10-04T17:44:41.837116Z",
+        "line": "rendering chunks..."
+      },
+      {
+        "ts": "2026-10-04T17:44:42.185334Z",
+        "line": "computing gzip size..."
+      },
+      {
+        "ts": "2026-10-04T17:44:42.342445Z",
+        "line": "dist/assets/favicon-B_SY1GJM.ico                                     0.00 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:42.342944Z",
+        "line": "dist/assets/qvx-hud-tips-CcsP5jU7.json                               8.62 kB │ gzip:     2.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:42.343056Z",
+        "line": "dist/index.html                                                     17.03 kB │ gzip:     4.98 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:42.343117Z",
+        "line": "dist/assets/lyric-particle-builder.worker-B0d4sj2d.js               56.88 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:42.343169Z",
+        "line": "dist/assets/ort-wasm-simd-threaded-CDsxkEtH.wasm                13,022.40 kB │ gzip: 3,391.83 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:42.343218Z",
+        "line": "dist/assets/qmr-mini-chip-mount-5UbZ1kdu.css                         1.22 kB │ gzip:     0.62 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:42.343265Z",
+        "line": "dist/assets/src-BcCg7KHv.css                                        23.85 kB │ gzip:     4.83 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:42.343324Z",
+        "line": "dist/assets/decision-response-bridge-BUsAsGSF.css                  112.39 kB │ gzip:    18.78 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:42.343366Z",
+        "line": "dist/assets/index-FowzuU-B.css                                     135.60 kB │ gzip:    29.71 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:42.343402Z",
+        "line": "dist/assets/qvx-hud-tips-im7Hm4nF.js                                 0.08 kB │ gzip:     0.10 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:42.343431Z",
+        "line": "dist/assets/shadow-logging-Dkv76Yvz.js                               0.08 kB │ gzip:     0.09 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:42.343459Z",
+        "line": "dist/assets/cue-policy-onnx-runtime-D4cn3ivp.js                      0.09 kB │ gzip:     0.10 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:42.343511Z",
+        "line": "dist/assets/app-state--jOA3KMF.js                                    0.10 kB │ gzip:     0.11 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:42.343544Z",
+        "line": "dist/assets/cue-policy-variant-family-onnx-runtime-Cb72o120.js       0.12 kB │ gzip:     0.12 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:42.343572Z",
+        "line": "dist/assets/state-bus-BFdSyKJB.js                                    0.32 kB │ gzip:     0.20 kB"
+      },
+      {
+        "ts": "2026-10-04T17:44:42.343599Z",
+        "line": "dist/assets/shadow-logging-C12KLXIz.js                               0.33 kB │ gzip:     0.26 kB"
+      }
+    ]
+  },
+  "success": true,
+  "errors": [],
+  "messages": []
+}

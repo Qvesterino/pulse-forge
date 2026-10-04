@@ -1374,3 +1374,167 @@ describe("U-P: LUFS meter reports silence after a long feed gap", () => {
     expect(proc.getMeters().global.outputShortTermLufs).toBeGreaterThan(-40);
   });
 });
+
+// ── 12. Dead front-panel knobs (2026-10-04 plugin audit) ─────
+
+describe("comp: the global THRESHOLD knob drives the single-band compressor", () => {
+  it("single-band comp responds to comp.thresholdDb (per-band default no longer shadows it)", () => {
+    // Pre-fix: buildDefaultParams() always materializes
+    // comp.band0.thresholdDb (-20), so `?? thresholdDb` never fired and the
+    // global knob was dead at bandCount 1 — the value every factory preset
+    // writes. Two renders with different global thresholds must differ.
+    const tailRms = (globalThresholdDb: number): number => {
+      const proc = makeProcessor();
+      enableInGraph(proc, "comp");
+      proc.setParameters({
+        "comp.thresholdDb": globalThresholdDb,
+        "comp.ratio": 12,
+        "comp.attackMs": 1,
+        "comp.releaseMs": 50,
+        "comp.mix": 100,
+        "comp.bandCount": 1,
+      });
+      const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+      let sumSq = 0;
+      let n = 0;
+      for (let b = 0; b < 120; b++) {
+        sine(chans, b, 440, 0.3); // ≈ −10.5 dBFS — well above −20
+        proc.process(chans, BLOCK);
+        if (b >= 80) {
+          for (let i = 0; i < BLOCK; i++) {
+            sumSq += chans[0][i] * chans[0][i];
+            n++;
+          }
+        }
+      }
+      return Math.sqrt(sumSq / n);
+    };
+    const low = tailRms(-40); // heavy compression
+    const high = tailRms(-6); // above the signal — nearly no compression
+    // With the knob dead both renders were identical (both at −20).
+    expect(high).toBeGreaterThan(low * 1.5);
+  });
+
+  it("2/3-band mode keeps per-band thresholds authoritative", () => {
+    const proc = makeProcessor();
+    enableInGraph(proc, "comp");
+    proc.setParameters({
+      "comp.thresholdDb": -6, // global ignored in multiband mode
+      "comp.ratio": 12,
+      "comp.attackMs": 1,
+      "comp.releaseMs": 50,
+      "comp.mix": 100,
+      "comp.bandCount": 2,
+      "comp.band0.thresholdDb": -45, // band 1 compresses hard
+      "comp.band1.thresholdDb": -6, // band 2 barely
+    });
+    const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    for (let b = 0; b < 60; b++) {
+      sine(chans, b, 440, 0.3);
+      proc.process(chans, BLOCK);
+    }
+    const meters = proc.getMeters().modules.comp as { gainReduction: number[] };
+    expect(meters.gainReduction[0]).toBeGreaterThan(2);
+    expect(meters.gainReduction[1]).toBeLessThan(1);
+  });
+});
+
+describe("comp meters: the GR bar scalar field exists", () => {
+  it("getMeters().gainReductionDb reports max-across-bands reduction", () => {
+    // Pre-fix the panel read `gainReductionDb` off a module that only
+    // exposed `gainReduction[]` — the bar stayed empty on every reduction.
+    const proc = makeProcessor();
+    enableInGraph(proc, "comp");
+    proc.setParameters({
+      "comp.thresholdDb": -40,
+      "comp.ratio": 12,
+      "comp.attackMs": 1,
+      "comp.releaseMs": 50,
+      "comp.mix": 100,
+      "comp.bandCount": 1,
+    });
+    const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    for (let b = 0; b < 60; b++) {
+      sine(chans, b, 440, 0.3);
+      proc.process(chans, BLOCK);
+    }
+    const meters = proc.getMeters().modules.comp as { gainReductionDb: number; gainReduction: number[] };
+    expect(Number.isFinite(meters.gainReductionDb)).toBe(true);
+    expect(meters.gainReductionDb).toBeGreaterThan(2);
+    expect(meters.gainReductionDb).toBe(Math.max(...meters.gainReduction));
+  });
+});
+
+describe("gate: the global HYSTERESIS knob drives the single-band gate", () => {
+  it("single-band gate close threshold follows gate.hysteresisDb", () => {
+    // Pre-fix: buildDefaultParams() always materializes
+    // gate.band0.closeThresholdDb (-50), so `?? open - hysteresis` never
+    // fired and the HYSTERESIS knob was dead at bandCount 1.
+    // Signal at −30 dBFS sits between (open=−40) − hysteresis (close) at
+    // hysteresis 6 (−46, below signal → stays open) and 24 (−64, also below
+    // signal). Use a decaying signal to expose the difference: a −28 dBFS
+    // tone must hold the gate open with hysteresis 24 but close with 0.
+    const holdFrames = (hysteresisDb: number): number => {
+      const proc = makeProcessor();
+      enableInGraph(proc, "gate");
+      proc.setParameters({
+        "gate.hysteresisDb": hysteresisDb,
+        "gate.rangeDb": -20,
+        "gate.attackMs": 1,
+        "gate.holdMs": 0,
+        "gate.releaseMs": 5,
+        "gate.mix": 100,
+        "gate.bandCount": 1,
+        "gate.band0.openThresholdDb": -40,
+      });
+      const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+      let lastOpen = -1;
+      for (let b = 0; b < 200; b++) {
+        // Amplitude ramp: −40 dBFS at b=0 down to −46 dBFS at b=99, then a
+        // steady −38 dBFS from b=100 (re-opens the gate).
+        const amp = b < 100 ? 0.03 * (1 - b * 0.0017) : 0.04;
+        sine(chans, b, 440, amp);
+        proc.process(chans, BLOCK);
+        const meters = proc.getMeters().modules.gate as { bandState: number[] };
+        // Open (2) or Holding (3) while the signal is above the derived close.
+        if (b < 100 && (meters.bandState[0] === 2 || meters.bandState[0] === 3)) lastOpen = b;
+      }
+      return lastOpen;
+    };
+    // Both must close eventually; the exact frames differ with the knob.
+    // The regression guard: pre-fix both runs returned the SAME value
+    // because the knob was dead.
+    const h0 = holdFrames(0);
+    const h24 = holdFrames(24);
+    expect(h0).not.toBe(-1); // gate did open at all
+    expect(h24).not.toBe(-1);
+    expect(h0).not.toBe(h24);
+  });
+
+  it("2/3-band mode keeps per-band close thresholds authoritative", () => {
+    const proc = makeProcessor();
+    enableInGraph(proc, "gate");
+    proc.setParameters({
+      "gate.hysteresisDb": 24, // global ignored in multiband mode
+      "gate.rangeDb": -20,
+      "gate.attackMs": 1,
+      "gate.holdMs": 50,
+      "gate.releaseMs": 5,
+      "gate.mix": 100,
+      "gate.bandCount": 2,
+      "gate.band0.openThresholdDb": -40,
+      "gate.band0.closeThresholdDb": -20, // clamped to open (−40) downstream
+      "gate.band1.openThresholdDb": -40,
+      "gate.band1.closeThresholdDb": -60,
+    });
+    const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    for (let b = 0; b < 40; b++) {
+      sine(chans, b, 440, 0.03);
+      proc.process(chans, BLOCK);
+    }
+    const meters = proc.getMeters().modules.gate as { bandState: number[] };
+    // Band 1 has an aggressive close (−20 clamped to −40): the gate must not
+    // chatter — it is open or holding while the signal is above −40.
+    expect([2, 3]).toContain(meters.bandState[0]);
+  });
+});

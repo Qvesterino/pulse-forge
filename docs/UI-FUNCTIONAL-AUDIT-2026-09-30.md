@@ -697,17 +697,35 @@ failed — a test for a state the product cannot be in.
 
 ## 5. INCOMPLETE / INTENTIONALLY NOT "FIXED"
 
-- **SliceLab FADE IN / FADE OUT** declare `max` = slice length but the
-  handler only clamps the low end. The engine bounds the value downstream,
-  so this is a UI-honesty issue, not a state-corruption one. Left as-is to
-  keep the diff focused; recorded here rather than silently dropped.
-- **Native `window.prompt` in the kit/PACK/BINDS/theme import paths and the
-  mixer fader menu.** The values are validated and the UX is dated, but
-  replacing them with dialogs is a design change, not a defect repair.
-- **Pre-existing per-keystroke commits in other small numeric fields**
-  (`ModPanel.tsx:934,952` automation point tick/value, `SliceLab.tsx:637,648`).
-  Same class as #6, lower severity (single param, snap-to-step). Fixing
-  them all is a broader refactor than this audit should make unprompted.
+- ~~**SliceLab FADE IN / FADE OUT** declare `max` = slice length but the
+  handler only clamps the low end.~~ **CLOSED (UX-polish wave, 2026-10-04).**
+  The engine's fade fit is now a shared pure function (`fitSliceFades` in
+  `src/audio-engine/declick.ts`) used by BOTH `resolveSlicePlayback()` and the
+  SliceLab edit handlers, so a field can no longer display a value the engine
+  would silently rescale. `tests/slice-playback.test.ts` pins helper ⇄ engine
+  equality.
+- ~~**Native `window.prompt` in the kit/PACK/BINDS/theme import paths and the
+  mixer fader menu.**~~ **CLOSED (UX-polish wave, 2026-10-04).** Replaced by
+  the shared `src/ui/TextPromptDialog.tsx` (multiline for share codes, Escape
+  and backdrop cancel, Enter/Ctrl+Enter submit, caller-owned error slot,
+  focus restored via `useFocusRestore`). Theme install tests now drive the
+  real dialog instead of mocking `window.prompt`, so a regression back to the
+  native prompt fails the suite. **Deliberately still native: the
+  MorphDynamics/Ultina user-preset name/rename/delete prompts and
+  `IntentPanel`'s "Copy share link" `window.prompt`** — those are a
+  preset-library management redesign (list UI + confirm dialogs), not the
+  code-entry path this wave targeted; recorded here rather than dropped.
+- ~~**Pre-existing per-keystroke commits in other small numeric fields**
+  (`ModPanel.tsx:934,952` automation point tick/value, `SliceLab.tsx:637,648`).~~
+  **CLOSED (UX-polish wave, 2026-10-04).** New shared
+  `src/ui/NumericDraftInput.tsx` (draft commits once on blur/Enter, Escape
+  reverts, cleared field cancels) now backs the ModPanel pattern- and
+  scene-automation point tick/value fields and the SliceLab START/END/FADE
+  fields. SliceLab's fields edit local drafts committed to the store only on
+  APPLY, so the audit note about them was lower-risk than stated — the
+  component still fixes the typing experience (a controlled `toFixed(3)` value
+  fought the decimal separator while typing). `tests/ui/NumericDraftInput.test.tsx`
+  - a ModPanel integration test pin "one commit, not one per keystroke".
 
 ---
 

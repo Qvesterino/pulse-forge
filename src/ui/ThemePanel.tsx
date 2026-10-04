@@ -1,6 +1,7 @@
 import { THEME_PRESETS, accentOf, resetTheme, setTheme, useTheme } from "./theme";
 import { decodeThemeCode, encodeThemeCode } from "../export/themeCode";
 import { useState } from "react";
+import { TextPromptDialog } from "./TextPromptDialog";
 
 /**
  * Theme panel — preset palettes, custom accent hue, UI scale, density and
@@ -9,6 +10,8 @@ import { useState } from "react";
 export function ThemePanel() {
   const theme = useTheme();
   const [shareStatus, setShareStatus] = useState<string | null>(null);
+  const [installOpen, setInstallOpen] = useState(false);
+  const [installError, setInstallError] = useState<string | null>(null);
 
   return (
     <div className="theme-panel" role="group" aria-label="Theme settings">
@@ -111,15 +114,8 @@ export function ThemePanel() {
             className="theme-mini-btn"
             title="Install a look from a PFTHM1 code"
             onClick={() => {
-              const code = window.prompt("Paste a theme code (PFTHM1:…)");
-              if (!code) return;
-              const decoded = decodeThemeCode(code);
-              if (!decoded) {
-                setShareStatus("Invalid theme code");
-                return;
-              }
-              setTheme(decoded);
-              setShareStatus("Theme installed");
+              setInstallError(null);
+              setInstallOpen(true);
             }}
           >
             INSTALL FROM CODE…
@@ -127,6 +123,31 @@ export function ThemePanel() {
         </div>
         {shareStatus && <div className="theme-share-status">{shareStatus}</div>}
       </div>
+      <TextPromptDialog
+        open={installOpen}
+        title="INSTALL THEME"
+        label="Paste a theme code (PFTHM1:…)"
+        placeholder="PFTHM1:…"
+        multiline
+        error={installError}
+        confirmLabel="INSTALL"
+        onSubmit={(code) => {
+          const decoded = decodeThemeCode(code);
+          if (!decoded) {
+            // Error lives in the OPEN dialog only — the status line sits
+            // behind the backdrop, so writing both duplicated the same text.
+            setInstallError("Invalid theme code");
+            return;
+          }
+          setInstallOpen(false);
+          setTheme(decoded);
+          setShareStatus("Theme installed");
+        }}
+        onClose={() => {
+          setInstallOpen(false);
+          setInstallError(null);
+        }}
+      />
     </div>
   );
 }

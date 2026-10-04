@@ -13,28 +13,28 @@
       "fileB": "pairs/phase5-soft-vs-closed-b.wav"
     },
     {
+      "lane": "phase5-dnb-vs-pop",
+      "label": "kick.dnb vs kick.pop (on the backbeat)",
+      "fileA": "pairs/phase5-dnb-vs-pop.wav",
+      "fileB": "pairs/phase5-dnb-vs-pop-b.wav"
+    },
+    {
+      "lane": "phase5-drill-vs-main-s",
+      "label": "snare.drill vs snare.main (on the backbeat)",
+      "fileA": "pairs/phase5-drill-vs-main-s.wav",
+      "fileB": "pairs/phase5-drill-vs-main-s-b.wav"
+    },
+    {
+      "lane": "phase5-pedal-vs-closed",
+      "label": "hat.pedal vs hat.closed.soft (on the offbeat)",
+      "fileA": "pairs/phase5-pedal-vs-closed.wav",
+      "fileB": "pairs/phase5-pedal-vs-closed-b.wav"
+    },
+    {
       "lane": "phase5-closed-vs-open",
       "label": "hat.closed vs hat.open.short (on the offbeat)",
       "fileA": "pairs/phase5-closed-vs-open.wav",
       "fileB": "pairs/phase5-closed-vs-open-b.wav"
-    },
-    {
-      "lane": "phase5-pop-vs-punch",
-      "label": "kick.pop vs kick.punch (on the backbeat)",
-      "fileA": "pairs/phase5-pop-vs-punch.wav",
-      "fileB": "pairs/phase5-pop-vs-punch-b.wav"
-    },
-    {
-      "lane": "phase5-closed-vs-dnb-h",
-      "label": "hat.closed vs hat.dnb (on the offbeat)",
-      "fileA": "pairs/phase5-closed-vs-dnb-h.wav",
-      "fileB": "pairs/phase5-closed-vs-dnb-h-b.wav"
-    },
-    {
-      "lane": "phase5-lofi-vs-punch-k",
-      "label": "kick.lofi vs kick.punch (on the backbeat)",
-      "fileA": "pairs/phase5-lofi-vs-punch-k.wav",
-      "fileB": "pairs/phase5-lofi-vs-punch-k-b.wav"
     }
   ]
 }

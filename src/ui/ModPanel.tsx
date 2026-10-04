@@ -51,6 +51,7 @@ import {
   targetParamDef,
 } from "../project-model/targets";
 import { Slider } from "./controls";
+import { NumericDraftInput } from "./NumericDraftInput";
 import { trackBadge } from "./TrackTabs";
 import { clamp } from "../shared/ids";
 import { StepGridEditor } from "./StepGridEditor";
@@ -923,34 +924,30 @@ function PointEditor({
               <span className="auto-point-index" aria-hidden="true">
                 #{i + 1}
               </span>
-              <input
-                type="number"
+              <NumericDraftInput
                 className="auto-point-input"
                 aria-label={`Point ${i + 1} tick`}
                 value={livePos?.index === i ? livePos.tick : p.tick}
                 min={0}
                 max={patternTicks}
                 step={STEP_TICKS}
-                onChange={(event) => {
-                  const v = Math.max(
-                    0,
-                    Math.min(patternTicks, Math.round(Number(event.target.value) / STEP_TICKS) * STEP_TICKS),
-                  );
+                onCommit={(raw) => {
+                  const v = Math.max(0, Math.min(patternTicks, Math.round(raw / STEP_TICKS) * STEP_TICKS));
                   services.store.execute(
                     moveAutomationPoint(services.store.doc, laneId, i, { tick: v, value: p.value }),
                   );
                 }}
               />
-              <input
-                type="number"
+              <NumericDraftInput
                 className="auto-point-input"
                 aria-label={`Point ${i + 1} value`}
-                value={Number((livePos?.index === i ? livePos.value : p.value).toFixed(3))}
+                format={(v) => String(Number(v.toFixed(3)))}
+                value={livePos?.index === i ? livePos.value : p.value}
                 min={range.min}
                 max={range.max}
                 step={(range.max - range.min) / 100}
-                onChange={(event) => {
-                  const v = Math.max(range.min, Math.min(range.max, Number(event.target.value)));
+                onCommit={(raw) => {
+                  const v = Math.max(range.min, Math.min(range.max, raw));
                   services.store.execute(
                     moveAutomationPoint(services.store.doc, laneId, i, { tick: p.tick, value: v }),
                   );
@@ -1732,14 +1729,10 @@ function IntensityEditor({
               }}
             >
               <span>#{i + 1}</span>
-              <input
-                type="number"
+              <NumericDraftInput
                 value={livePos?.index === i ? livePos.offset : p.offset}
-                onChange={(e) => {
-                  const v = Math.max(
-                    0,
-                    Math.min(maxTicks, Math.round(Number(e.target.value) / STEP_TICKS) * STEP_TICKS),
-                  );
+                onCommit={(raw) => {
+                  const v = Math.max(0, Math.min(maxTicks, Math.round(raw / STEP_TICKS) * STEP_TICKS));
                   const updated = [...curve];
                   updated[i] = { offset: v, value: p.value } as typeof p;
                   services.store.execute(setSceneIntensityCurve(services.store.doc, sceneId, updated));
@@ -1755,14 +1748,14 @@ function IntensityEditor({
                 }}
                 aria-label={`Point ${i + 1} offset ticks`}
               />
-              <input
-                type="number"
+              <NumericDraftInput
                 step={0.05}
                 min={0}
                 max={1}
-                value={Number((livePos?.index === i ? livePos.value : p.value).toFixed(2))}
-                onChange={(e) => {
-                  const v = Math.max(0, Math.min(1, Number(e.target.value)));
+                format={(v) => String(Number(v.toFixed(2)))}
+                value={livePos?.index === i ? livePos.value : p.value}
+                onCommit={(raw) => {
+                  const v = Math.max(0, Math.min(1, raw));
                   const updated = [...curve];
                   updated[i] = { offset: p.offset, value: v } as typeof p;
                   services.store.execute(setSceneIntensityCurve(services.store.doc, sceneId, updated));

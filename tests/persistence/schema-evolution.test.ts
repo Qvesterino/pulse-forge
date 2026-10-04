@@ -20,6 +20,7 @@ import {
   STORE_SNAPSHOT_INDEX,
   STORE_ULTINA_PRESETS,
   STORE_MORPH_PRESETS,
+  STORE_PERSONAL_MODELS,
 } from "../../src/persistence/db";
 import { KitRepository } from "../../src/persistence/KitRepository";
 import { GroovePoolRepository } from "../../src/persistence/GroovePoolRepository";
@@ -59,6 +60,7 @@ const ALL_STORES = [
   STORE_SNAPSHOT_INDEX,
   STORE_ULTINA_PRESETS,
   STORE_MORPH_PRESETS,
+  STORE_PERSONAL_MODELS,
 ];
 
 const DB_NAME = "pulse-forge";
@@ -87,7 +89,7 @@ function allStoreNames(db: IDBDatabase): string[] {
 
 describe("schema evolution — store layout (GOAL 05)", () => {
   it("declares the full store list (compile guard against typos in this file)", () => {
-    expect(ALL_STORES).toHaveLength(15);
+    expect(ALL_STORES).toHaveLength(16);
     expect(new Set(ALL_STORES).size).toBe(ALL_STORES.length);
   });
 
