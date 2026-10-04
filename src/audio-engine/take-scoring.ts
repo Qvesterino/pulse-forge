@@ -32,8 +32,12 @@
 
 import { detectTransients } from "../audio-workers/onset-detector";
 
-/** Grid tolerance used by the sequencer's own step snapping (± half a 1/16). */
-const GRID_TOLERANCE_SEC = 0.06;
+/** Deviation from the take's own MEDIAN that marks a hit as "on-grid".
+ *  Relative to the median, the shared detection bias cancels out.
+ *  25 ms is clearly inside the "feels locked" band — a 1/16 at 120 BPM is
+ *  125 ms, so a take whose hits wander by more than a fifth of the step
+ *  reads as human-loose, not machine-tight. */
+const GROOVE_SPREAD_TOLERANCE_SEC = 0.025;
 /** Frames under this RMS are "silence" for noise-floor ranking. */
 const SILENCE_RMS_FLOOR = 1e-4;
 /** Samples at |x| >= 0.999 count as clipped (16-bit headroom convention). */
@@ -47,14 +51,32 @@ const PITCH_MIN_HZ = 70;
 const PITCH_MAX_HZ = 1000;
 /** Relative autocorrelation peak required to call a frame "voiced". */
 const VOICED_CORRELATION_MIN = 0.3;
+/**
+ * Pitch frames must carry real signal, not room noise: RMS at or below
+ * −40 dBFS is a fan/hiss/preamp bed, and a perfectly periodic hum would
+ * otherwise score as "flawlessly in tune". Measured WITHOUT the tolerance
+ * games below — a vocal take sits far above this, a noise bed far below.
+ */
+const VOICED_RMS_MIN = 0.01;
 /** Semitone bandwidth where a take stops being "in tune with itself". */
 const PITCH_DRIFT_MAX_SEMITONES = 0.25;
 
 export interface TakeMetrics {
   /** Share of transients within grid tolerance (0..1). NaN when no onsets. */
   grooveTightness: number;
-  /** Median absolute onset deviation from the nearest grid line, seconds. */
+  /**
+   * Median absolute onset deviation from the nearest grid line, seconds.
+   * Includes the detector's shared pre-peak bias AND the take's own pocket
+   * feel — it is a character reading ("rushed/laid back"), NOT a quality
+   * score; compare `grooveSpreadSec` for lock.
+   */
   grooveMedianDeviationSec: number;
+  /**
+   * Robust spread of onset deviations around the take's own median (MAD),
+   * seconds. The shared detector bias cancels, so this is the take's LOCK:
+   * near 0 for machine-locked hits, tens of ms for wandering ones.
+   */
+  grooveSpreadSec: number;
   /** Noise floor as dBFS (10th-percentile frame RMS). */
   noiseFloorDb: number;
   /** Share of samples at or above full scale (0..1). */
@@ -150,6 +172,7 @@ export function measureTake(data: Float32Array, sampleRate: number, bpm: number)
   const empty: TakeMetrics = {
     grooveTightness: Number.NaN,
     grooveMedianDeviationSec: Number.NaN,
+    grooveSpreadSec: Number.NaN,
     noiseFloorDb: Number.NaN,
     clippedShare: 0,
     pitchDriftSemitones: Number.NaN,
@@ -181,22 +204,34 @@ export function measureTake(data: Float32Array, sampleRate: number, bpm: number)
   const floorRms = Math.max(sortedRms[floorIndex], SILENCE_RMS_FLOOR);
   const noiseFloorDb = 20 * Math.log10(floorRms);
 
-  // Groove: transients against the 1/16 grid.
+  // Groove: transients against the 1/16 grid. The detector's pre-peak
+  // latency shifts every onset by the same systematic amount, so tightness
+  // is judged against the take's own MEDIAN deviation (the shared bias
+  // cancels) while the median itself still reports the take's overall feel.
   const onsets = data.length > sampleRate * 0.05 ? detectTransients(data, sampleRate, 1) : [];
   const deviations: number[] = [];
   for (const onset of onsets) {
-    const deviation = Math.abs(onset - nearestGridSec(onset, safeBpm));
-    deviations.push(deviation);
+    deviations.push(Math.abs(onset - nearestGridSec(onset, safeBpm)));
   }
-  const onGridCount = deviations.filter((deviation) => deviation <= GRID_TOLERANCE_SEC).length;
-  const grooveTightness = deviations.length > 0 ? onGridCount / deviations.length : Number.NaN;
   const sortedDeviations = Float64Array.from(deviations).sort();
   const grooveMedianDeviationSec = deviations.length > 0 ? medianOfSorted(sortedDeviations) : Number.NaN;
+  let grooveTightness = Number.NaN;
+  let grooveSpreadSec = Number.NaN;
+  if (deviations.length > 0) {
+    const spreads = deviations.map((deviation) => Math.abs(deviation - grooveMedianDeviationSec));
+    grooveSpreadSec = medianOfSorted(Float64Array.from(spreads).sort());
+    const onGridCount = spreads.filter((spread) => spread <= GROOVE_SPREAD_TOLERANCE_SEC).length;
+    grooveTightness = onGridCount / deviations.length;
+  }
 
-  // Pitch drift: one autocorrelation estimate per 0.5 s voiced frame.
+  // Pitch drift: one autocorrelation estimate per 0.5 s voiced frame. Voiced
+  // requires BOTH a periodic peak and real energy (RMS gate) — a periodic fan
+  // would otherwise win the pitch axis with a perfect score.
   const pitchFrame = Math.round(0.5 * sampleRate);
   const voicedHz: number[] = [];
   for (let start = 0; start + pitchFrame <= data.length; start += pitchFrame) {
+    const rms = frameRms(data, start, start + pitchFrame);
+    if (rms < VOICED_RMS_MIN) continue;
     const peak = autocorrelationPeak(data, start, start + pitchFrame, sampleRate);
     if (peak.value >= VOICED_CORRELATION_MIN && peak.hz >= PITCH_MIN_HZ && peak.hz <= PITCH_MAX_HZ) {
       voicedHz.push(peak.hz);
@@ -216,6 +251,7 @@ export function measureTake(data: Float32Array, sampleRate: number, bpm: number)
   return {
     grooveTightness,
     grooveMedianDeviationSec,
+    grooveSpreadSec,
     noiseFloorDb,
     clippedShare,
     pitchDriftSemitones,
@@ -249,7 +285,7 @@ export function scoreTake(metrics: TakeMetrics): TakeScore {
   if (Number.isFinite(metrics.grooveTightness) && metrics.onsetCount > 0) {
     score += metrics.grooveTightness * 50;
     evidence.push(
-      `groove ${fmtPct(metrics.grooveTightness)} on-grid (median ${metrics.grooveMedianDeviationSec.toFixed(0)} ms)`,
+      `groove ${fmtPct(metrics.grooveTightness)} locked (spread ±${(metrics.grooveSpreadSec * 1000).toFixed(0)} ms, feel ${(metrics.grooveMedianDeviationSec * 1000).toFixed(0)} ms)`,
     );
   } else {
     evidence.push("no transients to judge groove");
@@ -267,11 +303,12 @@ export function scoreTake(metrics: TakeMetrics): TakeScore {
     evidence.push("no voiced pitch to judge");
   }
 
-  // Noise floor: 0..25. A floor below −70 dBFS earns the full share; every
-  // 10 dB louder loses a third of it (a fan or preamp hiss is audible long
-  // before it is loud).
+  // Noise floor: 0..25. A floor at −70 dBFS or BELOW earns the full share (a
+  // quieter room cannot score less than a quiet one — the axis is inverted
+  // in dB, so the fraction runs from the loud end); a floor at −40 dBFS or
+  // louder earns nothing. Every 10 dB of fan/hiss costs a third.
   const floorScore = Number.isFinite(metrics.noiseFloorDb)
-    ? 25 * Math.max(0, Math.min(1, (metrics.noiseFloorDb + 70) / 30))
+    ? 25 * Math.max(0, Math.min(1, (-40 - metrics.noiseFloorDb) / 30))
     : 0;
   score += floorScore;
   evidence.push(`floor ${fmtDb(metrics.noiseFloorDb)}`);

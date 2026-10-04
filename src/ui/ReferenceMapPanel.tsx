@@ -5,6 +5,7 @@ import {
   REFERENCE_STAGE_LABELS,
   analyzeReferenceAsync,
   bpmCommand,
+  buildReferenceMatch,
   confidenceLabel,
   decodeReferenceFile,
   effectiveBpm,
@@ -14,12 +15,14 @@ import {
   sectionMarkerCommand,
   toMono,
   toPercent,
+  type ReferenceMatchReport,
   type ReferenceKeyCandidate,
   type ReferenceMap,
   type ReferenceMode,
   type ReferenceStage,
   type TempoCandidate,
 } from "../reference";
+import { applyMasterMatchEqCommand } from "../commands/master";
 import { downloadBlob } from "../export/download";
 import { sanitizeFilename } from "../rendering/wav";
 import { MAX_AUDIO_IMPORT_BYTES } from "./DropZone";
@@ -56,13 +59,14 @@ const ACCEPTED_EXTENSIONS = /\.(wav|wave|mp3|ogg|oga|flac|aiff|aif|m4a|aac|opus|
 const MIN_BPM = 20;
 const MAX_BPM = 400;
 
-type TabId = "map" | "rhythm" | "harmony" | "diag";
+type TabId = "map" | "rhythm" | "harmony" | "diag" | "match";
 
 const TABS: ReadonlyArray<{ id: TabId; label: string }> = [
   { id: "map", label: "MAPA" },
   { id: "rhythm", label: "RYTMUS" },
   { id: "harmony", label: "HARMONIA" },
   { id: "diag", label: "DIAGNOSTIKA" },
+  { id: "match", label: "MATCH" },
 ];
 
 /** A user correction, kept beside the detected value rather than over it. */
@@ -81,6 +85,9 @@ interface Analyzed {
   /** Downsampled onset envelope for the MAPA waveform. */
   envelope: number[];
   frameRate: number;
+  /** Original decoded channels — the MATCH tab re-measures the reference. */
+  channels: Float32Array[];
+  sampleRate: number;
 }
 
 const EMPTY_CORRECTION: Correction = { bpm: null, tonic: null, mode: null, reading: "as-detected" };
@@ -183,6 +190,8 @@ export function ReferenceMapPanel() {
           map: output.result,
           envelope: output.onsetEnvelope,
           frameRate: output.onsetFrameRate,
+          channels: decoded.channels,
+          sampleRate: decoded.sampleRate,
         });
         setStage("done");
       } catch (err) {
@@ -347,6 +356,56 @@ export function ReferenceMapPanel() {
     // producer's own judgement, and the command writes exactly that.
     runCommand((d) => grooveCommand(d, { swing: swingPercent / 100 }), "Set a swing value first.");
   }, [swingPercent, runCommand]);
+
+  // ---------------------------------------------------------------------------
+  // MATCH — "ako ďaleko som od referencie" (reference-matching wave).
+  //
+  // Renders the CURRENT project pre-master (the match measures the MIX, not
+  // the master's reaction to it — the match-eq precedent), measures both
+  // sides through the SAME analyzers, and shows the deltas. APPLY lands the
+  // master match-EQ curve + loudness trim as ONE undo step through the same
+  // command the IntentPanel's Match-EQ uses. Nothing is auto-applied.
+  // ---------------------------------------------------------------------------
+  const [matchReport, setMatchReport] = useState<ReferenceMatchReport | null>(null);
+  const [matchBusy, setMatchBusy] = useState(false);
+  const [matchError, setMatchError] = useState<string | null>(null);
+
+  const runMatch = useCallback(async () => {
+    if (!analysis) return;
+    setMatchBusy(true);
+    setMatchError(null);
+    setMatchReport(null);
+    try {
+      const { renderProject } = await import("../rendering/renderer");
+      const buffer = await renderProject(doc, services.bank, {
+        mode: "pattern",
+        sampleRate: 44100,
+        tailSeconds: 0.3,
+        masterProcessing: false,
+      });
+      const channels = Array.from({ length: buffer.numberOfChannels }, (_, c) =>
+        buffer.getChannelData(c).slice(),
+      );
+      const report = buildReferenceMatch(
+        { channels, sampleRate: buffer.sampleRate },
+        { channels: analysis.channels, sampleRate: analysis.sampleRate },
+      );
+      setMatchReport(report);
+    } catch (err) {
+      setMatchError(err instanceof Error ? err.message : "Match failed.");
+    } finally {
+      setMatchBusy(false);
+    }
+  }, [analysis, doc, services.bank]);
+
+  const applyMatch = useCallback(() => {
+    if (!matchReport) return;
+    // The same command the IntentPanel Match-EQ button lands — one undo step
+    // carrying the curve AND the loudness trim together.
+    const command = applyMasterMatchEqCommand(doc, matchReport.curve, matchReport.loudnessTrimDb ?? undefined);
+    services.store.execute(command);
+    setApplied(command.label);
+  }, [matchReport, doc, services.store]);
 
   // Tick length is tempo-dependent, so marker placement is only correct if the
   // project is actually running at the reference tempo when the user imports.
@@ -585,6 +644,17 @@ export function ReferenceMapPanel() {
             {tab === "rhythm" && <RhythmTab map={analysis.map} half={halfCandidate} double={doubleCandidate} />}
             {tab === "harmony" && <HarmonyTab map={analysis.map} candidates={keyCandidates} />}
             {tab === "diag" && <DiagTab map={analysis.map} fileName={analysis.fileName} />}
+            {tab === "match" && (
+              <MatchTab
+                report={matchReport}
+                busy={matchBusy}
+                error={matchError}
+                hasAnalysis={analysis !== null}
+                onRun={runMatch}
+                onApply={applyMatch}
+                canApply={matchReport !== null && (matchReport.curve !== null || matchReport.loudnessTrimDb !== null)}
+              />
+            )}
           </div>
         </>
       )}
@@ -841,6 +911,158 @@ function Descriptors({ map }: { map: ReferenceMap }) {
           {d.groove.syncopation.toFixed(2)}
         </dd>
       </dl>
+    </div>
+  );
+}
+
+/**
+ * MATCH — "ako ďaleko som od referencie". The measured comparison: both
+ * sides through the same analyzers, the band table in dB-of-share, and the
+ * concrete APPLY (master match-EQ curve + loudness trim, one undo step).
+ *
+ * Honesty rules rendered, not just measured:
+ *   - nothing auto-applies — the button is the only path to a command;
+ *   - sub-deadzone gaps read "—" not "0.0 dB" (no trivia chasing);
+ *   - the reference's own descriptors are NEVER shown as a target — only the
+ *     measured DIFFERENCE is a suggestion (the F2 §2.2 rule).
+ */
+function MatchTab({
+  report,
+  busy,
+  error,
+  hasAnalysis,
+  onRun,
+  onApply,
+  canApply,
+}: {
+  report: ReferenceMatchReport | null;
+  busy: boolean;
+  error: string | null;
+  hasAnalysis: boolean;
+  onRun: () => void;
+  onApply: () => void;
+  canApply: boolean;
+}) {
+  return (
+    <div className="reference-match" data-testid="reference-match">
+      <div className="reference-match-header">
+        <button
+          type="button"
+          onClick={onRun}
+          disabled={!hasAnalysis || busy}
+          data-testid="reference-match-run"
+        >
+          {busy ? "Measuring…" : "Measure the mix vs the reference"}
+        </button>
+        {report && (
+          <button
+            type="button"
+            onClick={onApply}
+            disabled={!canApply}
+            title={
+              canApply
+                ? "Apply the match-EQ curve + loudness trim (one undo step)"
+                : "Nothing worth moving — the mix already matches"
+            }
+            data-testid="reference-match-apply"
+          >
+            APPLY MATCH
+          </button>
+        )}
+      </div>
+
+      {error && (
+        <p className="panel-error" role="alert" data-testid="reference-match-error">
+          {error}
+        </p>
+      )}
+
+      {report && (
+        <>
+          <p className="reference-summary" data-testid="reference-match-summary">
+            {report.summary}
+          </p>
+
+          <table className="reference-match-table" data-testid="reference-match-table">
+            <thead>
+              <tr>
+                <th>Band</th>
+                <th>Range</th>
+                <th>Mix</th>
+                <th>Reference</th>
+                <th>Δ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.bands.map((row) => (
+                <tr
+                  key={row.band}
+                  className={Math.abs(row.deltaDb) >= 1.5 ? "is-gapped" : undefined}
+                  data-testid={`reference-match-band-${row.band}`}
+                >
+                  <td>{row.label}</td>
+                  <td>{row.hz}</td>
+                  <td>{row.mixDb.toFixed(1)} dB</td>
+                  <td>{row.refDb.toFixed(1)} dB</td>
+                  <td>
+                    {Math.abs(row.deltaDb) < 1.5
+                      ? "—"
+                      : `${row.deltaDb > 0 ? "+" : ""}${row.deltaDb.toFixed(1)} dB`}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <dl className="reference-match-meta">
+            <dt>Loudness</dt>
+            <dd data-testid="reference-match-loudness">
+              {report.loudness.mixLufs === null || report.loudness.refLufs === null
+                ? "unmeasurable"
+                : `mix ${report.loudness.mixLufs} vs ref ${report.loudness.refLufs} LUFS → ${
+                    report.loudnessTrimDb === null
+                      ? "no trim worth making"
+                      : `${report.loudnessTrimDb > 0 ? "+" : ""}${report.loudnessTrimDb} dB trim`
+                  }`}
+            </dd>
+            <dt>Stereo</dt>
+            <dd data-testid="reference-match-stereo">
+              {report.stereo.verdict === "unknown"
+                ? "unmeasurable"
+                : report.stereo.verdict === "wider-reference"
+                  ? `the reference is wider (side ratio ${report.stereo.refSideRatio}) — widen the mix or pick a narrower reference`
+                  : report.stereo.verdict === "narrow-reference"
+                    ? `the reference is narrower (side ratio ${report.stereo.refSideRatio})`
+                    : "similar width"}
+            </dd>
+            {report.curve && (
+              <>
+                <dt>Match-EQ curve</dt>
+                <dd data-testid="reference-match-curve">
+                  low {report.curve.low > 0 ? "+" : ""}
+                  {report.curve.low} · low-mid {report.curve.lowMid > 0 ? "+" : ""}
+                  {report.curve.lowMid} · high-mid {report.curve.highMid > 0 ? "+" : ""}
+                  {report.curve.highMid} · high {report.curve.high > 0 ? "+" : ""}
+                  {report.curve.high} dB
+                </dd>
+              </>
+            )}
+          </dl>
+
+          <p className="panel-sub reference-match-note">
+            Shape, not volume: the curve is de-meaned (a match is never a hidden gain move) and clamped
+            ±6 dB. APPLY is one undo step — re-measure after to see what landed.
+          </p>
+        </>
+      )}
+
+      {!report && !busy && !error && (
+        <p className="panel-sub">
+          Renders the current pattern pre-master and compares it with the reference: band by band, in
+          loudness-invariant shares. The APPLY button lands a master match-EQ curve + loudness trim —
+          always yours to press, never automatic.
+        </p>
+      )}
     </div>
   );
 }

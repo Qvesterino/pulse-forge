@@ -103,6 +103,27 @@ export {
 } from "./apply";
 
 /**
+ * Reference Match (reference-matching wave) — the measured "ako ďaleko som
+ * od referencie" report: both sides through the same analyzers, the deltas in
+ * the mix-doctor band vocabulary, the master match-EQ curve + loudness trim
+ * an APPLY would land. Pure; the panel renders and applies, this measures.
+ */
+export {
+  buildReferenceMatch,
+  measureProjectMatch,
+  referenceIntegratedLufs,
+  MATCH_DEADZONE_DB,
+  MATCH_LOUDNESS_MIN_LU,
+  MATCH_MAX_DB,
+  type MatchBandRow,
+  type MatchLoudness,
+  type MatchProjectInput,
+  type MatchReferenceInput,
+  type MatchStereo,
+  type ReferenceMatchReport,
+} from "./match";
+
+/**
  * Confidence wording lives in the engine so the thresholds cannot drift from
  * the number that produced them. F4 renders the label directly; a panel that
  * invents its own "High/Moderate/Low" cutoffs would silently disagree with

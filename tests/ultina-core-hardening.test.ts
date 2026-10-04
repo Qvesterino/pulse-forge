@@ -1466,49 +1466,45 @@ describe("comp meters: the GR bar scalar field exists", () => {
 });
 
 describe("gate: the global HYSTERESIS knob drives the single-band gate", () => {
-  it("single-band gate close threshold follows gate.hysteresisDb", () => {
+  /** First block after the gate has been open at which it reports Closed. */
+  const closeBlock = (hysteresisDb: number): number => {
+    const proc = makeProcessor();
+    enableInGraph(proc, "gate");
+    proc.setParameters({
+      "gate.hysteresisDb": hysteresisDb,
+      "gate.rangeDb": -20,
+      "gate.attackMs": 1,
+      "gate.holdMs": 0,
+      "gate.releaseMs": 5,
+      "gate.mix": 100,
+      "gate.bandCount": 1,
+      "gate.band0.openThresholdDb": -40,
+    });
+    const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    let sawOpen = false;
+    for (let b = 0; b < 120; b++) {
+      sine(chans, b, 440, 0.03 * Math.exp(-b * 0.08));
+      proc.process(chans, BLOCK);
+      const m = proc.getMeters().modules.gate as { bandState: number[] };
+      const state = m.bandState[0];
+      if (state === 2 || state === 3) sawOpen = true;
+      if (sawOpen && state === 0) return b;
+    }
+    return -1;
+  };
+
+  it("a wider hysteresis keeps the gate open longer on a decaying tone", () => {
     // Pre-fix: buildDefaultParams() always materializes
     // gate.band0.closeThresholdDb (-50), so `?? open - hysteresis` never
-    // fired and the HYSTERESIS knob was dead at bandCount 1.
-    // Signal at −30 dBFS sits between (open=−40) − hysteresis (close) at
-    // hysteresis 6 (−46, below signal → stays open) and 24 (−64, also below
-    // signal). Use a decaying signal to expose the difference: a −28 dBFS
-    // tone must hold the gate open with hysteresis 24 but close with 0.
-    const holdFrames = (hysteresisDb: number): number => {
-      const proc = makeProcessor();
-      enableInGraph(proc, "gate");
-      proc.setParameters({
-        "gate.hysteresisDb": hysteresisDb,
-        "gate.rangeDb": -20,
-        "gate.attackMs": 1,
-        "gate.holdMs": 0,
-        "gate.releaseMs": 5,
-        "gate.mix": 100,
-        "gate.bandCount": 1,
-        "gate.band0.openThresholdDb": -40,
-      });
-      const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
-      let lastOpen = -1;
-      for (let b = 0; b < 200; b++) {
-        // Amplitude ramp: −40 dBFS at b=0 down to −46 dBFS at b=99, then a
-        // steady −38 dBFS from b=100 (re-opens the gate).
-        const amp = b < 100 ? 0.03 * (1 - b * 0.0017) : 0.04;
-        sine(chans, b, 440, amp);
-        proc.process(chans, BLOCK);
-        const meters = proc.getMeters().modules.gate as { bandState: number[] };
-        // Open (2) or Holding (3) while the signal is above the derived close.
-        if (b < 100 && (meters.bandState[0] === 2 || meters.bandState[0] === 3)) lastOpen = b;
-      }
-      return lastOpen;
-    };
-    // Both must close eventually; the exact frames differ with the knob.
-    // The regression guard: pre-fix both runs returned the SAME value
-    // because the knob was dead.
-    const h0 = holdFrames(0);
-    const h24 = holdFrames(24);
-    expect(h0).not.toBe(-1); // gate did open at all
-    expect(h24).not.toBe(-1);
-    expect(h0).not.toBe(h24);
+    // fired and the HYSTERESIS knob was dead at bandCount 1 — the close
+    // threshold was pinned at -50 regardless of the knob.
+    const narrow = closeBlock(0);
+    const wide = closeBlock(24);
+    expect(narrow).not.toBe(-1);
+    expect(wide).not.toBe(-1);
+    // With hysteresis 24 the close threshold sits 24 dB below the open one,
+    // so the same decaying tone passes it many blocks later.
+    expect(wide).toBeGreaterThan(narrow + 20);
   });
 
   it("2/3-band mode keeps per-band close thresholds authoritative", () => {
@@ -1518,23 +1514,32 @@ describe("gate: the global HYSTERESIS knob drives the single-band gate", () => {
       "gate.hysteresisDb": 24, // global ignored in multiband mode
       "gate.rangeDb": -20,
       "gate.attackMs": 1,
-      "gate.holdMs": 50,
+      "gate.holdMs": 0,
       "gate.releaseMs": 5,
       "gate.mix": 100,
       "gate.bandCount": 2,
       "gate.band0.openThresholdDb": -40,
-      "gate.band0.closeThresholdDb": -20, // clamped to open (−40) downstream
+      "gate.band0.closeThresholdDb": -60,
       "gate.band1.openThresholdDb": -40,
-      "gate.band1.closeThresholdDb": -60,
+      "gate.band1.closeThresholdDb": -40, // explicit per-band close
     });
     const chans = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
-    for (let b = 0; b < 40; b++) {
-      sine(chans, b, 440, 0.03);
+    let sawOpen = false;
+    let closedAt = -1;
+    for (let b = 0; b < 120; b++) {
+      sine(chans, b, 440, 0.03 * Math.exp(-b * 0.08));
       proc.process(chans, BLOCK);
+      // 440 Hz sits in band 1 (band 0 is the sub-250 Hz split, silent here).
+      const m = proc.getMeters().modules.gate as { bandState: number[] };
+      const state = m.bandState[1];
+      if (state === 2 || state === 3) sawOpen = true;
+      if (sawOpen && state === 0 && closedAt === -1) closedAt = b;
     }
-    const meters = proc.getMeters().modules.gate as { bandState: number[] };
-    // Band 1 has an aggressive close (−20 clamped to −40): the gate must not
-    // chatter — it is open or holding while the signal is above −40.
-    expect([2, 3]).toContain(meters.bandState[0]);
+    expect(sawOpen).toBe(true);
+    expect(closedAt).not.toBe(-1);
+    // Per-band close is -40: the gate closes near the -40 crossing
+    // (≈block 33 with release). If the global hysteresis (24 → close -64)
+    // had leaked in, it would stay open past block 60.
+    expect(closedAt).toBeLessThan(55);
   });
 });

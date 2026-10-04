@@ -4689,7 +4689,7 @@
         detectSource = scChannels;
       }
       const bandThresholdDb = this.bandThresholdDbBuf;
-      bandThresholdDb[0] = params["comp.band0.thresholdDb"] ?? thresholdDb;
+      bandThresholdDb[0] = bandCount === 1 ? thresholdDb : params["comp.band0.thresholdDb"] ?? thresholdDb;
       bandThresholdDb[1] = params["comp.band1.thresholdDb"] ?? thresholdDb;
       bandThresholdDb[2] = params["comp.band2.thresholdDb"] ?? thresholdDb;
       const scActive = scEnabled && sidechain && sidechain.length >= 2;
@@ -4794,13 +4794,20 @@
         this.pooledMeters = {
           gainReduction: new Array(this.gainReduction.length).fill(0),
           outputLevels: new Array(this.outputLevels.length).fill(0),
-          autoMakeupDb: 0
+          autoMakeupDb: 0,
+          gainReductionDb: 0
         };
       }
       const m = this.pooledMeters;
       for (let i = 0; i < m.gainReduction.length; i++) m.gainReduction[i] = this.gainReduction[i];
       for (let i = 0; i < m.outputLevels.length; i++) m.outputLevels[i] = this.outputLevels[i];
       m.autoMakeupDb = this.autoMakeupDb;
+      let maxGr = 0;
+      for (let i = 0; i < this.gainReduction.length; i++) {
+        const gr = this.gainReduction[i];
+        if (gr > maxGr) maxGr = gr;
+      }
+      m.gainReductionDb = maxGr;
       return m;
     }
     /** Hybrid crossover group delay (samples). */
@@ -5129,7 +5136,7 @@
       openThresholdDb[1] = params["gate.band1.openThresholdDb"] ?? -40;
       openThresholdDb[2] = params["gate.band2.openThresholdDb"] ?? -40;
       const closeThresholdDb = this.closeThresholdDbBuf;
-      closeThresholdDb[0] = params["gate.band0.closeThresholdDb"] ?? openThresholdDb[0] - hysteresisDb;
+      closeThresholdDb[0] = bandCount === 1 ? openThresholdDb[0] - hysteresisDb : params["gate.band0.closeThresholdDb"] ?? openThresholdDb[0] - hysteresisDb;
       closeThresholdDb[1] = params["gate.band1.closeThresholdDb"] ?? openThresholdDb[1] - hysteresisDb;
       closeThresholdDb[2] = params["gate.band2.closeThresholdDb"] ?? openThresholdDb[2] - hysteresisDb;
       for (let b = 0; b < closeThresholdDb.length; b++) {

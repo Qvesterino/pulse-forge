@@ -317,3 +317,30 @@ describe("UltinaPanel", () => {
     expect(onApplyProposal.mock.calls[0][2]).toEqual([{ parameterId: "eq.band0.gainDb", value: 1.5 }]);
   });
 });
+
+describe("UltinaPanel — EQ LEARN drives the real parameter (2026-10-04 audit)", () => {
+  it("clicking LEARN writes eq.learnActive=1 and a second click writes 0", async () => {
+    // Pre-fix the button toggled a local React state and never wrote
+    // eq.learnActive, so the DSP learn analyzer never started and no
+    // suggestion ever appeared.
+    const onParam = vi.fn();
+    const user = userEvent.setup();
+    renderWithContext(
+      <UltinaPanel {...baseProps} params={{ "comp.enabled": 1, "eq.learnActive": 0 }} onParam={onParam} />,
+      { services: mockServices() },
+    );
+
+    // The LEARN panel lives in the dock's ASSIST page; open the panel-wide
+    // assist tab first when docked, else the section renders inline.
+    await user.click(screen.getByRole("button", { name: /LEARN$/ }));
+    expect(onParam).toHaveBeenCalledWith("eq.learnActive", 1);
+  });
+
+  it("renders LEARNING state from the parameter (not local state)", () => {
+    renderWithContext(
+      <UltinaPanel {...baseProps} params={{ "comp.enabled": 1, "eq.learnActive": 1 }} onParam={vi.fn()} />,
+      { services: mockServices() },
+    );
+    expect(screen.getByRole("button", { name: "● LEARNING" })).toHaveAttribute("aria-pressed", "true");
+  });
+});
