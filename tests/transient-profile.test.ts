@@ -92,29 +92,37 @@ describe("transient profile — contract", () => {
 
 describe("transient profile — sees what broadband cannot", () => {
   it("a one-band strike makes that band win the max", () => {
-    // A 60 ms 180 Hz body with a 1 ms 4 kHz click at the head. Broadband
-    // power is dominated by the body, so the click barely moves it; the
-    // himid band is where the click lives.
+    // A 100 ms 220 Hz body fading in over 20 ms (so the head window sits
+    // inside the quiet ramp and the body reads ~0 dB of its own), plus a
+    // 1 ms 4 kHz click at t=6 ms. Broadband power is dominated by the body,
+    // so the click barely moves it; himid is where the click lives.
     const SR = 44100;
-    const body = new Float32Array(Math.round(0.06 * SR));
-    for (let i = 0; i < body.length; i++) {
-      const t = i / SR;
-      body[i] = 0.5 * Math.sin(2 * Math.PI * 180 * t) * Math.exp(-t / 0.02);
-    }
-    const withClick = new Float32Array(body);
-    for (let i = 0; i < Math.round(0.001 * SR); i++) {
-      withClick[i] += 0.6 * Math.sin((2 * Math.PI * 4000 * i) / SR);
-    }
-    const bodyProfile = analyzeTransientProfile(body)!;
-    const clickProfile = analyzeTransientProfile(withClick)!;
-    // Without the click the body's home band (sub) wins; with it, the click's
+    const make = (withClick: boolean) => {
+      const len = Math.round(0.1 * SR);
+      const sig = new Float32Array(len);
+      const ramp = Math.round(0.02 * SR);
+      for (let i = 0; i < len; i++) {
+        const env = i < ramp ? i / ramp : 1;
+        sig[i] = 0.5 * env * Math.sin((2 * Math.PI * 220 * i) / SR);
+      }
+      if (withClick) {
+        const at = Math.round(0.006 * SR);
+        for (let i = 0; i < Math.round(0.001 * SR); i++) {
+          sig[at + i] += 0.6 * Math.sin((2 * Math.PI * 4000 * i) / SR);
+        }
+      }
+      return sig;
+    };
+    const bodyProfile = analyzeTransientProfile(make(false), { windowMs: 8 })!;
+    const clickProfile = analyzeTransientProfile(make(true), { windowMs: 8 })!;
+    // Without the click the body's home band (mid) wins; with it, the click's
     // band (himid) takes the max — the term names WHERE the transient is.
-    expect(bodyProfile.maxBand).toBe("sub");
+    expect(bodyProfile.maxBand).toBe("mid");
     expect(clickProfile.maxBand).toBe("himid");
-    // The click's own band moves more than the broadband reading (which is
-    // diluted by the body) — the property the old metric lacked.
+    // The click's own band moves far more than the broadband reading (which
+    // is diluted by the body) — the property the old metric lacked.
     expect(clickProfile.bands.himid - bodyProfile.bands.himid).toBeGreaterThan(
-      clickProfile.broadbandDb - bodyProfile.broadbandDb,
+      clickProfile.broadbandDb - bodyProfile.broadbandDb + 5,
     );
     expect(clickProfile.bands.himid).toBeGreaterThan(clickProfile.bands.sub);
   });

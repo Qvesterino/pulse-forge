@@ -13,7 +13,9 @@
  * A strike lives in one band; the max across the bands is the strike.
  *
  * Real pre/post evidence (2026-10 mallet wave, tmp-old-* pairs): broadband
- * 0.0/0.0/0.1 dB vs per-band max 3.7/3.4/2.5 dB on vibes/marimba/kalimba.
+ * moves 0.0-0.1 dB (invisible) while the per-band max moves 1.5-3.7 dB —
+ * vibes 8.4→11.8 (himid), marimba 14.7→19.0 (himid), kalimba 8.2→10.1
+ * (himid), celesta 7.5→9.9 (high), musicbox 7.3→8.4 (high).
  *
  * Pure + deterministic: float math only, no AudioContext, no clock. The
  * audit script (scripts/audit-samples.mts) consumes `ANALYSIS_BANDS` and
@@ -122,10 +124,7 @@ function runBiquadForward(
  * up. The reverse pass cancels both the phase shift and that artifact,
  * which is what lets a steady tone read ~0 dB where it belongs.
  */
-function runBiquadZeroPhase(
-  data: Float32Array,
-  coeffs: [number, number, number, number, number],
-): Float32Array {
+function runBiquadZeroPhase(data: Float32Array, coeffs: [number, number, number, number, number]): Float32Array {
   const forward = runBiquadForward(data, coeffs);
   const [b0, b1, b2, a1, a2] = coeffs;
   const out = new Float32Array(forward.length);
@@ -154,8 +153,10 @@ export function analyzeTransientProfile(
   channel: Float32Array,
   options: TransientProfileOptions = {},
 ): TransientProfile | null {
-  const sampleRate = Number.isFinite(options.sampleRate) && (options.sampleRate as number) > 0 ? (options.sampleRate as number) : 44100;
-  const windowMs = Number.isFinite(options.windowMs) && (options.windowMs as number) > 0 ? (options.windowMs as number) : 10;
+  const sampleRate =
+    Number.isFinite(options.sampleRate) && (options.sampleRate as number) > 0 ? (options.sampleRate as number) : 44100;
+  const windowMs =
+    Number.isFinite(options.windowMs) && (options.windowMs as number) > 0 ? (options.windowMs as number) : 10;
   const loudFloor = Number.isFinite(options.loudFloor) ? (options.loudFloor as number) : 1e-3;
   const participationFloorDb = Number.isFinite(options.participationFloorDb)
     ? (options.participationFloorDb as number)

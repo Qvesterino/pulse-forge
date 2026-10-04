@@ -301,9 +301,9 @@ const noteName = (midi: number): string => `${NOTE_NAMES[midi % 12]}${Math.floor
  * sub-ms mallet contact at 2.6 kHz is a rounding error against the bar's own
  * low-mid body, so the whole-file ratio moves 0.0-0.1 dB on a strike fix.
  * Measured on the real pre/post pairs of the 2026-10 mallet wave
- * (tmp-old-*.wav): broadband 0.0-0.1 dB vs per-band 2.5-3.7 dB. The math now
- * lives in src/analysis/transientProfile.ts (shared with its vitest lock so
- * the printed table, the feature vector and the test cannot drift).
+ * (tmp-old-*.wav): broadband 0.0-0.1 dB vs per-band max 1.5-3.8 dB. The math
+ * now lives in src/analysis/transientProfile.ts (shared with its vitest lock
+ * so the printed table, the feature vector and the test cannot drift).
  */
 
 /* ── per-file analysis ── */
@@ -525,7 +525,7 @@ for (const row of rows) {
  *               max across the 7 bands, clamped at -30 dB. The broadband
  *               version this replaces could not see an in-band strike - a
  *               2.6 kHz mallet contact vs the bar's low-mid body measured
- *               0.0-0.1 dB broadband but 2.5-3.7 dB per-band on the real
+ *               0.0-0.1 dB broadband but 1.5-3.8 dB per-band on the real
  *               2026-10 pre/post pairs, so every strike fix was invisible.)
  * A pair is only a de-dup candidate when it is close on the axes its
  * category is supposed to vary on - `--why` prints those axes.
