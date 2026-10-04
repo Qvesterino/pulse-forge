@@ -65,6 +65,7 @@ import { renderProject } from "../rendering/renderer";
 import { encodeWav } from "../rendering/wav";
 import { consolidateRangeToAudio } from "../services/rangeConsolidation";
 import { CommandToast } from "./CommandToast";
+import { MixPreviewMount } from "./MixPreviewChip";
 // Palette lives in a lazy chunk — it loads on first Ctrl+K.
 const PaletteOverlay = lazy(() => import("./PaletteOverlay").then((m) => ({ default: m.PaletteOverlay })));
 import { HelpOverlay } from "./HelpOverlay";
@@ -75,12 +76,15 @@ import { DiceProvider } from "./DiceContext";
 import {
   useDockLayout,
   toggleSlot,
+  togglePanelVisible,
   openInSlotA,
   ensurePanelVisible,
   clampDockHeight,
+  defaultDockHeight,
   type BottomPanel,
   type DockState,
 } from "./dockLayout";
+import { DockChrome } from "./DockChrome";
 import { isPadKey, padKeysArmed, setPadKeysArmed } from "./padKeys";
 import { melodicKeys } from "./melodicKeys";
 import { JamGate } from "./JamGate";
@@ -371,8 +375,6 @@ export function App({
     return () => window.removeEventListener("resize", onResize);
   }, []);
   const [dock, setDock] = useDockLayout(viewportMax);
-  const bottomPanel = dock.slotA;
-  const splitPanel = dock.slotB;
   /** Panels with dense content need a minimum dock to be usable — the dice
       tray in a 240px sliver shows three sliders and hides the rolls. The
       user can still drag the dock smaller afterwards. */
@@ -394,16 +396,18 @@ export function App({
   const setBottomPanel = (panel: BottomPanel) => {
     const target = panel === "fx" || panel === "plugin" ? "devices" : panel;
     notifyOnboardingProgress("panel-opened");
+    // The dock's tab row is always mounted (ROADMAP-UI-2027 V1), so a panel
+    // opening automatically expands a "collapsed" dock — no flag to clear.
     setDock(bumpPanelHeight(openInSlotA(dock, target), target));
-    // A click that asks for a panel must expand a collapsed dock — landing
-    // on a thin hidden bar reads as "the button is broken".
-    setSheetCollapsed(false);
   };
   const setBottomPanelTab = (panel: BottomPanel, split?: boolean) => {
     const target = panel === "fx" || panel === "plugin" ? "devices" : panel;
-    const next = toggleSlot(dock, target, split ? 1 : 0);
+    notifyOnboardingProgress("panel-opened");
+    // Plain click toggles VISIBILITY in whichever slot hosts the panel
+    // (togglePanelVisible — a tab click means "hide", never "move to slot A");
+    // Ctrl/Cmd+click manages the split slot.
+    const next = split ? toggleSlot(dock, target, 1) : togglePanelVisible(dock, target);
     if (next.slotA === target || next.slotB === target) {
-      setSheetCollapsed(false);
       setDock(bumpPanelHeight(next, target));
       return;
     }
@@ -413,7 +417,6 @@ export function App({
   // device chain is already docked in either slot.
   const openDevicesPanel = () => {
     setDock(bumpPanelHeight(ensurePanelVisible(dock, "devices"), "devices"));
-    setSheetCollapsed(false);
   };
   // Viral growth plan A2/B1: a brand-new visitor lands in a studio whose
   // INTENT panel is already open — the engine is the product, the demo beat
@@ -448,14 +451,26 @@ export function App({
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onCancel);
   };
+  // Dock chrome actions (ROADMAP-UI-2027 V1): the grip is keyboard-driven
+  // too — arrows step, double-click/Enter resets to the viewport default.
+  const resetDockHeight = () => {
+    setDock({ ...dock, height: clampDockHeight(defaultDockHeight(viewportMax), viewportMax) });
+  };
+  const stepDockHeight = (deltaPx: number) => {
+    setDock({ ...dock, height: clampDockHeight(dock.height + deltaPx, viewportMax) });
+  };
+  const closeAllDockPanels = () => {
+    setDock({ ...dock, slotA: null, slotB: null });
+  };
 
   const [clip, setClip] = useState<PatternClipboard | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [scaleSnap, setScaleSnap] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  // Mobile bottom-sheet: the bottom panel row collapses to a grab handle.
-  const [sheetCollapsed, setSheetCollapsed] = useState(false);
+  // "Collapsed" is not a mode anymore — it is simply "no panel open". The
+  // always-mounted tab row keeps the dock reachable (ROADMAP-UI-2027 V1).
+  const sheetCollapsed = dock.slotA === null && dock.slotB === null;
   const [bouncingRange, setBouncingRange] = useState(false);
   // Capture last take (Ableton) — offered after pause/stop when the ring has material
   const [captureOffer, setCaptureOffer] = useState(false);
@@ -642,7 +657,9 @@ export function App({
       case "panelArr":
       case "panelMod":
       case "panelExport":
-      case "panelDice": {
+      case "panelDice":
+      case "panelIntent":
+      case "panelMidi": {
         event?.preventDefault();
         const panel = panelIdOfShortcut(matched);
         if (panel) setBottomPanelTab(panel as BottomPanel);
@@ -1496,12 +1513,9 @@ export function App({
             <div className="app">
               <TopBar
                 diagnosticsOpen={diagnosticsOpen}
-                bottomPanel={bottomPanel}
-                splitPanel={splitPanel}
                 playMode={playMode}
                 onSetPlayMode={services.playback.setMode}
                 onToggleDiagnostics={() => setDiagnosticsOpen((open) => !open)}
-                onSetBottomPanel={setBottomPanelTab}
                 onToggleHelp={() => setHelpOpen((v) => !v)}
                 onOpenPalette={() => setPaletteOpen(true)}
                 onOpenBrowser={onOpenBrowser}
@@ -1547,43 +1561,42 @@ export function App({
               <div
                 className={
                   "bottom-panels" +
-                  // An empty dock must collapse to its handle bar: with both
-                  // slots null the fixed-height container would keep occupying
-                  // the full dock band and its empty .dock-slot would swallow
-                  // pointer events over the sequencer/workspace underneath.
-                  (sheetCollapsed || (dock.slotA === null && dock.slotB === null) ? " sheet-collapsed" : "") +
+                  // Both slots null = collapsed: the tab row stays mounted
+                  // (DockChrome), the fixed-height band and its empty
+                  // .dock-slot wrappers do not — pointer events over the
+                  // sequencer underneath must keep working.
+                  (sheetCollapsed ? " sheet-collapsed" : "") +
                   (dock.slotB !== null ? " dock-split" : "")
                 }
                 style={{ "--dock-height": `${dock.height}px` } as React.CSSProperties}
               >
-                <button
-                  type="button"
-                  className="dock-resize-handle"
-                  aria-label="Resize bottom panel"
-                  title="Drag to resize the panel dock"
-                  onPointerDown={startDockResize}
-                >
-                  <span aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  className="sheet-handle"
-                  aria-expanded={!sheetCollapsed}
-                  aria-label={sheetCollapsed ? "Expand bottom panel" : "Collapse bottom panel"}
-                  title={sheetCollapsed ? "Expand panel" : "Collapse panel"}
-                  onClick={() => setSheetCollapsed((v) => !v)}
-                >
-                  <span className="sheet-handle-bar" aria-hidden="true" />
-                </button>
+                <DockChrome
+                  dock={dock}
+                  onToggle={setBottomPanelTab}
+                  onCloseAll={closeAllDockPanels}
+                  onResizeStart={startDockResize}
+                  onResizeReset={resetDockHeight}
+                  onResizeStep={stepDockHeight}
+                />
                 {!sheetCollapsed && dock.slotA !== null && (
-                  <div className="dock-slot">
+                  <div
+                    className="dock-slot"
+                    role="tabpanel"
+                    id={`dock-panel-${dock.slotA}`}
+                    aria-labelledby={`dock-tab-${dock.slotA}`}
+                  >
                     <Suspense fallback={<div className="panel-loading">Loading panel…</div>}>
                       {renderDockSlot(dock.slotA)}
                     </Suspense>
                   </div>
                 )}
                 {!sheetCollapsed && dock.slotB !== null && (
-                  <div className="dock-slot">
+                  <div
+                    className="dock-slot"
+                    role="tabpanel"
+                    id={`dock-panel-${dock.slotB}`}
+                    aria-labelledby={`dock-tab-${dock.slotB}`}
+                  >
                     <Suspense fallback={<div className="panel-loading">Loading panel…</div>}>
                       {renderDockSlot(dock.slotB)}
                     </Suspense>
@@ -1598,7 +1611,7 @@ export function App({
               <footer className="statusbar">
                 <SessionStateIndicator onOpenArrangement={() => setBottomPanel("arr")} />
                 <span>
-                  SPACE play · CTRL+K commands · ALT+1–6 panels · ? help · Ctrl+Z undo ·{" "}
+                  SPACE play · CTRL+K commands · ALT+1–8 panels · ? help · Ctrl+Z undo ·{" "}
                   <kbd className="statusbar-kbd">1</kbd>–<kbd className="statusbar-kbd">9</kbd> tracks · TOOL{" "}
                   {tool.toUpperCase()} (S/C/B/E/M)
                   {selection.trackIds.length > 0 && track.kind === "drum" && " · pad keys QWERTYUIASDFGHJK"}
@@ -1609,6 +1622,7 @@ export function App({
                 <PerformanceReadout engine={services.engine} scheduler={services.scheduler} />
               </footer>
               <CommandToast />
+              <MixPreviewMount />
               <GestureHintToast />
               {captureOffer && services.capture.hasCapturedMaterial && (
                 <div

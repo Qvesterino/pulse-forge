@@ -119,6 +119,7 @@ function depsFromServices(services: Services): McpBridgeDeps {
     // kyx_diagnose_mix: the interpretation layer — attributed findings + fixes.
     // Lazy: loads with the first diagnose call, not on boot (bundle budget).
     diagnoseMix: (request) => import("../mcp/mix-diagnosis").then((m) => m.mcpDiagnoseMix(services, request)),
+    mixPreview: (request) => import("../mcp/mix-preview").then((m) => m.previewMixIdea(services, request)),
   };
 }
 

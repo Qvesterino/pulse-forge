@@ -150,6 +150,34 @@
   border-color: var(--accent);
 }
 
+/* TextPromptDialog — the in-app replacement for window.prompt on the
+   kit/PACK/BINDS/theme import paths. Share codes are long, so the textarea
+   is the primary shape; the error sits under the field so a failed decode
+   is readable without the browser's native alert chrome. */
+.text-prompt-textarea {
+  width: 100%;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 6px 8px;
+  resize: vertical;
+  word-break: break-all;
+}
+
+.text-prompt-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.text-prompt-error {
+  color: #f87171;
+  font-size: 11px;
+}
+
 .generate-divider {
   height: 1px;
   background: var(--border);
@@ -1040,4 +1068,80 @@
   padding: 6px 8px;
   font-size: 12px;
   font-family: inherit;
+}
+
+/* ── MIX PREVIEW card — kyx_mix_idea preview mode (studio half) ─────────── */
+
+.mix-preview-card {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 360px;
+  padding: 12px 14px;
+  border: 1px solid rgba(245, 158, 11, 0.55);
+  border-radius: 8px;
+  background: var(--bg-raise);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+}
+
+.mix-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mix-preview-title {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: var(--accent);
+}
+
+.mix-preview-label {
+  font-size: 12px;
+  font-weight: 600;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mix-preview-x {
+  background: transparent;
+  border: none;
+  color: var(--text-dim, #8a8f98);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.mix-preview-stats {
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 11px;
+  color: var(--text-dim, #8a8f98);
+}
+
+.mix-preview-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mix-preview-play {
+  font-size: 11px;
+  padding: 7px 12px;
+}
+
+.mix-preview-apply {
+  font-size: 11px;
+  padding: 7px 12px;
+  background: var(--accent);
+}
+
+.mix-preview-error {
+  font-size: 11px;
+  color: #ef4444;
 }

@@ -1371,6 +1371,11 @@ export const MCP_TOOL_DEFS = [
           type: "boolean",
           description: "false (default) = plan only; true = apply as ONE undo step",
         },
+        preview: {
+          type: "boolean",
+          description:
+            "true = render the BEFORE/AFTER masters, level-match them and arm the studio MIX PREVIEW card so the human can listen before you apply. Read-only; render-bound transports only",
+        },
       },
       required: ["idea"],
     },

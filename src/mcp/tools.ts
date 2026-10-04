@@ -1099,6 +1099,11 @@ export const MCP_TOOLS: McpToolDef[] = [
             'Optional target override: "drums | bass | lead | chords | mix | kick | snare | hats" or a track id from kyx_state',
         },
         apply: { type: "boolean", description: "false (default) = plan only; true = apply as ONE undo step" },
+        preview: {
+          type: "boolean",
+          description:
+            "true = render the BEFORE/AFTER masters, level-match them and arm the studio MIX PREVIEW card so the human can listen before you apply. Read-only; render-bound transports only",
+        },
       },
       required: ["idea"],
     },
@@ -1480,6 +1485,9 @@ export interface McpToolContext {
   diagnoseMix?: (request: {
     scope?: "master" | "tracks" | "all";
   }) => Promise<import("./mix-diagnosis").MixDiagnosisData>;
+  /** kyx_mix_idea preview: render the before/after pair, measure, arm the
+   * session lane the studio chip picks up. Read-only over the project. */
+  mixPreview?: (request: { idea: string; target?: string }) => Promise<import("./mix-preview").MixPreviewOutcome>;
 }
 
 export interface McpToolResult {
@@ -3017,6 +3025,28 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
       }
       const target = typeof record.target === "string" ? record.target.trim() : undefined;
       const apply = record.apply === true;
+      if (record.preview === true) {
+        // PREVIEW MODE: render the before/after pair, measure both, arm the
+        // studio chip — still a pure read over the project.
+        if (ctx.mixPreview == null) {
+          return {
+            text: "mix preview is not available over this MCP transport (no render context bound) — use apply:true for the plan-and-apply loop",
+            mutated: false,
+            isError: true,
+          };
+        }
+        try {
+          const { formatMixPreview } = await import("./mix-preview");
+          const outcome = await ctx.mixPreview({ idea, ...(target ? { target } : {}) });
+          return { text: formatMixPreview(outcome), mutated: false };
+        } catch (error) {
+          return {
+            text: `mix preview failed: ${error instanceof Error ? error.message : String(error)}`,
+            mutated: false,
+            isError: true,
+          };
+        }
+      }
       try {
         const { planMixIdea, formatMixIdea } = await import("./mix-idea");
         const plan = planMixIdea(ctx.getDoc(), idea, target);

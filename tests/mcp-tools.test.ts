@@ -2215,6 +2215,52 @@ describe("kyx_mix_idea — text-to-mix loop", () => {
   });
 });
 
+describe("kyx_mix_idea — preview mode", () => {
+  it("arms the preview lane and reports the measured comparison without mutating", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const before = JSON.stringify(store.doc);
+    const ctx = storeCtx(store) as McpToolContext & { mixPreview: NonNullable<McpToolContext["mixPreview"]> };
+    ctx.mixPreview = async (request) => ({
+      ok: true,
+      studioBound: false,
+      lane: {
+        id: "mp-dispatch",
+        idea: request.idea,
+        label: "warmth + glue (production)",
+        targets: ["drums"],
+        goals: ["warmer", "glue"],
+        interpreter: "production",
+        beforeDoc: store.doc,
+        afterDoc: store.doc,
+        command: { execute: (input: unknown) => input, label: "noop" } as never,
+        stats: { beforeLufs: -14.2, afterLufs: -13.4, matchGainDb: -0.8, seconds: 9.6 },
+        createdAt: new Date().toISOString(),
+      },
+    });
+
+    const result = await executeMcpToolAsync(ctx, "kyx_mix_idea", {
+      idea: "warmer and glue the drums",
+      preview: true,
+    });
+    expect(result.mutated).toBe(false);
+    expect(result.text).toContain("PREVIEW armed");
+    expect(result.text).toContain("-14.2");
+    expect(result.text).toContain("desktop stdio");
+    expect(JSON.stringify(store.doc)).toBe(before);
+  });
+
+  it("refuses honestly when the transport cannot render previews", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const result = await executeMcpToolAsync(storeCtx(store), "kyx_mix_idea", {
+      idea: "warmer drums",
+      preview: true,
+    });
+    expect(result.mutated).toBe(false);
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("no render context bound");
+  });
+});
+
 describe("kyx_import_sfz — user library import", () => {
   const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
 

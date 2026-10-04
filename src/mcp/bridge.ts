@@ -40,6 +40,7 @@ export interface McpBridgeDeps {
   shareToGallery?: NonNullable<McpToolContext["shareToGallery"]>;
   renderSummary?: NonNullable<McpToolContext["renderSummary"]>;
   diagnoseMix?: NonNullable<McpToolContext["diagnoseMix"]>;
+  mixPreview?: NonNullable<McpToolContext["mixPreview"]>;
   importSamples?: NonNullable<McpToolContext["importSamples"]>;
 }
 
@@ -134,6 +135,7 @@ export class McpBridge {
         shareToGallery: this.deps.shareToGallery,
         renderSummary: this.deps.renderSummary,
         diagnoseMix: this.deps.diagnoseMix,
+        mixPreview: this.deps.mixPreview,
         importSamples: this.deps.importSamples,
         allowDestructive: mcpAllowDestructive,
       },

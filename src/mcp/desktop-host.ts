@@ -124,6 +124,7 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
     // kyx_diagnose_mix: the interpretation layer — attributed findings + fixes.
     // Lazy: loads with the first diagnose call, not on boot (bundle budget).
     diagnoseMix: (request) => import("./mix-diagnosis").then((m) => m.mcpDiagnoseMix(services, request)),
+    mixPreview: (request) => import("./mix-preview").then((m) => m.previewMixIdea(services, request)),
     allowDestructive: mcpAllowDestructive,
   };
 }
