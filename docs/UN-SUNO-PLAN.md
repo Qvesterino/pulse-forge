@@ -1,0 +1,233 @@
+# UN-SUNO — Track → editovateľný KYX projekt (plán, 2026-10-04)
+
+> **Pitch:** hodíš akúkoľvek MP3/WAV → KYX ju rozloží na plný projekt: tempo,
+> key, sekcie, drum patterny, bassline, akordy — plus mix-doctor sedne vedľa
+> teba („chorus je o 3 dB tichší než verse, basa maskuje kick na 60 Hz —
+> opravím?"). Všetko lokálne, žiadny cloud. Výstup NIE je MP3, ale plnohodnotný
+> DAW projekt, ktorý môžeš remixovať — to je naše UX proti RipX/Samplab.
+>
+> **Autor:** coding agent. Rešerš: `D:\beat_modifier` (predchádzajúci pokus,
+> Python — recepty sa portujú, aplikácia nie), `src/reference/` (F1–F5),
+> `src/intent/groove-extraction.ts`, `src/audio-workers/pitch-tracker.ts`,
+> `src/analysis/mixDoctor.ts`.
+
+---
+
+## 1. Čo už máme (a netreba robiť nanovo)
+
+Toto je prekvapivo veľa — polovica UN-SUNO už existuje ako Referenčná mapa:
+
+| Kameň                                          | Kde                                                                                         | Stav                                                                                      |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Tempo + beat grid + kandidáti + stability      | `src/reference/analysis/{tempoCandidates,beatGrid}.ts` (worker)                             | hotové, F1                                                                                |
+| Key + chroma + Camelot + kandidáti             | `src/reference/analysis/tonal.ts`, `dsp/{chroma,fft,keyProfiles}.ts` (worker)               | hotové, F1                                                                                |
+| Energy curve → sekcie → markery                | `src/reference/structure.ts` (role intro/drop/breakdown/…, sec+beat dvojito)                | hotové, F2                                                                                |
+| Spektrál/loudness/stereo/groove deskriptory    | `src/reference/descriptors.ts`                                                              | hotové, F2                                                                                |
+| Celý worker pipeline + progress                | `src/reference/workers/reference.worker.ts`, `reference-client.ts`                          | hotové — nové štágy sa pridávajú do tej istej schémy                                      |
+| Apply seam (mapa → commands, 1 undo)           | `src/reference/apply.ts` (`bpmCommand`, `keyCommand`, `markerCommand`, `grooveCommand`)     | hotové pre bpm/key/markery/groove                                                         |
+| Drum onsety → 16-step rows → pady              | `src/intent/groove-extraction.ts` (`extractGrooveGrid`, `grooveRowsForPads`)                | hotové, wired v IntentPanel REF flow; limit: jeden hit/step, jeden pattern pre celý súbor |
+| Microtiming (swing/humanize/step offsets)      | `src/audio-engine/groove-extract.ts` (`extractGroove`: timing/accent/swing)                 | hotové, čaká na zapojenie do UN-SUNO groove inštalácie                                    |
+| YIN pitch tracker (worker, anti-subharmonic)   | `src/audio-workers/pitch-tracker.ts` (`trackPitch`, 70–1050 Hz, clarity gate)               | hotové; na bass treba parametrizovať fmin/fmax                                            |
+| Mix doctor (LUFS, 7 pásiem, stereo, flagy)     | `src/analysis/mixDoctor.ts` + `deriveMixAutoFix`                                            | hotové na buffery; chýba per-sekcia + „maskovanie kick↔basa" heuristika                   |
+| Per-sekcia RMS/peak                            | `src/intent/song-audio-review.ts` (`analyzeSongSections`, `suggestSectionRevivals`)         | hotové                                                                                    |
+| MP3/WAV decode + 25 MB cap + persistence       | `src/ui/DropZone.tsx`, `src/ui/sample-import.ts`, `src/persistence/UserSampleRepository.ts` | hotové                                                                                    |
+| Warp (audio na projektové BPM, pitch-preserve) | `src/audio-engine/warpManager.ts` + `src/audio-workers/warp-render.ts`                      | hotové (live==export parita)                                                              |
+| Patterns/notes model + commands                | `src/commands/patterns.ts` (`createPattern`), `src/commands/notes.ts` (`addNote`)           | hotové                                                                                    |
+
+## 2. Čo portíme z `D:\beat_modifier` (recepty, nie aplikácia)
+
+beat_modifier (Python, librosa) má overené presne tie tri chýbajúce kúsky.
+Portujeme **algoritmy do TS workerov**, nič iné (žiadny FastAPI/numpy_synth/
+inspiration planner — intent engine túto rolu už má):
+
+1. **`_band_onsets_to_pattern`** — bandpass (FFT mask) → onset strength →
+   quantize na 16-step grid → **median-prune** (ak >75 % krokov svieti, odrež
+   slabé onsety pod median×threshold). Bandy: kick 40–120 Hz, snare 150–800 Hz,
+   hat 6 k+. Naše `extractGrooveGrid` robí podobné, ale bez median-prune a bez
+   separácie snare vs hat podľa pásma (má ZCR heuristiku). Port = robustnejšie
+   patterny v mixe.
+2. **`_extract_bass_line`** — bandpass 30–300 Hz → pyin (fmin 40, fmax 200) →
+   skupinovanie framov do nôt (`min_note_frames` ≈ 40 % doby, re-clamp do
+   basového rozsahu MIDI 24–60) → velocity z voiced_prob. **Scale-snap robíme
+   ako voliteľné** (vypnuté default — poctivosť: transkripcia, nie oprava).
+3. **`_extract_chords`** — chroma per bar (priemer framov baru) → template
+   skóre cez 7 stupňov × {maj, min, dom7, min7, sus4}: súčet chromy akordových
+   pitch classes **− 0,3 × súčet ne-akordových** (tlmí overtone šum) → merge
+   opakujúcich → `ChordSpec{degree, function, quality}`. Presne sedí na náš
+   `ChordEvent` shape (`src/ai/harmony.ts`) — generátor/progresie ostávajú,
+   pribúda rozpoznávanie.
+4. **`_extract_groove`** — odchýlka onsetov od gridu → per-step push/pull ms,
+   swing (priemer nepárnych krokov, normalizovaný na ±1), humanize (σ). Naše
+   `audio-engine/groove-extract.ts` robí to isté — **skontrolujeme paritu a
+   necháme jedno** (preferujeme existujúce KYX).
+
+Čo portovať **nechceme**: celú Python appu, render backend, similarity
+diagnostics (odložené — možno neskôr ako advisory), inspiration-spec planner.
+
+## 3. Čo CHÝBA (gap analyýza)
+
+| Gap                                                          | Riešenie                                                                                                                                                                                            |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Chord transcription** (chroma → ChordEvent[] per bar)      | nový `src/reference/analysis/chords.ts` (pure) + štág vo workeri; výstup do `ReferenceMap.tonal.chords?`                                                                                            |
+| **Bass transcription** (→ NoteEvent[])                       | bandpass + parametrizovaný pitch-tracker (fmin 30) + segmentácia (reuse `src/midi/hum-to-notes.ts` logiky) → `ReferenceMap` nový field `melodic?`                                                   |
+| **Drum patterny PER SEKCIA** (dnes 1 pattern pre celý súbor) | `extractGrooveGrid` volať po oknách sekcií zo `structure.sections`; + median-prune z beat_modifieru; multi-hit per step cez band separáciu                                                          |
+| **Rekonštrukcia do projektu** (mapa → tracks/patterns/lanes) | nový `src/reference/unsuno.ts`: pure `(doc, map, options) → Command` (compound, 1 undo): bpm/key/tracky/patterny per sekcia/arrangement/audio lane originálu/markery/groove                         |
+| **Mix-doctor na ZDROJ** (per-sekcia + kick↔bass masking)     | rozšíriť `mixDoctor` o per-sekcia band shary (máme `analyzeSongSections` + 7-band) + masking heuristiku (bass-band energia v sekcii vs kick transient) → findings + `deriveMixAutoFix` fix tlačidlá |
+| **UX flow** (import → potvrdenie → BUILD PROJECT)            | Confirm dialog (tempo reading half/double, key correction, sekcie editovateľné — UI už v ReferenceMapPanel má Corrections tab) + progress + honest degradation                                      |
+
+## 4. Vlny (každá = samostatné PR-éko, standing gates)
+
+### U0 — Golden transkripčný harness (meranie PRED features)
+
+Postav testovaciu základňu skôr než jeden riadok feature kódu (lekcia z
+W0.1 „merané, nie vymyslené"):
+
+- `scripts/gen-unsuno-golden.mjs`: vezme známe KYX projekty/patterny (syntetické:
+  kick pattern X + bassline Y + progresia Z, 3–5 žánrov), **renderuje cez
+  `renderProject`** do `tests/unsuno-golden/*.wav` + uloží ground-truth JSON
+  (patterny, nóty, akordy, bpm, key).
+- `tests/unsuno/golden-set.test.ts`: metriky — drums step F1, bass onset recall
+  - pitch accuracy, chords per-bar accuracy, tempo error, key top-1.
+- Tolerancie cieľov (nižšie v §5) sa **locknú do testu** — každá vlna ich smie
+  len zlepšovať.
+- **Úsilie:** ~0,5 bloku. **Riziko:** žiadne (čisté testy + render).
+
+### U1 — Chord transcription (chroma → ChordEvent[])
+
+- `src/reference/analysis/chords.ts` (pure): per-bar chroma segment → template
+  skóre (beat_modifier recept vrátane −0,3 penalty) → degree/quality mapované
+  proti **detegovanému** key z F1 → merge opakov → confidence (separácia
+  best/2nd + bass-pitch-class prior, ak U2 už beží — inak bez neho).
+- Worker štág `chords` za `tonal`; `ReferenceMap.tonal.chords?:
+{degree, quality, bars, confidence}[]` + `warning` pri nízkej confidence.
+- **Akceptácia:** per-bar accuracy ≥ 0,90 na golden sete; na drums-only
+  rendroch prázdne + warning (nie vymyslené akordy); determinizmus (rovnaký
+  WAV → rovnaké akordy).
+- **Úsilie:** ~1 blok.
+
+### U2 — Bass transcription (→ NoteEvent[])
+
+- Pitch-tracker parametrizácia: `trackPitch(data, sr, {fminHz, fmaxHz})`
+  (default dnešný 70–1050; UN-SUNO volá 30–250). Worker ostáva jeden.
+- `src/reference/analysis/bass.ts` (pure): bandpass 30–300 Hz (FFT mask ako v
+  beat_modifier, ale v referenčnom DSP — `dsp/fft.ts` už je) → trackPitch →
+  segmentácia (min duration ~40 % doby, clarity gate) → NoteEvent (ticks od
+  beat gridu, velocity z RMS/clarity) → scale-snap **opt-in**.
+- Per-sekcia coverage + confidence; sekcia pod gate → prázdna + poznámka.
+- **Akceptácia:** onset recall ≥ 0,70 a pitch accuracy ≥ 0,90 na golden sete
+  (číslo 0,70 je už zadané v W6 pláne pre bass transcription); 808 sub-bass aj
+  walking bass golden; výkon: 3-min track analyzovaný vo workeri < ~10 s.
+- **Úsilie:** ~1 blok. **Riziko:** polyfonný mix — rieši bandpass + clarity
+  gate + honest empty.
+
+### U3 — Drum map per sekcia + robustizácia
+
+- `extractGrooveGrid` dostane `windowSec?` a volá sa po sekciách; pridá
+  median-prune; snare/hat separácia cez band onsets (beat_modifier bandy) namiesto
+  len ZCR heuristiky; multi-hit per step (kick+hat na jeden step = dva riadky).
+- Microtiming per sekcia z `audio-engine/groove-extract` → do groove inštalácie.
+- **Akceptácia:** step F1 ≥ 0,85 na golden sete per sekcia; žánrové pokrytie
+  (four-on-floor vs breakbeat vs half-time goldeny).
+- **Úsilie:** ~1 blok.
+
+### U4 — Rekonštrukcia: `unsunoCommand` (mapa → projekt, 1 undo)
+
+- `src/reference/unsuno.ts` (pure, apply.ts style):
+  - bpm/key cez existujúce `bpmCommand`/`keyCommand` (rešpektujú confirmed
+    corrections z panelu);
+  - tracky: drum kit (žáner hint z AST labelu ak je `pf:audio-tag` on, inak
+    default kit), bass nástroj (presets/factory pick podľa žánru), chord/pad
+    nástroj — **recyklujeme template starters** (`src/project-model/templates.ts`);
+  - patterny per sekcia (rows z U3, bass notes z U2, chords z U1 → pad akordy
+    cez existujúci `expandProgression`-kompatibilný zápis);
+  - arrangement: sekcie → lanes/scenes + markery (structure.ts mapovanie už je);
+  - **audio lane originálu**: AudioClip track so zdrojovým WAV (user sample
+    persistence), voliteľne warp na projektové BPM cez WarpManager (default
+    ON pri odchylke >1 %, čestné upozornenie pri veľkej chybe gridu);
+  - groove microtiming inštalácia (swing/humanize z U3).
+- Celé = jeden compound command → **jedno Ctrl-Z odstráni rekonštrukciu**.
+- **Akceptácia:** round-trip test — vygenerovaný doc prejde schema validáciou,
+  offline `renderProject` exituje bez chýb (znie = ear pass na userovi),
+  1 undo = čistý pôvodný doc; bundle budget netknutý (žiadny nový model).
+- **Úsilie:** ~1–1,5 bloka. **Riziko:** rozsah — držať sa apply.ts vzoru
+  (pure + commands), žiadna logika v UI.
+
+### U5 — Mix-doctor vedľa teba (per-sekcia + masking)
+
+- Rozšírenie `mixDoctor`: per-sekcia LUFS/band shary (7 pásiem už sú) →
+  „chorus −3 dB vs verse" finding; masking heuristika: bass-band (60–120 Hz)
+  energia v sekcii vs kick transient energia → „basa maskuje kick na 60 Hz".
+- Findings → chips s fix tlačidlami cez existujúci `deriveMixAutoFix`
+  (tilt/master IN — report-only ostatné, ako dnes).
+- **Akceptácia:** syntetický render s tichým chorusom → finding svieti; fix =
+  1 undo; bez merania chip nesvieti (etiketa z W0.2).
+- **Úsilie:** ~0,5–1 blok.
+
+### U6 — UX flow + entry point
+
+- ReferenceMapPanel: „→ 🎛 BUILD PROJECT" CTA (mapa musí byť hotová = aspoň
+  rhythm+structure; chords/bass s warningmi sú dobrovoľné);
+- confirm dialog: tempo reading (as-detected/half/double — UI Corrections už
+  existuje), key, sekcie editovateľné, voľby (audio lane on/off, warp on/off,
+  scale-snap off);
+- progress stage labely (worker už streamuje štágy);
+- honest degradation: „bass nejasný v sekcii 2 — pattern ostáva prázdny";
+- DropZone shortcut: drop MP3 → ponuka „analyzuj / importuj ako sample".
+- **Akceptácia:** E2E smoke — drop synthetic golden WAV → projekt sa otvorí s
+  trackmi; Playwright scenár do `tests/e2e/`.
+- **Úsilie:** ~0,5–1 blok.
+
+**Celkom ≈ 6–7 agent-blokov.** Poradie U0→U1→U2→U3→U4→U5→U6 je lineárne
+(U4 potrebuje 1–3; U5/U6 paralelizovateľné s U4).
+
+## 5. KPI (nie vanity)
+
+| Metrika                  | Cieľ (golden synthetic)                               | Poznámka                                      |
+| ------------------------ | ----------------------------------------------------- | --------------------------------------------- |
+| Drums step F1 per sekcia | ≥ 0,85                                                | U3                                            |
+| Bass onset recall        | ≥ 0,70                                                | číslo prebraté z W6 akceptácie                |
+| Bass pitch accuracy      | ≥ 0,90                                                | U2                                            |
+| Chords per-bar accuracy  | ≥ 0,90                                                | U1                                            |
+| Tempo                    | ±0,5 BPM (synthetic); half/double správne na reálnych | F1 už existuje, len meriame                   |
+| Key top-1                | ≥ 0,80                                                | F1 existuje                                   |
+| Rekonštrukcia            | renderuje offline, 1 undo čistý                       | U4                                            |
+| Owner ear-pass           | 5 reálnych CC trackov                                 | sekcie majú hudobný zmysel (subjectívny gate) |
+
+## 6. Poctivosť a hranice (anti-goals z beat_modifier preberáme)
+
+- **Nie je to stem extractor ani bit-exact dekonštrukcia.** Výstup je
+  _transkripčný štartovací bod na remix/learning_ — povieme to v UI explicitne.
+- **Lokálne navždy** — žiadny upload, žiadny cloud, žiadny YouTube downloader;
+  používateľ hodí súbor, ktorý má (DropZone 25 MB cap zostáva).
+- **Nič sa nevymýšľa**: sekcia pod confidence gate = prázdny pattern +
+  poznámka, nikdy generovaný obsah vydávaný za transkripciu (rovnaké pravidlo
+  ako apply.ts honesty rules #1).
+- **Detected ≠ confirmed** — rekonštrukcia vždy konzumuje hodnoty z obrazovky
+  (corrections), nie surovú detekciu.
+- **Žiadne nové veľké modely** v MVP — čistý DSP; AST žánrový hint zostáva
+  opt-in (`pf:audio-tag`). ONNX refinements (napr. chord model) až keď DSP
+  verzia nedorazí na KPI — a až potom s manifest+gate ritualom.
+
+## 7. Architektúra (invarianty, ktoré nesmieme porušiť)
+
+- Ťažká analýza **vo workeri** (`reference.worker.ts` štágy; pitch-tracker
+  worker pre bass) — main thread nikdy.
+- **Pure analysis + commands** — `unsuno.ts` je `(doc, map, options) → Command`,
+  testovateľné bez Reactu; UI len opisuje intent (AGENTS #1/#2).
+- **Jedno undo** pre celú rekonštrukciu (compound/snapshot — vzor apply.ts #3).
+- **Live == offline parita** — audio lane/warp ide cez WarpManager (rovnaká
+  cesta pre scheduler aj renderer).
+- **Determinizmus** — rovnaký WAV + rovnaké options → rovnaký projekt (žiadný
+  RNG v transkripcii; `seed`-ované len generatívne doplnky, ak nejaké pribudnú).
+- **Schema**: ak rekonštrukcia pridá do projektu čokoľavo nové (napr. metadata
+  o pôvode), bump `SCHEMA_VERSION` + migrácia. MVP: nič nové do schémy.
+
+## 8. Otvorené otázky (rozhodnúť pred U4)
+
+1. **Vokály a lead** — MVP ich nerozkladá (originál zostáva na audio lane);
+   melody transcription (YIN 300–2 kHz) je kandidát na vlnu U7 ak budú KPI.
+2. **Pattern granularity** — 1 pattern per sekcia vs per N barov (opakujúce sa
+   2-barové frázy). Začať per sekcia, dedup merge ako follow-up.
+3. **Kit mapping bez AST** — default kit stačí? Alebo groove family
+   (four-on-floor/breakbeat/half-time z deskriptorov) → kit pick.
+4. **Similarity advisory** (beat_modifier to má) — zatiaľ NE; po U6 rozhodnúť.

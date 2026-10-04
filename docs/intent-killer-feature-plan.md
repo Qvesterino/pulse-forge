@@ -284,6 +284,13 @@ offline krok s golden review).
   s ≥ 70 % onset recall na syntetickom zlatom súbore; audition 100+ barov
   bez zamrznutia UI.
 
+### W8 — UN-SUNO: track → editovateľný projekt (killer-feature #2) — **plán hotový, čaká na GO**
+
+Rozklad ľubovoľnej MP3/WAV na plný KYX projekt (tempo, key, sekcie, drum
+patterny, bassline, akordy + mix-doctor vedľa teba). Plán vlnami U0–U6, KPI a
+anti-goals: **`docs/UN-SUNO-PLAN.md`**. Recepty sa portujú z `D:\beat_modifier`
+(Python pokus), polovica analýzy už existuje ako `src/reference/` ReferenceMap.
+
 ### W7 — SESSION THEATRE / NAJMI KAPELU (AI Producer Sessions) — **SHIPPED 2026-10-04**
 
 Killer-feature #1 z októbrovej brainsturmy: namiesto jednej generácie **najmeš
