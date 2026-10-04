@@ -108,7 +108,7 @@ function withLead(): ProjectDocument {
 }
 
 describe("mcp tools — headless execution", async () => {
-  it("tool surface: the 33 documented tools", async () => {
+  it("tool surface: the 34 documented tools", async () => {
     expect(MCP_TOOLS.map((tool) => tool.name)).toEqual([
       "kyx_intent",
       "kyx_state",
@@ -137,6 +137,7 @@ describe("mcp tools — headless execution", async () => {
       "kyx_publish_gallery",
       "kyx_render_summary",
       "kyx_diagnose_mix",
+      "kyx_mix_idea",
       "kyx_checkpoint",
       "kyx_mix",
       "kyx_arrange",
@@ -2173,6 +2174,44 @@ describe("mcp finishing — marker rename", async () => {
     const noName = await executeMcpTool(ctx, "kyx_markers", { op: "rename", bar: 5 });
     expect(noName.mutated).toBe(false);
     expect(noName.text).toContain("rename needs a name");
+  });
+});
+
+describe("kyx_mix_idea — text-to-mix loop", () => {
+  it("plans without mutating, then applies as ONE undo step", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const before = JSON.stringify(store.doc);
+
+    const plan = await executeMcpToolAsync(storeCtx(store), "kyx_mix_idea", {
+      idea: "warmer and glue the drums",
+    });
+    expect(plan.mutated).toBe(false);
+    expect(plan.text).toContain("nothing applied yet");
+    expect(plan.text).toMatch(/goals: .*warmer/);
+    expect(plan.text).toContain("Tape Sat");
+    expect(JSON.stringify(store.doc)).toBe(before);
+
+    const apply = await executeMcpToolAsync(storeCtx(store), "kyx_mix_idea", {
+      idea: "warmer and glue the drums",
+      apply: true,
+    });
+    expect(apply.mutated).toBe(true);
+    expect(apply.text).toMatch(/ONE undo/);
+    expect(JSON.stringify(store.doc)).not.toBe(before);
+    // ONE undo step for the WHOLE idea.
+    expect(storeCtx(store).undoStackLength()).toBe(1);
+  });
+
+  it("an unparseable idea is a clean refusal, never a mutation", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const before = JSON.stringify(store.doc);
+    const result = await executeMcpToolAsync(storeCtx(store), "kyx_mix_idea", {
+      idea: "make it smell like strawberries",
+      apply: true,
+    });
+    expect(result.mutated).toBe(false);
+    expect(result.text).toMatch(/mix idea|target|track|plans nothing/i);
+    expect(JSON.stringify(store.doc)).toBe(before);
   });
 });
 

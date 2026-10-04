@@ -1190,6 +1190,30 @@ const MCP_TOOL_DEFS = [
     },
   },
   {
+    name: "kyx_mix_idea",
+    description:
+      "TEXT-TO-MIX REMOTE CONTROL — one natural-language mix idea, the full loop: 'warm it up and glue the drums' → a PLAN of concrete device steps with the WHY attributed per step (nothing applied) → apply:true lands the whole idea as ONE undo step → verify with kyx_render_summary and let the human judge via kyx_blind_ab. Understands production concepts (warmer, punchier, brighter, deeper, wider, air…) and their targets from the sentence itself (drums, bass, lead, chords, the mix, kick/snare/hats); an explicit target overrides the text. Plan first — the plan is cheap and pure, the apply is a mutation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        idea: {
+          type: "string",
+          description: "The mix idea in plain language, e.g. 'warm it up and glue the drums'",
+        },
+        target: {
+          type: "string",
+          description:
+            'Optional target override: "drums | bass | lead | chords | mix | kick | snare | hats" or a track id from kyx_state',
+        },
+        apply: {
+          type: "boolean",
+          description: "false (default) = plan only; true = apply as ONE undo step",
+        },
+      },
+      required: ["idea"],
+    },
+  },
+  {
     name: "kyx_checkpoint",
     description:
       "Named project checkpoints for agent experiments: save the current state, list checkpoints with how many steps have passed since each, restore one (ONE undo step back to the pre-restore state), or delete. Session-scoped (last 8 kept); destructive ops auto-save auto-before-<tool> checkpoints when allowed.",

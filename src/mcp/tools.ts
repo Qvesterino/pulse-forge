@@ -1075,6 +1075,35 @@ export const MCP_TOOLS: McpToolDef[] = [
     outputSchema: OUTPUT_DIAGNOSE_MIX,
   },
   {
+    name: "kyx_mix_idea",
+    description:
+      "TEXT-TO-MIX REMOTE CONTROL — one natural-language mix idea, the full " +
+      "loop: 'warm it up and glue the drums' → a PLAN of concrete device " +
+      "steps with the WHY attributed per step (nothing applied) → apply:true " +
+      "lands the whole idea as ONE undo step → verify with kyx_render_summary " +
+      "and let the human judge via kyx_blind_ab. Understands production " +
+      "concepts (warmer, punchier, brighter, deeper, wider, air…) and their " +
+      "targets from the sentence itself (drums, bass, lead, chords, the mix, " +
+      "kick/snare/hats); an explicit target overrides the text. Plan first — " +
+      "the plan is cheap and pure, the apply is a mutation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        idea: {
+          type: "string",
+          description: "The mix idea in plain language, e.g. 'warm it up and glue the drums'",
+        },
+        target: {
+          type: "string",
+          description:
+            'Optional target override: "drums | bass | lead | chords | mix | kick | snare | hats" or a track id from kyx_state',
+        },
+        apply: { type: "boolean", description: "false (default) = plan only; true = apply as ONE undo step" },
+      },
+      required: ["idea"],
+    },
+  },
+  {
     name: "kyx_checkpoint",
     description:
       "Named project checkpoints for agent experiments: save the current " +
@@ -2968,6 +2997,39 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
       } catch (error) {
         return {
           text: `mix diagnosis failed: ${error instanceof Error ? error.message : String(error)}`,
+          mutated: false,
+          isError: true,
+        };
+      }
+    }
+    case "kyx_mix_idea": {
+      // TEXT-TO-MIX, CLOSED LOOP: plan (pure, attributed WHY) → apply as ONE
+      // undo step. The heavy lifting lives in the lazy mix-idea module — the
+      // tool stays a thin, honest envelope over the existing interpreters.
+      const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
+      const idea = typeof record.idea === "string" ? record.idea : "";
+      if (idea.trim().length < 3) {
+        return {
+          text: 'kyx_mix_idea needs an idea — e.g. idea: "warm it up and glue the drums"',
+          mutated: false,
+          isError: true,
+        };
+      }
+      const target = typeof record.target === "string" ? record.target.trim() : undefined;
+      const apply = record.apply === true;
+      try {
+        const { planMixIdea, formatMixIdea } = await import("./mix-idea");
+        const plan = planMixIdea(ctx.getDoc(), idea, target);
+        if (!plan.ok) {
+          return { text: plan.reason, mutated: false, isError: apply };
+        }
+        if (apply) {
+          ctx.execute(plan.command);
+        }
+        return { text: formatMixIdea(plan, apply), mutated: apply };
+      } catch (error) {
+        return {
+          text: `mix idea failed: ${error instanceof Error ? error.message : String(error)}`,
           mutated: false,
           isError: true,
         };
