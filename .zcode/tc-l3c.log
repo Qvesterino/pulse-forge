@@ -1,7 +1,0 @@
-
-> pulse-forge@0.1.0 typecheck
-> tsc --noEmit
-
-tests/reference/property-fuzz.test.ts(30,48): error TS6133: 'tonalTrack' is declared but its value is never read.
-tests/services/wiring.test.ts(119,27): error TS7053: Element implicitly has an 'any' type because expression of type 'RequiredCoreKeys' can't be used to index type 'Services'.
-  Property 'presets' does not exist on type 'Services'.

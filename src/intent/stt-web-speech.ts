@@ -67,7 +67,7 @@ export function createWebSpeechCapture(lang = "en-US"): WebSpeechCapture | null 
   let error: string | null = null;
 
   function buildRecognition(): SpeechRecognitionLike {
-    const rec = new Ctor();
+    const rec = new (Ctor as SpeechRecognitionCtor)();
     rec.lang = lang;
     rec.continuous = true;
     rec.interimResults = true;

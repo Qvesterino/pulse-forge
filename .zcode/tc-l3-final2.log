@@ -1,9 +1,0 @@
-
-> pulse-forge@0.1.0 typecheck
-> tsc --noEmit
-
-src/instruments/registry.ts(389,32): error TS2304: Cannot find name 'driftNodes'.
-src/instruments/registry.ts(389,70): error TS2304: Cannot find name 'seedBase'.
-tests/reference/property-fuzz.test.ts(30,48): error TS6133: 'tonalTrack' is declared but its value is never read.
-tests/services/wiring.test.ts(118,27): error TS7053: Element implicitly has an 'any' type because expression of type 'RequiredCoreKeys' can't be used to index type 'Services'.
-  Property 'presets' does not exist on type 'Services'.

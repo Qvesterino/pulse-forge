@@ -1,7 +1,0 @@
-
-> pulse-forge@0.1.0 typecheck
-> tsc --noEmit
-
-tests/intent-artist-mix-wiring.test.ts(17,5): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
-  Type 'null' is not assignable to type 'string | undefined'.
-tests/intent-artist-mix-wiring.test.ts(36,5): error TS2322: Type '"replace_drums"' is not assignable to type '"replace" | "new"'.
