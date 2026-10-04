@@ -653,23 +653,39 @@ const C4 = 261.63;
 function pluck(): Builder {
   return (ctx, dest) => {
     const t0 = ctx.currentTime;
+    // BRIGHT synthetic pluck (tonal de-homog 2026-10). Its manifest contract
+    // is "Bright, Short" — the opposite end of the family from pizzicato
+    // ("Plucked, Staccato", a dark string instrument). The old full-range
+    // triangle stack measured 0.983-correlated with pizzicato over a full
+    // second: same fundamental, same lowmid-dominated centroid (267 Hz), same
+    // decay. So the split is structural: a bright resonant lowpass with a
+    // lifted upper partial keeps the attack spark while pizzicato keeps the
+    // string body.
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = 5200;
+    lpf.Q.value = 1.6; // resonant top — the "bright" in the contract
+    lpf.connect(dest);
     const osc = ctx.createOscillator();
-    osc.type = "triangle";
+    osc.type = "sawtooth";
     osc.frequency.value = C4;
+    const body = ctx.createGain();
+    body.gain.value = 0.45;
+    osc.connect(body).connect(env(ctx, t0, 0.85, 0.26)).connect(lpf);
+    osc.start(t0);
+    osc.stop(t0 + 0.32);
+    // Upper-octave spark: the visible attack that separates it from pizzicato.
     const osc2 = ctx.createOscillator();
     osc2.type = "sine";
-    osc2.frequency.value = C4 * 2.003;
+    osc2.frequency.value = C4 * 4.0;
     const g2 = ctx.createGain();
-    g2.gain.value = 0.35;
-    osc.connect(env(ctx, t0, 0.85, 0.38)).connect(dest);
+    g2.gain.value = 0.3;
     osc2
       .connect(g2)
-      .connect(env(ctx, t0, 0.5, 0.18))
+      .connect(env(ctx, t0, 0.5, 0.12))
       .connect(dest);
-    osc.start(t0);
-    osc.stop(t0 + 0.45);
     osc2.start(t0);
-    osc2.stop(t0 + 0.25);
+    osc2.stop(t0 + 0.18);
   };
 }
 
@@ -897,34 +913,41 @@ function animePluck(): Builder {
 }
 
 /** Sad piano: layered sines with staggered decays under a dark LPF — the
- * melodic trap / drill heartbreak note. */
+ * melodic trap / drill heartbreak note. Tonal de-homog (2026-10): keys rings
+ * as ONE clean voice; this one BLEEDS — a ±4¢ unison pair per partial (the
+ * slow beating a depressed piano does), a darker 1900 Hz shade and a longer
+ * sympathetic ring. The old recipe shared keys' exact 2400/1.7 s shape and
+ * measured 0.980-correlated with it. */
 function sadPiano(): Builder {
   return (ctx, dest) => {
     const t0 = ctx.currentTime;
     const lpf = ctx.createBiquadFilter();
     lpf.type = "lowpass";
-    lpf.frequency.value = 2400;
+    lpf.frequency.value = 1900; // darker than keys (2400) — the heartbreak shade
     lpf.connect(dest);
     for (const [mult, level, decay] of [
-      [1, 0.6, 1.7],
-      [2.002, 0.25, 0.9],
-      [3.004, 0.1, 0.45],
-      [4.998, 0.05, 0.25],
+      [1, 0.6, 2.4], // longer sympathetic ring than keys' 1.7
+      [2.002, 0.28, 1.1],
+      [3.004, 0.1, 0.5],
+      [4.998, 0.05, 0.3],
     ] as [number, number, number][]) {
-      const osc = ctx.createOscillator();
-      osc.type = "sine";
-      osc.frequency.value = C4 * mult;
-      osc.connect(env(ctx, t0, level, decay)).connect(lpf);
-      osc.start(t0);
-      osc.stop(t0 + decay + 0.2);
+      for (const detune of [-4, 4]) {
+        const osc = ctx.createOscillator();
+        osc.type = "sine";
+        osc.frequency.value = C4 * mult;
+        osc.detune.value = detune;
+        osc.connect(env(ctx, t0, level / 2, decay)).connect(lpf);
+        osc.start(t0);
+        osc.stop(t0 + decay + 0.2);
+      }
     }
-    const hammer = noiseSource(ctx, 79, 0.012, t0);
+    const hammer = noiseSource(ctx, 79, 0.014, t0);
     const hlp = ctx.createBiquadFilter();
     hlp.type = "lowpass";
     hlp.frequency.value = 3000;
     hammer
       .connect(hlp)
-      .connect(env(ctx, t0, 0.08, 0.01))
+      .connect(env(ctx, t0, 0.09, 0.012))
       .connect(dest);
   };
 }
@@ -958,20 +981,23 @@ function padWarm(): Builder {
   };
 }
 
-/** Harp tone: five-partial cascade with fast staggered decays — the dnb
- * liquid / score gliss grain. */
+/** Harp tone: six-partial inharmonic cascade with fast staggered decays —
+ * the dnb liquid / score gliss grain. Tonal de-homog (2026-10): a harp
+ * string is NOT a harmonic series, so the partials sit at measured string
+ * ratios (2.004 / 3.02 / 4.11 / 5.34 / 6.79) and each rings off at its own
+ * rate — keys rings as one voice, the harp SPARKLES. The previous harmonic
+ * stack measured 0.981-correlated with keys. */
 function harpTone(): Builder {
   return (ctx, dest) => {
     const t0 = ctx.currentTime;
-    // Faster, fingered decays than the keys stack + a nail transient on the
-    // attack — without it the harp measured 0.973-correlated with tonal.keys
-    // (a duplicate, not a second voice).
+    // Inharmonic string ratios + the fastest staggered cascade in the bank.
     const parts: [number, number, number][] = [
-      [1, 0.5, 0.75],
-      [2.001, 0.3, 0.5],
-      [3.003, 0.18, 0.36],
-      [4.005, 0.1, 0.26],
-      [5.01, 0.06, 0.18],
+      [1, 0.5, 0.5],
+      [2.004, 0.32, 0.38],
+      [3.02, 0.2, 0.3],
+      [4.11, 0.12, 0.24],
+      [5.34, 0.08, 0.18],
+      [6.79, 0.05, 0.13],
     ];
     for (const [mult, level, decay] of parts) {
       const osc = ctx.createOscillator();
@@ -988,7 +1014,7 @@ function harpTone(): Builder {
     nbp.Q.value = 2;
     nail
       .connect(nbp)
-      .connect(env(ctx, t0, 0.12, 0.01))
+      .connect(env(ctx, t0, 0.16, 0.012))
       .connect(dest);
   };
 }
@@ -2750,8 +2776,19 @@ function orchestraHit(): Builder {
 
 /** Exported for the content-coherence tests (tests/kick-bank.test.ts). */
 export const BUILDERS: Record<string, Builder> = {
-  "factory.kick.deep": kick(150, 46.25, 0.42, 0.25),
-  "factory.kick.punch": kick(210, 55.0, 0.28, 0.45),
+  // Phase-3 re-voice (2026-10-04): kick.deep ↔ kick.lofi was 0.077* on
+  // loud +0.051 (deep o 51ms dlhší, ale read-ešte blízko). Posunúť deep
+  // hlbšie: decay 0.42 -> 0.50 (deep = *deepest* v celej bank, 0.5s telo)
+  // a click 0.25 -> 0.20 (menej high-end = väčšia diferenciácia od lofi).
+  // Pitch 46.25 Hz (F#1) je v glide contracte.
+  "factory.kick.deep": kick(150, 46.25, 0.5, 0.2),
+  // Phase-3 re-voice (2026-10-04): kick.punch ↔ kick.pop was 0.094* on
+  // air +0.061 / loud -0.057 — pop bol jasnejší a kratší, punch dlhší
+  // a tmavší. Obojsmerný ťah: punch click 0.45 -> 0.60 (ostrejší punch,
+  // kompenzuje loudMs kratšie o 57ms väčším attackom — teraz punch ≠
+  // "tmavý pop" ale "tight pop s peak-om"). Decay 0.28 + pitch 55 Hz
+  // (A1, glide contract) zostávajú.
+  "factory.kick.punch": kick(210, 55.0, 0.28, 0.6),
   "factory.kick.techno": kick(175, 43.65, 0.55, 0.3, 0.7),
   "factory.kick.sub808": sub808(),
   // Kick trio de-dup (library-quality audit 2026-10-04, second pass): deep /
@@ -2823,14 +2860,18 @@ export const BUILDERS: Record<string, Builder> = {
   // jersey kick re-voice (de-dup wave): the jersey-club signature is the
   // HIGH bouncy pitch — B1, shortest body, hardest click of the trio.
   "factory.kick.jersey": kick(210, 61.74, 0.2, 0.7),
-  // Phase-2 re-voice (2026-10-04): kick.dnb had a 0.086* nearest-neighbour
-  // distance to kick.phonk on brightness. First pass (decay 0.22 / click
-  // 0.65) brought it to 0.146 — still under the 0.15 watchlist gate on
-  // loud +0.081 / air +0.076 / brightness +0.064. Second pass tightens
-  // further: decay 0.22 -> 0.18 (the dnb backbeat is the SHARPEST kick
-  // in the bank — drill 808 territory), click 0.65 -> 0.75. Pitch
-  // 51.91 Hz preserved (glide contract).
-  "factory.kick.dnb": kick(170, 51.91, 0.18, 0.75),
+  // Phase-2/3 re-voice (2026-10-04): kick.dnb was 0.086* from kick.phonk
+  // on brightness. Fáza 2 settled on decay 0.18 / click 0.75 which
+  // pushed kick.dnb <-> kick.phonk to 0.172 (mimo watchlistu) but
+  // introduced three new watchlist pairs in Phase 3:
+  //   dnb <-> pop  0.126* (air +0.072, brightness -0.049)
+  //   dnb <-> jersey 0.133* (brightness -0.077)
+  //   dnb <-> phonk 0.172 (OK, mimo watchlistu)
+  // Všetky tri nové majú dominujúcu os "brightness" / "high" — dnb je
+  // príliš jasný. Kompromis: click 0.75 -> 0.6 (dostatočne nízko aby
+  // dnb nebol pop-klon, dostatočne vysoko aby dnb ostáva >0.15 od
+  // phonk). Decay 0.18 a pitch 51.91 Hz zostávajú.
+  "factory.kick.dnb": kick(170, 51.91, 0.18, 0.6),
   // Phase-2 re-voice: kick.lofi had a 0.084* distance to kick.knock driven
   // by crest (+0.045) + loud (+0.042) — knock is a louder, harder knocker.
   // Iterated four configurations and locked pass 2 as the right balance:
@@ -2858,7 +2899,12 @@ export const BUILDERS: Record<string, Builder> = {
     seed: 37,
   }),
   "factory.kick.knock": knock(),
-  "factory.kick.909": kick(290, 51.91, 0.3, 0.6, 0.15),
+  // Phase-3 re-voice (2026-10-04): kick.909 ↔ kick.trap was 0.093* on
+  // air -0.059 / loud +0.051 — trap (drive 0.6) bol squarovaný jasnejšie,
+  // 909 (drive 0.15) mal menej high. Zvýšiť 909 start frekvenciu
+  // 290 -> 310 Hz (B1+ vyššie, jasnejšie) — endHz 51.91 Hz zostáva
+  // (glide contract). Decay/click/drive 0.15/0.6 bezo zmeny.
+  "factory.kick.909": kick(310, 51.91, 0.3, 0.6, 0.15),
   "factory.rim.chip": rim(),
   "factory.snare.main": snare(192, 0.11, 0.2, 1750),
   "factory.snare.tight": snare(210, 0.07, 0.11, 2000),
@@ -2924,7 +2970,13 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.clap.main": clap(),
   "factory.clap.soft": clapSoft(),
   "factory.shaker.soft": shaker(),
-  "factory.hat.closed": hat(0.055, 7400, 0.55),
+  // Phase-3 re-voice (2026-10-04): hat.closed ↔ hat.closed.soft was 0.094*
+  // on lowmid +0.050 + crest +0.040 + himid +0.037 + sub +0.034 — soft
+  // mal viac low-end (HPF 6400 nechá telo) a vyšší crest. Znížiť closed
+  // level 0.55 -> 0.48 (tichší closed) — zatvorí sa loud gap a zníži
+  // sa celkový crest gap (RMS ide nadol, peak ostáva). Decay 0.055 +
+  // HPF 7400 zostávajú.
+  "factory.hat.closed": hat(0.055, 7400, 0.48),
   // Phase-2 re-voice (2026-10-04): hat.closed.soft was 0.121* from hat.pedal
   // with low -0.073 + crest +0.060 (low-band spread — a pedal-hat should be
   // the darkest/shortest, a closed-soft should be the brightest/thinnest).
@@ -2938,7 +2990,7 @@ export const BUILDERS: Record<string, Builder> = {
   //   (the head of the snareOne noise sits closer to the mean). The pair
   //   still sits on the watchlist but the dominant axes are now crest
   //   (loudness) and brightness (intended), not low-band spread.
-  "factory.hat.closed.soft": hat(0.035, 6400, 0.28),
+  "factory.hat.closed.soft": hat(0.04, 6400, 0.4),
   "factory.hat.open": hat(0.36, 7000, 0.5),
   "factory.hat.open.short": hat(0.18, 6800, 0.42),
   "factory.hat.pedal": hat(0.035, 4600, 0.24),
