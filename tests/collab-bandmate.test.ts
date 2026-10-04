@@ -14,7 +14,11 @@ function manualClock() {
 class FakeStore {
   doc: ProjectDocument;
   executed: string[] = [];
-  commands: { type?: string; execute: (d: ProjectDocument) => ProjectDocument; undo?: (d: ProjectDocument) => ProjectDocument }[] = [];
+  commands: {
+    type?: string;
+    execute: (d: ProjectDocument) => ProjectDocument;
+    undo?: (d: ProjectDocument) => ProjectDocument;
+  }[] = [];
   constructor(doc: ProjectDocument) {
     this.doc = doc;
   }

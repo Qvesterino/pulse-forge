@@ -169,7 +169,9 @@ describe("worklet descriptors cover EFFECT_META ranges", () => {
         checked++;
         const covered = desc.minValue <= def.min + EPS && desc.maxValue >= def.max - EPS;
         if (!covered) {
-          offenders.push(`${effect}.${def.id}: def [${def.min}, ${def.max}] vs desc [${desc.minValue}, ${desc.maxValue}]`);
+          offenders.push(
+            `${effect}.${def.id}: def [${def.min}, ${def.max}] vs desc [${desc.minValue}, ${desc.maxValue}]`,
+          );
         }
       }
     }

@@ -486,9 +486,7 @@ export class AutomationBridge {
       } else if (returnNodes) {
         const returnTrack = doc.returns.find((ret) => ret.id === trackId);
         if (returnTrack) {
-          const baseGain = Number.isFinite(returnTrack.gain)
-            ? Math.min(1.5, Math.max(0, returnTrack.gain))
-            : 0.9;
+          const baseGain = Number.isFinite(returnTrack.gain) ? Math.min(1.5, Math.max(0, returnTrack.gain)) : 0.9;
           returnNodes.gain.gain.setTargetAtTime(baseGain, ctx.currentTime, 0.01);
           returnNodes.modMacroGain.gain.setTargetAtTime(gain, ctx.currentTime, 0.01);
         }

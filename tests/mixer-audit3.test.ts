@@ -75,7 +75,14 @@ function mockCtx() {
     sampleRate: 48000,
     createGain: () => mockNode(),
     createStereoPanner: () => mockNode(),
-    createAnalyser: () => ({ ...mockNode(), fftSize: 0, channelCount: 2, channelCountMode: "explicit", getFloatTimeDomainData() {}, getByteFrequencyData() {} }),
+    createAnalyser: () => ({
+      ...mockNode(),
+      fftSize: 0,
+      channelCount: 2,
+      channelCountMode: "explicit",
+      getFloatTimeDomainData() {},
+      getByteFrequencyData() {},
+    }),
     createDelay: () => mockNode(),
     createDynamicsCompressor: () => ({ ...mockNode(), reduction: 0 }),
     createBiquadFilter: () => ({ ...mockNode(), type: "lowpass" }),
@@ -223,9 +230,11 @@ describe("automation/macros gain-domain alignment", () => {
   it("automation lane writes clamp at the authoritative 0..1.5 gain range (was 2)", async () => {
     const { doc, trackId } = baseDoc();
     const { bridge, view } = await bridgeForDoc(doc);
-    const write = (bridge as unknown as {
-      writeAutomationTargetAt(target: unknown, value: number, when: number): void;
-    }).writeAutomationTargetAt.bind(bridge);
+    const write = (
+      bridge as unknown as {
+        writeAutomationTargetAt(target: unknown, value: number, when: number): void;
+      }
+    ).writeAutomationTargetAt.bind(bridge);
     write({ kind: "trackGain", trackId }, 2, 0);
     expect(view.modAutoGain.gain.value).toBe(1.5);
     write({ kind: "trackGain", trackId }, -5, 0);

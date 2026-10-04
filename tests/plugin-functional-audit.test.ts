@@ -536,7 +536,9 @@ describe("F0. deprecated legacy aliases", () => {
     const store = new ProjectStore(doc);
     store.execute(setEffectParam(store.getDoc(), trackId, fxId, "midGain", 6));
     const fx = (
-      store.getDoc().tracks.find((t) => t.id === trackId) as { effects: { id: string; params: Record<string, number> }[] }
+      store.getDoc().tracks.find((t) => t.id === trackId) as {
+        effects: { id: string; params: Record<string, number> }[];
+      }
     ).effects.find((f) => f.id === fxId)!;
     expect(fx.params.lowMidGain).toBe(6);
     expect(fx.params.midGain).toBe(6);

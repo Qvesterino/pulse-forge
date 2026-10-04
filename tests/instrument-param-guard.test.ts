@@ -39,9 +39,7 @@ describe("instrument param finite guards", () => {
     const next = cmd.execute(doc);
     const updated = next.tracks.find((t) => t.id === track.id) as InstrumentTrack;
     expect(Number.isFinite(updated.params.oscBDetune!)).toBe(true);
-    expect(updated.params.oscBDetune).toBe(
-      INSTRUMENT_META.analog.params.find((p) => p.id === "oscBDetune")!.default,
-    );
+    expect(updated.params.oscBDetune).toBe(INSTRUMENT_META.analog.params.find((p) => p.id === "oscBDetune")!.default);
   });
 
   it("normalizeProject clamps known instrument params on load (was verbatim copy)", () => {
