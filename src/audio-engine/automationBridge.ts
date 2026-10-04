@@ -470,7 +470,11 @@ export class AutomationBridge {
       if (base !== null) this.lookup.writeDeviceTargetAt(target, base + delta);
     }
     for (const [trackId, offsets] of next) {
-      const gain = Math.max(0, offsets.gain);
+      // Gain offsets had no ceiling: N stacked macros × full-positive mappings
+      // composed an unbounded channel multiplier (runaway gain). Cap at 2
+      // (+6 dB) — a single full-depth mapping still lands exactly at 2, so
+      // existing projects are unchanged; only pathological stacking is bounded.
+      const gain = Math.min(2, Math.max(0, offsets.gain));
       const pan = Math.min(1, Math.max(-1, offsets.pan));
       const cached = this.macroCache.get(trackId);
       if (cached && cached.gain === gain && cached.pan === pan) continue;
@@ -482,7 +486,10 @@ export class AutomationBridge {
       } else if (returnNodes) {
         const returnTrack = doc.returns.find((ret) => ret.id === trackId);
         if (returnTrack) {
-          returnNodes.gain.gain.setTargetAtTime(Math.max(0, Math.min(1.5, returnTrack.gain)), ctx.currentTime, 0.01);
+          const baseGain = Number.isFinite(returnTrack.gain)
+            ? Math.min(1.5, Math.max(0, returnTrack.gain))
+            : 0.9;
+          returnNodes.gain.gain.setTargetAtTime(baseGain, ctx.currentTime, 0.01);
           returnNodes.modMacroGain.gain.setTargetAtTime(gain, ctx.currentTime, 0.01);
         }
       }
@@ -756,9 +763,12 @@ export class AutomationBridge {
             ? nodes.modAutoGain.gain
             : nodes.modAutoPan.pan
           : returnNodes!.modAutoGain.gain;
+        // Gain modulators swing the channel multiplier around base 1; the
+        // ceiling matches the authoritative gain domain (0..1.5) so no writer
+        // can push a channel past what a fader could legally reach.
         const clamp =
           target.kind === "trackGain"
-            ? (v: number) => Math.max(0, Math.min(2, 1 + v))
+            ? (v: number) => Math.max(0, Math.min(1.5, 1 + v))
             : (v: number) => Math.max(-1, Math.min(1, v));
         return (value, mode, when) => {
           try {
@@ -837,7 +847,10 @@ export class AutomationBridge {
       if (target.kind === "trackGain" && returnNodes) {
         returnNodes.modAutoGain.gain.setTargetAtTime(Math.max(0, Math.min(1.5, value)), when, 0.008);
       } else if (trackNodes && target.kind === "trackGain") {
-        trackNodes.modAutoGain.gain.setTargetAtTime(Math.max(0, Math.min(2, value)), when, 0.008);
+        // Authoritative range is targetParamDef (0..1.5) — the historical 2
+        // here let an imported lane push a channel +6 dB past every other
+        // gain surface (fader, send, return all clamp at 1.5).
+        trackNodes.modAutoGain.gain.setTargetAtTime(Math.max(0, Math.min(1.5, value)), when, 0.008);
       } else if (trackNodes && target.kind === "trackPan") {
         trackNodes.modAutoPan.pan.setTargetAtTime(Math.min(1, Math.max(-1, value)), when, 0.008);
       }

@@ -66,7 +66,7 @@ describe("normalizeProject — mixer parameter sanitization (audit 04)", () => {
     expect(hostile.master).toBeDefined();
   });
 
-  it("clamps hostile send levels into [0, 1] (pre-fix: send 42 reached the FX bus)", () => {
+  it("clamps hostile send levels into [0, 1.5] (pre-fix: send 42 reached the FX bus)", () => {
     const base = createProjectFromTemplate("house");
     const returnId = base.returns[0]?.id;
     if (!returnId) return;

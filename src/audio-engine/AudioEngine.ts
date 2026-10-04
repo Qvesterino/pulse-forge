@@ -81,6 +81,28 @@ export function soloAudibility(doc: ProjectDocument): SoloAudibility {
   };
 }
 
+/**
+ * MIXER AUDIT (signal-flow re-run 2026-10): the engine's COMMIT writes used to
+ * push raw doc values into the graph while the drag previews clamped — safety
+ * rested entirely on normalizeProject + command writers. Any path that reaches
+ * setProject with an unnormalized doc (collab peer mid-merge, embed, a future
+ * caller) hit the graph raw. These helpers mirror the schema clamps exactly
+ * (gain fallback 0.9 / pan 0 / send 0) so the graph can never see a non-finite
+ * or out-of-range fader value — setTargetAtTime(NaN) throws and would abort
+ * the whole syncProject pass.
+ */
+export function clampFaderGain(value: number): number {
+  return Number.isFinite(value) ? Math.min(1.5, Math.max(0, value)) : 0.9;
+}
+
+export function clampPanValue(value: number): number {
+  return Number.isFinite(value) ? Math.min(1, Math.max(-1, value)) : 0;
+}
+
+export function clampSendLevel(value: number): number {
+  return Number.isFinite(value) ? Math.min(1.5, Math.max(0, value)) : 0;
+}
+
 interface FxChainState {
   runtimes: Map<string, EffectRuntime>;
   params: Map<string, Record<string, number>>;
@@ -1272,7 +1294,7 @@ export class AudioEngine {
       } else {
         this.syncFxParams(ret.effects, nodes.fx);
       }
-      nodes.gain.gain.setTargetAtTime(Math.max(0, Math.min(1.5, ret.gain)), ctx.currentTime, 0.01);
+      nodes.gain.gain.setTargetAtTime(clampFaderGain(ret.gain), ctx.currentTime, 0.01);
     }
 
     // Create/update group nodes
@@ -1329,9 +1351,9 @@ export class AudioEngine {
       }
       this.syncSends(track.sends, nodes);
       const now = ctx.currentTime;
-      nodes.panner.pan.setTargetAtTime(track.pan, now, 0.01);
+      nodes.panner.pan.setTargetAtTime(clampPanValue(track.pan), now, 0.01);
       // Group audible when it — or any of its members — is soloed.
-      nodes.gain.gain.setTargetAtTime(solo.audible(track.id) ? track.gain : 0, now, 0.01);
+      nodes.gain.gain.setTargetAtTime(solo.audible(track.id) ? clampFaderGain(track.gain) : 0, now, 0.01);
     }
 
     for (const track of doc.tracks) {
@@ -1413,9 +1435,9 @@ export class AudioEngine {
         }
         // Still allow live gain/pan adjustments
         const now = ctx.currentTime;
-        nodes.panner.pan.setTargetAtTime(track.pan, now, 0.01);
+        nodes.panner.pan.setTargetAtTime(clampPanValue(track.pan), now, 0.01);
         // Member audible when it — or the group it feeds — is soloed.
-        nodes.gain.gain.setTargetAtTime(solo.audible(track.id) ? track.gain : 0, now, 0.01);
+        nodes.gain.gain.setTargetAtTime(solo.audible(track.id) ? clampFaderGain(track.gain) : 0, now, 0.01);
         continue; // Skip FX/instrument sync for frozen tracks
       }
 
@@ -1441,8 +1463,8 @@ export class AudioEngine {
       }
       this.syncSends(track.sends, nodes);
       const now = ctx.currentTime;
-      nodes.panner.pan.setTargetAtTime(track.pan, now, 0.01);
-      nodes.gain.gain.setTargetAtTime(solo.audible(track.id) ? track.gain : 0, now, 0.01);
+      nodes.panner.pan.setTargetAtTime(clampPanValue(track.pan), now, 0.01);
+      nodes.gain.gain.setTargetAtTime(solo.audible(track.id) ? clampFaderGain(track.gain) : 0, now, 0.01);
     }
 
     // All source nodes now exist, including tracks that appear after their
@@ -1670,7 +1692,7 @@ export class AudioEngine {
         nodes.sendDelays.set(returnId, sendDelay);
         nodes.modMacroPan.connect(sendGain);
       }
-      sendGain.gain.setTargetAtTime(sends[returnId] ?? 0, ctx.currentTime, 0.01);
+      sendGain.gain.setTargetAtTime(clampSendLevel(sends[returnId] ?? 0), ctx.currentTime, 0.01);
     }
   }
 
@@ -2263,7 +2285,7 @@ export class AudioEngine {
     // muted (or soloed-out) channel for the length of the drag, then snap
     // back to silence on commit.
     const audible = this.doc ? soloAudibility(this.doc).audible(trackId) : true;
-    nodes.gain.gain.setTargetAtTime(audible ? Math.min(1.5, Math.max(0, gain)) : 0, this.ctx.currentTime, 0.01);
+    nodes.gain.gain.setTargetAtTime(audible ? clampFaderGain(gain) : 0, this.ctx.currentTime, 0.01);
   }
 
   /** Live send-level preview (mirrors syncSends' write; commit is setTrackSend). */
@@ -2271,19 +2293,19 @@ export class AudioEngine {
     const nodes = this.trackNodes.get(trackId) ?? this.groupNodes.get(trackId);
     const sendGain = nodes?.sends.get(returnId);
     if (!sendGain || !this.ctx) return;
-    sendGain.gain.setTargetAtTime(Math.min(1.5, Math.max(0, level)), this.ctx.currentTime, 0.01);
+    sendGain.gain.setTargetAtTime(clampSendLevel(level), this.ctx.currentTime, 0.01);
   }
 
   previewTrackPan(trackId: string, pan: number): void {
     const nodes = this.trackNodes.get(trackId) ?? this.groupNodes.get(trackId);
     if (!nodes || !this.ctx) return;
-    nodes.panner.pan.setTargetAtTime(Math.min(1, Math.max(-1, pan)), this.ctx.currentTime, 0.01);
+    nodes.panner.pan.setTargetAtTime(clampPanValue(pan), this.ctx.currentTime, 0.01);
   }
 
   previewReturnGain(returnId: string, gain: number): void {
     const nodes = this.returnNodes.get(returnId);
     if (!nodes || !this.ctx) return;
-    nodes.gain.gain.setTargetAtTime(Math.min(1.5, Math.max(0, gain)), this.ctx.currentTime, 0.01);
+    nodes.gain.gain.setTargetAtTime(clampFaderGain(gain), this.ctx.currentTime, 0.01);
   }
 
   previewMasterGain(masterGain: number): void {
