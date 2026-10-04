@@ -74,13 +74,29 @@ export const pwaOptions: Partial<VitePWAOptions> = {
       "assets/ort-*.wasm",
       // An optional vendored copy must not be downloaded during PWA install.
       "audiotool-nexus/**",
+      // Locally-converted VSCO packs (scripts/convert-vsco2.mjs, gitignored at
+      // .gitignore:139) contain sustained piano/percussion loops at 4.3–4.7 MB
+      // each, past `maximumFileSizeToCacheInBytes` below. Workbox REPORTS
+      // over-limit precache entries as a build error, not a warning, so a
+      // developer who has converted the pack locally cannot build at all.
+      //
+      // Raise the cap instead and the install payload would grow by tens of
+      // megabytes of loops that a user only plays if they open the kit.
+      // Excluding them keeps the shell lean and matches how they are built:
+      // these are local development assets, not shipped ones. The curated
+      // `samples/piano/` pack — which IS what a shipped install precaches —
+      // stays under the cap and is unaffected.
+      "**/samples/vsco/**",
     ],
     // Workbox silently EXCLUDES precache entries above its 2 MiB default —
     // raise the cap so curated one-shots (kicks/snares are typically well
     // under this) never get silently dropped from the offline kit.
     //
     // Keep the app-shell cap bounded: optional third-party runtimes must not
-    // turn a small PWA install into a multi-dozen-megabyte download.
+    // turn a small PWA install into a multi-dozen-megabyte download. Note this
+    // is a limit, not a guarantee — anything above it is dropped from the
+    // precache manifest, so keeping local-only assets out is what actually
+    // makes `npm run build` succeed on a machine that has them.
     maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
     runtimeCaching: [
       {

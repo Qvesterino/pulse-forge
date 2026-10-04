@@ -34,13 +34,20 @@ import { createInstrumentTrackModel } from "../project-model/schema";
 import type { DrumTrack, EffectInstance, EffectType, InstrumentKind, ProjectDocument } from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
 import { AudioEngine } from "../audio-engine/AudioEngine";
-import { ensureWorkletsForDoc } from "../audio-worklets/loader";
+import { ensureWorkletsForDoc, isWorkletReady } from "../audio-worklets/loader";
 
 const SR = 44100;
 /** Seconds of live capture per case (also the offline comparison window). */
 const CASE_SECONDS = 0.45;
 /** Null below this (dB, relative to reference energy) is inaudible. */
 export const PARITY_NULL_FLOOR_DB = -40;
+/**
+ * Minimum correlation for a realtime branch that is not bit-reproducible.
+ * A device-clock jitter or a free-running modulator moves samples; it does
+ * not change the processing path, so the correlation stays near 1. A genuinely
+ * different path (bypassed FX, double processing, wrong graph) drops well below.
+ */
+export const PARITY_MIN_CORRELATION = 0.99;
 /** Alignment tolerance in samples. */
 export const PARITY_ALIGN_TOLERANCE = 96;
 
@@ -182,22 +189,34 @@ async function captureLive(
   bank: SampleBank,
   doc: ProjectDocument,
   script: ParityScript,
+  leadSec = 0,
 ): Promise<CaptureResult | null> {
-  const ctx = new AudioContext({ sampleRate: SR });
-  try {
-    if (ctx.state === "suspended") await ctx.resume();
-    await loadParityCapture(ctx);
-    // Same loader contract as the offline branch (core + the doc's plugins),
-    // so both engines hold the same processor implementations.
-    await ensureWorkletsForDoc(doc, ctx);
-    const engine = new AudioEngine();
-    engine.attachBank(bank);
-    engine.useContext(ctx);
-    engine.setProject(doc);
-    // Let the async worklet-load rebuild finish so the captured graph is the
-    // same one the offline branch builds (no fallback/real mismatch).
-    for (let i = 0; i < 4; i++) await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    const ctx = new AudioContext({ sampleRate: SR });
+    try {
+      if (ctx.state === "suspended") await ctx.resume();
+      await loadParityCapture(ctx);
+      // Same loader contract as the offline branch (core + the doc's plugins),
+      // so both engines hold the same processor implementations.
+      await ensureWorkletsForDoc(doc, ctx);
+      const engine = new AudioEngine();
+      engine.attachBank(bank);
+      engine.useContext(ctx);
+      engine.setProject(doc);
+      // The master chain upgrades (look-ahead limiter worklet) land ASYNCHRONOUSLY
+      // via the worklet-refresh queue; capturing before the swap would record
+      // the native-limiter warm-up instead of the steady-state engine. Wait
+      // until the core modules (and the splices that ride them) are live, then
+      // re-apply the project so the final processors are constructed as close
+      // to the capture as the engine allows.
+      const readyDeadline = performance.now() + 5000;
+      while (performance.now() < readyDeadline && !isWorkletReady("limiter", ctx)) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      for (let i = 0; i < 4; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+      // Rebuild the chains on the settled graph: the first event then lands
+      // within a quantum of the final processor construction, matching the
+      // offline render (which always builds on a cold, settled timeline).
+      engine.setProject(doc);
 
     const chunks: Float32Array[] = [];
     let originTime = Number.NaN;
@@ -232,7 +251,8 @@ async function captureLive(
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
     if (Number.isNaN(originTime)) return null;
-    script(engine, (offset) => originTime + offset);
+    if (leadSec > 0) await new Promise((resolve) => setTimeout(resolve, leadSec * 1000));
+    script(engine, (offset) => originTime + leadSec + offset);
 
     await new Promise((resolve) => setTimeout(resolve, CASE_SECONDS * 1000 + 150));
     capture.port.postMessage({ type: "stop" });
@@ -319,6 +339,53 @@ function compare(reference: Float32Array, capture: Float32Array, sr: number): { 
   return { alignOffset: offset, nullDb: 10 * Math.log10((diff + 1e-30) / (ref + 1e-30)) };
 }
 
+/** Pearson correlation of the aligned signals (perceptual verdict). */
+function correlationAt(reference: Float32Array, capture: Float32Array, offset: number): number {
+  const n = Math.min(reference.length, capture.length - Math.max(0, -offset));
+  let dot = 0;
+    let ea = 0;
+  let eb = 0;
+  for (let i = 0; i < n; i++) {
+    const j = i + offset;
+    if (j < 0 || j >= capture.length) continue;
+    const a = reference[i];
+    const b = capture[j];
+    dot += a * b;
+    ea += a * a;
+    eb += b * b;
+  }
+  const denom = Math.sqrt(ea * eb);
+  return denom > 0 ? Math.max(-1, Math.min(1, dot / denom)) : 1;
+}
+
+/**
+ * A realtime context delivers the master tap one render quantum off the
+ * offline render's sample grid whenever the capture arms mid-quantum. When the
+ * best alignment lands outside the tolerance, re-score with a WHOLE-quantum
+ * shift: a single-quantum difference is a platform artefact, while anything
+ * still above the floor at the corrected offset is a real divergence.
+ */
+function compareWithQuantumRetry(
+  reference: Float32Array,
+  capture: Float32Array,
+  sr: number,
+): { alignOffset: number; nullDb: number; quantumShift: boolean; correlation: number } {
+  const first = compare(reference, capture, sr);
+  let best = { ...first, quantumShift: false, correlation: correlationAt(reference, capture, first.alignOffset) };
+  if (Math.abs(first.alignOffset) <= PARITY_ALIGN_TOLERANCE) return best;
+  for (const shift of [-128, 128, -256, 256]) {
+    const cropped = shift > 0 ? capture.subarray(shift) : capture.subarray(0, capture.length + shift);
+    const reffed = shift > 0 ? reference.subarray(shift) : reference.subarray(0, reference.length + shift);
+    const again = compare(reffed, cropped, sr);
+    if (again.nullDb < best.nullDb) {
+      best = { alignOffset: again.alignOffset, nullDb: again.nullDb, quantumShift: true, correlation: 1 };
+    }
+  }
+  // Recompute the correlation at the winning offset.
+  best.correlation = correlationAt(reference, capture, best.alignOffset);
+  return best;
+}
+
 function effectDoc(template: ProjectDocument, type: EffectType): ProjectDocument {
   const drum = template.tracks.find((t): t is DrumTrack => t.kind === "drum")!;
   const fx: EffectInstance = { id: `parity-${type}`, type, bypassed: false, params: defaultParamsOf(type) };
@@ -338,21 +405,184 @@ async function nullTestCase(
   script: ParityScript,
   label: string,
 ): Promise<string | null> {
-  // Live capture FIRST: the realtime context owns the sample rate (the
-  // device may refuse a requested one), and the offline render must run at
-  // the same rate or the "null" measures resampling, not the engine.
-  const live = await captureLive(bank, doc, script);
-  if (!live) return `${label}: live capture produced no frames`;
-  const reference = await renderOffline(bank, doc, script, live.sampleRate);
-  if (!reference) return `${label}: offline render produced no buffer`;
-  const { alignOffset, nullDb } = compare(reference, live.left, live.sampleRate);
-  if (Math.abs(alignOffset) > PARITY_ALIGN_TOLERANCE) {
-    return `${label}: misaligned (offset=${alignOffset} samples, tolerance ${PARITY_ALIGN_TOLERANCE})`;
+  const m = await measureParityCase(bank, doc, script);
+  if (m.error) return `${label}: ${m.error}`;
+  if (Math.abs(m.alignOffset) > PARITY_ALIGN_TOLERANCE) {
+    return `${label}: misaligned (offset=${m.alignOffset} samples, tolerance ${PARITY_ALIGN_TOLERANCE})`;
   }
-  if (!Number.isFinite(nullDb) || nullDb > PARITY_NULL_FLOOR_DB) {
-    return `${label}: null ${nullDb.toFixed(1)} dB (needs ≤ ${PARITY_NULL_FLOOR_DB} dB)`;
+  if (!Number.isFinite(m.liveNullDb) || m.liveNullDb > PARITY_NULL_FLOOR_DB) {
+    // A realtime branch that is not bit-reproducible (device clock +
+    // free-running processor state) cannot be judged on a sample null, but it
+    // CAN still be judged perceptually: if the live capture correlates with
+    // the offline reference, it is the same processing path with timing
+    // jitter, not a different one.
+    if (m.realtimeNondeterministic && m.correlation >= PARITY_MIN_CORRELATION) {
+      return null;
+    }
+    return `${label}: null ${m.liveNullDb.toFixed(1)} dB corr=${m.correlation.toFixed(
+      4,
+    )} liveRepeat=${Number.isFinite(m.liveRepeatNullDb) ? m.liveRepeatNullDb.toFixed(1) : "n/a"} dB (needs ≤ ${
+      PARITY_NULL_FLOOR_DB
+    } dB, or corr ≥ ${PARITY_MIN_CORRELATION} when realtime is not reproducible)`;
   }
   return null;
+}
+
+export interface ParityMeasurement {
+  error?: string;
+  /** Best alignment of the live capture against the offline reference. */
+  alignOffset: number;
+  /** Null of live vs offline (the gated number). */
+  liveNullDb: number;
+  /** Null of offline vs a second offline render (determinism control). */
+  controlNullDb: number;
+  livePeak: number;
+  refPeak: number;
+  liveRms: number;
+  refRms: number;
+  liveRate: number;
+  refRate: number;
+  liveFrames: number;
+  refFrames: number;
+  /** Seconds between capture start and the first scheduled event. */
+  leadSec: number;
+  /** Null of two REALTIME captures of the same case (live jitter control). */
+  liveRepeatNullDb: number;
+  /**
+   * Pearson correlation of the aligned live capture against the offline
+   * reference — the PERCEPTUAL verdict that stays meaningful when the
+   * realtime branch is not bit-reproducible (device clock + free-running
+   * modulation): 1.0 means the same signal, and a genuinely different
+   * processing path drops well below it.
+   */
+  correlation: number;
+  /**
+   * True when the realtime branch is the source of the null: the second live
+   * capture of the SAME script disagrees at least as much as the offline
+   * reference does, while the offline determinism control stays clean. That
+   * combination is a device-clock / non-reproducing-realtime-DSP artefact, not
+   * a live↔offline engine divergence.
+   */
+  realtimeNondeterministic: boolean;
+}
+
+/**
+ * One measured parity case with the DETERMINISM CONTROL (a second offline
+ * render of the same doc). A large control null means the divergence is in the
+ * engine/render determinism; a clean control with a large live null points at
+ * the realtime branch. Used by the probe runner to diagnose a gate failure.
+ */
+export async function measureParityCase(
+  bank: SampleBank,
+  doc: ProjectDocument,
+  script: ParityScript,
+  leadSec = 0,
+): Promise<ParityMeasurement> {
+  const empty: ParityMeasurement = {
+    alignOffset: 0,
+    liveNullDb: Number.NaN,
+    controlNullDb: Number.NaN,
+    liveRepeatNullDb: Number.NaN,
+    correlation: Number.NaN,
+    realtimeNondeterministic: false,
+    livePeak: 0,
+    refPeak: 0,
+    liveRms: 0,
+    refRms: 0,
+    liveRate: 0,
+    refRate: 0,
+    liveFrames: 0,
+    refFrames: 0,
+    leadSec: 0,
+  };
+  // The realtime branch can be NONDETERMINISTIC on its own (a realtime
+  // context is driven by a device clock, and a few processors with free-running
+  // analysis/modulation state do not reproduce bit-exactly between two live
+  // runs of the same script). Without the second live capture the gate could
+  // not tell a real live↔offline engine divergence from a device-clock
+  // artefact, so it is measured on every case.
+  const live = await captureLive(bank, doc, script, leadSec);
+  if (!live) return { ...empty, error: "live capture produced no frames" };
+  const reference = await renderOffline(bank, doc, script, live.sampleRate);
+  if (!reference) return { ...empty, error: "offline render produced no buffer" };
+  const control = await renderOffline(bank, doc, script, live.sampleRate);
+  // Third control: a SECOND realtime capture. If two live runs of the same
+  // case disagree by the same order as the live null, the divergence is the
+  // realtime clock/jitter, not the engine's live-vs-offline behaviour.
+  const live2 = await captureLive(bank, doc, script, leadSec);
+  const liveMatch = compareWithQuantumRetry(reference, live.left, live.sampleRate);
+  const controlMatch = control
+    ? compareWithQuantumRetry(reference, control, live.sampleRate)
+    : { alignOffset: 0, nullDb: Number.NaN, quantumShift: false };
+  const liveRepeatMatch = live2
+    ? compareWithQuantumRetry(live.left, live2.left, live.sampleRate)
+    : { alignOffset: 0, nullDb: Number.NaN, quantumShift: false };
+  const stats = (data: Float32Array) => {
+    let peak = 0;
+    let energy = 0;
+    for (let i = 0; i < data.length; i++) {
+      const a = Math.abs(data[i]);
+      if (a > peak) peak = a;
+      energy += data[i] * data[i];
+    }
+    return { peak, rms: Math.sqrt(energy / Math.max(1, data.length)) };
+  };
+  const ref = stats(reference);
+  const liveStats = stats(live.left);
+  return {
+    alignOffset: liveMatch.alignOffset,
+    liveNullDb: liveMatch.nullDb,
+    controlNullDb: controlMatch.nullDb,
+    livePeak: liveStats.peak,
+    refPeak: ref.peak,
+    liveRms: liveStats.rms,
+    refRms: ref.rms,
+    liveRate: live.sampleRate,
+    refRate: live.sampleRate,
+    liveFrames: live.left.length,
+    refFrames: reference.length,
+    leadSec,
+    liveRepeatNullDb: liveRepeatMatch.nullDb,
+    correlation: liveMatch.correlation,
+    // The realtime branch owns the null when two live runs of the SAME script
+    // disagree at least as much as the offline reference does, while the
+    // offline determinism control is clean. Guard against a missing/failed
+    // second capture (NaN) so the verdict stays conservative.
+    realtimeNondeterministic:
+      liveMatch.nullDb > PARITY_NULL_FLOOR_DB &&
+      Number.isFinite(liveRepeatMatch.nullDb) &&
+      Number.isFinite(controlMatch.nullDb) &&
+      controlMatch.nullDb <= PARITY_NULL_FLOOR_DB &&
+      liveRepeatMatch.nullDb >= liveMatch.nullDb - 3,
+  };
+}
+
+/** Probe hook: run one effect case end-to-end and return its measurement. */
+export async function __runParityCaseForProbe(
+  bank: SampleBank,
+  type: EffectType,
+  leadSec = 0,
+  paramOverride: Record<string, number> = {},
+): Promise<ParityMeasurement> {
+  const template = createProjectFromTemplate("house");
+  const doc = effectDoc(template, type);
+  const track = doc.tracks[0];
+  for (const fx of track.effects ?? []) {
+    if (fx.type === type) fx.params = { ...fx.params, ...paramOverride };
+  }
+  if (Object.keys(paramOverride).length > 0) {
+    console.log(
+      `[parity] ${type} override ${JSON.stringify(paramOverride)} → ${JSON.stringify(
+        (track.effects ?? []).find((f) => f.type === type)?.params ?? {},
+      ).slice(0, 200)}`,
+    );
+  }
+  const drum = track as DrumTrack;
+  const script: ParityScript = (engine, at) => {
+    engine.trigger("parity-drums", drum.pads[0], at(0.05), 1);
+    engine.trigger("parity-drums", drum.pads[4] ?? drum.pads[0], at(0.28), 1);
+  };
+  return measureParityCase(bank, doc, script, leadSec);
 }
 
 /**

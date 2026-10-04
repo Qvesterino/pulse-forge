@@ -186,6 +186,13 @@ def main() -> None:
         "procedural variants merged into the TRAIN split only (weight 1.0); validation "
         "stays library-only, and variants of held-out sequences are dropped",
     )
+    parser.add_argument(
+        "--midi-corpus",
+        help="public-domain MIDI corpus dataset JSON (ingest-midi-corpus.mts output) — "
+        "external next-note samples merged into the TRAIN split only (weight 1.0); "
+        "validation stays library-only (W2: no data without provenance — the corpus "
+        "manifest is scripts/data/midi-corpus/manifest.json)",
+    )
     parser.add_argument("--favorite-oversample", type=int, default=3)
     parser.add_argument(
         "--weight-power",
@@ -301,6 +308,42 @@ def main() -> None:
             yt_train = np.concatenate([yt_train, np.array(aug_yt, dtype=np.int64)])
             print(f"[train] augmented merged: {aug_count} procedural samples (train-only, val siblings dropped)")
 
+    # W2 — Public-domain MIDI corpus: external next-note samples join the
+    # TRAIN split at weight 1.0. The corpus is NOT a sibling of any library
+    # sequence (its groups are `ambient#midi:<piece>#<role>`), so there is no
+    # leak guard to trip — but a corpus group may NEVER be a held-out val
+    # group, which the group naming makes structurally impossible. Validation
+    # stays library-pure: the manifest reports corpus size + provenance file.
+    corpus_count = 0
+    if args.midi_corpus:
+        corpus_payload = json.loads(Path(args.midi_corpus).read_text())
+        if corpus_payload.get("featureVersion") != "melodic-features.v1":
+            raise SystemExit(f"unexpected midi corpus feature version: {corpus_payload.get('featureVersion')}")
+        corpus_x: list[list[float]] = []
+        corpus_yd: list[int] = []
+        corpus_yt: list[int] = []
+        for sample in corpus_payload.get("data") or []:
+            row_x = sample["x"]
+            if embedding_mode:
+                if len(row_x) == 41:
+                    pass  # already v2
+                elif len(row_x) == 29:
+                    semantic = lookup.require(str(sample["group"]))  # type: ignore[union-attr]
+                    row_x = list(semantic) + list(row_x[4:])
+                else:
+                    raise SystemExit("midi corpus feature width mismatch — regenerate via ingest-midi-corpus.mts")
+            elif len(row_x) != x_all.shape[1]:
+                raise SystemExit("midi corpus feature width mismatch — regenerate via ingest-midi-corpus.mts")
+            corpus_x.append(list(row_x))
+            corpus_yd.append(int(sample["degree"]))
+            corpus_yt.append(int(sample["duration"]))
+        corpus_count = len(corpus_x)
+        if corpus_x:
+            x_train = np.concatenate([x_train, np.array(corpus_x, dtype=np.float64)])
+            yd_train = np.concatenate([yd_train, np.array(corpus_yd, dtype=np.int64)])
+            yt_train = np.concatenate([yt_train, np.array(corpus_yt, dtype=np.int64)])
+            print(f"[train] midi corpus merged: {corpus_count} public-domain samples (train-only)")
+
     # Favorites feedback loop (C1): weighted user-kept melodic phrases join
     # the TRAIN split only — validation stays library-only so reported
     # metrics keep meaning. Oversampling = repeating samples by weight.
@@ -376,6 +419,7 @@ def main() -> None:
         "featureCount": int(x_all.shape[1]),
         "mode": "embedding-v2" if embedding_mode else "genre-onehot-v1",
         "augmentedSamples": aug_count,
+        "midiCorpusSamples": corpus_count,
         "hidden": HIDDEN,
         "epochs": EPOCHS,
         "samples": int(len(x_all)),

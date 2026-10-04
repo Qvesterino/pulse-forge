@@ -72,15 +72,25 @@ export function createWebSpeechCapture(lang = "en-US"): WebSpeechCapture | null 
     rec.continuous = true;
     rec.interimResults = true;
     rec.onresult = (event) => {
-      let final = "";
+      // Results are CUMULATIVE snapshots: finalized phrases stay in the
+      // list, so collect each finalized phrase once (tracked by index) and
+      // join with spaces — a naive `final += text` would concatenate the
+      // whole history on every event AND glue consecutive phrases together
+      // without a separator.
+      const finalized = new Map<number, string>();
       let interim = "";
       for (let i = 0; i < event.results.length; i++) {
         const result = event.results[i];
         const text = result[0]?.transcript ?? "";
-        if (result.isFinal) final += text;
+        if (result.isFinal) finalized.set(i, text);
         else interim += text;
       }
-      finalTranscript = final.trim();
+      finalTranscript = Array.from(finalized.keys())
+        .sort((a, b) => a - b)
+        .map((index) => finalized.get(index)!.trim())
+        .filter(Boolean)
+        .join(" ")
+        .trim();
       interimTranscript = interim.trim();
     };
     rec.onerror = (event) => {
@@ -119,12 +129,15 @@ export function createWebSpeechCapture(lang = "en-US"): WebSpeechCapture | null 
       // SpeechRecognition results arrive asynchronously after stop() —
       // wait briefly for the final transcript to settle.
       for (let i = 0; i < 20; i++) {
-        if (finalTranscript || error) break;
+        if (error) break;
         await new Promise((resolve) => setTimeout(resolve, 150));
       }
       active = false;
       if (error) return null;
-      return finalTranscript || interimTranscript || null;
+      // Finalized phrases + any trailing interim words the user spoke
+      // before pressing stop — dropping the interim tail would silently
+      // lose the last few words of every utterance.
+      return [finalTranscript, interimTranscript].filter(Boolean).join(" ").trim() || null;
     },
     cancel() {
       recognition?.stop();

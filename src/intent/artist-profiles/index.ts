@@ -1551,6 +1551,48 @@ export function getArtistProfile(slug: string): ArtistProfile | undefined {
  * Useful for resolving a free-form vibe word from the user to candidate
  * profiles — wiring lives in a future slice.
  */
+/**
+ * W0.4 (intent-killer-feature-plan) — HONEST SLOT TABLE for descriptive
+ * genre values that sit outside the engine IntentGenre union. The
+ * `genres` field is DESCRIPTIVE of an artist's catalog (never a generator
+ * contract), so this table documents — it does not route. Each entry:
+ * the nearest engine genre IF the engine ever broadens its enum, and why
+ * the broader value is the honest one today. The companion test asserts
+ * every profile's genre value is either in-union or documented here —
+ * no silent fallback anywhere.
+ */
+export const PROFILE_GENRE_SLOTS: Readonly<Record<string, { nearest: IntentGenre; reason: string }>> = {
+  hiphop: {
+    nearest: "boombap",
+    reason:
+      "J Dilla's catalog is the boom-bap lineage — but the honest descriptive value is the broader hiphop umbrella until the engine owns a hiphop slot (boom-bap is a sub-culture, not the whole catalog).",
+  },
+};
+
+/** The engine genre union, restated for the slot test (avoids importing
+ * the generator's type list into the data layer — structural, not coupling). */
+export const ENGINE_GENRE_UNION: ReadonlySet<string> = new Set([
+  "house",
+  "techno",
+  "trap",
+  "ambient",
+  "drill",
+  "phonk",
+  "jersey",
+  "dnb",
+  "hyperpop",
+  "ukg",
+  "boombap",
+  "amapiano",
+  "trance",
+  "detroit",
+  "postrock",
+  "chiptune",
+  "eurodance",
+  "latin",
+  "drone",
+]);
+
 export function findProfilesByVibe(needle: string): readonly ArtistProfile[] {
   const lower = needle.trim().toLowerCase();
   if (!lower) return [];

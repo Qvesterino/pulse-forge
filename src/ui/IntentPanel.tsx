@@ -148,6 +148,7 @@ import { installIntentFailureDevtools, logIntentMiningEvent } from "../intent/fa
 import { diagnoseComplaint } from "../intent/complaints";
 import type { SongSectionMeter } from "../intent/song-audio-review";
 import { createVoiceCapture } from "../intent/voice-capture";
+import { createWebSpeechCapture, isWebSpeechSupported } from "../intent/stt-web-speech";
 import { isMicRecordingActive } from "../audio-engine/PcmMicRecorder";
 import type { IntentModelState } from "../intent/model-loader-types";
 import { normalizeIntent } from "../intent/normalize";
@@ -2536,6 +2537,25 @@ export function IntentPanel() {
       replacePrompt(transcript, true);
       setStatus(`🎙 ${transcript}`);
       return;
+    }
+    // W0.3 (killer-feature plan): prefer the browser-native Web Speech
+    // recognizer when the browser has one (Chrome/Edge) — zero download,
+    // live transcription, no 1.2 GB Whisper fetch. The PCM capture +
+    // Whisper path stays as the fallback (Firefox/Safari = today's state,
+    // honestly reported). Both satisfy the same capture contract, and the
+    // transcript is a TEXT SOURCE either way: it lands in the intent bar
+    // where the user sees and edits it before anything routes.
+    const webSpeech = isWebSpeechSupported() ? createWebSpeechCapture(navigator.language || "en-US") : null;
+    if (webSpeech) {
+      const started = await webSpeech.start();
+      if (started) {
+        voiceCaptureRef.current = webSpeech;
+        setVoiceState("recording");
+        setStatus("🎙 nahrávam (prehliadačová reč)… znova klikni pre stop + prepis");
+        return;
+      }
+      // start() failed (mic denied) — fall through to the PCM path, whose
+      // getUserMedia error is the clearer report.
     }
     const capture = createVoiceCapture();
     const started = await capture.start();

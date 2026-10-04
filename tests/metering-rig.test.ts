@@ -32,7 +32,7 @@ function makeDeps(overrides: Partial<MeteringRigDeps> = {}): MeteringRigDeps {
     trackAnalyser: () => null,
     groupAnalyser: () => null,
     returnAnalyser: () => null,
-    masterStage: () => ({ limiter: null, limiterWorklet: null, glue: null, kwMeter: null }),
+    masterStage: () => ({ limiter: null, limiterWorklet: null, glue: null, kwMeter: null, rtMonitor: null }),
     ...overrides,
   };
 }
@@ -68,7 +68,7 @@ describe("MeteringRig (Wave 4a)", () => {
         trackAnalyser: () => null,
         masterStage: () => {
           stageReads++;
-          return { limiter: null, limiterWorklet: null, glue: null, kwMeter: null };
+          return { limiter: null, limiterWorklet: null, glue: null, kwMeter: null, rtMonitor: null };
         },
         now: () => fakeNow,
       }),
@@ -149,6 +149,8 @@ describe("MeteringRig (Wave 4a)", () => {
           limiterWorklet: { getGainReductionDb: () => 5 } as unknown as never,
           glue: null,
           kwMeter: null,
+          // Added by the rt-monitor hardening commit that this test's mock never picked up.
+          rtMonitor: null,
         }),
       }),
     );
@@ -160,6 +162,8 @@ describe("MeteringRig (Wave 4a)", () => {
           limiterWorklet: null,
           glue: null,
           kwMeter: null,
+          // Added by the rt-monitor hardening commit that this test's mock never picked up.
+          rtMonitor: null,
         }),
       }),
     );

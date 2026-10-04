@@ -82,7 +82,7 @@ def to_v2_rows(x_v1: np.ndarray, groups: np.ndarray) -> np.ndarray | None:
     return np.array(rows, dtype=np.float64)
 
 
-def train_fold(base, aug, held_groups, weight_power: float, smoothing: float, embedding: bool):
+def train_fold(base, aug, corpus, held_groups, weight_power: float, smoothing: float, embedding: bool):
     xb = np.array([s["x"] for s in base], dtype=np.float64)
     ybd = np.array([s["degree"] for s in base], dtype=np.int64)
     ybt = np.array([s["duration"] for s in base], dtype=np.int64)
@@ -134,6 +134,29 @@ def train_fold(base, aug, held_groups, weight_power: float, smoothing: float, em
         yd_train = np.concatenate([yd_train, np.array(ad, dtype=np.int64)])
         yt_train = np.concatenate([yt_train, np.array(at, dtype=np.int64)])
 
+    # W2 public-domain MIDI corpus: train-only, no leak guard needed (its
+    # groups are `ambient#midi:<piece>#<role>` — never siblings of a held-out
+    # library sequence). Same merge order as the trainer so the gate measures
+    # the recipe the trainer will actually ship.
+    cx, cd, ct = [], [], []
+    for sample in corpus:
+        row = sample["x"]
+        if embedding:
+            if len(row) == 41:
+                pass
+            else:
+                semantic = vectors.vector_for(str(sample["group"]))  # type: ignore[union-attr]
+                if semantic is None:
+                    continue
+                row = list(semantic) + list(row[4:])
+        cx.append(row)
+        cd.append(int(sample["degree"]))
+        ct.append(int(sample["duration"]))
+    if cx:
+        x_train = np.concatenate([x_train, np.array(cx, dtype=np.float64)])
+        yd_train = np.concatenate([yd_train, np.array(cd, dtype=np.int64)])
+        yt_train = np.concatenate([yt_train, np.array(ct, dtype=np.int64)])
+
     rng = np.random.default_rng(SEED)
     model = MLP(x_train.shape[1], rng)
     dw = class_weights(yd_train, DEGREE_CLASSES, weight_power)
@@ -177,9 +200,20 @@ def main() -> None:
         help="drop dnb rows from base AND augmentation — reproduces the ds.v1 "
         "problem space, which is the only fair comparison for the shipped v1",
     )
+    parser.add_argument(
+        "--midi-corpus",
+        help="public-domain MIDI corpus dataset JSON (ingest-midi-corpus.mts output) — "
+        "merged into TRAIN only; validation stays library-pure (W2)",
+    )
     args = parser.parse_args()
 
     base, aug = load_datasets()
+    corpus: list[dict] = []
+    if args.midi_corpus:
+        corpus_payload = json.loads(Path(args.midi_corpus).read_text())
+        if corpus_payload.get("featureVersion") != "melodic-features.v1":
+            raise SystemExit(f"unexpected midi corpus feature version: {corpus_payload.get('featureVersion')}")
+        corpus = corpus_payload.get("data") or []
     if args.exclude_dnb:
         base = [s for s in base if not str(s["group"]).startswith("dnb")]
         aug = [s for s in aug if not str(s["group"]).startswith("dnb")]
@@ -197,15 +231,16 @@ def main() -> None:
     recipe = "embedding-v2" if args.embedding else "genre-onehot-v1"
     mode = "shipped 15% split" if args.shipped_split else f"{args.folds}-fold group CV"
     vintage = f"{dataset_version} -- no dnb" if args.exclude_dnb else f"{dataset_version} (current)"
+    corpus_label = f", midi corpus {len(corpus)} rows" if corpus else ", no midi corpus"
     print("=" * 78)
-    print(f"MELODIC RETRAIN GATE -- {mode}, {recipe}, {vintage}, weightPower={args.weight_power}")
+    print(f"MELODIC RETRAIN GATE -- {mode}, {recipe}, {vintage}{corpus_label}, weightPower={args.weight_power}")
     print("=" * 78)
     print(f"base={len(base)} rows / {len(unique)} groups, augmented={len(aug)} rows (train-only)")
     print()
 
     all_vd, all_yd, all_vt, all_yt, all_td, all_tt = [], [], [], [], [], []
     for index, held in enumerate(folds):
-        vd, yd, vt, yt, td, tt = train_fold(base, aug, held, args.weight_power, 0.1, args.embedding)
+        vd, yd, vt, yt, td, tt = train_fold(base, aug, corpus, held, args.weight_power, 0.1, args.embedding)
         all_vd.append(vd)
         all_yd.append(yd)
         all_vt.append(vt)
