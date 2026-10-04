@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { decodeShareCode, shareAppUrl } from "../export/shareCode";
 import { intentSnapshotOfDoc } from "../gallery/intentCarry";
-import { BRIGHT_LEVEL, DARK_LEVEL, applyEnergy, energyWeights, parseEmbedCommand } from "./energy";
+import {
+  BRIGHT_LEVEL,
+  DARK_LEVEL,
+  applyEnergy,
+  energyWeights,
+  initialEnergyFromHash,
+  parseEmbedCommand,
+} from "./energy";
 import type { ProjectDocument } from "../project-model/types";
 
 type Phase = { kind: "decoding" } | { kind: "rendering" } | { kind: "ready" } | { kind: "error"; message: string };
@@ -105,15 +112,16 @@ export function EmbedApp({
   // ── decode + render ─────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
-    const code =
-      codeProp ??
-      new URLSearchParams(
-        typeof location !== "undefined" && location.hash.startsWith("#") ? location.hash.slice(1) : "",
-      ).get("p");
+    const hash = typeof location !== "undefined" && location.hash.startsWith("#") ? location.hash : "";
+    const code = codeProp ?? new URLSearchParams(hash.slice(1)).get("p");
     if (!code) {
       setPhase({ kind: "error", message: "Missing beat code in the link." });
       return;
     }
+    // Deep-linked energy (#p=…&e=73) — the slider boots at the linked level.
+    const linked = codeProp ? 0.5 : initialEnergyFromHash(hash);
+    energyRef.current = linked;
+    setEnergy(linked);
     const doc = decodeShareCode(code);
     if (!doc) {
       setPhase({ kind: "error", message: "This beat link is invalid or corrupted." });

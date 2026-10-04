@@ -3,6 +3,7 @@ import {
   BRIGHT_LEVEL,
   DARK_LEVEL,
   applyEnergy,
+  initialEnergyFromHash,
   energyFamilyOfTrack,
   energyGainFactor,
   energyVelocityFactor,
@@ -177,6 +178,24 @@ describe("embed energy — crossfade weights", () => {
   it("clamps out-of-range positions", () => {
     expect(energyWeights(-3)[0]).toBe(1);
     expect(energyWeights(9)[2]).toBe(1);
+  });
+});
+
+describe("embed energy — deep-linked initial energy", () => {
+  it("reads the e percent from the share hash", () => {
+    expect(initialEnergyFromHash("#p=CODE&e=73")).toBeCloseTo(0.73, 6);
+    expect(initialEnergyFromHash("#p=CODE&e=0")).toBe(0);
+    expect(initialEnergyFromHash("#p=CODE&e=100")).toBe(1);
+    expect(initialEnergyFromHash("#p=CODE&e=12.5")).toBeCloseTo(0.125, 6);
+  });
+
+  it("degrades to the authored default on junk — the URL never breaks the player", () => {
+    expect(initialEnergyFromHash("#p=CODE")).toBe(0.5);
+    expect(initialEnergyFromHash("#p=CODE&e=")).toBe(0.5);
+    expect(initialEnergyFromHash("#p=CODE&e=loud")).toBe(0.5);
+    expect(initialEnergyFromHash("#p=CODE&e=-40")).toBe(0);
+    expect(initialEnergyFromHash("#p=CODE&e=999")).toBe(1);
+    expect(initialEnergyFromHash("")).toBe(0.5);
   });
 });
 

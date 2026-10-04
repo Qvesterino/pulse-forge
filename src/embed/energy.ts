@@ -226,3 +226,20 @@ export function parseEmbedCommand(data: unknown): EmbedCommand | null {
       return null;
   }
 }
+
+/**
+ * Deep-linkable energy: the share-page hash may carry `e` as a percent
+ * (0..100) next to the beat code — `#p=<code>&e=73` boots the player with
+ * the slider already at 73%, so a link can pin the energy a game, an OBS
+ * scene or a chat message wants. Anything missing, non-numeric or out of
+ * range degrades to the authored default (0.5) — the URL never breaks the
+ * player.
+ */
+export function initialEnergyFromHash(hash: string): number {
+  if (typeof hash !== "string" || !hash.startsWith("#")) return 0.5;
+  const raw = new URLSearchParams(hash.slice(1)).get("e");
+  if (raw == null || raw.trim() === "") return 0.5;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return 0.5;
+  return Math.max(0, Math.min(100, value)) / 100;
+}
