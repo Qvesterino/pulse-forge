@@ -59,10 +59,9 @@ for (let bar = 0; bar < 16; bar++) {
 async function main(): Promise<void> {
   const ort = await import("onnxruntime-web");
   ort.env.wasm.numThreads = 1;
-  const session = await ort.InferenceSession.create(
-    readFileSync(path.join(MODELS, "symbolic-melodic-v3.onnx")),
-    { executionProviders: ["wasm"] },
-  );
+  const session = await ort.InferenceSession.create(readFileSync(path.join(MODELS, "symbolic-melodic-v3.onnx")), {
+    executionProviders: ["wasm"],
+  });
   const inputName = session.inputNames[0];
 
   let modelHits = 0;
