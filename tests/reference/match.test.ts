@@ -59,15 +59,7 @@ describe("reference match — contract", () => {
     const mix = { channels: correlated(makeNoise(7, 3)), sampleRate: SR };
     const ref = { channels: correlated(toneBoostedNoise(11, 50, 3)), sampleRate: SR };
     const report = buildReferenceMatch(mix, ref);
-    expect(report.bands.map((b) => b.band)).toEqual([
-      "sub",
-      "low",
-      "lowmid",
-      "mid",
-      "himid",
-      "high",
-      "air",
-    ]);
+    expect(report.bands.map((b) => b.band)).toEqual(["sub", "low", "lowmid", "mid", "himid", "high", "air"]);
     for (const row of report.bands) {
       expect(Number.isFinite(row.mixDb), `${row.band} mixDb`).toBe(true);
       expect(Number.isFinite(row.refDb), `${row.band} refDb`).toBe(true);
@@ -93,7 +85,10 @@ describe("reference match — the share domain is level-free", () => {
   it("a −20 dB reference produces the same band table as the loud one", () => {
     const mix = { channels: correlated(makeNoise(7, 3)), sampleRate: SR };
     const loudRef = { channels: correlated(toneBoostedNoise(11, 200, 3)), sampleRate: SR };
-    const quietRef = { channels: correlated(toneBoostedNoise(11, 200, 3).map((v) => v * 0.1) as Float32Array), sampleRate: SR };
+    const quietRef = {
+      channels: correlated(toneBoostedNoise(11, 200, 3).map((v) => v * 0.1) as Float32Array),
+      sampleRate: SR,
+    };
     const loudReport = buildReferenceMatch(mix, loudRef);
     const quietReport = buildReferenceMatch(mix, quietRef);
     // Band shares are dB-of-own-total: scaling the reference cancels.
@@ -175,6 +170,56 @@ describe("reference match — hostile inputs never throw", () => {
     // Silent mix: same.
     const reportB = buildReferenceMatch(silent, real);
     expect(Number.isFinite(reportB.bands[0]!.mixDb)).toBe(true);
+  });
+});
+
+describe("reference match — participation floor (the empty-band rule)", () => {
+  it("a band empty on BOTH sides can never be the biggest gap", () => {
+    // Two pure low tones: the high/air bands hold no energy on either side,
+    // so their "difference" is only filter leakage. The summary must not send
+    // the user after air the mix and reference both leave empty.
+    const lowTone = (amp: number): Float32Array => {
+      const pcm = new Float32Array(SR * 3);
+      for (let i = 0; i < pcm.length; i++) pcm[i] = amp * Math.sin((2 * Math.PI * 80 * i) / SR);
+      return pcm;
+    };
+    const report = buildReferenceMatch(
+      { channels: correlated(lowTone(0.5)), sampleRate: SR },
+      { channels: correlated(lowTone(0.4)), sampleRate: SR },
+    );
+    const air = report.bands.find((b) => b.band === "air")!;
+    expect(air.empty).toBe(true);
+    // A near-identical low tone pair: the curve has nothing to move either.
+    expect(report.curve === null || Math.abs(report.curve.high) <= 1).toBe(true);
+  });
+
+  it("share semantics: a sub-heavy reference reads the mix as thin in sub (positive delta)", () => {
+    // Three real bands, sub dominant in the reference. The sub row must read
+    // POSITIVE (the mix is thinner there) — the panel renders the sign, and a
+    // user reads "mix is thin in sub" as the actionable direction.
+    const mixTones = [60, 1000, 9000].map((hz, idx) => {
+      const pcm = new Float32Array(SR * 3);
+      for (let i = 0; i < pcm.length; i++)
+        pcm[i] += 0.3 * Math.sin((2 * Math.PI * hz * i) / SR) * (idx === 0 ? 0.4 : 1);
+      return pcm;
+    });
+    const refTones = [50, 1000, 9000].map((hz, idx) => {
+      const pcm = new Float32Array(SR * 3);
+      for (let i = 0; i < pcm.length; i++) pcm[i] += (idx === 0 ? 0.8 : 0.25) * Math.sin((2 * Math.PI * hz * i) / SR);
+      return pcm;
+    });
+    const mix = mixTones.reduce(
+      (acc, pcm) => acc.map((ch) => ch.map((v, i) => v + pcm[i]!)),
+      [new Float32Array(SR * 3), new Float32Array(SR * 3)],
+    );
+    const ref = refTones.reduce(
+      (acc, pcm) => acc.map((ch) => ch.map((v, i) => v + pcm[i]!)),
+      [new Float32Array(SR * 3), new Float32Array(SR * 3)],
+    );
+    const report = buildReferenceMatch({ channels: mix, sampleRate: SR }, { channels: ref, sampleRate: SR });
+    const sub = report.bands.find((b) => b.band === "sub")!;
+    // Mix carries a weak 60 Hz, ref a strong 50 Hz: the mix IS thinner in sub.
+    expect(sub.deltaDb).toBeGreaterThan(0);
   });
 });
 

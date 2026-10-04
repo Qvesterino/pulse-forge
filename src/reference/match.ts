@@ -56,6 +56,12 @@ export interface MatchBandRow {
   refDb: number;
   /** ref − mix, dB of share. Positive = the mix is thinner here than the ref. */
   deltaDb: number;
+  /**
+   * Both sides sit below the participation floor — the band holds no energy on
+   * either side, so its delta is filter leakage and must not be ranked as a
+   * gap. The row still renders (it is a real measurement of "nothing here").
+   */
+  empty: boolean;
 }
 
 export interface MatchLoudness {
@@ -109,6 +115,15 @@ export const MATCH_DEADZONE_DB = 1.5;
 export const MATCH_LOUDNESS_MIN_LU = 1;
 /** Both halves clamp to the same ±6 the master commands already enforce. */
 export const MATCH_MAX_DB = 6;
+/**
+ * A band sitting this far below ITS OWN SIDE's loudest band holds no
+ * information — the "difference" there is filter leakage, not a mix decision.
+ * The same participation floor the sound-library audit's attack term uses: a
+ * band with no body to measure against must never win a comparison on ringing
+ * divided by near-zero. Relative per side, so a dark mix and a bright mix are
+ * each judged against their own dominant band.
+ */
+export const MATCH_PARTICIPATION_FLOOR_DB = 30;
 
 const round1 = (value: number): number => Math.round(value * 10) / 10;
 
@@ -126,14 +141,11 @@ function dbOfShare(share: number): number {
  * against a loud mix), derive the master match-EQ curve and the loudness
  * trim. Pure and synchronous: same inputs → byte-identical report.
  */
-export function buildReferenceMatch(
-  project: MatchProjectInput,
-  reference: MatchReferenceInput,
-): ReferenceMatchReport {
+export function buildReferenceMatch(project: MatchProjectInput, reference: MatchReferenceInput): ReferenceMatchReport {
   const mix = analyzeMixHealth(project.channels, project.sampleRate);
   const ref = analyzeMixHealth(reference.channels, reference.sampleRate);
 
-  const bands: MatchBandRow[] = BAND_DEFS.map(({ band, label, hz }) => {
+  const rows: Array<Omit<MatchBandRow, "empty">> = BAND_DEFS.map(({ band, label, hz }) => {
     // mix-doctor bandShares are LINEAR shares (0..1 of own total); the match
     // compares in dB-of-share (10·log10) so the table reads like every other
     // dB column and deltas are perceptually proportional.
@@ -141,6 +153,19 @@ export function buildReferenceMatch(
     const refDb = round1(dbOfShare(ref.bandShares[band]));
     return { band, label, hz, mixDb, refDb, deltaDb: round1(refDb - mixDb) };
   });
+  // Participation floor, per side: a band below its own side's loudest band by
+  // more than the floor has no body to compare. The curve is folded from the
+  // participating rows only, so leakage cannot push the master EQ either.
+  const participating = rows.filter(
+    (row) =>
+      row.mixDb >= Math.max(...rows.map((r) => r.mixDb)) - MATCH_PARTICIPATION_FLOOR_DB &&
+      row.refDb >= Math.max(...rows.map((r) => r.refDb)) - MATCH_PARTICIPATION_FLOOR_DB,
+  );
+  const bands: MatchBandRow[] = rows.map((row) => ({
+    ...row,
+    // Both sides empty → no information in the difference.
+    empty: !participating.includes(row),
+  }));
 
   const loudness: MatchLoudness = {
     mixLufs: mix.integratedLufs === null ? null : round1(mix.integratedLufs),
@@ -157,7 +182,9 @@ export function buildReferenceMatch(
   // folding them into the master chain's 4-band vocabulary (sub+low → low,
   // lowmid → lowMid, mid+himid → highMid, high+air → high — energy-weighted
   // by the share domain's own exponentials, never a plain average of dB).
-  const curve = matchCurveFromBands(mix.bandShares, ref.bandShares);
+  // Only PARTICIPATING bands are folded: an empty band's leakage would
+  // otherwise tilt the curve toward moving air neither mix nor reference has.
+  const curve = matchCurveFromBands(mix.bandShares, ref.bandShares, participating as MatchBandRow[]);
 
   // Level half: the reference's own LUFS, clamped to the streaming trim
   // window, only when the gap is a full LU or more.
@@ -234,15 +261,23 @@ const BAND_FOLD: Record<keyof MatchEqBands, ReadonlyArray<MatchBandRow["band"]>>
 function matchCurveFromBands(
   mix: MixHealthReport["bandShares"],
   ref: MixHealthReport["bandShares"],
+  participating: readonly MatchBandRow[],
 ): MatchEqCurve | null {
   const fold = (shares: MixHealthReport["bandShares"]): MatchEqBands => {
     const out: Record<keyof MatchEqBands, number> = { low: 0, lowMid: 0, highMid: 0, high: 0 };
     for (const target of Object.keys(BAND_FOLD) as Array<keyof MatchEqBands>) {
       // Shares are LINEAR (0..1 of own total) — folding is a plain sum, and
       // the folded value converts to dB only at the end
-      // (computeMatchEqCurve speaks dB-of-share).
+      // (computeMatchEqCurve speaks dB-of-share). A target band with no
+      // participating source is EXCLUDED rather than folded as −120: the
+      // curve must not try to correct a region neither side occupies.
+      const sources = BAND_FOLD[target].filter((band) => participating.some((p) => p.band === band));
+      if (sources.length === 0) {
+        out[target] = dbOfShare(0);
+        continue;
+      }
       let sum = 0;
-      for (const band of BAND_FOLD[target]) sum += shares[band];
+      for (const band of sources) sum += shares[band];
       out[target] = dbOfShare(sum);
     }
     return { low: out.low, lowMid: out.lowMid, highMid: out.highMid, high: out.high };
@@ -257,12 +292,13 @@ function matchCurveFromBands(
 /* ─────────────────────────── the summary ─────────────────────────── */
 
 function summarize(bands: MatchBandRow[], loudness: MatchLoudness): string {
-  const loud =
-    loudness.deltaLu !== null ? ` · loudness ${loudness.deltaLu > 0 ? "+" : ""}${loudness.deltaLu} LU` : "";
-  // Deadzone-aware: a match where NO band clears the deadzone and no trim
-  // was derived is "tonally matched", not "biggest gap 0.0 dB" — reporting a
-  // zero gap as a gap is noise, not information.
-  const worst = [...bands].sort((a, b) => Math.abs(b.deltaDb) - Math.abs(a.deltaDb))[0] ?? null;
+  const loud = loudness.deltaLu !== null ? ` · loudness ${loudness.deltaLu > 0 ? "+" : ""}${loudness.deltaLu} LU` : "";
+  // Rank only bands that hold energy on BOTH sides: an empty band's delta is
+  // filter leakage, and calling it the "biggest gap" would send the user after
+  // a band neither mix nor reference occupies. Deadzone-aware on top of that:
+  // a match where nothing clears 1.5 dB is "no measurable difference", not a
+  // zero gap reported as a gap.
+  const worst = [...bands].filter((b) => !b.empty).sort((a, b) => Math.abs(b.deltaDb) - Math.abs(a.deltaDb))[0] ?? null;
   if (worst === null || Math.abs(worst.deltaDb) < MATCH_DEADZONE_DB) {
     return `No measurable difference${loud}`;
   }

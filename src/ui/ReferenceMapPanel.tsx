@@ -383,9 +383,7 @@ export function ReferenceMapPanel() {
         tailSeconds: 0.3,
         masterProcessing: false,
       });
-      const channels = Array.from({ length: buffer.numberOfChannels }, (_, c) =>
-        buffer.getChannelData(c).slice(),
-      );
+      const channels = Array.from({ length: buffer.numberOfChannels }, (_, c) => buffer.getChannelData(c).slice());
       const report = buildReferenceMatch(
         { channels, sampleRate: buffer.sampleRate },
         { channels: analysis.channels, sampleRate: analysis.sampleRate },
@@ -946,12 +944,7 @@ function MatchTab({
   return (
     <div className="reference-match" data-testid="reference-match">
       <div className="reference-match-header">
-        <button
-          type="button"
-          onClick={onRun}
-          disabled={!hasAnalysis || busy}
-          data-testid="reference-match-run"
-        >
+        <button type="button" onClick={onRun} disabled={!hasAnalysis || busy} data-testid="reference-match-run">
           {busy ? "Measuring…" : "Measure the mix vs the reference"}
         </button>
         {report && (
@@ -997,7 +990,9 @@ function MatchTab({
               {report.bands.map((row) => (
                 <tr
                   key={row.band}
-                  className={Math.abs(row.deltaDb) >= 1.5 ? "is-gapped" : undefined}
+                  className={
+                    !row.empty && Math.abs(row.deltaDb) >= 1.5 ? "is-gapped" : row.empty ? "is-empty" : undefined
+                  }
                   data-testid={`reference-match-band-${row.band}`}
                 >
                   <td>{row.label}</td>
@@ -1005,7 +1000,10 @@ function MatchTab({
                   <td>{row.mixDb.toFixed(1)} dB</td>
                   <td>{row.refDb.toFixed(1)} dB</td>
                   <td>
-                    {Math.abs(row.deltaDb) < 1.5
+                    {/* A band empty on BOTH sides has no information in its
+                        delta — showing a filter-leakage number as a gap would
+                        send the user after a band neither mix occupies. */}
+                    {row.empty || Math.abs(row.deltaDb) < 1.5
                       ? "—"
                       : `${row.deltaDb > 0 ? "+" : ""}${row.deltaDb.toFixed(1)} dB`}
                   </td>
@@ -1050,17 +1048,17 @@ function MatchTab({
           </dl>
 
           <p className="panel-sub reference-match-note">
-            Shape, not volume: the curve is de-meaned (a match is never a hidden gain move) and clamped
-            ±6 dB. APPLY is one undo step — re-measure after to see what landed.
+            Shape, not volume: the curve is de-meaned (a match is never a hidden gain move) and clamped ±6 dB. APPLY is
+            one undo step — re-measure after to see what landed.
           </p>
         </>
       )}
 
       {!report && !busy && !error && (
         <p className="panel-sub">
-          Renders the current pattern pre-master and compares it with the reference: band by band, in
-          loudness-invariant shares. The APPLY button lands a master match-EQ curve + loudness trim —
-          always yours to press, never automatic.
+          Renders the current pattern pre-master and compares it with the reference: band by band, in loudness-invariant
+          shares. The APPLY button lands a master match-EQ curve + loudness trim — always yours to press, never
+          automatic.
         </p>
       )}
     </div>

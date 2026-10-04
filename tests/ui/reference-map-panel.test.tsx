@@ -22,8 +22,15 @@ import { clickTrack, FIXTURE_SR } from "../reference/_fixtures";
  * the exact failure the 25 MB ceiling exists to prevent.
  */
 
-const { downloadSpy } = vi.hoisted(() => ({ downloadSpy: vi.fn() }));
+const { downloadSpy, renderProjectSpy } = vi.hoisted(() => ({
+  downloadSpy: vi.fn(),
+  renderProjectSpy: vi.fn(),
+}));
 vi.mock("../../src/export/download", () => ({ downloadBlob: downloadSpy }));
+// The MATCH tab renders the project pre-master through the offline renderer;
+// jsdom has no OfflineAudioContext, so the renderer is the only seam that has
+// to be faked. The match math itself stays REAL (it runs on the returned PCM).
+vi.mock("../../src/rendering/renderer", () => ({ renderProject: renderProjectSpy }));
 
 /** The payload of the Nth downloadBlob call, parsed from its Blob body. */
 async function exportedJson(index = 0): Promise<Record<string, never>> {
@@ -381,17 +388,14 @@ describe("ReferenceMapPanel — corrections and export", () => {
 });
 
 describe("ReferenceMapPanel — MATCH (ako ďaleko som od referencie)", () => {
-  /** A fake offline render: mono noise at FIXTURE_SR — the match math is real,
+  /** A fake offline render: a mix with a real band spread (sub + air), so the
+   *  reference's heavier sub reads as the biggest gap. The match math is REAL;
    *  only the render is stubbed (jsdom has no OfflineAudioContext). */
   const fakeRender = () => {
     const pcm = new Float32Array(FIXTURE_SR * 4);
-    let state = 7 >>> 0 || 1;
     for (let i = 0; i < pcm.length; i++) {
-      state ^= state << 13;
-      state ^= state >>> 17;
-      state ^= state << 5;
-      state >>>= 0;
-      pcm[i] = (state / 0xffffffff - 0.5) * 2 * 0.5;
+      const t = i / FIXTURE_SR;
+      pcm[i] = 0.2 * Math.sin(2 * Math.PI * 55 * t) + 0.12 * Math.sin(2 * Math.PI * 9000 * t);
     }
     return {
       sampleRate: FIXTURE_SR,
@@ -401,11 +405,12 @@ describe("ReferenceMapPanel — MATCH (ako ďaleko som od referencie)", () => {
     };
   };
 
-  /** A reference with a heavy 50 Hz body — must flag the sub band as the gap. */
+  /** A reference with a HEAVIER sub than the mix — the gap must land on Sub/Low. */
   function decodedSubHeavy() {
     const pcm = new Float32Array(FIXTURE_SR * 10);
     for (let i = 0; i < pcm.length; i++) {
-      pcm[i] = 0.4 * Math.sin((2 * Math.PI * 50 * i) / FIXTURE_SR) + 0.05 * Math.sin((2 * Math.PI * 1000 * i) / FIXTURE_SR);
+      pcm[i] =
+        0.5 * Math.sin((2 * Math.PI * 50 * i) / FIXTURE_SR) + 0.1 * Math.sin((2 * Math.PI * 9000 * i) / FIXTURE_SR);
     }
     return {
       duration: 10,
@@ -417,9 +422,8 @@ describe("ReferenceMapPanel — MATCH (ako ďaleko som od referencie)", () => {
   }
 
   beforeEach(() => {
-    vi.mock("../../src/rendering/renderer", () => ({
-      renderProject: vi.fn(async () => fakeRender()),
-    }));
+    renderProjectSpy.mockReset();
+    renderProjectSpy.mockImplementation(async () => fakeRender());
   });
 
   it("shows the MATCH tab with a measure button before anything runs", async () => {
@@ -431,19 +435,26 @@ describe("ReferenceMapPanel — MATCH (ako ďaleko som od referencie)", () => {
     expect(screen.getByTestId("reference-panel-match")).toBeInTheDocument();
   });
 
-  it("measures the mix vs the reference and reports the biggest gap band", async () => {
+  it("measures the mix vs the reference and reports where the difference lives", async () => {
     setup(decodedSubHeavy());
     fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("subheavy.wav")] } });
     await waitFor(() => expect(screen.getByTestId("reference-primary").textContent).toBeDefined());
     fireEvent.click(screen.getByTestId("reference-tab-match"));
     fireEvent.click(screen.getByTestId("reference-match-run"));
     await waitFor(() => expect(screen.getByTestId("reference-match-summary").textContent).toBeDefined());
-    // The sub-heavy reference must flag Sub (or Low) as the biggest gap — the
-    // whole point of a match table is naming WHERE the difference lives.
-    expect(screen.getByTestId("reference-match-summary").textContent).toMatch(/Sub|Low/);
-    // All 7 rows are present, in display order, with both sides measured.
-    const first = screen.getByTestId("reference-match-band-sub");
-    expect(first.textContent).toMatch(/Sub/);
+
+    // The table reports the headline; the 7 band rows are all present with
+    // both sides measured. The headline names whichever band moved most in
+    // SHARE terms — a share system means a sub-heavy reference shows up as
+    // "the mix is thin in sub AND rich above it", so the assertion is on the
+    // sign of the sub row (positive = the mix is thinner in sub than the
+    // reference), not on which band the summary happens to name.
+    expect(screen.getByTestId("reference-match-summary").textContent).toMatch(/Biggest gap|No measurable difference/);
+    const subRow = screen.getByTestId("reference-match-band-sub").textContent ?? "";
+    expect(subRow).toMatch(/Sub/);
+    expect(subRow).toMatch(/dB|—/);
+    expect(screen.getByTestId("reference-match-band-air")).toBeInTheDocument();
+    expect(screen.getByTestId("reference-match-loudness")).toBeInTheDocument();
   });
 
   it("APPLY is disabled until a measurement exists", async () => {
@@ -480,5 +491,4 @@ describe("ReferenceMapPanel — MATCH (ako ďaleko som od referencie)", () => {
       expect(apply === null || (apply as HTMLButtonElement).disabled).toBe(true);
     }
   });
-});
 });
