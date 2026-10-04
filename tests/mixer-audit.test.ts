@@ -166,7 +166,7 @@ describe("mixer signal-flow audit — preview/teardown contracts", () => {
     const previewBody = src.slice(src.indexOf("previewTrackGain(trackId"), src.indexOf("previewTrackSend("));
     expect(previewBody, "preview must route through soloAudibility").toMatch(/soloAudibility\(this\.doc\)/);
     expect(previewBody, "inaudible channel must preview 0, never the raw fader value").toMatch(
-      /audible\s*\?\s*Math\.min\(1\.5,\s*Math\.max\(0,\s*gain\)\)\s*:\s*0/,
+      /audible\s*\?\s*clampFaderGain\(gain\)\s*:\s*0/,
     );
   });
 
