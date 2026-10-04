@@ -23,16 +23,16 @@ import { dirname, resolve } from "node:path";
 
 const BARREL = resolve(process.cwd(), "src/commands/commands.ts");
 
-/** Every source line of the barrel plus every module it re-exports. */
-export function readCommandLines(): string[] {
+/** The barrel plus every module it re-exports, in the order readCommandLines() concatenates them. */
+function readCommandSegments(): { file: string; lines: string[] }[] {
   const seen = new Set<string>();
-  const out: string[] = [];
+  const out: { file: string; lines: string[] }[] = [];
 
   const visit = (file: string): void => {
     if (seen.has(file)) return;
     seen.add(file);
     const src = readFileSync(file, "utf8");
-    out.push(...src.split(/\r?\n/));
+    out.push({ file, lines: src.split(/\r?\n/) });
     for (const m of src.matchAll(/^export\s+(?:\*|\{[^}]*\})\s+from\s+"\.\/([\w.-]+)"/gm)) {
       const next = resolve(dirname(file), `${m[1]}.ts`);
       if (existsSync(next)) visit(next);
@@ -41,6 +41,23 @@ export function readCommandLines(): string[] {
 
   visit(BARREL);
   return out;
+}
+
+/** Every source line of the barrel plus every module it re-exports. */
+export function readCommandLines(): string[] {
+  return readCommandSegments().flatMap((s) => s.lines);
+}
+
+/**
+ * The owning file of every line readCommandLines() returns — a parallel array.
+ *
+ * A guard that concatenates several files cannot tell a module header from a
+ * function's own JSDoc, because both are just a `/** ... *\/` block sitting
+ * above an `export function`. This gives callers the boundary they need to
+ * tell the two apart.
+ */
+export function readCommandLineOwners(): string[] {
+  return readCommandSegments().flatMap((s) => s.lines.map(() => s.file));
 }
 
 /** Names of every `export function` across the barrel and its domain modules. */
