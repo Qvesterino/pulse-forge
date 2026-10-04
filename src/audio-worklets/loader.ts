@@ -48,6 +48,7 @@ const CORE_TYPES = [
   "envFollower",
   "compressor",
   "kwmeter",
+  "rtMonitor",
   "stepGate",
   "svFilter",
   "flanger",

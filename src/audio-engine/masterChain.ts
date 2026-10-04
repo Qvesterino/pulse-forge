@@ -3,6 +3,7 @@ import { createLimiterNode } from "../audio-worklets/limiter-node";
 import { createCompressorNode } from "../audio-worklets/compressor-node";
 import { createTapeNode } from "../audio-worklets/tape-node";
 import { createKwMeterNode, type KwMeterHandle } from "../audio-worklets/kwmeter-node";
+import { createRtMonitorNode, type RtMonitorHandle } from "../audio-worklets/rt-monitor-node";
 import { isWorkletReady } from "../audio-worklets/loader";
 import { defaultMasterConfig } from "../project-model/schema";
 import type { MasterConfig } from "../project-model/types";
@@ -16,6 +17,8 @@ export interface MasterStage {
   glue: EffectRuntime | null;
   glueNative: DynamicsCompressorNode | null;
   kwMeter: KwMeterHandle | null;
+  /** Audio-thread load / xrun probe (release-gate hardening). */
+  rtMonitor: RtMonitorHandle | null;
 }
 
 export interface MasterChainDeps {
@@ -60,6 +63,8 @@ export class MasterChain {
   private masterLimiterWorklet: EffectRuntime | null = null;
   /** K-weighted loudness meter (BS.1770) — sink branch off the master limiter. */
   private kwMeter: KwMeterHandle | null = null;
+  /** Audio-thread load / xrun probe — sink branch off the master limiter. */
+  private rtMonitor: RtMonitorHandle | null = null;
   // @ts-ignore — reserved for master tape/ms stage
   private masterTape: EffectRuntime | null = null;
   /**
@@ -115,6 +120,7 @@ export class MasterChain {
       glue: this.masterGlue,
       glueNative: this.masterGlueNative,
       kwMeter: this.kwMeter,
+      rtMonitor: this.rtMonitor,
     };
   }
 
@@ -160,6 +166,8 @@ export class MasterChain {
     this.masterLimiterWorklet = null;
     this.kwMeter?.dispose();
     this.kwMeter = null;
+    this.rtMonitor?.dispose();
+    this.rtMonitor = null;
     this.masterTape?.dispose();
     this.masterTape = null;
     try {
@@ -653,6 +661,8 @@ export class MasterChain {
     });
     // K-weighted loudness meter (BS.1770) — sink branch, no audio output.
     if (isWorkletReady("kwmeter", ctx)) this.attachKwMeter(ctx);
+    // RT load / xrun probe — sink branch, no audio output (release-gate hardening).
+    if (isWorkletReady("rtMonitor", ctx)) this.attachRtMonitor(ctx);
   }
 
   /** Create + arm the K-weighted loudness meter sink (idempotent). */
@@ -662,15 +672,30 @@ export class MasterChain {
     this.masterLimiter.connect(this.kwMeter.input);
   }
 
+  /** Create + arm the RT load probe sink (idempotent). */
+  attachRtMonitor(ctx: BaseAudioContext): void {
+    if (this.rtMonitor || !this.masterLimiter || !isWorkletReady("rtMonitor", ctx)) return;
+    this.rtMonitor = createRtMonitorNode(ctx);
+    this.masterLimiter.connect(this.rtMonitor.input);
+  }
+
   /**
-   * Splice the K-weight meter into an already-built live master chain —
-   * called once AudioWorklet modules finish loading on a live context.
+   * Splice the K-weight meter + RT monitor into an already-built live master
+   * chain — called once AudioWorklet modules finish loading on a live context.
    */
   upgradeKwMeter(): void {
     const ctx = this.deps.ctx();
     if (!isLiveAudioContext(ctx)) return;
     if (this.kwMeter || !this.masterLimiter || !isWorkletReady("kwmeter", ctx)) return;
     this.attachKwMeter(ctx);
+  }
+
+  /** Splice the RT monitor into an already-built live master chain. */
+  upgradeRtMonitor(): void {
+    const ctx = this.deps.ctx();
+    if (!isLiveAudioContext(ctx)) return;
+    if (this.rtMonitor || !this.masterLimiter || !isWorkletReady("rtMonitor", ctx)) return;
+    this.attachRtMonitor(ctx);
   }
 
   applyMasterConfig(config: MasterConfig): void {

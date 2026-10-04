@@ -7,8 +7,14 @@
  *   - per-category loudness/crest table vs the seed-renderer targets,
  *   - technical flags (clipping, DC, leading silence, dead air, LUFS drift),
  *   - low-end tuning glide for the pitch-anchored families,
- *   - nearest-neighbour redundancy watch (feature distance within category),
+ *   - nearest-neighbour redundancy watch (feature distance within category,
+ *     time-aware since the 2026-10-04 metric correction - see the block above
+ *     the FEATURE_DIMS table for why the old vector could not see a strike),
  *   - a GATE summary mirroring tests/sound-library-gate.test.ts thresholds.
+ *
+ * Options: --json=<file>, --pairs=<n> closest pairs per category (default 2),
+ * --why = per-dimension breakdown of each printed pair, --window=<ms> = attack
+ * window for the transient term (default 10 ms; 1-25 ms judges one-shots).
  *
  * Exit 0 = gate summary clean; exit 1 = at least one gate violation (the
  * vitest gate remains the enforcement — this is the human-eye companion).
@@ -27,6 +33,15 @@ const SR = 44100;
 
 const args = process.argv.slice(2);
 const jsonOut = args.find((a) => a.startsWith("--json="))?.slice(7);
+const numArg = (flag: string, fallback: number): number => {
+  const raw = args.find((a) => a.startsWith(`${flag}=`))?.slice(flag.length + 1);
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+};
+const topPairs = Math.max(1, Math.round(numArg("--pairs", 2)));
+/** attack window for the transient term - the 186 ms band average dilutes a sub-ms strike ~23 dB */
+const attackWindowMs = numArg("--window", 10);
+const why = args.includes("--why");
 
 /* ── category targets: source-grepped from the seed renderer (sync-pin) ── */
 function categoryTargets(): Record<string, number> {
@@ -300,6 +315,11 @@ interface Row {
   leadGateMs: number;
   tailSilenceMs: number;
   loudMs: number;
+  /* mean power of the first `attackWindowMs` ms after the first loud sample,
+     relative to the loud span (dB). 0 dB = flat head, -10 dB = the attack
+     carries a tenth of the energy. This is the axis the old vector lacked:
+     every strike / click / transient change lives here. */
+  attackDb: number;
   crestDb: number;
   momentaryLufs: number;
   bands: Record<string, number>;
@@ -333,6 +353,15 @@ function analyzeFile(file: string, id: string, category: string): Row {
   const rms = cnt > 0 ? Math.sqrt(sumSq / cnt) : 0;
   const crest = rms > 0 ? 20 * Math.log10(peak / rms) : 120;
 
+  const attackFrames = Math.max(1, Math.round((attackWindowMs / 1000) * SR));
+  const headStart = Math.min(firstLoud, Math.max(frames - 1, 0));
+  const headEnd = Math.min(headStart + attackFrames, frames);
+  let headSq = 0;
+  for (let i = headStart; i < headEnd; i++) headSq += main[i] * main[i];
+  const headMean = headEnd > headStart ? headSq / (headEnd - headStart) : 0;
+  const loudMean = cnt > 0 ? sumSq / cnt : 0;
+  const attackDb = loudMean > 1e-18 ? 10 * Math.log10(Math.max(headMean, 1e-18) / loudMean) : 0;
+
   const bands = bandShares(main);
   const tuning: Row["tuning"] = {};
   if (/kick|tom|808|sub/.test(id)) {
@@ -364,6 +393,7 @@ function analyzeFile(file: string, id: string, category: string): Row {
       ) / 10,
     tailSilenceMs: Math.round(((frames - 1 - lastLoud) / SR) * 1000 * 10) / 10,
     loudMs: Math.round(((lastLoud - firstLoud) / SR) * 1000 * 10) / 10,
+    attackDb: Math.round(attackDb * 10) / 10,
     crestDb: Math.round(crest * 10) / 10,
     momentaryLufs: Math.round(momentaryMaxLufs(channels) * 10) / 10,
     bands,
@@ -456,31 +486,89 @@ for (const row of rows) {
   }
 }
 
-/* nearest neighbours (redundancy watch) */
+/* ── nearest neighbours (redundancy watch) ──────────────────────────────
+ * 2026-10-04 metric correction. The old vector was
+ *   [7 band shares (dB), crest, min(durationMs, 1000)] / max(|.|)
+ * and had two structural faults that made it unusable as a de-dup signal:
+ *   1. for a one-shot the render length (400-1000 ms) is the largest
+ *      magnitude in the vector, so it became the divisor for *every*
+ *      dimension: the distance collapsed to "RMS band delta / 400" and pairs
+ *      were not comparable to one another (a 1 s file got 2.5x the headroom
+ *      of a 0.4 s one);
+ *   2. every term was time- or loudness-blind. `bands` is a whole-file Welch
+ *      average of a LUFS-normalized render, so two files built from one
+ *      recipe with different decay (hat(0.055) vs hat(0.18)) are
+ *      near-identical by construction, and file duration is a render-tail
+ *      artifact, not a property of the sound.
+ * The vector is now measured per-file features with fixed per-dimension
+ * units, so the same distance means the same thing in every category:
+ *   bands x7    dB band share                    /60
+ *   crest       dB, head to RMS                 /20
+ *   loud        ms first-to-last loud sample    /1000  (decay / sustain)
+ *   brightness  log2(centroid Hz)               /4     (timbre family)
+ *   tilt        (tail - lead) silence ms        /1000  (sweep direction)
+ *   attack      head energy vs whole file, dB   /40    (transient term;
+ *               clamped at -30 dB, below that everything is "no head")
+ * A pair is only a de-dup candidate when it is close on the axes its
+ * category is supposed to vary on - `--why` prints those axes.
+ */
+const FEATURE_DIMS = [
+  "sub",
+  "low",
+  "lowmid",
+  "mid",
+  "himid",
+  "high",
+  "air",
+  "crest",
+  "loud",
+  "brightness",
+  "tilt",
+  "attack",
+] as const;
+const FEATURE_SCALE = [60, 60, 60, 60, 60, 60, 60, 20, 1000, 4, 1000, 40] as const;
+
+const feat = (r: Row): number[] => [
+  ...BANDS.map(([name]) => r.bands[name]),
+  r.crestDb,
+  r.loudMs,
+  Math.log2(Math.max(r.bands.centroid, 1)),
+  (r.tailSilenceMs - r.leadSilenceMs) / 1000,
+  Math.max(r.attackDb, -30),
+];
+const scaled = (r: Row): number[] => feat(r).map((x, i) => x / FEATURE_SCALE[i]);
+
+/* 0.15 = one full step on a single axis (e.g. 9 dB of band share, or 150 ms of
+   decay). Pairs under it are the de-dup watchlist; pairs over ~0.3 are plainly
+   distinct sounds. Thin categories (2-4 samples) always print a "closest
+   pair" - read the distance, not the ranking. */
+const WATCH_D = 0.15;
 console.log("\n=== NEAREST NEIGHBOURS (feature distance within category) ===");
-const feat = (r: Row): number[] => {
-  const b = r.bands;
-  return [b.sub, b.low, b.lowmid, b.mid, b.himid, b.high, b.air, r.crestDb, Math.min(r.durationSec * 1000, 1000)];
-};
-const normalize = (v: number[]): number[] => {
-  const m = Math.max(...v.map(Math.abs), 1);
-  return v.map((x) => x / m);
-};
+console.log(`  attack window ${attackWindowMs} ms | top ${topPairs}/category | * = under ${WATCH_D} | --why = axes`);
 for (const [category, list] of groups) {
   if (list.length < 2) continue;
-  const feats = list.map((r) => normalize(feat(r)));
-  const pairs: Array<[number, string, string]> = [];
+  const feats = list.map(scaled);
+  const pairs: Array<[number, string, string, number[]]> = [];
   for (let i = 0; i < list.length; i++)
     for (let j = i + 1; j < list.length; j++) {
+      const contrib = feats[i].map((v, k) => Math.abs(v - feats[j][k]));
       let d = 0;
-      for (let k = 0; k < feats[i].length; k++) d += (feats[i][k] - feats[j][k]) ** 2;
-      pairs.push([Math.sqrt(d), list[i].id, list[j].id]);
+      for (const c of contrib) d += c * c;
+      pairs.push([Math.sqrt(d), list[i].id, list[j].id, contrib]);
     }
   pairs.sort((a, b) => a[0] - b[0]);
-  for (const [d, a, b] of pairs.slice(0, 2))
-    console.log(
-      `  ${category.padEnd(10)} d=${d.toFixed(3)}  ${a.replace("factory.", "")} <-> ${b.replace("factory.", "")}`,
-    );
+  for (const [d, a, b, contrib] of pairs.slice(0, topPairs)) {
+    const pair = `${a.replace("factory.", "")} <-> ${b.replace("factory.", "")}`;
+    console.log(`  ${category.padEnd(10)} d=${d.toFixed(3)}${d < WATCH_D ? "*" : " "} ${pair}`);
+    if (!why) continue;
+    const axes = contrib
+      .map((c, k) => [c, FEATURE_DIMS[k]] as const)
+      .sort((x, y) => y[0] - x[0])
+      .filter(([c]) => c > 1e-6)
+      .slice(0, 4)
+      .map(([c, name]) => `${name} ${c.toFixed(3)}`);
+    console.log(`             ${axes.length > 0 ? axes.join(" | ") : "identical on every axis"}`);
+  }
 }
 
 /* gate summary */

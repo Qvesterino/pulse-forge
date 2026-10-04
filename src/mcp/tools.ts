@@ -843,6 +843,39 @@ export const MCP_TOOLS: McpToolDef[] = [
     },
   },
   {
+    name: "kyx_import_sfz",
+    description:
+      "Import the user's SFZ instrument library: an .sfz file plus its WAV " +
+      "samples arrive as base64; KYX builds a multisample sampler mapping " +
+      "(keyzones, velocity windows, per-sample roots from pitch_keycenter) " +
+      "and applies it to a sampler track as ONE undoable step. The samples " +
+      "persist in the user's library and play immediately. Send the whole " +
+      "instrument in one call (decoded payload up to ~256 MB). Requires a " +
+      "live KYX session with a sampler track (create one via the UI, or use " +
+      "an existing sampler track id from kyx_state).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Instrument display name, e.g. 'My Cello'" },
+        sfzBase64: { type: "string", description: "The .sfz file content, base64" },
+        trackId: { type: "string", description: "Target sampler track id (from kyx_state tracks)" },
+        samples: {
+          type: "array",
+          description: "The WAV files the SFZ references (16/24-bit PCM stereo or mono)",
+          items: {
+            type: "object",
+            properties: {
+              fileName: { type: "string", description: "File name EXACTLY as the SFZ sample= paths reference it" },
+              base64: { type: "string", description: "WAV bytes, base64" },
+            },
+            required: ["fileName", "base64"],
+          },
+        },
+      },
+      required: ["name", "sfzBase64", "trackId", "samples"],
+    },
+  },
+  {
     name: "kyx_publish_gallery",
     description:
       "Publish the CURRENT KYX project to the public beat gallery as " +
@@ -1210,6 +1243,30 @@ export interface McpToolContext {
    * ONLY while the user's allow flag is on. Absent/false → honest refusal.
    */
   allowDestructive?: () => boolean;
+  /**
+   * Sample import capability (kyx_import_sfz): present when a live session
+   * can decode + persist WAVs into the user library and apply the multisample
+   * mapping to a sampler track. Absent → honest refusal (headless servers).
+   */
+  importSamples?: (input: {
+    name: string;
+    sfzBase64: string;
+    trackId: string;
+    samples: Array<{ fileName: string; base64: string }>;
+  }) => Promise<
+    | {
+        ok: true;
+        report: {
+          trackId: string;
+          fallbackSampleId: string;
+          layers: number;
+          imported: number;
+          missing: Array<{ sample: string; fileName: string }>;
+          skipped: Array<{ sample: string; reason: string }>;
+        };
+      }
+    | { ok: false; error: string }
+  >;
   /**
    * P2 transaction support (kyx_batch): fold every mutation executed between
    * begin and end into ONE undo entry. Absent → batch still runs, but each
@@ -2501,6 +2558,47 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
           isError: true,
         };
       }
+    }
+    case "kyx_import_sfz": {
+      if (ctx.importSamples == null) {
+        return {
+          text: "sample import is not available over this transport — import SFZ libraries from a live KYX session (web or desktop)",
+          mutated: false,
+        };
+      }
+      const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
+      const name = typeof record.name === "string" ? record.name.trim() : "";
+      const sfzBase64 = typeof record.sfzBase64 === "string" ? record.sfzBase64 : "";
+      const trackId = typeof record.trackId === "string" ? record.trackId : "";
+      const samples = Array.isArray(record.samples)
+        ? record.samples.filter(
+            (s): s is { fileName: string; base64: string } =>
+              s != null && typeof s === "object" &&
+              typeof (s as Record<string, unknown>).fileName === "string" &&
+              typeof (s as Record<string, unknown>).base64 === "string",
+          )
+        : [];
+      if (name === "" || sfzBase64 === "" || trackId === "" || samples.length === 0) {
+        return {
+          text: "kyx_import_sfz needs name, sfzBase64, trackId and at least one sample — " +
+            "list tracks via kyx_state",
+          mutated: false,
+        };
+      }
+      const result = await ctx.importSamples({ name, sfzBase64, trackId, samples });
+      if (!result.ok) {
+        return { text: `SFZ import failed: ${result.error}`, mutated: false, isError: true };
+      }
+      const r = result.report;
+      return {
+        text:
+          `Imported "${name}": ${r.imported} samples → ${r.layers} velocity/keyzone layers on track ${r.trackId} ` +
+          `(fallback sample ${r.fallbackSampleId}). ` +
+          (r.missing.length > 0
+            ? `MISSING from the import: ${r.missing.map((m) => m.fileName).join(", ")} — those zones stay silent.`
+            : "All SFZ regions resolved."),
+        mutated: true,
+      };
     }
     case "kyx_publish_gallery": {
       const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;

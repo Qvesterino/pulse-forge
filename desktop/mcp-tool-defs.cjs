@@ -912,6 +912,47 @@ const MCP_TOOL_DEFS = [
     },
   },
   {
+    name: "kyx_import_sfz",
+    description:
+      "Import the user's SFZ instrument library: an .sfz file plus its WAV samples arrive as base64; KYX builds a multisample sampler mapping (keyzones, velocity windows, per-sample roots from pitch_keycenter) and applies it to a sampler track as ONE undoable step. The samples persist in the user's library and play immediately. Send the whole instrument in one call (decoded payload up to ~256 MB). Requires a live KYX session with a sampler track (create one via the UI, or use an existing sampler track id from kyx_state).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Instrument display name, e.g. 'My Cello'",
+        },
+        sfzBase64: {
+          type: "string",
+          description: "The .sfz file content, base64",
+        },
+        trackId: {
+          type: "string",
+          description: "Target sampler track id (from kyx_state tracks)",
+        },
+        samples: {
+          type: "array",
+          description: "The WAV files the SFZ references (16/24-bit PCM stereo or mono)",
+          items: {
+            type: "object",
+            properties: {
+              fileName: {
+                type: "string",
+                description: "File name EXACTLY as the SFZ sample= paths reference it",
+              },
+              base64: {
+                type: "string",
+                description: "WAV bytes, base64",
+              },
+            },
+            required: ["fileName", "base64"],
+          },
+        },
+      },
+      required: ["name", "sfzBase64", "trackId", "samples"],
+    },
+  },
+  {
     name: "kyx_publish_gallery",
     description:
       "Publish the CURRENT KYX project to the public beat gallery as AGENT-MADE (shows with the robot badge + your agent name in the feed). The beat is a share-code entry: instant embed player, no audio upload. Call when the user asks to share/publish/showcase the beat you built together. Requires a live KYX session (web/desktop); standalone servers refuse honestly.",

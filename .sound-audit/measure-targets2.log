@@ -1,0 +1,30 @@
+
+> pulse-forge@0.1.0 references:genres
+> node scripts/measure-genre-references.mjs
+
+[resume] house: cached from a previous run
+[resume] techno: cached from a previous run
+[resume] trap: cached from a previous run
+[resume] ambient: cached from a previous run
+[resume] drill: cached from a previous run
+[resume] phonk: cached from a previous run
+[resume] jersey: cached from a previous run
+[retry] postrock evaluate hit a Vite full reload — re-measuring (1/5)
+[retry] goto interrupted — retrying (1/8)
+[retry] postrock evaluate hit a Vite full reload — re-measuring (2/5)
+[retry] postrock evaluate hit a Vite full reload — re-measuring (3/5)
+[retry] goto interrupted — retrying (1/8)
+[retry] postrock evaluate hit a Vite full reload — re-measuring (4/5)
+[retry] goto interrupted — retrying (1/8)
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+page.evaluate: Execution context was destroyed, most likely because of a navigation.
+    at measureGenre (D:\pulse-forge\scripts\measure-genre-references.mjs:109:25)
+    at async file:///D:/pulse-forge/scripts/measure-genre-references.mjs:243:20 {
+  log: [],
+  name: 'Error'
+}
+
+Node.js v24.11.0

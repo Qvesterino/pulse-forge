@@ -747,6 +747,7 @@ export class AudioEngine {
         // look-ahead limiter in now that they are ready.
         this.masterChain.upgradeMasterDynamics();
         this.masterChain.upgradeKwMeter();
+        this.masterChain.upgradeRtMonitor();
       })
       .catch((err) => {
         if (this.workletRefreshQueuedFor === ctx) this.workletRefreshQueuedFor = null;
@@ -2416,6 +2417,21 @@ export class AudioEngine {
     return this.metering.getMasterHeadroomDb();
   }
 
+  /**
+   * Live audio-thread load / xrun probe (release-gate hardening). Null while
+   * no RT Monitor is attached (worklet module unavailable / no live context).
+   * The snapshot is the honest in-process proxy for device xruns: worst wall
+   * time inside one render quantum vs the 128/sampleRate budget, plus the
+   * worst wall gap between consecutive callbacks.
+   */
+  getRtLoad(): import("../audio-worklets/rt-monitor-node").RtMonitorSnapshot | null {
+    return this.metering.getRtLoad();
+  }
+
+  resetRtLoad(): void {
+    this.metering.resetRtLoad();
+  }
+
   getMasterSpectrumAnalyser(): AnalyserNode | null {
     return this.metering.getMasterSpectrumAnalyser();
   }
@@ -2463,6 +2479,8 @@ export class AudioEngine {
 
   getDiagnostics(): Record<string, string | number> {
     const effectCount = [...this.trackNodes.values()].reduce((sum, n) => sum + n.fx.runtimes.size, 0);
+    const rt = this.metering.getRtLoad();
+    const audioBudgetMs = this.ctx ? (128 / this.ctx.sampleRate) * 1000 : 0;
     return {
       contextState: this.ctx?.state ?? "not-created",
       sampleRate: this.ctx?.sampleRate ?? "-",
@@ -2474,6 +2492,15 @@ export class AudioEngine {
       returns: this.returnNodes.size,
       automationLanes: this.doc?.automation.length ?? 0,
       missingAssets: this.missingAssets.join(", ") || "none",
+      // Audio-thread budget: worst per-quantum wall time against the
+      // 128/sampleRate budget, plus the xrun proxy. "n/a" (not a fabricated
+      // 0) when no RT Monitor is attached, so the UI never lies.
+      rtBudgetMs: audioBudgetMs > 0 ? Number(audioBudgetMs.toFixed(3)) : "n/a",
+      rtAvgBlockMs: rt?.available ? Number(rt.avgBlockMs.toFixed(3)) : "n/a",
+      rtMaxBlockMs: rt?.available ? Number(rt.maxBlockMs.toFixed(3)) : "n/a",
+      rtLoadPercent: rt?.available && audioBudgetMs > 0 ? Number(((rt.avgBlockMs / audioBudgetMs) * 100).toFixed(1)) : "n/a",
+      rtMaxGapMs: rt?.available ? Number(rt.maxGapMs.toFixed(2)) : "n/a",
+      rtXruns: rt?.available ? rt.xruns : "n/a",
     };
   }
 }

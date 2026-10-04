@@ -127,6 +127,22 @@ describe("transition cue assets (T3 wave 2)", () => {
     expect(reverse.startBar + reverse.lengthBars).toBe(24); // ends at the seam
     expect(reverse.gain).toBeLessThan(1);
 
+    // A 16-bar incoming hook earns the cinematic sibling (impact2), a
+    // short incoming loop keeps the tight sub thump.
+    const longImpact = buildTransitionCueClips(
+      [{ id: "i2", type: "impact", seamBar: 24, outgoingStartBar: 16, incomingBars: 16 }],
+      140,
+      "track-fx",
+    );
+    expect(longImpact.find((c) => c.bufferId === "factory.fx.impact2")).toBeDefined();
+    expect(longImpact.find((c) => c.bufferId === "factory.fx.impact")).toBeUndefined();
+    const shortImpact = buildTransitionCueClips(
+      [{ id: "i3", type: "impact", seamBar: 24, outgoingStartBar: 16, incomingBars: 8 }],
+      140,
+      "track-fx",
+    );
+    expect(shortImpact.find((c) => c.bufferId === "factory.fx.impact")).toBeDefined();
+
     const custom = buildTransitionCueClips(
       [{ id: "c1", type: "custom", seamBar: 24, outgoingStartBar: 16 }],
       140,
@@ -146,14 +162,18 @@ describe("transition cue assets (T3 wave 2)", () => {
     expect(clips).toHaveLength(1);
     expect(clips[0]).toMatchObject({ bufferId: "factory.fx.riser", startBar: 14, lengthBars: 2, trackId: "track-fx" });
 
-    // Outgoing section too short for the full asset → clamp, never cross back
-    // into the PREVIOUS section.
-    const clamped = buildTransitionCueClips(
+    // Outgoing section too short for the full asset → short sibling, still
+    // ending exactly at the seam (never crossing back into the previous
+    // section). One bar fits the 0.85 s variant.
+    const short = buildTransitionCueClips(
       [{ id: "t2", type: "riser", seamBar: 16, outgoingStartBar: 15 }],
       140,
       "track-fx",
     );
-    expect(clamped[0]).toMatchObject({ startBar: 15, lengthBars: 1 });
+    expect(short[0]).toMatchObject({ bufferId: "factory.fx.riser-short", startBar: 15, lengthBars: 1 });
+    // A one-bar window still fits ONLY the short variant; the long riser
+    // would be cut mid-build (the old clamp this replaces).
+    expect(short[0].gain).toBeLessThan(1);
   });
 
   it("drop fires impact + sub-drop at the seam; break sweeps under the silence", () => {
@@ -165,13 +185,16 @@ describe("transition cue assets (T3 wave 2)", () => {
     expect(drop.map((c) => c.bufferId).sort()).toEqual(["factory.fx.impact", "factory.fx.subdrop"]);
     for (const clip of drop) expect(clip.startBar).toBe(20);
 
+    // Break: the mid sweep before the seam + the falling-air tail at it.
     const brk = buildTransitionCueClips(
       [{ id: "b1", type: "break", seamBar: 20, outgoingStartBar: 12 }],
       140,
       "track-fx",
     );
-    expect(brk).toHaveLength(1);
-    expect(brk[0].gain).toBeLessThan(1);
+    expect(brk.map((c) => c.bufferId).sort()).toEqual(["factory.fx.noise-down", "factory.fx.sweep"]);
+    const sweep = brk.find((c) => c.bufferId === "factory.fx.sweep")!;
+    expect(sweep.gain).toBeLessThan(1);
+    expect(brk.find((c) => c.bufferId === "factory.fx.noise-down")!.startBar).toBe(20);
   });
 
   it("cue seconds stay in sync with factory DURATIONS (source-grep pin)", () => {

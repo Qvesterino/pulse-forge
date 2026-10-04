@@ -53,6 +53,7 @@ import { inspectPatternInvariants } from "./ai/invariants";
 import { autoMapVelocityLayers } from "./samples/autoMap";
 import { measurePreviewAudio, passesPreviewAudio, previewNoteDuration } from "./presets/audioQuality";
 import { hashString } from "./shared/rng";
+import { auditLiveOfflineParity, parityObligationCheck } from "./testing/live-offline-parity";
 
 export interface CheckResult {
   name: string;
@@ -423,6 +424,11 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
   await loadCuratedLayer(bank);
   record(await auditFactoryPresetAudio(bank));
   record(await auditFxExpansion(bank));
+  // Live↔offline parity gate (release-gate hardening): the obligation check
+  // is cheap and registry-derived; the null test renders the same document
+  // through a live AudioContext and the export renderer and compares them.
+  record(parityObligationCheck());
+  record(await auditLiveOfflineParity(bank));
   {
     // Round-robin variants must be DERIVED from the bank's CURRENT base. The
     // curated layer overrides bases AFTER the initial derivation, so a stale

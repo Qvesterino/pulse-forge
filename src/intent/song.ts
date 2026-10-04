@@ -2533,6 +2533,7 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
         type: section.transitionIn,
         seamBar: bar,
         outgoingStartBar: bar - previousBars,
+        incomingBars: section.bars,
       });
     }
     if (section.marker) {

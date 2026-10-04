@@ -1141,6 +1141,7 @@ export async function openProject(
 
   const getDiagnostics = (): Record<string, string | number | boolean> => {
     const engineDiag = engine.getDiagnostics();
+    const rt = engine.getRtLoad();
     return {
       ...engineDiag,
       playMode: playback.mode,
@@ -1153,6 +1154,10 @@ export async function openProject(
       schedulerFailedWindows: scheduler.stats.failedWindows,
       nextStepTick: Math.round(scheduler.stats.lastHorizonTick),
       schedulerWindows: scheduler.stats.windows,
+      // Wave 3 driver observability surfaced to the diagnostics panel.
+      schedulerDriverKind: scheduler.stats.driverKind,
+      schedulerDriverMaxGapMs: scheduler.stats.driverMaxTickerGapMs,
+      rtMonitorAvailable: rt?.available ?? false,
       trackCount: store.doc.tracks.length,
       patternCount: store.doc.patterns.length,
       schemaVersion: store.doc.schemaVersion,

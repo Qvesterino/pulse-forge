@@ -1,0 +1,24 @@
+
+> pulse-forge@0.1.0 references:genres
+> node scripts/measure-genre-references.mjs
+
+[resume] house: cached from a previous run
+[resume] techno: cached from a previous run
+[resume] trap: cached from a previous run
+[resume] ambient: cached from a previous run
+[resume] drill: cached from a previous run
+[resume] phonk: cached from a previous run
+[resume] jersey: cached from a previous run
+[resume] dnb: cached from a previous run
+[resume] hyperpop: cached from a previous run
+[resume] ukg: cached from a previous run
+[resume] boombap: cached from a previous run
+[resume] amapiano: cached from a previous run
+[resume] trance: cached from a previous run
+[resume] detroit: cached from a previous run
+[retry] postrock evaluate hit a Vite full reload — re-measuring (1/5)
+[retry] goto interrupted — retrying (1/8)
+[retry] postrock evaluate hit a Vite full reload — re-measuring (2/5)
+[retry] goto interrupted — retrying (1/8)
+[retry] postrock evaluate hit a Vite full reload — re-measuring (3/5)
+[retry] goto interrupted — retrying (1/8)

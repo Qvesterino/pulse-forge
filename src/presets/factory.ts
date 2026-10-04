@@ -8571,6 +8571,73 @@ export const FACTORY_PRESETS: InstrumentPreset[] = [
       level: -7,
     },
   },
+
+  /* ================= Bass pack sampler voices (2026-10-04) =================
+     The six factory.bass.* one-shots as playable sampler presets. The root
+     param is the sample's RECORDED fundamental (D2 = MIDI 38; the pluck is
+     D3 = MIDI 50), so the mapping stays honest — playing the root note plays
+     the sample at its own pitch. Bass-role presets normalize against the bass
+     plateau via the instrument family (see preset catalog). */
+  {
+    id: "factory.sampler.house.subround",
+    name: "Sub Round",
+    instrument: "sampler",
+    genre: "house",
+    mood: ["deep", "clean"],
+    tags: ["bass", "sub", "round", "clean"],
+    sampleId: "factory.bass.clean",
+    params: { root: 38, attack: 0.004, release: 0.35, cutoff: 500, resonance: 0.7, gain: 0.9 },
+  },
+  {
+    id: "factory.sampler.dnb.reesesaw",
+    name: "Reese Saw",
+    instrument: "sampler",
+    genre: "dnb",
+    mood: ["dark", "aggressive"],
+    tags: ["bass", "reese", "growl", "dnb"],
+    sampleId: "factory.bass.reese",
+    params: { root: 38, attack: 0.004, release: 0.4, cutoff: 4200, resonance: 0.7, gain: 0.85 },
+  },
+  {
+    id: "factory.sampler.trap.fmbellbass",
+    name: "FM Bell Bass",
+    instrument: "sampler",
+    genre: "trap",
+    mood: ["bright", "aggressive"],
+    tags: ["bass", "fm", "bell", "trap"],
+    sampleId: "factory.bass.fm",
+    params: { root: 38, attack: 0.003, release: 0.4, cutoff: 7500, resonance: 0.7, gain: 0.85 },
+  },
+  {
+    id: "factory.sampler.house.pluckround",
+    name: "Round Pluck Bass",
+    instrument: "sampler",
+    genre: "house",
+    mood: ["clean", "warm"],
+    tags: ["bass", "pluck", "bounce", "house"],
+    sampleId: "factory.bass.pluck",
+    params: { root: 50, attack: 0.002, release: 0.22, cutoff: 5500, resonance: 1.0, gain: 0.9 },
+  },
+  {
+    id: "factory.sampler.dnb.wobblebass",
+    name: "Wobble Bass",
+    instrument: "sampler",
+    genre: "dnb",
+    mood: ["aggressive", "dark"],
+    tags: ["bass", "wobble", "lfo", "bassline"],
+    sampleId: "factory.bass.wobble",
+    params: { root: 38, attack: 0.004, release: 0.4, cutoff: 6000, resonance: 0.7, gain: 0.85 },
+  },
+  {
+    id: "factory.sampler.phonk.distbass",
+    name: "Dist Bass",
+    instrument: "sampler",
+    genre: "phonk",
+    mood: ["aggressive", "warm"],
+    tags: ["bass", "drive", "distorted", "phonk"],
+    sampleId: "factory.bass.dist",
+    params: { root: 38, attack: 0.003, release: 0.35, cutoff: 4200, resonance: 0.7, gain: 0.85 },
+  },
   {
     id: "factory.808.trap.pop808",
     name: "Pop 808",

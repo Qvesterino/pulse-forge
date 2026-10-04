@@ -256,6 +256,13 @@ const TRANSITION_TYPES: ArrangementTransitionType[] = ["fill", "riser", "impact"
 interface DragState {
   mode: "move" | "resize";
   clipId: string;
+  /**
+   * The pointer this gesture captured. Terminals read it from here rather than
+   * from the releasing event, because a `pointerup` can carry a different
+   * `pointerId` than the one capture was taken on, and releasing the wrong id
+   * silently leaves the capture on the element.
+   */
+  pointerId: number;
   origStart: number;
   origLength: number;
   grabBar: number;
@@ -270,6 +277,29 @@ interface DragState {
   /** Multi-select move: every selected clip id + its start when the drag began. */
   movingIds?: string[];
   origStarts?: Record<string, number>;
+}
+
+/**
+ * Release pointer capture without ever throwing.
+ *
+ * `releasePointerCapture` throws `NotFoundError` when the element is not
+ * capturing that pointer, which is a normal state here: the HTML spec releases
+ * capture implicitly on `pointerup`/`pointercancel`, and a gesture that was
+ * cancelled or lost its capture can reach a terminal with nothing to release.
+ * A terminal that throws is a terminal that can abort its own cleanup.
+ *
+ * This is the single safe shape for all four drag terminals; the lane and
+ * ruler handlers already wrap their calls in `try/catch` for the same reason.
+ */
+function releasePointerCaptureSafely(target: EventTarget | null | undefined, pointerId: number | undefined): void {
+  if (!target || pointerId === undefined) return;
+  const release = (target as Element).releasePointerCapture;
+  if (typeof release !== "function") return;
+  try {
+    release.call(target, pointerId);
+  } catch {
+    /* not capturing that pointer (already released, or never captured) */
+  }
 }
 
 interface TransitionBoundary {
@@ -1279,21 +1309,28 @@ export function ArrangementPanel() {
   }, [recState]);
   const audioDragRef = useRef<{
     clipId: string;
-    mode: "move" | "resize" | "trimStart" | "trimEnd" | "fadeIn" | "fadeOut" | "gain" | "stretch";
+    /**
+     * Gesture modes that actually have a branch in `onAudioPointerMove`.
+     * `"trimEnd"` was removed deliberately: the right edge sends `"resize"`
+     * (see the handle's onPointerDown), and no branch ever produced a trimEnd
+     * gesture. Leaving it in the union meant a future `trimEnd` branch would
+     * type-check and look wired when nothing routed to it.
+     */
+    mode: "move" | "resize" | "trimStart" | "fadeIn" | "fadeOut" | "gain" | "stretch";
     /** Stretch anchor: right edge pins the start, left edge pins the end. */
     edge: "left" | "right";
+    /** The pointer this gesture captured — see DragState.pointerId. */
+    pointerId: number;
     origStart: number;
     origLength: number;
     origRate: number;
     origTrimStart: number;
     /** px-per-bar captured at pointerdown — see DragState.barWidth. */
     barWidth: number;
-    origTrimEnd: number;
     origFadeIn: number;
     origFadeOut: number;
     origGain: number;
     grabBar: number;
-    grabX: number;
     grabY: number;
     /**
      * Wall-clock seconds per bar averaged over THIS clip's span, at the
@@ -1850,15 +1887,6 @@ export function ArrangementPanel() {
     return Math.max(0, (event.clientX - rect.left) / width);
   };
 
-  const seekFromRulerEvent = (event: React.PointerEvent) => {
-    const lane = laneRef.current;
-    if (!lane) return;
-    const rect = lane.getBoundingClientRect();
-    const bar = Math.max(0, (event.clientX - rect.left) / barWidth);
-    services.playback.seek(bar * BAR_TICKS);
-  };
-  void seekFromRulerEvent;
-
   const beginClipDrag = (event: React.PointerEvent, clipId: string, mode: "move" | "resize") => {
     if (event.button !== 0) return;
     event.stopPropagation();
@@ -1892,6 +1920,7 @@ export function ArrangementPanel() {
       dragRef.current = {
         mode,
         clipId,
+        pointerId: event.pointerId,
         origStart: clip.startBar,
         origLength: clip.lengthBars,
         grabBar: barFromEventAt(event, barWidth),
@@ -1909,6 +1938,7 @@ export function ArrangementPanel() {
     dragRef.current = {
       mode,
       clipId,
+      pointerId: event.pointerId,
       origStart: clip.startBar,
       origLength: clip.lengthBars,
       grabBar: barFromEventAt(event, barWidth),
@@ -1936,9 +1966,15 @@ export function ArrangementPanel() {
     }
   };
 
-  const onClipPointerUp = () => {
+  // `event` is optional: the drag guard's stuck-drag fallback terminal calls
+  // this without one. Capture release then no-ops, which is correct — there is
+  // no live event target, and the spec releases capture implicitly anyway.
+  const onClipPointerUp = (event?: React.PointerEvent) => {
     dragGuard.disarm();
     const current = dragRef.current;
+    // Release before the ref is cleared — the pointerId only exists on the
+    // gesture record. Idempotent and non-throwing (see the helper).
+    releasePointerCaptureSafely(event?.currentTarget, current?.pointerId);
     // The refs, not the state: a release that lands in the same batch as the
     // final move would otherwise commit the previous frame's bar (see the
     // dragLiveRef note).
@@ -2039,8 +2075,9 @@ export function ArrangementPanel() {
   };
 
   // Interrupted clip drag — abort without moving/resizing.
-  const onClipPointerCancel = () => {
+  const onClipPointerCancel = (event?: React.PointerEvent) => {
     dragGuard.disarm();
+    releasePointerCaptureSafely(event?.currentTarget, dragRef.current?.pointerId);
     dragRef.current = null;
     setClipDrag(null);
     setClipMultiDrag(null);
@@ -2094,7 +2131,9 @@ export function ArrangementPanel() {
   const beginAudioDrag = (
     event: React.PointerEvent,
     clipId: string,
-    mode: "move" | "resize" | "trimStart" | "trimEnd" | "fadeIn" | "fadeOut" | "gain" | "stretch",
+    // Mirrors the audioDragRef `mode` union exactly — `"trimEnd"` removed with
+    // it, since no call site passes it and no move branch handled it.
+    mode: "move" | "resize" | "trimStart" | "fadeIn" | "fadeOut" | "gain" | "stretch",
     edge: "left" | "right" = "right",
   ) => {
     if (event.button !== 0) return;
@@ -2119,18 +2158,17 @@ export function ArrangementPanel() {
       clipId,
       mode,
       edge,
+      pointerId: event.pointerId,
       origStart: clip.startBar,
       origLength: clip.lengthBars,
       origRate: clip.stretchRate ?? 1,
       origTrimStart: clip.trimStart ?? 0,
-      origTrimEnd: clip.trimEnd ?? 0,
       origFadeIn: clip.fadeIn ?? 0,
       origFadeOut: clip.fadeOut ?? 0,
       origGain: clip.gain ?? 1,
       grabBar: audioBarFromEventAt(event, barWidth),
       /** Same reason as the scene drag: one unit system per gesture. */
       barWidth,
-      grabX: event.clientX,
       grabY: event.clientY,
       secPerBar: clip.lengthBars > 0 ? clipWallSec / clip.lengthBars : (BAR_TICKS * 60) / (doc.bpm * PPQ),
     };
@@ -2185,6 +2223,9 @@ export function ArrangementPanel() {
   const onAudioPointerUp = (event?: React.PointerEvent) => {
     dragGuard.disarm();
     const cur = audioDragRef.current;
+    // Release before the ref is cleared. Falls back to the releasing event for
+    // the case where the gesture record is already gone.
+    releasePointerCaptureSafely(event?.currentTarget, cur?.pointerId ?? event?.pointerId);
     // The refs, not the state: a release that lands in the same batch as the
     // final move would otherwise commit the previous frame's geometry — and
     // for the fade/gain modes the staleness guard would swallow the commit
@@ -2254,8 +2295,9 @@ export function ArrangementPanel() {
   };
 
   // Interrupted audio drag — abort; previews clear with the drag state.
-  const onAudioPointerCancel = () => {
+  const onAudioPointerCancel = (event: React.PointerEvent) => {
     dragGuard.disarm();
+    releasePointerCaptureSafely(event.currentTarget, audioDragRef.current?.pointerId);
     audioDragRef.current = null;
     clearAudioDragLive();
   };
@@ -3378,9 +3420,9 @@ export function ArrangementPanel() {
               // The ruler and the lane are SIBLINGS, and every px→bar
               // conversion here is measured against the LANE's rect. Read the
               // lane through the same `if (!lane) return` guard the panel's
-              // own `barFromEvent` / `audioBarFromEventAt` / `seekFromRulerEvent`
-              // helpers already use — a non-null assertion on a sibling's ref
-              // turns a missing lane into a TypeError inside a pointer handler.
+              // own `barFromEvent` / `audioBarFromEventAt` helpers already
+              // use — a non-null assertion on a sibling's ref turns a missing
+              // lane into a TypeError inside a pointer handler.
               const lane = laneRef.current;
               if (!lane) return;
               const bar = Math.max(0, (event.clientX - lane.getBoundingClientRect().left) / barWidth);

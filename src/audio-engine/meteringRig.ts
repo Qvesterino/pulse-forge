@@ -1,5 +1,6 @@
 import type { EffectRuntime } from "../effects/types";
 import type { KwMeterHandle } from "../audio-worklets/kwmeter-node";
+import type { RtMonitorHandle } from "../audio-worklets/rt-monitor-node";
 import { MeterRing } from "./MeterRing";
 import {
   channelLevels,
@@ -42,6 +43,8 @@ export interface MasterStageReader {
   limiterWorklet: EffectRuntime | null;
   glue: EffectRuntime | null;
   kwMeter: KwMeterHandle | null;
+  /** Audio-thread load / xrun probe (release-gate hardening). */
+  rtMonitor: RtMonitorHandle | null;
 }
 
 export interface MeteringRigDeps {
@@ -356,6 +359,18 @@ export class MeteringRig {
    */
   getSpectrogramTrackAnalyser(sourceId: string): AnalyserNode | null {
     return this.deps.trackAnalyser(sourceId) ?? this.deps.groupAnalyser(sourceId);
+  }
+
+  /**
+   * Live audio-thread load snapshot (release-gate hardening). Null while no
+   * RT Monitor is attached (worklet module unavailable / no live context).
+   */
+  getRtLoad(): import("../audio-worklets/rt-monitor-node").RtMonitorSnapshot | null {
+    return this.deps.masterStage().rtMonitor?.getSnapshot() ?? null;
+  }
+
+  resetRtLoad(): void {
+    this.deps.masterStage().rtMonitor?.reset();
   }
 }
 

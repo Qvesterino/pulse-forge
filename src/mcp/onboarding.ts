@@ -139,6 +139,16 @@ HONEST REFUSALS AND HOW TO REACT
   KYX window; over transports WITH a render hook, kyx_export awaits and
   reports duration/size.
 
+SFZ IMPORT
+  kyx_import_sfz {path} — import an SFZ instrument definition from a
+  local file. Fails honestly if the file doesn't exist or is malformed.
+
+MIX DIAGNOSIS (agent's ears v2)
+  kyx_diagnose_mix — offline-render the master + per-strip, return
+  attributed findings (low-end dominance, clipping, crest collapse, DC
+  offset) with fix suggestions. Slower than kyx_render_summary but
+  more actionable: diagnose → fix (kyx_fx / kyx_loudness) → re-diagnose.
+
 FAILURE MINING (local, never telemetered)
   kyx_state {subject: "model-misses"} — the producer sentences the
   deterministic layer AND the local model both failed on, most-frequent

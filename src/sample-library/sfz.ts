@@ -43,7 +43,8 @@ export function parseSfz(text: string): SfzDocument {
   }
   const regions: SfzRegion[] = [];
   let ops: Record<string, string> = {};
-  let current: "control" | "global" | "group" | "region" | null = null;
+  type SfzSection = "control" | "global" | "group" | "region" | "curve";
+  let current: SfzSection | null = null;
 
   const flushRegion = () => {
     if (current !== "region" || typeof ops.sample !== "string" || ops.sample === "") return;
@@ -69,7 +70,7 @@ export function parseSfz(text: string): SfzDocument {
     const header = /<\s*(control|global|group|region|curve)\s*>(.*)/.exec(line);
     if (header) {
       flushRegion();
-      current = header[1] as typeof current;
+      current = header[1] as SfzSection;
       // Opcodes may share the header line (<region> sample=foo.wav).
       readOpcodes(header[2]);
       continue;

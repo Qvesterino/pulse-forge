@@ -5058,3 +5058,101 @@ the separation shows in the A/B figures above (crest, loud length, attack window
    (builder-level envelopes + a control strike), `tmp-probe3.mjs` (mastering chain stage by stage),
    `tmp-ab.mjs` (file-level bands/crest, now argv-driven).
 
+## Session: redundancy metric correction + close-pair re-triage — 2026-10-04 (night)
+
+The blocker for the remaining de-dup work was the metric, not the pairs. `scripts/audit-samples.mts`
+decided "how close are two samples" with a vector that could not be trusted, for two structural
+reasons:
+
+1. `feat()` ended in `min(durationSec * 1000, 1000)` and the whole vector was divided by `max(|.|)`.
+   For a one-shot the render length (400–1000 ms) is the largest magnitude in the vector, so it became
+   the divisor for *every* dimension: the printed distance collapsed to "RMS band-share delta / 400"
+   and was not comparable between pairs — a 1 s file got 2.5x the headroom of a 0.4 s one. That is why
+   the library read 0.005–0.080 and why a 0.005 vs 0.006 step was never meaningful.
+2. Every term was time- and loudness-blind. `bands` is a whole-file Welch average of a LUFS-normalized
+   render, so two files built from one recipe with a different decay (`hat(0.055)` vs `hat(0.18)`) are
+   near-identical by construction, and `durationSec` is a render-tail artifact, not a property of the
+   sound. Nothing in the vector could see a strike, a click or a sweep direction.
+
+### 1. What changed (`scripts/audit-samples.mts`)
+
+Measured features with **fixed per-dimension units**, so the same distance means the same thing in
+every category: bands x7 `/60` dB of share; crest `/20` dB; `loudMs` `/1000` (effective decay/sustain,
+replacing the file length); `log2(centroid)` `/4` (computed since the first version, already in the
+JSON, never used); tilt = (tail − lead) silence `/1000` (the cheap axis that tells a riser from a
+downlifter); and a new **attack** term `/40`, head energy (first 10 ms) vs the loud span, clamped at
+−30 dB. New CLI: `--pairs=<n>`, `--why` (per-axis breakdown of each pair), `--window=<ms>` (attack
+window; 1–25 ms judges one-shots — open item 3 of the previous session, now done). The GATE summary,
+JSON shape and exit code are untouched; `attackDb` is a new JSON field, so `tmp-audit-3.json` predates
+it. Grepped: nothing under `tests/` reads the audit output — the metric stays diagnostic, the vitest
+gate stays the enforcement.
+
+### 2. Re-triage: 7 of the 11 flagged pairs were metric artifacts
+
+Before/after on exactly the pairs the old metric flagged (scratch `tmp-metric-cmp.mjs`; raw in
+`tmp-audit-4.json` / `tmp-audit-4.log`). `*` = under 0.15, one full step on a single axis:
+
+| pair | old d | new d | dominant axis (new) | verdict |
+| --- | --- | --- | --- | --- |
+| kick.knock↔kick.lofi | 0.005 | **0.084\*** | crest + loud + himid | watchlist, crest/decay — *not* the click |
+| kick.dnb↔kick.phonk | 0.006 | **0.086\*** | brightness | watchlist |
+| hat.pedal↔hat.phonk | 0.011 | **0.079\*** | sub/low/lowmid (spread) | smallest in the library, no dominant axis |
+| snare.drill↔snare.main | 0.009 | **0.110\*** | brightness | watchlist |
+| snare.dnb↔snare.main | 0.009 | **0.123\*** | brightness + loud | watchlist, now Snare #3 |
+| hat.closed↔hat.open.short | 0.008 | 0.145 | loud (120 ms of decay) | at the boundary, by design |
+| clap.main↔clap.pop | 0.014 | 0.167 | brightness | out (clap.main↔soft 0.118\* is the new Clap #1) |
+| bass.dist↔bass.fm | 0.014 | 0.284 | crest/high/air/mid | out |
+| crash.dark↔crash.main | 0.008 | 0.392 | loud (361 ms) | out |
+| fx.downlifter↔fx.riser | 0.009 | **1.004** | attack **0.980** | out |
+| tonal.erhu↔tonal.trumpet | 0.013 | **1.020** | loud + attack | out |
+
+The attack term killed the two worst false positives, and it is objective: `fx.riser`'s first 10 ms
+carries **0.002 %** of its energy (attack −47.1 dB — a ramp), `fx.downlifter`'s head is **8x** its
+average power (+9.2 dB — an immediate hit). Same average spectrum, opposite sound; the same holds for
+the bowed erhu vs the brass trumpet. Two pairs the old metric never surfaced are now in the
+watchlist — the old ranking was *wrong inside categories*, not merely compressed:
+`snare.jersey↔snare.tight` 0.112\* (sub/brightness) and `clap.main↔clap.soft` 0.118\*. The watchlist
+(d < 0.15) is 8 pairs, each with a named dominant axis: every remaining "close" pair is now close for
+a reason that can be argued about instead of a number that cannot.
+
+### 3. Next: Fáza 2 targets (each confirmed by a named axis)
+
+1. `snare.dnb` (`↔snare.main` 0.123\*, brightness 0.093 + loud 0.037): today
+   `snareCrack({toneHz 210, toneDecay .11, noiseHz 1900, noiseDecay .19, click .3})` carries the same
+   body as `snare.main = snare(192, .11, .2, 1750)` → make it tight and bright (noiseDecay .19→.12,
+   noiseHz 1900→2500, click .3→.6, toneDecay .11→.08). Its two dominant axes are exactly the ones
+   that move; the id is load-bearing (genre-kit rr×3, drum-rr-declick).
+2. `kick.dnb↔kick.phonk` 0.086\* (brightness 0.051): `phonk` is a genre-kit anchor (rr×3) → move
+   `kick.dnb` (brighter, shorter body) and **keep the 51.91 Hz pitch** (glide contract + kick-bank).
+3. `kick.knock↔kick.lofi` 0.084\* (crest + loud + himid): no longer about the click at all — it is
+   tape-thump vs knocker, i.e. crest and body length. Either `lofi` longer/lower-crest/LPF down, or
+   `knock` shorter/higher-crest. Both ids are load-bearing (`knock` is index 0 in a genre kit and
+   `boombap.test` swaps to it).
+4. `hat.pedal↔hat.phonk` 0.079\* — the smallest remaining number, spread over three small low-band
+   terms with no dominant axis. Investigate before touching: it may be two genuinely different noise
+   hues that the centroid does not catch.
+5. Thin categories (unchanged; a better use of a render budget than nudging intentional variants):
+   Clap 3, Crash 3, Cymbal 2, Rim 2, Tom 4.
+
+### Gates
+
+- `vite-node scripts/audit-samples.mts --json=tmp-audit-4.json --why`: **GATE: PASS — 111 WAVs on
+  contract**, exit 0. FLAGS unchanged — only the intentional leads of `fx.reverse`, `fx.riser`,
+  `fx.riser-short`, `fx.sweep` and `tonal.choirpad` (2.1 ms).
+- `vitest run tests/sound-library-gate.test.ts tests/curated-samples.test.ts tests/kick-bank.test.ts
+  tests/pop-samples.test.ts`: **4 files / 20 tests passed** (exit 0). The previous session's blocked
+  state is gone — the concurrent session resolved the `drone.ts` / `ReferenceMapPanel.tsx` merge
+  markers and `git status` has no unmerged paths any more.
+- `prettier --check scripts/audit-samples.mts tmp-metric-cmp.mjs`: clean.
+- `npm run typecheck` **not measured**: it does not include `scripts/` (`tsconfig.include` is `src`,
+  `tests`, `vite.config.ts`) and a full run exceeded the 30 s command budget here. Nothing in this
+  change is inside the typecheck surface.
+
+### Repro tooling
+
+`tmp-metric-cmp.mjs` (new, scratch): old-vs-new distance plus dominant axes for a fixed pair list,
+reading `tmp-audit-4.json` and the old `tmp-audit-3.log`. `tmp-audit-4.json` / `tmp-audit-4.log` are the
+new raw artifacts, `tmp-vitest-faz0.log` the gate run. Care taken: `tmp-vitest.log` is *tracked* (an
+earlier commit sweep absorbed it) — this session copied its own run to `tmp-vitest-faz0.log` and
+restored the tracked file to HEAD rather than overwriting another session's artifact.
+

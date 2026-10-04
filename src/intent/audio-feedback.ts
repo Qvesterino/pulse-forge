@@ -30,7 +30,7 @@ export interface GenreAudioTarget {
 
 /** Hand-written fallback — exotic/out-of-union genres only. The 19 Genre
  * union members come from audio-targets.generated.ts (measured, W0.1). */
-const AUDIO_TARGETS: Record<string, GenreAudioTarget> = {
+export const AUDIO_TARGETS: Record<string, GenreAudioTarget> = {
   house: {
     rmsRange: [0.05, 0.3],
     crestRange: [2, 12],
@@ -54,6 +54,115 @@ const AUDIO_TARGETS: Record<string, GenreAudioTarget> = {
     crestRange: [4, 30],
     zcrRange: [0.005, 0.08],
     bassRange: [0.1, 0.5],
+  },
+  // ── W0.1: informed values for all 19 Genre-union members ─────────────────
+  // Values are derived from known BPM ranges, spectral characteristics and
+  // production conventions per genre. When `npm run references:genres` runs
+  // against a live server, GENERATED_AUDIO_TARGETS overrides these.
+  dnb: {
+    // 174 BPM breakbeats, Reese bass, moderate compression
+    rmsRange: [0.06, 0.32],
+    crestRange: [2, 10],
+    zcrRange: [0.02, 0.18],
+    bassRange: [0.2, 0.65],
+  },
+  drill: {
+    // 142 BPM, sliding 808s, dark sparse beats
+    rmsRange: [0.04, 0.28],
+    crestRange: [3, 18],
+    zcrRange: [0.005, 0.12],
+    bassRange: [0.28, 0.75],
+  },
+  phonk: {
+    // 150 BPM, lo-fi tape, cowbell melodies, heavy 808
+    rmsRange: [0.05, 0.25],
+    crestRange: [3, 15],
+    zcrRange: [0.003, 0.08],
+    bassRange: [0.3, 0.8],
+  },
+  jersey: {
+    // 140 BPM club, dense compressed beats, bright
+    rmsRange: [0.07, 0.35],
+    crestRange: [1.5, 8],
+    zcrRange: [0.015, 0.15],
+    bassRange: [0.2, 0.65],
+  },
+  ukg: {
+    // 133 BPM garage, shuffled hats, sub bass
+    rmsRange: [0.05, 0.3],
+    crestRange: [2.5, 12],
+    zcrRange: [0.01, 0.14],
+    bassRange: [0.2, 0.7],
+  },
+  amapiano: {
+    // 112 BPM, log drum bass, spacious, airy hats
+    rmsRange: [0.04, 0.28],
+    crestRange: [3, 15],
+    zcrRange: [0.008, 0.12],
+    bassRange: [0.25, 0.7],
+  },
+  boombap: {
+    // 90 BPM, punchy MPC drums, warm sample, moderate bass
+    rmsRange: [0.05, 0.28],
+    crestRange: [3, 15],
+    zcrRange: [0.008, 0.12],
+    bassRange: [0.15, 0.55],
+  },
+  chiptune: {
+    // square/pulse waves, very bright, minimal sub bass
+    rmsRange: [0.06, 0.3],
+    crestRange: [4, 25],
+    zcrRange: [0.08, 0.4],
+    bassRange: [0.02, 0.3],
+  },
+  detroit: {
+    // techno variant: driving kick, dark pads, high bass energy
+    rmsRange: [0.08, 0.35],
+    crestRange: [1.5, 8],
+    zcrRange: [0.005, 0.1],
+    bassRange: [0.28, 0.72],
+  },
+  drone: {
+    // very slow evolving textures, minimal transients
+    rmsRange: [0.005, 0.08],
+    crestRange: [5, 40],
+    zcrRange: [0.002, 0.06],
+    bassRange: [0.1, 0.55],
+  },
+  eurodance: {
+    // 140 BPM compressed dance pop, bright, driving
+    rmsRange: [0.08, 0.35],
+    crestRange: [1.5, 6],
+    zcrRange: [0.015, 0.15],
+    bassRange: [0.15, 0.55],
+  },
+  hyperpop: {
+    // heavily compressed, glitchy, very bright, extreme dynamics crushed
+    rmsRange: [0.1, 0.4],
+    crestRange: [1, 5],
+    zcrRange: [0.03, 0.3],
+    bassRange: [0.1, 0.5],
+  },
+  latin: {
+    // ~100 BPM, percussion-rich, warm bass, moderate brightness
+    rmsRange: [0.05, 0.3],
+    crestRange: [2, 14],
+    zcrRange: [0.01, 0.14],
+    bassRange: [0.15, 0.6],
+  },
+  postrock: {
+    // quiet-loud crescendo, wide dynamics, moderate brightness
+    rmsRange: [0.01, 0.2],
+    crestRange: [4, 35],
+    zcrRange: [0.005, 0.1],
+    bassRange: [0.08, 0.5],
+  },
+  trance: {
+    // 138 BPM, supersaw, compressed dance, moderate bass, bright
+    rmsRange: [0.08, 0.35],
+    crestRange: [1.5, 6],
+    zcrRange: [0.015, 0.15],
+    bassRange: [0.15, 0.55],
   },
 };
 

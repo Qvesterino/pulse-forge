@@ -203,8 +203,12 @@ export const GENRE_KIT_SWAPS: Partial<Record<GenerateOptions["genre"], GenrePadS
     // The Latin kit: the warm deep kick (the bass drum role), the soft snare
     // for brushed work, and the soft closed hat where a güira would sit.
     // The hand-drum voice lives on the tom pads (12/13) which the default
-    // kit already carries — no swap needed there.
+    // kit already carries — no swap needed there. The clave lands on the rim
+    // pad (3): the latin grooves' son-clave cell is written there, and the
+    // dry 3-2 click IS the voice that pattern was written for (the wooden
+    // cavity of rim.chip reads as a generic tick under a 200 BPM salsa).
     { index: 0, assetId: "factory.kick.deep" },
+    { index: 3, assetId: "factory.perc.clave", name: "Clave" },
     { index: 4, assetId: "factory.snare.main" },
     { index: 7, assetId: "factory.shaker.soft" },
     { index: 8, assetId: "factory.hat.closed.soft" },
