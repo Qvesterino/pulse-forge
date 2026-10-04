@@ -23,7 +23,7 @@ export const STEPS_PER_BAR = 16;
 /** Deterministic PRNG (mulberry32) — noise floor + optional humanize. */
 export const GOLDEN_SEED = 20261004;
 
-export type GoldenChordQuality = "maj" | "min" | "dom7" | "min7" | "sus4";
+export type GoldenChordQuality = "maj" | "min" | "dom7" | "min7" | "maj7" | "sus4";
 
 export interface GoldenBassNote {
   /** Absolute step index in the song (step = 1/16 note). */
@@ -141,6 +141,7 @@ const CHORD_INTERVALS: Record<GoldenChordQuality, number[]> = {
   min: [0, 3, 7],
   dom7: [0, 4, 7, 10],
   min7: [0, 3, 7, 10],
+  maj7: [0, 4, 7, 11],
   sus4: [0, 5, 7],
 };
 
@@ -249,11 +250,14 @@ function HOUSE(): GoldenTrack {
         { step: bar * STEPS_PER_BAR + 14, pitch: root, durationSteps: 2 },
       ];
     }).flat(),
-    chords: Array.from({ length: bars8 }, (_, bar) => ({
-      bar,
-      rootPc: progression[Math.floor(bar / 2) % 4],
-      quality: "min" as const,
-    })),
+    chords: Array.from({ length: bars8 }, (_, bar) => {
+      const slot = Math.floor(bar / 2) % 4;
+      return {
+        bar,
+        rootPc: progression[slot],
+        quality: (slot === 0 ? "min" : "maj") as "min" | "maj",
+      };
+    }),
   };
 }
 
@@ -305,11 +309,14 @@ function BOOMBAP(): GoldenTrack {
         { step: bar * STEPS_PER_BAR + 12, pitch: root + 10, durationSteps: 4 },
       ];
     }).flat(),
-    chords: Array.from({ length: bars4 }, (_, bar) => ({
-      bar,
-      rootPc: progression[bar % 4],
-      quality: "min7" as const,
-    })),
+    chords: Array.from({ length: bars4 }, (_, bar) => {
+      const slot = bar % 4;
+      return {
+        bar,
+        rootPc: progression[slot],
+        quality: (slot < 2 ? "min7" : "maj7") as "min7" | "maj7",
+      };
+    }),
   };
 }
 
@@ -334,11 +341,14 @@ function TRAP(): GoldenTrack {
         { step: bar * STEPS_PER_BAR + 12, pitch: root + 12, durationSteps: 4 },
       ];
     }).flat(),
-    chords: Array.from({ length: bars8 }, (_, bar) => ({
-      bar,
-      rootPc: progression[Math.floor(bar / 2) % 4],
-      quality: "min" as const,
-    })),
+    chords: Array.from({ length: bars8 }, (_, bar) => {
+      const slot = Math.floor(bar / 2) % 4;
+      return {
+        bar,
+        rootPc: progression[slot],
+        quality: (slot === 0 ? "min" : "maj") as "min" | "maj",
+      };
+    }),
   };
 }
 
@@ -360,11 +370,14 @@ function DNB(): GoldenTrack {
       const root = 31 + progression[Math.floor(bar / 2) % 4]; // G1 register
       return [{ step: bar * STEPS_PER_BAR + 0, pitch: root, durationSteps: 14 }];
     }).flat(),
-    chords: Array.from({ length: bars8 }, (_, bar) => ({
-      bar,
-      rootPc: progression[Math.floor(bar / 2) % 4],
-      quality: "min" as const,
-    })),
+    chords: Array.from({ length: bars8 }, (_, bar) => {
+      const slot = Math.floor(bar / 2) % 4;
+      return {
+        bar,
+        rootPc: progression[slot],
+        quality: (slot === 0 ? "min" : "maj") as "min" | "maj",
+      };
+    }),
   };
 }
 

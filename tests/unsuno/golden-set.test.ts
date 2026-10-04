@@ -111,45 +111,45 @@ describe("transcribeTrack contract — pending layers are honest", () => {
 
 describe("LIVE floor — tempo & key estimators on golden material", () => {
   // These run against the SHIPPED estimators TODAY and lock the measured
-  // U0 baseline (npm run unsuno:golden re-measures). The baseline is
+  // baseline (npm run unsuno:golden re-measures). The baseline is
   // DELIBERATELY per-track exact: any estimator/synth change must flip a
   // test and get re-locked on purpose — silent drift is the enemy.
-  // Known gaps (locked, not hidden): detectTransients finds only 2–11 of
-  // ~100 events on polyphonic material, so estimateTempo returns null on
-  // 3/5 tracks and misses by 8/30 BPM on the rest → U0.5 follow-up wave.
-  const BASELINE: Record<string, { tempo: number | null; key: string | null }> = {
-    "house-126-am": { tempo: 118, key: "A Natural Minor" },
-    "techno-130-em": { tempo: null, key: "E Natural Minor" },
-    "boombap-90-cm": { tempo: null, key: "C Natural Minor" },
-    "trap-140-fsm": { tempo: 110, key: null }, // detects A Natural Minor — wrong tonic (truth F#)
-    "dnb-174-gm": { tempo: null, key: "G Natural Minor" },
+  //
+  // HISTORY: U0 locked the old estimators (tempo null on 3/5, misses 8/30
+  // BPM; key 4/5). U0.5 rebuilt estimateTempo on the F1 flux envelope +
+  // parabolic candidates and fixed the golden fixture's chord qualities
+  // (were all "min"; D/A/E in an F#-minor progression are MAJOR — the F
+  // natural in Dm poisoned the trap key) → both KPIs now 5/5. Re-locked
+  // 2026-10-04.
+  const BASELINE: Record<string, { tempo: number; key: string }> = {
+    "house-126-am": { tempo: 126.0, key: "A Natural Minor" },
+    "techno-130-em": { tempo: 130.0, key: "E Natural Minor" },
+    "boombap-90-cm": { tempo: 89.9, key: "C Natural Minor" },
+    "trap-140-fsm": { tempo: 139.8, key: "F# Natural Minor" },
+    "dnb-174-gm": { tempo: 86.9, key: "G Natural Minor" }, // half-time of 174 — the honest fold
   };
 
-  it("tempo: per-track locked baseline (or honest null), fold error ≤ 30 everywhere", () => {
+  it("tempo: per-track locked baseline, fold error ≤ 1 BPM everywhere (U0.5 KPI)", () => {
     for (const track of tracks) {
       const expected = BASELINE[track.id];
       const t = transcriptions.get(track.id)!;
       expect(t.tempo?.bpm ?? null, `${track.id} tempo`).toBe(expected.tempo);
       const error = tempoFoldError(t.tempo?.bpm ?? null, track.bpm);
-      if (error !== null) expect(error, `${track.id} fold error`).toBeLessThanOrEqual(30);
+      expect(error, `${track.id} fold error`).not.toBeNull();
+      expect(error!, `${track.id} fold error`).toBeLessThanOrEqual(1);
     }
   });
-  it("key: 4/5 exact (mode included) — the U0 KPI floor (≥ 0.8), per-track locked", () => {
+  it("key: 5/5 exact (mode included) — the U0.5 KPI, per-track locked", () => {
     const exactCount = tracks.filter(
       (track) => keyMatch(transcriptions.get(track.id)!.key?.key ?? null, track.key).exact,
     ).length;
-    expect(exactCount).toBeGreaterThanOrEqual(4);
-    // Lock WHICH tracks pass — a new pass (e.g. trap fixed) must re-lock.
+    expect(exactCount).toBe(5);
     for (const track of tracks) {
       const expected = BASELINE[track.id];
-      const report = keyMatch(transcriptions.get(track.id)!.key?.key ?? null, track.key);
-      expect(report.exact, `${track.id} exact`).toBe(expected.key !== null);
-      if (expected.key !== null) {
-        expect(transcriptions.get(track.id)!.key?.key, `${track.id} key string`).toBe(expected.key);
-      }
+      expect(transcriptions.get(track.id)!.key?.key ?? null, `${track.id} key string`).toBe(expected.key);
     }
   });
-  it("onset floor: detectTransients finds ≥ 2 events per track (today's honest floor)", () => {
+  it("onset floor: detectTransients finds ≥ 2 events per track (shared detector untouched)", () => {
     for (const track of tracks) {
       const onsets = detectTransients(rendered.get(track.id)!, SAMPLE_RATE, 1);
       expect(onsets.length, `${track.id} onsets`).toBeGreaterThanOrEqual(2);

@@ -116,7 +116,7 @@ v teste dormantné cez `skipIf` — aktivujú sa samé, keď vrstva flipne
 udalostí na polyfónnom materiáli → riedky envelope) a miss 8/30 BPM na
 zvyšku (20 ms bin autokorelácia bez interpolácie).
 
-### U0.5 — Tempo/onset floor (nová vlna z U0 nálezov, PRED U1)
+### U0.5 — Tempo/onset floor (nová vlna z U0 nálezov, PRED U1) — **HOTOVÉ 2026-10-04**
 
 - `detectTransients`: adaptívny threshold na polyfónii (abs+rel mix alebo
   band-limited flux) — cieľ ≥ 60 % drum udalostí na golden sete.
@@ -125,6 +125,19 @@ zvyšku (20 ms bin autokorelácia bez interpolácie).
 - Trap key miss: chroma cez prvých 6 s vs trap progresia — skúmať region
   výber (tonalRegion middle?) — cieľ 5/5 exact.
 - **Akceptácia:** re-lock baseline testu (zlepšenie = zámerný re-lock commit).
+
+**Ako to dopadlo (SHIPPED):** `estimateTempo` je prestavaný na multi-band
+spectral flux + `estimateTempoCandidates` (parabolic + prior) — tú istú
+overenú F1 DSP, ktorú už má Reference Map; zdieľaný `detectTransients`
+(11 konzumentov) zostal nedotknutý. **Fixture bug namiesto estimátorového**:
+trap key miss spôsoboval zlatý synth — jeho progresie mali všetky akordy
+`min`, ale D/A/E vo F#-mol sú MAJOR (F natural v Dm otrávil chromu); opravené
+na diatonickú pravdu (house F/C/G maj, trap D/A/E maj, dnb Eb/Bb/F maj,
+boombap Bb/Eb maj7). Výsledok: **tempo 5/5 fold error ≤ 0,2 BPM** (126.0 /
+130.0 / 89.9 / 139.8 / 86.9 half-time) a **key 5/5 exact vrátane modu** —
+obe KPI splnené, baseline re-locked. `estimateTempo` teraz vracia 0,1 BPM
+presnosť (float), konzumenti (audio-reference patch, groove-extraction,
+voice-idea) prešli bez zmeny — ich testy 34/34 zelené.
 
 ### U1 — Chord transcription (chroma → ChordEvent[])
 

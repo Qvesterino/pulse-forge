@@ -1,24 +1,32 @@
 /**
  * AUDIO REFERENCE — tempo + key estimation (pure, testable, no workers).
  *
- * Tempo: the transient detector (log-flux onsets, shared with recording) is
- * collapsed into a 20 ms impulse envelope; autocorrelation over the 70–180
- * BPM lag range picks the pulse, then the estimate folds into that range
- * (half/double tempo is the classic ambiguity).
+ * Tempo (U0.5 rewrite, docs/UN-SUNO-PLAN.md): multi-band spectral flux
+ * (the same DSP the Reference Map's F1 tempo lane uses) builds the onset
+ * envelope; candidate generation runs harmonically enhanced autocorrelation
+ * with parabolic peak refinement and a common-tempo prior; the winner folds
+ * into the 70–180 BPM range (half/double tempo is the classic ambiguity).
+ * The old path — the shared transient detector collapsed into a 20 ms
+ * impulse envelope — starved the autocorrelation on polyphonic material
+ * (it found 2–11 of ~100 events on the U0 golden set and missed by up to
+ * 30 BPM); the transient detector itself keeps its other 10 consumers.
  *
  * Key: Goertzel probes over 12 pitch classes × 4 octaves (C2..B5) build a
- * chroma vector; Krumhansl major/minor profiles are correlated over all 12
- * rotations. A single-pitch input resolves the ROOT confidently but the
- * mode is ambiguous by design (both profiles fit a bare chroma).
+ * chroma vector from the first 6 s; Krumhansl major/minor profiles are
+ * correlated over all 12 rotations. A single-pitch input resolves the ROOT
+ * confidently but the mode is ambiguous by design (both profiles fit a bare
+ * chroma).
  *
  * Both estimators return null when the signal is too short/sparse to say
  * anything honest — callers keep their patch without the field.
  */
-import { detectTransients } from "../audio-workers/onset-detector";
+import { computeOnsetEnvelopes, removeBaseline } from "../reference/dsp/spectralFlux";
+import { estimateTempoCandidates } from "../reference/analysis/tempoCandidates";
 
 export interface TempoEstimate {
+  /** Rounded to 0.1 BPM — exact under the golden harness. */
   bpm: number;
-  /** Share of autocorrelation mass at the peak (0..1] — rough. */
+  /** Winner's normalized periodicity score (0..1] — rough. */
   confidence: number;
 }
 
@@ -30,43 +38,26 @@ export interface KeyEstimate {
 
 const MIN_BPM = 70;
 const MAX_BPM = 180;
-const ENVELOPE_BIN_SEC = 0.02;
+const FLUX_FFT_SIZE = 2048;
+const FLUX_HOP = 256;
 
 export function estimateTempo(pcm: Float32Array, sampleRate: number): TempoEstimate | null {
   try {
-    const onsets = detectTransients(pcm, sampleRate, 1);
-    if (onsets.length < 8) return null;
     const duration = pcm.length / sampleRate;
     if (duration < 4) return null;
-
-    const binCount = Math.ceil(duration / ENVELOPE_BIN_SEC);
-    const envelope = new Float64Array(binCount);
-    for (const onset of onsets) {
-      const bin = Math.floor(onset / ENVELOPE_BIN_SEC);
-      if (bin >= 0 && bin < binCount) envelope[bin] = 1;
-    }
-
-    let bestBpm = 0;
-    let bestScore = -1;
-    let totalScore = 0;
-    for (let bpm = MIN_BPM; bpm <= MAX_BPM; bpm += 1) {
-      const lag = Math.round(60 / bpm / ENVELOPE_BIN_SEC);
-      if (lag < 2 || lag * 2 >= binCount) continue;
-      let score = 0;
-      for (let index = 0; index + lag < binCount; index++) score += envelope[index] * envelope[index + lag];
-      totalScore += score;
-      if (score > bestScore) {
-        bestScore = score;
-        bestBpm = bpm;
-      }
-    }
-    if (bestBpm === 0 || bestScore <= 0) return null;
-
+    const envelopes = computeOnsetEnvelopes(pcm, sampleRate, FLUX_FFT_SIZE, FLUX_HOP);
+    if (envelopes.frameCount < 16) return null;
+    // ~1 s moving-average baseline keeps sustained bass/pads from masking
+    // drum flux — the exact failure that starved the old envelope.
+    const baseline = removeBaseline(envelopes.combined, Math.max(8, Math.round(envelopes.frameRate)));
+    const candidates = estimateTempoCandidates(baseline, envelopes.frameRate, 60, 200, 6);
+    const winner = candidates[0];
+    if (!winner || winner.bpm <= 0) return null;
     // fold half/double tempo into the range
-    let bpm = bestBpm;
+    let bpm = winner.bpm;
     while (bpm < MIN_BPM) bpm *= 2;
     while (bpm > MAX_BPM) bpm /= 2;
-    return { bpm: Math.round(bpm), confidence: totalScore > 0 ? bestScore / totalScore : 0 };
+    return { bpm: Math.round(bpm * 10) / 10, confidence: winner.score };
   } catch {
     return null;
   }
