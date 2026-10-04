@@ -888,7 +888,25 @@ export function createCollabServer({
     }
 
     if (req.method === "GET" && url.pathname === "/api/gallery") {
-      sendJson(res, 200, { items: gallery.list() });
+      const sort = url.searchParams.get("sort") ?? "new";
+      // Every item is annotated with its battle-earned Elo (null = never
+      // battled), so cards can badge it; sort=battles reorders the feed by
+      // that Elo — the taste flywheel surfacing winners — with never-battled
+      // beats following in feed order. Unknown sorts fall back to "new".
+      const items = gallery.list();
+      for (const item of items) {
+        const rating = battles.ratings.get(item.id);
+        item.elo = rating ? Math.round(rating.elo) : null;
+      }
+      if (sort === "battles") {
+        items.sort((x, y) => {
+          const ex = typeof x.elo === "number" ? x.elo : -1;
+          const ey = typeof y.elo === "number" ? y.elo : -1;
+          if (ex !== ey) return ey - ex;
+          return new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime();
+        });
+      }
+      sendJson(res, 200, { items, sort: sort === "battles" ? "battles" : "new" });
       return;
     }
 

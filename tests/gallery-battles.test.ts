@@ -69,6 +69,35 @@ async function vote(
   return { status: res.status, body: (await res.json()) as Record<string, unknown> };
 }
 
+describe("gallery battles — Elo-ordered feed", () => {
+  it("sort=battles orders by Elo with never-battled beats after, default stays newest-first", async () => {
+    const { base } = await boot();
+    const champ = await publish(base, "Feed Champ"); // newest of the three
+    const middle = await publish(base, "Feed Middle");
+    const fresh = await publish(base, "Never Battled");
+    await vote(base, middle.id, champ.id, "b", "feed-1"); // champ gains Elo
+
+    const battleSort = await (await fetch(`${base}/api/gallery?sort=battles`)).json();
+    const titles = (battleSort as { items: Array<{ title: string; elo: number | null }> }).items.map((i) => i.title);
+    expect(titles).toEqual(["Feed Champ", "Feed Middle", "Never Battled"]);
+    for (const item of (battleSort as { items: Array<{ elo: number | null }> }).items) {
+      expect(typeof item.elo === "number" || item.elo === null).toBe(true);
+    }
+
+    // Default order is untouched — newest first regardless of battles.
+    const def = await (await fetch(`${base}/api/gallery`)).json();
+    expect((def as { items: Array<{ title: string }> }).items.map((i) => i.title)).toEqual([
+      "Never Battled",
+      "Feed Middle",
+      "Feed Champ",
+    ]);
+    // Unknown sort falls back to new.
+    const weird = await (await fetch(`${base}/api/gallery?sort=chaos`)).json();
+    expect((weird as { sort?: string }).sort).toBe("new");
+    void fresh;
+  });
+});
+
 describe("gallery battles — blind pair endpoint", () => {
   it("refuses to build a pair from an empty gallery", async () => {
     const { base } = await boot();

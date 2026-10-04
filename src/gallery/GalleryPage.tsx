@@ -1,5 +1,5 @@
 import { ErrorBoundary } from "../ui/ErrorBoundary";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { EmbedApp } from "../embed/EmbedApp";
 import { BattlePanel } from "./BattlePanel";
 import { shareAppUrl } from "../export/shareCode";
@@ -11,6 +11,7 @@ import {
   encodeProjectForGallery,
   extractShareCode,
   listBeats,
+  type GallerySort,
   peekRemixParent,
   registerPlay,
   reportBeat,
@@ -43,16 +44,17 @@ export function GalleryPage() {
   const [query, setQuery] = useState("");
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [prefilledCode, setPrefilledCode] = useState<string | null>(null);
+  const [sort, setSort] = useState<GallerySort>("new");
 
-  const reload = () => {
+  const reload = useCallback(() => {
     setFeed({ kind: "loading" });
-    listBeats().then(
+    listBeats(undefined, sort).then(
       (items) => setFeed({ kind: "ready", items }),
       (error) => setFeed({ kind: "error", message: String(error) }),
     );
-  };
+  }, [sort]);
 
-  useEffect(reload, []);
+  useEffect(reload, [reload]);
 
   // Arriving from the studio's PUBLISH button — the encoded project is
   // handed over via sessionStorage so the URL stays clean.
@@ -146,6 +148,14 @@ export function GalleryPage() {
             #{filter} ✕
           </button>
         )}
+        <button
+          type="button"
+          className={"gallery-tag" + (sort === "battles" ? " gallery-tag-active" : "")}
+          onClick={() => setSort(sort === "battles" ? "new" : "battles")}
+          title="Order the feed by battle-earned Elo from blind A/B votes"
+        >
+          ⚔ TOP BY BATTLES
+        </button>
       </div>
 
       {agentCount > 0 && (
@@ -388,7 +398,7 @@ function GalleryCard({
           </span>
         </div>
       </div>
-      {(plays > 0 || (item.remixCount ?? 0) > 0 || (item.childrenCount ?? 0) > 0) && (
+      {(plays > 0 || (item.remixCount ?? 0) > 0 || (item.childrenCount ?? 0) > 0 || typeof item.elo === "number") && (
         <div className="gallery-card-stats" aria-label="Play, remix and family counts">
           {plays > 0 && (
             <span className="gallery-stat" title={`${plays} plays`}>
@@ -403,6 +413,11 @@ function GalleryCard({
           {(item.childrenCount ?? 0) > 0 && (
             <span className="gallery-stat" title={`${item.childrenCount} published children of this beat`}>
               🧬 {formatCount(item.childrenCount ?? 0)}
+            </span>
+          )}
+          {typeof item.elo === "number" && (
+            <span className="gallery-stat" title={`Battle-earned Elo — ${item.elo} from blind A/B votes`}>
+              ⚔ {item.elo}
             </span>
           )}
         </div>

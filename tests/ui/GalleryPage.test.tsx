@@ -161,6 +161,53 @@ describe("GalleryPage — battles", () => {
   });
 });
 
+describe("GalleryPage — battle-earned feed ordering", () => {
+  it("TOP BY BATTLES refetches with sort=battles and badges Elo on cards", async () => {
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("sort=battles")) {
+        return Promise.resolve(
+          jsonResponse({
+            items: [
+              {
+                id: "b9",
+                title: "Elo King",
+                author: "qveen",
+                tags: [],
+                code: code(),
+                createdAt: "2026-09-03T10:00:00.000Z",
+                elo: 1042,
+              },
+              {
+                id: "b1",
+                title: "Midnight 808",
+                author: "qveen",
+                tags: ["phonk"],
+                code: code(),
+                createdAt: "2026-09-01T10:00:00.000Z",
+                elo: null,
+              },
+            ],
+          }),
+        );
+      }
+      return Promise.resolve(feedResponse());
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<GalleryPage />);
+
+    await screen.findByText("Midnight 808");
+    fireEvent.click(screen.getByText("⚔ TOP BY BATTLES"));
+
+    await screen.findByText("Elo King");
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).includes("sort=battles"))).toBe(true);
+    expect(screen.getByText("⚔ 1042")).toBeTruthy();
+    // Toggling off returns to the default feed.
+    fireEvent.click(screen.getByText("⚔ TOP BY BATTLES"));
+    await screen.findByText("Garage Skank");
+  });
+});
+
 describe("GalleryPage", () => {
   it("renders the feed as cards with Open in Forge links", async () => {
     const fetchMock = vi.fn().mockResolvedValue(feedResponse());

@@ -43,6 +43,8 @@ export interface GalleryItem {
   origin?: "human" | "agent";
   /** Display name of the publishing agent ("Claude (MCP)"). */
   agent?: string | null;
+  /** Battle-earned Elo (round); null = never battled. Present on every feed item. */
+  elo?: number | null;
 }
 
 export interface PublishInput {
@@ -86,8 +88,11 @@ export function galleryBaseUrl(): string {
   return "";
 }
 
-export async function listBeats(baseUrl: string = galleryBaseUrl()): Promise<GalleryItem[]> {
-  const res = await fetch(`${baseUrl}/api/gallery`);
+/** Feed ordering: "new" (default, newest first) or "battles" (battle-earned Elo first). */
+export type GallerySort = "new" | "battles";
+
+export async function listBeats(baseUrl: string = galleryBaseUrl(), sort: GallerySort = "new"): Promise<GalleryItem[]> {
+  const res = await fetch(`${baseUrl}/api/gallery${sort === "battles" ? "?sort=battles" : ""}`);
   if (!res.ok) throw new Error(`Gallery unavailable (${res.status})`);
   const body = (await res.json()) as { items?: GalleryItem[] };
   return Array.isArray(body.items) ? body.items : [];
