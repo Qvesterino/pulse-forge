@@ -1,6 +1,7 @@
 import { ErrorBoundary } from "../ui/ErrorBoundary";
 import { useEffect, useMemo, useState } from "react";
 import { EmbedApp } from "../embed/EmbedApp";
+import { BattlePanel } from "./BattlePanel";
 import { shareAppUrl } from "../export/shareCode";
 import type { ProjectDocument } from "../project-model/types";
 import {
@@ -128,6 +129,8 @@ export function GalleryPage() {
       </header>
 
       <PublishForm prefilledCode={prefilledCode} onPublished={reload} />
+
+      <BattlePanel />
 
       <div className="gallery-toolbar" role="search">
         <input

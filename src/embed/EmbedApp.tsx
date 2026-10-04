@@ -36,12 +36,19 @@ export function EmbedApp({
   inline = false,
   hideBrand = false,
   onPlayed,
+  exclusiveGroup,
 }: {
   code?: string;
   inline?: boolean;
   hideBrand?: boolean;
   /** Fired when playback actually starts (autoplay-safe: always a user click). */
   onPlayed?: () => void;
+  /**
+   * Players sharing a group name never play simultaneously (gallery battles:
+   * starting one side pauses the other). Registry is module-level — no React
+   * coupling, no events, works across re-mounts.
+   */
+  exclusiveGroup?: string;
 } = {}) {
   const [phase, setPhase] = useState<Phase>({ kind: "decoding" });
   const [meta, setMeta] = useState<{ name: string; bpm: number; code: string } | null>(null);
@@ -67,6 +74,7 @@ export function EmbedApp({
   const [energy, setEnergy] = useState(0.5);
   const energyRef = useRef(0.5);
   const lastStatePostRef = useRef(0);
+  const pauseRef = useRef<() => void>(() => {});
 
   const setVariantsState = useCallback((next: Variants) => {
     variantsRef.current = next;
@@ -262,6 +270,12 @@ export function EmbedApp({
     ctxRef.current ??= new AudioContext();
     const ctx = ctxRef.current;
     void ctx.resume().catch(() => {});
+    if (exclusiveGroup) {
+      const token = groupTokenRef.current;
+      for (const [peer, pausePeer] of exclusiveGroups.get(exclusiveGroup) ?? []) {
+        if (peer !== token) pausePeer();
+      }
+    }
     stopAllSources();
     const weights = activeWeights();
     for (let i = 0; i < 3; i++) {
@@ -276,7 +290,7 @@ export function EmbedApp({
     } catch {
       /* observer must not break playback */
     }
-  }, [stopAllSources, activeWeights, startVariant, onPlayed, postState]);
+  }, [stopAllSources, activeWeights, startVariant, onPlayed, postState, exclusiveGroup]);
 
   const pause = useCallback(() => {
     const ctx = ctxRef.current;
@@ -287,6 +301,25 @@ export function EmbedApp({
     setPlaying(false);
     postState(true);
   }, [stopAllSources, postState]);
+
+  pauseRef.current = pause;
+
+  // Exclusive groups: joining players pause their group siblings on play.
+  // Registered by token so a player never pauses itself.
+  const groupTokenRef = useRef<object | null>(null);
+  useEffect(() => {
+    if (!exclusiveGroup) return;
+    const token = groupTokenRef.current ?? (groupTokenRef.current = {});
+    const map = exclusiveGroups.get(exclusiveGroup) ?? new Map<object, () => void>();
+    map.set(token, () => {
+      if (playingRef.current) pauseRef.current();
+    });
+    exclusiveGroups.set(exclusiveGroup, map);
+    return () => {
+      map.delete(token);
+      if (map.size === 0) exclusiveGroups.delete(exclusiveGroup);
+    };
+  }, [exclusiveGroup]);
 
   const seek = useCallback(
     (fraction: number) => {
@@ -540,6 +573,9 @@ export function EmbedApp({
     </div>
   );
 }
+
+/** Exclusive playback groups — token-keyed so a player never pauses itself. */
+const exclusiveGroups = new Map<string, Map<object, () => void>>();
 
 /** Fire-and-forget post to the embedding page (never the same-origin studio). */
 function postToParent(message: Record<string, unknown>) {

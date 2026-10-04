@@ -439,6 +439,216 @@ class GalleryStore {
   }
 }
 
+// ── Battles — blind A/B voting over published beats ───────────────────────
+// The taste-data flywheel: published beats face off in random pairs, visitors
+// vote blind, and every vote accumulates as real human preference data. Votes
+// are an append-only training log (exported for the ranker pipeline); the Elo
+// ratings are the live product surface (leaderboard). Bounded like every
+// store here — the log is capped, ratings are keyed by beat id.
+
+const BATTLES_VOTES_MAX = 50_000;
+const BATTLES_ELO_BASE = 1000;
+const BATTLES_ELO_K = 32;
+const BATTLES_SESSION_MAX = 64;
+const BATTLES_WINNERS = new Set(["a", "b", "tie", "both_bad"]);
+
+/**
+ * One Elo step (arena rules): score 1 / 0 / 0.5 per side for a / b / tie.
+ * "both_bad" mutates no ratings — it is logged only, as negative signal for
+ * the training export rather than a ranking event.
+ */
+function eloStep(ra, rb, winner) {
+  let sa = 0.5;
+  let sb = 0.5;
+  if (winner === "a") {
+    sa = 1;
+    sb = 0;
+  } else if (winner === "b") {
+    sa = 0;
+    sb = 1;
+  }
+  const ea = 1 / (1 + 10 ** ((rb - ra) / 400));
+  const eb = 1 - ea;
+  return {
+    a: ra + BATTLES_ELO_K * (sa - ea),
+    b: rb + BATTLES_ELO_K * (sb - eb),
+  };
+}
+
+function emptyRating() {
+  return { elo: BATTLES_ELO_BASE, wins: 0, losses: 0, ties: 0, bothBad: 0 };
+}
+
+/** Unordered pair key — a beat met the same opponent, whoever was listed first. */
+function battlePairKey(a, b) {
+  return [a, b].sort().join("|");
+}
+
+class BattleStore {
+  constructor(filePath, gallery) {
+    this.filePath = filePath;
+    this.gallery = gallery;
+    /** @type {Array<Record<string, unknown>>} append-only training log, oldest first */
+    this.votes = [];
+    /** @type {Map<string, Record<string, unknown>>} beatId → rating */
+    this.ratings = new Map();
+    /** @type {Map<string, Set<string>>} session → unordered pair keys already voted on */
+    this.voted = new Map();
+    try {
+      if (existsSync(filePath)) {
+        const parsed = JSON.parse(readFileSync(filePath, "utf-8"));
+        if (Array.isArray(parsed?.votes)) this.votes = parsed.votes.filter((v) => v && typeof v.a === "string");
+        if (parsed?.ratings && typeof parsed.ratings === "object") {
+          for (const [beatId, rating] of Object.entries(parsed.ratings)) {
+            if (rating && typeof rating.elo === "number") this.ratings.set(beatId, rating);
+          }
+        }
+        // Rebuild the dedupe index from the log — the file is the truth.
+        for (const vote of this.votes) {
+          if (typeof vote.session !== "string") continue;
+          const set = this.voted.get(vote.session) ?? new Set();
+          set.add(battlePairKey(vote.a, vote.b));
+          this.voted.set(vote.session, set);
+        }
+      }
+    } catch (error) {
+      console.warn("[battles] could not load store, starting empty:", String(error));
+    }
+  }
+
+  /**
+   * Two distinct published beats for a blind battle. Same-genre pools (when
+   * at least 4 beats share one) keep comparisons meaningful; otherwise any
+   * two beats can face off. Null while fewer than two beats exist.
+   */
+  pickPair() {
+    const candidates = this.gallery.items.filter((item) => typeof item.code === "string" && item.code.length > 0);
+    if (candidates.length < 2) return null;
+    const byGenre = new Map();
+    for (const item of candidates) {
+      if (typeof item.genre === "string" && item.genre.length > 0) {
+        const pool = byGenre.get(item.genre) ?? [];
+        pool.push(item);
+        byGenre.set(item.genre, pool);
+      }
+    }
+    const deep = [...byGenre.values()].filter((pool) => pool.length >= 4);
+    const pool = deep.length > 0 ? deep[Math.floor(Math.random() * deep.length)] : candidates;
+    const first = pool[Math.floor(Math.random() * pool.length)];
+    const others = (pool.length >= 2 ? pool : candidates).filter((item) => item.id !== first.id);
+    const second = others[Math.floor(Math.random() * others.length)];
+    return { a: first.id, b: second.id };
+  }
+
+  /**
+   * Record one blind vote. The reveal (titles/authors) exists only in the
+   * RESPONSE — the pair endpoint never carries them, so blindness is
+   * server-side, not a client-side convention.
+   */
+  vote(a, b, winner, session) {
+    const itemA = this.gallery.items.find((item) => item.id === a);
+    const itemB = this.gallery.items.find((item) => item.id === b);
+    if (!itemA || !itemB) return { error: "unknown beat" };
+    if (a === b) return { error: "a beat cannot battle itself" };
+    if (!BATTLES_WINNERS.has(winner)) return { error: "winner must be a, b, tie or both_bad" };
+    if (typeof session !== "string" || session.length === 0 || session.length > BATTLES_SESSION_MAX) {
+      return { error: "session (anonymous voter id) is required" };
+    }
+    const key = battlePairKey(a, b);
+    const seen = this.voted.get(session) ?? new Set();
+    if (seen.has(key)) return { error: "already voted on this battle", duplicate: true };
+    seen.add(key);
+    this.voted.set(session, seen);
+
+    const ra = { ...(this.ratings.get(a) ?? emptyRating()) };
+    const rb = { ...(this.ratings.get(b) ?? emptyRating()) };
+    if (winner !== "both_bad") {
+      const next = eloStep(ra.elo, rb.elo, winner);
+      ra.elo = next.a;
+      rb.elo = next.b;
+      if (winner === "a") {
+        ra.wins += 1;
+        rb.losses += 1;
+      } else if (winner === "b") {
+        rb.wins += 1;
+        ra.losses += 1;
+      } else {
+        ra.ties += 1;
+        rb.ties += 1;
+      }
+    } else {
+      ra.bothBad += 1;
+      rb.bothBad += 1;
+    }
+    this.ratings.set(a, ra);
+    this.ratings.set(b, rb);
+
+    this.votes.push({
+      id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
+      a,
+      b,
+      winner,
+      session,
+      createdAt: new Date().toISOString(),
+    });
+    if (this.votes.length > BATTLES_VOTES_MAX) this.votes.splice(0, this.votes.length - BATTLES_VOTES_MAX);
+    this.save();
+
+    const reveal = (item) => ({
+      id: item.id,
+      title: item.title,
+      author: item.author,
+      origin: item.origin ?? "human",
+      agent: item.agent ?? null,
+      genre: item.genre ?? null,
+      bpm: item.bpm ?? null,
+    });
+    return {
+      reveal: { a: reveal(itemA), b: reveal(itemB) },
+      ratings: { a: ra, b: rb },
+    };
+  }
+
+  /** Top beats by battle-earned Elo (at least one decided battle). */
+  leaderboard(limit = 10) {
+    const rows = [];
+    for (const [beatId, rating] of this.ratings) {
+      const battles = rating.wins + rating.losses + rating.ties;
+      if (battles === 0) continue;
+      const item = this.gallery.items.find((entry) => entry.id === beatId);
+      if (!item) continue;
+      rows.push({
+        id: beatId,
+        title: item.title,
+        author: item.author,
+        origin: item.origin ?? "human",
+        agent: item.agent ?? null,
+        elo: Math.round(rating.elo),
+        battles,
+      });
+    }
+    rows.sort((x, y) => y.elo - x.elo);
+    return rows.slice(0, limit);
+  }
+
+  /** The training log, without voter sessions — pairs and outcomes only. */
+  exportVotes() {
+    return this.votes.map((vote) => ({ a: vote.a, b: vote.b, winner: vote.winner, createdAt: vote.createdAt }));
+  }
+
+  save() {
+    try {
+      mkdirSync(dirname(this.filePath), { recursive: true });
+      writeFileSync(
+        this.filePath,
+        JSON.stringify({ votes: this.votes, ratings: Object.fromEntries(this.ratings) }, null, 2),
+      );
+    } catch (error) {
+      console.warn("[battles] could not save store:", String(error));
+    }
+  }
+}
+
 /** Naive per-IP sliding-window limiter. Returns true when the request passes. */
 function makeRateLimiter(limit = POST_WINDOW_LIMIT) {
   const hits = new Map(); // ip → timestamps[]
@@ -576,6 +786,7 @@ function createRoomRegistry() {
  */
 export function createCollabServer({
   galleryFile = process.env.GALLERY_FILE ?? DEFAULT_GALLERY_FILE,
+  battlesFile = process.env.BATTLES_FILE ?? join(dirname(galleryFile ?? DEFAULT_GALLERY_FILE), "gallery-battles.json"),
   intakeFile = process.env.INTAKE_FILE ?? DEFAULT_INTAKE_FILE,
   collabLimits: collabLimitOverrides = {},
   corsOrigins = process.env.CORS_ORIGIN ?? "*",
@@ -594,6 +805,7 @@ export function createCollabServer({
     throw new Error("production collab server requires an explicit CORS_ORIGIN allowlist");
   }
   const gallery = new GalleryStore(galleryFile);
+  const battles = new BattleStore(battlesFile ?? join(dirname(galleryFile), "gallery-battles.json"), gallery);
   const intake = new IntakeStore(intakeFile ?? DEFAULT_INTAKE_FILE);
   const allowPost = makeRateLimiter();
   // Play counters are much hotter than uploads — their own, looser window.
@@ -821,6 +1033,64 @@ export function createCollabServer({
           });
         },
       );
+      return;
+    }
+
+    // ── Battles: blind A/B preference voting (the taste-data flywheel) ─────
+    if (req.method === "GET" && url.pathname === "/api/gallery/battles/pair") {
+      const pair = battles.pickPair();
+      if (!pair) {
+        sendJson(res, 200, { pair: null });
+        return;
+      }
+      // Blind by contract: only ids and playability travel — titles, authors
+      // and provenance exist first in the vote response's reveal.
+      const itemA = gallery.find(pair.a);
+      const itemB = gallery.find(pair.b);
+      if (!itemA || !itemB) {
+        sendJson(res, 200, { pair: null });
+        return;
+      }
+      sendJson(res, 200, { pair: { a: { id: itemA.id, code: itemA.code }, b: { id: itemB.id, code: itemB.code } } });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/gallery/battles/vote") {
+      const ip = req.socket.remoteAddress ?? "unknown";
+      if (!allowPost(ip)) {
+        sendJson(res, 429, { error: "slow down — too many votes" });
+        return;
+      }
+      void readJsonBody(req, 4_096).then(
+        (parsed) => {
+          const result = battles.vote(parsed?.a, parsed?.b, parsed?.winner, parsed?.session);
+          if (result.duplicate) {
+            sendJson(res, 409, { error: result.error });
+            return;
+          }
+          if (result.error) {
+            sendJson(res, 400, { error: result.error });
+            return;
+          }
+          sendJson(res, 201, result);
+        },
+        (error) => {
+          sendJson(res, error?.code === "PAYLOAD_TOO_LARGE" ? 413 : 400, {
+            error: error?.message ?? "invalid vote body",
+          });
+        },
+      );
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/gallery/battles/leaderboard") {
+      sendJson(res, 200, { leaders: battles.leaderboard(10) });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/gallery/battles/export") {
+      // The ranker-training log: pairs + outcomes, no voter identities.
+      sendJson(res, 200, { votes: battles.exportVotes() });
       return;
     }
 

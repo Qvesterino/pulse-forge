@@ -124,6 +124,105 @@ export async function registerPlay(id: string, baseUrl: string = galleryBaseUrl(
   }
 }
 
+// ── battles — blind A/B preference voting (the taste-data flywheel) ─────────
+
+const BATTLE_SESSION_KEY = "pf-battle-session";
+
+/** A battle side as the PAIR endpoint returns it: blind — an id and a code, nothing else. */
+export interface BattleSide {
+  id: string;
+  code: string;
+}
+
+/** Titles, authors and provenance exist first in the vote response's reveal. */
+export interface BattleReveal {
+  id: string;
+  title: string;
+  author: string;
+  origin?: "human" | "agent";
+  agent?: string | null;
+  genre?: string | null;
+  bpm?: number | null;
+}
+
+export interface BattleRating {
+  elo: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  bothBad: number;
+}
+
+export interface BattleVoteResult {
+  reveal: { a: BattleReveal; b: BattleReveal };
+  ratings: { a: BattleRating; b: BattleRating };
+}
+
+export interface BattleLeaderRow extends BattleReveal {
+  elo: number;
+  battles: number;
+}
+
+export type BattleWinner = "a" | "b" | "tie" | "both_bad";
+
+/** Stable anonymous voter id — the server dedupes one vote per pair per session. */
+export function battleSessionId(): string {
+  try {
+    const existing = localStorage.getItem(BATTLE_SESSION_KEY);
+    if (existing) return existing;
+    const fresh =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem(BATTLE_SESSION_KEY, fresh);
+    return fresh;
+  } catch {
+    return "ephemeral";
+  }
+}
+
+/** A random pair of published beats, fully blind (ids + codes only). Null when the gallery is too small. */
+export async function fetchBattlePair(baseUrl: string = galleryBaseUrl()): Promise<BattleSidePair | null> {
+  const res = await fetch(`${baseUrl}/api/gallery/battles/pair`);
+  if (!res.ok) throw new Error(`Battles unavailable (${res.status})`);
+  const body = (await res.json()) as { pair?: { a: BattleSide; b: BattleSide } | null };
+  return body.pair ?? null;
+}
+
+export interface BattleSidePair {
+  a: BattleSide;
+  b: BattleSide;
+}
+
+/** Record one blind vote. 409 (already voted this pair) surfaces as an error the caller can retry past. */
+export async function submitBattleVote(
+  pair: BattleSidePair,
+  winner: BattleWinner,
+  session: string = battleSessionId(),
+  baseUrl: string = galleryBaseUrl(),
+): Promise<BattleVoteResult> {
+  const res = await fetch(`${baseUrl}/api/gallery/battles/vote`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ a: pair.a.id, b: pair.b.id, winner, session }),
+  });
+  const body = (await res.json().catch(() => ({}))) as (BattleVoteResult & { error?: string }) | { error?: string };
+  if (!res.ok || !("reveal" in body) || !body.reveal) {
+    const error = new Error(body.error ?? `Vote failed (${res.status})`) as Error & { duplicate?: boolean };
+    error.duplicate = res.status === 409;
+    throw error;
+  }
+  return body as BattleVoteResult;
+}
+
+/** Top beats by battle-earned Elo. */
+export async function fetchBattleLeaderboard(baseUrl: string = galleryBaseUrl()): Promise<BattleLeaderRow[]> {
+  const res = await fetch(`${baseUrl}/api/gallery/battles/leaderboard`);
+  if (!res.ok) throw new Error(`Leaderboard unavailable (${res.status})`);
+  const body = (await res.json()) as { leaders?: BattleLeaderRow[] };
+  return Array.isArray(body.leaders) ? body.leaders : [];
+}
+
 /** Send a privacy-safe moderation report; the server stores no reporter IP. */
 export async function reportBeat(id: string, reason: string, baseUrl: string = galleryBaseUrl()): Promise<void> {
   const res = await fetch(`${baseUrl}/api/gallery/${encodeURIComponent(id)}/report`, {

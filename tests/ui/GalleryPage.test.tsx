@@ -69,6 +69,98 @@ describe("extractShareCode", () => {
   });
 });
 
+describe("GalleryPage — battles", () => {
+  function routeFetch(routes: Array<[string, unknown]>) {
+    return vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      for (const [marker, body] of routes) {
+        if (url.includes(marker)) return Promise.resolve(jsonResponse(body));
+      }
+      return Promise.resolve(jsonResponse({ items: [] }));
+    });
+  }
+
+  it("runs a blind battle: pair with no titles, vote, reveal, leaderboard refresh", async () => {
+    const beatCode = code();
+    const fetchMock = routeFetch([
+      [
+        "/api/gallery/battles/pair",
+        {
+          pair: {
+            a: { id: "b1", code: beatCode },
+            b: { id: "b2", code: beatCode },
+          },
+        },
+      ],
+      [
+        "/api/gallery/battles/vote",
+        {
+          reveal: {
+            a: { id: "b1", title: "Midnight 808", author: "qveen", origin: "human", genre: "house", bpm: 124 },
+            b: { id: "b2", title: "Garage Skank", author: "matej", origin: "agent", agent: "KYX Agent", bpm: 135 },
+          },
+          ratings: {
+            a: { elo: 1016, wins: 1, losses: 0, ties: 0, bothBad: 0 },
+            b: { elo: 984, wins: 0, losses: 1, ties: 0, bothBad: 0 },
+          },
+        },
+      ],
+      [
+        "/api/gallery/battles/leaderboard",
+        { leaders: [{ id: "b1", title: "Midnight 808", author: "qveen", elo: 1016, battles: 1 }] },
+      ],
+    ]);
+    vi.stubGlobal("fetch", fetchMock);
+    render(<GalleryPage />);
+
+    fireEvent.click(await screen.findByText("FIND A BATTLE"));
+
+    // Blind phase: players mounted, no titles anywhere.
+    await waitFor(() => expect(screen.getAllByRole("document", { name: "KYX beat player" })).toHaveLength(2));
+    expect(screen.queryByText("Midnight 808")).toBeNull();
+    expect(screen.queryByText("Garage Skank")).toBeNull();
+
+    fireEvent.click(screen.getByText("A WINS"));
+
+    // Reveal: titles + provenance + the Elo the vote caused.
+    expect(await screen.findByText(/Midnight 808/)).toBeTruthy();
+    expect(screen.getByText(/Garage Skank/)).toBeTruthy();
+    expect(screen.getByText(/🤖/)).toBeTruthy();
+    expect(screen.getByText(/elo 1016/)).toBeTruthy();
+    expect(screen.getByText(/elo 984/)).toBeTruthy();
+    expect(screen.getByText(/#1 Midnight 808/)).toBeTruthy();
+
+    const voteCall = fetchMock.mock.calls.find((call) => String(call[0]).includes("/battles/vote"));
+    expect(voteCall).toBeTruthy();
+    const sent = JSON.parse(String(voteCall![1].body));
+    expect(sent).toMatchObject({ a: "b1", b: "b2", winner: "a" });
+    expect(typeof sent.session).toBe("string");
+    expect(sent.session.length).toBeGreaterThan(0);
+  });
+
+  it("treats a duplicate vote (409) as a fresh battle, not an error wall", async () => {
+    const duplicate = { ok: false, status: 409, json: async () => ({ error: "already voted" }) } as Response;
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/battles/vote")) return Promise.resolve(duplicate);
+      if (url.includes("/battles/pair")) {
+        return Promise.resolve(jsonResponse({ pair: { a: { id: "x", code: code() }, b: { id: "y", code: code() } } }));
+      }
+      if (url.includes("/battles/leaderboard")) return Promise.resolve(jsonResponse({ leaders: [] }));
+      return Promise.resolve(jsonResponse({ items: [] }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<GalleryPage />);
+
+    fireEvent.click(await screen.findByText("FIND A BATTLE"));
+    fireEvent.click(await screen.findByText("A WINS"));
+    // The panel recovered on its own — back to a blind arena, no error banner.
+    await waitFor(() => expect(screen.getByText(/already voted on this battle/)).toBeTruthy());
+    expect(screen.getAllByRole("document", { name: "KYX beat player" }).length).toBe(2);
+    expect(screen.getByText("A WINS")).toBeTruthy();
+  });
+});
+
 describe("GalleryPage", () => {
   it("renders the feed as cards with Open in Forge links", async () => {
     const fetchMock = vi.fn().mockResolvedValue(feedResponse());
@@ -176,16 +268,18 @@ describe("GalleryPage", () => {
     });
     fireEvent.click(screen.getByText("PUBLISH TO GALLERY"));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    const [, init] = fetchMock.mock.calls[1] as [unknown, RequestInit];
+    // The gallery page also pings the battle leaderboard on mount, so assert
+    // on the POST call itself rather than on exact call counts.
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, postInit]) => postInit?.method === "POST")).toBe(true));
+    const [, init] = fetchMock.mock.calls.find(([, postInit]) => postInit?.method === "POST") as [unknown, RequestInit];
     const body = JSON.parse(String(init.body));
     expect(body.title).toBe("My Jam");
     expect(body.author).toBe("me");
     expect(body.tags).toEqual(["house", "deep"]); // lowercased, split on comma+space
     expect(body.code.length).toBeGreaterThan(16);
     expect(await screen.findByText(/Published!/)).toBeTruthy();
-    // The feed reloads after publish.
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    // The feed reloads after publish (initial feed + leaderboard GET + POST + reload GET ≥ 4).
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(4));
   });
 
   it("flags an invalid share code instead of POSTing junk", async () => {
@@ -199,7 +293,9 @@ describe("GalleryPage", () => {
     fireEvent.click(screen.getByText("PUBLISH TO GALLERY"));
 
     expect(await screen.findByText(/Paste a valid share link/)).toBeTruthy();
-    expect(fetchMock).toHaveBeenCalledTimes(1); // only the initial GET
+    // The mount also pings the battle leaderboard — the pin is that NO POST
+    // left the page with the junk code.
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(0);
   });
 
   it("prefills the publish form from a studio hand-off (sessionStorage)", async () => {
