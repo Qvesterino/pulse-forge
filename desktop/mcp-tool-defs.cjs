@@ -176,6 +176,22 @@ const MCP_TOOL_DEFS = [
     },
   },
   {
+    name: "kyx_audio_preview",
+    description:
+      "Audition the opening of the CURRENT project without changing it or downloading a file. Returns a short stereo WAV as standard MCP audio content so compatible agents can listen before suggesting or applying edits. Defaults to 2 bars; previews are capped at 4 bars. This is a quick listening pass, not a full-quality export.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        bars: {
+          type: "integer",
+          minimum: 1,
+          maximum: 4,
+          description: "Opening bars to render (default 2, maximum 4)",
+        },
+      },
+    },
+  },
+  {
     name: "kyx_generate",
     description:
       "Generate a new pattern from an intent spec (deterministic engine, one undo step). Returns the pattern name and resolved BPM.",

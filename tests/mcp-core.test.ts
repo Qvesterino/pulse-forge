@@ -58,19 +58,20 @@ describe("mcp core — protocol with an authenticated session", () => {
     return { hub, delivered };
   }
 
-  it("initialize returns capabilities + serverInfo; tools/list returns the 33 tools", async () => {
+  it("initialize returns capabilities + serverInfo; tools/list returns the 34 tools", async () => {
     const { hub } = makeHub();
     const init = await handleMcpRequest(hub, TOKEN, TOKEN, rpc("initialize", {}, 1));
     expect(init.result.protocolVersion).toBe("2025-03-26");
     expect(init.result.capabilities.tools).toBeDefined();
     const list = await handleMcpRequest(hub as any, TOKEN, TOKEN, rpc("tools/list", {}, 2));
-    expect((list.result as { tools: Array<{ name: string }> }).tools).toHaveLength(33);
+    expect((list.result as { tools: Array<{ name: string }> }).tools).toHaveLength(34);
     expect((list.result as { tools: Array<{ name: string }> }).tools.map((t) => t.name)).toEqual([
       "kyx_intent",
       "kyx_state",
       "kyx_undo",
       "kyx_transport",
       "kyx_export",
+      "kyx_audio_preview",
       "kyx_generate",
       "kyx_groove",
       "kyx_fx",
@@ -129,6 +130,30 @@ describe("mcp core — protocol with an authenticated session", () => {
     expect(content[0].text).toContain("Drums mute ✓");
   });
 
+  it("preserves an attached audio content block across the authenticated web relay", async () => {
+    const { hub, delivered } = makeHub();
+    const promise = handleMcpRequest(
+      hub,
+      TOKEN,
+      TOKEN,
+      rpc("tools/call", { name: "kyx_audio_preview", arguments: { bars: 1 } }, 14),
+    );
+    hub.handleSessionMessage({
+      type: "mcp-result",
+      id: delivered[0].id,
+      result: {
+        text: "preview ready",
+        mutated: false,
+        audio: { data: "UklGRg==", mimeType: "audio/wav" },
+      },
+    });
+    const response = await promise;
+    expect(response.result.content).toEqual([
+      { type: "text", text: "preview ready" },
+      { type: "audio", data: "UklGRg==", mimeType: "audio/wav" },
+    ]);
+  });
+
   it("unknown tool → -32602 without touching the session", async () => {
     const { hub, delivered } = makeHub() as { hub: any; delivered: unknown[] };
     const response = await handleMcpRequest(hub, TOKEN, TOKEN, rpc("tools/call", { name: "nope", arguments: {} }, 3));
@@ -151,13 +176,14 @@ describe("mcp core — protocol with an authenticated session", () => {
     expect(delivered).toHaveLength(1);
   });
 
-  it("tool definitions match the KYX surface (33 tools, known names)", () => {
+  it("tool definitions match the KYX surface (34 tools, known names)", () => {
     expect(MCP_TOOL_DEFS.map((tool: { name: string }) => tool.name)).toEqual([
       "kyx_intent",
       "kyx_state",
       "kyx_undo",
       "kyx_transport",
       "kyx_export",
+      "kyx_audio_preview",
       "kyx_generate",
       "kyx_groove",
       "kyx_fx",

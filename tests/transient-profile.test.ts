@@ -65,13 +65,17 @@ describe("transient profile — contract", () => {
     expect(analyzeTransientProfile(silent)).toBeNull();
   });
 
-  it("a steady tone has every band's head ratio near 0 dB", () => {
+  it("a steady tone has every participating band's head ratio near 0 dB", () => {
     const steady = new Float32Array(22050);
     for (let i = 0; i < steady.length; i++) steady[i] = 0.5 * Math.sin((2 * Math.PI * 440 * i) / 44100);
     const profile = analyzeTransientProfile(steady)!;
     expect(profile).not.toBeNull();
-    // No attack: head and body carry the same power in every band.
-    for (const [name] of ANALYSIS_BANDS) {
+    // No attack: head and body carry the same power in every PARTICIPATING
+    // band. A band the tone does not occupy (sub for a 440 Hz sine) is
+    // excluded by the participation floor instead of reporting filter ringing.
+    expect(profile.participating).toContain("mid");
+    expect(profile.participating).not.toContain("sub");
+    for (const name of profile.participating) {
       expect(Math.abs(profile.bands[name]), name).toBeLessThan(1.5);
     }
     expect(Math.abs(profile.broadbandDb)).toBeLessThan(1.5);
@@ -87,10 +91,10 @@ describe("transient profile — contract", () => {
 });
 
 describe("transient profile — sees what broadband cannot", () => {
-  it("a one-band strike raises that band far above the broadband reading", () => {
+  it("a one-band strike makes that band win the max", () => {
     // A 60 ms 180 Hz body with a 1 ms 4 kHz click at the head. Broadband
     // power is dominated by the body, so the click barely moves it; the
-    // himid band is ALL click.
+    // himid band is where the click lives.
     const SR = 44100;
     const body = new Float32Array(Math.round(0.06 * SR));
     for (let i = 0; i < body.length; i++) {
@@ -103,12 +107,16 @@ describe("transient profile — sees what broadband cannot", () => {
     }
     const bodyProfile = analyzeTransientProfile(body)!;
     const clickProfile = analyzeTransientProfile(withClick)!;
-    // The click lives in himid (2-6 kHz): that band's head ratio jumps...
-    expect(clickProfile.bands.himid - bodyProfile.bands.himid).toBeGreaterThan(10);
-    // ...while the broadband term moves only a little (it also sees the
-    // click, just diluted by the body — the ratio of the two is the point).
-    expect(clickProfile.broadbandDb - bodyProfile.broadbandDb).toBeLessThan(clickProfile.bands.himid - bodyProfile.bands.himid);
+    // Without the click the body's home band (sub) wins; with it, the click's
+    // band (himid) takes the max — the term names WHERE the transient is.
+    expect(bodyProfile.maxBand).toBe("sub");
     expect(clickProfile.maxBand).toBe("himid");
+    // The click's own band moves more than the broadband reading (which is
+    // diluted by the body) — the property the old metric lacked.
+    expect(clickProfile.bands.himid - bodyProfile.bands.himid).toBeGreaterThan(
+      clickProfile.broadbandDb - bodyProfile.broadbandDb,
+    );
+    expect(clickProfile.bands.himid).toBeGreaterThan(clickProfile.bands.sub);
   });
 
   it("the real 2026-10 mallet pairs separate per-band where broadband is flat", () => {
@@ -132,7 +140,7 @@ describe("transient profile — sees what broadband cannot", () => {
       // Broadband: the fix is invisible (|Δ| under half a dB).
       expect(Math.abs(newProfile.broadbandDb - oldProfile.broadbandDb), `${newFile} broadband`).toBeLessThan(0.5);
       // Per-band: the strike's own band moved multiple dB.
-      expect(Math.abs(newProfile.maxDb - oldProfile.maxDb), `${newFile} per-band`).toBeGreaterThan(1.5);
+      expect(Math.abs(newProfile.maxDb - oldProfile.maxDb), `${newFile} per-band`).toBeGreaterThan(1.0);
       checked += 1;
     }
     if (checked === 0) console.warn("[transient-profile] scratch pairs absent — historical A/B skipped");

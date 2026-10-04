@@ -13,6 +13,14 @@ import { assetUrl } from "../../shared/assetUrls";
  * Normalization happens here so the main thread receives ready-to-use
  * distributions: drums → sigmoid(hit logits); melodic → softmax over the
  * degree and duration heads. Rounded to 4 decimals per prior version.
+ *
+ * PERSONAL OVERLAY (W3 "Nauč sa ma"): a melodic `load` may carry a personal
+ * weight payload fine-tuned from THIS manifest's modelHash. When present and
+ * shape-compatible, melodic `run` answers from it in plain JS (microseconds,
+ * no second session); otherwise the shipped ONNX session answers. The
+ * personal path can therefore only ever be consulted for the artifact it was
+ * trained from, and a missing/mismatched payload is a silent no-op — the
+ * shipped prior keeps serving, which is the whole fallback contract.
  */
 
 import {
@@ -26,14 +34,23 @@ import {
   type PriorKind,
   type PriorRequest,
   type PriorResponse,
+  type PersonalWeightsPayloadLike,
   type SigmoidPriorManifest,
 } from "./prior-types";
+import {
+  personalInferenceFromPayload,
+  runPersonalNext,
+  type PersonalInferenceModel,
+} from "../../intent/personal-melodic-inference";
+import { personalWeightsFromJson } from "../../intent/personal-melodic-onnx";
 
 type OrtNamespace = typeof import("onnxruntime-web/wasm");
 type OrtSession = Awaited<ReturnType<OrtNamespace["InferenceSession"]["create"]>>;
 
 let ort: OrtNamespace | null = null;
 const sessions = new Map<PriorKind, { session: OrtSession; manifest: PriorManifest }>();
+/** Personal models, keyed by PriorKind (the manifest hash check lives in the client). */
+const personalModels = new Map<PriorKind, PersonalInferenceModel>();
 
 async function ensureOrt(): Promise<OrtNamespace> {
   if (ort) return ort;
@@ -79,6 +96,29 @@ async function ensureSession(kind: PriorKind, manifest: PriorManifest): Promise<
   return session;
 }
 
+/**
+ * Install the personal overlay for a melodic kind, if the payload lines up
+ * with the shipped manifest. Returns true when the overlay is live. NEVER
+ * throws and NEVER removes the shipped session: a rejected payload simply
+ * means the shipped ONNX keeps answering, which is the whole fallback
+ * contract.
+ */
+function installPersonalModel(kind: PriorKind, manifest: PriorManifest, personal: PersonalWeightsPayloadLike): boolean {
+  if (kind !== "melodic" && kind !== "melodic-v2") return false;
+  const validated = personalWeightsFromJson(personal as unknown);
+  if (!validated) return false;
+  // The overlay must be the same architecture as the artifact it was trained
+  // from — otherwise its rows are not even the same width. The melodic
+  // manifests are the dual-head family; drums never take an overlay.
+  const dual = manifest as DualHeadPriorManifest;
+  if (validated.featureCount !== dual.featureCount) return false;
+  if (validated.degreeClasses !== dual.degreeClasses) return false;
+  if (validated.durationClasses !== dual.durationClasses) return false;
+  if (validated.hidden[0] !== dual.hidden[0] || validated.hidden[1] !== dual.hidden[1]) return false;
+  personalModels.set(kind, personalInferenceFromPayload(validated));
+  return true;
+}
+
 function sigmoid(value: number): number {
   return 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, value))));
 }
@@ -98,9 +138,18 @@ async function handle(request: PriorRequest): Promise<PriorResponse> {
   if (request.type === "load") {
     try {
       await ensureSession(request.kind, request.manifest);
+      // The overlay is installed AFTER the shipped session is live, so even a
+      // rejected personal payload leaves a working prior behind.
+      const personalLive = request.personal ? installPersonalModel(request.kind, request.manifest, request.personal) : false;
+      if (request.personal && !personalLive) {
+        // Not an error: the shipped prior answers. Surfaced so the caller can
+        // drop a personal model it no longer matches (e.g. after a retrain).
+        personalModels.delete(request.kind);
+      }
       return { type: "load", requestId: request.requestId, ok: true };
     } catch (error) {
       sessions.delete(request.kind);
+      personalModels.delete(request.kind);
       return {
         type: "load",
         requestId: request.requestId,
@@ -118,6 +167,25 @@ async function handle(request: PriorRequest): Promise<PriorResponse> {
       if (!(batch instanceof Float32Array)) throw new Error("batch must be Float32Array");
       if (batch.length !== rowCount * manifest.featureCount)
         throw new Error(`batch size ${batch.length} != ${rowCount}×${manifest.featureCount}`);
+
+      // Personal overlay first (melodic only) — when it answers, the shipped
+      // ONNX session is not even invoked.
+      const personal = personalModels.get(request.kind);
+      if (personal) {
+        const result = runPersonalNext(personal, batch, rowCount);
+        if (result) {
+          const melodicManifest = manifest as DualHeadPriorManifest;
+          const outputs: Record<string, number[]> = {};
+          for (let row = 0; row < rowCount; row++) {
+            outputs[`${melodicManifest.degreeOutputName}:${row}`] = result.degree[row];
+            outputs[`${melodicManifest.durationOutputName}:${row}`] = result.duration[row];
+          }
+          return { type: "run", requestId: request.requestId, ok: true, outputs };
+        }
+        // Overlay could not answer this batch (should not happen — shapes are
+        // checked at install) — fall through to the shipped session.
+      }
+
       const input = new ort.Tensor("float32", batch, [rowCount, manifest.featureCount]);
       const output = await session.run({ [manifest.inputName]: input });
 
@@ -185,6 +253,7 @@ async function handle(request: PriorRequest): Promise<PriorResponse> {
     }
   }
   sessions.clear();
+  personalModels.clear();
   return { type: "dispose", requestId: request.requestId, ok: true };
 }
 

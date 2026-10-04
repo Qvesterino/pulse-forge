@@ -1,5 +1,5 @@
 export const DB_NAME = "pulse-forge";
-export const DB_VERSION = 12;
+export const DB_VERSION = 13;
 export const STORE_PROJECTS = "projects";
 export const STORE_META = "meta";
 export const STORE_PRESETS = "presets";
@@ -24,6 +24,13 @@ export const STORE_SNAPSHOTS = "project-snapshots";
 export const STORE_SNAPSHOT_INDEX = "project-snapshot-index";
 export const STORE_ULTINA_PRESETS = "ultina-presets";
 export const STORE_MORPH_PRESETS = "morph-presets";
+/**
+ * Personal, ★-trained priors (W3 "Nauč sa ma"). Keyed OUT OF LINE by
+ * `<shippedKind>#<shippedModelHash>` so a record is only ever found for the
+ * exact artifact it was fine-tuned from — a new shipped prior cannot inherit
+ * a stale personal model. See PersonalModelRepository.
+ */
+export const STORE_PERSONAL_MODELS = "personal-models";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -63,6 +70,10 @@ export function openDb(): Promise<IDBDatabase> {
         db.createObjectStore(STORE_ULTINA_PRESETS, { keyPath: "id" });
       if (!db.objectStoreNames.contains(STORE_MORPH_PRESETS))
         db.createObjectStore(STORE_MORPH_PRESETS, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(STORE_PERSONAL_MODELS)) {
+        // Out-of-line key: `<kind>#<baseModelHash>`.
+        db.createObjectStore(STORE_PERSONAL_MODELS);
+      }
     };
     // Another tab still holds an older DB version — the open stays pending
     // until that tab closes. Fail with an actionable message instead of

@@ -115,6 +115,7 @@ describe("mcp tools — headless execution", async () => {
       "kyx_undo",
       "kyx_transport",
       "kyx_export",
+      "kyx_audio_preview",
       "kyx_generate",
       "kyx_groove",
       "kyx_fx",
@@ -1437,6 +1438,42 @@ describe("mcp P1 export — the awaited completion report", async () => {
   });
 });
 
+describe("mcp audio preview — attached, bounded audition", async () => {
+  const audio = { data: "UklGRg==", mimeType: "audio/wav" as const };
+
+  it("returns the rendered MCP audio block without mutating the project", async () => {
+    const original = datasetDoc();
+    const ctx = makeCtx(original);
+    const previewing: McpToolContext = {
+      ...ctx,
+      audioPreview: async ({ bars }) => ({
+        audio,
+        bars,
+        durationSec: 4.25,
+        sampleRate: 22050,
+        byteLength: 128,
+      }),
+    };
+    const result = await executeMcpToolAsync(previewing, "kyx_audio_preview", {});
+    expect(result.mutated).toBe(false);
+    expect(result.audio).toEqual(audio);
+    expect(result.data).toMatchObject({ bars: 2, sampleRate: 22050, mimeType: "audio/wav" });
+    expect(result.text).toContain("Listen to the attached audio content");
+    expect(ctx.getDoc()).toBe(original);
+  });
+
+  it("rejects invalid bar counts and honestly refuses hosts without a renderer", async () => {
+    const ctx = makeCtx(datasetDoc());
+    const invalid = await executeMcpToolAsync(ctx, "kyx_audio_preview", { bars: 5 });
+    expect(invalid.isError).toBe(true);
+    expect(invalid.text).toContain("integer from 1 to 4");
+
+    const unavailable = await executeMcpToolAsync(ctx, "kyx_audio_preview", {});
+    expect(unavailable.isError).toBe(true);
+    expect(unavailable.text).toContain("not available");
+  });
+});
+
 // ─── RESOURCES (MCP capability) — passive reads over the hidden channel ─────
 
 describe("mcp resources", async () => {
@@ -1542,6 +1579,7 @@ describe("mcp P2 batch — transactional multi-call", async () => {
       calls: [
         { tool: "kyx_intent", args: { instruction: "set tempo to 140" } },
         { tool: "kyx_export", args: { format: "wav" } },
+        { tool: "kyx_audio_preview", args: { bars: 2 } },
         { tool: "kyx_loudness", args: { op: "measure" } },
       ],
     });

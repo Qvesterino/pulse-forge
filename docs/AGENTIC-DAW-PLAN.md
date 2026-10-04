@@ -3,7 +3,7 @@
 > **Cieľ**: aby LLM agent (GLM-5.3 v ZCode, Claude Desktop, ...) mohol KYX nielen _ovládať_,
 > ale v ňom _pracovať_ — počuť ho, experimentovať, vrátiť sa, a vyrábať beaty v cykle
 > generate → analyze → adjust. Dokument rozširuje docs/INTENT-MCP-EXPANSION-PLAN.md
-> (transporty, protokol) a MCP_AI_CONTROL_MATRIX.md (20 toolov, P0–P2) na agentný zážitok.
+> (transporty, protokol) a MCP control-surface plán na agentný zážitok.
 
 ---
 

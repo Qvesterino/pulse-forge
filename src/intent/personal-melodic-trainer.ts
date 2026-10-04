@@ -235,7 +235,16 @@ export function trainPersonalPrior(
   const durationWeights = classWeights(Array.from(durationLabels), PERSONAL_DURATION_CLASSES, weightPower);
 
   // Adam state, one per parameter tensor (same layout as the python trainer).
-  const tensors: Float32Array[] = [weights.w0, weights.b0, weights.w1, weights.b1, weights.wd, weights.bd, weights.wt, weights.bt];
+  const tensors: Float32Array[] = [
+    weights.w0,
+    weights.b0,
+    weights.w1,
+    weights.b1,
+    weights.wd,
+    weights.bd,
+    weights.wt,
+    weights.bt,
+  ];
   const firstMoments = tensors.map((t) => new Float32Array(t.length));
   const secondMoments = tensors.map((t) => new Float32Array(t.length));
   const gradients = tensors.map((t) => new Float32Array(t.length));
@@ -279,13 +288,18 @@ export function trainPersonalPrior(
         // must actually descend.
         let degreeLoss = 0;
         for (let c = 0; c < PERSONAL_DEGREE_CLASSES; c++) {
-          const target = c === degreeLabel ? 1 - smoothing + smoothing / PERSONAL_DEGREE_CLASSES : smoothing / PERSONAL_DEGREE_CLASSES;
+          const target =
+            c === degreeLabel
+              ? 1 - smoothing + smoothing / PERSONAL_DEGREE_CLASSES
+              : smoothing / PERSONAL_DEGREE_CLASSES;
           degreeLoss += -target * Math.log(degreeProbs[c] + eps);
         }
         let durationLoss = 0;
         for (let c = 0; c < PERSONAL_DURATION_CLASSES; c++) {
           const target =
-            c === durationLabel ? 1 - smoothing + smoothing / PERSONAL_DURATION_CLASSES : smoothing / PERSONAL_DURATION_CLASSES;
+            c === durationLabel
+              ? 1 - smoothing + smoothing / PERSONAL_DURATION_CLASSES
+              : smoothing / PERSONAL_DURATION_CLASSES;
           durationLoss += -target * Math.log(durationProbs[c] + eps);
         }
         batchLoss += (wd * degreeLoss + wt * durationLoss) / n;
@@ -295,11 +309,17 @@ export function trainPersonalPrior(
         const degreeScale = wd / n;
         const durationScale = wt / n;
         for (let c = 0; c < PERSONAL_DEGREE_CLASSES; c++) {
-          const target = c === degreeLabel ? 1 - smoothing + smoothing / PERSONAL_DEGREE_CLASSES : smoothing / PERSONAL_DEGREE_CLASSES;
+          const target =
+            c === degreeLabel
+              ? 1 - smoothing + smoothing / PERSONAL_DEGREE_CLASSES
+              : smoothing / PERSONAL_DEGREE_CLASSES;
           degreeDelta[c] = (degreeProbs[c] - target) * degreeScale;
         }
         for (let c = 0; c < PERSONAL_DURATION_CLASSES; c++) {
-          const target = c === durationLabel ? 1 - smoothing + smoothing / PERSONAL_DURATION_CLASSES : smoothing / PERSONAL_DURATION_CLASSES;
+          const target =
+            c === durationLabel
+              ? 1 - smoothing + smoothing / PERSONAL_DURATION_CLASSES
+              : smoothing / PERSONAL_DURATION_CLASSES;
           durationDelta[c] = (durationProbs[c] - target) * durationScale;
         }
 
@@ -365,7 +385,7 @@ export function trainPersonalPrior(
           v[i] = beta2 * v[i] + (1 - beta2) * g * g;
           const mHat = m[i] / biasCorrection1;
           const vHat = v[i] / biasCorrection2;
-          param[i] -= learningRate * mHat / (Math.sqrt(vHat) + adamEps);
+          param[i] -= (learningRate * mHat) / (Math.sqrt(vHat) + adamEps);
         }
       }
     }

@@ -220,7 +220,11 @@ function createMcpBridgeServer({ token, executeTool, port = 0 }) {
     try {
       const result = await toolExecutor(name, args);
       if (typeof mapResult === "function") return mapResult(result?.text ?? "");
-      const payload = { content: [{ type: "text", text: result?.text ?? "" }] };
+      const content = [{ type: "text", text: result?.text ?? "" }];
+      if (result?.audio && typeof result.audio.data === "string" && typeof result.audio.mimeType === "string") {
+        content.push({ type: "audio", data: result.audio.data, mimeType: result.audio.mimeType });
+      }
+      const payload = { content };
       if (result?.isError === true) payload.isError = true;
       return rpcResult(id, payload);
     } catch (error) {

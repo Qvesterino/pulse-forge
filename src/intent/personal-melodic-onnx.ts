@@ -179,12 +179,8 @@ export function personalWeightsToJson(weights: PersonalWeights, meta: Record<str
   });
 }
 
-export interface PersonalWeightsPayload {
-  version: 1;
-  hidden: [number, number];
-  featureCount: number;
-  degreeClasses: number;
-  durationClasses: number;
+/** The eight weight arrays in trainer layout — the shape validation proves. */
+interface PersonalWeightArrays {
   w0: number[];
   b0: number[];
   w1: number[];
@@ -193,6 +189,15 @@ export interface PersonalWeightsPayload {
   bd: number[];
   wt: number[];
   bt: number[];
+}
+
+export interface PersonalWeightsPayload extends PersonalWeightArrays {
+  version: 1;
+  hidden: [number, number];
+  featureCount: number;
+  degreeClasses: number;
+  durationClasses: number;
+  /** Free-form provenance (createdAt, source, base hash, ★ count…). */
   [key: string]: unknown;
 }
 
@@ -209,28 +214,45 @@ export function personalWeightsFromJson(raw: unknown): PersonalWeightsPayload | 
     if (!Array.isArray(array) || array.length === 0) return null;
     for (const value of array) if (typeof value !== "number" || !Number.isFinite(value)) return null;
   }
-  const [h0, h1] = payload.hidden;
-  if (payload.w0.length !== h0 * payload.featureCount) return null;
-  if (payload.b0.length !== h0) return null;
-  if (payload.w1.length !== h1 * h0) return null;
-  if (payload.b1.length !== h1) return null;
-  if (payload.wd.length !== h1 * payload.degreeClasses) return null;
-  if (payload.bd.length !== payload.degreeClasses) return null;
-  if (payload.wt.length !== h1 * payload.durationClasses) return null;
-  if (payload.bt.length !== payload.durationClasses) return null;
+  // The loop above proved all eight arrays are number[]; re-state it for the
+  // compiler so the shape checks below need no assertions.
+  const {
+    w0,
+    b0,
+    w1,
+    b1,
+    wd,
+    bd,
+    wt,
+    bt,
+    hidden: [h0, h1],
+    featureCount,
+    degreeClasses,
+    durationClasses,
+  } = payload as PersonalWeightsPayload;
+  if (w0.length !== h0 * featureCount) return null;
+  if (b0.length !== h0) return null;
+  if (w1.length !== h1 * h0) return null;
+  if (b1.length !== h1) return null;
+  if (wd.length !== h1 * degreeClasses) return null;
+  if (bd.length !== degreeClasses) return null;
+  if (wt.length !== h1 * durationClasses) return null;
+  if (bt.length !== durationClasses) return null;
   return payload as PersonalWeightsPayload;
 }
 
 /** Convert a validated payload back to the trainer's tensor layout. */
 export function personalWeightsFromPayload(payload: PersonalWeightsPayload): PersonalWeights {
+  // personalWeightsFromJson proved each array exists and is finite; the
+  // non-null assertions below are that proof, re-stated for the compiler.
   return {
-    w0: Float32Array.from(payload.w0),
-    b0: Float32Array.from(payload.b0),
-    w1: Float32Array.from(payload.w1),
-    b1: Float32Array.from(payload.b1),
-    wd: Float32Array.from(payload.wd),
-    bd: Float32Array.from(payload.bd),
-    wt: Float32Array.from(payload.wt),
-    bt: Float32Array.from(payload.bt),
+    w0: Float32Array.from(payload.w0!),
+    b0: Float32Array.from(payload.b0!),
+    w1: Float32Array.from(payload.w1!),
+    b1: Float32Array.from(payload.b1!),
+    wd: Float32Array.from(payload.wd!),
+    bd: Float32Array.from(payload.bd!),
+    wt: Float32Array.from(payload.wt!),
+    bt: Float32Array.from(payload.bt!),
   };
 }

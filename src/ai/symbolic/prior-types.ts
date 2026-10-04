@@ -119,6 +119,32 @@ export interface PriorLoadRequest {
   requestId: number;
   kind: PriorKind;
   manifest: PriorManifest;
+  /**
+   * W3 personal overlay: a ★-trained weight payload fine-tuned from
+   * `manifest.modelHash`. Present only for melodic kinds, and only when the
+   * user installed a personal model. The worker validates the shape and the
+   * feature width; anything that does not line up is IGNORED (the shipped ONNX
+   * keeps answering) — a stale or corrupt personal model can never break the
+   * prior path.
+   */
+  personal?: PersonalWeightsPayloadLike;
+}
+
+/** The stored personal-weight payload as it crosses the worker boundary. */
+export interface PersonalWeightsPayloadLike {
+  version: 1;
+  hidden: [number, number];
+  featureCount: number;
+  degreeClasses: number;
+  durationClasses: number;
+  w0: number[];
+  b0: number[];
+  w1: number[];
+  b1: number[];
+  wd: number[];
+  bd: number[];
+  wt: number[];
+  bt: number[];
 }
 
 export interface PriorRunRequest {

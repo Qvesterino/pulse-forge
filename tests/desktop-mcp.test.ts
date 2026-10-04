@@ -160,6 +160,35 @@ describe("desktop mcp bridge server (real HTTP)", () => {
     expect(badBody.result.content[0]?.text).toBe("honest failure");
   });
 
+  it("returns standard MCP audio content blocks from the renderer executor", async () => {
+    const { server } = bridgeModule.createMcpBridgeServer({
+      token: "tok",
+      executeTool: async () => ({
+        text: "preview ready",
+        mutated: false,
+        audio: { data: "UklGRg==", mimeType: "audio/wav" },
+      }),
+    });
+    const port = await listenOnEphemeralPort(server);
+    runningServers.push(server);
+
+    const response = await post(
+      port,
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 7,
+        method: "tools/call",
+        params: { name: "kyx_audio_preview", arguments: { bars: 1 } },
+      }),
+      { token: "tok" },
+    );
+    const body = JSON.parse(response.body) as { result: { content: Array<Record<string, string>> } };
+    expect(body.result.content).toEqual([
+      { type: "text", text: "preview ready" },
+      { type: "audio", data: "UklGRg==", mimeType: "audio/wav" },
+    ]);
+  });
+
   it("protocol completeness: version negotiation, instructions, resources, batch, unknown-tool -32602", async () => {
     const { server } = bridgeModule.createMcpBridgeServer({
       token: "tok",
@@ -487,7 +516,7 @@ describe("desktop mcp stdio forwarder (subprocess)", () => {
     return { child, writeLine, nextLine };
   }
 
-  it("initialize → tools/list (27 tools) → tools/call round-trips through the bridge", async () => {
+  it("initialize → tools/list (34 tools) → tools/call round-trips through the bridge", async () => {
     const { child, writeLine, nextLine } = await startChain(true);
     writeLine({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} });
     const init = JSON.parse(await nextLine()) as { id: number; result: { serverInfo: { name: string } } };

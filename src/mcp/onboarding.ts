@@ -78,6 +78,10 @@ WORKFLOW: MIX PASS ON EXISTING MATERIAL
   the diagnosis, compare. kyx_meter / kyx_loudness for live or
   target-landing checks.
 
+LISTENING LOOP: kyx_audio_preview {bars: 2} attaches up to 4 opening bars as
+a WAV (no edit/download). Listen before/after one edit if your MCP client
+supports audio; otherwise say so. Pair it with render_summary/diagnose_mix.
+
 WORKFLOW: LIVE PERFORMANCE + PUBLISHING
   kyx_state {subject: scenes} lists launchable scenes with @bar N.
   kyx_transport {action:'launchScene', scene:"drop"} seeks + plays
@@ -91,7 +95,7 @@ WORKFLOW: ARRANGEMENT PASS
   {op: add/resize/reorder} -> kyx_clips {op: move/duplicate} ->
   kyx_markers {op: add}.
 
-TOOL INDEX (all 31 — grouped by job)
+TOOL INDEX (all 34 — grouped by job)
   read:        kyx_state (subjects incl. mixer) · kyx_meter · kyx_catalog
                (effects/instruments) · kyx://project/* resources
   compose:     kyx_generate (seedable) · kyx_notes (melodic) ·
@@ -104,7 +108,8 @@ TOOL INDEX (all 31 — grouped by job)
                intensity) · kyx_arrange · kyx_song (whole track) ·
                kyx_clips
   perform:     kyx_transport (incl. action:launchScene) · kyx_checkpoint
-  finish:      kyx_mix · kyx_loudness (BS.1770) · kyx_render_summary (per-strip
+  finish:      kyx_mix · kyx_audio_preview (attached listenable WAV) ·
+               kyx_loudness (BS.1770) · kyx_render_summary (per-strip
                LUFS/peak/crest) · kyx_diagnose_mix (attributed findings +
                callable fixes — ears v2) · kyx_export ·
                kyx_publish_gallery (agent badge)
@@ -135,12 +140,6 @@ SFZ IMPORT
   kyx_import_sfz {path} — import an SFZ instrument definition from a
   local file. Fails honestly if the file doesn't exist or is malformed.
 
-MIX DIAGNOSIS (agent's ears v2)
-  kyx_diagnose_mix — offline-render the master + per-strip, return
-  attributed findings (low-end dominance, clipping, crest collapse, DC
-  offset) with fix suggestions. Slower than kyx_render_summary but
-  more actionable: diagnose → fix (kyx_fx / kyx_loudness) → re-diagnose.
-
 FAILURE MINING (local, never telemetered)
   kyx_state {subject: "model-misses"} — the producer sentences the
   deterministic layer AND the local model both failed on, most-frequent
@@ -153,8 +152,9 @@ HYGIENE
   undo step). Destructive ops auto-save "auto-before-<tool>" checkpoints
   when the user allowed them; kyx_checkpoint {op: list} shows everything.
 - Read before acting. One read saves three wrong mutations.
-- Generation candidates need in-app auditioning — never claim a beat
-  "sounds good" without kyx_loudness/kyx_meter numbers or the user's ears.
+- Before making a subjective sonic claim, call kyx_audio_preview and listen
+  to its attachment when your MCP client supports audio. If not, be explicit
+  and stick to kyx_loudness / kyx_meter / render analysis or ask the user.
 - If a tool reports isError, change the ARGUMENTS, not the tool.`;
 
 export const MCP_VOCAB_TEXT = `KYX INTENT VOCABULARY (what free-text kyx_intent understands, EN + SK)

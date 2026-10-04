@@ -101,12 +101,13 @@ import {
 import { isAutomationTargetValid, targetParamDef } from "../project-model/targets";
 import { clampEffectParam, EFFECT_META, type EffectDefinitionMeta } from "../effects/definitions";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
+import type { McpAudioContent, McpAudioPreviewArtifact } from "./audio-preview";
 
 /**
  * KYX MCP — TOOL SURFACE (docs/INTENT-MCP-EXPANSION-PLAN.md Phase D).
  *
- * Sixteen tools expose the intent engine + project state to an external MCP
- * client. The GOLDEN RULE: the MCP layer is a TRANSPORT, never a bypass —
+ * The tool surface exposes the intent engine + project state to an external
+ * MCP client. The GOLDEN RULE: the MCP layer is a TRANSPORT, never a bypass —
  * every tool goes through the same deterministic command layer (clamps,
  * strict target resolution, one-undo snapshots) that the intent bar uses,
  * and every result is a VERIFICATION READ-BACK, not a dispatch echo.
@@ -120,6 +121,15 @@ import { INSTRUMENT_DEFS } from "../instruments/registry";
  * loudness/mix loops, section production), save/record, mic takes.
  */
 
+/** JSON Schema (2020-12 subset) for a tool's structured result. */
+export interface McpOutputSchema {
+  type: "object";
+  properties: Record<string, unknown>;
+  required?: string[];
+  /** true = extra keys allowed (structuredContent may carry more than declared). */
+  additionalProperties?: boolean;
+}
+
 export interface McpToolDef {
   name: string;
   description: string;
@@ -128,7 +138,187 @@ export interface McpToolDef {
     properties: Record<string, unknown>;
     required?: string[];
   };
+  /**
+   * MCP 2025-06-18+ `outputSchema`: declares the shape of `structuredContent`.
+   * When set, the wire layer MUST attach a matching `structuredContent` object
+   * to every successful result (see `toolResultPayload` in
+   * server/mcp-core.mjs + desktop/mcp-bridge-server.cjs).
+   */
+  outputSchema?: McpOutputSchema;
 }
+
+/** kyx_state - structured twin exists for the `mixer` subject. */
+const OUTPUT_STATE_MIXER: McpOutputSchema = {
+  type: "object",
+  additionalProperties: true,
+  properties: {
+    master: { type: ["object", "null"] },
+    returns: { type: "array", items: { type: "object" } },
+    tracks: { type: "array", items: { type: "object" } },
+  },
+  required: ["master", "returns", "tracks"],
+};
+/** kyx_meter - the live meter snapshot. */
+const OUTPUT_METER: McpOutputSchema = {
+  type: "object",
+  additionalProperties: true,
+  properties: {
+    master: { type: "object" },
+    tracks: { type: "array", items: { type: "object" } },
+  },
+  required: ["master", "tracks"],
+};
+/** kyx_audio_preview - metadata twin (audio travels as a content block). */
+const OUTPUT_AUDIO_PREVIEW: McpOutputSchema = {
+  type: "object",
+  additionalProperties: true,
+  properties: {
+    bars: { type: "number" },
+    durationSec: { type: "number" },
+    sampleRate: { type: "number" },
+    byteLength: { type: "number" },
+    mimeType: { type: "string" },
+  },
+  required: ["bars", "durationSec", "sampleRate", "byteLength", "mimeType"],
+};
+/** kyx_loudness - measure (integratedLufs) or loop (before/after/trim). */
+const OUTPUT_LOUDNESS: McpOutputSchema = {
+  type: "object",
+  additionalProperties: true,
+  properties: {
+    integratedLufs: { type: "number" },
+    measuredBefore: { type: "number" },
+    measuredAfter: { type: ["number", "null"] },
+    trimDb: { type: "number" },
+    targetLufs: { type: "number" },
+  },
+};
+/** kyx_render_summary - per-strip offline render evidence. */
+const OUTPUT_RENDER_SUMMARY: McpOutputSchema = {
+  type: "object",
+  additionalProperties: true,
+  properties: {
+    scope: { type: "string", enum: ["master", "tracks", "all"] },
+    strips: { type: "array", items: { type: "object" } },
+    master: { type: ["object", "null"] },
+    referenceLufs: { type: "number" },
+  },
+  required: ["scope", "strips", "referenceLufs"],
+};
+/** kyx_diagnose_mix - attributed findings + suggested actions. */
+const OUTPUT_DIAGNOSE_MIX: McpOutputSchema = {
+  type: "object",
+  additionalProperties: true,
+  properties: {
+    scope: { type: "string" },
+    referenceLufs: { type: "number" },
+    master: { type: ["object", "null"] },
+    strips: { type: "array", items: { type: "object" } },
+    findings: { type: "array", items: { type: "object" } },
+    attributions: { type: "array", items: { type: "string" } },
+    suggestedActions: { type: "array", items: { type: "string" } },
+  },
+  required: ["scope", "strips", "findings", "suggestedActions"],
+};
+/** kyx_batch - per-call results + counts. */
+const OUTPUT_BATCH: McpOutputSchema = {
+  type: "object",
+  additionalProperties: true,
+  properties: {
+    results: { type: "array", items: { type: "object" } },
+    mutations: { type: "number" },
+    failures: { type: "number" },
+    singleUndo: { type: "boolean" },
+  },
+  required: ["results", "mutations", "failures", "singleUndo"],
+};
+/** kyx_blind_ab - plan gains or verdict stats. */
+const OUTPUT_BLIND_AB: McpOutputSchema = {
+  type: "object",
+  additionalProperties: true,
+  properties: {
+    gains: { type: "object" },
+    total: { type: "number" },
+    correct: { type: "number" },
+    pValue: { type: "number" },
+  },
+};
+/** kyx_publish_gallery - the created gallery id + provenance. */
+const OUTPUT_PUBLISH: McpOutputSchema = {
+  type: "object",
+  additionalProperties: true,
+  properties: {
+    galleryId: { type: "string" },
+    origin: { type: "string" },
+    agent: { type: "string" },
+  },
+  required: ["galleryId", "origin", "agent"],
+};
+/** kyx_tracks loadPreset / listPresets twin. */
+const OUTPUT_TRACKS_PRESET: McpOutputSchema = {
+  type: "object",
+  additionalProperties: true,
+  properties: {
+    presetId: { type: "string" },
+    matchedBy: { type: "string" },
+    trackId: { type: ["string", "null"] },
+    family: { type: "string" },
+    fitting: { type: "number" },
+    total: { type: "number" },
+  },
+};
+/** kyx_notes list twin. */
+const OUTPUT_NOTES: McpOutputSchema = {
+  type: "object",
+  additionalProperties: true,
+  properties: {
+    trackId: { type: "string" },
+    count: { type: "number" },
+  },
+  required: ["trackId", "count"],
+};
+/** kyx_clips list/audioList twins (arrangement or track-lane clips). */
+const OUTPUT_CLIPS: McpOutputSchema = {
+  type: "object",
+  additionalProperties: true,
+  properties: {
+    arrangementClips: { type: "array", items: { type: "object" } },
+    audioClipCount: { type: "number" },
+    clips: { type: "array", items: { type: "object" } },
+  },
+};
+/** kyx_routing list twin. */
+const OUTPUT_ROUTING: McpOutputSchema = {
+  type: "object",
+  additionalProperties: true,
+  properties: {
+    routes: { type: "array", items: { type: "object" } },
+    groups: { type: "array", items: { type: "object" } },
+  },
+  required: ["routes", "groups"],
+};
+/** kyx_takes list twin. */
+const OUTPUT_TAKES: McpOutputSchema = {
+  type: "object",
+  additionalProperties: true,
+  properties: {
+    groups: { type: "array", items: { type: "object" } },
+  },
+  required: ["groups"],
+};
+/** kyx_sections launch twin. */
+const OUTPUT_SECTIONS_LAUNCH: McpOutputSchema = {
+  type: "object",
+  additionalProperties: true,
+  properties: {
+    sceneId: { type: "string" },
+    name: { type: "string" },
+    role: { type: ["string", "null"] },
+    startBar: { type: "number" },
+    playing: { type: "boolean" },
+  },
+  required: ["sceneId", "name", "startBar", "playing"],
+};
 
 export const MCP_TOOLS: McpToolDef[] = [
   {
@@ -184,6 +374,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["subject"],
     },
+    outputSchema: OUTPUT_STATE_MIXER,
   },
   {
     name: "kyx_undo",
@@ -276,6 +467,27 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["format"],
     },
+  },
+  {
+    name: "kyx_audio_preview",
+    description:
+      "Audition the opening of the CURRENT project without changing it or " +
+      "downloading a file. Returns a short stereo WAV as standard MCP audio " +
+      "content so compatible agents can listen before suggesting or applying " +
+      "edits. Defaults to 2 bars; previews are capped at 4 bars. This is a " +
+      "quick listening pass, not a full-quality export.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        bars: {
+          type: "integer",
+          minimum: 1,
+          maximum: 4,
+          description: "Opening bars to render (default 2, maximum 4)",
+        },
+      },
+    },
+    outputSchema: OUTPUT_AUDIO_PREVIEW,
   },
   {
     name: "kyx_generate",
@@ -440,6 +652,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["op", "role"],
     },
+    outputSchema: OUTPUT_SECTIONS_LAUNCH,
   },
   {
     name: "kyx_markers",
@@ -511,6 +724,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["op"],
     },
+    outputSchema: OUTPUT_TRACKS_PRESET,
   },
   {
     name: "kyx_pattern",
@@ -594,6 +808,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["op"],
     },
+    outputSchema: OUTPUT_NOTES,
   },
   {
     name: "kyx_music",
@@ -687,6 +902,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: [],
     },
+    outputSchema: OUTPUT_METER,
   },
   {
     name: "kyx_automation",
@@ -813,6 +1029,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["calls"],
     },
+    outputSchema: OUTPUT_BATCH,
   },
   {
     name: "kyx_loudness",
@@ -841,6 +1058,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["op"],
     },
+    outputSchema: OUTPUT_LOUDNESS,
   },
   {
     name: "kyx_import_sfz",
@@ -897,6 +1115,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["title"],
     },
+    outputSchema: OUTPUT_PUBLISH,
   },
   {
     name: "kyx_render_summary",
@@ -1170,6 +1389,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["op"],
     },
+    outputSchema: OUTPUT_BLIND_AB,
   },
 ];
 
@@ -1180,6 +1400,8 @@ export interface McpExportRequest {
   bitDepth?: 16 | 24 | 32;
   stems?: "all" | "drums" | "bass" | "music";
 }
+
+export type McpAudioPreviewRequest = { bars: number };
 
 /** Live metering snapshot the kyx_meter tool reads (present only when the
  * host has a running engine — headless contexts honestly refuse). */
@@ -1232,6 +1454,8 @@ export interface McpToolContext {
   ) => Promise<
     string | { report: string; health: unknown; fix: { tiltDb: number; masterGain: number; label: string } | null }
   >;
+  /** Render a short, attached audio preview for listening MCP clients. */
+  audioPreview?: (request: McpAudioPreviewRequest) => Promise<McpAudioPreviewArtifact>;
   /** C6 attribution: which automation surface drives this context (absent
    * for the human working the UI directly / headless tests). */
   agentId?: string;
@@ -1328,6 +1552,8 @@ export interface McpToolResult {
   /** Optional machine-readable envelope alongside the text — structured
    * results for programmatic agents (P2). JSON-serializable or absent. */
   data?: unknown;
+  /** Optional standard MCP audio attachment (base64 encoded). */
+  audio?: McpAudioContent;
 }
 
 const TICKS_PER_BAR = 4 * 480;
@@ -2488,6 +2714,41 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
       } catch (error) {
         return {
           text: `export failed: ${error instanceof Error ? error.message : String(error)}`,
+          mutated: false,
+          isError: true,
+        };
+      }
+    }
+    case "kyx_audio_preview": {
+      const rawBars = record.bars;
+      if (rawBars != null && (!Number.isInteger(rawBars) || Number(rawBars) < 1 || Number(rawBars) > 4)) {
+        return { text: "audio preview bars must be an integer from 1 to 4", mutated: false, isError: true };
+      }
+      if (ctx.audioPreview == null) {
+        return {
+          text: "audio preview is not available over this MCP transport — use the KYX export panel",
+          mutated: false,
+          isError: true,
+        };
+      }
+      const bars = rawBars == null ? 2 : Number(rawBars);
+      try {
+        const preview = await ctx.audioPreview({ bars });
+        return {
+          text: `audio preview ready — ${preview.bars} bar(s), ${preview.durationSec.toFixed(1)} s, ${preview.sampleRate} Hz, ${(preview.byteLength / 1024).toFixed(0)} KiB. Listen to the attached audio content.`,
+          mutated: false,
+          audio: preview.audio,
+          data: {
+            bars: preview.bars,
+            durationSec: preview.durationSec,
+            sampleRate: preview.sampleRate,
+            byteLength: preview.byteLength,
+            mimeType: preview.audio.mimeType,
+          },
+        };
+      } catch (error) {
+        return {
+          text: `audio preview failed: ${error instanceof Error ? error.message : String(error)}`,
           mutated: false,
           isError: true,
         };
@@ -4214,7 +4475,7 @@ async function executeBatchTool(ctx: McpToolContext, record: Record<string, unkn
         failures += 1;
         continue;
       }
-      if (tool === "kyx_export" || tool === "kyx_loudness") {
+      if (tool === "kyx_export" || tool === "kyx_audio_preview" || tool === "kyx_loudness") {
         results.push({ tool, mutated: false, text: `refused: ${tool} runs standalone (async, not batchable)` });
         failures += 1;
         continue;

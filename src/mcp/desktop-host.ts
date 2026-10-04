@@ -7,6 +7,7 @@ import { decodeAudioData } from "../services/audio-decode";
 import { mcpMeterSnapshotFromServices } from "./meters";
 import { mcpApplyLoudness, mcpMeasureLoudness } from "./loudness";
 import { mcpRenderSummary } from "./render-summary";
+import { mcpRenderAudioPreview } from "./audio-preview";
 import type { Services } from "../services";
 
 /**
@@ -39,7 +40,15 @@ export interface DesktopMcpApi {
   /** Subscribe to forwarded tool calls; returns an unsubscribe function. */
   onCall: (listener: (call: { id: string; name: string; args?: unknown }) => void) => () => void;
   /** Resolve a forwarded call: { id, result: { text, mutated, isError? } }. */
-  answer: (payload: { id: string; result: { text: string; mutated?: boolean; isError?: boolean } }) => Promise<void>;
+  answer: (payload: {
+    id: string;
+    result: {
+      text: string;
+      mutated?: boolean;
+      isError?: boolean;
+      audio?: import("./audio-preview").McpAudioContent;
+    };
+  }) => Promise<void>;
 }
 
 /** The `kyxDesktop.mcp` API when running under the desktop shell, else null. */
@@ -68,6 +77,7 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
     // kyx_export rides the same render + encode + download pipeline as the
     // in-app export intent (download lands in the focused KYX window).
     export: (request) => quickBounceDownload(services.store.getDoc(), services.bank, request),
+    audioPreview: (request) => mcpRenderAudioPreview(services, request),
     // kyx_import_sfz: base64 SFZ + WAVs → user library + sampler mapping
     // (the same importSfzLibrary core the web relay uses).
     importSamples: async (input) => {
@@ -136,7 +146,7 @@ export function startMcpDesktopHost(services: Services): () => void {
         const result = await executeMcpToolAsync(ctx, String(call?.name ?? ""), call?.args ?? {});
         await api.answer({
           id: String(call?.id ?? ""),
-          result: { text: result.text, mutated: result.mutated, isError: result.isError },
+          result: { text: result.text, mutated: result.mutated, isError: result.isError, audio: result.audio },
         });
       } catch (error) {
         await api.answer({

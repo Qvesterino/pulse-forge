@@ -1,6 +1,7 @@
 import { McpBridge, type McpBridgeDeps } from "./bridge";
 import { isMicRecordingActive } from "../audio-engine/PcmMicRecorder";
 import { quickBounceDownload } from "../export/quick-bounce";
+import { mcpRenderAudioPreview } from "../mcp/audio-preview";
 import { mcpRenderSummary } from "../mcp/render-summary";
 import { mcpMeterSnapshotFromServices } from "./meters";
 import { mcpApplyLoudness, mcpMeasureLoudness } from "./loudness";
@@ -71,6 +72,7 @@ function depsFromServices(services: Services): McpBridgeDeps {
     // kyx_export rides the SAME render + encode + download pipeline as the
     // in-app "export wav/mp3" intent (the download lands in the KYX window).
     export: async (request) => (await quickBounceDownload(services.store.getDoc(), services.bank, request)).report,
+    audioPreview: (request) => mcpRenderAudioPreview(services, request),
     // kyx_publish_gallery: encode the LIVE project into a gallery share code
     // and POST it with agent provenance (the feed shows the robot badge).
     // kyx_import_sfz: base64 SFZ + WAVs → user library + sampler mapping

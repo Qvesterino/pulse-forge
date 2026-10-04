@@ -8,7 +8,7 @@ import {
   personalWeightsFromPayload,
   parseOnnxInitializers,
 } from "../src/intent/personal-melodic-onnx";
-import { forwardRow, allocateScratch, parameterCount, type PersonalWeights } from "../src/intent/personal-melodic-trainer";
+import { forwardRow, allocateScratch, parameterCount } from "../src/intent/personal-melodic-trainer";
 
 /**
  * W3 — the shipped-weights bridge.
@@ -25,8 +25,20 @@ import { forwardRow, allocateScratch, parameterCount, type PersonalWeights } fro
  */
 
 const SHIPPED = [
-  { file: "symbolic-melodic-v1.onnx", featureCount: 29, hidden: [64, 32] as const, degreeClasses: 8, durationClasses: 4 },
-  { file: "symbolic-melodic-v2.onnx", featureCount: 41, hidden: [64, 32] as const, degreeClasses: 8, durationClasses: 4 },
+  {
+    file: "symbolic-melodic-v1.onnx",
+    featureCount: 29,
+    hidden: [64, 32] as const,
+    degreeClasses: 8,
+    durationClasses: 4,
+  },
+  {
+    file: "symbolic-melodic-v2.onnx",
+    featureCount: 41,
+    hidden: [64, 32] as const,
+    degreeClasses: 8,
+    durationClasses: 4,
+  },
 ];
 
 function readShipped(file: string): Uint8Array {
@@ -43,7 +55,12 @@ describe("personal melodic ONNX bridge", () => {
   });
 
   it.each(SHIPPED)("recovers the shipped weight shapes of $file", (spec) => {
-    const weights = personalWeightsFromOnnx(readShipped(spec.file), spec.hidden, spec.degreeClasses, spec.durationClasses);
+    const weights = personalWeightsFromOnnx(
+      readShipped(spec.file),
+      spec.hidden,
+      spec.degreeClasses,
+      spec.durationClasses,
+    );
     const [h0, h1] = spec.hidden;
     expect(weights.w0.length).toBe(spec.featureCount * h0);
     expect(weights.b0.length).toBe(h0);
@@ -53,9 +70,7 @@ describe("personal melodic ONNX bridge", () => {
     expect(weights.bd.length).toBe(spec.degreeClasses);
     expect(weights.wt.length).toBe(h1 * spec.durationClasses);
     expect(weights.bt.length).toBe(spec.durationClasses);
-    expect(parameterCount(weights)).toBe(
-      spec.featureCount * h0 + h0 + h0 * h1 + h1 + h1 * 8 + 8 + h1 * 4 + 4,
-    );
+    expect(parameterCount(weights)).toBe(spec.featureCount * h0 + h0 + h0 * h1 + h1 + h1 * 8 + 8 + h1 * 4 + 4);
   });
 
   it("produces finite, non-trivial weights (a real model, not zeros)", () => {
@@ -105,7 +120,12 @@ describe("personal melodic weights serialization", () => {
   const spec = SHIPPED[0];
 
   it("round trips the shipped weights through JSON without loss", () => {
-    const weights = personalWeightsFromOnnx(readShipped(spec.file), spec.hidden, spec.degreeClasses, spec.durationClasses);
+    const weights = personalWeightsFromOnnx(
+      readShipped(spec.file),
+      spec.hidden,
+      spec.degreeClasses,
+      spec.durationClasses,
+    );
     const json = personalWeightsToJson(weights, {
       hidden: [64, 32],
       featureCount: spec.featureCount,

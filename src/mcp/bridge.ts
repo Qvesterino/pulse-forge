@@ -31,6 +31,7 @@ export interface McpBridgeDeps {
   isMicRecordingActive(): boolean;
   transport: McpToolContext["transport"];
   export?: (request: McpExportRequest) => Promise<string>;
+  audioPreview?: NonNullable<McpToolContext["audioPreview"]>;
   meters?: () => McpMeterSnapshot | null;
   beginUndoFrame?: (label?: string) => void;
   endUndoFrame?: () => void;
@@ -124,6 +125,7 @@ export class McpBridge {
         isMicRecordingActive: () => this.deps.isMicRecordingActive(),
         transport: this.deps.transport,
         export: this.deps.export,
+        audioPreview: this.deps.audioPreview,
         meters: this.deps.meters,
         beginUndoFrame: this.deps.beginUndoFrame,
         endUndoFrame: this.deps.endUndoFrame,
