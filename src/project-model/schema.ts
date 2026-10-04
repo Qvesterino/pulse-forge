@@ -35,7 +35,7 @@ import { sanitizeProjectProducerBrief } from "./producer-brief";
 import { sanitizeGateSteps, sanitizeLfo, sanitizeManglerSteps } from "./modulators";
 import { uid } from "../shared/ids";
 import { jsonEqual } from "../shared/jsonEqual";
-import { defaultInstrumentParams, INSTRUMENT_META } from "../instruments/definitions";
+import { clampInstrumentParam, defaultInstrumentParams, INSTRUMENT_META } from "../instruments/definitions";
 import { createProjectFromTemplate } from "./templates";
 import { clampEffectParam, defaultParamsOf, EFFECT_META, normalizePluginParams } from "../effects/definitions";
 import { clampFxOutputTrimDb } from "../effects/presetLoudness";
@@ -1450,10 +1450,19 @@ function normalizeTracksDomain(s: NormalizeState): void {
         SAFE_PARAM_KEY.test(k) && !["__proto__", "constructor", "prototype"].includes(k);
       for (const k of Object.keys(defaults)) {
         const v = paramsRecord[k];
-        if (v === undefined) {
-          paramsChanged = true;
+        if (typeof v === "number" && Number.isFinite(v)) {
+          // Known keys clamp at load — the same contract normalizeEffects
+          // enforces for effect params. A hostile/corrupt doc (collab peer,
+          // import) with cutoff 1e308 or a non-number reached the voice
+          // runtime raw: instrument factories clamp some params inline but
+          // not all, and a non-finite value makes setTargetAtTime throw
+          // mid-sync, killing the whole graph update.
+          const clamped = clampInstrumentParam(instrument, k, v);
+          if (clamped !== v) paramsChanged = true;
+          merged[k] = clamped;
         } else {
-          merged[k] = v;
+          // Missing or non-numeric → the default already in `merged` stands.
+          paramsChanged = true;
         }
       }
       // Backfill any keys present in the track params but missing from defaults.

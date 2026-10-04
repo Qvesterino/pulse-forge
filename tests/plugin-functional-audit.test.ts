@@ -321,7 +321,7 @@ describe("D. clamp + normalization contracts", () => {
       for (const p of INSTRUMENT_META[kind].params) {
         expect(clampInstrumentParam(kind, p.id, p.min - 1)).toBe(p.min);
         expect(clampInstrumentParam(kind, p.id, p.max + 1)).toBe(p.max);
-        expect(clampInstrumentParam(kind, p.id, Number.NaN)).toBeNaN(); // instrument clamp is Math-only; engine guards non-finite upstream
+        expect(clampInstrumentParam(kind, p.id, Number.NaN)).toBe(p.default); // finite guard mirrors clampEffectParam (re-run 2026-10: the old "engine guards upstream" claim was false — normalize copied known keys verbatim)
       }
     }
   });

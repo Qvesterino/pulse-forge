@@ -586,6 +586,10 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
   preset("pitchshift-up", "Chop +4", "pitchShift", { semitones: 4, fine: 0, grainMs: 38, width: 0.4, mix: 1 }),
   preset("pitchshift-wide", "Wide Detune", "pitchShift", { semitones: 0, fine: 12, grainMs: 70, width: 1, mix: 0.5 }),
 
+  // SPEED is inverted glide time: higher = faster retune (displayed in ms).
+  preset("pitchcorrect-subtle", "Subtle Snap", "pitchCorrect", { amount: 0.55, speed: 0.5, mix: 0.8 }),
+  preset("pitchcorrect-hardtune", "Hard Tune", "pitchCorrect", { amount: 1, speed: 0.95, mix: 1 }),
+
   // Vinyl Suite — the presets lean on the individual module controls so they
   // are audibly distinct (AGE alone scales everything uniformly).
   preset("vinyl-78", "78 RPM Shellac", "vinyl", {

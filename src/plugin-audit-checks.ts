@@ -6,7 +6,7 @@
  * document-level half (ranges, serialization, automation targets) lives in
  * tests/plugin-functional-audit.test.ts.
  *
- * For every one of the 47 effect types:
+ * For every one of the 48 effect types:
  *  1. factory-level sweep — every param at min AND max against a stereo test
  *     signal: finite output, no runaway gain, and a measured delta (RMS,
  *     side energy, spectral centroid) proving the DSP actually responds to
@@ -20,7 +20,7 @@
  *     audibly drives the parameter;
  *  4. every factory effect preset renders finite within headroom.
  *
- * For every one of the 21 instrument kinds:
+ * For every one of the 22 instrument kinds:
  *  5. default noteOn is audible; every parameter at min AND max renders
  *     finite; the parameter surface is wired (≥1 param moves the output).
  *

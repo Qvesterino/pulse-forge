@@ -2,6 +2,7 @@ import type { EffectRuntime } from "../effects/types";
 
 import { attachProcessorErrorGuard } from "./processor-errors";
 import { dbToLinearGain } from "../effects/scale-bridges";
+import { safeApplyAudioParam } from "./safeAudioParam";
 /**
  * Create a Bus Compressor AudioWorkletNode synchronously.
  * The processor module MUST be pre-loaded via `loadWorkletModules()` first —
@@ -48,15 +49,11 @@ export function createCompressorNode(
     if (data?.type === "gr" && typeof data.gr === "number") lastGrDb = data.gr;
   };
 
+  // The shared defensive writer (this node's inline guard was the ORIGINAL the
+  // helper was copied from — use the shared one so the safe-param test's
+  // "every wrapper" claim covers this surface too).
   const apply = (id: string, v: number, when: number | undefined) => {
-    const p = node.parameters.get(id);
-    if (!p) return;
-    // A non-finite stored param (corrupt doc / bad automation write) must
-    // not throw "non-finite AudioParam value" and abort the whole track
-    // chain build — skip the write and keep the AudioParam's default.
-    if (!Number.isFinite(v)) return;
-    if (when === undefined) p.value = v;
-    else p.setValueAtTime(v, when);
+    safeApplyAudioParam(node, id, v, when);
   };
   apply("threshold", instance.params.threshold ?? -18, undefined);
   apply("ratio", instance.params.ratio ?? 3, undefined);

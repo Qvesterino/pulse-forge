@@ -926,5 +926,10 @@ export function defaultInstrumentParams(kind: InstrumentKind): Record<string, nu
 export function clampInstrumentParam(kind: InstrumentKind, paramId: string, value: number): number {
   const def: ParamDef | undefined = INSTRUMENT_META[kind].params.find((p) => p.id === paramId);
   if (!def) return value;
+  // A non-finite value must fall back to the default — Math.min/max both
+  // return NaN unchanged, and a NaN reaching a voice graph's
+  // setTargetAtTime/setValueAtTime throws TypeError in real browsers, killing
+  // the engine sync (the same failure mode clampEffectParam already guards).
+  if (!Number.isFinite(value)) return def.default;
   return Math.min(def.max, Math.max(def.min, value));
 }

@@ -1,5 +1,5 @@
 /**
- * Effect DEFINITIONS — pure parameter metadata for the 47 effect
+ * Effect DEFINITIONS — pure parameter metadata for the 48 effect
  * types, split verbatim from registry.ts (cross-platform campaign GOAL 02/03).
  *
  * Node-pure by contract: no React, no Web Audio, no worklet loaders, no

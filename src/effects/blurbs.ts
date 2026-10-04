@@ -10,6 +10,7 @@ import type { EffectType } from "../project-model/types";
 export const EFFECT_BLURBS: Partial<Record<EffectType, string>> = {
   // ── character ──────────────────────────────────────────────────────────
   pitchShift: "Moves a sound down or up in pitch — classic 808 depth and glide glue",
+  pitchCorrect: "Snaps off-pitch notes to a scale — subtle polish or hard autotune",
   tapeSat: "Warm tape drive — glues a track and softens harsh tops",
   vinyl: "Age and dust — crackle, wobble and 1950s tone in one knob",
   distortion: "Hard drive — grit and aggression from edge to full shred",

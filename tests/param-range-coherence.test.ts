@@ -37,6 +37,53 @@ const PROC_CASES: { effect: EffectType; proc: string; params: string[] }[] = [
   { effect: "bitcrusher", proc: "bitcrusher-processor", params: ["downsample"] },
 ];
 
+/**
+ * FULL SWEEP (signal-flow audit re-run 2026-10): PROC_CASES above hand-picked
+ * ~25 params out of ~30 worklet processors; the other ~20 processors (kaskada's
+ * 23, vinyl's 18, …) had NO def↔descriptor pin — one widened def (the
+ * historical 20 s decay vs 6 s descriptor bug shape) would pass CI silently.
+ *
+ * Sweep rule: every param id that exists BOTH in EFFECT_META and in the
+ * processor's descriptors must satisfy desc.min ≤ def.min and desc.max ≥ def.max —
+ * unless a registered scale bridge owns the domain crossing (verified in the
+ * bridge test below). Params absent from the descriptors are skipped (they
+ * live on native nodes of the fallback graph or are converted by the node
+ * wrapper under a different descriptor id, e.g. limiter lookaheadMs → s).
+ */
+const EFFECT_PROC_PAIRS: [EffectType, string][] = [
+  ["reverb", "reverb-processor"],
+  ["delay", "stock-delay-processor"],
+  ["duckDelay", "ducking-delay-processor"],
+  ["multiTapDelay", "multitap-processor"],
+  ["compressor", "compressor-processor"],
+  ["sidechain", "sidechain-processor"],
+  ["limiter", "limiter-processor"],
+  ["gate", "gate-processor"],
+  ["transient", "transient-processor"],
+  ["eq", "eq-processor"],
+  ["chorus", "chorus-processor"],
+  ["flanger", "flanger-processor"],
+  ["tremolo", "tremolo-processor"],
+  ["autowah", "autowah-processor"],
+  ["stutter", "stutter-processor"],
+  ["stepGate", "stepgate-processor"],
+  ["svFilter", "svfilter-processor"],
+  ["comb", "comb-processor"],
+  ["vowel", "vowel-processor"],
+  ["ringMod", "ringmod-processor"],
+  ["tapeStop", "tapestop-processor"],
+  ["freqShifter", "freqshift-processor"],
+  ["pitchShift", "pitchshift-processor"],
+  ["pitchCorrect", "pitchcorrect-processor"],
+  ["reverseSwell", "reverseswell-processor"],
+  ["granularFreeze", "granularfreeze-processor"],
+  ["vocoder", "vocoder-processor"],
+  ["vinyl", "vinyl-processor"],
+  ["beatMangler", "beatmangler-processor"],
+  ["kaskada", "kaskada"],
+  ["tapeSat", "tape-processor"],
+];
+
 const EPS = 1e-9;
 
 beforeAll(async () => {
@@ -47,6 +94,36 @@ beforeAll(async () => {
   };
   for (const c of PROC_CASES) {
     await import(`../src/audio-worklets/${c.proc}.js`);
+  }
+  // Static-string dynamic imports — vite cannot analyze a second variable
+  // template import site in the same file (it silently resolves an empty
+  // module for some entries).
+  const sweepImports: Record<string, () => Promise<unknown>> = {
+    "gate-processor": () => import("../src/audio-worklets/gate-processor.js"),
+    "transient-processor": () => import("../src/audio-worklets/transient-processor.js"),
+    "multitap-processor": () => import("../src/audio-worklets/multitap-processor.js"),
+    "flanger-processor": () => import("../src/audio-worklets/flanger-processor.js"),
+    "tremolo-processor": () => import("../src/audio-worklets/tremolo-processor.js"),
+    "autowah-processor": () => import("../src/audio-worklets/autowah-processor.js"),
+    "stutter-processor": () => import("../src/audio-worklets/stutter-processor.js"),
+    "stepgate-processor": () => import("../src/audio-worklets/stepgate-processor.js"),
+    "svfilter-processor": () => import("../src/audio-worklets/svfilter-processor.js"),
+    "comb-processor": () => import("../src/audio-worklets/comb-processor.js"),
+    "vowel-processor": () => import("../src/audio-worklets/vowel-processor.js"),
+    "ringmod-processor": () => import("../src/audio-worklets/ringmod-processor.js"),
+    "tapestop-processor": () => import("../src/audio-worklets/tapestop-processor.js"),
+    "freqshifter-processor": () => import("../src/audio-worklets/freqshifter-processor.js"), // registers as freqshift-processor
+    "pitchcorrect-processor": () => import("../src/audio-worklets/pitchcorrect-processor.js"),
+    "reverseswell-processor": () => import("../src/audio-worklets/reverseswell-processor.js"),
+    "granularfreeze-processor": () => import("../src/audio-worklets/granularfreeze-processor.js"),
+    "vocoder-processor": () => import("../src/audio-worklets/vocoder-processor.js"),
+    "vinyl-processor": () => import("../src/audio-worklets/vinyl-processor.js"),
+    "beatmangler-processor": () => import("../src/audio-worklets/beatmangler-processor.js"),
+    "kaskada-processor": () => import("../src/audio-worklets/kaskada-processor.js"),
+    "tape-processor": () => import("../src/audio-worklets/tape-processor.js"),
+  };
+  for (const [name, load] of Object.entries(sweepImports)) {
+    if (!registered.has(name)) await load();
   }
 });
 
@@ -71,6 +148,35 @@ describe("worklet descriptors cover EFFECT_META ranges", () => {
       }
     });
   }
+
+  it("FULL SWEEP: every def param that reaches a descriptor is covered by it (or bridged)", () => {
+    let checked = 0;
+    const offenders: string[] = [];
+    for (const [effect, proc] of EFFECT_PROC_PAIRS) {
+      const cls = registered.get(proc);
+      expect(cls, `${proc} self-registered at import`).toBeDefined();
+      const descriptors = new Map(
+        ((cls as any).parameterDescriptors as { name: string; minValue: number; maxValue: number }[]).map((d) => [
+          d.name,
+          d,
+        ]),
+      );
+      for (const def of EFFECT_META[effect].params) {
+        if (def.deprecated) continue;
+        const desc = descriptors.get(def.id);
+        if (!desc) continue; // native-node param or wrapper-converted id
+        if (scaleBridgeFor(effect, def.id)) continue; // domain crossing owned by a bridge
+        checked++;
+        const covered = desc.minValue <= def.min + EPS && desc.maxValue >= def.max - EPS;
+        if (!covered) {
+          offenders.push(`${effect}.${def.id}: def [${def.min}, ${def.max}] vs desc [${desc.minValue}, ${desc.maxValue}]`);
+        }
+      }
+    }
+    // A mapping typo must not silently shrink the sweep to nothing.
+    expect(checked, "sweep must cover a meaningful param count").toBeGreaterThanOrEqual(60);
+    expect(offenders.join("; ")).toBe("");
+  });
 
   it("headline audit values are pinned (Wave 1)", () => {
     const defOf = (effect: EffectType, id: string) => {
