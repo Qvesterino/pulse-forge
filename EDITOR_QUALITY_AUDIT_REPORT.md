@@ -438,28 +438,52 @@ The three other tests in that file are real and green: the drag alone commits no
 activation, a later deliberate activation is not swallowed by a stale flag, and a plain
 click with no drag is never suppressed.
 
-### #11 `releasePointerCapture` asymmetry — benign, deliberately left
+### #11 `releasePointerCapture` asymmetry — FIXED (on request)
 
-Confirmed: three call sites (3424, 3548, 3574) wrap it in `try/catch`, while
-`onClipPointerUp`, `onClipPointerCancel`, `onAudioPointerUp` and `onAudioPointerCancel`
-never call it. This is a genuine asymmetry, but it is inert: the HTML pointer-capture
-spec releases capture **implicitly** on `pointerup`/`pointercancel`, so omitting the call
-is correct, not lucky. Adding it to four terminals without a guard would be the riskier
-change — `releasePointerCapture` throws `NotFoundError` when the pointer is not captured,
-which would turn a working terminal into a throwing one. **No change made.**
+Confirmed first: three call sites (3424, 3548, 3574) wrapped the call in `try/catch`,
+while `onClipPointerUp`, `onClipPointerCancel`, `onAudioPointerUp` and
+`onAudioPointerCancel` never called it at all.
 
-### #12 dead members in the transient surface — confirmed, not removed
+Worth recording why this was initially left alone: the HTML pointer-capture spec
+releases capture **implicitly** on `pointerup`/`pointercancel`, so the omission was
+inert, and `releasePointerCapture` throws `NotFoundError` when the element is not
+capturing — so bolting the call on unguarded would have been the riskier change, turning
+a working terminal into a throwing one. It was raised rather than fixed, and fixed on
+request with that risk designed out.
 
-`seekFromRulerEvent` is defined and immediately voided (`ArrangementPanel.tsx:1853-1860`,
-`void seekFromRulerEvent;`). `origTrimEnd` (1291, 2126) and `grabX` (1296, 2133) are
-captured and never read. The `mode` union still lists `"trimEnd"` (1282, 2097) although
-no branch handles it and the right edge sends `"resize"`.
+`src/ui/ArrangementPanel.tsx`
 
-The union member is the one that matters, and it is the stated reason not to touch it now:
-a future `trimEnd` branch would look wired when it is not. Deleting dead code in a
-214 KB component is a normal cleanup, but it is unrelated to any user-visible defect and
-belongs to a deliberate pass, not an audit response to a guess. **No change made**;
-recorded here so the next pass starts from verified facts instead of re-investigating.
+- Module-level `releasePointerCaptureSafely(target, pointerId)`: checks target, checks
+  the method exists, wraps the call in `try/catch`. One safe shape, matching what the
+  lane and ruler already do by hand.
+- `DragState` and the audio drag ref now carry `pointerId`, captured at pointerdown.
+  Terminals read it from the gesture record rather than from the releasing event,
+  because a `pointerup` can carry a different `pointerId` than the one capture was taken
+  on — releasing the wrong id would silently leave the capture on the element.
+- All four terminals release before clearing their ref, since the id only exists on the
+  record.
+
+**One design constraint surfaced by the compiler.** Three of the four call sites are
+wrappers that existed to chain a long-press handler, and `dragGuard`'s stuck-drag
+fallback terminal calls `onClipPointerUp()` with no event at all. The event parameter is
+therefore optional, and the helper no-ops on a null target — which is correct, since
+there is no live event target to release from and the spec releases implicitly anyway.
+The three wrappers were updated to forward their event.
+
+### #12 dead members in the transient surface — FIXED (on request)
+
+All four confirmed as genuinely unreferenced, then removed:
+
+| Member                          | Evidence                                                        | Disposition                                                                                                            |
+| ------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `seekFromRulerEvent`            | defined then immediately `void`ed                               | removed with its `void`                                                                                                |
+| `origTrimEnd`                   | captured in the ref, never read                                 | removed from the ref and its initializer                                                                               |
+| `grabX`                         | captured, never read (`grabY` **is** read, by the gain gesture) | removed; `grabY` kept                                                                                                  |
+| `"trimEnd"` in the `mode` union | no branch handled it; the right edge sends `"resize"`           | removed from the ref union **and** from `beginAudioDrag`'s parameter type, so neither side can reintroduce it silently |
+
+The union member was the one flagged as dangerous, and the fix is the strict one: the
+parameter type of `beginAudioDrag` now mirrors the ref union exactly, so the two cannot
+drift, and the comment records why `"trimEnd"` is absent rather than what it used to do.
 
 ---
 
@@ -521,12 +545,12 @@ Each is a real observation with the reason it was not auto-fixed.
 
 ## Gates
 
-| Gate                                                           | Result                                              |
-| -------------------------------------------------------------- | --------------------------------------------------- |
-| `npm run typecheck`                                            | **EXIT 0**                                          |
-| `npm run format:check` (all touched files)                     | **All matched files use Prettier code style!**      |
-| Targeted suites (12 files, clip + gesture + selection + audio) | **133 passed / 0 failed**                           |
-| `npm run build`                                                | **EXIT 0** — `✓ built in 1m 2s`, `[size-budget] OK` |
+| Gate                                                              | Result                                              |
+| ----------------------------------------------------------------- | --------------------------------------------------- |
+| `npm run typecheck`                                               | **EXIT 0**                                          |
+| `npm run format:check` (all touched files)                        | **All matched files use Prettier code style!**      |
+| Targeted suites (9 files, clip + gesture + selection + take-lane) | **89 passed / 0 failed**                            |
+| `npm run build`                                                   | **EXIT 0** — `✓ built in 1m 2s`, `[size-budget] OK` |
 
 Build budget output as measured:
 

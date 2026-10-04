@@ -2573,15 +2573,16 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
       const samples = Array.isArray(record.samples)
         ? record.samples.filter(
             (s): s is { fileName: string; base64: string } =>
-              s != null && typeof s === "object" &&
+              s != null &&
+              typeof s === "object" &&
               typeof (s as Record<string, unknown>).fileName === "string" &&
               typeof (s as Record<string, unknown>).base64 === "string",
           )
         : [];
       if (name === "" || sfzBase64 === "" || trackId === "" || samples.length === 0) {
         return {
-          text: "kyx_import_sfz needs name, sfzBase64, trackId and at least one sample — " +
-            "list tracks via kyx_state",
+          text:
+            "kyx_import_sfz needs name, sfzBase64, trackId and at least one sample — " + "list tracks via kyx_state",
           mutated: false,
         };
       }
@@ -3241,9 +3242,7 @@ async function executeCheckpointTool(ctx: McpToolContext, record: Record<string,
     for (const [name, cp] of checkpoints) {
       const stepsSince = Math.max(0, ctx.undoStackLength() - cp.stepsAtSave);
       const scope = cp.projectId === projectId ? "" : " (other project)";
-      const timing = cp.reloaded
-        ? "↻ reloaded (steps reset)"
-        : `${stepsSince} step(s) since`;
+      const timing = cp.reloaded ? "↻ reloaded (steps reset)" : `${stepsSince} step(s) since`;
       lines.push(`${name}${cp.auto ? " (auto)" : ""} · ${cp.summary} · ${timing}${scope}`);
     }
     return { text: lines.join("\n"), mutated: false };

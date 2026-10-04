@@ -22,3 +22,16 @@
 [retry] goto interrupted — retrying (1/8)
 [retry] postrock evaluate hit a Vite full reload — re-measuring (3/5)
 [retry] goto interrupted — retrying (1/8)
+[retry] drone evaluate hit a Vite full reload — re-measuring (1/5)
+[retry] goto interrupted — retrying (1/8)
+[retry] drone evaluate hit a Vite full reload — re-measuring (2/5)
+[retry] goto interrupted — retrying (1/8)
+file:///D:/pulse-forge/scripts/measure-genre-references.mjs:328
+  .join(chr(10));
+  ^
+
+ReferenceError: chr is not defined
+    at file:///D:/pulse-forge/scripts/measure-genre-references.mjs:328:3
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+
+Node.js v24.11.0

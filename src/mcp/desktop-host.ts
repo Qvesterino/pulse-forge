@@ -3,6 +3,7 @@ import { withAgentAttribution } from "./attribution";
 import { mcpAllowDestructive } from "./flags";
 import { isMicRecordingActive } from "../audio-engine/PcmMicRecorder";
 import { quickBounceDownload } from "../export/quick-bounce";
+import { decodeAudioData } from "../services/audio-decode";
 import { mcpMeterSnapshotFromServices } from "./meters";
 import { mcpApplyLoudness, mcpMeasureLoudness } from "./loudness";
 import { mcpRenderSummary } from "./render-summary";
@@ -67,6 +68,33 @@ export function mcpToolContextFromServices(services: Services): McpToolContext {
     // kyx_export rides the same render + encode + download pipeline as the
     // in-app export intent (download lands in the focused KYX window).
     export: (request) => quickBounceDownload(services.store.getDoc(), services.bank, request),
+    // kyx_import_sfz: base64 SFZ + WAVs → user library + sampler mapping
+    // (the same importSfzLibrary core the web relay uses).
+    importSamples: async (input) => {
+      const { importSfzLibrary } = await import("../sample-library/sfz-import");
+      try {
+        const result = await importSfzLibrary(input, {
+          bank: services.bank,
+          userSamples: services.userSamples,
+          decode: (bytes) => decodeAudioData(bytes),
+          getDoc: () => services.store.getDoc(),
+          execute: (command) => services.store.execute(command),
+        });
+        return {
+          ok: true as const,
+          report: {
+            trackId: result.trackId,
+            fallbackSampleId: result.fallbackSampleId,
+            layers: result.layers.length,
+            imported: result.imported,
+            missing: result.missing,
+            skipped: result.skipped,
+          },
+        };
+      } catch (error) {
+        return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
     // kyx_publish_gallery: encode the LIVE project into a gallery share code
     // and POST it with agent provenance (the feed shows the robot badge).
     shareToGallery: async ({ title, author, tags, agent }) => {
