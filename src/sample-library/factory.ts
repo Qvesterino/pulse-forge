@@ -387,11 +387,11 @@ function clap(): Builder {
     const tail = noiseSource(ctx, 44, 0.3, t0 + 0.03);
     const bp = ctx.createBiquadFilter();
     bp.type = "bandpass";
-    bp.frequency.value = 1100;
+    bp.frequency.value = 1240;
     bp.Q.value = 1.1;
     tail
       .connect(bp)
-      .connect(env(ctx, t0 + 0.03, 0.5, 0.16))
+      .connect(env(ctx, t0 + 0.03, 0.5, 0.11))
       .connect(dest);
   };
 }
@@ -3018,13 +3018,11 @@ export const BUILDERS: Record<string, Builder> = {
   // a click 0.25 -> 0.20 (menej high-end = väčšia diferenciácia od lofi).
   // Pitch 46.25 Hz (F#1) je v glide contracte.
   "factory.kick.deep": kick(150, 46.25, 0.5, 0.2),
-  // Phase-3 re-voice (2026-10-04): kick.punch ↔ kick.pop was 0.094* on
-  // air +0.061 / loud -0.057 — pop bol jasnejší a kratší, punch dlhší
-  // a tmavší. Obojsmerný ťah: punch click 0.45 -> 0.60 (ostrejší punch,
-  // kompenzuje loudMs kratšie o 57ms väčším attackom — teraz punch ≠
-  // "tmavý pop" ale "tight pop s peak-om"). Decay 0.28 + pitch 55 Hz
-  // (A1, glide contract) zostávajú.
-  "factory.kick.punch": kick(210, 55.0, 0.28, 0.6),
+  // De-homog (2026-10-04 wave 2): kick.pop <-> kick.punch measured 0.096* on
+  // air + loud (a punch click 0.6 at louder body still reads a pop twin).
+  // punch commits DOWN (a longer, darker punch — decay 0.28 -> 0.34, click
+  // 0.6 -> 0.4: the body IS the voice), pop owns the tight bright pocket.
+  "factory.kick.punch": kick(210, 55.0, 0.34, 0.4),
   "factory.kick.techno": kick(175, 43.65, 0.55, 0.3, 0.7),
   "factory.kick.sub808": sub808(),
   // Kick trio de-dup (library-quality audit 2026-10-04, second pass): deep /
@@ -3124,14 +3122,18 @@ export const BUILDERS: Record<string, Builder> = {
   // (2600 -> 2200) and adds a moderate tape bump (drive 0.25 -> 0.32) — all
   // three moves widen different axes of the lofi/knock pair without the
   // pass-3 side effect of pushing lofi toward the 808 family.
+  // Wave-2 add (2026-10-04): the pair re-opened at 0.066* with the attack
+  // axis live; the tape grit is the voice lofi has and knock lacks — raise
+  // it (gritGain 0.1 -> 0.2, gritHz 900 -> 700) so the dusty read is audible
+  // instead of decoration.
   "factory.kick.lofi": vintageThump({
     startHz: 115,
     endHz: 49.0,
     decay: 0.36,
     drive: 0.32,
     lpfHz: 2200,
-    gritHz: 900,
-    gritGain: 0.1,
+    gritHz: 700,
+    gritGain: 0.2,
     seed: 37,
   }),
   "factory.kick.knock": knock(),
@@ -3140,12 +3142,30 @@ export const BUILDERS: Record<string, Builder> = {
   // 909 (drive 0.15) mal menej high. Zvýšiť 909 start frekvenciu
   // 290 -> 310 Hz (B1+ vyššie, jasnejšie) — endHz 51.91 Hz zostáva
   // (glide contract). Decay/click/drive 0.15/0.6 bezo zmeny.
-  "factory.kick.909": kick(310, 51.91, 0.3, 0.6, 0.15),
+  // De-homog (2026-10-04 wave 2): 909 <-> trap opened to 0.114* on air +
+  // loud after the punch/trap de-homog. Drive 0.15 -> 0.28 gave the 909 its
+  // own snappy overdrive; wave-2 b extends the HERITAGE body (0.3 -> 0.38:
+  // a real TR-909 kick rings past 300 ms) so the pair separates on loud
+  // (909 longer) + attack (trap's wide-drop click reads harder), trap stays
+  // the short bright genre voice.
+  "factory.kick.909": kick(310, 51.91, 0.38, 0.6, 0.28),
   "factory.rim.chip": rim(),
   "factory.rim.hard": rimHard(),
   "factory.rim.snap": rimSnap(),
   "factory.snare.main": snare(192, 0.11, 0.2, 1750),
-  "factory.snare.tight": snare(210, 0.07, 0.11, 2000),
+  // De-homog (2026-10-04 wave 2): snare.dnb <-> snare.tight measured 0.101*
+  // on brightness + sub — the two dark-ish short snares. dnb is the genre-
+  // locked backbeat (170 BPM break), so tight moves: its 2000 Hz noise band
+  // brightens to 2400 Hz (snare.main keeps 1750, dnb 2500 above it — tight
+  // becomes the cracky bright ghost voice, not the dark middle child).
+  // Wave-2 b: jersey went to 2800 (brighter than tight 2400 by only 400 Hz
+  // — same crack band, same read). tight commits DOWN to the dark short
+  // ghost instead: toneDecay 0.07 -> 0.055, noiseDecay 0.11 -> 0.09,
+  // noiseHz 2400 -> 1900. Now the crack band reads main 1750 (room
+  // backbeat) / tight 1900 (dark ghost) / dnb 2500 (genre) / jersey 2800
+  // (club crack) — four distinct pockets, and tight is also the SHORTEST
+  // (its load-bearing role: velocity ghost under 0.35).
+  "factory.snare.tight": snare(210, 0.055, 0.09, 1900),
   "factory.snare.punch": snarePunch(),
   "factory.snare.trap": snareTrap(),
   // Snare/hat bank expansion (2026-09): genre backbeats + groove hats for
@@ -3161,12 +3181,17 @@ export const BUILDERS: Record<string, Builder> = {
     seed: 41,
   }),
   "factory.snare.phonk": snareDusty({ toneHz: 186, toneDecay: 0.12, noiseHz: 1700, noiseDecay: 0.2, seed: 43 }),
+  // De-homog (2026-10-04 wave 2): jersey is the club-crack ghost — push its
+  // band UP (2400 -> 2800, click 0.7 -> 0.8): above tight's 2400 now AND
+  // above dnb's 2500, so the three snareCrack bands read main 1750 (room
+  // backbeat) / tight 2400 (bright ghost) / dnb 2500 dark tail (genre) /
+  // jersey 2800 (club crack), instead of tight+jersey sharing one band.
   "factory.snare.jersey": snareCrack({
     toneHz: 240,
     toneDecay: 0.06,
-    noiseHz: 2400,
+    noiseHz: 2800,
     noiseDecay: 0.11,
-    click: 0.7,
+    click: 0.8,
     seed: 47,
   }),
   // Phase-2 re-voice (2026-10-04): snare.dnb was the only snareCrack family
@@ -3233,7 +3258,15 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.hat.closed.soft": hat(0.04, 6400, 0.4),
   "factory.hat.open": hat(0.36, 7000, 0.5),
   "factory.hat.open.short": hat(0.18, 6800, 0.42),
-  "factory.hat.pedal": hat(0.035, 4600, 0.24),
+  // De-homog (2026-10-04 wave 2): pedal (the foot-splash) drops to 4000 Hz
+  // / shortest decay; phonk keeps 4200 with its own dusty double-strike at
+  // 70 ms. The pair separates on decay (35 -> 25 ms) + the darker ring.
+  "factory.hat.pedal": hat(0.025, 4000, 0.24),
+  // De-homog wave 2 b: phonk goes DARKER (HPF 4200 -> 3400) so its lowmid
+  // body diverges from pedal's ring — the phonk hat reads dusty/dark under
+  // the genre's vinyl bed, pedal reads a dry tick above it. Ping stays: the
+  // phonk hat keeps its metallic edge (ping 4800, vs jersey 6400 / dnb 7100).
+  "factory.hat.phonk": hatMetallic({ decay: 0.07, hpHz: 3400, level: 0.36, pingHz: 4800, ping: 0.22, seed: 43 }),
   "factory.ride.ping": ride(),
   "factory.ride.bell": rideBell(),
   "factory.ride.splash": rideSplash(),
@@ -3457,7 +3490,7 @@ export const DURATIONS: Record<string, number> = {
   "factory.kick.dnb": 0.42,
   "factory.kick.lofi": 0.5,
   "factory.kick.knock": 0.5,
-  "factory.kick.909": 0.45,
+  "factory.kick.909": 0.5,
   "factory.rim.chip": 0.08,
   "factory.rim.hard": 0.08,
   "factory.rim.snap": 0.04,

@@ -148,7 +148,7 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_export",
     description:
-      "Bounce the current project: full mix (WAV 16/24/32-bit, MP3 320) or a STEMS zip (stems: all | drums | bass | music — stem projects bypass the master chain, same as the ExportPanel stem flow). sampleRate selects the render rate. The render runs in the KYX window and the tool AWAITS it — the result carries the completion report (duration, size). Long renders may exceed the transport timeout (15 s relay / 10 s desktop); the download still lands in the app.",
+      "Bounce the current project: full mix (WAV 16/24/32-bit, MP3 320) or a STEMS zip (stems: all | drums | bass | music — stem projects bypass the master chain, same as the ExportPanel stem flow). sampleRate selects the render rate. The render runs in the KYX window and the tool AWAITS it — the result carries the completion report (duration, size). Render/generation calls get an extended 60 s MCP window; exceptionally long jobs may still time out, while the download lands in the app.",
     inputSchema: {
       type: "object",
       properties: {
@@ -189,6 +189,28 @@ const MCP_TOOL_DEFS = [
           description: "Opening bars to render (default 2, maximum 4)",
         },
       },
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        bars: {
+          type: "number",
+        },
+        durationSec: {
+          type: "number",
+        },
+        sampleRate: {
+          type: "number",
+        },
+        byteLength: {
+          type: "number",
+        },
+        mimeType: {
+          type: "string",
+        },
+      },
+      required: ["bars", "durationSec", "sampleRate", "byteLength", "mimeType"],
     },
   },
   {
@@ -732,6 +754,22 @@ const MCP_TOOL_DEFS = [
       },
       required: [],
     },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        master: {
+          type: "object",
+        },
+        tracks: {
+          type: "array",
+          items: {
+            type: "object",
+          },
+        },
+      },
+      required: ["master", "tracks"],
+    },
   },
   {
     name: "kyx_automation",
@@ -900,6 +938,28 @@ const MCP_TOOL_DEFS = [
       },
       required: ["calls"],
     },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        results: {
+          type: "array",
+          items: {
+            type: "object",
+          },
+        },
+        mutations: {
+          type: "number",
+        },
+        failures: {
+          type: "number",
+        },
+        singleUndo: {
+          type: "boolean",
+        },
+      },
+      required: ["results", "mutations", "failures", "singleUndo"],
+    },
   },
   {
     name: "kyx_loudness",
@@ -925,6 +985,27 @@ const MCP_TOOL_DEFS = [
         },
       },
       required: ["op"],
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        integratedLufs: {
+          type: "number",
+        },
+        measuredBefore: {
+          type: "number",
+        },
+        measuredAfter: {
+          type: ["number", "null"],
+        },
+        trimDb: {
+          type: "number",
+        },
+        targetLufs: {
+          type: "number",
+        },
+      },
     },
   },
   {
@@ -997,6 +1078,22 @@ const MCP_TOOL_DEFS = [
       },
       required: ["title"],
     },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        galleryId: {
+          type: "string",
+        },
+        origin: {
+          type: "string",
+        },
+        agent: {
+          type: "string",
+        },
+      },
+      required: ["galleryId", "origin", "agent"],
+    },
   },
   {
     name: "kyx_render_summary",
@@ -1011,6 +1108,29 @@ const MCP_TOOL_DEFS = [
           description: "all = strips + master (default); tracks/master limit the pass",
         },
       },
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        scope: {
+          type: "string",
+          enum: ["master", "tracks", "all"],
+        },
+        strips: {
+          type: "array",
+          items: {
+            type: "object",
+          },
+        },
+        master: {
+          type: ["object", "null"],
+        },
+        referenceLufs: {
+          type: "number",
+        },
+      },
+      required: ["scope", "strips", "referenceLufs"],
     },
   },
   {
@@ -1027,6 +1147,46 @@ const MCP_TOOL_DEFS = [
             "all = master + per-strip attribution (default); master = master findings only (1 render); tracks = strips only, master render skipped (N renders — the fast verify loop after a strip-level fix)",
         },
       },
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        scope: {
+          type: "string",
+        },
+        referenceLufs: {
+          type: "number",
+        },
+        master: {
+          type: ["object", "null"],
+        },
+        strips: {
+          type: "array",
+          items: {
+            type: "object",
+          },
+        },
+        findings: {
+          type: "array",
+          items: {
+            type: "object",
+          },
+        },
+        attributions: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+        suggestedActions: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+      },
+      required: ["scope", "strips", "findings", "suggestedActions"],
     },
   },
   {
@@ -1148,7 +1308,7 @@ const MCP_TOOL_DEFS = [
   {
     name: "kyx_song",
     description:
-      "PRODUCER MOVE, MEGA - build the WHOLE track in one call: generate the genre song form (patterns per section), lay out scenes + clips + markers, and apply the measured mix profile - all folded into ONE undo step. Optional loudness target adds a render-backed trim as a second undo step (needs the render context). Slow: full generation, may approach the transport timeout.",
+      "PRODUCER MOVE, MEGA - build the WHOLE track in one call: generate the genre song form (patterns per section), lay out scenes + clips + markers, and apply the measured mix profile - all folded into ONE undo step. Optional loudness target adds a render-backed trim as a second undo step (needs the render context). Slow: full generation, uses the extended 60 s MCP call window.",
     inputSchema: {
       type: "object",
       properties: {

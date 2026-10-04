@@ -141,7 +141,8 @@ export class McpBridge {
     );
     // A throwing tool must still ANSWER — without this catch the relay would
     // never receive an mcp-result and the server-side call would hang until
-    // its 15 s timeout (desktop host has the same guard). The async executor
+    // its timeout (15 s for normal calls, extended to 60 s for render and
+    // generation tools; desktop applies the same per-tool policy). The async executor
     // additionally awaits kyx_export and returns the completion report.
     let result;
     try {

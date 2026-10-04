@@ -21,6 +21,18 @@ const http = require("node:http");
 const { createMcpBridgeServer } = require("./mcp-bridge-server.cjs");
 
 const CALL_TIMEOUT_MS = 10_000;
+const LONG_CALL_TIMEOUT_MS = 60_000;
+const LONG_RUNNING_MCP_TOOLS = new Set([
+  "kyx_export",
+  "kyx_audio_preview",
+  "kyx_loudness",
+  "kyx_import_sfz",
+  "kyx_batch",
+  "kyx_render_summary",
+  "kyx_diagnose_mix",
+  "kyx_arrange",
+  "kyx_song",
+]);
 const DEFAULT_BRIDGE_PORT = 8787;
 
 function generateToken() {
@@ -194,21 +206,26 @@ class McpHostManager {
  * IPC surface for the renderer. `options.rendererExecute` is ASYNC and
  * receives { name, args } — main forwards the call to the KYX window
  * (webContents.send "kyx:mcp:call") and the window answers via
- * kyx:mcp:answer. 10 s timeout per call.
+ * kyx:mcp:answer. 10 s for normal calls; up to 60 s for render/generation calls.
  */
 function registerMcpIpcHandlers(ipcMain, options = {}) {
   if (!ipcMain || typeof ipcMain.handle !== "function") throw new Error("Electron ipcMain is required");
   const getWebContents = options.getWebContents;
+  const callTimeoutMs = options.callTimeoutMs ?? CALL_TIMEOUT_MS;
+  const longCallTimeoutMs = options.longCallTimeoutMs ?? LONG_CALL_TIMEOUT_MS;
   const manager = new McpHostManager(options);
   const pendingCalls = manager.pendingCalls;
 
   manager.forwardCall = (call) => {
     const callId = `call-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
     const promise = new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        pendingCalls.delete(callId);
-        reject(new Error("KYX window timed out"));
-      }, CALL_TIMEOUT_MS);
+      const timer = setTimeout(
+        () => {
+          pendingCalls.delete(callId);
+          reject(new Error("KYX window timed out"));
+        },
+        LONG_RUNNING_MCP_TOOLS.has(call.name) ? longCallTimeoutMs : callTimeoutMs,
+      );
       pendingCalls.set(callId, { resolve, reject, timer });
     });
     const webContents = getWebContents?.();
@@ -241,4 +258,5 @@ module.exports = {
   generateToken,
   tokenMatches,
   CALL_TIMEOUT_MS,
+  LONG_CALL_TIMEOUT_MS,
 };

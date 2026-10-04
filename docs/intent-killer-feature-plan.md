@@ -158,13 +158,13 @@ stop). Pipeline zostáva ako **tréningový základ pre W1** — tam sa korpus
 podmieni akordom, nie žánrom, a jeho voice-leading/harmónia je presne to, čo
 chord-aware model potrebuje. Dnešné správanie je bez zmeny (bez flagu).
 
-### W3 — „Nauč sa ma" tlačidlo: in-app personalizácia (D4) — **JADRO HOTOVÉ 2026-10-04 (WIP)**
+### W3 — „Nauč sa ma" tlačidlo: in-app personalizácia (D4) — **HOTOVÉ 2026-10-04**
 
 Dnes: ★ → ledger → export → CLI python → nový ONNX → ručne nahradiť.
 Cieľ: **jeden klik v appke**, bez cloudu, bez Pythonu u používateľa.
 
 Fakt, ktorý to umožňuje: naše modely sú MALÉ (MLP 29/41/60→64→32→hlavy,
-18–25 kB). Fine-tune 800 epôch na ~12 000 vzoriek je v plain JS sekundy.
+18–28 kB). Fine-tune 800 epôch na ~12 000 vzoriek je v plain JS sekundy.
 
 **Rozhodnutie architektúry: personal = fine-tune ZO SHIPPED VÁH, nie od nuly.**
 Tri dôvody v poradí dôležitosti: (1) **determinizmus** — bez random initu
@@ -172,30 +172,44 @@ zmizne RNG z osobnej cesty úplne (plán vyžadoval „seeded ako python", to je
 silnejšie); (2) **regresia je vylúčená konštrukciou** — personal model je
 delta na modeli, ktorý už funguje, pár ★ ho nemôže zhoršiť; (3) rýchlosť.
 
-**Hotové (krok 1–2 z plánu):**
+**Hotové — celý tok (5 krokov plánu):**
 
-- `src/intent/personal-melodic-trainer.ts` — čistý TS port `train_symbolic_melodic_lib.py`
-  (Adam, class-weighted CE na oboch hlavách, label smoothing). Duration hlava
-  je vážená **presne raz** (regresný guard z auditu 2026-09-27). Bez RNG.
-- `src/intent/personal-melodic-onnx.ts` — čítač ONNX inicializátorov
-  (hand-rolled protobuf walker, žiadna dependency) + JSON (de)serializácia
-  payloadu pre IndexedDB.
-- `tests/personal-melodic-trainer.test.ts` (11) — vrátane **finite-difference
-  gradient checku** (analytický gradient musí súhlasiť so skutočným
-  gradientom hlásenej loss — rovnaký dôkaz, aký odhalil double-weight bug)
-  a determinizmus (bit-identické výstupy pre rovnaký vstup).
-- `tests/personal-melodic-onnx.test.ts` (8) — reader reprodukuje Gemm
-  matematiku **na reálnom shipnutom artefakte** (nesprávna de-transpozícia
-  by trénovala na rozbiatej mriežke).
+1. **TS tréner** (`src/intent/personal-melodic-trainer.ts`) — verný port
+   `train_symbolic_melodic_lib.py` (Adam, class-weighted CE na oboch hlavách,
+   label smoothing; duration hlava vážená **presne raz** — regresný guard
+   z auditu 2026-09-27). Bez RNG. Finite-difference gradient check v testoch.
+2. **ONNX reader** (`src/intent/personal-melodic-onnx.ts`) — hand-rolled
+   protobuf walker + JSON payload (IndexedDB) + validácia. **Inference overlay**
+   (`src/intent/personal-melodic-inference.ts`) — plain-JS forward pass; testy
+   dokazujú zhodu so shipped ONNX logits **na reálnom artefakte**.
+3. **Personal model store** (`src/persistence/PersonalModelRepository.ts`, nový
+   `STORE_PERSONAL_MODELS`, DB v13) — kľúčovaný `kind#baseModelHash`; model sa
+   nikdy nevyzdvihne po upgrade prioru (hash lookup miss = čestné „žiadny
+   osobný model"), `pruneOrphanedPersonalModels` čistí sirotky pri boote.
+4. **Worker overlay** (`prior-worker.ts` + `prior-client.ts` + `prior-types.ts`)
+   — `load` nesie voliteľný `personal` payload; worker validuje tvar a šírku
+   voči manifestu, pri zhode odpovedá plain-JS (mikrosekundy), inak shipped
+   ONNX. Zlá/stale/nepasujúca váha = tichý no-op, fallback vždy.
+   Flag `pf:personal-prior`.
+5. **Jedno-klikový flow + UI** (`src/intent/personal-melodic-flow.ts` +
+   `IntentPanel.tsx` 🧠 NAUČ SA MA) — ledger → fine-tune → **A/B dôkaz**
+   (personal vs shipped top-1 na tvojich ★) → inštalácia len keď dôkaz prekoná
+   70 % a shipped; inak čestné odmietnutie s dôvodom. Manifest sa znovu načíta
+   z disku a cross-checkne (stale caller nemôže natrénovať zlú šírku). Zároveň
+   zostaví **ranker preferenčné skupiny** (`buildFavoriteRankerGroups`) a
+   reportuje ich počet.
+6. **Semantic korpus z ★** (`src/intent/semantic.ts`, D7) — každá ★ rolka pridá
+   deterministickú referenčnú vetu (`styleVectorTextForEntry`) s jej intent
+   patchom; cache keyovaná ledger signatúrou (nová ★ = re-embed). Prázdny
+   ledger = korpus byte-identický.
 
-**Ostáva (krok 3–5):** personal-model store (IndexedDB) + inference overlay v
-prior workeri, personal > shipped s fallbackom, tlačidlo v IntentPanel,
-A/B dôkaz (`rerank:fit` vzor), ranker personal retrain, semantic korpus
-rastúci z favoritov.
+**Ranker retrain — čestné rozdelenie:** shipped ranker je 54→…→1 ONNX a v JS
+**neexistuje ONNX exporter** (artifact pipeline je Python-only). Flow preto
+rankner preference skupiny ZOSTAVÍ v prehliadači a sprístupní ich offline
+`npm run favorites:retrain` kroku — žiadny falošný „in-browser ranker retrain".
 
-- **Akceptácia W3:** ★ pack → klik → A/B report v UI; personal prior vyhráva
-  nad shipped na užívateľových ★ (top-1 ≥ 70 %); bez ★ tlačidlo hlási
-  „potrebujem ≥ 3".
+**Overenie:** 64/64 testov v 7 súboroch (trainer 11, onnx 8, inference 5,
+training 11, flow 5, repository 9, semantic 15).
 
 ### W4 — Producer DNA 2.0: features.v2 (D5) + proaktívne taste probes
 
@@ -267,7 +281,7 @@ rastúci z favoritov.
 | W0.2 auto-diagnóza UI    | VYSOKÝ („engine mi povie čo je zle") | ~0,5       | W0.1 pomáha | **HOTOVÉ 2026-10-04** — SUNO MODE audition → analyzeSongSections → suggestSectionRevivals → chips; klik = reviseSection → náhľad → 1 undo; testy `tests/intent-song-audio-review.test.ts` (11/11)                                                                                                                                                                                                                                                  |
 | W1 melodic v3 (harmónia) | VYSOKÝ (hudobnosť AI)                | 4–6        | —           | **UZAVRETÉ 2026-10-04 — gate NEPREŠIEL, prior v3 neaktivovaný.** Smoke i-VI-III-VII (scripts/smoke-melodic-v3-chordtone.mts): model chord-tone hit 50.0 % vs random 53.1 % (greedy-tone 100 %) — rekonštruovaný MIDI chord kontext je pre per-slot MLP šum (potvrdzuje W2 audit). Alternatíva bez modelu: deterministický snap-to-chord-tone post-process na generovaných melódiách (ďalšia vlna); sequence student pri ďalšom vlnovom investovaní |
 | W2 MIDI korpus           | VYSOKÝ (dlhodobá kvalita)            | 3–5        | —           | **ODHADNUTÉ 2026-10-04** — gate FAIL (degree 0.5447 → 0.4774); pipeline hotová, korpus presmerovaný do W1. Audit: `docs/W2-MIDI-CORPUS-AUDIT-2026-10-04.md`                                                                                                                                                                                                                                                                                        |
-| W3 Nauč sa ma (in-app)   | KILLER story                         | 5–8        | —           | **DRUHÁ HLAVNÁ** — jadro hotové 2026-10-04: TS tréner (fine-tune zo shipped váh, bez RNG) + ONNX reader, 19/19 testov vrátane finite-difference gradient checku; ostáva store + UI tlačidlo + A/B dôkaz                                                                                                                                                                                                                                            |
+| W3 Nauč sa ma (in-app)   | KILLER story                         | 5–8        | —           | **HOTOVÉ 2026-10-04** — celý tok: TS tréner (fine-tune zo shipped váh, bez RNG) + ONNX reader + IndexedDB store + worker overlay (personal > shipped, fallback) + 🧠 NAUČ SA MA tlačidlo s A/B dôkazom + ranker preferenčné skupiny + semantic korpus z ★. 64/64 testov.                                                                                                                                                                           |
 | W4 features.v2 + DNA 2.0 | STREDNÍ-VYSOKÝ                       | 4–6        | —           | tretia štvrť                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | W5 kapela (arp/pad/perc) | STREDNÍ                              | 5–7        | W1 pomáha   | štvrtá štvrť                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | W6 reference 2.0         | STREDNÍ                              | 3–4        | —           | kedykoľvek                                                                                                                                                                                                                                                                                                                                                                                                                                         |

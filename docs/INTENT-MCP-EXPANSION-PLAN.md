@@ -210,7 +210,8 @@ executes nothing.
 
 - `desktop/mcp-host-manager.cjs` — manager pattern (clap-host/pcm): bridge
   lifecycle, token generation, IPC handlers (`kyx:mcp:status/enable/
-disable/answer`), pending-call map + 10 s timeout per forwarded call
+disable/answer`), pending-call map + 10 s normal / 60 s render-generation
+  timeout per forwarded call
 - `desktop/mcp-tool-defs.cjs` — CJS mirror of `MCP_TOOLS`; pinned to the
   TS source by `tests/desktop-mcp.test.ts` (anti-drift)
 - Renderer: `startMcpDesktopHost(services)` bound per-project in App;

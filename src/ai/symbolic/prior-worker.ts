@@ -140,7 +140,9 @@ async function handle(request: PriorRequest): Promise<PriorResponse> {
       await ensureSession(request.kind, request.manifest);
       // The overlay is installed AFTER the shipped session is live, so even a
       // rejected personal payload leaves a working prior behind.
-      const personalLive = request.personal ? installPersonalModel(request.kind, request.manifest, request.personal) : false;
+      const personalLive = request.personal
+        ? installPersonalModel(request.kind, request.manifest, request.personal)
+        : false;
       if (request.personal && !personalLive) {
         // Not an error: the shipped prior answers. Surfaced so the caller can
         // drop a personal model it no longer matches (e.g. after a retrain).

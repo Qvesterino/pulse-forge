@@ -17,7 +17,44 @@
 const { MCP_TOOL_DEFS, MCP_RESOURCE_DEFS } = require("./mcp-tool-defs.cjs");
 
 const BRIDGE_URL = process.env.KYX_MCP_BRIDGE_URL || "http://127.0.0.1:8787/rpc";
-const SUPPORTED_PROTOCOL_VERSIONS = ["2025-03-26"];
+/**
+ * Dual-era support (MCP 2026-07-28 "Versioning"): MODERN clients declare the
+ * version in per-request `_meta` and may call `server/discover`; LEGACY
+ * clients use the `initialize` handshake. Both are answered here.
+ */
+const PROTOCOL_VERSION = "2026-07-28";
+const LEGACY_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26"];
+const SUPPORTED_PROTOCOL_VERSIONS = [PROTOCOL_VERSION, ...LEGACY_PROTOCOL_VERSIONS];
+const UNSUPPORTED_PROTOCOL_CODE = -32022;
+const META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion";
+const META_SERVER_INFO = "io.modelcontextprotocol/serverInfo";
+const SERVER_INFO = { name: "kyx-mcp", version: "1.0.0" };
+let negotiatedProtocolVersion = LEGACY_PROTOCOL_VERSIONS[0];
+
+function requestProtocolVersion(params) {
+  const meta = params?._meta;
+  if (meta == null || typeof meta !== "object") return null;
+  const version = meta[META_PROTOCOL_VERSION];
+  return typeof version === "string" && version.length > 0 ? version : null;
+}
+
+function withServerMeta(result, modern) {
+  if (!modern || result == null || typeof result !== "object") return result;
+  const meta = result._meta != null && typeof result._meta === "object" ? result._meta : {};
+  return { ...result, _meta: { ...meta, [META_SERVER_INFO]: SERVER_INFO } };
+}
+
+function unsupportedProtocolError(id, requested) {
+  return {
+    jsonrpc: "2.0",
+    id: id ?? null,
+    error: {
+      code: UNSUPPORTED_PROTOCOL_CODE,
+      message: "Unsupported protocol version",
+      data: { supported: SUPPORTED_PROTOCOL_VERSIONS, requested },
+    },
+  };
+}
 const SERVER_INSTRUCTIONS =
   "KYX is a browser DAW whose MCP surface executes through the deterministic " +
   "command layer: every mutation is ONE undo step and returns a verification " +
@@ -65,9 +102,12 @@ async function forwardToBridge(rpc) {
 }
 
 async function handleRequest(rpc) {
-  // JSON-RPC batch (2025-03-26): an array line fans out; notifications
-  // produce no response line.
+  // JSON-RPC batching was removed in 2025-06-18. Keep it only for clients
+  // that explicitly negotiated the earlier 2025-03-26 protocol.
   if (Array.isArray(rpc)) {
+    if (negotiatedProtocolVersion !== "2025-03-26") {
+      return rpcError(null, -32600, "JSON-RPC batching is unavailable in this protocol version; use kyx_batch instead");
+    }
     const responses = [];
     for (const item of rpc) {
       const response = await handleSingle(item);
@@ -79,23 +119,52 @@ async function handleRequest(rpc) {
 }
 
 async function handleSingle(rpc) {
-  if (rpc.method === "initialize") {
+  // Modern (2026-07-28+) requests carry their version in per-request `_meta`;
+  // unsupported versions answer UnsupportedProtocolVersionError.
+  const modernVersion = requestProtocolVersion(rpc.params);
+  const modern = modernVersion != null;
+  if (modern && !SUPPORTED_PROTOCOL_VERSIONS.includes(modernVersion)) {
+    return unsupportedProtocolError(rpc.id ?? null, modernVersion);
+  }
+  if (rpc.method === "server/discover") {
+    if (!modern) return rpcError(rpc.id ?? null, -32601, `method not found: ${rpc.method}`);
     return rpcResult(rpc.id ?? null, {
-      protocolVersion: negotiateProtocolVersion(rpc.params?.protocolVersion),
+      resultType: "complete",
+      supportedVersions: SUPPORTED_PROTOCOL_VERSIONS,
       capabilities: { tools: {}, resources: {} },
-      serverInfo: { name: "kyx-mcp", version: "1.0.0" },
+      _meta: { [META_SERVER_INFO]: SERVER_INFO },
       instructions: SERVER_INSTRUCTIONS,
     });
   }
+  if (rpc.method === "initialize") {
+    negotiatedProtocolVersion = negotiateProtocolVersion(rpc.params?.protocolVersion);
+    return rpcResult(
+      rpc.id ?? null,
+      withServerMeta(
+        {
+          protocolVersion: negotiatedProtocolVersion,
+          capabilities: { tools: {}, resources: {} },
+          serverInfo: SERVER_INFO,
+          instructions: SERVER_INSTRUCTIONS,
+        },
+        modern,
+      ),
+    );
+  }
   if (rpc.method === "notifications/initialized") return undefined;
-  if (rpc.method === "ping") return rpcResult(rpc.id ?? null, {});
+  if (rpc.method === "ping") return rpcResult(rpc.id ?? null, withServerMeta({}, modern));
   if (rpc.method === "tools/list") {
     if (!process.env.KYX_MCP_TOKEN) return rpcError(rpc.id ?? null, -32001, "KYX_MCP_TOKEN is not set");
-    return rpcResult(rpc.id ?? null, { tools: MCP_TOOL_DEFS });
+    // Legacy 2025-03-26 predates outputSchema; strip it for that era only.
+    const tools =
+      !modern && negotiatedProtocolVersion === "2025-03-26"
+        ? MCP_TOOL_DEFS.map(({ outputSchema, ...tool }) => tool)
+        : MCP_TOOL_DEFS;
+    return rpcResult(rpc.id ?? null, withServerMeta({ tools }, modern));
   }
   if (rpc.method === "resources/list") {
     if (!process.env.KYX_MCP_TOKEN) return rpcError(rpc.id ?? null, -32001, "KYX_MCP_TOKEN is not set");
-    return rpcResult(rpc.id ?? null, { resources: MCP_RESOURCE_DEFS });
+    return rpcResult(rpc.id ?? null, withServerMeta({ resources: MCP_RESOURCE_DEFS }, modern));
   }
   if (rpc.method === "resources/read") {
     if (!process.env.KYX_MCP_TOKEN) return rpcError(rpc.id ?? null, -32001, "KYX_MCP_TOKEN is not set");
@@ -111,7 +180,10 @@ async function handleSingle(rpc) {
       params: { name: "__kyx_resource", arguments: { uri } },
     });
     const text = result?.content?.[0]?.text ?? "";
-    return rpcResult(rpc.id ?? null, { contents: [{ uri, mimeType: "text/plain", text }] });
+    return rpcResult(
+      rpc.id ?? null,
+      withServerMeta({ resultType: "complete", contents: [{ uri, mimeType: "text/plain", text }] }, modern),
+    );
   }
   if (rpc.method === "tools/call") {
     if (!process.env.KYX_MCP_TOKEN) return rpcError(rpc.id ?? null, -32001, "KYX_MCP_TOKEN is not set");
@@ -119,7 +191,11 @@ async function handleSingle(rpc) {
       return rpcError(rpc.id ?? null, -32602, `unknown tool: ${String(rpc.params?.name)}`);
     }
     const result = await forwardToBridge(rpc);
-    return rpcResult(rpc.id ?? null, result);
+    if (!modern && negotiatedProtocolVersion === "2025-03-26" && result != null && typeof result === "object") {
+      const { structuredContent: _structuredContent, ...legacyResult } = result;
+      return rpcResult(rpc.id ?? null, legacyResult);
+    }
+    return rpcResult(rpc.id ?? null, withServerMeta(result, modern));
   }
   return rpcError(rpc.id ?? null, -32601, `method not found: ${rpc.method}`);
 }

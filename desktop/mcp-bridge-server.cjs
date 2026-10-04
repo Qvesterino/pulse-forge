@@ -46,7 +46,19 @@ function resetRateLimitBucket() {
   bucketTokens = RATE_LIMIT_BURST;
   bucketLastRefill = Date.now();
 }
-const SUPPORTED_PROTOCOL_VERSIONS = ["2025-03-26"];
+/**
+ * Protocol eras this server speaks (MCP 2026-07-28 "Versioning"): MODERN
+ * (2026-07-28+) declares version/identity in per-request `_meta` and uses
+ * `server/discover`; LEGACY (2025-11-25 and earlier) uses the `initialize`
+ * handshake. A dual-era server serves both from the same endpoint.
+ */
+const PROTOCOL_VERSION = "2026-07-28";
+const LEGACY_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05", "2024-10-07"];
+const SUPPORTED_PROTOCOL_VERSIONS = [PROTOCOL_VERSION, ...LEGACY_PROTOCOL_VERSIONS];
+const UNSUPPORTED_PROTOCOL_CODE = -32022;
+const META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion";
+const META_SERVER_INFO = "io.modelcontextprotocol/serverInfo";
+const SERVER_INFO = { name: "kyx-mcp-bridge", version: "1.0.0" };
 const SERVER_INSTRUCTIONS =
   "KYX is a browser DAW whose MCP surface executes through the deterministic " +
   "command layer: every mutation is ONE undo step and returns a verification " +
@@ -62,6 +74,43 @@ function negotiateProtocolVersion(requested) {
   return typeof requested === "string" && SUPPORTED_PROTOCOL_VERSIONS.includes(requested)
     ? requested
     : SUPPORTED_PROTOCOL_VERSIONS[0];
+}
+
+/** The modern per-request protocol version from `_meta`, or null. */
+function requestProtocolVersion(params) {
+  const meta = params?._meta;
+  if (meta == null || typeof meta !== "object") return null;
+  const version = meta[META_PROTOCOL_VERSION];
+  return typeof version === "string" && version.length > 0 ? version : null;
+}
+
+/** Attach the server identity to a modern result's `_meta` (SHOULD). */
+function withServerMeta(result, modern) {
+  if (!modern || result == null || typeof result !== "object") return result;
+  const meta = result._meta != null && typeof result._meta === "object" ? result._meta : {};
+  return { ...result, _meta: { ...meta, [META_SERVER_INFO]: SERVER_INFO } };
+}
+
+function unsupportedProtocolError(id, requested) {
+  return {
+    jsonrpc: "2.0",
+    id: id ?? null,
+    error: {
+      code: UNSUPPORTED_PROTOCOL_CODE,
+      message: "Unsupported protocol version",
+      data: { supported: SUPPORTED_PROTOCOL_VERSIONS, requested },
+    },
+  };
+}
+
+function discoverResult() {
+  return {
+    resultType: "complete",
+    supportedVersions: SUPPORTED_PROTOCOL_VERSIONS,
+    capabilities: { tools: {}, resources: {} },
+    _meta: { [META_SERVER_INFO]: SERVER_INFO },
+    instructions: SERVER_INSTRUCTIONS,
+  };
 }
 
 function constantTimeEqual(a, b) {
@@ -176,27 +225,56 @@ function createMcpBridgeServer({ token, executeTool, port = 0 }) {
   }
 
   async function handleSingleRpc(rpc) {
+    // Modern (2026-07-28+) requests declare their version in per-request
+    // `_meta`; unsupported versions answer UnsupportedProtocolVersionError.
+    const modernVersion = requestProtocolVersion(rpc.params);
+    const modern = modernVersion != null;
+    if (modern && !SUPPORTED_PROTOCOL_VERSIONS.includes(modernVersion)) {
+      return unsupportedProtocolError(rpc.id ?? null, modernVersion);
+    }
+    if (rpc.method === "server/discover") {
+      if (!modern) return rpcError(rpc.id ?? null, RPC_ERRORS.methodNotFound, `method not found: ${rpc.method}`);
+      return rpcResult(rpc.id ?? null, discoverResult());
+    }
     if (rpc.method === "initialize") {
-      return rpcResult(rpc.id ?? null, {
-        protocolVersion: negotiateProtocolVersion(rpc.params?.protocolVersion),
-        capabilities: { tools: {}, resources: {} },
-        serverInfo: { name: "kyx-mcp-bridge", version: "1.0.0" },
-        instructions: SERVER_INSTRUCTIONS,
-      });
+      return rpcResult(
+        rpc.id ?? null,
+        withServerMeta(
+          {
+            protocolVersion: negotiateProtocolVersion(rpc.params?.protocolVersion),
+            capabilities: { tools: {}, resources: {} },
+            serverInfo: SERVER_INFO,
+            instructions: SERVER_INSTRUCTIONS,
+          },
+          modern,
+        ),
+      );
     }
     if (rpc.method === "notifications/initialized") return undefined;
-    if (rpc.method === "ping") return rpcResult(rpc.id ?? null, {});
-    if (rpc.method === "tools/list") return rpcResult(rpc.id ?? null, { tools: MCP_TOOL_DEFS });
-    if (rpc.method === "resources/list") return rpcResult(rpc.id ?? null, { resources: MCP_RESOURCE_DEFS });
+    if (rpc.method === "ping") return rpcResult(rpc.id ?? null, withServerMeta({}, modern));
+    if (rpc.method === "tools/list")
+      return rpcResult(
+        rpc.id ?? null,
+        withServerMeta({ ...(modern ? { resultType: "complete" } : {}), tools: MCP_TOOL_DEFS }, modern),
+      );
+    if (rpc.method === "resources/list")
+      return rpcResult(
+        rpc.id ?? null,
+        withServerMeta({ ...(modern ? { resultType: "complete" } : {}), resources: MCP_RESOURCE_DEFS }, modern),
+      );
     if (rpc.method === "resources/read") {
       const uri = String(rpc.params?.uri ?? "");
       if (!MCP_RESOURCE_DEFS.some((resource) => resource.uri === uri)) {
         return rpcError(rpc.id ?? null, -32602, `unknown resource: ${uri}`);
       }
       return callToolWrapped("__kyx_resource", { uri }, rpc.id ?? null, (payload) =>
-        rpcResult(rpc.id ?? null, {
-          contents: [{ uri, mimeType: "text/plain", text: payload }],
-        }),
+        rpcResult(
+          rpc.id ?? null,
+          withServerMeta(
+            { resultType: "complete", contents: [{ uri, mimeType: "text/plain", text: payload }] },
+            modern,
+          ),
+        ),
       );
     }
     if (rpc.method === "tools/call") {
@@ -205,17 +283,17 @@ function createMcpBridgeServer({ token, executeTool, port = 0 }) {
       if (!MCP_TOOL_DEFS.some((tool) => tool.name === name)) {
         return rpcError(rpc.id ?? null, -32602, `unknown tool: ${name}`);
       }
-      return callToolWrapped(name, args, rpc.id ?? null);
+      return callToolWrapped(name, args, rpc.id ?? null, undefined, modern);
     }
     return rpcError(rpc.id ?? null, RPC_ERRORS.methodNotFound, `method not found: ${rpc.method}`);
   }
 
-  async function callToolWrapped(name, args, id, mapResult) {
+  async function callToolWrapped(name, args, id, mapResult, modern = false) {
     if (typeof toolExecutor !== "function") {
-      return rpcResult(id, {
-        content: [{ type: "text", text: "no executor attached" }],
-        isError: true,
-      });
+      return rpcResult(
+        id,
+        withServerMeta({ content: [{ type: "text", text: "no executor attached" }], isError: true }, modern),
+      );
     }
     try {
       const result = await toolExecutor(name, args);
@@ -224,17 +302,33 @@ function createMcpBridgeServer({ token, executeTool, port = 0 }) {
       if (result?.audio && typeof result.audio.data === "string" && typeof result.audio.mimeType === "string") {
         content.push({ type: "audio", data: result.audio.data, mimeType: result.audio.mimeType });
       }
-      const payload = { content };
+      const payload = { resultType: "complete", content };
+      const hasStructuredContent =
+        result?.data != null && typeof result.data === "object" && !Array.isArray(result.data);
+      if (hasStructuredContent) payload.structuredContent = result.data;
+      const outputSchema = MCP_TOOL_DEFS.find((tool) => tool.name === name)?.outputSchema;
+      const missingStructuredContent = outputSchema != null && result?.isError !== true && !hasStructuredContent;
+      if (missingStructuredContent) {
+        content[0].text = `tool ${name} did not return structuredContent required by its outputSchema — ${content[0].text}`;
+      }
       if (result?.isError === true) payload.isError = true;
-      return rpcResult(id, payload);
+      if (missingStructuredContent) payload.isError = true;
+      return rpcResult(id, withServerMeta(payload, modern));
     } catch (error) {
       if (typeof mapResult === "function") {
         return rpcError(id, -32603, error instanceof Error ? error.message : String(error));
       }
-      return rpcResult(id, {
-        content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
-        isError: true,
-      });
+      return rpcResult(
+        id,
+        withServerMeta(
+          {
+            resultType: "complete",
+            content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
+            isError: true,
+          },
+          modern,
+        ),
+      );
     }
   }
 

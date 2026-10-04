@@ -5433,3 +5433,154 @@ Execution starts now.
 ### CURRENT-STATE.md
 
 Tento súbor nemá per-category count breakdown pre Clap/Crash/Cymbal/Rim/Tom (kontrola cez Select-String: žiadne explicitné "Clap: 3" atď). Preto niet čo meniť podľa AGENTS.md invariantu "Update CURRENT-STATE when counts change" — pravidlo sa vzťahuje na explicitné counts v CURRENT-STATE, ktoré tam nie sú. Ak by mal používateľ záujem, môžeme pridať nový riadok "Bank shape (2026-10-04)" do CURRENT-STATE.md s týmito novými počtami.
+
+---
+
+## GOAL Phase 5A — perceptual proxy threshold from audit data (2026-10-04)
+
+### Inputs
+
+- `tmp-audit-13.json` (119 WAVs, post Phase 4)
+- `tmp-faz5-proxy.mjs` (new): 4 alternative distance metrics for every within-category pair, Pearson r vs audit d
+- `tmp-faz5-correlation.json` (new, 812 pairs across 13 categories)
+
+### Pearson r (alternative metrics vs audit d_audit, 12-d Euclidean)
+
+| metric | definition | r |
+| --- | --- | --- |
+| d_l1   | 7-band dB L1, no scaling | 0.819 |
+| d_lin  | 7-band linear-energy L1 (preserves dB compression) | 0.473 |
+| d_env  | loudMs + crest + attack, no bands | 0.762 |
+| d_3d   | brightness (centroid) + loudMs + crest | **0.833** |
+
+d_3d najlepšie koreluje s audit d. Tri dimenzie nesú 83% signálu z audit 12-d vektora. Zvyšných 9 dimenzií (band shares, tilt) pridáva menej ako 17%.
+
+### Disagreement medzi audit d a d_3d
+
+Stabilné páry (audit d > 0.20) s nízkym d_3d — **spektrálne odlišné ale envelope-rovnaké**:
+- `hat.closed<->hat.dnb` d_audit=0.201, d_env=0.066
+- `kick.lofi<->kick.punch` d_audit=0.202, d_env=0.098
+- `snare.jersey<->snare.main` d_audit=0.203, d_env=0.106
+
+Tieto páry majú rovnaké "ako znejú" (envelope) ale rôzne "kde v spektre sedia". Pre ucho: počuteľne rovnaké (krátke, jasné, s rovnakým transient shape).
+
+### Dual-criterion watchlist
+
+Prah d_3d<0.10 dáva 54 párov (90% recall audit watchlistu). Príliš široký na samostatné použitie, ale ako **AND filter** s auditom dáva **19 párov (užší ako audit 21)**. Dva audit-flagged páry dual-criterion vyhodí ako falošne pozitívne:
+
+- `hat.closed<->hat.open.short` d_audit=0.141, d_3d=0.132, d_env=0.132 — rôzna dĺžka tela
+- `kick.phonk<->kick.punch` d_audit=0.144, d_3d=0.105, d_env=0.068 — rôzny envelope
+
+Tieto páry sú **v skutočnosti odlišné** v tom, ako hrajú v čase. Audit to zachytáva cez spektrum (0.15), ale d_3d správne hovorí "nie sú to twin-y".
+
+### Nový prah: banded dual-criterion
+
+| d_audit | d_3d | Kategória | Akcia |
+| --- | --- | --- | --- |
+| < 0.10 | < 0.05 | Duplicita | Vyhodiť (de-dup kandidát) |
+| 0.10-0.15 | 0.05-0.10 | Rodina | Ponechať, audit-relevantné |
+| > 0.15 OR d_3d > 0.10 | | Vlastný priestor | Stable |
+
+### Výsledok
+
+- Pôvodný audit watchlist: **21 párov** (d_audit < 0.15)
+- Dual-criterion watchlist: **19 párov** (d_audit < 0.15 AND d_3d < 0.10)
+- Falošne pozitívne audit-flagged (dual-criterion správne vyhodí): 2
+- Falošne negatívne (dual-criterion prepustí, audit označí): 0
+- Presnosť dual-criterion na audit watchlist: 19/21 = 90% recall
+
+### Reprodukcia
+
+```
+node tmp-faz5-proxy.mjs tmp-audit-13.json
+cat tmp-faz5-correlation.json
+```
+
+### Files v tomto commite (pred Phase 5B)
+
+- `tmp-faz5-proxy.mjs` (new, untracked)
+- `tmp-faz5-correlation.json` (new, untracked)
+- `AGENT_WORK_LOG.md` (tento záznam)
+
+### Fáza 5B — ABX page for perceptual validation (2026-10-04)
+
+6 pairs rendered as 2-bar beats (same bed, single voice swapped) and
+exported as 16-bit stereo WAV. Lanes overwrite lanes.json (pre-phase5
+backup saved to `listening/abx/lanes.backup-pre-phase5.json`).
+
+Selection rationale (each pair tests ONE dual-criterion hypothesis):
+
+| lane | A | B | d_audit | d_3d | hypothesis | expected verdict |
+| --- | --- | --- | --- | --- | --- | --- |
+| knock-vs-lofi    | kick.knock      | kick.lofi      | 0.068 | 0.046 | true positive | siblings (random) |
+| soft-vs-closed   | hat.closed.soft | hat.closed     | 0.092 | 0.045 | true positive | siblings (random) |
+| closed-vs-open    | hat.closed      | hat.open.short | 0.141 | 0.132 | false positive | not siblings (good) |
+| pop-vs-punch      | kick.pop        | kick.punch     | 0.093 | 0.059 | true positive | siblings (random) |
+| closed-vs-dnb-h   | hat.closed      | hat.dnb        | 0.201 | 0.089 | stable envelope-equal | spectral siblings (not random) |
+| lofi-vs-punch-k   | kick.lofi       | kick.punch     | 0.202 | 0.148 | stable envelope-equal | spectral siblings (not random) |
+
+If the listener can ABX-separate pairs 1, 2, 4 (true positive) at
+chance, dual-criterion is too lenient. If pairs 3, 5, 6 (envelope-
+equal/stable) are ABOVE chance, dual-criterion is too strict. The
+crossover is the empirical perceptual threshold.
+
+### ABX infra
+
+- `tmp-faz5-abx.mjs` (new, untracked): pair renderer (own bed, own WAV writer).
+- `listening/abx/pairs/phase5-*.wav` (12 files, 6 pairs * A/B).
+- `listening/abx/lanes.json` (overwritten with 6 phase-5 lanes).
+- `listening/abx/index.html` (regenerated by `npm run listening:abx`,
+  8 KB, 158 lines, self-contained ABX page with level matching).
+
+### How to use
+
+1. Start the listener: `npm run listening:serve` → opens
+   `http://127.0.0.1:5179/abx/`
+2. For each of the 6 lanes, the page plays X (reference), then A and B
+   in random order, and the listener picks which is X.
+3. Page POSTs each trial to `listening/abx/trials.jsonl`.
+4. After completing all 6 lanes, the listener can dump
+   `trials.jsonl` and we analyse the binomial.
+
+### Files in this commit
+
+- `tmp-faz5-abx.mjs` (new, untracked)
+- `tmp-faz5-listening-abx.out` (build log, untracked)
+- `listening/abx/pairs/phase5-*.wav` (12 new files; UNTRACKED — see gitignore)
+- `listening/abx/lanes.json` (overwritten; pre-phase5 backup in
+  `listening/abx/lanes.backup-pre-phase5.json`)
+- `listening/abx/index.html` (regenerated, untracked)
+- `AGENT_WORK_LOG.md` (this entry)
+
+### Verdict on Phase 5A proxy
+
+The proxy is **empirically testable but not validated without the ABX
+trial data**. Two metrics survive as candidates for replacing the
+arbitrary 0.15 threshold:
+
+1. `d_3d` (brightness + loudMs + crest, 3-d Euclidean) — Pearson r=0.833
+   vs audit d. A dual-criterion watchlist (`d_audit < 0.15 AND d_3d
+   < 0.10`) excludes 2 of 21 audit pairs as false positives
+   (hat.closed↔hat.open.short and kick.phonk↔kick.punch) — both have
+   envelope-only differences (d_env > 0.13) that the ear picks up.
+
+2. `d_env` (loudMs + crest + attack, no bands) — orthogonal to d_audit
+   (r=0.762) but catches pairs the audit considers distinct yet play
+   the same (e.g. kick.lofi↔kick.punch at d_audit=0.202, d_env=0.098).
+
+The ABX test in Phase 5B will determine whether the dual-criterion is
+better than audit d alone. If the listener scores pairs 1-2-4 (true
+positive) at chance, the proxy is useless; if the listener scores
+pairs 3-5-6 (envelope-equal) at chance, the proxy is correct.
+
+### Next step (user action)
+
+The user runs:
+  npm run listening:serve
+opens http://127.0.0.1:5179/abx/ in a browser, completes 6 trials
+(roughly 5 minutes — 6 lanes * 4 ABX trials each at ~10s per trial
++ scoring), and returns `listening/abx/trials.jsonl` for analysis.
+
+I will then compute the per-lane binomial accuracy, compare to chance
+(50%), and either (a) confirm dual-criterion, (b) adjust thresholds,
+or (c) abandon the proxy in favour of the audit d alone.

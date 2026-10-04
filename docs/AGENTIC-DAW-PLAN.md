@@ -33,8 +33,9 @@
 2. **Smoke checklist pre agenta** (tých 5 volaní, ktoré overia reťaz): overview →
    `kyx_generate` → `kyx_steps add` → `kyx_state pattern` (read-back) → `kyx_undo` →
    `kyx_state tempo` (žiadna zmena). Vložiť do playbooku ako "hello KYX".
-3. Trap-hunter: transport timeouty (10 s desktop / 15 s web) a ich dopad na dlhé rendery —
-   zapísať do playbooku ("export może timeoutnúť, download aj tak pristane").
+3. Trap-hunter: bežné volania majú krátky timeout (10 s desktop / 15 s web),
+   render/generovanie dostali rozšírený 60 s limit; veľmi veľké rendery môžu
+   stále dobehnúť až po odpovedi agenta (download aj tak pristane v KYX).
 
 Effort: jedno popoludnie, žiadny nový kód okrem dokumentu (chip už clientConfig vydáva).
 

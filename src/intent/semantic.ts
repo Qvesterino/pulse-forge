@@ -1,6 +1,9 @@
 import type { IntentInput } from "./types";
 import { ARTIST_PRESETS } from "./artists";
 import { embedTexts } from "../ai/semantic/semantic-client";
+import { readFavoriteLedger } from "./favorites";
+import { styleVectorTextForEntry } from "./style-vector";
+import { isValidLedgerEntry, type FavoriteLedgerEntry } from "./favorites-core";
 
 /**
  * SEMANTIC INTENT MATCHING (INTENT_ENGINE.md T1 krok 2) — the meaning layer
@@ -47,9 +50,17 @@ const MOOD_SK: Record<string, string> = {
 /**
  * The curated knowledge base: artist presets (the C1 dictionary, embedded so
  * UNKNOWN phrasings of the same idea still resolve) + genre/style/mood
- * vocabulary in EN and SK.
+ * vocabulary in EN and SK + the user's OWN ★-kept rolls (D7).
+ *
+ * FAVORITES: each kept roll contributes a deterministic reference sentence
+ * (`styleVectorTextForEntry` — the same word space the style vector and the
+ * training corpus live in) with the roll's own intent as its patch. Retrieval
+ * therefore learns to find "my stuff" by MEANING: a future prompt close to a
+ * sentence the user keeps will land on their own roll's recipe instead of the
+ * nearest generic artist preset. The favorites branch is additive — an empty
+ * ledger leaves the corpus byte-identical to the curated one.
  */
-export function buildSemanticCorpus(): SemanticCorpusEntry[] {
+export function buildSemanticCorpus(favoriteEntries: readonly FavoriteLedgerEntry[] = []): SemanticCorpusEntry[] {
   const corpus: SemanticCorpusEntry[] = [];
 
   for (const preset of ARTIST_PRESETS) {
@@ -196,18 +207,30 @@ export function buildSemanticCorpus(): SemanticCorpusEntry[] {
     // Chiptune / eurodance / latin (the three-family wave).
     { text: "chiptune 8-bit game music", patch: { genre: "chiptune", style: "nintendo", mood: "energetic" } },
     { text: "nes overworld theme", patch: { genre: "chiptune", style: "nintendo", mood: "energetic", energy: 0.75 } },
-    { text: "game boy lsdj chip break", patch: { genre: "chiptune", style: "gameboy", mood: "energetic", energy: 0.85 } },
+    {
+      text: "game boy lsdj chip break",
+      patch: { genre: "chiptune", style: "gameboy", mood: "energetic", energy: 0.85 },
+    },
     { text: "boss battle vgm metal", patch: { genre: "chiptune", style: "boss", mood: "aggressive", energy: 0.95 } },
     { text: "town theme sad chip ballad", patch: { genre: "chiptune", style: "ballad", mood: "chill", energy: 0.25 } },
     { text: "tracker demoscene arpeggio", patch: { genre: "chiptune", style: "tracker", mood: "energetic" } },
     { text: "90s eurodance radio hit", patch: { genre: "eurodance", style: "nrg", mood: "energetic" } },
     { text: "eurodance female chorus rap verse", patch: { genre: "eurodance", style: "nrg", mood: "energetic" } },
-    { text: "happy eurodance supersaw lift", patch: { genre: "eurodance", style: "happy", mood: "energetic", energy: 0.95 } },
-    { text: "german hands up hard dance", patch: { genre: "eurodance", style: "handsup", mood: "aggressive", energy: 0.95 } },
+    {
+      text: "happy eurodance supersaw lift",
+      patch: { genre: "eurodance", style: "happy", mood: "energetic", energy: 0.95 },
+    },
+    {
+      text: "german hands up hard dance",
+      patch: { genre: "eurodance", style: "handsup", mood: "aggressive", energy: 0.95 },
+    },
     { text: "euro trance dance melody", patch: { genre: "eurodance", style: "trancecore", mood: "energetic" } },
     { text: "italo dance autotune hook", patch: { genre: "eurodance", style: "italo", mood: "energetic" } },
     { text: "cumbia sonidera con guiro", patch: { genre: "latin", style: "cumbia", mood: "energetic" } },
-    { text: "merengue dominicano tambora", patch: { genre: "latin", style: "merengue", mood: "energetic", energy: 0.9 } },
+    {
+      text: "merengue dominicano tambora",
+      patch: { genre: "latin", style: "merengue", mood: "energetic", energy: 0.9 },
+    },
     { text: "bachata romantica bongo", patch: { genre: "latin", style: "bachata", mood: "chill" } },
     { text: "salsa dura con clave", patch: { genre: "latin", style: "salsa", mood: "energetic", energy: 0.9 } },
     { text: "mambo big band latin", patch: { genre: "latin", style: "mambo", mood: "energetic", energy: 0.95 } },
@@ -284,10 +307,34 @@ export function buildSemanticCorpus(): SemanticCorpusEntry[] {
     corpus.push({ text: entry.text, patch: entry.patch, label: entry.text });
   }
 
+  // ── The user's own ★ rolls (D7) ────────────────────────────────────────────
+  // Additive: each valid ledger entry becomes one reference sentence in the
+  // SAME deterministic word space the style vector uses, carrying the roll's
+  // intent as its patch. Retrieval can then resolve "chce to byť ako moje
+  // veci" by MEANING — the sentence the user keeps is the sentence their next
+  // prompt is nearest to. Invalid entries are skipped (defensive read).
+  for (const entry of favoriteEntries) {
+    if (!isValidLedgerEntry(entry)) continue;
+    const patch: Partial<IntentInput> = {
+      genre: entry.genre as IntentInput["genre"],
+      ...(entry.style ? { style: entry.style } : {}),
+      energy: entry.energy,
+      density: entry.density,
+      ...(entry.key ? { key: entry.key as IntentInput["key"] } : {}),
+    };
+    corpus.push({
+      text: styleVectorTextForEntry(entry),
+      patch,
+      // The label is what the UI shows; "★" makes it obvious the match came
+      // from the user's own history rather than the curated dictionary.
+      label: `★ ${entry.genre}${entry.style ? ` ${entry.style}` : ""}`,
+    });
+  }
+
   return corpus;
 }
 
-let corpusCache: { entries: SemanticCorpusEntry[]; vectors: Float32Array[] } | null = null;
+let corpusCache: { entries: SemanticCorpusEntry[]; vectors: Float32Array[]; favoritesSignature: string } | null = null;
 
 /** Test hook: drop the corpus + embedding cache. */
 export function resetSemanticCorpusCache(): void {
@@ -307,20 +354,28 @@ export type EmbedFn = (texts: string[]) => Promise<Float32Array[] | null>;
  * Resolve free text to an intent patch by semantic nearest neighbour.
  * Returns null when the embedder is unavailable or no corpus entry clears
  * the confidence threshold — callers fall back to the keyword parser.
+ *
+ * The corpus now includes the user's ★ rolls, so the cache is keyed by a
+ * cheap ledger signature: a new ★ invalidates the embedded corpus and the
+ * next call re-embeds WITH the user's history. `favorites` can be injected in
+ * tests; production reads the local ledger (never throws).
  */
 export async function semanticIntentFor(
   text: string,
-  options: { embed?: EmbedFn } = {},
+  options: { embed?: EmbedFn; favorites?: readonly FavoriteLedgerEntry[] } = {},
 ): Promise<SemanticMatch | null> {
   const embed = options.embed ?? embedTexts;
   const trimmed = text.trim();
   if (!trimmed) return null;
 
-  if (!corpusCache) {
-    const corpus = buildSemanticCorpus();
+  const favorites = options.favorites ?? readFavoriteLedger();
+  const favoritesSignature = favorites.map((entry) => entry.seed).join(",");
+
+  if (!corpusCache || corpusCache.favoritesSignature !== favoritesSignature) {
+    const corpus = buildSemanticCorpus(favorites);
     const vectors = await embed(corpus.map((entry) => entry.text));
     if (!vectors || vectors.length !== corpus.length) return null;
-    corpusCache = { entries: corpus, vectors };
+    corpusCache = { entries: corpus, vectors, favoritesSignature };
   }
 
   const queryVectors = await embed([trimmed]);

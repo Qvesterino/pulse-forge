@@ -472,8 +472,10 @@ function sendJson(res, status, body) {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
-    "Content-Length": Buffer.byteLength(payload),
   });
+  // Keep HTTP body framing under Node's control. In loopback-forwarded
+  // environments an explicit Content-Length may be rewritten to chunked
+  // transfer encoding without the matching body framing.
   res.end(payload);
 }
 
@@ -579,6 +581,11 @@ export function createCollabServer({
   corsOrigins = process.env.CORS_ORIGIN ?? "*",
   adminToken: adminTokenOverride = process.env.GALLERY_ADMIN_TOKEN ?? "",
   enforceProductionConfig = process.env.NODE_ENV === "production",
+  // Test seams (same shape the production env vars configure; absent in prod):
+  // a caller may inject the MCP token and a pre-built hub so the real-client
+  // wire gate can drive /mcp without an env process or a WS session.
+  mcpToken: mcpTokenOverride,
+  mcpHub: mcpHubOverride,
 } = {}) {
   const { getRoom, rooms } = createRoomRegistry();
   const collabLimits = normalizeCollabLimits(collabLimitOverrides);
@@ -605,15 +612,17 @@ export function createCollabServer({
   // MCP_TOKEN env — without it /mcp and /mcp-relay 404/refuse and the
   // surface costs nothing. Tool calls relay to the connected KYX window,
   // which executes them through the deterministic command layer.
-  const mcpToken = String(process.env.MCP_TOKEN ?? "").trim();
-  const mcpHub = createMcpHub({
-    token: mcpToken,
-    sendToSession: (payload) => {
-      if (mcpRelaySocket != null && mcpRelaySocket.readyState === WS_OPEN) {
-        mcpRelaySocket.send(JSON.stringify(payload));
-      }
-    },
-  });
+  const mcpToken = String(mcpTokenOverride ?? process.env.MCP_TOKEN ?? "").trim();
+  const mcpHub =
+    mcpHubOverride ??
+    createMcpHub({
+      token: mcpToken,
+      sendToSession: (payload) => {
+        if (mcpRelaySocket != null && mcpRelaySocket.readyState === WS_OPEN) {
+          mcpRelaySocket.send(JSON.stringify(payload));
+        }
+      },
+    });
 
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://x");
@@ -633,7 +642,14 @@ export function createCollabServer({
         if (raw.length > 1_000_000) req.destroy();
       });
       req.on("end", () => {
-        void handleMcpRequest(mcpHub, mcpToken, auth, raw).then((response) => {
+        const protocolVersion = req.headers["mcp-protocol-version"];
+        void handleMcpRequest(
+          mcpHub,
+          mcpToken,
+          auth,
+          raw,
+          typeof protocolVersion === "string" ? protocolVersion : undefined,
+        ).then((response) => {
           if (response != null) sendJson(res, 200, response);
           else sendJson(res, 202, {});
         });
@@ -652,7 +668,7 @@ export function createCollabServer({
       return;
     }
     res.setHeader("Access-Control-Allow-Methods", "DELETE,GET,POST,OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+    res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, MCP-Protocol-Version");
     if (req.method === "OPTIONS") {
       res.writeHead(204);
       res.end();

@@ -1,8 +1,5 @@
 import { openDb, STORE_PERSONAL_MODELS, tx } from "./db";
-import {
-  personalWeightsFromJson,
-  type PersonalWeightsPayload,
-} from "../intent/personal-melodic-onnx";
+import { personalWeightsFromJson, type PersonalWeightsPayload } from "../intent/personal-melodic-onnx";
 
 /**
  * PERSONAL MODEL STORE — the ★-trained prior the user keeps

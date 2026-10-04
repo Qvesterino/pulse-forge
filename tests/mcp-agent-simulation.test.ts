@@ -221,7 +221,8 @@ describe("agent simulation — the whole playbook in one session", async () => {
     expect(state.text.length).toBeGreaterThan(0);
 
     const meters = await agent.call("kyx_meter", { scope: "master" });
-    expect(meters.isError).toBeUndefined(); // no live engine headless — honest refusal is fine too
+    expect(meters.isError).toBe(true); // no live engine headless — the unavailable meter is an honest tool error
+    expect(meters.text).toContain("no live engine bound");
     const measured = await agent.callAsync("kyx_loudness", { op: "measure" });
     expect(measured.text).toContain("LUFS");
     const exported = await agent.callAsync("kyx_export", { format: "wav" });

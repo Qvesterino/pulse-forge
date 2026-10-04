@@ -18,6 +18,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { format, resolveConfig } from "prettier";
 // tsx runs this script, so importing the TS source directly is fine.
 import { MCP_TOOLS, MCP_RESOURCES } from "../src/mcp/tools.ts";
 
@@ -51,7 +52,16 @@ function apply(defsBody, resBody) {
 const results = apply(TOOL_BODY, RESOURCE_BODY);
 
 if (check) {
-  const drifted = results.filter((r) => readFileSync(r.abs, "utf8") !== r.content);
+  const normalizeLineEndings = (source) => source.replace(/\r\n/g, "\n");
+  const formattedResults = await Promise.all(
+    results.map(async (r) => {
+      const config = (await resolveConfig(r.abs)) ?? {};
+      return { ...r, content: await format(r.content, { ...config, filepath: r.abs }) };
+    }),
+  );
+  const drifted = formattedResults.filter(
+    (r) => normalizeLineEndings(readFileSync(r.abs, "utf8")) !== normalizeLineEndings(r.content),
+  );
   if (drifted.length > 0) {
     console.error(`[gen:mcp-mirrors] DRIFT detected in: ${drifted.map((d) => d.filePath).join(", ")}`);
     console.error("[gen:mcp-mirrors] Run `npm run gen:mcp-mirrors` and commit the result.");

@@ -1,6 +1,6 @@
 // @ts-expect-error — plain .mjs server module without declarations
 import { createMcpHub, handleMcpRequest, isValidToken, parseRpc, MCP_TOOL_DEFS } from "../server/mcp-core.mjs";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { MCP_TOOLS } from "../src/mcp/tools";
 
 /**
@@ -61,11 +61,15 @@ describe("mcp core — protocol with an authenticated session", () => {
   it("initialize returns capabilities + serverInfo; tools/list returns the 34 tools", async () => {
     const { hub } = makeHub();
     const init = await handleMcpRequest(hub, TOKEN, TOKEN, rpc("initialize", {}, 1));
-    expect(init.result.protocolVersion).toBe("2025-03-26");
+    expect(init.result.protocolVersion).toBe("2026-07-28");
     expect(init.result.capabilities.tools).toBeDefined();
     const list = await handleMcpRequest(hub as any, TOKEN, TOKEN, rpc("tools/list", {}, 2));
-    expect((list.result as { tools: Array<{ name: string }> }).tools).toHaveLength(34);
-    expect((list.result as { tools: Array<{ name: string }> }).tools.map((t) => t.name)).toEqual([
+    const listedTools = (list.result as { tools: Array<{ name: string; outputSchema?: unknown }> }).tools;
+    expect(listedTools).toHaveLength(34);
+    expect(listedTools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema,
+    );
+    expect(listedTools.map((t) => t.name)).toEqual([
       "kyx_intent",
       "kyx_state",
       "kyx_undo",
@@ -130,13 +134,51 @@ describe("mcp core — protocol with an authenticated session", () => {
     expect(content[0].text).toContain("Drums mute ✓");
   });
 
+  it("gives render and generation calls an extended relay timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const hub = createMcpHub({
+        token: TOKEN,
+        sendToSession: () => {},
+        callTimeoutMs: 1_000,
+        longCallTimeoutMs: 5_000,
+      });
+      hub.connectSession();
+
+      const normal = hub.callTool("kyx_state", {});
+      const slow = hub.callTool("kyx_arrange", {});
+      const normalRejected = expect(normal).rejects.toThrow("KYX session timed out");
+      const slowRejected = expect(slow).rejects.toThrow("KYX session timed out");
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      await normalRejected;
+      expect(hub.pendingCount()).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(4_000);
+      await slowRejected;
+      expect(hub.pendingCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("preserves an attached audio content block across the authenticated web relay", async () => {
     const { hub, delivered } = makeHub();
+    // A modern (2026-07-28) client: declares its version per-request so the
+    // stateless result shape (structuredContent + resultType) applies.
     const promise = handleMcpRequest(
       hub,
       TOKEN,
       TOKEN,
-      rpc("tools/call", { name: "kyx_audio_preview", arguments: { bars: 1 } }, 14),
+      rpc(
+        "tools/call",
+        {
+          name: "kyx_audio_preview",
+          arguments: { bars: 1 },
+          _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" },
+        },
+        14,
+      ),
     );
     hub.handleSessionMessage({
       type: "mcp-result",
@@ -145,6 +187,7 @@ describe("mcp core — protocol with an authenticated session", () => {
         text: "preview ready",
         mutated: false,
         audio: { data: "UklGRg==", mimeType: "audio/wav" },
+        data: { bars: 1, durationSec: 2, sampleRate: 22050, byteLength: 44144, mimeType: "audio/wav" },
       },
     });
     const response = await promise;
@@ -152,6 +195,79 @@ describe("mcp core — protocol with an authenticated session", () => {
       { type: "text", text: "preview ready" },
       { type: "audio", data: "UklGRg==", mimeType: "audio/wav" },
     ]);
+    expect(response.result.structuredContent).toEqual({
+      bars: 1,
+      durationSec: 2,
+      sampleRate: 22050,
+      byteLength: 44144,
+      mimeType: "audio/wav",
+    });
+  });
+
+  it("2025-03-26 legacy clients do not receive outputSchema or structuredContent", async () => {
+    const { hub, delivered } = makeHub();
+    const init = await handleMcpRequest(hub, TOKEN, TOKEN, rpc("initialize", { protocolVersion: "2025-03-26" }, 20));
+    expect(init.result.protocolVersion).toBe("2025-03-26");
+
+    const list = await handleMcpRequest(hub, TOKEN, TOKEN, rpc("tools/list", {}, 21));
+    const audioPreview = list.result.tools.find((tool: { name: string }) => tool.name === "kyx_audio_preview");
+    expect(audioPreview.outputSchema).toBeUndefined();
+
+    const promise = handleMcpRequest(
+      hub,
+      TOKEN,
+      TOKEN,
+      rpc("tools/call", { name: "kyx_audio_preview", arguments: { bars: 1 } }, 22),
+    );
+    hub.handleSessionMessage({
+      type: "mcp-result",
+      id: delivered[0].id,
+      result: {
+        text: "preview ready",
+        mutated: false,
+        audio: { data: "UklGRg==", mimeType: "audio/wav" },
+        data: { bars: 1, durationSec: 2, sampleRate: 22050, byteLength: 44144, mimeType: "audio/wav" },
+      },
+    });
+    const response = await promise;
+    expect(response.result.structuredContent).toBeUndefined();
+    expect(response.result.resultType).toBeUndefined();
+    expect(response.result.content[1]).toEqual({ type: "audio", data: "UklGRg==", mimeType: "audio/wav" });
+  });
+
+  it("2026-07-28 modern clients: server/discover, per-request _meta, unsupported version -32022", async () => {
+    const { hub } = makeHub();
+    const modernMeta = { "io.modelcontextprotocol/protocolVersion": "2026-07-28" };
+
+    // server/discover advertises versions/capabilities/identity (MUST).
+    const discover = await handleMcpRequest(hub, TOKEN, TOKEN, rpc("server/discover", { _meta: modernMeta }, 30));
+    expect(discover.error).toBeUndefined();
+    expect(discover.result.supportedVersions).toContain("2026-07-28");
+    expect(discover.result.supportedVersions).toContain("2025-03-26");
+    expect(discover.result.resultType).toBe("complete");
+    expect(discover.result._meta["io.modelcontextprotocol/serverInfo"]).toBeDefined();
+
+    // A stateless modern tools/list carries resultType; the legacy answer
+    // (no _meta, no MCP-Protocol-Version header) stays handshake-shaped.
+    const modernList = await handleMcpRequest(hub, TOKEN, TOKEN, rpc("tools/list", { _meta: modernMeta }, 31));
+    expect(modernList.result.resultType).toBe("complete");
+    const legacyList = await handleMcpRequest(hub, TOKEN, TOKEN, rpc("tools/list", {}, 32));
+    expect(legacyList.result.resultType).toBeUndefined();
+
+    // An unsupported modern version answers UnsupportedProtocolVersionError
+    // with the supported list a client retries against.
+    const bad = await handleMcpRequest(
+      hub,
+      TOKEN,
+      TOKEN,
+      rpc("tools/list", { _meta: { "io.modelcontextprotocol/protocolVersion": "1900-01-01" } }, 33),
+    );
+    expect(bad.error.code).toBe(-32022);
+    expect(bad.error.data.supported).toContain("2026-07-28");
+
+    // server/discover is modern-only; a legacy client gets method-not-found.
+    const legacyDiscover = await handleMcpRequest(hub, TOKEN, TOKEN, rpc("server/discover", {}, 34));
+    expect(legacyDiscover.error.code).toBe(-32601);
   });
 
   it("unknown tool → -32602 without touching the session", async () => {

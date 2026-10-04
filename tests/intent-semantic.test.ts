@@ -152,4 +152,86 @@ describe("semanticIntentFor with injected embedder", () => {
     // second call only embeds the QUERY (one more call), not the corpus
     expect(calls).toBe(afterFirst + 1);
   });
+
+  it("corpus cache invalidates when the ★ ledger changes", async () => {
+    let calls = 0;
+    const countingEmbed = async (texts: string[]) => {
+      calls += 1;
+      return mockEmbed(texts);
+    };
+    const empty: never[] = [];
+    await semanticIntentFor("hard techno", { embed: countingEmbed, favorites: empty });
+    const afterEmpty = calls;
+    // A new ★ changes the signature → corpus re-embeds once.
+    const withFavorite = [
+      {
+        savedAt: 1,
+        seed: "new-star",
+        genre: "house",
+        grooveId: "house.deep",
+        energy: 0.6,
+        density: 0.5,
+        complexity: 0.5,
+        variation: 0.3,
+        padIds: [],
+        padNames: [],
+        rows: {},
+      },
+    ];
+    await semanticIntentFor("hard techno", { embed: countingEmbed, favorites: withFavorite as never });
+    expect(calls).toBeGreaterThan(afterEmpty + 1);
+  });
+});
+
+describe("favorite-driven corpus (D7)", () => {
+  function ledgerEntry(overrides: Partial<Record<string, unknown>> = {}) {
+    return {
+      savedAt: 1,
+      seed: "fav-1",
+      genre: "house",
+      grooveId: "house.deep",
+      energy: 0.65,
+      density: 0.55,
+      complexity: 0.5,
+      variation: 0.3,
+      padIds: [],
+      padNames: [],
+      rows: {},
+      style: "deep",
+      key: "C Major",
+      ...overrides,
+    };
+  }
+
+  it("an empty ledger leaves the curated corpus unchanged", () => {
+    expect(buildSemanticCorpus([]).length).toBe(buildSemanticCorpus().length);
+  });
+
+  it("adds one labeled reference sentence per valid ★ entry", () => {
+    const corpus = buildSemanticCorpus([ledgerEntry() as never]);
+    const star = corpus.find((entry) => entry.label.startsWith("★"));
+    expect(star).toBeDefined();
+    // The sentence is the deterministic style-vector text (same word space).
+    expect(star!.text).toContain("house");
+    expect(star!.text).toContain("deep");
+    expect(star!.patch.genre).toBe("house");
+    expect(star!.patch.style).toBe("deep");
+    expect(star!.patch.energy).toBeCloseTo(0.65, 5);
+  });
+
+  it("skips invalid ledger entries instead of polluting the corpus", () => {
+    const junk = { seed: "junk", genre: 123 } as never;
+    const corpus = buildSemanticCorpus([junk]);
+    expect(corpus.some((entry) => entry.label.startsWith("★"))).toBe(false);
+  });
+
+  it("a prompt near a kept roll resolves to that roll's recipe", async () => {
+    // The mock embed clusters by the genre word — so a house ★ makes house
+    // queries land on the starred entry (it is now the nearest house reference
+    // with the roll's own energy/density patch).
+    const favorites = [ledgerEntry({ energy: 0.42, density: 0.38 }) as never];
+    const match = await semanticIntentFor("deep house groove", { embed: mockEmbed, favorites });
+    expect(match).not.toBeNull();
+    expect(match!.input.genre).toBe("house");
+  });
 });

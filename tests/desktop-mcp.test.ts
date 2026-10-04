@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { createRequire } from "node:module";
 import { spawn } from "node:child_process";
 import http from "node:http";
@@ -25,7 +25,7 @@ interface BridgeModule {
     server: http.Server;
     setExecutor(next: (name: string, args: Record<string, unknown>) => Promise<unknown>): void;
   };
-  MCP_TOOL_DEFS: Array<{ name: string; description: string; inputSchema: unknown }>;
+  MCP_TOOL_DEFS: Array<{ name: string; description: string; inputSchema: unknown; outputSchema?: unknown }>;
 }
 interface ManagerLike {
   enable(preferredPort?: number): Promise<{ enabled: boolean; bridgeUrl: string | null; token: string | null }>;
@@ -93,7 +93,12 @@ afterEach(() => {
 describe("desktop mcp tool defs — mirror pin", () => {
   it("MCP_TOOL_DEFS mirrors src/mcp/tools.ts MCP_TOOLS exactly (names, descriptions, schemas)", () => {
     expect(bridgeModule.MCP_TOOL_DEFS).toEqual(
-      MCP_TOOLS.map((tool) => ({ name: tool.name, description: tool.description, inputSchema: tool.inputSchema })),
+      MCP_TOOLS.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+        ...(tool.outputSchema != null ? { outputSchema: tool.outputSchema } : {}),
+      })),
     );
   });
 });
@@ -112,7 +117,7 @@ describe("desktop mcp bridge server (real HTTP)", () => {
     });
     expect(init.status).toBe(200);
     const initBody = JSON.parse(init.body) as { result: { protocolVersion: string; serverInfo: { name: string } } };
-    expect(initBody.result.protocolVersion).toBe("2025-03-26");
+    expect(initBody.result.protocolVersion).toBe("2026-07-28");
     expect(initBody.result.serverInfo.name).toBe("kyx-mcp-bridge");
 
     const ping = await post(port, JSON.stringify({ jsonrpc: "2.0", id: 2, method: "ping" }), { token: "tok" });
@@ -167,6 +172,7 @@ describe("desktop mcp bridge server (real HTTP)", () => {
         text: "preview ready",
         mutated: false,
         audio: { data: "UklGRg==", mimeType: "audio/wav" },
+        data: { bars: 1, durationSec: 2, sampleRate: 22050, byteLength: 44144, mimeType: "audio/wav" },
       }),
     });
     const port = await listenOnEphemeralPort(server);
@@ -182,11 +188,20 @@ describe("desktop mcp bridge server (real HTTP)", () => {
       }),
       { token: "tok" },
     );
-    const body = JSON.parse(response.body) as { result: { content: Array<Record<string, string>> } };
+    const body = JSON.parse(response.body) as {
+      result: { content: Array<Record<string, string>>; structuredContent: Record<string, unknown> };
+    };
     expect(body.result.content).toEqual([
       { type: "text", text: "preview ready" },
       { type: "audio", data: "UklGRg==", mimeType: "audio/wav" },
     ]);
+    expect(body.result.structuredContent).toEqual({
+      bars: 1,
+      durationSec: 2,
+      sampleRate: 22050,
+      byteLength: 44144,
+      mimeType: "audio/wav",
+    });
   });
 
   it("protocol completeness: version negotiation, instructions, resources, batch, unknown-tool -32602", async () => {
@@ -220,7 +235,7 @@ describe("desktop mcp bridge server (real HTTP)", () => {
       { token: "tok" },
     );
     expect((JSON.parse(future.body) as { result: { protocolVersion: string } }).result.protocolVersion).toBe(
-      "2025-03-26",
+      "2026-07-28",
     );
 
     // resources/list advertises the mirror; unknown read → -32602
@@ -394,6 +409,34 @@ describe("mcp host manager", () => {
     expect(manager.status.enabled).toBe(false);
   });
 
+  it("extends the desktop wait only for render and generation calls", async () => {
+    vi.useFakeTimers();
+    try {
+      const { manager } = managerModule.registerMcpIpcHandlers(
+        { handle: () => {} },
+        {
+          callTimeoutMs: 10,
+          longCallTimeoutMs: 60,
+          getWebContents: () => ({ isDestroyed: () => false, send: () => {} }),
+        },
+      );
+      const normal = manager.forwardCall({ name: "kyx_state" });
+      const slow = manager.forwardCall({ name: "kyx_arrange" });
+      const normalRejected = expect(normal).rejects.toThrow("KYX window timed out");
+      const slowRejected = expect(slow).rejects.toThrow("KYX window timed out");
+
+      await vi.advanceTimersByTimeAsync(10);
+      await normalRejected;
+      expect(manager.pendingCalls.size).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(50);
+      await slowRejected;
+      expect(manager.pendingCalls.size).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("renderer answer resolves an in-flight forwarded call (answer → HTTP response)", async () => {
     // Fake window whose webContents captures the forwarded payload.
     const sent: Array<{ id: string; name: string; args: unknown }> = [];
@@ -456,7 +499,7 @@ describe("desktop mcp stdio forwarder (subprocess)", () => {
       `const { createMcpBridgeServer } = require(${JSON.stringify(path.join(DESKTOP_DIR, "mcp-bridge-server.cjs"))});`,
       "const server = createMcpBridgeServer({",
       `  token: ${JSON.stringify(token)},`,
-      '  executeTool: async (name, args) => ({ text: "echo:" + name + ":" + JSON.stringify(args), mutated: false }),',
+      '  executeTool: async (name, args) => name === "kyx_audio_preview" ? { text: "preview", mutated: false, data: { bars: 1, durationSec: 2, sampleRate: 22050, byteLength: 44144, mimeType: "audio/wav" }, audio: { data: "UklGRg==", mimeType: "audio/wav" } } : ({ text: "echo:" + name + ":" + JSON.stringify(args), mutated: false }),',
       "});",
       'server.server.listen(0, "127.0.0.1", () => console.log("PORT:" + server.server.address().port));',
     ].join("\n");
@@ -519,14 +562,24 @@ describe("desktop mcp stdio forwarder (subprocess)", () => {
   it("initialize → tools/list (34 tools) → tools/call round-trips through the bridge", async () => {
     const { child, writeLine, nextLine } = await startChain(true);
     writeLine({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} });
-    const init = JSON.parse(await nextLine()) as { id: number; result: { serverInfo: { name: string } } };
+    const init = JSON.parse(await nextLine()) as {
+      id: number;
+      result: { protocolVersion: string; serverInfo: { name: string } };
+    };
     expect(init.id).toBe(1);
+    expect(init.result.protocolVersion).toBe("2026-07-28");
     expect(init.result.serverInfo.name).toBe("kyx-mcp");
 
     writeLine({ jsonrpc: "2.0", id: 2, method: "tools/list" });
-    const list = JSON.parse(await nextLine()) as { id: number; result: { tools: Array<{ name: string }> } };
+    const list = JSON.parse(await nextLine()) as {
+      id: number;
+      result: { tools: Array<{ name: string; outputSchema?: Record<string, unknown> }> };
+    };
     expect(list.id).toBe(2);
     expect(list.result.tools.map((tool) => tool.name)).toEqual(MCP_TOOLS.map((tool) => tool.name));
+    expect(list.result.tools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toEqual(
+      MCP_TOOLS.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema,
+    );
 
     writeLine({
       jsonrpc: "2.0",
@@ -537,6 +590,44 @@ describe("desktop mcp stdio forwarder (subprocess)", () => {
     const call = JSON.parse(await nextLine()) as { id: number; result: { content: Array<{ text: string }> } };
     expect(call.id).toBe(3);
     expect(call.result.content[0]?.text).toBe('echo:kyx_intent:{"instruction":"mute the drums"}');
+
+    writeLine({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "kyx_audio_preview", arguments: {} } });
+    const preview = JSON.parse(await nextLine()) as {
+      id: number;
+      result: { structuredContent: Record<string, unknown>; content: Array<Record<string, unknown>> };
+    };
+    expect(preview.result.structuredContent).toEqual({
+      bars: 1,
+      durationSec: 2,
+      sampleRate: 22050,
+      byteLength: 44144,
+      mimeType: "audio/wav",
+    });
+    expect(preview.result.content[1]).toEqual({ type: "audio", data: "UklGRg==", mimeType: "audio/wav" });
+    child.stdin?.end();
+  }, 30_000);
+
+  it("2025-03-26 clients keep the legacy surface without outputSchema or structuredContent", async () => {
+    const { child, writeLine, nextLine } = await startChain(true);
+    writeLine({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: { protocolVersion: "2025-03-26" },
+    });
+    const init = JSON.parse(await nextLine()) as { result: { protocolVersion: string } };
+    expect(init.result.protocolVersion).toBe("2025-03-26");
+
+    writeLine({ jsonrpc: "2.0", id: 2, method: "tools/list" });
+    const list = JSON.parse(await nextLine()) as { result: { tools: Array<{ name: string; outputSchema?: unknown }> } };
+    expect(list.result.tools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toBeUndefined();
+
+    writeLine({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "kyx_audio_preview", arguments: {} } });
+    const preview = JSON.parse(await nextLine()) as {
+      result: { structuredContent?: unknown; content: Array<Record<string, unknown>> };
+    };
+    expect(preview.result.structuredContent).toBeUndefined();
+    expect(preview.result.content[1]).toEqual({ type: "audio", data: "UklGRg==", mimeType: "audio/wav" });
     child.stdin?.end();
   }, 30_000);
 

@@ -140,24 +140,12 @@ export interface McpToolDef {
   };
   /**
    * MCP 2025-06-18+ `outputSchema`: declares the shape of `structuredContent`.
-   * When set, the wire layer MUST attach a matching `structuredContent` object
-   * to every successful result (see `toolResultPayload` in
-   * server/mcp-core.mjs + desktop/mcp-bridge-server.cjs).
+   * When set, every successful execution MUST return matching `data`; both
+   * wire transports expose it as `structuredContent` and flag contract misses.
    */
   outputSchema?: McpOutputSchema;
 }
 
-/** kyx_state - structured twin exists for the `mixer` subject. */
-const OUTPUT_STATE_MIXER: McpOutputSchema = {
-  type: "object",
-  additionalProperties: true,
-  properties: {
-    master: { type: ["object", "null"] },
-    returns: { type: "array", items: { type: "object" } },
-    tracks: { type: "array", items: { type: "object" } },
-  },
-  required: ["master", "returns", "tracks"],
-};
 /** kyx_meter - the live meter snapshot. */
 const OUTPUT_METER: McpOutputSchema = {
   type: "object",
@@ -232,17 +220,6 @@ const OUTPUT_BATCH: McpOutputSchema = {
   },
   required: ["results", "mutations", "failures", "singleUndo"],
 };
-/** kyx_blind_ab - plan gains or verdict stats. */
-const OUTPUT_BLIND_AB: McpOutputSchema = {
-  type: "object",
-  additionalProperties: true,
-  properties: {
-    gains: { type: "object" },
-    total: { type: "number" },
-    correct: { type: "number" },
-    pValue: { type: "number" },
-  },
-};
 /** kyx_publish_gallery - the created gallery id + provenance. */
 const OUTPUT_PUBLISH: McpOutputSchema = {
   type: "object",
@@ -254,72 +231,6 @@ const OUTPUT_PUBLISH: McpOutputSchema = {
   },
   required: ["galleryId", "origin", "agent"],
 };
-/** kyx_tracks loadPreset / listPresets twin. */
-const OUTPUT_TRACKS_PRESET: McpOutputSchema = {
-  type: "object",
-  additionalProperties: true,
-  properties: {
-    presetId: { type: "string" },
-    matchedBy: { type: "string" },
-    trackId: { type: ["string", "null"] },
-    family: { type: "string" },
-    fitting: { type: "number" },
-    total: { type: "number" },
-  },
-};
-/** kyx_notes list twin. */
-const OUTPUT_NOTES: McpOutputSchema = {
-  type: "object",
-  additionalProperties: true,
-  properties: {
-    trackId: { type: "string" },
-    count: { type: "number" },
-  },
-  required: ["trackId", "count"],
-};
-/** kyx_clips list/audioList twins (arrangement or track-lane clips). */
-const OUTPUT_CLIPS: McpOutputSchema = {
-  type: "object",
-  additionalProperties: true,
-  properties: {
-    arrangementClips: { type: "array", items: { type: "object" } },
-    audioClipCount: { type: "number" },
-    clips: { type: "array", items: { type: "object" } },
-  },
-};
-/** kyx_routing list twin. */
-const OUTPUT_ROUTING: McpOutputSchema = {
-  type: "object",
-  additionalProperties: true,
-  properties: {
-    routes: { type: "array", items: { type: "object" } },
-    groups: { type: "array", items: { type: "object" } },
-  },
-  required: ["routes", "groups"],
-};
-/** kyx_takes list twin. */
-const OUTPUT_TAKES: McpOutputSchema = {
-  type: "object",
-  additionalProperties: true,
-  properties: {
-    groups: { type: "array", items: { type: "object" } },
-  },
-  required: ["groups"],
-};
-/** kyx_sections launch twin. */
-const OUTPUT_SECTIONS_LAUNCH: McpOutputSchema = {
-  type: "object",
-  additionalProperties: true,
-  properties: {
-    sceneId: { type: "string" },
-    name: { type: "string" },
-    role: { type: ["string", "null"] },
-    startBar: { type: "number" },
-    playing: { type: "boolean" },
-  },
-  required: ["sceneId", "name", "startBar", "playing"],
-};
-
 export const MCP_TOOLS: McpToolDef[] = [
   {
     name: "kyx_intent",
@@ -374,7 +285,6 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["subject"],
     },
-    outputSchema: OUTPUT_STATE_MIXER,
   },
   {
     name: "kyx_undo",
@@ -451,8 +361,8 @@ export const MCP_TOOLS: McpToolDef[] = [
       "(stems: all | drums | bass | music — stem projects bypass the master chain, same as " +
       "the ExportPanel stem flow). sampleRate selects the render rate. The render runs in " +
       "the KYX window and the tool AWAITS it — the result carries the completion report " +
-      "(duration, size). Long renders may exceed the transport timeout (15 s relay / 10 s " +
-      "desktop); the download still lands in the app.",
+      "(duration, size). Render/generation calls get an extended 60 s MCP window; exceptionally " +
+      "long jobs may still time out, while the download lands in the app.",
     inputSchema: {
       type: "object",
       properties: {
@@ -652,7 +562,6 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["op", "role"],
     },
-    outputSchema: OUTPUT_SECTIONS_LAUNCH,
   },
   {
     name: "kyx_markers",
@@ -724,7 +633,6 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["op"],
     },
-    outputSchema: OUTPUT_TRACKS_PRESET,
   },
   {
     name: "kyx_pattern",
@@ -808,7 +716,6 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["op"],
     },
-    outputSchema: OUTPUT_NOTES,
   },
   {
     name: "kyx_music",
@@ -1136,6 +1043,7 @@ export const MCP_TOOLS: McpToolDef[] = [
         },
       },
     },
+    outputSchema: OUTPUT_RENDER_SUMMARY,
   },
   {
     name: "kyx_diagnose_mix",
@@ -1160,6 +1068,7 @@ export const MCP_TOOLS: McpToolDef[] = [
         },
       },
     },
+    outputSchema: OUTPUT_DIAGNOSE_MIX,
   },
   {
     name: "kyx_checkpoint",
@@ -1266,7 +1175,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       "+ markers, and apply the measured mix profile - all folded into ONE " +
       "undo step. Optional loudness target adds a render-backed trim as a " +
       "second undo step (needs the render context). Slow: full generation, " +
-      "may approach the transport timeout.",
+      "uses the extended 60 s MCP call window.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1389,7 +1298,6 @@ export const MCP_TOOLS: McpToolDef[] = [
       },
       required: ["op"],
     },
-    outputSchema: OUTPUT_BLIND_AB,
   },
 ];
 
@@ -2425,11 +2333,16 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
         return {
           text: "metering is not available over this MCP transport (no live engine bound) — start KYX with an audio context",
           mutated: false,
+          isError: true,
         };
       }
       const snapshotMeters = ctx.meters();
       if (snapshotMeters == null) {
-        return { text: "engine is not running (no audio context) — nothing to meter yet", mutated: false };
+        return {
+          text: "engine is not running (no audio context) — nothing to meter yet",
+          mutated: false,
+          isError: true,
+        };
       }
       const scope = String(record.scope ?? "all");
       const db = (value: number): string => (Number.isFinite(value) ? `${value.toFixed(1)} dBFS` : "-inf");
@@ -2762,6 +2675,7 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
           return {
             text: "loudness measurement is not available over this MCP transport (no render context bound)",
             mutated: false,
+            isError: true,
           };
         }
         try {
@@ -2790,6 +2704,7 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
         return {
           text: "the loudness loop is not available over this MCP transport (no render context bound)",
           mutated: false,
+          isError: true,
         };
       }
       const direction = record.direction === "quieter" ? ("quieter" as const) : ("louder" as const);
@@ -2877,6 +2792,7 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
         return {
           text: "gallery publishing is not available over this MCP transport — publish from a live KYX session (web or desktop)",
           mutated: false,
+          isError: true,
         };
       }
       const title = typeof record.title === "string" ? record.title.trim() : "";
@@ -3003,6 +2919,7 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
         return {
           text: "render summary is not available over this MCP transport (no render context bound) — use kyx_meter for live levels",
           mutated: false,
+          isError: true,
         };
       }
       const scope = record.scope === "master" || record.scope === "tracks" ? record.scope : "all";
@@ -3026,6 +2943,7 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
         return {
           text: "mix diagnosis is not available over this MCP transport (no render context bound) — use kyx_render_summary for numbers only",
           mutated: false,
+          isError: true,
         };
       }
       const scope = record.scope === "master" || record.scope === "tracks" ? record.scope : "all";
@@ -3633,9 +3551,9 @@ function exportFormatOf(record: Record<string, unknown>): "wav" | "mp3" {
  * {@link executeMcpTool} except `kyx_export`, which AWAITS the render +
  * encode + download hook and returns the completion report (duration/size)
  * instead of the fire-and-forget "started" echo. Render failures surface as
- * honest isError results. Long renders may exceed the transport timeout
- * (15 s web relay / 10 s desktop IPC) — the download still lands in the
- * window, but the caller sees a timeout, not the report.
+ * honest isError results. Render/generation calls receive an extended 60 s
+ * transport window; exceptionally long jobs may still time out even though
+ * the download lands in the window.
  */
 
 /** Strict family -> track ids for MCP ops: name/kind match only, groups and
@@ -4451,10 +4369,10 @@ function executeTakesTool(ctx: McpToolContext, record: Record<string, unknown>):
 async function executeBatchTool(ctx: McpToolContext, record: Record<string, unknown>): Promise<McpToolResult> {
   const calls = Array.isArray(record.calls) ? record.calls : null;
   if (calls == null || calls.length === 0) {
-    return { text: "batch needs calls: [{tool, args}…] (1..10)", mutated: false };
+    return { text: "batch needs calls: [{tool, args}…] (1..10)", mutated: false, isError: true };
   }
   if (calls.length > 10) {
-    return { text: `batch is capped at 10 calls (got ${calls.length}) — split it`, mutated: false };
+    return { text: `batch is capped at 10 calls (got ${calls.length}) — split it`, mutated: false, isError: true };
   }
   const framed = ctx.beginUndoFrame != null && ctx.endUndoFrame != null;
   const results: Array<{ tool: string; mutated: boolean; text: string }> = [];

@@ -1,112 +1,40 @@
 {
   "lanes": [
     {
-      "lane": "snare-room-vs-main",
-      "label": "NEW snare.room — the only bank snare with a room tail (A = dry snare.main)",
-      "fileA": "pairs/snare-main.wav",
-      "fileB": "pairs/snare-room.wav"
+      "lane": "phase5-knock-vs-lofi",
+      "label": "kick.knock vs kick.lofi (on the backbeat)",
+      "fileA": "pairs/phase5-knock-vs-lofi.wav",
+      "fileB": "pairs/phase5-knock-vs-lofi-b.wav"
     },
     {
-      "lane": "hat-wash-vs-open",
-      "label": "NEW hat.wash — long offbeat wash, ping keeps it a HAT (A = hat.open)",
-      "fileA": "pairs/hat-open.wav",
-      "fileB": "pairs/hat-wash.wav"
+      "lane": "phase5-soft-vs-closed",
+      "label": "hat.closed.soft vs hat.closed (on the offbeat)",
+      "fileA": "pairs/phase5-soft-vs-closed.wav",
+      "fileB": "pairs/phase5-soft-vs-closed-b.wav"
     },
     {
-      "lane": "hat-open-cup-vs-open",
-      "label": "RE-VOICED hat.cup — dark, half-open (A = hat.open; old cup was a near-twin)",
-      "fileA": "pairs/hat-open2.wav",
-      "fileB": "pairs/hat-cup.wav"
+      "lane": "phase5-closed-vs-open",
+      "label": "hat.closed vs hat.open.short (on the offbeat)",
+      "fileA": "pairs/phase5-closed-vs-open.wav",
+      "fileB": "pairs/phase5-closed-vs-open-b.wav"
     },
     {
-      "lane": "crash-pop-vs-main",
-      "label": "RE-VOICED crash.pop — bright splash, defined ping (A = wash-style old twin crash.main)",
-      "fileA": "pairs/crash-main.wav",
-      "fileB": "pairs/crash-pop.wav"
+      "lane": "phase5-pop-vs-punch",
+      "label": "kick.pop vs kick.punch (on the backbeat)",
+      "fileA": "pairs/phase5-pop-vs-punch.wav",
+      "fileB": "pairs/phase5-pop-vs-punch-b.wav"
     },
     {
-      "lane": "clap-pop-vs-main",
-      "label": "RE-VOICED clap.pop — gated bright clap, an octave of air (A = clap.main)",
-      "fileA": "pairs/clap-main.wav",
-      "fileB": "pairs/clap-pop.wav"
+      "lane": "phase5-closed-vs-dnb-h",
+      "label": "hat.closed vs hat.dnb (on the offbeat)",
+      "fileA": "pairs/phase5-closed-vs-dnb-h.wav",
+      "fileB": "pairs/phase5-closed-vs-dnb-h-b.wav"
     },
     {
-      "lane": "fx-subdrop-vs-downlifter",
-      "label": "NEW fx.subdrop — C3→C1 sub drop for transitions (A = fx.downlifter)",
-      "fileA": "pairs/fx-downlifter.wav",
-      "fileB": "pairs/fx-subdrop.wav"
-    },
-    {
-      "lane": "impact2-vs-impact",
-      "label": "NEW impact2 — cinematic metal-ring hit (A = sub-thump impact). Which lands harder?",
-      "fileA": "pairs/fx-impact.wav",
-      "fileB": "pairs/fx-impact2.wav"
-    },
-    {
-      "lane": "riser-short-vs-riser",
-      "label": "NEW riser-short — 0.7 s cliff sweep (A = 1.9 s long build). For quick catches.",
-      "fileA": "pairs/fx-riser.wav",
-      "fileB": "pairs/fx-riser-short.wav"
-    },
-    {
-      "lane": "noisedown-vs-downlifter",
-      "label": "NEW noise-down — 0.8 s falling air (A = long tonal downlifter). The exhale.",
-      "fileA": "pairs/fx-downlifter.wav",
-      "fileB": "pairs/fx-noise-down.wav"
-    },
-    {
-      "lane": "fx-vinyl-bed",
-      "label": "NEW fx.vinyl — dust texture as a bed (A = clean beat, B = same + vinyl @0.5)",
-      "fileA": "pairs/beat-clean.wav",
-      "fileB": "pairs/beat-vinyl.wav"
-    },
-    {
-      "lane": "woodblock-vs-clave",
-      "label": "PERC PACK — woodblock (resonant wooden cavity) vs clave (dry sharp son click). The two wooden voices, opposite ends.",
-      "fileA": "pairs/perc-woodblock.wav",
-      "fileB": "pairs/perc-clave.wav"
-    },
-    {
-      "lane": "snapstack-vs-clap",
-      "label": "PERC PACK — snap stack (finger snaps, thin + high) vs palm clap (broad + body). Different instruments, same backbeat slot.",
-      "fileA": "pairs/clap-main.wav",
-      "fileB": "pairs/perc-snapstack.wav"
-    },
-    {
-      "lane": "shaker-long-vs-soft",
-      "label": "PERC PACK — shaker.long: soft 12 ms swish attack + 0.4 s tail (A = shaker.soft tick). For slow 16ths.",
-      "fileA": "pairs/shaker-soft.wav",
-      "fileB": "pairs/shaker-long.wav"
-    },
-    {
-      "lane": "legacy-kick-808pure",
-      "label": "MASTERING kick.808pure — OLD shipped at −2.4 LUFS (limiter-pinned) vs NEW on the −8 target. Which is cleaner?",
-      "fileA": "pairs/legacy-kick-808pure.wav",
-      "fileB": "pairs/legacy-kick-808pure-new.wav"
-    },
-    {
-      "lane": "legacy-kick-trap",
-      "label": "MASTERING + TUNING kick.trap — OLD pre-campaign (off-semitone rest, hot) vs NEW (G1 rest, on-target). Same groove both sides.",
-      "fileA": "pairs/legacy-kick-trap.wav",
-      "fileB": "pairs/legacy-kick-trap-new.wav"
-    },
-    {
-      "lane": "kick-trio-dedup",
-      "label": "DE-DUP kick trio — punch (full G#1) vs pop (tight A1) vs jersey (high-bounce B1): three roles, not three clones. C = pop",
-      "fileA": "pairs/kick-punch.wav",
-      "fileB": "pairs/kick-jersey.wav"
-    },
-    {
-      "lane": "kick-trio-jersey",
-      "label": "DE-DUP kick trio pt.2 — pop (A1 tight) vs jersey (B1 high-bounce)",
-      "fileA": "pairs/kick-pop.wav",
-      "fileB": "pairs/kick-jersey.wav"
-    },
-    {
-      "lane": "legacy-kick-808drive",
-      "label": "MASTERING kick.808drive — OLD hot ride vs NEW clean D1 rest. The flagship before/after of the mastering convergence.",
-      "fileA": "pairs/legacy-kick-808drive.wav",
-      "fileB": "pairs/legacy-kick-808drive-new.wav"
+      "lane": "phase5-lofi-vs-punch-k",
+      "label": "kick.lofi vs kick.punch (on the backbeat)",
+      "fileA": "pairs/phase5-lofi-vs-punch-k.wav",
+      "fileB": "pairs/phase5-lofi-vs-punch-k-b.wav"
     }
   ]
 }

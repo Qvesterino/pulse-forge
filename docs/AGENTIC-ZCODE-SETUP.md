@@ -115,7 +115,7 @@ dorazí Fáza B).
 | 401 / unauthorized                         | Token v agentovi ≠ token bežiaceho bridge — **skopíruj čerstvý config z chipu** (mení sa pri enable)  |
 | Connection refused na 8787                 | Bridge nepočúva (⚡ off) alebo port zaneprázdnený a bridge si zobral iný — čerstvý config rieši oboje |
 | Agent "zmazal" a nemôže vrátiť             | D4: mazanie je zamknuté — povoľ 🔒 MAZANIE v chipi (alebo nechaj zamknuté, undo funguje vždy)         |
-| Dlhý export timeoutol                      | Známy limit transportu (10 s) — download aj tak pristane v KYX okne; Fáza B prinesie job pattern      |
+| Dlhý export timeoutol                      | Render/generovanie majú 60 s; pri extrémne dlhom rendri download aj tak pristane v KYX okne           |
 
 ## 7. Bezpečnostný model (prečo je to OK nechať zapnuté)
 

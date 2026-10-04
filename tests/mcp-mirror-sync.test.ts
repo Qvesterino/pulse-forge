@@ -31,6 +31,7 @@ const toMirror = (tool: (typeof MCP_TOOLS)[number]) => ({
   name: tool.name,
   description: tool.description,
   inputSchema: tool.inputSchema,
+  ...(tool.outputSchema != null ? { outputSchema: tool.outputSchema } : {}),
 });
 const toResource = (resource: (typeof MCP_RESOURCES)[number]) => ({
   uri: resource.uri,

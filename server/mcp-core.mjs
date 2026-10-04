@@ -17,9 +17,32 @@
  * never a bypass.
  */
 
-const SUPPORTED_PROTOCOL_VERSIONS = ["2025-03-26"];
-const PROTOCOL_VERSION = "2025-03-26";
-const SERVER_INFO = { name: "kyx-mcp", version: "1.0.0" };
+/**
+ * Protocol eras this server speaks (MCP 2026-07-28 "Versioning"):
+ *
+ *  - MODERN (2026-07-28+): no handshake. Every request carries its version,
+ *    identity and capabilities in `_meta` (`io.modelcontextprotocol/...`),
+ *    and `server/discover` advertises what we support. Version mismatches
+ *    answer `UnsupportedProtocolVersionError` (-32022).
+ *  - LEGACY (2025-11-25 and earlier): the `initialize`/`initialized`
+ *    handshake establishes a session and the negotiated version governs it.
+ *
+ * A dual-era server picks its behavior from how the client opens: a request
+ * carrying modern `_meta` is served statelessly; an `initialize` selects
+ * legacy semantics for that session. Both eras run on the same endpoint.
+ */
+export const PROTOCOL_VERSION = "2026-07-28";
+export const LEGACY_PROTOCOL_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05", "2024-10-07"];
+export const SUPPORTED_PROTOCOL_VERSIONS = [PROTOCOL_VERSION, ...LEGACY_PROTOCOL_VERSIONS];
+const UNSUPPORTED_PROTOCOL_CODE = -32022;
+const STRUCTURED_OUTPUT_PROTOCOL_VERSIONS = new Set([PROTOCOL_VERSION, "2025-11-25", "2025-06-18"]);
+const JSON_RPC_BATCH_PROTOCOL_VERSIONS = new Set(["2025-03-26", "2024-11-05", "2024-10-07"]);
+const negotiatedProtocolVersionByHub = new WeakMap();
+/** _meta keys defined by the modern protocol (2026-07-28 basic/index#meta). */
+const META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion";
+const META_CLIENT_INFO = "io.modelcontextprotocol/clientInfo";
+const META_SERVER_INFO = "io.modelcontextprotocol/serverInfo";
+export const SERVER_INFO = { name: "kyx-mcp", version: "1.0.0" };
 const SERVER_INSTRUCTIONS =
   "KYX is a browser DAW whose MCP surface executes through the deterministic " +
   "command layer: every mutation is ONE undo step and returns a verification " +
@@ -36,7 +59,66 @@ export function negotiateProtocolVersion(requested) {
     ? requested
     : PROTOCOL_VERSION;
 }
+
+function supportsStructuredOutput(protocolVersion) {
+  return STRUCTURED_OUTPUT_PROTOCOL_VERSIONS.has(protocolVersion);
+}
+
+/** The modern per-request protocol version from `_meta`, or null. */
+export function requestProtocolVersion(params) {
+  const meta = params?._meta;
+  if (meta == null || typeof meta !== "object") return null;
+  const version = meta[META_PROTOCOL_VERSION];
+  return typeof version === "string" && version.length > 0 ? version : null;
+}
+
+/** True when the request declares a modern (2026-07-28+) protocol version. */
+export function isModernRequest(params) {
+  return requestProtocolVersion(params) != null;
+}
+
+/** `server/discover` result (2026-07-28): supported versions + identity. */
+export function discoverResult() {
+  return {
+    resultType: "complete",
+    supportedVersions: SUPPORTED_PROTOCOL_VERSIONS,
+    capabilities: { tools: {}, resources: {} },
+    _meta: { [META_SERVER_INFO]: SERVER_INFO },
+    instructions: SERVER_INSTRUCTIONS,
+  };
+}
+
+/** Attach the server identity to a modern result's `_meta` (SHOULD). */
+function withServerMeta(result, modern) {
+  if (!modern || result == null || typeof result !== "object") return result;
+  const meta = result._meta != null && typeof result._meta === "object" ? result._meta : {};
+  return { ...result, _meta: { ...meta, [META_SERVER_INFO]: SERVER_INFO } };
+}
+
+function unsupportedProtocolError(id, requested) {
+  return {
+    jsonrpc: "2.0",
+    id: id ?? null,
+    error: {
+      code: UNSUPPORTED_PROTOCOL_CODE,
+      message: "Unsupported protocol version",
+      data: { supported: SUPPORTED_PROTOCOL_VERSIONS, requested },
+    },
+  };
+}
 const CALL_TIMEOUT_MS = 15_000;
+const LONG_CALL_TIMEOUT_MS = 60_000;
+const LONG_RUNNING_MCP_TOOLS = new Set([
+  "kyx_export",
+  "kyx_audio_preview",
+  "kyx_loudness",
+  "kyx_import_sfz",
+  "kyx_batch",
+  "kyx_render_summary",
+  "kyx_diagnose_mix",
+  "kyx_arrange",
+  "kyx_song",
+]);
 
 export function isValidToken(token, expected) {
   const t = String(token ?? "").trim();
@@ -228,7 +310,7 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_export",
     description:
-      "Bounce the current project: full mix (WAV 16/24/32-bit, MP3 320) or a STEMS zip (stems: all | drums | bass | music — stem projects bypass the master chain, same as the ExportPanel stem flow). sampleRate selects the render rate. The render runs in the KYX window and the tool AWAITS it — the result carries the completion report (duration, size). Long renders may exceed the transport timeout (15 s relay / 10 s desktop); the download still lands in the app.",
+      "Bounce the current project: full mix (WAV 16/24/32-bit, MP3 320) or a STEMS zip (stems: all | drums | bass | music — stem projects bypass the master chain, same as the ExportPanel stem flow). sampleRate selects the render rate. The render runs in the KYX window and the tool AWAITS it — the result carries the completion report (duration, size). Render/generation calls get an extended 60 s MCP window; exceptionally long jobs may still time out, while the download lands in the app.",
     inputSchema: {
       type: "object",
       properties: {
@@ -269,6 +351,28 @@ export const MCP_TOOL_DEFS = [
           description: "Opening bars to render (default 2, maximum 4)",
         },
       },
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        bars: {
+          type: "number",
+        },
+        durationSec: {
+          type: "number",
+        },
+        sampleRate: {
+          type: "number",
+        },
+        byteLength: {
+          type: "number",
+        },
+        mimeType: {
+          type: "string",
+        },
+      },
+      required: ["bars", "durationSec", "sampleRate", "byteLength", "mimeType"],
     },
   },
   {
@@ -812,6 +916,22 @@ export const MCP_TOOL_DEFS = [
       },
       required: [],
     },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        master: {
+          type: "object",
+        },
+        tracks: {
+          type: "array",
+          items: {
+            type: "object",
+          },
+        },
+      },
+      required: ["master", "tracks"],
+    },
   },
   {
     name: "kyx_automation",
@@ -980,6 +1100,28 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["calls"],
     },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        results: {
+          type: "array",
+          items: {
+            type: "object",
+          },
+        },
+        mutations: {
+          type: "number",
+        },
+        failures: {
+          type: "number",
+        },
+        singleUndo: {
+          type: "boolean",
+        },
+      },
+      required: ["results", "mutations", "failures", "singleUndo"],
+    },
   },
   {
     name: "kyx_loudness",
@@ -1005,6 +1147,27 @@ export const MCP_TOOL_DEFS = [
         },
       },
       required: ["op"],
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        integratedLufs: {
+          type: "number",
+        },
+        measuredBefore: {
+          type: "number",
+        },
+        measuredAfter: {
+          type: ["number", "null"],
+        },
+        trimDb: {
+          type: "number",
+        },
+        targetLufs: {
+          type: "number",
+        },
+      },
     },
   },
   {
@@ -1077,6 +1240,22 @@ export const MCP_TOOL_DEFS = [
       },
       required: ["title"],
     },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        galleryId: {
+          type: "string",
+        },
+        origin: {
+          type: "string",
+        },
+        agent: {
+          type: "string",
+        },
+      },
+      required: ["galleryId", "origin", "agent"],
+    },
   },
   {
     name: "kyx_render_summary",
@@ -1091,6 +1270,29 @@ export const MCP_TOOL_DEFS = [
           description: "all = strips + master (default); tracks/master limit the pass",
         },
       },
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        scope: {
+          type: "string",
+          enum: ["master", "tracks", "all"],
+        },
+        strips: {
+          type: "array",
+          items: {
+            type: "object",
+          },
+        },
+        master: {
+          type: ["object", "null"],
+        },
+        referenceLufs: {
+          type: "number",
+        },
+      },
+      required: ["scope", "strips", "referenceLufs"],
     },
   },
   {
@@ -1107,6 +1309,46 @@ export const MCP_TOOL_DEFS = [
             "all = master + per-strip attribution (default); master = master findings only (1 render); tracks = strips only, master render skipped (N renders — the fast verify loop after a strip-level fix)",
         },
       },
+    },
+    outputSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        scope: {
+          type: "string",
+        },
+        referenceLufs: {
+          type: "number",
+        },
+        master: {
+          type: ["object", "null"],
+        },
+        strips: {
+          type: "array",
+          items: {
+            type: "object",
+          },
+        },
+        findings: {
+          type: "array",
+          items: {
+            type: "object",
+          },
+        },
+        attributions: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+        suggestedActions: {
+          type: "array",
+          items: {
+            type: "string",
+          },
+        },
+      },
+      required: ["scope", "strips", "findings", "suggestedActions"],
     },
   },
   {
@@ -1228,7 +1470,7 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_song",
     description:
-      "PRODUCER MOVE, MEGA - build the WHOLE track in one call: generate the genre song form (patterns per section), lay out scenes + clips + markers, and apply the measured mix profile - all folded into ONE undo step. Optional loudness target adds a render-backed trim as a second undo step (needs the render context). Slow: full generation, may approach the transport timeout.",
+      "PRODUCER MOVE, MEGA - build the WHOLE track in one call: generate the genre song form (patterns per section), lay out scenes + clips + markers, and apply the measured mix profile - all folded into ONE undo step. Optional loudness target adds a render-backed trim as a second undo step (needs the render context). Slow: full generation, uses the extended 60 s MCP call window.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1455,7 +1697,12 @@ export const MCP_RESOURCE_DEFS = [
   },
 ];
 
-export function createMcpHub({ token, sendToSession, callTimeoutMs = CALL_TIMEOUT_MS }) {
+export function createMcpHub({
+  token,
+  sendToSession,
+  callTimeoutMs = CALL_TIMEOUT_MS,
+  longCallTimeoutMs = LONG_CALL_TIMEOUT_MS,
+}) {
   let sessionConnected = false;
   let nextCallId = 1;
   const pendingCalls = new Map();
@@ -1482,11 +1729,12 @@ export function createMcpHub({ token, sendToSession, callTimeoutMs = CALL_TIMEOU
       const id = nextCallId++;
       // Relay frame — the browser bridge expects { type: "mcp-call", id, tool, args }, NOT the raw JSON-RPC envelope (a live E2E caught these halves speaking different dialects).
       const payload = { type: "mcp-call", id, tool: name, args: args ?? {} };
+      const timeoutMs = LONG_RUNNING_MCP_TOOLS.has(name) ? longCallTimeoutMs : callTimeoutMs;
       const promise = new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
           pendingCalls.delete(id);
           reject(new Error("KYX session timed out"));
-        }, callTimeoutMs);
+        }, timeoutMs);
         pendingCalls.set(id, { resolve, reject, timer });
       });
       sendToSession(payload);
@@ -1521,52 +1769,106 @@ export function createMcpHub({ token, sendToSession, callTimeoutMs = CALL_TIMEOU
  * Handle one JSON-RPC request against the hub. Returns the JSON-RPC
  * response object. `forwardTool` is async (relays to the KYX session).
  */
-export async function handleMcpRequest(hub, expectedToken, authHeader, body) {
+export async function handleMcpRequest(hub, expectedToken, authHeader, body, protocolVersionHeader) {
   if (!isValidToken(authHeader, expectedToken)) {
     return rpcError(null, -32001, "unauthorized (missing or wrong MCP token)");
   }
   if (!hub.hasSession()) {
     return rpcError(null, -32002, "KYX session not connected — open KYX and enable MCP");
   }
-  // JSON-RPC batch (2025-03-26): an array body fans out request-by-request;
-  // notifications produce no entry, so the response can be empty.
+  // JSON-RPC batch (legacy revisions only — 2025-06-18 removed batching and
+  // modern (2026-07-28) is one-message-per-request): an array body fans out
+  // request-by-request; notifications produce no entry, so the response can
+  // be empty.
   let parsedBody;
   try {
     parsedBody = typeof body === "string" ? JSON.parse(body) : body;
   } catch {
     return rpcError(null, RPC_ERRORS.parse, "Parse error");
   }
+  if (!Array.isArray(parsedBody) && parsedBody?.method === "initialize") {
+    negotiatedProtocolVersionByHub.set(hub, negotiateProtocolVersion(parsedBody.params?.protocolVersion));
+  }
+  const headerVersion =
+    typeof protocolVersionHeader === "string" && protocolVersionHeader.length > 0 ? protocolVersionHeader : null;
+  if (headerVersion != null && !SUPPORTED_PROTOCOL_VERSIONS.includes(headerVersion)) {
+    return unsupportedProtocolError(Array.isArray(parsedBody) ? null : parsedBody?.id, headerVersion);
+  }
+  // Missing both the header and a handshake, MCP says assume 2025-03-26 (the
+  // last revision that required nothing extra) — never claim the modern era
+  // for an unidentified client.
+  const negotiatedProtocolVersion = headerVersion ?? negotiatedProtocolVersionByHub.get(hub) ?? "2025-03-26";
   if (Array.isArray(parsedBody)) {
+    if (!JSON_RPC_BATCH_PROTOCOL_VERSIONS.has(negotiatedProtocolVersion)) {
+      return rpcError(null, RPC_ERRORS.invalidRequest, "JSON-RPC batching is not supported by this protocol version");
+    }
     const responses = [];
     for (const item of parsedBody) {
-      const response = await handleSingleRequest(hub, item);
+      const response = await handleSingleRequest(hub, item, negotiatedProtocolVersion);
       if (response !== undefined) responses.push(response);
     }
     return responses;
   }
-  return handleSingleRequest(hub, parsedBody);
+  return handleSingleRequest(hub, parsedBody, negotiatedProtocolVersion);
 }
 
-async function handleSingleRequest(hub, rpc) {
+async function handleSingleRequest(hub, rpc, negotiatedProtocolVersion) {
   const parsed = parseRpc(rpc);
   if (!parsed.ok) return parsed.error;
 
+  // Modern (2026-07-28+) requests declare their version in `_meta`; an
+  // unsupported version answers UnsupportedProtocolVersionError and the client
+  // retries with a mutually supported one. On Streamable HTTP the same version
+  // may instead arrive in the `MCP-Protocol-Version` header (2025-06-18+
+  // requirement) — either channel selects the modern stateless shape.
+  const modernVersion = requestProtocolVersion(parsed.params);
+  const headerEra = negotiatedProtocolVersion === PROTOCOL_VERSION;
+  const modern = modernVersion != null || headerEra;
+  if (modernVersion != null && !SUPPORTED_PROTOCOL_VERSIONS.includes(modernVersion)) {
+    return unsupportedProtocolError(parsed.id, modernVersion);
+  }
+  const requestVersion = modernVersion ?? negotiatedProtocolVersion;
+
+  // `server/discover` (modern only, MUST implement): advertise versions,
+  // capabilities and identity up front.
+  if (parsed.method === "server/discover") {
+    if (!modern) {
+      return rpcError(parsed.id, RPC_ERRORS.methodNotFound, `method not found: ${parsed.method}`);
+    }
+    return rpcResult(parsed.id, discoverResult());
+  }
+
   if (parsed.method === "initialize") {
-    return rpcResult(parsed.id, {
-      protocolVersion: negotiateProtocolVersion(parsed.params?.protocolVersion),
-      capabilities: { tools: {}, resources: {} },
-      serverInfo: SERVER_INFO,
-      instructions: SERVER_INSTRUCTIONS,
-    });
+    // A modern-only server would reject this; a dual-era server answers the
+    // handshake for legacy clients (and names its supported versions so a
+    // modern client that sent initialize by mistake can recover).
+    return rpcResult(
+      parsed.id,
+      withServerMeta(
+        {
+          protocolVersion: negotiateProtocolVersion(parsed.params?.protocolVersion),
+          capabilities: { tools: {}, resources: {} },
+          serverInfo: SERVER_INFO,
+          instructions: SERVER_INSTRUCTIONS,
+        },
+        modern,
+      ),
+    );
   }
   if (parsed.method === "notifications/initialized") {
     return undefined; // notification — no response
   }
   if (parsed.method === "tools/list") {
-    return rpcResult(parsed.id, { tools: MCP_TOOL_DEFS });
+    const tools = supportsStructuredOutput(requestVersion)
+      ? MCP_TOOL_DEFS
+      : MCP_TOOL_DEFS.map(({ outputSchema, ...tool }) => tool);
+    return rpcResult(parsed.id, withServerMeta({ ...(modern ? { resultType: "complete" } : {}), tools }, modern));
   }
   if (parsed.method === "resources/list") {
-    return rpcResult(parsed.id, { resources: MCP_RESOURCE_DEFS });
+    return rpcResult(
+      parsed.id,
+      withServerMeta({ ...(modern ? { resultType: "complete" } : {}), resources: MCP_RESOURCE_DEFS }, modern),
+    );
   }
   if (parsed.method === "resources/read") {
     const uri = String(parsed.params?.uri ?? "");
@@ -1575,9 +1877,16 @@ async function handleSingleRequest(hub, rpc) {
     }
     try {
       const result = await hub.callTool("__kyx_resource", { uri });
-      return rpcResult(parsed.id, {
-        contents: [{ uri, mimeType: "text/plain", text: result.text ?? "" }],
-      });
+      return rpcResult(
+        parsed.id,
+        withServerMeta(
+          {
+            ...(modern ? { resultType: "complete" } : {}),
+            contents: [{ uri, mimeType: "text/plain", text: result.text ?? "" }],
+          },
+          modern,
+        ),
+      );
     } catch (error) {
       return rpcError(parsed.id, RPC_ERRORS.internal, error instanceof Error ? error.message : String(error));
     }
@@ -1593,20 +1902,44 @@ async function handleSingleRequest(hub, rpc) {
       if (result.audio && typeof result.audio.data === "string" && typeof result.audio.mimeType === "string") {
         content.push({ type: "audio", data: result.audio.data, mimeType: result.audio.mimeType });
       }
-      return rpcResult(parsed.id, {
+      const hasStructuredContent =
+        result.data != null && typeof result.data === "object" && !Array.isArray(result.data);
+      const payload = {
         content,
         isError:
           result.isError === true || (result.mutated === false && String(result.text ?? "").startsWith("unknown")),
-      });
+      };
+      const supportsStructuredResults = supportsStructuredOutput(requestVersion);
+      if (supportsStructuredResults && hasStructuredContent) payload.structuredContent = result.data;
+      const outputSchema = MCP_TOOL_DEFS.find((tool) => tool.name === name)?.outputSchema;
+      const missingStructuredContent =
+        supportsStructuredResults && outputSchema != null && !payload.isError && !hasStructuredContent;
+      if (missingStructuredContent) {
+        content[0].text = `tool ${name} did not return structuredContent required by its outputSchema — ${content[0].text}`;
+        payload.isError = true;
+      }
+      return rpcResult(
+        parsed.id,
+        withServerMeta({ ...(modern ? { resultType: "complete" } : {}), ...payload }, modern),
+      );
     } catch (error) {
-      return rpcResult(parsed.id, {
-        content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
-        isError: true,
-      });
+      return rpcResult(
+        parsed.id,
+        withServerMeta(
+          {
+            ...(modern ? { resultType: "complete" } : {}),
+            content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
+            isError: true,
+          },
+          modern,
+        ),
+      );
     }
   }
   if (parsed.method === "ping") {
-    return rpcResult(parsed.id, {});
+    // `ping` is legacy-only (removed in the modern revision) — keep answering
+    // it so older clients stay healthy, but modern clients should not send it.
+    return rpcResult(parsed.id, withServerMeta({}, modern));
   }
   return rpcError(parsed.id, RPC_ERRORS.methodNotFound, `method not found: ${parsed.method}`);
 }

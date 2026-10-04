@@ -173,6 +173,7 @@ import type { GenerationResult, RankedCandidate } from "../intent/types";
 import type { ArrangementClip, DrumTrack, Pattern, ProjectDocument } from "../project-model/types";
 import { ProducerDnaCompare } from "./ProducerDnaCompare";
 import { CandidateLaneReceipt } from "./CandidateLaneReceipt";
+import { runPersonalTrainingFromShipped } from "../intent/personal-melodic-flow";
 
 // The Audiotool connector is an explicit opt-in path. Keep its UI and adapter
 // out of the regular Intent bundle until the user chooses to export a take.
@@ -285,6 +286,11 @@ export function IntentPanel() {
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // W3 "Nauč sa ma" — the personal prior button runs a full in-browser
+  // fine-tune; `personalBusy` gates the button, `personalStatus` reports the
+  // honest outcome (installed / refused + why).
+  const [personalBusy, setPersonalBusy] = useState(false);
+  const [personalStatus, setPersonalStatus] = useState<string | null>(null);
   // A1 audition state — the ranked bank lives on the result; buffers are
   // cached per candidate so replaying is instant after the first render.
   const [bankResult, setBankResult] = useState<GenerationResult | null>(null);
@@ -1780,6 +1786,30 @@ export function IntentPanel() {
       services.transport.setMetronome(false);
       services.transport.setLoop(false, 0, 0);
       setStatus("🎧 vocal mode off");
+    }
+  };
+  // W3 "NAUČ SA MA" — fine-tune the personal melodic prior from the ★ ledger,
+  // IN THE BROWSER, and install it only when the measured A/B proof beats the
+  // shipped model. The status line is the honest report (installed / refused).
+  const trainPersonalPrior = async () => {
+    if (personalBusy) return;
+    setPersonalBusy(true);
+    setPersonalStatus("🧠 trénujem z tvojich ★…");
+    try {
+      const run = await runPersonalTrainingFromShipped();
+      setPersonalStatus(run.summary);
+      setStatus(run.installed ? `🧠 ${run.summary}` : `🧠 ${run.summary}`);
+      if (run.ranker && run.ranker.groupCount > 0) {
+        // The ranker preference groups are report-only here (offline retrain
+        // consumes them via `npm run favorites:retrain`).
+        setStatus((current) =>
+          `${current ?? ""} · ranker pack: ${run.ranker!.groupCount} skupín pripravených na offline retrain`.trim(),
+        );
+      }
+    } catch (err) {
+      setPersonalStatus(`tréning zlyhal: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setPersonalBusy(false);
     }
   };
   // Beat-only bounce: full pattern render WITHOUT the master chain — the raw
@@ -3599,6 +3629,11 @@ export function IntentPanel() {
           {status}
         </div>
       )}
+      {personalStatus && (
+        <div className="intent-status intent-personal-status" role="status">
+          {personalStatus}
+        </div>
+      )}
       {justApplied && (
         <div className="intent-share" aria-label="Share your beat">
           <span className="intent-share-label">Yours. Share it:</span>
@@ -3687,6 +3722,15 @@ export function IntentPanel() {
           title="Audio reference — drop a WAV and the engine listens: genre + energy patch, plus a semantic conditioning vector for the v2 priors"
         >
           {refBusy ? "🎧…" : "🎧 REF"}
+        </button>
+        <button
+          type="button"
+          className="btn intent-personal-btn"
+          disabled={personalBusy || busy || songBusy}
+          onClick={() => void trainPersonalPrior()}
+          title="NAUČ SA MA — fine-tune your personal melodic prior from your ★ rolls, in the browser. Installs only when it beats the shipped model on your own ★ (local, offline, one click)."
+        >
+          {personalBusy ? "🧠…" : "🧠 NAUČ SA MA"}
         </button>
         <button
           type="button"

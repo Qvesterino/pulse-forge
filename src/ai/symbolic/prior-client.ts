@@ -19,13 +19,46 @@ import {
   isMelodicV3PriorManifest,
   type MelodicPriorManifest,
   type MelodicV3PriorManifest,
+  type PersonalWeightsPayloadLike,
   type PriorKind,
   type PriorManifest,
   type PriorRequest,
   type PriorResponse,
 } from "./prior-types";
+import { getPersonalModel } from "../../persistence/PersonalModelRepository";
 
 export type PriorMode = "off" | "on";
+
+/**
+ * W3 "Nauč sa ma" — the personal overlay the user trained from their ★ rolls.
+ *
+ * The lookup is keyed by the SHIPPED manifest hash, so a personal model is
+ * only ever offered to the exact artifact it was fine-tuned from. A miss, a
+ * storage failure or a flag-off all resolve to undefined and the shipped ONNX
+ * answers — the overlay is strictly additive, never a replacement.
+ */
+export function personalMode(): boolean {
+  try {
+    return localStorage.getItem("pf:personal-prior") !== "off";
+  } catch {
+    return true;
+  }
+}
+
+/** The personal payload for a melodic kind, or undefined when there is none. */
+async function personalPayloadFor(
+  kind: PriorKind,
+  manifest: PriorManifest,
+): Promise<PersonalWeightsPayloadLike | undefined> {
+  if (kind !== "melodic" && kind !== "melodic-v2" && kind !== "melodic-v3") return undefined;
+  if (!personalMode()) return undefined;
+  try {
+    const record = await getPersonalModel({ kind, baseModelHash: manifest.modelHash });
+    return record?.payload;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Feature flag: localStorage `pf:symbolic-prior` = on|off (default on). The
@@ -359,8 +392,9 @@ export async function runMelodicNext(values: Float32Array, rowCount: number): Pr
     }
     const active = spawnWorker();
     if (!active) return { ok: false, degree: null, duration: null, source: "fallback" };
+    const personal = await personalPayloadFor("melodic", manifest);
     const load = await request(
-      { type: "load", requestId: nextRequestId++, kind: "melodic", manifest },
+      { type: "load", requestId: nextRequestId++, kind: "melodic", manifest, ...(personal ? { personal } : {}) },
       LOAD_TIMEOUT_MS,
     );
     if (!load.ok) return { ok: false, degree: null, duration: null, source: "fallback" };
@@ -417,8 +451,15 @@ export async function runMelodicNextV2(values: Float32Array, rowCount: number): 
     }
     const active = spawnWorker();
     if (!active) return { ok: false, degree: null, duration: null, source: "fallback" };
+    const personalV2 = await personalPayloadFor("melodic-v2", manifest);
     const load = await request(
-      { type: "load", requestId: nextRequestId++, kind: "melodic-v2", manifest },
+      {
+        type: "load",
+        requestId: nextRequestId++,
+        kind: "melodic-v2",
+        manifest,
+        ...(personalV2 ? { personal: personalV2 } : {}),
+      },
       LOAD_TIMEOUT_MS,
     );
     if (!load.ok) return { ok: false, degree: null, duration: null, source: "fallback" };
