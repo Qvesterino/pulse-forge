@@ -742,7 +742,10 @@ function pluck(): Builder {
     osc.frequency.value = C4;
     const body = ctx.createGain();
     body.gain.value = 0.45;
-    osc.connect(body).connect(env(ctx, t0, 0.85, 0.26)).connect(lpf);
+    osc
+      .connect(body)
+      .connect(env(ctx, t0, 0.85, 0.26))
+      .connect(lpf);
     osc.start(t0);
     osc.stop(t0 + 0.32);
     // Upper-octave spark: the visible attack that separates it from pizzicato.
@@ -3105,7 +3108,13 @@ export const BUILDERS: Record<string, Builder> = {
   // príliš jasný. Kompromis: click 0.75 -> 0.6 (dostatočne nízko aby
   // dnb nebol pop-klon, dostatočne vysoko aby dnb ostáva >0.15 od
   // phonk). Decay 0.18 a pitch 51.91 Hz zostávajú.
-  "factory.kick.dnb": kick(170, 51.91, 0.18, 0.6),
+  // Wave-2 (2026-10-04): dnb <-> pop 0.119* (air + loud after the punch
+  // re-voice). The manifest identity is "Rolling, Punchy" — decay 0.18 was
+  // the pop pocket, not a roll. decay 0.18 -> 0.26, click 0.6 -> 0.5: the
+  // dnb kick ROLLS (longer body, softer tick; the break's bass carries the
+  // punch), pop stays the tight bright club voice. Pitch 51.91 Hz stays
+  // (glide contract). Phonk stays >0.15 (decay gap widens it further).
+  "factory.kick.dnb": kick(170, 51.91, 0.26, 0.5),
   // Phase-2 re-voice: kick.lofi had a 0.084* distance to kick.knock driven
   // by crest (+0.045) + loud (+0.042) — knock is a louder, harder knocker.
   // Iterated four configurations and locked pass 2 as the right balance:
@@ -3159,13 +3168,15 @@ export const BUILDERS: Record<string, Builder> = {
   // brightens to 2400 Hz (snare.main keeps 1750, dnb 2500 above it — tight
   // becomes the cracky bright ghost voice, not the dark middle child).
   // Wave-2 b: jersey went to 2800 (brighter than tight 2400 by only 400 Hz
-  // — same crack band, same read). tight commits DOWN to the dark short
-  // ghost instead: toneDecay 0.07 -> 0.055, noiseDecay 0.11 -> 0.09,
-  // noiseHz 2400 -> 1900. Now the crack band reads main 1750 (room
-  // backbeat) / tight 1900 (dark ghost) / dnb 2500 (genre) / jersey 2800
-  // (club crack) — four distinct pockets, and tight is also the SHORTEST
-  // (its load-bearing role: velocity ghost under 0.35).
-  "factory.snare.tight": snare(210, 0.055, 0.09, 1900),
+  // — same crack band, same read). Wave-2 c: tight down to 1900 collided
+  // with drill (0.058* — both short dark ~2 kHz). The ghost's real voice is
+  // THIN-HIGH, not dark: tone 210 -> 246 (B3 — the piccolo-ghost read) with
+  // noiseHz 2200 (between main 1750 and dnb 2500), toneDecay 0.05 (shortest
+  // body in the bank). Four distinct pockets: main 1750 room backbeat /
+  // tight 2200 thin-high ghost / dnb 2500 genre / jersey 2800 club crack.
+  // Load-bearing FACTORY_SNARE_DYNAMIC ghost (velocity < 0.35) — decay/
+  // level stay close to the shipped read.
+  "factory.snare.tight": snare(246, 0.05, 0.1, 2200),
   "factory.snare.punch": snarePunch(),
   "factory.snare.trap": snareTrap(),
   // Snare/hat bank expansion (2026-09): genre backbeats + groove hats for
@@ -3218,7 +3229,17 @@ export const BUILDERS: Record<string, Builder> = {
   // air behind it; every other bank snare is dry/short).
   "factory.snare.room": snareRoom(),
   "factory.hat.drill": hat(0.035, 9200, 0.5),
-  "factory.hat.phonk": hat(0.07, 4200, 0.4),
+  // De-homog (2026-10-04 wave 2): hat.pedal <-> hat.phonk sat at 0.081* on
+  // sub + low — two dark hats reading each other's filter junk (a 4-5 kHz HPF
+  // hat has no real sub; its sub share is analyzer floor). Same lesson the
+  // attack term's participation floor taught: COMMIT the split. pedal (the
+  // foot-splash) drops to 4000 Hz / 25 ms — the dry tick; phonk goes darker
+  // AND gains a metallic ping (3400 Hz wash under a 4800 Hz ping, decay 70
+  // ms) — the dusty hat. Ping register separates them from the rest of the
+  // hat family too (jersey 6400 / dnb 7100). First attempt at a plain
+  // hat(0.07, 3400, 0.4) left them at 0.071* (both became featureless dark
+  // noise) — the ping is what makes phonk a HAT instead of a dark wash.
+  "factory.hat.phonk": hatMetallic({ decay: 0.07, hpHz: 3400, level: 0.36, pingHz: 4800, ping: 0.22, seed: 43 }),
   "factory.hat.jersey": hatMetallic({ decay: 0.055, hpHz: 8200, level: 0.55, pingHz: 6400, ping: 0.3, seed: 61 }),
   "factory.hat.dnb": hatMetallic({ decay: 0.04, hpHz: 9600, level: 0.5, pingHz: 7100, ping: 0.24, seed: 67 }),
   // cup re-voice (2026-09-30): at the shipped 5200 Hz / 95 ms ring it was a
@@ -3258,15 +3279,12 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.hat.closed.soft": hat(0.04, 6400, 0.4),
   "factory.hat.open": hat(0.36, 7000, 0.5),
   "factory.hat.open.short": hat(0.18, 6800, 0.42),
-  // De-homog (2026-10-04 wave 2): pedal (the foot-splash) drops to 4000 Hz
-  // / shortest decay; phonk keeps 4200 with its own dusty double-strike at
-  // 70 ms. The pair separates on decay (35 -> 25 ms) + the darker ring.
+  // De-homog (2026-10-04 wave 2): pedal is the foot-splash — the dry, SHORT
+  // tick under a foot. 0.035 -> 0.025 decay, HPF 4600 -> 4000 (a hair below
+  // phonk's 3400 wash but well below the 6400-9600 closed/open family) so
+  // the pedal↔phonk pair separates on decay + register instead of on the
+  // sub/low filter junk both used to share.
   "factory.hat.pedal": hat(0.025, 4000, 0.24),
-  // De-homog wave 2 b: phonk goes DARKER (HPF 4200 -> 3400) so its lowmid
-  // body diverges from pedal's ring — the phonk hat reads dusty/dark under
-  // the genre's vinyl bed, pedal reads a dry tick above it. Ping stays: the
-  // phonk hat keeps its metallic edge (ping 4800, vs jersey 6400 / dnb 7100).
-  "factory.hat.phonk": hatMetallic({ decay: 0.07, hpHz: 3400, level: 0.36, pingHz: 4800, ping: 0.22, seed: 43 }),
   "factory.ride.ping": ride(),
   "factory.ride.bell": rideBell(),
   "factory.ride.splash": rideSplash(),
@@ -3426,8 +3444,10 @@ export const BUILDERS: Record<string, Builder> = {
   // pop kick re-voice (de-dup wave): punch stayed the neutral G#1 stock, so
   // pop moves to A1 with a TIGHT body + bright click — the pop/dance voice
   // (jersey sits above it at B1 as the club bounce). Same family, three
-  // distinct roles: full-punch / tight-pop / high-bounce.
-  "factory.kick.pop": kick(195, 55.0, 0.22, 0.6),
+  // distinct roles: full-punch / tight-pop / high-bounce. Wave-2 (2026-10-04):
+  // dnb owns the roll (0.26 body), so pop commits to the TIGHTEST: 0.22 ->
+  // 0.18 + click 0.6 -> 0.7 (the two-fist pop punch read).
+  "factory.kick.pop": kick(195, 55.0, 0.18, 0.7),
   // clap.pop re-voice (2026-09-30): was clap.main + clap.soft stacked
   // verbatim — after mastering normalized both to −10.5 the stack collapsed
   // onto main (feature distance 0.051). Now its own dense bright stack.
