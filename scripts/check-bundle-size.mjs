@@ -127,6 +127,13 @@ const ENTRY_BUDGET_KB = 1070;
 // sample-library factory and the live-offline-parity harness. Measured
 // 4004 KB clean at 7903b8f2. The lazy preset-pack seam is now the
 // outstanding debt and reclaims ~230 KB on landing.
+// PAID SAME DAY — the pack seam (presets/pack-presets.ts behind the
+// factory-loader warm): the generated layer tables moved into their own
+// dynamic chunk, measured as the "optional preset packs" bucket below.
+// Measured 3769 KB clean — the first bump in this ladder that a diet then
+// genuinely repaid. One gotcha for the next person: do NOT force the chunk
+// with manualChunks — forcing made rollup hoist a preload edge into the
+// landing graph (+298 KB there); the natural dynamic chunk stays lazy.
 const TOTAL_BUDGET_KB = 4010;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, and ONNX Runtime for the
@@ -152,6 +159,19 @@ const OPTIONAL_NEXUS_PREFIXES = ["audiotool-nexus-"];
 // sibling monorepo). Growth beyond this cap is a conscious decision.
 const OPTIONAL_QMR_BUDGET_KB = 1600;
 const OPTIONAL_QMR_PREFIXES = ["qmr-"];
+// Real-instrument PACK PRESETS (Salamander piano + VSCO2 orchestra): the
+// generated velocity/keyzone tables behind the pack presets. Their SAMPLES
+// were always optional (public/samples fetched on demand, silent zone
+// degradation) — the 2026-10-04 pack seam gave the preset DATA the same
+// contract: `presets/pack-presets.ts` loads inside the factory-loader warm
+// (first preset access), never on boot. Measured ~230 KB at the seam; this
+// bucket keeps that weight out of the core DAW graph while still capping it.
+// If Vite renames the chunk, it falls back into TOTAL_BUDGET_KB, fails safe.
+// The chunk is the NATURAL dynamic chunk of the loader's import (no
+// manualChunks forcing — forcing made rollup hoist a preload edge into the
+// landing graph), so the prefix follows the entry module's file name.
+const OPTIONAL_PACK_BUDGET_KB = 320;
+const OPTIONAL_PACK_PREFIXES = ["pack-presets-"];
 // 150: deliberate bump (was 120 — the gate had been red since kaskada's
 // 32-band spectral DSP landed in the core bundle at ~137 KB). The de-cramped
 // stock EQ worklet pushed the measured size to 144 KB. The core bundle stays
@@ -200,6 +220,7 @@ let optionalAiRuntimeKb = 0;
 let optionalCodecKb = 0;
 let optionalNexusKb = 0;
 let optionalQmrKb = 0;
+let optionalPackKb = 0;
 const optionalNexusFiles = [];
 for (const file of readdirSync(join(dist, "assets"))) {
   if (!file.endsWith(".js")) continue;
@@ -210,6 +231,7 @@ for (const file of readdirSync(join(dist, "assets"))) {
     optionalNexusKb += sizeKb;
     optionalNexusFiles.push(file);
   } else if (OPTIONAL_QMR_PREFIXES.some((prefix) => file.startsWith(prefix))) optionalQmrKb += sizeKb;
+  else if (OPTIONAL_PACK_PREFIXES.some((prefix) => file.startsWith(prefix))) optionalPackKb += sizeKb;
   else totalKb += sizeKb;
 }
 
@@ -259,6 +281,12 @@ if (optionalAiRuntimeKb > OPTIONAL_AI_RUNTIME_BUDGET_KB) {
 if (optionalCodecKb > OPTIONAL_CODEC_BUDGET_KB) {
   console.error(
     `[size-budget] FAIL — optional codecs over budget: ${optionalCodecKb.toFixed(0)} > ${OPTIONAL_CODEC_BUDGET_KB} KB.`,
+  );
+  failed = true;
+}
+if (optionalPackKb > OPTIONAL_PACK_BUDGET_KB) {
+  console.error(
+    `[size-budget] FAIL — optional preset packs over budget: ${optionalPackKb.toFixed(0)} > ${OPTIONAL_PACK_BUDGET_KB} KB.`,
   );
   failed = true;
 }

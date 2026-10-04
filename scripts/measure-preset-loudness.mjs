@@ -52,7 +52,11 @@ await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", ti
 
 const measurements = await page.evaluate(async () => {
   const registry = await import("/src/instruments/registry.ts");
-  const presets = await import("/src/presets/factory.ts");
+  // The pack seam: the full bank (core + piano/VSCO packs) comes from the
+  // loader's warm — the raw factory module carries the core presets only.
+  const loader = await import("/src/presets/factory-loader.ts");
+  await loader.warmFactoryPresets();
+  const presets = { FACTORY_PRESETS: loader.factoryPresets() };
   const catalog = await import("/src/presets/catalog.ts");
   const factory = await import("/src/sample-library/factory.ts");
   const curated = await import("/src/sample-library/curated.ts");

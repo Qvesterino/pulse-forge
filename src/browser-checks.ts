@@ -14,7 +14,7 @@ import { buildStemProject, STEM_GROUPS } from "./rendering/stems";
 import { encodeWav } from "./rendering/wav";
 import { createDefaultProject, migrateProject, normalizeProject, validateProjectShape } from "./project-model/schema";
 import { TEMPLATES, createProjectFromTemplate } from "./project-model/templates";
-import { FACTORY_PRESETS } from "./presets/factory";
+import { factoryPresets, warmFactoryPresets } from "./presets/factory-loader";
 import { FACTORY_ASSETS } from "./sample-library/manifest";
 import { FACTORY_PRESET_LOUDNESS, NON_DETERMINISTIC_PRESETS } from "./presets/preset-loudness.generated";
 import { analyzeLoudnessBuffer } from "./audio-engine/kweighting";
@@ -126,6 +126,10 @@ export async function auditFactoryPresetAudio(bank: SampleBank): Promise<CheckRe
   const loudnessDrift: string[] = [];
   let rendered = 0;
 
+  // The bank comes from the lazy loader — the audit warms it first so pack
+  // presets (piano + VSCO) are auditioned exactly as before the seam.
+  await warmFactoryPresets();
+  const FACTORY_PRESETS = factoryPresets();
   for (const preset of FACTORY_PRESETS) {
     const track: InstrumentTrack = {
       id: `factory-preview-${preset.id}`,
@@ -416,7 +420,12 @@ export async function auditRtBudget(bank: SampleBank, informationalOnly = false)
     for (let s = 0; s < steps; s++) {
       const at = ctx.currentTime + 0.1 + s * stepSec;
       for (const track of tracks) {
-        engine.trigger(track.id, (track as DrumTrack).pads[(s + track.id.length) % (track as DrumTrack).pads.length], at, 0.8);
+        engine.trigger(
+          track.id,
+          (track as DrumTrack).pads[(s + track.id.length) % (track as DrumTrack).pads.length],
+          at,
+          0.8,
+        );
       }
     }
     await new Promise((resolve) => setTimeout(resolve, seconds * 1000 + 250));
@@ -533,7 +542,11 @@ export async function auditDenseRender(bank: SampleBank, informationalOnly = fal
         (informationalOnly ? " — machine loaded, informational run" : ""),
     };
   } catch (error) {
-    return { name: "perf: 8 tracks × 4 effects render stays within baseline + headroom", ok: false, message: String(error) };
+    return {
+      name: "perf: 8 tracks × 4 effects render stays within baseline + headroom",
+      ok: false,
+      message: String(error),
+    };
   }
 }
 
@@ -3917,12 +3930,13 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
   {
     // Real invariant: every instrument kind ships at least one factory preset.
     // (A hard-coded instrument count went stale when the ninth kind landed.)
-    const covered = new Set(FACTORY_PRESETS.map((p) => p.instrument));
+    const bank = await warmFactoryPresets().then(() => factoryPresets());
+    const covered = new Set(bank.map((p) => p.instrument));
     const missing = INSTRUMENT_ORDER.filter((kind) => !covered.has(kind));
     check(
       "presets: factory bank covers every instrument kind",
       missing.length === 0,
-      missing.length > 0 ? `missing: ${missing.join(",")}` : `kinds=${covered.size} presets=${FACTORY_PRESETS.length}`,
+      missing.length > 0 ? `missing: ${missing.join(",")}` : `kinds=${covered.size} presets=${bank.length}`,
     );
   }
 
@@ -3931,7 +3945,7 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     const bassTrack = project.tracks.find(
       (t): t is InstrumentTrack => t.kind === "instrument" && t.instrument === "808",
     );
-    const preset = FACTORY_PRESETS.find((p) => p.instrument === "808");
+    const preset = (await warmFactoryPresets().then(() => factoryPresets())).find((p) => p.instrument === "808");
     if (!bassTrack || !preset) throw new Error("808 track or preset missing");
     const applied = applyInstrumentPreset(project, bassTrack.id, preset).execute(project);
     const appliedTrack = applied.tracks.find((t) => t.id === bassTrack.id) as InstrumentTrack;

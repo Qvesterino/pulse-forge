@@ -17,7 +17,10 @@ import {
   defaultInstrumentParams,
 } from "../src/instruments/registry";
 import { INSTRUMENT_META } from "../src/instruments/definitions";
-import { FACTORY_PRESETS } from "../src/presets/factory";
+import { factoryPresets, warmFactoryPresets } from "../src/presets/factory-loader";
+// The pack seam (2026-10-04): the full bank = core + real-instrument packs,
+// assembled by the loader's warm — same presets as before the seam.
+const FACTORY_PRESETS = await warmFactoryPresets().then(() => factoryPresets());
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { normalizeProject } from "../src/project-model/schema";
 import { addEffect, setEffectParam, toggleEffectBypass } from "../src/commands/commands";

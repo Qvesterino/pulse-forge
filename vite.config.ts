@@ -44,30 +44,29 @@ export default defineConfig({
       // alias transparently (the stub is only consulted when the plugin
       // chain does not provide the virtual module).
       { find: /^virtual:pwa-register$/, replacement: virtualPwaRegisterStub },
-    // QMR HUD (Qvester ecosystem): the packages ship TS SOURCE (monorepo
-    // file:-dep style) — alias them in-place so KYX mounts the REAL chip
-    // without publishing or copying. Keep in sync with vitest.config.ts.
-    {
-      find: /^@qvester\/qmr-hud$/,
-      replacement: resolve(qvesterPkgSrc("qmr-hud"), "index.ts"),
-    },
-    {
-      find: /^@qvester\/qmr-hud\/(.*)$/,
-      replacement: `${qvesterPkgSrc("qmr-hud")}/$1`,
-    },
-    {
-      find: /^@qvester\/qmr-interop(.*)$/,
-      replacement: `${qvesterPkgSrc("qmr-interop")}/$1`,
-    },
-    {
-      find: /^@qvester\/intent-engine(.*)$/,
-      replacement: `${qvesterPkgSrc("intent-engine")}/$1`,
-    },
-    {
-      find: /^@qvester\/interop-types(.*)$/,
-      replacement: `${qvesterPkgSrc("interop-types")}/$1`,
-    },
-
+      // QMR HUD (Qvester ecosystem): the packages ship TS SOURCE (monorepo
+      // file:-dep style) — alias them in-place so KYX mounts the REAL chip
+      // without publishing or copying. Keep in sync with vitest.config.ts.
+      {
+        find: /^@qvester\/qmr-hud$/,
+        replacement: resolve(qvesterPkgSrc("qmr-hud"), "index.ts"),
+      },
+      {
+        find: /^@qvester\/qmr-hud\/(.*)$/,
+        replacement: `${qvesterPkgSrc("qmr-hud")}/$1`,
+      },
+      {
+        find: /^@qvester\/qmr-interop(.*)$/,
+        replacement: `${qvesterPkgSrc("qmr-interop")}/$1`,
+      },
+      {
+        find: /^@qvester\/intent-engine(.*)$/,
+        replacement: `${qvesterPkgSrc("intent-engine")}/$1`,
+      },
+      {
+        find: /^@qvester\/interop-types(.*)$/,
+        replacement: `${qvesterPkgSrc("interop-types")}/$1`,
+      },
     ],
   },
   // Browser ranker workers use module imports (onnxruntime-web + shared

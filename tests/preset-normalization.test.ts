@@ -6,7 +6,10 @@ import {
   presetNormalizationGainDb,
 } from "../src/presets/normalization";
 import { FACTORY_PRESET_GAIN_DB, PRESET_LOUDNESS_TARGET_LUFS } from "../src/presets/preset-loudness.generated";
-import { FACTORY_PRESETS } from "../src/presets/factory";
+import { factoryPresets, warmFactoryPresets } from "../src/presets/factory-loader";
+// The pack seam (2026-10-04): the full bank = core + real-instrument packs,
+// assembled by the loader's warm — same presets as before the seam.
+const FACTORY_PRESETS = await warmFactoryPresets().then(() => factoryPresets());
 import { getPresetMetadata } from "../src/presets/catalog";
 
 /**

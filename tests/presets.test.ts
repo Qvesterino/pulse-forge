@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { FACTORY_PRESETS } from "../src/presets/factory";
+import { factoryPresets, warmFactoryPresets } from "../src/presets/factory-loader";
+// The pack seam (2026-10-04): the full bank = core + real-instrument packs,
+// assembled by the loader's warm — same presets as before the seam.
+const FACTORY_PRESETS = await warmFactoryPresets().then(() => factoryPresets());
 import { getPresetMetadata, PRESET_ENERGIES, PRESET_USE_CASES } from "../src/presets/catalog";
 import type { InstrumentPreset } from "../src/presets/types";
 import { INSTRUMENT_DEFS, defaultInstrumentParams } from "../src/instruments/registry";

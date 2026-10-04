@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLibrary, useServices } from "./context";
 import { applyInstrumentPreset } from "../commands/commands";
 import { ensurePianoPackLoaded, isPianoPackSample } from "../presets/piano-pack";
-import { FACTORY_PRESETS } from "../presets/factory";
+import { factoryPresets, isFactoryPresetsWarm, warmFactoryPresets } from "../presets/factory-loader";
 import { PRESET_ENERGIES, PRESET_USE_CASES, getPresetMetadata } from "../presets/catalog";
 import { PRESET_GENRES, PRESET_MOODS } from "../presets/types";
 import type { InstrumentPreset, PresetEnergy, PresetGenre, PresetMood, PresetUseCase } from "../presets/types";
@@ -80,9 +80,26 @@ export function PresetBrowser({ track }: { track: InstrumentTrack }) {
     refreshUserPresets();
   }, [refreshUserPresets, track.instrument]);
 
+  // The factory bank (core + real-instrument packs) arrives through the lazy
+  // loader — first open warms it once, then the read is synchronous.
+  const bankWarm = isFactoryPresetsWarm();
+  const [bankTick, setBankTick] = useState(0);
+  useEffect(() => {
+    if (bankWarm) return;
+    let cancelled = false;
+    void warmFactoryPresets().then(() => {
+      if (!cancelled) setBankTick((tick) => tick + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [bankWarm]);
+
   const all = useMemo(
-    () => [...FACTORY_PRESETS, ...userPresets].filter((p) => p.instrument === track.instrument),
-    [userPresets, track.instrument],
+    () => [...(bankWarm ? factoryPresets() : []), ...userPresets].filter((p) => p.instrument === track.instrument),
+    // bankTick re-runs the memo when the lazy bank finishes warming.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [bankWarm, bankTick, userPresets, track.instrument],
   );
 
   const base = all.filter((preset) => {

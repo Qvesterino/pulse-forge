@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { clampInstrumentParam, INSTRUMENT_DEFS, defaultInstrumentParams } from "../src/instruments/registry";
-import { FACTORY_PRESETS } from "../src/presets/factory";
+import { factoryPresets, warmFactoryPresets } from "../src/presets/factory-loader";
+// The pack seam (2026-10-04): the full bank = core + real-instrument packs,
+// assembled by the loader's warm — same presets as before the seam.
+const FACTORY_PRESETS = await warmFactoryPresets().then(() => factoryPresets());
 import { midiToFreq, type InstrumentTrack } from "../src/project-model/types";
 
 /**

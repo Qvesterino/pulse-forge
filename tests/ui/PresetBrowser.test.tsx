@@ -2,7 +2,9 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { PresetBrowser } from "../../src/ui/PresetBrowser";
-import { FACTORY_PRESETS } from "../../src/presets/factory";
+import { factoryPresets, warmFactoryPresets } from "../../src/presets/factory-loader";
+// The pack seam: the full bank comes from the loader's warm (core + packs).
+const FACTORY_PRESETS = await warmFactoryPresets().then(() => factoryPresets());
 import { getPresetMetadata } from "../../src/presets/catalog";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { mockServices, renderWithContext } from "../helpers";
@@ -19,7 +21,7 @@ describe("PresetBrowser audition workflow", () => {
     if (!preset) throw new Error("preset fixture missing");
 
     const { services } = renderWithContext(<PresetBrowser track={track} />, { services: mockServices(doc) });
-    const previewButton = screen.getByRole("button", { name: `Preview ${preset.name}` });
+    const previewButton = await screen.findByRole("button", { name: `Preview ${preset.name}` });
 
     await user.click(previewButton);
 
@@ -48,7 +50,7 @@ describe("PresetBrowser audition workflow", () => {
     if (!preset) throw new Error("preset fixture missing");
 
     const { services } = renderWithContext(<PresetBrowser track={track} />, { services: mockServices(doc) });
-    const previewButton = screen.getByRole("button", { name: `Preview ${preset.name}` });
+    const previewButton = await screen.findByRole("button", { name: `Preview ${preset.name}` });
     await user.click(previewButton);
     await user.keyboard("{Escape}");
 

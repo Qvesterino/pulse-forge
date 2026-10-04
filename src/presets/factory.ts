@@ -1,14 +1,15 @@
 import type { DrumSynthPreset, InstrumentPreset } from "./types";
 
-import { REAL_PIANO_PRESET } from "./piano-pack";
-import { vscoPackPresets } from "./vsco-pack";
 /**
  * Factory presets are pure data, curated by genre and mood. Parameter values
  * stay inside each instrument's defined ranges so they clamp cleanly.
  */
+// The real-instrument PACK presets (Salamander piano + VSCO2 orchestra) do
+// NOT live here — their generated layer tables are ~230 KB built, and no
+// boot path needs them. factory-loader merges them in on warm() from
+// ./pack-presets (its own lazy chunk), so every consumer of the loader sees
+// the identical full bank while the eager graph stays pack-free.
 export const FACTORY_PRESETS: InstrumentPreset[] = [
-  REAL_PIANO_PRESET,
-  ...vscoPackPresets(),
   /* ================= Bass Synth ================= */
   {
     id: "factory.bass.house.pluck",

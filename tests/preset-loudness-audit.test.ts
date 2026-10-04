@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { FACTORY_PRESETS, DRUM_FACTORY_PRESETS } from "../src/presets/factory";
+import { factoryPresets, warmFactoryPresets } from "../src/presets/factory-loader";
+import { DRUM_FACTORY_PRESETS } from "../src/presets/factory";
+// The pack seam (2026-10-04): the full bank = core + real-instrument packs,
+// assembled by the loader's warm — same presets as before the seam. Drum
+// presets stay in the core module, untouched by the seam.
+const FACTORY_PRESETS = await warmFactoryPresets().then(() => factoryPresets());
 import { getPresetMetadata } from "../src/presets/catalog";
 import {
   FACTORY_PRESET_GAIN_DB,

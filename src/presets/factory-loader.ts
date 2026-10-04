@@ -25,10 +25,18 @@ import type { InstrumentPreset } from "./types";
 let bank: InstrumentPreset[] | null = null;
 let warm: Promise<void> | null = null;
 
-/** Load the factory bank on demand. Repeated calls await the same load. */
+/**
+ * Load the factory bank on demand. Repeated calls await the same load.
+ *
+ * The warm pulls TWO chunks: the core curated bank and the pack presets
+ * (Salamander piano + VSCO2 orchestra — their generated layer tables live in
+ * their own lazy chunk). Merged here so every consumer of `factoryPresets()`
+ * sees the identical full bank as before the pack seam; code that never
+ * touches presets never pays for the pack data at all.
+ */
 export function warmFactoryPresets(): Promise<void> {
-  warm ??= import("./factory").then((m) => {
-    bank = m.FACTORY_PRESETS;
+  warm ??= Promise.all([import("./factory"), import("./pack-presets")]).then(([core, packs]) => {
+    bank = [...core.FACTORY_PRESETS, ...packs.packPresets()];
   });
   return warm;
 }
