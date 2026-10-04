@@ -311,6 +311,7 @@ export function IntentPanel() {
   const [learnedPatternCount, setLearnedPatternCount] = useState(countStyleExamples);
   const [styleMemoryMessage, setStyleMemoryMessage] = useState<string | null>(null);
   const [automaticLearning, setAutomaticLearning] = useState(automaticStyleLearningEnabled);
+  const [styleMemoryRevision, setStyleMemoryRevision] = useState(0);
   // A1 audition state — the ranked bank lives on the result; buffers are
   // cached per candidate so replaying is instant after the first render.
   const [bankResult, setBankResult] = useState<GenerationResult | null>(null);
@@ -660,6 +661,7 @@ export function IntentPanel() {
     const refreshStyleMemory = (): void => {
       setLearnedPatternCount(countStyleExamples());
       setAutomaticLearning(automaticStyleLearningEnabled());
+      setStyleMemoryRevision((revision) => revision + 1);
     };
     window.addEventListener(STYLE_EXAMPLES_CHANGED_EVENT, refreshStyleMemory);
     return () => window.removeEventListener(STYLE_EXAMPLES_CHANGED_EVENT, refreshStyleMemory);
@@ -667,7 +669,7 @@ export function IntentPanel() {
 
   const learnedStyle = useMemo(
     () => personalStyleProfile(parsed?.input.genre),
-    [learnedPatternCount, parsed?.input.genre],
+    [learnedPatternCount, parsed?.input.genre, styleMemoryRevision],
   );
   const personalIntents = useMemo(() => personalStyleIntentSuggestions(learnedStyle), [learnedStyle]);
 
