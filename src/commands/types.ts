@@ -30,6 +30,18 @@ export interface Command {
   readonly coalesceKey?: string;
 }
 
+/**
+ * Human-edit dispatch for local taste learning. The fallback keeps lightweight
+ * host/test adapters compatible while full stores expose the learning signal.
+ */
+export function executeUserEdit(
+  store: { execute(command: Command): void; executeUserEdit?: (command: Command) => void },
+  command: Command,
+): void {
+  if (store.executeUserEdit) store.executeUserEdit(command);
+  else store.execute(command);
+}
+
 export function ySet(yMap: any, key: string, value: unknown): void {
   yMap.set(key, value);
 }

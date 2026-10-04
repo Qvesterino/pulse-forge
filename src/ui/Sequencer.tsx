@@ -33,6 +33,7 @@ import { getLastPlayActivity } from "./playActivity";
 import { humanizeVelocities, randomizeVelocities } from "../shared/velocityFx";
 import { SequencerCheatSheet } from "./SequencerCheatSheet";
 import type { RemoteCursor } from "../collab/CollaborationProvider";
+import { executeUserEdit } from "../commands/types";
 
 export interface StepSelection {
   padIds: string[];
@@ -433,7 +434,8 @@ export function Sequencer({
         return { padId, stepIndex: Number(step), velocity: drag.paintValue ? 0.8 : 0 };
       });
       if (entries.length > 0) {
-        services.store.execute(
+        executeUserEdit(
+          services.store,
           entries.length === 1 && drag.paintValue
             ? toggleStep(doc, entries[0].padId, entries[0].stepIndex)
             : setStepsVelocity(doc, pattern.id, entries),
@@ -464,9 +466,9 @@ export function Sequencer({
             // Delta snapshot, not a whole-doc pin — `undo: () => doc` would
             // wholesale-revert any edit (collab/live MIDI) that landed
             // between gesture start and the undo.
-            services.store.execute(snapshot("bulkMicrotiming", "Set microtiming", doc, nextDoc));
+            executeUserEdit(services.store, snapshot("bulkMicrotiming", "Set microtiming", doc, nextDoc));
           } else {
-            services.store.execute(setStepMeta(doc, pattern.id, drag.padId, drag.stepIndex, { microtiming }));
+            executeUserEdit(services.store, setStepMeta(doc, pattern.id, drag.padId, drag.stepIndex, { microtiming }));
           }
         }
       } else if (drag.editKind === "probability") {
@@ -484,9 +486,9 @@ export function Sequencer({
               for (let s = stepSelection.from; s <= stepSelection.to; s++)
                 nextDoc = setStepMeta(nextDoc, pattern.id, pid, s, { probability }).execute(nextDoc);
             // Delta snapshot — see bulkMicrotiming above.
-            services.store.execute(snapshot("bulkProbability", "Set probability", doc, nextDoc));
+            executeUserEdit(services.store, snapshot("bulkProbability", "Set probability", doc, nextDoc));
           } else {
-            services.store.execute(setStepMeta(doc, pattern.id, drag.padId, drag.stepIndex, { probability }));
+            executeUserEdit(services.store, setStepMeta(doc, pattern.id, drag.padId, drag.stepIndex, { probability }));
           }
         }
       } else {
@@ -507,13 +509,13 @@ export function Sequencer({
               entries.push({ padId: pad, stepIndex: i, velocity: ramped });
             }
           }
-          if (entries.length > 0) services.store.execute(setStepsVelocity(doc, pattern.id, entries));
+          if (entries.length > 0) executeUserEdit(services.store, setStepsVelocity(doc, pattern.id, entries));
         } else if (velocity !== drag.startVelocity) {
-          services.store.execute(setStepVelocityCommand(doc, drag.padId, drag.stepIndex, velocity));
+          executeUserEdit(services.store, setStepVelocityCommand(doc, drag.padId, drag.stepIndex, velocity));
         }
       }
     } else {
-      services.store.execute(toggleStep(doc, drag.padId, drag.stepIndex));
+      executeUserEdit(services.store, toggleStep(doc, drag.padId, drag.stepIndex));
       onSelectSteps(null);
     }
     setDragPreview(null);
@@ -795,7 +797,8 @@ export function Sequencer({
             title={lockClipboard ? `Paste ${Object.keys(lockClipboard).join(", ")}` : "No locks copied"}
             onClick={() => {
               if (!lockClipboard) return;
-              services.store.execute(
+              executeUserEdit(
+                services.store,
                 pasteStepLocks(
                   doc,
                   pattern.id,
@@ -814,7 +817,8 @@ export function Sequencer({
             className="btn btn-small"
             title="Clear all p-locks in selection"
             onClick={() =>
-              services.store.execute(
+              executeUserEdit(
+                services.store,
                 clearStepLocks(doc, pattern.id, stepSelection.padIds, stepSelection.from, stepSelection.to),
               )
             }
@@ -829,7 +833,8 @@ export function Sequencer({
             onClick={() => {
               if (activeSelectionEntries.length === 0) return;
               const next = randomizeVelocities(activeSelectionEntries.map((e) => e.velocity));
-              services.store.execute(
+              executeUserEdit(
+                services.store,
                 setStepsVelocity(
                   doc,
                   pattern.id,
@@ -848,7 +853,8 @@ export function Sequencer({
             onClick={() => {
               if (activeSelectionEntries.length === 0) return;
               const next = humanizeVelocities(activeSelectionEntries.map((e) => e.velocity));
-              services.store.execute(
+              executeUserEdit(
+                services.store,
                 setStepsVelocity(
                   doc,
                   pattern.id,
@@ -1121,20 +1127,21 @@ function StepEditor({
         }
       }
       // Delta snapshot — see bulkMicrotiming in the drag commit path.
-      services.store.execute(snapshot("bulkStepMeta", "Bulk edit steps", doc, nextDoc));
+      executeUserEdit(services.store, snapshot("bulkStepMeta", "Bulk edit steps", doc, nextDoc));
     } else {
-      services.store.execute(setStepMeta(doc, pattern.id, padId, stepIndex, change));
+      executeUserEdit(services.store, setStepMeta(doc, pattern.id, padId, stepIndex, change));
     }
   };
   const setLock = (key: "pitch" | "gain" | "pan" | "cutoff" | "sampleStart" | "length", value: number | undefined) => {
     if (isInSelection && stepSelection) {
-      services.store.execute(
+      executeUserEdit(
+        services.store,
         setStepsLocks(doc, pattern.id, stepSelection.padIds, stepSelection.from, stepSelection.to, {
           [key]: value,
         } as any),
       );
     } else {
-      services.store.execute(setStepLocks(doc, pattern.id, padId, stepIndex, { [key]: value } as any));
+      executeUserEdit(services.store, setStepLocks(doc, pattern.id, padId, stepIndex, { [key]: value } as any));
     }
   };
   const hasLocks = meta.locks && Object.keys(meta.locks).length > 0;
@@ -1336,7 +1343,8 @@ function StepEditor({
         title="Reset step performance to defaults"
         onClick={() => {
           if (isInSelection && stepSelection) {
-            services.store.execute(
+            executeUserEdit(
+              services.store,
               clearStepLocks(doc, pattern.id, stepSelection.padIds, stepSelection.from, stepSelection.to),
             );
           } else {
@@ -1391,7 +1399,7 @@ function TrackHeaderRow({
           title="Mute track"
           aria-label={`Mute ${track.name}`}
           aria-pressed={track.mute}
-          onClick={() => services.store.execute(setTrackParams(doc, track.id, { mute: !track.mute }))}
+          onClick={() => executeUserEdit(services.store, setTrackParams(doc, track.id, { mute: !track.mute }))}
         >
           M
         </button>
@@ -1401,7 +1409,7 @@ function TrackHeaderRow({
           title="Solo track"
           aria-label={`Solo ${track.name}`}
           aria-pressed={track.solo}
-          onClick={() => services.store.execute(setTrackParams(doc, track.id, { solo: !track.solo }))}
+          onClick={() => executeUserEdit(services.store, setTrackParams(doc, track.id, { solo: !track.solo }))}
         >
           S
         </button>
@@ -1509,7 +1517,7 @@ function PadRow({
           type="button"
           className={`row-toggle${pad.mute ? " active-mute" : ""}`}
           title="Mute pad"
-          onClick={() => services.store.execute(setPadParams(doc, pad.id, { mute: !pad.mute }))}
+          onClick={() => executeUserEdit(services.store, setPadParams(doc, pad.id, { mute: !pad.mute }))}
         >
           M
         </button>
@@ -1517,7 +1525,7 @@ function PadRow({
           type="button"
           className={`row-toggle${pad.solo ? " active-solo" : ""}`}
           title="Solo pad"
-          onClick={() => services.store.execute(setPadParams(doc, pad.id, { solo: !pad.solo }))}
+          onClick={() => executeUserEdit(services.store, setPadParams(doc, pad.id, { solo: !pad.solo }))}
         >
           S
         </button>
@@ -1715,7 +1723,7 @@ const StepCell = memo(function StepCell({
         // shortcut (preventing the keydown also cancels the native keyup click).
         if (event.key === "Enter") {
           event.preventDefault();
-          services.store.execute(toggleStep(services.store.doc, padId, stepIndex));
+          executeUserEdit(services.store, toggleStep(services.store.doc, padId, stepIndex));
         }
       }}
       onContextMenu={longPress.wrapContextMenu((event) => {
@@ -1761,7 +1769,8 @@ const StepCell = memo(function StepCell({
             const final = current;
             if (Math.abs(final - startAmount) > 0.01) {
               const target = final >= 0.99 ? undefined : final;
-              services.store.execute(
+              executeUserEdit(
+                services.store,
                 setStepMeta(
                   services.store.doc,
                   services.store.doc.activePatternId,

@@ -1,12 +1,12 @@
 /**
- * USER STYLE VECTOR (#7) — the user's ★-kept rolls averaged into a single
- * point in the SAME 16-dim semantic space the embedding-conditioned priors
- * consume. "Your sound" as a vector: blend it into the conditioning vector and
- * every v2 prior (drum + melodic) drifts toward what the user keeps, without
- * retraining anything.
+ * USER STYLE VECTOR (#7) — the user's ★-kept rolls and explicitly taught
+ * pattern summaries averaged into a single point in the SAME 16-dim semantic
+ * space the embedding-conditioned priors consume. "Your sound" as a vector:
+ * blend it into conditioning so both v2 priors drift toward what the user
+ * keeps, without retraining anything.
  *
- * Pipeline: ledger entries → deterministic EN text per entry (the same word
- * space the training corpus lives in) → MiniLM embed → average in 384-dim →
+ * Pipeline: compact local examples → deterministic EN text per example (the
+ * same word space the training corpus lives in) → MiniLM embed → average in 384-dim →
  * ONE PCA projection (linear, so mean-then-project ≡ project-then-mean) →
  * 16-dim style vector, cached in localStorage keyed by a ledger signature.
  *
@@ -17,6 +17,7 @@
 import { projectEmbedding } from "../ai/symbolic/pca-projection";
 import { isValidLedgerEntry, type FavoriteLedgerEntry } from "./favorites-core";
 import { readFavoriteLedger } from "./favorites";
+import { isValidStyleExample, readStyleExamples, type StyleExampleV1 } from "./style-example-ledger";
 
 export type EmbedFn = (texts: string[]) => Promise<Float32Array[] | null>;
 
@@ -38,12 +39,19 @@ export function styleVectorMode(): "off" | "on" {
  * described in the training corpus's word space ("energetic dense house deep").
  * Same entry ⇒ same text ⇒ same embedding.
  */
-export function styleVectorTextForEntry(entry: FavoriteLedgerEntry): string {
+type StyleTextSource = Pick<FavoriteLedgerEntry, "energy" | "density" | "complexity" | "genre" | "grooveId"> & {
+  variation?: number;
+};
+
+export function styleVectorTextForEntry(entry: StyleTextSource): string {
   const words: string[] = [];
-  words.push(entry.energy >= 0.7 ? "energetic" : entry.energy <= 0.4 ? "mellow" : "steady");
-  words.push(entry.density >= 0.7 ? "dense" : entry.density <= 0.4 ? "sparse" : "balanced");
-  if (entry.complexity >= 0.7) words.push("complex");
-  else if (entry.complexity <= 0.35) words.push("minimal");
+  words.push(entry.energy >= 0.72 ? "driving energetic" : entry.energy <= 0.35 ? "calm restrained" : "steady");
+  words.push(entry.density >= 0.68 ? "dense" : entry.density <= 0.34 ? "sparse spacious" : "balanced density");
+  if (entry.complexity >= 0.68) words.push("syncopated intricate");
+  else if (entry.complexity <= 0.3) words.push("minimal straight");
+  else words.push("subtle rhythmic detail");
+  const variation = entry.variation ?? 0.5;
+  words.push(variation >= 0.65 ? "evolving varied" : variation <= 0.28 ? "hypnotic repetitive" : "subtle variation");
   words.push(entry.genre);
   const dot = entry.grooveId.indexOf(".");
   if (dot >= 0 && dot + 1 < entry.grooveId.length) {
@@ -63,19 +71,29 @@ function hashSignature(input: string): string {
 }
 
 /**
- * Ledger fingerprint the caches key on: any ★ added, re-kept or dropped
- * (dedupe/cap changes the list) changes the signature → style vector and the
- * memoized conditioning vectors recompute.
+ * Fingerprint the caches key on: any ★ or explicitly taught pattern added,
+ * re-kept or dropped changes the signature → style and conditioning vectors
+ * recompute.
  */
-export function styleVectorSignature(entries: readonly FavoriteLedgerEntry[]): string {
-  const canonical = entries
-    .map((entry) => `${entry.savedAt}|${entry.seed}|${entry.grooveId}`)
+export function styleVectorSignature(
+  entries: readonly FavoriteLedgerEntry[],
+  examples: readonly StyleExampleV1[] = readStyleExamples(),
+): string {
+  const canonical = [
+    ...entries.map((entry) => `favorite|${entry.savedAt}|${entry.seed}|${entry.grooveId}`),
+    ...examples
+      .filter(isValidStyleExample)
+      .map(
+        (example) =>
+          `learned|${example.savedAt}|${example.contentHash}|${example.genre}|${example.grooveId}|${example.energy}|${example.density}|${example.complexity}|${example.variation}`,
+      ),
+  ]
     .sort()
     .join(";");
-  return `${entries.length}:${hashSignature(canonical)}`;
+  return `${canonical.length}:${hashSignature(canonical)}`;
 }
 
-/** Convenience: signature of the LIVE ledger (raw — invalid entries change it too). */
+/** Convenience: signature of the live favorite and explicitly taught ledgers. */
 export function liveStyleVectorSignature(): string {
   return styleVectorSignature(readFavoriteLedger());
 }
@@ -126,8 +144,9 @@ export async function computeStyleVector(
     const embed = embedFn ?? (await import("../ai/semantic/semantic-client")).embedTexts;
     if (styleVectorMode() === "off") return null;
     const valid = entries.filter(isValidLedgerEntry);
-    if (valid.length === 0) return null;
-    const signature = styleVectorSignature(valid);
+    const examples = readStyleExamples().filter(isValidStyleExample);
+    if (valid.length === 0 && examples.length === 0) return null;
+    const signature = styleVectorSignature(valid, examples);
 
     try {
       const raw = localStorage.getItem(STYLE_VECTOR_CACHE_KEY);
@@ -141,7 +160,7 @@ export async function computeStyleVector(
       /* stale/corrupt cache — recompute below */
     }
 
-    const texts = valid.map(styleVectorTextForEntry);
+    const texts = [...valid, ...examples].map(styleVectorTextForEntry);
     const vectors = await embed(texts);
     if (!vectors || vectors.length !== texts.length) return null;
     const dim = vectors[0]?.length ?? 0;

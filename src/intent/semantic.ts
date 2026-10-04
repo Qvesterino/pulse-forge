@@ -2,8 +2,10 @@ import type { IntentInput } from "./types";
 import { ARTIST_PRESETS } from "./artists";
 import { embedTexts } from "../ai/semantic/semantic-client";
 import { readFavoriteLedger } from "./favorites";
-import { styleVectorTextForEntry } from "./style-vector";
+import { styleVectorSignature, styleVectorTextForEntry } from "./style-vector";
 import { isValidLedgerEntry, type FavoriteLedgerEntry } from "./favorites-core";
+import { isValidStyleExample, readStyleExamples, type StyleExampleV1 } from "./style-example-ledger";
+import { personalStyleProfilesFromExamples } from "./personal-style";
 
 /**
  * SEMANTIC INTENT MATCHING (INTENT_ENGINE.md T1 krok 2) — the meaning layer
@@ -60,7 +62,10 @@ const MOOD_SK: Record<string, string> = {
  * nearest generic artist preset. The favorites branch is additive — an empty
  * ledger leaves the corpus byte-identical to the curated one.
  */
-export function buildSemanticCorpus(favoriteEntries: readonly FavoriteLedgerEntry[] = []): SemanticCorpusEntry[] {
+export function buildSemanticCorpus(
+  favoriteEntries: readonly FavoriteLedgerEntry[] = [],
+  styleExamples: readonly StyleExampleV1[] = [],
+): SemanticCorpusEntry[] {
   const corpus: SemanticCorpusEntry[] = [];
 
   for (const preset of ARTIST_PRESETS) {
@@ -331,6 +336,36 @@ export function buildSemanticCorpus(favoriteEntries: readonly FavoriteLedgerEntr
     });
   }
 
+  // Human-edited patterns join the retrieval vocabulary as compact intent
+  // recipes after three distinct examples establish a recurring preference.
+  // The notes themselves never leave the editor or enter this corpus.
+  const usableExamples = styleExamples.filter(isValidStyleExample);
+  for (const profile of personalStyleProfilesFromExamples(usableExamples)) {
+    if (profile.exampleCount < 3) continue;
+    const grooveCounts = new Map<string, number>();
+    for (const example of usableExamples) {
+      if (example.genre === profile.genre && example.grooveId) {
+        grooveCounts.set(example.grooveId, (grooveCounts.get(example.grooveId) ?? 0) + 1);
+      }
+    }
+    const grooveId = [...grooveCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0] ?? "";
+    const dot = grooveId.indexOf(".");
+    const style = dot >= 0 ? grooveId.slice(dot + 1) : "";
+    const patch: Partial<IntentInput> = {
+      genre: profile.genre as IntentInput["genre"],
+      ...(style ? { style } : {}),
+      energy: profile.energy,
+      density: profile.density,
+      complexity: profile.complexity,
+      variation: profile.variation,
+    };
+    corpus.push({
+      text: `my personal producer style ${styleVectorTextForEntry({ ...profile, grooveId })}`,
+      patch,
+      label: `Môj naučený štýl · ${profile.genre}`,
+    });
+  }
+
   return corpus;
 }
 
@@ -362,17 +397,30 @@ export type EmbedFn = (texts: string[]) => Promise<Float32Array[] | null>;
  */
 export async function semanticIntentFor(
   text: string,
-  options: { embed?: EmbedFn; favorites?: readonly FavoriteLedgerEntry[] } = {},
+  options: {
+    embed?: EmbedFn;
+    favorites?: readonly FavoriteLedgerEntry[];
+    styleExamples?: readonly StyleExampleV1[];
+  } = {},
 ): Promise<SemanticMatch | null> {
   const embed = options.embed ?? embedTexts;
   const trimmed = text.trim();
   if (!trimmed) return null;
 
   const favorites = options.favorites ?? readFavoriteLedger();
-  const favoritesSignature = favorites.map((entry) => entry.seed).join(",");
+  const styleExamples = options.styleExamples ?? readStyleExamples();
+  const validStyleExamples = styleExamples.filter(isValidStyleExample);
+  const examplesPerGenre = new Map<string, number>();
+  for (const example of validStyleExamples) {
+    examplesPerGenre.set(example.genre, (examplesPerGenre.get(example.genre) ?? 0) + 1);
+  }
+  const retrievalStyleExamples = validStyleExamples.filter(
+    (example) => (examplesPerGenre.get(example.genre) ?? 0) >= 3,
+  );
+  const favoritesSignature = styleVectorSignature(favorites, retrievalStyleExamples);
 
   if (!corpusCache || corpusCache.favoritesSignature !== favoritesSignature) {
-    const corpus = buildSemanticCorpus(favorites);
+    const corpus = buildSemanticCorpus(favorites, retrievalStyleExamples);
     const vectors = await embed(corpus.map((entry) => entry.text));
     if (!vectors || vectors.length !== corpus.length) return null;
     corpusCache = { entries: corpus, vectors, favoritesSignature };

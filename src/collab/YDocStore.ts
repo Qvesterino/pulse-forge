@@ -82,8 +82,10 @@ export class YDocStore {
   private doc_: ProjectDocument;
   /** Pre-first-sync command buffer — see the SyncPhase docs. */
   private syncPhase_: SyncPhase = "ready";
-  private bufferedCommands: Command[] = [];
+  private bufferedCommands: Array<{ command: Command; userAuthored: boolean }> = [];
   onDocChanged: ((doc: ProjectDocument) => void) | null = null;
+  /** Explicit local edits from a human music editor; remote/generated commands never call this. */
+  onUserPatternEdit: ((doc: ProjectDocument, previousDoc: ProjectDocument) => void) | null = null;
   /**
    * Jam-role gate: returns the local role (or null = ungated). Wired by
    * openProject to the CollabSession — see jamRoles.ts.
@@ -206,8 +208,8 @@ export class YDocStore {
     // One emit per flush: re-project once after the whole batch lands.
     const batch = this.bufferedCommands;
     this.bufferedCommands = [];
-    for (const command of batch) {
-      this.executeBuffered(command);
+    for (const entry of batch) {
+      this.executeBuffered(entry.command, entry.userAuthored);
     }
   }
 
@@ -341,23 +343,32 @@ export class YDocStore {
    * origin and never enter the local undo stack.
    */
   execute(command: Command): void {
+    this.applyCommand(command, false);
+  }
+
+  /** Apply a command made directly in a human editor and expose it to local taste learning. */
+  executeUserEdit(command: Command): void {
+    this.applyCommand(command, true);
+  }
+
+  private applyCommand(command: Command, userAuthored: boolean): void {
     if (this.syncPhase_ === "connecting") {
       // Pre-first-sync guard — see the SyncPhase docs. Bounded: beyond the
       // cap the OLDEST buffered command is dropped so the flushed state still
       // reflects the user's latest intent.
       if (this.bufferedCommands.length >= 200) this.bufferedCommands.shift();
-      this.bufferedCommands.push(command);
+      this.bufferedCommands.push({ command, userAuthored });
       if (this.saveStatus_ !== "syncing") {
         this.saveStatus_ = "syncing";
         this.emit();
       }
       return;
     }
-    this.executeBuffered(command);
+    this.executeBuffered(command, userAuthored);
   }
 
   /** Command application proper — runs once the sync phase is ready. */
-  private executeBuffered(command: Command): void {
+  private executeBuffered(command: Command, userAuthored = false): void {
     // Jam-role gate: a restricted role may not run commands outside its
     // bucket. The refusal is surfaced, never thrown — the UI keeps working.
     const role = this.roleProvider?.() ?? null;
@@ -369,6 +380,7 @@ export class YDocStore {
     }
     this.lastRoleBlock = null;
     this.pendingLabel = command.label;
+    const previousDoc = this.doc_;
     try {
       // `this` (the store) is the tracked origin — only local commands land
       // in the undo stack; remote updates arrive with foreign origins.
@@ -411,6 +423,14 @@ export class YDocStore {
     if (!sameGesture) this.undoManager.stopCapturing();
     this.lastCoalesce = command.coalesceKey != null ? { key: command.coalesceKey, at: now } : null;
     this.afterMutation();
+    if (userAuthored) {
+      try {
+        this.onUserPatternEdit?.(this.doc_, previousDoc);
+      } catch (error) {
+        // Taste learning is best-effort and must never make an edit fail.
+        console.warn("[style-learning] could not observe local pattern edit:", error);
+      }
+    }
   }
 
   /**

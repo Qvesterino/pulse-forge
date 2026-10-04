@@ -406,6 +406,19 @@ nota (degree + duration) a kontúra, čo príde ďalej?"
 - **Ledger**: `src/intent/favorites.ts` + `localStorage["pf:intent-favorites"]`
   — ★-nutie previewovanej rolky v Dice uloží intent + drum content (cap 200,
   dedupe, best-effort storage). Nič neopúšťa stroj.
+- **Učenie z ľudských úprav**: po ručnom zásahu v Piano Roll, Step Sequenceri
+  alebo MIDI nahrávaní sa po 1,4 s pokoja uloží kompaktný hudobný súhrn do
+  lokálneho ledgera (`pf:producer-style-examples`). Príkazy z generovania,
+  importu, vzdialeného collab-u a undo/redo tento vstup nevolajú. Ukladá sa
+  žáner, odvodená energia, hustota, komplexita, variácia a hash obsahu — bez
+  názvu projektu, stopy, promptu alebo samotných nôt. Automatické učenie je
+  lokálne a možno ho pozastaviť; aktívny pattern možno naučiť aj tlačidlom.
+- **Personalizácia výstupu**: súhrny ovplyvnia osobný sémantický vektor a po
+  troch príkladoch v žánri vytvoria lokálny intent retrieval a tri osobné
+  návrhy v Intent paneli. „Zabudnúť naučené“ vymaže ledger aj odvodené cache.
+  Ide o deterministickú adaptáciu vstupných dát a retrieval, nie o online
+  pretrénovanie neurónových váh; explicitný A/B ranker a osobný melodický
+  tréning ostávajú samostatnými kanálmi.
 - **Export**: tlačidlo "⬇ ★" v dice tray stiahne pack JSON
   (`pulse-forge-favorites-<dátum>.json`).
 - **Retrain (C1+C2, jeden príkaz)**: `npm run favorites:retrain -- <pack.json>`

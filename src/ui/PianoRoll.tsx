@@ -24,6 +24,7 @@ import { usePointerDragGuard } from "./usePointerDragGuard";
 import { MELODIC_OFFSETS, melodicKeys } from "./melodicKeys";
 import { humanizeVelocities, randomizeVelocities } from "../shared/velocityFx";
 import { HumToMelodyPanel } from "./HumToMelody";
+import { executeUserEdit } from "../commands/types";
 
 const PITCH_MIN = 24;
 const PITCH_MAX = 84;
@@ -460,7 +461,7 @@ export function PianoRollTrack({
         const hit = (pattern.notes?.[track.id] ?? []).find(
           (n) => n.pitch === cur.pitch && n.start === cur.step * STEP_TICKS,
         );
-        if (hit) services.store.execute(deleteNote(doc, track.id, hit.id));
+        if (hit) executeUserEdit(services.store, deleteNote(doc, track.id, hit.id));
         return;
       }
       const offset = MELODIC_OFFSETS[event.code];
@@ -475,7 +476,8 @@ export function PianoRollTrack({
       const patternTicks = stepCount * STEP_TICKS;
       const start = Math.max(0, Math.min(cur.step * STEP_TICKS, patternTicks - STEP_TICKS));
       const duration = Math.max(STEP_TICKS, Math.min(entrySteps * STEP_TICKS, patternTicks - start));
-      services.store.execute(
+      executeUserEdit(
+        services.store,
         addNote(doc, track.id, {
           pitch,
           start,
@@ -723,7 +725,7 @@ export function PianoRollTrack({
     // `=== true`: the services union includes a void no-op stand-in, and a
     // frame we did not open must never be closed by us.
     altDragFrameRef.current = services.store.beginUndoFrame(`Duplicate ${dups.length} notes (drag)`) === true;
-    services.store.execute({
+    executeUserEdit(services.store, {
       type: "altDragDuplicate",
       label: `Duplicate ${dups.length} notes`,
       execute: (d: any) => ({
@@ -770,8 +772,8 @@ export function PianoRollTrack({
       // The note can vanish mid-drag (undo/collab) — a throwing commit here
       // would skip the drag-state reset below and leave stale bar heights.
       try {
-        if (ids.length === 1) services.store.execute(setNotesVelocity(doc, track.id, ids, velocities[ids[0]]));
-        else if (ids.length > 1) services.store.execute(setNotesVelocities(doc, track.id, velocities));
+        if (ids.length === 1) executeUserEdit(services.store, setNotesVelocity(doc, track.id, ids, velocities[ids[0]]));
+        else if (ids.length > 1) executeUserEdit(services.store, setNotesVelocities(doc, track.id, velocities));
       } catch {
         /* stale ids — drop the commit, still reset drag state */
       }
@@ -791,13 +793,15 @@ export function PianoRollTrack({
       if (scaleSnap && projectKey) {
         newPitch = snapToScale(newPitch, projectKey);
       }
-      services.store.execute(
+      executeUserEdit(
+        services.store,
         moveNote(services.store.doc, track.id, current.noteId, { start: newStart, pitch: newPitch }),
       );
     }
     if (current.mode === "resize" && current.durSteps !== current.baseDurSteps) {
       const maxDur = Math.round((patternTicks - current.baseStart) / STEP_TICKS);
-      services.store.execute(
+      executeUserEdit(
+        services.store,
         resizeNote(services.store.doc, track.id, current.noteId, clamp(current.durSteps, 1, maxDur) * STEP_TICKS),
       );
     }
@@ -870,7 +874,8 @@ export function PianoRollTrack({
     }
     const { stepF, pitch } = posFromEvent(event);
     const start = clamp(Math.floor(stepF), 0, pattern.stepCount - 1) * STEP_TICKS;
-    services.store.execute(
+    executeUserEdit(
+      services.store,
       addNote(services.store.doc, track.id, { pitch, start, duration: STEP_TICKS, velocity: 0.9 }),
     );
     onSelectNote(null);
@@ -979,8 +984,8 @@ export function PianoRollTrack({
     }
     const ids = Object.keys(velocities);
     try {
-      if (ids.length === 1) services.store.execute(setNotesVelocity(doc, track.id, ids, velocities[ids[0]]));
-      else services.store.execute(setNotesVelocities(doc, track.id, velocities));
+      if (ids.length === 1) executeUserEdit(services.store, setNotesVelocity(doc, track.id, ids, velocities[ids[0]]));
+      else executeUserEdit(services.store, setNotesVelocities(doc, track.id, velocities));
     } catch {
       /* stale ids — drop the commit, still reset drag state */
     }
@@ -1038,7 +1043,7 @@ export function PianoRollTrack({
 
   const deleteNoteAt = (event: React.MouseEvent, note: NoteEvent) => {
     event.preventDefault();
-    services.store.execute(deleteNote(services.store.doc, track.id, note.id));
+    executeUserEdit(services.store, deleteNote(services.store.doc, track.id, note.id));
     if (selectedNote?.trackId === track.id && selectedNote.noteIds.includes(note.id)) onSelectNote(null);
   };
 
@@ -1063,7 +1068,7 @@ export function PianoRollTrack({
     const prev = [...notes];
     const next = [...notes, ...newNotes].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
     const newIds = newNotes.map((n) => n.id);
-    services.store.execute({
+    executeUserEdit(services.store, {
       type: "pasteNotes",
       label: `Paste ${newNotes.length} notes`,
       execute: (d: any) => ({
@@ -1122,7 +1127,7 @@ export function PianoRollTrack({
         if (e.key === "ArrowUp") dp = e.shiftKey ? 12 : 1;
         if (e.key === "ArrowDown") dp = e.shiftKey ? -12 : -1;
         try {
-          services.store.execute(nudgeNotes(doc, track.id, selectedNote!.noteIds, dt, dp));
+          executeUserEdit(services.store, nudgeNotes(doc, track.id, selectedNote!.noteIds, dt, dp));
         } catch {
           // Stale selection (notes deleted by undo/collab between renders) —
           // same tolerance the Ctrl+B / Alt+Q paths have; never an uncaught
@@ -1152,7 +1157,7 @@ export function PianoRollTrack({
         if (!hasSelection) return;
         e.preventDefault();
         try {
-          services.store.execute(duplicateNotes(doc, track.id, selectedNote!.noteIds));
+          executeUserEdit(services.store, duplicateNotes(doc, track.id, selectedNote!.noteIds));
         } catch {
           /* empty */
         }
@@ -1162,7 +1167,8 @@ export function PianoRollTrack({
       if (e.altKey && lower === "q" && !ctrl) {
         e.preventDefault();
         try {
-          services.store.execute(
+          executeUserEdit(
+            services.store,
             quantizeNotes(doc, track.id, hasSelection ? selectedNote!.noteIds : undefined, STEP_TICKS, 0.5),
           );
         } catch {
@@ -1195,7 +1201,7 @@ export function PianoRollTrack({
             }
             return { ...n, slide: n.start > sel[0].start };
           });
-          services.store.execute({
+          executeUserEdit(services.store, {
             type: "slideNotes",
             label: anySlid ? `Unslide ${sel.length} notes` : `Slide ${sel.length} notes`,
             execute: (d: any) => ({
@@ -1215,7 +1221,8 @@ export function PianoRollTrack({
         }
         // S strum — 20 ticks spread, uses FL strum semantics
         e.preventDefault();
-        services.store.execute(
+        executeUserEdit(
+          services.store,
           applyMidiCreativeTool(doc, {
             trackId: track.id,
             noteIds: selectedNote!.noteIds,
@@ -1244,7 +1251,7 @@ export function PianoRollTrack({
           if (cur.start + cur.duration > patternTicks) cur.duration = patternTicks - cur.start;
         }
         const next = notes.map((n) => map.get(n.id) ?? n);
-        services.store.execute({
+        executeUserEdit(services.store, {
           type: "legatoNotes",
           label: `Legato ${sel.length} notes`,
           execute: (d: any) => ({
@@ -1345,7 +1352,9 @@ export function PianoRollTrack({
             type="button"
             className="btn btn-small"
             title="Quantize to 1/16"
-            onClick={() => runOnSelection((ids) => services.store.execute(quantizeNotes(doc, track.id, ids ?? [])))}
+            onClick={() =>
+              runOnSelection((ids) => executeUserEdit(services.store, quantizeNotes(doc, track.id, ids ?? [])))
+            }
           >
             QUANT
           </button>
@@ -1361,7 +1370,7 @@ export function PianoRollTrack({
                 const next = randomizeVelocities(current);
                 const velocities: Record<string, number> = {};
                 list.forEach((id, i) => (velocities[id] = next[i]));
-                services.store.execute(setNotesVelocities(doc, track.id, velocities));
+                executeUserEdit(services.store, setNotesVelocities(doc, track.id, velocities));
               })
             }
           >
@@ -1379,7 +1388,7 @@ export function PianoRollTrack({
                 const next = humanizeVelocities(current);
                 const velocities: Record<string, number> = {};
                 list.forEach((id, i) => (velocities[id] = next[i]));
-                services.store.execute(setNotesVelocities(doc, track.id, velocities));
+                executeUserEdit(services.store, setNotesVelocities(doc, track.id, velocities));
               })
             }
           >
@@ -1398,7 +1407,7 @@ export function PianoRollTrack({
             type="button"
             className="btn btn-small"
             title="Duplicate"
-            onClick={() => runOnSelection((ids) => services.store.execute(duplicateNotes(doc, track.id, ids)))}
+            onClick={() => runOnSelection((ids) => executeUserEdit(services.store, duplicateNotes(doc, track.id, ids)))}
           >
             DUP
           </button>
@@ -1407,7 +1416,7 @@ export function PianoRollTrack({
             className="btn btn-small"
             title="Split notes in half"
             disabled={!hasSelection}
-            onClick={() => runOnSelection((ids) => services.store.execute(splitNotes(doc, track.id, ids)))}
+            onClick={() => runOnSelection((ids) => executeUserEdit(services.store, splitNotes(doc, track.id, ids)))}
           >
             SPLIT
           </button>
@@ -1416,7 +1425,7 @@ export function PianoRollTrack({
             className="btn btn-small"
             title="Glue notes of same pitch"
             disabled={!hasSelection || (selectedNote?.noteIds.length ?? 0) < 2}
-            onClick={() => runOnSelection((ids) => services.store.execute(glueNotes(doc, track.id, ids)))}
+            onClick={() => runOnSelection((ids) => executeUserEdit(services.store, glueNotes(doc, track.id, ids)))}
           >
             GLUE
           </button>
@@ -1427,7 +1436,7 @@ export function PianoRollTrack({
             disabled={!hasSelection}
             onClick={() => {
               if (hasSelection) {
-                services.store.execute(deleteNotes(doc, track.id, selectedNote!.noteIds));
+                executeUserEdit(services.store, deleteNotes(doc, track.id, selectedNote!.noteIds));
                 onSelectNote(null);
               }
             }}
@@ -1442,7 +1451,8 @@ export function PianoRollTrack({
             title="Reverse"
             onClick={() =>
               runOnSelection((ids) =>
-                services.store.execute(
+                executeUserEdit(
+                  services.store,
                   applyMidiCreativeTool(doc, {
                     trackId: track.id,
                     noteIds: ids,
@@ -1460,7 +1470,8 @@ export function PianoRollTrack({
             title="Humanize ±12 ticks / ±0.1 vel (seeded)"
             onClick={() =>
               runOnSelection((ids) =>
-                services.store.execute(
+                executeUserEdit(
+                  services.store,
                   applyMidiCreativeTool(doc, {
                     trackId: track.id,
                     noteIds: ids,
@@ -1483,7 +1494,8 @@ export function PianoRollTrack({
             title="Strum 20 ticks up"
             onClick={() =>
               runOnSelection((ids) =>
-                services.store.execute(
+                executeUserEdit(
+                  services.store,
                   applyMidiCreativeTool(doc, {
                     trackId: track.id,
                     noteIds: ids,
@@ -1511,7 +1523,7 @@ export function PianoRollTrack({
                 0.05,
                 (notes.find((n) => selectedNote!.noteIds.includes(n.id))?.velocity ?? 0.8) - 0.1,
               );
-              services.store.execute(setNotesVelocity(doc, track.id, selectedNote!.noteIds, vel));
+              executeUserEdit(services.store, setNotesVelocity(doc, track.id, selectedNote!.noteIds, vel));
             }}
           >
             V-
@@ -1524,7 +1536,7 @@ export function PianoRollTrack({
             onClick={() => {
               if (!hasSelection) return;
               const vel = Math.min(1, (notes.find((n) => selectedNote!.noteIds.includes(n.id))?.velocity ?? 0.8) + 0.1);
-              services.store.execute(setNotesVelocity(doc, track.id, selectedNote!.noteIds, vel));
+              executeUserEdit(services.store, setNotesVelocity(doc, track.id, selectedNote!.noteIds, vel));
             }}
           >
             V+
@@ -1538,7 +1550,8 @@ export function PianoRollTrack({
             disabled={!hasSelection}
             onClick={() =>
               runOnSelection((ids) =>
-                services.store.execute(
+                executeUserEdit(
+                  services.store,
                   applyMidiCreativeTool(doc, {
                     trackId: track.id,
                     noteIds: ids,
@@ -1557,7 +1570,8 @@ export function PianoRollTrack({
             disabled={!hasSelection}
             onClick={() =>
               runOnSelection((ids) =>
-                services.store.execute(
+                executeUserEdit(
+                  services.store,
                   applyMidiCreativeTool(doc, {
                     trackId: track.id,
                     noteIds: ids,
@@ -1576,7 +1590,8 @@ export function PianoRollTrack({
             disabled={!hasSelection}
             onClick={() =>
               runOnSelection((ids) =>
-                services.store.execute(
+                executeUserEdit(
+                  services.store,
                   applyMidiCreativeTool(doc, {
                     trackId: track.id,
                     noteIds: ids,
@@ -1595,7 +1610,8 @@ export function PianoRollTrack({
             disabled={!hasSelection}
             onClick={() =>
               runOnSelection((ids) =>
-                services.store.execute(
+                executeUserEdit(
+                  services.store,
                   applyMidiCreativeTool(doc, {
                     trackId: track.id,
                     noteIds: ids,
@@ -1615,7 +1631,8 @@ export function PianoRollTrack({
             title="Nudge left 1/16"
             disabled={!hasSelection}
             onClick={() =>
-              hasSelection && services.store.execute(nudgeNotes(doc, track.id, selectedNote!.noteIds, -STEP_TICKS, 0))
+              hasSelection &&
+              executeUserEdit(services.store, nudgeNotes(doc, track.id, selectedNote!.noteIds, -STEP_TICKS, 0))
             }
           >
             ◀
@@ -1626,7 +1643,8 @@ export function PianoRollTrack({
             title="Nudge right 1/16"
             disabled={!hasSelection}
             onClick={() =>
-              hasSelection && services.store.execute(nudgeNotes(doc, track.id, selectedNote!.noteIds, STEP_TICKS, 0))
+              hasSelection &&
+              executeUserEdit(services.store, nudgeNotes(doc, track.id, selectedNote!.noteIds, STEP_TICKS, 0))
             }
           >
             ▶
@@ -1637,7 +1655,7 @@ export function PianoRollTrack({
             title="Nudge up 1 semitone"
             disabled={!hasSelection}
             onClick={() =>
-              hasSelection && services.store.execute(nudgeNotes(doc, track.id, selectedNote!.noteIds, 0, 1))
+              hasSelection && executeUserEdit(services.store, nudgeNotes(doc, track.id, selectedNote!.noteIds, 0, 1))
             }
           >
             ▲
@@ -1648,7 +1666,7 @@ export function PianoRollTrack({
             title="Nudge down 1 semitone"
             disabled={!hasSelection}
             onClick={() =>
-              hasSelection && services.store.execute(nudgeNotes(doc, track.id, selectedNote!.noteIds, 0, -1))
+              hasSelection && executeUserEdit(services.store, nudgeNotes(doc, track.id, selectedNote!.noteIds, 0, -1))
             }
           >
             ▼
@@ -1659,7 +1677,8 @@ export function PianoRollTrack({
             title="Arpeggiate Up 1/16"
             onClick={() =>
               runOnSelection((ids) =>
-                services.store.execute(
+                executeUserEdit(
+                  services.store,
                   applyMidiCreativeTool(doc, {
                     trackId: track.id,
                     noteIds: ids,
@@ -1688,7 +1707,8 @@ export function PianoRollTrack({
             title="Note repeat x4 1/32"
             onClick={() =>
               runOnSelection((ids) =>
-                services.store.execute(
+                executeUserEdit(
+                  services.store,
                   applyMidiCreativeTool(doc, {
                     trackId: track.id,
                     noteIds: ids,
@@ -1950,7 +1970,8 @@ export function PianoRollTrack({
               onClick={() => {
                 setChordMenu(null);
                 try {
-                  services.store.execute(
+                  executeUserEdit(
+                    services.store,
                     applyMidiCreativeTool(doc, {
                       trackId: track.id,
                       noteIds: hasSelection ? selectedNote!.noteIds : undefined,
@@ -1988,7 +2009,7 @@ export function PianoRollTrack({
             onClick={() => {
               const target = noteMenu.noteId;
               setNoteMenu(null);
-              services.store.execute(deleteNote(services.store.doc, track.id, target));
+              executeUserEdit(services.store, deleteNote(services.store.doc, track.id, target));
             }}
           >
             Delete
@@ -1999,7 +2020,7 @@ export function PianoRollTrack({
             onClick={() => {
               const target = noteMenu.noteId;
               setNoteMenu(null);
-              services.store.execute(duplicateNotes(services.store.doc, track.id, [target]));
+              executeUserEdit(services.store, duplicateNotes(services.store.doc, track.id, [target]));
             }}
           >
             Duplicate
@@ -2014,7 +2035,7 @@ export function PianoRollTrack({
               if (!source) return;
               const next = notes.map((n) => (n.id === target ? { ...n, slide: !n.slide } : n));
               const prev = [...notes];
-              services.store.execute({
+              executeUserEdit(services.store, {
                 type: "toggleSlide",
                 label: `${source.slide ? "Unslide" : "Slide"} ${pitchName(source.pitch)}`,
                 execute: (d: ProjectDocument) => ({

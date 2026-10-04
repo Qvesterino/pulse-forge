@@ -158,7 +158,7 @@ import type { NoteEvent } from "../project-model/types";
 import { BAR_TICKS, PPQ } from "../project-model/types";
 import { rankerMode } from "../ai/ranking/ranker-client";
 import { playAuditionBuffer, renderAuditionBuffer, renderSongAuditionBuffer, stopAudition } from "../intent/audition";
-import { semanticIntentFor } from "../intent/semantic";
+import { resetSemanticCorpusCache, semanticIntentFor } from "../intent/semantic";
 import { takeIntentPrefill, takeRegenFlag } from "../landing/handoff";
 import { freshRegenSeed, intentSnapshotOfDoc, promptFromIntent } from "../gallery/intentCarry";
 import { PublishToGalleryButton } from "../gallery/PublishButton";
@@ -175,8 +175,22 @@ import type { ArrangementClip, DrumTrack, Pattern, ProjectDocument } from "../pr
 import { ProducerDnaCompare } from "./ProducerDnaCompare";
 import { CandidateLaneReceipt } from "./CandidateLaneReceipt";
 import { runPersonalTrainingFromShipped } from "../intent/personal-melodic-flow";
-import { clearStyleExamples, countStyleExamples, recordStyleExample } from "../intent/style-example-ledger";
+import {
+  automaticStyleLearningEnabled,
+  clearStyleExamples,
+  countStyleExamples,
+  recordStyleExample,
+  setAutomaticStyleLearningEnabled,
+  setPreferredStyleGenre,
+  STYLE_EXAMPLES_CHANGED_EVENT,
+} from "../intent/style-example-ledger";
 import { patternStyleExampleFromProject } from "../intent/pattern-style-example";
+import {
+  personalStyleDescription,
+  personalStyleIntentSuggestions,
+  personalStyleProfile,
+} from "../intent/personal-style";
+import { resetStyleVector } from "../intent/style-vector";
 
 // The Audiotool connector is an explicit opt-in path. Keep its UI and adapter
 // out of the regular Intent bundle until the user chooses to export a take.
@@ -296,6 +310,7 @@ export function IntentPanel() {
   const [personalStatus, setPersonalStatus] = useState<string | null>(null);
   const [learnedPatternCount, setLearnedPatternCount] = useState(countStyleExamples);
   const [styleMemoryMessage, setStyleMemoryMessage] = useState<string | null>(null);
+  const [automaticLearning, setAutomaticLearning] = useState(automaticStyleLearningEnabled);
   // A1 audition state — the ranked bank lives on the result; buffers are
   // cached per candidate so replaying is instant after the first render.
   const [bankResult, setBankResult] = useState<GenerationResult | null>(null);
@@ -637,6 +652,25 @@ export function IntentPanel() {
     return parseIntentText(text);
   }, [text]);
 
+  useEffect(() => {
+    if (parsed?.input.genre) setPreferredStyleGenre(parsed.input.genre);
+  }, [parsed?.input.genre]);
+
+  useEffect(() => {
+    const refreshStyleMemory = (): void => {
+      setLearnedPatternCount(countStyleExamples());
+      setAutomaticLearning(automaticStyleLearningEnabled());
+    };
+    window.addEventListener(STYLE_EXAMPLES_CHANGED_EVENT, refreshStyleMemory);
+    return () => window.removeEventListener(STYLE_EXAMPLES_CHANGED_EVENT, refreshStyleMemory);
+  }, []);
+
+  const learnedStyle = useMemo(
+    () => personalStyleProfile(parsed?.input.genre),
+    [learnedPatternCount, parsed?.input.genre],
+  );
+  const personalIntents = useMemo(() => personalStyleIntentSuggestions(learnedStyle), [learnedStyle]);
+
   const learnActivePattern = () => {
     const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
     if (!pattern) {
@@ -654,18 +688,34 @@ export function IntentPanel() {
     }
     const count = countStyleExamples();
     setLearnedPatternCount(count);
-    setStyleMemoryMessage(`Zapamätané lokálne · ${example.genre} · ${count} naučených patternov.`);
+    setStyleMemoryMessage(`Zapamätané lokálne · ${example.genre} · ${count} príkladov štýlu.`);
   };
 
   const forgetLearnedPatterns = () => {
     if (learnedPatternCount === 0) return;
-    if (!window.confirm("Vymazať patterny, ktoré si KYX výslovne naučil? Dice obľúbené rolky zostanú.")) return;
+    if (!window.confirm("Vymazať všetky lokálne príklady tvojho štýlu? Dice obľúbené rolky zostanú.")) return;
     if (!clearStyleExamples()) {
       setStyleMemoryMessage("Pamäť sa nepodarilo vymazať.");
       return;
     }
+    resetStyleVector();
+    resetSemanticCorpusCache();
     setLearnedPatternCount(0);
     setStyleMemoryMessage("Naučené patterny boli vymazané z lokálnej pamäte.");
+  };
+
+  const toggleAutomaticLearning = () => {
+    const next = !automaticLearning;
+    if (!setAutomaticStyleLearningEnabled(next)) {
+      setStyleMemoryMessage("Nastavenie učenia sa nepodarilo uložiť v tomto prehliadači.");
+      return;
+    }
+    setAutomaticLearning(next);
+    setStyleMemoryMessage(
+      next
+        ? "Automatické lokálne učenie je zapnuté. KYX si po ručných úpravách zapamätá iba hudobné súhrny."
+        : "Automatické učenie je pozastavené. Doterajšie lokálne príklady zostali uložené.",
+    );
   };
 
   const savedBriefAt = doc.producerBrief?.savedAt ?? null;
@@ -3456,8 +3506,18 @@ export function IntentPanel() {
       </div>
       <div className="intent-history" aria-label="Personal style memory">
         <span className="intent-history-label">
-          OSOBNÝ VKUS · {learnedPatternCount} naučených patternov · iba lokálne
+          OSOBNÝ VKUS · {learnedPatternCount} lokálnych príkladov · {automaticLearning ? "AUTO ON" : "AUTO OFF"} · iba
+          lokálne
         </span>
+        <button
+          type="button"
+          className="btn btn-small"
+          aria-pressed={automaticLearning}
+          onClick={toggleAutomaticLearning}
+          title="Po krátkej pauze po ručnej úprave v Piano Roll, Step Sequenceri alebo MIDI nahrávaní uloží KYX iba súhrn štýlu. Generované a vzdialené zmeny sa nezapočítajú."
+        >
+          {automaticLearning ? "POZASTAVIŤ UČENIE" : "ZAPNÚŤ UČENIE"}
+        </button>
         <button
           type="button"
           className="btn btn-small"
@@ -3472,6 +3532,24 @@ export function IntentPanel() {
           </button>
         )}
       </div>
+      {learnedStyle && learnedStyle.exampleCount >= 3 && (
+        <div className="intent-history" aria-label="Personalized intent suggestions">
+          <span className="intent-history-label">
+            TVOJ ŠTÝL · {learnedStyle.genre} · {personalStyleDescription(learnedStyle)}
+          </span>
+          {personalIntents.map((suggestion) => (
+            <button
+              key={suggestion.id}
+              type="button"
+              className="intent-history-chip"
+              title={`Použiť osobný návrh: ${suggestion.prompt}`}
+              onClick={() => setText(suggestion.prompt)}
+            >
+              {suggestion.label}
+            </button>
+          ))}
+        </div>
+      )}
       {styleMemoryMessage && (
         <div role="status" className="intent-detected">
           {styleMemoryMessage}

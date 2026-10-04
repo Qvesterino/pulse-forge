@@ -48,6 +48,8 @@ export class ProjectStore {
   private saveStatus_: SaveStatus = "saved";
   private lastSavedAt_: string | null = null;
   onDocChanged: ((doc: ProjectDocument) => void) | null = null;
+  /** Explicit local edits from a human music editor; generated/system commands never call this. */
+  onUserPatternEdit: ((doc: ProjectDocument, previousDoc: ProjectDocument) => void) | null = null;
 
   private static readonly HISTORY_LIMIT = 64;
 
@@ -194,6 +196,16 @@ export class ProjectStore {
   getLastSavedAt = (): string | null => this.lastSavedAt_;
 
   execute(command: Command): void {
+    this.applyCommand(command, false);
+  }
+
+  /** Apply a command made directly in a human editor and expose it to local taste learning. */
+  executeUserEdit(command: Command): void {
+    this.applyCommand(command, true);
+  }
+
+  private applyCommand(command: Command, userAuthored: boolean): void {
+    const previousDoc = this.doc_;
     const inFrame = this.frameCommands !== null;
     const topIdx = this.undoStack.length - 1;
     const top = this.undoStack[topIdx];
@@ -220,6 +232,7 @@ export class ProjectStore {
       this.historyDocs[this.historyDocs.length - 1] = this.doc_;
       if (inFrame) this.frameCommands!.push(command);
       this.afterMutation();
+      if (userAuthored) this.notifyUserPatternEdit(previousDoc);
       return;
     }
     const applied = command.execute(this.doc_);
@@ -243,6 +256,16 @@ export class ProjectStore {
     this.redoStack = [];
     if (inFrame) this.frameCommands!.push(command);
     this.afterMutation();
+    if (userAuthored) this.notifyUserPatternEdit(previousDoc);
+  }
+
+  private notifyUserPatternEdit(previousDoc: ProjectDocument): void {
+    try {
+      this.onUserPatternEdit?.(this.doc_, previousDoc);
+    } catch (error) {
+      // Taste learning is best-effort and must never make an edit fail.
+      console.warn("[style-learning] could not observe local pattern edit:", error);
+    }
   }
 
   /**

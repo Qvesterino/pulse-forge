@@ -65,6 +65,7 @@ import { LatencyCalibrationController } from "./audio-engine/latencyCalibration"
 import { ArrangementCaptureController } from "./arrangement/capture";
 import { GhostPreviewPlayer } from "./audio-engine/GhostPreviewPlayer";
 import { NoteRepeatController } from "./audio-engine/NoteRepeat";
+import { createLocalStyleObserver } from "./intent/style-observation";
 
 /**
  * Long-lived services shared across projects: the audio engine (one shared
@@ -479,6 +480,8 @@ export async function openProject(
       console.warn(`[jam] role "${role}" cannot run "${commandType}"`);
     };
   }
+  const styleObserver = createLocalStyleObserver();
+  store.onUserPatternEdit = (doc, previousDoc) => styleObserver.observe(doc, previousDoc);
   collab?.connect();
 
   // Snapshot safety net — "restore to yesterday". One snapshot at session
@@ -764,7 +767,7 @@ export async function openProject(
   // frame (one Ctrl+Z removes the take).
   const patternRecorder = new PatternRecorder({
     getDoc: () => store.doc,
-    execute: (command) => store.execute(command),
+    execute: (command) => store.executeUserEdit(command),
     getTick: () => transport.tickAt(engine.currentTime + 0.005),
     isPlaying: () => transport.playing,
     // Audit 07 D3: count-in/pre-roll hits land before the content region —
@@ -1106,6 +1109,8 @@ export async function openProject(
     // Ordered teardown; the flag first so pending fire-and-forget asyncs
     // (frozen restore, Web MIDI access grant) observe the close immediately.
     closed = true;
+    styleObserver.flush();
+    styleObserver.dispose();
     setLiveTakeAuditionProject(null);
     noteRepeat.stopAll();
     ghost.stop();
