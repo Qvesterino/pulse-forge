@@ -187,6 +187,20 @@ def main() -> None:
         "stays library-only, and variants of held-out sequences are dropped",
     )
     parser.add_argument(
+        "--feature-v3",
+        action="store_true",
+        help="train the W1 harmony-aware v3 prior: input = melodic-v3-dataset.json "
+        "(melodic-features.v3, 68 dims — chord root/quality/function + next-chord "
+        "+ position-in-chord + motif embedding) merged with the v1 library dataset "
+        "re-embedded through the same chord ladders. Separate artifact "
+        "symbolic-melodic-v3 / melodic-prior.v3 (runtime fallback v3→v2→v1)",
+    )
+    parser.add_argument(
+        "--v3-dataset",
+        default="scripts/data/melodic-v3-dataset.json",
+        help="melodic-v3-dataset.json path (generate-melodic-v3-dataset.mts output)",
+    )
+    parser.add_argument(
         "--midi-corpus",
         help="public-domain MIDI corpus dataset JSON (ingest-midi-corpus.mts output) — "
         "external next-note samples merged into the TRAIN split only (weight 1.0); "
@@ -215,7 +229,66 @@ def main() -> None:
     if payload["featureVersion"] != "melodic-features.v1":
         raise SystemExit(f"unexpected feature version: {payload['featureVersion']}")
 
-    data = payload["data"]
+    # ── W1 v3 branch: harmony-aware prior (separate artifact) ───────────────
+    # The v1 base dataset is re-embedded through the SAME chord ladders the
+    # v3 generator used (genre progression per group, expanded to the
+    # sequence length), then merged with the v3 dataset (library + MIDI
+    # rows, already 68-dim). Validation stays group-held-out as before.
+    if args.feature_v3:
+        # v3 is self-contained: the v3 dataset already embeds the library AND
+        # the MIDI corpus through the chord ladders — the v1/v2 extras
+        # (favorites, augmented, midi-corpus merge, style embeddings) are v1
+        # 29-dim shaped and would corrupt the 68-dim input.
+        for flag_name in ("favorites", "embedding", "augmented", "midi_corpus"):
+            if getattr(args, flag_name):
+                raise SystemExit(f"--{flag_name.replace('_', '-')} is incompatible with --feature-v3 (v1-shaped extras)")
+        feature_version = "melodic-features.v3"
+        prior_version = "melodic-prior.v3"
+        artifact_name = "symbolic-melodic-v3"
+
+        v3_payload = json.loads(Path(args.v3_dataset).read_text())
+        if v3_payload.get("featureVersion") != "melodic-features.v3":
+            raise SystemExit(f"unexpected v3 feature version: {v3_payload.get('featureVersion')}")
+
+        # rebuild the chord ladder per group key exactly like the v3
+        # generator did: library groups carry the genre, midi groups carry
+        # the family (classical→house, romantic/minimal→ambient)
+        def genre_family(group: str) -> str:
+            if "romantic" in group or "impressionist" in group or "minimal" in group:
+                return "ambient"
+            return "house"
+
+        # v1 base rows re-embedded: group → (startStep, prevDeg, prevDur,
+        # prevPrevDeg) sequence is NOT recoverable from the v1 row alone —
+        # but the v3 dataset ALREADY contains the library rows re-embedded
+        # (same sequences, same teacher), so the v1 base contributes only
+        # the rows whose group the v3 generator covered. Deduplicate by
+        # group: v3 rows win.
+        from collections import defaultdict
+
+        v3_by_group: dict[str, list[dict]] = defaultdict(list)
+        for sample in v3_payload["samples"]:
+            v3_by_group[str(sample["group"])].append(sample)
+
+        data = v3_payload["samples"]
+        x_all = np.array([sample["x"] for sample in data], dtype=np.float64)
+        y_degree = np.array([sample["degree"] for sample in data], dtype=np.int64)
+        y_duration = np.array([sample["duration"] for sample in data], dtype=np.int64)
+        groups = np.array([sample["group"] for sample in data])
+        # Validation stays LIBRARY-ONLY (W2 rule: "validation stays
+        # library-pure") — MIDI-embedded rows (group prefix `midi#`) are a
+        # re-embedded reconstruction whose wrap-around chords are
+        # approximate, so they train but never grade.
+        is_midi_group = np.array([group.startswith("midi#") for group in groups])
+        print(
+            f"[train][v3] {len(data)} harmony-aware samples, {x_all.shape[1]} dims "
+            f"(library {int((~is_midi_group).sum())} / midi {int(is_midi_group.sum())})"
+        )
+    else:
+        data = payload["data"]
+        artifact_name = "symbolic-melodic-v1"
+        feature_version = "melodic-features.v1"
+        prior_version = "melodic-prior.v1"
     x_all = np.array([sample["x"] for sample in data], dtype=np.float64)
     y_degree = np.array([sample["degree"] for sample in data], dtype=np.int64)
     y_duration = np.array([sample["duration"] for sample in data], dtype=np.int64)
@@ -236,9 +309,10 @@ def main() -> None:
     # v2 artifacts are SEPARATE from v1 — the one-hot prior stays intact as the
     # runtime fallback (mirrors the drum prior v2 policy).
     embedding_mode = lookup is not None
-    artifact_name = "symbolic-melodic-v2" if embedding_mode else "symbolic-melodic-v1"
-    feature_version = "melodic-features-v2" if embedding_mode else "melodic-features.v1"
-    prior_version = "melodic-prior.v2" if embedding_mode else "melodic-prior.v1"
+    if feature_version != "melodic-features.v3":
+        artifact_name = "symbolic-melodic-v2" if embedding_mode else "symbolic-melodic-v1"
+        feature_version = "melodic-features-v2" if embedding_mode else "melodic-features.v1"
+        prior_version = "melodic-prior.v2" if embedding_mode else "melodic-prior.v1"
 
     if lookup is not None:
         new_rows: list[list[float]] = []
@@ -254,6 +328,10 @@ def main() -> None:
     val_count = max(1, int(len(unique_groups) * VAL_FRACTION))
     val_groups = set(unique_groups[:val_count].tolist())
     val_mask = np.array([group in val_groups for group in groups])
+    if feature_version == "melodic-features.v3":
+        # library-pure validation (W2 rule): MIDI-reconstructed groups train,
+        # never grade
+        val_mask = val_mask & ~is_midi_group
 
     x_train, x_val = x_all[~val_mask], x_all[val_mask]
     yd_train, yd_val = y_degree[~val_mask], y_degree[val_mask]

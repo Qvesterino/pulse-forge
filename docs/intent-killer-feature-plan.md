@@ -134,30 +134,29 @@ Cieľ: AI melódie, ktoré **vedia, na akom akorde sú**. To je rozdiel medzi
   nasleduje rooty (≥80 % slotov), lead sedí na chord tones (≥70 % silných dôb);
   golden baselines nezmenené pre v1/v2 cesty; `tests/melodic-dialects` zelené.
 
-### W2 — Tréningový korpus: public-domain MIDI ingest (D3)
+### W2 — Tréningový korpus: public-domain MIDI ingest (D3) — **ODHADNUTÉ 2026-10-04, korpus presmerovaný do W1**
 
-Najväčší dlhodobý lever kvality. Engine je dnes limitovaný **861 ručne
-písanými riadkami**; melodic prior je interpolátor knižnice.
+Plán predpokladal, že klasický korpus zlepší melodic prior. **Gate to vyvrátil.**
+Plný audit: `docs/W2-MIDI-CORPUS-AUDIT-2026-10-04.md`.
 
-1. **Ingest pipeline** (offline script, ako ostatné dataset tooling):
-   načítaj MIDI (importér už existuje — `src/midi/midiFile…`), kvantizuj na
-   16-step grid, preveď pitch→degree cez detekovaný key (inverzia už existuje
-   v `favoritesToMelodicSamples`), roly cez `inferPadRole`-podobnú heuristiku
-   (bass = najnižší track, lead = melodický top…), filtruj (min. dĺžka,
-   tempo sanity, monofonicita pre bass/lead).
-2. **Len ako AUGMENTácia/rozšírenie datasetu s novými group keymi**
-   (`midi#<pack>#role#idx`) — validation zostáva library-pure (rovnaké
-   pravidlo leak-guardu ako dnes).
-3. **Licenčná hygiena:** len public-domain / CC0 packy (Bach chorales,
-   public folk, vlastné); provenance per pack do `scripts/data/midi-corpUS/`
-   README + manifest; žiadny scraped obsah.
-4. **Gate:** rovnaký predregistrovaný gate; očakávanie — duration head
-   prestane byť 4-triedna škrčka (54→tisíce duration-8 vzoriek), d1/d5
-   dostanú čestné príklady.
+**Čo sa podarilo (zostáva v repo):** ingest pipeline
+(`scripts/ingest-midi-corpus.mts` + `fetch-midi-corpus.mjs`, deterministický,
+license-clean, 345 PD kusov s SHA-1 verifikáciou), `classical.*` conditioning
+(`append-classical-embeddings.mts`), `--midi-corpus` flag v tréneri aj gate
+(zdieľaný merge — gate meria presne to, čo tréner shipne). **29 730 vzoriek**
+z 338 kusov — zaviera diery d1 (3 491), d5 (2 935) a duration-8 (736 vs 54).
 
-- **Úsilie:** 3–5 blokov (pipeline + eval), rast datasetu neobmedzený.
-- **Akceptácia:** dataset ≥ 5 000 base riadkov; gate PASS; smoke „prior
-  produkuje d1/d5" zelený; manifest nesie `corpusPacks`.
+**Čo zlyhalo (dôvod odmietnutia):** korpus znižuje degree accuracy na
+elektronickom val z **0.5447 → 0.4774** (3-fold, rovnaký split) — robustne vo
+všetkých variantoch (celý korpus / bass-only / bez chordu, `classical` aj
+`ambient` conditioning). Klasický kontrapunkt má iné lokálne distribúcie
+(stepwise + legato) než elektronický beat (skoky + synkopa) a 29 730 riadkov
+preplaví val o ~6 pp.
+
+**Rozhodnutie:** korpus sa **nenasadí** do `symbolic-melodic-v2` (gate FAIL =
+stop). Pipeline zostáva ako **tréningový základ pre W1** — tam sa korpus
+podmieni akordom, nie žánrom, a jeho voice-leading/harmónia je presne to, čo
+chord-aware model potrebuje. Dnešné správanie je bez zmeny (bez flagu).
 
 ### W3 — „Nauč sa ma" tlačidlo: in-app personalizácia (D4) — **killer UX vlna**
 
@@ -260,8 +259,8 @@ Fakt, ktorý to umožňuje: naše modely sú MALÉ (MLP 29/41/60→64→32→hla
 | ------------------------ | ------------------------------------ | ---------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | W0.1 audio targets 19/19 | VYSOKÝ (správny výber ihneď)         | ~0,5 bloku | —           | **HOTOVÉ 2026-10-04** — merané, nie vymyslené: `audio-targets.generated.ts` (19/19 žánrov, RMS/crest/ZCR/bass z referenčných renderov), wiring cez `audioTargetFor()`                             |
 | W0.2 auto-diagnóza UI    | VYSOKÝ („engine mi povie čo je zle") | ~0,5       | W0.1 pomáha | **HOTOVÉ 2026-10-04** — SUNO MODE audition → analyzeSongSections → suggestSectionRevivals → chips; klik = reviseSection → náhľad → 1 undo; testy `tests/intent-song-audio-review.test.ts` (11/11) |
-| W1 melodic v3 (harmónia) | VYSOKÝ (hudobnosť AI)                | 4–6        | —           | **HLAVNÁ VLNÁ** — paralelne s W2                                                                                                                                                                  |
-| W2 MIDI korpus           | VYSOKÝ (dlhodobá kvalita)            | 3–5        | —           | **SÚBEŽNE S W1** (gate meria oba)                                                                                                                                                                 |
+| W1 melodic v3 (harmónia) | VYSOKÝ (hudobnosť AI)                | 4–6        | —           | **WIP 2026-10-04** — kontrakt v3 ✓, dataset ✓ (9592), trainer ✓ (library-pure val); valDegreeAcc 0.57 vs v2 0.5946 — gate NEPREKONANÝ, provider v3 inert až po gate |
+| W2 MIDI korpus           | VYSOKÝ (dlhodobá kvalita)            | 3–5        | —           | **ODHADNUTÉ 2026-10-04** — gate FAIL (degree 0.5447 → 0.4774); pipeline hotová, korpus presmerovaný do W1. Audit: `docs/W2-MIDI-CORPUS-AUDIT-2026-10-04.md`                                       |
 | W3 Nauč sa ma (in-app)   | KILLER story                         | 5–8        | —           | **DRUHÁ HLAVNÁ** — po W1/W2, nezávislá na nich                                                                                                                                                    |
 | W4 features.v2 + DNA 2.0 | STREDNÍ-VYSOKÝ                       | 4–6        | —           | tretia štvrť                                                                                                                                                                                      |
 | W5 kapela (arp/pad/perc) | STREDNÍ                              | 5–7        | W1 pomáha   | štvrtá štvrť                                                                                                                                                                                      |
@@ -281,14 +280,14 @@ lokálne").
 
 ## 6. Ako meriame, že to funguje (KPI, nie vanity)
 
-| Metrika                          | Dnes                                      | Cieľ po vlnách                                              | Meranie                                         |
-| -------------------------------- | ----------------------------------------- | ----------------------------------------------------------- | ----------------------------------------------- |
-| Audio rerack správnosť per žáner | nevieme (house target pre 15 žánrov)      | 19/19 vlastné targety; A/B listening W0.1                   | `measure-genre-references` + golden review pack |
-| Melodic prior „hudobnosť"        | degree 0,5946 (bez harmónie)              | gate PASS + chord-tone recall ≥ 70 % silných dôb (W1 smoke) | smoke script + gate                             |
-| Tréningový korpus                | 861 base riadkov                          | ≥ 5 000 + licenčný manifest (W2)                            | dataset JSON                                    |
-| Personalizácia                   | ranker favoriteGroups: 0; retrain len CLI | klik → A/B dôkaz ≥ 70 % top-1 na ★ (W3)                     | A/B harness report v UI                         |
-| Producer DNA osi                 | 6 rankable reasons (bass/harmony null)    | 8 reasons (W4)                                              | `preference-evaluation.ts` lift                 |
-| Užívateľské „engine mi rozumie"  | —                                         | complaint chip → 1 klik → merateľná zmena (W0.2)            | telemetry-free: test-only (session state)       |
+| Metrika                          | Dnes                                      | Cieľ po vlnách                                                                                   | Meranie                                         |
+| -------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| Audio rerack správnosť per žáner | nevieme (house target pre 15 žánrov)      | 19/19 vlastné targety; A/B listening W0.1                                                        | `measure-genre-references` + golden review pack |
+| Melodic prior „hudobnosť"        | degree 0,5946 (bez harmónie)              | gate PASS + chord-tone recall ≥ 70 % silných dôb (W1 smoke)                                      | smoke script + gate                             |
+| Tréningový korpus                | 861 base riadkov                          | 29 730 hotových (W2) + ≥ 5 000 **proti elektronickej val** s gate PASS (W1 s chord conditioning) | `gate-melodic-retrain.py`                       |
+| Personalizácia                   | ranker favoriteGroups: 0; retrain len CLI | klik → A/B dôkaz ≥ 70 % top-1 na ★ (W3)                                                          | A/B harness report v UI                         |
+| Producer DNA osi                 | 6 rankable reasons (bass/harmony null)    | 8 reasons (W4)                                                                                   | `preference-evaluation.ts` lift                 |
+| Užívateľské „engine mi rozumie"  | —                                         | complaint chip → 1 klik → merateľná zmena (W0.2)                                                 | telemetry-free: test-only (session state)       |
 
 ---
 
@@ -301,10 +300,16 @@ lokálne").
 3. Feature kontrakt = verzia. W1 (melodic-features-v3) a W4 (features.v2)
    idú cez nové verzie + manifest, staré artefakty zostávajú fallbackmi.
 4. Každý nový dataset zdroj (MIDI pack) má licenčný manifest V TOM ISTOM
-   commite ako dáta.
-5. Lazy worker + timeout + circuit breaker pre všetko nové (TS trainer beží
+   commite ako dáta. **Len `license === "Public Domain"`** sa ingestuje
+   (W2: 345 PD kusov, SHA-1 overených; `scripts/data/midi-corpus/manifest.json`
+   je tracked audit trail, `.mid` súbory sú gitignored a regenerovateľné).
+5. **Gate FAIL = stop.** W2 toto pravidlo uplatnil: korpus sa nenasadil, pretože
+   znížil degree accuracy na elektronickom val. Audit
+   `docs/W2-MIDI-CORPUS-AUDIT-2026-10-04.md` zdokumentuje meranie aj
+   presmerovanie do W1 — plán sa nemení podľa výsledku, výsledok sa zapisuje.
+6. Lazy worker + timeout + circuit breaker pre všetko nové (TS trainer beží
    vo Worker-i, nie na main threade).
-6. `docs/CURRENT-STATE.md` + `INTENT_ENGINE.md` sa updatujú v rovnakom
+7. `docs/CURRENT-STATE.md` + `INTENT_ENGINE.md` sa updatujú v rovnakom
    commite ako čísla, ktoré menia (pravidlo AGENTS.md).
 
 ---
@@ -316,8 +321,9 @@ lokálne").
 > naučí tvoj zvuk priamo v prehliadači. Bez cloudu. Bez účtu. Bez kompromisu
 > na editovateľnosť.**
 
-W0 = pravdivé hneď (targets + diagnóza), W1/W2 = „z jednej vety hotová
-hudobná skladba", W3 = „naučí sa tvoj zvuk", W4/W5 = „znie to ako kapela".
+W0 = pravdivé hneď (targets + diagnóza), W1 = „z jednej vety hotová hudobná
+skladba" (aj s MIDI korpusom — podmieneným akordom, nie žánrom), W3 =
+„naučí sa tvoj zvuk", W4/W5 = „znie to ako kapela".
 
 ---
 
