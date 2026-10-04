@@ -423,6 +423,25 @@ function tom(startHz: number, endHz: number): Builder {
   };
 }
 
+/** Phase-4 percussion tom (2026-10-04): bank-coherence fill. The four
+ * toms (low, mid, high, floor) all have a 0.34 s sustained body. Perc
+ * tom is the SHORT snap-tom: 0.12 s decay, mid-pitch (180 Hz, between
+ * low and mid), and a 12% frequency drop instead of 0.4-octave. The
+ * "trx/lofi tom fill" voice — punctuates a 16th-note groove without
+ * singing. */
+function tomPerc(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(180, t0);
+    osc.frequency.exponentialRampToValueAtTime(158, t0 + 0.06);
+    osc.connect(env(ctx, t0, 0.85, 0.12)).connect(dest);
+    osc.start(t0);
+    osc.stop(t0 + 0.15);
+  };
+}
+
 function blip(fromHz: number, toHz: number, decay: number): Builder {
   return (ctx, dest) => {
     const t0 = ctx.currentTime;
@@ -491,6 +510,58 @@ function rimPop(): Builder {
     noise
       .connect(bp)
       .connect(env(ctx, t0, 0.35, 0.018))
+      .connect(dest);
+  };
+}
+
+/** Phase-4 hard rim (2026-10-04): bank-coherence fill. Rim.chip is dry
+ * and bright; rim.pop is pitched-up tight. Hard rim sits between them:
+ * pitched-DOWN (1400 Hz vs 1720-2050 Hz), LONGER body (45 ms vs 28-35),
+ * and a wider noise bandpass. The techno/house rim that punches through
+ * a wall of sub-bass. */
+function rimHard(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.value = 1400;
+    osc.connect(env(ctx, t0, 0.45, 0.045)).connect(dest);
+    osc.start(t0);
+    osc.stop(t0 + 0.07);
+    const noise = noiseSource(ctx, 145, 0.03, t0);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 2800;
+    bp.Q.value = 1.6;
+    noise
+      .connect(bp)
+      .connect(env(ctx, t0, 0.35, 0.025))
+      .connect(dest);
+  };
+}
+
+/** Phase-4 snap rim (2026-10-04): bank-coherence fill. The trx/lo-fi
+ * "ghost rim" — short (35 ms), high-mid only (4500 Hz), no tonal body.
+ * A click that reads as a hi-passed wood tap, not a snare hit. Used
+ * for 16th-note ghost grooves and 808 clap substitutions.
+ * Phase-4 follow-up 1: the first pass (15 ms, level 0.45) rendered
+ * at -16.7 LUFS (3.7 dB under the -13 Rim target) — a 15 ms noise
+ * burst is too short for the momentary-max analyzer to read.
+ * Phase-4 follow-up 2: doubled the level (0.45 -> 0.95) but the
+ * peak ceiling (-1.8 dBFS) capped the master trim. Final pass
+ * lengthens the burst to 35 ms (still reads as a "snap", not a body)
+ * and keeps level 0.95. */
+function rimSnap(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const noise = noiseSource(ctx, 146, 0.04, t0);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 4500;
+    bp.Q.value = 2.5;
+    noise
+      .connect(bp)
+      .connect(env(ctx, t0, 0.95, 0.035))
       .connect(dest);
   };
 }
@@ -1565,6 +1636,69 @@ function clapSoft(): Builder {
   };
 }
 
+/** Phase-4 dnb clap (2026-10-04): bank-coherence fill for the Clap category.
+ * DnB's 170 BPM break backbeat wants a tight, dark, LONGER clap than main —
+ * 4 stacked hits at 11ms spacing (vs main's 3) plus a 0.4s dark body that
+ * sits below 1.2 kHz so it doesn't fight the snare crack. The dnb kit was
+ * the only genre kit without a dedicated clap. */
+function clapDnb(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    for (let i = 0; i < 4; i++) {
+      const t = t0 + i * 0.011;
+      const noise = noiseSource(ctx, 35 + i, 0.02, t);
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = 950;
+      bp.Q.value = 1.5;
+      noise
+        .connect(bp)
+        .connect(env(ctx, t, 0.5, 0.018))
+        .connect(dest);
+    }
+    const tail = noiseSource(ctx, 46, 0.4, t0 + 0.044);
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = 1200;
+    tail
+      .connect(lpf)
+      .connect(env(ctx, t0 + 0.044, 0.4, 0.4))
+      .connect(dest);
+  };
+}
+
+/** Phase-4 traditional room clap (2026-10-04): bank-coherence fill. A
+ * "roomy" clap — 5 tight stacked hits with slight pitch drift in the
+ * bandpass (reads as multiple hands in a small room), 200 ms decaying
+ * tail kept dark. Hip-hop/lo-fi/boom-bap want a clap that feels like
+ * hands, not a 909 stack. */
+function clapTrad(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    for (let i = 0; i < 5; i++) {
+      const t = t0 + i * 0.013;
+      const noise = noiseSource(ctx, 36 + i, 0.02, t);
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = 1000 - i * 30;
+      bp.Q.value = 1.3;
+      noise
+        .connect(bp)
+        .connect(env(ctx, t, 0.42 - i * 0.03, 0.02))
+        .connect(dest);
+    }
+    const tail = noiseSource(ctx, 47, 0.32, t0 + 0.06);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 900;
+    bp.Q.value = 1.0;
+    tail
+      .connect(bp)
+      .connect(env(ctx, t0 + 0.06, 0.32, 0.22))
+      .connect(dest);
+  };
+}
+
 function rideBell(): Builder {
   return (ctx, dest) => {
     const t0 = ctx.currentTime;
@@ -1589,6 +1723,39 @@ function rideBell(): Builder {
       .connect(dest);
     ping.start(t0);
     ping.stop(t0 + 0.6);
+  };
+}
+
+/** Phase-4 ride splash (2026-10-04): bank-coherence fill. The Cymbal
+ * category had only ride.ping and ride.bell — both long sustained voices.
+ * A splash is a short, bright, high-pitched cymbal hit with a fast
+ * decay and a metallic ping on top. Standard accent voice in the cymbal
+ * family, distinct from crashes (which are bandpass-washy and
+ * mid-low). */
+function rideSplash(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const noise = noiseSource(ctx, 144, 0.5, t0);
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 7000;
+    noise
+      .connect(hp)
+      .connect(env(ctx, t0, 0.35, 0.4))
+      .connect(dest);
+    const ping = ctx.createOscillator();
+    ping.type = "square";
+    ping.frequency.value = 5600;
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 5600;
+    bp.Q.value = 10;
+    ping
+      .connect(bp)
+      .connect(env(ctx, t0, 0.25, 0.35))
+      .connect(dest);
+    ping.start(t0);
+    ping.stop(t0 + 0.4);
   };
 }
 
@@ -1657,6 +1824,75 @@ function crashPopSplash(): Builder {
       .connect(airHp)
       .connect(env(ctx, t0, 0.22, 0.9))
       .connect(dest);
+  };
+}
+
+/** Phase-4 short crash (2026-10-04): bank-coherence fill. The bank had
+ * only long crashes (1.3-1.7 s decay). A 0.4 s bright crash is the standard
+ * accent voice for a vocal downbeat that should not wash over the next
+ * bar. Brighter than crash.main (10 kHz vs 8.2 kHz), shorter decay, lower
+ * level — accents don't carry the energy of a section break. */
+function crashShort(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const noise = noiseSource(ctx, 142, 0.45, t0);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 10000;
+    bp.Q.value = 0.5;
+    noise
+      .connect(bp)
+      .connect(env(ctx, t0, 0.55, 0.4))
+      .connect(dest);
+    const ping = ctx.createOscillator();
+    ping.type = "square";
+    ping.frequency.value = 5200;
+    const pingBp = ctx.createBiquadFilter();
+    pingBp.type = "bandpass";
+    pingBp.frequency.value = 5200;
+    pingBp.Q.value = 9;
+    ping
+      .connect(pingBp)
+      .connect(env(ctx, t0, 0.22, 0.12))
+      .connect(dest);
+    ping.start(t0);
+    ping.stop(t0 + 0.16);
+  };
+}
+
+/** Phase-4 trash crash (2026-10-04): bank-coherence fill. The 80s / phonk /
+ * industrial cymbal character: highpassed noise (so the body is GONE — only
+ * the metallic edge remains), tight bandpass, fast decay. Reads as a
+ * trashy, broken, lo-fi cymbal — perfect for dark pads and tape grit. */
+function crashTrash(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const noise = noiseSource(ctx, 143, 0.4, t0);
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 4500;
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 7500;
+    bp.Q.value = 1.2;
+    noise
+      .connect(hp)
+      .connect(bp)
+      .connect(env(ctx, t0, 0.5, 0.35))
+      .connect(dest);
+    const ping = ctx.createOscillator();
+    ping.type = "square";
+    ping.frequency.value = 3900;
+    const pingBp = ctx.createBiquadFilter();
+    pingBp.type = "bandpass";
+    pingBp.frequency.value = 3900;
+    pingBp.Q.value = 6;
+    ping
+      .connect(pingBp)
+      .connect(env(ctx, t0, 0.18, 0.18))
+      .connect(dest);
+    ping.start(t0);
+    ping.stop(t0 + 0.22);
   };
 }
 
@@ -2906,6 +3142,8 @@ export const BUILDERS: Record<string, Builder> = {
   // (glide contract). Decay/click/drive 0.15/0.6 bezo zmeny.
   "factory.kick.909": kick(310, 51.91, 0.3, 0.6, 0.15),
   "factory.rim.chip": rim(),
+  "factory.rim.hard": rimHard(),
+  "factory.rim.snap": rimSnap(),
   "factory.snare.main": snare(192, 0.11, 0.2, 1750),
   "factory.snare.tight": snare(210, 0.07, 0.11, 2000),
   "factory.snare.punch": snarePunch(),
@@ -2969,6 +3207,8 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.hat.wash": hatWash(),
   "factory.clap.main": clap(),
   "factory.clap.soft": clapSoft(),
+  "factory.clap.dnb": clapDnb(),
+  "factory.clap.trad": clapTrad(),
   "factory.shaker.soft": shaker(),
   // Phase-3 re-voice (2026-10-04): hat.closed ↔ hat.closed.soft was 0.094*
   // on lowmid +0.050 + crest +0.040 + himid +0.037 + sub +0.034 — soft
@@ -2996,11 +3236,15 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.hat.pedal": hat(0.035, 4600, 0.24),
   "factory.ride.ping": ride(),
   "factory.ride.bell": rideBell(),
+  "factory.ride.splash": rideSplash(),
   "factory.crash.main": crash(8200, 1.3, 0.6),
   "factory.crash.dark": crash(5200, 1.7, 0.5),
+  "factory.crash.short": crashShort(),
+  "factory.crash.trash": crashTrash(),
   "factory.tom.low": tom(150, 92),
   "factory.tom.mid": tom(185, 120),
   "factory.tom.high": tom(220, 150),
+  "factory.tom.perc": tomPerc(),
   "factory.perc.tick": tick(),
   "factory.perc.blip": blip(880, 620, 0.09),
   "factory.perc.cowbell": cowbell(),
@@ -3215,6 +3459,8 @@ export const DURATIONS: Record<string, number> = {
   "factory.kick.knock": 0.5,
   "factory.kick.909": 0.45,
   "factory.rim.chip": 0.08,
+  "factory.rim.hard": 0.08,
+  "factory.rim.snap": 0.04,
   "factory.snare.main": 0.3,
   "factory.snare.tight": 0.2,
   "factory.snare.punch": 0.32,
@@ -3233,6 +3479,8 @@ export const DURATIONS: Record<string, number> = {
   "factory.hat.wash": 0.9,
   "factory.clap.main": 0.3,
   "factory.clap.soft": 0.36,
+  "factory.clap.dnb": 0.4,
+  "factory.clap.trad": 0.32,
   "factory.shaker.soft": 0.2,
   "factory.hat.closed": 0.12,
   "factory.hat.closed.soft": 0.1,
@@ -3241,11 +3489,15 @@ export const DURATIONS: Record<string, number> = {
   "factory.hat.pedal": 0.08,
   "factory.ride.ping": 0.8,
   "factory.ride.bell": 1.3,
+  "factory.ride.splash": 0.5,
   "factory.crash.main": 1.7,
   "factory.crash.dark": 1.9,
+  "factory.crash.short": 0.5,
+  "factory.crash.trash": 0.4,
   "factory.tom.low": 0.45,
   "factory.tom.mid": 0.45,
   "factory.tom.high": 0.45,
+  "factory.tom.perc": 0.2,
   "factory.perc.tick": 0.05,
   "factory.perc.blip": 0.15,
   "factory.perc.cowbell": 0.36,

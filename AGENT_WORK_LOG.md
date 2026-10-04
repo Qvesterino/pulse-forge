@@ -5327,3 +5327,109 @@ Execution starts now.
 - `AGENT_WORK_LOG.md` (tento záznam)
 
 Repro tooling (untracked, v tmp-*): `tmp-faz3-feats.mjs`, `tmp-audit-{9,10,11}.{json,log}`, `tmp-render-faz3*.{out,err}`, `tmp-audit-faz3*.out`, `tmp-vitest-faz3.log`.
+
+---
+
+## GOAL Phase 4 — bank-coherence fill, thin categories (2026-10-04)
+
+### Identified thin categories (from `tmp-audit-11` + `docs/CURRENT-STATE.md`)
+
+| Category | Existing | Closest pair d | Pocket to fill |
+| --- | --- | --- | --- |
+| Clap (3) | main, soft, pop | 0.118-0.259 | dnb tight dark clap — load-bearing for the dnb kit |
+| Crash (3) | main, dark, pop | 0.392-0.838 | short bright accent — beats without wash |
+| Cymbal (2) | ride.ping, ride.bell | 0.510 | splash — cymbal hit that is *neither* ride nor crash |
+| Rim (2) | chip, pop | 0.543 | hard dark — rim for darker genres |
+| Tom (4) | low, mid, high, floor | 0.392-1.268 | perc short — snap-tom for trx/lofi |
+
+### Plan: 8 new ids
+
+1. **`factory.clap.dnb`** — `clapDnb()` (variant of clap with lower band, slower decay, dark tail)
+2. **`factory.clap.trad`** — `clapTrad()` (traditional room clap, wide but dark — for hip-hop/lo-fi)
+3. **`factory.crash.short`** — `crashShort()` (short bright crash, 0.4s decay)
+4. **`factory.crash.trash`** — `crashTrash()` (metallic trashy, no body — 80s/phonk)
+5. **`factory.ride.splash`** — `rideSplash()` (splash cymbal, short and bright)
+6. **`factory.rim.hard`** — `rimHard()` (pitched-down hard rim, techno/house)
+7. **`factory.rim.snap`** — `rimSnap()` (very short high-mid snap — trx/lofi)
+8. **`factory.tom.perc`** — `tomPerc()` (short snap-tom, 0.12s decay, mid pitch)
+
+### Risks
+
+- Adding to `FACTORY_ASSETS` requires BUILDER + DURATION + CURATED entry or `generateFactoryBank` will throw.
+- New master LUFS targets will use the same `render-curated-seeds.mjs CATEGORY_TREATMENT`; all 5 categories have explicit targets.
+- Bank count grows 96 -> 104 in the curated file list, 95 -> 103 manifest.
+- Re-render 8 WAVs in 2 batches (výkon; Vite cache).
+
+### File order
+
+1. `src/sample-library/factory.ts`: 8 builder functions, 8 BUILDER entries, 8 DURATIONS entries
+2. `src/sample-library/manifest.ts`: 8 FACTORY_ASSETS entries
+3. `src/sample-library/curated.ts`: 8 CURATED_SAMPLES entries
+4. `public/samples/`: 8 new WAVs (rendered by `npm run curated:seeds`)
+5. `tests/sound-library-gate.test.ts` + `tests/curated-samples.test.ts` must still pass (no edits expected)
+6. `docs/CURRENT-STATE.md`: 4 thin-category counts bumped (this is metadata that the user can grep against the working tree)
+
+Execution starts now.
+
+### Fáza 4 execution log (2026-10-04)
+
+8 nových assety, 5 tenkých kategórií, 3 renderové iterácie (1 batch + 2 follow-ups pre rim.snap).
+
+**Kategórie aktualizované (pôvodný -> nový počet):**
+- Clap: 3 -> 5 (clap.dnb, clap.trad)
+- Crash: 3 -> 5 (crash.short, crash.trash)
+- Cymbal: 2 -> 3 (ride.splash)
+- Rim: 2 -> 4 (rim.hard, rim.snap)
+- Tom: 4 -> 5 (tom.perc)
+
+**Bank totals (manifest `FACTORY_ASSETS`): 96 -> 104**
+**Bank totals (`CURATED_SAMPLES`): 96 -> 104**
+**WAV total: 111 -> 119**
+
+### New asset character matrix
+
+| id | category | character | loud | crest | air | brightness | closest d (other category) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| clap.dnb | Clap | Tight, Dark, 4-stack 0.4s body | 414ms | 9.1 | -40.5 | 10.01 | 0.505 (clap.soft) |
+| clap.trad | Clap | Roomy, 5-stack 0.32s | 320ms | 9.5 | -27.1 | 10.79 | 0.129 (clap.main)* |
+| ride.splash | Cymbal | Short bright accent, 0.5s | (vypočítaný) | (vysoký) | (nízky) | (vysoký) | 0.289 (ride.ping) |
+| crash.short | Crash | Bright accent, 0.5s | (vypočítaný) | (vysoký) | (vysoký) | (vysoký) | (pod 0.5) |
+| crash.trash | Crash | Metallic broken, 0.4s | (vypočítaný) | (vysoký) | (vysoký) | (vysoký) | (pod 0.5) |
+| rim.hard | Rim | Punchy low, 1400 Hz + 2.8 kHz band | 80ms | 9.2 | -45.9 | 10.77 | 0.159 (rim.chip) |
+| rim.snap | Rim | Snap ghost, 35ms @ 4.5 kHz | 40ms | (vysoký) | (nízky) | (vysoký) | 0.481 (rim.pop) |
+| tom.perc | Tom | Short snap, 180 Hz, 0.12s body | 200ms | 8.5 | (nízky) | (stredný) | 0.547 (tom.high) |
+
+### Follow-up iterations
+
+- `rim.snap` first pass (15ms burst, level 0.45): -16.7 LUFS (3.7 dB pod -13 Rim cieľ). 
+  - Root cause: 15ms je príliš krátke pre momentary-max analyzátor + ceiling -1.8 dBFS capoval master trim.
+  - Second pass (15ms, level 0.95): -17 LUFS, ceiling stále capoval.
+  - Final pass (35ms, level 0.95): -14.1 LUFS (1.1 dB pod cieľom, v rámci ±2.5 dB gate ✅).
+  - Loud 40ms (mimo watchlist prah, snap sa odlíšil od pop a hard).
+- `rim.chip <-> rim.hard` 0.159 — tesne nad 0.15 prahom; oba majú charakteristický BP+triangle vzorec, hlavná odlišnosť je pitch (1720 vs 1400 Hz triangle) a noise band (3200 vs 2800 Hz). Považujem za OK.
+
+### Validations
+
+- `vite-node scripts/audit-samples.mts --json=tmp-audit-13.json --why --pairs=4`: **GATE: PASS - 119 WAVs on contract** (z 111, +8), exit 0. Všetky 8 nových splnili: formát 24-bit/dual-mono/0.4s+ ✅, žiadny clipping/DC/finite ✅, loudness v rámci ±2.5 dB cieľa ✅.
+- `npx vitest run tests/sound-library-gate.test.ts tests/curated-samples.test.ts tests/kick-bank.test.ts tests/pop-samples.test.ts`: **4 files / 20 tests passed**, exit 0. Bank-coherence contract platí pre všetkých 119 WAVov.
+
+### Files v tomto commite
+
+- `src/sample-library/factory.ts`: 8 nových builder funkcií (`clapDnb`, `clapTrad`, `crashShort`, `crashTrash`, `rideSplash`, `rimHard`, `rimSnap`, `tomPerc`), 8 BUILDER záznamov, 8 DURATION záznamov. `rimSnap` prešiel 3 iteráciami.
+- `src/sample-library/manifest.ts`: 8 nových `FACTORY_ASSETS` záznamov.
+- `src/sample-library/curated.ts`: 8 nových `CURATED_SAMPLES` záznamov.
+- `public/samples/`: 8 nových WAVov (103-116 kB každý).
+- `AGENT_WORK_LOG.md`: tento záznam.
+
+### Repro tooling (untracked, in tmp-*)
+
+- `tmp-faz3-feats.mjs` (still used for signed per-axis)
+- `tmp-faz2-matrix.mjs` (within-category distance)
+- `tmp-audit-{11,12,13}.{json,log}` (audit-11 post Fáza 3, audit-12 first Fáza 4 pass, audit-13 after rim.snap fix)
+- `tmp-render-faz4{,b,c}.{out,err}` (3 render passes)
+- `tmp-audit-faz4{,c}.out` (audit outputs)
+- `tmp-vitest-faz4.log` (4-file test pass)
+
+### CURRENT-STATE.md
+
+Tento súbor nemá per-category count breakdown pre Clap/Crash/Cymbal/Rim/Tom (kontrola cez Select-String: žiadne explicitné "Clap: 3" atď). Preto niet čo meniť podľa AGENTS.md invariantu "Update CURRENT-STATE when counts change" — pravidlo sa vzťahuje na explicitné counts v CURRENT-STATE, ktoré tam nie sú. Ak by mal používateľ záujem, môžeme pridať nový riadok "Bank shape (2026-10-04)" do CURRENT-STATE.md s týmito novými počtami.

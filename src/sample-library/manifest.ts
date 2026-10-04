@@ -247,6 +247,26 @@ export const FACTORY_ASSETS: FactoryAsset[] = [
     tags: ["clap", "soft"],
     mood: ["warm", "atmosphere"],
   },
+  // Phase-4 clap fills (2026-10-04): the Clap category had only 3 voices
+  // (main, soft, pop) — too thin to cover the genre-kit matrix. dnb was
+  // the only genre kit without a dedicated clap. dnb/trad also serve
+  // hip-hop and lo-fi lanes that want a real-hand, roomier clap.
+  {
+    id: "factory.clap.dnb",
+    name: "Clap DnB",
+    category: "Clap",
+    character: "Tight, Dark",
+    tags: ["dnb", "clap", "tight"],
+    mood: ["clean", "dark"],
+  },
+  {
+    id: "factory.clap.trad",
+    name: "Clap Traditional",
+    category: "Clap",
+    character: "Roomy, Hand-stacked",
+    tags: ["clap", "room", "traditional"],
+    mood: ["warm", "atmosphere"],
+  },
 
   /* ---------------- Hats ---------------- */
   {
@@ -355,6 +375,17 @@ export const FACTORY_ASSETS: FactoryAsset[] = [
     tags: ["ride", "bell"],
     mood: ["bright", "clean"],
   },
+  // Phase-4 cymbal fill (2026-10-04): the Cymbal category had only ride
+  // voices (long sustained). A splash cymbal is the standard short-bright
+  // accent — distinct from crashes (which are bandpass-washy and mid-low).
+  {
+    id: "factory.ride.splash",
+    name: "Splash",
+    category: "Cymbal",
+    character: "Short, Bright Accent",
+    tags: ["splash", "cymbal", "accent"],
+    mood: ["bright", "clean"],
+  },
   {
     id: "factory.crash.main",
     name: "Crash",
@@ -370,6 +401,26 @@ export const FACTORY_ASSETS: FactoryAsset[] = [
     character: "Dark, Washy",
     tags: ["crash", "dark"],
     mood: ["dark", "atmosphere"],
+  },
+  // Phase-4 crash fills (2026-10-04): the Crash category had only 3 long
+  // crashes (main 1.3s, dark 1.7s, pop 0.75s splash). short is the
+  // standard vocal-downbeat accent (0.4s bright), trash is the 80s/phonk
+  // metallic-only broken-cymbal hit.
+  {
+    id: "factory.crash.short",
+    name: "Crash Short",
+    category: "Crash",
+    character: "Bright, Accent",
+    tags: ["crash", "short", "accent"],
+    mood: ["bright", "aggressive"],
+  },
+  {
+    id: "factory.crash.trash",
+    name: "Crash Trash",
+    category: "Crash",
+    character: "Metallic, Broken",
+    tags: ["crash", "trash", "metallic"],
+    mood: ["dark", "aggressive"],
   },
 
   /* ---------------- Toms ---------------- */
@@ -397,6 +448,17 @@ export const FACTORY_ASSETS: FactoryAsset[] = [
     tags: ["tom", "high"],
     mood: ["bright", "clean"],
   },
+  // Phase-4 tom fill (2026-10-04): the Tom category had 4 sustained voices
+  // (low, mid, high, floor — all 0.34s body). Perc tom is the SHORT
+  // snap-tom for trx/lo-fi 16th-note fills.
+  {
+    id: "factory.tom.perc",
+    name: "Tom Perc",
+    category: "Tom",
+    character: "Short, Snap",
+    tags: ["tom", "short", "snap"],
+    mood: ["clean", "bright"],
+  },
 
   /* ---------------- Percussion ---------------- */
   {
@@ -405,6 +467,25 @@ export const FACTORY_ASSETS: FactoryAsset[] = [
     category: "Rim",
     character: "Dry, Tight",
     tags: ["rim", "tight"],
+    mood: ["clean", "bright"],
+  },
+  // Phase-4 rim fills (2026-10-04): the Rim category had only 2 voices
+  // (chip, pop). hard sits pitched-down for techno/house, snap is the
+  // trx/lo-fi ghost-rim click (15 ms, no tonal body).
+  {
+    id: "factory.rim.hard",
+    name: "Rim Hard",
+    category: "Rim",
+    character: "Punchy, Low",
+    tags: ["rim", "hard", "techno"],
+    mood: ["clean", "dark"],
+  },
+  {
+    id: "factory.rim.snap",
+    name: "Rim Snap",
+    category: "Rim",
+    character: "Snap, Ghost",
+    tags: ["rim", "snap", "ghost"],
     mood: ["clean", "bright"],
   },
   {
