@@ -1,5 +1,5 @@
 import { it } from "vitest";
-import { analyzeMixHealth } from "../src/analysis/mixDoctor";
+import { analyzeMixHealth } from "../../src/analysis/mixDoctor";
 const SR = 44100;
 function sine(freq: number, seconds: number, amp: number): Float32Array {
   const out = new Float32Array(Math.floor(seconds * SR));
