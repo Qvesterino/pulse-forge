@@ -1,4 +1,5 @@
 import { extractAudioFeatures, type AudioFeatures } from "../ai/audio-features";
+import { GENERATED_AUDIO_TARGETS } from "./audio-targets.generated";
 import type { SampleBank } from "../sample-library/factory";
 import type { ProjectDocument } from "../project-model/types";
 
@@ -27,6 +28,8 @@ export interface GenreAudioTarget {
   bassRange: [number, number];
 }
 
+/** Hand-written fallback — exotic/out-of-union genres only. The 19 Genre
+ * union members come from audio-targets.generated.ts (measured, W0.1). */
 const AUDIO_TARGETS: Record<string, GenreAudioTarget> = {
   house: {
     rmsRange: [0.05, 0.3],
@@ -81,9 +84,13 @@ export function scoreAudioFit(features: AudioFeatures, target: GenreAudioTarget)
   return dimensions > 0 ? total / dimensions : 0.5;
 }
 
-/** Get the audio target for a genre, falling back to house if unknown. */
+/** Get the audio target for a genre: the MEASURED per-genre table first
+ * (generated from full reference renders — see audio-targets.generated.ts),
+ * then the hand-written table, then house. All 19 Genre-union members are
+ * in the generated table, so the house fallback only fires for out-of-union
+ * strings. */
 export function audioTargetFor(genre: string): GenreAudioTarget {
-  return AUDIO_TARGETS[genre] ?? AUDIO_TARGETS.house;
+  return GENERATED_AUDIO_TARGETS[genre] ?? AUDIO_TARGETS[genre] ?? AUDIO_TARGETS.house;
 }
 
 // ── Candidate audio scoring ────────────────────────────────────────────────

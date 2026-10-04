@@ -391,6 +391,78 @@ outside the element that owns the ref.
 
 ---
 
+## Items investigated and NOT changed (with reasons)
+
+### #8 "split is unsnapped" — INVALID, and "fixing" it would reintroduce a bug
+
+The report claimed `splitAudioClipAtTick` produces fractional `leftBars` as a defect. It is a
+**documented, deliberate design decision**, documented in the code itself
+(`commands.ts:2440-2446`):
+
+```
+// Preserve the split's fractional-tick position. Rounding bars to 0.01
+// moved the timeline edge and accumulated source-offset drift on repeated
+// edits.
+```
+
+The tests actively pin it. `tests/edit-tools-geometry-refs-audit.test.ts:471` locates the
+right fragment by `startBar === 0.5` — exactly, not `0.4999` — and line 427 asserts the
+left fragment still has its parent's exact `startBar`. Quantising a split would move the
+timeline edge and reintroduce the drift that comment describes. **No change made**, and
+this one is worth flagging: it is the item most likely to be "fixed" by a later pass
+into a regression.
+
+### #10 take-lane click suppression — real fragility, NOT a demonstrated defect
+
+The mechanism is exactly as described: `finishTakeLaneRangeDrag`
+(ArrangementPanel.tsx:1525-1529) sets a bare boolean `suppressTakeLaneClickRef` and arms
+`window.setTimeout(..., 0)`; `onClickCapture` (4066-4071) consumes it and stops
+propagation. The flag carries **no pointerId, no target, and no drag identity** — it is
+decided purely by when a macrotask happens to run.
+
+I built the harness and measured it, with a guard that the comp-range drag really
+produced a visible `.arr-audio-take-lane-range` (without that guard, a drag that never
+moved would make every other assertion vacuous). In jsdom the click is **not** suppressed
+and `setActiveAudioTake` is dispatched, discarding the range the user just drew.
+
+**But that is not evidence of a product bug.** The design bets on the browser firing
+`click` in the same task as `pointerup`, before any 0 ms macrotask — and jsdom's
+`fireEvent` dispatches each event synchronously and independently, so it does not model
+that ordering in either direction. The test is therefore committed as a
+**characterization** (`tests/ui/take-lane-click-suppression.test.tsx`, 4 passing) that
+pins the real, worth-knowing property: the mechanism is a timing bet, not an identity
+check. Settling it requires a Playwright repro against a real browser. **No change made**,
+because changing it on jsdom evidence would be acting on a harness artefact.
+
+The three other tests in that file are real and green: the drag alone commits no
+activation, a later deliberate activation is not swallowed by a stale flag, and a plain
+click with no drag is never suppressed.
+
+### #11 `releasePointerCapture` asymmetry — benign, deliberately left
+
+Confirmed: three call sites (3424, 3548, 3574) wrap it in `try/catch`, while
+`onClipPointerUp`, `onClipPointerCancel`, `onAudioPointerUp` and `onAudioPointerCancel`
+never call it. This is a genuine asymmetry, but it is inert: the HTML pointer-capture
+spec releases capture **implicitly** on `pointerup`/`pointercancel`, so omitting the call
+is correct, not lucky. Adding it to four terminals without a guard would be the riskier
+change — `releasePointerCapture` throws `NotFoundError` when the pointer is not captured,
+which would turn a working terminal into a throwing one. **No change made.**
+
+### #12 dead members in the transient surface — confirmed, not removed
+
+`seekFromRulerEvent` is defined and immediately voided (`ArrangementPanel.tsx:1853-1860`,
+`void seekFromRulerEvent;`). `origTrimEnd` (1291, 2126) and `grabX` (1296, 2133) are
+captured and never read. The `mode` union still lists `"trimEnd"` (1282, 2097) although
+no branch handles it and the right edge sends `"resize"`.
+
+The union member is the one that matters, and it is the stated reason not to touch it now:
+a future `trimEnd` branch would look wired when it is not. Deleting dead code in a
+214 KB component is a normal cleanup, but it is unrelated to any user-visible defect and
+belongs to a deliberate pass, not an audit response to a guess. **No change made**;
+recorded here so the next pass starts from verified facts instead of re-investigating.
+
+---
+
 ## Audited and found correct
 
 These were checked and are **not** defects. Stating them matters as much as the findings.
@@ -473,15 +545,32 @@ measured build is 3464 KB. The doc was stale — and stale in the dangerous dire
 reading as though there were 290 KB of headroom that does not exist. Both occurrences
 corrected to 3500 KB.
 
-### Shared working tree — two files belong to another session
+### Shared working tree — files that belong to another session
 
 `src/mcp/tools.ts` and `tests/sample-license-gate.test.ts` were being written by a
-parallel agent while this audit ran (`git status` shows `M` and `??` respectively,
-with timestamps advancing during this session's own test runs). Neither has any
-relation to any file above. `tools.ts` briefly produced a parse error mid-write (an
-unterminated template literal) which cleared once that session finished its edit;
-`sample-license-gate.test.ts:24` still reports `TS7053`.
+parallel agent during this audit (`git status` shows `M` and `??`, with timestamps
+advancing during this session's own test runs). Neither relates to any file above.
+`tools.ts` briefly produced a parse error mid-write, which cleared once that session
+finished. `sample-license-gate.test.ts:24` still reports `TS7053`. Both left untouched.
 
-Both were left untouched — a repo-wide `tsc --noEmit` cannot pass while another
-session holds a file in a non-compiling state, and editing their work would risk
-destroying it. The typecheck row above is scoped to the files this audit changed.
+`src/intent/audio-feedback.ts` is also another session's edit, and it broke the whole
+module graph: it imports `./audio-targets.generated`, a file that does not exist and was
+never committed. Nothing in the repo could resolve — no test, no `tsc`, no `vite build`.
+
+`npm run references:genres` (the generator that produces it) could not fix this on its
+own: it measures genres by loading `src/intent/song.ts` through a live Vite server, and
+`song.ts` reaches `audio-feedback.ts`, which imports the very file being generated — a
+bootstrap cycle. With a minimal stub in place (a correctly-shaped, empty
+`GENERATED_AUDIO_TARGETS`) the graph resolves and tests run again, but the generator then
+failed with a separate `SyntaxError: Unexpected end of input` while evaluating the page,
+so the table is still empty.
+
+**That stub is not a fix and must not be committed as one.** An empty
+`GENERATED_AUDIO_TARGETS` silently makes every audio-target lookup fall back to defaults,
+which is worse than the build being broken. The header comment in
+`src/intent/audio-targets.generated.ts` says so. Whoever owns that feature needs to break
+the cycle properly (e.g. import the table lazily, or generate from a source that does not
+traverse `song.ts`) and then run `npm run references:genres` for real.
+
+The typecheck row above is therefore scoped to the files this audit changed: a repo-wide
+`tsc --noEmit` cannot pass while another session holds this repo in that state.

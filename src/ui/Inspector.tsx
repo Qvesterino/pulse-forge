@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useGenerativeStatus, useServices } from "./context";
 import {
   resetPadSlice,
@@ -26,6 +26,8 @@ import type { GenerativeVariation } from "../generative/resample";
 import { GENERATIVE_MACRO_NAMES } from "../generative/types";
 import { createUnavailableGenerativeProvider } from "../generative/registry";
 import { autoMapVelocityLayers } from "../samples/autoMap";
+import { runSfzInstrumentImport } from "../sample-library/sfz-import-run";
+import { decodeAudioData } from "../services/audio-decode";
 import { setVelocityLayersCommand } from "../commands/layerCommands";
 import { Slider } from "./controls";
 import {
@@ -93,6 +95,7 @@ export function Inspector({
   const [sliceLabOpen, setSliceLabOpen] = useState(false);
   const [advancedInstrumentControls, setAdvancedInstrumentControls] = useState(false);
   const [pendingSamplerMapping, setPendingSamplerMapping] = useState<SampleLayer[] | null>(null);
+  const sfzDirInputRef = useRef<HTMLInputElement | null>(null);
   const [generativeStyleDraft, setGenerativeStyleDraft] = useState("");
   const [generativeCaptureState, setGenerativeCaptureState] = useState<"idle" | "capturing" | "error">("idle");
   const [generativeResampleSourceId, setGenerativeResampleSourceId] = useState("");
@@ -237,6 +240,52 @@ export function Inspector({
                   : undefined
               }
             />
+            {track.instrument === "sampler" && (
+              <div className="inspector-sfz-import">
+                <input
+                  ref={sfzDirInputRef}
+                  type="file"
+                  // Folder input: the user picks their SFZ library root —
+                  // webkitRelativePath carries the nested paths the SFZ
+                  // sample resolution needs.
+                  {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+                  multiple
+                  hidden
+                  onChange={(event) => {
+                    const files = Array.from(event.target.files ?? []);
+                    event.target.value = "";
+                    if (files.length === 0) return;
+                    void runSfzInstrumentImport(files, {
+                      bank: services.bank,
+                      userSamples: services.userSamples,
+                      decode: (bytes) => decodeAudioData(bytes),
+                    }).then((result) => {
+                      if (result.failed.length > 0) {
+                        console.warn(
+                          "[sfz-import] failed samples:",
+                          result.failed.map((f) => `${f.file}: ${f.reason}`).join("; "),
+                        );
+                      }
+                      if (result.missing.length > 0) {
+                        console.warn(
+                          "[sfz-import] missing sample files:",
+                          result.missing.map((m) => m.fileName).join(", "),
+                        );
+                      }
+                      if (result.layers.length > 0) setPendingSamplerMapping(result.layers);
+                    });
+                  }}
+                />
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  title="Import an SFZ instrument library — pick the folder that contains the .sfz file and its samples"
+                  onClick={() => sfzDirInputRef.current?.click()}
+                >
+                  IMPORT SFZ
+                </button>
+              </div>
+            )}
             {track.instrument === "sampler" && pendingSamplerMapping && (
               <div className="sampler-map-preview" role="dialog" aria-label="Sampler mapping preview">
                 <div className="sampler-map-preview-heading">

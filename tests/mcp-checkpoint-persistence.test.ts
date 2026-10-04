@@ -115,7 +115,7 @@ describe("tool-level durable hydration", () => {
     const list = await executeMcpTool(ctx2, "kyx_checkpoint", { op: "list" });
     expect(list.text).toContain("durable");
     // hydrated entries restart their steps-since counter
-    expect(list.text).toContain("0 step(s) since");
+    expect(list.text).toContain("↻ reloaded");
 
     // and the restored document is the FULL saved snapshot
     await executeMcpTool(ctx2, "kyx_generate", { genre: "techno", seed: "post-reload" });

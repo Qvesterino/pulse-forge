@@ -79,7 +79,11 @@ describe("stepGate pattern sync", () => {
     rt.setPattern(a);
     rt.setPattern(a); // same reference — ignored
     rt.setPattern([0, 1, 0, 1]);
-    expect(patternPosts(node)).toEqual([[1, 0, 1, 0], [1, 0, 0, 1], [0, 1, 0, 1]]);
+    expect(patternPosts(node)).toEqual([
+      [1, 0, 1, 0],
+      [1, 0, 0, 1],
+      [0, 1, 0, 1],
+    ]);
   });
 
   it("a patternless construction posts nothing until setPattern arrives", () => {
@@ -98,6 +102,9 @@ describe("stutter pattern sync", () => {
     const a = [0.2, 0.4, 0.6, 0.8];
     rt.setPattern(a);
     rt.setPattern(a); // same reference — ignored
-    expect(patternPosts(node)).toEqual([[1, 1, 1, 1], [0.2, 0.4, 0.6, 0.8]]);
+    expect(patternPosts(node)).toEqual([
+      [1, 1, 1, 1],
+      [0.2, 0.4, 0.6, 0.8],
+    ]);
   });
 });

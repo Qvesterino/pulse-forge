@@ -2973,6 +2973,8 @@ interface McpCheckpoint {
   stepsAtSave: number;
   summary: string;
   auto: boolean;
+  /** True when hydrated from IDB after a reload — steps-since resets. */
+  reloaded?: boolean;
 }
 
 const checkpoints = new Map<string, McpCheckpoint>();
@@ -3076,6 +3078,7 @@ async function hydrateCheckpoints(ctx: McpToolContext, projectId: string): Promi
         stepsAtSave: ctx.undoStackLength(),
         summary: record.label,
         auto: record.auto,
+        reloaded: true,
       });
     }
   } catch {
@@ -3140,7 +3143,10 @@ async function executeCheckpointTool(ctx: McpToolContext, record: Record<string,
     for (const [name, cp] of checkpoints) {
       const stepsSince = Math.max(0, ctx.undoStackLength() - cp.stepsAtSave);
       const scope = cp.projectId === projectId ? "" : " (other project)";
-      lines.push(`${name}${cp.auto ? " (auto)" : ""} · ${cp.summary} · ${stepsSince} step(s) since${scope}`);
+      const timing = cp.reloaded
+        ? "↻ reloaded (steps reset)"
+        : `${stepsSince} step(s) since`;
+      lines.push(`${name}${cp.auto ? " (auto)" : ""} · ${cp.summary} · ${timing}${scope}`);
     }
     return { text: lines.join("\n"), mutated: false };
   }
