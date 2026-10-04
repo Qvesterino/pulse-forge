@@ -4125,7 +4125,11 @@ export const FACTORY_PRESETS: InstrumentPreset[] = [
     mood: ["warm", "atmosphere"],
     tags: ["harp", "swell", "intro"],
     sampleId: "factory.tonal.harp",
-    params: { root: 60, start: 0, attack: 0.6, decay: 1.6, release: 2, cutoff: 5200, resonance: 0.4, gain: 0.72 },
+    // The 0.6 s attack was fitted to the old LONG-ringing harp and gated the
+    // whole one-shot: the tonal de-homog re-voiced the harp as a fast inharmonic
+    // cascade (0.65 s of audible content), so the envelope now lets the
+    // sample speak and holds it with decay/release instead of silence.
+    params: { root: 60, start: 0, attack: 0.08, decay: 0.55, release: 0.45, cutoff: 5200, resonance: 0.4, gain: 0.72 },
   },
   {
     id: "factory.sampler.drill.darkstringslow",
