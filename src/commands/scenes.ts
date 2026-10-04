@@ -7,51 +7,10 @@
  * so the public surface does not grow by one name.
  */
 import type { Command } from "./types";
-import type {
-  ArrangementClip,
-  ArrangementTransition,
-  ArrangementTransitionType,
-  AudioClip,
-  AutomationTarget,
-  DrumPad,
-  DrumTrack,
-  EffectInstance,
-  EffectType,
-  GrooveSettings,
-  IntensityPoint,
-  Marker,
-  MusicalKey,
-  NoteEvent,
-  PatternAssist,
-  ProjectDocument,
-  Scene,
-  SceneRole,
-  SceneAutomation,
-  StepMeta,
-  Track,
-} from "../project-model/types";
-import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
-import { arrangementSecondsBetweenTicks, tempoAtTick } from "../project-model/scene-time";
-import {
-  planProductionActions,
-  resolveProductionTargets,
-  type ProductionAction,
-  type ProductionIntent,
-} from "../intent/production";
-import { patternPhaseOffsetAtTick, sceneOffsetAtTick } from "../project-model/events";
+import type { ProjectDocument, Scene, SceneRole } from "../project-model/types";
 import { patternLetter, sceneRoleOf } from "../project-model/schema";
-import { sanitizeGateSteps, sanitizeManglerSteps } from "../project-model/modulators";
 import type { Pattern } from "../project-model/types";
-import { clampEffectParam, defaultParamsOf, EFFECT_META, normalizePluginParams } from "../effects/definitions";
-import { clampTargetValue, isAutomationTargetValid, targetParamDef } from "../project-model/targets";
-import { CORE_EFFECT_PRESETS, type EffectPreset } from "../effects/presets";
-import { clampFxOutputTrimDb, factoryFxChainGainDb, factoryFxPresetGainDb } from "../effects/presetLoudness";
 import { uid } from "../shared/ids";
-import type { SharedPackSceneSketch, SharedPackSketch } from "../export/packCode";
-import { buildAssistPatch, normalizeAssistRequest } from "../assist/pipeline";
-import type { ExactIntentPlan, ExactOp, ExactTarget } from "../intent/exact";
-import { ASSIST_ENGINE_ID, ASSIST_ENGINE_VERSION, type AssistInput } from "../assist/types";
-import { canonicalizePattern, contentHash } from "../ai/evaluation";
 import { snapshot } from "./core";
 import { cloneStepMeta, markerClampPatch } from "./docOps";
 
