@@ -284,6 +284,38 @@ offline krok s golden review).
   s ≥ 70 % onset recall na syntetickom zlatom súbore; audition 100+ barov
   bez zamrznutia UI.
 
+### W7 — SESSION THEATRE / NAJMI KAPELU (AI Producer Sessions) — **SHIPPED 2026-10-04**
+
+Killer-feature #1 z októbrovej brainsturmy: namiesto jednej generácie **najmeš
+kapelu**. Šesť kurátorských AI producentov (`src/intent/producer-personas.ts`)
+— Katarína Afterhours (techno/🌃), Marek Bounce (jersey/🥁), Eva Reese&Rain
+(dnb/🌧), Dušan Dust Tape (boombap/📼), Leo Lullaby (ambient/🌅), Petra
+Punchline (trap/📰) — každý vezme TEN ISTÝ brief cez plný `composeFullTrack`
+tok, jeden po druhom:
+
+- **Brief je posvätný** — persona ho RECOLORUje (flavor phrase + mix words
+  sa pripoja, nikdy nenahradia; sekcie/kľúče z briefu zostávaju).
+- **Deterministické seeds** — `theatre|seedTag|hash(brief)|vN`; interjection
+  aj RETAKE menia verziu, nie vesmír (invariant #4).
+- **Sleduješ session pod menami** — karty streamujú stage labely počas behu.
+- **Finále je SLEPÉ** — karty sa maskujú na Take A/B, ▶ prehráva, LEPŠIE
+  hlasuje, víťaz postupuje proti ďalšiemu challengerovi (turnaj).
+- **Reveal odovzdá víťaza BEZ NOVÉHO APPLY KÓDU** — take JE `SongDraft`,
+  `USE` / loudness confirm / DO-IT revízia fungujú na ňom 1:1 ako na SUNO
+  builde. RETAKE pustí víťaza znova s pripomienkou („menej hi-hatov") alebo
+  holým seed-bumpom a znovuotvorí bracket (šampión bráni ako Take A).
+
+- **Súbory:** `src/intent/producer-personas.ts` (dáta), `src/intent/producer-theatre.ts`
+  (PURE orchestration — prompt/seed/stage script; UI len vykonáva),
+  `src/ui/IntentPanel.tsx` (🎬 KAPELU trigger, cast cards, blind bracket,
+  winner handoff), `src/styles/15-command-palette-2.css` (.intent-theatre).
+- **Testy:** `tests/producer-theatre.test.ts` (8/8) — determinizmus,
+  recolor-only briefy, interject targeting, retake seed flipy, stage streaming.
+- **Commit:** `a852a957`.
+- **Otvorené:** persona cast editor (vlastná kapela), medzi-producentové
+  jam jam (W5 roly), taste-learning z LEPŠIE hlasovaní (→ W3 personal
+  trainer dátová stránka).
+
 ### Explicitne NE (anti-goals)
 
 - **Neural audio syntéza / vocals v browseri** — T5 ostáva ďaleký horizont
