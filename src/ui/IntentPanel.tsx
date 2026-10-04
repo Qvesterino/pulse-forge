@@ -62,6 +62,8 @@ import { artistMixProfileOf } from "../intent/artist-mix";
 import { morphPatterns } from "../intent/morph";
 import { pushGhost, listGhosts, getGhost, removeGhost, type GhostVersion } from "../intent/versions";
 import { composeFullTrack, type ComposeResult } from "../intent/compose";
+import { buildTheatrePlan, stageLabel, type TheatreRun } from "../intent/producer-theatre";
+import { personaBySlug } from "../intent/producer-personas";
 import { mutateBeat } from "../gallery/lineage";
 import { applyFaderIntent, applyTempoIntent, faderReadback } from "../intent/conversation";
 import { applyCompoundIntent, compoundReadback } from "../intent/compound";
@@ -1464,6 +1466,28 @@ export function IntentPanel() {
   const songBufferRef = useRef<AudioBuffer | null>(null);
   const songTokenRef = useRef(0);
   const songTextRef = useRef("");
+  // SESSION THEATRE — NAJMI KAPELU: each producer = one full composeFullTrack
+  // session on the same brief. While the session runs the cards stream stage
+  // labels UNDER THEIR REAL NAMES (you watch the band work); the finále vote
+  // is BLIND (cards mask to "Take A/B") and only the revealed winner hands
+  // its draft to the normal USE flow below. A take IS a SongDraft, so the
+  // winner needs zero new apply code.
+  interface TheatreTake {
+    run: TheatreRun;
+    draft: SongDraft | null;
+    buffer: AudioBuffer | null;
+    stage: number;
+    label: string;
+    failed: string | null;
+  }
+  const [theatre, setTheatre] = useState<TheatreTake[] | null>(null);
+  const [theatreBusy, setTheatreBusy] = useState(false);
+  /** Blind finále bracket: current pair + queued challengers (tournament). */
+  const [theatrePair, setTheatrePair] = useState<{ a: number; b: number; queue: number[] } | null>(null);
+  const [theatrePlaying, setTheatrePlaying] = useState<number | null>(null);
+  const [theatreWinner, setTheatreWinner] = useState<number | null>(null);
+  const [theatreRetake, setTheatreRetake] = useState("");
+  const theatreTokenRef = useRef(0);
   // Per-section audition — each built section pattern renders through the
   // same candidate-audition path (ghost doc off the draft's base doc, the
   // section's own scoped FX folded in), buffers cached per pattern id.
@@ -2254,6 +2278,236 @@ export function IntentPanel() {
       await runSongBuild(parseSectionRequests(text) ?? undefined);
     } finally {
       setSongBusy(false);
+    }
+  };
+  // ─── SESSION THEATRE — NAJMI KAPELU ────────────────────────────────────
+  // The theatre is a SUPERSET of the SUNO build: the same composeFullTrack
+  // call, the same loudness measure, the SAME SongDraft shape — only the
+  // orchestration differs (one producer at a time, flavored prompt + pinned
+  // seed, blind A/B tournament on top). A take that wins the finále is
+  // handed to songDraft verbatim, so USE/loudness/DO-IT-revision need zero
+  // new code. Theatre takes are instrumental full-band sessions — hum and
+  // vocal-profile conditioning stay in the direct ♪ SONG lane.
+  const theatrePlaceholder = (run: TheatreRun): TheatreTake => ({
+    run,
+    draft: null,
+    buffer: null,
+    stage: 0,
+    label: stageLabel(run, 0),
+    failed: null,
+  });
+  const openTheatreBracket = (
+    entries: TheatreTake[],
+    firstIdx?: number,
+  ): { a: number; b: number; queue: number[] } | null => {
+    let ready = entries.map((take, i) => (take.buffer ? i : -1)).filter((i) => i >= 0);
+    if (firstIdx !== undefined) ready = [firstIdx, ...ready.filter((i) => i !== firstIdx)];
+    if (ready.length < 2) return null;
+    return { a: ready[0], b: ready[1], queue: ready.slice(2) };
+  };
+  const runTheatreTake = async (
+    baseDoc: ProjectDocument,
+    run: TheatreRun,
+    briefText: string,
+    intentInput: IntentInput,
+    onLabel: (label: string) => void,
+  ): Promise<TheatreTake> => {
+    const sections = parseSectionRequests(briefText);
+    const globalFx = parseProductionIntent(sections?.remainingText ?? run.prompt);
+    const result = await composeFullTrack(baseDoc, run.prompt, {
+      ...(sections ? { sections } : {}),
+      input: { ...intentInput, ...(globalFx ? { fx: globalFx } : {}) },
+      seed: run.seed,
+      bank: services.bank,
+      candidateCount: 2,
+      onProgress: onLabel,
+    });
+    // Preview doc for the audition render only — same fold as the SUNO build.
+    let preview: ProjectDocument = result.commands.song.execute(baseDoc);
+    if (result.commands.mix) {
+      try {
+        preview = result.commands.mix.execute(preview);
+      } catch {
+        /* garnish must not block the preview */
+      }
+    }
+    onLabel(`${run.name}: loudness pass…`);
+    const loud = await measurePreviewLoudness(preview, services.bank, briefText);
+    const seconds = Math.round((result.build.totalBars * 4 * 60) / (result.build.resolvedBpm ?? 120));
+    const draft: SongDraft = {
+      result,
+      activeBuild: result.build,
+      activeLane: null,
+      previewReady: false,
+      baseDoc,
+      previewDoc: preview,
+      mixNote: result.mixSummary ? ` · mix: ${result.mixSummary}` : "",
+      lengthNote: ` ≈ ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`,
+      seconds,
+      trimDb: loud.recommendedTrim ?? 0,
+      loudnessTarget: loud.target,
+      measuredBefore: loud.measured,
+      measuredAfter: null,
+      loudnessApplied: false,
+      loudnessRecommendation: loud.recommendation,
+      audioReview: null,
+    };
+    const take: TheatreTake = {
+      run,
+      draft,
+      buffer: null,
+      stage: run.stages.length - 1,
+      label: `${run.name}: rendering audition…`,
+      failed: null,
+    };
+    take.buffer = await renderSongAuditionBuffer(services.bank, preview);
+    draft.previewReady = true;
+    take.label = `${run.name}: ready`;
+    return take;
+  };
+  const hireTheBand = async () => {
+    if ((!text.trim() && !activeProjectBrief) || busy || songBusy || theatreBusy) return;
+    if (rejectUnresolvedBriefConflicts()) return;
+    stopAudition();
+    setSongPlaying(false);
+    setPlayingSectionId(null);
+    setTheatrePlaying(null);
+    setTheatreWinner(null);
+    setTheatrePair(null);
+    setTheatreRetake("");
+    setSongDraft(null); // a hired band supersedes any standing SUNO draft
+    songTokenRef.current++; // an in-flight SUNO build/render is superseded too
+    songBufferRef.current = null; // the shared audition channel now belongs to the theatre
+    const briefText = songTextRef.current || text;
+    const baseDoc = services.store.getDoc();
+    const intentInput = { ...briefInput, ...(refPatch ?? {}) };
+    const plan = buildTheatrePlan({ brief: briefText });
+    const token = ++theatreTokenRef.current;
+    setTheatreBusy(true);
+    setError(null);
+    setJustApplied(false);
+    setStatus(`🎬 SESSION THEATRE — ${plan.length} producentov berie tvôj brief…`);
+    const current: TheatreTake[] = plan.map(theatrePlaceholder);
+    setTheatre([...current]);
+    try {
+      for (let i = 0; i < plan.length; i++) {
+        const run = plan[i];
+        if (theatreTokenRef.current !== token) return;
+        try {
+          const take = await runTheatreTake(baseDoc, run, briefText, intentInput, (label) => {
+            current[i] = { ...current[i], label, stage: Math.min(current[i].stage + 1, run.stages.length - 1) };
+            setTheatre([...current]);
+          });
+          if (theatreTokenRef.current !== token) return;
+          current[i] = take;
+        } catch (err) {
+          current[i] = {
+            ...current[i],
+            failed: err instanceof Error ? err.message : String(err),
+            label: "session failed",
+          };
+        }
+        setTheatre([...current]);
+      }
+      setTheatrePair(openTheatreBracket(current));
+      setStatus(
+        openTheatreBracket(current)
+          ? "🎬 Kapela odohrala — SLEPÉ FINÁLE: prehraj Take A a Take B, hlasuj ktorý je lepší"
+          : current.some((take) => take.buffer)
+            ? "🎬 Kapela odohrala — jediný hotový take je pripravený"
+            : "🎬 Kapela skončila — žiadny take sa nepodaril (pozri ⚠ na kartách)",
+      );
+    } finally {
+      if (theatreTokenRef.current === token) setTheatreBusy(false);
+    }
+  };
+  const playTheatreTake = (index: number) => {
+    const take = theatre?.[index];
+    if (!take?.buffer || theatreBusy) return;
+    if (theatrePlaying === index) {
+      stopAudition();
+      setTheatrePlaying(null);
+      return;
+    }
+    stopAudition();
+    setSongPlaying(false);
+    playAuditionBuffer(take.buffer, () => setTheatrePlaying(null));
+    setTheatrePlaying(index);
+  };
+  const voteTheatre = (winnerIdx: number) => {
+    if (!theatre || !theatrePair || theatreBusy) return;
+    stopAudition();
+    setTheatrePlaying(null);
+    const [next, queue] = [theatrePair.queue[0], theatrePair.queue.slice(1)];
+    if (next !== undefined) {
+      setTheatrePair({ a: winnerIdx, b: next, queue });
+      setStatus("🎬 Víťaz duelu postupuje — ďalšie slepé kolo");
+      return;
+    }
+    // Finále: reveal the names and hand the winner to the normal USE flow.
+    const take = theatre[winnerIdx];
+    setTheatreWinner(winnerIdx);
+    setTheatrePair(null);
+    if (take.draft && take.buffer) {
+      songBufferRef.current = take.buffer;
+      setSongDraft(take.draft);
+    }
+    setStatus(`👑 Slepé finále: vyhral ${take.run.name} — draft dole: ▶ počúvaj, USE patrí tebe`);
+  };
+  const retakeTheatreWinner = async () => {
+    const entries = theatre;
+    if (!entries || theatreWinner === null || theatreBusy || busy || songBusy) return;
+    const idx = theatreWinner;
+    const persona = personaBySlug(entries[idx].run.producerSlug);
+    if (!persona) return;
+    const note = theatreRetake.trim();
+    const version = (Number(/v(\d+)$/.exec(entries[idx].run.seed)?.[1] ?? 0) || 0) + 1;
+    const [fresh] = buildTheatrePlan({
+      brief: songTextRef.current || text,
+      cast: [persona],
+      interjections: note ? [{ producerSlug: persona.slug, note }] : [],
+      retake: version,
+    });
+    const baseDoc = services.store.getDoc();
+    const intentInput = { ...briefInput, ...(refPatch ?? {}) };
+    const token = ++theatreTokenRef.current;
+    setTheatreBusy(true);
+    setError(null);
+    stopAudition();
+    setTheatrePlaying(null);
+    setTheatreWinner(null);
+    setTheatrePair(null);
+    setSongDraft(null);
+    songTokenRef.current++;
+    songBufferRef.current = null;
+    setStatus(`🎬 RETAKE — ${persona.name} ${note ? `berie pripomienku „${note}“` : "ide znova, nový draft"}…`);
+    const current = entries.map((take, k) => (k === idx ? theatrePlaceholder(fresh) : take));
+    setTheatre([...current]);
+    try {
+      try {
+        const take = await runTheatreTake(baseDoc, fresh, songTextRef.current || text, intentInput, (label) => {
+          current[idx] = { ...current[idx], label, stage: Math.min(current[idx].stage + 1, fresh.stages.length - 1) };
+          setTheatre([...current]);
+        });
+        if (theatreTokenRef.current !== token) return;
+        current[idx] = take;
+      } catch (err) {
+        current[idx] = {
+          ...current[idx],
+          failed: err instanceof Error ? err.message : String(err),
+          label: "session failed",
+        };
+      }
+      setTheatre([...current]);
+      const bracket = openTheatreBracket(current, idx);
+      setTheatrePair(bracket);
+      setStatus(
+        bracket
+          ? "🎬 Retake hotový — SLEPÉ FINÁLE znova: nový take bráni ako Take A"
+          : "🎬 Retake hotový — take je pripravený",
+      );
+    } finally {
+      if (theatreTokenRef.current === token) setTheatreBusy(false);
     }
   };
   // Remix-DNA MUTATE — one click forks the CURRENT beat into a child project
@@ -3848,6 +4102,15 @@ export function IntentPanel() {
         </button>
         <button
           type="button"
+          className="btn intent-theatre-btn"
+          disabled={(!text.trim() && !activeProjectBrief) || busy || songBusy || theatreBusy}
+          onClick={() => void hireTheBand()}
+          title="Session Theatre: traja AI producenti nahrajú tú istú pesničku každý po svojom, ty si potom slepo vyberieš víťaza"
+        >
+          {theatreBusy ? "🎬…" : "🎬 KAPELU"}
+        </button>
+        <button
+          type="button"
           className="btn intent-mutate-btn"
           disabled={busy || songBusy || mutateBusy}
           onClick={() => mutate()}
@@ -4189,7 +4452,7 @@ export function IntentPanel() {
           title="Snap every lead-track note to the nearest chord-tone pitch of the chords track (one undo)"
           onClick={handleSnapToChords}
         >
-          🎹 SEDNI NA AKORDY
+          🎹 SADNI NA AKORDY
         </button>
       </div>
       {songSuggestions.length > 0 && !sectionProposal && (
@@ -4431,6 +4694,98 @@ export function IntentPanel() {
               USE MORPH
             </button>
           </div>
+        </div>
+      )}
+      {theatre && (
+        <div className="intent-theatre" aria-label="Session theatre — hired AI producers">
+          <div className="intent-theatre-head">
+            <span className="intent-theatre-title">🎬 SESSION THEATRE</span>
+            <span className="intent-candidate-score">
+              {theatreBusy
+                ? "kapela nahráva — sleduj session…"
+                : theatreWinner !== null
+                  ? "slepé finále vyhodnotené — víťaz je dole v drafte"
+                  : theatrePair
+                    ? "SLEPÉ FINÁLE — prehraj Take A a Take B, hlasuj LEPŠIE"
+                    : "session hotová"}
+            </span>
+          </div>
+          <div className="intent-theatre-cast">
+            {theatre.map((take, i) => {
+              const masked = theatreWinner === null && theatrePair !== null;
+              const inPair = theatrePair != null && (theatrePair.a === i || theatrePair.b === i);
+              const pairLabel = theatrePair?.a === i ? "A" : "B";
+              const isWinner = theatreWinner === i;
+              return (
+                <div
+                  key={`${take.run.producerSlug}|${take.run.seed}`}
+                  className={`intent-theatre-card${isWinner ? " intent-theatre-card-winner" : ""}${
+                    inPair && masked ? " intent-theatre-card-duel" : ""
+                  }`}
+                >
+                  {masked ? (
+                    <span className="intent-theatre-name">
+                      🎭 Take {pairLabel}
+                      {inPair ? "" : " (čaká)"}
+                    </span>
+                  ) : (
+                    <span className="intent-theatre-name">
+                      {take.run.avatar} {take.run.name}
+                      {isWinner ? " 👑" : ""}
+                    </span>
+                  )}
+                  {!masked && <span className="intent-theatre-tagline">{take.run.tagline}</span>}
+                  <span className="intent-theatre-stage">
+                    {take.failed ? `⚠ ${take.failed}` : theatreBusy || take.buffer ? take.label : "čaká v zelené"}
+                  </span>
+                  {take.buffer && (
+                    <span className="intent-theatre-actions">
+                      <button
+                        type="button"
+                        className="btn btn-small"
+                        disabled={theatreBusy}
+                        onClick={() => playTheatreTake(i)}
+                        title={masked ? `Audition Take ${pairLabel}` : `Audition ${take.run.name}`}
+                      >
+                        {theatrePlaying === i ? "■" : "▶"}
+                      </button>
+                      {inPair && masked && (
+                        <button
+                          type="button"
+                          className="btn btn-small intent-use-btn"
+                          disabled={theatreBusy}
+                          onClick={() => voteTheatre(i)}
+                          title="Tento take je lepší — postupuje do ďalšieho kola"
+                        >
+                          LEPŠIE
+                        </button>
+                      )}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {theatreWinner !== null && theatre[theatreWinner] && (
+            <div className="intent-theatre-retake">
+              <input
+                value={theatreRetake}
+                onChange={(e) => setTheatreRetake(e.target.value)}
+                placeholder={`pripomienka pre ${theatre[theatreWinner].run.name} — „menej hi-hatov“, „hraj užšie“… a RETAKE`}
+                disabled={theatreBusy}
+                aria-label="Retake note for the winning producer"
+              />
+              <button
+                type="button"
+                className="btn btn-small"
+                disabled={theatreBusy || busy || songBusy}
+                onClick={() => void retakeTheatreWinner()}
+                title="Nový draft od víťaza (pripomienka mení prompt, RETAKE mení seed) — potom slepé finále znova"
+              >
+                🎬 RETAKE
+              </button>
+            </div>
+          )}
         </div>
       )}
       {songDraft && (
