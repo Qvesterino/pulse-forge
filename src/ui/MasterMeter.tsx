@@ -531,3 +531,87 @@ function dbToPct(db: number): number {
   const clamped = Math.max(-48, Math.min(6, db));
   return ((clamped + 48) / 54) * 100;
 }
+
+/**
+ * Compact L/R master meter for the statusbar (ROADMAP-UI-2027, Vlna 3) —
+ * the "never lose the music" FL lesson: the master level stays visible no
+ * matter which dock panel is open. Peak fill with an RMS core, a peak-hold
+ * line and a clip dot, fed by the same cheap engine snapshot the strip
+ * meters read (25 Hz — statusbar chrome, not a mix-decision surface).
+ */
+export function MasterMiniMeter() {
+  const services = useServices();
+  const [state, setState] = useState({
+    lPeak: -120,
+    lRms: -120,
+    rPeak: -120,
+    rRms: -120,
+    hold: -120,
+    clip: false,
+  });
+  const lastStateRef = useRef(state);
+  const clipHoldRef = useRef(0);
+
+  useEffect(() => {
+    let lastRead = 0;
+    registerRaf("master-mini-meter", (t) => {
+      if (t - lastRead < 40) return;
+      lastRead = t;
+      const engineWithMeter = services.engine as typeof services.engine & {
+        getMasterMeterSnapshot?: () => MasterSnapshot;
+      };
+      const snapshot = engineWithMeter.getMasterMeterSnapshot?.();
+      const levels = snapshot ?? services.engine.getMasterLevels();
+      const peakDb = Math.max(levels.left.peakDb, levels.right.peakDb);
+      // Same intersample-clip policy as the wall and the strip meters.
+      const truePeakDb = snapshot?.truePeakDb ?? peakDb;
+      const nowOver = truePeakDb > -0.1 || peakDb > 0;
+      if (nowOver) clipHoldRef.current = 0;
+      clipHoldRef.current += 0.04;
+      const next = {
+        lPeak: levels.left.peakDb,
+        lRms: levels.left.rmsDb,
+        rPeak: levels.right.peakDb,
+        rRms: levels.right.rmsDb,
+        hold: snapshot?.peakHoldDb ?? services.engine.getMasterPeakHoldDb(),
+        clip: clipHoldRef.current < 0.8,
+      };
+      const prev = lastStateRef.current;
+      const changed =
+        Math.abs(prev.lPeak - next.lPeak) > 0.4 ||
+        Math.abs(prev.rPeak - next.rPeak) > 0.4 ||
+        Math.abs(prev.lRms - next.lRms) > 0.6 ||
+        Math.abs(prev.rRms - next.rRms) > 0.6 ||
+        Math.abs(prev.hold - next.hold) > 0.4 ||
+        prev.clip !== next.clip;
+      if (changed) {
+        lastStateRef.current = next;
+        setState(next);
+      }
+    });
+    return () => unregisterRaf("master-mini-meter");
+  }, [services]);
+
+  // −60..0 dB maps to 0..100% — the readable floor for a 20px bar.
+  const pos = (db: number) => `${Math.min(100, Math.max(0, (1 + db / 60) * 100))}%`;
+  const hold = Math.min(100, Math.max(0, (1 + state.hold / 60) * 100));
+  return (
+    <div
+      className="statusbar-meter"
+      role="img"
+      aria-label="Master output level"
+      title={`Master out — L ${state.lPeak.toFixed(1)} dB · R ${state.rPeak.toFixed(1)} dB · hold ${state.hold.toFixed(1)} dB`}
+    >
+      <span className={`statusbar-meter-bar${state.clip ? " clipping" : ""}`}>
+        <i className="statusbar-meter-rms" style={{ height: pos(state.lRms) }} />
+        <i className="statusbar-meter-fill" style={{ height: pos(state.lPeak) }} />
+        {hold > 1 && <i className="statusbar-meter-hold" style={{ bottom: `${hold}%` }} />}
+      </span>
+      <span className={`statusbar-meter-bar${state.clip ? " clipping" : ""}`}>
+        <i className="statusbar-meter-rms" style={{ height: pos(state.rRms) }} />
+        <i className="statusbar-meter-fill" style={{ height: pos(state.rPeak) }} />
+        {hold > 1 && <i className="statusbar-meter-hold" style={{ bottom: `${hold}%` }} />}
+      </span>
+    </div>
+  );
+}

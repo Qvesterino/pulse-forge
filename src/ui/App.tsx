@@ -71,6 +71,8 @@ const PaletteOverlay = lazy(() => import("./PaletteOverlay").then((m) => ({ defa
 import { HelpOverlay } from "./HelpOverlay";
 import { notifyOnboardingProgress, OnboardingHint } from "./OnboardingHint";
 import { SessionStateIndicator } from "./SessionStateIndicator";
+import { StatusHint } from "./StatusHint";
+import { MasterMiniMeter } from "./MasterMeter";
 import { DiceProvider } from "./DiceContext";
 
 import {
@@ -1610,16 +1612,21 @@ export function App({
               )}
               <footer className="statusbar">
                 <SessionStateIndicator onOpenArrangement={() => setBottomPanel("arr")} />
-                <span>
-                  SPACE play · CTRL+K commands · ALT+1–8 panels · ? help · Ctrl+Z undo ·{" "}
-                  <kbd className="statusbar-kbd">1</kbd>–<kbd className="statusbar-kbd">9</kbd> tracks · TOOL{" "}
-                  {tool.toUpperCase()} (S/C/B/E/M)
-                  {selection.trackIds.length > 0 && track.kind === "drum" && " · pad keys QWERTYUIASDFGHJK"}
-                </span>
+                <StatusHint
+                  fallback={
+                    <span>
+                      SPACE play · CTRL+K commands · ALT+1–8 panels · ? help · Ctrl+Z undo ·{" "}
+                      <kbd className="statusbar-kbd">1</kbd>–<kbd className="statusbar-kbd">9</kbd> tracks · TOOL{" "}
+                      {tool.toUpperCase()} (S/C/B/E/M)
+                      {selection.trackIds.length > 0 && track.kind === "drum" && " · pad keys QWERTYUIASDFGHJK"}
+                    </span>
+                  }
+                />
                 <MtcChip services={services} />
                 <PcmChip services={services} />
                 <LinkChip services={services} />
                 <PerformanceReadout engine={services.engine} scheduler={services.scheduler} />
+                <MasterMiniMeter />
               </footer>
               <CommandToast />
               <MixPreviewMount />

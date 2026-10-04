@@ -112,7 +112,7 @@ describe("Slider hover tooltip (hint plumbing)", () => {
     );
     const wrapper = container.querySelector(".slider") as HTMLElement;
     expect(wrapper.getAttribute("title")).toBe(
-      "GAIN — Track level in dB — drag for coarse, right-click to type — drag to change, right-click for exact values, double-click to reset",
+      "GAIN — Track level in dB — drag for coarse, right-click to type — drag to change, scroll to adjust (Ctrl = fine), right-click for exact values, double-click to reset",
     );
   });
 
@@ -122,7 +122,7 @@ describe("Slider hover tooltip (hint plumbing)", () => {
     );
     const wrapper = container.querySelector(".slider") as HTMLElement;
     expect(wrapper.getAttribute("title")).toBe(
-      "PAN — drag to change, right-click for exact values, double-click to reset",
+      "PAN — drag to change, scroll to adjust (Ctrl = fine), right-click for exact values, double-click to reset",
     );
   });
 

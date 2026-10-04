@@ -282,3 +282,96 @@
 .devices-panel input[type="range"] {
   accent-color: var(--accent);
 }
+
+/* ---------- Statusbar chrome (Vlna 3) ----------
+   Live hint (FL hint-bar): the hovered control's name + value, with the
+   static shortcut hints as the no-hover fallback. */
+.statusbar-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 46vw;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.statusbar-hint-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.statusbar-hint-value {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text);
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 6px;
+  flex: none;
+}
+
+/* Mini master meter: two 5px peak bars with RMS cores, a hold line and a
+   clip state — the master level never leaves the screen (Vlna 3). */
+.statusbar-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 8px;
+  flex: none;
+  padding: 3px 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.statusbar-meter-bar {
+  position: relative;
+  display: block;
+  width: 5px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 1px;
+  overflow: hidden;
+}
+.statusbar-meter-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(180deg, #4ade80 55%, #f59e0b 85%, #f87171 100%);
+  border-radius: 1px;
+}
+.statusbar-meter-rms {
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.55);
+  border-radius: 1px;
+}
+.statusbar-meter-hold {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: #fff;
+  opacity: 0.85;
+}
+.statusbar-meter-bar.clipping {
+  box-shadow: inset 0 0 0 1px #f87171;
+}
+.statusbar-meter-bar.clipping::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(248, 113, 113, 0.35);
+  animation: statusbar-clip-blink 0.5s steps(2, end) infinite;
+}
+@keyframes statusbar-clip-blink {
+  50% {
+    opacity: 0;
+  }
+}

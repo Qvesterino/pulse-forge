@@ -1,4 +1,76 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { RefObject } from "react";
+
+/**
+ * FL-style wheel adjust (ROADMAP-UI-2027, Vlna 3): hovering a continuous
+ * control and scrolling changes its value — no click needed. Ctrl/Cmd+wheel
+ * is the fine step (≈1/10th). React attaches `wheel` as a PASSIVE listener
+ * at the root, so `preventDefault()` needs a native non-passive listener on
+ * the element itself; without the preventDefault the page scrolls AND the
+ * value moves, which reads as a broken control.
+ *
+ * Horizontal scrubs (shift+wheel, trackpad pan) are left to scrolling — only
+ * vertical deltas drive the value.
+ */
+export function useWheelAdjust(
+  ref: RefObject<HTMLElement | null>,
+  apply: (direction: 1 | -1, fine: boolean) => void,
+  enabled = true,
+): void {
+  const applyRef = useRef(apply);
+  applyRef.current = apply;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !enabled) return;
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaX !== 0) return;
+      event.preventDefault();
+      applyRef.current(event.deltaY < 0 ? 1 : -1, event.ctrlKey || event.metaKey);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [ref, enabled]);
+}
+
+/**
+ * Debounced wheel-commit (Vlna 3): a wheel gesture is a BURST of notches —
+ * committing each one floods undo history with 20 entries for one gesture.
+ * The value previews live (drag/edit state + onPreview) and settles as ONE
+ * document write shortly after the last notch.
+ */
+export function useDebouncedWheelCommit(delayMs = 350): {
+  schedule: (commit: () => void) => void;
+  flush: () => void;
+} {
+  const timer = useRef<number | null>(null);
+  const pending = useRef<(() => void) | null>(null);
+  const schedule = (commit: () => void) => {
+    pending.current = commit;
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      timer.current = null;
+      const fn = pending.current;
+      pending.current = null;
+      fn?.();
+    }, delayMs);
+  };
+  const flush = () => {
+    if (timer.current !== null) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+    const fn = pending.current;
+    pending.current = null;
+    fn?.();
+  };
+  useEffect(
+    () => () => {
+      if (timer.current !== null) window.clearTimeout(timer.current);
+    },
+    [],
+  );
+  return { schedule, flush };
+}
 
 /**
  * Built-in value menu shared by Slider and DragNumber: right-click (mouse) or
@@ -189,6 +261,28 @@ export function Slider({
   const [builtinMenu, setBuiltinMenu] = useState<{ x: number; y: number } | null>(null);
   const [typeDraft, setTypeDraft] = useState<string | null>(null);
   const shown = dragValue ?? value;
+  // FL wheel adjust (Vlna 3): steps ride the RATIO domain so log-tapered
+  // knobs move musically; the burst settles as ONE commit. The base value
+  // reads the REF, not the render closure — two notches in one batch must
+  // accumulate (the same authority rule as pointer drags, one comment up).
+  const wheelCommit = useDebouncedWheelCommit();
+  useWheelAdjust(
+    trackRef,
+    (direction, fine) => {
+      if (disabled) return;
+      const ratioStep = fine ? 0.0025 : 0.02;
+      const base = dragValueRef.current ?? value;
+      const ratio = Math.min(1, Math.max(0, taperToRatio(min, max, base, taper) + direction * ratioStep));
+      const v = ratioToTaper(min, max, ratio, taper);
+      setDrag(v);
+      firePreview(v);
+      wheelCommit.schedule(() => {
+        setDrag(null);
+        onCommit(v);
+      });
+    },
+    !disabled,
+  );
 
   const openMenu = (x: number, y: number) => {
     if (onMenu) onMenu(x, y);
@@ -340,7 +434,9 @@ export function Slider({
   return (
     <div
       className={`slider${compact ? " slider-compact" : ""}${disabled ? " slider-disabled" : ""}`}
-      title={`${label}${hint ? ` — ${hint}` : ""} — drag to change, right-click for exact values, double-click to reset`}
+      title={`${label}${hint ? ` — ${hint}` : ""} — drag to change, scroll to adjust (Ctrl = fine), right-click for exact values, double-click to reset`}
+      data-hint={`${label}${hint ? ` — ${hint}` : ""}`}
+      data-hint-value={format ? format(shown) : shown.toFixed(2)}
     >
       <div className="slider-header">
         <span className="slider-label">{label}</span>
@@ -589,6 +685,26 @@ export function DragNumber({
     setEditValue(null);
   };
 
+  // FL wheel adjust (Vlna 3): a notch burst settles as ONE commit, and a
+  // burst that lands back on the document value writes nothing (no undo
+  // noise). The base value reads the REF so back-to-back notches accumulate
+  // (see Slider). A notch is ~1/40th of the span, capped by the keyboard
+  // step — span-1 controls (SWING, humanize) resolve stepSize 1 and a raw
+  // stepSize notch would slam them to 100% in one scroll.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const wheelCommit = useDebouncedWheelCommit();
+  useWheelAdjust(rootRef, (direction, fine) => {
+    const coarse = Math.min(stepSize, (max - min) / 40);
+    const step = fine ? coarse / 10 : coarse;
+    const base = editRef.current ?? value;
+    const next = quantize(base + direction * step);
+    setEditValue(next);
+    wheelCommit.schedule(() => {
+      setEditValue(null);
+      if (next !== quantize(value)) onCommit(next);
+    });
+  });
+
   const commitTypeDraft = () => {
     if (typeDraft === null) return;
     const parsed = Number(typeDraft.replace(",", "."));
@@ -598,6 +714,7 @@ export function DragNumber({
 
   return (
     <div
+      ref={rootRef}
       className="drag-number"
       role="spinbutton"
       tabIndex={0}
@@ -608,7 +725,9 @@ export function DragNumber({
       aria-valuemin={min}
       aria-valuemax={max}
       aria-valuenow={shown}
-      title={`${label}${hint ? ` — ${hint}` : ""} — drag to change, Enter to type a value, double-click to reset`}
+      title={`${label}${hint ? ` — ${hint}` : ""} — drag to change, scroll to adjust (Ctrl = fine), Enter to type a value, double-click to reset`}
+      data-hint={`${label}${hint ? ` — ${hint}` : ""}`}
+      data-hint-value={format ? format(shown) : shown.toFixed(decimals)}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
