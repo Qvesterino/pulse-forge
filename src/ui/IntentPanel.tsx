@@ -95,6 +95,7 @@ import { extractGrooveGrid, grooveRowsForPads, type GrooveExtraction } from "../
 import { inferPadRole } from "../ai/pad-roles";
 import { setAudioReferenceConditioning } from "../intent/semantic-conditioning";
 import { computeMasterMatchEq, referenceLoudnessTrim, setMatchEqReference } from "../intent/match-eq";
+import { chordsTrackOf, snapMelodyToChordsCommand } from "../intent/chord-snap";
 import { applyMasterMatchEqCommand } from "../commands/commands";
 import {
   planVariantIntents,
@@ -174,6 +175,8 @@ import type { ArrangementClip, DrumTrack, Pattern, ProjectDocument } from "../pr
 import { ProducerDnaCompare } from "./ProducerDnaCompare";
 import { CandidateLaneReceipt } from "./CandidateLaneReceipt";
 import { runPersonalTrainingFromShipped } from "../intent/personal-melodic-flow";
+import { clearStyleExamples, countStyleExamples, recordStyleExample } from "../intent/style-example-ledger";
+import { patternStyleExampleFromProject } from "../intent/pattern-style-example";
 
 // The Audiotool connector is an explicit opt-in path. Keep its UI and adapter
 // out of the regular Intent bundle until the user chooses to export a take.
@@ -291,6 +294,8 @@ export function IntentPanel() {
   // honest outcome (installed / refused + why).
   const [personalBusy, setPersonalBusy] = useState(false);
   const [personalStatus, setPersonalStatus] = useState<string | null>(null);
+  const [learnedPatternCount, setLearnedPatternCount] = useState(countStyleExamples);
+  const [styleMemoryMessage, setStyleMemoryMessage] = useState<string | null>(null);
   // A1 audition state — the ranked bank lives on the result; buffers are
   // cached per candidate so replaying is instant after the first render.
   const [bankResult, setBankResult] = useState<GenerationResult | null>(null);
@@ -631,6 +636,37 @@ export function IntentPanel() {
     if (!text.trim()) return null;
     return parseIntentText(text);
   }, [text]);
+
+  const learnActivePattern = () => {
+    const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
+    if (!pattern) {
+      setStyleMemoryMessage("Aktívny pattern sa nenašiel.");
+      return;
+    }
+    const example = patternStyleExampleFromProject(doc, pattern, parsed?.input.genre);
+    if (!example) {
+      setStyleMemoryMessage("Pattern je prázdny; najprv doň pridaj noty alebo bicie.");
+      return;
+    }
+    if (!recordStyleExample(example)) {
+      setStyleMemoryMessage("Príklad sa nepodarilo uložiť do lokálnej pamäte.");
+      return;
+    }
+    const count = countStyleExamples();
+    setLearnedPatternCount(count);
+    setStyleMemoryMessage(`Zapamätané lokálne · ${example.genre} · ${count} naučených patternov.`);
+  };
+
+  const forgetLearnedPatterns = () => {
+    if (learnedPatternCount === 0) return;
+    if (!window.confirm("Vymazať patterny, ktoré si KYX výslovne naučil? Dice obľúbené rolky zostanú.")) return;
+    if (!clearStyleExamples()) {
+      setStyleMemoryMessage("Pamäť sa nepodarilo vymazať.");
+      return;
+    }
+    setLearnedPatternCount(0);
+    setStyleMemoryMessage("Naučené patterny boli vymazané z lokálnej pamäte.");
+  };
 
   const savedBriefAt = doc.producerBrief?.savedAt ?? null;
   useEffect(() => {
@@ -1580,6 +1616,35 @@ export function IntentPanel() {
       setRefBusy(false);
     }
   };
+  // SNAP TO CHORDS (snap-to-chord-tone wave): deterministic post-process —
+  // every lead-track note moves to the nearest chord-tone pitch of the
+  // chords track. One undo; no re-render needed (pure document edit).
+  const handleSnapToChords = () => {
+    const doc = services.store.getDoc();
+    const chordTrack = chordsTrackOf(doc);
+    if (!chordTrack) {
+      setError("🎹 snap to chords: no chords track in this project");
+      return;
+    }
+    const leadTrack = doc.tracks.find(
+      (track) =>
+        track.kind === "instrument" &&
+        track.id !== chordTrack.id &&
+        doc.patterns.some((p) => p.notes[track.id]?.length),
+    );
+    if (!leadTrack) {
+      setError("🎹 snap to chords: no melody track with notes");
+      return;
+    }
+    try {
+      const command = snapMelodyToChordsCommand(doc, leadTrack.id, chordTrack.id);
+      services.store.execute(command);
+      setStatus(`🎹 ${command.label}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   const handleReferenceFile = async (file: File | null) => {
     if (!file || refBusy) return;
     setRefBusy(true);
@@ -3389,6 +3454,29 @@ export function IntentPanel() {
           {voiceState === "recording" ? "⏺ REC" : voiceState === "transcribing" ? "…prepisujem" : "🎙 HOVOR"}
         </button>
       </div>
+      <div className="intent-history" aria-label="Personal style memory">
+        <span className="intent-history-label">
+          OSOBNÝ VKUS · {learnedPatternCount} naučených patternov · iba lokálne
+        </span>
+        <button
+          type="button"
+          className="btn btn-small"
+          onClick={learnActivePattern}
+          title="Uloží odvodený súhrn hudobných vlastností aktívneho patternu do lokálnej pamäte pre sémanticky podmienené generovanie."
+        >
+          NAUČ SA Z AKTÍVNEHO PATTERNU
+        </button>
+        {learnedPatternCount > 0 && (
+          <button type="button" className="btn btn-small" onClick={forgetLearnedPatterns}>
+            ZABUDNÚŤ NAUČENÉ
+          </button>
+        )}
+      </div>
+      {styleMemoryMessage && (
+        <div role="status" className="intent-detected">
+          {styleMemoryMessage}
+        </div>
+      )}
       {doc.producerBrief && (
         <>
           <div className="intent-history" aria-label="Project Producer Brief memory">
@@ -4014,6 +4102,16 @@ export function IntentPanel() {
           </span>
         </div>
       )}
+      <div className="intent-actions" aria-label="Harmony post-process">
+        <button
+          type="button"
+          className="btn"
+          title="Snap every lead-track note to the nearest chord-tone pitch of the chords track (one undo)"
+          onClick={handleSnapToChords}
+        >
+          🎹 SEDNI NA AKORDY
+        </button>
+      </div>
       {songSuggestions.length > 0 && !sectionProposal && (
         <div className="song-suggestions" aria-label="Evidence-based section suggestions">
           {songSuggestions.map((suggestion) => (

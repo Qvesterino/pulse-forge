@@ -540,3 +540,18 @@ long tonal sweep). All three on the −13 LUFS FX target, first-pass clean (no m
 games). Ear-pass lanes added: impact2-vs-impact, riser-short-vs-riser,
 noisedown-vs-downlifter (15 lanes total). Bank assets only — wiring into the
 transition-cue system (quick-build / exhale cues) is a follow-up.
+
+## Wave 11 (2026-10-04): SNAP-TO-CHORD-TONES — the model-free chord-tone path SHIPPED
+
+W1 verdict pivoted here: chord-tone agreement without a model. `src/intent/chord-snap.ts`:
+`snapNotesToChords(melody, chordNotes)` pure — every melody note moves to the NEAREST
+chord-tone pitch of the chords track active at its start (octave-extended candidates cover
+the melody register; equidistant → higher tone, leading feel; slide notes keep their glide
+target; pickup notes with no active chord pass through). Only the PITCH moves —
+start/duration/velocity/id preserved. `snapMelodyToChordsCommand` wraps it as one undo
+(track ids preserved — scenes and arrangement clips stay bound). Panel button
+`🎹 SEDNI NA AKORDY` in the IntentPanel.
+
+Tests `tests/chord-snap.test.ts` 8/8: chord tone untouched, equidistant → higher,
+chord-change respected mid-pattern, octave register, slide passthrough, determinism,
+command round-trip with undo. 20/20 with the W0 suites.

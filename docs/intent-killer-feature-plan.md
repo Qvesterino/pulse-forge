@@ -211,23 +211,47 @@ rankner preference skupiny ZOSTAVÍ v prehliadači a sprístupní ich offline
 **Overenie:** 64/64 testov v 7 súboroch (trainer 11, onnx 8, inference 5,
 training 11, flow 5, repository 9, semantic 15).
 
-### W4 — Producer DNA 2.0: features.v2 (D5) + proaktívne taste probes
+### W4 — Producer DNA 2.0: features.v2 (D5) + proaktívne taste probes — **HOTOVÉ 2026-10-04**
 
-1. **features.v2** — k 54 features pridať bass merania (rhytmická hustota,
-   syncopácia, root-coverage voči progresii), chord merania (voicing pohyb,
-   harmonic rhythm), arrangement (počet rolí, registra spread) + per-role
-   presence flags. Contract bump = nová verzia (pravidlo §9 INTENT_ENGINE);
-   ranker/pattern-features konzumenti migrujú cez dual-read (v1 pre staré
-   pozorovania — ledger verzie to rieši cez `featureVersion` pin).
-2. **Personal ranker bass/harmony adaptéry** prestanú byť `null` — D5 sa
-   zatvára; taste-probe picker dostane dve nové osi.
-3. **Proaktívne probes**: po N generáciách bez hlasovania panel navrhne
-   kontrolovanú A/B otázku (picker `suggestTasteProbePair` existuje) —
-   „chcem sa ťa niečo spýtať" moment, ktorý robí DAW živým.
+Diagnóza D5 sa zavrela: `personal-ranker` mal `bass`/`harmony` ako `null`, lebo
+features.v1 nemal **žiadne** bass/harmony merania. Teraz ich má.
 
-- **Úsilie:** 4–6 blokov. **Akceptácia:** hlasovanie s reason „bass" mení
-  bass-related výber; evaluation harness (`preference-evaluation.ts`) hlási
-  lift > 0 na held-out; v1→v2 migrácia bez zmeny starých hashov.
+1. **features.v2** (`src/ai/features/pattern-features-v2.ts`) — **aditívny**
+   kontrakt: prvých 54 dimenzií je **byte-identický** v1 vektor (pinutý
+   testom), nasleduje 15 nových meraní:
+   - **bass** (5): noteDensity, rootAlignment (proti najnižšiemu znemu
+     akordu v okamihu útoku), movement, syncopation, registerStability
+   - **harmony** (4): voicingMovement (voice leading), harmonicRhythm,
+     voiceRichness, chordDensity
+   - **arrangement** (3): roleCount, registerSpread, rhythmicAlignment
+   - **flags** (3): per-role presence (1 = absent, konvencia v1)
+     Roly sa riešia **generátorovým** resolverom (`instrumentTrackForRole`), takže
+     extraktor a engine nikdy nemôžu nesúhlasiť, čo je „basa".
+2. **Dual-read migrácia** — ledger validuje oba kontrakty podľa **deklarovanej
+   verzie**; `normalizeFeatureVector` v1 (54) dopĺňa na v2 (69) neutrálnym
+   0,5, takže **staré pozorovanie má na nových osiach presne nulový rozdiel** a
+   nikdy nedokáže „naučiť" basu/harmóniu, ktorú nemeralo. Všetci konzumenti
+   (rank-candidates, taste-probe, candidate-diversity, personal-ranker) tolerujú
+   obe šírky; shipped 54-dim ONNX ranker sa **nedotkne**.
+3. **bass/harmony adaptéry** už nie sú `null` — `isPreferenceReasonRankable`
+   je pre oba `true`, probe picker ich navrhuje, UI ponúka „basa" / „harmónia"
+   bez poznámky „ranker zatiaľ nemeria".
+4. **Proaktívne taste probes** (`src/intent/proactive-probe.ts`) — po 3
+   generáciách v tom istom kontexte **bez hlasovania** panel sám ponúkne JEDNU
+   kontrolovanú otázku. Zdržanlivosť je pravidlom, nie náhodou: pýta sa raz,
+   hlasovanie aj odmietnutie resetujú sériu, ticho pri pozastavenom učení a
+   pri banku bez použiteľnej dvojice, nikdy nič nezapíše bez výslovnej voľby.
+5. **Store** `STORE_PERSONAL_MODELS` (DB v13) s out-of-line key
+   `<kind>#<baseModelHash>` — osobný model platí len pre artefakt, z ktorého
+   bol natrénovaný.
+
+**Overenie:** 70/10 testov v 8 súboroch + UI test (46/46 spolu s DB-shape
+auditom). Vrátane: **prefix invariant** (v2 = v1 ++ extension), "bass/harmony sú
+rankable, ale legacy v1 vector ich nedokáže naučiť", a restraint testy pre probe.
+
+**Mimo scope W4:** features.v2 vstupuje do _osobného_ rankera; shipped ONNX
+ranker si drží 54-dim v1 (contract + artefakt zamrznutý, aktivácia je osobitný
+offline krok s golden review).
 
 ### W5 — Kapela rastie: nové roly + song-level motif (D8)
 
@@ -275,16 +299,16 @@ training 11, flow 5, repository 9, semantic 15).
 
 ## 5. Prioritná matrica (čo prvé)
 
-| Vlna                     | Dopad na „killer" pocit              | Úsilie     | Závislosť   | Verdict                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ------------------------ | ------------------------------------ | ---------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| W0.1 audio targets 19/19 | VYSOKÝ (správny výber ihneď)         | ~0,5 bloku | —           | **HOTOVÉ 2026-10-04** — merané, nie vymyslené: `audio-targets.generated.ts` (19/19 žánrov, RMS/crest/ZCR/bass z referenčných renderov), wiring cez `audioTargetFor()`                                                                                                                                                                                                                                                                              |
-| W0.2 auto-diagnóza UI    | VYSOKÝ („engine mi povie čo je zle") | ~0,5       | W0.1 pomáha | **HOTOVÉ 2026-10-04** — SUNO MODE audition → analyzeSongSections → suggestSectionRevivals → chips; klik = reviseSection → náhľad → 1 undo; testy `tests/intent-song-audio-review.test.ts` (11/11)                                                                                                                                                                                                                                                  |
-| W1 melodic v3 (harmónia) | VYSOKÝ (hudobnosť AI)                | 4–6        | —           | **UZAVRETÉ 2026-10-04 — gate NEPREŠIEL, prior v3 neaktivovaný.** Smoke i-VI-III-VII (scripts/smoke-melodic-v3-chordtone.mts): model chord-tone hit 50.0 % vs random 53.1 % (greedy-tone 100 %) — rekonštruovaný MIDI chord kontext je pre per-slot MLP šum (potvrdzuje W2 audit). Alternatíva bez modelu: deterministický snap-to-chord-tone post-process na generovaných melódiách (ďalšia vlna); sequence student pri ďalšom vlnovom investovaní |
-| W2 MIDI korpus           | VYSOKÝ (dlhodobá kvalita)            | 3–5        | —           | **ODHADNUTÉ 2026-10-04** — gate FAIL (degree 0.5447 → 0.4774); pipeline hotová, korpus presmerovaný do W1. Audit: `docs/W2-MIDI-CORPUS-AUDIT-2026-10-04.md`                                                                                                                                                                                                                                                                                        |
-| W3 Nauč sa ma (in-app)   | KILLER story                         | 5–8        | —           | **HOTOVÉ 2026-10-04** — celý tok: TS tréner (fine-tune zo shipped váh, bez RNG) + ONNX reader + IndexedDB store + worker overlay (personal > shipped, fallback) + 🧠 NAUČ SA MA tlačidlo s A/B dôkazom + ranker preferenčné skupiny + semantic korpus z ★. 64/64 testov.                                                                                                                                                                           |
-| W4 features.v2 + DNA 2.0 | STREDNÍ-VYSOKÝ                       | 4–6        | —           | tretia štvrť                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| W5 kapela (arp/pad/perc) | STREDNÍ                              | 5–7        | W1 pomáha   | štvrtá štvrť                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| W6 reference 2.0         | STREDNÍ                              | 3–4        | —           | kedykoľvek                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Vlna                     | Dopad na „killer" pocit              | Úsilie     | Závislosť   | Verdict                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------ | ------------------------------------ | ---------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| W0.1 audio targets 19/19 | VYSOKÝ (správny výber ihneď)         | ~0,5 bloku | —           | **HOTOVÉ 2026-10-04** — merané, nie vymyslené: `audio-targets.generated.ts` (19/19 žánrov, RMS/crest/ZCR/bass z referenčných renderov), wiring cez `audioTargetFor()`                                                                                                                                                                                                                                                                                          |
+| W0.2 auto-diagnóza UI    | VYSOKÝ („engine mi povie čo je zle") | ~0,5       | W0.1 pomáha | **HOTOVÉ 2026-10-04** — SUNO MODE audition → analyzeSongSections → suggestSectionRevivals → chips; klik = reviseSection → náhľad → 1 undo; testy `tests/intent-song-audio-review.test.ts` (11/11)                                                                                                                                                                                                                                                              |
+| W1 melodic v3 (harmónia) | VYSOKÝ (hudobnosť AI)                | 4–6        | —           | **UZAVRETÉ 2026-10-04 — gate NEPREŠIEL, prior v3 neaktivovaný.** Smoke i-VI-III-VII (scripts/smoke-melodic-v3-chordtone.mts): model chord-tone hit 50.0 % vs random 53.1 % (greedy-tone 100 %) — rekonštruovaný MIDI chord kontext je pre per-slot MLP šum (potvrdzuje W2 audit). Alternatíva SHIPPED bez modelu: **snap-to-chord-tone post-process** (`src/intent/chord-snap.ts`, 🎹 SEDNI NA AKORDY button); sequence student pri ďalšom vlnovom investovaní |
+| W2 MIDI korpus           | VYSOKÝ (dlhodobá kvalita)            | 3–5        | —           | **ODHADNUTÉ 2026-10-04** — gate FAIL (degree 0.5447 → 0.4774); pipeline hotová, korpus presmerovaný do W1. Audit: `docs/W2-MIDI-CORPUS-AUDIT-2026-10-04.md`                                                                                                                                                                                                                                                                                                    |
+| W3 Nauč sa ma (in-app)   | KILLER story                         | 5–8        | —           | **HOTOVÉ 2026-10-04** — celý tok: TS tréner (fine-tune zo shipped váh, bez RNG) + ONNX reader + IndexedDB store + worker overlay (personal > shipped, fallback) + 🧠 NAUČ SA MA tlačidlo s A/B dôkazom + ranker preferenčné skupiny + semantic korpus z ★. 64/64 testov.                                                                                                                                                                                       |
+| W4 features.v2 + DNA 2.0 | STREDNÍ-VYSOKÝ                       | 4–6        | —           | tretia štvrť                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| W5 kapela (arp/pad/perc) | STREDNÍ                              | 5–7        | W1 pomáha   | štvrtá štvrť                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| W6 reference 2.0         | STREDNÍ                              | 3–4        | —           | kedykoľvek                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 **Odporúčané prvé dve PR-éka (tento týždeň):**
 
