@@ -6,8 +6,6 @@ import type {
   AudioClip,
   DrumPad,
   DrumTrack,
-  EffectInstance,
-  EffectType,
   GrooveSettings,
   Marker,
   NoteEvent,
@@ -16,17 +14,10 @@ import type {
   Scene,
   SceneRole,
   StepMeta,
-  Track,
 } from "../project-model/types";
 import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { arrangementSecondsBetweenTicks, tempoAtTick } from "../project-model/scene-time";
 import { buildStemProject } from "../rendering/stems";
-import {
-  planProductionActions,
-  resolveProductionTargets,
-  type ProductionAction,
-  type ProductionIntent,
-} from "../intent/production";
 import { withPad } from "../project-model/transform";
 import { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
 import { patternPhaseOffsetAtTick, sceneOffsetAtTick } from "../project-model/events";
@@ -44,10 +35,8 @@ import {
 import { sanitizeGateSteps, sanitizeManglerSteps } from "../project-model/modulators";
 import type { Pattern } from "../project-model/types";
 import { clampEffectParam, defaultParamsOf, EFFECT_META, normalizePluginParams } from "../effects/definitions";
-import { targetParamDef } from "../project-model/targets";
-import { CORE_EFFECT_PRESETS, type EffectPreset } from "../effects/presets";
-import type { BeatmakingEffectChain } from "../effects/chains";
-import { clampFxOutputTrimDb, factoryFxChainGainDb, factoryFxPresetGainDb } from "../effects/presetLoudness";
+import { type EffectPreset } from "../effects/presets";
+import { clampFxOutputTrimDb, factoryFxPresetGainDb } from "../effects/presetLoudness";
 import { uid } from "../shared/ids";
 import type { SharedPackSceneSketch, SharedPackSketch } from "../export/packCode";
 import { resolveGrooveForGeneration } from "../ai/generator";
@@ -55,9 +44,6 @@ import { generateLocalResultFromOptions } from "../intent/pipeline";
 import type { GenerationResult } from "../intent/types";
 import type { GenerateOptions } from "../ai/types";
 import { buildAssistPatch, normalizeAssistRequest } from "../assist/pipeline";
-import { classifyPads } from "../assist/patternOps";
-import { padsForFamily } from "../intent/pattern-verbs";
-import type { ExactIntentPlan, ExactOp, ExactTarget } from "../intent/exact";
 import { ASSIST_ENGINE_ID, ASSIST_ENGINE_VERSION, type AssistInput } from "../assist/types";
 import { canonicalizePattern, contentHash } from "../ai/evaluation";
 
@@ -67,12 +53,10 @@ import { canonicalizePattern, contentHash } from "../ai/evaluation";
 // import it keep working against an unchanged surface.
 import { snapshot } from "./core";
 // The effect/intent layers below still drive the master bus; the command itself lives in ./master.
-import { setMasterConfig } from "./master";
 // The intent/production layer below still drives project-level settings and pads from their own
 // module now; the commands themselves live in ./project.
-import { type PadSlice, setBpm, setPadParams, setTrackParams, sliceToPads } from "./project";
+import { type PadSlice, sliceToPads } from "./project";
 // The intent layer below still applies groove settings; the command itself lives in ./groove.
-import { setGroove } from "./groove";
 // docOps is plumbing shared by several domains and is NOT re-exported wholesale; only the one
 // name that was already public goes back out, so the barrel's surface is unchanged.
 import { cloneStepMeta, trackEffectsOf, unlinkMarkersOfClips, withTrackEffects } from "./docOps";
@@ -94,11 +78,22 @@ export * from "./markers";
 export * from "./metadata";
 // The clip layers below read the project key when they rebuild a stem set, so this one needs a
 // local binding — a re-export would not give the barrel body the name.
-import { setProjectKey } from "./metadata";
 export * from "./clipPlayback";
 export * from "./sceneAutomation";
 export * from "./effectInstances";
-export * from "./intentRouting";
+// NOT `export *`: foldProductionIntent is exported from ./intentRouting for the barrel body and for
+// effectParams, and a star re-export would publish it — the surface would be 234 names, not 233.
+export {
+  applyExactIntentCommand,
+  applyProductionIntentCommand,
+  applyProductionIntentToTrackCommand,
+  exactReadback,
+  foldFxIntoDoc,
+  resolveExactTargetTracks,
+} from "./intentRouting";
+// The clip layers below fold production FX chains onto a ghost document, so this one needs a local
+// binding — and it is imported, not re-exported, because it was internal before the split.
+import { foldProductionIntent } from "./intentRouting";
 export * from "./effectParams";
 // The clip layers below read the transition list between neighbours, so this one needs a local
 // binding — a re-export would not give the barrel body the name.
@@ -117,16 +112,6 @@ export {
 // a local binding — a re-export would not give the barrel body the name either way.
 // The arrangement/clip layers below resize patterns directly, so this one needs a local binding —
 // a bare re-export would not give the barrel body the name.
-import { setPatternLength } from "./patterns";
-import {
-  addEffect,
-  cleanupDetail,
-  createDrumTrack,
-  createInstrumentTrack,
-  deleteTrack,
-  duplicateTrack,
-  stripDanglingEffectReferences,
-} from "./tracks";
 export {
   addEffect,
   addEffectToTracks,

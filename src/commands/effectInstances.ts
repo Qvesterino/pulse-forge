@@ -7,68 +7,12 @@
  * so the UI can tell the user what was cleaned up instead of silently losing the link.
  */
 import type { Command } from "./types";
-import type {
-  ArrangementClip,
-  ArrangementTransition,
-  ArrangementTransitionType,
-  AudioClip,
-  DrumPad,
-  DrumTrack,
-  EffectInstance,
-  EffectType,
-  GrooveSettings,
-  Marker,
-  NoteEvent,
-  PatternAssist,
-  ProjectDocument,
-  Scene,
-  SceneRole,
-  StepMeta,
-  Track,
-} from "../project-model/types";
-import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
-import { arrangementSecondsBetweenTicks, tempoAtTick } from "../project-model/scene-time";
-import { buildStemProject } from "../rendering/stems";
-import {
-  planProductionActions,
-  resolveProductionTargets,
-  type ProductionAction,
-  type ProductionIntent,
-} from "../intent/production";
-import { withPad } from "../project-model/transform";
-import { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
-import { patternPhaseOffsetAtTick, sceneOffsetAtTick } from "../project-model/events";
-import {
-  createGroupTrackModel,
-  createPatternForDoc,
-  MAX_ARRANGEMENT_CLIP_BARS,
-  MAX_BPM,
-  MIN_BPM,
-  normalizeProject,
-  sceneRoleOf,
-  clampArrangementTransitionType,
-  sanitizeArrangementTransitions,
-} from "../project-model/schema";
-import { sanitizeGateSteps, sanitizeManglerSteps } from "../project-model/modulators";
-import type { Pattern } from "../project-model/types";
-import { clampEffectParam, defaultParamsOf, EFFECT_META, normalizePluginParams } from "../effects/definitions";
-import { targetParamDef } from "../project-model/targets";
-import { CORE_EFFECT_PRESETS, type EffectPreset } from "../effects/presets";
-import type { BeatmakingEffectChain } from "../effects/chains";
-import { clampFxOutputTrimDb, factoryFxChainGainDb, factoryFxPresetGainDb } from "../effects/presetLoudness";
-import { uid } from "../shared/ids";
-import type { SharedPackSceneSketch, SharedPackSketch } from "../export/packCode";
-import { resolveGrooveForGeneration } from "../ai/generator";
-import { generateLocalResultFromOptions } from "../intent/pipeline";
-import type { GenerationResult } from "../intent/types";
-import type { GenerateOptions } from "../ai/types";
-import { buildAssistPatch, normalizeAssistRequest } from "../assist/pipeline";
-import { classifyPads } from "../assist/patternOps";
-import { padsForFamily } from "../intent/pattern-verbs";
-import type { ExactIntentPlan, ExactOp, ExactTarget } from "../intent/exact";
-import { ASSIST_ENGINE_ID, ASSIST_ENGINE_VERSION, type AssistInput } from "../assist/types";
-import { canonicalizePattern, contentHash } from "../ai/evaluation";
+import type { EffectType, ProjectDocument } from "../project-model/types";
+import { EFFECT_META } from "../effects/definitions";
 import { snapshot } from "./core";
+import { trackEffectsOf, withTrackEffects } from "./docOps";
+import { addEffect, cleanupDetail, stripDanglingEffectReferences } from "./tracks";
+import { setEffectParam } from "./effectParams";
 
 /* ---------------- effect instances ---------------- */
 export function removeEffect(doc: ProjectDocument, trackId: string, fxId: string): Command {
