@@ -21,6 +21,7 @@ import {
   toggleStep,
 } from "../commands/commands";
 import { assetCategoryOf, categoryColor } from "./kitColors";
+import { KYX_SAMPLE_MIME, sampleIdFromDrag } from "./SampleBrowser";
 import { PianoRollTrack } from "./PianoRoll";
 import type { SelectedNote } from "./PianoRoll";
 import { trackBadge } from "./TrackTabs";
@@ -1491,6 +1492,10 @@ function PadRow({
   const stableEnd = useCallback(() => endRef.current(), []);
   const stableEdit = useCallback((stepIndexArg: number) => editRef.current(stepIndexArg), []);
   const metaRow = pattern.stepMeta?.[pad.id] ?? {};
+  // Sample drop target (V4): dragging a sound from the browser strip onto
+  // this row's label swaps the pad's sample. Hover state is local — a drop
+  // flash must not re-render the 256 memoized step cells below.
+  const [sampleOver, setSampleOver] = useState(false);
 
   return (
     <div
@@ -1499,7 +1504,24 @@ function PadRow({
       // so the grid reads as one colour per sound family (kicks vs hats vs …).
       style={{ "--pad-color": categoryColor(assetCategoryOf(pad)) } as React.CSSProperties}
     >
-      <div className="row-label">
+      <div
+        className={`row-label${sampleOver ? " drop-target" : ""}`}
+        onDragOver={(event) => {
+          if (!event.dataTransfer.types.includes(KYX_SAMPLE_MIME) && !event.dataTransfer.types.includes("text/plain"))
+            return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+          setSampleOver(true);
+        }}
+        onDragLeave={() => setSampleOver(false)}
+        onDrop={(event) => {
+          const assetId = sampleIdFromDrag(event.dataTransfer);
+          setSampleOver(false);
+          if (!assetId) return;
+          event.preventDefault();
+          executeUserEdit(services.store, setPadParams(doc, pad.id, { assetId }));
+        }}
+      >
         <button
           type="button"
           className={`row-pad${selected ? " selected" : ""}`}

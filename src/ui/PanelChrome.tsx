@@ -64,3 +64,28 @@ export function PanelSection({ title, actions, className, children }: PanelSecti
     </section>
   );
 }
+
+interface EmptyStateProps {
+  /** Single glyph — an emoji or symbol, sized by the CSS. */
+  icon: string;
+  title: string;
+  hint?: string;
+  children?: ReactNode;
+}
+
+/**
+ * Shared empty state (Vlna 4): an empty panel explains ITSELF — what is
+ * missing and the first move to fill it — instead of a bare one-liner.
+ */
+export function EmptyState({ icon, title, hint, children }: EmptyStateProps) {
+  return (
+    <div className="empty-state" role="note">
+      <span className="empty-state-icon" aria-hidden="true">
+        {icon}
+      </span>
+      <span className="empty-state-title">{title}</span>
+      {hint && <span className="empty-state-hint">{hint}</span>}
+      {children}
+    </div>
+  );
+}

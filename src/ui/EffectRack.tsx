@@ -3,7 +3,7 @@ import { useServices, useTracks } from "./context";
 import type { EffectType, Track } from "../project-model/types";
 import { FxAddPopover } from "./FxAddPopover";
 import { FxIntentBar } from "./FxIntentBar";
-import { PanelHeader } from "./PanelChrome";
+import { EmptyState, PanelHeader } from "./PanelChrome";
 import { parseProductionIntent } from "../intent/production";
 import { addEffectWithLandingCommand, applyProductionIntentToTrackCommand } from "../commands/commands";
 import { applyEffectIntentOnTrack } from "./fxAddAssistant";
@@ -407,7 +407,11 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
               devicesMode
             />
           ) : (
-            <div className="devices-empty">Add a device to this track to build its sound.</div>
+            <EmptyState
+              icon="🎛"
+              title="No device on this track"
+              hint="Add an effect with + FX, or a ready chain with + CHAIN — or describe the sound you want in the idea bar below."
+            />
           )}
         </div>
       </section>

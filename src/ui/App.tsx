@@ -87,6 +87,7 @@ import {
   type DockState,
 } from "./dockLayout";
 import { DockChrome } from "./DockChrome";
+import { BrowserStrip } from "./BrowserStrip";
 import { isPadKey, padKeysArmed, setPadKeysArmed } from "./padKeys";
 import { melodicKeys } from "./melodicKeys";
 import { JamGate } from "./JamGate";
@@ -1528,6 +1529,11 @@ export function App({
                 onToggleHistory={() => setHistoryOpen((v) => !v)}
               />
               <main className="workspace">
+                {/* Left sounds strip (V4) — always one glance away; the
+                    selection (pad → instrument) is its assign target. */}
+                <ErrorBoundary panel="browser-strip">
+                  <BrowserStrip track={track} selectedPadId={padId} />
+                </ErrorBoundary>
                 <div className="workspace-main">
                   {track.kind === "drum" ? (
                     // Track tabs share the rack header row — one chrome row

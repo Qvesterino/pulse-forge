@@ -5,9 +5,11 @@ import {
   createGenerativeTrack,
   createGroupTrack,
   createInstrumentTrack,
+  setInstrumentSample,
   setTrackParams,
 } from "../commands/commands";
 import type { InstrumentKind, Track } from "../project-model/types";
+import { KYX_SAMPLE_MIME, sampleIdFromDrag } from "./SampleBrowser";
 
 const KIND_BADGE: Record<"drum" | "group" | InstrumentKind, string> = {
   drum: "DR",
@@ -58,6 +60,8 @@ export function TrackTabs({
   const tracks = useTracks();
   const doc = services.store.getDoc();
   const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
+  // Sample drop hover (V4) — which tab is currently under a KYX sample drag.
+  const [sampleOver, setSampleOver] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
 
   const beginRename = (trackId: string, name: string) => {
@@ -103,8 +107,8 @@ export function TrackTabs({
             role="tab"
             aria-selected={isSelected}
             aria-label={`${track.name} (${track.kind === "drum" ? "Drum track" : track.kind === "group" ? "Group track" : track.kind === "generative" ? "Generative track" : `${track.instrument} track`})${track.mute ? ", muted" : ""}${track.solo ? ", soloed" : ""}`}
-            className={`track-tab${isSelected ? " active" : ""}`}
-            title={`${track.name} — select track (${idx < 9 ? `${idx + 1}, ` : ""}Tab cycles), F2 to rename — Ctrl+click add, Shift+click range`}
+            className={`track-tab${isSelected ? " active" : ""}${sampleOver === track.id ? " drop-target" : ""}`}
+            title={`${track.name} — select track (${idx < 9 ? `${idx + 1}, ` : ""}Tab cycles), F2 to rename — Ctrl+click add, Shift+click range${track.kind === "instrument" ? " · drop a sample to load it" : ""}`}
             onClick={(e) => onSelectTrack(track.id, e)}
             onDoubleClick={() => beginRename(track.id, track.name)}
             onKeyDown={(event) => {
@@ -112,6 +116,25 @@ export function TrackTabs({
                 event.preventDefault();
                 beginRename(track.id, track.name);
               }
+            }}
+            onDragOver={(event) => {
+              // Sample drop (V4): instrument tracks load a dragged sound as
+              // their sample; drum tracks route through their pads instead,
+              // so the tab stays inert for them.
+              if (track.kind !== "instrument") return;
+              if (!event.dataTransfer.types.includes(KYX_SAMPLE_MIME)) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "copy";
+              setSampleOver(track.id);
+            }}
+            onDragLeave={() => setSampleOver((current) => (current === track.id ? null : current))}
+            onDrop={(event) => {
+              if (track.kind !== "instrument") return;
+              const assetId = sampleIdFromDrag(event.dataTransfer);
+              setSampleOver(null);
+              if (!assetId) return;
+              event.preventDefault();
+              services.store.execute(setInstrumentSample(doc, track.id, assetId));
             }}
           >
             <span className="track-tab-badge">{trackBadge(track)}</span>

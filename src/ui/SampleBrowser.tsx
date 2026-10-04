@@ -11,6 +11,21 @@ import { FreesoundSection } from "./FreesoundSection";
 /** Unified asset type — factory or user-imported. */
 export type SampleAsset = FactoryAsset | UserSampleAsset;
 
+/** MIME type carrying a sample asset id in drag&drop (ROADMAP-UI-2027 V4).
+ *  Drop targets: sequencer drum rows (pad asset) and instrument track tabs. */
+export const KYX_SAMPLE_MIME = "application/kyx-sample";
+
+/** Read a dragged sample id from a drop event — null when the drag carries
+ *  no KYX sample (files, text, external drags all pass through untouched). */
+export function sampleIdFromDrag(dt: DataTransfer): string | null {
+  const id = dt.getData(KYX_SAMPLE_MIME);
+  if (id) return id;
+  // Some hosts (Safari private mode, synthetic test events) drop the custom
+  // MIME but keep text/plain — the id also rides there.
+  const plain = dt.getData("text/plain");
+  return plain && /^[a-z0-9-]{8,}$/i.test(plain) ? plain : null;
+}
+
 type CategoryFilter = "all" | string;
 type MoodFilter = "all" | (typeof ASSET_MOODS)[number];
 
@@ -110,7 +125,19 @@ export function SampleBrowser({
   };
 
   const Row = ({ asset, fav }: { asset: SampleAsset; fav: boolean }) => (
-    <div className={`sample-row${asset.id === currentId ? " active" : ""}`}>
+    <div
+      className={`sample-row${asset.id === currentId ? " active" : ""}`}
+      draggable
+      onDragStart={(event) => {
+        // FL lesson (V4): sounds are dragged onto their destination — the
+        // sequencer's drum rows and the instrument track tabs. text/plain
+        // carries the id as a fallback for hosts that drop custom MIME types.
+        event.dataTransfer.effectAllowed = "copy";
+        event.dataTransfer.setData(KYX_SAMPLE_MIME, asset.id);
+        event.dataTransfer.setData("text/plain", asset.id);
+      }}
+      title="Drag onto a drum row or an instrument track to assign · click ▶ to preview"
+    >
       <button
         type="button"
         className="sample-preview"
@@ -243,7 +270,15 @@ export function SampleBrowser({
           </>
         )}
         <div className="sample-group-label">LIBRARY</div>
-        {rest.length === 0 && <div className="preset-empty">No sounds match.</div>}
+        {rest.length === 0 && (
+          <div className="sample-empty">
+            <span className="sample-empty-icon" aria-hidden="true">
+              🔍
+            </span>
+            No sounds match.{" "}
+            {allAssets.length > 0 ? "Try another category or clear the search." : "Drop audio files above to import."}
+          </div>
+        )}
         {rest.map((asset) => (
           <Row key={asset.id} asset={asset} fav={library.favoriteAssets.includes(asset.id)} />
         ))}
