@@ -16,7 +16,9 @@ import {
   isDrumsV3PriorManifest,
   isMelodicPriorManifest,
   isMelodicV2PriorManifest,
+  isMelodicV3PriorManifest,
   type MelodicPriorManifest,
+  type MelodicV3PriorManifest,
   type PriorKind,
   type PriorManifest,
   type PriorRequest,
@@ -82,6 +84,7 @@ const DRUMS_V2_MANIFEST_PATH = "/models/symbolic-prior-v2.manifest.json";
 const DRUMS_V3_MANIFEST_PATH = "/models/symbolic-prior-v3.manifest.json";
 const MELODIC_MANIFEST_PATH = "/models/symbolic-melodic-v1.manifest.json";
 const MELODIC_V2_MANIFEST_PATH = "/models/symbolic-melodic-v2.manifest.json";
+const MELODIC_V3_MANIFEST_PATH = "/models/symbolic-melodic-v3.manifest.json";
 
 let worker: Worker | null = null;
 let workerFailures = 0;
@@ -156,7 +159,9 @@ async function loadManifest(kind: PriorKind): Promise<PriorManifest | null> {
             ? DRUMS_V3_MANIFEST_PATH
             : kind === "melodic-v2"
               ? MELODIC_V2_MANIFEST_PATH
-              : MELODIC_MANIFEST_PATH;
+              : kind === "melodic-v3"
+                ? MELODIC_V3_MANIFEST_PATH
+                : MELODIC_MANIFEST_PATH;
     const fetchPromise = fetch(path, controller ? { signal: controller.signal } : undefined);
     const response = await Promise.race([
       fetchPromise,
@@ -179,9 +184,13 @@ async function loadManifest(kind: PriorKind): Promise<PriorManifest | null> {
             ? isMelodicV2PriorManifest(manifest)
               ? manifest
               : null
-            : isMelodicPriorManifest(manifest)
-              ? manifest
-              : null;
+            : kind === "melodic-v3"
+              ? isMelodicV3PriorManifest(manifest)
+                ? manifest
+                : null
+              : isMelodicPriorManifest(manifest)
+                ? manifest
+                : null;
     if (!validated) return null;
     cachedManifests.set(kind, validated);
     return validated;
@@ -448,6 +457,63 @@ export async function runMelodicNextV2(values: Float32Array, rowCount: number): 
 }
 
 /** Test/diagnostic hook: drop the worker + cached state. */
+/**
+ * Run the HARMONY-AWARE v3 melodic prior (W1). Same guarantees and shape
+ * as runMelodicNext/V2 — never throws; requires the v3 model artifact AND
+ * the harmony-aware flag. Callers fall back to V2 → V1 per call when this
+ * returns ok:false. The v3 model sees chord root/quality/function +
+ * next-chord resolution + motif embedding — it produces harmonically
+ * aware note choices, not just probable pitches.
+ */
+export async function runMelodicNextV3(values: Float32Array, rowCount: number): Promise<MelodicRunResult> {
+  try {
+    if (priorMode() === "off") return { ok: false, degree: null, duration: null, source: "off" };
+    const manifest = await loadManifest("melodic-v3");
+    if (!manifest || manifest.kind !== "melodic-v3")
+      return { ok: false, degree: null, duration: null, source: "fallback" };
+    const v3Manifest = manifest as MelodicV3PriorManifest;
+    if (values.length !== rowCount * v3Manifest.featureCount) {
+      return { ok: false, degree: null, duration: null, source: "fallback" };
+    }
+    const active = spawnWorker();
+    if (!active) return { ok: false, degree: null, duration: null, source: "fallback" };
+    const load = await request(
+      { type: "load", requestId: nextRequestId++, kind: "melodic-v3", manifest: v3Manifest },
+      LOAD_TIMEOUT_MS,
+    );
+    if (!load.ok) return { ok: false, degree: null, duration: null, source: "fallback" };
+    const response = await request(
+      { type: "run", requestId: nextRequestId++, kind: "melodic-v3", batch: values, rowCount },
+      RUN_TIMEOUT_MS,
+    );
+    if (!response.ok === false || response.type !== "run" || !response.outputs) {
+      return { ok: false, degree: null, duration: null, source: "fallback" };
+    }
+    const degreeSize = rowCount * v3Manifest.degreeClasses;
+    const durationSize = rowCount * v3Manifest.durationClasses;
+    const degree: number[] = [];
+    const duration: number[] = [];
+    for (let row = 0; row < rowCount; row++) {
+      const degreeDist = response.outputs[`${v3Manifest.degreeOutputName}:${row}`];
+      const durationDist = response.outputs[`${v3Manifest.durationOutputName}:${row}`];
+      if (!Array.isArray(degreeDist) || degreeDist.length !== v3Manifest.degreeClasses) {
+        return { ok: false, degree: null, duration: null, source: "fallback" };
+      }
+      if (!Array.isArray(durationDist) || durationDist.length !== v3Manifest.durationClasses) {
+        return { ok: false, degree: null, duration: null, source: "fallback" };
+      }
+      degree.push(...degreeDist);
+      duration.push(...durationDist);
+    }
+    if (degree.length !== degreeSize || duration.length !== durationSize) {
+      return { ok: false, degree: null, duration: null, source: "fallback" };
+    }
+    return { ok: true, degree, duration, source: "model" };
+  } catch {
+    return { ok: false, degree: null, duration: null, source: "fallback" };
+  }
+}
+
 export function resetPriorClient(): void {
   worker?.terminate();
   worker = null;

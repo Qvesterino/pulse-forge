@@ -26,6 +26,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { FACTORY_ASSETS } from "../src/sample-library/manifest";
 import { CURATED_SAMPLES } from "../src/sample-library/curated";
+import { ANALYSIS_BANDS, analyzeTransientProfile } from "../src/analysis/transientProfile";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SAMPLES_DIR = path.join(ROOT, "public", "samples");
@@ -213,15 +214,7 @@ function fftRadix2(re: Float64Array, im: Float64Array): void {
   }
 }
 
-const BANDS: ReadonlyArray<readonly [string, number, number]> = [
-  ["sub", 20, 60],
-  ["low", 60, 120],
-  ["lowmid", 120, 350],
-  ["mid", 350, 2000],
-  ["himid", 2000, 6000],
-  ["high", 6000, 12000],
-  ["air", 12000, 22050],
-];
+const BANDS: ReadonlyArray<readonly [string, number, number]> = ANALYSIS_BANDS;
 
 function bandShares(channel: Float32Array): Record<string, number> & { centroid: number } {
   const N = 4096;
@@ -303,6 +296,16 @@ function lowTuning(
 }
 const noteName = (midi: number): string => `${NOTE_NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`;
 
+/* ── per-band leading-window attack (transient term) ───────────────────────
+ * The broadband head term is blind to an in-band strike BY CONSTRUCTION: a
+ * sub-ms mallet contact at 2.6 kHz is a rounding error against the bar's own
+ * low-mid body, so the whole-file ratio moves 0.0-0.1 dB on a strike fix.
+ * Measured on the real pre/post pairs of the 2026-10 mallet wave
+ * (tmp-old-*.wav): broadband 0.0-0.1 dB vs per-band 2.5-3.7 dB. The math now
+ * lives in src/analysis/transientProfile.ts (shared with its vitest lock so
+ * the printed table, the feature vector and the test cannot drift).
+ */
+
 /* ── per-file analysis ── */
 interface Row {
   id: string;
@@ -320,6 +323,13 @@ interface Row {
      carries a tenth of the energy. This is the axis the old vector lacked:
      every strike / click / transient change lives here. */
   attackDb: number;
+  /* Per-band head/loud ratio (dB) + the strongest band. The broadband term
+     above cannot see an in-band strike (a 2.6 kHz contact is a rounding
+     error in broadband power); this one can. maxBand names WHERE the
+     transient lives. */
+  attackBandDb: Record<string, number>;
+  attackBandMaxDb: number;
+  attackBandMaxName: string;
   crestDb: number;
   momentaryLufs: number;
   bands: Record<string, number>;
@@ -361,6 +371,7 @@ function analyzeFile(file: string, id: string, category: string): Row {
   const headMean = headEnd > headStart ? headSq / (headEnd - headStart) : 0;
   const loudMean = cnt > 0 ? sumSq / cnt : 0;
   const attackDb = loudMean > 1e-18 ? 10 * Math.log10(Math.max(headMean, 1e-18) / loudMean) : 0;
+  const transient = analyzeTransientProfile(main, { windowMs: attackWindowMs, sampleRate: SR });
 
   const bands = bandShares(main);
   const tuning: Row["tuning"] = {};
@@ -394,6 +405,9 @@ function analyzeFile(file: string, id: string, category: string): Row {
     tailSilenceMs: Math.round(((frames - 1 - lastLoud) / SR) * 1000 * 10) / 10,
     loudMs: Math.round(((lastLoud - firstLoud) / SR) * 1000 * 10) / 10,
     attackDb: Math.round(attackDb * 10) / 10,
+    attackBandDb: transient?.bands ?? {},
+    attackBandMaxDb: transient?.maxDb ?? 0,
+    attackBandMaxName: transient?.maxBand ?? "sub",
     crestDb: Math.round(crest * 10) / 10,
     momentaryLufs: Math.round(momentaryMaxLufs(channels) * 10) / 10,
     bands,
@@ -507,8 +521,12 @@ for (const row of rows) {
  *   loud        ms first-to-last loud sample    /1000  (decay / sustain)
  *   brightness  log2(centroid Hz)               /4     (timbre family)
  *   tilt        (tail - lead) silence ms        /1000  (sweep direction)
- *   attack      head energy vs whole file, dB   /40    (transient term;
- *               clamped at -30 dB, below that everything is "no head")
+ *   attack      strongest PER-BAND head energy  /40    (transient term;
+ *               max across the 7 bands, clamped at -30 dB. The broadband
+ *               version this replaces could not see an in-band strike - a
+ *               2.6 kHz mallet contact vs the bar's low-mid body measured
+ *               0.0-0.1 dB broadband but 2.5-3.7 dB per-band on the real
+ *               2026-10 pre/post pairs, so every strike fix was invisible.)
  * A pair is only a de-dup candidate when it is close on the axes its
  * category is supposed to vary on - `--why` prints those axes.
  */
@@ -534,7 +552,7 @@ const feat = (r: Row): number[] => [
   r.loudMs,
   Math.log2(Math.max(r.bands.centroid, 1)),
   (r.tailSilenceMs - r.leadSilenceMs) / 1000,
-  Math.max(r.attackDb, -30),
+  Math.max(r.attackBandMaxDb, -30),
 ];
 const scaled = (r: Row): number[] => feat(r).map((x, i) => x / FEATURE_SCALE[i]);
 

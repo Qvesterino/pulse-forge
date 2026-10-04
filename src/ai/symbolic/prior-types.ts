@@ -1,6 +1,6 @@
 /** Shared contract for the ONNX symbolic prior worker (drums + melodic, T2). */
 
-export type PriorKind = "drums" | "drums-v2" | "drums-v3" | "melodic" | "melodic-v2";
+export type PriorKind = "drums" | "drums-v2" | "drums-v3" | "melodic" | "melodic-v2" | "melodic-v3";
 
 /** Drum prior: per-(pad,step) hit logits, sigmoid-normalized in the worker. */
 export interface DrumsPriorManifest {
@@ -85,14 +85,34 @@ export interface MelodicV2PriorManifest {
   hidden: readonly number[];
 }
 
+export interface MelodicV3PriorManifest {
+  kind: "melodic-v3";
+  priorVersion: string;
+  featureVersion: string;
+  featureCount: number;
+  modelPath: string;
+  inputName: string;
+  degreeOutputName: string;
+  durationOutputName: string;
+  degreeClasses: number;
+  durationClasses: number;
+  modelHash: string;
+  hidden: readonly number[];
+}
+
 export type PriorManifest =
-  DrumsPriorManifest | DrumsV2PriorManifest | DrumsV3PriorManifest | MelodicPriorManifest | MelodicV2PriorManifest;
+  | DrumsPriorManifest
+  | DrumsV2PriorManifest
+  | DrumsV3PriorManifest
+  | MelodicPriorManifest
+  | MelodicV2PriorManifest
+  | MelodicV3PriorManifest;
 
 /** Sigmoid-head priors share the run/response shape; only the manifest kind differs. */
 export type SigmoidPriorManifest = DrumsPriorManifest | DrumsV2PriorManifest | DrumsV3PriorManifest;
 
-/** Dual softmax-head priors (melodic v1/v2) share the run/response shape. */
-export type DualHeadPriorManifest = MelodicPriorManifest | MelodicV2PriorManifest;
+/** Dual softmax-head priors (melodic v1/v2/v3) share the run/response shape. */
+export type DualHeadPriorManifest = MelodicPriorManifest | MelodicV2PriorManifest | MelodicV3PriorManifest;
 
 export interface PriorLoadRequest {
   type: "load";
@@ -250,4 +270,24 @@ export function coerceDrumsManifest(value: unknown): DrumsPriorManifest | null {
   if (manifest.kind !== undefined && manifest.kind !== "drums") return null;
   if (!isDrumsPriorManifest({ ...manifest, kind: "drums" })) return null;
   return { ...(manifest as Omit<DrumsPriorManifest, "kind">), kind: "drums" };
+}
+
+export function isMelodicV3PriorManifest(value: unknown): value is MelodicV3PriorManifest {
+  if (!value || typeof value !== "object") return false;
+  const manifest = value as Record<string, unknown>;
+  return (
+    commonManifestFieldsValid(manifest) &&
+    manifest.kind === "melodic-v3" &&
+    manifest.featureVersion === "melodic-features.v3" &&
+    typeof manifest.degreeOutputName === "string" &&
+    manifest.degreeOutputName.length > 0 &&
+    typeof manifest.durationOutputName === "string" &&
+    manifest.durationOutputName.length > 0 &&
+    typeof manifest.degreeClasses === "number" &&
+    Number.isInteger(manifest.degreeClasses) &&
+    (manifest.degreeClasses as number) > 0 &&
+    typeof manifest.durationClasses === "number" &&
+    Number.isInteger(manifest.durationClasses) &&
+    (manifest.durationClasses as number) > 0
+  );
 }

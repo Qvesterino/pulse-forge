@@ -2,9 +2,21 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { pwaOptions } from "./src/pwa";
 
 const virtualPwaRegisterStub = fileURLToPath(new URL("./tests/_stubs/virtual-pwa-register.ts", import.meta.url));
+
+// QMR HUD ecosystem packages live in the SIBLING checkout (monorepo
+// file:-dep style). The default expects pulse-forge and QVESTER_LANDING_PAGE
+// side by side on disk; clean checkouts (the Qvester CI vendored build)
+// override the root via QVESTER_SIBLING_ROOT — without it the aliases point
+// at a directory that does not exist and vite build dies on ENOENT before
+// producing anything.
+const qvesterSiblingRoot = process.env.QVESTER_SIBLING_ROOT
+  ? resolve(process.env.QVESTER_SIBLING_ROOT)
+  : fileURLToPath(new URL("../QVESTER_LANDING_PAGE", import.meta.url));
+const qvesterPkgSrc = (pkg: string) => resolve(qvesterSiblingRoot, "packages", pkg, "src");
 
 // Desktop packaging (ADR 0010): the Electron shell serves the static dist/
 // over its own app:// scheme — the service-worker precache would be dead
@@ -37,23 +49,23 @@ export default defineConfig({
     // without publishing or copying. Keep in sync with vitest.config.ts.
     {
       find: /^@qvester\/qmr-hud$/,
-      replacement: fileURLToPath(new URL("../QVESTER_LANDING_PAGE/packages/qmr-hud/src/index.ts", import.meta.url)),
+      replacement: resolve(qvesterPkgSrc("qmr-hud"), "index.ts"),
     },
     {
       find: /^@qvester\/qmr-hud\/(.*)$/,
-      replacement: fileURLToPath(new URL("../QVESTER_LANDING_PAGE/packages/qmr-hud/src/$1", import.meta.url)),
+      replacement: `${qvesterPkgSrc("qmr-hud")}/$1`,
     },
     {
       find: /^@qvester\/qmr-interop(.*)$/,
-      replacement: fileURLToPath(new URL("../QVESTER_LANDING_PAGE/packages/qmr-interop/src/$1", import.meta.url)),
+      replacement: `${qvesterPkgSrc("qmr-interop")}/$1`,
     },
     {
       find: /^@qvester\/intent-engine(.*)$/,
-      replacement: fileURLToPath(new URL("../QVESTER_LANDING_PAGE/packages/intent-engine/src/$1", import.meta.url)),
+      replacement: `${qvesterPkgSrc("intent-engine")}/$1`,
     },
     {
       find: /^@qvester\/interop-types(.*)$/,
-      replacement: fileURLToPath(new URL("../QVESTER_LANDING_PAGE/packages/interop-types/src/$1", import.meta.url)),
+      replacement: `${qvesterPkgSrc("interop-types")}/$1`,
     },
 
     ],
