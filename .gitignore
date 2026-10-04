@@ -139,3 +139,6 @@ out/
 # Sample packs (CC0/CC-BY) — regenerated locally: scripts/convert-salamander.mjs / convert-vsco2.mjs
 public/samples/piano/
 public/samples/vsco/
+
+# UN-SUNO U0 golden WAVs — regenerable via npm run unsuno:golden (tests synthesize in memory)
+tests/unsuno/golden-wav/

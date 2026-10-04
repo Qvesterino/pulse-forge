@@ -77,7 +77,7 @@ diagnostics (odložené — možno neskôr ako advisory), inspiration-spec plann
 
 ## 4. Vlny (každá = samostatné PR-éko, standing gates)
 
-### U0 — Golden transkripčný harness (meranie PRED features)
+### U0 — Golden transkripčný harness (meranie PRED features) — **HOTOVÉ 2026-10-04**
 
 Postav testovaciu základňu skôr než jeden riadok feature kódu (lekcia z
 W0.1 „merané, nie vymyslené"):
@@ -91,6 +91,40 @@ W0.1 „merané, nie vymyslené"):
 - Tolerancie cieľov (nižšie v §5) sa **locknú do testu** — každá vlna ich smie
   len zlepšovať.
 - **Úsilie:** ~0,5 bloku. **Riziko:** žiadne (čisté testy + render).
+
+**Ako to dopadlo (SHIPPED, 26 testov):** dizajnová zmena — syntetizátor je
+on-the-fly pure TS (`tests/unsuno/golden-synth.ts`, 5 žánrov: house 126/am,
+techno 130/em, boombap 90/cm, trap 140/f#m, dnb 174/gm), nie `renderProject`
+(jsdom nemá WebAudio; binaries by neboli deterministické naprieč strojmi).
+WAV export ostáva ako `npm run unsuno:golden` pre owner ear-pass.
+Metriky = `src/reference/unsuno-metrics.ts` (self-testy), kontrakt =
+`src/reference/transcribe.ts` (`transcribeTrack`, pending vrstvy
+`implemented:false` + warning — nikdy vymyslený obsah). U1/U2/U3 KPI bloky sú
+v teste dormantné cez `skipIf` — aktivujú sa samé, keď vrstva flipne
+`implemented:true`. **Live baseline zamknutý per-track:**
+
+| track   | tempo (truth)       | key                |
+| ------- | ------------------- | ------------------ |
+| house   | 118 vs 126 (err 8)  | A Natural Minor ✓  |
+| techno  | null vs 130         | E Natural Minor ✓  |
+| boombap | null vs 90          | C Natural Minor ✓  |
+| trap    | 110 vs 140 (err 30) | **A** ✗ (truth F#) |
+| dnb     | null vs 174         | G Natural Minor ✓  |
+
+**Key KPI (≥0,8) splnené dnes: 4/5 exact vrátane modu.** Tempo NESPLNENÉ —
+`estimateTempo` dáva null na 3/5 (detectTransients nachádza len 2–11 z ~100
+udalostí na polyfónnom materiáli → riedky envelope) a miss 8/30 BPM na
+zvyšku (20 ms bin autokorelácia bez interpolácie).
+
+### U0.5 — Tempo/onset floor (nová vlna z U0 nálezov, PRED U1)
+
+- `detectTransients`: adaptívny threshold na polyfónii (abs+rel mix alebo
+  band-limited flux) — cieľ ≥ 60 % drum udalostí na golden sete.
+- `estimateTempo`: parabolic interpolation okolo autokorelačného peaku +
+  envelope hustejší ako 20 ms — cieľ fold error ≤ 1 BPM na 5/5.
+- Trap key miss: chroma cez prvých 6 s vs trap progresia — skúmať region
+  výber (tonalRegion middle?) — cieľ 5/5 exact.
+- **Akceptácia:** re-lock baseline testu (zlepšenie = zámerný re-lock commit).
 
 ### U1 — Chord transcription (chroma → ChordEvent[])
 

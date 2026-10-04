@@ -11,6 +11,7 @@
     "ai:performance": "vite-node scripts/ai-performance.mts",
     "audio:fetch": "node scripts/fetch-audio-model.mjs",
     "audit:intent": "vite-node scripts/audit-intent.mts",
+    "unsuno:golden": "vite-node scripts/gen-unsuno-golden.mts",
     "audit:melodic": "python scripts/audit-melodic-prior.py && python scripts/audit-melodic-duration-collapse.py && python scripts/audit-melodic-leakage-check.py && python scripts/audit-melodic-v1-honest.py && python scripts/audit-melodic-dnb-onehot.py",
     "audit:melodic:weights": "python scripts/audit-melodic-weights-ab.py && python scripts/audit-melodic-double-weight-proof.py",
     "audit:samples": "vite-node scripts/audit-samples.mts",
