@@ -89,8 +89,14 @@ describe("groove intent", () => {
 });
 
 describe("automate intent (gain ramp)", () => {
-  it("automate the volume from 0 to 100 builds a two-point trackGain lane", () => {
-    const store = new ProjectStore(freshDoc());
+  it("automate the volume from 0 to 100 builds a two-point trackGain lane (single-lane doc)", () => {
+    // A bare "automate the volume" only resolves on a one-lane project — the
+    // positional tracks[0] fallback was removed (no-guessing rule; multi-track
+    // decline is pinned in tests/intent-e2e-audit3.test.ts).
+    const base = freshDoc();
+    const only = base.tracks.find((t) => t.kind !== "group")!;
+    const doc = { ...base, tracks: [only, ...base.tracks.filter((t) => t.kind === "group")] };
+    const store = new ProjectStore(doc);
     const route = routeIntentText("automate the volume from 0 to 100", store.doc);
     expect(route.kind).toBe("automateIntent");
     if (route.kind !== "automateIntent") throw new Error("expected automate");

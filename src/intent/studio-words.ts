@@ -121,18 +121,24 @@ export function applyAutomateIntent(
   intent: AutomateIntent,
   span: { startTick: number; endTick: number } | null,
 ): Command | null {
-  // target track: the named family, else the first track (explicit "volume"
-  // without a target on a project with one lane is unambiguous enough)
+  // Target track: the named family. A positional fallback is allowed ONLY on
+  // a project with exactly one non-group lane — that is the case the original
+  // comment described ("volume without a target on a one-lane project is
+  // unambiguous enough"), but the code applied it to track[0] of ANY project,
+  // silently automating whatever happened to sit first (strict no-guessing
+  // rule everywhere else; see intent-e2e-audit2's transpose pin).
   const family = intent.trackId;
-  const track =
-    doc.tracks.find(
-      (t) =>
-        t.kind !== "group" &&
-        (family === "" ||
+  const nonGroupTracks = doc.tracks.filter((t) => t.kind !== "group");
+  const track = family
+    ? nonGroupTracks.find(
+        (t) =>
           ["bass", "808", "logdrum"].includes(t.kind === "instrument" ? t.instrument : "") ||
           new RegExp(`\\b${family}\\b`, "i").test(t.name) ||
-          (family === "drums" && t.kind === "drum")),
-    ) ?? doc.tracks.find((t) => t.kind !== "group");
+          (family === "drums" && t.kind === "drum"),
+      )
+    : nonGroupTracks.length === 1
+      ? nonGroupTracks[0]
+      : undefined;
   if (!track) return null;
   const PPQ = 480;
   const bar = 4 * PPQ;

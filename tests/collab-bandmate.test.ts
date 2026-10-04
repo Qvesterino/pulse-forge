@@ -14,11 +14,13 @@ function manualClock() {
 class FakeStore {
   doc: ProjectDocument;
   executed: string[] = [];
+  commands: { type?: string; execute: (d: ProjectDocument) => ProjectDocument; undo?: (d: ProjectDocument) => ProjectDocument }[] = [];
   constructor(doc: ProjectDocument) {
     this.doc = doc;
   }
   execute(command: { type?: string; label?: string; execute: (d: ProjectDocument) => ProjectDocument }): void {
     this.executed.push(command.label ?? command.type ?? "?");
+    this.commands.push(command as never);
     this.doc = command.execute(this.doc);
   }
 }
@@ -79,6 +81,26 @@ describe("AI bandmate", () => {
     for (const pad of s.humanDrum?.pads ?? []) {
       expect(botPadIds.has(pad.id), `human pad ${pad.name} must not be bot-owned`).toBe(false);
     }
+  });
+
+  it("bot track rename is a real undoable command (pre-fix: inline rename had undo:(d)=>d)", () => {
+    const s = setup();
+    s.bandmate.setEnabled(true);
+    s.transport.play(0);
+    s.clock.advance(secondsPerBar + 0.05);
+    s.bandmate.tick();
+
+    const bot = s.store.doc.tracks.find((t) => t.name === "KYX Drums");
+    expect(bot).toBeTruthy();
+    // The rename now rides the generic setTrackParams command: it carries a
+    // working undo AND applyToYDoc (the hand-rolled inline command had a
+    // no-op undo, so undoing past the bot's arrival kept the mutated name,
+    // and no YDoc bridge — collab peers never saw the identity).
+    const rename = s.store.commands.find((c) => c.type === "setTrackParams");
+    expect(rename).toBeTruthy();
+    const undone = rename!.undo!(s.store.doc);
+    const restored = undone.tracks.find((t) => t.id === bot!.id);
+    expect(restored!.name).not.toBe("KYX Drums");
   });
 
   it("one roll per phrase; deterministic per (roomId, phrase)", () => {

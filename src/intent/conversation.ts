@@ -23,6 +23,7 @@ import { parsePercent, parsePercentAllowingZero } from "./percent";
 import { intentCarriesGenreSignal } from "./exact";
 import { inferPadRole } from "../ai/pad-roles";
 import type { DrumTrack, ProjectDocument } from "../project-model/types";
+import { MAX_BPM, MIN_BPM } from "../project-model/schema";
 import type { ProductionIntent, ProductionTarget } from "./production";
 import type { DeclinedIntentClarification } from "./mix";
 
@@ -225,7 +226,10 @@ export function parseTempoIntent(text: string): TempoIntent | null {
   const setMatch = TEMPO_SET_TEMPO.exec(lower) ?? (intentCarriesGenreSignal(text) ? null : TEMPO_SET_BPM.exec(lower));
   if (setMatch) {
     const bpm = Number(setMatch[1] ?? setMatch[2]);
-    if (bpm >= 40 && bpm <= 220) return { direction: "set", bpm };
+    // Same window as the exact parser, normalizeProject and setBpm
+    // (MIN_BPM..MAX_BPM = 20..300). The old 40..220 gate made "tempo to 250"
+    // work through one phrasing but silently decline through another.
+    if (bpm >= MIN_BPM && bpm <= MAX_BPM) return { direction: "set", bpm };
   }
   if (TEMPO_DOWN.test(lower)) return { direction: "down" };
   if (TEMPO_UP.test(lower)) return { direction: "up" };

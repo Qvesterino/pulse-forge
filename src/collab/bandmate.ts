@@ -1,4 +1,5 @@
 import { createDrumTrack } from "../commands/commands";
+import { setTrackParams } from "../commands/project";
 import type { Command } from "../commands/types";
 import { hashString, mulberry32 } from "../shared/rng";
 import type { ProjectDocument, SceneRole } from "../project-model/types";
@@ -383,15 +384,11 @@ export function createBandmate(deps: {
     const newId = added.id;
     trackId = newId;
     // Rename through the generic path so every peer sees the bot's identity.
-    store.execute({
-      type: "renameTrack",
-      label: `Rename to ${BOT_TRACK_NAME}`,
-      execute: (d) => ({
-        ...d,
-        tracks: d.tracks.map((t) => (t.id === newId ? { ...t, name: BOT_TRACK_NAME } : t)),
-      }),
-      undo: (d) => d,
-    });
+    // setTrackParams (not a hand-rolled command): the previous inline rename
+    // had `undo: (d) => d`, so undoing past the bot's arrival restored the
+    // created rows but silently kept the mutated name — and it carried no
+    // applyToYDoc, so the rename only ever reached the local store.
+    store.execute(setTrackParams(store.doc, newId, { name: BOT_TRACK_NAME }));
     return true;
   };
 
