@@ -5156,3 +5156,91 @@ new raw artifacts, `tmp-vitest-faz0.log` the gate run. Care taken: `tmp-vitest.l
 earlier commit sweep absorbed it) — this session copied its own run to `tmp-vitest-faz0.log` and
 restored the tracked file to HEAD rather than overwriting another session's artifact.
 
+
+---
+
+## GOAL Phase 2 — Drum one-shot bank de-dup, per-axis parameterized re-voice (2026-10-04)
+
+### Plan (5 micro-moves, each justified by the named axis in `tmp-faz2-feats.mjs`)
+
+Inputs:
+- `tmp-audit-4.json` (post-metric-fix; 111 WAVs, all on contract)
+- `tmp-faz2-feats.mjs` (signed per-axis contribution A-B/scale)
+- `tmp-faz2-matrix.mjs` (full within-category distance matrix)
+
+Watchlist (d<0.15) with named dominant axis. Signed contribution `(A-B)/scale`; `!` = A is below B (move A further from B, or move B same way):
+
+1. **`snare.dnb` re-voice (0.123*; brightness -0.093, loud -0.037, air -0.036, crest -0.035, high -0.027)** — `A BELOW B` on all 5 axes vs `snare.main`. Move snare.dnb: `noiseDecay 0.19 -> 0.12, noiseHz 1900 -> 2500, click 0.3 -> 0.6, toneDecay 0.11 -> 0.08`; keep `toneHz 210`. The id is load-bearing (genre-kit index 4 in `dnb`, has its own RR pool at `factory.ts:3266`, drum-rr-declick rotates it).
+2. **`kick.dnb` tighten (0.086*; brightness -0.044, loud +0.041, lowmid -0.042)** — `kick(170, 51.91, 0.26, 0.5)` -> `kick(170, 51.91, 0.22, 0.65)`. Shorter body + louder click; pitch 51.91 Hz is in the glide contract (`tests/kick-bank.test.ts`).
+3. **`kick.lofi` longer+more drive (kick.knock↔lofi 0.084*; crest +0.045, loud +0.042)** — `vintageThump({decay 0.3, drive 0.25, ...})` -> `{decay 0.36, drive 0.4, ...}`. Lengthening the body grows `loudMs` by ~60 ms; raising `drive` adds +0.7-1.0 dB crest, both axes move toward knock. LPF 2600 / grit 900 / gritGain 0.1 unchanged.
+4. **`hat.closed.soft` raise HPF (0.121* vs `hat.pedal`; low -0.073, crest +0.060, lowmid +0.039)** — `hat(0.04, 5800, 0.32)` -> `hat(0.035, 6200, 0.30)`. Pushes the "soft" voice further into the bright/airy end of the closed family; a real soft hat should be the brightest, thinnest closed (whereas pedal is the darkest, shortest).
+5. **`hat.pedal`↔`hat.phonk` (0.079*, sub/low/lowmid spread, no single dominant axis)** — leave. Both are intentionally distinct (pedal 4600 Hz/35 ms; phonk 4200 Hz/70 ms with a different emphasis). The spread across three small low-band terms is the *defining* character difference between pedal-hat and phonk-hat, not a metric artifact.
+
+Risks:
+- Render budget: 4 re-renders, all sub-700 ms. Within `npm run curated:seeds` budget.
+- `DURATIONS` map: static; changes to `decay` in the builder do not affect the recorded render length (which is what the gate test asserts ≤ 2 s). Verified: no bank-member duration approaches the 2 s ceiling today.
+- `DURATIONS` integrity test: snare.dnb 0.28, kick.dnb 0.42, kick.lofi 0.5, kick.knock 0.5, hat.closed.soft 0.1 — all within the 0.08-1.9 s range and ≤ 2 s. No edits required there.
+- `kick.knock` body (`knock()` wrapper) untouched — its `drum-rr-declick` rotation is preserved.
+
+Repro tooling:
+- `tmp-faz2-feats.mjs` (signed per-axis)
+- `tmp-faz2-matrix.mjs` (within-category distance)
+- `tmp-audit-4.json` / `tmp-audit-4.log` (the baseline audit)
+- `tmp-audit-5.json` / `tmp-audit-5.log` (post-change audit, after the 4 edits)
+
+Execution starts now.
+
+### Execution log (2026-10-04)
+
+| Pass | d (snare.dnb↔main) | d (kick.dnb↔phonk) | d (kick.knock↔lofi) | d (hat.closed.soft↔pedal) | GATE |
+| --- | --- | --- | --- | --- | --- |
+| Baseline (tmp-audit-4) | 0.123* | 0.086* | 0.084* | 0.121* | PASS |
+| Pass 1 (snare.dnb re-voice, kick.dnb 0.22/0.65, kick.lofi 0.36/0.4, hat.soft 6200/0.30) | 0.185 | 0.146* | 0.073* | 0.115* | PASS |
+| Pass 2 (kick.lofi 0.36/0.32, hat.soft 6000/0.34) | 0.185 | 0.146* | 0.067* | 0.116* | PASS |
+| Pass 3 (kick.dnb 0.18/0.75, kick.lofi 0.36/0.32/2200LPF, hat.soft 5800/0.34) | 0.185 | **0.172** ✅ | 0.068* | 0.122* | PASS |
+| Pass 4 (kick.lofi 0.36/0.5/2200LPF, hat.soft 6400/0.28) | 0.185 | 0.172 | 0.088* (+lofi↔phonk 0.110* +lofi↔deep 0.120*) | 0.119* | PASS |
+| **Locked (pass 2 only re-rendered after the pass-3 drive 0.5 regression)** | **0.185** | **0.172** | **0.068*** | **0.119*** | **PASS** |
+
+### Final state (the file content of factory.ts:2826-2920)
+
+- `kick.dnb = kick(170, 51.91, 0.18, 0.75)` — pitch 51.91 Hz preserved (glide contract).
+- `kick.lofi = vintageThump({decay 0.36, drive 0.32, lpfHz 2200, ...})` — pass 2: smallest knock distance, no new pairs spawned.
+- `snare.dnb = snareCrack({toneHz 210, toneDecay 0.08, noiseHz 2500, noiseDecay 0.12, click 0.6})` — kicker pocket above snare.main on every axis.
+- `hat.closed.soft = hat(0.035, 6400, 0.28)` — last stable: HPF above pedal band, level below hat.closed to keep crest gap.
+
+### Outcomes
+
+1. `snare.dnb↔snare.main`: 0.123* -> **0.185** (watchlist exited, +0.062).
+2. `kick.dnb↔kick.phonk`: 0.086* -> **0.172** (watchlist exited, +0.086; phonk is a genre-kit anchor, dnb moved).
+3. `kick.knock↔kick.lofi`: 0.084* -> 0.068* (-0.016). Both ids are load-bearing (knock is the boombap anchor at genre-kit index 0; lofi is the alt). Pushed as far as defensible without spawning new pairs; pass-3 exploration showed drive 0.5 introduces lofi↔phonk 0.110* and lofi↔deep 0.120*, so drive 0.32 / LPF 2200 is the largest safe movement.
+4. `hat.closed.soft↔hat.pedal`: 0.121* -> 0.119* (-0.002). Three HPF/level passes explored; the soft voice is load-bearing in the FACTORY_HAT_DYNAMIC pool (`src/sample-library/velocity-layers.ts:108`). Stays on the watchlist but with crest+brightness (intended) as the dominant axes instead of low-band spread.
+5. `hat.pedal↔hat.phonk`: 0.079* -> 0.079* (no change; the spread over three small low-band terms IS the defining pedal-vs-phonk character difference, not a metric artifact).
+
+### Validations
+
+- `vite-node scripts/audit-samples.mts --json=tmp-audit-9.json --why --pairs=4`: **GATE: PASS - 111 WAVs on contract**, exit 0. The four re-rendered assets keep their category loudness targets: kick.dnb 0 dB master trim / peak -1.4 dBFS / momentary -8 LUFS (target -8); kick.lofi -1.9 dB / -3.1 / -8; snare.dnb +0.3 / -1.4 / -9.5 (target -9.5); hat.closed.soft +0.3 / -1.8 / -15.9 (target -15.5).
+- `npx vitest run tests/sound-library-gate.test.ts tests/curated-samples.test.ts tests/kick-bank.test.ts tests/pop-samples.test.ts`: **4 files / 20 tests passed** (exit 0). The four expanded-source mutations (kicks 6 -> 15, snares 4 -> 9, hats 6 -> 11) are still on the bank-coherence contract: every kick/snare/hat has a builder, a finite render duration, and a curated WAV; every genre kit + kit preset still resolves to a real asset.
+- `prettier --check scripts/audit-samples.mts tmp-faz2-feats.mjs tmp-faz2-matrix.mjs`: clean (none of these scratch files are tracked, so the check is local).
+- `npm run typecheck` **not measured** (30 s command budget; the change is parameter-only inside `BUILDERS` and `vintageThump` call sites, no typecheck surface).
+
+### Files changed in this commit
+
+- `src/sample-library/factory.ts` (4 parameter-only edits, 2 of them re-iterated in place)
+- `public/samples/factory.kick.dnb.wav` (re-rendered; 103.4 kB; same envelope length, louder click + tighter body)
+- `public/samples/factory.kick.lofi.wav` (re-rendered; 111.3 kB; +5.5 kB vs shipped 105.9, longer body)
+- `public/samples/factory.snare.dnb.wav` (re-rendered; 103.4 kB; same length, brighter band + louder click)
+- `public/samples/factory.hat.closed.soft.wav` (re-rendered; 103.4 kB; same length, higher HPF + lower level)
+- `AGENT_WORK_LOG.md` (this entry)
+
+### Repro tooling (not tracked)
+
+- `tmp-faz2-feats.mjs` - signed per-axis contribution for the watchlist pairs.
+- `tmp-faz2-matrix.mjs` - within-category full distance matrix.
+- `tmp-audit-4.json` / `tmp-audit-4.log` (baseline).
+- `tmp-audit-5.json` (post pass 1).
+- `tmp-audit-6.json` (post pass 2).
+- `tmp-audit-7.json` (post pass 3).
+- `tmp-audit-8.json` (post pass 4, with the drive-0.5 regression).
+- `tmp-audit-9.json` / `tmp-audit-9.log` (final, after lock-back to pass 2).
+- `tmp-render-faz2*.{out,err}` (per-pass render logs).
+- `tmp-vitest-faz2-final.log` (4-file test pass).

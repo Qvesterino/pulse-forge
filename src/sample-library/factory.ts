@@ -2823,13 +2823,36 @@ export const BUILDERS: Record<string, Builder> = {
   // jersey kick re-voice (de-dup wave): the jersey-club signature is the
   // HIGH bouncy pitch — B1, shortest body, hardest click of the trio.
   "factory.kick.jersey": kick(210, 61.74, 0.2, 0.7),
-  "factory.kick.dnb": kick(170, 51.91, 0.26, 0.5),
+  // Phase-2 re-voice (2026-10-04): kick.dnb had a 0.086* nearest-neighbour
+  // distance to kick.phonk on brightness. First pass (decay 0.22 / click
+  // 0.65) brought it to 0.146 — still under the 0.15 watchlist gate on
+  // loud +0.081 / air +0.076 / brightness +0.064. Second pass tightens
+  // further: decay 0.22 -> 0.18 (the dnb backbeat is the SHARPEST kick
+  // in the bank — drill 808 territory), click 0.65 -> 0.75. Pitch
+  // 51.91 Hz preserved (glide contract).
+  "factory.kick.dnb": kick(170, 51.91, 0.18, 0.75),
+  // Phase-2 re-voice: kick.lofi had a 0.084* distance to kick.knock driven
+  // by crest (+0.045) + loud (+0.042) — knock is a louder, harder knocker.
+  // Iterated four configurations and locked pass 2 as the right balance:
+  //   pass 0 (decay 0.3 / drive 0.25 / LPF 2600)  -> 0.084* (původní)
+  //   pass 1 (decay 0.36 / drive 0.4 / LPF 2600)   -> 0.073* (drive 0.4  ≡ knock crest)
+  //   pass 2 (decay 0.36 / drive 0.32 / LPF 2200) -> 0.067* (LOCKED — smallest d,
+  //                                                    no new pairs introduced)
+  //   pass 3 (decay 0.36 / drive 0.5 / LPF 2200)  -> 0.088* (but spawned two new
+  //                                                    pairs: lofi↔phonk 0.110 and
+  //                                                    lofi↔deep 0.120 — drive 0.5
+  //                                                    squared lofi's body into a
+  //                                                    phonk-like attack envelope)
+  // Pass 2 widens the body (0.3 -> 0.36, loudMs 360 -> 417), deepens the LPF
+  // (2600 -> 2200) and adds a moderate tape bump (drive 0.25 -> 0.32) — all
+  // three moves widen different axes of the lofi/knock pair without the
+  // pass-3 side effect of pushing lofi toward the 808 family.
   "factory.kick.lofi": vintageThump({
     startHz: 115,
     endHz: 49.0,
-    decay: 0.3,
-    drive: 0.25,
-    lpfHz: 2600,
+    decay: 0.36,
+    drive: 0.32,
+    lpfHz: 2200,
     gritHz: 900,
     gritGain: 0.1,
     seed: 37,
@@ -2862,12 +2885,22 @@ export const BUILDERS: Record<string, Builder> = {
     click: 0.7,
     seed: 47,
   }),
+  // Phase-2 re-voice (2026-10-04): snare.dnb was the only snareCrack family
+  // member sitting under snare.main on every single axis (brightness -0.093,
+  // loud -0.037, air -0.036, crest -0.035, high -0.027). The shipped numbers
+  // produced a dnb backbeat that read like a darker snare.main — a 0.123*
+  // watchlist pair with no perceptual reason to be that close. Tighten the
+  // body and brighten the band: noiseDecay 0.19 -> 0.12 (shorter, dnb
+  // backbeats don't smear), noiseHz 1900 -> 2500 (above snare.main's 1750
+  // band), click 0.3 -> 0.6 (the dnb backbeat has to cut through 170 BPM
+  // breaks), toneDecay 0.11 -> 0.08 (matching the crack family's 60-80 ms
+  // body). toneHz 210 preserved (the dnb fundamental).
   "factory.snare.dnb": snareCrack({
     toneHz: 210,
-    toneDecay: 0.11,
-    noiseHz: 1900,
-    noiseDecay: 0.19,
-    click: 0.3,
+    toneDecay: 0.08,
+    noiseHz: 2500,
+    noiseDecay: 0.12,
+    click: 0.6,
     seed: 53,
   }),
   "factory.snare.lofi": snareDusty({ toneHz: 172, toneDecay: 0.1, noiseHz: 1300, noiseDecay: 0.17, seed: 59 }),
@@ -2892,7 +2925,20 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.clap.soft": clapSoft(),
   "factory.shaker.soft": shaker(),
   "factory.hat.closed": hat(0.055, 7400, 0.55),
-  "factory.hat.closed.soft": hat(0.04, 5800, 0.32),
+  // Phase-2 re-voice (2026-10-04): hat.closed.soft was 0.121* from hat.pedal
+  // with low -0.073 + crest +0.060 (low-band spread — a pedal-hat should be
+  // the darkest/shortest, a closed-soft should be the brightest/thinnest).
+  // Three passes:
+  //   pass 1 (HPF 6200 / level 0.30)  -> 0.115* — himid gap -0.046
+  //   pass 2 (HPF 6000 / level 0.34)  -> 0.116* — himid gap -0.039
+  //   pass 3 (HPF 5800 / level 0.34)  -> 0.122* — low spread returned
+  //   pass 4 (HPF 6400 / level 0.28)  -> 0.115* — same crest, less body
+  //   pass 5 (HPF 6400 / level 0.28) is the right compromise: the HPF keeps
+  //   the soft voice above the pedal band, the lower level reduces crest
+  //   (the head of the snareOne noise sits closer to the mean). The pair
+  //   still sits on the watchlist but the dominant axes are now crest
+  //   (loudness) and brightness (intended), not low-band spread.
+  "factory.hat.closed.soft": hat(0.035, 6400, 0.28),
   "factory.hat.open": hat(0.36, 7000, 0.5),
   "factory.hat.open.short": hat(0.18, 6800, 0.42),
   "factory.hat.pedal": hat(0.035, 4600, 0.24),
