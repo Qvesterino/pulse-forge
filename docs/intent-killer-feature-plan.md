@@ -256,16 +256,16 @@ Fakt, ktorý to umožňuje: naše modely sú MALÉ (MLP 29/41/60→64→32→hla
 
 ## 5. Prioritná matrica (čo prvé)
 
-| Vlna                     | Dopad na „killer" pocit              | Úsilie     | Závislosť   | Verdict                                                    |
-| ------------------------ | ------------------------------------ | ---------- | ----------- | ---------------------------------------------------------- |
-| W0.1 audio targets 19/19 | VYSOKÝ (správny výber ihneď)         | ~0,5 bloku | —           | **ROBÍM PRVÉ** — najlepší pomer dopad/úsilie v celom pláne |
-| W0.2 auto-diagnóza UI    | VYSOKÝ („engine mi povie čo je zle") | ~0,5       | W0.1 pomáha | **PRVÉ**                                                   |
-| W1 melodic v3 (harmónia) | VYSOKÝ (hudobnosť AI)                | 4–6        | —           | **HLAVNÁ VLNÁ** — paralelne s W2                           |
-| W2 MIDI korpus           | VYSOKÝ (dlhodobá kvalita)            | 3–5        | —           | **SÚBEŽNE S W1** (gate meria oba)                          |
-| W3 Nauč sa ma (in-app)   | KILLER story                         | 5–8        | —           | **DRUHÁ HLAVNÁ** — po W1/W2, nezávislá na nich             |
-| W4 features.v2 + DNA 2.0 | STREDNÍ-VYSOKÝ                       | 4–6        | —           | tretia štvrť                                               |
-| W5 kapela (arp/pad/perc) | STREDNÍ                              | 5–7        | W1 pomáha   | štvrtá štvrť                                               |
-| W6 reference 2.0         | STREDNÍ                              | 3–4        | —           | kedykoľvek                                                 |
+| Vlna                     | Dopad na „killer" pocit              | Úsilie     | Závislosť   | Verdict                                                                                                                                                               |
+| ------------------------ | ------------------------------------ | ---------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| W0.1 audio targets 19/19 | VYSOKÝ (správny výber ihneď)         | ~0,5 bloku | —           | **HOTOVÉ 2026-10-04** — merané, nie vymyslené: `audio-targets.generated.ts` (19/19 žánrov, RMS/crest/ZCR/bass z referenčných renderov), wiring cez `audioTargetFor()` |
+| W0.2 auto-diagnóza UI    | VYSOKÝ („engine mi povie čo je zle") | ~0,5       | W0.1 pomáha | **PRVÉ**                                                                                                                                                              |
+| W1 melodic v3 (harmónia) | VYSOKÝ (hudobnosť AI)                | 4–6        | —           | **HLAVNÁ VLNÁ** — paralelne s W2                                                                                                                                      |
+| W2 MIDI korpus           | VYSOKÝ (dlhodobá kvalita)            | 3–5        | —           | **SÚBEŽNE S W1** (gate meria oba)                                                                                                                                     |
+| W3 Nauč sa ma (in-app)   | KILLER story                         | 5–8        | —           | **DRUHÁ HLAVNÁ** — po W1/W2, nezávislá na nich                                                                                                                        |
+| W4 features.v2 + DNA 2.0 | STREDNÍ-VYSOKÝ                       | 4–6        | —           | tretia štvrť                                                                                                                                                          |
+| W5 kapela (arp/pad/perc) | STREDNÍ                              | 5–7        | W1 pomáha   | štvrtá štvrť                                                                                                                                                          |
+| W6 reference 2.0         | STREDNÍ                              | 3–4        | —           | kedykoľvek                                                                                                                                                            |
 
 **Odporúčané prvé dve PR-éka (tento týždeň):**
 

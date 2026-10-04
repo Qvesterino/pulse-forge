@@ -82,6 +82,45 @@ if (!existsSync(partialDir)) {
 }
 const partial = existsSync(partialPath) ? JSON.parse(readFileSync(partialPath, "utf8")) : {};
 
+/**
+ * BOOTSTRAP: make sure `audio-targets.generated.ts` exists before measuring.
+ *
+ * `src/intent/audio-feedback.ts` statically imports that table and falls back
+ * to its own hardcoded `AUDIO_TARGETS` when a genre is missing
+ * (`GENERATED_AUDIO_TARGETS[genre] ?? AUDIO_TARGETS[genre] ?? AUDIO_TARGETS.house`).
+ * But measurement itself has to load `src/intent/song.ts` through a live Vite
+ * server, `song.ts` reaches `audio-feedback.ts` (even through a type-only
+ * import — Vite still resolves the specifier), and `audio-feedback.ts` then
+ * needs the generated module. A missing file therefore breaks the very run that
+ * would have produced it: a bootstrap cycle the generator cannot escape.
+ *
+ * Writing an empty table first breaks the cycle. The fallback chain in
+ * audio-feedback.ts keeps every genre covered for the duration of the run, and
+ * the real measured table overwrites this file at the end. An EMPTY table is a
+ * valid, non-crashing starting state — that is the whole point of the `??`
+ * chain existing.
+ */
+if (!existsSync(outTargetsFile)) {
+  writeFileSync(
+    outTargetsFile,
+    `// Bootstrap placeholder written by scripts/measure-genre-references.mjs so the
+// generator can load src/intent/song.ts to MEASURE this table. Empty on
+// purpose: audio-feedback.ts falls back to its hardcoded AUDIO_TARGETS for every
+// genre until the measured table lands. Overwritten by the run that just
+// completed — do not commit this placeholder.
+//
+//   npm run references:genres
+export const GENERATED_AUDIO_TARGETS: Record<string, {
+  rmsRange: [number, number];
+  crestRange: [number, number];
+  zcrRange: [number, number];
+  bassRange: [number, number];
+}> = {};
+`,
+  );
+  console.log(`[genre-reference] bootstrapped missing ${path.relative(root, outTargetsFile)} (empty)`);
+}
+
 async function gotoStudio() {
   // Direct studio route: bare "/" runs the landing Entry flow, which may
   // client-navigate mid-evaluate and destroy the execution context.
@@ -107,121 +146,121 @@ async function measureGenre(genre, seeds, targetLufs) {
   for (let attempt = 1; attempt <= 5; attempt++) {
     try {
       return await page.evaluate(
-async ({ genre, seeds, targetLufs }) => {
-const templates = await import("/src/project-model/templates.ts");
-const normalize = await import("/src/intent/normalize.ts");
-const song = await import("/src/intent/song.ts");
-const renderer = await import("/src/rendering/renderer.ts");
-const factory = await import("/src/sample-library/factory.ts");
-const curated = await import("/src/sample-library/curated.ts");
-const loudness = await import("/src/audio-engine/kweighting.ts");
-const audioFeatures = await import("/src/ai/audio-features.ts");
+        async ({ genre, seeds, targetLufs }) => {
+          const templates = await import("/src/project-model/templates.ts");
+          const normalize = await import("/src/intent/normalize.ts");
+          const song = await import("/src/intent/song.ts");
+          const renderer = await import("/src/rendering/renderer.ts");
+          const factory = await import("/src/sample-library/factory.ts");
+          const curated = await import("/src/sample-library/curated.ts");
+          const loudness = await import("/src/audio-engine/kweighting.ts");
+          const audioFeatures = await import("/src/ai/audio-features.ts");
 
-const SR = 44100;
-// Measure against the bank the app actually plays (synth kit +
-// curated layer) — preloading also skips renderProject's 2 s wait.
-const bank = await factory.generateFactoryBank();
-await curated.loadCuratedLayer(bank);
+          const SR = 44100;
+          // Measure against the bank the app actually plays (synth kit +
+          // curated layer) — preloading also skips renderProject's 2 s wait.
+          const bank = await factory.generateFactoryBank();
+          await curated.loadCuratedLayer(bank);
 
-// Same one-pole band split as measure-preset-loudness.mjs: low
-// ≤220 Hz vs high ≥4 kHz energy ratio in dB (positive = low-heavy).
-const tiltOf = (channels, sr) => {
-  const lpCoef = 1 - Math.exp((-2 * Math.PI * 220) / sr);
-  const hpCoef = Math.exp((-2 * Math.PI * 4000) / sr);
-  let lowE = 0;
-  let highE = 0;
-  for (const ch of channels) {
-    let lp = 0;
-    let hpY = 0;
-    let xPrev = 0;
-    for (let i = 0; i < ch.length; i++) {
-      const x = ch[i];
-      lp += (x - lp) * lpCoef;
-      const hp = hpCoef * (hpY + x - xPrev);
-      xPrev = x;
-      hpY = hp;
-      lowE += lp * lp;
-      highE += hp * hp;
-    }
-  }
-  return 10 * Math.log10((lowE + 1e-12) / (highE + 1e-12));
-};
+          // Same one-pole band split as measure-preset-loudness.mjs: low
+          // ≤220 Hz vs high ≥4 kHz energy ratio in dB (positive = low-heavy).
+          const tiltOf = (channels, sr) => {
+            const lpCoef = 1 - Math.exp((-2 * Math.PI * 220) / sr);
+            const hpCoef = Math.exp((-2 * Math.PI * 4000) / sr);
+            let lowE = 0;
+            let highE = 0;
+            for (const ch of channels) {
+              let lp = 0;
+              let hpY = 0;
+              let xPrev = 0;
+              for (let i = 0; i < ch.length; i++) {
+                const x = ch[i];
+                lp += (x - lp) * lpCoef;
+                const hp = hpCoef * (hpY + x - xPrev);
+                xPrev = x;
+                hpY = hp;
+                lowE += lp * lp;
+                highE += hp * hp;
+              }
+            }
+            return 10 * Math.log10((lowE + 1e-12) / (highE + 1e-12));
+          };
 
-const readings = [];
-for (const seed of seeds) {
-  const doc = templates.createProjectFromTemplate("house");
-  const intent = normalize.normalizeIntent({ genre, seed: `${genre}|${seed}` });
-  const build = await song.buildSong(doc, intent);
-  const next = song.applySongCommand(doc, build).execute(doc);
-  // Strip the genre loudness trim the builder may have written from
-  // a STALE generated table — this measurement defines the table.
-  const untrimmed = { ...next, master: { ...next.master, loudnessTrimDb: 0 } };
-  const buffer = await renderer.renderProject(untrimmed, bank, {
-    mode: "song",
-    sampleRate: SR,
-    quality: "studio",
-  });
-  const channels = Array.from({ length: buffer.numberOfChannels }, (_, ch) => buffer.getChannelData(ch));
-  const analysis = loudness.analyzeLoudnessBuffer(channels, SR);
-  let peak = 0;
-  for (const ch of channels) for (let i = 0; i < ch.length; i++) peak = Math.max(peak, Math.abs(ch[i]));
-  // Audio-target features: mono downmix at 44100 — the SAME
-  // convention as the runtime scoring path (audio-feedback renders
-  // candidates as mono Float32Array at 44100).
-  const mono = new Float32Array(buffer.length);
-  for (let frame = 0; frame < buffer.length; frame++) {
-    let acc = 0;
-    for (const ch of channels) acc += ch[frame];
-    mono[frame] = acc / channels.length;
-  }
-  const features = audioFeatures.extractAudioFeatures(mono, SR);
-  readings.push({
-    integrated: analysis.integrated,
-    shortTermMax: analysis.shortTermMax,
-    peak,
-    tiltDb: tiltOf(channels, SR),
-    features: {
-      rms: features.rms,
-      crestFactor: features.crestFactor,
-      zeroCrossingRate: features.zeroCrossingRate,
-      lowBandRatio: features.lowBandRatio,
-    },
-    seconds: buffer.duration,
-    bars: build.totalBars,
-    measured: analysis.measured === true,
-  });
-  console.log(
-    `[genre-reference] ${genre}/${seed}: ${analysis.integrated.toFixed(1)} LUFS · ${build.totalBars} bars · ${buffer.duration.toFixed(0)} s`,
-  );
-}
-const medianOf = (key) => {
-  const s = readings.map((r) => r[key]).sort((a, b) => a - b);
-  return s[Math.floor(s.length / 2)];
-};
-const integrated = medianOf("integrated");
-const peak = medianOf("peak");
-const featMedian = (key) => {
-  const s = readings.map((r) => r.features[key]).sort((a, b) => a - b);
-  return s[Math.floor(s.length / 2)];
-};
-return {
-  genre,
-  integrated,
-  shortTermMax: medianOf("shortTermMax"),
-  punchPlrDb: peak > 1e-6 ? Math.round((20 * Math.log10(peak) - integrated) * 10) / 10 : 0,
-  tiltDb: medianOf("tiltDb"),
-  features: {
-    rms: featMedian("rms"),
-    crestFactor: featMedian("crestFactor"),
-    zeroCrossingRate: featMedian("zeroCrossingRate"),
-    lowBandRatio: featMedian("lowBandRatio"),
-  },
-  measured: readings.every((r) => r.measured),
-  seconds: medianOf("seconds"),
-  bars: medianOf("bars"),
-  trimDb: Math.max(-6, Math.min(6, Math.round((targetLufs - integrated) * 10) / 10)),
-};
-},
+          const readings = [];
+          for (const seed of seeds) {
+            const doc = templates.createProjectFromTemplate("house");
+            const intent = normalize.normalizeIntent({ genre, seed: `${genre}|${seed}` });
+            const build = await song.buildSong(doc, intent);
+            const next = song.applySongCommand(doc, build).execute(doc);
+            // Strip the genre loudness trim the builder may have written from
+            // a STALE generated table — this measurement defines the table.
+            const untrimmed = { ...next, master: { ...next.master, loudnessTrimDb: 0 } };
+            const buffer = await renderer.renderProject(untrimmed, bank, {
+              mode: "song",
+              sampleRate: SR,
+              quality: "studio",
+            });
+            const channels = Array.from({ length: buffer.numberOfChannels }, (_, ch) => buffer.getChannelData(ch));
+            const analysis = loudness.analyzeLoudnessBuffer(channels, SR);
+            let peak = 0;
+            for (const ch of channels) for (let i = 0; i < ch.length; i++) peak = Math.max(peak, Math.abs(ch[i]));
+            // Audio-target features: mono downmix at 44100 — the SAME
+            // convention as the runtime scoring path (audio-feedback renders
+            // candidates as mono Float32Array at 44100).
+            const mono = new Float32Array(buffer.length);
+            for (let frame = 0; frame < buffer.length; frame++) {
+              let acc = 0;
+              for (const ch of channels) acc += ch[frame];
+              mono[frame] = acc / channels.length;
+            }
+            const features = audioFeatures.extractAudioFeatures(mono, SR);
+            readings.push({
+              integrated: analysis.integrated,
+              shortTermMax: analysis.shortTermMax,
+              peak,
+              tiltDb: tiltOf(channels, SR),
+              features: {
+                rms: features.rms,
+                crestFactor: features.crestFactor,
+                zeroCrossingRate: features.zeroCrossingRate,
+                lowBandRatio: features.lowBandRatio,
+              },
+              seconds: buffer.duration,
+              bars: build.totalBars,
+              measured: analysis.measured === true,
+            });
+            console.log(
+              `[genre-reference] ${genre}/${seed}: ${analysis.integrated.toFixed(1)} LUFS · ${build.totalBars} bars · ${buffer.duration.toFixed(0)} s`,
+            );
+          }
+          const medianOf = (key) => {
+            const s = readings.map((r) => r[key]).sort((a, b) => a - b);
+            return s[Math.floor(s.length / 2)];
+          };
+          const integrated = medianOf("integrated");
+          const peak = medianOf("peak");
+          const featMedian = (key) => {
+            const s = readings.map((r) => r.features[key]).sort((a, b) => a - b);
+            return s[Math.floor(s.length / 2)];
+          };
+          return {
+            genre,
+            integrated,
+            shortTermMax: medianOf("shortTermMax"),
+            punchPlrDb: peak > 1e-6 ? Math.round((20 * Math.log10(peak) - integrated) * 10) / 10 : 0,
+            tiltDb: medianOf("tiltDb"),
+            features: {
+              rms: featMedian("rms"),
+              crestFactor: featMedian("crestFactor"),
+              zeroCrossingRate: featMedian("zeroCrossingRate"),
+              lowBandRatio: featMedian("lowBandRatio"),
+            },
+            measured: readings.every((r) => r.measured),
+            seconds: medianOf("seconds"),
+            bars: medianOf("bars"),
+            trimDb: Math.max(-6, Math.min(6, Math.round((targetLufs - integrated) * 10) / 10)),
+          };
+        },
         { genre, seeds, targetLufs },
       );
     } catch (error) {
