@@ -193,33 +193,6 @@ const OUTPUT_LOUDNESS: McpOutputSchema = {
     targetLufs: { type: "number" },
   },
 };
-/** kyx_render_summary - per-strip offline render evidence. */
-const OUTPUT_RENDER_SUMMARY: McpOutputSchema = {
-  type: "object",
-  additionalProperties: true,
-  properties: {
-    scope: { type: "string", enum: ["master", "tracks", "all"] },
-    strips: { type: "array", items: { type: "object" } },
-    master: { type: ["object", "null"] },
-    referenceLufs: { type: "number" },
-  },
-  required: ["scope", "strips", "referenceLufs"],
-};
-/** kyx_diagnose_mix - attributed findings + suggested actions. */
-const OUTPUT_DIAGNOSE_MIX: McpOutputSchema = {
-  type: "object",
-  additionalProperties: true,
-  properties: {
-    scope: { type: "string" },
-    referenceLufs: { type: "number" },
-    master: { type: ["object", "null"] },
-    strips: { type: "array", items: { type: "object" } },
-    findings: { type: "array", items: { type: "object" } },
-    attributions: { type: "array", items: { type: "string" } },
-    suggestedActions: { type: "array", items: { type: "string" } },
-  },
-  required: ["scope", "strips", "findings", "suggestedActions"],
-};
 /** kyx_batch - per-call results + counts. */
 const OUTPUT_BATCH: McpOutputSchema = {
   type: "object",
@@ -276,35 +249,6 @@ const OUTPUT_NOTES: McpOutputSchema = {
     count: { type: "number" },
   },
   required: ["trackId", "count"],
-};
-/** kyx_clips list/audioList twins (arrangement or track-lane clips). */
-const OUTPUT_CLIPS: McpOutputSchema = {
-  type: "object",
-  additionalProperties: true,
-  properties: {
-    arrangementClips: { type: "array", items: { type: "object" } },
-    audioClipCount: { type: "number" },
-    clips: { type: "array", items: { type: "object" } },
-  },
-};
-/** kyx_routing list twin. */
-const OUTPUT_ROUTING: McpOutputSchema = {
-  type: "object",
-  additionalProperties: true,
-  properties: {
-    routes: { type: "array", items: { type: "object" } },
-    groups: { type: "array", items: { type: "object" } },
-  },
-  required: ["routes", "groups"],
-};
-/** kyx_takes list twin. */
-const OUTPUT_TAKES: McpOutputSchema = {
-  type: "object",
-  additionalProperties: true,
-  properties: {
-    groups: { type: "array", items: { type: "object" } },
-  },
-  required: ["groups"],
 };
 /** kyx_sections launch twin. */
 const OUTPUT_SECTIONS_LAUNCH: McpOutputSchema = {

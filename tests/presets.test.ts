@@ -7,6 +7,7 @@ import { createProjectFromTemplate } from "../src/project-model/templates";
 import { applyInstrumentPreset } from "../src/commands/commands";
 import type { InstrumentTrack, ProjectDocument } from "../src/project-model/types";
 import { CORE_EFFECT_PRESETS } from "../src/effects/presets";
+import { VSCO_PACK_LAYERS } from "../src/presets/vsco-pack.generated";
 
 function trackFor(instrument: InstrumentPreset["instrument"]): { doc: ProjectDocument; track: InstrumentTrack } {
   const doc = createProjectFromTemplate("empty");
@@ -65,6 +66,34 @@ describe("factory presets", () => {
       expect(preset.sampleId).toMatch(
         /^factory\.(tonal\.(pluck|stab|keys|bell|memphisguitar|darkstrings|rhodes|trumpet|animepluck|sadpiano|padwarm|harp|sitar|erhu|wurli|organ|acousticguitar|choirpad|cello|violin|pizzicato|nylonguitar|orchestrahit)|mallet\.(vibes|marimba|celesta|kalimba|musicbox)|perc\.(cowbell\.dark|cowbell\.scream|cowbell\.drill|cowbell\.bright)|bass\.(clean|reese|fm|pluck|wobble|dist)|piano\.[a-gs]+\d\.z[1-4]|vsco\.[a-z][a-z0-9-]*\.r\d+)$/,
       );
+    }
+  });
+
+  it("decodes the complete compact VSCO key/velocity map", () => {
+    expect(VSCO_PACK_LAYERS).toHaveLength(2141);
+    expect(VSCO_PACK_LAYERS[0]).toMatchObject({
+      id: "layer.vsco.bassoonstac.r1",
+      sampleId: "factory.vsco.bassoonstac.r1",
+      min: 0,
+      minPitch: 43,
+      maxPitch: 46,
+      root: 45,
+    });
+    expect(VSCO_PACK_LAYERS.at(-1)).toMatchObject({
+      id: "layer.vsco.xylophone.r8",
+      sampleId: "factory.vsco.xylophone.r8",
+      min: 0,
+      max: 1,
+      minPitch: 88,
+      maxPitch: 93,
+      root: 91,
+    });
+    expect(new Set(VSCO_PACK_LAYERS.map((layer) => layer.id)).size).toBe(VSCO_PACK_LAYERS.length);
+    for (const layer of VSCO_PACK_LAYERS) {
+      expect(layer.min).toBeGreaterThanOrEqual(0);
+      expect(layer.max).toBeLessThanOrEqual(1);
+      expect(layer.minPitch!).toBeLessThanOrEqual(layer.root!);
+      expect(layer.maxPitch!).toBeGreaterThanOrEqual(layer.root!);
     }
   });
 
