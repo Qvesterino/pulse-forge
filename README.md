@@ -657,3 +657,7 @@ The first beat plays in under a minute.
 AGPL-3.0 — see [LICENSE](LICENSE). The KYX source (engine, studio, MCP surface, instruments, effects) is free software: use it, study it, modify it; if you offer it as a network service, its modified source must be shared on request.
 
 Third-party assets keep their own licenses — CC0/CC-BY sample packs (see `docs/SAMPLE-SOURCES.md`), npm `third-party-licenses/` notices, and the vendored DSP cores are maintained in-repo as hardened copies.
+
+## License
+
+All rights reserved © 2026 Qvesterino. This is not open-source software — see [LICENSE](LICENSE). Third-party assets (sample packs, npm dependencies) keep their own terms.
