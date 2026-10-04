@@ -488,6 +488,42 @@
   flex-wrap: wrap;
 }
 
+/* ENERGY — interactive-beat slider between the transport and the footer. */
+.embed-energy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+}
+
+.embed-energy-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--text-dim, #8a8f98);
+  min-width: 48px;
+}
+
+.embed-energy input[type="range"] {
+  flex: 1;
+  max-width: 320px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.embed-energy input[type="range"]:disabled {
+  cursor: wait;
+  opacity: 0.45;
+}
+
+.embed-energy-value {
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 11px;
+  color: var(--text-dim, #8a8f98);
+  min-width: 34px;
+}
+
 .embed-meta {
   font-size: 13px;
   font-weight: 600;

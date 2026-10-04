@@ -33,30 +33,17 @@ export type EnergyFamily = "drums" | "bass" | "harmony" | "lead" | "fx" | "other
 const BASS_KINDS = new Set(["bass", "808", "logdrum", "reese", "acid"]);
 const DRUM_KINDS = new Set(["drum", "drumsynth"]);
 const LEAD_KINDS = new Set(["lead", "pluck", "spectral", "flute", "brass", "vocalchop"]);
-const HARMONY_KINDS = new Set([
-  "keys",
-  "organ",
-  "strings",
-  "bell",
-  "texture",
-  "wavetable",
-  "granular",
-  "fm",
-  "clav",
-]);
+const HARMONY_KINDS = new Set(["keys", "organ", "strings", "bell", "texture", "wavetable", "granular", "fm", "clav"]);
 /** One-shot FX / percussion colours by name — the first thing that dies at low energy. */
-const FX_NAME = /\bfx\b|riser|impact|downlift|sweep|vinyl|noise|ambien|atmo|foley|perc|shaker|tambo|conga|bongo|clave|rim|uvac/i;
+const FX_NAME =
+  /\bfx\b|riser|impact|downlift|sweep|vinyl|noise|ambien|atmo|foley|perc|shaker|tambo|conga|bongo|clave|rim|uvac/i;
 
 /**
  * Classify a track for the energy transform. Group/return/generative tracks
  * are "other" — groups aggregate already-scaled members, returns carry send
  * effects whose level follows their sources.
  */
-export function energyFamilyOfTrack(track: {
-  kind: string;
-  name: string;
-  instrument?: string;
-}): EnergyFamily {
+export function energyFamilyOfTrack(track: { kind: string; name: string; instrument?: string }): EnergyFamily {
   if (track.kind === "instrument") {
     const inst = track.instrument ?? "";
     if (BASS_KINDS.has(inst)) return "bass";
