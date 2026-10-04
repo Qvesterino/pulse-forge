@@ -59,8 +59,21 @@ describe("three-family wave — genre registration", () => {
   it("each genre owns six real grooves with unique ids", () => {
     for (const genre of ["chiptune", "eurodance", "latin"] as const) {
       const grooves = getGroovesForGenre(genre);
-      expect(grooves.length, genre).toBe(6);
-      expect(new Set(grooves.map((g) => g.id)).size, genre).toBe(6);
+      const documented = WAVE_GROOVES.filter((g) => g.genre === genre);
+      // "At least the documented six" rather than an exact count: the
+      // vocabulary-gap waves legitimately COMPLETE a promoted genre (wave 7
+      // finished eurodance with eurobeat/rave/breakbeat-hardcore → 9), and an
+      // exact-count lock goes red on that growth while proving nothing. What
+      // must hold is the original invariant — every documented school is a real
+      // groove, ids are unique, and nothing drifted out of the genre.
+      expect(grooves.length, genre).toBeGreaterThanOrEqual(6);
+      expect(new Set(grooves.map((g) => g.id)).size, genre).toBe(grooves.length);
+      for (const school of documented) {
+        expect(
+          grooves.map((g) => g.id),
+          school.id,
+        ).toContain(school.id);
+      }
     }
   });
 
@@ -228,7 +241,9 @@ describe("three-family wave — parser + artist routing", () => {
   });
 
   it("every new artist preset routes to a real groove (zero dangling)", () => {
-    const promoted = ARTIST_PRESETS.filter((p) => p.genre === "chiptune" || p.genre === "eurodance" || p.genre === "latin");
+    const promoted = ARTIST_PRESETS.filter(
+      (p) => p.genre === "chiptune" || p.genre === "eurodance" || p.genre === "latin",
+    );
     expect(promoted.length).toBeGreaterThanOrEqual(17);
     for (const preset of promoted) {
       const style = preset.style?.toLowerCase().replace(/\s+/g, "");

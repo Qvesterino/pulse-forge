@@ -28,7 +28,13 @@ describe("boom bap promotion (the six-school genre)", () => {
 
   it("all six schools exist as real grooves with unique ids and 16-step rows", () => {
     const grooves = getGroovesForGenre("boombap");
-    expect(grooves.length).toBe(SCHOOLS.length);
+    // "At least the documented six, all unique" rather than an exact count:
+    // the vocabulary-gap waves legitimately ADD schools to a promoted genre
+    // (boombap is at 10 after the jazz/turntablism + afro-caribbean waves),
+    // and an exact-count lock goes red on that growth while proving nothing.
+    // The invariants that actually matter are locked below — every documented
+    // school resolves as a real groove, ids stay unique, rows are 16 steps.
+    expect(grooves.length).toBeGreaterThanOrEqual(SCHOOLS.length);
     expect(new Set(grooves.map((g) => g.id)).size).toBe(grooves.length);
     for (const school of SCHOOLS) {
       expect(getGrooveById(`boombap.${school}`), school).toBeDefined();
@@ -50,8 +56,11 @@ describe("boom bap promotion (the six-school genre)", () => {
       const byName = resolveGroove("boombap", groove.name.toLowerCase(), () => 0);
       expect(byName.id, groove.name).toBe(groove.id);
     }
-    for (const _school of SCHOOLS) {
-      expect(getStyleNamesForGenre("boombap").length).toBe(SCHOOLS.length);
+    // Every documented school must be reachable as a STYLE name (the parser
+    // resolves user text through this list), but the list may also carry the
+    // later waves' schools.
+    for (const school of SCHOOLS) {
+      expect(getStyleNamesForGenre("boombap"), school).toContain(getGrooveById(`boombap.${school}`)!.name);
     }
   });
 

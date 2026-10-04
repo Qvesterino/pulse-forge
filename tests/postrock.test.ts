@@ -33,7 +33,12 @@ describe("postrock promotion (the quiet-loud crescendo genre)", () => {
 
   it("all six schools exist as real grooves with unique ids and 16-step rows", () => {
     const grooves = getGroovesForGenre("postrock");
-    expect(grooves.length).toBe(SCHOOLS.length);
+    // "At least the documented six, all unique" rather than an exact count —
+    // the vocabulary-gap waves legitimately add schools to a promoted genre
+    // (postrock is at 7 after the slowcore wave), and an exact-count lock goes
+    // red on that growth while proving nothing. Every documented school still
+    // has to resolve as a real groove with unique ids and 16-step rows.
+    expect(grooves.length).toBeGreaterThanOrEqual(SCHOOLS.length);
     expect(new Set(grooves.map((g) => g.id)).size).toBe(grooves.length);
     for (const school of SCHOOLS) {
       expect(getGrooveById(`postrock.${school}`), school).toBeDefined();
@@ -55,7 +60,9 @@ describe("postrock promotion (the quiet-loud crescendo genre)", () => {
       const byName = resolveGroove("postrock", groove.name.toLowerCase(), () => 0);
       expect(byName.id, groove.name).toBe(groove.id);
     }
-    expect(getStyleNamesForGenre("postrock").length).toBe(SCHOOLS.length);
+    for (const school of SCHOOLS) {
+      expect(getStyleNamesForGenre("postrock"), school).toContain(getGrooveById(`postrock.${school}`)!.name);
+    }
   });
 
   it("schools are genuinely different pockets (BPM, density, dynamic range)", () => {
@@ -69,9 +76,7 @@ describe("postrock promotion (the quiet-loud crescendo genre)", () => {
     // The math school is the FASTEST (Don Caballero angularity).
     expect(math.bpm[0]).toBeGreaterThanOrEqual(88);
     // The crescendo school has the WIDEST dynamic range (quiet → loud).
-    const crescendoRows = crescendo.patterns.map((p) =>
-      Math.max(...Object.values(p).map((r) => Math.max(...r))),
-    );
+    const crescendoRows = crescendo.patterns.map((p) => Math.max(...Object.values(p).map((r) => Math.max(...r))));
     expect(Math.max(...crescendoRows) - Math.min(...crescendoRows)).toBeGreaterThan(0.1);
   });
 
