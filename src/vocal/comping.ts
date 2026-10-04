@@ -1,12 +1,21 @@
 import type { VocalProfile } from "./types";
 
 /**
- * VOCAL COMPING (vocal lane pilot) — the producer assembles the best take
+ * VOCAL COMPING (vocal lane pilot) - the producer assembles the best take
  * from many. PURE functions over the measured profiles (no audio here: the
  * caller holds the PCM and applies the chosen segment plan). Deterministic,
- * honest about deafness — takes that failed analysis are skipped, and a
+ * honest about deafness - takes that failed analysis are skipped, and a
  * plan needs at least two MEASURED takes to exist (comping one take is a
  * no-op the singer didn't ask for).
+ *
+ * SCOPE - this plans the VOCAL RECORDING LANE from already-measured
+ * `VocalProfile`s (phrase energy / SNR). It is not the arrangement take-lane
+ * planner: `src/commands/smart-comp.ts` measures raw audio (groove lock,
+ * pitch drift, noise floor, clipping) and plans over
+ * `arrangement.audioClips` take groups so the result installs directly via
+ * `compAudioTakeRange`. Both do "best take per bar, merge same-winner
+ * spans", but over different inputs and for different lanes; they share no
+ * scoring code and should only ever be unified at the metric layer.
  *
  * Harmony generation is deliberately absent: it needs per-note pitch
  * extraction, which the analyzer does not provide yet. Guessing harmonies

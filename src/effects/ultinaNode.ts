@@ -27,8 +27,16 @@ export function createUltinaNode(
   const initial: Record<string, number> = { ...defaults, ...instance.params };
   for (const [id, v] of Object.entries(instance.params)) initial[id] = toDeepScale(id, v);
 
+  // TWO inputs: [0] = the mix to process, [1] = the sidechain feed (key /
+  // buss track picked as EffectInstance.sidechainTrackId). The vendored
+  // processor already accepts a sidechain buffer pair (process(channels,
+  // frameCount, sidechain)) and gates its comp/gate/EQ/unmask detectors on
+  // it — the host simply never delivered one, so every sidechain switch in
+  // the DSP was unreachable. Feeding it as a real second input keeps the
+  // detector sample-aligned with the block instead of polling an Analyser
+  // from the main thread (that route cannot see inside the render quantum).
   const node = new AudioWorkletNode(ctx, "ultina-processor", {
-    numberOfInputs: 1,
+    numberOfInputs: 2,
     numberOfOutputs: 1,
     outputChannelCount: [2],
     channelCount: 2,
@@ -39,7 +47,13 @@ export function createUltinaNode(
 
   const input = ctx.createGain();
   const output = ctx.createGain();
+  // Sidechain feed node — stays connected to the worklet's second input; the
+  // engine swaps what lands on it (or disconnects for the internal signal).
+  const sidechainFeed = ctx.createGain();
+  // Unconnected inputs are silent, which is exactly the "no sidechain"
+  // default: modules fall back to their own audio.
   input.connect(node);
+  sidechainFeed.connect(node, 0, 1);
   node.connect(output);
 
   // DSP latency arrives asynchronously over the port — the engine subscribes
@@ -60,6 +74,8 @@ export function createUltinaNode(
   // late), and a gated instance must surface no meters at all.
   let metersWanted = false;
   node.port.postMessage({ type: "setMeters", enabled: false });
+  /** Currently connected sidechain source (null = none). */
+  let sidechainSource: AudioNode | null = null;
 
   node.port.onmessage = (event) => {
     const msg = event.data as { type?: string; samples?: number; meters?: unknown } | null;
@@ -87,6 +103,37 @@ export function createUltinaNode(
       node.port.postMessage({ type: "param", id, value: toDeepScale(id, value) });
     },
     /**
+     * Sidechain feed (2026-10-04 audit). The engine calls this once after
+     * construction when `EffectInstance.sidechainTrackId` resolves to a live
+     * track, and again with `null` to clear it. `sidechainFeed` is already
+     * wired to the worklet's second input for the whole lifetime, so the
+     * whole job is (dis)connecting the source node to it — the DSP falls back
+     * to its own audio when the feed is silent, so a cleared sidechain needs
+     * no extra parameter write.
+     */
+    setSidechainInput(source: AudioNode | null) {
+      if (disposed) return;
+      if (sidechainSource === source) return;
+      if (sidechainSource) {
+        try {
+          sidechainSource.disconnect(sidechainFeed);
+        } catch {
+          /* already disconnected */
+        }
+      }
+      sidechainSource = source;
+      if (source) {
+        try {
+          source.connect(sidechainFeed);
+        } catch {
+          // A source that refuses the connection (already torn down with
+          // its track) leaves the feed silent — modules fall back to their
+          // own signal rather than going silent.
+          sidechainSource = null;
+        }
+      }
+    },
+    /**
      * Time-stamped parameter set (automation lanes, offline render). The
      * worklet queues the event and applies it when the render clock reaches
      * `when` — port messages have no timing of their own, so without this
@@ -109,6 +156,14 @@ export function createUltinaNode(
       latencyListeners.clear();
       metersWanted = false;
       meters = null; // no stale reads from a disposed runtime
+      if (sidechainSource) {
+        try {
+          sidechainSource.disconnect(sidechainFeed);
+        } catch {
+          /* already gone */
+        }
+        sidechainSource = null;
+      }
       // Best-effort spectral-registry cleanup. The port must NOT be closed
       // here: closing a MessagePort can drop already-queued messages
       // (engine-dependent), which would silently discard this terminal
@@ -125,6 +180,7 @@ export function createUltinaNode(
       node.disconnect();
       input.disconnect();
       output.disconnect();
+      sidechainFeed.disconnect();
     },
   };
 }

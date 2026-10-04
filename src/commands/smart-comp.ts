@@ -22,6 +22,18 @@
  *      feature, and it is measurable: `segments` in the plan is exactly the
  *      number of comp commands that will be dispatched.
  *
+ * SCOPE — how this relates to the existing `src/vocal/comping.ts`:
+ *
+ * That module plans a comp from MEASURED `VocalProfile`s for the vocal
+ * recording lane (IntentPanel), scoring phrase energy / SNR. It operates on
+ * already-extracted profile objects, not audio. This module is the
+ * ARRANGEMENT take-lane counterpart: it measures the audio itself
+ * (groove lock, pitch drift, noise floor, clipping) and plans over
+ * `arrangement.audioClips` take groups so the result is directly installable
+ * by `compAudioTakeRange`. The two plan DIFFERENT lanes (vocal-lane profiles
+ * vs any linear audio take group) and share no scoring code; if they are ever
+ * unified it should be at the metric layer, not the plan layer.
+ *
  * Honesty rules:
  *   - a take only competes for windows it actually covers (clip coverage is
  *     resolved via the same linear/forward rules `compAudioTakeRange` will
@@ -67,16 +79,16 @@ export interface SmartCompPlan {
 
 /** Linear/forward/one-pass rules — mirrors compAudioTakeRange's own gate. */
 function isCompableClip(clip: AudioClip): boolean {
-  return (
-    !clip.reverse &&
-    !clip.loop &&
-    clip.stretchMode !== "stretch" &&
-    (clip.warpMarkers?.length ?? 0) === 0
-  );
+  return !clip.reverse && !clip.loop && clip.stretchMode !== "stretch" && (clip.warpMarkers?.length ?? 0) === 0;
 }
 
 /** Bar coverage of one take: the union of its compable clips' bar spans. */
-function coveredBarRanges(clips: AudioClip[], groupId: string, takeId: string, trackId: string): Array<[number, number]> {
+function coveredBarRanges(
+  clips: AudioClip[],
+  groupId: string,
+  takeId: string,
+  trackId: string,
+): Array<[number, number]> {
   return clips
     .filter((clip) => clip.takeGroupId === groupId && clip.takeId === takeId && clip.trackId === trackId)
     .filter(isCompableClip)
@@ -161,7 +173,10 @@ export function planSmartComp(
     return {
       takeId,
       score,
-      coveredBarCount: coveredRangesFor(clips, groupId, takeId, group.trackId).reduce((sum, [s, e]) => sum + (e - s), 0),
+      coveredBarCount: coveredRangesFor(clips, groupId, takeId, group.trackId).reduce(
+        (sum, [s, e]) => sum + (e - s),
+        0,
+      ),
     };
   });
 
@@ -216,6 +231,7 @@ function scoreMissingTake(): TakeScore {
   return {
     grooveTightness: Number.NaN,
     grooveMedianDeviationSec: Number.NaN,
+    grooveSpreadSec: Number.NaN,
     noiseFloorDb: Number.NaN,
     clippedShare: 0,
     pitchDriftSemitones: Number.NaN,
@@ -263,10 +279,19 @@ export function applySmartComp(
   if (plan.segments.length === 0) {
     throw new Error("Nothing to comp — no segment won a bar in this group");
   }
-  const segmentCommands = plan.segments.map((segment) => {
+  // Segment commands must be built against the RUNNING document, not the
+  // initial one: `compAudioTakeRange` captures `compTakeId` from the group it
+  // was handed, so building every command up-front against `doc` would mint a
+  // SECOND comp take for segment 2 and scatter the comp across takes. Each
+  // command is therefore constructed lazily over the accumulated state.
+  const segmentCommands: Command[] = [];
+  let running = doc;
+  for (const segment of plan.segments) {
     const { startTick, endTick } = segmentTicks(segment);
-    return compAudioTakeRange(doc, groupId, segment.sourceTakeId, startTick, endTick, crossfadeTicks);
-  });
+    const command = compAudioTakeRange(running, groupId, segment.sourceTakeId, startTick, endTick, crossfadeTicks);
+    segmentCommands.push(command);
+    running = command.execute(running);
+  }
   return {
     type: "applySmartComp",
     label: `Smart comp from ${plan.segments.length} segment${plan.segments.length === 1 ? "" : "s"}`,

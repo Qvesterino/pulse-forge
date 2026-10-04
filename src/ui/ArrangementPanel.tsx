@@ -63,6 +63,7 @@ import {
   sliceToPads,
 } from "../commands/commands";
 import { MAX_ARRANGEMENT_CLIP_BARS, sceneRoleOf } from "../project-model/schema";
+import { applySmartComp, planBars, planSmartComp, type SmartCompPlan } from "../commands/smart-comp";
 import { sectionFxChips } from "../intent/song";
 import {
   arrangementSecondsBetweenTicks,
@@ -435,6 +436,13 @@ export function ArrangementPanel() {
   const suppressTakeLaneClickRef = useRef(false);
   const [audioTakeAudition, setAudioTakeAudition] = useState<AudioTakeAudition | null>(null);
   const audioTakeAuditionRef = useRef<AudioTakeAuditionRequest | null>(null);
+  /**
+   * SMART COMP preview state. The plan is computed on demand (it measures
+   * real PCM), held here while the producer reads the evidence, and applied
+   * as ONE undoable command — the source takes are never touched until then.
+   */
+  const [smartCompPlan, setSmartCompPlan] = useState<SmartCompPlan | null>(null);
+  const [smartCompBusy, setSmartCompBusy] = useState(false);
   const selectedAudioClip = (arrangement.audioClips ?? []).find((clip) => clip.id === selectedAudioClipId) ?? null;
   const selectedAudioTakeGroup = selectedAudioClip?.takeGroupId
     ? arrangement.takeGroups?.find((group) => group.id === selectedAudioClip.takeGroupId)
@@ -1505,6 +1513,66 @@ export function ArrangementPanel() {
       }
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Comp range failed");
+    }
+  };
+
+  /**
+   * SUGGEST COMP — measure every source take in the group and lay out the
+   * bar-by-bar winners with their evidence, WITHOUT touching the document.
+   * The producer reads the plan (and can cancel) before anything is
+   * committed; APPLY is the single undoable edit.
+   *
+   * The PCM read is the take's PLAYABLE window (the same trim window
+   * `audioClipPlayWindow` feeds the renderer), because a comp plays exactly
+   * that material — measuring the raw buffer would judge content the comp
+   * never plays (count-in head, trimmed tail).
+   */
+  const suggestSmartComp = (groupId: string): void => {
+    setSmartCompBusy(true);
+    setActionError(null);
+    try {
+      const group = services.store.doc.arrangement.takeGroups?.find((item) => item.id === groupId);
+      const plan = planSmartComp(services.store.doc, groupId, (takeId) => {
+        const clip = (services.store.doc.arrangement.audioClips ?? [])
+          .filter(
+            (candidate) =>
+              candidate.takeGroupId === groupId && candidate.takeId === takeId && candidate.trackId === group?.trackId,
+          )
+          .sort((a, b) => a.startBar - b.startBar)
+          .find((candidate) => !candidate.reverse && !candidate.loop && candidate.stretchMode !== "stretch");
+        if (!clip) return null;
+        const buffer = services.bank.get(clip.bufferId);
+        if (!buffer) return null;
+        const windowSec = audioClipWaveformWindow(buffer.duration, clip.offsetSec, clip.trimStart, clip.trimEnd);
+        const channel = audioClipChannelData(buffer, clip.sourceChannel);
+        const from = Math.max(0, Math.floor(windowSec.startSec * buffer.sampleRate));
+        const to = Math.min(channel.length, Math.ceil(windowSec.endSec * buffer.sampleRate));
+        if (to <= from) return null;
+        return { data: channel.subarray(from, to), sampleRate: buffer.sampleRate };
+      });
+      if (plan.segments.length === 0) {
+        setActionError("Smart comp needs a compable source take in this group");
+        setSmartCompPlan(null);
+        return;
+      }
+      setSmartCompPlan(plan);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Smart comp failed");
+      setSmartCompPlan(null);
+    } finally {
+      setSmartCompBusy(false);
+    }
+  };
+
+  const applySmartCompPlan = (groupId: string): void => {
+    if (!smartCompPlan) return;
+    try {
+      if (execute(applySmartComp(services.store.doc, groupId, smartCompPlan, compCrossfadeTicks))) {
+        setAudioTakeLaneRange(null);
+        setSmartCompPlan(null);
+      }
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Smart comp apply failed");
     }
   };
 
@@ -3197,6 +3265,83 @@ export function ArrangementPanel() {
                   COMP RANGE
                 </button>
               )}
+            {selectedAudioTakeGroup && selectedAudioTakeIds.length >= 2 && (
+              <button
+                type="button"
+                className={`btn btn-small${smartCompPlan ? " active-solo" : ""}`}
+                aria-label="Suggest a comp from the best parts of every take"
+                aria-expanded={smartCompPlan !== null}
+                title="Measure every take (groove lock, pitch drift, noise floor, clipping) and propose which take should feed each bar. Nothing is edited until you apply the plan."
+                disabled={smartCompBusy}
+                onClick={() => {
+                  if (smartCompPlan) setSmartCompPlan(null);
+                  else suggestSmartComp(selectedAudioTakeGroup.id);
+                }}
+              >
+                {smartCompBusy ? "ANALYSING…" : "SUGGEST COMP"}
+              </button>
+            )}
+            {smartCompPlan && selectedAudioTakeGroup && (
+              <div className="arr-smart-comp" role="group" aria-label="Smart comp suggestion">
+                <div className="arr-smart-comp-head">
+                  <strong>SMART COMP SUGGESTION</strong>
+                  <span>
+                    {planBars(smartCompPlan)} bars · {smartCompPlan.segments.length} segment
+                    {smartCompPlan.segments.length === 1 ? "" : "s"} · {smartCompPlan.segments.length - 1} seam
+                    {smartCompPlan.segments.length - 1 === 1 ? "" : "s"}
+                    {smartCompPlan.uncoveredBars.length > 0
+                      ? ` · ${smartCompPlan.uncoveredBars.length} bar${
+                          smartCompPlan.uncoveredBars.length === 1 ? "" : "s"
+                        } no take covers`
+                      : ""}
+                  </span>
+                </div>
+                <div className="arr-smart-comp-takes">
+                  {smartCompPlan.takeSummaries
+                    .slice()
+                    .sort((a, b) => b.score.score - a.score.score)
+                    .map((entry) => {
+                      const laneIndex = selectedAudioTakeIds.indexOf(entry.takeId) + 1;
+                      return (
+                        <div className="arr-smart-comp-take" key={entry.takeId}>
+                          <span className="arr-smart-comp-take-name">
+                            TAKE {laneIndex > 0 ? laneIndex : entry.takeId} · {entry.score.score.toFixed(0)}
+                          </span>
+                          <span className="arr-smart-comp-take-evidence">{entry.score.evidence.join(" · ")}</span>
+                        </div>
+                      );
+                    })}
+                </div>
+                <div className="arr-smart-comp-segments">
+                  {smartCompPlan.segments.map((segment) => {
+                    const laneIndex = selectedAudioTakeIds.indexOf(segment.sourceTakeId) + 1;
+                    return (
+                      <span className="arr-smart-comp-segment" key={`${segment.sourceTakeId}:${segment.startBar}`}>
+                        bars {segment.startBar + 1}–{segment.endBar} → TAKE {laneIndex}
+                      </span>
+                    );
+                  })}
+                </div>
+                <div className="arr-smart-comp-actions">
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    onClick={() => setSmartCompPlan(null)}
+                    title="Discard the suggestion — the document was never touched"
+                  >
+                    CANCEL
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-small intent-use-btn"
+                    onClick={() => applySmartCompPlan(selectedAudioTakeGroup.id)}
+                    title="Apply the suggested comp as ONE undoable edit. Source takes stay intact."
+                  >
+                    APPLY COMP
+                  </button>
+                </div>
+              </div>
+            )}
             {selectedAudioClipId && (
               <button
                 type="button"

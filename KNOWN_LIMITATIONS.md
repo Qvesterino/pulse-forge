@@ -235,4 +235,62 @@ the bounded memory footprint of the prepare-time delay reservation:
   fallback krátkeho vstupu fill-uje nulou namiesto kopírovania hlavy (duplex audio do
   neskorších chunkov); `validateState` clampuje hodnoty podľa vlastnej hlavičky;
   `extractFeatures` odmieta sampleRate <= 0/NaN (kompletná kontaminácia analýzy + ~200 MB
-  akumulátor pre 10-min buffer). Všetko zmirrorované do upstreamu.
+   akumulátor pre 10-min buffer). Všetko zmirrorované do upstreamu.
+
+### Ultina — mŕtve front-panel ovládače (opravené 2026-10-04)
+
+Štyri ovládacie prvky na paneli VLYX otočili gombík a nič sa
+nedialo, pretože `buildDefaultParams()` VŽDY materializuje aj per-band
+parametre s ich schémovými defaultmi — `params[key] ?? fallback` preto
+nikdy nespadol na fallback vetvu:
+
+- **COMP `THRESHOLD`** bol mŕtvy pri `bandCount = 1` (teda pri
+  defaulte): `comp.band0.thresholdDb` (−20) vždy prebilo globálny knob.
+  V single-band móde teraz riadi globálny `comp.thresholdDb` (zhoda s
+  native `comp_module.cpp`, ktorý číta iba `COMP_THRESHOLD_DB`); v
+  2/3-band móde zostávajú per-band hodnoty autoritatívne (to je
+  multiband feature).
+- **GATE `HYSTERESIS`** bol mŕtvy z rovnakého dôvodu
+  (`gate.band0.closeThresholdDb` = −50 vždy materializované). V
+  single-band móde sa close threshold teraz odvodí ako
+  `open − hysteresis`; per-band close hodnoty v multiband móde ostávajú.
+- **COMP GR meter** čítal `gainReductionDb`, ktorý modul nikdy
+  nevracal (modul vracia pole `gainReduction[]`). Panel tak vždy
+  ukazoval prázdny bar. `CompMeters` má teraz skalár
+  `gainReductionDb` = max naprieč pásmami.
+- **EQ LEARN** prepínač len menil lokálny React state a nikdy
+  nezapísal `eq.learnActive`, takže DSP analyzátor sa nikdy
+  nespustil a žiadne návrhu nevyšli. Prepínač teraz zapisuje
+  skutočný parameter a stav tlačidla sa odčítava z dokumentu
+  (prežije collapse/reload/undo).
+
+Regresie: `tests/ultina-core-hardening.test.ts` (comp threshold 2×,
+GR meter, gate hysteresis 2×) + `tests/ui/UltinaPanel.test.tsx` (LEARN
+zápis + stav z parametra).
+
+### Ultina — sidechain feed (zapojené 2026-10-04)
+
+`UltinaProcessor.process(channels, frameCount, sidechain)` sidechain
+**vždy dostával `null`**: worklet entry volal `proc.process(scratch, frames)`
+a `ultinaNode` nemal `setSidechainInput`. DSP síce podporuje
+`comp.sidechainEnabled`, `gate` SC HPF, `eq.band*.sidechainEnabled` a
+unmask ecosystem, ale cez host boli nedostupné.
+
+Teraz:
+
+- `ultinaNode` vytvára `sidechainFeed` GainNode pripojený na **druhý
+  vstup workletu** (`numberOfInputs: 2`) a implementuje
+  `setSidechainInput` (disconnect/connect, idempotentné, odpojí sa pri
+  `dispose`). Nepridaný source = tichý feed → moduly padnú späť na
+  vlastný signál, takže odstránenie keya nepotrebuje zápis parametra.
+- `ultina-worklet.entry.js` kopíruje `inputs[1]` do `scScratch`
+  (alokovaný lazily — bez keya je nulový per-block náklad) a posiela ho
+  do `proc.process`.
+
+Ide o **sample-aligned** cestu: detektor beží vnútri render kvanta,
+nie cez main-thread polling `AnalyserNode` (túto používa Pump
+fallback a nedokáže vidieť dovnútra kvanta).
+
+Regresie: `tests/ultina-worklet-entry.test.ts` (key komprimuje signál
+pod prahom; GR meter hlási > 10 dB) + `tests/fx-node-dispose.test.ts`
+(tri nody namiesto dvoch).

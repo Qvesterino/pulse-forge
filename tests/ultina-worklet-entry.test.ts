@@ -403,3 +403,74 @@ describe("Ultina worklet entry — hardening regressions (2026-09-12)", () => {
     expect(posts).toBeLessThanOrEqual(5);
   });
 });
+
+describe("Ultina worklet entry — sidechain feed (2026-10-04 audit)", () => {
+  /**
+   * Run the entry with a sidechain key on input 1 while the PROCESSED signal
+   * sits far below the threshold. With `comp.sidechainEnabled` the detector
+   * rides the key, so a loud key compresses a signal that would otherwise be
+   * untouched — proving the second input reaches the DSP. Without the feed the
+   * two renders are identical.
+   */
+  function runWithSidechain(keyAmplitude: number | null): number {
+    const proc = new Processor({
+      processorOptions: { params: { ...COMP_ON, "comp.sidechainEnabled": keyAmplitude === null ? 0 : 1 } },
+    });
+    const input = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    const output = [[new Float32Array(BLOCK), new Float32Array(BLOCK)]];
+    // inputs[0]: −50 dBFS processed signal (well under the −40 threshold →
+    // no gain reduction of its own)
+    fillSine(input, 0, 0.0032);
+    // inputs[1]: the key. null = no sidechain input at all.
+    const key = keyAmplitude === null ? null : [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    let sumSq = 0;
+    let inSumSq = 0;
+    let n = 0;
+    for (let b = 0; b < 200; b++) {
+      fillSine(input, b, 0.0032);
+      if (key) fillSine(key, b, keyAmplitude!);
+      const inputs = key ? [input, key] : [input];
+      proc.process(inputs, output);
+      if (b >= 192) {
+        for (let i = 0; i < BLOCK; i++) {
+          sumSq += output[0][0][i] * output[0][0][i];
+          inSumSq += input[0][i] * input[0][i];
+          n++;
+        }
+      }
+      now = ((b + 1) * BLOCK) / SR;
+    }
+    return Math.sqrt(sumSq / n) / Math.sqrt(inSumSq / n);
+  }
+
+  it("a key on input 1 compresses a signal that sits below the threshold", () => {
+    // No key: −34 dBFS is under the −40 dB threshold → pass-through.
+    const noKey = runWithSidechain(null);
+    // Loud key: the detector follows the key, so the −34 dBFS program is
+    // compressed hard even though it alone would never trigger.
+    const withKey = runWithSidechain(0.9);
+    expect(noKey).toBeGreaterThan(0.85);
+    expect(withKey).toBeLessThan(noKey * 0.6);
+  });
+
+  it("the comp meters report reduction when the key ducks the signal", () => {
+    const proc = new Processor({
+      processorOptions: { params: { ...COMP_ON, "comp.sidechainEnabled": 1 } },
+    });
+    const input = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    const key = [new Float32Array(BLOCK), new Float32Array(BLOCK)];
+    const output = [[new Float32Array(BLOCK), new Float32Array(BLOCK)]];
+    for (let b = 0; b < 60; b++) {
+      fillSine(input, b, 0.02);
+      fillSine(key, b, 0.9);
+      proc.process([input, key], output);
+      now = ((b + 1) * BLOCK) / SR;
+    }
+    const meters = proc.port.last("meters");
+    const comp = meters?.meters?.modules?.comp as { gainReductionDb?: number } | undefined;
+    expect(comp).toBeDefined();
+    // 0.9 (−0.9 dBFS) key vs −40 dB threshold at ratio 20 → large GR.
+    expect(comp?.gainReductionDb ?? 0).toBeGreaterThan(10);
+  });
+});
+

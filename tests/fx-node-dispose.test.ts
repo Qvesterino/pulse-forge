@@ -131,7 +131,8 @@ describe("plugin node dispose does not close the message port", () => {
     expect(node.port.closed).toBe(false); // ← the regression
     expect(node.disconnectCount).toBe(1);
     const gains = gainsOf(ctx);
-    expect(gains).toHaveLength(2);
+    // input + output + the sidechain feed (the worklet's second input).
+    expect(gains).toHaveLength(3);
     expect(gains.every((g) => g.disconnectCount === 1)).toBe(true);
 
     expect(() => rt.setParameter("global.inputGainDb", -3)).not.toThrow();

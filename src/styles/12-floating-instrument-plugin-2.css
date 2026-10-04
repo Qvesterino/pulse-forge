@@ -1065,6 +1065,82 @@
   accent-color: var(--accent);
 }
 
+/* Smart comp suggestion — the evidence card between "SUGGEST COMP" and the
+   document edit. It must read as a PROPOSAL: the numbers are shown per take
+   so the producer can disagree with the ranking before applying. */
+.arr-smart-comp {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0;
+  padding: 8px 10px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-family: var(--mono);
+  font-size: 10px;
+  max-width: 640px;
+}
+
+.arr-smart-comp-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.arr-smart-comp-head strong {
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+}
+
+.arr-smart-comp-head span {
+  color: var(--text-faint);
+}
+
+.arr-smart-comp-takes {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.arr-smart-comp-take {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.arr-smart-comp-take-name {
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.arr-smart-comp-take-evidence {
+  color: var(--text-faint);
+}
+
+.arr-smart-comp-segments {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.arr-smart-comp-segment {
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.arr-smart-comp-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
 .arr-mic-meter {
   position: relative;
   width: 84px;

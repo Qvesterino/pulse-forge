@@ -7534,6 +7534,11 @@
   var UltinaWorkletProcessor = class extends AudioWorkletProcessor {
     proc = new UltinaProcessor();
     scratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];
+    // Sidechain scratch (input 1): the key/buss feed the comp/gate/EQ/unmask
+    // detectors ride on. Left null while the host feeds nothing, so a
+    // sidechain switch costs no per-block copy (2026-10-04 audit: the DSP
+    // always received null here, so every sidechain path was unreachable).
+    scScratch = null;
     lastLatencyPosted = -1;
     blockCount = 0;
     metersEnabled = true;
@@ -7654,6 +7659,8 @@
       const output = outputs[0];
       if (!output || !output[0] || !output[1]) return true;
       const input = inputs[0];
+      const scInput = inputs[1];
+      const scActive = !!(scInput && scInput[0] && scInput[0].length);
       const total = output[0].length;
       this.applyDueParams(currentTime + total / sampleRate);
       for (let offset = 0; offset < total; offset += MAX_BLOCK) {
@@ -7667,7 +7674,23 @@
             buf.fill(0, 0, frames);
           }
         }
-        this.proc.process(this.scratch, frames);
+        let sc = null;
+        if (scActive) {
+          if (this.scScratch === null) {
+            this.scScratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];
+          }
+          for (let c = 0; c < CHANNELS; c++) {
+            const buf = this.scScratch[c];
+            const scCh = scInput[c];
+            if (scCh && scCh.length >= offset + frames) {
+              buf.set(scCh.subarray(offset, offset + frames));
+            } else {
+              buf.fill(0, 0, frames);
+            }
+          }
+          sc = this.scScratch;
+        }
+        this.proc.process(this.scratch, frames, sc);
         for (let c = 0; c < CHANNELS; c++) {
           output[c].set(this.scratch[c].subarray(0, frames), offset);
         }

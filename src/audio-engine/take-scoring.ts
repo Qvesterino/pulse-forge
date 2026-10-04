@@ -122,7 +122,12 @@ function nearestGridSec(timeSec: number, bpm: number): number {
  * One-frame normalized autocorrelation at a candidate lag. Returns the peak
  * correlation across the lag range (0 when the signal is too short).
  */
-function autocorrelationPeak(data: Float32Array, start: number, end: number, sampleRate: number): { value: number; hz: number } {
+function autocorrelationPeak(
+  data: Float32Array,
+  start: number,
+  end: number,
+  sampleRate: number,
+): { value: number; hz: number } {
   const minLag = Math.max(2, Math.floor(sampleRate / PITCH_MAX_HZ));
   const maxLag = Math.min(Math.floor(sampleRate / PITCH_MIN_HZ), end - start - 1);
   if (maxLag <= minLag || end - start < maxLag + 1) return { value: 0, hz: 0 };
@@ -197,10 +202,7 @@ export function measureTake(data: Float32Array, sampleRate: number, bpm: number)
     frameRmsValues[f] = frameRms(data, start, Math.min(start + frameLen, data.length));
   }
   const sortedRms = sortedFloats(frameRmsValues);
-  const floorIndex = Math.min(
-    sortedRms.length - 1,
-    Math.max(0, Math.floor(NOISE_FLOOR_PERCENTILE * sortedRms.length)),
-  );
+  const floorIndex = Math.min(sortedRms.length - 1, Math.max(0, Math.floor(NOISE_FLOOR_PERCENTILE * sortedRms.length)));
   const floorRms = Math.max(sortedRms[floorIndex], SILENCE_RMS_FLOOR);
   const noiseFloorDb = 20 * Math.log10(floorRms);
 
@@ -316,11 +318,7 @@ export function scoreTake(metrics: TakeMetrics): TakeScore {
   // Clipping: hard penalty (0..25 share lost).
   const clippingShare = Number.isFinite(metrics.clippedShare) ? Math.min(1, metrics.clippedShare * 40) : 0;
   score += 25 * (1 - clippingShare);
-  evidence.push(
-    metrics.clippedShare > 0
-      ? `CLIPPED ${fmtPct(metrics.clippedShare)} of samples`
-      : "no clipping",
-  );
+  evidence.push(metrics.clippedShare > 0 ? `CLIPPED ${fmtPct(metrics.clippedShare)} of samples` : "no clipping");
 
   return { ...metrics, score, evidence };
 }
