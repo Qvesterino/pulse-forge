@@ -33,11 +33,8 @@ import { createProjectFromTemplate } from "../project-model/templates";
 import { createInstrumentTrackModel } from "../project-model/schema";
 import type { DrumTrack, EffectInstance, EffectType, InstrumentKind, ProjectDocument } from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
-import { renderProject } from "../rendering/renderer";
 import { AudioEngine } from "../audio-engine/AudioEngine";
-import { Scheduler } from "../scheduler/Scheduler";
-import { Transport } from "../transport/Transport";
-import { createSchedulerDriver } from "../scheduler/schedulerDriver";
+import { ensureWorkletsForDoc } from "../audio-worklets/loader";
 
 const SR = 44100;
 /** Seconds of live capture per case (also the offline comparison window). */
@@ -135,31 +132,68 @@ export function parityObligationCheck(): ParityCheckResult {
 /* Real-audio null test (browser gate)                                 */
 /* ------------------------------------------------------------------ */
 
+/**
+ * The event script both branches play: identical engine calls at identical
+ * RELATIVE offsets. Offline maps them onto the render timeline (origin 0),
+ * live maps them onto the capture origin (T0, reported by the capture
+ * processor), so the two signals are directly comparable.
+ */
+type ParityScript = (engine: AudioEngine, at: (offsetSec: number) => number) => void;
+
 interface CaptureResult {
   left: Float32Array;
-  right: Float32Array;
+  /** Audio-clock time of the first captured sample (from capture-start). */
+  originTime: number;
 }
 
 async function loadParityCapture(ctx: BaseAudioContext): Promise<void> {
   await ctx.audioWorklet.addModule(new URL("/parity-capture-worklet.js", self.location.href).href);
 }
 
-/** Capture the post-limiter master of a live engine for `seconds`. */
-async function captureLive(bank: SampleBank, doc: ProjectDocument, play: (engine: AudioEngine, at: number) => void) {
+/** Render the script through the shared engine on an OfflineAudioContext. */
+async function renderOffline(bank: SampleBank, doc: ProjectDocument, script: ParityScript): Promise<Float32Array | null> {
+  const frames = Math.ceil((CASE_SECONDS + 0.2) * SR);
+  const ctx = new OfflineAudioContext(2, frames, SR);
+  // Same loader contract as the renderer: core + exactly the plugin suites
+  // this doc uses.
+  await ensureWorkletsForDoc(doc, ctx);
+  const engine = new AudioEngine();
+  engine.attachBank(bank);
+  engine.useContext(ctx);
+  engine.setProject(doc);
+  script(engine, (offset) => offset);
+  // The export barrier: exact PDC sizing before the (un-abortable) render —
+  // the same sequencing the real renderer performs.
+  await engine.prepareOfflineRender();
+  const buffer = await ctx.startRendering();
+  engine.detachBank();
+  return buffer.getChannelData(0);
+}
+
+/** Capture the post-limiter master of a realtime engine while the script plays. */
+async function captureLive(
+  bank: SampleBank,
+  doc: ProjectDocument,
+  script: ParityScript,
+): Promise<CaptureResult | null> {
   const ctx = new AudioContext({ sampleRate: SR });
   try {
     if (ctx.state === "suspended") await ctx.resume();
     await loadParityCapture(ctx);
+    // Same loader contract as the offline branch (core + the doc's plugins),
+    // so both engines hold the same processor implementations.
+    await ensureWorkletsForDoc(doc, ctx);
     const engine = new AudioEngine();
     engine.attachBank(bank);
     engine.useContext(ctx);
     engine.setProject(doc);
-    // Flush the async worklet-load rebuild so the captured graph is the
-    // final one (the same graph the export renders).
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Let the async worklet-load rebuild finish so the captured graph is the
+    // same one the offline branch builds (no fallback/real mismatch).
+    for (let i = 0; i < 4; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 60));
 
-    const chunks: CaptureResult[] = [];
+    const chunks: Float32Array[] = [];
+    let originTime = Number.NaN;
     let resolveDone: (() => void) | null = null;
     const done = new Promise<void>((resolve) => (resolveDone = resolve));
     const capture = new AudioWorkletNode(ctx, "capture-processor", {
@@ -169,8 +203,9 @@ async function captureLive(bank: SampleBank, doc: ProjectDocument, play: (engine
       channelInterpretation: "speakers",
     });
     capture.port.onmessage = (event: MessageEvent) => {
-      const data = event.data as { type?: string; left?: Float32Array; right?: Float32Array } | null;
-      if (data?.type === "chunk" && data.left && data.right) chunks.push({ left: data.left, right: data.right });
+      const data = event.data as { type?: string; time?: number; left?: Float32Array } | null;
+      if (data?.type === "capture-start" && typeof data.time === "number") originTime = data.time;
+      else if (data?.type === "chunk" && data.left) chunks.push(data.left);
       else if (data?.type === "capture-done") resolveDone?.();
     };
     const masterTap = engine.getMasterTapNode();
@@ -178,8 +213,16 @@ async function captureLive(bank: SampleBank, doc: ProjectDocument, play: (engine
     masterTap.connect(capture);
     capture.port.postMessage({ type: "arm", chunkFrames: 4096 });
 
-    play(engine, ctx.currentTime + 0.03);
-    await new Promise((resolve) => setTimeout(resolve, CASE_SECONDS * 1000 + 200));
+    // Wait until the capture has actually started before scheduling, so the
+    // first event cannot land in a pre-capture quantum.
+    const armDeadline = performance.now() + 1000;
+    while (Number.isNaN(originTime) && performance.now() < armDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    if (Number.isNaN(originTime)) return null;
+    script(engine, (offset) => originTime + offset);
+
+    await new Promise((resolve) => setTimeout(resolve, CASE_SECONDS * 1000 + 150));
     capture.port.postMessage({ type: "stop" });
     await Promise.race([done, new Promise((resolve) => setTimeout(resolve, 500))]);
 
@@ -190,17 +233,15 @@ async function captureLive(bank: SampleBank, doc: ProjectDocument, play: (engine
     } catch {
       /* already torn down */
     }
-    const frames = chunks.reduce((sum, c) => sum + c.left.length, 0);
+    const frames = chunks.reduce((sum, c) => sum + c.length, 0);
     if (frames === 0) return null;
     const left = new Float32Array(frames);
-    const right = new Float32Array(frames);
     let offset = 0;
     for (const chunk of chunks) {
-      left.set(chunk.left, offset);
-      right.set(chunk.right, offset);
-      offset += chunk.left.length;
+      left.set(chunk, offset);
+      offset += chunk.length;
     }
-    return { left, right };
+    return { left, originTime };
   } finally {
     await ctx.close().catch(() => undefined);
   }
@@ -228,7 +269,7 @@ function bestOffset(reference: Float32Array, capture: Float32Array, radius: numb
 }
 
 function compare(reference: Float32Array, capture: Float32Array): { alignOffset: number; nullDb: number } {
-  const { offset } = bestOffset(reference, capture, 128);
+  const { offset } = bestOffset(reference, capture, 384);
   const start = offset;
   const n = Math.min(reference.length, capture.length - Math.max(0, -start));
   let diff = 0;
@@ -259,13 +300,13 @@ function instrumentDoc(template: ProjectDocument, kind: InstrumentKind): Project
 async function nullTestCase(
   bank: SampleBank,
   doc: ProjectDocument,
-  play: (engine: AudioEngine, at: number) => void,
+  script: ParityScript,
   label: string,
 ): Promise<string | null> {
-  const live = await captureLive(bank, doc, play);
+  const reference = await renderOffline(bank, doc, script);
+  if (!reference) return `${label}: offline render produced no buffer`;
+  const live = await captureLive(bank, doc, script);
   if (!live) return `${label}: live capture produced no frames`;
-  const offline = await renderProject(doc, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 });
-  const reference = offline.getChannelData(0);
   const { alignOffset, nullDb } = compare(reference, live.left);
   if (Math.abs(alignOffset) > PARITY_ALIGN_TOLERANCE) {
     return `${label}: misaligned (offset=${alignOffset} samples, tolerance ${PARITY_ALIGN_TOLERANCE})`;
@@ -290,13 +331,12 @@ export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCh
     cases++;
     try {
       const doc = effectDoc(template, type);
-      const drumId = "parity-drums";
-      const play = (engine: AudioEngine, at: number) => {
-        const drum = doc.tracks.find((t): t is DrumTrack => t.kind === "drum")!;
-        engine.trigger(drumId, drum.pads[0], at, 1);
-        engine.trigger(drumId, drum.pads[4] ?? drum.pads[0], at + CASE_SECONDS * 0.5, 1);
+      const drum = doc.tracks.find((t): t is DrumTrack => t.kind === "drum")!;
+      const script: ParityScript = (engine, at) => {
+        engine.trigger("parity-drums", drum.pads[0], at(0.05), 1);
+        engine.trigger("parity-drums", drum.pads[4] ?? drum.pads[0], at(0.28), 1);
       };
-      const failure = await nullTestCase(bank, doc, play, `fx:${type}`);
+      const failure = await nullTestCase(bank, doc, script, `fx:${type}`);
       if (failure) failures.push(failure);
     } catch (error) {
       failures.push(`fx:${type}: ${String(error)}`);
@@ -307,10 +347,10 @@ export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCh
     cases++;
     try {
       const doc = instrumentDoc(template, kind);
-      const play = (engine: AudioEngine, at: number) => {
-        engine.noteOn("parity-inst", 60, 0.85, at, CASE_SECONDS * 0.7);
+      const script: ParityScript = (engine, at) => {
+        engine.noteOn("parity-inst", 60, 0.85, at(0.05), 0.3);
       };
-      const failure = await nullTestCase(bank, doc, play, `instrument:${kind}`);
+      const failure = await nullTestCase(bank, doc, script, `instrument:${kind}`);
       if (failure) failures.push(failure);
     } catch (error) {
       failures.push(`instrument:${kind}: ${String(error)}`);
@@ -318,7 +358,7 @@ export async function auditLiveOfflineParity(bank: SampleBank): Promise<ParityCh
   }
 
   return {
-    name: "live↔offline null test: FX + instrument corpus matches the export render",
+    name: "live↔offline null test: same engine + events on both contexts",
     ok: failures.length === 0,
     message: failures.length === 0 ? `passed=${cases}/${cases}` : failures.slice(0, 8).join(" | "),
   };

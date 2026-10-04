@@ -104,6 +104,23 @@ scripts/data/augmented-drum-dataset.json
 .preview*.log
 .preview*.err
 
+# Root-anchored agent scratch (audit JSONs, rendered A/B WAVs, probe scripts):
+# a wave's working files land at the repo root while the session runs and are
+# abandoned afterward. ROOT-ANCHORED on purpose so a real `src/tmp-*.ts`
+# module is never swallowed (see the golden-review note above). Scratch that
+# is worth keeping belongs in scratch/ (git add -f) or .sound-audit/.
+/tmp-*
+# Root-anchored per-run artifacts (faz0 captures, stray logs the agent tools
+# write at the root). Anything under a real source dir is unaffected.
+/*.err.log
+/*.faz0.log
+
+# Collab gallery runtime store: the server writes it on every POST/play tick,
+# so a committed copy is machine-local feed state, not source. A fresh
+# checkout starts empty (GalleryStore constructor handles a missing file);
+# deploy hosts point GALLERY_FILE at their own persistent path.
+server/gallery.json
+
 # Local listening-lab lanes (per-wave generated audio) — pattern-match the
 # family instead of listing each wave dir by hand. ROOT-ANCHORED (see the
 # golden-review note above — unanchored patterns swallow real source dirs).

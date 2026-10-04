@@ -2480,6 +2480,7 @@ export function appendCapturedArrangement(doc: ProjectDocument, captured: Captur
   });
 }
 
+/* ---------------- effect instances ---------------- */
 export function removeEffect(doc: ProjectDocument, trackId: string, fxId: string): Command {
   const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
   if (!target) {

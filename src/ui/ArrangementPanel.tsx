@@ -2295,9 +2295,9 @@ export function ArrangementPanel() {
   };
 
   // Interrupted audio drag — abort; previews clear with the drag state.
-  const onAudioPointerCancel = (event: React.PointerEvent) => {
+  const onAudioPointerCancel = (event?: React.PointerEvent) => {
     dragGuard.disarm();
-    releasePointerCaptureSafely(event.currentTarget, audioDragRef.current?.pointerId);
+    releasePointerCaptureSafely(event?.currentTarget, audioDragRef.current?.pointerId);
     audioDragRef.current = null;
     clearAudioDragLive();
   };
@@ -3732,13 +3732,13 @@ export function ArrangementPanel() {
                       onClipPointerMove(event);
                     }}
                     onPointerLeave={clipLongPress.onPointerLeave}
-                    onPointerUp={() => {
+                    onPointerUp={(event) => {
                       clipLongPress.onPointerUp();
-                      onClipPointerUp();
+                      onClipPointerUp(event);
                     }}
-                    onPointerCancel={() => {
+                    onPointerCancel={(event) => {
                       clipLongPress.onPointerCancel();
-                      onClipPointerCancel();
+                      onClipPointerCancel(event);
                     }}
                     onClick={() => setSelectedClipId(clip.id)}
                     onContextMenu={clipLongPress.wrapContextMenu((event) => {
@@ -3851,9 +3851,9 @@ export function ArrangementPanel() {
                     audioLongPress.onPointerUp();
                     onAudioPointerUp(event);
                   }}
-                  onPointerCancel={() => {
+                  onPointerCancel={(event) => {
                     audioLongPress.onPointerCancel();
-                    onAudioPointerCancel();
+                    onAudioPointerCancel(event);
                   }}
                   onClick={() => {
                     setSelectedAudioClipId(clip.id);

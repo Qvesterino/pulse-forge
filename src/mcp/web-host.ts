@@ -4,6 +4,7 @@ import { quickBounceDownload } from "../export/quick-bounce";
 import { mcpRenderSummary } from "../mcp/render-summary";
 import { mcpMeterSnapshotFromServices } from "./meters";
 import { mcpApplyLoudness, mcpMeasureLoudness } from "./loudness";
+import { decodeAudioData } from "../services/audio-decode";
 // Relay CONFIG lives in the tiny eager module (the IntentPanel reads the
 // enabled flag while mounting); the heavy bridge module re-exports it and
 // imports it for local use.
@@ -72,6 +73,33 @@ function depsFromServices(services: Services): McpBridgeDeps {
     export: async (request) => (await quickBounceDownload(services.store.getDoc(), services.bank, request)).report,
     // kyx_publish_gallery: encode the LIVE project into a gallery share code
     // and POST it with agent provenance (the feed shows the robot badge).
+    // kyx_import_sfz: base64 SFZ + WAVs → user library + sampler mapping
+    // (the same importSfzLibrary core the desktop host uses).
+    importSamples: async (input) => {
+      const { importSfzLibrary } = await import("../sample-library/sfz-import");
+      try {
+        const result = await importSfzLibrary(input, {
+          bank: services.bank,
+          userSamples: services.userSamples,
+          decode: (bytes) => decodeAudioData(bytes),
+          getDoc: () => services.store.getDoc(),
+          execute: (command) => services.store.execute(command),
+        });
+        return {
+          ok: true as const,
+          report: {
+            trackId: result.trackId,
+            fallbackSampleId: result.fallbackSampleId,
+            layers: result.layers.length,
+            imported: result.imported,
+            missing: result.missing,
+            skipped: result.skipped,
+          },
+        };
+      } catch (error) {
+        return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
+      }
+    },
     shareToGallery: async ({ title, author, tags, agent }) => {
       const { encodeProjectForGallery, publishBeat } = await import("../gallery/galleryApi");
       const item = await publishBeat({

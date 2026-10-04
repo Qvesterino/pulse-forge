@@ -9,10 +9,14 @@
  *   { type: "arm", chunkFrames?: number } — begin capture
  *   { type: "stop" } — stop capturing; a final partial chunk is flushed
  * Main thread receives:
+ *   { type: "capture-start", time, sampleRate } — audio-clock time of the
+ *       FIRST captured quantum; the harness uses it to align the live
+ *       capture against the offline render without blind correlation.
  *   { type: "chunk", frames, left, right }  (right === left when mono input)
  *   { type: "capture-done", frames }
  *
- * NOTE: served RAW inside core-worklet.js — plain JavaScript, no imports.
+ * NOTE: served RAW inside public/parity-capture-worklet.js — plain JavaScript,
+ * no imports.
  */
 const CAPTURE_DEFAULT_CHUNK = 4096;
 
@@ -26,12 +30,14 @@ class CaptureProcessor extends AudioWorkletProcessor {
     this.right = new Float32Array(this.chunkFrames);
     this.filled = 0;
     this.armed = false;
+    this.announced = false;
     this.port.onmessage = (event) => {
       const data = event.data;
       if (!data || typeof data !== "object") return;
       if (data.type === "arm") {
         this.filled = 0;
         this.armed = true;
+        this.announced = false;
       } else if (data.type === "stop") {
         this.flush();
         this.armed = false;
@@ -54,6 +60,12 @@ class CaptureProcessor extends AudioWorkletProcessor {
 
   process(inputs) {
     if (!this.armed) return true;
+    if (!this.announced) {
+      this.announced = true;
+      // currentTime is the audio-clock time at the start of this quantum —
+      // the exact origin of the captured sample stream.
+      this.port.postMessage({ type: "capture-start", time: currentTime, sampleRate: globalThis.sampleRate || 0 });
+    }
     const input = inputs[0];
     const ch0 = input && input[0] && input[0].length ? input[0] : null;
     const ch1 = input && input.length > 1 && input[1] && input[1].length ? input[1] : null;

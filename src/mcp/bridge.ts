@@ -39,6 +39,7 @@ export interface McpBridgeDeps {
   shareToGallery?: NonNullable<McpToolContext["shareToGallery"]>;
   renderSummary?: NonNullable<McpToolContext["renderSummary"]>;
   diagnoseMix?: NonNullable<McpToolContext["diagnoseMix"]>;
+  importSamples?: NonNullable<McpToolContext["importSamples"]>;
 }
 
 export class McpBridge {
@@ -131,6 +132,7 @@ export class McpBridge {
         shareToGallery: this.deps.shareToGallery,
         renderSummary: this.deps.renderSummary,
         diagnoseMix: this.deps.diagnoseMix,
+        importSamples: this.deps.importSamples,
         allowDestructive: mcpAllowDestructive,
       },
       "web-relay",

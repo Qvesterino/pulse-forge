@@ -52,21 +52,14 @@ WORKFLOW: BEAT FROM SCRATCH
      variants (LUFS from kyx_render_summary), the HUMAN listens and you
      op:record forced-choice answers; op:verdict gives the binomial p.
 
-WORKFLOW: MELODIC COMPOSITION (basslines, leads, chords — kyx_steps
-covers DRUMS only)
-  kyx_pattern {op:'select'} picks the ACTIVE pattern; kyx_notes
-  {op:'list', family} FIRST — the indices it returns address every edit.
-  add by pitch or name ("C3"), move (startBeat/pitchDelta),
-  setVelocity, quantize to grid ("1/16") or key ("A Minor"), transpose a
-  whole line. kyx_music for song state: setTempo / setKey /
-  setPatternLength / transposeAll. Every op = one undo step.
+WORKFLOW: MELODIC COMPOSITION (kyx_steps covers DRUMS only)
+  kyx_pattern {op:'select'} → kyx_notes {op:'list', family} FIRST —
+  its indices address every edit (add by pitch, move, setVelocity,
+  quantize, transpose). kyx_music for song state. Every op = 1 undo.
 
 WORKFLOW: SOUND SELECTION
-  kyx_tracks {op:'listPresets', family, query?} — the 488-preset factory
-  bank, family-fitting first. kyx_tracks {op:'loadPreset', presetName,
-  family} folds the preset over EVERY track of the family (one undo) and
-  verifies per-track with ✓. Unknown names return suggestions — never
-  guess ids.
+  kyx_tracks {op:'listPresets', family, query?} → kyx_tracks
+  {op:'loadPreset', presetName, family} folds over EVERY track (1 undo).
 
 WORKFLOW: MIX PASS ON EXISTING MATERIAL
   kyx_state {subject: mixer} — the WHOLE board in one call (faders, pan,
@@ -94,10 +87,9 @@ WORKFLOW: LIVE PERFORMANCE + PUBLISHING
   agent} — the beat ships to the public gallery with your agent badge.
 
 WORKFLOW: ARRANGEMENT PASS
-  On an EMPTY arrangement start with kyx_arrange {genre, length?} (whole
-  form in one undo), then refine with kyx_sections {op: add/duplicate/
-  resize/reorder, role, bars?} -> kyx_clips {op: move/resize/duplicate,
-  anchor bar} -> kyx_markers {op: add, bar, name}.
+  Empty arrangement: kyx_arrange {genre, length?}. Refine: kyx_sections
+  {op: add/resize/reorder} -> kyx_clips {op: move/duplicate} ->
+  kyx_markers {op: add}.
 
 TOOL INDEX (all 31 — grouped by job)
   read:        kyx_state (subjects incl. mixer) · kyx_meter · kyx_catalog
