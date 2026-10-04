@@ -2137,3 +2137,94 @@ describe("mcp finishing — marker rename", async () => {
     expect(noName.text).toContain("rename needs a name");
   });
 });
+
+describe("kyx_import_sfz — user library import", () => {
+  const b64 = (s: string) => Buffer.from(s, "utf8").toString("base64");
+
+  function ctxWithCapability(store: ProjectStore): McpToolContext {
+    const ctx = storeCtx(store);
+    const calls: Array<Record<string, unknown>> = [];
+    const withCapability = ctx as McpToolContext & {
+      importSamples: NonNullable<McpToolContext["importSamples"]>;
+      __calls: Array<Record<string, unknown>>;
+    };
+    withCapability.importSamples = async (input) => {
+      calls.push(input);
+      return {
+        ok: true,
+        report: {
+          trackId: input.trackId,
+          fallbackSampleId: "user.sfz.mycello.k60z1",
+          layers: input.samples.length,
+          imported: input.samples.length,
+          missing: [],
+          skipped: [],
+        },
+      };
+    };
+    (withCapability as { __calls: Array<Record<string, unknown>> }).__calls = calls;
+    return withCapability as McpToolContext;
+  }
+
+  it("refuses honestly when the transport has no import capability", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const result = await executeMcpToolAsync(ctx, "kyx_import_sfz", {
+      name: "My Cello",
+      sfzBase64: b64("<region>"),
+      trackId: "track-1",
+      samples: [{ fileName: "a.wav", base64: b64("wav") }],
+    });
+    expect(result.mutated).toBe(false);
+    expect(result.text).toContain("not available over this transport");
+  });
+
+  it("asks for the missing inputs instead of guessing", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = ctxWithCapability(store);
+    const empty = await executeMcpToolAsync(ctx, "kyx_import_sfz", {});
+    expect(empty.mutated).toBe(false);
+    expect(empty.text).toContain("name, sfzBase64, trackId and at least one sample");
+  });
+
+  it("imports through the capability and reports the read-back", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = ctxWithCapability(store) as McpToolContext & {
+      __calls: Array<Record<string, unknown>>;
+    };
+    const result = await executeMcpToolAsync(ctx, "kyx_import_sfz", {
+      name: "My Cello",
+      sfzBase64: b64("<region> sample=a.wav lokey=60 hikey=64 pitch_keycenter=60"),
+      trackId: store.doc.tracks[0].id,
+      samples: [
+        { fileName: "a.wav", base64: b64("wav-a") },
+        { fileName: "b.wav", base64: b64("wav-b") },
+      ],
+    });
+    expect(result.mutated).toBe(true);
+    expect(result.text).toContain("2 velocity/keyzone layers");
+    expect(result.text).not.toContain("MISSING");
+    expect(ctx.__calls.length).toBe(1);
+    expect(ctx.__calls[0].name).toBe("My Cello");
+    expect(ctx.__calls[0].samples).toHaveLength(2);
+  });
+
+  it("surfaces capability failures as errors without mutating", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = ctxWithCapability(store) as McpToolContext & {
+      __calls: Array<Record<string, unknown>>;
+    };
+    (ctx as { importSamples: unknown }).importSamples = async () => {
+      throw new Error("no pack on this machine");
+    };
+    const result = await executeMcpToolAsync(ctx, "kyx_import_sfz", {
+      name: "My Cello",
+      sfzBase64: b64("<region>"),
+      trackId: "track-1",
+      samples: [{ fileName: "a.wav", base64: b64("wav") }],
+    });
+    expect(result.mutated).toBe(false);
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain("no pack on this machine");
+  });
+});

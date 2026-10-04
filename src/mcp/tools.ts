@@ -2586,7 +2586,16 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
           mutated: false,
         };
       }
-      const result = await ctx.importSamples({ name, sfzBase64, trackId, samples });
+      let result: Awaited<ReturnType<NonNullable<McpToolContext["importSamples"]>>>;
+      try {
+        result = await ctx.importSamples({ name, sfzBase64, trackId, samples });
+      } catch (error) {
+        return {
+          text: `SFZ import failed: ${error instanceof Error ? error.message : String(error)}`,
+          mutated: false,
+          isError: true,
+        };
+      }
       if (!result.ok) {
         return { text: `SFZ import failed: ${result.error}`, mutated: false, isError: true };
       }
