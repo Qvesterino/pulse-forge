@@ -158,38 +158,44 @@ stop). Pipeline zostáva ako **tréningový základ pre W1** — tam sa korpus
 podmieni akordom, nie žánrom, a jeho voice-leading/harmónia je presne to, čo
 chord-aware model potrebuje. Dnešné správanie je bez zmeny (bez flagu).
 
-### W3 — „Nauč sa ma" tlačidlo: in-app personalizácia (D4) — **killer UX vlna**
+### W3 — „Nauč sa ma" tlačidlo: in-app personalizácia (D4) — **JADRO HOTOVÉ 2026-10-04 (WIP)**
 
-Dnes: ★ → ledger → export → CLI python → nové ONNX → ručne nahradiť.
+Dnes: ★ → ledger → export → CLI python → nový ONNX → ručne nahradiť.
 Cieľ: **jeden klik v appke**, bez cloudu, bez Pythonu u používateľa.
 
 Fakt, ktorý to umožňuje: naše modely sú MALÉ (MLP 29/41/60→64→32→hlavy,
 18–25 kB). Fine-tune 800 epôch na ~12 000 vzoriek je v plain JS sekundy.
 
-1. **TS trainer vo Worker-i** — verný port `train_symbolic_melodic_lib.py`
-   (Adam + weighted CE + label smoothing, ~200 riadkov). Rovnaká matematika =
-   rovnaké kontrakty; port sa testuje proti python výstupu na fixnom packu
-   (parity test do 1e-6).
-2. **TS inference overlay** — `prior-worker` dostane kind
-   `melodic-personal-v1`: načítaj weight-JSON (manifest + SHA-256, rovnaké
-   pravidlá), inferuj v plain JS (mikrosekundy). Personal > shipped ONNX,
-   fallback vždy.
-3. **„NAUČ SA MA" tlačidlo** v IntentPanel: ledger → pack → trainer →
-   A/B dôkaz (rovnaký harness ako `rerank:fit`: „nový model by vybral tvoje
-   ★ v X z Y prípadov") → inštalácia do IndexedDB; viditeľný status +
-   kill switch (`pf:personal-prior`).
-4. **Ranker personal retrain** v tom istom toku (preferenčné skupiny existujú —
-   `buildFavoriteRankerGroups`), čím sa uzavrie aj `favoriteGroups: 0`.
-5. **Semantic korpus rastie z favoritov** (D7): ★ pattern → deterministická
-   veta (`styleVectorTextForEntry` už existuje!) → pridať do corpusu s
-   užívateľským intent patchom → retrieval nájde „moje veci" významom.
+**Rozhodnutie architektúry: personal = fine-tune ZO SHIPPED VÁH, nie od nuly.**
+Tri dôvody v poradí dôležitosti: (1) **determinizmus** — bez random initu
+zmizne RNG z osobnej cesty úplne (plán vyžadoval „seeded ako python", to je
+silnejšie); (2) **regresia je vylúčená konštrukciou** — personal model je
+delta na modeli, ktorý už funguje, pár ★ ho nemôže zhoršiť; (3) rýchlosť.
 
-- **Úsilie:** 5–8 blokov (trainer port + worker kind + UI + parity testy).
-- **Riziko:** determinizmus — tréner musí byť seeded ako python (forkRandom
-  vzor), zlatý parity test je povinný pred aktiváciou.
-- **Akceptácia:** ★ pack → klik → A/B report v UI; personal prior vyhráva
-  nad shipped na užívateľových ★ (top-1 ≥ 70 %); bez ★ = tlačidlo zdravaní
-  „nemám dosť dát (potrebujem ≥ 3)".
+**Hotové (krok 1–2 z plánu):**
+
+- `src/intent/personal-melodic-trainer.ts` — čistý TS port `train_symbolic_melodic_lib.py`
+  (Adam, class-weighted CE na oboch hlavách, label smoothing). Duration hlava
+  je vážená **presne raz** (regresný guard z auditu 2026-09-27). Bez RNG.
+- `src/intent/personal-melodic-onnx.ts` — čítač ONNX inicializátorov
+  (hand-rolled protobuf walker, žiadna dependency) + JSON (de)serializácia
+  payloadu pre IndexedDB.
+- `tests/personal-melodic-trainer.test.ts` (11) — vrátane **finite-difference
+  gradient checku** (analytický gradient musí súhlasiť so skutočným
+  gradientom hlásenej loss — rovnaký dôkaz, aký odhalil double-weight bug)
+  a determinizmus (bit-identické výstupy pre rovnaký vstup).
+- `tests/personal-melodic-onnx.test.ts` (8) — reader reprodukuje Gemm
+  matematiku **na reálnom shipnutom artefakte** (nesprávna de-transpozícia
+  by trénovala na rozbiatej mriežke).
+
+**Ostáva (krok 3–5):** personal-model store (IndexedDB) + inference overlay v
+prior workeri, personal > shipped s fallbackom, tlačidlo v IntentPanel,
+A/B dôkaz (`rerank:fit` vzor), ranker personal retrain, semantic korpus
+rastúci z favoritov.
+
+- **Akceptácia W3:** ★ pack → klik → A/B report v UI; personal prior vyhráva
+  nad shipped na užívateľových ★ (top-1 ≥ 70 %); bez ★ tlačidlo hlási
+  „potrebujem ≥ 3".
 
 ### W4 — Producer DNA 2.0: features.v2 (D5) + proaktívne taste probes
 
@@ -255,16 +261,16 @@ Fakt, ktorý to umožňuje: naše modely sú MALÉ (MLP 29/41/60→64→32→hla
 
 ## 5. Prioritná matrica (čo prvé)
 
-| Vlna                     | Dopad na „killer" pocit              | Úsilie     | Závislosť   | Verdict                                                                                                                                                                                           |
-| ------------------------ | ------------------------------------ | ---------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| W0.1 audio targets 19/19 | VYSOKÝ (správny výber ihneď)         | ~0,5 bloku | —           | **HOTOVÉ 2026-10-04** — merané, nie vymyslené: `audio-targets.generated.ts` (19/19 žánrov, RMS/crest/ZCR/bass z referenčných renderov), wiring cez `audioTargetFor()`                             |
-| W0.2 auto-diagnóza UI    | VYSOKÝ („engine mi povie čo je zle") | ~0,5       | W0.1 pomáha | **HOTOVÉ 2026-10-04** — SUNO MODE audition → analyzeSongSections → suggestSectionRevivals → chips; klik = reviseSection → náhľad → 1 undo; testy `tests/intent-song-audio-review.test.ts` (11/11) |
-| W1 melodic v3 (harmónia) | VYSOKÝ (hudobnosť AI)                | 4–6        | —           | **WIP 2026-10-04** — kontrakt v3 ✓, dataset ✓ (9592), trainer ✓ (library-pure val); valDegreeAcc 0.57 vs v2 0.5946 — gate NEPREKONANÝ, provider v3 inert až po gate |
-| W2 MIDI korpus           | VYSOKÝ (dlhodobá kvalita)            | 3–5        | —           | **ODHADNUTÉ 2026-10-04** — gate FAIL (degree 0.5447 → 0.4774); pipeline hotová, korpus presmerovaný do W1. Audit: `docs/W2-MIDI-CORPUS-AUDIT-2026-10-04.md`                                       |
-| W3 Nauč sa ma (in-app)   | KILLER story                         | 5–8        | —           | **DRUHÁ HLAVNÁ** — po W1/W2, nezávislá na nich                                                                                                                                                    |
-| W4 features.v2 + DNA 2.0 | STREDNÍ-VYSOKÝ                       | 4–6        | —           | tretia štvrť                                                                                                                                                                                      |
-| W5 kapela (arp/pad/perc) | STREDNÍ                              | 5–7        | W1 pomáha   | štvrtá štvrť                                                                                                                                                                                      |
-| W6 reference 2.0         | STREDNÍ                              | 3–4        | —           | kedykoľvek                                                                                                                                                                                        |
+| Vlna                     | Dopad na „killer" pocit              | Úsilie     | Závislosť   | Verdict                                                                                                                                                                                                 |
+| ------------------------ | ------------------------------------ | ---------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| W0.1 audio targets 19/19 | VYSOKÝ (správny výber ihneď)         | ~0,5 bloku | —           | **HOTOVÉ 2026-10-04** — merané, nie vymyslené: `audio-targets.generated.ts` (19/19 žánrov, RMS/crest/ZCR/bass z referenčných renderov), wiring cez `audioTargetFor()`                                   |
+| W0.2 auto-diagnóza UI    | VYSOKÝ („engine mi povie čo je zle") | ~0,5       | W0.1 pomáha | **HOTOVÉ 2026-10-04** — SUNO MODE audition → analyzeSongSections → suggestSectionRevivals → chips; klik = reviseSection → náhľad → 1 undo; testy `tests/intent-song-audio-review.test.ts` (11/11)       |
+| W1 melodic v3 (harmónia) | VYSOKÝ (hudobnosť AI)                | 4–6        | —           | **WIP 2026-10-04** — kontrakt v3 ✓, dataset ✓ (9592), trainer ✓ (library-pure val); valDegreeAcc 0.57 vs v2 0.5946 — gate NEPREKONANÝ, provider v3 inert až po gate                                     |
+| W2 MIDI korpus           | VYSOKÝ (dlhodobá kvalita)            | 3–5        | —           | **ODHADNUTÉ 2026-10-04** — gate FAIL (degree 0.5447 → 0.4774); pipeline hotová, korpus presmerovaný do W1. Audit: `docs/W2-MIDI-CORPUS-AUDIT-2026-10-04.md`                                             |
+| W3 Nauč sa ma (in-app)   | KILLER story                         | 5–8        | —           | **DRUHÁ HLAVNÁ** — jadro hotové 2026-10-04: TS tréner (fine-tune zo shipped váh, bez RNG) + ONNX reader, 19/19 testov vrátane finite-difference gradient checku; ostáva store + UI tlačidlo + A/B dôkaz |
+| W4 features.v2 + DNA 2.0 | STREDNÍ-VYSOKÝ                       | 4–6        | —           | tretia štvrť                                                                                                                                                                                            |
+| W5 kapela (arp/pad/perc) | STREDNÍ                              | 5–7        | W1 pomáha   | štvrtá štvrť                                                                                                                                                                                            |
+| W6 reference 2.0         | STREDNÍ                              | 3–4        | —           | kedykoľvek                                                                                                                                                                                              |
 
 **Odporúčané prvé dve PR-éka (tento týždeň):**
 
