@@ -121,7 +121,13 @@ const ENTRY_BUDGET_KB = 1070;
 // Measured 3675 KB clean at 2f740fb9. Conscious bump; the packs are the
 // next diet target — a lazy seam behind first preset access reclaims the
 // ~100 KB.
-const TOTAL_BUDGET_KB = 3680;
+// 4010 (2026-10-04, same day): the VSCO wave kept landing —
+// vsco-pack.generated.ts grew another +20k lines (factory chunk
+// 193 -> 426 KB, now the single largest eager offender), plus
+// sample-library factory and the live-offline-parity harness. Measured
+// 4004 KB clean at 7903b8f2. The lazy preset-pack seam is now the
+// outstanding debt and reclaims ~230 KB on landing.
+const TOTAL_BUDGET_KB = 4010;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, and ONNX Runtime for the
 // symbolic/ranker workers. Keep these optional runtimes under one existing
