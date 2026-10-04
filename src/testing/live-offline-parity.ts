@@ -144,6 +144,8 @@ interface CaptureResult {
   left: Float32Array;
   /** Audio-clock time of the first captured sample (from capture-start). */
   originTime: number;
+  /** The context sample rate the live capture actually ran at. */
+  sampleRate: number;
 }
 
 async function loadParityCapture(ctx: BaseAudioContext): Promise<void> {
@@ -151,9 +153,14 @@ async function loadParityCapture(ctx: BaseAudioContext): Promise<void> {
 }
 
 /** Render the script through the shared engine on an OfflineAudioContext. */
-async function renderOffline(bank: SampleBank, doc: ProjectDocument, script: ParityScript): Promise<Float32Array | null> {
-  const frames = Math.ceil((CASE_SECONDS + 0.2) * SR);
-  const ctx = new OfflineAudioContext(2, frames, SR);
+async function renderOffline(
+  bank: SampleBank,
+  doc: ProjectDocument,
+  script: ParityScript,
+  sampleRate: number,
+): Promise<Float32Array | null> {
+  const frames = Math.ceil((CASE_SECONDS + 0.2) * sampleRate);
+  const ctx = new OfflineAudioContext(2, frames, sampleRate);
   // Same loader contract as the renderer: core + exactly the plugin suites
   // this doc uses.
   await ensureWorkletsForDoc(doc, ctx);
@@ -194,6 +201,7 @@ async function captureLive(
 
     const chunks: Float32Array[] = [];
     let originTime = Number.NaN;
+    let captureSampleRate = 0;
     let resolveDone: (() => void) | null = null;
     const done = new Promise<void>((resolve) => (resolveDone = resolve));
     const capture = new AudioWorkletNode(ctx, "capture-processor", {
@@ -203,9 +211,13 @@ async function captureLive(
       channelInterpretation: "speakers",
     });
     capture.port.onmessage = (event: MessageEvent) => {
-      const data = event.data as { type?: string; time?: number; left?: Float32Array } | null;
-      if (data?.type === "capture-start" && typeof data.time === "number") originTime = data.time;
-      else if (data?.type === "chunk" && data.left) chunks.push(data.left);
+      const data = event.data as
+        | { type?: string; time?: number; sampleRate?: number; left?: Float32Array }
+        | null;
+      if (data?.type === "capture-start" && typeof data.time === "number") {
+        originTime = data.time;
+        if (typeof data.sampleRate === "number" && data.sampleRate > 0) captureSampleRate = data.sampleRate;
+      } else if (data?.type === "chunk" && data.left) chunks.push(data.left);
       else if (data?.type === "capture-done") resolveDone?.();
     };
     const masterTap = engine.getMasterTapNode();
@@ -241,17 +253,40 @@ async function captureLive(
       left.set(chunk, offset);
       offset += chunk.length;
     }
-    return { left, originTime };
+    return { left, originTime, sampleRate: captureSampleRate || ctx.sampleRate };
   } finally {
     await ctx.close().catch(() => undefined);
   }
 }
 
 /** Best alignment offset (samples) between reference and capture, ±radius. */
-function bestOffset(reference: Float32Array, capture: Float32Array, radius: number): { offset: number; rms: number } {
+function bestOffset(
+  reference: Float32Array,
+  capture: Float32Array,
+  radius: number,
+  sr: number,
+): { offset: number; rms: number } {
   let best = { offset: 0, rms: Number.POSITIVE_INFINITY };
-  const n = Math.min(reference.length, capture.length, SR / 2);
+  const n = Math.min(reference.length, capture.length, sr / 2);
+  // Coarse sweep first (step 8), then refine to sample resolution — a
+  // sub-sample misalignment alone decorrelates a percussion null by tens of
+  // dB, so the alignment precision is part of the gate's honesty.
   for (let offset = -radius; offset <= radius; offset += 8) {
+    let error = 0;
+    let count = 0;
+    for (let i = 0; i < n; i++) {
+      const j = i + offset;
+      if (j < 0 || j >= capture.length) continue;
+      const d = reference[i] - capture[j];
+      error += d * d;
+      count++;
+    }
+    if (count === 0) continue;
+    const rms = Math.sqrt(error / count);
+    if (rms < best.rms) best = { offset, rms };
+  }
+  const coarse = best;
+  for (let offset = coarse.offset - 8; offset <= coarse.offset + 8; offset++) {
     let error = 0;
     let count = 0;
     for (let i = 0; i < n; i++) {
@@ -268,8 +303,8 @@ function bestOffset(reference: Float32Array, capture: Float32Array, radius: numb
   return best;
 }
 
-function compare(reference: Float32Array, capture: Float32Array): { alignOffset: number; nullDb: number } {
-  const { offset } = bestOffset(reference, capture, 384);
+function compare(reference: Float32Array, capture: Float32Array, sr: number): { alignOffset: number; nullDb: number } {
+  const { offset } = bestOffset(reference, capture, 384, sr);
   const start = offset;
   const n = Math.min(reference.length, capture.length - Math.max(0, -start));
   let diff = 0;
@@ -303,11 +338,14 @@ async function nullTestCase(
   script: ParityScript,
   label: string,
 ): Promise<string | null> {
-  const reference = await renderOffline(bank, doc, script);
-  if (!reference) return `${label}: offline render produced no buffer`;
+  // Live capture FIRST: the realtime context owns the sample rate (the
+  // device may refuse a requested one), and the offline render must run at
+  // the same rate or the "null" measures resampling, not the engine.
   const live = await captureLive(bank, doc, script);
   if (!live) return `${label}: live capture produced no frames`;
-  const { alignOffset, nullDb } = compare(reference, live.left);
+  const reference = await renderOffline(bank, doc, script, live.sampleRate);
+  if (!reference) return `${label}: offline render produced no buffer`;
+  const { alignOffset, nullDb } = compare(reference, live.left, live.sampleRate);
   if (Math.abs(alignOffset) > PARITY_ALIGN_TOLERANCE) {
     return `${label}: misaligned (offset=${alignOffset} samples, tolerance ${PARITY_ALIGN_TOLERANCE})`;
   }

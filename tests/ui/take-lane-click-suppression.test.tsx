@@ -52,7 +52,8 @@ function renderTakeLanes(): { lane: HTMLElement; execute: ReturnType<typeof vi.f
 
   fireEvent.click(container.querySelector(".arr-audio-clip")!);
   fireEvent.click(screen.getByRole("button", { name: "Show audio take lanes" }));
-  const lanes = within(screen.getByRole("region", { name: "Audio take lanes" }));
+  // Also asserts the lane region really mounted, which the whole spec needs.
+  within(screen.getByRole("region", { name: "Audio take lanes" }));
 
   // NOTE: `mockServices` stubs `store.execute`, so clicking an activate button
   // does NOT change the document — `aria-pressed` stays whatever the initial
