@@ -101,6 +101,8 @@ scripts/data/augmented-drum-dataset.json
 # manifest IS tracked — provenance for every ingested piece).
 scripts/data/midi-corpus/midi/
 scripts/data/midi-melodic-dataset.json
+# A/B experiment variants (role subsets / strided samples) — derived, disposable.
+scripts/data/midi-melodic-dataset-*.json
 
 # Agent-session noise: ad-hoc fix scripts and run logs from coding-agent
 # sessions (kilo/zcode) never belong in the repo. Real fixes land as source

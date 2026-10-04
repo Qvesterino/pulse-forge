@@ -2,25 +2,24 @@
  * RT Monitor — audio-thread load / xrun probe (release-gate hardening).
  *
  * A 0-output sink processor fed from the post-limiter master bus. It exists
- * so the audio thread keeps pulling it every render quantum; each quantum it
- * measures the WALL time the callback took and the wall gap between
- * consecutive callbacks, then posts a summary over the port.
+ * so the audio thread keeps pulling it every render quantum. It does NOT try
+ * to measure its own wall time: `AudioWorkletGlobalScope` has no `performance`
+ * (verified: headless Chromium reports `performance` undefined on the audio
+ * thread), so an in-worklet CPU measurement is not portable.
  *
- * What it can honestly measure:
- *   - blockMs: wall time spent inside process() for one quantum. The audio
- *     budget is 128/sampleRate ms (≈2.9 ms at 44.1 kHz); a sustained average
- *     above that means the thread cannot keep up.
- *   - callGapMs: wall time between the END of one callback and the START of
- *     the next. Under healthy operation this is near zero (the thread sleeps
- *     between quanta). A gap well above the quantum duration means quanta
- *     were dropped — the closest in-process proxy for a device xrun.
- *   - xruns: count of callbacks whose gap exceeded 2× the quantum.
+ * What the audio thread CAN report portably is the AUDIO CLOCK
+ * (`currentFrame`/`currentTime`). A healthy render advances exactly one render
+ * quantum per callback, so:
+ *   - `currentFrame` jumping by more than 128 frames means the audio device
+ *     dropped quanta — the platform's only observable xrun signal;
+ *   - the frame counter is forwarded with a heartbeat so the MAIN thread can
+ *     measure delivery jitter, which is the host-visible symptom of an
+ *     overloaded graph (the audio thread stops meeting its deadline and the
+ *     heartbeat arrives late / in bursts).
  *
- * `performance.now()` is not in the AudioWorklet minimal scope but is exposed
- * by Chrome and Firefox; where it is missing the processor reports
- * `available: false` instead of fabricating numbers.
- *
- * NOTE: served RAW inside core-worklet.js — plain JavaScript, no imports.
+ * Both numbers are honest: quanta actually dropped, and heartbeat jitter.
+ * Protocol (port): `{ type: "rt", blocks, frames, droppedQuanta, gapFrames }`
+ * every `reportEveryBlocks` quanta.
  */
 class RtMonitorProcessor extends AudioWorkletProcessor {
   constructor(options) {
@@ -28,60 +27,36 @@ class RtMonitorProcessor extends AudioWorkletProcessor {
     const opts = (options && options.processorOptions) || {};
     const reportEvery = Number(opts.reportEveryBlocks);
     this.reportEvery = Number.isFinite(reportEvery) && reportEvery >= 1 ? Math.floor(reportEvery) : 64;
-    this.quantumMs = (128 / (globalThis.sampleRate || 48000)) * 1000;
-    this.available = typeof performance !== "undefined" && typeof performance.now === "function";
+    this.sr = globalThis.sampleRate || 48000;
+    this.quantumMs = (128 / this.sr) * 1000;
     this.blocks = 0;
-    this.xruns = 0;
-    this.maxBlockMs = 0;
-    this.sumBlockMs = 0;
-    this.maxGapMs = 0;
-    this.lastCallEnd = 0;
+    this.droppedQuanta = 0;
+    this.lastFrame = null;
   }
 
   static get parameterDescriptors() {
     return [];
   }
 
-  post(reset) {
-    this.port.postMessage({
-      type: "rt",
-      available: this.available,
-      blocks: this.blocks,
-      xruns: this.xruns,
-      maxBlockMs: this.available ? this.maxBlockMs : 0,
-      avgBlockMs: this.available && this.blocks > 0 ? this.sumBlockMs / this.blocks : 0,
-      maxGapMs: this.available ? this.maxGapMs : 0,
-      quantumMs: this.quantumMs,
-    });
-    if (reset) {
-      this.blocks = 0;
-      this.xruns = 0;
-      this.maxBlockMs = 0;
-      this.sumBlockMs = 0;
-      this.maxGapMs = 0;
-    }
-  }
-
   process(_inputs, _outputs) {
-    let start = 0;
-    if (this.available) {
-      start = performance.now();
-      if (this.lastCallEnd > 0) {
-        const gap = start - this.lastCallEnd;
-        if (gap > this.maxGapMs) this.maxGapMs = gap;
-        if (gap > this.quantumMs * 2) this.xruns++;
-      }
+    const frame = currentFrame;
+    if (this.lastFrame !== null) {
+      const advanced = frame - this.lastFrame;
+      // Audio-thread underrun / device drop: the clock advanced by more than
+      // the render quantum. Anything past one extra quantum is a dropped block.
+      if (advanced > 128) this.droppedQuanta += Math.round(advanced / 128) - 1;
     }
-    // Sink processor: no audio work to do. Expose the probe as a no-op input
-    // drain so the graph keeps the node on the critical path.
+    this.lastFrame = frame;
     this.blocks++;
-    if (this.blocks % this.reportEvery === 0) this.post(false);
-    if (this.available) {
-      const end = performance.now();
-      const blockMs = end - start;
-      if (blockMs > this.maxBlockMs) this.maxBlockMs = blockMs;
-      this.sumBlockMs += blockMs;
-      this.lastCallEnd = end;
+    if (this.blocks % this.reportEvery === 0) {
+      this.port.postMessage({
+        type: "rt",
+        blocks: this.blocks,
+        sampleRate: this.sr,
+        quantumMs: this.quantumMs,
+        droppedQuanta: this.droppedQuanta,
+        audioTime: currentTime,
+      });
     }
     return true;
   }

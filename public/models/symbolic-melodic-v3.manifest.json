@@ -1,0 +1,35 @@
+{
+  "priorVersion": "melodic-prior.v3",
+  "featureVersion": "melodic-features.v3",
+  "featureCount": 68,
+  "modelPath": "/models/symbolic-melodic-v3.onnx",
+  "inputName": "features",
+  "degreeOutputName": "degree",
+  "durationOutputName": "duration",
+  "degreeClasses": 8,
+  "durationClasses": 4,
+  "modelHash": "fb4844b2d8b50b201b732b507c67063641fe889ccfbd9c556e235dec63557939",
+  "hidden": [
+    64,
+    32
+  ],
+  "report": {
+    "datasetVersion": "symbolic-melodic-ds.v3",
+    "featureVersion": "melodic-features.v3",
+    "featureCount": 68,
+    "mode": "genre-onehot-v1",
+    "augmentedSamples": 0,
+    "midiCorpusSamples": 0,
+    "hidden": [
+      64,
+      32
+    ],
+    "epochs": 800,
+    "samples": 9592,
+    "valDegreeAcc": 0.5699,
+    "trainDegreeAcc": 0.4422,
+    "valDurationAcc": 0.5,
+    "trainDurationAcc": 0.7602,
+    "weightPower": 0.5
+  }
+}

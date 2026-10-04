@@ -70,10 +70,7 @@ const CLASSICAL_DESCRIPTIONS: Record<string, string[]> = {
     "arpeggiated figuration, shimmering harmony",
     "atmospheric modal melody, colour over function",
   ],
-  modern: [
-    "twentieth-century atonal writing, twelve-tone line",
-    "serial melody without tonal centre",
-  ],
+  modern: ["twentieth-century atonal writing, twelve-tone line", "serial melody without tonal centre"],
 };
 
 async function main(): Promise<void> {
@@ -119,7 +116,9 @@ async function main(): Promise<void> {
     const styleId = `classical.${era}`;
     pack.styles[styleId] = project(avg);
     pack.variants[styleId] = variants;
-    console.log(`[classical-embed] ${styleId}: ${descriptions.length} descriptions → centroid + ${variants.length} variants`);
+    console.log(
+      `[classical-embed] ${styleId}: ${descriptions.length} descriptions → centroid + ${variants.length} variants`,
+    );
   }
 
   writeFileSync(packPath, JSON.stringify(pack, null, 0));

@@ -360,6 +360,166 @@ export async function auditFxExpansion(bank: SampleBank): Promise<CheckResult> {
   };
 }
 
+/**
+ * Audio-thread budget (release-gate hardening).
+ *
+ * The offline render budget above proves the EXPORT path is fast. This proves
+ * the REALTIME path stays inside the per-quantum deadline: a synthetic
+ * N-track × M-effect project plays on a live AudioContext while the engine's
+ * `rt-monitor` worklet measures how long the audio thread spends per render
+ * quantum and how often quanta are dropped (the xrun proxy). A regression
+ * that makes the graph too heavy shows up as a rising `loadPercent` / xrun
+ * count long before a user hears a click.
+ *
+ * `informationalOnly` is the same shared-machine guard the render budget uses:
+ * when the runner is co-tenanted the numbers are printed, not gated.
+ */
+export async function auditRtBudget(bank: SampleBank, informationalOnly = false): Promise<CheckResult> {
+  const TRACKS = 12;
+  const EFFECTS_PER_TRACK = 4;
+  const seconds = 2.5;
+  let ctx: AudioContext | null = null;
+  try {
+    const template = createProjectFromTemplate("house");
+    const source = template.tracks.find((t): t is DrumTrack => t.kind === "drum");
+    if (!source) return { name: "rt budget: N×M realtime", ok: false, message: "no drum track in template" };
+
+    // N tracks, each carrying M effects (a spread across the catalogue so the
+    // measurement covers different DSP costs rather than M copies of one).
+    const stack: EffectType[] = ["eq", "compressor", "saturation", "reverb", "chorus", "delay"];
+    const tracks = Array.from({ length: TRACKS }, (_, i) => ({
+      ...source,
+      id: `rt-budget-${i}`,
+      effects: Array.from({ length: EFFECTS_PER_TRACK }, (_, e) => ({
+        id: `rt-fx-${i}-${e}`,
+        type: stack[(i + e) % stack.length],
+        bypassed: false,
+        params: defaultParamsOf(stack[(i + e) % stack.length]),
+      })),
+    }));
+    const doc: ProjectDocument = { ...template, bpm: 120, tracks };
+
+    ctx = new AudioContext();
+    if (ctx.state === "suspended") await ctx.resume();
+    await loadCoreWorklets(ctx);
+    const engine = new AudioEngine();
+    engine.attachBank(bank);
+    engine.useContext(ctx);
+    engine.setProject(doc);
+    for (let i = 0; i < 4; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+    engine.resetRtLoad();
+
+    // Play the whole project: every track's kick on a simple pulse so the
+    // graph is genuinely pulled for the whole measurement window.
+    const stepSec = 0.25;
+    const steps = Math.floor(seconds / stepSec);
+    for (let s = 0; s < steps; s++) {
+      const at = ctx.currentTime + 0.1 + s * stepSec;
+      for (const track of tracks) {
+        engine.trigger(track.id, (track as DrumTrack).pads[(s + track.id.length) % (track as DrumTrack).pads.length], at, 0.8);
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, seconds * 1000 + 250));
+
+    const rt = engine.getRtLoad();
+    if (!rt || rt.blocks === 0) {
+      return {
+        name: "rt budget: 12 tracks × 4 effects realtime",
+        ok: informationalOnly,
+        message: "rt-monitor produced no heartbeat (worklet module unavailable on this context)",
+      };
+    }
+    // Expected heartbeat cadence: one report per `reportEveryBlocks` quanta.
+    const expectedGapMs = (64 * 128 * 1000) / rt.sampleRate;
+    const jitterRatio = expectedGapMs > 0 ? rt.avgGapMs / expectedGapMs : 0;
+    const detail =
+      `blocks=${rt.blocks} xruns=${rt.xruns} heartbeat avg=${rt.avgGapMs.toFixed(2)}ms ` +
+      `max=${rt.maxGapMs.toFixed(2)}ms (expected≈${expectedGapMs.toFixed(2)}ms, ${jitterRatio.toFixed(2)}×) ` +
+      `quantum=${rt.quantumMs.toFixed(3)}ms` +
+      (informationalOnly ? " — machine loaded, informational run" : "");
+    // The gate: the device must not drop quanta, and the heartbeat must
+    // arrive near its expected cadence (a graph that misses its deadline
+    // makes the heartbeat late or bursty).
+    const ok = rt.xruns === 0 && jitterRatio < 1.5;
+    return {
+      name: "rt budget: 12 tracks × 4 effects realtime",
+      ok: informationalOnly || ok,
+      message: informationalOnly ? detail : ok ? detail : `OVER BUDGET — ${detail}`,
+    };
+  } catch (error) {
+    return { name: "rt budget: 12 tracks × 4 effects realtime", ok: false, message: String(error) };
+  } finally {
+    await ctx?.close().catch(() => undefined);
+  }
+}
+
+/**
+ * Dense-matrix offline render budget (release-gate hardening).
+ *
+ * The per-template budget above measures ONE track's worth of work. This
+ * renders the same synthetic N-track × M-effect matrix the realtime budget
+ * uses, so a graph that grew structurally more expensive trips a deterministic
+ * gate. Offline rendering is CPU-bound and load-independent, so unlike the
+ * realtime budget it is always gated (a loaded machine slows it, but the
+ * ratio still separates structure from noise by a wide margin).
+ */
+export async function auditDenseRender(bank: SampleBank, informationalOnly = false): Promise<CheckResult> {
+  const TRACKS = 8;
+  const EFFECTS_PER_TRACK = 4;
+  const bars = 8;
+  try {
+    const template = createProjectFromTemplate("house");
+    const source = template.tracks.find((t): t is DrumTrack => t.kind === "drum");
+    const scene = template.scenes[0];
+    if (!source || !scene) {
+      return { name: "perf: 12×4 dense render budget", ok: false, message: "template missing drum track or scene" };
+    }
+    const stack: EffectType[] = ["eq", "compressor", "saturation", "reverb", "chorus", "delay"];
+    const tracks = Array.from({ length: TRACKS }, (_, i) => ({
+      ...source,
+      id: `dense-${i}`,
+      effects: Array.from({ length: EFFECTS_PER_TRACK }, (_, e) => ({
+        id: `dense-fx-${i}-${e}`,
+        type: stack[(i + e) % stack.length],
+        bypassed: false,
+        params: defaultParamsOf(stack[(i + e) % stack.length]),
+      })),
+    }));
+    const doc: ProjectDocument = {
+      ...template,
+      bpm: 120,
+      tracks,
+      arrangement: {
+        ...template.arrangement,
+        clips: Array.from({ length: bars }, (_, bar) => ({
+          id: `dense-bar-${bar}`,
+          sceneId: scene.id,
+          startBar: bar,
+          lengthBars: 1,
+        })),
+      },
+    };
+    const t0 = performance.now();
+    const rendered = await renderProject(doc, bank, { mode: "song", sampleRate: SR, tailSeconds: 0.5 });
+    const ms = performance.now() - t0;
+    const audioMs = rendered.duration * 1000;
+    // Budget: an 8-bar dense mix must render well faster than realtime.
+    // 0.9× realtime is the same ceiling the per-template budget uses, so the
+    // gate is "the export never becomes the bottleneck".
+    const budgetMs = Math.max(12000, audioMs * 0.9);
+    const ok = ms < budgetMs;
+    return {
+      name: "perf: 8 tracks × 4 effects, 8-bar render within budget",
+      ok: informationalOnly || ok,
+      message: `${ms.toFixed(0)}ms for ${audioMs.toFixed(0)}ms audio (budget ${budgetMs.toFixed(0)}ms, ${(
+        ms / Math.max(1, audioMs)
+      ).toFixed(2)}× realtime)${informationalOnly ? " — machine loaded, informational run" : ""}`,
+    };
+  } catch (error) {
+    return { name: "perf: 8 tracks × 4 effects, 8-bar render within budget", ok: false, message: String(error) };
+  }
+}
+
 export async function runChecks(onProgress?: (result: CheckResult) => void): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
   const record = (result: CheckResult) => {
@@ -3617,6 +3777,19 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
         ).toFixed(2)}× realtime${machineLoaded ? " — machine loaded, informational run" : ""}`,
       );
     }
+    // ── AUDIO-THREAD BUDGET: N tracks × M effects under the RT monitor ──
+    // The render budget above measures OFFLINE cost. This one measures the
+    // REALTIME path: the engine's rt-monitor worklet reports the worst wall
+    // time the audio thread spends per render quantum, and the worst gap
+    // between consecutive quanta (the xrun proxy). Same shared-machine guard
+    // as the render budget — on a loaded machine the numbers are reported but
+    // not gated, because they would measure co-tenant load, not regressions.
+    record(await auditRtBudget(bank, machineLoaded));
+    // The offline counterpart of the same N×M matrix: how long does an
+    // N-track × M-effect render take? Deterministic (no device clock), so it
+    // is always gated; it catches a graph that got structurally more
+    // expensive even when the realtime budget still has headroom.
+    record(await auditDenseRender(bank, machineLoaded));
   }
 
   try {

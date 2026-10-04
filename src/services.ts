@@ -1157,7 +1157,7 @@ export async function openProject(
       // Wave 3 driver observability surfaced to the diagnostics panel.
       schedulerDriverKind: scheduler.stats.driverKind,
       schedulerDriverMaxGapMs: scheduler.stats.driverMaxTickerGapMs,
-      rtMonitorAvailable: rt?.available ?? false,
+      rtMonitorAttached: rt !== null,
       trackCount: store.doc.tracks.length,
       patternCount: store.doc.patterns.length,
       schemaVersion: store.doc.schemaVersion,

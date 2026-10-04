@@ -2480,7 +2480,6 @@ export class AudioEngine {
   getDiagnostics(): Record<string, string | number> {
     const effectCount = [...this.trackNodes.values()].reduce((sum, n) => sum + n.fx.runtimes.size, 0);
     const rt = this.metering.getRtLoad();
-    const audioBudgetMs = this.ctx ? (128 / this.ctx.sampleRate) * 1000 : 0;
     return {
       contextState: this.ctx?.state ?? "not-created",
       sampleRate: this.ctx?.sampleRate ?? "-",
@@ -2492,15 +2491,14 @@ export class AudioEngine {
       returns: this.returnNodes.size,
       automationLanes: this.doc?.automation.length ?? 0,
       missingAssets: this.missingAssets.join(", ") || "none",
-      // Audio-thread budget: worst per-quantum wall time against the
-      // 128/sampleRate budget, plus the xrun proxy. "n/a" (not a fabricated
-      // 0) when no RT Monitor is attached, so the UI never lies.
-      rtBudgetMs: audioBudgetMs > 0 ? Number(audioBudgetMs.toFixed(3)) : "n/a",
-      rtAvgBlockMs: rt?.available ? Number(rt.avgBlockMs.toFixed(3)) : "n/a",
-      rtMaxBlockMs: rt?.available ? Number(rt.maxBlockMs.toFixed(3)) : "n/a",
-      rtLoadPercent: rt?.available && audioBudgetMs > 0 ? Number(((rt.avgBlockMs / audioBudgetMs) * 100).toFixed(1)) : "n/a",
-      rtMaxGapMs: rt?.available ? Number(rt.maxGapMs.toFixed(2)) : "n/a",
-      rtXruns: rt?.available ? rt.xruns : "n/a",
+      // Audio-thread health: quanta the device actually dropped, plus the
+      // main-thread delivery jitter of the worklet heartbeat. "n/a" (never a
+      // fabricated 0) while no RT Monitor is attached.
+      rtQuantumMs: rt ? Number(rt.quantumMs.toFixed(3)) : "n/a",
+      rtBlocks: rt ? rt.blocks : "n/a",
+      rtXruns: rt ? rt.xruns : "n/a",
+      rtHeartbeatGapMs: rt && rt.heartbeats > 1 ? Number(rt.avgGapMs.toFixed(2)) : "n/a",
+      rtMaxGapMs: rt ? Number(rt.maxGapMs.toFixed(2)) : "n/a",
     };
   }
 }
