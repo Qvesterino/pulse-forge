@@ -72,6 +72,10 @@ export function createVocoderNode(ctx: BaseAudioContext, instance: { params: Rec
     },
     getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,
     setSidechainInput(source: AudioNode | null) {
+      // The engine re-runs sidechain wiring on every project sync; an
+      // identical repoint must not tear the live modulator edge down
+      // (same early-return as compressor/fxeq/morphdynamics).
+      if (source === modulatorSource) return;
       if (modulatorSource) {
         try {
           modulatorSource.disconnect(node, 0, 1);

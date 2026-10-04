@@ -3,6 +3,7 @@ import type { EffectInstance, EffectType } from "../project-model/types";
 import { hashString, mulberry32 } from "../shared/rng";
 import { isWorkletReady, type WorkletType } from "../audio-worklets/loader";
 import { attachProcessorErrorGuard } from "../audio-worklets/processor-errors";
+import { safeApplyAudioParam } from "../audio-worklets/safeAudioParam";
 import { createLfoSyncController } from "./tempo-sync";
 import { createBitcrusherNode } from "../audio-worklets/bitcrusher-node";
 import { createFxEqNode } from "./fxeqNode";
@@ -2249,8 +2250,10 @@ function createWorkletRuntime(
     }
   };
   const apply = (id: string, value: number, when: number) => {
-    const param = node.parameters.get(id);
-    if (param) param.setValueAtTime(value, when);
+    // safeApplyAudioParam drops non-finite writes: the Web Audio spec makes
+    // AudioParam setValueAtTime throw on NaN/Infinity, and an escaping throw
+    // aborts the whole chain rebuild (syncFxParams has no catch boundary).
+    safeApplyAudioParam(node, id, value, when);
   };
   for (const [id, value] of Object.entries(instance.params)) apply(id, value, ctx.currentTime);
   return {
@@ -3111,7 +3114,6 @@ const stepGate: EffectDefinition = {
   factory(ctx, instance) {
     if (isWorkletReady("stepGate", ctx)) {
       const handle = createStepGateNode(ctx, instance);
-      if (instance.steps && instance.steps.length > 0) handle.setPattern(instance.steps);
       return {
         input: handle.input,
         output: handle.output,
@@ -3119,6 +3121,7 @@ const stepGate: EffectDefinition = {
         setParameterAt: handle.setParameterAt,
         syncBpm: handle.syncBpm,
         onTransportStarted: handle.onTransportStarted,
+        setPattern: handle.setPattern,
         dispose: handle.dispose,
       };
     }
@@ -3208,7 +3211,6 @@ const stutter: EffectDefinition = {
   factory(ctx, instance) {
     if (isWorkletReady("stutter", ctx)) {
       const handle = createStutterNode(ctx, instance);
-      if (instance.steps && instance.steps.length > 0) handle.setPattern(instance.steps);
       return {
         input: handle.input,
         output: handle.output,
@@ -3216,6 +3218,7 @@ const stutter: EffectDefinition = {
         setParameterAt: handle.setParameterAt,
         syncBpm: handle.syncBpm,
         onTransportStarted: handle.onTransportStarted,
+        setPattern: handle.setPattern,
         dispose: handle.dispose,
       };
     }

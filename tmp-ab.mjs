@@ -187,7 +187,8 @@ function attackBands(x) {
   return out;
 }
 
-for (const id of ["factory.mallet.marimba", "factory.perc.conga", "factory.kick.drill"]) {
+const CLI_IDS = process.argv.slice(2);
+for (const id of CLI_IDS.length > 0 ? CLI_IDS : ["factory.mallet.marimba", "factory.perc.conga", "factory.kick.drill"]) {
   const oldX = decodeWav(readFileSync(`tmp-old-${id.split(".")[2]}.wav`));
   const newX = decodeWav(readFileSync(`public/samples/${id}.wav`));
   const o = { ...stats(oldX), ...bands(oldX) };

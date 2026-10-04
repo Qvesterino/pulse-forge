@@ -66,6 +66,12 @@ export function createSidechainNode(
      * This replaces the old AnalyserNode + setInterval approach.
      */
     setSidechainInput(node: AudioNode | null) {
+      // The engine re-runs sidechain wiring on EVERY project sync
+      // (syncFxSidechains). Tearing the live detector edge down and rebuilding
+      // it on each committed fader move drops the detector for a render
+      // quantum, so identical repoints must be a no-op (compressor /
+      // fxeq / morphdynamics all early-return the same way).
+      if (node === sidechainSource) return;
       // Disconnect the PREVIOUS sidechain source from input 1. The old code
       // called input.disconnect(workletNode, 0, 1) — an edge that never
       // exists (input feeds input 0 only), so it detached nothing.

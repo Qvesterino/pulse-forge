@@ -52,6 +52,15 @@ interface FollowerModRuntime {
   signature: string;
   targetParam?: AudioParam | null;
   degradedReason?: string;
+  /**
+   * The source node whose output feeds `follower.input`. `follower.dispose()`
+   * only disconnects the follower's OUTGOING edges, so the upstream
+   * `source.input → follower.input` edge must be dropped explicitly or the
+   * retired worklet node is retained by its source for as long as the source
+   * lives (the same leak class compressor/sidechain/vocoder already guard
+   * with their own `lastSidechainSource`).
+   */
+  followerSource?: AudioNode | null;
 }
 
 type LfoRuntimeState = OscModRuntime | FollowerModRuntime;
@@ -70,6 +79,15 @@ function disposeLfoRuntime(state: LfoRuntimeState): void {
     state.osc.disconnect();
     state.depth.disconnect();
   } else {
+    if (state.followerSource) {
+      try {
+        if (state.follower) state.followerSource.disconnect(state.follower.input);
+        else state.followerSource.disconnect();
+      } catch {
+        /* edge may already be gone */
+      }
+      state.followerSource = null;
+    }
     try {
       state.follower?.dispose();
     } catch {
@@ -340,12 +358,24 @@ export class AutomationBridge {
         const polarity = lfo.polarity === 1 ? 1 : -1;
         depth.gain.value = polarity * (isFx ? scale : lfo.amount);
         follower.output.connect(depth).connect(destParam);
-        this.lfos.set(lfo.id, { follower, depth, signature: sig, targetParam: destParam });
+        this.lfos.set(lfo.id, {
+          follower,
+          depth,
+          signature: sig,
+          targetParam: destParam,
+          followerSource: sourceNodes.input,
+        });
       } else {
         // No AudioParam — follower posts envelope via port, polling will apply to FX/inst params.
         // Keep the depth null but preserve the follower for getEnvelope().
         // A dummy gain keeps the type uniform; not connected anywhere.
-        this.lfos.set(lfo.id, { follower, depth: null, signature: sig, targetParam: null });
+        this.lfos.set(lfo.id, {
+          follower,
+          depth: null,
+          signature: sig,
+          targetParam: null,
+          followerSource: sourceNodes.input,
+        });
       }
     }
   }

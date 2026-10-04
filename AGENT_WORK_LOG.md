@@ -4945,3 +4945,116 @@ sample 0 (only the intentional swell FX lead: reverse 274 ms, riser 610 ms, swee
 Could not re-render in this session: `render-curated-seeds.mjs` hit `page.goto` timeouts on its
 own vite port three times (machine saturated, 30 node processes); the shipped WAVs are from the
 pre-crash renders and the change is in them.
+
+---
+
+## Session: mallet strike path + kick trio de-dup — 2026-10-04 (evening)
+
+**Scope.** The previous entry's backlog, items 1 and 2: "the `mallet()` strike path is inert" and the
+d≤0.011 nearest-neighbour pairs, kicks first. Touched: `src/sample-library/factory.ts` and 8
+re-rendered seeds in `public/samples/` (5 mallets, `kick.soft`, `kick.trap`).
+
+### 1. Bug #1 was misdiagnosed: the strike path is not inert — it was 14 dB of band-pass loss
+
+The previous entry called the path inert because `clickLevel` 0.34 → 1.1 (+10 dB) produced apparently
+identical renders. Both halves of that were wrong, and the *instrument* was why:
+
+- `tmp-ab.mjs` takes its bands on the file's max-energy **8192-sample (186 ms)** Hann window. A
+  0.4 ms contact burst contributes ~+0.05 dB to such a window (10·log10(0.4/186) = −26.7 dB of
+  averaging) and its 1 ms-RMS `env` row is wideband, so the bar's own attack ramp hides it — the
+  tool cannot see a strike at all. File *size* is dominated by the 0.4 s length floor, not by head
+  content. Both were used as evidence; both are blind to this change.
+- The path works. Builder-level probe (`tmp-probe2.mjs` — renders `BUILDERS[id]` in headless
+  chromium, prints the 1 ms-RMS envelope): a `clickLevel` 0.34 strike measures **−23.7 dBFS peak,
+  −25.1 dBFS in its first millisecond**, against a marimba bar at −1.5 dBFS. A raw `clickLevel` is
+  what a Q-1 band-pass leaves of a white-noise burst: ~14 dB under its nominal value and 20–28 dB
+  under the bar. All five voices shipped at 0.12–0.34, so every strike was masked — sub-audible
+  levels, not a broken graph.
+- The mastering chain is innocent (`tmp-probe3.mjs` — the seed renderer's own norm→tape→limiter
+  chain, stage by stage, on the marimba builder output and on a raw control click): the click
+  arrives intact (peak −9.5 dBFS, first content exactly at the limiter's 223-sample look-ahead
+  offset). Nothing in mastering eats strikes; the conga's strike moving in the A/B already told us
+  so.
+
+**Fix, inside `mallet()`.** The band-pass's white-noise gain `sqrt(π·f0 / (2·Q·fs))` is now
+compensated, so `clickLevel` means the strike's level at the contact on the same scale as the
+partial levels, and the burst decays in 1.2 ms instead of 4 ms (a mallet contact is a click; a burst
+shorter than the measurement window keeps its whole level in the first millisecond). Per-voice
+levels and contact bands are calibrated so each contact *leads its own contact-band envelope*,
+measured on the shipped files with `node tmp-strike.mjs <id>...` (band-pass at the contact
+frequency, 1 ms RMS envelope, first ms vs the loudest ms at 8–32 ms):
+
+| Voice | contact | in-band 1st ms vs body (old → new) |
+| --- | --- | --- |
+| vibes | 2600 Hz Q 0.9 | −20.6 → **−0.2 dB** |
+| marimba | 2400 Hz Q 0.8 | −3.3 → **+2.6 dB**, band-envelope peak at 0 ms |
+| celesta | 3400 Hz Q 1.3 (was default 4×) | −13.1 → **−1.9 dB** |
+| kalimba | 2100 Hz Q 1.0 | −12.5 → **−1.5 dB** |
+| musicbox | 5200 Hz Q 2.6 (was default 4×) | −12.9 → **+4.3 dB**, peak at 0 ms |
+
+Celesta and musicbox share the C6 register and both used the default contact (4× fundamental); they
+now differ in the contact itself — felt hammer 3.4 kHz Q 1.3 vs comb pluck 5.2 kHz Q 2.6 — which also
+keeps the previously de-duplicated celesta/musicbox pair apart in the attack. The levels are
+deliberately *not* a ranking: the kalimba needs the most raw strike because its own 4th partial rings
+inside its contact band. Everything outside the first millisecond is untouched: no clipping, all
+five still on the Tonal target (momentary −16 LUFS), file peaks −9.4…−14.6 dBFS.
+
+### 2. Kick trio de-dup (deep / soft / trap)
+
+Fresh audit before the change: `Kick d=0.005 deep↔trap` **and** `d=0.005 deep↔soft` — the two closest
+pairs in the whole library, sharing `deep`. (The task list's pop↔punch had already been fixed by
+94f121b6; the live cluster was deep/soft/trap.) Only the two non-anchors moved, and they separate on
+the two features the metric reads besides the spectrum — duration and click balance. Every end
+frequency stays put (F#1/G1/F1), so the bank-wide glide contract and the `deep` house anchor that the
+genre kits name are untouched:
+
+- `kick.soft` "Round, Gentle": `kick(118, 43.65, 0.46, 0.16)` → `kick(118, 43.65, 0.62, 0.08)`, with
+  `DURATIONS["factory.kick.soft"]` 0.6 → 0.8 (the render length has to cover the longer body; 0.6
+  would have truncated it). A/B: dur 530 → 690 ms, crest 5.5 → 5.9, himid −45.2 → −47.2 rel,
+  high −70.7 → −75.6 rel.
+- `kick.trap` "Tight, Pitch-drop": `kick(180, 49.0, 0.35, 0.4, 0.45)` →
+  `kick(260, 49.0, 0.24, 0.6, 0.6)` — the drop is twice as wide in the same 90 ms, the body 100 ms
+  shorter, the click harder and the drive up. A/B: crest **5.1 → 6.0**, loud 350 → 250 ms, attack
+  window 3.2 → **0.4 ms**, atk himid −25.5 → −20.8 dB, high band −64.8 → −58.9 dB, and the 1 ms
+  envelope peak moves from a flat top to the contact.
+
+After: **neither deep pair is in the top-2 any more** (`Kick` now reads `d=0.005 knock↔lofi`,
+`d=0.006 dnb↔phonk`, both pre-existing pairs that were simply behind the deep cluster before).
+Honest caveat: this metric normalizes by the largest band magnitude and carries no attack/transient
+term, so its absolute values are compressed and a 0.005↔0.006 step is not meaningful on its own —
+the separation shows in the A/B figures above (crest, loud length, attack window, himid). The kicks'
+0.4 s file-length floor also blunts body-length changes (trap's file went 420 → 400 ms only because
+0.4 s is the floor).
+
+### Gates
+
+- `vite-node scripts/audit-samples.mts`: **GATE: PASS — 111 WAVs on contract** (loudness ±2.5 dB, DC,
+  lead, length). Flags unchanged: only the intentional swell/reverse/riser leads.
+- `tests/sound-library-gate.test.ts` **4/4 PASS**, `tests/kick-bank.test.ts` **5/5**,
+  `tests/curated-samples.test.ts` **8/8**, `tests/pop-samples.test.ts` **3/3**.
+- `prettier --check src/sample-library/factory.ts scripts/render-curated-seeds.mjs`: clean.
+- Blocked by a *concurrent* session, all outside this change: `tsc --noEmit` and `vitest` both fail on
+  unresolved merge markers in `src/ai/grooves/drone.ts` (`<<<<<<< Updated upstream`, git `UU`) and
+  `src/ui/ReferenceMapPanel.tsx` (`UU`). Because of it `tests/velocity-layers.test.ts` and
+  `tests/sound-quality-pass.test.ts` cannot even collect (esbuild refuses the file),
+  `tests/drum-rr-declick.test.ts` is 26/27 (its one failure is the genre-feel `humanizeTiming`
+  0.22 > 0.2 assertion — grooves data, not audio assets), and `npm run format:check` is red on four
+  `tests/domain-goldens/*.json` plus `tests/drone.test.ts`, all committed by other sessions and
+  untouched here.
+
+### Open / next
+
+1. Remaining close pairs (unchanged; full table in `tmp-audit-3.json`): Kick `knock↔lofi` 0.005,
+   `dnb↔phonk` 0.006; Snare `drill↔main` and `dnb↔main` 0.009; Hat `closed↔open.short` 0.008,
+   `pedal↔phonk` 0.011; Crash `dark↔main` 0.008; FX `downlifter↔riser` 0.006; Clap 0.014; Tonal
+   `erhu↔trumpet` 0.013.
+2. The redundancy feature vector needs an **attack term** (leading-window band energy). Without it a
+   strike/click/transient change is invisible by construction — and attack is exactly what separates
+   kicks, which is why both the mallet fix and the kick de-dup had to be verified outside it.
+3. `scripts/audit-samples.mts` should gain `--window=` so short one-shots can be judged at 1–25 ms
+   instead of the 186 ms dilution.
+4. Thin categories still thin: Clap 3, Crash 3, Cymbal 2, Rim 2, Tom 4.
+5. Repro tooling kept: `tmp-strike.mjs` (the correct instrument for strikes), `tmp-probe2.mjs`
+   (builder-level envelopes + a control strike), `tmp-probe3.mjs` (mastering chain stage by stage),
+   `tmp-ab.mjs` (file-level bands/crest, now argv-driven).
+

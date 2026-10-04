@@ -2754,8 +2754,18 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.kick.punch": kick(210, 55.0, 0.28, 0.45),
   "factory.kick.techno": kick(175, 43.65, 0.55, 0.3, 0.7),
   "factory.kick.sub808": sub808(),
-  "factory.kick.trap": kick(180, 49.0, 0.35, 0.4, 0.45),
-  "factory.kick.soft": kick(118, 43.65, 0.46, 0.16),
+  // Kick trio de-dup (library-quality audit 2026-10-04, second pass): deep /
+  // soft / trap measured d=0.005 against each other — the closest pair in the
+  // whole library, both pairs sharing `deep` as the common member. Only the two
+  // non-anchors move (deep stays the F#1 house/sub reference the genre kits
+  // name), and they separate on the two features the redundancy metric reads
+  // besides the spectrum: duration and click balance. Round-gentle becomes a
+  // long, click-light boom; tight-pitch-drop becomes the short, hard-clicked,
+  // harder-driven one whose drop is twice as wide (260 → 49 Hz in the same
+  // 90 ms), which is what "Pitch-drop" promises. End frequencies are untouched,
+  // so the bank-wide glide contract (F#1 deep / G1 trap / F1 soft) still holds.
+  "factory.kick.trap": kick(260, 49.0, 0.24, 0.6, 0.6),
+  "factory.kick.soft": kick(118, 43.65, 0.62, 0.08),
   // Kick bank expansion (2026-09): genre-anchored one-shots — the 808
   // family (drive/pure/drill), the vintage pair (phonk/lofi), and the
   // club/heritage punches (jersey/dnb/knock/909). Each targets a distinct
@@ -2941,10 +2951,11 @@ export const BUILDERS: Record<string, Builder> = {
     ],
     decay: 2.6,
     attack: 0.005,
-    // Softest contact of the family (rubber mallets on metal) — tuned so the
-    // strike is the loudest millisecond of the voice without turning the vibes
-    // into a woodblock. See the strike-fix note in mallet().
-    clickLevel: 0.8,
+    // Softest contact of the family (rubber mallets on metal): its strike peak
+    // lands ~5 dB under the bar's own peak — a chime, not a knock. Strike
+    // levels across the family are calibrated per voice so each contact LEADS
+    // its own band envelope (see the strike-fix note in mallet()), not ranked.
+    clickLevel: 1.5,
     clickHz: 2600,
     clickQ: 0.9,
     tremoloHz: 5.2,
@@ -2971,7 +2982,9 @@ export const BUILDERS: Record<string, Builder> = {
     ],
     decay: 0.9,
     attack: 0.002,
-    clickLevel: 1.2,
+    // Hardest contact of the family (rosewood on a low rosewood bar): strike
+    // peak level with the bar's — the "punchy" half of "Wooden, Punchy".
+    clickLevel: 2.0,
     clickHz: 2400,
     clickQ: 0.8,
     lpfHz: 6500,
@@ -2990,10 +3003,13 @@ export const BUILDERS: Record<string, Builder> = {
     ],
     decay: 1.6,
     attack: 0.002,
-    // Felt hammer on a small steel bar: the gentlest contact of the family —
-    // a click you hear once, never a knock. (0.12 shipped ~20 dB under the
-    // bar's own attack ramp; see the strike-fix note in mallet().)
-    clickLevel: 0.7,
+    // Felt hammer on a small steel bar: the gentlest contact of the family — a
+    // click you hear once, never a knock (its body already fills the contact
+    // band, hence the higher raw level; the shipped 0.12 measured 20 dB under
+    // the bar's own attack ramp — see the strike-fix note in mallet()).
+    clickLevel: 1.6,
+    clickHz: 3400,
+    clickQ: 1.3,
     lpfHz: 9000,
   }),
   "factory.tonal.wurli": wurli(),
@@ -3056,9 +3072,12 @@ export const BUILDERS: Record<string, Builder> = {
     ],
     decay: 0.7,
     attack: 0.002,
-    // Thumb on a metal tine: bright and immediate, softer than the marimba's
-    // rosewood knock.
-    clickLevel: 0.9,
+    // Thumb on a metal tine: bright and immediate, and the only contact of the
+    // family whose own bar rings inside the contact band (4th partial), so it
+    // needs the most strike to lead.
+    clickLevel: 2.9,
+    clickHz: 2100,
+    clickQ: 1.0,
     lpfHz: 7000,
   }),
   "factory.mallet.musicbox": mallet({
@@ -3070,9 +3089,13 @@ export const BUILDERS: Record<string, Builder> = {
     ],
     decay: 2.0,
     attack: 0.002,
-    // Plucked comb tooth: bright contact, level with the celesta's — the same
-    // register kept apart by timbre (inharmonic 1:3:6 comb vs pure bell).
-    clickLevel: 0.8,
+    // Plucked comb tooth: the brightest, narrowest contact of the family (a
+    // pluck, not a hammer) — the same register as the celesta, kept apart by
+    // timbre in both the bar (inharmonic 1:3:6 comb vs pure bell) and the
+    // contact itself (5.2 kHz Q 2.6 vs 3.4 kHz Q 1.3).
+    clickLevel: 2.0,
+    clickHz: 5200,
+    clickQ: 2.6,
   }),
 };
 
@@ -3083,7 +3106,7 @@ export const DURATIONS: Record<string, number> = {
   "factory.kick.techno": 0.65,
   "factory.kick.sub808": 1.2,
   "factory.kick.trap": 0.45,
-  "factory.kick.soft": 0.6,
+  "factory.kick.soft": 0.8,
   "factory.kick.808drive": 1.3,
   "factory.kick.808pure": 1.5,
   "factory.kick.drill": 0.6,

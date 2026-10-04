@@ -1,0 +1,11 @@
+
+  voice/control                                    peak   1st-ms  body8-32   lead  envPeak@
+  factory.mallet.vibes                               -2.9    -12.2      -0.9  -11.3      33ms
+  factory.mallet.marimba                             -1.5     -3.3       2.2   -5.5       5ms
+  factory.mallet.celesta                             -2.8     -5.9        -1   -4.9       8ms
+  factory.mallet.kalimba                             -3.4       -5      -0.3   -4.8       9ms
+  factory.mallet.musicbox                            -4.6     -5.1      -0.7   -4.3       8ms
+  factory.perc.conga                                 -1.1      1.5      -1.1    2.5       0ms
+  control strike 0.5 @ 2400Hz Q0.8 (bpGain 0.327)   -14.6    -20.6     -69.8   49.2       0ms
+  control strike 0.8 @ 2600Hz Q0.9 (bpGain 0.321)   -10.7    -16.9       -70   53.1       0ms
+  control strike 1.2 @ 2400Hz Q0.8 (bpGain 0.327)    -7.1    -13.5     -69.8   56.3       0ms

@@ -901,7 +901,13 @@ export class AudioEngine {
     if (!ctx) return;
     for (const unsub of state.latencySubs) unsub();
     state.latencySubs.length = 0;
-    for (const rt of state.runtimes.values()) rt.dispose();
+    for (const rt of state.runtimes.values()) {
+      try {
+        rt.dispose();
+      } catch {
+        /* a failing runtime must not abort the chain rebuild */
+      }
+    }
     state.runtimes.clear();
     // The chain rebuild replaced these effect instances — their meter flags
     // must not survive as unreachable entries that grow across every
@@ -1054,6 +1060,11 @@ export class AudioEngine {
         // and ignores identical arrays, so untouched envelopes never
         // re-upload to the audio thread.
         rt.setSteps?.(fx.volumeSteps, fx.pitchSteps);
+        // Step-pattern sync (stepGate / stutter): same reference contract.
+        // Without this push, pattern edits were audible only until the first
+        // chain rebuild — the runtime's construction snapshot was all the
+        // processor ever saw, so undo/redo of a pattern silently reverted it.
+        rt.setPattern?.(fx.steps ?? []);
         if (paramsChanged) state.params.set(fx.id, { ...fx.params, __outputTrimDb: outputTrimDb });
       } finally {
         rt.endParamSync?.();
@@ -1099,7 +1110,18 @@ export class AudioEngine {
     this.connectedGenerativeSources.delete(id);
     for (const unsub of nodes.fx.latencySubs) unsub();
     nodes.fx.latencySubs.length = 0;
-    for (const rt of nodes.fx.runtimes.values()) rt.dispose();
+    // Defect 12.1 (audio-engine audit): the instrument path below already
+    // contains per-runtime throws; the FX path did not. A runtime whose
+    // dispose() throws must not abort the rest of the teardown (remaining
+    // runtimes keep their nodes wired into a graph that is being discarded)
+    // nor the context swap that called this. Contain each dispose.
+    for (const rt of nodes.fx.runtimes.values()) {
+      try {
+        rt.dispose();
+      } catch {
+        /* a failing runtime must not strand the rest of the channel */
+      }
+    }
     nodes.fx.runtimes.clear();
     for (const fxId of nodes.fx.params.keys()) this.fxMetersEnabled.delete(fxId);
     nodes.fx.params.clear();
@@ -1138,7 +1160,13 @@ export class AudioEngine {
   private disposeReturnNodes(id: string, nodes: ReturnNodes): void {
     for (const unsub of nodes.fx.latencySubs) unsub();
     nodes.fx.latencySubs.length = 0;
-    for (const rt of nodes.fx.runtimes.values()) rt.dispose();
+    for (const rt of nodes.fx.runtimes.values()) {
+      try {
+        rt.dispose();
+      } catch {
+        /* a failing runtime must not strand the rest of the bus */
+      }
+    }
     nodes.fx.runtimes.clear();
     for (const fxId of nodes.fx.params.keys()) this.fxMetersEnabled.delete(fxId);
     nodes.fx.params.clear();
@@ -1154,7 +1182,13 @@ export class AudioEngine {
   private disposeGroupNodes(id: string, nodes: GroupNodes): void {
     for (const unsub of nodes.fx.latencySubs) unsub();
     nodes.fx.latencySubs.length = 0;
-    for (const rt of nodes.fx.runtimes.values()) rt.dispose();
+    for (const rt of nodes.fx.runtimes.values()) {
+      try {
+        rt.dispose();
+      } catch {
+        /* a failing runtime must not strand the rest of the group */
+      }
+    }
     nodes.fx.runtimes.clear();
     for (const fxId of nodes.fx.params.keys()) this.fxMetersEnabled.delete(fxId);
     nodes.fx.params.clear();

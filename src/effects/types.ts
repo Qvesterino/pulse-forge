@@ -43,6 +43,15 @@ export interface EffectRuntime {
    */
   setSteps?(volume: readonly number[] | undefined, pitch: readonly number[] | undefined): void;
   /**
+   * Step-pattern sync (stepGate / stutter). The engine calls this on every
+   * project sync with the instance's `steps` array REFERENCE — same
+   * pointer-compare contract as `setSteps`: unchanged patterns must not
+   * re-upload to the audio thread. Without it, editing the pattern after the
+   * first chain build was silent: the constructor snapshot was all the
+   * processor ever saw.
+   */
+  setPattern?(steps: readonly number[]): void;
+  /**
    * Tempo changed — re-derive tempo-synced modulators (LFO sync, delay time…).
    * `when` (audio-context time) schedules the change for offline renders so
    * each clip window's scene BPM lands at its own window start instead of the

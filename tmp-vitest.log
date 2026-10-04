@@ -1,0 +1,20 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+
+ [32m✓[39m tests/pop-samples.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 23[2mms[22m[39m
+ [32m✓[39m tests/curated-samples.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 474[2mms[22m[39m
+ [32m✓[39m tests/kick-bank.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 32[2mms[22m[39m
+ [32m✓[39m tests/sound-library-gate.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 1657[2mms[22m[39m
+   [33m[2m✓[22m[39m sound library gate — every curated WAV on contract[2m > [22mpurity: no clipping, no non-finite samples, no DC, grid-aligned start [33m455[2mms[22m[39m
+   [33m[2m✓[22m[39m sound library gate — every curated WAV on contract[2m > [22mloudness: every file within ±2.5 dB of its category target [33m921[2mms[22m[39m
+ [31m❯[39m tests/sound-quality-pass.test.ts [2m([22m[2m0 test[22m[2m)[22m
+ [31m❯[39m tests/velocity-layers.test.ts [2m([22m[2m0 test[22m[2m)[22m
+ [31m❯[39m tests/drum-rr-declick.test.ts [2m([22m[2m27 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[90m 74[2mms[22m[39m
+[31m   [31m×[31m genre feel (humanize defaults)[2m > [22mevery genre in the feel map gets modest, non-flat humanize[90m 15[2mms[22m[31m[39m
+[31m     → expected 0.22 to be less than or equal to 0.2[39m
+
+[2m Test Files [22m [1m[31m3 failed[39m[22m[2m | [22m[1m[32m4 passed[39m[22m[90m (7)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[2m | [22m[1m[32m46 passed[39m[22m[90m (47)[39m
+[2m   Start at [22m 02:14:24
+[2m   Duration [22m 25.29s[2m (transform 15.78s, setup 21.20s, collect 13.62s, tests 2.26s, environment 75.55s, prepare 2.94s)[22m
+

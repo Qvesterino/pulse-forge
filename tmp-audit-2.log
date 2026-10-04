@@ -1,0 +1,75 @@
+SOUND LIBRARY AUDIT — 111/111 WAVs (111 curated slots)
+
+=== CATEGORY SUMMARY (target = seed renderer's targetLufs) ===
+category   n   target  maxDrift  spread  crestMin  crestMax
+Bass        6    -12      0.0    0.0      4.9     10.0
+Clap        3  -10.5      0.0    0.0      9.8     10.5
+Crash       3    -17      0.0    0.0     18.7     19.5
+Cymbal      2    -17      0.0    0.0     18.0     19.0
+FX         11    -13      0.0    0.0      5.5     17.5
+Hat        11  -15.5      0.8    0.8     13.0     19.5
+Kick       16     -8      0.0    0.0      3.3      6.2
+Percussion  15  -13.5      1.9    1.9      8.4     14.6
+Rim         2    -13      0.2    0.0      9.2     10.3
+Snare      10   -9.5      0.2    0.2      8.3     10.5
+Tom         4  -11.5      0.0    0.0      8.4      8.7
+Tonal      28    -16      0.0    0.0      6.1     20.3
+
+=== FLAGS ===
+  factory.fx.reverse                   LEAD 274.4ms
+  factory.fx.riser-short               LEAD 185.5ms
+  factory.fx.riser                     LEAD 610.3ms
+  factory.fx.sweep                     LEAD 203.1ms
+  factory.tonal.choirpad               LEAD 2.1ms
+
+=== TUNING GLIDE (0.3 s window — kicks/toms/808s with long rests) ===
+  fx.subdrop             51.1Hz G#1-26c
+  kick.808drive          52.5Hz G#1+19c
+  kick.808pure           44.4Hz F1+30c
+  kick.909               40.4Hz E1-35c
+  kick.deep              45.7Hz F#1-19c
+  kick.dnb               24.3Hz G0-17c
+  kick.drill             41.7Hz E1+22c
+  kick.jersey            24.2Hz G0-20c
+  kick.knock             55.2Hz A1+6c
+  kick.lofi              59.2Hz A#1+28c
+  kick.phonk             51.1Hz G#1-26c
+  kick.pop               24.2Hz G0-20c
+  kick.punch             24.3Hz G0-11c
+  kick.soft              43.1Hz F1-24c
+  kick.sub808            43.1Hz F1-23c
+  kick.techno            43.1Hz F1-24c
+  kick.trap              24.2Hz G0-19c
+  tom.floor              75.4Hz D2+46c
+  tom.high               129.1Hz C3-23c
+  tom.low                91.5Hz F#2-19c
+  tom.mid                119.8Hz A#2+47c
+
+=== NEAREST NEIGHBOURS (feature distance within category) ===
+  Bass       d=0.014  bass.dist <-> bass.fm
+  Bass       d=0.022  bass.reese <-> bass.wobble
+  Clap       d=0.014  clap.main <-> clap.pop
+  Clap       d=0.015  clap.main <-> clap.soft
+  Crash      d=0.008  crash.dark <-> crash.main
+  Crash      d=0.031  crash.main <-> crash.pop
+  FX         d=0.006  fx.downlifter <-> fx.riser
+  FX         d=0.009  fx.downlifter <-> fx.riser-short
+  Hat        d=0.008  hat.closed <-> hat.open.short
+  Hat        d=0.011  hat.pedal <-> hat.phonk
+  Kick       d=0.005  kick.knock <-> kick.lofi
+  Kick       d=0.006  kick.deep <-> kick.trap
+  Tonal      d=0.013  tonal.erhu <-> tonal.trumpet
+  Tonal      d=0.018  tonal.keys <-> tonal.rhodes
+  Percussion d=0.024  perc.shaker.pop <-> shaker.soft
+  Percussion d=0.026  perc.snapstack <-> shaker.long
+  Cymbal     d=0.016  ride.bell <-> ride.ping
+  Rim        d=0.080  rim.chip <-> rim.pop
+  Snare      d=0.009  snare.drill <-> snare.main
+  Snare      d=0.009  snare.dnb <-> snare.main
+  Tom        d=0.051  tom.low <-> tom.mid
+  Tom        d=0.064  tom.floor <-> tom.low
+
+=== GATE SUMMARY (mirrors tests/sound-library-gate.test.ts) ===
+GATE: PASS — 111 WAVs on contract
+
+json written: tmp-audit-2.json

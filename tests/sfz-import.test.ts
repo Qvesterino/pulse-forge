@@ -55,12 +55,15 @@ const files: SfzImportFile[] = [
 ];
 
 describe("parseSfz (shared state-machine parser)", () => {
-  it("collects default_path + regions with opcodes on their own lines", () => {
+  it("collects default_path (separate) + regions with opcodes on their own lines", () => {
     const doc = parseSfz(SFZ);
+    // default_path is returned SEPARATELY — the consumer joins it when
+    // resolving sample files (the converter does path.join; the planner
+    // resolves by path suffix).
     expect(doc.defaultPath).toBe("Strings/Cello Section/susVib/");
     expect(doc.regions.length).toBe(4);
     expect(doc.regions[0]).toEqual({
-      sample: "Strings/Cello Section/susVib/susvib_A2_v1.wav",
+      sample: "susvib_A2_v1.wav",
       lokey: 45,
       hikey: 48,
       keycenter: 46,

@@ -20,7 +20,7 @@ export interface StepGateHandle extends EffectRuntime {
 
 export function createStepGateNode(
   ctx: BaseAudioContext,
-  instance: { params: Record<string, number> },
+  instance: { params: Record<string, number>; steps?: number[] },
 ): StepGateHandle {
   const node = new AudioWorkletNode(ctx, "stepgate-processor", {
     numberOfInputs: 1,
@@ -42,6 +42,16 @@ export function createStepGateNode(
   safeApplyAudioParam(node, "smooth", instance.params.smooth ?? 0.15);
   safeApplyAudioParam(node, "mix", instance.params.mix ?? 1);
 
+  let lastSteps: readonly number[] | undefined;
+  const pushPattern = (pattern: readonly number[] | undefined) => {
+    // Reference compare — the engine's sync loop calls this every project
+    // sync; an unchanged pattern must not re-post to the audio thread.
+    if (pattern === lastSteps) return;
+    lastSteps = pattern;
+    if (pattern && pattern.length > 0) node.port.postMessage({ type: "pattern", steps: [...pattern] });
+  };
+  pushPattern(instance.steps);
+
   return {
     input,
     output,
@@ -59,7 +69,7 @@ export function createStepGateNode(
       node.port.postMessage({ type: "align", time, phase: beatPhase });
     },
     setPattern(steps: readonly number[]) {
-      node.port.postMessage({ type: "pattern", steps: [...steps] });
+      pushPattern(steps);
     },
     dispose() {
       node.disconnect();

@@ -37,8 +37,15 @@ export function createStutterNode(
   safeApplyAudioParam(node, "feedback", instance.params.feedback ?? 0);
   safeApplyAudioParam(node, "smooth", instance.params.smooth ?? 0.003);
 
-  const steps = instance.steps && instance.steps.length > 0 ? instance.steps : undefined;
-  if (steps) node.port.postMessage({ type: "pattern", steps: [...steps] });
+  let lastSteps: readonly number[] | undefined;
+  const pushPattern = (pattern: readonly number[] | undefined) => {
+    // Reference compare — the engine's sync loop calls this every project
+    // sync; an unchanged pattern must not re-post to the audio thread.
+    if (pattern === lastSteps) return;
+    lastSteps = pattern;
+    if (pattern && pattern.length > 0) node.port.postMessage({ type: "pattern", steps: [...pattern] });
+  };
+  pushPattern(instance.steps);
 
   return {
     input,
@@ -57,7 +64,7 @@ export function createStutterNode(
       node.port.postMessage({ type: "align", time, phase: beatPhase });
     },
     setPattern(pattern: readonly number[]) {
-      node.port.postMessage({ type: "pattern", steps: [...pattern] });
+      pushPattern(pattern);
     },
     dispose() {
       node.disconnect();
