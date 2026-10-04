@@ -1,9 +1,22 @@
 /**
- * Small deterministic pairwise preference model (Producer DNA v1).
+ * Small deterministic pairwise preference model (Producer DNA v1 + v2).
  * It learns only from explicit A/B decisions and never replaces hard gates or
  * the global selector. The bounded residual can only reorder valid finalists.
+ *
+ * FEATURES.V2 (W4): the model runs on the 69-dim v2 contract. Observations
+ * recorded under the 54-dim v1 contract are normalized by padding the new
+ * axes with neutral 0.5 — their differences on the v2-only axes are exactly
+ * zero, so a legacy vote can never train or perturb a bass/harmony weight.
+ * This is the dual-read migration: no stored observation is invalidated and
+ * the shipped 54-dim intent ranker is untouched (it never enters this module).
  */
-import { FEATURE_COUNT, FEATURE_NAMES } from "../ai/features/pattern-features";
+import {
+  BASS_FEATURE_INDICES,
+  FEATURE_V2_COUNT,
+  FEATURE_V2_NAMES,
+  HARMONY_FEATURE_INDICES,
+  normalizeFeatureVector,
+} from "../ai/features/pattern-features-v2";
 import {
   isValidPreferenceObservation,
   type PreferenceContext,
@@ -44,11 +57,18 @@ export interface PersonalSearchBias {
   evidenceCount: number;
 }
 
+/**
+ * v2 names are the primary vocabulary; v1 names are kept for the inherited
+ * prefix so the old indices stay valid. The v1 prefix is a byte-identical
+ * prefix of v2 by contract, so v1 index i === v2 index i for i < 54.
+ */
+const V2_NAMES = FEATURE_V2_NAMES;
+
 const indicesForNames = (...names: string[]): readonly number[] =>
-  names.map((name) => FEATURE_NAMES.indexOf(name)).filter((index) => index >= 0);
+  names.map((name) => V2_NAMES.indexOf(name)).filter((index) => index >= 0);
 
 const indicesForPrefix = (prefix: string): readonly number[] =>
-  FEATURE_NAMES.flatMap((name, index) => (name.startsWith(prefix) ? [index] : []));
+  V2_NAMES.flatMap((name, index) => (name.startsWith(prefix) ? [index] : []));
 
 const REASON_FEATURE_INDICES: Readonly<Record<PreferenceReason, readonly number[] | null>> = {
   groove: indicesForNames(
@@ -60,13 +80,12 @@ const REASON_FEATURE_INDICES: Readonly<Record<PreferenceReason, readonly number[
     "drums.microtimingPresence",
   ),
   drums: indicesForPrefix("drums."),
-  // features.v1 has no bass-track or chord-progression measurements. Do not
-  // pretend unrelated drum/melody dimensions explain those preferences.
-  bass: null,
-  harmony: null,
+  // W4: bass and harmony are REAL measurements now (features.v2 extension).
+  bass: BASS_FEATURE_INDICES,
+  harmony: HARMONY_FEATURE_INDICES,
   melody: indicesForPrefix("melodic."),
   // In this pattern-level model, “space” means phrase spacing, not stereo
-  // width, reverb, or mix depth (none of those are features.v1 dimensions).
+  // width, reverb, or mix depth (none of those are measured dimensions).
   space: indicesForNames("melodic.restRatio", "melodic.longestGap"),
   // These are arrangement proxies, not measured loudness or mix energy.
   energy: indicesForNames("intent.energyFit", "drums.density", "drums.velocitySpread", "melodic.noteDensity"),
@@ -157,10 +176,14 @@ function pairExamples(
       .map((observation) => {
         const weight = contextWeight(observation.context, context);
         const direction = observation.choice === "a" ? 1 : -1;
-        const difference = observation.candidateA.features.map((feature, index) =>
-          allowedFeatures && !allowedFeatures.has(index)
-            ? 0
-            : direction * (feature - observation.candidateB.features[index]),
+        // W4 dual-read: both sides are normalized to the v2 width FIRST, so a
+        // v1 observation (padded with neutral 0.5) yields exactly zero
+        // difference on the v2-only axes and cannot teach them.
+        const a = normalizeFeatureVector(observation.candidateA.features);
+        const b = normalizeFeatureVector(observation.candidateB.features);
+        if (!a || !b) return null;
+        const difference = a.map((feature, index) =>
+          allowedFeatures && !allowedFeatures.has(index) ? 0 : direction * (feature - b[index]),
         );
         return {
           difference,
@@ -169,6 +192,7 @@ function pairExamples(
           tieBreak: `${observation.context.key}:${observation.candidateA.contentHash}:${observation.candidateB.contentHash}`,
         };
       })
+      .filter((example): example is PairExample => example !== null)
       .filter((example) => example.weight > 0 && example.difference.some((value) => Math.abs(value) > 1e-8))
       .sort((a, b) => a.at - b.at || a.tieBreak.localeCompare(b.tieBreak))
   );
@@ -189,13 +213,13 @@ export function fitPersonalPreferenceModel(
   const examples = pairExamples(observations, context, reason);
   if (examples.length < MIN_COMPARISONS) return null;
 
-  const weights = new Array<number>(FEATURE_COUNT).fill(0);
+  const weights = new Array<number>(FEATURE_V2_COUNT).fill(0);
   for (let epoch = 0; epoch < EPOCHS; epoch++) {
     for (const example of examples) {
       let margin = 0;
-      for (let index = 0; index < FEATURE_COUNT; index++) margin += weights[index] * example.difference[index];
+      for (let index = 0; index < FEATURE_V2_COUNT; index++) margin += weights[index] * example.difference[index];
       const gradient = example.weight * (1 - sigmoid(margin));
-      for (let index = 0; index < FEATURE_COUNT; index++) {
+      for (let index = 0; index < FEATURE_V2_COUNT; index++) {
         const next = weights[index] + LEARNING_RATE * (gradient * example.difference[index] - L2 * weights[index]);
         weights[index] = Math.max(-3, Math.min(3, next));
       }
@@ -234,7 +258,7 @@ export function inferPersonalSearchBias(
 
   const nudge = (axis: keyof typeof SEARCH_AXES): number => {
     const features = SEARCH_AXES[axis]
-      .map(([name, polarity]) => ({ index: FEATURE_NAMES.indexOf(name), polarity }))
+      .map(([name, polarity]) => ({ index: V2_NAMES.indexOf(name), polarity }))
       .filter(({ index }) => index >= 0);
     if (features.length === 0) return 0;
 
@@ -277,11 +301,14 @@ export function inferPersonalSearchBias(
 }
 
 function modelScore(model: PersonalPreferenceModel, features: ArrayLike<number>): number {
+  // W4 dual-read: accept a v1 (54-dim) or v2 (69-dim) vector. v1 is padded
+  // with neutral 0.5 on the v2-only axes, so a v2 model scores a v1 candidate
+  // using only the axes that candidate actually measured.
+  const normalized = normalizeFeatureVector(features);
+  if (!normalized) return 0.5;
   let margin = 0;
-  for (let index = 0; index < FEATURE_COUNT; index++) {
-    const feature = features[index];
-    if (!Number.isFinite(feature) || feature < 0 || feature > 1) return 0.5;
-    margin += model.weights[index] * feature;
+  for (let index = 0; index < FEATURE_V2_COUNT; index++) {
+    margin += (model.weights[index] ?? 0) * normalized[index];
   }
   return sigmoid(margin);
 }

@@ -1,8 +1,22 @@
 import { FEATURE_COUNT } from "../ai/features/pattern-features";
+import { FEATURE_V2_COUNT, isSupportedFeatureVector } from "../ai/features/pattern-features-v2";
 import { preferenceFeatureIndicesForReason } from "./personal-ranker";
 import type { PreferenceReason } from "./preference-ledger-core";
 
-const PROBE_REASONS: readonly PreferenceReason[] = ["groove", "drums", "melody", "space", "energy", "novelty"];
+/**
+ * W4: "bass" and "harmony" are real, measured axes since features.v2 — the
+ * picker can now ask the question those votes actually train.
+ */
+const PROBE_REASONS: readonly PreferenceReason[] = [
+  "groove",
+  "drums",
+  "bass",
+  "harmony",
+  "melody",
+  "space",
+  "energy",
+  "novelty",
+];
 const MIN_AXIS_DELTA = 0.08;
 const MIN_AXIS_DOMINANCE = 1.5;
 const MIN_OFF_AXIS_FLOOR = 0.025;
@@ -44,7 +58,10 @@ export function orderTasteProbeSides<T>(
 function isUsable(candidate: TasteProbeCandidate<unknown>): boolean {
   return (
     candidate.contentHash.length > 0 &&
-    candidate.features.length === FEATURE_COUNT &&
+    // W4 dual-read: a v1 or v2 vector is probe-able; the axis widths are read
+    // from the candidate's own vector, so v2-only reasons simply have no
+    // signal on a v1 bank and are skipped by the axisDelta threshold.
+    isSupportedFeatureVector(candidate.features) &&
     candidate.globalScore !== undefined &&
     Number.isFinite(candidate.globalScore) &&
     candidate.globalScore >= 0 &&
@@ -87,7 +104,9 @@ export function suggestTasteProbePair<T>(
     .sort((a, b) => a.candidateIndex - b.candidateIndex || a.contentHash.localeCompare(b.contentHash));
   if (usable.length < 2) return null;
 
-  const allFeatureIndices = Array.from({ length: FEATURE_COUNT }, (_, index) => index);
+  // The off-axis set must cover the WIDER of the two contracts, so a v1 pair is
+  // not "confounded" by the v2 axes it does not have.
+  const allFeatureIndices = Array.from({ length: Math.max(FEATURE_COUNT, FEATURE_V2_COUNT) }, (_, index) => index);
   let best: (TasteProbePair<T> & { quality: number }) | null = null;
 
   for (let left = 0; left < usable.length; left++) {

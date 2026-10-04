@@ -4,6 +4,9 @@ import { spawn } from "node:child_process";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { MCP_TOOLS } from "../src/mcp/tools";
 
 /**
@@ -638,5 +641,55 @@ describe("desktop mcp stdio forwarder (subprocess)", () => {
     expect(call.error.code).toBe(-32001);
     expect(call.error.message).toContain("KYX_MCP_TOKEN");
     child.stdin?.end();
+  }, 30_000);
+});
+
+describe("official MCP SDK client over the desktop stdio transport", () => {
+  it("discovers KYX tools and receives structured audio through the client config path", async () => {
+    const token = managerModule.generateToken();
+    const { server } = bridgeModule.createMcpBridgeServer({
+      token,
+      executeTool: async (name) =>
+        name === "kyx_audio_preview"
+          ? {
+              text: "preview ready",
+              mutated: false,
+              data: { bars: 1, durationSec: 1, sampleRate: 22050, byteLength: 44, mimeType: "audio/wav" },
+              audio: {
+                data: "UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAABErAAABAAgAZGF0YQAAAAA=",
+                mimeType: "audio/wav",
+              },
+            }
+          : { text: `ran ${name}`, mutated: false },
+    });
+    const port = await listenOnEphemeralPort(server);
+    runningServers.push(server);
+
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: [path.join(DESKTOP_DIR, "mcp-server.cjs")],
+      env: {
+        ...getDefaultEnvironment(),
+        KYX_MCP_BRIDGE_URL: `http://127.0.0.1:${port}/rpc`,
+        KYX_MCP_TOKEN: token,
+      },
+      stderr: "pipe",
+    });
+    const client = new Client({ name: "kyx-stdio-wire-test", version: "1.0.0" });
+
+    try {
+      await client.connect(transport);
+      const tools = await client.listTools();
+      expect(tools.tools).toHaveLength(34);
+      expect(tools.tools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toBeDefined();
+
+      const preview = await client.callTool({ name: "kyx_audio_preview", arguments: { bars: 1 } });
+      expect(preview.structuredContent).toMatchObject({ bars: 1, mimeType: "audio/wav" });
+      expect(preview.content).toContainEqual(
+        expect.objectContaining({ type: "audio", mimeType: "audio/wav", data: expect.any(String) }),
+      );
+    } finally {
+      await client.close();
+    }
   }, 30_000);
 });

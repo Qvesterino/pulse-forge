@@ -1,5 +1,6 @@
 /** Diversity-aware ordering for the already gated, already ranked candidate bank. */
 import { FEATURE_NAMES } from "../ai/features/pattern-features";
+import { isSupportedFeatureVector } from "../ai/features/pattern-features-v2";
 
 export interface DiverseCandidate {
   candidateIndex: number;
@@ -9,13 +10,21 @@ export interface DiverseCandidate {
 
 const DIVERSITY_HEAD_SIZE = 3;
 const RELEVANCE_WEIGHT = 0.72;
+/**
+ * Structural axes only. W4: features.v2 keeps the v1 prefix byte-identical
+ * and appends bass/harmony/arrangement axes, so v2 names extend the set and
+ * every v1 index still means the same thing.
+ */
 const STRUCTURAL_FEATURE_INDICES = FEATURE_NAMES.flatMap((name, index) =>
   name.startsWith("drums.") || name.startsWith("melodic.") ? [index] : [],
 );
 
 function validVector(vector: ArrayLike<number> | undefined): vector is ArrayLike<number> {
-  if (!vector || vector.length !== FEATURE_NAMES.length) return false;
+  // W4 dual-read: accept the v1 or the v2 width, and only validate the axes
+  // this vector actually has.
+  if (!vector || !isSupportedFeatureVector(vector)) return false;
   for (const index of STRUCTURAL_FEATURE_INDICES) {
+    if (index >= vector.length) continue;
     const value = vector[index];
     if (!Number.isFinite(value) || value < 0 || value > 1) return false;
   }
@@ -25,9 +34,11 @@ function validVector(vector: ArrayLike<number> | undefined): vector is ArrayLike
 /** Average L1 structural distance, excluding prompt-fit and batch-relative features. */
 export function candidateFeatureDistance(a: ArrayLike<number>, b: ArrayLike<number>): number {
   if (!validVector(a) || !validVector(b)) return 0;
+  const shared = STRUCTURAL_FEATURE_INDICES.filter((index) => index < a.length && index < b.length);
+  if (shared.length === 0) return 0;
   let total = 0;
-  for (const index of STRUCTURAL_FEATURE_INDICES) total += Math.abs(a[index] - b[index]);
-  return total / STRUCTURAL_FEATURE_INDICES.length;
+  for (const index of shared) total += Math.abs(a[index] - b[index]);
+  return total / shared.length;
 }
 
 /**

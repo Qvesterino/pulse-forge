@@ -3,8 +3,17 @@
  * Raw prompts, projects, filenames and audio are intentionally not part of
  * this record. Only coarse context labels, content hashes and normalized
  * feature vectors are retained.
+ *
+ * W4 dual-read: a snapshot carries the feature contract it was recorded
+ * under. BOTH features.v1 (54 dims, the shipped ranker contract) and
+ * features.v2 (69 dims, the bass/harmony/arrangement extension) are
+ * accepted, and each is validated against ITS OWN width — an old v1
+ * observation stays valid instead of being invalidated by the contract bump,
+ * which is what lets the personal ranker pad it to the v2 width at training
+ * time instead of dropping it.
  */
 import { FEATURE_CONTRACT, FEATURE_COUNT } from "../ai/features/pattern-features";
+import { FEATURE_CONTRACT_V2, FEATURE_V2_COUNT } from "../ai/features/pattern-features-v2";
 
 export const PREFERENCE_LEDGER_VERSION = 1 as const;
 export const PREFERENCE_LEDGER_CAP = 128;
@@ -12,6 +21,9 @@ export const PREFERENCE_LEDGER_CAP = 128;
 export type PreferenceTask = "pattern" | "section" | "song";
 export type PreferenceChoice = "a" | "b" | "neither" | "both";
 export type PreferenceReason = "groove" | "drums" | "bass" | "harmony" | "melody" | "space" | "energy" | "novelty";
+
+/** Feature contracts a stored snapshot may be recorded under (W4 dual-read). */
+export type PreferenceFeatureVersion = typeof FEATURE_CONTRACT.version | typeof FEATURE_CONTRACT_V2.version;
 
 export interface PreferenceContext {
   /** Coarse, non-identifying context. Never store the original prompt. */
@@ -25,7 +37,8 @@ export interface PreferenceContext {
 
 export interface PreferenceCandidateSnapshot {
   contentHash: string;
-  featureVersion: typeof FEATURE_CONTRACT.version;
+  /** The contract the stored vector was recorded under — never re-bumped. */
+  featureVersion: PreferenceFeatureVersion;
   features: number[];
   /** Non-personal selector baseline; absent on legacy observations. */
   globalScore?: number;
@@ -46,7 +59,8 @@ export interface PreferenceObservationV1 {
 export interface PreferenceLedgerPackV1 {
   version: typeof PREFERENCE_LEDGER_VERSION;
   exportedAt: number;
-  featureVersion: typeof FEATURE_CONTRACT.version;
+  /** Newest contract this build can produce; observations keep their own. */
+  featureVersion: PreferenceFeatureVersion;
   observations: PreferenceObservationV1[];
 }
 
@@ -70,21 +84,34 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isFeatureVector(value: unknown): value is number[] {
+const FEATURE_VERSIONS = new Set<PreferenceFeatureVersion>([
+  FEATURE_CONTRACT.version,
+  FEATURE_CONTRACT_V2.version,
+]);
+
+/** The width a snapshot's DECLARED version must actually have. */
+function expectedFeatureCount(version: PreferenceFeatureVersion): number {
+  return version === FEATURE_CONTRACT_V2.version ? FEATURE_V2_COUNT : FEATURE_COUNT;
+}
+
+function isFeatureVector(value: unknown, width: number): value is number[] {
   return (
     Array.isArray(value) &&
-    value.length === FEATURE_COUNT &&
+    value.length === width &&
     value.every((feature) => typeof feature === "number" && Number.isFinite(feature) && feature >= 0 && feature <= 1)
   );
 }
 
 function isCandidateSnapshot(value: unknown): value is PreferenceCandidateSnapshot {
   if (!isRecord(value)) return false;
+  // W4 dual-read: accept either contract, validated against ITS OWN width, so
+  // a legacy v1 vector is not invalidated by the v2 bump.
+  const version = value.featureVersion as PreferenceFeatureVersion;
   return (
     typeof value.contentHash === "string" &&
     HASH_RE.test(value.contentHash) &&
-    value.featureVersion === FEATURE_CONTRACT.version &&
-    isFeatureVector(value.features) &&
+    FEATURE_VERSIONS.has(version) &&
+    isFeatureVector(value.features, expectedFeatureCount(version)) &&
     ((value.globalScore === undefined && value.globalScoreVersion === undefined) ||
       (typeof value.globalScore === "number" &&
         Number.isFinite(value.globalScore) &&

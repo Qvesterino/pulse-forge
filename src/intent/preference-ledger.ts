@@ -1,5 +1,11 @@
 /** Local-only adapter for explicit Producer DNA feedback. */
 import { FEATURE_CONTRACT } from "../ai/features/pattern-features";
+import {
+  FEATURE_CONTRACT_V2,
+  FEATURE_V2_COUNT,
+  isSupportedFeatureVector,
+  normalizeFeatureVector,
+} from "../ai/features/pattern-features-v2";
 import type { IntentSpec } from "./types";
 import {
   dedupeAndCapPreferences,
@@ -9,6 +15,7 @@ import {
   type PreferenceCandidateSnapshot,
   type PreferenceChoice,
   type PreferenceContext,
+  type PreferenceFeatureVersion,
   type PreferenceLedgerPackV1,
   type PreferenceObservationV1,
   type PreferenceReason,
@@ -28,6 +35,7 @@ export type {
   PreferenceCandidateSnapshot,
   PreferenceChoice,
   PreferenceContext,
+  PreferenceFeatureVersion,
   PreferenceLedgerPackV1,
   PreferenceObservationV1,
   PreferenceReason,
@@ -63,10 +71,18 @@ export interface PreferenceCandidateInput {
   globalScoreVersion?: string;
 }
 
+/**
+ * Record the contract the vector was actually produced under (W4 dual-read).
+ * A v2-width vector is stamped "features.v2"; a v1-width vector keeps the
+ * legacy "features.v1" stamp, so old packs stay readable and the personal
+ * ranker normalizes at training time instead of discarding the observation.
+ */
 function snapshot(candidate: PreferenceCandidateInput): PreferenceCandidateSnapshot {
+  const featureVersion: PreferenceFeatureVersion =
+    candidate.features.length === FEATURE_V2_COUNT ? FEATURE_CONTRACT_V2.version : FEATURE_CONTRACT.version;
   return {
     contentHash: candidate.contentHash,
-    featureVersion: FEATURE_CONTRACT.version,
+    featureVersion,
     features: Array.from(candidate.features),
     ...(candidate.globalScore !== undefined ? { globalScore: candidate.globalScore } : {}),
     ...(candidate.globalScoreVersion !== undefined ? { globalScoreVersion: candidate.globalScoreVersion } : {}),
@@ -162,7 +178,17 @@ export function buildPreferenceLedgerPack(exportedAt = Date.now()): PreferenceLe
   return {
     version: PREFERENCE_LEDGER_VERSION,
     exportedAt,
-    featureVersion: FEATURE_CONTRACT.version,
+    // The newest contract this build can produce. Individual observations keep
+    // the version they were actually recorded under (W4 dual-read).
+    featureVersion: FEATURE_CONTRACT_V2.version,
     observations: safeRead(),
   };
 }
+
+/** True when a candidate vector width is storable under either contract. */
+export function isStorableFeatureVector(features: ArrayLike<number>): boolean {
+  return isSupportedFeatureVector(features);
+}
+
+/** Re-exported so callers can normalize without importing the feature module. */
+export { normalizeFeatureVector };

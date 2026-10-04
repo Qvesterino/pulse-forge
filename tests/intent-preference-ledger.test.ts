@@ -11,8 +11,10 @@ import {
   readPreferenceLedger,
   recordPreferenceObservation,
   setPreferenceLearningEnabled,
+  isValidPreferenceObservation,
 } from "../src/intent/preference-ledger";
 import type { PreferenceContext } from "../src/intent/preference-ledger";
+import { FEATURE_V2_COUNT } from "../src/ai/features/pattern-features-v2";
 
 const context: PreferenceContext = {
   genre: "trap",
@@ -93,9 +95,42 @@ describe("Producer DNA preference ledger", () => {
     expect(readPreferenceLedger()[0].createdAt).toBe(200);
     const pack = buildPreferenceLedgerPack(300);
     expect(pack.version).toBe(1);
-    expect(pack.featureVersion).toBe("features.v1");
+    // W4: the pack advertises the NEWEST contract this build produces; the
+    // observation itself keeps the version it was actually recorded under, so
+    // a legacy pack is never re-interpreted.
+    expect(pack.featureVersion).toBe("features.v2");
+    expect(pack.observations[0].candidateA.featureVersion).toBe("features.v1");
     expect(pack.exportedAt).toBe(300);
     expect(pack.observations).toHaveLength(1);
+  });
+
+  it("W4 dual-read: accepts a v2 vector and keeps a v1 observation valid", () => {
+    // A v2-width vector is stamped features.v2 and must survive validation.
+    const v2 = createPreferenceObservation(
+      context,
+      { contentHash: "v2-a", features: new Array(FEATURE_V2_COUNT).fill(0.4) },
+      { contentHash: "v2-b", features: new Array(FEATURE_V2_COUNT).fill(0.6) },
+      "a",
+    );
+    expect(v2).not.toBeNull();
+    expect(v2!.candidateA.featureVersion).toBe("features.v2");
+    expect(isValidPreferenceObservation(v2)).toBe(true);
+
+    // A legacy v1 observation stays valid — the contract bump must not
+    // invalidate stored taste.
+    const v1 = createPreferenceObservation(
+      context,
+      { contentHash: "v1-a", features: new Array(FEATURE_COUNT).fill(0.4) },
+      { contentHash: "v1-b", features: new Array(FEATURE_COUNT).fill(0.6) },
+      "a",
+    );
+    expect(v1).not.toBeNull();
+    expect(v1!.candidateA.featureVersion).toBe("features.v1");
+    expect(isValidPreferenceObservation(v1)).toBe(true);
+
+    // A vector of the wrong width for its declared version is still rejected.
+    const mismatched = { ...v2, candidateA: { ...v2!.candidateA, features: new Array(FEATURE_COUNT).fill(0.4) } };
+    expect(isValidPreferenceObservation(mismatched)).toBe(false);
   });
 
   it("pauses writes without discarding previous choices and clears the local ledger", () => {

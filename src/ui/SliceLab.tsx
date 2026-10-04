@@ -4,6 +4,7 @@ import { SampleBrowser } from "./SampleBrowser";
 import { chopSampleToPads, setPadLoop, type PadSlice } from "../commands/commands";
 import { gridSlicePoints, pointsToSlices, snapToGrid, zeroCrossSnap } from "../audio-engine/transients";
 import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
+import { fitSliceFades } from "../audio-engine/declick";
 import type { DrumPad, DrumTrack } from "../project-model/types";
 import { FACTORY_ASSETS } from "../sample-library/manifest";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
@@ -264,7 +265,23 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
       const value = Math.max(min, Math.min(max, Number.isFinite(snapped) ? snapped : min));
       const next = current.map((slice) => ({ ...slice }));
       next[boundaryIndex - 1].end = value;
+      // Resizing a shared boundary can shorten either slice below its fades —
+      // refit both so the fields keep showing what playback will use.
+      const beforeFades = fitSliceFades(
+        next[boundaryIndex - 1].fadeIn,
+        next[boundaryIndex - 1].fadeOut,
+        Math.max(0, value - next[boundaryIndex - 1].start),
+      );
+      next[boundaryIndex - 1].fadeIn = beforeFades.fadeIn;
+      next[boundaryIndex - 1].fadeOut = beforeFades.fadeOut;
       next[boundaryIndex].start = value;
+      const afterFades = fitSliceFades(
+        next[boundaryIndex].fadeIn,
+        next[boundaryIndex].fadeOut,
+        Math.max(0, next[boundaryIndex].end - value),
+      );
+      next[boundaryIndex].fadeIn = afterFades.fadeIn;
+      next[boundaryIndex].fadeOut = afterFades.fadeOut;
       return next;
     });
   };
@@ -276,17 +293,15 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
     if (selectedIndex < drafts.length - 1) updateBoundary(selectedIndex + 1, value);
     else {
       setDrafts((current) =>
-        current.map((slice, index) =>
-          index === selectedIndex
-            ? {
-                ...slice,
-                end: Math.max(
-                  slice.start + 0.001,
-                  Math.min(buffer.duration, Number.isFinite(value) ? value : slice.end),
-                ),
-              }
-            : slice,
-        ),
+        current.map((slice, index) => {
+          if (index !== selectedIndex) return slice;
+          const end = Math.max(
+            slice.start + 0.001,
+            Math.min(buffer.duration, Number.isFinite(value) ? value : slice.end),
+          );
+          const fitted = fitSliceFades(slice.fadeIn, slice.fadeOut, Math.max(0, end - slice.start));
+          return { ...slice, end, fadeIn: fitted.fadeIn, fadeOut: fitted.fadeOut };
+        }),
       );
     }
   };
@@ -431,7 +446,18 @@ export function SliceLab({ track, onClose }: { track: DrumTrack; onClose: () => 
   };
 
   const updateSelected = (values: Partial<DraftSlice>) => {
-    setDrafts((current) => current.map((slice, index) => (index === selectedIndex ? { ...slice, ...values } : slice)));
+    setDrafts((current) =>
+      current.map((slice, index) => {
+        if (index !== selectedIndex) return slice;
+        const next = { ...slice, ...values };
+        // Fade edits commit exactly what playback will use: the engine fits
+        // the pair into the slice (fitSliceFades), so the fields must not
+        // let a value stand that the engine would silently rescale.
+        const duration = Math.max(0, slice.end - slice.start);
+        const fitted = fitSliceFades(next.fadeIn, next.fadeOut, duration);
+        return { ...next, fadeIn: fitted.fadeIn, fadeOut: fitted.fadeOut };
+      }),
+    );
   };
 
   const chop = (createPattern: boolean) => {

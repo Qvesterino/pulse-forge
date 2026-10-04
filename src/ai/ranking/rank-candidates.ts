@@ -1,9 +1,10 @@
 import { extractPatternFeatures, type PatternFeatureVector } from "../features/pattern-features";
+import { extractPatternFeaturesV2 } from "../features/pattern-features-v2";
 import { scoreCandidateFeatures, rankerMode, type RankerMode } from "./ranker-client";
 import { currentRankerManifest } from "./ranker-client";
 import { rankCandidateBank, type CandidateBankEntry } from "../../intent/candidate-bank";
 import type { GenerationPlan } from "../../intent/types";
-import type { ProjectDocument } from "../../project-model/types";
+import type { Pattern, ProjectDocument } from "../../project-model/types";
 import {
   isPreferenceLearningEnabled,
   preferenceContextForIntent,
@@ -69,18 +70,28 @@ export async function rankCandidatesWithModel(
   // Both the ONNX and personal selector consume the same versioned,
   // deterministic feature vectors. Batch-relative values see the same bank.
   const patterns = heuristicOrder.map((entry) => entry.pattern);
-  vectors = patterns.map((pattern) =>
-    extractPatternFeatures({
-      doc,
-      pattern,
-      intent: plan.intent,
-      options: plan.options,
-      resolvedBpm: plan.resolvedBpm,
-      batch: patterns,
-    }),
-  );
+  const featureInput = (pattern: Pattern) => ({
+    doc,
+    pattern,
+    intent: plan.intent,
+    options: plan.options,
+    resolvedBpm: plan.resolvedBpm,
+    batch: patterns,
+  });
+  vectors = patterns.map((pattern) => extractPatternFeatures(featureInput(pattern)));
   const featureByHash = new Map(heuristicOrder.map((entry, index) => [entry.contentHash, vectors[index].values]));
   const featureVersion = vectors[0]?.version ?? null;
+  // W4: the personal residual and diversity need the v2 contract (bass /
+  // harmony / arrangement axes); the shipped ONNX ranker keeps its 54-dim
+  // v1 vectors. v2 extends v1 by a byte-identical prefix, so the two
+  // consumers can coexist on the same bank.
+  const personalVectors = needsPersonalFeatures
+    ? heuristicOrder.map((entry) => extractPatternFeaturesV2(featureInput(entry.pattern)))
+    : null;
+  const personalFeatureByHash =
+    personalVectors === null
+      ? featureByHash
+      : new Map(heuristicOrder.map((entry, index) => [entry.contentHash, personalVectors[index].values]));
 
   const finish = (
     baseOrder: CandidateBankEntry[],
@@ -102,7 +113,7 @@ export async function rankCandidatesWithModel(
       order = rerankWithPersonalPreferences(
         globallyScored,
         globallyScored.map((entry) => entry.globalScore ?? entry.score),
-        featureByHash,
+        personalFeatureByHash,
         observations,
         preferenceContextForIntent(plan.intent),
       );

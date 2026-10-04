@@ -209,7 +209,11 @@ describe("personal pairwise selector", () => {
     expect(order).toHaveLength(candidates.length);
   });
 
-  it("does not claim to learn reasons absent from the current feature contract", () => {
+  it("W4: bass/harmony are rankable, but a legacy v1 vector cannot teach them", () => {
+    // features.v2 measures bass and harmony for real, so both reasons are now
+    // rankable. A LEGACY (features.v1) observation is padded with neutral 0.5 on
+    // the new axes, so its A/B difference there is exactly zero — it must not be
+    // able to invent a bass preference it never measured.
     const high = vector(0.9);
     const low = vector(0.1);
     const observations = [pair("a", high, "b", low, "a", 1, "bass"), pair("c", high, "d", low, "a", 2, "bass")];
@@ -222,8 +226,18 @@ describe("personal pairwise selector", () => {
       ["second", low],
     ]);
 
-    expect(isPreferenceReasonRankable("bass")).toBe(false);
-    expect(preferenceFeatureIndicesForReason("harmony")).toBeNull();
+    expect(isPreferenceReasonRankable("bass")).toBe(true);
+    expect(isPreferenceReasonRankable("harmony")).toBe(true);
+    const bassAxes = preferenceFeatureIndicesForReason("bass")!;
+    const harmonyAxes = preferenceFeatureIndicesForReason("harmony")!;
+    expect(bassAxes.length).toBeGreaterThan(0);
+    expect(harmonyAxes.length).toBeGreaterThan(0);
+    // The new axes live strictly past the v1 prefix — that is what makes the
+    // v1 padding neutral.
+    for (const index of [...bassAxes, ...harmonyAxes]) {
+      expect(index).toBeGreaterThanOrEqual(FEATURE_COUNT);
+    }
+    // No v2 evidence → no bass model, and the bank keeps its global order.
     expect(fitPersonalPreferenceModel(observations, context, "bass")).toBeNull();
     expect(rerankWithPersonalPreferences(candidates, [0.4, 0.6], features, observations, context)).toEqual(candidates);
   });

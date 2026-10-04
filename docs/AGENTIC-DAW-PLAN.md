@@ -7,23 +7,26 @@
 
 ---
 
-## 0. Čo už agent má (2026-09-30) — a prečo to nestačí
+## 0. Aktuálny stav (2026-10-04)
 
-| Vrstva       | Stav                                                                                                                                                                             |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Transports   | desktop stdio (loopback bridge), web streamable-HTTP — protocol-complete (negotiation, batch, resources)                                                                         |
-| Tool surface | 20 toolov: intent/state/undo/transport/export/generate/groove/fx/sections/markers/tracks/pattern/steps/catalog/meter/automation/clips/batch/loudness (+ skrytý `__kyx_resource`) |
-| Čítanie      | 5 `kyx://project/*` resources, `data` JSON obálky, verify-by-read-backs                                                                                                          |
-| Bezpečnosť   | D4 deštrukčný zámok, one-undo snapshoty, `kyx_batch` = 10 volaní v JEDNOM undo                                                                                                   |
-| Sluch        | `kyx_loudness measure` (render-backed LUFS), `kyx_meter` (živé peak/RMS metre)                                                                                                   |
+| Vrstva       | Stav                                                                                                                         |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| Transports   | Desktop stdio + web Streamable HTTP; oficiálny MCP SDK testuje oba transporty.                                               |
+| Tool surface | 34 toolov vrátane `kyx_song`, checkpointov, producer moves a batch operácií.                                                 |
+| Čítanie      | 7 resources: 5 `kyx://project/*` snapshotov + `kyx://playbook` + `kyx://vocab`; mutácie vracajú read-backy.                  |
+| Bezpečnosť   | D4 deštrukčný zámok, checkpoint/undo, `kyx_batch` = do 10 volaní v jednom undo rámci.                                        |
+| Sluch        | `kyx_audio_preview` vracia audio blok; `kyx_render_summary` meria; `kyx_diagnose_mix` vysvetľuje problémy a navrhuje opravy. |
+| Latencia     | 10 s desktop / 15 s web pre bežné volania; 60 s pre render/generovanie.                                                      |
 
-**Čo agentovi chýba**: nemá ÚCHY (len hlasitosť, nie spektrum/karakter), nemá ČASOVÝ STROJ
-(expery bez vrátenia), nepozná SOP (čo s toolmi a v akom poradí), a nie je NAPPOJENÝ
-(zive — config existuje v chipi, ale wire-up nie je zdokumentovaný pre konkrétneho agenta).
+Pôvodné fázy E → A → B → C → D sú implementované. Zvuková analýza z Fázy B
+sa dodáva cez `kyx_render_summary` + `kyx_diagnose_mix`, nie samostatným
+`kyx_analyze`. `npm run mcp:demo` overuje 16 krokov cez web relay. Zostáva
+ručný smoke s reálnym KYX balíkom a klientom ZCode/Claude a neskôr job/progress
+model pre operácie, ktoré prekročia 60 s limit.
 
 ---
 
-## Fáza E — Napojenie agenta (PRVÉ — bez tohto zvyšok nemá zmysel)
+## Fáza E — Napojenie agenta — SHIPPED
 
 **Cieľ**: GLM-5.3 v ZCode (a Claude Desktop) vidia `kyx_*` tooly a môžu ich volať ešte dnes.
 
@@ -41,7 +44,7 @@ Effort: jedno popoludnie, žiadny nový kód okrem dokumentu (chip už clientCon
 
 ---
 
-## Fáza A — Agent onboarding (playbook + slovník ako resources)
+## Fáza A — Agent onboarding — SHIPPED
 
 **Cieľ**: agent sa naučí DAW bez toho, aby míňal tokeny na pokus-omyl.
 
@@ -58,27 +61,27 @@ Effort: 1 večer; resources list sa rozšíri na 7 URI (mirrory + piny podľa et
 
 ---
 
-## Fáza B — Uši: `kyx_analyze` (render → zvuková správa)
+## Fáza B — Uši: `kyx_render_summary` + `kyx_diagnose_mix` — SHIPPED
 
 **Cieľ**: agent ZPOČUJE projekt bez ľudí v reťazi. Najväčší schopnostný unlock.
 
-`kyx_analyze { bars?, tracks?, compareTo?: "genre" }` → compact report + `data`:
+Dodané cez dva nástroje s oddelenou rolou:
 
-- master: integrated LUFS (existujúca render infra z `kyx_loudness`), peak, crest factor,
-- per-track: RMS/peak, low/mid/high energie (3-pásmo stačí pre agentné rozhodovanie),
-  stereo šírka,
-- `compareTo: "genre"` — referencie zo sound-quality sprintu (FAMILY_REFERENCE
-  PLR+tilt): "hat wash je +4 dB nad genre cieľom" — agentné rozhodnutie je potom číslo,
-  nie dojem.
+- `kyx_render_summary` vracia master + strip LUFS, peak, crest factor, dĺžku a
+  delty hlasitosti voči najhlasnejšiemu stripu.
+- `kyx_diagnose_mix { scope? }` pridáva low/HF energy shares, clipping,
+  headroom, master stereo correlation, atribúciu stripov a konkrétne
+  volateľné návrhy opráv. `scope: "tracks"` je rýchla kontrola po oprave;
+  `scope: "master"` vynechá per-strip rendery.
+- Loudness referenciou je streamingový cieľ −14 LUFS; nejde o
+  `compareTo: "genre"` ani o per-track stereo-width analýzu.
 
-Infraštruktúra VŠETKO existuje: offline render (renderer.ts), metering rig,
-analyzeAudioReference, genre referencie. Nové je len agregácia do jedného tool reportu.
-Effort: 1–2 večera. Limit: render dlhší ako transport timeout — riešiť kratším
-rozborom (default 4–8 barov) a dokumentovať.
+Oba nástroje renderujú offline cez zdieľaný engine. Sú read-only; agent
+vykoná návrh samostatným MCP toolom a potom diagnostiku zopakuje.
 
 ---
 
-## Fáza C — Časový stroj: `kyx_checkpoint`
+## Fáza C — Časový stroj: `kyx_checkpoint` — SHIPPED
 
 **Cieľ**: agentné experimenty — checkpoint → 10 smelých krokov → restore. Bez strachu.
 
@@ -92,7 +95,7 @@ Effort: 1 večer (snapshots repo + restore path už bežia pre UI; tenké MCP ob
 
 ---
 
-## Fáza D — Producer moves (jeden call, celý ťah)
+## Fáza D — Producer moves (jeden call, celý ťah) — SHIPPED
 
 **Cieľ**: token-ekonomické hrubé kroky — agent premýšľa v zámeroch, nie v 20 volaniach.
 
@@ -101,9 +104,8 @@ Effort: 1 večer (snapshots repo + restore path už bežia pre UI; tenké MCP ob
 2. `kyx_arrange { form: "intro/build/drop/break/outro", bars per role }` — sekčný
    pipeline existuje (parseSectionRequests + forms + sceneAutomation); štruktúrovaný
    wrapper = spoľahlivosť pre agentov (bez NLP).
-3. Neskôr: `kyx_song` — beat + mix + aranžmán v jednej dávke (batch nad A+B+D).
-
-Effort: mix 1 večer, arrange 1 večer.
+3. `kyx_song` — beat + mix + aranžmán v jednej dávke; loudness trim je
+   voliteľný ďalší undo krok.
 
 ---
 

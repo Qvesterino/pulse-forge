@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { extractPatternFeatures } from "../ai/features/pattern-features";
+import { extractPatternFeaturesV2 } from "../ai/features/pattern-features-v2";
 import type { ProjectDocument } from "../project-model/types";
 import { orderTasteProbeSides, suggestTasteProbePair, tasteProbePairKey } from "../intent/taste-probe";
 import { isPreferenceReasonRankable } from "../intent/personal-ranker";
@@ -26,8 +26,10 @@ interface ProducerDnaCompareProps {
 const REASONS: readonly { value: PreferenceReason; label: string }[] = [
   { value: "groove", label: "groove" },
   { value: "drums", label: "bicie" },
-  { value: "bass", label: "basa (ranker zatiaľ nemeria)" },
-  { value: "harmony", label: "harmónia (ranker zatiaľ nemeria)" },
+  // W4: both are measured since features.v2 (bass note density / root
+  // alignment, chord voicing movement / harmonic rhythm).
+  { value: "bass", label: "basa" },
+  { value: "harmony", label: "harmónia" },
   { value: "melody", label: "melódia" },
   { value: "space", label: "priestor frázy" },
   { value: "energy", label: "energia aranžmánu" },
@@ -74,7 +76,9 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
       if (cache.rows.has(candidate.candidateIndex)) continue;
       cache.rows.set(
         candidate.candidateIndex,
-        extractPatternFeatures({
+        // W4: record the v2 contract (bass / harmony / arrangement axes), so
+        // a "bass" or "harmony" vote trains a real adapter.
+        extractPatternFeaturesV2({
           doc: project,
           pattern: candidate.pattern,
           intent: result.plan.intent,

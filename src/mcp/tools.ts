@@ -46,7 +46,11 @@ import {
   resolvePresetByName,
   type PresetTargetFamily,
 } from "../intent/preset-intent";
-import { FACTORY_PRESETS } from "../presets/factory";
+// The factory bank is lazy (presets/factory is ~130 KB): tools that read it
+// warm it through the loader instead of forcing it into the MCP graph. The
+// tool layer is a SELF-SUFFICIENT entry surface — a headless host or a test
+// that calls kyx_tracks loadPreset must not need the UI to have warmed first.
+import { factoryPresets, isFactoryPresetsWarm, warmFactoryPresets } from "../presets/factory-loader";
 import {
   addAutomationLane,
   addAutomationPoint,
@@ -1735,6 +1739,13 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
     // no model hit — fall through to the deterministic intent case below
   }
   const record = (args != null && typeof args === "object" ? args : {}) as Record<string, unknown>;
+  // Self-healing lazy-bank gate: kyx_state(mixer) and kyx_tracks(preset ops)
+  // read the factory bank, which is a separate chunk. Warm it here so the
+  // tool surface is a complete entry point on its own — a headless host, a
+  // batch call or a test never depends on someone else having warmed the UI.
+  if (name === "kyx_state" || name === "kyx_tracks") {
+    if (!isFactoryPresetsWarm()) await warmFactoryPresets();
+  }
   switch (name) {
     case "kyx_state": {
       const subject = String(record.subject ?? "overview");
@@ -2172,9 +2183,10 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
         // instruments first, then the rest (capped for a readable tool call).
         const family = (typeof record.family === "string" ? record.family : "bass") as PresetTargetFamily;
         const query = typeof record.query === "string" ? record.query.toLowerCase() : "";
+        const bank = factoryPresets();
         const fitting: string[] = [];
         const rest: string[] = [];
-        for (const preset of FACTORY_PRESETS) {
+        for (const preset of bank) {
           const line = `${preset.name} (${preset.instrument})`;
           const fits = PRESET_FAMILY_INSTRUMENTS[family]?.has(preset.instrument) ?? false;
           if (query !== "" && !line.toLowerCase().includes(query)) continue;
@@ -2182,9 +2194,9 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
         }
         const shown = [...fitting, ...rest].slice(0, 25);
         return {
-          text: `${FACTORY_PRESETS.length} factory presets; for ${family}${query !== "" ? ` matching "${query}"` : ""}: ${shown.join("; ")}${fitting.length + rest.length > 25 ? " …" : ""}`,
+          text: `${bank.length} factory presets; for ${family}${query !== "" ? ` matching "${query}"` : ""}: ${shown.join("; ")}${fitting.length + rest.length > 25 ? " …" : ""}`,
           mutated: false,
-          data: { family, fitting: fitting.length, total: FACTORY_PRESETS.length },
+          data: { family, fitting: fitting.length, total: bank.length },
         };
       }
       if (op === "rename") {
@@ -4757,7 +4769,12 @@ function stateSnapshot(
       if (track.kind === "instrument") {
         bits.push(`inst=${track.instrument}`);
         if (track.presetId) {
-          const preset = FACTORY_PRESETS.find((candidate) => candidate.id === track.presetId);
+          // Degrade honestly to the raw id when the bank chunk is cold — the
+          // kyx_state path warms before snapshotting, so this is belt-and-braces
+          // for any direct/internal caller of stateSnapshot.
+          const preset = isFactoryPresetsWarm()
+            ? factoryPresets().find((candidate) => candidate.id === track.presetId)
+            : undefined;
           bits.push(`preset=${preset?.name ?? track.presetId}`);
         }
       }

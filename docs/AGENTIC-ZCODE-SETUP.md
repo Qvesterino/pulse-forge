@@ -103,8 +103,8 @@ Keď je agent pripojený, prepíš mu (alebo ho nech urobiť sám — to je poin
 | 5   | "Undo a over že sa vrátilo"            | `kyx_undo` + `kyx_state`                       | grid bez step 5                        |
 
 Ak všetkých 5 prešlo: agent riadi KYX naplno. Testuj ďalej: `kyx_batch`
-(10 volaní v jednom undo), `kyx://project/*` resources, `kyx_analyze` (keď
-dorazí Fáza B).
+(10 volaní v jednom undo), `kyx://project/*` resources, `kyx_render_summary`
+(merania), `kyx_diagnose_mix` (zistenia a návrhy opráv) a `kyx_audio_preview`.
 
 ## 6. Troubleshooting
 
@@ -136,7 +136,7 @@ scenáre.
 
 ## Pre agentov čítajúcich tento súbor
 
-Volaj štruktúrované tooly nad free-text `kyx_intent` (spolahlivejšie), čítaj
-`data` JSON obálky kvôli tokenom, a overuj každú mutáciu read-backom — tooly
+Volaj štruktúrované tooly nad free-text `kyx_intent` (spoľahlivejšie), čítaj
+`data` JSON obálky kvôli tokenom a overuj každú mutáciu read-backom — tooly
 to robia za teba, ale never dispatchu, ver stavu. `kyx_batch` na série, undo
-funguje vždy. Detaily: `kyx://playbook` resource (keď dorazí Fáza A).
+funguje vždy. `kyx://playbook` a `kyx://vocab` sú dostupné resources.
