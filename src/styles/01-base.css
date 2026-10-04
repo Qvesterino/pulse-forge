@@ -23,6 +23,41 @@
   --glass-scene-stroke: rgba(255, 255, 255, 0.1);
   /* Sequencer label column — mirrors STEPS_LABEL_PX in Sequencer.tsx. */
   --steps-label: 168px;
+
+  /* ---------- Tokens 2.0 (ROADMAP-UI-2027) ----------
+     Spacing / radius / elevation / surface / control / type scale. Additive:
+     the legacy vars above stay until every consumer migrates. Surfaces are
+     REFERENCES, so theme presets that override --bg-panel flow through
+     without registering these in THEME_VARS. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --surface-0: var(--bg);
+  --surface-1: var(--bg-panel);
+  --surface-2: var(--bg-raise);
+  --elev-1: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --elev-2: 0 4px 14px rgba(0, 0, 0, 0.38);
+  --elev-3: 0 12px 32px rgba(0, 0, 0, 0.48);
+  --hairline: rgba(255, 255, 255, 0.06);
+  --ctrl-h: 28px;
+  --ctrl-h-sm: 24px;
+  --fs-2xs: 8px;
+  --fs-xs: 9px;
+  --fs-sm: 11px;
+  --fs-md: 12px;
+  --fs-lg: 14px;
+  /* Dock chrome: grip (10) + tab row (36). The persisted --dock-height
+     (set inline by App) sizes the PANEL area only, so chrome never steals
+     panel space when the tab row mounts (ROADMAP-UI-2027 V1). */
+  --dock-chrome-h: 46px;
 }
 
 * {

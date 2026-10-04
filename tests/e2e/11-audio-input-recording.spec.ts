@@ -9,12 +9,8 @@ async function ensureArrangementVisible(page: Page): Promise<void> {
   // ArrangementPanel is lazy-loaded. After a project reload the timeline may
   // not have mounted yet even though ARR is already the active dock panel; a
   // blind toggle in that window closes it before the chunk can render.
-  const directToggle = page.locator('.topbar button[aria-label="Toggle arrangement and scenes"]').first();
-  if (await directToggle.isVisible().catch(() => false)) {
-    if ((await directToggle.getAttribute("aria-pressed")) !== "true") await directToggle.click();
-  } else {
-    await clickPanelAction(page, "ARR");
-  }
+  const dockTab = page.locator('.dock-tabs button[aria-label="Toggle arrangement and scenes"]').first();
+  if ((await dockTab.getAttribute("aria-selected")) !== "true") await dockTab.click();
   await expect(timeline).toBeVisible({ timeout: 15_000 });
 }
 

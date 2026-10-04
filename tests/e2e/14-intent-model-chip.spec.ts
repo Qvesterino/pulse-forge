@@ -18,17 +18,10 @@ const CHIP = "button[aria-label^='Local intent model:']";
 const INTENT_TAB = "button[aria-label='Toggle intent panel']";
 
 /** openHouseTemplate seeds pf-intent-opened=1 (keeps the A2 auto-open out
- * of generic flows) — this spec WANTS the panel. At default e2e viewports
- * the INTENT toggle lives in the topbar's "⋯" overflow (same as the
- * 02-panel-toggles spec's EXPORT/MIDI), so open the menu first. */
+ * of generic flows) — this spec WANTS the panel. The INTENT tab lives in the
+ * always-mounted dock tab row (ROADMAP-UI-2027 V1): one click, no overflow. */
 async function openIntentPanel(page: import("playwright/test").Page): Promise<void> {
   await openHouseTemplate(page);
-  const direct = page.locator(INTENT_TAB).first();
-  // The toggle can exist but live hidden in the overflow menu — probe
-  // VISIBILITY, not presence (a detached/hidden match would click nothing).
-  if (!(await direct.isVisible())) {
-    await page.getByRole("button", { name: /more topbar controls/i }).click();
-  }
   await page.locator(INTENT_TAB).first().click();
 }
 

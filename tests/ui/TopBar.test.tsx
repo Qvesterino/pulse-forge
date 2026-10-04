@@ -12,9 +12,6 @@ function topBarProps(overrides?: Partial<React.ComponentProps<typeof TopBar>>) {
   return {
     onToggleDiagnostics: vi.fn(),
     diagnosticsOpen: false,
-    onSetBottomPanel: vi.fn(),
-    splitPanel: null as "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | "dice" | null,
-    bottomPanel: null as "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | "dice" | null,
     onToggleHelp: vi.fn(),
     playMode: "pattern" as const,
     onSetPlayMode: vi.fn(),
@@ -183,17 +180,14 @@ describe("TopBar", () => {
     expect(screen.getByLabelText("Project name")).toBeInTheDocument();
   });
 
-  it("renders MIX, DEV, ARR, MOD, EXPORT buttons", () => {
+  it("no longer carries panel toggles — the dock tab row owns them (ROADMAP-UI-2027 V1)", () => {
     renderWithContext(<TopBar {...topBarProps()} />);
-    expect(screen.getByText("MIX")).toBeInTheDocument();
-    // the FX rack panel was renamed DEV (track device chain)
-    expect(screen.getByText("DEV")).toBeInTheDocument();
-    expect(screen.getByText("ARR")).toBeInTheDocument();
-    expect(screen.getByText("MOD")).toBeInTheDocument();
-    expect(screen.getByText("EXPORT")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Toggle mixer panel")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Toggle export panel")).not.toBeInTheDocument();
+    expect(screen.queryByText("MIX")).not.toBeInTheDocument();
   });
 
-  it("moves lower-priority controls into an accessible overflow menu", async () => {
+  it("moves lower-priority tools into an accessible overflow menu", async () => {
     const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
     const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
       this: HTMLElement,
@@ -203,46 +197,29 @@ describe("TopBar", () => {
       return rect;
     });
     const user = userEvent.setup();
-    const onSetBottomPanel = vi.fn();
 
     try {
-      renderWithContext(<TopBar {...topBarProps({ onSetBottomPanel, onOpenPalette: vi.fn() })} />);
+      renderWithContext(<TopBar {...topBarProps({ onOpenPalette: vi.fn() })} />);
       await waitFor(() => expect(screen.getByRole("button", { name: /More topbar controls/ })).toBeInTheDocument());
 
-      expect(screen.getByLabelText("Toggle mixer panel")).toBeInTheDocument();
-      expect(screen.queryByLabelText("Toggle dice panel")).not.toBeInTheDocument();
+      // Tools only: ⌘K/?/HIST stay direct at 1280; ASSIST onwards overflow.
+      expect(screen.getByLabelText("Open command palette")).toBeInTheDocument();
+      expect(screen.getByLabelText("Show keyboard shortcuts")).toBeInTheDocument();
+      expect(screen.getByLabelText("Toggle undo history")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Toggle pattern assist panel")).not.toBeInTheDocument();
 
       await user.click(screen.getByRole("button", { name: /More topbar controls/ }));
       expect(screen.getByRole("menu", { name: "More topbar controls" })).toBeInTheDocument();
 
-      // At 1280 the four live panels (MIX/FX/ARR/MOD) are direct; the
-      // overflow starts at EXPORT, then MIDI.
-      expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Toggle export panel" }));
+      // Tool overflow order follows priority: ASSIST first, then JAM.
+      expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Toggle pattern assist panel" }));
       await user.keyboard("{ArrowDown}");
-      expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Toggle MIDI input panel" }));
+      expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Toggle collaboration panel" }));
       await user.keyboard("{Escape}");
-      expect(screen.queryByRole("menu", { name: "More topbar controls" })).not.toBeInTheDocument();
-
-      // The dice panel has a single home in the chrome — the PatternBar's
-      // DICE button — so the topbar no longer carries a dice toggle at all.
-      expect(screen.queryByRole("menuitem", { name: "Toggle dice panel" })).not.toBeInTheDocument();
-      await user.click(screen.getByRole("button", { name: /More topbar controls/ }));
-      await user.click(screen.getByRole("menuitem", { name: "Toggle MIDI input panel" }));
-      expect(onSetBottomPanel).toHaveBeenCalledWith("midi", false);
       expect(screen.queryByRole("menu", { name: "More topbar controls" })).not.toBeInTheDocument();
     } finally {
       rectSpy.mockRestore();
     }
-  });
-
-  it("calls onSetBottomPanel when panel button clicked", async () => {
-    const user = userEvent.setup();
-    const onSetBottomPanel = vi.fn();
-    renderWithContext(<TopBar {...topBarProps({ onSetBottomPanel })} />);
-    await user.click(screen.getByText("MIX"));
-    // The handler also receives the modifier flag (ctrl/meta = keep-open) —
-    // assert the panel id only.
-    expect(onSetBottomPanel.mock.calls[0][0]).toBe("mixer");
   });
 
   it("calls onToggleHelp when ? clicked", async () => {

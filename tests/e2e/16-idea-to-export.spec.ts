@@ -129,10 +129,8 @@ function readWavFacts(bytes: Buffer): WavFacts {
 async function openIntentPanel(page: Page): Promise<void> {
   await openHouseTemplate(page);
   await completeOnboardingTourIfPresent(page);
-  const direct = page.locator(INTENT_TAB).first();
-  if (!(await direct.isVisible())) {
-    await page.getByRole("button", { name: /more topbar controls/i }).click();
-  }
+  // The INTENT tab lives in the always-mounted dock tab row
+  // (ROADMAP-UI-2027 V1): one click, no overflow dance.
   await page.locator(INTENT_TAB).first().click();
   await expect(page.locator(".intent-panel")).toBeVisible({ timeout: 30_000 });
 }

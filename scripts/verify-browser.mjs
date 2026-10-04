@@ -16,28 +16,28 @@ const server = await createServer({
 await server.listen();
 
 /**
- * Click a topbar panel action whether it is direct or collapsed into the
- * "⋯" overflow menu (the topbar spends its width budget by priority, so on
- * narrower viewports lower-priority panels live behind the overflow trigger).
+ * Click a bottom-dock panel tab (ROADMAP-UI-2027 V1): the tab row is always
+ * mounted, so there is exactly one place to click at every viewport width —
+ * no direct-vs-overflow fallback. `label` is the historical test vocabulary
+ * (FX stays the alias for the DEV devices tab).
  */
+const DOCK_TAB_ARIA = {
+  MIX: "Toggle mixer panel",
+  FX: "Toggle track device chain",
+  DEV: "Toggle track device chain",
+  ARR: "Toggle arrangement and scenes",
+  MOD: "Toggle modulation panel",
+  EXPORT: "Toggle export panel",
+  DICE: "Toggle dice panel",
+  INTENT: "Toggle intent panel",
+  MIDI: "Toggle MIDI input panel",
+};
+
 async function clickPanelAction(page, label) {
-  // The device/effects dock is surfaced as DEV in the current topbar UI; keep
-  // the semantic FX test intent while targeting the actual visible contract.
-  const actionLabel = label === "FX" ? "DEV" : label;
-  const direct = page.locator(`.topbar button:has-text("${actionLabel}")`).first();
-  if (await direct.isVisible().catch(() => false)) {
-    await direct.click();
-    return;
-  }
-  const trigger = page.locator('button[aria-label^="More topbar controls"]').first();
-  await trigger.click();
-  await page
-    .locator('#topbar-overflow-menu button:has-text("' + actionLabel + '")')
-    .first()
-    .click();
-  // Close the menu so the next action starts from a clean state.
-  await page.keyboard.press("Escape");
-  await page.waitForTimeout(80);
+  const aria = DOCK_TAB_ARIA[label] ?? label;
+  const tab = page.locator(`.dock-tabs button[aria-label="${aria}"]`).first();
+  await tab.waitFor({ state: "visible", timeout: 5000 });
+  await tab.click();
 }
 
 let exitCode = 0;
@@ -173,9 +173,9 @@ try {
     // MIX panel — the default is "mixer" open, so explicit toggle semantics:
     // ensure it's open, verify the master meter, toggle LIMIT/CLIP, then close.
     {
-      const mixBtn = appPage.locator('.topbar button:has-text("MIX")').first();
-      const mixOpen = await mixBtn.evaluate((el) => el.getAttribute("aria-pressed"));
-      if (mixOpen !== "true") await mixBtn.click();
+      const mixTab = appPage.locator('.dock-tabs button[aria-label="Toggle mixer panel"]').first();
+      const mixOpen = await mixTab.evaluate((el) => el.getAttribute("aria-selected"));
+      if (mixOpen !== "true") await mixTab.click();
       await appPage.waitForSelector(".master-meter", { timeout: 5000 });
       await appPage.waitForSelector(".master-headroom", { timeout: 5000 });
       const limit = appPage.locator('.master-toggles button:has-text("LIMIT")').first();
@@ -356,14 +356,14 @@ try {
     await appPage.waitForSelector(".preset-fav", { timeout: 5000 });
     await appPage.locator(".preset-fav").first().click();
     // Arrangement ruler seeks the transport.
-    await appPage.locator('.topbar button:has-text("ARR")').first().click();
+    await clickPanelAction(appPage, "ARR");
     await appPage.waitForSelector(".arr-ruler", { timeout: 5000 });
     const ruler = appPage.locator(".arr-ruler").first();
     const box = await ruler.boundingBox();
     if (box) {
       await appPage.mouse.click(box.x + box.width * 0.6, box.y + box.height / 2);
     }
-    await appPage.locator('.topbar button:has-text("ARR")').first().click();
+    await clickPanelAction(appPage, "ARR");
     // Return to the browser — the freshly created project must be listed.
     await appPage.locator('.topbar button:has-text("PROJECTS")').first().click();
     await appPage.waitForSelector(".project-browser", { timeout: 30_000 });

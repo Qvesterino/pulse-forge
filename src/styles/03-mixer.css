@@ -4,10 +4,12 @@
   contain: layout style;
   max-height: 170px;
   overflow-x: auto;
-  overflow-y: hidden;
+  /* hidden clipped the RETURN/master rows at the dock edge with no way to
+     reach them — scroll instead of amputate (ROADMAP-UI-2027 V0). */
+  overflow-y: auto;
   background: var(--bg-panel);
   border-top: 1px solid var(--border);
-  padding: 10px 14px;
+  padding: 10px 14px 14px;
 }
 
 .mixer-strips {

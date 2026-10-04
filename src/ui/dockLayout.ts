@@ -99,6 +99,21 @@ export function openInSlotA(state: DockState, panel: BottomPanel): DockState {
 }
 
 /**
+ * Toggle a panel's VISIBILITY regardless of which slot hosts it
+ * (ROADMAP-UI-2027 V0c): a tab click means "hide this panel", never "move it
+ * to the primary slot". The old behaviour — clicking a panel that lived only
+ * in the split slot migrated it into slot A — read as a broken close button.
+ * Opening lands in slot A (standard tab semantics: the primary slot shows
+ * the last panel asked for).
+ */
+export function togglePanelVisible(state: DockState, panel: BottomPanel): DockState {
+  panel = normalizePanel(panel) ?? panel;
+  if (state.slotA === panel) return { ...state, slotA: null };
+  if (state.slotB === panel) return { ...state, slotB: null };
+  return { ...state, slotA: panel };
+}
+
+/**
  * Reveal `panel` without disturbing a layout that already shows it: a
  * no-op when the panel is docked in either slot, otherwise open it in the
  * primary slot. Used by add-effect flows (Mixer batch bar) where the goal

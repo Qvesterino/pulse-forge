@@ -6,6 +6,7 @@ import {
   ensurePanelVisible,
   loadDockLayout,
   openInSlotA,
+  togglePanelVisible,
   toggleSlot,
   type DockState,
 } from "../src/ui/dockLayout";
@@ -86,6 +87,31 @@ describe("ensurePanelVisible", () => {
   it("is a no-op when the panel already sits in the split slot", () => {
     const original = state({ slotA: "mixer", slotB: "devices" });
     expect(ensurePanelVisible(original, "devices")).toBe(original);
+  });
+});
+
+describe("togglePanelVisible", () => {
+  it("closes the panel regardless of which slot hosts it (ROADMAP-UI-2027 V0c)", () => {
+    // The quirk this replaces: a panel living only in the split slot MOVED
+    // to slot A on click instead of closing — it read as a broken close.
+    const fromB = togglePanelVisible(state({ slotA: "mixer", slotB: "arr" }), "arr");
+    expect(fromB.slotA).toBe("mixer");
+    expect(fromB.slotB).toBeNull();
+
+    const fromA = togglePanelVisible(state({ slotA: "arr", slotB: "mixer" }), "arr");
+    expect(fromA.slotA).toBeNull();
+    expect(fromA.slotB).toBe("mixer");
+  });
+
+  it("opens a closed panel in slot A, replacing the previous primary", () => {
+    const s = togglePanelVisible(state({ slotA: "mixer", slotB: null }), "dice");
+    expect(s.slotA).toBe("dice");
+    expect(s.slotB).toBeNull();
+  });
+
+  it("normalizes legacy fx/plugin ids to devices", () => {
+    const s = togglePanelVisible(state({ slotA: "mixer", slotB: null }), "fx");
+    expect(s.slotA).toBe("devices");
   });
 });
 

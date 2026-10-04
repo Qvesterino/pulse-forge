@@ -1,0 +1,220 @@
+/* ---------- Dock chrome V2 (ROADMAP-UI-2027, Vlna 1) -----------------------
+   The dock owns its chrome: a resize grip + an ALWAYS-VISIBLE tab row.
+   A collapsed dock IS the tab row — the panel switches never leave the
+   screen (the FL-Studio learnability lesson).
+
+   Loaded LAST in the cascade on purpose: these rules override the legacy
+   .bottom-panels block in 12-floating-instrument-plugin-2.css by cascade
+   order. Do not reorder src/styles/index.css. */
+
+/* The persisted --dock-height (set inline by App) sizes the PANEL area;
+   chrome height rides on top so the tab row never steals panel space. */
+.bottom-panels {
+  height: calc(var(--dock-height, 300px) + var(--dock-chrome-h, 46px));
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+}
+
+.dock-chrome {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+}
+
+/* Grip: a taller target with three visible lines — the old 7px invisible
+   strip had zero discoverability. Double-click / Enter resets (DockChrome). */
+.bottom-panels .dock-resize-handle {
+  height: 10px;
+  flex-direction: column;
+  gap: 2px;
+}
+.bottom-panels .dock-resize-handle span {
+  width: 28px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+/* Tab row */
+.dock-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  height: 36px;
+  flex: 0 0 auto;
+  padding: 0 6px 0 8px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-panel) 92%, #000), var(--bg-panel));
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none; /* the row itself only scrolls on cramped widths */
+}
+.dock-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.dock-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 11px;
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: var(--text-faint);
+  border-top: 2px solid transparent;
+  border-bottom: 2px solid transparent;
+  transition:
+    color 0.12s,
+    background 0.12s,
+    border-color 0.12s;
+}
+.dock-tab:hover {
+  color: var(--text);
+  background: var(--glass-scene);
+}
+.dock-tab:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.dock-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  background: linear-gradient(180deg, transparent 55%, var(--accent-soft));
+}
+
+/* FL-style channel LED: lit = the panel is mounted. The split slot gets the
+   dimmer tint so both open panels read at a glance. */
+.dock-tab-led {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--border);
+  box-shadow: inset 0 0 2px rgba(0, 0, 0, 0.6);
+  transition:
+    background 0.12s,
+    box-shadow 0.12s;
+}
+.dock-tab.active .dock-tab-led {
+  background: var(--accent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+.dock-tab.in-split .dock-tab-led {
+  background: color-mix(in srgb, var(--accent) 55%, var(--text-faint));
+  box-shadow: 0 0 4px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.dock-tabs-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 8px;
+  flex: 0 0 auto;
+}
+.dock-split-badge {
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  background: var(--bg-raise);
+}
+.dock-close-all {
+  width: 24px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  color: var(--text-faint);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  font-size: 9px;
+  transition:
+    color 0.12s,
+    border-color 0.12s;
+}
+.dock-close-all:hover:not(:disabled) {
+  color: var(--text);
+  border-color: #343945;
+}
+.dock-close-all:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* Collapsed dock = the tab row alone: grip and slots hide, the chrome
+   stays. Re-declares (and beats) the legacy rule in 12-...css, which hid
+   everything but the now-removed mobile sheet handle. */
+.bottom-panels.sheet-collapsed {
+  height: auto;
+  overflow: visible;
+}
+.bottom-panels.sheet-collapsed .dock-slot,
+.bottom-panels.sheet-collapsed .dock-resize-handle {
+  display: none;
+}
+
+/* Split: a real divider between the two slots instead of a bare gap. */
+.bottom-panels.dock-split {
+  column-gap: 0;
+}
+.bottom-panels.dock-split .dock-slot + .dock-slot {
+  border-left: 1px solid var(--border);
+  box-shadow: -4px 0 8px -6px rgba(0, 0, 0, 0.5);
+}
+
+/* Visible, themed scrollbars for dock panels (V0d) — the default Chromium
+   trough read as a rendering artefact on the dark panels. */
+.dock-slot {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  padding-bottom: 4px;
+}
+.dock-slot::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.dock-slot::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.dock-slot::-webkit-scrollbar-thumb:hover {
+  background-color: #3a4050;
+}
+.dock-slot::-webkit-scrollbar-track {
+  background: transparent;
+}
+.mixer {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.mixer::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+.mixer::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+}
+
+/* Mobile sheet: the tab row rides the top of the fixed sheet and stays
+   reachable when collapsed (the sheet-handle is gone — the tab row IS the
+   handle now). */
+@media (max-width: 760px) {
+  .dock-tabs {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--bg-panel);
+  }
+  .bottom-panels.sheet-collapsed > :not(.dock-chrome) {
+    display: none;
+  }
+}

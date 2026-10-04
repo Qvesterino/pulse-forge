@@ -5,14 +5,12 @@ import { renderWithContext, mockServices } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import type { Services } from "../../src/services";
 
-/** Mirrors the prop set `TopBar.test.tsx` uses — TopBar takes 14 required props. */
+/** Mirrors the prop set `TopBar.test.tsx` uses — panel toggles live in the
+ * dock tab row now (ROADMAP-UI-2027 V1), so TopBar takes 11 required props. */
 function topBarProps() {
   return {
     onToggleDiagnostics: vi.fn(),
     diagnosticsOpen: false,
-    onSetBottomPanel: vi.fn(),
-    splitPanel: null as "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | "dice" | null,
-    bottomPanel: null as "mixer" | "fx" | "arr" | "mod" | "exp" | "midi" | "dice" | null,
     onToggleHelp: vi.fn(),
     playMode: "pattern" as const,
     onSetPlayMode: vi.fn(),

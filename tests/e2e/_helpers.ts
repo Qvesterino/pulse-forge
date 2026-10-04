@@ -1,29 +1,36 @@
 import type { Page } from "playwright/test";
 
-/**
- * Click a topbar panel action whether it is direct or collapsed into the
- * "⋯" overflow menu (the topbar spends its width budget by priority, so on
- * narrower viewports lower-priority panels live behind the overflow trigger).
- *
- * Mirrors the local copy in scripts/verify-browser.mjs. Kept separate so the
- * standalone smoke script keeps its own version and the Playwright specs do
- * not drag a scripts/-only import into their world.
- */
+/** Panel label (test vocabulary) → the dock tab's stable aria-label.
+ * FX keeps its historical alias — the devices tab has been the FX dock's
+ * test-facing name since the rack was renamed DEV. */
+const DOCK_TAB_ARIA: Record<string, string> = {
+  MIX: "Toggle mixer panel",
+  FX: "Toggle track device chain",
+  DEV: "Toggle track device chain",
+  ARR: "Toggle arrangement and scenes",
+  MOD: "Toggle modulation panel",
+  EXPORT: "Toggle export panel",
+  DICE: "Toggle dice panel",
+  INTENT: "Toggle intent panel",
+  MIDI: "Toggle MIDI input panel",
+  REF: "Toggle reference map panel",
+};
+
+/** Resolve a panel label to its dock tab locator. The tab row is always
+ * mounted (ROADMAP-UI-2027 V1) — no direct-vs-overflow dance anymore. */
+export function dockTabLocator(page: Page, label: string) {
+  const aria = DOCK_TAB_ARIA[label];
+  if (!aria) throw new Error(`unknown panel label: ${label}`);
+  return page.locator(`.dock-tabs button[aria-label="${aria}"]`).first();
+}
+
 export async function clickPanelAction(page: Page, label: string): Promise<void> {
-  // The effect-chain panel is called DEV in the current topbar UI; retain the
-  // FX alias in test scenarios because the rack itself is still the FX dock.
-  const actionLabel = label === "FX" ? "DEV" : label;
-  const direct = page.locator(`.topbar button:has-text("${actionLabel}")`).first();
-  if (await direct.isVisible().catch(() => false)) {
-    await direct.click();
-    return;
-  }
-  const trigger = page.locator('button[aria-label^="More topbar controls"]').first();
-  await trigger.click();
-  await page.locator(`#topbar-overflow-menu button:has-text("${actionLabel}")`).first().click();
-  // Close the menu so the next action starts from a clean state.
-  await page.keyboard.press("Escape");
-  await page.waitForTimeout(80);
+  await dockTabLocator(page, label).click();
+}
+
+/** Read a dock tab's open state (aria-selected on the tab role). */
+export async function panelOpen(page: Page, label: string): Promise<boolean> {
+  return (await dockTabLocator(page, label).getAttribute("aria-selected")) === "true";
 }
 
 /**

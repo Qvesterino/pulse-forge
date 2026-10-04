@@ -2,22 +2,24 @@
 
 > Dizajnový roadmap pre redesign DAW UI, s dôrazom na **bottom dock**.
 > Vznikol z live vizuálneho auditu 2026-10-04 (všetky panely preklikané so screenshotmi)
-> + kódového štúdia (`src/ui/dockLayout.ts`, `src/ui/App.tsx`, `src/ui/TopBar.tsx`,
-> `src/styles/01..18-*.css`, `src/shared/theme-data.ts`).
-> Stav: **čaká na GO** — nič z tohto ešte nie je implementované.
+>
+> - kódového štúdia (`src/ui/dockLayout.ts`, `src/ui/App.tsx`, `src/ui/TopBar.tsx`,
+>   `src/styles/01..18-*.css`, `src/shared/theme-data.ts`).
+>   Stav: **čaká na GO** — nič z tohto ešte nie je implementované.
 
 ---
 
 ## 1. Cieľ a non-goaly
 
-**Cieľ:** UI sa riadi podľa FL Studio v *learnability* (všetko nájdeš na prvý
+**Cieľ:** UI sa riadi podľa FL Studio v _learnability_ (všetko nájdeš na prvý
 pohľad, myš stačí, systém ťa učí kým hoveruješ) a vizuálne je to 2027 moderná
 tmavá konzola na úrovni Abletonu/Bitwigu — "Molten Console 2.0" (evolúcia
 súčasnej identity, nie rebrand).
 
 **Non-goaly:**
+
 - **Žiadny floating-window systém** ako FL desktop. FL chaos okien je jeho
-  najväčšia UX daň; 2027 moderný DAW je dock-based. Kradneme FL *patterns*,
+  najväčšia UX daň; 2027 moderný DAW je dock-based. Kradneme FL _patterns_,
   nie jeho window manager.
 - Nemeníme audio architektúru, command flow ani project model (AGENTS.md
   invarianty zostávajú).
@@ -27,17 +29,17 @@ súčasnej identity, nie rebrand).
 
 ## 2. Čo konkrétne kradneme z FL Studio (a čo nie)
 
-| FL pattern | Ako sa prejaví v KYX | Vlna |
-| --- | --- | --- |
-| Panely majú vždy viditeľný chrome (title bar / dock strip) | Dock dostane **vlastnú tab row**, ktorá zostáva viditeľná aj v collapsed stave (dnes: 7 px neviditeľný pásik) | 1 |
-| Hint bar (ľavý horný roh) — čo je pod kurzorom + hodnota | **Statusbar = live hint**: názov + aktuálna hodnota + čo to robí pre hoverovaný control | 3 |
-| Scroll-wheel mení každý control | `useWheelAdjust` na Slider/knob — wheel = normálny krok, Ctrl+wheel = jemný (FL konvencia) | 3 |
-| Right-click na controle = menu (zadaj hodnotu, reset, link) | Rozšíriť existujúci `.value-type-popover` (už je!) o **Reset to default** a povedz ho všetkým slidrom | 3 |
-| Jednotné klávesové skoky na panely (F5/F6/F7/F9) | Zachovanie **Alt+1..6** + doplnenie Alt+7 INTENT, Alt+8 MIDI (F-klávesy v prehliadači nemôžu — F5 = reload) | 1 |
-| Browser vľavo, vždy dostupný, drag&drop | SampleBrowser z dialógu do **permanentného ľavého pruhu** (lazy, collapsible, 240 px) | 4 |
-| Farebné kanály, clipy dedia farbu | Máme track colors — dôsledne zdediť do padov/clipov/chipov v celom UI | 2 |
-| Pattern/Song prepínač v transporte | Už máme (`playMode`) — len ho vizuálne zdôrazníme | 1 |
-| Transport + CPU/voices stále viditeľné | Statusbar: CPU · voices · mini master meter (MasterMeter.tsx už existuje) | 3 |
+| FL pattern                                                  | Ako sa prejaví v KYX                                                                                          | Vlna |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ---- |
+| Panely majú vždy viditeľný chrome (title bar / dock strip)  | Dock dostane **vlastnú tab row**, ktorá zostáva viditeľná aj v collapsed stave (dnes: 7 px neviditeľný pásik) | 1    |
+| Hint bar (ľavý horný roh) — čo je pod kurzorom + hodnota    | **Statusbar = live hint**: názov + aktuálna hodnota + čo to robí pre hoverovaný control                       | 3    |
+| Scroll-wheel mení každý control                             | `useWheelAdjust` na Slider/knob — wheel = normálny krok, Ctrl+wheel = jemný (FL konvencia)                    | 3    |
+| Right-click na controle = menu (zadaj hodnotu, reset, link) | Rozšíriť existujúci `.value-type-popover` (už je!) o **Reset to default** a povedz ho všetkým slidrom         | 3    |
+| Jednotné klávesové skoky na panely (F5/F6/F7/F9)            | Zachovanie **Alt+1..6** + doplnenie Alt+7 INTENT, Alt+8 MIDI (F-klávesy v prehliadači nemôžu — F5 = reload)   | 1    |
+| Browser vľavo, vždy dostupný, drag&drop                     | SampleBrowser z dialógu do **permanentného ľavého pruhu** (lazy, collapsible, 240 px)                         | 4    |
+| Farebné kanály, clipy dedia farbu                           | Máme track colors — dôsledne zdediť do padov/clipov/chipov v celom UI                                         | 2    |
+| Pattern/Song prepínač v transporte                          | Už máme (`playMode`) — len ho vizuálne zdôrazníme                                                             | 1    |
+| Transport + CPU/voices stále viditeľné                      | Statusbar: CPU · voices · mini master meter (MasterMeter.tsx už existuje)                                     | 3    |
 
 **Čo zámerne NE:** floating okná, maximalistické menu bary, FL房间 skrývanie
 panelov do "internal controllers".
@@ -66,6 +68,7 @@ panelov do "internal controllers".
 ```
 
 Kľúčové zmeny oproti dnešku:
+
 1. **Panel prepínače idú z topbaru do docku.** Kde je panel, tam sa aj prepína
    (Ableton/Bitwig vzor). Topbar ostáva transport + globálne. Zmizne aj ⋯
    overflow — všetkých 9 panelov sa zmesti do tab row na 1280+ (taby sú úzke,
@@ -80,17 +83,20 @@ Kľúčové zmeny oproti dnešku:
 ## 4. Vlny
 
 ### Vlna 0 — Quick fixes (bugy z auditu, nezávislé, ihneď)
-| Fix | Kde |
-| --- | --- |
-| INTENT action row sa prekrýva v úzkom split slote (DO IT/GENERATE/SONG) | `IntentPanel.tsx` — flex-wrap + min-width |
-| Mixer obsah orezaný spodkom (RETURN/metre bez paddingu) | `03-mixer.css` + mixer wall |
+
+| Fix                                                                          | Kde                                                                                    |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| INTENT action row sa prekrýva v úzkom split slote (DO IT/GENERATE/SONG)      | `IntentPanel.tsx` — flex-wrap + min-width                                              |
+| Mixer obsah orezaný spodkom (RETURN/metre bez paddingu)                      | `03-mixer.css` + mixer wall                                                            |
 | Toggle quirk: panel v slotB → klik v topbare ho presunie namiesto zatvorenia | `App.tsx` `setBottomPanelTab` — klik na už-otvorený panel ho zavrie nezávisle od slotu |
-| SK preklepy v IntentPanel ("OSOBNÝ VLHUS", "SEDNÍ NA AKORDY") | `IntentPanel.tsx` copy |
-| Nestýlované scrollbary v dock-slote | nové pravidlá v dock CSS |
+| SK preklepy v IntentPanel ("OSOBNÝ VLHUS", "SEDNÍ NA AKORDY")                | `IntentPanel.tsx` copy                                                                 |
+| Nestýlované scrollbary v dock-slote                                          | nové pravidlá v dock CSS                                                               |
 
 ### Vlna 1 — Tokens 2.0 + Dock Chrome (jadro kampane)
+
 **Tokens 2.0** (additívne do `:root` v `01-base.css`, zaregistrovať v
 `theme-data.ts` THEME_VARS, aby fungovali theme presety):
+
 - spacing: `--space-1..6` (4/8/12/16/24/32)
 - radius: `--radius-xs..xl` (3/5/8/12/16)
 - elevation: `--elev-1..3` (tiene) + `--hairline` (0.5 px border token)
@@ -99,6 +105,7 @@ Kľúčové zmeny oproti dnešku:
 - typografia: `--fs-2xs..lg` + pravidlo "čísla vždy mono" (`tabular-nums` už je)
 
 **Dock Chrome:**
+
 - `DockChrome.tsx` — tab row generovaná z `PANEL_KEYS` (dockLayout.ts je zdroj
   pravdy), `role="tablist"/"tab"/"tabpanel"` + `aria-selected`
 - tab = ikona + label, aktívny tab má accent underline/glow (Molten glow len
@@ -120,6 +127,7 @@ dosiahnuteľný 1 klikom z hociaľ; Alt+1..8 prepína panely; F-keys sa nedotkn�
 e2e smoke zelený; screenshot verifikácia 1680×1000 + 1280×800.
 
 ### Vlna 2 — Control kit + panel konsolidácia (koniec button soup)
+
 - Control kit v `controls.tsx`/CSS: `.btn-primary` (accent fill), `.btn-secondary`
   (raised), `.btn-ghost`, `.btn-icon`, `.chip` (toggle), `.seg` (segmented) —
   dedia `--ctrl-h`, konsistentný focus-visible
@@ -133,6 +141,7 @@ e2e smoke zelený; screenshot verifikácia 1680×1000 + 1280×800.
   len status; DICE slidre preč z modrej; track color dedí do padov/clipov/chipov
 
 ### Vlna 3 — FL interakcie (myš a hint ako učiteľ)
+
 - `useWheelAdjust` — wheel na hover nad Slider/knob mení hodnotu, Ctrl+wheel
   = jemný krok; rešpektuje disabled + text inputy (nesmie kolidovať so
   scrollom gridu — wheel-braked len nad samotným controlom)
@@ -145,6 +154,7 @@ e2e smoke zelený; screenshot verifikácia 1680×1000 + 1280×800.
   voices už sú
 
 ### Vlna 4 — Browser panel + polish
+
 - ľavý strip SampleBrowser (lazy, collapsible 240 px; grid sa stane
   `auto 1fr 280px`); drag&drop do sequenceru cez existujúci DropZone infra
 - empty states pre prázdne panely

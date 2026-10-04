@@ -34,6 +34,8 @@ export type ShortcutKey =
   | "panelMod"
   | "panelExport"
   | "panelDice"
+  | "panelIntent"
+  | "panelMidi"
   | "nextPattern"
   | "prevPattern"
   | "seekHome"
@@ -56,6 +58,10 @@ export const PANEL_IDS_BY_SHORTCUT: Record<string, string> = {
   panelMod: "mod",
   panelExport: "exp",
   panelDice: "dice",
+  // Alt+7/8 close the gap left by the topbar's removed panel buttons —
+  // every dock tab is now keyboard-reachable (ROADMAP-UI-2027 V1).
+  panelIntent: "intent",
+  panelMidi: "midi",
 };
 
 export function panelIdOfShortcut(key: ShortcutKey): string | null {
@@ -154,6 +160,8 @@ export const SHORTCUTS: Shortcut[] = [
   { key: "panelMod", label: "Toggle modulation", group: "Panels", keyHint: "4", alt: true },
   { key: "panelExport", label: "Toggle export", group: "Panels", keyHint: "5", alt: true },
   { key: "panelDice", label: "Toggle dice panel", group: "Panels", keyHint: "6", alt: true },
+  { key: "panelIntent", label: "Toggle intent panel", group: "Panels", keyHint: "7", alt: true },
+  { key: "panelMidi", label: "Toggle MIDI input panel", group: "Panels", keyHint: "8", alt: true },
 
   { key: "deleteNote", label: "Delete selected note / clear selected steps", group: "Sequencer", keyHint: "Delete" },
 

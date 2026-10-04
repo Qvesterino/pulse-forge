@@ -21,9 +21,6 @@ describe("a11y: keyboard navigation across major panels", () => {
         <TopBar
           onToggleDiagnostics={noop}
           diagnosticsOpen={false}
-          onSetBottomPanel={noop}
-          bottomPanel={null}
-          splitPanel={null}
           onToggleHelp={noop}
           onOpenPalette={noop}
           playMode="pattern"

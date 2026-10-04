@@ -28,7 +28,6 @@ import { CollabPanel } from "./CollabPanel";
 import { AssistPanel } from "./AssistPanel";
 import { assistFill, assistVary } from "../commands/commands";
 import { nextSeed } from "../shared/dice";
-import type { BottomPanel } from "./dockLayout";
 
 function formatClock(iso: string | null): string {
   if (!iso) return "";
@@ -61,9 +60,6 @@ function selectTopbarActions(actions: readonly TopbarAction[], limit: number): T
 export function TopBar({
   onToggleDiagnostics,
   diagnosticsOpen,
-  onSetBottomPanel,
-  bottomPanel,
-  splitPanel,
   onToggleHelp,
   onOpenPalette,
   playMode,
@@ -77,9 +73,6 @@ export function TopBar({
 }: {
   onToggleDiagnostics: () => void;
   diagnosticsOpen: boolean;
-  onSetBottomPanel: (panel: BottomPanel, split?: boolean) => void;
-  bottomPanel: BottomPanel | null;
-  splitPanel: BottomPanel | null;
   onToggleHelp: () => void;
   /** Optional — the ⌘K palette button renders only when provided. */
   onOpenPalette?: () => void;
@@ -353,114 +346,6 @@ export function TopBar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loopEnabled, loopStart, loopEnd, doc, services.store]);
 
-  const panelActions: TopbarAction[] = [
-    {
-      id: "mixer",
-      label: "MIX",
-      ariaLabel: "Toggle mixer panel",
-      title: "Toggle mixer panel (1)",
-      priority: 100,
-      active: bottomPanel === "mixer" || splitPanel === "mixer",
-      onClick: (event) => onSetBottomPanel("mixer", event.ctrlKey || event.metaKey),
-    },
-    {
-      id: "devices",
-      label: "DEV",
-      ariaLabel: "Toggle track device chain",
-      title: "Toggle the selected track's instrument and effect chain (2)",
-      priority: 98,
-      active: bottomPanel === "devices" || splitPanel === "devices",
-      onClick: (event) => onSetBottomPanel("devices", event.ctrlKey || event.metaKey),
-    },
-    {
-      id: "arr",
-      label: "ARR",
-      ariaLabel: "Toggle arrangement and scenes",
-      title: "Toggle arrangement and scenes (3)",
-      priority: 96,
-      active: bottomPanel === "arr" || splitPanel === "arr",
-      onClick: (event) => onSetBottomPanel("arr", event.ctrlKey || event.metaKey),
-    },
-    {
-      id: "mod",
-      label: "MOD",
-      ariaLabel: "Toggle modulation panel",
-      title: "Toggle automation, LFOs and macros (4)",
-      priority: 88,
-      active: bottomPanel === "mod" || splitPanel === "mod",
-      onClick: (event) => onSetBottomPanel("mod", event.ctrlKey || event.metaKey),
-    },
-    {
-      id: "exp",
-      label: "EXPORT",
-      ariaLabel: "Toggle export panel",
-      title: "Toggle export panel (5)",
-      // Below DICE/INTENT (86/84): the generative surfaces are the product's
-      // differentiators and belong in direct reach; EXPORT returns to the
-      // visible row on wide topbars via the higher width tier.
-      priority: 78,
-      active: bottomPanel === "exp" || splitPanel === "exp",
-      className: "btn-export-toggle",
-      onClick: (event) => onSetBottomPanel("exp", event.ctrlKey || event.metaKey),
-    },
-    {
-      // Lives in the ⋯ overflow at common widths — the visible topbar keeps
-      // the live surfaces + generative panels. The button promotes back when
-      // the panel is open, so state never hides.
-      id: "midi",
-      label: "MIDI",
-      ariaLabel: "Toggle MIDI input panel",
-      title: "Toggle MIDI input panel",
-      priority: 72,
-      active: bottomPanel === "midi" || splitPanel === "midi",
-      onClick: (event) => onSetBottomPanel("midi", event.ctrlKey || event.metaKey),
-    },
-    {
-      // DICE/INTENT were previously reachable only via the toolbar's small
-      // 🎲 button or the ⌘K palette — users could not find how to get the
-      // dice panel back once the dock switched away from it (Alt+6 exists
-      // but is undiscoverable). Same overflow-promote behaviour as MIDI.
-      // Priority ABOVE EXPORT (86/84 > 78): the generative surfaces are the
-      // product's differentiators — they get direct topbar reach at common
-      // widths instead of hiding behind the ⋯ overflow.
-      id: "dice",
-      label: "DICE",
-      ariaLabel: "Toggle dice panel",
-      title: "Toggle dice panel (6) — rapid beat generator",
-      priority: 86,
-      active: bottomPanel === "dice" || splitPanel === "dice",
-      onClick: (event) => onSetBottomPanel("dice", event.ctrlKey || event.metaKey),
-    },
-    {
-      id: "intent",
-      label: "INTENT",
-      ariaLabel: "Toggle intent panel",
-      title: "Toggle intent panel — describe the beat in words",
-      priority: 84,
-      active: bottomPanel === "intent" || splitPanel === "intent",
-      onClick: (event) => onSetBottomPanel("intent", event.ctrlKey || event.metaKey),
-    },
-    {
-      // Reference Map reads a FINISHED track, unlike every other panel here
-      // which acts on the open project. Its position mirrors that: it is a
-      // lookup surface you reach for when you do not know what you are aiming
-      // at yet, not a mixing tool.
-      //
-      // Priority BELOW EXPORT (76 < 78) on purpose. The topbar promotes the
-      // highest-priority actions and drops the rest into the ⋯ overflow, so a
-      // new panel button above EXPORT silently evicts it from the bar — the
-      // existing TopBar test caught exactly that. EXPORT keeps its direct
-      // reach; Reference Map is one keystroke or a click away.
-      id: "reference",
-      label: "REF MAP",
-      ariaLabel: "Toggle reference map panel",
-      title: "Toggle reference map — drop a track, get its BPM, key and confidence",
-      priority: 76,
-      active: bottomPanel === "reference" || splitPanel === "reference",
-      onClick: (event) => onSetBottomPanel("reference", event.ctrlKey || event.metaKey),
-    },
-  ];
-
   const toolActions: TopbarAction[] = [
     ...(onOpenPalette
       ? [
@@ -559,26 +444,17 @@ export function TopBar({
     },
   ];
 
-  // Keep the transport and the project identity stable, then spend the remaining
-  // width on actions by priority. Active panels are promoted so state never hides.
-  // Panels: the four live surfaces (MIX/DEV/ARR/MOD) stay direct-access at
-  // common widths — EXPORT/MIDI live in the overflow until there is room.
-  // Keep the transport and the project identity stable, then spend the remaining
-  // width on actions by priority. Active panels are promoted so state never hides.
-  // Panels: the visible topbar keeps the four live surfaces (MIX/DEV/ARR/MOD)
-  // + EXPORT; MIDI waits in the overflow. Tools cap at ⌘K/?/HIST — ASSIST,
-  // JAM, SCALE, THEME and DIAG open from the ⋯ menu (or stay promoted while
-  // their popover is open, so state never hides).
-  // Width tiers (panel actions): at ≥1440 the generative surfaces DICE and
-  // INTENT (86/84) take the 5th/6th slots ahead of EXPORT (78), which returns
-  // on wide topbars (≥1760) as the 7th. MIDI stays overflow-promoted.
-  const panelLimit = topbarWidth < 1120 ? 3 : topbarWidth < 1440 ? 4 : topbarWidth < 1760 ? 6 : 7;
+  // Keep the transport and the project identity stable, then spend the
+  // remaining width on tools by priority; active tools are promoted so state
+  // never hides. Tools cap at ⌘K/?/HIST — ASSIST, JAM, SCALE, THEME and DIAG
+  // open from the ⋯ menu (or stay promoted while their popover is open).
+  // PANEL toggles no longer live here: the bottom dock owns its own tab row
+  // (DockChrome, ROADMAP-UI-2027 V1) — where the panel is, is where you
+  // switch it, FL-Studio style.
   const toolLimit = topbarWidth < 1120 ? 2 : 3;
-  const visiblePanelActions = selectTopbarActions(panelActions, panelLimit);
   const visibleToolActions = selectTopbarActions(toolActions, toolLimit);
-  const overflowPanelActions = panelActions.filter((action) => !visiblePanelActions.includes(action));
   const overflowToolActions = toolActions.filter((action) => !visibleToolActions.includes(action));
-  const overflowActionCount = overflowPanelActions.length + overflowToolActions.length;
+  const overflowActionCount = overflowToolActions.length;
   const hasOverflowActions = overflowActionCount > 0;
   // Transport terms scale with available room: full words only on wide topbars.
   // The long COUNT-IN/PRE-ROLL labels would otherwise squeeze the project name
@@ -905,21 +781,6 @@ export function TopBar({
             {saveStatus === "saving" && "SAVING…"}
             {saveStatus === "error" && "SAVE ERROR — RETRY"}
           </span>
-          {visiblePanelActions.map((action) => (
-            <button
-              key={action.id}
-              type="button"
-              className={["btn", "btn-ghost", action.className, action.active ? "active" : ""]
-                .filter(Boolean)
-                .join(" ")}
-              onClick={action.onClick}
-              title={action.title}
-              aria-label={action.ariaLabel}
-              aria-pressed={action.active}
-            >
-              {action.label}
-            </button>
-          ))}
           {visibleToolActions.map((action) => (
             <button
               key={action.id}
@@ -956,25 +817,6 @@ export function TopBar({
                   role="menu"
                   aria-label="More topbar controls"
                 >
-                  {overflowPanelActions.length > 0 && (
-                    <div className="topbar-overflow-section">
-                      <div className="topbar-overflow-heading">PANELS</div>
-                      {overflowPanelActions.map((action) => (
-                        <button
-                          key={action.id}
-                          type="button"
-                          className={`topbar-overflow-item${action.active ? " active" : ""}`}
-                          onClick={(event) => invokeOverflowAction(action, event)}
-                          title={action.title}
-                          aria-label={action.ariaLabel}
-                          aria-pressed={action.active}
-                          role="menuitem"
-                        >
-                          {action.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
                   {overflowToolActions.length > 0 && (
                     <div className="topbar-overflow-section">
                       <div className="topbar-overflow-heading">TOOLS</div>
