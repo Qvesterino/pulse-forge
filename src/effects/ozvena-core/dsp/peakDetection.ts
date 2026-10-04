@@ -183,7 +183,10 @@ export function estimateQ(
  * The returned array length = floor(mag.length / N). The mean of
  * `mag[i*k]` for k = 1..N is written to `out[floor(i/N)]`.
  */
-export function harmonicProductSpectrum(mag: Float32Array | number[], harmonics: number = 4): Float32Array {
+export function harmonicProductSpectrum(
+  mag: Float32Array | number[],
+  harmonics: number = 4,
+): Float32Array {
   if (harmonics < 1) {
     // Defensive: return a copy as Float32Array.
     const out = new Float32Array(mag.length);

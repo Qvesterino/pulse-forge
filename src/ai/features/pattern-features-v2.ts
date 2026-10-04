@@ -127,12 +127,15 @@ interface LaneStats {
   hits: number;
 }
 
-function laneStats(pattern: Pattern, doc: ProjectDocument, role: "bass" | "chord" | "lead", options: GenerateOptions): LaneStats {
+function laneStats(
+  pattern: Pattern,
+  doc: ProjectDocument,
+  role: "bass" | "chord" | "lead",
+  options: GenerateOptions,
+): LaneStats {
   const track = instrumentTrackForRole(doc, role, options.instrumentTrackIds);
   if (!track) return { present: false, notes: [], hits: 0 };
-  const notes = [...(pattern.notes?.[track.id] ?? [])].sort(
-    (a, b) => a.start - b.start || a.pitch - b.pitch,
-  );
+  const notes = [...(pattern.notes?.[track.id] ?? [])].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
   return { present: notes.length > 0, notes, hits: notes.length };
 }
 

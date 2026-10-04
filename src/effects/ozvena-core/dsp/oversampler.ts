@@ -53,7 +53,11 @@ function kaiserWindow(n: number, M: number, beta: number): number {
  * Design a Kaiser-windowed sinc low-pass at `cutoffHz` for a given
  * sample rate. Length must be odd. Stop-band attenuation = 90 dB.
  */
-export function designLowpassKernel(cutoffHz: number, sampleRate: number, length: number): Float32Array {
+export function designLowpassKernel(
+  cutoffHz: number,
+  sampleRate: number,
+  length: number,
+): Float32Array {
   if (length % 2 === 0) length += 1;
   const M = (length - 1) / 2;
   const A = 90;
@@ -259,7 +263,9 @@ export function createPolyphaseOversampler(): PolyphaseOversampler {
  * Pick the oversample factor for a given quality mode and CPU budget.
  * Used by quality-aware modules (smoother lookahead, future ADAA).
  */
-export function pickOversampleFactor(quality: "eco" | "standard" | "high" | "render"): OversampleFactor {
+export function pickOversampleFactor(
+  quality: "eco" | "standard" | "high" | "render",
+): OversampleFactor {
   if (quality === "eco") return 1;
   if (quality === "standard") return 2;
   if (quality === "high") return 4;

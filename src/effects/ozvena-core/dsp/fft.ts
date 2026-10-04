@@ -12,7 +12,6 @@
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
  */
-// (Reconciled from Pulse Forge hardening pass, 2026-09-14: magnitudeSpectrum exact-N scratch view + short-input zero pad.)
 // ═══════════════════════════════════════════════════════════
 // Ozvena — Self-contained radix-2 FFT + windowing
 //
@@ -148,12 +147,9 @@ export function magnitudeSpectrum(
   if (out.length < half + 1) {
     throw new Error(`magnitudeSpectrum: out must hold N/2+1=${half + 1} bins`);
   }
-  // View the scratch at EXACTLY N samples: fft() transforms re.length, so an
-  // oversized scratch (e.g. a 4096 buffer reused after switching to a 2048
-  // window) would drag stale bins N..len into the transform and contaminate
-  // every output bin, not just waste cycles.
   const re = scratchRe && scratchRe.length >= N ? scratchRe.subarray(0, N) : new Float64Array(N);
   const im = scratchIm && scratchIm.length >= N ? scratchIm.subarray(0, N) : new Float64Array(N);
+  // (Reconciled from Pulse Forge hardening pass, 2026-09-14: magnitudeSpectrum exact-N scratch view + short-input zero pad.)
 
   let winGain = 0;
   for (let k = 0; k < N; k++) {

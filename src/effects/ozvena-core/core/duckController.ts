@@ -12,7 +12,6 @@
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
  */
-// (Reconciled from Pulse Forge hardening pass, 2026-09-14: attack/release/sensitivity boundary clamps.)
 // ═══════════════════════════════════════════════════════════
 // Ozvena — Auto-Duck Controller
 //
@@ -102,6 +101,7 @@ export function createDuckController(): DuckController {
       // NaN), and the per-sample one-pole then diverges geometrically to
       // ±Infinity/NaN — latching onto the wet bus via lastDuckGain. Floor
       // the times so coef always lands in (0, 1).
+      // (Reconciled from Pulse Forge hardening pass, 2026-09-14: attack/release/sensitivity boundary clamps.)
       const attackCoef = Math.exp(-1000 / (sampleRate * Math.max(0.01, params.attackMs)));
       const releaseCoef = Math.exp(-1000 / (sampleRate * Math.max(0.01, params.releaseMs)));
       const coef = targetGain < currentGain ? attackCoef : releaseCoef;
@@ -118,12 +118,13 @@ export function createDuckController(): DuckController {
       const next = { ...params, ...p };
       // Boundary validation: invalid times/gains must never reach the
       // per-sample envelope (see getGain — coef > 1 diverges the recursion).
+      // (Reconciled from Pulse Forge hardening pass, 2026-09-14: attack/release/sensitivity boundary clamps.)
       if (!Number.isFinite(next.thresholdDb)) next.thresholdDb = DEFAULT_DUCK_PARAMS.thresholdDb;
       next.sensitivity = Number.isFinite(next.sensitivity)
-        ? clamp(next.sensitivity, 0, 1)
+        ? Math.max(0, Math.min(1, next.sensitivity))
         : DEFAULT_DUCK_PARAMS.sensitivity;
-      next.attackMs = Number.isFinite(next.attackMs) ? Math.max(0.01, next.attackMs) : DEFAULT_DUCK_PARAMS.attackMs;
-      next.releaseMs = Number.isFinite(next.releaseMs) ? Math.max(0.01, next.releaseMs) : DEFAULT_DUCK_PARAMS.releaseMs;
+      if (!Number.isFinite(next.attackMs)) next.attackMs = DEFAULT_DUCK_PARAMS.attackMs;
+      if (!Number.isFinite(next.releaseMs)) next.releaseMs = DEFAULT_DUCK_PARAMS.releaseMs;
       params = next;
     },
 

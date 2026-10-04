@@ -12,8 +12,6 @@
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
  */
-// (Reconciled from Pulse Forge hardening pass, 2026-09-14: shelf Q floor (q=0 no longer NaN).)
-// (Reconciled from Pulse Forge audit 12, 2026-09-23: denormal flush on DF2T z-states — see processBiquad.)
 // ═══════════════════════════════════════════════════════════
 // Ozvena — Biquad filter engine
 //
@@ -111,7 +109,13 @@ export function setHighPass(c: BiquadCoeffs, freq: number, q: number, sampleRate
   c.a2 = q32((1 - alpha) / a0);
 }
 
-export function setBell(c: BiquadCoeffs, freq: number, q: number, gainDb: number, sampleRate: number): void {
+export function setBell(
+  c: BiquadCoeffs,
+  freq: number,
+  q: number,
+  gainDb: number,
+  sampleRate: number,
+): void {
   const w = w0(freq, sampleRate);
   const cosW = Math.cos(w);
   const sinW = Math.sin(w);
@@ -125,14 +129,18 @@ export function setBell(c: BiquadCoeffs, freq: number, q: number, gainDb: number
   c.a2 = q32((1 - alpha / A) / a0);
 }
 
-export function setLowShelf(c: BiquadCoeffs, freq: number, q: number, gainDb: number, sampleRate: number): void {
+export function setLowShelf(
+  c: BiquadCoeffs,
+  freq: number,
+  q: number,
+  gainDb: number,
+  sampleRate: number,
+): void {
   const w = w0(freq, sampleRate);
   const cosW = Math.cos(w);
   const sinW = Math.sin(w);
   const A = Math.pow(10, gainDb / 40);
-  // q = 0 would make beta ±Infinity → a0 Infinity → b0 = Inf/Inf = NaN, and
-  // the NaN coefficients poison the wet bus (the state guard resets z1/z2 but
-  // cannot heal the coefficients). Same 1e-6 floor as every alpha above.
+  // (Reconciled from Pulse Forge hardening pass, 2026-09-14: shelf Q floor (q=0 no longer NaN).)
   const beta = Math.sqrt(A) / Math.max(1e-6, q);
   const a0 = A + 1 + (A - 1) * cosW + beta * sinW;
   c.b0 = q32((A * (A + 1 - (A - 1) * cosW + beta * sinW)) / a0);
@@ -142,12 +150,18 @@ export function setLowShelf(c: BiquadCoeffs, freq: number, q: number, gainDb: nu
   c.a2 = q32((A + 1 + (A - 1) * cosW - beta * sinW) / a0);
 }
 
-export function setHighShelf(c: BiquadCoeffs, freq: number, q: number, gainDb: number, sampleRate: number): void {
+export function setHighShelf(
+  c: BiquadCoeffs,
+  freq: number,
+  q: number,
+  gainDb: number,
+  sampleRate: number,
+): void {
   const w = w0(freq, sampleRate);
   const cosW = Math.cos(w);
   const sinW = Math.sin(w);
   const A = Math.pow(10, gainDb / 40);
-  // Same q floor as setLowShelf — see the comment there.
+  // (Reconciled from Pulse Forge hardening pass, 2026-09-14: shelf Q floor (q=0 no longer NaN).)
   const beta = Math.sqrt(A) / Math.max(1e-6, q);
   const a0 = A + 1 - (A - 1) * cosW + beta * sinW;
   c.b0 = q32((A * (A + 1 + (A - 1) * cosW + beta * sinW)) / a0);
@@ -240,9 +254,9 @@ export function processBiquad(bq: BiquadState, channels: Float32Array[], frameCo
     const buf = channels[ch];
     let z1 = bq.z1[ch];
     let z2 = bq.z2[ch];
-    // (Reconciled from Pulse Forge audit 12, 2026-09-23: denormal flush —
-    // a z-state decaying through the subnormal range after silence stalls
-    // the DF2T recursion for the whole block.)
+    // (Reconciled from Pulse Forge audit 12, 2026-09-23: denormal flush on DF2T z-states — see processBiquad.)
+    // A z-state decaying through the subnormal range after silence stalls
+    // the DF2T recursion for the whole block.
     if (z1 > -1e-20 && z1 < 1e-20) z1 = 0;
     if (z2 > -1e-20 && z2 < 1e-20) z2 = 0;
 

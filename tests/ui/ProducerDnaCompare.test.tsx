@@ -185,14 +185,17 @@ describe("ProducerDnaCompare", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/všeobecná preferencia.*aspoň 2 porovnania/i);
   });
 
-  it("does not advertise unsupported preference reasons as learnable", () => {
+  it("W4: bass and harmony are now offered as learnable reasons", () => {
     const { project, result } = buildFixture();
     render(<ProducerDnaCompare project={project} result={result} onAudition={vi.fn()} />);
     fireEvent.click(screen.getAllByRole("button", { name: "A" })[0]);
     fireEvent.click(screen.getAllByRole("button", { name: "B" })[1]);
 
-    expect(screen.getByRole("option", { name: /basa \(ranker zatiaľ nemeria\)/i })).toBeDisabled();
-    expect(screen.getByRole("option", { name: /harmónia \(ranker zatiaľ nemeria\)/i })).toBeDisabled();
+    // Since features.v2 both are REAL measurements (bass note density / root
+    // alignment, chord voicing movement / harmonic rhythm), so the reason
+    // picker no longer marks them as unlearnable.
+    expect(screen.getByRole("option", { name: /^basa$/i })).toBeEnabled();
+    expect(screen.getByRole("option", { name: /^harmónia$/i })).toBeEnabled();
     expect(screen.getByRole("option", { name: /priestor frázy/i })).toBeEnabled();
   });
 

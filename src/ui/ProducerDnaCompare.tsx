@@ -2,6 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { extractPatternFeaturesV2 } from "../ai/features/pattern-features-v2";
 import type { ProjectDocument } from "../project-model/types";
 import { orderTasteProbeSides, suggestTasteProbePair, tasteProbePairKey } from "../intent/taste-probe";
+import {
+  comparedPairKeys,
+  generationsWithoutProducerDnaVote,
+  noteGenerationWithoutVote,
+  noteProbeDismissed,
+  noteProducerDnaVote,
+  proactiveProbeState,
+} from "../intent/proactive-probe";
 import { isPreferenceReasonRankable } from "../intent/personal-ranker";
 import {
   buildPreferenceLedgerPack,
@@ -101,6 +109,56 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
     setMessage("");
   }, [result]);
 
+  /**
+   * W3 proactive probe: after N generations in this context WITHOUT an
+   * explicit vote, the panel offers ONE controlled question on its own. The
+   * counter is a session streak (a reload starts fresh); an explicit vote or a
+   * dismissal resets it, so this can never become a nagging loop.
+   */
+  const armProbe = useRef<(pair: ReturnType<typeof proactiveProbeState>["proposal"]) => void>(() => {});
+
+  useEffect(() => {
+    if (!learningEnabled || candidates.length < 2) return;
+    noteGenerationWithoutVote();
+    const features = candidateFeatures(candidates);
+    const state = proactiveProbeState({
+      candidates: candidates.map((candidate) => ({
+        candidate,
+        candidateIndex: candidate.candidateIndex,
+        contentHash: candidate.contentHash,
+        features: features.get(candidate.candidateIndex) ?? [],
+        globalScore: candidate.globalScore,
+        globalScoreVersion: candidate.globalScoreVersion,
+      })),
+      generationsWithoutVote: generationsWithoutProducerDnaVote(),
+      learningEnabled,
+      excludedPairKeys: new Set([...comparedPairKeys(readPreferenceLedger(), context.key), ...skippedProbePairs]),
+    });
+    if (state.proposal) armProbe.current(state.proposal);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result]);
+
+  // Assign the (stateful) A/B sides from a proposed pair.
+  useEffect(() => {
+    armProbe.current = (pair) => {
+      if (!pair) return;
+      let randomByte: number | undefined;
+      try {
+        randomByte = window.crypto.getRandomValues(new Uint8Array(1))[0];
+      } catch {
+        const hash = `${pair.candidateA.contentHash}:${pair.candidateB.contentHash}`;
+        randomByte =
+          Array.from(hash).reduce((value, character) => (value * 31 + character.charCodeAt(0)) >>> 0, 0) & 0xff;
+      }
+      const [sideA, sideB] = orderTasteProbeSides(pair, (randomByte ?? 0) % 2 === 1);
+      setAIndex(sideA.candidateIndex);
+      setBIndex(sideB.candidateIndex);
+      setReason(pair.reason);
+      setBlindProbeActive(true);
+      setMessage("Chcem sa ťa niečo spýtať — nič sa neuloží, kým nepotvrdíš voľbu.");
+    };
+  }, []);
+
   const selectA = (index: number) => {
     setBlindProbeActive(false);
     setAIndex(index);
@@ -140,6 +198,9 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
       setMessage("Voľbu sa nepodarilo uložiť lokálne.");
       return;
     }
+    // An explicit vote ends the "no feedback" streak — the panel will not
+    // proactively ask again until N fresh generations pass.
+    noteProducerDnaVote();
     const preferred = choice === "a" ? "A" : "B";
     if (choice === "neither") {
       setMessage("Uložené ako ‘ani jeden’ — bez učenia smeru.");
@@ -307,6 +368,9 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
                   const pairKey = tasteProbePairKey(candidateA.contentHash, candidateB.contentHash);
                   setSkippedProbePairs((previous) => new Set([...previous, pairKey]));
                 }
+                // A dismissed question resets the streak: the panel asks once,
+                // then waits again instead of nudging.
+                noteProbeDismissed();
                 setBlindProbeActive(false);
                 setAIndex(null);
                 setBIndex(null);

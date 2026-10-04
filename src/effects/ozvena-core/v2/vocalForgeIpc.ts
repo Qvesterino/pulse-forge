@@ -53,8 +53,18 @@ export interface PeerRegistry {
   getPeer(
     instanceId: PeerInstanceId,
   ): { instanceId: PeerInstanceId; kind: PluginKind; name: string; sampleRate: number } | undefined;
-  getPeers(): readonly { instanceId: PeerInstanceId; kind: PluginKind; name: string; sampleRate: number }[];
-  notifyLevel(fromInstanceId: PeerInstanceId, freqHz: number, magDb: number, timestamp: number): void;
+  getPeers(): readonly {
+    instanceId: PeerInstanceId;
+    kind: PluginKind;
+    name: string;
+    sampleRate: number;
+  }[];
+  notifyLevel(
+    fromInstanceId: PeerInstanceId,
+    freqHz: number,
+    magDb: number,
+    timestamp: number,
+  ): void;
   subscribe(callback: PeerNotificationCallback): () => void;
   subscribePeer(instanceId: PeerInstanceId, callback: PeerNotificationCallback): () => void;
   reset(): void;
@@ -148,7 +158,12 @@ export function createPeerRegistry(): PeerRegistry {
 export const globalPeerRegistry: PeerRegistry = createPeerRegistry();
 
 export interface OzvenaIpc {
-  register(name: string, sampleRate: number, latencySamples: number, channelCount: number): PeerInstanceId;
+  register(
+    name: string,
+    sampleRate: number,
+    latencySamples: number,
+    channelCount: number,
+  ): PeerInstanceId;
   unregister(): void;
   getPeers(): readonly PeerNotification[];
   getInstanceId(): PeerInstanceId | null;

@@ -30,7 +30,6 @@
 // ═══════════════════════════════════════════════════════════
 
 import { createSpectrumAnalyzer, type SpectrumAnalyzer } from "../dsp/spectrumAnalyzer.js";
-import { clamp } from "../dsp/math.js";
 
 /** A peer plugin that can be cross-referenced for masking analysis. */
 export interface MaskingIpcPeer {
@@ -141,10 +140,14 @@ export function createMaskingMeter(): MaskingMeter {
 
   return {
     prepare(sr) {
-      const srClamped = clamp(sr, 8000, 192000);
+      // The masker does not depend on the host sample rate — the FFT
+      // magnitude is bin-indexed and `snapshot` resolves the grid
+      // against the sample rate supplied by the caller. We re-instantiate
+      // the analyzer on every prepare() to drop stale ring content from
+      // a previous session and apply the current `analyzerEnabled` flag.
+      void sr;
       analyzer = createSpectrumAnalyzer({ fftSize: 2048 });
       analyzer.setEnabled(analyzerEnabled);
-      void srClamped;
     },
 
     setAnalyzerEnabled(on) {

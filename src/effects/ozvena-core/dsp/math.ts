@@ -12,7 +12,6 @@
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
  */
-// (Reconciled from Pulse Forge hardening pass, 2026-09-14: NaN-safe clamp (NaN degrades to lower bound).)
 // ═══════════════════════════════════════════════════════════
 // Ozvena — Math helpers
 //
@@ -23,16 +22,8 @@
 export const TAU = 2 * Math.PI;
 export const HALF_PI = Math.PI / 2;
 
-/**
- * Clamp `v` to the closed range [min, max].
- *
- * NaN-safe BY CONTRACT: NaN fails both naive comparisons, so the old
- * implementation returned NaN unchanged and one non-finite parameter
- * poisoned every derived coefficient it touched (attack alphas, feedback
- * gains, damper states — the FDN then latched NaN permanently). NaN is
- * never a meaningful audio value, so it degrades to the LOWER bound,
- * which for every parameter in the state tree is the safe/off direction.
- */
+/** Clamp `v` to the closed range [min, max]. */
+// (Reconciled from Pulse Forge hardening pass, 2026-09-14: NaN-safe clamp (NaN degrades to lower bound).)
 export function clamp(v: number, min: number, max: number): number {
   if (!(v >= min)) return min; // also catches NaN
   if (v > max) return max;
@@ -83,7 +74,13 @@ export function fastTanh(x: number): number {
  * Hermite 4-point, 3rd-order (Catmull-Rom) interpolation. Used for
  * fractional-delay reads in Mod Pad and engine smoothers.
  */
-export function hermiteInterp(s0: number, s1: number, s2: number, s3: number, frac: number): number {
+export function hermiteInterp(
+  s0: number,
+  s1: number,
+  s2: number,
+  s3: number,
+  frac: number,
+): number {
   const c0 = s1;
   const c1 = 0.5 * (s2 - s0);
   const c2 = s0 - 2.5 * s1 + 2 * s2 - 0.5 * s3;

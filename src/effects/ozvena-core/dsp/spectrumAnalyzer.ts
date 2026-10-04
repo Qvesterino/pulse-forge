@@ -62,7 +62,9 @@ export interface SpectrumAnalyzer {
 
 const TAPS: readonly AnalyzerTap[] = ["input", "dry", "wet", "output"];
 
-export function createSpectrumAnalyzer(opts: { fftSize?: FftSize; downmix?: "mono" | "max" } = {}): SpectrumAnalyzer {
+export function createSpectrumAnalyzer(
+  opts: { fftSize?: FftSize; downmix?: "mono" | "max" } = {},
+): SpectrumAnalyzer {
   let fftSize: number = opts.fftSize ?? 2048;
   const downmix: "mono" | "max" = opts.downmix ?? "mono";
   let enabled = true;

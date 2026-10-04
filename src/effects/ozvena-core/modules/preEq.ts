@@ -253,7 +253,7 @@ export function createPreEq(): PreEq {
   for (let i = 0; i < snapshotGrid.length; i++) {
     snapshotGrid[i] = 20 * Math.pow(1000, i / (snapshotGrid.length - 1));
   }
-  let snapshotBuf: Float32Array = new Float32Array(snapshotGrid.length);
+  const snapshotBuf: Float32Array = new Float32Array(snapshotGrid.length);
 
   function updateCoefficients(): void {
     shapeCoeffs(bq1, params.band1, sampleRate);
@@ -303,7 +303,11 @@ export function createPreEq(): PreEq {
       // Backward-compatible wrapper: returns just the 3-band cuts.
       const result = this.runAutoCutDetailed(sr);
       if (!result) return null;
-      return [result.bands[0].suggestedCutDb, result.bands[1].suggestedCutDb, result.bands[2].suggestedCutDb];
+      return [
+        result.bands[0].suggestedCutDb,
+        result.bands[1].suggestedCutDb,
+        result.bands[2].suggestedCutDb,
+      ];
     },
 
     runAutoCutDetailed(sr) {

@@ -263,7 +263,11 @@ export function createReverbEq(): ReverbEq {
     runUnmask(sr) {
       const result = this.runUnmaskDetailed(sr);
       if (!result) return null;
-      return [result.bands[0].suggestedCutDb, result.bands[1].suggestedCutDb, result.bands[2].suggestedCutDb];
+      return [
+        result.bands[0].suggestedCutDb,
+        result.bands[1].suggestedCutDb,
+        result.bands[2].suggestedCutDb,
+      ];
     },
 
     runUnmaskDetailed(sr) {

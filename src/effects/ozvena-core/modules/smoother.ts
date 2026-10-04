@@ -31,7 +31,12 @@
 // ═══════════════════════════════════════════════════════════
 
 import { clamp } from "../dsp/math.js";
-import { createArEnvelope, createTransientDetector, type ArEnvelope, type TransientDetector } from "../dsp/smoother.js";
+import {
+  createArEnvelope,
+  createTransientDetector,
+  type ArEnvelope,
+  type TransientDetector,
+} from "../dsp/smoother.js";
 
 export interface SmootherParams {
   enabled: boolean;

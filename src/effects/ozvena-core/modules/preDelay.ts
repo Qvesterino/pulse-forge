@@ -12,7 +12,6 @@
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
  */
-// (Reconciled from Pulse Forge hardening pass, 2026-09-14: NaN ms degrades to 0.)
 /* eslint-disable */
 // @ts-nocheck
 /**
@@ -103,7 +102,10 @@ export function createPreDelay(): PreDelay {
   let writeIdx: number[] = [];
   let ringLength = 0;
   function maxSupportedDelaySamples(): number {
-    return Math.max(Math.ceil((500 / 1000) * sampleRate), Math.ceil(((syncNoteToBeats("8/1") * 60) / 20) * sampleRate));
+    return Math.max(
+      Math.ceil((500 / 1000) * sampleRate),
+      Math.ceil(((syncNoteToBeats("8/1") * 60) / 20) * sampleRate),
+    );
   }
   function ensureBuffers(): void {
     // +1 lets a delay equal to the maximum supported length read the slot
@@ -121,9 +123,10 @@ export function createPreDelay(): PreDelay {
     ringLength = capacity;
   }
   function recomputeDelaySamples(): void {
-    // NaN/Infinity ms (corrupt direct-core state) must degrade to 0 —
-    // Math.max(0, Math.round(NaN)) is NaN, which slips past both the
-    // `<= 0` process gate and the `> cap` clamp and reads dly[NaN].
+    // (Reconciled from Pulse Forge hardening pass, 2026-09-14: NaN ms degrades to 0.)
+    // NaN/Infinity ms must degrade to 0 — Math.max(0, Math.round(NaN)) is
+    // NaN, which slips past both the `<= 0` process gate and the `> cap`
+    // clamp and reads dly[NaN].
     const ms = Number.isFinite(params.ms) ? params.ms : 0;
     if (params.syncEnabled) {
       const beats = syncNoteToBeats(params.syncNote);

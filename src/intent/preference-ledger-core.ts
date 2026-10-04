@@ -84,10 +84,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-const FEATURE_VERSIONS = new Set<PreferenceFeatureVersion>([
-  FEATURE_CONTRACT.version,
-  FEATURE_CONTRACT_V2.version,
-]);
+const FEATURE_VERSIONS = new Set<PreferenceFeatureVersion>([FEATURE_CONTRACT.version, FEATURE_CONTRACT_V2.version]);
 
 /** The width a snapshot's DECLARED version must actually have. */
 function expectedFeatureCount(version: PreferenceFeatureVersion): number {

@@ -77,7 +77,11 @@ describe("mcp lazy factory bank — the tool layer warms its own bank", () => {
     const result = await executeMcpTool(ctx, "kyx_tracks", { op: "listPresets", family: "bass" });
 
     expect(result.isError).toBeFalsy();
-    expect(result.data?.total).toBeGreaterThan(0);
+    const data = result.data;
+    if (!data || typeof data !== "object" || !("total" in data) || typeof data.total !== "number") {
+      throw new Error("listPresets must return a numeric structured total");
+    }
+    expect(data.total).toBeGreaterThan(0);
     expect(String(result.text)).toMatch(/factory presets/);
   });
 

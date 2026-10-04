@@ -726,7 +726,11 @@
       bypass: false,
       quality: "standard",
       freeze: false,
-      gate: false
+      gate: false,
+      gateMode: 0,
+      gateHoldMs: 0,
+      gateDecayMs: 120,
+      gateThresholdDb: -45
     };
   }
   function defaultConvolution() {
@@ -794,7 +798,10 @@
     let writeIdx = [];
     let ringLength = 0;
     function maxSupportedDelaySamples() {
-      return Math.max(Math.ceil(500 / 1e3 * sampleRate2), Math.ceil(syncNoteToBeats("8/1") * 60 / 20 * sampleRate2));
+      return Math.max(
+        Math.ceil(500 / 1e3 * sampleRate2),
+        Math.ceil(syncNoteToBeats("8/1") * 60 / 20 * sampleRate2)
+      );
     }
     function ensureBuffers() {
       const capacity = maxSupportedDelaySamples() + 1;
@@ -1215,7 +1222,7 @@
     for (let i = 0; i < snapshotGrid.length; i++) {
       snapshotGrid[i] = 20 * Math.pow(1e3, i / (snapshotGrid.length - 1));
     }
-    let snapshotBuf = new Float32Array(snapshotGrid.length);
+    const snapshotBuf = new Float32Array(snapshotGrid.length);
     function updateCoefficients() {
       shapeCoeffs(bq1, params.band1, sampleRate2);
       shapeCoeffs(bq2, params.band2, sampleRate2);
@@ -1256,7 +1263,11 @@
       runAutoCut(sr) {
         const result = this.runAutoCutDetailed(sr);
         if (!result) return null;
-        return [result.bands[0].suggestedCutDb, result.bands[1].suggestedCutDb, result.bands[2].suggestedCutDb];
+        return [
+          result.bands[0].suggestedCutDb,
+          result.bands[1].suggestedCutDb,
+          result.bands[2].suggestedCutDb
+        ];
       },
       runAutoCutDetailed(sr) {
         const n = analyzer.snapshot("input", snapshotBuf, snapshotGrid, sr);
@@ -1416,7 +1427,11 @@
       runUnmask(sr) {
         const result = this.runUnmaskDetailed(sr);
         if (!result) return null;
-        return [result.bands[0].suggestedCutDb, result.bands[1].suggestedCutDb, result.bands[2].suggestedCutDb];
+        return [
+          result.bands[0].suggestedCutDb,
+          result.bands[1].suggestedCutDb,
+          result.bands[2].suggestedCutDb
+        ];
       },
       runUnmaskDetailed(sr) {
         const dryN = analyzer.snapshot("dry", dryBuf, snapshotGrid, sr);
@@ -1513,8 +1528,20 @@
             const i0 = (i1 - 1 + len) % len;
             const i2 = (i1 + 1) % len;
             const i3 = (i1 + 2) % len;
-            const lSample = hermiteInterp(pitchBufL[i0], pitchBufL[i1], pitchBufL[i2], pitchBufL[i3], frac);
-            const rSample = hermiteInterp(pitchBufR[i0], pitchBufR[i1], pitchBufR[i2], pitchBufR[i3], frac);
+            const lSample = hermiteInterp(
+              pitchBufL[i0],
+              pitchBufL[i1],
+              pitchBufL[i2],
+              pitchBufL[i3],
+              frac
+            );
+            const rSample = hermiteInterp(
+              pitchBufR[i0],
+              pitchBufR[i1],
+              pitchBufR[i2],
+              pitchBufR[i3],
+              frac
+            );
             if (wet.length > 0) wet[0][i] = wet[0][i] * (1 - depth * 0.3) + lSample * (depth * 0.3);
             if (wet.length > 1) wet[1][i] = wet[1][i] * (1 - depth * 0.3) + rSample * (depth * 0.3);
             pitchWi = (pitchWi + 1) % len;
@@ -1580,10 +1607,9 @@
     }
     return {
       prepare(sr) {
-        const srClamped = clamp(sr, 8e3, 192e3);
+        void sr;
         analyzer = createSpectrumAnalyzer({ fftSize: 2048 });
         analyzer.setEnabled(analyzerEnabled);
-        void srClamped;
       },
       setAnalyzerEnabled(on) {
         analyzerEnabled = on;
@@ -1613,10 +1639,38 @@
 
   // src/effects/ozvena-core/modules/factoryIr.ts
   var IR_SPECS = {
-    "vocal-booth": { lengthSec: 1.2, earlyTaps: 6, earlyMaxMs: 25, lateDecay: 4.5, brightness: 0.3, character: "dry" },
-    plate: { lengthSec: 2.5, earlyTaps: 0, earlyMaxMs: 0, lateDecay: 2, brightness: 0.85, character: "metallic" },
-    hall: { lengthSec: 4, earlyTaps: 16, earlyMaxMs: 80, lateDecay: 1.2, brightness: 0.5, character: "warm" },
-    cathedral: { lengthSec: 5, earlyTaps: 12, earlyMaxMs: 120, lateDecay: 0.8, brightness: 0.2, character: "dark" },
+    "vocal-booth": {
+      lengthSec: 1.2,
+      earlyTaps: 6,
+      earlyMaxMs: 25,
+      lateDecay: 4.5,
+      brightness: 0.3,
+      character: "dry"
+    },
+    plate: {
+      lengthSec: 2.5,
+      earlyTaps: 0,
+      earlyMaxMs: 0,
+      lateDecay: 2,
+      brightness: 0.85,
+      character: "metallic"
+    },
+    hall: {
+      lengthSec: 4,
+      earlyTaps: 16,
+      earlyMaxMs: 80,
+      lateDecay: 1.2,
+      brightness: 0.5,
+      character: "warm"
+    },
+    cathedral: {
+      lengthSec: 5,
+      earlyTaps: 12,
+      earlyMaxMs: 120,
+      lateDecay: 0.8,
+      brightness: 0.2,
+      character: "dark"
+    },
     // Roadmap O7: mono fallbacks for the wide variants (true-stereo set is
     // preferred at runtime; these keep the catalogue total).
     "plate-wide": {
@@ -1741,7 +1795,12 @@
       const pan = (t % 2 === 0 ? 1 : -1) * (0.35 + mkRng() * 0.4);
       early.push({ pos, gain, pan });
     }
-    const rngs = [makeRng2(spec.seed + 11), makeRng2(spec.seed + 22), makeRng2(spec.seed + 33), makeRng2(spec.seed + 44)];
+    const rngs = [
+      makeRng2(spec.seed + 11),
+      makeRng2(spec.seed + 22),
+      makeRng2(spec.seed + 33),
+      makeRng2(spec.seed + 44)
+    ];
     const lp = [0, 0, 0, 0];
     const alpha = 1 - Math.exp(-2 * Math.PI * (1200 + spec.bright * 6e3) / sampleRate2);
     const offsets = [0, 3, 5, 8];
@@ -1838,12 +1897,18 @@
     let epScratch = new Float32Array(0);
     let dequeIdx = new Int32Array(0);
     let dequeVal = new Float32Array(0);
-    let linkedEnvScratch = [];
-    let upBuffers = [];
+    const linkedEnvScratch = [];
+    const upBuffers = [];
     function buildChannels(n, factor) {
       const set = [];
       for (let i = 0; i < n; i++) {
-        const c = { os: createPolyphaseOversampler(), env: 1, ring: new Float32Array(ringCap), wp: 0, fill: 0 };
+        const c = {
+          os: createPolyphaseOversampler(),
+          env: 1,
+          ring: new Float32Array(ringCap),
+          wp: 0,
+          fill: 0
+        };
         c.os.prepare(sampleRate2, factor);
         set.push(c);
       }
@@ -1906,7 +1971,8 @@
       }
       for (let i = 0; i < upLen; i++) {
         let minEnv = linkedEnvScratch[0][i];
-        for (let c = 1; c < numCh; c++) if (linkedEnvScratch[c][i] < minEnv) minEnv = linkedEnvScratch[c][i];
+        for (let c = 1; c < numCh; c++)
+          if (linkedEnvScratch[c][i] < minEnv) minEnv = linkedEnvScratch[c][i];
         for (let c = 0; c < numCh; c++) {
           const s = ch[c];
           const op = ((s.wp - upLen + i - effLA) % ringCap + ringCap) % ringCap;
@@ -2010,18 +2076,17 @@
       },
       process(channels, frameCount) {
         if (!prepared || frameCount <= 0 || ch.length === 0) return;
-        const n = frameCount;
         while (histRing.length < channels.length) histRing.push(new Float32Array(histCap));
         const pad = Math.max(0, maxOsLat - (ch.length > 0 ? ch[0].os.latencySamples : 0));
         for (let c = 0; c < channels.length && c < histRing.length; c++) {
           const hist = histRing[c];
           const buf = channels[c];
-          for (let i = 0; i < n; i++) {
+          for (let i = 0; i < frameCount; i++) {
             hist[(histWp + i) % histCap] = buf[i];
             if (pad > 0) buf[i] = hist[((histWp + i - pad) % histCap + histCap) % histCap];
           }
         }
-        histWp = (histWp + n) % histCap;
+        histWp = (histWp + frameCount) % histCap;
         const ceil = dbToLinear(ceilDb);
         const ovsRate = sampleRate2 * os;
         const rc = Math.exp(-1 / (RELEASE_MS / 1e3 * ovsRate));
@@ -2129,7 +2194,7 @@
     let oldActiveCount = 0;
     let hasRendered = false;
     let tapBlendCount = 0;
-    let layout = {
+    const layout = {
       tapsL: new Float32Array(MAX_TAPS),
       tapsR: new Float32Array(MAX_TAPS),
       gainsL: new Float32Array(MAX_TAPS),
@@ -2149,10 +2214,8 @@
       }
     }
     function recomputeLayout() {
-      const spaceScale = 1 + (clamp(params.space ?? 0.5, 0, 1) - 0.5) * 0.6;
-      const sizeScale = 1 + (clamp(params.size ?? 0.5, 0, 1) - 0.5) * 0.6;
-      const timeMs = clamp(params.time * spaceScale, 36.73, 250);
-      const diffusion = clamp(clamp(params.diffusion, 0, 100) / 100 * sizeScale, 0, 1);
+      const timeMs = clamp(params.time, 36.73, 250);
+      const diffusion = clamp(params.diffusion, 0, 100) / 100;
       const angle = clamp(params.angle, 0, 100) / 100;
       const activeCount = Math.max(4, Math.floor(4 + diffusion * (MAX_TAPS - 4)));
       const tapsL = layout.tapsL;
@@ -2224,7 +2287,12 @@
         const maxScaleR = 250 / BASE_TAPS_MS_R[MAX_TAPS - 1] * sampleRate2 / 1e3;
         const capacity = Math.max(
           1,
-          Math.ceil(Math.max(BASE_TAPS_MS_L[MAX_TAPS - 1] * maxScaleL, BASE_TAPS_MS_R[MAX_TAPS - 1] * maxScaleR))
+          Math.ceil(
+            Math.max(
+              BASE_TAPS_MS_L[MAX_TAPS - 1] * maxScaleL,
+              BASE_TAPS_MS_R[MAX_TAPS - 1] * maxScaleR
+            )
+          )
         );
         bufferL = new Float32Array(capacity);
         bufferR = new Float32Array(capacity);
@@ -2453,10 +2521,10 @@
     let lfoInc = 0;
     let apLines = [];
     let apIdx = [];
-    let lowSplitL = createBiquad(2);
-    let highSplitL = createBiquad(2);
-    let lowSplitR = createBiquad(2);
-    let highSplitR = createBiquad(2);
+    const lowSplitL = createBiquad(2);
+    const highSplitL = createBiquad(2);
+    const lowSplitR = createBiquad(2);
+    const highSplitR = createBiquad(2);
     const ALGO_TUNING = {
       room: { lenMult: 1, dampHz: 5e3, hpHz: 180, modRateMult: 1, modDepthMult: 0.5 },
       mediumChamber: { lenMult: 1.15, dampHz: 4500, hpHz: 160, modRateMult: 0.8, modDepthMult: 0.7 },
@@ -2493,7 +2561,11 @@
       dampAlpha = 1 - Math.exp(-2 * Math.PI * cutoffHz / sampleRate2);
       dampAlpha = q322(clamp(dampAlpha * (0.3 + damp * 0.7), 1e-6, 1));
       hpCoef = q322(Math.exp(-TAU * FDN_HP_HZ / sampleRate2));
-      feedbackGain = clamp(q322(Math.pow(1e-3, avgLen / (decaySec * sampleRate2))), 0, 0.99);
+      feedbackGain = clamp(
+        q322(Math.pow(1e-3, avgLen / (decaySec * sampleRate2))),
+        0,
+        0.99
+      );
       diffG = 0.3 + 0.45 * (clamp(params.diffusion, 0, 100) / 100);
       shAmt = clamp(params.shimmer, 0, 1);
       const bandTarget = (mult) => Math.pow(1e-3, avgLen / (decaySec * clamp(mult, 0.25, 4)) / sampleRate2) / feedbackGain;
@@ -2580,7 +2652,9 @@
         const stageLines = [];
         const stageIdx = [];
         for (let s = 0; s < ALLPASS_STAGES; s++) {
-          stageLines.push(new Float32Array(Math.max(4, Math.round(ALLPASS_LENGTHS[s] * (sampleRate2 / 44100)))));
+          stageLines.push(
+            new Float32Array(Math.max(4, Math.round(ALLPASS_LENGTHS[s] * (sampleRate2 / 44100))))
+          );
           stageIdx.push(0);
         }
         apLines.push(stageLines);
@@ -2661,7 +2735,10 @@
       return x;
     }
     function applyShimmerWindow() {
-      shWindow = Math.max(2048, Math.round(SH_WIN_BASE * SH_WIN_MULT[shQuality] * sampleRate2 / 48e3) & ~1);
+      shWindow = Math.max(
+        2048,
+        Math.round(SH_WIN_BASE * SH_WIN_MULT[shQuality] * sampleRate2 / 48e3) & ~1
+      );
       if (shWindow > shWinMax) shWindow = shWinMax;
     }
     return {
@@ -2908,8 +2985,42 @@
   var q323 = (x) => Math.fround(x);
   var FDN_LINES2 = 16;
   var DENSITY_GAIN2 = Math.sqrt(FDN_LINES2 / 8);
-  var BASE_LENGTHS_L2 = [2243, 2371, 2503, 2663, 2819, 2971, 3137, 3307, 3449, 3607, 3767, 3947, 4127, 4283, 4451, 4639];
-  var BASE_LENGTHS_R2 = [2053, 2179, 2311, 2459, 2617, 2789, 2969, 3163, 3319, 3467, 3613, 3779, 3917, 4057, 4201, 4363];
+  var BASE_LENGTHS_L2 = [
+    2243,
+    2371,
+    2503,
+    2663,
+    2819,
+    2971,
+    3137,
+    3307,
+    3449,
+    3607,
+    3767,
+    3947,
+    4127,
+    4283,
+    4451,
+    4639
+  ];
+  var BASE_LENGTHS_R2 = [
+    2053,
+    2179,
+    2311,
+    2459,
+    2617,
+    2789,
+    2969,
+    3163,
+    3319,
+    3467,
+    3613,
+    3779,
+    3917,
+    4057,
+    4201,
+    4363
+  ];
   var LINE_PREDELAY_OFFSETS = [0, 5, 11, 18, 26, 35, 45, 56, 68, 81, 95, 110, 126, 143, 161, 180];
   function householderN2(v) {
     let sum = 0;
@@ -3007,10 +3118,10 @@
     let lfoInc = 0;
     let predelayBufs = [];
     let predelayIdx = [];
-    let lowSplitL = createBiquad(2);
-    let highSplitL = createBiquad(2);
-    let lowSplitR = createBiquad(2);
-    let highSplitR = createBiquad(2);
+    const lowSplitL = createBiquad(2);
+    const highSplitL = createBiquad(2);
+    const lowSplitR = createBiquad(2);
+    const highSplitR = createBiquad(2);
     const ALGO_TUNING = {
       largeChamber: { lenMult: 0.95, dampHz: 4500, hpHz: 150 },
       hall: { lenMult: 1, dampHz: 3500, hpHz: 130 }
@@ -3044,7 +3155,9 @@
       }
       const damp = (clamp(params.dampingAmount, 1, 11) - 1) / 10;
       const cutoffHz = clamp(params.dampingFreqHz, 30, 2e4);
-      dampAlpha = q323(clamp((1 - Math.exp(-2 * Math.PI * cutoffHz / sampleRate2)) * (0.3 + damp * 0.7), 1e-6, 1));
+      dampAlpha = q323(
+        clamp((1 - Math.exp(-2 * Math.PI * cutoffHz / sampleRate2)) * (0.3 + damp * 0.7), 1e-6, 1)
+      );
       hpCoef = q323(Math.exp(-TAU * FDN_HP_HZ / sampleRate2));
       feedbackGain = clamp(q323(Math.pow(1e-3, avgLen / (decaySec * sampleRate2))), 0, 0.99);
       diffG = 0.3 + 0.45 * (clamp(params.diffusion, 0, 100) / 100);
@@ -3195,7 +3308,10 @@
       return x;
     }
     function applyShimmerWindow() {
-      shWindow = Math.max(2048, Math.round(SH_WIN_BASE * SH_WIN_MULT[shQuality] * sampleRate2 / 48e3) & ~1);
+      shWindow = Math.max(
+        2048,
+        Math.round(SH_WIN_BASE * SH_WIN_MULT[shQuality] * sampleRate2 / 48e3) & ~1
+      );
       if (shWindow > shWinMax) shWindow = shWinMax;
     }
     return {
@@ -3541,7 +3657,9 @@
       process(input, blockSize, output) {
         if (blockSize <= 0) return;
         if (output.length < blockSize) {
-          throw new Error(`partitionedConvolver.process: output too small (${output.length} < ${blockSize})`);
+          throw new Error(
+            `partitionedConvolver.process: output too small (${output.length} < ${blockSize})`
+          );
         }
         let done = 0;
         while (done < blockSize) {
@@ -3598,12 +3716,19 @@
       throw new Error("createPartitionedConvolverFromPrecomputed: invalid precomputed IR set");
     }
     const blockSpectra = checked.blockSpectra ?? createZeroedBlockSpectra(checked.numPartitions, checked.partitionSize);
-    return makeConvolver(checked.irSpectra, blockSpectra, checked.numPartitions, checked.partitionSize);
+    return makeConvolver(
+      checked.irSpectra,
+      blockSpectra,
+      checked.numPartitions,
+      checked.partitionSize
+    );
   }
   function createPartitionedConvolver(ir, opts) {
     const partitionSize = opts.partitionSize ?? 2048;
     if (!isPow2(partitionSize)) {
-      throw new Error(`createPartitionedConvolver: partitionSize must be a power of two, got ${partitionSize}`);
+      throw new Error(
+        `createPartitionedConvolver: partitionSize must be a power of two, got ${partitionSize}`
+      );
     }
     const numPartitions = Math.ceil(opts.irLength / (partitionSize / 2));
     if (numPartitions < 1) {
@@ -3627,7 +3752,12 @@
         irSpectrums[base + 2 * k + 1] = irIm[k];
       }
     }
-    return makeConvolver(irSpectrums, new Float64Array(numPartitions * partitionSize * 2), numPartitions, partitionSize);
+    return makeConvolver(
+      irSpectrums,
+      new Float64Array(numPartitions * partitionSize * 2),
+      numPartitions,
+      partitionSize
+    );
   }
   function recommendPartitionSize(irLength) {
     const target = Math.max(64, Math.round(2 * Math.sqrt(irLength)));
@@ -3851,14 +3981,34 @@
         }
         const n = Math.min(channelCount, channels.length);
         if (conv[0]) {
-          computeWetSet(conv, irChannels, channels, frameCount, n, scratchWetL, scratchWetR, scratchTmp, scratchTmp2);
+          computeWetSet(
+            conv,
+            irChannels,
+            channels,
+            frameCount,
+            n,
+            scratchWetL,
+            scratchWetR,
+            scratchTmp,
+            scratchTmp2
+          );
         } else {
           scratchWetL.fill(0, 0, frameCount);
           scratchWetR.fill(0, 0, frameCount);
         }
         if (fading && oldConv[0] !== null) {
           ensureOldScratch();
-          computeWetSet(oldConv, oldIrChannels, channels, frameCount, n, oldScratchL, oldScratchR, oldTmp1, oldTmp2);
+          computeWetSet(
+            oldConv,
+            oldIrChannels,
+            channels,
+            frameCount,
+            n,
+            oldScratchL,
+            oldScratchR,
+            oldTmp1,
+            oldTmp2
+          );
           const gOutStart = convFadePos / convFadeLen;
           const gStep = 1 / convFadeLen;
           for (let c = 0; c < n; c++) {
@@ -3988,9 +4138,9 @@
       setParams(p) {
         const next = { ...params, ...p };
         if (!Number.isFinite(next.thresholdDb)) next.thresholdDb = DEFAULT_DUCK_PARAMS.thresholdDb;
-        next.sensitivity = Number.isFinite(next.sensitivity) ? clamp(next.sensitivity, 0, 1) : DEFAULT_DUCK_PARAMS.sensitivity;
-        next.attackMs = Number.isFinite(next.attackMs) ? Math.max(0.01, next.attackMs) : DEFAULT_DUCK_PARAMS.attackMs;
-        next.releaseMs = Number.isFinite(next.releaseMs) ? Math.max(0.01, next.releaseMs) : DEFAULT_DUCK_PARAMS.releaseMs;
+        next.sensitivity = Number.isFinite(next.sensitivity) ? Math.max(0, Math.min(1, next.sensitivity)) : DEFAULT_DUCK_PARAMS.sensitivity;
+        if (!Number.isFinite(next.attackMs)) next.attackMs = DEFAULT_DUCK_PARAMS.attackMs;
+        if (!Number.isFinite(next.releaseMs)) next.releaseMs = DEFAULT_DUCK_PARAMS.releaseMs;
         params = next;
       },
       reset() {
@@ -4142,6 +4292,7 @@
     let lastDuckGain = 1;
     let lastFreeze = null;
     let gateGain = 1;
+    let gateHoldCounter = 0;
     let limiterQuality = "standard";
     let lastQualityTier = 1;
     let preparedMaxBs = 2048;
@@ -4199,7 +4350,7 @@
       }
       if ("precomputed" in res && res.precomputed) {
         convolution.loadIrPrecomputed(res.precomputed, res.channels);
-      } else {
+      } else if ("samples" in res) {
         convolution.loadIr(res.samples, sampleRate2, res.channels);
       }
       loadedIrId = irId;
@@ -4230,7 +4381,7 @@
     function setupIpc() {
       if (duckSubscription) return;
       if (duckInstanceId === null) {
-        duckInstanceId = ipc.register("Ozvena", sampleRate2, 0, channelCount);
+        duckInstanceId = ipc.register("ELYN", sampleRate2, 0, channelCount);
       }
       duckSubscription = ipc.subscribe((n) => {
         duckController.processNotification(n);
@@ -4332,8 +4483,16 @@
       if (modChanged || enginesChanged) {
         const mod = state.mod.enabled ? modPad.getModParams() : { rateHz: 0, depthSamples: 0 };
         const maxDepth = state.mod?.maxDepthSamples ?? 20;
-        plateChamber.setModulation(mod.rateHz * (state.engines.e2.modRateMult ?? 1), mod.depthSamples, maxDepth);
-        hall.setModulation(mod.rateHz * (state.engines.e3.modRateMult ?? 1), mod.depthSamples, maxDepth);
+        plateChamber.setModulation(
+          mod.rateHz * (state.engines.e2.modRateMult ?? 1),
+          mod.depthSamples,
+          maxDepth
+        );
+        hall.setModulation(
+          mod.rateHz * (state.engines.e3.modRateMult ?? 1),
+          mod.depthSamples,
+          maxDepth
+        );
       }
       if (!prev || state.convolution !== prev.convolution) {
         convolution.setParams({
@@ -4570,10 +4729,31 @@
               if (a > pk) pk = a;
             }
           }
-          const target = pk > 56e-4 ? 1 : 0;
-          const tau = target > gateGain ? 3e-3 : 0.12;
-          gateGain += (1 - Math.exp(-frameCount / (tau * sampleRate2))) * (target - gateGain);
-          gateG = gateGain;
+          const gateMode = Math.round(state.global.gateMode ?? 0);
+          if (gateMode === 1) {
+            const thLin = Math.pow(10, (state.global.gateThresholdDb ?? -45) / 20);
+            const holdSamples = Math.max(
+              1,
+              Math.round((state.global.gateHoldMs ?? 0) / 1e3 * sampleRate2)
+            );
+            const decayTau = Math.max(2e-3, (state.global.gateDecayMs ?? 120) / 1e3);
+            if (pk >= thLin) {
+              gateGain = 1;
+              gateHoldCounter = holdSamples;
+            } else if (gateHoldCounter > 0) {
+              gateHoldCounter -= frameCount;
+            } else {
+              const decayFactor = Math.exp(-frameCount / (decayTau * sampleRate2));
+              gateGain *= decayFactor;
+              if (gateGain < 1e-4) gateGain = 0;
+            }
+            gateG = gateGain;
+          } else {
+            const target = pk > 56e-4 ? 1 : 0;
+            const tau = target > gateGain ? 3e-3 : 0.12;
+            gateGain += (1 - Math.exp(-frameCount / (tau * sampleRate2))) * (target - gateGain);
+            gateG = gateGain;
+          }
         }
         const dw = clamp(state.global.dryWet, 0, 100) / 100;
         const dryG = state.global.fxOnly ? 0 : 1 - dw;

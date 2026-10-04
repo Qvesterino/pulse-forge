@@ -81,6 +81,9 @@ const STORE_CONSTS: string[] = [
   "STORE_SNAPSHOT_INDEX",
   "STORE_ULTINA_PRESETS",
   "STORE_MORPH_PRESETS",
+  // W4: the ★-trained personal prior payloads (out-of-line key:
+  // `<kind>#<baseModelHash>`), see PersonalModelRepository.
+  "STORE_PERSONAL_MODELS",
 ];
 
 const PUBLIC_FUNCTIONS: string[] = ["openDb", "tx"];

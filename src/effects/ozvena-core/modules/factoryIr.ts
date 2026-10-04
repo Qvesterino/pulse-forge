@@ -34,10 +34,38 @@ interface IrGenSpec {
 }
 
 const IR_SPECS: Record<FactoryIrId, IrGenSpec> = {
-  "vocal-booth": { lengthSec: 1.2, earlyTaps: 6, earlyMaxMs: 25, lateDecay: 4.5, brightness: 0.3, character: "dry" },
-  plate: { lengthSec: 2.5, earlyTaps: 0, earlyMaxMs: 0, lateDecay: 2.0, brightness: 0.85, character: "metallic" },
-  hall: { lengthSec: 4.0, earlyTaps: 16, earlyMaxMs: 80, lateDecay: 1.2, brightness: 0.5, character: "warm" },
-  cathedral: { lengthSec: 5.0, earlyTaps: 12, earlyMaxMs: 120, lateDecay: 0.8, brightness: 0.2, character: "dark" },
+  "vocal-booth": {
+    lengthSec: 1.2,
+    earlyTaps: 6,
+    earlyMaxMs: 25,
+    lateDecay: 4.5,
+    brightness: 0.3,
+    character: "dry",
+  },
+  plate: {
+    lengthSec: 2.5,
+    earlyTaps: 0,
+    earlyMaxMs: 0,
+    lateDecay: 2.0,
+    brightness: 0.85,
+    character: "metallic",
+  },
+  hall: {
+    lengthSec: 4.0,
+    earlyTaps: 16,
+    earlyMaxMs: 80,
+    lateDecay: 1.2,
+    brightness: 0.5,
+    character: "warm",
+  },
+  cathedral: {
+    lengthSec: 5.0,
+    earlyTaps: 12,
+    earlyMaxMs: 120,
+    lateDecay: 0.8,
+    brightness: 0.2,
+    character: "dark",
+  },
   // Roadmap O7: mono fallbacks for the wide variants (true-stereo set is
   // preferred at runtime; these keep the catalogue total).
   "plate-wide": {
@@ -121,7 +149,8 @@ function generateIr(spec: IrGenSpec, sampleRate: number): Float32Array {
 
     if (spec.character === "metallic") {
       const ringFreq = 3200 + Math.sin(t * 7) * 800;
-      lateSample += Math.sin(2 * Math.PI * ringFreq * t) * 0.15 * Math.exp(-spec.lateDecay * 1.5 * t);
+      lateSample +=
+        Math.sin(2 * Math.PI * ringFreq * t) * 0.15 * Math.exp(-spec.lateDecay * 1.5 * t);
     }
 
     const crossfade = lateStart > 0 ? Math.min(1, (i - lateStart) / (sampleRate * 0.02)) : 1;
@@ -206,7 +235,8 @@ export function generateFactoryIr4(id: string, sampleRate: number): Float32Array
   const mkRng = makeRng(spec.seed);
   const early: Array<{ pos: number; gain: number; pan: number }> = [];
   for (let t = 0; t < taps; t++) {
-    const pos = Math.floor((t / taps) * spread * (0.6 + mkRng() * 0.4)) + Math.floor(sampleRate * 0.002);
+    const pos =
+      Math.floor((t / taps) * spread * (0.6 + mkRng() * 0.4)) + Math.floor(sampleRate * 0.002);
     const gain = (1 / Math.sqrt(t + 1)) * (0.5 + mkRng() * 0.4);
     const pan = (t % 2 === 0 ? 1 : -1) * (0.35 + mkRng() * 0.4);
     early.push({ pos, gain, pan });
@@ -214,7 +244,12 @@ export function generateFactoryIr4(id: string, sampleRate: number): Float32Array
 
   // Late field: per-channel independently seeded noise with a shared
   // exponential envelope + one-pole HF damping per channel.
-  const rngs = [makeRng(spec.seed + 11), makeRng(spec.seed + 22), makeRng(spec.seed + 33), makeRng(spec.seed + 44)];
+  const rngs = [
+    makeRng(spec.seed + 11),
+    makeRng(spec.seed + 22),
+    makeRng(spec.seed + 33),
+    makeRng(spec.seed + 44),
+  ];
   const lp = [0, 0, 0, 0];
   const alpha = 1 - Math.exp((-2 * Math.PI * (1200 + spec.bright * 6000)) / sampleRate);
   const offsets = [0, 3, 5, 8]; // subtle per-channel onset offsets

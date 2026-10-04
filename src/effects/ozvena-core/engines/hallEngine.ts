@@ -12,7 +12,6 @@
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
  */
-// (Reconciled from Pulse Forge hardening pass, 2026-09-14: zero-channel guard + NaN attackEnv heal in recompute.)
 //
 // 8-line FDN with Householder feedback matrix, per-line HF damping
 // (IN the feedback loop), in-loop delay-line modulation (LFO per
@@ -36,9 +35,15 @@ import { clamp, flushDenormal, sanitize, TAU, hermiteInterp } from "../dsp/math.
 // differ by ULPs, and inside a feedback loop a 1-ULP coefficient difference
 // amplifies into full tail decorrelation. fround makes both ports identical.
 const q32 = (x: number): number => Math.fround(x);
-import { createBiquad, setLowPass, setHighPass, processBiquad, type BiquadState } from "../dsp/biquad.js";
+import {
+  createBiquad,
+  setLowPass,
+  setHighPass,
+  processBiquad,
+  type BiquadState,
+} from "../dsp/biquad.js";
 
-export interface HallParams extends HallEngineState {}
+export type HallParams = HallEngineState;
 
 const FDN_LINES = 16;
 // Broadband level compensation for the O2 density upgrade: with N
@@ -46,8 +51,12 @@ const FDN_LINES = 16;
 // historical 8-line reference, so gain back √(N/8).
 const DENSITY_GAIN = Math.sqrt(FDN_LINES / 8);
 
-const BASE_LENGTHS_L = [2243, 2371, 2503, 2663, 2819, 2971, 3137, 3307, 3449, 3607, 3767, 3947, 4127, 4283, 4451, 4639];
-const BASE_LENGTHS_R = [2053, 2179, 2311, 2459, 2617, 2789, 2969, 3163, 3319, 3467, 3613, 3779, 3917, 4057, 4201, 4363];
+const BASE_LENGTHS_L = [
+  2243, 2371, 2503, 2663, 2819, 2971, 3137, 3307, 3449, 3607, 3767, 3947, 4127, 4283, 4451, 4639,
+];
+const BASE_LENGTHS_R = [
+  2053, 2179, 2311, 2459, 2617, 2789, 2969, 3163, 3319, 3467, 3613, 3779, 3917, 4057, 4201, 4363,
+];
 
 const LINE_PREDELAY_OFFSETS = [0, 5, 11, 18, 26, 35, 45, 56, 68, 81, 95, 110, 126, 143, 161, 180];
 
@@ -204,10 +213,10 @@ export function createHallEngine(): HallEngine {
   let predelayBufs: Float32Array[][] = [];
   let predelayIdx: number[][] = [];
 
-  let lowSplitL: BiquadState = createBiquad(2);
-  let highSplitL: BiquadState = createBiquad(2);
-  let lowSplitR: BiquadState = createBiquad(2);
-  let highSplitR: BiquadState = createBiquad(2);
+  const lowSplitL: BiquadState = createBiquad(2);
+  const highSplitL: BiquadState = createBiquad(2);
+  const lowSplitR: BiquadState = createBiquad(2);
+  const highSplitR: BiquadState = createBiquad(2);
 
   interface AlgoTuning {
     lenMult: number;
@@ -262,7 +271,9 @@ export function createHallEngine(): HallEngine {
 
     const damp = (clamp(params.dampingAmount, 1, 11) - 1) / 10;
     const cutoffHz = clamp(params.dampingFreqHz, 30, 20000);
-    dampAlpha = q32(clamp((1 - Math.exp((-2 * Math.PI * cutoffHz) / sampleRate)) * (0.3 + damp * 0.7), 1e-6, 1));
+    dampAlpha = q32(
+      clamp((1 - Math.exp((-2 * Math.PI * cutoffHz) / sampleRate)) * (0.3 + damp * 0.7), 1e-6, 1),
+    );
     hpCoef = q32(Math.exp((-TAU * FDN_HP_HZ) / sampleRate));
 
     // T60 calibration - mirrors plateChamberEngine.ts exactly: pure
@@ -339,10 +350,12 @@ export function createHallEngine(): HallEngine {
     shDirWFreeze = shAmt > 0 ? Math.min(1, 0.995 - Math.SQRT2 * shInj) : 1;
 
     attackAlpha = q32(1 - Math.exp(-1 / Math.max(0.001, (params.attack / 1000) * sampleRate)));
+
     // A poisoned envelope (NaN from a non-finite alpha) latches forever:
     // `attackEnv < 1` is false for NaN, so the build-up branch never runs
     // and the engine outputs NaN until reset. setParams → recompute() is
     // the one guaranteed point where a heal can ride a parameter change.
+    // (Reconciled from Pulse Forge hardening pass, 2026-09-14: zero-channel guard + NaN attackEnv heal in recompute.)
     if (!Number.isFinite(attackEnv)) attackEnv = 0;
 
     airIncA = q32((TAU * AIR_RATE_A) / sampleRate);
@@ -411,8 +424,10 @@ export function createHallEngine(): HallEngine {
         // The O7 `size` macro scales line lengths by up to 1.2x (0..1
         // around the 0.5 midpoint), so the reservation includes that
         // factor — a size change stays scalar-only.
+        // (Reconciled from Pulse Forge audit, 2026-09-19.)
         const SIZE_MACRO_MAX = 1.2;
-        const maxLen = Math.max(8, Math.round(base[l] * maxSrScale * densityScale * SIZE_MACRO_MAX)) + 96;
+        const maxLen =
+          Math.max(8, Math.round(base[l] * maxSrScale * densityScale * SIZE_MACRO_MAX)) + 96;
         ls.push(new Float32Array(maxLen));
         wi.push(0);
         lp.push(0);
@@ -500,7 +515,10 @@ export function createHallEngine(): HallEngine {
   // Scalar-only shimmer window sizing (no realloc — the ring is allocated
   // for the largest tier in prepare()). Mirrors plateChamberEngine.ts.
   function applyShimmerWindow(): void {
-    shWindow = Math.max(2048, Math.round((SH_WIN_BASE * SH_WIN_MULT[shQuality] * sampleRate) / 48000) & ~1);
+    shWindow = Math.max(
+      2048,
+      Math.round((SH_WIN_BASE * SH_WIN_MULT[shQuality] * sampleRate) / 48000) & ~1,
+    );
     if (shWindow > shWinMax) shWindow = shWinMax;
   }
 
@@ -541,7 +559,7 @@ export function createHallEngine(): HallEngine {
 
     // PURE-WET contract: the engine writes ONLY the reverb tail.
     process(channels, frameCount) {
-      // Zero channels would crash the write-back (channels[0] undefined).
+      // (Reconciled from Pulse Forge hardening pass, 2026-09-14: zero-channel guard + NaN attackEnv heal in recompute.)
       if (!params.enabled || frameCount <= 0 || channels.length === 0) return;
       const cc = Math.min(channels.length, lines.length, 2);
       ensureScratch(frameCount);
@@ -595,7 +613,12 @@ export function createHallEngine(): HallEngine {
 
       // Hermite read at a given line length (used for the new length and,
       // during a length crossfade, the previous length too).
-      const readTap = (buf: Float32Array, w: number, baseLen: number, modOffset: number): number => {
+      const readTap = (
+        buf: Float32Array,
+        w: number,
+        baseLen: number,
+        modOffset: number,
+      ): number => {
         let readPos = modOffset !== 0 ? w - baseLen + modOffset : w - baseLen;
         const bufLen = buf.length;
         readPos = ((readPos % bufLen) + bufLen) % bufLen;

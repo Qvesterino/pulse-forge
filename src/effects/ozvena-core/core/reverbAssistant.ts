@@ -72,7 +72,12 @@ function styleToBlend(style: number, size: number): BlendPadState {
   const xBase = 0.4 + s * 0.2;
   const x = clamp(xBase + (z - 0.5) * 0.1, 0, 1);
 
-  return { x, y, engine2Algo: s < 0.4 ? "room" : s < 0.75 ? "mediumChamber" : "plate", injectER: 0 };
+  return {
+    x,
+    y,
+    engine2Algo: s < 0.4 ? "room" : s < 0.75 ? "mediumChamber" : "plate",
+    injectER: 0,
+  };
 }
 
 function styleToEngineTimes(
@@ -245,7 +250,10 @@ export function recommend(s: AssistantState): AssistantRecommendation {
  * Apply a recommendation onto an OzvenaStateV1, returning a NEW state.
  * Does not touch global.inputGainDb / outputGainDb / quality.
  */
-export function applyRecommendation(state: OzvenaStateV1, rec: AssistantRecommendation): OzvenaStateV1 {
+export function applyRecommendation(
+  state: OzvenaStateV1,
+  rec: AssistantRecommendation,
+): OzvenaStateV1 {
   return {
     ...state,
     blendPad: { ...rec.blendPad },

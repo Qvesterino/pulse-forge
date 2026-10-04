@@ -12,7 +12,6 @@
  *  - type-only specifiers marked with "type" for verbatimModuleSyntax
  *    (Pulse Forge tsconfig is stricter than upstream).
  */
-// (Reconciled from Pulse Forge hardening pass, 2026-09-14: tap crossfade old-distance double-modulo wrap.)
 // ═══════════════════════════════════════════════════════════
 // Ozvena — Reflections Engine (E1)
 //
@@ -38,7 +37,7 @@ import type { ReflectionsEngineState } from "../v2/types.js";
 import { clamp, flushDenormal, sanitize } from "../dsp/math.js";
 import { createBiquad, setLowPass, processBiquad, type BiquadState } from "../dsp/biquad.js";
 
-export interface ReflectionsParams extends ReflectionsEngineState {}
+export type ReflectionsParams = ReflectionsEngineState;
 
 // Base tap lengths in ms @ 44.1 kHz, low-diffusion sparse layout.
 // 12 taps total: 6 left + 6 right (mutually incommensurate prime multiples).
@@ -113,7 +112,7 @@ export function createReflectionsEngine(): ReflectionsEngine {
   // (the shared count of the previous and current layouts).
   let tapBlendCount = 0;
 
-  let layout: TapLayout = {
+  const layout: TapLayout = {
     tapsL: new Float32Array(MAX_TAPS),
     tapsR: new Float32Array(MAX_TAPS),
     gainsL: new Float32Array(MAX_TAPS),
@@ -140,17 +139,8 @@ export function createReflectionsEngine(): ReflectionsEngine {
   }
 
   function recomputeLayout(): void {
-    // Roadmap O1/O7: `space` and `size` are the documented macros ("adjusts
-    // time + size together", default 0.5). They were carried in the state,
-    // written by the assistant and exposed as automation targets, but read
-    // by NO engine — an automated "space" produced no sound change. Wire
-    // them as multiplicative offsets around the neutral 0.5 midpoint so
-    // existing projects (space/size = 0.5) stay bit-identical.
-    // (Reconciled from Pulse Forge audit, 2026-09-19.)
-    const spaceScale = 1 + (clamp(params.space ?? 0.5, 0, 1) - 0.5) * 0.6;
-    const sizeScale = 1 + (clamp(params.size ?? 0.5, 0, 1) - 0.5) * 0.6;
-    const timeMs = clamp(params.time * spaceScale, 36.73, 250);
-    const diffusion = clamp((clamp(params.diffusion, 0, 100) / 100) * sizeScale, 0, 1);
+    const timeMs = clamp(params.time, 36.73, 250);
+    const diffusion = clamp(params.diffusion, 0, 100) / 100;
     const angle = clamp(params.angle, 0, 100) / 100;
 
     // Use `diffusion` to decide how many taps are active. diffusion 0 = 4 taps,
@@ -254,7 +244,12 @@ export function createReflectionsEngine(): ReflectionsEngine {
       const maxScaleR = ((250 / BASE_TAPS_MS_R[MAX_TAPS - 1]) * sampleRate) / 1000;
       const capacity = Math.max(
         1,
-        Math.ceil(Math.max(BASE_TAPS_MS_L[MAX_TAPS - 1] * maxScaleL, BASE_TAPS_MS_R[MAX_TAPS - 1] * maxScaleR)),
+        Math.ceil(
+          Math.max(
+            BASE_TAPS_MS_L[MAX_TAPS - 1] * maxScaleL,
+            BASE_TAPS_MS_R[MAX_TAPS - 1] * maxScaleR,
+          ),
+        ),
       );
       bufferL = new Float32Array(capacity);
       bufferR = new Float32Array(capacity);
@@ -315,6 +310,7 @@ export function createReflectionsEngine(): ReflectionsEngine {
               // `undefined` → NaN → the tap's LPF state latches NaN and the
               // tap goes permanently silent. Double-modulo, like the FDN
               // engines' readTap, wraps any distance safely.
+              // (Reconciled from Pulse Forge hardening pass, 2026-09-14: tap crossfade old-distance double-modulo wrap.)
               const tFade = tapFadeRemaining / tapFadeLen;
               const oldD = oldTapsL[t];
               const rawL = wl - oldD;
@@ -337,6 +333,7 @@ export function createReflectionsEngine(): ReflectionsEngine {
               // Tap crossfade: blend the previous tap distance out (see the
               // left-channel comment — double-modulo keeps the old-distance
               // read inside the ring even when it exceeds maxLen).
+              // (Reconciled from Pulse Forge hardening pass, 2026-09-14: tap crossfade old-distance double-modulo wrap.)
               const tFade = tapFadeRemaining / tapFadeLen;
               const oldD = oldTapsR[t];
               const rawR = wr - oldD;

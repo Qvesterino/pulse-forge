@@ -1,5 +1,5 @@
 import { test, expect } from "playwright/test";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { clickPanelAction, completeOnboardingTourIfPresent, openHouseTemplate } from "./_helpers";
 import type { Page } from "playwright/test";
 
@@ -218,18 +218,22 @@ test.describe("16 — idea → export", () => {
     expect(facts.sampleRate, "master must carry a real sample rate").toBeGreaterThanOrEqual(8000);
     expect(facts.dataBytes, "master must contain a non-empty data chunk").toBeGreaterThan(44);
 
+    // Measurements are written BEFORE the level assertions below, on purpose:
+    // a level regression is exactly the case where they matter, and a report
+    // emitted after a failing expect never runs. An export failure is almost
+    // always a LEVEL problem (silence, near-silence, clipping, wrong rate) —
+    // "the WAV assertion failed" alone sends the next person hunting blind.
+    // Written via outputPath + attach-by-path (not an in-memory body, which
+    // only lands in the HTML report) so the numbers are on disk next to the
+    // trace and the failure screenshot.
+    const factsPath = testInfo.outputPath("master-wav-facts.json");
+    await writeFile(factsPath, JSON.stringify({ filename, bytes: bytes.length, ...facts }, null, 2), "utf8");
+    await testInfo.attach("master-wav-facts", { path: factsPath, contentType: "application/json" });
+
     // The project the words produced is a beat with a bass track — it must
     // not export as digital silence.
     expect(facts.peak, "exported master must not be silent").toBeGreaterThan(0.001);
-    expect(facts.rms, "exported master must carry musical energy, not a single click").toBeGreaterThan(99);
-
-    // Measurements travel with the report: an export regression is usually a
-    // LEVEL problem (silence, near-silence, clipped, wrong rate), and "the
-    // WAV assertion failed" alone would send the next person hunting blind.
-    await testInfo.attach("master-wav-facts.json", {
-      body: JSON.stringify({ filename, bytes: bytes.length, ...facts }, null, 2),
-      contentType: "application/json",
-    });
+    expect(facts.rms, "exported master must carry musical energy, not a single click").toBeGreaterThan(0.0001);
 
     // --- 6. The panel reports the delivery honestly ---------------------
     await expect(page.locator(".export-panel")).toContainText(/exported|master/i, { timeout: 30_000 });

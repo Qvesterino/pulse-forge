@@ -85,7 +85,7 @@ function threeLaneDoc(): { doc: ProjectDocument; bass: string; chords: string; l
   });
   doc = { ...doc, tracks: renamed };
   // Add the third lane ("Lead") so all three roles resolve by name.
-  doc = createInstrumentTrack(doc, "synth").execute(doc);
+  doc = createInstrumentTrack(doc, "analog").execute(doc);
   const lead = doc.tracks.filter((track) => track.kind === "instrument").at(-1)!;
   doc = {
     ...doc,
@@ -110,6 +110,26 @@ function patternWithNotes(doc: ProjectDocument, options: GenerateOptions, lanes:
       pitch,
       start: index * 480,
       duration: 480,
+      velocity: 0.8,
+    }));
+  }
+  return { ...base, notes, rows: {} };
+}
+
+/** Build a pattern from explicit notes: `lane: [pitch, startStep][]`. */
+function patternFromLanes(
+  doc: ProjectDocument,
+  options: GenerateOptions,
+  lanes: Record<string, { pitch: number; start: number; duration: number }[]>,
+): Pattern {
+  const base = generatePattern(doc, options);
+  const notes: Record<string, NoteEvent[]> = {};
+  for (const [trackId, events] of Object.entries(lanes)) {
+    notes[trackId] = events.map((event, index) => ({
+      id: `${trackId}-${index}`,
+      pitch: event.pitch,
+      start: event.start * 480,
+      duration: event.duration * 480,
       velocity: 0.8,
     }));
   }
@@ -182,21 +202,26 @@ describe("features.v2 — the new measurements answer a musical question", () =>
   it("bass.rootAlignment separates a root-locked bass from a wandering one", () => {
     const options = optionsOf();
     const { doc, bass: bassId, chords: chordId } = threeLaneDoc();
-
-    // A perfect fourth above the bass root is a chord tone; a tritone is not.
     const root = 40;
-    const locked = patternWithNotes(doc, options, {
-      [bassId]: [root, root, root, root],
-      [chordId]: [root + 5, root + 9, root + 12],
+    // ONE chord voicing held for the whole phrase (all three pitches share
+    // start 0) so every bass attack has a harmonic context. The chord's
+    // LOWEST pitch is the bass root — that is the reference rootAlignment
+    // measures against.
+    const held = { start: 0, duration: 16 };
+    const chords = [root, root + 4, root + 7].map((pitch) => ({ pitch, ...held }));
+    const locked = patternFromLanes(doc, options, {
+      [bassId]: [0, 1, 2, 3].map((step) => ({ pitch: root, start: step, duration: 1 })),
+      [chordId]: chords,
     });
-    const wandering = patternWithNotes(doc, options, {
-      [bassId]: [root + 6, root + 6, root + 6, root + 6],
-      [chordId]: [root + 5, root + 9, root + 12],
+    // A tritone above the chord root is not the root.
+    const wandering = patternFromLanes(doc, options, {
+      [bassId]: [0, 1, 2, 3].map((step) => ({ pitch: root + 6, start: step, duration: 1 })),
+      [chordId]: chords,
     });
     const lockedVector = extractPatternFeaturesV2(extract(doc, locked, intentOf(), options)).values;
     const wanderingVector = extractPatternFeaturesV2(extract(doc, wandering, intentOf(), options)).values;
     expect(value(lockedVector, "bass.rootAlignment")).toBe(1);
-    expect(value(wanderingVector, "bass.rootAlignment")).toBeLessThan(1);
+    expect(value(wanderingVector, "bass.rootAlignment")).toBe(0);
   });
 
   it("bass.registerStability separates a static bass from a leaping one", () => {
@@ -228,10 +253,13 @@ describe("features.v2 — the new measurements answer a musical question", () =>
     const { doc, bass: bassId, chords: chordId, lead: leadId } = threeLaneDoc();
     const all = patternWithNotes(doc, options, { [bassId]: [40], [chordId]: [60], [leadId]: [72] });
     const one = patternWithNotes(doc, options, { [bassId]: [40] });
-    expect(value(extractPatternFeaturesV2(extract(doc, all, intentOf(), options)).values, "arrangement.roleCount")).toBe(1);
-    expect(value(extractPatternFeaturesV2(extract(doc, one, intentOf(), options)).values, "arrangement.roleCount")).toBe(
-      1 / 3,
-    );
+    expect(
+      value(extractPatternFeaturesV2(extract(doc, all, intentOf(), options)).values, "arrangement.roleCount"),
+    ).toBe(1);
+    // 1 of 3 lanes — the extractor rounds to 4 decimals like every v1 value.
+    expect(
+      value(extractPatternFeaturesV2(extract(doc, one, intentOf(), options)).values, "arrangement.roleCount"),
+    ).toBeCloseTo(1 / 3, 3);
   });
 
   it("reports the chord lane as present and bass as absent when only chords are written", () => {

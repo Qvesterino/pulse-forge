@@ -49,7 +49,12 @@
     "smoother": { "enabled": true, "amount": 30 },
     "preEq": {
       "enabled": true,
-      "autoCut": { "enabled": false, "amount": 50, "status": "idle", "suggestedBandGainsDb": [0, 0, 0] },
+      "autoCut": {
+        "enabled": false,
+        "amount": 50,
+        "status": "idle",
+        "suggestedBandGainsDb": [0, 0, 0]
+      },
       "band1": { "enabled": false, "freqHz": 100, "gainDb": 0, "q": 0.7, "shape": "lowShelf" },
       "band2": { "enabled": true, "freqHz": 800, "gainDb": -1.5, "q": 1.0, "shape": "bell" },
       "band3": { "enabled": false, "freqHz": 8000, "gainDb": 0, "q": 0.7, "shape": "highShelf" }

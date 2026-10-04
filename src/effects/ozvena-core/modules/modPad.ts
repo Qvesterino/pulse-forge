@@ -146,8 +146,20 @@ export function createModPad(): ModPad {
           // pointer continuously, so a 2-point lerp would alias. The
           // modulated read lives INSIDE the wet path here (pitch wobble
           // on the reverb tail), where interpolation artifacts ring on.
-          const lSample = hermiteInterp(pitchBufL[i0], pitchBufL[i1], pitchBufL[i2], pitchBufL[i3], frac);
-          const rSample = hermiteInterp(pitchBufR[i0], pitchBufR[i1], pitchBufR[i2], pitchBufR[i3], frac);
+          const lSample = hermiteInterp(
+            pitchBufL[i0],
+            pitchBufL[i1],
+            pitchBufL[i2],
+            pitchBufL[i3],
+            frac,
+          );
+          const rSample = hermiteInterp(
+            pitchBufR[i0],
+            pitchBufR[i1],
+            pitchBufR[i2],
+            pitchBufR[i3],
+            frac,
+          );
 
           // Crossfade: dry (current) ↔ wet (modulated read) by depth.
           if (wet.length > 0) wet[0][i] = wet[0][i] * (1 - depth * 0.3) + lSample * (depth * 0.3);

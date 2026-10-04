@@ -51,7 +51,12 @@ export const ENGINE3_ALGOS: readonly Engine3Algo[] = ["largeChamber", "hall"] as
 /** Reverb Assistant tone choice (Neoverb Clean / Dark / Bright / Airy). */
 export type AssistantTone = "clean" | "dark" | "bright" | "airy";
 
-export const ASSISTANT_TONES: readonly AssistantTone[] = ["clean", "dark", "bright", "airy"] as const;
+export const ASSISTANT_TONES: readonly AssistantTone[] = [
+  "clean",
+  "dark",
+  "bright",
+  "airy",
+] as const;
 
 /** Auto Cut / Unmask analysis status state machine. */
 export type AssistantStatus = "idle" | "waiting" | "listening" | "done" | "accepted" | "dismissed";
@@ -128,7 +133,13 @@ export const SYNC_NOTE_VALUES: readonly SyncNoteValue[] = [
 /** Pre EQ / Reverb EQ band shapes. */
 export type EqBandShape = "lowShelf" | "bell" | "highShelf" | "lowCut" | "highCut";
 
-export const EQ_SHAPES: readonly EqBandShape[] = ["lowShelf", "bell", "highShelf", "lowCut", "highCut"] as const;
+export const EQ_SHAPES: readonly EqBandShape[] = [
+  "lowShelf",
+  "bell",
+  "highShelf",
+  "lowCut",
+  "highCut",
+] as const;
 
 /** Processing quality tier (CPU ↔ quality trade-off). */
 export type QualityMode = "eco" | "standard" | "high" | "render";
@@ -615,6 +626,19 @@ export interface GlobalState {
   freeze: boolean;
   /** Gated reverb: wet bus closes when the input stops. */
   gate: boolean;
+  /**
+   * Gate mode (vocal-fx-gaps E4): 0 = legacy hard gate (fast close on
+   * silence, 120 ms release), 1 = gated reverb shaper (opens on the
+   * dry envelope, holds gateHoldMs, then decays exponentially with
+   * gateDecayMs). Default 0 preserves legacy behaviour bit-for-bit.
+   */
+  gateMode: number;
+  /** Gated-reverb hold after the input drops below threshold (0..500 ms). */
+  gateHoldMs: number;
+  /** Gated-reverb exponential tail decay after hold (20..2000 ms). */
+  gateDecayMs: number;
+  /** Gated-reverb threshold on the dry envelope (−60..0 dBFS). */
+  gateThresholdDb: number;
 }
 
 /** Auto-duck controller state (wet-bus gain reduction when peer
@@ -669,6 +693,10 @@ export function defaultGlobal(): GlobalState {
     quality: "standard",
     freeze: false,
     gate: false,
+    gateMode: 0,
+    gateHoldMs: 0,
+    gateDecayMs: 120,
+    gateThresholdDb: -45,
   };
 }
 
