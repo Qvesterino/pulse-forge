@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useActivePatternId, usePatterns, useServices, useTracks } from "./context";
 import { useDice } from "./DiceContext";
+import { PanelHeader } from "./PanelChrome";
 import { getStyleNamesForGenre } from "../ai/grooves/index";
 import { GENRES } from "../ai/types";
 import type { DrumTrack } from "../project-model/types";
@@ -222,12 +223,11 @@ export function DiceTray() {
 
   return (
     <div className="dice-tray" role="region" aria-label="Dice — rapid beat generator">
-      <div className="dice-tray-header">
-        <span className="dice-tray-title">DICE — rapid idea generator</span>
-        <span className="dice-tray-hint">
-          Two rolls · Full = new pattern · Vary = mutate the active one · 100 rolls, one undo
-        </span>
-      </div>
+      <PanelHeader
+        kicker="DICE"
+        title="Rapid idea generator"
+        hint="Full = new pattern · Vary = mutate the active one · 100 rolls, one undo"
+      />
 
       {/* Intent row */}
       <div className="dice-row dice-intent-row">
@@ -360,7 +360,7 @@ export function DiceTray() {
       <div className="dice-row dice-roll-row">
         <button
           type="button"
-          className={`btn dice-big${session.mode === "full" ? " dice-active" : ""}`}
+          className={`btn dice-big btn-primary${session.mode === "full" ? " dice-active" : ""}`}
           onClick={rollFull}
           title="Roll FULL — new pattern (dice). Hotkey: D"
         >

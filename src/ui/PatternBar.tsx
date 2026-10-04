@@ -261,123 +261,135 @@ export function PatternBar({
         />
       </div>
 
-      <div className="pattern-actions">
-        <button
-          type="button"
-          className="btn btn-small"
-          title="New pattern"
-          onClick={() => services.store.execute(createPattern(doc))}
-        >
-          ADD
-        </button>
-        <button
-          type="button"
-          className="btn btn-small"
-          title="Duplicate active pattern (Ctrl+D)"
-          onClick={() => services.store.execute(duplicatePattern(doc, activePatternId))}
-        >
-          DUP
-        </button>
-        <span className="action-sep" aria-hidden="true" />
-        <button
-          type="button"
-          className="btn btn-small"
-          title="Mutate active pattern into a seeded variation (velocities, ghosts, microtiming)"
-          onClick={() => services.store.execute(mutatePattern(doc, activePatternId))}
-        >
-          MUT
-        </button>
-        <button
-          type="button"
-          className="btn btn-small"
-          title="Creates a NEW pattern as a fill — snare roll over the last beat. (The FILL in the ASSIST panel works into the current pattern instead.)"
-          onClick={() => services.store.execute(createFill(doc, activePatternId))}
-        >
-          FILL
-        </button>
-        <button
-          type="button"
-          className="btn btn-small"
-          title="Generate a new pattern from genre groove (Markov chain)"
-          onClick={() => setGenerateOpen(true)}
-        >
-          GEN
-        </button>
-        <button
-          type="button"
-          className="btn btn-small"
-          title="Import a .mid file as a new pattern (drums via GM channel 10, rest as instrument tracks)"
-          onClick={() => midiFileRef.current?.click()}
-        >
-          .MID
-        </button>
-        <input
-          ref={midiFileRef}
-          type="file"
-          accept=".mid,.midi,audio/midi,audio/x-midi"
-          style={{ display: "none" }}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            event.target.value = "";
-            if (!file) return;
-            void importMidiFile(file);
-          }}
-        />
-        <button
-          type="button"
-          className="btn btn-small btn-dice"
-          title="Open Dice — rapid beat generator (100 rolls)"
-          onClick={() => onOpenDice?.()}
-        >
-          🎲 DICE
-        </button>
-        <span className="action-sep" aria-hidden="true" />
-        <button
-          type="button"
-          className="btn btn-small"
-          title="Copy active pattern"
-          onClick={() =>
-            onCopy(
-              // Deep-copy: the clipboard must not alias the live document's
-              // rows/meta (paste clones again, but the snapshot itself has
-              // to be immune to any future in-place writer).
-              structuredClone({
-                stepCount: active.stepCount,
-                rows: active.rows,
-                notes: active.notes ?? {},
-                stepMeta: active.stepMeta,
-              }),
-            )
-          }
-        >
-          COPY
-        </button>
-        <button
-          type="button"
-          className="btn btn-small"
-          title="Paste into active pattern"
-          disabled={clip === null}
-          onClick={() => clip && services.store.execute(pastePattern(doc, clip))}
-        >
-          PASTE
-        </button>
-        <button
-          type="button"
-          className="btn btn-small btn-danger"
-          title="Clear all steps of active pattern (undoable)"
-          onClick={() => services.store.execute(clearPattern(doc, activePatternId))}
-        >
-          CLEAR
-        </button>
-        <button
-          type="button"
-          className="btn btn-small btn-danger"
-          title="Delete active pattern"
-          disabled={patterns.length <= 1}
-          onClick={() => services.store.execute(deletePattern(doc, activePatternId))}
-        >
-          DEL
-        </button>
+      {/* De-souped V2 (ROADMAP-UI-2027): the action wall became labelled
+          groups — the eye docks on PATTERN / GENERATE / CLIPBOARD instead of
+          scanning eleven identical rectangles. Same buttons, same handlers. */}
+      <div className="pattern-actions toolbar">
+        <div className="toolbar-group" role="group" aria-label="Pattern">
+          <span className="toolbar-label">PATTERN</span>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="New pattern"
+            onClick={() => services.store.execute(createPattern(doc))}
+          >
+            ADD
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Duplicate active pattern (Ctrl+D)"
+            onClick={() => services.store.execute(duplicatePattern(doc, activePatternId))}
+          >
+            DUP
+          </button>
+        </div>
+        <div className="toolbar-group" role="group" aria-label="Generate">
+          <span className="toolbar-label">GENERATE</span>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Mutate active pattern into a seeded variation (velocities, ghosts, microtiming)"
+            onClick={() => services.store.execute(mutatePattern(doc, activePatternId))}
+          >
+            MUT
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Creates a NEW pattern as a fill — snare roll over the last beat. (The FILL in the ASSIST panel works into the current pattern instead.)"
+            onClick={() => services.store.execute(createFill(doc, activePatternId))}
+          >
+            FILL
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Generate a new pattern from genre groove (Markov chain)"
+            onClick={() => setGenerateOpen(true)}
+          >
+            GEN
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Import a .mid file as a new pattern (drums via GM channel 10, rest as instrument tracks)"
+            onClick={() => midiFileRef.current?.click()}
+          >
+            .MID
+          </button>
+          <input
+            ref={midiFileRef}
+            type="file"
+            accept=".mid,.midi,audio/midi,audio/x-midi"
+            style={{ display: "none" }}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (!file) return;
+              void importMidiFile(file);
+            }}
+          />
+          <button
+            type="button"
+            className="btn btn-small btn-dice"
+            title="Open Dice — rapid beat generator (100 rolls)"
+            onClick={() => onOpenDice?.()}
+          >
+            🎲 DICE
+          </button>
+        </div>
+        <div className="toolbar-group" role="group" aria-label="Clipboard">
+          <span className="toolbar-label">CLIPBOARD</span>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Copy active pattern"
+            onClick={() =>
+              onCopy(
+                // Deep-copy: the clipboard must not alias the live document's
+                // rows/meta (paste clones again, but the snapshot itself has
+                // to be immune to any future in-place writer).
+                structuredClone({
+                  stepCount: active.stepCount,
+                  rows: active.rows,
+                  notes: active.notes ?? {},
+                  stepMeta: active.stepMeta,
+                }),
+              )
+            }
+          >
+            COPY
+          </button>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Paste into active pattern"
+            disabled={clip === null}
+            onClick={() => clip && services.store.execute(pastePattern(doc, clip))}
+          >
+            PASTE
+          </button>
+        </div>
+        <div className="toolbar-group" role="group" aria-label="Destructive">
+          <button
+            type="button"
+            className="btn btn-small btn-danger"
+            title="Clear all steps of active pattern (undoable)"
+            onClick={() => services.store.execute(clearPattern(doc, activePatternId))}
+          >
+            CLEAR
+          </button>
+          <button
+            type="button"
+            className="btn btn-small btn-danger"
+            title="Delete active pattern"
+            disabled={patterns.length <= 1}
+            onClick={() => services.store.execute(deletePattern(doc, activePatternId))}
+          >
+            DEL
+          </button>
+        </div>
         <select
           className="pattern-length"
           aria-label="Pattern length"

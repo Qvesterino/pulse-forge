@@ -3,6 +3,7 @@ import { useServices, useTracks } from "./context";
 import type { EffectType, Track } from "../project-model/types";
 import { FxAddPopover } from "./FxAddPopover";
 import { FxIntentBar } from "./FxIntentBar";
+import { PanelHeader } from "./PanelChrome";
 import { parseProductionIntent } from "../intent/production";
 import { addEffectWithLandingCommand, applyProductionIntentToTrackCommand } from "../commands/commands";
 import { applyEffectIntentOnTrack } from "./fxAddAssistant";
@@ -224,10 +225,97 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
 
     return (
       <section className="devices-panel" aria-label={`Devices — ${track.name}`}>
+        {/* V2 (ROADMAP-UI-2027): the panel identifies itself and hosts its
+            add-actions in one header row; the chain strip below is pure
+            navigation. Before, track name + chain + two selects shared one
+            anonymous toolbar with no hierarchy. */}
+        <PanelHeader
+          kicker="DEVICES"
+          title={track.name}
+          actions={
+            <>
+              <select
+                className="devices-add-effect"
+                value=""
+                title={
+                  selectedFx
+                    ? `Insert effect after ${EFFECT_DEFS[selectedFx.type].name}`
+                    : activeDeviceId === "instrument"
+                      ? `Insert effect after ${instrumentLabel}`
+                      : "Add effect to this track"
+                }
+                aria-label={
+                  selectedFx
+                    ? "Insert effect after the selected device"
+                    : activeDeviceId === "instrument"
+                      ? "Insert effect after the instrument"
+                      : "Add effect to the track"
+                }
+                onChange={(event) => {
+                  const type = event.target.value as EffectType;
+                  if (!type) return;
+                  const selectedIndex = track.effects.findIndex((fx) => fx.id === activeDeviceId);
+                  const insertionIndex =
+                    selectedIndex >= 0 ? selectedIndex + 1 : activeDeviceId === "instrument" ? 0 : track.effects.length;
+                  const command = addLanded(type, insertionIndex);
+                  services.store.execute(command);
+                  setSelectedDeviceId(command.effectId);
+                }}
+              >
+                <option value="">+ FX</option>
+                {CORE_EFFECT_GROUPS.map((group) => (
+                  <optgroup key={group.key} label={group.label}>
+                    {group.types.map((type) => (
+                      <option key={type} value={type}>
+                        {EFFECT_DEFS[type].name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+                <optgroup label="FLAGSHIP PLUGINS">
+                  {FLAGSHIP_EFFECT_ORDER.map((type) => (
+                    <option key={type} value={type}>
+                      {EFFECT_DEFS[type].name}
+                    </option>
+                  ))}
+                </optgroup>
+                {ADDITIONAL_EFFECT_GROUPS.map((group) => (
+                  <optgroup key={`${group.key}-more`} label={group.label}>
+                    {group.types.map((type) => (
+                      <option key={type} value={type}>
+                        {EFFECT_DEFS[type].name}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              <select
+                className="devices-add-chain"
+                value=""
+                title="Add a short beatmaking effect chain after the selected device"
+                aria-label="Add a beatmaking effect chain"
+                onChange={(event) => {
+                  const chain = BEATMAKING_EFFECT_CHAINS.find((candidate) => candidate.id === event.target.value);
+                  if (!chain) return;
+                  const selectedIndex = track.effects.findIndex((fx) => fx.id === activeDeviceId);
+                  const insertionIndex =
+                    selectedIndex >= 0 ? selectedIndex + 1 : activeDeviceId === "instrument" ? 0 : track.effects.length;
+                  const command = applyEffectChainPreset(doc, track.id, chain, insertionIndex);
+                  services.store.execute(command);
+                  setSelectedDeviceId(command.firstEffectId);
+                }}
+              >
+                <option value="">+ CHAIN</option>
+                {BEATMAKING_EFFECT_CHAINS.map((chain) => (
+                  <option key={chain.id} value={chain.id} title={chain.description}>
+                    {chain.name}
+                  </option>
+                ))}
+              </select>
+            </>
+          }
+        />
         <div className="devices-toolbar">
-          <span className="devices-track-name" title={track.name}>
-            {track.name}
-          </span>
           <div className="devices-chain" role="group" aria-label="Track device chain. Drag modules to reorder them.">
             {hasInstrument && (
               <button
@@ -287,84 +375,6 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
               </button>
             ))}
           </div>
-          <select
-            className="devices-add-effect"
-            value=""
-            title={
-              selectedFx
-                ? `Insert effect after ${EFFECT_DEFS[selectedFx.type].name}`
-                : activeDeviceId === "instrument"
-                  ? `Insert effect after ${instrumentLabel}`
-                  : "Add effect to this track"
-            }
-            aria-label={
-              selectedFx
-                ? "Insert effect after the selected device"
-                : activeDeviceId === "instrument"
-                  ? "Insert effect after the instrument"
-                  : "Add effect to the track"
-            }
-            onChange={(event) => {
-              const type = event.target.value as EffectType;
-              if (!type) return;
-              const selectedIndex = track.effects.findIndex((fx) => fx.id === activeDeviceId);
-              const insertionIndex =
-                selectedIndex >= 0 ? selectedIndex + 1 : activeDeviceId === "instrument" ? 0 : track.effects.length;
-              const command = addLanded(type, insertionIndex);
-              services.store.execute(command);
-              setSelectedDeviceId(command.effectId);
-            }}
-          >
-            <option value="">+ FX</option>
-            {CORE_EFFECT_GROUPS.map((group) => (
-              <optgroup key={group.key} label={group.label}>
-                {group.types.map((type) => (
-                  <option key={type} value={type}>
-                    {EFFECT_DEFS[type].name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-            <optgroup label="FLAGSHIP PLUGINS">
-              {FLAGSHIP_EFFECT_ORDER.map((type) => (
-                <option key={type} value={type}>
-                  {EFFECT_DEFS[type].name}
-                </option>
-              ))}
-            </optgroup>
-            {ADDITIONAL_EFFECT_GROUPS.map((group) => (
-              <optgroup key={`${group.key}-more`} label={group.label}>
-                {group.types.map((type) => (
-                  <option key={type} value={type}>
-                    {EFFECT_DEFS[type].name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-          <select
-            className="devices-add-chain"
-            value=""
-            title="Add a short beatmaking effect chain after the selected device"
-            aria-label="Add a beatmaking effect chain"
-            onChange={(event) => {
-              const chain = BEATMAKING_EFFECT_CHAINS.find((candidate) => candidate.id === event.target.value);
-              if (!chain) return;
-              const selectedIndex = track.effects.findIndex((fx) => fx.id === activeDeviceId);
-              const insertionIndex =
-                selectedIndex >= 0 ? selectedIndex + 1 : activeDeviceId === "instrument" ? 0 : track.effects.length;
-              const command = applyEffectChainPreset(doc, track.id, chain, insertionIndex);
-              services.store.execute(command);
-              setSelectedDeviceId(command.firstEffectId);
-            }}
-          >
-            <option value="">+ CHAIN</option>
-            {BEATMAKING_EFFECT_CHAINS.map((chain) => (
-              <option key={chain.id} value={chain.id} title={chain.description}>
-                {chain.name}
-              </option>
-            ))}
-          </select>
         </div>
         {/* The persistent idea input lives on BOTH rack surfaces — the dock
             renders this devices view for the selected track, the classic

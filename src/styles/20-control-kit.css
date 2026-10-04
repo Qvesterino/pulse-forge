@@ -1,0 +1,284 @@
+/* ---------- Control kit V2 (ROADMAP-UI-2027, Vlna 2) -----------------------
+   One button/toolbar/section language for every panel. Loaded LAST in the
+   cascade: additive component classes that must win ties against the legacy
+   per-panel styles. Do not reorder src/styles/index.css.
+
+   Hierarchy rules (Molten Console 2.0):
+   - accent  = interactive state + primary actions (sparingly!)
+   - raised  = neutral secondary chrome
+   - glow    = ACTIVE things only (recording, playing, selected tab/LED) */
+
+/* ---------- Buttons ---------- */
+
+/* Primary: the ONE action that moves the workflow forward (DO IT, ROLL).
+   Filled accent, dark text for contrast — never more than one per view. */
+.btn.btn-primary {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, #fff 12%), var(--accent));
+  border-color: color-mix(in srgb, var(--accent) 70%, #000);
+  color: #141008;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 0 12px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.btn.btn-primary:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 55%, #fff);
+  color: #141008;
+  filter: brightness(1.06);
+}
+.btn.btn-primary:disabled {
+  opacity: 0.4;
+}
+
+/* Soft: regular secondary actions — a raised surface, no accent. */
+.btn.btn-soft {
+  background: linear-gradient(180deg, var(--bg-raise), color-mix(in srgb, var(--bg-raise) 86%, #000));
+  color: var(--text);
+}
+
+/* Icon: square, for glyph-only actions. */
+.btn.btn-icon {
+  min-width: var(--ctrl-h-sm);
+  width: var(--ctrl-h-sm);
+  height: var(--ctrl-h-sm);
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+}
+
+/* Chip: compact toggle (LED + label) — the dock-tab look, reusable inside
+   panels for mode toggles and filter states. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--ctrl-h-sm);
+  padding: 0 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  color: var(--text-dim);
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  transition:
+    color 0.12s,
+    border-color 0.12s,
+    background 0.12s;
+}
+.chip:hover {
+  color: var(--text);
+  border-color: #343945;
+}
+.chip:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+.chip[aria-pressed="true"],
+.chip.active {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: linear-gradient(180deg, transparent 40%, var(--accent-soft));
+}
+.chip[aria-pressed="true"] .chip-led,
+.chip.active .chip-led {
+  background: var(--accent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+.chip-led {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--border);
+  flex: none;
+}
+
+/* Segmented control: mutually exclusive modes. */
+.seg {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.seg-item {
+  height: 20px;
+  padding: 0 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  color: var(--text-faint);
+  border-radius: var(--radius-xs);
+}
+.seg-item:hover {
+  color: var(--text);
+}
+.seg-item[aria-pressed="true"],
+.seg-item.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* Dice roll buttons: FULL carries the panel's primary fill; the LIT
+   (dice-active) mode state must stay readable above it — pressed = brighter
+   fill + glow, unpressed primary = deep accent. */
+.btn.dice-big.dice-active {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 78%, #fff),
+    color-mix(in srgb, var(--accent) 90%, #000)
+  );
+  border-color: color-mix(in srgb, var(--accent) 55%, #fff);
+  color: #141008;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    0 0 16px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+/* ---------- Toolbar (the de-soup primitive) ----------
+   A toolbar is a row of GROUPS, not a row of buttons: each group gets a tiny
+   mono label so the eye can dock onto "GENERATE" / "CLIPBOARD" instead of
+   scanning eleven identical rectangles. */
+.toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  row-gap: 6px;
+}
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px 3px 8px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+}
+.toolbar-label {
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 1.2px;
+  color: var(--text-faint);
+  margin-right: 2px;
+  user-select: none;
+}
+.toolbar-sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border-soft);
+  margin: 2px 2px;
+}
+
+/* ---------- Panel header / sections ---------- */
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 2px 0 8px;
+  border-bottom: 1px solid var(--border-soft);
+  margin-bottom: 8px;
+  flex: none;
+}
+.panel-header-id {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+.panel-kicker {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.6px;
+  color: var(--accent);
+  flex: none;
+}
+.panel-title-line {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.panel-hint {
+  font-size: 10px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.panel-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+/* Section card: content groups read as RAISED surfaces, not flat columns. */
+.panel-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, var(--bg-panel-2), color-mix(in srgb, var(--bg-panel-2) 84%, #000));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    var(--elev-1);
+}
+.panel-section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.panel-section-title {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  color: var(--text-dim);
+}
+.panel-section-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Mod panel: its .mod-section columns become the section cards (the audit's
+   biggest ask — sections were flat columns with no separation). Scoped to
+   the mod panel so the scene launcher's own .mod-section styling keeps its
+   layout. */
+.mod-panel .mod-section {
+  padding: 10px 12px;
+  background: linear-gradient(180deg, var(--bg-panel-2), color-mix(in srgb, var(--bg-panel-2) 84%, #000));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    var(--elev-1);
+}
+.mod-panel .mod-section > .panel-title {
+  margin: 0;
+}
+
+/* ---------- Colour discipline ----------
+   Raw range inputs default to Chromium blue — every one inside a panel wears
+   the theme accent instead (the DICE sliders were the loudest offender). */
+.dice-slider input[type="range"],
+.panel-section input[type="range"],
+.devices-panel input[type="range"] {
+  accent-color: var(--accent);
+}
