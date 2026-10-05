@@ -63,9 +63,11 @@ export function estimateTempo(pcm: Float32Array, sampleRate: number): TempoEstim
   }
 }
 
-// Krumhansl-Kessler key profiles (standard values).
-const MAJOR_PROFILE = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
-const MINOR_PROFILE = [6.33, 2.68, 3.52, 5.38, 2.6, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
+// Krumhansl-Kessler key profiles (standard values). Exported so the chord
+// transcriber (src/reference/analysis/chords.ts) scores roots against the
+// SAME tonal shapes the key lane uses — one definition of "how a bar sounds".
+export const MAJOR_PROFILE = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
+export const MINOR_PROFILE = [6.33, 2.68, 3.52, 5.38, 2.6, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 function pearson(a: readonly number[], b: readonly number[]): number {

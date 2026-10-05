@@ -335,7 +335,7 @@ function TRAP(): GoldenTrack {
       hat: bars(bars8, () => Array.from({ length: STEPS_PER_BAR }, () => 1)), // 16th rolls
     },
     bass: Array.from({ length: bars8 }, (_, bar) => {
-      const root = 30 + progression[Math.floor(bar / 2) % 4]; // F#1 register
+      const root = 30 + ((progression[Math.floor(bar / 2) % 4] - 6 + 12) % 12); // F#1 anchor
       return [
         { step: bar * STEPS_PER_BAR + 0, pitch: root, durationSteps: 10 },
         { step: bar * STEPS_PER_BAR + 12, pitch: root + 12, durationSteps: 4 },
@@ -367,7 +367,7 @@ function DNB(): GoldenTrack {
       hat: bars(bars8, () => row(2, 6, 10, 14)),
     },
     bass: Array.from({ length: bars8 }, (_, bar) => {
-      const root = 31 + progression[Math.floor(bar / 2) % 4]; // G1 register
+      const root = 31 + ((progression[Math.floor(bar / 2) % 4] - 7 + 12) % 12); // G1 anchor
       return [{ step: bar * STEPS_PER_BAR + 0, pitch: root, durationSteps: 14 }];
     }).flat(),
     chords: Array.from({ length: bars8 }, (_, bar) => {
@@ -384,4 +384,26 @@ function DNB(): GoldenTrack {
 /** The golden set — order is part of the contract (indexes in test reports). */
 export function goldenTracks(): GoldenTrack[] {
   return [HOUSE(), TECHNO(), BOOMBAP(), TRAP(), DNB()];
+}
+
+/**
+ * Drums-only material (four-on-floor, no bass, no chords) — the honesty
+ * fixture: the chord layer must come back EMPTY + warning, never invented.
+ * Deliberately NOT part of goldenTracks() so the locked tempo/key baselines
+ * stay scoped to the five harmonic tracks.
+ */
+export function drumsOnlyTrack(): GoldenTrack {
+  return {
+    id: "drums-only-120",
+    bpm: 120,
+    bars: 4,
+    key: { tonicPc: 0, mode: "minor" },
+    drums: {
+      kick: bars(4, () => row(0, 4, 8, 12)),
+      snare: bars(4, () => row(4, 12)),
+      hat: bars(4, () => row(2, 6, 10, 14)),
+    },
+    bass: [],
+    chords: [],
+  };
 }

@@ -216,6 +216,34 @@ export function chordBarAccuracy(detected: readonly DetectedChord[], truth: read
   };
 }
 
+/** Expand merged spans (startBar/bars) into the per-bar view the chord KPI
+ * scores against. Bars no span covers simply stay absent — accuracy counts
+ * them as misses, which is exactly how an honest transcription should lose
+ * points.
+ *
+ * `spanBarSec`/`truthBarSec` reconcile grids that differ: a half-time tempo
+ * detection (dnb at 86.9 vs the true 174) produces spans twice a truth bar
+ * long. Each truth bar joins the span covering its midpoint. Omit both to
+ * score a 1:1 grid. */
+export function expandChordSpans(
+  spans: ReadonlyArray<{ startBar: number; bars: number; rootPc: number; quality?: string }>,
+  options: { spanBarSec?: number; truthBarSec?: number; totalBars?: number } = {},
+): DetectedChord[] {
+  const spanBarSec = options.spanBarSec ?? options.truthBarSec ?? 1;
+  const truthBarSec = options.truthBarSec ?? spanBarSec;
+  const totalBars = options.totalBars ?? spans.reduce((max, span) => Math.max(max, span.startBar + span.bars), 0);
+  const detected: DetectedChord[] = [];
+  for (let bar = 0; bar < totalBars; bar++) {
+    const center = (bar + 0.5) * truthBarSec;
+    const span = spans.find((candidate) => {
+      const start = candidate.startBar * spanBarSec;
+      return center >= start && center < start + candidate.bars * spanBarSec;
+    });
+    if (span) detected.push({ bar, rootPc: span.rootPc, quality: span.quality });
+  }
+  return detected;
+}
+
 /** Tempo error after folding the detected BPM by half/double — the honest
  * "is the pulse right" number for an estimator that folds. */
 export function tempoFoldError(detectedBpm: number | null, truthBpm: number): number | null {

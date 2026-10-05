@@ -139,7 +139,7 @@ obe KPI splnené, baseline re-locked. `estimateTempo` teraz vracia 0,1 BPM
 presnosť (float), konzumenti (audio-reference patch, groove-extraction,
 voice-idea) prešli bez zmeny — ich testy 34/34 zelené.
 
-### U1 — Chord transcription (chroma → ChordEvent[])
+### U1 — Chord transcription (chroma → ChordEvent[]) — **HOTOVÉ 2026-10-04**
 
 - `src/reference/analysis/chords.ts` (pure): per-bar chroma segment → template
   skóre (beat_modifier recept vrátane −0,3 penalty) → degree/quality mapované
@@ -151,6 +151,33 @@ voice-idea) prešli bez zmeny — ich testy 34/34 zelené.
   rendroch prázdne + warning (nie vymyslené akordy); determinizmus (rovnaký
   WAV → rovnaké akordy).
 - **Úsilie:** ~1 blok.
+
+**Ako to dopadlo (SHIPPED, `transcribeTrack` wiring + KPI gate ACTIVE):**
+recept z beat_modifier sa po zlatom ladení zmenil na hybrid — tri lekcie,
+ktoré dal U0/U1 kalibračný cyklus:
+
+1. **Raw in-chord share nevie rooty** (F maj ≡ Dmin7 zdieľa 3/4 tónov;
+   4-tónové šablóny podvádzajú zbieraním kick-sweep tónov) → ROOT/TONALITA =
+   KK korelácia (rovnaké profily ako key lane) na full-weight chrome.
+2. **Sevenths bez voicingu neexistujú** — kick sweep fake-uje 7. tón →
+   QUALITY decision beží na oct1+ chrome (kick je oct0) a seventh musí
+   prekročiť OBA prahy: 0,6× najslabší triádny tón a 0,25× root.
+3. **Bbmaj7 ≡ Dm6 chromaticky** — jediný poctivý rozlišovač je basa:
+   `BASS_ROOT_SHARE 0.2` + bonus 0,12 (dnb sub-basa 58 Hz žije pod oct0,
+   hlasuje cez 2. harmoniku — preto threshold 0,2).
+
+Výsledok na golden sete: **exact (root+quality) 36/36** (house 8/8, techno
+8/8, boombap 4/4 vrátane min7+maj7, trap 8/8, dnb 8/8 cez half-time grid
+konverziu `expandChordSpans`), drums-only → prázdne + warning (corr gate
+0,55; drums max 0,487), silence → skip s warningom. Kontrakt: `TranscribedChordSpan`
+(špan + degree/func proti detegovanému key), determinizmus zamknutý.
+
+**Key floor re-lock (poctivý downgrade 5/5 → 3/5):** diatonické basy odhalili
+KK rotačnú ambivalenciu — trap progresia je diatonická v D major aj F#-mol;
+plain chroma nevie vybrať rotáciu bez tonic-hintu. Misy (trap→D maj,
+dnb→Eb maj) sú diatonicky príbuzné škály (rovnaký PC set). **U1.5 kandidát:
+key z chord-sekvencie** (prvý span s dobrou confidence = tonic) — U1 dáta to
+už umožňujú. Tempo floor nezmenený (5/5, err ≤ 0,2).
 
 ### U2 — Bass transcription (→ NoteEvent[])
 
