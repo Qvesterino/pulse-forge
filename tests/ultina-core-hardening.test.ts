@@ -719,7 +719,17 @@ describe("AudioEngine: automation resolves group-bus chains", () => {
       (t) => t / 960,
     );
     // Pre-fix: trackNodes-only lookup silently dropped group-bus lanes.
-    expect(calls).toEqual(["global.mix@50:0", "global.mix@80:0.5"]);
+    // Continuous params interpolate on a 16th-note grid (AutomationBridge,
+    // badfd106): 480 ticks = 4 sixteenths, so the 50->80 ramp lands as five
+    // scheduled writes — two raw setValueAtTime steps would sound like one
+    // jump at the lane's end instead of the line the editor draws.
+    expect(calls).toEqual([
+      "global.mix@50:0",
+      "global.mix@57.5:0.125",
+      "global.mix@65:0.25",
+      "global.mix@72.5:0.375",
+      "global.mix@80:0.5",
+    ]);
   });
 
   it("scheduleDeviceAutomation falls back to return-track chains", () => {
