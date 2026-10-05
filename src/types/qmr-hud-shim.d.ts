@@ -34,9 +34,10 @@ declare module "@qvester/qmr-hud/command-bus.ts" {
   }
   export function listenForCommands(
     appId: string,
-    handler: (
-      command: { type: string; [key: string]: unknown },
-    ) => CommandResult | Promise<CommandResult> | void | Promise<void>,
+    handler: (command: {
+      type: string;
+      [key: string]: unknown;
+    }) => CommandResult | Promise<CommandResult> | void | Promise<void>,
   ): () => void;
   export function dispatchViaHostBus(
     appId: string,

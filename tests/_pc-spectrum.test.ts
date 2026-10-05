@@ -37,7 +37,8 @@ function peakBin(out: Float32Array, sr: number, from: number, to: number): { hz:
   for (let f = from; f <= to; f++) {
     const k = (2 * Math.PI * f) / sr;
     const coeff = 2 * Math.cos(k);
-    let s1 = 0, s2 = 0;
+    let s1 = 0,
+      s2 = 0;
     for (let i = 0; i < seg.length; i++) {
       const s0 = seg[i] + coeff * s1 - s2;
       s2 = s1;
@@ -53,7 +54,7 @@ describe("pitchCorrect rendering spectrum (diagnostic)", () => {
   it("renders and reports the spectral peak at ratio 1.0187", () => {
     const scope: Record<string, unknown> = {};
     runInNewContext(
-      'this.AudioWorkletProcessor = class {}; this.registerProcessor = (name, p) => { this[name] = p; };',
+      "this.AudioWorkletProcessor = class {}; this.registerProcessor = (name, p) => { this[name] = p; };",
       scope,
     );
     const Processor = boot("src/audio-worklets/pitchcorrect-processor.js", scope);

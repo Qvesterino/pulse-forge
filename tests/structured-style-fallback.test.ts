@@ -113,15 +113,11 @@ describe("structuredStyleVector", () => {
   });
 
   it("falls through to the genre centre when the style is unknown", () => {
-    expect(structuredStyleVector({ genre: "house", style: "no-such-style" })).toEqual(
-      styleVectorForGenre("house"),
-    );
+    expect(structuredStyleVector({ genre: "house", style: "no-such-style" })).toEqual(styleVectorForGenre("house"));
   });
 
   it("treats a blank style as no style", () => {
-    expect(structuredStyleVector({ genre: "house", style: "   " })).toEqual(
-      styleVectorForGenre("house"),
-    );
+    expect(structuredStyleVector({ genre: "house", style: "   " })).toEqual(styleVectorForGenre("house"));
   });
 });
 
@@ -223,6 +219,3 @@ describe("the fallback actually reaches the drum prior's input space", () => {
     }
   });
 });
-
-
-

@@ -65,7 +65,25 @@ describe("every profile declares lanes that exist in the groove library", () => 
     // A lane id that does not exist is dead data: it would silently never
     // match and quietly cost that artist their lane preference forever.
     const known = new Set<string>();
-    for (const genre of ["house", "trap", "techno", "ambient", "hybrid", "dnb", "boombap", "drill", "phonk", "jersey", "ukg", "westcoast", "amapiano", "hyperpop", "detroit", "postrock", "trance"] as const) {
+    for (const genre of [
+      "house",
+      "trap",
+      "techno",
+      "ambient",
+      "hybrid",
+      "dnb",
+      "boombap",
+      "drill",
+      "phonk",
+      "jersey",
+      "ukg",
+      "westcoast",
+      "amapiano",
+      "hyperpop",
+      "detroit",
+      "postrock",
+      "trance",
+    ] as const) {
       for (const groove of getGroovesForGenre(genre as never)) known.add(groove.id.split(".")[1]);
     }
     for (const [slug, profile] of Object.entries(ARTIST_PROFILES)) {
@@ -98,9 +116,7 @@ describe("resolveGrooveSeeded — lane preference keeps the artist in its pocket
     const orchestral = new Set(
       seeds.map((s) => resolveGrooveSeeded("trap", undefined, s, null, ["lux", "rolling"]).id),
     );
-    const hyphy = new Set(
-      seeds.map((s) => resolveGrooveSeeded("trap", undefined, s, null, ["hyphy", "crunk"]).id),
-    );
+    const hyphy = new Set(seeds.map((s) => resolveGrooveSeeded("trap", undefined, s, null, ["hyphy", "crunk"]).id));
     const overlap = [...orchestral].filter((id) => hyphy.has(id));
     expect(overlap).toEqual([]);
   });

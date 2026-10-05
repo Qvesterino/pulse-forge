@@ -100,9 +100,7 @@ export function styleVectorForStyle(genre: IntentGenre | string, style: string):
  */
 export function styleVectorForGenre(genre: IntentGenre | string): number[] | null {
   const ids = styleIdsForGenre(genre);
-  const vectors = ids
-    .map(vectorFor)
-    .filter((vector): vector is readonly number[] => vector !== null);
+  const vectors = ids.map(vectorFor).filter((vector): vector is readonly number[] => vector !== null);
   const mean = meanOf(vectors);
   if (mean) return mean;
   const house = meanOf(styleIdsForGenre("house").map(vectorFor).filter(Boolean) as number[][]);
@@ -115,10 +113,7 @@ export function styleVectorForGenre(genre: IntentGenre | string): number[] | nul
  * caller must treat as "no semantic channel" rather than as a zero vector —
  * feeding zeros into the prior would bias every pad toward silence.
  */
-export function structuredStyleVector(input: {
-  genre: IntentGenre | string;
-  style?: string | null;
-}): number[] | null {
+export function structuredStyleVector(input: { genre: IntentGenre | string; style?: string | null }): number[] | null {
   const style = input.style?.trim();
   if (style) {
     const byStyle = styleVectorForStyle(input.genre, style);

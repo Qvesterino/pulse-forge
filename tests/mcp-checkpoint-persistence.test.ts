@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
-import { executeMcpTool, resetMcpCheckpoints, setMcpCheckpointRepository, type CheckpointRepoLike, type McpToolContext } from "../src/mcp/tools";
+import {
+  executeMcpTool,
+  resetMcpCheckpoints,
+  setMcpCheckpointRepository,
+  type CheckpointRepoLike,
+  type McpToolContext,
+} from "../src/mcp/tools";
 import { McpCheckpointRepository, checkpointKey } from "../src/persistence/McpCheckpointRepository";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";
@@ -20,7 +26,12 @@ import type { ProjectDocument } from "../src/project-model/types";
  */
 
 /** In-memory CheckpointRepoLike — mirrors the durable contract. */
-function memoryRepo(): CheckpointRepoLike & { rows: Map<string, { projectId: string; name: string; label: string; auto: boolean; savedAt: string; doc: ProjectDocument }> } {
+function memoryRepo(): CheckpointRepoLike & {
+  rows: Map<
+    string,
+    { projectId: string; name: string; label: string; auto: boolean; savedAt: string; doc: ProjectDocument }
+  >;
+} {
   const rows = new Map<
     string,
     { projectId: string; name: string; label: string; auto: boolean; savedAt: string; doc: ProjectDocument }

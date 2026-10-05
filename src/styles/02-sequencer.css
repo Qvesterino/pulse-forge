@@ -1,5 +1,3 @@
-
-
 /* ---------- Sequencer ---------- */
 
 .sequencer {
@@ -1042,8 +1040,13 @@
 }
 
 @keyframes hum-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 
 /* Hum contour canvas — hummed pitch curve vs extracted notes. */
@@ -1053,7 +1056,6 @@
   border-radius: 4px;
   background: color-mix(in srgb, var(--bg) 65%, transparent);
 }
-
 
 /* ---------- Mobile readiness (GOAL 10) ---------- */
 /* Note and velocity drags must not fight the roll's scroll on touch.

@@ -51,7 +51,7 @@ export function interpolateAutomationPoints(
 
   const span = Math.max(1, points[points.length - 1].tick - points[0].tick);
   let stride = Math.max(1, Math.round(gridTicks));
-  while ((span / stride + points.length) > maxEvents && stride < span) stride *= 2;
+  while (span / stride + points.length > maxEvents && stride < span) stride *= 2;
 
   const out: AutomationPoint[] = [{ tick: points[0].tick, value: points[0].value }];
   for (let i = 1; i < points.length; i++) {

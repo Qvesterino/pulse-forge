@@ -218,7 +218,7 @@ export const HYBRID_GROOVES: GrooveData[] = decodeGrooves([
       },
     ],
   },
-// ── Nu skool / progressive breaks, 125-140. The defining trait is
+  // ── Nu skool / progressive breaks, 125-140. The defining trait is
   // that the kick is NOT on every quarter note: a swung, fragmented rhythm
   // that bounces rather than stomps. The module's namesake crossover.
   {
@@ -303,5 +303,4 @@ export const HYBRID_GROOVES: GrooveData[] = decodeGrooves([
       },
     ],
   },
-
 ]);

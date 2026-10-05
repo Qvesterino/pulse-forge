@@ -192,10 +192,7 @@ export function targetParamDef(doc: ProjectDocument, target: AutomationTarget): 
  * target; the alias's value transfers 1:1 because commands already remapped
  * writes through the same pair. Non-alias targets pass through untouched.
  */
-export function canonicalizeDeprecatedTarget(
-  doc: ProjectDocument,
-  target: AutomationTarget,
-): AutomationTarget {
+export function canonicalizeDeprecatedTarget(doc: ProjectDocument, target: AutomationTarget): AutomationTarget {
   if (target.kind !== "fxParam" || !target.fxId || !target.paramId) return target;
   const effect = targetEffectsOf(doc, target.trackId).find((fx) => fx.id === target.fxId);
   if (!effect) return target;

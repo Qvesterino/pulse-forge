@@ -749,9 +749,7 @@ const DRONE_PROGRESSIONS: ChordProgression[] = [
   {
     name: "i (the drone - one chord, one swell)",
     genre: "drone",
-    events: [
-      { degree: 0, quality: "min7", duration: 16, func: "T" },
-    ],
+    events: [{ degree: 0, quality: "min7", duration: 16, func: "T" }],
   },
   {
     name: "i-VII (minimal drift)",

@@ -117,9 +117,7 @@ describe("resolveGrooveSeeded — artist tempo pocket", () => {
     // Two different seeds should still be able to land on DIFFERENT grooves
     // inside the window — a subset of one would be a bug, not a feature.
     const picks = new Set(
-      ["a", "b", "c", "d", "e", "f", "g", "h"].map(
-        (s) => resolveGrooveSeeded("house", undefined, s, [120, 135]).id,
-      ),
+      ["a", "b", "c", "d", "e", "f", "g", "h"].map((s) => resolveGrooveSeeded("house", undefined, s, [120, 135]).id),
     );
     expect(picks.size).toBeGreaterThan(1);
   });

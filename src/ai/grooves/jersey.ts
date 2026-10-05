@@ -162,5 +162,4 @@ export const JERSEY_GROOVES: GrooveData[] = decodeGrooves([
       },
     ],
   },
-
 ]);

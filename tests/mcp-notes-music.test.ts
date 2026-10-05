@@ -69,7 +69,13 @@ describe("kyx_notes", async () => {
     expect(added.text).toContain("A1");
     expect(notesOf(ctx, "bass")).toHaveLength(1);
 
-    await executeMcpTool(ctx, "kyx_notes", { op: "add", family: "bass", noteName: "C2", startBeat: 1, durationBeats: 0.5 });
+    await executeMcpTool(ctx, "kyx_notes", {
+      op: "add",
+      family: "bass",
+      noteName: "C2",
+      startBeat: 1,
+      durationBeats: 0.5,
+    });
     const list = await executeMcpTool(ctx, "kyx_notes", { op: "list", family: "bass" });
     expect(list.text).toContain("#0");
     expect(list.text).toContain("#1");
@@ -86,7 +92,13 @@ describe("kyx_notes", async () => {
 
   it("move by index shifts pitch and start; indices come from list", async () => {
     const ctx = makeCtx(freshDoc());
-    await executeMcpTool(ctx, "kyx_notes", { op: "add", family: "bass", noteName: "A1", startBeat: 0, durationBeats: 1 });
+    await executeMcpTool(ctx, "kyx_notes", {
+      op: "add",
+      family: "bass",
+      noteName: "A1",
+      startBeat: 0,
+      durationBeats: 1,
+    });
     const moved = await executeMcpTool(ctx, "kyx_notes", {
       op: "move",
       family: "bass",
@@ -109,7 +121,13 @@ describe("kyx_notes", async () => {
 
   it("setVelocity clamps into range; delete removes by index", async () => {
     const ctx = makeCtx(freshDoc());
-    await executeMcpTool(ctx, "kyx_notes", { op: "add", family: "chords", noteName: "E4", startBeat: 0, durationBeats: 2 });
+    await executeMcpTool(ctx, "kyx_notes", {
+      op: "add",
+      family: "chords",
+      noteName: "E4",
+      startBeat: 0,
+      durationBeats: 2,
+    });
     await executeMcpTool(ctx, "kyx_notes", { op: "setVelocity", family: "chords", index: 0, velocity: 5 });
     expect(notesOf(ctx, "chords")[0].velocity).toBe(1);
     const del = await executeMcpTool(ctx, "kyx_notes", { op: "delete", family: "chords", index: 0 });
@@ -134,8 +152,20 @@ describe("kyx_notes", async () => {
 
   it("transpose shifts the whole line by semitones", async () => {
     const ctx = makeCtx(freshDoc());
-    await executeMcpTool(ctx, "kyx_notes", { op: "add", family: "bass", noteName: "A1", startBeat: 0, durationBeats: 1 });
-    await executeMcpTool(ctx, "kyx_notes", { op: "add", family: "bass", noteName: "C2", startBeat: 1, durationBeats: 1 });
+    await executeMcpTool(ctx, "kyx_notes", {
+      op: "add",
+      family: "bass",
+      noteName: "A1",
+      startBeat: 0,
+      durationBeats: 1,
+    });
+    await executeMcpTool(ctx, "kyx_notes", {
+      op: "add",
+      family: "bass",
+      noteName: "C2",
+      startBeat: 1,
+      durationBeats: 1,
+    });
     await executeMcpTool(ctx, "kyx_notes", { op: "transpose", family: "bass", semitones: -3 });
     const pitches = notesOf(ctx, "bass").map((n) => n.pitch);
     expect(pitches).toEqual([30, 33]);
@@ -143,8 +173,20 @@ describe("kyx_notes", async () => {
 
   it("transposeAll (kyx_music) hits every instrument track with one undo step", async () => {
     const ctx = makeCtx(freshDoc());
-    await executeMcpTool(ctx, "kyx_notes", { op: "add", family: "bass", noteName: "A1", startBeat: 0, durationBeats: 1 });
-    await executeMcpTool(ctx, "kyx_notes", { op: "add", family: "chords", noteName: "E4", startBeat: 0, durationBeats: 1 });
+    await executeMcpTool(ctx, "kyx_notes", {
+      op: "add",
+      family: "bass",
+      noteName: "A1",
+      startBeat: 0,
+      durationBeats: 1,
+    });
+    await executeMcpTool(ctx, "kyx_notes", {
+      op: "add",
+      family: "chords",
+      noteName: "E4",
+      startBeat: 0,
+      durationBeats: 1,
+    });
     const r = await executeMcpTool(ctx, "kyx_music", { op: "transposeAll", semitones: 5 });
     expect(r.mutated).toBe(true);
     expect(notesOf(ctx, "bass")[0].pitch).toBe(33 + 5);

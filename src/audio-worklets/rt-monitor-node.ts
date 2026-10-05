@@ -76,7 +76,13 @@ export function createRtMonitorNode(
   let gapSum = 0;
 
   node.port.onmessage = (event: MessageEvent) => {
-    const data = event.data as { type?: string; blocks?: number; droppedQuanta?: number; sampleRate?: number; quantumMs?: number } | null;
+    const data = event.data as {
+      type?: string;
+      blocks?: number;
+      droppedQuanta?: number;
+      sampleRate?: number;
+      quantumMs?: number;
+    } | null;
     if (data?.type !== "rt") return;
     // Validate the untrusted port shape before adopting it.
     if (typeof data.blocks !== "number" || typeof data.droppedQuanta !== "number") return;
@@ -103,7 +109,15 @@ export function createRtMonitorNode(
     input: node,
     getSnapshot: () => ({ ...last }),
     reset() {
-      last = { blocks: 0, xruns: 0, sampleRate: last.sampleRate, quantumMs: last.quantumMs, maxGapMs: 0, avgGapMs: 0, heartbeats: 0 };
+      last = {
+        blocks: 0,
+        xruns: 0,
+        sampleRate: last.sampleRate,
+        quantumMs: last.quantumMs,
+        maxGapMs: 0,
+        avgGapMs: 0,
+        heartbeats: 0,
+      };
       gapSum = 0;
       lastAt = 0;
     },

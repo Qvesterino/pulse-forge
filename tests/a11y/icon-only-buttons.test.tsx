@@ -51,10 +51,7 @@ describe("a11y: icon-only buttons must have aria-label or aria-labelledby", () =
     const missing = buttonsWithoutLabel(buttons);
     if (missing.length) {
       // eslint-disable-next-line no-console
-      console.warn(
-        `[a11y] OnboardingTour has ${missing.length} icon-only button(s) without aria-label:`,
-        missing,
-      );
+      console.warn(`[a11y] OnboardingTour has ${missing.length} icon-only button(s) without aria-label:`, missing);
     }
     expect(missing).toEqual([]);
   });
@@ -198,14 +195,9 @@ describe("a11y: icon-only buttons must have aria-label or aria-labelledby", () =
 
   it("SampleBrowser: every icon-only button carries aria-label or aria-labelledby", () => {
     const doc = createProjectFromTemplate("house");
-    renderWithContext(
-      <SampleBrowser
-        assets={[]}
-        currentId={null}
-        onSelect={vi.fn()}
-      />,
-      { services: mockServices(doc) },
-    );
+    renderWithContext(<SampleBrowser assets={[]} currentId={null} onSelect={vi.fn()} />, {
+      services: mockServices(doc),
+    });
     const buttons = screen.queryAllByRole("button");
     const missing = buttonsWithoutLabel(buttons);
     if (missing.length) {
@@ -216,10 +208,7 @@ describe("a11y: icon-only buttons must have aria-label or aria-labelledby", () =
   });
 
   it("PatternBar: every icon-only button carries aria-label or aria-labelledby", () => {
-    renderWithContext(
-      <PatternBar clip={null} onCopy={vi.fn()} onOpenDice={vi.fn()} />,
-      { services: mockServices() },
-    );
+    renderWithContext(<PatternBar clip={null} onCopy={vi.fn()} onOpenDice={vi.fn()} />, { services: mockServices() });
     const buttons = screen.queryAllByRole("button");
     const missing = buttonsWithoutLabel(buttons);
     if (missing.length) {
@@ -234,10 +223,7 @@ describe("a11y: icon-only buttons must have aria-label or aria-labelledby", () =
     // they should still carry aria-label when their emoji has no
     // self-describing accessible name. This scan surfaces them so they can
     // be fixed one-by-one.
-    renderWithContext(
-      <PatternBar clip={null} onCopy={vi.fn()} onOpenDice={vi.fn()} />,
-      { services: mockServices() },
-    );
+    renderWithContext(<PatternBar clip={null} onCopy={vi.fn()} onOpenDice={vi.fn()} />, { services: mockServices() });
     const buttons = screen.queryAllByRole("button");
     const emojiOnly = buttonsWithEmojiOnly(buttons).filter(
       (b) => !b.getAttribute("aria-label") && !b.getAttribute("aria-labelledby"),

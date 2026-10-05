@@ -354,7 +354,7 @@ export const DNB_GROOVES: GrooveData[] = decodeGrooves([
       },
     ],
   },
-// ── Atmospheric: LTJ Bukem / Good Looking. The reaction AGAINST the
+  // ── Atmospheric: LTJ Bukem / Good Looking. The reaction AGAINST the
   // darkening hardstep trend, so the bass recedes and the space leads.
   {
     id: "dnb.atmospheric",
@@ -431,5 +431,4 @@ export const DNB_GROOVES: GrooveData[] = decodeGrooves([
       },
     ],
   },
-
 ]);

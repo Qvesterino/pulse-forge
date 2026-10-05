@@ -473,4 +473,3 @@ describe("Ultina worklet entry — sidechain feed (2026-10-04 audit)", () => {
     expect(comp?.gainReductionDb ?? 0).toBeGreaterThan(10);
   });
 });
-

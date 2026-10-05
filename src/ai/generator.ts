@@ -78,10 +78,7 @@ export function resolveGrooveSeeded(
   // lanes say which grooves the artist actually occupies inside them. Each
   // filter is a refinement that falls back to its input, so a profile that
   // over-specifies one of them still resolves on the other.
-  let grooves = preferGroovesByLanes(
-    preferGroovesForWindow(getGroovesForGenre(genre), grooveBpmWindow),
-    grooveLanes,
-  );
+  let grooves = preferGroovesByLanes(preferGroovesForWindow(getGroovesForGenre(genre), grooveBpmWindow), grooveLanes);
   if (grooves.length === 0) {
     // Fallback for unknown / mistyped genres — never let the indexed lookup
     // dereference `undefined.id` and throw into the generator pipeline.

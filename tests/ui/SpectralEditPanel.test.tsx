@@ -138,10 +138,9 @@ describe("SpectralEditPanel", () => {
     // The default mock has `getLiveAudioContext: () => null` (added in
     // tests/helpers) — apply short-circuits before the store mutation.
     const services = mockServices();
-    renderWithContext(
-      <SpectralEditPanel clip={makeClip()} buffer={makeAudioBuffer()} onClose={() => {}} />,
-      { services },
-    );
+    renderWithContext(<SpectralEditPanel clip={makeClip()} buffer={makeAudioBuffer()} onClose={() => {}} />, {
+      services,
+    });
     await userEvent.setup().click(screen.getByRole("button", { name: "APPLY" }));
     expect(services.store.execute).not.toHaveBeenCalled();
     expect(screen.getByText(/Audio engine not running/)).toBeInTheDocument();

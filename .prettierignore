@@ -1,1 +1,14 @@
 public/licenses/
+
+# Vendored plugin cores — script-generated mirrors of upstream (scripts/vendor-*.mjs
+# rewrite them from the upstream snapshot); formatting them would be false drift.
+src/effects/ozvena-core/
+src/effects/ultina-core/
+src/effects/fxeq-core/
+
+# Tool-emitted artifacts (preset pack generators, golden capture workflows) —
+# their emitters own the byte shape; see CAMPAIGN_STATE.md deferred follow-up.
+src/presets/*.generated.ts
+tests/domain-goldens/*.json
+tests/fxeq-golden/*.json
+tests/morph-dynamics-golden/*.json

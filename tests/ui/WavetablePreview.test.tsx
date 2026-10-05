@@ -16,10 +16,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { screen } from "@testing-library/react";
-import {
-  WavetablePreview,
-  resolveTrackWavetable,
-} from "../../src/ui/WavetablePreview";
+import { WavetablePreview, resolveTrackWavetable } from "../../src/ui/WavetablePreview";
 import { FACTORY_WAVETABLES } from "../../src/instruments/wavetables";
 import type { InstrumentTrack } from "../../src/project-model/types";
 import { renderWithContext } from "../helpers";

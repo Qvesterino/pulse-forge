@@ -97,8 +97,8 @@ describe("pitch tracker", () => {
     // contract structurally — same contract as onset-detector.ts.
     const source = readFileSync(resolve(process.cwd(), "src/audio-workers/pitch-tracker.ts"), "utf8");
     expect(source).toContain('typeof (self as unknown as { postMessage?: unknown }).postMessage === "function"');
-    expect(source).toContain('!(channelData instanceof Float32Array)');
-    expect(source).toContain('return; // not our message — ignore silently');
+    expect(source).toContain("!(channelData instanceof Float32Array)");
+    expect(source).toContain("return; // not our message — ignore silently");
   });
 });
 
@@ -164,17 +164,13 @@ describe("framesToNotes — segmentation, key snap, quantize", () => {
   });
 });
 
-describe('framesToNotes — beat-synced hum (transport anchor + loop wrap)', () => {
+describe("framesToNotes — beat-synced hum (transport anchor + loop wrap)", () => {
   const base = { bpm: 120, quantize: true };
 
-  it('anchors hummed timing to the transport position at take start', () => {
+  it("anchors hummed timing to the transport position at take start", () => {
     // Transport at bar 2 (tick 1920) when recording began; hum at 0.39 s
     // (≈374 ticks → quantized +360 offset) in a 4-bar pattern.
-    const audio = concat(
-      silence(Math.round(sec * 0.4)),
-      sine(220, Math.round(sec * 0.7)),
-      silence(sec),
-    );
+    const audio = concat(silence(Math.round(sec * 0.4)), sine(220, Math.round(sec * 0.7)), silence(sec));
     const notes = framesToNotes(trackPitch(audio, SR), {
       ...base,
       transportStartTick: 1920,
@@ -185,14 +181,10 @@ describe('framesToNotes — beat-synced hum (transport anchor + loop wrap)', () 
     expect(notes[0]!.pitch).toBe(57);
   });
 
-  it('wraps a hum past the loop end onto the pattern start (loop semantics)', () => {
+  it("wraps a hum past the loop end onto the pattern start (loop semantics)", () => {
     // 1-bar pattern (1920 ticks = 2 s @120). Hum at 0.39 s while the
     // transport was at bar 2 → absolute 2294 → wraps to 374 → 360.
-    const audio = concat(
-      silence(Math.round(sec * 0.4)),
-      sine(220, Math.round(sec * 0.7)),
-      silence(sec),
-    );
+    const audio = concat(silence(Math.round(sec * 0.4)), sine(220, Math.round(sec * 0.7)), silence(sec));
     const notes = framesToNotes(trackPitch(audio, SR), {
       ...base,
       transportStartTick: 1920,
@@ -202,7 +194,7 @@ describe('framesToNotes — beat-synced hum (transport anchor + loop wrap)', () 
     expect(notes[0]!.start).toBe(360);
   });
 
-  it('humming the same slot on a second loop REINFORCES the note instead of duplicating', () => {
+  it("humming the same slot on a second loop REINFORCES the note instead of duplicating", () => {
     // Two A3 runs 2 s apart (one 1-bar loop later), same wrapped start.
     const audio = concat(
       silence(Math.round(sec * 0.4)),
@@ -222,13 +214,9 @@ describe('framesToNotes — beat-synced hum (transport anchor + loop wrap)', () 
     expect(notes[0]!.duration).toBeGreaterThanOrEqual(240);
   });
 
-  it('clamps a note crossing the pattern end into the last step', () => {
+  it("clamps a note crossing the pattern end into the last step", () => {
     // Hum starts 1.79 s in (≈1718 ticks) and lasts past the 2 s pattern.
-    const audio = concat(
-      silence(Math.round(sec * 1.79)),
-      sine(220, Math.round(sec * 0.6)),
-      silence(sec),
-    );
+    const audio = concat(silence(Math.round(sec * 1.79)), sine(220, Math.round(sec * 0.6)), silence(sec));
     const notes = framesToNotes(trackPitch(audio, SR), {
       ...base,
       transportStartTick: 0,
@@ -240,16 +228,21 @@ describe('framesToNotes — beat-synced hum (transport anchor + loop wrap)', () 
   });
 });
 
-describe('HumToMelodyPanel — TO BEAT toggle', () => {
-  it('defaults to beat-synced with the click hint; toggling switches to free-time', async () => {
-    const doc = createProjectFromTemplate('house');
-    const track = doc.tracks.find((t): t is Extract<(typeof doc.tracks)[number], { kind: 'instrument' }> => t.kind === 'instrument')!;
+describe("HumToMelodyPanel — TO BEAT toggle", () => {
+  it("defaults to beat-synced with the click hint; toggling switches to free-time", async () => {
+    const doc = createProjectFromTemplate("house");
+    const track = doc.tracks.find(
+      (t): t is Extract<(typeof doc.tracks)[number], { kind: "instrument" }> => t.kind === "instrument",
+    )!;
     const pattern = doc.patterns[0]!;
-    renderWithContext(<HumToMelodyPanel track={track} pattern={pattern} docKey={doc.key ?? null} onClose={() => {}} />, {
-      services: mockServices(doc),
-    });
+    renderWithContext(
+      <HumToMelodyPanel track={track} pattern={pattern} docKey={doc.key ?? null} onClose={() => {}} />,
+      {
+        services: mockServices(doc),
+      },
+    );
 
-    const toggle = screen.getByRole('checkbox', { name: 'TO BEAT' }) as HTMLInputElement;
+    const toggle = screen.getByRole("checkbox", { name: "TO BEAT" }) as HTMLInputElement;
     expect(toggle.checked).toBe(true);
     expect(screen.getByText(/Hum to the beat/i)).toBeInTheDocument();
 
@@ -259,8 +252,8 @@ describe('HumToMelodyPanel — TO BEAT toggle', () => {
   });
 });
 
-describe('onset-assisted segmentation (da-da on one pitch)', () => {
-  it('splits a continuous same-pitch re-attack into two notes via the real onset detector', () => {
+describe("onset-assisted segmentation (da-da on one pitch)", () => {
+  it("splits a continuous same-pitch re-attack into two notes via the real onset detector", () => {
     const sec = SR;
     // Continuous A3 voicing with an amplitude re-articulation at ~0.35 s:
     // dips to 12% (still voiced: rms ~0.034 >> gate) then back to full —
@@ -268,13 +261,7 @@ describe('onset-assisted segmentation (da-da on one pitch)', () => {
     const first = sine(220, Math.round(sec * 0.3));
     const dip = sine(220, Math.round(sec * 0.06), 0.048);
     const second = sine(220, Math.round(sec * 0.3));
-    const audio = concat(
-      silence(Math.round(sec * 0.4)),
-      first,
-      dip,
-      second,
-      silence(sec),
-    );
+    const audio = concat(silence(Math.round(sec * 0.4)), first, dip, second, silence(sec));
     const frames = trackPitch(audio, SR);
     const onsets = detectHumReAttacks(audio, SR);
     expect(onsets).toHaveLength(1); // the re-articulation (the take start is a run edge, not a cut)
@@ -294,7 +281,7 @@ describe('onset-assisted segmentation (da-da on one pitch)', () => {
     for (const note of withOnsets) expect(note.duration).toBeGreaterThanOrEqual(120);
   });
 
-  it('margin guards: onsets near a run edge or in gaps never create fragments', () => {
+  it("margin guards: onsets near a run edge or in gaps never create fragments", () => {
     // Frames: one continuous voiced run 0.39–1.09 s (A3), hand-made.
     const mk = (timeSec: number, midi: number) => ({ timeSec, midi, clarity: 0.9, rms: 0.2 });
     const frames = Array.from({ length: 70 }, (_, i) => mk(0.39 + i * 0.01, 57));
@@ -363,9 +350,7 @@ describe("humContourLayout — pitch-contour canvas math", () => {
     // 60..72 padded ±2 → 58..74; the note sits ABOVE the frame on the canvas.
     expect(layout.pitchMin).toBe(58);
     expect(layout.pitchMax).toBe(74);
-    expect(layout.noteRects[0]!.y).toBeLessThan(
-      layout.points[0]!.y,
-    );
+    expect(layout.noteRects[0]!.y).toBeLessThan(layout.points[0]!.y);
 
     // A narrow hum spans at least 10 semitones, centered.
     const narrow = humContourLayout([frame(0, 64)], [], {
@@ -538,13 +523,7 @@ describe("recognition reliability — adaptive gate + pitch mode", () => {
   it("pitch mode: a glide INTO the note does not drag the pitch off target", () => {
     // 5 frames: three at ~63.3 (mode → 63) then two gliding up to 64.3.
     // Mean = 63.66 → rounds to 64 (the OLD, wrong landing); mode = 63.
-    const gliding = [
-      frame(0.4, 63.3),
-      frame(0.43, 63.4),
-      frame(0.46, 63.3),
-      frame(0.49, 64.1),
-      frame(0.52, 64.3),
-    ];
+    const gliding = [frame(0.4, 63.3), frame(0.43, 63.4), frame(0.46, 63.3), frame(0.49, 64.1), frame(0.52, 64.3)];
     const notes = framesToNotes(gliding, base);
     expect(notes).toHaveLength(1);
     expect(notes[0]!.pitch).toBe(63);
@@ -610,7 +589,9 @@ describe("audition helpers (pre-apply AUDITION + octave shift)", () => {
 
 describe("humToNotesCommand", () => {
   const doc = createProjectFromTemplate("house");
-  const track = doc.tracks.find((t): t is Extract<ProjectDocument["tracks"][number], { kind: "instrument" }> => t.kind === "instrument")!;
+  const track = doc.tracks.find(
+    (t): t is Extract<ProjectDocument["tracks"][number], { kind: "instrument" }> => t.kind === "instrument",
+  )!;
   const pattern = doc.patterns[0]!;
 
   const note = (pitch: number, start: number) => ({
@@ -623,12 +604,15 @@ describe("humToNotesCommand", () => {
 
   it("replaces the track's notes in ONE undo step and restores on undo", () => {
     const seeded: Pattern = { ...pattern, notes: { ...pattern.notes, [track.id]: [note(72, 0)] } };
-    const docSeeded: ProjectDocument = { ...doc, patterns: [seeded, ...doc.patterns.filter((p) => p.id !== seeded.id)] };
-    const command = humToNotesCommand(
-      docSeeded,
-      [note(60, 240), note(64, 480)],
-      { trackId: track.id, patternId: seeded.id, mode: "replace" },
-    );
+    const docSeeded: ProjectDocument = {
+      ...doc,
+      patterns: [seeded, ...doc.patterns.filter((p) => p.id !== seeded.id)],
+    };
+    const command = humToNotesCommand(docSeeded, [note(60, 240), note(64, 480)], {
+      trackId: track.id,
+      patternId: seeded.id,
+      mode: "replace",
+    });
     const next = command.execute(docSeeded);
     const applied = next.patterns.find((p) => p.id === seeded.id)!.notes[track.id]!;
     expect(applied.map((n) => n.pitch)).toEqual([60, 64]);
@@ -642,7 +626,10 @@ describe("humToNotesCommand", () => {
 
   it("merge appends without duplicating identical pitch+start", () => {
     const seeded: Pattern = { ...pattern, notes: { ...pattern.notes, [track.id]: [note(60, 240)] } };
-    const docSeeded: ProjectDocument = { ...doc, patterns: [seeded, ...doc.patterns.filter((p) => p.id !== seeded.id)] };
+    const docSeeded: ProjectDocument = {
+      ...doc,
+      patterns: [seeded, ...doc.patterns.filter((p) => p.id !== seeded.id)],
+    };
     const next = humToNotesCommand(docSeeded, [note(60, 240), note(64, 480)], {
       trackId: track.id,
       patternId: seeded.id,
@@ -660,9 +647,9 @@ describe("humToNotesCommand", () => {
     expect(() =>
       humToNotesCommand(doc, [note(60, 0)], { trackId: track.id, patternId: "missing", mode: "replace" }),
     ).toThrow(/pattern/);
-    expect(() =>
-      humToNotesCommand(doc, [], { trackId: track.id, patternId: pattern.id, mode: "replace" }),
-    ).toThrow(/No hummed notes/);
+    expect(() => humToNotesCommand(doc, [], { trackId: track.id, patternId: pattern.id, mode: "replace" })).toThrow(
+      /No hummed notes/,
+    );
   });
 
   it("patternLengthTicks matches the piano roll grid math", () => {

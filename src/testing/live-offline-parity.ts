@@ -212,32 +212,32 @@ async function captureLive(
   script: ParityScript,
   leadSec = 0,
 ): Promise<CaptureResult | null> {
-    const ctx = new AudioContext({ sampleRate: SR });
-    try {
-      if (ctx.state === "suspended") await ctx.resume();
-      await loadParityCapture(ctx);
-      // Same loader contract as the offline branch (core + the doc's plugins),
-      // so both engines hold the same processor implementations.
-      await ensureWorkletsForDoc(doc, ctx);
-      const engine = new AudioEngine();
-      engine.attachBank(bank);
-      engine.useContext(ctx);
-      engine.setProject(doc);
-      // The master chain upgrades (look-ahead limiter worklet) land ASYNCHRONOUSLY
-      // via the worklet-refresh queue; capturing before the swap would record
-      // the native-limiter warm-up instead of the steady-state engine. Wait
-      // until the core modules (and the splices that ride them) are live, then
-      // re-apply the project so the final processors are constructed as close
-      // to the capture as the engine allows.
-      const readyDeadline = performance.now() + 5000;
-      while (performance.now() < readyDeadline && !isWorkletReady("limiter", ctx)) {
-        await new Promise((resolve) => setTimeout(resolve, 25));
-      }
-      for (let i = 0; i < 4; i++) await new Promise((resolve) => setTimeout(resolve, 0));
-      // Rebuild the chains on the settled graph: the first event then lands
-      // within a quantum of the final processor construction, matching the
-      // offline render (which always builds on a cold, settled timeline).
-      engine.setProject(doc);
+  const ctx = new AudioContext({ sampleRate: SR });
+  try {
+    if (ctx.state === "suspended") await ctx.resume();
+    await loadParityCapture(ctx);
+    // Same loader contract as the offline branch (core + the doc's plugins),
+    // so both engines hold the same processor implementations.
+    await ensureWorkletsForDoc(doc, ctx);
+    const engine = new AudioEngine();
+    engine.attachBank(bank);
+    engine.useContext(ctx);
+    engine.setProject(doc);
+    // The master chain upgrades (look-ahead limiter worklet) land ASYNCHRONOUSLY
+    // via the worklet-refresh queue; capturing before the swap would record
+    // the native-limiter warm-up instead of the steady-state engine. Wait
+    // until the core modules (and the splices that ride them) are live, then
+    // re-apply the project so the final processors are constructed as close
+    // to the capture as the engine allows.
+    const readyDeadline = performance.now() + 5000;
+    while (performance.now() < readyDeadline && !isWorkletReady("limiter", ctx)) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    for (let i = 0; i < 4; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+    // Rebuild the chains on the settled graph: the first event then lands
+    // within a quantum of the final processor construction, matching the
+    // offline render (which always builds on a cold, settled timeline).
+    engine.setProject(doc);
 
     const chunks: Float32Array[] = [];
     let originTime = Number.NaN;
@@ -251,9 +251,7 @@ async function captureLive(
       channelInterpretation: "speakers",
     });
     capture.port.onmessage = (event: MessageEvent) => {
-      const data = event.data as
-        | { type?: string; time?: number; sampleRate?: number; left?: Float32Array }
-        | null;
+      const data = event.data as { type?: string; time?: number; sampleRate?: number; left?: Float32Array } | null;
       if (data?.type === "capture-start" && typeof data.time === "number") {
         originTime = data.time;
         if (typeof data.sampleRate === "number" && data.sampleRate > 0) captureSampleRate = data.sampleRate;
@@ -364,7 +362,7 @@ function compare(reference: Float32Array, capture: Float32Array, sr: number): { 
 function correlationAt(reference: Float32Array, capture: Float32Array, offset: number): number {
   const n = Math.min(reference.length, capture.length - Math.max(0, -offset));
   let dot = 0;
-    let ea = 0;
+  let ea = 0;
   let eb = 0;
   for (let i = 0; i < n; i++) {
     const j = i + offset;

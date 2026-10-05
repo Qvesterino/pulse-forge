@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, screen } from "@testing-library/react";
 import { render } from "@testing-library/react";
 import { FxAddPopover } from "../../src/ui/FxAddPopover";
-import { CORE_EFFECT_ORDER, EFFECT_DEFS, FLAGSHIP_EFFECT_ORDER, ADDITIONAL_EFFECT_GROUPS } from "../../src/effects/registry";
+import {
+  CORE_EFFECT_ORDER,
+  EFFECT_DEFS,
+  FLAGSHIP_EFFECT_ORDER,
+  ADDITIONAL_EFFECT_GROUPS,
+} from "../../src/effects/registry";
 import type { EffectType } from "../../src/project-model/types";
 
 /**

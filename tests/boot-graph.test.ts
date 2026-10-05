@@ -36,10 +36,7 @@ const FORBIDDEN: Array<{ pattern: RegExp; why: string }> = [
 // main.tsx is a thin route router (landing/browser/studio are lazy chunks);
 // the STUDIO boot graph starts at App.tsx — that is the 768 KB App-*.js
 // chunk plus its static imports that every project-open session pays for.
-const ENTRIES = [
-  resolve(process.cwd(), "src/main.tsx"),
-  resolve(process.cwd(), "src/ui/App.tsx"),
-];
+const ENTRIES = [resolve(process.cwd(), "src/main.tsx"), resolve(process.cwd(), "src/ui/App.tsx")];
 
 function importsOf(file: string): string[] {
   const source = readFileSync(file, "utf8");

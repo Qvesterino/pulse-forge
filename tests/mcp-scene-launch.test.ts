@@ -75,7 +75,11 @@ describe("kyx_transport launchScene", async () => {
     const introClip = doc.arrangement.clips.find((clip) => clip.sceneId === intro.id);
     const { ctx, transport } = makeCtx(doc);
     if (intro.role) {
-      const byRole = await executeMcpTool(ctx, "kyx_transport", { action: "launchScene", scene: intro.role, play: false });
+      const byRole = await executeMcpTool(ctx, "kyx_transport", {
+        action: "launchScene",
+        scene: intro.role,
+        play: false,
+      });
       expect(byRole.text).toContain("transport stopped");
       expect(transport.seeks).toEqual([introClip ? introClip.startBar * 1920 : 0]);
       expect(transport.plays).toBe(0);
@@ -116,7 +120,11 @@ describe("kyx_sections intensity", async () => {
     const doc = createProjectFromTemplate("house");
     const drop = doc.scenes.find((s) => s.role === "drop") ?? doc.scenes[doc.scenes.length - 1];
     const { ctx } = makeCtx(doc);
-    const r = await executeMcpTool(ctx, "kyx_sections", { op: "intensity", index: doc.scenes.indexOf(drop) + 1, value: 0.9 });
+    const r = await executeMcpTool(ctx, "kyx_sections", {
+      op: "intensity",
+      index: doc.scenes.indexOf(drop) + 1,
+      value: 0.9,
+    });
     expect(r.mutated).toBe(true);
     expect(ctx.getDoc().scenes.find((s) => s.id === drop.id)?.intensity).toBeCloseTo(0.9);
     expect(r.text).toContain("90%");
