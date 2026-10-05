@@ -145,6 +145,8 @@ interface TrackNodes {
   /** Exact downstream owner for the track output (master or one group input). */
   routeDestination: AudioNode;
   analyser: AnalyserNode;
+  /** PRE-fader tap (post-insert, pre-pan/fader) — gain-staging + triage meter. */
+  preFaderAnalyser: AnalyserNode;
   fx: FxChainState;
   sends: Map<string, GainNode>;
   /** Per-send PDC delays (sendGain → delay → return input), sized by syncPdc. */
@@ -188,6 +190,8 @@ interface GroupNodes {
   modMacroGain: GainNode;
   modMacroPan: StereoPannerNode;
   analyser: AnalyserNode;
+  /** PRE-fader tap (post-insert, pre-pan/fader) — gain-staging + triage meter. */
+  preFaderAnalyser: AnalyserNode;
   fx: FxChainState;
   sends: Map<string, GainNode>;
   /** Per-send PDC delays (sendGain → delay → return input), sized by syncPdc. */
@@ -229,6 +233,8 @@ export class AudioEngine {
     trackAnalyser: (id) => this.trackNodes.get(id)?.analyser ?? null,
     groupAnalyser: (id) => this.groupNodes.get(id)?.analyser ?? null,
     returnAnalyser: (id) => this.returnNodes.get(id)?.analyser ?? null,
+    trackPreAnalyser: (id) => this.trackNodes.get(id)?.preFaderAnalyser ?? null,
+    groupPreAnalyser: (id) => this.groupNodes.get(id)?.preFaderAnalyser ?? null,
     masterStage: (): MasterStage => this.masterChain.stage,
   });
   /**
@@ -1161,6 +1167,7 @@ export class AudioEngine {
     nodes.modMacroGain.disconnect();
     nodes.modMacroPan.disconnect();
     nodes.analyser.disconnect();
+    nodes.preFaderAnalyser.disconnect();
     this.trackNodes.delete(id);
   }
 
@@ -1224,6 +1231,7 @@ export class AudioEngine {
     nodes.modMacroGain.disconnect();
     nodes.modMacroPan.disconnect();
     nodes.analyser.disconnect();
+    nodes.preFaderAnalyser.disconnect();
     for (const send of nodes.sends.values()) send.disconnect();
     nodes.sends.clear();
     for (const delay of nodes.sendDelays.values()) delay.disconnect();
@@ -1320,7 +1328,15 @@ export class AudioEngine {
         analyser.fftSize = 2048;
         analyser.channelCount = 2;
         analyser.channelCountMode = "explicit";
+        // PRE-fader meter tap: the panner output is post-insert, pre-fader —
+        // the gain-staging and muted-channel-triage point. Pure parallel edge
+        // off panner; the audio path and PDC are untouched.
+        const preFaderAnalyser = ctx.createAnalyser();
+        preFaderAnalyser.fftSize = 2048;
+        preFaderAnalyser.channelCount = 2;
+        preFaderAnalyser.channelCountMode = "explicit";
         input.connect(panner);
+        panner.connect(preFaderAnalyser);
         panner.connect(gain);
         gain.connect(modAutoGain);
         modAutoGain.connect(modAutoPan);
@@ -1337,6 +1353,7 @@ export class AudioEngine {
           modMacroGain,
           modMacroPan,
           analyser,
+          preFaderAnalyser,
           fx: { runtimes: new Map(), params: new Map(), signature: null, pdcDelay: null, latencySubs: [] },
           sends: new Map(),
           sendDelays: new Map(),
@@ -1372,7 +1389,15 @@ export class AudioEngine {
         analyser.fftSize = 2048;
         analyser.channelCount = 2;
         analyser.channelCountMode = "explicit";
+        // PRE-fader meter tap: the panner output is post-insert, pre-fader —
+        // the gain-staging and muted-channel-triage point. Pure parallel edge
+        // off panner; the audio path and PDC are untouched.
+        const preFaderAnalyser = ctx.createAnalyser();
+        preFaderAnalyser.fftSize = 2048;
+        preFaderAnalyser.channelCount = 2;
+        preFaderAnalyser.channelCountMode = "explicit";
         input.connect(panner);
+        panner.connect(preFaderAnalyser);
         panner.connect(gain);
         gain.connect(modAutoGain);
         modAutoGain.connect(modAutoPan);
@@ -1390,6 +1415,7 @@ export class AudioEngine {
           modMacroPan,
           routeDestination: this.masterChain.input,
           analyser,
+          preFaderAnalyser,
           fx: { runtimes: new Map(), params: new Map(), signature: null, pdcDelay: null, latencySubs: [] },
           sends: new Map(),
           sendDelays: new Map(),
@@ -2127,6 +2153,11 @@ export class AudioEngine {
 
   getTrackMeterSnapshot(trackId: string): TrackMeterSnapshot {
     return this.metering.getTrackMeterSnapshot(trackId);
+  }
+
+  /** PRE-fader read (post-insert, pre-pan/fader) — see MeteringRig. */
+  getTrackPreMeterSnapshot(trackId: string): TrackMeterSnapshot {
+    return this.metering.getTrackPreMeterSnapshot(trackId);
   }
 
   getReturnMeterSnapshot(returnId: string): TrackMeterSnapshot {

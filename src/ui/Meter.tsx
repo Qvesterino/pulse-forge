@@ -5,12 +5,27 @@ import { registerRaf, unregisterRaf } from "../services/rafLoop";
 /**
  * Mono peak meter for a track or return.
  *
+ * `point` (track kind only) selects the meter tap: "post" (default) reads
+ * after the fader/mute/solo gate — what you hear; "pre" reads the engine's
+ * PRE-fader tap (post-insert, pre-pan/fader) — the gain-staging point that
+ * stays alive on a soloed-out channel. Returns always meter post.
+ *
  * PERFORMANCE: uses direct DOM mutation via refs instead of React state —
  * the RAF loop updates style.height and style.background every frame
  * without triggering React reconciliation. React renders the static shell
  * ONCE; all dynamic updates bypass the virtual DOM entirely.
  */
-export function Meter({ engine, kind, id }: { engine: AudioEngine; kind: "track" | "return"; id: string }) {
+export function Meter({
+  engine,
+  kind,
+  id,
+  point = "post",
+}: {
+  engine: AudioEngine;
+  kind: "track" | "return";
+  id: string;
+  point?: "post" | "pre";
+}) {
   const smoothed = useRef(0);
   const clipUntil = useRef(0);
   const holdLevel = useRef(0);
@@ -29,7 +44,12 @@ export function Meter({ engine, kind, id }: { engine: AudioEngine; kind: "track"
     registerRaf(meterId, (t) => {
       if (t - last < 33) return; // ~30 Hz
       last = t;
-      const snapshot = kind === "track" ? engine.getTrackMeterSnapshot(id) : engine.getReturnMeterSnapshot(id);
+      const snapshot =
+        kind === "return"
+          ? engine.getReturnMeterSnapshot(id)
+          : point === "pre"
+            ? engine.getTrackPreMeterSnapshot(id)
+            : engine.getTrackMeterSnapshot(id);
       const rawValue = snapshot.level;
       const value = Number.isFinite(rawValue) ? Math.max(0, rawValue) : 0;
       smoothed.current = Math.max(value, smoothed.current * 0.92);
@@ -83,10 +103,17 @@ export function Meter({ engine, kind, id }: { engine: AudioEngine; kind: "track"
       }
     });
     return () => unregisterRaf(meterId);
-  }, [engine, kind, id, meterId]);
+  }, [engine, kind, id, meterId, point]);
 
   return (
-    <div ref={rootRef} className={`meter`} role="meter" aria-label="Level meter" aria-valuemin={0} aria-valuemax={100}>
+    <div
+      ref={rootRef}
+      className={`meter${point === "pre" ? " meter--pre" : ""}`}
+      role="meter"
+      aria-label={point === "pre" ? "Pre-fader level meter" : "Level meter"}
+      aria-valuemin={0}
+      aria-valuemax={100}
+    >
       <div ref={fillRef} className="meter-fill" style={{ height: "0%" }} />
       <div ref={holdRef} className="meter-hold" style={{ bottom: "0%", opacity: 0 }} />
     </div>

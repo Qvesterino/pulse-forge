@@ -225,11 +225,11 @@ describe("E2E audit2 multi-step atomicity", () => {
 });
 
 describe("E2E audit2 parameter bounds (parse → clamp → command)", () => {
-  it("pan clamps to ±1, master gain to 1.5, bpm to 20..300", () => {
+  it("pan clamps to ±1, master gain to 2 (+6 dB domain), bpm to 20..300", () => {
     const store = new ProjectStore(testDoc());
     const cases: Array<[string, (doc: ProjectDocument) => unknown, unknown]> = [
       ["pan the bass 150% left", (doc) => instrumentTracks(doc).find((t) => /bass|808/i.test(t.name))?.pan, -1],
-      ["boost the mix by 400 db", (doc) => doc.master?.masterGain, 1.5],
+      ["boost the mix by 400 db", (doc) => doc.master?.masterGain, 2],
       ["set tempo to 999", (doc) => doc.bpm, 300],
       ["set tempo to 5", (doc) => doc.bpm, 20],
     ];

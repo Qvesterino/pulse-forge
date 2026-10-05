@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseTempoIntent } from "../src/intent/conversation";
 import { applyAutomateIntent, parseAutomateIntent } from "../src/intent/studio-words";
 import { parseExactIntent } from "../src/intent/exact";
+import { applyExactIntentCommand } from "../src/commands/commands";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { createDrumTrackModel, createInstrumentTrackModel } from "../src/project-model/schema";
 import { MAX_BPM, MIN_BPM } from "../src/project-model/schema";
@@ -98,5 +99,30 @@ describe("automate intent — no positional guessing", () => {
     expect(cmd).not.toBeNull();
     const next = cmd!.execute(doc);
     expect(next.automation.length).toBe(doc.automation.length + 1);
+  });
+});
+
+describe("master fader domain 0..2 (+6 dB) — the drive-into-the-chain knob", () => {
+  it("absolute master asks land the full +6 dB domain and clamp at 2 (was 1.5)", () => {
+    const base = createProjectFromTemplate("house");
+    const plan = parseExactIntent("master na 5 db")!;
+    expect(plan.ops).toContainEqual(expect.objectContaining({ kind: "gainDbAbsolute", target: "mix", absDb: 5 }));
+    const next = applyExactIntentCommand(base, plan).execute(base);
+    expect(next.master.masterGain).toBeCloseTo(Math.pow(10, 5 / 20), 4); // ≈1.778 — unreachable before
+    const loud = applyExactIntentCommand(base, parseExactIntent("master to 10 db")!).execute(base);
+    expect(loud.master.masterGain).toBe(2);
+  });
+
+  it("master DELTA rides the same domain; tracks keep the 1.5 fader domain", () => {
+    const base = createProjectFromTemplate("house");
+    const next = applyExactIntentCommand(base, parseExactIntent("boost the mix by 4 db")!).execute(base);
+    expect(next.master.masterGain).toBeCloseTo(Math.pow(10, 4 / 20), 3); // ≈1.585 — past the old 1.5 ceiling
+    const hot = { ...base, master: { ...base.master, masterGain: 1.8 } };
+    const up = applyExactIntentCommand(hot, parseExactIntent("boost the mix by 2 db")!).execute(hot);
+    expect(up.master.masterGain).toBe(2);
+    // Tracks stay 0..1.5 — only the MASTER widened.
+    const drums = applyExactIntentCommand(base, parseExactIntent("drums na 5 db")!).execute(base);
+    const drumTrack = drums.tracks.find((t) => t.kind === "drum");
+    expect(drumTrack && "gain" in drumTrack ? drumTrack.gain : null).toBe(1.5);
   });
 });

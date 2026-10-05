@@ -52,6 +52,9 @@ export interface MeteringRigDeps {
   trackAnalyser: (id: string) => AnalyserNode | null;
   groupAnalyser: (id: string) => AnalyserNode | null;
   returnAnalyser: (id: string) => AnalyserNode | null;
+  /** PRE-fader taps (post-insert, pre-pan/fader) — gain-staging + triage meter. */
+  trackPreAnalyser: (id: string) => AnalyserNode | null;
+  groupPreAnalyser: (id: string) => AnalyserNode | null;
   masterStage: () => MasterStageReader;
   /** Injectable clock for the snapshot TTL (tests); defaults to performance.now. */
   now?: () => number;
@@ -170,6 +173,15 @@ export class MeteringRig {
    * source getter uses) — pre-fix, bus strips showed flat-zero forever. */
   getTrackMeterSnapshot(trackId: string): TrackMeterSnapshot {
     const analyser = this.deps.trackAnalyser(trackId) ?? this.deps.groupAnalyser(trackId);
+    const peak = this.rawPeakOf(analyser);
+    return { level: Math.min(1, peak), peakDb: toDb(peak), clipping: peak >= 0.9995 };
+  }
+
+  /** PRE-fader read (post-insert, pre-pan/fader): level is INDEPENDENT of the
+   * fader/mute/solo gate, so a soloed-out channel still shows what it feeds.
+   * Groups fall back to their own pre tap — same rule as the post meter. */
+  getTrackPreMeterSnapshot(trackId: string): TrackMeterSnapshot {
+    const analyser = this.deps.trackPreAnalyser(trackId) ?? this.deps.groupPreAnalyser(trackId);
     const peak = this.rawPeakOf(analyser);
     return { level: Math.min(1, peak), peakDb: toDb(peak), clipping: peak >= 0.9995 };
   }

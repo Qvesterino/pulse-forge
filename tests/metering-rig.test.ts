@@ -32,6 +32,8 @@ function makeDeps(overrides: Partial<MeteringRigDeps> = {}): MeteringRigDeps {
     trackAnalyser: () => null,
     groupAnalyser: () => null,
     returnAnalyser: () => null,
+    trackPreAnalyser: () => null,
+    groupPreAnalyser: () => null,
     masterStage: () => ({ limiter: null, limiterWorklet: null, glue: null, kwMeter: null, rtMonitor: null }),
     ...overrides,
   };

@@ -43,15 +43,21 @@ function param(initial = 0) {
 }
 
 function nodeWith(params: Record<string, ReturnType<typeof param>> = {}) {
-  return {
+  const node = {
+    connections: new Set<unknown>(),
     gain: params.gain ?? param(1),
     pan: params.pan ?? param(0),
     ...params,
-    connect() {
-      return this;
+    connect(destination?: unknown) {
+      if (destination !== undefined) node.connections.add(destination);
+      return node;
     },
-    disconnect() {},
+    disconnect(destination?: unknown) {
+      if (destination === undefined) node.connections.clear();
+      else node.connections.delete(destination);
+    },
   };
+  return node;
 }
 
 function mockNode() {
@@ -214,6 +220,62 @@ describe("master gain preview domain", () => {
     expect(chain.input.gain.value).toBe(0);
     engine.previewMasterGain(5);
     expect(chain.input.gain.value).toBeCloseTo(2, 5);
+  });
+});
+
+describe("PRE-fader meter tap (post-insert, pre-pan/fader)", () => {
+  it("the panner feeds a SECOND analyser — pre and post meters are distinct taps", async () => {
+    const { AudioEngine } = await import("../src/audio-engine/AudioEngine");
+    const { doc, trackId } = baseDoc();
+    const engine = new AudioEngine();
+    engine.useContext(mockCtx() as unknown as BaseAudioContext);
+    engine.setProject(doc);
+    await flush();
+    const internals = engineInternals(engine);
+    const nodes = internals.trackNodes.get(trackId) as unknown as {
+      panner: { connections: Set<unknown> };
+      preFaderAnalyser: unknown;
+      analyser: unknown;
+    };
+    expect(nodes.preFaderAnalyser).toBeDefined();
+    expect(nodes.preFaderAnalyser).not.toBe(nodes.analyser);
+    expect(nodes.panner.connections.has(nodes.preFaderAnalyser)).toBe(true);
+    // Snapshot accessors route to the right taps (silent mock buffers → 0).
+    expect(engine.getTrackPreMeterSnapshot(trackId).level).toBe(0);
+    expect(engine.getTrackMeterSnapshot(trackId).level).toBe(0);
+  });
+
+  it("track teardown drops the PRE tap edge (no dangling analyser)", async () => {
+    const { AudioEngine } = await import("../src/audio-engine/AudioEngine");
+    const { doc, trackId } = baseDoc();
+    const engine = new AudioEngine();
+    engine.useContext(mockCtx() as unknown as BaseAudioContext);
+    engine.setProject(doc);
+    await flush();
+    const nodes = engineInternals(engine).trackNodes.get(trackId) as unknown as {
+      panner: { connections: Set<unknown> };
+      preFaderAnalyser: unknown;
+    };
+    const pre = nodes.preFaderAnalyser;
+    engine.setProject({ ...doc, tracks: doc.tracks.filter((t) => t.id !== trackId) });
+    await flush();
+    expect(nodes.panner.connections.has(pre)).toBe(false);
+  });
+
+  it("groups carry the same PRE tap", async () => {
+    const { AudioEngine } = await import("../src/audio-engine/AudioEngine");
+    const { doc, groupId } = baseDoc();
+    const engine = new AudioEngine();
+    engine.useContext(mockCtx() as unknown as BaseAudioContext);
+    engine.setProject(doc);
+    await flush();
+    const nodes = engineInternals(engine).groupNodes.get(groupId) as unknown as {
+      panner: { connections: Set<unknown> };
+      preFaderAnalyser: unknown;
+    };
+    expect(nodes.preFaderAnalyser).toBeDefined();
+    expect(nodes.panner.connections.has(nodes.preFaderAnalyser)).toBe(true);
+    expect(engine.getTrackPreMeterSnapshot(groupId).level).toBe(0); // group fallback read
   });
 });
 

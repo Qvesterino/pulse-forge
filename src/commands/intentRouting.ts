@@ -123,8 +123,10 @@ export function applyExactIntentCommand(doc: ProjectDocument, plan: ExactIntentP
     if (op.kind === "gainDbAbsolute") {
       // "bass to -6 dB" / "basa na -6 dB" — SET the fader to the absolute
       // dBFS-equivalent multiplier (reads current state only for the clamp).
+      // MASTER domain is 0..2 (+6 dB): the fader is the drive-into-the-
+      // master-chain knob; reference matching rides loudnessTrimDb instead.
       if (op.target === "mix") {
-        const targetMasterGain = Math.max(0, Math.min(1.5, Math.pow(10, op.absDb / 20)));
+        const targetMasterGain = Math.max(0, Math.min(2, Math.pow(10, op.absDb / 20)));
         next = setMasterConfig(next, { masterGain: targetMasterGain }).execute(next);
         continue;
       }
@@ -141,8 +143,9 @@ export function applyExactIntentCommand(doc: ProjectDocument, plan: ExactIntentP
       // old mapping to tracks[0] boosted whatever happened to be the first
       // track (usually the drums), silently missing the master.
       if (op.target === "mix") {
+        // Same 0..2 master domain as the absolute set above.
         const masterGain = next.master?.masterGain ?? 1;
-        const targetMasterGain = Math.max(0, Math.min(1.5, masterGain * Math.pow(10, op.deltaDb / 20)));
+        const targetMasterGain = Math.max(0, Math.min(2, masterGain * Math.pow(10, op.deltaDb / 20)));
         next = setMasterConfig(next, { masterGain: targetMasterGain }).execute(next);
         continue;
       }

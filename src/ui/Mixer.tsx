@@ -268,10 +268,10 @@ function MasterStrip() {
           <Slider
             compact
             label="IN"
-            hint="Master input gain in dB — the trim the export verdict's gain-staging advice applies to"
+            hint="Master input gain in dB — up to +6 dB to drive the master chain into tape/glue/clipper; reference matching rides the loudness trim instead"
             value={master.masterGain}
             min={0}
-            max={1.5}
+            max={2}
             defaultValue={1}
             format={(v) => gainDbLabel(v, " dB")}
             onCommit={(masterGain) => services.store.execute(setMasterConfig(doc, { masterGain }))}
@@ -430,6 +430,28 @@ function MasterStrip() {
   );
 }
 
+// ── Meter-point persistence (PST/PRE) — view preference, not project data ──
+
+const PRE_METER_KEY = "pf:mixer-pre-meter";
+
+function loadPreMeterTracks(): string[] {
+  try {
+    const raw = localStorage.getItem(PRE_METER_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePreMeterTracks(ids: string[]): void {
+  try {
+    localStorage.setItem(PRE_METER_KEY, JSON.stringify(ids));
+  } catch {
+    /* view preference only — storage may be unavailable */
+  }
+}
+
 function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }) {
   const services = useServices();
   // Fine-grained selectors (GOAL 04): ChannelStrip needs `tracks` to
@@ -455,6 +477,17 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
   }>(null);
   /** "Type value" dialog target — replaces the old window.prompt. */
   const [faderType, setFaderType] = useState<null | { param: string; current: number }>(null);
+  // Meter point (PST/PRE): per-strip, persisted in localStorage (view
+  // preference, NOT project data). PRE reads post-insert/pre-fader —
+  // gain staging and "is this soloed-out channel feeding?" triage.
+  const [preMeter, setPreMeter] = useState<boolean>(() => loadPreMeterTracks().includes(track.id));
+  const togglePreMeter = () =>
+    setPreMeter((prev) => {
+      const ids = loadPreMeterTracks();
+      const next = prev ? ids.filter((id) => id !== track.id) : [...ids, track.id];
+      savePreMeterTracks(next);
+      return !prev;
+    });
   const isGroup = track.kind === "group";
   // The BUS dropdown is only meaningful once bus groups exist — before that
   // every strip just repeats a dead "UNGROUPED" select.
@@ -686,7 +719,17 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
             + RETURN
           </button>
         </div>
-        <Meter engine={services.engine} kind="track" id={track.id} />
+        <button
+          type="button"
+          className={`btn btn-small meter-point${preMeter ? " active-pre" : ""}`}
+          title="Meter point — PST: post-fader (what you hear) · PRE: post-insert, pre-fader (gain staging; stays alive on soloed-out channels)"
+          aria-pressed={preMeter}
+          aria-label={preMeter ? "Pre-fader meter" : "Post-fader meter"}
+          onClick={togglePreMeter}
+        >
+          {preMeter ? "PRE" : "PST"}
+        </button>
+        <Meter engine={services.engine} kind="track" id={track.id} point={preMeter ? "pre" : "post"} />
       </div>
       <div className="channel-buttons">
         <button

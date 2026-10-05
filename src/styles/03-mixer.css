@@ -972,3 +972,29 @@
 .slider-compact .slider-thumb {
   width: 2px;
 }
+
+/* PRE/PST meter-point toggle (mixer strip, per-channel view preference).
+   A thin vertical chip hugging the meter bar; PRE lights amber. */
+.meter-point {
+  align-self: stretch;
+  width: 14px;
+  padding: 2px 0;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.meter-point.active-pre {
+  border-color: #f59e0b;
+  color: #f59e0b;
+}
+
+/* PRE mode marker on the bar itself: amber border while the tap is
+   pre-fader (the fill color stays level-driven — it's written inline). */
+.meter--pre {
+  border-color: rgba(245, 158, 11, 0.7);
+}
