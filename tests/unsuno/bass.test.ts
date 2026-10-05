@@ -104,8 +104,7 @@ describe("low-level primitives", () => {
   it("applyLowPass attenuates highs, keeps the fundamental", () => {
     const pcm = new Float32Array(SR);
     for (let i = 0; i < pcm.length; i++) {
-      pcm[i] =
-        0.5 * Math.sin((2 * Math.PI * 65.4 * i) / SR) + 0.5 * Math.sin((2 * Math.PI * 2000 * i) / SR);
+      pcm[i] = 0.5 * Math.sin((2 * Math.PI * 65.4 * i) / SR) + 0.5 * Math.sin((2 * Math.PI * 2000 * i) / SR);
     }
     const filtered = applyLowPass(pcm, SR, 300);
     const bandPower = (data: Float32Array, hz: number): number => {

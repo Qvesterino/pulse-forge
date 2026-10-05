@@ -195,6 +195,42 @@ rotácie správne). Tempo floor nezmenený (5/5, err ≤ 0,2).
 - **Úsilie:** ~1 blok. **Riziko:** polyfonný mix — rieši bandpass + clarity
   gate + honest empty.
 
+### U2 — Bass transcription (→ NoteEvent[]) — **HOTOVÉ 2026-10-04 (honest-partial, floors locked, KPI čaká U2.5)**
+
+- Pitch-tracker parametrizácia: `trackPitch(data, sr, {fminHz, fmaxHz, hopMs})`
+  (default dnešný 70–1050; UN-SUNO volá 40–250). Worker ostáva jeden.
+- `src/reference/analysis/bass.ts` (pure): bandpass 30–300 Hz (FFT mask ako v
+  beat_modifier, ale v referenčnom DSP — `dsp/fft.ts` už je) → trackPitch →
+  segmentácia (min duration ~40 % doby, clarity gate) → NoteEvent (ticks od
+  beat gridu, velocity z RMS/clarity) → scale-snap **opt-in**.
+- Per-sekcia coverage + confidence; sekcia pod gate → prázdna + poznámka.
+- **Akceptácia:** onset recall ≥ 0,70 a pitch accuracy ≥ 0,90 na golden sete
+  (číslo 0,70 je už zadané v W6 pláne pre bass transcription); 808 sub-bass aj
+  walking bass golden; výkon: 3-min track analyzovaný vo workeri < ~10 s.
+- **Úsilie:** ~1 blok. **Riziko:** polyfonný mix — rieši bandpass + clarity
+  gate + honest empty.
+
+**Ako to dopadlo (SHIPPED):** `src/reference/analysis/bass.ts` — 24 dB/oct RBJ
+low-pass 300 Hz + decimácia ×8 (YIN nad zvyškom beží 8× lacnejšie) →
+parametrizovaný pitch-tracker (`{fminHz: 40, fmaxHz: 250, hopMs: 20}`; 30 Hz
+z receptu povolovalo subharmonické oktávy) → segmentácia (median-pitch runy,
+min ~1/3 16th) → gap-merge → velocity z mean clarity. **CHORD-TONE PRIOR** =
+U1 zbraň proti kicku: per-bar rooty z chord lane filtrujú framy mimo
+root/third/fifth/seventh; bez čitateľnej harmónie bass lane **odmietne hádať**
+(honest skip). Clean-material unit testy 8/8: dve noty / pitch zmena / 808 sub
+F#1 46 Hz / snap shortest-shift / low-pass atenuačné piny — 100 %.
+
+**Známa medzera (U2.5 vlna, ďalšia):** syntetický kick je čistá sínusová
+sweep niekoľko dB HLASNEJŠIA ako bass — jeho chvost (48–52 Hz) má VYŠŠIU
+YIN clarity než bass fundamental a prejde priorom, keď terminálna výška =
+akordový tón. Diag: house recall 0.50 / pc 100 %, techno 0.50, boombap 0.42,
+trap 0.69, dnb 0.25 — pitch-class accuracy vysoká (house 100, trap 82),
+presná oktáva trpí. Plán U2.5: transient-gated voicing (kick onsety z flux
+envelope maskujú ~80 ms okolo seba) + bass-vs-kick energetický diskriminátor
+per frame. Floors zamknuté do golden-set.test.ts (zlepšenie = zámerný
+re-lock). `transcribeTrack` wiring: bass implemented od U2, warnings honest
+(no chord context / no pitched bass / no bar grid).
+
 ### U3 — Drum map per sekcia + robustizácia
 
 - `extractGrooveGrid` dostane `windowSec?` a volá sa po sekciách; pridá

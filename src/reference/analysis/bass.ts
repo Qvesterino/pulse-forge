@@ -77,15 +77,18 @@ export interface BassDetectionOptions {
 
 /** RBJ cookbook low-pass (Butterworth Q). Cascade 2× for 24 dB/oct — a single
  * 2nd-order section lets enough kick click through to confuse YIN. */
-function lowPassCoefficients(sampleRate: number, hz: number): { b0: number; b1: number; b2: number; a1: number; a2: number } {
+function lowPassCoefficients(
+  sampleRate: number,
+  hz: number,
+): { b0: number; b1: number; b2: number; a1: number; a2: number } {
   const w0 = (2 * Math.PI * hz) / sampleRate;
   const cos = Math.cos(w0);
   const alpha = Math.sin(w0) / (2 * Math.SQRT1_2);
   const a0 = 1 + alpha;
   return {
-    b0: ((1 - cos) / 2) / a0,
+    b0: (1 - cos) / 2 / a0,
     b1: (1 - cos) / a0,
-    b2: ((1 - cos) / 2) / a0,
+    b2: (1 - cos) / 2 / a0,
     a1: (-2 * cos) / a0,
     a2: (1 - alpha) / a0,
   };
@@ -155,7 +158,7 @@ function snapPitch(midi: number, tonicPc: number, mode: "major" | "minor"): numb
   const scale = mode === "major" ? [0, 2, 4, 5, 7, 9, 11] : [0, 2, 3, 5, 7, 8, 10];
   const rounded = Math.round(midi);
   const pc = ((rounded % 12) + 12) % 12;
-  const offset = ((pc - tonicPc) % 12 + 12) % 12;
+  const offset = (((pc - tonicPc) % 12) + 12) % 12;
   if (scale.includes(offset)) return rounded;
   let nearest = scale[0];
   let bestDist = 12;
@@ -173,7 +176,11 @@ function snapPitch(midi: number, tonicPc: number, mode: "major" | "minor"): numb
   return rounded + shift;
 }
 
-export function detectBassNotes(pcm: Float32Array, sampleRate: number, options: BassDetectionOptions): BassDetection | null {
+export function detectBassNotes(
+  pcm: Float32Array,
+  sampleRate: number,
+  options: BassDetectionOptions,
+): BassDetection | null {
   if (!Number.isFinite(options.bpm) || options.bpm <= 0 || sampleRate <= 0) return null;
   const maxSeconds = options.maxSeconds ?? 120;
   const analyzedSamples = Math.min(pcm.length, Math.floor(maxSeconds * sampleRate));
@@ -200,12 +207,12 @@ export function detectBassNotes(pcm: Float32Array, sampleRate: number, options: 
     const rootPc = context.barRoots[Math.min(bar, context.barRoots.length - 1)];
     if (rootPc === undefined || rootPc < 0) return true;
     const pc = ((Math.round(midi) % 12) + 12) % 12;
-    const offset = ((pc - rootPc) % 12 + 12) % 12;
+    const offset = (((pc - rootPc) % 12) + 12) % 12;
     return offset === 0 || offset === 3 || offset === 4 || offset === 7 || offset === 10;
   };
 
   const stepSec = 60 / options.bpm / 4;
-  const minNoteSec = Math.max(HOP_MS / 1000 * 2, stepSec * 0.3);
+  const minNoteSec = Math.max((HOP_MS / 1000) * 2, stepSec * 0.3);
   const frameSec = HOP_MS / 1000;
 
   interface Run {
@@ -236,7 +243,7 @@ export function detectBassNotes(pcm: Float32Array, sampleRate: number, options: 
   for (const run of runs) {
     if (run.frames.length * frameSec < minNoteSec) continue;
     const startSec = run.frames[0].timeSec;
-    const durationSec = (run.frames[run.frames.length - 1].timeSec - startSec + frameSec);
+    const durationSec = run.frames[run.frames.length - 1].timeSec - startSec + frameSec;
     const midiValue = median(run.frames.map((f) => f.midi));
     const midi = Math.round(midiValue);
     const clarity = run.frames.reduce((sum, f) => sum + f.clarity, 0) / run.frames.length;
@@ -250,11 +257,7 @@ export function detectBassNotes(pcm: Float32Array, sampleRate: number, options: 
   const merged: typeof raw = [];
   for (const note of raw) {
     const prev = merged[merged.length - 1];
-    if (
-      prev &&
-      note.midi === prev.midi &&
-      note.startSec - (prev.startSec + prev.durationSec) < stepSec * 0.5
-    ) {
+    if (prev && note.midi === prev.midi && note.startSec - (prev.startSec + prev.durationSec) < stepSec * 0.5) {
       prev.durationSec = note.startSec + note.durationSec - prev.startSec;
       continue;
     }
