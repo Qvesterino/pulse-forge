@@ -175,11 +175,12 @@ konverziu `expandChordSpans`), drums-only → prázdne + warning (corr gate
 **Key floor re-lock (poctivý downgrade 5/5 → 3/5):** diatonické basy odhalili
 KK rotačnú ambivalenciu — trap progresia je diatonická v D major aj F#-mol;
 plain chroma nevie vybrať rotáciu bez tonic-hintu. Misy (trap→D maj,
-dnb→Eb maj) sú diatonicky príbuzné škály (rovnaký PC set). **U1.5 kandidát:
-key z chord-sekvencie** (prvý span s dobrou confidence = tonic) — U1 dáta to
-už umožňujú. Tempo floor nezmenený (5/5, err ≤ 0,2).
-
-### U2 — Bass transcription (→ NoteEvent[])
+dnb→Eb maj) sú diatonicky príbuzné škály (rovnaký PC set). **U1.5 SHIPPED — key
+z chord-sekvencie:** `deriveKeyFromChords` skóruje všetkých 24 rotácií (diatonic fit +
+tonic-presence bonus + first chord ×3 + last ×1.5 + mode-match 0.25) a `transcribeTrack`
+ho používa PRIMÁRNE — estimateKey zostáva fallbackom pre materiál bez čitateľnej harmónie
+(drums-only → derived null). Key floor späť na **5/5 exact** (trap F# minor, dnb G minor —
+rotácie správne). Tempo floor nezmenený (5/5, err ≤ 0,2).
 
 - Pitch-tracker parametrizácia: `trackPitch(data, sr, {fminHz, fmaxHz})`
   (default dnešný 70–1050; UN-SUNO volá 30–250). Worker ostáva jeden.
