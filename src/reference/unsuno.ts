@@ -35,6 +35,7 @@ import { snapshot } from "../commands/core";
 import { setBpm } from "../commands/project";
 import { setProjectKey } from "../commands/metadata";
 import { createDrumTrack, createInstrumentTrack } from "../commands/tracks";
+import { addAudioClip } from "../commands/audioClips";
 import { createPattern, setPatternLength } from "../commands/patterns";
 import { addMarker } from "../commands/markers";
 import { createScene, setScenePattern } from "../commands/scenes";
@@ -66,6 +67,16 @@ export interface UnsunoOptions {
   confirmedKey?: { tonic: string; mode: "major" | "minor" } | null;
   /** Max pattern size in bars before chunking (pattern ceiling is 128 steps). */
   maxPatternBars?: number;
+  /**
+   * U4.5 — SOURCE AUDIO LANE. The bank id of the imported original file
+   * (the caller imports it through the user-sample flow BEFORE reconstructing;
+   * the command only references the buffer). When present, a sampler track
+   * carrying the full original as one arrangement clip is added — the
+   * reference layer you remix against. The clip's stretchRate warps it to
+   * the project grid; `needsWarpWarm` in the result tells the caller to
+   * warm the WarpManager after executing (the command stays pure).
+   */
+  sourceSampleId?: string | null;
 }
 
 export interface UnsunoResult {
@@ -73,9 +84,11 @@ export interface UnsunoResult {
   /** Human summary for the panel status line. */
   summary: string;
   /** Per-layer notes — empty layers with their reason (never silent). */
-  layers: { drums: string; bass: string; chords: string };
+  layers: Record<string, string>;
   bpm: number | null;
   patternCount: number;
+  /** The source-audio clip needs a WarpManager warm-up after execute. */
+  needsWarpWarm: boolean;
 }
 
 /** Chord voicing sits in C4 territory, bass an octave and a half below. */
@@ -137,10 +150,11 @@ function spansInSection(
 }
 
 export function unsunoCommand(doc: ProjectDocument, input: UnsunoInput, options: UnsunoOptions = {}): UnsunoResult {
-  const layers = {
+  const layers: Record<string, string> = {
     drums: "drums transcription pending (U3) — drum track skipped",
     bass: "no bass notes — bass track skipped",
     chords: "no chord spans — chord track skipped",
+    source: "no source sample given",
   };
   const { transcription } = input;
   const bpm = effectiveBpm(transcription, options);
@@ -151,6 +165,7 @@ export function unsunoCommand(doc: ProjectDocument, input: UnsunoInput, options:
       layers,
       bpm: null,
       patternCount: 0,
+      needsWarpWarm: false,
     };
   }
 
@@ -298,13 +313,39 @@ export function unsunoCommand(doc: ProjectDocument, input: UnsunoInput, options:
     patternCount += 1;
   }
 
+  // ── U4.5 source-audio lane: the original as one arrangement clip ──
+  let needsWarpWarm = false;
+  const sourceSampleId = options.sourceSampleId?.trim();
+  if (sourceSampleId && transcription.durationSec > 0.5) {
+    next = createInstrumentTrack(next, "sampler").execute(next);
+    const carrier = next.tracks[next.tracks.length - 1];
+    const barSec = 240 / bpm;
+    // Playback rate = the pure BPM ratio (project grid vs the detected
+    // source tempo). A length-fit rate would silently absorb tempo
+    // differences through fractional bars; the ratio makes the warp honest
+    // and triggers the warm-up exactly when the grids disagree.
+    const sourceBpm = transcription.tempo?.bpm ?? bpm;
+    const stretchRate = Math.min(4, Math.max(0.25, Math.round((bpm / sourceBpm) * 1000) / 1000));
+    const lengthBars = Math.max(0.25, Math.ceil((transcription.durationSec / stretchRate / barSec) * 100) / 100);
+    needsWarpWarm = Math.abs(stretchRate - 1) > 0.01;
+    next = addAudioClip(next, carrier.id, sourceSampleId, 0, lengthBars, {
+      gain: 0.9,
+      fadeOut: 0.01,
+      stretchRate,
+    }).execute(next);
+    layers.source = `original attached (${lengthBars} bars${needsWarpWarm ? `, warp ×${stretchRate.toFixed(2)}` : ""})`;
+  } else if (sourceSampleId) {
+    layers.source = "source sample given but too short to attach";
+  }
+
   const command = snapshot("unsuno", `UN-SUNO reconstruct — ${patternCount} section pattern(s), ${bpm} BPM`, doc, next);
   const parts = [ids.drums ? "drums" : null, ids.bass ? "bass" : null, ids.chords ? "chords" : null].filter(Boolean);
   return {
     command,
-    summary: `${patternCount} pattern(s) · ${parts.join(" + ") || "no layers"} · ${bpm} BPM${key ? ` · ${key}` : ""}`,
+    summary: `${patternCount} pattern(s) · ${parts.join(" + ") || "no layers"} · ${bpm} BPM${key ? ` · ${key}` : ""}${needsWarpWarm ? " · source warped" : ""}`,
     layers,
     bpm,
     patternCount,
+    needsWarpWarm,
   };
 }

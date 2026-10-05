@@ -323,9 +323,16 @@ restore; confirmed overrides; half/double reading; no-tempo → null command +
 poctivý summary; determinizmus (uid sa líšia by design — porovnáva sa hudobná
 štruktúra: names/stepCounts/note shapes/scenes).
 
-**U4.5 zostáva:** audio lane originálu (AudioClip + WarpManager na projektové
-BPM) — potrebuje user-sample persistence flow z U6; drums rows wiring do
-pattern.rows keď U3 flipne kontrakt.
+**U4.5 SHIPPED — source-audio lane (2026-10-04):** `unsunoCommand` options
+`sourceSampleId` (bank id importovaného originálu — caller importuje cez
+user-sample flow PRED rekonštrukciou) → sampler carrier track + JEDEN
+arrangement AudioClip (gain 0.9, fadeOut 0.01). **stretchRate = čistý BPM
+ratio** (projekt grid / detected tempo, clamp 0.25–4) — length-fit rate by
+fractional bary potichu absorboval tempo rozdiel; ratio spôsobí warp poctivo
+a `result.needsWarpWarm` povie calleru zohriať WarpManager po execute
+(command ostáva pure). Testy 7/7: clip inštalovaný (8.26 barov, rate 1 pri
+126/126, sampler carrier), undo bit-exact, warp warm flag pri 128/126 →
+1.016 (> 1 — rýchlejší grid prehrá originál rýchlejšie).
 
 ### U5 — Mix-doctor vedľa teba (per-sekcia + masking)
 

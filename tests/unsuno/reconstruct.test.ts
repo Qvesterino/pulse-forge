@@ -125,6 +125,49 @@ describe("unsunoCommand — reconstruction contract", () => {
     expect(result.summary).toMatch(/no tempo/);
   });
 
+  it("U4.5: sourceSampleId attaches the original as one arrangement clip", () => {
+    const store = new ProjectStore(createProjectFromTemplate("house"));
+    const before = canonize(normalizeProject(store.doc));
+    const result = unsunoCommand(store.doc, { transcription, sections }, { sourceSampleId: "user.src-123" });
+    expect(result.needsWarpWarm).toBe(false); // detected 126 == project 126 → rate 1
+    expect(result.layers.source).toMatch(/original attached/);
+    store.execute(result.command!);
+    const doc = normalizeProject(store.doc);
+    const clip = doc.arrangement.audioClips?.find((c) => c.bufferId === "user.src-123");
+    expect(clip).toBeDefined();
+    // 15.2 s source on a 126 BPM grid = 8 bars; the sampler carrier exists.
+    expect(clip!.lengthBars).toBeGreaterThanOrEqual(8);
+    expect(clip!.startBar).toBe(0);
+    expect(clip!.stretchRate).toBe(1); // 126 detected == 126 grid
+    const carrier = doc.tracks.find((t) => t.id === clip!.trackId);
+    expect(carrier?.kind).toBe("instrument");
+    expect(carrier?.kind === "instrument" && carrier.instrument).toBe("sampler");
+    // Undo removes the clip with everything else (bit-exact against THIS
+    // store's own before — template uids differ across stores by design).
+    const ownBefore = canonize(normalizeProject(new ProjectStore(createProjectFromTemplate("house")).doc));
+    void ownBefore;
+    store.undo();
+    expect(canonize(normalizeProject(store.doc))).toEqual(before);
+  });
+
+  it("U4.5: a source at a different tempo asks for a warp warm-up", () => {
+    const store = new ProjectStore(createProjectFromTemplate("house"));
+    const result = unsunoCommand(
+      store.doc,
+      { transcription, sections },
+      {
+        sourceSampleId: "user.src-456",
+        confirmedBpm: 128, // grid faster than the 126 source → stretch
+      },
+    );
+    expect(result.needsWarpWarm).toBe(true);
+    store.execute(result.command!);
+    const doc = normalizeProject(store.doc);
+    const clip = doc.arrangement.audioClips?.find((c) => c.bufferId === "user.src-456")!;
+    expect(clip.stretchRate).toBeGreaterThan(1); // faster grid plays the source quicker (128/126)
+    expect(clip.stretchRate).toBeGreaterThanOrEqual(0.25);
+  });
+
   it("determinism: same input → same musical structure (uid differs by design)", () => {
     const a = new ProjectStore(createProjectFromTemplate("house"));
     const b = new ProjectStore(createProjectFromTemplate("house"));
