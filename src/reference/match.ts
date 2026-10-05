@@ -27,9 +27,14 @@
  */
 
 import { analyzeLoudnessBuffer } from "../audio-engine/kweighting";
-import { analyzeMixHealth, type MixHealthReport } from "../analysis/mixDoctor";
+import { analyzeMixHealth, type MixBandShares, type MixHealthReport } from "../analysis/mixDoctor";
 import type { MatchEqBands, MatchEqCurve } from "../intent/match-eq";
 import { computeMatchEqCurve } from "../intent/match-eq";
+import { snapshot } from "../commands/core";
+import { setTrackParams } from "../commands/project";
+import { applyMasterMatchEqCommand } from "../commands/master";
+import type { Command } from "../commands/types";
+import type { ProjectDocument } from "../project-model/types";
 
 /* ───────────────────────── measurement inputs ───────────────────────── */
 
@@ -153,19 +158,19 @@ export function buildReferenceMatch(project: MatchProjectInput, reference: Match
     const refDb = round1(dbOfShare(ref.bandShares[band]));
     return { band, label, hz, mixDb, refDb, deltaDb: round1(refDb - mixDb) };
   });
-  // Participation floor, per side: a band below its own side's loudest band by
-  // more than the floor has no body to compare. The curve is folded from the
-  // participating rows only, so leakage cannot push the master EQ either.
-  const participating = rows.filter(
-    (row) =>
-      row.mixDb >= Math.max(...rows.map((r) => r.mixDb)) - MATCH_PARTICIPATION_FLOOR_DB &&
-      row.refDb >= Math.max(...rows.map((r) => r.refDb)) - MATCH_PARTICIPATION_FLOOR_DB,
-  );
+  // Participation floor, per side: a band is EMPTY only when it is quiet on
+  // BOTH sides — each judged against its own loudest band. A band loud on one
+  // side and quiet on the other is the REAL gap a match exists to find (the
+  // mix is missing the reference's sub, say), never "empty". The curve folds
+  // only non-empty rows so leakage in a dead band cannot tilt the master EQ.
+  const mixLoudest = Math.max(...rows.map((r) => r.mixDb));
+  const refLoudest = Math.max(...rows.map((r) => r.refDb));
+  const quietOn = (db: number, loudest: number): boolean => db < loudest - MATCH_PARTICIPATION_FLOOR_DB;
   const bands: MatchBandRow[] = rows.map((row) => ({
     ...row,
-    // Both sides empty → no information in the difference.
-    empty: !participating.includes(row),
+    empty: quietOn(row.mixDb, mixLoudest) && quietOn(row.refDb, refLoudest),
   }));
+  const participating = bands.filter((row) => !row.empty);
 
   const loudness: MatchLoudness = {
     mixLufs: mix.integratedLufs === null ? null : round1(mix.integratedLufs),
@@ -319,4 +324,173 @@ export function measureProjectMatch(channels: Float32Array[], sampleRate: number
 /** The reference's integrated loudness on its own — the panel shows it beside the mix's. */
 export function referenceIntegratedLufs(channels: Float32Array[], sampleRate: number): number | null {
   return analyzeLoudnessBuffer(channels, sampleRate).integrated;
+}
+
+/* ─────────────────────── per-track attribution ─────────────────────── */
+
+/**
+ * One rendered strip (a single track's own pre-master stem). The panel renders
+ * these; this module only consumes the measurement, so attribution is pure and
+ * testable without an OfflineAudioContext.
+ */
+export interface MatchStrip {
+  id: string;
+  name: string;
+  kind: "drum" | "instrument" | "audio" | "group";
+  lufs: number | null;
+  /** The strip's own 7-band shares (linear 0..1 of its own total). */
+  bandShares: MixBandShares;
+  /** True when the track owns playable content (notes / rows / clips). */
+  hasContent: boolean;
+  /** True when the track is muted at the track level (mute beats every fader move). */
+  muted: boolean;
+}
+
+/**
+ * Which strip owns a band, and how much of the mix's energy there is theirs.
+ * `share` is energy-weighted (each strip's loudness as power × its own band
+ * share) — the same math as the mix-diagnosis `rankBandOwnership`, so a quiet
+ * track cannot "own" a band it barely contributes to.
+ */
+export interface BandOwner {
+  band: MatchBandRow["band"];
+  strip: MatchStrip;
+  /** 0..1 of the mix's energy in this band contributed by this strip. */
+  share: number;
+}
+
+/** Linear power proxy from LUFS (absolute log scale → energy ratio). */
+function lufsToPower(lufs: number): number {
+  return Math.pow(10, lufs / 10);
+}
+
+/**
+ * Rank band ownership across strips for every band. Deterministic; strips
+ * without a measurable LUFS are skipped honestly (unknown energy cannot be
+ * ranked). Ties break by strip id so the order never depends on input order.
+ */
+export function rankMatchBandOwnership(strips: readonly MatchStrip[]): BandOwner[] {
+  const measured = strips.filter((strip) => strip.lufs !== null && strip.hasContent);
+  const owners: BandOwner[] = [];
+  for (const band of ["sub", "low", "lowmid", "mid", "himid", "high", "air"] as const) {
+    const contributions = measured.map((strip) => ({
+      strip,
+      weight: lufsToPower(strip.lufs ?? -99) * strip.bandShares[band],
+    }));
+    const total = contributions.reduce((acc, c) => acc + c.weight, 0);
+    if (total <= 0) continue;
+    const best = contributions
+      .map((c) => ({ strip: c.strip, share: c.weight / total }))
+      .sort((a, b) => b.share - a.share || a.strip.id.localeCompare(b.strip.id))[0]!;
+    owners.push({ band, strip: best.strip, share: best.share });
+  }
+  return owners;
+}
+
+/** A band suggestion is only actionable when one strip clearly owns it. */
+export const MATCH_OWNER_MIN_SHARE = 0.4;
+/** The strip-gain move never exceeds this (the mix-diagnosis setGain ceiling). */
+export const MATCH_STRIP_GAIN_LIMIT_DB = 3;
+
+/**
+ * Per-track suggestions for the bands with a real gap. Each names the OWNER of
+ * the band and proposes a bounded fader move TOWARD closing the measured gap:
+ *
+ *   - a band the mix is THIN in (delta > 0, reference has more) → the owner is
+ *     the wrong place to cut; raising it is the move (bounded, partial);
+ *   - a band the mix is RICH in (delta < 0) → the owner is the suspect to pull
+ *     down (bounded);
+ *   - a muted owner is a mute problem, not a fader problem — say so, do not
+ *     propose a gain the mute would swallow.
+ *
+ * The gain factor is 0.5× the measured gap (the ultina/match-eq broad-stroke
+ * convention) so a "match" nudges, never over-corrects, and is clamped to the
+ * command layer's own setGain ceiling. A band with no clear owner (share below
+ * MATCH_OWNER_MIN_SHARE) yields NO strip action — an ownership guess would be
+ * an invented target.
+ */
+export function attributeMatchToStrips(
+  report: ReferenceMatchReport,
+  strips: readonly MatchStrip[],
+): Array<{ band: MatchBandRow; owner: BandOwner }> {
+  const owners = rankMatchBandOwnership(strips);
+  const out: Array<{ band: MatchBandRow; owner: BandOwner }> = [];
+  for (const band of report.bands) {
+    if (band.empty) continue;
+    if (Math.abs(band.deltaDb) < MATCH_DEADZONE_DB) continue;
+    const owner = owners.find((candidate) => candidate.band === band.band);
+    if (!owner || owner.share < MATCH_OWNER_MIN_SHARE) continue;
+    out.push({ band, owner });
+  }
+  return out;
+}
+
+/** One concrete per-track move the panel can render and APPLY. */
+export interface MatchStripMove {
+  band: MatchBandRow;
+  owner: BandOwner;
+  /** Signed fader move in dB, clamped to ±{@link MATCH_STRIP_GAIN_LIMIT_DB}. */
+  gainDb: number;
+  /** One-line evidence the panel renders ("Kick owns 58% of sub · mix is 3.1 dB thin"). */
+  reason: string;
+}
+
+/**
+ * Turn the band attributions into concrete strip moves. Each is a broad-stroke
+ * partial correction: half the measured band gap, clamped ±3 dB, with the
+ * sign telling the direction (mix thin in the band → raise its owner; mix rich
+ * → pull it down). A muted owner is skipped with a reason instead of a gain —
+ * mute beats every fader value, so proposing one would be a dead move.
+ */
+export function matchStripMoves(report: ReferenceMatchReport, strips: readonly MatchStrip[]): MatchStripMove[] {
+  const moves: MatchStripMove[] = [];
+  for (const { band, owner } of attributeMatchToStrips(report, strips)) {
+    const raw = band.deltaDb * 0.5;
+    const gainDb = round1(Math.max(-MATCH_STRIP_GAIN_LIMIT_DB, Math.min(MATCH_STRIP_GAIN_LIMIT_DB, raw)));
+    const direction = band.deltaDb > 0 ? "thin" : "rich";
+    moves.push({
+      band,
+      owner,
+      gainDb: owner.strip.muted ? 0 : gainDb,
+      reason: owner.strip.muted
+        ? `${owner.strip.name} owns ${Math.round(owner.share * 100)}% of ${band.label} but is MUTED — unmute (a fader move would be swallowed)`
+        : `${owner.strip.name} owns ${Math.round(owner.share * 100)}% of ${band.label} · the mix is ${Math.abs(band.deltaDb).toFixed(1)} dB ${direction} there → move ${gainDb > 0 ? "+" : ""}${gainDb} dB`,
+    });
+  }
+  return moves;
+}
+
+/**
+ * The panel's APPLY: ONE command carrying the master match-EQ curve, the
+ * loudness trim, and every unmuted per-track fader move as a single undo step.
+ * Returns null when there is nothing to apply. Each sub-move rides an existing
+ * command (`applyMasterMatchEqCommand`, `setTrackParams`) — no new mutation
+ * paths — and is folded through `snapshot` so Ctrl-Z reverts the whole match.
+ */
+export function applyMatchCommand(
+  doc: ProjectDocument,
+  report: ReferenceMatchReport,
+  moves: readonly MatchStripMove[],
+): Command | null {
+  const before = doc;
+  let after = doc;
+  let changed = false;
+
+  if (report.curve !== null || report.loudnessTrimDb !== null) {
+    after = applyMasterMatchEqCommand(after, report.curve, report.loudnessTrimDb ?? undefined).execute(after);
+    changed = true;
+  }
+
+  for (const move of moves) {
+    if (move.owner.strip.muted || move.gainDb === 0) continue;
+    const track = after.tracks.find((candidate) => candidate.id === move.owner.strip.id);
+    if (!track) continue;
+    // Linear gain from the current value; setTrackParams clamps [0,1.5].
+    const nextGain = track.gain * Math.pow(10, move.gainDb / 20);
+    after = setTrackParams(after, track.id, { gain: nextGain }).execute(after);
+    changed = true;
+  }
+
+  if (!changed) return null;
+  return snapshot("referenceMatch", "Apply reference match", before, after);
 }

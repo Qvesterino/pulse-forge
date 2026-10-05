@@ -4,6 +4,7 @@ import {
   PITCH_CLASSES,
   REFERENCE_STAGE_LABELS,
   analyzeReferenceAsync,
+  attributeMatchToStrips,
   bpmCommand,
   buildReferenceMatch,
   confidenceLabel,
@@ -12,9 +13,12 @@ import {
   grooveCommand,
   keyCommand,
   markerCommand,
+  matchStripMoves,
+  applyMatchCommand,
   sectionMarkerCommand,
   toMono,
   toPercent,
+  type MatchStrip,
   type ReferenceMatchReport,
   type ReferenceKeyCandidate,
   type ReferenceMap,
@@ -22,11 +26,11 @@ import {
   type ReferenceStage,
   type TempoCandidate,
 } from "../reference";
-import { applyMasterMatchEqCommand } from "../commands/master";
 import { downloadBlob } from "../export/download";
 import { sanitizeFilename } from "../rendering/wav";
 import { MAX_AUDIO_IMPORT_BYTES } from "./DropZone";
 import { type ProjectDocument } from "../project-model/types";
+import type { SampleBank } from "../sample-library/factory";
 import type { Command } from "../commands/types";
 import { useDoc } from "./context";
 
@@ -362,11 +366,14 @@ export function ReferenceMapPanel() {
   //
   // Renders the CURRENT project pre-master (the match measures the MIX, not
   // the master's reaction to it — the match-eq precedent), measures both
-  // sides through the SAME analyzers, and shows the deltas. APPLY lands the
-  // master match-EQ curve + loudness trim as ONE undo step through the same
-  // command the IntentPanel's Match-EQ uses. Nothing is auto-applied.
+  // sides through the SAME analyzers, and shows the deltas. Per-track
+  // attribution renders each content track as its own stem so a band gap can
+  // name the strip that owns it. APPLY lands the master match-EQ curve +
+  // loudness trim + every unmuted fader move as ONE undo step. Nothing is
+  // auto-applied.
   // ---------------------------------------------------------------------------
   const [matchReport, setMatchReport] = useState<ReferenceMatchReport | null>(null);
+  const [matchStrips, setMatchStrips] = useState<MatchStrip[]>([]);
   const [matchBusy, setMatchBusy] = useState(false);
   const [matchError, setMatchError] = useState<string | null>(null);
 
@@ -375,6 +382,7 @@ export function ReferenceMapPanel() {
     setMatchBusy(true);
     setMatchError(null);
     setMatchReport(null);
+    setMatchStrips([]);
     try {
       const { renderProject } = await import("../rendering/renderer");
       const buffer = await renderProject(doc, services.bank, {
@@ -389,6 +397,12 @@ export function ReferenceMapPanel() {
         { channels: analysis.channels, sampleRate: analysis.sampleRate },
       );
       setMatchReport(report);
+
+      // Per-track attribution: render each content track as its own pre-master
+      // stem so a band gap can name the strip that owns it. Failures degrade
+      // to no attribution, never a broken measurement.
+      const strips = await collectMatchStrips(doc, services.bank);
+      setMatchStrips(strips);
     } catch (err) {
       setMatchError(err instanceof Error ? err.message : "Match failed.");
     } finally {
@@ -398,12 +412,17 @@ export function ReferenceMapPanel() {
 
   const applyMatch = useCallback(() => {
     if (!matchReport) return;
-    // The same command the IntentPanel Match-EQ button lands — one undo step
-    // carrying the curve AND the loudness trim together.
-    const command = applyMasterMatchEqCommand(doc, matchReport.curve, matchReport.loudnessTrimDb ?? undefined);
+    // ONE command: master match-EQ curve + loudness trim + every unmuted
+    // per-track fader move folded into a single undo step.
+    const moves = matchStripMoves(matchReport, matchStrips);
+    const command = applyMatchCommand(doc, matchReport, moves);
+    if (!command) {
+      setApplied("Nothing worth applying — the mix already matches.");
+      return;
+    }
     services.store.execute(command);
     setApplied(command.label);
-  }, [matchReport, doc, services.store]);
+  }, [matchReport, matchStrips, doc, services.store]);
 
   // Tick length is tempo-dependent, so marker placement is only correct if the
   // project is actually running at the reference tempo when the user imports.
@@ -645,12 +664,18 @@ export function ReferenceMapPanel() {
             {tab === "match" && (
               <MatchTab
                 report={matchReport}
+                strips={matchStrips}
                 busy={matchBusy}
                 error={matchError}
                 hasAnalysis={analysis !== null}
                 onRun={runMatch}
                 onApply={applyMatch}
-                canApply={matchReport !== null && (matchReport.curve !== null || matchReport.loudnessTrimDb !== null)}
+                canApply={
+                  matchReport !== null &&
+                  (matchReport.curve !== null ||
+                    matchReport.loudnessTrimDb !== null ||
+                    matchStripMoves(matchReport, matchStrips).some((m) => m.gainDb !== 0))
+                }
               />
             )}
           </div>
@@ -914,6 +939,61 @@ function Descriptors({ map }: { map: ReferenceMap }) {
 }
 
 /**
+ * Render the project's content tracks as individual pre-master stems and
+ * measure each — the mix-diagnosis attribution path, bounded to the same 14
+ * strips the agent tool caps at. Per-track failures are swallowed (a stem that
+ * will not render simply is not attributed; the match measurement itself still
+ * stands). Only tracks with playable content are rendered: an empty track
+ * owning nothing is not a finding.
+ */
+async function collectMatchStrips(doc: ProjectDocument, bank: SampleBank): Promise<MatchStrip[]> {
+  const { renderProject } = await import("../rendering/renderer");
+  const { buildStemProject } = await import("../rendering/stems");
+  const { analyzeMixHealth } = await import("../analysis/mixDoctor");
+  const contentTracks = new Set<string>();
+  for (const pattern of doc.patterns) {
+    for (const trackId of Object.keys(pattern.notes ?? {})) {
+      if ((pattern.notes?.[trackId] ?? []).length > 0) contentTracks.add(trackId);
+    }
+    for (const padId of Object.keys(pattern.rows ?? {})) {
+      if ((pattern.rows?.[padId] ?? []).some((v) => v > 0)) {
+        const owner = doc.tracks.find((t) => t.kind === "drum" && t.pads.some((pad) => pad.id === padId));
+        if (owner) contentTracks.add(owner.id);
+      }
+    }
+  }
+  for (const clip of doc.arrangement.audioClips ?? []) contentTracks.add(clip.trackId);
+
+  const candidates = doc.tracks.filter((t) => t.kind !== "group" && contentTracks.has(t.id)).slice(0, 14);
+  const strips: MatchStrip[] = [];
+  for (const track of candidates) {
+    try {
+      const stemDoc = buildStemProject(doc, (candidate) => candidate.id === track.id);
+      const buffer = await renderProject(stemDoc, bank, {
+        mode: "pattern",
+        sampleRate: 44100,
+        tailSeconds: 0.3,
+        masterProcessing: false,
+      });
+      const channels = Array.from({ length: buffer.numberOfChannels }, (_, c) => buffer.getChannelData(c));
+      const report = analyzeMixHealth(channels, buffer.sampleRate);
+      strips.push({
+        id: track.id,
+        name: track.name,
+        kind: track.kind === "drum" ? "drum" : "instrument",
+        lufs: report.integratedLufs,
+        bandShares: report.bandShares,
+        hasContent: true,
+        muted: track.mute === true,
+      });
+    } catch {
+      // Degrade to no attribution for this strip.
+    }
+  }
+  return strips;
+}
+
+/**
  * MATCH — "ako ďaleko som od referencie". The measured comparison: both
  * sides through the same analyzers, the band table in dB-of-share, and the
  * concrete APPLY (master match-EQ curve + loudness trim, one undo step).
@@ -926,6 +1006,7 @@ function Descriptors({ map }: { map: ReferenceMap }) {
  */
 function MatchTab({
   report,
+  strips,
   busy,
   error,
   hasAnalysis,
@@ -934,6 +1015,7 @@ function MatchTab({
   canApply,
 }: {
   report: ReferenceMatchReport | null;
+  strips: readonly MatchStrip[];
   busy: boolean;
   error: string | null;
   hasAnalysis: boolean;
@@ -941,6 +1023,10 @@ function MatchTab({
   onApply: () => void;
   canApply: boolean;
 }) {
+  // Per-track attribution is derived from the measured report + strips — pure,
+  // computed at render, so it can never drift from the table above it.
+  const moves = report ? matchStripMoves(report, strips) : [];
+  const attributions = report ? attributeMatchToStrips(report, strips) : [];
   return (
     <div className="reference-match" data-testid="reference-match">
       <div className="reference-match-header">
@@ -1046,6 +1132,28 @@ function MatchTab({
               </>
             )}
           </dl>
+
+          {/* Per-track attribution — WHO owns the bands with a real gap. Only
+              bands whose top strip holds ≥40% of that band's energy appear;
+              an ownership guess below that is an invented target, not a
+              measurement. Rendered from the measured report + strips, so it
+              can never disagree with the table above. */}
+          {attributions.length > 0 && (
+            <div className="reference-match-attribution" data-testid="reference-match-attribution">
+              <h4>Who owns the gap</h4>
+              <ul>
+                {moves.map((move) => (
+                  <li key={move.band.band} data-testid={`reference-match-owner-${move.band.band}`}>
+                    {move.reason}
+                  </li>
+                ))}
+              </ul>
+              <p className="panel-sub">
+                Ownership is energy-weighted (loudness × band share), the same math the agent's mix diagnosis uses.
+                Moves are half the measured gap, clamped ±3 dB, and apply as one undo.
+              </p>
+            </div>
+          )}
 
           <p className="panel-sub reference-match-note">
             Shape, not volume: the curve is de-meaned (a match is never a hidden gain move) and clamped ±6 dB. APPLY is
