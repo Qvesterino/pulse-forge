@@ -154,6 +154,7 @@ export function unsunoCommand(doc: ProjectDocument, input: UnsunoInput, options:
     drums: "drums transcription pending (U3) — drum track skipped",
     bass: "no bass notes — bass track skipped",
     chords: "no chord spans — chord track skipped",
+    lead: "no confident lead line — lead track skipped",
     source: "no source sample given",
   };
   const { transcription } = input;
@@ -178,7 +179,12 @@ export function unsunoCommand(doc: ProjectDocument, input: UnsunoInput, options:
   next = setBpm(next, Math.round(bpm)).execute(next);
   if (key) next = setProjectKey(next, key).execute(next);
 
-  const ids = { drums: null as string | null, bass: null as string | null, chords: null as string | null };
+  const ids = {
+    drums: null as string | null,
+    bass: null as string | null,
+    chords: null as string | null,
+    lead: null as string | null,
+  };
 
   // Tracks: only when the layer carries content.
   const drumSlots = transcription.drums.kick.length + transcription.drums.snare.length + transcription.drums.hat.length;
@@ -192,6 +198,14 @@ export function unsunoCommand(doc: ProjectDocument, input: UnsunoInput, options:
     next = createInstrumentTrack(next, "bass").execute(next);
     ids.bass = next.tracks[next.tracks.length - 1].id;
     layers.bass = `${bassNotes.length} bass notes transcribed`;
+  }
+  const melodyNotes = transcription.melody.notes;
+  if (melodyNotes.length > 0) {
+    // Lead line → sampler carrier (its default sample is a pluck — a usable
+    // mono lead voice without any preset machinery).
+    next = createInstrumentTrack(next, "sampler").execute(next);
+    ids.lead = next.tracks[next.tracks.length - 1].id;
+    layers.lead = `${melodyNotes.length} lead notes transcribed`;
   }
   if (transcription.chords.spans.length > 0) {
     next = createInstrumentTrack(next, "keys").execute(next);
@@ -244,6 +258,27 @@ export function unsunoCommand(doc: ProjectDocument, input: UnsunoInput, options:
         });
       }
       updatedPattern.notes[ids.chords!] = notes;
+    }
+
+    // Lead notes — same window mapping as bass, octave-safe for the sampler.
+    if (ids.lead) {
+      const notes: NoteEvent[] = [];
+      for (const note of melodyNotes) {
+        if (note.startSec < section.startSec || note.startSec >= section.endSec) continue;
+        const startTick = Math.max(0, Math.round(((note.startSec - section.startSec) * bpm * PPQ) / 60));
+        const durationTicks = Math.max(
+          STEP_TICKS,
+          Math.round((Math.min(note.durationSec, section.endSec - note.startSec) * bpm * PPQ) / 60),
+        );
+        notes.push({
+          id: `us-l-${patternId}-${notes.length}`,
+          pitch: Math.max(36, Math.min(96, note.midi)),
+          start: startTick,
+          duration: durationTicks,
+          velocity: note.velocity,
+        });
+      }
+      updatedPattern.notes[ids.lead] = notes;
     }
 
     // Bass notes — seconds inside the window → ticks.
@@ -355,7 +390,12 @@ export function unsunoCommand(doc: ProjectDocument, input: UnsunoInput, options:
   }
 
   const command = snapshot("unsuno", `UN-SUNO reconstruct — ${patternCount} section pattern(s), ${bpm} BPM`, doc, next);
-  const parts = [ids.drums ? "drums" : null, ids.bass ? "bass" : null, ids.chords ? "chords" : null].filter(Boolean);
+  const parts = [
+    ids.drums ? "drums" : null,
+    ids.bass ? "bass" : null,
+    ids.chords ? "chords" : null,
+    ids.lead ? "lead" : null,
+  ].filter(Boolean);
   return {
     command,
     summary: `${patternCount} pattern(s) · ${parts.join(" + ") || "no layers"} · ${bpm} BPM${key ? ` · ${key}` : ""}${needsWarpWarm ? " · source warped" : ""}`,

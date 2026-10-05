@@ -134,7 +134,7 @@ describe("DropZone — UN-SUNO analyze offer (U6)", () => {
       await waitFor(() => expect(screen.getByTestId("dropzone-analyze-offer")).toBeInTheDocument());
       fireEvent.click(screen.getByTestId("dropzone-analyze-go"));
       expect(listener).toHaveBeenCalledTimes(1);
-      const event = listener.mock.calls[0][0] as CustomEvent<File>;
+      const event = listener.mock.calls[0][0] as CustomEvent<{ file: File; sampleId: string }>;
       expect(event.detail.file).toBeInstanceOf(File);
       expect(typeof event.detail.sampleId).toBe("string");
       expect(event.detail.sampleId).toMatch(/^user\./);

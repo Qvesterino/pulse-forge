@@ -15,6 +15,7 @@
 import { estimateKey, estimateTempo, type KeyEstimate, type TempoEstimate } from "../ai/audio-tempo-key";
 import { deriveKeyFromChords, detectChordSpans, type ChordSpan, type TranscribedChordQuality } from "./analysis/chords";
 import { detectBassNotes, type TranscribedBassNote } from "./analysis/bass";
+import { detectMelodyNotes, type TranscribedMelodyNote } from "./analysis/melody";
 import { detectDrumMap } from "./analysis/drums";
 
 export interface TranscribedLayer {
@@ -73,6 +74,13 @@ export interface TranscribedDrums extends TranscribedDrumPattern {
   sections?: Array<TranscribedDrumPattern & { role: string; startSec: number; endSec: number }>;
 }
 
+export interface TranscribedMelody {
+  implemented: boolean;
+  warning: string | null;
+  notes: TranscribedMelodyNote[];
+  coverage: number | null;
+}
+
 export interface UnsunoTranscription {
   sampleRate: number;
   durationSec: number;
@@ -81,6 +89,8 @@ export interface UnsunoTranscription {
   drums: TranscribedDrums;
   bass: TranscribedBass;
   chords: TranscribedChords;
+  /** U7 — best-effort lead/vocal line; often honestly empty on dense mixes. */
+  melody: TranscribedMelody;
 }
 
 /** Which wave owns which layer — drives the pending warnings and the gated
@@ -267,6 +277,24 @@ export function transcribeTrack(
       }));
   }
 
+  // U7 — lead/vocal line, best-effort by design: the melodic register
+  // overlaps the chords, so the lane reports only when its strict gates
+  // (clarity 0.65+, stable runs, minimum coverage) actually found a line.
+  const melody: TranscribedMelody = !tempo
+    ? { implemented: true, warning: "tempo unavailable — no grid, melody skipped (honest empty)", notes: [], coverage: null }
+    : (() => {
+        const detection = detectMelodyNotes(pcm, sampleRate, { bpm: tempo.bpm });
+        const notes = detection?.notes ?? [];
+        return notes.length > 0
+          ? { implemented: true, warning: null, notes, coverage: detection?.coverage ?? null }
+          : {
+              implemented: true,
+              warning: "no confident lead line — melody left empty (polyphonic bleed beats the gates)",
+              notes: [],
+              coverage: detection?.coverage ?? null,
+            };
+      })();
+
   return {
     sampleRate,
     durationSec: sampleRate > 0 ? pcm.length / sampleRate : 0,
@@ -275,6 +303,7 @@ export function transcribeTrack(
     drums,
     bass,
     chords,
+    melody,
   };
 }
 
