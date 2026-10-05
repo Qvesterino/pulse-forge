@@ -707,10 +707,13 @@ export class MasterChain {
       // input trim — pre-limiter by design, the limiter catches the extra
       // drive. Engine clamp ±12 dB is a defensive bound; the builder writes
       // at most ±6.
-      const gain = Math.min(2, Math.max(0, config.masterGain));
-      // NaN-safe: Math.min/max pass NaN through, and gain * 10**(NaN/20)
-      // would throw inside setTargetAtTime — the FIRST statement of
-      // syncProject, killing the whole graph sync.
+      // NaN-safe for the GAIN too (the trim below had this guard, the gain
+      // line did not): Math.min/max pass NaN through, and
+      // gain * 10**(NaN/20) would throw inside setTargetAtTime — the FIRST
+      // statement of syncProject, killing the whole graph sync. Non-finite
+      // falls back to the schema default (1).
+      const gainRaw = config.masterGain;
+      const gain = typeof gainRaw === "number" && Number.isFinite(gainRaw) ? Math.min(2, Math.max(0, gainRaw)) : 1;
       const trimRaw = config.loudnessTrimDb;
       const trim = typeof trimRaw === "number" && Number.isFinite(trimRaw) ? Math.min(12, Math.max(-12, trimRaw)) : 0;
       this.master.gain.setTargetAtTime(gain * Math.pow(10, trim / 20), now, 0.01);

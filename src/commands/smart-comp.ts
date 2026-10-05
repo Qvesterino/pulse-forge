@@ -30,9 +30,11 @@
  * ARRANGEMENT take-lane counterpart: it measures the audio itself
  * (groove lock, pitch drift, noise floor, clipping) and plans over
  * `arrangement.audioClips` take groups so the result is directly installable
- * by `compAudioTakeRange`. The two plan DIFFERENT lanes (vocal-lane profiles
- * vs any linear audio take group) and share no scoring code; if they are ever
- * unified it should be at the metric layer, not the plan layer.
+ * by `compAudioTakeRange`. The METRICS are deliberately separate — different
+ * inputs, different questions, no shared thresholds. The PLANNING SPINE
+ * (best take per bar, merge same-winner spans, honest holes, earlier take
+ * wins ties) is shared through `src/shared/comp-core.ts`, so the two lanes
+ * cannot drift apart on merge/hole semantics.
  *
  * Honesty rules:
  *   - a take only competes for windows it actually covers (clip coverage is
@@ -48,6 +50,7 @@
 import { scoreTake, measureTake, type TakeScore } from "../audio-engine/take-scoring";
 import type { AudioClip, AudioTakeGroup, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS } from "../project-model/types";
+import { planCompCore, type CompCoreTake } from "../shared/comp-core";
 import { compAudioTakeRange } from "./commands";
 import type { Command } from "./types";
 
@@ -181,37 +184,34 @@ export function planSmartComp(
   });
 
   // Rank: score descending, coverage as tiebreak (more coverage = fewer seams
-  // downstream even before merging).
+  // downstream even before merging). The PLANNING SPINE is shared with the
+  // vocal lane (`planCompCore`): best take per bar, merge same-winner spans,
+  // honest holes. The tie-break here is the RANK ORDER, so equal scores keep
+  // the ranked-earlier take — same "earlier wins ties" rule as the core.
   const ranked = [...takeSummaries].sort(
     (a, b) => b.score.score - a.score.score || b.coveredBarCount - a.coveredBarCount,
   );
+  const coverageByTake = new Map(
+    sourceTakeIds.map((takeId) => [takeId, coveredRangesFor(clips, groupId, takeId, group.trackId)] as const),
+  );
+  const candidates: CompCoreTake<string>[] = ranked.map((entry) => ({
+    takeId: entry.takeId,
+    scoreBar: (bar) => {
+      const ranges = coverageByTake.get(entry.takeId) ?? [];
+      if (!coversBar(ranges, bar)) return { eligible: false, score: 0 };
+      return { eligible: true, score: entry.score.score };
+    },
+  }));
+  const core = planCompCore(candidates, spanEnd - spanStart);
 
-  // Bar-by-bar winner, then merge adjacent equal winners.
-  const winnerByBar = new Map<number, string>();
-  const uncoveredBars: number[] = [];
-  for (let bar = spanStart; bar < spanEnd; bar++) {
-    const winner = ranked.find((entry) =>
-      coversBar(coveredRangesFor(clips, groupId, entry.takeId, group.trackId), bar),
-    );
-    if (winner) winnerByBar.set(bar, winner.takeId);
-    else uncoveredBars.push(bar);
-  }
-
-  const segments: CompSegment[] = [];
-  let current: CompSegment | null = null;
-  for (let bar = spanStart; bar < spanEnd; bar++) {
-    const winner = winnerByBar.get(bar);
-    if (winner === undefined) {
-      current = null;
-      continue;
-    }
-    if (current && current.sourceTakeId === winner && current.endBar === bar) {
-      current.endBar = bar + 1;
-    } else {
-      current = { sourceTakeId: winner, startBar: bar, endBar: bar + 1 };
-      segments.push(current);
-    }
-  }
+  // The core grid is relative (0..spanEnd-spanStart); shift to absolute bars
+  // and convert the inclusive endBar to this plan's exclusive endBar.
+  const segments: CompSegment[] = core.segments.map((segment) => ({
+    sourceTakeId: segment.winner,
+    startBar: segment.startBar + spanStart,
+    endBar: segment.endBar + 1 + spanStart,
+  }));
+  const uncoveredBars = core.uncoveredBars.map((bar) => bar + spanStart);
 
   return {
     segments,

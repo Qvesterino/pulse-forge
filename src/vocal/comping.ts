@@ -1,4 +1,5 @@
 import type { VocalProfile } from "./types";
+import { planCompCore, type CompCoreTake } from "../shared/comp-core";
 
 /**
  * VOCAL COMPING (vocal lane pilot) - the producer assembles the best take
@@ -9,13 +10,13 @@ import type { VocalProfile } from "./types";
  * no-op the singer didn't ask for).
  *
  * SCOPE - this plans the VOCAL RECORDING LANE from already-measured
- * `VocalProfile`s (phrase energy / SNR). It is not the arrangement take-lane
- * planner: `src/commands/smart-comp.ts` measures raw audio (groove lock,
- * pitch drift, noise floor, clipping) and plans over
- * `arrangement.audioClips` take groups so the result installs directly via
- * `compAudioTakeRange`. Both do "best take per bar, merge same-winner
- * spans", but over different inputs and for different lanes; they share no
- * scoring code and should only ever be unified at the metric layer.
+ * `VocalProfile`s (phrase energy / SNR). The ARRANGEMENT TAKE LANE
+ * (`src/commands/smart-comp.ts`) measures raw audio (groove lock, pitch
+ * drift, noise floor, clipping) instead. The METRICS are deliberately
+ * separate - different inputs, different questions, no shared thresholds.
+ * The PLANNING SPINE (best take per bar, merge same-winner spans, honest
+ * holes, earlier take wins ties) is shared through `src/shared/comp-core.ts`
+ * so the two lanes cannot drift apart on merge/hole semantics.
  *
  * Harmony generation is deliberately absent: it needs per-note pitch
  * extraction, which the analyzer does not provide yet. Guessing harmonies
@@ -63,6 +64,10 @@ function barScore(take: VocalProfile, bar: number): { score: number; sung: boole
  * Plan the composite: for every bar on the shared grid, the take with the
  * best bar score wins. Consecutive same-winner bars merge into segments.
  * Returns null when fewer than two measured takes exist (nothing to comp).
+ *
+ * The selection/merge/hole semantics live in `planCompCore`; this function
+ * is the vocal-lane ADAPTER: it defines what "eligible" and "score" mean for
+ * a vocal phrase and maps the shared plan back onto the take indexes.
  */
 export function planVocalComp(takes: readonly VocalProfile[]): CompPlan | null {
   const measured = takes.map((take, index) => ({ take, index })).filter((entry) => entry.take.measured);
@@ -70,43 +75,31 @@ export function planVocalComp(takes: readonly VocalProfile[]): CompPlan | null {
   const bars = Math.min(...measured.map((entry) => entry.take.bars));
   if (bars <= 0) return null;
 
-  const perTakeBars = takes.map(() => 0);
-  const segments: CompSegment[] = [];
-  let sungBars = 0;
-  let current: CompSegment | null = null;
-
-  for (let bar = 0; bar < bars; bar++) {
-    let best = -1;
-    let bestScore = 0;
-    let bestSung = false;
-    for (const { take, index } of measured) {
+  // Measured takes only; each is an eligible candidate on its own grid.
+  const candidates: CompCoreTake<number>[] = measured.map(({ take, index }) => ({
+    takeId: index,
+    scoreBar: (bar) => {
       const { score, sung } = barScore(take, bar);
-      if (sung && score > bestScore) {
-        best = index;
-        bestScore = score;
-        bestSung = true;
-      }
-    }
-    if (bestSung && best >= 0) {
-      sungBars += 1;
-      perTakeBars[best] += 1;
-      if (current && current.takeIndex === best && current.endBar === bar - 1) {
-        current.endBar = bar;
-        current.score = Math.max(current.score, bestScore);
-      } else {
-        current = { startBar: bar, endBar: bar, takeIndex: best, score: bestScore };
-        segments.push(current);
-      }
-    } else {
-      current = null; // nobody sings this bar — the comp keeps the gap honest
-    }
-  }
+      return { eligible: sung, score };
+    },
+  }));
+  const core = planCompCore(candidates, bars);
 
-  let winner = 0;
-  for (let index = 1; index < perTakeBars.length; index++) {
-    if (perTakeBars[index] > perTakeBars[winner]) winner = index;
-  }
-  return { segments, sungBars, perTakeBars, winner, takesMeasured: measured.length, bars };
+  const perTakeBars = takes.map((_, index) => core.perTakeBars.get(index) ?? 0);
+  const segments: CompSegment[] = core.segments.map((segment) => ({
+    startBar: segment.startBar,
+    endBar: segment.endBar,
+    takeIndex: segment.winner,
+    score: segment.score,
+  }));
+  return {
+    segments,
+    sungBars: core.coveredBars,
+    perTakeBars,
+    winner: core.winner ?? 0,
+    takesMeasured: measured.length,
+    bars,
+  };
 }
 
 // ── Arrangement suggestions (the aranž-dialóg) ──────────────────────────────

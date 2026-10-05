@@ -2,7 +2,14 @@ import { describe, it, expect } from "vitest";
 import { executeMcpTool, executeMcpToolAsync, MCP_TOOLS, type McpToolContext } from "../src/mcp/tools";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";
-import { addArrangementClip, addEffectToTracks, createScene, setSceneRole, snapshot } from "../src/commands/commands";
+import {
+  addArrangementClip,
+  addEffectToTracks,
+  createScene,
+  setSceneRole,
+  setTrackSend,
+  snapshot,
+} from "../src/commands/commands";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { inferPadRole } from "../src/ai/pad-roles";
 import type { ProjectDocument } from "../src/project-model/types";
@@ -1879,6 +1886,29 @@ describe("mcp routing — the group graph", async () => {
     const removed = await executeMcpTool(ctx, "kyx_routing", { op: "removeFromGroup", family: "drums" });
     expect(removed.mutated).toBe(true);
     expect(store.doc.tracks.find((t) => t.kind === "drum")!.groupId).toBeUndefined();
+  });
+
+  it("removeReturn drops the bus AND its send references — locked without the allow flag", async () => {
+    const store = new ProjectStore(datasetDoc());
+    await executeMcpTool(storeCtx(store), "kyx_routing", { op: "createReturn", name: "Space" });
+    const ret = store.doc.returns.find((r) => r.name === "Space")!;
+    const drums = store.doc.tracks.find((t) => t.kind === "drum")!;
+    store.execute(setTrackSend(store.doc, drums.id, ret.id, 0.4));
+
+    const locked = await executeMcpTool(storeCtx(store), "kyx_routing", { op: "removeReturn", returnId: ret.id });
+    expect(locked.mutated).toBe(false);
+    expect(locked.text).toContain("locked");
+    expect(store.doc.returns.find((r) => r.id === ret.id)).toBeDefined();
+
+    const allowed = await executeMcpTool(storeCtx(store, { allowDestructive: true }), "kyx_routing", {
+      op: "removeReturn",
+      returnId: ret.id,
+    });
+    expect(allowed.mutated).toBe(true);
+    expect(store.doc.returns.find((r) => r.id === ret.id)).toBeUndefined();
+    expect(
+      (store.doc.tracks.find((t) => t.id === drums.id)! as { sends?: Record<string, number> }).sends?.[ret.id],
+    ).toBeUndefined();
   });
 
   it("honest failures: unknown group, unknown group name, track not in a group", async () => {

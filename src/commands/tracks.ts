@@ -466,6 +466,53 @@ export function createReturnTrack(doc: ProjectDocument, name?: string): Command 
   return snapshot("createReturnTrack", `Add return ${baseName}`, doc, next);
 }
 
+/**
+ * Delete a return bus — the missing half of the return CRUD seam (signal-flow
+ * audit re-run 2026-10; createReturnTrack existed, deletion was only possible
+ * via raw doc edits which relied on the engine's silent send filter).
+ *
+ * Cleanup contract mirrors deleteTrack: automation lanes, LFOs, scene
+ * automation, macro mappings and MIDI CC mappings routed at the return dangle
+ * after the bus is gone (the engine skips them silently, but the dead
+ * references would live in every save), and every track's send level into
+ * THIS bus is user intent that dies with the bus — all stripped inside the
+ * same snapshot so the undo restores the bus together with everything that
+ * pointed at it. normalizeProject deliberately does NOT drop send keys for
+ * already-deleted returns (collab forward-compat: a peer may re-add the bus);
+ * the command-level strip is the explicit user-intent path.
+ */
+export function deleteReturnTrack(doc: ProjectDocument, returnId: string): Command {
+  const target = doc.returns.find((r) => r.id === returnId);
+  if (!target) throw new Error(`Return track ${returnId} not found`);
+  const automation = doc.automation?.filter((lane) => lane.target.trackId !== returnId);
+  const lfos = doc.lfos?.filter((lfo) => lfo.trackId !== returnId && lfo.target?.trackId !== returnId);
+  const sceneAutomation = doc.sceneAutomation?.filter((lane) => lane.target.trackId !== returnId);
+  const macros = doc.macros?.map((macro) => ({
+    ...macro,
+    mappings: macro.mappings.filter((m) => m.trackId !== returnId && m.target?.trackId !== returnId),
+  }));
+  const midi = doc.midi;
+  const stripSend = (t: (typeof doc.tracks)[number]): (typeof doc.tracks)[number] => {
+    const sends = (t as { sends?: Record<string, number> }).sends;
+    if (!sends || sends[returnId] === undefined) return t;
+    return {
+      ...t,
+      sends: Object.fromEntries(Object.entries(sends).filter(([key]) => key !== returnId)),
+    } as (typeof doc.tracks)[number];
+  };
+  const next: ProjectDocument = {
+    ...doc,
+    tracks: doc.tracks.map(stripSend),
+    returns: doc.returns.filter((r) => r.id !== returnId),
+    ...(midi ? { midi: { ...midi, ccMappings: midi.ccMappings.filter((m) => m.target?.trackId !== returnId) } } : {}),
+    ...(doc.automation ? { automation } : {}),
+    ...(doc.lfos ? { lfos } : {}),
+    ...(doc.sceneAutomation ? { sceneAutomation } : {}),
+    ...(doc.macros ? { macros } : {}),
+  };
+  return snapshot("deleteReturnTrack", `Delete return ${target.name}`, doc, next);
+}
+
 export function addEffectToTracks(doc: ProjectDocument, trackIds: string[], type: EffectType): Command {
   if (trackIds.length === 0) throw new Error("Select at least one track");
   const unique = [...new Set(trackIds)];

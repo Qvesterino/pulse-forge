@@ -145,6 +145,9 @@ import {
   type SongSectionSuggestion,
 } from "../intent/song-audio-review";
 import { routeIntentText, REVISE_DELTA, type ReviseAttribute, type RoutedIntent } from "../intent/route";
+import { destructiveCheckpointName, routeIsDestructive } from "../intent/route-guard";
+import { restoreIntentCheckpoint, saveIntentCheckpoint } from "../intent/checkpoints";
+import { snapshot } from "../commands/core";
 import { getIntentModelProvider, tryModelRoute } from "../intent/model-resolver";
 import { isCreativeBriefRoute } from "../intent/model-fallback-policy";
 import { installIntentFailureDevtools, logIntentMiningEvent } from "../intent/failure-log";
@@ -3004,6 +3007,18 @@ export function IntentPanel() {
         await generate();
         return;
       }
+      // DESTRUCTIVE-INTENT CHECKPOINT (signal-flow audit re-run): removeTrack
+      // / deleteClip / scene-remove / effect-remove execute immediately — the
+      // bounded undo stack evicts the pre-delete state in a long session, so
+      // a durable checkpoint is saved first (same database the MCP agent
+      // checkpoints use). Undo stays the primary recovery; "restore
+      // checkpoint" is the second net.
+      let checkpointNote = "";
+      if (routeIsDestructive(route)) {
+        const cpName = destructiveCheckpointName(route);
+        await saveIntentCheckpoint(cpName, doc);
+        checkpointNote = ` · 🛟 checkpoint '${cpName}'`;
+      }
       if (route.kind === "transport") {
         // Bare-word transport commands — runtime SERVICE state, not document
         // state: dispatch is the whole operation, nothing to undo.
@@ -3094,20 +3109,58 @@ export function IntentPanel() {
             setError("nahrávka beží — undo až po stop");
             return;
           }
+          // Honest counting (audit re-run): report what ACTUALLY undid — the
+          // old text echoed the requested step count even when the stack ran
+          // out (or a command's undo threw) after fewer steps.
+          let done = 0;
+          let failure: string | null = null;
           const labels: string[] = [];
           for (let i = 0; i < route.intent.steps; i++) {
             const before = services.store.undoStackLength;
-            services.store.undo();
+            try {
+              services.store.undo();
+            } catch (err) {
+              failure = err instanceof Error ? err.message : String(err);
+              break;
+            }
             if (services.store.undoStackLength === before) break;
+            done += 1;
             labels.unshift(services.store.lastCommandLabel ?? "");
           }
-          setStatus(
-            `↩ undone ${route.intent.steps} step(s)${labels.length > 0 ? ` — ${labels.filter(Boolean).join(" · ")}` : ""}`,
-          );
+          const labelPart = labels.length > 0 ? ` — ${labels.filter(Boolean).join(" · ")}` : "";
+          const shortfall = done < route.intent.steps ? ` (${done}/${route.intent.steps} possible)` : "";
+          const failPart = failure ? ` — step failed: ${failure}` : "";
+          setStatus(`↩ undone ${done} step(s)${shortfall}${labelPart}${failPart}`);
         } else {
-          for (let i = 0; i < route.intent.steps; i++) services.store.redo();
-          setStatus(`↪ redone ${route.intent.steps} step(s)`);
+          let done = 0;
+          let failure: string | null = null;
+          for (let i = 0; i < route.intent.steps; i++) {
+            const before = services.store.undoStackLength;
+            try {
+              services.store.redo();
+            } catch (err) {
+              failure = err instanceof Error ? err.message : String(err);
+              break;
+            }
+            if (services.store.undoStackLength === before) break;
+            done += 1;
+          }
+          const shortfall = done < route.intent.steps ? ` (${done}/${route.intent.steps} possible)` : "";
+          const failPart = failure ? ` — step failed: ${failure}` : "";
+          setStatus(`↪ redone ${done} step(s)${shortfall}${failPart}`);
         }
+      } else if (route.kind === "checkpointIntent") {
+        // Safety-net restore: brings back the state the destructive-intent
+        // checkpoint captured. One undoable snapshot — the restore itself
+        // can be undone.
+        const restored = await restoreIntentCheckpoint(doc.id, route.intent.name ?? undefined);
+        if (!restored) {
+          setError("no checkpoint found — destructive intents save one automatically");
+          return;
+        }
+        const command = snapshot("restoreIntentCheckpoint", `Restore checkpoint '${restored.name}'`, doc, restored.doc);
+        services.store.execute(command);
+        setStatus(`↻ checkpoint '${restored.name}' restored — one undo step returns back`);
       } else if (route.kind === "queryIntent") {
         // READ-ONLY queries — answers from the current doc + store history,
         // never a mutation.
@@ -3358,7 +3411,7 @@ export function IntentPanel() {
       } else if (route.kind === "arrange") {
         stopAudition();
         services.store.execute(applyArrangeOps(doc, route.ops));
-        setStatus(`⚡ arranged — ${route.ops.length} op${route.ops.length === 1 ? "" : "s"}`);
+        setStatus(`⚡ arranged — ${route.ops.length} op${route.ops.length === 1 ? "" : "s"}${checkpointNote}`);
       } else if (route.kind === "clips") {
         // Clip-level trim/copy/move/delete at absolute positions — one
         // undoable command, NO relayout (the user placed clips on purpose).
@@ -3369,7 +3422,7 @@ export function IntentPanel() {
           return;
         }
         services.store.execute(command);
-        setStatus(`⚡ ${command.label}`);
+        setStatus(`⚡ ${command.label}${checkpointNote}`);
       } else if (route.kind === "exact") {
         // Exact mixer commands ("mute the drums", "pan the bass left 30") —
         // one undoable command group.
@@ -3384,14 +3437,14 @@ export function IntentPanel() {
         // silence while reporting success. No-ops when no track was removed.
         selection.retainTracks(services.store.getDoc().tracks.map((t) => t.id));
         const readback = exactReadback(doc, services.store.getDoc(), route.plan);
-        setStatus(`⚡ ${route.plan.label}${readback ? ` — ${readback}` : ""}`);
+        setStatus(`⚡ ${route.plan.label}${readback ? ` — ${readback}` : ""}${checkpointNote}`);
       } else if (route.kind === "effectIntent") {
         // D1 v2a: targeted effect × target × direction
         stopAudition();
         const command = applyEffectIntent(doc, route.intent);
         services.store.execute(command);
         const readback = effectReadback(doc, services.store.getDoc(), route.intent);
-        setStatus(`⚡ ${route.intent.detected.join(" · ")}${readback ? ` — ${readback}` : ""}`);
+        setStatus(`⚡ ${route.intent.detected.join(" · ")}${readback ? ` — ${readback}` : ""}${checkpointNote}`);
       } else if (route.kind === "sendIntent") {
         // "more reverb send on the lead" — send level per the matching return
         stopAudition();
@@ -3450,7 +3503,7 @@ export function IntentPanel() {
         }
         services.store.execute(command);
         const readback = compoundReadback(doc, services.store.getDoc(), route.parts);
-        setStatus(`${command.label}${readback ? ` — ${readback}` : ""} (one undo step)`);
+        setStatus(`${command.label}${readback ? ` — ${readback}` : ""} (one undo step)${checkpointNote}`);
       } else if (route.kind === "tempo") {
         // GOAL 38: "zníž tempo" / "na 128" — project BPM with one undo step
         services.store.execute(applyTempoIntent(doc, route.intent));

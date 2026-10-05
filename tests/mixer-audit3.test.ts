@@ -194,6 +194,29 @@ describe("mixer commit-path clamps (engine defense-in-depth)", () => {
   });
 });
 
+describe("master gain preview domain", () => {
+  it("preview honors the authoritative 0..2 master range (was clamped to 1.5, preview/commit flicker)", async () => {
+    const { AudioEngine } = await import("../src/audio-engine/AudioEngine");
+    const { doc } = baseDoc();
+    const engine = new AudioEngine();
+    engine.useContext(mockCtx() as unknown as BaseAudioContext);
+    engine.setProject(doc);
+    await flush();
+    const chain = (engine as unknown as { masterChain: { input: { gain: { value: number } } } }).masterChain;
+    engine.previewMasterGain(1.8);
+    expect(chain.input.gain.value).toBeCloseTo(1.8, 5);
+    // NaN asks are dropped (the chain's setTargetAtTime would throw) — the
+    // value stays where the last valid preview left it.
+    engine.previewMasterGain(Number.NaN);
+    expect(chain.input.gain.value).toBeCloseTo(1.8, 5);
+    // Below the range floors at 0, above caps at 2.
+    engine.previewMasterGain(-3);
+    expect(chain.input.gain.value).toBe(0);
+    engine.previewMasterGain(5);
+    expect(chain.input.gain.value).toBeCloseTo(2, 5);
+  });
+});
+
 describe("automation/macros gain-domain alignment", () => {
   async function bridgeForDoc(doc: ProjectDocument) {
     const { AutomationBridge } = await import("../src/audio-engine/automationBridge");

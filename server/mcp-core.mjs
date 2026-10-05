@@ -1552,13 +1552,22 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_routing",
     description:
-      "The group routing graph AND send buses: list every track's destination (its group or master) with a structured envelope, create a group bus, route tracks into it (addToGroup) or back to master (removeFromGroup). The model is FLAT — one group per track, no group-into-group — so routing cycles are impossible by construction. setSend/setReturnGain/ createReturn cover the send-bus mixer.",
+      "The group routing graph AND send buses: list every track's destination (its group or master) with a structured envelope, create a group bus, route tracks into it (addToGroup) or back to master (removeFromGroup). The model is FLAT — one group per track, no group-into-group — so routing cycles are impossible by construction. setSend/setReturnGain/ createReturn cover the send-bus mixer; removeReturn drops a bus and every send reference into it (destructive-gated).",
     inputSchema: {
       type: "object",
       properties: {
         op: {
           type: "string",
-          enum: ["list", "createGroup", "addToGroup", "removeFromGroup", "setSend", "setReturnGain", "createReturn"],
+          enum: [
+            "list",
+            "createGroup",
+            "addToGroup",
+            "removeFromGroup",
+            "setSend",
+            "setReturnGain",
+            "createReturn",
+            "removeReturn",
+          ],
         },
         trackId: {
           type: "string",
@@ -1583,7 +1592,7 @@ export const MCP_TOOL_DEFS = [
         },
         returnId: {
           type: "string",
-          description: "For setSend/setReturnGain — the return bus id (op:list)",
+          description: "For setSend/setReturnGain/removeReturn — the return bus id (op:list)",
         },
         returnName: {
           type: "string",

@@ -385,6 +385,32 @@ export function parseUndoIntent(text: string): UndoIntent | null {
   return null;
 }
 
+// ── Checkpoints (destructive-intent safety net) ─────────────────────────────
+
+export interface CheckpointIntent {
+  action: "restore";
+  /** Named restore; null = the newest saved checkpoint for the project. */
+  name: string | null;
+}
+
+const RESTORE_CHECKPOINT_ASK =
+  /^\s*(?:please\s+)?(?:restore|obnov[a-z]*)\s+(?:the\s+)?(?:checkpoint|kontroln[yý]\s+bod|checkpointy)(?:\s+(.+?))?\s*[.!]?\s*$/i;
+
+/**
+ * "restore checkpoint" / "obnoviť checkpoint" — brings back the state saved
+ * by the destructive-intent auto-checkpoint (route-guard + checkpoints
+ * service). Undo-first stays the primary recovery; this is the second net
+ * for when the undo stack already moved past the deletion.
+ */
+export function parseCheckpointIntent(text: string): CheckpointIntent | null {
+  // Deaccent first (repo convention, cf. parseTempoIntent): "obnoviť" carries
+  // "í", which the ASCII word pattern cannot cross.
+  const m = RESTORE_CHECKPOINT_ASK.exec(text.normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+  if (!m) return null;
+  const name = m[1]?.trim() || null;
+  return { action: "restore", name: name && name.length <= 64 ? name : null };
+}
+
 const QUERY_SUBJECTS: ReadonlyArray<readonly [RegExp, QueryIntent["subject"]]> = [
   [/\b(?:tempo|bpm|takt(?:e|u)?)\b/i, "tempo"],
   [/\bkey\b|\btonina\b/i, "key"],

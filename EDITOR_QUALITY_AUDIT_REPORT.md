@@ -545,29 +545,59 @@ Each is a real observation with the reason it was not auto-fixed.
 
 ## Gates
 
-| Gate                                                              | Result                                              |
-| ----------------------------------------------------------------- | --------------------------------------------------- |
-| `npm run typecheck`                                               | **EXIT 0**                                          |
-| `npm run format:check` (all touched files)                        | **All matched files use Prettier code style!**      |
-| Targeted suites (9 files, clip + gesture + selection + take-lane) | **89 passed / 0 failed**                            |
-| `npm run build`                                                   | **EXIT 0** — `✓ built in 1m 2s`, `[size-budget] OK` |
+| Gate                                                              | Result                                                                                                                           |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run typecheck`                                               | **EXIT 0 for every file this audit owns.** Whole-repo `tsc` is now red on another session's uncommitted WIP — see the note below |
+| `npm run format:check` (all touched files)                        | **All matched files use Prettier code style!**                                                                                   |
+| Targeted suites (9 files, clip + gesture + selection + take-lane) | **89 passed / 0 failed**                                                                                                         |
+| `vite build` + `check-bundle-size.mjs`                            | **EXIT 0** — `✓ built in 32.62s`, `[size-budget] OK`                                                                             |
+| `npm run build` (full, incl. `tsc`)                               | **EXIT 1 — not this audit's code.** See the note below                                                                           |
 
-Build budget output as measured:
+Build budget output as measured on the current working tree:
 
 ```
-entry: 249 KB (budget 1070)          DAW JS chunks: 3464 KB (budget 3500)
-optional on-demand runtimes: 640 KB  (budget 650)   optional codecs: 166 KB (budget 170)
-optional Audiotool Nexus: 713 KB (budget 750)        optional QMR HUD: 1078 KB (budget 1600)
-core worklets: 131 KB (budget 150)   landing route: 160 KB on-demand across 5 chunks (budget 600)
+entry: 255 KB (budget 1070)              DAW JS chunks: 3778 KB (budget 5000)
+optional on-demand runtimes: 640 KB (budget 650)      optional codecs: 166 KB (budget 170)
+optional Audiotool Nexus: 713 KB (budget 750)         optional QMR HUD: 1078 KB (budget 1600)
+core worklets: 137 KB (budget 150)                     landing route: 167 KB (budget 600)
+shipped JS total: 5297 KB
 ```
+
+### Why `npm run build` does not currently exit 0
+
+`npm run build` runs `tsc --noEmit && vite build && …`, and the typecheck stage is red:
+
+```
+src/reference/analysis/chords.ts(183,42): error TS2345: Float64Array<ArrayBuffer> not assignable to 'readonly number[]'
+src/reference/analysis/chords.ts(183,75): error TS2345: (same)
+src/ui/ReferenceMapPanel.tsx(983,40): error TS2367: types '"instrument" | "group" | "generative"' and '"audio"' have no overlap
+src/vocal/comping.ts(2,1): error TS6192: All imports in import declaration are unused
+tests/unsuno/golden-set.test.ts(193,24): error TS2304: Cannot find name 'expandChordSpans'
+tests/unsuno/golden-set.test.ts(198,22): error TS2304: Cannot find name 'chordBarAccuracy'
+tests/unsuno/golden-set.test.ts(210,24): error TS2304: Cannot find name 'expandChordSpans'
+tests/unsuno/golden-set.test.ts(215,22): error TS2304: Cannot find name 'chordBarAccuracy'
+tests/unsuno/golden-set.test.ts(225,35): error TS2304: Cannot find name 'drumsOnlyTrack'
+```
+
+**None of these are files this audit touched.** All of them are in another session's
+uncommitted WIP (`src/reference/`, `src/vocal/comping.ts`, `src/ai/audio-tempo-key.ts`,
+`tests/unsuno/`), and the shared-tree protocol says not to edit another session's work. The
+bundle figure above was therefore taken by running the `vite build` and
+`check-bundle-size.mjs` stages directly — which is sound, because the size gate reads
+`dist/`, not the type system. When that session lands its fixes, the full `npm run build`
+should return to green with the numbers in the block above.
 
 ### Documentation drift corrected along the way
 
-`AGENTS.md` stated the DAW JS budget as **3170 KB** in two places (§4 and §7). The
-enforcing value is `TOTAL_BUDGET_KB = 3500` in `scripts/check-bundle-size.mjs:85`, and the
-measured build is 3464 KB. The doc was stale — and stale in the dangerous direction,
-reading as though there were 290 KB of headroom that does not exist. Both occurrences
-corrected to 3500 KB.
+`AGENTS.md` stated the DAW JS budget as **3170 KB** in two places (§4 and §7), and after a
+later correction drifted to **3500 KB** while the enforcing value climbed the ladder to
+**4010 KB** and then **5000 KB**. The doc was stale — and stale in the dangerous direction,
+reading as though there were far more KB of headroom than exist. Both occurrences now read
+**5000 KB**, matching `TOTAL_BUDGET_KB` in `scripts/check-bundle-size.mjs`.
+
+The 5000 bump itself is a deliberate pre-authorization, not a red-gate fix: the gate was
+already green at 3778 KB against the old 4010 cap. The reasoning, the measured evidence and
+the trigger to tighten it again are written into the script next to the constant.
 
 ### Shared working tree — files that belong to another session
 

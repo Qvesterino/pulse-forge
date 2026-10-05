@@ -2311,8 +2311,13 @@ export class AudioEngine {
   previewMasterGain(masterGain: number): void {
     // applyMasterConfig combines the fader with the persisted loudness trim —
     // route through it so the preview matches the committed write exactly.
+    // Clamp mirrors the authoritative master domain (0..2, clampMasterGain):
+    // the old 1.5 here made an imported 1.8 fader flicker between preview and
+    // commit, and Math.min/max pass NaN through — a NaN ask would throw
+    // inside the chain's setTargetAtTime.
     if (!this.masterChain.input || !this.doc || !this.ctx) return;
-    this.masterChain.applyMasterConfig({ ...this.doc.master, masterGain: Math.min(1.5, Math.max(0, masterGain)) });
+    if (!Number.isFinite(masterGain)) return;
+    this.masterChain.applyMasterConfig({ ...this.doc.master, masterGain: Math.min(2, Math.max(0, masterGain)) });
   }
 
   /** Start an engine-owned, non-persistent audition for one reviewed FX proposal. */

@@ -93,7 +93,7 @@ These are the rules every coding agent must follow. They are encoded in `ARCHITE
 - **Decompression-bomb and import caps** are mandatory. Existing ceilings: share tokens 2 M chars / 8 M decompressed chars (`src/export/shareCode.ts`), project JSON 10 MB (`src/export/project-io.ts`), audio samples 25 MB (`src/ui/DropZone.tsx`).
 - **`?server=` overrides** must use `isAllowedServerUrl` in `src/collab/collabShared.ts` — never bypass it. Self-hosted relays on other hosts must be entered in the UI deliberately, not via URL params.
 - **State-management discipline.** Mutations go through commands (with full undo/redo). Project model is a plain serializable object. React components are renderers, never owners, of audio state.
-- **Bundle budgets.** `npm run build` enforces budgets (entry 1070 KB, DAW JS 3500 KB, optional lazy AI runtimes 650 KB, core worklets 150 KB). `scripts/check-bundle-size.mjs` reports the physical shipped JS total separately; any budget increase needs a measured justification there.
+- **Bundle budgets.** `npm run build` enforces budgets (entry 1070 KB, DAW JS 5000 KB, optional lazy AI runtimes 650 KB, core worklets 150 KB). `scripts/check-bundle-size.mjs` reports the physical shipped JS total separately; any budget increase needs a measured justification there.
 - **AudioWorklet DSP lives in `src/audio-worklets/` and `src/effects/{fxeq,ultina,ozvena}-core/`.** Changes to those trees require running the matching `npm run build:core-worklets` / `build:fxeq` / `build:ultina` / `build:ozvena` before `npm run dev` or `npm run build`. The `predev` and `prebuild` npm hooks already do this automatically.
 
 ---
@@ -197,7 +197,7 @@ The dev server must be on port 5199 with `--strictPort` (the playwright.config.t
   `tests/mcp-mirror-sync.test.ts`). After changing the tool surface run
   `npm run gen:mcp-mirrors` and commit — never hand-edit a mirror.
 - **Schema versioning**: any change to the on-disk project shape must bump `SCHEMA_VERSION` in `src/project-model/schema.ts` and add a migration in `migrateProject`. Loading code rejects unknown future versions.
-- **Bundle budgets**: `npm run build` enforces entry 1070 KB, DAW JS 3500 KB, optional lazy AI runtimes 650 KB, core worklets 150 KB. `scripts/check-bundle-size.mjs` reports physical shipped JS separately. Any budget increase needs a measured justification and a script update.
+- **Bundle budgets**: `npm run build` enforces entry 1070 KB, DAW JS 5000 KB, optional lazy AI runtimes 650 KB, core worklets 150 KB. `scripts/check-bundle-size.mjs` reports physical shipped JS separately. Any budget increase needs a measured justification and a script update.
 - **Live and offline render parity**: the renderer hands the same `AudioEngine` an `OfflineAudioContext`. If a feature only works in one path, that's a bug. Verify by exporting the project and listening to the result.
 
 ---

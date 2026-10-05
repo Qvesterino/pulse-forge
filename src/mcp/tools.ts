@@ -6,6 +6,7 @@ import { topIntentMisses } from "../intent/failure-log";
 import { planBlindPairGains, recordBlindAbTrial, resetBlindAbTrials, summarizeBlindAb } from "./blind-ab";
 import type { Command } from "../commands/types";
 import { routeIntentText, type RoutedIntent } from "../intent/route";
+import { routeIsDestructive } from "../intent/route-guard";
 import { isCreativeBriefRoute } from "../intent/model-fallback-policy";
 import { applyFaderIntent, applyTempoIntent } from "../intent/conversation";
 import {
@@ -58,6 +59,7 @@ import {
   addNote,
   createGroupTrack,
   createReturnTrack,
+  deleteReturnTrack,
   addMarker,
   addArrangementClip,
   applyExactIntentCommand,
@@ -1264,13 +1266,23 @@ export const MCP_TOOLS: McpToolDef[] = [
       "tracks into it (addToGroup) or back to master (removeFromGroup). The " +
       "model is FLAT — one group per track, no group-into-group — so routing " +
       "cycles are impossible by construction. setSend/setReturnGain/ " +
-      "createReturn cover the send-bus mixer.",
+      "createReturn cover the send-bus mixer; removeReturn drops a bus and " +
+      "every send reference into it (destructive-gated).",
     inputSchema: {
       type: "object",
       properties: {
         op: {
           type: "string",
-          enum: ["list", "createGroup", "addToGroup", "removeFromGroup", "setSend", "setReturnGain", "createReturn"],
+          enum: [
+            "list",
+            "createGroup",
+            "addToGroup",
+            "removeFromGroup",
+            "setSend",
+            "setReturnGain",
+            "createReturn",
+            "removeReturn",
+          ],
         },
         trackId: { type: "string", description: "Exact track id — overrides family when present" },
         family: {
@@ -1284,7 +1296,10 @@ export const MCP_TOOLS: McpToolDef[] = [
           type: "string",
           description: "For createGroup/createReturn — optional name (default: Group N / Return N)",
         },
-        returnId: { type: "string", description: "For setSend/setReturnGain — the return bus id (op:list)" },
+        returnId: {
+          type: "string",
+          description: "For setSend/setReturnGain/removeReturn — the return bus id (op:list)",
+        },
         returnName: { type: "string", description: "Return bus name alternative to returnId" },
         level: {
           type: "number",
@@ -1824,17 +1839,25 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
         };
       }
       let done = 0;
-      for (let i = 0; i < steps; i++) {
-        const before = ctx.undoStackLength();
-        if (action === "undo") ctx.undo();
-        else ctx.redo();
-        // A real undo/redo always moves the undo stack (undo pops it, redo
-        // pushes it); an unchanged length means the stack ran out — stop
-        // counting so the read-back never reports steps that did not happen.
-        if (ctx.undoStackLength() === before) break;
-        done += 1;
+      let failure: string | null = null;
+      try {
+        for (let i = 0; i < steps; i++) {
+          const before = ctx.undoStackLength();
+          if (action === "undo") ctx.undo();
+          else ctx.redo();
+          // A real undo/redo always moves the undo stack (undo pops it, redo
+          // pushes it); an unchanged length means the stack ran out — stop
+          // counting so the read-back never reports steps that did not happen.
+          if (ctx.undoStackLength() === before) break;
+          done += 1;
+        }
+      } catch (error) {
+        // A broken command's undo must not turn into an uncountable partial
+        // state — report exactly how far it got (audit re-run).
+        failure = error instanceof Error ? error.message : String(error);
       }
       let text = `${action} ×${done}`;
+      if (failure) text += ` — step failed after ${done}: ${failure}`;
       if (done > 0 && reverted.length > 0) {
         const shown = reverted
           .slice(0, done)
@@ -4283,6 +4306,33 @@ function executeRoutingTool(ctx: McpToolContext, record: Record<string, unknown>
       ctx.execute(snapshot("mcpRouting", `MCP: unroute ${ids.length} track(s)`, doc, next));
       return { text: `${parts.join("; ")} — one undo step`, mutated: true };
     }
+    if (op === "removeReturn") {
+      // Destructive: drops the bus AND every send/LFO/automation reference
+      // into it (deleteReturnTrack strips them inside one snapshot) — gated
+      // + auto-checkpointed like the other destructive surfaces.
+      if (!destructiveAllowedWithCheckpoint(ctx, "kyx_routing")) return destructiveRefusal();
+      const returnId = resolveReturnId(doc, record);
+      if (!returnId) {
+        return {
+          text: "removeReturn needs returnId (from op:list) — or a name that resolves to one return",
+          mutated: false,
+        };
+      }
+      const target = doc.returns.find((r) => r.id === returnId);
+      try {
+        ctx.execute(deleteReturnTrack(doc, returnId));
+        return {
+          text: `removed return bus "${target?.name ?? returnId}" and its send references — one undo step`,
+          mutated: true,
+        };
+      } catch (error) {
+        return {
+          text: `routing op failed: ${error instanceof Error ? error.message : String(error)}`,
+          mutated: false,
+          isError: true,
+        };
+      }
+    }
     if (op === "setSend" || op === "setReturnGain" || op === "createReturn") {
       // Structured send-bus writes — the last NL-only corner of the mixer.
       if (op === "createReturn") {
@@ -5157,26 +5207,9 @@ function executeStepsTool(ctx: McpToolContext, record: Record<string, unknown>):
  * destructive-op consent flag. Mirrors the structured tools (tracks/sections
  * remove) — track removal (exact), scene removal (arrange), clip deletion,
  * FX-instance removal (effect) and the compound clauses carrying them. */
-function routeIsDestructive(route: RoutedIntent): boolean {
-  switch (route.kind) {
-    case "exact":
-      return route.plan.ops.some((op) => op.kind === "removeTrack");
-    case "arrange":
-      return route.ops.some((op) => op.op === "remove");
-    case "clips":
-      return route.ops.some((op) => op.op === "deleteClip");
-    case "effectIntent":
-      return route.intent.direction === "remove";
-    case "compound":
-      return route.parts.some(
-        (part) =>
-          (part.kind === "effect" && part.intent.direction === "remove") ||
-          (part.kind === "exact" && part.plan.ops.some((op) => op.kind === "removeTrack")),
-      );
-    default:
-      return false;
-  }
-}
+// routeIsDestructive lives in src/intent/route-guard.ts (shared with the
+// Intent Bar's destructive-intent checkpoint — the UI must not import the
+// lazy MCP surface, so the predicate moved to the intent layer).
 
 function executeIntentTool(ctx: McpToolContext, instruction: string): McpToolResult {
   const trimmed = instruction.trim();
@@ -5253,7 +5286,7 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
     }
     return { text: `${route.intent.kind} ×${done}`, mutated: done > 0 };
   }
-  if (routeIsDestructive(route) && ctx.allowDestructive?.() !== true) return destructiveRefusal();
+  if (routeIsDestructive(route) && !destructiveAllowedWithCheckpoint(ctx, "kyx_intent")) return destructiveRefusal();
 
   // Route kinds whose executors need window-local state (audition players,
   // loudness render loop, mix brief/reference patches) or are UI state —

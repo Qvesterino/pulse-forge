@@ -30,12 +30,14 @@ import {
 } from "./exact";
 import {
   parseAutomateIntent,
+  parseCheckpointIntent,
   parseGrooveIntent,
   parseMarkerIntent,
   parseQueryIntent,
   parseSectionGrooveIntent,
   parseUndoIntent,
   type AutomateIntent,
+  type CheckpointIntent,
   type GrooveIntent,
   type MarkerIntent,
   type QueryIntent,
@@ -245,6 +247,7 @@ export type RoutedIntent =
   | { kind: "export"; format: ExportFormat }
   | { kind: "record"; arm: boolean }
   | { kind: "undoIntent"; intent: UndoIntent }
+  | { kind: "checkpointIntent"; intent: CheckpointIntent }
   | { kind: "complaintIntent"; intent: ComplaintIntent }
   | { kind: "queryIntent"; intent: QueryIntent }
   | { kind: "grooveIntent"; intent: GrooveIntent }
@@ -361,6 +364,10 @@ export function routeIntentText(
   const undoIntent = parseUndoIntent(text);
   if (undoIntent) {
     return { kind: "undoIntent", intent: undoIntent };
+  }
+  const checkpointIntent = parseCheckpointIntent(text);
+  if (checkpointIntent) {
+    return { kind: "checkpointIntent", intent: checkpointIntent };
   }
   const queryIntent = parseQueryIntent(text);
   if (queryIntent) {

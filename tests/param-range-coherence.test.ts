@@ -95,35 +95,17 @@ beforeAll(async () => {
   for (const c of PROC_CASES) {
     await import(`../src/audio-worklets/${c.proc}.js`);
   }
-  // Static-string dynamic imports — vite cannot analyze a second variable
-  // template import site in the same file (it silently resolves an empty
-  // module for some entries).
-  const sweepImports: Record<string, () => Promise<unknown>> = {
-    "gate-processor": () => import("../src/audio-worklets/gate-processor.js"),
-    "transient-processor": () => import("../src/audio-worklets/transient-processor.js"),
-    "multitap-processor": () => import("../src/audio-worklets/multitap-processor.js"),
-    "flanger-processor": () => import("../src/audio-worklets/flanger-processor.js"),
-    "tremolo-processor": () => import("../src/audio-worklets/tremolo-processor.js"),
-    "autowah-processor": () => import("../src/audio-worklets/autowah-processor.js"),
-    "stutter-processor": () => import("../src/audio-worklets/stutter-processor.js"),
-    "stepgate-processor": () => import("../src/audio-worklets/stepgate-processor.js"),
-    "svfilter-processor": () => import("../src/audio-worklets/svfilter-processor.js"),
-    "comb-processor": () => import("../src/audio-worklets/comb-processor.js"),
-    "vowel-processor": () => import("../src/audio-worklets/vowel-processor.js"),
-    "ringmod-processor": () => import("../src/audio-worklets/ringmod-processor.js"),
-    "tapestop-processor": () => import("../src/audio-worklets/tapestop-processor.js"),
-    "freqshifter-processor": () => import("../src/audio-worklets/freqshifter-processor.js"), // registers as freqshift-processor
-    "pitchcorrect-processor": () => import("../src/audio-worklets/pitchcorrect-processor.js"),
-    "reverseswell-processor": () => import("../src/audio-worklets/reverseswell-processor.js"),
-    "granularfreeze-processor": () => import("../src/audio-worklets/granularfreeze-processor.js"),
-    "vocoder-processor": () => import("../src/audio-worklets/vocoder-processor.js"),
-    "vinyl-processor": () => import("../src/audio-worklets/vinyl-processor.js"),
-    "beatmangler-processor": () => import("../src/audio-worklets/beatmangler-processor.js"),
-    "kaskada-processor": () => import("../src/audio-worklets/kaskada-processor.js"),
-    "tape-processor": () => import("../src/audio-worklets/tape-processor.js"),
+  // Registered name ≠ file name for two processors; the single variable
+  // import site stays vite-analyzable (static .js imports would need d.ts
+  // stubs for tsc).
+  const PROC_FILE: Record<string, string> = {
+    "freqshift-processor": "freqshifter-processor",
+    kaskada: "kaskada-processor",
   };
-  for (const [name, load] of Object.entries(sweepImports)) {
-    if (!registered.has(name)) await load();
+  const swept = new Set(PROC_CASES.map((c) => c.proc));
+  for (const [, proc] of EFFECT_PROC_PAIRS) {
+    const file = PROC_FILE[proc] ?? proc;
+    if (!swept.has(file)) await import(`../src/audio-worklets/${file}.js`);
   }
 });
 

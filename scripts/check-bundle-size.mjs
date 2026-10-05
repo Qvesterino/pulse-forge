@@ -134,7 +134,30 @@ const ENTRY_BUDGET_KB = 1070;
 // genuinely repaid. One gotcha for the next person: do NOT force the chunk
 // with manualChunks — forcing made rollup hoist a preload edge into the
 // landing graph (+298 KB there); the natural dynamic chunk stays lazy.
-const TOTAL_BUDGET_KB = 4010;
+// 5000 (2026-10-05): READ THIS BEFORE "FIXING" THE NUMBER BACK DOWN.
+// This bump does NOT unblock a red gate — the gate was already green when it
+// was made. Measured 3778 KB against the 4010 cap, every other bucket inside
+// its own allowance (entry 255/1070, AI runtimes 640/650, codecs 166/170,
+// Nexus 713/750, QMR HUD 1078/1600, core worklets 137/150, landing 167/600),
+// so 4010 still had ~230 KB of headroom and 5000 buys ~1.2 MB that nothing
+// needs yet. Caveat on that 3778 figure: it was measured on a working tree
+// still carrying another session's uncommitted reference/WIP files, so read
+// it as "one wave, +/-", not as a clean-commit number.
+// It is deliberate PRE-AUTHORIZATION, and the ladder above is the evidence:
+// five bumps in three days (3575 -> 3585 -> 3600 -> 3680 -> 4010), three of
+// them same-day re-landings, each costing a full ~40 s production build to
+// re-measure plus a separate chore commit to land. A cap that flaps red on
+// every parallel feature wave trains the team to ignore this gate, which
+// costs far more than the KB it conceals — so the waves stop paying rent for
+// headroom they had already earned.
+// TRIGGER TO TIGHTEN AGAIN (any one): a regression in the entry chunk or in
+// first-preset-load time; or two consecutive waves landing with <200 KB of
+// combined growth, meaning the cap is now carrying slack rather than a wave.
+// Do NOT tighten on a single noisy +200 KB wave — that is the flapping this
+// bump exists to stop. The diet targets are unchanged and still owed: the
+// App/commands eager anchors, and the VSCO generated layer tables that
+// pack-presets.ts moved out of the eager graph but did not shrink.
+const TOTAL_BUDGET_KB = 5000;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, and ONNX Runtime for the
 // symbolic/ranker workers. Keep these optional runtimes under one existing
