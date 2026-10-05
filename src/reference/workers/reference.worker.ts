@@ -1,5 +1,6 @@
 /// <reference lib="webworker" />
 import { analyzeReference } from "../analysis/analyzeReference";
+import { transcribeTrack } from "../transcribe";
 import type { ReferenceAudioMetadata, ReferenceOptions, ReferenceStage } from "../types";
 
 /**
@@ -26,14 +27,23 @@ export interface ReferenceWorkerRequest {
   options?: Partial<ReferenceOptions>;
 }
 
+export interface TranscribeWorkerRequest {
+  type: "TRANSCRIBE_TRACK";
+  jobId: number;
+  mono: Float32Array;
+  sampleRate: number;
+  sections?: Array<{ role: string; startSec: number; endSec: number }>;
+}
+
 export type ReferenceWorkerResponse =
   | { type: "PROGRESS_STAGE"; jobId: number; stage: ReferenceStage }
+  | { type: "TRANSCRIBE_RESULT"; jobId: number; payload: ReturnType<typeof transcribeTrack> }
   | { type: "REFERENCE_RESULT"; jobId: number; payload: ReturnType<typeof analyzeReference> }
   | { type: "REFERENCE_ERROR"; jobId: number; message: string };
 
 interface MinimalDedicatedWorkerGlobalScope {
   postMessage: (msg: ReferenceWorkerResponse, transfer?: Transferable[]) => void;
-  onmessage: ((event: MessageEvent<ReferenceWorkerRequest>) => void) | null;
+  onmessage: ((event: MessageEvent<ReferenceWorkerRequest | TranscribeWorkerRequest>) => void) | null;
 }
 
 const dedicated: MinimalDedicatedWorkerGlobalScope | undefined =
@@ -42,9 +52,31 @@ const dedicated: MinimalDedicatedWorkerGlobalScope | undefined =
     : undefined;
 
 if (dedicated) {
-  dedicated.onmessage = (event: MessageEvent<ReferenceWorkerRequest>) => {
+  dedicated.onmessage = (event: MessageEvent<ReferenceWorkerRequest | TranscribeWorkerRequest>) => {
     const data = event.data;
-    if (!data || data.type !== "ANALYZE_REFERENCE") return;
+    if (!data) return;
+    // U6 — UN-SUNO transcription runs here so a 3-minute track never blocks
+    // the main thread; same deterministic core as the sync path.
+    if (data.type === "TRANSCRIBE_TRACK") {
+      if (typeof data.jobId !== "number" || !(data.mono instanceof Float32Array)) return;
+      if (typeof data.sampleRate !== "number" || !Number.isFinite(data.sampleRate) || data.sampleRate <= 0) return;
+      try {
+        const payload = transcribeTrack(data.mono, data.sampleRate, { sections: data.sections });
+        dedicated.postMessage({
+          type: "TRANSCRIBE_RESULT",
+          jobId: data.jobId,
+          payload,
+        } satisfies ReferenceWorkerResponse);
+      } catch (error) {
+        dedicated.postMessage({
+          type: "REFERENCE_ERROR",
+          jobId: data.jobId,
+          message: error instanceof Error ? error.message : "Unknown transcription failure.",
+        } satisfies ReferenceWorkerResponse);
+      }
+      return;
+    }
+    if (data.type !== "ANALYZE_REFERENCE") return;
     if (typeof data.jobId !== "number" || !Number.isFinite(data.jobId)) return;
     if (!(data.mono instanceof Float32Array)) return;
     if (!data.metadata || typeof data.metadata.sampleRate !== "number" || !Number.isFinite(data.metadata.sampleRate))

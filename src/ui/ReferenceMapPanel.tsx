@@ -28,7 +28,7 @@ import {
   type ReferenceStage,
   type TempoCandidate,
 } from "../reference";
-import { transcribeTrack } from "../reference/transcribe";
+import { transcribeTrackAsync } from "../reference/reference-client";
 import { analyzeSectionMix, type SectionMixFinding } from "../analysis/sectionMixDoctor";
 import { unsunoCommand } from "../reference/unsuno";
 import { downloadBlob } from "../export/download";
@@ -348,13 +348,17 @@ export function ReferenceMapPanel() {
       // transcription blocks the thread for a second or two.
       await new Promise((resolve) => setTimeout(resolve, 0));
       const mono = toMono(analysis.channels);
-      const transcription = transcribeTrack(mono, analysis.sampleRate, { sections: sectionsOfResult });
       const sectionsOfResult = analysis.map.structure?.sections.map((section) => ({
         role: section.role,
         startSec: section.startSec,
         endSec: section.endSec,
         energy: section.energy,
       }));
+      // U6 — the heavy transcription runs in the reference worker (sync
+      // fallback where module workers are unavailable); never blocks the UI.
+      const transcription = await transcribeTrackAsync(mono, analysis.sampleRate, {
+        sections: sectionsOfResult,
+      });
       const result = unsunoCommand(
         doc,
         {

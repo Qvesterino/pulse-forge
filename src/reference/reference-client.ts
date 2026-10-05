@@ -1,4 +1,5 @@
 import { analyzeReference, type AnalyzeReferenceInput, type AnalyzeReferenceOutput } from "./analysis/analyzeReference";
+import { transcribeTrack, type UnsunoTranscription } from "./transcribe";
 import type { ReferenceStage } from "./types";
 
 /** Above this length (s × sr) we pay worker startup + transfer cost; below it we stay on the main thread. */
@@ -98,6 +99,61 @@ export function analyzeReferenceAsync(
       );
     } catch {
       finish(analyzeReference({ ...rest, onStage }));
+    }
+  });
+}
+
+/**
+ * U6 — UN-SUNO transcription off the main thread: same deterministic core
+ * as {@link transcribeTrack}, run in the reference worker for long buffers
+ * so a 3-minute track never freezes the UI. Below the worker threshold (or
+ * when module workers are unavailable) it degrades to the synchronous
+ * main-thread call — still deterministic, just blocking.
+ */
+export function transcribeTrackAsync(
+  pcm: Float32Array,
+  sampleRate: number,
+  options: {
+    sections?: ReadonlyArray<{ role: string; startSec: number; endSec: number }>;
+    signal?: AbortSignal;
+  } = {},
+): Promise<UnsunoTranscription> {
+  const run = (): UnsunoTranscription => transcribeTrack(pcm, sampleRate, { sections: options.sections });
+  if (options.signal?.aborted) return Promise.resolve(run());
+  if (typeof Worker === "undefined" || pcm.length < WORKER_MIN_SAMPLES) {
+    return Promise.resolve(run());
+  }
+  return new Promise<UnsunoTranscription>((resolve) => {
+    let worker: Worker;
+    try {
+      worker = new Worker(new URL("./workers/reference.worker.ts", import.meta.url), { type: "module" });
+    } catch {
+      resolve(run());
+      return;
+    }
+    let settled = false;
+    const finish = (payload: UnsunoTranscription): void => {
+      if (settled) return;
+      settled = true;
+      worker.terminate();
+      resolve(payload);
+    };
+    const onMessage = (event: MessageEvent<unknown>): void => {
+      const msg = event.data as { type?: unknown; payload?: UnsunoTranscription } | null;
+      if (!msg || msg.type !== "TRANSCRIBE_RESULT" || !msg.payload) return;
+      finish(msg.payload);
+    };
+    const onError = (): void => finish(run());
+    worker.addEventListener("message", onMessage);
+    worker.addEventListener("error", onError);
+    try {
+      const copy = new Float32Array(pcm);
+      worker.postMessage(
+        { type: "TRANSCRIBE_TRACK", jobId: Date.now() & 0xffff, mono: copy, sampleRate, sections: options.sections },
+        [copy.buffer],
+      );
+    } catch {
+      finish(run());
     }
   });
 }
