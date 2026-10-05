@@ -73,6 +73,7 @@ function makeEngine(): AudioEngine {
     setEffectiveBpm: vi.fn(),
     stopPreview: vi.fn(),
     getDiagnostics: vi.fn(() => ({ contextState: "closed", workletCount: 0, missedAssets: 0 })),
+    getRtLoad: vi.fn(() => null),
   } as unknown as AudioEngine;
 }
 

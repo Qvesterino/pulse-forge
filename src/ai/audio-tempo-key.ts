@@ -40,6 +40,15 @@ const MIN_BPM = 70;
 const MAX_BPM = 180;
 const FLUX_FFT_SIZE = 2048;
 const FLUX_HOP = 256;
+/**
+ * Honesty floor: peak-to-mean ratio (crest) of the baseline onset envelope.
+ * A stationary tone still leaves a periodic low-level wobble in the
+ * rectified flux envelope (spectral-leakage beating) which the candidate
+ * scorer happily normalizes into a "confident" pulse — a bare 440 Hz sine
+ * measures crest ≈ 4.8 while every rhythmic fixture (click trains, the
+ * golden set) measures ≥ 20. Below this there is no pulse to measure.
+ */
+const ONSET_CREST_FLOOR = 8;
 
 export function estimateTempo(pcm: Float32Array, sampleRate: number): TempoEstimate | null {
   try {
@@ -50,6 +59,16 @@ export function estimateTempo(pcm: Float32Array, sampleRate: number): TempoEstim
     // ~1 s moving-average baseline keeps sustained bass/pads from masking
     // drum flux — the exact failure that starved the old envelope.
     const baseline = removeBaseline(envelopes.combined, Math.max(8, Math.round(envelopes.frameRate)));
+    let envelopePeak = 0;
+    let envelopeSum = 0;
+    for (let i = 0; i < baseline.length; i++) {
+      if (baseline[i] > envelopePeak) envelopePeak = baseline[i];
+      envelopeSum += baseline[i];
+    }
+    const envelopeMean = envelopeSum / Math.max(1, baseline.length);
+    if (!(envelopePeak > 0) || envelopePeak / Math.max(envelopeMean, 1e-9) < ONSET_CREST_FLOOR) {
+      return null;
+    }
     const candidates = estimateTempoCandidates(baseline, envelopes.frameRate, 60, 200, 6);
     const winner = candidates[0];
     if (!winner || winner.bpm <= 0) return null;
