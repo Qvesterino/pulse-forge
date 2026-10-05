@@ -51,7 +51,7 @@ import { scoreTake, measureTake, type TakeScore } from "../audio-engine/take-sco
 import type { AudioClip, AudioTakeGroup, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS } from "../project-model/types";
 import { planCompCore, type CompCoreTake } from "../shared/comp-core";
-import { compAudioTakeRange } from "./commands";
+import { compAudioTakeRange } from "./audioClips";
 import type { Command } from "./types";
 
 /** A contiguous range of bars assigned to one source take. */

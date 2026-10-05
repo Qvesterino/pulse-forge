@@ -1,5 +1,5 @@
 import type { Command } from "./types";
-import { snapshot } from "./commands";
+import { snapshot } from "./core";
 import { sanitizeProjectProducerBrief } from "../project-model/producer-brief";
 import type { ProjectDocument, ProjectProducerBriefFact, ProjectProducerBriefV1 } from "../project-model/types";
 

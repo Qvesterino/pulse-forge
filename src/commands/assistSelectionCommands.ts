@@ -7,7 +7,7 @@ import {
   type NoteSelectionScope,
   type StepSelectionScope,
 } from "../assist/patternOps";
-import { snapshot } from "./commands";
+import { snapshot } from "./core";
 import type { Command } from "./types";
 
 /** Create one undoable, deterministic VARY operation limited to selected drum cells. */

@@ -75,7 +75,7 @@ for (const file of files) {
 }
 
 /** Tarjan strongly-connected components over the static graph. */
-function sccs(): string[][] {
+function sccs(g: Map<string, string[]> = graph): string[][] {
   const index = new Map<string, number>();
   const low = new Map<string, number>();
   const onStack = new Set<string>();
@@ -89,7 +89,7 @@ function sccs(): string[][] {
     counter += 1;
     stack.push(v);
     onStack.add(v);
-    for (const w of graph.get(v) ?? []) {
+    for (const w of g.get(v) ?? []) {
       if (!index.has(w)) {
         strong(w);
         low.set(v, Math.min(low.get(v)!, low.get(w)!));
@@ -184,5 +184,65 @@ describe("architecture import graph", () => {
     expect(symbolic).not.toMatch(/from\s+"\.\/local"/);
     const candidate = readFileSync(resolve(SRC, "intent/providers/candidate.ts"), "utf8");
     expect(candidate).not.toMatch(/from\s+"\.\/(local|symbolic)"/);
+  });
+});
+
+/**
+ * COMMANDS LAYER LAW (commands.ts decomposition re-run 2026-10).
+ *
+ * commands.ts went from a 7726-line monolith to a pure re-export barrel;
+ * the extraction left four leaf modules importing the BARREL for one symbol
+ * each (`snapshot` from ./core, `compAudioTakeRange` from ./audioClips).
+ * A leaf→hub edge is not a cycle, so the SCC guard above never saw it — but
+ * it inverts the layering, drags the ENTIRE command surface into every tiny
+ * consumer's module closure (the observed co-run flake class: partially
+ * initialized barrel namespaces surfacing as ReferenceError/TDZ under
+ * parallel transform load), and is one edit away from a real cycle. The law:
+ *
+ *   1. no module inside src/commands imports the barrel;
+ *   2. the intra-commands import graph stays ACYCLIC (zero multi-file SCCs);
+ *   3. commands.ts stays a pure barrel — new commands land in leaf modules.
+ */
+const COMMANDS_DIR = join(SRC, "commands");
+const COMMANDS_BARREL = join(COMMANDS_DIR, "commands.ts");
+const commandFiles = files.filter((file) => dirname(file) === COMMANDS_DIR && statSync(file).isFile());
+
+describe("commands layer law", () => {
+  it("no command module imports the barrel (leaves import leaves)", () => {
+    const offenders = commandFiles
+      .filter((file) => file !== COMMANDS_BARREL && (graph.get(file) ?? []).includes(COMMANDS_BARREL))
+      .map(rel);
+    expect(
+      offenders,
+      "Import the owning leaf module instead (snapshot → ./core, compAudioTakeRange → ./audioClips, …) — " +
+        "a leaf→barrel edge drags the whole command surface into the consumer and invites cycles",
+    ).toEqual([]);
+  });
+
+  it("the intra-commands import graph is acyclic", () => {
+    // Induced subgraph: only edges BETWEEN files inside src/commands.
+    const induced = new Map<string, string[]>();
+    for (const file of commandFiles) {
+      induced.set(
+        file,
+        (graph.get(file) ?? []).filter((target) => dirname(target) === COMMANDS_DIR),
+      );
+    }
+    const cycles = sccs(induced).map((component) => component.map(rel).sort());
+    expect(
+      cycles,
+      "A cycle inside src/commands makes module-evaluation order load-bearing (TDZ/ReferenceError class) — " +
+        "break it by moving the shared symbol down to a leaf both sides import",
+    ).toEqual([]);
+  });
+
+  it("commands.ts stays a pure barrel — no inline command definitions", () => {
+    const source = readFileSync(COMMANDS_BARREL, "utf8");
+    const inline = [...source.matchAll(/^\s*export\s+(?:async\s+)?(?:function|const)\s+(\w+)/gm)].map((m) => m[1]!);
+    expect(
+      inline,
+      "commands.ts is a re-export hub — define new commands in a leaf module and re-export; " +
+        "inline definitions here turn the barrel back into a monolith",
+    ).toEqual([]);
   });
 });

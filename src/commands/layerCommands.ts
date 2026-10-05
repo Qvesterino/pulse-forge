@@ -2,7 +2,7 @@ import type { Command } from "./types";
 import type { InstrumentTrack, ProjectDocument, SampleLayer } from "../project-model/types";
 import type { RandomizeMode } from "../instruments/randomize";
 import { randomizeParams } from "../instruments/randomize";
-import { snapshot } from "./commands";
+import { snapshot } from "./core";
 
 function sanitizeLayers(layers: unknown): SampleLayer[] {
   const raw = Array.isArray(layers) ? (layers as unknown[]) : [];
