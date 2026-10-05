@@ -49,7 +49,7 @@ export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) 
   const [fitOffer, setFitOffer] = useState<{ asset: UserSampleAsset; placement: FittedLoopPlacement } | null>(null);
   // U6 — UN-SUNO shortcut: the File behind a single import, so the panel can
   // analyze the ORIGINAL (the asset alone would need re-decoding from the bank).
-  const [analyzeOffer, setAnalyzeOffer] = useState<File | null>(null);
+  const [analyzeOffer, setAnalyzeOffer] = useState<{ file: File; sampleId: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   /** Place the offered loop on the timeline, fitted — one undoable command. */
@@ -138,17 +138,19 @@ export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) 
       // Batches skip the offer (the browser rows keep their BPM badges).
       if (importedBatch.length === 1) {
         const [only] = importedBatch;
+        void only;
         const doc = services.store.doc;
         const placement =
           only.bpm !== undefined
             ? fittedLoopPlacement(only.duration, only.bpm, doc.bpm, doc.timeSignature.numerator)
             : null;
         if (placement) setFitOffer({ asset: only, placement });
-        // UN-SUNO shortcut offer — hand the File to the Reference Map panel,
-        // which owns the analyze pipeline (it may be closed; the offer then
-        // just does nothing until the user opens it).
+        // UN-SUNO shortcut offer — hand the File AND the bank id to the
+        // Reference Map panel, which owns the analyze pipeline (it may be
+        // closed; the offer then just does nothing until the user opens it).
+        // The sample id lets BUILD PROJECT attach the original as an audio lane.
         const file = fileArray[0];
-        if (file) setAnalyzeOffer(file);
+        if (file) setAnalyzeOffer({ file, sampleId: only.id });
       }
       setImporting(false);
     },

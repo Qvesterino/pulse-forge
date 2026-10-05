@@ -135,7 +135,9 @@ describe("DropZone — UN-SUNO analyze offer (U6)", () => {
       fireEvent.click(screen.getByTestId("dropzone-analyze-go"));
       expect(listener).toHaveBeenCalledTimes(1);
       const event = listener.mock.calls[0][0] as CustomEvent<File>;
-      expect(event.detail).toBeInstanceOf(File);
+      expect(event.detail.file).toBeInstanceOf(File);
+      expect(typeof event.detail.sampleId).toBe("string");
+      expect(event.detail.sampleId).toMatch(/^user\./);
       expect(screen.queryByTestId("dropzone-analyze-offer")).not.toBeInTheDocument();
     } finally {
       window.removeEventListener("pf:unsuno-analyze", listener);

@@ -365,6 +365,7 @@ export function ReferenceMapPanel() {
           reading: correction.reading,
           confirmedBpm: correction.bpm,
           confirmedKey: correction.tonic && shownMode ? { tonic: correction.tonic, mode: shownMode } : null,
+          sourceSampleId: sourceSampleRef.current,
         },
       );
       if (!result.command) {
@@ -373,6 +374,13 @@ export function ReferenceMapPanel() {
         return;
       }
       services.store.execute(result.command);
+      // U4.5 completion: the command stays pure, so the WARP warm-up for the
+      // freshly attached source clip happens here, caller-side.
+      if (result.needsWarpWarm && sourceSampleRef.current) {
+        const fresh = services.store.doc;
+        const clip = fresh.arrangement.audioClips?.find((c) => c.bufferId === sourceSampleRef.current);
+        if (clip) services.engine.warmWarpForClip(clip);
+      }
       setApplied(`UN-SUNO: ${result.summary} (one undo step)`);
       // U5 — mix-doctor beside you: measure the SOURCE the project came
       // from. Balance/masking findings are report-only; the master-fix chip
@@ -394,10 +402,15 @@ export function ReferenceMapPanel() {
   }, [analysis, buildBusy, correction.reading, correction.bpm, correction.tonic, doc, services.store, shownMode]);
 
   // DropZone shortcut: an imported file can ask this panel to analyze it.
+  // The bank id rides along so BUILD PROJECT can attach the original.
+  const sourceSampleRef = useRef<string | null>(null);
   useEffect(() => {
     const onExternal = (event: Event) => {
-      const detail = (event as CustomEvent<File>).detail;
-      if (detail instanceof File) void analyze(detail);
+      const detail = (event as CustomEvent<{ file: File; sampleId?: string }>).detail;
+      if (detail?.file instanceof File) {
+        sourceSampleRef.current = detail.sampleId ?? null;
+        void analyze(detail.file);
+      }
     };
     window.addEventListener("pf:unsuno-analyze", onExternal);
     return () => window.removeEventListener("pf:unsuno-analyze", onExternal);
