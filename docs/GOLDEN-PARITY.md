@@ -72,6 +72,7 @@ regenerating existing pins breaks the backward-compatibility contract.
 GOAL 09 outcome: `shared/velocityFx.ts` is now SEEDABLE (optional `rng`
 parameter; default Math.random preserved for creative per-click rolls — the
 computed values are baked into their commands, so replay was already
-stable). The two wall-clock id sites in `commands.ts` (modulator seed,
-sketch stamp) are uniqueness-only by design: stored seeds make their streams
+stable). The two wall-clock id sites under `src/commands/` (modulator seed in
+`automation.ts`, sketch stamp in `drumContent.ts`) are uniqueness-only by design:
+stored seeds make their streams
 reproducible, so they stay.

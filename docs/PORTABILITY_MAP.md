@@ -22,7 +22,7 @@ bare Node; **MIXED** = core pure, some symbols/files touch the platform;
 | Area | Category | Notes and evidence |
 |---|---|---|
 | `src/project-model/*` | **PURE** (2 timestamp sites) | schema/transforms/groove/automation/modulators/scenes/templates/markers/kit-presets — no DOM, no storage. Only impurity: `new Date().toISOString()` backfill of createdAt/updatedAt (`schema.ts:1585,1589`, `templates.ts:180`) and `uid()` ids (`shared/ids.ts`). ⚠ Import-graph caveat: `schema.ts` + `targets.ts` pull `effects/registry` + `instruments/registry` for param metadata (pure data, but drags worklet node-factory modules + loader into every schema import). |
-| `src/commands/*` | **PURE** | Commands are `(doc) → doc` closures (`commands.ts`, 6.3k lines, zero DOM/audio). yjs decoupling via the `yDocBridge` service-locator pattern (`yDocBridge.ts`) — inert unless the host registers helpers. |
+| `src/commands/*` | **PURE** | Commands are `(doc) → doc` closures (the layer is ~40 domain modules behind the `commands.ts` barrel, zero DOM/audio). yjs decoupling via the `yDocBridge` service-locator pattern (`yDocBridge.ts`) — inert unless the host registers helpers. |
 | `src/store/*` | **MIXED (clock only)** | `ProjectStore` uses `Date.now()` for undo-coalesce windows / save-status only — never into the doc. `SelectionStore`, `ToolStore` pure. |
 | `src/transport` | **PURE by injection** | `Clock` interface (`Transport.ts:3–7`); production injects `{ now: () => engine.currentTime }` (`services.ts:365`). |
 | `src/scheduler` | **MIXED (deliberate seam)** | All host access flows through `SchedulerDeps` (`Scheduler.ts:9–100`) — the de-facto audio-host port. Own only `setInterval` (25 ms tick) + console. Already driven headless in tests. |
@@ -59,7 +59,7 @@ bare Node; **MIXED** = core pure, some symbols/files touch the platform;
   sendBeacon / EventSource in `src/`.
 - **Node builtins in `src/` — clean.** No `fs/path/os/crypto/child_process`,
   no `require`, no `__dirname`. One benign macro: `process.env.NODE_ENV` in
-  `commands/commands.ts:132` (`isDev()`, Vite-dead-code-eliminated; a native
+  `commands/core.ts:20` (`isDev()`, Vite-dead-code-eliminated; a native
   toolchain must define it). Zero `import.meta.env` in app code (18 ×
   `import.meta.url` for worker/worklet URLs — standard).
 - **Timers in domain modules:** scheduler tick, MIDI clock, sidechain poll
@@ -162,7 +162,8 @@ bare Node; **MIXED** = core pure, some symbols/files touch the platform;
    way when it clears).
 9. **Micro-nits recorded:** `process.env.NODE_ENV` macro (native toolchain
    must define it); unseeded `Math.random` in `shared/velocityFx.ts:14,23`
-   and wall-clock seeds in `commands.ts:4012` / `commands.ts:2925` (GOAL 09
+   and wall-clock seeds in `commands/automation.ts:169` (modulator seed) /
+   `commands/drumContent.ts:219` (sketch stamp) (GOAL 09
    determinism targets — replayability of humanize/randomize edits); snapshot
    and recovery-repo ids use `Date.now()+Math.random` (metadata only); own
    rAF loops in 8 components bypass `rafLoop.ts`.

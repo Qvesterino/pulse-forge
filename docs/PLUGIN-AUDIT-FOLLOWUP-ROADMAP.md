@@ -179,7 +179,7 @@ model-level.
 **Problem.** `eqParams` carries 7 legacy alias ids (`lowGain`, `lowFreq`,
 `midGain`, `midFreq`, `midQ`, `highGain`, `highFreq` —
 `src/effects/definitions.ts` ~527–553) that `setEffectParam` remaps via
-`eqLegacyMap` (`src/commands/commands.ts:5722`). The raw runtime never sees
+`eqLegacyMap` (`src/commands/effectParams.ts:82`). The raw runtime never sees
 them, so they measure "inert" in every audit and pollute the automation
 target list.
 

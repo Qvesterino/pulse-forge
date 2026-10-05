@@ -25,7 +25,6 @@ src/audio-engine/GhostPreviewPlayer.ts
 src/audio-worklets/granular-voice-processor.js
 src/audio-worklets/loader.ts
 src/audio-worklets/wtvoice-processor.js
-src/commands/commands.ts
 src/commands/layerCommands.ts
 src/effects/fxeq-core/core/bandEngine.ts
 src/effects/fxeq-core/core/commandHistory.ts
