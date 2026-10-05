@@ -109,22 +109,39 @@ describe("AGENTS.md invariant #7 — AudioNode creation outside AudioEngine.useC
     for (const f of seen) expect(AUDIO_NODE_FACTORIES).toContain(f);
   });
 
-  it("src/ui/* keeps its three SpectralEditPanel AudioNodes on the engine-owned context", () => {
-    // SpectralEditPanel has three documented direct creations. Each helper
-    // first obtains the live context from AudioEngine; no other UI file may
-    // create nodes. Check by count and helper scope, not brittle line numbers.
+  it("src/ui/* keeps its SpectralEditPanel + MixPreviewChip AudioNodes on owned contexts", () => {
+    // Two documented UI owners, by pattern (not brittle line numbers):
+    //   - SpectralEditPanel: three direct creations, each preceded by a
+    //     fetch of the live context from AudioEngine.
+    //   - MixPreviewChipLazy: the kyx_mix_idea before/after A/B preview —
+    //     two direct creations on its own PRIVATE AudioContext (same
+    //     carve-out class as src/intent/audition.ts: level-matched
+    //     monitoring must not touch the project graph). Each creation
+    //     must be preceded by the private-context acquisition.
+    // No other UI file may create nodes.
     const hits = audioNodeHits("src/ui");
-    expect(hits, "unexpected direct AudioNode creation in src/ui").toHaveLength(3);
-    expect(
-      hits.map((hit) => hit.file),
-      "only SpectralEditPanel owns these sites",
-    ).toEqual(["src/ui/SpectralEditPanel.tsx", "src/ui/SpectralEditPanel.tsx", "src/ui/SpectralEditPanel.tsx"]);
+    const spectral = hits.filter((hit) => hit.file === "src/ui/SpectralEditPanel.tsx");
+    const mixPreview = hits.filter((hit) => hit.file === "src/ui/MixPreviewChipLazy.tsx");
+    const others = hits.filter(
+      (hit) => hit.file !== "src/ui/SpectralEditPanel.tsx" && hit.file !== "src/ui/MixPreviewChipLazy.tsx",
+    );
+    expect(spectral, "SpectralEditPanel owns exactly three sites").toHaveLength(3);
+    expect(mixPreview, "MixPreviewChipLazy owns exactly two sites").toHaveLength(2);
+    expect(others, "unexpected direct AudioNode creation in src/ui outside the two owners").toEqual([]);
 
-    for (const hit of hits) {
+    for (const hit of spectral) {
       const ls = lines(hit.file);
       const CTX_FETCH = /getLiveAudioContext|ensureContext|engine\.useContext/;
       const hasEngineContext = ls.slice(Math.max(0, hit.line - 31), hit.line - 1).some((line) => CTX_FETCH.test(line));
       expect(hasEngineContext, `${hit.file}:${hit.line} must fetch the engine-owned context first`).toBe(true);
+    }
+    for (const hit of mixPreview) {
+      const ls = lines(hit.file);
+      const PRIVATE_CTX = /new AudioContext\(\)/;
+      const hasPrivateContext = ls
+        .slice(Math.max(0, hit.line - 31), hit.line - 1)
+        .some((line) => PRIVATE_CTX.test(line));
+      expect(hasPrivateContext, `${hit.file}:${hit.line} must acquire its private context first`).toBe(true);
     }
   });
 

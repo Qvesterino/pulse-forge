@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EFFECT_DEFS, defaultParamsOf, multitapDelaySec } from "../src/effects/registry";
+import { createMultitapNode } from "../src/audio-worklets/multitap-node";
 import { presetsForEffect } from "../src/effects/presets";
 import type { EffectInstance } from "../src/project-model/types";
 
@@ -171,55 +172,90 @@ describe.skipIf(typeof OfflineAudioContext === "undefined")("multiTapDelay timin
   });
 });
 
-describe("multiTapDelay live parameter synchronization", () => {
-  it("re-centers active taps when the tap count changes and updates spread live", () => {
-    const { context, panners } = fakeAudioContext();
-    const rt = EFFECT_DEFS.multiTapDelay.factory(context, instanceOf({ taps: 3 }), { bpm: 120 });
+describe("multiTapDelay live parameter synchronization (worklet wrapper)", () => {
+  // The inline tapNodes/panner runtime moved into the multitap AudioWorklet
+  // (spread/taps re-centering is processor-side DSP, covered by the offline
+  // tapPeaks suite above). These pins hold the HOST wrapper to its half of
+  // the contract: live writes land at ctx.currentTime, divisions re-derive
+  // tap times, and scheduled writes carry the requested audio time.
+  function makeMultitapMock(currentTime = 0) {
+    const PARAM_IDS = ["mix", "feedback", "tone", "spread", "taps", "t1Time", "t2Time", "t3Time", "t4Time"];
+    const params = new Map<string, ReturnType<typeof fakeAudioParam>>();
+    for (const id of PARAM_IDS) params.set(id, fakeAudioParam());
+    const chainable = (obj: Record<string, unknown>) => {
+      obj.connect = (destination: unknown) => destination;
+      obj.disconnect = () => {};
+      return obj;
+    };
+    class FakeWorkletNode {
+      parameters = { get: (id: string) => params.get(id) ?? null };
+      connect = (destination: unknown) => destination;
+      disconnect = () => {};
+    }
+    const stub = globalThis as unknown as { AudioWorkletNode?: unknown };
+    const RealNode = stub.AudioWorkletNode;
+    stub.AudioWorkletNode = FakeWorkletNode;
+    const context = {
+      currentTime,
+      createGain: () => chainable({ gain: fakeAudioParam(1) }),
+    };
+    return {
+      params,
+      context: context as unknown as BaseAudioContext,
+      restore: () => {
+        if (RealNode === undefined) delete stub.AudioWorkletNode;
+        else stub.AudioWorkletNode = RealNode;
+      },
+    };
+  }
 
-    rt.setParameter("taps", 1);
-    expect(panners[0].value).toBeCloseTo(0, 6);
-
-    rt.setParameter("taps", 4);
-    expect(panners.map((pan) => pan.value)).toEqual([
-      expect.closeTo(-0.63, 6),
-      expect.closeTo(-0.21, 6),
-      expect.closeTo(0.21, 6),
-      expect.closeTo(0.63, 6),
-    ]);
-
-    rt.setParameter("spread", 0.5);
-    expect(panners.map((pan) => pan.value)).toEqual([
-      expect.closeTo(-0.45, 6),
-      expect.closeTo(-0.15, 6),
-      expect.closeTo(0.15, 6),
-      expect.closeTo(0.45, 6),
-    ]);
-    rt.dispose();
+  it("routes taps and spread live writes straight to the processor params", () => {
+    const mock = makeMultitapMock();
+    try {
+      const rt = createMultitapNode(mock.context, instanceOf({ taps: 3 }), 120);
+      rt.setParameter("taps", 1);
+      expect(mock.params.get("taps")!.value).toBe(1);
+      rt.setParameter("spread", 0.5);
+      expect(mock.params.get("spread")!.value).toBe(0.5);
+      rt.dispose();
+    } finally {
+      mock.restore();
+    }
   });
 
   it("retains the latest note division when tempo changes", () => {
-    const { context, delays } = fakeAudioContext();
-    const rt = EFFECT_DEFS.multiTapDelay.factory(context, instanceOf({ taps: 1, t1Div: 2 }), { bpm: 60 });
-    expect(delays[0].value).toBeCloseTo(1, 6);
+    const mock = makeMultitapMock();
+    try {
+      const rt = createMultitapNode(mock.context, instanceOf({ taps: 1, t1Div: 2 }), 60);
+      const t1 = mock.params.get("t1Time")!;
+      expect(t1.value).toBeCloseTo(1, 6); // 2 beats (1/2 note) at 60 bpm
 
-    rt.setParameter("t1Div", 4);
-    expect(delays[0].targetValues.at(-1)).toBeCloseTo(0.5, 6);
+      rt.setParameter("t1Div", 4);
+      expect(t1.value).toBeCloseTo(0.5, 6); // 1 beat at 60 bpm, applied live
 
-    rt.syncBpm?.(120);
-    expect(delays[0].targetValues.at(-1)).toBeCloseTo(0.25, 6);
-    rt.dispose();
+      rt.syncBpm?.(120);
+      expect(t1.value).toBeCloseTo(0.25, 6); // same division re-derived at 120 bpm
+      rt.dispose();
+    } finally {
+      mock.restore();
+    }
   });
 
   it("schedules tap-count and division automation at the requested audio time", () => {
-    const { context, delays, panners } = fakeAudioContext();
-    const rt = EFFECT_DEFS.multiTapDelay.factory(context, instanceOf({ taps: 3 }), { bpm: 120 });
+    const mock = makeMultitapMock();
+    try {
+      const rt = createMultitapNode(mock.context, instanceOf({ taps: 3 }), 120);
 
-    rt.setParameterAt!("taps", 1, 0.4);
-    expect(panners[0].scheduledValues.at(-1)).toEqual({ value: 0, time: 0.4 });
+      rt.setParameterAt!("taps", 1, 0.4);
+      expect(mock.params.get("taps")!.scheduledValues.at(-1)).toEqual({ value: 1, time: 0.4 });
 
-    rt.setParameterAt!("t1Div", 6, 0.8);
-    expect(delays[0].scheduledValues.at(-1)?.time).toBe(0.8);
-    expect(delays[0].scheduledValues.at(-1)?.value).toBeCloseTo(0.125, 6);
-    rt.dispose();
+      rt.setParameterAt!("t1Div", 6, 0.8);
+      const t1 = mock.params.get("t1Time")!;
+      expect(t1.scheduledValues.at(-1)?.time).toBe(0.8);
+      expect(t1.scheduledValues.at(-1)?.value).toBeCloseTo(0.125, 6); // 1/16 at 120 bpm
+      rt.dispose();
+    } finally {
+      mock.restore();
+    }
   });
 });

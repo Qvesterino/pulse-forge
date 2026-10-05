@@ -146,14 +146,20 @@ describe("offline scene-BPM seam (timestamped syncBpm)", () => {
     const ducking = readFileSync("src/audio-worklets/ducking-delay-node.ts", "utf8");
     expect(ducking).toContain('safeApplyAudioParam(node, "time", nextMs, when ?? ctx.currentTime)');
     const registry = readFileSync("src/effects/registry.ts", "utf8");
-    // Pump-key oscillator, native-chorus LFO pair, LFO-sync wrapper, multitap.
+    // Pump-key oscillator, native-chorus LFO pair, LFO-sync wrapper.
     expect(registry).toContain("smooth(osc.frequency, freqOf(), when ?? ctx.currentTime, 0.05)");
     expect(registry).toContain("lfoSync.syncBpm(nextBpm, when ?? ctx.currentTime)");
     // Native-chorus fallback: the syncBpm(bpm, when) body schedules at `at`.
     expect(registry).toContain("syncBpm(bpm, when) {");
     expect(registry).toContain("const at = when ?? ctx.currentTime;");
-    expect(registry).toContain(
-      "tapNodes[t].delay.delayTime.setTargetAtTime(multitapDelaySec(divisions[t], bpm), at, 0.05)",
+    // Multitap moved to the AudioWorklet wrapper (multitap-node.ts): live
+    // writes fall back to ctx.currentTime, syncBpm re-derives every tap time
+    // from the CURRENT divisions and schedules the write at `when`.
+    const multitap = readFileSync("src/audio-worklets/multitap-node.ts", "utf8");
+    expect(multitap).toContain("setParameter: (id, v) => apply(id, v, ctx.currentTime)");
+    expect(multitap).toContain("syncBpm(next: number, when?: number)");
+    expect(multitap).toContain(
+      "safeApplyAudioParam(node, TIME_PARAM_IDS[t], multitapDelaySec(divisions[t], currentBpm), when)",
     );
     // Contract carries the optional timestamp.
     const types = readFileSync("src/effects/types.ts", "utf8");
