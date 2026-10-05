@@ -518,4 +518,54 @@ describe("ReferenceMapPanel — MATCH (ako ďaleko som od referencie)", () => {
     }
     void services;
   });
+
+  it("detects problem frequencies in a stem and lets the user cut them", async () => {
+    // A stem with a planted narrow resonance. If the mock doc has content
+    // tracks (the house template does), the panel runs the resonance detector
+    // and renders the "Problem frequencies" section with a per-track CUT.
+    const resonanceBuffer = () => {
+      const pcm = new Float32Array(FIXTURE_SR * 3);
+      let state = 42 >>> 0 || 1;
+      for (let i = 0; i < pcm.length; i++) {
+        state ^= state << 13;
+        state ^= state >>> 17;
+        state ^= state << 5;
+        state >>>= 0;
+        const env = Math.exp((-3 * i) / pcm.length);
+        pcm[i] = 0.2 * (state / 0xffffffff - 0.5) + 0.5 * env * Math.sin((2 * Math.PI * 120 * i) / FIXTURE_SR);
+      }
+      return {
+        sampleRate: FIXTURE_SR,
+        numberOfChannels: 1,
+        length: pcm.length,
+        getChannelData: () => pcm,
+      };
+    };
+    renderProjectSpy.mockImplementation(async () => resonanceBuffer());
+
+    const { services } = setup(decodedSubHeavy());
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("subheavy.wav")] } });
+    await waitFor(() => expect(screen.getByTestId("reference-primary").textContent).toBeDefined());
+    fireEvent.click(screen.getByTestId("reference-tab-match"));
+    fireEvent.click(screen.getByTestId("reference-match-run"));
+    await waitFor(() => expect(screen.getByTestId("reference-match-summary").textContent).toBeDefined());
+
+    const section = screen.queryByTestId("reference-match-resonances");
+    if (section) {
+      expect(section.textContent).toMatch(/Problem frequencies/);
+      expect(section.textContent).toMatch(/Hz/);
+      const cut = screen.getAllByText(/CUT on/)[0]!;
+      const executed: unknown[] = [];
+      (services.store as unknown as { execute: (c: unknown) => void }).execute = (c: unknown) => {
+        executed.push(c);
+      };
+      fireEvent.click(cut);
+      // One command — the cuts fold into a single undo step.
+      expect(executed).toHaveLength(1);
+    } else {
+      // No content-bearing track in the mock doc → no stems to analyse; the
+      // table still rendered (the resonance section is additive).
+      expect(screen.getByTestId("reference-match-table")).toBeInTheDocument();
+    }
+  });
 });

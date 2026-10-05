@@ -117,11 +117,14 @@ describe("applyResonanceCutsCommand", () => {
   it("adds an eq with a BELL on free1 when the track has none, as one command", async () => {
     const doc = createDefaultProject();
     const kick = doc.tracks.find((t) => t.kind === "drum")!;
-    const peaks = analyzeResonances((() => {
-      const pcm = noise(2, 0.3);
-      addResonance(pcm, 120, 0.6);
-      return pcm;
-    })(), SR);
+    const peaks = analyzeResonances(
+      (() => {
+        const pcm = noise(2, 0.3);
+        addResonance(pcm, 120, 0.6);
+        return pcm;
+      })(),
+      SR,
+    );
     expect(peaks.length).toBeGreaterThanOrEqual(1);
 
     const command = applyResonanceCutsCommand(doc, kick.id, peaks);
