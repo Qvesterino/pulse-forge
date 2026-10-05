@@ -881,6 +881,24 @@
   background: rgba(255, 208, 0, 0.08);
 }
 
+/* U6 — UN-SUNO build confirm + DropZone analyze offer. */
+.reference-build-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+
+.reference-build-confirm-text {
+  color: var(--text-muted, #aaa);
+}
+
+.dropzone-analyze-offer {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
 /* SESSION THEATRE — NAJMI KAPELU: cast cards + blind A/B finále. */
 .intent-theatre {
   display: flex;

@@ -28,6 +28,8 @@ import {
   type ReferenceStage,
   type TempoCandidate,
 } from "../reference";
+import { transcribeTrack } from "../reference/transcribe";
+import { unsunoCommand } from "../reference/unsuno";
 import { downloadBlob } from "../export/download";
 import { sanitizeFilename } from "../rendering/wav";
 import { MAX_AUDIO_IMPORT_BYTES } from "./DropZone";
@@ -306,6 +308,9 @@ export function ReferenceMapPanel() {
   const [beatsPerPhrase, setBeatsPerPhrase] = useState(8);
   const [swingPercent, setSwingPercent] = useState(0);
   const [applied, setApplied] = useState<string | null>(null);
+  // U6 — UN-SUNO reconstruction flow: two-step confirm, then one command.
+  const [buildBusy, setBuildBusy] = useState(false);
+  const [buildConfirm, setBuildConfirm] = useState(false);
 
   const runCommand = useCallback(
     (build: (d: ProjectDocument) => Command | null, fallback: string) => {
@@ -319,6 +324,63 @@ export function ReferenceMapPanel() {
     },
     [doc, services.store],
   );
+
+  // U6 — BUILD PROJECT: transcribe the analyzed signal (tempo/key/chords/
+  // bass/drums — all three layers live now) and rebuild it as an editable
+  // project in ONE undoable command. Corrected values win over detections
+  // exactly like every other Apply action here; without a correction the
+  // chord-sequence key from the transcription itself stays authoritative.
+  const buildProject = useCallback(async () => {
+    if (!analysis || buildBusy) return;
+    setBuildBusy(true);
+    setError(null);
+    try {
+      // Yield one frame so the busy state paints before the synchronous
+      // transcription blocks the thread for a second or two.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const mono = toMono(analysis.channels);
+      const transcription = transcribeTrack(mono, analysis.sampleRate);
+      const result = unsunoCommand(
+        doc,
+        {
+          transcription,
+          sections: analysis.map.structure?.sections.map((section) => ({
+            role: section.role,
+            startSec: section.startSec,
+            endSec: section.endSec,
+            energy: section.energy,
+          })),
+        },
+        {
+          reading: correction.reading,
+          confirmedBpm: correction.bpm,
+          confirmedKey: correction.tonic && shownMode ? { tonic: correction.tonic, mode: shownMode } : null,
+        },
+      );
+      if (!result.command) {
+        setApplied(`UN-SUNO: ${result.summary}`);
+        setBuildConfirm(false);
+        return;
+      }
+      services.store.execute(result.command);
+      setApplied(`UN-SUNO: ${result.summary} (one undo step)`);
+      setBuildConfirm(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Reconstruction failed.");
+    } finally {
+      setBuildBusy(false);
+    }
+  }, [analysis, buildBusy, correction.reading, correction.bpm, correction.tonic, doc, services.store, shownMode]);
+
+  // DropZone shortcut: an imported file can ask this panel to analyze it.
+  useEffect(() => {
+    const onExternal = (event: Event) => {
+      const detail = (event as CustomEvent<File>).detail;
+      if (detail instanceof File) void analyze(detail);
+    };
+    window.addEventListener("pf:unsuno-analyze", onExternal);
+    return () => window.removeEventListener("pf:unsuno-analyze", onExternal);
+  }, [analyze]);
 
   const applyBpm = useCallback(() => {
     if (!analysis) return;
@@ -591,6 +653,33 @@ export function ReferenceMapPanel() {
             <button type="button" onClick={exportJson} data-testid="reference-export">
               Export JSON
             </button>
+            {buildConfirm ? (
+              <span className="reference-build-confirm" data-testid="reference-build-confirm">
+                <span className="reference-build-confirm-text">Postaviť projekt z tejto analýzy?</span>
+                <button
+                  type="button"
+                  onClick={() => void buildProject()}
+                  disabled={buildBusy}
+                  data-testid="reference-build-go"
+                  title="Vytvorí tracky, patterny a markery z transkripcie — jedno Ctrl-Z vráti všetko"
+                >
+                  {buildBusy ? "STAVIA…" : "Postaviť"}
+                </button>
+                <button type="button" onClick={() => setBuildConfirm(false)} disabled={buildBusy}>
+                  Zrušiť
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setBuildConfirm(true)}
+                disabled={!analysis || buildBusy}
+                data-testid="reference-build"
+                title="UN-SUNO: rozloží track na editovateľný projekt — tracky, patterny, markery (jedno undo)"
+              >
+                🎛 BUILD PROJECT
+              </button>
+            )}
           </div>
 
           <section className="reference-apply" data-testid="reference-apply">

@@ -47,6 +47,9 @@ export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) 
   // Post-import fit offer: a single freshly imported loop with a steady
   // detected tempo offers one-click fitted timeline placement.
   const [fitOffer, setFitOffer] = useState<{ asset: UserSampleAsset; placement: FittedLoopPlacement } | null>(null);
+  // U6 — UN-SUNO shortcut: the File behind a single import, so the panel can
+  // analyze the ORIGINAL (the asset alone would need re-decoding from the bank).
+  const [analyzeOffer, setAnalyzeOffer] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   /** Place the offered loop on the timeline, fitted — one undoable command. */
@@ -82,6 +85,7 @@ export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) 
       setImporting(true);
       setError(null);
       setFitOffer(null);
+      setAnalyzeOffer(null);
       const fileArray = Array.from(files);
       const importedBatch: UserSampleAsset[] = [];
       const skipped: string[] = [];
@@ -140,6 +144,11 @@ export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) 
             ? fittedLoopPlacement(only.duration, only.bpm, doc.bpm, doc.timeSignature.numerator)
             : null;
         if (placement) setFitOffer({ asset: only, placement });
+        // UN-SUNO shortcut offer — hand the File to the Reference Map panel,
+        // which owns the analyze pipeline (it may be closed; the offer then
+        // just does nothing until the user opens it).
+        const file = fileArray[0];
+        if (file) setAnalyzeOffer(file);
       }
       setImporting(false);
     },
@@ -207,6 +216,22 @@ export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) 
         style={{ display: "none" }}
         onChange={handleFileChange}
       />
+      {analyzeOffer && !importing && (
+        <div className="dropzone-analyze-offer" data-testid="dropzone-analyze-offer">
+          <button
+            type="button"
+            className="btn btn-small"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent("pf:unsuno-analyze", { detail: analyzeOffer }));
+              setAnalyzeOffer(null);
+            }}
+            data-testid="dropzone-analyze-go"
+            title="Otvorí REF panel a analyzuje tento súbor — potom 🎛 BUILD PROJECT postaví editovateľný projekt"
+          >
+            🎛 UN-SUNO: analyzovať → projekt
+          </button>
+        </div>
+      )}
       {fitOffer && !importing && (
         <div
           className="drop-zone-fit"
