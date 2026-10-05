@@ -296,6 +296,26 @@ chips (`unsuno-mix-findings`): report chips + voliteľný „🔧 Opraviť" chip
 testom**: čistý mix → prázdne findings → chips NESVIECIA; UI test to pinuje
 na golden house renderi. Testy 6/6 pure + etiketa v UI suite.
 
+### U6.5 / U3.5-maps / worker / U7 — štyri vlny po dokončení kampane — **HOTOVÉ 2026-10-06**
+
+- **U6.5 (`4504033a`)** — source lane cez UX: `pf:unsuno-analyze` event nesie
+  `{ file, sampleId }`, panel si ho pamätá, `unsunoCommand` dostáva
+  `sourceSampleId` a po executne zohreje clip cez `warmWarpForClip`. Celý
+  príbeh (drop → analyze → BUILD → originál na lane, warped) je klikateľný.
+- **Per-section drum mapy (`af304e6d`)** — `transcribeTrack` prijíma
+  `{ sections }` a re-transcribuje drum mapu v každom okne (≥1 s; kratšie sa
+  preskočia, nikdy nevymyslia). `unsunoCommand` preferuje section mapu
+  pokrývajúcu chunk midpoint, fallback = whole-track fold (rows nikdy
+  prázdne preto, že okno minulo). Drop a break môžu mať rôzne bubny.
+- **Worker (`d1a9fc91`)** — `transcribeTrackAsync` dispatchuje
+  `TRANSCRIBE_TRACK` do reference workera (PCM kópiou, sync fallback pod
+  2 s / bez module workerov); panel await-uje async klienta — 3-minútový
+  track už nezamrzne UI. Parita so sync jadrom zamknutá testom.
+- **U7 (`ee88e525`)** — lead/vocal melody layer: HP 120 Hz (bass LP +
+  subtract) → pitch tracker 150–1050 Hz → prísne gatey (clarity 0.65+,
+  stabilné runy, min coverage) → inak honest-empty. `transcription.melody`
+  - sampler lead track v rekonštrukcii (pluck default, noty 36–96).
+
 ### U6 — UX flow — HOTOVÉ 2026-10-04
 
 - **ReferenceMapPanel „🎛 BUILD PROJECT"** (vedľa Export JSON): dvojkrokový
