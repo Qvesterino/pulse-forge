@@ -220,6 +220,20 @@ root/third/fifth/seventh; bez čitateľnej harmónie bass lane **odmietne háda�
 (honest skip). Clean-material unit testy 8/8: dve noty / pitch zmena / 808 sub
 F#1 46 Hz / snap shortest-shift / low-pass atenuačné piny — 100 %.
 
+**U2.5 SHIPPED — kick-tail mask (2026-10-04):** `kickTailMask` v bass.ts —
+low-band (≤120 Hz) energia per 10 ms frame; frame je UNVOICED kým decayuje z
+transientného spike. Spike signatúra TRIACKO: >1,6× track medián + strmý
+rising edge (>1,45× predchádzajúceho frame) + **look-ahead decay** (energia
+180 ms neskôr < 55 % spike — bass onset SUSTAINUJE ~90 %, kick chvost
+decayuje — clean material tak ostáva netknutý, overené: 808 nota 0.00+0.69 s
+celá). Plus: hop 20→10 ms, re-anchor (nota začína NA maske, cap 200 ms),
+merge len pre skutočné gapy (re-anchored prekryvy sa neglujú). Trade-off
+zamknutý do floors: **precision/pitch-class výrazne hore** (house prec
+0.37→0.70, techno/dnb/trap pc → 100 %), recall dole kde maska odstránila
+phantom-matchy (techno 0.50→0.09 — synth kick sedí V 16th-bounce base a
+YIN subharmonický bleed cez E1/E2 sloty je dokumentovaný U2.6 problém, nie
+mask). Drums-only zostáva honest-empty.
+
 **Známa medzera (U2.5 vlna, ďalšia):** syntetický kick je čistá sínusová
 sweep niekoľko dB HLASNEJŠIA ako bass — jeho chvost (48–52 Hz) má VYŠŠIU
 YIN clarity než bass fundamental a prejde priorom, keď terminálna výška =

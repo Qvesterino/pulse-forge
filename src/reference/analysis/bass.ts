@@ -210,11 +210,15 @@ function kickTailMask(small: Float32Array, smallRate: number, frameSec: number):
   let release = -1; // frame index where the current mask ends
   for (let f = 0; f < frameCount; f++) {
     const value = energy[f];
-    // 1.6x median, not 2.5x: the sustained bass itself lifts the median, so
-    // a measured kick spike sits at only ~2.4x — 2.5 never fired (techno's
-    // masks stayed empty). The rising-edge test (1.3x previous frame) keeps
-    // sustained bass from ever triggering.
-    const onset = value > med * 1.6 && (f === 0 || value > energy[f - 1] * 1.45) && release < f;
+    // Three-way spike signature: above 1.6x the track median (the sustained
+    // bass itself lifts the median, so a measured kick spike sits at only
+    // ~2.4x), a steep rising edge (sustained-bass energy wobbles ±20 %, a
+    // kick lands at 2.3x), and — the decisive one — RAPID DECAY ahead: the
+    // energy 180 ms later is well under half the spike. A bass onset
+    // SUSTAINS (~90 % of its peak 180 ms in), so clean material never gets
+    // masked; a kick tail does decay, and that tail is what YIN was tracking.
+    const future = energy[Math.min(frameCount - 1, f + 18)];
+    const onset = value > med * 1.6 && (f === 0 || value > energy[f - 1] * 1.45) && future * 1.8 < value && release < f;
     if (onset) {
       // decay threshold: 30% of the spike, at most ~2.5 half-lives of a
       // typical synthesized kick — cap keeps a pathological signal from
@@ -263,8 +267,6 @@ export function detectBassNotes(
     const offset = (((pc - rootPc) % 12) + 12) % 12;
     return offset === 0 || offset === 3 || offset === 4 || offset === 7 || offset === 10;
   };
-
-
 
   const stepSec = 60 / options.bpm / 4;
   const minNoteSec = Math.max((HOP_MS / 1000) * 4, stepSec * 0.25);

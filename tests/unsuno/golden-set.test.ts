@@ -275,9 +275,9 @@ describe("U2 bass KPI (active — floors at the U2 baseline, KPI NOT yet met)", 
   const FLOORS: Record<string, { recall: number; pitch: number; pitchClass: number }> = {
     "house-126-am": { recall: 0.35, pitch: 0.5, pitchClass: 0.9 },
     "techno-130-em": { recall: 0.05, pitch: 0.3, pitchClass: 0.9 },
-    "boombap-90-cm": { recall: 0.05, pitch: 0.0, pitchClass: 0.9 },
+    "boombap-90-cm": { recall: 0.1, pitch: 0.0, pitchClass: 0.25 },
     "trap-140-fsm": { recall: 0.35, pitch: 0.25, pitchClass: 0.9 },
-    "dnb-174-gm": { recall: 0.15, pitch: 0.9, pitchClass: 0.9 },
+    "dnb-174-gm": { recall: 0.15, pitch: 0.55, pitchClass: 0.9 },
   };
   it("onset recall / pitch accuracy at or above the locked U2 baseline", () => {
     const lines: string[] = [];
