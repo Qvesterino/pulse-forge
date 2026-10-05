@@ -15,6 +15,7 @@
 import { estimateKey, estimateTempo, type KeyEstimate, type TempoEstimate } from "../ai/audio-tempo-key";
 import { deriveKeyFromChords, detectChordSpans, type ChordSpan, type TranscribedChordQuality } from "./analysis/chords";
 import { detectBassNotes, type TranscribedBassNote } from "./analysis/bass";
+import { detectDrumMap } from "./analysis/drums";
 
 export interface TranscribedLayer {
   /** false = this layer is not transcribed yet — consumers must treat it as
@@ -50,12 +51,22 @@ export interface TranscribedBass {
   notes: TranscribedBassNote[];
 }
 
+/** U3 drum map — pattern slots (0..15) per band, folded over the track. */
+export interface TranscribedDrums {
+  implemented: boolean;
+  warning: string | null;
+  /** Lit pattern slots per band (0-based, 16 steps per bar). */
+  kick: number[];
+  snare: number[];
+  hat: number[];
+}
+
 export interface UnsunoTranscription {
   sampleRate: number;
   durationSec: number;
   tempo: TempoEstimate | null;
   key: KeyEstimate | null;
-  drums: TranscribedLayer;
+  drums: TranscribedDrums;
   bass: TranscribedBass;
   chords: TranscribedChords;
 }
@@ -107,10 +118,7 @@ function decorateSpan(span: ChordSpan, parsed: ParsedKey | null): TranscribedCho
 
 export function transcribeTrack(pcm: Float32Array, sampleRate: number): UnsunoTranscription {
   const tempo = estimateTempo(pcm, sampleRate);
-  const pending = (layer: keyof typeof TRANSCRIPTION_WAVE_OWNERS): TranscribedLayer => ({
-    implemented: false,
-    warning: `${layer} transcription not implemented yet — lands in ${TRANSCRIPTION_WAVE_OWNERS[layer]} (docs/UN-SUNO-PLAN.md)`,
-  });
+  void TRANSCRIPTION_WAVE_OWNERS;
 
   const rawSpans: ChordSpan[] = [];
   let derived: ReturnType<typeof deriveKeyFromChords> = null;
@@ -148,6 +156,33 @@ export function transcribeTrack(pcm: Float32Array, sampleRate: number): UnsunoTr
           warning: "no stable harmony detected — chords left empty, never invented",
           spans: [],
         };
+
+  // U3 — drum map: one 16-slot pattern folded over the track (golden-set
+  // bar patterns are constant, so the fold is lossless there; per-section
+  // maps are the U3.5 refinement). Kick/snare/hat land as pattern slots.
+  const drums: TranscribedDrums = !tempo
+    ? {
+        implemented: true,
+        warning: "tempo unavailable — no bar grid, drum map skipped (honest empty)",
+        kick: [],
+        snare: [],
+        hat: [],
+      }
+    : (() => {
+        const detection = detectDrumMap(pcm, sampleRate, { bpm: tempo.bpm });
+        const drums: TranscribedDrums = {
+          implemented: true,
+          warning: null,
+          kick: detection?.bands.kick.steps ?? [],
+          snare: detection?.bands.snare.steps ?? [],
+          hat: detection?.bands.hat.steps ?? [],
+        };
+        if (detection) drums.warning = detection.warnings.length > 0 ? detection.warnings.join("; ") : null;
+        if (drums.kick.length + drums.snare.length + drums.hat.length === 0 && drums.warning === null) {
+          drums.warning = "no drum onsets above threshold — pattern left empty, never invented";
+        }
+        return drums;
+      })();
 
   // U2 — bass transcription shares the tempo gate (note-length decisions
   // need the grid) AND the chord gate: the kick is louder than the bass in
@@ -195,7 +230,7 @@ export function transcribeTrack(pcm: Float32Array, sampleRate: number): UnsunoTr
     durationSec: sampleRate > 0 ? pcm.length / sampleRate : 0,
     tempo,
     key,
-    drums: pending("drums"),
+    drums,
     bass,
     chords,
   };

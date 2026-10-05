@@ -40,6 +40,7 @@ import { addMarker } from "../commands/markers";
 import { createScene, setScenePattern } from "../commands/scenes";
 import { musicalKeyFor } from "./apply";
 import { voiceLead } from "../ai/harmony";
+import { inferPadRole } from "../ai/pad-roles";
 import type { Command } from "../commands/types";
 import type { UnsunoTranscription, TranscribedChordSpan } from "./transcribe";
 
@@ -165,11 +166,11 @@ export function unsunoCommand(doc: ProjectDocument, input: UnsunoInput, options:
   const ids = { drums: null as string | null, bass: null as string | null, chords: null as string | null };
 
   // Tracks: only when the layer carries content.
-  if (transcription.drums.implemented) {
-    const track = createDrumTrack(next).execute(next);
-    next = track;
+  const drumSlots = transcription.drums.kick.length + transcription.drums.snare.length + transcription.drums.hat.length;
+  if (transcription.drums.implemented && drumSlots > 0) {
+    next = createDrumTrack(next).execute(next);
     ids.drums = next.tracks[next.tracks.length - 1].id;
-    layers.drums = transcription.drums.warning ?? "drum track created";
+    layers.drums = transcription.drums.warning ?? `${drumSlots} drum steps transcribed`;
   }
   const bassNotes = transcription.bass.notes;
   if (bassNotes.length > 0) {
@@ -251,16 +252,33 @@ export function unsunoCommand(doc: ProjectDocument, input: UnsunoInput, options:
       updatedPattern.notes[ids.bass!] = notes;
     }
 
-    // Drum rows — the U3 layer fills this; today the shell stays empty.
-    if (ids.drums && transcription.drums.implemented) {
+    // Drum rows — the U3 pattern slots mapped onto the default kit through
+    // pad-role resolution (never by index): kick/snares get their inferred
+    // pads, hats land on the first closedHat.
+    if (ids.drums && drumSlots > 0) {
       const drumTrack = next.tracks.find((t) => t.id === ids.drums);
       if (drumTrack && drumTrack.kind === "drum") {
         const rows: Record<string, number[]> = {};
-        for (const pad of drumTrack.pads) {
-          rows[pad.id] = new Array<number>(steps).fill(0);
-        }
-        // U3 wiring lands here once the drums layer ships its rows contract;
-        // pad resolution will go through inferPadRole(pad.name, index).
+        for (const pad of drumTrack.pads) rows[pad.id] = new Array<number>(steps).fill(0);
+        const slotPattern: Record<string, number[]> = {
+          kick: transcription.drums.kick,
+          snare: transcription.drums.snare,
+          hat: transcription.drums.hat,
+        };
+        const taken = new Set<string>();
+        drumTrack.pads.forEach((pad, index) => {
+          const role = inferPadRole(pad.name, index);
+          if (role === "kick" && !taken.has("kick")) {
+            for (const step of slotPattern.kick) if (step < steps) rows[pad.id][step] = 0.9;
+            taken.add("kick");
+          } else if ((role === "snare" || role === "clap") && !taken.has("snare")) {
+            for (const step of slotPattern.snare) if (step < steps) rows[pad.id][step] = 0.85;
+            taken.add("snare");
+          } else if (role === "closedHat" && !taken.has("hat")) {
+            for (const step of slotPattern.hat) if (step < steps) rows[pad.id][step] = 0.6;
+            taken.add("hat");
+          }
+        });
         updatedPattern = { ...updatedPattern, rows };
       }
     }

@@ -51,7 +51,7 @@ describe("unsunoCommand — reconstruction contract", () => {
     expect(doc.bpm).toBe(126);
     expect(doc.key).toBe("A Natural Minor");
 
-    // bass + keys tracks exist (drums stay skipped while U3 is pending)
+    // bass + keys tracks exist
     const instrumentKinds = doc.tracks.map((t) => (t.kind === "instrument" ? t.instrument : t.kind));
     expect(instrumentKinds).toContain("bass");
     expect(instrumentKinds).toContain("keys");
@@ -59,6 +59,13 @@ describe("unsunoCommand — reconstruction contract", () => {
     // one pattern per section, both under the 128-step ceiling
     const ours = doc.patterns.filter((p) => p.name.startsWith("UN-SUNO"));
     expect(ours.length).toBe(2);
+
+    // drums track exists now too (U3 landed) with the kick map on a pad
+    expect(doc.tracks.some((t) => t.kind === "drum")).toBe(true);
+    const drumPattern = ours.find((p) => Object.keys(p.rows).length > 0);
+    expect(drumPattern).toBeDefined();
+    const litRows = Object.values(drumPattern!.rows).filter((row) => row.some((v) => v > 0));
+    expect(litRows.length).toBeGreaterThanOrEqual(1);
     for (const pattern of ours) {
       expect(pattern.stepCount).toBeLessThanOrEqual(128);
       expect(pattern.stepCount).toBe(4 * 16);
