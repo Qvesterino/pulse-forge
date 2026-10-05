@@ -128,7 +128,7 @@ Longer local-model work must run outside the audio callback, leave playback and 
 
 ### 4.5 Optional, transparent Producer DNA
 
-KYX may learn a local, user-controlled preference profile to make suggestions feel more like this producer. It must be opt-in, inspectable, editable, resettable and exportable. It should distinguish an explicit favorite, a deliberate A/B preference, an accepted-but-only-closest candidate and a rejection with a stated reason; merely applying or previewing something is not automatically a taste label.
+KYX may learn a local, user-controlled preference profile to make suggestions feel more like this producer. It must be inspectable, editable, resettable and exportable. It should distinguish an explicit favorite, a deliberate A/B preference, a settled before/after correction made in the local editor while automatic learning is enabled, an accepted-but-only-closest candidate and a rejection with a stated reason; merely applying or previewing something is not automatically a taste label.
 
 Preference memory must be contextual (genre, role, task and project where relevant), must not silently train on raw project audio, vocals or lyrics, and must not transfer to ZYVO or another device without an explicit user action. Turning it off must leave the core DAW and deterministic Intent Engine fully usable.
 
@@ -138,7 +138,7 @@ Preference memory must be contextual (genre, role, task and project where releva
 
 1. **Session context — what are we working on right now?** Recent prompts, candidate references (“the second one”), audition state and follow-up context may live in a bounded in-memory session. It is temporary and may be forgotten on reload; it must not silently become a durable training or taste signal.
 2. **Project Producer Brief — what should this project sound like or preserve?** A project may store a small, versioned set of structured, allowlisted musical facts and explicit corrections, with source/confidence metadata. Saving and clearing it are deliberate, undoable project actions. It is project-local and may travel only with an explicitly saved/shared/exported project. It is not a raw prompt archive: raw prompts, conversation transcripts, chain-of-thought, audio, vocals and lyrics are not part of this brief.
-3. **Producer DNA — what kinds of results does this creator tend to prefer?** This is a separate, optional local profile based on sufficiently clear user signals such as an explicit favorite or deliberate A/B choice. It is a soft preference, never a project instruction or hard constraint. Previewing, generating, or applying a candidate alone does not teach taste.
+3. **Producer DNA — what kinds of results does this creator tend to prefer?** This is a separate, optional local profile based on sufficiently clear user signals such as an explicit favorite, deliberate A/B choice, or a measurable before/after correction made while local edit learning is enabled. It is a soft preference, never a project instruction or hard constraint. Previewing, generating, or applying a candidate alone does not teach taste.
 
 The active request has priority over remembered soft preferences. A saved project constraint that conflicts with a new request must be shown as a conflict and resolved explicitly; KYX must not silently choose. Producer DNA may rank only candidates that have already passed the active brief and safety gates. Each layer needs its own inspect/clear controls and tests proving that project switches, session resets and DNA opt-out do not leak or erase another layer.
 

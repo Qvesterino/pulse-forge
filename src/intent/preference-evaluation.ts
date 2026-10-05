@@ -101,6 +101,11 @@ export function evaluatePersonalPreferences(input: readonly unknown[]): Personal
     const group = observations.slice(start, end);
 
     for (const observation of group) {
+      if (observation.source === "edit") {
+        // Corrections are valid training evidence for later explicit choices,
+        // but they have no captured global baseline and are not evaluation rows.
+        continue;
+      }
       if (observation.choice !== "a" && observation.choice !== "b") {
         skipped.nonDirectionalChoice++;
         continue;

@@ -1,7 +1,9 @@
 /**
  * Small deterministic pairwise preference model (Producer DNA v1 + v2).
- * It learns only from explicit A/B decisions and never replaces hard gates or
- * the global selector. The bounded residual can only reorder valid finalists.
+ * It learns from explicit A/B decisions and settled before/after editor
+ * corrections; applying or previewing a candidate alone is never a label.
+ * It never replaces hard gates or the global selector. The bounded residual
+ * can only reorder valid finalists.
  *
  * FEATURES.V2 (W4): the model runs on the 69-dim v2 contract. Observations
  * recorded under the 54-dim v1 contract are normalized by padding the new
@@ -170,8 +172,9 @@ function pairExamples(
     observations
       .filter(isValidPreferenceObservation)
       .filter((observation) => observation.choice === "a" || observation.choice === "b")
-      // Unlabelled A/B votes teach the general adapter. A reason-tagged vote
-      // trains only that reason's adapter, never unrelated feature dimensions.
+      // Unlabelled comparisons and editor corrections teach the general
+      // adapter. A reason-tagged vote trains only that reason's adapter, never
+      // unrelated feature dimensions.
       .filter((observation) => (reason ? observation.reason === reason : observation.reason === undefined))
       .map((observation) => {
         const weight = contextWeight(observation.context, context);
@@ -189,7 +192,14 @@ function pairExamples(
           difference,
           weight,
           at: observation.createdAt,
-          tieBreak: `${observation.context.key}:${observation.candidateA.contentHash}:${observation.candidateB.contentHash}`,
+          tieBreak: [
+            observation.context.key,
+            observation.candidateA.contentHash,
+            observation.candidateB.contentHash,
+            observation.choice,
+            observation.reason ?? "",
+            observation.source ?? "comparison",
+          ].join(":"),
         };
       })
       .filter((example): example is PairExample => example !== null)
@@ -203,7 +213,7 @@ function sigmoid(value: number): number {
   return 1 / (1 + Math.exp(-bounded));
 }
 
-/** Fit an L2-regularized logistic preference model from A/B comparisons. */
+/** Fit an L2-regularized logistic preference model from directional pairs. */
 export function fitPersonalPreferenceModel(
   observations: readonly PreferenceObservationV1[],
   context: PreferenceContext,

@@ -407,18 +407,24 @@ nota (degree + duration) a kontúra, čo príde ďalej?"
   — ★-nutie previewovanej rolky v Dice uloží intent + drum content (cap 200,
   dedupe, best-effort storage). Nič neopúšťa stroj.
 - **Učenie z ľudských úprav**: po ručnom zásahu v Piano Roll, Step Sequenceri
-  alebo MIDI nahrávaní sa po 1,4 s pokoja uloží kompaktný hudobný súhrn do
-  lokálneho ledgera (`pf:producer-style-examples`). Príkazy z generovania,
-  importu, vzdialeného collab-u a undo/redo tento vstup nevolajú. Ukladá sa
-  žáner, odvodená energia, hustota, komplexita, variácia a hash obsahu — bez
-  názvu projektu, stopy, promptu alebo samotných nôt. Automatické učenie je
-  lokálne a možno ho pozastaviť; aktívny pattern možno naučiť aj tlačidlom.
-- **Personalizácia výstupu**: súhrny ovplyvnia osobný sémantický vektor a po
-  troch príkladoch v žánri vytvoria lokálny intent retrieval a tri osobné
-  návrhy v Intent paneli. „Zabudnúť naučené“ vymaže ledger aj odvodené cache.
-  Ide o deterministickú adaptáciu vstupných dát a retrieval, nie o online
-  pretrénovanie neurónových váh; explicitný A/B ranker a osobný melodický
-  tréning ostávajú samostatnými kanálmi.
+  alebo MIDI nahrávaní sa po 1,4 s pokoja spojí celý ťah do porovnania pred/po.
+  Generovanie, import, vzdialený collab a undo/redo tento vstup nevolajú.
+  Súhrnný štýlový ledger ukladá žáner, energiu, hustotu, komplexitu, variáciu
+  a hash. Producer DNA ledger ukladá 69 čŕt `features.v2`, hrubý kontext,
+  hashe a označenie `source: "edit"`; výsledný stav je preferovaná strana.
+  Úplne prázdny predchádzajúci pattern a zmeny bez aspoň 0,02 súčtu črtových
+  rozdielov sa vyradia. Žiadny ledger neukladá názvy, noty, prompt ani projekt.
+- **Personalizácia výstupu**: uložené páry trénujú ten istý deterministický
+  L2-logistický Producer DNA ranker ako explicitné A/B voľby. Ranker môže iba
+  jemne zmeniť poradie kandidátov, ktoré už prešli bránami; pri dostatku dôkazu
+  existujúca personal search lane mení aj mäkké smery generovania. Intent panel
+  odvodí z najsilnejších váh čitateľné hudobné cue-y a pridá ich do osobných
+  promptov. Tri štýlové príklady v žánri stále odomknú sémantický retrieval a
+  tri osobné návrhy. Reset vymaže oba profile, preferencie aj odvodené cache.
+  Hodnotenie budúcich explicitných A/B volieb môže použiť skoršie úpravy na
+  trénovanie, ale úpravy samy nie sú hodnotiacimi A/B riadkami. Toto je lokálne
+  párové učenie; nepretrénováva online ONNX váhy a osobný melodický tréning
+  ostáva samostatný.
 - **Ochrana pred neinformovanými príkladmi**: automatický capture zahazuje
   príklad, ktorého naučiteľný vektor (`genre` + `energy`/`density`/`complexity`/
   `variation` — presne tie polia, ktoré `personalStyleProfileFromExamples`

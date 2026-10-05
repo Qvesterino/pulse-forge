@@ -139,7 +139,7 @@ export async function rankCandidatesWithModel(
   const result = await scoreCandidateFeatures(batch, heuristicOrder.length);
 
   if (!result.ok || !result.scores) {
-    // A model failure leaves the global heuristic intact; explicit local
+    // A model failure leaves the global heuristic intact; stored local
     // preferences may still add their bounded, post-gate residual.
     return finish(heuristicOrder, "fallback", null, null);
   }

@@ -1,4 +1,13 @@
 import { GENRES } from "../ai/types";
+import { FEATURE_V2_NAMES } from "../ai/features/pattern-features-v2";
+import { fitPersonalPreferenceModel } from "./personal-ranker";
+import {
+  isPreferenceLearningEnabled,
+  preferenceContextForIntent,
+  readPreferenceLedger,
+  type PreferenceObservationV1,
+} from "./preference-ledger";
+import { normalizeIntent } from "./normalize";
 import { isValidStyleExample, readStyleExamples, type StyleExampleV1 } from "./style-example-ledger";
 
 export interface PersonalStyleProfile {
@@ -17,8 +26,81 @@ export interface PersonalStyleIntentSuggestion {
   prompt: string;
 }
 
+export interface PersonalStyleCorrectionSummary {
+  /** Unique, locally stored before/after edit comparisons for this genre. */
+  correctionCount: number;
+  /** Directional comparisons available to the same model used for reranking. */
+  learnedComparisonCount: number;
+  modelReady: boolean;
+  rankerEnabled: boolean;
+  /** Human-readable directions whose 69-feature weights carry the clearest signal. */
+  directions: string[];
+}
+
 const MIN_SUGGESTION_EXAMPLES = 3;
 const RECENCY_HALF_LIFE_MS = 120 * 24 * 60 * 60 * 1000;
+
+const FEATURE_DIRECTIONS: Readonly<Record<string, readonly [string, string]>> = {
+  "drums.density": ["hustejšie bicie", "viac priestoru v bicích"],
+  "drums.anchorCoverage": ["pevný kick/snare základ", "voľnejší rytmický základ"],
+  "drums.ghostRatio": ["jemné ghost údery", "čisté bicie bez ghost úderov"],
+  "drums.syncopation": ["synkopované bicie", "rovnejší groove"],
+  "drums.offbeatRatio": ["offbeat údery", "údery pevne v gride"],
+  "drums.barRepetition": ["opakujúci sa groove", "obmeny medzi taktmi"],
+  "drums.velocitySpread": ["výrazné dynamické akcenty", "rovnomerná dynamika"],
+  "drums.microtimingPresence": ["ľudský mikrotiming", "presný timing v gride"],
+  "melodic.noteDensity": ["hutnejšia melodika", "vzdušná melodika"],
+  "melodic.restRatio": ["melodické pauzy", "plynulé melodické frázy"],
+  "melodic.pitchRange": ["širší melodický register", "úzky melodický register"],
+  "melodic.intervalVariety": ["pestrejší pohyb tónov", "jednoduchý pohyb tónov"],
+  "melodic.motifRepetition": ["vracajúci sa melodický motív", "vyvíjajúca sa melódia"],
+  "melodic.motifNovelty": ["nové melodické motívy", "opakujúca sa fráza"],
+  "bass.noteDensity": ["hustejšia basa", "úspornejšia basa"],
+  "bass.rootAlignment": ["basu pevne viazanú na harmóniu", "voľnejší pohyb basy"],
+  "bass.movement": ["pohyblivú basovú linku", "stabilnejšiu basovú linku"],
+  "bass.syncopation": ["synkopovanú basu", "rovnejšiu basu"],
+  "bass.registerStability": ["stabilnú polohu basy", "pohyb basy medzi registrami"],
+  "harmony.voicingMovement": ["plynulé zmeny akordov", "stabilné akordické voicingy"],
+  "harmony.harmonicRhythm": ["častejšie harmonické zmeny", "dlhšie držané akordy"],
+  "harmony.voiceRichness": ["bohatšie akordické voicingy", "jednoduchšie akordy"],
+  "harmony.chordDensity": ["hustejšiu harmóniu", "viac priestoru medzi akordmi"],
+  "arrangement.rhythmicAlignment": ["pevný súlad basy s bicími", "nezávislejší pohyb basy a bicích"],
+};
+
+/**
+ * Read the same local pairwise model that reranks valid Intent candidates and
+ * translate its strongest learned axes into useful, inspectable style cues.
+ */
+export function personalStyleCorrectionSummary(
+  genre: string,
+  observations: readonly PreferenceObservationV1[] = readPreferenceLedger(),
+): PersonalStyleCorrectionSummary {
+  const matching = observations.filter((observation) => observation.context.genre === genre);
+  const corrections = matching.filter(
+    (observation) => observation.source === "edit" && (observation.choice === "a" || observation.choice === "b"),
+  );
+  const context = preferenceContextForIntent(normalizeIntent({ genre }));
+  const model = fitPersonalPreferenceModel(observations, context);
+  const directions = model
+    ? Object.entries(FEATURE_DIRECTIONS)
+        .map(([featureName, labels]) => {
+          const index = FEATURE_V2_NAMES.indexOf(featureName);
+          const weight = model.weights[index] ?? 0;
+          return { label: weight >= 0 ? labels[0] : labels[1], strength: Math.abs(weight) };
+        })
+        .filter((entry) => entry.strength >= 0.025)
+        .sort((a, b) => b.strength - a.strength || a.label.localeCompare(b.label))
+        .slice(0, 3)
+        .map((entry) => entry.label)
+    : [];
+  return {
+    correctionCount: corrections.length,
+    learnedComparisonCount: model?.comparisonCount ?? 0,
+    modelReady: model !== null,
+    rankerEnabled: isPreferenceLearningEnabled(),
+    directions,
+  };
+}
 
 function genreExamples(examples: readonly StyleExampleV1[], genre: string): StyleExampleV1[] {
   return examples.filter((example) => example.genre === genre);
@@ -76,7 +158,7 @@ export function personalStyleProfile(genre?: string | null): PersonalStyleProfil
   return selectedGenre ? personalStyleProfileFromExamples(examples, selectedGenre) : null;
 }
 
-export function personalStyleDescription(profile: PersonalStyleProfile): string {
+export function personalStyleDescription(profile: PersonalStyleProfile, directions: readonly string[] = []): string {
   const energy = profile.energy >= 0.68 ? "energický" : profile.energy <= 0.38 ? "pokojný" : "vyvážený";
   const density = profile.density >= 0.68 ? "hustý" : profile.density <= 0.34 ? "vzdušný" : "stredne hustý";
   const rhythm =
@@ -87,28 +169,33 @@ export function personalStyleDescription(profile: PersonalStyleProfile): string 
       : profile.variation <= 0.28
         ? "hypnoticky opakujúci sa"
         : "s drobnými obmenami";
-  return `${energy}, ${density}, ${rhythm}, ${movement}`;
+  const base = `${energy}, ${density}, ${rhythm}, ${movement}`;
+  return directions.length > 0 ? `${base}, ${directions.slice(0, 2).join(", ")}` : base;
 }
 
 /** Concrete, deterministic prompt ideas distilled from repeated local edits. */
-export function personalStyleIntentSuggestions(profile: PersonalStyleProfile | null): PersonalStyleIntentSuggestion[] {
+export function personalStyleIntentSuggestions(
+  profile: PersonalStyleProfile | null,
+  directions: readonly string[] = [],
+): PersonalStyleIntentSuggestion[] {
   if (!profile || profile.exampleCount < MIN_SUGGESTION_EXAMPLES) return [];
-  const descriptors = personalStyleDescription(profile);
+  const descriptors = personalStyleDescription(profile, directions);
+  const correctionTail = directions.length > 0 ? `; môj zvuk: ${directions.slice(0, 3).join(", ")}` : "";
   return [
     {
       id: "signature",
       label: `Môj podpis · ${profile.genre}`,
-      prompt: `${profile.genre} beat, ${descriptors}, v mojom osobnom štýle`,
+      prompt: `${profile.genre} beat, ${descriptors}, v mojom osobnom štýle${correctionTail}`,
     },
     {
       id: "more-driving",
       label: "Môj podpis · viac ťahu",
-      prompt: `${profile.genre} beat v mojom osobnom štýle, driving, punchy, viac energie`,
+      prompt: `${profile.genre} beat v mojom osobnom štýle${correctionTail}, driving, punchy, viac energie`,
     },
     {
       id: "more-space",
       label: "Môj podpis · viac priestoru",
-      prompt: `${profile.genre} beat v mojom osobnom štýle, sparse, minimalistický, viac priestoru`,
+      prompt: `${profile.genre} beat v mojom osobnom štýle${correctionTail}, sparse, minimalistický, viac priestoru`,
     },
   ];
 }

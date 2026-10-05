@@ -9,6 +9,8 @@ import {
   type StyleExampleV1,
 } from "./style-example-ledger";
 import { patternStyleExampleFromProject } from "./pattern-style-example";
+import { PREFERENCE_LEDGER_CLEARED_EVENT } from "./preference-ledger";
+import { learnFromPatternCorrection } from "./style-correction-learning";
 
 const OBSERVATION_SETTLE_MS = 1400;
 
@@ -49,13 +51,13 @@ export interface LocalStyleObserver {
 
 /**
  * Capture only after a human editor has been quiet briefly. This collapses
- * paint strokes and note drags into one example and stores summary features,
- * never project or note data. AI, import, undo, remote and automation commands
- * do not reach this observer.
+ * paint strokes and note drags into one before/after comparison and one style
+ * summary. The ledgers store features and hashes, never project or note data.
+ * AI, import, undo, remote and automation commands do not reach this observer.
  */
 export function createLocalStyleObserver(onLearned?: (count: number) => void): LocalStyleObserver {
   let timer: ReturnType<typeof setTimeout> | null = null;
-  let pending: ProjectDocument | null = null;
+  let pending: { before: ProjectDocument; after: ProjectDocument } | null = null;
   let lastCaptureKey: string | null = null;
 
   const clearPending = (): void => {
@@ -65,17 +67,23 @@ export function createLocalStyleObserver(onLearned?: (count: number) => void): L
     lastCaptureKey = null;
   };
 
-  if (typeof window !== "undefined") window.addEventListener(STYLE_EXAMPLES_CLEARED_EVENT, clearPending);
+  if (typeof window !== "undefined") {
+    window.addEventListener(STYLE_EXAMPLES_CLEARED_EVENT, clearPending);
+    window.addEventListener(PREFERENCE_LEDGER_CLEARED_EVENT, clearPending);
+  }
 
   const capture = (): void => {
     if (timer !== null) clearTimeout(timer);
     timer = null;
-    const doc = pending;
+    const observation = pending;
     pending = null;
-    if (!doc || !automaticStyleLearningEnabled()) return;
-    const pattern = doc.patterns.find((candidate) => candidate.id === doc.activePatternId);
+    if (!observation || !automaticStyleLearningEnabled()) return;
+    const { before, after } = observation;
+    const beforePattern = before.patterns.find((candidate) => candidate.id === before.activePatternId);
+    const pattern = after.patterns.find((candidate) => candidate.id === after.activePatternId);
+    if (beforePattern && pattern) learnFromPatternCorrection(before, beforePattern, after, pattern);
     if (!pattern) return;
-    const example = patternStyleExampleFromProject(doc, pattern, preferredStyleGenre());
+    const example = patternStyleExampleFromProject(after, pattern, preferredStyleGenre());
     if (!example) return;
     const captureKey = `${example.genre}:${example.contentHash}`;
     if (captureKey === lastCaptureKey) return;
@@ -103,14 +111,20 @@ export function createLocalStyleObserver(onLearned?: (count: number) => void): L
       if (previousExample?.contentHash === nextExample.contentHash && previousExample.genre === nextExample.genre) {
         return;
       }
-      pending = doc;
+      pending = {
+        before: pending?.before ?? previousDoc,
+        after: doc,
+      };
       if (timer !== null) clearTimeout(timer);
       timer = setTimeout(capture, OBSERVATION_SETTLE_MS);
     },
     flush: capture,
     dispose() {
       clearPending();
-      if (typeof window !== "undefined") window.removeEventListener(STYLE_EXAMPLES_CLEARED_EVENT, clearPending);
+      if (typeof window !== "undefined") {
+        window.removeEventListener(STYLE_EXAMPLES_CLEARED_EVENT, clearPending);
+        window.removeEventListener(PREFERENCE_LEDGER_CLEARED_EVENT, clearPending);
+      }
     },
   };
 }

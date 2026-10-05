@@ -1,4 +1,4 @@
-/** Local-only adapter for explicit Producer DNA feedback. */
+/** Local-only adapter for explicit Producer DNA feedback and edit corrections. */
 import { FEATURE_CONTRACT } from "../ai/features/pattern-features";
 import {
   FEATURE_CONTRACT_V2,
@@ -24,6 +24,9 @@ import {
 
 export const PREFERENCE_LEDGER_KEY = "pf:producer-dna-preferences";
 export const PREFERENCE_LEARNING_KEY = "pf:producer-dna-learning";
+export const PREFERENCE_LEDGER_CHANGED_EVENT = "pf:producer-dna-preferences-changed";
+export const PREFERENCE_LEDGER_CLEARED_EVENT = "pf:producer-dna-preferences-cleared";
+const PREFERENCE_LEDGER_MAX_CHARS = 512_000;
 
 export {
   dedupeAndCapPreferences,
@@ -98,7 +101,7 @@ export function createPreferenceObservation(
   candidateA: PreferenceCandidateInput,
   candidateB: PreferenceCandidateInput,
   choice: PreferenceChoice,
-  options: { reason?: PreferenceReason; createdAt?: number } = {},
+  options: { reason?: PreferenceReason; createdAt?: number; source?: "edit" } = {},
 ): PreferenceObservationV1 | null {
   if (candidateA.contentHash === candidateB.contentHash) return null;
   const shouldSwap = candidateA.contentHash.localeCompare(candidateB.contentHash) > 0;
@@ -110,6 +113,7 @@ export function createPreferenceObservation(
     candidateB: snapshot(shouldSwap ? candidateA : candidateB),
     choice: normalizedChoice,
     ...(options.reason ? { reason: options.reason } : {}),
+    ...(options.source ? { source: options.source } : {}),
     createdAt: options.createdAt ?? Date.now(),
   };
   return isValidPreferenceObservation(observation) ? observation : null;
@@ -119,7 +123,7 @@ function safeRead(): PreferenceObservationV1[] {
   try {
     if (typeof localStorage === "undefined") return [];
     const raw = localStorage.getItem(PREFERENCE_LEDGER_KEY);
-    if (!raw) return [];
+    if (!raw || raw.length > PREFERENCE_LEDGER_MAX_CHARS) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter(isValidPreferenceObservation).slice(-PREFERENCE_LEDGER_CAP);
@@ -138,10 +142,20 @@ function safeWrite(observations: readonly PreferenceObservationV1[]): boolean {
   }
 }
 
-/** Explicit comparisons are the only events that enter this ledger. */
+function notifyChanged(): void {
+  try {
+    if (typeof window !== "undefined") window.dispatchEvent(new Event(PREFERENCE_LEDGER_CHANGED_EVENT));
+  } catch {
+    /* storage/UI notification is best-effort */
+  }
+}
+
+/** Store an explicit comparison or a privacy-safe before/after correction. */
 export function recordPreferenceObservation(observation: PreferenceObservationV1): boolean {
   if (!isPreferenceLearningEnabled() || !isValidPreferenceObservation(observation)) return false;
-  return safeWrite(dedupeAndCapPreferences(safeRead(), observation));
+  const saved = safeWrite(dedupeAndCapPreferences(safeRead(), observation));
+  if (saved) notifyChanged();
+  return saved;
 }
 
 export function readPreferenceLedger(): PreferenceObservationV1[] {
@@ -161,6 +175,7 @@ export function setPreferenceLearningEnabled(enabled: boolean): void {
   try {
     if (typeof localStorage === "undefined") return;
     localStorage.setItem(PREFERENCE_LEARNING_KEY, enabled ? "on" : "off");
+    notifyChanged();
   } catch {
     /* preference learning safely becomes unavailable when storage is blocked */
   }
@@ -169,6 +184,8 @@ export function setPreferenceLearningEnabled(enabled: boolean): void {
 export function clearPreferenceLedger(): void {
   try {
     if (typeof localStorage !== "undefined") localStorage.removeItem(PREFERENCE_LEDGER_KEY);
+    notifyChanged();
+    if (typeof window !== "undefined") window.dispatchEvent(new Event(PREFERENCE_LEDGER_CLEARED_EVENT));
   } catch {
     /* no-op; all ranking paths retain their global fallback */
   }

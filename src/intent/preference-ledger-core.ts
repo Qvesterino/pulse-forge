@@ -1,5 +1,6 @@
 /**
- * Pure, versioned storage contract for explicit Producer DNA comparisons.
+ * Pure, versioned storage contract for explicit Producer DNA comparisons and
+ * local before/after correction pairs.
  * Raw prompts, projects, filenames and audio are intentionally not part of
  * this record. Only coarse context labels, content hashes and normalized
  * feature vectors are retained.
@@ -53,6 +54,8 @@ export interface PreferenceObservationV1 {
   candidateB: PreferenceCandidateSnapshot;
   choice: PreferenceChoice;
   reason?: PreferenceReason;
+  /** Passive correction pair (edited result preferred over the prior state). */
+  source?: "edit";
   createdAt: number;
 }
 
@@ -151,6 +154,7 @@ export function isValidPreferenceObservation(value: unknown): value is Preferenc
     CHOICES.has(value.choice as PreferenceChoice) &&
     (value.reason === undefined ||
       (typeof value.reason === "string" && REASONS.has(value.reason as PreferenceReason))) &&
+    (value.source === undefined || value.source === "edit") &&
     typeof value.createdAt === "number" &&
     Number.isFinite(value.createdAt) &&
     value.createdAt >= 0
@@ -165,11 +169,24 @@ export function dedupeAndCapPreferences(
 ): PreferenceObservationV1[] {
   const pair = [observation.candidateA.contentHash, observation.candidateB.contentHash].sort().join("|");
   const retained = observations.filter((existing) => {
-    if (existing.context.key !== observation.context.key) return true;
+    if (
+      existing.context.key !== observation.context.key ||
+      (existing.source ?? "comparison") !== (observation.source ?? "comparison")
+    )
+      return true;
     const existingPair = [existing.candidateA.contentHash, existing.candidateB.contentHash].sort().join("|");
     return existingPair !== pair;
   });
   const boundedCap = Math.max(1, Math.floor(cap));
   const next = [...retained, observation];
-  return next.length > boundedCap ? next.slice(next.length - boundedCap) : next;
+  if (next.length <= boundedCap) return next;
+
+  // Passive edits can be frequent. Reserve half the bounded ledger for
+  // deliberate A/B comparisons so correction bursts cannot evict them all.
+  const editCap = Math.floor(boundedCap / 2);
+  const edits = editCap > 0 ? next.filter((item) => item.source === "edit").slice(-editCap) : [];
+  const comparisons = next.filter((item) => item.source !== "edit").slice(-(boundedCap - edits.length));
+  const retainedBySource = [...comparisons, ...edits];
+  const bounded = retainedBySource.length > 0 ? retainedBySource : next.slice(-boundedCap);
+  return bounded.sort((a, b) => a.createdAt - b.createdAt);
 }

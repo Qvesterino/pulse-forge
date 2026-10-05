@@ -44,6 +44,10 @@ const REASONS: readonly { value: PreferenceReason; label: string }[] = [
   { value: "novelty", label: "originalita motívu" },
 ];
 
+function explicitComparisonCount(): number {
+  return readPreferenceLedger().filter((observation) => observation.source !== "edit").length;
+}
+
 function downloadPack(): void {
   const pack = buildPreferenceLedgerPack();
   const blob = new Blob([JSON.stringify(pack, null, 2)], { type: "application/json" });
@@ -63,7 +67,7 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
   const [blindProbeActive, setBlindProbeActive] = useState(false);
   const [skippedProbePairs, setSkippedProbePairs] = useState<ReadonlySet<string>>(() => new Set());
   const [learningEnabled, setLearningEnabled] = useState(isPreferenceLearningEnabled);
-  const [comparisonCount, setComparisonCount] = useState(() => readPreferenceLedger().length);
+  const [comparisonCount, setComparisonCount] = useState(explicitComparisonCount);
   const [message, setMessage] = useState("");
   const featureCache = useRef<{
     result: GenerationResult;
@@ -215,7 +219,7 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
     } else {
       setMessage(`Voľba ${preferred} uložená ako všeobecná preferencia; učenie sa aktivuje po aspoň 2 porovnaniach.`);
     }
-    setComparisonCount(readPreferenceLedger().length);
+    setComparisonCount(explicitComparisonCount());
     setAIndex(null);
     setBIndex(null);
     setReason("");
@@ -278,10 +282,15 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
   };
 
   const clear = () => {
-    if (!window.confirm("Vymazať všetky lokálne Producer DNA porovnania? Táto akcia sa nedá vrátiť.")) return;
+    if (
+      !window.confirm(
+        "Vymazať všetky lokálne Producer DNA preferencie vrátane ručných úprav? Táto akcia sa nedá vrátiť.",
+      )
+    )
+      return;
     clearPreferenceLedger();
     setComparisonCount(0);
-    setMessage("Lokálne porovnania boli vymazané.");
+    setMessage("Lokálne A/B voľby aj učenie z ručných opráv boli vymazané.");
   };
 
   return (
@@ -385,7 +394,7 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
       )}
 
       <div className="intent-candidate-row">
-        <span>{comparisonCount} lokálnych porovnaní · bez promptov, audia a projektu</span>
+        <span>{comparisonCount} explicitných A/B volieb · bez promptov, audia a projektu</span>
         <button type="button" className="btn btn-small" onClick={toggleLearning}>
           Učenie {learningEnabled ? "zapnuté" : "pozastavené"}
         </button>

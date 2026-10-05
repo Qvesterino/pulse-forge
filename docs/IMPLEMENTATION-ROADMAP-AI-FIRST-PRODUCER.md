@@ -743,7 +743,7 @@ Toto je prvá trvalá pamäť AI producenta a súčasť vertical slice-u; nesmie
 
 **Práca:**
 
-- Rozlíšiť „najlepšie splnil brief“ od „toto sa mi páči“. Zbierať explicitné A/B/favorite/reject + dôvod ako samostatné signály; samotné použitie návrhu nie je automaticky preference label.
+- Rozlíšiť „najlepšie splnil brief“ od „toto sa mi páči“. Zbierať explicitné A/B/favorite/reject + dôvod a pri zapnutom lokálnom učení aj merateľné pred/po opravy z editora; samotné použitie návrhu nie je automaticky preference label.
 - Integrácia Producer DNA musí byť lokálna, opt-in, prehliadnuteľná, opraviteľná, resetovateľná a context-aware podľa žánru, úlohy a hudobnej roly. Používateľ môže pokračovať bez pamäte.
 - Kandidáti SAFE/PERSONAL/EXPERIMENTAL musia byť počuteľne rozdielni už pri generovaní; všetky prechádzajú rovnakým brief gate. PERSONAL bez dôkazu prizná cold-start.
 - Porovnávať audio cez rovnaký `AudioEngine`/offline renderer a controlled loudness A/B. Listening sets musia pokryť beatmakerov, spevákov, viac žánrov a aj negatívne výsledky.
@@ -752,7 +752,7 @@ Toto je prvá trvalá pamäť AI producenta a súčasť vertical slice-u; nesmie
 
 **Kód:** `preference-ledger*.ts`, `personal-ranker.ts`, `candidate-diversity.ts`, `candidate-search.ts`, `audio-reference.ts`, `reference/`, `audio-feedback.ts`, `listening/`, `src/generative/`.
 
-**Oddelenie od ostatných pamätí:** Producer DNA je globálny soft preference profil, nie uložený project brief. Do ledgeru idú len explicitné signály (favorite, porovnanie A/B, reject s dôvodom); `apply`/preview/generate nie sú štítky samy osebe. Jeho vypnutie alebo reset nesmie meniť project briefy ani transient session context.
+**Oddelenie od ostatných pamätí:** Producer DNA je globálny soft preference profil, nie uložený project brief. Do ledgeru idú len explicitné signály (favorite, porovnanie A/B, reject s dôvodom) alebo črtové pred/po páry z výslovne zapnutého lokálneho učenia; `apply`/preview/generate nie sú štítky samy osebe. Jeho vypnutie alebo reset nesmie meniť project briefy ani transient session context.
 
 **Hotovo, keď:** vopred registrovaná blind evaluácia ukáže, v ktorých úlohách AI oproti deterministickej baseline pomáha, neškodí alebo ešte nie je pripravená; výsledok sa reportuje per úloha/žáner a nie iba jediným súhrnným score.
 
