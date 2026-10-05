@@ -12,6 +12,11 @@
  *  - DAW TOTAL: all studio JS chunks except optional AI runtimes and the MP3
  *    codec, which have separate budgets below. This catches dead-weight
  *    creeping into the DAW graph even when code is split.
+ *  - STUDIO BOOT PATH: the App shell + its transitive static imports — the
+ *    parse/eval a waiting user pays at boot. This is the metric that REWARDS
+ *    lazy-seam work (the sum-based DAW TOTAL counts every chunk and cannot
+ *    see it), and it fails loudly if an optional-bucket module ever becomes
+ *    boot-critical.
  *
  * NOTE: the flagship plugin AudioWorklet bundles are not part of the app
  * chunk budgets because they are lazy-loaded. The two stock/core bundles are
@@ -209,6 +214,26 @@ const CORE_WORKLET_BUDGET_KB = 150;
 // measured at 493 KB (2026-09-20) — 600 gives ~20% headroom. Raise only as a
 // conscious decision; the guards below fail hard instead.
 const LANDING_ROUTE_BUDGET_KB = 600;
+// STUDIO BOOT PATH — the parse/eval a waiting user actually pays at studio
+// boot: the App shell chunk plus its transitive STATIC imports (dynamic
+// imports — panels, collab, AI runtimes — load on demand and stay out).
+// The sum-based DAW TOTAL above cannot reward lazy-seam work (it counts
+// every chunk); this line can. First measured: 2123 KB across 17 chunks
+// (2026-10-04, after the preset-pack seam) — 2400 gives ~13% headroom for
+// the concurrent feature waves, entry and landing stay separately capped.
+// FORBIDDEN: the optional buckets must never become boot-critical — a
+// static import of any of them into the boot graph fails loudly here
+// (failsafe: a renamed optional chunk falls back into DAW TOTAL instead).
+const BOOT_PATH_BUDGET_KB = 2400;
+const BOOT_ENTRY_PREFIX = "App-";
+const BOOT_FORBIDDEN_PREFIXES = [
+  "pack-presets-",
+  "qmr-",
+  "audiotool-nexus-",
+  "transformers.web-",
+  "ort.wasm.bundle.min-",
+  "mp3-",
+];
 const LANDING_ENTRY_PREFIX = "LandingPage-";
 // Modules that must never statically reach the landing route. The semantic
 // model runtime and the studio shell have their own routes/chunks; if one of
@@ -419,6 +444,60 @@ if (!landingEntry) {
   if (forbiddenHits.length > 0) {
     console.error(`[size-budget] FAIL — forbidden modules reached the landing route: ${forbiddenHits.join(", ")}`);
     failed = true;
+  }
+}
+
+// ── Studio boot path (App shell + static closure) ──────────────────────────
+{
+  const bootEntry = readdirSync(join(dist, "assets")).find(
+    (file) => file.endsWith(".js") && file.startsWith(BOOT_ENTRY_PREFIX),
+  );
+  if (!bootEntry) {
+    console.error(`[size-budget] FAIL — no ${BOOT_ENTRY_PREFIX}*.js chunk in dist/assets (studio shell moved?).`);
+    failed = true;
+  } else {
+    const jsFiles = readdirSync(join(dist, "assets")).filter((file) => file.endsWith(".js"));
+    const sizeOf = (file) => statSync(join(dist, "assets", file)).size / 1024;
+    const staticDeps = (file) => {
+      const prologue = readFileSync(join(dist, "assets", file), "utf8").slice(0, 8000);
+      const out = [];
+      for (const match of prologue.matchAll(/from"\.\/([^"]+)"|import"\.\/([^"]+)"/g)) {
+        out.push(match[1] ?? match[2]);
+      }
+      return out;
+    };
+    const seen = new Set([bootEntry]);
+    const queue = [bootEntry];
+    let bootKb = 0;
+    while (queue.length > 0) {
+      const file = queue.shift();
+      bootKb += sizeOf(file);
+      for (const dep of staticDeps(file)) {
+        if (!seen.has(dep) && jsFiles.includes(dep)) {
+          seen.add(dep);
+          queue.push(dep);
+        }
+      }
+    }
+    const forbiddenHits = [...seen].filter((file) => BOOT_FORBIDDEN_PREFIXES.some((bad) => file.startsWith(bad)));
+    console.log(
+      `[size-budget] studio boot path: ${bootKb.toFixed(0)} KB across ${seen.size} chunks (budget ${BOOT_PATH_BUDGET_KB})`,
+    );
+    if (bootKb > BOOT_PATH_BUDGET_KB) {
+      console.error(
+        `[size-budget] FAIL — studio boot path over budget: ${bootKb.toFixed(0)} > ${BOOT_PATH_BUDGET_KB} KB.`,
+      );
+      console.error(
+        "            Lazy-seam the newcomer (dynamic import behind first use) or raise the budget consciously.",
+      );
+      failed = true;
+    }
+    if (forbiddenHits.length > 0) {
+      console.error(
+        `[size-budget] FAIL — optional-bucket modules reached the studio boot path: ${forbiddenHits.join(", ")}`,
+      );
+      failed = true;
+    }
   }
 }
 
