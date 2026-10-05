@@ -31,37 +31,6 @@ function fakeAudioParam(initialValue = 0) {
   };
 }
 
-function fakeAudioContext() {
-  const panners: ReturnType<typeof fakeAudioParam>[] = [];
-  const delays: ReturnType<typeof fakeAudioParam>[] = [];
-  const node = () => ({
-    connect(destination: unknown) {
-      return destination;
-    },
-    disconnect() {},
-  });
-  const context = {
-    currentTime: 0,
-    createGain() {
-      return Object.assign(node(), { gain: fakeAudioParam(1) });
-    },
-    createDelay() {
-      const delayTime = fakeAudioParam();
-      delays.push(delayTime);
-      return Object.assign(node(), { delayTime });
-    },
-    createStereoPanner() {
-      const pan = fakeAudioParam();
-      panners.push(pan);
-      return Object.assign(node(), { pan });
-    },
-    createBiquadFilter() {
-      return Object.assign(node(), { type: "lowpass", frequency: fakeAudioParam() });
-    },
-  };
-  return { context: context as unknown as BaseAudioContext, panners, delays };
-}
-
 describe("multiTapDelay registry entry", () => {
   it("is registered with taps, per-tap divisions, spread, feedback, tone, mix", () => {
     const def = EFFECT_DEFS.multiTapDelay;
