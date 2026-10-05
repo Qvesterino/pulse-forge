@@ -58,14 +58,14 @@ describe("mcp core — protocol with an authenticated session", () => {
     return { hub, delivered };
   }
 
-  it("initialize returns capabilities + serverInfo; tools/list returns the 34 tools", async () => {
+  it("initialize returns capabilities + serverInfo; tools/list returns the 35 tools", async () => {
     const { hub } = makeHub();
     const init = await handleMcpRequest(hub, TOKEN, TOKEN, rpc("initialize", {}, 1));
     expect(init.result.protocolVersion).toBe("2026-07-28");
     expect(init.result.capabilities.tools).toBeDefined();
     const list = await handleMcpRequest(hub as any, TOKEN, TOKEN, rpc("tools/list", {}, 2));
     const listedTools = (list.result as { tools: Array<{ name: string; outputSchema?: unknown }> }).tools;
-    expect(listedTools).toHaveLength(34);
+    expect(listedTools).toHaveLength(35);
     expect(listedTools.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema).toEqual(
       MCP_TOOLS.find((tool) => tool.name === "kyx_audio_preview")?.outputSchema,
     );
@@ -97,6 +97,7 @@ describe("mcp core — protocol with an authenticated session", () => {
       "kyx_publish_gallery",
       "kyx_render_summary",
       "kyx_diagnose_mix",
+      "kyx_mix_idea",
       "kyx_checkpoint",
       "kyx_mix",
       "kyx_arrange",
@@ -266,7 +267,7 @@ describe("mcp core — protocol with an authenticated session", () => {
     expect(bad.error.data.supported).toContain("2026-07-28");
 
     // server/discover is modern-only; a legacy client gets method-not-found.
-    const legacyDiscover = await handleMcpRequest(hub, TOKEN, TOKEN, rpc("server/discover", {}, 34));
+    const legacyDiscover = await handleMcpRequest(hub, TOKEN, TOKEN, rpc("server/discover", {}, 35));
     expect(legacyDiscover.error.code).toBe(-32601);
   });
 
@@ -292,7 +293,7 @@ describe("mcp core — protocol with an authenticated session", () => {
     expect(delivered).toHaveLength(1);
   });
 
-  it("tool definitions match the KYX surface (34 tools, known names)", () => {
+  it("tool definitions match the KYX surface (35 tools, known names)", () => {
     expect(MCP_TOOL_DEFS.map((tool: { name: string }) => tool.name)).toEqual([
       "kyx_intent",
       "kyx_state",
@@ -321,6 +322,7 @@ describe("mcp core — protocol with an authenticated session", () => {
       "kyx_publish_gallery",
       "kyx_render_summary",
       "kyx_diagnose_mix",
+      "kyx_mix_idea",
       "kyx_checkpoint",
       "kyx_mix",
       "kyx_arrange",

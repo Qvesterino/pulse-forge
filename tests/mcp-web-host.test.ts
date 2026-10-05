@@ -172,10 +172,19 @@ describe("web mcp bridge lifecycle", () => {
     socket.onmessage?.({
       data: JSON.stringify({ type: "mcp-call", id: 11, tool: "kyx_state", args: { subject: "overview" } }),
     });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    const raw = socket.sent
-      .map((entry) => JSON.parse(entry) as { type: string; id?: number; result?: { text?: string; isError?: boolean } })
-      .find((message) => message.type === "mcp-result");
+    // kyx_state first self-heals the lazy factory bank (Fáza 2b warm gate)
+    // before the tool body runs — that is many ticks, not one macrotask.
+    // Poll for the answer with a bound: the contract under test is "the
+    // relay NEVER hangs", so the poll must find the mcp-result quickly.
+    const deadline = Date.now() + 5000;
+    let raw: { type: string; id?: number; result?: { text?: string; isError?: boolean } } | undefined;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      raw = socket.sent
+        .map((entry) => JSON.parse(entry) as { type: string; id?: number; result?: { text?: string; isError?: boolean } })
+        .find((message) => message.type === "mcp-result");
+      if (raw) break;
+    }
     expect(raw?.id).toBe(11);
     expect(raw?.result?.text).toContain("tool crashed: boom");
     expect(raw?.result?.isError).toBe(true);

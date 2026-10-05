@@ -44,10 +44,12 @@ describe("kyx_checkpoint diff (C7.5)", () => {
     const ctx = makeCtx();
     await executeMcpTool(ctx, "kyx_checkpoint", { op: "save", name: "base" });
 
-    // mutate: tempo, new track, FX, markers
-    executeMcpTool(ctx, "kyx_intent", { instruction: "set tempo to 150" });
-    executeMcpTool(ctx, "kyx_tracks", { op: "addInstrument", instrument: "808" });
-    executeMcpTool(ctx, "kyx_fx", { effect: "reverb", family: "drums", action: "more" });
+    // mutate: tempo, new track, FX, markers — each call AWAITED: the tools
+    // are async, and an un-awaited mutation races the diff read (the track
+    // add used to lose it and the diff honestly reported 2 changes).
+    await executeMcpTool(ctx, "kyx_intent", { instruction: "set tempo to 150" });
+    await executeMcpTool(ctx, "kyx_tracks", { op: "addInstrument", instrument: "808" });
+    await executeMcpTool(ctx, "kyx_fx", { effect: "reverb", family: "drums", action: "more" });
 
     const diff = await executeMcpTool(ctx, "kyx_checkpoint", { op: "diff", name: "base" });
     expect(diff.mutated).toBe(false);
