@@ -82,8 +82,14 @@ const measurements = await page.evaluate(async () => {
   ];
   await Promise.all(
     packIds.map(async (id) => {
+      // Per-pack path: VSCO2 samples live under /samples/vsco/ (the hard
+      //coded /samples/piano/ used to 404 every VSCO id, so the whole VSCO
+      // catalogue measured its silent fallback and silently dropped OUT of
+      // the generated map — unmeasured presets get a 0 dB normalization
+      // gain and the drift gate skips ids the map does not know).
+      const pack = id.startsWith("factory.vsco.") ? "vsco" : "piano";
       try {
-        const response = await fetch(`/samples/piano/${id}.wav`);
+        const response = await fetch(`/samples/${pack}/${id}.wav`);
         if (!response.ok) return;
         const data = await response.arrayBuffer();
         const decoded = await import("/src/services/audio-decode.ts");

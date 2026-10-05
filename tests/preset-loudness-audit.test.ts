@@ -140,6 +140,12 @@ describe("preset gain sanity", () => {
       "factory.sampler.techno.padwarmdark",
       "factory.vocalchop.ambient.ghostvox",
       "factory.vocalchop.score.lonelyvox",
+      // Solo violin pizzicato sits far below the pluck-family median — the
+      // +18 dB ceiling still leaves it the quietest voice in the bank. First
+      // VSCO entry (2026-10-04): the loudness mine fix finally measured the
+      // VSCO presets at all (the fetch path had 404'd every /samples/vsco/
+      // id, so the whole catalogue lived at unity gain, unmeasured).
+      "factory.vsco.sviolinpizz",
     ];
     const actual = Object.entries(FACTORY_PRESET_GAIN_DB)
       .filter(([, gain]) => Math.abs(gain) >= PRESET_GAIN_DB_LIMIT)
