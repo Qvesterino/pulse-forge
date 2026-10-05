@@ -280,6 +280,21 @@ per-step dominance ratio zlyhal, ratia na parite) a dnb half-time grid
 reconciliation (86.9 vs 174 — dnb floors nízke). Taktiež per-section mapy
 (teraz jeden pattern foldovaný cez track).
 
+### U6 — UX flow — HOTOVÉ 2026-10-04
+
+- **ReferenceMapPanel „🎛 BUILD PROJECT"** (vedľa Export JSON): dvojkrokový
+  confirm → transcribeTrack na analyzovaný signál (yield frame pred sync
+  behom) → unsunoCommand s panel corrections (user korekcie vyhrávajú; bez
+  nich vedie chord-sequence key z transkripcie) → jeden store.execute →
+  applied status s honest summary + „(one undo step)". Sekcie z
+  map.structure.sections.
+- **DropZone shortcut**: po importe jedného súboru ponuka „🎛 UN-SUNO:
+  analyzovať → projekt" — pf:unsuno-analyze CustomEvent s File; panel si ho
+  vyzdvihne (ak je pripojený) a pustí vlastný analyze flow.
+- **Testy** tests/ui/reference-unsuno-build.test.tsx (3): reálny reťazec
+  file → decodeAudioData mock → analyze → BUILD → confirm → PRÁVE JEDEN
+  store.execute s type unsuno; neighbors 81/81.
+
 ### U4 — Rekonštrukcia: `unsunoCommand` (mapa → projekt, 1 undo)
 
 - `src/reference/unsuno.ts` (pure, apply.ts style):
