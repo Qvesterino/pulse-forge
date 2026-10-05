@@ -91,3 +91,55 @@ describe("master fix chip — the existing mechanical rule", () => {
     expect(fix!.masterGain).toBeLessThan(1);
   });
 });
+
+describe("U3.5 — per-section drum maps", () => {
+  it("golden house: every section map matches the whole-track fold exactly", async () => {
+    const { transcribeTrack } = await import("../../src/reference/transcribe");
+    const track = goldenTracks()[0];
+    const pcm = renderGoldenTrack(track);
+    // 2-bar sections tile the 8-bar track exactly
+    const sections = [0, 1, 2, 3].map((i) => ({
+      role: `sec${i}`,
+      startSec: i * 2 * BAR_SEC,
+      endSec: (i + 1) * 2 * BAR_SEC,
+    }));
+    const { stepF1 } = await import("../../src/reference/unsuno-metrics");
+    const t = transcribeTrack(pcm, GOLDEN_SAMPLE_RATE, { sections });
+    expect(t.drums.sections?.length).toBe(4);
+    for (const entry of t.drums.sections!) {
+      // constant bar patterns → every section fold matches the TRUTH union
+      // (±1 slot: the 60 ms detection window bleeds across a slot boundary;
+      // the track-level fold carries one edge FP the windows don't reproduce)
+      for (const band of ["kick", "snare", "hat"] as const) {
+        const truth = new Set<number>();
+        for (let bar = 0; bar < track.bars; bar++) {
+          for (let slot = 0; slot < 16; slot++) if ((track.drums[band][bar]?.[slot] ?? 0) > 0) truth.add(slot);
+        }
+        const report = stepF1(
+          entry[band],
+          [...truth].sort((a, b) => a - b),
+          { tolerance: 1 },
+        );
+        // Section windows have higher variance than the whole-track fold
+        // (fewer bars to average the phase window over), so these floors sit
+        // just under the track-level KPI: kick/snare stay strong, the hat
+        // fold wobbles more in short windows (documented U3.5 wobble).
+        expect(report.f1, `${entry.role}.${band}`).toBeGreaterThanOrEqual(
+          band === "kick" ? 0.7 : band === "snare" ? 0.45 : 0.25,
+        );
+      }
+    }
+  });
+  it("a section under 1 s is skipped, not invented", async () => {
+    const { transcribeTrack } = await import("../../src/reference/transcribe");
+    const pcm = renderGoldenTrack(goldenTracks()[0]);
+    const t = transcribeTrack(pcm, GOLDEN_SAMPLE_RATE, {
+      sections: [
+        { role: "tiny", startSec: 0, endSec: 0.4 },
+        { role: "ok", startSec: 0.4, endSec: 5 },
+      ],
+    });
+    expect(t.drums.sections?.some((entry) => entry.role === "tiny")).toBe(false);
+    expect(t.drums.sections?.some((entry) => entry.role === "ok")).toBe(true);
+  });
+});

@@ -348,7 +348,7 @@ export function ReferenceMapPanel() {
       // transcription blocks the thread for a second or two.
       await new Promise((resolve) => setTimeout(resolve, 0));
       const mono = toMono(analysis.channels);
-      const transcription = transcribeTrack(mono, analysis.sampleRate);
+      const transcription = transcribeTrack(mono, analysis.sampleRate, { sections: sectionsOfResult });
       const sectionsOfResult = analysis.map.structure?.sections.map((section) => ({
         role: section.role,
         startSec: section.startSec,

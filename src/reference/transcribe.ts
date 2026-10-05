@@ -51,14 +51,26 @@ export interface TranscribedBass {
   notes: TranscribedBassNote[];
 }
 
-/** U3 drum map — pattern slots (0..15) per band, folded over the track. */
-export interface TranscribedDrums {
-  implemented: boolean;
-  warning: string | null;
-  /** Lit pattern slots per band (0-based, 16 steps per bar). */
+/** U3 drum map — pattern slots (0..15) per band, folded over a window. */
+export interface TranscribedDrumPattern {
   kick: number[];
   snare: number[];
   hat: number[];
+}
+
+export interface TranscribedDrums extends TranscribedDrumPattern {
+  implemented: boolean;
+  warning: string | null;
+  /** Lit pattern slots per band (0-based, 16 steps per bar) — the WHOLE-track fold. */
+  kick: number[];
+  snare: number[];
+  hat: number[];
+  /**
+   * U3.5 — PER-SECTION maps: the drum pattern re-transcribed inside each
+   * section window, so a drop and a break can differ. Empty arrays mean
+   * "nothing read in this window".
+   */
+  sections?: Array<TranscribedDrumPattern & { role: string; startSec: number; endSec: number }>;
 }
 
 export interface UnsunoTranscription {
@@ -116,7 +128,11 @@ function decorateSpan(span: ChordSpan, parsed: ParsedKey | null): TranscribedCho
   return { ...span, degree, func: DEGREE_FUNC[degree] ?? "p" };
 }
 
-export function transcribeTrack(pcm: Float32Array, sampleRate: number): UnsunoTranscription {
+export function transcribeTrack(
+  pcm: Float32Array,
+  sampleRate: number,
+  options: { sections?: ReadonlyArray<{ role: string; startSec: number; endSec: number }> } = {},
+): UnsunoTranscription {
   const tempo = estimateTempo(pcm, sampleRate);
   void TRANSCRIPTION_WAVE_OWNERS;
 
@@ -224,6 +240,32 @@ export function transcribeTrack(pcm: Float32Array, sampleRate: number): UnsunoTr
                 notes: [],
               };
         })();
+
+  // U3.5 — per-section maps: only windows >= 1 s; each carries its own fold
+  // so the reconstruction can give a drop and a break different drums.
+  const drumPatternForWindow = (startSec: number, endSec: number): TranscribedDrumPattern | null => {
+    if (!tempo) return null;
+    const from = Math.floor(startSec * sampleRate);
+    const to = Math.min(pcm.length, Math.floor(endSec * sampleRate));
+    if (to - from < sampleRate) return null; // under a second — no grid to read
+    const detection = detectDrumMap(pcm.subarray(from, to), sampleRate, { bpm: tempo.bpm });
+    if (!detection) return null;
+    return {
+      kick: detection.bands.kick.steps,
+      snare: detection.bands.snare.steps,
+      hat: detection.bands.hat.steps,
+    };
+  };
+  if (tempo && options.sections && options.sections.length > 0) {
+    drums.sections = options.sections
+      .filter((section) => section.endSec - section.startSec >= 1)
+      .map((section) => ({
+        role: section.role,
+        startSec: section.startSec,
+        endSec: section.endSec,
+        ...(drumPatternForWindow(section.startSec, section.endSec) ?? { kick: [], snare: [], hat: [] }),
+      }));
+  }
 
   return {
     sampleRate,

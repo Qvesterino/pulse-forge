@@ -269,16 +269,32 @@ export function unsunoCommand(doc: ProjectDocument, input: UnsunoInput, options:
 
     // Drum rows — the U3 pattern slots mapped onto the default kit through
     // pad-role resolution (never by index): kick/snares get their inferred
-    // pads, hats land on the first closedHat.
+    // pads, hats land on the first closedHat. Per-section maps (U3.5) win
+    // when one covers this chunk's midpoint; the whole-track fold is the
+    // fallback so the rows are never empty merely because a window missed.
     if (ids.drums && drumSlots > 0) {
       const drumTrack = next.tracks.find((t) => t.id === ids.drums);
       if (drumTrack && drumTrack.kind === "drum") {
         const rows: Record<string, number[]> = {};
         for (const pad of drumTrack.pads) rows[pad.id] = new Array<number>(steps).fill(0);
+        const midSec = (section.startSec + section.endSec) / 2;
+        const sectionMap = transcription.drums.sections?.find(
+          (entry) => midSec >= entry.startSec && midSec < entry.endSec,
+        );
+        const hasSlots = (pattern_: { kick: number[]; snare: number[]; hat: number[] }): boolean =>
+          pattern_.kick.length + pattern_.snare.length + pattern_.hat.length > 0;
+        const chosen =
+          sectionMap && hasSlots(sectionMap)
+            ? sectionMap
+            : {
+                kick: transcription.drums.kick,
+                snare: transcription.drums.snare,
+                hat: transcription.drums.hat,
+              };
         const slotPattern: Record<string, number[]> = {
-          kick: transcription.drums.kick,
-          snare: transcription.drums.snare,
-          hat: transcription.drums.hat,
+          kick: chosen.kick,
+          snare: chosen.snare,
+          hat: chosen.hat,
         };
         const taken = new Set<string>();
         drumTrack.pads.forEach((pad, index) => {
