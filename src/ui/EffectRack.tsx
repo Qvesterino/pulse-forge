@@ -320,21 +320,28 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
             {hasInstrument && (
               <button
                 type="button"
-                className={`device-chain-item${activeDeviceId === "instrument" ? " active" : ""}`}
+                className={`device-chain-item is-instrument${activeDeviceId === "instrument" ? " active" : ""}`}
+                data-family="instrument"
+                data-index="0"
                 aria-pressed={activeDeviceId === "instrument"}
                 title={`${instrumentLabel} instrument`}
                 onClick={() => setSelectedDeviceId("instrument")}
               >
+                <span className="device-chain-index" aria-hidden="true">
+                  0
+                </span>
                 <span className="device-chain-dot" aria-hidden="true" />
                 {instrumentLabel}
               </button>
             )}
-            {track.effects.map((fx) => (
+            {track.effects.map((fx, chainIndex) => (
               <button
                 key={fx.id}
                 type="button"
                 draggable
                 className={`device-chain-item${activeDeviceId === fx.id ? " active" : ""}${fx.bypassed ? " is-bypassed" : ""}${draggedFxId === fx.id ? " is-dragging" : ""}${dropTargetFxId === fx.id ? " is-drop-target" : ""}`}
+                data-family={EFFECT_DEFS[fx.type].category}
+                data-index={hasInstrument ? chainIndex + 1 : chainIndex}
                 aria-pressed={activeDeviceId === fx.id}
                 title={`${EFFECT_DEFS[fx.type].name}${fx.bypassed ? " — bypassed" : ""}`}
                 onClick={() => setSelectedDeviceId(fx.id)}
@@ -370,6 +377,9 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
                   setDropTargetFxId(null);
                 }}
               >
+                <span className="device-chain-index" aria-hidden="true">
+                  {hasInstrument ? chainIndex + 1 : chainIndex}
+                </span>
                 <span className="device-chain-dot" aria-hidden="true" />
                 {EFFECT_DEFS[fx.type].name}
               </button>
@@ -575,6 +585,7 @@ function Device({
   return (
     <div
       className={`fx-device${devicesMode ? " device-editor" : ""}${fx.bypassed ? " bypassed" : ""}${expanded ? "" : " collapsed"}`}
+      data-family={editorSpec.family}
     >
       <div className="fx-device-header">
         {/* Collapse control only exists where the host owns the expand state.

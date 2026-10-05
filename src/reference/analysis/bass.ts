@@ -153,9 +153,10 @@ function median(values: number[]): number {
 
 function snapPitch(midi: number, tonicPc: number, mode: "major" | "minor"): number {
   const scale = mode === "major" ? [0, 2, 4, 5, 7, 9, 11] : [0, 2, 3, 5, 7, 8, 10];
-  const pc = ((Math.round(midi) % 12) + 12) % 12;
+  const rounded = Math.round(midi);
+  const pc = ((rounded % 12) + 12) % 12;
   const offset = ((pc - tonicPc) % 12 + 12) % 12;
-  if (scale.includes(offset)) return Math.round(midi);
+  if (scale.includes(offset)) return rounded;
   let nearest = scale[0];
   let bestDist = 12;
   for (const degree of scale) {
@@ -165,7 +166,11 @@ function snapPitch(midi: number, tonicPc: number, mode: "major" | "minor"): numb
       nearest = degree;
     }
   }
-  return Math.round(midi) + (((nearest - offset) % 12 + 12) % 12 > 6 ? nearest - offset - 12 : nearest - offset);
+  // Take the SHORTEST shift: nearest-offset can wrap past an octave either
+  // way (C#→C is -1, not +11) — never jump more than half an octave.
+  const raw = nearest - offset;
+  const shift = raw > 6 ? raw - 12 : raw < -6 ? raw + 12 : raw;
+  return rounded + shift;
 }
 
 export function detectBassNotes(pcm: Float32Array, sampleRate: number, options: BassDetectionOptions): BassDetection | null {

@@ -89,4 +89,33 @@ describe("applyVocalCompCommand", () => {
       /not staged/,
     );
   });
+
+  it("names comp tracks by TAKE INDEX so the strip legend and the mixer agree even when a later take wins more", () => {
+    // Take A (index 0) sings only bar 0; Take B (index 1) wins bars 1-7.
+    // B contributes the most bars, so a rank-ordered naming would hand B the
+    // "A" track while the strip legend still calls index 0 "Take A" — the
+    // exact silent mismatch this test forbids.
+    const doc = testDoc();
+    const takes = [
+      { bufferId: "buf-first", profile: profile(8, [phrase(0, 0, 0.4)], (bar) => (bar === 0 ? 0.4 : 0)) },
+      { bufferId: "buf-second", profile: profile(8, [phrase(1, 7, 0.95)], (bar) => (bar >= 1 ? 0.95 : 0)) },
+    ];
+    const plan = planVocalComp(takes.map((t) => t.profile))!;
+    expect(plan.perTakeBars[1]).toBeGreaterThan(plan.perTakeBars[0]!); // B is the top contributor
+    expect(plan.winner).toBe(1);
+
+    const next = applyVocalCompCommand(doc, takes, plan).execute(doc);
+    // The shipped prefix carries an em-dash ("Comp — voice "), so the names
+    // are matched by prefix + letter rather than assuming ASCII punctuation.
+    const voiceTrack = (letter: string) =>
+      next.tracks.find(
+        (t): t is import("../src/project-model/types").InstrumentTrack =>
+          t.kind === "instrument" && t.name.startsWith("Comp ") && t.name.endsWith(`voice ${letter}`),
+      );
+    const trackA = voiceTrack("A");
+    const trackB = voiceTrack("B");
+    // "voice A" must carry TAKE 0's material, not the top contributor's.
+    expect(trackA?.sampleId).toBe("buf-first");
+    expect(trackB?.sampleId).toBe("buf-second");
+  });
 });
