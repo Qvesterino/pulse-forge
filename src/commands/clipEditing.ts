@@ -5,6 +5,7 @@
  * splitAudioClipAtTick is the one to be careful with: a split that would leave a fragment
  * shorter than the fade region produces a click, so the real implementation lives in an
  * internal helper that enforces the minimum and the exported command delegates to it.
+ */
 import type { Command } from "./types";
 import type {
   ArrangementClip,
@@ -16,6 +17,7 @@ import type {
   GrooveSettings,
   Marker,
   NoteEvent,
+  Pattern,
   PatternAssist,
   ProjectDocument,
   Scene,
@@ -29,20 +31,19 @@ import { withPad } from "../project-model/transform";
 import { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
 import { patternPhaseOffsetAtTick, sceneOffsetAtTick } from "../project-model/events";
 import {
+  clampArrangementTransitionType,
   createGroupTrackModel,
   createPatternForDoc,
   MAX_ARRANGEMENT_CLIP_BARS,
   MAX_BPM,
   MIN_BPM,
   normalizeProject,
-  sceneRoleOf,
-  clampArrangementTransitionType,
   sanitizeArrangementTransitions,
+  sceneRoleOf,
 } from "../project-model/schema";
 import { sanitizeGateSteps, sanitizeManglerSteps } from "../project-model/modulators";
-import type { Pattern } from "../project-model/types";
 import { clampEffectParam, defaultParamsOf, EFFECT_META, normalizePluginParams } from "../effects/definitions";
-import { type EffectPreset } from "../effects/presets";
+import type { EffectPreset } from "../effects/presets";
 import { clampFxOutputTrimDb, factoryFxPresetGainDb } from "../effects/presetLoudness";
 import { uid } from "../shared/ids";
 import type { SharedPackSceneSketch, SharedPackSketch } from "../export/packCode";
@@ -51,43 +52,12 @@ import { generateLocalResultFromOptions } from "../intent/pipeline";
 import type { GenerationResult } from "../intent/types";
 import type { GenerateOptions } from "../ai/types";
 import { buildAssistPatch, normalizeAssistRequest } from "../assist/pipeline";
-import { ASSIST_ENGINE_ID, ASSIST_ENGINE_VERSION, type AssistInput } from "../assist/types";
+import type { AssistInput } from "../assist/types";
+import { ASSIST_ENGINE_ID, ASSIST_ENGINE_VERSION } from "../assist/types";
 import { canonicalizePattern, contentHash } from "../ai/evaluation";
 import { snapshot } from "./core";
-
-import type { Command } from "./types";
-import type {
-  ArrangementClip,
-  ArrangementTransition,
-  ArrangementTransitionType,
-  AudioClip,
-  DrumTrack,
-  Marker,
-  NoteEvent,
-  Pattern,
-  ProjectDocument,
-  Scene,
-  SceneRole,
-} from "../project-model/types";
-import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
-import { arrangementSecondsBetweenTicks, tempoAtTick } from "../project-model/scene-time";
-import { buildStemProject } from "../rendering/stems";
-import { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
-import { patternPhaseOffsetAtTick, sceneOffsetAtTick } from "../project-model/events";
-import {
-  clampArrangementTransitionType,
-  createGroupTrackModel,
-  MAX_ARRANGEMENT_CLIP_BARS,
-  MAX_BPM,
-  MIN_BPM,
-  normalizeProject,
-  sanitizeArrangementTransitions,
-  sceneRoleOf,
-} from "../project-model/schema";
-import { uid } from "../shared/ids";
-import type { SharedPackSceneSketch, SharedPackSketch } from "../export/packCode";
-import { snapshot } from "./core";
 import { cloneStepMeta, unlinkMarkersOfClips } from "./docOps";
+import { addAudioClip, audioClipDurationSec, clampClipFades } from "./audioClips";
 
 /* ---------------- clip editing ---------------- */
 export function updateAudioClip(
@@ -348,7 +318,7 @@ export function splitAudioClipAtTick(
   return splitAudioClipAtTickWithMinimumFragment(doc, clipId, splitTick, sourceDurationSec, 0.05);
 }
 
-function splitAudioClipAtTickWithMinimumFragment(
+export function splitAudioClipAtTickWithMinimumFragment(
   doc: ProjectDocument,
   clipId: string,
   splitTick: number,

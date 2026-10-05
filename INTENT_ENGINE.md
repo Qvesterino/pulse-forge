@@ -419,6 +419,16 @@ nota (degree + duration) a kontúra, čo príde ďalej?"
   Ide o deterministickú adaptáciu vstupných dát a retrieval, nie o online
   pretrénovanie neurónových váh; explicitný A/B ranker a osobný melodický
   tréning ostávajú samostatnými kanálmi.
+- **Ochrana pred neinformovanými príkladmi**: automatický capture zahazuje
+  príklad, ktorého naučiteľný vektor (`genre` + `energy`/`density`/`complexity`/
+  `variation` — presne tie polia, ktoré `personalStyleProfileFromExamples`
+  priemeruje) je identický s niektorým už uloženým príkladom. Zmerané 2026-10-04:
+  `normalizedContentHash` hashuje aj velocity nôt, ale `energy` a `velocitySpread`
+  sa počítajú z drum hits, ak vzor má biciele — takže úprava velocity nôt posunie
+  `contentHash` a zapíše nový príklad, ktorý o tejto editácii nehovorí nič. Bez
+  tejto ochrany sa podmienka „3 príklady" (`confidence`) splnila štyrmi ťahmi
+  rýchlosti bez jediného reálneho signálu. Manuálne tlačidlo „naučiť tento
+  pattern" je explicitný zámerný ťah a guard sa ho **ne**týka.
 - **Pokrytie testami (2026-10-04)**: `tests/style-example-ledger.test.ts` (11,
   validácia/dedupe/cap/DoS-guard/clear), `tests/pattern-style-example.test.ts`
   (7, extrakcia + privacy — žiadne noty/projekt v súhrne),
@@ -426,7 +436,9 @@ nota (degree + duration) a kontúra, čo príde ďalej?"
   `tests/style-observation.test.ts` (7, settle okno/pattern-switch/pauza/flush),
   `tests/project-store-user-edit.test.ts` (5, HRANICA: `executeUserEdit` fire-uje
   observer, `execute` NIE; throwing observer nesmie zhodiť edit),
-  `tests/intent-semantic.test.ts` (+2, learned-style korpus až po 3 príkladoch).
+  `tests/intent-semantic.test.ts` (+2, learned-style korpus až po 3 príkladoch),
+  `tests/noop-edit-contamination.test.ts` (7, meranie: no-op = 0 príkladov,
+  4× velocity ťah = 1 príklad, reálna drum zmena prejde).
 - **Export**: tlačidlo "⬇ ★" v dice tray stiahne pack JSON
   (`pulse-forge-favorites-<dátum>.json`).
 - **Retrain (C1+C2, jeden príkaz)**: `npm run favorites:retrain -- <pack.json>`

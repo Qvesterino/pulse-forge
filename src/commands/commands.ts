@@ -97,7 +97,21 @@ import { foldProductionIntent } from "./intentRouting";
 export * from "./effectParams";
 export * from "./audioClips";
 export * from "./drumContent";
-export * from "./clipEditing";
+// NOT `export *`: splitAudioClipAtTickWithMinimumFragment is exported from ./clipEditing because
+// ./timeRange calls it, but it was internal before the split — a star re-export would publish it
+// and the surface would be 234 names instead of 233.
+export {
+  updateAudioClip,
+  fittedLoopPlacement,
+  fitAudioClipTempo,
+  sliceAudioClipToArrangement,
+  duplicateAudioClip,
+  bounceStemsToAudioClip,
+  splitAudioClipAtTick,
+  stripSilenceAudioClip,
+  consolidateAudioClips,
+} from "./clipEditing";
+export type { FittedLoopPlacement } from "./clipEditing";
 export * from "./timeRange";
 export * from "./arrangementShapes";
 // The clip layers below read the transition list between neighbours, so this one needs a local

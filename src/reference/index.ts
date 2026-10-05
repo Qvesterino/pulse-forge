@@ -132,6 +132,18 @@ export {
   type ReferenceMatchReport,
 } from "./match";
 
+export {
+  analyzeResonances,
+  applyResonanceCutsCommand,
+  describeResonance,
+  RESONANCE_MAX_CUT_DB,
+  RESONANCE_MIN_PROMINENCE_DB,
+  RESONANCE_MIN_Q,
+  RESONANCE_MAX_Q,
+  type FreeBandSlot,
+  type ResonancePeak,
+} from "./resonance";
+
 /**
  * Confidence wording lives in the engine so the thresholds cannot drift from
  * the number that produced them. F4 renders the label directly; a panel that

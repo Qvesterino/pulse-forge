@@ -35,6 +35,7 @@ import { setTrackParams } from "../commands/project";
 import { applyMasterMatchEqCommand } from "../commands/master";
 import type { Command } from "../commands/types";
 import type { ProjectDocument } from "../project-model/types";
+import type { ResonancePeak } from "./resonance";
 
 /* ───────────────────────── measurement inputs ───────────────────────── */
 
@@ -344,6 +345,12 @@ export interface MatchStrip {
   hasContent: boolean;
   /** True when the track is muted at the track level (mute beats every fader move). */
   muted: boolean;
+  /**
+   * Narrow problem peaks found in this strip's own spectrum (the resonance
+   * detector). Optional: a strip measured before the resonance pass, or one
+   * whose render failed, simply carries none.
+   */
+  resonances?: ResonancePeak[];
 }
 
 /**

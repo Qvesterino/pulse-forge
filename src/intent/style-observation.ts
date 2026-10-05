@@ -3,12 +3,43 @@ import {
   automaticStyleLearningEnabled,
   countStyleExamples,
   preferredStyleGenre,
+  readStyleExamples,
   recordStyleExample,
   STYLE_EXAMPLES_CLEARED_EVENT,
+  type StyleExampleV1,
 } from "./style-example-ledger";
 import { patternStyleExampleFromProject } from "./pattern-style-example";
 
 const OBSERVATION_SETTLE_MS = 1400;
+
+/**
+ * The four features `personalStyleProfileFromExamples` actually averages,
+ * plus the genre it groups by. An automatic capture whose taste vector is
+ * identical to one already in the ledger teaches the profile nothing: the
+ * recency-weighted mean of a repeated vector is that same vector.
+ */
+function learnedTasteKey(example: StyleExampleV1): string {
+  return [
+    example.genre,
+    example.energy.toFixed(6),
+    example.density.toFixed(6),
+    example.complexity.toFixed(6),
+    example.variation.toFixed(6),
+  ].join("|");
+}
+
+/**
+ * An edit can move `contentHash` without moving any learned feature. Note
+ * velocity is the measured case: `normalizedContentHash` hashes note velocity,
+ * but `energy`/`velocitySpread` are derived from drum hits whenever the pattern
+ * has drums, so a melodic-velocity edit records a new example that is
+ * feature-identical to the one already stored. That inflates `exampleCount`
+ * and lets `confidence` reach 1.0 with no signal behind it.
+ */
+function alreadyLearned(example: StyleExampleV1): boolean {
+  const key = learnedTasteKey(example);
+  return readStyleExamples().some((existing) => learnedTasteKey(existing) === key);
+}
 
 export interface LocalStyleObserver {
   observe(doc: ProjectDocument, previousDoc: ProjectDocument): void;
@@ -48,6 +79,7 @@ export function createLocalStyleObserver(onLearned?: (count: number) => void): L
     if (!example) return;
     const captureKey = `${example.genre}:${example.contentHash}`;
     if (captureKey === lastCaptureKey) return;
+    if (alreadyLearned(example)) return;
     if (!recordStyleExample(example)) return;
     lastCaptureKey = captureKey;
     try {

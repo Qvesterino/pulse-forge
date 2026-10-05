@@ -4,11 +4,13 @@ import {
   PITCH_CLASSES,
   REFERENCE_STAGE_LABELS,
   analyzeReferenceAsync,
+  applyResonanceCutsCommand,
   attributeMatchToStrips,
   bpmCommand,
   buildReferenceMatch,
   confidenceLabel,
   decodeReferenceFile,
+  describeResonance,
   effectiveBpm,
   grooveCommand,
   keyCommand,
@@ -424,6 +426,22 @@ export function ReferenceMapPanel() {
     setApplied(command.label);
   }, [matchReport, matchStrips, doc, services.store]);
 
+  /** Cut every detected resonance on ONE track (the native EQ's two free
+   *  bands) as a single undo step. */
+  const applyResonancesForStrip = useCallback(
+    (strip: MatchStrip) => {
+      const peaks = strip.resonances ?? [];
+      const command = applyResonanceCutsCommand(doc, strip.id, peaks);
+      if (!command) {
+        setApplied(`No resonances to cut on ${strip.name}.`);
+        return;
+      }
+      services.store.execute(command);
+      setApplied(`${strip.name}: ${command.label}`);
+    },
+    [doc, services.store],
+  );
+
   // Tick length is tempo-dependent, so marker placement is only correct if the
   // project is actually running at the reference tempo when the user imports.
   const tempoMismatch = shownBpm !== null && Math.abs(shownBpm - doc.bpm) > 0.5;
@@ -670,6 +688,7 @@ export function ReferenceMapPanel() {
                 hasAnalysis={analysis !== null}
                 onRun={runMatch}
                 onApply={applyMatch}
+                onApplyResonances={applyResonancesForStrip}
                 canApply={
                   matchReport !== null &&
                   (matchReport.curve !== null ||
@@ -950,6 +969,7 @@ async function collectMatchStrips(doc: ProjectDocument, bank: SampleBank): Promi
   const { renderProject } = await import("../rendering/renderer");
   const { buildStemProject } = await import("../rendering/stems");
   const { analyzeMixHealth } = await import("../analysis/mixDoctor");
+  const { analyzeResonances } = await import("../reference/resonance");
   const contentTracks = new Set<string>();
   for (const pattern of doc.patterns) {
     for (const trackId of Object.keys(pattern.notes ?? {})) {
@@ -985,6 +1005,10 @@ async function collectMatchStrips(doc: ProjectDocument, bank: SampleBank): Promi
         bandShares: report.bandShares,
         hasContent: true,
         muted: track.mute === true,
+        // Narrow problem peaks in this stem's own spectrum — the per-track
+        // "cut 120 Hz" detector. Mono sum so a hard-panned strip is not
+        // analysed half-empty.
+        resonances: analyzeResonances(toMono(channels), buffer.sampleRate),
       });
     } catch {
       // Degrade to no attribution for this strip.
@@ -1012,6 +1036,7 @@ function MatchTab({
   hasAnalysis,
   onRun,
   onApply,
+  onApplyResonances,
   canApply,
 }: {
   report: ReferenceMatchReport | null;
@@ -1021,12 +1046,19 @@ function MatchTab({
   hasAnalysis: boolean;
   onRun: () => void;
   onApply: () => void;
+  onApplyResonances: (strip: MatchStrip) => void;
   canApply: boolean;
 }) {
   // Per-track attribution is derived from the measured report + strips — pure,
   // computed at render, so it can never drift from the table above it.
   const moves = report ? matchStripMoves(report, strips) : [];
   const attributions = report ? attributeMatchToStrips(report, strips) : [];
+  // Resonances come from the per-strip spectra; show only strips that found a
+  // narrow problem peak, worst-first.
+  const resonantStrips = strips
+    .map((strip) => ({ strip, peaks: strip.resonances ?? [] }))
+    .filter((entry) => entry.peaks.length > 0)
+    .sort((a, b) => (b.peaks[0]?.prominenceDb ?? 0) - (a.peaks[0]?.prominenceDb ?? 0));
   return (
     <div className="reference-match" data-testid="reference-match">
       <div className="reference-match-header">
@@ -1151,6 +1183,40 @@ function MatchTab({
               <p className="panel-sub">
                 Ownership is energy-weighted (loudness × band share), the same math the agent's mix diagnosis uses.
                 Moves are half the measured gap, clamped ±3 dB, and apply as one undo.
+              </p>
+            </div>
+          )}
+
+          {/* Problem frequencies — narrow resonances found in each strip's own
+              spectrum, each with a bounded EQ cut on the native EQ's free
+              surgical band. A flat spectrum yields nothing here (no invented
+              problems); the cut is the panel's per-track APPLY, one undo. */}
+          {resonantStrips.length > 0 && (
+            <div className="reference-match-resonances" data-testid="reference-match-resonances">
+              <h4>Problem frequencies</h4>
+              <ul>
+                {resonantStrips.map(({ strip, peaks }) => (
+                  <li key={strip.id} data-testid={`reference-match-resonance-${strip.id}`}>
+                    <strong>{strip.name}</strong>
+                    <ul>
+                      {peaks.map((peak) => (
+                        <li key={`${strip.id}-${peak.hz}`}>{describeResonance(peak)}</li>
+                      ))}
+                    </ul>
+                    <button
+                      type="button"
+                      onClick={() => onApplyResonances(strip)}
+                      data-testid={`reference-match-resonance-apply-${strip.id}`}
+                      title="Notch these peaks on this track (one undo step)"
+                    >
+                      CUT on {strip.name}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <p className="panel-sub">
+                Found by an averaged periodogram: local maxima above the local spectral median, with Q from each
+                peak&apos;s −3 dB bandwidth. The cut is 0.7× the prominence, clamped −12 dB, on the EQ&apos;s free band.
               </p>
             </div>
           )}
