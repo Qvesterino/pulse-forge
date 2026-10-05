@@ -88,7 +88,9 @@ describe("gallery REST API", () => {
 
     const empty = await fetch(`${base}/api/gallery`);
     expect(empty.status).toBe(200);
-    expect(await empty.json()).toEqual({ items: [] });
+    // Battles flywheel (9d5d3b0b): the feed response echoes its effective
+    // sort — "new" unless ?sort=battles (unknown sorts normalize to "new").
+    expect(await empty.json()).toEqual({ items: [], sort: "new" });
 
     const post = await fetch(`${base}/api/gallery`, {
       method: "POST",

@@ -1017,6 +1017,16 @@
           }
         },
         {
+          "type": "pitchCorrect",
+          "defaults": {
+            "amount": 1,
+            "speed": 0.7,
+            "root": 0,
+            "scaleMode": 1,
+            "mix": 1
+          }
+        },
+        {
           "type": "vinyl",
           "defaults": {
             "amount": 0.5,

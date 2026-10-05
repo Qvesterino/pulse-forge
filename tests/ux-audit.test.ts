@@ -47,6 +47,9 @@ const ALL_KEYS: ShortcutKey[] = [
   "panelMod",
   "panelExport",
   "panelDice",
+  // Alt+7/8 (ROADMAP-UI-2027 V1): every dock tab keyboard-reachable.
+  "panelIntent",
+  "panelMidi",
   "nextPattern",
   "prevPattern",
   "seekHome",
@@ -91,12 +94,14 @@ describe("keyboard shortcut table", () => {
   });
 
   it("maps every panel shortcut to a real bottom-panel id", () => {
-    const realPanelIds = new Set(["mixer", "fx", "arr", "mod", "exp", "midi", "dice"]);
+    // "intent" is the real dock id App.tsx setBottomPanel() accepts
+    // (Alt+7); "fx" is canonicalized to the unified Devices panel in App.
+    const realPanelIds = new Set(["mixer", "fx", "arr", "mod", "exp", "midi", "dice", "intent"]);
     for (const sc of SHORTCUTS) {
       const panel = panelIdOfShortcut(sc.key);
       if (panel) expect(realPanelIds.has(panel), `${sc.key} → unknown panel "${panel}"`).toBe(true);
     }
-    expect(Object.keys(PANEL_IDS_BY_SHORTCUT)).toHaveLength(6);
+    expect(Object.keys(PANEL_IDS_BY_SHORTCUT)).toHaveLength(8);
   });
 });
 
