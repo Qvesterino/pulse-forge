@@ -1,84 +1,159 @@
-# CAMPAIGN_STATE — CROSS-PLATFORM READINESS CAMPAIGN
+# CAMPAIGN STATE
 
-> **CAMPAIGN CLOSED 2026-09-23 — ALL 13 GOALS DONE.** Final deliverables:
-> PLATFORM_CAPABILITY_MATRIX · CROSS_PLATFORM_READINESS_REPORT · PORTING-SLICE-PLAN.
-> Open queues live in CROSS_PLATFORM_READINESS_REPORT §3 and are maintained by normal sessions.
+## ACTIVE CAMPAIGN
 
-**Objective:** make Pulse Forge's product behavior explicit enough that a
-future Android / iOS / desktop implementation can _reuse_ behavior and
-architectural contracts instead of reverse-engineering them. This campaign
-does **not** translate code to Kotlin/Swift — it prepares the ground
-(contracts, state models, persistence clarity, golden behaviors, parity
-tests).
+Name: BUILD & TOOLCHAIN — gate integrity & post-feature verification (playbook campaign 9, goals 04+05 with a regression sweep)
+Current goal: CLOSED 2026-10-06 — all non-owned red gates repaired; see NEXT HIGHEST VALUE WORK for continuation
+Last updated: 2026-10-06 (session sess_85d94465)
 
-**Started:** 2026-09-21 · **Source prompt:** user-issued
-"CROSS-PLATFORM READINESS CAMPAIGN" (13 sequential goals).
-**Full audit detail:** `docs/PORTABILITY_MAP.md` · **Session records:**
-`AGENT_WORK_LOG.md` (append per goal, match existing entry style).
+> Historical: the previous campaign in this file (CROSS-PLATFORM READINESS,
+> 2026-09-21→09-23, all 13 goals DONE) is preserved in git history and in
+> `docs/PORTABILITY_MAP.md`; its open queues live in
+> `CROSS_PLATFORM_READINESS_REPORT.md` §3.
 
----
+## VERIFIED FIXED
 
-## Execution contract (recap)
+### U0.5 tempo rewrite measured a phantom pulse on steady tones
+- Area: `src/ai/audio-tempo-key.ts` (UN-SUNO U0.5 flux rewrite 464f512d)
+- Root cause: the rewrite dropped the old `onsets < 8 → null` honesty gate; a stationary sine leaves periodic spectral-leakage wobble in the rectified flux envelope which the self-normalizing candidate scorer promotes to "150 BPM @ 0.979".
+- Fix: crest gate — baseline envelope peak/mean < 8 → null. Measured: sine ≈ 4.8, click trains 29–38, golden fixtures 20–44.
+- Verification: vocal-profile 55-test adjacency all green incl. the honest-null spec; golden-set LIVE floors still green.
+- Files changed: src/ai/audio-tempo-key.ts, tests/services/wiring.test.ts (fake engine gained getRtLoad after 020a721d)
+- Date/session: 2026-10-06, commit `dfe6bf06`
 
-Do not merely report problems: investigate → root-cause → smallest safe fix →
-implement when evidence suffices → validate → inspect regressions → update
-this file → continue. Prefer architecture-preserving changes. Each goal runs
-as its own session. Before every goal: read this file, inspect previous work,
-continue from existing evidence.
+### format:check was red on 103 files with three different causes
+- Area: Prettier gate (`npm run format:check`)
+- Root cause: (a) 68 files of real drift accumulated by feature waves that skipped `npm run format`; (b) 35 worktree-only eol artifacts (see VERIFIED OPEN — eol policy); (c) tool-generated artifacts (vendored cores, generated presets, golden JSONs) that no emitter formats.
+- Fix: `.prettierignore` now scopes the gate to first-party code (vendored plugin-core trees = script-generated mirrors, same precedent as `public/licenses/`; generated presets + golden JSONs = emitters own the byte shape); 34 first-party files formatted.
+- Verification: prettier --list-different on committed content before/after; typecheck 0; targeted suites green.
+- Files changed: .prettierignore + 34 files
+- Date/session: 2026-10-06, commit `a3823bbb`
 
-## Goal ledger
+### Three suites still tested the deleted inline multitap runtime
+- Area: tests/invariants, tests/fx-tempo-sync, tests/multi-tap-delay
+- Root cause: multi-tap migrated to an AudioWorklet wrapper (449039ad era); pins and fake-context tests never followed.
+- Fix: invariant #7 pin now documents MixPreviewChipLazy (kyx_mix_idea A/B preview, private-context owner, 65e117f8) next to SpectralEditPanel; tempo-sync grep points at multitap-node.ts's scheduled-write path; live-sync tests drive createMultitapNode directly (beatmangler fake-worklet pattern).
+- Verification: 44 tests green across the three files.
+- Date/session: 2026-10-06, commit `d9304cc3`
 
-| #   | Goal                                                              | Status                | Evidence                                                                                                                                                                                                                                                                                                                                                                        |
-| --- | ----------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 01  | Portability readiness audit                                       | **DONE** (2026-09-21) | `docs/PORTABILITY_MAP.md`, work log GOAL 01, fixes in `src/export/download.ts` (+4 call sites), `src/intent/audition.ts`                                                                                                                                                                                                                                                        |
-| 02  | Domain logic extraction                                           | **DONE** (2026-09-21) | `src/instruments/definitions.ts` (pure meta; schema/targets/commands re-pointed, registry re-exports), `src/shared/{theme-data,pad-keys-data}.ts` (encoders React-free), `src/intent/favorites-core.ts`; pins in `tests/domain-purity.test.ts`. Leftover: effects-registry split (race with concurrent session) → ride along in GOAL 03                                         |
-| 03  | Platform contract definition                                      | **DONE** (2026-09-21) | docs/PLATFORM-CONTRACTS.md catalog; persistence/contracts.ts (11 interfaces, threaded through Services); shared/assetUrls.ts (10 sites migrated); services/audio-decode.ts (3 repos migrated); effects defs split ride-along done. Full tsc 0 errors                                                                                                                            |
-| 04  | State machine formalization                                       | **DONE** (2026-09-22) | docs/STATE-MACHINES.md (8 machines, verdict ledgers); fixes: onDocChanged closed-guard (write-after-close class), renderer abort-bank leak, collab follower resync. Glue-park resolved upstream (1361202) — engine changes reverted. 243/243 tests                                                                                                                              |
-| 05  | Persistence & schema evolution                                    | **DONE** (2026-09-22) | docs/PERSISTENCE-SCHEMAS.md (15 stores + 39 web-storage keys + 11 formats, ownership + versioning); schema-evolution + ydoc-drift tests; tags materialization drift FIXED; pluginMode sanitized; v8 incident pinned                                                                                                                                                             |
-| 06  | Golden behavior & parity tests                                    | **DONE** (2026-09-22) | tests/domain-goldens/ (5 families, 43 cases + decode pins) + docs/GOLDEN-PARITY.md consumer guide; goldens:capture workflow; ids nested-restore fix; replay stable ×3                                                                                                                                                                                                           |
-| 07  | Error boundaries & fault containment                              | **DONE** (2026-09-22) | docs/FAULT-CONTAINMENT.md (boundary map + recorded gaps); UI boundaries (Sequencer/Inspector/Palette/TopBar popovers/gallery cards/Landing); setProject + doSave rejection paths closed; runtime worklet processor-error reporter + diagnostics; 5 containment tests. Four mixed-ownership files ride in the tree until absorption                                              |
-| 08  | Risk-based test coverage expansion                                | **DONE** (2026-09-22) | Risk-ranked additions: services save-failure drain (data-loss guard), GroovePool + kit-pools + MidiClock-master + zyvo-contract suites; sec-debug deleted, ai-markov strengthened; remaining risk areas recorded (ExportPanel real cancel, scene-intensity boundaries, latencyProbe, injection-seam generalization)                                                             |
-| 09  | Determinism & reproducibility audit                               | **DONE** (2026-09-22) | velocityFx seedable (optional rng; verdict: UI randomness is creative + baked into commands — not a defect); velocity-fx golden family + 8 unit pins; wall-clock ids verified uniqueness-only (intentional); timing-dependent tests swept (verdicts recorded)                                                                                                                   |
-| 10  | Mobile readiness audit                                            | **DONE** (2026-09-22) | docs/MOBILE-READINESS.md — ZERO architecture blockers (verified); FIXED: piano-roll/arrangement/auto-canvas touch-action, coarse hit pads for 10px notes, safe-area base shell, storage.persist() + data-safety copy, semantic model constrained-device gate. QUEUED: long-press for right-click-only workflows (recipe in doc), add-marker tap control, collab offline wording |
-| 11  | Platform capability matrix (`PLATFORM_CAPABILITY_MATRIX.md`)      | **DONE** (2026-09-23) |                                                                                                                                                                                                                                                                                                                                                                                 |
-| 12  | Migration readiness review (`CROSS_PLATFORM_READINESS_REPORT.md`) | **DONE** (2026-09-23) |                                                                                                                                                                                                                                                                                                                                                                                 |
-| 13  | Porting slice plan                                                | **DONE** (2026-09-23) |                                                                                                                                                                                                                                                                                                                                                                                 |
+### kyx_mix_idea landing missed its own surface bookkeeping
+- Area: MCP surface contracts
+- Root cause: the 35th tool shipped with mirrors synced but count pins (34), name lists, and the ROT GUARD playbook text untouched; two adjacent tests also raced the Fáza 2b factory-bank warm gate.
+- Fix: pins 34→35 with kyx_mix_idea in MCP_TOOLS order; playbook documents it inside the 8000-char compactness budget (diagnose_mix gloss compressed to pay); checkpoint-diff test awaits its mutations (probe-verified product code was correct); web-host crash test polls for the mcp-result with a 5 s bound; mirrors regenerated.
+- Verification: mcp family + desktop-mcp + mirror-sync 57 tests green.
+- Date/session: 2026-10-06, commit `6ee711a5`
 
-## Highest-risk portability dependencies (GOAL 01 verdict)
+### Contract pins lagged three shipped features
+- Area: domain goldens, gallery REST, ux-audit shortcut table
+- Root cause: pitchCorrect (47→48 effects — CURRENT-STATE already said 48) without golden re-capture; 091b8cfb subpath-mount share-link change without serialization re-capture; battles flywheel (9d5d3b0b) response shape; ROADMAP-UI-2027 V1 Alt+7/8 shortcuts.
+- Fix: goldens:capture re-run — surgical diff (+10 lines pitchCorrect row, 1 line share code; decode-goldens preserved by design); pins updated to current contracts.
+- Verification: domain-goldens 12/12, gallery-server 22/22, ux-audit green.
+- Date/session: 2026-10-06, commit `9e477015`
 
-Ranked, with contract-owner goals — full reasoning in
-`docs/PORTABILITY_MAP.md` §5:
+### Ultina group-bus automation pin predated 16th-grid interpolation
+- Area: tests/ultina-core-hardening
+- Root cause: AutomationBridge (badfd106) interpolates continuous device params on a 16th-note grid; the pin expected the pre-decomposition endpoint-only writes.
+- Fix: pin follows the documented interpolation (5 writes for a 480-tick ramp).
+- Verification: 60/60 green.
+- Date/session: 2026-10-06, commit `4061bdcb`
 
-1. Root-absolute asset serving (worklets + models) → GOAL 03 asset-resolver contract.
-2. Persistence decodes audio via throwaway OfflineAudioContext (3 repos) → GOAL 03 audio-decode contract.
-3. Audio I/O: mic/MIDI/second-live-contexts (video export, intent audition) → GOAL 03/04.
-4. Worker-everything + sync main-thread fallbacks → GOAL 11 matrix.
-5. PWA/offline model bound to Vite plugins → GOAL 11 matrix.
-6. Collab ws/wss endpoints derived from `location` → GOAL 03 network contract.
-7. ~~Export encoders pull React via `packCode.ts` → ui imports~~ **RESOLVED in GOAL 02** (`src/shared/{theme-data,pad-keys-data}.ts`; pinned by `tests/domain-purity.test.ts`).
-8. Instrument/effect DEFINITIONS entangled with audio RUNTIME registries → **instrument half RESOLVED in GOAL 02** (`src/instruments/definitions.ts`); effects half pending (concurrent-session race on `src/effects/registry.ts`).
+## VERIFIED OPEN
 
-## Environment cautions (read every session)
+### Intent/symbolic/grooves/melodic + engine-pin test family (~23 tests, 18 files) red
+- Area: intent-model artifact pins (ai-baseline, creative-task-contract, intent-model-loader, intent-model-artifact, intent-model-sft-prompt, intent-sft-golden, intent-wrongkind-wave, model-packs ×2); grooves/melodic wave (drum-rr-declick, metric-accent, symbolic-melodic ×2, symbolic-prior ×4, melodic-embedding-conditioning); engine source-grep pins (trigger-engine "method inventory", warp-manager "delegates" — against the sibling's committed AudioEngine refactor); license render (sample-license-gate: credits.md vs fresh PACK_CREDITS render after their sample/preset waves).
+- Evidence: final clean full-suite run at HEAD (804 files passed / 18 failed, 140 skipped); the engine-pin + model-packs + sample-license subset verified red SOLO at BOTH 5ab7bbc7 and the pre-session commit 8f0de079 → pre-existing, introduced by the concurrent session's committed waves, not by this campaign's commits.
+- Root cause: mixture — in-flight grooves/melodic wave, intent-model artifact re-pins dependent on gitignored local datasets, engine refactor pins not yet updated, credits render stale after sample waves (per 10-03 classification: no unowned items).
+- User/system impact: none new — pre-existing, owned.
+- Why unresolved: active ownership by the concurrent session's waves (they were still editing src/intent/* + engine files at session close); re-pinning their surface mid-refactor would just break again.
+- Recommended next action: after their waves commit, solo re-run this family; re-classify anything still red.
+- Priority: medium (owned elsewhere)
 
-- **A concurrent agent session edits this repo live** (as of 2026-09-21:
-  morph-dynamics listening-room tooling + symbolic-melodic model retrain,
-  uncommitted). Never `git add -A` / `git checkout .` — commit **explicit
-  paths only**. Their past commits have reverted in-flight work: re-verify
-  your files survived after they commit.
-- AudioEngine + modulation worklets are their active refactor zone — gather
-  engine-area evidence by reading, avoid engine edits unless the goal demands it.
-- Pre-commit hook is **disabled** — run `npm run typecheck` +
-  `npm run format:check` (and targeted tests) manually before committing.
-- If full typecheck fails in files you did not touch, use filtered tsc on
-  your files and note it in the work log.
-- Known test-environment quirk: full suite runs under jsdom; "pure" modules
-  in the map don't need it, but vitest gives it to them anyway.
+### format:check still red on ~35 eol-artifact files + in-flight sibling files
+- Area: Prettier gate, whole repo
+- Evidence: committed content of those files passes Prettier; worktree copies differ only in CRLF/LF. `core.autocrlf=true`, NO `.gitattributes` exists.
+- Root cause: the repository has no eol policy; any git checkout rewrites worktree files to CRLF while Prettier's default endOfLine is LF. Normalizing worktree copies to LF makes them git-phantom-modified instead — there is no state that is both git-clean and Prettier-clean on this machine.
+- User/system impact: the documented merge gate cannot go fully green on Windows checkouts; noise in every git status.
+- Why unresolved: the fix (`* text=auto eol=lf` + `git add --renormalize .`) rewrites every text file — high-churn, must be done in a quiet window with no concurrent sessions.
+- Recommended next action: dedicated session: add .gitattributes, renormalize, verify fresh-clone format:check + build, coordinate via this file.
+- Priority: high (structural, keeps re-breaking a merge gate)
 
-## Gate commands
+### Tool emitters don't format their output
+- Area: scripts/capture-domain-goldens.mts (JSON.stringify vs Prettier style), preset-pack generators (measure-preset-loudness.mjs etc.)
+- Evidence: golden JSONs + *.generated.ts were the bulk of real format drift; now prettier-ignored, so the gate no longer forces it.
+- Root cause: emitters write raw serializations; nothing runs Prettier on their output.
+- Why unresolved: cosmetic; ignoring was the safe shared-tree move.
+- Recommended next action: make each emitter pipe through prettier.format, then remove the corresponding .prettierignore lines.
+- Priority: low
 
-```bash
-npm run typecheck        # strict tsc --noEmit
-npm run test             # full vitest suite
-npm run format:check     # prettier
-npm run build            # production + bundle budgets
-```
+## NEEDS INVESTIGATION
+
+### docs/AGENTS.md effect/instrument counts drifted from CURRENT-STATE
+- Area: AGENTS.md §2 ("42 core effects", "15 instrument kinds" vs CURRENT-STATE 48 effects / memory's 22 instruments)
+- Suspicion/evidence: AGENTS.md repository-map one-liners were never bump-tracked; CURRENT-STATE is the canonical count file.
+- What remains unknown: exact instrument count from a fresh grep; whether other AGENTS.md numbers drifted.
+- Recommended investigation: one docs session, counts reproduced by grep only.
+
+## BLOCKED
+
+### Deployed smoke + LICENSE (carried from earlier campaigns)
+- Blocker: user-owned deploy URL + LICENSE decision.
+- Required dependency / information / environment: `KYX_DEPLOY_URL`, LICENSE file.
+- Safe next action once unblocked: `npm run release:deployed-smoke`.
+
+## DO NOT TOUCH
+
+### Stem separation (UN-SUNO S-wave) + loudness/mixer refactor zone
+- Reason: a concurrent session is actively working here (S0 HPSS core f493d5ef + 8f0de079 loudness harness; worktree edits in AudioEngine.ts, meteringRig.ts, Meter.tsx, Mixer.tsx, intentRouting.ts, measure-preset-loudness.mjs, preset-loudness*, 03-mixer.css during this session).
+- Known constraint: shared working tree — stage explicit paths only, commit early.
+- Conditions under which modification would become safe: their wave commits and this file records it.
+
+## DEFERRED / OUT OF SCOPE
+
+### `.gitattributes` eol policy + renormalization
+- Reason: high-churn mechanical rewrite of every text file; unsafe on a shared tree with live concurrent sessions.
+- Relevant future campaign: Build & Toolchain, quiet-window session.
+
+### AGENTS.md count refresh
+- Reason: docs-only, needs a grep-verified sweep; not blocking.
+- Relevant future campaign: Documentation ↔ Code Reconciliation.
+
+## IMPORTANT INVARIANTS
+
+- The ten AGENTS.md §3 invariants (UI intent / model truth / transport time / scheduler events / engine execution; no React realtime truth; one engine live+offline; determinism; AudioWorklet boundary; schema versioning; useContext sole AudioNode path; ADR 0014 scope honesty; no WASM DSP path shipped; no innerHTML/eval).
+- **Pins follow features in the same commit.** This session's whole second half was feature waves that shipped without their contract pins (count lists, ROT GUARD docs, goldens, shortcut tables). When adding a tool/effect/shortcut: update mcp pins + playbook + CURRENT-STATE + goldens in the SAME commit.
+- **goldens:capture blesses drift by design** — always review the capture diff before committing; decode-goldens.json is never regenerated.
+- **Never pipe gate runs through `tail`** (exit codes and full failure lists are lost — relearned 2026-10-06 at the cost of a re-run).
+
+## HIGH-RISK AREAS
+
+- Shared working tree with live concurrent sessions:
+  - Why risky: absorbed commits, in-flight edits mid-typecheck, new unformatted files appearing between scans.
+  - Relevant files/modules: docs/MULTI-AGENT-GUARDRAILS.md (protocol), git status before every batch.
+- MCP surface:
+  - Why risky: four coupled artifacts (src/mcp/tools.ts, generated mirrors, playbook/vocab text, count pins in 3 test files) — the mirror-sync test only covers the mirrors.
+  - Relevant files/modules: src/mcp/tools.ts, src/mcp/onboarding.ts, tests/mcp-*.test.ts, desktop/mcp-tool-defs.cjs, server/mcp-core.mjs.
+
+## RECENT VALIDATION
+
+- Command/check: `npm run typecheck` — EXIT 0 (final HEAD a70f5a49; the build's tsc also caught one dead helper the earlier typecheck predated — re-run typecheck after EVERY edit batch).
+- Command/check: full vitest at 5ab7bbc7 in the clean D:/pf-verify worktree — **822 files: 804 passed / 18 failed; 9109 tests: ~23 failed / 140 skipped**. All 18 failing files are the owned family above (verified: the 5 non-10-03-classified ones also fail solo at the pre-session commit 8f0de079). Every failure this campaign touched is green: vocal-profile, wiring, multitap ×3, fx-tempo-sync, invariants, ultina, goldens ×2, gallery, ux-audit ×2, mcp-core ×2, mcp-onboarding, mcp-web-host, mcp-checkpoint-diff, desktop-mcp.
+- Command/check: `npm run build` — EXIT 0 at a70f5a49, all budgets respected (entry 255/1070, DAW 3839/5000, worklets 137/150, on-demand 640/650, boot path 2129/2400).
+- Command/check: `npm run format:check` — **zero real first-party drift at HEAD**; remaining red = 34 eol artifacts (committed content clean; VERIFIED OPEN) + the concurrent wave's in-flight files.
+- Relevant notes: sibling session's worktree edits typechecked clean by session end (their getTrackPreMeterSnapshot gap closed mid-flight).
+
+## NEXT HIGHEST VALUE WORK
+
+1. Quiet-window `.gitattributes` eol policy + renormalize (unblocks a permanently green format gate).
+2. After the intent/symbolic/grooves wave commits: solo re-run of the ~14-test owned-red family; re-classify stragglers.
+3. AGENTS.md count sweep (grep-verified) + the deferred emitter-formatting work.
+4. Re-establish the fresh-clone bootstrap check (`npm install && npm run dev` on a clean machine) — last verified 10-03.
+
+## SESSION LOG
+
+### 2026-10-06 / Build & Toolchain — gate integrity & post-feature verification
+- Inspected: CAMPAIGN_STATE (closed predecessor), git history (UN-SUNO U0–U7 + concurrent stem-separation S0 + loudness waves), 103 Prettier-flagged files (classified against committed content), full-suite failure set (34 → 32 → 23 fails across runs) against the 10-03 baseline classification, D:/pf-verify worktree at HEAD for falsification (5 suspect failures proven pre-existing at 8f0de079).
+- Fixed: 10 commits — dfe6bf06 (tempo honesty gate + wiring fixture), a3823bbb (format gate scoping + 34 files), d9304cc3 (multitap/invariants re-pins), 6ee711a5 (MCP surface bookkeeping ×5 files), 9e477015 (goldens/gallery/ux-audit re-baselines), 4061bdcb (ultina pin), 5ab7bbc7 (format follow-up), a70f5a49 (dead helper).
+- Verified: every fix green solo at HEAD; typecheck EXIT 0; full suite 804/822 files green with all 18 remaining failures owned/classified; production build EXIT 0 with budgets respected.
+- Unresolved: eol policy (VERIFIED OPEN, high), owned intent/grooves/engine-pin family (VERIFIED OPEN, medium), emitter formatting (low), AGENTS.md counts (NEEDS INVESTIGATION).
+- Tests/checks: see RECENT VALIDATION.
+- Recommended continuation: NEXT HIGHEST VALUE WORK items 1–2.
