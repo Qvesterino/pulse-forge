@@ -137,7 +137,9 @@ const LOW_PASS_HZ = 300;
  */
 const FMIN_HZ = 40;
 const FMAX_HZ = 250;
-const HOP_MS = 20;
+/** 10 ms frames: notes short as one 16th sit right at the minimum-note
+ * boundary, and every frame a kick mask eats is a frame the note loses. */
+const HOP_MS = 10;
 /** Voiced frame clarity gate. The voice gate (0.5) is TOO HIGH for bass in
  * a mix: the kick's tail intermodulates with the bass fundamental and drags
  * YIN clarity of real bass frames to 0.50–0.65 (measured), while pure-kick
@@ -176,6 +178,57 @@ function snapPitch(midi: number, tonicPc: number, mode: "major" | "minor"): numb
   return rounded + shift;
 }
 
+/**
+ * U2.5 kick-tail mask. One-pole low-pass at 120 Hz → per-YIN-frame energy;
+ * a frame is masked while the energy decays from a transient spike (2.5× the
+ * track median, falling). Sustained bass never spikes, so clean material
+ * keeps an empty mask. Returns 0/1 per 20 ms frame slot.
+ */
+function kickTailMask(small: Float32Array, smallRate: number, frameSec: number): Uint8Array {
+  // One-pole LP 120 Hz on the decimated signal.
+  const coeff = Math.exp((-2 * Math.PI * 120) / smallRate);
+  const frameCount = Math.max(1, Math.ceil(small.length / (smallRate * frameSec)));
+  const energy = new Float64Array(frameCount);
+  let lp = 0;
+  for (let i = 0; i < small.length; i++) {
+    lp = small[i] + coeff * (lp - small[i]);
+    const frame = Math.min(frameCount - 1, Math.floor(i / (smallRate * frameSec)));
+    energy[frame] += lp * lp;
+  }
+  let maxEnergy = 0;
+  for (let f = 0; f < frameCount; f++) {
+    energy[f] = Math.sqrt(energy[f] / Math.max(1, smallRate * frameSec));
+    if (energy[f] > maxEnergy) maxEnergy = energy[f];
+  }
+  if (maxEnergy <= 0) return new Uint8Array(frameCount);
+
+  // Track median for the spike test.
+  const sorted = [...energy].sort((a, b) => a - b);
+  const med = sorted[Math.floor(frameCount / 2)] || 0;
+
+  const mask = new Uint8Array(frameCount);
+  let release = -1; // frame index where the current mask ends
+  for (let f = 0; f < frameCount; f++) {
+    const value = energy[f];
+    // 1.6x median, not 2.5x: the sustained bass itself lifts the median, so
+    // a measured kick spike sits at only ~2.4x — 2.5 never fired (techno's
+    // masks stayed empty). The rising-edge test (1.3x previous frame) keeps
+    // sustained bass from ever triggering.
+    const onset = value > med * 1.6 && (f === 0 || value > energy[f - 1] * 1.45) && release < f;
+    if (onset) {
+      // decay threshold: 30% of the spike, at most ~2.5 half-lives of a
+      // typical synthesized kick — cap keeps a pathological signal from
+      // masking everything.
+      const threshold = value * 0.3;
+      let end = f + 1;
+      while (end < frameCount && energy[end] > threshold && end - f < Math.round(0.25 / frameSec)) end++;
+      release = end;
+    }
+    if (release > f) mask[f] = 1;
+  }
+  return mask;
+}
+
 export function detectBassNotes(
   pcm: Float32Array,
   sampleRate: number,
@@ -211,9 +264,21 @@ export function detectBassNotes(
     return offset === 0 || offset === 3 || offset === 4 || offset === 7 || offset === 10;
   };
 
+
+
   const stepSec = 60 / options.bpm / 4;
-  const minNoteSec = Math.max((HOP_MS / 1000) * 2, stepSec * 0.3);
+  const minNoteSec = Math.max((HOP_MS / 1000) * 4, stepSec * 0.25);
   const frameSec = HOP_MS / 1000;
+
+  // U2.5 — KICK-TAIL MASK. The kick's decaying tail out-claries the bass
+  // fundamental in YIN (measured: tail frames score 0.7+ clarity while real
+  // bass under a fresh kick sits at 0.5-0.65), and when the sweep's terminal
+  // pitch lands on a chord tone the prior lets those frames through. So
+  // detect low-band transients and keep frames UNVOICED while the ≤120 Hz
+  // energy decays from a spike. A sustained bass never triggers it (its
+  // energy is flat — no 2.5x median spikes), and the same-pitch gap merge
+  // re-joins notes that a mask split.
+  const masked = kickTailMask(small, smallRate, frameSec);
 
   interface Run {
     frames: PitchFrame[];
@@ -226,6 +291,10 @@ export function detectBassNotes(
   };
   for (const frame of frames) {
     if (frame.clarity < BASS_CLARITY_GATE || frame.midi <= 0 || !chordAllows(frame.timeSec, frame.midi)) {
+      flush();
+      continue;
+    }
+    if (masked[Math.round(frame.timeSec / frameSec)] === 1) {
       flush();
       continue;
     }
@@ -242,7 +311,18 @@ export function detectBassNotes(
   const raw: { startSec: number; durationSec: number; midi: number; clarity: number }[] = [];
   for (const run of runs) {
     if (run.frames.length * frameSec < minNoteSec) continue;
-    const startSec = run.frames[0].timeSec;
+    let startSec = run.frames[0].timeSec;
+    // Re-anchor: a run whose preceding frame slot was masked begins AT the
+    // mask — the note was sounding under the kick tail, the tracker just
+    // could not see it. Without this, every kick-coincident note starts late.
+    const firstSlot = Math.round(startSec / frameSec);
+    if (firstSlot > 0 && masked[firstSlot - 1] === 1) {
+      let slot = firstSlot - 1;
+      // Cap the slide: a mask longer than ~200 ms is not one note's start.
+      const earliest = Math.max(0, firstSlot - Math.round(0.2 / frameSec));
+      while (slot > 0 && masked[slot] === 1 && slot > earliest) slot--;
+      startSec = slot * frameSec;
+    }
     const durationSec = run.frames[run.frames.length - 1].timeSec - startSec + frameSec;
     const midiValue = median(run.frames.map((f) => f.midi));
     const midi = Math.round(midiValue);
@@ -257,7 +337,13 @@ export function detectBassNotes(
   const merged: typeof raw = [];
   for (const note of raw) {
     const prev = merged[merged.length - 1];
-    if (prev && note.midi === prev.midi && note.startSec - (prev.startSec + prev.durationSec) < stepSec * 0.5) {
+    if (
+      prev &&
+      note.midi === prev.midi &&
+      // Re-anchored notes may overlap their predecessor — glue only true gaps.
+      note.startSec >= prev.startSec + prev.durationSec &&
+      note.startSec - (prev.startSec + prev.durationSec) < stepSec * 0.5
+    ) {
       prev.durationSec = note.startSec + note.durationSec - prev.startSec;
       continue;
     }
