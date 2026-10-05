@@ -255,6 +255,31 @@ re-lock). `transcribeTrack` wiring: bass implemented od U2, warnings honest
   (four-on-floor vs breakbeat vs half-time goldeny).
 - **Úsilie:** ~1 blok.
 
+### U3 — Drum map per sekcia + robustizácia — **HOTOVÉ 2026-10-04 (core, honest-partial floors; U3.5 zostáva)**
+
+`src/reference/analysis/drums.ts` (štart od paralelnej session, dokončené a
+doladené touto vlnou): FFT band energy envelopes (kick 40–120, snare 150–800,
+hat 6k+ Hz) → per-step okná. **Kick = percussiveness diskriminátor** (attack/
+sustain ratio ≥ 2.2 — bassa v tom istom pásmu SUSTAINUJE, kick decayuje; band
+alone chytil každý bass onset). **Snare = broadband gate** (snare noise siaha
+do hat bandu, bass harmonics nie — magnitude threshold zlyháva, bass 2./3.
+harmoniky sú v snare band rovnako loud). **Phase 0 pre obe bandy** — count
+sweep nevie fázu na hustom materiáli (60 ms okno chytí každý hit pri každej
+fáze) a mass tie-break vybral pol-krok shift. KPI pattern-level (truth =
+union slotov cez bary, ±1 krok): kick recall 1.00 všade, F1 house 0.91 /
+techno 0.94 (±1); snare EXACT 1.00 na techno/boombap/trap; hat aligned
+(house 0.80). **Floors zamknuté** do golden-set.test.ts.
+
+**Wiring:** `transcribeTrack` → `drums.implemented: true` s
+`TranscribedDrums {kick,snare,hat: number[]}` (pattern slots); `unsunoCommand`
+inštaluje drum track + rows cez **inferPadRole** (nikdy index): kick/snare/hat
+na prvé resolved pady, rows[padId][step] = velocity.
+
+**U3.5 zostáva:** snare↔hat cross-talk (hat noise svieti v snare band ~1:1 —
+per-step dominance ratio zlyhal, ratia na parite) a dnb half-time grid
+reconciliation (86.9 vs 174 — dnb floors nízke). Taktiež per-section mapy
+(teraz jeden pattern foldovaný cez track).
+
 ### U4 — Rekonštrukcia: `unsunoCommand` (mapa → projekt, 1 undo)
 
 - `src/reference/unsuno.ts` (pure, apply.ts style):
