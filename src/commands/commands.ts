@@ -125,12 +125,7 @@ export {
 // Type-only re-export: isolatedModules forbids smiešanie typov do hodnotového zozname vyššie.
 export type { GenerativeTrackConfigPatch } from "./tracks";
 
-/* ---------------- Pattern assist (iteration on your idea) ---------------- */
-
-function drumPadsOf(doc: ProjectDocument): DrumPad[] {
-  const track = doc.tracks.find((t): t is DrumTrack => t.kind === "drum");
-  return track ? track.pads : [];
-}
+/* ---------------- effect ops ---------------- */
 
 export function setEffectSidechainSource(
   doc: ProjectDocument,
@@ -235,6 +230,72 @@ export function resetEffect(doc: ProjectDocument, trackId: string, fxId: string)
   };
 }
 
+/* ---------------- pad ops ---------------- */
+
+/** Remove the project-local slice edit from a pad while keeping its asset. */
+export function resetPadSlice(doc: ProjectDocument, padId: string): Command {
+  const pad = doc.tracks.flatMap((t) => (t.kind === "drum" ? t.pads : [])).find((p) => p.id === padId);
+  if (!pad) throw new Error(`Pad ${padId} not found`);
+  const next = withPad(doc, padId, (current) => {
+    const clean = { ...current };
+    delete clean.sliceStart;
+    delete clean.sliceEnd;
+    delete clean.sliceFadeIn;
+    delete clean.sliceFadeOut;
+    delete clean.sliceReverse;
+    return clean;
+  });
+  return snapshot("resetPadSlice", `Reset slice on ${pad.name}`, doc, next);
+}
+
+export interface ChopSampleOptions {
+  trackId: string;
+  assetId: string;
+  sourceName: string;
+  slices: PadSlice[];
+  createPattern: boolean;
+}
+
+/** Atomically map a source's first 16 slices and optionally create a pattern. */
+export function chopSampleToPads(doc: ProjectDocument, options: ChopSampleOptions): Command {
+  const track = doc.tracks.find((t): t is DrumTrack => t.id === options.trackId && t.kind === "drum");
+  if (!track) throw new Error(`Drum track ${options.trackId} not found`);
+  const fit = options.slices.slice(0, track.pads.length);
+  let next = sliceToPads(doc, options.trackId, options.assetId, fit, options.sourceName).execute(doc);
+
+  if (options.createPattern) {
+    const pattern = createPatternForDoc(next, `${options.sourceName} Chop`, 16);
+    const rows = { ...pattern.rows };
+    fit.forEach((_, index) => {
+      const pad = track.pads[index];
+      if (!pad) return;
+      const row = [...(rows[pad.id] ?? new Array<number>(16).fill(0))];
+      row[index] = 0.9;
+      rows[pad.id] = row;
+    });
+    const choppedPattern = { ...pattern, rows };
+    next = {
+      ...next,
+      patterns: [...next.patterns, choppedPattern],
+      activePatternId: choppedPattern.id,
+    };
+  }
+
+  return snapshot(
+    "chopSampleToPads",
+    options.createPattern ? `Chop ${fit.length} slices + create pattern` : `Chop ${fit.length} slices to pads`,
+    doc,
+    next,
+  );
+}
+
+/* ---------------- pattern assist (iteration on your idea) ---------------- */
+
+function drumPadsOf(doc: ProjectDocument): DrumPad[] {
+  const track = doc.tracks.find((t): t is DrumTrack => t.kind === "drum");
+  return track ? track.pads : [];
+}
+
 function applyRowsPatch(
   doc: ProjectDocument,
   patternId: string,
@@ -304,63 +365,6 @@ function applyRowsPatch(
       };
     }),
   };
-}
-
-/** Remove the project-local slice edit from a pad while keeping its asset. */
-export function resetPadSlice(doc: ProjectDocument, padId: string): Command {
-  const pad = doc.tracks.flatMap((t) => (t.kind === "drum" ? t.pads : [])).find((p) => p.id === padId);
-  if (!pad) throw new Error(`Pad ${padId} not found`);
-  const next = withPad(doc, padId, (current) => {
-    const clean = { ...current };
-    delete clean.sliceStart;
-    delete clean.sliceEnd;
-    delete clean.sliceFadeIn;
-    delete clean.sliceFadeOut;
-    delete clean.sliceReverse;
-    return clean;
-  });
-  return snapshot("resetPadSlice", `Reset slice on ${pad.name}`, doc, next);
-}
-
-export interface ChopSampleOptions {
-  trackId: string;
-  assetId: string;
-  sourceName: string;
-  slices: PadSlice[];
-  createPattern: boolean;
-}
-
-/** Atomically map a source's first 16 slices and optionally create a pattern. */
-export function chopSampleToPads(doc: ProjectDocument, options: ChopSampleOptions): Command {
-  const track = doc.tracks.find((t): t is DrumTrack => t.id === options.trackId && t.kind === "drum");
-  if (!track) throw new Error(`Drum track ${options.trackId} not found`);
-  const fit = options.slices.slice(0, track.pads.length);
-  let next = sliceToPads(doc, options.trackId, options.assetId, fit, options.sourceName).execute(doc);
-
-  if (options.createPattern) {
-    const pattern = createPatternForDoc(next, `${options.sourceName} Chop`, 16);
-    const rows = { ...pattern.rows };
-    fit.forEach((_, index) => {
-      const pad = track.pads[index];
-      if (!pad) return;
-      const row = [...(rows[pad.id] ?? new Array<number>(16).fill(0))];
-      row[index] = 0.9;
-      rows[pad.id] = row;
-    });
-    const choppedPattern = { ...pattern, rows };
-    next = {
-      ...next,
-      patterns: [...next.patterns, choppedPattern],
-      activePatternId: choppedPattern.id,
-    };
-  }
-
-  return snapshot(
-    "chopSampleToPads",
-    options.createPattern ? `Chop ${fit.length} slices + create pattern` : `Chop ${fit.length} slices to pads`,
-    doc,
-    next,
-  );
 }
 
 function assistCommand(
