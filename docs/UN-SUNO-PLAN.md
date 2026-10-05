@@ -296,6 +296,11 @@ chips (`unsuno-mix-findings`): report chips + voliteľný „🔧 Opraviť" chip
 testom**: čistý mix → prázdne findings → chips NESVIECIA; UI test to pinuje
 na golden house renderi. Testy 6/6 pure + etiketa v UI suite.
 
+> **Návaznos:** najväčší kvalitatívny skok pre tento engine je stem separation —
+> vlastná rešerš + ADR + plán: **docs/adr/0019-stem-separation.md** +
+> **docs/STEM-SEPARATION-PLAN.md** (Tier 1 HPSS deterministické guide stemy,
+> Tier 2 opt-in htdemucs ONNX ~80 MB MIT; cieľ: techno bass recall 0.09→≥0.3/+).
+
 ### U6.5 / U3.5-maps / worker / U7 — štyri vlny po dokončení kampane — **HOTOVÉ 2026-10-06**
 
 - **U6.5 (`4504033a`)** — source lane cez UX: `pf:unsuno-analyze` event nesie
