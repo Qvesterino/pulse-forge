@@ -181,7 +181,9 @@ describe("web mcp bridge lifecycle", () => {
     while (Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 5));
       raw = socket.sent
-        .map((entry) => JSON.parse(entry) as { type: string; id?: number; result?: { text?: string; isError?: boolean } })
+        .map(
+          (entry) => JSON.parse(entry) as { type: string; id?: number; result?: { text?: string; isError?: boolean } },
+        )
         .find((message) => message.type === "mcp-result");
       if (raw) break;
     }
