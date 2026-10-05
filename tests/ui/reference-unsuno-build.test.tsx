@@ -98,6 +98,9 @@ describe("ReferenceMapPanel — BUILD PROJECT (U6)", () => {
     expect(command.label).toMatch(/UN-SUNO reconstruct/);
     // The applied status carries the honest layer summary.
     await waitFor(() => expect(screen.getByTestId("reference-applied").textContent).toMatch(/UN-SUNO:/));
+    // U5 etiquette: the golden house mix is clean — no findings, no chip.
+    // (The pure heuristics are covered in section-mix-doctor.test.ts.)
+    expect(screen.queryByTestId("unsuno-mix-findings")).not.toBeInTheDocument();
   }, 90_000);
 });
 

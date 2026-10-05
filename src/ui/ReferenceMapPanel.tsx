@@ -29,6 +29,7 @@ import {
   type TempoCandidate,
 } from "../reference";
 import { transcribeTrack } from "../reference/transcribe";
+import { analyzeSectionMix, type SectionMixFinding } from "../analysis/sectionMixDoctor";
 import { unsunoCommand } from "../reference/unsuno";
 import { downloadBlob } from "../export/download";
 import { sanitizeFilename } from "../rendering/wav";
@@ -36,6 +37,7 @@ import { MAX_AUDIO_IMPORT_BYTES } from "./DropZone";
 import { type ProjectDocument } from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
 import type { Command } from "../commands/types";
+import { setMasterConfig } from "../commands/master";
 import { useDoc } from "./context";
 
 /**
@@ -140,6 +142,8 @@ export function ReferenceMapPanel() {
       setAnalysis(null);
       setCorrection(EMPTY_CORRECTION);
       setBpmDraft("");
+      setMixFindings(null);
+      setMixFix(null);
 
       if (!ACCEPTED_EXTENSIONS.test(file.name)) {
         setError("Unsupported file. Use WAV, MP3, OGG, FLAC, AIFF, M4A or OPUS.");
@@ -311,6 +315,11 @@ export function ReferenceMapPanel() {
   // U6 — UN-SUNO reconstruction flow: two-step confirm, then one command.
   const [buildBusy, setBuildBusy] = useState(false);
   const [buildConfirm, setBuildConfirm] = useState(false);
+  // U5 — mix-doctor findings over the SOURCE, measured at build time; the
+  // fix chip (when the full-source report has a mechanical fix) applies a
+  // master config as one more undo step.
+  const [mixFindings, setMixFindings] = useState<SectionMixFinding[] | null>(null);
+  const [mixFix, setMixFix] = useState<{ tiltDb: number; masterGain: number; label: string } | null>(null);
 
   const runCommand = useCallback(
     (build: (d: ProjectDocument) => Command | null, fallback: string) => {
@@ -340,16 +349,17 @@ export function ReferenceMapPanel() {
       await new Promise((resolve) => setTimeout(resolve, 0));
       const mono = toMono(analysis.channels);
       const transcription = transcribeTrack(mono, analysis.sampleRate);
+      const sectionsOfResult = analysis.map.structure?.sections.map((section) => ({
+        role: section.role,
+        startSec: section.startSec,
+        endSec: section.endSec,
+        energy: section.energy,
+      }));
       const result = unsunoCommand(
         doc,
         {
           transcription,
-          sections: analysis.map.structure?.sections.map((section) => ({
-            role: section.role,
-            startSec: section.startSec,
-            endSec: section.endSec,
-            energy: section.energy,
-          })),
+          sections: sectionsOfResult,
         },
         {
           reading: correction.reading,
@@ -364,6 +374,17 @@ export function ReferenceMapPanel() {
       }
       services.store.execute(result.command);
       setApplied(`UN-SUNO: ${result.summary} (one undo step)`);
+      // U5 — mix-doctor beside you: measure the SOURCE the project came
+      // from. Balance/masking findings are report-only; the master-fix chip
+      // (tilt / master trim) comes from the existing mechanical-fix rule.
+      try {
+        setMixFindings(analyzeSectionMix(analysis.channels, analysis.sampleRate, sectionsOfResult ?? []));
+        const { analyzeMixHealth, deriveMixAutoFix } = await import("../analysis/mixDoctor");
+        setMixFix(deriveMixAutoFix(analyzeMixHealth(analysis.channels, analysis.sampleRate)));
+      } catch {
+        setMixFindings(null);
+        setMixFix(null);
+      }
       setBuildConfirm(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Reconstruction failed.");
@@ -745,6 +766,37 @@ export function ReferenceMapPanel() {
               <p className="reference-applied" role="status" data-testid="reference-applied">
                 {applied}
               </p>
+            )}
+            {mixFindings && (mixFindings.length > 0 || mixFix) && (
+              <ul className="unsuno-mix-findings" data-testid="unsuno-mix-findings">
+                {mixFindings.map((finding, index) => (
+                  <li key={`${finding.kind}-${finding.section ?? "track"}-${index}`} className="unsuno-mix-finding">
+                    <span className="unsuno-mix-finding-text" title={finding.evidence}>
+                      🔎 {finding.message}
+                    </span>
+                  </li>
+                ))}
+                {mixFix && (
+                  <li className="unsuno-mix-finding">
+                    <button
+                      type="button"
+                      className="btn btn-small"
+                      data-testid="unsuno-mix-fix"
+                      onClick={() => {
+                        const patch: { tiltDb?: number; masterGain?: number } = {};
+                        if (mixFix.tiltDb !== 0) patch.tiltDb = mixFix.tiltDb;
+                        if (mixFix.masterGain !== 1) patch.masterGain = mixFix.masterGain;
+                        if (Object.keys(patch).length === 0) return;
+                        services.store.execute(setMasterConfig(services.store.doc, patch));
+                        setApplied(`Mix fix: ${mixFix.label} (one undo step)`);
+                      }}
+                      title={`Mechanicky bezpečný fix: ${mixFix.label}`}
+                    >
+                      🔧 Opraviť: {mixFix.label}
+                    </button>
+                  </li>
+                )}
+              </ul>
             )}
           </section>
 

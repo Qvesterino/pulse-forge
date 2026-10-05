@@ -280,6 +280,22 @@ per-step dominance ratio zlyhal, ratia na parite) a dnb half-time grid
 reconciliation (86.9 vs 174 — dnb floors nízke). Taktiež per-section mapy
 (teraz jeden pattern foldovaný cez track).
 
+### U5 — Mix-doctor vedľa teba — **HOTOVÉ 2026-10-04**
+
+`src/analysis/sectionMixDoctor.ts` — pure `analyzeSectionMix(channels, sr,
+sections)` s DVOMI konzervatívnymi heuristikami: **section balance**
+(sekcia ≥3 dB pod mediánom sekcií → „„drop" je o 3.2 dB tichšia než medián
+sekcií", report-only — fix je hudobný, nie master) a **low-end masking**
+(low band ≤120 Hz > 55 % energie sekcie + transient contrast < 1.7 → „basa
+môže maskovať kick okolo 60–120 Hz", report-only; prahy kalibrované na
+golden sete — reálny kick mix NESPÚŠŤA heuristiku, bass-only drone áno).
+Master mechanické fixy (tilt / master trim na −1 dBFS) ostávajú v
+`mixDoctor.deriveMixAutoFix` — panel po BUILD PROJECT meria oboje a renderuje
+chips (`unsuno-mix-findings`): report chips + voliteľný „🔧 Opraviť" chip
+(Sk `setMasterConfig` patch, jedno ďalšie undo). **Etiketa W0.2 zamknutá
+testom**: čistý mix → prázdne findings → chips NESVIECIA; UI test to pinuje
+na golden house renderi. Testy 6/6 pure + etiketa v UI suite.
+
 ### U6 — UX flow — HOTOVÉ 2026-10-04
 
 - **ReferenceMapPanel „🎛 BUILD PROJECT"** (vedľa Export JSON): dvojkrokový

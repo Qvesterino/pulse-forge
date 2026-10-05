@@ -881,6 +881,22 @@
   background: rgba(255, 208, 0, 0.08);
 }
 
+/* U5 — UN-SUNO mix findings chips. */
+.unsuno-mix-findings {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+}
+
+.unsuno-mix-finding-text {
+  font-size: 10px;
+  color: var(--text-muted, #aaa);
+  line-height: 1.35;
+}
+
 /* U6 — UN-SUNO build confirm + DropZone analyze offer. */
 .reference-build-confirm {
   display: inline-flex;
