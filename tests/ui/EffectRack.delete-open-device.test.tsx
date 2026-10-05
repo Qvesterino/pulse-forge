@@ -59,7 +59,7 @@ function renderLive(doc: ProjectDocument, trackId: string, mode?: "rack" | "devi
 
 describe("§13 deleting the effect whose editor is open", () => {
   /** The devices dock's empty state, scoped by class — its copy also appears elsewhere. */
-  const devicesEmpty = () => document.querySelector(".devices-empty");
+  const devicesEmpty = () => document.querySelector(".devices-panel .empty-state");
 
   it("rack: deleting the explicitly expanded device focuses the remaining one", async () => {
     const user = userEvent.setup();

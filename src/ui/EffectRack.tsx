@@ -322,7 +322,6 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
                 type="button"
                 className={`device-chain-item is-instrument${activeDeviceId === "instrument" ? " active" : ""}`}
                 data-family="instrument"
-                data-index="0"
                 aria-pressed={activeDeviceId === "instrument"}
                 title={`${instrumentLabel} instrument`}
                 onClick={() => setSelectedDeviceId("instrument")}
@@ -341,7 +340,6 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
                 draggable
                 className={`device-chain-item${activeDeviceId === fx.id ? " active" : ""}${fx.bypassed ? " is-bypassed" : ""}${draggedFxId === fx.id ? " is-dragging" : ""}${dropTargetFxId === fx.id ? " is-drop-target" : ""}`}
                 data-family={EFFECT_DEFS[fx.type].category}
-                data-index={hasInstrument ? chainIndex + 1 : chainIndex}
                 aria-pressed={activeDeviceId === fx.id}
                 title={`${EFFECT_DEFS[fx.type].name}${fx.bypassed ? " — bypassed" : ""}`}
                 onClick={() => setSelectedDeviceId(fx.id)}
