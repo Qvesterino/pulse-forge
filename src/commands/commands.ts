@@ -1,44 +1,22 @@
 import type { Command } from "./types";
 import type {
-  ArrangementClip,
-  ArrangementTransition,
-  ArrangementTransitionType,
-  AudioClip,
   DrumPad,
   DrumTrack,
   GrooveSettings,
-  Marker,
-  NoteEvent,
   PatternAssist,
   ProjectDocument,
   Scene,
-  SceneRole,
   StepMeta,
 } from "../project-model/types";
-import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
-import { arrangementSecondsBetweenTicks, tempoAtTick } from "../project-model/scene-time";
-import { buildStemProject } from "../rendering/stems";
+import { STEP_TICKS } from "../project-model/types";
 import { withPad } from "../project-model/transform";
-import { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
-import { patternPhaseOffsetAtTick, sceneOffsetAtTick } from "../project-model/events";
-import {
-  createGroupTrackModel,
-  createPatternForDoc,
-  MAX_ARRANGEMENT_CLIP_BARS,
-  MAX_BPM,
-  MIN_BPM,
-  normalizeProject,
-  sceneRoleOf,
-  clampArrangementTransitionType,
-  sanitizeArrangementTransitions,
-} from "../project-model/schema";
+import { createPatternForDoc } from "../project-model/schema";
 import { sanitizeGateSteps, sanitizeManglerSteps } from "../project-model/modulators";
 import type { Pattern } from "../project-model/types";
 import { clampEffectParam, defaultParamsOf, EFFECT_META, normalizePluginParams } from "../effects/definitions";
 import { type EffectPreset } from "../effects/presets";
 import { clampFxOutputTrimDb, factoryFxPresetGainDb } from "../effects/presetLoudness";
 import { uid } from "../shared/ids";
-import type { SharedPackSceneSketch, SharedPackSketch } from "../export/packCode";
 import { resolveGrooveForGeneration } from "../ai/generator";
 import { generateLocalResultFromOptions } from "../intent/pipeline";
 import type { GenerationResult } from "../intent/types";
@@ -59,7 +37,7 @@ import { type PadSlice, sliceToPads } from "./project";
 // The intent layer below still applies groove settings; the command itself lives in ./groove.
 // docOps is plumbing shared by several domains and is NOT re-exported wholesale; only the one
 // name that was already public goes back out, so the barrel's surface is unchanged.
-import { cloneStepMeta, trackEffectsOf, unlinkMarkersOfClips, withTrackEffects } from "./docOps";
+import { trackEffectsOf, withTrackEffects } from "./docOps";
 export { __resetSnapshotVerificationFallbacks, __snapshotVerificationFallbacks, snapshot } from "./core";
 export { trackEffectsOf } from "./docOps";
 
