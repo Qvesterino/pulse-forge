@@ -277,6 +277,31 @@ re-lock). `transcribeTrack` wiring: bass implemented od U2, warnings honest
 - **Úsilie:** ~1–1,5 bloka. **Riziko:** rozsah — držať sa apply.ts vzoru
   (pure + commands), žiadna logika v UI.
 
+### U4 — Rekonštrukcia: `unsunoCommand` — **HOTOVÉ 2026-10-04 (core; audio lane = U4.5)**
+
+`src/reference/unsuno.ts` — pure `(doc, input, options) → UnsunoResult` v apply.ts
+kontrakte: jeden reduce cez plain commands + JEDEN `snapshot()` (jedno Ctrl-Z).
+Inštaluje: BPM (+ confirmed override, half/double reading), project key
+(musicalKeyFor konverzia, confirmed override), **tracky len keď vrstva nesie
+obsah** (drum track — zatiaľ skip s honest warningom kým U3 nedodá rows
+kontrakt; bass `"bass"`; chords `"keys"`), **1 pattern per section chunk**
+(≤ 8 barov = 128-step ceiling; dlhšie sekcie chunkované `<role> pt N`),
+pattern obsahuje chord voicingy (voiceLead, multi-voice konvencia, spans →
+NoteEventy), bass noty (sekundy → ticky v sekciinom okne), scény per pattern,
+markery na section starts. Deep-frozen dokument: pattern sa REBUILDuje spread-om
+(snapshot kontrakt — in-place mutácia padá na "object is not extensible").
+
+**Testy (tests/unsuno/reconstruct.test.ts, 5):** reálna transkripcia golden
+house tracku → BPM 126 + A Natural Minor + bass/keys tracky + 2 patterny
+(stepCount ≤ 128) + scény + markery + undoStackLength 1 + undo = bit-exact
+restore; confirmed overrides; half/double reading; no-tempo → null command +
+poctivý summary; determinizmus (uid sa líšia by design — porovnáva sa hudobná
+štruktúra: names/stepCounts/note shapes/scenes).
+
+**U4.5 zostáva:** audio lane originálu (AudioClip + WarpManager na projektové
+BPM) — potrebuje user-sample persistence flow z U6; drums rows wiring do
+pattern.rows keď U3 flipne kontrakt.
+
 ### U5 — Mix-doctor vedľa teba (per-sekcia + masking)
 
 - Rozšírenie `mixDoctor`: per-sekcia LUFS/band shary (7 pásiem už sú) →
