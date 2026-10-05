@@ -13,7 +13,7 @@
  * never throw — every estimator inside has its own guard.
  */
 import { estimateKey, estimateTempo, type KeyEstimate, type TempoEstimate } from "../ai/audio-tempo-key";
-import { detectChordSpans, type ChordSpan, type TranscribedChordQuality } from "./analysis/chords";
+import { deriveKeyFromChords, detectChordSpans, type ChordSpan, type TranscribedChordQuality } from "./analysis/chords";
 
 export interface TranscribedLayer {
   /** false = this layer is not transcribed yet — consumers must treat it as
@@ -98,31 +98,47 @@ function decorateSpan(span: ChordSpan, parsed: ParsedKey | null): TranscribedCho
 
 export function transcribeTrack(pcm: Float32Array, sampleRate: number): UnsunoTranscription {
   const tempo = estimateTempo(pcm, sampleRate);
-  const key = estimateKey(pcm, sampleRate);
   const pending = (layer: keyof typeof TRANSCRIPTION_WAVE_OWNERS): TranscribedLayer => ({
     implemented: false,
     warning: `${layer} transcription not implemented yet — lands in ${TRANSCRIPTION_WAVE_OWNERS[layer]} (docs/UN-SUNO-PLAN.md)`,
   });
 
-  let chords: TranscribedChords;
-  if (!tempo) {
-    chords = {
-      implemented: true,
-      warning: "tempo unavailable — no bar grid, chord segmentation skipped (honest empty)",
-      spans: [],
-    };
-  } else {
+  const rawSpans: ChordSpan[] = [];
+  let derived: ReturnType<typeof deriveKeyFromChords> = null;
+  if (tempo) {
     const detection = detectChordSpans(pcm, sampleRate, { bpm: tempo.bpm });
-    const raw = detection?.spans ?? [];
-    chords =
-      raw.length > 0
-        ? { implemented: true, warning: null, spans: raw.map((span) => decorateSpan(span, parseKeyEstimate(key))) }
-        : {
-            implemented: true,
-            warning: "no stable harmony detected — chords left empty, never invented",
-            spans: [],
-          };
+    if (detection) {
+      rawSpans.push(...detection.spans);
+      // U1.5 — the chord sequence decides the key whenever it exists: a
+      // diatonic progression reads as several rotations and raw chroma
+      // cannot pick one, but what the song PLAYS (first chord, tonic
+      // returns, mode matches) can. estimateKey stays the fallback for
+      // material without a readable harmony.
+      derived = deriveKeyFromChords(detection.spans, detection.barsAnalyzed);
+    }
   }
+  const key: KeyEstimate | null =
+    derived !== null
+      ? {
+          key: `${NOTE_NAMES[derived.tonicPc]} ${derived.mode === "minor" ? "Natural Minor" : "Major"}`,
+          confidence: derived.confidence,
+        }
+      : estimateKey(pcm, sampleRate);
+  const parsedKey = parseKeyEstimate(key);
+
+  const chords: TranscribedChords = !tempo
+    ? {
+        implemented: true,
+        warning: "tempo unavailable — no bar grid, chord segmentation skipped (honest empty)",
+        spans: [],
+      }
+    : rawSpans.length > 0
+      ? { implemented: true, warning: null, spans: rawSpans.map((span) => decorateSpan(span, parsedKey)) }
+      : {
+          implemented: true,
+          warning: "no stable harmony detected — chords left empty, never invented",
+          spans: [],
+        };
 
   return {
     sampleRate,

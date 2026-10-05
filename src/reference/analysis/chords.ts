@@ -64,6 +64,91 @@ export interface ChordSpan {
   confidence: number;
 }
 
+/**
+ * U1.5 — KEY FROM THE CHORD SEQUENCE.
+ *
+ * Plain chroma correlation (estimateKey) cannot pick a rotation of a
+ * diatonic set: the whole trap progression (F#m D A E) lives in D major just
+ * as well as in F# minor, and the profile shapes decide arbitrarily. The
+ * chord sequence carries the missing evidence, so this derives the key from
+ * WHAT THE SONG DOES instead of how one bar sounds:
+ *
+ * - every chord that sits inside the candidate scale supports it;
+ * - a chord that IS the tonic supports its rotation extra (progressions
+ *   keep returning home);
+ * - the FIRST chord is the classic tonic statement (x2 weight) and the LAST
+ *   is the resolution (x1.5) — pop harmony starts and ends at home;
+ * - off-scale chords cost evidence.
+ *
+ * Confidence is the winning rotation's normalized evidence, not a margin —
+ * several rotations legitimately fit the same set and the margin between
+ * them would understate how much the sequence actually says.
+ */
+export interface DerivedKey {
+  tonicPc: number;
+  mode: "major" | "minor";
+  /** Normalized evidence 0..1 for the winning rotation. */
+  confidence: number;
+}
+
+const MAJOR_SCALE_OFFSETS = [0, 2, 4, 5, 7, 9, 11];
+const MINOR_SCALE_OFFSETS = [0, 2, 3, 5, 7, 8, 10];
+const FIRST_CHORD_WEIGHT = 3;
+const LAST_CHORD_WEIGHT = 1.5;
+const TONIC_CHORD_BONUS = 0.5;
+/** A chord whose QUALITY matches the candidate mode (minor chord in a minor
+ * key, major in major) reinforces it — without this, a one-chord drone
+ * (Em for 8 bars) reads identically as E minor and E major. */
+const MODE_MATCH_BONUS = 0.25;
+const OFF_SCALE_PENALTY = 0.5;
+
+export function deriveKeyFromChords(spans: readonly ChordSpan[], barsAnalyzed: number): DerivedKey | null {
+  if (spans.length === 0 || barsAnalyzed < 4) return null;
+  // Expand to per-bar roots with their span position kept.
+  const bars: { rootPc: number; index: number; confidence: number; minor: boolean }[] = [];
+  for (const span of spans) {
+    const minor = span.quality.startsWith("min");
+    for (let bar = span.startBar; bar < span.startBar + span.bars && bar < barsAnalyzed; bar++) {
+      bars.push({ rootPc: span.rootPc, index: bar, confidence: span.confidence, minor });
+    }
+  }
+  if (bars.length === 0) return null;
+  const lastIndex = bars[bars.length - 1].index;
+
+  const candidates: { tonicPc: number; mode: "major" | "minor"; evidence: number; weight: number }[] = [];
+  for (let tonicPc = 0; tonicPc < PITCH_CLASS_COUNT; tonicPc++) {
+    for (const mode of ["major", "minor"] as const) {
+      const scale = mode === "major" ? MAJOR_SCALE_OFFSETS : MINOR_SCALE_OFFSETS;
+      let evidence = 0;
+      let weight = 0;
+      for (const bar of bars) {
+        let w = 1;
+        if (bar.index === 0) w += FIRST_CHORD_WEIGHT - 1;
+        if (bar.index === lastIndex) w += LAST_CHORD_WEIGHT - 1;
+        weight += w;
+        const offset = (bar.rootPc - tonicPc + PITCH_CLASS_COUNT) % PITCH_CLASS_COUNT;
+        if (scale.includes(offset)) {
+          let fit = 0.5 + 0.5 * bar.confidence;
+          if (bar.minor === (mode === "minor")) fit += MODE_MATCH_BONUS;
+          evidence += w * fit;
+          if (offset === 0) evidence += w * TONIC_CHORD_BONUS;
+        } else {
+          evidence -= w * OFF_SCALE_PENALTY;
+        }
+      }
+      candidates.push({ tonicPc, mode, evidence, weight });
+    }
+  }
+  candidates.sort((a, b) => b.evidence - a.evidence);
+  const best = candidates[0];
+  if (!best || best.evidence <= 0) return null;
+  return {
+    tonicPc: best.tonicPc,
+    mode: best.mode,
+    confidence: Math.max(0, Math.min(1, best.evidence / best.weight)),
+  };
+}
+
 export interface ChordDetection {
   spans: ChordSpan[];
   /** Bars actually analyzed (after the analysis cap). */

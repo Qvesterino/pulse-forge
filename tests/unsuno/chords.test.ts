@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectChordSpans } from "../../src/reference/analysis/chords";
+import { deriveKeyFromChords, detectChordSpans, type ChordSpan } from "../../src/reference/analysis/chords";
 import { expandChordSpans } from "../../src/reference/unsuno-metrics";
 
 /**
@@ -53,6 +53,43 @@ describe("detectChordSpans — pure contract", () => {
 
   it("grid too fast to be meaningful → null", () => {
     expect(detectChordSpans(new Float32Array(SR * 4), SR, { bpm: 2000 })).toBeNull();
+  });
+});
+
+describe("deriveKeyFromChords — U1.5 sequence key", () => {
+  const span = (startBar: number, bars: number, rootPc: number, quality: ChordSpan["quality"]): ChordSpan => ({
+    startBar,
+    bars,
+    rootPc,
+    quality,
+    confidence: 0.4,
+  });
+  const conf = (derived: { tonicPc: number; mode: string } | null, tonicPc: number, mode: string): boolean =>
+    derived !== null && derived.tonicPc === tonicPc && derived.mode === mode;
+
+  it("i VI III VII (Gm Eb Bb F) → G minor, not the Bb-major rotation", () => {
+    const derived = deriveKeyFromChords(
+      [span(0, 2, 7, "min"), span(2, 2, 3, "maj"), span(4, 2, 10, "maj"), span(6, 2, 5, "maj")],
+      8,
+    );
+    expect(conf(derived, 7, "minor")).toBe(true);
+    expect(derived!.confidence).toBeGreaterThan(0.5);
+  });
+  it("a one-chord minor drone reads MINOR (mode match breaks the rotation tie)", () => {
+    const derived = deriveKeyFromChords([span(0, 8, 4, "min")], 8);
+    expect(conf(derived, 4, "minor")).toBe(true);
+  });
+  it("too little evidence (single short span) → null", () => {
+    expect(deriveKeyFromChords([span(0, 1, 0, "maj")], 1)).toBeNull();
+    expect(deriveKeyFromChords([], 8)).toBeNull();
+  });
+  it("off-scale chords eat the evidence — chromatic nonsense → low confidence", () => {
+    const derived = deriveKeyFromChords(
+      [span(0, 2, 0, "maj"), span(2, 2, 1, "maj"), span(4, 2, 6, "min"), span(6, 2, 11, "maj")],
+      8,
+    );
+    // C, C#, F#, B — no diatonic scale holds this; whatever wins must be weak.
+    expect(derived!.confidence).toBeLessThan(0.9);
   });
 });
 

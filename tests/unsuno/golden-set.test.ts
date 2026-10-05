@@ -145,19 +145,18 @@ describe("LIVE floor — tempo & key estimators on golden material", () => {
   // (were all "min"; D/A/E in an F#-minor progression are MAJOR — the F
   // natural in Dm poisoned the trap key) → both KPIs now 5/5. Re-locked
   // 2026-10-04.
-  // U1 fixture evolution (bass roots now diatonic — trap bass was playing C
-  // under an F#m chord, dnb D under Gm) exposed the KK rotation limit: the
-  // whole trap progression is diatonic in D major AND F#-minor/A-major, and
-  // plain chroma correlation cannot pick the rotation without a tonic hint.
-  // The misses are DIATONICALLY RELATED scales (D# major shares 7 pitches
-  // with G minor). Key-from-chord-sequence is the principled fix (U1.5
-  // candidate in docs/UN-SUNO-PLAN.md); until then the floor is honestly 3/5.
+  // U1 fixture evolution (bass roots now diatonic) exposed the KK rotation
+  // limit — chroma alone read trap as D major and dnb as Eb major (both
+  // diatonically valid rotations, floor honestly re-locked 3/5). U1.5 fixed
+  // it at the SOURCE: the chord sequence decides the key (first chord ×3,
+  // tonic returns, mode matches) — estimateKey only falls back when no
+  // harmony is readable. Floor back to 5/5. Re-locked 2026-10-04.
   const BASELINE: Record<string, { tempo: number; key: string }> = {
     "house-126-am": { tempo: 126.0, key: "A Natural Minor" },
     "techno-130-em": { tempo: 130.0, key: "E Natural Minor" },
     "boombap-90-cm": { tempo: 89.9, key: "C Natural Minor" },
-    "trap-140-fsm": { tempo: 139.8, key: "D Major" }, // diatonic-rotation miss (truth F# minor)
-    "dnb-174-gm": { tempo: 86.9, key: "D# Major" }, // diatonic-rotation miss (truth G minor)
+    "trap-140-fsm": { tempo: 139.8, key: "F# Natural Minor" },
+    "dnb-174-gm": { tempo: 86.9, key: "G Natural Minor" },
   };
 
   it("tempo: per-track locked baseline, fold error ≤ 1 BPM everywhere (U0.5 KPI)", () => {
@@ -170,11 +169,11 @@ describe("LIVE floor — tempo & key estimators on golden material", () => {
       expect(error!, `${track.id} fold error`).toBeLessThanOrEqual(1);
     }
   });
-  it("key: 3/5 exact (mode included) — the U1 re-locked floor, per-track locked", () => {
+  it("key: 5/5 exact (mode included) — the U1.5 chord-sequence key, per-track locked", () => {
     const exactCount = tracks.filter(
       (track) => keyMatch(transcriptions.get(track.id)!.key?.key ?? null, track.key).exact,
     ).length;
-    expect(exactCount).toBe(3);
+    expect(exactCount).toBe(5);
     for (const track of tracks) {
       const expected = BASELINE[track.id];
       expect(transcriptions.get(track.id)!.key?.key ?? null, `${track.id} key string`).toBe(expected.key);
