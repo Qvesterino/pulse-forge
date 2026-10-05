@@ -85,7 +85,7 @@ export function detectMelodyNotes(
 
   const frameSec = HOP_MS / 1000;
   const stepSec = 60 / options.bpm / 4;
-  const minNoteSec = Math.max(HOP_MS / 1000 * 4, stepSec * 0.5);
+  const minNoteSec = Math.max((HOP_MS / 1000) * 4, stepSec * 0.5);
 
   const runs: PitchFrame[][] = [];
   let current: PitchFrame[] = [];
@@ -123,7 +123,10 @@ export function detectMelodyNotes(
     });
   }
   const maxClarity = raw.reduce((m, n) => Math.max(m, n.confidence), 0);
-  const notes = raw.map((note) => ({ ...note, velocity: Math.max(1, Math.min(127, Math.round(40 + 80 * (note.confidence / Math.max(maxClarity, 1e-9))))) }));
+  const notes = raw.map((note) => ({
+    ...note,
+    velocity: Math.max(1, Math.min(127, Math.round(40 + 80 * (note.confidence / Math.max(maxClarity, 1e-9))))),
+  }));
 
   const coveredSec = notes.reduce((sum, n) => sum + n.durationSec, 0);
   const coverage = Math.min(1, coveredSec / analyzedSec);

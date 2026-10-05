@@ -281,7 +281,12 @@ export function transcribeTrack(
   // overlaps the chords, so the lane reports only when its strict gates
   // (clarity 0.65+, stable runs, minimum coverage) actually found a line.
   const melody: TranscribedMelody = !tempo
-    ? { implemented: true, warning: "tempo unavailable — no grid, melody skipped (honest empty)", notes: [], coverage: null }
+    ? {
+        implemented: true,
+        warning: "tempo unavailable — no grid, melody skipped (honest empty)",
+        notes: [],
+        coverage: null,
+      }
     : (() => {
         const detection = detectMelodyNotes(pcm, sampleRate, { bpm: tempo.bpm });
         const notes = detection?.notes ?? [];
