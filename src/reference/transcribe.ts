@@ -14,6 +14,7 @@
  */
 import { estimateKey, estimateTempo, type KeyEstimate, type TempoEstimate } from "../ai/audio-tempo-key";
 import { deriveKeyFromChords, detectChordSpans, type ChordSpan, type TranscribedChordQuality } from "./analysis/chords";
+import { detectBassNotes, type TranscribedBassNote } from "./analysis/bass";
 
 export interface TranscribedLayer {
   /** false = this layer is not transcribed yet — consumers must treat it as
@@ -41,13 +42,21 @@ export interface TranscribedChords {
   spans: TranscribedChordSpan[];
 }
 
+export interface TranscribedBass {
+  /** true from U2 on — the layer HAS an implementation. Whether it found
+   * anything is `notes` + `warning`, never folded into this flag. */
+  implemented: boolean;
+  warning: string | null;
+  notes: TranscribedBassNote[];
+}
+
 export interface UnsunoTranscription {
   sampleRate: number;
   durationSec: number;
   tempo: TempoEstimate | null;
   key: KeyEstimate | null;
   drums: TranscribedLayer;
-  bass: TranscribedLayer;
+  bass: TranscribedBass;
   chords: TranscribedChords;
 }
 
@@ -140,13 +149,54 @@ export function transcribeTrack(pcm: Float32Array, sampleRate: number): UnsunoTr
           spans: [],
         };
 
+  // U2 — bass transcription shares the tempo gate (note-length decisions
+  // need the grid) AND the chord gate: the kick is louder than the bass in
+  // the same band, and without the chord lane's per-bar roots the prior has
+  // nothing to filter phantom kick notes with — so no readable harmony means
+  // no bass attempt, honestly.
+  const bass: TranscribedBass = !tempo
+    ? {
+        implemented: true,
+        warning: "tempo unavailable — no bar grid, bass segmentation skipped (honest empty)",
+        notes: [],
+      }
+    : rawSpans.length === 0
+      ? {
+          implemented: true,
+          warning: "no chord context — bass prior unavailable, transcription skipped (honest empty)",
+          notes: [],
+        }
+      : (() => {
+          // Chord context for the bass prior: per-bar roots in the SAME grid,
+          // -1 where the chord lane had no confident read.
+          const barSec = 240 / tempo.bpm;
+          const barRoots = new Array(Math.ceil(pcm.length / sampleRate / barSec)).fill(-1);
+          for (const span of rawSpans) {
+            for (let bar = span.startBar; bar < span.startBar + span.bars && bar < barRoots.length; bar++) {
+              barRoots[bar] = span.rootPc;
+            }
+          }
+          const detection = detectBassNotes(pcm, sampleRate, {
+            bpm: tempo.bpm,
+            chordContext: { barRoots, barSec },
+          });
+          const notes = detection?.notes ?? [];
+          return notes.length > 0
+            ? { implemented: true, warning: null, notes }
+            : {
+                implemented: true,
+                warning: "no pitched bass found — notes left empty, never invented",
+                notes: [],
+              };
+        })();
+
   return {
     sampleRate,
     durationSec: sampleRate > 0 ? pcm.length / sampleRate : 0,
     tempo,
     key,
     drums: pending("drums"),
-    bass: pending("bass"),
+    bass,
     chords,
   };
 }

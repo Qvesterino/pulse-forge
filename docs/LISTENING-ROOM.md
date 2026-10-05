@@ -29,7 +29,8 @@ Nothing leaves the machine: renders, verdicts and packs live under
 
 ```bash
 npm run listening:room     # render all suites → listening/room/  (~5–10 min)
-npm run listening:serve    # http://127.0.0.1:5179/room/
+npm run listening:serve    # Listening Inbox: http://127.0.0.1:5179/
+# direct routes: /room/ (suite) · /abx/ (forced-choice) · Producer DNA packs auto-list
 # …listen, rank, ★ — verdicts POST to listening/verdicts.json
 npm run listening:ingest   # verdicts → ranker golden + favorites pack
 npm run favorites:retrain -- listening/favorites-pack.json   # all 3 models
@@ -70,14 +71,24 @@ skips unknown grooves); the activation gate demands an independent holdout
 
 ## 3. Files
 
-| Path | Role |
-| --- | --- |
-| `scripts/render-listening-room.mjs` | renders every suite through the REAL engine (vite + headless Chromium, `renderProject` pattern mode), writes WAVs + `room.json` + copies the page template |
-| `scripts/listening-room-template.html` | the room page (static; fetches `room.json`, POSTs verdicts) |
-| `scripts/serve-listening.mjs` | static server on 127.0.0.1:5179 **+ verdict API** (`POST /api/verdict`, `GET /api/verdicts`) |
-| `scripts/ingest-listening-verdicts.mjs` | verdicts → ranker golden merge + FavoritesPack |
-| `listening/room/` | output (gitignored): WAVs, `room.json`, `room.html` |
-| `listening/verdicts.json` | raw verdict ledger (append-only) |
+| Path                                    | Role                                                                                                                                                       |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scripts/render-listening-room.mjs`     | renders every suite through the REAL engine (vite + headless Chromium, `renderProject` pattern mode), writes WAVs + `room.json` + copies the page template |
+| `scripts/listening-room-template.html`  | the room page (static; fetches `room.json`, POSTs verdicts)                                                                                                |
+| `scripts/serve-listening.mjs`           | static server on 127.0.0.1:5179 **+ verdict API** (`POST /api/verdict`, `GET /api/verdicts`)                                                               |
+| `scripts/listening-index-template.html` | stable Listening Inbox at `/`; links the room, ABX and discovered Producer DNA sessions                                                                    |
+| `scripts/listening-catalog.mjs`         | read-only catalogue for generated listening sessions; skips empty/failed renders and never reads answer keys                                               |
+| `scripts/ingest-listening-verdicts.mjs` | verdicts → ranker golden merge + FavoritesPack                                                                                                             |
+| `listening/room/`                       | output (gitignored): WAVs, `room.json`, `room.html`                                                                                                        |
+| `listening/verdicts.json`               | raw verdict ledger (append-only)                                                                                                                           |
+
+The root URL is the permanent entry point for human listening work. Finished
+Producer DNA packs under `listening/producer-dna/` and
+`listening/producer-dna-songs/` appear automatically when they contain an
+`index.html` and at least one complete WAV pair. Votes from those standalone
+pages are downloaded as `verdicts.json`; put the file into its pack folder if
+you want the Inbox to show that the result was saved there. ABX is available
+at both `/abx/` and `/abx/index.html`.
 
 ## 4. Suites
 
@@ -131,7 +142,7 @@ formula the dataset walk uses, so what you hear is what the ranker scored.
 `npm run listening:ingest` then:
 
 1. **ranking** → upserts `{ groupKey, order, reviewed: true, reviewedBy:
-   "listening-room", source: "listening-room" }` into
+"listening-room", source: "listening-room" }` into
    `scripts/data/intent-ranker-golden.json` — **only when the groupKey
    exists in the ranker dataset** (unmatched keys are reported and left in
    the verdict file; never invent golden entries for groups the ranker

@@ -24,10 +24,13 @@ export function VocalCompStrip({ plan, labels }: VocalCompStripProps) {
     const segment = plan.segments.find((s) => bar >= s.startBar && bar <= s.endBar);
     return { bar, segment };
   });
+  // Contributors by bars WON (descending), earlier take winning ties — the
+  // same order the comp apply uses for track letters, so the legend, the
+  // strip and the planted tracks all agree on which take is "A".
   const contributors = plan.perTakeBars
     .map((count, index) => ({ count, index }))
     .filter((entry) => entry.count > 0)
-    .sort((a, b) => b.count - a.index);
+    .sort((a, b) => b.count - a.count || a.index - b.index);
 
   return (
     <div className="vocal-comp-strip" data-testid="vocal-comp-strip">

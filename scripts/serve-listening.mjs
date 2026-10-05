@@ -1,12 +1,13 @@
 /**
- * Tiny static server for the MORPH listening pack —
- * http://127.0.0.1:5179  (serves listening/ with correct WAV mime type).
+ * Local Listening Inbox and static listening-pack server —
+ * http://127.0.0.1:5179/ (serves listening/ with correct WAV mime type).
  */
 import { createServer } from "node:http";
 import { readFile, stat, writeFile, readdir } from "node:fs/promises";
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildListeningCatalog } from "./listening-catalog.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SERVE_ROOT = path.join(ROOT, "listening");
@@ -138,6 +139,15 @@ const server = createServer(async (req, res) => {
       res.end(JSON.stringify({ packs }));
       return;
     }
+    if (url.pathname === "/api/listening-catalog" && req.method === "GET") {
+      const catalog = await buildListeningCatalog(ROOT);
+      res.writeHead(200, {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+      });
+      res.end(JSON.stringify(catalog));
+      return;
+    }
     {
       const packMatch = /^\/pack\/([\w-]+)\/([^/]+)$/.exec(url.pathname);
       if (packMatch) {
@@ -155,8 +165,19 @@ const server = createServer(async (req, res) => {
         return;
       }
     }
+    if (url.pathname === "/" || url.pathname === "/index.html") {
+      const data = await readFile(path.join(ROOT, "scripts", "listening-index-template.html"));
+      res.writeHead(200, {
+        "content-type": MIME[".html"],
+        "content-length": data.length,
+        "cache-control": "no-store",
+      });
+      res.end(data);
+      return;
+    }
     let rel = decodeURIComponent(url.pathname);
-    if (rel === "/" || rel === "/morph/") rel = "/morph/index.html";
+    if (rel === "/morph/") rel = "/morph/index.html";
+    if (rel === "/abx/" || rel === "/abx") rel = "/abx/index.html";
     if (rel === "/room/" || rel === "/room") rel = "/room/room.html";
     const abs = path.join(SERVE_ROOT, rel);
     if (!abs.startsWith(SERVE_ROOT)) throw new Error("traversal");
@@ -175,6 +196,8 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, "127.0.0.1", () => {
-  console.log(`listening pack: http://127.0.0.1:${PORT}/morph/`);
+  console.log(`listening inbox: http://127.0.0.1:${PORT}/`);
+  console.log(`Listening Room: http://127.0.0.1:${PORT}/room/`);
+  console.log(`ABX: http://127.0.0.1:${PORT}/abx/`);
   console.log("(Ctrl+C to stop)");
 });

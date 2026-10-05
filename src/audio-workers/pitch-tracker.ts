@@ -34,15 +34,28 @@ export const PITCH_TRACK_MAX_HZ = 1050;
 /** Frames below this clarity are unvoiced (noise / breath / room). */
 export const PITCH_CLARITY_GATE = 0.5;
 
-export function trackPitch(data: Float32Array, sampleRate: number): PitchFrame[] {
-  if (!Number.isFinite(sampleRate) || sampleRate <= 0 || data.length < 2048) return [];
+export interface PitchTrackOptions {
+  /** Lowest f0 to track (default PITCH_TRACK_MIN_HZ — the hummed range). */
+  fminHz?: number;
+  /** Highest f0 to track (default PITCH_TRACK_MAX_HZ). */
+  fmaxHz?: number;
+  /** Frame hop in ms (default 10). Bass transcription uses 20 — bass notes
+   * are long, and the larger window at low f0 makes frames expensive. */
+  hopMs?: number;
+}
 
-  const tauMin = Math.max(2, Math.floor(sampleRate / PITCH_TRACK_MAX_HZ));
-  const tauMax = Math.min(Math.floor(sampleRate / PITCH_TRACK_MIN_HZ), Math.floor(data.length / 2) - 1);
+export function trackPitch(data: Float32Array, sampleRate: number, options: PitchTrackOptions = {}): PitchFrame[] {
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0 || data.length < 2048) return [];
+  const fminHz = options.fminHz ?? PITCH_TRACK_MIN_HZ;
+  const fmaxHz = options.fmaxHz ?? PITCH_TRACK_MAX_HZ;
+  if (!Number.isFinite(fminHz) || !Number.isFinite(fmaxHz) || fminHz <= 0 || fmaxHz <= fminHz) return [];
+
+  const tauMin = Math.max(2, Math.floor(sampleRate / fmaxHz));
+  const tauMax = Math.min(Math.floor(sampleRate / fminHz), Math.floor(data.length / 2) - 1);
   if (tauMax <= tauMin) return [];
   // Window long enough to cover 2 full periods at the lowest f0.
   const window = tauMax * 2;
-  const hop = Math.max(64, Math.round(sampleRate * 0.01)); // ~10 ms
+  const hop = Math.max(16, Math.round((sampleRate * (options.hopMs ?? 10)) / 1000));
   const framesExpected = Math.floor((data.length - window) / hop) + 1;
   if (framesExpected < 4) return [];
 

@@ -197,3 +197,114 @@ Both would have produced confident nonsense:
 5. **`performance-hardening.test.ts`'s source greps give false assurance**
    (P5) and could be promoted to behavioural assertions — or relabelled as
    structural guards so their weaker status is explicit.
+
+---
+
+# ADDENDUM — 2026-10-05 — P1/P2 resolved by measurement, P3 partially closed
+
+Worked after the static pass above. One product-code change was considered per
+finding; **none were applied**. What changed is what is now _known_.
+
+## P2 — CLOSED, and the answer is "do not fix"
+
+The read-per-`pointermove` audit 16 deferred is now measured, and the obvious fix
+is **wrong**. An instrumented `getBoundingClientRect` on the lane element:
+
+```
+counter positive control: OK (reads after pointerdown=1)
+20 lane rect reads over 20 moves = 1.00/move
+distinct rects seen: 2;  clip startBar=6  moved=true
+```
+
+One read per move — the thrash pattern is real. But the probe deliberately
+injected a container reflow **mid-drag** (dock resize, panel open, scroll) and
+the lane rect genuinely changed: **2 distinct values observed**. Caching the
+rect at `pointerdown` would be a _correctness regression_ — it would silently
+land clips at the wrong bar whenever the viewport moves mid-gesture. Doing it
+properly needs the rect **plus** invalidation on resize/scroll, which is more
+machinery than one read per event justifies.
+
+**Nothing to do.** The deferral from audit 16 was correct, and is now backed by
+a measurement instead of a hunch.
+
+## P1 — cost measured; shape confirmed, severity NOT established
+
+`React.Profiler.actualDuration`, median per drag commit (jsdom):
+
+| Clips in doc | Clips rendered | Median       | p95          |
+| ------------ | -------------- | ------------ | ------------ |
+| 1            | 2              | 2.62 ms      | 5.26 ms      |
+| 25           | 26             | 9.56 ms      | 14.15 ms     |
+| 100          | 101            | **15.04 ms** | **23.13 ms** |
+| 300          | 301            | **52.25 ms** | **74.35 ms** |
+
+Commit _count_ stays a perfect 1.00/move at every size; `renderedClips` tracks
+`docClips` exactly. So the count is O(1) and the **cost is O(clips)** — the
+shape above is confirmed.
+
+**These milliseconds are not a browser budget.** jsdom has no layout or paint
+and a JS DOM, so the absolute figures are plausibly several times a real
+browser's. Only the shape is trustworthy; the severity is unmeasured.
+
+**Not fixed, and now not recommended on this evidence.** The fix is a component
+extraction plus `memo` or a windowing pass over a 106 KB file another session
+holds open. More importantly the "inconsistency" may not be a defect at all:
+`Sequencer` and `PianoRoll` window because their grids are unbounded, whereas an
+arrangement timeline is _supposed_ to show the whole song. At realistic density
+(4-bar clips ⇒ ~60 clips for a 10-minute track) this is likely fine. Deciding
+needs a browser measurement, not a jsdom number.
+
+## P3 — partially closed: the half of the guard that works, landed
+
+Added `tests/ui/arrangement-drag-commit.test.tsx` (2 specs). It asserts a
+pointermove commits **exactly once**, as a per-move _vector_ — an aggregate
+total cannot distinguish "one per move" from "move 7 commits twice, move 8
+commits zero", and both defect shapes sum to the same number.
+
+**Falsified, not assumed.** Injected a stuttered gesture (every move dropped)
+into `onClipPointerMove`; the gate failed with
+`every pointermove must commit exactly once, saw [0]: expected [+0,…] to deeply
+equal [+1,…]`. Product code restored byte-identical to HEAD afterwards.
+
+A first attempt to falsify it with a _second_ `setState` in the same handler
+proved impossible to break — React 18 batches, so one event yields at most one
+commit regardless. The "2 commits per move" shape this gate is named for
+therefore has to come from _outside_ React's event batching (a timer or rAF
+write), not from extra state writes in the handler.
+
+### The cost guard was built, falsified, and REMOVED
+
+This is the part worth reading. A total-commit-cost ratio gate was implemented,
+then deliberately broken twice to test it:
+
+| Injected regression              | Ratio measured    | Budget | Verdict                                    |
+| -------------------------------- | ----------------- | ------ | ------------------------------------------ |
+| none (baseline, 3 runs)          | 5.5×, 5.7×, 10.9× | —      | noise band                                 |
+| O(N²) scan in the clip map       | 8.92×             | 16×    | **passed a regression it exists to catch** |
+| `JSON.stringify(clips)` per clip | 11.10×            | 16×    | **passed again**                           |
+
+Marginal slope was tried as a more sensitive statistic: **1.21** with the
+quadratic injected vs. **1.18** baseline — a 0.03 difference, i.e. noise. The
+bands overlap (5.5–10.9 clean vs 8.9–11.1 with a heavy regression), so a jsdom
+cost gate cannot separate them.
+
+The reason is structural: React's DOM reconciliation dominates the commit and is
+itself swamped by machine load on a box running parallel agents. Shipping that
+gate would have been the "test that cannot fail" trap this very audit criticises
+in P5 — rigorous-looking, zero teeth. **It was removed, not loosened.** The cost
+property stays a documented finding; a real gate needs a browser harness with a
+load-calibrated baseline.
+
+## Verification (addendum)
+
+| Command                                                                                          | Result                                          |
+| ------------------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| `npx vitest run tests/ui/arrangement-drag-commit.test.tsx`                                       | 2/2 passed                                      |
+| Gate falsified (stuttered drag injected)                                                         | **failed as designed**, then reverted           |
+| `arrangement-drag-commit` + `ui-responsiveness` + `arrangement-escape-cancels-drag` + `controls` | **55/55 passed, 3 consecutive runs**            |
+| `git diff src/ui/ArrangementPanel.tsx` after revert                                              | **empty — product code byte-identical to HEAD** |
+
+One run of that four-file set returned 2 failures and every subsequent run was
+green (3×55/55). It is reported as an unexplained one-off rather than dismissed;
+the most likely cause is a parallel session's edit landing mid-run, since the
+tree was active throughout.

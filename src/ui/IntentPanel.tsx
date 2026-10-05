@@ -4389,7 +4389,7 @@ export function IntentPanel() {
                   <button
                     type="button"
                     className="btn btn-small"
-                    disabled={compBusy || busy}
+                    disabled={compBusy || busy || plan.sungBars === 0}
                     onClick={() => {
                       if (compBusy) return;
                       setCompBusy(true);
@@ -4403,7 +4403,11 @@ export function IntentPanel() {
                         setCompBusy(false);
                       }
                     }}
-                    title="Assemble the winning bars into one comped vocal — one undo step"
+                    title={
+                      plan.sungBars === 0
+                        ? "No bar has a sung take to comp — analyze takes that actually sing"
+                        : "Assemble the winning bars into one comped vocal — one undo step"
+                    }
                   >
                     {compBusy ? "…" : "🎹 BUILD COMP"}
                   </button>

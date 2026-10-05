@@ -82,18 +82,23 @@ export function applyVocalCompCommand(
   if (!pattern) throw new Error("No active pattern to plant the comp into");
   const patternSteps = Math.max(1, Math.round(pattern.stepCount));
 
-  // Contributing takes, sorted by contribution (winner first → track A)
+  // Contributing takes, in TAKE-INDEX order (not rank order). The track a
+  // take's material lands on is named by the take's position, so the mixer
+  // tracks, the summary line and the `VocalCompStrip` legend all agree on
+  // which take is "A". Naming by contribution rank instead would let a
+  // higher-index take claim the "A" track while the strip still calls the
+  // first analyzed take "Take A" — a silent mismatch the user cannot audit.
   const contributors = plan.perTakeBars
     .map((count, index) => ({ count, index }))
     .filter((entry) => entry.count > 0)
-    .sort((a, b) => b.count - a.count || a.index - b.index);
+    .sort((a, b) => a.index - b.index);
 
   let tracks = doc.tracks;
   const notesByTrack = new Map<string, NoteEvent[]>();
 
-  contributors.forEach((contributor, letterIndex) => {
+  contributors.forEach((contributor) => {
     const source = takes[contributor.index]!;
-    const name = COMP_TRACK_PREFIX + voiceLetter(letterIndex);
+    const name = COMP_TRACK_PREFIX + voiceLetter(contributor.index);
     // Reuse a previous comp track with the same buffer on re-apply
     const existing = tracks.find(
       (t): t is InstrumentTrack =>

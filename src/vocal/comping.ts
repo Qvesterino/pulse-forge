@@ -41,8 +41,8 @@ export interface CompPlan {
   sungBars: number;
   /** Per-take contribution in bars (index-aligned with the takes array). */
   perTakeBars: number[];
-  /** Take contributing the most bars (index into takes). */
-  winner: number;
+  /** Take contributing the most bars; earlier take wins ties; null when nobody sang. */
+  winner: number | null;
   /** How many takes entered the comparison (measured only). */
   takesMeasured: number;
   /** Bar count of the shared grid (min across takes). */
@@ -96,7 +96,7 @@ export function planVocalComp(takes: readonly VocalProfile[]): CompPlan | null {
     segments,
     sungBars: core.coveredBars,
     perTakeBars,
-    winner: core.winner ?? 0,
+    winner: core.winner,
     takesMeasured: measured.length,
     bars,
   };

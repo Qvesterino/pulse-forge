@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="sk">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#111318" />
+    <link rel="icon" href="data:," />
+    <title>KYX — Listening Inbox</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font:
+          15px/1.55 Inter,
+          ui-sans-serif,
+          system-ui,
+          sans-serif;
+        background: #111318;
+        color: #f2f2f4;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        max-width: 1040px;
+        margin: 0 auto;
+        padding: 44px 22px 64px;
+      }
+      a {
+        color: inherit;
+      }
+      .eyebrow {
+        color: #aaaeb9;
+        font-size: 12px;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+      h1 {
+        margin: 8px 0 6px;
+        font-size: clamp(30px, 6vw, 48px);
+        letter-spacing: -0.04em;
+      }
+      .intro {
+        max-width: 680px;
+        margin: 0;
+        color: #b5b7c0;
+      }
+      .section {
+        margin-top: 38px;
+      }
+      .section-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 13px;
+      }
+      h2 {
+        margin: 0;
+        font-size: 19px;
+      }
+      .count,
+      .muted {
+        color: #9a9eaa;
+        font-size: 13px;
+      }
+      .primary-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+      .card {
+        min-width: 0;
+        border: 1px solid #30333d;
+        border-radius: 12px;
+        padding: 19px;
+        background: #191b22;
+      }
+      .primary-card {
+        display: flex;
+        flex-direction: column;
+        min-height: 205px;
+      }
+      .card h3 {
+        margin: 0 0 7px;
+        font-size: 17px;
+      }
+      .card p {
+        margin: 0;
+        color: #b3b6c0;
+      }
+      .card .meta {
+        margin-top: 13px;
+        font-size: 13px;
+        color: #8f95a3;
+      }
+      .action {
+        display: inline-flex;
+        align-items: center;
+        align-self: flex-start;
+        margin-top: auto;
+        padding: 9px 13px;
+        border-radius: 7px;
+        background: #c5f36a;
+        color: #171a12;
+        font-weight: 700;
+        text-decoration: none;
+      }
+      .action:hover {
+        background: #d8ff8c;
+      }
+      .action[aria-disabled="true"] {
+        opacity: 0.5;
+        pointer-events: none;
+      }
+      .secondary .action {
+        background: #282b34;
+        color: #f2f2f4;
+        border: 1px solid #414550;
+      }
+      .secondary .action:hover {
+        background: #343843;
+      }
+      .session-list {
+        display: grid;
+        gap: 10px;
+      }
+      .session {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        gap: 14px;
+      }
+      .session .meta {
+        margin-top: 3px;
+      }
+      .session .action {
+        margin: 0;
+        white-space: nowrap;
+      }
+      .empty {
+        border: 1px dashed #414550;
+        border-radius: 9px;
+        padding: 16px;
+        color: #aeb2bc;
+      }
+      .note {
+        margin-top: 34px;
+        border-left: 2px solid #c5f36a;
+        padding: 2px 0 2px 13px;
+        color: #aeb2bc;
+        font-size: 13px;
+      }
+      footer {
+        margin-top: 34px;
+        color: #777d89;
+        font-size: 12px;
+      }
+      code {
+        color: #d5e6af;
+      }
+      @media (max-width: 680px) {
+        body {
+          padding: 28px 16px 42px;
+        }
+        .primary-grid {
+          grid-template-columns: 1fr;
+        }
+        .session {
+          grid-template-columns: 1fr;
+        }
+        .session .action {
+          justify-self: start;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="eyebrow">KYX · Pulse Forge</div>
+      <h1>Listening Inbox</h1>
+      <p class="intro">
+        Jeden stabilný rozcestník pre zvukové porovnania. Otvor balík, počúvaj a potom mi pošli svoje verdikty — zostanú
+        skryté odpovede, kým ich neodhlasuješ.
+      </p>
+    </header>
+
+    <section class="section" aria-labelledby="main-title">
+      <div class="section-head"><h2 id="main-title">Hlavné posluchové nástroje</h2></div>
+      <div class="primary-grid">
+        <article class="card primary-card" id="room-card">
+          <h3>Listening Room</h3>
+          <p>
+            LANES, MORPH, SCENE presety, intent kandidáti, conditioning a groovy. Bežné A/B hodnotenie aj zoradenie
+            kandidátov.
+          </p>
+          <div class="meta" id="room-meta">Načítavam dostupné testy…</div>
+          <a class="action" href="/room/">Otvoriť Listening Room</a>
+        </article>
+        <article class="card primary-card secondary" id="abx-card">
+          <h3>ABX — slepé rozpoznávanie</h3>
+          <p>Počuj X, A a B a rozhodni, ktorá ukážka je X. Aktívne porovnania sa náhodne prehadzujú.</p>
+          <div class="meta" id="abx-meta">Načítavam ABX testy…</div>
+          <a class="action" href="/abx/">Otvoriť ABX</a>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="dna-title">
+      <div class="section-head">
+        <h2 id="dna-title">Producer DNA — groove a hook</h2>
+        <span class="count" id="dna-count"></span>
+      </div>
+      <div class="session-list" id="dna-sessions" aria-live="polite"><div class="empty">Načítavam balíky…</div></div>
+    </section>
+
+    <section class="section" aria-labelledby="song-title">
+      <div class="section-head">
+        <h2 id="song-title">Producer DNA — celé skladby</h2>
+        <span class="count" id="song-count"></span>
+      </div>
+      <div class="session-list" id="song-sessions" aria-live="polite"><div class="empty">Načítavam balíky…</div></div>
+    </section>
+
+    <p class="note">
+      Verdikty z Listening Room a ABX sa ukladajú cez lokálny server. Producer DNA balík ponúkne stiahnutie výsledku; po
+      uložení ho môžeš pridať do jeho priečinka, aby sa tu zobrazil ako uložený. Odpoveďové kľúče neotváraj pred
+      hlasovaním.
+    </p>
+    <footer>
+      Lokálna stránka · <code>http://127.0.0.1:5179/</code> · nové hotové Producer DNA balíky sa do zoznamu pridajú
+      automaticky.
+    </footer>
+
+    <script>
+      const addText = (parent, tag, value, className) => {
+        const element = document.createElement(tag);
+        element.textContent = value;
+        if (className) element.className = className;
+        parent.append(element);
+        return element;
+      };
+
+      function renderSessions(container, sessions, emptyText) {
+        container.replaceChildren();
+        if (!sessions.length) {
+          addText(container, "div", emptyText, "empty");
+          return;
+        }
+        for (const session of sessions) {
+          const card = document.createElement("article");
+          card.className = "card session";
+          const details = document.createElement("div");
+          addText(details, "h3", session.title);
+          const meta = [
+            session.genre,
+            session.mode,
+            session.date,
+            session.pairCount + (session.pairCount === 1 ? " pár" : " páry"),
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          addText(details, "div", meta, "meta");
+          addText(
+            details,
+            "div",
+            session.verdictsSaved ? "Verdikty sú uložené v balíku" : "Bez uloženého verdicts.json",
+            "muted",
+          );
+          const link = document.createElement("a");
+          link.className = "action";
+          link.href = session.url;
+          link.textContent = "Otvoriť balík";
+          link.setAttribute("aria-label", "Otvoriť " + session.title + (session.date ? " · " + session.date : ""));
+          card.append(details, link);
+          container.append(card);
+        }
+      }
+
+      async function loadCatalog() {
+        try {
+          const response = await fetch("/api/listening-catalog", { cache: "no-store" });
+          if (!response.ok) throw new Error("catalog unavailable");
+          const catalog = await response.json();
+
+          const room = catalog.room;
+          const roomLink = document.querySelector("#room-card .action");
+          roomLink.href = room.url;
+          if (!room.available) {
+            roomLink.setAttribute("aria-disabled", "true");
+            roomLink.removeAttribute("href");
+            roomLink.tabIndex = -1;
+            roomLink.textContent = "Balík ešte nie je vygenerovaný";
+          }
+          const suiteNames = [
+            ["LANES", room.lanes],
+            ["MORPH", room.suites.morph],
+            ["SCENE", room.suites.scenes],
+            ["INTENT skupiny", room.suites.intent],
+            ["CONDITIONING páry", room.suites.conditioning],
+            ["GROOVES", room.suites.grooves],
+          ];
+          document.getElementById("room-meta").textContent = room.available
+            ? suiteNames.map(([name, count]) => name + " " + count).join(" · ")
+            : "Spusti npm run listening:room a potom obnov túto stránku.";
+
+          const abxLink = document.querySelector("#abx-card .action");
+          abxLink.href = catalog.abx.url;
+          if (!catalog.abx.available) {
+            abxLink.setAttribute("aria-disabled", "true");
+            abxLink.removeAttribute("href");
+            abxLink.tabIndex = -1;
+            abxLink.textContent = "ABX balík ešte nie je vygenerovaný";
+          }
+          document.getElementById("abx-meta").textContent = catalog.abx.available
+            ? catalog.abx.lanes + " aktívnych porovnávacích párov · hlasovania sa ukladajú lokálne"
+            : "Spusti npm run listening:abx a potom obnov túto stránku.";
+
+          const dna = catalog.producerDna;
+          const songs = catalog.producerDnaSongs;
+          document.getElementById("dna-count").textContent =
+            dna.length + " balíkov · " + dna.reduce((sum, item) => sum + item.pairCount, 0) + " párov";
+          document.getElementById("song-count").textContent =
+            songs.length + " balíkov · " + songs.reduce((sum, item) => sum + item.pairCount, 0) + " párov";
+          renderSessions(
+            document.getElementById("dna-sessions"),
+            dna,
+            "Zatiaľ tu nie je vygenerovaný groove/hook balík Producer DNA.",
+          );
+          renderSessions(
+            document.getElementById("song-sessions"),
+            songs,
+            "Zatiaľ tu nie je vygenerovaný whole-song balík Producer DNA.",
+          );
+        } catch {
+          document.getElementById("room-meta").textContent =
+            "Nepodarilo sa načítať katalóg; skontroluj, či beží listening server.";
+          document.getElementById("abx-meta").textContent = "Katalóg je momentálne nedostupný.";
+          renderSessions(document.getElementById("dna-sessions"), [], "Katalóg Producer DNA je nedostupný.");
+          renderSessions(document.getElementById("song-sessions"), [], "Katalóg Producer DNA je nedostupný.");
+        }
+      }
+
+      loadCatalog();
+    </script>
+  </body>
+</html>
