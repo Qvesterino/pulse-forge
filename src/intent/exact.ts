@@ -21,7 +21,13 @@ export type ExactOp =
   | { kind: "mute"; target: ExactTarget; value: boolean }
   | { kind: "solo"; target: ExactTarget; value: boolean }
   | { kind: "pan"; target: ExactTarget; value: number }
-  | { kind: "gainDb"; target: ExactTarget; deltaDb: number }
+  /**
+   * "lower the drums by 3 db" — when the ask names no magnitude
+   * ("lower drums db"), deltaDb carries the bounded default (±2) and
+   * `assumed` marks it so the label/readback can say the number was never
+   * the user's (SILENT-DEFAULT rule, signal-flow audit re-run).
+   */
+  | { kind: "gainDb"; target: ExactTarget; deltaDb: number; assumed?: true }
   /** Absolute fader set: "bass to -6 dB", "basa na -6 dB" — reads current state in the applier. */
   | { kind: "gainDbAbsolute"; target: ExactTarget; absDb: number }
   | { kind: "transpose"; target: ExactTarget; semitones: number }
@@ -298,7 +304,14 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
   if (gainDb) {
     const target = firstTarget(gainDb[2]);
     const sign = /lower|reduce|drop|cut|zniz|ztichn|stis|ztlm|tichs/.test(gainDb[1]) ? -1 : 1;
-    if (target) ops.push({ kind: "gainDb", target, deltaDb: sign * Number(gainDb[3] ?? 2) });
+    const stated = gainDb[3] != null;
+    if (target)
+      ops.push({
+        kind: "gainDb",
+        target,
+        deltaDb: sign * Number(gainDb[3] ?? 2),
+        ...(stated ? {} : { assumed: true as const }),
+      });
   }
 
   // Absolute fader set: "set bass to -6 dB", "basa na -6 dB". Checked AFTER
@@ -421,7 +434,8 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
       if (op.kind === "mute") return `${op.value ? "mute" : "unmute"} ${op.target}`;
       if (op.kind === "solo") return `solo ${op.target}`;
       if (op.kind === "pan") return `pan ${op.target} ${op.value.toFixed(2)}`;
-      if (op.kind === "gainDb") return `${op.deltaDb > 0 ? "+" : ""}${op.deltaDb} dB ${op.target}`;
+      if (op.kind === "gainDb")
+        return `${op.deltaDb > 0 ? "+" : ""}${op.deltaDb} dB ${op.target}${op.assumed ? " (assumed)" : ""}`;
       if (op.kind === "transpose") return `transpose ${op.target} ${op.semitones > 0 ? "+" : ""}${op.semitones} st`;
       if (op.kind === "addTrack") {
         return op.trackKind === "drum" ? "add drum track" : `add ${op.instrument} track`;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseTempoIntent } from "../src/intent/conversation";
 import { applyAutomateIntent, parseAutomateIntent } from "../src/intent/studio-words";
+import { parseExactIntent } from "../src/intent/exact";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { createDrumTrackModel, createInstrumentTrackModel } from "../src/project-model/schema";
 import { MAX_BPM, MIN_BPM } from "../src/project-model/schema";
@@ -18,7 +19,30 @@ import type { ProjectDocument } from "../src/project-model/types";
  *    (pinned for transpose in intent-e2e-audit2) did not hold here. The
  *    fallback is now restricted to the case its comment actually described:
  *    a project with exactly one non-group lane.
+ * 3. Silent defaults: a magnitude-less dB ask ("lower drums db") lands on the
+ *    bounded ±2 dB default — legal, but the label must SAY the number was
+ *    assumed, not present it as the user's (SILENT-DEFAULT rule).
  */
+
+describe("silent dB default is marked as assumed", () => {
+  it("magnitude-less ask lands ±2 dB with assumed: true and the label says so", () => {
+    const plan = parseExactIntent("lower drums db")!;
+    expect(plan).not.toBeNull();
+    const op = plan.ops.find((o) => o.kind === "gainDb");
+    expect(op).toMatchObject({ kind: "gainDb", target: "drums", deltaDb: -2, assumed: true });
+    expect(plan.label).toContain("-2 dB drums (assumed)");
+    const boost = parseExactIntent("boost the mix db")!;
+    expect(boost.ops.find((o) => o.kind === "gainDb")).toMatchObject({ deltaDb: 2, assumed: true });
+  });
+
+  it("a stated magnitude never carries the assumed flag", () => {
+    const plan = parseExactIntent("lower drums by 3 db")!;
+    const op = plan.ops.find((o) => o.kind === "gainDb");
+    expect(op).toMatchObject({ kind: "gainDb", target: "drums", deltaDb: -3 });
+    expect(op && "assumed" in op && op.assumed).toBeFalsy();
+    expect(plan.label).not.toContain("assumed");
+  });
+});
 
 describe("tempo intent window (MIN_BPM..MAX_BPM everywhere)", () => {
   it("accepts the full authoritative window through the tempo-word parser", () => {

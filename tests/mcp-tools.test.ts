@@ -244,6 +244,21 @@ describe("mcp structured tools", async () => {
     expect(store.doc.groove?.swing ?? 0).toBe(0);
   });
 
+  it("kyx_groove set without percent lands the 50% default and SAYS it is assumed", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    const result = await executeMcpTool(ctx, "kyx_groove", { direction: "set" });
+    expect(result.mutated).toBe(true);
+    expect(store.doc.groove?.swing ?? 0).toBeCloseTo(0.5, 5);
+    expect(result.text).toContain("assumed default");
+    expect(result.text).toContain("pass percent");
+    // A stated percent must NOT carry the assumed note.
+    store.undo();
+    const stated = await executeMcpTool(ctx, "kyx_groove", { direction: "set", percent: 75 });
+    expect(stated.text).not.toContain("assumed");
+    expect(store.doc.groove?.swing ?? 0).toBeCloseTo(0.75, 5);
+  });
+
   it("kyx_fx more reverb on the lead adds the instance; remove deletes it (D4-gated)", async () => {
     const store = new ProjectStore(withLead());
     const locked = storeCtx(store);

@@ -1933,6 +1933,11 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
       const direction = String(record.direction ?? "");
       const section = typeof record.section === "string" ? record.section : undefined;
       const percent = typeof record.percent === "number" ? record.percent : undefined;
+      // SILENT-DEFAULT rule: an unstated magnitude lands on the bounded
+      // default (50 %), and the read-back says so — an agent that meant 80 %
+      // must see that 50 happened, not mistake the default for its intent.
+      const assumedNote =
+        direction === "set" && percent == null ? " (swing 50% assumed default — pass percent for an exact value)" : "";
       if (section == null) {
         const command = applyGrooveIntent(
           ctx.getDoc(),
@@ -1944,12 +1949,12 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
         );
         if (!command) return { text: "groove already neutral", mutated: false };
         ctx.execute(command);
-        return { text: command.label, mutated: true };
+        return { text: `${command.label}${assumedNote}`, mutated: true };
       }
       const scoped = applySectionGrooveIntent(ctx.getDoc(), sectionGrooveFrom(direction, percent, section));
       if (!scoped) return { text: `no pattern for the "${section}" section`, mutated: false };
       ctx.execute(scoped);
-      return { text: scoped.label, mutated: true };
+      return { text: `${scoped.label}${assumedNote}`, mutated: true };
     }
     case "kyx_fx": {
       const action = String(record.action ?? "");
