@@ -46,9 +46,11 @@ await server.listen();
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
-// Generous nav timeout: under a loaded machine (parallel suites) the
-// default 30 s aborts before the dev server's first compile finishes.
-await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 180000 });
+// Generous nav timeout: under a loaded machine (parallel suites — measured
+// 61 concurrent node processes mid-workday) vite's first dep-optimization
+// competes for the .vite cache lock and can exceed even 3 minutes before
+// the first request is served.
+await page.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: "domcontentloaded", timeout: 420000 });
 
 const measurements = await page.evaluate(async () => {
   const registry = await import("/src/instruments/registry.ts");
@@ -69,37 +71,17 @@ const measurements = await page.evaluate(async () => {
   // map must describe the curated sound, not the raw synth fallback.
   const bank = await factory.generateFactoryBank();
   await curated.loadCuratedLayer(bank);
-  // Real piano pack: fetch the pack WAVs into the bank so the sampler
-  // preset measures its actual sound (the pack lives in public/samples/
-  // piano/, served by the same dev server — ~120 files, fetched once).
-  const pianoPack = await import("/src/presets/piano-pack.generated.ts");
-  const vscoPack = await import("/src/presets/vsco-pack.generated.ts");
-  const packIds = [
-    ...new Set([
-      ...pianoPack.PIANO_PACK_LAYERS.map((l) => l.sampleId),
-      ...vscoPack.VSCO_PACK_LAYERS.map((l) => l.sampleId),
-    ]),
-  ];
-  await Promise.all(
-    packIds.map(async (id) => {
-      // Per-pack path: VSCO2 samples live under /samples/vsco/ (the hard
-      //coded /samples/piano/ used to 404 every VSCO id, so the whole VSCO
-      // catalogue measured its silent fallback and silently dropped OUT of
-      // the generated map — unmeasured presets get a 0 dB normalization
-      // gain and the drift gate skips ids the map does not know).
-      const pack = id.startsWith("factory.vsco.") ? "vsco" : "piano";
-      try {
-        const response = await fetch(`/samples/${pack}/${id}.wav`);
-        if (!response.ok) return;
-        const data = await response.arrayBuffer();
-        const decoded = await import("/src/services/audio-decode.ts");
-        bank.add(id, await decoded.decodeAudioData(data));
-      } catch {
-        /* missing pack file — the preset measures its fallback silence and
-           the loudness audit will flag the coverage gap honestly */
-      }
-    }),
-  );
+  // Real-instrument packs: fetch the pack WAVs into the bank so sampler
+  // presets measure their actual sound. Goes through the SAME ensure helpers
+  // the studio apply path uses (bounded 4-worker queue via assetUrl) — the
+  // previous hand-rolled Promise.all fired ~2400 concurrent fetches at the
+  // dev server, which dropped a random subset (timpani 26/28, whole
+  // instruments 0/44), and any dropped sample rendered its preset silent:
+  // the preset then measured nothing and silently fell out of the map.
+  const pianoPack = await import("/src/presets/piano-pack.ts");
+  const vscoPack = await import("/src/presets/vsco-pack.ts");
+  await pianoPack.ensurePianoPackLoaded(bank);
+  await vscoPack.ensureVscoPackLoaded(bank);
   const out = [];
 
   for (const preset of presets.FACTORY_PRESETS) {
