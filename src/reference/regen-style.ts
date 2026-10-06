@@ -20,13 +20,16 @@ import { generateMelodicParts } from "../ai/melodic";
 import { PAD_NAMES } from "../ai/types";
 import { inferPadRole } from "../ai/pad-roles";
 import { artistMixProfileOf } from "../intent/artist-mix";
-import { matchArtistPreset, type ArtistPreset } from "../intent/artists";
+import { ARTIST_PRESETS, type ArtistPreset } from "../intent/artists";
 import { planMixProfile, applyMixIntent } from "../intent/mix";
-import { applyKitToDrumTrack } from "../commands/drumContent";
-import { applyInstrumentPreset } from "../commands/instrument";
 import { snapshot } from "../commands/core";
-import { getKitPresetsForGenre } from "../project-model/kit-presets";
-import { STEP_TICKS, type ProjectDocument, type NoteEvent } from "../project-model/types";
+import {
+  STEP_TICKS,
+  type DrumTrack,
+  type InstrumentTrack,
+  type ProjectDocument,
+  type NoteEvent,
+} from "../project-model/types";
 import type { Command } from "../commands/types";
 
 export interface RegenStyleResult {
@@ -38,17 +41,12 @@ export interface RegenStyleResult {
 
 /** Same resolve + seed logic as restyle.ts — identical artist = identical band. */
 function resolveArtist(label: string): ArtistPreset | null {
+  // EXACT label match only: regeneration REWRITES NOTES, so a fuzzy phrase
+  // match (which happily binds "nikto taky 999" to some artist) would be a
+  // silent content change the user did not ask for. The UI select feeds
+  // exact labels anyway.
   const wanted = label.trim().toLowerCase();
   if (!wanted) return null;
-  const exact = ARTIST_FIND(wanted);
-  if (exact) return exact;
-  return matchArtistPreset(wanted)?.preset ?? null;
-}
-
-function ARTIST_FIND(wanted: string): ArtistPreset | null {
-  // Local import indirection to keep the hot path allocation-free is
-  // unnecessary — direct find over the decoded array.
-  const { ARTIST_PRESETS } = require("../intent/artists") as typeof import("../intent/artists");
   return ARTIST_PRESETS.find((p) => p.label === wanted) ?? null;
 }
 
@@ -74,16 +72,11 @@ function grooveRole(padIndex: number): string {
   return inferPadRole(PAD_NAMES[padIndex] ?? undefined, padIndex);
 }
 
-export function regenerateStyleCommand(
-  doc: ProjectDocument,
-  artistLabel: string,
-  options: { includeChords?: boolean } = {},
-): RegenStyleResult {
+export function regenerateStyleCommand(doc: ProjectDocument, artistLabel: string): RegenStyleResult {
   const artist = resolveArtist(artistLabel);
   if (!artist) {
     return { command: null, summary: `unknown artist "${artistLabel}" — pick one from the list`, sections: 0 };
   }
-  const seed = labelSeed(`${artist.label}|regen`);
   const groove = resolveGrooveSeeded(artist.genre, artist.style, `${artist.label}`, artist.bpmRange, null);
 
   const drumTrack = doc.tracks.find((t): t is DrumTrack => t.kind === "drum");
@@ -149,13 +142,13 @@ export function regenerateStyleCommand(
         doc.key ?? undefined,
         kickRows,
       );
-      const source = bassTrack.id;
       // Keep each existing chord's root as the bass register anchor: take the
       // generated rhythm, pitch it into the bass register over the chord pcs
       // already in the pattern (the transcribed harmony stays the identity).
-      const existingChords = pattern.notes[doc.tracks.find(
-        (t): t is InstrumentTrack => t.kind === "instrument" && t.instrument === "keys",
-      )?.id ?? ""];
+      const existingChords =
+        pattern.notes[
+          doc.tracks.find((t): t is InstrumentTrack => t.kind === "instrument" && t.instrument === "keys")?.id ?? ""
+        ];
       const anchorPcs = (existingChords ?? []).map((n) => ((Math.round(n.pitch) % 12) + 12) % 12);
       const bassNotes: NoteEvent[] = melodic.bass
         .filter((note) => note.start < pattern.stepCount * STEP_TICKS)
@@ -184,9 +177,6 @@ export function regenerateStyleCommand(
   }
 
   // 3) MIX — the artist's bus signals, same as restyle.
-  if (!options.includeChords) {
-    /* no-op guard: option reserved */
-  }
   try {
     const profile = artistMixProfileOf({
       version: 2,
@@ -222,9 +212,9 @@ export function regenerateStyleCommand(
     doc,
     next,
   );
-  return { command, summary: `${artist.label} · groove ${groove.id} · ${sections} sekcií (nové bubny + basa, akordy z originálu)`, sections };
+  return {
+    command,
+    summary: `${artist.label} · groove ${groove.id} · ${sections} sekcií (nové bubny + basa, akordy z originálu)`,
+    sections,
+  };
 }
-
-// keep chords option in the public shape even though v1 always preserves them
-export type RegenStyleOptions = { includeChords?: boolean };
-void STEP_TICKS;

@@ -127,6 +127,12 @@ describe("DropZone — UN-SUNO analyze offer (U6)", () => {
     const command = executeSpy.mock.calls[1][0] as unknown as { type: string; label: string };
     expect(command.type).toBe("restyle");
     expect(command.label).toMatch(/travis scott/i);
+    // 🎲 REGEN: exact-label regeneration executes as a second command.
+    fireEvent.click(screen.getByTestId("regen-go"));
+    await waitFor(() => expect(executeSpy).toHaveBeenCalledTimes(3), { timeout: 30_000 });
+    const regenCommand = executeSpy.mock.calls[2][0] as unknown as { type: string; label: string };
+    expect(regenCommand.type).toBe("regenStyle");
+    expect(regenCommand.label).toMatch(/travis scott/i);
   }, 120_000);
 
   it("S-advisory: similarity button measures the current project vs the build-time source", async () => {

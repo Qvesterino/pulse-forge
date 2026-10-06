@@ -31,6 +31,7 @@ import {
 import { transcribeTrackAsync } from "../reference/reference-client";
 import { analyzeSectionMix, type SectionMixFinding } from "../analysis/sectionMixDoctor";
 import { restyleCommand, artistLabels } from "../reference/restyle";
+import { regenerateStyleCommand } from "../reference/regen-style";
 import {
   projectFingerprint,
   similarityAdvisory,
@@ -939,7 +940,7 @@ export function ReferenceMapPanel() {
                 )}
               </div>
             )}
-            {applied?.includes("UN-SUNO") && (
+            {sourceFingerprint && (
               <div className="restyle-row" data-testid="restyle-row">
                 <input
                   list="restyle-artists"
@@ -966,12 +967,29 @@ export function ReferenceMapPanel() {
                       return;
                     }
                     services.store.execute(result.command);
-                    setRestyleArtist("");
                     setApplied(`🎨 ${result.summary} (one undo step)`);
                   }}
                   title="Zamení kapelu (kit + inštrumenty + mix) — kompozícia (patterny, noty) zostáva; jedno undo"
                 >
                   🎨 RE-STYLE
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  disabled={!restyleArtist.trim()}
+                  data-testid="regen-go"
+                  onClick={() => {
+                    const result = regenerateStyleCommand(services.store.doc, restyleArtist.trim().toLowerCase());
+                    if (!result.command) {
+                      setApplied(`Regen: ${result.summary}`);
+                      return;
+                    }
+                    services.store.execute(result.command);
+                    setApplied(`🎲 ${result.summary} (one undo step)`);
+                  }}
+                  title="REGENERUJE obsah sekcií v štýle umelca (nové bubny z jeho groovu + nová basa) — akordy, štruktúra a tónina zostávajú; jedno undo"
+                >
+                  🎲 REGEN
                 </button>
               </div>
             )}
