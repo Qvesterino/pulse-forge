@@ -3452,6 +3452,12 @@ const zenit: EffectDefinition = {
     for (let i = 0; i < subs.length - 1; i++) subs[i]!.output.connect(subs[i + 1]!.input);
     const [eq, tape, comp, util, clip, lim] = subs;
     let ceilingValue = instance.params.ceiling ?? -1;
+    // The LIMIT macro derives the limiter threshold FROM the ceiling — the
+    // two macros are state-coupled, so ceiling moves must re-derive the
+    // threshold (and iteration order over the stored params object must not
+    // matter). Without this, LIMIT 0 stopped meaning "limiter idle at the
+    // ceiling" the moment CEILING moved after LIMIT.
+    let limitValue = instance.params.limit ?? 0;
 
     const apply = (id: string, v: number, when?: number): void => {
       const push = (rt: EffectRuntime, paramId: string, paramValue: number) => {
@@ -3490,10 +3496,14 @@ const zenit: EffectDefinition = {
           ceilingValue = v;
           push(clip!, "ceiling", v);
           push(lim!, "ceiling", v);
+          // Re-derive the limiter threshold so LIMIT keeps its meaning
+          // relative to the NEW ceiling (see the limitValue note above).
+          push(lim!, "threshold", limitThreshold(limitValue, v));
           break;
         case "limit":
           // 0 = limiter idle (threshold rides the ceiling the clipper already
           // caught); >0 pushes the threshold harder for loudness.
+          limitValue = v;
           push(lim!, "threshold", limitThreshold(v, ceilingValue));
           break;
       }

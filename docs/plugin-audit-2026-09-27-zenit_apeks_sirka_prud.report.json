@@ -1,0 +1,467 @@
+{
+  "effects": [
+    {
+      "type": "zenit",
+      "defaultPeak": 0.8858416080474854,
+      "defaultFinite": true,
+      "bypassDelta": 2.1969216227959394,
+      "params": [
+        {
+          "id": "eqLow",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.8825501799583435,
+          "maxPeak": 0.890604555606842,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.37087722228674697
+        },
+        {
+          "id": "eqMid",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.8851311802864075,
+          "maxPeak": 0.8864331245422363,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.11785286599222425
+        },
+        {
+          "id": "eqHigh",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.8867332339286804,
+          "maxPeak": 0.8912509083747864,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.03954645194368168
+        },
+        {
+          "id": "glue",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.8858414888381958,
+          "maxPeak": 0.6977828145027161,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "rms",
+          "delta": 0.525877301050415
+        },
+        {
+          "id": "drive",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.8858415484428406,
+          "maxPeak": 0.8912509083747864,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "rms",
+          "delta": 0.7905016169837579
+        },
+        {
+          "id": "width",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.8735448718070984,
+          "maxPeak": 0.8912509083747864,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 1.7903875206215738
+        },
+        {
+          "id": "bassMono",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.8858415484428406,
+          "maxPeak": 0.8757297396659851,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.7240327569982004
+        },
+        {
+          "id": "ceiling",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4961606562137604,
+          "maxPeak": 0.9941540956497192,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "rms",
+          "delta": 0.43783470857308326
+        },
+        {
+          "id": "limit",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.8858416080474854,
+          "maxPeak": 0.8754772543907166,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.014925927528623305
+        }
+      ],
+      "deadParams": [
+        "limit"
+      ],
+      "unstableParams": [],
+      "rapidSwingFinite": true,
+      "presetsFinite": 3,
+      "presetsTotal": 3,
+      "hostProcesses": true,
+      "hostDelta": 0.6740479899173277,
+      "hostBypassEqualsRemoved": true,
+      "hostFinite": true,
+      "automationDelta": 0.000002326022759334146,
+      "automationFinite": true,
+      "restoreMaxDiff": 0.0008822977542877197,
+      "restoreRmsDiff": 2.0943053344152772e-7,
+      "name": "ZENIT",
+      "category": "dynamics"
+    },
+    {
+      "type": "apeks",
+      "defaultPeak": 0.8912501335144043,
+      "defaultFinite": true,
+      "bypassDelta": 0.9951363522553319,
+      "params": [
+        {
+          "id": "drive",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4668046832084656,
+          "maxPeak": 0.8912509083747864,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "rms",
+          "delta": 0.4987811239720107
+        },
+        {
+          "id": "ceiling",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.25118863582611084,
+          "maxPeak": 0.9313977956771851,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "rms",
+          "delta": 0.5913864866117988
+        },
+        {
+          "id": "release",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.8912501335144043,
+          "maxPeak": 0.8912501335144043,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "preserve",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.8912509083747864,
+          "maxPeak": 0.8912493586540222,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "rms",
+          "delta": 1.6023441604627734e-8
+        },
+        {
+          "id": "mix",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4668046832084656,
+          "maxPeak": 0.8912501335144043,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "rms",
+          "delta": 0.4987811239720107
+        },
+        {
+          "id": "output",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.22387191653251648,
+          "maxPeak": 3.548130750656128,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "side",
+          "delta": 2.981071708438344
+        }
+      ],
+      "deadParams": [
+        "release",
+        "preserve"
+      ],
+      "unstableParams": [],
+      "rapidSwingFinite": true,
+      "presetsFinite": 3,
+      "presetsTotal": 3,
+      "hostProcesses": true,
+      "hostDelta": 0.3654126060507367,
+      "hostBypassEqualsRemoved": true,
+      "hostFinite": true,
+      "automationDelta": 1.9749283712834094,
+      "automationFinite": true,
+      "restoreMaxDiff": 2.384185791015625e-7,
+      "restoreRmsDiff": 7.499927527929107e-11,
+      "name": "APEKS",
+      "category": "dynamics"
+    },
+    {
+      "type": "sirka",
+      "defaultPeak": 0.4668046832084656,
+      "defaultFinite": true,
+      "bypassDelta": 0,
+      "params": [
+        {
+          "id": "lowFreq",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4668046832084656,
+          "maxPeak": 0.4668046832084656,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "highFreq",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4668046832084656,
+          "maxPeak": 0.4668046832084656,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        },
+        {
+          "id": "lowWidth",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4565466642379761,
+          "maxPeak": 0.5445709228515625,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "side",
+          "delta": 0.3219650653174606
+        },
+        {
+          "id": "midWidth",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4259284734725952,
+          "maxPeak": 0.6297264695167542,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 0.8784465589918501
+        },
+        {
+          "id": "highWidth",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4708000123500824,
+          "maxPeak": 0.4687173068523407,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.02450867133960115
+        },
+        {
+          "id": "mix",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4668046832084656,
+          "maxPeak": 0.4668046832084656,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "",
+          "delta": 0
+        }
+      ],
+      "deadParams": [
+        "lowFreq",
+        "highFreq",
+        "mix"
+      ],
+      "unstableParams": [],
+      "rapidSwingFinite": true,
+      "presetsFinite": 2,
+      "presetsTotal": 2,
+      "hostProcesses": false,
+      "hostDelta": 1.733530747612721e-8,
+      "hostBypassEqualsRemoved": true,
+      "hostFinite": true,
+      "automationDelta": 7.333549744856241e-9,
+      "automationFinite": true,
+      "restoreMaxDiff": 2.384185791015625e-7,
+      "restoreRmsDiff": 3.149116353251015e-11,
+      "name": "ŠÍRKA",
+      "category": "movement"
+    },
+    {
+      "type": "prud",
+      "defaultPeak": 0.455426961183548,
+      "defaultFinite": true,
+      "bypassDelta": 0.02007394533158503,
+      "params": [
+        {
+          "id": "freq1",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.41014859080314636,
+          "maxPeak": 0.4653441607952118,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 0.12051761421288684
+        },
+        {
+          "id": "thresh1",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4545418322086334,
+          "maxPeak": 0.4653441607952118,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.016491728354527502
+        },
+        {
+          "id": "amount1",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.45542699098587036,
+          "maxPeak": 0.4653441607952118,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.016491728354527502
+        },
+        {
+          "id": "q1",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.394748717546463,
+          "maxPeak": 0.4651888310909271,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "side",
+          "delta": 0.1111020595554117
+        },
+        {
+          "id": "freq2",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.41489869356155396,
+          "maxPeak": 0.4575256407260895,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 0.11029674933923247
+        },
+        {
+          "id": "thresh2",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.45527970790863037,
+          "maxPeak": 0.4575256407260895,
+          "responsive": false,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 0.004727644897263453
+        },
+        {
+          "id": "amount2",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.455426961183548,
+          "maxPeak": 0.4575256407260895,
+          "responsive": false,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.0042514226920162
+        },
+        {
+          "id": "q2",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.44422078132629395,
+          "maxPeak": 0.4575256407260895,
+          "responsive": true,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 0.026435601549568782
+        },
+        {
+          "id": "attack",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.45438751578330994,
+          "maxPeak": 0.46538636088371277,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "dyn",
+          "delta": 0.020092292538376532
+        },
+        {
+          "id": "release",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.4667585790157318,
+          "maxPeak": 0.4543938934803009,
+          "responsive": false,
+          "bestExtreme": "min",
+          "metric": "dyn",
+          "delta": 0.01959835869771547
+        },
+        {
+          "id": "output",
+          "minFinite": true,
+          "maxFinite": true,
+          "minPeak": 0.11439807713031769,
+          "maxPeak": 1.8130873441696167,
+          "responsive": true,
+          "bestExtreme": "max",
+          "metric": "side",
+          "delta": 2.981071706937775
+        }
+      ],
+      "deadParams": [
+        "thresh1",
+        "amount1",
+        "thresh2",
+        "amount2",
+        "release"
+      ],
+      "unstableParams": [],
+      "rapidSwingFinite": true,
+      "presetsFinite": 2,
+      "presetsTotal": 2,
+      "hostProcesses": true,
+      "hostDelta": 1.1767118610099827,
+      "hostBypassEqualsRemoved": true,
+      "hostFinite": true,
+      "automationDelta": 1.516459983303448,
+      "automationFinite": true,
+      "restoreMaxDiff": 9.5367431640625e-7,
+      "restoreRmsDiff": 6.326895507677053e-11,
+      "name": "PRÚD",
+      "category": "tone"
+    }
+  ],
+  "instruments": [],
+  "interactions": null,
+  "startedAt": "2026-10-06T06:32:22.654Z",
+  "finishedAt": "2026-10-06T06:33:36.995Z"
+}

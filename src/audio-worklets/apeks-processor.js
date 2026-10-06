@@ -47,7 +47,11 @@ class ApeksProcessor extends AudioWorkletProcessor {
     const inGain = Math.pow(10, (drive * 12) / 20);
     const ceilLin = Math.pow(10, ceilingDb / 20);
     const outGain = Math.pow(10, outDb / 20);
-    const relCoef = Math.exp(-1 / (sr * release));
+    // Per-sample BLEND toward the GR target (one-pole): release sets the time
+    // constant, so larger release = slower recovery. The exp form alone is a
+    // KEEP fraction (~1); blending with it directly snapped GR to the target
+    // in one sample and made the RELEASE knob inaudible (param audit 10-06).
+    const relBlend = 1 - Math.exp(-1 / (sr * release));
     const fastCoef = Math.exp(-1 / (sr * 0.002));
     const slowCoef = Math.exp(-1 / (sr * 0.05));
 
@@ -77,7 +81,7 @@ class ApeksProcessor extends AudioWorkletProcessor {
         fast += (ax - fast) * (ax > fast ? fastCoef : 1);
         slow += (ax - slow) * slowCoef;
         if (gr < grTarget) gr += (grTarget - gr) * 0.5;
-        else gr += (grTarget - gr) * relCoef;
+        else gr += (grTarget - gr) * relBlend;
         const r = Math.min(1, (fast - slow) / (ax + 1e-6));
         const grTransient = Math.min(1, gr + preserve * (1 - gr));
         let y = gr * x * (1 - r) + grTransient * x * r;
