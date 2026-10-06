@@ -90,7 +90,8 @@ describe("mastering platform profiles", () => {
     expect(loudnessStatus(-11.9)).toBe("fail");
     expect(loudnessStatus(-15)).toBe("pass");
     expect(loudnessStatus(-16)).toBe("warn");
-    expect(loudnessStatus(-16.1)).toBe("warn");
+    // The warn band ends AT 2 LU below target — anything beyond fails hard.
+    expect(loudnessStatus(-16.05)).toBe("fail");
     expect(loudnessStatus(-16.2)).toBe("fail");
     expect(loudnessStatus(null)).toBe("warn");
     expect(loudnessStatus(-120)).toBe("warn");

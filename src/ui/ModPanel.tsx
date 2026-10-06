@@ -368,7 +368,7 @@ export function ModPanel() {
             return (
               <div key={lane.id} className={`mod-lane-row${lane.id === selectedLaneId ? " selected" : ""}`}>
                 <button type="button" className="mod-lane-label" onClick={() => setSelectedLaneId(lane.id)}>
-                  {laneLabel(lane, track?.name ?? "?", fxName)} · {lane.points.length} pts
+                  {laneLabel(lane, track ? ("name" in track ? track.name : "MASTER") : "?", fxName)} · {lane.points.length} pts
                 </button>
                 <button
                   type="button"
@@ -436,7 +436,7 @@ export function ModPanel() {
               <div key={lfo.id} className={`lfo-row${kind !== "osc" ? " lfo-row-sched" : ""}`}>
                 <div className="lfo-row-header">
                   <span className="lfo-row-name">
-                    {trackBadgeSafe(track)} {track?.name ?? "?"} · {KIND_LABELS[kind]}
+                    {trackBadgeSafe(track)} {track ? ("name" in track ? track.name : "MASTER") : "?"} · {KIND_LABELS[kind]}
                   </span>
                   <button
                     type="button"
@@ -1122,7 +1122,7 @@ function MacroCard({ macro }: { macro: ProjectDocument["macros"][number] }) {
           return (
             <div key={mapping.id} className="macro-mapping">
               <span className="macro-mapping-label">
-                {trackBadgeSafe(track)} {track?.name ?? "?"} · {macroMappingLabel(doc, mapping)}
+                {trackBadgeSafe(track)} {track ? ("name" in track ? track.name : "MASTER") : "?"} · {macroMappingLabel(doc, mapping)}
                 {mapping.source === "midiCC"
                   ? ` · CC${mapping.ccNumber}${mapping.channel ? ` Ch${mapping.channel}` : ""}`
                   : ""}
@@ -1540,7 +1540,7 @@ function ScenePanel() {
                 return (
                   <div key={lane.id} className={`mod-lane-row${lane.id === selectedSceneLaneId ? " selected" : ""}`}>
                     <button type="button" className="mod-lane-label" onClick={() => setSelectedSceneLaneId(lane.id)}>
-                      {trackBadgeSafe(track)} {track?.name ?? "?"} · {lane.target.kind} · {lane.points.length} pts
+                      {trackBadgeSafe(track)} {track ? ("name" in track ? track.name : "MASTER") : "?"} · {lane.target.kind} · {lane.points.length} pts
                     </button>
                     <button
                       type="button"
