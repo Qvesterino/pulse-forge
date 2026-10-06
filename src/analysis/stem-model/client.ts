@@ -22,6 +22,8 @@ export interface ModelStems {
   stemNames: StemModelManifest["stems"];
   analyzedSec: number;
   modelVersion: string;
+  /** Execution provider the session ran on (S5). */
+  ep: StemEp;
 }
 
 export interface ModelSeparationOptions extends ChunkedSeparationOptions {
@@ -33,6 +35,8 @@ export interface StemModelSession {
   manifest: StemModelManifest;
   /** ORT InferenceSession (typed loosely — onnxruntime-web import is lazy). */
   session: unknown;
+  /** Execution provider actually used (S5) — "wasm" unless WebGPU probed. */
+  ep: StemEp;
 }
 
 let cachedSession: StemModelSession | null = null;
@@ -51,15 +55,53 @@ export function resetStemModelSession(): void {
   cachedSession = null;
 }
 
-/** Create the ORT session for the manifest's model file. Never throws. */
+/** S5 — execution-provider probe: WebGPU when the browser exposes
+ * navigator.gpu, WASM SIMD otherwise. The choice is remembered per
+ * session; a WebGPU session that fails to CREATE falls back to WASM
+ * here (not silently mid-run — ORT does not hot-swap EPs). */
+export type StemEp = "webgpu" | "wasm";
+
+let cachedEp: StemEp | null = null;
+
+export function resetStemEpCache(): void {
+  cachedEp = null;
+}
+
+async function pickExecutionProvider(): Promise<StemEp> {
+  if (cachedEp) return cachedEp;
+  try {
+    const gpu = (navigator as Navigator & { gpu?: { requestAdapter: () => Promise<unknown> } }).gpu;
+    cachedEp = gpu ? ((await gpu.requestAdapter()) ? "webgpu" : "wasm") : "wasm";
+  } catch {
+    cachedEp = "wasm";
+  }
+  return cachedEp;
+}
+
+/** Create the ORT session for the manifest's model file. Never throws;
+ * WebGPU first (when probed available) with a WASM fallback on creation
+ * failure. Reports the EP actually used on the session. */
 async function createSession(manifest: StemModelManifest): Promise<StemModelSession | null> {
   if (sessionFactoryOverride) return sessionFactoryOverride(manifest);
   try {
     const ort = await import("onnxruntime-web");
-    const session = await ort.InferenceSession.create(assetUrlFor(manifest.modelFile), {
-      executionProviders: ["wasm"],
-    });
-    return { manifest, session };
+    const preferred = await pickExecutionProvider();
+    const providers = preferred === "webgpu" ? ["webgpu", "wasm"] : ["wasm"];
+    try {
+      const session = await ort.InferenceSession.create(assetUrlFor(manifest.modelFile), {
+        executionProviders: providers,
+      });
+      return { manifest, session, ep: preferred };
+    } catch {
+      if (preferred === "webgpu") {
+        const session = await ort.InferenceSession.create(assetUrlFor(manifest.modelFile), {
+          executionProviders: ["wasm"],
+        });
+        cachedEp = "wasm";
+        return { manifest, session, ep: "wasm" };
+      }
+      return null;
+    }
   } catch {
     return null;
   }
@@ -152,6 +194,7 @@ export async function separateTrackModel(
       aborted: false,
       analyzedSec: total / sampleRate,
       modelVersion: manifest.stemModelVersion,
+      ep: session.ep,
     };
   } catch {
     return null;

@@ -94,3 +94,22 @@ binary) matches the existing model-pack pattern and keeps the repo clean.
 integration + KPI re-measure), S2 (user stems export), S3 (model fetch + ORT
 worker + chunked inference), S4 (lane wiring + panel surface), S5 (WebGPU +
 benchmarks).
+
+### S5 support matrix (2026-10-06)
+
+Execution-provider selection lives in the model client: `navigator.gpu`
+probe → WebGPU session (with a WASM fallback on create failure, cached so
+the probe runs once), WASM SIMD otherwise. The benchmark table itself is
+produced by `npm run stem:benchmark` on a machine with the fetched
+checkpoint — realtime factor = model-chunk-seconds per wall second:
+
+| Runtime                            | Expectation                        | Notes                             |
+| ---------------------------------- | ---------------------------------- | --------------------------------- |
+| WASM SIMD (Node + browser)         | baseline, always available         | the floor every tier must beat    |
+| WebGPU (Chrome/Edge, discrete GPU) | 2–8× WASM on htdemucs-class models | ORT-web JSEP; validate per driver |
+| WebGPU (integrated GPU)            | 1–3× WASM                          | memory-bound on 80 MB weights     |
+| Firefox/Safari WebGPU              | n/a until shipped                  | WASM path is the honest default   |
+
+The client carries `ep` on its result so the UI/benchmark can attribute
+runs; the panel's model option notes the backend. Fill the measured table
+by running `npm run stem:benchmark` in a GPU browser after `stem:fetch`.

@@ -14,6 +14,7 @@
     "unsuno:golden": "vite-node scripts/gen-unsuno-golden.mts",
     "stem:fetch": "node scripts/fetch-stem-model.mjs",
     "stem:validate": "vite-node scripts/validate-stem-model.mts",
+    "stem:benchmark": "vite-node scripts/benchmark-stem-model.mts",
     "audit:melodic": "python scripts/audit-melodic-prior.py && python scripts/audit-melodic-duration-collapse.py && python scripts/audit-melodic-leakage-check.py && python scripts/audit-melodic-v1-honest.py && python scripts/audit-melodic-dnb-onehot.py",
     "audit:melodic:weights": "python scripts/audit-melodic-weights-ab.py && python scripts/audit-melodic-double-weight-proof.py",
     "audit:samples": "vite-node scripts/audit-samples.mts",

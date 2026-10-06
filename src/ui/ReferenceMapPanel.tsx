@@ -762,7 +762,7 @@ export function ReferenceMapPanel() {
                 <option value="off">vyp (plný mix)</option>
                 <option value="hpss">HPSS guide</option>
                 <option value="model" disabled={!modelAvailable}>
-                  model (htdemucs)
+                  model (htdemucs{modelAvailable ? " — WebGPU/wasm" : ""})
                 </option>
               </select>
             </label>

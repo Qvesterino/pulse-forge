@@ -64,10 +64,14 @@
 - **KPI:** model floors tabuľka (target: všetky vrstvy nad HPSS floors).
 - **Úsilie:** ~0.5–1 blok.
 
-### S5 — WebGPU + benchmarky (optional)
+### S5 — WebGPU + benchmarky — **HOTOVÉ 2026-10-06**
 
-- ORT-web WebGPU backend za flagom, benchmark tabuľka (WASM SIMD vs WebGPU,
-  realtime factor per minúta audia), dokumentovaná podpora matrix.
+- EP probe v model cliene: `navigator.gpu` → WebGPU session (WASM fallback na
+  create failure, cache raz), WASM SIMD inak; result nesie `ep` (atribúcia).
+- `npm run stem:benchmark` — realtime factor tabuľka (WASM vs WebGPU,
+  warm-up nevymeraný, 3 runy) na syntetickej fixture; WebGPU riadok = n/a
+  v Node (poctivo) — beží v GPU browseri po `stem:fetch`.
+- Support matrix + očakávania v ADR 0019 §S5.
 
 ## KPI
 
