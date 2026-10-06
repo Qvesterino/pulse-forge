@@ -29,6 +29,8 @@ export interface RenderOptions {
    * Defaults to true for backward compatibility.
    */
   masterProcessing?: boolean;
+  /** Bypass the user master chain for a monitor A/B render, retaining the final safety limiter. */
+  masterBypassed?: boolean;
   /**
    * Global Live/Export quality switch. "studio" (default in the export UI)
    * bumps every PRISM instance to 8× saturation oversampling and every
@@ -57,6 +59,27 @@ export interface RenderOptions {
    * setup fails fast instead of rendering a buffer the caller throws away.
    */
   signal?: AbortSignal;
+}
+
+/**
+ * Bound the single full-stereo Float32 output buffer allocated by browser
+ * OfflineAudioContext renders. The same ceiling is used by mastering A/B
+ * comparisons; reject before constructing the context so an oversized
+ * render becomes an actionable UI error instead of a browser-tab OOM.
+ */
+export const MAX_OFFLINE_RENDER_PCM_BYTES = 320 * 1024 * 1024;
+
+export function assertOfflineRenderPcmBudget(estimatedPcmBytes: number): void {
+  if (!Number.isFinite(estimatedPcmBytes) || estimatedPcmBytes <= 0) {
+    throw new Error("KYX could not estimate the memory needed for this offline render.");
+  }
+  if (estimatedPcmBytes > MAX_OFFLINE_RENDER_PCM_BYTES) {
+    const estimateMiB = Math.ceil(estimatedPcmBytes / (1024 * 1024));
+    const limitMiB = Math.floor(MAX_OFFLINE_RENDER_PCM_BYTES / (1024 * 1024));
+    throw new Error(
+      `This offline render needs about ${estimateMiB} MiB of stereo PCM, above KYX's ${limitMiB} MiB safety limit. Shorten the render or lower its sample rate, then try again.`,
+    );
+  }
 }
 
 /**
@@ -202,9 +225,13 @@ export function resolveRenderTailSeconds(doc: ProjectDocument, fallback = 2): nu
     const repeats = boundedFeedback > 0 ? Math.ceil(Math.log(1e-4) / Math.log(boundedFeedback)) : 1;
     return Math.min(12, delaySeconds * Math.max(1, repeats) + 0.5);
   };
-  const containers = [...(doc.tracks ?? []), ...(doc.returns ?? [])];
-  for (const track of containers) {
-    for (const fx of track.effects ?? []) {
+  const effectLists = [
+    ...(doc.tracks ?? []).map((track) => track.effects ?? []),
+    ...(doc.returns ?? []).map((track) => track.effects ?? []),
+    doc.master?.effects ?? [],
+  ];
+  for (const effects of effectLists) {
+    for (const fx of effects) {
       if (fx.bypassed) continue;
       const params = fx.params ?? {};
       // Native reverb DECAY is expressed directly in seconds (0.1–6).
@@ -345,6 +372,23 @@ export function unfreezeDoc(doc: ProjectDocument): ProjectDocument {
   };
 }
 
+/** Exact Float32 PCM footprint for a project render, before allocating its OfflineAudioContext. */
+export function estimateRenderPcmBytes(
+  doc: ProjectDocument,
+  options: Pick<RenderOptions, "mode" | "sampleRate" | "tailSeconds" | "minimumDurationTicks" | "arrangementOnly">,
+): number {
+  const tail = options.tailSeconds ?? resolveRenderTailSeconds(doc);
+  const secondsPerTick = 60 / (doc.bpm * PPQ);
+  const durationFloor = Number.isFinite(options.minimumDurationTicks) ? Math.max(0, options.minimumDurationTicks!) : 0;
+  const totalTicks = Math.max(computeRenderTicks(doc, options.mode), durationFloor);
+  const pendingWindows = collectClipWindows(doc, options.mode, options.arrangementOnly === true);
+  const tempoMap = buildTempoMap(doc, pendingWindows);
+  const duration = (tempoMap.segments.length > 0 ? tempoMap.timeAt(totalTicks) : totalTicks * secondsPerTick) + tail;
+  if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(options.sampleRate) || options.sampleRate <= 0)
+    return Number.POSITIVE_INFINITY;
+  return Math.ceil(duration * options.sampleRate) * 2 * Float32Array.BYTES_PER_ELEMENT;
+}
+
 export async function renderProject(
   doc: ProjectDocument,
   bank: SampleBank,
@@ -364,6 +408,10 @@ export async function renderProject(
   }
   throwIfAborted(options.signal);
   assertGenerativeExportSources(doc, bank);
+  // Fail before curated/user-sample readiness waits or OfflineAudioContext
+  // allocation. The shared estimate uses the same duration/tail contract as
+  // this renderer and bounds only the final stereo Float32 PCM buffer.
+  assertOfflineRenderPcmBudget(estimateRenderPcmBytes(doc, options));
   // Curated factory layer (same-id override, memoized per bank): exports wait
   // briefly for the curated sound so "what you hear is what you export" —
   // after the timeout the synthesized fallback renders (offline installs).
@@ -385,7 +433,8 @@ export async function renderProject(
   // window's end: with audio clips past the final scene clip, totalSeconds
   // stops short and the OfflineAudioContext cuts them off.
   const duration = (tempoMap.segments.length > 0 ? tempoMap.timeAt(totalTicks) : totalTicks * secondsPerTick) + tail;
-  const ctx = new OfflineAudioContext(2, Math.max(1, Math.ceil(duration * sampleRate)), sampleRate);
+  const outputFrames = Math.max(1, Math.ceil(duration * sampleRate));
+  const ctx = new OfflineAudioContext(2, outputFrames, sampleRate);
   // Load AudioWorklet processors into THIS offline context so bitcrusher
   // downsample and sidechain ducking render correctly (the fallbacks are
   // broken offline: WaveShaper has no state, setInterval never fires).
@@ -430,6 +479,7 @@ export async function renderProject(
     engine.bypassMasterChainForOfflineRender();
   } else {
     engine.setProject(renderDoc);
+    if (options.masterBypassed === true) engine.setMasterBypassed(true, true);
   }
 
   // Global Live/Export quality switch (opt-in): push the runtime quality

@@ -1,12 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  assertOfflineRenderPcmBudget,
   fxeqRenderQualityBumps,
+  MAX_OFFLINE_RENDER_PCM_BYTES,
   ozvenaRenderQualityBumps,
   renderQualityBumps,
+  renderProject,
   resolveRenderQuality,
   resolveRenderTailSeconds,
 } from "../src/rendering/renderer";
 import type { ProjectDocument } from "../src/project-model/types";
+import { createProjectFromTemplate } from "../src/project-model/templates";
+import { SampleBank } from "../src/sample-library/factory";
 
 type EffectFixture = {
   id: string;
@@ -89,6 +94,39 @@ describe("global Live/Export quality switch", () => {
   });
 });
 
+describe("offline render PCM budget", () => {
+  it("accepts a render at the documented limit", () => {
+    expect(() => assertOfflineRenderPcmBudget(MAX_OFFLINE_RENDER_PCM_BYTES)).not.toThrow();
+  });
+
+  it("rejects a render before it can exceed the browser allocation budget", () => {
+    expect(() => assertOfflineRenderPcmBudget(MAX_OFFLINE_RENDER_PCM_BYTES + 1)).toThrow(
+      /above KYX's 320 MiB safety limit/,
+    );
+  });
+
+  it("rejects unknown or empty estimates instead of allocating an unbounded context", () => {
+    expect(() => assertOfflineRenderPcmBudget(Number.NaN)).toThrow(/could not estimate the memory/i);
+    expect(() => assertOfflineRenderPcmBudget(Number.POSITIVE_INFINITY)).toThrow(/could not estimate the memory/i);
+    expect(() => assertOfflineRenderPcmBudget(0)).toThrow(/could not estimate the memory/i);
+  });
+
+  it("rejects an oversized project before constructing OfflineAudioContext", async () => {
+    const doc = createProjectFromTemplate("empty");
+    doc.arrangement.clips = doc.arrangement.clips.map((clip) => ({ ...clip, lengthBars: 8192 }));
+    const contextConstructor = vi.fn();
+    vi.stubGlobal("OfflineAudioContext", contextConstructor);
+    try {
+      await expect(renderProject(doc, new SampleBank(), { mode: "song", sampleRate: 192_000 })).rejects.toThrow(
+        /above KYX's 320 MiB safety limit/,
+      );
+      expect(contextConstructor).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
 describe("VØID render tail (2026-09-19 audit)", () => {
   type OzvenaFixture = {
     id: string;
@@ -164,6 +202,55 @@ describe("VØID render tail (2026-09-19 audit)", () => {
         params: { "engines.e3.enabled": 1, "engines.e3.time": 24000 },
       },
     ]);
+    expect(resolveRenderTailSeconds(bypassed)).toBe(2);
+  });
+
+  it("covers global master-bus reverb inserts so their tails are not cut off", () => {
+    const doc = {
+      bpm: 120,
+      scenes: [],
+      tracks: [],
+      returns: [],
+      master: {
+        effects: [
+          {
+            id: "master-reverb",
+            type: "ozvena",
+            bypassed: false,
+            params: { "engines.e3.enabled": 1, "engines.e3.time": 8000 },
+          },
+        ],
+      },
+    } as unknown as ProjectDocument;
+
+    expect(resolveRenderTailSeconds(doc)).toBeCloseTo(9.3, 5);
+  });
+
+  it("covers master-bus delay inserts and ignores bypassed tail processors", () => {
+    const doc = {
+      bpm: 120,
+      scenes: [],
+      tracks: [],
+      returns: [],
+      master: {
+        effects: [
+          {
+            id: "master-delay",
+            type: "delay",
+            bypassed: false,
+            params: { time: 500, sync: 0, feedback: 0.4, mix: 0.5 },
+          },
+        ],
+      },
+    } as unknown as ProjectDocument;
+
+    expect(resolveRenderTailSeconds(doc)).toBeCloseTo(6, 5);
+    const bypassed = {
+      ...doc,
+      master: {
+        effects: (doc.master.effects ?? []).map((fx) => ({ ...fx, bypassed: true })),
+      },
+    } as unknown as ProjectDocument;
     expect(resolveRenderTailSeconds(bypassed)).toBe(2);
   });
 

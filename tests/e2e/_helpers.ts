@@ -14,6 +14,7 @@ const DOCK_TAB_ARIA: Record<string, string> = {
   INTENT: "Toggle intent panel",
   MIDI: "Toggle MIDI input panel",
   REF: "Toggle reference map panel",
+  MASTER: "Toggle mastering panel",
 };
 
 /** Resolve a panel label to its dock tab locator. The tab row is always
@@ -95,7 +96,8 @@ export async function openHouseTemplateFromLanding(page: Page): Promise<void> {
  * directly via the project browser (no landing CTA). Useful for specs that
  * don't need to re-prove the landing detour.
  */
-export async function openHouseTemplate(page: Page): Promise<void> {
+export async function openHouseTemplate(page: Page, options: { timeoutMs?: number } = {}): Promise<void> {
+  const timeoutMs = options.timeoutMs ?? 60_000;
   // This helper presumes a RETURNING visitor (project browser directly at "/").
   // Playwright contexts are fresh, so seed the onboarded flag the Entry gate
   // checks — otherwise the first-visit landing page hides .project-browser.
@@ -109,10 +111,10 @@ export async function openHouseTemplate(page: Page): Promise<void> {
       /* storage blocked — nothing to seed */
     }
   });
-  await page.goto("/", { waitUntil: "domcontentloaded", timeout: 60_000 });
-  await page.waitForSelector(".project-browser", { timeout: 60_000 });
+  await page.goto("/", { waitUntil: "domcontentloaded", timeout: timeoutMs });
+  await page.waitForSelector(".project-browser", { timeout: timeoutMs });
   await page.evaluate(() => document.querySelectorAll<HTMLElement>(".pb-template")[0]?.click());
-  await page.waitForSelector(".topbar", { timeout: 60_000 });
-  await page.waitForSelector(".sequencer", { timeout: 60_000 });
+  await page.waitForSelector(".topbar", { timeout: timeoutMs });
+  await page.waitForSelector(".sequencer", { timeout: timeoutMs });
   await completeOnboardingTourIfPresent(page);
 }

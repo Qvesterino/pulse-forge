@@ -1653,7 +1653,7 @@ export const MCP_TOOL_DEFS = [
       properties: {
         op: {
           type: "string",
-          enum: ["add", "preset", "trim", "assist", "land", "platform", "remove", "status"],
+          enum: ["add", "preset", "trim", "assist", "land", "platform", "stems", "remove", "status"],
         },
         trackId: {
           type: "string",

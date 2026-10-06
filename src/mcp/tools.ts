@@ -10,6 +10,7 @@ import { routeIsDestructive } from "../intent/route-guard";
 import { presetsForEffect } from "../effects/presets";
 import { planMasterSettings } from "./master-assistant";
 import { profileFor, resolveDeliveryTarget, verdictAgainst, worstStatus } from "./master-profiles";
+import { stemMasteringPlan, stemRoleOf } from "./stem-mastering";
 import { MASTER_SIGNAL_FLOW, type MasterSignalFlowStageId } from "../mastering/signalFlow";
 import { isCreativeBriefRoute } from "../intent/model-fallback-policy";
 import { applyFaderIntent, applyTempoIntent } from "../intent/conversation";
@@ -1382,7 +1383,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       properties: {
         op: {
           type: "string",
-          enum: ["add", "preset", "trim", "assist", "land", "platform", "remove", "status"],
+          enum: ["add", "preset", "trim", "assist", "land", "platform", "stems", "remove", "status"],
         },
         trackId: { type: "string", description: "Exact track id — overrides family when present" },
         family: {
@@ -5253,6 +5254,51 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
         (steps.length > 0 ? `${steps.join("\n")}\n` : "") +
         verdicts.map((v) => v.line).join("\n"),
       mutated,
+    };
+  }
+
+  if (op === "stems") {
+    // STEM MASTERING payoff: per-stem ZENIT shapes on the separated lanes
+    // (vocals/drums/bass/other). Lanes are matched by NAME; a lane without
+    // a stem role is reported, never touched. ONE snapshot for everything.
+    const plan = stemMasteringPlan();
+    let next = doc;
+    const lines: string[] = [];
+    let matched = 0;
+    for (const id of ids) {
+      const track = next.tracks.find((t) => t.id === id)!;
+      const stem = stemRoleOf(track.name);
+      if (!stem) {
+        lines.push(`${track.name}: no stem role in the name — skipped (rename the lane vocals/drums/bass/other)`);
+        continue;
+      }
+      const shape = plan.find((entry) => entry.stem === stem)!;
+      let fxId = pickZenitInstance(next, id, record);
+      if (!fxId) {
+        next = addEffectToTracks(next, [id], "zenit").execute(next);
+        const created = next.tracks
+          .find((t) => t.id === id)!
+          .effects.filter((fx) => fx.type === "zenit")
+          .at(-1);
+        if (!created) return { text: `insert of ZENIT failed on ${track.name}`, mutated: false, isError: true };
+        fxId = created.id;
+      }
+      for (const [paramId, value] of Object.entries(shape.params))
+        next = setEffectParam(next, id, fxId, paramId, value).execute(next);
+      matched++;
+      lines.push(`${track.name} → ${shape.label} — ${shape.why}`);
+    }
+    if (matched === 0) {
+      const detail = lines.length > 0 ? ` — ${lines.join("; ")}` : "";
+      return {
+        text: `no stem lanes matched — stem mastering needs lanes named vocals/drums/bass/other${detail}`,
+        mutated: false,
+      };
+    }
+    ctx.execute(snapshot("mcpStemMastering", `MCP: stem mastering on ${matched} lane(s)`, doc, next));
+    return {
+      text: `stem mastering applied on ${matched} lane(s), one undo step:\n${lines.join("\n")}\nland the master with op:land after a fresh measure`,
+      mutated: true,
     };
   }
 
