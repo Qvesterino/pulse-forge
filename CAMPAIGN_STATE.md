@@ -57,6 +57,14 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Verification: 60/60 green.
 - Date/session: 2026-10-06, commit `4061bdcb`
 
+### Honest-gate sweep wave 2: DC offset fabricated section-mix findings
+- Area: src/analysis/sectionMixDoctor.ts (+ verified-clean src/vocal/ + src/analysis/ scorers)
+- Root cause: the low-band measurement ran raw signal through a one-pole LP at 120 Hz, which passes DC COMPLETELY — a render with a DC offset measured "100 % low-band, no transient contrast" and fabricated low-masking findings (probe: pure DC → 2 findings, music+DC → 97 % low share where clean had none).
+- Fix: sections measured DC-free (per-slice mean subtracted); zero-mean material unchanged, U5 calibrated KPI floors green, positive-control pin proves genuine findings still fire.
+- Verification: honest-gates 17 specs (wave 2 adds DC cases + comp degenerate-family determinism + level-match honest degradation); 136/136 across mixDoctor/vocal/unsuno adjacency; typecheck EXIT 0.
+- Verified clean by probe: mixDoctor adversarial flags all TRUE statements; planVocalComp identical/quiet take families deterministic; arrangement-lane take-scoring anchor-based on every axis; levelMatch honest degradation + clamp surfacing.
+- Date/session: 2026-10-06, commit d9e9567a
+
 ### ZENIT/M2 param audit: one dead knob, one broken macro coupling, CI typecheck red
 - Area: ZENIT composite + APEKS/ŠÍRKA/PRÚD (docs/ZENIT-M2-PARAM-AUDIT-2026-10-06.md)
 - Root cause (×3): APEKS release blended the GR one-pole with the KEEP fraction (≈1) instead of (1−keep) — knob inaudible; ZENIT ceiling moves never re-derived the LIMIT threshold (macro coupling broken + load-order dependent); the M2 wave committed tests/m2-dsp.test.ts importing untyped processor .js without the house .d.ts stubs — tsc red on main since the landing.
@@ -165,6 +173,14 @@ Last updated: 2026-10-06 (session sess_85d94465)
 4. Re-establish the fresh-clone bootstrap check (`npm install && npm run dev` on a clean machine) — last verified 10-03.
 
 ## SESSION LOG
+
+### 2026-10-06 (follow-up 4) / Honest-gate sweep wave 2 — src/vocal + src/analysis
+- Inspected: comping.ts barScore (self-normalized energyCurve = by-design shape question, absolute dimension via snrBonus), analyze.ts estimateSnrDb (bounded, silence/constant → 0), mixDoctor thresholds (calibrated, flags are TRUE statements), sectionMixDoctor, levelMatch, arrangement-lane take-scoring (anchor-based everywhere).
+- Fixed: sectionMixDoctor DC contamination (probe-confirmed fabricated findings).
+- Verified: 41/41 honest-gates + section-mix + comping + level-match; 136/136 broader adjacency; typecheck EXIT 0.
+- Note: the smart-comp arrangement lane scores takes in src/audio-engine/take-scoring.ts with absolute anchors — the strongest scorer in the repo, no findings.
+- Commits: d9e9567a.
+- Recommended continuation: honest-gate sweep is COMPLETE for reference+ai+vocal+analysis; remaining candidates from the ranking: drift:check (proposal 3) and the MCP agent-surface audit (proposal 4).
 
 ### 2026-10-06 (follow-up 3) / ZENIT + M2 param audit (user-picked proposal 1)
 - Inspected: all five new mastering surfaces against NEW-EFFECT-CHECKLIST (5 death modes, 5 registration surfaces, per-param min/max rule); ran the worklet-loaded browser audit on the four effects (report in docs/); probe-measured APEKS release/preserve across six excitation families.
