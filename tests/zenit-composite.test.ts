@@ -147,11 +147,11 @@ function buildZenit(params: Record<string, number>) {
 }
 
 describe("ZENIT registry hygiene", () => {
-  it("registers exactly once across all order surfaces (49 effects total)", () => {
+  it("registers exactly once across all order surfaces (52 effects total)", () => {
     expect(EFFECT_ORDER.filter((t) => t === "zenit")).toHaveLength(1);
     expect(CORE_EFFECT_ORDER.filter((t) => t === "zenit")).toHaveLength(1);
     expect(FLAGSHIP_EFFECT_ORDER).not.toContain("zenit");
-    expect(EFFECT_ORDER).toHaveLength(49);
+    expect(EFFECT_ORDER).toHaveLength(52);
     expect(EFFECT_DEFS.zenit.params).toEqual(zenitParams);
   });
 

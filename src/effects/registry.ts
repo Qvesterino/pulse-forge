@@ -38,6 +38,7 @@ import { createPitchShiftNode } from "../audio-worklets/pitchshift-node";
 import { createVinylNode } from "../audio-worklets/vinyl-node";
 import { createBeatManglerNode } from "../audio-worklets/beatmangler-node";
 import { createVocoderNode } from "../audio-worklets/vocoder-node";
+import { createApeksNode, createSirkaNode, createPrudNode } from "../audio-worklets/zenit-m2-nodes";
 import { createReverseSwellNode } from "../audio-worklets/reverseswell-node";
 import { createGranularFreezeNode } from "../audio-worklets/granularfreeze-node";
 import { createReverbNode } from "../audio-worklets/reverb-node";
@@ -90,6 +91,9 @@ import {
   beatManglerParams,
   vocoderParams,
   zenitParams,
+  apeksParams,
+  sirkaParams,
+  prudParams,
   reverseSwellParams,
   granularFreezeParams,
   kaskadaParams,
@@ -235,6 +239,10 @@ export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded"
   vocoder: "degraded",
   reverseSwell: "critical",
   granularFreeze: "critical",
+  // M2 mastering DSP — first-party processors, no native approximation.
+  apeks: "critical",
+  sirka: "critical",
+  prud: "critical",
 };
 
 export type EffectProcessorStatus = "ok" | "bypassed" | "fallback";
@@ -3525,6 +3533,44 @@ export function limitThreshold(limit: number, ceilingDb: number): number {
   return ceilingDb - 1 - limit * 11;
 }
 
+/**
+ * M2 mastering DSP (ADR 0020 lineage) — first-party AudioWorklet processors
+ * with honest 1:1 bypass fallbacks (critical severity: no native approximation
+ * pretends to do the job).
+ */
+const apeks: EffectDefinition = {
+  type: "apeks",
+  name: "APEKS",
+  category: "dynamics",
+  params: apeksParams,
+  factory(ctx, instance) {
+    if (isWorkletReady("apeks", ctx)) return createApeksNode(ctx, instance);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — maximizer bypassed (1:1 signal)");
+  },
+};
+
+const sirka: EffectDefinition = {
+  type: "sirka",
+  name: "ŠÍRKA",
+  category: "movement",
+  params: sirkaParams,
+  factory(ctx, instance) {
+    if (isWorkletReady("sirka", ctx)) return createSirkaNode(ctx, instance);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — imager bypassed (1:1 signal)");
+  },
+};
+
+const prud: EffectDefinition = {
+  type: "prud",
+  name: "PRÚD",
+  category: "tone",
+  params: prudParams,
+  factory(ctx, instance) {
+    if (isWorkletReady("prud", ctx)) return createPrudNode(ctx, instance);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — dynamic EQ bypassed (1:1 signal)");
+  },
+};
+
 /** Stable beat-repeat division ids. Existing projects start with 1/1…1/32;
  * dotted and triplet ids are appended so saved parameter values stay valid. */
 
@@ -3655,6 +3701,9 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   pitchCorrect,
   vinyl,
   zenit,
+  apeks,
+  sirka,
+  prud,
   beatMangler,
   vocoder,
   reverseSwell,

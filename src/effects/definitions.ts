@@ -1,5 +1,5 @@
 /**
- * Effect DEFINITIONS — pure parameter metadata for the 49 effect
+ * Effect DEFINITIONS — pure parameter metadata for the 52 effect
  * types, split verbatim from registry.ts (cross-platform campaign GOAL 02/03).
  *
  * Node-pure by contract: no React, no Web Audio, no worklet loaders, no
@@ -256,6 +256,9 @@ export const EFFECT_ORDER: EffectType[] = [
   "vinyl",
   "beatMangler",
   "zenit",
+  "apeks",
+  "sirka",
+  "prud",
 ];
 
 export const CORE_EFFECT_ORDER: EffectType[] = [
@@ -286,6 +289,9 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "sidechain",
   "chorus",
   "zenit",
+  "apeks",
+  "sirka",
+  "prud",
 ];
 
 export const FLAGSHIP_EFFECT_ORDER: EffectType[] = ["fxeq", "ultina", "ozvena", "kaskada", "morphdynamics"];
@@ -1909,6 +1915,65 @@ export const zenitParams: ParamDef[] = [
   { id: "limit", label: "LIMIT", min: 0, max: 1, default: 0, format: formatPct },
 ];
 
+/** APEKS (M2) — transient-preserving maximizer macro surface. */
+export const apeksParams: ParamDef[] = [
+  { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.5, format: formatPct },
+  { id: "ceiling", label: "CEIL", min: -12, max: 0, default: -1, unit: "dB", format: formatDb },
+  {
+    id: "release",
+    label: "RELEASE",
+    min: 0.05,
+    max: 0.5,
+    default: 0.15,
+    unit: "s",
+    format: (v) => `${(v * 1000).toFixed(0)} ms`,
+  },
+  { id: "preserve", label: "PRESERVE", min: 0, max: 1, default: 0.5, format: formatPct },
+  { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+  { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
+];
+
+/** ŠÍRKA (M2) — per-band stereo imager; width 1 everywhere is a neutral pass. */
+export const sirkaParams: ParamDef[] = [
+  { id: "lowFreq", label: "LOW X", min: 60, max: 500, default: 120, unit: "Hz", format: formatHz, taper: "log" },
+  { id: "highFreq", label: "HIGH X", min: 2000, max: 12000, default: 5000, unit: "Hz", format: formatHz, taper: "log" },
+  { id: "lowWidth", label: "LOW W", min: 0, max: 2, default: 1, format: (v) => `${Math.round(v * 100)}%` },
+  { id: "midWidth", label: "MID W", min: 0, max: 2, default: 1, format: (v) => `${Math.round(v * 100)}%` },
+  { id: "highWidth", label: "HIGH W", min: 0, max: 2, default: 1, format: (v) => `${Math.round(v * 100)}%` },
+  { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+];
+
+/** PRÚD (M2) — two-band dynamic EQ (ducking only, never boosting). */
+export const prudParams: ParamDef[] = [
+  { id: "freq1", label: "F1", min: 80, max: 8000, default: 900, unit: "Hz", format: formatHz, taper: "log" },
+  { id: "thresh1", label: "THR 1", min: -60, max: 0, default: -18, unit: "dB", format: formatDb },
+  { id: "amount1", label: "CUT 1", min: -12, max: 0, default: -6, unit: "dB", format: formatDb },
+  { id: "q1", label: "Q 1", min: 0.5, max: 8, default: 2, format: (v) => v.toFixed(1) },
+  { id: "freq2", label: "F2", min: 80, max: 12000, default: 3200, unit: "Hz", format: formatHz, taper: "log" },
+  { id: "thresh2", label: "THR 2", min: -60, max: 0, default: -24, unit: "dB", format: formatDb },
+  { id: "amount2", label: "CUT 2", min: -12, max: 0, default: -6, unit: "dB", format: formatDb },
+  { id: "q2", label: "Q 2", min: 0.5, max: 8, default: 2, format: (v) => v.toFixed(1) },
+  {
+    id: "attack",
+    label: "ATTACK",
+    min: 0.001,
+    max: 0.1,
+    default: 0.02,
+    unit: "s",
+    format: (v) => `${(v * 1000).toFixed(1)} ms`,
+  },
+  {
+    id: "release",
+    label: "RELEASE",
+    min: 0.01,
+    max: 1,
+    default: 0.2,
+    unit: "s",
+    format: (v) => `${(v * 1000).toFixed(0)} ms`,
+  },
+  { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
+];
+
 export const vinylParams: ParamDef[] = [
   // Master macro first — the "one knob" path for people who just want AGE.
   { id: "amount", label: "AGE", min: 0, max: 1, default: 0.5, format: formatPct },
@@ -2337,6 +2402,9 @@ export const EFFECT_META: Record<EffectType, EffectDefinitionMeta> = {
   pitchShift: { type: "pitchShift", name: "Pitch Shift", category: "character", params: pitchShiftParams },
   pitchCorrect: { type: "pitchCorrect", name: "Pitch Correct", category: "character", params: pitchCorrectParams },
   zenit: { type: "zenit", name: "ZENIT", category: "dynamics", params: zenitParams },
+  apeks: { type: "apeks", name: "APEKS", category: "dynamics", params: apeksParams },
+  sirka: { type: "sirka", name: "ŠÍRKA", category: "movement", params: sirkaParams },
+  prud: { type: "prud", name: "PRÚD", category: "tone", params: prudParams },
   vinyl: { type: "vinyl", name: "Vinyl Suite", category: "character", params: vinylParams },
   beatMangler: { type: "beatMangler", name: "Beat Mangler", category: "movement", params: beatManglerParams },
   vocoder: { type: "vocoder", name: "Vocoder", category: "character", params: vocoderParams },

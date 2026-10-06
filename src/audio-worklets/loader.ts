@@ -41,6 +41,9 @@ const PLUGIN_MODULE_URLS: Record<PluginWorkletType, string> = {
 
 const CORE_TYPES = [
   "bitcrusher",
+  "apeks",
+  "sirka",
+  "prud",
   "sidechain",
   "transient",
   "gate",

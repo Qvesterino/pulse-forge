@@ -82,6 +82,9 @@ const EFFECT_PROC_PAIRS: [EffectType, string][] = [
   ["beatMangler", "beatmangler-processor"],
   ["kaskada", "kaskada"],
   ["tapeSat", "tape-processor"],
+  ["apeks", "apeks-processor"],
+  ["sirka", "sirka-processor"],
+  ["prud", "prud-processor"],
 ];
 
 const EPS = 1e-9;

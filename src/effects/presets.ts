@@ -618,6 +618,15 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
     eqLow: -1,
   }),
 
+  // M2 mastering DSP targets — shape first, loudness via output trim.
+  preset("apeks-streaming", "Streaming Push", "apeks", { drive: 0.55, ceiling: -1, preserve: 0.6, release: 0.12 }),
+  preset("apeks-guard", "Safety Ceiling", "apeks", { drive: 0, ceiling: -1, preserve: 0.5, mix: 1 }),
+  preset("apeks-smash", "Wall", "apeks", { drive: 0.9, ceiling: -0.8, preserve: 0.15, release: 0.3 }),
+  preset("sirka-wide", "Wide Open", "sirka", { lowFreq: 140, lowWidth: 0.9, midWidth: 1.35, highWidth: 1.5 }),
+  preset("sirka-monobass", "Mono Bass", "sirka", { lowFreq: 150, lowWidth: 0, midWidth: 1.1, highWidth: 1.2 }),
+  preset("prud-vocal-tame", "Vocal Tame", "prud", { freq1: 2800, thresh1: -26, amount1: -8, q1: 3 }),
+  preset("prud-hat-control", "Hat Control", "prud", { freq2: 8000, thresh2: -30, amount2: -6, q2: 2.5 }),
+
   // Vinyl Suite — the presets lean on the individual module controls so they
   // are audibly distinct (AGE alone scales everything uniformly).
   preset("vinyl-78", "78 RPM Shellac", "vinyl", {
