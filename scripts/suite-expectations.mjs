@@ -1,7 +1,15 @@
-#!/usr/bin/env node
 /**
  * SUITE EXPECTATIONS LEDGER — the Chromium TestExpectations model, sized for
  * this repository.
+ *
+ * NOTE: no shebang on purpose. This module is imported by tests
+ * (tests/suite-expectations.test.ts); a `#!/usr/bin/env node` first line
+ * combined with CRLF line endings (any Windows checkout under
+ * core.autocrlf=true) makes vite's transform throw
+ * "Invalid or unexpected token" — reproducible: LF+shebang and
+ * CRLF-without-shebang both parse, shebang+CRLF does not. Invoked as
+ * `node scripts/suite-expectations.mjs` everywhere, so the shebang was
+ * decorative anyway.
  *
  * Problem it solves: the suite carries a standing owned-red family (in-flight
  * concurrent waves, vendor owner-gates, artifact pins). When red is normal,
