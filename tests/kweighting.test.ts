@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   analyzeLoudnessBuffer,
   integratedLufsStreaming,
+  KWeightedLoudnessAccumulator,
   KWeightingFilter,
   kWeightingCoefficients,
 } from "../src/audio-engine/kweighting";
@@ -18,6 +19,34 @@ function sineStereo(dBFS: number, frequency: number, seconds: number, sampleRate
     channels[1][i] = value;
   }
   return channels;
+}
+
+function ebuLraSignal(levelsDbfs: readonly number[], segmentSeconds: number, sampleRate: number): Float32Array[] {
+  const framesPerSegment = Math.round(segmentSeconds * sampleRate);
+  const channels = [
+    new Float32Array(framesPerSegment * levelsDbfs.length),
+    new Float32Array(framesPerSegment * levelsDbfs.length),
+  ];
+  for (let segment = 0; segment < levelsDbfs.length; segment++) {
+    const amplitude = Math.pow(10, levelsDbfs[segment] / 20);
+    const start = segment * framesPerSegment;
+    for (let frame = 0; frame < framesPerSegment; frame++) {
+      const sample = amplitude * Math.sin((2 * Math.PI * 1000 * (start + frame)) / sampleRate);
+      channels[0][start + frame] = sample;
+      channels[1][start + frame] = sample;
+    }
+  }
+  return channels;
+}
+
+function measureLra(channels: readonly Float32Array[], sampleRate: number): number | null {
+  const accumulator = new KWeightedLoudnessAccumulator(channels.length, sampleRate);
+  const frame = new Float64Array(channels.length);
+  for (let index = 0; index < channels[0].length; index++) {
+    for (let channel = 0; channel < channels.length; channel++) frame[channel] = channels[channel][index];
+    accumulator.processFrame(frame);
+  }
+  return accumulator.finishWithLoudnessRange().loudnessRangeLu;
 }
 
 describe("K-weighting (ITU-R BS.1770-4)", () => {
@@ -99,6 +128,63 @@ describe("K-weighting (ITU-R BS.1770-4)", () => {
     expect(integratedLufsStreaming(channels, 48000)).toBeCloseTo(reading.integrated, 5);
     expect(integratedLufsStreaming([new Float32Array(48000), new Float32Array(48000)], 48000)).toBeNull();
     expect(integratedLufsStreaming([new Float32Array(100)], 0)).toBeNull();
+  });
+});
+
+describe("Loudness Range (EBU Tech 3342 minimum requirements)", () => {
+  it.each([
+    { testCase: 1, levelsDbfs: [-20, -30], expectedLu: 10 },
+    { testCase: 2, levelsDbfs: [-20, -15], expectedLu: 5 },
+    { testCase: 3, levelsDbfs: [-40, -20], expectedLu: 20 },
+    { testCase: 4, levelsDbfs: [-50, -35, -20, -35, -50], expectedLu: 15 },
+  ])("matches minimum requirement signal #$testCase within ±1 LU", ({ levelsDbfs, expectedLu }) => {
+    const sampleRate = 48000;
+    const segmentSeconds = 20;
+    const channels = ebuLraSignal(levelsDbfs, segmentSeconds, sampleRate);
+    const loudnessRangeLu = measureLra(channels, sampleRate);
+    expect(loudnessRangeLu).not.toBeNull();
+    expect(loudnessRangeLu).toBeGreaterThanOrEqual(expectedLu - 1);
+    expect(loudnessRangeLu).toBeLessThanOrEqual(expectedLu + 1);
+  });
+
+  it("keeps the LRA stable when a complete programme sequence is repeated", () => {
+    const sampleRate = 48000;
+    const sequence = ebuLraSignal([-20, -30], 20, sampleRate);
+    const repeated = sequence.map((channel) => {
+      const twice = new Float32Array(channel.length * 2);
+      twice.set(channel);
+      twice.set(channel, channel.length);
+      return twice;
+    });
+
+    const onceLra = measureLra(sequence, sampleRate);
+    const repeatedLra = measureLra(repeated, sampleRate);
+    expect(onceLra).not.toBeNull();
+    expect(repeatedLra).not.toBeNull();
+    expect(Math.abs(repeatedLra! - onceLra!)).toBeLessThanOrEqual(0.5);
+  });
+
+  it("does not let a short, smooth programme fade inflate the LRA", () => {
+    const sampleRate = 48000;
+    const programme = ebuLraSignal([-20, -30], 30, sampleRate);
+    const fadeFrames = 5 * sampleRate;
+    const faded = programme.map((channel) => {
+      const result = new Float32Array(channel.length + fadeFrames);
+      result.set(channel);
+      const amplitude = Math.pow(10, -30 / 20);
+      for (let frame = 0; frame < fadeFrames; frame++) {
+        const gain = 1 - (frame + 1) / fadeFrames;
+        const phase = (2 * Math.PI * 1000 * (channel.length + frame)) / sampleRate;
+        result[channel.length + frame] = amplitude * gain * Math.sin(phase);
+      }
+      return result;
+    });
+
+    const programmeLra = measureLra(programme, sampleRate);
+    const fadedLra = measureLra(faded, sampleRate);
+    expect(programmeLra).not.toBeNull();
+    expect(fadedLra).not.toBeNull();
+    expect(Math.abs(fadedLra! - programmeLra!)).toBeLessThanOrEqual(1);
   });
 });
 

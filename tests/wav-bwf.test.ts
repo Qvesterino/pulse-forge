@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { MasterAnalysisAccumulator, analyzeMasterPcm } from "../src/mastering/analysis";
+import { inspectEncodedMaster, inspectMasteringReferenceContainer } from "../src/mastering/encodedInspection";
+import type { MasterProfile } from "../src/mastering/profiles";
+import { MASTER_PROFILES } from "../src/mastering/profiles";
 import { createBextMetadata, encodeWav, encodeWavAsync, type WavBextMetadata } from "../src/rendering/wav";
 
 /**
@@ -50,6 +54,103 @@ function riffChunks(bytes: ArrayBuffer): { id: string; body: number; size: numbe
     pos += 8 + size + (size % 2);
   }
   return chunks;
+}
+
+function decodeWavPcmForReference(
+  bytes: ArrayBuffer,
+  dataOffset: number,
+  bitDepth: 16 | 24 | 32,
+  frameCount: number,
+): Float32Array[] {
+  const view = new DataView(bytes);
+  const channels = [new Float32Array(frameCount), new Float32Array(frameCount)];
+  const bytesPerSample = bitDepth / 8;
+  for (let frame = 0; frame < frameCount; frame++) {
+    for (let channel = 0; channel < 2; channel++) {
+      const offset = dataOffset + frame * 2 * bytesPerSample + channel * bytesPerSample;
+      let value: number;
+      if (bitDepth === 16) {
+        value = view.getInt16(offset, true) / 0x8000;
+      } else if (bitDepth === 24) {
+        let signed = view.getUint8(offset) | (view.getUint8(offset + 1) << 8);
+        signed |= view.getUint8(offset + 2) << 16;
+        if (signed & 0x800000) signed -= 0x1000000;
+        value = signed / 0x800000;
+      } else {
+        value = view.getFloat32(offset, true);
+      }
+      channels[channel]![frame] = value;
+    }
+  }
+  return channels;
+}
+
+class MasteringAnalysisWorkerHarness extends EventTarget {
+  private jobId = 0;
+  private frameCount = 0;
+  private frameOffset = 0;
+  private analyzer: MasterAnalysisAccumulator | null = null;
+  private frameScratch = new Float64Array(2);
+  private terminated = false;
+
+  constructor(_scriptUrl: string | URL, _options?: WorkerOptions) {
+    super();
+  }
+
+  postMessage(value: unknown): void {
+    if (!value || typeof value !== "object") return;
+    const message = value as Record<string, unknown>;
+    const jobId = message.jobId;
+    const type = message.type;
+    if (typeof jobId !== "number" || typeof type !== "string") return;
+    if (type === "MASTER_ANALYSIS_START") {
+      this.jobId = jobId;
+      this.frameCount = Number(message.frameCount);
+      this.frameOffset = 0;
+      this.frameScratch = new Float64Array(Number(message.channelCount));
+      this.analyzer = new MasterAnalysisAccumulator(
+        Number(message.sampleRate),
+        Number(message.channelCount),
+        message.profile as MasterProfile,
+      );
+      queueMicrotask(() => this.emit("MASTER_ANALYSIS_READY"));
+      return;
+    }
+    if (jobId !== this.jobId || !this.analyzer) return;
+    if (type === "MASTER_ANALYSIS_CHUNK") {
+      const channels = message.channels as Float32Array[];
+      const offset = Number(message.offset);
+      const length = channels[0]?.length ?? 0;
+      for (let frame = 0; frame < length; frame++) {
+        for (let channel = 0; channel < channels.length; channel++) {
+          this.frameScratch[channel] = channels[channel]![frame]!;
+        }
+        this.analyzer.processFrame(this.frameScratch);
+      }
+      this.frameOffset += length;
+      queueMicrotask(() =>
+        this.emit("MASTER_ANALYSIS_CHUNK_ACK", {
+          offset,
+          length,
+          progress: this.frameOffset / this.frameCount,
+        }),
+      );
+      return;
+    }
+    if (type === "MASTER_ANALYSIS_FINISH") {
+      const analysis = this.analyzer.finish();
+      queueMicrotask(() => this.emit("MASTER_ANALYSIS_RESULT", { analysis }));
+    }
+  }
+
+  terminate(): void {
+    this.terminated = true;
+  }
+
+  private emit(type: string, details: Record<string, unknown> = {}): void {
+    if (this.terminated) return;
+    this.dispatchEvent(new MessageEvent("message", { data: { jobId: this.jobId, type, ...details } }));
+  }
 }
 
 function readFixed(view: DataView, offset: number, width: number): string {
@@ -129,7 +230,7 @@ describe("WAV BWF bext chunk (EBU Tech 3285)", () => {
     expect(time).toBe(48000 * 123456);
   });
 
-  it("version 2: loudness uses the EBU fixed-point scales and clamps to int16", () => {
+  it("version 2: loudness uses the EBU Tech 3285 ×100 fixed-point scale", () => {
     const bytes = encodeWav(toneBuffer(), 16, {
       bext: sampleBext({
         loudness: {
@@ -144,21 +245,35 @@ describe("WAV BWF bext chunk (EBU Tech 3285)", () => {
     const view = new DataView(bytes);
     const body = riffChunks(bytes)[1]!.body;
     expect(view.getUint16(body + 346, true)).toBe(2);
-    expect(view.getInt16(body + 412, true)).toBe(-140); // 0.1 LU
-    expect(view.getInt16(body + 414, true)).toBe(75); // 0.1 LU
+    expect(view.getInt16(body + 412, true)).toBe(-1404); // 0.01 LU
+    expect(view.getInt16(body + 414, true)).toBe(750); // 0.01 LU
     expect(view.getInt16(body + 416, true)).toBe(-123); // 0.01 dBTP
-    expect(view.getInt16(body + 418, true)).toBe(-85);
-    expect(view.getInt16(body + 420, true)).toBe(-120);
+    expect(view.getInt16(body + 418, true)).toBe(-850);
+    expect(view.getInt16(body + 420, true)).toBe(-1200);
+    expect(inspectMasteringReferenceContainer("wav", bytes).bext?.loudness).toEqual({
+      integratedLufs: -14.04,
+      rangeLu: 7.5,
+      truePeakDbtp: -1.23,
+      momentaryLufs: -8.5,
+      shortTermLufs: -12,
+    });
   });
 
-  it("non-finite loudness collapses to 0 (undefined per spec) instead of poisoning the chunk", () => {
+  it("non-finite loudness uses the unavailable-value sentinel from the spec", () => {
     const bytes = encodeWav(toneBuffer(), 16, {
       bext: sampleBext({ loudness: { integratedLufs: Number.NaN, truePeakDbtp: Number.POSITIVE_INFINITY } }),
     });
     const view = new DataView(bytes);
     const body = riffChunks(bytes)[1]!.body;
-    expect(view.getInt16(body + 412, true)).toBe(0);
-    expect(view.getInt16(body + 416, true)).toBe(0); // not NaN, not a clamped absurdity
+    expect(view.getInt16(body + 412, true)).toBe(0x7fff);
+    expect(view.getInt16(body + 416, true)).toBe(0x7fff);
+    expect(inspectMasteringReferenceContainer("wav", bytes).bext?.loudness).toEqual({
+      integratedLufs: null,
+      rangeLu: null,
+      truePeakDbtp: null,
+      momentaryLufs: null,
+      shortTermLufs: null,
+    });
   });
 
   it("fixed-width fields are truncated and non-ASCII is replaced with '?'", () => {
@@ -217,6 +332,21 @@ describe("WAV BWF bext chunk (EBU Tech 3285)", () => {
     expect(Number.isFinite(view.getFloat32(data.body, true))).toBe(true);
   });
 
+  it("rejects a truncated or internally corrupted RIFF before accepting a master file", () => {
+    const valid = encodeWav(toneBuffer(), 24, { bext: sampleBext() });
+    const truncated = valid.slice(0, valid.byteLength - 16);
+    expect(() => inspectMasteringReferenceContainer("wav", truncated)).toThrow(/RIFF size extends beyond/);
+
+    const corruptChunk = valid.slice(0);
+    const view = new DataView(corruptChunk);
+    // Locate the data chunk after fmt + bext, then claim that its payload
+    // extends beyond the RIFF boundary.
+    const dataChunk = riffChunks(corruptChunk).find((chunk) => chunk.id === "data");
+    expect(dataChunk).toBeDefined();
+    view.setUint32(dataChunk!.body - 4, 0xfffffff0, true);
+    expect(() => inspectMasteringReferenceContainer("wav", corruptChunk)).toThrow(/data chunk extends beyond/);
+  });
+
   it("createBextMetadata fills KYX defaults and formats the EBU clock", () => {
     const meta = createBextMetadata({ description: "d", date: FIXED_DATE });
     expect(meta.originator).toBe("KYX");
@@ -225,4 +355,66 @@ describe("WAV BWF bext chunk (EBU Tech 3285)", () => {
     expect(meta.timeReference).toBe(0);
     expect(meta.loudness).toBeUndefined();
   });
+});
+
+describe("large encoded WAV mastering inspection", () => {
+  it.each([16, 24, 32] as const)(
+    "streams %i-bit PCM through the canonical worker analyzer and matches decoded sample measurements",
+    async (bitDepth) => {
+      const sampleRate = 44_100;
+      const frameCount = sampleRate * 3 + 1_234;
+      const source = fakeBuffer(
+        2,
+        sampleRate,
+        frameCount,
+        (channel, frame) =>
+          (channel === 0 ? 0.31 : 0.23) * Math.sin((2 * Math.PI * (221 + channel) * frame) / sampleRate),
+      );
+      const profile = MASTER_PROFILES.find((candidate) => candidate.id === "streaming")!;
+      const originalAnalysis = analyzeMasterPcm(
+        [source.getChannelData(0), source.getChannelData(1)],
+        sampleRate,
+        profile,
+      );
+      const encoded = encodeWav(source, bitDepth, { bext: sampleBext() });
+      const dataChunk = riffChunks(encoded).find((chunk) => chunk.id === "data");
+      expect(dataChunk).toBeDefined();
+      // This independent decode serves as the numeric reference for the bytes
+      // the exporter actually wrote, including the shifted BWF data offset.
+      const decodedChannels = decodeWavPcmForReference(encoded, dataChunk!.body, bitDepth, frameCount);
+      const expected = analyzeMasterPcm(decodedChannels, sampleRate, profile);
+
+      // Force the >96 MiB branch on a small fixture so the unit test exercises
+      // chunk decoding and worker handoff without allocating a 100 MiB test file.
+      Object.defineProperty(encoded, "byteLength", {
+        configurable: true,
+        value: 96 * 1024 * 1024 + 1,
+      });
+      vi.stubGlobal("Worker", MasteringAnalysisWorkerHarness as unknown as typeof Worker);
+      try {
+        const inspection = await inspectEncodedMaster({
+          format: "wav",
+          bytes: encoded,
+          expectedDurationSeconds: frameCount / sampleRate,
+          sourceMeasurements: originalAnalysis.measurements,
+          profile,
+        });
+        expect(inspection.decode.status).toBe("measured");
+        if (inspection.decode.status !== "measured")
+          throw new Error("Expected the streamed PCM result to be measured.");
+        expect(inspection.decode.decoder).toBe("KYX WAV PCM reader");
+        expect(inspection.decode.sampleRate).toBe(sampleRate);
+        expect(inspection.decode.channels).toBe(2);
+        expect(inspection.decode.durationSeconds).toBeCloseTo(frameCount / sampleRate, 9);
+        expect(inspection.decode.measurements?.rmsDb).toBeCloseTo(expected.measurements.rmsDb, 5);
+        expect(inspection.decode.measurements?.truePeakDb).toBeCloseTo(expected.measurements.truePeakDb, 5);
+        expect(inspection.decode.measurements?.lufsIntegrated).toBeCloseTo(expected.measurements.lufsIntegrated, 5);
+        expect(inspection.decode.measurements?.loudnessRangeLu).toBeCloseTo(expected.measurements.loudnessRangeLu!, 5);
+      } finally {
+        Reflect.deleteProperty(encoded, "byteLength");
+        vi.unstubAllGlobals();
+      }
+    },
+    15_000,
+  );
 });

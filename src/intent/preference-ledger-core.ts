@@ -89,6 +89,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 const FEATURE_VERSIONS = new Set<PreferenceFeatureVersion>([FEATURE_CONTRACT.version, FEATURE_CONTRACT_V2.version]);
 
+/** Validate a ledger pack's advertised newest feature contract. */
+export function isPreferenceFeatureVersion(value: unknown): value is PreferenceFeatureVersion {
+  return typeof value === "string" && FEATURE_VERSIONS.has(value as PreferenceFeatureVersion);
+}
+
 /** The width a snapshot's DECLARED version must actually have. */
 function expectedFeatureCount(version: PreferenceFeatureVersion): number {
   return version === FEATURE_CONTRACT_V2.version ? FEATURE_V2_COUNT : FEATURE_COUNT;
@@ -110,7 +115,7 @@ function isCandidateSnapshot(value: unknown): value is PreferenceCandidateSnapsh
   return (
     typeof value.contentHash === "string" &&
     HASH_RE.test(value.contentHash) &&
-    FEATURE_VERSIONS.has(version) &&
+    isPreferenceFeatureVersion(version) &&
     isFeatureVector(value.features, expectedFeatureCount(version)) &&
     ((value.globalScore === undefined && value.globalScoreVersion === undefined) ||
       (typeof value.globalScore === "number" &&

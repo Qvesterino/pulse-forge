@@ -93,7 +93,10 @@ describe("Mixer — live fader preview wiring (audit 04 #6)", () => {
     expect(mixer.match(/onCancel=/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
     expect(mixer).toContain("previewTrackGain(track.id, gain)");
     expect(mixer).toContain("previewReturnGain(ret.id, gain)");
-    expect(mixer).toContain("previewMasterGain(masterGain)");
+    expect(mixer).toContain("<MasterProcessingControls />");
+    const masterControls = readFileSync(resolve(process.cwd(), "src/ui/MasterProcessingControls.tsx"), "utf8");
+    expect(masterControls).toContain("previewMasterGain(masterGain)");
+    expect(masterControls).toContain("previewMasterGain(master.masterGain)");
   });
 });
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useActivePatternId, useMarkers, useMaster, usePatterns, useServices, useTracks } from "./context";
-import { renderProject } from "../rendering/renderer";
+import { estimateRenderPcmBytes, MAX_OFFLINE_RENDER_PCM_BYTES, renderProject } from "../rendering/renderer";
 import { buildStemProject, nonEmptyStemGroups } from "../rendering/stems";
 import {
   createBextMetadata,
@@ -23,6 +23,7 @@ import {
   evaluateMasterVerdict,
   computeStageAdjustment,
   type BufferSummary,
+  type MasterVerdict,
 } from "../audio-engine/metering";
 import { extensionForMime, LiveRecorder, type RecordSource } from "../audio-engine/recorder";
 import type { PcmMicRecorder } from "../audio-engine/PcmMicRecorder";
@@ -32,33 +33,77 @@ import { userSampleId, type UserSampleAsset } from "../persistence/UserSampleRep
 import { PublishToGalleryButton } from "../gallery/PublishButton";
 import { isMountedInEcosystem, prepareBeatHandoff } from "../interop/qvesterHandoff";
 import { setMasterConfig, chopSampleToPads } from "../commands/commands";
-import { analyzeMixHealthBuffer, deriveMixAutoFix, type MixHealthReport } from "../analysis/mixDoctor";
+import { deriveMixAutoFix, type MixHealthReport } from "../analysis/mixDoctor";
 import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import { slicesFromOnsets } from "../audio-engine/transients";
 import { resolveDeliveryTarget, type MasterProfile } from "../mastering/profiles";
 import { inspectEncodedMaster, type EncodedMasterInspection } from "../mastering/encodedInspection";
-import { createMasterRenderReport, serializeMasterReportSidecar, type MasterRenderReport } from "../mastering/report";
+import {
+  createMasterRenderReport,
+  projectRevisionIdFor,
+  serializeMasterReportSidecar,
+  type MasterRenderReport,
+} from "../mastering/report";
+import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
+import { awaitMasteringSampleBankReady } from "../mastering/readiness";
 
 type Status =
   | { kind: "idle" }
   | { kind: "busy"; label: string }
   | { kind: "done"; label: string; summary: BufferSummary }
+  | { kind: "cancelled"; label: string; reason: string }
   | { kind: "error"; label: string };
 
+export interface MasteringWorkspaceState {
+  mode: PlayMode;
+  setMode: (mode: PlayMode) => void;
+  sampleRate: number;
+  setSampleRate: (sampleRate: number) => void;
+  quality: "live" | "studio";
+  setQuality: (quality: "live" | "studio") => void;
+  statusKind: Status["kind"];
+  busy: boolean;
+  activity: string | null;
+  report: MasterRenderReport | null;
+  reportStale: boolean;
+  renderPcmBytes: number;
+  renderPcmWithinBudget: boolean;
+  analyze: () => void;
+}
+
 type MasterFormat = "wav" | "mp3-192" | "mp3-320" | "video";
+type ProfileExportRecommendation = { format: Exclude<MasterFormat, "video">; bitDepth?: WavBitDepth };
+
+function profileExportRecommendation(profile: MasterProfile): ProfileExportRecommendation | null {
+  const recommendation = profile.recommendedFormat.toLowerCase();
+  const bitDepthMatch = recommendation.match(/\b(16|24|32)-bit\b/);
+  const bitDepth = bitDepthMatch ? (Number(bitDepthMatch[1]) as WavBitDepth) : undefined;
+  if (recommendation.includes("wav") && bitDepth) return { format: "wav", bitDepth };
+  if (recommendation.includes("mp3")) {
+    const bitrate = recommendation.match(/\b(192|320)\s*kbps\b/);
+    if (bitrate) return { format: `mp3-${bitrate[1]}` as "mp3-192" | "mp3-320" };
+  }
+  return null;
+}
 
 const EMPTY_EXPORT_SUMMARY: BufferSummary = {
+  channelCount: 0,
   peak: 0,
   peakDb: -120,
   truePeakDb: -120,
   rms: 0,
   rmsDb: -120,
   correlation: 1,
+  lrImbalanceDb: null,
   lufsMomentary: -120,
   lufsShortTerm: -120,
   lufsIntegrated: -120,
   monoLossDb: 0,
 };
+
+function isAbortError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && "name" in error && error.name === "AbortError";
+}
 
 type RecSourceKind = "master" | "track" | "mic";
 type RecState = "idle" | "starting" | "recording" | "saving";
@@ -81,6 +126,7 @@ function bextFor(
       ? {
           loudness: {
             integratedLufs: summary.lufsIntegrated,
+            rangeLu: summary.loudnessRangeLu,
             truePeakDbtp: summary.truePeakDb,
             momentaryLufs: summary.lufsMomentary,
             shortTermLufs: summary.lufsShortTerm,
@@ -96,13 +142,17 @@ export function ExportPanel({
   selectedTrackName,
   masteringMode = false,
   revisionId,
+  onMasteringWorkspaceStateChange,
 }: {
   selectedTrackId?: string;
   selectedTrackName?: string;
   masteringMode?: boolean;
   revisionId?: string;
+  onMasteringWorkspaceStateChange?: (state: MasteringWorkspaceState) => void;
 } = {}) {
   const services = useServices();
+  const [sampleBankRevision, setSampleBankRevision] = useState(services.bank.revision);
+  useEffect(() => services.bank.onRevisionChanged(setSampleBankRevision), [services.bank]);
   // Fine-grained selectors (GOAL 04): ExportPanel reads markers (count
   // badge), patterns (active pattern name), tracks (renderable tracks,
   // total count), and master (LUFS target, ceiling dB for the meter). Root
@@ -112,6 +162,8 @@ export function ExportPanel({
   const activePatternId = useActivePatternId();
   const tracks = useTracks();
   const master = useMaster();
+  const deliveryProfile = resolveDeliveryTarget(master);
+  const recommendedExport = profileExportRecommendation(deliveryProfile);
   const doc = services.store.getDoc();
   const [mode, setMode] = useState<PlayMode>(masteringMode ? "song" : services.playback.mode);
   const [sampleRate, setSampleRate] = useState(44100);
@@ -120,33 +172,39 @@ export function ExportPanel({
   // Global Live/Export quality switch — defaults to STUDIO: the export has
   // no realtime CPU budget, so PRISM's 8× saturation oversampling and VØID's
   // render tier (default-tier instances only; explicit eco/high/render
-  // choices are respected) are free. LIVE renders exactly what you hear,
-  // faster. Freeze/bounce stay on the live tier by default.
+  // choices are respected) apply across tracks, returns and master inserts.
+  // LIVE keeps their stored runtime quality; freeze/bounce stay on that tier.
   const [quality, setQuality] = useState<"live" | "studio">("studio");
   const [includeTrackStems, setIncludeTrackStems] = useState(true);
   const [clipSeconds, setClipSeconds] = useState(15);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [masterReport, setMasterReport] = useState<MasterRenderReport | null>(null);
 
-  /** Mix-doctor verdikt posledného master renderu (null = ešte sa neriadilo). */
-  const [mixHealth, setMixHealth] = useState<MixHealthReport | null>(null);
   const markerCount = markers.length;
   /** Active export run — the CANCEL button aborts it (roadmap 1.4). */
   const abortRef = useRef<AbortController | null>(null);
+  const analyzeActionRef = useRef<() => void>(() => undefined);
+  const cancelRequestedByUserRef = useRef(false);
   const beginExport = (): AbortSignal => {
-    setMixHealth(null);
+    cancelRequestedByUserRef.current = false;
     setMasterReport(null);
     const controller = new AbortController();
     abortRef.current = controller;
     return controller.signal;
   };
-  const cancelExport = () => abortRef.current?.abort();
-  /** Cancellation is a normal outcome, not an error — surface it as such. */
-  const cancelOrElse = (error: unknown, fallbackLabel: string): void => {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      setMixHealth(null);
+  const cancelExport = () => {
+    cancelRequestedByUserRef.current = true;
+    abortRef.current?.abort();
+  };
+  /** Cancellation is distinct from success and failure; it never leaves a report behind. */
+  const cancelOrElse = (error: unknown, fallbackLabel: string, cancelLabel: string): void => {
+    if (isAbortError(error)) {
+      const reason = cancelRequestedByUserRef.current
+        ? "Cancelled by user."
+        : "The operation aborted before completion.";
+      cancelRequestedByUserRef.current = false;
       setMasterReport(null);
-      setStatus({ kind: "done", label: "Export cancelled", summary: EMPTY_EXPORT_SUMMARY });
+      setStatus({ kind: "cancelled", label: cancelLabel, reason });
       return;
     }
     setStatus({ kind: "error", label: fallbackLabel.replace("{err}", String(error)) });
@@ -170,8 +228,8 @@ export function ExportPanel({
       : null;
   const deliveredMixHealth =
     masterReport?.encodedDelivery?.decode.status === "measured"
-      ? (masterReport.encodedDelivery.decode.mixHealth ?? mixHealth)
-      : mixHealth;
+      ? (masterReport.encodedDelivery.decode.mixHealth ?? masterReport.mixHealth)
+      : (masterReport?.mixHealth ?? null);
   const mixHealthStage = masterReport?.encodedDelivery?.decode.status === "measured" ? "POST-DECODE" : "PRE-ENCODE";
   const encodedSettingsStale = Boolean(
     masterReport?.encodedDelivery &&
@@ -186,12 +244,20 @@ export function ExportPanel({
     masteringMode &&
     masterReport &&
     (masterReport.projectRevisionId !== revisionId ||
+      masterReport.sampleBankRevision !== sampleBankRevision ||
       masterReport.scope !== mode ||
       masterReport.sampleRate !== sampleRate ||
       masterReport.quality !== quality ||
       encodedSettingsStale),
   );
   const baseName = sanitizeFilename(doc.name);
+  // Keep the workspace preflight tied to the renderer's exact duration/tail
+  // estimate so Analyze and Export can explain a memory-limit failure before
+  // an OfflineAudioContext is allocated.
+  const renderPcmBytes = estimateRenderPcmBytes(doc, { mode, sampleRate });
+  const renderPcmLimitMiB = Math.floor(MAX_OFFLINE_RENDER_PCM_BYTES / (1024 * 1024));
+  const renderPcmWithinBudget =
+    Number.isFinite(renderPcmBytes) && renderPcmBytes > 0 && renderPcmBytes <= MAX_OFFLINE_RENDER_PCM_BYTES;
   const groups = nonEmptyStemGroups(doc);
   const videoSupported = canExportVideo();
   const activePatternName = patterns.find((p) => p.id === activePatternId)?.name ?? "pattern";
@@ -203,36 +269,61 @@ export function ExportPanel({
 
   const exportMaster = async (download = true) => {
     const signal = beginExport();
-    setStatus({ kind: "busy", label: download ? "Rendering master…" : "Analyzing master…" });
+    const projectRevisionAtStart = projectRevisionIdFor(doc);
+    let sampleBankRevisionAtStart = services.bank.revision;
+    const assertMasterSourceCurrent = (): void => {
+      if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
+      const current = services.store.getDoc();
+      if (current.id !== doc.id || projectRevisionIdFor(current) !== projectRevisionAtStart) {
+        throw new Error("The project changed during mastering. The stale result was discarded; analyze again.");
+      }
+      if (services.bank.revision !== sampleBankRevisionAtStart) {
+        throw new Error("The sample bank changed during mastering. The stale result was discarded; analyze again.");
+      }
+    };
+    setStatus({ kind: "busy", label: "Preparing sample audio for a consistent mastering render…" });
     try {
+      await awaitMasteringSampleBankReady(services.core.initialSampleBankHydration, signal);
+      sampleBankRevisionAtStart = services.bank.revision;
+      assertMasterSourceCurrent();
+      setStatus({ kind: "busy", label: download ? "Rendering master…" : "Analyzing master…" });
       let buffer: AudioBuffer | null = await renderProject(doc, services.bank, {
         mode,
         sampleRate,
         quality,
         signal,
       });
-      if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
+      assertMasterSourceCurrent();
       const renderedDurationSeconds = buffer.duration;
-      const summary = summarizeBuffer(buffer);
-      const mixHealthReport = analyzeMixHealthBuffer(buffer);
-      setMixHealth(mixHealthReport);
+      const profile = resolveDeliveryTarget(master);
+      const analysis = await analyzeMasterBufferAsync(buffer, profile, {
+        signal,
+        onProgress: ({ progress, stage }) =>
+          setStatus({ kind: "busy", label: `Analyzing master… ${Math.round(progress * 100)}% · ${stage}` }),
+      });
+      assertMasterSourceCurrent();
+      const { measurements: summary, mixHealth: mixHealthReport, verdict } = analysis;
       setMasterReport(
         createMasterRenderReport({
           projectId: doc.id,
           projectName: doc.name,
-          projectRevisionId: revisionId ?? `${doc.id}:${doc.updatedAt}`,
+          projectRevisionId: revisionId ?? projectRevisionAtStart,
+          sampleBankRevision: sampleBankRevisionAtStart,
           scope: mode,
           sampleRate: buffer.sampleRate,
           quality,
           durationSeconds: renderedDurationSeconds,
           sampleRange: { startFrame: 0, endFrame: buffer.length },
-          profile: resolveDeliveryTarget(master),
+          profile,
           measurements: summary,
+          loudnessTimeline: analysis.loudnessTimeline,
           mixHealth: mixHealthReport,
+          verdict,
         }),
       );
 
       if (!download) {
+        assertMasterSourceCurrent();
         setStatus({
           kind: "done",
           label: `Analysis complete (${mode === "song" ? "full song" : "active pattern"}, ${buffer.duration.toFixed(1)}s, ${sampleRate} Hz, ${quality === "studio" ? "Studio HQ" : "Live"})`,
@@ -250,6 +341,7 @@ export function ExportPanel({
           signal,
           onProgress: (f) => setStatus({ kind: "busy", label: `Recording video… ${Math.round(f * 100)}%` }),
         });
+        assertMasterSourceCurrent();
         downloadBlob(result.blob, `${baseName}-clip.${result.ext}`);
         setStatus({
           kind: "done",
@@ -274,9 +366,13 @@ export function ExportPanel({
           format: "mp3",
           bytes: blob,
           expectedDurationSeconds: renderedDurationSeconds,
+          sourceMeasurements: summary,
+          profile,
           signal,
+          onProgress: ({ progress, stage }) =>
+            setStatus({ kind: "busy", label: `Checking encoded MP3… ${Math.round(progress * 100)}% · ${stage}` }),
         });
-        if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
+        assertMasterSourceCurrent();
         setMasterReport((report) => (report ? { ...report, encodedDelivery } : report));
         downloadBlob(blob, `${baseName}-${kbps}.mp3`);
         setStatus({
@@ -302,9 +398,13 @@ export function ExportPanel({
         format: "wav",
         bytes: wavBytes,
         expectedDurationSeconds: renderedDurationSeconds,
+        sourceMeasurements: summary,
+        profile,
         signal,
+        onProgress: ({ progress, stage }) =>
+          setStatus({ kind: "busy", label: `Checking encoded WAV… ${Math.round(progress * 100)}% · ${stage}` }),
       });
-      if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
+      assertMasterSourceCurrent();
       setMasterReport((report) => (report ? { ...report, encodedDelivery } : report));
       downloadBlob(wavBlob, `${baseName}-master.wav`);
       setStatus({
@@ -313,9 +413,49 @@ export function ExportPanel({
         summary,
       });
     } catch (error) {
-      cancelOrElse(error, `Export failed: {err}`);
+      if (!isAbortError(error)) setMasterReport(null);
+      cancelOrElse(error, `Export failed: {err}`, download ? "Master export cancelled" : "Master analysis cancelled");
     }
   };
+
+  analyzeActionRef.current = () => {
+    if (masteringMode && !busy) void exportMaster(false);
+  };
+
+  useEffect(() => {
+    if (!masteringMode || !onMasteringWorkspaceStateChange) return;
+    onMasteringWorkspaceStateChange({
+      mode,
+      setMode,
+      sampleRate,
+      setSampleRate,
+      quality,
+      setQuality,
+      statusKind: status.kind,
+      busy,
+      activity: status.kind === "idle" ? null : status.label,
+      report: masterReport,
+      reportStale,
+      renderPcmBytes,
+      renderPcmWithinBudget,
+      analyze: () => analyzeActionRef.current(),
+    });
+  }, [
+    masteringMode,
+    onMasteringWorkspaceStateChange,
+    mode,
+    setMode,
+    sampleRate,
+    setSampleRate,
+    quality,
+    setQuality,
+    busy,
+    status,
+    masterReport,
+    reportStale,
+    renderPcmBytes,
+    renderPcmWithinBudget,
+  ]);
 
   /** Qvester ecosystem: render + hand the WAV to Audio Canvas (same-origin
    *  mount only — the handoff medium is shared IndexedDB + WebStorage). */
@@ -339,7 +479,7 @@ export function ExportPanel({
       });
       window.location.assign(url);
     } catch (error) {
-      cancelOrElse(error, `Send to visualizer failed: {err}`);
+      cancelOrElse(error, `Send to visualizer failed: {err}`, "Visualizer handoff cancelled");
     }
   };
 
@@ -377,7 +517,7 @@ export function ExportPanel({
         summary: lastSummary ?? EMPTY_EXPORT_SUMMARY,
       });
     } catch (error) {
-      cancelOrElse(error, "Stem export failed: {err}");
+      cancelOrElse(error, "Stem export failed: {err}", "Stem export cancelled");
     }
   };
 
@@ -398,6 +538,11 @@ export function ExportPanel({
           sampleRate,
           quality,
           signal,
+          // Individual track exports are pre-master stems, just like grouped
+          // stem exports. Their track, parent-group and routed return FX stay
+          // in the render; global master processing is applied only to the
+          // final stereo master and must not be printed onto every track.
+          masterProcessing: false,
         });
         lastSummary = summarizeBuffer(buffer);
         downloadWav(
@@ -415,7 +560,7 @@ export function ExportPanel({
         summary: lastSummary ?? EMPTY_EXPORT_SUMMARY,
       });
     } catch (error) {
-      cancelOrElse(error, "Track export failed: {err}");
+      cancelOrElse(error, "Track export failed: {err}", "Track export cancelled");
     }
   };
 
@@ -486,7 +631,7 @@ export function ExportPanel({
         summary: EMPTY_EXPORT_SUMMARY,
       });
     } catch (error) {
-      cancelOrElse(error, "Scorepack failed: {err}");
+      cancelOrElse(error, "Scorepack failed: {err}", "Scorepack creation cancelled");
     }
   };
 
@@ -514,7 +659,7 @@ export function ExportPanel({
         summary: result.masterSummary,
       });
     } catch (error) {
-      cancelOrElse(error, "ZYVO transfer failed: {err}");
+      cancelOrElse(error, "ZYVO transfer failed: {err}", "ZYVO transfer cancelled");
     }
   };
 
@@ -738,20 +883,24 @@ export function ExportPanel({
   return (
     <section className="export-panel" aria-label="Export">
       <div className="export-options">
-        <label className="fx-param-select">
-          <span className="slider-label">SOURCE</span>
-          <select value={mode} onChange={(event) => setMode(event.target.value as PlayMode)}>
-            <option value="song">Arrangement (SONG)</option>
-            <option value="pattern">Active pattern (1 pass)</option>
-          </select>
-        </label>
-        <label className="fx-param-select">
-          <span className="slider-label">RATE</span>
-          <select value={sampleRate} onChange={(event) => setSampleRate(Number(event.target.value))}>
-            <option value={44100}>44.1 kHz</option>
-            <option value={48000}>48 kHz</option>
-          </select>
-        </label>
+        {!masteringMode && (
+          <label className="fx-param-select">
+            <span className="slider-label">SOURCE</span>
+            <select value={mode} onChange={(event) => setMode(event.target.value as PlayMode)}>
+              <option value="song">Arrangement (SONG)</option>
+              <option value="pattern">Active pattern (1 pass)</option>
+            </select>
+          </label>
+        )}
+        {!masteringMode && (
+          <label className="fx-param-select">
+            <span className="slider-label">RATE</span>
+            <select value={sampleRate} onChange={(event) => setSampleRate(Number(event.target.value))}>
+              <option value={44100}>44.1 kHz</option>
+              <option value={48000}>48 kHz</option>
+            </select>
+          </label>
+        )}
         <label className="fx-param-select">
           <span className="slider-label">FORMAT</span>
           <select value={format} onChange={(event) => setFormat(event.target.value as MasterFormat)}>
@@ -763,16 +912,18 @@ export function ExportPanel({
             </option>
           </select>
         </label>
-        <label
-          className="fx-param-select"
-          title="STUDIO: PRISM renders at 8x saturation oversampling and default-tier VØID at the render tier (explicit eco/high/render choices respected). Slower render, no effect on the live document. LIVE renders exactly what you hear, faster."
-        >
-          <span className="slider-label">QUALITY</span>
-          <select value={quality} onChange={(event) => setQuality(event.target.value as "live" | "studio")}>
-            <option value="studio">Studio HQ</option>
-            <option value="live">Live (faster)</option>
-          </select>
-        </label>
+        {!masteringMode && (
+          <label
+            className="fx-param-select"
+            title="STUDIO: PRISM renders at 8x saturation oversampling and default-tier VØID at the render tier across tracks, returns and master inserts (explicit eco/high/render choices respected). Slower render, no effect on the live document. LIVE uses each effect's stored quality setting and renders faster."
+          >
+            <span className="slider-label">QUALITY</span>
+            <select value={quality} onChange={(event) => setQuality(event.target.value as "live" | "studio")}>
+              <option value="studio">Studio HQ</option>
+              <option value="live">Live (faster)</option>
+            </select>
+          </label>
+        )}
         {format === "video" && (
           <label className="fx-param-select">
             <span className="slider-label">LENGTH</span>
@@ -798,7 +949,37 @@ export function ExportPanel({
           </select>
         </label>
       </div>
+      {masteringMode && (
+        <div className="mastering-profile-export-suggestion" role="note">
+          <span>
+            PROFILE SUGGESTION · {deliveryProfile.recommendedFormat}
+            {
+              " · 16-bit uses deterministic TPDF dither; 24-bit uses integer quantization; 32-bit float is not dithered."
+            }
+          </span>
+          {recommendedExport && (
+            <button
+              type="button"
+              className="btn btn-small"
+              disabled={busy}
+              onClick={() => {
+                setFormat(recommendedExport.format);
+                if (recommendedExport.bitDepth) setBitDepth(recommendedExport.bitDepth);
+              }}
+            >
+              USE PROFILE FILE SETTINGS
+            </button>
+          )}
+        </div>
+      )}
       <div className="export-policy" role="note" aria-label="Export policy">
+        {masteringMode && !renderPcmWithinBudget && (
+          <span className="export-policy-warning" role="alert">
+            {Number.isFinite(renderPcmBytes) && renderPcmBytes > 0
+              ? `RENDER TOO LARGE · ${(renderPcmBytes / (1024 * 1024)).toFixed(1)} MiB stereo PCM exceeds the ${renderPcmLimitMiB} MiB limit. Choose Active pattern or shorten the song${sampleRate > 44100 ? ", or lower the sample rate" : ""}.`
+              : "RENDER SIZE UNAVAILABLE · Check the project tempo and render scope before analyzing or exporting."}
+          </span>
+        )}
         {markerCount > 0 && (
           <span className="export-policy-warning">
             MARKERS: {markerCount} cue one-shots are included in SCOREPACK, not the master WAV.
@@ -814,13 +995,15 @@ export function ExportPanel({
       <div className="export-buttons">
         {masteringMode ? (
           <>
-            <button type="button" className="btn btn-export" disabled={busy} onClick={() => void exportMaster(false)}>
-              {mode === "song" ? "ANALYZE FULL SONG" : "ANALYZE PATTERN"}
-            </button>
             <button
               type="button"
               className="btn btn-export"
-              disabled={busy || (format === "video" && !videoSupported)}
+              disabled={busy || !renderPcmWithinBudget || (format === "video" && !videoSupported)}
+              title={
+                !renderPcmWithinBudget
+                  ? `The estimated stereo PCM render exceeds KYX's ${renderPcmLimitMiB} MiB safety limit.`
+                  : undefined
+              }
               onClick={() => void exportMaster(true)}
             >
               {format === "video" ? "EXPORT VIDEO" : `EXPORT MASTER${format.startsWith("mp3") ? " (MP3)" : ""}`}
@@ -933,9 +1116,10 @@ export function ExportPanel({
         {status.kind === "idle" &&
           "Offline render uses the exact same engine, instruments and effects as playback — plus a 2 s tail for reverb/delay."}
         {status.kind !== "idle" && status.label}
+        {status.kind === "cancelled" && <span className="export-cancel-reason"> · {status.reason}</span>}
         {reportStale && (
           <span className="export-policy-warning">
-            STALE REPORT — project or render settings changed; analyze again.
+            STALE REPORT — project, sample bank or render settings changed; analyze again.
           </span>
         )}
         {busy && (
@@ -950,17 +1134,21 @@ export function ExportPanel({
           <ExportSummary
             summary={status.summary}
             deliveryProfile={masterReport?.profile ?? resolveDeliveryTarget(master)}
+            verdict={masterReport?.verdict}
           />
         </div>
       )}
       {status.kind === "done" && masteringMode && masterReport && (
         <>
           <div className="master-render-report-meta" role="note" aria-label="Master render report details">
-            <strong title={masterReport.runId}>REPORT V{masterReport.version}</strong>
+            <strong title={masterReport.runId}>
+              REPORT V{masterReport.version} · {masterReport.measurementTap.position.toUpperCase()} · PRE-ENCODE
+            </strong>
             <span>
               {masterReport.projectName} · {masterReport.scope === "song" ? "FULL SONG" : "PATTERN"} ·{" "}
               {masterReport.sampleRate} Hz · {masterReport.quality === "studio" ? "Studio HQ" : "Live"} ·{" "}
               {masterReport.durationSeconds.toFixed(1)} s · {masterReport.sampleRange.endFrame.toLocaleString()} samples
+              · bank r{masterReport.sampleBankRevision}
             </span>
             <time dateTime={masterReport.createdAt}>{new Date(masterReport.createdAt).toLocaleString()}</time>
             <button
@@ -1071,7 +1259,10 @@ function EncodedDeliveryCheck({
       : `MP3 · ${file.averageBitrateKbps?.toFixed(0) ?? "?"} kbps avg`;
   const channelsLabel = file.channels === 1 ? "mono" : `${file.channels} channels`;
   const bextLabel = file.bext ? `BWF v${file.bext.version}` : "no BWF metadata";
+  const bextLoudness = file.bext?.loudness;
   const durationLabel = `${file.durationSeconds.toFixed(2)} s${file.durationAccuracy === "estimated" ? " estimated" : ""}`;
+  const formatBwfField = (value: number | null, unit: string) =>
+    value == null ? `N/A ${unit}` : `${value.toFixed(2)} ${unit}`;
 
   return (
     <section className="master-delivery-check" aria-label="Encoded master file check">
@@ -1084,13 +1275,20 @@ function EncodedDeliveryCheck({
         {inspection.format === "wav" ? ` · ${bextLabel}` : ""}
       </p>
       {file.bext?.description && <p className="master-delivery-metadata">BWF description: {file.bext.description}</p>}
+      {bextLoudness && (
+        <p className="master-delivery-metadata">
+          BWF v2 source PCM · I {formatBwfField(bextLoudness.integratedLufs, "LUFS")} · LRA{" "}
+          {formatBwfField(bextLoudness.rangeLu, "LU")} · max TP {formatBwfField(bextLoudness.truePeakDbtp, "dBTP")} · M{" "}
+          {formatBwfField(bextLoudness.momentaryLufs, "LUFS")} · S {formatBwfField(bextLoudness.shortTermLufs, "LUFS")}
+        </p>
+      )}
       {decode.status === "measured" && decode.measurements ? (
         <div className="master-delivery-decoded">
           <span>
             POST-DECODE · {decode.sampleRate?.toLocaleString()} Hz · {decode.channels} channels ·{" "}
-            {decode.durationSeconds?.toFixed(2)} s · browser Web Audio decoder
+            {decode.durationSeconds?.toFixed(2)} s · {decode.decoder}
           </span>
-          <ExportSummary summary={decode.measurements} deliveryProfile={deliveryProfile} />
+          <ExportSummary summary={decode.measurements} deliveryProfile={deliveryProfile} verdict={decode.verdict} />
         </div>
       ) : (
         <p className="master-delivery-not-measured" role="status">
@@ -1111,15 +1309,18 @@ function EncodedDeliveryCheck({
 function MixHealthLine({ health, stage }: { health: MixHealthReport; stage: "PRE-ENCODE" | "POST-DECODE" }) {
   const red = health.flags.filter((f) => f.severity === "red");
   const yellow = health.flags.filter((f) => f.severity === "yellow");
+  const measured = health.integratedLufs !== null;
   const stats = `low ${(health.lowEndShare * 100).toFixed(0)}% · crest ${health.crestDb.toFixed(1)} dB · peak −${health.headroomDb.toFixed(1)} dBFS`;
   const notes = [...red, ...yellow]
     .map((f) => `${f.severity === "red" ? "⚠" : "○"} ${f.check}: ${f.detail}`)
     .join(" · ");
   return (
     <div className="export-resample-hint" role="status">
-      {red.length === 0
-        ? `MIX CHECK · ${stage} PASS — `
-        : `MIX CHECK · ${stage} — ${red.length} ISSUE${red.length > 1 ? "S" : ""} — `}
+      {!measured
+        ? `MIX CHECK · ${stage} NOT MEASURED — `
+        : red.length === 0
+          ? `MIX CHECK · ${stage} PASS — `
+          : `MIX CHECK · ${stage} — ${red.length} ISSUE${red.length > 1 ? "S" : ""} — `}
       {stats}
       {notes && ` — ${notes}`}
     </div>
@@ -1194,9 +1395,18 @@ function AutoStageButton({ summary }: { summary: BufferSummary }) {
   );
 }
 
-function ExportSummary({ summary, deliveryProfile }: { summary: BufferSummary; deliveryProfile: MasterProfile }) {
+function ExportSummary({
+  summary,
+  deliveryProfile,
+  verdict: measuredVerdict,
+}: {
+  summary: BufferSummary;
+  deliveryProfile: MasterProfile;
+  verdict?: MasterVerdict;
+}) {
   const corr = summary.correlation;
-  const corrLabel = corr > 0.5 ? "Mono OK" : corr < 0 ? "Phase" : "Wide";
+  const stereoMeasured = summary.channelCount >= 2 && summary.lufsIntegrated > -119;
+  const corrLabel = !stereoMeasured ? "N/A" : corr > 0.5 ? "Mono OK" : corr < 0 ? "Phase" : "Wide";
   const clipped = summary.peakDb > -0.3 || summary.truePeakDb > -0.3;
   // Mono-loss guardian: same thresholds as the live mix-check verdict, so
   // the export summary never disagrees with the master meter wall.
@@ -1204,42 +1414,50 @@ function ExportSummary({ summary, deliveryProfile }: { summary: BufferSummary; d
   // Gain-staging verdict: the same print-ready verdict the live master
   // meter shows (loudness vs streaming target, true peak vs limiter
   // ceiling, mono, balance) — the export tells you what to turn.
-  const verdict = evaluateMasterVerdict(
-    {
-      lufsIntegrated: summary.lufsIntegrated,
-      truePeakDb: summary.truePeakDb,
-      monoLossDb: summary.monoLossDb,
-      correlation: summary.correlation,
-      // The offline summary carries no L/R-imbalance reading — 0 keeps the
-      // balance check neutral instead of inventing a measurement.
-      lrImbalanceDb: 0,
-    },
-    deliveryProfile.targetLufs,
-    deliveryProfile.maxTruePeakDb,
-    deliveryProfile.label.toUpperCase(),
-    deliveryProfile,
-  );
+  const verdict =
+    measuredVerdict ??
+    evaluateMasterVerdict(
+      {
+        lufsIntegrated: summary.lufsIntegrated,
+        truePeakDb: summary.truePeakDb,
+        monoLossDb: stereoMeasured ? summary.monoLossDb : null,
+        correlation: stereoMeasured ? summary.correlation : null,
+        lrImbalanceDb: stereoMeasured ? summary.lrImbalanceDb : null,
+      },
+      deliveryProfile.targetLufs,
+      deliveryProfile.maxTruePeakDb,
+      deliveryProfile.label.toUpperCase(),
+      deliveryProfile,
+    );
   return (
     <div className="export-summary" aria-label="Export summary">
       <div className="export-summary-row">
         <span className="export-summary-label">PEAK</span>
-        <span className="export-summary-value">{summary.peakDb.toFixed(1)} dB</span>
+        <span className="export-summary-value">{summary.peakDb.toFixed(1)} dBFS</span>
       </div>
       <div className="export-summary-row">
         <span className="export-summary-label">TRUE PEAK</span>
         <span className={`export-summary-value${clipped ? " export-summary-clipped" : ""}`}>
-          {summary.truePeakDb.toFixed(1)} dB
+          {summary.truePeakDb.toFixed(1)} dBTP
           {clipped && " ⚠"}
         </span>
       </div>
       <div className="export-summary-row">
         <span className="export-summary-label">RMS</span>
-        <span className="export-summary-value">{summary.rmsDb.toFixed(1)} dB</span>
+        <span className="export-summary-value">{summary.rmsDb.toFixed(1)} dBFS</span>
       </div>
       <div className="export-summary-row">
         <span className="export-summary-label">×CORR</span>
         <span className="export-summary-value">
-          {corr.toFixed(2)} {corrLabel}
+          {stereoMeasured ? `${corr.toFixed(2)} ${corrLabel}` : "N/A · mono or silence"}
+        </span>
+      </div>
+      <div className="export-summary-row">
+        <span className="export-summary-label">L/R Δ RMS</span>
+        <span className="export-summary-value">
+          {!stereoMeasured || summary.lrImbalanceDb === null
+            ? "N/A · mono or silence"
+            : `${summary.lrImbalanceDb.toFixed(1)} dB`}
         </span>
       </div>
       <div className="export-summary-row">
@@ -1248,10 +1466,23 @@ function ExportSummary({ summary, deliveryProfile }: { summary: BufferSummary; d
           {summary.lufsIntegrated <= -119 ? "-INF" : summary.lufsIntegrated.toFixed(1)}
         </span>
       </div>
+      {summary.loudnessRangeLu !== undefined && (
+        <div
+          className="export-summary-row"
+          title="EBU Tech 3342 Loudness Range uses gated 3-second loudness windows. It describes programme dynamics; it is not a delivery target."
+        >
+          <span className="export-summary-label">LRA</span>
+          <span className="export-summary-value">
+            {summary.loudnessRangeLu == null
+              ? "NOT MEASURED · short or silent programme"
+              : `${summary.loudnessRangeLu.toFixed(1)} LU`}
+          </span>
+        </div>
+      )}
       <div className="export-summary-row">
         <span className="export-summary-label">MONO LOSS</span>
         <span className={`export-summary-value${monoGuard.level !== "ok" ? " export-summary-clipped" : ""}`}>
-          {summary.monoLossDb.toFixed(1)} dB
+          {stereoMeasured ? `${summary.monoLossDb.toFixed(1)} dB` : "N/A · mono or silence"}
           {monoGuard.level !== "ok" && " ⚠"}
         </span>
       </div>
@@ -1270,6 +1501,18 @@ function ExportSummary({ summary, deliveryProfile }: { summary: BufferSummary; d
               {hint}
             </span>
           ))}
+        </div>
+      )}
+      {verdict.checks.some((check) => check.status === "not-measured") && (
+        <div className="export-summary-row" role="note">
+          <span className="export-summary-label">NOT MEASURED</span>
+          {verdict.checks
+            .filter((check) => check.status === "not-measured")
+            .map((check) => (
+              <span key={check.line} className="export-summary-value">
+                {check.line}
+              </span>
+            ))}
         </div>
       )}
       {monoGuard.level !== "ok" && (

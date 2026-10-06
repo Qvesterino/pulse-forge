@@ -435,6 +435,14 @@
   color: var(--accent);
 }
 
+.export-cancelled {
+  color: var(--text-dim);
+}
+
+.export-cancel-reason {
+  color: var(--text-faint);
+}
+
 /* ── User theme system ─────────────────────────────────────────────── */
 
 .theme-panel {

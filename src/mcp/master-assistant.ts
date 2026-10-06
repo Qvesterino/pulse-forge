@@ -6,15 +6,17 @@
  * The executor (kyx_master op:assist) applies the plan through the normal
  * command layer as ONE snapshot — the planner never touches the doc.
  *
- * Rules are intentionally conservative and bounded: they land inside every
- * param's registry range, never boost the ceiling above −0.5 dB, and never
- * push limiting past 70% — the assistant proposes shape, the loudness loop
- * (op:trim against a measured LUFS) stays the loudness authority.
+ * With an explicit delivery contract, production callers receive only an
+ * evidence-backed true-peak ceiling suggestion; LUFS, crest, stereo and band
+ * shares remain report-only because they do not reveal a safe correction by
+ * themselves. The legacy no-contract planner path remains for existing API
+ * consumers. The loudness loop (op:trim) stays the loudness authority.
  */
 
 export interface MasterMeasurement {
   /** Integrated LUFS; null = not measurable (assistant skips loudness rules). */
   lufs: number | null;
+  /** True peak in dBTP when available; legacy MCP callers may pass peak hold. */
   peakDb: number;
   /** crest = peak − rms in dB; low crest = squashed, high = peaky. */
   crestDb: number;
@@ -24,6 +26,8 @@ export interface MasterMeasurement {
   hfShare?: number | null;
   /** Target integrated loudness (default −14 LUFS streaming). */
   targetLufs?: number;
+  /** Target true peak in dBTP; when present, ceiling advice follows this delivery contract. */
+  targetTruePeakDb?: number;
 }
 
 export interface MasterAssistantStep {
@@ -41,9 +45,25 @@ export function planMasterSettings(m: MasterMeasurement): MasterAssistantStep[] 
   const steps: MasterAssistantStep[] = [];
   const target = m.targetLufs ?? -14;
 
-  // 1. LOUDNESS SHAPE — how hard the limiter/clipper chain works to reach the
-  // target BEFORE the trim loop: quieter-than-target mixes get limiting push,
-  // louder ones get ceiling discipline (the trim loop then fine-lands it).
+  // 1. DELIVERY CONTRACT. With an explicit target, only a measured true-peak
+  // violation is strong enough evidence for an automatic insert change.
+  // Loudness, crest, correlation and band shares stay advisory; they cannot
+  // identify whether a master-bus correction is safer than fixing the mix.
+  const truePeakTarget = m.targetTruePeakDb;
+  if (truePeakTarget != null) {
+    if (m.peakDb > truePeakTarget + 0.3) {
+      const ceiling = clamp(truePeakTarget - 0.5, -6, -0.5);
+      steps.push({
+        device: "zenit",
+        param: "ceiling",
+        value: ceiling,
+        why: `measured true peak ${m.peakDb.toFixed(1)} dBTP exceeds the ${truePeakTarget.toFixed(1)} dBTP delivery limit — ZENIT ceiling set to ${ceiling.toFixed(1)} dB for margin`,
+      });
+    }
+    return steps;
+  }
+
+  // Legacy no-contract callers retain their shape heuristics for compatibility.
   if (m.lufs != null) {
     const delta = target - m.lufs; // >0 = needs loudness
     if (delta > 2) {
@@ -66,7 +86,7 @@ export function planMasterSettings(m: MasterMeasurement): MasterAssistantStep[] 
         value: -1.5,
         why: `${m.lufs.toFixed(1)} LUFS already ${(-delta).toFixed(1)} LU hot — ceiling discipline, let op:trim reduce`,
       });
-    } else {
+    } else if (delta >= -2) {
       steps.push({
         device: "zenit",
         param: "limit",

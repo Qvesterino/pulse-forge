@@ -1,4 +1,5 @@
 import { analyzeLoudnessBuffer } from "../audio-engine/kweighting";
+import type { LoudnessReading } from "../audio-engine/kweighting";
 
 /**
  * MIX DOCTOR (library-gate wave follow-up, 2026-09-30) — automatic mix QA on
@@ -91,25 +92,62 @@ function rbjLowHigh(type: "lp" | "hp", freq: number, sampleRate: number): Biquad
   };
 }
 
+function mixBandFilters(sampleRate: number): Array<[keyof MixBandShares, Biquad[]]> {
+  return [
+    ["sub", [rbjLowHigh("lp", 60, sampleRate)]],
+    ["low", [rbjLowHigh("hp", 60, sampleRate), rbjLowHigh("lp", 120, sampleRate)]],
+    ["lowmid", [rbjLowHigh("hp", 120, sampleRate), rbjLowHigh("lp", 350, sampleRate)]],
+    ["mid", [rbjLowHigh("hp", 350, sampleRate), rbjLowHigh("lp", 2000, sampleRate)]],
+    ["himid", [rbjLowHigh("hp", 2000, sampleRate), rbjLowHigh("lp", 6000, sampleRate)]],
+    ["high", [rbjLowHigh("hp", 6000, sampleRate), rbjLowHigh("lp", 12000, sampleRate)]],
+    ["air", [rbjLowHigh("hp", 12000, sampleRate)]],
+  ];
+}
+
 /** Streaming biquad — processes a length in place mathematically (no copy). */
-function biquadPower(data: Float32Array, chain: Biquad[]): number {
-  let sumSq = 0;
-  const st = chain.map(() => ({ x1: 0, x2: 0, y1: 0, y2: 0 }));
-  for (let i = 0; i < data.length; i++) {
-    let v = data[i];
-    for (let f = 0; f < chain.length; f++) {
-      const c = chain[f];
-      const s = st[f];
-      const y = c.b0 * v + c.b1 * s.x1 + c.b2 * s.x2 - c.a1 * s.y1 - c.a2 * s.y2;
-      s.x2 = s.x1;
-      s.x1 = v;
-      s.y2 = s.y1;
-      s.y1 = y;
-      v = y;
+function analyzeDownmixBands(
+  channels: readonly Float32Array[],
+  sampleRate: number,
+  onProgress?: (fraction: number) => void,
+): { totalPower: number; bandPower: Record<keyof MixBandShares, number> } {
+  const bands = mixBandFilters(sampleRate);
+  const states = bands.map(([, chain]) => chain.map(() => ({ x1: 0, x2: 0, y1: 0, y2: 0 })));
+  const bandPower = Object.fromEntries(bands.map(([name]) => [name, 0])) as Record<keyof MixBandShares, number>;
+  const length = channels.reduce((acc, channel) => Math.min(acc, channel.length), Number.MAX_SAFE_INTEGER);
+  let totalPower = 0;
+  onProgress?.(0);
+  for (let i = 0; i < length; i++) {
+    let mono = 0;
+    for (const channel of channels) {
+      const sample = channel[i];
+      mono += Number.isFinite(sample) ? sample : 0;
     }
-    sumSq += v * v;
+    mono = Math.fround(mono / channels.length);
+    totalPower += mono * mono;
+    for (let bandIndex = 0; bandIndex < bands.length; bandIndex++) {
+      const [name, chain] = bands[bandIndex];
+      let value = mono;
+      for (let filterIndex = 0; filterIndex < chain.length; filterIndex++) {
+        const coefficients = chain[filterIndex];
+        const state = states[bandIndex][filterIndex];
+        const output =
+          coefficients.b0 * value +
+          coefficients.b1 * state.x1 +
+          coefficients.b2 * state.x2 -
+          coefficients.a1 * state.y1 -
+          coefficients.a2 * state.y2;
+        state.x2 = state.x1;
+        state.x1 = value;
+        state.y2 = state.y1;
+        state.y1 = output;
+        value = output;
+      }
+      bandPower[name] += value * value;
+    }
+    if (i > 0 && i % 32768 === 0) onProgress?.(i / length);
   }
-  return sumSq;
+  onProgress?.(1);
+  return { totalPower, bandPower };
 }
 
 const CLIP_EDGE = 0.9995;
@@ -121,107 +159,31 @@ const CREST_YELLOW_DB = 8;
 const DC_RED = 1e-3;
 const SILENCE_RMS = 1e-4;
 
-/**
- * Mix-health analysis over rendered channel buffers. Channels may be of
- * unequal length (the shortest bounds the scan); at least one channel is
- * required. For stereo inputs the correlation is the sample correlation
- * between L and R.
- */
-export function analyzeMixHealth(channels: readonly Float32Array[], sampleRate: number): MixHealthReport {
-  const empty: MixBandShares = { sub: 0, low: 0, lowmid: 0, mid: 0, himid: 0, high: 0, air: 0 };
-  if (channels.length === 0 || sampleRate <= 0 || !Number.isFinite(sampleRate)) {
-    return {
-      durationSec: 0,
-      peak: 0,
-      clippedSamples: 0,
-      headroomDb: 120,
-      crestDb: 120,
-      dcOffset: 0,
-      integratedLufs: null,
-      momentaryMaxLufs: null,
-      bandShares: empty,
-      lowEndShare: 0,
-      stereoCorrelation: null,
-      flags: [{ severity: "yellow", check: "no-signal", detail: "no channels to analyze" }],
-      ok: false,
-    };
-  }
-  const length = channels.reduce((acc, ch) => Math.min(acc, ch.length), Number.MAX_SAFE_INTEGER);
+interface MixHealthMeasurements {
+  durationSec: number;
+  peak: number;
+  clippedSamples: number;
+  rms: number;
+  dcOffset: number;
+  bandShares: MixBandShares;
+  stereoCorrelation: number | null;
+  finite: boolean;
+  loudness: LoudnessReading | null;
+}
 
-  // Whole-buffer readings: peak / clip / DC / RMS (all channels).
-  let peak = 0;
-  let clipped = 0;
-  let dcSum = 0;
-  let sampleCount = 0;
-  let sumSq = 0;
-  let finite = true;
-  for (const ch of channels) {
-    for (let i = 0; i < length; i++) {
-      const v = ch[i];
-      if (!Number.isFinite(v)) finite = false;
-      const a = Math.abs(v);
-      if (a > peak) peak = a;
-      if (a >= CLIP_EDGE) clipped += 1;
-      dcSum += v;
-      sumSq += v * v;
-      sampleCount += 1;
-    }
-  }
-  const rms = sampleCount > 0 ? Math.sqrt(sumSq / sampleCount) : 0;
-  const dcOffset = sampleCount > 0 ? dcSum / sampleCount : 0;
+function buildMixHealthReport(input: MixHealthMeasurements): MixHealthReport {
+  const { durationSec, peak, clippedSamples, rms, dcOffset, bandShares, stereoCorrelation, finite, loudness } = input;
   const crestDb = rms > 0 && peak > 0 ? 20 * Math.log10(peak / rms) : 120;
   const headroomDb = peak > 0 ? -20 * Math.log10(peak) : 120;
-
-  // Mono downmix for band shares — a running array only for the downmix.
-  const mono = new Float32Array(length);
-  for (let i = 0; i < length; i++) {
-    let acc = 0;
-    for (const ch of channels) acc += ch[i];
-    mono[i] = acc / channels.length;
-  }
-  const totalSq = biquadPower(mono, []);
-  const bandShares: MixBandShares = { ...empty };
-  if (totalSq > 0) {
-    const bands: Array<[keyof MixBandShares, Biquad[]]> = [
-      ["sub", [rbjLowHigh("lp", 60, sampleRate)]],
-      ["low", [rbjLowHigh("hp", 60, sampleRate), rbjLowHigh("lp", 120, sampleRate)]],
-      ["lowmid", [rbjLowHigh("hp", 120, sampleRate), rbjLowHigh("lp", 350, sampleRate)]],
-      ["mid", [rbjLowHigh("hp", 350, sampleRate), rbjLowHigh("lp", 2000, sampleRate)]],
-      ["himid", [rbjLowHigh("hp", 2000, sampleRate), rbjLowHigh("lp", 6000, sampleRate)]],
-      ["high", [rbjLowHigh("hp", 6000, sampleRate), rbjLowHigh("lp", 12000, sampleRate)]],
-      ["air", [rbjLowHigh("hp", 12000, sampleRate)]],
-    ];
-    for (const [name, chain] of bands) {
-      bandShares[name] = biquadPower(mono, chain) / totalSq;
-    }
-  }
   const lowEndShare = bandShares.sub + bandShares.low;
   const hfShare = bandShares.high + bandShares.air;
-
-  // Stereo correlation (only meaningful for 2 channels of equal work).
-  let stereoCorrelation: number | null = null;
-  if (channels.length >= 2) {
-    let lr = 0;
-    let ll = 0;
-    let rr = 0;
-    for (let i = 0; i < length; i++) {
-      lr += channels[0][i] * channels[1][i];
-      ll += channels[0][i] * channels[0][i];
-      rr += channels[1][i] * channels[1][i];
-    }
-    stereoCorrelation = ll > 0 && rr > 0 ? lr / Math.sqrt(ll * rr) : 1;
-  }
-
-  // BS.1770 loudness — null when unmeasurable (short or silent).
-  const loudness =
-    length >= Math.ceil(0.4 * sampleRate) ? analyzeLoudnessBuffer(channels as Float32Array[], sampleRate) : null;
   const integratedLufs = loudness?.measured ? loudness.integrated : null;
   const momentaryMaxLufs = loudness?.measured ? loudness.momentaryMax : null;
 
-  // ── Flags ────────────────────────────────────────────────────────────────
   const flags: MixHealthFlag[] = [];
   if (!finite) flags.push({ severity: "red", check: "non-finite", detail: "render contains non-finite samples" });
-  if (clipped > 0) flags.push({ severity: "red", check: "clipping", detail: `${clipped} samples at/over full scale` });
+  if (clippedSamples > 0)
+    flags.push({ severity: "red", check: "clipping", detail: `${clippedSamples} samples at/over full scale` });
   if (peak > 1)
     flags.push({
       severity: "red",
@@ -273,9 +235,9 @@ export function analyzeMixHealth(channels: readonly Float32Array[], sampleRate: 
     });
 
   return {
-    durationSec: length / sampleRate,
+    durationSec,
     peak,
-    clippedSamples: clipped,
+    clippedSamples,
     headroomDb,
     crestDb,
     dcOffset,
@@ -289,11 +251,235 @@ export function analyzeMixHealth(channels: readonly Float32Array[], sampleRate: 
   };
 }
 
+/**
+ * Mix-health analysis over rendered channel buffers. Channels may be of
+ * unequal length (the shortest bounds the scan); at least one channel is
+ * required. For stereo inputs the correlation is the sample correlation
+ * between L and R.
+ */
+export function analyzeMixHealth(
+  channels: readonly Float32Array[],
+  sampleRate: number,
+  onProgress?: (stage: string, fraction: number) => void,
+  loudnessOverride?: LoudnessReading | null,
+): MixHealthReport {
+  const empty: MixBandShares = { sub: 0, low: 0, lowmid: 0, mid: 0, himid: 0, high: 0, air: 0 };
+  if (channels.length === 0 || sampleRate <= 0 || !Number.isFinite(sampleRate)) {
+    return {
+      durationSec: 0,
+      peak: 0,
+      clippedSamples: 0,
+      headroomDb: 120,
+      crestDb: 120,
+      dcOffset: 0,
+      integratedLufs: null,
+      momentaryMaxLufs: null,
+      bandShares: empty,
+      lowEndShare: 0,
+      stereoCorrelation: null,
+      flags: [{ severity: "yellow", check: "no-signal", detail: "no channels to analyze" }],
+      ok: false,
+    };
+  }
+  const length = channels.reduce((acc, ch) => Math.min(acc, ch.length), Number.MAX_SAFE_INTEGER);
+
+  // Whole-buffer readings: peak / clip / DC / RMS (all channels).
+  let peak = 0;
+  let clipped = 0;
+  let dcSum = 0;
+  let sampleCount = 0;
+  let sumSq = 0;
+  let finite = true;
+  let completedSamples = 0;
+  const totalSamples = length * channels.length;
+  onProgress?.("mix sample and DC checks", 0);
+  for (const ch of channels) {
+    for (let i = 0; i < length; i++) {
+      const raw = ch[i];
+      if (!Number.isFinite(raw)) finite = false;
+      const v = Number.isFinite(raw) ? raw : 0;
+      const a = Math.abs(v);
+      if (a > peak) peak = a;
+      if (a >= CLIP_EDGE) clipped += 1;
+      dcSum += v;
+      sumSq += v * v;
+      sampleCount += 1;
+      completedSamples++;
+      if (completedSamples % 32768 === 0 && totalSamples > 0)
+        onProgress?.("mix sample and DC checks", completedSamples / totalSamples);
+    }
+  }
+  onProgress?.("mix sample and DC checks", 1);
+  const rms = sampleCount > 0 ? Math.sqrt(sumSq / sampleCount) : 0;
+  const dcOffset = sampleCount > 0 ? dcSum / sampleCount : 0;
+
+  const bandShares: MixBandShares = { ...empty };
+  onProgress?.("mix spectrum", 0);
+  const analyzedBands = analyzeDownmixBands(channels, sampleRate, (fraction) => onProgress?.("mix spectrum", fraction));
+  const totalSq = analyzedBands.totalPower;
+  if (totalSq > 0) {
+    for (const [name] of Object.entries(analyzedBands.bandPower) as Array<[keyof MixBandShares, number]>)
+      bandShares[name] = analyzedBands.bandPower[name] / totalSq;
+  }
+  onProgress?.("mix spectrum", 1);
+
+  // Stereo correlation (only meaningful for 2 channels of equal work).
+  let stereoCorrelation: number | null = null;
+  if (channels.length >= 2) {
+    let lr = 0;
+    let ll = 0;
+    let rr = 0;
+    onProgress?.("mix stereo", 0);
+    for (let i = 0; i < length; i++) {
+      const leftSample = channels[0][i];
+      const rightSample = channels[1][i];
+      const left = Number.isFinite(leftSample) ? leftSample : 0;
+      const right = Number.isFinite(rightSample) ? rightSample : 0;
+      lr += left * right;
+      ll += left * left;
+      rr += right * right;
+      if (i > 0 && i % 32768 === 0) onProgress?.("mix stereo", i / length);
+    }
+    onProgress?.("mix stereo", 1);
+    stereoCorrelation = ll > 0 && rr > 0 ? lr / Math.sqrt(ll * rr) : 1;
+  }
+
+  // BS.1770 loudness — null when unmeasurable (short or silent).
+  const loudness =
+    loudnessOverride !== undefined
+      ? loudnessOverride
+      : length >= Math.ceil(0.4 * sampleRate)
+        ? analyzeLoudnessBuffer(channels as Float32Array[], sampleRate, (fraction) =>
+            onProgress?.("mix loudness", fraction),
+          )
+        : null;
+  return buildMixHealthReport({
+    durationSec: length / sampleRate,
+    peak,
+    clippedSamples: clipped,
+    rms,
+    dcOffset,
+    bandShares,
+    stereoCorrelation,
+    finite,
+    loudness,
+  });
+}
+
 /** AudioBuffer convenience wrapper (the export/render callers' shape). */
 export function analyzeMixHealthBuffer(buffer: AudioBuffer): MixHealthReport {
   const channels: Float32Array[] = [];
   for (let c = 0; c < buffer.numberOfChannels; c++) channels.push(buffer.getChannelData(c));
   return analyzeMixHealth(channels, buffer.sampleRate);
+}
+
+/**
+ * Incremental Mix Doctor state for the mastering worker. It keeps filter and
+ * scalar accumulators only, so chunked analysis does not retain a PCM copy.
+ */
+export class MixDoctorAccumulator {
+  private readonly bands: Array<[keyof MixBandShares, Biquad[]]>;
+  private readonly states: Array<Array<{ x1: number; x2: number; y1: number; y2: number }>>;
+  private readonly bandPower: Record<keyof MixBandShares, number> = {
+    sub: 0,
+    low: 0,
+    lowmid: 0,
+    mid: 0,
+    himid: 0,
+    high: 0,
+    air: 0,
+  };
+  private frameCount = 0;
+  private sampleCount = 0;
+  private peak = 0;
+  private clippedSamples = 0;
+  private sumSq = 0;
+  private dcSum = 0;
+  private finite = true;
+  private totalPower = 0;
+  private lr = 0;
+  private ll = 0;
+  private rr = 0;
+
+  constructor(
+    private readonly channelCount: number,
+    private readonly sampleRate: number,
+  ) {
+    this.bands = mixBandFilters(sampleRate);
+    this.states = this.bands.map(([, chain]) => chain.map(() => ({ x1: 0, x2: 0, y1: 0, y2: 0 })));
+  }
+
+  processFrame(samples: ArrayLike<number>): void {
+    let mono = 0;
+    let left = 0;
+    let right = 0;
+    for (let channel = 0; channel < this.channelCount; channel++) {
+      const raw = samples[channel] ?? 0;
+      if (!Number.isFinite(raw)) this.finite = false;
+      const value = Number.isFinite(raw) ? raw : 0;
+      if (channel === 0) left = value;
+      if (channel === 1) right = value;
+      mono += value;
+      const abs = Math.abs(value);
+      if (abs > this.peak) this.peak = abs;
+      if (abs >= CLIP_EDGE) this.clippedSamples++;
+      this.sumSq += value * value;
+      this.dcSum += value;
+      this.sampleCount++;
+    }
+
+    mono = Math.fround(mono / this.channelCount);
+    this.totalPower += mono * mono;
+    for (let bandIndex = 0; bandIndex < this.bands.length; bandIndex++) {
+      const [name, chain] = this.bands[bandIndex];
+      let value = mono;
+      for (let filterIndex = 0; filterIndex < chain.length; filterIndex++) {
+        const coefficients = chain[filterIndex];
+        const state = this.states[bandIndex][filterIndex];
+        const output =
+          coefficients.b0 * value +
+          coefficients.b1 * state.x1 +
+          coefficients.b2 * state.x2 -
+          coefficients.a1 * state.y1 -
+          coefficients.a2 * state.y2;
+        state.x2 = state.x1;
+        state.x1 = value;
+        state.y2 = state.y1;
+        state.y1 = output;
+        value = output;
+      }
+      this.bandPower[name] += value * value;
+    }
+
+    if (this.channelCount >= 2) {
+      this.lr += left * right;
+      this.ll += left * left;
+      this.rr += right * right;
+    }
+    this.frameCount++;
+  }
+
+  finish(loudness: LoudnessReading | null): MixHealthReport {
+    const bandShares: MixBandShares = { sub: 0, low: 0, lowmid: 0, mid: 0, himid: 0, high: 0, air: 0 };
+    if (this.totalPower > 0) {
+      for (const name of Object.keys(this.bandPower) as Array<keyof MixBandShares>)
+        bandShares[name] = this.bandPower[name] / this.totalPower;
+    }
+    const stereoCorrelation =
+      this.channelCount >= 2 ? (this.ll > 0 && this.rr > 0 ? this.lr / Math.sqrt(this.ll * this.rr) : 1) : null;
+    const rms = this.sampleCount > 0 ? Math.sqrt(this.sumSq / this.sampleCount) : 0;
+    return buildMixHealthReport({
+      durationSec: this.sampleRate > 0 ? this.frameCount / this.sampleRate : 0,
+      peak: this.peak,
+      clippedSamples: this.clippedSamples,
+      rms,
+      dcOffset: this.sampleCount > 0 ? this.dcSum / this.sampleCount : 0,
+      bandShares,
+      stereoCorrelation,
+      finite: this.finite,
+      loudness,
+    });
+  }
 }
 
 /* ── Auto-fix derivation (wave: mix-doctor auto-fix) ─────────────────────── */

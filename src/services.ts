@@ -75,6 +75,8 @@ import { createLocalStyleObserver } from "./intent/style-observation";
 export interface CoreServices {
   engine: AudioEngine;
   bank: SampleBank;
+  /** Settles after boot-time curated and persisted-user samples stop mutating the bank. */
+  initialSampleBankHydration?: Promise<void>;
   /** Provider implementations are host capabilities, never project state. */
   generativeProviders?: GenerativeProviderRegistry;
   /** Host-local provider warm-up/control measurements; never project state. */
@@ -357,13 +359,14 @@ export async function createCoreServices(): Promise<CoreServices> {
   // the app is fully usable while imports stream back in). Memoized per bank:
   // the offline renderer awaits the same promise (bounded) so an export or
   // freeze that races the restore cannot silently bake missing samples.
-  void restoreUserSampleAudioMemoized(bank).catch((error) => {
+  const userSampleHydration = restoreUserSampleAudioMemoized(bank).catch((error) => {
     console.error("[user-samples] boot restore failed:", error);
   });
   // Curated factory layer (same-id override): the synthesized kit already
   // sounds; these progressively replace the curated slots as they decode.
   // Export paths await `curatedReady()` so renders use the intended sound.
-  void ensureCuratedLayer(bank);
+  const curatedSampleHydration = ensureCuratedLayer(bank);
+  const initialSampleBankHydration = Promise.all([userSampleHydration, curatedSampleHydration]).then(() => undefined);
   // Warm the semantic embedding model (semantic escape hatch, fix A).
   // 88% of library grooves are outside PRIOR_STYLE_VOCAB, so the v3 channel
   // is what keeps generated drums off the template fallback — but its FIRST
@@ -387,6 +390,7 @@ export async function createCoreServices(): Promise<CoreServices> {
   return {
     engine,
     bank,
+    initialSampleBankHydration,
     generativeProviders,
     generativeLatency: new GenerativeLatencyCalibrationController(),
     repo: new ProjectRepository(),

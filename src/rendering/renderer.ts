@@ -3,7 +3,7 @@ import { curatedReadyWithin } from "../sample-library/curated-layer";
 import { userSamplesReadyWithin } from "../persistence/UserSampleRepository";
 import type { SampleBank } from "../sample-library/factory";
 import type { AutomationPoint, Pattern, PlayMode, ProjectDocument } from "../project-model/types";
-import { BAR_TICKS, PPQ, STEP_TICKS, getActivePattern } from "../project-model/types";
+import { BAR_TICKS, MASTER_EFFECT_OWNER_ID, PPQ, STEP_TICKS, getActivePattern } from "../project-model/types";
 import { drumHitsInWindow } from "../project-model/groove";
 import { noteEventsInWindow, patternBaseTickForClip, sceneBaseTickForClip } from "../project-model/events";
 import { computeSceneIntensity } from "../project-model/intensity";
@@ -134,9 +134,8 @@ export function resolveRenderQuality(
 /**
  * The VØID quality bump for one document: {trackId, fxId, paramId, value}
  * entries that the renderer feeds through engine.previewFxParam. Pure so the
- * export contract is testable without an audio context. Covers tracks and
- * return tracks (both resolve through previewFxParam); master-chain
- * instances keep their live tier.
+ * export contract is testable without an audio context. Covers tracks,
+ * returns and final master inserts through previewFxParam.
  */
 export function ozvenaRenderQualityBumps(doc: ProjectDocument): {
   trackId: string;
@@ -145,7 +144,11 @@ export function ozvenaRenderQualityBumps(doc: ProjectDocument): {
   value: number;
 }[] {
   const bumps: { trackId: string; fxId: string; paramId: string; value: number }[] = [];
-  const containers = [...(doc.tracks ?? []), ...(doc.returns ?? [])];
+  const containers = [
+    ...(doc.tracks ?? []),
+    ...(doc.returns ?? []),
+    { id: MASTER_EFFECT_OWNER_ID, effects: doc.master?.effects ?? [] },
+  ];
   for (const track of containers) {
     for (const fx of track.effects ?? []) {
       if (fx.type !== "ozvena" || fx.bypassed) continue;
@@ -162,7 +165,8 @@ export function ozvenaRenderQualityBumps(doc: ProjectDocument): {
 /**
  * The quality bump for one document: {trackId, fxId, paramId, value} entries
  * that the renderer feeds through engine.previewFxParam. Pure so the export contract
- * is testable without an audio context.
+ * is testable without an audio context. Covers tracks, returns and final
+ * master inserts.
  */
 export function fxeqRenderQualityBumps(doc: ProjectDocument): {
   trackId: string;
@@ -171,7 +175,12 @@ export function fxeqRenderQualityBumps(doc: ProjectDocument): {
   value: number;
 }[] {
   const bumps: { trackId: string; fxId: string; paramId: string; value: number }[] = [];
-  for (const track of doc.tracks) {
+  const containers = [
+    ...doc.tracks,
+    ...(doc.returns ?? []),
+    { id: MASTER_EFFECT_OWNER_ID, effects: doc.master?.effects ?? [] },
+  ];
+  for (const track of containers) {
     for (const fx of track.effects ?? []) {
       if (fx.type !== "fxeq" || fx.bypassed) continue;
       const rawBandCount = fx.params?.bandCount;

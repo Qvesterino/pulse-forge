@@ -277,6 +277,7 @@ export class AudioEngine {
     ctx: () => this.ctx,
     doc: () => this.doc,
     metering: this.metering,
+    masterInsertLatencySec: () => this.masterInsertLatencySec(),
   });
   private masterFx: FxChainState = {
     runtimes: new Map(),
@@ -588,6 +589,15 @@ export class AudioEngine {
   /** Route offline-rendered track output around the fixed master chain. */
   bypassMasterChainForOfflineRender(): void {
     this.masterChain.bypassForOfflineRender();
+  }
+
+  /** Toggle monitor-only master bypass without changing project state. */
+  setMasterBypassed(enabled: boolean, immediate = false): void {
+    this.masterChain.setBypassed(enabled, immediate);
+  }
+
+  isMasterBypassed(): boolean {
+    return this.masterChain.isBypassed;
   }
 
   useContext(ctx: BaseAudioContext): void {
@@ -1661,6 +1671,7 @@ export class AudioEngine {
     const returnLatency = new Map<string, number>();
     for (const [id, nodes] of this.returnNodes) returnLatency.set(id, chainLatency(nodes.fx));
     const now = ctx.currentTime;
+    this.masterChain.syncMonitorBypassLatency(this.offlineExactPdc);
     const writeDelay = (delay: DelayNode | null | undefined, seconds: number): void => {
       // Non-finite mirrors sendPdcDelaySec: treat as no compensation rather
       // than throwing on the AudioParam write.
@@ -1693,6 +1704,16 @@ export class AudioEngine {
         writeDelay(delay, sendPdcDelaySec(0, returnLatency.get(returnId) ?? 0));
       }
     }
+  }
+
+  /** Serial fixed latency of the master insert slot plus its local PDC delay. */
+  private masterInsertLatencySec(): number {
+    let seconds = Math.max(0, this.masterFx.pdcDelay?.delayTime.value ?? 0);
+    for (const runtime of this.masterFx.runtimes.values()) {
+      const latency = runtime.getLatencySec?.() ?? 0;
+      if (Number.isFinite(latency) && latency > 0) seconds += latency;
+    }
+    return seconds;
   }
 
   /**
@@ -2109,6 +2130,15 @@ export class AudioEngine {
     this.previewDeck.previewBuffer(buffer, gainValue, onEnded, offsetSec);
   }
 
+  /** Audition an already mastered comparison render straight to the monitor output. */
+  previewMasterCompare(buffer: AudioBuffer, gainValue = 0.9, onEnded?: () => void, offsetSec = 0, mono = false): void {
+    this.previewDeck.previewMasterCompare(buffer, gainValue, onEnded, offsetSec, mono);
+  }
+
+  updateMasterComparePreview(gainValue: number, mono: boolean): void {
+    this.previewDeck.updateMasterComparePreview(gainValue, mono);
+  }
+
   previewAssetSynced(assetId: string, rate = 1): void {
     this.previewDeck.previewAssetSynced(assetId, rate);
   }
@@ -2240,6 +2270,7 @@ export class AudioEngine {
         if (rt.degraded) out.push({ trackId, fxId, reason: rt.degradedReason ?? "Fallback processing" });
       }
     };
+    collect(MASTER_EFFECT_OWNER_ID, this.masterFx);
     for (const [id, nodes] of this.trackNodes) collect(id, nodes.fx);
     for (const [id, nodes] of this.groupNodes) collect(id, nodes.fx);
     for (const [id, nodes] of this.returnNodes) collect(id, nodes.fx);
@@ -2248,6 +2279,14 @@ export class AudioEngine {
       out.push({ trackId: host, fxId: id, reason });
     }
     return out;
+  }
+
+  /** Built-in master processors using reduced or bypass fallbacks. */
+  getDegradedMasterStages(): {
+    stageId: "tape" | "glue" | "limiter" | "monitorBypass";
+    reason: string;
+  }[] {
+    return this.masterChain.getDegradedStages();
   }
 
   /** Latest gain reduction in dB reported by an effect runtime (metering). */
@@ -2351,7 +2390,8 @@ export class AudioEngine {
     const rt =
       this.trackNodes.get(trackId)?.fx.runtimes.get(fxId) ??
       this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
-      this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
+      this.returnNodes.get(trackId)?.fx.runtimes.get(fxId) ??
+      (trackId === MASTER_EFFECT_OWNER_ID ? this.masterFx.runtimes.get(fxId) : undefined);
     if (!rt || rt.degraded) return;
     rt.setParameter?.(paramId, value);
   }

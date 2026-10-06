@@ -1975,7 +1975,9 @@ describe("mcp kyx_master — the ZENIT mastering device", async () => {
     const status = await executeMcpTool(ctx, "kyx_master", { op: "status" });
     expect(status.mutated).toBe(false);
     expect(status.text).toContain("Mix Bus");
-    expect(status.text).toContain("kyx_loudness");
+    expect(status.text).toContain("GLOBAL MASTER");
+    expect(status.text).toContain("01 Input trim");
+    expect(status.text).toContain("MASTER → Analyze / Export");
   });
 
   it("trim rides the output-trim seam clamped −18…+12; unknown target refused honestly", async () => {

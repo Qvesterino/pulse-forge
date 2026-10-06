@@ -667,7 +667,8 @@ export function App({
       case "panelExport":
       case "panelDice":
       case "panelIntent":
-      case "panelMidi": {
+      case "panelMidi":
+      case "panelMaster": {
         event?.preventDefault();
         const panel = panelIdOfShortcut(matched);
         if (panel) setBottomPanelTab(panel as BottomPanel);

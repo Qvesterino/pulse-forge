@@ -16,9 +16,10 @@ const SR = 48000;
 const BLOCK = 128;
 
 class FakeAudioWorkletProcessor {
+  messages: unknown[] = [];
   port = {
     onmessage: null as ((event: { data: unknown }) => void) | null,
-    postMessage: (_msg: unknown) => {},
+    postMessage: (msg: unknown) => this.messages.push(msg),
   };
 }
 
@@ -118,22 +119,55 @@ describe("gate hysteresis + look-ahead", () => {
   it("look-ahead passes the transient at full level", () => {
     // Silence (gate closed) then a 6 ms burst. With a slow 100 ms attack
     // and NO look-ahead the burst is over before the gain opens; with
-    // look-ahead the gain opens instantly and the ring delay places that
-    // opened gain right where the delayed burst lands.
-    const burstGen = (i: number): number => (i >= 0.3 * SR && i < 0.3 * SR + 0.006 * SR ? 1 : 0);
-    const withLa = run(make("gate-processor"), { ...base, hysteresis: 0, attack: 0.1, lookahead: 1 }, burstGen, 0.35);
-    const withoutLa = run(
+    // look-ahead the detector opens ahead of the audio delayed by 2.5 ms.
+    const burstGen = (i: number): number => (i >= 0.3 * SR && i < 0.3 * SR + 0.001 * SR ? 1 : 0);
+    const withLa = run(
       make("gate-processor"),
-      { ...base, hysteresis: 0, attack: 0.1, lookahead: 0 },
+      { ...base, threshold: -50, hysteresis: 0, attack: 0.1, lookahead: 1 },
       burstGen,
       0.35,
     );
-    const clickPos = Math.floor(0.3 * SR);
+    const withoutLa = run(
+      make("gate-processor"),
+      { ...base, threshold: -50, hysteresis: 0, attack: 0.1, lookahead: 0 },
+      burstGen,
+      0.35,
+    );
+    const clickPos = Math.floor(0.3 * SR) + Math.round(SR * 0.0025);
     const windowEnd = clickPos + Math.floor(0.009 * SR);
     const windowLa = Math.max(...Array.from(withLa.slice(clickPos, windowEnd), Math.abs));
     const windowNo = Math.max(...Array.from(withoutLa.slice(clickPos, windowEnd), Math.abs));
     expect(windowLa).toBeGreaterThan(0.7);
     expect(windowLa).toBeGreaterThan(windowNo * 2);
+  });
+
+  it("delays stereo audio by the exact fixed latency it reports to PDC", () => {
+    const latency = Math.round(SR * 0.0025);
+    for (const lookahead of [0, 1]) {
+      const proc = make("gate-processor");
+      const messages = (proc as unknown as { messages: unknown[] }).messages;
+      expect(messages).toEqual([{ type: "latency", samples: latency }]);
+
+      const left = new Float32Array(BLOCK);
+      const right = new Float32Array(BLOCK);
+      const outLeft = new Float32Array(BLOCK);
+      const outRight = new Float32Array(BLOCK);
+      left[0] = 0.75;
+      right[1] = -0.5;
+      proc.process([[left, right]], [[outLeft, outRight]], {
+        ...Object.fromEntries(Object.entries(base).map(([key, value]) => [key, new Float32Array([value])])),
+        lookahead: new Float32Array([lookahead]),
+        hysteresis: new Float32Array([0]),
+        // Keep the gate out of this latency contract; only the audio ring is
+        // under test here.
+        range: new Float32Array([0]),
+        mix: new Float32Array([0]),
+      });
+
+      expect(outLeft[latency]).toBeCloseTo(0.75, 6);
+      expect(outRight[latency + 1]).toBeCloseTo(-0.5, 6);
+      expect(outLeft.slice(0, latency).some((sample) => sample !== 0)).toBe(false);
+    }
   });
 });
 

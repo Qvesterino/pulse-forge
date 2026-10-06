@@ -1,5 +1,6 @@
 import type { McpMeterSnapshot } from "./tools";
 import type { Services } from "../services";
+import { MASTER_EFFECT_OWNER_ID } from "../project-model/types";
 
 /**
  * KYX MCP — METER BRIDGE (kyx_meter's ears, docs/INTENT-MCP-EXPANSION-PLAN.md
@@ -29,6 +30,14 @@ export function mcpMeterSnapshotFromServices(services: Services): McpMeterSnapsh
         clipping: master.truePeakDb >= 0,
       },
       tracks: [],
+      masterRuntime: {
+        available: engine.getLiveAudioContext() !== null,
+        degradedStages: engine.getDegradedMasterStages(),
+        degradedInserts: engine
+          .getDegradedFx()
+          .filter((effect) => effect.trackId === MASTER_EFFECT_OWNER_ID)
+          .map(({ fxId, reason }) => ({ fxId, reason })),
+      },
     };
     for (const track of services.store.getDoc().tracks) {
       const analyser = engine.getSpectrogramTrackAnalyser(track.id);

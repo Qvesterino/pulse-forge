@@ -350,6 +350,7 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "", isMaster 
                 key={fx.id}
                 type="button"
                 draggable
+                data-effect-id={fx.id}
                 className={`device-chain-item${activeDeviceId === fx.id ? " active" : ""}${fx.bypassed ? " is-bypassed" : ""}${draggedFxId === fx.id ? " is-dragging" : ""}${dropTargetFxId === fx.id ? " is-drop-target" : ""}`}
                 data-family={EFFECT_DEFS[fx.type].category}
                 aria-pressed={activeDeviceId === fx.id}

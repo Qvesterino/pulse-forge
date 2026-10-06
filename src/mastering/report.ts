@@ -4,6 +4,8 @@ import type { ProjectDocument } from "../project-model/types";
 import packageMetadata from "../../package.json";
 import type { EncodedMasterInspection } from "./encodedInspection";
 import type { MasterProfile } from "./profiles";
+import type { MasterVerdict } from "../audio-engine/metering";
+import type { LoudnessTimeline } from "../audio-engine/kweighting";
 
 export interface MasterRenderReportV1 {
   version: 1;
@@ -28,7 +30,44 @@ export interface MasterRenderReportV2 extends Omit<MasterRenderReportV1, "versio
   encodedDelivery: EncodedMasterInspection | null;
 }
 
-export type MasterRenderReport = MasterRenderReportV2;
+export interface MasterRenderReportV3 extends Omit<MasterRenderReportV2, "version"> {
+  version: 3;
+  /** Monotonic sample-bank revision used by the render, local to this app session. */
+  sampleBankRevision: number;
+}
+
+export interface MasterRenderReportV4 extends Omit<MasterRenderReportV3, "version"> {
+  version: 4;
+  /** Profile-based checks computed from the exact PCM represented by measurements. */
+  verdict: MasterVerdict;
+}
+
+export interface MasterRenderReportV5 extends Omit<MasterRenderReportV4, "version"> {
+  version: 5;
+  /** Named signal tap and encoding position for the report's primary PCM measurements. */
+  measurementTap: {
+    id: "master-output";
+    position: "post-limiter";
+    fileStage: "pre-encode";
+  };
+}
+
+export interface MasterRenderReportV6 extends Omit<MasterRenderReportV5, "version" | "measurements"> {
+  version: 6;
+  measurements: BufferSummary & { loudnessRangeLu: number | null };
+}
+
+export interface MasterRenderReportV7 extends Omit<MasterRenderReportV6, "version"> {
+  version: 7;
+  /** Bounded short-term loudness overview, null for unmeasurable programmes. */
+  loudnessTimeline: LoudnessTimeline | null;
+}
+
+export interface MasterRenderReportV8 extends Omit<MasterRenderReportV7, "version"> {
+  version: 8;
+}
+
+export type MasterRenderReport = MasterRenderReportV8;
 
 let nextRunId = 1;
 let nextRevisionId = 1;
@@ -44,13 +83,14 @@ export function projectRevisionIdFor(doc: ProjectDocument): string {
 }
 
 export function createMasterRenderReport(
-  input: Omit<MasterRenderReportV2, "version" | "runId" | "createdAt" | "encodedDelivery">,
-): MasterRenderReportV2 {
+  input: Omit<MasterRenderReportV8, "version" | "runId" | "createdAt" | "encodedDelivery" | "measurementTap">,
+): MasterRenderReportV8 {
   return {
-    version: 2,
+    version: 8,
     runId: `master-render-${Date.now().toString(36)}-${nextRunId++}`,
     createdAt: new Date().toISOString(),
     encodedDelivery: null,
+    measurementTap: { id: "master-output", position: "post-limiter", fileStage: "pre-encode" },
     ...input,
   };
 }
@@ -60,7 +100,7 @@ export function serializeMasterReportSidecar(report: MasterRenderReport, generat
   return JSON.stringify(
     {
       schema: "kyx.master-report",
-      schemaVersion: 1,
+      schemaVersion: 7,
       generatedAt: generatedAt.toISOString(),
       application: {
         product: packageMetadata.productName,
@@ -68,6 +108,7 @@ export function serializeMasterReportSidecar(report: MasterRenderReport, generat
         version: packageMetadata.version,
       },
       projectRevisionScope: "local-app-session",
+      sampleBankRevisionScope: "local-app-session",
       report,
     },
     null,

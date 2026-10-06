@@ -30,9 +30,10 @@ export const MASTER_PROFILES: readonly MasterProfile[] = [
     warningToleranceLufs: 2,
     maxTruePeakDb: -1,
     truePeakGraceDb: 0.3,
-    note: "Starting point for streaming delivery; check the current distributor requirements.",
+    note: "−14 LUFS / −1 dBTP start; Spotify advises < −2 dBTP above −14 LUFS.",
     recommendedFormat: "24-bit PCM WAV",
-    intendedUse: "General streaming delivery. Loudness normalization and encoding behavior vary by service.",
+    intendedUse:
+      "General starting point, not a universal platform specification. Spotify's conditional peak guidance is shown as an advisory.",
   },
   {
     id: "apple",
@@ -122,7 +123,7 @@ export interface DeliveryMetrics {
 }
 
 export interface DeliveryCheck {
-  status: "pass" | "warn" | "fail";
+  status: "pass" | "warn" | "fail" | "not-measured";
   line: string;
 }
 
@@ -145,8 +146,8 @@ export function evaluateDelivery(
   let loudnessDeltaDb = 0;
   if (metrics.lufs == null || !Number.isFinite(metrics.lufs) || metrics.lufs <= -119) {
     checks.push({
-      status: "warn",
-      line: `${profile.label}: LUFS not measurable — play a few seconds for integration to settle`,
+      status: "not-measured",
+      line: `${profile.label}: LUFS not measured — render a programme long enough for integrated loudness`,
     });
   } else {
     loudnessDeltaDb = metrics.lufs - targetLufs;
@@ -162,7 +163,7 @@ export function evaluateDelivery(
   }
 
   if (!Number.isFinite(metrics.truePeakDb)) {
-    checks.push({ status: "warn", line: `${profile.label}: true peak not measurable` });
+    checks.push({ status: "not-measured", line: `${profile.label}: true peak not measured` });
   } else {
     const tpOver = metrics.truePeakDb - maxTruePeakDb;
     if (tpOver > profile.truePeakGraceDb) {
@@ -183,6 +184,23 @@ export function evaluateDelivery(
     }
   }
 
+  // Spotify publishes a stricter true-peak recommendation for masters louder
+  // than −14 LUFS. Keep this as an advisory beside the general profile check:
+  // it is not a universal streaming requirement or a processing instruction.
+  if (
+    profile.id === "streaming" &&
+    metrics.lufs != null &&
+    Number.isFinite(metrics.lufs) &&
+    metrics.lufs > -14 &&
+    Number.isFinite(metrics.truePeakDb) &&
+    metrics.truePeakDb >= -2
+  ) {
+    checks.push({
+      status: "warn",
+      line: `Spotify guidance: at ${metrics.lufs.toFixed(1)} LUFS, keep true peak below −2 dBTP to reduce lossy-encoding distortion risk`,
+    });
+  }
+
   if (metrics.correlation != null && metrics.correlation < 0) {
     checks.push({ status: "fail", line: "Phase issues — check mono compatibility" });
   }
@@ -191,6 +209,17 @@ export function evaluateDelivery(
   }
   if (metrics.lrImbalanceDb != null && metrics.lrImbalanceDb > 6) {
     checks.push({ status: "warn", line: "Left/right balance off by more than 6 dB" });
+  }
+  const stereoMetrics = [metrics.correlation, metrics.monoLossDb, metrics.lrImbalanceDb];
+  if (stereoMetrics.every((value) => value == null)) {
+    checks.push({
+      status: "not-measured",
+      line: "Stereo compatibility not measured — an audible stereo programme is required",
+    });
+  } else {
+    if (metrics.correlation == null) checks.push({ status: "not-measured", line: "Stereo correlation not measured" });
+    if (metrics.monoLossDb == null) checks.push({ status: "not-measured", line: "Mono fold-down loss not measured" });
+    if (metrics.lrImbalanceDb == null) checks.push({ status: "not-measured", line: "L/R balance not measured" });
   }
   if (profile.id === "vinyl") {
     checks.push({
@@ -206,6 +235,7 @@ export function evaluateDelivery(
 export function worstStatus(checks: DeliveryCheck[]): DeliveryCheck["status"] {
   if (checks.some((check) => check.status === "fail")) return "fail";
   if (checks.some((check) => check.status === "warn")) return "warn";
+  if (checks.some((check) => check.status === "not-measured")) return "not-measured";
   return "pass";
 }
 

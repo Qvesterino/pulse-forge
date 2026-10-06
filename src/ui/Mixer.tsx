@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMacros, useMaster, useReturns, useSelection, useSelectionStore, useServices, useTracks } from "./context";
+import { useMacros, useReturns, useSelection, useSelectionStore, useServices, useTracks } from "./context";
 import {
   addEffectToTracks,
   addMacroMapping,
@@ -15,7 +15,6 @@ import {
   setGroupCollapsed,
   setGroupMute,
   setGroupSolo,
-  setMasterConfig,
   setReturnGain,
   setTrackColor,
   setTrackParams,
@@ -27,6 +26,7 @@ import { Slider } from "./controls";
 import { TextPromptDialog } from "./TextPromptDialog";
 import { Meter } from "./Meter";
 import { MasterMeter, MasterStereoMeters } from "./MasterMeter";
+import { MasterProcessingControls } from "./MasterProcessingControls";
 import { trackBadge } from "./TrackTabs";
 import { FreezeButton } from "./FreezeButton";
 import { MacroPerformanceBar } from "./MacroPerformanceBar";
@@ -243,21 +243,6 @@ export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
 }
 
 function MasterStrip() {
-  const services = useServices();
-  // Fine-grained selector (GOAL 04): MasterStrip only ever reads `master`.
-  // Subscribing to the whole document via `useDoc()` would re-render this
-  // strip on every track-mute change. `useMaster()` re-renders only when
-  // the master slice identity changes. `setMasterConfig` and friends still
-  // need the full `doc`, but `services.store.getDoc()` is a plain getter
-  // (not a React subscription) so it does not affect re-renders.
-  const master = useMaster();
-  const doc = services.store.getDoc();
-  const limiterTitle =
-    "Master limiter — transparent brick-wall ceiling that prevents clipping above the ceiling (default −1 dBFS). " +
-    "Always safe to leave on.";
-  const clipperTitle =
-    "Master soft clipper — sat­urating curve above the ceiling, adds character and perceived loudness. " +
-    "Engage it for a coloured master, leave it off for a clean mastered feel.";
   return (
     <div className="channel-strip master-strip" aria-label="Master channel">
       <div className="channel-name">
@@ -265,162 +250,7 @@ function MasterStrip() {
       </div>
       <div className="channel-body">
         <div className="channel-controls">
-          <Slider
-            compact
-            label="IN"
-            hint="Master input gain in dB — up to +6 dB to drive the master chain into tape/glue/clipper; reference matching rides the loudness trim instead"
-            value={master.masterGain}
-            min={0}
-            max={2}
-            defaultValue={1}
-            format={(v) => gainDbLabel(v, " dB")}
-            onCommit={(masterGain) => services.store.execute(setMasterConfig(doc, { masterGain }))}
-            onPreview={(masterGain) => services.engine.previewMasterGain(masterGain)}
-            onCancel={() => services.engine.previewMasterGain(master.masterGain)}
-          />
-          <Slider
-            compact
-            label="CEIL"
-            hint="Limiter true-peak ceiling in dBTP — 0 is transparent, -1 to -3 leaves streaming headroom"
-            value={master.ceilingDb}
-            min={-12}
-            max={0}
-            defaultValue={-1}
-            format={(v) => `${v.toFixed(1)} dB`}
-            onCommit={(ceilingDb) => services.store.execute(setMasterConfig(doc, { ceilingDb }))}
-          />
-          <div className="master-toggles">
-            <button
-              type="button"
-              className={`btn btn-small${master.limiterEnabled ? " active-solo" : ""}`}
-              title={limiterTitle}
-              aria-label="Master limiter"
-              aria-pressed={master.limiterEnabled}
-              onClick={() => services.store.execute(setMasterConfig(doc, { limiterEnabled: !master.limiterEnabled }))}
-            >
-              LIMIT
-            </button>
-            <button
-              type="button"
-              className={`btn btn-small${master.clipperEnabled ? " active-solo" : ""}`}
-              title={clipperTitle}
-              aria-label="Master soft clipper"
-              aria-pressed={master.clipperEnabled}
-              onClick={() => services.store.execute(setMasterConfig(doc, { clipperEnabled: !master.clipperEnabled }))}
-            >
-              CLIP
-            </button>
-            <button
-              type="button"
-              className={`btn btn-small${(master.glueEnabled ?? true) ? " active-solo" : ""}`}
-              title="Buss glue on master (post-M/S, pre-clipper) — gentle 2:1 RMS leveling before the limiter"
-              aria-label="Master glue"
-              aria-pressed={master.glueEnabled ?? true}
-              onClick={() =>
-                services.store.execute(setMasterConfig(doc, { glueEnabled: !(master.glueEnabled ?? true) }))
-              }
-            >
-              GLUE
-            </button>
-            <button
-              type="button"
-              className={`btn btn-small${master.tapeEnabled ? " active-solo" : ""}`}
-              title="Tape saturation on master (post-gain, pre-limiter) — adds warmth, 1-knob drive"
-              aria-label="Master tape"
-              aria-pressed={!!master.tapeEnabled}
-              onClick={() => services.store.execute(setMasterConfig(doc, { tapeEnabled: !master.tapeEnabled }))}
-            >
-              TAPE
-            </button>
-            <button
-              type="button"
-              className={`btn btn-small${master.bassMonoEnabled ? " active-solo" : ""}`}
-              title="Bass Mono — below the corner frequency the master collapses to mono (club/low-end focus)"
-              aria-label="Master bass mono"
-              aria-pressed={!!master.bassMonoEnabled}
-              onClick={() => services.store.execute(setMasterConfig(doc, { bassMonoEnabled: !master.bassMonoEnabled }))}
-            >
-              B-MONO
-            </button>
-          </div>
-          {!!master.bassMonoEnabled && (
-            <Slider
-              compact
-              label="B-MONO"
-              value={master.bassMonoFreq ?? 120}
-              min={60}
-              max={400}
-              defaultValue={120}
-              format={(v) => `${Math.round(v)} Hz`}
-              onCommit={(bassMonoFreq) => services.store.execute(setMasterConfig(doc, { bassMonoFreq }))}
-            />
-          )}
-          {master.tapeEnabled && (
-            <Slider
-              compact
-              label="TAPE DRIVE"
-              value={master.tapeDrive ?? 0.35}
-              min={0}
-              max={1}
-              defaultValue={0.35}
-              format={(v) => `${Math.round(v * 100)}%`}
-              onCommit={(tapeDrive) => services.store.execute(setMasterConfig(doc, { tapeDrive }))}
-            />
-          )}
-          {master.msEnabled && (
-            <>
-              <Slider
-                compact
-                label="MID"
-                value={master.msMidGain ?? 0}
-                min={-6}
-                max={6}
-                defaultValue={0}
-                format={(v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`}
-                onCommit={(msMidGain) => services.store.execute(setMasterConfig(doc, { msMidGain }))}
-              />
-              <Slider
-                compact
-                label="SIDE"
-                value={master.msSideGain ?? 0}
-                min={-6}
-                max={6}
-                defaultValue={0}
-                format={(v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`}
-                onCommit={(msSideGain) => services.store.execute(setMasterConfig(doc, { msSideGain }))}
-              />
-            </>
-          )}
-          {/* Tonal tilt (sound-quality pass): complementary master shelves,
-              + dark / − bright. Songs generated for a character genre land
-              here pre-set (drill +2, phonk +1.5, jersey −1.5). */}
-          <Slider
-            compact
-            label="TILT"
-            hint="Master tilt EQ in dB — negative darkens the balance, positive brightens it; character genres bake a tilt at generation"
-            value={master.tiltDb ?? 0}
-            min={-4}
-            max={4}
-            defaultValue={0}
-            format={(v) => (v === 0 ? "0 dB" : `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`)}
-            onCommit={(tiltDb) => services.store.execute(setMasterConfig(doc, { tiltDb: Math.round(tiltDb * 2) / 2 }))}
-          />
-          {/* Genre loudness trim: auto-written by the song builder from the
-              measured genre references so exports land at ≈ −14 LUFS; drag to
-              offset further (re-generating a song re-computes it). */}
-          <Slider
-            compact
-            label="TRIM"
-            hint="Loudness trim in dB before the limiter — auto-written per genre so exports land near the LUFS target; drag to offset further"
-            value={master.loudnessTrimDb ?? 0}
-            min={-6}
-            max={6}
-            defaultValue={0}
-            format={(v) => (v === 0 ? "0 dB" : `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`)}
-            onCommit={(loudnessTrimDb) =>
-              services.store.execute(setMasterConfig(doc, { loudnessTrimDb: Math.round(loudnessTrimDb * 10) / 10 }))
-            }
-          />
+          <MasterProcessingControls />
           {/* Stereo indicators fill the strip's dead space under the controls. */}
           <MasterStereoMeters />
         </div>

@@ -52,7 +52,9 @@ describe("mastering platform profiles", () => {
     const vinyl = verdictAgainst({ lufs: -12.2, truePeakDb: -2.4 }, profileFor("vinyl")!);
     expect(vinyl.some((v) => v.line.includes("mono"))).toBe(true);
     expect(worstStatus(hot)).toBe("fail");
-    expect(worstStatus(good)).toBe("pass");
+    // Loudness and true peak pass, but the overall report stays honest until
+    // its stereo compatibility measurements are available.
+    expect(worstStatus(good)).toBe("not-measured");
   });
 
   it("uses the same loudness and true-peak thresholds in live meter and profile reports", () => {
@@ -93,15 +95,15 @@ describe("mastering platform profiles", () => {
     // The warn band ends AT 2 LU below target — anything beyond fails hard.
     expect(loudnessStatus(-16.05)).toBe("fail");
     expect(loudnessStatus(-16.2)).toBe("fail");
-    expect(loudnessStatus(null)).toBe("warn");
-    expect(loudnessStatus(-120)).toBe("warn");
+    expect(loudnessStatus(null)).toBe("not-measured");
+    expect(loudnessStatus(-120)).toBe("not-measured");
 
     const peakStatus = (truePeakDb: number) => evaluateDelivery({ lufs: -14, truePeakDb }, profile).checks[1]?.status;
     expect(peakStatus(-1)).toBe("pass");
     expect(peakStatus(-0.9)).toBe("warn");
     expect(peakStatus(-0.71)).toBe("warn");
     expect(peakStatus(-0.69)).toBe("fail");
-    expect(evaluateDelivery({ lufs: -120, truePeakDb: Number.NaN }, profile).status).toBe("warn");
+    expect(evaluateDelivery({ lufs: -120, truePeakDb: Number.NaN }, profile).status).toBe("not-measured");
 
     const phase = evaluateDelivery(
       { lufs: -14, truePeakDb: -1.5, correlation: -0.1, monoLossDb: -4, lrImbalanceDb: 7 },
@@ -160,14 +162,13 @@ describe("kyx_master op:land — the closed loudness loop", () => {
 
   it("op:platform is a read-only verdict; profile drives op:assist's target", async () => {
     const store = new ProjectStore(datasetDoc());
-    const ctx = landingCtx(store, -12.5);
+    const ctx = landingCtx(store, -12.5, -0.2);
     const verdict = await executeMcpTool(ctx, "kyx_master", { op: "platform", profile: "apple" });
     expect(verdict.mutated).toBe(false);
     expect(verdict.text).toContain("HOT");
 
-    // assist targets the APPLE contract when given the profile (−16, quieter
-    // than the measured −12.5+trim domain): the plan must carry ceiling
-    // discipline, not limiting push.
+    // Assist uses the APPLE true-peak limit when measured peak exceeds it;
+    // loudness alone must not trigger limiting push or a ceiling change.
     const assisted = await executeMcpTool(ctx, "kyx_master", {
       op: "assist",
       family: "drums",
@@ -175,7 +176,7 @@ describe("kyx_master op:land — the closed loudness loop", () => {
       insert: true,
     });
     expect(assisted.mutated).toBe(true);
-    expect(assisted.text).toContain("ceiling discipline");
+    expect(assisted.text).toContain("measured true peak");
   });
 
   it("MCP platform report includes the same stereo checks as the live verdict", async () => {

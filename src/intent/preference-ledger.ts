@@ -30,6 +30,7 @@ const PREFERENCE_LEDGER_MAX_CHARS = 512_000;
 
 export {
   dedupeAndCapPreferences,
+  isPreferenceFeatureVersion,
   isValidPreferenceObservation,
   PREFERENCE_LEDGER_CAP,
   PREFERENCE_LEDGER_VERSION,

@@ -208,18 +208,18 @@ describe("master gain preview domain", () => {
     engine.useContext(mockCtx() as unknown as BaseAudioContext);
     engine.setProject(doc);
     await flush();
-    const chain = (engine as unknown as { masterChain: { input: { gain: { value: number } } } }).masterChain;
+    const chain = (engine as unknown as { masterChain: { masterInputGain: { gain: { value: number } } } }).masterChain;
     engine.previewMasterGain(1.8);
-    expect(chain.input.gain.value).toBeCloseTo(1.8, 5);
+    expect(chain.masterInputGain.gain.value).toBeCloseTo(1.8, 5);
     // NaN asks are dropped (the chain's setTargetAtTime would throw) — the
     // value stays where the last valid preview left it.
     engine.previewMasterGain(Number.NaN);
-    expect(chain.input.gain.value).toBeCloseTo(1.8, 5);
+    expect(chain.masterInputGain.gain.value).toBeCloseTo(1.8, 5);
     // Below the range floors at 0, above caps at 2.
     engine.previewMasterGain(-3);
-    expect(chain.input.gain.value).toBe(0);
+    expect(chain.masterInputGain.gain.value).toBe(0);
     engine.previewMasterGain(5);
-    expect(chain.input.gain.value).toBeCloseTo(2, 5);
+    expect(chain.masterInputGain.gain.value).toBeCloseTo(2, 5);
   });
 });
 

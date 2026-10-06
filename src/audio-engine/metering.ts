@@ -60,8 +60,12 @@ export function monoLossDb(left: Float32Array, right: Float32Array): number {
   let stereo = 0;
   let mono = 0;
   for (let i = 0; i < n; i++) {
-    stereo += (left[i] * left[i] + right[i] * right[i]) * 0.5;
-    const m = (left[i] + right[i]) * 0.5;
+    const leftSample = left[i];
+    const rightSample = right[i];
+    const l = Number.isFinite(leftSample) ? leftSample : 0;
+    const r = Number.isFinite(rightSample) ? rightSample : 0;
+    stereo += (l * l + r * r) * 0.5;
+    const m = (l + r) * 0.5;
     mono += m * m;
   }
   if (stereo <= 1e-12) return 0;
@@ -185,19 +189,22 @@ export function computeStageAdjustment(
 export interface MasterVerdictInput {
   lufsIntegrated: number;
   truePeakDb: number;
-  monoLossDb: number;
-  correlation: number;
-  lrImbalanceDb: number;
+  monoLossDb: number | null;
+  correlation: number | null;
+  lrImbalanceDb: number | null;
 }
 
 export interface MasterVerdict {
-  /** idle = nothing measured yet, ok = print-ready, warn = close, bad = fix first. */
+  /** idle = one or more required checks were not measured, ok = print-ready, warn = close, bad = fix first. */
   level: "idle" | "ok" | "warn" | "bad";
   headline: string;
   /** Fix-it hints, highest priority first (UI shows at most two). */
   hints: string[];
   /** LUFS-I − target; 0 when idle. */
   loudnessDeltaDb: number;
+  /** Detailed delivery checks from the shared profile evaluator. */
+  status: ReturnType<typeof evaluateDelivery>["status"];
+  checks: ReturnType<typeof evaluateDelivery>["checks"];
 }
 
 /**
@@ -212,7 +219,6 @@ export function evaluateMasterVerdict(
   targetLabel = "",
   deliveryProfile?: MasterProfile,
 ): MasterVerdict {
-  if (input.lufsIntegrated <= -119) return { level: "idle", headline: "—", hints: [], loudnessDeltaDb: 0 };
   const profile: MasterProfile = deliveryProfile ?? {
     id: "custom",
     label: targetLabel || "Master",
@@ -238,7 +244,14 @@ export function evaluateMasterVerdict(
     deliveryProfile?.maxTruePeakDb ?? ceilingDb,
   );
   const checks = result.checks;
-  const level: MasterVerdict["level"] = result.status === "fail" ? "bad" : result.status === "warn" ? "warn" : "ok";
+  const level: MasterVerdict["level"] =
+    result.status === "fail"
+      ? "bad"
+      : result.status === "warn"
+        ? "warn"
+        : result.status === "not-measured"
+          ? "idle"
+          : "ok";
   const peakCheck = checks.find((check) => check.line.startsWith("true peak "));
   const failedPeak = peakCheck?.status === "fail";
   const phaseIssue = checks.some((check) => check.status === "fail" && check.line.startsWith("Phase issues"));
@@ -269,14 +282,22 @@ export function evaluateMasterVerdict(
 
   const forLabel = targetLabel ? ` FOR ${targetLabel}` : "";
   let headline: string;
-  if (level === "ok") headline = `READY${forLabel}`;
+  if (level === "idle") headline = "NOT MEASURED";
+  else if (level === "ok") headline = `READY${forLabel}`;
   else if (failedPeak) headline = "TRUE PEAK OVER";
   else if (phaseIssue) headline = "PHASE ISSUES";
   else if (result.loudnessDeltaDb > 1) headline = "TOO LOUD";
   else if (result.loudnessDeltaDb < -1) headline = "TOO QUIET";
   else headline = "CHECK STEREO";
 
-  return { level, headline, hints: hints.slice(0, 2), loudnessDeltaDb: result.loudnessDeltaDb };
+  return {
+    level,
+    headline,
+    hints: hints.slice(0, 2),
+    loudnessDeltaDb: result.loudnessDeltaDb,
+    status: result.status,
+    checks: result.checks,
+  };
 }
 
 /** Channel-interleaved linear frame (L, R, L, R, …). */
@@ -333,8 +354,10 @@ export function stereoCorrelation(left: Float32Array, right: Float32Array): numb
   let sumL = 0;
   let sumR = 0;
   for (let i = 0; i < n; i++) {
-    sumL += left[i];
-    sumR += right[i];
+    const leftSample = left[i];
+    const rightSample = right[i];
+    sumL += Number.isFinite(leftSample) ? leftSample : 0;
+    sumR += Number.isFinite(rightSample) ? rightSample : 0;
   }
   const meanL = sumL / n;
   const meanR = sumR / n;
@@ -342,8 +365,10 @@ export function stereoCorrelation(left: Float32Array, right: Float32Array): numb
   let denL = 0;
   let denR = 0;
   for (let i = 0; i < n; i++) {
-    const dl = left[i] - meanL;
-    const dr = right[i] - meanR;
+    const leftSample = left[i];
+    const rightSample = right[i];
+    const dl = (Number.isFinite(leftSample) ? leftSample : 0) - meanL;
+    const dr = (Number.isFinite(rightSample) ? rightSample : 0) - meanR;
     num += dl * dr;
     denL += dl * dl;
     denR += dr * dr;
@@ -390,6 +415,8 @@ export function readAnalyserFrame(analyser: AnalyserNode, target: Frame): void {
 }
 
 export interface BufferSummary {
+  /** Actual channel count on the measured buffer. */
+  channelCount: number;
   /** Linear peak [0..1] across the whole buffer. */
   peak: number;
   /** Peak in dBFS. */
@@ -402,19 +429,27 @@ export interface BufferSummary {
   rmsDb: number;
   /** Stereo correlation [-1, +1]; 1 for mono source. */
   correlation: number;
+  /** Absolute whole-program RMS difference between channels; null for mono or digital silence. */
+  lrImbalanceDb: number | null;
   lufsMomentary: number;
   lufsShortTerm: number;
   lufsIntegrated: number;
+  /** EBU Tech 3342 loudness range in LU; absent outside full master analysis. */
+  loudnessRangeLu?: number | null;
   monoLossDb: number;
 }
 
+export type MeteringProgress = (stage: "peak-rms" | "true-peak" | "loudness", fraction: number) => void;
+
 const EMPTY_SUMMARY: BufferSummary = {
+  channelCount: 0,
   peak: 0,
   peakDb: MIN_DB,
   truePeakDb: MIN_DB,
   rms: 0,
   rmsDb: MIN_DB,
   correlation: 1,
+  lrImbalanceDb: null,
   lufsMomentary: MIN_DB,
   lufsShortTerm: MIN_DB,
   lufsIntegrated: MIN_DB,
@@ -426,34 +461,64 @@ const EMPTY_SUMMARY: BufferSummary = {
  * by the export panel to surface the master reading for a rendered file.
  */
 export function summarizeBuffer(buffer: AudioBuffer): BufferSummary {
-  const channels = Math.min(2, buffer.numberOfChannels);
-  if (channels <= 0 || buffer.length === 0) return EMPTY_SUMMARY;
   const split: Float32Array<ArrayBuffer>[] = [];
-  for (let c = 0; c < channels; c++) split.push(buffer.getChannelData(c) as Float32Array<ArrayBuffer>);
+  for (let c = 0; c < Math.min(2, buffer.numberOfChannels); c++)
+    split.push(buffer.getChannelData(c) as Float32Array<ArrayBuffer>);
+  return summarizePcm(split, buffer.sampleRate, buffer.numberOfChannels);
+}
+
+/** Pure channel-array entry point shared by the UI and mastering analysis worker. */
+export function summarizePcm(
+  channels: readonly Float32Array[],
+  sampleRate: number,
+  channelCount = channels.length,
+  onProgress?: MeteringProgress,
+): BufferSummary {
+  const split = channels.slice(0, 2);
+  if (split.length === 0 || split[0].length === 0)
+    return { ...EMPTY_SUMMARY, channelCount: Math.max(0, Math.floor(channelCount)) };
 
   let peak = 0;
   let sumSq = 0;
-  for (const ch of split) {
+  const channelSumSq = new Array<number>(split.length).fill(0);
+  const totalFrames = split.reduce((sum, channel) => sum + channel.length, 0);
+  let completedFrames = 0;
+  onProgress?.("peak-rms", 0);
+  for (let channel = 0; channel < split.length; channel++) {
+    const ch = split[channel];
     for (let i = 0; i < ch.length; i++) {
-      const v = ch[i];
+      const raw = ch[i];
+      const v = Number.isFinite(raw) ? raw : 0;
       const a = Math.abs(v);
       if (a > peak) peak = a;
       sumSq += v * v;
+      channelSumSq[channel] += v * v;
+      completedFrames++;
+      if (completedFrames % 32768 === 0) onProgress?.("peak-rms", completedFrames / totalFrames);
     }
   }
+  onProgress?.("peak-rms", 1);
   const total = split.reduce((acc, ch) => acc + ch.length, 0);
   const rms = total > 0 ? Math.sqrt(sumSq / total) : 0;
-  const truePeak = channels >= 1 ? truePeakOversampled(split) : peak;
+  const truePeak = truePeakOversampled(split, (fraction) => onProgress?.("true-peak", fraction));
   const correlation = split.length >= 2 ? stereoCorrelation(split[0], split[1]) : 1;
-  const loudness = analyzeLoudnessBuffer(split, buffer.sampleRate);
+  const lrImbalanceDb =
+    split.length >= 2 && sumSq > 1e-12
+      ? Math.abs(
+          toDb(Math.sqrt(channelSumSq[0] / split[0].length)) - toDb(Math.sqrt(channelSumSq[1] / split[1].length)),
+        )
+      : null;
+  const loudness = analyzeLoudnessBuffer(split, sampleRate, (fraction) => onProgress?.("loudness", fraction));
 
   return {
+    channelCount: Math.max(0, Math.floor(channelCount)),
     peak,
     peakDb: toDb(peak),
     truePeakDb: toDb(truePeak),
     rms,
     rmsDb: toDb(rms),
     correlation,
+    lrImbalanceDb,
     lufsMomentary: loudness.measured ? loudness.momentaryMax : MIN_DB,
     lufsShortTerm: loudness.measured ? loudness.shortTermMax : MIN_DB,
     lufsIntegrated: loudness.measured ? loudness.integrated : MIN_DB,
@@ -498,24 +563,56 @@ const TRUE_PEAK_FILTER: Float32Array[] = (() => {
   return phases;
 })();
 
-export function truePeakOversampled(channels: readonly Float32Array[]): number {
-  let peak = 0;
-  for (const ch of channels) {
-    for (let p = 0; p < TP_PHASES; p++) {
-      const taps = TRUE_PEAK_FILTER[p];
-      let phasePeak = 0;
-      for (let i = 0; i < ch.length; i++) {
-        let acc = 0;
-        const base = i + 1 - TP_TAPS_PER_PHASE;
-        for (let j = 0; j < TP_TAPS_PER_PHASE; j++) {
-          const idx = base + j;
-          if (idx >= 0 && idx < ch.length) acc += ch[idx] * taps[j];
-        }
-        const v = acc < 0 ? -acc : acc;
-        if (v > phasePeak) phasePeak = v;
+/** One-channel true-peak state that keeps only the FIR history between chunks. */
+export class TruePeakChannelAccumulator {
+  private readonly history = new Float64Array(TP_TAPS_PER_PHASE);
+  private frameCount = 0;
+  private maximum = 0;
+
+  processSample(raw: number): void {
+    const index = this.frameCount;
+    this.history[index % TP_TAPS_PER_PHASE] = Number.isFinite(raw) ? raw : 0;
+    for (let phase = 0; phase < TP_PHASES; phase++) {
+      const taps = TRUE_PEAK_FILTER[phase];
+      let acc = 0;
+      const base = index + 1 - TP_TAPS_PER_PHASE;
+      for (let tap = 0; tap < TP_TAPS_PER_PHASE; tap++) {
+        const sourceIndex = base + tap;
+        if (sourceIndex >= 0) acc += this.history[sourceIndex % TP_TAPS_PER_PHASE] * taps[tap];
       }
-      if (phasePeak > peak) peak = phasePeak;
+      const value = acc < 0 ? -acc : acc;
+      if (value > this.maximum) this.maximum = value;
     }
+    this.frameCount++;
   }
+
+  get peak(): number {
+    return this.maximum;
+  }
+}
+
+export function truePeakOversampled(
+  channels: readonly Float32Array[],
+  onProgress?: (fraction: number) => void,
+): number {
+  let peak = 0;
+  const totalWork = channels.reduce((sum, channel) => sum + channel.length * TP_PHASES, 0);
+  let completedWork = 0;
+  let lastProgressWork = 0;
+  const progressStride = 32768;
+  onProgress?.(0);
+  for (const ch of channels) {
+    const accumulator = new TruePeakChannelAccumulator();
+    for (let index = 0; index < ch.length; index++) {
+      accumulator.processSample(ch[index]);
+      completedWork += TP_PHASES;
+      if (completedWork - lastProgressWork >= progressStride && totalWork > 0) {
+        lastProgressWork = completedWork;
+        onProgress?.(completedWork / totalWork);
+      }
+    }
+    if (accumulator.peak > peak) peak = accumulator.peak;
+  }
+  onProgress?.(1);
   return peak;
 }

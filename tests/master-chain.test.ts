@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { MasterChain } from "../src/audio-engine/masterChain";
+import type { MeteringRig } from "../src/audio-engine/meteringRig";
 
 /**
  * Wave 4b (AudioEngine decomposition) — MasterChain pins.
@@ -80,5 +82,112 @@ describe("MasterChain (Wave 4b)", () => {
     expect(defRe.test(engine)).toBe(false);
     expect(defRe.test(chain)).toBe(false);
     expect(readFileSync(resolve(process.cwd(), "src/audio-engine/liveContext.ts"), "utf8")).toMatch(defRe);
+  });
+});
+
+describe("MasterChain monitor bypass", () => {
+  type ParamCall = { method: string; args: number[] };
+  const makeParam = (value = 0) => {
+    const calls: ParamCall[] = [];
+    const param = {
+      value,
+      cancelScheduledValues: (time: number) => calls.push({ method: "cancelScheduledValues", args: [time] }),
+      cancelAndHoldAtTime: (time: number) => calls.push({ method: "cancelAndHoldAtTime", args: [time] }),
+      setValueAtTime: (next: number, time: number) => calls.push({ method: "setValueAtTime", args: [next, time] }),
+      setTargetAtTime: (next: number, time: number, constant: number) =>
+        calls.push({ method: "setTargetAtTime", args: [next, time, constant] }),
+      linearRampToValueAtTime: (next: number, time: number) =>
+        calls.push({ method: "linearRampToValueAtTime", args: [next, time] }),
+    } as unknown as AudioParam;
+    return { param, calls };
+  };
+
+  const makeHarness = () => {
+    const delayTime = makeParam();
+    const wetGain = makeParam(1);
+    const dryGain = makeParam(0);
+    const ctx = { currentTime: 2, sampleRate: 48_000 } as BaseAudioContext;
+    let tapeLatency = 0.004;
+    let glueLatency = 0.01;
+    let insertLatency = 0.02;
+    const chain = new MasterChain({
+      ctx: () => ctx,
+      doc: () => null,
+      metering: {} as MeteringRig,
+      masterInsertLatencySec: () => insertLatency,
+    });
+    Object.assign(chain, {
+      masterTape: { getLatencySec: () => tapeLatency },
+      masterGlue: { getLatencySec: () => glueLatency },
+      masterBypassDelay: { delayTime: delayTime.param },
+      masterBypassWet: { gain: wetGain.param },
+      masterBypassDry: { gain: dryGain.param },
+    });
+    return {
+      chain,
+      delayTime,
+      wetGain,
+      dryGain,
+      setLatency: (tape: number, glue: number, inserts: number) => {
+        tapeLatency = tape;
+        glueLatency = glue;
+        insertLatency = inserts;
+      },
+    };
+  };
+
+  it("follows delayed master latency reports with a smoothed, bounded alignment", () => {
+    const { chain, delayTime, setLatency } = makeHarness();
+
+    chain.syncMonitorBypassLatency();
+    expect(delayTime.calls.at(-1)).toEqual({ method: "setTargetAtTime", args: [0.034, 2, 0.015] });
+
+    // A later AudioWorklet report re-runs the same synchronization path.
+    setLatency(0.008, 0.012, 0.025);
+    chain.syncMonitorBypassLatency();
+    expect(delayTime.calls.at(-1)).toEqual({ method: "setTargetAtTime", args: [0.045, 2, 0.015] });
+
+    setLatency(0.4, 0.4, 0.3);
+    chain.syncMonitorBypassLatency();
+    expect(delayTime.calls.at(-1)).toEqual({ method: "setTargetAtTime", args: [0.999, 2, 0.015] });
+    expect(chain.getDegradedStages().find((stage) => stage.stageId === "monitorBypass")?.reason).toContain(
+      "aligned only to 0.999 s",
+    );
+  });
+
+  it("uses sample-exact delay writes when armed for offline PDC", () => {
+    const { chain, delayTime } = makeHarness();
+
+    chain.syncMonitorBypassLatency(true);
+
+    expect(delayTime.calls).toContainEqual({ method: "cancelScheduledValues", args: [2] });
+    expect(delayTime.calls).toContainEqual({ method: "setValueAtTime", args: [0.034, 2] });
+    expect(delayTime.calls.some((call) => call.method === "setTargetAtTime")).toBe(false);
+  });
+
+  it("crossfades wet and latency-aligned dry paths together and holds automation on rapid toggles", () => {
+    const { chain, wetGain, dryGain } = makeHarness();
+
+    chain.setBypassed(true);
+    expect(chain.isBypassed).toBe(true);
+    expect(wetGain.calls.slice(-2)).toEqual([
+      { method: "cancelAndHoldAtTime", args: [2] },
+      { method: "linearRampToValueAtTime", args: [0, 2.015] },
+    ]);
+    expect(dryGain.calls.slice(-2)).toEqual([
+      { method: "cancelAndHoldAtTime", args: [2] },
+      { method: "linearRampToValueAtTime", args: [1, 2.015] },
+    ]);
+
+    chain.setBypassed(false);
+    expect(chain.isBypassed).toBe(false);
+    expect(wetGain.calls.slice(-2)).toEqual([
+      { method: "cancelAndHoldAtTime", args: [2] },
+      { method: "linearRampToValueAtTime", args: [1, 2.015] },
+    ]);
+    expect(dryGain.calls.slice(-2)).toEqual([
+      { method: "cancelAndHoldAtTime", args: [2] },
+      { method: "linearRampToValueAtTime", args: [0, 2.015] },
+    ]);
   });
 });

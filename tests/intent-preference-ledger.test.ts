@@ -5,6 +5,7 @@ import {
   buildPreferenceLedgerPack,
   clearPreferenceLedger,
   createPreferenceObservation,
+  isPreferenceFeatureVersion,
   isPreferenceLearningEnabled,
   PREFERENCE_LEDGER_KEY,
   preferenceContextForIntent,
@@ -102,6 +103,13 @@ describe("Producer DNA preference ledger", () => {
     expect(pack.observations[0].candidateA.featureVersion).toBe("features.v1");
     expect(pack.exportedAt).toBe(300);
     expect(pack.observations).toHaveLength(1);
+  });
+
+  it("accepts both stored preference feature contracts for offline evaluation", () => {
+    expect(isPreferenceFeatureVersion("features.v1")).toBe(true);
+    expect(isPreferenceFeatureVersion("features.v2")).toBe(true);
+    expect(isPreferenceFeatureVersion("features.v3")).toBe(false);
+    expect(isPreferenceFeatureVersion(null)).toBe(false);
   });
 
   it("W4 dual-read: accepts a v2 vector and keeps a v1 observation valid", () => {

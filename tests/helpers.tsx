@@ -110,6 +110,8 @@ export function mockServices(doc?: ProjectDocument): Services {
       bank: (() => {
         const m = new Map();
         return {
+          revision: 0,
+          onRevisionChanged: vi.fn(() => () => {}),
           get size() {
             return m.size;
           },
@@ -298,6 +300,8 @@ export function mockServices(doc?: ProjectDocument): Services {
     bank: (() => {
       const m = new Map();
       return {
+        revision: 0,
+        onRevisionChanged: vi.fn(() => () => {}),
         get size() {
           return m.size;
         },

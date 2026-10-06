@@ -24,6 +24,7 @@ import { DEFAULT_GENERATE_OPTIONS, GENRES, type GenerateOptions } from "../src/a
 import { FAMILY_REFERENCE } from "../src/presets/preset-loudness.generated";
 import { buildPhrasePlan } from "../src/ai/phrase";
 import type { Pattern, ProjectDocument } from "../src/project-model/types";
+import { MASTER_SIGNAL_NODE_ORDER } from "../src/mastering/signalFlow";
 
 /**
  * Sound-quality pass (transition cue sounds + drill/phonk genres + genre
@@ -517,13 +518,15 @@ describe("master tilt EQ consumption (sound-quality wave 3)", () => {
     expect(source).toMatch(/masterTiltHigh\.type = "highshelf"/);
     expect(source).toMatch(/masterTiltHigh\.frequency\.value = 5000/);
     // Complementary wiring order (tone shapes the glue/limiter detection).
-    // The match-EQ wave inserted corrective stages between DC and tilt
-    // (correction first, taste last) — the pinned invariant is tilt BEFORE
-    // glue, whatever sits upstream of the shelves.
+    // Stage-to-stage wiring is data-driven from the shared signal-flow order;
+    // pin that order and the stage map instead of looking for a direct
+    // high-shelf → glue connect call that no longer exists.
     const tiltPair = source.indexOf("this.masterTiltLow!.connect(this.masterTiltHigh!)");
-    const glueIn = source.indexOf("this.masterTiltHigh!.connect(this.masterGlue!.input)");
     expect(tiltPair).toBeGreaterThan(0);
-    expect(glueIn).toBeGreaterThan(tiltPair);
+    expect(source).toContain("tilt: { input: this.masterTiltLow!, output: this.masterTiltHigh! }");
+    expect(source).toContain("glue: { input: this.masterGlue!.input, output: this.masterGlue!.output }");
+    expect(source).toContain("current.output.connect(next.input)");
+    expect(MASTER_SIGNAL_NODE_ORDER.indexOf("tilt")).toBeLessThan(MASTER_SIGNAL_NODE_ORDER.indexOf("glue"));
     // Clamp keeps a bad document from slamming the master.
     expect(source).toMatch(/Math\.min\(4, Math\.max\(-4, config\.tiltDb \?\? 0\)\)/);
   });

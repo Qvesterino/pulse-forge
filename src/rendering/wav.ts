@@ -4,17 +4,40 @@ import { downloadBlob } from "../export/download";
 export type WavBitDepth = 16 | 24 | 32;
 
 /**
- * BWF `bext` loudness fields (EBU Tech 3285 v2). Plain dB/LUFS values — the
- * serializer applies the spec's fixed-point scales (0.1 LU / 0.01 dBTP) and
- * clamps to int16. Unknown fields stay 0 per the spec.
+ * BWF `bext` loudness fields (EBU Tech 3285 v2). Values are supplied in dB/LUFS/LU;
+ * the serializer applies the specification's 100× fixed-point scale. Missing or
+ * out-of-range values use the specified 0x7fff unavailable sentinel.
  */
 export interface WavBextLoudness {
   integratedLufs: number;
   /** Loudness range, LU. */
-  rangeLu?: number;
+  rangeLu?: number | null;
   truePeakDbtp: number;
-  momentaryLufs?: number;
-  shortTermLufs?: number;
+  momentaryLufs?: number | null;
+  shortTermLufs?: number | null;
+}
+
+export type WavBextLoudnessField = "integratedLufs" | "rangeLu" | "truePeakDbtp" | "momentaryLufs" | "shortTermLufs";
+
+const UNKNOWN_BWF_LOUDNESS = 0x7fff;
+
+function roundTiesAwayFromZero(value: number): number {
+  const magnitude = Math.abs(value);
+  const rounded = Math.floor(magnitude + 0.5 + Number.EPSILON * magnitude);
+  return Math.sign(value) * rounded;
+}
+
+/** Encode/decode a BWF v2 loudness field using Tech 3285's ×100 scale and sentinel. */
+export function encodeBwfLoudnessValue(value: number | null | undefined, field: WavBextLoudnessField): number {
+  const minimum = field === "rangeLu" ? 0 : -99.99;
+  if (value == null || !Number.isFinite(value) || value < minimum || value > 99.99) return UNKNOWN_BWF_LOUDNESS;
+  return roundTiesAwayFromZero(value * 100);
+}
+
+export function decodeBwfLoudnessValue(raw: number, field: WavBextLoudnessField): number | null {
+  const minimum = field === "rangeLu" ? 0 : -99.99;
+  if (!Number.isInteger(raw) || raw === UNKNOWN_BWF_LOUDNESS || raw < minimum * 100 || raw > 9999) return null;
+  return raw / 100;
 }
 
 /**
@@ -45,12 +68,6 @@ const BEXT_BASE_BYTES = 602;
 const asciiText = (text: string): string => text.replace(/[^\x20-\x7e]/g, "?");
 /** Coding history keeps line structure (spec: CRLF-terminated lines). */
 const asciiHistory = (text: string): string => text.replace(/\r?\n/g, "\r\n").replace(/[^\x20-\x7e\r\n]/g, "?");
-
-const clampInt16 = (value: number): number => {
-  if (!Number.isFinite(value)) return 0;
-  const rounded = Math.round(value);
-  return rounded < -32768 ? -32768 : rounded > 32767 ? 32767 : rounded;
-};
 
 /**
  * Build a {@link WavBextMetadata} with KYX defaults: the current wall clock
@@ -97,13 +114,13 @@ function writeBextBody(view: DataView, offset: number, meta: WavBextMetadata, hi
   view.setUint16(offset + 346, meta.loudness ? 2 : 1, true);
   // UMID (348..412) stays zero = unallocated, per spec.
   const loudness = meta.loudness;
-  const i16 = (pos: number, value: number | undefined, scale: number) =>
-    view.setInt16(pos, clampInt16(value === undefined ? 0 : value * scale), true);
-  i16(offset + 412, loudness?.integratedLufs, 10);
-  i16(offset + 414, loudness?.rangeLu, 10);
-  i16(offset + 416, loudness?.truePeakDbtp, 100);
-  i16(offset + 418, loudness?.momentaryLufs, 10);
-  i16(offset + 420, loudness?.shortTermLufs, 10);
+  if (loudness) {
+    view.setInt16(offset + 412, encodeBwfLoudnessValue(loudness.integratedLufs, "integratedLufs"), true);
+    view.setInt16(offset + 414, encodeBwfLoudnessValue(loudness.rangeLu, "rangeLu"), true);
+    view.setInt16(offset + 416, encodeBwfLoudnessValue(loudness.truePeakDbtp, "truePeakDbtp"), true);
+    view.setInt16(offset + 418, encodeBwfLoudnessValue(loudness.momentaryLufs, "momentaryLufs"), true);
+    view.setInt16(offset + 420, encodeBwfLoudnessValue(loudness.shortTermLufs, "shortTermLufs"), true);
+  }
   // 180 reserved bytes (422..602) stay zero.
   // History arrives pre-normalized (asciiHistory) — writing it raw keeps the
   // spec's CRLF line endings; running it through asciiText would eat them.

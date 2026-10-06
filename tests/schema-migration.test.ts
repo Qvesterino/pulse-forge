@@ -60,6 +60,31 @@ describe("schema migration contract", () => {
     expect(migrated.schemaVersion).toBe(version);
   });
 
+  it("backfills a legacy project without master state using the engine's existing master defaults", async () => {
+    const schema = await import("../src/project-model/schema");
+    const version = schema.SCHEMA_VERSION;
+    const legacyWithoutMaster = {
+      schemaVersion: version - 1,
+      id: "legacy-without-master",
+      name: "Legacy Project",
+      bpm: 120,
+      timeSignature: { numerator: 4, denominator: 4 },
+      tracks: [],
+      patterns: [],
+      scenes: [],
+      arrangement: { clips: [], transitions: [] },
+      markers: [],
+    };
+
+    const migrated = schema.migrateProject(legacyWithoutMaster as never);
+    expect(migrated.master).toEqual(schema.defaultMasterConfig());
+    // Before migration materializes the field, MasterChain.build() uses this
+    // same fallback; loading an old project therefore does not turn on new
+    // processing or replace prior master settings with different values.
+    const masterChain = readFileSync(resolve(process.cwd(), "src/audio-engine/masterChain.ts"), "utf8");
+    expect(masterChain).toContain("this.applyMasterConfig(this.deps.doc()?.master ?? defaultMasterConfig())");
+  });
+
   it("migrateProject throws for FUTURE versions (newer than supported)", async () => {
     const schema = await import("../src/project-model/schema");
     const version = schema.SCHEMA_VERSION;

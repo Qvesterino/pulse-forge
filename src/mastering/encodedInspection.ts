@@ -1,6 +1,12 @@
-import { analyzeMixHealthBuffer, type MixHealthReport } from "../analysis/mixDoctor";
-import { summarizeBuffer, type BufferSummary } from "../audio-engine/metering";
+import type { MixHealthReport } from "../analysis/mixDoctor";
+import type { BufferSummary, MasterVerdict } from "../audio-engine/metering";
+import type { LoudnessTimeline } from "../audio-engine/kweighting";
 import { decodeAudioData } from "../services/audio-decode";
+import type { MasterAnalysisProgressListener } from "./analysis";
+import { analyzeMasterBufferAsync, analyzeMasterPcmStreamAsync } from "./analysisClient";
+import type { MasterProfile } from "./profiles";
+import { decodeBwfLoudnessValue, encodeBwfLoudnessValue, type WavBextLoudnessField } from "../rendering/wav";
+import { parseMp3FrameHeader } from "./mp3Frames";
 
 export type EncodedMasterFormat = "wav" | "mp3";
 
@@ -11,7 +17,17 @@ export interface EncodedMasterFileDetails {
   durationAccuracy: "exact" | "estimated";
   bitDepth?: 16 | 24 | 32;
   averageBitrateKbps?: number;
-  bext?: { version: number; description: string };
+  bext?: {
+    version: number;
+    description: string;
+    loudness?: {
+      integratedLufs: number | null;
+      rangeLu: number | null;
+      truePeakDbtp: number | null;
+      momentaryLufs: number | null;
+      shortTermLufs: number | null;
+    };
+  };
 }
 
 export interface EncodedMasterInspection {
@@ -20,12 +36,14 @@ export interface EncodedMasterInspection {
   file: EncodedMasterFileDetails;
   decode: {
     status: "measured" | "not-measured";
-    decoder: "Web Audio";
+    decoder: "Web Audio" | "KYX WAV PCM reader" | "not invoked";
     sampleRate?: number;
     channels?: number;
     durationSeconds?: number;
     measurements?: BufferSummary;
+    loudnessTimeline?: LoudnessTimeline | null;
     mixHealth?: MixHealthReport;
+    verdict?: MasterVerdict;
     reason?: string;
     warnings: string[];
   };
@@ -34,8 +52,43 @@ export interface EncodedMasterInspection {
 const MAX_WAV_DECODE_BYTES = 96 * 1024 * 1024;
 const MAX_MP3_DECODE_BYTES = 12 * 1024 * 1024;
 
+function cancelledError(): DOMException {
+  return new DOMException("Master inspection cancelled", "AbortError");
+}
+
+/** Stop waiting promptly when a browser byte read or atomic decoder cannot itself be cancelled. */
+function awaitWithAbort<T>(operation: PromiseLike<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return Promise.resolve(operation);
+  if (signal.aborted) return Promise.reject(cancelledError());
+
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    let onAbort: () => void = () => undefined;
+    const cleanup = () => signal.removeEventListener("abort", onAbort);
+    const finish = (complete: () => void) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      complete();
+    };
+    onAbort = () => finish(() => reject(cancelledError()));
+
+    signal.addEventListener("abort", onAbort, { once: true });
+    Promise.resolve(operation).then(
+      (value) => finish(() => resolve(value)),
+      (error: unknown) => finish(() => reject(error)),
+    );
+    if (signal.aborted) onAbort();
+  });
+}
+
 interface ParsedWav extends EncodedMasterFileDetails {
   bitDepth: 16 | 24 | 32;
+  formatCode: 1 | 3;
+  blockAlign: number;
+  dataBytes: number;
+  dataOffset: number;
+  frameCount: number;
 }
 
 interface ParsedMp3 extends EncodedMasterFileDetails {
@@ -78,6 +131,8 @@ function parseWav(bytes: ArrayBuffer): ParsedWav {
   let blockAlign = 0;
   let bitDepth = 0;
   let dataBytes = 0;
+  let dataOffset = 0;
+  let byteRate = 0;
   let bext: EncodedMasterFileDetails["bext"];
   let offset = 12;
 
@@ -93,15 +148,29 @@ function parseWav(bytes: ArrayBuffer): ParsedWav {
       formatCode = view.getUint16(chunkStart, true);
       channels = view.getUint16(chunkStart + 2, true);
       sampleRate = view.getUint32(chunkStart + 4, true);
+      byteRate = view.getUint32(chunkStart + 8, true);
       blockAlign = view.getUint16(chunkStart + 12, true);
       bitDepth = view.getUint16(chunkStart + 14, true);
     } else if (chunkId === "data") {
       dataBytes = chunkSize;
+      dataOffset = chunkStart;
     } else if (chunkId === "bext") {
       if (chunkSize < 602) throw new Error("The WAV broadcast metadata (bext) chunk is incomplete.");
+      const version = view.getUint16(chunkStart + 346, true);
       bext = {
-        version: view.getUint16(chunkStart + 346, true),
+        version,
         description: readAscii(view, chunkStart, 256),
+        ...(version >= 2
+          ? {
+              loudness: {
+                integratedLufs: decodeBwfLoudnessValue(view.getInt16(chunkStart + 412, true), "integratedLufs"),
+                rangeLu: decodeBwfLoudnessValue(view.getInt16(chunkStart + 414, true), "rangeLu"),
+                truePeakDbtp: decodeBwfLoudnessValue(view.getInt16(chunkStart + 416, true), "truePeakDbtp"),
+                momentaryLufs: decodeBwfLoudnessValue(view.getInt16(chunkStart + 418, true), "momentaryLufs"),
+                shortTermLufs: decodeBwfLoudnessValue(view.getInt16(chunkStart + 420, true), "shortTermLufs"),
+              },
+            }
+          : {}),
       };
     }
 
@@ -116,6 +185,9 @@ function parseWav(bytes: ArrayBuffer): ParsedWav {
   if (formatCode === 1 && bitDepth === 32)
     throw new Error("The exported 32-bit WAV must contain floating-point samples.");
   if (formatCode === 3 && bitDepth !== 32) throw new Error("The exported floating-point WAV must be 32-bit.");
+  if (blockAlign !== channels * (bitDepth / 8) || byteRate !== sampleRate * blockAlign) {
+    throw new Error("The WAV sample layout does not match its channel, rate or bit-depth fields.");
+  }
   if (dataBytes % blockAlign !== 0) throw new Error("The WAV audio data is not aligned to complete sample frames.");
 
   return {
@@ -124,48 +196,56 @@ function parseWav(bytes: ArrayBuffer): ParsedWav {
     durationSeconds: dataBytes / blockAlign / sampleRate,
     durationAccuracy: "exact",
     bitDepth: bitDepth as 16 | 24 | 32,
+    formatCode: formatCode as 1 | 3,
+    blockAlign,
+    dataBytes,
+    dataOffset,
+    frameCount: dataBytes / blockAlign,
     ...(bext ? { bext } : {}),
   };
 }
 
-const MPEG1_L3_KBPS = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0] as const;
-const MPEG2_L3_KBPS = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0] as const;
-
-interface Mp3FrameHeader {
-  version: 1 | 2 | 2.5;
-  sampleRate: number;
-  channels: number;
-  bitrateKbps: number;
-  frameBytes: number;
-  samplesPerFrame: number;
+function publicWavDetails(wav: ParsedWav): EncodedMasterFileDetails {
+  return {
+    sampleRate: wav.sampleRate,
+    channels: wav.channels,
+    durationSeconds: wav.durationSeconds,
+    durationAccuracy: wav.durationAccuracy,
+    bitDepth: wav.bitDepth,
+    ...(wav.bext ? { bext: wav.bext } : {}),
+  };
 }
 
-function parseMp3FrameHeader(view: DataView, offset: number): Mp3FrameHeader | null {
-  if (offset + 4 > view.byteLength) return null;
-  const word = view.getUint32(offset, false);
-  if (word >>> 21 !== 0x7ff) return null;
-  const versionBits = (word >>> 19) & 0b11;
-  const layerBits = (word >>> 17) & 0b11;
-  const bitrateIndex = (word >>> 12) & 0b1111;
-  const sampleRateIndex = (word >>> 10) & 0b11;
-  if (versionBits === 1 || layerBits !== 1 || bitrateIndex === 0 || bitrateIndex === 15 || sampleRateIndex === 3)
-    return null;
-
-  const version: Mp3FrameHeader["version"] = versionBits === 3 ? 1 : versionBits === 2 ? 2 : 2.5;
-  const baseRate = [44100, 48000, 32000][sampleRateIndex];
-  const sampleRate = baseRate / (version === 1 ? 1 : version === 2 ? 2 : 4);
-  const bitrateKbps = (version === 1 ? MPEG1_L3_KBPS : MPEG2_L3_KBPS)[bitrateIndex];
-  const padding = (word >>> 9) & 1;
-  const samplesPerFrame = version === 1 ? 1152 : 576;
-  const frameBytes = Math.floor(((version === 1 ? 144 : 72) * bitrateKbps * 1000) / sampleRate) + padding;
-  return {
-    version,
-    sampleRate,
-    channels: ((word >>> 6) & 0b11) === 3 ? 1 : 2,
-    bitrateKbps,
-    frameBytes,
-    samplesPerFrame,
-  };
+function decodeWavPcmRange(
+  bytes: ArrayBuffer,
+  wav: ParsedWav,
+  frameOffset: number,
+  frameCount: number,
+): Float32Array[] {
+  const start = wav.dataOffset + frameOffset * wav.blockAlign;
+  const view = new DataView(bytes, start, frameCount * wav.blockAlign);
+  const channels = Array.from({ length: wav.channels }, () => new Float32Array(frameCount));
+  const bytesPerSample = wav.bitDepth / 8;
+  for (let frame = 0; frame < frameCount; frame++) {
+    const frameStart = frame * wav.blockAlign;
+    for (let channel = 0; channel < wav.channels; channel++) {
+      const sampleOffset = frameStart + channel * bytesPerSample;
+      let sample: number;
+      if (wav.formatCode === 3) {
+        sample = view.getFloat32(sampleOffset, true);
+        if (!Number.isFinite(sample)) throw new Error("The WAV contains a non-finite floating-point sample.");
+      } else if (wav.bitDepth === 16) {
+        sample = view.getInt16(sampleOffset, true) / 0x8000;
+      } else {
+        let value = view.getUint8(sampleOffset) | (view.getUint8(sampleOffset + 1) << 8);
+        value |= view.getUint8(sampleOffset + 2) << 16;
+        if (value & 0x800000) value -= 0x1000000;
+        sample = value / 0x800000;
+      }
+      channels[channel][frame] = sample;
+    }
+  }
+  return channels;
 }
 
 /** Read MPEG Layer III frame headers so MP3 metadata comes from the file, not the dropdown. */
@@ -218,8 +298,16 @@ function parseMp3(bytes: ArrayBuffer): ParsedMp3 {
   };
 }
 
-async function mp3MetadataWindow(blob: Blob): Promise<ArrayBuffer> {
-  const header = await blob.slice(0, Math.min(10, blob.size)).arrayBuffer();
+/** Parse WAV/MP3 delivery metadata without decoding or modifying the source bytes. */
+export function inspectMasteringReferenceContainer(
+  format: EncodedMasterFormat,
+  bytes: ArrayBuffer,
+): EncodedMasterFileDetails {
+  return format === "wav" ? publicWavDetails(parseWav(bytes)) : parseMp3(bytes);
+}
+
+async function mp3MetadataWindow(blob: Blob, signal?: AbortSignal): Promise<ArrayBuffer> {
+  const header = await awaitWithAbort(blob.slice(0, Math.min(10, blob.size)).arrayBuffer(), signal);
   const headerView = new DataView(header);
   let start = 0;
   if (
@@ -236,7 +324,7 @@ async function mp3MetadataWindow(blob: Blob): Promise<ArrayBuffer> {
     start = 10 + size + ((headerView.getUint8(5) & 0x10) !== 0 ? 10 : 0);
   }
   if (start >= blob.size) throw new Error("The MP3 ID3 tag contains no following audio frames.");
-  return blob.slice(start, Math.min(blob.size, start + 64 * 1024)).arrayBuffer();
+  return awaitWithAbort(blob.slice(start, Math.min(blob.size, start + 64 * 1024)).arrayBuffer(), signal);
 }
 
 function notMeasured(
@@ -245,8 +333,9 @@ function notMeasured(
   file: EncodedMasterFileDetails,
   reason: string,
   warnings: string[],
+  decoder: EncodedMasterInspection["decode"]["decoder"] = "not invoked",
 ): EncodedMasterInspection {
-  return { format, byteLength, file, decode: { status: "not-measured", decoder: "Web Audio", reason, warnings } };
+  return { format, byteLength, file, decode: { status: "not-measured", decoder, reason, warnings } };
 }
 
 /** Verify the finished WAV/MP3 container, then measure the browser-decoded deliverable. */
@@ -254,20 +343,25 @@ export async function inspectEncodedMaster(input: {
   format: EncodedMasterFormat;
   bytes: ArrayBuffer | Blob;
   expectedDurationSeconds: number;
+  sourceMeasurements: BufferSummary;
+  profile: MasterProfile;
+  onProgress?: MasterAnalysisProgressListener;
   signal?: AbortSignal;
 }): Promise<EncodedMasterInspection> {
-  const { format, bytes, expectedDurationSeconds, signal } = input;
+  const { format, bytes, expectedDurationSeconds, sourceMeasurements, profile, onProgress, signal } = input;
   if (signal?.aborted) throw new DOMException("Master inspection cancelled", "AbortError");
   const blobInput = typeof Blob !== "undefined" && bytes instanceof Blob ? bytes : null;
   const byteLength = blobInput?.size ?? (bytes as ArrayBuffer).byteLength;
   let file: EncodedMasterFileDetails;
   let decoderBytes: ArrayBuffer;
+  let parsedWav: ParsedWav | null = null;
   if (format === "wav") {
     if (blobInput) throw new Error("WAV inspection requires the encoded RIFF byte buffer.");
     decoderBytes = bytes as ArrayBuffer;
-    file = parseWav(decoderBytes);
+    parsedWav = parseWav(decoderBytes);
+    file = publicWavDetails(parsedWav);
   } else if (blobInput && byteLength > MAX_MP3_DECODE_BYTES) {
-    const frameWindow = await mp3MetadataWindow(blobInput);
+    const frameWindow = await mp3MetadataWindow(blobInput, signal);
     const sampledFile = parseMp3(frameWindow);
     file = {
       ...sampledFile,
@@ -276,7 +370,7 @@ export async function inspectEncodedMaster(input: {
     };
     decoderBytes = frameWindow;
   } else {
-    decoderBytes = blobInput ? await blobInput.arrayBuffer() : (bytes as ArrayBuffer);
+    decoderBytes = blobInput ? await awaitWithAbort(blobInput.arrayBuffer(), signal) : (bytes as ArrayBuffer);
     file = parseMp3(decoderBytes);
   }
   const warnings: string[] = [];
@@ -296,6 +390,75 @@ export async function inspectEncodedMaster(input: {
   if (format === "wav" && !file.bext) warnings.push("The WAV has no BWF bext metadata chunk.");
   if (format === "wav" && file.bext && file.bext.version < 2)
     warnings.push("The WAV BWF metadata has no version 2 loudness fields.");
+  if (format === "wav" && file.bext && file.bext.version >= 2 && file.bext.loudness) {
+    const expectedFields: Array<{ field: WavBextLoudnessField; label: string; value: number | null | undefined }> = [
+      { field: "integratedLufs", label: "integrated loudness", value: sourceMeasurements.lufsIntegrated },
+      { field: "rangeLu", label: "loudness range", value: sourceMeasurements.loudnessRangeLu },
+      { field: "truePeakDbtp", label: "maximum true peak", value: sourceMeasurements.truePeakDb },
+      { field: "momentaryLufs", label: "maximum momentary loudness", value: sourceMeasurements.lufsMomentary },
+      { field: "shortTermLufs", label: "maximum short-term loudness", value: sourceMeasurements.lufsShortTerm },
+    ];
+    for (const { field, label, value } of expectedFields) {
+      const expected = decodeBwfLoudnessValue(encodeBwfLoudnessValue(value, field), field);
+      const actual = file.bext.loudness[field];
+      if (actual !== expected) {
+        warnings.push(
+          `BWF v2 ${label} metadata ${actual == null ? "is unavailable" : `is ${actual.toFixed(2)}`} but source PCM measurement is ${expected == null ? "unavailable" : expected.toFixed(2)}.`,
+        );
+      }
+    }
+  }
+
+  if (format === "wav" && byteLength > MAX_WAV_DECODE_BYTES && parsedWav) {
+    try {
+      onProgress?.({ progress: 0, stage: "Reading encoded WAV PCM in bounded chunks" });
+      const analysis = await analyzeMasterPcmStreamAsync(
+        {
+          sampleRate: parsedWav.sampleRate,
+          channelCount: parsedWav.channels,
+          frameCount: parsedWav.frameCount,
+          readChunk: (offset, length) => decodeWavPcmRange(decoderBytes, parsedWav!, offset, length),
+        },
+        profile,
+        { onProgress, signal },
+      );
+      const finiteMeasurements = Object.values(analysis.measurements).every(
+        (value) => value === null || Number.isFinite(value),
+      );
+      if (!finiteMeasurements) throw new Error("The encoded WAV produced a non-finite measurement.");
+      const durationSeconds = parsedWav.frameCount / parsedWav.sampleRate;
+      if (Math.abs(analysis.mixHealth.durationSec - durationSeconds) > 1 / parsedWav.sampleRate) {
+        warnings.push("The streamed WAV analysis duration differs from the RIFF frame count.");
+      }
+      return {
+        format,
+        byteLength,
+        file,
+        decode: {
+          status: "measured",
+          decoder: "KYX WAV PCM reader",
+          sampleRate: parsedWav.sampleRate,
+          channels: parsedWav.channels,
+          durationSeconds,
+          measurements: analysis.measurements,
+          loudnessTimeline: analysis.loudnessTimeline,
+          mixHealth: analysis.mixHealth,
+          verdict: analysis.verdict,
+          warnings,
+        },
+      };
+    } catch (error) {
+      if (signal?.aborted) throw cancelledError();
+      return notMeasured(
+        format,
+        byteLength,
+        file,
+        `The encoded WAV PCM reader could not measure this file: ${error instanceof Error ? error.message : String(error)}`,
+        warnings,
+        "KYX WAV PCM reader",
+      );
+    }
+  }
 
   const maxDecodeBytes = format === "wav" ? MAX_WAV_DECODE_BYTES : MAX_MP3_DECODE_BYTES;
   if (byteLength > maxDecodeBytes) {
@@ -311,21 +474,25 @@ export async function inspectEncodedMaster(input: {
 
   let decoded: AudioBuffer;
   try {
-    decoded = await decodeAudioData(decoderBytes, file.sampleRate);
+    decoded = await awaitWithAbort(decodeAudioData(decoderBytes, file.sampleRate), signal);
   } catch (error) {
+    if (signal?.aborted) throw cancelledError();
     return notMeasured(
       format,
       byteLength,
       file,
       `The browser decoder could not measure this file: ${error instanceof Error ? error.message : String(error)}`,
       warnings,
+      "Web Audio",
     );
   }
   if (signal?.aborted) throw new DOMException("Master inspection cancelled", "AbortError");
 
   try {
-    const measurements = summarizeBuffer(decoded);
-    const finiteMeasurements = Object.values(measurements).every(Number.isFinite);
+    const analysis = await analyzeMasterBufferAsync(decoded, profile, { onProgress, signal });
+    const finiteMeasurements = Object.values(analysis.measurements).every(
+      (value) => value === null || Number.isFinite(value),
+    );
     if (!finiteMeasurements) throw new Error("The decoded file produced a non-finite measurement.");
     if (decoded.numberOfChannels !== file.channels) {
       warnings.push(
@@ -347,8 +514,10 @@ export async function inspectEncodedMaster(input: {
         sampleRate: decoded.sampleRate,
         channels: decoded.numberOfChannels,
         durationSeconds: decoded.duration,
-        measurements,
-        mixHealth: analyzeMixHealthBuffer(decoded),
+        measurements: analysis.measurements,
+        loudnessTimeline: analysis.loudnessTimeline,
+        mixHealth: analysis.mixHealth,
+        verdict: analysis.verdict,
         warnings,
       },
     };
@@ -360,6 +529,7 @@ export async function inspectEncodedMaster(input: {
       file,
       `The browser decoder could not measure this file: ${error instanceof Error ? error.message : String(error)}`,
       warnings,
+      "Web Audio",
     );
   }
 }

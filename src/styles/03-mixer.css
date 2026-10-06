@@ -331,8 +331,8 @@
   gap: 6px;
 }
 
-/* Four toggles must fit the 150px column in one row — intrinsic button
-   width (52px × 4) overflows it and M/S ends up under the metering wall. */
+/* Keep the compact master toggles in three equal columns. Six controls form
+   two rows without widening the 150px column into the metering wall. */
 .master-strip .master-toggles .btn {
   flex: 1 1 0;
   min-width: 0;

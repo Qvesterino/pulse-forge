@@ -6,9 +6,21 @@ const SAMPLE_RATE = 44100;
 export class SampleBank {
   private buffers = new Map<string, AudioBuffer>();
   private sampleAddedListeners = new Set<(id: string) => void>();
+  private revisionListeners = new Set<(revision: number) => void>();
+  private revisionValue = 0;
+
+  /** Monotonic content revision for consumers that need stale-render checks. */
+  get revision(): number {
+    return this.revisionValue;
+  }
 
   add(id: string, buffer: AudioBuffer): void {
-    const isNew = !this.buffers.has(id);
+    const previous = this.buffers.get(id);
+    const isNew = previous === undefined;
+    if (previous !== buffer) {
+      this.revisionValue++;
+      this.notifyRevisionChanged();
+    }
     this.buffers.set(id, buffer);
     if (isNew) this.notifySampleAdded(id);
   }
@@ -22,7 +34,10 @@ export class SampleBank {
   }
 
   remove(id: string): void {
-    this.buffers.delete(id);
+    if (this.buffers.delete(id)) {
+      this.revisionValue++;
+      this.notifyRevisionChanged();
+    }
   }
 
   get size(): number {
@@ -45,8 +60,20 @@ export class SampleBank {
     return () => this.sampleAddedListeners.delete(listener);
   }
 
+  /** Subscribe to any content change, including replacing or removing an existing sample. */
+  onRevisionChanged(listener: (revision: number) => void): () => void {
+    this.revisionListeners.add(listener);
+    return () => {
+      this.revisionListeners.delete(listener);
+    };
+  }
+
   private notifySampleAdded(id: string): void {
     for (const listener of this.sampleAddedListeners) listener(id);
+  }
+
+  private notifyRevisionChanged(): void {
+    for (const listener of this.revisionListeners) listener(this.revisionValue);
   }
 }
 

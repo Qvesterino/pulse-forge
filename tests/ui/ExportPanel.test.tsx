@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ExportPanel } from "../../src/ui/ExportPanel";
+import { awaitMasteringSampleBankReady } from "../../src/mastering/readiness";
 import { mockServices, renderWithContext } from "../helpers";
 
 vi.mock("../../src/rendering/renderer", async (importOriginal) => {
@@ -24,6 +25,23 @@ vi.mock("../../src/rendering/renderer", async (importOriginal) => {
 vi.mock("../../src/rendering/wav", async (importOriginal) => {
   const mod = await importOriginal<typeof import("../../src/rendering/wav")>();
   return { ...mod, downloadWav: vi.fn() };
+});
+
+vi.mock("../../src/mastering/analysisClient", async (importOriginal) => {
+  const [mod, analysis] = await Promise.all([
+    importOriginal<typeof import("../../src/mastering/analysisClient")>(),
+    import("../../src/mastering/analysis"),
+  ]);
+  return {
+    ...mod,
+    analyzeMasterBufferAsync: vi.fn(
+      async (
+        buffer: AudioBuffer,
+        profile: Parameters<typeof analysis.analyzeMasterBuffer>[1],
+        options?: Parameters<typeof mod.analyzeMasterBufferAsync>[2],
+      ) => analysis.analyzeMasterBuffer(buffer, profile, options?.onProgress),
+    ),
+  };
 });
 
 // Rhythmic take: four decaying 60 Hz bursts (detector-grade attacks).
@@ -66,6 +84,19 @@ vi.mock("../../src/audio-engine/recorder", async (importOriginal) => {
 });
 
 describe("ExportPanel", () => {
+  it("allows cancelling while boot-time sample hydration is still pending", async () => {
+    let resolveHydration: (() => void) | undefined;
+    const hydration = new Promise<void>((resolve) => {
+      resolveHydration = resolve;
+    });
+    const controller = new AbortController();
+    const waiting = awaitMasteringSampleBankReady(hydration, controller.signal);
+
+    controller.abort();
+    await expect(waiting).rejects.toMatchObject({ name: "AbortError" });
+    resolveHydration?.();
+  });
+
   it("renders the export region with the default FORMAT select", () => {
     renderWithContext(<ExportPanel />, { services: mockServices() });
     expect(screen.getByRole("region", { name: "Export" })).toBeInTheDocument();

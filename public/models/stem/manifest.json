@@ -1,0 +1,15 @@
+{
+  "stemModelVersion": "stem-htdemucs.v1",
+  "model": "htdemucs",
+  "modelHash": "68d0bf16428ef66e692cdff8a9ccf28f1ef3f69440d57e58605a4cc55fcc5e74",
+  "modelFile": "htdemucs.onnx",
+  "sampleRate": 44100,
+  "chunkSec": 7.8,
+  "stems": [
+    "vocals",
+    "drums",
+    "bass",
+    "other"
+  ],
+  "gatePassed": false
+}

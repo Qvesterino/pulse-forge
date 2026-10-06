@@ -1,0 +1,296 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mD:/pulse-forge[39m
+
+[90mstderr[2m | tests/ui/ExportPanel.test.tsx[2m > [22m[2mExportPanel[2m > [22m[2mrenders the export region with the default FORMAT select
+[22m[39mTypeError: services.bank.onRevisionChanged is not a function
+    at D:\pulse-forge\src\ui\ExportPanel.tsx:151:33
+    at commitHookEffectListMount (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27078:3)
+    at flushPassiveEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27023:14)
+    at D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:26808:9
+    at flushActQueue (D:\pulse-forge\node_modules\react\cjs\react.development.js:2667:24)
+The above error occurred in the <ExportPanel> component:
+
+    at ExportPanel (D:\pulse-forge\src\ui\ExportPanel.tsx:102:42)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+[90mstderr[2m | tests/ui/ExportPanel.test.tsx[2m > [22m[2mExportPanel[2m > [22m[2mdefault export button is labelled EXPORT MASTER (WAV)
+[22m[39mTypeError: services.bank.onRevisionChanged is not a function
+    at D:\pulse-forge\src\ui\ExportPanel.tsx:151:33
+    at commitHookEffectListMount (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27078:3)
+    at flushPassiveEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27023:14)
+    at D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:26808:9
+    at flushActQueue (D:\pulse-forge\node_modules\react\cjs\react.development.js:2667:24)
+The above error occurred in the <ExportPanel> component:
+
+    at ExportPanel (D:\pulse-forge\src\ui\ExportPanel.tsx:102:42)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+[90mstderr[2m | tests/ui/ExportPanel.test.tsx[2m > [22m[2mExportPanel[2m > [22m[2mswitching FORMAT to MP3 192 updates the button label
+[22m[39mTypeError: services.bank.onRevisionChanged is not a function
+    at D:\pulse-forge\src\ui\ExportPanel.tsx:151:33
+    at commitHookEffectListMount (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27078:3)
+    at flushPassiveEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27023:14)
+    at D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:26808:9
+    at flushActQueue (D:\pulse-forge\node_modules\react\cjs\react.development.js:2667:24)
+The above error occurred in the <ExportPanel> component:
+
+    at ExportPanel (D:\pulse-forge\src\ui\ExportPanel.tsx:102:42)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+[90mstderr[2m | tests/ui/ExportPanel.test.tsx[2m > [22m[2mExportPanel[2m > [22m[2mswitching RATE to 48 kHz records 48000 as selected value
+[22m[39mTypeError: services.bank.onRevisionChanged is not a function
+    at D:\pulse-forge\src\ui\ExportPanel.tsx:151:33
+    at commitHookEffectListMount (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27078:3)
+    at flushPassiveEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27023:14)
+    at D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:26808:9
+    at flushActQueue (D:\pulse-forge\node_modules\react\cjs\react.development.js:2667:24)
+The above error occurred in the <ExportPanel> component:
+
+    at ExportPanel (D:\pulse-forge\src\ui\ExportPanel.tsx:102:42)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+[90mstderr[2m | tests/ui/ExportPanel.test.tsx[2m > [22m[2mExportPanel[2m > [22m[2mexport-policy note is rendered so users can see CANCEL guidance
+[22m[39mTypeError: services.bank.onRevisionChanged is not a function
+    at D:\pulse-forge\src\ui\ExportPanel.tsx:151:33
+    at commitHookEffectListMount (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27078:3)
+    at flushPassiveEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27023:14)
+    at D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:26808:9
+    at flushActQueue (D:\pulse-forge\node_modules\react\cjs\react.development.js:2667:24)
+The above error occurred in the <ExportPanel> component:
+
+    at ExportPanel (D:\pulse-forge\src\ui\ExportPanel.tsx:102:42)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+[90mstderr[2m | tests/ui/ExportPanel.test.tsx[2m > [22m[2mExportPanel[2m > [22m[2mno AUTO STAGE button before any export
+[22m[39mTypeError: services.bank.onRevisionChanged is not a function
+    at D:\pulse-forge\src\ui\ExportPanel.tsx:151:33
+    at commitHookEffectListMount (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27078:3)
+    at flushPassiveEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27023:14)
+    at D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:26808:9
+    at flushActQueue (D:\pulse-forge\node_modules\react\cjs\react.development.js:2667:24)
+The above error occurred in the <ExportPanel> component:
+
+    at ExportPanel (D:\pulse-forge\src\ui\ExportPanel.tsx:102:42)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+[90mstderr[2m | tests/ui/ExportPanel.test.tsx[2m > [22m[2mExportPanel[2m > [22m[2mhot export offers AUTO STAGE and applies one master-gain command
+[22m[39mTypeError: services.bank.onRevisionChanged is not a function
+    at D:\pulse-forge\src\ui\ExportPanel.tsx:151:33
+    at commitHookEffectListMount (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27078:3)
+    at flushPassiveEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27023:14)
+    at D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:26808:9
+    at flushActQueue (D:\pulse-forge\node_modules\react\cjs\react.development.js:2667:24)
+The above error occurred in the <ExportPanel> component:
+
+    at ExportPanel (D:\pulse-forge\src\ui\ExportPanel.tsx:102:42)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+[90mstderr[2m | tests/ui/ExportPanel.test.tsx[2m > [22m[2mExportPanel[2m > [22m[2mre-enables AUTO STAGE when a re-export delivers a new verdict
+[22m[39mTypeError: services.bank.onRevisionChanged is not a function
+    at D:\pulse-forge\src\ui\ExportPanel.tsx:151:33
+    at commitHookEffectListMount (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27078:3)
+    at flushPassiveEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27023:14)
+    at D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:26808:9
+    at flushActQueue (D:\pulse-forge\node_modules\react\cjs\react.development.js:2667:24)
+The above error occurred in the <ExportPanel> component:
+
+    at ExportPanel (D:\pulse-forge\src\ui\ExportPanel.tsx:102:42)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+[90mstderr[2m | tests/ui/ExportPanel.test.tsx[2m > [22m[2mExportPanel[2m > [22m[2mglobal quality switch defaults to Studio HQ
+[22m[39mTypeError: services.bank.onRevisionChanged is not a function
+    at D:\pulse-forge\src\ui\ExportPanel.tsx:151:33
+    at commitHookEffectListMount (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27078:3)
+    at flushPassiveEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27023:14)
+    at D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:26808:9
+    at flushActQueue (D:\pulse-forge\node_modules\react\cjs\react.development.js:2667:24)
+The above error occurred in the <ExportPanel> component:
+
+    at ExportPanel (D:\pulse-forge\src\ui\ExportPanel.tsx:102:42)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+[90mstderr[2m | tests/ui/ExportPanel.test.tsx[2m > [22m[2mExportPanel[2m > [22m[2mswitching QUALITY to Live records live as selected value
+[22m[39mTypeError: services.bank.onRevisionChanged is not a function
+    at D:\pulse-forge\src\ui\ExportPanel.tsx:151:33
+    at commitHookEffectListMount (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27078:3)
+    at flushPassiveEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27023:14)
+    at D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:26808:9
+    at flushActQueue (D:\pulse-forge\node_modules\react\cjs\react.development.js:2667:24)
+The above error occurred in the <ExportPanel> component:
+
+    at ExportPanel (D:\pulse-forge\src\ui\ExportPanel.tsx:102:42)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+[90mstderr[2m | tests/ui/ExportPanel.test.tsx[2m > [22m[2mExportPanel[2m > [22m[2mno AUTO-CHOP button before any take
+[22m[39mTypeError: services.bank.onRevisionChanged is not a function
+    at D:\pulse-forge\src\ui\ExportPanel.tsx:151:33
+    at commitHookEffectListMount (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27078:3)
+    at flushPassiveEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27023:14)
+    at D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:26808:9
+    at flushActQueue (D:\pulse-forge\node_modules\react\cjs\react.development.js:2667:24)
+The above error occurred in the <ExportPanel> component:
+
+    at ExportPanel (D:\pulse-forge\src\ui\ExportPanel.tsx:102:42)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+[90mstderr[2m | tests/ui/ExportPanel.test.tsx[2m > [22m[2mExportPanel[2m > [22m[2mrecorded take offers AUTO-CHOP that maps onsets to drum pads + pattern
+[22m[39mTypeError: services.bank.onRevisionChanged is not a function
+    at D:\pulse-forge\src\ui\ExportPanel.tsx:151:33
+    at commitHookEffectListMount (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27078:3)
+    at flushPassiveEffects (D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:27023:14)
+    at D:\pulse-forge\node_modules\react-dom\cjs\react-dom.development.js:26808:9
+    at flushActQueue (D:\pulse-forge\node_modules\react\cjs\react.development.js:2667:24)
+The above error occurred in the <ExportPanel> component:
+
+    at ExportPanel (D:\pulse-forge\src\ui\ExportPanel.tsx:102:42)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+
+ [31m❯[39m tests/ui/ExportPanel.test.tsx [2m([22m[2m12 tests[22m[2m | [22m[31m12 failed[39m[2m)[22m[90m 125[2mms[22m[39m
+[31m   [31m×[31m ExportPanel[2m > [22mrenders the export region with the default FORMAT select[90m 44[2mms[22m[31m[39m
+[31m     → services.bank.onRevisionChanged is not a function[39m
+[31m   [31m×[31m ExportPanel[2m > [22mdefault export button is labelled EXPORT MASTER (WAV)[90m 10[2mms[22m[31m[39m
+[31m     → services.bank.onRevisionChanged is not a function[39m
+[31m   [31m×[31m ExportPanel[2m > [22mswitching FORMAT to MP3 192 updates the button label[90m 9[2mms[22m[31m[39m
+[31m     → services.bank.onRevisionChanged is not a function[39m
+[31m   [31m×[31m ExportPanel[2m > [22mswitching RATE to 48 kHz records 48000 as selected value[90m 7[2mms[22m[31m[39m
+[31m     → services.bank.onRevisionChanged is not a function[39m
+[31m   [31m×[31m ExportPanel[2m > [22mexport-policy note is rendered so users can see CANCEL guidance[90m 7[2mms[22m[31m[39m
+[31m     → services.bank.onRevisionChanged is not a function[39m
+[31m   [31m×[31m ExportPanel[2m > [22mno AUTO STAGE button before any export[90m 7[2mms[22m[31m[39m
+[31m     → services.bank.onRevisionChanged is not a function[39m
+[31m   [31m×[31m ExportPanel[2m > [22mhot export offers AUTO STAGE and applies one master-gain command[90m 7[2mms[22m[31m[39m
+[31m     → services.bank.onRevisionChanged is not a function[39m
+[31m   [31m×[31m ExportPanel[2m > [22mre-enables AUTO STAGE when a re-export delivers a new verdict[90m 6[2mms[22m[31m[39m
+[31m     → services.bank.onRevisionChanged is not a function[39m
+[31m   [31m×[31m ExportPanel[2m > [22mglobal quality switch defaults to Studio HQ[90m 7[2mms[22m[31m[39m
+[31m     → services.bank.onRevisionChanged is not a function[39m
+[31m   [31m×[31m ExportPanel[2m > [22mswitching QUALITY to Live records live as selected value[90m 8[2mms[22m[31m[39m
+[31m     → services.bank.onRevisionChanged is not a function[39m
+[31m   [31m×[31m ExportPanel[2m > [22mno AUTO-CHOP button before any take[90m 5[2mms[22m[31m[39m
+[31m     → services.bank.onRevisionChanged is not a function[39m
+[31m   [31m×[31m ExportPanel[2m > [22mrecorded take offers AUTO-CHOP that maps onsets to drum pads + pattern[90m 6[2mms[22m[31m[39m
+[31m     → services.bank.onRevisionChanged is not a function[39m
+
+[31m⎯⎯⎯⎯⎯⎯[1m[7m Failed Tests 12 [27m[22m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[31m[1m[7m FAIL [27m[22m[39m tests/ui/ExportPanel.test.tsx[2m > [22mExportPanel[2m > [22mrenders the export region with the default FORMAT select
+[31m[1m[7m FAIL [27m[22m[39m tests/ui/ExportPanel.test.tsx[2m > [22mExportPanel[2m > [22mdefault export button is labelled EXPORT MASTER (WAV)
+[31m[1m[7m FAIL [27m[22m[39m tests/ui/ExportPanel.test.tsx[2m > [22mExportPanel[2m > [22mswitching FORMAT to MP3 192 updates the button label
+[31m[1m[7m FAIL [27m[22m[39m tests/ui/ExportPanel.test.tsx[2m > [22mExportPanel[2m > [22mswitching RATE to 48 kHz records 48000 as selected value
+[31m[1m[7m FAIL [27m[22m[39m tests/ui/ExportPanel.test.tsx[2m > [22mExportPanel[2m > [22mexport-policy note is rendered so users can see CANCEL guidance
+[31m[1m[7m FAIL [27m[22m[39m tests/ui/ExportPanel.test.tsx[2m > [22mExportPanel[2m > [22mno AUTO STAGE button before any export
+[31m[1m[7m FAIL [27m[22m[39m tests/ui/ExportPanel.test.tsx[2m > [22mExportPanel[2m > [22mhot export offers AUTO STAGE and applies one master-gain command
+[31m[1m[7m FAIL [27m[22m[39m tests/ui/ExportPanel.test.tsx[2m > [22mExportPanel[2m > [22mre-enables AUTO STAGE when a re-export delivers a new verdict
+[31m[1m[7m FAIL [27m[22m[39m tests/ui/ExportPanel.test.tsx[2m > [22mExportPanel[2m > [22mglobal quality switch defaults to Studio HQ
+[31m[1m[7m FAIL [27m[22m[39m tests/ui/ExportPanel.test.tsx[2m > [22mExportPanel[2m > [22mswitching QUALITY to Live records live as selected value
+[31m[1m[7m FAIL [27m[22m[39m tests/ui/ExportPanel.test.tsx[2m > [22mExportPanel[2m > [22mno AUTO-CHOP button before any take
+[31m[1m[7m FAIL [27m[22m[39m tests/ui/ExportPanel.test.tsx[2m > [22mExportPanel[2m > [22mrecorded take offers AUTO-CHOP that maps onsets to drum pads + pattern
+[31m[1mTypeError[22m: services.bank.onRevisionChanged is not a function[39m
+[36m [2m❯[22m src/ui/ExportPanel.tsx:[2m151:33[22m[39m
+    [90m149| [39m  [35mconst[39m services [33m=[39m [34museServices[39m()[33m;[39m
+    [90m150| [39m  [35mconst[39m [sampleBankRevision[33m,[39m setSampleBankRevision] [33m=[39m [34museState[39m(service…
+    [90m151| [39m  [34museEffect[39m(() [33m=>[39m services[33m.[39mbank[33m.[39m[34monRevisionChanged[39m(setSampleBankRevisio…
+    [90m   | [39m                                [31m^[39m
+    [90m152| [39m  [90m// Fine-grained selectors (GOAL 04): ExportPanel reads markers (count[39m
+    [90m153| [39m  [90m// badge), patterns (active pattern name), tracks (renderable tracks,[39m
+[90m [2m❯[22m commitHookEffectListMount node_modules/react-dom/cjs/react-dom.development.js:[2m23189:26[22m[39m
+[90m [2m❯[22m commitPassiveMountOnFiber node_modules/react-dom/cjs/react-dom.development.js:[2m24970:11[22m[39m
+[90m [2m❯[22m commitPassiveMountEffects_complete node_modules/react-dom/cjs/react-dom.development.js:[2m24930:9[22m[39m
+[90m [2m❯[22m commitPassiveMountEffects_begin node_modules/react-dom/cjs/react-dom.development.js:[2m24917:7[22m[39m
+[90m [2m❯[22m commitPassiveMountEffects node_modules/react-dom/cjs/react-dom.development.js:[2m24905:3[22m[39m
+[90m [2m❯[22m flushPassiveEffectsImpl node_modules/react-dom/cjs/react-dom.development.js:[2m27078:3[22m[39m
+[90m [2m❯[22m flushPassiveEffects node_modules/react-dom/cjs/react-dom.development.js:[2m27023:14[22m[39m
+[90m [2m❯[22m node_modules/react-dom/cjs/react-dom.development.js:[2m26808:9[22m[39m
+[90m [2m❯[22m flushActQueue node_modules/react/cjs/react.development.js:[2m2667:24[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/12]⎯[22m[39m
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m12 failed[39m[22m[90m (12)[39m
+[2m   Start at [22m 17:30:52
+[2m   Duration [22m 5.83s[2m (transform 1.68s, setup 408ms, collect 2.53s, tests 125ms, environment 1.81s, prepare 219ms)[22m
+

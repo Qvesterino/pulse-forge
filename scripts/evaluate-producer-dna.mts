@@ -1,7 +1,10 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import { FEATURE_CONTRACT } from "../src/ai/features/pattern-features";
-import { PREFERENCE_LEDGER_CAP, isValidPreferenceObservation } from "../src/intent/preference-ledger-core";
+import {
+  PREFERENCE_LEDGER_CAP,
+  isPreferenceFeatureVersion,
+  isValidPreferenceObservation,
+} from "../src/intent/preference-ledger-core";
 import { evaluatePersonalPreferences } from "../src/intent/preference-evaluation";
 
 const MAX_PACK_BYTES = 4 * 1024 * 1024;
@@ -37,8 +40,8 @@ async function main(): Promise<void> {
     fail("the input is not valid JSON");
   }
   if (!isRecord(parsed)) fail("expected a Producer DNA export object");
-  if (parsed.version !== 1 || parsed.featureVersion !== FEATURE_CONTRACT.version) {
-    fail(`unsupported pack or feature version (expected pack v1 / ${FEATURE_CONTRACT.version})`);
+  if (parsed.version !== 1 || !isPreferenceFeatureVersion(parsed.featureVersion)) {
+    fail("unsupported pack or feature version (expected pack v1 and a supported preference feature contract)");
   }
   if (!Array.isArray(parsed.observations)) fail("the pack does not contain an observations array");
   if (parsed.observations.length > PREFERENCE_LEDGER_CAP) {
@@ -51,7 +54,7 @@ async function main(): Promise<void> {
     JSON.stringify(
       {
         source: path.basename(absolutePath),
-        featureVersion: FEATURE_CONTRACT.version,
+        featureVersion: parsed.featureVersion,
         rejectedInvalidObservations: parsed.observations.length - valid.length,
         ...report,
       },

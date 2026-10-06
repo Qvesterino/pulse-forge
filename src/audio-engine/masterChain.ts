@@ -7,6 +7,7 @@ import { createRtMonitorNode, type RtMonitorHandle } from "../audio-worklets/rt-
 import { isWorkletReady } from "../audio-worklets/loader";
 import { defaultMasterConfig } from "../project-model/schema";
 import type { MasterConfig } from "../project-model/types";
+import { MASTER_SIGNAL_NODE_ORDER, type MasterSignalNodeId } from "../mastering/signalFlow";
 import { isLiveAudioContext } from "./liveContext";
 import type { MeteringRig } from "./meteringRig";
 
@@ -25,6 +26,7 @@ export interface MasterChainDeps {
   ctx: () => BaseAudioContext | null;
   doc: () => import("../project-model/types").ProjectDocument | null;
   metering: MeteringRig;
+  masterInsertLatencySec: () => number;
 }
 
 /**
@@ -49,6 +51,15 @@ export class MasterChain {
   constructor(private readonly deps: MasterChainDeps) {}
 
   private master: GainNode | null = null;
+  /** User-facing master input trim, separated from the pre-master sum for monitor bypass. */
+  private masterInputGain: GainNode | null = null;
+  /** Complementary monitor paths that rejoin before the common safety limiter. */
+  private masterBypassWet: GainNode | null = null;
+  private masterBypassDry: GainNode | null = null;
+  /** Aligns the raw audition branch with reported latency in the master path. */
+  private masterBypassDelay: DelayNode | null = null;
+  private monitorBypassLatencyWarning: string | null = null;
+  private masterBypassed = false;
   private masterClipper: WaveShaperNode | null = null;
   private masterInsertInput: GainNode | null = null;
   private masterInsertOutput: GainNode | null = null;
@@ -119,7 +130,7 @@ export class MasterChain {
     return {
       limiter: this.masterLimiter,
       limiterWorklet: this.masterLimiterWorklet,
-      glue: this.masterGlue,
+      glue: this.masterBypassed ? null : this.masterGlue,
       glueNative: this.masterGlueNative,
       kwMeter: this.kwMeter,
       rtMonitor: this.rtMonitor,
@@ -129,6 +140,99 @@ export class MasterChain {
   /** Graph sink everything routes into (null until build()). */
   get input(): GainNode | null {
     return this.master;
+  }
+
+  get isBypassed(): boolean {
+    return this.masterBypassed;
+  }
+
+  getDegradedStages(): { stageId: "tape" | "glue" | "limiter" | "monitorBypass"; reason: string }[] {
+    if (!this.deps.ctx()) return [];
+    const config = this.deps.doc()?.master ?? defaultMasterConfig();
+    const out: { stageId: "tape" | "glue" | "limiter" | "monitorBypass"; reason: string }[] = [];
+    if (config.tapeEnabled && this.masterTape?.degraded)
+      out.push({
+        stageId: "tape",
+        reason: this.masterTape.degradedReason ?? "Tape worklet is unavailable; stage is bypassed",
+      });
+    if ((config.glueEnabled ?? true) && this.masterGlue?.degraded)
+      out.push({
+        stageId: "glue",
+        reason: this.masterGlue.degradedReason ?? "Master glue is using a reduced fallback",
+      });
+    if (config.limiterEnabled && !this.masterLimiterWorklet)
+      out.push({
+        stageId: "limiter",
+        reason: "Look-ahead limiter worklet is unavailable; native limiter fallback is active",
+      });
+    if (this.monitorBypassLatencyWarning) {
+      out.push({ stageId: "monitorBypass", reason: this.monitorBypassLatencyWarning });
+    }
+    return out;
+  }
+
+  /** Keep the monitor-only raw branch aligned with fixed latency before the limiter. */
+  syncMonitorBypassLatency(immediate = false): void {
+    const ctx = this.deps.ctx();
+    const delayTime = this.masterBypassDelay?.delayTime;
+    if (!ctx || !delayTime) return;
+
+    const latencyOf = (runtime: EffectRuntime | null): number => {
+      const value = runtime?.getLatencySec?.() ?? 0;
+      return Number.isFinite(value) && value > 0 ? value : 0;
+    };
+    const requestedLatency =
+      latencyOf(this.masterTape) + latencyOf(this.masterGlue) + Math.max(0, this.deps.masterInsertLatencySec());
+    const maximumAlignmentSec = 0.999;
+    const target = Math.min(requestedLatency, maximumAlignmentSec);
+    this.monitorBypassLatencyWarning =
+      requestedLatency > maximumAlignmentSec
+        ? `Reported master latency is ${requestedLatency.toFixed(3)} s; monitor bypass is aligned only to ${maximumAlignmentSec.toFixed(3)} s`
+        : null;
+
+    if (Math.abs(delayTime.value - target) < 1 / ctx.sampleRate) return;
+    const now = ctx.currentTime;
+    if (immediate) {
+      delayTime.cancelScheduledValues(now);
+      delayTime.setValueAtTime(target, now);
+      return;
+    }
+    const hold = delayTime as AudioParam & { cancelAndHoldAtTime?: (time: number) => void };
+    if (typeof hold.cancelAndHoldAtTime === "function") hold.cancelAndHoldAtTime(now);
+    else {
+      const current = delayTime.value;
+      delayTime.cancelScheduledValues(now);
+      delayTime.setValueAtTime(current, now);
+    }
+    delayTime.setTargetAtTime(target, now, 0.015);
+  }
+
+  /** Monitor-only bypass. The dry signal rejoins before the shared safety limiter. */
+  setBypassed(enabled: boolean, immediate = false): void {
+    this.syncMonitorBypassLatency(immediate);
+    this.masterBypassed = enabled;
+    const ctx = this.deps.ctx();
+    const wet = this.masterBypassWet?.gain;
+    const dry = this.masterBypassDry?.gain;
+    if (!ctx || !wet || !dry) return;
+    const now = ctx.currentTime;
+    const setPath = (param: AudioParam, target: number) => {
+      if (immediate) {
+        param.cancelScheduledValues(now);
+        param.setValueAtTime(target, now);
+        return;
+      }
+      const hold = param as AudioParam & { cancelAndHoldAtTime?: (time: number) => void };
+      if (typeof hold.cancelAndHoldAtTime === "function") hold.cancelAndHoldAtTime(now);
+      else {
+        const current = param.value;
+        param.cancelScheduledValues(now);
+        param.setValueAtTime(current, now);
+      }
+      param.linearRampToValueAtTime(target, now + 0.015);
+    };
+    setPath(wet, enabled ? 0 : 1);
+    setPath(dry, enabled ? 1 : 0);
   }
 
   /** Entry and exit of the user insert slot before the final safety stages. */
@@ -176,6 +280,19 @@ export class MasterChain {
     }
     this.masterInsertInput = null;
     this.masterInsertOutput = null;
+    try {
+      this.masterInputGain?.disconnect();
+      this.masterBypassWet?.disconnect();
+      this.masterBypassDry?.disconnect();
+      this.masterBypassDelay?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    this.masterInputGain = null;
+    this.masterBypassWet = null;
+    this.masterBypassDry = null;
+    this.masterBypassDelay = null;
+    this.monitorBypassLatencyWarning = null;
     try {
       this.master?.disconnect();
     } catch {
@@ -309,6 +426,8 @@ export class MasterChain {
     }
     this.master = ctx.createGain();
     this.master.gain.value = 1;
+    this.masterInputGain = ctx.createGain();
+    this.masterInputGain.gain.value = 1;
     // Master tape saturation (pre-limiter, post-gain)
     if (isWorkletReady("tapeSat", ctx)) {
       this.masterTape = createTapeNode(ctx, {
@@ -324,6 +443,8 @@ export class MasterChain {
       this.masterTape = {
         input,
         output,
+        degraded: true,
+        degradedReason: "Tape worklet is unavailable; stage is bypassed",
         setParameter: () => {},
         setParameterAt: () => {},
         getAudioParam: () => null,
@@ -487,6 +608,12 @@ export class MasterChain {
     this.masterClipper = ctx.createWaveShaper();
     this.masterInsertInput = ctx.createGain();
     this.masterInsertOutput = ctx.createGain();
+    this.masterBypassWet = ctx.createGain();
+    this.masterBypassDry = ctx.createGain();
+    this.masterBypassDelay = ctx.createDelay(1);
+    this.masterBypassDelay.delayTime.value = 0;
+    this.masterBypassWet.gain.value = this.masterBypassed ? 0 : 1;
+    this.masterBypassDry.gain.value = this.masterBypassed ? 1 : 0;
     this.masterClipper.oversample = "4x";
     this.masterClipper.curve = null;
     // Master DC blocker (fixed 12 Hz highpass, always on): asymmetric
@@ -580,27 +707,37 @@ export class MasterChain {
     masterAnalyser.fftSize = 2048;
     masterAnalyser.channelCount = 2;
     masterAnalyser.channelCountMode = "explicit";
-    this.master.connect(this.masterTape!.input);
-    this.masterTape!.output.connect(this.masterMs!.input);
-    this.masterMs!.output.connect(this.masterBassMono!.input);
-    this.masterBassMono!.output.connect(this.masterDc!);
-    // Match EQ sits BEFORE the tilt (correction first, taste last).
-    this.masterDc!.connect(this.masterMatchEqStages![0]);
+    this.master.connect(this.masterBypassDry);
+    this.master.connect(this.masterInputGain);
+    const attached = this.masterLimiterWorklet as EffectRuntime | null;
+    const stageNodes: Record<MasterSignalNodeId, { input: AudioNode; output: AudioNode }> = {
+      inputTrim: { input: this.masterInputGain!, output: this.masterInputGain! },
+      tape: { input: this.masterTape!.input, output: this.masterTape!.output },
+      midSide: { input: this.masterMs!.input, output: this.masterMs!.output },
+      bassMono: { input: this.masterBassMono!.input, output: this.masterBassMono!.output },
+      dcFilter: { input: this.masterDc!, output: this.masterDc! },
+      matchEq: { input: this.masterMatchEqStages![0], output: this.masterMatchEqStages![3] },
+      tilt: { input: this.masterTiltLow!, output: this.masterTiltHigh! },
+      glue: { input: this.masterGlue!.input, output: this.masterGlue!.output },
+      masterInserts: { input: this.masterInsertInput!, output: this.masterInsertOutput! },
+      clipper: { input: this.masterClipper, output: this.masterClipper },
+      monitorBypass: { input: this.masterBypassWet!, output: this.masterBypassWet! },
+      limiter: { input: attached?.input ?? this.masterLimiter!, output: this.masterLimiter! },
+    };
+    for (let index = 0; index < MASTER_SIGNAL_NODE_ORDER.length - 1; index++) {
+      const current = stageNodes[MASTER_SIGNAL_NODE_ORDER[index]];
+      const next = stageNodes[MASTER_SIGNAL_NODE_ORDER[index + 1]];
+      current.output.connect(next.input);
+    }
+    // Match EQ's four filters are one visible stage and remain correction-first.
     this.masterMatchEqStages![0].connect(this.masterMatchEqStages![1]);
     this.masterMatchEqStages![1].connect(this.masterMatchEqStages![2]);
     this.masterMatchEqStages![2].connect(this.masterMatchEqStages![3]);
-    this.masterMatchEqStages![3].connect(this.masterTiltLow!);
     this.masterTiltLow!.connect(this.masterTiltHigh!);
-    this.masterTiltHigh!.connect(this.masterGlue!.input);
-    this.masterGlue!.output.connect(this.masterInsertInput);
-    this.masterInsertOutput!.connect(this.masterClipper);
-    const attached = this.masterLimiterWorklet as EffectRuntime | null;
-    if (attached) {
-      this.masterClipper.connect(attached.input);
-      attached.output.connect(this.masterLimiter);
-    } else {
-      this.masterClipper.connect(this.masterLimiter);
-    }
+    if (attached) attached.output.connect(this.masterLimiter!);
+    this.masterBypassDry.connect(this.masterBypassDelay);
+    this.masterBypassDelay.connect(stageNodes.limiter.input);
+    // The serial master path and dry monitor-bypass branch share the same safety-limiter input.
     this.masterLimiter.connect(masterAnalyser);
     masterAnalyser.connect(ctx.destination);
     // Stereo tap: limiter → splitter → per-channel analysers (metering sinks).
@@ -738,7 +875,7 @@ export class MasterChain {
       const gain = typeof gainRaw === "number" && Number.isFinite(gainRaw) ? Math.min(2, Math.max(0, gainRaw)) : 1;
       const trimRaw = config.loudnessTrimDb;
       const trim = typeof trimRaw === "number" && Number.isFinite(trimRaw) ? Math.min(12, Math.max(-12, trimRaw)) : 0;
-      this.master.gain.setTargetAtTime(gain * Math.pow(10, trim / 20), now, 0.01);
+      this.masterInputGain?.gain.setTargetAtTime(gain * Math.pow(10, trim / 20), now, 0.01);
     }
     if (this.masterTape) {
       const enabled = config.tapeEnabled ?? false;
@@ -872,16 +1009,26 @@ export class MasterChain {
   upgradeMasterDynamics(): void {
     const ctx = this.deps.ctx();
     if (!isLiveAudioContext(ctx)) return;
-    if (!this.master || !this.masterClipper || !this.masterLimiter) return;
+    if (
+      !this.master ||
+      !this.masterClipper ||
+      !this.masterBypassWet ||
+      !this.masterBypassDry ||
+      !this.masterBypassDelay ||
+      !this.masterLimiter
+    )
+      return;
     if (isWorkletReady("limiter", ctx)) this.attachMasterWorklet(ctx);
     const attached = this.masterLimiterWorklet;
     if (!attached) return;
     try {
-      this.masterClipper.disconnect();
+      this.masterBypassWet.disconnect();
+      this.masterBypassDelay.disconnect();
     } catch {
       /* already disconnected */
     }
-    this.masterClipper.connect(attached.input);
+    this.masterBypassWet.connect(attached.input);
+    this.masterBypassDelay.connect(attached.input);
     attached.output.connect(this.masterLimiter);
     this.applyMasterConfig(this.deps.doc()?.master ?? defaultMasterConfig());
   }

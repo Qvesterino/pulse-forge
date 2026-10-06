@@ -85,6 +85,19 @@ export class KWeightingFilter {
     this.w1 = hp;
     return hp;
   }
+
+  clone(): KWeightingFilter {
+    const copy = new KWeightingFilter(this.stages);
+    copy.x1 = this.x1;
+    copy.x2 = this.x2;
+    copy.y1 = this.y1;
+    copy.y2 = this.y2;
+    copy.u1 = this.u1;
+    copy.u2 = this.u2;
+    copy.w1 = this.w1;
+    copy.w2 = this.w2;
+    return copy;
+  }
 }
 
 export interface LoudnessReading {
@@ -98,93 +111,293 @@ export interface LoudnessReading {
   measured: boolean;
 }
 
+export interface LoudnessTimelinePoint {
+  /** Center of this display bucket, relative to the beginning of the render. */
+  timeSeconds: number;
+  /** Lowest 3 s short-term value represented by this bucket. */
+  lowLufs: number;
+  /** Mean 3 s short-term value represented by this bucket. */
+  meanLufs: number;
+  /** Highest 3 s short-term value represented by this bucket. */
+  highLufs: number;
+}
+
+export interface LoudnessTimeline {
+  windowSeconds: 3;
+  hopSeconds: number;
+  startSeconds: 3;
+  durationSeconds: number;
+  sourceWindowCount: number;
+  /** Downsampled min/mean/max buckets; no more than 1,200 points. */
+  points: LoudnessTimelinePoint[];
+}
+
 const SUBBLOCK_SECONDS = 0.1; // 100 ms hop (75 % block overlap)
+const MAX_LOUDNESS_TIMELINE_POINTS = 1200;
+
+function unmeasuredLoudness(): LoudnessReading {
+  return { integrated: MIN_DB, momentaryMax: MIN_DB, shortTermMax: MIN_DB, measured: false };
+}
+
+function loudnessFromSubblocks(subPowers: readonly number[]): LoudnessReading {
+  const loudnessOf = (meanSquare: number): number =>
+    meanSquare > 1e-12 ? Math.max(-180, -0.691 + 10 * Math.log10(meanSquare)) : -180;
+  const blockMeanSquare = (index: number): number =>
+    ((subPowers[index] ?? 0) +
+      (subPowers[index + 1] ?? 0) +
+      (subPowers[index + 2] ?? 0) +
+      (subPowers[index + 3] ?? 0)) /
+    4;
+  const blockCount = Math.max(0, subPowers.length - 3);
+  if (blockCount === 0) return unmeasuredLoudness();
+
+  let audiblePower = 0;
+  let audibleCount = 0;
+  let momentaryMax = Number.NEGATIVE_INFINITY;
+  for (let index = 0; index < blockCount; index++) {
+    const power = blockMeanSquare(index);
+    const lufs = loudnessOf(power);
+    momentaryMax = Math.max(momentaryMax, lufs);
+    if (lufs > -70) {
+      audiblePower += power;
+      audibleCount++;
+    }
+  }
+
+  let integrated = MIN_DB;
+  if (audibleCount > 0) {
+    const ungatedMean = audiblePower / audibleCount;
+    const relativeGate = -0.691 + 10 * Math.log10(ungatedMean) - 10;
+    const gateFloor = Math.max(-70, relativeGate);
+    let gatedPower = 0;
+    let gatedCount = 0;
+    for (let index = 0; index < blockCount; index++) {
+      const power = blockMeanSquare(index);
+      if (loudnessOf(power) >= gateFloor) {
+        gatedPower += power;
+        gatedCount++;
+      }
+    }
+    if (gatedCount > 0) integrated = loudnessOf(gatedPower / gatedCount);
+  }
+
+  let shortTermMax = momentaryMax;
+  if (subPowers.length >= 30) {
+    shortTermMax = Number.NEGATIVE_INFINITY;
+    let windowPower = 0;
+    for (let offset = 0; offset < 30; offset++) windowPower += subPowers[offset];
+    const windowCount = subPowers.length - 29;
+    for (let start = 0; start < windowCount; start++) {
+      shortTermMax = Math.max(shortTermMax, loudnessOf(windowPower / 30));
+      if (start + 30 < subPowers.length) windowPower += subPowers[start + 30] - subPowers[start];
+    }
+  }
+  return { integrated, momentaryMax, shortTermMax, measured: audibleCount > 0 };
+}
+
+function shortTermLoudnessFromSubblocks(subPowers: readonly number[]): number[] {
+  if (subPowers.length < 30) return [];
+  const loudnessOf = (meanSquare: number): number =>
+    meanSquare > 1e-12 ? Math.max(-180, -0.691 + 10 * Math.log10(meanSquare)) : -180;
+  const shortTerm: number[] = [];
+  let windowPower = 0;
+  for (let offset = 0; offset < 30; offset++) windowPower += subPowers[offset] ?? 0;
+  for (let start = 0; start + 30 <= subPowers.length; start++) {
+    shortTerm.push(loudnessOf(windowPower / 30));
+    if (start + 30 < subPowers.length) windowPower += (subPowers[start + 30] ?? 0) - (subPowers[start] ?? 0);
+  }
+  return shortTerm;
+}
+
+/** EBU Tech 3342 LRA from 3 s K-weighted windows sampled at 10 Hz. */
+function loudnessRangeFromShortTerm(shortTerm: readonly number[]): number | null {
+  if (shortTerm.length === 0) return null;
+  const absoluteGated = shortTerm.filter((value) => value >= -70);
+  if (absoluteGated.length === 0) return null;
+  const absoluteGatedMeanPower =
+    absoluteGated.reduce((sum, value) => sum + Math.pow(10, value / 10), 0) / absoluteGated.length;
+  const relativeGate = 10 * Math.log10(absoluteGatedMeanPower) - 20;
+  const gated = absoluteGated.filter((value) => value >= relativeGate).sort((a, b) => a - b);
+  if (gated.length === 0) return null;
+  const low = gated[Math.round((gated.length - 1) * 0.1)];
+  const high = gated[Math.round((gated.length - 1) * 0.95)];
+  return low === undefined || high === undefined ? null : Math.max(0, high - low);
+}
+
+function loudnessTimelineFromShortTerm(
+  shortTerm: readonly number[],
+  sourceWindowCount: number,
+  durationSeconds: number,
+  hopSeconds: number,
+): LoudnessTimeline | null {
+  const windowCount = Math.min(shortTerm.length, sourceWindowCount);
+  if (windowCount === 0) return null;
+  const bucketSize = Math.max(1, Math.ceil(windowCount / MAX_LOUDNESS_TIMELINE_POINTS));
+  const points: LoudnessTimelinePoint[] = [];
+  for (let start = 0; start < windowCount; start += bucketSize) {
+    const end = Math.min(windowCount, start + bucketSize);
+    let lowLufs = Number.POSITIVE_INFINITY;
+    let highLufs = Number.NEGATIVE_INFINITY;
+    let sumLufs = 0;
+    for (let index = start; index < end; index++) {
+      const value = shortTerm[index] ?? -180;
+      lowLufs = Math.min(lowLufs, value);
+      highLufs = Math.max(highLufs, value);
+      sumLufs += value;
+    }
+    const firstWindowEnd = 3 + start * hopSeconds;
+    const lastWindowEnd = 3 + (end - 1) * hopSeconds;
+    points.push({
+      timeSeconds: Math.min(durationSeconds, (firstWindowEnd + lastWindowEnd) * 0.5),
+      lowLufs,
+      meanLufs: sumLufs / (end - start),
+      highLufs,
+    });
+  }
+  return {
+    windowSeconds: 3,
+    hopSeconds,
+    startSeconds: 3,
+    durationSeconds,
+    sourceWindowCount: windowCount,
+    points,
+  };
+}
+
+/** Incremental BS.1770 K-weighting state for bounded-memory PCM workers. */
+export class KWeightedLoudnessAccumulator {
+  private readonly filters: KWeightingFilter[];
+  private readonly subblock: number;
+  private readonly subPowers: number[] = [];
+  private readonly subPowerByChannel: Float64Array;
+  private samplesInSubblock = 0;
+  private frames = 0;
+
+  constructor(
+    private readonly channelCount: number,
+    private readonly sampleRate: number,
+  ) {
+    const stages = kWeightingCoefficients(sampleRate);
+    this.filters = Array.from({ length: channelCount }, () => new KWeightingFilter(stages));
+    this.subblock = Math.max(1, Math.round(SUBBLOCK_SECONDS * sampleRate));
+    this.subPowerByChannel = new Float64Array(channelCount);
+  }
+
+  processFrame(samples: ArrayLike<number>): void {
+    for (let channel = 0; channel < this.channelCount; channel++) {
+      const raw = samples[channel] ?? 0;
+      const filtered = this.filters[channel].processSample(Number.isFinite(raw) ? raw : 0);
+      this.subPowerByChannel[channel] += filtered * filtered;
+    }
+    this.samplesInSubblock++;
+    this.frames++;
+    if (this.samplesInSubblock === this.subblock) {
+      let combinedPower = 0;
+      for (let channel = 0; channel < this.channelCount; channel++) {
+        combinedPower += this.subPowerByChannel[channel] / this.subblock;
+        this.subPowerByChannel[channel] = 0;
+      }
+      this.subPowers.push(combinedPower);
+      this.samplesInSubblock = 0;
+    }
+  }
+
+  finish(): LoudnessReading {
+    if (
+      !Number.isFinite(this.sampleRate) ||
+      this.sampleRate <= 0 ||
+      this.channelCount <= 0 ||
+      this.frames < Math.ceil(0.4 * this.sampleRate)
+    ) {
+      return unmeasuredLoudness();
+    }
+    return loudnessFromSubblocks(this.subPowers);
+  }
+
+  /**
+   * File-based LRA adds at least 1.5 s of silence so the final sliding
+   * 3 s windows can settle. Keep the regular loudness readings based on the
+   * unpadded programme and simulate that tail on cloned filters.
+   */
+  finishWithLoudnessRange(): {
+    loudness: LoudnessReading;
+    loudnessRangeLu: number | null;
+    loudnessTimeline: LoudnessTimeline | null;
+  } {
+    const loudness = this.finish();
+    if (!loudness.measured || this.frames < Math.ceil(3 * this.sampleRate)) {
+      return { loudness, loudnessRangeLu: null, loudnessTimeline: null };
+    }
+
+    const filters = this.filters.map((filter) => filter.clone());
+    const subPowerByChannel = this.subPowerByChannel.slice();
+    const subPowers = [...this.subPowers];
+    let samplesInSubblock = this.samplesInSubblock;
+    const initialBlockPadding = samplesInSubblock > 0 ? this.subblock - samplesInSubblock : 0;
+    const paddingFrames = initialBlockPadding + Math.ceil(1.5 * this.sampleRate);
+    for (let frame = 0; frame < paddingFrames; frame++) {
+      for (let channel = 0; channel < this.channelCount; channel++) {
+        const filtered = filters[channel].processSample(0);
+        subPowerByChannel[channel] += filtered * filtered;
+      }
+      samplesInSubblock++;
+      if (samplesInSubblock === this.subblock) {
+        let combinedPower = 0;
+        for (let channel = 0; channel < this.channelCount; channel++) {
+          combinedPower += subPowerByChannel[channel] / this.subblock;
+          subPowerByChannel[channel] = 0;
+        }
+        subPowers.push(combinedPower);
+        samplesInSubblock = 0;
+      }
+    }
+    const shortTerm = shortTermLoudnessFromSubblocks(subPowers);
+    const sourceWindowCount = Math.max(0, this.subPowers.length - 29);
+    return {
+      loudness,
+      loudnessRangeLu: loudnessRangeFromShortTerm(shortTerm),
+      loudnessTimeline: loudnessTimelineFromShortTerm(
+        shortTerm,
+        sourceWindowCount,
+        this.frames / this.sampleRate,
+        this.subblock / this.sampleRate,
+      ),
+    };
+  }
+}
 
 /**
  * Full K-weighted loudness analysis of rendered channel buffers.
  * BS.1770-4: 400 ms blocks with 100 ms hop, absolute gate −70 LUFS and
  * relative gate −10 LU, evaluated in the power domain.
  */
-export function analyzeLoudnessBuffer(channels: readonly Float32Array[], sampleRate: number): LoudnessReading {
+export function analyzeLoudnessBuffer(
+  channels: readonly Float32Array[],
+  sampleRate: number,
+  onProgress?: (fraction: number) => void,
+): LoudnessReading {
   // Guard before any arithmetic — a 0/NaN/Infinity sampleRate would make
   // minSamples = 0 and length = MAX_SAFE_INTEGER (via the reduce), which
   // produces a subblock = 1 loop that iterates MAX_SAFE_INTEGER times and
   // returns measured=true with integrated=MIN_DB. The loudness loop would
   // then chase the silence with gain adjustments.
-  if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
-    return { integrated: MIN_DB, momentaryMax: MIN_DB, shortTermMax: MIN_DB, measured: false };
-  }
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0) return unmeasuredLoudness();
   const length = channels.reduce((acc, ch) => Math.min(acc, ch.length), Number.MAX_SAFE_INTEGER);
   const minSamples = Math.ceil(0.4 * sampleRate);
-  if (!Number.isFinite(length) || length < minSamples || channels.length === 0) {
-    return { integrated: MIN_DB, momentaryMax: MIN_DB, shortTermMax: MIN_DB, measured: false };
+  if (!Number.isFinite(length) || length < minSamples || channels.length === 0) return unmeasuredLoudness();
+
+  const accumulator = new KWeightedLoudnessAccumulator(channels.length, sampleRate);
+  const frameSamples = new Float64Array(channels.length);
+  const progressStride = 32768;
+  onProgress?.(0);
+  for (let frame = 0; frame < length; frame++) {
+    for (let channelIndex = 0; channelIndex < channels.length; channelIndex++)
+      frameSamples[channelIndex] = channels[channelIndex][frame];
+    accumulator.processFrame(frameSamples);
+    if (frame > 0 && frame % progressStride === 0) onProgress?.(frame / length);
   }
-
-  const stages = kWeightingCoefficients(sampleRate);
-  const filtered = channels.map((channel) => {
-    const filter = new KWeightingFilter(stages);
-    const out = new Float64Array(channel.length);
-    for (let i = 0; i < channel.length; i++) out[i] = filter.processSample(channel[i]);
-    return out;
-  });
-
-  const subblock = Math.max(1, Math.round(SUBBLOCK_SECONDS * sampleRate));
-  const subPowers: number[] = [];
-  for (let start = 0; start + subblock <= length; start += subblock) {
-    let sum = 0;
-    for (const ch of filtered) {
-      let acc = 0;
-      for (let i = start; i < start + subblock; i++) acc += ch[i] * ch[i];
-      sum += acc / subblock;
-    }
-    subPowers.push(sum);
-  }
-
-  const loudnessOf = (meanSquare: number): number =>
-    meanSquare > 1e-12 ? Math.max(-180, -0.691 + 10 * Math.log10(meanSquare)) : -180;
-
-  const blockMeanSquare = (k: number): number =>
-    (subPowers[k] + subPowers[k + 1] + subPowers[k + 2] + subPowers[k + 3]) / 4;
-
-  const blocks: number[] = []; // loudness per 400 ms block (4 subblocks)
-  for (let k = 0; k + 4 <= subPowers.length; k++) {
-    blocks.push(loudnessOf(blockMeanSquare(k)));
-  }
-  const shortTerm: number[] = []; // loudness per 3 s window (30 subblocks)
-  for (let k = 0; k + 30 <= subPowers.length; k++) {
-    let acc = 0;
-    for (let j = k; j < k + 30; j++) acc += subPowers[j];
-    shortTerm.push(loudnessOf(acc / 30));
-  }
-  if (blocks.length === 0) {
-    return { integrated: MIN_DB, momentaryMax: MIN_DB, shortTermMax: MIN_DB, measured: false };
-  }
-
-  // Dual gate: absolute −70 LUFS, then relative −10 LU (power domain).
-  const blockEntries = blocks.map((loudness, index) => ({ loudness, ms: blockMeanSquare(index) }));
-  const audible = blockEntries.filter((entry) => entry.loudness > -70);
-  let integrated = MIN_DB;
-  if (audible.length > 0) {
-    const ungatedMean = audible.reduce((acc, entry) => acc + entry.ms, 0) / audible.length;
-    const relativeGate = -0.691 + 10 * Math.log10(ungatedMean) - 10;
-    const gateFloor = Math.max(-70, relativeGate);
-    const gated = audible.filter((entry) => entry.loudness >= gateFloor);
-    if (gated.length > 0) {
-      const gatedMean = gated.reduce((acc, entry) => acc + entry.ms, 0) / gated.length;
-      integrated = loudnessOf(gatedMean);
-    }
-  }
-
-  // Nothing above the absolute gate (silence/digital black) = NOT measurable —
-  // consumers (the loudness loop) must not chase −∞ with gain adjustments.
-  const measured = audible.length > 0;
-
-  return {
-    integrated,
-    momentaryMax: Math.max(...blocks),
-    shortTermMax: shortTerm.length > 0 ? Math.max(...shortTerm) : Math.max(...blocks),
-    measured,
-  };
+  onProgress?.(1);
+  return accumulator.finish();
 }
 
 /**

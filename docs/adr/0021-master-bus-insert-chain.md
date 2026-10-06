@@ -31,14 +31,24 @@ same target.
    rack rules and use the same effect runtimes in live playback and offline
    rendering.
 4. Master inserts process the final stereo sum, including returns and all
-   groups. Track and group inserts remain available for stem shaping. A
-   pre-master/stem render bypasses the master bus inserts together with the
-   rest of master processing.
+   groups. ZENIT remains a track/group effect; a group-hosted ZENIT shapes
+   that group before it joins the final sum. Track and group inserts remain
+   available for stem shaping. Grouped-stem and per-track exports preserve the
+   selected source's track/group processing and routed return processing, but
+   bypass the complete global master chain. Exported stems clear source mute
+   and solo flags so a live mix state cannot silently produce a partial stem.
+   The full-mix master render honors the project's active mix/routing state
+   and is the only path in the MASTER workspace that presents the
+   master-delivery report.
 5. Master inserts use the generic effect runtime, lazy worklet loading,
    parameter validation, and teardown path. Their latency is reported by the
    engine; because the insert is after the final sum, it does not need to
-   offset one source against another. Render tail and reported latency remain
-   part of the offline-render acceptance checks.
+   offset one source against another. The monitor-only raw bypass branch is
+   delayed by the reported pre-limiter latency of the built-in and inserted
+   master processors before it rejoins the shared limiter. If reported latency
+   exceeds the DelayNode alignment range, the MASTER signal-flow view reports
+   that alignment is partial. Render tail and reported latency remain part of
+   the offline-render acceptance checks.
 6. Shared pure delivery rules define loudness tolerance, true-peak tolerance,
    and available stereo checks. MIX, export, and MCP consume those rules. A
    measurement report must distinguish measured values from target guidance.
@@ -68,6 +78,8 @@ same target.
 - Live and offline renders use identical master insert order and parameters.
 - Reordering, bypass, parameter edits, undo/redo, collaboration round-trip,
   and project reopen preserve the serialized chain.
+- Monitor bypass crossfades between paths aligned to the same reported
+  pre-limiter processor latency; an alignment-range fallback is visible.
 - Pre-master/stem output does not accidentally include master inserts.
 - The final clipper/limiter stays downstream of all master inserts.
 
@@ -75,5 +87,7 @@ same target.
 
 - Spotify, [Loudness normalization](https://support.spotify.com/artists/article/loudness-normalization/),
   accessed 2026-10-06. Spotify describes −14 LUFS as its playback normalization
-  reference and recommends a −1 dBTP maximum for lossy encoding; this is the
-  Streaming profile's starting point, not a universal delivery requirement.
+  reference and recommends true peak below −1 dBTP for lossy encoding, and
+  below −2 dBTP when the master is louder than −14 LUFS. KYX surfaces the
+  conditional limit as an advisory; these remain Spotify recommendations, not
+  universal delivery requirements.

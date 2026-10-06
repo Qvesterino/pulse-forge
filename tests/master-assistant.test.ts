@@ -58,4 +58,32 @@ describe("master assistant planner", () => {
       expect(step.why.length).toBeGreaterThan(10);
     }
   });
+
+  it("with a delivery contract, broad mix statistics alone never trigger master processing", () => {
+    const plan = planMasterSettings({
+      lufs: -22,
+      peakDb: -3,
+      crestDb: 6,
+      correlation: 0.1,
+      hfShare: 0.4,
+      targetLufs: -14,
+      targetTruePeakDb: -1,
+    });
+    expect(plan).toEqual([]);
+  });
+
+  it("with a delivery contract, only a measured true-peak miss proposes a bounded ceiling", () => {
+    const plan = planMasterSettings({
+      lufs: -9,
+      peakDb: -0.4,
+      crestDb: 17,
+      correlation: 0.98,
+      hfShare: 0.4,
+      targetLufs: -14,
+      targetTruePeakDb: -1,
+    });
+    expect(plan).toHaveLength(1);
+    expect(plan[0]).toMatchObject({ device: "zenit", param: "ceiling", value: -1.5 });
+    expect(plan[0]?.why).toContain("measured true peak -0.4 dBTP");
+  });
 });

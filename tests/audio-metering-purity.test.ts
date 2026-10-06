@@ -53,6 +53,7 @@ const PURE_HELPERS: Anchor[] = [
   { name: "channelLevels", kind: "fn" },
   { name: "stereoCorrelation", kind: "fn" },
   { name: "summarizeBuffer", kind: "fn" },
+  { name: "summarizePcm", kind: "fn" },
 ];
 
 // Constants and types — checked for shape and immutability but not for purity.
@@ -71,6 +72,7 @@ const TYPES: Anchor[] = [
   { name: "ChannelLevels", kind: "iface" },
   { name: "BufferSummary", kind: "iface" },
   { name: "Frame", kind: "type" },
+  { name: "MeteringProgress", kind: "type" },
 ];
 
 // Full export surface — pinned for audit. Adding a new export to
@@ -85,6 +87,7 @@ const KNOWN_EXPORTS: Anchor[] = [
   { name: "evaluateMasterVerdict", kind: "fn" },
   { name: "readAnalyserFrame", kind: "fn" },
   { name: "truePeakOversampled", kind: "fn" },
+  { name: "TruePeakChannelAccumulator", kind: "class" },
   { name: "PeakHold", kind: "class" },
 ];
 

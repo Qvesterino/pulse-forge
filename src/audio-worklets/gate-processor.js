@@ -4,14 +4,14 @@ class GateProcessor extends AudioWorkletProcessor {
     this.envelope = 0;
     this.gain = 0;
     this.holdSamples = 0;
-    // Look-ahead: the computed gain is applied to a DELAYED signal, so the
-    // envelope sees the transient BEFORE the gain closes — drum attacks pass
-    // at full level instead of being clipped by the attack lag. Constant
-    // 2.5 ms delay, reported to the host PDC by the runtime layer.
+    // The audio path always carries this fixed delay, including with the
+    // look-ahead switch off. Keeping physical latency fixed makes the host's
+    // PDC report truthful and avoids a discontinuity when the switch changes.
     const sr = globalThis.sampleRate || 44100;
     this.lookaheadSamples = Math.round(sr * 0.0025);
+    this.audioRing = new Float32Array(this.lookaheadSamples * 2);
     this.gainRing = new Float32Array(this.lookaheadSamples);
-    this.gainRingIdx = 0;
+    this.audioRingIdx = 0;
     this.wasOpen = false;
     // Report the look-ahead delay once so the host PDC can align tracks.
     this.port.postMessage({ type: "latency", samples: this.lookaheadSamples });
@@ -69,10 +69,9 @@ class GateProcessor extends AudioWorkletProcessor {
       } // else: inside the hysteresis band — keep the current state.
       const target = this.holdSamples > 0 || this.wasOpen ? 1 : Math.pow(10, range / 20);
       if (lookahead >= 0.5 && target > this.gain) {
-        // Look-ahead OPEN is instantaneous: the envelope crossed the
-        // threshold at the live signal position, while the RING applies
-        // that gain 2.5 ms later — exactly where the delayed transient
-        // sits. The attack lag would otherwise still clip the attack.
+        // The detector sees the live input while the output is delayed by
+        // 2.5 ms. Open immediately so the upcoming delayed transient clears
+        // the gate without being clipped by the attack ramp.
         this.gain = target;
       } else {
         const step =
@@ -83,24 +82,21 @@ class GateProcessor extends AudioWorkletProcessor {
       }
       if (Math.abs(this.gain) < 1e-20) this.gain = 0;
 
-      // Apply the computed gain to the DELAYED input when look-ahead is on:
-      // the envelope reacted to the transient BEFORE it reaches the output.
-      let appliedGain = this.gain;
-      if (lookahead >= 0.5 && this.lookaheadSamples > 0) {
-        if (!this.lookaheadWasOn) {
-          // Re-enabling look-ahead must not replay gains parked in the ring
-          // while it was off (stale open/closed values mute or leak for the
-          // whole 2.5 ms ring on the transition block).
-          this.gainRing.fill(this.gain);
-          this.lookaheadWasOn = true;
-        }
-        appliedGain = this.gainRing[this.gainRingIdx];
-        this.gainRing[this.gainRingIdx] = this.gain;
-        this.gainRingIdx = (this.gainRingIdx + 1) % this.lookaheadSamples;
-      } else {
-        this.lookaheadWasOn = false;
+      // Delay the audio itself by the declared look-ahead latency. The gain
+      // detector stays on the live input, so it can react before that sample
+      // reaches the output. Keeping the audio delay present with look-ahead
+      // off holds the effect's physical latency constant for PDC. In that
+      // mode, pair the delayed sample with the gain from the same input time
+      // so the switch actually disables detector look-ahead.
+      for (let ch = 0; ch < channels; ch++) {
+        const ringIdx = ch * this.lookaheadSamples + this.audioRingIdx;
+        const delayed = this.audioRing[ringIdx];
+        this.audioRing[ringIdx] = input[ch][i] || 0;
+        const delayedGain = this.gainRing[this.audioRingIdx];
+        output[ch][i] = delayed * (1 + ((lookahead >= 0.5 ? this.gain : delayedGain) - 1) * mix);
       }
-      for (let ch = 0; ch < channels; ch++) output[ch][i] = (input[ch][i] || 0) * (1 + (appliedGain - 1) * mix);
+      this.gainRing[this.audioRingIdx] = this.gain;
+      this.audioRingIdx = (this.audioRingIdx + 1) % this.lookaheadSamples;
     }
     // Mono input feeding a multi-channel output: mirror ch0 so trailing
     // outputs never carry stale samples (svfilter/compressor do the same).

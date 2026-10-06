@@ -36,6 +36,7 @@ import { DECLICK_TAIL_SEC, declickFadeOut, resolveSlicePlayback } from "./declic
 interface PreviewVoice {
   source: AudioBufferSourceNode;
   gain: GainNode;
+  masterCompare?: boolean;
 }
 
 interface InstrumentPreviewVoice {
@@ -289,6 +290,20 @@ export class PreviewDeck {
     };
   }
 
+  /** Update gain/mono audition controls for the active direct master-comparison voice. */
+  updateMasterComparePreview(gainValue: number, mono: boolean): void {
+    const ctx = this.deps.ctx();
+    if (!ctx) return;
+    const target = Math.max(0, Math.min(1, gainValue));
+    for (const voice of this.previewVoices) {
+      if (!voice.masterCompare) continue;
+      voice.gain.gain.setTargetAtTime(target, ctx.currentTime, 0.015);
+      voice.gain.channelCount = mono ? 1 : 2;
+      voice.gain.channelCountMode = mono ? "explicit" : "max";
+      voice.gain.channelInterpretation = "speakers";
+    }
+  }
+
   previewBuffer(buffer: AudioBuffer, gainValue = 0.9, onEnded?: () => void, offsetSec = 0): void {
     this.deps.ensureContext();
     const ctx = this.deps.ctx();
@@ -299,6 +314,32 @@ export class PreviewDeck {
     gain.gain.value = Math.max(0, Math.min(1, gainValue));
     source.connect(gain).connect(this.deps.masterInput()!);
     const voice: PreviewVoice = { source, gain };
+    this.previewVoices.add(voice);
+    source.start(ctx.currentTime + 0.005, Math.max(0, Math.min(buffer.duration, offsetSec)));
+    source.onended = () => {
+      this.previewVoices.delete(voice);
+      gain.disconnect();
+      source.disconnect();
+      onEnded?.();
+    };
+  }
+
+  /** Play a rendered master comparison directly to the monitor, avoiding a second master pass. */
+  previewMasterCompare(buffer: AudioBuffer, gainValue = 0.9, onEnded?: () => void, offsetSec = 0, mono = false): void {
+    this.deps.ensureContext();
+    const ctx = this.deps.ctx();
+    if (!ctx) return;
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    const gain = ctx.createGain();
+    gain.gain.value = Math.max(0, Math.min(1, gainValue));
+    if (mono) {
+      gain.channelCount = 1;
+      gain.channelCountMode = "explicit";
+      gain.channelInterpretation = "speakers";
+    }
+    source.connect(gain).connect(ctx.destination);
+    const voice: PreviewVoice = { source, gain, masterCompare: true };
     this.previewVoices.add(voice);
     source.start(ctx.currentTime + 0.005, Math.max(0, Math.min(buffer.duration, offsetSec)));
     source.onended = () => {
