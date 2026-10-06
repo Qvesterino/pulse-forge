@@ -1,0 +1,40 @@
+# EOL POLICY (2026-10-06) — LF everywhere in the repository and in every
+# checkout, on every platform. Prettier's default endOfLine is LF, the
+# generators write LF, and the shebang+CRLF vite-transform bug
+# (scripts/suite-expectations.mjs header) only exists on CRLF worktrees —
+# this file makes LF the enforced normal instead of a per-machine lottery
+# under core.autocrlf=true.
+#
+# text=auto: git normalizes TEXT files to LF in the index (already true for
+# years via autocrlf) and eol=lf forces LF in working-tree checkouts too.
+# Binary files below are explicitly excluded from any conversion.
+
+* text=auto eol=lf
+
+# ── Binary: never touch bytes ─────────────────────────────────────────────
+*.wav   -text
+*.mp4   -text
+*.png   -text
+*.jpg   -text
+*.jpeg  -text
+*.gif   -text
+*.webp  -text
+*.ico   -text
+*.icns  -text
+*.onnx  -text
+*.wasm  -text
+*.asar  -text
+*.pyc   -text
+*.exe   -text
+*.dll   -text
+*.node  -text
+*.zip   -text
+*.dmg   -text
+*.ttf   -text
+*.woff  -text
+*.woff2 -text
+
+# ── Windows shell scripts: cmd.exe batch parsing wants CRLF ───────────────
+# (none tracked today; rule guards future additions)
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
