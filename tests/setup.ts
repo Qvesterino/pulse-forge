@@ -22,6 +22,16 @@ if (typeof HTMLElement !== "undefined") {
   HTMLElement.prototype.releasePointerCapture = vi.fn();
 }
 
+// jsdom does not implement blob object URLs; the export paths (and any
+// downloadBlob user) need them to reach the download step in tests. The
+// revoke is a tracked no-op — production revokes on a 5 s safety timer
+// (AGENTS.md gotcha), which has no meaning for a fake URL.
+if (typeof URL !== "undefined" && typeof URL.createObjectURL !== "function") {
+  let blobCounter = 0;
+  URL.createObjectURL = (obj: Blob | MediaSource) => `blob:jsdom-${++blobCounter}-${obj?.size ?? 0}`;
+  URL.revokeObjectURL = () => {};
+}
+
 // react-window v2 uses ResizeObserver which jsdom doesn't provide.
 if (typeof globalThis.ResizeObserver === "undefined") {
   vi.stubGlobal(

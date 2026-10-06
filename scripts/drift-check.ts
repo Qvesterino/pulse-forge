@@ -30,8 +30,8 @@
  * see scripts/suite-expectations.mjs). Deterministic generators only: a
  * detected drift is re-verified by a second regeneration before reporting.
  */
-import { spawnSync } from "node:child_process";
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EFFECT_META } from "../src/effects/definitions";
@@ -70,21 +70,19 @@ export function restoreDecision(cleanBefore: boolean, differsFromHead: boolean):
   return differsFromHead ? "keep-diff" : "restore";
 }
 
-/** Live spec-file count: tests/**\/*.test.{ts,tsx}, excluding tests/e2e/ (the
- * exact contract docs/CURRENT-STATE.md documents). */
-export function countSpecFiles(root: string, dir = "tests"): number {
-  let count = 0;
-  const base = join(root, dir);
-  for (const entry of readdirSync(base)) {
-    const full = join(base, entry);
-    if (statSync(full).isDirectory()) {
-      if (dir === "tests" && entry === "e2e") continue;
-      count += countSpecFiles(root, join(dir, entry));
-    } else if (/\.test\.tsx?$/.test(entry)) {
-      count += 1;
-    }
-  }
-  return count;
+/** Live spec-file count: `.test.ts` / `.test.tsx` under tests/, excluding tests/e2e/ (the
+ * exact contract docs/CURRENT-STATE.md documents).
+ *
+ * Committed-only by design: a directory walk counted untracked WIP, so
+ * parallel agent sessions made the same repo measure 838 in a clean tree and
+ * 839 in a dirty one — the drift gate flapped between runs. `git ls-files`
+ * is the authority for "what the committed docs describe". */
+export function countSpecFiles(root: string, _dir = "tests"): number {
+  const listed = execFileSync("git", ["-C", root, "ls-files", "tests"], { encoding: "utf8" });
+  return listed
+    .split("\n")
+    .filter((file) => file.endsWith(".test.ts") || file.endsWith(".test.tsx"))
+    .filter((file) => !file.startsWith("tests/e2e/")).length;
 }
 
 export interface CountCheck {
