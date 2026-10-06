@@ -136,6 +136,16 @@ import { StretchDialog } from "./StretchDialog";
 const BASE_BAR_WIDTH = 30;
 const LANE_HEIGHT = 56;
 /**
+ * Extra bars rendered either side of the viewport.
+ *
+ * The lane is scrolled by the wheel AND dragged by the pointer, so a clip that
+ * is half a screen away still becomes reachable within one gesture. Two bar
+ * widths of slack is not enough: a fast horizontal flick covers more than that
+ * between two frames, and the clip the user is reaching for would flicker out
+ * of the DOM and back.
+ */
+const VIEWPORT_OVERSCAN_BARS = 12;
+/**
  * Transient times (sec) per audio buffer for the warp-pin magnet. Module
  * scope: detection is async (worker for long samples) and outlives renders.
  * A placement miss simply stays un-snapped and kicks off detection, so the
@@ -370,6 +380,33 @@ export function ArrangementPanel() {
   const zoomRef = useRef(1);
   const zoomAnchorRef = useRef<{ tick: number; cursorX: number } | null>(null);
   zoomRef.current = zoom;
+  /**
+   * The bar range the lane is actually showing. `null` means "never measured"
+   * and renders the whole song — the safe direction, because an unmeasured
+   * window must never mean "nothing renders".
+   *
+   * The range is QUANTIZED to whole bars on purpose. `scrollLeft` changes on
+   * every pixel of a wheel event, and storing the raw value would re-render the
+   * panel at pixel frequency — trading an O(n) render for an O(1) one plus a
+   * re-render per pixel. Storing the integer bar bounds means at most one
+   * render per bar of travel.
+   */
+  const [viewport, setViewport] = useState<{ firstBar: number; lastBar: number } | null>(null);
+  const measureViewport = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const width = el.clientWidth;
+    // No layout (jsdom, or a hidden panel) — keep whatever we already had
+    // rather than collapsing the window to "nothing is visible".
+    if (width <= 0) return;
+    const pxPerBar = BASE_BAR_WIDTH * zoomRef.current;
+    if (pxPerBar <= 0) return;
+    const first = Math.floor(el.scrollLeft / pxPerBar) - VIEWPORT_OVERSCAN_BARS;
+    const last = Math.ceil((el.scrollLeft + width) / pxPerBar) + VIEWPORT_OVERSCAN_BARS;
+    setViewport((prev) =>
+      prev && prev.firstBar === first && prev.lastBar === last ? prev : { firstBar: first, lastBar: last },
+    );
+  }, []);
   const [showSkeletonPreview, setShowSkeletonPreview] = useState(false);
   const [transitionBoundary, setTransitionBoundary] = useState<TransitionBoundary | null>(null);
   const [transitionDraft, setTransitionDraft] = useState<TransitionDraft>({
@@ -701,6 +738,16 @@ export function ArrangementPanel() {
     el.scrollLeft = Math.max(0, (anchor.tick / BAR_TICKS) * (BASE_BAR_WIDTH * zoom) - anchor.cursorX);
     zoomAnchorRef.current = null;
   }, [zoom]);
+
+  // Re-measure the window on mount and after every zoom. Declared AFTER the
+  // re-anchor effect on purpose: effects run in declaration order, so this one
+  // sees the scrollLeft that zoom just set instead of the pre-zoom value.
+  // Assigning scrollLeft fires a scroll event in the browser, which would
+  // eventually correct the window anyway — but relying on that is how a zoom
+  // ends up one render behind.
+  useEffect(() => {
+    measureViewport();
+  }, [measureViewport, zoom]);
 
   // Actionable delete toast — dismisses itself; UNDO stays available while shown.
   useEffect(() => {
@@ -1466,6 +1513,85 @@ export function ArrangementPanel() {
     ...clips.map((clip) => clip.startBar + clip.lengthBars + 4),
     ...audioClips.map((c) => c.startBar + c.lengthBars + 4),
   );
+
+  /**
+   * VIEWPORT WINDOWING.
+   *
+   * The lane used to map EVERY clip on every render, plus one grid div per bar.
+   * Measured cost: O(n) nodes per React commit, and the panel commits on every
+   * pointermove, so a 200-clip song reconciled hundreds of nodes per mouse move
+   * while audio played. The audio map was worse — `compSourceTakeNumber` rebuilds
+   * a Set over all audio clips and `arrangementSecondsBetweenTicks` walks
+   * `clips`, so its outer loop was O(n²).
+   *
+   * Both lists are sorted by startBar (see the memos above), which is what makes
+   * this cheap: the time window maps to a CONTIGUOUS index range and the scan
+   * stops at `lastBar`.
+   *
+   * Two things this deliberately does NOT do:
+   *
+   * - It does not touch the `.arr-role-flow` strip, which also maps `clips`. That
+   *   widget is an ordered A → B → C section flow in a container with its own
+   *   `overflow-x`, positioned in document order and unrelated to `barWidth`.
+   *   Culling it by bar range would delete the arrows that are its entire point.
+   *
+   * - It never lets the window drop a clip a live gesture owns. The element a
+   *   pointer is captured on unmounting mid-drag is the failure this whole change
+   *   would otherwise introduce: `usePointerDragGuard` covers undo/collab deletes
+   *   today, but scrolling and dragging are now a far more common cause.
+   *
+   * Entries keep their ORIGINAL index because `clips[index + 1]` renders the
+   * transition mark to the next section — resolved against the full list, not the
+   * window, or the last visible clip silently loses its "+" button.
+   */
+  const windowed = useMemo(() => {
+    const forced = new Set<string>();
+    const sceneDrag = dragRef.current;
+    if (sceneDrag?.clipId) forced.add(sceneDrag.clipId);
+    if (sceneDrag?.movingIds) for (const id of sceneDrag.movingIds) forced.add(id);
+    const audioDrag = audioDragRef.current;
+    // Audio gestures are single-clip (no `movingIds` on this ref), so `clipId`
+    // is the whole forced set on the audio side.
+    if (audioDrag?.clipId) forced.add(audioDrag.clipId);
+
+    const pick = <T extends { id: string; startBar: number; lengthBars: number }>(
+      list: readonly T[],
+    ): { clip: T; index: number }[] => {
+      if (!viewport) return list.map((clip, index) => ({ clip, index }));
+      const out: { clip: T; index: number }[] = [];
+      const taken = new Set<number>();
+      for (let i = 0; i < list.length; i++) {
+        const clip = list[i]!;
+        if (clip.startBar > viewport.lastBar) break; // sorted by startBar
+        if (clip.startBar + clip.lengthBars >= viewport.firstBar) {
+          out.push({ clip, index: i });
+          taken.add(i);
+        }
+      }
+      for (let i = 0; i < list.length; i++) {
+        const clip = list[i]!;
+        if (!taken.has(i) && forced.has(clip.id)) out.push({ clip, index: i });
+      }
+      return out.sort((a, b) => a.index - b.index);
+    };
+
+    return { clips: pick(clips), audioClips: pick(audioClips) };
+    // The drag refs are read, not tracked: `drag` / `multiDrag` are the state
+    // that changes during a gesture, and both force a recompute anyway.
+  }, [clips, audioClips, viewport, drag, multiDrag]);
+  const visibleClips = windowed.clips;
+  const visibleAudioClips = windowed.audioClips;
+
+  /** Grid cells for the visible bars only — one div per bar was O(totalBars). */
+  const visibleBarIndices = useMemo(() => {
+    if (!viewport) return null;
+    const first = Math.max(0, viewport.firstBar);
+    const last = Math.min(totalBars, viewport.lastBar + 1);
+    const out: number[] = [];
+    for (let bar = first; bar < last; bar++) out.push(bar);
+    return out;
+  }, [viewport, totalBars]);
+
   const selectedScene = scenes.find((scene) => scene.id === selectedSceneId) ?? scenes[0];
   const selectedClip = clips.find((clip) => clip.id === selectedClipId);
   const selectedClipScene = selectedClip ? scenes.find((scene) => scene.id === selectedClip.sceneId) : undefined;
@@ -3555,7 +3681,7 @@ export function ArrangementPanel() {
               </div>
             );
           })()}
-        <div className="arr-lane-scroll" ref={scrollRef}>
+        <div className="arr-lane-scroll" ref={scrollRef} onScroll={measureViewport}>
           <div
             className="arr-ruler"
             style={{ width: totalBars * barWidth }}
@@ -3812,14 +3938,14 @@ export function ArrangementPanel() {
                 }}
               />
             )}
-            {Array.from({ length: totalBars }, (_, index) => (
+            {(visibleBarIndices ?? Array.from({ length: totalBars }, (_, index) => index)).map((index) => (
               <div
                 key={index}
                 className={`arr-bar-grid${index % 4 === 0 ? " bar-strong" : ""}`}
                 style={{ left: index * barWidth }}
               />
             ))}
-            {clips.map((clip, index) => {
+            {visibleClips.map(({ clip, index }) => {
               const scene = scenes.find((candidate) => candidate.id === clip.sceneId);
               const role = scene ? (sceneRoleOf(scene) ?? "custom") : "custom";
               const isDragging = dragRef.current?.clipId === clip.id && drag !== null;
@@ -3926,7 +4052,7 @@ export function ArrangementPanel() {
                 </div>
               );
             })}
-            {audioClips.map((clip) => {
+            {visibleAudioClips.map(({ clip }) => {
               const isDragging = audioDragRef.current?.clipId === clip.id && audioDrag !== null;
               const startBar = isDragging ? audioDrag.startBar : clip.startBar;
               const lengthBars = isDragging ? audioDrag.lengthBars : clip.lengthBars;

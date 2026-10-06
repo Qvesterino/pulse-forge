@@ -49,20 +49,31 @@ export function addEffectWithLandingCommand(
   insertAt?: number,
 ): Command & { readonly effectId: string } {
   const add = addEffect(doc, trackId, type, insertAt);
-  let next = add.execute(doc);
   const def = EFFECT_META[type];
-  for (const [paramId, value] of Object.entries(landing)) {
-    const param = def.params.find((pd) => pd.id === paramId);
-    if (!param) continue;
-    const clamped = Math.max(param.min, Math.min(param.max, value));
-    next = setEffectParam(next, trackId, add.effectId, paramId, clamped).execute(next);
-  }
+  // Audit 17: the landing fold runs LAZILY, against whatever doc the store
+  // hands the command. It used to be computed here, once, over the captured
+  // `doc`, and returned pinned (`execute: () => next`) — which silently
+  // reverted every change that landed between this render and the click
+  // (a remote collab edit, a second handler in the same tick). `addEffect`
+  // already pins the effect id at construction, which is what undo/redo
+  // needs; only the BASE has to come from the argument. Sibling commands
+  // document this exact hazard at groove.ts:178 and project.ts:287.
+  const applyLanding = (d: ProjectDocument): ProjectDocument => {
+    let next = add.execute(d);
+    for (const [paramId, value] of Object.entries(landing)) {
+      const param = def.params.find((pd) => pd.id === paramId);
+      if (!param) continue;
+      const clamped = Math.max(param.min, Math.min(param.max, value));
+      next = setEffectParam(next, trackId, add.effectId, paramId, clamped).execute(next);
+    }
+    return next;
+  };
   return {
     type: "addEffect",
     label: `${add.label} (tuned)`,
     effectId: add.effectId,
-    execute: () => next,
-    undo: () => doc,
+    execute: (d) => applyLanding(d),
+    undo: (d) => add.undo(d),
     // No applyToYDoc fast path: without it YDocStore falls back to the
     // generic whole-document diff, which is correct for add+fold.
   };

@@ -76,7 +76,7 @@ describe("DiceContext", () => {
     spy.mockRestore();
   });
 
-  it("gates the heavy preview on `active` — inactive providers skip generation", () => {
+  it("gates the heavy preview on `active` - inactive providers skip generation", async () => {
     // The provider is always mounted in App: with the panel closed it must
     // not run the generation pipeline on every doc change (the freeze bug).
     function PreviewProbe() {

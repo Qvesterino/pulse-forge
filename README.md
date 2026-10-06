@@ -114,6 +114,7 @@ Each effect is a shared `EffectDefinition` → `EffectRuntime`; structural chain
 
 ### Mixer and master chain
 
+- **Mastering guide** — the standalone [Slovak KYX mastering manual](docs/MASTERING.md) explains the master strip, ZENIT and related effects, meter readings, export checks and MCP platform profiles.
 - **Channel strips per track** — rename, volume, pan, mute, solo, delete, real peak meters (AnalyserNode per track + return + master), per-track send knobs to returns, return strips, master strip.
 - **Returns (send/return buses)** — two factory returns (Reverb, Delay) with real insert effect chains.
 - **Master chain** — `IN → soft-clipper → look-ahead limiter (worklet) → analyser`. The master strip exposes `IN`, `CEIL`, `LIMIT` and `CLIP`. Both processors are honest, bypassable, and the signal chain is identical between live playback and offline export.

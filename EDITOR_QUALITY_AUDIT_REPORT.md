@@ -543,6 +543,113 @@ Each is a real observation with the reason it was not auto-fixed.
 
 ---
 
+## D7 (P1, CONFIRMED) — the lane mounted the whole song on every render
+
+### Correction to the earlier finding, made during the fix
+
+The performance write-up named **three** clip maps. That was wrong, and it was
+wrong in a way that would have produced a regression if implemented as described.
+
+`ArrangementPanel.tsx:3474` maps `clips` into `.arr-role-flow`, but that widget is
+**not a timeline**. Its CSS is `display: flex; overflow-x: auto; gap: 3px`, it is
+positioned in document order with `→` arrows between sections, and nothing about
+it is a function of `barWidth`. Culling it by bar range would delete the arrows
+that are the entire point of the widget. It was left alone.
+
+There are **two** timeline maps, plus a third thing nobody had counted.
+
+### Root cause
+
+Three O(n)-or-worse render paths, all re-running on every React commit — and the
+panel commits on every `pointermove`:
+
+| Site                                | Pre-fix      | What it is                      |
+| ----------------------------------- | ------------ | ------------------------------- |
+| `clips.map` (scene lane)            | O(n)         | timeline                        |
+| `audioClips.map` (audio lane)       | **O(n²)**    | timeline                        |
+| `Array.from({ length: totalBars })` | O(totalBars) | bar grid — previously uncounted |
+
+The audio map is quadratic because `compSourceTakeNumber` rebuilds a `Set` over
+every audio clip per clip, and `arrangementSecondsBetweenTicks` walks `clips`.
+Windowing the outer loop collapses both.
+
+The bar grid was the surprise: one absolutely-positioned `<div>` per bar, with no
+interaction attached whatsoever.
+
+### Measured (before → after), 800 px viewport
+
+| Song      | `.arr-clip` before | after  | `.arr-bar-grid` before | after  |
+| --------- | ------------------ | ------ | ---------------------- | ------ |
+| 50 clips  | 50                 | **10** | 200                    | **40** |
+| 200 clips | 200                | **10** | 800                    | **40** |
+| 800 clips | 800                | **10** | 3200                   | **40** |
+
+Rendered nodes are now **constant in song length**. Before, the count grew linearly
+and the commit cost with it.
+
+### Design decisions that are load-bearing
+
+- **The window is quantized to whole bars.** Storing raw `scrollLeft` would re-render
+  at pixel frequency — trading an O(n) render for an O(1) one plus a render per pixel.
+  Whole-bar bounds mean at most one render per bar of travel.
+- **`null` window means "render everything"**, never "render nothing". A viewport
+  that cannot be measured (jsdom, hidden panel) keeps the last window instead of
+  collapsing to an empty lane.
+- **The measure effect is declared after the zoom re-anchor effect** so it sees the
+  `scrollLeft` zoom just set, not the pre-zoom value.
+- **Entries keep their ORIGINAL index**, because `clips[index + 1]` renders the
+  transition mark to the next section. Resolving it against the window instead of the
+  full list would silently strip the `+` button from the last visible clip.
+
+### The bug the fix would have introduced, and the falsification that caught it
+
+A naive window drops the clip being dragged the moment it leaves the window. The
+element the pointer is captured on then unmounts and **the commit is silently lost**
+— no error, no move.
+
+Disabling the forced-inclusion union (`forced`) and re-running produced
+`expected 0 to be greater than 10`: the dragged clip stayed at bar 0. That is the
+falsification, and it is what proves the guard is load-bearing rather than
+decoration.
+
+Note what did _not_ catch it: the clip **count** assertion stayed green, because the
+window still holds other clips. Only the committed position of the dragged clip by
+id exposes it. `arrangement.clips[0]` does not work for this — the move command
+re-sorts the array, so index 0 is a different clip after any drag that passes the
+first neighbour.
+
+### A fixture that would have produced a fake defect
+
+The first version of the test packed a clip onto **every bar**. No drag committed:
+every move collided with its neighbour and the command refused. Read naively that is
+"dragging is broken". It was a property of the fixture, not the product — with
+gaps every 4th bar the same gesture commits normally (bar 0 → bar 7).
+
+The fixture now uses spacing, and the reason is recorded in the test file so the next
+person does not rediscover it as a product bug.
+
+### New test
+
+`tests/ui/arrangement-viewport-windowing.test.tsx` — 5 tests: a positive control on
+the document (300 clips really present), bounded clip count, bounded grid count,
+window follows scroll, and the drag-owns-its-clip guard.
+
+---
+
+## Pre-existing defect found and fixed en route
+
+`tests/ui/DiceContext.test.tsx` could not be parsed. Commit `ccdf108d`
+("perf(bundle): F2 eager diet") inserted `await waitFor(...)` into a non-async `it`
+callback, so esbuild failed the whole file.
+
+**None of its tests were running** — they were not failing, they were absent, and
+vitest reported a suite-level transform error rather than six reds. Fixed by making
+that callback `async`; the file now runs **6 tests, all passing**. A test file that
+cannot parse is worse than a red one: it looks like a broken suite instead of
+silently-absent coverage.
+
+---
+
 ## Gates
 
 | Gate                                                              | Result                                                                                                                           |
