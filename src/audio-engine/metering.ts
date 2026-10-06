@@ -238,8 +238,7 @@ export function evaluateMasterVerdict(
     deliveryProfile?.maxTruePeakDb ?? ceilingDb,
   );
   const checks = result.checks;
-  const level: MasterVerdict["level"] =
-    result.status === "fail" ? "bad" : result.status === "warn" ? "warn" : "ok";
+  const level: MasterVerdict["level"] = result.status === "fail" ? "bad" : result.status === "warn" ? "warn" : "ok";
   const peakCheck = checks.find((check) => check.line.startsWith("true peak "));
   const failedPeak = peakCheck?.status === "fail";
   const phaseIssue = checks.some((check) => check.status === "fail" && check.line.startsWith("Phase issues"));

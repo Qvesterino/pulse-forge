@@ -4942,8 +4942,7 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
     const profile = {
       ...baseProfile,
       targetLufs: typeof record.targetLufs === "number" ? record.targetLufs : baseProfile.targetLufs,
-      maxTruePeakDb:
-        typeof record.targetTruePeakDb === "number" ? record.targetTruePeakDb : baseProfile.maxTruePeakDb,
+      maxTruePeakDb: typeof record.targetTruePeakDb === "number" ? record.targetTruePeakDb : baseProfile.maxTruePeakDb,
     };
     const targetLufs = profile.targetLufs;
     const readMeter = () => {
@@ -4974,7 +4973,10 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
       };
     }
     if (first.lufs == null) {
-      return { text: "land needs measurable LUFS-I (play the full song or use op:platform to read available checks)", mutated: false };
+      return {
+        text: "land needs measurable LUFS-I (play the full song or use op:platform to read available checks)",
+        mutated: false,
+      };
     }
     // op:land — bounded closed loop on the MASTER loudness trim. Each
     // iteration APPLIES the trim through the command layer (the engine syncs
@@ -5048,10 +5050,12 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
       targetLufs:
         typeof record.targetLufs === "number"
           ? record.targetLufs
-          : (profileFor(typeof record.profile === "string" ? record.profile : doc.master.deliveryProfileId) ??
+          : (
+              profileFor(typeof record.profile === "string" ? record.profile : doc.master.deliveryProfileId) ??
               (record.profile === "custom" || doc.master.deliveryProfileId === "custom"
                 ? resolveDeliveryTarget(doc.master)
-                : null))?.targetLufs,
+                : null)
+            )?.targetLufs,
     });
     if (plan.length === 0) return { text: "assist found nothing to change", mutated: false };
 

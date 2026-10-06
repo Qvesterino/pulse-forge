@@ -57,19 +57,17 @@ type DiceHeavy = {
 const diceHeavy: { current: DiceHeavy | null } = { current: null };
 function loadDiceHeavy(): Promise<DiceHeavy> {
   if (diceHeavy.current) return Promise.resolve(diceHeavy.current);
-  return Promise.all([
-    import("../intent/pipeline"),
-    import("../intent/quality"),
-    import("../ai/generator"),
-  ]).then(([pipeline, quality, generator]) => {
-    diceHeavy.current = {
-      generateLocalResultFromOptions: pipeline.generateLocalResultFromOptions,
-      refreshPatternOutputHash: quality.refreshPatternOutputHash,
-      resolveGrooveForGeneration: generator.resolveGrooveForGeneration,
-      generatePattern: generator.generatePattern,
-    };
-    return diceHeavy.current;
-  });
+  return Promise.all([import("../intent/pipeline"), import("../intent/quality"), import("../ai/generator")]).then(
+    ([pipeline, quality, generator]) => {
+      diceHeavy.current = {
+        generateLocalResultFromOptions: pipeline.generateLocalResultFromOptions,
+        refreshPatternOutputHash: quality.refreshPatternOutputHash,
+        resolveGrooveForGeneration: generator.resolveGrooveForGeneration,
+        generatePattern: generator.generatePattern,
+      };
+      return diceHeavy.current;
+    },
+  );
 }
 
 export interface DicePreview {
@@ -407,7 +405,10 @@ export function DiceProvider({
             return null;
           }
         })();
-        const locked = diceHeavy.current!.refreshPatternOutputHash(doc, applyDiceLocks(prev, result.proposal.pattern, session.locks, doc));
+        const locked = diceHeavy.current!.refreshPatternOutputHash(
+          doc,
+          applyDiceLocks(prev, result.proposal.pattern, session.locks, doc),
+        );
         result.proposal.pattern = locked;
       }
       const pat = result.proposal?.pattern;

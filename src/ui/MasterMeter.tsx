@@ -8,12 +8,7 @@ import { LoudnessHistory } from "./LoudnessHistory";
 import { SpectrumAnalyzer } from "./SpectrumAnalyzer";
 import { Spectrogram } from "./Spectrogram";
 import { setMasterConfig } from "../commands/commands";
-import {
-  MASTER_PROFILES,
-  profileFor,
-  resolveDeliveryTarget,
-  type MasterProfileId,
-} from "../mastering/profiles";
+import { MASTER_PROFILES, profileFor, resolveDeliveryTarget, type MasterProfileId } from "../mastering/profiles";
 
 interface ReadState {
   left: ChannelLevels;

@@ -1,4 +1,10 @@
-import { MASTER_EFFECT_OWNER_ID, type EffectInstance, type Marker, type Pattern, type ProjectDocument } from "../project-model/types";
+import {
+  MASTER_EFFECT_OWNER_ID,
+  type EffectInstance,
+  type Marker,
+  type Pattern,
+  type ProjectDocument,
+} from "../project-model/types";
 import { BAR_TICKS, STEP_TICKS } from "../project-model/types";
 
 /**
