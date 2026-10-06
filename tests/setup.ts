@@ -28,7 +28,10 @@ if (typeof HTMLElement !== "undefined") {
 // (AGENTS.md gotcha), which has no meaning for a fake URL.
 if (typeof URL !== "undefined" && typeof URL.createObjectURL !== "function") {
   let blobCounter = 0;
-  URL.createObjectURL = (obj: Blob | MediaSource) => `blob:jsdom-${++blobCounter}-${obj?.size ?? 0}`;
+  URL.createObjectURL = (obj: Blob | MediaSource) => {
+    const size = "size" in obj && typeof obj.size === "number" ? obj.size : 0;
+    return `blob:jsdom-${++blobCounter}-${size}`;
+  };
   URL.revokeObjectURL = () => {};
 }
 
