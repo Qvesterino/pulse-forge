@@ -20,11 +20,13 @@ type CollabServer = ReturnType<typeof createCollabServer>;
 
 const opened: CollabServer[] = [];
 
-async function boot(): Promise<{ base: string; collab: CollabServer; battlesFile: string }> {
+async function boot(
+  options: Record<string, unknown> = {},
+): Promise<{ base: string; collab: CollabServer; battlesFile: string }> {
   const dir = mkdtempSync(join(tmpdir(), "pf-battles-"));
   const galleryFile = join(dir, "gallery.json");
   const battlesFile = join(dir, "gallery-battles.json");
-  const collab = createCollabServer({ galleryFile, battlesFile });
+  const collab = createCollabServer({ galleryFile, battlesFile, ...options });
   await new Promise<void>((resolve) => collab.server.listen(0, "127.0.0.1", resolve));
   opened.push(collab);
   const { port } = collab.server.address() as AddressInfo;
@@ -95,6 +97,83 @@ describe("gallery battles — Elo-ordered feed", () => {
     const weird = await (await fetch(`${base}/api/gallery?sort=chaos`)).json();
     expect((weird as { sort?: string }).sort).toBe("new");
     void fresh;
+  });
+});
+
+describe("gallery battles — Elo integrity (no-auth abuse controls)", () => {
+  it("damps repeated ballots from one address: the Nth vote moves Elo less", async () => {
+    const { base } = await boot();
+    // Every test request arrives from 127.0.0.1, so votes 2..n share the
+    // first vote's damping window by construction.
+    const one = await publish(base, "Damp A");
+    const two = await publish(base, "Damp B");
+    const three = await publish(base, "Damp C");
+    const four = await publish(base, "Damp D");
+
+    const first = await vote(base, one.id, two.id, "a", "damp-1");
+    const second = await vote(base, three.id, four.id, "a", "damp-2");
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    const eloA = (first.body as { ratings: { a: { elo: number } } }).ratings.a.elo;
+    const eloC = (second.body as { ratings: { a: { elo: number } } }).ratings.a.elo;
+    const delta1 = eloA - 1000;
+    const delta2 = eloC - 1000;
+    expect(delta1).toBeGreaterThan(0);
+    // Same winner, same starting Elo — the second ballot from this address
+    // must move the rating strictly less (sqrt damping, floor 0.15).
+    expect(delta2).toBeLessThan(delta1);
+    expect(delta2).toBeGreaterThan(0); // damped, not silenced
+  });
+
+  it("caps one session at the hourly battle budget with 429", async () => {
+    // The per-IP vote pacing is raised here: this suite exercises the
+    // SESSION cap (60/hour), not the pacing limiter.
+    const { base } = await boot({ rateLimits: { post: 300, vote: 300 } });
+    const beats: Array<{ id: string }> = [];
+    for (let i = 0; i < 13; i++) beats.push(await publish(base, `Cap Beat ${i}`));
+    // 13 beats -> 78 distinct pairs; vote 60 pairs from ONE session.
+    const pairs: Array<[string, string]> = [];
+    for (let i = 0; i < beats.length && pairs.length < 60; i++) {
+      for (let j = i + 1; j < beats.length && pairs.length < 60; j++) {
+        pairs.push([beats[i]!.id, beats[j]!.id]);
+      }
+    }
+    expect(pairs.length).toBe(60);
+    for (const [a, b] of pairs) {
+      const res = await vote(base, a, b, "a", "cap-session");
+      expect(res.status).toBe(201);
+    }
+    // Vote 61 from the same session — a fresh pair is impossible (all 78
+    // pairs remain unused? no: 60 used of 78, so pick an unused one).
+    const unused: Array<[string, string]> = [];
+    for (let i = 0; i < beats.length && unused.length < 1; i++) {
+      for (let j = i + 1; j < beats.length && unused.length < 1; j++) {
+        const key = [beats[i]!.id, beats[j]!.id].sort().join("|");
+        const used = pairs.some(([a, b]) => [a, b].sort().join("|") === key);
+        if (!used) unused.push([beats[i]!.id, beats[j]!.id]);
+      }
+    }
+    const last = await vote(base, unused[0]![0], unused[0]![1], "a", "cap-session");
+    expect(last.status).toBe(429);
+    // A DIFFERENT session is untouched by the cap.
+    const other = await vote(base, unused[0]![0], unused[0]![1], "a", "cap-other-session");
+    expect(other.status).toBe(201);
+  });
+
+  it("exports the applied Elo weight so training can weight pairs honestly", async () => {
+    const { base } = await boot();
+    const one = await publish(base, "Weight A");
+    const two = await publish(base, "Weight B");
+    const three = await publish(base, "Weight C");
+    const four = await publish(base, "Weight D");
+    await vote(base, one.id, two.id, "a", "w-1");
+    await vote(base, three.id, four.id, "a", "w-2");
+    const res = await fetch(`${base}/api/gallery/battles/export`);
+    const body = (await res.json()) as { votes: Array<{ weight: number }> };
+    expect(body.votes).toHaveLength(2);
+    expect(body.votes[0]!.weight).toBe(1); // first ballot from the address: full weight
+    expect(body.votes[1]!.weight).toBeGreaterThan(0.15);
+    expect(body.votes[1]!.weight).toBeLessThan(1); // second ballot: damped
   });
 });
 

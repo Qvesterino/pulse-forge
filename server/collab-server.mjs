@@ -129,6 +129,12 @@ const REPORTS_MAX = 2_000;
 /** Sliding window: max posts per IP per minute (spam guard, not auth). */
 const POST_WINDOW_MS = 60_000;
 const POST_WINDOW_LIMIT = 10;
+// Votes get their own, looser budget — judging battles IS the product loop
+// (a keen human clears ~10 in a minute) and it must not compete with the
+// upload anti-spam budget. The Elo damping + session cap above remain the
+// integrity layer; this is just pacing.
+const VOTE_WINDOW_MS = 60_000;
+const VOTE_WINDOW_LIMIT = 30;
 const REPORT_WINDOW_LIMIT = 5;
 const DELETE_WINDOW_LIMIT = 10;
 const RATE_LIMIT_MAX_KEYS = 4_096;
@@ -451,13 +457,29 @@ const BATTLES_ELO_BASE = 1000;
 const BATTLES_ELO_K = 32;
 const BATTLES_SESSION_MAX = 64;
 const BATTLES_WINNERS = new Set(["a", "b", "tie", "both_bad"]);
+// Elo integrity (no auth exists): ballots from the same IP inside a 24 h
+// window are damped — the Nth vote counts at 1/sqrt(N) weight (floored at
+// 0.15). A real human casting a handful of votes loses almost nothing; a
+// ballot stuffing run from one address has to fight square-root decay. The
+// weights ride the vote log so the training export can weight honestly too.
+const BATTLES_IP_WINDOW_MS = 24 * 60 * 60 * 1000;
+const BATTLES_IP_WEIGHT_FLOOR = 0.15;
+const BATTLES_IP_MAX_KEYS = 5_000;
+// One session can judge at most this many battles per rolling hour — a
+// blind listen takes ~20-30 s, so the cap is far above human pace while
+// bounding scripted voting even across rotating sessions per IP.
+const BATTLES_SESSION_HOURLY_CAP = 60;
+const BATTLES_SESSION_WINDOW_MS = 60 * 60 * 1000;
+const BATTLES_SESSION_MAX_KEYS = 5_000;
 
 /**
  * One Elo step (arena rules): score 1 / 0 / 0.5 per side for a / b / tie.
  * "both_bad" mutates no ratings — it is logged only, as negative signal for
- * the training export rather than a ranking event.
+ * the training export rather than a ranking event. `weight` scales the step
+ * (IP damping): the first vote from an address moves Elo fully, repeated
+ * ballots from the same address move it progressively less.
  */
-function eloStep(ra, rb, winner) {
+function eloStep(ra, rb, winner, weight = 1) {
   let sa = 0.5;
   let sb = 0.5;
   if (winner === "a") {
@@ -469,9 +491,10 @@ function eloStep(ra, rb, winner) {
   }
   const ea = 1 / (1 + 10 ** ((rb - ra) / 400));
   const eb = 1 - ea;
+  const k = BATTLES_ELO_K * Math.max(BATTLES_IP_WEIGHT_FLOOR, Math.min(1, weight));
   return {
-    a: ra + BATTLES_ELO_K * (sa - ea),
-    b: rb + BATTLES_ELO_K * (sb - eb),
+    a: ra + k * (sa - ea),
+    b: rb + k * (sb - eb),
   };
 }
 
@@ -494,6 +517,10 @@ class BattleStore {
     this.ratings = new Map();
     /** @type {Map<string, Set<string>>} session → unordered pair keys already voted on */
     this.voted = new Map();
+    /** @type {Map<string, number[]>} ip → vote timestamps inside the 24 h damping window (in-memory abuse control) */
+    this.ipVotes = new Map();
+    /** @type {Map<string, number[]>} session → vote timestamps inside the rolling hour (in-memory abuse control) */
+    this.sessionVotes = new Map();
     try {
       if (existsSync(filePath)) {
         const parsed = JSON.parse(readFileSync(filePath, "utf-8"));
@@ -545,7 +572,7 @@ class BattleStore {
    * RESPONSE — the pair endpoint never carries them, so blindness is
    * server-side, not a client-side convention.
    */
-  vote(a, b, winner, session) {
+  vote(a, b, winner, session, ip = "unknown") {
     const itemA = this.gallery.items.find((item) => item.id === a);
     const itemB = this.gallery.items.find((item) => item.id === b);
     if (!itemA || !itemB) return { error: "unknown beat" };
@@ -560,10 +587,47 @@ class BattleStore {
     seen.add(key);
     this.voted.set(session, seen);
 
+    // Rolling-hour session cap — bounds scripted voting even with rotating
+    // sessions (the IP damping below still applies on top).
+    const now = Date.now();
+    const sessionRecent = (this.sessionVotes.get(session) ?? []).filter((t) => now - t < BATTLES_SESSION_WINDOW_MS);
+    if (sessionRecent.length >= BATTLES_SESSION_HOURLY_CAP) {
+      this.sessionVotes.set(session, sessionRecent);
+      return { error: "session battle cap reached for this hour — come back later", rateLimited: true };
+    }
+    sessionRecent.push(now);
+    this.sessionVotes.set(session, sessionRecent);
+    if (!this.sessionVotes.has(session) && this.sessionVotes.size >= BATTLES_SESSION_MAX_KEYS) {
+      for (const [key2, stamps] of this.sessionVotes) {
+        if (stamps.every((t) => now - t >= BATTLES_SESSION_WINDOW_MS)) this.sessionVotes.delete(key2);
+      }
+      if (this.sessionVotes.size >= BATTLES_SESSION_MAX_KEYS) {
+        const oldest = this.sessionVotes.keys().next().value;
+        if (oldest !== undefined) this.sessionVotes.delete(oldest);
+      }
+    }
+
+    // IP damping: the Nth ballot from one address inside 24 h moves Elo at
+    // 1/sqrt(N) weight. Counted BEFORE this vote, so the first vote from an
+    // address always carries full weight.
+    const ipRecent = (this.ipVotes.get(ip) ?? []).filter((t) => now - t < BATTLES_IP_WINDOW_MS);
+    const weight = Math.max(BATTLES_IP_WEIGHT_FLOOR, 1 / Math.sqrt(ipRecent.length + 1));
+    ipRecent.push(now);
+    this.ipVotes.set(ip, ipRecent);
+    if (!this.ipVotes.has(ip) && this.ipVotes.size >= BATTLES_IP_MAX_KEYS) {
+      for (const [key2, stamps] of this.ipVotes) {
+        if (stamps.every((t) => now - t >= BATTLES_IP_WINDOW_MS)) this.ipVotes.delete(key2);
+      }
+      if (this.ipVotes.size >= BATTLES_IP_MAX_KEYS) {
+        const oldest = this.ipVotes.keys().next().value;
+        if (oldest !== undefined) this.ipVotes.delete(oldest);
+      }
+    }
+
     const ra = { ...(this.ratings.get(a) ?? emptyRating()) };
     const rb = { ...(this.ratings.get(b) ?? emptyRating()) };
     if (winner !== "both_bad") {
-      const next = eloStep(ra.elo, rb.elo, winner);
+      const next = eloStep(ra.elo, rb.elo, winner, weight);
       ra.elo = next.a;
       rb.elo = next.b;
       if (winner === "a") {
@@ -589,6 +653,9 @@ class BattleStore {
       b,
       winner,
       session,
+      // Elo weight actually applied (IP damping) — the training export uses
+      // it to weight the preference pairs honestly.
+      weight: Math.round(weight * 1000) / 1000,
       createdAt: new Date().toISOString(),
     });
     if (this.votes.length > BATTLES_VOTES_MAX) this.votes.splice(0, this.votes.length - BATTLES_VOTES_MAX);
@@ -633,7 +700,13 @@ class BattleStore {
 
   /** The training log, without voter sessions — pairs and outcomes only. */
   exportVotes() {
-    return this.votes.map((vote) => ({ a: vote.a, b: vote.b, winner: vote.winner, createdAt: vote.createdAt }));
+    return this.votes.map((vote) => ({
+      a: vote.a,
+      b: vote.b,
+      winner: vote.winner,
+      weight: typeof vote.weight === "number" ? vote.weight : 1,
+      createdAt: vote.createdAt,
+    }));
   }
 
   save() {
@@ -789,6 +862,9 @@ export function createCollabServer({
   battlesFile = process.env.BATTLES_FILE ?? join(dirname(galleryFile ?? DEFAULT_GALLERY_FILE), "gallery-battles.json"),
   intakeFile = process.env.INTAKE_FILE ?? DEFAULT_INTAKE_FILE,
   collabLimits: collabLimitOverrides = {},
+  // Test seams (same shape the production env would configure): raise the
+  // per-IP pacing budgets for suites that exercise many posts/votes.
+  rateLimits: rateLimitOverrides = {},
   corsOrigins = process.env.CORS_ORIGIN ?? "*",
   adminToken: adminTokenOverride = process.env.GALLERY_ADMIN_TOKEN ?? "",
   enforceProductionConfig = process.env.NODE_ENV === "production",
@@ -807,7 +883,8 @@ export function createCollabServer({
   const gallery = new GalleryStore(galleryFile);
   const battles = new BattleStore(battlesFile ?? join(dirname(galleryFile), "gallery-battles.json"), gallery);
   const intake = new IntakeStore(intakeFile ?? DEFAULT_INTAKE_FILE);
-  const allowPost = makeRateLimiter();
+  const allowPost = makeRateLimiter(rateLimitOverrides.post ?? POST_WINDOW_LIMIT);
+  const allowVote = makeRateLimiter(rateLimitOverrides.vote ?? VOTE_WINDOW_LIMIT);
   // Play counters are much hotter than uploads — their own, looser window.
   const allowPlay = makeRateLimiter(60);
   const allowReport = makeRateLimiter(REPORT_WINDOW_LIMIT);
@@ -1075,13 +1152,17 @@ export function createCollabServer({
 
     if (req.method === "POST" && url.pathname === "/api/gallery/battles/vote") {
       const ip = req.socket.remoteAddress ?? "unknown";
-      if (!allowPost(ip)) {
+      if (!allowVote(ip)) {
         sendJson(res, 429, { error: "slow down — too many votes" });
         return;
       }
       void readJsonBody(req, 4_096).then(
         (parsed) => {
-          const result = battles.vote(parsed?.a, parsed?.b, parsed?.winner, parsed?.session);
+          const result = battles.vote(parsed?.a, parsed?.b, parsed?.winner, parsed?.session, ip);
+          if (result.rateLimited) {
+            sendJson(res, 429, { error: result.error });
+            return;
+          }
           if (result.duplicate) {
             sendJson(res, 409, { error: result.error });
             return;
