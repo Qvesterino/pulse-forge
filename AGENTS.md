@@ -153,18 +153,19 @@ These are the rules every coding agent must follow. They are encoded in `ARCHITE
 > parameter goes silently dead (audit 2026-09-27) and the QA obligations
 > that catch them.
 
-| Gate                      | Command                                | Expected result                                                                                                   |
-| ------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Strict typecheck          | `npm run typecheck`                    | EXIT 0 (clean `tsc --noEmit`)                                                                                     |
-| Full Vitest suite         | `npm run test`                         | See `docs/CURRENT-STATE.md` for the current file count; all tests pass, with intentional skips reported by Vitest |
-| Suite expectations ratchet | `npm run test:expectations`           | EXIT 0 — the failure set EXACTLY matches `suite-expectations.json` (new reds AND cured reds both fail; every entry needs owner + reason; `flaky: true` exempts both ways) |
-| Format check              | `npm run format:check`                 | `All matched files use Prettier code style!`                                                                      |
-| Real-browser audio        | `npm run test:browser`                 | all checks pass in Chromium, Firefox and Edge (historical baseline 226/226)                                       |
-| Factory preset QA         | `npm run test:browser:factory-presets` | all factory presets audible (298 today; the script enumerates dynamically)                                        |
-| Targeted plugin hardening | (per plugin, under `tests/`)           | PASS for PRISM, VLYX, VØID                                                                                        |
-| 300 s plugin soaks        | (per plugin, under `tests/`)           | heap growth ≤ 6 MB, drift ≤ 0.003 dB, zero non-finite samples                                                     |
-| Production build          | `npm run build`                        | exit 0, bundle budgets respected                                                                                  |
-| Vulnerability audit       | `npm audit --omit=dev`                 | 0 vulnerabilities                                                                                                 |
+| Gate                       | Command                                | Expected result                                                                                                                                                                                                                          |
+| -------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Strict typecheck           | `npm run typecheck`                    | EXIT 0 (clean `tsc --noEmit`)                                                                                                                                                                                                            |
+| Full Vitest suite          | `npm run test`                         | See `docs/CURRENT-STATE.md` for the current file count; all tests pass, with intentional skips reported by Vitest                                                                                                                        |
+| Suite expectations ratchet | `npm run test:expectations`            | EXIT 0 — the failure set EXACTLY matches `suite-expectations.json` (new reds AND cured reds both fail; every entry needs owner + reason; `flaky: true` exempts both ways)                                                                |
+| Derivable-artifact drift   | `npm run drift:check`                  | EXIT 0 — regenerated MCP mirrors, domain goldens and the CURRENT-STATE counts match HEAD (stale artifact = drift, exit 1; intentional changes go through `npm run drift:bless` + review; dirty-before paths are skipped, never restored) |
+| Format check               | `npm run format:check`                 | `All matched files use Prettier code style!`                                                                                                                                                                                             |
+| Real-browser audio         | `npm run test:browser`                 | all checks pass in Chromium, Firefox and Edge (historical baseline 226/226)                                                                                                                                                              |
+| Factory preset QA          | `npm run test:browser:factory-presets` | all factory presets audible (298 today; the script enumerates dynamically)                                                                                                                                                               |
+| Targeted plugin hardening  | (per plugin, under `tests/`)           | PASS for PRISM, VLYX, VØID                                                                                                                                                                                                               |
+| 300 s plugin soaks         | (per plugin, under `tests/`)           | heap growth ≤ 6 MB, drift ≤ 0.003 dB, zero non-finite samples                                                                                                                                                                            |
+| Production build           | `npm run build`                        | exit 0, bundle budgets respected                                                                                                                                                                                                         |
+| Vulnerability audit        | `npm audit --omit=dev`                 | 0 vulnerabilities                                                                                                                                                                                                                        |
 
 Owner gates still open (release-blocking, not feature-blocking): manual Firefox/Safari/iOS Safari smoke, `release:deployed-smoke` with a real `KYX_DEPLOY_URL`. See `RELEASE_READINESS_REPORT.md`.
 
@@ -219,6 +220,11 @@ npm run test:browser:factory-presets          # factory preset audio QA
 
 # Worklets (auto-run by predev/prebuild hooks)
 npm run build:core-worklets
+
+# Derivable artifacts (MCP mirrors, domain goldens, CURRENT-STATE counts)
+npm run drift:check                          # verify artifacts match their generators
+npm run drift:bless                          # regenerate in place for an intentional change
+
 npm run build:fxeq
 npm run build:ultina
 npm run build:ozvena
