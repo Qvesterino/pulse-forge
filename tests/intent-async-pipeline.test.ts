@@ -3,7 +3,7 @@ import { createDefaultProject, normalizeProject } from "../src/project-model/sch
 import { ProjectStore } from "../src/store/ProjectStore";
 import { canonicalizePattern, contentHash } from "../src/ai/evaluation";
 import { generateAsyncResult, generateLocalResult, resultForCandidate } from "../src/intent/pipeline";
-import { applyGenerationResultCommand } from "../src/commands/commands";
+import { applyGenerationResultCommand } from "../src/commands/aiPattern";
 import { resetRankerClient } from "../src/ai/ranking/ranker-client";
 import { localDeterministicProvider } from "../src/intent/providers/local";
 import * as soundRanking from "../src/intent/ranking-v3";

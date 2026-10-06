@@ -66,9 +66,6 @@ import {
   setEffectOutputTrimDb,
   addMarker,
   addArrangementClip,
-  applyExactIntentCommand,
-  applyGenerationResultCommand,
-  applyProductionIntentCommand,
   createDrumTrack,
   createInstrumentTrack,
   createScene,
@@ -109,6 +106,9 @@ import {
   updateAudioClip,
   addEffectToTracks,
 } from "../commands/commands";
+// F2 eager diet: intent graph loads with the MCP surface, not at boot.
+import { applyExactIntentCommand, applyProductionIntentCommand } from "../commands/intentRouting";
+import { applyGenerationResultCommand } from "../commands/aiPattern";
 import { isAutomationTargetValid, targetParamDef } from "../project-model/targets";
 import { clampEffectParam, EFFECT_META, type EffectDefinitionMeta } from "../effects/definitions";
 import { INSTRUMENT_DEFS } from "../instruments/registry";

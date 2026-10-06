@@ -23,10 +23,12 @@ import {
   addAutomationLane,
   addAutomationPoint,
   addEffect,
-  applyGenerationResultCommand,
   applyInstrumentPreset,
   setEffectParam,
 } from "./commands/commands";
+import {
+  applyGenerationResultCommand,
+} from "./commands/aiPattern";
 import { generateAsyncResult } from "./intent/pipeline";
 import { ProjectStore } from "./store/ProjectStore";
 import { PPQ } from "./project-model/types";

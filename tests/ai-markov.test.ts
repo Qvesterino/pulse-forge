@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultProject } from "../src/project-model/schema";
-import { generatePatternCommand } from "../src/commands/commands";
+import { generatePatternCommand } from "../src/commands/aiPattern";
 import { generatePattern, resolveGroove } from "../src/ai/generator";
 import { generateDrumPattern } from "../src/ai/drums";
 import { generateMelodicPattern } from "../src/ai/melodic";

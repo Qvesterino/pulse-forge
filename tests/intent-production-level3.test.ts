@@ -272,7 +272,7 @@ describe("notch concept (surgical EQ, plugin-audit follow-up)", () => {
 
   it("applies notch → eq free surgical band as deep notch on the named track", async () => {
     const { parseProductionIntent } = await import("../src/intent/production");
-    const { applyProductionIntentCommand } = await import("../src/commands/commands");
+    const { applyProductionIntentCommand } = await import("../src/commands/intentRouting");
     const { createProjectFromTemplate } = await import("../src/project-model/templates");
     const { ProjectStore } = await import("../src/store/ProjectStore");
     const doc = createProjectFromTemplate("house");

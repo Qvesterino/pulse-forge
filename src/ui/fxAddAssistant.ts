@@ -1,12 +1,10 @@
 import type { EffectType } from "../project-model/types";
 import type { ProjectDocument } from "../project-model/types";
 import type { Command } from "../commands/types";
-import {
-  addEffectWithLandingCommand,
-  applyProductionIntentToTrackCommand,
-  snapshot,
-  trackEffectsOf,
-} from "../commands/commands";
+import { addEffectWithLandingCommand, snapshot, trackEffectsOf } from "../commands/commands";
+// F2 eager diet: intent-surface commands import their home module directly —
+// the commands barrel no longer re-exports the intent graph (boot-path seam).
+import { applyProductionIntentToTrackCommand } from "../commands/intentRouting";
 import { applyEffectIntentProposal } from "../effect-intent/apply";
 import { planEffectIntent } from "../effect-intent/planner";
 import { EFFECT_INTENT_PILOT_TYPES, effectIntentMappingsForGoal } from "../effect-intent/capabilities";

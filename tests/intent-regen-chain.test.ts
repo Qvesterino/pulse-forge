@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { testDoc } from "./fixtures/doc";
 import { generateAsyncResult } from "../src/intent/pipeline";
 import { normalizeIntent } from "../src/intent/normalize";
-import { applyGenerationResultCommand } from "../src/commands/commands";
+import { applyGenerationResultCommand } from "../src/commands/aiPattern";
 import { encodeShareCode, decodeShareCode } from "../src/export/shareCode";
 import { intentSnapshotOfDoc, promptFromIntent, freshRegenSeed } from "../src/gallery/intentCarry";
 

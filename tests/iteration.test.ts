@@ -3,7 +3,7 @@ import { testDoc } from "./fixtures/doc";
 import { generateAsyncResult } from "../src/intent/pipeline";
 import { normalizeIntent } from "../src/intent/normalize";
 import { compileIteration } from "../src/intent/iteration";
-import { applyGenerationResultCommand } from "../src/commands/commands";
+import { applyGenerationResultCommand } from "../src/commands/aiPattern";
 import { rememberGeneration, lastGeneration, type SessionGeneration } from "../src/intent/session-context";
 import { contentHash, canonicalizePattern } from "../src/ai/evaluation";
 import { hashString } from "../src/shared/rng";

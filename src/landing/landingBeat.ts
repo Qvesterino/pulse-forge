@@ -17,7 +17,7 @@ import { createProjectFromTemplate, type TemplateId } from "../project-model/tem
 import { normalizeProject } from "../project-model/schema";
 import { parseIntentText } from "../intent/text-parser";
 import { generateAsyncResult } from "../intent/pipeline";
-import { applyGenerationResultCommand } from "../commands/commands";
+import { applyGenerationResultCommand } from "../commands/aiPattern";
 import { buildSong, applySongCommand, parseSongLength } from "../intent/song";
 import { planMixProfile, applyMixIntent } from "../intent/mix";
 

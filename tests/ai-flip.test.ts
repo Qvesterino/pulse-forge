@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { analyzeLoopForFlip, buildFlipOptions, flipSeed } from "../src/ai/flip";
 import { createDefaultProject } from "../src/project-model/schema";
 import { getDrumTrack } from "../src/project-model/types";
-import { generatePatternCommand, stealGrooveIntoPattern } from "../src/commands/commands";
+import { stealGrooveIntoPattern } from "../src/commands/commands";
+import { generatePatternCommand } from "../src/commands/aiPattern";
 
 const SR = 44100;
 

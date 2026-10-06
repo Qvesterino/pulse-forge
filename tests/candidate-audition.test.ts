@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { testDoc } from "./fixtures/doc";
 import { generateAsyncResult, resultForCandidate } from "../src/intent/pipeline";
 import { normalizeIntent } from "../src/intent/normalize";
-import { applyGenerationResultCommand } from "../src/commands/commands";
+import { applyGenerationResultCommand } from "../src/commands/aiPattern";
 import { getActivePattern } from "../src/project-model/types";
 
 // Stub the prior clients (deterministic drums, unavailable melodic → template

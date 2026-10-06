@@ -5,7 +5,7 @@ import { reviseSectionProduction } from "../src/intent/section-production";
 import { planSongForm, buildSong, applySongCommand, sectionFxChips } from "../src/intent/song";
 import { normalizeIntent } from "../src/intent/normalize";
 import { generateLocalResult } from "../src/intent/pipeline";
-import { applyGenerationResultWithFxCommand } from "../src/commands/commands";
+import { applyGenerationResultWithFxCommand } from "../src/commands/aiPattern";
 import { auditionDoc } from "../src/intent/audition";
 import type { ProductionIntent } from "../src/intent/production";
 import type { ProjectDocument, InstrumentTrack } from "../src/project-model/types";

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { routeIntentText } from "../src/intent/route";
-import { applyExactIntentCommand, applyProductionIntentCommand, exactReadback } from "../src/commands/commands";
+import { applyExactIntentCommand, applyProductionIntentCommand, exactReadback } from "../src/commands/intentRouting";
 import { applyCompoundIntent } from "../src/intent/compound";
 import { applyEffectIntent } from "../src/intent/mix";
 import { resolveProductionTargets } from "../src/intent/production";

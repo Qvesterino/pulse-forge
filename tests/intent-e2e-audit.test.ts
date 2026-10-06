@@ -17,20 +17,19 @@ import { applyPresetIntentCommand, parsePresetIntent, presetReadback } from "../
 import { effectReadback } from "../src/intent/mix";
 import { parseProductionIntent, productionReadback } from "../src/intent/production";
 import { parseExactIntent } from "../src/intent/exact";
-import { exactReadback } from "../src/commands/commands";
+import { exactReadback } from "../src/commands/intentRouting";
 import { resolveProductionTargets } from "../src/intent/production";
 import { normalizeIntent } from "../src/intent/normalize";
 import {
   addArrangementClip,
   addEffect,
-  applyExactIntentCommand,
-  applyProductionIntentCommand,
   createInstrumentTrack,
   createScene,
   setBpm,
   setEffectParam,
   setSceneRole,
 } from "../src/commands/commands";
+import { applyExactIntentCommand, applyProductionIntentCommand } from "../src/commands/intentRouting";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { testDoc, drumTrackOf } from "./fixtures/doc";
 import { createInstrumentTrackModel } from "../src/project-model/schema";

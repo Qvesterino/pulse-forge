@@ -4,7 +4,7 @@ import { generateLocalResult, generateAsyncResult, resultForCandidate } from "..
 import { parseIntentText } from "../src/intent/text-parser";
 import { normalizeIntent } from "../src/intent/normalize";
 import { intentHash } from "../src/intent/hash";
-import { applyGenerationResultCommand } from "../src/commands/commands";
+import { applyGenerationResultCommand } from "../src/commands/aiPattern";
 import { briefGateViolations } from "../src/intent/brief-gate";
 import { compileIteration } from "../src/intent/iteration";
 import { recommendLoudnessTrim } from "../src/intent/loudness";

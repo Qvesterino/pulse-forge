@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { parseProductionIntent, planProductionActions, resolveProductionTargets } from "../src/intent/production";
-import { applyProductionIntentCommand, applyProductionIntentToTrackCommand } from "../src/commands/commands";
+import { applyProductionIntentCommand, applyProductionIntentToTrackCommand } from "../src/commands/intentRouting";
 import type { ProjectDocument, InstrumentTrack } from "../src/project-model/types";
 
 /**

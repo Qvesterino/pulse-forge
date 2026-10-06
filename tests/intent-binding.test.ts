@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { generatePattern } from "../src/ai/generator";
 import { inspectPatternInvariants } from "../src/ai/invariants";
-import { generatePatternCommand } from "../src/commands/commands";
+import { generatePatternCommand } from "../src/commands/aiPattern";
 import { rankCandidateBank } from "../src/intent/candidate-bank";
 import { LocalDeterministicProvider } from "../src/intent/providers/local";
 import { generateLocalResult } from "../src/intent/pipeline";

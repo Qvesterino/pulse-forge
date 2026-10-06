@@ -1,5 +1,5 @@
 import { AudioEngine } from "../audio-engine/AudioEngine";
-import { curatedReadyWithin } from "../sample-library/curated";
+import { curatedReadyWithin } from "../sample-library/curated-layer";
 import { userSamplesReadyWithin } from "../persistence/UserSampleRepository";
 import type { SampleBank } from "../sample-library/factory";
 import type { AutomationPoint, Pattern, PlayMode, ProjectDocument } from "../project-model/types";

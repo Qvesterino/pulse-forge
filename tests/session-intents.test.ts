@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { routeIntentText } from "../src/intent/route";
 import { parseUndoIntent, parseQueryIntent } from "../src/intent/studio-words";
 import { parseExactIntent } from "../src/intent/exact";
-import { applyExactIntentCommand } from "../src/commands/commands";
+import { applyExactIntentCommand } from "../src/commands/intentRouting";
 import { ProjectStore } from "../src/store/ProjectStore";
 import { testDoc } from "./fixtures/doc";
 

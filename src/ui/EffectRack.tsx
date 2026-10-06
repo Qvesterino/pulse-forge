@@ -5,7 +5,8 @@ import { FxAddPopover } from "./FxAddPopover";
 import { FxIntentBar } from "./FxIntentBar";
 import { EmptyState, PanelHeader } from "./PanelChrome";
 import { parseProductionIntent } from "../intent/production";
-import { addEffectWithLandingCommand, applyProductionIntentToTrackCommand } from "../commands/commands";
+import { addEffectWithLandingCommand } from "../commands/commands";
+import { applyProductionIntentToTrackCommand } from "../commands/intentRouting";
 import { applyEffectIntentOnTrack } from "./fxAddAssistant";
 import { roleOfTrack, rolePresetFor } from "../effects/role-presets";
 import {

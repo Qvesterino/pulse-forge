@@ -7,7 +7,7 @@ import {
 } from "../src/intent/model-resolver";
 import { routeIntentText } from "../src/intent/route";
 import { applyFaderIntent } from "../src/intent/conversation";
-import { applyExactIntentCommand } from "../src/commands/commands";
+import { applyExactIntentCommand } from "../src/commands/intentRouting";
 import { applyClipArrangeOps } from "../src/intent/arrangeWords";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { useDeterministicIds, resetDeterministicIds } from "../src/shared/ids";

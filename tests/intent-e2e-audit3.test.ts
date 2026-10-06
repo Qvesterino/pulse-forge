@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseTempoIntent } from "../src/intent/conversation";
 import { applyAutomateIntent, parseAutomateIntent } from "../src/intent/studio-words";
 import { parseExactIntent } from "../src/intent/exact";
-import { applyExactIntentCommand } from "../src/commands/commands";
+import { applyExactIntentCommand } from "../src/commands/intentRouting";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { createDrumTrackModel, createInstrumentTrackModel } from "../src/project-model/schema";
 import { MAX_BPM, MIN_BPM } from "../src/project-model/schema";

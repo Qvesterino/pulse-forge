@@ -29,16 +29,13 @@ export * from "./metadata";
 export * from "./clipPlayback";
 export * from "./sceneAutomation";
 export * from "./effectInstances";
-// NOT `export *`: foldProductionIntent is exported from ./intentRouting for the barrel body and for
-// effectParams, and a star re-export would publish it — the surface would be 234 names, not 233.
-export {
-  applyExactIntentCommand,
-  applyProductionIntentCommand,
-  applyProductionIntentToTrackCommand,
-  exactReadback,
-  foldFxIntoDoc,
-  resolveExactTargetTracks,
-} from "./intentRouting";
+// F2 EAGER DIET (ROADMAP): ./aiPattern and ./intentRouting are deliberately
+// NOT re-exported here. Both sit on the Intent Engine (pipeline → generator →
+// artist/groove data, ~390 KB built), and a barrel re-export pinned that whole
+// graph to the studio boot path for every one of the ~199 importers. Their
+// consumers import "../commands/aiPattern" / "../commands/intentRouting"
+// directly — every one of them is a lazy surface (dock panels, dialogs, the
+// MCP relay), so the engine now loads on first intent use, not at boot.
 // The clip layers below fold production FX chains onto a ghost document, so this one needs a local
 // binding — and it is imported, not re-exported, because it was internal before the split.
 export * from "./effectParams";
@@ -61,7 +58,6 @@ export {
 export type { FittedLoopPlacement } from "./clipEditing";
 export * from "./timeRange";
 export * from "./arrangementShapes";
-export * from "./aiPattern";
 export * from "./effectOps";
 export * from "./padOps";
 export * from "./patternAssist";

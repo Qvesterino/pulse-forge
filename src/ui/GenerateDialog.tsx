@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { usePatterns, useServices, useTracks } from "./context";
 import { useFocusRestore } from "./useFocusRestore";
-import { applyGenerationResultCommand } from "../commands/commands";
+import { applyGenerationResultCommand } from "../commands/aiPattern";
 import type { GenerateOptions } from "../ai/types";
 import { GENRES, DEFAULT_GENERATE_OPTIONS } from "../ai/types";
 import { getStyleNamesForGenre } from "../ai/grooves/index";

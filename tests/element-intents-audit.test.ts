@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { parseProductionIntent } from "../src/intent/production";
-import { applyProductionIntentCommand } from "../src/commands/commands";
+import { applyProductionIntentCommand } from "../src/commands/intentRouting";
 import { classifyPads } from "../src/assist/patternOps";
 import type { DrumTrack, ProjectDocument } from "../src/project-model/types";
 

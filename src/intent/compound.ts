@@ -1,6 +1,7 @@
 import type { Command } from "../commands/types";
 import type { ProjectDocument } from "../project-model/types";
-import { applyExactIntentCommand, exactReadback, snapshot } from "../commands/commands";
+import { snapshot } from "../commands/commands";
+import { applyExactIntentCommand, exactReadback } from "../commands/intentRouting";
 import {
   applyFaderIntents,
   applyTempoIntent,

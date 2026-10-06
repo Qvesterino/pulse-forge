@@ -5,7 +5,7 @@ import { generateLocalResultFromOptions } from "../intent/pipeline";
 import { refreshPatternOutputHash } from "../intent/quality";
 import { buildAssistPatch } from "../assist/pipeline";
 import { buildMelodicPhrase } from "../ai/melodicDice";
-import { generatePatternCommand, assistVary, snapshot } from "../commands/commands";
+import { assistVary, snapshot } from "../commands/commands";
 import { generatePattern } from "../ai/generator";
 import type { Services } from "../services";
 import { uid } from "../shared/ids";
@@ -633,10 +633,17 @@ export function DiceProvider({
           replaceMode: "new",
           drumTrackId: currentDoc.tracks.find((t) => t.kind === "drum")?.id,
         };
-        const generated = generatePatternCommand(currentDoc, opts).execute(currentDoc);
-        const drumTrackId = currentDoc.tracks.find((track) => track.kind === "drum")?.id;
-        const withDiceFx = applyDiceFxForRoll(generated, seed, session.locks, drumTrackId);
-        services.store.execute(snapshot("diceFull", `Dice FULL ${seed}`, currentDoc, withDiceFx));
+        // F2 eager diet: the fallback generation lives in commands/aiPattern,
+        // whose module graph IS the intent engine — loaded on first roll,
+        // not at provider mount. The no-preview path is self-contained
+        // (generate → apply dice FX → one snapshot → return), so a deferred
+        // import cannot interleave with the synchronous paths around it.
+        void import("../commands/aiPattern").then(({ generatePatternCommand }) => {
+          const generated = generatePatternCommand(currentDoc, opts).execute(currentDoc);
+          const drumTrackId = currentDoc.tracks.find((track) => track.kind === "drum")?.id;
+          const withDiceFx = applyDiceFxForRoll(generated, seed, session.locks, drumTrackId);
+          services.store.execute(snapshot("diceFull", `Dice FULL ${seed}`, currentDoc, withDiceFx));
+        });
         return;
       }
       const lockedPattern = previewedPattern;

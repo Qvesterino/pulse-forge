@@ -28,15 +28,9 @@ import {
   rememberPrompt,
   resolveSessionReference,
 } from "../intent/session-context";
-import {
-  applyExactIntentCommand,
-  applyGenerationResultCommand,
-  applyGenerationResultWithFxCommand,
-  applyProductionIntentCommand,
-  exactReadback,
-  setMasterConfig,
-  duplicateTimeRange,
-} from "../commands/commands";
+import { setMasterConfig, duplicateTimeRange } from "../commands/commands";
+import { applyExactIntentCommand, applyProductionIntentCommand, exactReadback } from "../commands/intentRouting";
+import { applyGenerationResultCommand, applyGenerationResultWithFxCommand } from "../commands/aiPattern";
 import {
   applyArrangeOps,
   applyClipArrangeOps,

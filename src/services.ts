@@ -42,7 +42,7 @@ import { MtcChaser, MtcReceiver } from "./midi/smpte";
 import { UserSampleRepository, restoreUserSampleAudioMemoized } from "./persistence/UserSampleRepository";
 import { ensurePianoPackLoaded, isPianoPackSample } from "./presets/piano-pack";
 import { RecordingRecoveryRepository } from "./persistence/RecordingRecoveryRepository";
-import { ensureCuratedLayer } from "./sample-library/curated";
+import { ensureCuratedLayer } from "./sample-library/curated-layer";
 import { FrozenBufferRepository, restoreFrozenTracks } from "./persistence/FrozenBufferRepository";
 import { ensureWorkletsForDoc } from "./audio-worklets/loader";
 import type { YDocStore } from "./collab/YDocStore";

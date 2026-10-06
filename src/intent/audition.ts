@@ -1,6 +1,6 @@
 import type { SampleBank } from "../sample-library/factory";
 import type { Pattern, ProjectDocument } from "../project-model/types";
-import { foldFxIntoDoc } from "../commands/commands";
+import { foldFxIntoDoc } from "../commands/intentRouting";
 import type { ProductionIntent } from "./production";
 
 /**

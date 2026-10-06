@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { lazy, Suspense, useRef, useState } from "react";
 import { useActivePatternId, usePatterns, useServices } from "./context";
 import {
   clearPattern,
@@ -20,7 +20,9 @@ import {
 import type { PatternClipboard } from "../commands/commands";
 import { grooveOf, GRID_8TH, GRID_16TH, GRID_32ND } from "../project-model/types";
 import { DragNumber } from "./controls";
-import { GenerateDialog } from "./GenerateDialog";
+// F2 eager diet: the dialog mounts its intent-generation graph — load it
+// when the user opens it, not with the pattern bar at boot.
+const GenerateDialog = lazy(() => import("./GenerateDialog").then((m) => ({ default: m.GenerateDialog })));
 import { SceneLauncher } from "./SceneLauncher";
 import { useCurrentItemId } from "./playhead";
 
@@ -444,7 +446,9 @@ export function PatternBar({
         onRenameScene={(scene, name) => services.store.execute(renameScene(doc, scene.id, name))}
       />
 
-      <GenerateDialog open={generateOpen} onClose={() => setGenerateOpen(false)} />
+      <Suspense fallback={null}>
+        <GenerateDialog open={generateOpen} onClose={() => setGenerateOpen(false)} />
+      </Suspense>
     </section>
   );
 }

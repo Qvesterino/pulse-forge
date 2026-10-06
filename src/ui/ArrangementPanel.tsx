@@ -23,7 +23,6 @@ import {
   consolidateAudioClips,
   compAudioTakeRange,
   autoArrangeSong,
-  generatePatternCommand,
   createArrangementSkeleton,
   createScene,
   createVariationAndPlaceClip,
@@ -62,6 +61,7 @@ import {
   updateAudioClip,
   sliceToPads,
 } from "../commands/commands";
+import { generatePatternCommand } from "../commands/aiPattern";
 import { MAX_ARRANGEMENT_CLIP_BARS, sceneRoleOf } from "../project-model/schema";
 import { applySmartComp, planBars, planSmartComp, type SmartCompPlan } from "../commands/smart-comp";
 import { sectionFxChips } from "../intent/song";

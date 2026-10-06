@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { parseExactIntent } from "../src/intent/exact";
-import { applyExactIntentCommand } from "../src/commands/commands";
+import { applyExactIntentCommand } from "../src/commands/intentRouting";
 import type { InstrumentTrack, ProjectDocument } from "../src/project-model/types";
 
 /**

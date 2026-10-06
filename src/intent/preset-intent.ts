@@ -1,6 +1,7 @@
 import type { Command } from "../commands/types";
 import type { InstrumentTrack, ProjectDocument } from "../project-model/types";
-import { applyInstrumentPreset, resolveExactTargetTracks, snapshot } from "../commands/commands";
+import { applyInstrumentPreset, snapshot } from "../commands/commands";
+import { resolveExactTargetTracks } from "../commands/intentRouting";
 import { factoryPresets } from "../presets/factory-loader";
 import type { InstrumentPreset } from "../presets/types";
 import type { ExactTarget } from "./exact";
