@@ -313,5 +313,9 @@ const invokedAsScript = !process.env.VITEST;
 if (invokedAsScript) {
   // exitCode (NOT process.exit) — exit() truncates pending stdout writes to
   // a pipe on Windows, which silently ate the whole report on the first run.
-  process.exitCode = main(process.argv.slice(3));
+  // Flags are read from the FULL argv (not a slice): the vite-node worker's
+  // argv layout with script args was never stable across probes, and
+  // `process.argv.includes` is layout-independent (probe-verified: --bless
+  // silently vanished with slice(3), running bless as eval).
+  process.exitCode = main(process.argv);
 }
