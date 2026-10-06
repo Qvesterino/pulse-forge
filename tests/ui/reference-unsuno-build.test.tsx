@@ -4,6 +4,7 @@ import { ServicesContext } from "../../src/ui/context";
 import { ReferenceMapPanel } from "../../src/ui/ReferenceMapPanel";
 import { DropZone } from "../../src/ui/DropZone";
 import { mockServices } from "../helpers";
+import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { renderGoldenTrack, goldenTracks, GOLDEN_SAMPLE_RATE } from "../unsuno/golden-synth";
 
 /**
@@ -19,6 +20,24 @@ const { downloadSpy, renderProjectSpy } = vi.hoisted(() => ({
 }));
 vi.mock("../../src/export/download", () => ({ downloadBlob: downloadSpy }));
 vi.mock("../../src/rendering/renderer", () => ({ renderProject: renderProjectSpy }));
+// Cover Band renders section auditions offline — jsdom has no audio stack;
+// the blind-tournament WIRING is what this suite pins.
+vi.mock("../../src/intent/audition", () => ({
+  renderAuditionBuffer: vi.fn(async () => ({
+    numberOfChannels: 1,
+    length: 44100,
+    sampleRate: 44100,
+    getChannelData: () => new Float32Array(44100),
+  })),
+  playAuditionBuffer: vi.fn(),
+  stopAudition: vi.fn(),
+  renderSongAuditionBuffer: vi.fn(async () => ({
+    numberOfChannels: 1,
+    length: 44100,
+    sampleRate: 44100,
+    getChannelData: () => new Float32Array(44100),
+  })),
+}));
 
 const housePcm = renderGoldenTrack(goldenTracks()[0]);
 const seconds = housePcm.length / GOLDEN_SAMPLE_RATE;
@@ -40,8 +59,20 @@ function makeFile(name: string, bytes = 2048): File {
 function setup() {
   const decodeAudioData = vi.fn(async () => decodedHouse());
   const services = mockServices();
-  const executeSpy = vi.fn((command: { type: string; label?: string }) => {
-    // Mimic the real store just enough: the toast reads the label.
+  // A STATEFUL store mock: commands are pure doc→doc, so Cover Band's
+  // coverBandCandidates(doc) must see the patterns the BUILD command added
+  // (a stateless mock would report "no UN-SUNO sections" forever).
+  let currentDoc = createProjectFromTemplate("house");
+  (services.store as { getDoc: () => unknown }).getDoc = () => currentDoc;
+  // The mock's `doc` is a getter closing over the original template — the
+  // panel reads store.doc (not getDoc) in the cover-band path, so re-point
+  // the getter at the stateful doc too.
+  Object.defineProperty(services.store, "doc", {
+    get: () => currentDoc,
+    configurable: true,
+  });
+  const executeSpy = vi.fn((command: { type: string; label?: string; execute?: (d: unknown) => unknown }) => {
+    if (typeof command.execute === "function") currentDoc = command.execute(currentDoc) as never;
     (services as { lastCommandLabel?: string | null }).lastCommandLabel = command.label ?? null;
     return undefined;
   });
@@ -157,6 +188,47 @@ describe("DropZone — UN-SUNO analyze offer (U6)", () => {
     expect(verdict.textContent).toMatch(/\d+ %/);
     expect(verdict.textContent).toMatch(/NIE je právna/);
   }, 120_000);
+
+  it("COVER BAND: three blind persona covers, tournament picks a winner, one command executes", async () => {
+    const { services, executeSpy } = setup();
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("coverme.wav")] } });
+    await waitFor(
+      () => {
+        const build = screen.getByTestId("reference-build") as HTMLButtonElement;
+        expect(build.disabled).toBe(false);
+      },
+      { timeout: 20_000 },
+    );
+    fireEvent.click(screen.getByTestId("reference-build"));
+    fireEvent.click(screen.getByTestId("reference-build-go"));
+    await waitFor(() => expect(executeSpy).toHaveBeenCalledTimes(1), { timeout: 30_000 });
+
+    fireEvent.click(screen.getByTestId("cover-band-go"));
+    // Three blind candidate cards appear with rendered auditions.
+    await waitFor(
+      () => {
+        const cards = screen.getAllByText(/Cover [ABC]/);
+        expect(cards.length).toBe(3);
+      },
+      { timeout: 30_000 },
+    );
+    // Renders finish, then the blind bracket opens (vote buttons appear).
+    await waitFor(() => expect(screen.getByTestId("cover-vote-0")).toBeInTheDocument(), { timeout: 30_000 });
+    // Blind: no persona names visible during the tournament.
+    expect(screen.queryByText(/Katarína/)).not.toBeInTheDocument();
+
+    // Duel 1: A vs B → vote A (index 0)
+    fireEvent.click(screen.getByTestId("cover-vote-0"));
+    // Duel 2: winner vs C → vote C's card (find the remaining LEPŠIE button)
+    const voteButtons = screen.getAllByText("LEPŠIE");
+    expect(voteButtons.length).toBe(2);
+    fireEvent.click(voteButtons[1]);
+    // Winner executed + names revealed.
+    await waitFor(() => expect(executeSpy).toHaveBeenCalledTimes(2), { timeout: 10_000 });
+    const command = executeSpy.mock.calls[1][0] as unknown as { type: string };
+    expect(command.type).toBe("regenStyle");
+    expect(screen.getAllByText(/👑/).length).toBe(1);
+  }, 180_000);
 
   it("U4.5: sourceSampleId attaches the original as one arrangement clip", async () => {
     const { services, executeSpy } = setup();

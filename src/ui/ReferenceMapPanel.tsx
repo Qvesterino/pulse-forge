@@ -32,6 +32,8 @@ import { transcribeTrackAsync } from "../reference/reference-client";
 import { analyzeSectionMix, type SectionMixFinding } from "../analysis/sectionMixDoctor";
 import { restyleCommand, artistLabels } from "../reference/restyle";
 import { regenerateStyleCommand } from "../reference/regen-style";
+import { coverBandCandidates, pickCoverPattern } from "../reference/cover-band";
+import { playAuditionBuffer, renderAuditionBuffer, stopAudition } from "../intent/audition";
 import {
   projectFingerprint,
   similarityAdvisory,
@@ -363,6 +365,21 @@ export function ReferenceMapPanel() {
     typeof sourceFingerprintFromTranscription
   > | null>(null);
   const [similarity, setSimilarity] = useState<SimilarityVerdict | null>(null);
+  // COVER BAND — personas cover the built project; blind A/B tournament on
+  // rendered first-section auditions; ONLY the winner executes on the store.
+  interface CoverBandCandidate {
+    personaSlug: string;
+    personaName: string;
+    avatar: string;
+    genre: string;
+    command: import("../commands/types").Command;
+    buffer: AudioBuffer | null;
+  }
+  const [coverCandidates, setCoverCandidates] = useState<CoverBandCandidate[] | null>(null);
+  const [coverBusy, setCoverBusy] = useState(false);
+  const [coverBracket, setCoverBracket] = useState<{ a: number; b: number; queue: number[] } | null>(null);
+  const [coverWinner, setCoverWinner] = useState<number | null>(null);
+  const [coverPlaying, setCoverPlaying] = useState<number | null>(null);
 
   const runCommand = useCallback(
     (build: (d: ProjectDocument) => Command | null, fallback: string) => {
@@ -484,6 +501,83 @@ export function ReferenceMapPanel() {
       setStemsBusy(false);
     }
   }, [analysis, stemsBusy, services.engine]);
+
+  // COVER BAND — render blind persona covers of the built project.
+  const startCoverBand = useCallback(async () => {
+    if (!analysis || coverBusy) return;
+    if (!sourceFingerprint) {
+      setApplied("Cover Band: najprv 🎛 BUILD PROJECT.");
+      return;
+    }
+    stopAudition();
+    setCoverBusy(true);
+    setError(null);
+    try {
+      const doc = services.store.doc;
+      const candidates = coverBandCandidates(doc).map((c) => ({ ...c, buffer: null as AudioBuffer | null }));
+      if (candidates.length < 2) {
+        setApplied("Cover Band: menej než 2 persony pokryly tento projekt.");
+        setCoverCandidates([]);
+        return;
+      }
+      setCoverCandidates(candidates);
+      setCoverBracket(null);
+      setCoverWinner(null);
+      for (let i = 0; i < candidates.length; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 0)); // paint between renders
+        const preview = candidates[i].command.execute(doc);
+        const pattern = pickCoverPattern(preview);
+        if (!pattern) continue;
+        const buffer = await renderAuditionBuffer(preview, services.bank, pattern, null);
+        setCoverCandidates((prev) => {
+          if (!prev) return prev;
+          const next = [...prev];
+          next[i] = { ...next[i], buffer };
+          return next;
+        });
+      }
+      setCoverBracket({ a: 0, b: 1, queue: candidates.map((_, i) => i).slice(2) });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Cover Band failed.");
+    } finally {
+      setCoverBusy(false);
+    }
+  }, [analysis, coverBusy, services, sourceFingerprint]);
+
+  const playCover = useCallback(
+    (index: number) => {
+      const candidate = coverCandidates?.[index];
+      if (!candidate?.buffer) return;
+      if (coverPlaying === index) {
+        stopAudition();
+        setCoverPlaying(null);
+        return;
+      }
+      stopAudition();
+      playAuditionBuffer(candidate.buffer, () => setCoverPlaying(null));
+      setCoverPlaying(index);
+    },
+    [coverCandidates, coverPlaying],
+  );
+
+  const voteCover = useCallback(
+    (winner: number) => {
+      if (!coverCandidates || !coverBracket) return;
+      stopAudition();
+      setCoverPlaying(null);
+      const next = coverBracket.queue[0];
+      if (next !== undefined) {
+        setCoverBracket({ a: winner, b: next, queue: coverBracket.queue.slice(1) });
+        return;
+      }
+      // Finále: execute the WINNER's command on the real store, reveal names.
+      services.store.execute(coverCandidates[winner].command);
+      setCoverWinner(winner);
+      setCoverBracket(null);
+      setApplied(`🎬 Cover vyhral ${coverCandidates[winner].personaName} — jedno undo vracia predošlú verziu`);
+    },
+    [coverCandidates, coverBracket, services],
+  );
 
   // DropZone shortcut: an imported file can ask this panel to analyze it.
   // The bank id rides along so BUILD PROJECT can attach the original.
@@ -924,6 +1018,16 @@ export function ReferenceMapPanel() {
                 <button
                   type="button"
                   className="btn btn-small"
+                  data-testid="cover-band-go"
+                  disabled={coverBusy}
+                  onClick={() => void startCoverBand()}
+                  title="Session Theatre × UN-SUNO: traja producenti nahrajú COVER tejto pesničky — slepo vyber víťaza, jeho verzia sa stane projektom"
+                >
+                  {coverBusy ? "🎬 NATÁČA…" : "🎬 COVER BAND"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-small"
                   data-testid="similarity-go"
                   onClick={() =>
                     setSimilarity(similarityAdvisory(sourceFingerprint, projectFingerprint(services.store.doc)))
@@ -938,6 +1042,56 @@ export function ReferenceMapPanel() {
                     <span className="similarity-disclaimer">{similarity.disclaimer}</span>
                   </span>
                 )}
+              </div>
+            )}
+            {coverCandidates && coverCandidates.length >= 2 && (
+              <div className="cover-band" data-testid="cover-band">
+                {coverCandidates.map((candidate, index) => {
+                  const revealed = coverWinner !== null;
+                  const inDuel = coverBracket !== null && (coverBracket.a === index || coverBracket.b === index);
+                  const duelingLabel = coverBracket?.a === index ? "A" : "B";
+                  return (
+                    <div
+                      key={`${candidate.personaSlug}|${index}`}
+                      className={`cover-card${coverWinner === index ? " cover-card-winner" : ""}${
+                        inDuel && coverBracket ? " cover-card-duel" : ""
+                      }`}
+                    >
+                      <span className="cover-card-name">
+                        {revealed
+                          ? `${candidate.avatar} ${candidate.personaName}${coverWinner === index ? " 👑" : ""}`
+                          : `🎭 Cover ${duelingLabel}${inDuel ? "" : " (čaká)"}`}
+                      </span>
+                      <span className="cover-card-stage">
+                        {candidate.buffer ? (revealed ? candidate.genre : "ready") : "nahráva…"}
+                      </span>
+                      {candidate.buffer && (
+                        <span className="cover-card-actions">
+                          <button
+                            type="button"
+                            className="btn btn-small"
+                            disabled={coverBusy}
+                            onClick={() => playCover(index)}
+                            title={revealed ? `Audition ${candidate.personaName}` : "Audition this cover"}
+                          >
+                            {coverPlaying === index ? "■" : "▶"}
+                          </button>
+                          {inDuel && coverBracket && !revealed && (
+                            <button
+                              type="button"
+                              className="btn btn-small intent-use-btn"
+                              data-testid={`cover-vote-${index}`}
+                              onClick={() => voteCover(index)}
+                              title="Tento cover je lepší — postupuje do ďalšieho kola"
+                            >
+                              LEPŠIE
+                            </button>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
             {sourceFingerprint && (

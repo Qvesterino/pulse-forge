@@ -39,17 +39,6 @@ export interface RegenStyleResult {
   sections: number;
 }
 
-/** Same resolve + seed logic as restyle.ts — identical artist = identical band. */
-function resolveArtist(label: string): ArtistPreset | null {
-  // EXACT label match only: regeneration REWRITES NOTES, so a fuzzy phrase
-  // match (which happily binds "nikto taky 999" to some artist) would be a
-  // silent content change the user did not ask for. The UI select feeds
-  // exact labels anyway.
-  const wanted = label.trim().toLowerCase();
-  if (!wanted) return null;
-  return ARTIST_PRESETS.find((p) => p.label === wanted) ?? null;
-}
-
 function labelSeed(label: string): number {
   let hash = 5381;
   for (let i = 0; i < label.length; i++) hash = ((hash << 5) + hash + label.charCodeAt(i)) & 0x7fffffff;
@@ -72,12 +61,24 @@ function grooveRole(padIndex: number): string {
   return inferPadRole(PAD_NAMES[padIndex] ?? undefined, padIndex);
 }
 
-export function regenerateStyleCommand(doc: ProjectDocument, artistLabel: string): RegenStyleResult {
-  const artist = resolveArtist(artistLabel);
-  if (!artist) {
-    return { command: null, summary: `unknown artist "${artistLabel}" — pick one from the list`, sections: 0 };
-  }
-  const groove = resolveGrooveSeeded(artist.genre, artist.style, `${artist.label}`, artist.bpmRange, null);
+export interface RegenArtistSpec {
+  genre: ArtistPreset["genre"];
+  style?: string;
+  seedLabel: string;
+}
+
+/** Core regeneration for an already-resolved style spec — the seam the
+ * Cover Band uses to drive PERSONA genres (which are not artist presets).
+ * Deterministic per (doc, spec). */
+export function regenerateForGenre(doc: ProjectDocument, spec: RegenArtistSpec): RegenStyleResult {
+  const artist = {
+    genre: spec.genre,
+    style: spec.style,
+    label: spec.seedLabel,
+    bpmRange: null as [number, number] | null,
+    mood: undefined as ArtistPreset["mood"],
+  };
+  const groove = resolveGrooveSeeded(artist.genre, artist.style, `${artist.label}`, artist.bpmRange ?? null, null);
 
   const drumTrack = doc.tracks.find((t): t is DrumTrack => t.kind === "drum");
   if (!drumTrack) {
@@ -217,4 +218,17 @@ export function regenerateStyleCommand(doc: ProjectDocument, artistLabel: string
     summary: `${artist.label} · groove ${groove.id} · ${sections} sekcií (nové bubny + basa, akordy z originálu)`,
     sections,
   };
+}
+
+/** Public entry: EXACT artist label only. Regeneration REWRITES NOTES, so a
+ * fuzzy phrase match (which happily binds "nikto taky 999" to some artist)
+ * would be a silent content change nobody asked for. The UI select feeds
+ * exact labels anyway. */
+export function regenerateStyleCommand(doc: ProjectDocument, artistLabel: string): RegenStyleResult {
+  const wanted = artistLabel.trim().toLowerCase();
+  const artist = ARTIST_PRESETS.find((p) => p.label === wanted);
+  if (!artist) {
+    return { command: null, summary: `unknown artist "${artistLabel}" — pick one from the list`, sections: 0 };
+  }
+  return regenerateForGenre(doc, { genre: artist.genre, style: artist.style, seedLabel: artist.label });
 }

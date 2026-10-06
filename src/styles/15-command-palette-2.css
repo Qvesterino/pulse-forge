@@ -929,6 +929,53 @@
   flex: 1 1 42%;
 }
 
+/* Cover Band — blind persona cover cards. */
+.cover-band {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 6px;
+  margin: 6px 0 0;
+}
+
+.cover-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  min-width: 0;
+}
+
+.cover-card-duel {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.cover-card-winner {
+  background: rgba(255, 208, 0, 0.08);
+}
+
+.cover-card-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cover-card-stage {
+  font-size: 10px;
+  color: var(--text-dim, #777);
+}
+
+.cover-card-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
 /* Similarity advisory verdict chip. */
 .similarity-verdict {
   font-size: 10px;
