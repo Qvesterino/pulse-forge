@@ -10,7 +10,6 @@ import {
 } from "./style-example-ledger";
 import { patternStyleExampleFromProject } from "./pattern-style-example";
 import { PREFERENCE_LEDGER_CLEARED_EVENT } from "./preference-ledger";
-import { learnFromPatternCorrection } from "./style-correction-learning";
 
 const OBSERVATION_SETTLE_MS = 1400;
 
@@ -81,7 +80,14 @@ export function createLocalStyleObserver(onLearned?: (count: number) => void): L
     const { before, after } = observation;
     const beforePattern = before.patterns.find((candidate) => candidate.id === before.activePatternId);
     const pattern = after.patterns.find((candidate) => candidate.id === after.activePatternId);
-    if (beforePattern && pattern) learnFromPatternCorrection(before, beforePattern, after, pattern);
+    if (beforePattern && pattern) {
+      // F2 eager diet: the correction learner sits on the intent plan/generator
+      // graph (~230 KB built). It fires on a settle timer long after boot, so
+      // it loads on first fire instead of with the services wiring.
+      void import("./style-correction-learning").then(({ learnFromPatternCorrection }) => {
+        learnFromPatternCorrection(before, beforePattern, after, pattern);
+      });
+    }
     if (!pattern) return;
     const example = patternStyleExampleFromProject(after, pattern, preferredStyleGenre());
     if (!example) return;

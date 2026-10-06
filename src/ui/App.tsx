@@ -24,7 +24,9 @@ import type { StepSelection } from "./Sequencer";
 import { Inspector } from "./Inspector";
 import { Diagnostics } from "./Diagnostics";
 import { PatternBar } from "./PatternBar";
-import { EffectRack } from "./EffectRack";
+// F2 eager diet: EffectRack was the one dock panel statically imported —
+// it dragged the intent-routing graph (its FX-intent assistant) into boot.
+const EffectRack = lazy(() => import("./EffectRack").then((m) => ({ default: m.EffectRack })));
 import { UndoHistoryPanel } from "./UndoHistoryPanel";
 // Bottom dock panels load on first open — they are large and most sessions
 // touch only one or two of them.

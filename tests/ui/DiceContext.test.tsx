@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { screen, fireEvent } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { DiceProvider, useDice } from "../../src/ui/DiceContext";
 import { renderWithContext } from "../helpers";
@@ -102,10 +102,12 @@ describe("DiceContext", () => {
         <PreviewProbe />
       </DiceProvider>,
     );
-    expect(screen.getByTestId("hasFull").textContent).toBe("true");
+    // F2 eager diet: the heavy engine loads async on first activation — the
+    // preview fills in once it lands.
+    await waitFor(() => expect(screen.getByTestId("hasFull").textContent).toBe("true"));
   });
 
-  it("previews and commits a deterministic FX card in the same undoable FULL roll", () => {
+  it("previews and commits a deterministic FX card in the same undoable FULL roll", async () => {
     const doc = createProjectFromTemplate("house");
     const seed = Array.from({ length: 1000 }, (_, i) => `dice-${i}`).find((value) =>
       pickDiceFx(value, DEFAULT_DICE_LOCKS),
@@ -139,8 +141,9 @@ describe("DiceContext", () => {
     expect(screen.getByTestId("fx-card")).toHaveTextContent(card.key);
     fireEvent.click(screen.getByRole("button", { name: "apply" }));
 
+    // With the async engine the apply path resolves after the heavy load.
     const execute = vi.mocked(services.store.execute);
-    expect(execute).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
     const command = execute.mock.calls[0][0];
     const after = command.execute(doc);
     const drum = after.tracks.find((track) => track.kind === "drum");

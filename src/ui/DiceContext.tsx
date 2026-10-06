@@ -1,12 +1,10 @@
-import { createContext, useContext, useMemo, useRef, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import type { DrumPad, MusicalKey, NoteEvent, ProjectDocument } from "../project-model/types";
 import { getActivePattern, getDrumTrack } from "../project-model/types";
-import { generateLocalResultFromOptions } from "../intent/pipeline";
-import { refreshPatternOutputHash } from "../intent/quality";
+
 import { buildAssistPatch } from "../assist/pipeline";
 import { buildMelodicPhrase } from "../ai/melodicDice";
 import { assistVary, snapshot } from "../commands/commands";
-import { generatePattern } from "../ai/generator";
 import type { Services } from "../services";
 import { uid } from "../shared/ids";
 import { downloadBlob } from "../export/download";
@@ -42,14 +40,42 @@ import {
 } from "../intent/favorites";
 import type { GenerateOptions } from "../ai/types";
 import { GENRES } from "../ai/types";
-import { resolveGrooveForGeneration } from "../ai/generator";
+
 import { resolveKitAssignments } from "../sample-library/kit-pools";
 import { kitPresetById, resolveKitPreset } from "../project-model/kit-presets";
+
+// F2 eager diet: the dice heavy set — intent pipeline, generator, quality —
+// used to sit on module-level imports and pinned ~480 KB of the intent engine
+// to the studio boot graph for EVERY session. It loads on first need (the dice
+// panel opening), and preview/rolls gate on it.
+type DiceHeavy = {
+  generateLocalResultFromOptions: (typeof import("../intent/pipeline"))["generateLocalResultFromOptions"];
+  refreshPatternOutputHash: (typeof import("../intent/quality"))["refreshPatternOutputHash"];
+  resolveGrooveForGeneration: (typeof import("../ai/generator"))["resolveGrooveForGeneration"];
+  generatePattern: (typeof import("../ai/generator"))["generatePattern"];
+};
+const diceHeavy: { current: DiceHeavy | null } = { current: null };
+function loadDiceHeavy(): Promise<DiceHeavy> {
+  if (diceHeavy.current) return Promise.resolve(diceHeavy.current);
+  return Promise.all([
+    import("../intent/pipeline"),
+    import("../intent/quality"),
+    import("../ai/generator"),
+  ]).then(([pipeline, quality, generator]) => {
+    diceHeavy.current = {
+      generateLocalResultFromOptions: pipeline.generateLocalResultFromOptions,
+      refreshPatternOutputHash: quality.refreshPatternOutputHash,
+      resolveGrooveForGeneration: generator.resolveGrooveForGeneration,
+      generatePattern: generator.generatePattern,
+    };
+    return diceHeavy.current;
+  });
+}
 
 export interface DicePreview {
   mode: DiceMode;
   seed: string;
-  fullPattern: ReturnType<typeof generateLocalResultFromOptions> | null;
+  fullPattern: import("../intent/types").GenerationResult | null;
   varyPatch: ReturnType<typeof buildAssistPatch> | null;
   hitCount: number;
   beforeHits: number;
@@ -150,6 +176,18 @@ export function DiceProvider({
   }
 
   const [target, setTarget] = useState<"drums" | "melodic">("drums");
+  // Bumped when the heavy engine finishes loading so the preview recomputes.
+  const [heavyReady, setHeavyReady] = useState(diceHeavy.current !== null);
+  useEffect(() => {
+    if (!active || diceHeavy.current) return;
+    let cancelled = false;
+    void loadDiceHeavy().then(() => {
+      if (!cancelled) setHeavyReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [active]);
 
   const preview = useMemo<DicePreview>(() => {
     const seed = diceCurrentSeed(session);
@@ -164,10 +202,11 @@ export function DiceProvider({
       }
     })();
 
-    if (!active) {
-      // Tray unmounted — nothing displays the preview, so skip the pipeline.
-      // Rolls cannot fire while inactive either: their hotkeys live in the
-      // tray. Opening the panel recomputes the real preview.
+    if (!active || !diceHeavy.current) {
+      // Tray unmounted OR the engine is still loading — nothing displays the
+      // preview yet, so skip the pipeline. Rolls cannot fire while inactive
+      // either: their hotkeys live in the tray. Opening the panel starts the
+      // engine load; `heavyReady` recomputes this preview when it lands.
       return {
         mode: session.mode,
         seed,
@@ -297,7 +336,7 @@ export function DiceProvider({
       let swing: number | null = null;
       let kitAssignments: Map<string, Partial<DrumPad>> | null = null;
       try {
-        const groove = resolveGrooveForGeneration(doc, opts);
+        const groove = diceHeavy.current!.resolveGrooveForGeneration(doc, opts);
         if (session.jitter > 0.15) {
           const r = forkRandom(seed, "dice.swing");
           const jitteredSwing = Math.max(0, Math.min(1, groove.swing + (r() - 0.5) * 0.4 * session.jitter));
@@ -333,7 +372,7 @@ export function DiceProvider({
         kitName = null;
       }
       const hasLocks = Object.values(session.locks).some(Boolean);
-      let result = generateLocalResultFromOptions(doc, opts, "preview");
+      let result = diceHeavy.current!.generateLocalResultFromOptions(doc, opts, "preview");
       if (hasLocks && result.proposal?.pattern) {
         const prev = (() => {
           try {
@@ -344,17 +383,17 @@ export function DiceProvider({
         })();
         if (prev) {
           // Regenerate with subSeed locks for true parity
-          const lockedPattern = generatePattern(doc, opts, { ...session.locks, prevPattern: prev });
+          const lockedPattern = diceHeavy.current!.generatePattern(doc, opts, { ...session.locks, prevPattern: prev });
           // The locked content differs from the generated rows the recipe
           // hashed — refresh outputContentHash so provenance describes the
           // content actually previewed/applied.
-          const hashed = refreshPatternOutputHash(doc, lockedPattern);
+          const hashed = diceHeavy.current!.refreshPatternOutputHash(doc, lockedPattern);
           result = {
             ...result,
             proposal: { ...result.proposal, pattern: hashed },
           } as typeof result;
         } else {
-          const locked = refreshPatternOutputHash(
+          const locked = diceHeavy.current!.refreshPatternOutputHash(
             doc,
             applyDiceLocks(null, result.proposal.pattern, session.locks, doc),
           );
@@ -368,7 +407,7 @@ export function DiceProvider({
             return null;
           }
         })();
-        const locked = refreshPatternOutputHash(doc, applyDiceLocks(prev, result.proposal.pattern, session.locks, doc));
+        const locked = diceHeavy.current!.refreshPatternOutputHash(doc, applyDiceLocks(prev, result.proposal.pattern, session.locks, doc));
         result.proposal.pattern = locked;
       }
       const pat = result.proposal?.pattern;
@@ -406,7 +445,7 @@ export function DiceProvider({
         fxCard,
       };
     }
-  }, [session, doc, active, target]);
+  }, [session, doc, active, target, heavyReady]);
 
   const rollFull = useCallback(() => {
     setSession((prev) => {

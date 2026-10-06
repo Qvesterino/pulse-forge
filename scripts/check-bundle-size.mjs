@@ -162,6 +162,21 @@ const ENTRY_BUDGET_KB = 1070;
 // bump exists to stop. The diet targets are unchanged and still owed: the
 // App/commands eager anchors, and the VSCO generated layer tables that
 // pack-presets.ts moved out of the eager graph but did not shrink.
+// 2026-10-04 — THE OWED ANCHOR DIET LANDED (F2 eager diet, ROADMAP-UI-2027
+// successor work): boot path 2137 -> 1864 KB (−273 KB, −12.8 %) with NO cap
+// change. What moved out of the static boot closure: the intent ENGINE
+// (commands barrel no longer re-exports aiPattern/intentRouting — consumers
+// import their home modules directly and every consumer is a lazy surface),
+// the dice heavy set (DiceContext loads pipeline/generator/quality on first
+// panel activation), the style-correction learner (dynamic on first settle
+// fire), curated.ts (async behind curated-layer.ts; the remaining 316 KB
+// "curated-layer" chunk is sample-library/factory — boot-critical kit
+// synthesis by contract), and EffectRack (the one dock panel that was still
+// statically imported). DAW TOTAL ticked +21 KB from lazy-chunk wrapper
+// overhead this sum metric cannot reward; the boot-path line above is the
+// metric that reflects the win. Remaining known anchors: App shell 621 KB,
+// sample-library/factory 316 KB (contract), intent/normalize 61 KB +
+// preference-ledger group 162 KB (dice/style internals — next diet).
 const TOTAL_BUDGET_KB = 5000;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, and ONNX Runtime for the
