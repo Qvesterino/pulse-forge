@@ -57,6 +57,16 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Verification: 60/60 green.
 - Date/session: 2026-10-06, commit `4061bdcb`
 
+### MCP agent-surface audit: notes-delete loophole + SFZ pre-decode cap (user-picked proposal 4)
+- Area: all 36 MCP tools (docs/MCP-AGENT-SURFACE-AUDIT-2026-10-06.md)
+- Fixed: kyx_notes op:delete shipped WITHOUT the D4 destructive gate (the only removal loophole — every other removal is gated); kyx_import_sfz decoded the whole payload before its 256 MB cap (desktop stdio unbounded → OOM-scale allocation; now a pre-decode estimate refuses early).
+- By-design recorded: checkpoint restore ungated (documented recovery path, one-undo), checkpoint delete (agent-owned bounded data).
+- Verified clean: batch 10-cap + ctx propagation, checkpoints bounded at 8, relay 8 MB + token-required + isAllowedServerUrl intact, export filename sanitized, gallery = same rate-limited path as the UI, error containment pinned.
+- Bookkeeping completed: kyx_master count pins (35→36, order-corrected) + ROT GUARD playbook entry (the landing missed them — the drift gate covers artifacts, but tool-count PINS needed the audit).
+- Verification: 70/70 across six touched suites; typecheck clean except the sibling's in-flight test file.
+- Lesson (second occurrence): a stale pathspec in `git add` fails the WHOLE add atomically and `2>/dev/null` hides it — commit showed 1 file instead of 11; always verify commit stats.
+- Date/session: 2026-10-06, commits 9699bea1 + 492d9a69
+
 ### drift:check — the derivable-artifact gate (user-picked proposal 3)
 - Area: scripts/drift-check.mts (+ tests/drift-check.test.ts, 7 pins)
 - Built: one command regenerating MCP mirrors (gen:mcp-mirrors), domain goldens (goldens:capture) and the CURRENT-STATE counts (EFFECT_META / INSTRUMENT_META / TEMPLATES / spec-file count) with the same npm commands humans use, diffing vs HEAD. Exit 0 clean / 1 drift (drift:bless + review + commit) / 2 tool error; a detected drift is re-verified by a second regeneration (flaky-generator verdict); dirty-before paths SKIPPED never restored (shared-tree guardrail); clean paths normalized back (generator LF vs autocrlf checkout CRLF phantom).
@@ -180,6 +190,13 @@ Last updated: 2026-10-06 (session sess_85d94465)
 4. Re-establish the fresh-clone bootstrap check (`npm install && npm run dev` on a clean machine) — last verified 10-03.
 
 ## SESSION LOG
+
+### 2026-10-06 (follow-up 6) / MCP agent-surface audit (user-picked proposal 4)
+- Inspected: 36 tools classified read-only/mutating/destructive/network/file; 6 allowDestructive gate sites vs the full removal inventory; byte paths (SFZ/export/gallery) for caps; token/relay/auth invariants.
+- Fixed: notes-delete gate loophole; SFZ pre-decode cap; kyx_master pins + ROT GUARD; 2 stale-pin suites green.
+- Unresolved: none in scope. Remaining candidate: none from the original list — all four proposals delivered (ratchet, honest-gate ×2, drift:check, MCP audit).
+- Commits: 9699bea1, 492d9a69.
+- Recommended continuation: let the two gates run (suite-expectations + drift:check); next high-value windows: the eol policy session (unblocks format:check fully) or wave-based re-audits when the current storm of sibling landings settles.
 
 ### 2026-10-06 (follow-up 5) / drift:check — derivable-artifact gate (user-picked proposal 3)
 - Built: scripts/drift-check.mts + 7 unit pins + npm scripts (drift:check / drift:bless) + AGENTS.md gate row + cheat sheet.
