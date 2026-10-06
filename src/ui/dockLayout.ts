@@ -7,7 +7,18 @@ import { useEffect, useRef, useState } from "react";
  * Preferences persist in localStorage (per-user UI prefs, not project data).
  */
 
-export const PANEL_KEYS = ["mixer", "devices", "arr", "mod", "exp", "midi", "dice", "intent", "reference"] as const;
+export const PANEL_KEYS = [
+  "mixer",
+  "devices",
+  "arr",
+  "mod",
+  "exp",
+  "master",
+  "midi",
+  "dice",
+  "intent",
+  "reference",
+] as const;
 export type BottomPanel = (typeof PANEL_KEYS)[number] | "fx" | "plugin";
 
 export interface DockState {

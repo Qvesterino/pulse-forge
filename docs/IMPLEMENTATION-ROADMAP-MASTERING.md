@@ -1,6 +1,6 @@
 # Pulse Forge — realizačný plán: mastering
 
-> Stav plánu: návrh, 2026-10-06  
+> Stav plánu: priebežne aktualizovaná implementácia, 2026-10-06  
 > Produktové meno: **KYX**  
 > Rozsah: zjednotenie existujúceho masteringu do profesionálneho, merateľného a zrozumiteľného workflow  
 > Účel: vykonateľný plán nad aktuálnym kódom; nejde o tvrdenie, že všetky body už KYX obsahuje.
@@ -26,18 +26,35 @@ Samostatné masteringové relácie pre dlhé stereo súbory vytvoríme až ako o
 
 ### Súhrn etáp
 
-| Etapa | Výsledok | Závislosť | Priorita |
-| --- | --- | --- | --- |
-| 0. Rozhodnutia a baseline | Jasný produktový, audio a validačný kontrakt | — | P0 |
-| 1. Jednotný profil doručenia | Rovnaké ciele a pravidlá v MIX, EXP a MCP | 0 | P0 |
-| 2. Master bus a signálová cesta | Jednoznačný graf procesorov vrátane finálneho insert miesta | 0 | P0 |
-| 3. Master pracovisko | Jedna používateľská cesta od analýzy po export | 1, 2 | P0 |
-| 4. Merací a exportný report | Dôveryhodná analýza vyrenderovaného výstupu | 1, 2 | P0 |
-| 5. Snapshoty, A/B a referencie | Bezpečné porovnávanie master verzií | 2, 3, 4 | P1 |
-| 6. Masteringový asistent | Vysvetliteľné návrhy s preview, potvrdením a undo | 4, 5 | P1 |
-| 7. Delivery QA | Kontrola skutočne zakódovaného súboru a exportné profily | 1, 4 | P1 |
-| 8. Mastering externého stereo súboru | Samostatná práca so stereo mixom mimo projektu KYX | osobitný návrh | P2 |
-| 9. Release hardening | Zvuková, browserová a používateľská dôkazná sada | 3–7 | P0 pred označením za hotové |
+| Etapa                                | Výsledok                                                    | Závislosť      | Priorita                    |
+| ------------------------------------ | ----------------------------------------------------------- | -------------- | --------------------------- |
+| 0. Rozhodnutia a baseline            | Jasný produktový, audio a validačný kontrakt                | —              | P0                          |
+| 1. Jednotný profil doručenia         | Rovnaké ciele a pravidlá v MIX, EXP a MCP                   | 0              | P0                          |
+| 2. Master bus a signálová cesta      | Jednoznačný graf procesorov vrátane finálneho insert miesta | 0              | P0                          |
+| 3. Master pracovisko                 | Jedna používateľská cesta od analýzy po export              | 1, 2           | P0                          |
+| 4. Merací a exportný report          | Dôveryhodná analýza vyrenderovaného výstupu                 | 1, 2           | P0                          |
+| 5. Snapshoty, A/B a referencie       | Bezpečné porovnávanie master verzií                         | 2, 3, 4        | P1                          |
+| 6. Masteringový asistent             | Vysvetliteľné návrhy s preview, potvrdením a undo           | 4, 5           | P1                          |
+| 7. Delivery QA                       | Kontrola skutočne zakódovaného súboru a exportné profily    | 1, 4           | P1                          |
+| 8. Mastering externého stereo súboru | Samostatná práca so stereo mixom mimo projektu KYX          | osobitný návrh | P2                          |
+| 9. Release hardening                 | Zvuková, browserová a používateľská dôkazná sada            | 3–7            | P0 pred označením za hotové |
+
+## Aktuálny stav implementácie
+
+### Dodaný základ
+
+- UI, offline export a `kyx_master` používajú spoločné profily a pravidlá verdictu. Výber profilu mení kontrolné ciele; master gain, fyzický limiter ceiling a spracovanie sa nemenia.
+- `MasterConfig` ukladá profil, samostatný dBTP cieľ a globálny zoznam insertov. Schéma je v12; staršie LUFS ciele a limiter ceiling sa pri migrácii zachovávajú.
+- Globálny insert rack je pred vstavaným clipperom a limiterom a spracúva finálny súčet. Master/stem bypass ostáva pre-master cestou. Insert parametre používajú existujúce efektové príkazy a runtime.
+- Nový dock panel MASTER (Alt+9) spája živý meter, master insert rack a offline analýzu/export. Offline report obsahuje verziu, beh, revíziu projektu, profil, scope, kvalitu, sample rate a rozsah vzoriek; po zmene projektu alebo render nastavení sa označí za zastaraný.
+
+### Otvorené P0 brány
+
+- Typová kontrola prešla 2026-10-06. Po posledných zmenách treba ešte znovu prejsť testy master profilu, migrácie, collab round-tripu, efektového grafu a live/offline parity; browser audio a produkčný build ostávajú release gates.
+- Report teraz meria PCM pred kódovaním. MP3 po decode, WAV po kvantizácii/dither, formátové metadáta, sample-bank revízia a finálna súborová kontrola ešte nie sú v report kontrakte.
+- Full-master A/B snapshoty, level-matched reference, vysvetliteľný asistent a externý stereo mix zostávajú ďalšími etapami podľa tabuľky.
+
+Za dokončenú etapu sa považuje až po splnení jej akceptačných kritérií nižšie. Tento stav preto nedeklaruje plnohodnotný release gate ani masteringovú certifikáciu.
 
 Etapy 1–4 vytvárajú prvé použiteľné pracovisko. Označenie „profesionálny masteringový nástroj“ nepriraďovať, kým neprejdú aj relevantné časti etáp 5–9 a manuálny posluchový gate.
 
@@ -79,10 +96,10 @@ Referencie k aktuálnemu správaniu: [Mastering v KYX](MASTERING.md), [ADR 0009 
 
 ### Rozhodnutia pred implementáciou
 
-- [ ] Zafixovať prvý rozsah: master výstup projektu KYX; externý stereo súbor je samostatný P2 workstream.
-- [ ] Rozhodnúť, či finálny master bus dostane vlastný insert chain, alebo sa prvá verzia pracoviska mapuje iba na fixný master chain a existujúce group/track insert chainy.
-- [ ] Ak sa pridá master insert chain, otvoriť follow-up ADR k ADR 0006/0009/0020: poradie voči returns, master safety, latency/PDC, live/offline sync, solo/stem správanie, bypass a migrácia.
-- [ ] Definovať rozdiel medzi **delivery profile** (čo sa kontroluje), **processing preset** (ako sa tvaruje zvuk) a **loudness adjustment** (aké gain zmeny používateľ potvrdil).
+- [x] Zafixovať prvý rozsah: master výstup projektu KYX; externý stereo súbor je samostatný P2 workstream.
+- [x] Rozhodnúť, či finálny master bus dostane vlastný insert chain, alebo sa prvá verzia pracoviska mapuje iba na fixný master chain a existujúce group/track insert chainy.
+- [x] Ak sa pridá master insert chain, otvoriť follow-up ADR k ADR 0006/0009/0020: poradie voči returns, master safety, latency/PDC, live/offline sync, solo/stem správanie, bypass a migrácia.
+- [x] Definovať rozdiel medzi **delivery profile** (čo sa kontroluje), **processing preset** (ako sa tvaruje zvuk) a **loudness adjustment** (aké gain zmeny používateľ potvrdil).
 - [ ] Určiť cieľové verzie platformových špecifikácií, ich vlastníka a postup periodickej revízie; všetky hodnoty označiť za orientačné alebo používateľsky upraviteľné, ak nie sú povinným technickým limitom.
 - [ ] Zaznamenať baseline pre typy projektov, metering, offline renderer, export formáty, aktuálne warning thresholds, testy a známu odchýlku medzi LIVE a Studio HQ quality.
 - [ ] Zaznamenať platformové obmedzenia monitoringu. Windows Electron je podľa aktuálneho kontraktu tenký Web Audio shell; profesionálny monitoringový claim čaká na zdokumentovaný a odmeraný výstupný device path.
@@ -95,14 +112,14 @@ Referencie k aktuálnemu správaniu: [Mastering v KYX](MASTERING.md), [ADR 0009 
 
 **Pravdepodobné súbory:** `src/mcp/master-profiles.ts`, nové zdieľané `src/mastering/profiles.ts`, `src/project-model/types.ts`, `src/project-model/schema.ts`, `src/commands/commands.ts`, `src/ui/MasterMeter.tsx`, `src/ui/ExportPanel.tsx`, `src/mcp/tools.ts` a testy týchto oblastí.
 
-- [ ] Presunúť alebo zdieľať profilovú definíciu tak, aby UI a `kyx_master` volali tie isté čisté pravidlá a mali identické verdict thresholds.
-- [ ] Definovať profilový kontrakt minimálne s: ID/názvom, integrovaným LUFS cieľom, toleranciou, max true peak dBTP, pravidlami pre nemerateľný signál, mono/fázovými kontrolami, odporúčaním pre formát a jasným textom o zamýšľanom použití.
-- [ ] Pridať používateľský **Custom** profil. Nesmie odstrániť možnosť nastaviť samostatne loudness target a ceiling.
-- [ ] Oddeliť `Check against profile` od explicitného `Apply profile settings`. Výber profilu sám nemení masterGain, ceiling, limiter ani efekty.
-- [ ] Rozhodnúť persisted semantiku: ak sa profil uloží v projekte, doplniť voliteľné pole `MasterConfig`, zvýšiť `SCHEMA_VERSION` a pridať migráciu cez `migrateProject`. Existujúce `lufsTarget` a `ceilingDb` zachovať bez prekvapivého prepisu; stará hodnota sa bezpečne premietne do Custom/legacy stavu.
-- [ ] Zachovať profilové merania ako odvodený runtime/export report, nie ako údaj uložený v project documente.
-- [ ] MCP `platform`, `land`, `trim` a `assist` majú používať zdieľaný profilový kontrakt; MCP read-back a UI verdict musia byť pri rovnakom reporte identické.
-- [ ] Zjednotiť jednotky a popisy: sample peak dBFS, true peak dBTP, loudness LUFS/LU; nikde neskrývať rozdiel pod všeobecné „dB“.
+- [x] Presunúť alebo zdieľať profilovú definíciu tak, aby UI a `kyx_master` volali tie isté čisté pravidlá a mali identické verdict thresholds.
+- [x] Definovať profilový kontrakt minimálne s: ID/názvom, integrovaným LUFS cieľom, toleranciou, max true peak dBTP, pravidlami pre nemerateľný signál, mono/fázovými kontrolami, odporúčaním pre formát a jasným textom o zamýšľanom použití.
+- [x] Pridať používateľský **Custom** profil. Nesmie odstrániť možnosť nastaviť samostatne loudness target a ceiling.
+- [x] Oddeliť `Check against profile` od explicitného `Apply profile settings`. Výber profilu sám nemení masterGain, ceiling, limiter ani efekty.
+- [x] Rozhodnúť persisted semantiku: ak sa profil uloží v projekte, doplniť voliteľné pole `MasterConfig`, zvýšiť `SCHEMA_VERSION` a pridať migráciu cez `migrateProject`. Existujúce `lufsTarget` a `ceilingDb` zachovať bez prekvapivého prepisu; stará hodnota sa bezpečne premietne do Custom/legacy stavu.
+- [x] Zachovať profilové merania ako odvodený runtime/export report, nie ako údaj uložený v project documente.
+- [x] MCP `platform`, `land`, `trim` a `assist` majú používať zdieľaný profilový kontrakt; MCP read-back a UI verdict musia byť pri rovnakom reporte identické.
+- [x] Zjednotiť jednotky a popisy: sample peak dBFS, true peak dBTP, loudness LUFS/LU; nikde neskrývať rozdiel pod všeobecné „dB“.
 
 **Akceptácia:** golden testy pre každý profil pokryjú hranice pass/warn/fail, nemerateľný materiál, true peak, mono/fázu a custom hodnoty. Pri tom istom `MasterMeasurement` musí UI aj MCP vrátiť rovnaký status, hodnoty a dôvody. Projekt vytvorený pred migráciou si ponechá doterajší zvuk aj cieľ merania.
 
@@ -112,14 +129,14 @@ Referencie k aktuálnemu správaniu: [Mastering v KYX](MASTERING.md), [ADR 0009 
 
 **Pravdepodobné súbory:** `src/project-model/types.ts`, `schema.ts`, `src/audio-engine/masterChain.ts`, `AudioEngine.ts`, `src/effects/registry.ts`, `src/ui/EffectRack.tsx`, `src/ui/Mixer.tsx`, `src/rendering/renderer.ts`, commands a engine/render testy.
 
-- [ ] Zvoliť kanonickú reprezentáciu master insertov. Odporúčaný cieľ: rovnaký `EffectRuntime`/`EffectDefinition` kontrakt ako pri trackoch, ale v explicitnom master slote project modelu.
-- [ ] Zachovať oddelenie fixných safety/utility stupňov (napr. DC a ochrana stropu) od používateľsky vložených farebných/dynamických insertov; presné poradie musí byť viditeľné a zdokumentované.
+- [x] Zvoliť kanonickú reprezentáciu master insertov. Odporúčaný cieľ: rovnaký `EffectRuntime`/`EffectDefinition` kontrakt ako pri trackoch, ale v explicitnom master slote project modelu.
+- [x] Zachovať oddelenie fixných safety/utility stupňov (napr. DC a ochrana stropu) od používateľsky vložených farebných/dynamických insertov; presné poradie musí byť viditeľné a zdokumentované.
 - [ ] Rozhodnúť, či ZENIT dostane host pozíciu na master bus alebo zostane iba track/group device. Nevykresliť falošnú UI cestu, ktorá ovláda inú zbernicu, než používateľ počuje.
 - [ ] Definovať master-insert správanie pre returns, group routovanie, solo, mute, export master, skupinové stemy a export všetkých trackov.
 - [ ] Implementovať jednu signal-flow reprezentáciu, ktorú používajú graf, engine sync, offline render, metering a MCP. Žiadna paralelná ručne udržiavaná tabuľka poradia.
 - [ ] Ošetriť bypass bez klikov, missing worklet/degraded stav, disposal, parameter automation a súčet `getLatencySec()` cez PDC.
-- [ ] Pri novom persisted master racku zvýšiť `SCHEMA_VERSION`, doplniť migráciu cez `migrateProject`, normalize, command/undo/redo, collab/YDoc round-trip a import/export projektu.
-- [ ] Zachovať nulové rozšírenie live graphu po otvorení exportného `OfflineAudioContext`; všetky uzly vznikajú cez `useContext(ctx)`.
+- [x] Pri novom persisted master racku zvýšiť `SCHEMA_VERSION`, doplniť migráciu cez `migrateProject`, normalize, command/undo/redo, collab/YDoc round-trip a import/export projektu.
+- [x] Zachovať nulové rozšírenie live graphu po otvorení exportného `OfflineAudioContext`; všetky uzly vznikajú cez `useContext(ctx)`.
 - [ ] Ak sa zavádza nový efekt/processor, pridať technický ADR a zodpovedajúce zdokumentované QA. M1/M2 DSP sa nesmie potichu meniť pod existujúcim presetom.
 
 **Akceptácia:** testy deterministicky preukážu skutočné poradie uzlov, bypass, latency/PDC, dispose a zhodu živej a offline cesty. Export mastera obsahuje presne zobrazené master inserts; group/stem render spracuje len tie zbernice, ktoré deklaruje UI.
@@ -141,7 +158,7 @@ MASTER
 └─ Export: nastavenia, render, post-encode QC a finálny report
 ```
 
-- [ ] Pridať vstup do MASTER pracoviska z master metera a exportu. O vhodnosti samostatného dock tabu rozhodnúť na úzkom prototype; neskrývať ho za viacero vnorených panelov.
+- [x] Pridať samostatnú MASTER dock záložku a klávesovú skratku Alt+9; meter, insert rack a exportná analýza sú v jednom pracovisku.
 - [ ] Zobraziť názov projektu, SONG/PATTERN scope, dĺžku analyzovaného programu, profil, dátum/čerstvosť render reportu a jedinú primárnu akciu `Analyze full arrangement`.
 - [ ] V hornej sumarizácii ukázať stav profilu, LUFS-I delta, max dBTP delta, mono/fázu a počet otvorených problémov. Každý status musí mať aj text, nie iba farbu.
 - [ ] Zobraziť audio chain ako čitateľné bloky s aktívnym/bypass/degraded stavom a otváraním parametrov. Rozlíšiť BUS/STEM, MASTER INSERT a SAFETY; nepredstierať, že track insert je master insert.
@@ -158,13 +175,14 @@ MASTER
 
 **Pravdepodobné súbory:** `src/audio-engine/kweighting.ts`, `metering.ts`, `meteringRig.ts`, `artifactGate.ts`, `src/analysis/mixDoctor.ts`, nové `src/mastering/analysis.ts`/worker, `src/rendering/renderer.ts`, `ExportPanel.tsx` a meracie/browser testy.
 
-- [ ] Vytvoriť jeden verzovaný typ `MasterRenderReport` s run ID, project revision/hash, profilom, sample rate, quality mode, scope SONG/PATTERN, rozsahom analyzovaných vzoriek a dôvodom zrušenia/neúplnosti.
-- [ ] Prežiť celý finálny výstup cez offline renderer; meranie nesmie čítať iba aktuálny 30 Hz live UI snapshot a tvrdiť, že pokrýva celý track.
+- [x] Vytvoriť jeden verzovaný typ `MasterRenderReport` pre úspešný beh s run ID, project revision ID, profilom, sample rate, quality mode, scope SONG/PATTERN a rozsahom analyzovaných vzoriek.
+- [x] Previesť celý finálny výstup cez offline renderer; meranie nesmie čítať iba aktuálny 30 Hz live UI snapshot a tvrdiť, že pokrýva celý track.
+- [ ] Vrátiť samostatný stav cancelled/error s dôvodom; dnes zrušený beh nevytvára report a jeho stav sa ukáže v export paneli.
 - [ ] Znovu použiť existujúce meracie primitívy. Zjednotiť integrovaný LUFS, sample peak, true peak, RMS/crest, koreláciu, mono loss, L/R imbalance, clipping a Mix Doctor pod report kontraktom.
 - [ ] Preskúmať pridanú hodnotu a presnú definíciu Loudness Range (LRA), krátkodobej loudness timeline, DC offsetu a fade/tail detekcie. Pridať iba tie, ktoré majú referenčné vectors a zrozumiteľné použitie.
 - [ ] Žiadne skryté “spectral balance pass” rozhodnutie bez jasného popisu proxy a neistoty; tonal curve je odporúčanie, nie štandardizovaný pass/fail.
 - [ ] Oddeliť `pass / advisory / fail / not measured / stale / cancelled`. Ticho, úsek kratší než meracie minimum, mono zdroj a chýbajúci worklet nesmú skončiť ako falošné zelené OK.
-- [ ] Report zneplatniť pri zmene audio parametra, routovania, sample banku, aranžmánu, profilu alebo export-quality režimu. Používateľ musí vidieť, kedy výsledky už nie sú aktuálne.
+- [x] Report zneplatniť pri zmene projektu, profilu, scope, sample rate alebo export-quality režimu. Používateľ vidí zastaraný stav; zmena sample banku bez zmeny project documentu sa ešte nesleduje.
 - [ ] Dlhšie analyzovanie držať mimo realtime audio callbacku; progress/cancel a validácia dát worker boundary podľa pracovného kontraktu.
 - [ ] Neodovzdávať do workerov bez limitov celé neoverené reťazce a náhodné typed arrays. Udržať pamäťový rozpočet pre dlhé skladby.
 
@@ -281,16 +299,16 @@ Mastering upgrade je release-ready len vtedy, keď:
 
 ## Riziká a guardrails
 
-| Riziko | Opatrenie |
-| --- | --- |
+| Riziko                                                  | Opatrenie                                                                                                                             |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | Dvojité limitovanie (napr. group ZENIT + global master) | Zobraziť obe pozície v grafe, obe gain-reduction meter hodnoty a výsledný master true peak. Preset nesmie tajne zvyšovať výstup gain. |
-| Cieľ LUFS sa považuje za automatickú normalizáciu | Rozdeliť „check against target“ a potvrdenú loudness úpravu; po zmene vykonať nové meranie. |
-| Hlasnejšie A/B vyhrá | Level-match iba cez dočasný posluchový trim; zobraziť rozdiel gainu a neukladať ho do signálovej cesty. |
-| Report zastará po editácii | Naviazať report na render fingerprint a invalidovať ho pri každej relevantnej zmene dokumentu, banku, profilu alebo export módu. |
-| Všeobecné „streaming standard“ tvrdenie | Profily mať ako verziované ciele s pôvodom a dátumom kontroly; Custom zostáva dostupný. |
-| Meranie správneho signálu na nesprávnom bode | Dokumentovať measurement tap a merať po poslednom processor/encode stupni podľa otázky reportu. |
-| Browserová prekážka pri externom masteringu | V prvej verzii jasne obmedziť scope na render projektu; dlhý import súboru navrhovať samostatne s pamäťovým a I/O auditom. |
-| Nové mastering UI nafúkne startup bundle | Nový panel/analyzátor lazy-loadovať, render worker oddeliť a merať produkčný bundle. |
+| Cieľ LUFS sa považuje za automatickú normalizáciu       | Rozdeliť „check against target“ a potvrdenú loudness úpravu; po zmene vykonať nové meranie.                                           |
+| Hlasnejšie A/B vyhrá                                    | Level-match iba cez dočasný posluchový trim; zobraziť rozdiel gainu a neukladať ho do signálovej cesty.                               |
+| Report zastará po editácii                              | Naviazať report na render fingerprint a invalidovať ho pri každej relevantnej zmene dokumentu, banku, profilu alebo export módu.      |
+| Všeobecné „streaming standard“ tvrdenie                 | Profily mať ako verziované ciele s pôvodom a dátumom kontroly; Custom zostáva dostupný.                                               |
+| Meranie správneho signálu na nesprávnom bode            | Dokumentovať measurement tap a merať po poslednom processor/encode stupni podľa otázky reportu.                                       |
+| Browserová prekážka pri externom masteringu             | V prvej verzii jasne obmedziť scope na render projektu; dlhý import súboru navrhovať samostatne s pamäťovým a I/O auditom.            |
+| Nové mastering UI nafúkne startup bundle                | Nový panel/analyzátor lazy-loadovať, render worker oddeliť a merať produkčný bundle.                                                  |
 
 ## Odporúčané poradie implementačných PR/commits
 
@@ -307,4 +325,3 @@ Commitovať po dôkaznom celku; staging iba vlastných súborov v zdieľanom wor
 9. `test: close mastering release gates` — browser, stress, manual listen a limitations.
 
 Ak si súborové zmeny vyžadujú inú sériu, zachovať rovnaké závislosti a nekombinovať veľký architektúrny refactor s novým DSP bez samostatného dôvodu.
-

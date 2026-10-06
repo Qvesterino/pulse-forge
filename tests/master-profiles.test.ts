@@ -95,8 +95,7 @@ describe("mastering platform profiles", () => {
     expect(loudnessStatus(null)).toBe("warn");
     expect(loudnessStatus(-120)).toBe("warn");
 
-    const peakStatus = (truePeakDb: number) =>
-      evaluateDelivery({ lufs: -14, truePeakDb }, profile).checks[1]?.status;
+    const peakStatus = (truePeakDb: number) => evaluateDelivery({ lufs: -14, truePeakDb }, profile).checks[1]?.status;
     expect(peakStatus(-1)).toBe("pass");
     expect(peakStatus(-0.9)).toBe("warn");
     expect(peakStatus(-0.71)).toBe("warn");
@@ -187,10 +186,15 @@ describe("kyx_master op:land — the closed loudness loop", () => {
         master: {
           lufsIntegrated: -11.5,
           truePeakDb: -0.8,
+          rmsDb: -14,
+          lufsMomentary: -12,
+          lufsShortTerm: -11.8,
           correlation: -0.2,
+          clipping: false,
           monoLossDb: -4,
           lrImbalanceDb: 7,
         },
+        tracks: [],
       }),
     } as McpToolContext;
     const report = await executeMcpTool(ctx, "kyx_master", { op: "platform" });

@@ -7,6 +7,7 @@
  */
 import type { Command } from "./types";
 import type { EffectInstance, ProjectDocument } from "../project-model/types";
+import { MASTER_EFFECT_OWNER_ID } from "../project-model/types";
 import { sanitizeGateSteps, sanitizeManglerSteps } from "../project-model/modulators";
 import { clampEffectParam, defaultParamsOf, EFFECT_META } from "../effects/definitions";
 import { targetParamDef } from "../project-model/targets";
@@ -117,6 +118,17 @@ export function setEffectParam(
     execute: (d) => apply(d, nextValues),
     undo: (d) => apply(d, previousValues),
     applyToYDoc: (yMap) => {
+      if (trackId === MASTER_EFFECT_OWNER_ID) {
+        const master = yMap.get("master") as any;
+        const effects = (master?.get("effects") as EffectInstance[] | undefined) ?? [];
+        master?.set(
+          "effects",
+          effects.map((effect) =>
+            effect.id === fxId ? { ...effect, params: { ...effect.params, ...nextValues } } : effect,
+          ),
+        );
+        return;
+      }
       const tracks = yMap.get("tracks") as any;
       for (let i = 0; i < tracks.length; i++) {
         const t = tracks.get(i) as any;
@@ -181,7 +193,8 @@ export function applyEffectChainPreset(
   chain: BeatmakingEffectChain,
   insertAt = trackEffectsOf(doc, trackId).length,
 ): Command & { readonly firstEffectId: string; readonly effectIds: readonly string[] } {
-  if (!doc.tracks.some((track) => track.id === trackId)) throw new Error(`Track ${trackId} not found`);
+  if (trackId !== MASTER_EFFECT_OWNER_ID && !doc.tracks.some((track) => track.id === trackId))
+    throw new Error(`Track ${trackId} not found`);
   if (chain.effects.length === 0) throw new Error("Effect chain is empty");
   const factoryById = new Map(CORE_EFFECT_PRESETS.map((preset) => [preset.id, preset]));
   const instances: EffectInstance[] = chain.effects.map((item) => {
@@ -237,6 +250,15 @@ export function toggleEffectBypass(doc: ProjectDocument, trackId: string, fxId: 
     execute: (d) => apply(d, !prev),
     undo: (d) => apply(d, prev),
     applyToYDoc: (yMap) => {
+      if (trackId === MASTER_EFFECT_OWNER_ID) {
+        const master = yMap.get("master") as any;
+        const effects = (master?.get("effects") as EffectInstance[] | undefined) ?? [];
+        master?.set(
+          "effects",
+          effects.map((effect) => (effect.id === fxId ? { ...effect, bypassed: !prev } : effect)),
+        );
+        return;
+      }
       const tracks = yMap.get("tracks") as any;
       for (let i = 0; i < tracks.length; i++) {
         const t = tracks.get(i);

@@ -46,6 +46,12 @@ export const DOCK_TABS: readonly DockTabDef[] = [
   { id: "dice", label: "DICE", ariaLabel: "Toggle dice panel", title: "Dice — rapid beat generator (Alt+6)" },
   { id: "intent", label: "INTENT", ariaLabel: "Toggle intent panel", title: "Describe the beat in words (Alt+7)" },
   { id: "exp", label: "EXP", ariaLabel: "Toggle export panel", title: "Export audio and project (Alt+5)" },
+  {
+    id: "master",
+    label: "MASTER",
+    ariaLabel: "Toggle mastering panel",
+    title: "Mastering — final processing, loudness targets and stereo checks (Alt+9)",
+  },
   { id: "midi", label: "MIDI", ariaLabel: "Toggle MIDI input panel", title: "MIDI input and routing (Alt+8)" },
   {
     id: "reference",

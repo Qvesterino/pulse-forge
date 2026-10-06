@@ -321,6 +321,7 @@ export function IntentPanel() {
   // A1 audition state — the ranked bank lives on the result; buffers are
   // cached per candidate so replaying is instant after the first render.
   const [bankResult, setBankResult] = useState<GenerationResult | null>(null);
+  const [iterationReferencePattern, setIterationReferencePattern] = useState<Pattern | null>(null);
   const [audiotoolExport, setAudiotoolExport] = useState<{
     candidateIndex: number;
     pattern: Pattern;
@@ -605,6 +606,7 @@ export function IntentPanel() {
     songBufferRef.current = null;
     sectionBuffersRef.current = new Map();
     setBankResult(null);
+    setIterationReferencePattern(null);
     setPlayingIndex(null);
     setPlayingSectionId(null);
     setRenderingSectionId(null);
@@ -897,6 +899,7 @@ export function IntentPanel() {
     setError(null);
     setStatus(null);
     setBankResult(null);
+    setIterationReferencePattern(null);
     setAudiotoolExport(null);
     setPlayingIndex(null);
     setJustApplied(false);
@@ -960,6 +963,7 @@ export function IntentPanel() {
           setBusy(false);
           return;
         }
+        setIterationReferencePattern(iteration.before);
         setBankResult(iteration.result);
         previewDocRef.current = doc;
         buffersRef.current = new Map();
@@ -1212,7 +1216,9 @@ export function IntentPanel() {
       const withFx = bankResult
         ? (resultForCandidate(bankResult, candidate.candidateIndex)?.plan.intent.fx ?? null)
         : null;
-      setStatus(`▶ auditioning candidate #${candidate.candidateIndex + 1}${withFx ? " — with FX" : ""}`);
+      const auditionLabel =
+        candidate.candidateIndex === -1 ? "original take" : `candidate #${candidate.candidateIndex + 1}`;
+      setStatus(`▶ auditioning ${auditionLabel}${withFx ? " — with FX" : ""}`);
     } catch (err) {
       if (playTokenRef.current === token) {
         setError(`audition failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -4709,15 +4715,18 @@ export function IntentPanel() {
           />
         </Suspense>
       )}
-      {bankResult && candidates && candidates.length > 1 && (
-        <ProducerDnaCompare
-          project={doc}
-          result={bankResult}
-          onAudition={(candidate) => {
-            void toggleAudition(candidate);
-          }}
-        />
-      )}
+      {bankResult &&
+        candidates &&
+        (candidates.length > 1 || (iterationReferencePattern !== null && candidates.length > 0)) && (
+          <ProducerDnaCompare
+            project={doc}
+            result={bankResult}
+            referencePattern={iterationReferencePattern}
+            onAudition={(candidate) => {
+              void toggleAudition(candidate);
+            }}
+          />
+        )}
       {candidates && candidates.length === 0 && bankResult?.proposal && (
         <button type="button" className="btn intent-generate-btn" onClick={() => useCandidate(null)}>
           USE RESULT

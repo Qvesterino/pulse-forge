@@ -32,6 +32,7 @@ describe("shortcut bindings", () => {
     expect(matchShortcut(key("3", { altKey: true }))).toBe("panelArr");
     expect(matchShortcut(key("4", { altKey: true }))).toBe("panelMod");
     expect(matchShortcut(key("5", { altKey: true }))).toBe("panelExport");
+    expect(matchShortcut(key("9", { altKey: true }))).toBe("panelMaster");
   });
 
   it("Escape resolves to stop — selection clearing runs earlier in the app handler", () => {

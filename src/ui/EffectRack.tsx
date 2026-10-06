@@ -80,9 +80,10 @@ type EffectRackProps = {
   track: Track;
   mode?: "rack" | "devices";
   selectedPadId?: string;
+  isMaster?: boolean;
 };
 
-export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectRackProps) {
+export function EffectRack({ track, mode = "rack", selectedPadId = "", isMaster = false }: EffectRackProps) {
   const services = useServices();
   const doc = services.store.getDoc();
   const devicesMode = mode === "devices";
@@ -225,14 +226,18 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
           : "BUS";
 
     return (
-      <section className="devices-panel" aria-label={`Devices — ${track.name}`}>
+      <section
+        className={`devices-panel${isMaster ? " mastering-device-panel" : ""}`}
+        aria-label={isMaster ? "Master effects" : `Devices — ${track.name}`}
+      >
         {/* V2 (ROADMAP-UI-2027): the panel identifies itself and hosts its
             add-actions in one header row; the chain strip below is pure
             navigation. Before, track name + chain + two selects shared one
             anonymous toolbar with no hierarchy. */}
         <PanelHeader
-          kicker="DEVICES"
+          kicker={isMaster ? "MASTERING" : "DEVICES"}
           title={track.name}
+          hint={isMaster ? "Final mix inserts before the safety limiter and output meters." : undefined}
           actions={
             <>
               <select
@@ -290,29 +295,35 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
                   </optgroup>
                 ))}
               </select>
-              <select
-                className="devices-add-chain"
-                value=""
-                title="Add a short beatmaking effect chain after the selected device"
-                aria-label="Add a beatmaking effect chain"
-                onChange={(event) => {
-                  const chain = BEATMAKING_EFFECT_CHAINS.find((candidate) => candidate.id === event.target.value);
-                  if (!chain) return;
-                  const selectedIndex = track.effects.findIndex((fx) => fx.id === activeDeviceId);
-                  const insertionIndex =
-                    selectedIndex >= 0 ? selectedIndex + 1 : activeDeviceId === "instrument" ? 0 : track.effects.length;
-                  const command = applyEffectChainPreset(doc, track.id, chain, insertionIndex);
-                  services.store.execute(command);
-                  setSelectedDeviceId(command.firstEffectId);
-                }}
-              >
-                <option value="">+ CHAIN</option>
-                {BEATMAKING_EFFECT_CHAINS.map((chain) => (
-                  <option key={chain.id} value={chain.id} title={chain.description}>
-                    {chain.name}
-                  </option>
-                ))}
-              </select>
+              {!isMaster && (
+                <select
+                  className="devices-add-chain"
+                  value=""
+                  title="Add a short beatmaking effect chain after the selected device"
+                  aria-label="Add a beatmaking effect chain"
+                  onChange={(event) => {
+                    const chain = BEATMAKING_EFFECT_CHAINS.find((candidate) => candidate.id === event.target.value);
+                    if (!chain) return;
+                    const selectedIndex = track.effects.findIndex((fx) => fx.id === activeDeviceId);
+                    const insertionIndex =
+                      selectedIndex >= 0
+                        ? selectedIndex + 1
+                        : activeDeviceId === "instrument"
+                          ? 0
+                          : track.effects.length;
+                    const command = applyEffectChainPreset(doc, track.id, chain, insertionIndex);
+                    services.store.execute(command);
+                    setSelectedDeviceId(command.firstEffectId);
+                  }}
+                >
+                  <option value="">+ CHAIN</option>
+                  {BEATMAKING_EFFECT_CHAINS.map((chain) => (
+                    <option key={chain.id} value={chain.id} title={chain.description}>
+                      {chain.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </>
           }
         />
@@ -388,19 +399,21 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
         {/* The persistent idea input lives on BOTH rack surfaces — the dock
             renders this devices view for the selected track, the classic
             rack below for the mixer-focused flow. */}
-        <FxIntentBar trackId={track.id} />
-        <SourceMacroDock
-          track={track}
-          profile={sourceProfile}
-          profileIds={SOURCE_PROFILE_IDS}
-          loadedEffectIds={sourceEffectIds}
-          onSelectProfile={(id) => {
-            setSourceProfileId(id);
-            setSourceEffectIds([]);
-          }}
-          onLoadProfile={loadSourceProfile}
-          onCommitMacro={commitSourceMacro}
-        />
+        {!isMaster && <FxIntentBar trackId={track.id} />}
+        {!isMaster && (
+          <SourceMacroDock
+            track={track}
+            profile={sourceProfile}
+            profileIds={SOURCE_PROFILE_IDS}
+            loadedEffectIds={sourceEffectIds}
+            onSelectProfile={(id) => {
+              setSourceProfileId(id);
+              setSourceEffectIds([]);
+            }}
+            onLoadProfile={loadSourceProfile}
+            onCommitMacro={commitSourceMacro}
+          />
+        )}
         <div className="device-surface">
           {activeDeviceId === "instrument" && hasInstrument ? (
             <DockedPlugin trackId={track.id} selectedPadId={selectedPadId} />
@@ -419,7 +432,11 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "" }: EffectR
             <EmptyState
               icon="🎛"
               title="No device on this track"
-              hint="Add an effect with + FX, or a ready chain with + CHAIN — or describe the sound you want in the idea bar below."
+              hint={
+                isMaster
+                  ? "Add an insert with + FX. It processes the final mix before the safety limiter."
+                  : "Add an effect with + FX, or a ready chain with + CHAIN — or describe the sound you want in the idea bar below."
+              }
             />
           )}
         </div>

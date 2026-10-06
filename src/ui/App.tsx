@@ -38,6 +38,7 @@ const ExportPanel = lazy(() => import("./ExportPanel").then((m) => ({ default: m
 const DiceTray = lazy(() => import("./DiceTray").then((m) => ({ default: m.DiceTray })));
 const IntentPanel = lazy(() => import("./IntentPanel").then((m) => ({ default: m.IntentPanel })));
 const ReferenceMapPanel = lazy(() => import("./ReferenceMapPanel").then((m) => ({ default: m.ReferenceMapPanel })));
+const MasteringPanel = lazy(() => import("./MasteringPanel").then((m) => ({ default: m.MasteringPanel })));
 import { InstallPrompt } from "./InstallPrompt";
 import { ErrorBoundary } from "./ErrorBoundary";
 import {
@@ -1461,6 +1462,11 @@ export function App({
     exp: (
       <ErrorBoundary panel="exp">
         <ExportPanel selectedTrackId={track.id} selectedTrackName={track.name} />
+      </ErrorBoundary>
+    ),
+    master: (
+      <ErrorBoundary panel="master">
+        <MasteringPanel />
       </ErrorBoundary>
     ),
     midi: (

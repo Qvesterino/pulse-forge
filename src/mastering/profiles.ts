@@ -152,11 +152,7 @@ export function evaluateDelivery(
     loudnessDeltaDb = metrics.lufs - targetLufs;
     const distance = Math.abs(loudnessDeltaDb);
     const status: DeliveryCheck["status"] =
-      distance <= profile.targetToleranceLufs
-        ? "pass"
-        : distance <= profile.warningToleranceLufs
-          ? "warn"
-          : "fail";
+      distance <= profile.targetToleranceLufs ? "pass" : distance <= profile.warningToleranceLufs ? "warn" : "fail";
     const where =
       loudnessDeltaDb > 0 ? `${loudnessDeltaDb.toFixed(1)} LU HOT` : `${(-loudnessDeltaDb).toFixed(1)} LU under`;
     checks.push({
@@ -170,10 +166,10 @@ export function evaluateDelivery(
   } else {
     const tpOver = metrics.truePeakDb - maxTruePeakDb;
     if (tpOver > profile.truePeakGraceDb) {
-    checks.push({
-      status: "fail",
-      line: `true peak ${metrics.truePeakDb.toFixed(1)} dBTP exceeds the ${maxTruePeakDb} dBTP target by ${tpOver.toFixed(1)} dB`,
-    });
+      checks.push({
+        status: "fail",
+        line: `true peak ${metrics.truePeakDb.toFixed(1)} dBTP exceeds the ${maxTruePeakDb} dBTP target by ${tpOver.toFixed(1)} dB`,
+      });
     } else if (tpOver > 0) {
       checks.push({
         status: "warn",
@@ -214,9 +210,6 @@ export function worstStatus(checks: DeliveryCheck[]): DeliveryCheck["status"] {
 }
 
 /** Legacy MCP API retained while the shared profile contract moves out of MCP. */
-export function verdictAgainst(
-  metrics: DeliveryMetrics,
-  profile: MasterProfile,
-): DeliveryCheck[] {
+export function verdictAgainst(metrics: DeliveryMetrics, profile: MasterProfile): DeliveryCheck[] {
   return evaluateDelivery(metrics, profile).checks;
 }

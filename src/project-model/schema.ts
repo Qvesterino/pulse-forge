@@ -2579,7 +2579,7 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // v9 adds `AudioClip.loopPhaseOffsetSec` for phase-preserving loop splits;
   // v10 adds the opt-in, structured project Producer Brief (no raw prompts/audio);
   // v11 adds ArrangementClip pattern/scene phase offsets (missing means phase 0);
-  // v12 adds the explicit mastering delivery profile + true-peak target.
+  // v12 adds the explicit mastering delivery profile, true-peak target, and final-sum insert chain.
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

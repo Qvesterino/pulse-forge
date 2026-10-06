@@ -36,6 +36,7 @@ import { analyzeMixHealthBuffer, deriveMixAutoFix, type MixHealthReport } from "
 import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import { slicesFromOnsets } from "../audio-engine/transients";
 import { resolveDeliveryTarget, type MasterProfile } from "../mastering/profiles";
+import { createMasterRenderReport, type MasterRenderReport } from "../mastering/report";
 
 type Status =
   | { kind: "idle" }
@@ -92,9 +93,13 @@ function bextFor(
 export function ExportPanel({
   selectedTrackId,
   selectedTrackName,
+  masteringMode = false,
+  revisionId,
 }: {
   selectedTrackId?: string;
   selectedTrackName?: string;
+  masteringMode?: boolean;
+  revisionId?: string;
 } = {}) {
   const services = useServices();
   // Fine-grained selectors (GOAL 04): ExportPanel reads markers (count
@@ -107,7 +112,7 @@ export function ExportPanel({
   const tracks = useTracks();
   const master = useMaster();
   const doc = services.store.getDoc();
-  const [mode, setMode] = useState<PlayMode>(services.playback.mode);
+  const [mode, setMode] = useState<PlayMode>(masteringMode ? "song" : services.playback.mode);
   const [sampleRate, setSampleRate] = useState(44100);
   const [bitDepth, setBitDepth] = useState<WavBitDepth>(16);
   const [format, setFormat] = useState<MasterFormat>("wav");
@@ -120,6 +125,7 @@ export function ExportPanel({
   const [includeTrackStems, setIncludeTrackStems] = useState(true);
   const [clipSeconds, setClipSeconds] = useState(15);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
+  const [masterReport, setMasterReport] = useState<MasterRenderReport | null>(null);
 
   /** Mix-doctor verdikt posledného master renderu (null = ešte sa neriadilo). */
   const [mixHealth, setMixHealth] = useState<MixHealthReport | null>(null);
@@ -128,6 +134,7 @@ export function ExportPanel({
   const abortRef = useRef<AbortController | null>(null);
   const beginExport = (): AbortSignal => {
     setMixHealth(null);
+    setMasterReport(null);
     const controller = new AbortController();
     abortRef.current = controller;
     return controller.signal;
@@ -154,14 +161,22 @@ export function ExportPanel({
   const [chopNote, setChopNote] = useState<string | null>(null);
 
   const busy = status.kind === "busy";
+  const reportStale = Boolean(
+    masteringMode &&
+    masterReport &&
+    (masterReport.projectRevisionId !== revisionId ||
+      masterReport.scope !== mode ||
+      masterReport.sampleRate !== sampleRate ||
+      masterReport.quality !== quality),
+  );
   const baseName = sanitizeFilename(doc.name);
   const groups = nonEmptyStemGroups(doc);
   const videoSupported = canExportVideo();
   const activePatternName = patterns.find((p) => p.id === activePatternId)?.name ?? "pattern";
 
-  const exportMaster = async () => {
+  const exportMaster = async (download = true) => {
     const signal = beginExport();
-    setStatus({ kind: "busy", label: "Rendering master…" });
+    setStatus({ kind: "busy", label: download ? "Rendering master…" : "Analyzing master…" });
     try {
       const buffer = await renderProject(doc, services.bank, {
         mode,
@@ -171,7 +186,32 @@ export function ExportPanel({
       });
       if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
       const summary = summarizeBuffer(buffer);
-      setMixHealth(analyzeMixHealthBuffer(buffer));
+      const mixHealthReport = analyzeMixHealthBuffer(buffer);
+      setMixHealth(mixHealthReport);
+      setMasterReport(
+        createMasterRenderReport({
+          projectId: doc.id,
+          projectName: doc.name,
+          projectRevisionId: revisionId ?? `${doc.id}:${doc.updatedAt}`,
+          scope: mode,
+          sampleRate: buffer.sampleRate,
+          quality,
+          durationSeconds: buffer.duration,
+          sampleRange: { startFrame: 0, endFrame: buffer.length },
+          profile: resolveDeliveryTarget(master),
+          measurements: summary,
+          mixHealth: mixHealthReport,
+        }),
+      );
+
+      if (!download) {
+        setStatus({
+          kind: "done",
+          label: `Analysis complete (${mode === "song" ? "full song" : "active pattern"}, ${buffer.duration.toFixed(1)}s, ${sampleRate} Hz, ${quality === "studio" ? "Studio HQ" : "Live"})`,
+          summary,
+        });
+        return;
+      }
 
       if (format === "video") {
         const seconds = Math.min(clipSeconds, buffer.duration);
@@ -669,7 +709,7 @@ export function ExportPanel({
             <option value="wav">WAV (studio)</option>
             <option value="mp3-192">MP3 192 (share)</option>
             <option value="mp3-320">MP3 320 (hq share)</option>
-            <option value="video" disabled={!videoSupported}>
+            <option value="video" disabled={!videoSupported || masteringMode} hidden={masteringMode}>
               VIDEO {videoSupported ? "(Reels/TikTok)" : "(unsupported)"}
             </option>
           </select>
@@ -723,176 +763,217 @@ export function ExportPanel({
         )}
       </div>
       <div className="export-buttons">
-        <button
-          type="button"
-          className="btn btn-export"
-          disabled={busy || (format === "video" && !videoSupported)}
-          onClick={() => void exportMaster()}
-        >
-          {format === "video" ? "EXPORT VIDEO" : `EXPORT MASTER${format.startsWith("mp3") ? " (MP3)" : ""}`}
-        </button>
-        <button
-          type="button"
-          className="btn btn-export"
-          disabled={busy || groups.length === 0}
-          title="Grouped stems: drums / bass / music (solo is disabled in stems)"
-          onClick={() => void exportStems()}
-        >
-          EXPORT STEMS ({groups.length})
-        </button>
-        <button type="button" className="btn btn-export" disabled={busy} onClick={() => void exportTracks()}>
-          EXPORT ALL TRACKS ({tracks.length})
-        </button>
-        <button
-          type="button"
-          className="btn btn-export"
-          disabled={busy}
-          title="Copy a link that opens this project in the full studio"
-          onClick={() => void copyShareLink()}
-        >
-          COPY SHARE LINK
-        </button>
-        <button
-          type="button"
-          className="btn btn-export"
-          disabled={busy}
-          title="Copy an iframe embed with a playable beat player"
-          onClick={() => void copyEmbedCode()}
-        >
-          COPY EMBED CODE
-        </button>
-        <PublishToGalleryButton />
-        {isMountedInEcosystem() && (
-          <button
-            type="button"
-            className="btn btn-export"
-            disabled={busy}
-            title="Render this beat and hand it to Audio Canvas (SIQ) — its analysis and beat-reactive visuals run on your audio"
-            onClick={() => void sendToQvesterVisualizer()}
-          >
-            ✦ SEND TO QVESTER VISUALIZER
-          </button>
+        {masteringMode ? (
+          <>
+            <button type="button" className="btn btn-export" disabled={busy} onClick={() => void exportMaster(false)}>
+              {mode === "song" ? "ANALYZE FULL SONG" : "ANALYZE PATTERN"}
+            </button>
+            <button
+              type="button"
+              className="btn btn-export"
+              disabled={busy || (format === "video" && !videoSupported)}
+              onClick={() => void exportMaster(true)}
+            >
+              {format === "video" ? "EXPORT VIDEO" : `EXPORT MASTER${format.startsWith("mp3") ? " (MP3)" : ""}`}
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="btn btn-export"
+              disabled={busy || (format === "video" && !videoSupported)}
+              onClick={() => void exportMaster()}
+            >
+              {format === "video" ? "EXPORT VIDEO" : `EXPORT MASTER${format.startsWith("mp3") ? " (MP3)" : ""}`}
+            </button>
+            <button
+              type="button"
+              className="btn btn-export"
+              disabled={busy || groups.length === 0}
+              title="Grouped stems: drums / bass / music (solo is disabled in stems)"
+              onClick={() => void exportStems()}
+            >
+              EXPORT STEMS ({groups.length})
+            </button>
+            <button type="button" className="btn btn-export" disabled={busy} onClick={() => void exportTracks()}>
+              EXPORT ALL TRACKS ({tracks.length})
+            </button>
+            <button
+              type="button"
+              className="btn btn-export"
+              disabled={busy}
+              title="Copy a link that opens this project in the full studio"
+              onClick={() => void copyShareLink()}
+            >
+              COPY SHARE LINK
+            </button>
+            <button
+              type="button"
+              className="btn btn-export"
+              disabled={busy}
+              title="Copy an iframe embed with a playable beat player"
+              onClick={() => void copyEmbedCode()}
+            >
+              COPY EMBED CODE
+            </button>
+            <PublishToGalleryButton />
+            {isMountedInEcosystem() && (
+              <button
+                type="button"
+                className="btn btn-export"
+                disabled={busy}
+                title="Render this beat and hand it to Audio Canvas (SIQ) — its analysis and beat-reactive visuals run on your audio"
+                onClick={() => void sendToQvesterVisualizer()}
+              >
+                ✦ SEND TO QVESTER VISUALIZER
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-export btn-export-scorepack"
+              disabled={busy}
+              title="Export a .scorepack ZIP: master + stems + cues + JSON manifests"
+              onClick={() => void exportScorepack()}
+            >
+              EXPORT SCOREPACK
+            </button>
+            <label
+              className="export-policy"
+              title="Track stems are rendered as time-aligned 32-bit-float WAVs to preserve headroom; long sessions can make the transfer large."
+            >
+              <input
+                type="checkbox"
+                checked={includeTrackStems}
+                disabled={busy}
+                onChange={(event) => setIncludeTrackStems(event.target.checked)}
+              />
+              INCLUDE TRACK STEMS
+            </label>
+            <button
+              type="button"
+              className="btn btn-export btn-export-scorepack"
+              disabled={busy}
+              title="Create a ZYVO transfer with a 48 kHz 32-bit-float master, optional aligned stems, arrangement metadata, and the original KYX project."
+              onClick={() => void exportZyvoTransfer()}
+            >
+              EXPORT TO ZYVO
+            </button>
+            <button
+              type="button"
+              className="btn btn-export"
+              disabled={busy}
+              title="Download the active pattern as a .mid file (drums on channel 10, one track per instrument)"
+              onClick={() => void exportMidi()}
+            >
+              EXPORT MIDI (PATTERN)
+            </button>
+            <button
+              type="button"
+              className="btn btn-export"
+              disabled={busy}
+              title="Download project as JSON file for backup or sharing"
+              onClick={() => exportProject(doc)}
+            >
+              EXPORT JSON
+            </button>
+          </>
         )}
-        <button
-          type="button"
-          className="btn btn-export btn-export-scorepack"
-          disabled={busy}
-          title="Export a .scorepack ZIP: master + stems + cues + JSON manifests"
-          onClick={() => void exportScorepack()}
-        >
-          EXPORT SCOREPACK
-        </button>
-        <label
-          className="export-policy"
-          title="Track stems are rendered as time-aligned 32-bit-float WAVs to preserve headroom; long sessions can make the transfer large."
-        >
-          <input
-            type="checkbox"
-            checked={includeTrackStems}
-            disabled={busy}
-            onChange={(event) => setIncludeTrackStems(event.target.checked)}
-          />
-          INCLUDE TRACK STEMS
-        </label>
-        <button
-          type="button"
-          className="btn btn-export btn-export-scorepack"
-          disabled={busy}
-          title="Create a ZYVO transfer with a 48 kHz 32-bit-float master, optional aligned stems, arrangement metadata, and the original KYX project."
-          onClick={() => void exportZyvoTransfer()}
-        >
-          EXPORT TO ZYVO
-        </button>
-        <button
-          type="button"
-          className="btn btn-export"
-          disabled={busy}
-          title="Download the active pattern as a .mid file (drums on channel 10, one track per instrument)"
-          onClick={() => void exportMidi()}
-        >
-          EXPORT MIDI (PATTERN)
-        </button>
-        <button
-          type="button"
-          className="btn btn-export"
-          disabled={busy}
-          title="Download project as JSON file for backup or sharing"
-          onClick={() => exportProject(doc)}
-        >
-          EXPORT JSON
-        </button>
       </div>
       <div className={`export-status export-${status.kind}`}>
         {status.kind === "idle" &&
           "Offline render uses the exact same engine, instruments and effects as playback — plus a 2 s tail for reverb/delay."}
         {status.kind !== "idle" && status.label}
+        {reportStale && (
+          <span className="export-policy-warning">
+            STALE REPORT — project or render settings changed; analyze again.
+          </span>
+        )}
         {busy && (
           <button type="button" className="btn btn-small" onClick={cancelExport} aria-label="Cancel export">
             CANCEL
           </button>
         )}
       </div>
-      {status.kind === "done" && (
-        <ExportSummary summary={status.summary} deliveryProfile={resolveDeliveryTarget(master)} />
+      {status.kind === "done" && (!masteringMode || masterReport) && (
+        <ExportSummary
+          summary={status.summary}
+          deliveryProfile={masterReport?.profile ?? resolveDeliveryTarget(master)}
+        />
+      )}
+      {status.kind === "done" && masteringMode && masterReport && (
+        <div className="master-render-report-meta" role="note" aria-label="Master render report details">
+          <strong title={masterReport.runId}>REPORT V{masterReport.version}</strong>
+          <span>
+            {masterReport.projectName} · {masterReport.scope === "song" ? "FULL SONG" : "PATTERN"} ·{" "}
+            {masterReport.sampleRate} Hz · {masterReport.quality === "studio" ? "Studio HQ" : "Live"} ·{" "}
+            {masterReport.durationSeconds.toFixed(1)} s · {masterReport.sampleRange.endFrame.toLocaleString()} samples
+          </span>
+          <time dateTime={masterReport.createdAt}>{new Date(masterReport.createdAt).toLocaleString()}</time>
+        </div>
       )}
       {status.kind === "done" && mixHealth && <MixHealthLine health={mixHealth} />}
-      {status.kind === "done" && mixHealth && <MixAutoFixButton health={mixHealth} />}
-      {status.kind === "done" && <AutoStageButton summary={status.summary} />}
+      {status.kind === "done" && mixHealth && !reportStale && <MixAutoFixButton health={mixHealth} />}
+      {status.kind === "done" && (!masteringMode || masterReport) && !reportStale && (
+        <AutoStageButton summary={status.summary} />
+      )}
 
-      <div className="export-resample" role="group" aria-label="Realtime resample">
-        <div className="export-resample-head">RESAMPLE — BOUNCE WHAT YOU HEAR</div>
-        <div className="export-resample-row">
-          <select
-            aria-label="Recording source"
-            value={recSource}
-            disabled={recState !== "idle"}
-            onChange={(event) => setRecSource(event.target.value as RecSourceKind)}
-          >
-            <option value="master">MASTER (with FX)</option>
-            {selectedTrackId && (
-              <option value="track">TRACK: {(selectedTrackName ?? selectedTrackId).toUpperCase()}</option>
-            )}
-            <option value="mic">MIC / LINE IN</option>
-          </select>
-          {recState === "recording" ? (
-            <button type="button" className="btn btn-rec btn-rec-stop" onClick={() => void stopRecording()}>
-              ■ STOP {recSeconds.toFixed(0)}s
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="btn btn-rec"
-              disabled={recState === "saving" || recState === "starting"}
-              onClick={() => void startRecording()}
-            >
-              {recState === "starting" ? "…" : "● REC"}
-            </button>
-          )}
-          {recState === "saving" && <span className="export-resample-saving">saving…</span>}
-        </div>
-        {recError && <div className="export-resample-error">{recError}</div>}
-        {lastTake && recState !== "recording" && (
+      {!masteringMode && (
+        <div className="export-resample" role="group" aria-label="Realtime resample">
+          <div className="export-resample-head">RESAMPLE — BOUNCE WHAT YOU HEAR</div>
           <div className="export-resample-row">
-            <button
-              type="button"
-              className="btn btn-rec"
-              disabled={chopping}
-              title="Detect onsets in the last take and chop zero-cross-snapped slices to drum pads + pattern (one undoable step)"
-              onClick={() => void autoChop()}
+            <select
+              aria-label="Recording source"
+              value={recSource}
+              disabled={recState !== "idle"}
+              onChange={(event) => setRecSource(event.target.value as RecSourceKind)}
             >
-              {chopping ? "CHOPPING…" : `AUTO-CHOP "${lastTake.name.toUpperCase()}" → PADS`}
-            </button>
+              <option value="master">MASTER (with FX)</option>
+              {selectedTrackId && (
+                <option value="track">TRACK: {(selectedTrackName ?? selectedTrackId).toUpperCase()}</option>
+              )}
+              <option value="mic">MIC / LINE IN</option>
+            </select>
+            {recState === "recording" ? (
+              <button type="button" className="btn btn-rec btn-rec-stop" onClick={() => void stopRecording()}>
+                ■ STOP {recSeconds.toFixed(0)}s
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-rec"
+                disabled={recState === "saving" || recState === "starting"}
+                onClick={() => void startRecording()}
+              >
+                {recState === "starting" ? "…" : "● REC"}
+              </button>
+            )}
+            {recState === "saving" && <span className="export-resample-saving">saving…</span>}
           </div>
-        )}
-        {chopNote && (
-          <div className="export-resample-hint" role="status">
-            {chopNote}
+          {recError && <div className="export-resample-error">{recError}</div>}
+          {lastTake && recState !== "recording" && (
+            <div className="export-resample-row">
+              <button
+                type="button"
+                className="btn btn-rec"
+                disabled={chopping}
+                title="Detect onsets in the last take and chop zero-cross-snapped slices to drum pads + pattern (one undoable step)"
+                onClick={() => void autoChop()}
+              >
+                {chopping ? "CHOPPING…" : `AUTO-CHOP "${lastTake.name.toUpperCase()}" → PADS`}
+              </button>
+            </div>
+          )}
+          {chopNote && (
+            <div className="export-resample-hint" role="status">
+              {chopNote}
+            </div>
+          )}
+          <div className="export-resample-hint">
+            Realtime capture through the full live chain. The take lands in Samples — click it to flip onto a pad.
           </div>
-        )}
-        <div className="export-resample-hint">
-          Realtime capture through the full live chain. The take lands in Samples — click it to flip onto a pad.
         </div>
-      </div>
+      )}
     </section>
   );
 }
@@ -986,13 +1067,7 @@ function AutoStageButton({ summary }: { summary: BufferSummary }) {
   );
 }
 
-function ExportSummary({
-  summary,
-  deliveryProfile,
-}: {
-  summary: BufferSummary;
-  deliveryProfile: MasterProfile;
-}) {
+function ExportSummary({ summary, deliveryProfile }: { summary: BufferSummary; deliveryProfile: MasterProfile }) {
   const corr = summary.correlation;
   const corrLabel = corr > 0.5 ? "Mono OK" : corr < 0 ? "Phase" : "Wide";
   const clipped = summary.peakDb > -0.3 || summary.truePeakDb > -0.3;

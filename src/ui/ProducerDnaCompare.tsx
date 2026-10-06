@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { canonicalizePattern, contentHash } from "../ai/evaluation";
 import { extractPatternFeaturesV2 } from "../ai/features/pattern-features-v2";
-import type { ProjectDocument } from "../project-model/types";
+import type { Pattern, ProjectDocument } from "../project-model/types";
 import { orderTasteProbeSides, suggestTasteProbePair, tasteProbePairKey } from "../intent/taste-probe";
 import {
   comparedPairKeys,
@@ -28,6 +29,8 @@ import type { GenerationResult, RankedCandidate } from "../intent/types";
 interface ProducerDnaCompareProps {
   project: ProjectDocument;
   result: GenerationResult;
+  /** Original take for a recursive iteration, compared against its variants. */
+  referencePattern?: Pattern | null;
   onAudition: (candidate: RankedCandidate) => void;
 }
 
@@ -59,8 +62,26 @@ function downloadPack(): void {
   window.setTimeout(() => URL.revokeObjectURL(url), 5_000);
 }
 
-export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaCompareProps) {
+export function ProducerDnaCompare({ project, result, referencePattern = null, onAudition }: ProducerDnaCompareProps) {
   const candidates = result.bank ?? [];
+  const referenceCandidate = useMemo<RankedCandidate | null>(
+    () =>
+      referencePattern
+        ? {
+            candidateIndex: -1,
+            seed: referencePattern.generation?.seed ?? "iteration-parent",
+            source: "template",
+            status: "accepted",
+            repairs: [],
+            score: 0,
+            modelScore: null,
+            contentHash: contentHash(canonicalizePattern(project, referencePattern)),
+            pattern: referencePattern,
+          }
+        : null,
+    [project, referencePattern],
+  );
+  const comparisonCandidates = referenceCandidate ? [...candidates, referenceCandidate] : candidates;
   const [aIndex, setAIndex] = useState<number | null>(null);
   const [bIndex, setBIndex] = useState<number | null>(null);
   const [reason, setReason] = useState<PreferenceReason | "">("");
@@ -72,18 +93,21 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
   const featureCache = useRef<{
     result: GenerationResult;
     project: ProjectDocument;
+    referencePattern: Pattern | null;
     rows: Map<number, Float32Array>;
   } | null>(null);
 
   const context = useMemo(() => preferenceContextForIntent(result.plan.intent), [result.plan.intent]);
-  const candidateA = candidates.find((candidate) => candidate.candidateIndex === aIndex) ?? null;
-  const candidateB = candidates.find((candidate) => candidate.candidateIndex === bIndex) ?? null;
+  const candidateA = comparisonCandidates.find((candidate) => candidate.candidateIndex === aIndex) ?? null;
+  const candidateB = comparisonCandidates.find((candidate) => candidate.candidateIndex === bIndex) ?? null;
   const candidateFeatures = (requested: readonly RankedCandidate[]) => {
     const cache =
-      featureCache.current?.result === result && featureCache.current.project === project
+      featureCache.current?.result === result &&
+      featureCache.current.project === project &&
+      featureCache.current.referencePattern === referencePattern
         ? featureCache.current
-        : { result, project, rows: new Map<number, Float32Array>() };
-    const batch = candidates.map((candidate) => candidate.pattern);
+        : { result, project, referencePattern, rows: new Map<number, Float32Array>() };
+    const batch = comparisonCandidates.map((candidate) => candidate.pattern);
     for (const candidate of requested) {
       if (cache.rows.has(candidate.candidateIndex)) continue;
       cache.rows.set(
@@ -111,7 +135,7 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
     setBlindProbeActive(false);
     setSkippedProbePairs(new Set());
     setMessage("");
-  }, [result]);
+  }, [result, referencePattern]);
 
   /**
    * W3 proactive probe: after N generations in this context WITHOUT an
@@ -122,7 +146,37 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
   const armProbe = useRef<(pair: ReturnType<typeof proactiveProbeState>["proposal"]) => void>(() => {});
 
   useEffect(() => {
-    if (!learningEnabled || candidates.length < 2) return;
+    if (!learningEnabled) return;
+    if (referenceCandidate && candidates.length > 0) {
+      const child = candidates[0];
+      if (!child || child.contentHash === referenceCandidate.contentHash) {
+        setMessage("Pôvodný take a najlepšia iterácia majú rovnaký hudobný obsah; niet čo porovnávať.");
+        return;
+      }
+      const pairKey = tasteProbePairKey(referenceCandidate.contentHash, child.contentHash);
+      if (comparedPairKeys(readPreferenceLedger(), context.key).has(pairKey)) {
+        setMessage("Tento pôvodný take a iterácia už boli porovnané. Môžeš si ručne vybrať inú dvojicu.");
+        return;
+      }
+      let randomByte: number | undefined;
+      try {
+        randomByte = window.crypto.getRandomValues(new Uint8Array(1))[0];
+      } catch {
+        const hash = `${referenceCandidate.contentHash}:${child.contentHash}`;
+        randomByte =
+          Array.from(hash).reduce((value, character) => (value * 31 + character.charCodeAt(0)) >>> 0, 0) & 0xff;
+      }
+      const parentFirst = (randomByte ?? 0) % 2 === 1;
+      setAIndex(parentFirst ? referenceCandidate.candidateIndex : child.candidateIndex);
+      setBIndex(parentFirst ? child.candidateIndex : referenceCandidate.candidateIndex);
+      setReason("");
+      setBlindProbeActive(true);
+      setMessage(
+        "Slepé porovnanie pôvodného take-u a iterácie: strany sú náhodne priradené. Vypočuj obe; nič sa neuloží, kým nepotvrdíš voľbu.",
+      );
+      return;
+    }
+    if (candidates.length < 2) return;
     noteGenerationWithoutVote();
     const features = candidateFeatures(candidates);
     const state = proactiveProbeState({
@@ -140,7 +194,7 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
     });
     if (state.proposal) armProbe.current(state.proposal);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [result]);
+  }, [result, referenceCandidate, referencePattern, learningEnabled]);
 
   // Assign the (stateful) A/B sides from a proposed pair.
   useEffect(() => {
@@ -206,18 +260,30 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
     // proactively ask again until N fresh generations pass.
     noteProducerDnaVote();
     const preferred = choice === "a" ? "A" : "B";
+    const hasParent = candidateA.candidateIndex === -1 || candidateB.candidateIndex === -1;
+    const parentSide = candidateA.candidateIndex === -1 ? "A" : "B";
+    const sourceReveal =
+      referenceCandidate && hasParent
+        ? choice === "a" || choice === "b"
+          ? ` Vybral si ${(choice === "a" ? candidateA : candidateB).candidateIndex === -1 ? "pôvodný take" : "iteráciu"}; pôvodný take bol ${parentSide}.`
+          : ` Pôvodný take bol ${parentSide}.`
+        : "";
     if (choice === "neither") {
-      setMessage("Uložené ako ‘ani jeden’ — bez učenia smeru.");
+      setMessage(`Uložené ako ‘ani jeden’ — bez učenia smeru.${sourceReveal}`);
     } else if (choice === "both") {
-      setMessage("Uložené ako ‘oba dobré’ — bez učenia smeru.");
+      setMessage(`Uložené ako ‘oba dobré’ — bez učenia smeru.${sourceReveal}`);
     } else if (reason && !isPreferenceReasonRankable(reason)) {
-      setMessage(`Voľba ${preferred} je uložená, ale tento ranker zatiaľ nemá feature osi pre „${reason}“.`);
+      setMessage(
+        `Voľba ${preferred} je uložená, ale tento ranker zatiaľ nemá feature osi pre „${reason}“.${sourceReveal}`,
+      );
     } else if (reason) {
       setMessage(
-        `Voľba ${preferred} uložená pre „${reason}“; táto os sa použije po aspoň 2 relevantných porovnaniach.`,
+        `Voľba ${preferred} uložená pre „${reason}“; táto os sa použije po aspoň 2 relevantných porovnaniach.${sourceReveal}`,
       );
     } else {
-      setMessage(`Voľba ${preferred} uložená ako všeobecná preferencia; učenie sa aktivuje po aspoň 2 porovnaniach.`);
+      setMessage(
+        `Voľba ${preferred} uložená ako všeobecná preferencia; učenie sa aktivuje po aspoň 2 porovnaniach.${sourceReveal}`,
+      );
     }
     setComparisonCount(explicitComparisonCount());
     setAIndex(null);
@@ -299,17 +365,25 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
         Producer DNA · vyber, ktorý take by si si nechal. Toto učí osobný vkus, nie hodnotenie plnenia briefu.
       </div>
       <div className="intent-candidate-row">
-        <span>Automatický návrh hľadá podobne vysoko vybrané take-y s jedným merateľným rozdielom.</span>
-        <button type="button" className="btn btn-small" onClick={suggestProbe}>
-          NAVRHNÚŤ TASTE PROBE
-        </button>
+        <span>
+          {referenceCandidate
+            ? "Porovnaj pôvodný take s iteráciou; strany A/B sú skryté do uloženia voľby."
+            : "Automatický návrh hľadá podobne vysoko vybrané take-y s jedným merateľným rozdielom."}
+        </span>
+        {!referenceCandidate && (
+          <button type="button" className="btn btn-small" onClick={suggestProbe}>
+            NAVRHNÚŤ TASTE PROBE
+          </button>
+        )}
       </div>
       {!blindProbeActive && (
         <div className="intent-candidates" aria-label="Choose candidates to compare">
-          {candidates.map((candidate, position) => (
+          {comparisonCandidates.map((candidate, position) => (
             <div className="intent-candidate-row" key={candidate.candidateIndex}>
               <span className="intent-candidate-index">
-                #{position + 1} · {candidate.source === "symbolic-prior" ? "PRIOR" : "TPL"}
+                {candidate.candidateIndex === -1
+                  ? "PÔVODNÝ TAKE"
+                  : `#${position + 1} · ${candidate.source === "symbolic-prior" ? "PRIOR" : "TPL"}`}
               </span>
               <button
                 type="button"
@@ -335,7 +409,13 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
       {candidateA && candidateB && (
         <div className="intent-candidate-row" aria-label="Vote on A/B comparison">
           <strong>Ktorý take by si nechal?</strong>
-          <span>{blindProbeActive ? "A" : `A #${candidateA.candidateIndex + 1}`}</span>
+          <span>
+            {blindProbeActive
+              ? "A"
+              : candidateA.candidateIndex === -1
+                ? "A · pôvodný take"
+                : `A #${candidateA.candidateIndex + 1}`}
+          </span>
           <button type="button" className="btn btn-small" onClick={() => onAudition(candidateA)}>
             ▶ A
           </button>
@@ -343,7 +423,13 @@ export function ProducerDnaCompare({ project, result, onAudition }: ProducerDnaC
           <button type="button" className="btn btn-small" onClick={() => onAudition(candidateB)}>
             ▶ B
           </button>
-          <span>{blindProbeActive ? "B" : `B #${candidateB.candidateIndex + 1}`}</span>
+          <span>
+            {blindProbeActive
+              ? "B"
+              : candidateB.candidateIndex === -1
+                ? "B · pôvodný take"
+                : `B #${candidateB.candidateIndex + 1}`}
+          </span>
           <select
             aria-label="Optional reason for preference"
             value={reason}

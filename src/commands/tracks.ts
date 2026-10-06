@@ -9,6 +9,7 @@ import type {
   ProjectDocument,
   Track,
 } from "../project-model/types";
+import { MASTER_EFFECT_OWNER_ID } from "../project-model/types";
 import { DEFAULT_GATE_PATTERN } from "../project-model/modulators";
 import { defaultParamsOf, EFFECT_META } from "../effects/definitions";
 import {
@@ -669,6 +670,13 @@ export function addEffect(
       }),
     undo: (d) => withTrackEffects(d, trackId, (effects) => effects.filter((f) => f.id !== fx.id)),
     applyToYDoc: (yMap) => {
+      if (trackId === MASTER_EFFECT_OWNER_ID) {
+        const master = yMap.get("master") as any;
+        const effects = (master?.get("effects") as EffectInstance[] | undefined) ?? [];
+        const at = Math.max(0, Math.min(effects.length, insertionIndex));
+        master?.set("effects", [...effects.slice(0, at), fx, ...effects.slice(at)]);
+        return;
+      }
       const tracks = yMap.get("tracks") as any;
       for (let i = 0; i < tracks.length; i++) {
         const t = tracks.get(i) as any;

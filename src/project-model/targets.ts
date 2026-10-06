@@ -122,6 +122,7 @@ OZVENA_TARGET_DEFS.push(
 export interface MasterEffectOwner {
   id: typeof MASTER_EFFECT_OWNER_ID;
   kind: "master";
+  name: "MASTER";
   effects: EffectInstance[];
 }
 
@@ -130,7 +131,7 @@ export type EffectTargetOwner = Track | ReturnTrack | MasterEffectOwner;
 /** Return the track, return bus, or master bus that owns a target id. */
 export function targetOwner(doc: ProjectDocument, trackId: string): EffectTargetOwner | undefined {
   if (trackId === MASTER_EFFECT_OWNER_ID) {
-    return { id: MASTER_EFFECT_OWNER_ID, kind: "master", effects: doc.master.effects ?? [] };
+    return { id: MASTER_EFFECT_OWNER_ID, kind: "master", name: "MASTER", effects: doc.master.effects ?? [] };
   }
   return doc.tracks?.find((track) => track.id === trackId) ?? doc.returns?.find((ret) => ret.id === trackId);
 }

@@ -593,7 +593,7 @@ export class MasterChain {
     this.masterTiltLow!.connect(this.masterTiltHigh!);
     this.masterTiltHigh!.connect(this.masterGlue!.input);
     this.masterGlue!.output.connect(this.masterInsertInput);
-    this.masterInsertOutput.connect(this.masterClipper);
+    this.masterInsertOutput!.connect(this.masterClipper);
     const attached = this.masterLimiterWorklet as EffectRuntime | null;
     if (attached) {
       this.masterClipper.connect(attached.input);

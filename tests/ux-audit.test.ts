@@ -50,6 +50,7 @@ const ALL_KEYS: ShortcutKey[] = [
   // Alt+7/8 (ROADMAP-UI-2027 V1): every dock tab keyboard-reachable.
   "panelIntent",
   "panelMidi",
+  "panelMaster",
   "nextPattern",
   "prevPattern",
   "seekHome",

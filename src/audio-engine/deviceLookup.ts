@@ -2,6 +2,7 @@ import type { EffectRuntime } from "../effects/types";
 import type { InstrumentRuntime } from "../instruments/types";
 import type { AutomationTarget, ProjectDocument } from "../project-model/types";
 import { clampTargetValue, targetOwner, targetParamDef } from "../project-model/targets";
+import { MASTER_EFFECT_OWNER_ID } from "../project-model/types";
 
 /**
  * DeviceLookup — Wave 4d (step 1) of the AudioEngine decomposition
@@ -48,6 +49,7 @@ export interface DeviceLookupDeps {
   trackNodes: (id: string) => TrackOrGroupView | undefined;
   groupNodes: (id: string) => TrackOrGroupView | undefined;
   returnNodes: (id: string) => ReturnView | undefined;
+  masterFx?: () => { runtimes: Map<string, EffectRuntime> } | undefined;
   instrumentStates: () => Map<string, { runtime: InstrumentRuntime }>;
 }
 
@@ -72,6 +74,10 @@ export class DeviceLookup {
         if (g) candidates.push(g.fx);
         const r = this.deps.returnNodes(target.trackId);
         if (r) candidates.push(r.fx);
+        if (target.trackId === MASTER_EFFECT_OWNER_ID) {
+          const master = this.deps.masterFx?.();
+          if (master) candidates.push(master);
+        }
         for (const state of candidates) {
           const rt = state.runtimes.get(target.fxId);
           if (rt?.getAudioParam) {
@@ -92,7 +98,11 @@ export class DeviceLookup {
       this.deps.trackNodes(target.trackId) ??
       this.deps.groupNodes(target.trackId) ??
       this.deps.returnNodes(target.trackId);
-    return nodes?.fx.runtimes.get(target.fxId) ?? null;
+    return (
+      nodes?.fx.runtimes.get(target.fxId) ??
+      (target.trackId === MASTER_EFFECT_OWNER_ID ? this.deps.masterFx?.()?.runtimes.get(target.fxId) : undefined) ??
+      null
+    );
   }
 
   instrumentRuntimeForTarget(target: AutomationTarget): InstrumentRuntime | null {

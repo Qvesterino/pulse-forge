@@ -7,6 +7,7 @@ import type {
   SampleLayer,
   SceneAutomation,
 } from "../project-model/types";
+import { MASTER_EFFECT_OWNER_ID } from "../project-model/types";
 import type { AudioClip, AutomationPoint } from "../project-model/types";
 import { MAX_AUDIO_CLIP_WARP_SEGMENTS, resolveWarpPinPoints } from "../project-model/audio-clip-warp";
 export { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
@@ -277,6 +278,13 @@ export class AudioEngine {
     doc: () => this.doc,
     metering: this.metering,
   });
+  private masterFx: FxChainState = {
+    runtimes: new Map(),
+    params: new Map(),
+    signature: null,
+    pdcDelay: null,
+    latencySubs: [],
+  };
   private liveContextListeners = new Set<(context: AudioContext | null) => void>();
   private bank: SampleBank | null = null;
   private doc: ProjectDocument | null = null;
@@ -341,6 +349,7 @@ export class AudioEngine {
     groupNodes: (id) => this.groupNodes.get(id),
     returnNodes: (id) => this.returnNodes.get(id),
     instrumentStates: () => this.instruments,
+    masterFx: () => this.masterFx,
   });
   /**
    * Wave 4d step 2 (decomposition): modulation + automation write layer —
@@ -661,6 +670,7 @@ export class AudioEngine {
     // play off-pitch. setProject clears these too — but a bare context swap
     // (contextlost recovery) never runs setProject. (Wave 4e: WarpManager.)
     this.warpManager.invalidateForContextSwap();
+    this.disposeFxChainForContextSwap(this.masterFx);
     this.ctx = ctx;
     this.masterChain.build();
     if (this.doc) this.syncProject(this.doc);
@@ -919,6 +929,28 @@ export class AudioEngine {
     );
   }
 
+  /** Release master insert runtimes before their AudioContext is replaced. */
+  private disposeFxChainForContextSwap(state: FxChainState): void {
+    for (const unsubscribe of state.latencySubs) unsubscribe();
+    state.latencySubs.length = 0;
+    for (const runtime of state.runtimes.values()) {
+      try {
+        runtime.dispose();
+      } catch {
+        /* context swap must continue if a device fails teardown */
+      }
+    }
+    state.runtimes.clear();
+    state.params.clear();
+    try {
+      state.pdcDelay?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    state.pdcDelay = null;
+    state.signature = null;
+  }
+
   private rebuildFxChain(
     ownerId: string,
     effects: EffectInstance[],
@@ -1126,6 +1158,15 @@ export class AudioEngine {
         runtime.setSidechainInput(sourceNodes?.input ?? null);
       }
     }
+    for (const fx of doc.master.effects ?? []) {
+      if (fx.bypassed) continue;
+      const runtime = this.masterFx.runtimes.get(fx.id);
+      if (!runtime?.setSidechainInput) continue;
+      const sourceNodes = fx.sidechainTrackId
+        ? (this.trackNodes.get(fx.sidechainTrackId) ?? this.groupNodes.get(fx.sidechainTrackId))
+        : null;
+      runtime.setSidechainInput(sourceNodes?.input ?? null);
+    }
   }
 
   private disposeTrackNodes(id: string, nodes: TrackNodes): void {
@@ -1241,9 +1282,18 @@ export class AudioEngine {
 
   private syncProject(doc: ProjectDocument): void {
     const ctx = this.ctx;
-    if (!ctx || !this.masterChain.input) return;
+    const insertInput = this.masterChain.insertInput;
+    const insertOutput = this.masterChain.insertOutput;
+    if (!ctx || !this.masterChain.input || !insertInput || !insertOutput) return;
 
     this.masterChain.applyMasterConfig(doc.master);
+    const masterEffects = doc.master.effects ?? [];
+    const masterSignature = this.fxSignature(masterEffects);
+    if (this.masterFx.signature !== masterSignature) {
+      this.rebuildFxChain(MASTER_EFFECT_OWNER_ID, masterEffects, insertInput, insertOutput, this.masterFx);
+    } else {
+      this.syncFxParams(masterEffects, this.masterFx);
+    }
 
     const liveTrackIds = new Set(doc.tracks.map((t) => t.id));
     for (const [id, nodes] of [...this.trackNodes]) {
@@ -2203,6 +2253,7 @@ export class AudioEngine {
   /** Latest gain reduction in dB reported by an effect runtime (metering). */
   getFxGainReductionDb(trackId: string, fxId: string): number | null {
     const rt =
+      (trackId === MASTER_EFFECT_OWNER_ID ? this.masterFx.runtimes.get(fxId) : undefined) ??
       this.trackNodes.get(trackId)?.fx.runtimes.get(fxId) ??
       this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
       this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
@@ -2217,6 +2268,7 @@ export class AudioEngine {
    */
   async loadUserIrForFx(trackId: string, fxId: string, file: File): Promise<void> {
     const rt =
+      (trackId === MASTER_EFFECT_OWNER_ID ? this.masterFx.runtimes.get(fxId) : undefined) ??
       this.trackNodes.get(trackId)?.fx.runtimes.get(fxId) ??
       this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
       this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
@@ -2233,6 +2285,7 @@ export class AudioEngine {
    */
   clearUserIrForFx(trackId: string, fxId: string): void {
     const rt =
+      (trackId === MASTER_EFFECT_OWNER_ID ? this.masterFx.runtimes.get(fxId) : undefined) ??
       this.trackNodes.get(trackId)?.fx.runtimes.get(fxId) ??
       this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
       this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
@@ -2243,6 +2296,7 @@ export class AudioEngine {
   /** Live meter snapshot from an effect runtime ( Ultina spectrum/LUFS/masking…). */
   getFxMeters(trackId: string, fxId: string): unknown {
     const rt =
+      (trackId === MASTER_EFFECT_OWNER_ID ? this.masterFx.runtimes.get(fxId) : undefined) ??
       this.trackNodes.get(trackId)?.fx.runtimes.get(fxId) ??
       this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
       this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);

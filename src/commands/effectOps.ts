@@ -12,6 +12,7 @@
 import { trackEffectsOf, withTrackEffects } from "./docOps";
 import type { Command } from "./types";
 import type { ProjectDocument } from "../project-model/types";
+import { MASTER_EFFECT_OWNER_ID } from "../project-model/types";
 import { sanitizeGateSteps, sanitizeManglerSteps } from "../project-model/modulators";
 import { clampEffectParam, defaultParamsOf, EFFECT_META, normalizePluginParams } from "../effects/definitions";
 import { type EffectPreset } from "../effects/presets";
@@ -25,9 +26,12 @@ export function setEffectSidechainSource(
   fxId: string,
   sourceTrackId: string | null,
 ): Command {
-  const targetTrack = doc.tracks.find((track) => track.id === trackId);
+  const targetExists =
+    trackId === MASTER_EFFECT_OWNER_ID ||
+    doc.tracks.some((track) => track.id === trackId) ||
+    doc.returns.some((r) => r.id === trackId);
   const target = trackEffectsOf(doc, trackId).find((fx) => fx.id === fxId);
-  if (!targetTrack || !target) throw new Error(`Effect ${fxId} not found`);
+  if (!targetExists || !target) throw new Error(`Effect ${fxId} not found`);
   if (sourceTrackId !== null) {
     if (sourceTrackId === trackId) throw new Error("A track cannot sidechain itself");
     if (!doc.tracks.some((track) => track.id === sourceTrackId))

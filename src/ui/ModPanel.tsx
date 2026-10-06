@@ -184,6 +184,7 @@ function laneRange(doc: ProjectDocument, target: AutomationTarget): ParamRange {
 
 function trackBadgeSafe(track: { kind: string; instrument?: string } | undefined): string {
   if (!track) return "??";
+  if (track.kind === "master") return "MST";
   if (track.kind === "drum") return "DR";
   const badge: Record<string, string> = { sampler: "SMP", analog: "AN", bass: "BSS", "808": "808" };
   return badge[track.instrument ?? ""] ?? "??";
