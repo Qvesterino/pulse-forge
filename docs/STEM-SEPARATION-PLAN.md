@@ -64,14 +64,19 @@
 - **KPI:** model floors tabuľka (target: všetky vrstvy nad HPSS floors).
 - **Úsilie:** ~0.5–1 blok.
 
-### S5 — WebGPU + benchmarky — **HOTOVÉ 2026-10-06**
+### S5 — WebGPU + benchmarky — **HOTOVÉ 2026-10-06 (s meraným BLOCKERom pre Tier 2)**
 
 - EP probe v model cliene: `navigator.gpu` → WebGPU session (WASM fallback na
   create failure, cache raz), WASM SIMD inak; result nesie `ep` (atribúcia).
-- `npm run stem:benchmark` — realtime factor tabuľka (WASM vs WebGPU,
-  warm-up nevymeraný, 3 runy) na syntetickej fixture; WebGPU riadok = n/a
-  v Node (poctivo) — beží v GPU browseri po `stem:fetch`.
-- Support matrix + očakávania v ADR 0019 §S5.
+- `npm run stem:benchmark` + `public/bench-stem.html` (dev-served harness).
+- **MERANÝ VÝSLEDOK (2026-10-06, Chrome + NVIDIA Ampere): adowu/htdemucs.onnx
+  nie je onnxruntime-web-kompatibilný v ŽIADNOM EP** — WASM: std::bad_alloc
+  (302 MB fp16-mixed presahuje 2 GB wasm32 heap) aj pri 3,9 s chunku; WebGPU:
+  ConstantOfShape node bez providera (ISTFT chvost); WASM v Chrome: chýba fp16
+  ConstantOfShape kernel. `gatePassed` ostáva FALSE — checkpoint zlyhal
+  validáciu. **S6 návrhy:** full-fp32 export / graph surgery na
+  ConstantOfShape / iný exporter (StemSplit ft) / q8 export. Detaily a presné
+  chyby: ADR 0019 §S5 support matrix.
 
 ## KPI
 

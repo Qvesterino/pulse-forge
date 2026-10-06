@@ -26,7 +26,7 @@ if (!existsSync(modelPath)) {
 }
 
 const SR = manifest.sampleRate ?? 44100;
-const chunkSec = manifest.chunkSec ?? 7.8;
+const chunkSec = process.env.STEM_CHUNK_SEC ? Number(process.env.STEM_CHUNK_SEC) : (manifest.chunkSec ?? 7.8);
 const samples = Math.floor(chunkSec * SR);
 // Synthetic fixture: 220 Hz tone (harmonic) + 60→110 Hz sweep burst (bass-ish)
 // + noise — enough structure to prove the model ran and produced stems.
@@ -47,7 +47,9 @@ const isNode = typeof process !== "undefined" && process.versions?.node === "str
 // vite-node shims the dynamic import toward onnxruntime-web's node build —
 // require() reaches the real native binding (no wasm32 heap ceiling).
 const ort = isNode
-  ? (((await import("node:module")).createRequire(import.meta.url))("onnxruntime-node") as typeof import("onnxruntime-node"))
+  ? ((await import("node:module")).createRequire(import.meta.url)(
+      "onnxruntime-node",
+    ) as typeof import("onnxruntime-node"))
   : await import("onnxruntime-web");
 const session = await ort.InferenceSession.create(modelPath, isNode ? {} : { executionProviders: ["wasm"] });
 const inputName = manifest.inputName ?? session.inputNames[0];

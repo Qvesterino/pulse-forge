@@ -95,7 +95,32 @@ integration + KPI re-measure), S2 (user stems export), S3 (model fetch + ORT
 worker + chunked inference), S4 (lane wiring + panel surface), S5 (WebGPU +
 benchmarks).
 
-### S5 support matrix (2026-10-06)
+### S5 support matrix — MEASURED 2026-10-06 (Tier 2 BLOCKED on export compatibility)
+
+Real findings from running the fetched adowu/htdemucs.onnx (301.8 MB fp16-mixed,
+sha256 68d0bf16…) through onnxruntime-web 1.29 in Chrome (WebGPU adapter:
+NVIDIA Ampere, 2 GB buffer limit):
+
+| Runtime                      | Result (measured)                                                                                                                                                                   |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| WASM SIMD (Node 24 + Chrome) | **CREATE FAILED — std::bad_alloc** at 7.8 s AND 3.9 s chunks: fp16-mixed 302 MB weights + ORT arena exceed the 2 GB wasm32 heap. The fp32 model cannot run on the WASM tier at all. |
+| WebGPU (Chrome, Ampere)      | **CREATE FAILED — ERROR_CODE 1: Provider type for ConstantOfShape node '/real_istft/ConstantOfShape' is not set** — the graph's ISTFT tail has unassignable nodes.                  |
+| WASM (Chrome)                | **CREATE FAILED — ERROR_CODE 9: Could not find an implementation for ConstantOfShape(9)** — the export uses fp16 ConstantOfShape; the WASM build ships no fp16 kernel for it.       |
+
+CONCLUSION: the adowu ONNX export is **not onnxruntime-web-compatible in any
+execution provider** (measured, exact errors above). `gatePassed` stays FALSE —
+the checkpoint FAILED validation and remains a non-actor. Tier-1 HPSS is the
+shipping separation tier. Fix directions for a future Tier-2 wave (S6):
+(a) a full-fp32 export (no fp16 ConstantOfShape) — larger but wasm-viable only
+with a 4 GB/memory64 build, so realistically WebGPU-only; (b) graph surgery
+replacing ConstantOfShape with initializer constants; (c) a different exporter
+(StemSplit's ft exports) validated against the same checklist; (d) a quantized
+q8 export (~80 MB) if one appears. The benchmark page (public/bench-stem.html,
+dev-served) is the standing harness — re-run it against any new export.
+
+### Original expectation (pre-measurement, kept for honesty)
+
+S5 support matrix (2026-10-06)
 
 Execution-provider selection lives in the model client: `navigator.gpu`
 probe → WebGPU session (with a WASM fallback on create failure, cached so

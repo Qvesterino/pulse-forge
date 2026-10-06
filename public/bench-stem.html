@@ -1,0 +1,89 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>STEM benchmark</title>
+  </head>
+  <body>
+    <div id="status">running…</div>
+    <pre id="out"></pre>
+    <script type="module">
+      // S5 benchmark page — served by the dev server, imports ort straight from
+      // the dist directory so the wasm/jsep companions resolve next to it.
+      const out = [];
+      const log = (line) => {
+        out.push(line);
+        document.getElementById("out").textContent = out.join("\n");
+      };
+      try {
+        const SR = 44100;
+        const chunkSec = 7.8;
+        const samples = Math.floor(chunkSec * SR);
+        const planar = new Float32Array(samples * 2);
+        for (let i = 0; i < samples; i++) {
+          const t = i / SR;
+          const v =
+            0.3 * Math.sin(2 * Math.PI * 220 * t) +
+            0.25 * Math.sin(2 * Math.PI * (60 + 50 * Math.min(1, t / chunkSec)) * t) * (t < 1 ? 1 : 0.2) +
+            0.02 * ((Math.sin(i * 12.9898) * 43758.5453) % 1);
+          planar[i] = v;
+          planar[samples + i] = v;
+        }
+
+        const ort = await import("../../node_modules/onnxruntime-web/dist/ort.webgpu.min.mjs");
+        const adapter = await navigator.gpu?.requestAdapter();
+        log("gpu adapter: " + (adapter ? JSON.stringify(adapter.info ?? {}) : "none"));
+        log("ort " + (ort.env.versions?.web ?? "?"));
+
+        const resp = await fetch("/models/stem/htdemucs.onnx");
+        const bytes = new Uint8Array(await resp.arrayBuffer());
+        log("model: " + (bytes.length / 1048576).toFixed(1) + " MB");
+
+        for (const [label, providers] of [
+          ["WebGPU", ["webgpu", "wasm"]],
+          ["WASM SIMD", ["wasm"]],
+        ]) {
+          let session = null;
+          let createError = "";
+          try {
+            session = await ort.InferenceSession.create(bytes, { executionProviders: providers });
+          } catch (err) {
+            createError = String(err?.message ?? err);
+          }
+          if (!session) {
+            log(label + ": CREATE FAILED — " + createError);
+            continue;
+          }
+          const inputName = session.inputNames[0];
+          const outputName = session.outputNames[0];
+          const input = new ort.Tensor("float32", planar, [1, 2, samples]);
+          await session.run({ [inputName]: input }); // warm-up
+          const runs = 3;
+          const started = performance.now();
+          let dims = "";
+          for (let i = 0; i < runs; i++) {
+            const result = await session.run({ [inputName]: input });
+            if (i === 0) dims = (result[outputName]?.dims ?? []).join(",");
+          }
+          const perRunSec = (performance.now() - started) / runs / 1000;
+          log(
+            label +
+              ": " +
+              perRunSec.toFixed(2) +
+              " s/chunk · realtime " +
+              (chunkSec / perRunSec).toFixed(2) +
+              "× · dims [" +
+              dims +
+              "]",
+          );
+          await session.release();
+        }
+      } catch (err) {
+        log("ERROR: " + (err?.message ?? String(err)));
+      } finally {
+        window.__BENCH_LINES = out;
+        document.getElementById("status").textContent = "done";
+      }
+    </script>
+  </body>
+</html>
