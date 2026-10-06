@@ -190,7 +190,7 @@ describe("DropZone — UN-SUNO analyze offer (U6)", () => {
   }, 120_000);
 
   it("COVER BAND: three blind persona covers, tournament picks a winner, one command executes", async () => {
-    const { services, executeSpy } = setup();
+    const { executeSpy } = setup();
     fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("coverme.wav")] } });
     await waitFor(
       () => {
