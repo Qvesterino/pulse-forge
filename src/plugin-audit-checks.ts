@@ -6,7 +6,7 @@
  * document-level half (ranges, serialization, automation targets) lives in
  * tests/plugin-functional-audit.test.ts.
  *
- * For every one of the 48 effect types:
+ * For every one of the 49 effect types:
  *  1. factory-level sweep — every param at min AND max against a stereo test
  *     signal: finite output, no runaway gain, and a measured delta (RMS,
  *     side energy, spectral centroid) proving the DSP actually responds to

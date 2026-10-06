@@ -150,6 +150,7 @@ describe("mcp tools — headless execution", async () => {
       "kyx_arrange",
       "kyx_song",
       "kyx_routing",
+      "kyx_master",
       "kyx_takes",
       "kyx_blind_ab",
     ]);
@@ -1940,6 +1941,72 @@ describe("mcp routing — the group graph", async () => {
     const notInGroup = await executeMcpTool(ctx, "kyx_routing", { op: "removeFromGroup", family: "drums" });
     expect(notInGroup.mutated).toBe(false);
     expect(notInGroup.text).toContain("nothing changed");
+  });
+});
+
+describe("mcp kyx_master — the ZENIT mastering device", async () => {
+  it("add inserts ZENIT on a GROUP bus (stem mastering), preset lands the target shape, one undo each", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    await executeMcpTool(ctx, "kyx_routing", { op: "createGroup", name: "Mix Bus" });
+    const group = store.doc.tracks.find((t) => t.kind === "group" && t.name === "Mix Bus")!;
+
+    const added = await executeMcpTool(ctx, "kyx_master", { op: "add", trackId: group.id });
+    expect(added.mutated).toBe(true);
+    const instance = store.doc.tracks.find((t) => t.id === group.id)!.effects.find((fx) => fx.type === "zenit")!;
+    expect(instance).toBeTruthy();
+
+    const preset = await executeMcpTool(ctx, "kyx_master", {
+      op: "preset",
+      trackId: group.id,
+      target: "streaming",
+    });
+    expect(preset.mutated).toBe(true);
+    expect(preset.text).toContain("Streaming −14");
+    const shaped = store.doc.tracks.find((t) => t.id === group.id)!.effects.find((fx) => fx.type === "zenit")!;
+    expect(shaped.params.ceiling).toBe(-1);
+    expect(shaped.params.limit).toBe(0.35);
+    expect(shaped.params.glue).toBe(0.25);
+    // createGroup + rename + ZENIT add + preset = 4 undo steps (createGroup
+    // lands its rename as a second command).
+    expect(store.undoStackLength).toBe(4);
+
+    const status = await executeMcpTool(ctx, "kyx_master", { op: "status" });
+    expect(status.mutated).toBe(false);
+    expect(status.text).toContain("Mix Bus");
+    expect(status.text).toContain("kyx_loudness");
+  });
+
+  it("trim rides the output-trim seam clamped −18…+12; unknown target refused honestly", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const ctx = storeCtx(store);
+    await executeMcpTool(ctx, "kyx_master", { op: "add", family: "drums" });
+    const refused = await executeMcpTool(ctx, "kyx_master", { op: "preset", family: "drums", target: "spotify" });
+    expect(refused.mutated).toBe(false);
+    expect(refused.text).toContain("streaming | club | vinyl");
+
+    const trim = await executeMcpTool(ctx, "kyx_master", { op: "trim", family: "drums", trimDb: -1.2 });
+    expect(trim.mutated).toBe(true);
+    const fx = store.doc.tracks
+      .find((t) => t.kind === "drum")!
+      .effects.find((candidate) => candidate.type === "zenit")!;
+    expect(fx.outputTrimDb).toBe(-1.2);
+    const over = await executeMcpTool(ctx, "kyx_master", { op: "trim", family: "drums", trimDb: 40 });
+    expect(over.mutated).toBe(true);
+    const overFx = store.doc.tracks
+      .find((t) => t.kind === "drum")!
+      .effects.find((candidate) => candidate.type === "zenit")!;
+    expect(overFx.outputTrimDb).toBe(12); // clamped
+  });
+
+  it("remove is destructive-gated with the checkpoint; status guides when empty", async () => {
+    const store = new ProjectStore(datasetDoc());
+    const locked = await executeMcpTool(storeCtx(store), "kyx_master", { op: "remove", family: "drums" });
+    expect(locked.mutated).toBe(false);
+    expect(locked.text).toContain("locked");
+
+    const empty = await executeMcpTool(storeCtx(store), "kyx_master", { op: "status" });
+    expect(empty.text).toContain("no ZENIT instances");
   });
 });
 

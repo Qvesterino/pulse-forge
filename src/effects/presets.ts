@@ -590,6 +590,34 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
   preset("pitchcorrect-subtle", "Subtle Snap", "pitchCorrect", { amount: 0.55, speed: 0.5, mix: 0.8 }),
   preset("pitchcorrect-hardtune", "Hard Tune", "pitchCorrect", { amount: 1, speed: 0.95, mix: 1 }),
 
+  // ZENIT targets (ADR 0020) — loudness refinement happens via output trim
+  // against the measured LUFS (kyx_master trim / export verdict), the presets
+  // set the SHAPE: ceiling discipline, limiting push, glue and stereo field.
+  preset("zenit-streaming", "Streaming −14", "zenit", {
+    ceiling: -1,
+    limit: 0.35,
+    glue: 0.25,
+    eqHigh: 0.5,
+    width: 1.05,
+  }),
+  preset("zenit-club", "Club Push", "zenit", {
+    ceiling: -0.5,
+    limit: 0.7,
+    glue: 0.45,
+    drive: 0.25,
+    bassMono: 120,
+    width: 1.1,
+  }),
+  preset("zenit-vinyl", "Vinyl Safe", "zenit", {
+    ceiling: -3,
+    limit: 0.15,
+    glue: 0.2,
+    drive: 0.1,
+    bassMono: 150,
+    width: 0.9,
+    eqLow: -1,
+  }),
+
   // Vinyl Suite — the presets lean on the individual module controls so they
   // are audibly distinct (AGE alone scales everything uniformly).
   preset("vinyl-78", "78 RPM Shellac", "vinyl", {

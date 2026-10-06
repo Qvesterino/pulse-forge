@@ -1,5 +1,5 @@
 /**
- * Effect DEFINITIONS — pure parameter metadata for the 48 effect
+ * Effect DEFINITIONS — pure parameter metadata for the 49 effect
  * types, split verbatim from registry.ts (cross-platform campaign GOAL 02/03).
  *
  * Node-pure by contract: no React, no Web Audio, no worklet loaders, no
@@ -255,6 +255,7 @@ export const EFFECT_ORDER: EffectType[] = [
   "pitchCorrect",
   "vinyl",
   "beatMangler",
+  "zenit",
 ];
 
 export const CORE_EFFECT_ORDER: EffectType[] = [
@@ -284,6 +285,7 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "gate",
   "sidechain",
   "chorus",
+  "zenit",
 ];
 
 export const FLAGSHIP_EFFECT_ORDER: EffectType[] = ["fxeq", "ultina", "ozvena", "kaskada", "morphdynamics"];
@@ -1881,6 +1883,32 @@ export const pitchCorrectParams: ParamDef[] = [
   { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
 ];
 
+/**
+ * ZENIT macro surface (ADR 0020) — the composite mastering device. Nine knobs
+ * mapped onto a fixed chain of existing runtimes
+ * (eq → tapeSat → compressor → utility → clipper → limiter); the loudness
+ * target loop rides the engine-owned outputTrimDb seam.
+ */
+export const zenitParams: ParamDef[] = [
+  { id: "eqLow", label: "LOW", min: -6, max: 6, default: 0, unit: "dB", format: formatDb },
+  { id: "eqMid", label: "MID", min: -6, max: 6, default: 0, unit: "dB", format: formatDb },
+  { id: "eqHigh", label: "HIGH", min: -6, max: 6, default: 0, unit: "dB", format: formatDb },
+  { id: "glue", label: "GLUE", min: 0, max: 1, default: 0, format: formatPct },
+  { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0, format: formatPct },
+  { id: "width", label: "WIDTH", min: 0, max: 2, default: 1, format: (v) => `${Math.round(v * 100)}%` },
+  {
+    id: "bassMono",
+    label: "BASS MONO",
+    min: 0,
+    max: 200,
+    default: 0,
+    unit: "Hz",
+    format: (v) => (v <= 0 ? "OFF" : formatHz(v)),
+  },
+  { id: "ceiling", label: "CEIL", min: -6, max: 0, default: -1, unit: "dB", format: formatDb },
+  { id: "limit", label: "LIMIT", min: 0, max: 1, default: 0, format: formatPct },
+];
+
 export const vinylParams: ParamDef[] = [
   // Master macro first — the "one knob" path for people who just want AGE.
   { id: "amount", label: "AGE", min: 0, max: 1, default: 0.5, format: formatPct },
@@ -2308,6 +2336,7 @@ export const EFFECT_META: Record<EffectType, EffectDefinitionMeta> = {
   multiTapDelay: { type: "multiTapDelay", name: "Multi-Tap", category: "space", params: multiTapDelayParams },
   pitchShift: { type: "pitchShift", name: "Pitch Shift", category: "character", params: pitchShiftParams },
   pitchCorrect: { type: "pitchCorrect", name: "Pitch Correct", category: "character", params: pitchCorrectParams },
+  zenit: { type: "zenit", name: "ZENIT", category: "dynamics", params: zenitParams },
   vinyl: { type: "vinyl", name: "Vinyl Suite", category: "character", params: vinylParams },
   beatMangler: { type: "beatMangler", name: "Beat Mangler", category: "movement", params: beatManglerParams },
   vocoder: { type: "vocoder", name: "Vocoder", category: "character", params: vocoderParams },

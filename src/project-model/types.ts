@@ -60,6 +60,7 @@ export type EffectType =
   | "utility"
   | "gate"
   | "shimmer"
+  | "zenit"
   | "fxeq"
   | "ultina"
   | "ozvena"

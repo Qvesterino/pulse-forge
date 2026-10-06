@@ -48,6 +48,7 @@ import {
   haasWidenerParams,
   multibandParams,
   compressorParams,
+  defaultParamsOf,
   saturationParams,
   tapeSatParams,
   clipperParams,
@@ -88,6 +89,7 @@ import {
   vinylParams,
   beatManglerParams,
   vocoderParams,
+  zenitParams,
   reverseSwellParams,
   granularFreezeParams,
   kaskadaParams,
@@ -3365,6 +3367,164 @@ const vinyl: EffectDefinition = {
   },
 };
 
+/**
+ * ZENIT (ADR 0020) — the composite mastering device. Fixed chain of SIX
+ * existing audited runtimes (eq → tapeSat → compressor → utility → clipper →
+ * limiter) behind a nine-knob macro surface; every stage keeps its own
+ * worklet-gated degraded path and the aggregate reports honestly. No new
+ * DSP by construction — composition, wiring and latency accounting only.
+ * A device on a group bus IS stem mastering (host position is the feature).
+ */
+const zenit: EffectDefinition = {
+  type: "zenit",
+  name: "ZENIT",
+  category: "dynamics",
+  params: zenitParams,
+  factory(ctx, instance) {
+    const stages: { type: EffectType; params: Record<string, number> }[] = [
+      {
+        type: "eq",
+        // Mastering-friendly fixed mids/highs; only the three gain macros move.
+        params: {
+          ...defaultParamsOf("eq"),
+          lowShelfFreq: 120,
+          lowMidFreq: 900,
+          lowMidQ: 0.9,
+          highMidFreq: 3500,
+          highMidQ: 0.9,
+          highShelfFreq: 9000,
+        },
+      },
+      // DRIVE is transparent at 0 via mix (tape hysteresis would still color).
+      {
+        type: "tapeSat",
+        params: { ...defaultParamsOf("tapeSat"), drive: 0, hysteresis: 0.1, tone: 9000, mix: 0, output: 0 },
+      },
+      // GLUE transparent at 0 via mix; >0 sweeps a gentle bus-comp curve.
+      {
+        type: "compressor",
+        params: {
+          ...defaultParamsOf("compressor"),
+          threshold: -6,
+          ratio: 1.4,
+          attack: 0.02,
+          release: 0.25,
+          knee: 6,
+          makeup: 0,
+          mix: 0,
+          drive: 0,
+          character: 0,
+        },
+      },
+      { type: "utility", params: { ...defaultParamsOf("utility") } },
+      {
+        type: "clipper",
+        params: { ...defaultParamsOf("clipper"), drive: 0, ceiling: -1, softness: 0.5, mix: 1, output: 0 },
+      },
+      {
+        type: "limiter",
+        params: {
+          ...defaultParamsOf("limiter"),
+          ceiling: -1,
+          threshold: -1,
+          release: 0.12,
+          lookaheadMs: 4,
+          link: 1,
+          mix: 1,
+        },
+      },
+    ];
+    const subs = stages.map((stage) =>
+      EFFECT_DEFS[stage.type].factory(
+        ctx,
+        { id: `${instance.id}·zen·${stage.type}`, type: stage.type, bypassed: false, params: stage.params },
+        { bpm: 120 },
+      ),
+    );
+    for (let i = 0; i < subs.length - 1; i++) subs[i]!.output.connect(subs[i + 1]!.input);
+    const [eq, tape, comp, util, clip, lim] = subs;
+    let ceilingValue = instance.params.ceiling ?? -1;
+
+    const apply = (id: string, v: number, when?: number): void => {
+      const push = (rt: EffectRuntime, paramId: string, paramValue: number) => {
+        if (when === undefined) rt.setParameter(paramId, paramValue);
+        else if (rt.setParameterAt) rt.setParameterAt(paramId, paramValue, when);
+        else rt.setParameter(paramId, paramValue);
+      };
+      switch (id) {
+        case "eqLow":
+          push(eq!, "lowShelfGain", v);
+          break;
+        case "eqMid":
+          push(eq!, "lowMidGain", v);
+          break;
+        case "eqHigh":
+          push(eq!, "highShelfGain", v);
+          break;
+        case "glue":
+          push(comp!, "mix", v > 0 ? 1 : 0);
+          if (v > 0) {
+            push(comp!, "threshold", -6 - v * 18);
+            push(comp!, "ratio", 1.4 + v * 2.1);
+          }
+          break;
+        case "drive":
+          push(tape!, "drive", v);
+          push(tape!, "mix", v > 0 ? 1 : 0);
+          break;
+        case "width":
+          push(util!, "width", v);
+          break;
+        case "bassMono":
+          push(util!, "monoBassFrequency", v);
+          break;
+        case "ceiling":
+          ceilingValue = v;
+          push(clip!, "ceiling", v);
+          push(lim!, "ceiling", v);
+          break;
+        case "limit":
+          // 0 = limiter idle (threshold rides the ceiling the clipper already
+          // caught); >0 pushes the threshold harder for loudness.
+          push(lim!, "threshold", limitThreshold(v, ceilingValue));
+          break;
+      }
+    };
+    for (const [id, value] of Object.entries(instance.params)) apply(id, value);
+
+    const fallbacks = subs.filter((s) => s.degraded);
+    const reason = fallbacks
+      .map((s) => s.degradedReason)
+      .filter(Boolean)
+      .join(" · ");
+    return {
+      input: subs[0]!.input,
+      output: subs[subs.length - 1]!.output,
+      degraded: fallbacks.length > 0,
+      ...(reason ? { degradedReason: `ZENIT stage fallback — ${reason}` } : {}),
+      setParameter: (id, value) => apply(id, value),
+      setParameterAt: (id, value, when) => apply(id, value, when),
+      getLatencySec: () => subs.reduce((sum, s) => sum + (s.getLatencySec?.() ?? 0), 0),
+      syncBpm: (bpm, when) => subs.forEach((s) => s.syncBpm?.(bpm, when)),
+      dispose: () => {
+        for (const sub of subs) {
+          try {
+            sub.dispose();
+          } catch {
+            /* a failing stage must not strand the others */
+          }
+        }
+      },
+    };
+  },
+};
+
+/** LIMIT 0 keeps the limiter idle at the ceiling; 1 pushes 12 dB harder. */
+export function limitThreshold(limit: number, ceilingDb: number): number {
+  if (limit <= 0) return ceilingDb;
+  return ceilingDb - 1 - limit * 11;
+}
+
 /** Stable beat-repeat division ids. Existing projects start with 1/1…1/32;
  * dotted and triplet ids are appended so saved parameter values stay valid. */
 
@@ -3494,6 +3654,7 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   pitchShift,
   pitchCorrect,
   vinyl,
+  zenit,
   beatMangler,
   vocoder,
   reverseSwell,

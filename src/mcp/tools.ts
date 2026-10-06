@@ -7,6 +7,7 @@ import { planBlindPairGains, recordBlindAbTrial, resetBlindAbTrials, summarizeBl
 import type { Command } from "../commands/types";
 import { routeIntentText, type RoutedIntent } from "../intent/route";
 import { routeIsDestructive } from "../intent/route-guard";
+import { presetsForEffect } from "../effects/presets";
 import { isCreativeBriefRoute } from "../intent/model-fallback-policy";
 import { applyFaderIntent, applyTempoIntent } from "../intent/conversation";
 import {
@@ -60,6 +61,7 @@ import {
   createGroupTrack,
   createReturnTrack,
   deleteReturnTrack,
+  setEffectOutputTrimDb,
   addMarker,
   addArrangementClip,
   applyExactIntentCommand,
@@ -103,6 +105,7 @@ import {
   toggleEffectBypass,
   splitAudioClipAtTick,
   updateAudioClip,
+  addEffectToTracks,
 } from "../commands/commands";
 import { isAutomationTargetValid, targetParamDef } from "../project-model/targets";
 import { clampEffectParam, EFFECT_META, type EffectDefinitionMeta } from "../effects/definitions";
@@ -1313,6 +1316,42 @@ export const MCP_TOOLS: McpToolDef[] = [
     },
   },
   {
+    name: "kyx_master",
+    description:
+      "The ZENIT composite mastering device (ADR 0020) — EQ → drive → glue → " +
+      "width/bass-mono → clipper → limiter behind nine macros, insertable on " +
+      "any bus (a device on a group bus IS stem mastering). add inserts it, " +
+      "preset lands a target shape (streaming −14 LUFS / club / vinyl), trim " +
+      "applies a loudness make-up delta on the instance's output trim after " +
+      "measuring with kyx_loudness/kyx_render_summary, status reads the " +
+      "inserts. Chain order: EQ before limiting, always.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: { type: "string", enum: ["add", "preset", "trim", "remove", "status"] },
+        trackId: { type: "string", description: "Exact track id — overrides family when present" },
+        family: {
+          type: "string",
+          enum: ["drums", "bass", "chords", "lead", "vocal"],
+          description: "Family alternative to trackId",
+        },
+        target: {
+          type: "string",
+          enum: ["streaming", "club", "vinyl"],
+          description: "For op:preset — the mastering target shape",
+        },
+        trimDb: {
+          type: "number",
+          minimum: -18,
+          maximum: 12,
+          description: "For op:trim — output-trim delta in dB (e.g. target LUFS minus measured LUFS)",
+        },
+        instance: { type: "number", description: "1-based ZENIT instance index when a track carries more than one" },
+      },
+      required: ["op"],
+    },
+  },
+  {
     name: "kyx_takes",
     description:
       "Take groups (comp workflow): list every group with its track, the " +
@@ -2401,6 +2440,8 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
       return executeClipsTool(ctx, record);
     case "kyx_routing":
       return executeRoutingTool(ctx, record);
+    case "kyx_master":
+      return executeMasterTool(ctx, record);
     case "kyx_takes":
       return executeTakesTool(ctx, record);
     case "kyx_batch":
@@ -4781,6 +4822,130 @@ function sectionCommand(record: Record<string, unknown>, doc: ProjectDocument): 
     default:
       return null;
   }
+}
+
+/** ZENIT instances on one track, in chain order. */
+function zenitInstancesOf(doc: ProjectDocument, trackId: string): { id: string }[] {
+  return (doc.tracks.find((t) => t.id === trackId)?.effects ?? [])
+    .filter((fx) => fx.type === "zenit")
+    .map((fx) => ({ id: fx.id }));
+}
+
+function pickZenitInstance(doc: ProjectDocument, trackId: string, record: Record<string, unknown>): string | null {
+  const instances = zenitInstancesOf(doc, trackId);
+  if (instances.length === 0) return null;
+  const index = Math.max(1, Math.round(Number(record.instance ?? 1))) - 1;
+  return instances[Math.min(index, instances.length - 1)]?.id ?? null;
+}
+
+/**
+ * The ZENIT composite mastering device (ADR 0020) over the MCP transport.
+ * trackId may name a GROUP bus deliberately — a ZENIT on a group IS stem
+ * mastering (host position is the feature); families resolve non-group tracks.
+ */
+function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
+  const op = String(record.op ?? "status");
+  const doc = ctx.getDoc();
+  if (op === "status") {
+    const rows: string[] = [];
+    for (const track of doc.tracks) {
+      for (const fx of zenitInstancesOf(doc, track.id)) {
+        const instance = track.effects.find((candidate) => candidate.id === fx.id);
+        if (!instance) continue;
+        const pct = (v: unknown): number => Math.round(Number(v ?? 0) * 100);
+        rows.push(
+          `${track.name} (id=${track.id}): ZENIT ${fx.id} · ceil ${Number(instance.params.ceiling ?? -1)} dB · ` +
+            `limit ${pct(instance.params.limit)}% · glue ${pct(instance.params.glue)}% · drive ${pct(instance.params.drive)}%`,
+        );
+      }
+    }
+    return {
+      text:
+        (rows.length > 0
+          ? rows.join("\n")
+          : "no ZENIT instances — op:add inserts the mastering strip on a bus (a group bus = stem mastering)") +
+        "\nloudness: measure with kyx_loudness / kyx_render_summary, then op:trim {trimDb: target − measured}",
+      mutated: false,
+    };
+  }
+  let ids: string[];
+  const exactId = typeof record.trackId === "string" ? record.trackId.trim() : "";
+  if (exactId !== "") {
+    if (!doc.tracks.some((t) => t.id === exactId)) return { text: `track ${exactId} not found`, mutated: false };
+    ids = [exactId];
+  } else {
+    ids = tracksInFamily(doc, String(record.family ?? ""));
+    if (ids.length === 0) {
+      return {
+        text: `no track matches family "${String(record.family ?? "")}" — pass trackId (group buses allowed and encouraged: that IS stem mastering)`,
+        mutated: false,
+      };
+    }
+  }
+
+  if (op === "add") {
+    let next = doc;
+    for (const id of ids) next = addEffectToTracks(next, [id], "zenit").execute(next);
+    ctx.execute(snapshot("mcpMasterAdd", `MCP: add ZENIT (${ids.length} bus)`, doc, next));
+    const placed = ids
+      .map((id) => `${doc.tracks.find((t) => t.id === id)!.name}: ${pickZenitInstance(next, id, {}) ?? "?"}`)
+      .join("; ");
+    return { text: `ZENIT inserted — ${placed} — one undo step`, mutated: true };
+  }
+
+  // The remove gate fires BEFORE target resolution: a locked context must
+  // refuse as locked even when no instance exists (the lock is the message).
+  if (op === "remove" && !destructiveAllowedWithCheckpoint(ctx, "kyx_master")) return destructiveRefusal();
+
+  // Every op below targets EXISTING ZENIT instances.
+  const targets: { trackId: string; trackName: string; fxId: string }[] = [];
+  for (const id of ids) {
+    const track = doc.tracks.find((t) => t.id === id)!;
+    const fxId = pickZenitInstance(doc, id, record);
+    if (!fxId) return { text: `${track.name} carries no ZENIT instance — op:add first`, mutated: false };
+    targets.push({ trackId: id, trackName: track.name, fxId });
+  }
+
+  if (op === "preset") {
+    const target = String(record.target ?? "");
+    const preset = presetsForEffect("zenit").find((candidate) => candidate.id === `zenit-${target}`);
+    if (!preset) return { text: "preset needs target: streaming | club | vinyl", mutated: false };
+    let next = doc;
+    for (const { trackId, fxId } of targets)
+      for (const [paramId, value] of Object.entries(preset.params))
+        next = setEffectParam(next, trackId, fxId, paramId, value).execute(next);
+    ctx.execute(snapshot("mcpMasterPreset", `MCP: ZENIT preset "${preset.name}"`, doc, next));
+    return {
+      text: `${preset.name} on ${targets.map((t) => t.trackName).join(", ")} — one undo step; measure with kyx_loudness, then op:trim`,
+      mutated: true,
+    };
+  }
+
+  if (op === "trim") {
+    const trimDb = Number(record.trimDb);
+    if (record.trimDb == null || !Number.isFinite(trimDb)) {
+      return {
+        text: "trim needs trimDb = target LUFS − measured LUFS (measure with kyx_loudness first)",
+        mutated: false,
+      };
+    }
+    let next = doc;
+    for (const { trackId, fxId } of targets) next = setEffectOutputTrimDb(next, trackId, fxId, trimDb).execute(next);
+    ctx.execute(snapshot("mcpMasterTrim", `MCP: ZENIT trim ${trimDb > 0 ? "+" : ""}${trimDb} dB`, doc, next));
+    return {
+      text: `output trim ${trimDb > 0 ? "+" : ""}${trimDb} dB on ${targets.map((t) => t.trackName).join(", ")} — one undo step (clamped −18…+12)`,
+      mutated: true,
+    };
+  }
+
+  if (op === "remove") {
+    let next = doc;
+    for (const { trackId, fxId } of targets) next = removeEffect(next, trackId, fxId).execute(next);
+    ctx.execute(snapshot("mcpMasterRemove", `MCP: remove ZENIT (${targets.length})`, doc, next));
+    return { text: `ZENIT removed from ${targets.map((t) => t.trackName).join(", ")} — one undo step`, mutated: true };
+  }
+
+  return { text: `unknown kyx_master op: ${op}`, mutated: false, isError: true };
 }
 
 /** Scoped groove part builder for the kyx_groove tool. */
