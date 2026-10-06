@@ -5,9 +5,9 @@ import { BAR_TICKS, type ProjectDocument } from "../project-model/types";
 import type { IUserSampleRepository } from "../persistence/contracts";
 import { userSampleId } from "../persistence/UserSampleRepository";
 import type { SampleBank } from "../sample-library/factory";
+import type { renderProject } from "../rendering/renderer";
 import { encodeWav } from "../rendering/wav";
 import { buildTimeRangeConsolidationDoc } from "../rendering/bounce";
-import { buildTempoMap, renderProject, resolveRenderTailSeconds } from "../rendering/renderer";
 
 export interface RangeConsolidationRuntime {
   store: {
@@ -26,12 +26,15 @@ export async function consolidateRangeToAudio(
   runtime: RangeConsolidationRuntime,
   range: { fromTick: number; toTick: number },
   isSelectionCurrent: () => boolean = () => true,
-  render: typeof renderProject = renderProject,
+  render?: typeof renderProject,
 ): Promise<Command> {
   const store = runtime.store;
   if (storesInFlight.has(store)) throw new Error("A range consolidation is already in progress.");
   storesInFlight.add(store);
 
+  // Renderer loads on demand (the boot graph must not carry it — it drags
+  // the worklet loaders); tests may inject a render function directly.
+  const renderFn = render ?? (await import("../rendering/renderer")).renderProject;
   let bufferId: string | undefined;
   let saveAttempted = false;
   let bankAdded = false;
@@ -53,6 +56,7 @@ export async function consolidateRangeToAudio(
     const plan = buildTimeRangeConsolidationDoc(sourceDoc, range.fromTick, range.toTick, sourceDurationsByBufferId);
     const sampleRate = runtime.engine.getLiveAudioContext()?.sampleRate ?? 44100;
     const durationTicks = plan.lengthBars * BAR_TICKS;
+    const { buildTempoMap, resolveRenderTailSeconds } = await import("../rendering/renderer");
     const tailSeconds = resolveRenderTailSeconds(plan.project);
     const rangeStartTick = Math.min(range.fromTick, range.toTick);
     const rangeEndTick = Math.max(range.fromTick, range.toTick);
@@ -74,7 +78,7 @@ export async function consolidateRangeToAudio(
     const printEndTick = sourceTempoMap.tickAt(sourceTempoMap.timeAt(rangeEndTick) + tailSeconds);
     const printLengthBars =
       Math.ceil(Math.max(plan.lengthBars, (printEndTick - rangeStartTick) / BAR_TICKS) * 100) / 100;
-    const buffer = await render(plan.project, runtime.bank, {
+    const buffer = await renderFn(plan.project, runtime.bank, {
       mode: "song",
       sampleRate,
       tailSeconds,

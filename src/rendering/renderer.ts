@@ -319,90 +319,12 @@ function collectClipWindows(doc: ProjectDocument, mode: PlayMode, arrangementOnl
   return [{ pattern, base: 0, from: 0, to: patternTicks, sceneBase: 0, bpm: doc.bpm }];
 }
 
-export interface TempoSegment {
-  from: number;
-  to: number;
-  bpm: number;
-  /** Wall-clock time (seconds) at `from`. */
-  startTime: number;
-}
-
-/**
- * Piecewise tick→seconds map for scene tempo lanes: every window runs at its
- * scene's BPM, gaps between windows run at the project BPM. Pure — the
- * offline render and its length computation both consume it.
- */
-export function buildTempoMap(
-  doc: ProjectDocument,
-  windows: readonly Pick<ClipWindow, "from" | "to" | "bpm">[],
-): {
-  segments: TempoSegment[];
-  totalSeconds: number;
-  timeAt: (tick: number) => number;
-  tickAt: (seconds: number) => number;
-} {
-  const docSpt = 60 / (doc.bpm * PPQ);
-  const sorted = [...windows].sort((a, b) => a.from - b.from);
-  const segments: TempoSegment[] = [];
-  let cursorTick = 0;
-  let cursorTime = 0;
-  for (const w of sorted) {
-    if (w.from > cursorTick) {
-      // Gap: project-tempo travel up to the window start.
-      cursorTime += (w.from - cursorTick) * docSpt;
-      cursorTick = w.from;
-    }
-    const bpm = w.bpm ?? doc.bpm;
-    const spt = 60 / (bpm * PPQ);
-    segments.push({ from: w.from, to: w.to, bpm, startTime: cursorTime });
-    cursorTime += (w.to - w.from) * spt;
-    cursorTick = Math.max(cursorTick, w.to);
-  }
-  const totalSeconds = cursorTime;
-  const timeAt = (tick: number): number => {
-    if (segments.length === 0) return tick * docSpt;
-    const segmentEndTime = (segment: TempoSegment): number =>
-      segment.startTime + (segment.to - segment.from) * (60 / (segment.bpm * PPQ));
-    for (let index = 0; index < segments.length; index++) {
-      const segment = segments[index];
-      if (tick >= segment.from && tick <= segment.to) {
-        return segment.startTime + (tick - segment.from) * (60 / (segment.bpm * PPQ));
-      }
-      if (tick < segment.from) {
-        // A gap before the first window, or between two windows, runs at the
-        // project tempo. Anchor it to the nearest preceding edge instead of
-        // extrapolating from the last scene (which can collapse an AudioClip
-        // beyond that scene to a zero-second render duration).
-        const previous = segments[index - 1];
-        return previous ? segmentEndTime(previous) + (tick - previous.to) * docSpt : tick * docSpt;
-      }
-    }
-    // Beyond the final scene window, continue from its actual end time and
-    // then advance at the project tempo.
-    const last = segments[segments.length - 1];
-    return segmentEndTime(last) + (tick - last.to) * docSpt;
-  };
-  const tickAt = (seconds: number): number => {
-    if (!Number.isFinite(seconds)) return 0;
-    if (segments.length === 0) return seconds / docSpt;
-    const segmentEndTime = (segment: TempoSegment): number =>
-      segment.startTime + (segment.to - segment.from) * (60 / (segment.bpm * PPQ));
-    for (let index = 0; index < segments.length; index++) {
-      const segment = segments[index];
-      if (seconds < segment.startTime) {
-        const previous = segments[index - 1];
-        return previous ? previous.to + (seconds - segmentEndTime(previous)) / docSpt : seconds / docSpt;
-      }
-      const endTime = segmentEndTime(segment);
-      if (seconds <= endTime) {
-        return segment.from + (seconds - segment.startTime) / (60 / (segment.bpm * PPQ));
-      }
-    }
-    const last = segments[segments.length - 1];
-    return last.to + (seconds - segmentEndTime(last)) / docSpt;
-  };
-  return { segments, totalSeconds, timeAt, tickAt };
-}
+// Tempo-map math lives in ./tempoMap (pure, boot-graph safe): the bounce and
+// range-consolidation doc builders need it without the offline renderer's
+// engine + worklet-loader closure. Re-exported here so every existing
+// renderer import site keeps working.
+export { buildTempoMap, type TempoSegment, type TempoWindow } from "./tempoMap";
+import { buildTempoMap } from "./tempoMap";
 
 /**
  * Strip frozen state for offline rendering. Frozen buffers are a LIVE

@@ -1,5 +1,6 @@
 import { buildStemProject } from "./stems";
-import { buildTempoMap, type ClipWindow } from "./renderer";
+import type { ClipWindow } from "./renderer";
+import { buildTempoMap } from "./tempoMap";
 import type { ProjectDocument } from "../project-model/types";
 import { BAR_TICKS } from "../project-model/types";
 import { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";

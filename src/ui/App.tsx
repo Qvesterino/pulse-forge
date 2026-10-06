@@ -61,7 +61,6 @@ import type { PaletteDeps } from "./commandPalette";
 import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
 import { userSampleId } from "../persistence/UserSampleRepository";
 import { buildBounceZoneDoc } from "../rendering/bounce";
-import { renderProject } from "../rendering/renderer";
 import { encodeWav } from "../rendering/wav";
 import { consolidateRangeToAudio } from "../services/rangeConsolidation";
 import { CommandToast } from "./CommandToast";
@@ -1253,6 +1252,9 @@ export function App({
                 const liveContext = (
                   services.engine as { getLiveAudioContext?: () => AudioContext | null }
                 ).getLiveAudioContext?.();
+                // Lazy: the offline renderer drags the worklet loaders into
+                // the boot graph — bounce happens long after boot, on demand.
+                const { renderProject } = await import("../rendering/renderer");
                 const buffer = await renderProject(zoneDoc, services.bank, {
                   mode: "song",
                   sampleRate: liveContext?.sampleRate ?? 44100,
