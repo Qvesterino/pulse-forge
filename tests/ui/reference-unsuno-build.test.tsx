@@ -106,7 +106,7 @@ describe("ReferenceMapPanel — BUILD PROJECT (U6)", () => {
 
 describe("DropZone — UN-SUNO analyze offer (U6)", () => {
   it("RE-STYLE: after BUILD, an artist input swaps the band in one command", async () => {
-    const { services, executeSpy } = setup();
+    const { executeSpy } = setup();
     fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("song.wav")] } });
     await waitFor(
       () => {

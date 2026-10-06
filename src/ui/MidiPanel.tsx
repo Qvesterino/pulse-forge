@@ -969,13 +969,13 @@ function MidiCcRow({
   const targetLabel = (() => {
     switch (mapping.target.kind) {
       case "trackGain":
-        return `${owner?.name ?? "?"} → Volume`;
+        return `${owner ? ("name" in owner ? owner.name : "MASTER") : "?"} → Volume`;
       case "trackPan":
-        return `${owner?.name ?? "?"} → Pan`;
+        return `${owner ? ("name" in owner ? owner.name : "MASTER") : "?"} → Pan`;
       case "fxParam":
-        return `${owner?.name ?? "?"} → FX · ${targetDef?.label ?? mapping.target.paramId ?? "?"}`;
+        return `${owner ? ("name" in owner ? owner.name : "MASTER") : "?"} → FX · ${targetDef?.label ?? mapping.target.paramId ?? "?"}`;
       case "instParam":
-        return `${owner?.name ?? "?"} → Instrument · ${targetDef?.label ?? mapping.target.paramId ?? "?"}`;
+        return `${owner ? ("name" in owner ? owner.name : "MASTER") : "?"} → Instrument · ${targetDef?.label ?? mapping.target.paramId ?? "?"}`;
     }
   })();
 
