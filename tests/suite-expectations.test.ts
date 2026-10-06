@@ -57,6 +57,16 @@ describe("parseVitestJsonReport", () => {
     expect(parsed.failedIds).toEqual(["tests/a.test.ts > boom"]);
   });
 
+  it("anchors cross-tree reports at tests/ so a worktree report evaluates from the main checkout", () => {
+    // A report produced in D:/pf-verify (verification worktree) evaluated
+    // with the script's root at D:/pulse-forge must yield the SAME ids.
+    const parsed = parseVitestJsonReport(
+      report(reportFile("D:/pf-verify/tests/a.test.ts", [assertion("boom", "failed")])),
+      "D:/pulse-forge",
+    );
+    expect(parsed.failedIds).toEqual(["tests/a.test.ts > boom"]);
+  });
+
   it("represents collection errors as pseudo ids (file failed, zero failed assertions)", () => {
     const parsed = parseVitestJsonReport(
       report(reportFile("D:/pulse-forge/tests/c.test.ts", [], "failed")),

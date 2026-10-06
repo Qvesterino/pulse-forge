@@ -62,11 +62,21 @@ const LEDGER_NOTE =
 
 export class ExpectationsError extends Error {}
 
-/** Absolute-or-relative reporter path → repo-relative, forward slashes. */
+/**
+ * Reporter file path → repo-relative, forward slashes. Tolerates reports
+ * produced in a DIFFERENT tree (e.g. a verification worktree evaluated from
+ * the main checkout): when the path doesn't sit under `root`, anchor at the
+ * `/tests/` segment — every spec in this repo lives under `tests/`, so the
+ * id stays identical regardless of which tree produced the report.
+ */
 export function normalizeFilePath(rawPath, root = REPO_ROOT) {
   let p = String(rawPath).replace(/\\/g, "/");
   const r = String(root).replace(/\\/g, "/");
-  if (p.startsWith(`${r}/`)) p = p.slice(r.length + 1);
+  if (r !== "" && p.startsWith(`${r}/`)) p = p.slice(r.length + 1);
+  if (p.includes("/tests/")) {
+    const anchor = p.indexOf("/tests/") + 1;
+    p = p.slice(anchor);
+  }
   return p;
 }
 
