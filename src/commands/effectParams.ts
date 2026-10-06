@@ -119,7 +119,8 @@ export function setEffectParam(
     undo: (d) => apply(d, previousValues),
     applyToYDoc: (yMap) => {
       if (trackId === MASTER_EFFECT_OWNER_ID) {
-        const master = yMap.get("master") as any;
+        const master = yMap.get("master") as
+          { get(key: "effects"): unknown; set(key: "effects", value: unknown): void } | undefined;
         const effects = (master?.get("effects") as EffectInstance[] | undefined) ?? [];
         master?.set(
           "effects",
@@ -251,7 +252,8 @@ export function toggleEffectBypass(doc: ProjectDocument, trackId: string, fxId: 
     undo: (d) => apply(d, prev),
     applyToYDoc: (yMap) => {
       if (trackId === MASTER_EFFECT_OWNER_ID) {
-        const master = yMap.get("master") as any;
+        const master = yMap.get("master") as
+          { get(key: "effects"): unknown; set(key: "effects", value: unknown): void } | undefined;
         const effects = (master?.get("effects") as EffectInstance[] | undefined) ?? [];
         master?.set(
           "effects",

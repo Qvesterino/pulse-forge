@@ -97,12 +97,12 @@ describe("keyboard shortcut table", () => {
   it("maps every panel shortcut to a real bottom-panel id", () => {
     // "intent" is the real dock id App.tsx setBottomPanel() accepts
     // (Alt+7); "fx" is canonicalized to the unified Devices panel in App.
-    const realPanelIds = new Set(["mixer", "fx", "arr", "mod", "exp", "midi", "dice", "intent"]);
+    const realPanelIds = new Set(["mixer", "fx", "arr", "mod", "exp", "midi", "dice", "intent", "master"]);
     for (const sc of SHORTCUTS) {
       const panel = panelIdOfShortcut(sc.key);
       if (panel) expect(realPanelIds.has(panel), `${sc.key} → unknown panel "${panel}"`).toBe(true);
     }
-    expect(Object.keys(PANEL_IDS_BY_SHORTCUT)).toHaveLength(8);
+    expect(Object.keys(PANEL_IDS_BY_SHORTCUT)).toHaveLength(9);
   });
 });
 

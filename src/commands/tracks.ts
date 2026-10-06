@@ -671,7 +671,8 @@ export function addEffect(
     undo: (d) => withTrackEffects(d, trackId, (effects) => effects.filter((f) => f.id !== fx.id)),
     applyToYDoc: (yMap) => {
       if (trackId === MASTER_EFFECT_OWNER_ID) {
-        const master = yMap.get("master") as any;
+        const master = yMap.get("master") as
+          { get(key: "effects"): unknown; set(key: "effects", value: unknown): void } | undefined;
         const effects = (master?.get("effects") as EffectInstance[] | undefined) ?? [];
         const at = Math.max(0, Math.min(effects.length, insertionIndex));
         master?.set("effects", [...effects.slice(0, at), fx, ...effects.slice(at)]);

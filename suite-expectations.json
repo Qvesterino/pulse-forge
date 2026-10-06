@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAgainst": "445c117d",
+  "recordedAgainst": "4c29966f",
   "date": "2026-10-06",
   "note": "Owned-red ledger (Chromium TestExpectations model). Every entry needs owner + reason. Ratchet: new reds fail the gate, cured reds demand removal. See scripts/suite-expectations.mjs.",
   "expectations": [
@@ -15,13 +15,6 @@
       "id": "tests/asio-host.test.ts > ASIO SDK vendor gate (scripts/vendor-asio.mjs) records provenance and hashes without committing SDK bytes",
       "owner": "vendor SDK owner gate (by design)",
       "reason": "provenance gate needs the locally fetched ASIO SDK bytes; never committed",
-      "addedAt": "2026-10-06",
-      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
-    },
-    {
-      "id": "tests/clap-host.test.ts > CLAP player end-to-end (ADR 0016 audio hosting) state extension: --set 880 + --state-out, then --state-in replays at 880 Hz",
-      "owner": "vendor SDK owner gate (by design)",
-      "reason": "needs the locally built CLAP probe/SDK artifacts; never committed",
       "addedAt": "2026-10-06",
       "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
     },
@@ -75,21 +68,21 @@
       "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
     },
     {
-      "id": "tests/intent-wrongkind-wave.test.ts > wrongkind wave — teacher routing SK preset asks accept inflected targets (na leade / na basu)",
+      "id": "tests/intent-wrongkind-wave.test.ts > wrongkind wave \u2014 teacher routing SK preset asks accept inflected targets (na leade / na basu)",
       "owner": "intent-model wave",
       "reason": "pins frozen to artifact/prompt bytes of the locally retrained ONNX + SFT models; re-pin needs manifest regen after the next retrain",
       "addedAt": "2026-10-06",
       "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
     },
     {
-      "id": "tests/melodic-embedding-conditioning.test.ts > provider melodic v2 path flag off → straight to v1 (no v2 attempt)",
+      "id": "tests/melodic-embedding-conditioning.test.ts > provider melodic v2 path flag off \u2192 straight to v1 (no v2 attempt)",
       "owner": "concurrent symbolic/grooves retrain wave",
       "reason": "melodic v2 path flag routing pinned to the pre-retrain embedding gate",
       "addedAt": "2026-10-06",
       "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
     },
     {
-      "id": "tests/metric-accent.test.ts > metric accent end to end — the musical claim does not flatten a groove written on the off-beats (house)",
+      "id": "tests/metric-accent.test.ts > metric accent end to end \u2014 the musical claim does not flatten a groove written on the off-beats (house)",
       "owner": "concurrent symbolic/grooves retrain wave",
       "reason": "off-beat groove preservation pin vs in-flight groove generator changes",
       "addedAt": "2026-10-06",
@@ -159,18 +152,32 @@
       "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
     },
     {
-      "id": "tests/trigger-engine.test.ts > TriggerEngine (Wave 4f — final) owns the moved realtime path verbatim (method inventory)",
+      "id": "tests/trigger-engine.test.ts > TriggerEngine (Wave 4f \u2014 final) owns the moved realtime path verbatim (method inventory)",
       "owner": "engine decomposition wave (4f)",
       "reason": "source-grep 'method inventory' pin still describes the pre-refactor AudioEngine surface",
       "addedAt": "2026-10-06",
       "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
     },
     {
-      "id": "tests/warp-manager.test.ts > WarpManager (Wave 4e) engine keeps the surface as delegates (no stale cache fields)",
-      "owner": "engine decomposition wave (4e)",
-      "reason": "source-grep 'delegates' pin still describes the pre-refactor AudioEngine surface",
+      "id": "tests/ui/ExportPanel.test.tsx > ExportPanel hot export offers AUTO STAGE and applies one master-gain command",
+      "owner": "master-effect wave (aa575d6b/a41fab7a)",
+      "reason": "AUTO STAGE flow times out in jsdom since the master yMap sync landed; needs the wave author's follow-up (F1 worktree triage 2026-10-06, repros in isolation)",
       "addedAt": "2026-10-06",
-      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+      "evidence": "F1 baseline worktree run at 4c29966f \u2014 repros with `npx vitest run tests/ui/ExportPanel.test.tsx`"
+    },
+    {
+      "id": "tests/ui/ExportPanel.test.tsx > ExportPanel re-enables AUTO STAGE when a re-export delivers a new verdict",
+      "owner": "master-effect wave (aa575d6b/a41fab7a)",
+      "reason": "same AUTO STAGE stall as the hot-export twin",
+      "addedAt": "2026-10-06",
+      "evidence": "F1 baseline worktree run at 4c29966f"
+    },
+    {
+      "id": "tests/drift-check.test.ts > collectCountChecks (against the real docs/CURRENT-STATE.md) parses every tracked row and matches live code RIGHT NOW",
+      "owner": "drift-check wave",
+      "reason": "spec-file count is environment-sensitive while parallel sessions hold untracked test files (HEAD measures 838, a tree with untracked WIP measures 839); the count needs a committed-only measure",
+      "addedAt": "2026-10-06",
+      "evidence": "F1 baseline: worktree (clean) 838 vs main tree (untracked WIP) 839 across two full-suite runs"
     }
   ]
 }
