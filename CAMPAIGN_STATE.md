@@ -57,6 +57,13 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Verification: 60/60 green.
 - Date/session: 2026-10-06, commit `4061bdcb`
 
+### drift:check — the derivable-artifact gate (user-picked proposal 3)
+- Area: scripts/drift-check.mts (+ tests/drift-check.test.ts, 7 pins)
+- Built: one command regenerating MCP mirrors (gen:mcp-mirrors), domain goldens (goldens:capture) and the CURRENT-STATE counts (EFFECT_META / INSTRUMENT_META / TEMPLATES / spec-file count) with the same npm commands humans use, diffing vs HEAD. Exit 0 clean / 1 drift (drift:bless + review + commit) / 2 tool error; a detected drift is re-verified by a second regeneration (flaky-generator verdict); dirty-before paths SKIPPED never restored (shared-tree guardrail); clean paths normalized back (generator LF vs autocrlf checkout CRLF phantom).
+- First-run catches (validated live): domain goldens stale at 47 vs 51 effect defaults since ZENIT M2 (tests/domain-goldens.test.ts red on main, fixed 8d2216a0), mirrors lagging two MCP waves, CURRENT-STATE spec count stale twice within the hour.
+- Guards learned live and pinned in comments: vite-node forks a worker with NO script path in argv (VITEST env is the discriminator); process.exit truncates piped stdout on Windows (exitCode assignment).
+- Date/session: 2026-10-06, commits 13d22879/8d2216a0/cb767793 (machinery partially absorbed into concurrent commits — content verified in HEAD)
+
 ### Honest-gate sweep wave 2: DC offset fabricated section-mix findings
 - Area: src/analysis/sectionMixDoctor.ts (+ verified-clean src/vocal/ + src/analysis/ scorers)
 - Root cause: the low-band measurement ran raw signal through a one-pole LP at 120 Hz, which passes DC COMPLETELY — a render with a DC offset measured "100 % low-band, no transient contrast" and fabricated low-masking findings (probe: pure DC → 2 findings, music+DC → 97 % low share where clean had none).
@@ -173,6 +180,14 @@ Last updated: 2026-10-06 (session sess_85d94465)
 4. Re-establish the fresh-clone bootstrap check (`npm install && npm run dev` on a clean machine) — last verified 10-03.
 
 ## SESSION LOG
+
+### 2026-10-06 (follow-up 5) / drift:check — derivable-artifact gate (user-picked proposal 3)
+- Built: scripts/drift-check.mts + 7 unit pins + npm scripts (drift:check / drift:bless) + AGENTS.md gate row + cheat sheet.
+- Caught live: domain goldens 47 vs 51 (M2 landing, test red on main — fixed), mirrors two waves behind (sibling self-fixed mid-session), spec count stale twice (832/834 re-measured).
+- Verified: drift:check EXIT 0 "no drift" on final run; domain-goldens 12/12; mirror-sync green; drift-check tests 7/7.
+- Note: with the sibling landing every few minutes, artifacts got absorbed/reverted mid-bless twice — commit blessed artifacts IMMEDIATELY in the same chain.
+- Commits: 13d22879, 8d2216a0, cb767793.
+- Recommended continuation: remaining audit candidates from the ranking: MCP agent-surface security/capability audit (proposal 4).
 
 ### 2026-10-06 (follow-up 4) / Honest-gate sweep wave 2 — src/vocal + src/analysis
 - Inspected: comping.ts barScore (self-normalized energyCurve = by-design shape question, absolute dimension via snrBonus), analyze.ts estimateSnrDb (bounded, silence/constant → 0), mixDoctor thresholds (calibrated, flags are TRUE statements), sectionMixDoctor, levelMatch, arrangement-lane take-scoring (anchor-based everywhere).
