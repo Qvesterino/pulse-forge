@@ -109,8 +109,9 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Recommended next action: **when a wave lands, the ratchet tells you what to do** — cured entries FAIL the gate until removed from the ledger; a wave that fixes its reds deletes its own entries (baseline only shrinks). New reds must be fixed or classified with owner+reason.
 - Priority: enforced by `npm run test:expectations` (CI test job) — no longer priority-tracked by hand
 
-### format:check still red on ~35 eol-artifact files + in-flight sibling files
+### format:check still red on ~35 eol-artifact files + in-flight sibling files — RESOLVED 2026-10-06
 - Area: Prettier gate, whole repo
+- RESOLUTION (2026-10-06): `.gitattributes` committed (`* text=auto eol=lf` + binary exclusions, 33b7f0c4); index was already 100% LF so NO renormalize was needed; 108 clean worktree CRLF/mixed files converted in place (sibling dirty untouched); fresh-checkout acceptance PASSED (0 CRLF on autocrlf=true Windows); format:check noise 103 flags -> 1 owned flag. Session log follow-up 7.
 - Evidence: committed content of those files passes Prettier; worktree copies differ only in CRLF/LF. `core.autocrlf=true`, NO `.gitattributes` exists.
 - Root cause: the repository has no eol policy; any git checkout rewrites worktree files to CRLF while Prettier's default endOfLine is LF. Normalizing worktree copies to LF makes them git-phantom-modified instead — there is no state that is both git-clean and Prettier-clean on this machine.
 - User/system impact: the documented merge gate cannot go fully green on Windows checkouts; noise in every git status.
@@ -150,9 +151,8 @@ Last updated: 2026-10-06 (session sess_85d94465)
 
 ## DEFERRED / OUT OF SCOPE
 
-### `.gitattributes` eol policy + renormalization
-- Reason: high-churn mechanical rewrite of every text file; unsafe on a shared tree with live concurrent sessions.
-- Relevant future campaign: Build & Toolchain, quiet-window session.
+### `.gitattributes` eol policy + renormalization — DONE 2026-10-06 (see follow-up 7)
+- Resolution: shipped without a full renormalize (index already LF); only clean worktree copies converted.
 
 ### AGENTS.md count refresh
 - Reason: docs-only, needs a grep-verified sweep; not blocking.
@@ -190,6 +190,14 @@ Last updated: 2026-10-06 (session sess_85d94465)
 4. Re-establish the fresh-clone bootstrap check (`npm install && npm run dev` on a clean machine) — last verified 10-03.
 
 ## SESSION LOG
+
+### 2026-10-06 (follow-up 7) / eol policy — the quiet-window session (last structural item)
+- Did: .gitattributes (LF + binary exclusions + bat/cmd CRLF guard, 33b7f0c4); inventory proved the index was already 100% LF (autocrlf normalized on check-in for years) so renormalize was unnecessary; converted 108 clean worktree CRLF/mixed files to LF; formatted 8 committed-drift files from the mastering/DNA waves (ebc4cbc7).
+- Proved: fresh worktree checkout on autocrlf=true Windows produces 0 CRLF (the policy's acceptance test); format:check 103 -> 1 owned flag; drift:check EXIT 0 'no drift'.
+- Earned on the way: drift-check --bless silently vanished via argv slice(3) under vite-node (fixed 6f99db8d, full-argv read); the sibling landed mid-bless — artifacts blessed in the CLEAN worktree (never baking their in-flight tools.ts) and the content landed through their absorb (1ef04e55); arbiters 15/15.
+- Timing note: mid-conversion the tree showed ~131 phantom-M files — the sibling's git operation was rebuilding the index stat cache during my writes; it settled clean on its own. Their index.lock made update-index die (exit 128) — waited, never forced.
+- Commits: 33b7f0c4, ebc4cbc7, 6f99db8d (+1ef04e55 absorb), 894c9c54.
+- Recommended continuation: nothing structural left from the 10-06 list — the two standing gates own the remaining reds (all owned/active-wave). format:check's only flag is the sibling's in-flight file.
 
 ### 2026-10-06 (follow-up 6) / MCP agent-surface audit (user-picked proposal 4)
 - Inspected: 36 tools classified read-only/mutating/destructive/network/file; 6 allowDestructive gate sites vs the full removal inventory; byte paths (SFZ/export/gallery) for caps; token/relay/auth invariants.
