@@ -195,8 +195,26 @@ class AsioProbeManager {
   }
 }
 
+/**
+ * Electron IPC surface (Studio I/O panel). One handler, two tiers, both
+ * honest: registry names always (pure Node), native probe details
+ * best-effort (absent build / timeout / partial are statuses, not errors).
+ * The renderer never names an executable and never talks to a driver.
+ */
+function registerAsioIpcHandlers(ipcMain, options = {}) {
+  if (!ipcMain || typeof ipcMain.handle !== "function") throw new Error("Electron ipcMain is required");
+  const manager = options.manager ?? new AsioProbeManager(options);
+  ipcMain.handle("kyx:asio:list", async () => {
+    const registry = await manager.listRegisteredDrivers();
+    const details = await manager.probeDrivers();
+    return { registry, details };
+  });
+  return manager;
+}
+
 module.exports = {
   AsioProbeManager,
+  registerAsioIpcHandlers,
   defaultProbePath,
   enumerateRegistry,
   validateAsioDriverRecord,

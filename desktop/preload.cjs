@@ -28,6 +28,10 @@ contextBridge.exposeInMainWorld("kyxDesktop", {
     /** Crash-isolated scan of the standard CLAP directories (probe per file). */
     scan: () => ipcRenderer.invoke("kyx:clap:scan"),
   },
+  asio: {
+    /** ASIO discovery (ADR 0017): registry names + best-effort probe details. */
+    list: () => ipcRenderer.invoke("kyx:asio:list"),
+  },
   pcm: {
     /** External PCM source: main spawns the host, frames land in the shared ring. */
     start: (request) => ipcRenderer.invoke("kyx:pcm:start", request),

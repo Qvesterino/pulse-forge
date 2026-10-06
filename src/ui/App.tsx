@@ -87,6 +87,7 @@ import {
 } from "./dockLayout";
 import { DockChrome } from "./DockChrome";
 import { BrowserStrip } from "./BrowserStrip";
+import { IoPanel } from "./IoPanel";
 import { isPadKey, padKeysArmed, setPadKeysArmed } from "./padKeys";
 import { melodicKeys } from "./melodicKeys";
 import { JamGate } from "./JamGate";
@@ -364,6 +365,8 @@ export function App({
     doc.tracks[0]?.kind === "drum" ? (doc.tracks[0].pads[0]?.id ?? "") : "",
   );
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  // Studio I/O popover (statusbar meter click + topbar ⋯ tool).
+  const [ioOpen, setIoOpen] = useState(false);
   // The dock ceiling is a function of the live viewport, so it has to be
   // state and not a render-time read: a browser resize must re-clamp a dock
   // that was sized on a taller window (audit 16). Reading `innerHeight` during
@@ -1518,9 +1521,11 @@ export function App({
             <div className="app">
               <TopBar
                 diagnosticsOpen={diagnosticsOpen}
+                ioOpen={ioOpen}
                 playMode={playMode}
                 onSetPlayMode={services.playback.setMode}
                 onToggleDiagnostics={() => setDiagnosticsOpen((open) => !open)}
+                onToggleIo={() => setIoOpen((open) => !open)}
                 onToggleHelp={() => setHelpOpen((v) => !v)}
                 onOpenPalette={() => setPaletteOpen(true)}
                 onOpenBrowser={onOpenBrowser}
@@ -1633,9 +1638,27 @@ export function App({
                 <MtcChip services={services} />
                 <PcmChip services={services} />
                 <LinkChip services={services} />
+                {/* I/O opener sits LEFT of the perf readout: the QMR HUD orb
+                    owns the very corner and would swallow meter clicks. */}
+                <button
+                  type="button"
+                  className="statusbar-io"
+                  onClick={() => setIoOpen((open) => !open)}
+                  aria-label="Studio I/O — audio device settings"
+                  aria-expanded={ioOpen}
+                  title="Studio I/O — output / input devices, ASIO drivers"
+                >
+                  <MasterMiniMeter />
+                </button>
                 <PerformanceReadout engine={services.engine} scheduler={services.scheduler} />
-                <MasterMiniMeter />
               </footer>
+              {ioOpen && (
+                <div className="io-popover" role="dialog" aria-label="Studio I/O settings">
+                  <ErrorBoundary panel="io-panel">
+                    <IoPanel />
+                  </ErrorBoundary>
+                </div>
+              )}
               <CommandToast />
               <MixPreviewMount />
               <GestureHintToast />

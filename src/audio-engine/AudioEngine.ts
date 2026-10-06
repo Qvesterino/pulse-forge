@@ -2351,6 +2351,43 @@ export class AudioEngine {
     this.masterChain.applyMasterConfig({ ...this.doc.master, masterGain: Math.min(2, Math.max(0, masterGain)) });
   }
 
+  /**
+   * Studio I/O panel: a short quiet tone straight to the destination — a
+   * DEVICE test, deliberately bypassing the mixer so project state (mutes,
+   * master trim, limiter) can never mask a dead output. Invariant #7
+   * discipline: the nodes are created here on the engine's own context and
+   * disposed; the panel never touches a raw context. 440 Hz at −24 dBFS,
+   * 10 ms fade edges — audible but polite.
+   */
+  playTestTone(durationSec = 0.45): { status: "ok" | "error"; message?: string } {
+    if (!this.ctx || this.ctx.state === "closed" || !isLiveAudioContext(this.ctx)) {
+      return { status: "error", message: "No active audio context — start playback once first" };
+    }
+    const ctx = this.ctx;
+    try {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = 440;
+      osc.type = "sine";
+      const now = ctx.currentTime;
+      const end = now + Math.max(0.05, Math.min(2, durationSec));
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.06, now + 0.01);
+      gain.gain.setValueAtTime(0.06, end - 0.01);
+      gain.gain.linearRampToValueAtTime(0, end);
+      osc.connect(gain).connect(ctx.destination);
+      osc.onended = () => {
+        osc.disconnect();
+        gain.disconnect();
+      };
+      osc.start(now);
+      osc.stop(end);
+      return { status: "ok" };
+    } catch (err) {
+      return { status: "error", message: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
   /** Start an engine-owned, non-persistent audition for one reviewed FX proposal. */
   beginEffectIntentPreview(
     trackId: string,

@@ -579,3 +579,151 @@
   padding-bottom: 5px;
   margin-bottom: 6px;
 }
+
+/* ---------- Studio I/O panel ----------
+   Statusbar-anchored popover (device settings are set-and-forget — a dialog,
+   not a dock tab): click the master meter or the ⋯ I/O tool. Bottom-right so
+   it grows UPWARD into the workspace, never over the statusbar itself. */
+.io-popover {
+  position: fixed;
+  /* Clear of the QMR HUD orb in the very corner. */
+  right: 72px;
+  bottom: 32px;
+  z-index: 130;
+  width: 380px;
+  max-height: min(520px, calc(100vh - 120px));
+  overflow-y: auto;
+  padding: 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-3);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.statusbar-io {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.statusbar-io:hover {
+  border-color: var(--border);
+}
+.statusbar-io[aria-expanded="true"] {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+.statusbar-io > * {
+  pointer-events: none;
+}
+
+.io-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.io-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.io-field-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  color: var(--text-faint);
+  width: 52px;
+  flex: none;
+}
+.io-field select {
+  flex: 1;
+  min-width: 0;
+  height: var(--ctrl-h-sm);
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 11px;
+  padding: 0 6px;
+}
+.io-field-slider input[type="range"] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+.io-field-value {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text);
+  min-width: 56px;
+  text-align: right;
+}
+.io-note {
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--text-faint);
+}
+.io-error {
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--stop);
+}
+.io-readout {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.6px;
+  color: var(--text-dim);
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 6px;
+}
+.io-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+.io-actions {
+  display: flex;
+  gap: 6px;
+}
+.io-driver-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.io-driver {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 5px 8px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+}
+.io-driver-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 55%;
+}
+.io-driver-meta {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-faint);
+  margin-left: auto;
+  white-space: nowrap;
+}

@@ -60,6 +60,8 @@ function selectTopbarActions(actions: readonly TopbarAction[], limit: number): T
 export function TopBar({
   onToggleDiagnostics,
   diagnosticsOpen,
+  ioOpen,
+  onToggleIo,
   onToggleHelp,
   onOpenPalette,
   playMode,
@@ -73,6 +75,8 @@ export function TopBar({
 }: {
   onToggleDiagnostics: () => void;
   diagnosticsOpen: boolean;
+  ioOpen: boolean;
+  onToggleIo: () => void;
   onToggleHelp: () => void;
   /** Optional — the ⌘K palette button renders only when provided. */
   onOpenPalette?: () => void;
@@ -441,6 +445,17 @@ export function TopBar({
       priority: 42,
       active: diagnosticsOpen,
       onClick: onToggleDiagnostics,
+    },
+    {
+      id: "io",
+      // Lives in the ⋯ overflow (promoted while open): device settings are a
+      // set-and-forget surface; the statusbar meter is the primary entry.
+      label: "I/O",
+      ariaLabel: "Toggle Studio I/O panel",
+      title: "Studio I/O — output / input devices, ASIO drivers",
+      priority: 38,
+      active: ioOpen,
+      onClick: onToggleIo,
     },
   ];
 

@@ -69,6 +69,18 @@ declare global {
           scannedDirectories?: string[];
         }>;
       };
+      asio?: {
+        /** ASIO discovery (ADR 0017): registry names + best-effort probe. */
+        list: () => Promise<{
+          registry: { status: string; names?: string[]; message?: string };
+          details: {
+            status: string;
+            drivers?: Array<Record<string, unknown>>;
+            partial?: boolean;
+            message?: string;
+          };
+        }>;
+      };
       mrt2?: {
         getAvailability: () => Promise<{
           nativeInstalled: boolean;

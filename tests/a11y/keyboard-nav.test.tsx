@@ -21,6 +21,8 @@ describe("a11y: keyboard navigation across major panels", () => {
         <TopBar
           onToggleDiagnostics={noop}
           diagnosticsOpen={false}
+          ioOpen={false}
+          onToggleIo={noop}
           onToggleHelp={noop}
           onOpenPalette={noop}
           playMode="pattern"

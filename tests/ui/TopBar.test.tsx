@@ -12,6 +12,8 @@ function topBarProps(overrides?: Partial<React.ComponentProps<typeof TopBar>>) {
   return {
     onToggleDiagnostics: vi.fn(),
     diagnosticsOpen: false,
+    ioOpen: false,
+    onToggleIo: vi.fn(),
     onToggleHelp: vi.fn(),
     playMode: "pattern" as const,
     onSetPlayMode: vi.fn(),

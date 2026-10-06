@@ -11,6 +11,8 @@ function topBarProps() {
   return {
     onToggleDiagnostics: vi.fn(),
     diagnosticsOpen: false,
+    ioOpen: false,
+    onToggleIo: vi.fn(),
     onToggleHelp: vi.fn(),
     playMode: "pattern" as const,
     onSetPlayMode: vi.fn(),
