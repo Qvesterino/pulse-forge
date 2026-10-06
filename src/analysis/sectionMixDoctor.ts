@@ -50,16 +50,9 @@ const LOW_DENSE_SHARE = 0.55;
  * punch — the bass is the only story down there. */
 const TRANSIENT_CONTRAST_MAX = 1.7;
 
-function rms(data: Float32Array, from: number, to: number): number {
-  let sum = 0;
-  const lo = Math.max(0, from);
-  const hi = Math.min(data.length, to);
-  for (let i = lo; i < hi; i++) sum += data[i] * data[i];
-  return Math.sqrt(sum / Math.max(1, hi - lo));
-}
-
 /** One-pole low-pass RMS cascade: e60 ⊂ e120 hierarchically, so the 60–120
- * band energy is estimated as sqrt(max(e120² − e60², 0)). Cheap O(n) pass. */
+ * band energy is estimated as sqrt(max(e120² − e60², 0)). Cheap O(n) pass.
+ * Input must already be DC-free (see dcFreeSlice). */
 function lowBandRms(data: Float32Array, sampleRate: number, from: number, to: number): { e120: number } {
   const coeff60 = Math.exp((-2 * Math.PI * 60) / sampleRate);
   const coeff120 = Math.exp((-2 * Math.PI * 120) / sampleRate);
@@ -101,9 +94,31 @@ export function analyzeSectionMix(
   const usable = sections.filter((section) => section.endSec - section.startSec >= MIN_SECTION_SEC);
   if (usable.length < 2) return [];
 
-  const levels = usable.map((section) =>
-    toDb(rms(mono, Math.round(section.startSec * sampleRate), Math.round(section.endSec * sampleRate))),
-  );
+  // DC-free measurement: a one-pole low-pass at 120 Hz passes DC COMPLETELY,
+  // so an un-removed offset reads as "100 % of the energy is low-band with
+  // no transient contrast" — a fabricated bass-masking finding on a silent
+  // render with an offset (probe-verified 2026-10-06). Subtract the section
+  // mean before every measurement; zero-mean material is unchanged.
+  const dcFreeSlice = (from: number, to: number): Float32Array => {
+    const lo = Math.max(0, from);
+    const hi = Math.min(mono.length, to);
+    const slice = mono.slice(lo, hi);
+    let mean = 0;
+    for (let i = 0; i < slice.length; i++) mean += slice[i]!;
+    mean /= Math.max(1, slice.length);
+    for (let i = 0; i < slice.length; i++) slice[i] = slice[i]! - mean;
+    return slice;
+  };
+  const rmsOf = (data: Float32Array): number => {
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+    return Math.sqrt(sum / Math.max(1, data.length));
+  };
+
+  const levels = usable.map((section) => {
+    const slice = dcFreeSlice(Math.round(section.startSec * sampleRate), Math.round(section.endSec * sampleRate));
+    return toDb(rmsOf(slice));
+  });
   const medianLevel = [...levels].sort((a, b) => a - b)[Math.floor(levels.length / 2)];
 
   const findings: SectionMixFinding[] = [];
@@ -118,18 +133,17 @@ export function analyzeSectionMix(
       });
     }
 
-    const from = Math.round(section.startSec * sampleRate);
-    const to = Math.round(section.endSec * sampleRate);
-    const full = rms(mono, from, to);
-    const { e120 } = lowBandRms(mono, sampleRate, from, to);
+    const slice = dcFreeSlice(Math.round(section.startSec * sampleRate), Math.round(section.endSec * sampleRate));
+    const full = rmsOf(slice);
+    const { e120 } = lowBandRms(slice, sampleRate, 0, slice.length);
     const lowShare = full > 0 ? e120 / full : 0;
     // Transient contrast: loudest 20 ms low-band window vs the section's
     // typical 200 ms window. A kick under the bass shows as a clear peak.
     let peak20 = 0;
     const window = Math.max(1, Math.round(0.02 * sampleRate));
     const step = Math.max(1, Math.round(0.01 * sampleRate));
-    for (let i = from; i + window < to; i += step) {
-      const value = rms(mono, i, i + window);
+    for (let i = 0; i + window < slice.length; i += step) {
+      const value = rmsOf(slice.subarray(i, i + window));
       if (value > peak20) peak20 = value;
     }
     const contrast = e120 > 0 ? peak20 / e120 : 0;

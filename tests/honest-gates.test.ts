@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { estimateKey, estimateTempo } from "../src/ai/audio-tempo-key";
 import { computeOnsetEnvelopes, ONSET_CREST_FLOOR, onsetEnvelopeCrest } from "../src/reference/dsp/spectralFlux";
 import { analyzeRhythm } from "../src/reference/analysis/rhythm";
+import { analyzeSectionMix } from "../src/analysis/sectionMixDoctor";
+import { levelMatchGainsDb } from "../src/analysis/levelMatch";
+import { planVocalComp } from "../src/vocal/comping";
+import type { VocalProfile } from "../src/vocal/types";
 
 /**
  * HONEST-GATE SWEEP (2026-10-06) — the confidence-metric audit found two
@@ -144,5 +148,98 @@ describe("estimateTempo — crest gate holds on adversarial input", () => {
     const tempo = estimateTempo(clickTrack(120, 8), SR);
     expect(tempo).not.toBeNull();
     expect(Math.abs(tempo!.bpm - 120)).toBeLessThanOrEqual(1);
+  });
+});
+
+// ── wave 2 (2026-10-06): src/vocal + src/analysis scorers ──────────────────
+
+describe("analyzeSectionMix — DC-free measurement (wave 2)", () => {
+  const SECTIONS = [
+    { role: "verse", startSec: 0, endSec: 4 },
+    { role: "chorus", startSec: 4, endSec: 8 },
+  ];
+
+  it("a pure DC offset fabricates NOTHING (the 120 Hz one-pole passes DC completely)", () => {
+    const silentWithDc = new Float32Array(8 * SR).fill(0.3);
+    expect(analyzeSectionMix([silentWithDc], SR, SECTIONS)).toEqual([]);
+  });
+
+  it("DC on real material no longer masquerades as bass density", () => {
+    const music = new Float32Array(8 * SR);
+    for (let i = 0; i < music.length; i++) {
+      const t = i / SR;
+      const pulse = 0.5 + 0.5 * Math.sin(2 * Math.PI * 2 * t);
+      music[i] = 0.5 * pulse * Math.sin(2 * Math.PI * 60 * t) + 0.3;
+    }
+    expect(analyzeSectionMix([music], SR, SECTIONS)).toEqual([]);
+  });
+
+  it("positive control: a genuinely quiet section is still found (the fix is not a mute)", () => {
+    const loud = new Float32Array(4 * SR);
+    for (let i = 0; i < loud.length; i++) {
+      const t = i / SR;
+      loud[i] = 0.5 * Math.sin(2 * Math.PI * 220 * t);
+    }
+    const quiet = new Float32Array(4 * SR);
+    for (let i = 0; i < quiet.length; i++) {
+      const t = i / SR;
+      quiet[i] = 0.03 * Math.sin(2 * Math.PI * 220 * t);
+    }
+    const findings = analyzeSectionMix([loud, quiet], SR, SECTIONS);
+    expect(findings.some((f) => f.kind === "section-quiet" && f.section === "chorus")).toBe(true);
+  });
+});
+
+describe("planVocalComp — degenerate take families stay deterministic and honest", () => {
+  const SHAPE = [0.8, 0.9, 0.85, 0.7, 0.9, 0.8, 0.75, 0.85];
+  const profile = (curve: number[], snrDb: number) =>
+    ({
+      version: 1,
+      measured: true,
+      key: "C Major",
+      keyMeasured: true,
+      keyConfidence: 0.5,
+      tempoBpm: 120,
+      tempoAltBpm: null,
+      tempoConfidence: 0.5,
+      tempoMeasured: true,
+      energyCurve: curve,
+      phrases: [{ startBar: 0, endBar: curve.length - 1, peakEnergy: Math.max(...curve) }],
+      silenceRatio: 0,
+      snrDb,
+      durationSec: curve.length * 2,
+      bars: curve.length,
+      bpm: 120,
+      profileHash: "pin",
+    }) as VocalProfile;
+
+  it("five IDENTICAL takes: one segment, earlier take wins the tie (documented spine rule)", () => {
+    const plan = planVocalComp(Array.from({ length: 5 }, () => profile(SHAPE, 40)));
+    expect(plan).not.toBeNull();
+    expect(plan!.segments).toHaveLength(1);
+    expect(plan!.winner).toBe(0);
+    expect(plan!.perTakeBars).toEqual([8, 0, 0, 0, 0]);
+  });
+
+  it("five whisper-quiet takes: the best-SNR take wins deterministically — no fabricated preference", () => {
+    const plan = planVocalComp(Array.from({ length: 5 }, (_, i) => profile(SHAPE, 5 + i)));
+    expect(plan!.winner).toBe(4);
+    expect(plan!.perTakeBars).toEqual([0, 0, 0, 0, 8]);
+  });
+});
+
+describe("levelMatchGainsDb — honest degradation and the ±12 dB clamp", () => {
+  it("unmeasurable sides degrade to matched:false with zero gains", () => {
+    expect(levelMatchGainsDb(null, -5).matched).toBe(false);
+    expect(levelMatchGainsDb(Number.NaN, -5).matched).toBe(false);
+    expect(levelMatchGainsDb(-5, null).gainDbA).toBe(0);
+  });
+
+  it("a wild pair clamps symmetrically and SAYS so", () => {
+    const m = levelMatchGainsDb(-30, -5);
+    expect(m.targetLufs).toBe(-17.5);
+    expect(m.gainDbA).toBe(12);
+    expect(m.gainDbB).toBe(-12);
+    expect(m.note).toContain("clamped at ±12 dB");
   });
 });
