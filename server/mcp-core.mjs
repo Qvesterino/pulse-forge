@@ -1623,7 +1623,7 @@ export const MCP_TOOL_DEFS = [
       properties: {
         op: {
           type: "string",
-          enum: ["add", "preset", "trim", "assist", "remove", "status"],
+          enum: ["add", "preset", "trim", "assist", "land", "platform", "remove", "status"],
         },
         trackId: {
           type: "string",
@@ -1639,11 +1639,17 @@ export const MCP_TOOL_DEFS = [
           enum: ["streaming", "club", "vinyl"],
           description: "For op:preset — the mastering target shape",
         },
+        profile: {
+          type: "string",
+          enum: ["streaming", "apple", "loud", "vinyl"],
+          description:
+            "For op:land / op:platform / op:assist — the delivery platform contract (target LUFS + true-peak ceiling)",
+        },
         targetLufs: {
           type: "number",
           minimum: -24,
           maximum: -6,
-          description: "For op:assist — loudness target (default −14 LUFS streaming)",
+          description: "For op:assist / op:land — loudness target (overrides profile; default −14 LUFS streaming)",
         },
         insert: {
           type: "boolean",

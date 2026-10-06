@@ -67,7 +67,10 @@ export function verdictAgainst(
 ): PlatformVerdict[] {
   const out: PlatformVerdict[] = [];
   if (m.lufs == null) {
-    out.push({ status: "warn", line: `${profile.label}: LUFS not measurable — play a few seconds for integration to settle` });
+    out.push({
+      status: "warn",
+      line: `${profile.label}: LUFS not measurable — play a few seconds for integration to settle`,
+    });
   } else {
     const delta = m.lufs - profile.targetLufs;
     const adelta = Math.abs(delta);
@@ -80,11 +83,20 @@ export function verdictAgainst(
   }
   const tpOver = m.truePeakDb - profile.maxTruePeakDb;
   if (tpOver > 0.3) {
-    out.push({ status: "fail", line: `true peak ${m.truePeakDb.toFixed(1)} dBTP exceeds the ${profile.maxTruePeakDb} dBTP ceiling by ${tpOver.toFixed(1)} dB` });
+    out.push({
+      status: "fail",
+      line: `true peak ${m.truePeakDb.toFixed(1)} dBTP exceeds the ${profile.maxTruePeakDb} dBTP ceiling by ${tpOver.toFixed(1)} dB`,
+    });
   } else if (tpOver > 0) {
-    out.push({ status: "warn", line: `true peak ${m.truePeakDb.toFixed(1)} dBTP grazes the ${profile.maxTruePeakDb} dBTP ceiling` });
+    out.push({
+      status: "warn",
+      line: `true peak ${m.truePeakDb.toFixed(1)} dBTP grazes the ${profile.maxTruePeakDb} dBTP ceiling`,
+    });
   } else {
-    out.push({ status: "pass", line: `true peak ${m.truePeakDb.toFixed(1)} dBTP within the ${profile.maxTruePeakDb} dBTP ceiling` });
+    out.push({
+      status: "pass",
+      line: `true peak ${m.truePeakDb.toFixed(1)} dBTP within the ${profile.maxTruePeakDb} dBTP ceiling`,
+    });
   }
   if (profile.id === "vinyl") {
     out.push({ status: "warn", line: `${profile.note} (run ŠÍRKA lowWidth 0 — the mono check is not automated yet)` });

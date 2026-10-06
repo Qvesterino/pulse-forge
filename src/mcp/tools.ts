@@ -9,6 +9,7 @@ import { routeIntentText, type RoutedIntent } from "../intent/route";
 import { routeIsDestructive } from "../intent/route-guard";
 import { presetsForEffect } from "../effects/presets";
 import { planMasterSettings } from "./master-assistant";
+import { profileFor, verdictAgainst, worstStatus } from "./master-profiles";
 import { isCreativeBriefRoute } from "../intent/model-fallback-policy";
 import { applyFaderIntent, applyTempoIntent } from "../intent/conversation";
 import {
@@ -1329,7 +1330,10 @@ export const MCP_TOOLS: McpToolDef[] = [
     inputSchema: {
       type: "object",
       properties: {
-        op: { type: "string", enum: ["add", "preset", "trim", "assist", "remove", "status"] },
+        op: {
+          type: "string",
+          enum: ["add", "preset", "trim", "assist", "land", "platform", "remove", "status"],
+        },
         trackId: { type: "string", description: "Exact track id — overrides family when present" },
         family: {
           type: "string",
@@ -1341,11 +1345,17 @@ export const MCP_TOOLS: McpToolDef[] = [
           enum: ["streaming", "club", "vinyl"],
           description: "For op:preset — the mastering target shape",
         },
+        profile: {
+          type: "string",
+          enum: ["streaming", "apple", "loud", "vinyl"],
+          description:
+            "For op:land / op:platform / op:assist — the delivery platform contract (target LUFS + true-peak ceiling)",
+        },
         targetLufs: {
           type: "number",
           minimum: -24,
           maximum: -6,
-          description: "For op:assist — loudness target (default −14 LUFS streaming)",
+          description: "For op:assist / op:land — loudness target (overrides profile; default −14 LUFS streaming)",
         },
         insert: {
           type: "boolean",
@@ -4908,13 +4918,73 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
   // refuse as locked even when no instance exists (the lock is the message).
   if (op === "remove" && !destructiveAllowedWithCheckpoint(ctx, "kyx_master")) return destructiveRefusal();
 
-  // Every op below targets EXISTING ZENIT instances.
-  const targets: { trackId: string; trackName: string; fxId: string }[] = [];
-  for (const id of ids) {
-    const track = doc.tracks.find((t) => t.id === id)!;
-    const fxId = pickZenitInstance(doc, id, record);
-    if (!fxId) return { text: `${track.name} carries no ZENIT instance — op:add first`, mutated: false };
-    targets.push({ trackId: id, trackName: track.name, fxId });
+  if (op === "platform" || op === "land") {
+    // Closed loudness/true-peak loop against a delivery platform contract.
+    // platform: measure → verdict lines (read-only). land: iterate
+    // measure → master loudness-trim → measure until |delta| ≤ 0.3 LU
+    // (max 3 bounded iterations — the loop reports honestly when the
+    // ±12 dB trim range cannot close the gap).
+    const profile = profileFor(typeof record.profile === "string" ? record.profile : "streaming")!;
+    const targetLufs = typeof record.targetLufs === "number" ? record.targetLufs : profile.targetLufs;
+    const readMeter = (): { lufs: number; truePeakDb: number } | null => {
+      const master = (ctx.meters?.() as { master?: Record<string, unknown> } | null)?.master;
+      if (!master) return null;
+      const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+      const lufs = num(master.lufsIntegrated) ?? num(master.lufsShortTerm);
+      const truePeakDb = num(master.truePeakDb) ?? num(master.peakHoldDb);
+      if (lufs == null || truePeakDb == null) return null;
+      return { lufs, truePeakDb };
+    };
+    const first = readMeter();
+    if (!first) {
+      return { text: `${op} needs live audio meters (play a few seconds for LUFS-I to settle)`, mutated: false };
+    }
+    if (op === "platform") {
+      const verdicts = verdictAgainst(first, profile);
+      return {
+        text: `${worstStatus(verdicts).toUpperCase()} — ${verdicts.map((v) => v.line).join("\n")}`,
+        mutated: false,
+      };
+    }
+    // op:land — bounded closed loop on the MASTER loudness trim. Each
+    // iteration APPLIES the trim through the command layer (the engine syncs
+    // immediately) and re-measures the REAL meters — no simulated arithmetic.
+    const clampTrim = (v: number) => Math.min(12, Math.max(-12, v));
+    const TOLERANCE = 0.3;
+    const MAX_STEPS = 3;
+    const steps: string[] = [];
+    let meter = first;
+    let mutated = false;
+    for (let step = 0; step < MAX_STEPS; step++) {
+      const delta = targetLufs - meter.lufs;
+      if (Math.abs(delta) <= TOLERANCE) break;
+      const current = ctx.getDoc().master.loudnessTrimDb ?? 0;
+      const nextTrim = clampTrim(current + delta);
+      if (Math.abs(nextTrim - current) < 0.01) {
+        steps.push(
+          `master trim range (±12 dB) exhausted at ${current.toFixed(1)} dB — cannot close the remaining ${Math.abs(delta).toFixed(1)} LU`,
+        );
+        break;
+      }
+      ctx.execute(setMasterConfig(ctx.getDoc(), { loudnessTrimDb: nextTrim }));
+      mutated = true;
+      const remeasured = readMeter();
+      if (!remeasured) break;
+      meter = remeasured;
+      steps.push(
+        `step ${step + 1}: trim ${nextTrim >= 0 ? "+" : ""}${nextTrim.toFixed(1)} dB → measured ${meter.lufs.toFixed(1)} LUFS`,
+      );
+    }
+    const finalDelta = targetLufs - meter.lufs;
+    const landed = Math.abs(finalDelta) <= 0.5;
+    const verdicts = verdictAgainst(meter, profile);
+    return {
+      text:
+        `${landed ? "LANDED" : "NOT LANDED"} — target ${targetLufs} LUFS, measured ${meter.lufs.toFixed(1)}:\n` +
+        (steps.length > 0 ? `${steps.join("\n")}\n` : "") +
+        verdicts.map((v) => v.line).join("\n"),
+      mutated,
+    };
   }
 
   if (op === "assist") {
@@ -4940,7 +5010,10 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
       peakDb,
       crestDb,
       correlation,
-      targetLufs: typeof record.targetLufs === "number" ? record.targetLufs : undefined,
+      targetLufs:
+        typeof record.targetLufs === "number"
+          ? record.targetLufs
+          : profileFor(typeof record.profile === "string" ? record.profile : undefined)?.targetLufs,
     });
     if (plan.length === 0) return { text: "assist found nothing to change", mutated: false };
 
@@ -4985,6 +5058,15 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
       text: `master assistant applied ${plan.length} step(s), one undo step:\n${lines.join("\n")}\nmeasure again (kyx_loudness) and fine-land with op:trim`,
       mutated: true,
     };
+  }
+
+  // Every op below targets EXISTING ZENIT instances.
+  const targets: { trackId: string; trackName: string; fxId: string }[] = [];
+  for (const id of ids) {
+    const track = doc.tracks.find((t) => t.id === id)!;
+    const fxId = pickZenitInstance(doc, id, record);
+    if (!fxId) return { text: `${track.name} carries no ZENIT instance — op:add first`, mutated: false };
+    targets.push({ trackId: id, trackName: track.name, fxId });
   }
 
   if (op === "preset") {
