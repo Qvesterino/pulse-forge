@@ -123,3 +123,26 @@ export function calculateSpectralFlux(
 ): Float32Array {
   return computeOnsetEnvelopes(signal, sampleRate, fftSize, hopSize).combined;
 }
+
+/**
+ * Honesty floor for tempo consumers: peak-to-mean ratio (crest) of an onset
+ * envelope. Stationary material — sustained tones, room tone, any color of
+ * noise — leaves only low-crest spectral-leakage wobble, which the
+ * self-normalizing candidate scorer promotes into a "confident" phantom
+ * pulse (measured: sine ≤ 4.9, white/pink/lowpassed noise ≤ 5.3, while every
+ * rhythmic fixture measures ≥ 11.5 and click trains ≥ 22.6). Consumers gate
+ * with {@link ONSET_CREST_FLOOR}; below it there is no pulse to measure.
+ */
+export const ONSET_CREST_FLOOR = 8;
+
+export function onsetEnvelopeCrest(env: Float32Array): number {
+  if (env.length === 0) return 0;
+  let peak = 0;
+  let sum = 0;
+  for (let i = 0; i < env.length; i++) {
+    if (env[i] > peak) peak = env[i];
+    sum += env[i];
+  }
+  const mean = sum / env.length;
+  return mean > 0 ? peak / mean : 0;
+}

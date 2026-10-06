@@ -20,7 +20,12 @@
  * Both estimators return null when the signal is too short/sparse to say
  * anything honest — callers keep their patch without the field.
  */
-import { computeOnsetEnvelopes, removeBaseline } from "../reference/dsp/spectralFlux";
+import {
+  computeOnsetEnvelopes,
+  ONSET_CREST_FLOOR,
+  onsetEnvelopeCrest,
+  removeBaseline,
+} from "../reference/dsp/spectralFlux";
 import { estimateTempoCandidates } from "../reference/analysis/tempoCandidates";
 
 export interface TempoEstimate {
@@ -41,14 +46,16 @@ const MAX_BPM = 180;
 const FLUX_FFT_SIZE = 2048;
 const FLUX_HOP = 256;
 /**
- * Honesty floor: peak-to-mean ratio (crest) of the baseline onset envelope.
- * A stationary tone still leaves a periodic low-level wobble in the
- * rectified flux envelope (spectral-leakage beating) which the candidate
- * scorer happily normalizes into a "confident" pulse — a bare 440 Hz sine
- * measures crest ≈ 4.8 while every rhythmic fixture (click trains, the
- * golden set) measures ≥ 20. Below this there is no pulse to measure.
+ * Tonal-evidence floors for {@link estimateKey}. The Pearson MARGIN cannot
+ * gate (measured: real boombap material scores 0.025 while pink noise scores
+ * 0.235) — the absolute floors can. Concentration = chroma max/mean: noise
+ * of every color measures 1.76–1.90, real tonal material 2.55–4.05, a bare
+ * sine 11.9 (single pitch → the root is honestly resolvable). Absolute
+ * best-correlation: noise ≤ 0.584, real material ≥ 0.685. Mirrors the
+ * absolute+tonality terms the F2 lane (analyzeTonality) already uses.
  */
-const ONSET_CREST_FLOOR = 8;
+const KEY_MIN_CONCENTRATION = 2;
+const KEY_MIN_CORRELATION = 0.6;
 
 export function estimateTempo(pcm: Float32Array, sampleRate: number): TempoEstimate | null {
   try {
@@ -56,19 +63,15 @@ export function estimateTempo(pcm: Float32Array, sampleRate: number): TempoEstim
     if (duration < 4) return null;
     const envelopes = computeOnsetEnvelopes(pcm, sampleRate, FLUX_FFT_SIZE, FLUX_HOP);
     if (envelopes.frameCount < 16) return null;
+    // Honesty gate on the RAW combined envelope: baseline removal flattens
+    // slow trends but AMPLIFIES frame-to-frame relative wobble on noise
+    // (measured white/pink raw crest 5.9/6.0 → baseline-removed 10.5/10.8),
+    // so a gate after removal leaks. Raw separates cleanly: stationary ≤ 6,
+    // click trains ≥ 36.
+    if (onsetEnvelopeCrest(envelopes.combined) < ONSET_CREST_FLOOR) return null;
     // ~1 s moving-average baseline keeps sustained bass/pads from masking
     // drum flux — the exact failure that starved the old envelope.
     const baseline = removeBaseline(envelopes.combined, Math.max(8, Math.round(envelopes.frameRate)));
-    let envelopePeak = 0;
-    let envelopeSum = 0;
-    for (let i = 0; i < baseline.length; i++) {
-      if (baseline[i] > envelopePeak) envelopePeak = baseline[i];
-      envelopeSum += baseline[i];
-    }
-    const envelopeMean = envelopeSum / Math.max(1, baseline.length);
-    if (!(envelopePeak > 0) || envelopePeak / Math.max(envelopeMean, 1e-9) < ONSET_CREST_FLOOR) {
-      return null;
-    }
     const candidates = estimateTempoCandidates(baseline, envelopes.frameRate, 60, 200, 6);
     const winner = candidates[0];
     if (!winner || winner.bpm <= 0) return null;
@@ -142,6 +145,13 @@ export function estimateKey(pcm: Float32Array, sampleRate: number): KeyEstimate 
     }
     const total = chroma.reduce((sum, value) => sum + value, 0);
     if (total <= 0) return null;
+    // Tonal-evidence gates: noise (any color) has a flat chroma and a
+    // mediocre best-rotation correlation — both floors measured with margin
+    // (see KEY_MIN_CONCENTRATION). Without these, a noise take got a
+    // phantom key with an honest-looking low confidence number.
+    const chromaMax = Math.max(...chroma);
+    const chromaMean = total / 12;
+    if (chromaMax / chromaMean < KEY_MIN_CONCENTRATION) return null;
 
     let best = { key: "", correlation: -2 };
     let second = -2;
@@ -160,7 +170,7 @@ export function estimateKey(pcm: Float32Array, sampleRate: number): KeyEstimate 
         }
       }
     }
-    if (best.correlation <= 0) return null;
+    if (best.correlation < KEY_MIN_CORRELATION) return null;
     return {
       key: best.key,
       confidence: Number(Math.max(0, best.correlation - second).toFixed(3)),

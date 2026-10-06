@@ -287,7 +287,7 @@ exports[`reference/golden > C sustained-note track — canonical tonal snapshot 
   "descriptors": {
     "groove": {
       "drumDensity": 1,
-      "family": "half_time",
+      "family": "four_on_the_floor",
       "syncopation": 0.05713314129576045,
     },
     "loudness": {
@@ -310,7 +310,7 @@ exports[`reference/golden > C sustained-note track — canonical tonal snapshot 
       "sideEnergyRatio": 0,
       "width": 0,
     },
-    "summary": "Estimated around 65 BPM in C minor (40% confidence). Energy averages 1.00. Structure: single-section. Groove reads as half-time (drum density 1.00, syncopation 0.06). Spectral character: warm/dark (centroid 385 Hz). Stereo field: narrow.",
+    "summary": "No reliable tempo detected. Energy averages 1.00. Structure: single-section. Groove reads as four-on-the-floor (drum density 1.00, syncopation 0.06). Spectral character: warm/dark (centroid 385 Hz). Stereo field: narrow.",
   },
   "diagnostics": {
     "analysisSampleRate": 22050,
@@ -339,60 +339,15 @@ exports[`reference/golden > C sustained-note track — canonical tonal snapshot 
     "size": 1058400,
   },
   "rhythm": {
-    "beatIntervalSeconds": 0.9290802105915145,
-    "beatOffsetSeconds": 0.302,
-    "beatTimes": [
-      0.301951,
-      1.231031,
-      2.160111,
-      3.089192,
-      4.018272,
-      4.947352,
-      5.876432,
-      6.805513,
-      7.734593,
-      8.663673,
-      9.592753,
-      10.521833,
-      11.450914,
-    ],
-    "bpm": 64.58,
-    "candidates": [
-      {
-        "bpm": 64.58,
-        "relation": "primary",
-        "score": 0.9403,
-      },
-      {
-        "bpm": 32.29,
-        "relation": "half-time",
-        "score": 0,
-      },
-      {
-        "bpm": 129.16,
-        "relation": "double-time",
-        "score": 0,
-      },
-      {
-        "bpm": 98.92,
-        "relation": "alternative",
-        "score": 0.901,
-      },
-      {
-        "bpm": 83.25,
-        "relation": "alternative",
-        "score": 0.7731,
-      },
-      {
-        "bpm": 135.91,
-        "relation": "alternative",
-        "score": 0.7376,
-      },
-    ],
-    "confidence": 0.5747009906651706,
+    "beatIntervalSeconds": null,
+    "beatOffsetSeconds": null,
+    "beatTimes": [],
+    "bpm": null,
+    "candidates": [],
+    "confidence": 0,
     "localBpms": [],
     "stability": "unknown",
-    "warning": null,
+    "warning": "Tempo could not be determined: insufficient rhythmic information.",
   },
   "structure": {
     "averageEnergy": 1,
@@ -519,6 +474,7 @@ exports[`reference/golden > C sustained-note track — canonical tonal snapshot 
   },
   "warnings": [
     "The reference is at or near full scale — it clips. Treat its loudness reading as unreliable.",
+    "Tempo could not be determined: insufficient rhythmic information.",
     "Low tonal confidence — the key is ambiguous.",
   ],
 }

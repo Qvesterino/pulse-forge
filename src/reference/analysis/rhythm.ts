@@ -1,4 +1,4 @@
-import { computeOnsetEnvelopes, type OnsetEnvelopes } from "../dsp/spectralFlux";
+import { computeOnsetEnvelopes, ONSET_CREST_FLOOR, onsetEnvelopeCrest, type OnsetEnvelopes } from "../dsp/spectralFlux";
 import { type ReferenceRhythm, type TempoCandidate, type TempoStability } from "../types";
 import { estimateBeatGrid } from "./beatGrid";
 import { clamp01 } from "./confidence";
@@ -103,6 +103,13 @@ export function analyzeRhythm(input: RhythmAnalysisInput): RhythmAnalysisOutput 
 
   const raw = estimateTempoCandidates(env, frameRate, tempoMin, tempoMax, 6);
   if (raw.length === 0) return empty;
+  // Honesty gate (the same crest floor the U0.5 estimateTempo uses): a
+  // stationary input (sustained tones, room tone, any color of noise) leaves
+  // low-crest leakage wobble that the self-normalizing scorer promotes into
+  // a phantom pulse ABOVE the 0.55 warning threshold (measured sine 86 BPM @
+  // 0.585, noise 126 BPM @ 0.640) — the docstring contract "pure tonal
+  // content → null" was otherwise unenforceable.
+  if (onsetEnvelopeCrest(env) < ONSET_CREST_FLOOR) return empty;
 
   const top = raw[0];
   const family = pickTempoFamily(top.bpm, top.score, env, frameRate, tempoMin, tempoMax);
