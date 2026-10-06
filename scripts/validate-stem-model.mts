@@ -39,8 +39,17 @@ for (let i = 0; i < samples; i++) {
     0.02 * ((Math.sin(i * 12.9898) * 43758.5453) % 1);
 }
 
-const ort = await import("onnxruntime-web");
-const session = await ort.InferenceSession.create(modelPath, { executionProviders: ["wasm"] });
+// Node validation runs the NATIVE onnxruntime backend: htdemucs fp32 needs
+// more memory than the wasm32 heap can give (std::bad_alloc at session
+// create — the exact wall that pushed S5 to WebGPU). This script only proves
+// the MODEL; the browser keeps its wasm/webgpu runtime contract.
+const isNode = typeof process !== "undefined" && process.versions?.node === "string";
+// vite-node shims the dynamic import toward onnxruntime-web's node build —
+// require() reaches the real native binding (no wasm32 heap ceiling).
+const ort = isNode
+  ? (((await import("node:module")).createRequire(import.meta.url))("onnxruntime-node") as typeof import("onnxruntime-node"))
+  : await import("onnxruntime-web");
+const session = await ort.InferenceSession.create(modelPath, isNode ? {} : { executionProviders: ["wasm"] });
 const inputName = manifest.inputName ?? session.inputNames[0];
 const outputName = manifest.outputName ?? session.outputNames[0];
 console.log(`[stem:validate] model ${manifest.modelFile} · input "${inputName}" · output "${outputName}"`);
