@@ -59,14 +59,15 @@ Last updated: 2026-10-06 (session sess_85d94465)
 
 ## VERIFIED OPEN
 
-### Intent/symbolic/grooves/melodic + engine-pin test family (~23 tests, 18 files) red
-- Area: intent-model artifact pins (ai-baseline, creative-task-contract, intent-model-loader, intent-model-artifact, intent-model-sft-prompt, intent-sft-golden, intent-wrongkind-wave, model-packs ×2); grooves/melodic wave (drum-rr-declick, metric-accent, symbolic-melodic ×2, symbolic-prior ×4, melodic-embedding-conditioning); engine source-grep pins (trigger-engine "method inventory", warp-manager "delegates" — against the sibling's committed AudioEngine refactor); license render (sample-license-gate: credits.md vs fresh PACK_CREDITS render after their sample/preset waves).
-- Evidence: final clean full-suite run at HEAD (804 files passed / 18 failed, 140 skipped); the engine-pin + model-packs + sample-license subset verified red SOLO at BOTH 5ab7bbc7 and the pre-session commit 8f0de079 → pre-existing, introduced by the concurrent session's committed waves, not by this campaign's commits.
-- Root cause: mixture — in-flight grooves/melodic wave, intent-model artifact re-pins dependent on gitignored local datasets, engine refactor pins not yet updated, credits render stale after sample waves (per 10-03 classification: no unowned items).
+### Intent/symbolic/grooves/melodic + engine-pin test family (~24 tests) red — NOW MACHINE-READABLE
+- Area: **the classification lives in `suite-expectations.json` (repo root) as of 2026-10-06** — this prose entry is the narrative companion, the JSON is the source of truth the gate enforces.
+- Families (24 entries, recordedAgainst 445c117d): intent-model artifact pins ×7, symbolic/grooves/melodic wave ×8, ONNX model-pack hashes ×2, sample-license credits render ×1, engine source-grep pins (trigger/warp, waves 4e/4f) ×2, vendor SDK owner gates asio+clap ×3(+collection), SFT corpus ×1.
+- Evidence: seeded from a full-suite JSON run in the clean D:/pf-verify worktree at 445c117d (824 files · 8982 passed · 24 failed · 121 skipped); `npm run test:expectations:eval` exits 0 against that report.
+- Root cause: mixture — in-flight concurrent waves, artifact re-pins dependent on gitignored local datasets, engine refactor pins not yet updated, credits render stale.
 - User/system impact: none new — pre-existing, owned.
-- Why unresolved: active ownership by the concurrent session's waves (they were still editing src/intent/* + engine files at session close); re-pinning their surface mid-refactor would just break again.
-- Recommended next action: after their waves commit, solo re-run this family; re-classify anything still red.
-- Priority: medium (owned elsewhere)
+- Why unresolved: active ownership by concurrent sessions' waves; re-pinning mid-refactor would break again.
+- Recommended next action: **when a wave lands, the ratchet tells you what to do** — cured entries FAIL the gate until removed from the ledger; a wave that fixes its reds deletes its own entries (baseline only shrinks). New reds must be fixed or classified with owner+reason.
+- Priority: enforced by `npm run test:expectations` (CI test job) — no longer priority-tracked by hand
 
 ### format:check still red on ~35 eol-artifact files + in-flight sibling files
 - Area: Prettier gate, whole repo
@@ -149,6 +150,14 @@ Last updated: 2026-10-06 (session sess_85d94465)
 4. Re-establish the fresh-clone bootstrap check (`npm install && npm run dev` on a clean machine) — last verified 10-03.
 
 ## SESSION LOG
+
+### 2026-10-06 (follow-up) / Suite expectations ledger — the Chromium ratchet (user-picked top idea)
+- Built: `scripts/suite-expectations.mjs` (+ `.d.mts` types, 17 unit pins) — parses vitest `--reporter=json`, diffs against `suite-expectations.json`: new reds FAIL, cured reds FAIL (baseline only shrinks), TODO owners FAIL, `flaky:true` exempts both ways, collection errors surface as pseudo-ids. `npm run test:expectations` (--run + eval), `:eval` re-evaluates the last report; CI's test job runs it instead of plain `npm test`.
+- Seeded: full-suite JSON run in the clean worktree at 445c117d (824 files · 8982 passed · 24 failed · 121 skipped) → ledger with 24 classified entries across 7 owned families; eval exits 0.
+- Found on the way (fixed): **shebang + CRLF breaks vite's transform** — `#!/usr/bin/env node` on a test-imported `.mjs` + a Windows checkout (autocrlf, no .gitattributes) = "Invalid or unexpected token" while plain node parses the same bytes; shebang dropped (445c117d), precedent `validate-intent-ranker-golden.mjs` is shebang-free too. Cross-tree report normalization anchored at `/tests/` (38e8620d).
+- Commits: 10b3a770 (machinery + wiring), 445c117d (shebang fix), 38e8620d (cross-tree ids), this commit (seeded ledger + docs).
+- Caveats: ledger's `recordedAgainst` is 445c117d — the sibling landed 97e48846+ during seeding, so the NEXT full eval will legitimately flag diffs (their cured/new reds); that is the ratchet working, follow its instructions. CI (ubuntu) vs local (windows) may diverge on soak-boundary flakes → use `flaky:true` with owner+reason if that materializes.
+- Recommended continuation: NEXT HIGHEST VALUE WORK item 1 (eol policy — would also retire the shebang/CRLF hazard class entirely), then let the ratchet drive ledger shrinkage.
 
 ### 2026-10-06 / Build & Toolchain — gate integrity & post-feature verification
 - Inspected: CAMPAIGN_STATE (closed predecessor), git history (UN-SUNO U0–U7 + concurrent stem-separation S0 + loudness waves), 103 Prettier-flagged files (classified against committed content), full-suite failure set (34 → 32 → 23 fails across runs) against the 10-03 baseline classification, D:/pf-verify worktree at HEAD for falsification (5 suspect failures proven pre-existing at 8f0de079).

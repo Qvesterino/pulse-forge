@@ -1,0 +1,176 @@
+{
+  "version": 1,
+  "recordedAgainst": "445c117d",
+  "date": "2026-10-06",
+  "note": "Owned-red ledger (Chromium TestExpectations model). Every entry needs owner + reason. Ratchet: new reds fail the gate, cured reds demand removal. See scripts/suite-expectations.mjs.",
+  "expectations": [
+    {
+      "id": "tests/ai-baseline.test.ts > AI baseline harness matches the frozen correctness-1 hashes and metrics",
+      "owner": "intent-model wave",
+      "reason": "frozen correctness-1 hashes vs locally regenerated baseline vectors",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/asio-host.test.ts > ASIO SDK vendor gate (scripts/vendor-asio.mjs) records provenance and hashes without committing SDK bytes",
+      "owner": "vendor SDK owner gate (by design)",
+      "reason": "provenance gate needs the locally fetched ASIO SDK bytes; never committed",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/clap-host.test.ts > CLAP player end-to-end (ADR 0016 audio hosting) state extension: --set 880 + --state-out, then --state-in replays at 880 Hz",
+      "owner": "vendor SDK owner gate (by design)",
+      "reason": "needs the locally built CLAP probe/SDK artifacts; never committed",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/clap-host.test.ts > vendored CLAP headers (scripts/vendor-clap.mjs) vendors a complete 1.2.10 tree with a verifiable manifest",
+      "owner": "vendor SDK owner gate (by design)",
+      "reason": "needs the locally built CLAP probe/SDK artifacts; never committed",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/creative-task-contract.test.ts > creative task contract v1 keeps the creative SFT bootstrap pinned, family-disjoint, and outside both held-out datasets",
+      "owner": "intent-model wave",
+      "reason": "creative SFT bootstrap pin vs in-flight corpus wave",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/drum-rr-declick.test.ts > genre feel (humanize defaults) every genre in the feel map gets modest, non-flat humanize",
+      "owner": "concurrent symbolic/grooves retrain wave",
+      "reason": "genre humanize map expects the pre-wave feel calibration",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/intent-model-artifact.test.ts > intent model artifact lock pins validation metrics to the exact model, dataset splits, decoder, and evaluator",
+      "owner": "intent-model wave",
+      "reason": "pins frozen to artifact/prompt bytes of the locally retrained ONNX + SFT models; re-pin needs manifest regen after the next retrain",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/intent-model-loader.test.ts > loader registration + timeouts + breaker a scripted model registers the resolver provider and routes through it",
+      "owner": "intent-model wave",
+      "reason": "pins frozen to artifact/prompt bytes of the locally retrained ONNX + SFT models; re-pin needs manifest regen after the next retrain",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/intent-model-sft-prompt.test.ts > SFT prompt pin the Ollama provider sends the exact prompt the SFT model was trained on",
+      "owner": "intent-model wave",
+      "reason": "pins frozen to artifact/prompt bytes of the locally retrained ONNX + SFT models; re-pin needs manifest regen after the next retrain",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/intent-sft-golden.test.ts > intent SFT dataset (LLM-as-sound-engineer distillation) every golden pair re-routes to the EXACT same canonical action",
+      "owner": "intent-model wave",
+      "reason": "pins frozen to artifact/prompt bytes of the locally retrained ONNX + SFT models; re-pin needs manifest regen after the next retrain",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/intent-wrongkind-wave.test.ts > wrongkind wave — teacher routing SK preset asks accept inflected targets (na leade / na basu)",
+      "owner": "intent-model wave",
+      "reason": "pins frozen to artifact/prompt bytes of the locally retrained ONNX + SFT models; re-pin needs manifest regen after the next retrain",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/melodic-embedding-conditioning.test.ts > provider melodic v2 path flag off → straight to v1 (no v2 attempt)",
+      "owner": "concurrent symbolic/grooves retrain wave",
+      "reason": "melodic v2 path flag routing pinned to the pre-retrain embedding gate",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/metric-accent.test.ts > metric accent end to end — the musical claim does not flatten a groove written on the off-beats (house)",
+      "owner": "concurrent symbolic/grooves retrain wave",
+      "reason": "off-beat groove preservation pin vs in-flight groove generator changes",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/model-packs.test.ts > model pack registry file hashes mirror the dev-time fetch manifest (single source of truth)",
+      "owner": "ONNX model-pack re-pin",
+      "reason": "file hashes/manifestContent drifted from the dev-time fetch manifest after the pack regen",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/model-packs.test.ts > model pack registry manifestContent parses and pins the loader contract",
+      "owner": "ONNX model-pack re-pin",
+      "reason": "file hashes/manifestContent drifted from the dev-time fetch manifest after the pack regen",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/sample-license-gate.test.ts > sample license gate credits.md matches a fresh render of PACK_CREDITS (CC-BY obligation)",
+      "owner": "sample-library wave",
+      "reason": "credits.md is stale against a fresh PACK_CREDITS render after the sample/preset waves",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/symbolic-melodic.test.ts > melodic prior sampling in the provider falls back to template melody when multi-voice and the prior are unavailable",
+      "owner": "concurrent symbolic/grooves retrain wave",
+      "reason": "provider expectations pinned to the pre-retrain prior behavior; re-pin when the wave lands",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/symbolic-melodic.test.ts > melodic prior sampling in the provider produces prior-sampled notes that are in-key by construction",
+      "owner": "concurrent symbolic/grooves retrain wave",
+      "reason": "provider expectations pinned to the pre-retrain prior behavior; re-pin when the wave lands",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/symbolic-prior.test.ts > semantic conditioning gate falls back to the template for the same groove when no embedding is available",
+      "owner": "concurrent symbolic/grooves retrain wave",
+      "reason": "provider expectations pinned to the pre-retrain prior behavior; re-pin when the wave lands",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/symbolic-prior.test.ts > symbolic prior provider applies the shared search-lane policy while retaining the original intent provenance",
+      "owner": "concurrent symbolic/grooves retrain wave",
+      "reason": "provider expectations pinned to the pre-retrain prior behavior; re-pin when the wave lands",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/symbolic-prior.test.ts > symbolic prior provider degrades an in-genre but out-of-vocabulary groove to template instead of guessing",
+      "owner": "concurrent symbolic/grooves retrain wave",
+      "reason": "provider expectations pinned to the pre-retrain prior behavior; re-pin when the wave lands",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/symbolic-prior.test.ts > symbolic prior provider uses the selected alternate groove for symbolic candidates without changing validation provenance",
+      "owner": "concurrent symbolic/grooves retrain wave",
+      "reason": "provider expectations pinned to the pre-retrain prior behavior; re-pin when the wave lands",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/trigger-engine.test.ts > TriggerEngine (Wave 4f — final) owns the moved realtime path verbatim (method inventory)",
+      "owner": "engine decomposition wave (4f)",
+      "reason": "source-grep 'method inventory' pin still describes the pre-refactor AudioEngine surface",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    },
+    {
+      "id": "tests/warp-manager.test.ts > WarpManager (Wave 4e) engine keeps the surface as delegates (no stale cache fields)",
+      "owner": "engine decomposition wave (4e)",
+      "reason": "source-grep 'delegates' pin still describes the pre-refactor AudioEngine surface",
+      "addedAt": "2026-10-06",
+      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+    }
+  ]
+}
