@@ -57,6 +57,14 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Verification: 60/60 green.
 - Date/session: 2026-10-06, commit `4061bdcb`
 
+### ZENIT/M2 param audit: one dead knob, one broken macro coupling, CI typecheck red
+- Area: ZENIT composite + APEKS/ŠÍRKA/PRÚD (docs/ZENIT-M2-PARAM-AUDIT-2026-10-06.md)
+- Root cause (×3): APEKS release blended the GR one-pole with the KEEP fraction (≈1) instead of (1−keep) — knob inaudible; ZENIT ceiling moves never re-derived the LIMIT threshold (macro coupling broken + load-order dependent); the M2 wave committed tests/m2-dsp.test.ts importing untyped processor .js without the house .d.ts stubs — tsc red on main since the landing.
+- Fix: relBlend form + bundle rebuild; limit value tracked + re-derived on ceiling, order-independent; three .d.ts stubs.
+- Verification: 12 new pins (tests/zenit-m2-param-audit.test.ts) — 9 macros both extremes → stage writes, coupling incl. load order, def↔processor descriptor equality, 23-param aliveness with designed excitations; 26/26 across the three families; typecheck EXIT 0; browser audit's 12 DEAD flags: 11 explained as harness artifacts, 1 real.
+- Design question (owner, not changed): APEKS preserve audible window structurally narrow (~6e-4 best measured) — guard clamps the region preserve would shape; levers sketched in the audit doc.
+- Date/session: 2026-10-06, commits 308c15f9 + a8a84939 (part of the fix absorbed into the sibling's 218fc3d9)
+
 ### Honest-gate sweep: two estimators promoted stationary input into confident readings
 - Area: `src/reference/analysis/rhythm.ts` (F1 lane) + `src/ai/audio-tempo-key.ts` (estimateTempo gate placement, estimateKey); full audit in `docs/HONEST-GATE-AUDIT-2026-10-06.md`
 - Root cause: confidence mixes dominated by SELF-NORMALIZED scores (share of the signal's own max) with no absolute floor. F1 reported "86 BPM @ 0.585, no warning" on a bare sine and "~126 BPM @ 0.640" on pink noise; estimateKey fabricated keys on any noise color (margin cannot gate: real boombap 0.025 vs pink 0.235); the dfe6bf06 tempo crest gate sat on the baseline-REMOVED envelope where removal AMPLIFIES noise wobble (5.9/6.0 raw → 10.5/10.8 removed) so pink leaked.
@@ -157,6 +165,15 @@ Last updated: 2026-10-06 (session sess_85d94465)
 4. Re-establish the fresh-clone bootstrap check (`npm install && npm run dev` on a clean machine) — last verified 10-03.
 
 ## SESSION LOG
+
+### 2026-10-06 (follow-up 3) / ZENIT + M2 param audit (user-picked proposal 1)
+- Inspected: all five new mastering surfaces against NEW-EFFECT-CHECKLIST (5 death modes, 5 registration surfaces, per-param min/max rule); ran the worklet-loaded browser audit on the four effects (report in docs/); probe-measured APEKS release/preserve across six excitation families.
+- Fixed: APEKS release dead knob; ZENIT ceiling↔limit coupling; .d.ts trio (CI typecheck red since M2 landing).
+- Verified: 26/26 across zenit-m2-param-audit + m2-dsp + zenit-composite; param-range-coherence + honest-gates green; typecheck EXIT 0; shipped bundle contains the fix.
+- Design question recorded: APEKS preserve narrow window (owner decision).
+- Commits: 308c15f9, a8a84939 (+ sibling absorb 218fc3d9).
+- Recommended continuation: wave 2 honest-gate sweep (src/vocal + src/analysis) or drift:check — both still open.
+
 
 ### 2026-10-06 (follow-up 2) / Honest-gate sweep — confidence metrics audit (user-picked idea C)
 - Inspected: every confidence producer in src/reference/ + src/ai/ (11 entries classified, verdict table in docs/HONEST-GATE-AUDIT-2026-10-06.md); adversarial probe (sine, white/pink/lowpassed noise, silence, clicks, 5 golden fixtures) with measured thresholds.
