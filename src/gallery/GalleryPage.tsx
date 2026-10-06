@@ -24,6 +24,7 @@ import {
 } from "./galleryApi";
 import { buildRemix, remixTagsOf } from "./remix";
 import { buildFamily } from "./family";
+import { FamilyTreeOverlay } from "./FamilyTreeOverlay";
 import { funnelEvent } from "../services/funnel";
 import { randomRoomId } from "../collab/collabShared";
 import { appUrl } from "../shared/mountBase";
@@ -262,6 +263,8 @@ function GalleryCard({
 }) {
   const [copied, setCopied] = useState(false);
   const [familyOpen, setFamilyOpen] = useState(false);
+  // F4: the full family tree overlay (every branch, both edge eras).
+  const [treeOpen, setTreeOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [reportReason, setReportReason] = useState("spam or misleading content");
   const [reportStatus, setReportStatus] = useState<string | null>(null);
@@ -486,6 +489,16 @@ function GalleryCard({
             🧬 FAMILY{(item.childrenCount ?? 0) > 0 ? ` ${item.childrenCount}` : ""}
           </button>
         )}
+        {familySize > 0 && (
+          <button
+            type="button"
+            className="gallery-fork"
+            title="Full family tree — every branch and generation at once"
+            onClick={() => setTreeOpen(true)}
+          >
+            🌳 TREE
+          </button>
+        )}
         <button type="button" className="gallery-copylink" onClick={() => void copyLink()}>
           {copied ? "LINK COPIED ✓" : "COPY LINK"}
         </button>
@@ -541,6 +554,7 @@ function GalleryCard({
           )}
         </div>
       )}
+      {treeOpen && <FamilyTreeOverlay item={item} items={items} onClose={() => setTreeOpen(false)} />}
       {reportOpen && (
         <div className="gallery-report" role="group" aria-label={`Report ${item.title}`}>
           <label>
