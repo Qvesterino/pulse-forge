@@ -31,6 +31,12 @@ import {
 import { transcribeTrackAsync } from "../reference/reference-client";
 import { analyzeSectionMix, type SectionMixFinding } from "../analysis/sectionMixDoctor";
 import { restyleCommand, artistLabels } from "../reference/restyle";
+import {
+  projectFingerprint,
+  similarityAdvisory,
+  sourceFingerprintFromTranscription,
+  type SimilarityVerdict,
+} from "../analysis/similarity-advisory";
 import { separateHPSS } from "../analysis/hpss";
 import { unsunoCommand } from "../reference/unsuno";
 import { downloadBlob } from "../export/download";
@@ -147,6 +153,8 @@ export function ReferenceMapPanel() {
       setBpmDraft("");
       setMixFindings(null);
       setMixFix(null);
+      setSourceFingerprint(null);
+      setSimilarity(null);
 
       if (!ACCEPTED_EXTENSIONS.test(file.name)) {
         setError("Unsupported file. Use WAV, MP3, OGG, FLAC, AIFF, M4A or OPUS.");
@@ -348,6 +356,12 @@ export function ReferenceMapPanel() {
   const [mixFix, setMixFix] = useState<{ tiltDb: number; masterGain: number; label: string } | null>(null);
   // RE-STYLE REMIX BRIDGE — keep the composition, swap the band.
   const [restyleArtist, setRestyleArtist] = useState("");
+  // Similarity advisory — the SOURCE fingerprint captured at build time,
+  // compared against the CURRENT project on demand.
+  const [sourceFingerprint, setSourceFingerprint] = useState<ReturnType<
+    typeof sourceFingerprintFromTranscription
+  > | null>(null);
+  const [similarity, setSimilarity] = useState<SimilarityVerdict | null>(null);
 
   const runCommand = useCallback(
     (build: (d: ProjectDocument) => Command | null, fallback: string) => {
@@ -388,6 +402,8 @@ export function ReferenceMapPanel() {
         sections: sectionsOfResult,
         separation,
       });
+      setSourceFingerprint(sourceFingerprintFromTranscription(transcription));
+      setSimilarity(null); // new build → previous advisory is stale
       const result = unsunoCommand(
         doc,
         {
@@ -901,6 +917,27 @@ export function ReferenceMapPanel() {
                   </li>
                 )}
               </ul>
+            )}
+            {sourceFingerprint && (
+              <div className="restyle-row">
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  data-testid="similarity-go"
+                  onClick={() =>
+                    setSimilarity(similarityAdvisory(sourceFingerprint, projectFingerprint(services.store.doc)))
+                  }
+                  title="Numerický kompozičný overlap projektu vs zdrojový track — NIE právna clearance"
+                >
+                  🔍 Similarity advisory
+                </button>
+                {similarity && (
+                  <span className="similarity-verdict" data-testid="similarity-verdict">
+                    <b>{Math.round(similarity.overall * 100)} %</b> — {similarity.verdict}.{" "}
+                    <span className="similarity-disclaimer">{similarity.disclaimer}</span>
+                  </span>
+                )}
+              </div>
             )}
             {applied?.includes("UN-SUNO") && (
               <div className="restyle-row" data-testid="restyle-row">

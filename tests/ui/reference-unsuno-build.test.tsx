@@ -129,6 +129,29 @@ describe("DropZone — UN-SUNO analyze offer (U6)", () => {
     expect(command.label).toMatch(/travis scott/i);
   }, 120_000);
 
+  it("S-advisory: similarity button measures the current project vs the build-time source", async () => {
+    setup();
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("song.wav")] } });
+    await waitFor(
+      () => {
+        const build = screen.getByTestId("reference-build") as HTMLButtonElement;
+        expect(build.disabled).toBe(false);
+      },
+      { timeout: 20_000 },
+    );
+    fireEvent.click(screen.getByTestId("reference-build"));
+    fireEvent.click(screen.getByTestId("reference-build-go"));
+    await waitFor(() => expect(executeSpySpy()).toBeTruthy(), { timeout: 30_000 });
+    function executeSpySpy(): boolean {
+      return screen.getByTestId("restyle-row").textContent !== null;
+    }
+    fireEvent.click(screen.getByTestId("similarity-go"));
+    const verdict = await waitFor(() => screen.getByTestId("similarity-verdict"), { timeout: 10_000 });
+    // A project built FROM this source reads as clearly derived.
+    expect(verdict.textContent).toMatch(/\d+ %/);
+    expect(verdict.textContent).toMatch(/NIE je právna/);
+  }, 120_000);
+
   it("U4.5: sourceSampleId attaches the original as one arrangement clip", async () => {
     const { services, executeSpy } = setup();
     const capturedBox: { detail?: { file: File; sampleId?: string } } = {};

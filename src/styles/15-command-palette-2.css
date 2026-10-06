@@ -881,6 +881,65 @@
   background: rgba(255, 208, 0, 0.08);
 }
 
+.intent-iteration-controls {
+  position: relative;
+}
+
+.intent-iteration-controls > summary {
+  cursor: pointer;
+  list-style: none;
+  white-space: nowrap;
+}
+
+.intent-iteration-controls > summary::-webkit-details-marker {
+  display: none;
+}
+
+.intent-iteration-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 5px);
+  right: 0;
+  display: flex;
+  width: min(360px, calc(100vw - 32px));
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px;
+  border: 1px solid var(--border, #444);
+  border-radius: 8px;
+  background: var(--panel-bg, #17191d);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42);
+}
+
+.intent-iteration-label,
+.intent-iteration-footnote {
+  color: var(--text-muted, #aaa);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.intent-iteration-scopes,
+.intent-iteration-directions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.intent-iteration-directions .btn {
+  flex: 1 1 42%;
+}
+
+/* Similarity advisory verdict chip. */
+.similarity-verdict {
+  font-size: 10px;
+  color: var(--text-muted, #aaa);
+  line-height: 1.35;
+}
+
+.similarity-disclaimer {
+  color: var(--text-dim, #777);
+}
+
 /* RE-STYLE remix bridge — artist input + button row. */
 .restyle-row {
   display: flex;
