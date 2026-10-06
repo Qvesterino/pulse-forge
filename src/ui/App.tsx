@@ -42,7 +42,6 @@ const MasteringPanel = lazy(() => import("./MasteringPanel").then((m) => ({ defa
 import { InstallPrompt } from "./InstallPrompt";
 import { ErrorBoundary } from "./ErrorBoundary";
 import {
-  addArrangementTransition,
   addAudioClip,
   clearSteps,
   deleteArrangementClip,
@@ -54,8 +53,8 @@ import {
   setActivePattern,
   setTrackParams,
   splitAudioClipAtTick,
-  updateAudioClip,
 } from "../commands/commands";
+import { applyRangeCrossfade } from "./rangeCrossfade";
 import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import type { PatternClipboard } from "../commands/commands";
 import type { SelectedNote } from "./PianoRoll";
@@ -1311,49 +1310,12 @@ export function App({
         // let PianoRoll's Ctrl+B duplicate notes handle it (don't prevent)
       }
 
-      // Range Tool: X crossfade (Cubase) — for audioClips/transitions inside timeRange or selected clips
+      // Range Tool: X crossfade (Cubase) — for audioClips/transitions inside timeRange or selected clips.
+      // One keypress = one undo entry; see applyRangeCrossfade for the frame contract.
       if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "x") {
-        if (selection.timeRange || selection.clipIds.length > 0) {
-          let did = false;
-          // AudioClips crossfade: set fadeIn/Out 0.08 on clips intersecting range/selection
-          const rangeFrom = selection.timeRange?.fromTick ?? 0;
-          const rangeTo = selection.timeRange?.toTick ?? 0;
-          const hasRange = !!selection.timeRange;
-          for (const ac of doc.arrangement.audioClips ?? []) {
-            const cFrom = ac.startBar * BAR_TICKS;
-            const cTo = (ac.startBar + ac.lengthBars) * BAR_TICKS;
-            const inRange = hasRange ? cFrom < rangeTo && cTo > rangeFrom : selection.clipIds.includes(ac.id);
-            if (inRange) {
-              try {
-                services.store.execute(updateAudioClip(doc, ac.id, { fadeIn: 0.08, fadeOut: 0.08 }));
-              } catch {}
-              did = true;
-            }
-          }
-          // Arrangement transitions crossfade: create transition between adjacent clips inside range
-          if (hasRange) {
-            const clips = [...doc.arrangement.clips].sort((a, b) => a.startBar - b.startBar);
-            for (let i = 0; i < clips.length - 1; i++) {
-              const a = clips[i];
-              const b = clips[i + 1];
-              const aEnd = (a.startBar + a.lengthBars) * BAR_TICKS;
-              const bStart = b.startBar * BAR_TICKS;
-              const gap = bStart - aEnd;
-              if (Math.abs(gap) < BAR_TICKS * 0.5 && aEnd >= rangeFrom && bStart <= rangeTo) {
-                const exists = doc.arrangement.transitions?.some((t) => t.fromClipId === a.id && t.toClipId === b.id);
-                if (!exists) {
-                  try {
-                    services.store.execute(addArrangementTransition(doc, a.id, b.id, "custom", 1));
-                  } catch {}
-                  did = true;
-                }
-              }
-            }
-          }
-          if (did) {
-            event.preventDefault();
-            return;
-          }
+        if (applyRangeCrossfade(services.store, doc, selection)) {
+          event.preventDefault();
+          return;
         }
       }
 

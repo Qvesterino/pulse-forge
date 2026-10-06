@@ -438,9 +438,16 @@ export class YDocStore {
    * capture timeout — these calls seal the open undo item before and after a
    * recorded pass, so the take stays one coherent block (best effort: a take
    * longer than the capture timeout still splits inside).
+   *
+   * Returns true, mirroring ProjectStore's ownership contract ("this call
+   * opened the frame — the caller must close it with endUndoFrame"). In yjs
+   * terms begin/end are symmetric stopCapturing seams, so a caller that
+   * brackets a gesture now also seals the block on the collab undo stack
+   * instead of leaving the item open until an unrelated capture seam.
    */
-  beginUndoFrame(_label?: string): void {
+  beginUndoFrame(_label?: string): boolean {
     this.undoManager.stopCapturing();
+    return true;
   }
 
   endUndoFrame(): void {
