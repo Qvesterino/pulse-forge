@@ -1615,9 +1615,39 @@ export const MCP_TOOL_DEFS = [
     },
   },
   {
+    name: "kyx_unsuno",
+    description:
+      "UN-SUNO — TRACK TO EDITABLE PROJECT (ADR 0019, the demo pipeline). transcribe: decode a user-library audio id, transcribe it (tempo, key, drums, bass, chords — deterministic DSP lanes) and BUILD a playable project: drum/bass/keys tracks, section patterns, scenes, markers — ONE undo step. Requires a live session able to load user-sample audio (headless servers refuse honestly). restyle: swap the BAND through an artist preset (genre kit + instrument presets + mix profile) while the composition stays byte-equal. regen: REGENERATE section content in the artist's style (genre groove drums + bass rhythm) keeping the source harmony and structure. similarity: numerical composition overlap of the CURRENT project vs the transcribed source (percent + verdict — NOT legal clearance). The source fingerprint is session-scoped: similarity works after a transcribe in the same session.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          enum: ["transcribe", "restyle", "regen", "similarity"],
+        },
+        sourceId: {
+          type: "string",
+          description:
+            "User-library audio id (required for transcribe) — e.g. from kyx_import or the user samples list",
+        },
+        artist: {
+          type: "string",
+          description: 'Artist label for restyle/regen — exact label (e.g. "travis scott", "fisher")',
+        },
+        separation: {
+          type: "string",
+          enum: ["off", "hpss"],
+          description:
+            'transcribe: "off" (default, full mix) or "hpss" (Tier-1 guide stems slow the pass but lift bass/drums lanes)',
+        },
+      },
+      required: ["action"],
+    },
+  },
+  {
     name: "kyx_master",
     description:
-      "The ZENIT composite mastering device (ADR 0020) — EQ → drive → glue → width/bass-mono → clipper → limiter behind nine macros, insertable on any bus (a device on a group bus IS stem mastering). add inserts it, preset lands a target shape (streaming −14 LUFS / club / vinyl), trim applies a loudness make-up delta on the instance's output trim after measuring with kyx_loudness/kyx_render_summary, status reads the inserts. Chain order: EQ before limiting, always.",
+      "Mastering read-back and ZENIT controls. status reports the ordered global KYX MASTER signal path, delivery profile, runtime fallbacks and a live meter snapshot when available; it also lists ZENIT instances. Other ops insert or manage the ZENIT composite mastering device (ADR 0020) on a track/group bus. A group-hosted ZENIT shapes that stem before the final global master chain. Use platform/land for profile checks and explicit loudness adjustment; live meter snapshots are not full-song reports.",
     inputSchema: {
       type: "object",
       properties: {

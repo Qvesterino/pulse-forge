@@ -10,6 +10,7 @@ import { routeIsDestructive } from "../intent/route-guard";
 import { presetsForEffect } from "../effects/presets";
 import { planMasterSettings } from "./master-assistant";
 import { profileFor, resolveDeliveryTarget, verdictAgainst, worstStatus } from "./master-profiles";
+import { MASTER_SIGNAL_FLOW, type MasterSignalFlowStageId } from "../mastering/signalFlow";
 import { isCreativeBriefRoute } from "../intent/model-fallback-policy";
 import { applyFaderIntent, applyTempoIntent } from "../intent/conversation";
 import {
@@ -23,6 +24,16 @@ import {
   planMixProfile,
   type MixOverrides,
 } from "../intent/mix";
+import { transcribeTrack } from "../reference/transcribe";
+import { unsunoCommand } from "../reference/unsuno";
+import { restyleCommand } from "../reference/restyle";
+import { regenerateStyleCommand } from "../reference/regen-style";
+import {
+  projectFingerprint,
+  similarityAdvisory,
+  sourceFingerprintFromTranscription,
+  type SourceCompositionFingerprint,
+} from "../analysis/similarity-advisory";
 import type { SongSectionSpec } from "../intent/song";
 import { applyCompoundIntent } from "../intent/compound";
 import { productionReadback } from "../intent/production";
@@ -1318,15 +1329,54 @@ export const MCP_TOOLS: McpToolDef[] = [
     },
   },
   {
+    name: "kyx_unsuno",
+    description:
+      "UN-SUNO — TRACK TO EDITABLE PROJECT (ADR 0019, the demo pipeline). " +
+      "transcribe: decode a user-library audio id, transcribe it (tempo, key, " +
+      "drums, bass, chords — deterministic DSP lanes) and BUILD a playable " +
+      "project: drum/bass/keys tracks, section patterns, scenes, markers — " +
+      "ONE undo step. Requires a live session able to load user-sample audio " +
+      "(headless servers refuse honestly). restyle: swap the BAND through an " +
+      "artist preset (genre kit + instrument presets + mix profile) while the " +
+      "composition stays byte-equal. regen: REGENERATE section content in the " +
+      "artist's style (genre groove drums + bass rhythm) keeping the source " +
+      "harmony and structure. similarity: numerical composition overlap of " +
+      "the CURRENT project vs the transcribed source (percent + verdict — " +
+      "NOT legal clearance). The source fingerprint is session-scoped: " +
+      "similarity works after a transcribe in the same session.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["transcribe", "restyle", "regen", "similarity"] },
+        sourceId: {
+          type: "string",
+          description:
+            "User-library audio id (required for transcribe) — e.g. from kyx_import or the user samples list",
+        },
+        artist: {
+          type: "string",
+          description: 'Artist label for restyle/regen — exact label (e.g. "travis scott", "fisher")',
+        },
+        separation: {
+          type: "string",
+          enum: ["off", "hpss"],
+          description:
+            'transcribe: "off" (default, full mix) or "hpss" (Tier-1 guide stems slow the pass but lift bass/drums lanes)',
+        },
+      },
+      required: ["action"],
+    },
+  },
+  {
     name: "kyx_master",
     description:
-      "The ZENIT composite mastering device (ADR 0020) — EQ → drive → glue → " +
-      "width/bass-mono → clipper → limiter behind nine macros, insertable on " +
-      "any bus (a device on a group bus IS stem mastering). add inserts it, " +
-      "preset lands a target shape (streaming −14 LUFS / club / vinyl), trim " +
-      "applies a loudness make-up delta on the instance's output trim after " +
-      "measuring with kyx_loudness/kyx_render_summary, status reads the " +
-      "inserts. Chain order: EQ before limiting, always.",
+      "Mastering read-back and ZENIT controls. status reports the ordered global " +
+      "KYX MASTER signal path, delivery profile, runtime fallbacks and a live " +
+      "meter snapshot when available; it also lists ZENIT instances. Other ops " +
+      "insert or manage the ZENIT composite mastering device (ADR 0020) on a " +
+      "track/group bus. A group-hosted ZENIT shapes that stem before the final " +
+      "global master chain. Use platform/land for profile checks and explicit " +
+      "loudness adjustment; live meter snapshots are not full-song reports.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1442,6 +1492,12 @@ export interface McpMeterSnapshot {
     clipping: boolean;
   };
   tracks: Array<{ id: string; name: string; peakDb: number; rmsDb: number; clipping: boolean }>;
+  /** Runtime-only master readiness; absent in older/headless meter providers. */
+  masterRuntime?: {
+    available: boolean;
+    degradedStages: Array<{ stageId: string; reason: string }>;
+    degradedInserts: Array<{ fxId: string; reason: string }>;
+  };
 }
 
 /** Narrow capability surface the tools need — implemented by the app's
@@ -1517,6 +1573,14 @@ export interface McpToolContext {
       }
     | { ok: false; error: string }
   >;
+  /**
+   * UN-SUNO (kyx_unsuno) — load a user-library audio id as MONO PCM for the
+   * transcription lanes. Present when a live session can decode + read the
+   * user sample bank; absent → kyx_unsuno transcribe refuses honestly
+   * (headless servers have no audio to transcribe).
+   */
+  loadSampleMono?: (sampleId: string) => Promise<{ mono: Float32Array; sampleRate: number } | null>;
+
   /**
    * P2 transaction support (kyx_batch): fold every mutation executed between
    * begin and end into ONE undo entry. Absent → batch still runs, but each
@@ -2468,6 +2532,8 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
       return executeRoutingTool(ctx, record);
     case "kyx_master":
       return executeMasterTool(ctx, record);
+    case "kyx_unsuno":
+      return executeUnsunoTool(ctx, record);
     case "kyx_takes":
       return executeTakesTool(ctx, record);
     case "kyx_batch":
@@ -3505,6 +3571,15 @@ let checkpointRepoPromise: Promise<CheckpointRepoLike | null> | null = null;
 
 /** Test hook — inject a repository (e.g. fake-indexeddb backed). Pass null
  * to force session-only behavior. */
+/** Session-scoped UN-SUNO source fingerprint (kyx_unsuno similarity) — dies
+ * with reload like the producer session (D6 honesty, documented). */
+let unsunoSourceFingerprint: SourceCompositionFingerprint | null = null;
+
+/** Test/diagnostic hook: drop the session-scoped UN-SUNO state. */
+export function resetMcpUnsunoState(): void {
+  unsunoSourceFingerprint = null;
+}
+
 export function setMcpCheckpointRepository(repo: CheckpointRepoLike | null): void {
   checkpointRepo = repo;
   checkpointRepoResolved = true;
@@ -4869,11 +4944,145 @@ function pickZenitInstance(doc: ProjectDocument, trackId: string, record: Record
   return instances[Math.min(index, instances.length - 1)]?.id ?? null;
 }
 
+function masterSignalFlowStatus(doc: ProjectDocument): string[] {
+  const master = doc.master;
+  const inputDb = (value: number): string => (value <= 0 ? "−∞" : `${(20 * Math.log10(value)).toFixed(1)} dB`);
+  const trimDb = master.loudnessTrimDb ?? 0;
+  const activeMatchBands = Object.values(master.matchEq ?? {}).filter(
+    (value) => Number.isFinite(value) && Math.abs(value) >= 0.05,
+  ).length;
+  const insertSummary = (master.effects ?? []).length
+    ? (master.effects ?? [])
+        .map((effect) => `${effect.type.toUpperCase()} ${effect.id}${effect.bypassed ? " (bypassed)" : ""}`)
+        .join(", ")
+    : "none";
+  const details: Record<MasterSignalFlowStageId, string> = {
+    inputTrim: `IN ${inputDb(master.masterGain)} · loudness trim ${trimDb > 0 ? "+" : ""}${trimDb.toFixed(1)} dB`,
+    tape: master.tapeEnabled ? `enabled · drive ${Math.round((master.tapeDrive ?? 0.35) * 100)}%` : "bypassed",
+    midSide: master.msEnabled
+      ? `enabled · mid ${master.msMidGain ?? 0} dB · side ${master.msSideGain ?? 0} dB`
+      : "unity / transparent",
+    bassMono: master.bassMonoEnabled
+      ? `enabled below ${Math.round(master.bassMonoFreq ?? 120)} Hz`
+      : "stereo unchanged",
+    dcFilter: "always on · 12 Hz",
+    matchEq: activeMatchBands ? `${activeMatchBands} corrective band(s) active` : "flat / transparent",
+    tilt: `${(master.tiltDb ?? 0) > 0 ? "+" : ""}${(master.tiltDb ?? 0).toFixed(1)} dB`,
+    glue: (master.glueEnabled ?? true) ? "enabled" : "bypassed",
+    masterInserts: insertSummary,
+    clipper: master.clipperEnabled ? `enabled · ceiling ${master.ceilingDb.toFixed(1)} dBFS` : "bypassed",
+    monitorBypass: "monitor-only audition junction; rejoins before final limiter",
+    limiter: master.limiterEnabled ? `enabled · ceiling ${master.ceilingDb.toFixed(1)} dBFS` : "bypassed",
+    outputMeter: "post-limiter output · source PCM is pre-encode",
+  };
+  return MASTER_SIGNAL_FLOW.map(
+    (stage, index) => `${String(index + 1).padStart(2, "0")} ${stage.label}: ${details[stage.id]}`,
+  );
+}
+
 /**
  * The ZENIT composite mastering device (ADR 0020) over the MCP transport.
  * trackId may name a GROUP bus deliberately — a ZENIT on a group IS stem
  * mastering (host position is the feature); families resolve non-group tracks.
  */
+/** kyx_unsuno — the track-to-project pipeline for agents. */
+async function executeUnsunoTool(ctx: McpToolContext, record: Record<string, unknown>): Promise<McpToolResult> {
+  const action = typeof record.action === "string" ? record.action : "";
+  const text = (value: string, mutated = false, data?: unknown): McpToolResult => ({
+    text: value,
+    mutated,
+    ...(data !== undefined ? { data } : {}),
+  });
+
+  if (action === "transcribe") {
+    const sourceId = typeof record.sourceId === "string" ? record.sourceId.trim() : "";
+    if (!sourceId) return text("kyx_unsuno transcribe needs sourceId — a user-library audio id.");
+    if (!ctx.loadSampleMono) {
+      return text(
+        "kyx_unsuno transcribe needs a live session able to load user-sample audio — this context cannot (headless?).",
+      );
+    }
+    if (record.separation !== undefined && record.separation !== "off" && record.separation !== "hpss") {
+      return text(
+        'separation must be "off" or "hpss" — the neural tier is not an agent surface (it downloads an 80 MB model).',
+      );
+    }
+    const loaded = await ctx.loadSampleMono(sourceId);
+    {
+      if (!loaded) return text(`sample "${sourceId}" not found or undecodable — nothing transcribed.`);
+      const transcription = transcribeTrack(loaded.mono, loaded.sampleRate, {
+        separation: record.separation === "hpss" ? "hpss" : "off",
+      });
+      if (!transcription.tempo) {
+        return text(
+          "transcription found no tempo — the source is too short or too sparse to build a project from. Nothing mutated.",
+        );
+      }
+      const result = unsunoCommand(ctx.getDoc(), { transcription });
+      if (!result.command) {
+        return text(`UN-SUNO: ${result.summary}`);
+      }
+      ctx.execute(result.command);
+      unsunoSourceFingerprint = sourceFingerprintFromTranscription(transcription);
+      const layers = Object.entries(result.layers)
+        .filter(([, note]) => !/skipped|no /.test(note))
+        .map(([layer, note]) => `${layer}: ${note}`);
+      const layerLines = layers.length > 0 ? `\n${layers.join("\n")}` : "";
+      return text(
+        `UN-SUNO built: ${result.summary}${layerLines}\n` +
+          `Next: kyx_unsuno restyle/regen with an artist label, kyx_unsuno similarity for the overlap report, kyx_render_summary to verify.`,
+        true,
+        {
+          bpm: result.bpm,
+          patternCount: result.patternCount,
+          layers: result.layers,
+          warnings: transcription.drums.warning ?? transcription.bass.warning ?? transcription.chords.warning ?? null,
+        },
+      );
+    }
+  }
+
+  if (action === "restyle" || action === "regen") {
+    const artist = typeof record.artist === "string" ? record.artist.trim() : "";
+    if (!artist) return text(`kyx_unsuno ${action} needs an exact artist label — e.g. "travis scott".`);
+    const result =
+      action === "restyle" ? restyleCommand(ctx.getDoc(), artist) : regenerateStyleCommand(ctx.getDoc(), artist);
+    if (!result.command) {
+      const verbFail = action === "restyle" ? "Re-style" : "Regen";
+      return text(`${verbFail}: ${result.summary}`);
+    }
+    ctx.execute(result.command);
+    const verb = action === "restyle" ? "Re-styled as" : "Regenerated as";
+    const applied: Record<string, unknown> = {
+      ...("applied" in result ? (result.applied as Record<string, unknown>) : {}),
+    };
+    return text(`${verb} ${artist}: ${result.summary} (one undo step restores the previous version)`, true, {
+      applied,
+      sections: "sections" in result ? (result.sections as number) : 0,
+    });
+  }
+
+  if (action === "similarity") {
+    if (!unsunoSourceFingerprint) {
+      return text(
+        "no session source fingerprint — run kyx_unsuno transcribe first (the fingerprint is session-scoped).",
+      );
+    }
+    const verdict = similarityAdvisory(unsunoSourceFingerprint, projectFingerprint(ctx.getDoc()));
+    return text(
+      `Similarity: ${Math.round(verdict.overall * 100)} % — ${verdict.verdict}.\n` +
+        `drums ${verdict.drums !== null ? Math.round(verdict.drums * 100) + " %" : "n/a"} · ` +
+        `harmony ${verdict.harmony !== null ? Math.round(verdict.harmony * 100) + " %" : "n/a"} · ` +
+        `bass ${verdict.bass !== null ? Math.round(verdict.bass * 100) + " %" : "n/a"}\n` +
+        `${verdict.disclaimer}`,
+      false,
+      { drums: verdict.drums, harmony: verdict.harmony, bass: verdict.bass, overall: verdict.overall },
+    );
+  }
+
+  return text("kyx_unsuno action must be one of: transcribe | restyle | regen | similarity.");
+}
+
 function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
   const op = String(record.op ?? "status");
   const doc = ctx.getDoc();
@@ -4890,12 +5099,35 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
         );
       }
     }
+    const profile = resolveDeliveryTarget(doc.master);
+    const meterSnapshot = ctx.meters?.() ?? null;
+    const runtime = meterSnapshot?.masterRuntime;
+    const runtimeLines =
+      !runtime || !runtime.available
+        ? ["RUNTIME: no active audio context; worklet readiness/fallbacks are not currently observable."]
+        : [
+            ...runtime.degradedStages.map(({ stageId, reason }) => `FALLBACK ${stageId}: ${reason}`),
+            ...runtime.degradedInserts.map(({ fxId, reason }) => `FALLBACK master insert ${fxId}: ${reason}`),
+            ...(!runtime.degradedStages.length && !runtime.degradedInserts.length
+              ? ["RUNTIME: no master processor fallback reported."]
+              : []),
+          ];
+    const liveMeterLines =
+      runtime?.available && meterSnapshot
+        ? [
+            `LIVE SNAPSHOT (not a full-song report) · ${meterSnapshot.master.lufsIntegrated.toFixed(1)} LUFS-I · ${meterSnapshot.master.truePeakDb.toFixed(1)} dBTP · ${meterSnapshot.master.clipping ? "clip flag" : "no clip flag"}`,
+          ]
+        : [];
     return {
       text:
         (rows.length > 0
           ? rows.join("\n")
           : "no ZENIT instances — op:add inserts the mastering strip on a bus (a group bus = stem mastering)") +
-        "\nloudness: measure with kyx_loudness / kyx_render_summary, then op:trim {trimDb: target − measured}",
+        `\n\nGLOBAL MASTER · ${profile.label} · target ${profile.targetLufs} LUFS · delivery ceiling ${profile.maxTruePeakDb} dBTP · processing ceiling ${doc.master.ceilingDb.toFixed(1)} dBFS` +
+        `\n${masterSignalFlowStatus(doc).join("\n")}` +
+        `\n${runtimeLines.join("\n")}` +
+        `${liveMeterLines.length ? `\n${liveMeterLines.join("\n")}` : ""}` +
+        "\nMeasure a full master with MASTER → Analyze / Export; live meter values above are only a current snapshot.",
       mutated: false,
     };
   }
@@ -5042,20 +5274,19 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
     const rmsDb = num(master.rmsDb);
     const crestDb = num(master.crestDb) ?? (peakDb != null && rmsDb != null ? peakDb - rmsDb : 10);
     const correlation = num(master.correlation);
+    const requestedProfile = typeof record.profile === "string" ? record.profile : doc.master.deliveryProfileId;
+    const assistantProfile =
+      requestedProfile === "custom"
+        ? resolveDeliveryTarget({ ...doc.master, deliveryProfileId: "custom" })
+        : (profileFor(requestedProfile) ?? resolveDeliveryTarget(doc.master));
     const plan = planMasterSettings({
       lufs,
       peakDb,
       crestDb,
       correlation,
-      targetLufs:
-        typeof record.targetLufs === "number"
-          ? record.targetLufs
-          : (
-              profileFor(typeof record.profile === "string" ? record.profile : doc.master.deliveryProfileId) ??
-              (record.profile === "custom" || doc.master.deliveryProfileId === "custom"
-                ? resolveDeliveryTarget(doc.master)
-                : null)
-            )?.targetLufs,
+      targetLufs: typeof record.targetLufs === "number" ? record.targetLufs : assistantProfile.targetLufs,
+      targetTruePeakDb:
+        typeof record.targetTruePeakDb === "number" ? record.targetTruePeakDb : assistantProfile.maxTruePeakDb,
     });
     if (plan.length === 0) return { text: "assist found nothing to change", mutated: false };
 
