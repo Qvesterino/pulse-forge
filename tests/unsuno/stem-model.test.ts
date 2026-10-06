@@ -102,7 +102,7 @@ describe("S3 chunking — the provable properties", () => {
 });
 
 describe("S3 gate — the audio-tag ritual for htdemucs", () => {
-  const validManifest = {
+  const validManifest: import("../../src/analysis/stem-model/gate").StemModelManifest = {
     stemModelVersion: "stem-htdemucs.v1",
     model: "htdemucs",
     modelHash: "a".repeat(64),
