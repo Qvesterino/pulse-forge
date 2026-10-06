@@ -30,8 +30,10 @@ import {
 } from "../reference";
 import { transcribeTrackAsync } from "../reference/reference-client";
 import { analyzeSectionMix, type SectionMixFinding } from "../analysis/sectionMixDoctor";
+import { separateHPSS } from "../analysis/hpss";
 import { unsunoCommand } from "../reference/unsuno";
 import { downloadBlob } from "../export/download";
+import { encodeWav } from "../rendering/wav";
 import { sanitizeFilename } from "../rendering/wav";
 import { MAX_AUDIO_IMPORT_BYTES } from "./DropZone";
 import { type ProjectDocument } from "../project-model/types";
@@ -318,6 +320,8 @@ export function ReferenceMapPanel() {
   // U5 — mix-doctor findings over the SOURCE, measured at build time; the
   // fix chip (when the full-source report has a mechanical fix) applies a
   // master config as one more undo step.
+  // S2 — stems export: HPSS guide stems for any analyzed track, three WAVs.
+  const [stemsBusy, setStemsBusy] = useState(false);
   const [mixFindings, setMixFindings] = useState<SectionMixFinding[] | null>(null);
   const [mixFix, setMixFix] = useState<{ tiltDb: number; masterGain: number; label: string } | null>(null);
 
@@ -404,6 +408,40 @@ export function ReferenceMapPanel() {
       setBuildBusy(false);
     }
   }, [analysis, buildBusy, correction.reading, correction.bpm, correction.tonic, doc, services.store, shownMode]);
+
+  // S2 — export the analyzed track's HPSS guide stems as three WAVs
+  // (percussive / harmonic / bass). Deterministic: the same file always
+  // produces byte-identical WAVs (separateHPSS is pinned bit-identical,
+  // the encoder is a pure function).
+  const exportStems = useCallback(async () => {
+    if (!analysis || stemsBusy) return;
+    setStemsBusy(true);
+    setError(null);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const mono = toMono(analysis.channels);
+      const stems = separateHPSS(mono, analysis.sampleRate, { maxSeconds: 120 });
+      if (!stems) {
+        setApplied("Stems: signal too quiet to separate.");
+        return;
+      }
+      const context = services.engine.ensureContext() as AudioContext;
+      const base = analysis.fileName.replace(/\.[^.]+$/, "");
+      const exportOne = (stem: Float32Array, suffix: string): void => {
+        const buffer = context.createBuffer(1, stem.length, analysis.sampleRate);
+        buffer.copyToChannel(new Float32Array(stem), 0);
+        downloadBlob(new Blob([encodeWav(buffer, 16)], { type: "audio/wav" }), `${base}-${suffix}.wav`);
+      };
+      exportOne(stems.percussive, "percussive");
+      exportOne(stems.harmonic, "harmonic");
+      exportOne(stems.bass, "bass");
+      setApplied(`Exported 3 guide stems (percussive / harmonic / bass) — deterministic per input.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Stems export failed.");
+    } finally {
+      setStemsBusy(false);
+    }
+  }, [analysis, stemsBusy, services.engine]);
 
   // DropZone shortcut: an imported file can ask this panel to analyze it.
   // The bank id rides along so BUILD PROJECT can attach the original.
@@ -690,6 +728,15 @@ export function ReferenceMapPanel() {
             </label>
             <button type="button" onClick={exportJson} data-testid="reference-export">
               Export JSON
+            </button>
+            <button
+              type="button"
+              onClick={() => void exportStems()}
+              disabled={!analysis || stemsBusy}
+              data-testid="reference-export-stems"
+              title="UN-SUNO Tier-1: exportuje 3 guide stemy (percussive / harmonic / bass) ako WAV — deterministické pre rovnaký vstup"
+            >
+              {stemsBusy ? "SEPARUJEM…" : "🎛 Export stems (3)"}
             </button>
             {buildConfirm ? (
               <span className="reference-build-confirm" data-testid="reference-build-confirm">

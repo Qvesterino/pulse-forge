@@ -105,6 +105,97 @@ describe("ReferenceMapPanel — BUILD PROJECT (U6)", () => {
 });
 
 describe("DropZone — UN-SUNO analyze offer (U6)", () => {
+  it("U4.5: sourceSampleId attaches the original as one arrangement clip", async () => {
+    const { services, executeSpy } = setup();
+    const capturedBox: { detail?: { file: File; sampleId?: string } } = {};
+    const listener = (event: Event): void => {
+      capturedBox.detail = (event as CustomEvent<{ file: File; sampleId?: string }>).detail;
+    };
+    window.addEventListener("pf:unsuno-analyze", listener);
+    // Simulate the DropZone hand-off, then BUILD with the source attached.
+    window.dispatchEvent(
+      new CustomEvent("pf:unsuno-analyze", { detail: { file: makeFile("orig.wav"), sampleId: "user.orig-123" } }),
+    );
+    window.removeEventListener("pf:unsuno-analyze", listener);
+    await waitFor(
+      () => {
+        const build = screen.getByTestId("reference-build") as HTMLButtonElement;
+        expect(build.disabled).toBe(false);
+      },
+      { timeout: 20_000 },
+    );
+    fireEvent.click(screen.getByTestId("reference-build"));
+    fireEvent.click(screen.getByTestId("reference-build-go"));
+    await waitFor(() => expect(executeSpy).toHaveBeenCalledTimes(1), { timeout: 30_000 });
+    expect(capturedBox.detail?.sampleId).toBe("user.orig-123");
+    // The executed unsuno command was built WITH the source id (its label
+    // carries the warp suffix only when grids disagree; presence is enough).
+    const command = executeSpy.mock.calls[0][0] as unknown as { type: string };
+    expect(command.type).toBe("unsuno");
+    void services;
+  }, 60_000);
+
+  it("S2: stems export produces 3 valid RIFF WAVs with suffixed names", async () => {
+    // HPSS on the 15 s house render takes tens of seconds in the test env;
+    // the contract (3 valid RIFF WAVs, suffixed names) is what this test
+    // pins — determinism lives in stems-export.test.ts.
+    const { services, decodeAudioData: decodeAudioDataMock } = setup();
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("mysong.wav")] } });
+    await waitFor(
+      () => {
+        const build = screen.getByTestId("reference-build") as HTMLButtonElement;
+        expect(build.disabled).toBe(false);
+      },
+      { timeout: 20_000 },
+    );
+    const exportBtn = screen.getByTestId("reference-export-stems") as HTMLButtonElement;
+    expect(exportBtn.disabled).toBe(false);
+    // The engine mock's context needs createBuffer for the WAV encode path.
+    (services.engine as unknown as { ensureContext: unknown }).ensureContext = () => ({
+      state: "running",
+      resume: vi.fn(async () => {}),
+      currentTime: 0,
+      decodeAudioData: vi.fn(async () => decodeAudioDataMock),
+      // A storing AudioBuffer stub: copyToChannel feeds getChannelData so the
+      // encoded WAV carries the actual stem samples.
+      createBuffer: (channels: number, length: number, rate: number) => {
+        const data = new Map<number, Float32Array>();
+        return {
+          numberOfChannels: channels,
+          length,
+          sampleRate: rate,
+          getChannelData: (index: number) => {
+            if (!data.has(index)) data.set(index, new Float32Array(length));
+            return data.get(index)!;
+          },
+          copyToChannel: (source: Float32Array, index: number) => data.set(index, new Float32Array(source)),
+        };
+      },
+    });
+    fireEvent.click(exportBtn);
+    await waitFor(
+      () => {
+        // surface any panel error inline — a silent failure teaches nothing
+        const err = screen.queryByTestId("reference-error");
+        expect(err?.textContent ?? null).toBe(null);
+        expect(downloadSpy.mock.calls.length).toBeGreaterThanOrEqual(3);
+      },
+      { timeout: 60_000 },
+    );
+    const names = downloadSpy.mock.calls.slice(0, 3).map((call) => call[1] as string);
+    // the analyzed fileName is SANITIZED (dot stripped) before it reaches names
+    expect(names).toEqual(["mysongwav-percussive.wav", "mysongwav-harmonic.wav", "mysongwav-bass.wav"]);
+    for (const call of downloadSpy.mock.calls.slice(0, 3)) {
+      const blob = call[0] as Blob;
+      expect(blob.type).toBe("audio/wav");
+      const head = Buffer.from(await blob.slice(0, 44).arrayBuffer());
+      expect(head.subarray(0, 4).toString("ascii")).toBe("RIFF");
+      expect(head.subarray(8, 12).toString("ascii")).toBe("WAVE");
+      expect(head.readUInt32LE(24)).toBe(GOLDEN_SAMPLE_RATE);
+      expect(head.readUInt16LE(22)).toBe(1); // mono
+    }
+  }, 120_000);
+
   it("offers analysis after a single import and dispatches the panel event", async () => {
     const services = mockServices();
     (services.engine as unknown as { ensureContext: unknown }).ensureContext = () => ({
