@@ -10,7 +10,7 @@ import type { ProjectDocument } from "../src/project-model/types";
  * length) with one-undo steps and honest index addressing.
  */
 
-function makeCtx(doc: ProjectDocument): McpToolContext {
+function makeCtx(doc: ProjectDocument, options: { allowDestructive?: boolean } = {}): McpToolContext {
   let current = doc;
   return {
     getDoc: () => current,
@@ -23,6 +23,7 @@ function makeCtx(doc: ProjectDocument): McpToolContext {
     historyLabels: () => [],
     isMicRecordingActive: () => false,
     transport: { play: () => {}, stop: () => {}, pause: () => {}, setLoop: () => {}, setMetronome: () => {} },
+    ...(options.allowDestructive ? { allowDestructive: () => true } : {}),
   };
 }
 
@@ -119,8 +120,23 @@ describe("kyx_notes", async () => {
     expect(r.mutated).toBe(false);
   });
 
-  it("setVelocity clamps into range; delete removes by index", async () => {
-    const ctx = makeCtx(freshDoc());
+  it("setVelocity clamps into range; delete removes by index (destructive-gated, audit 10-06)", async () => {
+    // The D4 gate: note delete is a REMOVAL — refused until the user's chip
+    // allows destructive ops, with an auto-checkpoint taken when allowed.
+    const locked = makeCtx(freshDoc());
+    await executeMcpTool(locked, "kyx_notes", {
+      op: "add",
+      family: "chords",
+      noteName: "E4",
+      startBeat: 0,
+      durationBeats: 2,
+    });
+    const refused = await executeMcpTool(locked, "kyx_notes", { op: "delete", family: "chords", index: 0 });
+    expect(refused.mutated).toBe(false);
+    expect(refused.text).toContain("destructive MCP ops are locked");
+    expect(notesOf(locked, "chords")).toHaveLength(1);
+
+    const ctx = makeCtx(freshDoc(), { allowDestructive: true });
     await executeMcpTool(ctx, "kyx_notes", {
       op: "add",
       family: "chords",

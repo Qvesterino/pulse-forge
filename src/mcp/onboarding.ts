@@ -108,12 +108,10 @@ TOOL INDEX (all 34 — grouped by job)
                intensity) · kyx_arrange · kyx_song (whole track) ·
                kyx_clips
   perform:     kyx_transport (incl. action:launchScene) · kyx_checkpoint
-  finish:      kyx_mix · kyx_mix_idea (text→mix) ·
-               kyx_audio_preview (attached listenable WAV) ·
-               kyx_loudness (BS.1770) · kyx_render_summary (per-strip
-               LUFS/peak/crest) · kyx_diagnose_mix (attributed findings +
-               fixes) · kyx_export ·
-               kyx_publish_gallery (agent badge)
+  finish:      kyx_mix · kyx_mix_idea (text→mix) · kyx_master (ZENIT ops) · kyx_audio_preview (listenable
+               WAV) · kyx_loudness (BS.1770) · kyx_render_summary
+               (per-strip LUFS/peak/crest) · kyx_diagnose_mix (findings +
+               fixes) · kyx_export · kyx_publish_gallery (agent badge)
   control:     kyx_intent (EN/SK; 🤖 model fallback) · kyx_batch (10 in
                one undo) · kyx_undo · kyx_takes (vocal comps)
 

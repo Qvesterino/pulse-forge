@@ -233,6 +233,16 @@ export async function importSfzLibrary(
   input: SfzLibraryImportInput,
   sinks: SfzLibraryImportSinks,
 ): Promise<SfzLibraryImportResult> {
+  // Cheap PRE-decode estimate (base64 chars × 3/4): the relay caps messages
+  // at 8 MB, but the desktop stdio transport is unbounded — without this a
+  // hugely oversized request allocated its full decoded size before the
+  // exact cap below could throw (agent-surface audit 10-06).
+  const base64Chars = input.sfzBase64.length + input.samples.reduce((sum, s) => sum + s.base64.length, 0);
+  if (base64Chars * 3 > SFZ_IMPORT_MAX_BYTES * 4) {
+    throw new Error(
+      `import too large (~${Math.round((base64Chars * 3) / 4 / 1e6)} MB — limit ${Math.round(SFZ_IMPORT_MAX_BYTES / 1e6)} MB); import in smaller batches`,
+    );
+  }
   const sfzBytes = base64ToBuffer(input.sfzBase64);
   let total = sfzBytes.byteLength;
   const decodedSamples = input.samples.map((s) => {

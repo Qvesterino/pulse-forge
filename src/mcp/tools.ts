@@ -2594,6 +2594,11 @@ export async function executeMcpTool(ctx: McpToolContext, name: string, args: un
         return { text: `moved: now ${describe(moved, index)}`, mutated: true };
       }
       if (op === "delete") {
+        // The one removal op that shipped without the D4 gate (audit 10-06):
+        // every other removal (tracks/clips/fx/takes/master) refuses until
+        // the user flips the chip — note delete must not be the loophole
+        // that deletes a part one call at a time.
+        if (!destructiveAllowedWithCheckpoint(ctx, "kyx_notes")) return destructiveRefusal();
         ctx.execute(deleteNote(ctx.getDoc(), trackId, target!.id));
         return { text: `deleted ${describe(target!, index)} — ${notesOf().length} notes left`, mutated: true };
       }

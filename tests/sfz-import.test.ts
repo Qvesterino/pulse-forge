@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { parseSfz } from "../src/sample-library/sfz";
-import { planSfzInstrumentImport, type SfzImportFile } from "../src/sample-library/sfz-import";
+import {
+  importSfzLibrary,
+  planSfzInstrumentImport,
+  SFZ_IMPORT_MAX_BYTES,
+  type SfzImportFile,
+} from "../src/sample-library/sfz-import";
 
 /**
  * USER SFZ LIBRARY IMPORT — parser + planner contracts. VSCO2 CE proved the
@@ -113,5 +118,22 @@ describe("planSfzInstrumentImport", () => {
     const plan = planSfzInstrumentImport("MyCello.sfz", SFZ, [files[2]!]);
     expect(plan.missing.length).toBeGreaterThan(0);
     expect(plan.missing[0].fileName).toContain("susvib_A2_v1.wav");
+  });
+});
+
+describe("importSfzLibrary — size honesty (agent-surface audit 10-06)", () => {
+  it("refuses an oversized request BEFORE decoding anything (clean error, no OOM allocation)", async () => {
+    // 256 MB cap → a base64 payload of >4/3·cap chars must be refused from
+    // the string length alone, before a single byte is decoded.
+    const oversizeChars = Math.ceil((SFZ_IMPORT_MAX_BYTES * 4) / 3) + 16; // > 4/3·cap → decoded > cap
+    const oversized = { sfzBase64: "QUFB", samples: [{ fileName: "a.wav", base64: "A".repeat(oversizeChars) }] };
+    const sinks = {
+      bank: { add: () => undefined },
+      userSamples: { put: () => Promise.resolve() },
+      decode: () => Promise.resolve({ length: 0 } as unknown as AudioBuffer),
+      getDoc: () => ({ id: "x", name: "x", tracks: [], patterns: [], scenes: [], arrangement: { clips: [] } }),
+      execute: () => undefined,
+    };
+    await expect(importSfzLibrary(oversized as never, sinks as never)).rejects.toThrow(/import too large/);
   });
 });

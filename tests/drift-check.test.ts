@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { collectCountChecks, countSpecFiles, parseCountRow, restoreDecision } from "../scripts/drift-check.mts";
+import { collectCountChecks, countSpecFiles, parseCountRow, restoreDecision } from "../scripts/drift-check";
 
 /**
  * DRIFT CHECK — the derivable-artifact gate (Chromium-style regeneration
