@@ -1,9 +1,8 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { runChunkedSeparation } from "../../src/analysis/stem-model/chunking";
 import {
   isStemModelManifest,
   manifestGatePassed,
-  probeStemModelManifest,
   resetStemModelProbe,
   setStemModelFlag,
   STEM_MODEL_FLAG,
@@ -139,7 +138,7 @@ describe("S3 gate — the audio-tag ritual for htdemucs", () => {
   it("gated OUT manifest (gatePassed false) → client returns null even with a session factory", async () => {
     setStemModelFlag(true);
     resetStemModelProbe();
-    const sessionSpy = vi.fn(async () => ({ manifest: validManifest, session: {} }));
+    const sessionSpy = vi.fn(async () => ({ manifest: validManifest as never, session: {} }));
     setStemModelSessionFactoryForTests(sessionSpy);
     vi.stubGlobal(
       "fetch",
