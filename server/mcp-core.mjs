@@ -1615,6 +1615,45 @@ export const MCP_TOOL_DEFS = [
     },
   },
   {
+    name: "kyx_master",
+    description:
+      "The ZENIT composite mastering device (ADR 0020) — EQ → drive → glue → width/bass-mono → clipper → limiter behind nine macros, insertable on any bus (a device on a group bus IS stem mastering). add inserts it, preset lands a target shape (streaming −14 LUFS / club / vinyl), trim applies a loudness make-up delta on the instance's output trim after measuring with kyx_loudness/kyx_render_summary, status reads the inserts. Chain order: EQ before limiting, always.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        op: {
+          type: "string",
+          enum: ["add", "preset", "trim", "remove", "status"],
+        },
+        trackId: {
+          type: "string",
+          description: "Exact track id — overrides family when present",
+        },
+        family: {
+          type: "string",
+          enum: ["drums", "bass", "chords", "lead", "vocal"],
+          description: "Family alternative to trackId",
+        },
+        target: {
+          type: "string",
+          enum: ["streaming", "club", "vinyl"],
+          description: "For op:preset — the mastering target shape",
+        },
+        trimDb: {
+          type: "number",
+          minimum: -18,
+          maximum: 12,
+          description: "For op:trim — output-trim delta in dB (e.g. target LUFS minus measured LUFS)",
+        },
+        instance: {
+          type: "number",
+          description: "1-based ZENIT instance index when a track carries more than one",
+        },
+      },
+      required: ["op"],
+    },
+  },
+  {
     name: "kyx_takes",
     description:
       "Take groups (comp workflow): list every group with its track, the ACTIVE take and the alternatives (clips per take), or activate a take — the comp pick that decides which alternative is heard. Reversible (one undo step); the domain validates the take has clips. deleteTake (destructive-gated) removes every clip of one take.",
