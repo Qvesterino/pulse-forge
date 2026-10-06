@@ -1,0 +1,22 @@
+import { normalizeProject } from "../src/project-model/schema";
+import { createProjectFromTemplate } from "../src/project-model/templates";
+import { ProjectStore } from "../src/store/ProjectStore";
+import { restyleCommand } from "../src/reference/restyle";
+import { unsunoCommand } from "../src/reference/unsuno";
+import { transcribeTrack } from "../src/reference/transcribe";
+import { goldenTracks, renderGoldenTrack, GOLDEN_SAMPLE_RATE } from "../tests/unsuno/golden-synth";
+
+const house = goldenTracks()[0];
+const transcription = transcribeTrack(renderGoldenTrack(house), GOLDEN_SAMPLE_RATE, { separation: "off" });
+const sections = [0, 1].map((i) => ({ role: i === 0 ? "intro" : "drop", startSec: i * 4 * (240 / 126), endSec: (i + 1) * 4 * (240 / 126) }));
+const store = new ProjectStore(createProjectFromTemplate("house"));
+store.execute(unsunoCommand(store.doc, { transcription, sections }).command!);
+const result = restyleCommand(store.doc, "travis scott");
+console.log("applied", JSON.stringify(result.applied, null, 1));
+const doc = normalizeProject(store.doc);
+const bass = doc.tracks.find((t) => t.kind === "instrument" && t.instrument === "bass");
+console.log("bass presetId before:", bass?.presetId);
+store.execute(result.command!);
+const after = normalizeProject(store.doc);
+const bassAfter = after.tracks.find((t) => t.kind === "instrument" && t.instrument === "bass");
+console.log("bass presetId after:", bassAfter?.presetId);
