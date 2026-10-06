@@ -1027,6 +1027,58 @@
           }
         },
         {
+          "type": "zenit",
+          "defaults": {
+            "eqLow": 0,
+            "eqMid": 0,
+            "eqHigh": 0,
+            "glue": 0,
+            "drive": 0,
+            "width": 1,
+            "bassMono": 0,
+            "ceiling": -1,
+            "limit": 0
+          }
+        },
+        {
+          "type": "apeks",
+          "defaults": {
+            "drive": 0.5,
+            "ceiling": -1,
+            "release": 0.15,
+            "preserve": 0.5,
+            "mix": 1,
+            "output": 0
+          }
+        },
+        {
+          "type": "sirka",
+          "defaults": {
+            "lowFreq": 120,
+            "highFreq": 5000,
+            "lowWidth": 1,
+            "midWidth": 1,
+            "highWidth": 1,
+            "mix": 1
+          }
+        },
+        {
+          "type": "prud",
+          "defaults": {
+            "freq1": 900,
+            "thresh1": -18,
+            "amount1": -6,
+            "q1": 2,
+            "freq2": 3200,
+            "thresh2": -24,
+            "amount2": -6,
+            "q2": 2,
+            "attack": 0.02,
+            "release": 0.2,
+            "output": 0
+          }
+        },
+        {
           "type": "vinyl",
           "defaults": {
             "amount": 0.5,
