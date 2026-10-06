@@ -142,6 +142,68 @@
   flex: 1 1 360px;
 }
 
+.master-render-measurement > strong {
+  display: block;
+  margin-top: 8px;
+  color: var(--text-faint);
+  font: 9px var(--mono);
+}
+
+.master-delivery-check {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.master-delivery-check-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text);
+  font: 9px var(--mono);
+}
+
+.master-delivery-check-head strong {
+  color: var(--accent);
+}
+
+.master-delivery-check p {
+  margin: 5px 0 0;
+  line-height: 1.4;
+}
+
+.master-delivery-metadata {
+  overflow-wrap: anywhere;
+}
+
+.master-delivery-decoded {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.master-delivery-decoded > span {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--text-faint);
+  font: 9px var(--mono);
+}
+
+.master-delivery-not-measured {
+  color: var(--warn, #efb34f) !important;
+}
+
+.master-delivery-warnings {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  color: var(--warn, #efb34f);
+  line-height: 1.45;
+}
+
 @media (max-width: 760px) {
   .mastering-panel-intro {
     grid-template-columns: 1fr;

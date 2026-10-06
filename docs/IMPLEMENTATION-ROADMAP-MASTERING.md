@@ -46,12 +46,12 @@ Samostatné masteringové relácie pre dlhé stereo súbory vytvoríme až ako o
 - UI, offline export a `kyx_master` používajú spoločné profily a pravidlá verdictu. Výber profilu mení kontrolné ciele; master gain, fyzický limiter ceiling a spracovanie sa nemenia.
 - `MasterConfig` ukladá profil, samostatný dBTP cieľ a globálny zoznam insertov. Schéma je v12; staršie LUFS ciele a limiter ceiling sa pri migrácii zachovávajú.
 - Globálny insert rack je pred vstavaným clipperom a limiterom a spracúva finálny súčet. Master/stem bypass ostáva pre-master cestou. Insert parametre používajú existujúce efektové príkazy a runtime.
-- Nový dock panel MASTER (Alt+9) spája živý meter, master insert rack a offline analýzu/export. Offline report obsahuje verziu, beh, revíziu projektu, profil, scope, kvalitu, sample rate a rozsah vzoriek; po zmene projektu alebo render nastavení sa označí za zastaraný.
+- Nový dock panel MASTER (Alt+9) spája živý meter, master insert rack a offline analýzu/export. Report V2 oddeľuje PCM pred enkódovaním od finálneho WAV/MP3. Export skontroluje kontajner, WAV hlavičku/BWF a MP3 frame metadáta a dekóduje výstup na nové meranie, ak sa zmestí do pamäťového limitu browsera. Súbor nad 96 MiB WAV alebo 12 MiB MP3 dostane poctivý stav „audio not measured“ s dôvodom; veľký MP3 sa na kontrolu hlavičky číta po krátkych úsekoch a dĺžka sa označí ako odhad.
 
 ### Otvorené P0 brány
 
-- Typová kontrola prešla 2026-10-06. Po posledných zmenách treba ešte znovu prejsť testy master profilu, migrácie, collab round-tripu, efektového grafu a live/offline parity; browser audio a produkčný build ostávajú release gates.
-- Report teraz meria PCM pred kódovaním. MP3 po decode, WAV po kvantizácii/dither, formátové metadáta, sample-bank revízia a finálna súborová kontrola ešte nie sú v report kontrakte.
+- `npm run typecheck`, Prettier na dotknutých súboroch, `git diff --check` a `npm run build` prešli 2026-10-06; produkčný build splnil všetky aktuálne bundle budgety. Relevantné Vitest suites a `npm run drift:check` treba ešte spustiť. Browser audio, live/offline posluchová kontrola a manuálny listening gate ostávajú otvorené.
+- Post-encode dekódované metriky, WAV/MP3 kontajnerové údaje a stiahnuteľný JSON sidecar už patria do reportu. Otvorené ostávajú dlhé WAV nad browser decode limit, odvodenie/overenie BWF loudness polí, tail kontrola, testy všetkých bit depthov a round-trip akceptácia naprieč podporovanými browsermi.
 - Full-master A/B snapshoty, level-matched reference, vysvetliteľný asistent a externý stereo mix zostávajú ďalšími etapami podľa tabuľky.
 
 Za dokončenú etapu sa považuje až po splnení jej akceptačných kritérií nižšie. Tento stav preto nedeklaruje plnohodnotný release gate ani masteringovú certifikáciu.
@@ -235,13 +235,13 @@ MASTER
 
 **Pravdepodobné súbory:** `src/ui/ExportPanel.tsx`, `src/rendering/renderer.ts`, `src/rendering/wav.ts`, `src/export/mp3.ts`, `src/export/scorepack.ts`, `src/mastering/profiles.ts`, export browser checks.
 
-- [ ] Oddeliť exportné nastavenia od analytického targetu, ale prepojiť ich cez čitateľné upozornenia. 32-bit float môže zachovať headroom; PCM/MP3 output sa posudzuje až po encode.
-- [ ] Zmerať finálne zakódované WAV dáta po quantization. Pri MP3 navyše znovu dekódovať zakódovaný súbor a zmerať true peak/loudness po kodeku; ak decoder nie je dostupný, poctivo označiť stav „codec TP not measured“.
+- [x] Oddeliť exportné nastavenia od analytického targetu; report sa zneplatní pri zmene bit depthu alebo kodeku. PCM/MP3 súbor má samostatný post-encode check.
+- [x] WAV a MP3 výstup sa dekóduje a zmeria po kódovaní/kvantizácii, keď je v pamäťovom limite browsera. Nad limitom alebo pri nedostupnom decoderi sa zobrazí „not measured“ aj s dôvodom; report nevydáva pre-encode metriky za codec TP.
 - [ ] Urobiť audit dither/bit-depth reduction. Ak sa pridá TPDF dither, musí byť zapínateľný/zdokumentovaný podľa export formátu, deterministický v testoch cez seed alebo mať jasne definovaný test contract; 32-bit float sa neditheruje bez explicitného dôvodu.
-- [ ] Skontrolovať WAV hlavičky, channel count, sample rate, bit depth, BWF metadata, dĺžku a tail. Všetko pinovať tests pre 16/24/32-bit a abort/chybný output.
+- [ ] WAV hlavička, channel count, sample rate, bit depth, BWF chunk a dĺžka sa kontrolujú pri exporte. Zostáva overenie BWF loudness hodnôt/tailu a testy pre 16/24/32-bit, abort a poškodený output.
 - [ ] Exportné profily môžu predvyplniť WAV rate/depth a názov verzie, nesmú však skryť ručné nastavenia ani meniť audio bez potvrdenia.
-- [ ] Pridať možnosť exportovať stručný JSON alebo text report vedľa mastera: project/render fingerprint, profil, meranie pre-encode aj post-encode, export formát, dátum, warningy a verziu nástrojov.
-- [ ] V prípade odlišnosti Studio HQ a LIVE kvality ukázať konkrétne nastavenie a zneplatniť report po zmene quality mode.
+- [x] Ponúknuť stiahnuteľný JSON sidecar: project/session revision, profil, pre/post-encode merania, formát, dátum, warningy a verziu KYX. Projektová revízia je výslovne označená ako platná iba v aktuálnej app session.
+- [x] Report uvádza Studio HQ alebo LIVE kvalitu a zneplatní sa po zmene quality mode.
 - [ ] Zachovať abort semantiku: zrušený export nesmie vyzerať ako hotový master; progress ukazuje aktuálnu render/encode/measure fázu.
 - [ ] Stemy ostávajú samostatnou diagnostickou/exportnou funkciou; master report sa nesmie prezentovať ako meranie každého stema, ak ho neanalyzoval.
 

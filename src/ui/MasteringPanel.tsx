@@ -55,8 +55,8 @@ export function MasteringPanel() {
           <span className="mastering-panel-kicker">OFFLINE CHECK</span>
           <h3>Analyze and deliver</h3>
           <p>
-            Render the selected song or pattern through the same engine used by playback, then review the measured
-            result. The report measures PCM before MP3 encoding or WAV bit-depth conversion.
+            Render through the same engine used by playback. Analyze checks the source PCM; Export Master also checks
+            the encoded WAV/MP3 header and, within the browser decode memory limit, measures the decoded deliverable.
           </p>
         </header>
         <ExportPanel masteringMode revisionId={revisionId} />

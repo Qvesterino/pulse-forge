@@ -8,6 +8,7 @@ export interface EncodedMasterFileDetails {
   sampleRate: number;
   channels: number;
   durationSeconds: number;
+  durationAccuracy: "exact" | "estimated";
   bitDepth?: 16 | 24 | 32;
   averageBitrateKbps?: number;
   bext?: { version: number; description: string };
@@ -121,6 +122,7 @@ function parseWav(bytes: ArrayBuffer): ParsedWav {
     sampleRate,
     channels,
     durationSeconds: dataBytes / blockAlign / sampleRate,
+    durationAccuracy: "exact",
     bitDepth: bitDepth as 16 | 24 | 32,
     ...(bext ? { bext } : {}),
   };
@@ -141,7 +143,7 @@ interface Mp3FrameHeader {
 function parseMp3FrameHeader(view: DataView, offset: number): Mp3FrameHeader | null {
   if (offset + 4 > view.byteLength) return null;
   const word = view.getUint32(offset, false);
-  if ((word & 0xffe00000) !== 0xffe00000) return null;
+  if (word >>> 21 !== 0x7ff) return null;
   const versionBits = (word >>> 19) & 0b11;
   const layerBits = (word >>> 17) & 0b11;
   const bitrateIndex = (word >>> 12) & 0b1111;
@@ -187,7 +189,6 @@ function parseMp3(bytes: ArrayBuffer): ParsedMp3 {
   let first: Mp3FrameHeader | null = null;
   while (offset <= searchEnd && !(first = parseMp3FrameHeader(view, offset))) offset++;
   if (!first) throw new Error("No valid MPEG Layer III frame was found in the exported MP3.");
-  const firstOffset = offset;
   let frames = 0;
   let bitrateSum = 0;
   while (offset + 4 <= bytes.byteLength) {
@@ -208,13 +209,34 @@ function parseMp3(bytes: ArrayBuffer): ParsedMp3 {
   }
   if (frames === 0) throw new Error("The exported MP3 contains no complete audio frames.");
 
-  const audioBytes = offset - firstOffset;
   return {
     sampleRate: first.sampleRate,
     channels: first.channels,
     durationSeconds: (frames * first.samplesPerFrame) / first.sampleRate,
+    durationAccuracy: "exact",
     averageBitrateKbps: bitrateSum / frames,
   };
+}
+
+async function mp3MetadataWindow(blob: Blob): Promise<ArrayBuffer> {
+  const header = await blob.slice(0, Math.min(10, blob.size)).arrayBuffer();
+  const headerView = new DataView(header);
+  let start = 0;
+  if (
+    header.byteLength >= 10 &&
+    headerView.getUint8(0) === 0x49 &&
+    headerView.getUint8(1) === 0x44 &&
+    headerView.getUint8(2) === 0x33
+  ) {
+    const size =
+      ((headerView.getUint8(6) & 0x7f) << 21) |
+      ((headerView.getUint8(7) & 0x7f) << 14) |
+      ((headerView.getUint8(8) & 0x7f) << 7) |
+      (headerView.getUint8(9) & 0x7f);
+    start = 10 + size + ((headerView.getUint8(5) & 0x10) !== 0 ? 10 : 0);
+  }
+  if (start >= blob.size) throw new Error("The MP3 ID3 tag contains no following audio frames.");
+  return blob.slice(start, Math.min(blob.size, start + 64 * 1024)).arrayBuffer();
 }
 
 function notMeasured(
@@ -230,17 +252,39 @@ function notMeasured(
 /** Verify the finished WAV/MP3 container, then measure the browser-decoded deliverable. */
 export async function inspectEncodedMaster(input: {
   format: EncodedMasterFormat;
-  bytes: ArrayBuffer;
+  bytes: ArrayBuffer | Blob;
   expectedDurationSeconds: number;
   signal?: AbortSignal;
 }): Promise<EncodedMasterInspection> {
   const { format, bytes, expectedDurationSeconds, signal } = input;
   if (signal?.aborted) throw new DOMException("Master inspection cancelled", "AbortError");
-  const byteLength = bytes.byteLength;
-  const file = format === "wav" ? parseWav(bytes) : parseMp3(bytes);
+  const blobInput = typeof Blob !== "undefined" && bytes instanceof Blob ? bytes : null;
+  const byteLength = blobInput?.size ?? (bytes as ArrayBuffer).byteLength;
+  let file: EncodedMasterFileDetails;
+  let decoderBytes: ArrayBuffer;
+  if (format === "wav") {
+    if (blobInput) throw new Error("WAV inspection requires the encoded RIFF byte buffer.");
+    decoderBytes = bytes as ArrayBuffer;
+    file = parseWav(decoderBytes);
+  } else if (blobInput && byteLength > MAX_MP3_DECODE_BYTES) {
+    const frameWindow = await mp3MetadataWindow(blobInput);
+    const sampledFile = parseMp3(frameWindow);
+    file = {
+      ...sampledFile,
+      durationSeconds: (byteLength * 8) / (sampledFile.averageBitrateKbps * 1000),
+      durationAccuracy: "estimated",
+    };
+    decoderBytes = frameWindow;
+  } else {
+    decoderBytes = blobInput ? await blobInput.arrayBuffer() : (bytes as ArrayBuffer);
+    file = parseMp3(decoderBytes);
+  }
   const warnings: string[] = [];
   const durationTolerance = Math.max(0.25, (2 * 1152) / file.sampleRate);
-  if (Math.abs(file.durationSeconds - expectedDurationSeconds) > durationTolerance) {
+  if (
+    file.durationAccuracy === "exact" &&
+    Math.abs(file.durationSeconds - expectedDurationSeconds) > durationTolerance
+  ) {
     warnings.push(
       `File duration differs from the rendered program by ${(file.durationSeconds - expectedDurationSeconds).toFixed(3)} s.`,
     );
@@ -254,7 +298,7 @@ export async function inspectEncodedMaster(input: {
     warnings.push("The WAV BWF metadata has no version 2 loudness fields.");
 
   const maxDecodeBytes = format === "wav" ? MAX_WAV_DECODE_BYTES : MAX_MP3_DECODE_BYTES;
-  if (bytes.byteLength > maxDecodeBytes) {
+  if (byteLength > maxDecodeBytes) {
     const limitMb = (maxDecodeBytes / 1024 / 1024).toFixed(0);
     return notMeasured(
       format,
@@ -267,7 +311,7 @@ export async function inspectEncodedMaster(input: {
 
   let decoded: AudioBuffer;
   try {
-    decoded = await decodeAudioData(bytes, file.sampleRate);
+    decoded = await decodeAudioData(decoderBytes, file.sampleRate);
   } catch (error) {
     return notMeasured(
       format,

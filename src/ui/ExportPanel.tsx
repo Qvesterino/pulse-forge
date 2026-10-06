@@ -36,7 +36,8 @@ import { analyzeMixHealthBuffer, deriveMixAutoFix, type MixHealthReport } from "
 import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import { slicesFromOnsets } from "../audio-engine/transients";
 import { resolveDeliveryTarget, type MasterProfile } from "../mastering/profiles";
-import { createMasterRenderReport, type MasterRenderReport } from "../mastering/report";
+import { inspectEncodedMaster, type EncodedMasterInspection } from "../mastering/encodedInspection";
+import { createMasterRenderReport, serializeMasterReportSidecar, type MasterRenderReport } from "../mastering/report";
 
 type Status =
   | { kind: "idle" }
@@ -143,6 +144,8 @@ export function ExportPanel({
   /** Cancellation is a normal outcome, not an error — surface it as such. */
   const cancelOrElse = (error: unknown, fallbackLabel: string): void => {
     if (error instanceof DOMException && error.name === "AbortError") {
+      setMixHealth(null);
+      setMasterReport(null);
       setStatus({ kind: "done", label: "Export cancelled", summary: EMPTY_EXPORT_SUMMARY });
       return;
     }
@@ -161,30 +164,55 @@ export function ExportPanel({
   const [chopNote, setChopNote] = useState<string | null>(null);
 
   const busy = status.kind === "busy";
+  const deliveredMeasurements =
+    masterReport?.encodedDelivery?.decode.status === "measured"
+      ? (masterReport.encodedDelivery.decode.measurements ?? null)
+      : null;
+  const deliveredMixHealth =
+    masterReport?.encodedDelivery?.decode.status === "measured"
+      ? (masterReport.encodedDelivery.decode.mixHealth ?? mixHealth)
+      : mixHealth;
+  const mixHealthStage = masterReport?.encodedDelivery?.decode.status === "measured" ? "POST-DECODE" : "PRE-ENCODE";
+  const encodedSettingsStale = Boolean(
+    masterReport?.encodedDelivery &&
+    (format === "video" ||
+      masterReport.encodedDelivery.format !== (format.startsWith("mp3") ? "mp3" : "wav") ||
+      (masterReport.encodedDelivery.format === "wav" && masterReport.encodedDelivery.file.bitDepth !== bitDepth) ||
+      (masterReport.encodedDelivery.format === "mp3" &&
+        Math.abs((masterReport.encodedDelivery.file.averageBitrateKbps ?? 0) - (format === "mp3-320" ? 320 : 192)) >
+          8)),
+  );
   const reportStale = Boolean(
     masteringMode &&
     masterReport &&
     (masterReport.projectRevisionId !== revisionId ||
       masterReport.scope !== mode ||
       masterReport.sampleRate !== sampleRate ||
-      masterReport.quality !== quality),
+      masterReport.quality !== quality ||
+      encodedSettingsStale),
   );
   const baseName = sanitizeFilename(doc.name);
   const groups = nonEmptyStemGroups(doc);
   const videoSupported = canExportVideo();
   const activePatternName = patterns.find((p) => p.id === activePatternId)?.name ?? "pattern";
+  const downloadMasterReport = () => {
+    if (!masterReport || reportStale) return;
+    const json = serializeMasterReportSidecar(masterReport);
+    downloadBlob(new Blob([json], { type: "application/json" }), `${baseName}-master-report.json`);
+  };
 
   const exportMaster = async (download = true) => {
     const signal = beginExport();
     setStatus({ kind: "busy", label: download ? "Rendering master…" : "Analyzing master…" });
     try {
-      const buffer = await renderProject(doc, services.bank, {
+      let buffer: AudioBuffer | null = await renderProject(doc, services.bank, {
         mode,
         sampleRate,
         quality,
         signal,
       });
       if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
+      const renderedDurationSeconds = buffer.duration;
       const summary = summarizeBuffer(buffer);
       const mixHealthReport = analyzeMixHealthBuffer(buffer);
       setMixHealth(mixHealthReport);
@@ -196,7 +224,7 @@ export function ExportPanel({
           scope: mode,
           sampleRate: buffer.sampleRate,
           quality,
-          durationSeconds: buffer.duration,
+          durationSeconds: renderedDurationSeconds,
           sampleRange: { startFrame: 0, endFrame: buffer.length },
           profile: resolveDeliveryTarget(master),
           measurements: summary,
@@ -214,7 +242,7 @@ export function ExportPanel({
       }
 
       if (format === "video") {
-        const seconds = Math.min(clipSeconds, buffer.duration);
+        const seconds = Math.min(clipSeconds, renderedDurationSeconds);
         const result = await recordVideo(buffer, {
           title: doc.name,
           bpm: doc.bpm,
@@ -240,10 +268,20 @@ export function ExportPanel({
           signal,
           onProgress: (f) => setStatus({ kind: "busy", label: `Encoding MP3 ${kbps}… ${Math.round(f * 100)}%` }),
         });
+        buffer = null;
+        setStatus({ kind: "busy", label: "Checking encoded MP3…" });
+        const encodedDelivery = await inspectEncodedMaster({
+          format: "mp3",
+          bytes: blob,
+          expectedDurationSeconds: renderedDurationSeconds,
+          signal,
+        });
+        if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
+        setMasterReport((report) => (report ? { ...report, encodedDelivery } : report));
         downloadBlob(blob, `${baseName}-${kbps}.mp3`);
         setStatus({
           kind: "done",
-          label: `MP3 exported (${buffer.duration.toFixed(1)}s, ${kbps} kbps, ${(blob.size / 1e6).toFixed(2)} MB)`,
+          label: `MP3 exported (${renderedDurationSeconds.toFixed(1)}s, ${kbps} kbps, ${(blob.size / 1e6).toFixed(2)} MB) — ${encodedDelivery.decode.status === "measured" ? "decoded file measured" : "header checked; audio not measured"}`,
           summary,
         });
         return;
@@ -257,10 +295,21 @@ export function ExportPanel({
         onProgress: (f) => setStatus({ kind: "busy", label: `Encoding WAV… ${Math.round(f * 100)}%` }),
         signal,
       });
-      downloadWav(wavBytes, `${baseName}-master.wav`);
+      const wavBlob = new Blob([wavBytes], { type: "audio/wav" });
+      buffer = null;
+      setStatus({ kind: "busy", label: "Checking encoded WAV…" });
+      const encodedDelivery = await inspectEncodedMaster({
+        format: "wav",
+        bytes: wavBytes,
+        expectedDurationSeconds: renderedDurationSeconds,
+        signal,
+      });
+      if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
+      setMasterReport((report) => (report ? { ...report, encodedDelivery } : report));
+      downloadBlob(wavBlob, `${baseName}-master.wav`);
       setStatus({
         kind: "done",
-        label: `Master exported (${buffer.duration.toFixed(1)}s, ${sampleRate} Hz, ${bitDepth}-bit)`,
+        label: `Master exported (${renderedDurationSeconds.toFixed(1)}s, ${sampleRate} Hz, ${bitDepth}-bit) — ${encodedDelivery.decode.status === "measured" ? "decoded file measured" : "header checked; audio not measured"}`,
         summary,
       });
     } catch (error) {
@@ -896,26 +945,49 @@ export function ExportPanel({
         )}
       </div>
       {status.kind === "done" && (!masteringMode || masterReport) && (
-        <ExportSummary
-          summary={status.summary}
-          deliveryProfile={masterReport?.profile ?? resolveDeliveryTarget(master)}
-        />
-      )}
-      {status.kind === "done" && masteringMode && masterReport && (
-        <div className="master-render-report-meta" role="note" aria-label="Master render report details">
-          <strong title={masterReport.runId}>REPORT V{masterReport.version}</strong>
-          <span>
-            {masterReport.projectName} · {masterReport.scope === "song" ? "FULL SONG" : "PATTERN"} ·{" "}
-            {masterReport.sampleRate} Hz · {masterReport.quality === "studio" ? "Studio HQ" : "Live"} ·{" "}
-            {masterReport.durationSeconds.toFixed(1)} s · {masterReport.sampleRange.endFrame.toLocaleString()} samples
-          </span>
-          <time dateTime={masterReport.createdAt}>{new Date(masterReport.createdAt).toLocaleString()}</time>
+        <div className="master-render-measurement">
+          {masteringMode && <strong>RENDER PCM · PRE-ENCODE</strong>}
+          <ExportSummary
+            summary={status.summary}
+            deliveryProfile={masterReport?.profile ?? resolveDeliveryTarget(master)}
+          />
         </div>
       )}
-      {status.kind === "done" && mixHealth && <MixHealthLine health={mixHealth} />}
-      {status.kind === "done" && mixHealth && !reportStale && <MixAutoFixButton health={mixHealth} />}
+      {status.kind === "done" && masteringMode && masterReport && (
+        <>
+          <div className="master-render-report-meta" role="note" aria-label="Master render report details">
+            <strong title={masterReport.runId}>REPORT V{masterReport.version}</strong>
+            <span>
+              {masterReport.projectName} · {masterReport.scope === "song" ? "FULL SONG" : "PATTERN"} ·{" "}
+              {masterReport.sampleRate} Hz · {masterReport.quality === "studio" ? "Studio HQ" : "Live"} ·{" "}
+              {masterReport.durationSeconds.toFixed(1)} s · {masterReport.sampleRange.endFrame.toLocaleString()} samples
+            </span>
+            <time dateTime={masterReport.createdAt}>{new Date(masterReport.createdAt).toLocaleString()}</time>
+            <button
+              type="button"
+              className="btn btn-small"
+              disabled={reportStale}
+              onClick={downloadMasterReport}
+              aria-label="Download mastering report JSON"
+            >
+              DOWNLOAD REPORT JSON
+            </button>
+          </div>
+          {masterReport.encodedDelivery ? (
+            <EncodedDeliveryCheck inspection={masterReport.encodedDelivery} deliveryProfile={masterReport.profile} />
+          ) : (
+            <div className="master-delivery-check" role="note">
+              Analysis-only run. No WAV/MP3 file was created or checked.
+            </div>
+          )}
+        </>
+      )}
+      {status.kind === "done" && deliveredMixHealth && (
+        <MixHealthLine health={deliveredMixHealth} stage={mixHealthStage} />
+      )}
+      {status.kind === "done" && deliveredMixHealth && !reportStale && <MixAutoFixButton health={deliveredMixHealth} />}
       {status.kind === "done" && (!masteringMode || masterReport) && !reportStale && (
-        <AutoStageButton summary={status.summary} />
+        <AutoStageButton summary={deliveredMeasurements ?? status.summary} />
       )}
 
       {!masteringMode && (
@@ -983,7 +1055,60 @@ export function ExportPanel({
  * master render — one compact line, pass or the flag list. Advisory
  * (yellow) flags render as ○ notes, failures (red) as ⚠.
  */
-function MixHealthLine({ health }: { health: MixHealthReport }) {
+function EncodedDeliveryCheck({
+  inspection,
+  deliveryProfile,
+}: {
+  inspection: EncodedMasterInspection;
+  deliveryProfile: MasterProfile;
+}) {
+  const { file, decode } = inspection;
+  const sizeMb = (inspection.byteLength / 1024 / 1024).toFixed(1);
+  const wavEncoding = file.bitDepth === 32 ? "float" : "PCM";
+  const formatLabel =
+    inspection.format === "wav"
+      ? `WAV · ${file.bitDepth}-bit ${wavEncoding}`
+      : `MP3 · ${file.averageBitrateKbps?.toFixed(0) ?? "?"} kbps avg`;
+  const channelsLabel = file.channels === 1 ? "mono" : `${file.channels} channels`;
+  const bextLabel = file.bext ? `BWF v${file.bext.version}` : "no BWF metadata";
+  const durationLabel = `${file.durationSeconds.toFixed(2)} s${file.durationAccuracy === "estimated" ? " estimated" : ""}`;
+
+  return (
+    <section className="master-delivery-check" aria-label="Encoded master file check">
+      <div className="master-delivery-check-head">
+        <strong>FINAL FILE · {decode.status === "measured" ? "DECODED + MEASURED" : "HEADER CHECKED"}</strong>
+        <span>{(inspection.byteLength / 1024).toFixed(0)} KiB</span>
+      </div>
+      <p>
+        {formatLabel} · {file.sampleRate.toLocaleString()} Hz · {channelsLabel} · {durationLabel} · {sizeMb} MiB
+        {inspection.format === "wav" ? ` · ${bextLabel}` : ""}
+      </p>
+      {file.bext?.description && <p className="master-delivery-metadata">BWF description: {file.bext.description}</p>}
+      {decode.status === "measured" && decode.measurements ? (
+        <div className="master-delivery-decoded">
+          <span>
+            POST-DECODE · {decode.sampleRate?.toLocaleString()} Hz · {decode.channels} channels ·{" "}
+            {decode.durationSeconds?.toFixed(2)} s · browser Web Audio decoder
+          </span>
+          <ExportSummary summary={decode.measurements} deliveryProfile={deliveryProfile} />
+        </div>
+      ) : (
+        <p className="master-delivery-not-measured" role="status">
+          Post-encode audio measurements not available: {decode.reason ?? "decoder result unavailable"}
+        </p>
+      )}
+      {decode.warnings.length > 0 && (
+        <ul className="master-delivery-warnings" aria-label="File check warnings">
+          {decode.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function MixHealthLine({ health, stage }: { health: MixHealthReport; stage: "PRE-ENCODE" | "POST-DECODE" }) {
   const red = health.flags.filter((f) => f.severity === "red");
   const yellow = health.flags.filter((f) => f.severity === "yellow");
   const stats = `low ${(health.lowEndShare * 100).toFixed(0)}% · crest ${health.crestDb.toFixed(1)} dB · peak −${health.headroomDb.toFixed(1)} dBFS`;
@@ -992,7 +1117,9 @@ function MixHealthLine({ health }: { health: MixHealthReport }) {
     .join(" · ");
   return (
     <div className="export-resample-hint" role="status">
-      {red.length === 0 ? "MIX CHECK PASS — " : `MIX CHECK — ${red.length} ISSUE${red.length > 1 ? "S" : ""} — `}
+      {red.length === 0
+        ? `MIX CHECK · ${stage} PASS — `
+        : `MIX CHECK · ${stage} — ${red.length} ISSUE${red.length > 1 ? "S" : ""} — `}
       {stats}
       {notes && ` — ${notes}`}
     </div>
