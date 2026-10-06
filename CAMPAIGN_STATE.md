@@ -57,6 +57,13 @@ Last updated: 2026-10-06 (session sess_85d94465)
 - Verification: 60/60 green.
 - Date/session: 2026-10-06, commit `4061bdcb`
 
+### Honest-gate sweep: two estimators promoted stationary input into confident readings
+- Area: `src/reference/analysis/rhythm.ts` (F1 lane) + `src/ai/audio-tempo-key.ts` (estimateTempo gate placement, estimateKey); full audit in `docs/HONEST-GATE-AUDIT-2026-10-06.md`
+- Root cause: confidence mixes dominated by SELF-NORMALIZED scores (share of the signal's own max) with no absolute floor. F1 reported "86 BPM @ 0.585, no warning" on a bare sine and "~126 BPM @ 0.640" on pink noise; estimateKey fabricated keys on any noise color (margin cannot gate: real boombap 0.025 vs pink 0.235); the dfe6bf06 tempo crest gate sat on the baseline-REMOVED envelope where removal AMPLIFIES noise wobble (5.9/6.0 raw → 10.5/10.8 removed) so pink leaked.
+- Fix: shared `onsetEnvelopeCrest()` + `ONSET_CREST_FLOOR = 8` in spectralFlux.ts; analyzeRhythm gates the RAW envelope (stationary ≤ 5.3, rhythmic ≥ 11.5); estimateTempo gate moved to the raw envelope (stationary ≤ 6, clicks ≥ 36); estimateKey gains two measured absolute floors (chroma concentration ≥ 2, best correlation ≥ 0.6 — bare sine keeps its root by design).
+- Verification: `tests/honest-gates.test.ts` (10 specs) green; C-sustained-note reference snapshot honestly regenerated (phantom "65 BPM @ 40%" → null + "No reliable tempo detected", diff reviewed); unsuno golden KPI floors (tempo 5/5, key 5/5, chords 36/36) + full reference family 209 tests green; safe estimators verified (tonal F2, chords 0.55, bass/melody YIN gates, intent abstain margin).
+- Date/session: 2026-10-06, commit `426cc1cd`
+
 ## VERIFIED OPEN
 
 ### Intent/symbolic/grooves/melodic + engine-pin test family (~24 tests) red — NOW MACHINE-READABLE
@@ -150,6 +157,14 @@ Last updated: 2026-10-06 (session sess_85d94465)
 4. Re-establish the fresh-clone bootstrap check (`npm install && npm run dev` on a clean machine) — last verified 10-03.
 
 ## SESSION LOG
+
+### 2026-10-06 (follow-up 2) / Honest-gate sweep — confidence metrics audit (user-picked idea C)
+- Inspected: every confidence producer in src/reference/ + src/ai/ (11 entries classified, verdict table in docs/HONEST-GATE-AUDIT-2026-10-06.md); adversarial probe (sine, white/pink/lowpassed noise, silence, clicks, 5 golden fixtures) with measured thresholds.
+- Fixed: F1 analyzeRhythm crest gate (phantom "86 BPM @ 0.585 no warning" on sine, "~126 @ 0.640" on pink → honest null); estimateTempo gate moved to the RAW envelope (baseline removal amplifies noise wobble — pink leaked the removed-envelope gate); estimateKey dual absolute floor (concentration ≥ 2 + correlation ≥ 0.6).
+- Verified: honest-gates.test.ts 10/10; reference family + estimators + unsuno golden KPIs 209/209; snapshot diff reviewed then regenerated; typecheck clean on my files (2 remaining tsc errors = sibling's untracked studio-io.test.ts + asio-host-manager.cjs mid-landing).
+- Unresolved (documented, not bugs): analyzeTonality returns low-confidence tonic on noise with warning (wording vs. null gap, left as-is); src/vocal + presets/audioQuality out of scope.
+- Commits: 426cc1cd (sweep), this commit (docs/count).
+- Recommended continuation: let the ratchet drive; next window = eol policy session (item 1) or the vocal/presets confidence follow-up sweep.
 
 ### 2026-10-06 (follow-up) / Suite expectations ledger — the Chromium ratchet (user-picked top idea)
 - Built: `scripts/suite-expectations.mjs` (+ `.d.mts` types, 17 unit pins) — parses vitest `--reporter=json`, diffs against `suite-expectations.json`: new reds FAIL, cured reds FAIL (baseline only shrinks), TODO owners FAIL, `flaky:true` exempts both ways, collection errors surface as pseudo-ids. `npm run test:expectations` (--run + eval), `:eval` re-evaluates the last report; CI's test job runs it instead of plain `npm test`.
