@@ -155,6 +155,12 @@ export function transcribeTrack(
      * behaves like "hpss" until the htdemucs wave (S3/S4) ships.
      */
     separation?: "off" | "hpss" | "model";
+    /**
+     * S4 — pre-separated NEURAL stems (the async client's model path
+     * produces these, then calls this entry with separation "off" so the
+     * lanes read the model stems directly). Mono, pipeline rate.
+     */
+    modelStems?: { vocals: Float32Array; drums: Float32Array; bass: Float32Array; chords: Float32Array };
   } = {},
 ): UnsunoTranscription {
   const tempo = estimateTempo(pcm, sampleRate);
@@ -164,16 +170,18 @@ export function transcribeTrack(
   // HPSS separation is requested. Tempo stays on the FULL mix (the pulse is
   // most reliable there and the fold-to-grid floors are measured on it).
   const separated = options.separation === "hpss" || options.separation === "model";
-  const stems: HpssStems | null = tempo && separated ? separateHPSS(pcm, sampleRate, { maxSeconds: 120 }) : null;
-  const drumSource = stems?.percussive ?? pcm;
-  const bassSource = stems?.bass ?? pcm;
+  const stems: HpssStems | null =
+    tempo && separated && options.separation === "hpss" ? separateHPSS(pcm, sampleRate, { maxSeconds: 120 }) : null;
+  const modelStems = options.modelStems;
+  const drumSource = modelStems?.drums ?? stems?.percussive ?? pcm;
+  const bassSource = modelStems?.bass ?? stems?.bass ?? pcm;
   // Chords/melody read the harmonic stem MINUS its bass register: the
   // bass fundamental dominates the harmonic stem's low chroma (it is the
   // loudest sustained thing down there) and drowns the chord voicings
   // (measured: boombap chords 3/4 -> 4/4 on harmonic-HP130). The high-pass
   // reuses the bass lane's own low-pass by subtraction.
-  let tonalSource = stems?.harmonic ?? pcm;
-  if (stems) {
+  let tonalSource = modelStems?.chords ?? stems?.harmonic ?? pcm;
+  if (stems && !modelStems) {
     const low = applyLowPass(stems.harmonic, sampleRate, 130);
     const hp = new Float32Array(tonalSource.length);
     for (let i = 0; i < hp.length; i++) hp[i] = tonalSource[i] - low[i];
@@ -322,7 +330,8 @@ export function transcribeTrack(
         coverage: null,
       }
     : (() => {
-        const detection = detectMelodyNotes(tonalSource, sampleRate, { bpm: tempo.bpm });
+        const melodySource = modelStems?.vocals ?? tonalSource;
+        const detection = detectMelodyNotes(melodySource, sampleRate, { bpm: tempo.bpm });
         const notes = detection?.notes ?? [];
         return notes.length > 0
           ? { implemented: true, warning: null, notes, coverage: detection?.coverage ?? null }

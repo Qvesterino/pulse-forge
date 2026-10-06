@@ -1,5 +1,6 @@
 import { analyzeReference, type AnalyzeReferenceInput, type AnalyzeReferenceOutput } from "./analysis/analyzeReference";
 import { transcribeTrack, type UnsunoTranscription } from "./transcribe";
+import { separateTrackModel } from "../analysis/stem-model/client";
 import type { ReferenceStage } from "./types";
 
 /** Above this length (s × sr) we pay worker startup + transfer cost; below it we stay on the main thread. */
@@ -119,6 +120,31 @@ export function transcribeTrackAsync(
     signal?: AbortSignal;
   } = {},
 ): Promise<UnsunoTranscription> {
+  // S4 — the MODEL path orchestrates here: neural stems first (never-throw),
+  // then the sync core reads them directly. Any failure degrades to the
+  // requested non-model path, exactly like the model lanes' own fallback.
+  if (options.separation === "model") {
+    const runModel = async (): Promise<UnsunoTranscription> => {
+      const model = await separateTrackModel(pcm, sampleRate, {
+        maxSeconds: options.sections?.reduce((max, s) => Math.max(max, s.endSec), 0) || undefined,
+        signal: options.signal,
+      });
+      if (model) {
+        return transcribeTrack(pcm, sampleRate, {
+          sections: options.sections,
+          modelStems: {
+            vocals: model.stems[0],
+            drums: model.stems[1],
+            bass: model.stems[2],
+            chords: model.stems[3],
+          },
+        });
+      }
+      // model unavailable → hpss guide stems (Tier 1 fallback chain)
+      return transcribeTrack(pcm, sampleRate, { sections: options.sections, separation: "hpss" });
+    };
+    return runModel();
+  }
   const run = (): UnsunoTranscription =>
     transcribeTrack(pcm, sampleRate, { sections: options.sections, separation: options.separation });
   if (options.signal?.aborted) return Promise.resolve(run());

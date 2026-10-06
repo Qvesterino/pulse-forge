@@ -13,7 +13,8 @@
  * production code exercised with a fake separator by tests.
  */
 import { assetUrl } from "../../shared/assetUrls";
-import { runChunkedSeparation, type ChunkedSeparationOptions, type StemChunkResult } from "./chunking";
+import type { ChunkedSeparationOptions, StemChunkResult } from "./chunking";
+import { fitLength, monoToStereoPlanar, planarToMonoStems, resampleLinear } from "./tensor";
 import { manifestGatePassed, probeStemModelManifest, stemModelFlagOn, type StemModelManifest } from "./gate";
 
 export interface ModelStems {
@@ -91,36 +92,109 @@ export async function separateTrackModel(
     if (!cachedSession) return null;
 
     const session = cachedSession;
-    const result = runChunkedSeparation(
-      pcm,
-      sampleRate,
-      (chunk, index, total) => {
-        if (options.signal?.aborted) return null;
-        const chunks = separateChunkWithSession(session, chunk, sampleRate);
-        options.onProgress?.(index + 1, total);
-        return chunks;
-      },
-      options,
-    );
-    if (!result || result.aborted) return null;
-    return { ...result, analyzedSec: result.stems[0].length / sampleRate, modelVersion: manifest.stemModelVersion };
+    // The model separator is ASYNC (ORT run is a promise), so the chunked
+    // grid runs inline with the SAME rules as runChunkedSeparation (fixed
+    // grid, complementary crossfades, abort between chunks). The pure sync
+    // runner stays for tests and future sync separators.
+    const chunkSec = options.chunkSec ?? manifest.chunkSec ?? 8;
+    const overlapSec = Math.min(options.overlapSec ?? 1, chunkSec / 4);
+    const maxSeconds = options.maxSeconds ?? 240;
+    const total = Math.min(pcm.length, Math.floor(maxSeconds * sampleRate));
+    if (total < sampleRate) return null;
+    const chunkSamples = Math.floor(chunkSec * sampleRate);
+    const overlapSamples = Math.floor(overlapSec * sampleRate);
+    if (chunkSamples <= overlapSamples) return null;
+    const starts: number[] = [];
+    for (let start = 0; start < total; start += chunkSamples - overlapSamples) {
+      starts.push(start);
+      if (start + chunkSamples >= total) break;
+    }
+    const last = starts.length - 1;
+    const fadeIn = new Float64Array(overlapSamples);
+    const fadeOut = new Float64Array(overlapSamples);
+    for (let j = 0; j < overlapSamples; j++) {
+      const phase = (j + 0.5) / overlapSamples;
+      fadeIn[j] = 0.5 - 0.5 * Math.cos(Math.PI * phase);
+      fadeOut[j] = 1 - fadeIn[j];
+    }
+    const stems: Float32Array[] = [0, 1, 2, 3].map(() => new Float32Array(total));
+    let processed = 0;
+    for (let index = 0; index < starts.length; index++) {
+      if (options.signal?.aborted) return null;
+      const start = starts[index];
+      const end = Math.min(total, start + chunkSamples);
+      const length = end - start;
+      const tailStart = length - overlapSamples;
+      const separated = await separateChunkWithSession(session, pcm.subarray(start, end), sampleRate);
+      if (!separated || separated.length !== 4) continue;
+      for (let stem = 0; stem < 4; stem++) {
+        const target = stems[stem];
+        const source = separated[stem];
+        for (let i = 0; i < length; i++) {
+          let weight = 1;
+          const inHead = index > 0 && i < overlapSamples;
+          const inTail = index < last && i >= tailStart;
+          if (inHead) weight = fadeIn[i];
+          else if (inTail) weight = fadeOut[i - tailStart];
+          target[start + i] += source[i] * weight;
+        }
+      }
+      processed += 1;
+      // Yield between chunks so the main thread breathes during inference.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      options.onProgress?.(processed, starts.length);
+    }
+    if (processed === 0) return null;
+    return {
+      stems,
+      stemNames: manifest.stems,
+      chunksProcessed: processed,
+      aborted: false,
+      analyzedSec: total / sampleRate,
+      modelVersion: manifest.stemModelVersion,
+    };
   } catch {
     return null;
   }
 }
 
-/**
- * S4 fills this with the real tensor plumbing (resample → ort session.run →
- * de-layout → resample back). Until a real checkpoint exists to validate
- * against, the honest answer is null → caller falls back to HPSS.
- */
-function separateChunkWithSession(
+interface OrtTensorLike {
+  data: Float32Array;
+  dims: number[];
+}
+
+/** S4 — the real tensor plumbing: mono → stereo planar → ORT run → 4 mono
+ * stems, resampled to the pipeline rate and fitted to the chunk length.
+ * Throws on shape/IO surprises — the client's never-throw wraps it. */
+async function separateChunkWithSession(
   session: StemModelSession,
   chunk: Float32Array,
   sampleRate: number,
-): Float32Array[] | null {
-  void session;
-  void chunk;
-  void sampleRate;
-  return null;
+): Promise<Float32Array[] | null> {
+  const target = session.manifest.sampleRate;
+  const atModelRate = resampleLinear(chunk, sampleRate, target);
+  const planar = monoToStereoPlanar(atModelRate);
+  const samples = planar.length / 2;
+
+  const ortSession = session.session as {
+    inputNames: readonly string[];
+    outputNames: readonly string[];
+    run: (feeds: Record<string, unknown>) => Promise<Record<string, OrtTensorLike>>;
+  };
+  const { Tensor } = await import("onnxruntime-web");
+  const inputName = session.manifest.inputName ?? ortSession.inputNames[0];
+  const outputName = session.manifest.outputName ?? ortSession.outputNames[0];
+  if (!inputName || !outputName) return null;
+
+  const input = new Tensor("float32", planar, [1, 2, samples]);
+  const outputs = await ortSession.run({ [inputName]: input });
+  const output = outputs[outputName];
+  if (!output || !output.data) return null;
+
+  // [1, 8, N] planar → 4 mono stems at the model rate → pipeline rate + length.
+  const outputData = output.data as Float32Array;
+  const stemSamples = Math.floor(outputData.length / 8);
+  if (stemSamples === 0) return null;
+  const atModelRateStems = planarToMonoStems(outputData, 4, stemSamples);
+  return atModelRateStems.map((stem) => fitLength(resampleLinear(stem, target, sampleRate), chunk.length));
 }

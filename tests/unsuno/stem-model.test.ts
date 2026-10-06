@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { runChunkedSeparation } from "../../src/analysis/stem-model/chunking";
+import { goldenTracks, renderGoldenTrack, GOLDEN_SAMPLE_RATE } from "./golden-synth";
 import {
   isStemModelManifest,
   manifestGatePassed,
@@ -182,4 +183,69 @@ describe("S3 gate — the audio-tag ritual for htdemucs", () => {
     resetStemModelSession();
     resetStemModelProbe();
   });
+});
+
+describe("S4 — tensor layout + model lane wiring", () => {
+  it("tensor helpers: mono→planar→4 mono stems round-trip the layout", async () => {
+    const { monoToStereoPlanar, planarToMonoStems } = await import("../../src/analysis/stem-model/tensor");
+    const mono = new Float32Array(1000);
+    for (let i = 0; i < mono.length; i++) mono[i] = Math.sin(i / 10);
+    const planar = monoToStereoPlanar(mono);
+    expect(planar.length).toBe(2000);
+    expect(planar[0]).toBe(mono[0]);
+    expect(planar[1000]).toBe(mono[0]);
+    // One stereo stem (2 planar channels) folds back to exactly the mono signal.
+    const stems = planarToMonoStems(planar, 1, 1000);
+    expect(stems.length).toBe(1);
+    for (let i = 0; i < 1000; i += 37) expect(stems[0][i]).toBeCloseTo(mono[i], 5);
+    // A full 4-stem planar (8 channels) de-interleaves to 4 independent monos.
+    const quad = new Float32Array(8 * 1000);
+    for (let s = 0; s < 4; s++)
+      for (let i = 0; i < 1000; i++) {
+        quad[s * 2 * 1000 + i] = s;
+        quad[(s * 2 + 1) * 1000 + i] = s;
+      }
+    const quadStems = planarToMonoStems(quad, 4, 1000);
+    for (let s = 0; s < 4; s++) expect(quadStems[s][500]).toBe(s);
+  });
+
+  it(
+    "lanes read MODEL stems via transcribeTrack modelStems (drums lane reads the drums stem)",
+    { timeout: 30_000 },
+    async () => {
+      const { transcribeTrack } = await import("../../src/reference/transcribe");
+      const { detectDrumMap } = await import("../../src/reference/analysis/drums");
+      const track = goldenTracks()[0];
+      const pcm = renderGoldenTrack(track);
+      // Simulate PERFECT separation: model stems == the ground-truth renders.
+      const drumsStem = renderGoldenTrack({ ...track, bass: [], chords: [] });
+      const modelStems = {
+        vocals: new Float32Array(pcm.length),
+        drums: drumsStem,
+        bass: new Float32Array(pcm.length),
+        chords: new Float32Array(pcm.length),
+      };
+      const t = transcribeTrack(pcm, GOLDEN_SAMPLE_RATE, { separation: "off", modelStems });
+      void detectDrumMap;
+      // WIRING PROOF, part 1: the drums lane read the DRUMS stem — a
+      // drums-only stem transcribes to a DIFFERENT map (F1 ~0.67 vs the
+      // full-mix 0.91) and the test asserts the drums-stem signature.
+      const truth = new Set<number>();
+      for (let bar = 0; bar < track.bars; bar++) {
+        for (let slot = 0; slot < 16; slot++) if ((track.drums.kick[bar]?.[slot] ?? 0) > 0) truth.add(slot);
+      }
+      const { stepF1 } = await import("../../src/reference/unsuno-metrics");
+      const report = stepF1(
+        t.drums.kick,
+        [...truth].sort((a, b) => a - b),
+        { tolerance: 1 },
+      );
+      expect(report.f1).toBeGreaterThan(0.6);
+      expect(report.f1).toBeLessThan(0.85); // NOT the full-mix map
+      // WIRING PROOF, part 2: the silent bass/chords/vocals stems yield
+      // EMPTY lanes — on the full mix the bass lane finds 24 notes.
+      expect(t.bass.notes).toEqual([]);
+      expect(t.chords.spans).toEqual([]);
+    },
+  );
 });

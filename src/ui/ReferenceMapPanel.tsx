@@ -317,6 +317,27 @@ export function ReferenceMapPanel() {
   // U6 — UN-SUNO reconstruction flow: two-step confirm, then one command.
   const [buildBusy, setBuildBusy] = useState(false);
   const [buildConfirm, setBuildConfirm] = useState(false);
+  // S4 — separation choice for BUILD: off (full mix), hpss (Tier-1 guide
+  // stems), model (htdemucs, only when the fetched+gated manifest exists).
+  const [separation, setSeparation] = useState<"off" | "hpss" | "model">("off");
+  const [modelAvailable, setModelAvailable] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const { stemModelFlagOn, probeStemModelManifest, manifestGatePassed } =
+          await import("../analysis/stem-model/gate");
+        if (!stemModelFlagOn()) return;
+        const manifest = await probeStemModelManifest();
+        if (alive && manifest && manifestGatePassed(manifest)) setModelAvailable(true);
+      } catch {
+        /* availability is a bonus — the select degrades */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
   // U5 — mix-doctor findings over the SOURCE, measured at build time; the
   // fix chip (when the full-source report has a mechanical fix) applies a
   // master config as one more undo step.
@@ -362,6 +383,7 @@ export function ReferenceMapPanel() {
       // fallback where module workers are unavailable); never blocks the UI.
       const transcription = await transcribeTrackAsync(mono, analysis.sampleRate, {
         sections: sectionsOfResult,
+        separation,
       });
       const result = unsunoCommand(
         doc,
@@ -729,6 +751,21 @@ export function ReferenceMapPanel() {
             <button type="button" onClick={exportJson} data-testid="reference-export">
               Export JSON
             </button>
+            <label className="reference-separation-field" data-testid="reference-separation-field">
+              <span>Separácia</span>
+              <select
+                value={separation}
+                onChange={(e) => setSeparation(e.target.value as "off" | "hpss" | "model")}
+                data-testid="reference-separation"
+                disabled={!analysis}
+              >
+                <option value="off">vyp (plný mix)</option>
+                <option value="hpss">HPSS guide</option>
+                <option value="model" disabled={!modelAvailable}>
+                  model (htdemucs)
+                </option>
+              </select>
+            </label>
             <button
               type="button"
               onClick={() => void exportStems()}

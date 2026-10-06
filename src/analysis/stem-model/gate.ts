@@ -25,6 +25,10 @@ export interface StemModelManifest {
   /** Native chunk length in seconds the export was validated with. */
   chunkSec: number;
   stems: ["vocals", "drums", "bass", "other"];
+  /** Optional ONNX IO name overrides — defaults follow the demucs
+   * convention (first input, first output). */
+  inputName?: string;
+  outputName?: string;
   /** Set true ONLY after the S4 validation pass (golden set + smoke). */
   gatePassed: boolean;
 }
