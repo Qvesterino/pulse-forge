@@ -1461,7 +1461,7 @@ const MCP_TOOL_DEFS = [
       properties: {
         op: {
           type: "string",
-          enum: ["add", "preset", "trim", "remove", "status"],
+          enum: ["add", "preset", "trim", "assist", "remove", "status"],
         },
         trackId: {
           type: "string",
@@ -1476,6 +1476,16 @@ const MCP_TOOL_DEFS = [
           type: "string",
           enum: ["streaming", "club", "vinyl"],
           description: "For op:preset — the mastering target shape",
+        },
+        targetLufs: {
+          type: "number",
+          minimum: -24,
+          maximum: -6,
+          description: "For op:assist — loudness target (default −14 LUFS streaming)",
+        },
+        insert: {
+          type: "boolean",
+          description: "For op:assist — insert any missing mastering devices on the bus before applying the plan",
         },
         trimDb: {
           type: "number",

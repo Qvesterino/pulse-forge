@@ -8,6 +8,7 @@ import type { Command } from "../commands/types";
 import { routeIntentText, type RoutedIntent } from "../intent/route";
 import { routeIsDestructive } from "../intent/route-guard";
 import { presetsForEffect } from "../effects/presets";
+import { planMasterSettings } from "./master-assistant";
 import { isCreativeBriefRoute } from "../intent/model-fallback-policy";
 import { applyFaderIntent, applyTempoIntent } from "../intent/conversation";
 import {
@@ -1328,7 +1329,7 @@ export const MCP_TOOLS: McpToolDef[] = [
     inputSchema: {
       type: "object",
       properties: {
-        op: { type: "string", enum: ["add", "preset", "trim", "remove", "status"] },
+        op: { type: "string", enum: ["add", "preset", "trim", "assist", "remove", "status"] },
         trackId: { type: "string", description: "Exact track id — overrides family when present" },
         family: {
           type: "string",
@@ -1339,6 +1340,16 @@ export const MCP_TOOLS: McpToolDef[] = [
           type: "string",
           enum: ["streaming", "club", "vinyl"],
           description: "For op:preset — the mastering target shape",
+        },
+        targetLufs: {
+          type: "number",
+          minimum: -24,
+          maximum: -6,
+          description: "For op:assist — loudness target (default −14 LUFS streaming)",
+        },
+        insert: {
+          type: "boolean",
+          description: "For op:assist — insert any missing mastering devices on the bus before applying the plan",
         },
         trimDb: {
           type: "number",
@@ -4904,6 +4915,76 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
     const fxId = pickZenitInstance(doc, id, record);
     if (!fxId) return { text: `${track.name} carries no ZENIT instance — op:add first`, mutated: false };
     targets.push({ trackId: id, trackName: track.name, fxId });
+  }
+
+  if (op === "assist") {
+    // MASTER ASSISTANT (M3): measure → deterministic plan (master-assistant.ts)
+    // → apply through the command layer as ONE snapshot. Every step carries
+    // its WHY; the loudness authority stays with op:trim after measuring.
+    const meter = ctx.meters?.();
+    const master = (meter as { master?: Record<string, unknown> } | null)?.master;
+    if (!master) {
+      return {
+        text: "assist needs live audio meters (play a few seconds first) — or use op:preset + op:trim with explicit values",
+        mutated: false,
+      };
+    }
+    const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+    const lufs = num(master.lufsIntegrated) ?? num(master.lufsShortTerm);
+    const peakDb = num(master.truePeakDb) ?? num(master.peakHoldDb) ?? 0;
+    const rmsDb = num(master.rmsDb);
+    const crestDb = num(master.crestDb) ?? (peakDb != null && rmsDb != null ? peakDb - rmsDb : 10);
+    const correlation = num(master.correlation);
+    const plan = planMasterSettings({
+      lufs,
+      peakDb,
+      crestDb,
+      correlation,
+      targetLufs: typeof record.targetLufs === "number" ? record.targetLufs : undefined,
+    });
+    if (plan.length === 0) return { text: "assist found nothing to change", mutated: false };
+
+    const wantedTypeOf: Record<string, "zenit" | "apeks" | "sirka"> = {
+      zenit: "zenit",
+      apeks: "apeks",
+      sirka: "sirka",
+    };
+    let next = doc;
+    const lines: string[] = [];
+    for (const step of plan) {
+      for (const id of ids) {
+        const track = next.tracks.find((t) => t.id === id)!;
+        let fxId = pickZenitInstance(next, id, record);
+        const wantedType = wantedTypeOf[step.device];
+        if (step.device !== "zenit") {
+          const sameDevice = track.effects.find((fx) => fx.type === wantedType);
+          fxId = sameDevice?.id ?? null;
+        }
+        if (!fxId) {
+          if (record.insert !== true) {
+            return {
+              text: `${track.name}: ${step.device} not inserted — pass insert:true to let assist add missing devices`,
+              mutated: false,
+            };
+          }
+          next = addEffectToTracks(next, [id], wantedType).execute(next);
+          const created = next.tracks
+            .find((t) => t.id === id)!
+            .effects.filter((fx) => fx.type === wantedType)
+            .at(-1);
+          if (!created)
+            return { text: `insert of ${step.device} failed on ${track.name}`, mutated: false, isError: true };
+          fxId = created.id;
+        }
+        next = setEffectParam(next, id, fxId, step.param, step.value).execute(next);
+        lines.push(`${track.name} · ${step.device}.${step.param} = ${step.value.toFixed(2)} — ${step.why}`);
+      }
+    }
+    ctx.execute(snapshot("mcpMasterAssist", "MCP: master assistant plan", doc, next));
+    return {
+      text: `master assistant applied ${plan.length} step(s), one undo step:\n${lines.join("\n")}\nmeasure again (kyx_loudness) and fine-land with op:trim`,
+      mutated: true,
+    };
   }
 
   if (op === "preset") {
