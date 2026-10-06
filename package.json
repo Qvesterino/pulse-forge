@@ -117,6 +117,8 @@
     "sweep:claps": "node scripts/sweep-claps.mjs",
     "taste:train": "node scripts/train-my-taste.mjs",
     "test": "vitest run",
+    "test:expectations": "node scripts/suite-expectations.mjs --run",
+    "test:expectations:eval": "node scripts/suite-expectations.mjs",
     "test:fast": "vite-node scripts/run-fast-subset.mts",
     "test:browser": "node scripts/verify-browser.mjs",
     "test:browser:factory-presets": "node scripts/verify-factory-presets.mjs",

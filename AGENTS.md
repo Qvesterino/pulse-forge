@@ -157,6 +157,7 @@ These are the rules every coding agent must follow. They are encoded in `ARCHITE
 | ------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Strict typecheck          | `npm run typecheck`                    | EXIT 0 (clean `tsc --noEmit`)                                                                                     |
 | Full Vitest suite         | `npm run test`                         | See `docs/CURRENT-STATE.md` for the current file count; all tests pass, with intentional skips reported by Vitest |
+| Suite expectations ratchet | `npm run test:expectations`           | EXIT 0 — the failure set EXACTLY matches `suite-expectations.json` (new reds AND cured reds both fail; every entry needs owner + reason; `flaky: true` exempts both ways) |
 | Format check              | `npm run format:check`                 | `All matched files use Prettier code style!`                                                                      |
 | Real-browser audio        | `npm run test:browser`                 | all checks pass in Chromium, Firefox and Edge (historical baseline 226/226)                                       |
 | Factory preset QA         | `npm run test:browser:factory-presets` | all factory presets audible (298 today; the script enumerates dynamically)                                        |

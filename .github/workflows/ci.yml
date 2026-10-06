@@ -40,7 +40,11 @@ jobs:
       - run: npm ci
       # Soak heap gates call global.gc?.() — without exposed GC the numbers
       # measure garbage, not leaks (47.9 MB vs 0.7 MB for identical code).
-      - run: npm test
+      # test:expectations runs the SAME full suite once (JSON report + eval):
+      # the failure set must exactly match suite-expectations.json — a new
+      # red OR a cured ledger entry fails the build (the baseline may only
+      # shrink; see scripts/suite-expectations.mjs).
+      - run: npm run test:expectations
         env:
           NODE_OPTIONS: --expose-gc
       - run: npm run ai:performance
