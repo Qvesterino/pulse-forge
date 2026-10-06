@@ -30,6 +30,7 @@ import {
 } from "../reference";
 import { transcribeTrackAsync } from "../reference/reference-client";
 import { analyzeSectionMix, type SectionMixFinding } from "../analysis/sectionMixDoctor";
+import { restyleCommand, artistLabels } from "../reference/restyle";
 import { separateHPSS } from "../analysis/hpss";
 import { unsunoCommand } from "../reference/unsuno";
 import { downloadBlob } from "../export/download";
@@ -345,6 +346,8 @@ export function ReferenceMapPanel() {
   const [stemsBusy, setStemsBusy] = useState(false);
   const [mixFindings, setMixFindings] = useState<SectionMixFinding[] | null>(null);
   const [mixFix, setMixFix] = useState<{ tiltDb: number; masterGain: number; label: string } | null>(null);
+  // RE-STYLE REMIX BRIDGE — keep the composition, swap the band.
+  const [restyleArtist, setRestyleArtist] = useState("");
 
   const runCommand = useCallback(
     (build: (d: ProjectDocument) => Command | null, fallback: string) => {
@@ -898,6 +901,42 @@ export function ReferenceMapPanel() {
                   </li>
                 )}
               </ul>
+            )}
+            {applied?.includes("UN-SUNO") && (
+              <div className="restyle-row" data-testid="restyle-row">
+                <input
+                  list="restyle-artists"
+                  value={restyleArtist}
+                  onChange={(e) => setRestyleArtist(e.target.value)}
+                  placeholder="🎨 re-style ako umelec (napíš meno alebo vyber)…"
+                  data-testid="restyle-artist-input"
+                  aria-label="Artist for re-style"
+                />
+                <datalist id="restyle-artists">
+                  {artistLabels().map((label) => (
+                    <option key={label} value={label} />
+                  ))}
+                </datalist>
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  disabled={!restyleArtist.trim()}
+                  data-testid="restyle-go"
+                  onClick={() => {
+                    const result = restyleCommand(services.store.doc, restyleArtist);
+                    if (!result.command) {
+                      setApplied(`Re-style: ${result.summary}`);
+                      return;
+                    }
+                    services.store.execute(result.command);
+                    setRestyleArtist("");
+                    setApplied(`🎨 ${result.summary} (one undo step)`);
+                  }}
+                  title="Zamení kapelu (kit + inštrumenty + mix) — kompozícia (patterny, noty) zostáva; jedno undo"
+                >
+                  🎨 RE-STYLE
+                </button>
+              </div>
             )}
           </section>
 

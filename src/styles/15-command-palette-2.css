@@ -881,6 +881,20 @@
   background: rgba(255, 208, 0, 0.08);
 }
 
+/* RE-STYLE remix bridge — artist input + button row. */
+.restyle-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.restyle-row input {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+}
+
 /* U5 — UN-SUNO mix findings chips. */
 .unsuno-mix-findings {
   list-style: none;

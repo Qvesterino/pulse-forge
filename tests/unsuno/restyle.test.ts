@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeAll } from "vitest";
 import { normalizeProject } from "../../src/project-model/schema";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { ProjectStore } from "../../src/store/ProjectStore";
@@ -6,6 +6,7 @@ import { artistLabels, restyleCommand } from "../../src/reference/restyle";
 import { unsunoCommand } from "../../src/reference/unsuno";
 import { transcribeTrack } from "../../src/reference/transcribe";
 import { goldenTracks, renderGoldenTrack, GOLDEN_SAMPLE_RATE } from "./golden-synth";
+import { warmFactoryPresets } from "../../src/presets/factory-loader";
 
 /**
  * RE-STYLE REMIX BRIDGE — the invariant that makes this a remix rather than
@@ -49,6 +50,12 @@ function compositionFingerprint(doc: ReturnType<typeof normalizeProject>) {
 }
 
 describe("restyleCommand — same composition, new band", () => {
+  // The instrument-preset leg reads the factory bank, which throws while
+  // cold (the wrongkind-wave lesson) — production warms it at boot.
+  beforeAll(async () => {
+    await warmFactoryPresets();
+  });
+
   it("swaps kit + instruments + mix while rows and notes stay byte-equal; one undo restores", () => {
     const store = reconstructedProject();
     const doc = normalizeProject(store.doc);

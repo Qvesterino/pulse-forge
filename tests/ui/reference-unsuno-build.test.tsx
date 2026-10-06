@@ -105,6 +105,30 @@ describe("ReferenceMapPanel — BUILD PROJECT (U6)", () => {
 });
 
 describe("DropZone — UN-SUNO analyze offer (U6)", () => {
+  it("RE-STYLE: after BUILD, an artist input swaps the band in one command", async () => {
+    const { services, executeSpy } = setup();
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("song.wav")] } });
+    await waitFor(
+      () => {
+        const build = screen.getByTestId("reference-build") as HTMLButtonElement;
+        expect(build.disabled).toBe(false);
+      },
+      { timeout: 20_000 },
+    );
+    fireEvent.click(screen.getByTestId("reference-build"));
+    fireEvent.click(screen.getByTestId("reference-build-go"));
+    await waitFor(() => expect(executeSpy).toHaveBeenCalledTimes(1), { timeout: 30_000 });
+    // The re-style row appears after a successful build.
+    const row = await waitFor(() => expect(screen.getByTestId("restyle-row")).toBeInTheDocument(), { timeout: 10_000 });
+    void row;
+    fireEvent.change(screen.getByTestId("restyle-artist-input"), { target: { value: "travis scott" } });
+    fireEvent.click(screen.getByTestId("restyle-go"));
+    await waitFor(() => expect(executeSpy).toHaveBeenCalledTimes(2), { timeout: 30_000 });
+    const command = executeSpy.mock.calls[1][0] as unknown as { type: string; label: string };
+    expect(command.type).toBe("restyle");
+    expect(command.label).toMatch(/travis scott/i);
+  }, 120_000);
+
   it("U4.5: sourceSampleId attaches the original as one arrangement clip", async () => {
     const { services, executeSpy } = setup();
     const capturedBox: { detail?: { file: File; sampleId?: string } } = {};

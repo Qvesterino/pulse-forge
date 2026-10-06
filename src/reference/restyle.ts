@@ -31,7 +31,13 @@ import type { Command } from "../commands/types";
 export interface RestyleResult {
   command: Command | null;
   summary: string;
-  applied: { kit: string | null; bassPreset: string | null; chordPreset: string | null; leadPreset: string | null; mix: string | null };
+  applied: {
+    kit: string | null;
+    bassPreset: string | null;
+    chordPreset: string | null;
+    leadPreset: string | null;
+    mix: string | null;
+  };
 }
 
 export interface RestyleOptions {
@@ -91,7 +97,13 @@ function presetForFamily(
 }
 
 export function restyleCommand(doc: ProjectDocument, artistLabel: string, options: RestyleOptions = {}): RestyleResult {
-  const applied: RestyleResult["applied"] = { kit: null, bassPreset: null, chordPreset: null, leadPreset: null, mix: null };
+  const applied: RestyleResult["applied"] = {
+    kit: null,
+    bassPreset: null,
+    chordPreset: null,
+    leadPreset: null,
+    mix: null,
+  };
   const artist = resolveArtist(artistLabel);
   if (!artist) {
     return { command: null, summary: `unknown artist "${artistLabel}" — pick one from the list`, applied };
@@ -116,7 +128,11 @@ export function restyleCommand(doc: ProjectDocument, artistLabel: string, option
 
   // 2) INSTRUMENT PRESETS per family — only tracks whose family matches.
   const instrumentTracks = doc.tracks.filter((t): t is InstrumentTrack => t.kind === "instrument");
-  const familyTargets: Array<{ family: "bass" | "chords" | "lead"; kinds: string[]; key: "bassPreset" | "chordPreset" | "leadPreset" }> = [
+  const familyTargets: Array<{
+    family: "bass" | "chords" | "lead";
+    kinds: string[];
+    key: "bassPreset" | "chordPreset" | "leadPreset";
+  }> = [
     { family: "bass", kinds: ["bass", "808"], key: "bassPreset" },
     { family: "chords", kinds: ["keys", "texture"], key: "chordPreset" },
     { family: "lead", kinds: ["sampler"], key: "leadPreset" },
@@ -166,7 +182,12 @@ export function restyleCommand(doc: ProjectDocument, artistLabel: string, option
   if (commands === 0) {
     return { command: null, summary: `${artist.label}: nothing to re-style (no tracks found)`, applied };
   }
-  const command = snapshot("restyle", `Re-style as ${artist.label} — ${[applied.kit, applied.bassPreset, applied.chordPreset].filter(Boolean).join(" · ")}`, doc, next);
+  const command = snapshot(
+    "restyle",
+    `Re-style as ${artist.label} — ${[applied.kit, applied.bassPreset, applied.chordPreset].filter(Boolean).join(" · ")}`,
+    doc,
+    next,
+  );
   return {
     command,
     summary: `${artist.label}: ${[applied.kit, applied.bassPreset, applied.chordPreset, applied.leadPreset, applied.mix].filter(Boolean).join(" · ")}`,
