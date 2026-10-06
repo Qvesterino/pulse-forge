@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "recordedAgainst": "4f6348de",
+  "recordedAgainst": "36d3afbb",
   "date": "2026-10-06",
   "note": "Owned-red ledger (Chromium TestExpectations model). Every entry needs owner + reason. Ratchet: new reds fail the gate, cured reds demand removal. See scripts/suite-expectations.mjs.",
   "expectations": [
@@ -19,13 +19,6 @@
       "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
     },
     {
-      "id": "tests/clap-host.test.ts > vendored CLAP headers (scripts/vendor-clap.mjs) vendors a complete 1.2.10 tree with a verifiable manifest",
-      "owner": "vendor SDK owner gate (by design)",
-      "reason": "needs the locally built CLAP probe/SDK artifacts; never committed",
-      "addedAt": "2026-10-06",
-      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
-    },
-    {
       "id": "tests/creative-task-contract.test.ts > creative task contract v1 keeps the creative SFT bootstrap pinned, family-disjoint, and outside both held-out datasets",
       "owner": "intent-model wave",
       "reason": "creative SFT bootstrap pin vs in-flight corpus wave",
@@ -40,21 +33,7 @@
       "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
     },
     {
-      "id": "tests/intent-model-artifact.test.ts > intent model artifact lock pins validation metrics to the exact model, dataset splits, decoder, and evaluator",
-      "owner": "intent-model wave",
-      "reason": "pins frozen to artifact/prompt bytes of the locally retrained ONNX + SFT models; re-pin needs manifest regen after the next retrain",
-      "addedAt": "2026-10-06",
-      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
-    },
-    {
       "id": "tests/intent-model-loader.test.ts > loader registration + timeouts + breaker a scripted model registers the resolver provider and routes through it",
-      "owner": "intent-model wave",
-      "reason": "pins frozen to artifact/prompt bytes of the locally retrained ONNX + SFT models; re-pin needs manifest regen after the next retrain",
-      "addedAt": "2026-10-06",
-      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
-    },
-    {
-      "id": "tests/intent-model-sft-prompt.test.ts > SFT prompt pin the Ollama provider sends the exact prompt the SFT model was trained on",
       "owner": "intent-model wave",
       "reason": "pins frozen to artifact/prompt bytes of the locally retrained ONNX + SFT models; re-pin needs manifest regen after the next retrain",
       "addedAt": "2026-10-06",
@@ -103,13 +82,6 @@
       "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
     },
     {
-      "id": "tests/sample-license-gate.test.ts > sample license gate credits.md matches a fresh render of PACK_CREDITS (CC-BY obligation)",
-      "owner": "sample-library wave",
-      "reason": "credits.md is stale against a fresh PACK_CREDITS render after the sample/preset waves",
-      "addedAt": "2026-10-06",
-      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
-    },
-    {
       "id": "tests/symbolic-melodic.test.ts > melodic prior sampling in the provider falls back to template melody when multi-voice and the prior are unavailable",
       "owner": "concurrent symbolic/grooves retrain wave",
       "reason": "provider expectations pinned to the pre-retrain prior behavior; re-pin when the wave lands",
@@ -152,11 +124,12 @@
       "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
     },
     {
-      "id": "tests/trigger-engine.test.ts > TriggerEngine (Wave 4f \u2014 final) owns the moved realtime path verbatim (method inventory)",
-      "owner": "engine decomposition wave (4f)",
-      "reason": "source-grep 'method inventory' pin still describes the pre-refactor AudioEngine surface",
+      "id": "tests/intent-model-artifact.test.ts > intent model artifact lock model + vocab artifacts match the manifest pins",
+      "owner": "intent-model wave",
+      "reason": "flaky machine-state: the manifest-pin check flips between runs at the same SHA family (CURED in one F1 run, NEW in the next) \u2014 locally fetched ONNX/vocab artifacts vary while the pins stay frozen. flaky: true exempts both directions until the wave owner re-pins.",
       "addedAt": "2026-10-06",
-      "evidence": "CAMPAIGN_STATE.md VERIFIED OPEN (owned-red family, 2026-10-06 classification)"
+      "flaky": true,
+      "evidence": "F1 worktree at 36d3afbb: CURED in run A, NEW in run B, identical tree"
     }
   ]
 }
