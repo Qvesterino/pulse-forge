@@ -17,6 +17,8 @@ import { deriveKeyFromChords, detectChordSpans, type ChordSpan, type Transcribed
 import { detectBassNotes, type TranscribedBassNote } from "./analysis/bass";
 import { detectMelodyNotes, type TranscribedMelodyNote } from "./analysis/melody";
 import { detectDrumMap } from "./analysis/drums";
+import { separateHPSS, type HpssStems } from "../analysis/hpss";
+import { applyLowPass } from "../reference/analysis/bass";
 
 export interface TranscribedLayer {
   /** false = this layer is not transcribed yet — consumers must treat it as
@@ -141,15 +143,47 @@ function decorateSpan(span: ChordSpan, parsed: ParsedKey | null): TranscribedCho
 export function transcribeTrack(
   pcm: Float32Array,
   sampleRate: number,
-  options: { sections?: ReadonlyArray<{ role: string; startSec: number; endSec: number }> } = {},
+  options: {
+    sections?: ReadonlyArray<{ role: string; startSec: number; endSec: number }>;
+    /**
+     * S1 — source separation before transcription. "off" (default) reads
+     * the full mix everywhere — the locked U0-U7 baselines are all measured
+     * this way. "hpss" separates the source into deterministic guide stems
+     * first (ADR 0019 Tier 1) and routes each lane to its stem: drums read
+     * the percussive stem, bass the bass register, chords/melody the
+     * harmonic stem. "model" is accepted for forward compatibility and
+     * behaves like "hpss" until the htdemucs wave (S3/S4) ships.
+     */
+    separation?: "off" | "hpss" | "model";
+  } = {},
 ): UnsunoTranscription {
   const tempo = estimateTempo(pcm, sampleRate);
   void TRANSCRIPTION_WAVE_OWNERS;
 
+  // S1 — separation routing: each lane reads its stem when the Tier-1
+  // HPSS separation is requested. Tempo stays on the FULL mix (the pulse is
+  // most reliable there and the fold-to-grid floors are measured on it).
+  const separated = options.separation === "hpss" || options.separation === "model";
+  const stems: HpssStems | null = tempo && separated ? separateHPSS(pcm, sampleRate, { maxSeconds: 120 }) : null;
+  const drumSource = stems?.percussive ?? pcm;
+  const bassSource = stems?.bass ?? pcm;
+  // Chords/melody read the harmonic stem MINUS its bass register: the
+  // bass fundamental dominates the harmonic stem's low chroma (it is the
+  // loudest sustained thing down there) and drowns the chord voicings
+  // (measured: boombap chords 3/4 -> 4/4 on harmonic-HP130). The high-pass
+  // reuses the bass lane's own low-pass by subtraction.
+  let tonalSource = stems?.harmonic ?? pcm;
+  if (stems) {
+    const low = applyLowPass(stems.harmonic, sampleRate, 130);
+    const hp = new Float32Array(tonalSource.length);
+    for (let i = 0; i < hp.length; i++) hp[i] = tonalSource[i] - low[i];
+    tonalSource = hp;
+  }
+
   const rawSpans: ChordSpan[] = [];
   let derived: ReturnType<typeof deriveKeyFromChords> = null;
   if (tempo) {
-    const detection = detectChordSpans(pcm, sampleRate, { bpm: tempo.bpm });
+    const detection = detectChordSpans(tonalSource, sampleRate, { bpm: tempo.bpm });
     if (detection) {
       rawSpans.push(...detection.spans);
       // U1.5 — the chord sequence decides the key whenever it exists: a
@@ -195,7 +229,7 @@ export function transcribeTrack(
         hat: [],
       }
     : (() => {
-        const detection = detectDrumMap(pcm, sampleRate, { bpm: tempo.bpm });
+        const detection = detectDrumMap(drumSource, sampleRate, { bpm: tempo.bpm });
         const drums: TranscribedDrums = {
           implemented: true,
           warning: null,
@@ -237,7 +271,7 @@ export function transcribeTrack(
               barRoots[bar] = span.rootPc;
             }
           }
-          const detection = detectBassNotes(pcm, sampleRate, {
+          const detection = detectBassNotes(bassSource, sampleRate, {
             bpm: tempo.bpm,
             chordContext: { barRoots, barSec },
           });
@@ -256,9 +290,9 @@ export function transcribeTrack(
   const drumPatternForWindow = (startSec: number, endSec: number): TranscribedDrumPattern | null => {
     if (!tempo) return null;
     const from = Math.floor(startSec * sampleRate);
-    const to = Math.min(pcm.length, Math.floor(endSec * sampleRate));
+    const to = Math.min(drumSource.length, Math.floor(endSec * sampleRate));
     if (to - from < sampleRate) return null; // under a second — no grid to read
-    const detection = detectDrumMap(pcm.subarray(from, to), sampleRate, { bpm: tempo.bpm });
+    const detection = detectDrumMap(drumSource.subarray(from, to), sampleRate, { bpm: tempo.bpm });
     if (!detection) return null;
     return {
       kick: detection.bands.kick.steps,
@@ -288,7 +322,7 @@ export function transcribeTrack(
         coverage: null,
       }
     : (() => {
-        const detection = detectMelodyNotes(pcm, sampleRate, { bpm: tempo.bpm });
+        const detection = detectMelodyNotes(tonalSource, sampleRate, { bpm: tempo.bpm });
         const notes = detection?.notes ?? [];
         return notes.length > 0
           ? { implemented: true, warning: null, notes, coverage: detection?.coverage ?? null }

@@ -33,6 +33,7 @@ export interface TranscribeWorkerRequest {
   mono: Float32Array;
   sampleRate: number;
   sections?: Array<{ role: string; startSec: number; endSec: number }>;
+  separation?: "off" | "hpss" | "model";
 }
 
 export type ReferenceWorkerResponse =
@@ -61,7 +62,10 @@ if (dedicated) {
       if (typeof data.jobId !== "number" || !(data.mono instanceof Float32Array)) return;
       if (typeof data.sampleRate !== "number" || !Number.isFinite(data.sampleRate) || data.sampleRate <= 0) return;
       try {
-        const payload = transcribeTrack(data.mono, data.sampleRate, { sections: data.sections });
+        const payload = transcribeTrack(data.mono, data.sampleRate, {
+          sections: data.sections,
+          separation: data.separation,
+        });
         dedicated.postMessage({
           type: "TRANSCRIBE_RESULT",
           jobId: data.jobId,

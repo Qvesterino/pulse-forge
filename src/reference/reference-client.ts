@@ -115,10 +115,12 @@ export function transcribeTrackAsync(
   sampleRate: number,
   options: {
     sections?: ReadonlyArray<{ role: string; startSec: number; endSec: number }>;
+    separation?: "off" | "hpss" | "model";
     signal?: AbortSignal;
   } = {},
 ): Promise<UnsunoTranscription> {
-  const run = (): UnsunoTranscription => transcribeTrack(pcm, sampleRate, { sections: options.sections });
+  const run = (): UnsunoTranscription =>
+    transcribeTrack(pcm, sampleRate, { sections: options.sections, separation: options.separation });
   if (options.signal?.aborted) return Promise.resolve(run());
   if (typeof Worker === "undefined" || pcm.length < WORKER_MIN_SAMPLES) {
     return Promise.resolve(run());
@@ -149,7 +151,14 @@ export function transcribeTrackAsync(
     try {
       const copy = new Float32Array(pcm);
       worker.postMessage(
-        { type: "TRANSCRIBE_TRACK", jobId: Date.now() & 0xffff, mono: copy, sampleRate, sections: options.sections },
+        {
+          type: "TRANSCRIBE_TRACK",
+          jobId: Date.now() & 0xffff,
+          mono: copy,
+          sampleRate,
+          sections: options.sections,
+          separation: options.separation,
+        },
         [copy.buffer],
       );
     } catch {
