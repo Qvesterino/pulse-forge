@@ -1641,15 +1641,20 @@ export const MCP_TOOL_DEFS = [
         },
         profile: {
           type: "string",
-          enum: ["streaming", "apple", "loud", "vinyl"],
-          description:
-            "For op:land / op:platform / op:assist — the delivery platform contract (target LUFS + true-peak ceiling)",
+          enum: ["streaming", "apple", "loud", "vinyl", "custom"],
+          description: "For op:land / op:platform / op:assist — the delivery target profile to evaluate",
         },
         targetLufs: {
           type: "number",
           minimum: -24,
-          maximum: -6,
-          description: "For op:assist / op:land — loudness target (overrides profile; default −14 LUFS streaming)",
+          maximum: 0,
+          description: "For op:assist / op:land / op:platform — loudness target override",
+        },
+        targetTruePeakDb: {
+          type: "number",
+          minimum: -12,
+          maximum: 0,
+          description: "For op:land / op:platform — maximum true peak in dBTP (overrides the profile)",
         },
         insert: {
           type: "boolean",
