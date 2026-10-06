@@ -9,7 +9,7 @@ import { routeIntentText, type RoutedIntent } from "../intent/route";
 import { routeIsDestructive } from "../intent/route-guard";
 import { presetsForEffect } from "../effects/presets";
 import { planMasterSettings } from "./master-assistant";
-import { profileFor, verdictAgainst, worstStatus } from "./master-profiles";
+import { profileFor, resolveDeliveryTarget, verdictAgainst, worstStatus } from "./master-profiles";
 import { isCreativeBriefRoute } from "../intent/model-fallback-policy";
 import { applyFaderIntent, applyTempoIntent } from "../intent/conversation";
 import {
@@ -1347,15 +1347,20 @@ export const MCP_TOOLS: McpToolDef[] = [
         },
         profile: {
           type: "string",
-          enum: ["streaming", "apple", "loud", "vinyl"],
-          description:
-            "For op:land / op:platform / op:assist — the delivery platform contract (target LUFS + true-peak ceiling)",
+          enum: ["streaming", "apple", "loud", "vinyl", "custom"],
+          description: "For op:land / op:platform / op:assist — the delivery target profile to evaluate",
         },
         targetLufs: {
           type: "number",
           minimum: -24,
-          maximum: -6,
-          description: "For op:assist / op:land — loudness target (overrides profile; default −14 LUFS streaming)",
+          maximum: 0,
+          description: "For op:assist / op:land / op:platform — loudness target override",
+        },
+        targetTruePeakDb: {
+          type: "number",
+          minimum: -12,
+          maximum: 0,
+          description: "For op:land / op:platform — maximum true peak in dBTP (overrides the profile)",
         },
         insert: {
           type: "boolean",
@@ -4929,16 +4934,33 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
     // measure → master loudness-trim → measure until |delta| ≤ 0.3 LU
     // (max 3 bounded iterations — the loop reports honestly when the
     // ±12 dB trim range cannot close the gap).
-    const profile = profileFor(typeof record.profile === "string" ? record.profile : "streaming")!;
-    const targetLufs = typeof record.targetLufs === "number" ? record.targetLufs : profile.targetLufs;
-    const readMeter = (): { lufs: number; truePeakDb: number } | null => {
+    const requestedProfile =
+      typeof record.profile === "string" ? record.profile : (doc.master.deliveryProfileId ?? "streaming");
+    const baseProfile =
+      profileFor(requestedProfile) ??
+      (requestedProfile === "custom" ? resolveDeliveryTarget(doc.master) : profileFor("streaming"))!;
+    const profile = {
+      ...baseProfile,
+      targetLufs: typeof record.targetLufs === "number" ? record.targetLufs : baseProfile.targetLufs,
+      maxTruePeakDb:
+        typeof record.targetTruePeakDb === "number" ? record.targetTruePeakDb : baseProfile.maxTruePeakDb,
+    };
+    const targetLufs = profile.targetLufs;
+    const readMeter = () => {
       const master = (ctx.meters?.() as { master?: Record<string, unknown> } | null)?.master;
       if (!master) return null;
       const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
-      const lufs = num(master.lufsIntegrated) ?? num(master.lufsShortTerm);
+      const measuredLufs = num(master.lufsIntegrated) ?? num(master.lufsShortTerm);
+      const lufs = measuredLufs != null && measuredLufs > -119 ? measuredLufs : null;
       const truePeakDb = num(master.truePeakDb) ?? num(master.peakHoldDb);
-      if (lufs == null || truePeakDb == null) return null;
-      return { lufs, truePeakDb };
+      if (truePeakDb == null) return null;
+      return {
+        lufs,
+        truePeakDb,
+        correlation: num(master.correlation),
+        monoLossDb: num(master.monoLossDb),
+        lrImbalanceDb: num(master.lrImbalanceDb),
+      };
     };
     const first = readMeter();
     if (!first) {
@@ -4951,6 +4973,9 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
         mutated: false,
       };
     }
+    if (first.lufs == null) {
+      return { text: "land needs measurable LUFS-I (play the full song or use op:platform to read available checks)", mutated: false };
+    }
     // op:land — bounded closed loop on the MASTER loudness trim. Each
     // iteration APPLIES the trim through the command layer (the engine syncs
     // immediately) and re-measures the REAL meters — no simulated arithmetic.
@@ -4961,6 +4986,7 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
     let meter = first;
     let mutated = false;
     for (let step = 0; step < MAX_STEPS; step++) {
+      if (meter.lufs == null) break;
       const delta = targetLufs - meter.lufs;
       if (Math.abs(delta) <= TOLERANCE) break;
       const current = ctx.getDoc().master.loudnessTrimDb ?? 0;
@@ -4976,9 +5002,13 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
       const remeasured = readMeter();
       if (!remeasured) break;
       meter = remeasured;
+      if (meter.lufs == null) break;
       steps.push(
         `step ${step + 1}: trim ${nextTrim >= 0 ? "+" : ""}${nextTrim.toFixed(1)} dB → measured ${meter.lufs.toFixed(1)} LUFS`,
       );
+    }
+    if (meter.lufs == null) {
+      return { text: "NOT LANDED — LUFS-I became unavailable after a trim; remeasure the master", mutated };
     }
     const finalDelta = targetLufs - meter.lufs;
     const landed = Math.abs(finalDelta) <= 0.5;
@@ -5018,7 +5048,10 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
       targetLufs:
         typeof record.targetLufs === "number"
           ? record.targetLufs
-          : profileFor(typeof record.profile === "string" ? record.profile : undefined)?.targetLufs,
+          : (profileFor(typeof record.profile === "string" ? record.profile : doc.master.deliveryProfileId) ??
+              (record.profile === "custom" || doc.master.deliveryProfileId === "custom"
+                ? resolveDeliveryTarget(doc.master)
+                : null))?.targetLufs,
     });
     if (plan.length === 0) return { text: "assist found nothing to change", mutated: false };
 

@@ -39,6 +39,7 @@ import { clampInstrumentParam, defaultInstrumentParams, INSTRUMENT_META } from "
 import { createProjectFromTemplate } from "./templates";
 import { clampEffectParam, defaultParamsOf, EFFECT_META, normalizePluginParams } from "../effects/definitions";
 import { clampFxOutputTrimDb } from "../effects/presetLoudness";
+import { isMasterProfileId } from "../mastering/profiles";
 import {
   canonicalizeDeprecatedTarget,
   clampTargetValue,
@@ -47,7 +48,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -254,6 +255,9 @@ export function defaultMasterConfig(): MasterConfig {
     msMidGain: 0,
     msSideGain: 0,
     lufsTarget: -14,
+    deliveryProfileId: "streaming",
+    deliveryTruePeakDb: -1,
+    effects: [],
     bassMonoEnabled: false,
     bassMonoFreq: 120,
     glueEnabled: true,
@@ -2068,6 +2072,22 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
       typeof m.lufsTarget === "number" && Number.isFinite(m.lufsTarget)
         ? Math.min(0, Math.max(-24, m.lufsTarget))
         : -14;
+    // Older projects only stored a loudness target and limiter ceiling. Map
+    // the default -14 target to Streaming and preserve all other legacy target
+    // choices as Custom. The delivery TP target defaults to the old ceiling,
+    // so migration cannot silently change an existing verdict.
+    const deliveryProfileId = isMasterProfileId(m.deliveryProfileId)
+      ? m.deliveryProfileId
+      : lufsTarget === -14
+        ? "streaming"
+        : "custom";
+    const deliveryTruePeakDb =
+      typeof m.deliveryTruePeakDb === "number" && Number.isFinite(m.deliveryTruePeakDb)
+        ? Math.min(0, Math.max(-12, m.deliveryTruePeakDb))
+        : dc;
+    const masterEffectOwners = new Set([...doc.tracks, ...(doc.returns ?? [])].map((owner) => owner.id));
+    const effects = normalizeEffects(m.effects, "master", masterEffectOwners);
+    const effectsChanged = !Array.isArray(m.effects) || !jsonEqual(effects, m.effects);
     const glueEnabled = typeof m.glueEnabled === "boolean" ? m.glueEnabled : true;
     const bassMonoEnabled = typeof m.bassMonoEnabled === "boolean" ? m.bassMonoEnabled : false;
     const bassMonoFreq =
@@ -2111,6 +2131,9 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
       msMidGain !== m.msMidGain ||
       msSideGain !== m.msSideGain ||
       lufsTarget !== m.lufsTarget ||
+      deliveryProfileId !== m.deliveryProfileId ||
+      deliveryTruePeakDb !== m.deliveryTruePeakDb ||
+      effectsChanged ||
       glueEnabled !== m.glueEnabled ||
       bassMonoEnabled !== m.bassMonoEnabled ||
       bassMonoFreq !== m.bassMonoFreq ||
@@ -2131,6 +2154,9 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
           msMidGain,
           msSideGain,
           lufsTarget,
+          deliveryProfileId,
+          deliveryTruePeakDb,
+          effects,
           glueEnabled,
           bassMonoEnabled,
           bassMonoFreq,
@@ -2552,7 +2578,8 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // v8 adds optional per-pad round-robin / velocity layers (`DrumPad.layers`);
   // v9 adds `AudioClip.loopPhaseOffsetSec` for phase-preserving loop splits;
   // v10 adds the opt-in, structured project Producer Brief (no raw prompts/audio);
-  // v11 adds ArrangementClip pattern/scene phase offsets (missing means phase 0).
+  // v11 adds ArrangementClip pattern/scene phase offsets (missing means phase 0);
+  // v12 adds the explicit mastering delivery profile + true-peak target.
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

@@ -373,6 +373,9 @@ export interface ReturnTrack {
   effects: EffectInstance[];
 }
 
+/** Stable owner id used by effect, automation, and MCP targets on the stereo master bus. */
+export const MASTER_EFFECT_OWNER_ID = "master";
+
 export interface MasterConfig {
   /** Master input trim (0..2 → -∞..+6 dB). Pull this down before the limiter if the mix peaks. */
   masterGain: number;
@@ -389,6 +392,12 @@ export interface MasterConfig {
   msSideGain?: number;
   /** Loudness target for integrated LUFS (e.g. -14 for streaming). */
   lufsTarget?: number;
+  /** Delivery contract shown by the master meter, export report, and assistants. */
+  deliveryProfileId?: "streaming" | "apple" | "loud" | "vinyl" | "custom";
+  /** True-peak delivery limit in dBTP; independent of the realtime limiter ceiling. */
+  deliveryTruePeakDb?: number;
+  /** Ordered inserts on the final stereo sum, before the built-in clipper and limiter. */
+  effects?: EffectInstance[];
   /**
    * Gentle SSL-style buss glue (2:1, RMS, post-M/S pre-clipper). Defaults ON:
    * below-threshold sparse mixes pass transparently, hot mixes get 1–3 dB of

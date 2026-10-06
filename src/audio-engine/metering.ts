@@ -11,6 +11,8 @@
  *  - peak hold with linear decay per poll
  */
 
+import { evaluateDelivery, type MasterProfile } from "../mastering/profiles";
+
 import { analyzeLoudnessBuffer } from "./kweighting";
 
 export const MIN_DB = -120;
@@ -208,47 +210,74 @@ export function evaluateMasterVerdict(
   lufsTarget: number,
   ceilingDb: number,
   targetLabel = "",
+  deliveryProfile?: MasterProfile,
 ): MasterVerdict {
   if (input.lufsIntegrated <= -119) return { level: "idle", headline: "—", hints: [], loudnessDeltaDb: 0 };
-  const delta = input.lufsIntegrated - lufsTarget;
+  const profile: MasterProfile = deliveryProfile ?? {
+    id: "custom",
+    label: targetLabel || "Master",
+    targetLufs: lufsTarget,
+    targetToleranceLufs: 1,
+    warningToleranceLufs: 2,
+    maxTruePeakDb: ceilingDb,
+    truePeakGraceDb: 0.3,
+    note: "",
+    recommendedFormat: "",
+    intendedUse: "",
+  };
+  const result = evaluateDelivery(
+    {
+      lufs: input.lufsIntegrated,
+      truePeakDb: input.truePeakDb,
+      correlation: input.correlation,
+      monoLossDb: input.monoLossDb,
+      lrImbalanceDb: input.lrImbalanceDb,
+    },
+    profile,
+    lufsTarget,
+    deliveryProfile?.maxTruePeakDb ?? ceilingDb,
+  );
+  const checks = result.checks;
+  const level: MasterVerdict["level"] =
+    result.status === "fail" ? "bad" : result.status === "warn" ? "warn" : "ok";
+  const peakCheck = checks.find((check) => check.line.startsWith("true peak "));
+  const failedPeak = peakCheck?.status === "fail";
+  const phaseIssue = checks.some((check) => check.status === "fail" && check.line.startsWith("Phase issues"));
   const hints: string[] = [];
-  let level: MasterVerdict["level"] = "ok";
-
-  if (input.correlation < 0) {
-    level = "bad";
-    hints.push("Phase issues — check mono compatibility");
-  }
-  if (input.truePeakDb > ceilingDb) {
-    level = "bad";
-    hints.push(`True peak over ceiling — pull IN or CEIL down`);
-  }
-  if (Math.abs(delta) > 1) {
-    if (level === "ok") level = "warn";
+  if (phaseIssue) hints.push("Phase issues — check mono compatibility");
+  if (peakCheck && peakCheck.status !== "pass") {
     hints.push(
-      delta > 0
-        ? `+${delta.toFixed(1)} dB louder than target — platforms will duck it`
-        : `${Math.abs(delta).toFixed(1)} dB quieter than target — raise IN`,
+      peakCheck.status === "warn"
+        ? `True peak is close to the ${deliveryProfile?.label ?? "master"} limit — leave more headroom`
+        : deliveryProfile
+          ? `True peak exceeds ${deliveryProfile.label} target — lower the output level or choose more headroom`
+          : "True peak over ceiling — pull IN or CEIL down",
     );
   }
-  if (input.monoLossDb < -3) {
-    if (level === "ok") level = "warn";
+  if (Math.abs(result.loudnessDeltaDb) > 1) {
+    hints.push(
+      result.loudnessDeltaDb > 0
+        ? `+${result.loudnessDeltaDb.toFixed(1)} dB louder than target — review the delivery target`
+        : `${Math.abs(result.loudnessDeltaDb).toFixed(1)} dB quieter than target — review the delivery target`,
+    );
+  }
+  if (checks.some((check) => check.status === "warn" && check.line.startsWith("Mono fold-down"))) {
     hints.push("Mono fold-down loses depth — check wide elements");
   }
-  if (input.lrImbalanceDb > 6) {
-    if (level === "ok") level = "warn";
+  if (checks.some((check) => check.status === "warn" && check.line.startsWith("Left/right balance"))) {
     hints.push("Left/right balance off by more than 6 dB");
   }
 
   const forLabel = targetLabel ? ` FOR ${targetLabel}` : "";
   let headline: string;
   if (level === "ok") headline = `READY${forLabel}`;
-  else if (input.truePeakDb > ceilingDb) headline = "TRUE PEAK OVER";
-  else if (input.correlation < 0) headline = "PHASE ISSUES";
-  else if (delta > 1) headline = "TOO LOUD";
-  else if (delta < -1) headline = "TOO QUIET";
+  else if (failedPeak) headline = "TRUE PEAK OVER";
+  else if (phaseIssue) headline = "PHASE ISSUES";
+  else if (result.loudnessDeltaDb > 1) headline = "TOO LOUD";
+  else if (result.loudnessDeltaDb < -1) headline = "TOO QUIET";
   else headline = "CHECK STEREO";
 
-  return { level, headline, hints: hints.slice(0, 2), loudnessDeltaDb: delta };
+  return { level, headline, hints: hints.slice(0, 2), loudnessDeltaDb: result.loudnessDeltaDb };
 }
 
 /** Channel-interleaved linear frame (L, R, L, R, …). */

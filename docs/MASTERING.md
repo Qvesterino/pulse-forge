@@ -15,7 +15,7 @@ Master chain spracúva výstup projektu pri prehrávaní aj pri offline rendri. 
 ## Odporúčaný postup
 
 1. **Dokonči mix pred masterom.** Najprv vyváž hlasitosti a panorámu stôp, skontroluj basy a dozvuky. Ak musí master limiter sústavne výrazne uberať hlasitosť, vráť sa k mixu a nájdi najhlasnejšie stopy alebo skupiny.
-2. **Vyber cieľ merania.** V master meteri otvor **TARGET**. Grafické rozhranie ponúka −14 LUFS (Spotify), −12 LUFS (YouTube), −9 LUFS (Club) a −7 LUFS (Loud). Táto voľba mení porovnávací verdikt; sama nezmení hlasitosť signálu.
+2. **Vyber profil doručenia.** V master meteri vyber **Streaming**, **Quieter / dynamic**, **Club / loud**, **Vinyl pre-master** alebo **Custom**. Profil mení len meracie ciele, nie zvuk. Sú to pracovné východiská, nie certifikácia služby. V režime Custom môžeš upraviť LUFS-I aj maximum dBTP.
 3. **Zmeraj celý track.** Pred meraním stlač **RESET INTEGRATED**, potom prehraj celú skladbu od začiatku do konca. LUFS-I potrebuje reprezentatívny úsek; pri tichu alebo príliš krátkom materiáli nemusí byť údaj merateľný.
 4. **Skontroluj úroveň a rezervu.** Sleduj true peak, indikátor CLIP a gain reduction. Tlačidlo **AUTO -6dB** nastaví vstup mastera tak, aby špičky mierili približne 6 dB pod zvolený strop. Je to nastavenie vstupnej rezervy, nie dorovnanie na LUFS cieľ.
 5. **Uprav farbu a dynamiku len podľa potreby.** Začni jemne s GLUE, TAPE, TILT alebo B-MONO. Po každej zmene znova počúvaj aj meraj; hlasnejšia verzia môže pri rýchlom A/B pôsobiť lepšie len preto, že je hlasnejšia.
@@ -38,6 +38,8 @@ Master strip sa nachádza v paneli **MIX**. Jeho hlavné ovládače upravujú sp
 | **TRIM** | Dodatočný loudness gain pred limitujúcou časťou master chainu; rozsah v master stripe je ±6 dB. | Uprav ho po vyvážení mixu. Viac trimu môže znamenať viac práce pre limiter. |
 
 Master chain obsahuje aj korekčné a ochranné stupne. Orientačný tok je: **IN/TRIM → TAPE → B-MONO a interné spracovanie → EQ/TILT → GLUE → CLIP → LIMIT → výstup a metering**. Niektoré stupne sú neutrálne, kým ich projekt alebo funkcia ako referenčné prispôsobenie nenastaví.
+
+**CEIL** riadi fyzický strop interného limitera. **MAX TP** v Custom profile je kontrolná hranica pre doručenie. Sú to samostatné hodnoty: zmena profilu alebo MAX TP sama neprepíše CEIL ani nezmení zvuk.
 
 ### Dva rôzne „AUTO“ kroky
 
@@ -118,16 +120,19 @@ Pre ďalšiu kontrolu môžeš exportovať **EXPORT STEMS** pre dostupné skupin
 
 ## Platformové profily cez MCP
 
-Rozšírený nástroj `kyx_master` poskytuje cez MCP profily a operácie **platform**, **land**, **trim** a **assist**. Tieto profily nie sú totožné s voľbami TARGET v grafickom master meteri.
+Rozšírený nástroj `kyx_master` poskytuje cez MCP profily a operácie **platform**, **land**, **trim** a **assist**. Master meter, exportný súhrn a MCP používajú rovnaké ciele a tolerancie. MCP bez explicitného profilu použije profil uložený v projekte.
 
-| Profil MCP | Orientačný cieľ hlasitosti | Strop true peak |
+| Profil | Predvolený cieľ hlasitosti | Predvolený limit true peak |
 | --- | ---: | ---: |
-| Streaming — Spotify / YouTube / Tidal | −14 LUFS | −1 dBTP |
-| Apple Music | −16 LUFS | −1 dBTP |
+| Streaming | −14 LUFS | −1 dBTP |
+| Quieter / dynamic | −16 LUFS | −1 dBTP |
 | Club / Loud | −8 LUFS | −0,3 dBTP |
-| Vinyl Pre-Master | −12 LUFS | −2 dBTP |
+| Vinyl pre-master | −12 LUFS | −2 dBTP |
+| Custom | Projektové hodnoty | Projektové hodnoty |
 
-Verdikt porovná namerané hodnoty s profilom a upozorní, ak hlasitosť nie je merateľná. Vinyl profil je orientačný premaster: skontroluj požiadavky konkrétnej lisovne a kompatibilitu basov. Ani profilový verdikt nenahrádza počúvanie ani finálny exportný test.
+Všeobecne platí: odchýlka hlasitosti do ±1 LU prejde, do ±2 LU je upozornenie a väčšia odchýlka zlyhá. True peak do 0,3 dB nad limitom sa označí upozornením; väčšie prekročenie zlyhá. Nezmeraná hlasitosť sa nikdy neoznačí ako úspech. Záporná korelácia zlyhá a výrazný mono loss alebo L/R nerovnováha vyvolajú upozornenie.
+
+Profily Streaming a ostatné sú orientačné workflow. Spotify momentálne uvádza −14 LUFS ako úroveň normalizácie prehrávania a odporúča maximum −1 dBTP pre lossy kódovanie; hlasnejšie masterované skladby odporúča držať pod −2 dBTP. Tieto čísla nie sú všeobecnou normou pre všetky platformy. [Spotify: Loudness normalization](https://support.spotify.com/artists/article/loudness-normalization/). Vinyl profil je orientačný premaster: konkrétny cut priprav podľa požiadaviek masteringového alebo cutting inžiniera. Žiaden profil nenahrádza počúvanie ani kontrolu vyrenderovaného súboru.
 
 ## Krátky kontrolný zoznam
 

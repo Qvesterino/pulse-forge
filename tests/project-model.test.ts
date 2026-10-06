@@ -247,6 +247,9 @@ describe("normalizeProject — macros, returns, master", () => {
       msMidGain: 0,
       msSideGain: 0,
       lufsTarget: -14,
+      deliveryProfileId: "streaming",
+      deliveryTruePeakDb: -1,
+      effects: [],
       glueEnabled: true,
       bassMonoEnabled: false,
       bassMonoFreq: 120,
@@ -436,6 +439,28 @@ describe("migrateProject", () => {
     const older = { ...doc, schemaVersion: 0 } as ProjectDocument;
     const migrated = migrateProject(older);
     expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
+  });
+
+  it("preserves legacy master targets while assigning an explicit delivery profile", () => {
+    const base = createDefaultProject();
+    const legacy = {
+      ...base,
+      schemaVersion: SCHEMA_VERSION - 1,
+      master: {
+        ...base.master,
+        ceilingDb: -2,
+        lufsTarget: -12,
+        deliveryProfileId: undefined,
+        deliveryTruePeakDb: undefined,
+      },
+    } as ProjectDocument;
+    const migrated = migrateProject(legacy);
+    expect(migrated.master).toMatchObject({
+      lufsTarget: -12,
+      deliveryProfileId: "custom",
+      deliveryTruePeakDb: -2,
+      ceilingDb: -2,
+    });
   });
 
   it("upgrades schema v8 loop clips and preserves valid audio loop offsets", () => {

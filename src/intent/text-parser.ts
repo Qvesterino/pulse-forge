@@ -745,6 +745,17 @@ const TRAIT_PHRASES: ReadonlyArray<readonly [RegExp, CharacterTrait]> = [
   [/\bold[- ]?school\b|\bretro\b|\bvintage\b|\bstaromodn|\bnostalgick/, { variation: 0.3 }],
   [/\bedgy\b|\bcutting\b|\bostry\b|\bstiplav|\brezav/, { complexity: 0.65 }],
   [/\bshallow\b|\bflat\b|\bplytk/, { density: 0.3 }],
+  // Single-axis directions used by recursive iteration controls. Keep these
+  // last so a clear axis request overrides broader character phrases without
+  // quietly changing a second macro.
+  [/\b(?:less dense|menej hust\w*)\b/, { density: 0.3 }],
+  [/\b(?:denser|more dense|hustej\w*)\b/, { density: 0.75 }],
+  [/\b(?:less complex|simpler|menej zlozit\w*)\b/, { complexity: 0.25 }],
+  [/\b(?:more complex|more intricate|zlozit\w*)\b/, { complexity: 0.8 }],
+  [/\b(?:more repetitive|opakuj\w*)\b/, { variation: 0.2 }],
+  [/\b(?:more evolving|more variation|evolving|dynamic|dynamick\w*)\b/, { variation: 0.8 }],
+  [/\b(?:less energy|menej energi\w*)\b/, { energy: 0.3 }],
+  [/\b(?:more energy|higher energy|viac energi\w*)\b/, { energy: 0.85 }],
 ];
 
 /**

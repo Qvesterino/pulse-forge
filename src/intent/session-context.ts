@@ -75,6 +75,14 @@ const ORDINALS: ReadonlyArray<readonly [string, number]> = [
   ["treti", 2],
   ["fourth", 3],
   ["stvrty", 3],
+  ["fifth", 4],
+  ["piaty", 4],
+  ["sixth", 5],
+  ["sesty", 5],
+  ["seventh", 6],
+  ["siedmy", 6],
+  ["eighth", 7],
+  ["osmy", 7],
 ];
 
 const DETERMINERS = new Set(["that", "the", "ten", "ta", "to"]);

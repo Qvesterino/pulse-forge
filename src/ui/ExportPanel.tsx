@@ -35,6 +35,7 @@ import { setMasterConfig, chopSampleToPads } from "../commands/commands";
 import { analyzeMixHealthBuffer, deriveMixAutoFix, type MixHealthReport } from "../analysis/mixDoctor";
 import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import { slicesFromOnsets } from "../audio-engine/transients";
+import { resolveDeliveryTarget, type MasterProfile } from "../mastering/profiles";
 
 type Status =
   | { kind: "idle" }
@@ -832,7 +833,7 @@ export function ExportPanel({
         )}
       </div>
       {status.kind === "done" && (
-        <ExportSummary summary={status.summary} lufsTarget={master.lufsTarget ?? -14} ceilingDb={master.ceilingDb} />
+        <ExportSummary summary={status.summary} deliveryProfile={resolveDeliveryTarget(master)} />
       )}
       {status.kind === "done" && mixHealth && <MixHealthLine health={mixHealth} />}
       {status.kind === "done" && mixHealth && <MixAutoFixButton health={mixHealth} />}
@@ -959,7 +960,13 @@ function AutoStageButton({ summary }: { summary: BufferSummary }) {
   const services = useServices();
   const master = useMaster();
   const [staged, setStaged] = useState(false);
-  const adj = computeStageAdjustment(summary, master.masterGain ?? 1, master.lufsTarget ?? -14, master.ceilingDb);
+  const deliveryProfile = resolveDeliveryTarget(master);
+  const adj = computeStageAdjustment(
+    summary,
+    master.masterGain ?? 1,
+    deliveryProfile.targetLufs,
+    deliveryProfile.maxTruePeakDb,
+  );
   if (adj.noop) return null;
   return (
     <button
@@ -981,12 +988,10 @@ function AutoStageButton({ summary }: { summary: BufferSummary }) {
 
 function ExportSummary({
   summary,
-  lufsTarget,
-  ceilingDb,
+  deliveryProfile,
 }: {
   summary: BufferSummary;
-  lufsTarget: number;
-  ceilingDb: number;
+  deliveryProfile: MasterProfile;
 }) {
   const corr = summary.correlation;
   const corrLabel = corr > 0.5 ? "Mono OK" : corr < 0 ? "Phase" : "Wide";
@@ -1007,8 +1012,10 @@ function ExportSummary({
       // balance check neutral instead of inventing a measurement.
       lrImbalanceDb: 0,
     },
-    lufsTarget,
-    ceilingDb,
+    deliveryProfile.targetLufs,
+    deliveryProfile.maxTruePeakDb,
+    deliveryProfile.label.toUpperCase(),
+    deliveryProfile,
   );
   return (
     <div className="export-summary" aria-label="Export summary">

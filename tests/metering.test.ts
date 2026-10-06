@@ -141,16 +141,16 @@ describe("evaluateMasterVerdict", () => {
     expect(verdict.hints).toHaveLength(0);
   });
 
-  it("flags too loud with the delta as a hint", () => {
+  it("fails beyond the shared two-LU warning band and reports the delta", () => {
     const verdict = evaluateMasterVerdict({ ...base, lufsIntegrated: -11.5 }, -14, -1);
-    expect(verdict.level).toBe("warn");
+    expect(verdict.level).toBe("bad");
     expect(verdict.headline).toBe("TOO LOUD");
     expect(verdict.hints[0]).toContain("+2.5 dB louder than target");
   });
 
-  it("flags too quiet with the delta as a hint", () => {
+  it("fails when more than two LU below target", () => {
     const verdict = evaluateMasterVerdict({ ...base, lufsIntegrated: -17 }, -14, -1);
-    expect(verdict.level).toBe("warn");
+    expect(verdict.level).toBe("bad");
     expect(verdict.headline).toBe("TOO QUIET");
     expect(verdict.hints[0]).toContain("3.0 dB quieter than target");
   });

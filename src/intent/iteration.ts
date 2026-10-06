@@ -11,7 +11,8 @@ import { briefGateViolations } from "./brief-gate";
 import { scoreCandidate } from "./candidate-bank";
 import { parseIntentText } from "./text-parser";
 import { normalizeIntent } from "./normalize";
-import { generateLocalResult } from "./pipeline";
+import { generateAsyncResult, generateLocalResult } from "./pipeline";
+import type { SampleBank } from "../sample-library/factory";
 import { refreshPatternOutputHash, refreshPatternQuality } from "./quality";
 import { resolveSessionReference, type SessionGeneration } from "./session-context";
 import type { GenerationResult, IntentInput, IntentRole } from "./types";
@@ -98,6 +99,19 @@ function resizeNotes(notes: Pattern["notes"], stepCount: number): Pattern["notes
 
 function withFreshIdentityIfAlreadyApplied(pattern: Pattern, doc: ProjectDocument): Pattern {
   if (!doc.patterns.some((existing) => existing.id === pattern.id)) return pattern;
+  return {
+    ...pattern,
+    id: uid("pattern"),
+    notes: Object.fromEntries(
+      Object.entries(pattern.notes ?? {}).map(([trackId, notes]) => [
+        trackId,
+        notes.map((note) => ({ ...note, id: uid("note") })),
+      ]),
+    ),
+  };
+}
+
+function withFreshIterationIdentity(pattern: Pattern): Pattern {
   return {
     ...pattern,
     id: uid("pattern"),
@@ -349,5 +363,169 @@ export function compileIteration(
     summary,
     result,
     before: candidate.pattern,
+  };
+}
+
+export interface CompileIterationBankOptions {
+  signal?: AbortSignal;
+  soundBank?: SampleBank;
+}
+
+/**
+ * Interactive recursive pass. The synchronous compiler remains available to
+ * deterministic callers; the DAW uses this path to rank a small bank through
+ * the same async selector as first-pass generation.
+ */
+export async function compileIterationWithBank(
+  text: string,
+  generation: SessionGeneration,
+  doc: ProjectDocument,
+  options: CompileIterationBankOptions = {},
+): Promise<IterationProposal | null> {
+  const base = compileIteration(text, generation, doc);
+  if (!base?.result.proposal) return base;
+
+  const reference = resolveSessionReference(text, generation.candidates);
+  const candidate = reference ? generation.candidates[reference.index] : null;
+  if (!reference || !candidate || !base.before) return base;
+
+  const residual = parseIntentText(reference.rest.trim());
+  const candidateCount = Math.max(1, Math.min(8, residual.input.candidateCount ?? 3));
+  const preserve = base.preserve;
+  const explicitNoDrums = residual.detected.includes("no drums");
+  const drumTarget = base.targets.includes("drums");
+  const drumRemoval = explicitNoDrums && hasDrumContent(candidate.pattern);
+  const melodicPreserved = MELODIC_ROLES.some((role) => preserve.includes(role));
+  const melodicTargeted = base.targets.some((role) => MELODIC_ROLES.includes(role));
+  const melodicRegen = melodicTargeted && !melodicPreserved;
+  const fullRegen = base.patch.length !== undefined && base.patch.length !== candidate.pattern.stepCount;
+
+  const sourcePattern =
+    fullRegen && (preserve.includes("drums") || melodicPreserved)
+      ? {
+          ...candidate.pattern,
+          stepCount: base.result.plan.intent.length,
+          ...(preserve.includes("drums")
+            ? { rows: resizeRows(candidate.pattern.rows, base.result.plan.intent.length) }
+            : {}),
+          ...(melodicPreserved ? { notes: resizeNotes(candidate.pattern.notes, base.result.plan.intent.length) } : {}),
+        }
+      : candidate.pattern;
+  const sourceDoc: ProjectDocument = {
+    ...doc,
+    patterns: [...doc.patterns.filter((pattern) => pattern.id !== candidate.pattern.id), sourcePattern],
+  };
+  const intent = normalizeIntent({ ...base.result.plan.intent, candidateCount });
+  const generated = await generateAsyncResult(sourceDoc, intent, {
+    mode: "preview",
+    includeBank: true,
+    ...(options.signal ? { signal: options.signal } : {}),
+    ...(options.soundBank ? { sound: { bank: options.soundBank } } : {}),
+  });
+  if (!generated.proposal || (generated.status !== "accepted" && generated.status !== "repaired")) {
+    const reason =
+      generated.diagnostics.errors[0] ?? generated.diagnostics.fallbackReason ?? "generovanie návrhu zlyhalo";
+    return {
+      ...base,
+      summary: `${base.summary} · iterácia odmietnutá: ${reason}`,
+      result: rejectedResult(generated, `iteration: ${reason}`),
+    };
+  }
+
+  const warnings = [
+    ...generated.diagnostics.warnings,
+    `iteration:source:candidate-${reference.index}`,
+    `iteration:targets:${base.targets.join("+") || "none"}`,
+    `iteration:preserve:${preserve.length > 0 ? preserve.join("+") : "none"}`,
+    ...(drumRemoval ? ["iteration:removed:drums"] : []),
+    ...(fullRegen ? ["iteration:full-regen:length"] : []),
+  ];
+  const iterationBank: NonNullable<GenerationResult["bank"]>[number][] = [];
+  const seenHashes = new Set<string>();
+  const validationErrors: string[] = [];
+  for (const entry of generated.bank ?? []) {
+    const regenerated = entry.pattern;
+    let composed: Pattern;
+    if (fullRegen) {
+      composed = { ...regenerated };
+      if (preserve.includes("drums") && !explicitNoDrums) {
+        const rows = resizeRows(candidate.pattern.rows, regenerated.stepCount);
+        composed = {
+          ...composed,
+          rows,
+          stepMeta: resizeStepMeta(candidate.pattern, rows, regenerated.stepCount),
+        };
+      }
+      if (melodicPreserved)
+        composed = { ...composed, notes: resizeNotes(candidate.pattern.notes, regenerated.stepCount) };
+    } else {
+      composed = {
+        ...candidate.pattern,
+        generation: regenerated.generation,
+        ...(drumTarget
+          ? {
+              rows: regenerated.rows,
+              ...(regenerated.stepMeta !== undefined ? { stepMeta: regenerated.stepMeta } : { stepMeta: undefined }),
+            }
+          : {}),
+        ...(drumRemoval ? { rows: {}, stepMeta: undefined } : {}),
+        ...(melodicRegen ? { notes: regenerated.notes } : {}),
+      };
+    }
+
+    composed = withFreshIterationIdentity(composed);
+    const measured = refreshPatternQuality(sourceDoc, composed, generated.plan.options);
+    const finalPattern = refreshPatternOutputHash(sourceDoc, measured);
+    const violations = briefGateViolations(finalPattern, generated.plan, {
+      preservedRoles: preserve,
+      project: sourceDoc,
+    });
+    if (violations.length > 0) {
+      validationErrors.push(...violations.map((violation) => `${violation.id}: ${violation.detail}`));
+      continue;
+    }
+
+    const hash = contentHash(canonicalizePattern(sourceDoc, finalPattern));
+    if (seenHashes.has(hash)) continue;
+    seenHashes.add(hash);
+    iterationBank.push({
+      ...entry,
+      score: scoreCandidate(finalPattern),
+      contentHash: hash,
+      pattern: finalPattern,
+    });
+  }
+
+  if (iterationBank.length === 0) {
+    const reason = validationErrors[0] ?? "iterácia nevytvorila odlišný platný variant";
+    return {
+      ...base,
+      summary: `${base.summary} · iterácia odmietnutá: ${reason}`,
+      result: rejectedResult(generated, `iteration:brief-gate:${reason}`),
+    };
+  }
+
+  const selected = iterationBank[0]!;
+  const diagnostics = {
+    ...generated.diagnostics,
+    warnings: [...warnings, `iteration:variant:${selected.candidateIndex}`],
+    repairs: [...selected.repairs],
+  };
+  if (selected.pattern.generation?.quality) diagnostics.quality = selected.pattern.generation.quality;
+  else delete diagnostics.quality;
+  const result: GenerationResult = {
+    status: selected.status,
+    plan: generated.plan,
+    proposal: { pattern: selected.pattern, diagnostics, status: selected.status },
+    diagnostics,
+    provider: generated.provider,
+    bank: iterationBank,
+    ...(generated.selection ? { selection: { ...generated.selection, selectedIndex: selected.candidateIndex } } : {}),
+  };
+
+  return {
+    ...base,
+    summary: `${base.summary} · ${iterationBank.length} varianty na porovnanie`,
+    result,
   };
 }

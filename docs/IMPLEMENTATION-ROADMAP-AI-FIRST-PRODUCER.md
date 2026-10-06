@@ -232,6 +232,23 @@ NEISTÉ: tónina nebola zadaná
   druhé ▶ tlačidlo v návrhu; revízne ID proti collab peer zmenám pokrýva stale guard
   (referenčná identita doc objektu) — plnohodnotný revision ledger je Fáza 5 priestor.
 
+**Doplnok (2026-10-06): rekurzívne pokračovanie s kontrolovanou variáciou.**
+
+- Kandidátsky riadok ponúka `ĎALEJ ROZVÍJAŤ`: používateľ zvolí bicie alebo celý
+  melodický blok, potom jednu os (hustota, komplexita, variácia alebo energia).
+  KYX pripraví tri varianty z vybraného take-u a druhý blok výslovne zachová.
+- Interaktívna cesta používa `generateAsyncResult` vrátane bežného rankera,
+  audio výberu, hard gates a následnej kontroly zloženého patternu. Každý variant
+  dostane vlastnú identitu a skutočný content hash.
+- Po iterácii sa nový zoradený bank stane dočasným session kontextom; ďalšie
+  „ten druhý, …“ alebo kliknutie na `ĎALEJ ROZVÍJAŤ` pokračuje z novej vetvy.
+  Referencie teraz pokrývajú prvých osem kandidátov.
+- Tri varianty sa dajú vypočuť a porovnať cez existujúce Producer DNA A/B.
+  Vkus sa uloží až po výslovnom hlase; samotné `USE` ďalej nie je tréningový
+  signál. Kontext ledgeru zahŕňa žáner, profil, úlohu a generované roly.
+- Otvorené: priamy A/B pôvodný rodič verzus odvodený variant, projektovo
+  špecifická pamäť vkusu a blind posluchová evaluácia iterovaných výstupov.
+
 ### Fáza 4 — ranker, ktorý sa zlepšuje podľa reálnych preferencií
 
 **Cieľ:** ONNX pomáha vyberať hudobne lepší a briefu vernejší výsledok, nie iba napodobňuje dnešnú heuristiku.

@@ -1,4 +1,4 @@
-import type { EffectInstance, Marker, Pattern, ProjectDocument } from "../project-model/types";
+import { MASTER_EFFECT_OWNER_ID, type EffectInstance, type Marker, type Pattern, type ProjectDocument } from "../project-model/types";
 import { BAR_TICKS, STEP_TICKS } from "../project-model/types";
 
 /**
@@ -20,6 +20,9 @@ export function withTrackEffects(
   trackId: string,
   fn: (effects: EffectInstance[]) => EffectInstance[],
 ): ProjectDocument {
+  if (trackId === MASTER_EFFECT_OWNER_ID) {
+    return { ...doc, master: { ...doc.master, effects: fn(doc.master.effects ?? []) } };
+  }
   return {
     ...doc,
     tracks: doc.tracks.map((t) => (t.id === trackId && "effects" in t ? { ...t, effects: fn(t.effects) } : t)),
@@ -28,6 +31,7 @@ export function withTrackEffects(
 
 /** A track's effect chain, or an empty list for tracks that carry none. */
 export function trackEffectsOf(doc: ProjectDocument, trackId: string): EffectInstance[] {
+  if (trackId === MASTER_EFFECT_OWNER_ID) return doc.master.effects ?? [];
   const track = doc.tracks.find((t) => t.id === trackId);
   return track && "effects" in track ? track.effects : [];
 }

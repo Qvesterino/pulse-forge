@@ -32,7 +32,7 @@ export interface MasterChainDeps {
  * (docs/AUDIOENGINE-DECOMPOSITION-PLAN.md).
  *
  * Owns the master output graph: input gain → tape → M/S → bass-mono → DC
- * blocker → match EQ → tilt → glue → clipper → limiter (+ look-ahead worklet
+ * blocker → match EQ → tilt → glue → user inserts → clipper → limiter (+ look-ahead worklet
  * splice + K-weighted meter sink), and every `master*` device handle. The
  * metering taps it creates are REGISTERED with the MeteringRig (which owns
  * their storage and reads — Wave 4a); creation and graph shape stay here.
@@ -50,6 +50,8 @@ export class MasterChain {
 
   private master: GainNode | null = null;
   private masterClipper: WaveShaperNode | null = null;
+  private masterInsertInput: GainNode | null = null;
+  private masterInsertOutput: GainNode | null = null;
   /** Cached soft-clip curve — depends only on constants, so built once and
    *  reused across commits / fader-preview frames (applyMasterConfig runs
    *  on every syncProject). */
@@ -129,6 +131,15 @@ export class MasterChain {
     return this.master;
   }
 
+  /** Entry and exit of the user insert slot before the final safety stages. */
+  get insertInput(): GainNode | null {
+    return this.masterInsertInput;
+  }
+
+  get insertOutput(): GainNode | null {
+    return this.masterInsertOutput;
+  }
+
   bypassForOfflineRender(): void {
     const ctx = this.deps.ctx();
     if (!ctx || isLiveAudioContext(ctx)) {
@@ -157,6 +168,14 @@ export class MasterChain {
     } catch {
       /* already disconnected */
     }
+    try {
+      this.masterInsertInput?.disconnect();
+      this.masterInsertOutput?.disconnect();
+    } catch {
+      /* already disconnected */
+    }
+    this.masterInsertInput = null;
+    this.masterInsertOutput = null;
     try {
       this.master?.disconnect();
     } catch {
@@ -466,6 +485,8 @@ export class MasterChain {
       ).sideToRInv = sideToRInv;
     }
     this.masterClipper = ctx.createWaveShaper();
+    this.masterInsertInput = ctx.createGain();
+    this.masterInsertOutput = ctx.createGain();
     this.masterClipper.oversample = "4x";
     this.masterClipper.curve = null;
     // Master DC blocker (fixed 12 Hz highpass, always on): asymmetric
@@ -571,7 +592,8 @@ export class MasterChain {
     this.masterMatchEqStages![3].connect(this.masterTiltLow!);
     this.masterTiltLow!.connect(this.masterTiltHigh!);
     this.masterTiltHigh!.connect(this.masterGlue!.input);
-    this.masterGlue!.output.connect(this.masterClipper);
+    this.masterGlue!.output.connect(this.masterInsertInput);
+    this.masterInsertOutput.connect(this.masterClipper);
     const attached = this.masterLimiterWorklet as EffectRuntime | null;
     if (attached) {
       this.masterClipper.connect(attached.input);

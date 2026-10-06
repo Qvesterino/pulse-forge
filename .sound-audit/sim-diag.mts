@@ -1,0 +1,20 @@
+import { similarityAdvisory, sourceFingerprintFromTranscription, projectFingerprint } from "../src/analysis/similarity-advisory";
+import { transcribeTrack } from "../src/reference/transcribe";
+import { unsunoCommand } from "../src/reference/unsuno";
+import { normalizeProject } from "../src/project-model/schema";
+import { createProjectFromTemplate } from "../src/project-model/templates";
+import { ProjectStore } from "../src/store/ProjectStore";
+import { goldenTracks, renderGoldenTrack, GOLDEN_SAMPLE_RATE } from "../tests/unsuno/golden-synth";
+
+const house = goldenTracks()[0];
+const t = transcribeTrack(renderGoldenTrack(house), GOLDEN_SAMPLE_RATE, { separation: "off" });
+const src = sourceFingerprintFromTranscription(t);
+const sections = [0, 1].map((i) => ({ role: i === 0 ? "intro" : "drop", startSec: i * 4 * (240 / 126), endSec: (i + 1) * 4 * (240 / 126) }));
+const store = new ProjectStore(createProjectFromTemplate("house"));
+store.execute(unsunoCommand(store.doc, { transcription: t, sections }).command!);
+const proj = projectFingerprint(normalizeProject(store.doc));
+const v = similarityAdvisory(src, proj);
+console.log("drums", v.drums?.toFixed(3), "harmony", v.harmony?.toFixed(3), "bass", v.bass?.toFixed(3), "overall", v.overall.toFixed(3));
+console.log("src chordPcs", src.chordPcs, "proj chordPcs", proj.chordPcs);
+console.log("src bassPcs", [...new Set(src.bassPcs)], "proj bassPcs", proj.bassPcs);
+console.log("src slots", JSON.stringify(src.drumSlots), "proj slots", JSON.stringify(proj.drumSlots));

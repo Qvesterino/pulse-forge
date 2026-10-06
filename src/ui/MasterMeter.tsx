@@ -8,6 +8,12 @@ import { LoudnessHistory } from "./LoudnessHistory";
 import { SpectrumAnalyzer } from "./SpectrumAnalyzer";
 import { Spectrogram } from "./Spectrogram";
 import { setMasterConfig } from "../commands/commands";
+import {
+  MASTER_PROFILES,
+  profileFor,
+  resolveDeliveryTarget,
+  type MasterProfileId,
+} from "../mastering/profiles";
 
 interface ReadState {
   left: ChannelLevels;
@@ -27,9 +33,6 @@ interface ReadState {
 }
 
 const EMPTY: ChannelLevels = { peak: 0, rms: 0, peakDb: -120, rmsDb: -120 };
-
-/** Streaming-target option labels for the print-ready verdict headline. */
-const TARGET_LABELS: Record<number, string> = { 14: "SPOTIFY", 12: "YOUTUBE", 9: "CLUB", 7: "LOUD" };
 
 /**
  * Master metering wall: spectrum + loudness history in the centre, goniometer
@@ -53,6 +56,10 @@ export function MasterMeter() {
   const effectiveSpectroSource = spectroSources.some((s) => s.id === spectroSource) ? spectroSource : "";
   const ceilingDb = master.ceilingDb;
   const lufsTarget = master.lufsTarget ?? -14;
+  const deliveryProfile = resolveDeliveryTarget(master);
+  const profileId = master.deliveryProfileId ?? "streaming";
+  const [customLufsDraft, setCustomLufsDraft] = useState(String(lufsTarget));
+  const [customPeakDraft, setCustomPeakDraft] = useState(String(deliveryProfile.maxTruePeakDb));
   const [state, setState] = useState<ReadState>({
     left: { ...EMPTY },
     right: { ...EMPTY },
@@ -73,6 +80,11 @@ export function MasterMeter() {
   const clipHoldRef = useRef(0);
   const phaseSinceRef = useRef<number | null>(null);
   const imbalanceSinceRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setCustomLufsDraft(String(lufsTarget));
+    setCustomPeakDraft(String(deliveryProfile.maxTruePeakDb));
+  }, [lufsTarget, deliveryProfile.maxTruePeakDb]);
 
   useEffect(() => {
     let lastRead = 0;
@@ -176,7 +188,8 @@ export function MasterMeter() {
     },
     lufsTarget,
     ceilingDb,
-    TARGET_LABELS[Math.round(-lufsTarget)] ?? "",
+    deliveryProfile.label.toUpperCase(),
+    deliveryProfile,
   );
 
   return (
@@ -263,17 +276,32 @@ export function MasterMeter() {
           <div className="master-verdict-target">
             <span className="master-verdict-target-label">TARGET</span>
             <select
-              value={String(lufsTarget)}
-              onChange={(e) =>
-                services.store.execute(setMasterConfig(services.store.getDoc(), { lufsTarget: Number(e.target.value) }))
-              }
-              aria-label="LUFS target"
-              title="Streaming loudness target the master verdict judges against — -14 Spotify, -12 YouTube, -9 club, -7 loud. The Δ chip shows how far the current mix sits from it."
+              value={profileId}
+              onChange={(event) => {
+                const id = event.target.value as MasterProfileId;
+                const profile = profileFor(id);
+                services.store.execute(
+                  setMasterConfig(
+                    services.store.getDoc(),
+                    profile
+                      ? {
+                          deliveryProfileId: id,
+                          lufsTarget: profile.targetLufs,
+                          deliveryTruePeakDb: profile.maxTruePeakDb,
+                        }
+                      : { deliveryProfileId: "custom" },
+                  ),
+                );
+              }}
+              aria-label="Master delivery profile"
+              title="Delivery profile changes measurement targets only. It does not change the audio processing."
             >
-              <option value="-14">-14 LUFS (Spotify)</option>
-              <option value="-12">-12 LUFS (YouTube)</option>
-              <option value="-9">-9 LUFS (Club)</option>
-              <option value="-7">-7 LUFS (Loud)</option>
+              {MASTER_PROFILES.map((profile) => (
+                <option key={profile.id} value={profile.id}>
+                  {profile.label}
+                </option>
+              ))}
+              <option value="custom">Custom</option>
             </select>
             <span
               className="master-verdict-delta"
@@ -286,6 +314,59 @@ export function MasterMeter() {
                   : `Δ ${(state.lufsIntegrated - lufsTarget).toFixed(1)} dB`}
             </span>
           </div>
+          <div className="master-delivery-note" title={deliveryProfile.intendedUse}>
+            {profileId === "custom" ? "Custom delivery targets" : deliveryProfile.note}
+          </div>
+          {profileId === "custom" && (
+            <div className="master-custom-targets" role="group" aria-label="Custom delivery targets">
+              <label>
+                LUFS-I
+                <input
+                  type="number"
+                  min="-24"
+                  max="0"
+                  step="0.1"
+                  value={customLufsDraft}
+                  aria-label="Custom integrated loudness target in LUFS"
+                  onChange={(event) => setCustomLufsDraft(event.target.value)}
+                  onBlur={() => {
+                    if (!customLufsDraft.trim()) return;
+                    const value = Number(customLufsDraft);
+                    if (!Number.isFinite(value)) return;
+                    services.store.execute(
+                      setMasterConfig(services.store.getDoc(), {
+                        deliveryProfileId: "custom",
+                        lufsTarget: Math.max(-24, Math.min(0, value)),
+                      }),
+                    );
+                  }}
+                />
+              </label>
+              <label>
+                MAX TP dBTP
+                <input
+                  type="number"
+                  min="-12"
+                  max="0"
+                  step="0.1"
+                  value={customPeakDraft}
+                  aria-label="Custom maximum true peak target in dBTP"
+                  onChange={(event) => setCustomPeakDraft(event.target.value)}
+                  onBlur={() => {
+                    if (!customPeakDraft.trim()) return;
+                    const value = Number(customPeakDraft);
+                    if (!Number.isFinite(value)) return;
+                    services.store.execute(
+                      setMasterConfig(services.store.getDoc(), {
+                        deliveryProfileId: "custom",
+                        deliveryTruePeakDb: Math.max(-12, Math.min(0, value)),
+                      }),
+                    );
+                  }}
+                />
+              </label>
+            </div>
+          )}
           <div className="master-verdict-actions">
             <button
               type="button"

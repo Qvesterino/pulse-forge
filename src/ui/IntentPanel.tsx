@@ -114,7 +114,7 @@ import {
   saveProjectProducerBriefCommand,
 } from "../commands/producerBriefCommands";
 import { evaluateBriefCompliance } from "../intent/brief-gate";
-import { compileIteration } from "../intent/iteration";
+import { compileIterationWithBank } from "../intent/iteration";
 import { BriefContractSummary } from "./BriefContractSummary";
 import { ProjectProducerBriefManager } from "./ProjectProducerBriefManager";
 import { downmixToMono, resampleLinear } from "../sample-library/audio-index";
@@ -172,6 +172,7 @@ import type { Command } from "../commands/types";
 import type { GenerationResult, RankedCandidate } from "../intent/types";
 import type { ArrangementClip, DrumTrack, Pattern, ProjectDocument } from "../project-model/types";
 import { ProducerDnaCompare } from "./ProducerDnaCompare";
+import { CandidateIterationActions } from "./CandidateIterationActions";
 import { CandidateLaneReceipt } from "./CandidateLaneReceipt";
 import { runPersonalTrainingFromShipped } from "../intent/personal-melodic-flow";
 import {
@@ -932,7 +933,26 @@ export function IntentPanel() {
       // audition first, USE applies (one undo). Scope is stated in the
       // summary, never implicit. A pure reference ("ten druhý") keeps the
       // instant re-apply below.
-      const iteration = compileIteration(promptText, last, doc);
+      const iterationController = new AbortController();
+      abortRef.current?.abort();
+      abortRef.current = iterationController;
+      let iteration: Awaited<ReturnType<typeof compileIterationWithBank>>;
+      try {
+        iteration = await compileIterationWithBank(promptText, last, doc, {
+          signal: iterationController.signal,
+          soundBank: services.bank,
+        });
+      } catch (err) {
+        if (!iterationController.signal.aborted) {
+          setError(`Iteráciu sa nepodarilo dokončiť: ${err instanceof Error ? err.message : String(err)}`);
+          setBusy(false);
+        }
+        return;
+      }
+      if (iterationController.signal.aborted) {
+        if (abortRef.current === iterationController) setBusy(false);
+        return;
+      }
       if (iteration) {
         rememberPrompt(promptText);
         if (!iteration.result.proposal) {
@@ -943,7 +963,23 @@ export function IntentPanel() {
         setBankResult(iteration.result);
         previewDocRef.current = doc;
         buffersRef.current = new Map();
-        setStatus(`↻ ${iteration.summary} — ▶ náhľad, USE na aplikovanie`);
+        const nextCandidates = iteration.result.bank ?? [];
+        rememberGeneration({
+          text: promptText.trim(),
+          intent: iteration.result.plan.intent,
+          candidates: nextCandidates.map((candidate, index) => ({
+            index,
+            pattern: candidate.pattern,
+            intent: iteration.result.plan.intent,
+          })),
+          appliedIndex: null,
+          docId: doc.id,
+          at: Date.now(),
+        });
+        recordIntentDecisions(iteration.result.plan.intent, promptText);
+        bumpGenerationCount();
+        setSessionTick((tick) => tick + 1);
+        setStatus(`↻ ${iteration.summary} — vypočuj, porovnaj A/B a pokračuj z vybraného take-u.`);
         setBusy(false);
         return;
       }
@@ -4618,6 +4654,10 @@ export function IntentPanel() {
                 >
                   USE
                 </button>
+                <CandidateIterationActions
+                  candidatePosition={candidates.indexOf(candidate)}
+                  onIterate={(prompt) => replacePrompt(prompt, true)}
+                />
                 {!window.kyxDesktop?.isDesktop && (
                   <button
                     type="button"

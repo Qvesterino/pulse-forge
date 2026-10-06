@@ -1,4 +1,11 @@
-import type { EffectInstance, ProjectDocument, ReturnTrack, Track, AutomationTarget } from "./types";
+import {
+  MASTER_EFFECT_OWNER_ID,
+  type AutomationTarget,
+  type EffectInstance,
+  type ProjectDocument,
+  type ReturnTrack,
+  type Track,
+} from "./types";
 import type { ParamDef } from "../effects/types";
 import { clampEffectParam, EFFECT_META } from "../effects/definitions";
 import { buildSchema as buildFxEqSchema } from "../effects/fxeq-core/core/parameterSchema";
@@ -112,8 +119,19 @@ OZVENA_TARGET_DEFS.push(
   { id: "convolution.mode", label: "Convolution Mode", min: 0, max: 2, default: 0 },
 );
 
-/** Return the track or return bus that owns a target id. */
-export function targetOwner(doc: ProjectDocument, trackId: string): Track | ReturnTrack | undefined {
+export interface MasterEffectOwner {
+  id: typeof MASTER_EFFECT_OWNER_ID;
+  kind: "master";
+  effects: EffectInstance[];
+}
+
+export type EffectTargetOwner = Track | ReturnTrack | MasterEffectOwner;
+
+/** Return the track, return bus, or master bus that owns a target id. */
+export function targetOwner(doc: ProjectDocument, trackId: string): EffectTargetOwner | undefined {
+  if (trackId === MASTER_EFFECT_OWNER_ID) {
+    return { id: MASTER_EFFECT_OWNER_ID, kind: "master", effects: doc.master.effects ?? [] };
+  }
   return doc.tracks?.find((track) => track.id === trackId) ?? doc.returns?.find((ret) => ret.id === trackId);
 }
 
@@ -172,9 +190,12 @@ export function instrumentTargetParamDefs(track: Extract<Track, { kind: "instrum
 export function targetParamDef(doc: ProjectDocument, target: AutomationTarget): TargetParamDef | null {
   const owner = targetOwner(doc, target.trackId);
   if (!owner) return null;
-  if (target.kind === "trackGain") return { id: "gain", label: "Volume", min: 0, max: 1.5, default: 1 };
+  if (target.kind === "trackGain")
+    return owner.kind === "master" ? null : { id: "gain", label: "Volume", min: 0, max: 1.5, default: 1 };
   if (target.kind === "trackPan")
-    return owner.kind === "return" ? null : { id: "pan", label: "Pan", min: -1, max: 1, default: 0 };
+    return owner.kind === "return" || owner.kind === "master"
+      ? null
+      : { id: "pan", label: "Pan", min: -1, max: 1, default: 0 };
   if (target.kind === "instParam") {
     if (owner.kind !== "instrument" || !target.paramId) return null;
     return instrumentTargetParamDefs(owner).find((def) => def.id === target.paramId) ?? null;

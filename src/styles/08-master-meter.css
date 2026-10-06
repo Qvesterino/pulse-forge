@@ -225,6 +225,39 @@
   padding: 2px 4px;
 }
 
+.master-delivery-note {
+  color: var(--text-faint);
+  font-size: 9px;
+  line-height: 1.35;
+  padding: 3px 0 5px;
+}
+
+.master-custom-targets {
+  display: flex;
+  gap: 8px;
+  padding-bottom: 6px;
+}
+
+.master-custom-targets label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-faint);
+  font-size: 8px;
+  letter-spacing: 0.3px;
+}
+
+.master-custom-targets input {
+  width: 48px;
+  min-width: 0;
+  padding: 2px 3px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font: 10px var(--mono, ui-monospace, monospace);
+}
+
 .master-verdict-delta {
   font-family: var(--mono, ui-monospace, monospace);
   font-size: 10px;
