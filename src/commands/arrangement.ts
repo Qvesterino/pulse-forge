@@ -32,7 +32,12 @@ export function addArrangementClip(doc: ProjectDocument, sceneId: string, startB
   // unguarded NaN/negative wrote a clip that normalize then silently
   // DELETED (as an "undoable move"). Clamp like the audio-clip path.
   const bar = Number.isFinite(startBar) ? Math.max(0, Math.round(startBar)) : 0;
-  const bars = Number.isFinite(lengthBars) ? Math.max(1, Math.round(lengthBars)) : 1;
+  // MAX on add as well as resize: normalize FILTERS (drops) an over-length clip
+  // outright, so an unclamped add from a scripted caller would "succeed" while
+  // the clip never lands. Clamp here so the stored clip is one normalize keeps.
+  const bars = Number.isFinite(lengthBars)
+    ? Math.min(MAX_ARRANGEMENT_CLIP_BARS, Math.max(1, Math.round(lengthBars)))
+    : 1;
   if (clipsOverlap(doc.arrangement.clips, null, bar, bars)) {
     throw new Error(`Clip overlaps an existing clip at bar ${bar + 1}`);
   }
@@ -63,8 +68,15 @@ export function createVariationAndPlaceClip(
 ): Command {
   const source = doc.scenes.find((scene) => scene.id === sceneId);
   if (!source) throw new Error(`Scene ${sceneId} not found`);
-  const bar = Math.max(0, Math.round(startBar));
-  const bars = Math.max(1, Math.round(lengthBars));
+  // Same NaN/MAX discipline as addArrangementClip — with more at stake: this
+  // command also mints a scene + pattern via makeSceneVariation BEFORE the
+  // clip is placed, and normalize only filters the bad CLIP, so an unguarded
+  // NaN startBar left the doc with an orphan scene+pattern and the command
+  // reporting success with nothing on the timeline.
+  const bar = Number.isFinite(startBar) ? Math.max(0, Math.round(startBar)) : 0;
+  const bars = Number.isFinite(lengthBars)
+    ? Math.min(MAX_ARRANGEMENT_CLIP_BARS, Math.max(1, Math.round(lengthBars)))
+    : 1;
   if (clipsOverlap(doc.arrangement.clips, null, bar, bars)) {
     throw new Error(`Clip overlaps an existing clip at bar ${bar + 1}`);
   }

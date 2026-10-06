@@ -28,7 +28,7 @@ import {
 } from "../project-model/schema";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
-import { cloneStepMeta } from "./docOps";
+import { cloneStepMeta, unlinkMarkersOfClips } from "./docOps";
 import { addAudioClip } from "./audioClips";
 import { splitAudioClipAtTickWithMinimumFragment } from "./clipEditing";
 
@@ -110,8 +110,12 @@ export function duplicateTimeRange(doc: ProjectDocument, fromTick: number, toTic
   const baseClips: ArrangementClip[] = doc.arrangement.clips.map((c) =>
     trailingIds.has(c.id) ? { ...c, startBar: c.startBar + deltaBars } : c,
   );
+  // Fresh clip ids are minted through a map so copied markers can follow their
+  // linked clip into the zone copy — a copied marker that kept the ORIGINAL
+  // clip's linkedClipId navigated back to the source section.
+  const clipIdMap = new Map<string, string>(whollyInside.map((c) => [c.id, uid("clip")] as const));
   const duplicatedClips: ArrangementClip[] = whollyInside.map((c) => ({
-    id: uid("clip"),
+    id: clipIdMap.get(c.id)!,
     sceneId: c.sceneId,
     startBar: c.startBar + deltaBars,
     lengthBars: c.lengthBars,
@@ -184,7 +188,19 @@ export function duplicateTimeRange(doc: ProjectDocument, fromTick: number, toTic
   // Markers inside zone are duplicated; trailing markers are shifted
   const nextMarkers = doc.markers.flatMap((m) => {
     if (m.tick >= from && m.tick < to) {
-      return [m, { ...m, id: uid("marker"), tick: m.tick + delta }];
+      // A linked clip that was duplicated into the zone copy relinks to the
+      // COPY; a linked trailing clip keeps its id (it only shifted), and any
+      // other link is left exactly as it was.
+      const linkedClipId = m.linkedClipId !== undefined ? (clipIdMap.get(m.linkedClipId) ?? m.linkedClipId) : undefined;
+      return [
+        m,
+        {
+          ...m,
+          id: uid("marker"),
+          tick: m.tick + delta,
+          ...(linkedClipId !== undefined ? { linkedClipId } : {}),
+        },
+      ];
     }
     if (m.tick >= to) return [{ ...m, tick: m.tick + delta }];
     return [m];
@@ -428,9 +444,14 @@ export function consolidateTimeRange(doc: ProjectDocument, fromTick: number, toT
   const remainingClips = doc.arrangement.clips.filter((c) => !whollyInsideIds.has(c.id));
   const nextClips = [...remainingClips, newClip].sort((a, b) => a.startBar - b.startBar);
   const nextTransitions = sanitizeArrangementTransitions(doc.arrangement.transitions, nextClips);
+  // Consolidation REPLACES the wholly-inside clips with the new one, so their
+  // markers must be unlinked in-command (deleteArrangementClip contract) — a
+  // stale linkedClipId survives every save.
+  const unlinked = unlinkMarkersOfClips(doc.markers, whollyInsideIds);
 
   const nextDoc: ProjectDocument = {
     ...doc,
+    ...(unlinked !== undefined ? { markers: unlinked } : {}),
     patterns: nextPatterns,
     scenes: nextScenes,
     arrangement: {

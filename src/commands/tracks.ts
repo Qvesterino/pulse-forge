@@ -1,11 +1,13 @@
 import type { Command } from "./types";
 import type {
+  AutomationTarget,
   DrumTrack,
   EffectInstance,
   EffectType,
   GenerativeTrackConfig,
   InstrumentKind,
   InstrumentTrack,
+  MacroMapping,
   ProjectDocument,
   Track,
 } from "../project-model/types";
@@ -239,6 +241,20 @@ export function duplicateTrack(doc: ProjectDocument, trackId: string): Command {
   const target = doc.tracks.find((t) => t.id === trackId);
   if (!target) throw new Error(`Track ${trackId} not found`);
   const cloneId = uid("track");
+  // Mint the cloned fx ids up front through a map: the clone's automation
+  // family (lanes, scene automation, LFOs, macro mappings) must follow the NEW
+  // ids, and mapping old→new in one place is what keeps them consistent with
+  // the chain the clone actually carries.
+  const fxIdMap = new Map<string, string>();
+  for (const fx of target.effects) fxIdMap.set(fx.id, uid("fx"));
+  const clonedEffects = (): EffectInstance[] =>
+    target.effects.map((fx) => ({
+      ...fx,
+      id: fxIdMap.get(fx.id)!,
+      params: { ...fx.params },
+      ...(fx.steps ? { steps: [...fx.steps] } : {}),
+      ...(fx.sidechainTrackId ? { sidechainTrackId: fx.sidechainTrackId } : {}),
+    }));
   let clone: Track;
   if (target.kind === "drum") {
     clone = {
@@ -246,13 +262,7 @@ export function duplicateTrack(doc: ProjectDocument, trackId: string): Command {
       id: cloneId,
       name: `${target.name} copy`,
       pads: target.pads.map((p) => ({ ...p, id: uid("pad"), chokeGroup: p.chokeGroup })),
-      effects: target.effects.map((fx) => ({
-        ...fx,
-        id: uid("fx"),
-        params: { ...fx.params },
-        ...(fx.steps ? { steps: [...fx.steps] } : {}),
-        ...(fx.sidechainTrackId ? { sidechainTrackId: fx.sidechainTrackId } : {}),
-      })),
+      effects: clonedEffects(),
       sends: { ...target.sends },
       ...(target.groupId ? { groupId: target.groupId } : {}),
       ...(target.color ? { color: target.color } : {}),
@@ -266,13 +276,7 @@ export function duplicateTrack(doc: ProjectDocument, trackId: string): Command {
       id: cloneId,
       name: `${target.name} copy`,
       params: { ...target.params },
-      effects: target.effects.map((fx) => ({
-        ...fx,
-        id: uid("fx"),
-        params: { ...fx.params },
-        ...(fx.steps ? { steps: [...fx.steps] } : {}),
-        ...(fx.sidechainTrackId ? { sidechainTrackId: fx.sidechainTrackId } : {}),
-      })),
+      effects: clonedEffects(),
       sends: { ...target.sends },
       ...(target.groupId ? { groupId: target.groupId } : {}),
       ...(target.color ? { color: target.color } : {}),
@@ -287,13 +291,7 @@ export function duplicateTrack(doc: ProjectDocument, trackId: string): Command {
       ...target,
       id: cloneId,
       name: `${target.name} copy`,
-      effects: target.effects.map((fx) => ({
-        ...fx,
-        id: uid("fx"),
-        params: { ...fx.params },
-        ...(fx.steps ? { steps: [...fx.steps] } : {}),
-        ...(fx.sidechainTrackId ? { sidechainTrackId: fx.sidechainTrackId } : {}),
-      })),
+      effects: clonedEffects(),
       sends: { ...target.sends },
       ...(target.color ? { color: target.color } : {}),
     };
@@ -322,6 +320,79 @@ export function duplicateTrack(doc: ProjectDocument, trackId: string): Command {
       }),
     };
   }
+  // Instrument notes are pattern content keyed by trackId — the drum branch
+  // clones its rows above, and without this the instrument clone silently
+  // started with EMPTY note lanes in every scene (a duplicated synth played
+  // nothing). Fresh note ids, same as duplicateTimeRange's note copies.
+  if (target.kind === "instrument") {
+    next = {
+      ...next,
+      patterns: next.patterns.map((pat) => {
+        const notes = pat.notes?.[target.id];
+        if (!notes || notes.length === 0) return pat;
+        return {
+          ...pat,
+          notes: { ...pat.notes, [cloneId]: notes.map((n) => ({ ...n, id: uid("note") })) },
+        };
+      }),
+    };
+  }
+  // The automation family must follow the clone: the effects above got NEW
+  // ids, so leaving the lanes/LFOs/macro mappings behind meant the duplicate
+  // ran unautomated while the original kept everything (and a copied mapping
+  // with the OLD fx id would have modulated the ORIGINAL's effect — the two
+  // edits-affect-the-wrong-copy direction). Entries targeting OTHER tracks are
+  // left alone; envFollower `sourceTrackId` stays pointed at its source.
+  const remapTarget = (t: AutomationTarget): AutomationTarget => ({
+    ...t,
+    trackId: cloneId,
+    ...(t.fxId !== undefined && fxIdMap.has(t.fxId) ? { fxId: fxIdMap.get(t.fxId)! } : {}),
+  });
+  const clonedLanes = doc.automation
+    .filter((lane) => lane.target.trackId === target.id)
+    .map((lane) => ({
+      ...lane,
+      id: uid("lane"),
+      target: remapTarget(lane.target),
+      points: lane.points.map((p) => ({ ...p })),
+    }));
+  if (clonedLanes.length > 0) next = { ...next, automation: [...next.automation, ...clonedLanes] };
+  const clonedSceneAutomation = doc.sceneAutomation
+    .filter((entry) => entry.target.trackId === target.id)
+    .map((entry) => ({
+      ...entry,
+      id: uid("sceneAuto"),
+      target: remapTarget(entry.target),
+      points: entry.points.map((p) => ({ ...p })),
+    }));
+  if (clonedSceneAutomation.length > 0) {
+    next = { ...next, sceneAutomation: [...next.sceneAutomation, ...clonedSceneAutomation] };
+  }
+  const clonedLfos = doc.lfos
+    .filter((lfo) => lfo.trackId === target.id)
+    .map((lfo) => ({
+      ...lfo,
+      id: uid("lfo"),
+      trackId: cloneId,
+      ...(lfo.target?.trackId === target.id ? { target: remapTarget(lfo.target) } : {}),
+      ...(lfo.steps ? { steps: [...lfo.steps] } : {}),
+    }));
+  if (clonedLfos.length > 0) next = { ...next, lfos: [...next.lfos, ...clonedLfos] };
+  const mapsToTrack = (mapping: MacroMapping): boolean =>
+    mapping.target ? mapping.target.trackId === target.id : mapping.trackId === target.id;
+  let macrosChanged = false;
+  const nextMacros = doc.macros.map((macro) => {
+    const copies = macro.mappings.filter(mapsToTrack).map((mapping) => ({
+      ...mapping,
+      id: uid("map"),
+      trackId: cloneId,
+      ...(mapping.target ? { target: remapTarget(mapping.target) } : {}),
+    }));
+    if (copies.length === 0) return macro;
+    macrosChanged = true;
+    return { ...macro, mappings: [...macro.mappings, ...copies] };
+  });
+  if (macrosChanged) next = { ...next, macros: nextMacros };
   next = normalizeProject(next);
   return snapshot("duplicateTrack", `Duplicate track ${target.name}`, doc, next);
 }

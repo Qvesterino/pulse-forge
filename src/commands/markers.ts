@@ -19,7 +19,7 @@ import { snapshot } from "./core";
     id: uid("marker"),
     name: partial.name?.trim() || `Marker ${doc.markers.length + 1}`,
     type: partial.type ?? "cue",
-    tick: Math.max(0, Math.floor(partial.tick)),
+    tick: Number.isFinite(partial.tick) ? Math.max(0, Math.floor(partial.tick)) : 0,
     linkedClipId: partial.linkedClipId,
     customId: partial.customId,
   };
@@ -48,6 +48,10 @@ export function setMarkerType(doc: ProjectDocument, markerId: string, type: Mark
 export function moveMarker(doc: ProjectDocument, markerId: string, tick: number): Command {
   const target = doc.markers.find((m) => m.id === markerId);
   if (!target) throw new Error(`Marker ${markerId} not found`);
+  // Math.max(0, Math.floor(NaN)) is NaN — the marker would teleport to tick 0
+  // at the next normalize (sanitizeMarkers maps NaN→0). Refuse the move
+  // instead, same contract as moveAudioClip's NaN no-op.
+  if (!Number.isFinite(tick)) return snapshot("moveMarker", "Move marker (no-op)", doc, doc);
   const clamped = Math.max(0, Math.floor(tick));
   const next = { ...doc, markers: doc.markers.map((m) => (m.id === markerId ? { ...m, tick: clamped } : m)) };
   return snapshot("moveMarker", "Move marker", doc, next);

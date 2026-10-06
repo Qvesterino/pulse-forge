@@ -50,7 +50,9 @@ export function setSceneIntensityCurve(doc: ProjectDocument, sceneId: string, cu
   if (!target) throw new Error(`Scene ${sceneId} not found`);
   const cleaned = curve
     .map((p) => ({
-      offset: Math.max(0, Math.floor(p.offset)),
+      // Math.floor(NaN) is NaN — sanitize would silently pin it to 0 on the
+      // next execute; clamp here so the stored curve is already finite.
+      offset: Number.isFinite(p.offset) ? Math.max(0, Math.floor(p.offset)) : 0,
       value: Math.min(1, Math.max(0, Number.isFinite(p.value) ? p.value : 0)),
     }))
     .sort((a, b) => a.offset - b.offset);

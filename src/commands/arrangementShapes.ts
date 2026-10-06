@@ -16,9 +16,10 @@ import type {
   SceneRole,
 } from "../project-model/types";
 import { BAR_TICKS } from "../project-model/types";
-import { clampArrangementTransitionType, sceneRoleOf } from "../project-model/schema";
+import { clampArrangementTransitionType, MAX_ARRANGEMENT_CLIP_BARS, sceneRoleOf } from "../project-model/schema";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
+import { unlinkMarkersOfClips } from "./docOps";
 
 /* ---------------- arrangement shapes ---------------- */
 function transitionBetween(doc: ProjectDocument, fromClipId: string, toClipId: string): void {
@@ -269,7 +270,15 @@ export function createArrangementSkeleton(doc: ProjectDocument): Command {
     startBar: step.startBar,
     lengthBars: step.lengthBars,
   }));
-  const next: ProjectDocument = { ...doc, arrangement: { ...doc.arrangement, clips, transitions: undefined } };
+  // The skeleton REPLACES every existing clip, so markers linked to any of
+  // them must be unlinked in-command — same contract as deleteArrangementClip
+  // (the stale id would survive every save; schema keeps any string).
+  const unlinked = unlinkMarkersOfClips(doc.markers, new Set(doc.arrangement.clips.map((c) => c.id)));
+  const next: ProjectDocument = {
+    ...doc,
+    ...(unlinked !== undefined ? { markers: unlinked } : {}),
+    arrangement: { ...doc.arrangement, clips, transitions: undefined },
+  };
   return snapshot("createArrangementSkeleton", "Build arrangement skeleton", doc, next);
 }
 
@@ -285,11 +294,16 @@ export function appendCapturedArrangement(doc: ProjectDocument, captured: Captur
     if (!doc.scenes.some((scene) => scene.id === entry.sceneId)) throw new Error(`Scene ${entry.sceneId} not found`);
   }
   const baseBar = doc.arrangement.clips.reduce((max, clip) => Math.max(max, clip.startBar + clip.lengthBars), 0);
+  // NaN/MAX discipline of addArrangementClip: normalize FILTERS a non-finite
+  // or over-length clip, so an unguarded capture entry would silently vanish
+  // from the appended block while the command still reports success.
   const clips = captured.map((entry) => ({
     id: uid("clip"),
     sceneId: entry.sceneId,
-    startBar: baseBar + Math.max(0, Math.round(entry.startBar)),
-    lengthBars: Math.max(1, Math.round(entry.lengthBars)),
+    startBar: baseBar + (Number.isFinite(entry.startBar) ? Math.max(0, Math.round(entry.startBar)) : 0),
+    lengthBars: Number.isFinite(entry.lengthBars)
+      ? Math.min(MAX_ARRANGEMENT_CLIP_BARS, Math.max(1, Math.round(entry.lengthBars)))
+      : 1,
   }));
   const allClips = [...doc.arrangement.clips, ...clips].sort((a, b) => a.startBar - b.startBar);
   if (

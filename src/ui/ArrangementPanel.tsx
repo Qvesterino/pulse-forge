@@ -336,6 +336,14 @@ interface AudioTakeLaneDrag extends AudioTakeLaneRange {
   currentTick: number;
   anchorClientX: number;
   moved: boolean;
+  /**
+   * Lane geometry CAPTURED at pointerdown (px width + px/bar). Ctrl+wheel can
+   * zoom mid-gesture and re-render the lane at a different barWidth —
+   * converting the live pointer against the NEW geometry teleports the range
+   * (same pixel, different tick). Same discipline as DragState.barWidth and
+   * audioDragRef.barWidth.
+   */
+  geometry: { width: number; barWidthAt: number };
 }
 
 interface AudioTakeAudition {
@@ -1702,12 +1710,16 @@ export function ArrangementPanel() {
     }
   };
 
-  const takeLaneTickAtPointer = (event: ReactPointerEvent<HTMLDivElement>): number => {
+  const takeLaneTickAtPointer = (
+    event: ReactPointerEvent<HTMLDivElement>,
+    geometry?: { width: number; barWidthAt: number },
+  ): number => {
     const rect = event.currentTarget.getBoundingClientRect();
-    const width = rect.width || totalBars * barWidth;
+    const width = geometry ? geometry.width : rect.width || totalBars * barWidth;
+    const barWidthAt = geometry ? geometry.barWidthAt : barWidth;
     const left = rect.width ? rect.left : 0;
     const x = Math.max(0, Math.min(width, event.clientX - left));
-    return (x / Math.max(1, barWidth)) * BAR_TICKS;
+    return (x / Math.max(1, barWidthAt)) * BAR_TICKS;
   };
 
   const startTakeLaneRangeDrag = (
@@ -1717,7 +1729,9 @@ export function ArrangementPanel() {
   ): void => {
     if (event.button !== 0 || sourceTakeId === selectedAudioTakeGroup?.compTakeId) return;
     event.preventDefault();
-    const startTick = takeLaneTickAtPointer(event);
+    const rect = event.currentTarget.getBoundingClientRect();
+    const geometry = { width: rect.width || totalBars * barWidth, barWidthAt: barWidth };
+    const startTick = takeLaneTickAtPointer(event, geometry);
     audioTakeLaneDragRef.current = {
       groupId,
       sourceTakeId,
@@ -1727,6 +1741,7 @@ export function ArrangementPanel() {
       pointerId: event.pointerId,
       anchorClientX: event.clientX,
       moved: false,
+      geometry,
     };
     setAudioTakeLaneRange({ groupId, sourceTakeId, startTick, endTick: startTick });
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -1735,7 +1750,7 @@ export function ArrangementPanel() {
   const updateTakeLaneRangeDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
     const drag = audioTakeLaneDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    const currentTick = takeLaneTickAtPointer(event);
+    const currentTick = takeLaneTickAtPointer(event, drag.geometry);
     const moved = drag.moved || Math.abs(event.clientX - drag.anchorClientX) > 2;
     audioTakeLaneDragRef.current = { ...drag, currentTick, moved };
     if (moved) {
@@ -1752,7 +1767,7 @@ export function ArrangementPanel() {
     const drag = audioTakeLaneDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     audioTakeLaneDragRef.current = null;
-    const endTick = takeLaneTickAtPointer(event);
+    const endTick = takeLaneTickAtPointer(event, drag.geometry);
     if (drag.moved && Math.abs(endTick - drag.startTick) >= 1) {
       suppressTakeLaneClickRef.current = true;
       window.setTimeout(() => {
