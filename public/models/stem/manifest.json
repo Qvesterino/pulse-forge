@@ -1,8 +1,8 @@
 {
-  "stemModelVersion": "stem-htdemucs.v1",
+  "stemModelVersion": "stem-htdemucs.fp32graph.v1",
   "model": "htdemucs",
-  "modelHash": "68d0bf16428ef66e692cdff8a9ccf28f1ef3f69440d57e58605a4cc55fcc5e74",
-  "modelFile": "htdemucs.onnx",
+  "modelHash": "e806183123bad32532e9bb2fc189f7ecacb70a9bbc6d25c8c0333537f1678459",
+  "modelFile": "htdemucs_fp32graph.onnx",
   "sampleRate": 44100,
   "chunkSec": 7.8,
   "stems": [
@@ -11,5 +11,12 @@
     "bass",
     "other"
   ],
-  "gatePassed": false
+  "inputName": "mix",
+  "outputName": "stems",
+  "gatePassed": true,
+  "provenance": {
+    "source": "adowu/htdemucs-onnx (HF) \u2014 fp16-mixed adowu export",
+    "surgery": "graph dtype normalization: 341 float64 tensors -> float32 + /real_istft/ConstantOfShape value float64 -> float32 (scripts/\u2026 S6 pass, onnx 1.21)",
+    "validation": "Chrome WebGPU (NVIDIA Ampere): 4/4 stems non-silent, 6.58x realtime on 7.8 s chunk; wasm tier: bad_alloc (fp32 > 2 GB wasm32 heap) \u2014 WebGPU REQUIRED for this model"
+  }
 }

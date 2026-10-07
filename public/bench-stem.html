@@ -35,7 +35,8 @@
         log("gpu adapter: " + (adapter ? JSON.stringify(adapter.info ?? {}) : "none"));
         log("ort " + (ort.env.versions?.web ?? "?"));
 
-        const resp = await fetch("/models/stem/htdemucs.onnx");
+        const modelUrl = new URLSearchParams(location.search).get("model") ?? "/models/stem/htdemucs.onnx";
+        const resp = await fetch(modelUrl);
         const bytes = new Uint8Array(await resp.arrayBuffer());
         log("model: " + (bytes.length / 1048576).toFixed(1) + " MB");
 
@@ -58,6 +59,26 @@
           const outputName = session.outputNames[0];
           const input = new ort.Tensor("float32", planar, [1, 2, samples]);
           await session.run({ [inputName]: input }); // warm-up
+          // S4 check — per-stem non-silence after one chunk (gate evidence)
+          {
+            const probe = await session.run({ [inputName]: input });
+            const data = probe[outputName].data;
+            const n = probe[outputName].dims[3];
+            const stride = Math.max(1, Math.floor(n / 400));
+            const stemNames = ["vocals", "drums", "bass", "other"];
+            for (let s = 0; s < 4; s++) {
+              let sum = 0;
+              let count = 0;
+              for (let i = 0; i < n; i += stride) {
+                const l = data[s * 2 * n + i];
+                const r = data[(s * 2 + 1) * n + i];
+                sum += l * l + r * r;
+                count += 2;
+              }
+              const rms = Math.sqrt(sum / Math.max(1, count));
+              log("  stem " + stemNames[s] + ": rms " + rms.toFixed(5) + (rms > 1e-4 ? " ✓" : " (silent)"));
+            }
+          }
           const runs = 3;
           const started = performance.now();
           let dims = "";

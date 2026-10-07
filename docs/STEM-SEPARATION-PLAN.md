@@ -64,7 +64,18 @@
 - **KPI:** model floors tabuľka (target: všetky vrstvy nad HPSS floors).
 - **Úsilie:** ~0.5–1 blok.
 
-### S5 — WebGPU + benchmarky — **HOTOVÉ 2026-10-06 (s meraným BLOCKERom pre Tier 2)**
+### S5 — WebGPU + benchmarky — **HOTOVÉ 2026-10-06**
+
+**S6 GRAPH SURGERY — TIER 2 ODBLOKOVANÉ (2026-10-06):** Python onnx 1.21
+surgery na adowu exporte — input pin [1,2,343980] → shape inference → **341
+float64 tenzorov → float32** (ISTFT chvost htdemucsu beží v double; audio
+[-1,1] stačí float32) → CoS value float64→float32 → checker. Výsledok:
+`htdemucs_fp32graph.onnx` (297.6 MB) — **WebGPU: session ✓, run ✓, 4 stemy
+non-silent, 1.19 s/chunk = 6.58× REALTIME** (NVIDIA Ampere). WASM ostáva
+bad_alloc (fp32 > 2 GB heap) → **neurónny tier = WebGPU-POVINNÝ** (Chrome/
+Edge; Firefox/Safari pre Tier 2 poctivo nepodporované). Manifest PINNUTÝ:
+`stem-htdemucs.fp32graph.v1`, gatePassed **true**, IO mix/stems. Panel
+model select je teraz REÁLNE funkčný.
 
 - EP probe v model cliene: `navigator.gpu` → WebGPU session (WASM fallback na
   create failure, cache raz), WASM SIMD inak; result nesie `ep` (atribúcia).

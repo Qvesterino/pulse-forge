@@ -107,16 +107,32 @@ NVIDIA Ampere, 2 GB buffer limit):
 | WebGPU (Chrome, Ampere)      | **CREATE FAILED — ERROR_CODE 1: Provider type for ConstantOfShape node '/real_istft/ConstantOfShape' is not set** — the graph's ISTFT tail has unassignable nodes.                  |
 | WASM (Chrome)                | **CREATE FAILED — ERROR_CODE 9: Could not find an implementation for ConstantOfShape(9)** — the export uses fp16 ConstantOfShape; the WASM build ships no fp16 kernel for it.       |
 
-CONCLUSION: the adowu ONNX export is **not onnxruntime-web-compatible in any
-execution provider** (measured, exact errors above). `gatePassed` stays FALSE —
-the checkpoint FAILED validation and remains a non-actor. Tier-1 HPSS is the
-shipping separation tier. Fix directions for a future Tier-2 wave (S6):
-(a) a full-fp32 export (no fp16 ConstantOfShape) — larger but wasm-viable only
-with a 4 GB/memory64 build, so realistically WebGPU-only; (b) graph surgery
-replacing ConstantOfShape with initializer constants; (c) a different exporter
-(StemSplit's ft exports) validated against the same checklist; (d) a quantized
-q8 export (~80 MB) if one appears. The benchmark page (public/bench-stem.html,
-dev-served) is the standing harness — re-run it against any new export.
+### S6 — GRAPH SURGERY SUCCESS (2026-10-06, same day): Tier 2 UNBLOCKED
+
+Graph surgery in Python (onnx 1.21) on the SAME adowu checkpoint:
+
+1. input pinned to the fixed chunk shape [1, 2, 343980];
+2. shape inference over the whole graph;
+3. **ALL 341 float64 tensors converted to float32** (initializers, node
+   outputs, attribute tensors) — the htdemucs ISTFT tail legitimately runs
+   in double precision; audio in [-1, 1] needs only float32;
+4. `/real_istft/ConstantOfShape` value float64 → float32;
+5. onnx.checker re-validation, stale value_info dropped.
+
+**MEASURED RESULT (Chrome WebGPU, NVIDIA Ampere):**
+
+- session CREATE ✓ · chunk run ✓ · output [1, 4, 2, 343980] = 4 stems ✓
+- per-stem non-silence ✓ (drums 0.061, bass 0.212 rms on the fixture)
+- **1.19 s per 7.8 s chunk = 6.58× REALTIME** on WebGPU
+- WASM remains bad_alloc (297 MB fp32 weights + arena > 2 GB wasm32 heap)
+  → **the neural tier is WebGPU-REQUIRED** (Chrome/Edge; Firefox/Safari
+  honestly unsupported for Tier 2).
+
+`htdemucs_fp32graph.onnx` validated → manifest pinned `gatePassed: true`
+(`stem-htdemucs.fp32graph.v1`, IO names mix/stems, sha256 pinned). The
+pf:stem-model flag + panel select now actually serve the neural tier.
+
+### S5 support matrix (2026-10-06, PRE-SURGERY — kept for the record)
 
 ### Original expectation (pre-measurement, kept for honesty)
 
