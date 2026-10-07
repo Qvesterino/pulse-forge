@@ -179,6 +179,14 @@
   outline: 2px dashed var(--accent);
   outline-offset: -2px;
 }
+/* Reorder drop targets (Wave D): the edge that will receive the strip
+   lights up, so the drop half (left/right) is visible before release. */
+.channel-strip.drag-before {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.channel-strip.drag-after {
+  box-shadow: inset -3px 0 0 var(--accent);
+}
 .channel-strip.selected-strip {
   outline: 1px solid var(--accent);
   outline-offset: -1px;

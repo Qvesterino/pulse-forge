@@ -8,7 +8,7 @@ import {
 import { addMarker, moveMarker, setMarkerLinkedClip } from "../src/commands/markers";
 import { moveArrangementClipRipple, setSceneIntensityCurve } from "../src/commands/clipPlayback";
 import { consolidateTimeRange, duplicateTimeRange } from "../src/commands/timeRange";
-import { addEffect, duplicateTrack } from "../src/commands/tracks";
+import { addEffect, duplicateTrack, moveTrackAdjacent } from "../src/commands/tracks";
 import { addNote } from "../src/commands/notes";
 import { addAudioClip, addAudioTakeClip } from "../src/commands/audioClips";
 import { createProjectFromTemplate } from "../src/project-model/templates";
@@ -435,5 +435,53 @@ describe("marker link validation (§6)", () => {
     expect(() => setMarkerLinkedClip(doc, markerId, "nope").execute(doc)).toThrow(/unknown clip/);
     const next = setMarkerLinkedClip(doc, markerId, null).execute(doc);
     expect(next.markers.find((m) => m.id === markerId)!.linkedClipId).toBeUndefined();
+  });
+});
+
+/* ---------------- Wave D (2026-10-07): track reorder ---------------- */
+
+describe("moveTrackAdjacent (Wave D — mixer drag reorder)", () => {
+  it("moves before/after with the removal shift handled from both sides", () => {
+    const doc = createProjectFromTemplate("house");
+    const [drums, eighty, chords] = doc.tracks;
+    // Drums (index 0) dropped before Chords (index 2): the removal shifts
+    // Chords to 1, so "before" lands at 1 → 808, Drums, Chords.
+    const before = moveTrackAdjacent(doc, drums!.id, chords!.id, "before").execute(doc);
+    expect(before.tracks.map((t) => t.id)).toEqual([eighty!.id, drums!.id, chords!.id]);
+    // Chords (index 2) dropped after Drums (index 0): target slot 1, removal
+    // is to the RIGHT of the slot → no shift → Chords, Drums, 808.
+    const after = moveTrackAdjacent(doc, chords!.id, drums!.id, "after").execute(doc);
+    expect(after.tracks.map((t) => t.id)).toEqual([drums!.id, chords!.id, eighty!.id]);
+  });
+
+  it("an adjacent drop that changes nothing is a same-document no-op", () => {
+    const doc = createProjectFromTemplate("house");
+    const [drums, eighty] = doc.tracks;
+    // Drums already sits directly before 808 — the drop must not push a
+    // junk undo entry.
+    const next = moveTrackAdjacent(doc, drums!.id, eighty!.id, "before").execute(doc);
+    expect(next).toBe(doc);
+  });
+
+  it("is purely positional: same track objects, nothing else touched, undo restores", () => {
+    const doc = createProjectFromTemplate("house");
+    const [drums, eighty, chords] = doc.tracks;
+    const store = new ProjectStore(doc);
+    store.execute(moveTrackAdjacent(doc, chords!.id, drums!.id, "before"));
+    const reordered = store.getDoc();
+    expect(reordered.tracks.map((t) => t.id)).toEqual([chords!.id, drums!.id, eighty!.id]);
+    // The SAME track objects move — no cloning, no id regeneration, no
+    // collateral change anywhere else in the document.
+    for (const t of doc.tracks) expect(reordered.tracks.find((x) => x.id === t.id)).toBe(t);
+    expect(reordered.scenes).toBe(doc.scenes);
+    expect(reordered.patterns).toBe(doc.patterns);
+    store.undo();
+    expect(store.getDoc().tracks.map((t) => t.id)).toEqual(doc.tracks.map((t) => t.id));
+  });
+
+  it("unknown ids throw", () => {
+    const doc = createProjectFromTemplate("house");
+    expect(() => moveTrackAdjacent(doc, "nope", doc.tracks[0]!.id, "before")).toThrow(/not found/);
+    expect(() => moveTrackAdjacent(doc, doc.tracks[0]!.id, "nope", "after")).toThrow(/not found/);
   });
 });

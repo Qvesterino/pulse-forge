@@ -156,6 +156,37 @@ export function removeFromGroup(doc: ProjectDocument, trackId: string): Command 
   };
 }
 
+/**
+ * Move a track directly before/after another track — the mixer's drag-reorder
+ * drop. Purely positional: ids, group membership, sends, routing and pattern
+ * references are position-independent (the audio graph is addressed by id),
+ * so NOTHING else in the document may change. The drop-index adjustment
+ * ("insert before T" lands at T−1 when the dragged track originally sat
+ * before T, because the removal shifts T) lives HERE so callers pass intent,
+ * not arithmetic. A no-op snapshot when the track already sits adjacent, so a
+ * drop that changes nothing pushes no junk undo entry. Group membership is
+ * deliberately untouched: reordering is not a regroup — the mixer renders a
+ * child wherever it sits in the list.
+ */
+export function moveTrackAdjacent(
+  doc: ProjectDocument,
+  trackId: string,
+  targetTrackId: string,
+  where: "before" | "after",
+): Command {
+  const from = doc.tracks.findIndex((t) => t.id === trackId);
+  if (from === -1) throw new Error(`Track ${trackId} not found`);
+  const targetIndex = doc.tracks.findIndex((t) => t.id === targetTrackId);
+  if (targetIndex === -1) throw new Error(`Track ${targetTrackId} not found`);
+  let slot = targetIndex + (where === "after" ? 1 : 0);
+  if (from < slot) slot -= 1;
+  if (slot === from) return snapshot("moveTrackAdjacent", "Move track (no-op)", doc, doc);
+  const tracks = [...doc.tracks];
+  const [moved] = tracks.splice(from, 1);
+  tracks.splice(slot, 0, moved!);
+  return snapshot("moveTrackAdjacent", `Move ${moved!.name}`, doc, { ...doc, tracks });
+}
+
 export function deleteTrack(doc: ProjectDocument, trackId: string): Command {
   if (doc.tracks.length <= 1) throw new Error("Cannot delete the last track");
   const target = doc.tracks.find((t) => t.id === trackId);

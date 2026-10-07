@@ -9,6 +9,7 @@ import {
   createReturnTrack,
   deleteTrack,
   duplicateTrack,
+  moveTrackAdjacent,
   removeEffectFromTracks,
   removeFromGroup,
   setEffectBypassOnTracks,
@@ -297,7 +298,11 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
   const macros = useMacros();
   const doc = services.store.getDoc();
   const [nameDraft, setNameDraft] = useState<string | null>(null);
-  const [dragOver, setDragOver] = useState(false);
+  // Drag affordance for THIS strip: "group" (the established drop-into-group
+  // target), or "before"/"after" (reorder — the pointer's half of the strip
+  // picks the side). The drop itself RECOMPUTES the side from event
+  // coordinates instead of trusting this state.
+  const [dropHint, setDropHint] = useState<"group" | "before" | "after" | null>(null);
   const [faderMenu, setFaderMenu] = useState<null | {
     x: number;
     y: number;
@@ -338,7 +343,7 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
 
   return (
     <div
-      className={`channel-strip${isGroup ? " group-strip" : ""}${dragOver ? " drag-over" : ""}${selection.trackIds.includes(track.id) ? " selected-strip" : ""}`}
+      className={`channel-strip${isGroup ? " group-strip" : ""}${dropHint === "group" ? " drag-over" : dropHint ? ` drag-${dropHint}` : ""}${selection.trackIds.includes(track.id) ? " selected-strip" : ""}`}
       draggable={!isGroup}
       onClick={(e) => {
         if ((e.target as HTMLElement).closest("button, input, select, a, .channel-color")) return;
@@ -371,20 +376,44 @@ function ChannelStrip({ track, canDelete }: { track: Track; canDelete: boolean }
         e.dataTransfer.effectAllowed = "move";
       }}
       onDragOver={(e) => {
-        if (!isGroup) return;
+        // GROUP strip: the established drop-into-group target. Non-group
+        // strips accept REORDER drops: the pointer's half picks the
+        // insertion side. Rects can be zero-sized in degraded environments —
+        // without a measurable width there is no side to pick.
         e.preventDefault();
         e.dataTransfer.dropEffect = "move";
-        setDragOver(true);
+        if (isGroup) {
+          setDropHint("group");
+          return;
+        }
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        setDropHint(rect.width > 0 && e.clientX > rect.left + rect.width / 2 ? "after" : "before");
       }}
-      onDragLeave={() => setDragOver(false)}
+      onDragLeave={() => setDropHint(null)}
       onDrop={(e) => {
-        if (!isGroup) return;
         e.preventDefault();
-        setDragOver(false);
+        setDropHint(null);
         const draggedId = e.dataTransfer.getData("text/plain");
         if (!draggedId || draggedId === track.id) return;
+        // Group strips may not be dragged (draggable=false) — belt and
+        // braces: a group id in the payload is never a reorder source.
+        const dragged = tracks.find((t) => t.id === draggedId);
+        if (!dragged || dragged.kind === "group") return;
+        if (isGroup) {
+          try {
+            services.store.execute(addToGroup(doc, draggedId, track.id));
+          } catch {
+            /* ignore */
+          }
+          return;
+        }
+        // Drop half decides the side; the command owns the removal-shift
+        // arithmetic (intent in, index math out of the UI). Recomputed from
+        // the drop event, never from drag-over state.
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        const where = rect.width > 0 && e.clientX > rect.left + rect.width / 2 ? "after" : "before";
         try {
-          services.store.execute(addToGroup(doc, draggedId, track.id));
+          services.store.execute(moveTrackAdjacent(doc, draggedId, track.id, where));
         } catch {
           /* ignore */
         }
