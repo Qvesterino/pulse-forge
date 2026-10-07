@@ -565,22 +565,25 @@ export class MasteringSessionRepository {
     void source;
     await transactAcross<undefined>(
       [MASTERING_SESSION_STORE, MASTERING_SESSION_SOURCE_STORE],
-      (transaction, complete) => {
-        transaction.objectStore(MASTERING_SESSION_STORE).put(summary);
+      (transaction, complete, fail) => {
+        const summaryStore = transaction.objectStore(MASTERING_SESSION_STORE);
+        const summaryRequest = summaryStore.put(summary);
+        summaryRequest.onerror = () => fail(summaryRequest.error ?? new Error("Could not save the session summary."));
         const sourceStore = transaction.objectStore(MASTERING_SESSION_SOURCE_STORE);
         const existingSource = sourceStore.get(validated.id);
         existingSource.onsuccess = () => {
           if (existingSource.result == null) {
-            sourceStore.put({ id: validated.id, source: validated.source });
+            try {
+              const sourceRequest = sourceStore.put({ id: validated.id, source: validated.source });
+              sourceRequest.onerror = () =>
+                fail(sourceRequest.error ?? new Error("Could not save the original mastering source."));
+            } catch (error) {
+              fail(error);
+            }
           }
         };
-        existingSource.onerror = () => {
-          try {
-            transaction.abort();
-          } catch {
-            /* already completed */
-          }
-        };
+        existingSource.onerror = () =>
+          fail(existingSource.error ?? new Error("Could not check the existing mastering source."));
         complete(undefined);
       },
     );
@@ -636,16 +639,17 @@ export class MasteringSessionRepository {
             fail(new Error("The mastering session was closed before its reference could be saved."));
             return;
           }
-          transaction.objectStore(MASTERING_SESSION_REFERENCE_STORE).put(reference);
-          complete(undefined);
-        };
-        sessionRequest.onerror = () => {
           try {
-            transaction.abort();
-          } catch {
-            /* already completed */
+            const referenceRequest = transaction.objectStore(MASTERING_SESSION_REFERENCE_STORE).put(reference);
+            referenceRequest.onerror = () =>
+              fail(referenceRequest.error ?? new Error("Could not save the comparison reference."));
+            complete(undefined);
+          } catch (error) {
+            fail(error);
           }
         };
+        sessionRequest.onerror = () =>
+          fail(sessionRequest.error ?? new Error("Could not verify the mastering session for this reference."));
       },
     );
   }

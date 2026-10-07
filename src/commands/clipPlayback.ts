@@ -115,7 +115,17 @@ export function moveArrangementClipRipple(doc: ProjectDocument, clipId: string, 
   const clip = doc.arrangement.clips.find((c) => c.id === clipId);
   if (!clip) throw new Error(`Clip ${clipId} not found`);
   if (!Number.isFinite(startBar)) return snapshot("moveArrangementClipRipple", "Ripple move (no-op)", doc, doc);
-  const target = Math.max(0, Math.round(startBar));
+  // RIPPLE LEFT FLOOR: the moved clip stops at the end of whatever sits
+  // before it (0 when the lane is clear to the origin). An unclamped
+  // leftward ripple dropped the clip ON its predecessor, and the per-clip
+  // Math.max(0, …) below then piled every later clip onto bar 0 — N
+  // overlapping clips at the timeline origin from one drag. Clamping the
+  // TARGET (not the per-clip results) is what keeps every gap: later clips
+  // shift by the same delta, so once the target is legal the whole tail is.
+  const predecessorEnd = doc.arrangement.clips
+    .filter((c) => c.id !== clipId && c.startBar + c.lengthBars <= clip.startBar)
+    .reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
+  const target = Math.max(predecessorEnd, Math.round(startBar));
   const delta = target - clip.startBar;
   const clips = doc.arrangement.clips
     .map((c) =>

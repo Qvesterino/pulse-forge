@@ -102,6 +102,176 @@ function makeStereoTestWav(durationSeconds = 1): Buffer {
   return wav;
 }
 
+async function installMasteringSessionRenderGate(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    type RenderGate = {
+      armed: boolean;
+      arm: () => void;
+      waitForStart: () => Promise<void>;
+    };
+    let startedResolve: (() => void) | null = null;
+    let started = Promise.resolve();
+    const gate: RenderGate = {
+      armed: false,
+      arm: () => {
+        started = new Promise<void>((resolve) => {
+          startedResolve = resolve;
+        });
+        gate.armed = true;
+      },
+      waitForStart: () => started,
+    };
+    Object.defineProperty(window, "__masteringSessionRenderGate", { configurable: true, value: gate });
+
+    const prototype = OfflineAudioContext.prototype;
+    const originalStartRendering = prototype.startRendering;
+    Object.defineProperty(prototype, "startRendering", {
+      configurable: true,
+      writable: true,
+      value: function (this: OfflineAudioContext): Promise<AudioBuffer> {
+        if (!gate.armed) return originalStartRendering.call(this);
+        gate.armed = false;
+        startedResolve?.();
+        startedResolve = null;
+        return new Promise<AudioBuffer>(() => undefined);
+      },
+    });
+  });
+}
+
+async function armMasteringSessionRenderGate(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const gate = (window as Window & { __masteringSessionRenderGate?: { arm: () => void } })
+      .__masteringSessionRenderGate;
+    if (!gate) throw new Error("The mastering-session render gate was not installed.");
+    gate.arm();
+  });
+}
+
+async function waitForMasteringSessionRenderStart(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const gate = (window as Window & { __masteringSessionRenderGate?: { waitForStart: () => Promise<void> } })
+      .__masteringSessionRenderGate;
+    if (!gate) throw new Error("The mastering-session render gate was not installed.");
+    await gate.waitForStart();
+  });
+}
+
+async function installMasteringSessionExportGates(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    type ExportGate = {
+      encodeArmed: boolean;
+      inspectionArmed: boolean;
+      armEncode: () => void;
+      armInspection: () => void;
+      waitForEncode: () => Promise<void>;
+      waitForInspection: () => Promise<void>;
+    };
+    let encodeStartedResolve: (() => void) | null = null;
+    let encodeStarted = Promise.resolve();
+    let inspectionStartedResolve: (() => void) | null = null;
+    let inspectionStarted = Promise.resolve();
+    const gate: ExportGate = {
+      encodeArmed: false,
+      inspectionArmed: false,
+      armEncode: () => {
+        encodeStarted = new Promise<void>((resolve) => {
+          encodeStartedResolve = resolve;
+        });
+        gate.encodeArmed = true;
+      },
+      armInspection: () => {
+        inspectionStarted = new Promise<void>((resolve) => {
+          inspectionStartedResolve = resolve;
+        });
+        gate.inspectionArmed = true;
+      },
+      waitForEncode: () => encodeStarted,
+      waitForInspection: () => inspectionStarted,
+    };
+    Object.defineProperty(window, "__masteringSessionExportGates", { configurable: true, value: gate });
+
+    const originalSetTimeout = window.setTimeout.bind(window) as (handler: TimerHandler, timeout?: number) => number;
+    Object.defineProperty(window, "setTimeout", {
+      configurable: true,
+      writable: true,
+      value: function (this: Window, handler: TimerHandler, timeout?: number): number {
+        if (gate.encodeArmed && timeout === 0 && new Error().stack?.includes("yieldForNextTask")) {
+          gate.encodeArmed = false;
+          encodeStartedResolve?.();
+          encodeStartedResolve = null;
+          // Hold the encoder's next cooperative yield until Cancel clears this timer.
+          return originalSetTimeout(() => undefined, 60_000);
+        }
+        return originalSetTimeout(handler, timeout);
+      },
+    });
+
+    const prototype = OfflineAudioContext.prototype;
+    const originalDecode = prototype.decodeAudioData;
+    Object.defineProperty(prototype, "decodeAudioData", {
+      configurable: true,
+      writable: true,
+      value: function (this: OfflineAudioContext, encodedBytes: ArrayBuffer): Promise<AudioBuffer> {
+        if (!gate.inspectionArmed) return originalDecode.call(this, encodedBytes);
+        const bytes = new Uint8Array(encodedBytes);
+        const hasRiffWaveHeader =
+          bytes.length > 44 &&
+          bytes[0] === 0x52 &&
+          bytes[1] === 0x49 &&
+          bytes[2] === 0x46 &&
+          bytes[3] === 0x46 &&
+          bytes[8] === 0x57 &&
+          bytes[9] === 0x41 &&
+          bytes[10] === 0x56 &&
+          bytes[11] === 0x45;
+        let hasBext = false;
+        for (let index = 12; index + 4 <= Math.min(bytes.length, 4096); index++) {
+          if (
+            bytes[index] === 0x62 &&
+            bytes[index + 1] === 0x65 &&
+            bytes[index + 2] === 0x78 &&
+            bytes[index + 3] === 0x74
+          ) {
+            hasBext = true;
+            break;
+          }
+        }
+        if (!hasRiffWaveHeader || !hasBext) return originalDecode.call(this, encodedBytes);
+        gate.inspectionArmed = false;
+        inspectionStartedResolve?.();
+        inspectionStartedResolve = null;
+        return new Promise<AudioBuffer>(() => undefined);
+      },
+    });
+  });
+}
+
+async function armMasteringSessionExportGate(page: Page, stage: "encode" | "inspection"): Promise<void> {
+  await page.evaluate((gateStage) => {
+    const gate = (
+      window as Window & {
+        __masteringSessionExportGates?: { armEncode: () => void; armInspection: () => void };
+      }
+    ).__masteringSessionExportGates;
+    if (!gate) throw new Error("The mastering-session export gates were not installed.");
+    if (gateStage === "encode") gate.armEncode();
+    else gate.armInspection();
+  }, stage);
+}
+
+async function waitForMasteringSessionExportGate(page: Page, stage: "encode" | "inspection"): Promise<void> {
+  await page.evaluate(async (gateStage) => {
+    const gate = (
+      window as Window & {
+        __masteringSessionExportGates?: { waitForEncode: () => Promise<void>; waitForInspection: () => Promise<void> };
+      }
+    ).__masteringSessionExportGates;
+    if (!gate) throw new Error("The mastering-session export gates were not installed.");
+    await (gateStage === "encode" ? gate.waitForEncode() : gate.waitForInspection());
+  }, stage);
+}
+
 async function installMasteringDecodeGate(page: Page): Promise<void> {
   await page.addInitScript(() => {
     type DecodeGate = {
@@ -145,6 +315,158 @@ async function installMasteringDecodeGate(page: Page): Promise<void> {
           startedResolve?.();
           startedResolve = null;
         });
+      },
+    });
+  });
+}
+
+async function installMasteringHashGate(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    type HashGate = {
+      armed: boolean;
+      arm: (byteLength: number) => void;
+      waitForStart: () => Promise<void>;
+      release: () => void;
+    };
+    let expectedByteLength = 0;
+    let startedResolve: (() => void) | null = null;
+    let started = Promise.resolve();
+    let releaseDigest: (() => void) | null = null;
+    const gate: HashGate = {
+      armed: false,
+      arm: (byteLength) => {
+        expectedByteLength = byteLength;
+        started = new Promise<void>((resolve) => {
+          startedResolve = resolve;
+        });
+        gate.armed = true;
+      },
+      waitForStart: () => started,
+      release: () => releaseDigest?.(),
+    };
+    Object.defineProperty(window, "__masteringHashGate", { configurable: true, value: gate });
+
+    const prototype = SubtleCrypto.prototype;
+    const originalDigest = prototype.digest;
+    Object.defineProperty(prototype, "digest", {
+      configurable: true,
+      writable: true,
+      value: function (this: SubtleCrypto, algorithm: AlgorithmIdentifier, data: BufferSource): Promise<ArrayBuffer> {
+        if (!gate.armed || data.byteLength !== expectedByteLength) return originalDigest.call(this, algorithm, data);
+        gate.armed = false;
+        const digest = originalDigest.call(this, algorithm, data);
+        return new Promise<ArrayBuffer>((resolve, reject) => {
+          releaseDigest = () => {
+            releaseDigest = null;
+            void digest.then(resolve, reject);
+          };
+          startedResolve?.();
+          startedResolve = null;
+        });
+      },
+    });
+  });
+}
+
+async function installMasteringFileReadGate(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    type FileReadGate = {
+      armed: boolean;
+      arm: (byteLength: number) => void;
+      waitForStart: () => Promise<void>;
+      release: () => void;
+    };
+    let expectedByteLength = 0;
+    let startedResolve: (() => void) | null = null;
+    let started = Promise.resolve();
+    let releaseRead: (() => void) | null = null;
+    const gate: FileReadGate = {
+      armed: false,
+      arm: (byteLength) => {
+        expectedByteLength = byteLength;
+        started = new Promise<void>((resolve) => {
+          startedResolve = resolve;
+        });
+        gate.armed = true;
+      },
+      waitForStart: () => started,
+      release: () => releaseRead?.(),
+    };
+    Object.defineProperty(window, "__masteringFileReadGate", { configurable: true, value: gate });
+
+    const originalArrayBuffer = Blob.prototype.arrayBuffer;
+    Object.defineProperty(Blob.prototype, "arrayBuffer", {
+      configurable: true,
+      writable: true,
+      value: function (this: Blob): Promise<ArrayBuffer> {
+        if (!gate.armed || this.size !== expectedByteLength) return originalArrayBuffer.call(this);
+        gate.armed = false;
+        const read = originalArrayBuffer.call(this);
+        return new Promise<ArrayBuffer>((resolve, reject) => {
+          releaseRead = () => {
+            releaseRead = null;
+            void read.then(resolve, reject);
+          };
+          startedResolve?.();
+          startedResolve = null;
+        });
+      },
+    });
+  });
+}
+
+async function installMasteringAnalysisGate(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    type AnalysisGate = {
+      armed: boolean;
+      waitForStart: () => Promise<void>;
+      arm: () => void;
+      release: () => void;
+    };
+    let startedResolve: (() => void) | null = null;
+    let started = Promise.resolve();
+    let releaseAnalysis: (() => void) | null = null;
+    const gate: AnalysisGate = {
+      armed: false,
+      waitForStart: () => started,
+      arm: () => {
+        started = new Promise<void>((resolve) => {
+          startedResolve = resolve;
+        });
+        gate.armed = true;
+      },
+      release: () => releaseAnalysis?.(),
+    };
+    Object.defineProperty(window, "__masteringAnalysisGate", { configurable: true, value: gate });
+
+    const originalPostMessage = Worker.prototype.postMessage;
+    Object.defineProperty(Worker.prototype, "postMessage", {
+      configurable: true,
+      writable: true,
+      value: function (this: Worker, message: unknown, ...options: unknown[]): void {
+        if (
+          gate.armed &&
+          typeof message === "object" &&
+          message !== null &&
+          "type" in message &&
+          message.type === "MASTER_ANALYSIS_START"
+        ) {
+          gate.armed = false;
+          const deferredMessage = message;
+          const deferredOptions = options;
+          releaseAnalysis = () => {
+            releaseAnalysis = null;
+            try {
+              Reflect.apply(originalPostMessage, this, [deferredMessage, ...deferredOptions]);
+            } catch {
+              // Cancellation may terminate this worker before the test releases the held request.
+            }
+          };
+          startedResolve?.();
+          startedResolve = null;
+          return;
+        }
+        Reflect.apply(originalPostMessage, this, [message, ...options]);
       },
     });
   });
@@ -891,6 +1213,125 @@ test.describe("17 — mastering workspace", () => {
     await expect(session.getByLabel("Saved mastering sessions").locator("option")).toHaveCount(1);
   });
 
+  test("cancels session restore during decoding and allows a successful retry", async ({ page }, testInfo) => {
+    test.setTimeout(180_000);
+    test.skip(testInfo.project.name !== "chromium", "External mastering import requires browser Web Audio decoding.");
+    await installMasteringDecodeGate(page);
+    await openHouseTemplate(page, { timeoutMs: 120_000 });
+    await clickPanelAction(page, "MASTER");
+
+    const session = page.getByRole("region", { name: "External file mastering session" });
+    await session.getByLabel("Import WAV or MP3 mixdown").setInputFiles({
+      name: "restore-cancel-source.wav",
+      mimeType: "audio/wav",
+      buffer: makeStereoTestWav(),
+    });
+    await expect(session.getByText(/Original saved locally/)).toBeVisible({ timeout: 30_000 });
+    const savedSessions = session.getByLabel("Saved mastering sessions");
+    const savedSessionId = await savedSessions.locator("option").nth(1).getAttribute("value");
+    expect(savedSessionId).toBeTruthy();
+    const decodeStarted = page.evaluate(() => {
+      const gate = (
+        window as Window & {
+          __masteringDecodeGate?: { arm: (byteLength: number) => void; waitForStart: () => Promise<void> };
+        }
+      ).__masteringDecodeGate;
+      if (!gate) throw new Error("Mastering decode gate was not installed.");
+      gate.arm(44 + 44_100 * 4);
+      return gate.waitForStart();
+    });
+    await savedSessions.selectOption("");
+    await savedSessions.selectOption(savedSessionId!);
+    await decodeStarted;
+    await session.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(session.getByText("Session load cancelled.", { exact: true })).toBeVisible();
+    await page.evaluate(() => {
+      (window as Window & { __masteringDecodeGate?: { release: () => void } }).__masteringDecodeGate?.release();
+    });
+
+    await savedSessions.selectOption(savedSessionId!);
+    await expect(session.getByText(/Loaded restore-cancel-source\.wav/)).toBeVisible({ timeout: 30_000 });
+    await expect(session.getByLabel("External master input gain")).toBeVisible();
+  });
+
+  test("cancels an external source import while reading the original Blob", async ({ page }, testInfo) => {
+    test.setTimeout(180_000);
+    test.skip(testInfo.project.name !== "chromium", "External mastering import requires browser Web Audio decoding.");
+    await installMasteringFileReadGate(page);
+    await openHouseTemplate(page, { timeoutMs: 120_000 });
+    await clickPanelAction(page, "MASTER");
+
+    const session = page.getByRole("region", { name: "External file mastering session" });
+    const sourceFile = makeStereoTestWav();
+    const readStarted = page.evaluate((byteLength) => {
+      const gate = (
+        window as Window & {
+          __masteringFileReadGate?: {
+            arm: (size: number) => void;
+            waitForStart: () => Promise<void>;
+          };
+        }
+      ).__masteringFileReadGate;
+      if (!gate) throw new Error("Mastering file-read gate was not installed.");
+      gate.arm(byteLength);
+      return gate.waitForStart();
+    }, sourceFile.length);
+    await session.getByLabel("Import WAV or MP3 mixdown").setInputFiles({
+      name: "read-cancel-source.wav",
+      mimeType: "audio/wav",
+      buffer: sourceFile,
+    });
+    await readStarted;
+    await expect(session.locator(".mastering-file-session-status")).toContainText("Reading source file…");
+    await session.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(
+      session.getByText(/Source import cancelled\. The selected session was left unchanged\./),
+    ).toBeVisible();
+    await page.evaluate(() => {
+      (window as Window & { __masteringFileReadGate?: { release: () => void } }).__masteringFileReadGate?.release();
+    });
+    await expect(session.getByLabel("Saved mastering sessions").locator("option")).toHaveCount(1);
+  });
+
+  test("cancels an external source import while hashing its original file", async ({ page }, testInfo) => {
+    test.setTimeout(180_000);
+    test.skip(testInfo.project.name !== "chromium", "External mastering import requires browser Web Audio decoding.");
+    await installMasteringHashGate(page);
+    await openHouseTemplate(page, { timeoutMs: 120_000 });
+    await clickPanelAction(page, "MASTER");
+
+    const session = page.getByRole("region", { name: "External file mastering session" });
+    const sourceFile = makeStereoTestWav();
+    const digestStarted = page.evaluate((byteLength) => {
+      const gate = (
+        window as Window & {
+          __masteringHashGate?: {
+            arm: (size: number) => void;
+            waitForStart: () => Promise<void>;
+          };
+        }
+      ).__masteringHashGate;
+      if (!gate) throw new Error("Mastering hash gate was not installed.");
+      gate.arm(byteLength);
+      return gate.waitForStart();
+    }, sourceFile.length);
+    await session.getByLabel("Import WAV or MP3 mixdown").setInputFiles({
+      name: "hash-cancel-source.wav",
+      mimeType: "audio/wav",
+      buffer: sourceFile,
+    });
+    await digestStarted;
+    await expect(session.locator(".mastering-file-session-status")).toContainText("Fingerprinting source file…");
+    await session.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(
+      session.getByText(/Source import cancelled\. The selected session was left unchanged\./),
+    ).toBeVisible();
+    await page.evaluate(() => {
+      (window as Window & { __masteringHashGate?: { release: () => void } }).__masteringHashGate?.release();
+    });
+    await expect(session.getByLabel("Saved mastering sessions").locator("option")).toHaveCount(1);
+  });
+
   test("cancels an external source import during cooperative decoded-audio inspection", async ({ page }, testInfo) => {
     test.setTimeout(180_000);
     test.skip(testInfo.project.name !== "chromium", "External mastering import requires browser Web Audio decoding.");
@@ -969,15 +1410,167 @@ test.describe("17 — mastering workspace", () => {
     await expect(session.getByText("cancelled-reference.wav", { exact: true })).toHaveCount(0);
   });
 
-  test("shows a clear message when browser storage quota blocks a source import", async ({ page }, testInfo) => {
+  test("cancels a comparison reference import while hashing its original file", async ({ page }, testInfo) => {
+    test.setTimeout(180_000);
     test.skip(testInfo.project.name !== "chromium", "External mastering import requires browser Web Audio decoding.");
+    await installMasteringHashGate(page);
+    await openHouseTemplate(page, { timeoutMs: 120_000 });
+    await clickPanelAction(page, "MASTER");
+
+    const session = page.getByRole("region", { name: "External file mastering session" });
+    await session.getByLabel("Import WAV or MP3 mixdown").setInputFiles({
+      name: "reference-hash-source.wav",
+      mimeType: "audio/wav",
+      buffer: makeStereoTestWav(),
+    });
+    await expect(session.getByText(/Original saved locally/)).toBeVisible({ timeout: 30_000 });
+
+    const referenceFile = makeStereoTestWav();
+    const digestStarted = page.evaluate((byteLength) => {
+      const gate = (
+        window as Window & {
+          __masteringHashGate?: {
+            arm: (size: number) => void;
+            waitForStart: () => Promise<void>;
+          };
+        }
+      ).__masteringHashGate;
+      if (!gate) throw new Error("Mastering hash gate was not installed.");
+      gate.arm(byteLength);
+      return gate.waitForStart();
+    }, referenceFile.length);
+    await session.getByLabel("Import external mastering reference WAV or MP3").setInputFiles({
+      name: "hash-cancel-reference.wav",
+      mimeType: "audio/wav",
+      buffer: referenceFile,
+    });
+    await digestStarted;
+    await expect(session.locator(".mastering-file-session-status")).toContainText(
+      "Fingerprinting comparison reference…",
+    );
+    await session.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(session.getByText("Reference import cancelled.", { exact: true })).toBeVisible();
+    await page.evaluate(() => {
+      (window as Window & { __masteringHashGate?: { release: () => void } }).__masteringHashGate?.release();
+    });
+
+    const savedSessions = session.getByLabel("Saved mastering sessions");
+    const savedSessionId = await savedSessions.locator("option").nth(1).getAttribute("value");
+    expect(savedSessionId).toBeTruthy();
+    await savedSessions.selectOption("");
+    await savedSessions.selectOption(savedSessionId!);
+    await expect(session.getByText(/Loaded reference-hash-source\.wav/)).toBeVisible({ timeout: 30_000 });
+    await expect(session.getByRole("button", { name: "Listen to reference" })).toHaveCount(0);
+    await expect(session.getByText("hash-cancel-reference.wav", { exact: true })).toHaveCount(0);
+  });
+
+  test("cancels a comparison reference import while reading its original Blob", async ({ page }, testInfo) => {
+    test.setTimeout(180_000);
+    test.skip(testInfo.project.name !== "chromium", "External mastering import requires browser Web Audio decoding.");
+    await installMasteringFileReadGate(page);
+    await openHouseTemplate(page, { timeoutMs: 120_000 });
+    await clickPanelAction(page, "MASTER");
+
+    const session = page.getByRole("region", { name: "External file mastering session" });
+    await session.getByLabel("Import WAV or MP3 mixdown").setInputFiles({
+      name: "reference-read-source.wav",
+      mimeType: "audio/wav",
+      buffer: makeStereoTestWav(),
+    });
+    await expect(session.getByText(/Original saved locally/)).toBeVisible({ timeout: 30_000 });
+    const referenceFile = makeStereoTestWav();
+    const readStarted = page.evaluate((byteLength) => {
+      const gate = (
+        window as Window & {
+          __masteringFileReadGate?: { arm: (size: number) => void; waitForStart: () => Promise<void> };
+        }
+      ).__masteringFileReadGate;
+      if (!gate) throw new Error("Mastering file-read gate was not installed.");
+      gate.arm(byteLength);
+      return gate.waitForStart();
+    }, referenceFile.length);
+    await session.getByLabel("Import external mastering reference WAV or MP3").setInputFiles({
+      name: "read-cancel-reference.wav",
+      mimeType: "audio/wav",
+      buffer: referenceFile,
+    });
+    await readStarted;
+    await expect(session.locator(".mastering-file-session-status")).toContainText("Validating comparison reference…");
+    await session.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(session.getByText("Reference import cancelled.", { exact: true })).toBeVisible();
+    await page.evaluate(() => {
+      (window as Window & { __masteringFileReadGate?: { release: () => void } }).__masteringFileReadGate?.release();
+    });
+
+    const savedSessions = session.getByLabel("Saved mastering sessions");
+    const savedSessionId = await savedSessions.locator("option").nth(1).getAttribute("value");
+    expect(savedSessionId).toBeTruthy();
+    await savedSessions.selectOption("");
+    await savedSessions.selectOption(savedSessionId!);
+    await expect(session.getByText(/Loaded reference-read-source\.wav/)).toBeVisible({ timeout: 30_000 });
+    await expect(session.getByRole("button", { name: "Listen to reference" })).toHaveCount(0);
+    await expect(session.getByText("read-cancel-reference.wav", { exact: true })).toHaveCount(0);
+  });
+
+  test("cancels reference analysis before its worker receives PCM", async ({ page }, testInfo) => {
+    test.setTimeout(180_000);
+    test.skip(testInfo.project.name !== "chromium", "External mastering import requires browser Web Audio decoding.");
+    await installMasteringAnalysisGate(page);
+    await openHouseTemplate(page, { timeoutMs: 120_000 });
+    await clickPanelAction(page, "MASTER");
+
+    const session = page.getByRole("region", { name: "External file mastering session" });
+    await session.getByLabel("Import WAV or MP3 mixdown").setInputFiles({
+      name: "analysis-cancel-source.wav",
+      mimeType: "audio/wav",
+      buffer: makeStereoTestWav(),
+    });
+    await expect(session.getByText(/Original saved locally/)).toBeVisible({ timeout: 30_000 });
+    const analysisStarted = page.evaluate(() => {
+      const gate = (
+        window as Window & {
+          __masteringAnalysisGate?: { arm: () => void; waitForStart: () => Promise<void> };
+        }
+      ).__masteringAnalysisGate;
+      if (!gate) throw new Error("Mastering analysis gate was not installed.");
+      gate.arm();
+      return gate.waitForStart();
+    });
+    await session.getByLabel("Import external mastering reference WAV or MP3").setInputFiles({
+      name: "analysis-cancel-reference.wav",
+      mimeType: "audio/wav",
+      buffer: makeStereoTestWav(),
+    });
+    await analysisStarted;
+    await expect(session.locator(".mastering-file-session-status")).toContainText("Measuring comparison reference…");
+    await session.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(session.getByText("Reference import cancelled.", { exact: true })).toBeVisible();
+    await page.evaluate(() => {
+      (window as Window & { __masteringAnalysisGate?: { release: () => void } }).__masteringAnalysisGate?.release();
+    });
+
+    const savedSessions = session.getByLabel("Saved mastering sessions");
+    const savedSessionId = await savedSessions.locator("option").nth(1).getAttribute("value");
+    expect(savedSessionId).toBeTruthy();
+    await savedSessions.selectOption("");
+    await savedSessions.selectOption(savedSessionId!);
+    await expect(session.getByText(/Loaded analysis-cancel-source\.wav/)).toBeVisible({ timeout: 30_000 });
+    await expect(session.getByRole("button", { name: "Listen to reference" })).toHaveCount(0);
+    await expect(session.getByText("analysis-cancel-reference.wav", { exact: true })).toHaveCount(0);
+  });
+
+  test("shows a clear message when browser storage quota blocks a source import", async ({ page }, testInfo) => {
+    test.skip(
+      !["chromium", "firefox-mastering-session"].includes(testInfo.project.name),
+      "External mastering import requires an audio-capable browser.",
+    );
     await page.addInitScript(() => {
       const originalPut = IDBObjectStore.prototype.put;
       Object.defineProperty(IDBObjectStore.prototype, "put", {
         configurable: true,
         writable: true,
         value: function (this: IDBObjectStore, value: unknown, key?: IDBValidKey): IDBRequest<IDBValidKey> {
-          if (this.transaction.db.name === "kyx-mastering-sessions" && this.name === "sessions") {
+          if (this.transaction.db.name === "kyx-mastering-sessions" && this.name === "sources") {
             throw new DOMException("Simulated browser quota reached", "QuotaExceededError");
           }
           if (arguments.length > 1) return originalPut.call(this, value, key);
@@ -999,6 +1592,73 @@ test.describe("17 — mastering workspace", () => {
     await expect(session.getByLabel("Saved mastering sessions").locator("option")).toHaveCount(1);
   });
 
+  test("shows a clear message when browser storage quota blocks a comparison reference", async ({ page }, testInfo) => {
+    test.setTimeout(180_000);
+    test.skip(
+      !["chromium", "firefox-mastering-session"].includes(testInfo.project.name),
+      "External mastering import requires an audio-capable browser.",
+    );
+    await page.addInitScript(() => {
+      const originalPut = IDBObjectStore.prototype.put;
+      Object.defineProperty(IDBObjectStore.prototype, "put", {
+        configurable: true,
+        writable: true,
+        value: function (this: IDBObjectStore, value: unknown, key?: IDBValidKey): IDBRequest<IDBValidKey> {
+          if (this.transaction.db.name === "kyx-mastering-sessions" && this.name === "references") {
+            throw new DOMException("Simulated browser quota reached", "QuotaExceededError");
+          }
+          if (arguments.length > 1) return originalPut.call(this, value, key);
+          return originalPut.call(this, value);
+        },
+      });
+    });
+    await openHouseTemplate(page, { timeoutMs: 120_000 });
+    await clickPanelAction(page, "MASTER");
+
+    const session = page.getByRole("region", { name: "External file mastering session" });
+    await session.getByLabel("Import WAV or MP3 mixdown").setInputFiles({
+      name: "reference-quota-source.wav",
+      mimeType: "audio/wav",
+      buffer: makeStereoTestWav(),
+    });
+    await expect(session.getByText(/Original saved locally/)).toBeVisible({ timeout: 30_000 });
+    await session.getByLabel("Import external mastering reference WAV or MP3").setInputFiles({
+      name: "reference-quota-fail.wav",
+      mimeType: "audio/wav",
+      buffer: makeStereoTestWav(),
+    });
+    await expect(session.getByRole("alert")).toContainText("Browser storage is full", { timeout: 30_000 });
+    await expect(session.getByText("reference-quota-fail.wav", { exact: true })).toHaveCount(0);
+    await expect(session.getByRole("button", { name: "Listen to reference" })).toHaveCount(0);
+  });
+
+  test("explains when browser permissions block the local mastering database", async ({ page }, testInfo) => {
+    test.skip(
+      !["chromium", "firefox-mastering-session"].includes(testInfo.project.name),
+      "Storage permission workflow is tested on audio-capable browsers.",
+    );
+    await page.addInitScript(() => {
+      const originalOpen = IDBFactory.prototype.open;
+      Object.defineProperty(IDBFactory.prototype, "open", {
+        configurable: true,
+        writable: true,
+        value: function (this: IDBFactory, name: string, version?: number): IDBOpenDBRequest {
+          if (name === "kyx-mastering-sessions") {
+            throw new DOMException("Simulated local storage permission denied", "SecurityError");
+          }
+          if (version !== undefined) return originalOpen.call(this, name, version);
+          return originalOpen.call(this, name);
+        },
+      });
+    });
+    await openHouseTemplate(page, { timeoutMs: 120_000 });
+    await clickPanelAction(page, "MASTER");
+
+    const session = page.getByRole("region", { name: "External file mastering session" });
+    await expect(session.getByRole("alert")).toContainText("Browser storage is unavailable for this page");
+    await expect(session.getByRole("alert")).toContainText("Check the site storage permission");
+  });
+
   test("rejects a malformed external WAV header without creating a session", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "chromium", "External mastering import requires browser Web Audio decoding.");
     await openHouseTemplate(page, { timeoutMs: 120_000 });
@@ -1014,6 +1674,93 @@ test.describe("17 — mastering workspace", () => {
     });
     await expect(session.getByRole("alert")).toContainText("RIFF/WAVE header");
     await expect(session.getByLabel("Saved mastering sessions").locator("option")).toHaveCount(1);
+  });
+
+  test("cancels external master and A/B renders without leaving partial results", async ({ page }, testInfo) => {
+    test.setTimeout(180_000);
+    test.skip(
+      !["chromium", "firefox-mastering-session"].includes(testInfo.project.name),
+      "External mastering render cancellation gate uses OfflineAudioContext.",
+    );
+    await installMasteringSessionRenderGate(page);
+    await openHouseTemplate(page, { timeoutMs: 120_000 });
+    await clickPanelAction(page, "MASTER");
+
+    const session = page.getByRole("region", { name: "External file mastering session" });
+    await session.getByLabel("Import WAV or MP3 mixdown").setInputFiles({
+      name: "cancel-render-source.wav",
+      mimeType: "audio/wav",
+      buffer: makeStereoTestWav(),
+    });
+    await expect(session.getByText(/Original saved locally/)).toBeVisible({ timeout: 30_000 });
+
+    await armMasteringSessionRenderGate(page);
+    await session.getByRole("button", { name: "Render & analyze" }).click();
+    await waitForMasteringSessionRenderStart(page);
+    await expect(session.getByRole("status")).toContainText("Rendering source through the master chain");
+    await session.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(session.getByText("Render or analysis cancelled.", { exact: true })).toBeVisible();
+    await expect(session.locator(".mastering-file-session-report")).toHaveCount(0);
+    await expect(session.getByRole("button", { name: "Encode & export WAV" })).toBeDisabled();
+
+    await session.getByLabel("Name for version A").fill("Cancel A");
+    await session.getByRole("button", { name: "Save current to A" }).click();
+    await session.getByLabel("Name for version B").fill("Cancel B");
+    await session.getByRole("button", { name: "Save current to B" }).click();
+    await armMasteringSessionRenderGate(page);
+    await session.getByRole("button", { name: "Render A/B versions" }).click();
+    await waitForMasteringSessionRenderStart(page);
+    await expect(session.getByRole("status")).toContainText("Rendering version A");
+    await session.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(session.getByText("A/B render cancelled.", { exact: true })).toBeVisible();
+    await expect(session.getByRole("button", { name: "Listen to A" })).toBeDisabled();
+    await expect(session.getByRole("button", { name: "Listen to B" })).toBeDisabled();
+  });
+
+  test("cancels external WAV encoding and final inspection without downloading an unchecked file", async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(180_000);
+    test.skip(testInfo.project.name !== "chromium", "External mastering export cancellation gates use Web Audio APIs.");
+    await installMasteringSessionExportGates(page);
+    await openHouseTemplate(page, { timeoutMs: 120_000 });
+    await clickPanelAction(page, "MASTER");
+
+    const session = page.getByRole("region", { name: "External file mastering session" });
+    await session.getByLabel("Import WAV or MP3 mixdown").setInputFiles({
+      name: "cancel-export-source.wav",
+      mimeType: "audio/wav",
+      buffer: makeStereoTestWav(),
+    });
+    await expect(session.getByText(/Original saved locally/)).toBeVisible({ timeout: 30_000 });
+    await session.getByRole("button", { name: "Render & analyze" }).click();
+    await expect(session.getByRole("button", { name: "Encode & export WAV" })).toBeEnabled({ timeout: 90_000 });
+
+    await armMasteringSessionExportGate(page, "encode");
+    await session.getByRole("button", { name: "Encode & export WAV" }).click();
+    await waitForMasteringSessionExportGate(page, "encode");
+    await expect(session.getByText(/Encoding WAV ·/)).toBeVisible();
+    const encodeDownload = page.waitForEvent("download", { timeout: 5_000 }).then(
+      () => true,
+      () => false,
+    );
+    await session.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(session.getByText("WAV export cancelled.", { exact: true })).toBeVisible();
+    expect(await encodeDownload).toBe(false);
+    await expect(session.getByText(/Exported .*encoded file parsed/)).toHaveCount(0);
+
+    await armMasteringSessionExportGate(page, "inspection");
+    await session.getByRole("button", { name: "Encode & export WAV" }).click();
+    await waitForMasteringSessionExportGate(page, "inspection");
+    await expect(session.getByRole("status")).toContainText("Checking encoded WAV delivery");
+    const inspectionDownload = page.waitForEvent("download", { timeout: 5_000 }).then(
+      () => true,
+      () => false,
+    );
+    await session.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(session.getByText("WAV export cancelled.", { exact: true })).toBeVisible();
+    expect(await inspectionDownload).toBe(false);
+    await expect(session.getByText(/Exported .*encoded file parsed/)).toHaveCount(0);
   });
 
   test("external file inserts are editable, undoable, and isolated from the open project", async ({
@@ -1092,7 +1839,10 @@ test.describe("17 — mastering workspace", () => {
 
   test("renders, encodes, checks, and re-imports a mastering-session WAV", async ({ page }, testInfo) => {
     test.setTimeout(180_000);
-    test.skip(testInfo.project.name !== "chromium", "External mastering import requires browser Web Audio decoding.");
+    test.skip(
+      !["chromium", "firefox-mastering-session"].includes(testInfo.project.name),
+      "External mastering delivery round trip runs in Chromium and the focused Firefox project.",
+    );
     await openHouseTemplate(page, { timeoutMs: 120_000 });
     await clickPanelAction(page, "MASTER");
 

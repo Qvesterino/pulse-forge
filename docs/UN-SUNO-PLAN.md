@@ -275,10 +275,24 @@ techno 0.94 (±1); snare EXACT 1.00 na techno/boombap/trap; hat aligned
 inštaluje drum track + rows cez **inferPadRole** (nikdy index): kick/snare/hat
 na prvé resolved pady, rows[padId][step] = velocity.
 
-**U3.5 zostáva:** snare↔hat cross-talk (hat noise svieti v snare band ~1:1 —
-per-step dominance ratio zlyhal, ratia na parite) a dnb half-time grid
-reconciliation (86.9 vs 174 — dnb floors nízke). Taktiež per-section mapy
-(teraz jeden pattern foldovaný cez track).
+**U3.5 kalibrácia (2026-10-05, paralelná session — snare/hat gates):**
+snare brána posunutá z 12 % na **25 % hat-band broadband floor**, referencovaná
+proti najhlasnejšiemu STEP OKNU (nie raw peak obálky — kalibračné dáta merali
+per-step maximá a raw peak mimo grid okna nastavil prísnejšiu hranicu, než
+ktorýkoľvek krok mohol splniť). Hat lane **zrušila snare vylučovanie** (merané:
+golden snare kroky SÚ hat kroky — vylučovanie zrazilo haty na 0.00–0.40;
+dense-roll median-prune je správny filter). Rovnako **jeden FFT prechod pre
+všetky tri bandy** (predtým nový `ReferenceFft` per band, 3–4× práca).
+Namerané po kalibrácii (patten-level ±1): **snare F1 1.00** na house/techno/
+boombap/trap (predtým 0.50/1.00/1.00/1.00), **techno hat 1.00** (predtým 0.40),
+house hat 0.80, dnb hat 0.89; kick recall 1.00 všade. Floors **re-locked
+nahor** v golden-set.test.ts (snare 0.95, techno hat 0.9). Detekcia je navyše
+BPM-robustnejšia: pri posune gridu ±0.2 BPM (vnútri `estimateTempo` presnosti)
+snare neklesá na 0.44 ako predtým.
+
+**U3.5 zostáva:** dnb half-time grid reconciliation (86.9 vs 174 — dnb snare
+F1 0.00 na half-time grid; pri správnom 174 deteguje [4,12] správne) a
+per-section mapy súčasného fold-u cez celý track.
 
 ### U5 — Mix-doctor vedľa teba — **HOTOVÉ 2026-10-04**
 

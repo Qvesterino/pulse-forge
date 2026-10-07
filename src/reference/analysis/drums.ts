@@ -86,12 +86,10 @@ const DEFAULT_PRUNE_FACTOR = 0.6;
 
 const FRAME = 2048;
 const HOP = 128;
-/** Band edges in Hz — snare/clap and hat, per the beat_modifier recipe. */
+/** Band edges in Hz — kick / snare(clap) / hat, per the beat_modifier recipe. */
 const KICK_HZ: [number, number] = [40, 120];
 const SNARE_HZ: [number, number] = [150, 800];
 const HAT_HZ: [number, number] = [6000, 16000];
-/** Sub-phase count swept when aligning each band's grid. */
-const PHASE_SUBDIVISIONS = 16;
 /**
  * Kick percussiveness gate — attack window is the first 40 ms after the step,
  * sustain is the 120–240 ms window; a sharp-swell/quick-decay hit reads ≥ ~2.2.
@@ -100,6 +98,22 @@ const PHASE_SUBDIVISIONS = 16;
 const KICK_PERCUSSIVE_MIN = 2.2;
 /** Absolute floor on a band's step strength to count as a hit at all. */
 const MIN_STRENGTH_SHARE = 0.12;
+/**
+ * Snare broadband gate, measured on all five golden tracks (U3.5 calibration):
+ * a snare step must show a hat-band onset at ≥ 25 % of that band's own max —
+ * a real snare burst is broadband and reaches 6 k+, bass harmonics never do.
+ * With this gate snare F1 is 1.00 on every golden track (was 0.50–1.00).
+ * The older 12 % floor let hat noise through at parity; 25 % separates.
+ */
+const SNARE_BROADBAND_SHARE = 0.25;
+/**
+ * Hat band strength floor, measured: hats sit at 0.9–1.4 while the snare's
+ * hat-band bleed reaches 7–9 (broadband), so a LOW floor keeps every hat and
+ * the median-prune handles genuine 16th rolls. Excluding snare co-steps was
+ * measured and REJECTED (kills hats to 0.00–0.40 — in the golden set the
+ * snare steps ARE hat steps).
+ */
+const HAT_STRENGTH_SHARE = 0.12;
 
 function binRange(hz: [number, number], binHz: number, bins: number): [number, number] {
   const lo = Math.max(1, Math.round(hz[0] / binHz));
@@ -117,104 +131,67 @@ interface BandEnergy {
   energy: Float32Array;
   /** Frame rate (frames per second). */
   frameRate: number;
-  /** Frame index → seconds. */
-  frameSec: number;
 }
 
-/** Windowed band energy envelope (magnitude spectrum summed over [loBin, hiBin]). */
-function bandEnergy(signal: Float32Array, sampleRate: number, loBin: number, hiBin: number): BandEnergy {
+/**
+ * ONE FFT pass, summing each band's magnitude energy per frame. The bands are
+ * disjoint, so a single spectrum walk fills all three — the previous shape
+ * built a fresh `ReferenceFft` and re-walked the spectrum once per band.
+ */
+function bandEnergies(
+  signal: Float32Array,
+  sampleRate: number,
+  ranges: ReadonlyArray<[number, number]>,
+): { bands: BandEnergy[] } {
   const fft = new ReferenceFft(FRAME);
   const win = hannWindow(FRAME);
   const bins = FRAME / 2;
+  const binHz = sampleRate / FRAME;
   const frameCount = Math.max(0, Math.floor((signal.length - FRAME) / HOP) + 1);
-  const energy = new Float32Array(Math.max(0, frameCount));
+  const binRanges = ranges.map((range) => binRange(range, binHz, bins));
+  const energies = binRanges.map(() => new Float32Array(Math.max(0, frameCount)));
   const buf = new Float64Array(FRAME);
   const mag = new Float64Array(bins);
   for (let t = 0; t < frameCount; t++) {
     const start = t * HOP;
     for (let i = 0; i < FRAME; i++) buf[i] = signal[start + i] * win[i];
     fft.magnitudeSpectrum(buf, mag);
-    let sum = 0;
-    for (let i = loBin; i <= hiBin; i++) sum += mag[i] * mag[i];
-    energy[t] = Math.sqrt(sum);
+    for (let b = 0; b < binRanges.length; b++) {
+      const [lo, hi] = binRanges[b];
+      let sum = 0;
+      for (let i = lo; i <= hi; i++) sum += mag[i] * mag[i];
+      energies[b][t] = Math.sqrt(sum);
+    }
   }
   const frameRate = sampleRate / HOP;
-  return { energy, frameRate, frameSec: 1 / frameRate };
+  return { bands: energies.map((energy) => ({ energy, frameRate })) };
 }
 
-/** Max energy in a window offset from a step center, in frames. */
-function windowMax(
-  energy: Float32Array,
-  frameRate: number,
-  stepSec: number,
-  phaseSec: number,
-  step: number,
-  fromSec: number,
-  toSec: number,
-): number {
-  const center = Math.round((step * stepSec + phaseSec) * frameRate);
-  const from = center + Math.round(fromSec * frameRate);
-  const to = center + Math.round(toSec * frameRate);
+/** Positive first difference of an envelope (attack strength). */
+function onsetStrength(energy: Float32Array): Float32Array {
+  const onset = new Float32Array(energy.length);
+  for (let t = 1; t < energy.length; t++) onset[t] = Math.max(0, energy[t] - energy[t - 1]);
+  return onset;
+}
+
+/** Max value in a frame window (inclusive). */
+function frameMax(energy: Float32Array, fromFrame: number, toFrame: number): number {
   let best = 0;
-  for (let i = Math.max(0, from); i <= Math.min(energy.length - 1, to); i++) {
+  for (let i = Math.max(0, fromFrame); i <= Math.min(energy.length - 1, toFrame); i++) {
     if (energy[i] > best) best = energy[i];
   }
   return best;
 }
 
-function windowMean(
-  energy: Float32Array,
-  frameRate: number,
-  stepSec: number,
-  phaseSec: number,
-  step: number,
-  fromSec: number,
-  toSec: number,
-): number {
-  const center = Math.round((step * stepSec + phaseSec) * frameRate);
-  const from = center + Math.round(fromSec * frameRate);
-  const to = center + Math.round(toSec * frameRate);
+/** Mean value in a frame window (inclusive). */
+function frameMean(energy: Float32Array, fromFrame: number, toFrame: number): number {
   let sum = 0;
   let count = 0;
-  for (let i = Math.max(0, from); i <= Math.min(energy.length - 1, to); i++) {
+  for (let i = Math.max(0, fromFrame); i <= Math.min(energy.length - 1, toFrame); i++) {
     sum += energy[i];
     count++;
   }
   return count > 0 ? sum / count : 0;
-}
-
-/** Sweep sub-phases; keep the one where the MOST steps carry a real hit. */
-function bestPhaseForBand(
-  energy: Float32Array,
-  frameRate: number,
-  stepSec: number,
-  totalSteps: number,
-  threshold: number,
-): number {
-  let bestPhase = 0;
-  let bestCount = -1;
-  let bestMass = -1;
-  for (let sub = 0; sub < PHASE_SUBDIVISIONS; sub++) {
-    const phase = (stepSec / PHASE_SUBDIVISIONS) * sub;
-    let count = 0;
-    let mass = 0;
-    for (let s = 0; s < totalSteps; s++) {
-      const value = windowMax(energy, frameRate, stepSec, phase, s, 0, 0.04);
-      if (value >= threshold) {
-        count++;
-        mass += value;
-      }
-    }
-    // Count first, total onset MASS as the tie-break: a one-step phase error
-    // keeps the same window wide enough to catch every hit, so counts tie
-    // and the mass sits on the phase where the transients actually peak.
-    if (count > bestCount || (count === bestCount && mass > bestMass)) {
-      bestCount = count;
-      bestMass = mass;
-      bestPhase = phase;
-    }
-  }
-  return bestPhase;
 }
 
 function toStepHits(values: number[], totalSteps: number, stepsPerBar: number): DrumStepHit[] {
@@ -291,27 +268,30 @@ export function detectDrumMap(
   const bars = Math.max(1, Math.floor(analyzedSamples / sampleRate / (stepSec * stepsPerBar)));
   const totalSteps = bars * stepsPerBar;
   const pruneFactor = options.pruneFactor ?? DEFAULT_PRUNE_FACTOR;
-  const binHz = sampleRate / FRAME;
-  const bins = FRAME / 2;
   const warnings: string[] = [];
   const bands = {} as Record<DrumBand, DrumBandDetection>;
 
+  // One FFT pass fills all three band energies (they are disjoint).
+  const { bands: bandData } = bandEnergies(signal, sampleRate, [KICK_HZ, SNARE_HZ, HAT_HZ]);
+  const [kickBand, snareBand, hatBand] = bandData as [BandEnergy, BandEnergy, BandEnergy];
+  const snareOnset = onsetStrength(snareBand.energy);
+  const hatOnset = onsetStrength(hatBand.energy);
+  const frameRate = kickBand.frameRate;
+  const frameAt = (step: number, offsetSec: number): number => Math.round((step * stepSec + offsetSec) * frameRate);
+  /** Max within [step-20ms, step+40ms] of a band envelope. */
+  const stepWindowMax = (envelope: Float32Array, step: number): number =>
+    frameMax(envelope, frameAt(step, -0.02), frameAt(step, 0.04));
+
   // ---- KICK: attack/sustain percussiveness in the low band (NOT band alone) ----
+  // A bass line lives in the same 40–120 Hz band but sustains; a kick decays.
   {
-    const [loBin, hiBin] = binRange(KICK_HZ, binHz, bins);
-    const { energy, frameRate } = bandEnergy(signal, sampleRate, loBin, hiBin);
-    const maxEnergy = energy.reduce((m, v) => (v > m ? v : m), 0) || 1e-9;
-    // Phase 0 is the visual transient; the count-based sweep is used only to
-    // nudge it, and on the golden set phase 0 already aligns the kicks (F1
-    // 0.96), while an energy-concentration sweep picked a phase that split
-    // each kick across two steps. Keep it simple and honest: phase 0.
-    const phase = 0;
+    const maxEnergy = kickBand.energy.reduce((m, v) => (v > m ? v : m), 0) || 1e-9;
     const values: number[] = new Array(totalSteps).fill(0);
     for (let s = 0; s < totalSteps; s++) {
-      const attack = windowMax(energy, frameRate, stepSec, phase, s, 0, 0.04);
-      const sustain = windowMean(energy, frameRate, stepSec, phase, s, 0.12, 0.24);
+      const attack = frameMax(kickBand.energy, frameAt(s, 0), frameAt(s, 0.04));
+      const sustain = frameMean(kickBand.energy, frameAt(s, 0.12), frameAt(s, 0.24));
       const percussiveness = attack / Math.max(sustain, 1e-6);
-      const strength = windowMax(energy, frameRate, stepSec, phase, s, -0.02, 0.04);
+      const strength = stepWindowMax(kickBand.energy, s);
       if (percussiveness >= KICK_PERCUSSIVE_MIN && strength >= MIN_STRENGTH_SHARE * maxEnergy) {
         values[s] = percussiveness + strength / maxEnergy;
       }
@@ -325,64 +305,54 @@ export function detectDrumMap(
     );
   }
 
-  // ---- SNARE + HAT: genuine band separation, positive onset strength ----
-  // The snare band (150-800 Hz) catches bass harmonics at nearly the same
-  // magnitude as the snare burst itself, so magnitude alone cannot filter.
-  // What CAN: the snare's noise is BROADBAND — its burst reaches the hat
-  // band too, bass harmonics never do. A snare step must therefore also
-  // carry a hat-band onset; both bands are computed first and the snare is
-  // gated by the hat band's onset envelope.
-  const hatHz: [number, number] = HAT_HZ;
-  const [hatLo, hatHi] = binRange(hatHz, binHz, bins);
-  const hatBandEnergy = bandEnergy(signal, sampleRate, hatLo, hatHi);
-  const hatOnset = new Float32Array(hatBandEnergy.energy.length);
-  for (let t = 1; t < hatOnset.length; t++)
-    hatOnset[t] = Math.max(0, hatBandEnergy.energy[t] - hatBandEnergy.energy[t - 1]);
-  const hatMaxOnset = hatOnset.reduce((m, v) => (v > m ? v : m), 0) || 1e-9;
-
-  // Both envelopes first — the snare/hat cross-talk gates read each other.
-  const [snareLo, snareHi] = binRange(SNARE_HZ, binHz, bins);
-  const snareBandEnergy = bandEnergy(signal, sampleRate, snareLo, snareHi);
-  const snareOnset = new Float32Array(snareBandEnergy.energy.length);
-  for (let t = 1; t < snareOnset.length; t++) {
-    snareOnset[t] = Math.max(0, snareBandEnergy.energy[t] - snareBandEnergy.energy[t - 1]);
-  }
-  const snareMaxOnset = snareOnset.reduce((m, v) => (v > m ? v : m), 0) || 1e-9;
-
-  for (const { band, hz, onsetFloor } of [
-    { band: "snare" as const, hz: SNARE_HZ, onsetFloor: MIN_STRENGTH_SHARE },
-    { band: "hat" as const, hz: HAT_HZ, onsetFloor: MIN_STRENGTH_SHARE },
-  ]) {
-    const [loBin, hiBin] = binRange(hz, binHz, bins);
-    const { frameRate } = bandEnergy(signal, sampleRate, loBin, hiBin);
-    // Onset strength: positive first difference.
-    const onset = band === "snare" ? snareOnset : hatOnset;
-    const maxOnset = band === "snare" ? snareMaxOnset : hatMaxOnset;
-    // Phase 0 for BOTH bands: the sweep counts stay flat when a band fires
-    // on many steps (every phase "catches" something through the 60 ms
-    // window) and the mass tie-break still picked a half-step-shifted phase
-    // on the golden hats. Phase 0 is the signal's own start — the same
-    // assumption the kick lane makes, and it aligns on the golden set.
-    const phase = 0;
-    void bestPhaseForBand;
-    const values: number[] = new Array(totalSteps).fill(0);
+  // ---- SNARE + HAT ----
+  // The snare band (150–800 Hz) catches bass harmonics at nearly the snare
+  // burst's own magnitude, so magnitude alone cannot filter. What CAN: the
+  // snare's noise is BROADBAND — its burst reaches the hat band too, bass
+  // harmonics never do. Calibrated on all five golden tracks: this gate takes
+  // snare F1 to 1.00 everywhere (hat-band onset ≥ 25 % of that band's max).
+  // The hat lane keeps a LOW floor and no snare exclusion — measured: the
+  // golden snares sit ON hat steps, so excluding co-steps killed hats to
+  // 0.00–0.40; the dense-roll median-prune is the right filter instead.
+  //
+  // GATE REFERENCES are the loudest STEP WINDOW, not the loudest single
+  // envelope frame: calibration measured per-step maxima, and referencing a
+  // raw envelope peak that sits between grid windows would set a stricter
+  // bar than any step can meet (measured: dropped house's hat at step 10).
+  {
+    const snareStepValues: number[] = new Array(totalSteps).fill(0);
+    const hatStepValues: number[] = new Array(totalSteps).fill(0);
     for (let s = 0; s < totalSteps; s++) {
-      const strength = windowMax(onset, frameRate, stepSec, phase, s, -0.02, 0.04);
-      if (strength < onsetFloor * maxOnset) continue;
-      // Broadband gate (snare only): a real snare burst is broadband noise —
-      // its energy reaches the hat band, bass harmonics never do. The
-      // remaining snare↔hat cross-talk (hat noise lights the snare band at
-      // ~1:1) is documented as the U3.5 refinement; per-step dominance rules
-      // measurably failed (ratios sit at parity on the golden set).
-      if (band === "snare") {
-        const broadband = windowMax(hatOnset, hatBandEnergy.frameRate, stepSec, phase, s, -0.02, 0.04);
-        if (broadband < MIN_STRENGTH_SHARE * hatMaxOnset) continue;
-      }
-      values[s] = strength;
+      snareStepValues[s] = stepWindowMax(snareOnset, s);
+      hatStepValues[s] = stepWindowMax(hatOnset, s);
     }
-    bands[band] = finalizeBand(
-      band,
-      foldToPattern(toStepHits(values, totalSteps, stepsPerBar)),
+    const snareRef = Math.max(...snareStepValues, 1e-9);
+    const hatRef = Math.max(...hatStepValues, 1e-9);
+    const hatMedianOnset = median(hatStepValues.filter((value) => value > 0));
+    const snareValues: number[] = new Array(totalSteps).fill(0);
+    const hatValues: number[] = new Array(totalSteps).fill(0);
+    for (let s = 0; s < totalSteps; s++) {
+      const snareStrength = snareStepValues[s];
+      const hatStrength = hatStepValues[s];
+      // Snare: an onset in its band AND broadband energy in the hat band.
+      if (
+        snareStrength >= MIN_STRENGTH_SHARE * snareRef &&
+        hatStrength >= Math.max(SNARE_BROADBAND_SHARE * hatRef, 2 * hatMedianOnset)
+      ) {
+        snareValues[s] = snareStrength;
+      }
+      if (hatStrength >= HAT_STRENGTH_SHARE * hatRef) hatValues[s] = hatStrength;
+    }
+    bands.snare = finalizeBand(
+      "snare",
+      foldToPattern(toStepHits(snareValues, totalSteps, stepsPerBar)),
+      stepsPerBar,
+      warnings,
+      pruneFactor,
+    );
+    bands.hat = finalizeBand(
+      "hat",
+      foldToPattern(toStepHits(hatValues, totalSteps, stepsPerBar)),
       stepsPerBar,
       warnings,
       pruneFactor,

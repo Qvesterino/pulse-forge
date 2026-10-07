@@ -19,7 +19,7 @@ import { BAR_TICKS } from "../project-model/types";
 import { clampArrangementTransitionType, MAX_ARRANGEMENT_CLIP_BARS, sceneRoleOf } from "../project-model/schema";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
-import { unlinkMarkersOfClips } from "./docOps";
+import { markerClampPatch, unlinkMarkersOfClips } from "./docOps";
 
 /* ---------------- arrangement shapes ---------------- */
 function transitionBetween(doc: ProjectDocument, fromClipId: string, toClipId: string): void {
@@ -253,10 +253,22 @@ export function autoArrangeSong(doc: ProjectDocument): Command {
   }
   if (usedSlots === 0) throw new Error("No scenes could be placed — create a few scenes first");
 
+  // Auto-arrange REPLACES every clip: user markers survive the re-layout —
+  // unlinked from the dead clip ids (the deleteArrangementClip contract;
+  // wholesale-replacing the marker array silently DESTROYED user cues) —
+  // and the merged set clamps to the NEW project end in-command, so undo
+  // restores the pre-arrange markers verbatim.
+  const unlinked = unlinkMarkersOfClips(doc.markers, new Set(doc.arrangement.clips.map((c) => c.id)));
+  const mergedMarkers = [...(unlinked ?? doc.markers), ...markers];
+  const clamp = markerClampPatch(mergedMarkers, doc.scenes, doc.patterns, {
+    ...doc.arrangement,
+    clips,
+    transitions,
+  });
   const next: ProjectDocument = {
     ...doc,
     arrangement: { ...doc.arrangement, clips, transitions },
-    markers: markers,
+    markers: clamp.markers ?? mergedMarkers,
   };
   return snapshot("autoArrangeSong", `Auto-arrange song (intro→build→drop→break→drop→outro)`, doc, next);
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, afterEach } from "vitest";
 import { act, fireEvent, screen } from "@testing-library/react";
 import { ArrangementPanel } from "../../src/ui/ArrangementPanel";
 import { PianoRollTrack } from "../../src/ui/PianoRoll";
@@ -371,5 +371,87 @@ describe("usePointerDragGuard", () => {
     utils.unmount();
     expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onEnd).not.toHaveBeenCalled();
+  });
+});
+
+/* -----------------------------------------------------------------------
+ * Wave B (2026-10-07): ripple move left floor. jsdom rects are all-zero,
+ * which makes every scene-clip press a "resize" (clientX > right - 10) and
+ * every lane conversion degenerate — give elements a wide, left-anchored
+ * rect so px→bar math is clientX/30 (zoom 1).
+ */
+describe("ripple move left floor (panel preview + commit)", () => {
+  let rectSpy: ReturnType<typeof vi.spyOn> | undefined;
+  afterEach(() => {
+    rectSpy?.mockRestore();
+    rectSpy = undefined;
+  });
+  function useWideRects(): void {
+    rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 10_000,
+      bottom: 100,
+      width: 10_000,
+      height: 100,
+      toJSON: () => ({}),
+    } as DOMRect);
+  }
+
+  function threeClipDoc(): { doc: ProjectDocument; bId: string; cId: string } {
+    const base = createProjectFromTemplate("house");
+    const cleared = { ...base, arrangement: { ...base.arrangement, clips: [] } };
+    let doc = addArrangementClip(cleared, cleared.scenes[0]!.id, 0, 4).execute(cleared); // A [0,4)
+    doc = addArrangementClip(doc, doc.scenes[0]!.id, 10, 4).execute(doc); // B [10,14)
+    doc = addArrangementClip(doc, doc.scenes[0]!.id, 16, 4).execute(doc); // C [16,20)
+    return {
+      doc,
+      bId: doc.arrangement.clips.find((c) => c.startBar === 10)!.id,
+      cId: doc.arrangement.clips.find((c) => c.startBar === 16)!.id,
+    };
+  }
+
+  const noOverlap = (doc: ProjectDocument): void => {
+    const sorted = [...doc.arrangement.clips].sort((x, y) => x.startBar - y.startBar);
+    for (let i = 1; i < sorted.length; i++)
+      expect(sorted[i]!.startBar).toBeGreaterThanOrEqual(sorted[i - 1]!.startBar + sorted[i - 1]!.lengthBars);
+  };
+
+  it("single ripple move stops at the predecessor instead of overlapping it", () => {
+    useWideRects();
+    const built = threeClipDoc();
+    const { project } = renderLiveArrangement(built.doc);
+    fireEvent.click(screen.getByRole("button", { name: /RIPPLE/ }));
+    const els = clipEls();
+    expect(els.length).toBe(3);
+    // Press clip B (bar 10.5), drag toward bar 1.5. Pre-fix the commit wrote
+    // B at bar 1, ON TOP of A[0,4).
+    fireEvent.pointerDown(els[1]!, { button: 0, pointerId: 1, clientX: 315 });
+    fireEvent.pointerMove(els[1]!, { pointerId: 1, clientX: 45 });
+    fireEvent.pointerUp(els[1]!, { pointerId: 1, clientX: 45 });
+    const moved = project.getDoc().arrangement.clips.find((c) => c.id === built.bId)!;
+    expect(moved.startBar).toBe(4);
+    noOverlap(project.getDoc());
+  });
+
+  it("multi ripple block stops at the stationary predecessor (no pile-up)", () => {
+    useWideRects();
+    const built = threeClipDoc();
+    const { project } = renderLiveArrangement(built.doc);
+    fireEvent.click(screen.getByRole("button", { name: /RIPPLE/ }));
+    const els = clipEls();
+    // Ctrl+click selects B and C; a plain press on B then block-moves them.
+    fireEvent.pointerDown(els[1]!, { button: 0, pointerId: 1, clientX: 315, ctrlKey: true });
+    fireEvent.pointerDown(els[2]!, { button: 0, pointerId: 2, clientX: 495, ctrlKey: true });
+    const els2 = clipEls();
+    fireEvent.pointerDown(els2[1]!, { button: 0, pointerId: 3, clientX: 315 });
+    fireEvent.pointerMove(els2[1]!, { pointerId: 3, clientX: 75 }); // bar 2.5 → raw delta −8 → floored to −6
+    fireEvent.pointerUp(els2[1]!, { pointerId: 3, clientX: 75 });
+    const clips = project.getDoc().arrangement.clips;
+    expect(clips.find((c) => c.id === built.bId)!.startBar).toBe(4); // 10 − 6
+    expect(clips.find((c) => c.id === built.cId)!.startBar).toBe(10); // 16 − 6, gap preserved
+    noOverlap(project.getDoc());
   });
 });

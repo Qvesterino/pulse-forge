@@ -62,9 +62,15 @@ another DAW.
   IndexedDB object store holds one read-only WAV/MP3 reference per session;
   its SHA-256 is checked on reload, its audio is measured, and it is auditioned
   against the current render with preview-only loudness trim. It is not added to
-  the scratch project, session source, or export. The bounded slice still does
-  not provide streaming, persisted measurement reports, or validated
-  cross-browser length claims.
+  the scratch project, session source, or export. After a checked WAV export,
+  the session can download a JSON report sidecar tied to the source hash,
+  processing revision, delivery profile, render measurements and encoded-file
+  inspection. The report is not automatically persisted in IndexedDB and
+  contains no audio. The session report surface presents LRA, short-term
+  loudness timeline, stereo checks and Mix Doctor diagnostics from the decoded
+  WAV when measured; otherwise it labels the source-PCM fallback and does not
+  substitute source data for missing post-encode analysis. The bounded slice still does not provide streaming,
+  automatic report persistence, or validated cross-browser length claims.
 
 ## Validation contract
 
@@ -82,7 +88,21 @@ another DAW.
 - Chromium E2E verifies external file import, isolated insert Apply/Undo/Redo,
   session-local reference measurement/audition, named A/B snapshot renders and
   audition, 24-bit PCM+BWF v2 export, encoded WAV parsing/decoded measurements,
-  and re-import of the delivered WAV. Storage quota and cancellation failure
-  workflows remain open.
+  and re-import of the delivered WAV. Additional Chromium cases cover source
+  and reference Blob reads, SHA-256 and decode cancellation, reference worker
+  analysis, cooperative source PCM audit, session-restore cancellation/retry,
+  source and reference IndexedDB quota errors, blocked storage permission,
+  malformed WAV input, and UI cancellation during source/A-B rendering and
+  WAV encode/post-encode inspection. Source/reference quota and blocked-storage
+  errors also pass in Firefox. Cross-browser duration/memory limits and Safari
+  on macOS storage/device behavior remain unverified.
+- A focused Firefox Playwright project passes five external-session scenarios:
+  the complete WAV import, render/analyze, 24-bit BWF export/decode and re-import
+  path; source/reference quota errors; blocked database permission; and source/A-B
+  render cancellation. It does not claim long-file, WAV-export cancellation or
+  device-monitoring parity in Firefox.
+- The Windows Playwright WebKit runtime lacks `AudioContext`; it shows the
+  explicit Web Audio guidance screen and is not an external-mastering target.
+  Safari on macOS requires a separate owner smoke test.
 - Any supported-length claim is backed by real-browser duration and memory
   measurements on the named browser/OS profile.

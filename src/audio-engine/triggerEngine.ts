@@ -56,6 +56,22 @@ export interface TriggerTrackView {
   input: GainNode;
 }
 
+/**
+ * Identity of one clip-triggered one-shot source, recorded alongside the
+ * generic one-shot registry so the engine can tell WHICH clip a sounding
+ * source belongs to. The live-editing sync compares this snapshot against the
+ * current document: a source whose clip vanished (delete, split, undo) or
+ * whose timeline geometry changed (move, resize, trim) is an orphan and gets
+ * de-click-cancelled instead of ringing to its originally scheduled end.
+ */
+export interface ClipSourceMeta {
+  clipId: string;
+  startBar: number;
+  lengthBars: number;
+  /** The node whose gain envelope owns this source's audibility (per-segment for warp clips). */
+  gainNode: GainNode;
+}
+
 export interface TriggerEngineDeps {
   ctx: () => BaseAudioContext | null;
   doc: () => ProjectDocument | null;
@@ -68,7 +84,7 @@ export interface TriggerEngineDeps {
   /** Warp/freeze manager (frozen guards, warp cache + warming). */
   warp: WarpManager;
   /** One-shot source tracking (panic/seek hard-stops these). */
-  trackOneShot(source: AudioScheduledSourceNode): void;
+  trackOneShot(source: AudioScheduledSourceNode, clipMeta?: ClipSourceMeta): void;
   releaseOneShot(source: AudioScheduledSourceNode): void;
   /** Report an asset that failed to resolve (engine diagnostics). */
   missAsset(assetId: string): void;
@@ -591,7 +607,12 @@ export class TriggerEngine {
         } catch {
           /* already started */
         }
-        this.deps.trackOneShot(segSource);
+        this.deps.trackOneShot(segSource, {
+          clipId: clip.id,
+          startBar: clip.startBar,
+          lengthBars: clip.lengthBars,
+          gainNode: segGain,
+        });
         segSource.onended = () => {
           this.deps.releaseOneShot(segSource);
           try {
@@ -629,7 +650,12 @@ export class TriggerEngine {
       } catch {
         /* already started */
       }
-      this.deps.trackOneShot(source);
+      this.deps.trackOneShot(source, {
+        clipId: clip.id,
+        startBar: clip.startBar,
+        lengthBars: clip.lengthBars,
+        gainNode: gain,
+      });
       source.onended = () => {
         this.deps.releaseOneShot(source);
         try {

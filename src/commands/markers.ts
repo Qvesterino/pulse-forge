@@ -11,10 +11,22 @@ import type { Marker, ProjectDocument } from "../project-model/types";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
 
+/**
+ * A marker link must name a live clip in EITHER clip system — a dangling id
+ * survives every save (the schema deliberately keeps any string) and silently
+ * points nowhere. Commands validate against the doc they execute on, so a
+ * composed flow that creates the clip first is unaffected.
+ */
+const clipExists = (doc: ProjectDocument, clipId: string): boolean =>
+  doc.arrangement.clips.some((c) => c.id === clipId) || (doc.arrangement.audioClips ?? []).some((c) => c.id === clipId);
+
 /* ---------------- markers ---------------- */ export function addMarker(
   doc: ProjectDocument,
   partial: { tick: number; type?: Marker["type"]; name?: string; linkedClipId?: string; customId?: string },
 ): Command {
+  if (partial.linkedClipId !== undefined && !clipExists(doc, partial.linkedClipId)) {
+    throw new Error(`Cannot link a marker to unknown clip ${partial.linkedClipId}`);
+  }
   const marker: Marker = {
     id: uid("marker"),
     name: partial.name?.trim() || `Marker ${doc.markers.length + 1}`,
@@ -59,6 +71,9 @@ export function moveMarker(doc: ProjectDocument, markerId: string, tick: number)
 export function setMarkerLinkedClip(doc: ProjectDocument, markerId: string, linkedClipId: string | null): Command {
   const target = doc.markers.find((m) => m.id === markerId);
   if (!target) throw new Error(`Marker ${markerId} not found`);
+  if (linkedClipId !== null && !clipExists(doc, linkedClipId)) {
+    throw new Error(`Cannot link marker ${markerId} to unknown clip ${linkedClipId}`);
+  }
   const next = {
     ...doc,
     markers: doc.markers.map((m) => (m.id === markerId ? { ...m, linkedClipId: linkedClipId ?? undefined } : m)),

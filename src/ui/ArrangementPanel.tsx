@@ -2121,6 +2121,21 @@ export function ArrangementPanel() {
     return Math.max(0, (event.clientX - rect.left) / width);
   };
 
+  /**
+   * RIPPLE LEFT FLOOR (command twin lives in moveArrangementClipRipple): the
+   * end bar of the stationary clip directly before a ripple block — the block
+   * may slide left up to it, never across it. Without the floor the ghost
+   * previewed an overlap the commit then wrote (and the per-clip max(0, …)
+   * piled the tail onto bar 0).
+   */
+  const ripplePredecessorEnd = (movingIds: readonly string[], origStarts: Record<string, number>): number => {
+    const minStart = Math.min(...Object.values(origStarts));
+    const moving = new Set(movingIds);
+    return doc.arrangement.clips
+      .filter((c) => !moving.has(c.id) && c.startBar + c.lengthBars <= minStart)
+      .reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
+  };
+
   const beginClipDrag = (event: React.PointerEvent, clipId: string, mode: "move" | "resize") => {
     if (event.button !== 0) return;
     event.stopPropagation();
@@ -2189,12 +2204,23 @@ export function ArrangementPanel() {
     // `barWidth` mid-drag, and mixing the two scales silently mis-places the clip.
     const bar = barFromEventAt(event, current.barWidth);
     if (current.movingIds) {
-      const delta = Math.max(bar - current.grabBar, -Math.min(...Object.values(current.origStarts ?? { 0: 0 })));
+      let delta = Math.max(bar - current.grabBar, -Math.min(...Object.values(current.origStarts ?? { 0: 0 })));
+      // Ripple preview never crosses the stationary predecessor — the ghost
+      // must show the position the commit actually writes.
+      if (rippleMode && current.origStarts) {
+        delta = Math.max(
+          delta,
+          ripplePredecessorEnd(current.movingIds, current.origStarts) - Math.min(...Object.values(current.origStarts)),
+        );
+      }
       setClipMultiDrag(delta);
       return;
     }
     if (current.mode === "move") {
-      setClipDrag({ startBar: Math.max(0, current.origStart + bar - current.grabBar), lengthBars: current.origLength });
+      let startBar = Math.max(0, current.origStart + bar - current.grabBar);
+      if (rippleMode)
+        startBar = Math.max(startBar, ripplePredecessorEnd([current.clipId], { [current.clipId]: current.origStart }));
+      setClipDrag({ startBar, lengthBars: current.origLength });
     } else {
       setClipDrag({ startBar: current.origStart, lengthBars: Math.max(1, bar - current.origStart + 1) });
     }
@@ -2229,9 +2255,15 @@ export function ArrangementPanel() {
       if (rippleMode) {
         // RIPPLE multi-move: the block and every later clip slide by the
         // same delta — gaps after the strip stay exactly as before. No
-        // collision guard: layering the strip past a stationary clip is
-        // the ripple contract (later clips move WITH the block).
+        // collision guard for the TAIL: later clips move WITH the block, so
+        // they cannot collide with it. The one hard floor is the stationary
+        // clip BEFORE the block (same discipline as the command twin): an
+        // unclamped leftward drag landed the block ON its predecessor and
+        // the per-clip Math.max(0, …) piled the tail onto bar 0.
         const minStart = Math.min(...movingIds.map((id) => current.origStarts?.[id] ?? 0));
+        const flooredDelta = current.origStarts
+          ? Math.max(delta, ripplePredecessorEnd(current.movingIds, current.origStarts) - minStart)
+          : delta;
         const clips = beforeDoc.arrangement.clips
           .map((c) =>
             movingIds.includes(c.id) || c.startBar >= minStart
@@ -2239,7 +2271,7 @@ export function ArrangementPanel() {
                 // fractional pointer position, and a fractional startBar
                 // persists off-grid (it also makes later resizes report an
                 // overlap the user cannot see on the grid).
-                { ...c, startBar: Math.max(0, Math.round(c.startBar + delta)) }
+                { ...c, startBar: Math.max(0, Math.round(c.startBar + flooredDelta)) }
               : c,
           )
           .sort((a, b) => a.startBar - b.startBar);

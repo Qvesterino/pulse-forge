@@ -118,6 +118,7 @@
 
 .mastering-file-session-context select,
 .mastering-file-session-actions select,
+.mastering-file-session-actions input[type="text"],
 .mastering-file-session-controls select,
 .mastering-file-session-controls input[type="number"] {
   min-height: 25px;
@@ -455,6 +456,40 @@
 .mastering-file-session-verdict[data-state="fail"] strong,
 .mastering-file-session-verdict small[data-state="fail"] {
   color: var(--danger, #ef4444);
+}
+
+.mastering-session-metrics {
+  flex-basis: 100%;
+  min-width: 100%;
+}
+
+.mastering-file-session-findings {
+  display: grid;
+  flex-basis: 100%;
+  gap: 5px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.mastering-file-session-findings ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.mastering-file-session-findings li,
+.mastering-file-session-findings small {
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.mastering-file-session-findings li[data-severity="red"] b {
+  color: var(--danger, #ef4444);
+}
+
+.mastering-file-session-findings li[data-severity="yellow"] b {
+  color: var(--warn, #efb34f);
 }
 
 .mastering-file-session-note {

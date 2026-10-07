@@ -105,6 +105,28 @@ function isAbortError(error: unknown): boolean {
   return typeof error === "object" && error !== null && "name" in error && error.name === "AbortError";
 }
 
+function screenReaderExportStatus(status: Status, reportStale: boolean): string {
+  const label =
+    status.kind === "idle"
+      ? "Offline render uses the same engine, instruments and effects as playback, plus a 2 second tail for reverb and delay."
+      : status.label;
+  const message = status.kind === "cancelled" ? `${label}. ${status.reason}` : label;
+  const progressMatch = status.kind === "busy" ? message.match(/\d{1,3}%/) : null;
+  const announcedMessage = progressMatch
+    ? message.replace(progressMatch[0], `${Math.floor(Number(progressMatch[0].slice(0, -1)) / 10) * 10}%`)
+    : message;
+  const staleMessage = reportStale ? "Master report is stale. Analyze again before delivery." : null;
+  return [announcedMessage, staleMessage].filter(Boolean).join(" ");
+}
+
+function sanitizeMasterVersion(value: string): string {
+  return value
+    .trim()
+    .replace(/[^\w\- ]+/g, "")
+    .replace(/\s+/g, "-")
+    .slice(0, 32);
+}
+
 type RecSourceKind = "master" | "track" | "mic";
 type RecState = "idle" | "starting" | "recording" | "saving";
 
@@ -167,7 +189,13 @@ export function ExportPanel({
   const doc = services.store.getDoc();
   const [mode, setMode] = useState<PlayMode>(masteringMode ? "song" : services.playback.mode);
   const [sampleRate, setSampleRate] = useState(44100);
-  const [bitDepth, setBitDepth] = useState<WavBitDepth>(16);
+  const [standardBitDepth, setStandardBitDepth] = useState<WavBitDepth>(16);
+  const [masteringBitDepth, setMasteringBitDepth] = useState<WavBitDepth>(recommendedExport?.bitDepth ?? 24);
+  const bitDepth = masteringMode ? masteringBitDepth : standardBitDepth;
+  const setBitDepth = (depth: WavBitDepth) => {
+    if (masteringMode) setMasteringBitDepth(depth);
+    else setStandardBitDepth(depth);
+  };
   const [format, setFormat] = useState<MasterFormat>("wav");
   // Global Live/Export quality switch — defaults to STUDIO: the export has
   // no realtime CPU budget, so PRISM's 8× saturation oversampling and VØID's
@@ -179,6 +207,8 @@ export function ExportPanel({
   const [clipSeconds, setClipSeconds] = useState(15);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [masterReport, setMasterReport] = useState<MasterRenderReport | null>(null);
+  const [masterVersion, setMasterVersion] = useState("");
+  const [masterDeliveryFileName, setMasterDeliveryFileName] = useState<string | null>(null);
 
   const markerCount = markers.length;
   /** Active export run — the CANCEL button aborts it (roadmap 1.4). */
@@ -188,6 +218,7 @@ export function ExportPanel({
   const beginExport = (): AbortSignal => {
     cancelRequestedByUserRef.current = false;
     setMasterReport(null);
+    setMasterDeliveryFileName(null);
     const controller = new AbortController();
     abortRef.current = controller;
     return controller.signal;
@@ -251,6 +282,8 @@ export function ExportPanel({
       encodedSettingsStale),
   );
   const baseName = sanitizeFilename(doc.name);
+  const version = masteringMode ? sanitizeMasterVersion(masterVersion) : "";
+  const versionSuffix = version ? `-${version}` : "";
   // Keep the workspace preflight tied to the renderer's exact duration/tail
   // estimate so Analyze and Export can explain a memory-limit failure before
   // an OfflineAudioContext is allocated.
@@ -264,7 +297,10 @@ export function ExportPanel({
   const downloadMasterReport = () => {
     if (!masterReport || reportStale) return;
     const json = serializeMasterReportSidecar(masterReport);
-    downloadBlob(new Blob([json], { type: "application/json" }), `${baseName}-master-report.json`);
+    const reportName = masterDeliveryFileName
+      ? masterDeliveryFileName.replace(/\.(?:wav|mp3)$/i, "-report.json")
+      : `${baseName}-master-report.json`;
+    downloadBlob(new Blob([json], { type: "application/json" }), reportName);
   };
 
   const exportMaster = async (download = true) => {
@@ -374,10 +410,12 @@ export function ExportPanel({
         });
         assertMasterSourceCurrent();
         setMasterReport((report) => (report ? { ...report, encodedDelivery } : report));
-        downloadBlob(blob, `${baseName}-${kbps}.mp3`);
+        const fileName = `${baseName}-${kbps}${versionSuffix}.mp3`;
+        setMasterDeliveryFileName(fileName);
+        downloadBlob(blob, fileName);
         setStatus({
           kind: "done",
-          label: `MP3 exported (${renderedDurationSeconds.toFixed(1)}s, ${kbps} kbps, ${(blob.size / 1e6).toFixed(2)} MB) — ${encodedDelivery.decode.status === "measured" ? "decoded file measured" : "header checked; audio not measured"}`,
+          label: `MP3 exported (${renderedDurationSeconds.toFixed(1)}s, ${kbps} kbps, ${(blob.size / 1e6).toFixed(2)} MB) as ${fileName} — ${encodedDelivery.decode.status === "measured" ? "decoded file measured" : "header checked; audio not measured"}`,
           summary,
         });
         return;
@@ -406,10 +444,12 @@ export function ExportPanel({
       });
       assertMasterSourceCurrent();
       setMasterReport((report) => (report ? { ...report, encodedDelivery } : report));
-      downloadBlob(wavBlob, `${baseName}-master.wav`);
+      const fileName = `${baseName}-master${versionSuffix}.wav`;
+      setMasterDeliveryFileName(fileName);
+      downloadBlob(wavBlob, fileName);
       setStatus({
         kind: "done",
-        label: `Master exported (${renderedDurationSeconds.toFixed(1)}s, ${sampleRate} Hz, ${bitDepth}-bit) — ${encodedDelivery.decode.status === "measured" ? "decoded file measured" : "header checked; audio not measured"}`,
+        label: `Master exported (${renderedDurationSeconds.toFixed(1)}s, ${sampleRate} Hz, ${bitDepth}-bit) as ${fileName} — ${encodedDelivery.decode.status === "measured" ? "decoded file measured" : "header checked; audio not measured"}`,
         summary,
       });
     } catch (error) {
@@ -948,6 +988,27 @@ export function ExportPanel({
             <option value={32}>32-bit float</option>
           </select>
         </label>
+        {masteringMode && format !== "video" && (
+          <label className="fx-param-select">
+            <span className="slider-label">VERSION</span>
+            <input
+              type="text"
+              value={masterVersion}
+              disabled={busy}
+              maxLength={32}
+              placeholder="Optional · e.g. v02"
+              title="Version for the next master export. Spaces become dashes; unsafe filename characters are removed."
+              aria-label="Master delivery version"
+              aria-describedby="master-version-hint"
+              autoCapitalize="off"
+              spellCheck={false}
+              onChange={(event) => setMasterVersion(event.target.value)}
+            />
+            <small id="master-version-hint" className="export-version-hint">
+              Next export only · spaces become dashes; unsafe filename characters are removed.
+            </small>
+          </label>
+        )}
       </div>
       {masteringMode && (
         <div className="mastering-profile-export-suggestion" role="note">
@@ -1113,20 +1174,30 @@ export function ExportPanel({
         )}
       </div>
       <div className={`export-status export-${status.kind}`}>
-        {status.kind === "idle" &&
-          "Offline render uses the exact same engine, instruments and effects as playback — plus a 2 s tail for reverb/delay."}
-        {status.kind !== "idle" && status.label}
-        {status.kind === "cancelled" && <span className="export-cancel-reason"> · {status.reason}</span>}
-        {reportStale && (
-          <span className="export-policy-warning">
-            STALE REPORT — project, sample bank or render settings changed; analyze again.
-          </span>
-        )}
+        <span aria-hidden="true">
+          {status.kind === "idle" &&
+            "Offline render uses the exact same engine, instruments and effects as playback — plus a 2 s tail for reverb/delay."}
+          {status.kind !== "idle" && status.label}
+          {status.kind === "cancelled" && <span className="export-cancel-reason"> · {status.reason}</span>}
+          {reportStale && (
+            <span className="export-policy-warning">
+              STALE REPORT — project, sample bank or render settings changed; analyze again.
+            </span>
+          )}
+        </span>
         {busy && (
           <button type="button" className="btn btn-small" onClick={cancelExport} aria-label="Cancel export">
             CANCEL
           </button>
         )}
+      </div>
+      <div
+        className="sr-only"
+        role={status.kind === "error" ? "alert" : "status"}
+        aria-live={status.kind === "error" ? "assertive" : "polite"}
+        aria-atomic="true"
+      >
+        {screenReaderExportStatus(status, reportStale)}
       </div>
       {status.kind === "done" && (!masteringMode || masterReport) && (
         <div className="master-render-measurement">

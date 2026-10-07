@@ -49,6 +49,15 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
     {
+      // Keep a focused external-mastering acceptance set in Firefox without
+      // duplicating the full Chromium E2E matrix. It covers delivery, local
+      // storage failures and render cancellation on another audio engine.
+      name: "firefox-mastering-session",
+      use: { ...devices["Desktop Firefox"] },
+      testMatch: /17-mastering-workspace\.spec\.ts/,
+      grep: /cancels external master and A\/B renders|renders, encodes, checks, and re-imports a mastering-session WAV|shows a clear message when browser storage quota blocks (a source import|a comparison reference)|explains when browser permissions block the local mastering database/,
+    },
+    {
       // Safari-engine coverage on Windows: the same scenarios through the
       // WebKit engine. Playwright's Windows WebKit build ships WITHOUT the
       // media stack (no AudioContext at all), so the engine-backed scenarios

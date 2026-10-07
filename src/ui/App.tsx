@@ -1129,9 +1129,9 @@ export function App({
       // Strip Silence + Consolidate helpers are in ArrangementPanel's audioMenu; Tab+B here is bounce which is handled above (Ctrl+B)
 
       // Range Tool: P = locators to selection (Cubase) — set loop to timeRange
-      // or the selection bbox. Runs BEFORE the tool switcher: P used to be
-      // consumed by the toolMap and this branch was unreachable. With no
-      // selection P still falls through to the pencil tool.
+      // or the selection bbox. Does nothing without a selection: the old
+      // pencil-tool fall-through belonged to the dead tool keybinds, which
+      // are gone (nothing was ever wired to the tool state).
       if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "p") {
         const hasSel =
           selection.timeRange ||
@@ -1225,25 +1225,11 @@ export function App({
         return;
       }
 
-      // Tool switching: S/C/B/E/M without modifiers, Esc handled above already resets tool.
-      // P is reserved for the locator shortcut above when a selection exists.
-      if (!event.ctrlKey && !event.metaKey && !event.altKey) {
-        const lower = event.key.toLowerCase();
-        const toolMap: Record<string, import("../store/ToolStore").Tool> = {
-          s: "select",
-          p: "pencil",
-          c: "cut",
-          b: "slip",
-          e: "stretch",
-          m: "mute",
-        };
-        const t = toolMap[lower];
-        if (t) {
-          event.preventDefault();
-          toolStore.setTool(t);
-          return;
-        }
-      }
+      // NO tool-switch keybinds here: the S/P/C/B/E/M tool map was removed —
+      // no editing behavior was ever wired to the tool state (the only
+      // consumer was a statusbar label), so the keys silently swallowed
+      // letters. Escape still resets the stored tool; the ToolStore remains
+      // the anchor for a real tool system when one lands.
 
       // Range Tool: Ctrl/Cmd+B bounce in Range (like Cubase Render in Place).
       // This is deliberately async: the buffer must be rendered from the
@@ -1610,8 +1596,7 @@ export function App({
                   fallback={
                     <span>
                       SPACE play · CTRL+K commands · ALT+1–8 panels · ? help · Ctrl+Z undo ·{" "}
-                      <kbd className="statusbar-kbd">1</kbd>–<kbd className="statusbar-kbd">9</kbd> tracks · TOOL{" "}
-                      {tool.toUpperCase()} (S/C/B/E/M)
+                      <kbd className="statusbar-kbd">1</kbd>–<kbd className="statusbar-kbd">9</kbd> tracks
                       {selection.trackIds.length > 0 && track.kind === "drum" && " · pad keys QWERTYUIASDFGHJK"}
                     </span>
                   }

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { MixHealthReport } from "../analysis/mixDoctor";
 import type { BufferSummary } from "../audio-engine/metering";
+import type { LoudnessTimeline } from "../audio-engine/kweighting";
 import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
 import {
   inspectEncodedMaster,
@@ -8,6 +10,7 @@ import {
 } from "../mastering/encodedInspection";
 import { awaitMasteringSampleBankReady } from "../mastering/readiness";
 import { evaluateDelivery, MASTER_PROFILES, resolveDeliveryTarget } from "../mastering/profiles";
+import { serializeExternalMasteringReport } from "../mastering/sessionReport";
 import {
   assertMasteringSessionWorkingSetBudget,
   estimateMasteringSessionComparisonBytes,
@@ -32,6 +35,7 @@ import { createBextMetadata, encodeWavAsync, sanitizeFilename } from "../renderi
 import type { WavBitDepth } from "../rendering/wav";
 import { downloadBlob } from "../export/download";
 import { useServices } from "./context";
+import { MasteringLoudnessTimeline } from "./MasteringLoudnessTimeline";
 import { MasteringSessionInsertRack } from "./MasteringSessionInsertRack";
 
 const MAX_DECODED_SOURCE_BYTES = 128 * 1024 * 1024;
@@ -41,7 +45,10 @@ const AUDIO_EXTENSION = /\.(wav|wave|mp3)$/i;
 interface RenderedSession {
   buffer: AudioBuffer;
   measurements: BufferSummary;
+  mixHealth: MixHealthReport;
+  loudnessTimeline: LoudnessTimeline | null;
   configRevision: number;
+  renderedAt: string;
   sampleRate: 44_100 | 48_000;
 }
 
@@ -94,6 +101,21 @@ function formatBytes(bytes: number): string {
 
 function bufferBytes(buffer: AudioBuffer | null): number {
   return buffer ? buffer.length * buffer.numberOfChannels * Float32Array.BYTES_PER_ELEMENT : 0;
+}
+
+function sanitizeSessionVersion(value: string): string {
+  return value.trim().replace(/[^\w\- ]+/g, "").replace(/\s+/g, "-").slice(0, 32);
+}
+
+function masteredWavFileName(
+  session: MasteringSessionRecord,
+  sampleRate: number,
+  bitDepth: number,
+  version: string,
+): string {
+  const baseName = sanitizeFilename(session.fileName.replace(/\.(wav|wave|mp3)$/i, ""));
+  const revision = sanitizeSessionVersion(version);
+  return `${baseName}-mastered-${sampleRate}Hz-${bitDepth}bit${revision ? `-${revision}` : ""}.wav`;
 }
 
 function awaitWithSessionAbort<T>(
@@ -264,8 +286,10 @@ export function MasteringFileSessionPanel() {
     B: "Version B",
   });
   const [inspection, setInspection] = useState<EncodedMasterInspection | null>(null);
+  const [exportedFileName, setExportedFileName] = useState<string | null>(null);
   const [sampleRate, setSampleRate] = useState<44_100 | 48_000>(44_100);
   const [bitDepth, setBitDepth] = useState<WavBitDepth>(24);
+  const [deliveryVersions, setDeliveryVersions] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState("");
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
@@ -274,6 +298,11 @@ export function MasteringFileSessionPanel() {
   const selectionEpoch = useRef(0);
   const playingRef = useRef<SessionPreviewSelection | null>(null);
   playingRef.current = playing;
+  const deliveryVersion = session ? (deliveryVersions[session.id] ?? "") : "";
+  const setDeliveryVersion = (value: string) => {
+    if (!session) return;
+    setDeliveryVersions((current) => ({ ...current, [session.id]: value }));
+  };
 
   useEffect(() => {
     let active = true;
@@ -340,8 +369,8 @@ export function MasteringFileSessionPanel() {
   const referenceAudioGain = reference ? compareGain(reference.measurements, referenceMatchTarget, matchLoudness) : 1;
   const outputMeasurements = useMemo(() => {
     if (!rendered) return null;
-    if (inspection?.decode.status === "measured" && inspection.decode.measurements) {
-      return inspection.decode.measurements;
+    if (inspection?.decode.status === "measured") {
+      return inspection.decode.measurements ?? null;
     }
     return rendered.measurements;
   }, [inspection, rendered]);
@@ -353,8 +382,9 @@ export function MasteringFileSessionPanel() {
       B: session.snapshots.B?.name ?? "Version B",
     });
   }, [session?.id, session?.snapshots.A?.id, session?.snapshots.B?.id]);
+  const deliveryTarget = useMemo(() => (draft ? resolveDeliveryTarget(draft) : null), [draft]);
   const deliveryVerdict = useMemo(() => {
-    if (!outputMeasurements || !draft) return null;
+    if (!outputMeasurements || !deliveryTarget) return null;
     return evaluateDelivery(
       {
         lufs: outputMeasurements.lufsIntegrated,
@@ -363,9 +393,19 @@ export function MasteringFileSessionPanel() {
         monoLossDb: outputMeasurements.monoLossDb,
         lrImbalanceDb: outputMeasurements.lrImbalanceDb,
       },
-      resolveDeliveryTarget(draft),
+      deliveryTarget,
     );
-  }, [draft, outputMeasurements]);
+  }, [deliveryTarget, outputMeasurements]);
+  const outputMixHealth =
+    inspection?.decode.status === "measured" ? (inspection.decode.mixHealth ?? null) : (rendered?.mixHealth ?? null);
+  const outputLoudnessTimeline =
+    inspection?.decode.status === "measured"
+      ? (inspection.decode.loudnessTimeline ?? null)
+      : (rendered?.loudnessTimeline ?? null);
+  const outputDurationSeconds =
+    inspection?.decode.status === "measured"
+      ? (inspection.decode.durationSeconds ?? rendered?.buffer.duration ?? 0)
+      : (rendered?.buffer.duration ?? 0);
 
   useEffect(() => {
     if (playing === "A") services.engine.updateMasterComparePreview(comparisonGainA, false);
@@ -393,6 +433,7 @@ export function MasteringFileSessionPanel() {
       setDraft(null);
       setRendered(null);
       setInspection(null);
+      setExportedFileName(null);
       setError("");
       setNotice("");
       if (!id) {
@@ -494,6 +535,7 @@ export function MasteringFileSessionPanel() {
         if (estimatedDecodeBytes > MAX_DECODED_SOURCE_BYTES) {
           throw new Error("The decoded source would exceed KYX's 128 MiB source-memory limit.");
         }
+        setBusy("Fingerprinting source file…");
         const sourceHash = await awaitWithSessionAbort(sha256Hex(bytes), controller.signal, "Source import cancelled");
         ensureActive();
         setProgress("Decoding source audio…");
@@ -606,6 +648,7 @@ export function MasteringFileSessionPanel() {
         const baseBytes =
           estimateMasteringSessionWorkingSetBytes(source, draft, sampleRate) + bufferBytes(reference?.buffer ?? null);
         assertMasteringSessionWorkingSetBudget(baseBytes + estimatedReferenceBytes);
+        setBusy("Fingerprinting comparison reference…");
         const sourceHash = await awaitWithSessionAbort(
           sha256Hex(bytes),
           controller.signal,
@@ -961,13 +1004,22 @@ export function MasteringFileSessionPanel() {
         signal: controller.signal,
       });
       if (controller.signal.aborted) throw new DOMException("Render cancelled", "AbortError");
+      const renderedAt = new Date().toISOString();
       setBusy("Analyzing rendered master…");
       const analysis = await analyzeMasterBufferAsync(buffer, resolveDeliveryTarget(draft), {
         signal: controller.signal,
         onProgress: (update) => setProgress(`${update.stage} · ${Math.round(update.progress * 100)}%`),
       });
       if (controller.signal.aborted) throw new DOMException("Analysis cancelled", "AbortError");
-      setRendered({ buffer, measurements: analysis.measurements, configRevision: session.configRevision, sampleRate });
+      setRendered({
+        buffer,
+        measurements: analysis.measurements,
+        mixHealth: analysis.mixHealth,
+        loudnessTimeline: analysis.loudnessTimeline,
+        configRevision: session.configRevision,
+        renderedAt,
+        sampleRate,
+      });
       setNotice("Studio render and loudness analysis are ready. Review the measurements, then export the checked WAV.");
     } catch (reason) {
       if (selectionEpoch.current !== epoch) return;
@@ -997,6 +1049,7 @@ export function MasteringFileSessionPanel() {
     setNotice("");
     setProgress("");
     setInspection(null);
+    setExportedFileName(null);
     setComparison(null);
     try {
       const wav = await encodeWavAsync(rendered.buffer, bitDepth, {
@@ -1030,7 +1083,8 @@ export function MasteringFileSessionPanel() {
       });
       if (controller.signal.aborted) throw new DOMException("Export cancelled", "AbortError");
       setInspection(checked);
-      const fileName = `${sanitizeFilename(session.fileName.replace(/\.(wav|wave|mp3)$/i, ""))}-mastered-${rendered.sampleRate}Hz-${bitDepth}bit.wav`;
+      const fileName = masteredWavFileName(session, rendered.sampleRate, bitDepth, deliveryVersion);
+      setExportedFileName(fileName);
       downloadBlob(deliveryBlob, fileName);
       setNotice(
         checked.decode.status === "measured"
@@ -1051,7 +1105,36 @@ export function MasteringFileSessionPanel() {
         setProgress("");
       }
     }
-  }, [bitDepth, draft, renderCurrent, rendered, session, stopSessionPreview]);
+  }, [bitDepth, deliveryVersion, draft, renderCurrent, rendered, session, stopSessionPreview]);
+
+  const downloadDeliveryReport = useCallback(() => {
+    if (!session || !draft || !rendered || !renderCurrent || !inspection || !deliveryVerdict) return;
+    const fileName =
+      exportedFileName ??
+      masteredWavFileName(
+        session,
+        inspection.file.sampleRate,
+        inspection.file.bitDepth ?? bitDepth,
+        deliveryVersion,
+      );
+    const report = serializeExternalMasteringReport({
+      session,
+      masterConfig: draft,
+      profile: resolveDeliveryTarget(draft),
+      renderedAt: rendered.renderedAt,
+      renderConfigRevision: rendered.configRevision,
+      sampleRate: rendered.sampleRate,
+      durationSeconds: rendered.buffer.duration,
+      sourceMeasurements: rendered.measurements,
+      sourceMixHealth: rendered.mixHealth,
+      sourceLoudnessTimeline: rendered.loudnessTimeline,
+      inspection,
+      exportedFileName: fileName,
+      deliveryVerdict,
+    });
+    const reportName = fileName.replace(/\.wav$/i, "-report.json");
+    downloadBlob(new Blob([report], { type: "application/json" }), reportName);
+  }, [bitDepth, deliveryVersion, deliveryVerdict, draft, exportedFileName, inspection, renderCurrent, rendered, session]);
 
   const deleteSession = useCallback(async () => {
     if (!session) return;
@@ -1524,6 +1607,24 @@ export function MasteringFileSessionPanel() {
                 <option value={32}>32-bit float</option>
               </select>
             </label>
+            <label>
+              <strong>VERSION</strong>
+              <input
+                type="text"
+                value={deliveryVersion}
+                disabled={Boolean(busy)}
+                maxLength={32}
+                placeholder="Optional · e.g. v02"
+                aria-label="External master delivery version"
+                aria-describedby="external-master-version-hint"
+                autoCapitalize="off"
+                spellCheck={false}
+                onChange={(event) => setDeliveryVersion(event.target.value)}
+              />
+              <small id="external-master-version-hint" className="export-version-hint">
+                Spaces become dashes; unsafe filename characters are removed.
+              </small>
+            </label>
             <span className="mastering-file-session-budget">
               RENDER MEMORY {estimatedBytes > 0 ? formatBytes(estimatedBytes) : "—"} / 512 MiB
             </span>
@@ -1610,12 +1711,83 @@ export function MasteringFileSessionPanel() {
                 ? "RENDER PCM · ENCODED WAV NOT MEASURED"
                 : "RENDER PCM · PRE-ENCODE"}
           </strong>
-          <span>{outputMeasurements?.lufsIntegrated.toFixed(1)} LUFS</span>
-          <span>{outputMeasurements?.truePeakDb.toFixed(1)} dBTP</span>
+          <span>{outputMeasurements ? `${outputMeasurements.lufsIntegrated.toFixed(1)} LUFS` : "NOT MEASURED"}</span>
+          <span>{outputMeasurements ? `${outputMeasurements.truePeakDb.toFixed(1)} dBTP` : "NOT MEASURED"}</span>
           <span>
             {rendered.buffer.duration.toFixed(1)} s · {rendered.buffer.numberOfChannels} ch ·{" "}
             {rendered.sampleRate / 1000} kHz
           </span>
+          {outputMeasurements && (
+            <div className="mastering-overview-metrics mastering-session-metrics">
+              <div className="mastering-overview-metric">
+                <span>INTEGRATED LOUDNESS</span>
+                <strong>{outputMeasurements.lufsIntegrated.toFixed(1)} LUFS</strong>
+                <small>
+                  {deliveryVerdict
+                    ? `${deliveryVerdict.loudnessDeltaDb > 0 ? "+" : ""}${deliveryVerdict.loudnessDeltaDb.toFixed(1)} LU vs ${deliveryTarget?.targetLufs} LUFS target`
+                    : "Measured programme loudness"}
+                </small>
+              </div>
+              <div className="mastering-overview-metric">
+                <span>TRUE PEAK / MARGIN</span>
+                <strong>{outputMeasurements.truePeakDb.toFixed(1)} dBTP</strong>
+                <small>
+                  {deliveryTarget
+                    ? `${deliveryTarget.maxTruePeakDb - outputMeasurements.truePeakDb >= 0 ? "+" : ""}${(deliveryTarget.maxTruePeakDb - outputMeasurements.truePeakDb).toFixed(1)} dB to ${deliveryTarget.maxTruePeakDb} dBTP ceiling`
+                    : "Measured true peak"}
+                </small>
+              </div>
+              <div
+                className="mastering-overview-metric"
+                data-state={
+                  outputMeasurements.channelCount < 2 || outputMeasurements.lufsIntegrated <= -119 ? "warn" : ""
+                }
+              >
+                <span>STEREO / MONO</span>
+                <strong>
+                  {outputMeasurements.channelCount < 2
+                    ? "MONO SOURCE"
+                    : outputMeasurements.lufsIntegrated <= -119
+                      ? "NOT MEASURED"
+                      : "STEREO MEASURED"}
+                </strong>
+                <small>
+                  {outputMeasurements.channelCount < 2
+                    ? "Stereo compatibility checks are not measured for mono audio"
+                    : outputMeasurements.lufsIntegrated <= -119
+                      ? "No measurable signal for stereo compatibility checks"
+                      : `Correlation ${outputMeasurements.correlation.toFixed(2)} · mono loss ${outputMeasurements.monoLossDb.toFixed(1)} dB${outputMeasurements.lrImbalanceDb == null ? "" : ` · L/R ${outputMeasurements.lrImbalanceDb.toFixed(1)} dB`}`}
+                </small>
+              </div>
+              <div className="mastering-overview-metric">
+                <span>LOUDNESS RANGE</span>
+                <strong>
+                  {outputMeasurements.loudnessRangeLu == null
+                    ? "NOT MEASURED"
+                    : `${outputMeasurements.loudnessRangeLu.toFixed(1)} LU`}
+                </strong>
+                <small>
+                  {outputMeasurements.loudnessRangeLu == null
+                    ? outputDurationSeconds < 3
+                      ? "Needs a programme of at least 3 s"
+                      : "No 3 s windows passed the EBU gates"
+                    : "EBU Tech 3342 · supplementary dynamics descriptor, not a target"}
+                </small>
+              </div>
+              <div className="mastering-overview-metric">
+                <span>CREST / MIX DOCTOR</span>
+                <strong>{outputMixHealth ? `${outputMixHealth.crestDb.toFixed(1)} dB crest` : "NOT MEASURED"}</strong>
+                <small>
+                  {outputMixHealth
+                    ? outputMixHealth.flags.length > 0
+                      ? `${outputMixHealth.flags.filter((flag) => flag.severity === "red").length} critical · ${outputMixHealth.flags.filter((flag) => flag.severity === "yellow").length} advisory findings`
+                      : "No Mix Doctor findings"
+                    : "Mix Doctor data unavailable"}
+                </small>
+              </div>
+            </div>
+          )}
+          <MasteringLoudnessTimeline timeline={outputLoudnessTimeline} />
           {inspection && (
             <small>
               {inspection.decode.status === "measured"
@@ -1635,6 +1807,32 @@ export function MasteringFileSessionPanel() {
                 </small>
               ))}
             </div>
+          )}
+          {outputMixHealth && (
+            <div className="mastering-file-session-findings" aria-label="Mix Doctor findings">
+              <strong>MIX DOCTOR · {outputMixHealth.ok ? "NO FLAGS" : "REVIEW FINDINGS"}</strong>
+              {outputMixHealth.flags.length > 0 ? (
+                <ul>
+                  {outputMixHealth.flags.map((flag, index) => (
+                    <li key={`${flag.check}-${index}`} data-severity={flag.severity}>
+                      <b>{flag.check}</b> {flag.detail}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <small>No mix-health threshold flags were raised for this measured audio.</small>
+              )}
+            </div>
+          )}
+          {inspection && (
+            <button
+              type="button"
+              className="btn btn-small"
+              disabled={!session || !draft || !renderCurrent || !deliveryVerdict || Boolean(busy)}
+              onClick={downloadDeliveryReport}
+            >
+              Download delivery report JSON
+            </button>
           )}
         </div>
       )}

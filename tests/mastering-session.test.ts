@@ -184,6 +184,47 @@ describe("external mastering session persistence", () => {
     await repository.delete(id);
     await expect(repository.getReference(id)).resolves.toBeNull();
   });
+
+  it("preserves IndexedDB quota errors from asynchronous reference writes", async () => {
+    const repository = new MasteringSessionRepository();
+    const id = `reference-quota-${Date.now()}`;
+    await repository.put(createTestMasteringSession(id));
+    const reference = {
+      sessionId: id,
+      fileName: "reference.wav",
+      mimeType: "audio/wav",
+      byteLength: 4,
+      source: new NodeBlob([new Uint8Array([5, 6, 7, 8])], { type: "audio/wav" }) as unknown as Blob,
+      sourceHash: "d".repeat(64),
+      durationSeconds: 1,
+      channels: 2 as const,
+      sampleRate: 44_100,
+      importedAt: "2026-10-07T12:04:00.000Z",
+    };
+    const originalPut = IDBObjectStore.prototype.put;
+    Object.defineProperty(IDBObjectStore.prototype, "put", {
+      configurable: true,
+      writable: true,
+      value: function (this: IDBObjectStore, value: unknown, key?: IDBValidKey): IDBRequest<IDBValidKey> {
+        if (this.name === MASTERING_SESSION_REFERENCE_STORE) {
+          throw new DOMException("Simulated storage exhaustion", "QuotaExceededError");
+        }
+        if (arguments.length > 1) return originalPut.call(this, value, key);
+        return originalPut.call(this, value);
+      },
+    });
+    try {
+      await expect(repository.putReference(reference)).rejects.toMatchObject({ name: "QuotaExceededError" });
+      await expect(repository.getReference(id)).resolves.toBeNull();
+    } finally {
+      Object.defineProperty(IDBObjectStore.prototype, "put", {
+        configurable: true,
+        writable: true,
+        value: originalPut,
+      });
+    }
+    await repository.delete(id);
+  });
 });
 
 describe("mastering A/B session snapshots", () => {

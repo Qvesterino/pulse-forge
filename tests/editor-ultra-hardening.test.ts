@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { addArrangementClip, createVariationAndPlaceClip } from "../src/commands/arrangement";
-import { appendCapturedArrangement, createArrangementSkeleton } from "../src/commands/arrangementShapes";
-import { addMarker, moveMarker } from "../src/commands/markers";
-import { setSceneIntensityCurve } from "../src/commands/clipPlayback";
+import {
+  appendCapturedArrangement,
+  autoArrangeSong,
+  createArrangementSkeleton,
+} from "../src/commands/arrangementShapes";
+import { addMarker, moveMarker, setMarkerLinkedClip } from "../src/commands/markers";
+import { moveArrangementClipRipple, setSceneIntensityCurve } from "../src/commands/clipPlayback";
 import { consolidateTimeRange, duplicateTimeRange } from "../src/commands/timeRange";
 import { addEffect, duplicateTrack } from "../src/commands/tracks";
 import { addNote } from "../src/commands/notes";
-import { addAudioTakeClip } from "../src/commands/audioClips";
+import { addAudioClip, addAudioTakeClip } from "../src/commands/audioClips";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { MAX_ARRANGEMENT_CLIP_BARS } from "../src/project-model/schema";
 import { ProjectStore } from "../src/store/ProjectStore";
@@ -319,5 +323,117 @@ describe("audio take group integrity under selection-free edits (§9/§28)", () 
     expect(groupClips.length).toBe(2);
     expect(groupClips.every((c) => c.trackId === track.id)).toBe(true);
     expect(new Set(groupClips.map((c) => c.takeId)).size).toBe(2);
+  });
+});
+
+/* ---------------- Wave B (2026-10-07): semantic healing ---------------- */
+
+function roleSceneDoc(): ProjectDocument {
+  const base = emptyArrangementDoc();
+  const roles = ["intro", "build", "drop", "break", "outro"] as const;
+  return {
+    ...base,
+    scenes: [...base.scenes, ...roles.map((role, i) => ({ ...base.scenes[0]!, id: `role-sc-${i}`, name: role, role }))],
+  };
+}
+
+describe("autoArrangeSong keeps user markers (§27)", () => {
+  it("preserves user cues, unlinks dead clip links, clamps to the new project end", () => {
+    let doc = roleSceneDoc();
+    doc = addArrangementClip(doc, doc.scenes[0]!.id, 0, 4).execute(doc);
+    const oldClipId = doc.arrangement.clips[0]!.id;
+    doc = addMarker(doc, { tick: 2 * BAR_TICKS, name: "linked cue", linkedClipId: oldClipId }).execute(doc);
+    doc = addMarker(doc, { tick: 2 * BAR_TICKS, name: "free cue" }).execute(doc);
+    doc = addMarker(doc, { tick: 400 * BAR_TICKS, name: "far cue" }).execute(doc);
+
+    const next = autoArrangeSong(doc).execute(doc);
+    // New layout markers exist alongside the survivors.
+    expect(next.markers.length).toBeGreaterThanOrEqual(4);
+    // The linked user cue survived WITHOUT the dead link — the old code
+    // wholesale-replaced the marker array and silently destroyed it.
+    const linked = next.markers.find((m) => m.name === "linked cue")!;
+    expect(linked).toBeDefined();
+    expect(linked.linkedClipId).toBeUndefined();
+    expect(next.markers.find((m) => m.name === "free cue")).toBeDefined();
+    // The far cue survived but clamped to the NEW project end (in-command,
+    // so undo restores the original tick).
+    const far = next.markers.find((m) => m.name === "far cue")!;
+    expect(far).toBeDefined();
+    const projectEndTicks = Math.max(0, ...next.arrangement.clips.map((c) => (c.startBar + c.lengthBars) * BAR_TICKS));
+    expect(far.tick).toBeLessThanOrEqual(projectEndTicks);
+    expect(far.tick).toBeLessThan(400 * BAR_TICKS);
+
+    // Undo restores the pre-arrange markers verbatim.
+    const store = new ProjectStore(doc);
+    store.execute(autoArrangeSong(doc));
+    expect(store.getDoc().markers.length).toBeGreaterThan(doc.markers.length);
+    store.undo();
+    expect(store.getDoc().markers).toEqual(doc.markers);
+  });
+});
+
+describe("moveArrangementClipRipple left floor (§5/§16)", () => {
+  function threeClipDoc(): { doc: ProjectDocument; bId: string } {
+    let doc = emptyArrangementDoc();
+    doc = addArrangementClip(doc, doc.scenes[0]!.id, 0, 4).execute(doc); // A [0,4)
+    doc = addArrangementClip(doc, doc.scenes[0]!.id, 10, 2).execute(doc); // B [10,12)
+    doc = addArrangementClip(doc, doc.scenes[0]!.id, 14, 2).execute(doc); // C [14,16)
+    return { doc, bId: doc.arrangement.clips.find((c) => c.startBar === 10)!.id };
+  }
+
+  const assertNoOverlap = (clips: ProjectDocument["arrangement"]["clips"]): void => {
+    const sorted = [...clips].sort((x, y) => x.startBar - y.startBar);
+    for (let i = 1; i < sorted.length; i++)
+      expect(sorted[i]!.startBar).toBeGreaterThanOrEqual(sorted[i - 1]!.startBar + sorted[i - 1]!.lengthBars);
+  };
+
+  it("the moved clip stops at the predecessor instead of overlapping it", () => {
+    const { doc, bId } = threeClipDoc();
+    const next = moveArrangementClipRipple(doc, bId, 1).execute(doc);
+    const clips = next.arrangement.clips;
+    // Pre-fix: B landed at bar 1, ON A[0,4), and C was pulled to bar 5 —
+    // also onto A's tail region.
+    expect(clips.find((c) => c.id === bId)!.startBar).toBe(4);
+    expect(clips.find((c) => c.startBar === 8)).toBeDefined(); // C shifted by -6, gap preserved
+    assertNoOverlap(clips);
+  });
+
+  it("an extreme leftward ripple piles nothing onto bar 0", () => {
+    const { doc, bId } = threeClipDoc();
+    const next = moveArrangementClipRipple(doc, bId, -50).execute(doc);
+    const clips = next.arrangement.clips;
+    expect(clips.find((c) => c.id === bId)!.startBar).toBe(4);
+    // Pre-fix the per-clip Math.max(0, …) wrote B AND C both at bar 0.
+    expect(clips.every((c) => c.startBar >= 0)).toBe(true);
+    assertNoOverlap(clips);
+  });
+});
+
+describe("marker link validation (§6)", () => {
+  it("addMarker refuses a linkedClipId that names no live clip", () => {
+    const doc = createProjectFromTemplate("house");
+    expect(() => addMarker(doc, { tick: 0, linkedClipId: "clip-does-not-exist" }).execute(doc)).toThrow(/unknown clip/);
+  });
+
+  it("addMarker accepts scene-clip and audio-clip ids", () => {
+    let doc = emptyArrangementDoc();
+    doc = addArrangementClip(doc, doc.scenes[0]!.id, 0, 4).execute(doc);
+    const sceneClipId = doc.arrangement.clips[0]!.id;
+    const track = doc.tracks.find((t) => t.kind !== "group")!;
+    doc = addAudioClip(doc, track.id, "buf", 0, 2).execute(doc);
+    const audioClipId = (doc.arrangement.audioClips ?? [])[0]!.id;
+    let next = addMarker(doc, { tick: 0, linkedClipId: sceneClipId }).execute(doc);
+    expect(next.markers.some((m) => m.linkedClipId === sceneClipId)).toBe(true);
+    next = addMarker(next, { tick: 1, linkedClipId: audioClipId }).execute(next);
+    expect(next.markers.some((m) => m.linkedClipId === audioClipId)).toBe(true);
+  });
+
+  it("setMarkerLinkedClip refuses unknown clips and unlinks with null", () => {
+    let doc = createProjectFromTemplate("house");
+    doc = addMarker(doc, { tick: 0 }).execute(doc);
+    const markerId = doc.markers[0]!.id;
+    expect(() => setMarkerLinkedClip(doc, markerId, "nope").execute(doc)).toThrow(/unknown clip/);
+    const next = setMarkerLinkedClip(doc, markerId, null).execute(doc);
+    expect(next.markers.find((m) => m.id === markerId)!.linkedClipId).toBeUndefined();
   });
 });
