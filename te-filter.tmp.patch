@@ -1,0 +1,98 @@
+diff --git a/src/audio-engine/triggerEngine.ts b/src/audio-engine/triggerEngine.ts
+index deb59b2c..1d085669 100644
+--- a/src/audio-engine/triggerEngine.ts
++++ b/src/audio-engine/triggerEngine.ts
+@@ -15,6 +15,13 @@ export interface TriggerVoice {
+   filter?: BiquadFilterNode;
+   /** Per-pad mod nodes (LFO osc + depth gain) — disconnected with the voice. */
+   extras?: AudioNode[];
++  /**
++   * Owner tag stamped by `withVoiceOwner` — a transient player (ghost
++   * preview) tags its voices so its stop() can kill exactly its own overhang.
++   * Untagged voices belong to the live scheduler/transport and are never
++   * matched by `stopVoicesForOwner`.
++   */
++  owner?: string;
+ }
+ 
+ /**
+@@ -198,6 +205,8 @@ export function warpSegmentRenders(
+ export class TriggerEngine {
+   private voices = new Set<TriggerVoice>();
+   private synthNoise: AudioBuffer | null = null;
++  /** Scope tag for voices created inside `withVoiceOwner` — see that method. */
++  private pendingVoiceOwner: string | undefined;
+ 
+   constructor(
+     private readonly deps: TriggerEngineDeps,
+@@ -233,6 +242,46 @@ export class TriggerEngine {
+     this.synthNoise = null;
+   }
+ 
++  /**
++   * Tag every voice created inside `fn` with `owner` (nesting-safe: inner
++   * scopes inherit the outer tag unless they override it, and the previous
++   * tag is restored on exit). Exists so a transient player can claim its
++   * voices WITHOUT threading another parameter through trigger/noteOn —
++   * the scheduler/live path simply never scopes.
++   */
++  withVoiceOwner<T>(owner: string, fn: () => T): T {
++    const previous = this.pendingVoiceOwner;
++    this.pendingVoiceOwner = owner;
++    try {
++      return fn();
++    } finally {
++      this.pendingVoiceOwner = previous;
++    }
++  }
++
++  /**
++   * De-clicked stop of ONLY the voices an owner tagged — a transient player
++   * kills its own overhang (events already committed to the WebAudio clock:
++   * pending starts in the lookahead window plus notes still ringing) without
++   * touching scheduler/live-transport sound, which is never tagged. Same
++   * de-click idiom as `panicVoices`.
++   */
++  stopVoicesForOwner(owner: string, now: number): void {
++    for (const voice of this.voices) {
++      if (voice.owner !== owner) continue;
++      this.voices.delete(voice);
++      voice.gain.gain.cancelScheduledValues(now);
++      voice.gain.gain.setTargetAtTime(0, now, 0.008);
++      const stopAll = (voice as unknown as { _stopAll?: (t: number) => void })._stopAll;
++      try {
++        if (stopAll) stopAll(now + 0.05);
++        else voice.source.stop(now + 0.05);
++      } catch {
++        /* already stopped */
++      }
++    }
++  }
++
+   /** Live panic: de-clicked ramps, then stop (verbatim from the old panic loop). */
+   panicVoices(now: number): void {
+     for (const voice of this.voices) {
+@@ -772,7 +821,14 @@ export class TriggerEngine {
+       source.connect(gain).connect(panner).connect(trackNodes.input);
+     }
+ 
+-    const voice: TriggerVoice = { source, gain, trackId, chokeGroup: pad.chokeGroup, filter: voiceFilter ?? undefined };
++    const voice: TriggerVoice = {
++      source,
++      gain,
++      trackId,
++      chokeGroup: pad.chokeGroup,
++      filter: voiceFilter ?? undefined,
++      ...(this.pendingVoiceOwner !== undefined ? { owner: this.pendingVoiceOwner } : {}),
++    };
+     if (modActive) this.attachPadMod(voice, mod!, peak, when, endWhen);
+     this.addDrumVoice(voice);
+     source.onended = () => {
+@@ -945,6 +1001,7 @@ export class TriggerEngine {
+         gain: voiceGain,
+         trackId,
+         chokeGroup: pad.chokeGroup,
++        ...(this.pendingVoiceOwner !== undefined ? { owner: this.pendingVoiceOwner } : {}),
+       };
+       // Store all sources for choke/silence
+       const allSources = [...sources];

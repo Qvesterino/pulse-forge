@@ -91,7 +91,8 @@ export type InstrumentKind =
   | "logdrum"
   | "spectral"
   | "vocalchop"
-  | "drumsynth";
+  | "drumsynth"
+  | "tsar";
 
 export interface EffectInstance {
   id: ID;
@@ -271,6 +272,12 @@ export interface InstrumentTrack {
   mute: boolean;
   solo: boolean;
   sampleId: string | null;
+  /**
+   * Second source for hybrid engines (TSAR Source B). Absent = no B source.
+   * The engine's `srcBEngine`/`srcBLevel` params decide whether it is heard;
+   * this is the sample identity only (docs/TSAR-ROADMAP.md, ADR 0023).
+   */
+  sampleIdB?: string | null;
   /**
    * Velocity/round-robin sample layers (sampler). Absent or empty = classic
    * single-sample mode via `sampleId`.

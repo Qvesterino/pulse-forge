@@ -1,4 +1,10 @@
-import { mulberry32, quantizeInt16Sample, softClipSample } from "../export/quantize";
+import {
+  assertIntegerPcmRange,
+  mulberry32,
+  quantizeInt16Sample,
+  softClipSample,
+  type IntegerOverflowPolicy,
+} from "../export/quantize";
 import { downloadBlob } from "../export/download";
 
 export type WavBitDepth = 16 | 24 | 32;
@@ -197,20 +203,21 @@ function writeSample(
   input: number,
   bitDepth: WavBitDepth,
   ditherRand: () => number,
+  integerOverflowPolicy: IntegerOverflowPolicy,
 ): number {
-  // Keep non-finite render artefacts from poisoning the file, but feed
-  // hot finite samples through the shared soft-knee policy. Clamping
-  // before softClipSample would turn the 24/32-bit paths into a hidden
-  // hard clip at exactly full scale.
-  const sample = Number.isFinite(input) ? input : 0;
   if (bitDepth === 16) {
-    view.setInt16(offset, quantizeInt16Sample(sample, ditherRand), true);
+    view.setInt16(offset, quantizeInt16Sample(input, ditherRand, integerOverflowPolicy), true);
     return offset + 2;
   }
+  // Keep non-finite render artefacts from poisoning float output. Strict
+  // mastering PCM rejects them before the finite fallback can mask them.
+  if (bitDepth === 24 && integerOverflowPolicy === "reject") assertIntegerPcmRange(input);
+  const sample = Number.isFinite(input) ? input : 0;
   // 32-bit float is the interchange/mastering format: retain finite
   // over-range samples and let the receiving DAW preserve the headroom.
-  // Integer PCM still uses the export soft-knee to avoid hard clipping.
-  const clipped = bitDepth === 32 ? sample : softClipSample(sample);
+  // Legacy integer exports use the soft-knee; mastering delivery can instead
+  // pass every in-range sample unchanged after its explicit overflow check.
+  const clipped = bitDepth === 32 || integerOverflowPolicy === "reject" ? sample : softClipSample(sample);
   if (bitDepth === 24) {
     const value = Math.round(clipped * (clipped < 0 ? 0x800000 : 0x7fffff));
     view.setUint8(offset, value & 0xff);
@@ -225,6 +232,8 @@ function writeSample(
 export interface EncodeWavOptions {
   /** Optional BWF `bext` chunk (EBU Tech 3285) — pro-interchange metadata. */
   bext?: WavBextMetadata;
+  /** Use `reject` for mastering delivery to prevent automatic saturation of integer PCM. */
+  integerOverflowPolicy?: IntegerOverflowPolicy;
 }
 
 export function encodeWav(buffer: AudioBuffer, bitDepth: WavBitDepth, options: EncodeWavOptions = {}): ArrayBuffer {
@@ -232,6 +241,7 @@ export function encodeWav(buffer: AudioBuffer, bitDepth: WavBitDepth, options: E
   const sampleRate = buffer.sampleRate;
   const frames = buffer.length;
   const { arrayBuffer, view, dataStart } = createWavContainer(numChannels, sampleRate, frames, bitDepth, options.bext);
+  const integerOverflowPolicy = options.integerOverflowPolicy ?? "soft-knee";
 
   const channels: Float32Array[] = [];
   for (let ch = 0; ch < numChannels; ch++) channels.push(buffer.getChannelData(ch));
@@ -241,7 +251,7 @@ export function encodeWav(buffer: AudioBuffer, bitDepth: WavBitDepth, options: E
   const ditherRand = mulberry32(0x57415631);
   for (let i = 0; i < frames; i++) {
     for (let ch = 0; ch < numChannels; ch++) {
-      offset = writeSample(view, offset, channels[ch][i], bitDepth, ditherRand);
+      offset = writeSample(view, offset, channels[ch][i], bitDepth, ditherRand, integerOverflowPolicy);
     }
   }
   return arrayBuffer;
@@ -287,7 +297,7 @@ function yieldForNextTask(signal?: AbortSignal): Promise<void> {
  * per-sample loop (~seconds on a 4-minute 24-bit master), while this one
  * processes 64k-frame blocks and hands control back to the event loop
  * between them, reporting progress and honoring an abort signal.
- * Byte-identical output: same soft-knee/dither policy, one continuous
+ * Byte-identical output: same overflow/dither policy, one continuous
  * seeded PRNG across blocks.
  */
 export async function encodeWavAsync(
@@ -300,6 +310,7 @@ export async function encodeWavAsync(
   const sampleRate = buffer.sampleRate;
   const frames = buffer.length;
   const { arrayBuffer, view, dataStart } = createWavContainer(numChannels, sampleRate, frames, bitDepth, options.bext);
+  const integerOverflowPolicy = options.integerOverflowPolicy ?? "soft-knee";
 
   const channels: Float32Array[] = [];
   for (let ch = 0; ch < numChannels; ch++) channels.push(buffer.getChannelData(ch));
@@ -310,7 +321,7 @@ export async function encodeWavAsync(
     const end = Math.min(frames, start + ENCODE_BLOCK_FRAMES);
     for (let i = start; i < end; i++) {
       for (let ch = 0; ch < numChannels; ch++) {
-        offset = writeSample(view, offset, channels[ch][i], bitDepth, ditherRand);
+        offset = writeSample(view, offset, channels[ch][i], bitDepth, ditherRand, integerOverflowPolicy);
       }
     }
     options.onProgress?.(end / frames);

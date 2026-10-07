@@ -14,6 +14,7 @@ import type { ParamDef } from "../effects/types";
 import { ENV_SHAPE_OPTIONS } from "./envelope";
 import { modMatrixParams } from "./modmatrix";
 import { FACTORY_TABLE_OPTIONS, FACTORY_WAVETABLES } from "./wavetables";
+import { tsarParams } from "../tsar/params";
 
 export const WAVE_NAMES = ["sine", "triangle", "sawtooth", "square"] as const;
 
@@ -892,6 +893,7 @@ export const INSTRUMENT_META: Record<InstrumentKind, InstrumentDefinitionMeta> =
   spectral: { kind: "spectral", name: "Spectral Pad", params: spectralParams },
   vocalchop: { kind: "vocalchop", name: "Vocal Chop", params: vocalchopParams },
   drumsynth: { kind: "drumsynth", name: "Drum Synth", params: drumsynthParams },
+  tsar: { kind: "tsar", name: "TSAR", params: tsarParams },
 };
 
 export const INSTRUMENT_ORDER: InstrumentKind[] = [
@@ -917,6 +919,7 @@ export const INSTRUMENT_ORDER: InstrumentKind[] = [
   "spectral",
   "vocalchop",
   "drumsynth",
+  "tsar",
 ];
 
 export function defaultInstrumentParams(kind: InstrumentKind): Record<string, number> {

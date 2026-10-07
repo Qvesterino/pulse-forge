@@ -48,6 +48,8 @@
     outPeak = 0;
     /** Preallocated per-block event scratch (no allocation in the render path). */
     blockEvents = [];
+    /** Smoothed polyphony divisor (1 → one voice, N → N voices). */
+    polyGain = 1;
     constructor(options) {
       this.sampleRate = options.sampleRate > 0 ? options.sampleRate : 48e3;
       for (let i = 0; i < MAX_VOICES; i++) this.voices.push(this.makeVoice(i));
@@ -224,27 +226,39 @@
       }
     }
     /**
-     * State-variable filter (Chamberlin-ish 2-pole). `state` holds the two
-     * integrators; the caller owns persistence per voice.
+     * Chamberlin semi-implicit SVF, ported from the repo's proven
+     * `svfilter-processor.js`:
+     *   hp = in − lp − q·bp;  bp += f·hp;  lp += f·bp
+     * with the same stability guard — the recursion diverges when f·q exceeds
+     * (4 − f²)/2, which happens at HIGH cutoff with LOW resonance. Scaling q
+     * into the stable region is the fix the worklet already verified; without
+     * it a wide-open cutoff turns into a limit cycle instead of passing the
+     * signal through (measured during T1: cutoff 18000 kHz at q 0.8 was
+     * unstable — the earlier "formant" SVF form normalized by
+     * (1 + q·f + f²) instead and barely filtered at all).
      */
-    runSvf(input, type, cutoffHz, q, state) {
+    runSvf(input, type, cutoffHz, qParam, state) {
+      const res = clamp((qParam - 0.3) / 11.7, 0, 1);
       const f = 2 * Math.sin(Math.PI * clamp(cutoffHz, 20, this.sampleRate * 0.24) / this.sampleRate);
-      const qq = 2 - 2 * clamp(q / 12, 0, 1);
-      const hp = (input - qq * state.s1 - state.s2) / (1 + qq * f + f * f);
-      const bp = f * hp + state.s1;
-      state.s1 = f * hp + bp;
-      const lp = f * bp + state.s2;
-      state.s2 = f * bp + lp;
+      let q = 2 - 2 * res;
+      const fqMax = (4 - f * f) * 0.49;
+      if (f * q > fqMax) q = fqMax / f;
+      const hp = input - state.s2 - q * state.s1;
+      state.s1 += f * hp;
+      state.s2 += f * state.s1;
+      if (state.s1 > 8) state.s1 = 8;
+      else if (state.s1 < -8) state.s1 = -8;
+      if (state.s2 > 8) state.s2 = 8;
+      else if (state.s2 < -8) state.s2 = -8;
       switch (type) {
         case 1:
           return hp;
         case 2:
-          return bp;
+          return state.s1;
         case 3:
-          return input - lp - qq * bp;
-        // notch
+          return input - state.s2 - q * state.s1;
         default:
-          return lp;
+          return state.s2;
       }
     }
     /** Wavetable read: frame morph (linear blend), linear within a frame. */
@@ -361,8 +375,10 @@
         }
         let mixL = 0;
         let mixR = 0;
+        let soundingVoices = 0;
         for (const voice of this.voices) {
           if (!voice.active) continue;
+          soundingVoices += 1;
           if (voice.f0 !== voice.targetF0) {
             voice.f0 += (voice.targetF0 - voice.f0) * glideCoeff;
             if (Math.abs(voice.f0 - voice.targetF0) < 0.01) voice.f0 = voice.targetF0;
@@ -420,8 +436,22 @@
           }
           modAmp = clamp(modAmp, 0, 4);
           const velGain = 1 - velAmount + velAmount * voice.vel;
-          const rawA = this.sourceSample(voice, 0, engineA, clamp((this.params.srcAMorph ?? 0) + modAMorph, 0, 1), this.params.srcAScan ?? 0, detuneA) * envA * levelA;
-          const rawB = this.sourceSample(voice, 1, engineB, clamp((this.params.srcBMorph ?? 0) + modBMorph, 0, 1), this.params.srcBScan ?? 0, detuneB) * envB * levelB;
+          const rawA = this.sourceSample(
+            voice,
+            0,
+            engineA,
+            clamp((this.params.srcAMorph ?? 0) + modAMorph, 0, 1),
+            this.params.srcAScan ?? 0,
+            detuneA
+          ) * envA * levelA;
+          const rawB = this.sourceSample(
+            voice,
+            1,
+            engineB,
+            clamp((this.params.srcBMorph ?? 0) + modBMorph, 0, 1),
+            this.params.srcBScan ?? 0,
+            detuneB
+          ) * envB * levelB;
           svfA.s1 = voice.svfA1;
           svfA.s2 = voice.svfA2;
           const filteredA = this.runSvf(
@@ -461,7 +491,8 @@
           }
           const gainTarget = voice.gate ? 1 : 0;
           voice.gain += (gainTarget - voice.gain) * gainCoeff;
-          if (!voice.gate && voice.gain < 1e-3 && voice.envA.stage === 0 && voice.envB.stage === 0) {
+          const bCanSound = levelB > 0;
+          if (!voice.gate && voice.gain < 1e-3 && voice.envA.stage === 0 && (!bCanSound || voice.envB.stage === 0)) {
             voice.active = false;
             continue;
           }
@@ -484,8 +515,10 @@
           l = Math.tanh(l * driveGain) / norm;
           r = Math.tanh(r * driveGain) / norm;
         }
-        l *= level;
-        r *= level;
+        this.polyGain += (Math.max(1, soundingVoices) - this.polyGain) * gainCoeff;
+        const poly = 1 / Math.sqrt(this.polyGain);
+        l *= level * poly;
+        r *= level * poly;
         left[frame] = l;
         right[frame] = r;
         const magnitude = Math.max(Math.abs(l), Math.abs(r));

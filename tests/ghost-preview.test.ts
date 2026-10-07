@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GhostPreviewPlayer } from "../src/audio-engine/GhostPreviewPlayer";
+import { GhostPreviewPlayer, GHOST_VOICE_OWNER } from "../src/audio-engine/GhostPreviewPlayer";
 import { createDefaultProject } from "../src/project-model/schema";
 import { getDrumTrack, BAR_TICKS, STEP_TICKS } from "../src/project-model/types";
 import type { Pattern, ProjectDocument } from "../src/project-model/types";
@@ -19,6 +19,10 @@ function makeEngine() {
     ensureContext: vi.fn(),
     trigger: vi.fn(),
     noteOn: vi.fn(),
+    // ADR 0024: the player scopes its scheduling and kills its own overhang —
+    // pass-through fakes keep these calls transparent to the assertions.
+    withVoiceOwner: vi.fn((_owner: string, fn: () => void) => fn()),
+    stopVoicesForOwner: vi.fn(),
   };
 }
 
@@ -89,6 +93,10 @@ describe("GhostPreviewPlayer", () => {
 
     player.stop();
     expect(player.isPlaying).toBe(false);
+    // ADR 0024: the scheduling interval dying is not enough — the already
+    // committed lookahead window dies with it, owner-scoped (never a global
+    // panic: live-transport voices are untagged and unmatched).
+    expect(engine.stopVoicesForOwner).toHaveBeenCalledWith(GHOST_VOICE_OWNER);
     vi.advanceTimersByTime(2000);
     expect(engine.trigger).not.toHaveBeenCalled();
   });

@@ -6,6 +6,8 @@ import { buildWavetableMips, extractWavetable, FACTORY_WAVETABLES, FRAME_SIZE, p
 import { scheduleDahdsr } from "./envelope";
 import { createWtVoiceRuntime } from "./wtvoiceNode";
 import { createGrainVoiceRuntime, grainProcessorOptions } from "./granularNode";
+import { createTsarRuntime } from "./tsarNode";
+import { tsarParams } from "../tsar/params";
 import { scheduleVoiceModMatrix, updateVoiceModMatrix } from "./modmatrix";
 import { shapeOscillator } from "./bandlimited";
 import { isWorkletReady } from "../audio-worklets/loader";
@@ -2092,8 +2094,7 @@ const texture: InstrumentDefinition = {
 const wavetable: InstrumentDefinition = {
   kind: "wavetable",
   name: "Wavetable Synth",
-  params: wavetableParams,
-  factory(ctx, track, env) {
+  params: wavetableParams,  factory(ctx, track, env) {
     // Phase-2 voice-engine pilot: when the wtvoice worklet module is loaded,
     // the whole voice runs per-sample inside the worklet (with a per-voice
     // modulation matrix). Otherwise the historical main-thread graph below
@@ -6471,6 +6472,61 @@ const drumsynth: InstrumentDefinition = {
   },
 };
 
+/**
+ * TSAR — the flagship hybrid sample+synthesis engine (docs/TSAR-ROADMAP.md,
+ * ADR 0023). The whole voice runs per-sample in `tsar-processor`; this factory
+ * is the bridge. Unlike wtvoice, TSAR takes the SAME worklet path offline:
+ * the runtime buffers every scheduled event and `prepareOfflineRender()`
+ * seeds it through `processorOptions` (the renderer knows all notes before
+ * `startRendering`), so an export sounds EXACTLY like live — no native
+ * fallback that would diverge.
+ *
+ * A context WITHOUT the worklet module (jsdom, a failed network fetch, a
+ * pre-worklet browser) gets an honest silent runtime: the inspector shows
+ * the track and the panel warns, but nothing is invented — the same honesty
+ * rule as the transcription lanes.
+ */
+const tsar: InstrumentDefinition = {
+  kind: "tsar",
+  name: "TSAR",
+  params: tsarParams,
+  factory(ctx, track, env) {
+    const offline = offlineRenderContext(ctx);
+    if (!isWorkletReady("tsar", ctx)) {
+      // No module: silent output with a working parameter surface, so a
+      // project loaded before the worklet lands is not corrupted.
+      const silent = ctx.createGain();
+      silent.gain.value = 0;
+      const params = { ...track.params };
+      return {
+        output: silent,
+        noteOn() {},
+        noteOff() {},
+        setParameter(name, value) {
+          params[name] = value;
+        },
+        panic() {},
+        dispose() {
+          silent.disconnect();
+        },
+      };
+    }
+    return createTsarRuntime({
+      createGain: () => ctx.createGain(),
+      createNode: (processorOptions) =>
+        new AudioWorkletNode(ctx, "tsar-processor", {
+          numberOfInputs: 0,
+          numberOfOutputs: 1,
+          outputChannelCount: [2],
+          processorOptions,
+        }),
+      offline,
+      track,
+      getSample: (id) => env.getSample(id),
+    });
+  },
+};
+
 /* ---------------- registry ---------------- */
 
 export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
@@ -6496,6 +6552,7 @@ export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
   spectral,
   vocalchop,
   drumsynth,
+  tsar,
 };
 
 export function instrumentTrackKindLabel(track: InstrumentTrack): string {

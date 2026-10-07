@@ -5,7 +5,7 @@ import { ExportPanel, type MasteringWorkspaceState } from "./ExportPanel";
 import { useDoc, useMaster } from "./context";
 import { EffectRack } from "./EffectRack";
 import { projectRevisionIdFor } from "../mastering/report";
-import { resolveDeliveryTarget } from "../mastering/profiles";
+import { MASTER_PROFILE_SOURCES, resolveDeliveryTarget } from "../mastering/profiles";
 import { MasteringABCompare } from "./MasteringABCompare";
 import { MasteringSignalFlow } from "./MasteringSignalFlow";
 import { MasterProcessingControls } from "./MasterProcessingControls";
@@ -22,6 +22,7 @@ export function MasteringPanel() {
   const revisionId = projectRevisionIdFor(doc);
   const master = useMaster();
   const profile = resolveDeliveryTarget(master);
+  const profileSource = MASTER_PROFILE_SOURCES[profile.id];
   const [workspaceState, setWorkspaceState] = useState<MasteringWorkspaceState | null>(null);
   const [controlView, setControlView] = useState<"simple" | "advanced">("simple");
   const renderPcmLimitMiB = MAX_OFFLINE_RENDER_PCM_BYTES / (1024 * 1024);
@@ -129,7 +130,19 @@ export function MasteringPanel() {
           <h2>Mastering — {doc.name}</h2>
           <p>Check the full mix, review the real signal path, then shape the final stereo output.</p>
         </div>
-        <p className="mastering-profile-note">Delivery profiles set meter targets. They do not change the sound.</p>
+        <p className="mastering-profile-note">
+          {profile.intendedUse} {profile.note} Delivery profiles set measurement targets only; they do not change the
+          sound or certify that a master meets every destination requirement.
+          {profileSource && (
+            <>
+              {" "}
+              <a href={profileSource.url} target="_blank" rel="noopener noreferrer">
+                {profileSource.label}
+              </a>{" "}
+              · checked {profileSource.checkedAt}.
+            </>
+          )}
+        </p>
       </header>
       <MasteringFileSessionPanel />
       <section className="mastering-overview" aria-label="Mastering analysis overview">

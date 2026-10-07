@@ -6,6 +6,15 @@ import { BAR_TICKS, PPQ } from "../project-model/types";
 import { drumHitsInWindow } from "../project-model/groove";
 import { noteEventsInWindow } from "../project-model/events";
 
+/**
+ * Every ghost voice is tagged with this owner (engine.withVoiceOwner), so
+ * stop() can de-click-kill the player's own overhang — events already
+ * committed to the WebAudio clock (the ≤120 ms lookahead window plus notes
+ * still ringing their durSec) — without touching live-transport sound, which
+ * is never tagged. Exported for tests.
+ */
+export const GHOST_VOICE_OWNER = "ghost-preview";
+
 export class GhostPreviewPlayer {
   private transport: Transport | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -80,6 +89,12 @@ export class GhostPreviewPlayer {
     this.ghostDoc = null;
     this.pattern = null;
     this.windowStart = 0;
+    // The scheduler's window already handed events to the WebAudio clock —
+    // stopping the timer only stops FUTURE scheduling. Kill this player's
+    // committed-but-not-yet-played (and still-ringing) voices, or the ghost
+    // keeps sounding for the lookahead plus every sustained note's durSec.
+    // Owner-scoped: live transport voices are untagged and never matched.
+    this.engine.stopVoicesForOwner(GHOST_VOICE_OWNER);
   }
 
   private tick(): void {
@@ -110,24 +125,27 @@ export class GhostPreviewPlayer {
     if (!this.ghostDoc || !this.pattern || !this.transport) return;
     const now = this.engine.currentTime;
     const timeAt = (tick: number) => this.transport!.timeAtTick(tick);
-    for (const hit of drumHitsInWindow(this.ghostDoc, this.pattern, 0, ws, we)) {
-      const when = timeAt(hit.tick) + 0.005;
-      if (when < now - 0.002) continue;
-      this.engine.trigger(hit.trackId, hit.pad, when, hit.velocity, hit.locks);
-    }
-    for (const ev of noteEventsInWindow(this.pattern, 0, ws, we)) {
-      const when = timeAt(ev.tick) + 0.005;
-      if (when < now - 0.002) continue;
-      const durSec = ev.note.duration * (60 / (this.ghostDoc!.bpm * PPQ));
-      this.engine.noteOn(
-        ev.trackId,
-        ev.note.pitch,
-        ev.note.velocity,
-        when,
-        durSec,
-        ev.slideFrom?.tick,
-        ev.slideFrom?.pitch,
-      );
-    }
+    // Tag every voice this window creates so stop() can kill the overhang.
+    this.engine.withVoiceOwner(GHOST_VOICE_OWNER, () => {
+      for (const hit of drumHitsInWindow(this.ghostDoc!, this.pattern!, 0, ws, we)) {
+        const when = timeAt(hit.tick) + 0.005;
+        if (when < now - 0.002) continue;
+        this.engine.trigger(hit.trackId, hit.pad, when, hit.velocity, hit.locks);
+      }
+      for (const ev of noteEventsInWindow(this.pattern!, 0, ws, we)) {
+        const when = timeAt(ev.tick) + 0.005;
+        if (when < now - 0.002) continue;
+        const durSec = ev.note.duration * (60 / (this.ghostDoc!.bpm * PPQ));
+        this.engine.noteOn(
+          ev.trackId,
+          ev.note.pitch,
+          ev.note.velocity,
+          when,
+          durSec,
+          ev.slideFrom?.tick,
+          ev.slideFrom?.pitch,
+        );
+      }
+    });
   }
 }

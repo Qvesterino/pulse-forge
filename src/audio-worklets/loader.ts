@@ -282,5 +282,8 @@ export function pluginTypesInDoc(doc: unknown): PluginWorkletType[] {
  */
 export async function loadAllWorklets(ctx: BaseAudioContext): Promise<void> {
   await loadCoreWorklets(ctx);
-  await Promise.all(PLUGIN_WORKLET_TYPES.map((type) => loadPluginWorklet(ctx, type)));
+  await Promise.all([
+    ...PLUGIN_WORKLET_TYPES.map((type) => loadPluginWorklet(ctx, type)),
+    ...INSTRUMENT_WORKLET_TYPES.map((type) => loadInstrumentWorklet(ctx, type)),
+  ]);
 }

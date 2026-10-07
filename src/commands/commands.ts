@@ -107,3 +107,6 @@ export {
 } from "./tracks";
 // Type-only re-export: isolatedModules forbids smiešanie typov do hodnotového zozname vyššie.
 export type { GenerativeTrackConfigPatch } from "./tracks";
+// TSAR Sample Forge (ADR 0023): plan -> TSAR patch, one undo step.
+export { forgeSampleCommand } from "./tsar";
+export type { ForgeSampleOptions } from "./tsar";

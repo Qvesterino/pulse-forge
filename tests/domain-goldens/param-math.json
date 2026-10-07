@@ -495,6 +495,74 @@
             "drive": 0.2,
             "level": -6
           }
+        },
+        {
+          "kind": "tsar",
+          "defaults": {
+            "srcAEngine": 1,
+            "srcALevel": 0.8,
+            "srcAPan": 0,
+            "srcACoarse": 0,
+            "srcAFine": 0,
+            "srcARoot": 60,
+            "srcAMorph": 0,
+            "srcAScan": 0,
+            "srcAUnison": 1,
+            "srcASpread": 0,
+            "srcAAtk": 0.005,
+            "srcADec": 0.6,
+            "srcASus": 0.7,
+            "srcARel": 0.4,
+            "srcAFilter": 0,
+            "srcACutoff": 18000,
+            "srcAQ": 0.8,
+            "srcAFilterEnv": 0,
+            "srcBEngine": 0,
+            "srcBLevel": 0,
+            "srcBPan": 0,
+            "srcBCoarse": 0,
+            "srcBFine": 0,
+            "srcBRoot": 60,
+            "srcBMorph": 0,
+            "srcBScan": 0,
+            "srcBUnison": 1,
+            "srcBSpread": 0,
+            "srcBAtk": 0.005,
+            "srcBDec": 0.6,
+            "srcBSus": 0.7,
+            "srcBRel": 0.4,
+            "srcBFilter": 0,
+            "srcBCutoff": 18000,
+            "srcBQ": 0.8,
+            "srcBFilterEnv": 0,
+            "morph": 0,
+            "sub": 0,
+            "subOct": -1,
+            "noise": 0,
+            "noiseColor": 0.5,
+            "glide": 0,
+            "velocity": 0.7,
+            "drift": 0.15,
+            "mod1Src": -1,
+            "mod1Dst": -1,
+            "mod1Amt": 0,
+            "mod2Src": -1,
+            "mod2Dst": -1,
+            "mod2Amt": 0,
+            "mod3Src": -1,
+            "mod3Dst": -1,
+            "mod3Amt": 0,
+            "mod4Src": -1,
+            "mod4Dst": -1,
+            "mod4Amt": 0,
+            "lfoRate": 2,
+            "lfoShape": 0,
+            "lfoSync": 0,
+            "tone": 0,
+            "drive": 0,
+            "width": 0.5,
+            "level": 0.8
+          }
         }
       ]
     },
@@ -1668,6 +1736,28 @@
         6,
         12,
         12
+      ]
+    },
+    {
+      "name": "clampInstrumentParam tsar:srcAEngine",
+      "operation": "clampInstrumentParam",
+      "input": {
+        "kind": "tsar",
+        "paramId": "srcAEngine",
+        "probes": [
+          -100,
+          0,
+          1,
+          2,
+          102
+        ]
+      },
+      "expected": [
+        0,
+        0,
+        1,
+        2,
+        2
       ]
     },
     {

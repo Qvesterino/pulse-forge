@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 export const PANEL_KEYS = [
   "mixer",
   "devices",
+  "tsar",
   "arr",
   "mod",
   "exp",

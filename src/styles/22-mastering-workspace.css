@@ -187,6 +187,33 @@
   color: var(--text-faint);
 }
 
+.mastering-file-session-advanced-processing {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+}
+
+.mastering-file-session-advanced-processing > summary {
+  color: var(--text-dim);
+  cursor: pointer;
+  font: 700 9px var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.mastering-file-session-advanced-processing > p {
+  margin: 0;
+  color: var(--text-faint);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.master-processing-controls[data-view="advanced-extras"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .mastering-session-inserts {
   display: grid;
   gap: 7px;
@@ -515,6 +542,42 @@
 .mastering-file-session-verdict[data-state="fail"] strong,
 .mastering-file-session-verdict small[data-state="fail"] {
   color: var(--danger, #ef4444);
+}
+
+.mastering-file-session-auto-stage {
+  display: grid;
+  justify-items: start;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  background: var(--bg);
+}
+
+.mastering-file-session-auto-stage p,
+.mastering-file-session-auto-stage small {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.mastering-file-session-auto-stage small {
+  color: var(--text-faint);
+}
+
+.mastering-file-session-lossy-source-warning {
+  color: var(--warn, #efb34f) !important;
+  font-weight: 600;
+}
+
+.mastering-file-session-overrange-warning {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--warn, #efb34f);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .mastering-session-metrics {

@@ -18,9 +18,20 @@ export interface ExternalMasteringReportInput {
   sourceMeasurements: BufferSummary;
   sourceMixHealth: MixHealthReport;
   sourceLoudnessTimeline: LoudnessTimeline | null;
+  inputBaseline: ExternalMasteringInputBaseline | null;
   inspection: EncodedMasterInspection;
   exportedFileName: string;
   deliveryVerdict: DeliveryVerdict;
+}
+
+export interface ExternalMasteringInputBaseline {
+  sessionId: string;
+  sourceHash: string;
+  measuredAt: string;
+  decodedSampleRate: number;
+  measurements: BufferSummary;
+  mixHealth: MixHealthReport;
+  loudnessTimeline: LoudnessTimeline | null;
 }
 
 /** JSON handoff for a checked external-session WAV or MP3; source audio itself is never included. */
@@ -30,10 +41,12 @@ export function serializeExternalMasteringReport(
 ): string {
   const { session, masterConfig, profile, inspection } = input;
   const decoded = inspection.decode.status === "measured";
+  const inputBaselineMatchesSession =
+    input.inputBaseline?.sessionId === session.id && input.inputBaseline?.sourceHash === session.sourceHash;
   return JSON.stringify(
     {
       schema: "kyx.external-mastering-report",
-      schemaVersion: 1,
+      schemaVersion: 2,
       generatedAt: generatedAt.toISOString(),
       application: {
         product: packageMetadata.productName,
@@ -55,6 +68,24 @@ export function serializeExternalMasteringReport(
         channels: session.channels,
         sampleRate: session.sourceSampleRate,
       },
+      inputBaseline:
+        inputBaselineMatchesSession && input.inputBaseline
+          ? {
+              status: "measured",
+              sessionId: input.inputBaseline.sessionId,
+              sourceSha256: input.inputBaseline.sourceHash,
+              measuredAt: input.inputBaseline.measuredAt,
+              decodedSampleRate: input.inputBaseline.decodedSampleRate,
+              measurements: input.inputBaseline.measurements,
+              mixHealth: input.inputBaseline.mixHealth,
+              loudnessTimeline: input.inputBaseline.loudnessTimeline,
+            }
+          : {
+              status: "not-measured",
+              reason: input.inputBaseline
+                ? "Input baseline source fingerprint does not match this delivery session; it was excluded."
+                : "Input baseline analysis was not run before this delivery export.",
+            },
       mastering: {
         configRevision: input.renderConfigRevision,
         config: masterConfig,
@@ -86,7 +117,7 @@ export function serializeExternalMasteringReport(
           reason: inspection.decode.reason ?? null,
           warnings: inspection.decode.warnings,
         },
-        measurementBasis: decoded ? "decoded-exported-file" : "source-pcm-only",
+        measurementBasis: decoded ? "decoded-exported-file" : "pre-encode-render-pcm-only",
         verdict: input.deliveryVerdict,
       },
     },

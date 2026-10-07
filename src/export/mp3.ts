@@ -1,5 +1,5 @@
 import { Mp3Encoder } from "@breezystack/lamejs";
-import { mulberry32, quantizeInt16Sample } from "./quantize";
+import { mulberry32, quantizeInt16Sample, type IntegerOverflowPolicy } from "./quantize";
 
 export interface Mp3Options {
   /** Target bitrate in kbps (default 192). */
@@ -8,6 +8,8 @@ export interface Mp3Options {
   onProgress?: (fraction: number) => void;
   /** Abort support (release roadmap 1.4): checked at every yield point. */
   signal?: AbortSignal;
+  /** Use `reject` for mastering delivery to prevent automatic saturation before MP3 encoding. */
+  integerOverflowPolicy?: IntegerOverflowPolicy;
 }
 
 async function quantizeChannelAsync(
@@ -17,13 +19,16 @@ async function quantizeChannelAsync(
   totalSamples: number,
   onProgress: ((fraction: number) => void) | undefined,
   signal: AbortSignal | undefined,
+  overflowPolicy: IntegerOverflowPolicy,
 ): Promise<Int16Array<ArrayBuffer>> {
   const rand = mulberry32(seed);
   const output = new Int16Array(input.length);
   const chunkSize = 65_536;
   for (let offset = 0; offset < input.length; offset += chunkSize) {
     const end = Math.min(input.length, offset + chunkSize);
-    for (let index = offset; index < end; index++) output[index] = quantizeInt16Sample(input[index], rand);
+    for (let index = offset; index < end; index++) {
+      output[index] = quantizeInt16Sample(input[index], rand, overflowPolicy);
+    }
     onProgress?.(((completedSamplesBeforeChannel + end) / Math.max(1, totalSamples)) * 0.2);
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
     if (signal?.aborted) throw new DOMException("Export cancelled", "AbortError");
@@ -54,10 +59,10 @@ export async function encodeMp3(buffer: AudioBuffer, options: Mp3Options = {}): 
   }
   const encoder = new Mp3Encoder(channelCount, buffer.sampleRate, kbps);
 
-  // Soft-knee clip + TPDF dither before 16-bit quantization: hot masters
-  // lose the hard-clip crunch, quiet passages fade into noise instead of
-  // digital silence. Seeds differ per channel to decorrelate the dither;
-  // fixed seeds keep exports byte-reproducible.
+  // Legacy exports retain the soft-knee policy; mastering delivery can opt
+  // into rejection so the encoder never changes over-range samples silently.
+  // Seeds differ per channel to decorrelate dither and keep output reproducible.
+  const overflowPolicy = options.integerOverflowPolicy ?? "soft-knee";
   const channelLength = buffer.length;
   const totalSamples = channelLength * channelCount;
   const left = await quantizeChannelAsync(
@@ -67,6 +72,7 @@ export async function encodeMp3(buffer: AudioBuffer, options: Mp3Options = {}): 
     totalSamples,
     options.onProgress,
     options.signal,
+    overflowPolicy,
   );
   const right =
     channelCount === 2
@@ -77,6 +83,7 @@ export async function encodeMp3(buffer: AudioBuffer, options: Mp3Options = {}): 
           totalSamples,
           options.onProgress,
           options.signal,
+          overflowPolicy,
         )
       : null;
   if (options.signal?.aborted) throw new DOMException("Export cancelled", "AbortError");

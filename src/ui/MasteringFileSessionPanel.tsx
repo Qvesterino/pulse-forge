@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MixHealthReport } from "../analysis/mixDoctor";
+import { computeStageAdjustment } from "../audio-engine/metering";
 import type { BufferSummary } from "../audio-engine/metering";
 import type { LoudnessTimeline } from "../audio-engine/kweighting";
 import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
@@ -9,9 +10,14 @@ import {
   type EncodedMasterInspection,
 } from "../mastering/encodedInspection";
 import { awaitMasteringSampleBankReady } from "../mastering/readiness";
-import { evaluateDelivery, MASTER_PROFILES, resolveDeliveryTarget } from "../mastering/profiles";
+import {
+  evaluateDelivery,
+  MASTER_PROFILE_SOURCES,
+  MASTER_PROFILES,
+  resolveDeliveryTarget,
+} from "../mastering/profiles";
 import { masteringVersionSuffix } from "../mastering/deliveryFilename";
-import { serializeExternalMasteringReport } from "../mastering/sessionReport";
+import { serializeExternalMasteringReport, type ExternalMasteringInputBaseline } from "../mastering/sessionReport";
 import {
   assertMasteringSessionWorkingSetBudget,
   estimateMasteringSessionComparisonBytes,
@@ -37,6 +43,7 @@ import type { WavBitDepth } from "../rendering/wav";
 import { downloadBlob } from "../export/download";
 import { useServices } from "./context";
 import { MasteringLoudnessTimeline } from "./MasteringLoudnessTimeline";
+import { MasterProcessingControls } from "./MasterProcessingControls";
 import { MasteringSessionInsertRack } from "./MasteringSessionInsertRack";
 
 const MAX_DECODED_SOURCE_BYTES = 128 * 1024 * 1024;
@@ -52,6 +59,10 @@ interface RenderedSession {
   configRevision: number;
   renderedAt: string;
   sampleRate: 44_100 | 48_000;
+}
+
+interface SourceSessionAnalysis extends ExternalMasteringInputBaseline {
+  sessionId: string;
 }
 
 interface SessionComparedVersion {
@@ -293,6 +304,7 @@ export function MasteringFileSessionPanel() {
   const [source, setSource] = useState<AudioBuffer | null>(null);
   const [reference, setReference] = useState<LoadedSessionReference | null>(null);
   const [draft, setDraft] = useState<MasteringSessionRecord["masterConfig"] | null>(null);
+  const [sourceAnalysis, setSourceAnalysis] = useState<SourceSessionAnalysis | null>(null);
   const [rendered, setRendered] = useState<RenderedSession | null>(null);
   const [comparison, setComparison] = useState<SessionComparison | null>(null);
   const [matchLoudness, setMatchLoudness] = useState(true);
@@ -315,6 +327,7 @@ export function MasteringFileSessionPanel() {
   const selectionEpoch = useRef(0);
   const playingRef = useRef<SessionPreviewSelection | null>(null);
   playingRef.current = playing;
+  const sourceIsLossyMp3 = Boolean(session?.fileName.toLowerCase().endsWith(".mp3"));
   const deliveryVersion = session?.deliveryVersion ?? "";
   const setDeliveryVersion = (value: string) => {
     setSession((current) => (current ? { ...current, deliveryVersion: value.slice(0, 32) } : current));
@@ -360,6 +373,16 @@ export function MasteringFileSessionPanel() {
     rendered.configRevision === session.configRevision &&
     rendered.sampleRate === sampleRate,
   );
+  const integerDeliveryOverRange = Boolean(
+    renderCurrent &&
+    rendered &&
+    rendered.measurements.peak > 1 &&
+    (deliveryFormat === "mp3" || (deliveryFormat === "wav" && bitDepth !== 32)),
+  );
+  const currentSourceAnalysis =
+    session && sourceAnalysis?.sessionId === session.id && sourceAnalysis.sourceHash === session.sourceHash
+      ? sourceAnalysis
+      : null;
   const estimatedBytes =
     source && draft
       ? estimateMasteringSessionWorkingSetBytes(source, draft, sampleRate) + bufferBytes(reference?.buffer ?? null)
@@ -416,6 +439,16 @@ export function MasteringFileSessionPanel() {
     });
   }, [session?.id, session?.snapshots.A?.id, session?.snapshots.B?.id]);
   const deliveryTarget = useMemo(() => (draft ? resolveDeliveryTarget(draft) : null), [draft]);
+  const deliveryTargetSource = deliveryTarget ? MASTER_PROFILE_SOURCES[deliveryTarget.id] : undefined;
+  const stageAdjustment = useMemo(() => {
+    if (!renderCurrent || !rendered || !draft || !deliveryTarget) return null;
+    return computeStageAdjustment(
+      rendered.measurements,
+      draft.masterGain,
+      deliveryTarget.targetLufs,
+      deliveryTarget.maxTruePeakDb,
+    );
+  }, [deliveryTarget, draft, renderCurrent, rendered]);
   const deliveryVerdict = useMemo(() => {
     if (!outputMeasurements || !deliveryTarget) return null;
     return evaluateDelivery(
@@ -1012,6 +1045,56 @@ export function MasteringFileSessionPanel() {
     },
     [stopSessionPreview],
   );
+  const analyzeSource = useCallback(async () => {
+    if (!session || !source || !draft) return;
+    const controller = new AbortController();
+    operation.current?.abort();
+    operation.current = controller;
+    const epoch = selectionEpoch.current;
+    stopSessionPreview();
+    setBusy("Analyzing original input…");
+    setError("");
+    setNotice("");
+    setProgress("");
+    try {
+      const analysis = await analyzeMasterBufferAsync(source, resolveDeliveryTarget(draft), {
+        signal: controller.signal,
+        onProgress: (update) => setProgress(`${update.stage} · ${Math.round(update.progress * 100)}%`),
+      });
+      if (controller.signal.aborted) throw new DOMException("Input analysis cancelled", "AbortError");
+      if (selectionEpoch.current !== epoch) return;
+      setSourceAnalysis({
+        sessionId: session.id,
+        sourceHash: session.sourceHash,
+        measuredAt: new Date().toISOString(),
+        decodedSampleRate: source.sampleRate,
+        measurements: analysis.measurements,
+        mixHealth: analysis.mixHealth,
+        loudnessTimeline: analysis.loudnessTimeline,
+      });
+      setNotice("Input baseline measured from decoded source PCM. No session processing setting changed.");
+    } catch (reason) {
+      if (selectionEpoch.current !== epoch) return;
+      if (controller.signal.aborted || (reason instanceof DOMException && reason.name === "AbortError")) {
+        setNotice("Input analysis cancelled. No session processing setting changed.");
+      } else {
+        setError(masteringSessionErrorMessage(reason, "Could not analyze the original input mixdown."));
+      }
+    } finally {
+      if (operation.current === controller) operation.current = null;
+      if (selectionEpoch.current === epoch) {
+        setBusy("");
+        setProgress("");
+      }
+    }
+  }, [draft, session, source, stopSessionPreview]);
+  const stageMasterGain = useCallback(() => {
+    if (!stageAdjustment || stageAdjustment.noop || !renderCurrent) return;
+    updateDraft({ masterGain: stageAdjustment.masterGain });
+    setNotice(
+      `AUTO STAGE proposed ${stageAdjustment.applied[0]}. Apply settings, then render and analyze again to verify the actual result.`,
+    );
+  }, [renderCurrent, stageAdjustment, updateDraft]);
   const updateDraftEffects = useCallback((effects: EffectInstance[]) => updateDraft({ effects }), [updateDraft]);
 
   const renderAndAnalyze = useCallback(async () => {
@@ -1096,6 +1179,7 @@ export function MasteringFileSessionPanel() {
         const { encodeMp3 } = await import("../export/mp3");
         deliveryBlob = await encodeMp3(rendered.buffer, {
           kbps: mp3Bitrate,
+          integerOverflowPolicy: "reject",
           signal: controller.signal,
           onProgress: (value) => setProgress(`Encoding ${mp3Bitrate} kbps MP3 · ${Math.round(value * 100)}%`),
         });
@@ -1112,6 +1196,7 @@ export function MasteringFileSessionPanel() {
         fileName = masteredMp3FileName(session, rendered.sampleRate, mp3Bitrate, deliveryVersion);
       } else {
         const wav = await encodeWavAsync(rendered.buffer, bitDepth, {
+          integerOverflowPolicy: "reject",
           signal: controller.signal,
           onProgress: (value) => setProgress(`Encoding WAV · ${Math.round(value * 100)}%`),
           bext: createBextMetadata({
@@ -1168,6 +1253,7 @@ export function MasteringFileSessionPanel() {
         sourceMeasurements: rendered.measurements,
         sourceMixHealth: rendered.mixHealth,
         sourceLoudnessTimeline: rendered.loudnessTimeline,
+        inputBaseline: currentSourceAnalysis,
         inspection: checked,
         exportedFileName: fileName,
         deliveryVerdict: reportDeliveryVerdict,
@@ -1212,6 +1298,7 @@ export function MasteringFileSessionPanel() {
     deliveryFormat,
     deliveryVersion,
     draft,
+    currentSourceAnalysis,
     mp3Bitrate,
     persistDeliveryVersion,
     renderCurrent,
@@ -1453,9 +1540,32 @@ export function MasteringFileSessionPanel() {
                 {deliveryTarget.intendedUse} Delivery targets only judge the rendered file; they do not normalize LUFS
                 or change processing. CEILING controls the limiter, while TRUE PEAK TARGET is checked during delivery
                 QA.
+                {deliveryTargetSource && (
+                  <>
+                    {" "}
+                    <a href={deliveryTargetSource.url} target="_blank" rel="noopener noreferrer">
+                      {deliveryTargetSource.label}
+                    </a>{" "}
+                    · checked {deliveryTargetSource.checkedAt}.
+                  </>
+                )}
               </small>
             </aside>
           )}
+
+          <details className="mastering-file-session-advanced-processing">
+            <summary>ADVANCED BUILT-IN PROCESSING</summary>
+            <p>
+              Adjustments stay in this file session. Apply settings and render again to hear and measure the updated
+              master.
+            </p>
+            <MasterProcessingControls
+              view="advanced-extras"
+              config={draft}
+              onChange={updateDraft}
+              disabled={Boolean(busy)}
+            />
+          </details>
 
           <MasteringSessionInsertRack
             key={`${session.id}-${session.configRevision}`}
@@ -1674,6 +1784,15 @@ export function MasteringFileSessionPanel() {
           </section>
 
           <div className="mastering-file-session-actions">
+            <button
+              type="button"
+              className="btn btn-small"
+              aria-label="Analyze original external mastering input"
+              disabled={Boolean(busy) || !source}
+              onClick={() => void analyzeSource()}
+            >
+              {currentSourceAnalysis ? "Re-analyze input" : "Analyze input"}
+            </button>
             <label>
               <strong>RENDER RATE</strong>
               <select
@@ -1708,6 +1827,13 @@ export function MasteringFileSessionPanel() {
                   ? "WAV preserves PCM samples; choose bit depth below."
                   : "MP3 is a lossy listening copy; choose 192 or 320 kbps below."}
               </small>
+              {sourceIsLossyMp3 && (
+                <small className="mastering-file-session-lossy-source-warning" role="status" aria-live="polite">
+                  {deliveryFormat === "wav"
+                    ? "The source is already lossy MP3. WAV avoids another lossy encode, but cannot restore discarded detail."
+                    : "MP3 export re-encodes this already lossy source. Prefer WAV when the destination accepts it; lost detail cannot be restored."}
+                </small>
+              )}
             </label>
             {deliveryFormat === "wav" ? (
               <label>
@@ -1736,6 +1862,14 @@ export function MasteringFileSessionPanel() {
                   <option value={320}>320 kbps · high quality</option>
                 </select>
               </label>
+            )}
+            {integerDeliveryOverRange && rendered && (
+              <p className="mastering-file-session-overrange-warning" role="alert">
+                INTEGER DELIVERY EXCEEDS FULL SCALE · sample peak{" "}
+                {(20 * Math.log10(rendered.measurements.peak)).toFixed(2)} dBFS. Lower master input/trim or limiter
+                ceiling and render again, or choose 32-bit-float WAV. KYX will refuse integer export instead of applying
+                hidden saturation.
+              </p>
             )}
             <label>
               <strong>VERSION</strong>
@@ -1809,7 +1943,12 @@ export function MasteringFileSessionPanel() {
             <button
               type="button"
               className="btn btn-export"
-              disabled={Boolean(busy) || !renderCurrent}
+              disabled={Boolean(busy) || !renderCurrent || integerDeliveryOverRange}
+              title={
+                integerDeliveryOverRange
+                  ? "Integer master delivery exceeds 0 dBFS sample peak. Lower the master level or choose 32-bit-float WAV."
+                  : undefined
+              }
               onClick={() => void exportDelivery()}
             >
               Encode &amp; export {deliveryFormat.toUpperCase()}
@@ -1845,6 +1984,42 @@ export function MasteringFileSessionPanel() {
         <p className="mastering-file-session-status" data-state="notice" role="status">
           {notice}
         </p>
+      )}
+      {currentSourceAnalysis && session && (
+        <div className="mastering-file-session-report" aria-label="Original input baseline measurements">
+          <strong>INPUT BASELINE · DECODED PCM · PRE-MASTER CHAIN</strong>
+          <span>
+            {currentSourceAnalysis.measurements.lufsIntegrated > -119
+              ? `${currentSourceAnalysis.measurements.lufsIntegrated.toFixed(1)} LUFS-I`
+              : "LUFS-I not measured"}
+          </span>
+          <span>
+            {currentSourceAnalysis.measurements.lufsIntegrated > -119
+              ? `${currentSourceAnalysis.measurements.truePeakDb.toFixed(1)} dBTP`
+              : "True peak not measured"}
+          </span>
+          <span>
+            {currentSourceAnalysis.measurements.loudnessRangeLu == null
+              ? "LRA not measured"
+              : `LRA ${currentSourceAnalysis.measurements.loudnessRangeLu.toFixed(1)} LU`}
+          </span>
+          <span>
+            {currentSourceAnalysis.measurements.channelCount < 2
+              ? "Mono source · stereo checks N/A"
+              : currentSourceAnalysis.measurements.lufsIntegrated <= -119
+                ? "No audible stereo signal · stereo checks not measured"
+                : `Correlation ${currentSourceAnalysis.measurements.correlation.toFixed(2)} · mono loss ${currentSourceAnalysis.measurements.monoLossDb.toFixed(1)} dB`}
+          </span>
+          <span>
+            Original file {session.sourceSampleRate / 1000} kHz · analysis decoded at{" "}
+            {source?.sampleRate ? `${source.sampleRate / 1000} kHz` : "44.1 kHz"}
+          </span>
+          <small>
+            Baseline for the stored original; compare it with the rendered master below. Mix Doctor raised{" "}
+            {currentSourceAnalysis.mixHealth.flags.length} input finding(s).
+          </small>
+          <MasteringLoudnessTimeline timeline={currentSourceAnalysis.loudnessTimeline} />
+        </div>
       )}
       {rendered && renderCurrent && (
         <div className="mastering-file-session-report" aria-label="Rendered master measurements">
@@ -1954,6 +2129,23 @@ export function MasteringFileSessionPanel() {
                   {check.line}
                 </small>
               ))}
+            </div>
+          )}
+          {stageAdjustment && !stageAdjustment.noop && (
+            <div
+              className="mastering-file-session-auto-stage"
+              role="group"
+              aria-label="Automatic gain staging suggestion"
+            >
+              <p>{stageAdjustment.applied[0]}</p>
+              <button type="button" className="btn btn-small" disabled={Boolean(busy)} onClick={stageMasterGain}>
+                Use AUTO STAGE · {stageAdjustment.deltaDb > 0 ? "+" : ""}
+                {stageAdjustment.deltaDb.toFixed(1)} dB INPUT
+              </button>
+              <small>
+                Estimate from this source render only. It changes the session draft; Apply settings saves one undo step.
+                Render again to measure the result.
+              </small>
             </div>
           )}
           {outputMixHealth && (

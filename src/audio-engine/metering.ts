@@ -4,7 +4,7 @@
  * renderer for export summaries.
  *
  * Conventions:
- *  - peak amplitude in linear [0..1] (full-scale = 1.0)
+ *  - sample peak is linear; floating-point renders may exceed 1.0 (0 dBFS)
  *  - dBFS via `toDb(linear)`, clamped to -120..+6
  *  - RMS over a frame for momentary loudness
  *  - stereo correlation ∈ [-1, +1]: +1 = mono-compatible, < 0 = phase issues
@@ -417,7 +417,7 @@ export function readAnalyserFrame(analyser: AnalyserNode, target: Frame): void {
 export interface BufferSummary {
   /** Actual channel count on the measured buffer. */
   channelCount: number;
-  /** Linear peak [0..1] across the whole buffer. */
+  /** Linear sample peak across the whole buffer; can exceed 1 in floating-point audio. */
   peak: number;
   /** Peak in dBFS. */
   peakDb: number;

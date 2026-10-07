@@ -84,8 +84,11 @@ describe("TriggerEngine (Wave 4f — final)", () => {
       expect(src.includes(gone), `stale engine member: ${gone}`).toBe(false);
     }
     // one-shot tracking stays ENGINE-side (markers/clicks use it), the engine
-    // hands the tracker to the collaborator through deps.
-    expect(src).toMatch(/trackOneShot: \(source\) => this\.oneShotSources\.add\(source\)/);
+    // hands the tracker to the collaborator through deps. The live-editing
+    // wave (ADR 0024) added the per-source clip metadata side table for
+    // orphan cancellation, so the handoff grew releaseOneShot + clipMeta.
+    expect(src).toMatch(/trackOneShot: \(source, clipMeta\) => \{/);
+    expect(src).toMatch(/releaseOneShot: \(source\) => \{/);
   });
 
   it("frozen guards route through the shared WarpManager instance", () => {

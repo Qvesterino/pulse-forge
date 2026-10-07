@@ -37,6 +37,12 @@ export const DOCK_TABS: readonly DockTabDef[] = [
     title: "Instrument + effect chain of the selected track (Alt+2)",
   },
   {
+    id: "tsar",
+    label: "TSAR",
+    ariaLabel: "Toggle TSAR engine panel",
+    title: "TSAR - hybrid sample + synthesis engine: dual sources, morph, mod matrix, Forge (Alt+0)",
+  },
+  {
     id: "arr",
     label: "ARR",
     ariaLabel: "Toggle arrangement and scenes",

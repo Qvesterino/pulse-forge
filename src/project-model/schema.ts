@@ -48,7 +48,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -183,6 +183,7 @@ const INSTRUMENT_NAMES: Record<InstrumentKind, string> = {
   spectral: "Spectral",
   vocalchop: "Vocal Chop",
   drumsynth: "Drum Synth",
+  tsar: "TSAR",
 };
 
 export function createInstrumentTrackModel(kind: InstrumentKind, index: number): InstrumentTrack {
@@ -2580,6 +2581,7 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // v10 adds the opt-in, structured project Producer Brief (no raw prompts/audio);
   // v11 adds ArrangementClip pattern/scene phase offsets (missing means phase 0);
   // v12 adds the explicit mastering delivery profile, true-peak target, and final-sum insert chain.
+  // v13 adds the optional `InstrumentTrack.sampleIdB` (TSAR Source B identity; ADR 0023).
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

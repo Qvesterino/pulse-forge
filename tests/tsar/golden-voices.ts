@@ -31,7 +31,7 @@ export interface GoldenVoice {
   /** Ground-truth root MIDI note (null = unpitched, Forge must say "unknown"). */
   rootMidi: number | null;
   /** Ground-truth character. */
-  kind: "sustained" | "one-shot" | "unpitched";
+  kind: "sustained" | "one-shot";
   /** Seconds of rendered material. */
   durationSec: number;
   /** Expected Forge routing (T2 contract). */
@@ -42,8 +42,12 @@ export const GOLDEN_VOICES: GoldenVoice[] = [
   { id: "sine-a1", rootMidi: 33, kind: "sustained", durationSec: 2, expectedEngine: "wavetable" },
   { id: "saw-c3", rootMidi: 48, kind: "sustained", durationSec: 2, expectedEngine: "wavetable" },
   { id: "808-f1", rootMidi: 29, kind: "one-shot", durationSec: 1.5, expectedEngine: "sampler" },
-  { id: "noise-burst", rootMidi: null, kind: "unpitched", durationSec: 0.5, expectedEngine: "sampler" },
+  // A decaying noise burst IS a one-shot; it is unpitched (rootMidi null) at
+  // the same time, which is the honesty case Forge must report.
+  { id: "noise-burst", rootMidi: null, kind: "one-shot", durationSec: 0.5, expectedEngine: "sampler" },
   { id: "formant-e3", rootMidi: 52, kind: "sustained", durationSec: 2, expectedEngine: "wavetable" },
+  // The pad DRIFTS (a slow glide across a whole tone) so it genuinely routes
+  // to the granular engine — a stable pad would be wavetable material.
   { id: "sustained-pad", rootMidi: 45, kind: "sustained", durationSec: 6, expectedEngine: "granular" },
 ];
 
@@ -136,18 +140,20 @@ export function renderGoldenVoice(voice: GoldenVoice, seed = TSAR_GOLDEN_SEED): 
       break;
     }
     case "sustained-pad": {
-      // Long evolving pad: detuned partial stack + slow AM - Forge should see
-      // a stable f0 with a long, non-instant envelope -> granular territory.
-      const f0 = midiToHz(voice.rootMidi!);
-      const f2 = f0 * Math.pow(2, 7 / 1200); // +7 cents
+      // Long evolving pad with a REAL drift: the f0 glides across ±1.5
+      // semitones over the take, so Forge's stability check routes it to the
+      // granular engine (a stable pad would be wavetable material). Phase is
+      // ACCUMULATED (a changing f0 with `f0 * i` steps the phase and clicks).
+      const base = midiToHz(voice.rootMidi!);
+      let phase = 0;
       for (let i = 0; i < length; i++) {
         const t = i / sr;
+        const glide = Math.pow(2, (Math.sin((2 * Math.PI * t) / 6) * 1.5) / 12);
+        const f0 = base * glide;
+        phase += (2 * Math.PI * f0) / sr;
+        const partner = Math.sin(phase * Math.pow(2, 7 / 1200)); // +7 cents
         const am = 0.8 + 0.2 * Math.sin(2 * Math.PI * 0.4 * t);
-        out[i] =
-          0.4 *
-          attackGain(i, attack) *
-          am *
-          (Math.sin((2 * Math.PI * f0 * i) / sr) + Math.sin((2 * Math.PI * f2 * i) / sr));
+        out[i] = 0.4 * attackGain(i, attack) * am * (Math.sin(phase) + partner);
       }
       break;
     }
@@ -163,3 +169,6 @@ export function renderGoldenVoice(voice: GoldenVoice, seed = TSAR_GOLDEN_SEED): 
 export function renderAllGoldenVoices(seed = TSAR_GOLDEN_SEED): Map<GoldenVoiceId, Float32Array> {
   return new Map(GOLDEN_VOICES.map((voice) => [voice.id, renderGoldenVoice(voice, seed)]));
 }
+
+/** Rendered once per module — the shared fixture the T2/T3 tests read. */
+export const goldenVoices: Map<GoldenVoiceId, Float32Array> = renderAllGoldenVoices();

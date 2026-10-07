@@ -1756,6 +1756,15 @@ export class AudioEngine {
     for (let turn = 0; turn < 2; turn++) {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
+    // TSAR (and future event-queue instrument runtimes): build the seeded
+    // worklet node NOW, after every note/automation is scheduled and before
+    // startRendering (docs/TSAR-ROADMAP.md T5, ADR 0023). Port messages are
+    // not pumped during an OfflineAudioContext render, so the runtime seeded
+    // its queue via processorOptions instead.
+    for (const state of this.instruments.values()) {
+      const runtime = state.runtime as { prepareOfflineRender?: () => void };
+      runtime.prepareOfflineRender?.();
+    }
     // Switch to exact writes FIRST, then run the final sizing pass with
     // them, then lock: a mid-glide final write would defeat the whole
     // barrier (the arm-before-write ordering is the contract).
@@ -1915,6 +1924,21 @@ export class AudioEngine {
     sampleId?: string | null,
   ): void {
     this.triggerEngine.trigger(trackId, pad, when, velocity, locks, sampleId);
+  }
+
+  /**
+   * Scope the voices created inside `fn` to `owner` — a transient player
+   * (ghost preview) claims its voices so its stop() can kill exactly its own
+   * overhang without touching live-transport sound. See
+   * TriggerEngine.withVoiceOwner.
+   */
+  withVoiceOwner<T>(owner: string, fn: () => T): T {
+    return this.triggerEngine.withVoiceOwner(owner, fn);
+  }
+
+  /** De-clicked stop of one owner's pending + ringing voices. */
+  stopVoicesForOwner(owner: string): void {
+    this.triggerEngine.stopVoicesForOwner(owner, this.currentTime);
   }
 
   setMidiPitchBend(trackId: string, semitones: number): void {

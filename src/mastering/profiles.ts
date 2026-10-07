@@ -21,6 +21,21 @@ export interface MasterProfile {
   intendedUse: string;
 }
 
+export interface MasterProfileSource {
+  label: string;
+  url: string;
+  checkedAt: string;
+}
+
+/** Current primary references behind platform-specific profile guidance. */
+export const MASTER_PROFILE_SOURCES: Partial<Record<MasterProfileId, MasterProfileSource>> = {
+  streaming: {
+    label: "Spotify for Artists · Loudness normalization",
+    url: "https://support.spotify.com/us/artists/article/loudness-normalization/",
+    checkedAt: "2026-10-07",
+  },
+};
+
 export const MASTER_PROFILES: readonly MasterProfile[] = [
   {
     id: "streaming",

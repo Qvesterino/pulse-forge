@@ -47,6 +47,7 @@ import {
 } from "../mastering/report";
 import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
 import { awaitMasteringSampleBankReady } from "../mastering/readiness";
+import { IntegerPcmDeliveryError } from "../export/quantize";
 
 type Status =
   | { kind: "idle" }
@@ -264,15 +265,19 @@ export function ExportPanel({
         Math.abs((masterReport.encodedDelivery.file.averageBitrateKbps ?? 0) - (format === "mp3-320" ? 320 : 192)) >
           8)),
   );
-  const reportStale = Boolean(
+  const masterRenderStale = Boolean(
     masteringMode &&
     masterReport &&
     (masterReport.projectRevisionId !== revisionId ||
       masterReport.sampleBankRevision !== sampleBankRevision ||
       masterReport.scope !== mode ||
       masterReport.sampleRate !== sampleRate ||
-      masterReport.quality !== quality ||
-      encodedSettingsStale),
+      masterReport.quality !== quality),
+  );
+  const reportStale = Boolean(masteringMode && masterReport && (masterRenderStale || encodedSettingsStale));
+  const integerMasterDelivery = format.startsWith("mp3") || (format === "wav" && bitDepth !== 32);
+  const integerMasterPeakOverRange = Boolean(
+    masteringMode && masterReport && !masterRenderStale && integerMasterDelivery && masterReport.measurements.peak > 1,
   );
   const baseName = sanitizeFilename(doc.name);
   const versionSuffix = masteringMode ? masteringVersionSuffix(masterVersion) : "";
@@ -385,6 +390,7 @@ export function ExportPanel({
         const { encodeMp3 } = await import("../export/mp3");
         const blob = await encodeMp3(buffer, {
           kbps,
+          ...(masteringMode ? { integerOverflowPolicy: "reject" as const } : {}),
           signal,
           onProgress: (f) => setStatus({ kind: "busy", label: `Encoding MP3 ${kbps}… ${Math.round(f * 100)}%` }),
         });
@@ -418,6 +424,7 @@ export function ExportPanel({
       // and honors Cancel. Byte-identical to the sync encoder.
       const wavBytes = await encodeWavAsync(buffer, bitDepth, {
         bext: bextFor(`${doc.name} — KYX master`, summary, sampleRate, bitDepth),
+        ...(masteringMode ? { integerOverflowPolicy: "reject" as const } : {}),
         onProgress: (f) => setStatus({ kind: "busy", label: `Encoding WAV… ${Math.round(f * 100)}%` }),
         signal,
       });
@@ -445,7 +452,7 @@ export function ExportPanel({
         summary,
       });
     } catch (error) {
-      if (!isAbortError(error)) setMasterReport(null);
+      if (!isAbortError(error) && !(error instanceof IntegerPcmDeliveryError)) setMasterReport(null);
       cancelOrElse(error, `Export failed: {err}`, download ? "Master export cancelled" : "Master analysis cancelled");
     }
   };
@@ -1007,7 +1014,7 @@ export function ExportPanel({
           <span>
             PROFILE SUGGESTION · {deliveryProfile.recommendedFormat}
             {
-              " · 16-bit uses deterministic TPDF dither; 24-bit uses integer quantization; 32-bit float is not dithered."
+              " · 16-bit uses deterministic TPDF dither; 24-bit uses integer quantization; 32-bit float is not dithered. Integer mastering delivery will not silently soft-clip over-range samples."
             }
           </span>
           {recommendedExport && (
@@ -1026,6 +1033,14 @@ export function ExportPanel({
         </div>
       )}
       <div className="export-policy" role="note" aria-label="Export policy">
+        {integerMasterPeakOverRange && masterReport && (
+          <span className="export-policy-warning" role="alert">
+            INTEGER DELIVERY EXCEEDS FULL SCALE · sample peak{" "}
+            {(20 * Math.log10(masterReport.measurements.peak)).toFixed(2)} dBFS. Lower master gain/trim or limiter
+            ceiling and render again, or choose 32-bit-float WAV. KYX will refuse this integer export instead of
+            applying hidden saturation.
+          </span>
+        )}
         {masteringMode && !renderPcmWithinBudget && (
           <span className="export-policy-warning" role="alert">
             {Number.isFinite(renderPcmBytes) && renderPcmBytes > 0
@@ -1051,11 +1066,15 @@ export function ExportPanel({
             <button
               type="button"
               className="btn btn-export"
-              disabled={busy || !renderPcmWithinBudget || (format === "video" && !videoSupported)}
+              disabled={
+                busy || !renderPcmWithinBudget || integerMasterPeakOverRange || (format === "video" && !videoSupported)
+              }
               title={
-                !renderPcmWithinBudget
-                  ? `The estimated stereo PCM render exceeds KYX's ${renderPcmLimitMiB} MiB safety limit.`
-                  : undefined
+                integerMasterPeakOverRange
+                  ? "Integer master delivery exceeds 0 dBFS sample peak. Lower the master level or choose 32-bit-float WAV."
+                  : !renderPcmWithinBudget
+                    ? `The estimated stereo PCM render exceeds KYX's ${renderPcmLimitMiB} MiB safety limit.`
+                    : undefined
               }
               onClick={() => void exportMaster(true)}
             >
@@ -1191,17 +1210,18 @@ export function ExportPanel({
       >
         {screenReaderExportStatus(status, reportStale)}
       </div>
-      {status.kind === "done" && (!masteringMode || masterReport) && (
+      {((status.kind === "done" && (!masteringMode || masterReport)) ||
+        (status.kind === "error" && masteringMode && masterReport)) && (
         <div className="master-render-measurement">
           {masteringMode && <strong>RENDER PCM · PRE-ENCODE</strong>}
           <ExportSummary
-            summary={status.summary}
+            summary={status.kind === "done" ? status.summary : (masterReport?.measurements ?? EMPTY_EXPORT_SUMMARY)}
             deliveryProfile={masterReport?.profile ?? resolveDeliveryTarget(master)}
             verdict={masterReport?.verdict}
           />
         </div>
       )}
-      {status.kind === "done" && masteringMode && masterReport && (
+      {masteringMode && masterReport && (status.kind === "done" || (status.kind === "error" && !reportStale)) && (
         <>
           <div className="master-render-report-meta" role="note" aria-label="Master render report details">
             <strong title={masterReport.runId}>
@@ -1226,6 +1246,11 @@ export function ExportPanel({
           </div>
           {masterReport.encodedDelivery ? (
             <EncodedDeliveryCheck inspection={masterReport.encodedDelivery} deliveryProfile={masterReport.profile} />
+          ) : status.kind === "error" ? (
+            <div className="master-delivery-check" role="note">
+              Integer delivery was refused. No encoded file was created or checked; the pre-encode render report is
+              retained.
+            </div>
           ) : (
             <div className="master-delivery-check" role="note">
               Analysis-only run. No WAV/MP3 file was created or checked.
