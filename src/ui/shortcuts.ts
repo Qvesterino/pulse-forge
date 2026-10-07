@@ -40,6 +40,7 @@ export type ShortcutKey =
   | "panelIntent"
   | "panelMidi"
   | "panelMaster"
+  | "panelTsar"
   | "nextPattern"
   | "prevPattern"
   | "seekHome"
@@ -67,6 +68,7 @@ export const PANEL_IDS_BY_SHORTCUT: Record<string, string> = {
   panelIntent: "intent",
   panelMidi: "midi",
   panelMaster: "master",
+  panelTsar: "tsar",
 };
 
 export function panelIdOfShortcut(key: ShortcutKey): string | null {
@@ -175,6 +177,7 @@ export const SHORTCUTS: Shortcut[] = [
   { key: "panelIntent", label: "Toggle intent panel", group: "Panels", keyHint: "7", alt: true },
   { key: "panelMidi", label: "Toggle MIDI input panel", group: "Panels", keyHint: "8", alt: true },
   { key: "panelMaster", label: "Toggle mastering panel", group: "Panels", keyHint: "9", alt: true },
+  { key: "panelTsar", label: "Toggle TSAR engine panel", group: "Panels", keyHint: "0", alt: true },
 
   { key: "deleteNote", label: "Delete selected note / clear selected steps", group: "Sequencer", keyHint: "Delete" },
 
@@ -318,6 +321,11 @@ export const EDITOR_SHORTCUTS: EditorShortcut[] = [
     area: "Arrangement keys",
     label: "Separate the audio clip at the playhead",
     bindings: ["Ctrl + E"],
+  },
+  {
+    area: "Arrangement keys",
+    label: "Slip the audio clip's content (linear clips)",
+    bindings: ["Alt + drag body"],
   },
   {
     area: "Capture",

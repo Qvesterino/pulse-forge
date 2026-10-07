@@ -53,6 +53,7 @@ import {
   setSceneIntensityCurve,
   setSceneRole,
   resizeAudioClip,
+  slipAudioClip,
   setActiveAudioTake,
   splitAudioClipAtTick,
   stripSilenceAudioClip,
@@ -1390,7 +1391,7 @@ export function ArrangementPanel() {
      * gesture. Leaving it in the union meant a future `trimEnd` branch would
      * type-check and look wired when nothing routed to it.
      */
-    mode: "move" | "resize" | "trimStart" | "fadeIn" | "fadeOut" | "gain" | "stretch";
+    mode: "move" | "resize" | "trimStart" | "fadeIn" | "fadeOut" | "gain" | "stretch" | "slip";
     /** Stretch anchor: right edge pins the start, left edge pins the end. */
     edge: "left" | "right";
     /** The pointer this gesture captured — see DragState.pointerId. */
@@ -1399,6 +1400,9 @@ export function ArrangementPanel() {
     origLength: number;
     origRate: number;
     origTrimStart: number;
+    /** Slip gesture: the captured content offset and its content-coverage ceiling. */
+    origOffsetSec: number;
+    maxOffsetSec: number | null;
     /** px-per-bar captured at pointerdown — see DragState.barWidth. */
     barWidth: number;
     origFadeIn: number;
@@ -1423,6 +1427,8 @@ export function ArrangementPanel() {
     null,
   );
   const [audioGainPreview, setAudioGainPreview] = useState<{ clipId: string; gain: number } | null>(null);
+  // Slip preview (Alt+drag in the clip body): which part of the source plays.
+  const [audioSlipPreview, setAudioSlipPreview] = useState<{ clipId: string; offsetSec: number } | null>(null);
   // Live audio-drag values mirrored out of state (audit 16) — see the
   // dragLiveRef note above. `onAudioPointerUp` is a DISCRETE handler that
   // commits move / resize / stretch / trim / fade / gain from these values.
@@ -1434,6 +1440,7 @@ export function ArrangementPanel() {
   const audioFadeLiveRef = useRef<{ clipId: string; fadeIn: number; fadeOut: number } | null>(null);
   const audioGainLiveRef = useRef<{ clipId: string; gain: number } | null>(null);
   const audioStretchLiveRef = useRef<{ clipId: string; rate: number } | null>(null);
+  const audioSlipLiveRef = useRef<{ clipId: string; offsetSec: number } | null>(null);
   /** Write-through setters: the ref is the event authority, state the render. */
   const setAudioDragLive = (next: { startBar: number; lengthBars: number } | null) => {
     audioDragLiveRef.current = next;
@@ -1451,6 +1458,10 @@ export function ArrangementPanel() {
     audioStretchLiveRef.current = next;
     setAudioStretchPreview(next);
   };
+  const setAudioSlipLive = (next: { clipId: string; offsetSec: number } | null) => {
+    audioSlipLiveRef.current = next;
+    setAudioSlipPreview(next);
+  };
   // Block-move preview: the shared delta every selected audio clip slides by.
   // Same write-through discipline as the other live values — pointerup is a
   // discrete handler that must read the latest frame, not batched state.
@@ -1466,11 +1477,13 @@ export function ArrangementPanel() {
     audioFadeLiveRef.current = null;
     audioGainLiveRef.current = null;
     audioStretchLiveRef.current = null;
+    audioSlipLiveRef.current = null;
     audioMultiDragLiveRef.current = null;
     setAudioDrag(null);
     setAudioFadePreview(null);
     setAudioGainPreview(null);
     setAudioStretchPreview(null);
+    setAudioSlipPreview(null);
     setAudioMultiDrag(null);
   };
   const [audioMenu, setAudioMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);
@@ -2399,7 +2412,7 @@ export function ArrangementPanel() {
     clipId: string,
     // Mirrors the audioDragRef `mode` union exactly — `"trimEnd"` removed with
     // it, since no call site passes it and no move branch handled it.
-    mode: "move" | "resize" | "trimStart" | "fadeIn" | "fadeOut" | "gain" | "stretch",
+    mode: "move" | "resize" | "trimStart" | "fadeIn" | "fadeOut" | "gain" | "stretch" | "slip",
     edge: "left" | "right" = "right",
   ) => {
     if (event.button !== 0) return;
@@ -2458,6 +2471,25 @@ export function ArrangementPanel() {
       (clip.startBar + clip.lengthBars) * BAR_TICKS,
       doc.bpm,
     );
+    // SLIP gate (Alt+drag in the body): the slip writes offsetSec, whose
+    // mapping is only defined for linear forward playback — reversed clips
+    // read the source backwards, looped clips phase through loopPhaseOffsetSec,
+    // and warp-pinned clips anchor content by arrangement tick (a slip would
+    // need to shift the pins). Same family as the live-resume gate.
+    if (mode === "slip" && (clip.reverse || clip.loop === true || (clip.warpMarkers?.length ?? 0) > 0)) return;
+    // Content-coverage ceiling for the slip: the playable window
+    // [offset+trimStart, bufferDur−trimEnd] must keep covering the clip's
+    // wall length (source seconds scale by the rate). Commands cannot reach
+    // the sample bank — the gesture injects the duration, the same pattern as
+    // splitAudioClipAtTick's sourceDuration.
+    const slipBuffer = mode === "slip" ? services.bank.get(clip.bufferId) : undefined;
+    // Wall length in SOURCE seconds: resample consumes wall×rate, and the
+    // stretch buffer is original/rate long — same ×rate accounting.
+    const slipWallSourceSec = mode === "slip" ? clipWallSec * (clip.stretchRate ?? 1) : 0;
+    const maxOffsetSec =
+      mode === "slip" && slipBuffer
+        ? Math.max(0, slipBuffer.duration - (clip.trimStart ?? 0) - (clip.trimEnd ?? 0) - slipWallSourceSec)
+        : null;
     audioDragRef.current = {
       clipId,
       mode,
@@ -2467,6 +2499,8 @@ export function ArrangementPanel() {
       origLength: clip.lengthBars,
       origRate: clip.stretchRate ?? 1,
       origTrimStart: clip.trimStart ?? 0,
+      origOffsetSec: clip.offsetSec ?? 0,
+      maxOffsetSec,
       origFadeIn: clip.fadeIn ?? 0,
       origFadeOut: clip.fadeOut ?? 0,
       origGain: clip.gain ?? 1,
@@ -2514,6 +2548,15 @@ export function ArrangementPanel() {
       const newStart = cur.edge === "right" ? cur.origStart : Math.max(0, cur.origStart + delta);
       setAudioDragLive({ startBar: newStart, lengthBars: newLen });
       setAudioStretchLive({ clipId: cur.clipId, rate: previewStretchRate(cur.origRate, cur.origLength, newLen) });
+    } else if (cur.mode === "slip") {
+      // Content follows the pointer: dragging the content LEFT reveals later
+      // source material (offset grows), right reveals earlier (offset
+      // shrinks). Ceiling keeps the playable window covering the whole clip.
+      const next = Math.max(
+        0,
+        Math.min(cur.maxOffsetSec ?? Number.POSITIVE_INFINITY, cur.origOffsetSec - delta * secPerBar),
+      );
+      setAudioSlipLive({ clipId: cur.clipId, offsetSec: next });
     } else if (cur.mode === "fadeIn") {
       const deltaSec = delta * secPerBar;
       const clipSec = cur.origLength * secPerBar;
@@ -2546,6 +2589,7 @@ export function ArrangementPanel() {
     const fadePrev = audioFadeLiveRef.current;
     const gainPrev = audioGainLiveRef.current;
     const stretchPrev = audioStretchLiveRef.current;
+    const slipPrev = audioSlipLiveRef.current;
     const multiDelta = audioMultiDragLiveRef.current;
     audioDragRef.current = null;
     clearAudioDragLive();
@@ -2629,6 +2673,10 @@ export function ArrangementPanel() {
           }),
         );
       }
+    } else if (cur.mode === "slip" && slipPrev && slipPrev.clipId === cur.clipId) {
+      // 1 ms quantize: slip is audio-position precision, not a 2dp UI knob.
+      if (Math.abs(slipPrev.offsetSec - cur.origOffsetSec) > 0.001)
+        execute(slipAudioClip(services.store.doc, cur.clipId, Math.round(slipPrev.offsetSec * 1000) / 1000));
     } else if (cur.mode === "fadeIn" && fadePrev && fadePrev.clipId === cur.clipId) {
       if (Math.abs(fadePrev.fadeIn - cur.origFadeIn) > 0.005)
         execute(updateAudioClip(services.store.doc, cur.clipId, { fadeIn: Math.round(fadePrev.fadeIn * 100) / 100 }));
@@ -2694,11 +2742,13 @@ export function ArrangementPanel() {
     audioFadeLiveRef.current = null;
     audioGainLiveRef.current = null;
     audioStretchLiveRef.current = null;
+    audioSlipLiveRef.current = null;
     audioMultiDragLiveRef.current = null;
     setAudioDrag(null);
     setAudioFadePreview(null);
     setAudioGainPreview(null);
     setAudioStretchPreview(null);
+    setAudioSlipPreview(null);
     setAudioMultiDrag(null);
     marqueeStartRef.current = null;
     setMarquee(null);
@@ -4253,6 +4303,9 @@ export function ArrangementPanel() {
               const effFadeIn = audioFadePreview?.clipId === clip.id ? audioFadePreview.fadeIn : (clip.fadeIn ?? 0);
               const effFadeOut = audioFadePreview?.clipId === clip.id ? audioFadePreview.fadeOut : (clip.fadeOut ?? 0);
               const effGain = audioGainPreview?.clipId === clip.id ? audioGainPreview.gain : (clip.gain ?? 1);
+              // Slip preview: the waveform draws the shifted source window.
+              const effOffsetSec =
+                audioSlipPreview?.clipId === clip.id ? audioSlipPreview.offsetSec : (clip.offsetSec ?? 0);
               // Fade overlay widths use the clip's OWN wall duration (scene
               // tempo aware, matching the drag sensitivity in beginAudioDrag),
               // not doc.bpm — under a pinned scene the handle sat at the
@@ -4272,7 +4325,7 @@ export function ArrangementPanel() {
                   key={clip.id}
                   className={`arr-audio-clip${selected ? " selected" : ""}${isCurrent ? " current" : ""}${clip.takeId === clipTakeGroup?.compTakeId ? " comp" : ""}`}
                   style={{ left: startBar * barWidth, width: lengthBars * barWidth - 4 }}
-                  title={`${track?.name ?? clip.trackId} · ${clip.bufferId} · ${clip.reverse ? "REV " : ""}${clip.loop ? "LOOP " : ""}${(clip.warpMarkers?.length ?? 0) > 0 ? `WARP${clip.warpMarkers!.length} ` : ""}${clip.stretchMode === "stretch" ? `STRETCH×${effRate.toFixed(2)} ` : effRate !== 1 ? `×${effRate.toFixed(2)} ` : ""}${lengthBars}b · trim ${clip.trimStart.toFixed(2)}/${clip.trimEnd.toFixed(2)} fade ${effFadeIn.toFixed(2)}/${effFadeOut.toFixed(2)} gain ${effGain.toFixed(2)} — PT: top corners fade, top middle clip gain, Alt+edge stretches`}
+                  title={`${track?.name ?? clip.trackId} · ${clip.bufferId} · ${clip.reverse ? "REV " : ""}${clip.loop ? "LOOP " : ""}${(clip.warpMarkers?.length ?? 0) > 0 ? `WARP${clip.warpMarkers!.length} ` : ""}${clip.stretchMode === "stretch" ? `STRETCH×${effRate.toFixed(2)} ` : effRate !== 1 ? `×${effRate.toFixed(2)} ` : ""}${lengthBars}b · trim ${clip.trimStart.toFixed(2)}/${clip.trimEnd.toFixed(2)} fade ${effFadeIn.toFixed(2)}/${effFadeOut.toFixed(2)} gain ${effGain.toFixed(2)} — PT: top corners fade, top middle clip gain, Alt+edge stretches, Alt+body slips${clip.reverse || clip.loop || (clip.warpMarkers?.length ?? 0) > 0 ? " (slip off: REV/LOOP/WARP)" : ""}`}
                   onPointerDown={(event) => {
                     audioLongPressTargetRef.current = { clipId: clip.id, x: event.clientX, y: event.clientY };
                     audioLongPress.onPointerDown(event);
@@ -4281,7 +4334,7 @@ export function ArrangementPanel() {
                     const w = rect.width;
                     if (x < 8) beginAudioDrag(event, clip.id, event.altKey ? "stretch" : "trimStart", "left");
                     else if (x > w - 8) beginAudioDrag(event, clip.id, event.altKey ? "stretch" : "resize", "right");
-                    else beginAudioDrag(event, clip.id, "move");
+                    else beginAudioDrag(event, clip.id, event.altKey ? "slip" : "move");
                   }}
                   onPointerMove={(event) => {
                     audioLongPress.onPointerMove();
@@ -4328,7 +4381,7 @@ export function ArrangementPanel() {
                     sourceChannel={clip.sourceChannel}
                     reverse={clip.reverse}
                     showOnsets={selected || (clip.warpMarkers?.length ?? 0) > 0}
-                    offsetSec={clip.offsetSec ?? 0}
+                    offsetSec={effOffsetSec}
                     trimStart={clip.trimStart ?? 0}
                     trimEnd={clip.trimEnd ?? 0}
                   />

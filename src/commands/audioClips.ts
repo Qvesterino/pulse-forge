@@ -484,6 +484,35 @@ export function moveAudioClip(doc: ProjectDocument, clipId: string, startBar: nu
 }
 
 /**
+ * SLIP the clip's content (Pro Tools / Reaper semantics): shift WHICH part of
+ * the source plays without moving or resizing the clip on the timeline.
+ * Only `offsetSec` changes — trim windows, fades, gain and geometry stay, so
+ * the user's trims are not dragged along with the content shift.
+ *
+ * `offsetSec` is clamped to ≥ 0; the caller (the drag gesture) owns the upper
+ * bound via the loaded buffer's duration — same parameter-injection pattern
+ * as splitAudioClipAtTick's sourceDuration, because commands are pure over
+ * the document and cannot reach the sample bank. Non-finite input keeps the
+ * clip's current offset (no-op history entry, the moveAudioClip pattern).
+ */
+export function slipAudioClip(doc: ProjectDocument, clipId: string, offsetSec: number): Command {
+  const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
+  if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  const nextOffset = Number.isFinite(offsetSec) ? Math.max(0, offsetSec) : (clip.offsetSec ?? 0);
+  if (nextOffset === (clip.offsetSec ?? 0)) return snapshot("slipAudioClip", "Slip audio clip (no-op)", doc, doc);
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: {
+      ...doc.arrangement,
+      audioClips: (doc.arrangement.audioClips ?? []).map((c) =>
+        c.id === clipId ? { ...c, offsetSec: nextOffset } : c,
+      ),
+    },
+  };
+  return snapshot("slipAudioClip", `Slip audio clip to ${nextOffset.toFixed(3)}s`, doc, next);
+}
+
+/**
  * Preview rate for Alt+drag clip stretching: the content scales with the
  * clip, so the rate follows the length ratio (longer clip = slower playback
  * = lower rate). Relative to the CURRENT rate — trims need no absolute
