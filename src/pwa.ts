@@ -69,6 +69,9 @@ export const pwaOptions: Partial<VitePWAOptions> = {
       // The optional SDK and its KYX adapter are downloaded only after the
       // user chooses Audiotool export; do not include either in PWA install/update.
       "**/audiotool-nexus-*.js",
+      // The FLAC worker and WASM are an opt-in delivery codec; cache the
+      // chunks after first use instead of downloading them during PWA install.
+      "**/flac-codec-*.js",
       // The ONNX runtime blobs are model dependencies, loaded behind circuit
       // breakers — never part of the install payload.
       "assets/ort-*.wasm",
@@ -99,6 +102,15 @@ export const pwaOptions: Partial<VitePWAOptions> = {
     // makes `npm run build` succeed on a machine that has them.
     maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
     runtimeCaching: [
+      {
+        urlPattern: /\/assets\/flac-codec-[^/]+\.js$/,
+        handler: "CacheFirst",
+        options: {
+          cacheName: "kyx-flac-encoder",
+          cacheableResponse: { statuses: [0, 200] },
+          expiration: { maxEntries: 8, maxAgeSeconds: 60 * 60 * 24 * 365 },
+        },
+      },
       {
         urlPattern:
           /^https:\/\/cdn\.audiotool\.com\/website-assets\/document-service\/[0-9a-f]+\/(?:wasm_exec\.js|document_validator\.wasm\.gz)$/,

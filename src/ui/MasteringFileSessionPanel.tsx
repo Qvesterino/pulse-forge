@@ -43,6 +43,7 @@ import type { EffectInstance } from "../project-model/types";
 import { createBextMetadata, encodeWavAsync, sanitizeFilename } from "../rendering/wav";
 import type { WavBitDepth } from "../rendering/wav";
 import { downloadBlob } from "../export/download";
+import { loadFlacEncoder } from "../export/flac-loader";
 import { useServices } from "./context";
 import { MasteringLoudnessTimeline } from "./MasteringLoudnessTimeline";
 import { MasteringFingerprint } from "./MasteringFingerprint";
@@ -83,7 +84,7 @@ interface SessionComparison {
 }
 
 type SessionPreviewSelection = MasteringSessionSlot | "master" | "reference";
-type SessionDeliveryFormat = "wav" | "mp3";
+type SessionDeliveryFormat = "wav" | "flac" | "mp3";
 
 interface RecentDeliveryReport {
   key: string;
@@ -147,6 +148,16 @@ function masteredMp3FileName(
 ): string {
   const baseName = sanitizeFilename(session.fileName.replace(/\.(wav|wave|mp3|flac)$/i, ""));
   return `${baseName}-mastered-${sampleRate}Hz-${kbps}kbps${masteringVersionSuffix(version)}.mp3`;
+}
+
+function masteredFlacFileName(
+  session: MasteringSessionRecord,
+  sampleRate: number,
+  bitDepth: 16 | 24,
+  version: string,
+): string {
+  const baseName = sanitizeFilename(session.fileName.replace(/\.(wav|wave|mp3|flac)$/i, ""));
+  return `${baseName}-mastered-${sampleRate}Hz-${bitDepth}bit${masteringVersionSuffix(version)}.flac`;
 }
 
 function awaitWithSessionAbort<T>(
@@ -390,7 +401,7 @@ export function MasteringFileSessionPanel() {
     renderCurrent &&
     rendered &&
     rendered.measurements.peak > 1 &&
-    (deliveryFormat === "mp3" || (deliveryFormat === "wav" && bitDepth !== 32)),
+    (deliveryFormat === "mp3" || deliveryFormat === "flac" || (deliveryFormat === "wav" && bitDepth !== 32)),
   );
   const currentSourceAnalysis =
     session && sourceAnalysis?.sessionId === session.id && sourceAnalysis.sourceHash === session.sourceHash
@@ -1158,7 +1169,7 @@ export function MasteringFileSessionPanel() {
         sampleRate,
       });
       setNotice(
-        "Studio render and loudness analysis are ready. Review the measurements, then export a checked WAV or MP3.",
+        "Studio render and loudness analysis are ready. Review the measurements, then export a checked WAV, FLAC or MP3.",
       );
     } catch (reason) {
       if (selectionEpoch.current !== epoch) return;
@@ -1215,6 +1226,26 @@ export function MasteringFileSessionPanel() {
           onProgress: (update) => setProgress(`${update.stage} · ${Math.round(update.progress * 100)}%`),
         });
         fileName = masteredMp3FileName(session, rendered.sampleRate, mp3Bitrate, deliveryVersion);
+      } else if (deliveryFormat === "flac") {
+        const { encodeFlac } = await loadFlacEncoder();
+        const flacBitDepth = bitDepth === 16 ? 16 : 24;
+        deliveryBlob = await encodeFlac(rendered.buffer, {
+          bitDepth: flacBitDepth,
+          signal: controller.signal,
+          onProgress: (value) => setProgress(`Encoding ${flacBitDepth}-bit FLAC · ${Math.round(value * 100)}%`),
+        });
+        setBusy("Checking encoded FLAC delivery…");
+        checked = await inspectEncodedMaster({
+          format: "flac",
+          bytes: deliveryBlob,
+          fingerprintBlob: deliveryBlob,
+          expectedDurationSeconds: rendered.buffer.duration,
+          sourceMeasurements: rendered.measurements,
+          profile: resolveDeliveryTarget(draft),
+          signal: controller.signal,
+          onProgress: (update) => setProgress(`${update.stage} · ${Math.round(update.progress * 100)}%`),
+        });
+        fileName = masteredFlacFileName(session, rendered.sampleRate, flacBitDepth, deliveryVersion);
       } else {
         const wav = await encodeWavAsync(rendered.buffer, bitDepth, {
           integerOverflowPolicy: "reject",
@@ -1280,7 +1311,7 @@ export function MasteringFileSessionPanel() {
         exportedFileName: fileName,
         deliveryVerdict: reportDeliveryVerdict,
       });
-      const reportFileName = fileName.replace(/\.(wav|mp3)$/i, "-report.json");
+      const reportFileName = fileName.replace(/\.(wav|mp3|flac)$/i, "-report.json");
       const savedReport: RecentDeliveryReport = {
         key: `${session.id}:${fileName}`,
         sourceFileName: session.fileName,
@@ -1299,7 +1330,9 @@ export function MasteringFileSessionPanel() {
           ? `Encoded ${formatLabel} parsed and decoded audio measured.`
           : deliveryFormat === "mp3"
             ? `MP3 headers checked; post-decode audio was not measured: ${checked.decode.reason ?? "not measured"}.`
-            : `WAV container checked; post-decode audio was not measured: ${checked.decode.reason ?? "not measured"}.`;
+            : deliveryFormat === "flac"
+              ? `FLAC header checked; post-decode audio was not measured: ${checked.decode.reason ?? "not measured"}.`
+              : `WAV container checked; post-decode audio was not measured: ${checked.decode.reason ?? "not measured"}.`;
       setNotice(`Exported ${fileName} · ${inspectionNote}${versionSaveNote}`);
     } catch (reason) {
       if (selectionEpoch.current !== epoch) return;
@@ -1367,7 +1400,7 @@ export function MasteringFileSessionPanel() {
           <h3>Master a stereo mixdown</h3>
           <p>
             Open a WAV, MP3 or FLAC, process it with KYX’s offline master chain, then inspect and export a checked WAV
-            or MP3. This local session is separate from the KYX project above; its edits never change the project.
+            FLAC or MP3. This local session is separate from the KYX project above; its edits never change the project.
           </p>
         </div>
         <label className="btn btn-small mastering-file-session-import">
@@ -1842,36 +1875,45 @@ export function MasteringFileSessionPanel() {
                 aria-label="External mastering delivery format"
                 value={deliveryFormat}
                 disabled={Boolean(busy)}
-                onChange={(event) => setDeliveryFormat(event.target.value as SessionDeliveryFormat)}
+                onChange={(event) => {
+                  const nextFormat = event.target.value as SessionDeliveryFormat;
+                  setDeliveryFormat(nextFormat);
+                  if (nextFormat === "flac" && bitDepth === 32) setBitDepth(24);
+                }}
               >
                 <option value="wav">WAV · lossless PCM</option>
+                <option value="flac">FLAC · lossless compressed</option>
                 <option value="mp3">MP3 · lossy</option>
               </select>
               <small className="export-version-hint">
                 {deliveryFormat === "wav"
                   ? "WAV preserves PCM samples; choose bit depth below."
-                  : "MP3 is a lossy listening copy; choose 192 or 320 kbps below."}
+                  : deliveryFormat === "flac"
+                    ? "FLAC compresses without loss; choose 16- or 24-bit PCM below."
+                    : "MP3 is a lossy listening copy; choose 192 or 320 kbps below."}
               </small>
               {sourceIsLossyMp3 && (
                 <small className="mastering-file-session-lossy-source-warning" role="status" aria-live="polite">
                   {deliveryFormat === "wav"
                     ? "The source is already lossy MP3. WAV avoids another lossy encode, but cannot restore discarded detail."
-                    : "MP3 export re-encodes this already lossy source. Prefer WAV when the destination accepts it; lost detail cannot be restored."}
+                    : deliveryFormat === "flac"
+                      ? "The source is already lossy MP3. FLAC preserves the processed PCM without another lossy encode, but cannot restore discarded detail."
+                      : "MP3 export re-encodes this already lossy source. Prefer a lossless format when the destination accepts it; lost detail cannot be restored."}
                 </small>
               )}
             </label>
-            {deliveryFormat === "wav" ? (
+            {deliveryFormat === "wav" || deliveryFormat === "flac" ? (
               <label>
-                <strong>WAV BIT DEPTH</strong>
+                <strong>{deliveryFormat === "flac" ? "FLAC BIT DEPTH" : "WAV BIT DEPTH"}</strong>
                 <select
-                  aria-label="External mastering WAV bit depth"
+                  aria-label={`External mastering ${deliveryFormat.toUpperCase()} bit depth`}
                   value={bitDepth}
                   disabled={Boolean(busy)}
                   onChange={(event) => setBitDepth(Number(event.target.value) as WavBitDepth)}
                 >
                   <option value={16}>16-bit PCM</option>
                   <option value={24}>24-bit PCM</option>
-                  <option value={32}>32-bit float</option>
+                  {deliveryFormat === "wav" && <option value={32}>32-bit float</option>}
                 </select>
               </label>
             ) : (

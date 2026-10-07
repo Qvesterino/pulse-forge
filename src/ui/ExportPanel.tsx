@@ -14,6 +14,7 @@ import { buildZyvoTransfer } from "../export/zyvo-transfer";
 import { exportProject } from "../export/project-io";
 import { canExportVideo, recordVideo } from "../export/video";
 import { downloadBlob } from "../export/download";
+import { loadFlacEncoder } from "../export/flac-loader";
 import { encodeShareCode, shareAppUrl, embedUrl, embedSnippet } from "../export/shareCode";
 import type { WavBitDepth } from "../rendering/wav";
 import type { PlayMode } from "../project-model/types";
@@ -75,13 +76,14 @@ export interface MasteringWorkspaceState {
   analyze: () => void;
 }
 
-type MasterFormat = "wav" | "mp3-192" | "mp3-320" | "video";
+type MasterFormat = "wav" | "flac" | "mp3-192" | "mp3-320" | "video";
 type ProfileExportRecommendation = { format: Exclude<MasterFormat, "video">; bitDepth?: WavBitDepth };
 
 function profileExportRecommendation(profile: MasterProfile): ProfileExportRecommendation | null {
   const recommendation = profile.recommendedFormat.toLowerCase();
   const bitDepthMatch = recommendation.match(/\b(16|24|32)-bit\b/);
   const bitDepth = bitDepthMatch ? (Number(bitDepthMatch[1]) as WavBitDepth) : undefined;
+  if (recommendation.includes("flac")) return { format: "flac", bitDepth: bitDepth === 16 ? 16 : 24 };
   if (recommendation.includes("wav") && bitDepth) return { format: "wav", bitDepth };
   if (recommendation.includes("mp3")) {
     const bitrate = recommendation.match(/\b(192|320)\s*kbps\b/);
@@ -261,8 +263,10 @@ export function ExportPanel({
   const encodedSettingsStale = Boolean(
     masterReport?.encodedDelivery &&
     (format === "video" ||
-      masterReport.encodedDelivery.format !== (format.startsWith("mp3") ? "mp3" : "wav") ||
-      (masterReport.encodedDelivery.format === "wav" && masterReport.encodedDelivery.file.bitDepth !== bitDepth) ||
+      masterReport.encodedDelivery.format !==
+        (format.startsWith("mp3") ? "mp3" : format === "flac" ? "flac" : "wav") ||
+      ((masterReport.encodedDelivery.format === "wav" || masterReport.encodedDelivery.format === "flac") &&
+        masterReport.encodedDelivery.file.bitDepth !== bitDepth) ||
       (masterReport.encodedDelivery.format === "mp3" &&
         Math.abs((masterReport.encodedDelivery.file.averageBitrateKbps ?? 0) - (format === "mp3-320" ? 320 : 192)) >
           8)),
@@ -277,7 +281,7 @@ export function ExportPanel({
       masterReport.quality !== quality),
   );
   const reportStale = Boolean(masteringMode && masterReport && (masterRenderStale || encodedSettingsStale));
-  const integerMasterDelivery = format.startsWith("mp3") || (format === "wav" && bitDepth !== 32);
+  const integerMasterDelivery = format.startsWith("mp3") || format === "flac" || (format === "wav" && bitDepth !== 32);
   const integerMasterPeakOverRange = Boolean(
     masteringMode && masterReport && !masterRenderStale && integerMasterDelivery && masterReport.measurements.peak > 1,
   );
@@ -297,7 +301,7 @@ export function ExportPanel({
     if (!masterReport || reportStale) return;
     const json = serializeMasterReportSidecar(masterReport);
     const reportName = masterDeliveryFileName
-      ? masterDeliveryFileName.replace(/\.(?:wav|mp3)$/i, "-report.json")
+      ? masterDeliveryFileName.replace(/\.(?:wav|mp3|flac)$/i, "-report.json")
       : `${baseName}-master-report.json`;
     downloadBlob(new Blob([json], { type: "application/json" }), reportName);
   };
@@ -417,6 +421,40 @@ export function ExportPanel({
         setStatus({
           kind: "done",
           label: `MP3 exported (${renderedDurationSeconds.toFixed(1)}s, ${kbps} kbps, ${(blob.size / 1e6).toFixed(2)} MB) as ${fileName} — ${encodedDelivery.decode.status === "measured" ? "decoded file measured" : "header checked; audio not measured"}`,
+          summary,
+        });
+        return;
+      }
+
+      if (format === "flac") {
+        const { encodeFlac } = await loadFlacEncoder();
+        const flacBitDepth = bitDepth === 16 ? 16 : 24;
+        const blob = await encodeFlac(buffer, {
+          bitDepth: flacBitDepth,
+          signal,
+          onProgress: (f) => setStatus({ kind: "busy", label: `Encoding FLAC… ${Math.round(f * 100)}%` }),
+        });
+        buffer = null;
+        setStatus({ kind: "busy", label: "Checking encoded FLAC…" });
+        const encodedDelivery = await inspectEncodedMaster({
+          format: "flac",
+          bytes: blob,
+          fingerprintBlob: masteringMode ? blob : undefined,
+          expectedDurationSeconds: renderedDurationSeconds,
+          sourceMeasurements: summary,
+          profile,
+          signal,
+          onProgress: ({ progress, stage }) =>
+            setStatus({ kind: "busy", label: `Checking encoded FLAC… ${Math.round(progress * 100)}% · ${stage}` }),
+        });
+        assertMasterSourceCurrent();
+        setMasterReport((report) => (report ? { ...report, encodedDelivery } : report));
+        const fileName = `${baseName}-master-${flacBitDepth}bit${versionSuffix}.flac`;
+        setMasterDeliveryFileName(fileName);
+        downloadBlob(blob, fileName);
+        setStatus({
+          kind: "done",
+          label: `FLAC exported (${renderedDurationSeconds.toFixed(1)}s, ${sampleRate} Hz, ${flacBitDepth}-bit) as ${fileName} — ${encodedDelivery.decode.status === "measured" ? "decoded file measured" : "header checked; audio not measured"}`,
           summary,
         });
         return;
@@ -946,8 +984,16 @@ export function ExportPanel({
         )}
         <label className="fx-param-select">
           <span className="slider-label">FORMAT</span>
-          <select value={format} onChange={(event) => setFormat(event.target.value as MasterFormat)}>
+          <select
+            value={format}
+            onChange={(event) => {
+              const nextFormat = event.target.value as MasterFormat;
+              setFormat(nextFormat);
+              if (nextFormat === "flac" && bitDepth === 32) setBitDepth(24);
+            }}
+          >
             <option value="wav">WAV (studio)</option>
+            <option value="flac">FLAC (lossless)</option>
             <option value="mp3-192">MP3 192 (share)</option>
             <option value="mp3-320">MP3 320 (hq share)</option>
             <option value="video" disabled={!videoSupported || masteringMode} hidden={masteringMode}>
@@ -982,13 +1028,13 @@ export function ExportPanel({
           <span className="slider-label">DEPTH</span>
           <select
             value={bitDepth}
-            disabled={format !== "wav"}
-            title={format !== "wav" ? "Depth applies to WAV only" : undefined}
+            disabled={format !== "wav" && format !== "flac"}
+            title={format === "flac" ? "FLAC supports 16-bit or 24-bit integer PCM" : format !== "wav" ? "Depth applies to WAV and FLAC only" : undefined}
             onChange={(event) => setBitDepth(Number(event.target.value) as WavBitDepth)}
           >
             <option value={16}>16-bit PCM</option>
             <option value={24}>24-bit PCM</option>
-            <option value={32}>32-bit float</option>
+            <option value={32} disabled={format === "flac"}>32-bit float</option>
           </select>
         </label>
         {masteringMode && format !== "video" && (
@@ -1018,7 +1064,7 @@ export function ExportPanel({
           <span>
             PROFILE SUGGESTION · {deliveryProfile.recommendedFormat}
             {
-              " · 16-bit uses deterministic TPDF dither; 24-bit uses integer quantization; 32-bit float is not dithered. Integer mastering delivery will not silently soft-clip over-range samples."
+              " · WAV supports 16/24-bit PCM and 32-bit float; FLAC supports 16/24-bit PCM. Integer exports use deterministic TPDF dither and refuse over-range samples instead of silently clipping."
             }
           </span>
           <MasterProfileFileGuidance profile={deliveryProfile} />
@@ -1083,7 +1129,9 @@ export function ExportPanel({
               }
               onClick={() => void exportMaster(true)}
             >
-              {format === "video" ? "EXPORT VIDEO" : `EXPORT MASTER${format.startsWith("mp3") ? " (MP3)" : ""}`}
+              {format === "video"
+                ? "EXPORT VIDEO"
+                : `EXPORT MASTER${format === "flac" ? " (FLAC)" : format.startsWith("mp3") ? " (MP3)" : ""}`}
             </button>
           </>
         ) : (
@@ -1094,7 +1142,9 @@ export function ExportPanel({
               disabled={busy || (format === "video" && !videoSupported)}
               onClick={() => void exportMaster()}
             >
-              {format === "video" ? "EXPORT VIDEO" : `EXPORT MASTER${format.startsWith("mp3") ? " (MP3)" : ""}`}
+              {format === "video"
+                ? "EXPORT VIDEO"
+                : `EXPORT MASTER${format === "flac" ? " (FLAC)" : format.startsWith("mp3") ? " (MP3)" : ""}`}
             </button>
             <button
               type="button"
@@ -1258,7 +1308,7 @@ export function ExportPanel({
             </div>
           ) : (
             <div className="master-delivery-check" role="note">
-              Analysis-only run. No WAV/MP3 file was created or checked.
+              Analysis-only run. No WAV, FLAC or MP3 file was created or checked.
             </div>
           )}
         </>
@@ -1349,7 +1399,9 @@ function EncodedDeliveryCheck({
   const formatLabel =
     inspection.format === "wav"
       ? `WAV · ${file.bitDepth}-bit ${wavEncoding}`
-      : `MP3 · ${file.averageBitrateKbps?.toFixed(0) ?? "?"} kbps avg`;
+      : inspection.format === "flac"
+        ? `FLAC · ${file.bitDepth ?? "?"}-bit PCM`
+        : `MP3 · ${file.averageBitrateKbps?.toFixed(0) ?? "?"} kbps avg`;
   const channelsLabel = file.channels === 1 ? "mono" : `${file.channels} channels`;
   const bextLabel = file.bext ? `BWF v${file.bext.version}` : "no BWF metadata";
   const bextLoudness = file.bext?.loudness;

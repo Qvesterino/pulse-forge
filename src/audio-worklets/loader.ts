@@ -137,6 +137,10 @@ export async function loadCoreWorklets(ctx: BaseAudioContext): Promise<void> {
     .then(() => {
       readyContexts.add(ctx);
       readyPluginTypes.set(ctx, new Set());
+      // Instrument worklets (TSAR) track readiness on the same per-context
+      // mark; without this set the loader could never report a loaded
+      // instrument module (measured by the E2E lazy-load check).
+      readyInstrumentTypes.set(ctx, new Set());
     })
     .catch((err) => {
       failedContexts.add(ctx);

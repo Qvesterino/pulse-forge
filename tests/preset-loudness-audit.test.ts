@@ -90,33 +90,26 @@ describe("preset gain sanity", () => {
       "factory.drumsynth.ambient.softclap",
       "factory.drumsynth.drill.tickhat",
       "factory.drumsynth.jersey.hat",
+      // TSAR texture/pad presets measure LOUDER than the old granular drones
+      // at the same family target, which pulled the texture family median
+      // down enough to clamp these quiet siblings (T3, 2026-10-06). Measured
+      // consequence of adding the bank — the per-family rebalance is a
+      // follow-up, not a silent cap.
+      "factory.fm.jersey.squeak",
       "factory.granular.ambient.cloudpad",
       "factory.granular.ambient.dust",
       "factory.granular.ambient.timestretch",
       "factory.granular.ambient.vaporcloud",
       "factory.granular.dnb.liquidfog",
+      "factory.granular.drill.dust",
       "factory.granular.drill.tension",
       "factory.granular.house.vocalchop",
       "factory.granular.jersey.sparkle",
       "factory.granular.phonk.haunt",
       "factory.granular.phonk.tapefog",
-      "factory.granular.techno.stutter",
-      // TSAR texture/pad presets measure LOUDER than the old granular drones
-      // at the same family target, which pulled the texture family median
-      // down enough to clamp nine of its quiet siblings (T3, 2026-10-06:
-      // fm.jersey.squeak, granular.drill.dust, granular.techno.glitchsweep,
-      // granular.techno.rhythmcloud, pluck.house.brightpick/groove/nylon/
-      // poppick/warmair). Measured consequence of adding the bank — the
-      // per-family rebalance is a follow-up, not a silent cap.
-      "factory.fm.jersey.squeak",
-      "factory.granular.drill.dust",
       "factory.granular.techno.glitchsweep",
       "factory.granular.techno.rhythmcloud",
-      "factory.pluck.house.brightpick",
-      "factory.pluck.house.groove",
-      "factory.pluck.house.nylon",
-      "factory.pluck.house.poppick",
-      "factory.pluck.house.warmair",
+      "factory.granular.techno.stutter",
       "factory.granular.trap.reversepad",
       "factory.keys.ambient.breathy",
       "factory.keys.ambient.movementkeys",
@@ -146,7 +139,12 @@ describe("preset gain sanity", () => {
       "factory.pluck.ambient.flutepluck",
       "factory.pluck.ambient.harp",
       "factory.pluck.dnb.harp",
+      "factory.pluck.house.brightpick",
+      "factory.pluck.house.groove",
       "factory.pluck.house.guitarpluck",
+      "factory.pluck.house.nylon",
+      "factory.pluck.house.poppick",
+      "factory.pluck.house.warmair",
       "factory.pluck.jersey.clubpluck",
       "factory.pluck.score.breathstring",
       "factory.pluck.score.kora",

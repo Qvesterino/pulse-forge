@@ -189,6 +189,12 @@ const OPTIONAL_AI_RUNTIME_PREFIXES = ["transformers.web-", "ort.wasm.bundle.min-
 // Keep its exported chunk out of the DAW graph while enforcing a separate cap.
 const OPTIONAL_CODEC_BUDGET_KB = 170;
 const OPTIONAL_CODEC_PREFIXES = ["mp3-"];
+// FLAC encoding is an opt-in worker/WASM codec. It has its own cap and stays
+// out of both the initial import graph and the install-time PWA precache.
+// Measured at 413 KiB in the first FLAC-enabled production build; 500 KiB
+// leaves about 21% headroom before the codec needs another measured review.
+const OPTIONAL_FLAC_CODEC_BUDGET_KB = 500;
+const OPTIONAL_FLAC_CODEC_PREFIXES = ["flac-codec-"];
 // Nexus 0.0.19 and its KYX adapter are fetched only after an explicit
 // Audiotool action. Measure them together in a narrow opt-in payload budget;
 // the adapter must not hide outside the SDK's separate allowance.
@@ -248,6 +254,7 @@ const BOOT_FORBIDDEN_PREFIXES = [
   "transformers.web-",
   "ort.wasm.bundle.min-",
   "mp3-",
+  "flac-codec-",
 ];
 const LANDING_ENTRY_PREFIX = "LandingPage-";
 // Modules that must never statically reach the landing route. The semantic
@@ -281,15 +288,20 @@ const entryKb = statSync(entryFile).size / 1024;
 let totalKb = 0;
 let optionalAiRuntimeKb = 0;
 let optionalCodecKb = 0;
+let optionalFlacCodecKb = 0;
 let optionalNexusKb = 0;
 let optionalQmrKb = 0;
 let optionalPackKb = 0;
 const optionalNexusFiles = [];
+const optionalFlacCodecFiles = [];
 for (const file of readdirSync(join(dist, "assets"))) {
   if (!file.endsWith(".js")) continue;
   const sizeKb = statSync(join(dist, "assets", file)).size / 1024;
   if (OPTIONAL_AI_RUNTIME_PREFIXES.some((prefix) => file.startsWith(prefix))) optionalAiRuntimeKb += sizeKb;
-  else if (OPTIONAL_CODEC_PREFIXES.some((prefix) => file.startsWith(prefix))) optionalCodecKb += sizeKb;
+  else if (OPTIONAL_FLAC_CODEC_PREFIXES.some((prefix) => file.startsWith(prefix))) {
+    optionalFlacCodecKb += sizeKb;
+    optionalFlacCodecFiles.push(file);
+  } else if (OPTIONAL_CODEC_PREFIXES.some((prefix) => file.startsWith(prefix))) optionalCodecKb += sizeKb;
   else if (OPTIONAL_NEXUS_PREFIXES.some((prefix) => file.startsWith(prefix))) {
     optionalNexusKb += sizeKb;
     optionalNexusFiles.push(file);
@@ -305,11 +317,14 @@ console.log(
 );
 console.log(`[size-budget] optional codecs: ${optionalCodecKb.toFixed(0)} KB (budget ${OPTIONAL_CODEC_BUDGET_KB})`);
 console.log(
+  `[size-budget] optional FLAC codec: ${optionalFlacCodecKb.toFixed(0)} KB (budget ${OPTIONAL_FLAC_CODEC_BUDGET_KB})`,
+);
+console.log(
   `[size-budget] optional Audiotool Nexus: ${optionalNexusKb.toFixed(0)} KB (budget ${OPTIONAL_NEXUS_BUDGET_KB})`,
 );
 console.log(`[size-budget] optional QMR HUD: ${optionalQmrKb.toFixed(0)} KB (budget ${OPTIONAL_QMR_BUDGET_KB})`);
 console.log(
-  `[size-budget] shipped JS total: ${(totalKb + optionalAiRuntimeKb + optionalCodecKb + optionalNexusKb).toFixed(0)} KB`,
+  `[size-budget] shipped JS total: ${(totalKb + optionalAiRuntimeKb + optionalCodecKb + optionalFlacCodecKb + optionalNexusKb).toFixed(0)} KB`,
 );
 
 let coreWorkletKb = 0;
@@ -363,6 +378,12 @@ if (optionalCodecKb > OPTIONAL_CODEC_BUDGET_KB) {
   );
   failed = true;
 }
+if (optionalFlacCodecKb > OPTIONAL_FLAC_CODEC_BUDGET_KB) {
+  console.error(
+    `[size-budget] FAIL — optional FLAC codec over budget: ${optionalFlacCodecKb.toFixed(0)} > ${OPTIONAL_FLAC_CODEC_BUDGET_KB} KB.`,
+  );
+  failed = true;
+}
 if (optionalPackKb > OPTIONAL_PACK_BUDGET_KB) {
   console.error(
     `[size-budget] FAIL — optional preset packs over budget: ${optionalPackKb.toFixed(0)} > ${OPTIONAL_PACK_BUDGET_KB} KB.`,
@@ -405,10 +426,22 @@ if (eagerlyLoadedNexus.length > 0) {
   );
   failed = true;
 }
+const eagerlyLoadedFlacCodec = optionalFlacCodecFiles.filter((file) => initialSeen.has(file));
+if (eagerlyLoadedFlacCodec.length > 0) {
+  console.error(
+    `[size-budget] FAIL — optional FLAC codec is statically reachable at boot: ${eagerlyLoadedFlacCodec.join(", ")}`,
+  );
+  failed = true;
+}
 const serviceWorker = readFileSync(join(dist, "sw.js"), "utf8");
 const precachedNexus = optionalNexusFiles.filter((file) => serviceWorker.includes(file));
 if (precachedNexus.length > 0) {
   console.error(`[size-budget] FAIL — optional Nexus SDK is in the PWA precache: ${precachedNexus.join(", ")}`);
+  failed = true;
+}
+const precachedFlacCodec = optionalFlacCodecFiles.filter((file) => serviceWorker.includes(file));
+if (precachedFlacCodec.length > 0) {
+  console.error(`[size-budget] FAIL — optional FLAC codec is in the PWA precache: ${precachedFlacCodec.join(", ")}`);
   failed = true;
 }
 const nexusRuntime = optionalNexusFiles.map((file) => readFileSync(join(dist, "assets", file), "utf8")).join("\n");

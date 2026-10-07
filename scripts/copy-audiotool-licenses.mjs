@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
 const lock = JSON.parse(await readFile(path.join(repoRoot, "package-lock.json"), "utf8"));
 const nexusKey = "node_modules/@audiotool/nexus";
+const flacRuntimeKeys = ["node_modules/mediabunny", "node_modules/@mediabunny/flac-encoder"];
 const lockPackages = lock.packages;
 if (!lockPackages || !lockPackages[nexusKey]) {
   throw new Error("@audiotool/nexus is missing from package-lock.json; cannot assemble its distribution notices.");
@@ -21,7 +22,7 @@ function resolveDependency(fromKey, name) {
   return null;
 }
 
-const pending = [nexusKey];
+const pending = [nexusKey, ...flacRuntimeKeys];
 const included = new Set();
 while (pending.length > 0) {
   const key = pending.pop();
@@ -38,12 +39,15 @@ while (pending.length > 0) {
 
 const outputDir = path.join(repoRoot, "dist", "third-party-licenses");
 await mkdir(outputDir, { recursive: true });
+const xiphLicense = "COPYING.Xiph";
+await copyFile(path.join(repoRoot, "licenses", xiphLicense), path.join(outputDir, xiphLicense));
 const noticeLines = [
   "Third-party software included in KYX",
   "",
-  "This directory contains the license texts for @audiotool/nexus and its locked runtime dependency closure.",
+  "This directory contains license texts for @audiotool/nexus and its locked runtime dependency closure, plus the on-demand FLAC encoder libraries.",
   "The Nexus 0.0.19 npm metadata declares MIT, while its published LICENSE file says Apache License 2.0.",
   "KYX preserves the actual published LICENSE text and treats the SDK conservatively as Apache-2.0 pending clarification.",
+  "The on-demand FLAC encoder uses Mediabunny under MPL-2.0 and embeds libFLAC, which is distributed under Xiph.org's BSD-like license (see COPYING.Xiph).",
   "",
 ];
 

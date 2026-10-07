@@ -384,8 +384,8 @@ export function MasteringPanel() {
           <span className="mastering-panel-kicker">OFFLINE CHECK</span>
           <h3>Analyze and deliver</h3>
           <p>
-            Set WAV/MP3 format and bit depth here. Scope, rate and render quality are above; Export Master checks the
-            encoded file and measures its decoded audio when browser memory allows.
+            Set WAV/FLAC/MP3 format and bit depth here. Scope, rate and render quality are above; Export Master checks
+            the encoded file and measures its decoded audio when browser memory allows.
           </p>
         </header>
         <ExportPanel

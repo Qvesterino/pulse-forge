@@ -90,7 +90,11 @@ export default defineConfig({
               id.includes("/src/integrations/audiotool-nexus/") ||
               id.endsWith("/src/ui/AudiotoolNexusExport.tsx"),
           );
-          return containsAudiotoolCode ? "assets/audiotool-nexus-[hash].js" : "assets/[name]-[hash].js";
+          const containsFlacCodec = chunkInfo.moduleIds.some(
+            (id) => id.includes("/node_modules/mediabunny/") || id.includes("/node_modules/@mediabunny/flac-encoder/"),
+          );
+          if (containsAudiotoolCode) return "assets/audiotool-nexus-[hash].js";
+          return containsFlacCodec ? "assets/flac-codec-[hash].js" : "assets/[name]-[hash].js";
         },
         manualChunks(id) {
           if (id.includes("node_modules")) {

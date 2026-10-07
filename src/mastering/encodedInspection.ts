@@ -10,8 +10,8 @@ import type { MasterProfile } from "./profiles";
 import { decodeBwfLoudnessValue, encodeBwfLoudnessValue, type WavBextLoudnessField } from "../rendering/wav";
 import { parseMp3FrameHeader, type Mp3FrameHeader } from "./mp3Frames";
 
-export type EncodedMasterFormat = "wav" | "mp3";
-export type MasteringReferenceFormat = EncodedMasterFormat | "flac";
+export type EncodedMasterFormat = "wav" | "mp3" | "flac";
+export type MasteringReferenceFormat = EncodedMasterFormat;
 
 export interface EncodedMasterFileDetails {
   sampleRate: number;
@@ -55,6 +55,8 @@ export interface EncodedMasterInspection {
 
 const MAX_WAV_DECODE_BYTES = 96 * 1024 * 1024;
 const MAX_MP3_DECODE_BYTES = 12 * 1024 * 1024;
+const MAX_FLAC_DECODE_BYTES = 96 * 1024 * 1024;
+const MAX_FLAC_DECODE_PCM_BYTES = 64 * 1024 * 1024;
 
 function cancelledError(): DOMException {
   return new DOMException("Master inspection cancelled", "AbortError");
@@ -303,7 +305,7 @@ function parseMp3(bytes: ArrayBuffer): ParsedMp3 {
 }
 
 /** Read the FLAC STREAMINFO block and first-frame marker without decoding or changing source bytes. */
-function parseFlac(bytes: ArrayBuffer): EncodedMasterFileDetails {
+export function parseFlac(bytes: ArrayBuffer): EncodedMasterFileDetails {
   const view = new DataView(bytes);
   if (bytes.byteLength < 42 || readFourCc(view, 0) !== "fLaC") {
     throw new Error("The FLAC file is missing its marker or STREAMINFO block.");
@@ -422,7 +424,7 @@ function notMeasured(
   return { format, byteLength, file, fingerprint, decode: { status: "not-measured", decoder, reason, warnings } };
 }
 
-/** Verify the finished WAV/MP3 container, then measure the browser-decoded deliverable. */
+/** Verify the finished WAV/MP3/FLAC container, then measure the browser-decoded deliverable. */
 export async function inspectEncodedMaster(input: {
   format: EncodedMasterFormat;
   bytes: ArrayBuffer | Blob;
@@ -446,7 +448,7 @@ export async function inspectEncodedMaster(input: {
     decoderBytes = bytes as ArrayBuffer;
     parsedWav = parseWav(decoderBytes);
     file = publicWavDetails(parsedWav);
-  } else if (blobInput && byteLength > MAX_MP3_DECODE_BYTES) {
+  } else if (format === "mp3" && blobInput && byteLength > MAX_MP3_DECODE_BYTES) {
     const frameWindow = await mp3MetadataWindow(blobInput, signal);
     const sampledFile = parseMp3(frameWindow);
     file = {
@@ -455,6 +457,18 @@ export async function inspectEncodedMaster(input: {
       durationAccuracy: "estimated",
     };
     decoderBytes = frameWindow;
+  } else if (format === "flac" && blobInput) {
+    // FLAC output has a short STREAMINFO header. Keep container inspection
+    // bounded for large files; only fetch the full file when decoding is
+    // within the explicit file and projected PCM working-set caps.
+    const headerBytes = await awaitWithAbort(blobInput.slice(0, Math.min(byteLength, 1024 * 1024)).arrayBuffer(), signal);
+    file = parseFlac(headerBytes);
+    const decodedPcmBytes = file.channels * file.sampleRate * file.durationSeconds * Float32Array.BYTES_PER_ELEMENT;
+    const canDecode = byteLength <= MAX_FLAC_DECODE_BYTES && decodedPcmBytes <= MAX_FLAC_DECODE_PCM_BYTES;
+    decoderBytes = canDecode ? await awaitWithAbort(blobInput.arrayBuffer(), signal) : headerBytes;
+  } else if (format === "flac") {
+    decoderBytes = bytes as ArrayBuffer;
+    file = parseFlac(decoderBytes);
   } else {
     decoderBytes = blobInput ? await awaitWithAbort(blobInput.arrayBuffer(), signal) : (bytes as ArrayBuffer);
     file = parseMp3(decoderBytes);
@@ -629,7 +643,21 @@ export async function inspectEncodedMaster(input: {
     }
   }
 
-  const maxDecodeBytes = format === "wav" ? MAX_WAV_DECODE_BYTES : MAX_MP3_DECODE_BYTES;
+  if (format === "flac") {
+    const decodedPcmBytes = file.channels * file.sampleRate * file.durationSeconds * Float32Array.BYTES_PER_ELEMENT;
+    if (byteLength > MAX_FLAC_DECODE_BYTES || decodedPcmBytes > MAX_FLAC_DECODE_PCM_BYTES) {
+      return notMeasured(
+        format,
+        byteLength,
+        file,
+        `The FLAC header was checked, but post-encode decoding was skipped because the file or projected PCM exceeds KYX's ${Math.floor(MAX_FLAC_DECODE_PCM_BYTES / (1024 * 1024))} MiB FLAC decode working-set limit.`,
+        warnings,
+        fingerprint,
+      );
+    }
+  }
+
+  const maxDecodeBytes = format === "wav" ? MAX_WAV_DECODE_BYTES : format === "mp3" ? MAX_MP3_DECODE_BYTES : MAX_FLAC_DECODE_BYTES;
   if (byteLength > maxDecodeBytes) {
     const limitMb = (maxDecodeBytes / 1024 / 1024).toFixed(0);
     return notMeasured(
