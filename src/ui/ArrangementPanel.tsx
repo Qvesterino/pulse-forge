@@ -35,6 +35,7 @@ import {
   duplicateSceneAsVariation,
   fitAudioClipTempo,
   previewStretchRate,
+  quantizeAudioBar,
   stretchAudioClip,
   stealGrooveIntoPattern,
   moveArrangementClip,
@@ -74,6 +75,8 @@ import {
   tempoAtTick,
 } from "../project-model/scene-time";
 import { usePointerDragGuard } from "./usePointerDragGuard";
+import { SNAP_GRIDS, loadSnapGrid, snapBar, snapBarsFor, snapDelta, snapTick, storeSnapGrid } from "./snap";
+import type { SnapGridId } from "./snap";
 import { computeSceneIntensity } from "../project-model/intensity";
 import type {
   ArrangementClip,
@@ -1788,7 +1791,9 @@ export function ArrangementPanel() {
   const updateTakeLaneRangeDrag = (event: ReactPointerEvent<HTMLDivElement>): void => {
     const drag = audioTakeLaneDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    const currentTick = takeLaneTickAtPointer(event, drag.geometry);
+    // Comp ranges are timeline positions — snap to the grid (Shift suspends).
+    const grid = event.shiftKey ? null : snapBarsFor(snapGrid);
+    const currentTick = snapTick(takeLaneTickAtPointer(event, drag.geometry), grid);
     const moved = drag.moved || Math.abs(event.clientX - drag.anchorClientX) > 2;
     audioTakeLaneDragRef.current = { ...drag, currentTick, moved };
     if (moved) {
@@ -1805,7 +1810,8 @@ export function ArrangementPanel() {
     const drag = audioTakeLaneDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     audioTakeLaneDragRef.current = null;
-    const endTick = takeLaneTickAtPointer(event, drag.geometry);
+    const grid = event.shiftKey ? null : snapBarsFor(snapGrid);
+    const endTick = snapTick(takeLaneTickAtPointer(event, drag.geometry), grid);
     if (drag.moved && Math.abs(endTick - drag.startTick) >= 1) {
       suppressTakeLaneClickRef.current = true;
       window.setTimeout(() => {
@@ -2365,6 +2371,14 @@ export function ArrangementPanel() {
   // Ripple mode (arrangement-as-a-tool): moves/resizes/deletes shift every
   // later clip to preserve the gaps after the edit.
   const [rippleMode, setRippleMode] = useState(false);
+  // Snap grid (view preference, persisted per-browser — see ./snap.ts for the
+  // scope/precision/modifier contracts). "off" keeps the exact pre-snap
+  // behavior (free position at tick storage precision).
+  const [snapGrid, setSnapGrid] = useState<SnapGridId>(loadSnapGrid);
+  const changeSnapGrid = (id: SnapGridId): void => {
+    setSnapGrid(id);
+    storeSnapGrid(id);
+  };
   /** Delete arrangement clips (single or multi) as ONE undoable gesture + toast. */
   const deleteClipsWithToast = (ids: string[], ripple = false) => {
     if (ids.length === 0) return;
@@ -2526,28 +2540,52 @@ export function ArrangementPanel() {
     const bar = audioBarFromEventAt(event, cur.barWidth);
     const delta = bar - cur.grabBar;
     const secPerBar = cur.secPerBar;
+    // Snap grid for THIS event: Shift suspends it (the DAW convention).
+    // Fades/gain/slip live in source-time/audio-rate domains — never snapped.
+    const grid = event.shiftKey ? null : snapBarsFor(snapGrid);
     // Block move: one shared delta for every selected audio clip, floored so
     // the leftmost clip cannot cross bar 0 (mirrors the scene block move).
+    // Delta-snapped (not per-clip absolute): the block's internal spacing
+    // must survive — absolute snapping would collapse between-grid offsets.
     if (cur.movingIds) {
-      setAudioMultiDragLive(Math.max(delta, -Math.min(...Object.values(cur.origStarts ?? { 0: 0 }))));
+      setAudioMultiDragLive(Math.max(snapDelta(delta, grid), -Math.min(...Object.values(cur.origStarts ?? { 0: 0 }))));
       return;
     }
     if (cur.mode === "move")
-      setAudioDragLive({ startBar: Math.max(0, cur.origStart + delta), lengthBars: cur.origLength });
-    else if (cur.mode === "resize")
-      setAudioDragLive({ startBar: cur.origStart, lengthBars: Math.max(0.25, cur.origLength + delta) });
-    else if (cur.mode === "trimStart") {
-      const newStart = Math.max(0, cur.origStart + delta);
-      const newLen = Math.max(0.25, cur.origLength - delta);
+      setAudioDragLive({
+        startBar: Math.max(0, snapBar(cur.origStart + delta, grid)),
+        lengthBars: cur.origLength,
+      });
+    else if (cur.mode === "resize") {
+      // Snap the END edge (musical: land on a grid line), start stays put.
+      const endEdge = snapBar(cur.origStart + cur.origLength + delta, grid);
+      setAudioDragLive({ startBar: cur.origStart, lengthBars: Math.max(0.25, endEdge - cur.origStart) });
+    } else if (cur.mode === "trimStart") {
+      // Snap the START edge; the length is whatever remains up to the fixed end.
+      const newStart = Math.max(0, snapBar(cur.origStart + delta, grid));
+      const newLen = Math.max(0.25, cur.origStart + cur.origLength - newStart);
       setAudioDragLive({ startBar: newStart, lengthBars: newLen });
     } else if (cur.mode === "stretch") {
       // Alt+drag: length follows the pointer like resize/trim, the rate
       // follows the length ratio (previewStretchRate) — the content keeps
-      // filling the clip. Right edge pins the start, left edge pins the end.
-      const newLen = Math.max(0.25, cur.edge === "right" ? cur.origLength + delta : cur.origLength - delta);
-      const newStart = cur.edge === "right" ? cur.origStart : Math.max(0, cur.origStart + delta);
-      setAudioDragLive({ startBar: newStart, lengthBars: newLen });
-      setAudioStretchLive({ clipId: cur.clipId, rate: previewStretchRate(cur.origRate, cur.origLength, newLen) });
+      // filling the clip. Right edge pins the start (snap the end edge like
+      // resize), left edge pins the end (snap the start like trimStart).
+      if (cur.edge === "right") {
+        const newLen = Math.max(0.25, snapBar(cur.origStart + cur.origLength + delta, grid) - cur.origStart);
+        setAudioDragLive({ startBar: cur.origStart, lengthBars: newLen });
+        setAudioStretchLive({
+          clipId: cur.clipId,
+          rate: previewStretchRate(cur.origRate, cur.origLength, newLen),
+        });
+      } else {
+        const newStart = Math.max(0, snapBar(cur.origStart + delta, grid));
+        const newLen = Math.max(0.25, cur.origStart + cur.origLength - newStart);
+        setAudioDragLive({ startBar: newStart, lengthBars: newLen });
+        setAudioStretchLive({
+          clipId: cur.clipId,
+          rate: previewStretchRate(cur.origRate, cur.origLength, newLen),
+        });
+      }
     } else if (cur.mode === "slip") {
       // Content follows the pointer: dragging the content LEFT reveals later
       // source material (offset grows), right reveals earlier (offset
@@ -2612,7 +2650,9 @@ export function ArrangementPanel() {
           movingIds.includes(c.id)
             ? {
                 ...c,
-                startBar: Math.max(0, Math.round(((cur.origStarts?.[c.id] ?? c.startBar) + multiDelta) * 100) / 100),
+                // Tick storage precision (matches moveAudioClip) — a snapped
+                // delta survives the commit exactly.
+                startBar: Math.max(0, quantizeAudioBar((cur.origStarts?.[c.id] ?? c.startBar) + multiDelta)),
               }
             : c,
         )
@@ -3799,6 +3839,29 @@ export function ArrangementPanel() {
           <span className="arr-ripple-hint">shifts later clips to keep the gaps</span>
         </div>
 
+        <div className="arr-ripple-row">
+          <label
+            className="arr-snap-label"
+            title="Snap grid for audio clips, take-lane ranges, time ranges and markers. Hold Shift during a drag to suspend it. Scene clips stay bar-aligned by contract."
+          >
+            SNAP
+            <select
+              className="arr-arm-select"
+              aria-label="Snap grid"
+              value={snapGrid}
+              onChange={(event) => changeSnapGrid(event.target.value as SnapGridId)}
+            >
+              <option value="off">OFF</option>
+              {SNAP_GRIDS.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span className="arr-ripple-hint">Shift suspends during a drag</span>
+        </div>
+
         <div className="arr-role-flow" aria-label="Arrangement role flow">
           {clips.length === 0 ? (
             <span className="arr-role-flow-empty">EMPTY ARRANGEMENT</span>
@@ -3904,7 +3967,14 @@ export function ArrangementPanel() {
               if (!lane) return;
               const bar = Math.max(0, (event.clientX - lane.getBoundingClientRect().left) / barWidth);
               if (event.shiftKey) {
-                execute(addMarker(services.store.doc, { tick: Math.floor(bar * BAR_TICKS), type: "cue" }));
+                // Shift here IS the feature key (add marker), so it does not
+                // act as snap-suspend — the grid applies to the placement.
+                execute(
+                  addMarker(services.store.doc, {
+                    tick: Math.floor(snapBar(bar, snapBarsFor(snapGrid)) * BAR_TICKS),
+                    type: "cue",
+                  }),
+                );
                 return;
               }
               setTimeDrag({ startBar: bar, currentBar: bar });
@@ -3919,8 +3989,11 @@ export function ArrangementPanel() {
                 Math.min(totalBars, (event.clientX - lane.getBoundingClientRect().left) / barWidth),
               );
               setTimeDrag({ startBar: timeDrag.startBar, currentBar: bar });
-              const from = Math.min(timeDrag.startBar, bar);
-              const to = Math.max(timeDrag.startBar, bar);
+              // Range edges snap to the grid (Shift suspends) — a snap-to-zero
+              // span (< grid apart) reads as a click, same as the 0.15 check.
+              const grid = event.shiftKey ? null : snapBarsFor(snapGrid);
+              const from = snapBar(Math.min(timeDrag.startBar, bar), grid);
+              const to = snapBar(Math.max(timeDrag.startBar, bar), grid);
               if (Math.abs(to - from) > 0.15) {
                 selectionStore.setTimeRange({
                   fromTick: Math.floor(from * BAR_TICKS),
@@ -4041,8 +4114,10 @@ export function ArrangementPanel() {
                 Math.min(totalBars, (event.clientX - laneRef.current!.getBoundingClientRect().left) / barWidth),
               );
               setTimeDrag({ startBar: timeDrag.startBar, currentBar: bar });
-              const from = Math.min(timeDrag.startBar, bar);
-              const to = Math.max(timeDrag.startBar, bar);
+              // Same snap contract as the ruler's range drag (Shift suspends).
+              const grid = event.shiftKey ? null : snapBarsFor(snapGrid);
+              const from = snapBar(Math.min(timeDrag.startBar, bar), grid);
+              const to = snapBar(Math.max(timeDrag.startBar, bar), grid);
               if (Math.abs(to - from) > 0.15)
                 selectionStore.setTimeRange({
                   fromTick: Math.floor(from * BAR_TICKS),
@@ -4323,9 +4398,9 @@ export function ArrangementPanel() {
               return (
                 <div
                   key={clip.id}
-                  className={`arr-audio-clip${selected ? " selected" : ""}${isCurrent ? " current" : ""}${clip.takeId === clipTakeGroup?.compTakeId ? " comp" : ""}`}
+                  className={`arr-audio-clip${selected ? " selected" : ""}${isCurrent ? " current" : ""}${clip.takeId === clipTakeGroup?.compTakeId ? " comp" : ""}${clip.muted ? " muted" : ""}`}
                   style={{ left: startBar * barWidth, width: lengthBars * barWidth - 4 }}
-                  title={`${track?.name ?? clip.trackId} · ${clip.bufferId} · ${clip.reverse ? "REV " : ""}${clip.loop ? "LOOP " : ""}${(clip.warpMarkers?.length ?? 0) > 0 ? `WARP${clip.warpMarkers!.length} ` : ""}${clip.stretchMode === "stretch" ? `STRETCH×${effRate.toFixed(2)} ` : effRate !== 1 ? `×${effRate.toFixed(2)} ` : ""}${lengthBars}b · trim ${clip.trimStart.toFixed(2)}/${clip.trimEnd.toFixed(2)} fade ${effFadeIn.toFixed(2)}/${effFadeOut.toFixed(2)} gain ${effGain.toFixed(2)} — PT: top corners fade, top middle clip gain, Alt+edge stretches, Alt+body slips${clip.reverse || clip.loop || (clip.warpMarkers?.length ?? 0) > 0 ? " (slip off: REV/LOOP/WARP)" : ""}`}
+                  title={`${track?.name ?? clip.trackId} · ${clip.bufferId} · ${clip.muted ? "MUTED " : ""}${clip.reverse ? "REV " : ""}${clip.loop ? "LOOP " : ""}${(clip.warpMarkers?.length ?? 0) > 0 ? `WARP${clip.warpMarkers!.length} ` : ""}${clip.stretchMode === "stretch" ? `STRETCH×${effRate.toFixed(2)} ` : effRate !== 1 ? `×${effRate.toFixed(2)} ` : ""}${lengthBars}b · trim ${clip.trimStart.toFixed(2)}/${clip.trimEnd.toFixed(2)} fade ${effFadeIn.toFixed(2)}/${effFadeOut.toFixed(2)} gain ${effGain.toFixed(2)} — M mutes · PT: top corners fade, top middle clip gain, Alt+edge stretches, Alt+body slips${clip.reverse || clip.loop || (clip.warpMarkers?.length ?? 0) > 0 ? " (slip off: REV/LOOP/WARP)" : ""}`}
                   onPointerDown={(event) => {
                     audioLongPressTargetRef.current = { clipId: clip.id, x: event.clientX, y: event.clientY };
                     audioLongPress.onPointerDown(event);

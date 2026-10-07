@@ -2583,6 +2583,7 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // v11 adds ArrangementClip pattern/scene phase offsets (missing means phase 0);
   // v12 adds the explicit mastering delivery profile, true-peak target, and final-sum insert chain.
   // v13 adds the optional `InstrumentTrack.sampleIdB` (TSAR Source B identity; ADR 0023).
+  // v14 adds the optional `AudioClip.muted` clip-level mute (absent = audible).
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

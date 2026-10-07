@@ -191,9 +191,9 @@ const OPTIONAL_CODEC_BUDGET_KB = 170;
 const OPTIONAL_CODEC_PREFIXES = ["mp3-"];
 // FLAC encoding is an opt-in worker/WASM codec. It has its own cap and stays
 // out of both the initial import graph and the install-time PWA precache.
-// Measured at 413 KiB in the first FLAC-enabled production build; 500 KiB
-// leaves about 21% headroom before the codec needs another measured review.
-const OPTIONAL_FLAC_CODEC_BUDGET_KB = 500;
+// The combined encoder and WASM decoder measured 488 KiB in the production
+// build (2026-10-07); 600 KiB leaves 112 KiB of headroom for small fixes.
+const OPTIONAL_FLAC_CODEC_BUDGET_KB = 600;
 const OPTIONAL_FLAC_CODEC_PREFIXES = ["flac-codec-"];
 // Nexus 0.0.19 and its KYX adapter are fetched only after an explicit
 // Audiotool action. Measure them together in a narrow opt-in payload budget;

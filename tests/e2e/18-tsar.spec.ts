@@ -17,7 +17,10 @@ import { openHouseTemplate } from "./_helpers";
  * Chromium-only: the offline render needs the Web Audio media stack.
  */
 test.describe("18 — TSAR engine", () => {
-  test.skip(({ browserName }) => browserName !== "chromium", "offline render needs Web Audio — WebKit/Windows has none");
+  test.skip(
+    ({ browserName }) => browserName !== "chromium",
+    "offline render needs Web Audio — WebKit/Windows has none",
+  );
 
   test("the lazy worklet loads on demand and a TSAR track renders audible offline", async ({ page }) => {
     test.setTimeout(180_000);

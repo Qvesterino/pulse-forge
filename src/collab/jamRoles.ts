@@ -204,6 +204,7 @@ const ARRANGE = new Set([
   "resizeAudioClip",
   "updateAudioClip",
   "duplicateAudioClip",
+  "setAudioClipsMute",
   "sliceAudioClipToArrangement",
   "fitAudioClipTempo",
   "consolidateAudioClips",

@@ -75,6 +75,8 @@ export interface ClipSourceMeta {
   clipId: string;
   startBar: number;
   lengthBars: number;
+  /** Mute state at trigger time — muting a sounding clip makes it an orphan too. */
+  muted: boolean;
   /** The node whose gain envelope owns this source's audibility (per-segment for warp clips). */
   gainNode: GainNode;
 }
@@ -660,6 +662,7 @@ export class TriggerEngine {
           clipId: clip.id,
           startBar: clip.startBar,
           lengthBars: clip.lengthBars,
+          muted: clip.muted === true,
           gainNode: segGain,
         });
         segSource.onended = () => {
@@ -703,6 +706,7 @@ export class TriggerEngine {
         clipId: clip.id,
         startBar: clip.startBar,
         lengthBars: clip.lengthBars,
+        muted: clip.muted === true,
         gainNode: gain,
       });
       source.onended = () => {

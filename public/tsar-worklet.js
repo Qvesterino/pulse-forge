@@ -657,32 +657,28 @@
   var MONO_L = new Float32Array(BLOCK);
   var MONO_R = new Float32Array(BLOCK);
   var TsarWorkletProcessor = class extends AudioWorkletProcessor {
-    proc = new TsarProcessor({
-      sampleRate,
-      events: processorOptions && processorOptions.events || void 0
-    });
-    initialized = false;
-    constructor() {
+    // The DSP is created in the constructor because it needs `sampleRate` (a
+    // global) and the seeded options; a field initializer cannot read the
+    // constructor argument.
+    constructor(options) {
       super();
       this.port.onmessage = (event) => this.handle(event.data);
-      this.port.postMessage({ type: "constructed", events: processorOptions?.events?.length ?? 0 });
-      if (processorOptions && processorOptions.bpm) this.proc.setBpm(processorOptions.bpm);
-      if (processorOptions && processorOptions.params) {
-        this.proc.applyParams(processorOptions.params);
+      const opts = options && options.processorOptions || {};
+      this.proc = new TsarProcessor({ sampleRate, events: Array.isArray(opts.events) ? opts.events : void 0 });
+      if (opts.bpm) this.proc.setBpm(opts.bpm);
+      if (opts.params) {
+        this.proc.applyParams(opts.params);
         this.initialized = true;
       }
-      if (processorOptions && processorOptions.wavetables) {
-        for (const entry of processorOptions.wavetables) {
+      if (opts.wavetables) {
+        for (const entry of opts.wavetables) {
           this.proc.setWavetable(entry.slot, entry.frames, entry.frameCount);
         }
       }
-      if (processorOptions && processorOptions.samples) {
-        for (const entry of processorOptions.samples) {
+      if (opts.samples) {
+        for (const entry of opts.samples) {
           this.proc.setSample(entry.slot, entry.pcm, entry.rootHz);
         }
-      }
-      if (processorOptions && Array.isArray(processorOptions.events)) {
-        for (const event of processorOptions.events) this.proc.postEvent(event);
       }
     }
     handle(message) {
@@ -723,10 +719,6 @@
     process(_inputs, outputs) {
       const output = outputs[0];
       if (!output || output.length === 0) return true;
-      if (!this.__probed) {
-        this.__probed = true;
-        this.port.postMessage({ type: "probe", hasOutput: true, frames: output[0].length, active: this.proc.activeVoiceCount });
-      }
       const left = output[0];
       const frames = Math.min(BLOCK, left.length);
       const l = frames === left.length ? left : left.subarray(0, frames);

@@ -221,3 +221,57 @@ describe("Ctrl+E split-failure bridge", () => {
     expect(document.querySelector(".arr-error")?.textContent).toContain("Split too close to edge");
   });
 });
+
+/* -----------------------------------------------------------------------
+ * Snap system: the arrangement's snap grid drives audio-clip drags —
+ * absolute snap for single moves, Shift suspends mid-drag, OFF keeps the
+ * free (tick-precision) behavior.
+ */
+describe("snap grid drives audio-clip drags", () => {
+  afterEach(() => {
+    localStorage.removeItem("pf:arr-snap");
+  });
+
+  function setSnap(value: string): void {
+    fireEvent.change(screen.getByRole("combobox", { name: "Snap grid" }), { target: { value } });
+  }
+
+  function dragFirstClip(moveClientX: number, upClientX: number, mods: Record<string, unknown> = {}): void {
+    const el = audioClipEls()[0]!;
+    fireEvent.pointerDown(el, { button: 0, pointerId: 7, clientX: 100, ...mods });
+    fireEvent.pointerMove(el, { pointerId: 7, clientX: moveClientX, ...mods });
+    fireEvent.pointerUp(el, { pointerId: 7, clientX: upClientX, ...mods });
+  }
+
+  it("SNAP 1/2 pulls a 1.3-bar drag onto the half-bar grid", () => {
+    useWideRects();
+    const { doc, audioA } = parityDoc();
+    const { project } = renderLiveArrangement(doc);
+    setSnap("1/2");
+    dragFirstClip(139, 139); // grab 3.333b → 4.633b = +1.3 bars raw
+    expect(project.getDoc().arrangement.audioClips?.find((c) => c.id === audioA)!.startBar).toBeCloseTo(1.5, 9);
+  });
+
+  it("holding Shift MID-DRAG suspends the grid (Shift at pointerdown is range-select)", () => {
+    useWideRects();
+    const { doc, audioA } = parityDoc();
+    const { project } = renderLiveArrangement(doc);
+    setSnap("1/2");
+    // Plain press starts the drag (Shift+press = range-select, no drag);
+    // pressing Shift only for the move/up suspends the grid.
+    const el = audioClipEls()[0]!;
+    fireEvent.pointerDown(el, { button: 0, pointerId: 7, clientX: 100 });
+    fireEvent.pointerMove(el, { pointerId: 7, clientX: 139, shiftKey: true });
+    fireEvent.pointerUp(el, { pointerId: 7, clientX: 139, shiftKey: true });
+    // Free placement at tick precision: 1.3 bars = 2496 ticks exactly.
+    expect(project.getDoc().arrangement.audioClips?.find((c) => c.id === audioA)!.startBar).toBeCloseTo(1.3, 9);
+  });
+
+  it("SNAP OFF keeps the exact pre-snap free behavior", () => {
+    useWideRects();
+    const { doc, audioA } = parityDoc();
+    const { project } = renderLiveArrangement(doc);
+    dragFirstClip(139, 139);
+    expect(project.getDoc().arrangement.audioClips?.find((c) => c.id === audioA)!.startBar).toBeCloseTo(1.3, 9);
+  });
+});

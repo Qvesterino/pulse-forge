@@ -2220,7 +2220,9 @@ export class AudioEngine {
 
   /**
    * LIVE-EDITING FLUSH — de-click-cancel every clip one-shot whose clip is
-   * gone from (or has moved within) the current document.
+   * gone from (or has moved within) the current document — or whose mute
+   * state flipped (B3): muting a sounding clip must silence it NOW, exactly
+   * like a delete, and unmuting lets the resume pass pick the clip back up.
    *
    * The scheduler re-plans from the new document at the next 25 ms window,
    * but one-shot sources already handed to the WebAudio clock keep sounding
@@ -2228,19 +2230,22 @@ export class AudioEngine {
    * playback left it ringing for seconds, and a moved clip kept sounding at
    * its old spot. Called by the doc-change sync while playing; returns the
    * ids of clips still legitimately sounding (unchanged id + timeline
-   * geometry), which the resume pass must not double-trigger.
+   * geometry + mute state), which the resume pass must not double-trigger.
    */
   cancelOrphanedClipSources(): Set<string> {
     const survivors = new Set<string>();
     if (this.clipSourceMeta.size === 0) return survivors;
-    const live = new Map<string, { startBar: number; lengthBars: number }>();
+    const live = new Map<string, { startBar: number; lengthBars: number; muted?: boolean }>();
     for (const clip of this.doc ? audioClipsForPlayback(this.doc.arrangement) : []) {
       live.set(clip.id, clip);
     }
     const now = this.currentTime;
     for (const [source, meta] of this.clipSourceMeta) {
       const current = live.get(meta.clipId);
-      if (current && current.startBar === meta.startBar && current.lengthBars === meta.lengthBars) {
+      // A muted clip no longer reaches this map (audioClipsForPlayback
+      // filters it) — current === undefined covers mute-while-playing; the
+      // meta.muted check is the belt-and-suspenders for legacy call shapes.
+      if (current && !current.muted && !meta.muted && current.startBar === meta.startBar && current.lengthBars === meta.lengthBars) {
         survivors.add(meta.clipId);
         continue;
       }

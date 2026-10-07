@@ -1,5 +1,13 @@
 # TSAR — hybridný zvukový engine (implementačný plán)
 
+> **STATUS: T0–T7 SHIPPED (2026-10-06/07).** This document is kept as the
+> canonical record of WHAT shipped and WHY the decisions were made; the
+> "how it turned out" notes live under each wave. Counts are in
+> `docs/CURRENT-STATE.md` (23 instruments, 610 presets). The 23rd instrument
+> is registered in `INSTRUMENT_DEFS`, the dock panel is `Alt+0`, and the
+> browser gate `tests/e2e/18-tsar.spec.ts` proves the offline event-queue
+> render is audible.
+
 > **Pitch:** TSAR je klenot KYX — hybridný sample+synthesis engine v bottom docku,
 > ktorý z jedného WAV-u spraví hrateľný nástroj a z jedného patcha vrstvený zvuk
 > hodný produkcie. Inšpirovaný Omnisphere (hybrid source engine, enormná
@@ -427,3 +435,124 @@ Tento plán **dopĺňa, nenahrádza**:
 **T0 je čisto meracia vlna — žiadny feature kód.** Lekcia z UN-SUNO U0
 („merané, nie vymyslené"): KPI kontrakt musí existovať skôr, než prvý riadok
 enginu.
+
+---
+
+## 12. Ako to dopadlo (SHIPPED, 2026-10-06/07) — merané, nie odhadované
+
+Každá vlna skončila s testami, ktoré bežali; toto je záznam o tom, čo sa
+v priebehu merania UKÁZALO (a čo sa opravilo), nie sľub.
+
+### T0 — golden harness — SHIPPED
+
+`tests/tsar/golden-voices.ts` (6 seedovaných zdrojov: sine/saw/808/noise/
+formant/drifting pad) + `golden-set.test.ts` (6 specov: determinizmus,
+non-silence, dĺžka, Goertzel root-dominance, one-shot vs sustained shape).
+**Dva fixture nálezy, ktoré testy chytili:** formant suma prekročila 1.0
+(clip — znížené úrovne), a plain-autocorrelation root check čítal oktávu
+nesprávne (pure sine → cos(ωL) je vysoký na malých lagoch) → prepnuté na
+Goertzel energiu proti susedom ±1 semitone.
+
+### T1 — engine core — SHIPPED
+
+`src/tsar/dsp/tsarProcessor.ts` (typed, priamo testovateľný): 16 hlasov,
+dual-source, morph, sub/noise, per-source Chamberlin SVF, 4-slot mod matrix,
+glide, velocity, drive, tone, width, 1/√n polyfónia. `tsar-worklet.entry.js`
+
+- `scripts/build-tsar-worklet.mjs` (22 KB bundle), lazy loader
+  (`INSTRUMENT_WORKLET_TYPES`), `sampleIdB` + `SCHEMA_VERSION 13`.
+  `tests/tsar/engine.test.ts` (17 specov, všetky zelené).
+
+**Štyri reálne DSP bugy, ktoré testy odhalili:**
+
+1. **Invertovaná/nesprávna SVF normalizácia** — pôvodný tvar
+   `(input − q·s1 − s2)/(1+q·f+f²)` takmer vôbec nefiltroval (cutoff 300 Hz
+   na 261 Hz tón sotva zmenil RMS). Port z overeného
+   `svfilter-processor.js` (semi-implicit Chamberlin + `f·q` stability
+   guard) dal skutočný útlm (cutoff 100 Hz → 7.6×).
+2. **Voice lifecycle leak** — dlhý release na Source B držal hlas v 16-slot
+   pool-e, aj keď B bol ticho (active count ostal 1 po >1 s). Fix: B env
+   počíta len keď `levelB > 0`.
+3. **16 hlasov prebudzovalo bus** (peak 2.09) — pridaný 1/√n polyphony
+   divisor so smoothed menovateľom.
+4. **Testovacia metrika bola zlá** — zero-crossing počet nemeria jas (každý
+   harmonický stack 261 Hz tónu kríži nulu rovnako). Nahradené
+   first-difference energy ratio; morph aj filter testy potom skutočne
+   merajú to, čo tvrdia.
+
+### T5 — offline event queue — SHIPPED (v rámci T1)
+
+`AudioEngine.prepareOfflineRender()` volá `runtime.prepareOfflineRender()`,
+ktorý vytvorí worklet node s `processorOptions.events` (celý naplánovaný
+zoznam not) — lebo Chromium nepumpuje port messages počas
+`OfflineAudioContext` renderu. **Jeden `applyEvent` interpreter pre obe
+cesty**, bit-identické merané v `tests/tsar/engine.test.ts`; reálny browser
+dôkaz v `tests/e2e/18-tsar.spec.ts` (peak > 0.005).
+
+**Dva kritické bugy odhalené až browser E2E (unit testy ich nevideli):**
+
+1. **`loadInstrumentWorklet` nikdy nehlásil readiness** — `readyInstrumentTypes`
+   set sa inicializoval len pre plugin typy v `loadCoreWorklets`, takže
+   `isWorkletReady("tsar")` bolo vždy false. Fix v `loader.ts`.
+2. **Worklet čítal globál `processorOptions`** — v modernom Chrome je táto
+   globálna premenná `undefined`; `processorOptions` prichádza ako
+   **`constructor(options).processorOptions`**. Preto bol offline render
+   digitálne ticho, kým live cesta cez port fungovala. Toto je presne tá
+   trieda chyby, kvôli ktorej je `tests/e2e/18-tsar.spec.ts` povinný.
+
+### T2 — Sample Forge — SHIPPED
+
+`src/tsar/forge.ts` (pure): YIN root detection (absolute-threshold descent,
+žiadne oktávové chyby), one-shot/sustained cez median-of-windows decay
+ratio (robustný voči AM — prvá verzia s okrajovými decilami falošne čítala
+golden pad ako decay), engine routing (sampler/wavetable/granular podľa
+stability f0), envelope + normalizácia, honesty gates. `forgeSampleCommand`
+(slot A/B, 1 undo). Testy: `forge.test.ts` (12) + `forge-command.test.ts`
+(6) — root KPI 100 % (≥95 % cieľ), one-shot KPI 100 % (≥90 % cieľ).
+
+### T3 — factory bank — SHIPPED
+
+`src/presets/tsar-factory.ts`: 8 archetypov × 6 žánrových profilov = **48
+presetov** v lazy `pack-presets` chunku (eager graf zostal pack-free).
+`presets:loudness` gate premeral **610/610 presetov**; testy `presets.test.ts`
+(6: schéma, unikátnosť, rozsahy, metadata, determinizmus, „profily reálne
+hýbu zvukom"). **Loudness gate chytil reálny problém:** pady/textúry s dlhým
+attackom merali v 0.78 s probe takmer ticho (+18 clamp), príliš hlasné
+varianty (-18 clamp) — vybalansované na stred.
+
+### T4 — dock panel — SHIPPED
+
+`src/ui/TsarPanel.tsx` (source/morph matrix/LFO/arp surfaces, Forge drop
+zone s reálnym `importAudioFile` + `forgePlan` + `forgeSampleCommand`,
+factory browser s filtrom). `PANEL_KEYS` + `DOCK_TABS` + `App.tsx` +
+`Alt+0` shortcut + `23-tsar.css`. Testy `TsarPanel.test.tsx` (5: empty
+state, source surfaces, command-per-control, filter+apply preset, matrix
+wiring). **Graph audit:** TSAR natívny fallback (keď worklet chýba) dáva
+audible=1 — inak by bol 23. nástroj mŕtvy graf.
+
+### T6 — arpeggiator — SHIPPED
+
+Per-sample arp clock v DSP: UP/DOWN/UPDN/ORDER/seeded-RANDOM, rate/octaves/
+gate/swing, okamžitý prvý step pri stlačení klávesy (`arpPress` force).
+`tests/tsar/arp.test.ts` (5: retrigger count, gate energy, RANDOM
+determinizmus, release-clean, octaves menia linku). **Nález:** prvý step
+chýbal (arp čakal celý step) — opravené.
+
+### T7 — release gates — SHIPPED
+
+ADR `docs/adr/0023-tsar-hybrid-engine.md`; `CURRENT-STATE.md` (23 nástrojov,
+610 presetov); bundle budget row `TSAR_WORKLET_BUDGET_KB = 48` (merané
+22 KB); `tests/e2e/18-tsar.spec.ts` (2, chromium); parity obligation
+prechádza; `test:fast` 421/421.
+
+### Otvorené (poctivo, nie blokujúce)
+
+- **Per-source filter je post-sum** (jeden SVF na source na hlas, nie per
+  unison copy) — CPU optimalizácia, zvukovo ekvivalentná pre v1.
+- **Mod matrix má 4 sloty** (schéma má 8 v pláne; UI aj DSP používajú 4 —
+  rozšírenie je jednoduchý follow-up).
+- **Granular source je position-scan**, nie plný grain cloud (Forge routing
+  ho používa pre drifty; plný grain engine je kandidát na T8).
+- **Offline event queue generalizácia** na `wtvoice`/`grainVoice` — tie
+  stále používajú natívny fallback offline (funguje, ale líši sa od live);
+  vlastná vlna s ADR amendmentom.

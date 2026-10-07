@@ -18,6 +18,18 @@ import { unlinkMarkersOfClips } from "./docOps";
 
 /* ---------------- audioClips ---------------- */
 
+/**
+ * Storage precision for audio-clip bar geometry: TICK-ALIGNED. The musical
+ * grid lives on ticks (1/16 bar = 120 ticks), so every snapped position
+ * survives the round-trip exactly. The previous 0.01-bar round collapsed 1/8
+ * and 1/16 positions (0.125 → 0.13, 0.0625 → 0.06) — finer than the old
+ * precision on purpose, and legacy 0.01-quantized data shifts by at most half
+ * a tick on its next edit (inaudible at any tempo).
+ */
+export function quantizeAudioBar(bar: number): number {
+  return Number.isFinite(bar) ? Math.round(bar * BAR_TICKS) / BAR_TICKS : bar;
+}
+
 export function addAudioClip(
   doc: ProjectDocument,
   trackId: string,
@@ -36,8 +48,8 @@ export function addAudioClip(
     id: uid("audioClip"),
     trackId,
     bufferId,
-    startBar: Math.max(0, Math.round(finiteOr(startBar, 0) * 100) / 100),
-    lengthBars: Math.max(0.25, Math.round(finiteOr(lengthBars, 4) * 100) / 100),
+    startBar: Math.max(0, quantizeAudioBar(finiteOr(startBar, 0))),
+    lengthBars: Math.max(0.25, quantizeAudioBar(finiteOr(lengthBars, 4))),
     offsetSec: Math.max(0, finiteOr(patch.offsetSec ?? 0, 0)),
     trimStart: Math.max(0, finiteOr(patch.trimStart ?? 0, 0)),
     trimEnd: Math.max(0, finiteOr(patch.trimEnd ?? 0, 0)),
@@ -53,6 +65,7 @@ export function addAudioClip(
       : {}),
     ...(patch.stretchMode ? { stretchMode: patch.stretchMode } : {}),
     ...(patch.loop === true ? { loop: true as const } : {}),
+    ...(patch.muted === true ? { muted: true as const } : {}),
     ...(patch.loop === true && Number.isFinite(patch.loopPhaseOffsetSec)
       ? { loopPhaseOffsetSec: Math.max(0, patch.loopPhaseOffsetSec!) }
       : {}),
@@ -470,7 +483,7 @@ export function moveAudioClip(doc: ProjectDocument, clipId: string, startBar: nu
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
   if (!Number.isFinite(startBar)) return snapshot("moveAudioClip", "Move audio clip (no-op)", doc, doc);
-  const bar = Math.max(0, Math.round(startBar * 100) / 100);
+  const bar = Math.max(0, quantizeAudioBar(startBar));
   const next: ProjectDocument = {
     ...doc,
     arrangement: {
@@ -513,6 +526,37 @@ export function slipAudioClip(doc: ProjectDocument, clipId: string, offsetSec: n
 }
 
 /**
+ * Mute/unmute a SET of audio clips as ONE undoable entry (a clip selection
+ * can mix both clip systems — arrangement clips are routed out here, audio
+ * clips muted). `muted` clips are skipped by `audioClipsForPlayback`, so the
+ * scheduler, the offline render and the live-editing resume all agree; the
+ * doc-change sync de-click-cancels a muted clip that is currently sounding
+ * and resumes an unmuted one spanning the playhead (liveEditSync).
+ */
+export function setAudioClipsMute(doc: ProjectDocument, clipIds: readonly string[], muted: boolean): Command {
+  const ids = new Set(clipIds);
+  // Canonical comparison: an UNmuted clip stores no `muted` key (undefined),
+  // so a raw `!==` would treat undefined vs false as a change and push a
+  // dead history entry for "unmute what is already unmuted".
+  const changed = (doc.arrangement.audioClips ?? []).some((c) => ids.has(c.id) && (c.muted === true) !== muted);
+  if (!changed) return snapshot("setAudioClipsMute", muted ? "Mute clips (no-op)" : "Unmute clips (no-op)", doc, doc);
+  const count = (doc.arrangement.audioClips ?? []).filter((c) => ids.has(c.id)).length;
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: {
+      ...doc.arrangement,
+      audioClips: (doc.arrangement.audioClips ?? []).map((c) => (ids.has(c.id) ? { ...c, muted: muted === true } : c)),
+    },
+  };
+  return snapshot(
+    "setAudioClipsMute",
+    `${muted ? "Mute" : "Unmute"} ${count === 1 ? "1 audio clip" : `${count} audio clips`}`,
+    doc,
+    next,
+  );
+}
+
+/**
  * Preview rate for Alt+drag clip stretching: the content scales with the
  * clip, so the rate follows the length ratio (longer clip = slower playback
  * = lower rate). Relative to the CURRENT rate — trims need no absolute
@@ -539,7 +583,7 @@ export function stretchAudioClip(
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
   if (!Number.isFinite(lengthBars)) return snapshot("stretchAudioClip", "Stretch audio clip (no-op)", doc, doc);
-  const bars = Math.max(0.25, Math.round(lengthBars * 100) / 100);
+  const bars = Math.max(0.25, quantizeAudioBar(lengthBars));
   const rate = Number.isFinite(stretchRate) ? Math.round(Math.min(4, Math.max(0.25, stretchRate)) * 100) / 100 : 1;
   // Fades must stay inside the clip (clampClipFades) — same rule as resize.
   const { fadeIn, fadeOut } = clampClipFades(doc, clip, bars, clip.startBar);
@@ -559,7 +603,7 @@ export function resizeAudioClip(doc: ProjectDocument, clipId: string, lengthBars
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
   if (!Number.isFinite(lengthBars)) return snapshot("resizeAudioClip", "Resize audio clip (no-op)", doc, doc);
-  const bars = Math.max(0.25, Math.round(lengthBars * 100) / 100);
+  const bars = Math.max(0.25, quantizeAudioBar(lengthBars));
   // Fades must stay inside the resized clip (audit §8): the engine clamps
   // audibly, but out-of-bounds state desyncs the fade handles from the
   // visual clip width.
@@ -591,9 +635,7 @@ export function trimAudioClipStart(
 ): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
-  const bars = Number.isFinite(patch.lengthBars)
-    ? Math.max(0.25, Math.round(patch.lengthBars * 100) / 100)
-    : clip.lengthBars;
+  const bars = Number.isFinite(patch.lengthBars) ? Math.max(0.25, quantizeAudioBar(patch.lengthBars)) : clip.lengthBars;
   const trimStart = Number.isFinite(patch.trimStart) ? Math.max(0, patch.trimStart) : clip.trimStart;
   const offsetSec = Number.isFinite(patch.offsetSec) ? Math.max(0, patch.offsetSec) : clip.offsetSec;
   // Fades must stay inside the trimmed clip (same rule as resizeAudioClip) or

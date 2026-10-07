@@ -10,7 +10,8 @@ import { moveArrangementClipRipple, setSceneIntensityCurve } from "../src/comman
 import { consolidateTimeRange, duplicateTimeRange } from "../src/commands/timeRange";
 import { addEffect, duplicateTrack, moveTrackAdjacent } from "../src/commands/tracks";
 import { addNote } from "../src/commands/notes";
-import { addAudioClip, addAudioTakeClip } from "../src/commands/audioClips";
+import { addAudioClip, addAudioTakeClip, moveAudioClip, resizeAudioClip } from "../src/commands/audioClips";
+import { SNAP_GRIDS, SNAP_STORAGE_KEY, loadSnapGrid, snapBar, snapBarsFor, snapDelta, snapTick } from "../src/ui/snap";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { MAX_ARRANGEMENT_CLIP_BARS } from "../src/project-model/schema";
 import { ProjectStore } from "../src/store/ProjectStore";
@@ -483,5 +484,77 @@ describe("moveTrackAdjacent (Wave D — mixer drag reorder)", () => {
     const doc = createProjectFromTemplate("house");
     expect(() => moveTrackAdjacent(doc, "nope", doc.tracks[0]!.id, "before")).toThrow(/not found/);
     expect(() => moveTrackAdjacent(doc, doc.tracks[0]!.id, "nope", "after")).toThrow(/not found/);
+  });
+});
+
+/* ---------------- Snap system (2026-10-07): grids + tick storage ---------------- */
+
+describe("snap module (pure)", () => {
+  it("every grid is tick-clean and tick-snapping lands on whole ticks", () => {
+    for (const g of SNAP_GRIDS) {
+      expect((g.bars * BAR_TICKS) % 1).toBe(0);
+      expect(snapTick(BAR_TICKS * 0.51, g.bars) % 1).toBe(0);
+    }
+    // Nearest-line behavior, half rounds up.
+    expect(snapBar(1.26, 0.25)).toBeCloseTo(1.25, 9);
+    expect(snapBar(1.14, 0.25)).toBeCloseTo(1.25, 9);
+    expect(snapBar(1.375, 0.25)).toBeCloseTo(1.5, 9);
+    expect(snapBar(1.3, 0.5)).toBeCloseTo(1.5, 9);
+    expect(snapBar(1.24, 0.5)).toBeCloseTo(1.0, 9);
+    // Null/unknown grid = free positioning (identity).
+    expect(snapBar(1.37, null)).toBe(1.37);
+    expect(snapBarsFor("off")).toBeNull();
+    expect(snapBarsFor("1/16")).toBeCloseTo(0.0625, 9);
+    // Delta snap keeps block-internal spacing (grid multiples only).
+    expect(snapDelta(1.3, 0.5)).toBeCloseTo(1.5, 9);
+    expect(snapDelta(-0.26, 0.25)).toBeCloseTo(-0.25, 9);
+    // Tick snapping uses the grid in ticks.
+    expect(snapTick(121, 0.0625)).toBe(120);
+    // 180 sits exactly between 120 and 240 — half rounds UP (documented).
+    expect(snapTick(180, 0.0625)).toBe(240);
+    expect(snapTick(181, 0.0625)).toBe(240);
+    expect(snapTick(999, null)).toBe(999);
+  });
+
+  it("loadSnapGrid validates storage and falls back to off", () => {
+    localStorage.removeItem(SNAP_STORAGE_KEY);
+    expect(loadSnapGrid()).toBe("off");
+    localStorage.setItem(SNAP_STORAGE_KEY, "1/4");
+    expect(loadSnapGrid()).toBe("1/4");
+    localStorage.setItem(SNAP_STORAGE_KEY, "garbage");
+    expect(loadSnapGrid()).toBe("off");
+    localStorage.removeItem(SNAP_STORAGE_KEY);
+  });
+});
+
+describe("audio-clip commands store tick-aligned geometry (snap prerequisite)", () => {
+  it("a 1/16-bar move survives storage EXACTLY (0.01 round collapsed it to 0.06)", () => {
+    let doc = createProjectFromTemplate("house");
+    const track = doc.tracks.find((t) => t.kind !== "group")!;
+    doc = addAudioClip(doc, track.id, "buf-snap", 0, 4).execute(doc);
+    const clipId = (doc.arrangement.audioClips ?? [])[0]!.id;
+    const next = moveAudioClip(doc, clipId, 0.0625).execute(doc);
+    expect((next.arrangement.audioClips ?? []).find((c) => c.id === clipId)!.startBar).toBe(0.0625);
+  });
+
+  it("a 1/8-bar resize survives storage EXACTLY (0.01 round collapsed it to 0.13)", () => {
+    let doc = createProjectFromTemplate("house");
+    const track = doc.tracks.find((t) => t.kind !== "group")!;
+    doc = addAudioClip(doc, track.id, "buf-snap", 0, 4).execute(doc);
+    const clipId = (doc.arrangement.audioClips ?? [])[0]!.id;
+    // Grow by 1/8 (the 0.25-bar minimum floor forbids shrinking TO 0.125).
+    const next = resizeAudioClip(doc, clipId, 4.125).execute(doc);
+    expect((next.arrangement.audioClips ?? []).find((c) => c.id === clipId)!.lengthBars).toBe(4.125);
+  });
+
+  it("legacy 0.01-quantized positions stay valid (19.2 ticks → nearest tick)", () => {
+    let doc = createProjectFromTemplate("house");
+    const track = doc.tracks.find((t) => t.kind !== "group")!;
+    doc = addAudioClip(doc, track.id, "buf-snap", 1.03, 2).execute(doc);
+    const clipId = (doc.arrangement.audioClips ?? [])[0]!.id;
+    // An edit after legacy storage re-quantizes to ticks — within half a tick.
+    const next = moveAudioClip(doc, clipId, 2.03).execute(doc);
+    const moved = (next.arrangement.audioClips ?? []).find((c) => c.id === clipId)!;
+    expect(Math.abs(moved.startBar - 2.03)).toBeLessThanOrEqual(0.5 / BAR_TICKS);
   });
 });

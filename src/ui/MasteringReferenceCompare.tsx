@@ -6,11 +6,13 @@ import {
   inspectMasteringReferenceContainer,
   masteringReferenceFormatFromFileName,
   type EncodedMasterFileDetails,
+  type MasteringReferenceFormat,
 } from "../mastering/encodedInspection";
 import { CUSTOM_PROFILE, resolveDeliveryTarget } from "../mastering/profiles";
 import { MasteringReferenceRepository, type MasteringReferenceRecord } from "../mastering/referenceRepository";
 import { projectRevisionIdFor } from "../mastering/report";
 import { decodeAudioData } from "../services/audio-decode";
+import { decodeFlacAudioBuffer, estimateFlacDecoderWorkingSetBytes } from "../mastering/flacDecode";
 import { estimateRenderPcmBytes, renderProject } from "../rendering/renderer";
 import type { ProjectDocument } from "../project-model/types";
 import { useServices } from "./context";
@@ -36,7 +38,7 @@ const DECODE_SAMPLE_RATE = 44100;
 const MAX_REFERENCE_SECONDS = 12 * 60;
 const AUDIO_FILE_EXTENSION = /\.(wav|wave|mp3|flac)$/i;
 
-function assertReferenceMetadata(details: EncodedMasterFileDetails): void {
+function assertReferenceMetadata(format: MasteringReferenceFormat, details: EncodedMasterFileDetails): void {
   if (details.channels !== 1 && details.channels !== 2) {
     throw new Error(`Reference audio must be mono or stereo; this file has ${details.channels} channels.`);
   }
@@ -49,7 +51,8 @@ function assertReferenceMetadata(details: EncodedMasterFileDetails): void {
   if (details.durationSeconds > MAX_REFERENCE_SECONDS) {
     throw new Error("Reference audio is longer than 12 minutes. Shorten it before importing.");
   }
-  const decodedBytes = Math.ceil(details.durationSeconds * DECODE_SAMPLE_RATE) * details.channels * 4;
+  const decodedSampleRate = format === "flac" ? details.sampleRate : DECODE_SAMPLE_RATE;
+  const decodedBytes = Math.ceil(details.durationSeconds * decodedSampleRate) * details.channels * 4;
   if (decodedBytes > MAX_REFERENCE_BUFFER_BYTES) {
     throw new Error("The decoded reference would exceed the 128 MiB memory limit. Use a shorter excerpt.");
   }
@@ -61,6 +64,7 @@ async function decodeReferenceBytes(
   profile: ReturnType<typeof resolveDeliveryTarget>,
   signal?: AbortSignal,
   onProgress?: (progress: number, stage: string) => void,
+  additionalWorkingSetBytes = 0,
 ): Promise<LoadedReference> {
   if (
     record.byteLength <= 0 ||
@@ -72,15 +76,27 @@ async function decodeReferenceBytes(
   }
   const format = masteringReferenceFormatFromFileName(record.fileName);
   const details = inspectMasteringReferenceContainer(format, bytes);
-  assertReferenceMetadata(details);
+  assertReferenceMetadata(format, details);
+  if (format === "flac") {
+    const pcmBytes = Math.ceil(details.durationSeconds * details.sampleRate) * details.channels * 4;
+    const decodeWorkingSetBytes = estimateFlacDecoderWorkingSetBytes(bytes.byteLength, pcmBytes);
+    if (decodeWorkingSetBytes + additionalWorkingSetBytes > MAX_COMPARE_PCM_BYTES) {
+      throw new Error(
+        "The FLAC reference and current comparison audio exceed the 320 MiB working-memory limit. Use a shorter excerpt.",
+      );
+    }
+  }
   let buffer: AudioBuffer;
   try {
-    buffer = await decodeAudioData(bytes.slice(0), DECODE_SAMPLE_RATE);
+    buffer =
+      format === "flac"
+        ? await decodeFlacAudioBuffer(bytes, details, { maxPcmBytes: MAX_REFERENCE_BUFFER_BYTES, signal })
+        : await decodeAudioData(bytes.slice(0), DECODE_SAMPLE_RATE);
   } catch (reason) {
     if (signal?.aborted || (reason instanceof DOMException && reason.name === "AbortError")) throw reason;
     if (format === "flac") {
       throw new Error(
-        "This browser could not decode the FLAC reference. Convert it to WAV or try a browser with FLAC decoding.",
+        `The FLAC decoder could not read this reference: ${reason instanceof Error ? reason.message : String(reason)}`,
       );
     }
     throw new Error("The browser could not decode this reference. Check the file or try another WAV/MP3 export.");
@@ -114,6 +130,7 @@ async function decodeReference(
   profile: ReturnType<typeof resolveDeliveryTarget>,
   signal?: AbortSignal,
   onProgress?: (progress: number, stage: string) => void,
+  additionalWorkingSetBytes = 0,
 ): Promise<LoadedReference> {
   if (
     record.byteLength <= 0 ||
@@ -122,7 +139,14 @@ async function decodeReference(
   ) {
     throw new Error("The saved reference file is empty or exceeds the 96 MiB import limit.");
   }
-  return decodeReferenceBytes(record, await record.source.arrayBuffer(), profile, signal, onProgress);
+  return decodeReferenceBytes(
+    record,
+    await record.source.arrayBuffer(),
+    profile,
+    signal,
+    onProgress,
+    additionalWorkingSetBytes,
+  );
 }
 
 function bufferBytes(buffer: AudioBuffer | null): number {
@@ -186,6 +210,9 @@ export function MasteringReferenceCompare({
   const playingRef = useRef(playing);
   playingRef.current = playing;
   const projectMasterPcmBytes = bufferBytes(projectMaster?.buffer ?? null);
+  const residentWorkingSetBytesRef = useRef(0);
+  residentWorkingSetBytesRef.current =
+    assistantBytes + comparisonBytes + projectMasterPcmBytes + bufferBytes(reference?.buffer ?? null);
 
   useEffect(() => {
     onProjectMasterBytes(projectMasterPcmBytes);
@@ -224,10 +251,16 @@ export function MasteringReferenceCompare({
           return;
         }
         setStatus("Decoding saved reference…");
-        const decoded = await decodeReference(record, CUSTOM_PROFILE, controller.signal, (progress, stage) => {
-          if (aliveRef.current && decodeJobRef.current === job)
-            setStatus(`Measuring saved reference… ${Math.round(progress * 100)}% · ${stage}`);
-        });
+        const decoded = await decodeReference(
+          record,
+          CUSTOM_PROFILE,
+          controller.signal,
+          (progress, stage) => {
+            if (aliveRef.current && decodeJobRef.current === job)
+              setStatus(`Measuring saved reference… ${Math.round(progress * 100)}% · ${stage}`);
+          },
+          residentWorkingSetBytesRef.current,
+        );
         if (!aliveRef.current || decodeJobRef.current !== job) return;
         setReference(decoded);
         setStatus("Local reference ready.");
@@ -327,6 +360,7 @@ export function MasteringReferenceCompare({
           if (aliveRef.current && decodeJobRef.current === job)
             setStatus(`Measuring reference… ${Math.round(progress * 100)}% · ${stage}`);
         },
+        assistantBytes + comparisonBytes + projectMasterPcmBytes + bufferBytes(reference?.buffer ?? null),
       );
       if (
         !aliveRef.current ||

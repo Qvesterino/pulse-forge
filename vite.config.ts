@@ -91,13 +91,27 @@ export default defineConfig({
               id.endsWith("/src/ui/AudiotoolNexusExport.tsx"),
           );
           const containsFlacCodec = chunkInfo.moduleIds.some(
-            (id) => id.includes("/node_modules/mediabunny/") || id.includes("/node_modules/@mediabunny/flac-encoder/"),
+            (id) =>
+              id.includes("/node_modules/mediabunny/") ||
+              id.includes("/node_modules/@mediabunny/flac-encoder/") ||
+              id.includes("/node_modules/@wasm-audio-decoders/") ||
+              id.includes("/node_modules/codec-parser/") ||
+              id.includes("/node_modules/@eshaz/web-worker/") ||
+              id.includes("/node_modules/simple-yenc/"),
           );
           if (containsAudiotoolCode) return "assets/audiotool-nexus-[hash].js";
           return containsFlacCodec ? "assets/flac-codec-[hash].js" : "assets/[name]-[hash].js";
         },
         manualChunks(id) {
           if (id.includes("node_modules")) {
+            if (
+              id.includes("/node_modules/@wasm-audio-decoders/") ||
+              id.includes("/node_modules/codec-parser/") ||
+              id.includes("/node_modules/@eshaz/web-worker/") ||
+              id.includes("/node_modules/simple-yenc/")
+            ) {
+              return "flac-codec";
+            }
             if (id.includes("react-dom") || /[\/]react[\/]/.test(id) || id.includes("scheduler")) {
               return "vendor-react";
             }

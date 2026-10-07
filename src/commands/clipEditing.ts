@@ -33,6 +33,7 @@ export function updateAudioClip(
       | "stretchMode"
       | "reverse"
       | "loop"
+      | "muted"
       | "bufferId"
       | "warpMarkers"
     >
@@ -74,6 +75,7 @@ export function updateAudioClip(
     nextPatch.warpMarkers = patch.warpMarkers.map((m) => ({ timeSec: m.timeSec, tick: m.tick }));
   }
   if (patch.reverse !== undefined) nextPatch.reverse = patch.reverse === true;
+  if (patch.muted !== undefined) nextPatch.muted = patch.muted === true;
   if (patch.loop !== undefined) {
     nextPatch.loop = patch.loop === true;
     if (patch.loop !== true) nextPatch.loopPhaseOffsetSec = undefined;

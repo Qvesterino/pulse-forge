@@ -38,6 +38,7 @@ import {
 import type { MasteringSessionRecord, MasteringSessionReferenceRecord } from "../mastering/sessionStore";
 import type { MasteringSessionSlot, MasteringSessionSummary } from "../mastering/sessionStore";
 import { decodeAudioData } from "../services/audio-decode";
+import { decodeFlacAudioBuffer, estimateFlacDecoderWorkingSetBytes } from "../mastering/flacDecode";
 import { uid } from "../shared/ids";
 import type { EffectInstance } from "../project-model/types";
 import { createBextMetadata, encodeWavAsync, sanitizeFilename } from "../rendering/wav";
@@ -203,15 +204,18 @@ async function decodeMasteringInputWithSessionAbort(
   signal: AbortSignal | undefined,
   message: string,
 ): Promise<AudioBuffer> {
+  if (format === "flac") {
+    const details = inspectMasteringReferenceContainer(format, bytes);
+    const pcmBytes = Math.ceil(details.durationSeconds * details.sampleRate) * details.channels * 4;
+    if (!Number.isSafeInteger(pcmBytes) || pcmBytes > MAX_DECODED_SOURCE_BYTES) {
+      throw new Error("The decoded FLAC would exceed KYX's 128 MiB source-memory limit.");
+    }
+    return decodeFlacAudioBuffer(bytes, details, { maxPcmBytes: MAX_DECODED_SOURCE_BYTES, signal });
+  }
   try {
-    return await decodeAudioDataWithSessionAbort(bytes, DECODE_SAMPLE_RATE, signal, message);
+    return await decodeAudioDataWithSessionAbort(bytes.slice(0), DECODE_SAMPLE_RATE, signal, message);
   } catch (reason) {
     if (signal?.aborted || (reason instanceof DOMException && reason.name === "AbortError")) throw reason;
-    if (format === "flac") {
-      throw new Error(
-        "This browser could not decode the FLAC source. Convert it to WAV or try a browser with FLAC decoding.",
-      );
-    }
     throw reason;
   }
 }
@@ -253,7 +257,11 @@ async function decodeSessionSource(record: MasteringSessionRecord, signal?: Abor
   if (details.channels !== record.channels || details.sampleRate !== record.sourceSampleRate) {
     throw new Error("The saved file metadata no longer matches this mastering session.");
   }
-  const buffer = await decodeMasteringInputWithSessionAbort(bytes.slice(0), format, signal, "Session load cancelled");
+  if (format === "flac") {
+    const pcmBytes = Math.ceil(details.durationSeconds * details.sampleRate) * details.channels * 4;
+    assertMasteringSessionWorkingSetBudget(estimateFlacDecoderWorkingSetBytes(bytes.byteLength, pcmBytes));
+  }
+  const buffer = await decodeMasteringInputWithSessionAbort(bytes, format, signal, "Session load cancelled");
   if (signal?.aborted) throw new DOMException("Session load cancelled", "AbortError");
   if (
     buffer.numberOfChannels !== record.channels ||
@@ -290,11 +298,15 @@ async function decodeSessionReference(
   ) {
     throw new Error("The saved reference metadata no longer matches its file.");
   }
-  const estimatedBytes = Math.ceil(details.durationSeconds * DECODE_SAMPLE_RATE) * details.channels * 4;
+  const decodedSampleRate = format === "flac" ? details.sampleRate : DECODE_SAMPLE_RATE;
+  const estimatedBytes = Math.ceil(details.durationSeconds * decodedSampleRate) * details.channels * 4;
   if (estimatedBytes > MAX_DECODED_SOURCE_BYTES) {
     throw new Error("The decoded reference exceeds KYX's 128 MiB memory limit.");
   }
-  const buffer = await decodeMasteringInputWithSessionAbort(bytes.slice(0), format, signal, "Reference load cancelled");
+  if (format === "flac") {
+    assertMasteringSessionWorkingSetBudget(estimateFlacDecoderWorkingSetBytes(bytes.byteLength, estimatedBytes));
+  }
+  const buffer = await decodeMasteringInputWithSessionAbort(bytes, format, signal, "Reference load cancelled");
   if (
     buffer.numberOfChannels !== record.channels ||
     buffer.duration < 0.8 ||
@@ -555,10 +567,16 @@ export function MasteringFileSessionPanel() {
         if (savedReference) {
           try {
             setBusy("Loading saved comparison reference…");
+            const referenceFormat = masteringReferenceFormatFromFileName(savedReference.fileName);
+            const referenceSampleRate = referenceFormat === "flac" ? savedReference.sampleRate : DECODE_SAMPLE_RATE;
             const referenceBytes =
-              Math.ceil(savedReference.durationSeconds * DECODE_SAMPLE_RATE) * savedReference.channels * 4;
+              Math.ceil(savedReference.durationSeconds * referenceSampleRate) * savedReference.channels * 4;
             const baseBytes = estimateMasteringSessionWorkingSetBytes(buffer, record.masterConfig, sampleRate);
-            assertMasteringSessionWorkingSetBudget(baseBytes + referenceBytes);
+            const decodeWorkingSetBytes =
+              referenceFormat === "flac"
+                ? estimateFlacDecoderWorkingSetBytes(savedReference.byteLength, referenceBytes)
+                : referenceBytes;
+            assertMasteringSessionWorkingSetBudget(baseBytes + decodeWorkingSetBytes);
             loadedReference = await decodeSessionReference(
               savedReference,
               resolveDeliveryTarget(record.masterConfig),
@@ -628,16 +646,27 @@ export function MasteringFileSessionPanel() {
         if (details.sampleRate < 8000 || details.sampleRate > 192000) {
           throw new Error("The source sample rate must be between 8 and 192 kHz.");
         }
-        const estimatedDecodeBytes = Math.ceil(details.durationSeconds * DECODE_SAMPLE_RATE) * details.channels * 4;
+        const decodedSampleRate = format === "flac" ? details.sampleRate : DECODE_SAMPLE_RATE;
+        const estimatedDecodeBytes = Math.ceil(details.durationSeconds * decodedSampleRate) * details.channels * 4;
         if (estimatedDecodeBytes > MAX_DECODED_SOURCE_BYTES) {
           throw new Error("The decoded source would exceed KYX's 128 MiB source-memory limit.");
+        }
+        if (format === "flac") {
+          const currentRenderBytes =
+            bufferBytes(rendered?.buffer ?? null) +
+            (comparison ? bufferBytes(comparison.a.buffer) + bufferBytes(comparison.b.buffer) : 0);
+          assertMasteringSessionWorkingSetBudget(
+            estimatedBytes +
+              currentRenderBytes +
+              estimateFlacDecoderWorkingSetBytes(bytes.byteLength, estimatedDecodeBytes),
+          );
         }
         setBusy("Fingerprinting source file…");
         const sourceHash = await awaitWithSessionAbort(sha256Hex(bytes), controller.signal, "Source import cancelled");
         ensureActive();
         setProgress("Decoding source audio…");
         const buffer = await decodeMasteringInputWithSessionAbort(
-          bytes.slice(0),
+          bytes,
           format,
           controller.signal,
           "Source import cancelled",
@@ -695,7 +724,7 @@ export function MasteringFileSessionPanel() {
         }
       }
     },
-    [repository, stopSessionPreview],
+    [comparison, estimatedBytes, rendered, repository, stopSessionPreview],
   );
 
   const importReference = useCallback(
@@ -739,14 +768,22 @@ export function MasteringFileSessionPanel() {
         if (details.sampleRate < 8000 || details.sampleRate > 192000) {
           throw new Error("The comparison sample rate must be between 8 and 192 kHz.");
         }
+        const decodedSampleRate = format === "flac" ? details.sampleRate : DECODE_SAMPLE_RATE;
         const estimatedReferenceBytes =
-          Math.ceil(details.durationSeconds * DECODE_SAMPLE_RATE) * details.channels * Float32Array.BYTES_PER_ELEMENT;
+          Math.ceil(details.durationSeconds * decodedSampleRate) * details.channels * Float32Array.BYTES_PER_ELEMENT;
         if (estimatedReferenceBytes > MAX_DECODED_SOURCE_BYTES) {
           throw new Error("The decoded reference exceeds KYX's 128 MiB memory limit.");
         }
         const baseBytes =
           estimateMasteringSessionWorkingSetBytes(source, draft, sampleRate) + bufferBytes(reference?.buffer ?? null);
-        assertMasteringSessionWorkingSetBudget(baseBytes + estimatedReferenceBytes);
+        const decodeWorkingSetBytes =
+          format === "flac"
+            ? estimateFlacDecoderWorkingSetBytes(bytes.byteLength, estimatedReferenceBytes)
+            : estimatedReferenceBytes;
+        const currentRenderBytes =
+          bufferBytes(rendered?.buffer ?? null) +
+          (comparison ? bufferBytes(comparison.a.buffer) + bufferBytes(comparison.b.buffer) : 0);
+        assertMasteringSessionWorkingSetBudget(baseBytes + currentRenderBytes + decodeWorkingSetBytes);
         setBusy("Fingerprinting comparison reference…");
         const sourceHash = await awaitWithSessionAbort(
           sha256Hex(bytes),
@@ -756,7 +793,7 @@ export function MasteringFileSessionPanel() {
         ensureActive();
         setBusy("Decoding comparison reference…");
         const buffer = await decodeMasteringInputWithSessionAbort(
-          bytes.slice(0),
+          bytes,
           format,
           controller.signal,
           "Reference import cancelled",
@@ -815,7 +852,7 @@ export function MasteringFileSessionPanel() {
         }
       }
     },
-    [draft, repository, sampleRate, session, source, stopSessionPreview],
+    [comparison, draft, reference, rendered, repository, sampleRate, session, source, stopSessionPreview],
   );
 
   const removeReference = useCallback(async () => {
@@ -1250,6 +1287,7 @@ export function MasteringFileSessionPanel() {
           expectedDurationSeconds: rendered.buffer.duration,
           sourceMeasurements: rendered.measurements,
           profile: resolveDeliveryTarget(draft),
+          additionalWorkingSetBytes: estimatedBytes,
           signal: controller.signal,
           onProgress: (update) => setProgress(`${update.stage} · ${Math.round(update.progress * 100)}%`),
         });

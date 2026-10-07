@@ -29,37 +29,32 @@ const MONO_L = new Float32Array(BLOCK);
 const MONO_R = new Float32Array(BLOCK);
 
 class TsarWorkletProcessor extends AudioWorkletProcessor {
-  proc = new TsarProcessor({
-    sampleRate,
-    events: (processorOptions && processorOptions.events) || undefined,
-  });
-  initialized = false;
-
-  constructor() {
+  // The DSP is created in the constructor because it needs `sampleRate` (a
+  // global) and the seeded options; a field initializer cannot read the
+  // constructor argument.
+  constructor(options) {
     super();
     this.port.onmessage = (event) => this.handle(event.data);
-    this.port.postMessage({ type: "constructed", events: processorOptions?.events?.length ?? 0 });
-    if (processorOptions && processorOptions.bpm) this.proc.setBpm(processorOptions.bpm);
-    if (processorOptions && processorOptions.params) {
-      this.proc.applyParams(processorOptions.params);
+    // processorOptions arrives as `options.processorOptions` — the GLOBAL
+    // `processorOptions` is a legacy alias that is undefined in current
+    // Chromium (measured: a processorOptions-only offline render produced
+    // digital silence until this contract was fixed).
+    const opts = (options && options.processorOptions) || {};
+    this.proc = new TsarProcessor({ sampleRate, events: Array.isArray(opts.events) ? opts.events : undefined });
+    if (opts.bpm) this.proc.setBpm(opts.bpm);
+    if (opts.params) {
+      this.proc.applyParams(opts.params);
       this.initialized = true;
     }
-    if (processorOptions && processorOptions.wavetables) {
-      for (const entry of processorOptions.wavetables) {
+    if (opts.wavetables) {
+      for (const entry of opts.wavetables) {
         this.proc.setWavetable(entry.slot, entry.frames, entry.frameCount);
       }
     }
-    if (processorOptions && processorOptions.samples) {
-      for (const entry of processorOptions.samples) {
+    if (opts.samples) {
+      for (const entry of opts.samples) {
         this.proc.setSample(entry.slot, entry.pcm, entry.rootHz);
       }
-    }
-    // OFFLINE EVENT SEED (the T5 contract): `processorOptions.events` carries
-    // the whole scheduled note list because Chromium does not pump port
-    // messages during an OfflineAudioContext render. This is the SAME
-    // postEvent queue the live port path fills — one interpreter, two paths.
-    if (processorOptions && Array.isArray(processorOptions.events)) {
-      for (const event of processorOptions.events) this.proc.postEvent(event);
     }
   }
 
@@ -102,12 +97,6 @@ class TsarWorkletProcessor extends AudioWorkletProcessor {
   process(_inputs, outputs) {
     const output = outputs[0];
     if (!output || output.length === 0) return true;
-    // Debug probe (removed before commit): proves process() runs and reports
-    // its first frame peak + active voice count.
-    if (!this.__probed) {
-      this.__probed = true;
-      this.port.postMessage({ type: "probe", hasOutput: true, frames: output[0].length, active: this.proc.activeVoiceCount });
-    }
     const left = output[0];
     const frames = Math.min(BLOCK, left.length);
     const l = frames === left.length ? left : left.subarray(0, frames);

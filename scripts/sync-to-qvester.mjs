@@ -91,6 +91,7 @@ for (const required of [
   "third-party-licenses/@audiotool__nexus@0.0.19-LICENSE",
   "third-party-licenses/mediabunny@1.56.1-LICENSE",
   "third-party-licenses/@mediabunny__flac-encoder@1.56.1-LICENSE",
+  "third-party-licenses/codec-parser@2.5.0-LICENSE",
   "third-party-licenses/COPYING.Xiph",
 ]) {
   if (!existsSync(join(targetDist, required))) fail(`target dist missing ${required}`);

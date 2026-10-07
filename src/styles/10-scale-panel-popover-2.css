@@ -424,6 +424,22 @@ html {
   background: linear-gradient(180deg, rgba(20, 184, 166, 0.24), rgba(20, 184, 166, 0.1));
   border-color: rgba(45, 212, 191, 0.72);
 }
+/* Clip-level mute (B3): clearly "still there, not playing" — desaturated,
+   dimmed, with a small MUTED stamp that cannot be mistaken for a selection. */
+.arr-audio-clip.muted {
+  filter: grayscale(0.85) brightness(0.55);
+}
+.arr-audio-clip.muted::after {
+  content: "MUTED";
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: rgba(248, 113, 113, 0.95);
+  pointer-events: none;
+}
 .arr-audio-clip .audio-waveform {
   flex: 1;
   display: block;

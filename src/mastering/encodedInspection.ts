@@ -2,6 +2,7 @@ import type { MixHealthReport } from "../analysis/mixDoctor";
 import type { BufferSummary, MasterVerdict } from "../audio-engine/metering";
 import type { LoudnessTimeline } from "../audio-engine/kweighting";
 import { decodeAudioData } from "../services/audio-decode";
+import { decodeFlacAudioBuffer, estimateFlacDecoderWorkingSetBytes, FlacDataError } from "./flacDecode";
 import type { MasterAnalysisProgressListener } from "./analysis";
 import { analyzeMasterBufferAsync, analyzeMasterPcmStreamAsync } from "./analysisClient";
 import { analyzeMp3BlobAsync } from "./mp3AnalysisClient";
@@ -40,7 +41,8 @@ export interface EncodedMasterInspection {
   fingerprint: EncodedMasterFingerprint;
   decode: {
     status: "measured" | "not-measured";
-    decoder: "Web Audio" | "KYX WAV PCM reader" | "WebCodecs MP3 worker" | "not invoked";
+    decoder:
+      "Web Audio" | "KYX WAV PCM reader" | "WebCodecs MP3 worker" | "KYX FLAC WebAssembly worker" | "not invoked";
     sampleRate?: number;
     channels?: number;
     durationSeconds?: number;
@@ -57,6 +59,7 @@ const MAX_WAV_DECODE_BYTES = 96 * 1024 * 1024;
 const MAX_MP3_DECODE_BYTES = 12 * 1024 * 1024;
 const MAX_FLAC_DECODE_BYTES = 96 * 1024 * 1024;
 const MAX_FLAC_DECODE_PCM_BYTES = 64 * 1024 * 1024;
+const MAX_FLAC_DECODE_WORKING_SET_BYTES = 512 * 1024 * 1024;
 
 function cancelledError(): DOMException {
   return new DOMException("Master inspection cancelled", "AbortError");
@@ -433,11 +436,25 @@ export async function inspectEncodedMaster(input: {
   expectedDurationSeconds: number;
   sourceMeasurements: BufferSummary;
   profile: MasterProfile;
+  /** Resident PCM outside the encoded file, used to bound post-encode FLAC read-back. */
+  additionalWorkingSetBytes?: number;
   onProgress?: MasterAnalysisProgressListener;
   signal?: AbortSignal;
 }): Promise<EncodedMasterInspection> {
-  const { format, bytes, expectedDurationSeconds, sourceMeasurements, profile, onProgress, signal } = input;
+  const {
+    format,
+    bytes,
+    expectedDurationSeconds,
+    sourceMeasurements,
+    profile,
+    additionalWorkingSetBytes = 0,
+    onProgress,
+    signal,
+  } = input;
   if (signal?.aborted) throw new DOMException("Master inspection cancelled", "AbortError");
+  if (!Number.isFinite(additionalWorkingSetBytes) || additionalWorkingSetBytes < 0) {
+    throw new Error("KYX could not estimate the resident audio memory for post-encode inspection.");
+  }
   const blobInput = typeof Blob !== "undefined" && bytes instanceof Blob ? bytes : null;
   const byteLength = blobInput?.size ?? (bytes as ArrayBuffer).byteLength;
   let file: EncodedMasterFileDetails;
@@ -467,7 +484,12 @@ export async function inspectEncodedMaster(input: {
     );
     file = parseFlac(headerBytes);
     const decodedPcmBytes = file.channels * file.sampleRate * file.durationSeconds * Float32Array.BYTES_PER_ELEMENT;
-    const canDecode = byteLength <= MAX_FLAC_DECODE_BYTES && decodedPcmBytes <= MAX_FLAC_DECODE_PCM_BYTES;
+    const decoderWorkingSetBytes =
+      estimateFlacDecoderWorkingSetBytes(byteLength, Math.ceil(decodedPcmBytes), 3) + additionalWorkingSetBytes;
+    const canDecode =
+      byteLength <= MAX_FLAC_DECODE_BYTES &&
+      decodedPcmBytes <= MAX_FLAC_DECODE_PCM_BYTES &&
+      decoderWorkingSetBytes <= MAX_FLAC_DECODE_WORKING_SET_BYTES;
     decoderBytes = canDecode ? await awaitWithAbort(blobInput.arrayBuffer(), signal) : headerBytes;
   } else if (format === "flac") {
     decoderBytes = bytes as ArrayBuffer;
@@ -648,12 +670,19 @@ export async function inspectEncodedMaster(input: {
 
   if (format === "flac") {
     const decodedPcmBytes = file.channels * file.sampleRate * file.durationSeconds * Float32Array.BYTES_PER_ELEMENT;
-    if (byteLength > MAX_FLAC_DECODE_BYTES || decodedPcmBytes > MAX_FLAC_DECODE_PCM_BYTES) {
+    const decoderWorkingSetBytes =
+      estimateFlacDecoderWorkingSetBytes(byteLength, Math.ceil(decodedPcmBytes), blobInput ? 3 : 2) +
+      additionalWorkingSetBytes;
+    if (
+      byteLength > MAX_FLAC_DECODE_BYTES ||
+      decodedPcmBytes > MAX_FLAC_DECODE_PCM_BYTES ||
+      decoderWorkingSetBytes > MAX_FLAC_DECODE_WORKING_SET_BYTES
+    ) {
       return notMeasured(
         format,
         byteLength,
         file,
-        `The FLAC header was checked, but post-encode decoding was skipped because the file or projected PCM exceeds KYX's ${Math.floor(MAX_FLAC_DECODE_PCM_BYTES / (1024 * 1024))} MiB FLAC decode working-set limit.`,
+        `The FLAC header was checked, but post-encode decoding was skipped because the file, projected PCM, or combined decoder memory exceeds KYX's ${Math.floor(MAX_FLAC_DECODE_WORKING_SET_BYTES / (1024 * 1024))} MiB FLAC decode working-set limit.`,
         warnings,
         fingerprint,
       );
@@ -675,10 +704,15 @@ export async function inspectEncodedMaster(input: {
   }
 
   let decoded: AudioBuffer;
+  const decoderName = format === "flac" ? "KYX FLAC WebAssembly worker" : "Web Audio";
   try {
-    decoded = await awaitWithAbort(decodeAudioData(decoderBytes, file.sampleRate), signal);
+    decoded =
+      format === "flac"
+        ? await decodeFlacAudioBuffer(decoderBytes, file, { maxPcmBytes: MAX_FLAC_DECODE_PCM_BYTES, signal })
+        : await awaitWithAbort(decodeAudioData(decoderBytes, file.sampleRate), signal);
   } catch (error) {
     if (signal?.aborted) throw cancelledError();
+    if (format === "flac" && error instanceof FlacDataError) throw error;
     return notMeasured(
       format,
       byteLength,
@@ -686,7 +720,7 @@ export async function inspectEncodedMaster(input: {
       `The browser decoder could not measure this file: ${error instanceof Error ? error.message : String(error)}`,
       warnings,
       fingerprint,
-      "Web Audio",
+      decoderName,
     );
   }
   if (signal?.aborted) throw new DOMException("Master inspection cancelled", "AbortError");
@@ -714,7 +748,7 @@ export async function inspectEncodedMaster(input: {
       fingerprint,
       decode: {
         status: "measured",
-        decoder: "Web Audio",
+        decoder: decoderName,
         sampleRate: decoded.sampleRate,
         channels: decoded.numberOfChannels,
         durationSeconds: decoded.duration,
@@ -734,7 +768,7 @@ export async function inspectEncodedMaster(input: {
       `The browser decoder could not measure this file: ${error instanceof Error ? error.message : String(error)}`,
       warnings,
       fingerprint,
-      "Web Audio",
+      decoderName,
     );
   }
 }
