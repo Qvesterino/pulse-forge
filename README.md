@@ -189,6 +189,31 @@ Each effect is a shared `EffectDefinition` → `EffectRuntime`; structural chain
 - **Command palette** (`⌘K`) — keyboard-driven access to actions.
 - **Help overlay** with the full shortcut reference.
 
+### UN-SUNO — drop a song, get an editable project
+
+Drop any MP3/WAV and the built-in pipeline decomposes it into a real, editable project: **transcription** (tempo, key, drum pattern, bass line, chord voicings, lead line — deterministic DSP lanes, no cloud), **reconstruction** into drum/bass/chords/lead tracks with section patterns, scenes and markers (one undo step), the original attached as a warped audio lane, plus **mix-doctor findings** ("chorus is 3 dB under the verse") and a **similarity advisory** (numerical composition overlap vs the source — explicitly not legal clearance).
+
+- **Cover Band** — the Session Theatre producers each cover the song in their own style; blind A/B tournament; the winning cover becomes the project.
+- **RE-STYLE / REGEN** — swap the band through ~650 artist presets (kit, instruments, mix profile), or regenerate section content in the artist's genre (groove drums + genre bass) while the harmony and structure stay.
+- **Stem separation** — HPSS guide stems everywhere; optional neural 4-stem separation (htdemucs) on WebGPU-capable hardware.
+- Everything runs **locally** — no cloud, no uploads; the neural model is a one-time ~298 MB download.
+
+#### UN-SUNO & stem separation — system requirements
+
+|                 | Minimum — Tier 1 (HPSS guide stems + transcription)                                                    | Recommended — Tier 2 (neural 4-stem separation)                                                                                        |
+| --------------- | ------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Browser         | Any KYX-supported browser (Web Audio required)                                                         | **Chrome or Edge 113+** (WebGPU stable)                                                                                                |
+| CPU             | Any dual-core x86-64 (≈2012+), e.g. Core i3-3220 / Athlon 5350 — transcription runs on CPU in a worker | Quad-core (Intel 8th gen / Ryzen 3000 class, e.g. i5-8400 / Ryzen 5 3600)                                                              |
+| GPU             | None                                                                                                   | Discrete WebGPU GPU with **2 GB VRAM free**: NVIDIA GTX 1050 / RTX 3050 or newer, AMD RX 560 / RX 6000 series, Intel Arc A380 or newer |
+| Integrated GPU  | —                                                                                                      | May work, slower and **unverified**: Intel Iris Xe (11th gen+), AMD Radeon 680M                                                        |
+| RAM             | 4 GB                                                                                                   | 8 GB                                                                                                                                   |
+| Disk (one-time) | —                                                                                                      | ~298 MB model cache via `npm run stem:fetch`                                                                                           |
+| Measured speed  | 15 s track ≈ 13 s (CPU worker)                                                                         | **6.58× realtime** (Chrome, NVIDIA RTX 30 / Ampere)                                                                                    |
+
+**Not supported for the neural tier:** Firefox and Safari (WebGPU incomplete for ORT-web), and WASM execution of the model (measured `std::bad_alloc` — the 2 GB wasm32 heap cannot hold htdemucs-class weights + activations).
+
+_Compatibility note: inference was measured only on an NVIDIA Ampere card; other GPU models are listed per WebGPU vendor support and D3D12/Vulkan capability, not measured. The built-in benchmark page (`/bench-stem.html` on the dev server) verifies any machine in one reload._
+
 ---
 
 ## 3. The user workflow
