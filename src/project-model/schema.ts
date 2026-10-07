@@ -48,7 +48,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -649,6 +649,7 @@ export function sanitizeAudioClips(
       ...(loopPhaseOffsetSec !== undefined ? { loopPhaseOffsetSec } : {}),
       ...(stretchMode ? { stretchMode } : {}),
       ...(warpMarkers ? { warpMarkers } : {}),
+      ...(raw.muted === true ? { muted: true } : {}),
     });
   }
   out.sort((a, b) => a.startBar - b.startBar);

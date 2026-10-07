@@ -44,6 +44,7 @@ import { createBextMetadata, encodeWavAsync, sanitizeFilename } from "../renderi
 import type { WavBitDepth } from "../rendering/wav";
 import { downloadBlob } from "../export/download";
 import { loadFlacEncoder } from "../export/flac-loader";
+import { assertFlacExportWorkingSetBudget, estimateFlacOutputWorkingSetBytes } from "../export/flac-limits";
 import { useServices } from "./context";
 import { MasteringLoudnessTimeline } from "./MasteringLoudnessTimeline";
 import { MasteringFingerprint } from "./MasteringFingerprint";
@@ -1202,6 +1203,13 @@ export function MasteringFileSessionPanel() {
     setInspection(null);
     setComparison(null);
     try {
+      if (deliveryFormat === "flac") {
+        const flacBitDepth = bitDepth === 16 ? 16 : 24;
+        assertFlacExportWorkingSetBudget(
+          estimatedBytes,
+          estimateFlacOutputWorkingSetBytes(rendered.buffer, flacBitDepth),
+        );
+      }
       const versionSaveError = await persistDeliveryVersion();
       let deliveryBlob: Blob;
       let checked: EncodedMasterInspection;

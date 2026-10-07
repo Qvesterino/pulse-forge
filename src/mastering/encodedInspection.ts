@@ -461,7 +461,10 @@ export async function inspectEncodedMaster(input: {
     // FLAC output has a short STREAMINFO header. Keep container inspection
     // bounded for large files; only fetch the full file when decoding is
     // within the explicit file and projected PCM working-set caps.
-    const headerBytes = await awaitWithAbort(blobInput.slice(0, Math.min(byteLength, 1024 * 1024)).arrayBuffer(), signal);
+    const headerBytes = await awaitWithAbort(
+      blobInput.slice(0, Math.min(byteLength, 1024 * 1024)).arrayBuffer(),
+      signal,
+    );
     file = parseFlac(headerBytes);
     const decodedPcmBytes = file.channels * file.sampleRate * file.durationSeconds * Float32Array.BYTES_PER_ELEMENT;
     const canDecode = byteLength <= MAX_FLAC_DECODE_BYTES && decodedPcmBytes <= MAX_FLAC_DECODE_PCM_BYTES;
@@ -657,7 +660,8 @@ export async function inspectEncodedMaster(input: {
     }
   }
 
-  const maxDecodeBytes = format === "wav" ? MAX_WAV_DECODE_BYTES : format === "mp3" ? MAX_MP3_DECODE_BYTES : MAX_FLAC_DECODE_BYTES;
+  const maxDecodeBytes =
+    format === "wav" ? MAX_WAV_DECODE_BYTES : format === "mp3" ? MAX_MP3_DECODE_BYTES : MAX_FLAC_DECODE_BYTES;
   if (byteLength > maxDecodeBytes) {
     const limitMb = (maxDecodeBytes / 1024 / 1024).toFixed(0);
     return notMeasured(

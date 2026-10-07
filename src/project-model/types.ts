@@ -753,6 +753,14 @@ export interface AudioClip {
    * Interpolated between markers for smooth warp.
    */
   warpMarkers?: Array<{ timeSec: number; tick: number }>;
+  /**
+   * Clip-level mute (B3): the clip is skipped by playback entirely —
+   * `audioClipsForPlayback` filters it out, so scheduler, offline render and
+   * the live-editing resume all agree through one choke point. Absent =
+   * audible (legacy). Track-level mute is the mixer's job; this mutes ONE
+   * clip, e.g. a split fragment, without touching its neighbours.
+   */
+  muted?: boolean;
 }
 
 /** Whole-pass or comp selection state shared by the AudioClips in one take lane. */

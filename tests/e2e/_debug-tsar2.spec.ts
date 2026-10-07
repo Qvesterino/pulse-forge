@@ -7,7 +7,8 @@ test("debug tsar worklet direct", async ({ page }) => {
   const report = await page.evaluate(async () => {
     const load = (specifier: string) => import(/* @vite-ignore */ specifier);
     const loader = await load("/src/audio-worklets/loader.ts");
-    const ctx = new OfflineAudioContext(2, 44100, 44100);
+    const sampleRate = 44100;
+    const ctx = new OfflineAudioContext(2, sampleRate, sampleRate);
     await loader.ensureWorkletsForDoc({ tracks: [{ instrument: "tsar" }] }, ctx);
     const node = new AudioWorkletNode(ctx, "tsar-processor", {
       numberOfInputs: 0,
@@ -18,14 +19,14 @@ test("debug tsar worklet direct", async ({ page }) => {
         events: [{ type: "noteOn", when: 0.05, pitch: 60, velocity: 0.9 }],
       },
     });
-    let messages: unknown[] = [];
+    const messages: unknown[] = [];
     node.port.onmessage = (e) => messages.push(e.data);
     node.connect(ctx.destination);
     const buffer = await ctx.startRendering();
     const d = buffer.getChannelData(0);
     let peak = 0;
     for (let i = 0; i < d.length; i++) peak = Math.max(peak, Math.abs(d[i]));
-    return { peak, messages };
+    return { peak, messages, sampleRate, frames: d.length };
   });
   console.log("DIRECT REPORT:", JSON.stringify(report));
   expect(report.peak).toBeGreaterThan(0.005);

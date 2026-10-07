@@ -15,6 +15,7 @@ import { exportProject } from "../export/project-io";
 import { canExportVideo, recordVideo } from "../export/video";
 import { downloadBlob } from "../export/download";
 import { loadFlacEncoder } from "../export/flac-loader";
+import { assertFlacExportWorkingSetBudget, estimateFlacOutputWorkingSetBytes } from "../export/flac-limits";
 import { encodeShareCode, shareAppUrl, embedUrl, embedSnippet } from "../export/shareCode";
 import type { WavBitDepth } from "../rendering/wav";
 import type { PlayMode } from "../project-model/types";
@@ -263,8 +264,7 @@ export function ExportPanel({
   const encodedSettingsStale = Boolean(
     masterReport?.encodedDelivery &&
     (format === "video" ||
-      masterReport.encodedDelivery.format !==
-        (format.startsWith("mp3") ? "mp3" : format === "flac" ? "flac" : "wav") ||
+      masterReport.encodedDelivery.format !== (format.startsWith("mp3") ? "mp3" : format === "flac" ? "flac" : "wav") ||
       ((masterReport.encodedDelivery.format === "wav" || masterReport.encodedDelivery.format === "flac") &&
         masterReport.encodedDelivery.file.bitDepth !== bitDepth) ||
       (masterReport.encodedDelivery.format === "mp3" &&
@@ -427,8 +427,9 @@ export function ExportPanel({
       }
 
       if (format === "flac") {
-        const { encodeFlac } = await loadFlacEncoder();
         const flacBitDepth = bitDepth === 16 ? 16 : 24;
+        assertFlacExportWorkingSetBudget(renderPcmBytes, estimateFlacOutputWorkingSetBytes(buffer, flacBitDepth));
+        const { encodeFlac } = await loadFlacEncoder();
         const blob = await encodeFlac(buffer, {
           bitDepth: flacBitDepth,
           signal,
@@ -1029,12 +1030,20 @@ export function ExportPanel({
           <select
             value={bitDepth}
             disabled={format !== "wav" && format !== "flac"}
-            title={format === "flac" ? "FLAC supports 16-bit or 24-bit integer PCM" : format !== "wav" ? "Depth applies to WAV and FLAC only" : undefined}
+            title={
+              format === "flac"
+                ? "FLAC supports 16-bit or 24-bit integer PCM"
+                : format !== "wav"
+                  ? "Depth applies to WAV and FLAC only"
+                  : undefined
+            }
             onChange={(event) => setBitDepth(Number(event.target.value) as WavBitDepth)}
           >
             <option value={16}>16-bit PCM</option>
             <option value={24}>24-bit PCM</option>
-            <option value={32} disabled={format === "flac"}>32-bit float</option>
+            <option value={32} disabled={format === "flac"}>
+              32-bit float
+            </option>
           </select>
         </label>
         {masteringMode && format !== "video" && (

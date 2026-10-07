@@ -38,6 +38,7 @@ class TsarWorkletProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.port.onmessage = (event) => this.handle(event.data);
+    this.port.postMessage({ type: "constructed", events: processorOptions?.events?.length ?? 0 });
     if (processorOptions && processorOptions.bpm) this.proc.setBpm(processorOptions.bpm);
     if (processorOptions && processorOptions.params) {
       this.proc.applyParams(processorOptions.params);
@@ -52,6 +53,13 @@ class TsarWorkletProcessor extends AudioWorkletProcessor {
       for (const entry of processorOptions.samples) {
         this.proc.setSample(entry.slot, entry.pcm, entry.rootHz);
       }
+    }
+    // OFFLINE EVENT SEED (the T5 contract): `processorOptions.events` carries
+    // the whole scheduled note list because Chromium does not pump port
+    // messages during an OfflineAudioContext render. This is the SAME
+    // postEvent queue the live port path fills — one interpreter, two paths.
+    if (processorOptions && Array.isArray(processorOptions.events)) {
+      for (const event of processorOptions.events) this.proc.postEvent(event);
     }
   }
 
@@ -94,6 +102,12 @@ class TsarWorkletProcessor extends AudioWorkletProcessor {
   process(_inputs, outputs) {
     const output = outputs[0];
     if (!output || output.length === 0) return true;
+    // Debug probe (removed before commit): proves process() runs and reports
+    // its first frame peak + active voice count.
+    if (!this.__probed) {
+      this.__probed = true;
+      this.port.postMessage({ type: "probe", hasOutput: true, frames: output[0].length, active: this.proc.activeVoiceCount });
+    }
     const left = output[0];
     const frames = Math.min(BLOCK, left.length);
     const l = frames === left.length ? left : left.subarray(0, frames);

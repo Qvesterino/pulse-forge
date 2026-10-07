@@ -1,6 +1,15 @@
 import { registerFlacEncoder } from "@mediabunny/flac-encoder";
-import { AudioSample, AudioSampleSource, BufferTarget, canEncodeAudio, FlacOutputFormat, Output } from "mediabunny";
+import {
+  AudioSample,
+  AudioSampleSource,
+  canEncodeAudio,
+  FlacOutputFormat,
+  Output,
+  StreamTarget,
+  type StreamTargetChunk,
+} from "mediabunny";
 import { assertIntegerPcmRange, mulberry32, quantizeInt16Sample } from "./quantize";
+import { FLAC_STREAM_CHUNK_BYTES, MAX_FLAC_OUTPUT_BYTES } from "./flac-limits";
 
 export type FlacBitDepth = 16 | 24;
 
@@ -9,9 +18,6 @@ export interface FlacOptions {
   onProgress?: (fraction: number) => void;
   signal?: AbortSignal;
 }
-
-/** BufferTarget is intentionally bounded; use a shorter render when the estimated file exceeds this. */
-export const MAX_FLAC_OUTPUT_BYTES = 96 * 1024 * 1024;
 
 const ENCODE_BLOCK_FRAMES = 65_536;
 const FLAC_SAMPLE_RATES = new Set([8000, 16000, 22050, 24000, 32000, 44100, 48000, 88200, 96000, 176400, 192000]);
@@ -57,17 +63,43 @@ export async function encodeFlac(buffer: AudioBuffer, options: FlacOptions = {})
   }
   const channels = Array.from({ length: buffer.numberOfChannels }, (_, index) => buffer.getChannelData(index));
   const random = mulberry32(bitDepth === 16 ? 0x464c3136 : 0x464c3234);
-  const target = new BufferTarget();
-  const output = new Output({
-    format: new FlacOutputFormat({
-      onFrame: (data, position) => {
-        if (position + data.byteLength > MAX_FLAC_OUTPUT_BYTES) {
+  const outputChunks = new Map<number, Uint8Array<ArrayBuffer>>();
+  let outputByteLength = 0;
+  const target = new StreamTarget(
+    new WritableStream<StreamTargetChunk>({
+      write({ data, position }) {
+        const end = position + data.byteLength;
+        if (!Number.isSafeInteger(position) || position < 0 || end > MAX_FLAC_OUTPUT_BYTES) {
           throw new Error(
             `FLAC output exceeded KYX's ${Math.floor(MAX_FLAC_OUTPUT_BYTES / (1024 * 1024))} MiB in-memory export limit. Shorten the render or export a section.`,
           );
         }
+        if (position > outputByteLength) throw new Error("The FLAC encoder produced a file with a missing byte range.");
+        let sourceOffset = 0;
+        while (sourceOffset < data.byteLength) {
+          const absolutePosition = position + sourceOffset;
+          const chunkIndex = Math.floor(absolutePosition / FLAC_STREAM_CHUNK_BYTES);
+          const chunkOffset = absolutePosition % FLAC_STREAM_CHUNK_BYTES;
+          const chunkLength = Math.min(FLAC_STREAM_CHUNK_BYTES - chunkOffset, data.byteLength - sourceOffset);
+          let chunk = outputChunks.get(chunkIndex);
+          if (!chunk) {
+            chunk = new Uint8Array(FLAC_STREAM_CHUNK_BYTES);
+            outputChunks.set(chunkIndex, chunk);
+          }
+          chunk.set(data.subarray(sourceOffset, sourceOffset + chunkLength), chunkOffset);
+          sourceOffset += chunkLength;
+        }
+        outputByteLength = Math.max(outputByteLength, end);
+      },
+      abort() {
+        outputChunks.clear();
+        outputByteLength = 0;
       },
     }),
+    { chunked: true, chunkSize: FLAC_STREAM_CHUNK_BYTES },
+  );
+  const output = new Output({
+    format: new FlacOutputFormat(),
     target,
   });
   const source = new AudioSampleSource({ codec: "flac" });
@@ -134,8 +166,18 @@ export async function encodeFlac(buffer: AudioBuffer, options: FlacOptions = {})
     throwIfAborted(options.signal);
     await output.finalize();
     finalized = true;
-    if (!target.buffer || target.buffer.byteLength < 42) throw new Error("The FLAC encoder produced an empty file.");
-    return new Blob([target.buffer], { type: "audio/flac" });
+    if (outputByteLength < 42) throw new Error("The FLAC encoder produced an empty file.");
+    const parts: Uint8Array<ArrayBuffer>[] = [];
+    const chunkCount = Math.ceil(outputByteLength / FLAC_STREAM_CHUNK_BYTES);
+    for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex++) {
+      const chunk = outputChunks.get(chunkIndex);
+      if (!chunk) throw new Error("The FLAC encoder produced a file with a missing byte range.");
+      const remainingBytes = outputByteLength - chunkIndex * FLAC_STREAM_CHUNK_BYTES;
+      parts.push(chunk.subarray(0, Math.min(FLAC_STREAM_CHUNK_BYTES, remainingBytes)));
+    }
+    const blob = new Blob(parts, { type: "audio/flac" });
+    outputChunks.clear();
+    return blob;
   } catch (error) {
     if (!finalized) await output.cancel().catch(() => undefined);
     throw error;

@@ -35,6 +35,15 @@ const MAX_VOICES = 16;
 const UNISON_MAX = 8;
 /** Wavetable frame size (two periods at the lowest tracked f0). */
 const FRAME_SIZE = 2048;
+/** Fallback table: a 1-harmonic sine, used when a slot has no uploaded table
+ *  but its engine is WAVETABLE. Without it a table-less wavetable slot renders
+ *  DIGITAL SILENCE (measured: a processorOptions-only offline render produced
+ *  peak 0 until the seed fix + this fallback landed). */
+const FALLBACK_TABLE = (() => {
+  const frame = new Float32Array(FRAME_SIZE);
+  for (let i = 0; i < FRAME_SIZE; i++) frame[i] = Math.sin((2 * Math.PI * i) / FRAME_SIZE) * 0.5;
+  return frame;
+})();
 /** Golden-ratio phase spread for decorrelated per-voice LFOs. */
 const GOLDEN = 0.6180339887498949;
 /** One-pole smoothing coefficient for click-free voice gain (≈2 ms @ 44.1k). */
@@ -482,17 +491,18 @@ export class TsarProcessor {
 
   /** Wavetable read: frame morph (linear blend), linear within a frame. */
   private readWavetable(data: SourceData, phase: number, morph: number): number {
-    if (!data.table || data.frameCount <= 0) return 0;
-    const frameFloat = clamp(morph, 0, 1) * Math.max(0, data.frameCount - 1);
+    const table = data.table ?? FALLBACK_TABLE;
+    const frameCount = Math.max(1, data.frameCount || 1);
+    const frameFloat = clamp(morph, 0, 1) * Math.max(0, frameCount - 1);
     const f0 = Math.floor(frameFloat);
-    const f1 = Math.min(data.frameCount - 1, f0 + 1);
+    const f1 = Math.min(frameCount - 1, f0 + 1);
     const fFrac = frameFloat - f0;
     const scaled = phase * FRAME_SIZE;
     const i0 = Math.floor(scaled) % FRAME_SIZE;
     const tFrac = scaled - Math.floor(scaled);
     const i1 = (i0 + 1) % FRAME_SIZE;
-    const a = data.table[f0 * FRAME_SIZE + i0]! * (1 - tFrac) + data.table[f0 * FRAME_SIZE + i1]! * tFrac;
-    const b = data.table[f1 * FRAME_SIZE + i0]! * (1 - tFrac) + data.table[f1 * FRAME_SIZE + i1]! * tFrac;
+    const a = table[f0 * FRAME_SIZE + i0]! * (1 - tFrac) + table[f0 * FRAME_SIZE + i1]! * tFrac;
+    const b = table[f1 * FRAME_SIZE + i0]! * (1 - tFrac) + table[f1 * FRAME_SIZE + i1]! * tFrac;
     return a + (b - a) * fFrac;
   }
 

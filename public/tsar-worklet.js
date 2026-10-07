@@ -5,6 +5,11 @@
   var MAX_VOICES = 16;
   var UNISON_MAX = 8;
   var FRAME_SIZE = 2048;
+  var FALLBACK_TABLE = (() => {
+    const frame = new Float32Array(FRAME_SIZE);
+    for (let i = 0; i < FRAME_SIZE; i++) frame[i] = Math.sin(2 * Math.PI * i / FRAME_SIZE) * 0.5;
+    return frame;
+  })();
   var GOLDEN = 0.6180339887498949;
   var GAIN_RAMP_SEC = 2e-3;
   function clamp(value, min, max) {
@@ -344,17 +349,18 @@
     }
     /** Wavetable read: frame morph (linear blend), linear within a frame. */
     readWavetable(data, phase, morph) {
-      if (!data.table || data.frameCount <= 0) return 0;
-      const frameFloat = clamp(morph, 0, 1) * Math.max(0, data.frameCount - 1);
+      const table = data.table ?? FALLBACK_TABLE;
+      const frameCount = Math.max(1, data.frameCount || 1);
+      const frameFloat = clamp(morph, 0, 1) * Math.max(0, frameCount - 1);
       const f0 = Math.floor(frameFloat);
-      const f1 = Math.min(data.frameCount - 1, f0 + 1);
+      const f1 = Math.min(frameCount - 1, f0 + 1);
       const fFrac = frameFloat - f0;
       const scaled = phase * FRAME_SIZE;
       const i0 = Math.floor(scaled) % FRAME_SIZE;
       const tFrac = scaled - Math.floor(scaled);
       const i1 = (i0 + 1) % FRAME_SIZE;
-      const a = data.table[f0 * FRAME_SIZE + i0] * (1 - tFrac) + data.table[f0 * FRAME_SIZE + i1] * tFrac;
-      const b = data.table[f1 * FRAME_SIZE + i0] * (1 - tFrac) + data.table[f1 * FRAME_SIZE + i1] * tFrac;
+      const a = table[f0 * FRAME_SIZE + i0] * (1 - tFrac) + table[f0 * FRAME_SIZE + i1] * tFrac;
+      const b = table[f1 * FRAME_SIZE + i0] * (1 - tFrac) + table[f1 * FRAME_SIZE + i1] * tFrac;
       return a + (b - a) * fFrac;
     }
     /**
@@ -659,6 +665,7 @@
     constructor() {
       super();
       this.port.onmessage = (event) => this.handle(event.data);
+      this.port.postMessage({ type: "constructed", events: processorOptions?.events?.length ?? 0 });
       if (processorOptions && processorOptions.bpm) this.proc.setBpm(processorOptions.bpm);
       if (processorOptions && processorOptions.params) {
         this.proc.applyParams(processorOptions.params);
@@ -673,6 +680,9 @@
         for (const entry of processorOptions.samples) {
           this.proc.setSample(entry.slot, entry.pcm, entry.rootHz);
         }
+      }
+      if (processorOptions && Array.isArray(processorOptions.events)) {
+        for (const event of processorOptions.events) this.proc.postEvent(event);
       }
     }
     handle(message) {
@@ -713,6 +723,10 @@
     process(_inputs, outputs) {
       const output = outputs[0];
       if (!output || output.length === 0) return true;
+      if (!this.__probed) {
+        this.__probed = true;
+        this.port.postMessage({ type: "probe", hasOutput: true, frames: output[0].length, active: this.proc.activeVoiceCount });
+      }
       const left = output[0];
       const frames = Math.min(BLOCK, left.length);
       const l = frames === left.length ? left : left.subarray(0, frames);
