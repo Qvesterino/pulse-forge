@@ -9,6 +9,7 @@ import {
   duplicateNotes,
   duplicatePattern,
   duplicateTimeRange,
+  toggleAudioClipsMute,
 } from "../commands/commands";
 import { BAR_TICKS } from "../project-model/types";
 import { consolidateRangeToAudio } from "../services/rangeConsolidation";
@@ -186,6 +187,15 @@ export function ContextMenu({
   const hasClips = selection.clipIds.length > 0;
   const hasTime = !!selection.timeRange;
   const hasAny = hasNotes || hasSteps || hasClips || hasTime;
+  // Mute is an AUDIO-clip property: the item is live only when the selection
+  // actually holds audio clips, and the label announces what M would do
+  // (any unmuted clip in the selection -> mute all; all-muted -> unmute).
+  const selectedAudioClips = (arrangement.audioClips ?? []).filter((clip) => selection.clipIds.includes(clip.id));
+  const hasAudioClipSelection = selectedAudioClips.length > 0;
+  // No audio clips in the selection: the label stays "Mute" (the item is
+  // disabled anyway) instead of the misleading "Unmute" from an empty .some().
+  const clipMuteLabel =
+    !hasAudioClipSelection || selectedAudioClips.some((clip) => clip.muted !== true) ? "Mute" : "Unmute";
 
   const handle = (action: string) => {
     let keepOpen = false;
@@ -241,6 +251,13 @@ export function ContextMenu({
       }
       case "pasteClips": {
         if (clipsClipboard) onPasteClips?.();
+        break;
+      }
+      case "toggleClipMute": {
+        // Same toggle semantics as the M key — the command layer owns them
+        // (toggleAudioClipsMute returns null over a non-audio selection).
+        const muteCommand = toggleAudioClipsMute(doc, selection.clipIds);
+        if (muteCommand) services.store.execute(muteCommand);
         break;
       }
       case "duplicate": {
@@ -527,6 +544,14 @@ export function ContextMenu({
           </button>
           <button type="button" role="menuitem" onClick={() => handle("pasteClips")} disabled={!clipsClipboard}>
             Paste at playhead (Ctrl+V)
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => handle("toggleClipMute")}
+            disabled={!hasAudioClipSelection}
+          >
+            {clipMuteLabel} (M)
           </button>
           <button type="button" role="menuitem" onClick={() => handle("delete")} disabled={!hasAny}>
             Delete

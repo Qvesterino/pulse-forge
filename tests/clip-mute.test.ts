@@ -5,12 +5,14 @@ import { SCHEMA_VERSION } from "../src/project-model/schema";
 import { audioClipsForPlayback } from "../src/project-model/audio-takes";
 import { ProjectStore } from "../src/store/ProjectStore";
 import {
+  addArrangementClip,
   addAudioClip,
   buildClipClipboard,
   duplicateAudioClip,
   pasteClips,
   setAudioClipsMute,
   splitAudioClipAtTick,
+  toggleAudioClipsMute,
 } from "../src/commands/commands";
 import { BAR_TICKS } from "../src/project-model/types";
 import type { AudioClip, ProjectDocument } from "../src/project-model/types";
@@ -70,6 +72,23 @@ describe("MU2 one-entry multi mute", () => {
     store.redo();
     expect(clips(store.doc).every((c) => c.muted === true)).toBe(true);
     void a;
+    void b;
+  });
+
+  it("toggleAudioClipsMute: null over a non-audio selection; toggle semantics; arrangement ids ignored", () => {
+    const { doc, a, b } = docWithTones();
+    let d2 = addArrangementClip(doc, doc.scenes[0]!.id, 12, 4).execute(doc);
+    const arrId = d2.arrangement.clips[0]!.id;
+    // No audio clips in the selection → null (no command, no history entry).
+    expect(toggleAudioClipsMute(d2, [arrId])).toBeNull();
+    expect(toggleAudioClipsMute(d2, ["dead-id"])).toBeNull();
+    // Mixed selection: only the audio clip is routed.
+    const muteCmd = toggleAudioClipsMute(d2, [a, arrId])!;
+    expect(muteCmd.execute(d2).arrangement.audioClips?.find((c) => c.id === a)!.muted).toBe(true);
+    // All-muted selection → unmute.
+    const mutedDoc = muteCmd.execute(d2);
+    const unmuteCmd = toggleAudioClipsMute(mutedDoc, [a, arrId])!;
+    expect(unmuteCmd.execute(mutedDoc).arrangement.audioClips?.find((c) => c.id === a)!.muted).toBe(false);
     void b;
   });
 

@@ -557,6 +557,21 @@ export function setAudioClipsMute(doc: ProjectDocument, clipIds: readonly string
 }
 
 /**
+ * TOGGLE for a mixed clip selection (the M key AND the context-menu item —
+ * one home for the toggle semantics): any unmuted audio clip in the selection
+ * mutes ALL selected audio clips; an all-muted selection unmutes. Arrangement
+ * clips in the selection are ignored (scene clips gate via track mute).
+ * Returns null when the selection holds no audio clips — callers skip
+ * silently instead of pushing a no-op history entry.
+ */
+export function toggleAudioClipsMute(doc: ProjectDocument, clipIds: readonly string[]): Command | null {
+  const audioIds = clipIds.filter((id) => (doc.arrangement.audioClips ?? []).some((c) => c.id === id));
+  if (audioIds.length === 0) return null;
+  const anyUnmuted = (doc.arrangement.audioClips ?? []).some((c) => audioIds.includes(c.id) && c.muted !== true);
+  return setAudioClipsMute(doc, audioIds, anyUnmuted);
+}
+
+/**
  * Preview rate for Alt+drag clip stretching: the content scales with the
  * clip, so the rate follows the length ratio (longer clip = slower playback
  * = lower rate). Relative to the CURRENT rate — trims need no absolute

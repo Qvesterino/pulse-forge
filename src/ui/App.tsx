@@ -56,7 +56,7 @@ import {
   splitAudioClipAtTick,
 } from "../commands/commands";
 import { applyRangeCrossfade } from "./rangeCrossfade";
-import { buildClipClipboard, cutClips, pasteClips, setAudioClipsMute } from "../commands/commands";
+import { buildClipClipboard, cutClips, pasteClips, toggleAudioClipsMute } from "../commands/commands";
 import type { ClipClipboard } from "../commands/commands";
 import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import type { PatternClipboard } from "../commands/commands";
@@ -739,15 +739,12 @@ export function App({
       }
       case "toggleClipMute": {
         event?.preventDefault();
-        // Mute is an AUDIO-clip property (arrangement scene clips gate via
-        // track mute); route the selection's audio ids only.
-        const audioIds = selection.clipIds.filter((id) => (doc.arrangement.audioClips ?? []).some((c) => c.id === id));
-        if (audioIds.length === 0) return;
-        // Toggle semantics: any unmuted clip in the selection mutes ALL of
-        // them; an all-muted selection unmutes.
-        const anyUnmuted = (doc.arrangement.audioClips ?? []).some((c) => audioIds.includes(c.id) && c.muted !== true);
+        // Toggle semantics live in the command layer (shared with the
+        // context-menu item): null = no audio clips in the selection.
+        const muteCommand = toggleAudioClipsMute(doc, selection.clipIds);
+        if (!muteCommand) return;
         try {
-          services.store.execute(setAudioClipsMute(doc, audioIds, anyUnmuted));
+          services.store.execute(muteCommand);
         } catch (e) {
           window.dispatchEvent(new CustomEvent("pf-arrangement-action-error", { detail: String(e) }));
         }

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { vi } from "vitest";
 import { consolidateRangeToAudio } from "../../src/services/rangeConsolidation";
 import { ContextMenu } from "../../src/ui/ContextMenu";
@@ -290,5 +290,99 @@ describe("ContextMenu — zone duplicate failure routing", () => {
     expect(screen.getByRole("dialog", { name: "Edit selected range with Producer" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Producer range instruction" })).toHaveValue("duplicate selected range");
     expect(screen.getByText(/crosses its boundary/i)).toBeInTheDocument();
+  });
+
+  describe("clip mute menu item (B2.5)", () => {
+    const docWithAudio = () => {
+      const base = createProjectFromTemplate("scene-score");
+      const audioClip = {
+        id: "mute-audio",
+        trackId: base.tracks.find((track) => track.kind !== "group")!.id,
+        bufferId: "user.mute-audio",
+        startBar: 0,
+        lengthBars: 1,
+        offsetSec: 0,
+        trimStart: 0,
+        trimEnd: 0,
+        gain: 1,
+        fadeIn: 0,
+        fadeOut: 0,
+        stretchRate: 1,
+        reverse: false,
+      };
+      const project = {
+        ...base,
+        arrangement: { ...base.arrangement, audioClips: [...(base.arrangement.audioClips ?? []), audioClip] },
+      };
+      return { project, audioClip };
+    };
+
+    it("mutes a selected audio clip through the command (same toggle semantics as M)", () => {
+      cleanup(); // earlier tests in this file leave menus mounted (no auto-cleanup)
+      const { project, audioClip } = docWithAudio();
+      const services = mockServices(project);
+      const selection = new SelectionStore();
+      selection.setClips([audioClip.id]);
+      const rendered = renderWithContext(
+        <SelectionContext.Provider value={selection}>
+          <ContextMenu state={{ x: 0, y: 0, context: "1 clip" }} onClose={() => {}} />
+        </SelectionContext.Provider>,
+        { services },
+      );
+
+      const item = screen.getByRole("menuitem", { name: "Mute (M)" });
+      expect(item).toBeEnabled();
+      fireEvent.click(item);
+      const command = (services.store.execute as any).mock.calls.at(-1)?.[0];
+      expect(command).toBeDefined();
+      const muted = command.execute(project);
+      expect(
+        (muted.arrangement.audioClips ?? []).find((c: { id: string }) => c.id === audioClip.id)?.muted,
+      ).toBe(true);
+      rendered.unmount();
+    });
+
+    it("the label flips to Unmute when every selected audio clip is muted", () => {
+      cleanup();
+      const { project, audioClip } = docWithAudio();
+      const mutedProject = {
+        ...project,
+        arrangement: {
+          ...project.arrangement,
+          audioClips: (project.arrangement.audioClips ?? []).map((c) =>
+            c.id === audioClip.id ? { ...c, muted: true } : c,
+          ),
+        },
+      };
+      const services = mockServices(mutedProject);
+      const selection = new SelectionStore();
+      selection.setClips([audioClip.id]);
+      const rendered = renderWithContext(
+        <SelectionContext.Provider value={selection}>
+          <ContextMenu state={{ x: 0, y: 0, context: "1 clip" }} onClose={() => {}} />
+        </SelectionContext.Provider>,
+        { services },
+      );
+
+      expect(screen.getByRole("menuitem", { name: "Unmute (M)" })).toBeEnabled();
+      rendered.unmount();
+    });
+
+    it("is disabled over a selection without audio clips", () => {
+      cleanup();
+      const project = createProjectFromTemplate("scene-score");
+      const services = mockServices(project);
+      const selection = new SelectionStore();
+      selection.setClips([project.arrangement.clips[0]!.id]);
+      const rendered = renderWithContext(
+        <SelectionContext.Provider value={selection}>
+          <ContextMenu state={{ x: 0, y: 0, context: "1 clip" }} onClose={() => {}} />
+        </SelectionContext.Provider>,
+        { services },
+      );
+
+      expect(screen.getByRole("menuitem", { name: "Mute (M)" })).toBeDisabled();
+      rendered.unmount();
+    });
   });
 });
