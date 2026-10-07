@@ -134,6 +134,22 @@ pf:stem-model flag + panel select now actually serve the neural tier.
 
 ### S5 support matrix (2026-10-06, PRE-SURGERY — kept for the record)
 
+### Requirements table (2026-10-06, from the measured matrix)
+
+|                 | MINIMUM (Tier 1 — HPSS guide stems)                                  | RECOMMENDED (Tier 2 — neural stems)                                                                                   | NEURAL TIER: NOT SUPPORTED                                                                                                      |
+| --------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Browser         | any the DAW supports (Web Audio required)                            | **Chrome / Edge 113+** (WebGPU stable)                                                                                | Firefox, Safari — WebGPU absent/incomplete for ORT-web                                                                          |
+| GPU             | none (CPU only)                                                      | **WebGPU-capable discrete GPU**, ~1–2 GB VRAM headroom (weights 298 MB fp32 + activations; measured on NVIDIA Ampere) | integrated GPUs: unverified — shared-memory bandwidth is the suspected bottleneck, bench page will tell                         |
+| CPU             | any (HPSS ~0.9× realtime in the reference worker; 15 s track ≈ 13 s) | any (transcription lanes are CPU; the neural pass runs on GPU)                                                        | wasm32 execution of htdemucs-class models: **measured std::bad_alloc at ANY chunk length** — 2 GB wasm32 heap < weights + arena |
+| Disk (one-time) | 0 MB                                                                 | **~298 MB** model cache via `npm run stem:fetch` (+ manifest)                                                         | —                                                                                                                               |
+| RAM             | DAW baseline                                                         | +~600 MB browser process (model bytes + session)                                                                      | —                                                                                                                               |
+| Quality         | guide stems (percussive/tonal bleed)                                 | 4 true stems (vocals/drums/bass/other)                                                                                | —                                                                                                                               |
+| Speed           | 15 s track ≈ 13 s                                                    | **6.58× realtime** measured (Ampere); expect ≥1× on any discrete GPU                                                  | wasm: n/a                                                                                                                       |
+
+Verdict tiers the UI may honestly claim: Tier 1 everywhere the DAW runs;
+Tier 2 "Chrome/Edge + discrete GPU" only — with the model option disabled
+(already implemented) when the gated manifest or WebGPU adapter is absent.
+
 ### Original expectation (pre-measurement, kept for honesty)
 
 S5 support matrix (2026-10-06)
