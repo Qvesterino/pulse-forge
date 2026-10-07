@@ -70,7 +70,8 @@ another DAW.
   the session can download a JSON report sidecar tied to the source hash,
   processing revision, delivery profile, render measurements and encoded-file
   inspection. The report is not automatically persisted in IndexedDB and
-  contains no audio. The session report surface presents LRA, short-term
+  contains no audio; the open workspace retains the six most recent distinct
+  delivery reports for explicit download. The session report surface presents LRA, short-term
   loudness timeline, stereo checks and Mix Doctor diagnostics from the decoded
   delivered file when measured; otherwise it labels the source-PCM fallback and does not
   substitute source data for missing post-encode analysis. The bounded slice still does not provide streaming,
@@ -87,7 +88,8 @@ another DAW.
   available browser decoder supports it; the browser acceptance test then
   imports the delivered WAV again as a new session. The external-session MP3
   export path must separately verify 192/320 kbps outputs and the truthful
-  unsupported-decoder fallback before being treated as a release gate.
+  unsupported-decoder fallback, along with report pairing across consecutive
+  exports, before being treated as a release gate.
 - Session create, reopen, update, revision, delete, quota failure, import
   abort, render abort, and export abort are acceptance requirements; the
   current automated coverage is incomplete.

@@ -40,6 +40,7 @@ import { MasteringLoudnessTimeline } from "./MasteringLoudnessTimeline";
 import { MasteringSessionInsertRack } from "./MasteringSessionInsertRack";
 
 const MAX_DECODED_SOURCE_BYTES = 128 * 1024 * 1024;
+const MAX_RECENT_DELIVERY_REPORTS = 6;
 const DECODE_SAMPLE_RATE = 44_100;
 const AUDIO_EXTENSION = /\.(wav|wave|mp3)$/i;
 
@@ -68,6 +69,14 @@ interface SessionComparison {
 
 type SessionPreviewSelection = MasteringSessionSlot | "master" | "reference";
 type SessionDeliveryFormat = "wav" | "mp3";
+
+interface RecentDeliveryReport {
+  key: string;
+  sourceFileName: string;
+  fileName: string;
+  reportFileName: string;
+  reportJson: string;
+}
 
 interface LoadedSessionReference {
   record: MasteringSessionReferenceRecord;
@@ -293,7 +302,7 @@ export function MasteringFileSessionPanel() {
     B: "Version B",
   });
   const [inspection, setInspection] = useState<EncodedMasterInspection | null>(null);
-  const [exportedFileName, setExportedFileName] = useState<string | null>(null);
+  const [recentDeliveryReports, setRecentDeliveryReports] = useState<RecentDeliveryReport[]>([]);
   const [sampleRate, setSampleRate] = useState<44_100 | 48_000>(44_100);
   const [bitDepth, setBitDepth] = useState<WavBitDepth>(24);
   const [deliveryFormat, setDeliveryFormat] = useState<SessionDeliveryFormat>("wav");
@@ -459,7 +468,6 @@ export function MasteringFileSessionPanel() {
       setDraft(null);
       setRendered(null);
       setInspection(null);
-      setExportedFileName(null);
       setError("");
       setNotice("");
       if (!id) {
@@ -1078,7 +1086,6 @@ export function MasteringFileSessionPanel() {
     setNotice("");
     setProgress("");
     setInspection(null);
-    setExportedFileName(null);
     setComparison(null);
     try {
       const versionSaveError = await persistDeliveryVersion();
@@ -1136,8 +1143,47 @@ export function MasteringFileSessionPanel() {
         fileName = masteredWavFileName(session, rendered.sampleRate, bitDepth, deliveryVersion);
       }
       if (controller.signal.aborted) throw new DOMException("Export cancelled", "AbortError");
+      const reportMeasurements =
+        checked.decode.status === "measured"
+          ? (checked.decode.measurements ?? rendered.measurements)
+          : rendered.measurements;
+      const reportDeliveryVerdict = evaluateDelivery(
+        {
+          lufs: reportMeasurements.lufsIntegrated,
+          truePeakDb: reportMeasurements.truePeakDb,
+          correlation: reportMeasurements.correlation,
+          monoLossDb: reportMeasurements.monoLossDb,
+          lrImbalanceDb: reportMeasurements.lrImbalanceDb,
+        },
+        resolveDeliveryTarget(draft),
+      );
+      const reportJson = serializeExternalMasteringReport({
+        session,
+        masterConfig: draft,
+        profile: resolveDeliveryTarget(draft),
+        renderedAt: rendered.renderedAt,
+        renderConfigRevision: rendered.configRevision,
+        sampleRate: rendered.sampleRate,
+        durationSeconds: rendered.buffer.duration,
+        sourceMeasurements: rendered.measurements,
+        sourceMixHealth: rendered.mixHealth,
+        sourceLoudnessTimeline: rendered.loudnessTimeline,
+        inspection: checked,
+        exportedFileName: fileName,
+        deliveryVerdict: reportDeliveryVerdict,
+      });
+      const reportFileName = fileName.replace(/\.(wav|mp3)$/i, "-report.json");
+      const savedReport: RecentDeliveryReport = {
+        key: `${session.id}:${fileName}`,
+        sourceFileName: session.fileName,
+        fileName,
+        reportFileName,
+        reportJson,
+      };
+      setRecentDeliveryReports((current) =>
+        [savedReport, ...current.filter((item) => item.key !== savedReport.key)].slice(0, MAX_RECENT_DELIVERY_REPORTS),
+      );
       setInspection(checked);
-      setExportedFileName(fileName);
       downloadBlob(deliveryBlob, fileName);
       const versionSaveNote = versionSaveError ? ` Revision was not saved locally: ${versionSaveError}` : "";
       const inspectionNote =
@@ -1172,53 +1218,6 @@ export function MasteringFileSessionPanel() {
     rendered,
     session,
     stopSessionPreview,
-  ]);
-
-  const downloadDeliveryReport = useCallback(() => {
-    if (!session || !draft || !rendered || !renderCurrent || !inspection || !deliveryVerdict) return;
-    const fileName =
-      exportedFileName ??
-      (inspection.format === "wav"
-        ? masteredWavFileName(
-            session,
-            inspection.file.sampleRate,
-            inspection.file.bitDepth ?? bitDepth,
-            deliveryVersion,
-          )
-        : masteredMp3FileName(
-            session,
-            inspection.file.sampleRate,
-            inspection.file.averageBitrateKbps ?? mp3Bitrate,
-            deliveryVersion,
-          ));
-    const report = serializeExternalMasteringReport({
-      session,
-      masterConfig: draft,
-      profile: resolveDeliveryTarget(draft),
-      renderedAt: rendered.renderedAt,
-      renderConfigRevision: rendered.configRevision,
-      sampleRate: rendered.sampleRate,
-      durationSeconds: rendered.buffer.duration,
-      sourceMeasurements: rendered.measurements,
-      sourceMixHealth: rendered.mixHealth,
-      sourceLoudnessTimeline: rendered.loudnessTimeline,
-      inspection,
-      exportedFileName: fileName,
-      deliveryVerdict,
-    });
-    const reportName = fileName.replace(/\.(wav|mp3)$/i, "-report.json");
-    downloadBlob(new Blob([report], { type: "application/json" }), reportName);
-  }, [
-    bitDepth,
-    deliveryVersion,
-    deliveryVerdict,
-    draft,
-    exportedFileName,
-    inspection,
-    mp3Bitrate,
-    renderCurrent,
-    rendered,
-    session,
   ]);
 
   const deleteSession = useCallback(async () => {
@@ -1445,6 +1444,18 @@ export function MasteringFileSessionPanel() {
               </button>
             </div>
           </div>
+
+          {deliveryTarget && (
+            <aside className="mastering-file-session-profile-guidance" aria-live="polite">
+              <strong>{deliveryTarget.label} · DELIVERY GUIDANCE</strong>
+              <p>{deliveryTarget.note}</p>
+              <small>
+                {deliveryTarget.intendedUse} Delivery targets only judge the rendered file; they do not normalize LUFS
+                or change processing. CEILING controls the limiter, while TRUE PEAK TARGET is checked during delivery
+                QA.
+              </small>
+            </aside>
+          )}
 
           <MasteringSessionInsertRack
             key={`${session.id}-${session.configRevision}`}
@@ -1961,16 +1972,32 @@ export function MasteringFileSessionPanel() {
               )}
             </div>
           )}
-          {inspection && (
-            <button
-              type="button"
-              className="btn btn-small"
-              disabled={!session || !draft || !renderCurrent || !deliveryVerdict || Boolean(busy)}
-              onClick={downloadDeliveryReport}
-            >
-              Download delivery report JSON
-            </button>
-          )}
+        </div>
+      )}
+      {recentDeliveryReports.length > 0 && (
+        <div
+          className="mastering-file-session-delivery-reports"
+          role="group"
+          aria-label="Recent exported delivery report downloads"
+        >
+          <strong>RECENT DELIVERY REPORTS · THIS WORKSPACE</strong>
+          <div className="mastering-file-session-delivery-report-list">
+            {recentDeliveryReports.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                className="btn btn-small"
+                title={item.reportFileName}
+                aria-label={`Download delivery report JSON for ${item.fileName}`}
+                onClick={() =>
+                  downloadBlob(new Blob([item.reportJson], { type: "application/json" }), item.reportFileName)
+                }
+              >
+                {item.sourceFileName} → {item.fileName} · JSON
+              </button>
+            ))}
+          </div>
+          <small>Reports remain available while this workspace is open; download JSON to keep them.</small>
         </div>
       )}
       <p className="mastering-file-session-note">

@@ -1,5 +1,5 @@
 import { Mp3Encoder } from "@breezystack/lamejs";
-import { quantizeInt16 } from "./quantize";
+import { mulberry32, quantizeInt16Sample } from "./quantize";
 
 export interface Mp3Options {
   /** Target bitrate in kbps (default 192). */
@@ -8,6 +8,27 @@ export interface Mp3Options {
   onProgress?: (fraction: number) => void;
   /** Abort support (release roadmap 1.4): checked at every yield point. */
   signal?: AbortSignal;
+}
+
+async function quantizeChannelAsync(
+  input: Float32Array,
+  seed: number,
+  completedSamplesBeforeChannel: number,
+  totalSamples: number,
+  onProgress: ((fraction: number) => void) | undefined,
+  signal: AbortSignal | undefined,
+): Promise<Int16Array<ArrayBuffer>> {
+  const rand = mulberry32(seed);
+  const output = new Int16Array(input.length);
+  const chunkSize = 65_536;
+  for (let offset = 0; offset < input.length; offset += chunkSize) {
+    const end = Math.min(input.length, offset + chunkSize);
+    for (let index = offset; index < end; index++) output[index] = quantizeInt16Sample(input[index], rand);
+    onProgress?.(((completedSamplesBeforeChannel + end) / Math.max(1, totalSamples)) * 0.2);
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    if (signal?.aborted) throw new DOMException("Export cancelled", "AbortError");
+  }
+  return output;
 }
 
 /**
@@ -21,6 +42,7 @@ export interface Mp3Options {
  * the UI responsive and progress can be reported.
  */
 export async function encodeMp3(buffer: AudioBuffer, options: Mp3Options = {}): Promise<Blob> {
+  if (options.signal?.aborted) throw new DOMException("Export cancelled", "AbortError");
   const kbps = options.kbps ?? 192;
   const channelCount = Math.min(2, Math.max(1, buffer.numberOfChannels));
   // Audit 11 D7: LAME's MPEG tables only express standard rates — a 96 kHz
@@ -36,8 +58,28 @@ export async function encodeMp3(buffer: AudioBuffer, options: Mp3Options = {}): 
   // lose the hard-clip crunch, quiet passages fade into noise instead of
   // digital silence. Seeds differ per channel to decorrelate the dither;
   // fixed seeds keep exports byte-reproducible.
-  const left = quantizeInt16(buffer.getChannelData(0), 0x4c4631);
-  const right = channelCount === 2 ? quantizeInt16(buffer.getChannelData(1), 0x4c4632) : null;
+  const channelLength = buffer.length;
+  const totalSamples = channelLength * channelCount;
+  const left = await quantizeChannelAsync(
+    buffer.getChannelData(0),
+    0x4c4631,
+    0,
+    totalSamples,
+    options.onProgress,
+    options.signal,
+  );
+  const right =
+    channelCount === 2
+      ? await quantizeChannelAsync(
+          buffer.getChannelData(1),
+          0x4c4632,
+          channelLength,
+          totalSamples,
+          options.onProgress,
+          options.signal,
+        )
+      : null;
+  if (options.signal?.aborted) throw new DOMException("Export cancelled", "AbortError");
 
   const blockSize = 1152; // LAME's MP3 frame size
   const chunks: Uint8Array[] = [];
@@ -47,9 +89,9 @@ export async function encodeMp3(buffer: AudioBuffer, options: Mp3Options = {}): 
     const l = left.subarray(i, i + blockSize);
     const encoded = right ? encoder.encodeBuffer(l, right.subarray(i, i + blockSize)) : encoder.encodeBuffer(l);
     if (encoded.length > 0) chunks.push(new Uint8Array(encoded));
-    // Yield every ~250 blocks (~6.5 s of audio) so the UI stays alive.
-    if (block % 250 === 249) {
-      options.onProgress?.(block / totalBlocks);
+    // Yield regularly so cancellation remains responsive on long mastering sessions.
+    if (block % 100 === 99) {
+      options.onProgress?.(0.2 + (block / totalBlocks) * 0.8);
       await new Promise((resolve) => setTimeout(resolve, 0));
       // Abort only at a yield point — no partial Blob is ever produced.
       if (options.signal?.aborted) throw new DOMException("Export cancelled", "AbortError");

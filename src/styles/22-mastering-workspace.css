@@ -160,6 +160,33 @@
   align-content: start;
 }
 
+.mastering-file-session-profile-guidance {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  background: var(--bg);
+}
+
+.mastering-file-session-profile-guidance strong {
+  color: var(--accent);
+  font: 700 9px var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.mastering-file-session-profile-guidance p,
+.mastering-file-session-profile-guidance small {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.mastering-file-session-profile-guidance small {
+  color: var(--text-faint);
+}
+
 .mastering-session-inserts {
   display: grid;
   gap: 7px;
@@ -433,6 +460,38 @@
 
 .mastering-file-session-report small {
   flex-basis: 100%;
+}
+
+.mastering-file-session-delivery-reports {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  background: var(--bg);
+}
+
+.mastering-file-session-delivery-reports > strong {
+  color: var(--text-faint);
+  font: 700 9px var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.mastering-file-session-delivery-report-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.mastering-file-session-delivery-report-list button {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.mastering-file-session-delivery-reports > small {
+  color: var(--text-faint);
 }
 
 .mastering-file-session-verdict {

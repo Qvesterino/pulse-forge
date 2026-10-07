@@ -85,13 +85,31 @@ const CORE_TYPES = [
 
 export type WorkletType = (typeof CORE_TYPES)[number] | PluginWorkletType;
 
+/**
+ * FLAGSHIP INSTRUMENT worklets - loaded on demand like plugin effects, NOT in
+ * the core boot bundle. TSAR is ~22 KB minified (measured 2026-10-06) and a
+ * beat that never adds a TSAR track must not pay for it. Instrument kind ->
+ * worklet module (the doc-scan lives in `instrumentWorkletTypesInDoc`).
+ */
+export const INSTRUMENT_WORKLET_TYPES = ["tsar"] as const;
+export type InstrumentWorkletType = (typeof INSTRUMENT_WORKLET_TYPES)[number];
+
+const INSTRUMENT_MODULE_URLS: Record<InstrumentWorkletType, string> = {
+  tsar: new URL(assetUrl("/tsar-worklet.js"), import.meta.url).href,
+};
+
 const readyPluginTypes = new WeakMap<BaseAudioContext, Set<PluginWorkletType>>();
 const pluginInflight = new Map<BaseAudioContext, Map<PluginWorkletType, Promise<void>>>();
+const readyInstrumentTypes = new WeakMap<BaseAudioContext, Set<InstrumentWorkletType>>();
+const instrumentInflight = new Map<BaseAudioContext, Map<InstrumentWorkletType, Promise<void>>>();
 
-export function isWorkletReady(type: WorkletType, ctx: BaseAudioContext | null | undefined): boolean {
+export function isWorkletReady(type: WorkletType | InstrumentWorkletType, ctx: BaseAudioContext | null | undefined): boolean {
   if (!ctx || !readyContexts.has(ctx)) return false;
   if ((PLUGIN_WORKLET_TYPES as readonly string[]).includes(type)) {
     return readyPluginTypes.get(ctx)?.has(type as PluginWorkletType) ?? false;
+  }
+  if ((INSTRUMENT_WORKLET_TYPES as readonly string[]).includes(type)) {
+    return readyInstrumentTypes.get(ctx)?.has(type as InstrumentWorkletType) ?? false;
   }
   return true;
 }
@@ -168,15 +186,72 @@ export async function loadPluginWorklet(ctx: BaseAudioContext, type: PluginWorkl
 }
 
 /**
- * Load the plugin modules a PROJECT actually uses into the context.
- * Returns the set of plugin types that are ready afterwards — callers use it
- * to decide whether an FX rebuild is worth it.
+ * Load ONE flagship INSTRUMENT module (tsar) into the context. Same contract
+ * as the plugin loader: idempotent per context, never rejects, and the
+ * factory keeps a fallback for contexts where the module is unavailable.
+ */
+export async function loadInstrumentWorklet(ctx: BaseAudioContext, type: InstrumentWorkletType): Promise<void> {
+  if (!ctx?.audioWorklet) return;
+  await loadCoreWorklets(ctx);
+  if (failedContexts.has(ctx)) return;
+  const instrumentSet = readyInstrumentTypes.get(ctx);
+  if (instrumentSet?.has(type)) return;
+
+  let perCtx = instrumentInflight.get(ctx);
+  if (perCtx?.get(type)) return perCtx.get(type);
+
+  const load = ctx.audioWorklet
+    .addModule(INSTRUMENT_MODULE_URLS[type])
+    .then(() => {
+      readyInstrumentTypes.get(ctx)?.add(type);
+    })
+    .catch((err) => {
+      console.warn(`[audio-worklets] ${type} instrument module load failed, factory keeps its fallback:`, err);
+    })
+    .finally(() => {
+      perCtx = instrumentInflight.get(ctx);
+      perCtx?.delete(type);
+      if (perCtx && perCtx.size === 0) instrumentInflight.delete(ctx);
+    });
+  if (!perCtx) {
+    perCtx = new Map();
+    instrumentInflight.set(ctx, perCtx);
+  }
+  perCtx.set(type, load);
+  return load;
+}
+
+/**
+ * Load the plugin + instrument worklet modules a PROJECT actually uses into
+ * the context. Returns the set of PLUGIN types that are ready afterwards —
+ * callers use it to decide whether an FX rebuild is worth it. Instrument
+ * worklets are fire-and-forget from the caller's perspective (the factory
+ * hot-swaps when the module lands).
  */
 export async function ensureWorkletsForDoc(doc: unknown, ctx: BaseAudioContext): Promise<PluginWorkletType[]> {
   await loadCoreWorklets(ctx);
   const wanted = pluginTypesInDoc(doc);
-  await Promise.all(wanted.map((type) => loadPluginWorklet(ctx, type)));
+  const instrumentWanted = instrumentWorkletTypesInDoc(doc);
+  await Promise.all([
+    ...wanted.map((type) => loadPluginWorklet(ctx, type)),
+    ...instrumentWanted.map((type) => loadInstrumentWorklet(ctx, type)),
+  ]);
   return wanted.filter((type) => isWorkletReady(type, ctx));
+}
+
+/** Which flagship instrument worklets does the project reference (pure). */
+export function instrumentWorkletTypesInDoc(doc: unknown): InstrumentWorkletType[] {
+  if (typeof doc !== "object" || doc === null) return [];
+  const container = doc as { tracks?: unknown };
+  if (!Array.isArray(container.tracks)) return [];
+  const found = new Set<InstrumentWorkletType>();
+  for (const track of container.tracks) {
+    const kind = (track as { kind?: unknown; instrument?: unknown } | null)?.instrument;
+    if (typeof kind === "string" && (INSTRUMENT_WORKLET_TYPES as readonly string[]).includes(kind)) {
+      found.add(kind as InstrumentWorkletType);
+    }
+  }
+  return [...found];
 }
 
 /** Which vendored plugin effects does the project reference (pure). */
