@@ -76,15 +76,19 @@ export function syncDocChangeWhilePlaying(deps: LiveEditSyncDeps): void {
  * cadence ≥ 95 ms), so a clip the planner is about to fire can never be
  * double-fired here.
  */
-export function resumeSpanningAudioClips(
-  deps: LiveEditSyncDeps & { skipIds?: ReadonlySet<string> },
-): void {
+export function resumeSpanningAudioClips(deps: LiveEditSyncDeps & { skipIds?: ReadonlySet<string> }): void {
   const doc = deps.getDoc();
+  const arrangement = doc?.arrangement;
   const pos = deps.transport.position;
-  if (!Number.isFinite(pos) || pos <= 0) return;
+  // Tolerant to minimal documents (test harnesses mock the store with bare
+  // objects — services.seek runs on every playing seek whatever they hold).
+  if (!arrangement || !Number.isFinite(pos) || pos <= 0) return;
   const slackTicks = deps.transport.secondsPerTick * RESUME_FORWARD_SLACK_SEC;
   const when = deps.engine.currentTime + 0.005;
-  for (const clip of audioClipsForPlayback(doc.arrangement)) {
+  const scenes = doc.scenes ?? [];
+  const projectBpm = Number.isFinite(doc.bpm) && (doc.bpm as number) > 0 ? (doc.bpm as number) : 120;
+  const clips = arrangement.clips ?? [];
+  for (const clip of audioClipsForPlayback(arrangement)) {
     const startTick = clip.startBar * BAR_TICKS;
     const endTick = (clip.startBar + clip.lengthBars) * BAR_TICKS;
     // Strictly spanning, or starting within the seam slack: anything starting
@@ -94,14 +98,9 @@ export function resumeSpanningAudioClips(
     const rate = Math.min(4, Math.max(0.25, clip.stretchRate ?? 1));
     if (clip.reverse || clip.loop === true || (clip.warpMarkers?.length ?? 0) > 0) continue;
     if (clip.stretchMode === "stretch" && Math.abs(rate - 1) >= 0.01) continue;
-    const clips = doc.arrangement.clips;
-    const scenes = doc.scenes;
-    const elapsedSec = Math.max(
-      0,
-      arrangementSecondsBetweenTicks(clips, scenes, startTick, pos, doc.bpm),
-    );
-    const remainingSec = arrangementSecondsBetweenTicks(clips, scenes, pos, endTick, doc.bpm);
-    if (remainingSec <= 0.01) continue;
+    const elapsedSec = Math.max(0, arrangementSecondsBetweenTicks(clips, scenes, startTick, pos, projectBpm));
+    const remainingSec = arrangementSecondsBetweenTicks(clips, scenes, pos, endTick, projectBpm);
+    if (!Number.isFinite(remainingSec) || remainingSec <= 0.01) continue;
     const resumed: AudioClip = {
       ...clip,
       startBar: pos / BAR_TICKS,

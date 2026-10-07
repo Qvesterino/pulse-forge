@@ -124,7 +124,8 @@ function analyseTake(buffer: AudioBuffer, tailSec = 1.0, earlySec = 0.5): TakeSh
       run = 0;
     }
   }
-  const mean = (slice: Float32Array): number => (slice.length > 0 ? slice.reduce((a, b) => a + b, 0) / slice.length : 0);
+  const mean = (slice: Float32Array): number =>
+    slice.length > 0 ? slice.reduce((a, b) => a + b, 0) / slice.length : 0;
   const tailRms = mean(rms.slice(Math.max(0, rms.length - Math.floor(tailSec / windowSec))));
   const earlyRms = mean(rms.slice(0, Math.min(rms.length, Math.floor(earlySec / windowSec))));
   let peak = 0;
@@ -317,8 +318,7 @@ export async function runLiveEditingChecks(onProgress?: (message: string) => voi
         store.execute(splitAudioClipAtTick(store.doc, clipId, transport.position, 8));
       }, 4.0);
       if (!shape) throw new Error("recorder produced no take");
-      const noHole =
-        shape.longestSilentGapSec < 0.8 && shape.tailRms > AUDIBLE_RMS && shape.earlyRms > AUDIBLE_RMS;
+      const noHole = shape.longestSilentGapSec < 0.8 && shape.tailRms > AUDIBLE_RMS && shape.earlyRms > AUDIBLE_RMS;
       check(
         "live-edit S3: splitting at the playhead keeps the audio continuous",
         noHole,
@@ -395,7 +395,9 @@ export async function runLiveEditingChecks(onProgress?: (message: string) => voi
           () => store.execute(updateAudioClip(store.doc, liveClip().id, { fadeIn: 0.05, fadeOut: 0.05 })),
           () => store.execute(duplicateAudioClip(store.doc, liveClip().id)),
           () => {
-            const copy = (store.doc.arrangement.audioClips ?? []).find((c) => c.bufferId === TONE_ID && c.id !== liveClip().id);
+            const copy = (store.doc.arrangement.audioClips ?? []).find(
+              (c) => c.bufferId === TONE_ID && c.id !== liveClip().id,
+            );
             if (copy) store.execute(deleteAudioClip(store.doc, copy.id));
           },
           () => store.undo(),
