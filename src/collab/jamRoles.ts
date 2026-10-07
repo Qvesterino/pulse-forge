@@ -209,6 +209,8 @@ const ARRANGE = new Set([
   "consolidateAudioClips",
   "stripSilence",
   "duplicateTimeRange",
+  "cutClips",
+  "pasteClips",
   "consolidateTimeRange",
   "setBpm",
   "setProjectKey",

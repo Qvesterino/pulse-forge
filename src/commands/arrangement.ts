@@ -12,7 +12,12 @@ import { markerClampPatch, unlinkMarkersOfClips } from "./docOps";
 
 /* ---------------- arrangement ---------------- */
 
-function clipsOverlap(
+/**
+ * The arrangement lane's strict no-overlap predicate: touching (adjacent)
+ * clips are legal. Shared with the clip clipboard's paste placement, which
+ * must honor the exact same contract as add/move/resize/duplicate.
+ */
+export function clipsOverlap(
   clips: ArrangementClip[],
   ignoreId: string | null,
   startBar: number,

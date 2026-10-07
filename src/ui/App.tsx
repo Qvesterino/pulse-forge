@@ -55,6 +55,8 @@ import {
   splitAudioClipAtTick,
 } from "../commands/commands";
 import { applyRangeCrossfade } from "./rangeCrossfade";
+import { buildClipClipboard, cutClips, pasteClips } from "../commands/commands";
+import type { ClipClipboard } from "../commands/commands";
 import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import type { PatternClipboard } from "../commands/commands";
 import type { SelectedNote } from "./PianoRoll";
@@ -471,6 +473,9 @@ export function App({
   };
 
   const [clip, setClip] = useState<PatternClipboard | null>(null);
+  // Clip clipboard (timeline clips) — payload state owned here like the
+  // pattern clipboard; the commands live in commands/clipClipboard.ts.
+  const [clipsClipboard, setClipsClipboard] = useState<ClipClipboard | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [scaleSnap, setScaleSnap] = useState(false);
@@ -698,6 +703,35 @@ export function App({
           }
         } else {
           services.store.execute(duplicatePattern(doc, doc.activePatternId));
+        }
+        return;
+      }
+      case "copyClips": {
+        event?.preventDefault();
+        const payload = buildClipClipboard(doc, selection.clipIds);
+        if (payload) setClipsClipboard(payload);
+        return;
+      }
+      case "cutClips": {
+        event?.preventDefault();
+        const payload = buildClipClipboard(doc, selection.clipIds);
+        if (!payload) return;
+        try {
+          services.store.execute(cutClips(doc, selection.clipIds));
+          setClipsClipboard(payload);
+          selectionStore.clear();
+        } catch (e) {
+          window.dispatchEvent(new CustomEvent("pf-arrangement-action-error", { detail: String(e) }));
+        }
+        return;
+      }
+      case "pasteClips": {
+        event?.preventDefault();
+        if (!clipsClipboard) return;
+        try {
+          services.store.execute(pasteClips(doc, clipsClipboard, services.transport.position));
+        } catch (e) {
+          window.dispatchEvent(new CustomEvent("pf-arrangement-action-error", { detail: String(e) }));
         }
         return;
       }
@@ -1670,7 +1704,36 @@ export function App({
                 </Suspense>
               </ErrorBoundary>
               <OnboardingHint />
-              <ContextMenu state={contextMenu} onClose={() => setContextMenu(null)} />
+              <ContextMenu
+                state={contextMenu}
+                onClose={() => setContextMenu(null)}
+                clipsClipboard={clipsClipboard}
+                onCopyClips={() => {
+                  const payload = buildClipClipboard(services.store.getDoc(), selection.clipIds);
+                  if (payload) setClipsClipboard(payload);
+                }}
+                onCutClips={() => {
+                  const payload = buildClipClipboard(services.store.getDoc(), selection.clipIds);
+                  if (!payload) return;
+                  try {
+                    services.store.execute(cutClips(services.store.getDoc(), selection.clipIds));
+                    setClipsClipboard(payload);
+                    selectionStore.clear();
+                  } catch (e) {
+                    window.dispatchEvent(new CustomEvent("pf-arrangement-action-error", { detail: String(e) }));
+                  }
+                }}
+                onPasteClips={() => {
+                  if (!clipsClipboard) return;
+                  try {
+                    services.store.execute(
+                      pasteClips(services.store.getDoc(), clipsClipboard, services.transport.position),
+                    );
+                  } catch (e) {
+                    window.dispatchEvent(new CustomEvent("pf-arrangement-action-error", { detail: String(e) }));
+                  }
+                }}
+              />
               {/* QMR HUD chip (Qvester ecosystem) — lazy + error-bounded, the
                   app stays fully usable when the shared HUD chunk is slow. */}
               <QmrChipMount services={services} />

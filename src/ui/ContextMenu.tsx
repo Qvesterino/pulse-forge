@@ -12,6 +12,7 @@ import {
 } from "../commands/commands";
 import { BAR_TICKS } from "../project-model/types";
 import { consolidateRangeToAudio } from "../services/rangeConsolidation";
+import type { ClipClipboard } from "../commands/commands";
 import {
   applyClipArrangeOps,
   parseSelectedClipArrangeIntent,
@@ -25,7 +26,22 @@ export interface ContextMenuState {
   context: string;
 }
 
-export function ContextMenu({ state, onClose }: { state: ContextMenuState | null; onClose: () => void }) {
+export function ContextMenu({
+  state,
+  onClose,
+  clipsClipboard = null,
+  onCopyClips,
+  onCutClips,
+  onPasteClips,
+}: {
+  state: ContextMenuState | null;
+  onClose: () => void;
+  /** Timeline-clip clipboard payload (App-owned state); null = nothing to paste. */
+  clipsClipboard?: ClipClipboard | null;
+  onCopyClips?: () => void;
+  onCutClips?: () => void;
+  onPasteClips?: () => void;
+}) {
   const services = useServices();
   // Fine-grained selectors (GOAL 04): ContextMenu reads the arrangement
   // (clip + audio clip id sets for menu enable/disable) and the active
@@ -213,6 +229,18 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
             ]);
           }
         }
+        break;
+      }
+      case "copyClips": {
+        if (hasClips) onCopyClips?.();
+        break;
+      }
+      case "cutClips": {
+        if (hasClips) onCutClips?.();
+        break;
+      }
+      case "pasteClips": {
+        if (clipsClipboard) onPasteClips?.();
         break;
       }
       case "duplicate": {
@@ -491,6 +519,15 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
       ) : (
         <>
           <div className="context-menu-header">{state.context}</div>
+          <button type="button" role="menuitem" onClick={() => handle("copyClips")} disabled={!hasClips}>
+            Copy (Ctrl+C)
+          </button>
+          <button type="button" role="menuitem" onClick={() => handle("cutClips")} disabled={!hasClips}>
+            Cut (Ctrl+X)
+          </button>
+          <button type="button" role="menuitem" onClick={() => handle("pasteClips")} disabled={!clipsClipboard}>
+            Paste at playhead (Ctrl+V)
+          </button>
           <button type="button" role="menuitem" onClick={() => handle("delete")} disabled={!hasAny}>
             Delete
           </button>

@@ -14,6 +14,9 @@ export type ShortcutKey =
   | "save"
   | "toggleLoop"
   | "duplicatePattern"
+  | "copyClips"
+  | "cutClips"
+  | "pasteClips"
   | "deleteNote"
   | "nextTrack"
   | "prevTrack"
@@ -75,7 +78,7 @@ export interface Shortcut {
   /** Human-readable label for the help overlay. */
   label: string;
   /** Group label for organizing the help overlay. */
-  group: "Transport" | "Tracks" | "Patterns" | "Panels" | "Sequencer" | "Help";
+  group: "Transport" | "Tracks" | "Patterns" | "Clips" | "Panels" | "Sequencer" | "Help";
   /** Primary key (lowercased). */
   keyHint: string;
   /** Modifiers required for the primary key. */
@@ -152,6 +155,13 @@ export const SHORTCUTS: Shortcut[] = [
     ctrl: true,
     altHints: [{ key: "d", ctrl: true }],
   },
+
+  // Clip clipboard — the arrangement's copy/cut/paste family. Operates on the
+  // mixed clip selection (audio + arrangement clips); paste lands at the
+  // playhead. Input fields are protected by the global typing guard.
+  { key: "copyClips", label: "Copy clips", group: "Clips", keyHint: "C", ctrl: true },
+  { key: "cutClips", label: "Cut clips", group: "Clips", keyHint: "X", ctrl: true },
+  { key: "pasteClips", label: "Paste clips at playhead", group: "Clips", keyHint: "V", ctrl: true },
 
   // Bare digits 1–9 select tracks; panels live on Alt+1–5. Both families
   // previously bound the bare 1–5 keys — the map silently kept only the
