@@ -387,9 +387,14 @@ describe("audit probes — boundary & repeatability gaps", () => {
     const { doc, clipId } = audioDoc(2);
     let next = moveAudioClip(doc, clipId, 4.005).execute(doc);
     const first = next.arrangement.audioClips![0]!.startBar;
-    expect(first).toBe(4.01); // 0.01-bar quantization
-    for (let i = 0; i < 50; i++) next = moveAudioClip(next, clipId, 4.01).execute(next);
-    expect(next.arrangement.audioClips![0]!.startBar).toBe(4.01);
+    // Tick quantization (snap wave): stored bar geometry lands on the
+    // nearest 1/1920-bar tick — the old 0.01-bar round destroyed 1/8 and
+    // 1/16 positions the snap grid needs. The FIXED-POINT intent is what
+    // this probe pins: the quantized value is exact, and re-moving to it
+    // never drifts.
+    expect(first).toBe(Math.round(4.005 * BAR_TICKS) / BAR_TICKS);
+    for (let i = 0; i < 50; i++) next = moveAudioClip(next, clipId, first).execute(next);
+    expect(next.arrangement.audioClips![0]!.startBar).toBe(first);
   });
 
   it("scene clip moves round to whole bars (grid stays exact under repeats)", () => {

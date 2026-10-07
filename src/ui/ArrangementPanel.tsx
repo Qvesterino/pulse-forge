@@ -9,6 +9,8 @@ import {
   useSelection,
   useSelectionStore,
   useServices,
+  useTool,
+  useToolStore,
   useTracks,
 } from "./context";
 import { notifyOnboardingProgress } from "./OnboardingHint";
@@ -56,6 +58,7 @@ import {
   resizeAudioClip,
   slipAudioClip,
   setActiveAudioTake,
+  splitArrangementClipAtTick,
   splitAudioClipAtTick,
   stripSilenceAudioClip,
   trimAudioClipStart,
@@ -2382,6 +2385,10 @@ export function ArrangementPanel() {
   // Ripple mode (arrangement-as-a-tool): moves/resizes/deletes shift every
   // later clip to preserve the gaps after the edit.
   const [rippleMode, setRippleMode] = useState(false);
+  // Editing tool (select | cut) — see ToolStore for why the union is two
+  // entries. The cut branch lives in the clip pointerdown handlers below.
+  const tool = useTool();
+  const toolStore = useToolStore();
   // Snap grid (view preference, persisted per-browser — see ./snap.ts for the
   // scope/precision/modifier contracts). "off" keeps the exact pre-snap
   // behavior (free position at tick storage precision).
@@ -3884,6 +3891,15 @@ export function ArrangementPanel() {
             RIPPLE {rippleMode ? "ON" : "OFF"}
           </button>
           <span className="arr-ripple-hint">shifts later clips to keep the gaps</span>
+          <button
+            type="button"
+            className={`arr-ripple-toggle${tool === "cut" ? " on" : ""}`}
+            aria-pressed={tool === "cut"}
+            title="Cut tool — click any clip to split it at the click position (V = select, C = cut). Scene clips split on their bar grid, audio clips sample-precise."
+            onClick={() => toolStore.setTool(tool === "cut" ? "select" : "cut")}
+          >
+            CUT
+          </button>
         </div>
 
         <div className="arr-ripple-row">
@@ -4123,7 +4139,7 @@ export function ArrangementPanel() {
             <ArrPlayheadLine transport={services.transport} barWidth={barWidth} className="arr-playhead" />
           </div>
           <div
-            className="arr-lane"
+            className={`arr-lane${tool === "cut" ? " arr-cut-tool" : ""}`}
             ref={laneRef}
             style={{ width: totalBars * barWidth, height: LANE_HEIGHT }}
             onPointerDown={(event) => {
@@ -4296,6 +4312,24 @@ export function ArrangementPanel() {
                     style={{ left: startBar * barWidth, width: lengthBars * barWidth - 4 }}
                     title={`${scene?.name ?? "?"} · ${role.toUpperCase()} · bars ${startBar + 1}–${startBar + lengthBars}`}
                     onPointerDown={(event) => {
+                      // CUT TOOL (ADR 0025): the razor splits scene OR audio
+                      // clips at the click — the one interaction a drag
+                      // gesture cannot express. Scene clips land on their bar
+                      // grid (the command floors), audio clips cut
+                      // sample-precise, snapped when the grid is on.
+                      if (tool === "cut") {
+                        event.stopPropagation();
+                        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+                        const bar = Math.max(0, clip.startBar + (event.clientX - rect.left) / Math.max(1, barWidth));
+                        execute(
+                          splitArrangementClipAtTick(
+                            services.store.doc,
+                            clip.id,
+                            Math.floor(snapBar(bar, snapBarsFor(snapGrid)) * BAR_TICKS),
+                          ),
+                        );
+                        return;
+                      }
                       clipLongPressTargetRef.current = clip.id;
                       clipLongPress.onPointerDown(event);
                       beginClipDrag(
@@ -4426,6 +4460,23 @@ export function ArrangementPanel() {
                   style={{ left: startBar * barWidth, width: lengthBars * barWidth - 4 }}
                   title={`${track?.name ?? clip.trackId} · ${clip.bufferId} · ${clip.muted ? "MUTED " : ""}${clip.reverse ? "REV " : ""}${clip.loop ? "LOOP " : ""}${(clip.warpMarkers?.length ?? 0) > 0 ? `WARP${clip.warpMarkers!.length} ` : ""}${clip.stretchMode === "stretch" ? `STRETCH×${effRate.toFixed(2)} ` : effRate !== 1 ? `×${effRate.toFixed(2)} ` : ""}${lengthBars}b · trim ${clip.trimStart.toFixed(2)}/${clip.trimEnd.toFixed(2)} fade ${effFadeIn.toFixed(2)}/${effFadeOut.toFixed(2)} gain ${effGain.toFixed(2)} — M mutes · PT: top corners fade, top middle clip gain, Alt+edge stretches, Alt+body slips${clip.reverse || clip.loop || (clip.warpMarkers?.length ?? 0) > 0 ? " (slip off: REV/LOOP/WARP)" : ""}`}
                   onPointerDown={(event) => {
+                    // CUT TOOL: sample-precise split at the pointer, snapped
+                    // when the grid is on (same click contract as the scene
+                    // razor — see that branch).
+                    if (tool === "cut") {
+                      event.stopPropagation();
+                      const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+                      const bar = Math.max(0, clip.startBar + (event.clientX - rect.left) / Math.max(1, barWidth));
+                      execute(
+                        splitAudioClipAtTick(
+                          services.store.doc,
+                          clip.id,
+                          Math.floor(snapBar(bar, snapBarsFor(snapGrid)) * BAR_TICKS),
+                          services.bank.get(clip.bufferId)?.duration,
+                        ),
+                      );
+                      return;
+                    }
                     audioLongPressTargetRef.current = { clipId: clip.id, x: event.clientX, y: event.clientY };
                     audioLongPress.onPointerDown(event);
                     const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();

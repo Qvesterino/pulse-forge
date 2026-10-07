@@ -4,12 +4,19 @@ import { ToolStore, type Tool } from "../src/store/ToolStore";
 /**
  * ToolStore — the third pub/sub store of the architecture triad
  * (ProjectStore / SelectionStore / ToolStore). Tiny, but it is the single
- * owner of the editing tool state: every piano-roll/dock surface subscribes
- * to it, so notification discipline (no spurious emits, unsubscribe safety,
+ * owner of the editing tool state: the arrangement subscribes to it, so
+ * notification discipline (no spurious emits, unsubscribe safety,
  * listener-throw containment) is architectural, not cosmetic.
+ *
+ * The union is DELIBERATELY "select" | "cut" — the other four names were
+ * aspirational dead entries for months (nothing consumed them; their
+ * gestures shipped as Alt-modifiers instead). See the ToolStore header for
+ * the full story. Keyboard shortcuts live in App.tsx (V select, C cut), not
+ * in this store — the old `shortcutForKey` map here was the dead-map
+ * anti-pattern.
  */
 
-const ALL_TOOLS: Tool[] = ["select", "pencil", "cut", "slip", "stretch", "mute"];
+const ALL_TOOLS: Tool[] = ["select", "cut"];
 
 describe("ToolStore — state", () => {
   it("defaults to select", () => {
@@ -26,12 +33,12 @@ describe("ToolStore — state", () => {
 
   it("setting the SAME tool does not emit (no spurious re-renders)", () => {
     const store = new ToolStore();
-    store.setTool("pencil");
+    store.setTool("cut");
     const listener = vi.fn();
     store.subscribe(listener);
-    store.setTool("pencil");
-    expect(listener).not.toHaveBeenCalled();
     store.setTool("cut");
+    expect(listener).not.toHaveBeenCalled();
+    store.setTool("select");
     expect(listener).toHaveBeenCalledTimes(1);
   });
 });
@@ -54,7 +61,7 @@ describe("ToolStore — pub/sub discipline", () => {
     const unsub = store.subscribe(listener);
     unsub();
     unsub(); // idempotent — Set.delete returns false the second time
-    store.setTool("slip");
+    store.setTool("cut");
     expect(listener).not.toHaveBeenCalled();
   });
 
@@ -64,10 +71,10 @@ describe("ToolStore — pub/sub discipline", () => {
     const later = vi.fn();
     const unsub = store.subscribe(selfRemoving);
     store.subscribe(later);
-    store.setTool("stretch"); // selfRemoving unsubscribes mid-emit
+    store.setTool("cut"); // selfRemoving unsubscribes mid-emit
     expect(selfRemoving).toHaveBeenCalledTimes(1);
     expect(later).toHaveBeenCalledTimes(1); // Set iteration survives mid-loop delete
-    store.setTool("mute");
+    store.setTool("select");
     expect(selfRemoving).toHaveBeenCalledTimes(1); // stays unsubscribed
     expect(later).toHaveBeenCalledTimes(2);
   });
@@ -85,39 +92,12 @@ describe("ToolStore — pub/sub discipline", () => {
     // miss this notification (the UI throws inside React's batch). State is
     // committed BEFORE emit, so the tool still switched. If containment is
     // ever wanted (try/catch in emit), this pin fails — make it deliberate.
-    expect(() => store.setTool("pencil")).toThrow("listener exploded");
+    expect(() => store.setTool("cut")).toThrow("listener exploded");
     expect(good).not.toHaveBeenCalled();
-    expect(store.getTool()).toBe("pencil");
+    expect(store.getTool()).toBe("cut");
     // Recovery: once the thrower is gone, notifications flow normally again.
     unsubBad();
-    store.setTool("cut");
+    store.setTool("select");
     expect(good).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("ToolStore — keyboard shortcuts", () => {
-  it("maps every tool shortcut key (case-insensitive)", () => {
-    const store = new ToolStore();
-    const expected: Record<string, Tool> = { s: "select", p: "pencil", c: "cut", b: "slip", e: "stretch", m: "mute" };
-    for (const [key, tool] of Object.entries(expected)) {
-      expect(store.shortcutForKey(key)).toBe(tool);
-      expect(store.shortcutForKey(key.toUpperCase())).toBe(tool);
-    }
-  });
-
-  it("every Tool has exactly one shortcut (bijective coverage)", () => {
-    const store = new ToolStore();
-    // 'slip' lives on 'b' and 'stretch' on 'e' — resolve via the full key map.
-    const keys = ["s", "p", "c", "b", "e", "m"];
-    const mapped = new Set(keys.map((k) => store.shortcutForKey(k)));
-    expect([...mapped].sort()).toEqual([...ALL_TOOLS].sort());
-  });
-
-  it("unknown keys return null (no accidental tool switches)", () => {
-    const store = new ToolStore();
-    expect(store.shortcutForKey("x")).toBeNull();
-    expect(store.shortcutForKey("1")).toBeNull();
-    expect(store.shortcutForKey("")).toBeNull();
-    expect(store.shortcutForKey("ctrl")).toBeNull();
   });
 });

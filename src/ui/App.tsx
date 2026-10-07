@@ -1294,11 +1294,20 @@ export function App({
         return;
       }
 
-      // NO tool-switch keybinds here: the S/P/C/B/E/M tool map was removed —
-      // no editing behavior was ever wired to the tool state (the only
-      // consumer was a statusbar label), so the keys silently swallowed
-      // letters. Escape still resets the stored tool; the ToolStore remains
-      // the anchor for a real tool system when one lands.
+      // Tool switching (real behavior now): V = select, C = cut. The cut tool
+      // splits any clip at the click position (ADR 0025 made split
+      // timeline-wide); Escape resets to select. While the drum rack is
+      // armed, pad keys shadow these letters — the documented pad-key
+      // contract (see padKeys.ts). The old S/P/C/B/E/M map died because five
+      // of its six tools had no behavior; these two letters each have one.
+      if (!event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+        const lower = event.key.toLowerCase();
+        if (lower === "c" || lower === "v") {
+          event.preventDefault();
+          toolStore.setTool(lower === "c" ? "cut" : "select");
+          return;
+        }
+      }
 
       // Range Tool: Ctrl/Cmd+B bounce in Range (like Cubase Render in Place).
       // This is deliberately async: the buffer must be rendered from the
@@ -1672,6 +1681,9 @@ export function App({
                       SPACE play · CTRL+K commands · ALT+1–8 panels · ? help · Ctrl+Z undo ·{" "}
                       <kbd className="statusbar-kbd">1</kbd>–<kbd className="statusbar-kbd">9</kbd> tracks
                       {selection.trackIds.length > 0 && track.kind === "drum" && " · pad keys QWERTYUIASDFGHJK"}
+                      {/* Real tools now (V select / C cut) — the chip returns,
+                          flagged when a mode is active so it never reads as noise. */}
+                      {tool !== "select" && ` · TOOL ${tool.toUpperCase()} (V = select)`}
                     </span>
                   }
                 />

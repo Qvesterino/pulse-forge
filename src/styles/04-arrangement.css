@@ -599,6 +599,12 @@
   cursor: copy;
 }
 
+/* Cut tool (ADR 0025 razor): the crosshair says "click divides", overriding
+   the lane's copy cursor everywhere inside it. */
+.arr-lane.arr-cut-tool {
+  cursor: crosshair;
+}
+
 .arr-bar-grid {
   position: absolute;
   top: 0;

@@ -6,6 +6,9 @@ import { useSelection } from "../../src/ui/context";
 import { ProjectStore } from "../../src/store/ProjectStore";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { deleteArrangementClip, addArrangementClip } from "../../src/commands/commands";
+import { addAudioClip } from "../../src/commands/audioClips";
+import { ToolContext } from "../../src/ui/context";
+import { ToolStore } from "../../src/store/ToolStore";
 import { mockServices, renderWithContext } from "../helpers";
 import type { Services } from "../../src/services";
 import type { NoteEvent, ProjectDocument } from "../../src/project-model/types";
@@ -453,5 +456,111 @@ describe("ripple move left floor (panel preview + commit)", () => {
     expect(clips.find((c) => c.id === built.bId)!.startBar).toBe(4); // 10 − 6
     expect(clips.find((c) => c.id === built.cId)!.startBar).toBe(10); // 16 − 6, gap preserved
     noOverlap(project.getDoc());
+  });
+});
+
+/* -----------------------------------------------------------------------
+ * Cut tool (ADR 0025 razor): with the tool active, clicking any clip —
+ * scene OR audio — splits it at the click position instead of dragging.
+ * Scene cuts land on the bar grid (the command floors); audio cuts are
+ * sample-precise, snapped when the snap grid is on.
+ */
+describe("cut tool (razor)", () => {
+  let rectSpy: ReturnType<typeof vi.spyOn> | undefined;
+  afterEach(() => {
+    rectSpy?.mockRestore();
+    rectSpy = undefined;
+    localStorage.removeItem("pf:arr-snap");
+  });
+  function useWideRects(): void {
+    rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 10_000,
+      bottom: 100,
+      width: 10_000,
+      height: 100,
+      toJSON: () => ({}),
+    } as DOMRect);
+  }
+  function renderWithTool(doc: ProjectDocument) {
+    const project = new ProjectStore(doc);
+    const services = { ...mockServices(doc), store: project } as unknown as Services;
+    const toolStore = new ToolStore();
+    const utils = renderWithContext(
+      <ToolContext.Provider value={toolStore}>
+        <ArrangementPanel />
+      </ToolContext.Provider>,
+      { services },
+    );
+    return { ...utils, project, toolStore };
+  }
+  const clickClip = (el: HTMLElement, clientX: number): void => {
+    fireEvent.pointerDown(el, { button: 0, pointerId: 9, clientX });
+  };
+
+  it("clicking a scene clip with the cut tool splits it at the click bar", () => {
+    useWideRects();
+    const doc = createProjectFromTemplate("house");
+    const cleared = { ...doc, arrangement: { ...doc.arrangement, clips: [] } };
+    let seeded = addArrangementClip(cleared, cleared.scenes[0]!.id, 0, 4).execute(cleared);
+    seeded = addAudioClip(seeded, seeded.tracks.find((t) => t.kind !== "group")!.id, "buf-x", 0, 4).execute(seeded);
+    const { project, toolStore } = renderWithTool(seeded);
+    act(() => toolStore.setTool("cut"));
+
+    const sceneStrip = Array.from(document.querySelectorAll<HTMLElement>(".arr-clip"))[0]!;
+    clickClip(sceneStrip, 60); // bar 2
+
+    const clips = project.getDoc().arrangement.clips;
+    expect(clips.length).toBe(2);
+    expect(clips[0]!.startBar).toBe(0);
+    expect(clips[1]!.startBar).toBe(2);
+  });
+
+  it("clicking an audio clip with the cut tool splits sample-precise and honors the snap grid", () => {
+    useWideRects();
+    const doc = createProjectFromTemplate("house");
+    const cleared = { ...doc, arrangement: { ...doc.arrangement, clips: [] } };
+    let seeded = addAudioClip(cleared, cleared.tracks.find((t) => t.kind !== "group")!.id, "buf-y", 0, 4).execute(
+      cleared,
+    );
+    seeded = addArrangementClip(seeded, seeded.scenes[0]!.id, 8, 4).execute(seeded);
+    const { project, toolStore } = renderWithTool(seeded);
+    act(() => toolStore.setTool("cut"));
+
+    // Click at bar 2.4 with SNAP 1/2 (driven through the real selector) →
+    // the cut snaps to the 2.5 grid line (half rounds up).
+    fireEvent.change(screen.getByRole("combobox", { name: "Snap grid" }), { target: { value: "1/2" } });
+    const audioEl = Array.from(document.querySelectorAll<HTMLElement>(".arr-audio-clip"))[0]!;
+    clickClip(audioEl, 72); // 72/30 = 2.4 bars
+    let audio = project.getDoc().arrangement.audioClips ?? [];
+    expect(audio.length).toBe(2);
+    expect(audio[1]!.startBar).toBeCloseTo(2.5, 6);
+
+    // SNAP OFF → the same click cuts at the exact tick position (2.3 bars).
+    // NOTE: splitAudioClipAtTick mints TWO fresh ids (unlike the scene split,
+    // whose left fragment keeps the original id for transitions).
+    fireEvent.change(screen.getByRole("combobox", { name: "Snap grid" }), { target: { value: "off" } });
+    const el2 = Array.from(document.querySelectorAll<HTMLElement>(".arr-audio-clip"))[0]!;
+    clickClip(el2, 69);
+    audio = project.getDoc().arrangement.audioClips ?? [];
+    expect(audio.length).toBe(3);
+    expect(audio[0]!.startBar).toBeCloseTo(0, 6);
+    expect(audio.some((c) => c.startBar === 2.3)).toBe(true);
+  });
+
+  it("select tool keeps dragging — pointerdown does not split", () => {
+    useWideRects();
+    const doc = createProjectFromTemplate("house");
+    const cleared = { ...doc, arrangement: { ...doc.arrangement, clips: [] } };
+    let seeded = addArrangementClip(cleared, cleared.scenes[0]!.id, 0, 4).execute(cleared);
+    seeded = addAudioClip(seeded, seeded.tracks.find((t) => t.kind !== "group")!.id, "buf-z", 0, 4).execute(seeded);
+    const { project, toolStore } = renderWithTool(seeded);
+    act(() => toolStore.setTool("select"));
+
+    clickClip(Array.from(document.querySelectorAll<HTMLElement>(".arr-clip"))[0]!, 60);
+    expect(project.getDoc().arrangement.clips.length).toBe(1);
   });
 });

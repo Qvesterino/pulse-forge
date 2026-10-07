@@ -47,9 +47,11 @@ export function useSelection(): SelectionState {
 }
 
 export function useToolStore(): ToolStore {
-  const store = useContext(ToolContext);
-  if (!store) throw new Error("ToolStore not initialized");
-  return store;
+  // Provider-less fallback (same contract as the selection store): tests and
+  // provider-less surfaces share one module instance; the app mounts the real
+  // store through the provider. The old throwing variant had zero consumers —
+  // a hook that crashes the panel it serves was speculation, not safety.
+  return useContext(ToolContext) ?? fallbackToolStore;
 }
 
 export function useTool(): Tool {
