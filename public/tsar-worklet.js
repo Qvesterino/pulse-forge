@@ -50,6 +50,19 @@
     blockEvents = [];
     /** Smoothed polyphony divisor (1 → one voice, N → N voices). */
     polyGain = 1;
+    // ── Arpeggiator (T6) ────────────────────────────────────────────────────
+    /** Held notes in press order (the order mode is the press order). */
+    arpHeld = [];
+    /** Arp step phase in normalized [0,1); advanced once per step. */
+    arpPhase = 0;
+    /** Current arp step index (walked through the note pool). */
+    arpStep = 0;
+    /** Arp gate counter (0..1): a note sounds while it is below the gate. */
+    arpGatePhase = 0;
+    /** Arp clock seed for the RANDOM mode (deterministic LCG). */
+    arpSeed = 1234567;
+    /** Notes currently owned by the arp (released when the arp stops them). */
+    arpSounding = /* @__PURE__ */ new Set();
     constructor(options) {
       this.sampleRate = options.sampleRate > 0 ? options.sampleRate : 48e3;
       for (let i = 0; i < MAX_VOICES; i++) this.voices.push(this.makeVoice(i));
@@ -98,6 +111,12 @@
       this.sources[slot].pcm = pcm;
       this.sources[slot].pcmRootHz = rootHz > 0 ? rootHz : 261.63;
     }
+    /** Tempo for the arp clock (engine `syncBpm`). */
+    bpm = 120;
+    /** Tempo update from the engine (arp step length derives from it). */
+    setBpm(bpm) {
+      if (Number.isFinite(bpm) && bpm > 0) this.bpm = clamp(bpm, 20, 300);
+    }
     /** True when a slot has anything to read (silence honesty in tests/UI). */
     hasSource(slot) {
       const source = this.sources[slot];
@@ -116,10 +135,18 @@
     applyEvent(event) {
       switch (event.type) {
         case "noteOn":
-          this.noteOn(event.pitch ?? 60, event.velocity ?? 0.8);
+          if ((this.params.arpOn ?? 0) >= 0.5) {
+            this.arpPress(event.pitch ?? 60, event.velocity ?? 0.8, this.arpVelocity);
+          } else {
+            this.noteOn(event.pitch ?? 60, event.velocity ?? 0.8);
+          }
           break;
         case "noteOff":
-          this.noteOff(event.pitch ?? 60);
+          if ((this.params.arpOn ?? 0) >= 0.5) {
+            this.arpRelease(event.pitch ?? 60);
+          } else {
+            this.noteOff(event.pitch ?? 60);
+          }
           break;
         case "pressure":
           this.pressure(event.pitch ?? 60, event.value ?? 0);
@@ -128,6 +155,8 @@
           if (event.name) this.setParam(event.name, event.value ?? 0);
           break;
         case "panic":
+          this.arpHeld.length = 0;
+          this.arpSounding.clear();
           for (const voice of this.voices) {
             voice.active = false;
             voice.gate = false;
@@ -135,6 +164,58 @@
           }
           break;
       }
+    }
+    /** Velocity captured at arp press time (the pool carries it). */
+    arpVelocity = 0.8;
+    /** Press a key while the arp is on: the note joins the held pool. */
+    arpPress(pitch, velocity, _captured) {
+      void _captured;
+      if (!this.arpHeld.includes(pitch)) this.arpHeld.push(pitch);
+      this.arpVelocity = velocity;
+      if (this.arpHeld.length === 1 && this.arpSounding.size === 0) {
+        this.arpPhase = 1;
+        this.arpStep = 0;
+      }
+    }
+    /** Release a key: the note leaves the pool (the arp keeps the rest). */
+    arpRelease(pitch) {
+      const index = this.arpHeld.indexOf(pitch);
+      if (index >= 0) this.arpHeld.splice(index, 1);
+    }
+    /**
+     * Next arp pitch for the current step. Deterministic: RANDOM uses a seeded
+     * LCG advanced per step, so the same event stream yields the same melody.
+     */
+    arpNextPitch() {
+      const mode = Math.round(this.params.arpMode ?? 0);
+      const octaves = clamp(Math.round(this.params.arpOctaves ?? 1), 1, 4);
+      const pool = this.arpHeld;
+      if (pool.length === 0) return 0;
+      const stepCount = pool.length * octaves;
+      const index = (this.arpStep % stepCount + stepCount) % stepCount;
+      const octave = Math.floor(index / pool.length);
+      let noteIndex = index % pool.length;
+      switch (mode) {
+        case 1:
+          noteIndex = pool.length - 1 - noteIndex;
+          break;
+        case 2: {
+          const cycle = stepCount * 2 - 2;
+          const position = stepCount <= 1 ? 0 : (this.arpStep % cycle + cycle) % cycle;
+          noteIndex = position < stepCount ? position % pool.length : (cycle - position) % pool.length;
+          return pool[noteIndex] + 12 * (position < stepCount ? Math.floor(position / pool.length) : Math.floor((cycle - position) / pool.length));
+        }
+        case 3:
+          return pool[index % pool.length] + 12 * octave;
+        case 4: {
+          this.arpSeed = this.arpSeed * 1664525 + 1013904223 >>> 0;
+          const pick = this.arpSeed % pool.length;
+          return pool[pick] + 12 * octave;
+        }
+        default:
+          break;
+      }
+      return pool[noteIndex] + 12 * octave;
     }
     noteOn(pitch, velocity) {
       let voice = this.voices.find((candidate) => !candidate.active);
@@ -366,12 +447,41 @@
       const svfB = { s1: 0, s2: 0 };
       const glideCoeff = glide > 0 ? Math.min(1, 1 / (glide * sr * 0.35)) : 1;
       const gainCoeff = Math.min(1, 1 / (GAIN_RAMP_SEC * sr));
+      const arpOn = (this.params.arpOn ?? 0) >= 0.5;
+      const arpRate = clamp(Math.round(this.params.arpRate ?? 8), 1, 16);
+      const arpGate = clamp(this.params.arpGate ?? 0.5, 0.05, 1);
+      const arpSwing = clamp(this.params.arpSwing ?? 0, 0, 0.75);
+      const arpStepSec = 60 / this.bpm / (arpRate / 4);
+      const arpStepInc = arpStepSec > 0 ? 1 / (arpStepSec * sr) : 0;
       this.outPeak = 0;
       for (let frame = 0; frame < frames; frame++) {
         const frameTime = (currentFrame2 + frame) / sr;
         while (eventCursor < blockEvents.length && blockEvents[eventCursor].when <= frameTime) {
           this.applyEvent(blockEvents[eventCursor]);
           eventCursor += 1;
+        }
+        if (arpOn && this.arpHeld.length > 0) {
+          this.arpPhase += arpStepInc;
+          this.arpGatePhase += arpStepInc;
+          if (this.arpPhase >= 1) {
+            this.arpPhase -= 1;
+            this.arpGatePhase = 0;
+            for (const sounding of [...this.arpSounding]) this.noteOff(sounding);
+            this.arpSounding.clear();
+            if (arpSwing > 0 && this.arpStep % 2 === 1) this.arpPhase = arpSwing * 0.5;
+            const pitch = this.arpNextPitch();
+            if (pitch > 0) {
+              this.noteOn(pitch, this.arpVelocity);
+              this.arpSounding.add(pitch);
+            }
+            this.arpStep += 1;
+          } else if (this.arpGatePhase >= arpGate && this.arpSounding.size > 0) {
+            for (const sounding of [...this.arpSounding]) this.noteOff(sounding);
+            this.arpSounding.clear();
+          }
+        } else if (!arpOn && this.arpSounding.size > 0) {
+          for (const sounding of [...this.arpSounding]) this.noteOff(sounding);
+          this.arpSounding.clear();
         }
         let mixL = 0;
         let mixR = 0;
@@ -549,6 +659,7 @@
     constructor() {
       super();
       this.port.onmessage = (event) => this.handle(event.data);
+      if (processorOptions && processorOptions.bpm) this.proc.setBpm(processorOptions.bpm);
       if (processorOptions && processorOptions.params) {
         this.proc.applyParams(processorOptions.params);
         this.initialized = true;
@@ -575,6 +686,9 @@
           break;
         case "param":
           this.proc.setParam(message.name, message.value);
+          break;
+        case "bpm":
+          this.proc.setBpm(message.bpm);
           break;
         case "noteOn":
         case "noteOff":

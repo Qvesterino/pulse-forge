@@ -5,13 +5,14 @@ import { ExportPanel, type MasteringWorkspaceState } from "./ExportPanel";
 import { useDoc, useMaster } from "./context";
 import { EffectRack } from "./EffectRack";
 import { projectRevisionIdFor } from "../mastering/report";
-import { MASTER_PROFILE_SOURCES, resolveDeliveryTarget } from "../mastering/profiles";
+import { isMasterProfileSourceReviewDue, MASTER_PROFILE_SOURCES, resolveDeliveryTarget } from "../mastering/profiles";
 import { MasteringABCompare } from "./MasteringABCompare";
 import { MasteringSignalFlow } from "./MasteringSignalFlow";
 import { MasterProcessingControls } from "./MasterProcessingControls";
 import { MasteringLoudnessTimeline } from "./MasteringLoudnessTimeline";
 import { MAX_OFFLINE_RENDER_PCM_BYTES } from "../rendering/renderer";
 import { MasteringFileSessionPanel } from "./MasteringFileSessionPanel";
+import { MasterProfileFileGuidance } from "./MasterProfileFileGuidance";
 
 const StableMasterMeter = memo(MasterMeter);
 const StableEffectRack = memo(EffectRack);
@@ -23,6 +24,7 @@ export function MasteringPanel() {
   const master = useMaster();
   const profile = resolveDeliveryTarget(master);
   const profileSource = MASTER_PROFILE_SOURCES[profile.id];
+  const profileSourceReviewDue = profileSource ? isMasterProfileSourceReviewDue(profileSource) : false;
   const [workspaceState, setWorkspaceState] = useState<MasteringWorkspaceState | null>(null);
   const [controlView, setControlView] = useState<"simple" | "advanced">("simple");
   const renderPcmLimitMiB = MAX_OFFLINE_RENDER_PCM_BYTES / (1024 * 1024);
@@ -134,17 +136,23 @@ export function MasteringPanel() {
           {profile.intendedUse} {profile.note} Delivery profiles set measurement targets only; they do not change the
           sound or certify that a master meets every destination requirement.
           {profileSource && (
-            <>
+            <span className="mastering-profile-source" data-review-due={profileSourceReviewDue}>
               {" "}
               <a href={profileSource.url} target="_blank" rel="noopener noreferrer">
                 {profileSource.label}
               </a>{" "}
               · checked {profileSource.checkedAt}.
-            </>
+              {profileSourceReviewDue && " Source review is due before relying on this target."}
+            </span>
           )}
+          <MasterProfileFileGuidance profile={profile} />
+        </p>
+        <p className="mastering-monitor-note" role="note">
+          Master A/B and reference audition play through the active browser output. Open Studio I/O in the top bar to
+          choose an output where supported and view browser-reported latency. KYX does not measure hardware round-trip
+          latency or calibrate monitor response; check the result on a known monitor or headphone chain.
         </p>
       </header>
-      <MasteringFileSessionPanel />
       <section className="mastering-overview" aria-label="Mastering analysis overview">
         <div className="mastering-overview-heading">
           <div>
@@ -386,6 +394,7 @@ export function MasteringPanel() {
           onMasteringWorkspaceStateChange={handleWorkspaceStateChange}
         />
       </section>
+      <MasteringFileSessionPanel />
     </section>
   );
 }

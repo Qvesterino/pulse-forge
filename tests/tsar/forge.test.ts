@@ -19,15 +19,16 @@ describe("forgePlan — root detection (KPI ≥ 95 %)", () => {
     const misses: string[] = [];
     for (const voice of pitched) {
       const plan = forgePlan(goldenVoices.get(voice.id)!, SR);
+      const expected = voice.rootMidi!; // filtered above
       // Stable voices must be exact (a wrong root poisons every patch).
       // The DRIFTING pad is allowed ±1 semitone: its f0 moves across ±1.5 st
       // BY DESIGN, so no single sample instant is the "true" root and the
       // detector's midpoint read is a legitimate instant reading.
       const tolerance = voice.id === "sustained-pad" ? 1 : 0;
-      if (plan.rootMidi !== null && Math.abs(plan.rootMidi - voice.rootMidi) <= tolerance) {
+      if (plan.rootMidi !== null && Math.abs(plan.rootMidi - expected) <= tolerance) {
         correct += 1;
       } else {
-        misses.push(`${voice.id}: expected ${voice.rootMidi}±${tolerance}, got ${plan.rootMidi}`);
+        misses.push(`${voice.id}: expected ${expected}±${tolerance}, got ${plan.rootMidi}`);
       }
     }
     const accuracy = correct / pitched.length;

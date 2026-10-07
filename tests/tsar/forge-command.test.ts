@@ -3,6 +3,7 @@ import { forgeSampleCommand } from "../../src/commands/tsar";
 import { forgePlan } from "../../src/tsar/forge";
 import { createInstrumentTrackModel } from "../../src/project-model/schema";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
+import type { InstrumentTrack } from "../../src/project-model/types";
 import { goldenVoices } from "./golden-voices";
 
 /**
@@ -28,7 +29,7 @@ describe("forgeSampleCommand", () => {
     expect(plan.engine).toBe("wavetable");
     const command = forgeSampleCommand(doc, "tsar-track", "user.sample.saw", plan);
     const next = command.execute(doc);
-    const track = next.tracks.find((t) => t.id === "tsar-track")!;
+    const track = next.tracks.find((t): t is InstrumentTrack => t.id === "tsar-track")!;
     expect(track.sampleId).toBe("user.sample.saw");
     expect(track.params.srcAEngine).toBe(1);
     expect(track.params.srcARoot).toBe(48);
@@ -42,7 +43,7 @@ describe("forgeSampleCommand", () => {
     const plan = forgePlan(goldenVoices.get("808-f1")!, SR);
     expect(plan.kind).toBe("one-shot");
     const next = forgeSampleCommand(doc, "tsar-track", "user.sample.808", plan).execute(doc);
-    const track = next.tracks.find((t) => t.id === "tsar-track")!;
+    const track = next.tracks.find((t): t is InstrumentTrack => t.id === "tsar-track")!;
     expect(track.params.srcAEngine).toBe(0);
     expect(track.params.srcASus).toBe(0);
     expect(track.params.srcADec).toBeGreaterThan(0);
@@ -52,7 +53,7 @@ describe("forgeSampleCommand", () => {
     const doc = tsarDoc();
     const plan = forgePlan(goldenVoices.get("sine-a1")!, SR);
     const next = forgeSampleCommand(doc, "tsar-track", "user.sample.b", plan, { slot: 1 }).execute(doc);
-    const track = next.tracks.find((t) => t.id === "tsar-track")!;
+    const track = next.tracks.find((t): t is InstrumentTrack => t.id === "tsar-track")!;
     expect(track.sampleIdB).toBe("user.sample.b");
     expect(track.sampleId).toBeNull(); // A untouched
     expect(track.params.srcBEngine).toBe(1);
@@ -84,7 +85,7 @@ describe("forgeSampleCommand", () => {
     const plan = forgePlan(goldenVoices.get("noise-burst")!, SR);
     expect(plan.rootMidi).toBeNull();
     const next = forgeSampleCommand(seeded, "tsar-track", "user.noise", plan).execute(seeded);
-    const track = next.tracks.find((t) => t.id === "tsar-track")!;
+    const track = next.tracks.find((t): t is InstrumentTrack => t.id === "tsar-track")!;
     expect(track.params.srcARoot).toBe(55);
     expect(track.params.srcAEngine).toBe(0); // honest sampler route
   });

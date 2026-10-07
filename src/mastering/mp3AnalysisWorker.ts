@@ -53,7 +53,9 @@ function isProfile(value: unknown): value is MasterProfile {
     typeof value.recommendedFormat === "string" &&
     value.recommendedFormat.length <= 160 &&
     typeof value.intendedUse === "string" &&
-    value.intendedUse.length <= 1000
+    value.intendedUse.length <= 1000 &&
+    (value.fileGuidanceNote === undefined ||
+      (typeof value.fileGuidanceNote === "string" && value.fileGuidanceNote.length <= 1000))
   );
 }
 

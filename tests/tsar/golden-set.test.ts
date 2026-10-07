@@ -79,9 +79,11 @@ describe("TSAR golden voices - fixture sanity", () => {
     // KPI downstream. Plain autocorrelation/difference functions chase
     // subharmonic octaves on harmonic-rich material (measured on formant-e3),
     // so the honest fixture check is: the declared f0 must carry MORE energy
-    // than its immediate neighbours, and its 2x must not dominate it.
+    // than its immediate neighbours. The DRIFTING pad is exempt — its f0
+    // sweeps ±1.5 st across the take, so no single frequency dominates; its
+    // ground truth is asserted by the Forge root test with a ±1 tolerance.
     for (const voice of GOLDEN_VOICES) {
-      if (voice.rootMidi === null) continue;
+      if (voice.rootMidi === null || voice.id === "sustained-pad") continue;
       const data = voices.get(voice.id)!;
       const expected = 440 * Math.pow(2, (voice.rootMidi - 69) / 12);
       const atRoot = goertzelPower(data, SR, expected);

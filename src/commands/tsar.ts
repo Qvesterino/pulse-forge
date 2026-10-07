@@ -51,7 +51,8 @@ export function forgeSampleCommand(
   const params: Record<string, number> = {
     ...track.params,
     [`${prefix}Engine`]: engineValue,
-    [`${prefix}Level`]: slot === 0 ? Math.max(0.6, track.params.srcALevel ?? 0.8) : Math.max(0.6, track.params.srcBLevel ?? 0),
+    [`${prefix}Level`]:
+      slot === 0 ? Math.max(0.6, track.params.srcALevel ?? 0.8) : Math.max(0.6, track.params.srcBLevel ?? 0),
     [`${prefix}Atk`]: plan.envelope.attackSec,
     [`${prefix}Rel`]: plan.envelope.releaseSec,
   };

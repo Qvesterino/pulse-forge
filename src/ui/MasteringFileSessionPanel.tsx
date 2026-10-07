@@ -7,11 +7,13 @@ import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
 import {
   inspectEncodedMaster,
   inspectMasteringReferenceContainer,
+  masteringReferenceFormatFromFileName,
   type EncodedMasterInspection,
 } from "../mastering/encodedInspection";
 import { awaitMasteringSampleBankReady } from "../mastering/readiness";
 import {
   evaluateDelivery,
+  isMasterProfileSourceReviewDue,
   MASTER_PROFILE_SOURCES,
   MASTER_PROFILES,
   resolveDeliveryTarget,
@@ -43,13 +45,15 @@ import type { WavBitDepth } from "../rendering/wav";
 import { downloadBlob } from "../export/download";
 import { useServices } from "./context";
 import { MasteringLoudnessTimeline } from "./MasteringLoudnessTimeline";
+import { MasteringFingerprint } from "./MasteringFingerprint";
 import { MasterProcessingControls } from "./MasterProcessingControls";
 import { MasteringSessionInsertRack } from "./MasteringSessionInsertRack";
+import { MasterProfileFileGuidance } from "./MasterProfileFileGuidance";
 
 const MAX_DECODED_SOURCE_BYTES = 128 * 1024 * 1024;
 const MAX_RECENT_DELIVERY_REPORTS = 6;
 const DECODE_SAMPLE_RATE = 44_100;
-const AUDIO_EXTENSION = /\.(wav|wave|mp3)$/i;
+const AUDIO_EXTENSION = /\.(wav|wave|mp3|flac)$/i;
 
 interface RenderedSession {
   buffer: AudioBuffer;
@@ -131,7 +135,7 @@ function masteredWavFileName(
   bitDepth: number,
   version: string,
 ): string {
-  const baseName = sanitizeFilename(session.fileName.replace(/\.(wav|wave|mp3)$/i, ""));
+  const baseName = sanitizeFilename(session.fileName.replace(/\.(wav|wave|mp3|flac)$/i, ""));
   return `${baseName}-mastered-${sampleRate}Hz-${bitDepth}bit${masteringVersionSuffix(version)}.wav`;
 }
 
@@ -141,7 +145,7 @@ function masteredMp3FileName(
   kbps: number,
   version: string,
 ): string {
-  const baseName = sanitizeFilename(session.fileName.replace(/\.(wav|wave|mp3)$/i, ""));
+  const baseName = sanitizeFilename(session.fileName.replace(/\.(wav|wave|mp3|flac)$/i, ""));
   return `${baseName}-mastered-${sampleRate}Hz-${kbps}kbps${masteringVersionSuffix(version)}.mp3`;
 }
 
@@ -181,6 +185,25 @@ function decodeAudioDataWithSessionAbort(
   return awaitWithSessionAbort(decodeAudioData(bytes, sampleRate), signal, message);
 }
 
+async function decodeMasteringInputWithSessionAbort(
+  bytes: ArrayBuffer,
+  format: "wav" | "mp3" | "flac",
+  signal: AbortSignal | undefined,
+  message: string,
+): Promise<AudioBuffer> {
+  try {
+    return await decodeAudioDataWithSessionAbort(bytes, DECODE_SAMPLE_RATE, signal, message);
+  } catch (reason) {
+    if (signal?.aborted || (reason instanceof DOMException && reason.name === "AbortError")) throw reason;
+    if (format === "flac") {
+      throw new Error(
+        "This browser could not decode the FLAC source. Convert it to WAV or try a browser with FLAC decoding.",
+      );
+    }
+    throw reason;
+  }
+}
+
 async function auditDecodedAudio(buffer: AudioBuffer, signal?: AbortSignal): Promise<void> {
   let checked = 0;
   const total = buffer.length * buffer.numberOfChannels;
@@ -213,17 +236,12 @@ async function decodeSessionSource(record: MasteringSessionRecord, signal?: Abor
   if ((await awaitWithSessionAbort(sha256Hex(bytes), signal, "Session load cancelled")) !== record.sourceHash)
     throw new Error("The saved source file does not match its session fingerprint.");
   if (signal?.aborted) throw new DOMException("Session load cancelled", "AbortError");
-  const format = record.fileName.toLowerCase().endsWith(".mp3") ? "mp3" : "wav";
+  const format = masteringReferenceFormatFromFileName(record.fileName);
   const details = inspectMasteringReferenceContainer(format, bytes);
   if (details.channels !== record.channels || details.sampleRate !== record.sourceSampleRate) {
     throw new Error("The saved file metadata no longer matches this mastering session.");
   }
-  const buffer = await decodeAudioDataWithSessionAbort(
-    bytes.slice(0),
-    DECODE_SAMPLE_RATE,
-    signal,
-    "Session load cancelled",
-  );
+  const buffer = await decodeMasteringInputWithSessionAbort(bytes.slice(0), format, signal, "Session load cancelled");
   if (signal?.aborted) throw new DOMException("Session load cancelled", "AbortError");
   if (
     buffer.numberOfChannels !== record.channels ||
@@ -251,7 +269,7 @@ async function decodeSessionReference(
     throw new Error("The saved reference file does not match its session fingerprint.");
   }
   if (signal?.aborted) throw new DOMException("Reference load cancelled", "AbortError");
-  const format = record.fileName.toLowerCase().endsWith(".mp3") ? "mp3" : "wav";
+  const format = masteringReferenceFormatFromFileName(record.fileName);
   const details = inspectMasteringReferenceContainer(format, bytes);
   if (
     details.channels !== record.channels ||
@@ -264,12 +282,7 @@ async function decodeSessionReference(
   if (estimatedBytes > MAX_DECODED_SOURCE_BYTES) {
     throw new Error("The decoded reference exceeds KYX's 128 MiB memory limit.");
   }
-  const buffer = await decodeAudioDataWithSessionAbort(
-    bytes.slice(0),
-    DECODE_SAMPLE_RATE,
-    signal,
-    "Reference load cancelled",
-  );
+  const buffer = await decodeMasteringInputWithSessionAbort(bytes.slice(0), format, signal, "Reference load cancelled");
   if (
     buffer.numberOfChannels !== record.channels ||
     buffer.duration < 0.8 ||
@@ -440,6 +453,9 @@ export function MasteringFileSessionPanel() {
   }, [session?.id, session?.snapshots.A?.id, session?.snapshots.B?.id]);
   const deliveryTarget = useMemo(() => (draft ? resolveDeliveryTarget(draft) : null), [draft]);
   const deliveryTargetSource = deliveryTarget ? MASTER_PROFILE_SOURCES[deliveryTarget.id] : undefined;
+  const deliveryTargetSourceReviewDue = deliveryTargetSource
+    ? isMasterProfileSourceReviewDue(deliveryTargetSource)
+    : false;
   const stageAdjustment = useMemo(() => {
     if (!renderCurrent || !rendered || !draft || !deliveryTarget) return null;
     return computeStageAdjustment(
@@ -579,13 +595,15 @@ export function MasteringFileSessionPanel() {
       stopSessionPreview();
       setBusy("Reading source file…");
       try {
-        if (!AUDIO_EXTENSION.test(file.name)) throw new Error("Choose a WAV or MP3 mixdown.");
+        if (!AUDIO_EXTENSION.test(file.name)) throw new Error("Choose a WAV, MP3 or FLAC mixdown.");
         if (file.size <= 0 || file.size > 96 * 1024 * 1024) {
           throw new Error("External mastering accepts files up to 96 MiB.");
         }
         const bytes = await awaitWithSessionAbort(file.arrayBuffer(), controller.signal, "Source import cancelled");
         ensureActive();
-        const format = file.name.toLowerCase().endsWith(".mp3") ? "mp3" : "wav";
+        const format = masteringReferenceFormatFromFileName(file.name);
+        const sourceMimeType =
+          file.type || (format === "wav" ? "audio/wav" : format === "mp3" ? "audio/mpeg" : "audio/flac");
         const details = inspectMasteringReferenceContainer(format, bytes);
         if (details.channels !== 1 && details.channels !== 2) throw new Error("Use a mono or stereo source file.");
         if (
@@ -606,9 +624,9 @@ export function MasteringFileSessionPanel() {
         const sourceHash = await awaitWithSessionAbort(sha256Hex(bytes), controller.signal, "Source import cancelled");
         ensureActive();
         setProgress("Decoding source audio…");
-        const buffer = await decodeAudioDataWithSessionAbort(
+        const buffer = await decodeMasteringInputWithSessionAbort(
           bytes.slice(0),
-          DECODE_SAMPLE_RATE,
+          format,
           controller.signal,
           "Source import cancelled",
         );
@@ -627,7 +645,7 @@ export function MasteringFileSessionPanel() {
         const record = createMasteringSessionRecord({
           id: uid("mastering-session"),
           fileName: file.name.slice(0, 255),
-          mimeType: file.type.slice(0, 120),
+          mimeType: sourceMimeType.slice(0, 120),
           source: file,
           sourceHash,
           durationSeconds: buffer.duration,
@@ -686,13 +704,15 @@ export function MasteringFileSessionPanel() {
       setProgress("");
       setBusy("Validating comparison reference…");
       try {
-        if (!AUDIO_EXTENSION.test(file.name)) throw new Error("Choose a WAV or MP3 reference file.");
+        if (!AUDIO_EXTENSION.test(file.name)) throw new Error("Choose a WAV, MP3 or FLAC reference file.");
         if (file.size <= 0 || file.size > 96 * 1024 * 1024) {
           throw new Error("Comparison references must be between 1 byte and 96 MiB.");
         }
         const bytes = await awaitWithSessionAbort(file.arrayBuffer(), controller.signal, "Reference import cancelled");
         ensureActive();
-        const format = file.name.toLowerCase().endsWith(".mp3") ? "mp3" : "wav";
+        const format = masteringReferenceFormatFromFileName(file.name);
+        const referenceMimeType =
+          file.type || (format === "wav" ? "audio/wav" : format === "mp3" ? "audio/mpeg" : "audio/flac");
         const details = inspectMasteringReferenceContainer(format, bytes);
         if (details.channels !== 1 && details.channels !== 2) {
           throw new Error("Use a mono or stereo comparison reference.");
@@ -723,9 +743,9 @@ export function MasteringFileSessionPanel() {
         );
         ensureActive();
         setBusy("Decoding comparison reference…");
-        const buffer = await decodeAudioDataWithSessionAbort(
+        const buffer = await decodeMasteringInputWithSessionAbort(
           bytes.slice(0),
-          DECODE_SAMPLE_RATE,
+          format,
           controller.signal,
           "Reference import cancelled",
         );
@@ -751,9 +771,9 @@ export function MasteringFileSessionPanel() {
         const record: MasteringSessionReferenceRecord = {
           sessionId: session.id,
           fileName: file.name.slice(0, 255),
-          mimeType: file.type.slice(0, 120),
+          mimeType: referenceMimeType.slice(0, 120),
           byteLength: file.size,
-          source: file.slice(0, file.size, file.type),
+          source: file.slice(0, file.size, referenceMimeType),
           sourceHash,
           durationSeconds: buffer.duration,
           channels: buffer.numberOfChannels as 1 | 2,
@@ -1187,6 +1207,7 @@ export function MasteringFileSessionPanel() {
         checked = await inspectEncodedMaster({
           format: "mp3",
           bytes: deliveryBlob,
+          fingerprintBlob: deliveryBlob,
           expectedDurationSeconds: rendered.buffer.duration,
           sourceMeasurements: rendered.measurements,
           profile: resolveDeliveryTarget(draft),
@@ -1219,6 +1240,7 @@ export function MasteringFileSessionPanel() {
         checked = await inspectEncodedMaster({
           format: "wav",
           bytes: wav,
+          fingerprintBlob: deliveryBlob,
           expectedDurationSeconds: rendered.buffer.duration,
           sourceMeasurements: rendered.measurements,
           profile: resolveDeliveryTarget(draft),
@@ -1344,15 +1366,16 @@ export function MasteringFileSessionPanel() {
           <span className="mastering-panel-kicker">EXTERNAL FILE MASTERING</span>
           <h3>Master a stereo mixdown</h3>
           <p>
-            Open a WAV or MP3, process it with KYX’s offline master chain, then inspect and export a checked WAV or MP3.
+            Open a WAV, MP3 or FLAC, process it with KYX’s offline master chain, then inspect and export a checked WAV
+            or MP3. This local session is separate from the KYX project above; its edits never change the project.
           </p>
         </div>
         <label className="btn btn-small mastering-file-session-import">
-          Import WAV / MP3
+          Import WAV / MP3 / FLAC
           <input
             type="file"
-            aria-label="Import WAV or MP3 mixdown"
-            accept=".wav,.wave,.mp3,audio/wav,audio/mpeg"
+            aria-label="Import WAV, MP3 or FLAC mixdown"
+            accept=".wav,.wave,.mp3,.flac,audio/wav,audio/mpeg,audio/flac"
             disabled={Boolean(busy)}
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];
@@ -1541,15 +1564,17 @@ export function MasteringFileSessionPanel() {
                 or change processing. CEILING controls the limiter, while TRUE PEAK TARGET is checked during delivery
                 QA.
                 {deliveryTargetSource && (
-                  <>
+                  <span className="mastering-profile-source" data-review-due={deliveryTargetSourceReviewDue}>
                     {" "}
                     <a href={deliveryTargetSource.url} target="_blank" rel="noopener noreferrer">
                       {deliveryTargetSource.label}
                     </a>{" "}
                     · checked {deliveryTargetSource.checkedAt}.
-                  </>
+                    {deliveryTargetSourceReviewDue && " Source review is due before relying on this target."}
+                  </span>
                 )}
               </small>
+              <MasterProfileFileGuidance profile={deliveryTarget} />
             </aside>
           )}
 
@@ -1707,14 +1732,14 @@ export function MasteringFileSessionPanel() {
             <header>
               <div>
                 <strong>REFERENCE COMPARISON</strong>
-                <p>Import a read-only WAV/MP3 and compare it with the current rendered master.</p>
+                <p>Import a read-only WAV, MP3 or FLAC and compare it with the current rendered master.</p>
               </div>
               <label className="mastering-session-reference-import">
-                <span>{reference ? "Replace reference" : "Import reference WAV / MP3"}</span>
+                <span>{reference ? "Replace reference" : "Import reference WAV / MP3 / FLAC"}</span>
                 <input
                   type="file"
-                  aria-label="Import external mastering reference WAV or MP3"
-                  accept=".wav,.wave,.mp3,audio/wav,audio/mpeg"
+                  aria-label="Import external mastering reference WAV, MP3 or FLAC"
+                  accept=".wav,.wave,.mp3,.flac,audio/wav,audio/mpeg,audio/flac"
                   disabled={Boolean(busy)}
                   onChange={(event) => {
                     const file = event.currentTarget.files?.[0];
@@ -2112,11 +2137,14 @@ export function MasteringFileSessionPanel() {
           )}
           <MasteringLoudnessTimeline timeline={outputLoudnessTimeline} />
           {inspection && (
-            <small>
-              {inspection.decode.status === "measured"
-                ? `Decoded ${inspection.format.toUpperCase()} · ${inspection.decode.measurements?.lufsIntegrated.toFixed(1)} LUFS · ${inspection.decode.measurements?.truePeakDb.toFixed(1)} dBTP`
-                : `Encoded file metadata checked · post-decode measurement unavailable: ${inspection.decode.reason ?? "not measured"}`}
-            </small>
+            <>
+              <small>
+                {inspection.decode.status === "measured"
+                  ? `Decoded ${inspection.format.toUpperCase()} · ${inspection.decode.measurements?.lufsIntegrated.toFixed(1)} LUFS · ${inspection.decode.measurements?.truePeakDb.toFixed(1)} dBTP`
+                  : `Encoded file metadata checked · post-decode measurement unavailable: ${inspection.decode.reason ?? "not measured"}`}
+              </small>
+              <MasteringFingerprint fingerprint={inspection.fingerprint} />
+            </>
           )}
           {deliveryVerdict && (
             <div className="mastering-file-session-verdict" data-state={deliveryVerdict.status}>

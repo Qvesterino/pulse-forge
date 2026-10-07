@@ -5,18 +5,20 @@ import { decodeAudioData } from "../services/audio-decode";
 import type { MasterAnalysisProgressListener } from "./analysis";
 import { analyzeMasterBufferAsync, analyzeMasterPcmStreamAsync } from "./analysisClient";
 import { analyzeMp3BlobAsync } from "./mp3AnalysisClient";
+import { fingerprintEncodedMasterAsync, type EncodedMasterFingerprint } from "./fingerprintClient";
 import type { MasterProfile } from "./profiles";
 import { decodeBwfLoudnessValue, encodeBwfLoudnessValue, type WavBextLoudnessField } from "../rendering/wav";
 import { parseMp3FrameHeader, type Mp3FrameHeader } from "./mp3Frames";
 
 export type EncodedMasterFormat = "wav" | "mp3";
+export type MasteringReferenceFormat = EncodedMasterFormat | "flac";
 
 export interface EncodedMasterFileDetails {
   sampleRate: number;
   channels: number;
   durationSeconds: number;
   durationAccuracy: "exact" | "estimated";
-  bitDepth?: 16 | 24 | 32;
+  bitDepth?: number;
   averageBitrateKbps?: number;
   bext?: {
     version: number;
@@ -35,6 +37,7 @@ export interface EncodedMasterInspection {
   format: EncodedMasterFormat;
   byteLength: number;
   file: EncodedMasterFileDetails;
+  fingerprint: EncodedMasterFingerprint;
   decode: {
     status: "measured" | "not-measured";
     decoder: "Web Audio" | "KYX WAV PCM reader" | "WebCodecs MP3 worker" | "not invoked";
@@ -299,12 +302,91 @@ function parseMp3(bytes: ArrayBuffer): ParsedMp3 {
   };
 }
 
-/** Parse WAV/MP3 delivery metadata without decoding or modifying the source bytes. */
+/** Read the FLAC STREAMINFO block and first-frame marker without decoding or changing source bytes. */
+function parseFlac(bytes: ArrayBuffer): EncodedMasterFileDetails {
+  const view = new DataView(bytes);
+  if (bytes.byteLength < 42 || readFourCc(view, 0) !== "fLaC") {
+    throw new Error("The FLAC file is missing its marker or STREAMINFO block.");
+  }
+
+  let offset = 4;
+  let streamInfo: { sampleRate: number; channels: number; bitDepth: number; totalSamples: number } | undefined;
+  let isLastBlock = false;
+  while (!isLastBlock) {
+    if (offset + 4 > bytes.byteLength) throw new Error("The FLAC metadata header is incomplete.");
+    const header = view.getUint8(offset);
+    const blockType = header & 0x7f;
+    isLastBlock = (header & 0x80) !== 0;
+    const blockLength =
+      (view.getUint8(offset + 1) << 16) | (view.getUint8(offset + 2) << 8) | view.getUint8(offset + 3);
+    const blockStart = offset + 4;
+    const blockEnd = blockStart + blockLength;
+    if (blockEnd > bytes.byteLength) throw new Error("The FLAC metadata block extends beyond the file.");
+
+    if (offset === 4 && (blockType !== 0 || blockLength !== 34)) {
+      throw new Error("The FLAC file must begin with a 34-byte STREAMINFO block.");
+    }
+    if (blockType === 0) {
+      if (blockLength !== 34 || streamInfo) throw new Error("The FLAC STREAMINFO block is invalid or duplicated.");
+      const packedOffset = blockStart + 10;
+      const packed = [
+        view.getUint8(packedOffset),
+        view.getUint8(packedOffset + 1),
+        view.getUint8(packedOffset + 2),
+        view.getUint8(packedOffset + 3),
+        view.getUint8(packedOffset + 4),
+        view.getUint8(packedOffset + 5),
+        view.getUint8(packedOffset + 6),
+        view.getUint8(packedOffset + 7),
+      ];
+      const sampleRate = (packed[0] << 12) | (packed[1] << 4) | (packed[2] >>> 4);
+      const channels = ((packed[2] >>> 1) & 0x07) + 1;
+      const bitDepth = (((packed[2] & 0x01) << 4) | (packed[3] >>> 4)) + 1;
+      const totalSamples =
+        (packed[3] & 0x0f) * 0x1_0000_0000 +
+        packed[4] * 0x1_000_000 +
+        packed[5] * 0x1_0000 +
+        packed[6] * 0x100 +
+        packed[7];
+      if (sampleRate < 1 || channels < 1 || channels > 8 || bitDepth < 4 || bitDepth > 32 || totalSamples <= 0) {
+        throw new Error("The FLAC STREAMINFO audio fields are invalid or do not include a known duration.");
+      }
+      streamInfo = { sampleRate, channels, bitDepth, totalSamples };
+    }
+    offset = blockEnd;
+  }
+
+  if (!streamInfo) throw new Error("The FLAC file does not contain a STREAMINFO block.");
+  if (offset + 6 > bytes.byteLength || view.getUint8(offset) !== 0xff || (view.getUint8(offset + 1) & 0xfc) !== 0xf8) {
+    throw new Error("The FLAC metadata is not followed by an audio frame.");
+  }
+
+  return {
+    sampleRate: streamInfo.sampleRate,
+    channels: streamInfo.channels,
+    durationSeconds: streamInfo.totalSamples / streamInfo.sampleRate,
+    durationAccuracy: "exact",
+    bitDepth: streamInfo.bitDepth,
+  };
+}
+
+/** Infer a supported read-only mastering input format from its filename. */
+export function masteringReferenceFormatFromFileName(fileName: string): MasteringReferenceFormat {
+  const extension = fileName.toLowerCase().split(".").pop();
+  if (extension === "wav" || extension === "wave") return "wav";
+  if (extension === "mp3") return "mp3";
+  if (extension === "flac") return "flac";
+  throw new Error("Mastering reference input supports WAV, MP3 and FLAC files.");
+}
+
+/** Parse WAV/MP3/FLAC source metadata without decoding or modifying the source bytes. */
 export function inspectMasteringReferenceContainer(
-  format: EncodedMasterFormat,
+  format: MasteringReferenceFormat,
   bytes: ArrayBuffer,
 ): EncodedMasterFileDetails {
-  return format === "wav" ? publicWavDetails(parseWav(bytes)) : parseMp3(bytes);
+  if (format === "wav") return publicWavDetails(parseWav(bytes));
+  if (format === "mp3") return parseMp3(bytes);
+  return parseFlac(bytes);
 }
 
 async function mp3MetadataWindow(blob: Blob, signal?: AbortSignal): Promise<ArrayBuffer> {
@@ -334,15 +416,18 @@ function notMeasured(
   file: EncodedMasterFileDetails,
   reason: string,
   warnings: string[],
+  fingerprint: EncodedMasterFingerprint,
   decoder: EncodedMasterInspection["decode"]["decoder"] = "not invoked",
 ): EncodedMasterInspection {
-  return { format, byteLength, file, decode: { status: "not-measured", decoder, reason, warnings } };
+  return { format, byteLength, file, fingerprint, decode: { status: "not-measured", decoder, reason, warnings } };
 }
 
 /** Verify the finished WAV/MP3 container, then measure the browser-decoded deliverable. */
 export async function inspectEncodedMaster(input: {
   format: EncodedMasterFormat;
   bytes: ArrayBuffer | Blob;
+  /** Exact download Blob for bounded output hashing when `bytes` is an ArrayBuffer. */
+  fingerprintBlob?: Blob;
   expectedDurationSeconds: number;
   sourceMeasurements: BufferSummary;
   profile: MasterProfile;
@@ -374,6 +459,25 @@ export async function inspectEncodedMaster(input: {
     decoderBytes = blobInput ? await awaitWithAbort(blobInput.arrayBuffer(), signal) : (bytes as ArrayBuffer);
     file = parseMp3(decoderBytes);
   }
+  const fingerprintBlob = input.fingerprintBlob ?? null;
+  const fingerprint =
+    fingerprintBlob && fingerprintBlob.size === byteLength
+      ? await fingerprintEncodedMasterAsync(fingerprintBlob, {
+          signal,
+          onProgress: ({ progress }) =>
+            onProgress?.({ progress: progress * 0.15, stage: "Fingerprinting encoded file" }),
+        })
+      : {
+          algorithm: "SHA-256" as const,
+          status: "not-computed" as const,
+          hex: null,
+          reason: fingerprintBlob
+            ? "The fingerprint Blob size does not match the inspected delivery bytes."
+            : "The exact delivery Blob was not provided for bounded fingerprinting.",
+        };
+  const analysisProgress: MasterAnalysisProgressListener | undefined = onProgress
+    ? ({ progress, stage }) => onProgress({ progress: 0.15 + progress * 0.85, stage })
+    : undefined;
   const warnings: string[] = [];
   const durationTolerance = Math.max(0.25, (2 * 1152) / file.sampleRate);
   if (
@@ -412,7 +516,7 @@ export async function inspectEncodedMaster(input: {
 
   if (format === "wav" && byteLength > MAX_WAV_DECODE_BYTES && parsedWav) {
     try {
-      onProgress?.({ progress: 0, stage: "Reading encoded WAV PCM in bounded chunks" });
+      onProgress?.({ progress: 0.15, stage: "Reading encoded WAV PCM in bounded chunks" });
       const analysis = await analyzeMasterPcmStreamAsync(
         {
           sampleRate: parsedWav.sampleRate,
@@ -421,7 +525,7 @@ export async function inspectEncodedMaster(input: {
           readChunk: (offset, length) => decodeWavPcmRange(decoderBytes, parsedWav!, offset, length),
         },
         profile,
-        { onProgress, signal },
+        { onProgress: analysisProgress, signal },
       );
       const finiteMeasurements = Object.values(analysis.measurements).every(
         (value) => value === null || Number.isFinite(value),
@@ -435,6 +539,7 @@ export async function inspectEncodedMaster(input: {
         format,
         byteLength,
         file,
+        fingerprint,
         decode: {
           status: "measured",
           decoder: "KYX WAV PCM reader",
@@ -456,6 +561,7 @@ export async function inspectEncodedMaster(input: {
         file,
         `The encoded WAV PCM reader could not measure this file: ${error instanceof Error ? error.message : String(error)}`,
         warnings,
+        fingerprint,
         "KYX WAV PCM reader",
       );
     }
@@ -467,7 +573,7 @@ export async function inspectEncodedMaster(input: {
         blobInput,
         { sampleRate: file.sampleRate, channels: file.channels },
         profile,
-        { onProgress, signal },
+        { onProgress: analysisProgress, signal },
       );
       if (result.status === "unsupported") {
         return notMeasured(
@@ -476,6 +582,7 @@ export async function inspectEncodedMaster(input: {
           file,
           `${result.reason} The MP3 header was checked, but post-encode audio measurements were skipped.`,
           warnings,
+          fingerprint,
           "WebCodecs MP3 worker",
         );
       }
@@ -494,6 +601,7 @@ export async function inspectEncodedMaster(input: {
         format,
         byteLength,
         file,
+        fingerprint,
         decode: {
           status: "measured",
           decoder: "WebCodecs MP3 worker",
@@ -515,6 +623,7 @@ export async function inspectEncodedMaster(input: {
         file,
         `The WebCodecs MP3 worker could not measure this file: ${error instanceof Error ? error.message : String(error)}`,
         warnings,
+        fingerprint,
         "WebCodecs MP3 worker",
       );
     }
@@ -529,6 +638,7 @@ export async function inspectEncodedMaster(input: {
       file,
       `File exceeds the ${limitMb} MiB in-memory decode limit; the encoded header was checked, but post-encode audio measurements were skipped.`,
       warnings,
+      fingerprint,
     );
   }
 
@@ -543,13 +653,14 @@ export async function inspectEncodedMaster(input: {
       file,
       `The browser decoder could not measure this file: ${error instanceof Error ? error.message : String(error)}`,
       warnings,
+      fingerprint,
       "Web Audio",
     );
   }
   if (signal?.aborted) throw new DOMException("Master inspection cancelled", "AbortError");
 
   try {
-    const analysis = await analyzeMasterBufferAsync(decoded, profile, { onProgress, signal });
+    const analysis = await analyzeMasterBufferAsync(decoded, profile, { onProgress: analysisProgress, signal });
     const finiteMeasurements = Object.values(analysis.measurements).every(
       (value) => value === null || Number.isFinite(value),
     );
@@ -568,6 +679,7 @@ export async function inspectEncodedMaster(input: {
       format,
       byteLength,
       file,
+      fingerprint,
       decode: {
         status: "measured",
         decoder: "Web Audio",
@@ -589,6 +701,7 @@ export async function inspectEncodedMaster(input: {
       file,
       `The browser decoder could not measure this file: ${error instanceof Error ? error.message : String(error)}`,
       warnings,
+      fingerprint,
       "Web Audio",
     );
   }

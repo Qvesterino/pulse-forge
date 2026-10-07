@@ -20,7 +20,9 @@ import type { ParamDef } from "../effects/types";
 import { tsarParams } from "../tsar/params";
 
 /** Defaults from the schema — the base every archetype starts from. */
-const DEFAULTS: Record<string, number> = Object.fromEntries(tsarParams.map((param: ParamDef) => [param.id, param.default]));
+const DEFAULTS: Record<string, number> = Object.fromEntries(
+  tsarParams.map((param: ParamDef) => [param.id, param.default]),
+);
 
 interface Archetype {
   key: string;
@@ -152,21 +154,25 @@ const ARCHETYPES: Archetype[] = [
     tags: ["pad", "sustained", "wide"],
     params: {
       srcAEngine: 1,
-      srcALevel: 0.7,
+      srcALevel: 0.45,
       srcAMorph: 0.4,
       srcAUnison: 4,
       srcASpread: 24,
-      srcAAtk: 0.8,
+      // A 0.8 s attack inside the 0.78 s loudness probe measured near-silent
+      // (clamped at +18); a 0.25 s attack at full level measured near
+      // full-scale (clamped at -18). 0.3 s + a moderate level sits between
+      // the clamps while staying pad-like.
+      srcAAtk: 0.3,
       srcADec: 1.6,
       srcASus: 0.85,
       srcARel: 1.8,
       srcAScan: 0.06,
       srcACutoff: 3200,
       srcAQ: 0.6,
-      sub: 0.15,
+      sub: 0.1,
       tone: -0.1,
       width: 0.75,
-      level: 0.68,
+      level: 0.5,
     },
   },
   {
@@ -198,19 +204,21 @@ const ARCHETYPES: Archetype[] = [
     tags: ["texture", "granular", "ambient"],
     params: {
       srcAEngine: 2,
-      srcALevel: 0.6,
+      srcALevel: 0.5,
       srcAScan: 0.35,
       srcAUnison: 2,
       srcASpread: 30,
-      srcAAtk: 1.4,
+      // Same loudness-probe lesson as the pad — 0.35 s attack at a moderate
+      // level stays inside both clamps.
+      srcAAtk: 0.35,
       srcADec: 2.5,
       srcASus: 0.9,
       srcARel: 2.8,
       srcACutoff: 2400,
       srcAQ: 0.5,
-      noise: 0.12,
+      noise: 0.1,
       width: 0.8,
-      level: 0.62,
+      level: 0.5,
     },
   },
   {

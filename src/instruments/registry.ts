@@ -6,7 +6,7 @@ import { buildWavetableMips, extractWavetable, FACTORY_WAVETABLES, FRAME_SIZE, p
 import { scheduleDahdsr } from "./envelope";
 import { createWtVoiceRuntime } from "./wtvoiceNode";
 import { createGrainVoiceRuntime, grainProcessorOptions } from "./granularNode";
-import { createTsarRuntime } from "./tsarNode";
+import { createTsarRuntime, createTsarFallbackRuntime } from "./tsarNode";
 import { tsarParams } from "../tsar/params";
 import { scheduleVoiceModMatrix, updateVoiceModMatrix } from "./modmatrix";
 import { shapeOscillator } from "./bandlimited";
@@ -2094,7 +2094,8 @@ const texture: InstrumentDefinition = {
 const wavetable: InstrumentDefinition = {
   kind: "wavetable",
   name: "Wavetable Synth",
-  params: wavetableParams,  factory(ctx, track, env) {
+  params: wavetableParams,
+  factory(ctx, track, env) {
     // Phase-2 voice-engine pilot: when the wtvoice worklet module is loaded,
     // the whole voice runs per-sample inside the worklet (with a per-voice
     // modulation matrix). Otherwise the historical main-thread graph below
@@ -6492,38 +6493,27 @@ const tsar: InstrumentDefinition = {
   params: tsarParams,
   factory(ctx, track, env) {
     const offline = offlineRenderContext(ctx);
-    if (!isWorkletReady("tsar", ctx)) {
-      // No module: silent output with a working parameter surface, so a
-      // project loaded before the worklet lands is not corrupted.
-      const silent = ctx.createGain();
-      silent.gain.value = 0;
-      const params = { ...track.params };
-      return {
-        output: silent,
-        noteOn() {},
-        noteOff() {},
-        setParameter(name, value) {
-          params[name] = value;
-        },
-        panic() {},
-        dispose() {
-          silent.disconnect();
-        },
-      };
+    // When the worklet module is on the context, TSAR takes the SAME worklet
+    // path offline as live (the runtime seeds the event queue through
+    // processorOptions - no divergence). Without the module (jsdom graph
+    // audit, pre-worklet browser, failed fetch) a real native subtractive
+    // voice keeps the track audible instead of a dead graph.
+    if (isWorkletReady("tsar", ctx)) {
+      return createTsarRuntime({
+        createGain: () => ctx.createGain(),
+        createNode: (processorOptions) =>
+          new AudioWorkletNode(ctx, "tsar-processor", {
+            numberOfInputs: 0,
+            numberOfOutputs: 1,
+            outputChannelCount: [2],
+            processorOptions,
+          }),
+        offline,
+        track,
+        getSample: (id) => env.getSample(id),
+      });
     }
-    return createTsarRuntime({
-      createGain: () => ctx.createGain(),
-      createNode: (processorOptions) =>
-        new AudioWorkletNode(ctx, "tsar-processor", {
-          numberOfInputs: 0,
-          numberOfOutputs: 1,
-          outputChannelCount: [2],
-          processorOptions,
-        }),
-      offline,
-      track,
-      getSample: (id) => env.getSample(id),
-    });
+    return createTsarFallbackRuntime(ctx, track);
   },
 };
 

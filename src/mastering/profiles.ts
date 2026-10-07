@@ -19,12 +19,15 @@ export interface MasterProfile {
   note: string;
   recommendedFormat: string;
   intendedUse: string;
+  /** Verified file-delivery limitations or requirements; never used to auto-change export settings. */
+  fileGuidanceNote?: string;
 }
 
 export interface MasterProfileSource {
   label: string;
   url: string;
   checkedAt: string;
+  reviewIntervalDays: number;
 }
 
 /** Current primary references behind platform-specific profile guidance. */
@@ -33,8 +36,76 @@ export const MASTER_PROFILE_SOURCES: Partial<Record<MasterProfileId, MasterProfi
     label: "Spotify for Artists · Loudness normalization",
     url: "https://support.spotify.com/us/artists/article/loudness-normalization/",
     checkedAt: "2026-10-07",
+    reviewIntervalDays: 180,
   },
 };
+
+/** Primary file-delivery references, kept separate from loudness-target references. */
+export const MASTER_PROFILE_FILE_SOURCES: Partial<Record<MasterProfileId, MasterProfileSource>> = {
+  streaming: {
+    label: "Spotify for Artists · Audio file formats",
+    url: "https://support.spotify.com/us/artists/article/audio-file-formats/",
+    checkedAt: "2026-10-07",
+    reviewIntervalDays: 180,
+  },
+};
+
+/** Sources older than their review interval must not be presented as current guidance. */
+export function isMasterProfileSourceReviewDue(source: MasterProfileSource, now = Date.now()): boolean {
+  const checkedAt = Date.parse(`${source.checkedAt}T00:00:00.000Z`);
+  const reviewIntervalMs = source.reviewIntervalDays * 24 * 60 * 60 * 1000;
+  return (
+    !Number.isFinite(checkedAt) ||
+    !Number.isFinite(reviewIntervalMs) ||
+    reviewIntervalMs <= 0 ||
+    checkedAt > now ||
+    now - checkedAt >= reviewIntervalMs
+  );
+}
+
+export interface MasterProfileProvenance {
+  basis: "primary-source" | "workflow-baseline" | "user-defined";
+  review: "current" | "due" | "not-applicable";
+  source: MasterProfileSource | null;
+  fileSettingsReview: "current" | "due" | "not-applicable";
+  fileSettingsSource: MasterProfileSource | null;
+}
+
+/** Stable, report-friendly account of where a profile's guidance comes from. */
+export function masterProfileProvenance(profileId: MasterProfileId, asOf = Date.now()): MasterProfileProvenance {
+  const fileSettingsSource = MASTER_PROFILE_FILE_SOURCES[profileId] ?? null;
+  const fileSettingsReview = fileSettingsSource
+    ? isMasterProfileSourceReviewDue(fileSettingsSource, asOf)
+      ? "due"
+      : "current"
+    : "not-applicable";
+  if (profileId === "custom") {
+    return {
+      basis: "user-defined",
+      review: "not-applicable",
+      source: null,
+      fileSettingsReview,
+      fileSettingsSource: fileSettingsSource ? { ...fileSettingsSource } : null,
+    };
+  }
+  const source = MASTER_PROFILE_SOURCES[profileId];
+  if (!source) {
+    return {
+      basis: "workflow-baseline",
+      review: "not-applicable",
+      source: null,
+      fileSettingsReview,
+      fileSettingsSource: fileSettingsSource ? { ...fileSettingsSource } : null,
+    };
+  }
+  return {
+    basis: "primary-source",
+    review: isMasterProfileSourceReviewDue(source, asOf) ? "due" : "current",
+    source: { ...source },
+    fileSettingsReview,
+    fileSettingsSource: fileSettingsSource ? { ...fileSettingsSource } : null,
+  };
+}
 
 export const MASTER_PROFILES: readonly MasterProfile[] = [
   {
@@ -46,9 +117,11 @@ export const MASTER_PROFILES: readonly MasterProfile[] = [
     maxTruePeakDb: -1,
     truePeakGraceDb: 0.3,
     note: "−14 LUFS / −1 dBTP start; Spotify advises < −2 dBTP above −14 LUFS.",
-    recommendedFormat: "24-bit PCM WAV",
+    recommendedFormat: "24-bit PCM WAV · FLAC preferred by Spotify",
     intendedUse:
       "General starting point, not a universal platform specification. Spotify's conditional peak guidance is shown as an advisory.",
+    fileGuidanceNote:
+      "Spotify strongly prefers FLAC; WAV is also accepted. Its guidance requires at least 44.1 kHz and advises preserving native rate and bit depth. Project renders offer 44.1/48 kHz without a project-native rate; external sessions decode at 44.1 kHz. KYX has no FLAC export, so this workflow cannot promise native-rate delivery. RATE stays manual.",
   },
   {
     id: "apple",

@@ -3,7 +3,7 @@ import type { MixHealthReport } from "../analysis/mixDoctor";
 import type { ProjectDocument } from "../project-model/types";
 import packageMetadata from "../../package.json";
 import type { EncodedMasterInspection } from "./encodedInspection";
-import type { MasterProfile } from "./profiles";
+import { masterProfileProvenance, type MasterProfile } from "./profiles";
 import type { MasterVerdict } from "../audio-engine/metering";
 import type { LoudnessTimeline } from "../audio-engine/kweighting";
 
@@ -67,7 +67,15 @@ export interface MasterRenderReportV8 extends Omit<MasterRenderReportV7, "versio
   version: 8;
 }
 
-export type MasterRenderReport = MasterRenderReportV8;
+export interface MasterRenderReportV9 extends Omit<MasterRenderReportV8, "version"> {
+  version: 9;
+}
+
+export interface MasterRenderReportV10 extends Omit<MasterRenderReportV9, "version"> {
+  version: 10;
+}
+
+export type MasterRenderReport = MasterRenderReportV10;
 
 let nextRunId = 1;
 let nextRevisionId = 1;
@@ -83,10 +91,10 @@ export function projectRevisionIdFor(doc: ProjectDocument): string {
 }
 
 export function createMasterRenderReport(
-  input: Omit<MasterRenderReportV8, "version" | "runId" | "createdAt" | "encodedDelivery" | "measurementTap">,
-): MasterRenderReportV8 {
+  input: Omit<MasterRenderReportV10, "version" | "runId" | "createdAt" | "encodedDelivery" | "measurementTap">,
+): MasterRenderReportV10 {
   return {
-    version: 8,
+    version: 10,
     runId: `master-render-${Date.now().toString(36)}-${nextRunId++}`,
     createdAt: new Date().toISOString(),
     encodedDelivery: null,
@@ -100,7 +108,7 @@ export function serializeMasterReportSidecar(report: MasterRenderReport, generat
   return JSON.stringify(
     {
       schema: "kyx.master-report",
-      schemaVersion: 7,
+      schemaVersion: 10,
       generatedAt: generatedAt.toISOString(),
       application: {
         product: packageMetadata.productName,
@@ -109,6 +117,7 @@ export function serializeMasterReportSidecar(report: MasterRenderReport, generat
       },
       projectRevisionScope: "local-app-session",
       sampleBankRevisionScope: "local-app-session",
+      profileProvenance: masterProfileProvenance(report.profile.id, generatedAt.getTime()),
       report,
     },
     null,

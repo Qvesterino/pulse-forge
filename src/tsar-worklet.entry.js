@@ -38,6 +38,7 @@ class TsarWorkletProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.port.onmessage = (event) => this.handle(event.data);
+    if (processorOptions && processorOptions.bpm) this.proc.setBpm(processorOptions.bpm);
     if (processorOptions && processorOptions.params) {
       this.proc.applyParams(processorOptions.params);
       this.initialized = true;
@@ -65,6 +66,9 @@ class TsarWorkletProcessor extends AudioWorkletProcessor {
         break;
       case "param":
         this.proc.setParam(message.name, message.value);
+        break;
+      case "bpm":
+        this.proc.setBpm(message.bpm);
         break;
       case "noteOn":
       case "noteOff":

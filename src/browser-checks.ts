@@ -8,7 +8,7 @@ import { generateFactoryBank, RR_VARIATIONS, type SampleBank } from "./sample-li
 import { CURATED_SAMPLES, loadCuratedLayer } from "./sample-library/curated";
 import { normalizeIntent } from "./intent/normalize";
 import { planGeneration } from "./intent/plan";
-import { loadCoreWorklets } from "./audio-worklets/loader";
+import { loadCoreWorklets, loadInstrumentWorklet } from "./audio-worklets/loader";
 import { renderProject } from "./rendering/renderer";
 import { buildStemProject, STEM_GROUPS } from "./rendering/stems";
 import { encodeWav } from "./rendering/wav";
@@ -1050,6 +1050,53 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
   } catch (error) {
     check(
       "offline export parity: wavetable + granular render audible with worklets loaded (native offline routing)",
+      false,
+      String(error),
+    );
+  }
+
+  // TSAR (ADR 0023) — the flagship hybrid engine takes the SAME worklet path
+  // offline: the runtime buffers every scheduled event and
+  // `prepareOfflineRender()` seeds it through processorOptions, because
+  // Chromium does not pump worklet message queues during an
+  // OfflineAudioContext render. A silent or missing note here means the
+  // event-queue contract broke.
+  try {
+    const ctx = new OfflineAudioContext(2, SR, SR);
+    await loadCoreWorklets(ctx);
+    // TSAR is a LAZY instrument worklet (not in the core bundle).
+    await loadInstrumentWorklet(ctx, "tsar");
+    const track: InstrumentTrack = {
+      id: "check-tsar",
+      kind: "instrument",
+      instrument: "tsar",
+      name: "tsar",
+      gain: 1,
+      pan: 0,
+      mute: false,
+      solo: false,
+      sampleId: null,
+      params: { ...defaultInstrumentParams("tsar"), srcALevel: 0.9, srcACutoff: 12000, level: 0.9 },
+      effects: [],
+      sends: {},
+    };
+    const rt = INSTRUMENT_DEFS.tsar.factory(ctx, track, { bpm: 124, getSample: (id) => bank.get(id) });
+    rt.output.connect(ctx.destination);
+    rt.noteOn(60, 0.9, 0.05, 0.6);
+    // The renderer's barrier: build the seeded worklet before startRendering.
+    const prepared = rt as { prepareOfflineRender?: () => void };
+    prepared.prepareOfflineRender?.();
+    const buffer = await ctx.startRendering();
+    rt.dispose();
+    const tsarPeak = peakOf(buffer.getChannelData(0));
+    check(
+      "TSAR: offline export is audible through the event-queue worklet (lazy load + processorOptions seed)",
+      tsarPeak > 0.005,
+      `peak=${tsarPeak.toFixed(4)}`,
+    );
+  } catch (error) {
+    check(
+      "TSAR: offline export is audible through the event-queue worklet (lazy load + processorOptions seed)",
       false,
       String(error),
     );

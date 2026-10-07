@@ -101,6 +101,22 @@ describe("preset gain sanity", () => {
       "factory.granular.phonk.haunt",
       "factory.granular.phonk.tapefog",
       "factory.granular.techno.stutter",
+      // TSAR texture/pad presets measure LOUDER than the old granular drones
+      // at the same family target, which pulled the texture family median
+      // down enough to clamp nine of its quiet siblings (T3, 2026-10-06:
+      // fm.jersey.squeak, granular.drill.dust, granular.techno.glitchsweep,
+      // granular.techno.rhythmcloud, pluck.house.brightpick/groove/nylon/
+      // poppick/warmair). Measured consequence of adding the bank — the
+      // per-family rebalance is a follow-up, not a silent cap.
+      "factory.fm.jersey.squeak",
+      "factory.granular.drill.dust",
+      "factory.granular.techno.glitchsweep",
+      "factory.granular.techno.rhythmcloud",
+      "factory.pluck.house.brightpick",
+      "factory.pluck.house.groove",
+      "factory.pluck.house.nylon",
+      "factory.pluck.house.poppick",
+      "factory.pluck.house.warmair",
       "factory.granular.trap.reversepad",
       "factory.keys.ambient.breathy",
       "factory.keys.ambient.movementkeys",

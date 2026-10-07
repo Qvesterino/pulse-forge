@@ -39,6 +39,7 @@ const DiceTray = lazy(() => import("./DiceTray").then((m) => ({ default: m.DiceT
 const IntentPanel = lazy(() => import("./IntentPanel").then((m) => ({ default: m.IntentPanel })));
 const ReferenceMapPanel = lazy(() => import("./ReferenceMapPanel").then((m) => ({ default: m.ReferenceMapPanel })));
 const MasteringPanel = lazy(() => import("./MasteringPanel").then((m) => ({ default: m.MasteringPanel })));
+const TsarPanel = lazy(() => import("./TsarPanel").then((m) => ({ default: m.TsarPanel })));
 import { InstallPrompt } from "./InstallPrompt";
 import { ErrorBoundary } from "./ErrorBoundary";
 import {
@@ -672,7 +673,8 @@ export function App({
       case "panelDice":
       case "panelIntent":
       case "panelMidi":
-      case "panelMaster": {
+      case "panelMaster":
+      case "panelTsar": {
         event?.preventDefault();
         const panel = panelIdOfShortcut(matched);
         if (panel) setBottomPanelTab(panel as BottomPanel);
@@ -1486,6 +1488,11 @@ export function App({
     reference: (
       <ErrorBoundary panel="reference">
         <ReferenceMapPanel />
+      </ErrorBoundary>
+    ),
+    tsar: (
+      <ErrorBoundary panel="tsar">
+        <TsarPanel />
       </ErrorBoundary>
     ),
   };

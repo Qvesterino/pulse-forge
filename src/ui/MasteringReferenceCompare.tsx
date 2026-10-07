@@ -2,7 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { BufferSummary } from "../audio-engine/metering";
 import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
 import { awaitMasteringSampleBankReady } from "../mastering/readiness";
-import { inspectMasteringReferenceContainer, type EncodedMasterFileDetails } from "../mastering/encodedInspection";
+import {
+  inspectMasteringReferenceContainer,
+  masteringReferenceFormatFromFileName,
+  type EncodedMasterFileDetails,
+} from "../mastering/encodedInspection";
 import { CUSTOM_PROFILE, resolveDeliveryTarget } from "../mastering/profiles";
 import { MasteringReferenceRepository, type MasteringReferenceRecord } from "../mastering/referenceRepository";
 import { projectRevisionIdFor } from "../mastering/report";
@@ -30,14 +34,7 @@ const MAX_REFERENCE_BUFFER_BYTES = 128 * 1024 * 1024;
 const MAX_COMPARE_PCM_BYTES = 320 * 1024 * 1024;
 const DECODE_SAMPLE_RATE = 44100;
 const MAX_REFERENCE_SECONDS = 12 * 60;
-const AUDIO_FILE_EXTENSION = /\.(wav|wave|mp3)$/i;
-
-function referenceFormat(fileName: string): "wav" | "mp3" {
-  const extension = fileName.toLowerCase().split(".").pop();
-  if (extension === "wav" || extension === "wave") return "wav";
-  if (extension === "mp3") return "mp3";
-  throw new Error("Master reference import supports WAV and MP3. Use a stereo or mono file.");
-}
+const AUDIO_FILE_EXTENSION = /\.(wav|wave|mp3|flac)$/i;
 
 function assertReferenceMetadata(details: EncodedMasterFileDetails): void {
   if (details.channels !== 1 && details.channels !== 2) {
@@ -73,13 +70,19 @@ async function decodeReferenceBytes(
   ) {
     throw new Error("The reference file is empty or exceeds the 96 MiB import limit.");
   }
-  const format = referenceFormat(record.fileName);
+  const format = masteringReferenceFormatFromFileName(record.fileName);
   const details = inspectMasteringReferenceContainer(format, bytes);
   assertReferenceMetadata(details);
   let buffer: AudioBuffer;
   try {
     buffer = await decodeAudioData(bytes.slice(0), DECODE_SAMPLE_RATE);
-  } catch {
+  } catch (reason) {
+    if (signal?.aborted || (reason instanceof DOMException && reason.name === "AbortError")) throw reason;
+    if (format === "flac") {
+      throw new Error(
+        "This browser could not decode the FLAC reference. Convert it to WAV or try a browser with FLAC decoding.",
+      );
+    }
     throw new Error("The browser could not decode this reference. Check the file or try another WAV/MP3 export.");
   }
   if (buffer.length <= 0 || (buffer.numberOfChannels !== 1 && buffer.numberOfChannels !== 2)) {
@@ -289,7 +292,7 @@ export function MasteringReferenceCompare({
     setError("");
     setStorageMessage("");
     if (!AUDIO_FILE_EXTENSION.test(file.name)) {
-      setError("Choose a WAV or MP3 reference audio file.");
+      setError("Choose a WAV, MP3 or FLAC reference audio file.");
       return;
     }
     if (file.size === 0 || file.size > MAX_REFERENCE_FILE_BYTES) {
@@ -305,8 +308,8 @@ export function MasteringReferenceCompare({
     try {
       const bytes = await file.arrayBuffer();
       if (!aliveRef.current || decodeJobRef.current !== job) return;
-      const format = referenceFormat(file.name);
-      const mimeType = format === "wav" ? "audio/wav" : "audio/mpeg";
+      const format = masteringReferenceFormatFromFileName(file.name);
+      const mimeType = format === "wav" ? "audio/wav" : format === "mp3" ? "audio/mpeg" : "audio/flac";
       const record: MasteringReferenceRecord = {
         projectId,
         fileName: file.name,
@@ -497,13 +500,15 @@ export function MasteringReferenceCompare({
         <div>
           <span className="mastering-panel-kicker">REFERENCE</span>
           <h4>Compare with a reference track</h4>
-          <p>Import an original WAV or MP3, measure it, then switch between it and the current rendered master.</p>
+          <p>
+            Import an original WAV, MP3 or FLAC, measure it, then switch between it and the current rendered master.
+          </p>
         </div>
         <label className="master-reference-import">
-          <span>{loading ? "Loading…" : reference ? "Replace reference" : "Import WAV / MP3"}</span>
+          <span>{loading ? "Loading…" : reference ? "Replace reference" : "Import WAV / MP3 / FLAC"}</span>
           <input
             type="file"
-            accept=".wav,.wave,.mp3,audio/wav,audio/mpeg"
+            accept=".wav,.wave,.mp3,.flac,audio/wav,audio/mpeg,audio/flac"
             disabled={loading || rendering}
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];

@@ -323,6 +323,22 @@ for (const file of ["bitcrusher-worklet.js", "core-worklet.js"]) {
 }
 console.log(`[size-budget] core worklets: ${coreWorkletKb.toFixed(0)} KB (budget ${CORE_WORKLET_BUDGET_KB})`);
 
+// TSAR flagship instrument worklet (ADR 0023): a LAZY instrument module
+// (loaded only for projects with a TSAR track), so it carries its own budget
+// instead of inflating the core boot bundle. Measured ~22 KB at T1; the
+// budget leaves room for the T6 arp + future voice additions.
+const TSAR_WORKLET_BUDGET_KB = 48;
+let tsarWorkletKb = 0;
+{
+  const path = join(dist, "tsar-worklet.js");
+  if (!statSync(path).isFile()) {
+    console.error("[size-budget] FAIL — missing TSAR worklet: dist/tsar-worklet.js");
+    process.exit(1);
+  }
+  tsarWorkletKb = statSync(path).size / 1024;
+}
+console.log(`[size-budget] TSAR worklet: ${tsarWorkletKb.toFixed(0)} KB (budget ${TSAR_WORKLET_BUDGET_KB})`);
+
 let failed = false;
 if (entryKb > ENTRY_BUDGET_KB) {
   console.error(`[size-budget] FAIL — entry chunk over budget: ${entryKb.toFixed(0)} > ${ENTRY_BUDGET_KB} KB.`);
@@ -403,6 +419,12 @@ if (/undici|connect-node/i.test(nexusRuntime)) {
 if (coreWorkletKb > CORE_WORKLET_BUDGET_KB) {
   console.error(
     `[size-budget] FAIL — core worklets over budget: ${coreWorkletKb.toFixed(0)} > ${CORE_WORKLET_BUDGET_KB} KB.`,
+  );
+  failed = true;
+}
+if (tsarWorkletKb > TSAR_WORKLET_BUDGET_KB) {
+  console.error(
+    `[size-budget] FAIL — TSAR worklet over budget: ${tsarWorkletKb.toFixed(0)} > ${TSAR_WORKLET_BUDGET_KB} KB.`,
   );
   failed = true;
 }

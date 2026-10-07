@@ -48,6 +48,8 @@ import {
 import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
 import { awaitMasteringSampleBankReady } from "../mastering/readiness";
 import { IntegerPcmDeliveryError } from "../export/quantize";
+import { MasteringFingerprint } from "./MasteringFingerprint";
+import { MasterProfileFileGuidance } from "./MasterProfileFileGuidance";
 
 type Status =
   | { kind: "idle" }
@@ -399,6 +401,7 @@ export function ExportPanel({
         const encodedDelivery = await inspectEncodedMaster({
           format: "mp3",
           bytes: blob,
+          fingerprintBlob: masteringMode ? blob : undefined,
           expectedDurationSeconds: renderedDurationSeconds,
           sourceMeasurements: summary,
           profile,
@@ -434,6 +437,7 @@ export function ExportPanel({
       const encodedDelivery = await inspectEncodedMaster({
         format: "wav",
         bytes: wavBytes,
+        fingerprintBlob: masteringMode ? wavBlob : undefined,
         expectedDurationSeconds: renderedDurationSeconds,
         sourceMeasurements: summary,
         profile,
@@ -1017,6 +1021,7 @@ export function ExportPanel({
               " · 16-bit uses deterministic TPDF dither; 24-bit uses integer quantization; 32-bit float is not dithered. Integer mastering delivery will not silently soft-clip over-range samples."
             }
           </span>
+          <MasterProfileFileGuidance profile={deliveryProfile} />
           {recommendedExport && (
             <button
               type="button"
@@ -1362,6 +1367,7 @@ function EncodedDeliveryCheck({
         {formatLabel} · {file.sampleRate.toLocaleString()} Hz · {channelsLabel} · {durationLabel} · {sizeMb} MiB
         {inspection.format === "wav" ? ` · ${bextLabel}` : ""}
       </p>
+      <MasteringFingerprint fingerprint={inspection.fingerprint} />
       {file.bext?.description && <p className="master-delivery-metadata">BWF description: {file.bext.description}</p>}
       {bextLoudness && (
         <p className="master-delivery-metadata">

@@ -61,9 +61,9 @@ describe("TSAR factory presets — schema audit", () => {
       params: { ...preset.params },
     }));
     const moduleAgain = await import("../../src/presets/tsar-factory");
-    expect(
-      moduleAgain.TSAR_FACTORY_PRESETS.map((preset) => ({ id: preset.id, params: { ...preset.params } })),
-    ).toEqual(snapshot);
+    expect(moduleAgain.TSAR_FACTORY_PRESETS.map((preset) => ({ id: preset.id, params: { ...preset.params } }))).toEqual(
+      snapshot,
+    );
   });
 
   it("genre profiles actually move the sound (not 48 copies of one patch)", () => {

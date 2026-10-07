@@ -155,6 +155,27 @@ export const tsarParams: ParamDef[] = [
   { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0, format: pct },
   { id: "width", label: "WIDTH", min: 0, max: 1, default: 0.5, format: pct },
   { id: "level", label: "LEVEL", min: 0, max: 1.5, default: 0.8, format: pct },
+
+  // ── Arpeggiator (T6) ────────────────────────────────────────────────────
+  { id: "arpOn", label: "ARP", min: 0, max: 1, default: 0, kind: "toggle" },
+  {
+    id: "arpMode",
+    label: "A MODE",
+    min: 0,
+    max: 4,
+    default: 0,
+    options: [
+      { value: 0, label: "UP" },
+      { value: 1, label: "DOWN" },
+      { value: 2, label: "UPDN" },
+      { value: 3, label: "ORDER" },
+      { value: 4, label: "RANDOM" },
+    ],
+  },
+  { id: "arpRate", label: "A RATE", min: 1, max: 16, default: 8, step: 1, kind: "discrete" },
+  { id: "arpOctaves", label: "A OCT", min: 1, max: 4, default: 1, step: 1, kind: "discrete" },
+  { id: "arpGate", label: "A GATE", min: 0.05, max: 1, default: 0.5, format: pct },
+  { id: "arpSwing", label: "A SWING", min: 0, max: 0.75, default: 0, format: pct },
 ];
 
 /** Fast id → ParamDef lookup (built once; the schema is static). */

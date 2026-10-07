@@ -106,7 +106,12 @@ function median(values: number[]): number {
  * multiple of the period is an equally deep minimum, so the FIRST dip below
  * the threshold wins, then descends to that valley's floor.
  */
-function detectF0(data: Float32Array, sampleRate: number, fminHz: number, fmaxHz: number): { hz: number; clarity: number } {
+function detectF0(
+  data: Float32Array,
+  sampleRate: number,
+  fminHz: number,
+  fmaxHz: number,
+): { hz: number; clarity: number } {
   const win = Math.min(data.length, Math.round(0.05 * sampleRate));
   if (win < 64) return { hz: 0, clarity: 0 };
   const start = Math.max(0, Math.min(data.length - win - 1, Math.round(data.length * 0.4)));

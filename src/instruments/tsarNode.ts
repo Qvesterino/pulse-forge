@@ -48,6 +48,90 @@ export interface TsarRuntimeOptions {
   getSample(id: string | null): AudioBuffer | undefined;
 }
 
+export interface TsarFallbackOptions {
+  /** The graph factory's context (createGain/createBiquadFilter/createOscillator). */
+  ctx: BaseAudioContext;
+  track: InstrumentTrack;
+}
+
+/**
+ * NATIVE FALLBACK VOICE — used only when the TSAR worklet module is not
+ * available on the context (a pre-worklet browser; the jsdom graph audit;
+ * a failed module fetch). It is a real, audible subtractive voice so the
+ * instrument is never a dead graph: oscillator (morph opens a second detuned
+ * copy) -> biquad low-pass -> gain envelope. The worklet is the engine; this
+ * keeps the promise "a track never silently disappears" when the platform
+ * cannot run it. Live↔offline parity is unaffected in any context that HAS
+ * the worklet, because the fallback never runs there.
+ */
+export function createTsarFallbackRuntime(ctx: BaseAudioContext, track: InstrumentTrack): TsarRuntime {
+  const output = ctx.createGain();
+  let params: Record<string, number> = { ...track.params };
+  const voices = new Map<number, { osc: OscillatorNode[]; gain: GainNode; filter: BiquadFilterNode }>();
+
+  const stopVoice = (pitch: number, when: number) => {
+    const voice = voices.get(pitch);
+    if (!voice) return;
+    voices.delete(pitch);
+    const release = Math.max(0.01, params.srcARel ?? 0.4);
+    try {
+      voice.gain.gain.cancelScheduledValues(when);
+      voice.gain.gain.setTargetAtTime(0, when, release * 0.35);
+      for (const osc of voice.osc) osc.stop(when + release * 2 + 0.05);
+    } catch {
+      /* already stopped */
+    }
+  };
+
+  return {
+    output,
+    noteOn(pitch, velocity, when) {
+      const freq = 440 * Math.pow(2, (pitch - 69) / 12);
+      const gain = ctx.createGain();
+      const filter = ctx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.setValueAtTime(Math.min(18000, params.srcACutoff ?? 12000), when);
+      filter.Q.value = Math.max(0.0001, (params.srcAQ ?? 0.8) * 0.2);
+      const level = (params.srcALevel ?? 0.8) * (params.level ?? 0.8);
+      const attack = Math.max(0.001, params.srcAAtk ?? 0.005);
+      gain.gain.setValueAtTime(0.0001, when);
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, level * velocity), when + attack);
+      gain.connect(filter).connect(output);
+      const oscCount = (params.srcAUnison ?? 1) >= 2 ? 2 : 1;
+      const oscs: OscillatorNode[] = [];
+      for (let i = 0; i < oscCount; i++) {
+        const osc = ctx.createOscillator();
+        osc.type = (params.srcAMorph ?? 0) > 0.5 ? "sawtooth" : "square";
+        const detune = (params.srcAFine ?? 0) + (i === 1 ? (params.srcASpread ?? 0) : 0);
+        osc.frequency.setValueAtTime(freq, when);
+        osc.detune.setValueAtTime(detune, when);
+        osc.connect(gain);
+        osc.start(when);
+        oscs.push(osc);
+      }
+      voices.set(pitch, { osc: oscs, gain, filter });
+    },
+    noteOff(pitch, when) {
+      stopVoice(pitch, when);
+    },
+    setSample() {
+      // The fallback has no sample playback; the worklet owns that.
+    },
+    setVelocityLayers() {},
+    syncBpm() {},
+    setParameter(id, value) {
+      if (Number.isFinite(value)) params = { ...params, [id]: value };
+    },
+    panic() {
+      for (const pitch of [...voices.keys()]) stopVoice(pitch, ctx.currentTime);
+    },
+    dispose() {
+      this.panic();
+      output.disconnect();
+    },
+  };
+}
+
 interface SlotUpload {
   wavetable: { slot: 0 | 1; frames: Float32Array; frameCount: number };
   sample: { slot: 0 | 1; pcm: Float32Array; rootHz: number };
@@ -64,6 +148,7 @@ export function createTsarRuntime(options: TsarRuntimeOptions): TsarRuntime {
   const { offline, getSample } = options;
   const output = options.createGain();
   const pendingEvents: TsarEvent[] = [];
+  let pendingBpm: number | null = null;
   let currentTrack = { ...options.track };
   let node: AudioWorkletNode | null = null;
 
@@ -109,6 +194,7 @@ export function createTsarRuntime(options: TsarRuntimeOptions): TsarRuntime {
         params: paramsSnapshot(),
         wavetables: uploads.map((u) => u.wavetable),
         samples: uploads.map((u) => u.sample),
+        bpm: pendingBpm ?? undefined,
       }),
     );
   }
@@ -160,8 +246,13 @@ export function createTsarRuntime(options: TsarRuntimeOptions): TsarRuntime {
     setVelocityLayers() {
       // Keyzones / round-robin are sampler features, not TSAR.
     },
-    syncBpm() {
-      // The tempo-synced LFO lives in the worklet; nothing to rescale here.
+    syncBpm(bpm) {
+      // The arp clock derives its step length from the project tempo; relay
+      // it to the worklet (live and offline both — offline the tempo map is
+      // applied by the renderer before startRendering).
+      if (!Number.isFinite(bpm) || bpm <= 0) return;
+      if (node) node.port.postMessage({ type: "bpm", bpm });
+      else pendingBpm = bpm;
     },
     setParameter(name, value) {
       if (!Number.isFinite(value)) return;
@@ -202,6 +293,7 @@ export function createTsarRuntime(options: TsarRuntimeOptions): TsarRuntime {
           events: pendingEvents.slice(),
           wavetables: uploads.map((u) => u.wavetable),
           samples: uploads.map((u) => u.sample),
+          bpm: pendingBpm ?? undefined,
         }),
       );
     };
