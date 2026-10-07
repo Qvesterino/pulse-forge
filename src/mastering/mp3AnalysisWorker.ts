@@ -15,6 +15,7 @@ interface WorkerScope extends EventTarget {
 }
 
 const scope = self as unknown as WorkerScope;
+let activeJobId: number | null = null;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -65,14 +66,23 @@ function errorText(error: unknown): string {
 }
 
 function bytesStartWithTag(bytes: Uint8Array, offset: number): boolean {
-  return offset + 3 <= bytes.length && bytes[offset] === 0x54 && bytes[offset + 1] === 0x41 && bytes[offset + 2] === 0x47;
+  return (
+    offset + 3 <= bytes.length && bytes[offset] === 0x54 && bytes[offset + 1] === 0x41 && bytes[offset + 2] === 0x47
+  );
 }
 
-async function run(jobId: number, blob: Blob, expected: { sampleRate: number; channels: number }, profile: MasterProfile) {
+async function run(
+  jobId: number,
+  blob: Blob,
+  expected: { sampleRate: number; channels: number },
+  profile: MasterProfile,
+) {
   const Decoder = scope.AudioDecoder;
   const EncodedChunk = scope.EncodedAudioChunk;
   if (!Decoder || !EncodedChunk) {
-    post(jobId, "MP3_ANALYSIS_UNSUPPORTED", { reason: "This browser does not expose the WebCodecs audio decoder in workers." });
+    post(jobId, "MP3_ANALYSIS_UNSUPPORTED", {
+      reason: "This browser does not expose the WebCodecs audio decoder in workers.",
+    });
     return;
   }
 
@@ -126,7 +136,8 @@ async function run(jobId: number, blob: Blob, expected: { sampleRate: number; ch
             return samples;
           });
           for (let frame = 0; frame < audioData.numberOfFrames; frame++) {
-            for (let channel = 0; channel < expected.channels; channel++) frameScratch[channel] = planes[channel][frame];
+            for (let channel = 0; channel < expected.channels; channel++)
+              frameScratch[channel] = planes[channel][frame];
             analyzer.processFrame(frameScratch);
           }
           decodedFrames += audioData.numberOfFrames;
@@ -142,7 +153,9 @@ async function run(jobId: number, blob: Blob, expected: { sampleRate: number; ch
     });
     decoder.configure(config);
   } catch (error) {
-    post(jobId, "MP3_ANALYSIS_UNSUPPORTED", { reason: `The browser could not configure its MP3 decoder: ${errorText(error)}` });
+    post(jobId, "MP3_ANALYSIS_UNSUPPORTED", {
+      reason: `The browser could not configure its MP3 decoder: ${errorText(error)}`,
+    });
     return;
   }
 
@@ -151,6 +164,7 @@ async function run(jobId: number, blob: Blob, expected: { sampleRate: number; ch
   let carry = new Uint8Array(0);
   let firstHeader: Mp3FrameHeader | null = null;
   let encodedFrames = 0;
+  let bitrateSumKbps = 0;
   let timestampUs = 0;
   let trailingTag = false;
   let failed = "";
@@ -160,10 +174,13 @@ async function run(jobId: number, blob: Blob, expected: { sampleRate: number; ch
     if (!Number.isSafeInteger(readOffset) || readOffset < 0 || readOffset >= blob.size) {
       throw new Error("The MP3 ID3 tag contains no following audio frames.");
     }
+    const audioStartOffset = readOffset;
 
     while (readOffset < blob.size) {
       const blockStart = readOffset;
-      const block = new Uint8Array(await blob.slice(blockStart, Math.min(blob.size, blockStart + READ_BLOCK_BYTES)).arrayBuffer());
+      const block = new Uint8Array(
+        await blob.slice(blockStart, Math.min(blob.size, blockStart + READ_BLOCK_BYTES)).arrayBuffer(),
+      );
       if (block.length === 0) break;
       readOffset += block.length;
       const combined = new Uint8Array(carry.length + block.length);
@@ -194,7 +211,9 @@ async function run(jobId: number, blob: Blob, expected: { sampleRate: number; ch
           throw new Error(`Invalid or truncated MP3 frame sequence at byte ${absoluteOffset}.`);
         }
         if (!firstHeader) firstHeader = header;
-        else if (!sameMp3Stream(firstHeader, header)) throw new Error("The MP3 changes sample rate, channel count or MPEG version mid-file.");
+        else if (!sameMp3Stream(firstHeader, header))
+          throw new Error("The MP3 changes sample rate, channel count or MPEG version mid-file.");
+        bitrateSumKbps += header.bitrateKbps;
         if (header.sampleRate !== expected.sampleRate || header.channels !== expected.channels) {
           throw new Error("The MP3 frame layout differs from its inspected metadata.");
         }
@@ -224,14 +243,15 @@ async function run(jobId: number, blob: Blob, expected: { sampleRate: number; ch
 
       carry = awaitingMore ? combined.slice(cursor) : combined.slice(cursor);
       post(jobId, "MP3_ANALYSIS_PROGRESS", {
-        progress: Math.min(0.8, (readOffset / blob.size) * 0.8),
+        progress: Math.min(0.8, ((readOffset - audioStartOffset) / (blob.size - audioStartOffset)) * 0.8),
         stage: "Decoding and analyzing MP3 frames in bounded worker blocks",
       });
       if (trailingTag) break;
       if (readOffset === blob.size) break;
     }
 
-    if (encodedFrames === 0 || !firstHeader) throw new Error("No valid MPEG Layer III frames were found in the MP3 file.");
+    if (encodedFrames === 0 || !firstHeader)
+      throw new Error("No valid MPEG Layer III frames were found in the MP3 file.");
     if (!trailingTag && carry.length > 0) {
       const isCompleteTrailingId3 = carry.length >= 3 && bytesStartWithTag(carry, 0) && readOffset + 128 === blob.size;
       if (!isCompleteTrailingId3) throw new Error("The MP3 ends with an incomplete audio frame.");
@@ -249,6 +269,7 @@ async function run(jobId: number, blob: Blob, expected: { sampleRate: number; ch
       channels: expected.channels,
       durationSeconds: decodedFrames / expected.sampleRate,
       frameCount: decodedFrames,
+      averageBitrateKbps: bitrateSumKbps / encodedFrames,
     });
   } catch (error) {
     failed = errorText(error);
@@ -288,7 +309,16 @@ scope.onmessage = (event) => {
       post(jobId, "MP3_ANALYSIS_ERROR", { message: "Invalid MP3 mastering analysis request." });
     return;
   }
-  void run(jobId, blob, { sampleRate: file.sampleRate, channels: file.channels }, profile).catch((error: unknown) => {
-    post(jobId, "MP3_ANALYSIS_ERROR", { message: errorText(error) });
-  });
+  if (activeJobId !== null) {
+    post(jobId, "MP3_ANALYSIS_ERROR", { message: "The MP3 analysis worker already has an active job." });
+    return;
+  }
+  activeJobId = jobId;
+  void run(jobId, blob, { sampleRate: file.sampleRate, channels: file.channels }, profile)
+    .catch((error: unknown) => {
+      post(jobId, "MP3_ANALYSIS_ERROR", { message: errorText(error) });
+    })
+    .finally(() => {
+      activeJobId = null;
+    });
 };

@@ -77,7 +77,7 @@ function isLoudnessTimeline(value: unknown): value is LoudnessTimeline | null {
   });
 }
 
-function isMasterBufferAnalysis(value: unknown): value is MasterBufferAnalysis {
+export function isMasterBufferAnalysisResult(value: unknown): value is MasterBufferAnalysis {
   if (!isRecord(value) || !isRecord(value.measurements) || !isRecord(value.mixHealth) || !isRecord(value.verdict))
     return false;
   const measurements = value.measurements;
@@ -300,7 +300,7 @@ export function analyzeMasterPcmStreamAsync(
         return;
       }
       if (message.type === "MASTER_ANALYSIS_RESULT") {
-        if (!isMasterBufferAnalysis(message.analysis)) {
+        if (!isMasterBufferAnalysisResult(message.analysis)) {
           finish(undefined, new Error("Master analysis worker returned an invalid report."));
           return;
         }

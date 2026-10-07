@@ -42,6 +42,425 @@
   font-size: 10px;
 }
 
+.mastering-file-session {
+  display: grid;
+  flex: none;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-raise);
+}
+
+.mastering-file-session-heading,
+.mastering-file-session-context,
+.mastering-file-session-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+}
+
+.mastering-file-session-heading h3 {
+  margin: 2px 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.mastering-file-session-heading p,
+.mastering-file-session-note,
+.mastering-file-session-status {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.mastering-file-session-import {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.mastering-file-session-import input[type="file"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.mastering-file-session-context,
+.mastering-file-session-actions {
+  padding: 7px 8px;
+  background: var(--bg);
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.mastering-file-session-context label,
+.mastering-file-session-actions label,
+.mastering-file-session-controls > label {
+  display: grid;
+  gap: 4px;
+  min-width: 130px;
+}
+
+.mastering-file-session-context strong,
+.mastering-file-session-actions strong,
+.mastering-file-session-controls strong {
+  color: var(--text-faint);
+  font: 700 9px var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.mastering-file-session-context select,
+.mastering-file-session-actions select,
+.mastering-file-session-controls select,
+.mastering-file-session-controls input[type="number"] {
+  min-height: 25px;
+  max-width: 230px;
+  padding: 3px 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  background: var(--bg-raise);
+  color: var(--text);
+  font: 10px var(--mono);
+}
+
+.mastering-file-session-source {
+  display: grid;
+  gap: 3px;
+  min-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mastering-file-session-source small,
+.mastering-file-session-report small {
+  color: var(--text-faint);
+  font-size: 9px;
+}
+
+.mastering-file-session-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  align-items: end;
+  gap: 8px 12px;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+}
+
+.mastering-file-session-controls > label {
+  align-content: start;
+}
+
+.mastering-session-inserts {
+  display: grid;
+  gap: 7px;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+}
+
+.mastering-session-inserts legend {
+  padding: 0 5px;
+  color: var(--text-faint);
+  font: 700 9px var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.mastering-session-inserts > p,
+.mastering-session-inserts-note {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.mastering-session-inserts .mastering-device-panel {
+  height: auto;
+  min-height: 260px;
+}
+
+.mastering-session-inserts-note {
+  color: var(--text-faint);
+}
+
+.mastering-session-ab {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  background: var(--bg);
+}
+
+.mastering-session-reference {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.mastering-session-reference > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+}
+
+.mastering-session-reference > header strong,
+.mastering-session-reference-details > strong {
+  color: var(--text-faint);
+  font: 700 9px var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.mastering-session-reference > header p {
+  margin: 3px 0 0;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.mastering-session-reference-import {
+  position: relative;
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  padding: 5px 9px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.mastering-session-reference-import input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.mastering-session-reference-import:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.mastering-session-reference-details {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding-top: 5px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.mastering-session-reference-details > span {
+  overflow-wrap: anywhere;
+}
+
+.mastering-session-reference-details > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.mastering-session-ab > header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+}
+
+.mastering-session-ab > header strong,
+.mastering-session-version strong {
+  color: var(--text-faint);
+  font: 700 9px var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.mastering-session-ab > header p {
+  margin: 3px 0 0;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.mastering-session-match {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.mastering-session-version-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 8px;
+}
+
+.mastering-session-version {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+}
+
+.mastering-session-version > label {
+  display: grid;
+  gap: 4px;
+}
+
+.mastering-session-version input {
+  min-height: 25px;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: 3px;
+  background: var(--bg-raise);
+  color: var(--text);
+  font: 10px var(--mono);
+}
+
+.mastering-session-version-state,
+.mastering-session-ab-note {
+  color: var(--text-faint);
+  font-size: 9px;
+}
+
+.mastering-session-version-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.mastering-session-version dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+
+.mastering-session-version dl div {
+  display: grid;
+  gap: 2px;
+}
+
+.mastering-session-version dt {
+  color: var(--text-faint);
+  font-size: 9px;
+}
+
+.mastering-session-version dd {
+  margin: 0;
+  color: var(--text);
+  font: 10px var(--mono);
+}
+
+.mastering-file-session-range input[type="range"] {
+  width: 100%;
+  min-height: 18px;
+  accent-color: var(--accent);
+}
+
+.mastering-file-session-range small {
+  color: var(--text);
+  font: 10px var(--mono);
+}
+
+.mastering-file-session-toggles,
+.mastering-file-session-history {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.mastering-file-session-budget {
+  color: var(--text-faint);
+  font: 9px var(--mono);
+}
+
+.mastering-file-session-status[data-state="error"] {
+  color: var(--danger, #ef4444);
+}
+
+.mastering-file-session-status[data-state="notice"] {
+  color: var(--accent);
+}
+
+.mastering-file-session-status[data-state="warn"] {
+  color: var(--warn, #efb34f);
+}
+
+.mastering-file-session-report {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: 10px var(--mono);
+}
+
+.mastering-file-session-report strong {
+  color: var(--accent);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.mastering-file-session-report small {
+  flex-basis: 100%;
+}
+
+.mastering-file-session-verdict {
+  display: grid;
+  flex-basis: 100%;
+  gap: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.mastering-file-session-verdict[data-state="pass"] strong,
+.mastering-file-session-verdict small[data-state="pass"] {
+  color: var(--success, #72d59a);
+}
+
+.mastering-file-session-verdict[data-state="warn"] strong,
+.mastering-file-session-verdict small[data-state="warn"] {
+  color: var(--warn, #efb34f);
+}
+
+.mastering-file-session-verdict[data-state="fail"] strong,
+.mastering-file-session-verdict small[data-state="fail"] {
+  color: var(--danger, #ef4444);
+}
+
+.mastering-file-session-note {
+  color: var(--text-faint);
+}
+
 .mastering-overview {
   display: grid;
   flex: none;

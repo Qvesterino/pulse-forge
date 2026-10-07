@@ -153,6 +153,36 @@ class MasteringAnalysisWorkerHarness extends EventTarget {
   }
 }
 
+class UnsupportedMp3WorkerHarness extends EventTarget {
+  private terminated = false;
+
+  constructor(_scriptUrl: string | URL, _options?: WorkerOptions) {
+    super();
+  }
+
+  postMessage(value: unknown): void {
+    if (!value || typeof value !== "object") return;
+    const message = value as Record<string, unknown>;
+    if (typeof message.jobId !== "number" || message.type !== "MP3_ANALYSIS_START") return;
+    queueMicrotask(() => {
+      if (this.terminated) return;
+      this.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            jobId: message.jobId,
+            type: "MP3_ANALYSIS_UNSUPPORTED",
+            reason: "This browser does not support MP3 through WebCodecs.",
+          },
+        }),
+      );
+    });
+  }
+
+  terminate(): void {
+    this.terminated = true;
+  }
+}
+
 function readFixed(view: DataView, offset: number, width: number): string {
   let out = "";
   for (let i = 0; i < width; i++) {
@@ -417,4 +447,41 @@ describe("large encoded WAV mastering inspection", () => {
     },
     15_000,
   );
+});
+
+describe("large encoded MP3 mastering inspection", () => {
+  it("keeps the report explicitly not measured when WebCodecs has no MP3 decoder", async () => {
+    const frame = new Uint8Array(417);
+    frame.set([0xff, 0xfb, 0x90, 0x64]); // MPEG-1 Layer III, 128 kbps, 44.1 kHz, stereo
+    const blob = new Blob([frame], { type: "audio/mpeg" });
+    Object.defineProperty(blob, "size", { configurable: true, value: 12 * 1024 * 1024 + 1 });
+    const profile = MASTER_PROFILES.find((candidate) => candidate.id === "streaming")!;
+    const source = fakeBuffer(
+      2,
+      44_100,
+      44_100,
+      (channel, frameIndex) => 0.2 * Math.sin((2 * Math.PI * (220 + channel) * frameIndex) / 44_100),
+    );
+    const sourceAnalysis = analyzeMasterPcm(
+      [source.getChannelData(0), source.getChannelData(1)],
+      source.sampleRate,
+      profile,
+    );
+    vi.stubGlobal("Worker", UnsupportedMp3WorkerHarness as unknown as typeof Worker);
+    try {
+      const inspection = await inspectEncodedMaster({
+        format: "mp3",
+        bytes: blob,
+        expectedDurationSeconds: 1,
+        sourceMeasurements: sourceAnalysis.measurements,
+        profile,
+      });
+      expect(inspection.decode.status).toBe("not-measured");
+      expect(inspection.decode.decoder).toBe("WebCodecs MP3 worker");
+      expect(inspection.decode.reason).toContain("does not support MP3 through WebCodecs");
+      expect(inspection.file.durationAccuracy).toBe("estimated");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

@@ -81,9 +81,20 @@ type EffectRackProps = {
   mode?: "rack" | "devices";
   selectedPadId?: string;
   isMaster?: boolean;
+  /** Distinguishes simultaneous isolated master racks from the project master rack. */
+  statusScopeId?: string;
+  /** External mastering sessions cannot attach a transient user IR to the live engine graph. */
+  allowUserImpulseResponses?: boolean;
 };
 
-export function EffectRack({ track, mode = "rack", selectedPadId = "", isMaster = false }: EffectRackProps) {
+export function EffectRack({
+  track,
+  mode = "rack",
+  selectedPadId = "",
+  isMaster = false,
+  statusScopeId,
+  allowUserImpulseResponses = true,
+}: EffectRackProps) {
   const services = useServices();
   const doc = services.store.getDoc();
   const devicesMode = mode === "devices";
@@ -179,7 +190,8 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "", isMaster 
     let last = 0;
     let fallbackSig = "";
     let grSig = "";
-    registerRaf(`fx-status-${track.id}`, (t) => {
+    const statusKey = statusScopeId ?? track.id;
+    registerRaf(`fx-status-${statusKey}`, (t) => {
       if (t - last < 60) return;
       last = t;
       const nextFallbacks: Record<string, string> = {};
@@ -213,8 +225,8 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "", isMaster 
         setGainReduction(nextGr);
       }
     });
-    return () => unregisterRaf(`fx-status-${track.id}`);
-  }, [services, track]);
+    return () => unregisterRaf(`fx-status-${statusKey}`);
+  }, [services, statusScopeId, track]);
 
   if (devicesMode) {
     const selectedFx = track.effects.find((fx) => fx.id === activeDeviceId);
@@ -426,6 +438,7 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "", isMaster 
               count={track.effects.length}
               fallbackReason={fallbacks[selectedFx.id]}
               gainReductionDb={gainReduction[selectedFx.id]}
+              allowUserImpulseResponses={allowUserImpulseResponses}
               expanded
               devicesMode
             />
@@ -508,6 +521,7 @@ export function EffectRack({ track, mode = "rack", selectedPadId = "", isMaster 
               count={track.effects.length}
               fallbackReason={fallbacks[fx.id]}
               gainReductionDb={gainReduction[fx.id]}
+              allowUserImpulseResponses={allowUserImpulseResponses}
               expanded={fx.id === effectiveExpandedFxId}
               onToggleFocus={() => setExpandedFxId(fx.id === effectiveExpandedFxId ? "" : fx.id)}
             />
@@ -525,6 +539,7 @@ function Device({
   count,
   fallbackReason,
   gainReductionDb,
+  allowUserImpulseResponses = true,
   expanded,
   onToggleFocus,
   devicesMode = false,
@@ -535,6 +550,7 @@ function Device({
   count: number;
   fallbackReason?: string;
   gainReductionDb?: number;
+  allowUserImpulseResponses?: boolean;
   expanded: boolean;
   /** Omit when the host has no expand state (the devices dock's single editor). */
   onToggleFocus?: () => void;
@@ -659,7 +675,7 @@ function Device({
             ))}
           </select>
         )}
-        {fx.type === "ozvena" && irNote === "IR loaded" && (
+        {allowUserImpulseResponses && fx.type === "ozvena" && irNote === "IR loaded" && (
           <button
             type="button"
             className="btn btn-small fx-ir-load"
@@ -679,7 +695,7 @@ function Device({
             CLR
           </button>
         )}
-        {fx.type === "ozvena" && (
+        {allowUserImpulseResponses && fx.type === "ozvena" && (
           <label className="btn btn-small fx-ir-load" title="Load a user impulse response (VØID convolution)">
             IR…
             <input

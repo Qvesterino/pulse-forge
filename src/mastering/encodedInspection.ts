@@ -4,9 +4,10 @@ import type { LoudnessTimeline } from "../audio-engine/kweighting";
 import { decodeAudioData } from "../services/audio-decode";
 import type { MasterAnalysisProgressListener } from "./analysis";
 import { analyzeMasterBufferAsync, analyzeMasterPcmStreamAsync } from "./analysisClient";
+import { analyzeMp3BlobAsync } from "./mp3AnalysisClient";
 import type { MasterProfile } from "./profiles";
 import { decodeBwfLoudnessValue, encodeBwfLoudnessValue, type WavBextLoudnessField } from "../rendering/wav";
-import { parseMp3FrameHeader } from "./mp3Frames";
+import { parseMp3FrameHeader, type Mp3FrameHeader } from "./mp3Frames";
 
 export type EncodedMasterFormat = "wav" | "mp3";
 
@@ -36,7 +37,7 @@ export interface EncodedMasterInspection {
   file: EncodedMasterFileDetails;
   decode: {
     status: "measured" | "not-measured";
-    decoder: "Web Audio" | "KYX WAV PCM reader" | "not invoked";
+    decoder: "Web Audio" | "KYX WAV PCM reader" | "WebCodecs MP3 worker" | "not invoked";
     sampleRate?: number;
     channels?: number;
     durationSeconds?: number;
@@ -456,6 +457,65 @@ export async function inspectEncodedMaster(input: {
         `The encoded WAV PCM reader could not measure this file: ${error instanceof Error ? error.message : String(error)}`,
         warnings,
         "KYX WAV PCM reader",
+      );
+    }
+  }
+
+  if (format === "mp3" && blobInput && byteLength > MAX_MP3_DECODE_BYTES) {
+    try {
+      const result = await analyzeMp3BlobAsync(
+        blobInput,
+        { sampleRate: file.sampleRate, channels: file.channels },
+        profile,
+        { onProgress, signal },
+      );
+      if (result.status === "unsupported") {
+        return notMeasured(
+          format,
+          byteLength,
+          file,
+          `${result.reason} The MP3 header was checked, but post-encode audio measurements were skipped.`,
+          warnings,
+          "WebCodecs MP3 worker",
+        );
+      }
+      file = {
+        ...file,
+        durationSeconds: result.durationSeconds,
+        durationAccuracy: "exact",
+        averageBitrateKbps: result.averageBitrateKbps,
+      };
+      if (Math.abs(result.durationSeconds - expectedDurationSeconds) > durationTolerance) {
+        warnings.push(
+          `Decoded file duration differs from the rendered program by ${(result.durationSeconds - expectedDurationSeconds).toFixed(3)} s.`,
+        );
+      }
+      return {
+        format,
+        byteLength,
+        file,
+        decode: {
+          status: "measured",
+          decoder: "WebCodecs MP3 worker",
+          sampleRate: file.sampleRate,
+          channels: file.channels,
+          durationSeconds: result.durationSeconds,
+          measurements: result.analysis.measurements,
+          loudnessTimeline: result.analysis.loudnessTimeline,
+          mixHealth: result.analysis.mixHealth,
+          verdict: result.analysis.verdict,
+          warnings,
+        },
+      };
+    } catch (error) {
+      if (signal?.aborted) throw cancelledError();
+      return notMeasured(
+        format,
+        byteLength,
+        file,
+        `The WebCodecs MP3 worker could not measure this file: ${error instanceof Error ? error.message : String(error)}`,
+        warnings,
+        "WebCodecs MP3 worker",
       );
     }
   }

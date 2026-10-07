@@ -256,6 +256,31 @@ export interface EncodeWavAsyncOptions extends EncodeWavOptions {
 
 const ENCODE_BLOCK_FRAMES = 65536;
 
+function yieldForNextTask(signal?: AbortSignal): Promise<void> {
+  if (!signal) return new Promise((resolve) => setTimeout(resolve, 0));
+
+  return new Promise((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout>;
+    const cleanup = () => signal.removeEventListener("abort", onAbort);
+    const onAbort = () => {
+      clearTimeout(timer);
+      cleanup();
+      reject(new DOMException("Export cancelled", "AbortError"));
+    };
+
+    if (signal.aborted) {
+      reject(new DOMException("Export cancelled", "AbortError"));
+      return;
+    }
+
+    timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, 0);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 /**
  * Audit 11 (reliability wave): yielding variant of {@link encodeWav} for
  * long masters — the sync encoder freezes the main thread for the whole
@@ -270,6 +295,7 @@ export async function encodeWavAsync(
   bitDepth: WavBitDepth,
   options: EncodeWavAsyncOptions = {},
 ): Promise<ArrayBuffer> {
+  if (options.signal?.aborted) throw new DOMException("Export cancelled", "AbortError");
   const numChannels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
   const frames = buffer.length;
@@ -290,7 +316,7 @@ export async function encodeWavAsync(
     options.onProgress?.(end / frames);
     if (options.signal?.aborted) throw new DOMException("Export cancelled", "AbortError");
     // Hand control back to the event loop so the UI stays alive.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await yieldForNextTask(options.signal);
   }
   return arrayBuffer;
 }

@@ -8,7 +8,7 @@ import { isWorkletReady } from "../audio-worklets/loader";
 import { defaultMasterConfig } from "../project-model/schema";
 import type { MasterConfig } from "../project-model/types";
 import { MASTER_SIGNAL_NODE_ORDER, type MasterSignalNodeId } from "../mastering/signalFlow";
-import { isLiveAudioContext } from "./liveContext";
+import { isLiveAudioContext, isOfflineAudioContext } from "./liveContext";
 import type { MeteringRig } from "./meteringRig";
 
 /** Master-stage handles the metering rig (and diagnostics) read. */
@@ -861,6 +861,10 @@ export class MasterChain {
     if (!this.master || !this.masterClipper || !this.masterLimiter) return;
     const ctx = this.deps.ctx();
     const now = ctx ? ctx.currentTime : 0;
+    const writeControl = (param: AudioParam, value: number, smoothingSeconds: number): void => {
+      if (isOfflineAudioContext(ctx)) param.setValueAtTime(value, now);
+      else param.setTargetAtTime(value, now, smoothingSeconds);
+    };
     if (this.master) {
       // Genre loudness trim (song references) rides multiplicatively on the
       // input trim — pre-limiter by design, the limiter catches the extra
@@ -875,7 +879,7 @@ export class MasterChain {
       const gain = typeof gainRaw === "number" && Number.isFinite(gainRaw) ? Math.min(2, Math.max(0, gainRaw)) : 1;
       const trimRaw = config.loudnessTrimDb;
       const trim = typeof trimRaw === "number" && Number.isFinite(trimRaw) ? Math.min(12, Math.max(-12, trimRaw)) : 0;
-      this.masterInputGain?.gain.setTargetAtTime(gain * Math.pow(10, trim / 20), now, 0.01);
+      if (this.masterInputGain) writeControl(this.masterInputGain.gain, gain * Math.pow(10, trim / 20), 0.01);
     }
     if (this.masterTape) {
       const enabled = config.tapeEnabled ?? false;
@@ -892,21 +896,21 @@ export class MasterChain {
       const sideDb = Math.min(6, Math.max(-6, config.msSideGain ?? 0));
       const midLin = enabled ? Math.pow(10, midDb / 20) : 1;
       const sideLin = enabled ? Math.pow(10, sideDb / 20) : 1;
-      this.masterMs.midGain.gain.setTargetAtTime(midLin, now, 0.01);
-      this.masterMs.sideGain.gain.setTargetAtTime(sideLin, now, 0.01);
+      writeControl(this.masterMs.midGain.gain, midLin, 0.01);
+      writeControl(this.masterMs.sideGain.gain, sideLin, 0.01);
     }
     if (this.masterBassMono) {
       const enabled = config.bassMonoEnabled ?? false;
       const freq = Math.min(400, Math.max(60, config.bassMonoFreq ?? 120));
-      this.masterBassMono.sideLP.frequency.setTargetAtTime(freq, now, 0.02);
-      this.masterBassMono.sideWet.gain.setTargetAtTime(enabled ? 1 : 0, now, 0.02);
-      this.masterBassMono.sideDry.gain.setTargetAtTime(enabled ? 0 : 1, now, 0.02);
+      writeControl(this.masterBassMono.sideLP.frequency, freq, 0.02);
+      writeControl(this.masterBassMono.sideWet.gain, enabled ? 1 : 0, 0.02);
+      writeControl(this.masterBassMono.sideDry.gain, enabled ? 0 : 1, 0.02);
     }
     if (this.masterTiltLow && this.masterTiltHigh) {
       // Complementary shelves: positive tilt = dark (more low, less high).
       const tilt = Math.min(4, Math.max(-4, config.tiltDb ?? 0));
-      this.masterTiltLow.gain.setTargetAtTime(tilt / 2, now, 0.05);
-      this.masterTiltHigh.gain.setTargetAtTime(-tilt / 2, now, 0.05);
+      writeControl(this.masterTiltLow.gain, tilt / 2, 0.05);
+      writeControl(this.masterTiltHigh.gain, -tilt / 2, 0.05);
     }
     if (this.masterMatchEqStages) {
       // MATCH EQ: ±6 dB corrective gains, 0 = transparent (absent config
@@ -918,7 +922,7 @@ export class MasterChain {
       const match = config.matchEq;
       const gains = [clamp6(match?.low), clamp6(match?.lowMid), clamp6(match?.highMid), clamp6(match?.high)];
       for (let i = 0; i < this.masterMatchEqStages.length; i++) {
-        this.masterMatchEqStages[i].gain.setTargetAtTime(gains[i], now, 0.05);
+        writeControl(this.masterMatchEqStages[i].gain, gains[i], 0.05);
       }
     }
     if (this.masterGlue) {
@@ -927,8 +931,8 @@ export class MasterChain {
       // so it parks at threshold 0 / ratio 1 like the disabled limiter below.
       const enabled = config.glueEnabled ?? true;
       if (this.masterGlueNative) {
-        this.masterGlueNative.threshold.setTargetAtTime(enabled ? -6 : 0, now, 0.02);
-        this.masterGlueNative.ratio.setTargetAtTime(enabled ? 2 : 1, now, 0.02);
+        writeControl(this.masterGlueNative.threshold, enabled ? -6 : 0, 0.02);
+        writeControl(this.masterGlueNative.ratio, enabled ? 2 : 1, 0.02);
       } else {
         this.masterGlue.setParameter("mix", enabled ? 1 : 0);
       }

@@ -8,3 +8,8 @@
 export function isLiveAudioContext(ctx: BaseAudioContext | null | undefined): ctx is AudioContext {
   return typeof AudioContext !== "undefined" && ctx instanceof AudioContext;
 }
+
+/** Avoid live UI smoothing when a render context is evaluated from sample 0. */
+export function isOfflineAudioContext(ctx: BaseAudioContext | null | undefined): ctx is OfflineAudioContext {
+  return typeof OfflineAudioContext !== "undefined" && ctx instanceof OfflineAudioContext;
+}

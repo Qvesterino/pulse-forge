@@ -125,6 +125,26 @@ describe("export verification — WAV encode contract (audit 11 wave 4)", () => 
     expect(result).toBeNull();
     expect(progress.length).toBeGreaterThan(0);
   });
+
+  it("async encoder aborts during its yielded UI turn before encoding another block", async () => {
+    const controller = new AbortController();
+    const buffer = fakeBuffer(2, SR, 200_000, () => 0.5);
+    const progress: number[] = [];
+    const result = await encodeWavAsync(buffer, 16, {
+      onProgress: (fraction) => {
+        progress.push(fraction);
+        if (progress.length === 1) setTimeout(() => controller.abort(), 0);
+      },
+      signal: controller.signal,
+    }).then(
+      () => ({ error: null }),
+      (error: unknown) => ({ error }),
+    );
+
+    expect(result.error).toBeInstanceOf(DOMException);
+    expect((result.error as DOMException).name).toBe("AbortError");
+    expect(progress).toHaveLength(1);
+  });
 });
 
 describe("tail estimation — dynamic export tail (audit 11 wave 2a)", () => {

@@ -11,6 +11,7 @@ import { MasteringSignalFlow } from "./MasteringSignalFlow";
 import { MasterProcessingControls } from "./MasterProcessingControls";
 import { MasteringLoudnessTimeline } from "./MasteringLoudnessTimeline";
 import { MAX_OFFLINE_RENDER_PCM_BYTES } from "../rendering/renderer";
+import { MasteringFileSessionPanel } from "./MasteringFileSessionPanel";
 
 const StableMasterMeter = memo(MasterMeter);
 const StableEffectRack = memo(EffectRack);
@@ -130,6 +131,7 @@ export function MasteringPanel() {
         </div>
         <p className="mastering-profile-note">Delivery profiles set meter targets. They do not change the sound.</p>
       </header>
+      <MasteringFileSessionPanel />
       <section className="mastering-overview" aria-label="Mastering analysis overview">
         <div className="mastering-overview-heading">
           <div>

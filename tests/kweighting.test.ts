@@ -164,6 +164,27 @@ describe("Loudness Range (EBU Tech 3342 minimum requirements)", () => {
     expect(Math.abs(repeatedLra! - onceLra!)).toBeLessThanOrEqual(0.5);
   });
 
+  it("keeps downsampled loudness timeline buckets ordered", () => {
+    const sampleRate = 8000;
+    const frameCount = 130 * sampleRate;
+    const accumulator = new KWeightedLoudnessAccumulator(2, sampleRate);
+    const frame = new Float64Array(2);
+    for (let index = 0; index < frameCount; index++) {
+      const envelope = 0.16 + 0.01 * Math.sin((2 * Math.PI * index) / (sampleRate * 3.7));
+      frame[0] = envelope * Math.sin((2 * Math.PI * 311 * index) / sampleRate);
+      frame[1] = envelope * Math.sin((2 * Math.PI * 317 * index) / sampleRate);
+      accumulator.processFrame(frame);
+    }
+
+    const { loudnessTimeline } = accumulator.finishWithLoudnessRange();
+    expect(loudnessTimeline).not.toBeNull();
+    expect(loudnessTimeline!.points.length).toBeLessThanOrEqual(1200);
+    for (const point of loudnessTimeline!.points) {
+      expect(point.lowLufs).toBeLessThanOrEqual(point.meanLufs);
+      expect(point.meanLufs).toBeLessThanOrEqual(point.highLufs);
+    }
+  });
+
   it("does not let a short, smooth programme fade inflate the LRA", () => {
     const sampleRate = 48000;
     const programme = ebuLraSignal([-20, -30], 30, sampleRate);

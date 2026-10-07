@@ -247,10 +247,13 @@ function loudnessTimelineFromShortTerm(
     }
     const firstWindowEnd = 3 + start * hopSeconds;
     const lastWindowEnd = 3 + (end - 1) * hopSeconds;
+    // Floating-point accumulation can move the arithmetic mean one ULP
+    // outside the extrema. Keep the public min/mean/max bucket ordered.
+    const meanLufs = Math.max(lowLufs, Math.min(highLufs, sumLufs / (end - start)));
     points.push({
       timeSeconds: Math.min(durationSeconds, (firstWindowEnd + lastWindowEnd) * 0.5),
       lowLufs,
-      meanLufs: sumLufs / (end - start),
+      meanLufs,
       highLufs,
     });
   }
