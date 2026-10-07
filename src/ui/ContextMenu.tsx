@@ -12,6 +12,7 @@ import {
   toggleAudioClipsMute,
 } from "../commands/commands";
 import { BAR_TICKS } from "../project-model/types";
+import { timelineItemsOf } from "../project-model/timeline";
 import { consolidateRangeToAudio } from "../services/rangeConsolidation";
 import type { ClipClipboard } from "../commands/commands";
 import {
@@ -214,12 +215,13 @@ export function ContextMenu({
           const sel = selection.stepSelection!;
           services.store.execute(clearSteps(doc, activePatternId, sel.padIds, sel.from, sel.to));
         } else if (hasClips) {
-          const arrangementIds = new Set(arrangement.clips.map((clip) => clip.id));
-          const audioIds = new Set((arrangement.audioClips ?? []).map((clip) => clip.id));
+          // ADR 0025: route by the projection's kind, not by set membership.
+          const kinds = new Map(timelineItemsOf(doc).map((item) => [item.id, item.kind] as const));
           let next = doc;
           for (const clipId of selection.clipIds) {
-            if (arrangementIds.has(clipId)) next = deleteArrangementClip(next, clipId).execute(next);
-            else if (audioIds.has(clipId)) next = deleteAudioClip(next, clipId).execute(next);
+            const kind = kinds.get(clipId);
+            if (kind === "scene") next = deleteArrangementClip(next, clipId).execute(next);
+            else if (kind === "audio") next = deleteAudioClip(next, clipId).execute(next);
           }
           if (next !== doc) {
             // Multiple selected clips are one user gesture and therefore one

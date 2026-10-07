@@ -53,6 +53,7 @@ import {
   duplicateTimeRange,
   setActivePattern,
   setTrackParams,
+  splitArrangementClipAtTick,
   splitAudioClipAtTick,
 } from "../commands/commands";
 import { applyRangeCrossfade } from "./rangeCrossfade";
@@ -64,6 +65,7 @@ import type { SelectedNote } from "./PianoRoll";
 import { matchShortcut, panelIdOfShortcut, type ShortcutKey } from "./shortcuts";
 import type { PaletteDeps } from "./commandPalette";
 import { BAR_TICKS, PPQ, STEP_TICKS } from "../project-model/types";
+import { timelineItemsOf } from "../project-model/timeline";
 import { userSampleId } from "../persistence/UserSampleRepository";
 import { buildBounceZoneDoc } from "../rendering/bounce";
 import { encodeWav } from "../rendering/wav";
@@ -823,12 +825,13 @@ export function App({
           const oldDoc = doc;
           // Same routing as the context menu's Delete: a clip selection can
           // mix arrangement clips and audio clips — delete both kinds in one
-          // gesture.
-          const arrangementIds = new Set(doc.arrangement.clips.map((c) => c.id));
-          const audioIds = new Set((doc.arrangement.audioClips ?? []).map((c) => c.id));
+          // gesture. ADR 0025: route by the projection's kind, not by set
+          // membership probes.
+          const kinds = new Map(timelineItemsOf(doc).map((item) => [item.id, item.kind] as const));
           for (const clipId of selection.clipIds) {
-            if (arrangementIds.has(clipId)) newDoc = deleteArrangementClip(newDoc, clipId).execute(newDoc);
-            else if (audioIds.has(clipId)) newDoc = deleteAudioClip(newDoc, clipId).execute(newDoc);
+            const kind = kinds.get(clipId);
+            if (kind === "scene") newDoc = deleteArrangementClip(newDoc, clipId).execute(newDoc);
+            else if (kind === "audio") newDoc = deleteAudioClip(newDoc, clipId).execute(newDoc);
           }
           services.store.execute({
             type: "deleteClips",
@@ -1173,6 +1176,28 @@ export function App({
           }
           return;
         }
+        // ADR 0025: split-at-playhead is timeline-wide — with no audio clip
+        // under the playhead, split the SCENE clip under it. Scene clips are
+        // integer-bar by contract, so the command lands the split on the last
+        // bar line at or before the playhead and refuses edge-adjacent spots.
+        const sceneClip = doc.arrangement.clips.find((c) => {
+          const s = c.startBar * BAR_TICKS;
+          const e2 = s + c.lengthBars * BAR_TICKS;
+          return pos >= s && pos < e2;
+        });
+        if (sceneClip) {
+          event.preventDefault();
+          try {
+            services.store.execute(splitArrangementClipAtTick(doc, sceneClip.id, pos));
+          } catch (err) {
+            window.dispatchEvent(
+              new CustomEvent("pf-arrangement-action-error", {
+                detail: err instanceof Error ? err.message : String(err),
+              }),
+            );
+          }
+          return;
+        }
       }
 
       // Strip Silence + Consolidate helpers are in ArrangementPanel's audioMenu; Tab+B here is bounce which is handled above (Ctrl+B)
@@ -1195,8 +1220,10 @@ export function App({
             let min = Infinity;
             let max = -Infinity;
             if (selection.clipIds.length > 0) {
+              // ADR 0025: one projection, both clip systems.
+              const items = new Map(timelineItemsOf(doc).map((item) => [item.id, item] as const));
               for (const cid of selection.clipIds) {
-                const c = doc.arrangement.clips.find((x) => x.id === cid);
+                const c = items.get(cid);
                 if (c) {
                   const s = c.startBar * BAR_TICKS;
                   const e = (c.startBar + c.lengthBars) * BAR_TICKS;
@@ -1204,13 +1231,6 @@ export function App({
                   max = Math.max(max, e);
                 }
               }
-              for (const ac of doc.arrangement.audioClips ?? [])
-                if (selection.clipIds.includes(ac.id)) {
-                  const s = ac.startBar * BAR_TICKS;
-                  const e = (ac.startBar + ac.lengthBars) * BAR_TICKS;
-                  min = Math.min(min, s);
-                  max = Math.max(max, e);
-                }
             }
             if (selection.noteSelections.length > 0) {
               for (const ns of selection.noteSelections) {

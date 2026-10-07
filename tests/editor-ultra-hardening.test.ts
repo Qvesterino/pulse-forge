@@ -1,12 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { addArrangementClip, createVariationAndPlaceClip } from "../src/commands/arrangement";
+import {
+  addArrangementClip,
+  createVariationAndPlaceClip,
+  splitArrangementClipAtTick,
+} from "../src/commands/arrangement";
 import {
   appendCapturedArrangement,
   autoArrangeSong,
   createArrangementSkeleton,
 } from "../src/commands/arrangementShapes";
 import { addMarker, moveMarker, setMarkerLinkedClip } from "../src/commands/markers";
-import { moveArrangementClipRipple, setSceneIntensityCurve } from "../src/commands/clipPlayback";
+import {
+  deleteArrangementClipRipple,
+  moveArrangementClipRipple,
+  resizeArrangementClipRipple,
+  setSceneIntensityCurve,
+} from "../src/commands/clipPlayback";
+import { timelineItemsOf } from "../src/project-model/timeline";
+import { patternPhaseOffsetAtTick, sceneOffsetAtTick } from "../src/project-model/events";
 import { consolidateTimeRange, duplicateTimeRange } from "../src/commands/timeRange";
 import { addEffect, duplicateTrack, moveTrackAdjacent } from "../src/commands/tracks";
 import { addNote } from "../src/commands/notes";
@@ -556,5 +567,142 @@ describe("audio-clip commands store tick-aligned geometry (snap prerequisite)", 
     const next = moveAudioClip(doc, clipId, 2.03).execute(doc);
     const moved = (next.arrangement.audioClips ?? []).find((c) => c.id === clipId)!;
     expect(Math.abs(moved.startBar - 2.03)).toBeLessThanOrEqual(0.5 / BAR_TICKS);
+  });
+});
+
+/* ---------------- ADR 0025: unified timeline surface ---------------- */
+
+describe("splitArrangementClipAtTick (ADR 0025 — scene split)", () => {
+  function oneSceneClipDoc(phase = 0, sceneOffset = 0, loop = false): { doc: ProjectDocument; clipId: string } {
+    let doc = emptyArrangementDoc();
+    doc = addArrangementClip(doc, doc.scenes[0]!.id, 0, 4).execute(doc);
+    const clipId = doc.arrangement.clips[0]!.id;
+    if (phase || sceneOffset || loop) {
+      doc = {
+        ...doc,
+        arrangement: {
+          ...doc.arrangement,
+          clips: doc.arrangement.clips.map((c) =>
+            c.id === clipId
+              ? {
+                  ...c,
+                  ...(phase ? { phaseOffsetTicks: phase } : {}),
+                  ...(sceneOffset ? { sceneOffsetTicks: sceneOffset } : {}),
+                  ...(loop ? { loop: true as const } : {}),
+                }
+              : c,
+          ),
+        },
+      };
+    }
+    return { doc, clipId };
+  }
+
+  it("splits at a bar line: left keeps the id, right continues with fresh phase math", () => {
+    const { doc, clipId } = oneSceneClipDoc();
+    const next = splitArrangementClipAtTick(doc, clipId, 2 * BAR_TICKS).execute(doc);
+    const clips = next.arrangement.clips;
+    expect(clips.length).toBe(2);
+    const left = clips.find((c) => c.id === clipId)!;
+    const right = clips.find((c) => c.id !== clipId)!;
+    expect(left.lengthBars).toBe(2);
+    expect(right.startBar).toBe(2);
+    expect(right.lengthBars).toBe(2);
+    expect(right.sceneId).toBe(doc.scenes[0]!.id);
+  });
+
+  it("the seam is content-continuous: pattern phase and scene offset continue at the split", () => {
+    const { doc, clipId } = oneSceneClipDoc(240, 480, true);
+    const splitTick = 2 * BAR_TICKS;
+    const next = splitArrangementClipAtTick(doc, clipId, splitTick).execute(doc);
+    const original = doc.arrangement.clips.find((c) => c.id === clipId)!;
+    const right = next.arrangement.clips.find((c) => c.id !== clipId)!;
+    const pattern = next.patterns.find((p) => p.id === next.scenes.find((s) => s.id === right.sceneId)!.patternId)!;
+    // Pattern phase at the seam is IDENTICAL before and after the split —
+    // the right fragment plays exactly what the original played there.
+    expect(patternPhaseOffsetAtTick(right, pattern, splitTick)).toBe(
+      patternPhaseOffsetAtTick(original, pattern, splitTick),
+    );
+    // Scene automation time does not loop — it keeps elapsing.
+    expect(sceneOffsetAtTick(right, splitTick)).toBe(sceneOffsetAtTick(original, splitTick));
+    expect(right.loop).toBe(true);
+  });
+
+  it("a mid-bar playhead floors to the bar line; edges and sub-bar throws", () => {
+    const { doc, clipId } = oneSceneClipDoc();
+    // Playhead mid bar 2 (2.5 bars) → split lands on the bar-2 line.
+    const floored = splitArrangementClipAtTick(doc, clipId, 2.5 * BAR_TICKS).execute(doc);
+    const right = floored.arrangement.clips.find((c) => c.id !== clipId)!;
+    expect(right.startBar).toBe(2);
+    // Playhead inside the FIRST bar: floor = clip start → nothing to split.
+    expect(() => splitArrangementClipAtTick(doc, clipId, 0.5 * BAR_TICKS).execute(doc)).toThrow(/bar lines/);
+    // Playhead outside → throw.
+    expect(() => splitArrangementClipAtTick(doc, clipId, 9 * BAR_TICKS)).toThrow(/outside clip/);
+  });
+});
+
+describe("ripple is timeline-wide (ADR 0025 — audio clips ride the shift)", () => {
+  function scenePlusAudioDoc(): {
+    doc: ProjectDocument;
+    sceneClipId: string;
+    audioBefore: string;
+    audioAfter: string;
+    audioStraddle: string;
+  } {
+    let doc = emptyArrangementDoc();
+    const track = doc.tracks.find((t) => t.kind !== "group")!;
+    doc = addArrangementClip(doc, doc.scenes[0]!.id, 0, 4).execute(doc);
+    doc = addArrangementClip(doc, doc.scenes[0]!.id, 8, 4).execute(doc);
+    const sceneClipId = doc.arrangement.clips[0]!.id;
+    doc = addAudioClip(doc, track.id, "buf-a", 1, 2).execute(doc); // BEFORE the edit (straddles nothing)
+    doc = addAudioClip(doc, track.id, "buf-b", 12, 2).execute(doc); // AFTER (shifts)
+    doc = addAudioClip(doc, track.id, "buf-c", 3.5, 2).execute(doc); // STRADDLES bar 4 (stays)
+    // audioClips are stored sorted by startBar — map by the bufferId marker.
+    const idByBuffer = new Map((doc.arrangement.audioClips ?? []).map((c) => [c.bufferId, c.id] as const));
+    return {
+      doc,
+      sceneClipId,
+      audioBefore: idByBuffer.get("buf-a")!,
+      audioAfter: idByBuffer.get("buf-b")!,
+      audioStraddle: idByBuffer.get("buf-c")!,
+    };
+  }
+
+  it("move ripple shifts audio at/after the moved clip's end; straddlers stay", () => {
+    const { doc, sceneClipId, audioBefore, audioAfter, audioStraddle } = scenePlusAudioDoc();
+    // [0,4) moved TO bar 2 = +2 (rightward) — the audio tail rides +2.
+    const next = moveArrangementClipRipple(doc, sceneClipId, 2).execute(doc);
+    const audio = next.arrangement.audioClips ?? [];
+    expect(audio.find((c) => c.id === audioBefore)!.startBar).toBe(1); // untouched (before old end)
+    expect(audio.find((c) => c.id === audioAfter)!.startBar).toBe(14); // 12 + 2
+    expect(audio.find((c) => c.id === audioStraddle)!.startBar).toBe(3.5); // straddler stays
+  });
+
+  it("delete ripple closes the gap under the audio tail too", () => {
+    const { doc, sceneClipId, audioAfter, audioStraddle } = scenePlusAudioDoc();
+    const next = deleteArrangementClipRipple(doc, sceneClipId).execute(doc);
+    const audio = next.arrangement.audioClips ?? [];
+    expect(audio.find((c) => c.id === audioAfter)!.startBar).toBe(8); // 12 - 4
+    expect(audio.find((c) => c.id === audioStraddle)!.startBar).toBe(3.5);
+  });
+
+  it("resize ripple pushes the audio tail right (shift is tick-aligned)", () => {
+    const { doc, sceneClipId, audioAfter } = scenePlusAudioDoc();
+    const next = resizeArrangementClipRipple(doc, sceneClipId, 6).execute(doc);
+    const audio = next.arrangement.audioClips ?? [];
+    expect(audio.find((c) => c.id === audioAfter)!.startBar).toBe(14); // 12 + 2, sub-bar intact
+  });
+});
+
+describe("timelineItemsOf (ADR 0025 read model)", () => {
+  it("projects both clip systems with kinds", () => {
+    let doc = emptyArrangementDoc();
+    const track = doc.tracks.find((t) => t.kind !== "group")!;
+    doc = addArrangementClip(doc, doc.scenes[0]!.id, 0, 4).execute(doc);
+    doc = addAudioClip(doc, track.id, "buf", 2, 1).execute(doc);
+    const items = timelineItemsOf(doc);
+    expect(items.length).toBe(2);
+    expect(items.find((i) => i.kind === "scene")!.lengthBars).toBe(4);
+    expect(items.find((i) => i.kind === "audio")!.startBar).toBe(2);
   });
 });

@@ -74,6 +74,7 @@ import {
   sceneSecondsToBars,
   tempoAtTick,
 } from "../project-model/scene-time";
+import { timelineItemsOf } from "../project-model/timeline";
 import { usePointerDragGuard } from "./usePointerDragGuard";
 import { SNAP_GRIDS, loadSnapGrid, snapBar, snapBarsFor, snapDelta, snapTick, storeSnapGrid } from "./snap";
 import type { SnapGridId } from "./snap";
@@ -2294,9 +2295,19 @@ export function ArrangementPanel() {
               : c,
           )
           .sort((a, b) => a.startBar - b.startBar);
+        // ADR 0025: ripple is timeline-wide — audio clips at/after the block
+        // ride the same whole-bar delta (the command twin does the same).
+        const rippleAudio = (beforeDoc.arrangement.audioClips ?? []).map((c) =>
+          c.startBar >= minStart ? { ...c, startBar: Math.max(0, quantizeAudioBar(c.startBar + flooredDelta)) } : c,
+        );
         const nextDoc: ProjectDocument = {
           ...beforeDoc,
-          arrangement: { ...beforeDoc.arrangement, clips, transitions: transitionsForClips(beforeDoc, clips) },
+          arrangement: {
+            ...beforeDoc.arrangement,
+            clips,
+            audioClips: rippleAudio,
+            transitions: transitionsForClips(beforeDoc, clips),
+          },
         };
         services.store.execute({
           type: "moveClipsRipple",
@@ -3006,6 +3017,42 @@ export function ArrangementPanel() {
     }
   };
 
+  // RIPPLE GHOST (ADR 0025): while a ripple drag moves, show where
+  // every later clip will land (dashed outline at the shifted slot) —
+  // scene AND audio clips. The audio threshold differs from the scene
+  // one for single move/resize: audio clips may STRADDLE the moved clip
+  // (layering), and the command only shifts audio at or after its END,
+  // so the ghost must not preview a shift the commit will not make.
+  const rippleGhost = (() => {
+    if (!rippleMode) return null;
+    const cur = dragRef.current;
+    if (!cur) return null;
+    if (cur.movingIds && multiDrag !== null) {
+      const minStart = Math.min(...Object.values(cur.origStarts ?? { 0: 0 }));
+      if (multiDrag === 0) return null;
+      return { skip: cur.movingIds, fromScene: minStart, fromAudio: minStart, delta: multiDrag };
+    }
+    if (!drag) return null;
+    if (cur.mode === "move" && drag.startBar !== cur.origStart) {
+      return {
+        skip: [cur.clipId],
+        fromScene: cur.origStart,
+        fromAudio: cur.origStart + cur.origLength,
+        delta: drag.startBar - cur.origStart,
+      };
+    }
+    if (cur.mode === "resize" && drag.lengthBars !== cur.origLength) {
+      return {
+        skip: [cur.clipId],
+        fromScene: cur.origStart + cur.origLength,
+        fromAudio: cur.origStart + cur.origLength,
+        delta: drag.lengthBars - cur.origLength,
+      };
+    }
+    return null;
+  })();
+  const ghostShiftFor = (id: string, startBar: number, threshold: number): number =>
+    rippleGhost && !rippleGhost.skip.includes(id) && startBar >= threshold ? rippleGhost.delta : 0;
   return (
     <section className="arr-panel" aria-label="Arrangement and scenes">
       <div className="arr-scenes">
@@ -4150,13 +4197,13 @@ export function ArrangementPanel() {
                   setSelectedClipId(null);
                   setSelectedAudioClipId(null);
                 } else {
-                  // Marquee spans BOTH clip systems — the lane hosts scene and
-                  // audio clips alike, and the shared selection store carries
-                  // either kind (keyboard Delete routes both).
-                  selectionStore.setClips([
-                    ...clips.filter((c) => c.startBar < to && c.startBar + c.lengthBars > from).map((c) => c.id),
-                    ...audioClips.filter((c) => c.startBar < to && c.startBar + c.lengthBars > from).map((c) => c.id),
-                  ]);
+                  // Marquee spans BOTH clip systems (ADR 0025) — one
+                  // projection, one intersect, either kind in the selection.
+                  selectionStore.setClips(
+                    timelineItemsOf(services.store.doc)
+                      .filter((item) => item.startBar < to && item.startBar + item.lengthBars > from)
+                      .map((item) => item.id),
+                  );
                   setSelectedClipId(null);
                 }
                 return;
@@ -4235,34 +4282,7 @@ export function ArrangementPanel() {
               const scene = scenes.find((candidate) => candidate.id === clip.sceneId);
               const role = scene ? (sceneRoleOf(scene) ?? "custom") : "custom";
               const isDragging = dragRef.current?.clipId === clip.id && drag !== null;
-              // RIPPLE GHOST: while a ripple drag moves, show where every
-              // later clip will land (dashed outline at the shifted slot).
-              const rippleGhost = (() => {
-                if (!rippleMode) return null;
-                const cur = dragRef.current;
-                if (!cur) return null;
-                if (cur.movingIds && multiDrag !== null) {
-                  const minStart = Math.min(...Object.values(cur.origStarts ?? { 0: 0 }));
-                  if (multiDrag === 0) return null;
-                  return { skip: cur.movingIds, from: minStart, delta: multiDrag };
-                }
-                if (!drag) return null;
-                if (cur.mode === "move" && drag.startBar !== cur.origStart) {
-                  return { skip: [cur.clipId], from: cur.origStart, delta: drag.startBar - cur.origStart };
-                }
-                if (cur.mode === "resize" && drag.lengthBars !== cur.origLength) {
-                  return {
-                    skip: [cur.clipId],
-                    from: cur.origStart + cur.origLength,
-                    delta: drag.lengthBars - cur.origLength,
-                  };
-                }
-                return null;
-              })();
-              const ghostShift =
-                rippleGhost && !rippleGhost.skip.includes(clip.id) && clip.startBar >= rippleGhost.from
-                  ? rippleGhost.delta
-                  : 0;
+              const ghostShift = ghostShiftFor(clip.id, clip.startBar, rippleGhost?.fromScene ?? 0);
               const multiMoving = dragRef.current?.movingIds?.includes(clip.id) && multiDrag !== null;
               const startBar = multiMoving ? clip.startBar + multiDrag : isDragging ? drag.startBar : clip.startBar;
               const lengthBars = isDragging ? drag.lengthBars : clip.lengthBars;
@@ -4342,11 +4362,15 @@ export function ArrangementPanel() {
               const isDragging = audioDragRef.current?.clipId === clip.id && audioDrag !== null;
               // Block move: every selected audio clip previews the shared delta.
               const multiMovingAudio = audioDragRef.current?.movingIds?.includes(clip.id) && audioMultiDrag !== null;
+              // Ripple ghost (ADR 0025): at/after the moved clip's END — the
+              // same threshold the ripple commands shift audio by.
+              const audioGhostShift =
+                isDragging || multiMovingAudio ? 0 : ghostShiftFor(clip.id, clip.startBar, rippleGhost?.fromAudio ?? 0);
               const startBar = multiMovingAudio
                 ? Math.max(0, clip.startBar + audioMultiDrag)
                 : isDragging
                   ? audioDrag.startBar
-                  : clip.startBar;
+                  : clip.startBar + audioGhostShift;
               const lengthBars = isDragging ? audioDrag.lengthBars : clip.lengthBars;
               // Shared selection drives the visual, same as scene clips; the
               // local mirror stays for panel features that follow ONE clip

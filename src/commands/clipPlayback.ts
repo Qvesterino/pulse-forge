@@ -8,7 +8,7 @@
  * you see exactly which lines make the difference.
  */
 import type { Command } from "./types";
-import type { IntensityPoint, ProjectDocument } from "../project-model/types";
+import type { AudioClip, IntensityPoint, ProjectDocument } from "../project-model/types";
 import { MAX_ARRANGEMENT_CLIP_BARS } from "../project-model/schema";
 import { snapshot } from "./core";
 import { markerClampPatch, unlinkMarkersOfClips } from "./docOps";
@@ -106,6 +106,22 @@ export function setArrangementClipScene(doc: ProjectDocument, clipId: string, sc
 }
 
 /**
+ * ADR 0025: ripple is timeline-wide. Audio clips at/after the edit point
+ * shift by the same whole-bar delta (tick-aligned — integer bars cannot
+ * destroy sub-bar positions). A clip STRADDLING the boundary stays put: the
+ * layering contract allows it to keep sounding across the moved seam, and
+ * yanking it would teleport audible content the user did not grab.
+ */
+function rippleShiftAudioClips(
+  audioClips: AudioClip[] | undefined,
+  threshold: number,
+  deltaBars: number,
+): AudioClip[] | undefined {
+  if (!audioClips || audioClips.length === 0) return audioClips;
+  return audioClips.map((c) => (c.startBar >= threshold ? { ...c, startBar: Math.max(0, c.startBar + deltaBars) } : c));
+}
+
+/**
  * RIPPLE EDIT (arrangement-as-a-tool wave): moving a clip shifts every
  * later clip by the same delta, preserving all gaps — the arrangement
  * behaves like one continuous strip instead of clips floating on rails.
@@ -136,7 +152,12 @@ export function moveArrangementClipRipple(doc: ProjectDocument, clipId: string, 
     .sort((a, b) => a.startBar - b.startBar);
   const next: ProjectDocument = {
     ...doc,
-    arrangement: { ...doc.arrangement, clips, transitions: transitionsForClips(doc, clips) },
+    arrangement: {
+      ...doc.arrangement,
+      clips,
+      audioClips: rippleShiftAudioClips(doc.arrangement.audioClips, clip.startBar + clip.lengthBars, delta),
+      transitions: transitionsForClips(doc, clips),
+    },
   };
   return snapshot("moveArrangementClipRipple", `Ripple move to bar ${target + 1}`, doc, next);
 }
@@ -162,7 +183,12 @@ export function resizeArrangementClipRipple(doc: ProjectDocument, clipId: string
     .sort((a, b) => a.startBar - b.startBar);
   const next: ProjectDocument = {
     ...doc,
-    arrangement: { ...doc.arrangement, clips, transitions: transitionsForClips(doc, clips) },
+    arrangement: {
+      ...doc.arrangement,
+      clips,
+      audioClips: rippleShiftAudioClips(doc.arrangement.audioClips, oldEnd, deltaBars),
+      transitions: transitionsForClips(doc, clips),
+    },
   };
   return snapshot("resizeArrangementClipRipple", `Ripple resize to ${bars} bars`, doc, next);
 }
@@ -187,7 +213,12 @@ export function deleteArrangementClipRipple(doc: ProjectDocument, clipId: string
     ...doc,
     // Audit 08 D3: markers clamp to the shrunken project end in-command.
     ...markersPatch,
-    arrangement: { ...doc.arrangement, clips, transitions: transitionsForClips(doc, clips) },
+    arrangement: {
+      ...doc.arrangement,
+      clips,
+      audioClips: rippleShiftAudioClips(doc.arrangement.audioClips, oldEnd, -clip.lengthBars),
+      transitions: transitionsForClips(doc, clips),
+    },
   };
   return snapshot("deleteArrangementClipRipple", `Ripple delete clip`, doc, next);
 }

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import type { ProjectDocument } from "../project-model/types";
+import { timelineItemsOf } from "../project-model/timeline";
 import type { SelectionStore } from "../store/SelectionStore";
 
 /**
@@ -44,10 +45,8 @@ export interface ClipSelectionSource {
 export function pruneDeadClipIds(store: ClipSelectionSource, selectionStore: SelectionStore): void {
   if (selectionStore.getState().clipIds.length === 0) return;
   const doc = store.getDoc();
-  selectionStore.retainClips([
-    ...doc.arrangement.clips.map((c) => c.id),
-    ...(doc.arrangement.audioClips ?? []).map((c) => c.id),
-  ]);
+  // ADR 0025: the projection is the one place that knows both id sets.
+  selectionStore.retainClips(timelineItemsOf(doc).map((item) => item.id));
 }
 
 /**

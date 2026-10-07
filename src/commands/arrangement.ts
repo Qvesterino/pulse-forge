@@ -4,6 +4,7 @@
  */
 import type { Command } from "./types";
 import type { ArrangementClip, ArrangementTransition, ProjectDocument, SceneRole } from "../project-model/types";
+import { BAR_TICKS, STEP_TICKS } from "../project-model/types";
 import { MAX_ARRANGEMENT_CLIP_BARS, sanitizeArrangementTransitions } from "../project-model/schema";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
@@ -172,6 +173,73 @@ export function deleteArrangementClip(doc: ProjectDocument, clipId: string): Com
     },
   };
   return snapshot("deleteArrangementClip", "Delete clip", doc, next);
+}
+
+/**
+ * SPLIT a scene clip at an arrangement tick (ADR 0025: split-at-playhead is
+ * timeline-wide). The LEFT fragment keeps the original id, so transitions
+ * attached to the clip stay attached to the continuation of its start; the
+ * RIGHT fragment is a fresh clip whose content state continues the seam:
+ *
+ *  - pattern phase: (phase + leftTicks) % patternTicks — the wrapped pattern
+ *    position the right half actually plays from (loops included);
+ *  - scene-automation offset: sceneOffset + leftTicks — the intensity curve
+ *    does NOT loop, it keeps elapsed time;
+ *  - the per-clip loop flag carries (duplicateArrangementClip contract).
+ *
+ * The scene-clip system is integer-bar by contract (every move/resize rounds,
+ * no-overlap compares integer starts), so the split lands on the LAST bar
+ * line at or before the playhead, and both fragments must keep a whole bar
+ * (the arrangement-clip minimum). Splitting mid-bar asks for the nearest
+ * earlier bar line — never a fractional startBar, which the next move would
+ * silently snap anyway.
+ */
+export function splitArrangementClipAtTick(doc: ProjectDocument, clipId: string, splitTick: number): Command {
+  const clip = doc.arrangement.clips.find((c) => c.id === clipId);
+  if (!clip) throw new Error(`Clip ${clipId} not found`);
+  if (!Number.isFinite(splitTick)) throw new Error("Split point must be a finite arrangement tick");
+  const startTick = clip.startBar * BAR_TICKS;
+  const endTick = startTick + clip.lengthBars * BAR_TICKS;
+  if (splitTick <= startTick || splitTick >= endTick) throw new Error("Split point outside clip");
+  const splitBar = Math.floor(splitTick / BAR_TICKS);
+  const leftBars = splitBar - clip.startBar;
+  const rightBars = clip.lengthBars - leftBars;
+  if (leftBars < 1 || rightBars < 1) {
+    throw new Error("Scene clips split at bar lines — playhead must leave a whole bar on each side");
+  }
+  const leftTicks = leftBars * BAR_TICKS;
+  const scene = doc.scenes.find((s) => s.id === clip.sceneId);
+  const pattern = scene ? doc.patterns.find((p) => p.id === scene.patternId) : undefined;
+  const patternTicks = pattern ? pattern.stepCount * STEP_TICKS : 0;
+  const phase = clip.phaseOffsetTicks ?? 0;
+  const rightPhase = patternTicks > 0 ? (((phase + leftTicks) % patternTicks) + patternTicks) % patternTicks : phase;
+  const right: ArrangementClip = {
+    id: uid("clip"),
+    sceneId: clip.sceneId,
+    startBar: splitBar,
+    lengthBars: rightBars,
+    ...(rightPhase > 0 ? { phaseOffsetTicks: rightPhase } : {}),
+    ...((clip.sceneOffsetTicks ?? 0) + leftTicks > 0
+      ? { sceneOffsetTicks: (clip.sceneOffsetTicks ?? 0) + leftTicks }
+      : {}),
+    ...(clip.loop ? { loop: clip.loop } : {}),
+  };
+  const left: ArrangementClip = { ...clip, lengthBars: leftBars };
+  const nextClips = doc.arrangement.clips
+    .flatMap((c) => (c.id === clipId ? [left, right] : [c]))
+    .sort((a, b) => a.startBar - b.startBar);
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: {
+      ...doc.arrangement,
+      clips: nextClips,
+      // The original id survives as the left fragment, so every transition
+      // touching it is still ordered against the shrunken left edge — re-run
+      // the same sanitize move/resize run rather than trusting that.
+      transitions: sanitizeArrangementTransitions(doc.arrangement.transitions, nextClips),
+    },
+  };
+  return snapshot("splitArrangementClip", `Split clip at bar ${splitBar + 1}`, doc, next);
 }
 
 export function duplicateArrangementClip(doc: ProjectDocument, clipId: string): Command {
