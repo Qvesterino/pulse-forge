@@ -2245,7 +2245,13 @@ export class AudioEngine {
       // A muted clip no longer reaches this map (audioClipsForPlayback
       // filters it) — current === undefined covers mute-while-playing; the
       // meta.muted check is the belt-and-suspenders for legacy call shapes.
-      if (current && !current.muted && !meta.muted && current.startBar === meta.startBar && current.lengthBars === meta.lengthBars) {
+      if (
+        current &&
+        !current.muted &&
+        !meta.muted &&
+        current.startBar === meta.startBar &&
+        current.lengthBars === meta.lengthBars
+      ) {
         survivors.add(meta.clipId);
         continue;
       }

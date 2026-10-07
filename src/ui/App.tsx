@@ -745,9 +745,7 @@ export function App({
         if (audioIds.length === 0) return;
         // Toggle semantics: any unmuted clip in the selection mutes ALL of
         // them; an all-muted selection unmutes.
-        const anyUnmuted = (doc.arrangement.audioClips ?? []).some(
-          (c) => audioIds.includes(c.id) && c.muted !== true,
-        );
+        const anyUnmuted = (doc.arrangement.audioClips ?? []).some((c) => audioIds.includes(c.id) && c.muted !== true);
         try {
           services.store.execute(setAudioClipsMute(doc, audioIds, anyUnmuted));
         } catch (e) {

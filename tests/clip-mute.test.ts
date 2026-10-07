@@ -117,9 +117,7 @@ describe("MU4 edits carry the flag", () => {
 
     // Duplicate inherits it too (lands exactly after the left fragment: bar 1).
     store.execute(duplicateAudioClip(store.doc, fragments[0]!.id));
-    const dup = clips(store.doc).filter(
-      (c) => c.id !== b && c.id !== fragments[0]!.id && c.id !== fragments[1]!.id,
-    );
+    const dup = clips(store.doc).filter((c) => c.id !== b && c.id !== fragments[0]!.id && c.id !== fragments[1]!.id);
     expect(dup).toHaveLength(1);
     expect(dup[0]!.startBar).toBe(1);
     expect(dup[0]!.muted).toBe(true);
