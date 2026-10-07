@@ -1,5 +1,6 @@
 import { AudioEngine } from "./audio-engine/AudioEngine";
 import { LiveRecorder } from "./audio-engine/recorder";
+import { resumeSpanningAudioClips, syncDocChangeWhilePlaying } from "./audio-engine/liveEditSync";
 import { Scheduler } from "./scheduler/Scheduler";
 import { createSchedulerDriver } from "./scheduler/schedulerDriver";
 import { Transport } from "./transport/Transport";
@@ -182,10 +183,12 @@ export async function runLiveEditingChecks(onProgress?: (message: string) => voi
     const driver = createSchedulerDriver(ctx, { createGain: () => ctx.createGain() });
     if (driver) scheduler.setDriver(driver);
 
-    // Doc-change → engine wiring, mirroring services.ts's audio branch 1:1.
+    // Doc-change → engine wiring — the SHARED live-editing sync (the same
+    // functions services.ts calls), plus the services-shaped play/seek
+    // gestures below, so this pass exercises the shipped path.
     store.onDocChanged = (doc) => {
       engine.setProject(doc);
-      if (transport.playing) engine.restartFrozenSources(transport.position);
+      if (transport.playing) syncDocChangeWhilePlaying({ engine, transport, getDoc: () => doc });
     };
 
     const recorder = new LiveRecorder({
@@ -215,6 +218,7 @@ export async function runLiveEditingChecks(onProgress?: (message: string) => voi
     const playLive = (): void => {
       engine.transportStarted(engine.currentTime, beatPhase(transport) / PPQ, transport.position / PPQ);
       engine.restartFrozenSources(transport.position);
+      resumeSpanningAudioClips({ engine, transport, getDoc: () => store.doc });
       scheduler.start();
     };
 
@@ -226,6 +230,7 @@ export async function runLiveEditingChecks(onProgress?: (message: string) => voi
       engine.transportStarted(engine.currentTime, beatPhase(transport) / PPQ, transport.position / PPQ);
       engine.restartFrozenSources(transport.position);
       scheduler.resync();
+      resumeSpanningAudioClips({ engine, transport, getDoc: () => store.doc });
     };
 
     const recordTake = async (

@@ -25,6 +25,8 @@ export interface MasteringSessionRecord {
   sourceSampleRate: number;
   masterConfig: MasterConfig;
   snapshots: MasteringSessionSnapshots;
+  /** Optional additive revision label; old session records default to an empty string. */
+  deliveryVersion?: string;
   /** Increments on edits and undo/redo so render reports can detect stale state. */
   configRevision: number;
   undoStack: MasterConfig[];
@@ -190,6 +192,8 @@ function isMasteringSessionSummary(value: unknown): value is MasteringSessionSum
     value.sourceSampleRate <= 192000 &&
     normalizeSessionMasterConfig(value.masterConfig) !== null &&
     normalizeSessionSnapshots(value.snapshots) !== null &&
+    (value.deliveryVersion === undefined ||
+      (typeof value.deliveryVersion === "string" && value.deliveryVersion.length <= 32)) &&
     Number.isSafeInteger(value.configRevision) &&
     (value.configRevision as number) >= 0 &&
     validHistory(value.undoStack) &&
@@ -231,6 +235,7 @@ export function createMasteringSessionRecord(input: {
     sourceSampleRate: input.sourceSampleRate,
     masterConfig: cloneSessionMasterConfig(input.masterConfig),
     snapshots: { A: null, B: null },
+    deliveryVersion: "",
     configRevision: 0,
     undoStack: [],
     redoStack: [],
@@ -500,6 +505,7 @@ function validateLoadedSummary(value: unknown): MasteringSessionSummary {
     ...value,
     masterConfig,
     snapshots,
+    deliveryVersion: typeof value.deliveryVersion === "string" ? value.deliveryVersion : "",
     undoStack: undoStack as MasterConfig[],
     redoStack: redoStack as MasterConfig[],
   };
@@ -587,6 +593,34 @@ export class MasteringSessionRepository {
         complete(undefined);
       },
     );
+  }
+
+  async updateDeliveryVersion(sessionId: string, deliveryVersion: string): Promise<void> {
+    const normalizedVersion = deliveryVersion.slice(0, 32);
+    await transactAcross<undefined>([MASTERING_SESSION_STORE], (transaction, complete, fail) => {
+      const store = transaction.objectStore(MASTERING_SESSION_STORE);
+      const request = store.get(sessionId);
+      request.onsuccess = () => {
+        if (!isMasteringSessionSummary(request.result)) {
+          fail(new Error("The mastering session was closed before its delivery version could be saved."));
+          return;
+        }
+        const updated: MasteringSessionSummary = {
+          ...validateLoadedSummary(request.result),
+          deliveryVersion: normalizedVersion,
+          updatedAt: new Date().toISOString(),
+        };
+        try {
+          const write = store.put(updated);
+          write.onerror = () => fail(write.error ?? new Error("Could not save the mastering delivery version."));
+          complete(undefined);
+        } catch (error) {
+          fail(error);
+        }
+      };
+      request.onerror = () =>
+        fail(request.error ?? new Error("Could not load the session for its delivery version update."));
+    });
   }
 
   async delete(id: string): Promise<void> {

@@ -55,6 +55,7 @@ export async function encodeMp3(buffer: AudioBuffer, options: Mp3Options = {}): 
       if (options.signal?.aborted) throw new DOMException("Export cancelled", "AbortError");
     }
   }
+  if (options.signal?.aborted) throw new DOMException("Export cancelled", "AbortError");
   const tail = encoder.flush();
   if (tail.length > 0) chunks.push(new Uint8Array(tail));
   options.onProgress?.(1);

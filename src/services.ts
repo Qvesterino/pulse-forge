@@ -1,6 +1,7 @@
 import { warmSemanticModel } from "./ai/semantic/semantic-client";
 import { AudioEngine } from "./audio-engine/AudioEngine";
 import { Scheduler } from "./scheduler/Scheduler";
+import { resumeSpanningAudioClips, syncDocChangeWhilePlaying } from "./audio-engine/liveEditSync";
 import { Transport } from "./transport/Transport";
 import { ticksPerBar } from "./project-model/schema";
 import { ProjectStore } from "./store/ProjectStore";
@@ -273,6 +274,10 @@ export class PlaybackController {
       // Frozen playback is transport-aware: sources are torn down by
       // panic() on pause/stop and resurrected here on every play.
       this.engine.restartFrozenSources(this.transport.position);
+      // LIVE-EDITING: play-from-position inside a clip's body — the clip's
+      // start is behind the first scheduling window, so resume it explicitly
+      // (same mid-clip resume as seek).
+      resumeSpanningAudioClips({ engine: this.engine, transport: this.transport, getDoc: () => this.projectRef() });
       this.scheduler.start();
       this.generativeLifecycle?.start();
     }
@@ -314,6 +319,11 @@ export class PlaybackController {
       this.engine.transportStarted(this.engine.currentTime, pos / PPQ, this.transport.position / PPQ);
       this.engine.restartFrozenSources(this.transport.position);
       this.scheduler.resync();
+      // LIVE-EDITING: the panic above silenced everything, and the scheduler
+      // only fires clips whose START enters a future window — a clip whose
+      // body spans the new playhead (seek into its middle) needs an explicit
+      // mid-clip resume or it stays silent forever.
+      resumeSpanningAudioClips({ engine: this.engine, transport: this.transport, getDoc: () => this.projectRef() });
       this.generativeLifecycle?.seek();
     }
     this.notify();
@@ -1058,7 +1068,17 @@ export async function openProject(
       engine.automationReset();
     }
     engine.setProject(doc);
-    if (transport.playing) engine.restartFrozenSources(transport.position);
+    if (transport.playing) {
+      // LIVE-EDITING SYNC: the scheduler re-plans from the new doc at its
+      // next window, but one-shot sources already committed to the audio
+      // clock ring to their originally scheduled end (a deleted multi-bar
+      // clip kept sounding), and clips restored/moved/split over the
+      // playhead have their start behind every future window and stayed
+      // silent forever. De-click-cancel orphans, resume what spans the
+      // playhead, then re-align frozen sources.
+      syncDocChangeWhilePlaying({ engine, transport, getDoc: () => doc });
+      engine.restartFrozenSources(transport.position);
+    }
     transport.setBarTicks(ticksPerBar(doc));
     transport.setBpm(doc.bpm);
     void generativeRuntime.refreshAll().catch((error) => {

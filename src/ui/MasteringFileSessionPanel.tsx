@@ -10,6 +10,7 @@ import {
 } from "../mastering/encodedInspection";
 import { awaitMasteringSampleBankReady } from "../mastering/readiness";
 import { evaluateDelivery, MASTER_PROFILES, resolveDeliveryTarget } from "../mastering/profiles";
+import { masteringVersionSuffix } from "../mastering/deliveryFilename";
 import { serializeExternalMasteringReport } from "../mastering/sessionReport";
 import {
   assertMasteringSessionWorkingSetBudget,
@@ -66,6 +67,7 @@ interface SessionComparison {
 }
 
 type SessionPreviewSelection = MasteringSessionSlot | "master" | "reference";
+type SessionDeliveryFormat = "wav" | "mp3";
 
 interface LoadedSessionReference {
   record: MasteringSessionReferenceRecord;
@@ -103,10 +105,6 @@ function bufferBytes(buffer: AudioBuffer | null): number {
   return buffer ? buffer.length * buffer.numberOfChannels * Float32Array.BYTES_PER_ELEMENT : 0;
 }
 
-function sanitizeSessionVersion(value: string): string {
-  return value.trim().replace(/[^\w\- ]+/g, "").replace(/\s+/g, "-").slice(0, 32);
-}
-
 function masteredWavFileName(
   session: MasteringSessionRecord,
   sampleRate: number,
@@ -114,8 +112,17 @@ function masteredWavFileName(
   version: string,
 ): string {
   const baseName = sanitizeFilename(session.fileName.replace(/\.(wav|wave|mp3)$/i, ""));
-  const revision = sanitizeSessionVersion(version);
-  return `${baseName}-mastered-${sampleRate}Hz-${bitDepth}bit${revision ? `-${revision}` : ""}.wav`;
+  return `${baseName}-mastered-${sampleRate}Hz-${bitDepth}bit${masteringVersionSuffix(version)}.wav`;
+}
+
+function masteredMp3FileName(
+  session: MasteringSessionRecord,
+  sampleRate: number,
+  kbps: number,
+  version: string,
+): string {
+  const baseName = sanitizeFilename(session.fileName.replace(/\.(wav|wave|mp3)$/i, ""));
+  return `${baseName}-mastered-${sampleRate}Hz-${kbps}kbps${masteringVersionSuffix(version)}.mp3`;
 }
 
 function awaitWithSessionAbort<T>(
@@ -289,7 +296,8 @@ export function MasteringFileSessionPanel() {
   const [exportedFileName, setExportedFileName] = useState<string | null>(null);
   const [sampleRate, setSampleRate] = useState<44_100 | 48_000>(44_100);
   const [bitDepth, setBitDepth] = useState<WavBitDepth>(24);
-  const [deliveryVersions, setDeliveryVersions] = useState<Record<string, string>>({});
+  const [deliveryFormat, setDeliveryFormat] = useState<SessionDeliveryFormat>("wav");
+  const [mp3Bitrate, setMp3Bitrate] = useState<192 | 320>(320);
   const [busy, setBusy] = useState("");
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
@@ -298,11 +306,27 @@ export function MasteringFileSessionPanel() {
   const selectionEpoch = useRef(0);
   const playingRef = useRef<SessionPreviewSelection | null>(null);
   playingRef.current = playing;
-  const deliveryVersion = session ? (deliveryVersions[session.id] ?? "") : "";
+  const deliveryVersion = session?.deliveryVersion ?? "";
   const setDeliveryVersion = (value: string) => {
-    if (!session) return;
-    setDeliveryVersions((current) => ({ ...current, [session.id]: value }));
+    setSession((current) => (current ? { ...current, deliveryVersion: value.slice(0, 32) } : current));
   };
+
+  const persistDeliveryVersion = useCallback(async (): Promise<string | null> => {
+    if (!session) return null;
+    const updated: MasteringSessionRecord = {
+      ...session,
+      deliveryVersion: deliveryVersion.slice(0, 32),
+      updatedAt: new Date().toISOString(),
+    };
+    setSession(updated);
+    setSessions((current) => setItem(current, updated));
+    try {
+      await repository.updateDeliveryVersion(session.id, updated.deliveryVersion ?? "");
+      return null;
+    } catch (reason) {
+      return masteringSessionErrorMessage(reason, "Could not save the delivery version to this local session.");
+    }
+  }, [deliveryVersion, repository, session]);
 
   useEffect(() => {
     let active = true;
@@ -402,10 +426,12 @@ export function MasteringFileSessionPanel() {
     inspection?.decode.status === "measured"
       ? (inspection.decode.loudnessTimeline ?? null)
       : (rendered?.loudnessTimeline ?? null);
-  const outputDurationSeconds =
-    inspection?.decode.status === "measured"
-      ? (inspection.decode.durationSeconds ?? rendered?.buffer.duration ?? 0)
-      : (rendered?.buffer.duration ?? 0);
+  const outputDurationSeconds = inspection
+    ? (inspection.decode.durationSeconds ?? inspection.file.durationSeconds)
+    : (rendered?.buffer.duration ?? 0);
+  const outputSampleRate = inspection?.decode.sampleRate ?? inspection?.file.sampleRate ?? rendered?.sampleRate;
+  const outputChannelCount =
+    inspection?.decode.channels ?? inspection?.file.channels ?? rendered?.buffer.numberOfChannels;
 
   useEffect(() => {
     if (playing === "A") services.engine.updateMasterComparePreview(comparisonGainA, false);
@@ -1020,7 +1046,9 @@ export function MasteringFileSessionPanel() {
         renderedAt,
         sampleRate,
       });
-      setNotice("Studio render and loudness analysis are ready. Review the measurements, then export the checked WAV.");
+      setNotice(
+        "Studio render and loudness analysis are ready. Review the measurements, then export a checked WAV or MP3.",
+      );
     } catch (reason) {
       if (selectionEpoch.current !== epoch) return;
       if (controller.signal.aborted || (reason instanceof DOMException && reason.name === "AbortError")) {
@@ -1037,14 +1065,15 @@ export function MasteringFileSessionPanel() {
     }
   }, [dirty, draft, estimatedBytes, sampleRate, services, session, source, stopSessionPreview]);
 
-  const exportWav = useCallback(async () => {
+  const exportDelivery = useCallback(async () => {
     if (!session || !draft || !rendered || !renderCurrent) return;
     const controller = new AbortController();
     operation.current?.abort();
     operation.current = controller;
     const epoch = selectionEpoch.current;
     stopSessionPreview();
-    setBusy("Encoding delivery WAV…");
+    const formatLabel = deliveryFormat.toUpperCase();
+    setBusy(`Encoding delivery ${formatLabel}…`);
     setError("");
     setNotice("");
     setProgress("");
@@ -1052,51 +1081,78 @@ export function MasteringFileSessionPanel() {
     setExportedFileName(null);
     setComparison(null);
     try {
-      const wav = await encodeWavAsync(rendered.buffer, bitDepth, {
-        signal: controller.signal,
-        onProgress: (value) => setProgress(`Encoding WAV · ${Math.round(value * 100)}%`),
-        bext: createBextMetadata({
-          description: `KYX mastered delivery · ${session.fileName}`,
-          loudness: {
-            integratedLufs: rendered.measurements.lufsIntegrated,
-            rangeLu: rendered.measurements.loudnessRangeLu,
-            truePeakDbtp: rendered.measurements.truePeakDb,
-            momentaryLufs: rendered.measurements.lufsMomentary,
-            shortTermLufs: rendered.measurements.lufsShortTerm,
-          },
-          codingHistory: `A=PCM,F=${rendered.sampleRate},W=${bitDepth},M=stereo,T=KYX external mastering`,
-        }),
-      });
-      // Web Audio decodeAudioData may detach the ArrayBuffer passed to encoded
-      // inspection. Retain the delivery Blob before inspection so export bytes
-      // remain intact after the browser measures the encoded master.
-      const deliveryBlob = new Blob([wav], { type: "audio/wav" });
-      setBusy("Checking encoded WAV delivery…");
-      const checked = await inspectEncodedMaster({
-        format: "wav",
-        bytes: wav,
-        expectedDurationSeconds: rendered.buffer.duration,
-        sourceMeasurements: rendered.measurements,
-        profile: resolveDeliveryTarget(draft),
-        signal: controller.signal,
-        onProgress: (update) => setProgress(`${update.stage} · ${Math.round(update.progress * 100)}%`),
-      });
+      const versionSaveError = await persistDeliveryVersion();
+      let deliveryBlob: Blob;
+      let checked: EncodedMasterInspection;
+      let fileName: string;
+      if (deliveryFormat === "mp3") {
+        const { encodeMp3 } = await import("../export/mp3");
+        deliveryBlob = await encodeMp3(rendered.buffer, {
+          kbps: mp3Bitrate,
+          signal: controller.signal,
+          onProgress: (value) => setProgress(`Encoding ${mp3Bitrate} kbps MP3 · ${Math.round(value * 100)}%`),
+        });
+        setBusy("Checking encoded MP3 delivery…");
+        checked = await inspectEncodedMaster({
+          format: "mp3",
+          bytes: deliveryBlob,
+          expectedDurationSeconds: rendered.buffer.duration,
+          sourceMeasurements: rendered.measurements,
+          profile: resolveDeliveryTarget(draft),
+          signal: controller.signal,
+          onProgress: (update) => setProgress(`${update.stage} · ${Math.round(update.progress * 100)}%`),
+        });
+        fileName = masteredMp3FileName(session, rendered.sampleRate, mp3Bitrate, deliveryVersion);
+      } else {
+        const wav = await encodeWavAsync(rendered.buffer, bitDepth, {
+          signal: controller.signal,
+          onProgress: (value) => setProgress(`Encoding WAV · ${Math.round(value * 100)}%`),
+          bext: createBextMetadata({
+            description: `KYX mastered delivery · ${session.fileName}`,
+            loudness: {
+              integratedLufs: rendered.measurements.lufsIntegrated,
+              rangeLu: rendered.measurements.loudnessRangeLu,
+              truePeakDbtp: rendered.measurements.truePeakDb,
+              momentaryLufs: rendered.measurements.lufsMomentary,
+              shortTermLufs: rendered.measurements.lufsShortTerm,
+            },
+            codingHistory: `A=PCM,F=${rendered.sampleRate},W=${bitDepth},M=stereo,T=KYX external mastering`,
+          }),
+        });
+        // Web Audio decodeAudioData may detach the ArrayBuffer passed to encoded
+        // inspection. Retain the delivery Blob before inspection so export bytes
+        // remain intact after the browser measures the encoded master.
+        deliveryBlob = new Blob([wav], { type: "audio/wav" });
+        setBusy("Checking encoded WAV delivery…");
+        checked = await inspectEncodedMaster({
+          format: "wav",
+          bytes: wav,
+          expectedDurationSeconds: rendered.buffer.duration,
+          sourceMeasurements: rendered.measurements,
+          profile: resolveDeliveryTarget(draft),
+          signal: controller.signal,
+          onProgress: (update) => setProgress(`${update.stage} · ${Math.round(update.progress * 100)}%`),
+        });
+        fileName = masteredWavFileName(session, rendered.sampleRate, bitDepth, deliveryVersion);
+      }
       if (controller.signal.aborted) throw new DOMException("Export cancelled", "AbortError");
       setInspection(checked);
-      const fileName = masteredWavFileName(session, rendered.sampleRate, bitDepth, deliveryVersion);
       setExportedFileName(fileName);
       downloadBlob(deliveryBlob, fileName);
-      setNotice(
+      const versionSaveNote = versionSaveError ? ` Revision was not saved locally: ${versionSaveError}` : "";
+      const inspectionNote =
         checked.decode.status === "measured"
-          ? `Exported ${fileName} · encoded file parsed and decoded audio measured.`
-          : `Exported ${fileName} · WAV container checked; post-decode audio was not measured.`,
-      );
+          ? `Encoded ${formatLabel} parsed and decoded audio measured.`
+          : deliveryFormat === "mp3"
+            ? `MP3 headers checked; post-decode audio was not measured: ${checked.decode.reason ?? "not measured"}.`
+            : `WAV container checked; post-decode audio was not measured: ${checked.decode.reason ?? "not measured"}.`;
+      setNotice(`Exported ${fileName} · ${inspectionNote}${versionSaveNote}`);
     } catch (reason) {
       if (selectionEpoch.current !== epoch) return;
       if (controller.signal.aborted || (reason instanceof DOMException && reason.name === "AbortError")) {
-        setNotice("WAV export cancelled.");
+        setNotice(`${formatLabel} export cancelled.`);
       } else {
-        setError(masteringSessionErrorMessage(reason, "Could not encode or inspect the delivery WAV."));
+        setError(masteringSessionErrorMessage(reason, `Could not encode or inspect the delivery ${formatLabel}.`));
       }
     } finally {
       if (operation.current === controller) operation.current = null;
@@ -1105,18 +1161,36 @@ export function MasteringFileSessionPanel() {
         setProgress("");
       }
     }
-  }, [bitDepth, deliveryVersion, draft, renderCurrent, rendered, session, stopSessionPreview]);
+  }, [
+    bitDepth,
+    deliveryFormat,
+    deliveryVersion,
+    draft,
+    mp3Bitrate,
+    persistDeliveryVersion,
+    renderCurrent,
+    rendered,
+    session,
+    stopSessionPreview,
+  ]);
 
   const downloadDeliveryReport = useCallback(() => {
     if (!session || !draft || !rendered || !renderCurrent || !inspection || !deliveryVerdict) return;
     const fileName =
       exportedFileName ??
-      masteredWavFileName(
-        session,
-        inspection.file.sampleRate,
-        inspection.file.bitDepth ?? bitDepth,
-        deliveryVersion,
-      );
+      (inspection.format === "wav"
+        ? masteredWavFileName(
+            session,
+            inspection.file.sampleRate,
+            inspection.file.bitDepth ?? bitDepth,
+            deliveryVersion,
+          )
+        : masteredMp3FileName(
+            session,
+            inspection.file.sampleRate,
+            inspection.file.averageBitrateKbps ?? mp3Bitrate,
+            deliveryVersion,
+          ));
     const report = serializeExternalMasteringReport({
       session,
       masterConfig: draft,
@@ -1132,9 +1206,20 @@ export function MasteringFileSessionPanel() {
       exportedFileName: fileName,
       deliveryVerdict,
     });
-    const reportName = fileName.replace(/\.wav$/i, "-report.json");
+    const reportName = fileName.replace(/\.(wav|mp3)$/i, "-report.json");
     downloadBlob(new Blob([report], { type: "application/json" }), reportName);
-  }, [bitDepth, deliveryVersion, deliveryVerdict, draft, exportedFileName, inspection, renderCurrent, rendered, session]);
+  }, [
+    bitDepth,
+    deliveryVersion,
+    deliveryVerdict,
+    draft,
+    exportedFileName,
+    inspection,
+    mp3Bitrate,
+    renderCurrent,
+    rendered,
+    session,
+  ]);
 
   const deleteSession = useCallback(async () => {
     if (!session) return;
@@ -1172,7 +1257,9 @@ export function MasteringFileSessionPanel() {
         <div>
           <span className="mastering-panel-kicker">EXTERNAL FILE MASTERING</span>
           <h3>Master a stereo mixdown</h3>
-          <p>Open a WAV or MP3, process it with KYX’s offline master chain, then inspect and export a checked WAV.</p>
+          <p>
+            Open a WAV or MP3, process it with KYX’s offline master chain, then inspect and export a checked WAV or MP3.
+          </p>
         </div>
         <label className="btn btn-small mastering-file-session-import">
           Import WAV / MP3
@@ -1595,18 +1682,50 @@ export function MasteringFileSessionPanel() {
               </select>
             </label>
             <label>
-              <strong>WAV BIT DEPTH</strong>
+              <strong>DELIVERY FORMAT</strong>
               <select
-                aria-label="External mastering WAV bit depth"
-                value={bitDepth}
+                aria-label="External mastering delivery format"
+                value={deliveryFormat}
                 disabled={Boolean(busy)}
-                onChange={(event) => setBitDepth(Number(event.target.value) as WavBitDepth)}
+                onChange={(event) => setDeliveryFormat(event.target.value as SessionDeliveryFormat)}
               >
-                <option value={16}>16-bit PCM</option>
-                <option value={24}>24-bit PCM</option>
-                <option value={32}>32-bit float</option>
+                <option value="wav">WAV · lossless PCM</option>
+                <option value="mp3">MP3 · lossy</option>
               </select>
+              <small className="export-version-hint">
+                {deliveryFormat === "wav"
+                  ? "WAV preserves PCM samples; choose bit depth below."
+                  : "MP3 is a lossy listening copy; choose 192 or 320 kbps below."}
+              </small>
             </label>
+            {deliveryFormat === "wav" ? (
+              <label>
+                <strong>WAV BIT DEPTH</strong>
+                <select
+                  aria-label="External mastering WAV bit depth"
+                  value={bitDepth}
+                  disabled={Boolean(busy)}
+                  onChange={(event) => setBitDepth(Number(event.target.value) as WavBitDepth)}
+                >
+                  <option value={16}>16-bit PCM</option>
+                  <option value={24}>24-bit PCM</option>
+                  <option value={32}>32-bit float</option>
+                </select>
+              </label>
+            ) : (
+              <label>
+                <strong>MP3 BITRATE</strong>
+                <select
+                  aria-label="External mastering MP3 bitrate"
+                  value={mp3Bitrate}
+                  disabled={Boolean(busy)}
+                  onChange={(event) => setMp3Bitrate(Number(event.target.value) as 192 | 320)}
+                >
+                  <option value={192}>192 kbps</option>
+                  <option value={320}>320 kbps · high quality</option>
+                </select>
+              </label>
+            )}
             <label>
               <strong>VERSION</strong>
               <input
@@ -1620,6 +1739,20 @@ export function MasteringFileSessionPanel() {
                 autoCapitalize="off"
                 spellCheck={false}
                 onChange={(event) => setDeliveryVersion(event.target.value)}
+                onBlur={() => {
+                  const saveSessionId = session?.id;
+                  const saveEpoch = selectionEpoch.current;
+                  void persistDeliveryVersion().then((saveError) => {
+                    if (
+                      saveError &&
+                      saveSessionId &&
+                      session?.id === saveSessionId &&
+                      selectionEpoch.current === saveEpoch
+                    ) {
+                      setError(saveError);
+                    }
+                  });
+                }}
               />
               <small id="external-master-version-hint" className="export-version-hint">
                 Spaces become dashes; unsafe filename characters are removed.
@@ -1666,9 +1799,9 @@ export function MasteringFileSessionPanel() {
               type="button"
               className="btn btn-export"
               disabled={Boolean(busy) || !renderCurrent}
-              onClick={() => void exportWav()}
+              onClick={() => void exportDelivery()}
             >
-              Encode &amp; export WAV
+              Encode &amp; export {deliveryFormat.toUpperCase()}
             </button>
           </div>
           {estimatedBytes > 512 * 1024 * 1024 && (
@@ -1706,16 +1839,20 @@ export function MasteringFileSessionPanel() {
         <div className="mastering-file-session-report" aria-label="Rendered master measurements">
           <strong>
             {inspection?.decode.status === "measured"
-              ? "DECODED WAV · POST-ENCODE"
+              ? `DECODED ${inspection.format.toUpperCase()} · POST-ENCODE`
               : inspection
-                ? "RENDER PCM · ENCODED WAV NOT MEASURED"
+                ? `RENDER PCM · ENCODED ${inspection.format.toUpperCase()} NOT MEASURED`
                 : "RENDER PCM · PRE-ENCODE"}
           </strong>
           <span>{outputMeasurements ? `${outputMeasurements.lufsIntegrated.toFixed(1)} LUFS` : "NOT MEASURED"}</span>
           <span>{outputMeasurements ? `${outputMeasurements.truePeakDb.toFixed(1)} dBTP` : "NOT MEASURED"}</span>
           <span>
-            {rendered.buffer.duration.toFixed(1)} s · {rendered.buffer.numberOfChannels} ch ·{" "}
-            {rendered.sampleRate / 1000} kHz
+            {inspection?.file.durationAccuracy === "estimated" ? "≈ " : ""}
+            {outputDurationSeconds.toFixed(1)} s · {outputChannelCount} ch ·{" "}
+            {(outputSampleRate ?? rendered.sampleRate) / 1000} kHz
+            {inspection?.format === "mp3" && inspection.file.averageBitrateKbps
+              ? ` · ${inspection.file.averageBitrateKbps} kbps MP3`
+              : ""}
           </span>
           {outputMeasurements && (
             <div className="mastering-overview-metrics mastering-session-metrics">
@@ -1791,15 +1928,15 @@ export function MasteringFileSessionPanel() {
           {inspection && (
             <small>
               {inspection.decode.status === "measured"
-                ? `Decoded WAV · ${inspection.decode.measurements?.lufsIntegrated.toFixed(1)} LUFS · ${inspection.decode.measurements?.truePeakDb.toFixed(1)} dBTP`
-                : `Container checked · post-decode measurement unavailable: ${inspection.decode.reason ?? "not measured"}`}
+                ? `Decoded ${inspection.format.toUpperCase()} · ${inspection.decode.measurements?.lufsIntegrated.toFixed(1)} LUFS · ${inspection.decode.measurements?.truePeakDb.toFixed(1)} dBTP`
+                : `Encoded file metadata checked · post-decode measurement unavailable: ${inspection.decode.reason ?? "not measured"}`}
             </small>
           )}
           {deliveryVerdict && (
             <div className="mastering-file-session-verdict" data-state={deliveryVerdict.status}>
               <strong>
-                {inspection?.decode.status === "measured" ? "DECODED WAV" : "RENDER PCM"} DELIVERY TARGET CHECK ·{" "}
-                {deliveryVerdict.status.toUpperCase()}
+                {inspection?.decode.status === "measured" ? `DECODED ${inspection.format.toUpperCase()}` : "RENDER PCM"}{" "}
+                DELIVERY TARGET CHECK · {deliveryVerdict.status.toUpperCase()}
               </strong>
               {deliveryVerdict.checks.map((check, index) => (
                 <small key={`${check.line}-${index}`} data-state={check.status}>

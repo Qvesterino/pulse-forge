@@ -33,7 +33,8 @@ import { PreviewDeck } from "./previewDeck";
 import { AutomationBridge } from "./automationBridge";
 import { WarpManager } from "./warpManager";
 import { TriggerEngine } from "./triggerEngine";
-import type { TriggerTrackView, InstrumentStateView } from "./triggerEngine";
+import type { TriggerTrackView, InstrumentStateView, ClipSourceMeta } from "./triggerEngine";
+import { audioClipsForPlayback } from "../project-model/audio-takes";
 import type { TrackOrGroupView, ReturnView } from "./deviceLookup";
 import { targetOwner } from "../project-model/targets";
 import { DeviceLookup } from "./deviceLookup";
@@ -331,8 +332,14 @@ export class AudioEngine {
       groupNodes: this.groupNodes as unknown as Map<string, TriggerTrackView>,
       instrumentStates: this.instruments as unknown as Map<string, InstrumentStateView>,
       warp: this.warpManager,
-      trackOneShot: (source) => this.oneShotSources.add(source),
-      releaseOneShot: (source) => this.oneShotSources.delete(source),
+      trackOneShot: (source, clipMeta) => {
+        this.oneShotSources.add(source);
+        if (clipMeta) this.clipSourceMeta.set(source, clipMeta);
+      },
+      releaseOneShot: (source) => {
+        this.oneShotSources.delete(source);
+        this.clipSourceMeta.delete(source);
+      },
       missAsset: (assetId) => this.missedAssets.add(assetId),
     },
     this.warpManager,
@@ -394,6 +401,13 @@ export class AudioEngine {
    * cues. Bounded: each source removes itself on `onended`.
    */
   private oneShotSources = new Set<AudioScheduledSourceNode>();
+  /**
+   * Clip identity for the subset of one-shot sources that belong to an
+   * AudioClip (straight source or warp segment). Keyed by source node; a
+   * source removes itself via releaseOneShot on `onended`. Consumed by
+   * cancelOrphanedClipSources() — the live-editing flush.
+   */
+  private clipSourceMeta = new Map<AudioScheduledSourceNode, ClipSourceMeta>();
   private missedAssets = new Set<string>();
   private syncedBpm = 0;
   /** Active scene BPM override (song mode) — null = runtimes follow doc.bpm. */
@@ -2177,6 +2191,54 @@ export class AudioEngine {
       }
     }
     this.oneShotSources.clear();
+    this.clipSourceMeta.clear();
+  }
+
+  /**
+   * LIVE-EDITING FLUSH — de-click-cancel every clip one-shot whose clip is
+   * gone from (or has moved within) the current document.
+   *
+   * The scheduler re-plans from the new document at the next 25 ms window,
+   * but one-shot sources already handed to the WebAudio clock keep sounding
+   * to their ORIGINALLY scheduled stop: deleting a multi-bar clip during
+   * playback left it ringing for seconds, and a moved clip kept sounding at
+   * its old spot. Called by the doc-change sync while playing; returns the
+   * ids of clips still legitimately sounding (unchanged id + timeline
+   * geometry), which the resume pass must not double-trigger.
+   */
+  cancelOrphanedClipSources(): Set<string> {
+    const survivors = new Set<string>();
+    if (this.clipSourceMeta.size === 0) return survivors;
+    const live = new Map<string, { startBar: number; lengthBars: number }>();
+    for (const clip of this.doc ? audioClipsForPlayback(this.doc.arrangement) : []) {
+      live.set(clip.id, clip);
+    }
+    const now = this.currentTime;
+    for (const [source, meta] of this.clipSourceMeta) {
+      const current = live.get(meta.clipId);
+      if (current && current.startBar === meta.startBar && current.lengthBars === meta.lengthBars) {
+        survivors.add(meta.clipId);
+        continue;
+      }
+      // Orphaned: drop the envelope over ~12 ms (3τ) before the hard stop at
+      // +50 ms — a bare source.stop() would click at an arbitrary waveform
+      // phase. cancelScheduledValues first so scheduled fade ramps cannot
+      // fight the ramp-down (a mid-fade cancel can step to the ramp's start
+      // value; the 4 ms time-constant masks it).
+      try {
+        meta.gainNode.gain.cancelScheduledValues(now);
+        meta.gainNode.gain.setTargetAtTime(0, now, 0.004);
+      } catch {
+        /* node already disconnected */
+      }
+      try {
+        source.stop(now + 0.05);
+      } catch {
+        /* already stopped */
+      }
+      this.clipSourceMeta.delete(source);
+    }
+    return survivors;
   }
 
   panic(): void {

@@ -37,6 +37,7 @@ import { deriveMixAutoFix, type MixHealthReport } from "../analysis/mixDoctor";
 import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import { slicesFromOnsets } from "../audio-engine/transients";
 import { resolveDeliveryTarget, type MasterProfile } from "../mastering/profiles";
+import { masteringVersionSuffix } from "../mastering/deliveryFilename";
 import { inspectEncodedMaster, type EncodedMasterInspection } from "../mastering/encodedInspection";
 import {
   createMasterRenderReport,
@@ -117,14 +118,6 @@ function screenReaderExportStatus(status: Status, reportStale: boolean): string 
     : message;
   const staleMessage = reportStale ? "Master report is stale. Analyze again before delivery." : null;
   return [announcedMessage, staleMessage].filter(Boolean).join(" ");
-}
-
-function sanitizeMasterVersion(value: string): string {
-  return value
-    .trim()
-    .replace(/[^\w\- ]+/g, "")
-    .replace(/\s+/g, "-")
-    .slice(0, 32);
 }
 
 type RecSourceKind = "master" | "track" | "mic";
@@ -282,8 +275,7 @@ export function ExportPanel({
       encodedSettingsStale),
   );
   const baseName = sanitizeFilename(doc.name);
-  const version = masteringMode ? sanitizeMasterVersion(masterVersion) : "";
-  const versionSuffix = version ? `-${version}` : "";
+  const versionSuffix = masteringMode ? masteringVersionSuffix(masterVersion) : "";
   // Keep the workspace preflight tied to the renderer's exact duration/tail
   // estimate so Analyze and Export can explain a memory-limit failure before
   // an OfflineAudioContext is allocated.

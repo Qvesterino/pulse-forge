@@ -220,8 +220,15 @@ function descend(node: unknown, op: DeltaOp, depth: number): unknown {
     if (last) {
       const child = node[segment];
       // ins/move anchor the ARRAY itself (index/id ride on the op).
-      if (op.k === "ins" && Array.isArray(child)) {
-        const copy = [...child];
+      if (op.k === "ins" && (Array.isArray(child) || child === undefined)) {
+        // An ABSENT anchor array is materialized. normalizeProject strips
+        // empty optional arrays (audioClips, transitions, …), so undoing a
+        // command that removed the last element — e.g. "delete the last
+        // audio clip" — replays its ins op against a document where the key
+        // no longer exists. Skipping the op there silently lost the restored
+        // element (undo became a no-op while still consuming the history
+        // entry). An empty array is materialized and the index clamps in.
+        const copy = Array.isArray(child) ? [...child] : [];
         copy.splice(Math.min(op.index, copy.length), 0, op.value);
         return { ...node, [segment]: copy };
       }

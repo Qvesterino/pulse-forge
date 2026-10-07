@@ -49,6 +49,10 @@ another DAW.
 - The source Blob makes a session reopenable, but browser quota or eviction
   can prevent persistence; storage failures must remain visible and no render
   should claim that its source session was saved when the write failed.
+- An optional `deliveryVersion` is additive session summary metadata, separate
+  from `MasterConfig`, render revisions, snapshots, and undo history. Schema-2
+  records without the field normalize to an empty string; later session writes
+  persist it. It labels future filenames and does not change rendered audio.
 - This ADR authorizes the session boundary and render route. The first
   bounded UI slice accepts WAV/MP3 up to 96 MiB and 12 minutes, decodes mono or
   stereo to 44.1 kHz, and rejects estimated working sets above 512 MiB. It
@@ -62,13 +66,13 @@ another DAW.
   IndexedDB object store holds one read-only WAV/MP3 reference per session;
   its SHA-256 is checked on reload, its audio is measured, and it is auditioned
   against the current render with preview-only loudness trim. It is not added to
-  the scratch project, session source, or export. After a checked WAV export,
+  the scratch project, session source, or export. After a checked WAV or MP3 export,
   the session can download a JSON report sidecar tied to the source hash,
   processing revision, delivery profile, render measurements and encoded-file
   inspection. The report is not automatically persisted in IndexedDB and
   contains no audio. The session report surface presents LRA, short-term
   loudness timeline, stereo checks and Mix Doctor diagnostics from the decoded
-  WAV when measured; otherwise it labels the source-PCM fallback and does not
+  delivered file when measured; otherwise it labels the source-PCM fallback and does not
   substitute source data for missing post-encode analysis. The bounded slice still does not provide streaming,
   automatic report persistence, or validated cross-browser length claims.
 
@@ -81,7 +85,9 @@ another DAW.
   as project export.
 - The encoded file is parsed and decoded/measured before download when the
   available browser decoder supports it; the browser acceptance test then
-  imports the delivered WAV again as a new session.
+  imports the delivered WAV again as a new session. The external-session MP3
+  export path must separately verify 192/320 kbps outputs and the truthful
+  unsupported-decoder fallback before being treated as a release gate.
 - Session create, reopen, update, revision, delete, quota failure, import
   abort, render abort, and export abort are acceptance requirements; the
   current automated coverage is incomplete.

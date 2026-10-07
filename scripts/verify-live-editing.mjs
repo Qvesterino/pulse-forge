@@ -36,11 +36,12 @@ const page = await browser.newPage();
 const errors = [];
 const streamed = [];
 page.on("console", (msg) => {
-  if (msg.type() !== "error" && msg.text().startsWith("[live-edit] ")) {
+  if (msg.type() !== "error" && msg.text().startsWith("[live-edit]")) {
+    const text = msg.text();
     try {
-      streamed.push(JSON.parse(msg.text().slice("[live-edit] ".length)));
+      streamed.push(text.startsWith("[live-edit] ") ? JSON.parse(text.slice("[live-edit] ".length)) : text);
     } catch {
-      streamed.push(msg.text());
+      streamed.push(text);
     }
   } else if (msg.type() === "error") {
     errors.push(msg.text());

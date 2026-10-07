@@ -23,7 +23,7 @@ export interface ExternalMasteringReportInput {
   deliveryVerdict: DeliveryVerdict;
 }
 
-/** JSON handoff for a verified external-session WAV; source audio itself is never included. */
+/** JSON handoff for a checked external-session WAV or MP3; source audio itself is never included. */
 export function serializeExternalMasteringReport(
   input: ExternalMasteringReportInput,
   generatedAt = new Date(),
