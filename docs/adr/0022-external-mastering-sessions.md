@@ -63,10 +63,10 @@ another DAW.
   persist locally; render buffers and audition state remain ephemeral. A/B
   comparison renders both versions through the same isolated source path and
   can attenuation-match the louder version for audition only. A separate
-  IndexedDB object store holds one read-only WAV/MP3 reference per session;
+  IndexedDB object store holds one read-only WAV/MP3/FLAC reference per session;
   its SHA-256 is checked on reload, its audio is measured, and it is auditioned
   against the current render with preview-only loudness trim. It is not added to
-  the scratch project, session source, or export. After a checked WAV or MP3 export,
+  the scratch project, session source, or export. After a checked WAV, MP3 or FLAC export,
   the session can download a JSON report sidecar tied to the source hash,
   processing revision, delivery profile, render measurements and encoded-file
   inspection. The report is not automatically persisted in IndexedDB and
@@ -114,3 +114,20 @@ another DAW.
   Safari on macOS requires a separate owner smoke test.
 - Any supported-length claim is backed by real-browser duration and memory
   measurements on the named browser/OS profile.
+
+## Implementation update — 2026-10-07
+
+The bounded session now decodes WAV/MP3 at 44.1 kHz and FLAC at the source's
+native sample rate using an optional, lazy-loaded KYX WASM worker. The worker
+checks decoded rate, channel count, bit depth and sample count against FLAC
+STREAMINFO, rejects any damaged/skipped frames, and is terminated on Cancel or
+after a two-minute worker-operation timeout. The source PCM cap remains 128
+MiB; import, session restore, reference decode and export read-back account for
+encoded copies plus decoded PCM before starting work. Session render/export
+memory still has the 512 MiB ceiling, while project reference comparison keeps
+its 320 MiB ceiling. FLAC post-encode read-back also caps files at 96 MiB and
+projected PCM at 64 MiB; if the combined decode estimate exceeds 512 MiB, the
+header can remain checked while post-decode audio is reported `not-measured`.
+FLAC output remains 16/24-bit PCM at the selected 44.1/48 kHz render rate.
+Browser FLAC acceptance, round-trip vectors and supported browser/OS profiles
+remain open; this update does not broaden the validated support matrix.

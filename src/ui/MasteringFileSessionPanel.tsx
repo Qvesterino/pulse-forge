@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import type { MixHealthReport } from "../analysis/mixDoctor";
 import { computeStageAdjustment } from "../audio-engine/metering";
 import type { BufferSummary } from "../audio-engine/metering";
@@ -360,6 +360,8 @@ export function MasteringFileSessionPanel() {
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [sourceDragActive, setSourceDragActive] = useState(false);
+  const [referenceDragActive, setReferenceDragActive] = useState(false);
   const operation = useRef<AbortController | null>(null);
   const selectionEpoch = useRef(0);
   const playingRef = useRef<SessionPreviewSelection | null>(null);
@@ -1445,12 +1447,32 @@ export function MasteringFileSessionPanel() {
           <span className="mastering-panel-kicker">EXTERNAL FILE MASTERING</span>
           <h3>Master a stereo mixdown</h3>
           <p>
-            Open a WAV, MP3 or FLAC, process it with KYX’s offline master chain, then inspect and export a checked WAV
+            Open a WAV, MP3 or FLAC, process it with KYX’s offline master chain, then inspect and export a checked WAV,
             FLAC or MP3. This local session is separate from the KYX project above; its edits never change the project.
           </p>
         </div>
-        <label className="btn btn-small mastering-file-session-import">
-          Import WAV / MP3 / FLAC
+        <label
+          className={`btn btn-small mastering-file-session-import${sourceDragActive ? " is-drag-over" : ""}`}
+          onDragEnter={(event: DragEvent<HTMLLabelElement>) => {
+            event.preventDefault();
+            if (!busy) setSourceDragActive(true);
+          }}
+          onDragOver={(event: DragEvent<HTMLLabelElement>) => {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = busy ? "none" : "copy";
+          }}
+          onDragLeave={(event: DragEvent<HTMLLabelElement>) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setSourceDragActive(false);
+          }}
+          onDrop={(event: DragEvent<HTMLLabelElement>) => {
+            event.preventDefault();
+            setSourceDragActive(false);
+            if (busy) return;
+            const file = event.dataTransfer.files[0];
+            if (file) void importFile(file);
+          }}
+        >
+          {sourceDragActive ? "Drop mixdown to import" : "Import WAV / MP3 / FLAC"}
           <input
             type="file"
             aria-label="Import WAV, MP3 or FLAC mixdown"
@@ -1813,8 +1835,34 @@ export function MasteringFileSessionPanel() {
                 <strong>REFERENCE COMPARISON</strong>
                 <p>Import a read-only WAV, MP3 or FLAC and compare it with the current rendered master.</p>
               </div>
-              <label className="mastering-session-reference-import">
-                <span>{reference ? "Replace reference" : "Import reference WAV / MP3 / FLAC"}</span>
+              <label
+                className={`mastering-session-reference-import${referenceDragActive ? " is-drag-over" : ""}`}
+                onDragEnter={(event: DragEvent<HTMLLabelElement>) => {
+                  event.preventDefault();
+                  if (!busy) setReferenceDragActive(true);
+                }}
+                onDragOver={(event: DragEvent<HTMLLabelElement>) => {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = busy ? "none" : "copy";
+                }}
+                onDragLeave={(event: DragEvent<HTMLLabelElement>) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setReferenceDragActive(false);
+                }}
+                onDrop={(event: DragEvent<HTMLLabelElement>) => {
+                  event.preventDefault();
+                  setReferenceDragActive(false);
+                  if (busy) return;
+                  const file = event.dataTransfer.files[0];
+                  if (file) void importReference(file);
+                }}
+              >
+                <span>
+                  {referenceDragActive
+                    ? "Drop reference to compare"
+                    : reference
+                      ? "Replace reference"
+                      : "Import reference WAV / MP3 / FLAC"}
+                </span>
                 <input
                   type="file"
                   aria-label="Import external mastering reference WAV, MP3 or FLAC"

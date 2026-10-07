@@ -1,8 +1,11 @@
-# TSAR — hybridný zvukový engine (implementačný plán)
+# TSAR — hybridný zvukový engine (implementačný záznam)
 
 > **STATUS: T0–T7 SHIPPED (2026-10-06/07).** This document is kept as the
-> canonical record of WHAT shipped and WHY the decisions were made; the
-> "how it turned out" notes live under each wave. Counts are in
+> implementation record for WHAT shipped and WHY the decisions were made;
+> the "how it turned out" notes live under each wave. The original product
+> pitch and T0–T7 plan below are historical. For the forward-looking product
+> direction and proposed next waves, read
+> [`TSAR-PRODUCT-DIRECTION.md`](TSAR-PRODUCT-DIRECTION.md). Counts are in
 > `docs/CURRENT-STATE.md` (23 instruments, 610 presets). The 23rd instrument
 > is registered in `INSTRUMENT_DEFS`, the dock panel is `Alt+0`, and the
 > browser gate `tests/e2e/18-tsar.spec.ts` proves the offline event-queue

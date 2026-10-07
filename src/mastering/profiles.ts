@@ -121,7 +121,7 @@ export const MASTER_PROFILES: readonly MasterProfile[] = [
     intendedUse:
       "General starting point, not a universal platform specification. Spotify's conditional peak guidance is shown as an advisory.",
     fileGuidanceNote:
-      "Spotify strongly prefers FLAC; WAV is also accepted. Its guidance requires at least 44.1 kHz and advises preserving native rate and bit depth. KYX FLAC supports 16/24-bit output at the selected project render rate (44.1/48 kHz); external sessions decode at 44.1 kHz. RATE stays manual.",
+      "Spotify strongly prefers FLAC; WAV is also accepted. Its guidance requires at least 44.1 kHz and advises preserving native rate and bit depth. KYX FLAC supports 16/24-bit output at the selected project or external render rate (44.1/48 kHz); external FLAC sources decode at their native rate, while WAV/MP3 sources decode at 44.1 kHz. RATE stays manual.",
   },
   {
     id: "apple",

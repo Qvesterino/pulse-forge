@@ -14,6 +14,7 @@ import {
   duplicateAudioClip,
   moveAudioClip,
   resizeAudioClip,
+  setAudioClipsMute,
   splitAudioClipAtTick,
   updateAudioClip,
 } from "./commands/commands";
@@ -61,6 +62,9 @@ import { BAR_TICKS, PPQ } from "./project-model/types";
  *                        (before fix: ghost rings continuously → no gap → FAIL)
  *  S6 edit storm       — rapid mixed edits while playing: transport stays up,
  *                        position monotonic, document stays valid
+ *  S7 mute/unmute      — muting a SOUNDING clip silences it de-clicked;
+ *                        unmuting resumes it from the playhead
+ *                        (before B3: mute was not a clip property at all)
  */
 
 export interface LiveEditingCheckResult {
@@ -437,6 +441,33 @@ export async function runLiveEditingChecks(onProgress?: (message: string) => voi
       );
     } catch (error) {
       check("live-edit S6 edit storm", false, String(error));
+    }
+
+    // ── S7 mute / unmute while playing ───────────────────────────
+    try {
+      const clipId = resetScenario(0);
+      const shape = await recordTake(async (t0) => {
+        transport.play(0, { leadIn: false });
+        playLive();
+        await waitUntilAudioTime(ctx, t0 + 1.5);
+        // Mute a SOUNDING clip: the doc-change flush treats the muted clip
+        // as an orphan (it no longer passes audioClipsForPlayback) and
+        // de-click-cancels it exactly like a delete.
+        store.execute(setAudioClipsMute(store.doc, [clipId], true));
+        await waitUntilAudioTime(ctx, t0 + 3.0);
+        // Unmute: the clip spans the playhead again and must resume from it.
+        store.execute(setAudioClipsMute(store.doc, [clipId], false));
+      }, 6.0);
+      if (!shape) throw new Error("recorder produced no take");
+      const gapExists = shape.longestSilentGapSec >= 0.8; // the muted stretch
+      const tailAudible = shape.tailRms > AUDIBLE_RMS; // unmute resumed
+      check(
+        "live-edit S7: muting a playing clip silences it de-clicked; unmuting resumes from the playhead",
+        gapExists && tailAudible,
+        `${shapeMessage(shape)} gapExists=${gapExists} tailAudible=${tailAudible}`,
+      );
+    } catch (error) {
+      check("live-edit S7 mute/unmute", false, String(error));
     }
 
     scheduler.stop();

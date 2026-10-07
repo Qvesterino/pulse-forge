@@ -88,35 +88,41 @@ describe("MU3 persistence normalization", () => {
     const base = createDefaultProject();
     const trackId = base.tracks[0]!.id;
     const doc = addAudioClip(base, trackId, "buf-1", 0, 2).execute(base);
+    // Unmuted first: the key is dropped entirely (stored only when true).
+    const unmuted = normalizeProject(doc);
+    expect("muted" in clips(unmuted)[0]!).toBe(false);
+    // A muted clip round-trips with the flag intact.
     const muted = { ...clips(doc)[0]!, muted: true };
     const normalized = normalizeProject({
       ...doc,
       arrangement: { ...doc.arrangement, audioClips: [muted] },
     } as ProjectDocument);
     expect(clips(normalized)[0]!.muted).toBe(true);
-    // Unmuted: the key is dropped entirely (stored only when true).
-    expect("muted" in clips(normalized)[0]!).toBe(false);
-    const unmuted = normalizeProject(doc);
-    expect("muted" in clips(unmuted)[0]!).toBe(false);
+    expect("muted" in clips(normalized)[0]!).toBe(true);
   });
 });
 
 describe("MU4 edits carry the flag", () => {
   it("split fragments and duplicates inherit mute; clipboard paste preserves it", () => {
-    const { doc, a } = docWithTones();
+    const { doc, a, b } = docWithTones();
     const store = new ProjectStore(doc);
     store.execute(setAudioClipsMute(store.doc, [a], true));
 
     // Split a muted clip: fragments inherit it (the split fragment is the
     // whole B3 use case — mute one half of a phrase).
     store.execute(splitAudioClipAtTick(store.doc, a, BAR));
-    const fragments = clips(store.doc);
+    const fragments = clips(store.doc).filter((c) => c.id !== b);
     expect(fragments).toHaveLength(2);
     expect(fragments.every((c) => c.muted === true)).toBe(true);
 
-    // Duplicate inherits it too.
+    // Duplicate inherits it too (lands exactly after the left fragment: bar 1).
     store.execute(duplicateAudioClip(store.doc, fragments[0]!.id));
-    expect(clips(store.doc).find((c) => c.startBar === 2)!.muted).toBe(true);
+    const dup = clips(store.doc).filter(
+      (c) => c.id !== b && c.id !== fragments[0]!.id && c.id !== fragments[1]!.id,
+    );
+    expect(dup).toHaveLength(1);
+    expect(dup[0]!.startBar).toBe(1);
+    expect(dup[0]!.muted).toBe(true);
 
     // Copy → paste at the playhead keeps the clip muted.
     const payload = buildClipClipboard(store.doc, [fragments[0]!.id])!;

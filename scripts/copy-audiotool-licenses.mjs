@@ -52,7 +52,8 @@ const noticeLines = [
   "The Nexus 0.0.19 npm metadata declares MIT, while its published LICENSE file says Apache License 2.0.",
   "KYX preserves the actual published LICENSE text and treats the SDK conservatively as Apache-2.0 pending clarification.",
   "The on-demand FLAC encoder uses Mediabunny under MPL-2.0 and embeds libFLAC, which is distributed under Xiph.org's BSD-like license (see COPYING.Xiph).",
-  "The on-demand FLAC decoder is MIT-licensed; its codec-parser dependency is LGPL-3.0-or-later. See the included package license texts.",
+  "The FLAC decoder and common package declare MIT in npm metadata but their tarballs contain no MIT license text; the upstream README describes project code as MIT and notes that embedded third-party source may use other terms: https://github.com/eshaz/wasm-audio-decoders.",
+  "The decoder's codec-parser dependency declares LGPL-3.0-or-later and its license text is included below.",
   "",
 ];
 

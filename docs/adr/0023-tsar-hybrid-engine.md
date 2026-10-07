@@ -1,7 +1,7 @@
 # ADR 0023 — TSAR hybrid sample+synthesis engine
 
-**Status:** proposed (T0 skeleton) · **Date:** 2026-10-06
-**Companion:** `docs/TSAR-ROADMAP.md`, ADR 0004 (AudioWorklet boundary), ADR 0003 (project model ↔ runtime)
+**Status:** accepted; implemented in TSAR T0–T7 · **Date:** 2026-10-07
+**Companions:** `docs/TSAR-ROADMAP.md`, `docs/TSAR-PRODUCT-DIRECTION.md`, ADR 0004 (AudioWorklet boundary), ADR 0003 (project model ↔ runtime)
 
 ## Context
 
@@ -25,8 +25,9 @@ Two constraints shape the design:
 
 ## Decision
 
-1. **TSAR is a per-sample AudioWorklet engine** (`src/audio-worklets/tsar-processor.js`),
-   bundling a typed first-party core (the `morph-dynamics-core` pattern).
+1. **TSAR is a per-sample AudioWorklet engine.** The wrapper is
+   `src/tsar-worklet.entry.js`; the typed first-party DSP core is
+   `src/tsar/dsp/tsarProcessor.ts` (the `morph-dynamics-core` pattern).
    No main-thread graph for the voice path.
 2. **Offline parity via a pre-seeded event queue.** The renderer knows every
    note before `startRendering()`; the runtime buffers note/param events and,
@@ -35,9 +36,9 @@ Two constraints shape the design:
    seeded queue through ONE `applyEvent` path. Live = port, offline = queue,
    identical DSP.
 3. **Dual-source patch, no multitimbral.** One track = Source A + Source B +
-   Sub + Noise. Layers across tracks use existing group tracks. The only
-   schema change is an optional `sampleIdB` on `InstrumentTrack`
-   (`SCHEMA_VERSION` 6 → 7 + migration).
+   Sub + Noise. Layers across tracks use existing group tracks. TSAR adds an
+   optional `sampleIdB` on `InstrumentTrack`; it was introduced in schema
+   v13. Later schema increments belong to unrelated project changes.
 4. **Lazy worklet load.** A `TSAR_WORKLET_TYPES` / instrument-worklet path
    mirrors the plugin-effect lazy loader; projects without a TSAR track never
    fetch `public/tsar-worklet.js`.
@@ -49,11 +50,10 @@ Two constraints shape the design:
 
 - The offline event queue can later be generalized to `wtvoice`/`grainVoice`
   (separate wave + ADR amendment).
-- `renderProject` gains one instrument-worklet preload branch; renderer tests
-  must cover a TSAR project.
-- Bundle budgets gain a `tsar` worklet row (proposed 160 KB, measured before
-  the budget commit).
-- The instrument count in `docs/CURRENT-STATE.md` moves 22 → 23 when T1 lands.
+- `renderProject` preloads the TSAR instrument worklet for projects that use it.
+- The TSAR worklet is measured at about 22 KB; its bundle budget is 48 KB.
+- TSAR is the 23rd registered instrument. Current counts live in
+  `docs/CURRENT-STATE.md`.
 
 ## Alternatives considered
 

@@ -34,7 +34,7 @@ export interface ExternalMasteringInputBaseline {
   loudnessTimeline: LoudnessTimeline | null;
 }
 
-/** JSON handoff for a checked external-session WAV or MP3; source audio itself is never included. */
+/** JSON handoff for a checked external-session WAV, MP3 or FLAC; source audio itself is never included. */
 export function serializeExternalMasteringReport(
   input: ExternalMasteringReportInput,
   generatedAt = new Date(),
