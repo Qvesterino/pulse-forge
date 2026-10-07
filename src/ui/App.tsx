@@ -1111,7 +1111,17 @@ export function App({
           event.preventDefault();
           try {
             services.store.execute(splitAudioClipAtTick(doc, clip.id, pos, services.bank.get(clip.bufferId)?.duration));
-          } catch {}
+          } catch (err) {
+            // Surfaced in the arrangement panel's error strip — the clip being
+            // split lives there (its context menu reports through the same
+            // channel). A silent catch here made Ctrl+E over an edge-adjacent
+            // playhead do nothing with no explanation.
+            window.dispatchEvent(
+              new CustomEvent("pf-arrangement-action-error", {
+                detail: err instanceof Error ? err.message : String(err),
+              }),
+            );
+          }
           return;
         }
       }

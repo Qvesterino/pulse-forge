@@ -423,6 +423,17 @@ export function ArrangementPanel() {
     cueAssetId: "",
   });
   const [actionError, setActionError] = useState<string | null>(null);
+  // App-level shortcuts that edit this panel's clips (Ctrl+E split at
+  // playhead) surface their failures here — the error strip renders next to
+  // the clips the user is editing, instead of a silent catch.
+  useEffect(() => {
+    const onError = (event: Event): void => {
+      const detail = (event as CustomEvent<string>).detail;
+      if (typeof detail === "string" && detail !== "") setActionError(detail);
+    };
+    window.addEventListener("pf-arrangement-action-error", onError);
+    return () => window.removeEventListener("pf-arrangement-action-error", onError);
+  }, []);
   // Clip multi-select: marquee on empty-lane drag, ctrl/shift+click toggles.
   // The ids live in the shared SelectionStore — keyboard Delete, the P
   // (locators to selection) shortcut and the context menu already read them.
@@ -1402,6 +1413,9 @@ export function ArrangementPanel() {
      * trim sensitivity disagree with what the transport actually plays.
      */
     secPerBar: number;
+    /** Block move: every selected audio clip slides by one shared delta. */
+    movingIds?: string[];
+    origStarts?: Record<string, number>;
   } | null>(null);
   const [audioStretchPreview, setAudioStretchPreview] = useState<{ clipId: string; rate: number } | null>(null);
   const [audioDrag, setAudioDrag] = useState<{ startBar: number; lengthBars: number } | null>(null);
@@ -1437,16 +1451,27 @@ export function ArrangementPanel() {
     audioStretchLiveRef.current = next;
     setAudioStretchPreview(next);
   };
+  // Block-move preview: the shared delta every selected audio clip slides by.
+  // Same write-through discipline as the other live values — pointerup is a
+  // discrete handler that must read the latest frame, not batched state.
+  const [audioMultiDrag, setAudioMultiDrag] = useState<number | null>(null);
+  const audioMultiDragLiveRef = useRef<number | null>(null);
+  const setAudioMultiDragLive = (next: number | null) => {
+    audioMultiDragLiveRef.current = next;
+    setAudioMultiDrag(next);
+  };
   /** Clear every live audio-drag value — used by all three abort paths. */
   const clearAudioDragLive = () => {
     audioDragLiveRef.current = null;
     audioFadeLiveRef.current = null;
     audioGainLiveRef.current = null;
     audioStretchLiveRef.current = null;
+    audioMultiDragLiveRef.current = null;
     setAudioDrag(null);
     setAudioFadePreview(null);
     setAudioGainPreview(null);
     setAudioStretchPreview(null);
+    setAudioMultiDrag(null);
   };
   const [audioMenu, setAudioMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);
   const clipLongPressTargetRef = useRef<string | null>(null);
@@ -2349,9 +2374,47 @@ export function ArrangementPanel() {
     event.stopPropagation();
     const clip = audioClips.find((c) => c.id === clipId);
     if (!clip) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
     setSelectedAudioClipId(clipId);
     setSelectedClipId(null);
+    // SHARED-SELECTION PARITY: audio clips feed the same selectionStore as
+    // scene clips, so keyboard Delete, `P` locators, the context menu and the
+    // marquee see them identically. Semantics mirror beginClipDrag.
+    if (mode === "move") {
+      // Ctrl+click toggles the clip in the multi-selection (no drag).
+      if (event.ctrlKey || event.metaKey) {
+        selectionStore.setClips(
+          selectionStore.isClipSelected(clipId)
+            ? selection.clipIds.filter((id) => id !== clipId)
+            : [...selection.clipIds, clipId],
+        );
+        return;
+      }
+      // Shift+click selects the range from the last selected clip (bar order).
+      if (event.shiftKey) {
+        const ordered = [...audioClips].sort((a, b) => a.startBar - b.startBar);
+        const last = selection.clipIds.at(-1);
+        const a = ordered.findIndex((c) => c.id === last);
+        const b = ordered.findIndex((c) => c.id === clipId);
+        selectionStore.setClips(
+          a !== -1 && b !== -1 ? ordered.slice(Math.min(a, b), Math.max(a, b) + 1).map((c) => c.id) : [clipId],
+        );
+        return;
+      }
+    }
+    if (!selectionStore.isClipSelected(clipId)) selectionStore.setClips([clipId]);
+    // Plain press on a selected clip inside an active multi-selection moves
+    // ALL selected audio clips together (resize/trim/fade/gain stay
+    // single-clip by nature — same rule as the scene block move).
+    const movingIds =
+      mode === "move" && selection.clipIds.length > 1 && selectionStore.isClipSelected(clipId)
+        ? selection.clipIds.filter((id) => audioClips.some((c) => c.id === id))
+        : undefined;
+    const multiMoving = movingIds !== undefined && movingIds.length > 1 ? movingIds : undefined;
+    const origStarts =
+      multiMoving !== undefined
+        ? Object.fromEntries(multiMoving.map((id) => [id, audioClips.find((c) => c.id === id)!.startBar]))
+        : undefined;
+    event.currentTarget.setPointerCapture(event.pointerId);
     // Wall-clock sensitivity for THIS clip's span at the scenes' effective
     // tempos (average sec/bar). doc.bpm alone disagreed with playback whenever
     // a scene pinned a different tempo — the fade handle moved at the wrong
@@ -2380,8 +2443,10 @@ export function ArrangementPanel() {
       barWidth,
       grabY: event.clientY,
       secPerBar: clip.lengthBars > 0 ? clipWallSec / clip.lengthBars : (BAR_TICKS * 60) / (doc.bpm * PPQ),
+      ...(multiMoving !== undefined ? { movingIds: multiMoving, origStarts } : {}),
     };
     dragGuard.arm();
+    if (multiMoving !== undefined) setAudioMultiDragLive(0);
     if (mode === "fadeIn" || mode === "fadeOut")
       setAudioFadeLive({ clipId, fadeIn: clip.fadeIn ?? 0, fadeOut: clip.fadeOut ?? 0 });
     if (mode === "gain") setAudioGainLive({ clipId, gain: clip.gain ?? 1 });
@@ -2395,6 +2460,12 @@ export function ArrangementPanel() {
     const bar = audioBarFromEventAt(event, cur.barWidth);
     const delta = bar - cur.grabBar;
     const secPerBar = cur.secPerBar;
+    // Block move: one shared delta for every selected audio clip, floored so
+    // the leftmost clip cannot cross bar 0 (mirrors the scene block move).
+    if (cur.movingIds) {
+      setAudioMultiDragLive(Math.max(delta, -Math.min(...Object.values(cur.origStarts ?? { 0: 0 }))));
+      return;
+    }
     if (cur.mode === "move")
       setAudioDragLive({ startBar: Math.max(0, cur.origStart + delta), lengthBars: cur.origLength });
     else if (cur.mode === "resize")
@@ -2443,9 +2514,45 @@ export function ArrangementPanel() {
     const fadePrev = audioFadeLiveRef.current;
     const gainPrev = audioGainLiveRef.current;
     const stretchPrev = audioStretchLiveRef.current;
+    const multiDelta = audioMultiDragLiveRef.current;
     audioDragRef.current = null;
     clearAudioDragLive();
     if (!cur) return;
+    // BLOCK MOVE: every selected audio clip slides by the shared delta in ONE
+    // command (one gesture = one undo entry). AudioClips LAYER — the
+    // documented overlap contract means no collision guard, unlike the scene
+    // block move. 0.01-bar quantize matches moveAudioClip.
+    if (cur.movingIds) {
+      // Press+release without movement is a click — selection already changed
+      // at pointerdown; nothing to commit (mirrors the scene block move).
+      if (!multiDelta) return;
+      const beforeDoc = services.store.doc;
+      // A clip in the block can be deleted mid-gesture (undo/collab) — move
+      // only what is still live (same discipline as the scene block move).
+      const movingIds = cur.movingIds.filter((id) => (beforeDoc.arrangement.audioClips ?? []).some((c) => c.id === id));
+      if (movingIds.length === 0) return;
+      const nextAudioClips = (beforeDoc.arrangement.audioClips ?? [])
+        .map((c) =>
+          movingIds.includes(c.id)
+            ? {
+                ...c,
+                startBar: Math.max(0, Math.round(((cur.origStarts?.[c.id] ?? c.startBar) + multiDelta) * 100) / 100),
+              }
+            : c,
+        )
+        .sort((a, b) => a.startBar - b.startBar);
+      const nextDoc: ProjectDocument = {
+        ...beforeDoc,
+        arrangement: { ...beforeDoc.arrangement, audioClips: nextAudioClips },
+      };
+      services.store.execute({
+        type: "moveAudioClips",
+        label: `Move ${movingIds.length} audio clips`,
+        execute: () => nextDoc,
+        undo: () => beforeDoc,
+      });
+      return;
+    }
     if (cur.mode === "move" && final && final.startBar !== cur.origStart)
       execute(moveAudioClip(services.store.doc, cur.clipId, final.startBar));
     else if (cur.mode === "resize" && final && final.lengthBars !== cur.origLength)
@@ -2555,10 +2662,12 @@ export function ArrangementPanel() {
     audioFadeLiveRef.current = null;
     audioGainLiveRef.current = null;
     audioStretchLiveRef.current = null;
+    audioMultiDragLiveRef.current = null;
     setAudioDrag(null);
     setAudioFadePreview(null);
     setAudioGainPreview(null);
     setAudioStretchPreview(null);
+    setAudioMultiDrag(null);
     marqueeStartRef.current = null;
     setMarquee(null);
     setTimeDrag(null);
@@ -3882,10 +3991,15 @@ export function ArrangementPanel() {
                   if (selectedScene) placeScene(selectedScene.id, from);
                   selectionStore.setClips([]);
                   setSelectedClipId(null);
+                  setSelectedAudioClipId(null);
                 } else {
-                  selectionStore.setClips(
-                    clips.filter((c) => c.startBar < to && c.startBar + c.lengthBars > from).map((c) => c.id),
-                  );
+                  // Marquee spans BOTH clip systems — the lane hosts scene and
+                  // audio clips alike, and the shared selection store carries
+                  // either kind (keyboard Delete routes both).
+                  selectionStore.setClips([
+                    ...clips.filter((c) => c.startBar < to && c.startBar + c.lengthBars > from).map((c) => c.id),
+                    ...audioClips.filter((c) => c.startBar < to && c.startBar + c.lengthBars > from).map((c) => c.id),
+                  ]);
                   setSelectedClipId(null);
                 }
                 return;
@@ -4069,9 +4183,18 @@ export function ArrangementPanel() {
             })}
             {visibleAudioClips.map(({ clip }) => {
               const isDragging = audioDragRef.current?.clipId === clip.id && audioDrag !== null;
-              const startBar = isDragging ? audioDrag.startBar : clip.startBar;
+              // Block move: every selected audio clip previews the shared delta.
+              const multiMovingAudio = audioDragRef.current?.movingIds?.includes(clip.id) && audioMultiDrag !== null;
+              const startBar = multiMovingAudio
+                ? Math.max(0, clip.startBar + audioMultiDrag)
+                : isDragging
+                  ? audioDrag.startBar
+                  : clip.startBar;
               const lengthBars = isDragging ? audioDrag.lengthBars : clip.lengthBars;
-              const selected = selectedAudioClipId === clip.id;
+              // Shared selection drives the visual, same as scene clips; the
+              // local mirror stays for panel features that follow ONE clip
+              // (take lanes, warp pins, context menu).
+              const selected = selectedAudioClipId === clip.id || selectionStore.isClipSelected(clip.id);
               const isCurrent = clip.id === currentClipId;
               const track = tracks.find((t) => t.id === clip.trackId);
               const clipTakeGroup = clip.takeGroupId
