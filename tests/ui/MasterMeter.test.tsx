@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { act, screen } from "@testing-library/react";
 import { MasterMeter, MasterStereoMeters } from "../../src/ui/MasterMeter";
 import { renderWithContext } from "../helpers";
 
@@ -12,6 +12,35 @@ describe("MasterMeter", () => {
   it("shows the buss-glue gain reduction separately", () => {
     renderWithContext(<MasterMeter />);
     expect(screen.getByText(/GLUE 0\.0 dB/)).toBeInTheDocument();
+  });
+
+  it("does not announce clipping on the first silent meter frame", () => {
+    const frames: FrameRequestCallback[] = [];
+    const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
+    const originalCancelAnimationFrame = globalThis.cancelAnimationFrame;
+    let unmount = () => {};
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+
+    try {
+      const rendered = renderWithContext(<MasterMeter />);
+      unmount = rendered.unmount;
+      const engine = rendered.services.engine as typeof rendered.services.engine & {
+        getMasterGainReductionDb: () => number;
+      };
+      engine.getMasterGainReductionDb = vi.fn(() => 0);
+      const firstFrame = frames.shift();
+      expect(firstFrame).toBeDefined();
+      act(() => firstFrame?.(33));
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    } finally {
+      unmount();
+      vi.stubGlobal("requestAnimationFrame", originalRequestAnimationFrame);
+      vi.stubGlobal("cancelAnimationFrame", originalCancelAnimationFrame);
+    }
   });
 });
 

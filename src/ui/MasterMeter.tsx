@@ -28,6 +28,8 @@ interface ReadState {
 }
 
 const EMPTY: ChannelLevels = { peak: 0, rms: 0, peakDb: -120, rmsDb: -120 };
+const MASTER_CLIP_HOLD_SECONDS = 0.6;
+const STATUS_BAR_CLIP_HOLD_SECONDS = 0.8;
 
 /**
  * Master metering wall: spectrum + loudness history in the centre, goniometer
@@ -72,7 +74,7 @@ export function MasterMeter() {
     warnings: [],
   });
   const lastStateRef = useRef(state);
-  const clipHoldRef = useRef(0);
+  const clipHoldRef = useRef(MASTER_CLIP_HOLD_SECONDS);
   const phaseSinceRef = useRef<number | null>(null);
   const imbalanceSinceRef = useRef<number | null>(null);
 
@@ -102,7 +104,7 @@ export function MasterMeter() {
         const nowOver = truePeakDb > -0.1 || peakDb > 0;
         if (nowOver) clipHoldRef.current = 0;
         clipHoldRef.current += 0.033;
-        const clipping = clipHoldRef.current < 0.6;
+        const clipping = clipHoldRef.current < MASTER_CLIP_HOLD_SECONDS;
         const phaseSince = levels.correlation < 0 ? (phaseSinceRef.current ?? t) : null;
         const imbalance = snapshot?.lrImbalanceDb ?? Math.abs(left.rmsDb - right.rmsDb);
         const imbalanceSince = imbalance > 6 ? (imbalanceSinceRef.current ?? t) : null;
@@ -455,7 +457,7 @@ export function MasterStereoMeters() {
     clipping: false,
   });
   const lastStateRef = useRef(state);
-  const clipHoldRef = useRef(0);
+  const clipHoldRef = useRef(MASTER_CLIP_HOLD_SECONDS);
 
   useEffect(() => {
     let lastRead = 0;
@@ -477,7 +479,7 @@ export function MasterStereoMeters() {
       const nowOver = truePeakDb > -0.1 || peakDb > 0;
       if (nowOver) clipHoldRef.current = 0;
       clipHoldRef.current += 0.033;
-      const clipping = clipHoldRef.current < 0.6;
+      const clipping = clipHoldRef.current < MASTER_CLIP_HOLD_SECONDS;
       const gainReductionDb =
         Math.round((snapshot ? snapshot.gainReductionDb : (services.engine.getMasterGainReductionDb?.() ?? 0)) * 10) /
         10;
@@ -626,7 +628,7 @@ export function MasterMiniMeter() {
     clip: false,
   });
   const lastStateRef = useRef(state);
-  const clipHoldRef = useRef(0);
+  const clipHoldRef = useRef(STATUS_BAR_CLIP_HOLD_SECONDS);
 
   useEffect(() => {
     let lastRead = 0;
@@ -650,7 +652,7 @@ export function MasterMiniMeter() {
         rPeak: levels.right.peakDb,
         rRms: levels.right.rmsDb,
         hold: snapshot?.peakHoldDb ?? services.engine.getMasterPeakHoldDb(),
-        clip: clipHoldRef.current < 0.8,
+        clip: clipHoldRef.current < STATUS_BAR_CLIP_HOLD_SECONDS,
       };
       const prev = lastStateRef.current;
       const changed =
