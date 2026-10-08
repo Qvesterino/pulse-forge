@@ -1603,7 +1603,10 @@ export function bass808(zone: "soft" | "medium" | "hard"): Builder {
       const hp = ctx.createBiquadFilter();
       hp.type = "highpass";
       hp.frequency.value = 900;
-      click.connect(hp).connect(env(ctx, t0, cfg.click, 0.01)).connect(dest);
+      click
+        .connect(hp)
+        .connect(env(ctx, t0, cfg.click, 0.01))
+        .connect(dest);
     }
   };
 }
@@ -1697,7 +1700,10 @@ function bassUpright(): Builder {
     const lp2 = ctx.createBiquadFilter();
     lp2.type = "lowpass";
     lp2.frequency.value = 700;
-    thump.connect(lp2).connect(env(ctx, t0, 0.25, 0.03)).connect(dest);
+    thump
+      .connect(lp2)
+      .connect(env(ctx, t0, 0.25, 0.03))
+      .connect(dest);
   };
 }
 

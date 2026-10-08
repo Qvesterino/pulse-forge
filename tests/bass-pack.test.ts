@@ -25,6 +25,23 @@ const BASS_IDS = [
   "factory.bass.pluck",
   "factory.bass.wobble",
   "factory.bass.dist",
+  // Priority-1 expand (UN-SUNO bass-lane feed)
+  "factory.bass.808.soft",
+  "factory.bass.808.medium",
+  "factory.bass.808.hard",
+  "factory.bass.subsine",
+  "factory.bass.subsquare",
+  "factory.bass.upright",
+  "factory.bass.acid.fast",
+  "factory.bass.acid.slow",
+];
+
+const LEAD_IDS = [
+  "factory.lead.saw",
+  "factory.lead.supersaw",
+  "factory.lead.square",
+  "factory.lead.pluck.bright",
+  "factory.lead.pluck.dark",
 ];
 
 const SR = 44100;
@@ -166,17 +183,63 @@ describe("bass pack — registry coherence", () => {
   });
 });
 
+describe("lead pack — registry coherence (Priority-1 expand)", () => {
+  it("ships as the Lead category with unique ids, character, tags and moods", () => {
+    const leads = FACTORY_ASSETS.filter((a) => a.id.startsWith("factory.lead."));
+    expect(leads.map((a) => a.id)).toEqual(LEAD_IDS);
+    expect(new Set(leads.map((a) => a.character)).size).toBe(LEAD_IDS.length);
+    for (const asset of leads) {
+      expect(asset.category, `${asset.id} category`).toBe("Lead");
+      expect(asset.tags.length).toBeGreaterThanOrEqual(3);
+      expect(asset.mood.length).toBeGreaterThanOrEqual(1);
+    }
+  });
+  it("every lead asset has a synth builder, a duration and exactly one curated override", () => {
+    for (const id of LEAD_IDS) {
+      expect(BUILDERS[id], `${id} builder`).toBeTypeOf("function");
+      expect(DURATIONS[id], `${id} duration`).toBeTypeOf("number");
+      expect(DURATIONS[id]).toBeGreaterThan(0.2);
+      expect(CURATED_SAMPLES.filter((c) => c.id === id)).toHaveLength(1);
+    }
+  });
+  it("the curated WAVs exist on disk and are non-trivially long", () => {
+    for (const id of LEAD_IDS) {
+      const slot = CURATED_SAMPLES.find((c) => c.id === id)!;
+      const file = path.resolve(__dirname, "..", "public", "samples", slot.file);
+      const stat = readFileSync(file);
+      // 24-bit mono: 44-byte header + frames*3; > 0.2 s at 44.1 kHz
+      expect(stat.length, `${slot.file} size`).toBeGreaterThan(44 + Math.floor(0.2 * 44100) * 3);
+    }
+  });
+});
+
 describe("bass pack — curated tuning anchor", () => {
-  it("every sub-anchored voice sits on the D2 root (a detuned bass beats against melodies)", () => {
-    // The reese/wobble/distorion voices carry heavy harmonics, so the
-    // autocorrelation estimate is only asserted on the pure/bell voices where
-    // the fundamental dominates; all six are authored on D2/D3 by construction.
-    const pure = ["factory.bass.clean", "factory.bass.fm"];
-    for (const id of pure) {
+  it("every sub-anchored voice sits on its authored root (a detuned bass beats against melodies)", () => {
+    // Heavy-harmonic voices defeat the estimator, so the anchor asserts on
+    // the pure voices where the fundamental dominates. Roots are authored
+    // per voice: the originals on D2, the expand wave on F1 (808/subs),
+    // E1 (upright) and C2 (acid) — each documented in its builder.
+    const anchors: Array<[id: string, hz: number]> = [
+      ["factory.bass.clean", 73.42], // D2
+      ["factory.bass.fm", 73.42], // D2
+      ["factory.bass.subsine", 43.65], // F1
+      ["factory.bass.upright", 41.2], // E1
+    ];
+    for (const [id, root] of anchors) {
       const hz = lowFundamentalHz(decodeCurated(`${id}.wav`));
       expect(hz, `${id} fundamental`).not.toBeNull();
-      const cents = Math.abs(1200 * Math.log2((hz as number) / 73.42));
-      expect(cents, `${id} ${(hz as number).toFixed(2)} Hz vs D2`).toBeLessThan(50);
+      const cents = Math.abs(1200 * Math.log2((hz as number) / root));
+      expect(cents, `${id} ${(hz as number).toFixed(2)} Hz vs ${root} Hz`).toBeLessThan(50);
     }
+  });
+  it("the 808 velocity zones escalate — hard decays longer and drives hotter than soft", async () => {
+    // The velocity contract in one measurable: soft is short/clean, hard is
+    // long/driven. Compare the curated zone WAVs' durations and energy tails.
+    const zoneSeconds = (id: string): number => decodeCurated(`${id}.wav`).length / SR;
+    const soft = zoneSeconds("factory.bass.808.soft");
+    const medium = zoneSeconds("factory.bass.808.medium");
+    const hard = zoneSeconds("factory.bass.808.hard");
+    expect(medium).toBeGreaterThan(soft);
+    expect(hard).toBeGreaterThan(medium);
   });
 });

@@ -1,5 +1,17 @@
 export type AssetCategory =
-  "Kick" | "Snare" | "Clap" | "Hat" | "Cymbal" | "Crash" | "Tom" | "Rim" | "Percussion" | "Bass" | "Tonal" | "Lead" | "FX";
+  | "Kick"
+  | "Snare"
+  | "Clap"
+  | "Hat"
+  | "Cymbal"
+  | "Crash"
+  | "Tom"
+  | "Rim"
+  | "Percussion"
+  | "Bass"
+  | "Tonal"
+  | "Lead"
+  | "FX";
 
 /** Mood/usage descriptors for curated browsing (FEATURES.md §23 character tags). */
 export type AssetMood = "dark" | "bright" | "warm" | "aggressive" | "clean" | "deep" | "atmosphere";
