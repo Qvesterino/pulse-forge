@@ -136,6 +136,7 @@ export function pasteClips(doc: ProjectDocument, clipboard: ClipClipboard, playh
           loop: stored.loop === true ? true : undefined,
           loopPhaseOffsetSec: stored.loopPhaseOffsetSec,
           muted: stored.muted === true ? true : undefined,
+          fadeCurve: stored.fadeCurve === "equal" ? "equal" : undefined,
           sourceChannel: stored.sourceChannel,
           warpMarkers: stored.warpMarkers,
         },

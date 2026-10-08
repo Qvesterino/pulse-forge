@@ -48,7 +48,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 16;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -651,6 +651,7 @@ export function sanitizeAudioClips(
       ...(warpMarkers ? { warpMarkers } : {}),
       ...(raw.muted === true ? { muted: true } : {}),
       ...(raw.locked === true ? { locked: true } : {}),
+      ...(raw.fadeCurve === "equal" ? { fadeCurve: "equal" as const } : {}),
     });
   }
   out.sort((a, b) => a.startBar - b.startBar);
@@ -2624,6 +2625,8 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // v15 adds clip groups (`Arrangement.clipGroups`, membership by clip id) and
   // the optional clip-level `locked` flag on BOTH clip systems (absent =
   // unlocked).
+  // v16 adds the optional `AudioClip.fadeCurve` ("equal" = equal-power
+  // sine/cosine fades; absent = linear).
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

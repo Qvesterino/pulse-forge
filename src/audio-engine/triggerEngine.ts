@@ -509,6 +509,27 @@ export class TriggerEngine {
       fadeOutActive && fadeOut > 0 ? Math.min(1, Math.max(0, (resumedBy - fadeOutStartSec) / fadeOut)) : 0;
     const fadeOutRemaining = fadeOutActive ? clipDurSec : fadeOut;
     const fadeOutAt = fadeOutActive ? when : when + Math.max(0, clipDurSec - fadeOut);
+    // Equal-power envelope curves (sine rising / cosine falling) — the shape
+    // comp clips always use, and the shape `fadeCurve: "equal"` opts regular
+    // clip fades into: two complementary equal-power fades over the same span
+    // sum to constant power, which is what makes a crossfade not dip.
+    const scheduleCurve = (
+      gainNode: GainNode,
+      startAt: number,
+      duration: number,
+      rising: boolean,
+      startProgress = 0,
+    ): void => {
+      const pointCount = 64;
+      const values = new Float32Array(pointCount + 1);
+      for (let index = 0; index <= pointCount; index++) {
+        const progress = startProgress + (index / pointCount) * (1 - startProgress);
+        const angle = (progress * Math.PI) / 2;
+        values[index] = clipGain * (rising ? Math.sin(angle) : Math.cos(angle));
+      }
+      gainNode.gain.setValueCurveAtTime(values, startAt, duration);
+    };
+
     if (isCompClip) {
       const scheduleCurve = (startAt: number, duration: number, rising: boolean, startProgress = 0): void => {
         const pointCount = 64;
@@ -527,15 +548,24 @@ export class TriggerEngine {
         scheduleCurve(fadeOutAt, Math.min(fadeOutRemaining, clipDurSec), false, fadeOutProgress);
       }
     } else {
-      const initialEnvelope = (fadeInActive ? fadeInProgress : 1) * (fadeOutActive ? 1 - fadeOutProgress : 1);
+      const equalPower = clip.fadeCurve === "equal";
+      const initialEnvelope = equalPower
+        ? (fadeOutActive ? Math.cos((fadeOutProgress * Math.PI) / 2) : 1) *
+          (fadeInActive ? Math.sin((fadeInProgress * Math.PI) / 2) : 1)
+        : (fadeInActive ? fadeInProgress : 1) * (fadeOutActive ? 1 - fadeOutProgress : 1);
       gain.gain.setValueAtTime(clipGain * initialEnvelope, when);
       if (fadeInActive) {
-        gain.gain.linearRampToValueAtTime(clipGain, when + Math.min(fadeInRemaining, clipDurSec / 2));
+        if (equalPower) scheduleCurve(gain, when, Math.min(fadeInRemaining, clipDurSec / 2), true, fadeInProgress);
+        else gain.gain.linearRampToValueAtTime(clipGain, when + Math.min(fadeInRemaining, clipDurSec / 2));
       }
       if (fadeOutRemaining > 0.001 && clipDurSec > 0.01) {
         const outStart = fadeOutAt;
-        if (!fadeOutActive) gain.gain.setValueAtTime(clipGain, outStart);
-        gain.gain.linearRampToValueAtTime(0, when + clipDurSec);
+        if (equalPower) {
+          scheduleCurve(gain, outStart, Math.min(fadeOutRemaining, clipDurSec), false, fadeOutProgress);
+        } else {
+          if (!fadeOutActive) gain.gain.setValueAtTime(clipGain, outStart);
+          gain.gain.linearRampToValueAtTime(0, when + clipDurSec);
+        }
       }
     }
     const sourceSplitter = connectAudioClipSourceChannel(ctx, source, gain, clip.sourceChannel);

@@ -10,6 +10,7 @@ import type { Command } from "./types";
 import type { AudioClip, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS, PPQ } from "../project-model/types";
 import { arrangementSecondsBetweenTicks, tempoAtTick } from "../project-model/scene-time";
+import { normalizeProject } from "../project-model/schema";
 import { buildStemProject } from "../rendering/stems";
 import { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
 import { uid } from "../shared/ids";
@@ -35,6 +36,7 @@ export function updateAudioClip(
       | "reverse"
       | "loop"
       | "muted"
+      | "fadeCurve"
       | "bufferId"
       | "warpMarkers"
     >
@@ -77,6 +79,8 @@ export function updateAudioClip(
   }
   if (patch.reverse !== undefined) nextPatch.reverse = patch.reverse === true;
   if (patch.muted !== undefined) nextPatch.muted = patch.muted === true;
+  // Fade curve: only "equal" is stored — absent means linear.
+  if (patch.fadeCurve !== undefined) nextPatch.fadeCurve = patch.fadeCurve === "equal" ? "equal" : undefined;
   if (patch.loop !== undefined) {
     nextPatch.loop = patch.loop === true;
     if (patch.loop !== true) nextPatch.loopPhaseOffsetSec = undefined;
@@ -576,3 +580,77 @@ export function consolidateAudioClips(doc: ProjectDocument, clipIds: string[], b
   };
   return snapshot("consolidateAudioClips", `Consolidate ${clips.length} clips`, doc, next);
 }
+
+/**
+ * CROSSFADE two OVERLAPPING audio clips on the same track: the earlier clip
+ * fades out over the overlap, the later fades in over it — with
+ * `fadeCurve: "equal"` by default, because two complementary equal-power
+ * fades over the same span sum to constant power (a linear pair audibly
+ * dips). This is the "crossfade-on-overlap" verb: the audio lane layers by
+ * contract, so an overlap normally means both clips at full level — this
+ * command turns that overlap into a mix.
+ *
+ * The fades are measured from each clip's own edge over the overlap span —
+ * exact for the everyday tail-over-head crossfade, approximate when one clip
+ * fully contains the other. Each fade is clamped to its own clip's duration
+ * (updateAudioClip re-clamps anyway). One command, one undo entry.
+ */
+export function crossfadeAudioClips(
+  doc: ProjectDocument,
+  earlierId: string,
+  laterId: string,
+  options: { curve?: "linear" | "equal" } = {},
+): Command {
+  const earlier = (doc.arrangement.audioClips ?? []).find((c) => c.id === earlierId);
+  const later = (doc.arrangement.audioClips ?? []).find((c) => c.id === laterId);
+  if (!earlier) throw new Error(`AudioClip ${earlierId} not found`);
+  if (!later) throw new Error(`AudioClip ${laterId} not found`);
+  if (earlier.trackId !== later.trackId) throw new Error("Crossfade requires both clips on the same track");
+  const eStart = earlier.startBar * BAR_TICKS;
+  const eEnd = eStart + earlier.lengthBars * BAR_TICKS;
+  const lStart = later.startBar * BAR_TICKS;
+  const lEnd = lStart + later.lengthBars * BAR_TICKS;
+  const overlapTicks = Math.min(eEnd, lEnd) - Math.max(eStart, lStart);
+  if (overlapTicks <= 0) throw new Error("Clips do not overlap — nothing to crossfade");
+  const scenes = doc.scenes;
+  const overlapSec = Math.max(
+    0,
+    arrangementSecondsBetweenTicks(doc.arrangement.clips, scenes, Math.max(eStart, lStart), Math.min(eEnd, lEnd), doc.bpm),
+  );
+  const eDur = Math.max(0, arrangementSecondsBetweenTicks(doc.arrangement.clips, scenes, eStart, eEnd, doc.bpm));
+  const lDur = Math.max(0, arrangementSecondsBetweenTicks(doc.arrangement.clips, scenes, lStart, lEnd, doc.bpm));
+  const earlierFade = Math.min(overlapSec, eDur);
+  const laterFade = Math.min(overlapSec, lDur);
+  const curve = options.curve === "linear" ? undefined : "equal";
+  const round = (sec: number): number => Math.round(sec * 1000) / 1000;
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: {
+      ...doc.arrangement,
+      audioClips: (doc.arrangement.audioClips ?? []).map((c) => {
+        if (c.id === earlierId) {
+          return {
+            ...c,
+            fadeOut: round(Math.min(2, earlierFade)),
+            ...(curve ? { fadeCurve: curve } : {}),
+          };
+        }
+        if (c.id === laterId) {
+          return {
+            ...c,
+            fadeIn: round(Math.min(2, laterFade)),
+            ...(curve ? { fadeCurve: curve } : {}),
+          };
+        }
+        return c;
+      }),
+    },
+  };
+  return snapshot(
+    "crossfadeAudioClips",
+    `Crossfade ${round(earlierFade)}s`,
+    doc,
+    normalizeProject(next),
+  );
+}
+

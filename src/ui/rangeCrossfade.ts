@@ -1,7 +1,8 @@
 import type { Command } from "../commands/types";
 import { addArrangementTransition } from "../commands/arrangementShapes";
+import { crossfadeAudioClips } from "../commands/clipEditing";
 import { updateAudioClip } from "../commands/clipEditing";
-import type { ProjectDocument } from "../project-model/types";
+import type { AudioClip, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS } from "../project-model/types";
 import type { SelectionState } from "../store/SelectionStore";
 
@@ -54,7 +55,41 @@ export function applyRangeCrossfade(
     const rangeFrom = selection.timeRange?.fromTick ?? 0;
     const rangeTo = selection.timeRange?.toTick ?? 0;
     const hasRange = !!selection.timeRange;
+    // PHASE 1 — crossfade OVERLAPPING pairs (same track): the real verb.
+    // Each pair gets complementary fades over its overlap span (equal-power),
+    // replacing the blanket 0.08 seam for those clips. A clip can join only
+    // one crossfade per press (first pair wins, clips sorted by start).
+    const crossfaded = new Set<string>();
+    const byTrack = new Map<string, AudioClip[]>();
     for (const ac of doc.arrangement.audioClips ?? []) {
+      const inRange = hasRange
+        ? ac.startBar * BAR_TICKS < rangeTo && (ac.startBar + ac.lengthBars) * BAR_TICKS > rangeFrom
+        : selection.clipIds.includes(ac.id);
+      if (!inRange) continue;
+      const list = byTrack.get(ac.trackId) ?? [];
+      list.push(ac);
+      byTrack.set(ac.trackId, list);
+    }
+    for (const list of byTrack.values()) {
+      const sorted = [...list].sort((a, b) => a.startBar - b.startBar);
+      for (let i = 0; i < sorted.length - 1; i++) {
+        const a = sorted[i];
+        const b = sorted[i + 1];
+        if (crossfaded.has(a.id) || crossfaded.has(b.id)) continue;
+        const aEnd = (a.startBar + a.lengthBars) * BAR_TICKS;
+        const bStart = b.startBar * BAR_TICKS;
+        if (aEnd <= bStart) continue; // adjacent or gapped — not an overlap
+        try {
+          store.execute(crossfadeAudioClips(doc, a.id, b.id));
+          crossfaded.add(a.id);
+          crossfaded.add(b.id);
+          did = true;
+        } catch {}
+      }
+    }
+    // PHASE 2 — seam fades for clips that got no crossfade (unchanged behavior).
+    for (const ac of doc.arrangement.audioClips ?? []) {
+      if (crossfaded.has(ac.id)) continue;
       const cFrom = ac.startBar * BAR_TICKS;
       const cTo = (ac.startBar + ac.lengthBars) * BAR_TICKS;
       const inRange = hasRange ? cFrom < rangeTo && cTo > rangeFrom : selection.clipIds.includes(ac.id);

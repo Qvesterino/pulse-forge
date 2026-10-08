@@ -768,6 +768,13 @@ export interface AudioClip {
    */
   locked?: boolean;
   /**
+   * Fade curve shape for fadeIn/fadeOut: "linear" (default, absent) ramps
+   * linearly; "equal" uses the equal-power sine/cosine curves comp clips
+   * always use — the correct shape when a fade doubles as a crossfade over
+   * another clip (a linear crossfade audibly dips in the overlap).
+   */
+  fadeCurve?: "linear" | "equal";
+  /**
    * Clip-level mute (B3): the clip is skipped by playback entirely —
    * `audioClipsForPlayback` filters it out, so scheduler, offline render and
    * the live-editing resume all agree through one choke point. Absent =

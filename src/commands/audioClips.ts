@@ -67,6 +67,7 @@ export function addAudioClip(
     ...(patch.stretchMode ? { stretchMode: patch.stretchMode } : {}),
     ...(patch.loop === true ? { loop: true as const } : {}),
     ...(patch.muted === true ? { muted: true as const } : {}),
+    ...(patch.fadeCurve === "equal" ? { fadeCurve: "equal" as const } : {}),
     ...(patch.loop === true && Number.isFinite(patch.loopPhaseOffsetSec)
       ? { loopPhaseOffsetSec: Math.max(0, patch.loopPhaseOffsetSec!) }
       : {}),

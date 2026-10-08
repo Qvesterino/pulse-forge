@@ -4977,6 +4977,37 @@ export function ArrangementPanel() {
           >
             <div className="context-menu-header">AUDIO CLIP</div>
             {(() => {
+              const menuClip = audioClips.find((item) => item.id === audioMenu.clipId);
+              if (!menuClip) return null;
+              return (
+                <div role="group" aria-label="Fade curve">
+                  <div className="context-menu-header">FADE CURVE</div>
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={menuClip.fadeCurve !== "equal"}
+                    onClick={() => {
+                      execute(updateAudioClip(services.store.doc, menuClip.id, { fadeCurve: "linear" }));
+                      setAudioMenu(null);
+                    }}
+                  >
+                    Linear (default)
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={menuClip.fadeCurve === "equal"}
+                    onClick={() => {
+                      execute(updateAudioClip(services.store.doc, menuClip.id, { fadeCurve: "equal" }));
+                      setAudioMenu(null);
+                    }}
+                  >
+                    Equal power (crossfades)
+                  </button>
+                </div>
+              );
+            })()}
+            {(() => {
               const clip = audioClips.find((item) => item.id === audioMenu.clipId);
               const buffer = clip ? services.bank.get(clip.bufferId) : null;
               if (!clip || !buffer || buffer.numberOfChannels < 2) return null;
