@@ -170,6 +170,13 @@ export const CURATED_SAMPLES: CuratedSample[] = [
   { id: "factory.bass.upright", file: "factory.bass.upright.wav" },
   { id: "factory.bass.acid.fast", file: "factory.bass.acid.fast.wav" },
   { id: "factory.bass.acid.slow", file: "factory.bass.acid.slow.wav" },
+  // World percussion (Priority 3, amapiano/latino/afro/samba).
+  { id: "factory.perc.conga.high", file: "factory.perc.conga.high.wav" },
+  { id: "factory.perc.bongos", file: "factory.perc.bongos.wav" },
+  { id: "factory.perc.timbale", file: "factory.perc.timbale.wav" },
+  { id: "factory.perc.tabla", file: "factory.perc.tabla.wav" },
+  { id: "factory.perc.cajon", file: "factory.perc.cajon.wav" },
+  { id: "factory.perc.agogo", file: "factory.perc.agogo.wav" },
   // Cymbal/shaker expand (Priority 2, jazz/dnb/rock).
   { id: "factory.crash.china", file: "factory.crash.china.wav" },
   { id: "factory.ride.jazz", file: "factory.ride.jazz.wav" },

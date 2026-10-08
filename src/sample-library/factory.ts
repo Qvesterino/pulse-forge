@@ -2347,6 +2347,175 @@ function crashTrash(): Builder {
   };
 }
 
+/** Conga HIGH (tumba-mundo complement) — the EXISTING conga is the
+ * mid/tumba voice (230→160 Hz body). The high conga (quinto) is a brighter,
+ * shorter slap: the 300→220 Hz pitch range with a 2.2 kHz skin contact —
+ * the "slap tone" that carries a tumbao pattern's accents. Latin/afro
+ * top-end; the mid conga keeps the open tone. */
+function congaHigh(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(305, t0);
+    osc.frequency.exponentialRampToValueAtTime(225, t0 + 0.05);
+    osc.connect(env(ctx, t0, 0.55, 0.16)).connect(dest);
+    osc.start(t0);
+    osc.stop(t0 + 0.24);
+    const noise = noiseSource(ctx, 151, 0.06, t0);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 2200;
+    bp.Q.value = 1.3;
+    noise
+      .connect(bp)
+      .connect(env(ctx, t0, 0.3, 0.045))
+      .connect(dest);
+  };
+}
+
+/** Bongos — the MARTILLO pair in one asset: the hembra's low thump at
+ * ~200 Hz immediately chased by the macho's higher ~330 Hz tick, 30 ms
+ * apart (the bongocero's two-drum roll). A single asset that reads as
+ * "bongos" in a pattern because the pair IS the instrument. */
+function bongos(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    // Hembra (low drum)
+    const osc1 = ctx.createOscillator();
+    osc1.type = "sine";
+    osc1.frequency.setValueAtTime(200, t0);
+    osc1.frequency.exponentialRampToValueAtTime(155, t0 + 0.04);
+    osc1.connect(env(ctx, t0, 0.5, 0.12)).connect(dest);
+    osc1.start(t0);
+    osc1.stop(t0 + 0.2);
+    // Macho (high drum) — 30 ms later, shorter and brighter
+    const osc2 = ctx.createOscillator();
+    osc2.type = "sine";
+    osc2.frequency.setValueAtTime(330, t0 + 0.03);
+    osc2.frequency.exponentialRampToValueAtTime(265, t0 + 0.07);
+    osc2.connect(env(ctx, t0 + 0.03, 0.42, 0.09)).connect(dest);
+    osc2.start(t0 + 0.03);
+    osc2.stop(t0 + 0.22);
+    // Finger contact for both hits
+    const noise = noiseSource(ctx, 173, 0.08, t0);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 2600;
+    bp.Q.value = 1.1;
+    noise
+      .connect(bp)
+      .connect(env(ctx, t0, 0.22, 0.05))
+      .connect(dest);
+  };
+}
+
+/** Timbale — the SALSA bell/side hit: a bright metallic crack with a
+ * short ring. Where the cowbell family sustains and the conga family is
+ * tonal skin, the timbale is a metal-shell SNARE-crack: 2.8 kHz strike,
+ * 800 Hz shell ring, 0.18 s decay. The mambo/salsa/cascara voice. */
+function timbale(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const noise = noiseSource(ctx, 191, 0.2, t0);
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 2800;
+    noise
+      .connect(hp)
+      .connect(env(ctx, t0, 0.48, 0.14))
+      .connect(dest);
+    // Shell ring
+    const osc = ctx.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.value = 810;
+    osc.connect(env(ctx, t0, 0.18, 0.11)).connect(dest);
+    osc.start(t0);
+    osc.stop(t0 + 0.2);
+  };
+}
+
+/** Tabla — the North Indian drum pair's signature: a resonant body with
+ * a PITCH BEND (the syahi's pressure modulation) — the fundamental glides
+ * DOWN from ~180 to ~145 Hz over the sustain while a harmonic 5th sustains
+ * above. The bend is what says "tabla" (a static tone is just a drum). */
+function tabla(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(180, t0);
+    // The syahi glide — the defining feature
+    osc.frequency.exponentialRampToValueAtTime(145, t0 + 0.25);
+    osc.connect(env(ctx, t0, 0.6, 0.4)).connect(dest);
+    osc.start(t0);
+    osc.stop(t0 + 0.6);
+    // Sustained 5th harmonic above (the ringing overtones of the black patch)
+    const harm = ctx.createOscillator();
+    harm.type = "sine";
+    harm.frequency.setValueAtTime(905, t0);
+    harm.frequency.exponentialRampToValueAtTime(760, t0 + 0.25);
+    harm.connect(env(ctx, t0, 0.14, 0.3)).connect(dest);
+    harm.start(t0);
+    harm.stop(t0 + 0.6);
+  };
+}
+
+/** Cajón — the Peruvian box drum: a warm low thump (the box body) with a
+ * subtle snare-buzz top (the strings against the tapa). THE flamenco/
+ * acoustic-pop/rumba voice — a drummer in a box. Drier and lower-pitched
+ * than any existing percussion voice. */
+function cajon(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(95, t0);
+    osc.frequency.exponentialRampToValueAtTime(68, t0 + 0.08);
+    osc.connect(env(ctx, t0, 0.65, 0.18)).connect(dest);
+    osc.start(t0);
+    osc.stop(t0 + 0.3);
+    // Snare buzz: a tiny noise band at 1.8 Hz above, decaying fast —
+    // the tapa strings, not a full snare wire sound
+    const buzz = noiseSource(ctx, 223, 0.07, t0);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 1800;
+    bp.Q.value = 0.8;
+    buzz
+      .connect(bp)
+      .connect(env(ctx, t0, 0.12, 0.05))
+      .connect(dest);
+  };
+}
+
+/** Agogô — the Brazilian double-bell (samba): a HIGH clink chased by a
+ * LOWER one 40 ms later — the two bells of the agogô are always played
+ * together or in quick alternation. Reads as "samba" in one hit. */
+function agogo(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    for (const [delay, hz, level] of [
+      [0, 2350, 0.32], // high bell first
+      [0.04, 1780, 0.26], // low bell chase
+    ] as [number, number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = "square";
+      osc.frequency.value = hz;
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = hz;
+      bp.Q.value = 6;
+      osc
+        .connect(bp)
+        .connect(env(ctx, t0 + delay, level, 0.1))
+        .connect(dest);
+      osc.start(t0 + delay);
+      osc.stop(t0 + delay + 0.16);
+    }
+  };
+}
+
 function cowbell(): Builder {
   return (ctx, dest) => {
     const t0 = ctx.currentTime;
@@ -3765,6 +3934,18 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.tonal.erhu": erhu(),
   "factory.perc.conga": conga(),
   "factory.perc.tambourine": tambourine(),
+
+  // World percussion (Priority-3 wave, amapiano/latino/afro/samba): the
+  // tumbao pair gets its quinto complement, the bongocero his martillo,
+  // salsa its cascara, the tabla its syahi glide, the cajón its box, and
+  // samba its double bell — six voices the existing 13-member family
+  // (conga + clave + cowbell×4 + ...) leaves to regional lanes only.
+  "factory.perc.conga.high": congaHigh(),
+  "factory.perc.bongos": bongos(),
+  "factory.perc.timbale": timbale(),
+  "factory.perc.tabla": tabla(),
+  "factory.perc.cajon": cajon(),
+  "factory.perc.agogo": agogo(),
   // Percussion flavor pack (percussion pack wave)
   "factory.perc.woodblock": woodblock(),
   "factory.perc.clave": clave(),
@@ -4046,6 +4227,12 @@ export const DURATIONS: Record<string, number> = {
   "factory.tonal.erhu": 1.9,
   "factory.perc.conga": 0.32,
   "factory.perc.tambourine": 0.3,
+  "factory.perc.conga.high": 0.25,
+  "factory.perc.bongos": 0.3,
+  "factory.perc.timbale": 0.25,
+  "factory.perc.tabla": 0.65,
+  "factory.perc.cajon": 0.35,
+  "factory.perc.agogo": 0.3,
   "factory.perc.woodblock": 0.3,
   "factory.perc.clave": 0.3,
   "factory.perc.snapstack": 0.3,
