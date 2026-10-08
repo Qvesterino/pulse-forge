@@ -1,6 +1,6 @@
 # Pulse Forge — realizačný plán: mastering
 
-> Stav plánu: priebežne aktualizovaná implementácia, 2026-10-08
+> Stav plánu: priebežne aktualizovaná implementácia, 2026-10-09
 > Produktové meno: **KYX**  
 > Rozsah: zjednotenie existujúceho masteringu do profesionálneho, merateľného a zrozumiteľného workflow  
 > Účel: vykonateľný plán nad aktuálnym kódom; nejde o tvrdenie, že všetky body už KYX obsahuje.
@@ -170,7 +170,7 @@ Referencie k aktuálnemu správaniu: [Mastering v KYX](MASTERING.md), [ADR 0009 
 - [x] Monitor-only bypass používa plynulý crossfade a suchú vetvu dorovnáva podľa nahlásenej pre-limiter latencie vstavaných aj vložených master procesorov; prekročenie 0,999 s sa viditeľne označí ako čiastočné dorovnanie.
 - [x] Unit testy potvrdzujú 15 ms párový crossfade, podržanie automatizácie pri rýchlom prepnutí, aktualizáciu zarovnania po neskorom reporte latencie, limit 0,999 s s viditeľným warningom a sample-exact delay write pri offline príprave (`tests/master-chain.test.ts`).
 - [x] Chromium audio E2E potvrdzuje fallback→worklet výmenu master Gate/Tape/Glue/Limiter, reálny 2,494 ms Gate report a posun monitor PDC na 2,676 ms, dispose starého workletu pri výmene kontextu a live/offline master null test (korelácia >0,99, rezíduum <−40 dB).
-- [x] Chromium E2E zachytáva živý AudioWorklet master výstup pri dvoch prepnutiach monitor bypassu cez zámerne stiahnutý gate; potvrdzuje prítomnosť zarovnanej suchej vetvy a transient pomer pod 1,6 podľa druhého rozdielu vzoriek.
+- [ ] Chromium E2E zachytáva živý AudioWorklet master výstup pri dvoch prepnutiach monitor bypassu cez zámerne stiahnutý gate. Dva po sebe idúce focused behy 2026-10-08/09 dali rozdielny výsledok: prvý prekročil transient limit pomerom **2,01** pri cieli **<1,6**, opakovanie prešlo **1/1**. Zarovnanie suchej vetvy a live/offline parity prešli v oboch; opakovateľnosť transient metriky treba vyriešiť pred uzavretím tejto akceptácie.
 - [ ] Manuálny posluch monitor toggle na kontrolovanom audio výstupe ostáva otvorený; browser capture potvrdzuje merateľný priebeh, no nenahrádza posluch cez reálne zariadenie.
 - [x] Pri novom persisted master racku zvýšiť `SCHEMA_VERSION`, doplniť migráciu cez `migrateProject`, normalize, command/undo/redo, collab/YDoc round-trip a import/export projektu.
 - [x] Zachovať nulové rozšírenie live graphu po otvorení exportného `OfflineAudioContext`; všetky uzly vznikajú cez `useContext(ctx)`.
