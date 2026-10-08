@@ -272,3 +272,45 @@ export function planReferenceMastering(pair: ReferencePair): MasterAssistantStep
 
   return steps;
 }
+
+/** The slice of ReferenceMatchReport (src/reference/match.ts) the planner needs. */
+export interface MatchReportForAssistant {
+  bands: { band: string; mixDb: number; refDb: number; empty: boolean }[];
+  loudness: { mixLufs: number | null; refLufs: number | null; deltaLu: number | null };
+  stereo: { mixCorrelation: number | null; refSideRatio: number };
+}
+
+/** Convert a mix-doctor band share (dB of own total) to a 0..1 share. */
+const shareFromDb = (db: number): number => Math.pow(10, db / 10);
+
+/**
+ * Bridge: a buildReferenceMatch report becomes the planner's ReferencePair.
+ * Shares come from the report's dB-of-own-total (converted back to linear
+ * shares — the planner compares them in the same loudness-invariant domain);
+ * crest is not in the report, so the dynamics rules fall back to the mix's
+ * own crest when the caller supplies it (optional).
+ */
+export function referencePairFromMatchReport(
+  report: MatchReportForAssistant,
+  options: { mineCrestDb?: number; referenceCrestDb?: number } = {},
+): import("./master-assistant").ReferencePair {
+  const band = (name: string) => report.bands.find((row) => row.band === name && !row.empty);
+  const air = band("air");
+  const low = band("low");
+  return {
+    mine: {
+      lufs: report.loudness.mixLufs,
+      crestDb: options.mineCrestDb ?? 11,
+      correlation: report.stereo.mixCorrelation,
+      hfShare: air ? shareFromDb(air.mixDb) : 0.2,
+      lowEndShare: low ? shareFromDb(low.mixDb) : 0.25,
+    },
+    reference: {
+      lufs: report.loudness.refLufs,
+      crestDb: options.referenceCrestDb ?? 11,
+      correlation: null,
+      hfShare: air ? shareFromDb(air.refDb) : 0.2,
+      lowEndShare: low ? shareFromDb(low.refDb) : 0.25,
+    },
+  };
+}
