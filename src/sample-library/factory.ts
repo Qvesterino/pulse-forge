@@ -610,6 +610,148 @@ function shakerPop(): Builder {
   };
 }
 
+/** China cymbal — the trashy inverted crash (rock/metal/dnb). The only
+ * cymbal family voice with a NON-crash envelope: a fast EXPLOSIVE attack
+ * (the inverted bell edge) into a shorter trash-tail with an inharmonic
+ * "roar" (two detuned square partials an odd interval apart). Reads as
+ * CHINA within one bar — the existing 5 crashes are all tonal-family. */
+function china(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const noise = noiseSource(ctx, 133, 1.1, t0);
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 3600;
+    // Fast explosive attack then a shorter tail than crash.main (1.3 s):
+    // a china is articulate, not a wash.
+    noise
+      .connect(hp)
+      .connect(env(ctx, t0, 0.55, 0.45))
+      .connect(dest);
+    // The roar: two inharmonic partials a tritone apart, detuned by 7 Hz —
+    // the beating trash that separates a china from a dark crash.
+    for (const [hz, level] of [
+      [1420, 0.16],
+      [2010, 0.12],
+    ] as [number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = "square";
+      osc.frequency.value = hz;
+      osc.detune.value = hz === 1420 ? 4 : -3;
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = hz;
+      bp.Q.value = 5;
+      osc
+        .connect(bp)
+        .connect(env(ctx, t0, level, 0.32))
+        .connect(dest);
+      osc.start(t0);
+      osc.stop(t0 + 0.4);
+    }
+  };
+}
+
+/** Jazz ride — the washy comping ride (the ride.ping's complement). Where
+ * ping is a defined strike with a short tail, the jazz ride is a TICK over
+ * a WASH: a small attack transient then a long bright tail that carries
+ * through comping patterns. Longer than any existing ride (1.4 s tail) and
+ * softer — the jazz drummer's right hand for ballad and swing comping. */
+function rideJazz(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const noise = noiseSource(ctx, 171, 1.6, t0);
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 5400;
+    // Long soft wash — the comping bed.
+    noise
+      .connect(hp)
+      .connect(env(ctx, t0, 0.22, 1.1))
+      .connect(dest);
+    // The tick: a defined but SMALL transient on top (jazz comping is
+    // tick-led, not ping-led).
+    const tickOsc = ctx.createOscillator();
+    tickOsc.type = "square";
+    tickOsc.frequency.value = 5800;
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 5800;
+    bp.Q.value = 11;
+    tickOsc
+      .connect(bp)
+      .connect(env(ctx, t0, 0.14, 0.05))
+      .connect(dest);
+    tickOsc.start(t0);
+    tickOsc.stop(t0 + 0.1);
+  };
+}
+
+/** Shaker fast — the third shaker voice: SHORT and driving, the latin/dnb
+ * 16th top-end. The existing pair is long (slow swish) and soft (gentle
+ * backbeat); the fast is the propulsive one: a 0.07 s envelope with a
+ * double-hit transient (the bead chain's forward-and-back). */
+function shakerFast(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const noise = noiseSource(ctx, 211, 0.12, t0);
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 7200;
+    bp.Q.value = 1.6;
+    noise
+      .connect(bp)
+      .connect(env(ctx, t0, 0.42, 0.07))
+      .connect(dest);
+    // The double hit: a second smaller push 18 ms later — the chain
+    // snapping back. This is what makes 16th shakers DRIVE.
+    const noise2 = noiseSource(ctx, 97, 0.1, t0 + 0.018);
+    const bp2 = ctx.createBiquadFilter();
+    bp2.type = "bandpass";
+    bp2.frequency.value = 6800;
+    bp2.Q.value = 1.4;
+    noise2
+      .connect(bp2)
+      .connect(env(ctx, t0 + 0.018, 0.24, 0.05))
+      .connect(dest);
+  };
+}
+
+/** Crash roll — the crescendo crash roll (build fills, rock/metal/dnb
+ * transitions). Not a single hit: a 1.2 s accelerating roll into a final
+ * crash bloom, the drummer's two-hand crescendo. Arrangement transition
+ * cue for drops and section seams. */
+function crashRoll(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    // Accelerating roll: hit spacing halves from 90 ms to 22 ms over 1.1 s.
+    let t = 0;
+    let spacing = 0.09;
+    while (t < 1.1) {
+      const noise = noiseSource(ctx, 47 + Math.floor(t * 1000), 0.06, t0 + t);
+      const hp = ctx.createBiquadFilter();
+      hp.type = "highpass";
+      hp.frequency.value = 6800;
+      const level = 0.14 + (t / 1.1) * 0.32;
+      noise
+        .connect(hp)
+        .connect(env(ctx, t0 + t, level, 0.05))
+        .connect(dest);
+      t += spacing;
+      spacing = Math.max(0.022, spacing * 0.93);
+    }
+    // Final bloom: the full crash at the seam.
+    const bloom = noiseSource(ctx, 83, 1.2, t0 + 1.1);
+    const hp2 = ctx.createBiquadFilter();
+    hp2.type = "highpass";
+    hp2.frequency.value = 5200;
+    bloom
+      .connect(hp2)
+      .connect(env(ctx, t0 + 1.1, 0.5, 0.9))
+      .connect(dest);
+  };
+}
+
 function ride(): Builder {
   return (ctx, dest) => {
     const t0 = ctx.currentTime;
@@ -3594,6 +3736,15 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.ride.ping": ride(),
   "factory.ride.bell": rideBell(),
   "factory.ride.splash": rideSplash(),
+
+  // Cymbal/shaker expand (Priority-2 wave, jazz/dnb/rock): the china (the
+  // only non-tonal-family crash), the washy jazz comping ride, the driving
+  // 16th shaker, and the crescendo crash roll — the four voices those three
+  // genre families reach for that the bank did not have.
+  "factory.crash.china": china(),
+  "factory.ride.jazz": rideJazz(),
+  "factory.shaker.fast": shakerFast(),
+  "factory.crash.roll": crashRoll(),
   "factory.crash.main": crash(8200, 1.3, 0.6),
   "factory.crash.dark": crash(5200, 1.7, 0.5),
   "factory.crash.short": crashShort(),
@@ -3872,6 +4023,10 @@ export const DURATIONS: Record<string, number> = {
   "factory.ride.ping": 0.8,
   "factory.ride.bell": 1.3,
   "factory.ride.splash": 0.5,
+  "factory.crash.china": 1.0,
+  "factory.ride.jazz": 1.6,
+  "factory.shaker.fast": 0.2,
+  "factory.crash.roll": 2.4,
   "factory.crash.main": 1.7,
   "factory.crash.dark": 1.9,
   "factory.crash.short": 0.5,

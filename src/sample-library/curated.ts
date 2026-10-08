@@ -170,6 +170,11 @@ export const CURATED_SAMPLES: CuratedSample[] = [
   { id: "factory.bass.upright", file: "factory.bass.upright.wav" },
   { id: "factory.bass.acid.fast", file: "factory.bass.acid.fast.wav" },
   { id: "factory.bass.acid.slow", file: "factory.bass.acid.slow.wav" },
+  // Cymbal/shaker expand (Priority 2, jazz/dnb/rock).
+  { id: "factory.crash.china", file: "factory.crash.china.wav" },
+  { id: "factory.ride.jazz", file: "factory.ride.jazz.wav" },
+  { id: "factory.shaker.fast", file: "factory.shaker.fast.wav" },
+  { id: "factory.crash.roll", file: "factory.crash.roll.wav" },
   // Lead expand (Priority 1): the mono-lead palette the bank never had.
   { id: "factory.lead.saw", file: "factory.lead.saw.wav" },
   { id: "factory.lead.supersaw", file: "factory.lead.supersaw.wav" },
