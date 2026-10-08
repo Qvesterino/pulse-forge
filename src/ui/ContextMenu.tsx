@@ -9,7 +9,10 @@ import {
   duplicateNotes,
   duplicatePattern,
   duplicateTimeRange,
+  groupClips,
+  setClipsLocked,
   toggleAudioClipsMute,
+  ungroupClips,
 } from "../commands/commands";
 import { BAR_TICKS } from "../project-model/types";
 import { timelineItemsOf } from "../project-model/timeline";
@@ -197,6 +200,17 @@ export function ContextMenu({
   // disabled anyway) instead of the misleading "Unmute" from an empty .some().
   const clipMuteLabel =
     !hasAudioClipSelection || selectedAudioClips.some((clip) => clip.muted !== true) ? "Mute" : "Unmute";
+  // Lock is a BOTH-systems property; the label announces what the click does.
+  const selectedAnyClip = selection.clipIds.length > 0;
+  const allSelectedClipsLocked =
+    selectedAnyClip &&
+    (doc.arrangement.clips.filter((c) => selection.clipIds.includes(c.id)).every((c) => c.locked === true) ||
+      (doc.arrangement.audioClips ?? [])
+        .filter((c) => selection.clipIds.includes(c.id))
+        .every((c) => c.locked === true) ||
+      (doc.arrangement.clips.filter((c) => selection.clipIds.includes(c.id)).length === 0 &&
+        (doc.arrangement.audioClips ?? []).filter((c) => selection.clipIds.includes(c.id)).length === 0));
+  const clipLockLabel = allSelectedClipsLocked ? "Unlock" : "Lock";
 
   const handle = (action: string) => {
     let keepOpen = false;
@@ -253,6 +267,32 @@ export function ContextMenu({
       }
       case "pasteClips": {
         if (clipsClipboard) onPasteClips?.();
+        break;
+      }
+      case "groupClips": {
+        try {
+          services.store.execute(groupClips(doc, selection.clipIds));
+        } catch (error) {
+          window.dispatchEvent(new CustomEvent("pf-arrangement-action-error", { detail: String(error) }));
+        }
+        break;
+      }
+      case "ungroupClips": {
+        services.store.execute(ungroupClips(doc, selection.clipIds));
+        break;
+      }
+      case "toggleClipLock": {
+        // Same toggle semantics as Shift+L: any unlocked clip locks all.
+        const liveIds = selection.clipIds.filter(
+          (id) =>
+            doc.arrangement.clips.some((c) => c.id === id) ||
+            (doc.arrangement.audioClips ?? []).some((c) => c.id === id),
+        );
+        if (liveIds.length === 0) break;
+        const anyUnlocked =
+          doc.arrangement.clips.some((c) => liveIds.includes(c.id) && c.locked !== true) ||
+          (doc.arrangement.audioClips ?? []).some((c) => liveIds.includes(c.id) && c.locked !== true);
+        services.store.execute(setClipsLocked(doc, liveIds, anyUnlocked));
         break;
       }
       case "toggleClipMute": {
@@ -554,6 +594,20 @@ export function ContextMenu({
             disabled={!hasAudioClipSelection}
           >
             {clipMuteLabel} (M)
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => handle("groupClips")}
+            disabled={selection.clipIds.length < 2}
+          >
+            Group (Ctrl+G)
+          </button>
+          <button type="button" role="menuitem" onClick={() => handle("ungroupClips")} disabled={!hasClips}>
+            Ungroup (Ctrl+Shift+G)
+          </button>
+          <button type="button" role="menuitem" onClick={() => handle("toggleClipLock")} disabled={!hasClips}>
+            {clipLockLabel} (Shift+L)
           </button>
           <button type="button" role="menuitem" onClick={() => handle("delete")} disabled={!hasAny}>
             Delete

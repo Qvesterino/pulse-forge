@@ -39,7 +39,9 @@ function withoutIds(groups: ClipGroup[] | undefined, removed: readonly string[])
   const dead = new Set(removed);
   const next = groups
     .map((group) => ({ ...group, clipIds: group.clipIds.filter((id) => !dead.has(id)) }))
-    .filter((group) => group.clipIds.length > 0);
+    // A group is a RELATIONSHIP — one clip alone is not a group (groupClips
+    // refuses < 2 for the same reason). A group down to a single member dies.
+    .filter((group) => group.clipIds.length > 1);
   return next;
 }
 

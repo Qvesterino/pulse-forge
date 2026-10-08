@@ -58,7 +58,15 @@ import {
 } from "../commands/commands";
 import { applyRangeCrossfade } from "./rangeCrossfade";
 import { snapController } from "./snap";
-import { buildClipClipboard, cutClips, pasteClips, toggleAudioClipsMute } from "../commands/commands";
+import {
+  buildClipClipboard,
+  cutClips,
+  groupClips,
+  pasteClips,
+  setClipsLocked,
+  toggleAudioClipsMute,
+  ungroupClips,
+} from "../commands/commands";
 import type { ClipClipboard } from "../commands/commands";
 import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import type { PatternClipboard } from "../commands/commands";
@@ -743,6 +751,40 @@ export function App({
       case "toggleSnap": {
         event?.preventDefault();
         snapController.toggleEnabled();
+        return;
+      }
+      case "groupClips": {
+        event?.preventDefault();
+        try {
+          services.store.execute(groupClips(doc, selection.clipIds));
+        } catch (e) {
+          window.dispatchEvent(new CustomEvent("pf-arrangement-action-error", { detail: String(e) }));
+        }
+        return;
+      }
+      case "ungroupClips": {
+        event?.preventDefault();
+        services.store.execute(ungroupClips(doc, selection.clipIds));
+        return;
+      }
+      case "toggleClipLock": {
+        event?.preventDefault();
+        // Toggle semantics in the command layer: any unlocked clip in the
+        // selection locks ALL of them; an all-locked selection unlocks.
+        const liveIds = selection.clipIds.filter(
+          (id) =>
+            doc.arrangement.clips.some((c) => c.id === id) ||
+            (doc.arrangement.audioClips ?? []).some((c) => c.id === id),
+        );
+        if (liveIds.length === 0) return;
+        const anyUnlocked =
+          doc.arrangement.clips.some((c) => liveIds.includes(c.id) && c.locked !== true) ||
+          (doc.arrangement.audioClips ?? []).some((c) => liveIds.includes(c.id) && c.locked !== true);
+        try {
+          services.store.execute(setClipsLocked(doc, liveIds, anyUnlocked));
+        } catch (e) {
+          window.dispatchEvent(new CustomEvent("pf-arrangement-action-error", { detail: String(e) }));
+        }
         return;
       }
       case "toggleClipMute": {

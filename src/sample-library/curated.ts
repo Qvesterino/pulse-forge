@@ -160,6 +160,22 @@ export const CURATED_SAMPLES: CuratedSample[] = [
   { id: "factory.bass.pluck", file: "factory.bass.pluck.wav" },
   { id: "factory.bass.wobble", file: "factory.bass.wobble.wav" },
   { id: "factory.bass.dist", file: "factory.bass.dist.wav" },
+  // Bass expand (Priority 1): the melodic 808 velocity zones, held subs,
+  // upright jazz, and the acid pair — every new slot gets a mastered seed.
+  { id: "factory.bass.808.soft", file: "factory.bass.808.soft.wav" },
+  { id: "factory.bass.808.medium", file: "factory.bass.808.medium.wav" },
+  { id: "factory.bass.808.hard", file: "factory.bass.808.hard.wav" },
+  { id: "factory.bass.subsine", file: "factory.bass.subsine.wav" },
+  { id: "factory.bass.subsquare", file: "factory.bass.subsquare.wav" },
+  { id: "factory.bass.upright", file: "factory.bass.upright.wav" },
+  { id: "factory.bass.acid.fast", file: "factory.bass.acid.fast.wav" },
+  { id: "factory.bass.acid.slow", file: "factory.bass.acid.slow.wav" },
+  // Lead expand (Priority 1): the mono-lead palette the bank never had.
+  { id: "factory.lead.saw", file: "factory.lead.saw.wav" },
+  { id: "factory.lead.supersaw", file: "factory.lead.supersaw.wav" },
+  { id: "factory.lead.square", file: "factory.lead.square.wav" },
+  { id: "factory.lead.pluck.bright", file: "factory.lead.pluck.bright.wav" },
+  { id: "factory.lead.pluck.dark", file: "factory.lead.pluck.dark.wav" },
 ];
 
 /** Concurrency cap for parallel fetch+decode. */

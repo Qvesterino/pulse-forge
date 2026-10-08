@@ -47,6 +47,10 @@ const CATEGORY_TREATMENT = {
   // drive squares a sustained sine past the limiter). Loudness sits under the
   // kick target so a bass+kick stack keeps headroom.
   Bass: { targetLufs: -12, tapeDrive: 0.06, tapeTone: 14000, ceiling: -1.6 },
+  // Lead expand (Priority 1 wave): mono leads sit between tonal pads and
+  // the hats — present but not pad-wide. Supersaw is the widest, so a touch
+  // more glue drive keeps the seven saws from flapping.
+  Lead: { targetLufs: -14, tapeDrive: 0.12, tapeTone: 11000, ceiling: -1.7 },
   Tonal: { targetLufs: -16, tapeDrive: 0.16, tapeTone: 9500, ceiling: -1.8 },
   FX: { targetLufs: -13, tapeDrive: 0.16, tapeTone: 10500, ceiling: -1.5 },
 };
@@ -79,6 +83,11 @@ const ASSET_TREATMENT_OVERRIDE = {
 const server = await createServer({
   root,
   logLevel: "error",
+  // Untracked sibling artifacts (dist-contest/, golden-review/,
+  // playwright-report/, public/bench-stem.html) poison the default dep-scan
+  // ("Failed to scan for dependencies from entries") and domcontentloaded
+  // never fires. Pin the scan to the app's single real entry.
+  optimizeDeps: { entries: ["index.html"] },
   server: { port: PORT, host: "127.0.0.1", strictPort: true },
 });
 await server.listen();

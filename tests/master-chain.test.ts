@@ -227,6 +227,7 @@ describe("MasterChain limiter delivery", () => {
       ctx: () => null,
       doc: () => null,
       metering: {} as MeteringRig,
+      masterInsertLatencySec: () => 0,
     });
     Object.assign(chain, {
       master: {},

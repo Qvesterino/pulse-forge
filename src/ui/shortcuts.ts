@@ -19,6 +19,9 @@ export type ShortcutKey =
   | "pasteClips"
   | "toggleClipMute"
   | "toggleSnap"
+  | "groupClips"
+  | "ungroupClips"
+  | "toggleClipLock"
   | "deleteNote"
   | "nextTrack"
   | "prevTrack"
@@ -168,6 +171,9 @@ export const SHORTCUTS: Shortcut[] = [
   { key: "pasteClips", label: "Paste clips at playhead", group: "Clips", keyHint: "V", ctrl: true },
   { key: "toggleClipMute", label: "Mute / unmute selected audio clips", group: "Clips", keyHint: "M" },
   { key: "toggleSnap", label: "Toggle snap grid on/off", group: "Clips", keyHint: "J" },
+  { key: "groupClips", label: "Group selected clips", group: "Clips", keyHint: "G", ctrl: true },
+  { key: "ungroupClips", label: "Ungroup selected clips", group: "Clips", keyHint: "G", ctrl: true, shift: true },
+  { key: "toggleClipLock", label: "Lock / unlock selected clips", group: "Clips", keyHint: "L", shift: true },
 
   // Bare digits 1–9 select tracks; panels live on Alt+1–5. Both families
   // previously bound the bare 1–5 keys — the map silently kept only the
@@ -340,6 +346,16 @@ export const EDITOR_SHORTCUTS: EditorShortcut[] = [
     area: "Arrangement keys",
     label: "Toggle the snap grid (restores the last grid)",
     bindings: ["J"],
+  },
+  {
+    area: "Arrangement keys",
+    label: "Group / ungroup the selected clips",
+    bindings: ["Ctrl + G", "Ctrl + Shift + G"],
+  },
+  {
+    area: "Arrangement keys",
+    label: "Lock / unlock the selected clips",
+    bindings: ["Shift + L"],
   },
   {
     area: "Capture",

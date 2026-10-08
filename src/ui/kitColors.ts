@@ -14,6 +14,7 @@ const CATEGORY_COLORS: Record<AssetCategory, string> = {
   Percussion: "#38bdf8",
   Bass: "#818cf8",
   Tonal: "#22d3ee",
+  Lead: "#c084fc",
   FX: "#e879f9",
 };
 

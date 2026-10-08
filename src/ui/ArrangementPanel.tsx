@@ -2206,6 +2206,33 @@ export function ArrangementPanel() {
       dragGuard.arm();
       return;
     }
+    // GROUP-AWARE MOVE: a plain press on a grouped clip drags the whole group.
+    // Same-system members only (v1 boundary — a cross-system group moves via
+    // multi-select). Reuses the block-move machinery: one delta, relative
+    // spacing preserved, one undo entry at commit.
+    if (mode === "move") {
+      const group = arrangement.clipGroups?.find((g) => g.clipIds.includes(clipId));
+      const groupIds = (group?.clipIds ?? []).filter((id) => clips.some((c) => c.id === id));
+      if (groupIds.length > 1) {
+        const origStarts = Object.fromEntries(groupIds.map((id) => [id, clips.find((c) => c.id === id)!.startBar]));
+        event.currentTarget.setPointerCapture(event.pointerId);
+        dragRef.current = {
+          mode,
+          clipId,
+          pointerId: event.pointerId,
+          origStart: clip.startBar,
+          origLength: clip.lengthBars,
+          grabBar: barFromEventAt(event, barWidth),
+          barWidth,
+          movingIds: groupIds,
+          origStarts,
+        };
+        setClipDrag({ startBar: clip.startBar, lengthBars: clip.lengthBars });
+        setClipMultiDrag(0);
+        dragGuard.arm();
+        return;
+      }
+    }
     if (!selectionStore.isClipSelected(clipId)) selectionStore.setClips([clipId]);
     event.currentTarget.setPointerCapture(event.pointerId);
     dragRef.current = {
@@ -2494,10 +2521,17 @@ export function ArrangementPanel() {
     // Plain press on a selected clip inside an active multi-selection moves
     // ALL selected audio clips together (resize/trim/fade/gain stay
     // single-clip by nature — same rule as the scene block move).
-    const movingIds =
+    // GROUP-AWARE MOVE: a plain press on a grouped clip drags its same-system
+    // group members (same v1 boundary as the scene lane).
+    let movingIds: string[] | undefined =
       mode === "move" && selection.clipIds.length > 1 && selectionStore.isClipSelected(clipId)
         ? selection.clipIds.filter((id) => audioClips.some((c) => c.id === id))
         : undefined;
+    if (mode === "move" && movingIds === undefined) {
+      const group = arrangement.clipGroups?.find((g) => g.clipIds.includes(clipId));
+      const groupIds = (group?.clipIds ?? []).filter((id) => audioClips.some((c) => c.id === id));
+      if (groupIds.length > 1) movingIds = groupIds;
+    }
     const multiMoving = movingIds !== undefined && movingIds.length > 1 ? movingIds : undefined;
     const origStarts =
       multiMoving !== undefined
@@ -4347,9 +4381,9 @@ export function ArrangementPanel() {
               return (
                 <div key={clip.id}>
                   <div
-                    className={`arr-clip role-${role}${selected ? " selected" : ""}${isCurrentClip ? " current" : ""}${runtime.playing && isCurrentClip ? " playing" : ""}`}
+                    className={`arr-clip role-${role}${selected ? " selected" : ""}${isCurrentClip ? " current" : ""}${runtime.playing && isCurrentClip ? " playing" : ""}${clip.locked ? " locked" : ""}${arrangement.clipGroups?.some((g) => g.clipIds.includes(clip.id)) ? " grouped" : ""}`}
                     style={{ left: startBar * barWidth, width: lengthBars * barWidth - 4 }}
-                    title={`${scene?.name ?? "?"} · ${role.toUpperCase()} · bars ${startBar + 1}–${startBar + lengthBars}`}
+                    title={`${scene?.name ?? "?"} · ${role.toUpperCase()}${clip.locked ? " · LOCKED" : ""} · bars ${startBar + 1}–${startBar + lengthBars}`}
                     onPointerDown={(event) => {
                       // CUT TOOL (ADR 0025): the razor splits scene OR audio
                       // clips at the click — the one interaction a drag
@@ -4498,9 +4532,9 @@ export function ArrangementPanel() {
               return (
                 <div
                   key={clip.id}
-                  className={`arr-audio-clip${selected ? " selected" : ""}${isCurrent ? " current" : ""}${clip.takeId === clipTakeGroup?.compTakeId ? " comp" : ""}${clip.muted ? " muted" : ""}`}
+                  className={`arr-audio-clip${selected ? " selected" : ""}${isCurrent ? " current" : ""}${clip.takeId === clipTakeGroup?.compTakeId ? " comp" : ""}${clip.muted ? " muted" : ""}${clip.locked ? " locked" : ""}${arrangement.clipGroups?.some((g) => g.clipIds.includes(clip.id)) ? " grouped" : ""}`}
                   style={{ left: startBar * barWidth, width: lengthBars * barWidth - 4 }}
-                  title={`${track?.name ?? clip.trackId} · ${clip.bufferId} · ${clip.muted ? "MUTED " : ""}${clip.reverse ? "REV " : ""}${clip.loop ? "LOOP " : ""}${(clip.warpMarkers?.length ?? 0) > 0 ? `WARP${clip.warpMarkers!.length} ` : ""}${clip.stretchMode === "stretch" ? `STRETCH×${effRate.toFixed(2)} ` : effRate !== 1 ? `×${effRate.toFixed(2)} ` : ""}${lengthBars}b · trim ${clip.trimStart.toFixed(2)}/${clip.trimEnd.toFixed(2)} fade ${effFadeIn.toFixed(2)}/${effFadeOut.toFixed(2)} gain ${effGain.toFixed(2)} — M mutes · PT: top corners fade, top middle clip gain, Alt+edge stretches, Alt+body slips${clip.reverse || clip.loop || (clip.warpMarkers?.length ?? 0) > 0 ? " (slip off: REV/LOOP/WARP)" : ""}`}
+                  title={`${track?.name ?? clip.trackId} · ${clip.bufferId} · ${clip.locked ? "LOCKED " : ""}${clip.muted ? "MUTED " : ""}${clip.reverse ? "REV " : ""}${clip.loop ? "LOOP " : ""}${(clip.warpMarkers?.length ?? 0) > 0 ? `WARP${clip.warpMarkers!.length} ` : ""}${clip.stretchMode === "stretch" ? `STRETCH×${effRate.toFixed(2)} ` : effRate !== 1 ? `×${effRate.toFixed(2)} ` : ""}${lengthBars}b · trim ${clip.trimStart.toFixed(2)}/${clip.trimEnd.toFixed(2)} fade ${effFadeIn.toFixed(2)}/${effFadeOut.toFixed(2)} gain ${effGain.toFixed(2)} — M mutes · PT: top corners fade, top middle clip gain, Alt+edge stretches, Alt+body slips${clip.reverse || clip.loop || (clip.warpMarkers?.length ?? 0) > 0 ? " (slip off: REV/LOOP/WARP)" : ""}`}
                   onPointerDown={(event) => {
                     // CUT TOOL: sample-precise split at the pointer, snapped
                     // when the grid is on (same click contract as the scene
