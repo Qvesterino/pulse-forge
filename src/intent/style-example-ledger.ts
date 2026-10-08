@@ -134,6 +134,22 @@ export function recordStyleExample(example: StyleExampleV1): boolean {
   return saved;
 }
 
+/** Merge explicitly imported compact style examples by content and genre. */
+export function mergeStyleExamples(examples: readonly unknown[]): boolean {
+  const merged = safeRead();
+  for (const value of examples) {
+    if (!isValidStyleExample(value)) continue;
+    const next = merged.filter(
+      (existing) => existing.contentHash !== value.contentHash || existing.genre !== value.genre,
+    );
+    next.push(value);
+    merged.splice(0, merged.length, ...next.slice(-STYLE_EXAMPLE_LEDGER_CAP));
+  }
+  const saved = safeWrite(merged);
+  if (saved) notifyChanged();
+  return saved;
+}
+
 export function countStyleExamples(): number {
   return safeRead().length;
 }

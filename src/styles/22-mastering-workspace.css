@@ -732,6 +732,13 @@
   font-size: 10px;
 }
 
+.mastering-overview-rate-note {
+  flex: 1 1 100%;
+  color: var(--text-faint);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
 .mastering-overview-context strong,
 .mastering-overview-scope > strong,
 .mastering-overview-select > strong {
@@ -884,6 +891,28 @@
   border: 1px solid var(--border-soft);
   border-radius: 3px;
   background: var(--bg);
+}
+
+.mastering-overview-findings-action {
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mastering-overview-findings-action:not(:disabled):hover {
+  border-color: var(--accent);
+}
+
+.mastering-overview-findings-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.mastering-overview-findings-action:disabled {
+  cursor: default;
+  opacity: 1;
 }
 
 .mastering-overview-metric > span {
@@ -1959,6 +1988,15 @@
 
 .master-render-report-meta span {
   flex: 1 1 360px;
+}
+
+.master-render-measurement[tabindex="-1"] {
+  scroll-margin-block-start: 16px;
+}
+
+.master-render-measurement[tabindex="-1"]:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .master-render-measurement > strong {

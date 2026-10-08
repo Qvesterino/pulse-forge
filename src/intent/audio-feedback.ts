@@ -1,4 +1,11 @@
-import { extractAudioFeatures, type AudioFeatures } from "../ai/audio-features";
+import {
+  extractAudioFeaturesV2,
+  extractAudioFeatures,
+  extractStereoAudioFeatures,
+  type AudioFeatures,
+  type AudioFeaturesV2,
+  type StereoAudioFeatures,
+} from "../ai/audio-features";
 import { GENERATED_AUDIO_TARGETS } from "./audio-targets.generated";
 import type { SampleBank } from "../sample-library/factory";
 import type { ProjectDocument } from "../project-model/types";
@@ -206,15 +213,18 @@ export function audioTargetFor(genre: string): GenreAudioTarget {
 
 export interface CandidateAudioScore {
   candidateIndex: number;
-  features: AudioFeatures;
+  features: AudioFeaturesV2;
+  stereoFeatures?: StereoAudioFeatures;
   audioScore: number;
 }
+
+export type RenderCandidateAudio = Float32Array | AudioBuffer;
 
 export type RenderCandidateFn = (
   doc: ProjectDocument,
   bank: SampleBank,
   patternPattern: Pattern,
-) => Promise<Float32Array>;
+) => Promise<RenderCandidateAudio>;
 
 import type { Pattern } from "../project-model/types";
 
@@ -227,7 +237,7 @@ export async function scoreCandidatesBySound(
   doc: ProjectDocument,
   candidates: Array<{ pattern: Pattern; candidateIndex: number }>,
   genre: string,
-  renderFn: (doc: ProjectDocument, pattern: Pattern) => Promise<Float32Array>,
+  renderFn: (doc: ProjectDocument, pattern: Pattern) => Promise<RenderCandidateAudio>,
 ): Promise<CandidateAudioScore[]> {
   const target = audioTargetFor(genre);
   const results: CandidateAudioScore[] = [];
@@ -241,9 +251,44 @@ export async function scoreCandidatesBySound(
     candidates.map(async (candidate) => {
       try {
         const audio = await renderFn(doc, candidate.pattern);
-        const features = extractAudioFeatures(audio, 44100);
+        let mono: Float32Array;
+        let stereoFeatures: StereoAudioFeatures | undefined;
+        let sampleRate = 44_100;
+        if (audio instanceof Float32Array) {
+          mono = audio;
+        } else {
+          const channels = Array.from({ length: Math.max(0, audio.numberOfChannels) }, (_, channel) =>
+            audio.getChannelData(channel),
+          );
+          sampleRate = Number.isFinite(audio.sampleRate) && audio.sampleRate > 0 ? audio.sampleRate : 44_100;
+          mono = new Float32Array(Math.max(0, audio.length));
+          for (let frame = 0; frame < mono.length; frame++) {
+            let sum = 0;
+            let count = 0;
+            for (const channel of channels) {
+              const value = channel[frame];
+              if (value === undefined || !Number.isFinite(value)) continue;
+              sum += value;
+              count++;
+            }
+            mono[frame] = count > 0 ? sum / count : 0;
+          }
+          const left = channels[0];
+          const right = channels[1];
+          if (left && right) stereoFeatures = extractStereoAudioFeatures(left, right);
+        }
+        const advancedFeatures = extractAudioFeaturesV2(mono, sampleRate);
+        // Preserve the original global genre-fit behavior, which measured the
+        // mono finalist stream at 44.1 kHz, while using the actual render rate
+        // for the new spectral and periodicity summaries.
+        const features: AudioFeaturesV2 = { ...advancedFeatures, ...extractAudioFeatures(mono, 44_100) };
         const audioScore = scoreAudioFit(features, target);
-        return { candidateIndex: candidate.candidateIndex, features, audioScore };
+        return {
+          candidateIndex: candidate.candidateIndex,
+          features,
+          ...(stereoFeatures ? { stereoFeatures } : {}),
+          audioScore,
+        };
       } catch {
         // Skip candidates that fail to render — they just don't get an audio score
         return null;

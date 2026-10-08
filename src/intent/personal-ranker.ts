@@ -25,8 +25,10 @@ import {
   type PreferenceObservationV1,
   type PreferenceReason,
 } from "./preference-ledger-core";
+import { isAudioPreferenceReason, personalAudioPreferenceEvidence } from "./audio-personal-ranker";
 
 const MIN_COMPARISONS = 2;
+const CONFIDENCE_PRIOR_WEIGHT = 6;
 const MAX_PERSONAL_RESIDUAL = 0.2;
 const MAX_REASON_RESIDUAL = 0.08;
 const EPOCHS = 48;
@@ -45,6 +47,17 @@ export interface PersonalPreferenceModel {
   comparisonCount: number;
   effectiveComparisonCount: number;
   reason: PreferenceReason | null;
+}
+
+export interface PersonalPreferenceEvidence {
+  comparisonCount: number;
+  exactContextComparisons: number;
+  effectiveComparisonCount: number;
+  confidenceWeight: number;
+  audioComparisonCount: number;
+  audioEffectiveComparisonCount: number;
+  audioConfidenceWeight: number;
+  state: "cold-start" | "weak-signal" | "building" | "supported";
 }
 
 export interface PersonalSearchBias {
@@ -97,6 +110,15 @@ const REASON_FEATURE_INDICES: Readonly<Record<PreferenceReason, readonly number[
     "melodic.motifRepetition",
     "drums.barRepetition",
   ),
+  // Rendered-audio axes are learned by audio-personal-ranker after offline render.
+  brightness: null,
+  lowEnd: null,
+  dynamics: null,
+  level: null,
+  timbre: null,
+  voicing: null,
+  stereo: null,
+  mix: null,
 };
 
 const SUPPORTED_REASONS = Object.keys(REASON_FEATURE_INDICES).filter(
@@ -146,10 +168,10 @@ export function preferenceFeatureIndicesForReason(reason: PreferenceReason): rea
 }
 
 export function isPreferenceReasonRankable(reason: PreferenceReason): boolean {
-  return (REASON_FEATURE_INDICES[reason]?.length ?? 0) > 0;
+  return isAudioPreferenceReason(reason) || (REASON_FEATURE_INDICES[reason]?.length ?? 0) > 0;
 }
 
-function contextWeight(observed: PreferenceContext, current: PreferenceContext): number {
+export function preferenceContextWeight(observed: PreferenceContext, current: PreferenceContext): number {
   if (observed.key === current.key) return 1;
   if (observed.genre !== current.genre || observed.task !== current.task) return 0;
   const profileWeight = observed.productionProfile === current.productionProfile ? 1 : 0.3;
@@ -172,12 +194,18 @@ function pairExamples(
     observations
       .filter(isValidPreferenceObservation)
       .filter((observation) => observation.choice === "a" || observation.choice === "b")
+      .filter(
+        (observation) =>
+          observation.context.task !== "song" ||
+          observation.songReason === undefined ||
+          observation.songReason === "overall",
+      )
       // Unlabelled comparisons and editor corrections teach the general
       // adapter. A reason-tagged vote trains only that reason's adapter, never
       // unrelated feature dimensions.
       .filter((observation) => (reason ? observation.reason === reason : observation.reason === undefined))
       .map((observation) => {
-        const weight = contextWeight(observation.context, context);
+        const weight = preferenceContextWeight(observation.context, context);
         const direction = observation.choice === "a" ? 1 : -1;
         // W4 dual-read: both sides are normalized to the v2 width FIRST, so a
         // v1 observation (padded with neutral 0.5) yields exactly zero
@@ -244,6 +272,56 @@ export function fitPersonalPreferenceModel(
   };
 }
 
+/**
+ * Estimate how useful a named-axis comparison would be under the current
+ * local model. High entropy means the model is unsure which side the user may
+ * prefer; low evidence also keeps uncertainty high. This is a deterministic
+ * query-selection proxy, not a calibrated probability.
+ */
+function uncertaintyFromModel(
+  model: PersonalPreferenceModel | null,
+  featuresA: ArrayLike<number>,
+  featuresB: ArrayLike<number>,
+): number {
+  const normalizedA = normalizeFeatureVector(featuresA);
+  const normalizedB = normalizeFeatureVector(featuresB);
+  if (!model || !normalizedA || !normalizedB) return 1;
+  let margin = 0;
+  for (let index = 0; index < FEATURE_V2_COUNT; index++) {
+    margin += (model.weights[index] ?? 0) * ((normalizedA[index] ?? 0.5) - (normalizedB[index] ?? 0.5));
+  }
+  const probability = Math.max(1e-6, Math.min(1 - 1e-6, sigmoid(margin)));
+  const entropy = -(probability * Math.log2(probability) + (1 - probability) * Math.log2(1 - probability));
+  const confidence = shrinkageConfidence(model.effectiveComparisonCount);
+  return Math.max(0, Math.min(1, 1 - confidence * (1 - entropy)));
+}
+
+/**
+ * Build a query-time uncertainty scorer that fits each reason model at most
+ * once. Probe selection considers many candidate pairs, so fitting inside the
+ * pair loop would repeat the same local training work hundreds of times.
+ */
+export function createPreferencePairUncertaintyScorer(
+  observations: readonly PreferenceObservationV1[],
+  context: PreferenceContext,
+): (reason: PreferenceReason, featuresA: ArrayLike<number>, featuresB: ArrayLike<number>) => number {
+  const models = new Map<PreferenceReason, PersonalPreferenceModel | null>();
+  return (reason, featuresA, featuresB) => {
+    if (!models.has(reason)) models.set(reason, fitPersonalPreferenceModel(observations, context, reason));
+    return uncertaintyFromModel(models.get(reason) ?? null, featuresA, featuresB);
+  };
+}
+
+export function preferencePairUncertainty(
+  observations: readonly PreferenceObservationV1[],
+  context: PreferenceContext,
+  reason: PreferenceReason,
+  featuresA: ArrayLike<number>,
+  featuresB: ArrayLike<number>,
+): number {
+  return createPreferencePairUncertaintyScorer(observations, context)(reason, featuresA, featuresB);
+}
+
 function fitAvailablePreferenceModels(
   observations: readonly PreferenceObservationV1[],
   context: PreferenceContext,
@@ -252,6 +330,42 @@ function fitAvailablePreferenceModels(
     fitPersonalPreferenceModel(observations, context),
     ...SUPPORTED_REASONS.map((reason) => fitPersonalPreferenceModel(observations, context, reason)),
   ].filter((model): model is PersonalPreferenceModel => model !== null);
+}
+
+/** Summarize evidence after the same genre/profile/task/role weighting used by the ranker. */
+export function personalPreferenceEvidence(
+  observations: readonly PreferenceObservationV1[],
+  context: PreferenceContext,
+): PersonalPreferenceEvidence {
+  const examples = [
+    ...pairExamples(observations, context),
+    ...SUPPORTED_REASONS.flatMap((reason) => pairExamples(observations, context, reason)),
+  ];
+  const effectiveComparisonCount = examples.reduce((sum, example) => sum + example.weight, 0);
+  const audioEvidence = personalAudioPreferenceEvidence(observations, context);
+  const combinedEffectiveComparisonCount = Math.max(effectiveComparisonCount, audioEvidence.effectiveComparisonCount);
+  return {
+    comparisonCount: Math.max(examples.length, audioEvidence.comparisonCount),
+    exactContextComparisons: examples.filter((example) => example.weight === 1).length,
+    effectiveComparisonCount: combinedEffectiveComparisonCount,
+    confidenceWeight: shrinkageConfidence(combinedEffectiveComparisonCount),
+    audioComparisonCount: audioEvidence.comparisonCount,
+    audioEffectiveComparisonCount: audioEvidence.effectiveComparisonCount,
+    audioConfidenceWeight: audioEvidence.confidenceWeight,
+    state:
+      combinedEffectiveComparisonCount < MIN_COMPARISONS
+        ? "cold-start"
+        : combinedEffectiveComparisonCount < 5
+          ? "weak-signal"
+          : combinedEffectiveComparisonCount < 10
+            ? "building"
+            : "supported",
+  };
+}
+
+/** Conservative empirical-Bayes-style shrinkage toward global-only ranking. */
+function shrinkageConfidence(effectiveComparisonCount: number): number {
+  return effectiveComparisonCount / (effectiveComparisonCount + CONFIDENCE_PRIOR_WEIGHT);
 }
 
 /**
@@ -280,7 +394,7 @@ export function inferPersonalSearchBias(
         const signal =
           relevant.reduce((sum, feature) => sum + model.weights[feature.index] * feature.polarity, 0) /
           Math.sqrt(relevant.length);
-        const confidence = model.effectiveComparisonCount / (model.effectiveComparisonCount + 2);
+        const confidence = shrinkageConfidence(model.effectiveComparisonCount);
         return signal * confidence;
       })
       .filter((signal): signal is number => signal !== null && Math.abs(signal) > 1e-8);
@@ -357,7 +471,7 @@ export function scoreWithPersonalPreferences<T extends PreferenceRankCandidate>(
   for (const model of models) {
     const scores = featuresByCandidate.map((features) => (features ? modelScore(model, features) : 0.5));
     const mean = scores.reduce((sum, score) => sum + score, 0) / scores.length;
-    const confidence = model.effectiveComparisonCount / (model.effectiveComparisonCount + 2);
+    const confidence = shrinkageConfidence(model.effectiveComparisonCount);
     const maxResidual = model.reason === null ? MAX_PERSONAL_RESIDUAL : MAX_REASON_RESIDUAL / reasonModels.length;
     const residualWeight = maxResidual * confidence;
     scores.forEach((score, index) => {

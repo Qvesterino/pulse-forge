@@ -7,14 +7,36 @@ export const FLAC_STREAM_CHUNK_BYTES = 4 * 1024 * 1024;
 /** Session guard shared with external file mastering. */
 export const MAX_FLAC_EXPORT_WORKING_SET_BYTES = 512 * 1024 * 1024;
 
+/** Validate an encoder write against the exact in-memory FLAC file cap. */
+export function assertFlacOutputChunkRange(position: number, byteLength: number): number {
+  const end = position + byteLength;
+  if (
+    !Number.isSafeInteger(position) ||
+    position < 0 ||
+    !Number.isSafeInteger(byteLength) ||
+    byteLength < 0 ||
+    !Number.isSafeInteger(end) ||
+    end > MAX_FLAC_OUTPUT_BYTES
+  ) {
+    throw new Error(
+      `FLAC output exceeded KYX's ${Math.floor(MAX_FLAC_OUTPUT_BYTES / (1024 * 1024))} MiB in-memory export limit. Shorten the render or export a section.`,
+    );
+  }
+  return end;
+}
+
 const FLAC_TARGET_TRANSIENT_BYTES = 24 * 1024 * 1024;
 const FLAC_FRAME_OVERHEAD_FACTOR = 1.05;
 const FLAC_METADATA_RESERVE_BYTES = 1024 * 1024;
+const FLAC_ENCODER_BASE_RESERVE_BYTES = 64 * 1024 * 1024;
+const FLAC_ENCODER_OUTPUT_HEADROOM_FACTOR = 3.25;
 
 /**
- * Estimate the extra peak memory needed while a FLAC file is retained and
- * copied into an immutable Blob. The cap is exact; compression size is
- * estimated conservatively from uncompressed integer PCM plus frame overhead.
+ * Estimate the extra peak memory needed by the FLAC output target, immutable
+ * Blob snapshot, and WASM encoder. The encoder reserve is calibrated above the
+ * Windows Chromium process-tree increase measured while hitting the 96 MiB cap.
+ * The cap is exact; compressed size is estimated from integer PCM plus frame
+ * overhead because audio entropy is unknown before encoding.
  */
 export function estimateFlacOutputWorkingSetBytes(
   audio: Pick<AudioBuffer, "length" | "numberOfChannels">,
@@ -36,12 +58,20 @@ export function estimateFlacOutputWorkingSetBytes(
     MAX_FLAC_OUTPUT_BYTES,
     Math.ceil(pcmBytes * FLAC_FRAME_OVERHEAD_FACTOR + FLAC_METADATA_RESERVE_BYTES),
   );
-  // One retained file plus the immutable Blob snapshot and bounded muxer chunks.
-  return estimatedFileBytes * 2 + FLAC_TARGET_TRANSIENT_BYTES;
+  // Model file/Blob copies, bounded muxer chunks, and the measured encoder/WASM
+  // headroom. High-entropy input can approach the in-memory file cap.
+  const encoderHeadroom =
+    FLAC_ENCODER_BASE_RESERVE_BYTES + Math.ceil(estimatedFileBytes * FLAC_ENCODER_OUTPUT_HEADROOM_FACTOR);
+  return estimatedFileBytes * 2 + FLAC_TARGET_TRANSIENT_BYTES + encoderHeadroom;
 }
 
 export function assertFlacExportWorkingSetBudget(existingBytes: number, outputBytes: number): void {
-  if (!Number.isFinite(existingBytes) || existingBytes < 0 || !Number.isFinite(outputBytes) || outputBytes <= 0) {
+  if (
+    !Number.isSafeInteger(existingBytes) ||
+    existingBytes < 0 ||
+    !Number.isSafeInteger(outputBytes) ||
+    outputBytes <= 0
+  ) {
     throw new Error("KYX could not estimate the memory needed for this FLAC export.");
   }
   const totalBytes = existingBytes + outputBytes;

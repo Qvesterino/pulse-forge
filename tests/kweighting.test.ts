@@ -39,6 +39,57 @@ function ebuLraSignal(levelsDbfs: readonly number[], segmentSeconds: number, sam
   return channels;
 }
 
+/** Original deterministic mix texture for LRA checks; no external programme audio is used. */
+function proceduralStereoProgramme(
+  levelsDbfs: readonly number[],
+  segmentSeconds: number,
+  sampleRate: number,
+): Float32Array[] {
+  const framesPerSegment = Math.round(segmentSeconds * sampleRate);
+  const frameCount = framesPerSegment * levelsDbfs.length;
+  const channels = [new Float32Array(frameCount), new Float32Array(frameCount)];
+  let leftNoise = 0x13579bdf;
+  let rightNoise = 0x2468ace0;
+  const random = (state: number): [number, number] => {
+    const next = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return [next, next / 0x80000000 - 1];
+  };
+  const tone = (frequency: number, frame: number, phase = 0) =>
+    Math.sin((2 * Math.PI * frequency * frame) / sampleRate + phase);
+  const beatFrames = Math.max(1, Math.round(sampleRate * 0.5));
+
+  for (let frame = 0; frame < frameCount; frame++) {
+    const segment = Math.min(levelsDbfs.length - 1, Math.floor(frame / framesPerSegment));
+    const gain = Math.pow(10, levelsDbfs[segment] / 20);
+    const beatOffset = frame % beatFrames;
+    const kickEnvelope = Math.exp(-beatOffset / (sampleRate * 0.045));
+    const kick = 0.2 * kickEnvelope * tone(62, beatOffset);
+    const [nextLeftNoise, leftTexture] = random(leftNoise);
+    leftNoise = nextLeftNoise;
+    const [nextRightNoise, rightTexture] = random(rightNoise);
+    rightNoise = nextRightNoise;
+    const left =
+      0.18 * tone(55, frame) +
+      0.15 * tone(110, frame) +
+      0.11 * tone(220, frame, 0.19) +
+      0.075 * tone(440, frame, 0.41) +
+      0.045 * tone(1370, frame, 0.63) +
+      kick +
+      0.018 * leftTexture;
+    const right =
+      0.16 * tone(55, frame, 0.04) +
+      0.14 * tone(110, frame, 0.11) +
+      0.12 * tone(220, frame, 0.31) +
+      0.07 * tone(440, frame, 0.52) +
+      0.05 * tone(1370, frame, 0.79) +
+      kick * 0.94 +
+      0.018 * rightTexture;
+    channels[0][frame] = gain * left;
+    channels[1][frame] = gain * right;
+  }
+  return channels;
+}
+
 function measureLra(channels: readonly Float32Array[], sampleRate: number): number | null {
   const accumulator = new KWeightedLoudnessAccumulator(channels.length, sampleRate);
   const frame = new Float64Array(channels.length);
@@ -162,6 +213,22 @@ describe("Loudness Range (EBU Tech 3342 minimum requirements)", () => {
     expect(onceLra).not.toBeNull();
     expect(repeatedLra).not.toBeNull();
     expect(Math.abs(repeatedLra! - onceLra!)).toBeLessThanOrEqual(0.5);
+  });
+
+  it("separates original programme-like narrow and wide stereo dynamics", () => {
+    const sampleRate = 48000;
+    const narrowProgramme = proceduralStereoProgramme([-22, -23, -21, -22, -24, -22, -21, -23], 5, sampleRate);
+    const narrowLra = measureLra(narrowProgramme, sampleRate);
+    const wideProgramme = proceduralStereoProgramme([-30, -25, -20, -13, -27, -18, -23, -12], 5, sampleRate);
+    const wideLra = measureLra(wideProgramme, sampleRate);
+
+    expect(narrowLra).not.toBeNull();
+    expect(wideLra).not.toBeNull();
+    expect(narrowLra).toBeGreaterThanOrEqual(2);
+    expect(narrowLra).toBeLessThanOrEqual(5);
+    expect(wideLra).toBeGreaterThanOrEqual(14);
+    expect(wideLra).toBeLessThanOrEqual(20);
+    expect(wideLra! - narrowLra!).toBeGreaterThan(9);
   });
 
   it("keeps downsampled loudness timeline buckets ordered", () => {

@@ -1,5 +1,6 @@
 import { Mp3Encoder } from "@breezystack/lamejs";
 import { mulberry32, quantizeInt16Sample, type IntegerOverflowPolicy } from "./quantize";
+import { isMp3SampleRateSupported, MP3_SUPPORTED_SAMPLE_RATES } from "./mp3-capabilities";
 
 export interface Mp3Options {
   /** Target bitrate in kbps (default 192). */
@@ -10,6 +11,25 @@ export interface Mp3Options {
   signal?: AbortSignal;
   /** Use `reject` for mastering delivery to prevent automatic saturation before MP3 encoding. */
   integerOverflowPolicy?: IntegerOverflowPolicy;
+}
+
+function yieldToEventLoop(signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Export cancelled", "AbortError"));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      reject(new DOMException("Export cancelled", "AbortError"));
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, 0);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 async function quantizeChannelAsync(
@@ -30,7 +50,7 @@ async function quantizeChannelAsync(
       output[index] = quantizeInt16Sample(input[index], rand, overflowPolicy);
     }
     onProgress?.(((completedSamplesBeforeChannel + end) / Math.max(1, totalSamples)) * 0.2);
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    await yieldToEventLoop(signal);
     if (signal?.aborted) throw new DOMException("Export cancelled", "AbortError");
   }
   return output;
@@ -53,9 +73,10 @@ export async function encodeMp3(buffer: AudioBuffer, options: Mp3Options = {}): 
   // Audit 11 D7: LAME's MPEG tables only express standard rates — a 96 kHz
   // buffer (e.g. a live-context-rate render) produced corrupt garbage
   // instead of an error.
-  const SUPPORTED_RATES = [8000, 11025, 12000, 16000, 22050, 24000, 32000, 44100, 48000];
-  if (!SUPPORTED_RATES.includes(buffer.sampleRate)) {
-    throw new Error(`MP3 export does not support ${buffer.sampleRate} Hz — use 44100 or 48000 Hz, or export WAV`);
+  if (!isMp3SampleRateSupported(buffer.sampleRate)) {
+    throw new Error(
+      `MP3 export does not support ${buffer.sampleRate} Hz — supported rates: ${MP3_SUPPORTED_SAMPLE_RATES.join(", ")} Hz.`,
+    );
   }
   const encoder = new Mp3Encoder(channelCount, buffer.sampleRate, kbps);
 
@@ -99,7 +120,7 @@ export async function encodeMp3(buffer: AudioBuffer, options: Mp3Options = {}): 
     // Yield regularly so cancellation remains responsive on long mastering sessions.
     if (block % 100 === 99) {
       options.onProgress?.(0.2 + (block / totalBlocks) * 0.8);
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await yieldToEventLoop(options.signal);
       // Abort only at a yield point — no partial Blob is ever produced.
       if (options.signal?.aborted) throw new DOMException("Export cancelled", "AbortError");
     }

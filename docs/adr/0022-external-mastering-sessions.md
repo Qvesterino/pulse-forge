@@ -128,6 +128,8 @@ memory still has the 512 MiB ceiling, while project reference comparison keeps
 its 320 MiB ceiling. FLAC post-encode read-back also caps files at 96 MiB and
 projected PCM at 64 MiB; if the combined decode estimate exceeds 512 MiB, the
 header can remain checked while post-decode audio is reported `not-measured`.
-FLAC output remains 16/24-bit PCM at the selected 44.1/48 kHz render rate.
+FLAC output remains 16/24-bit PCM at the selected 44.1/48/96 kHz render
+rate. MP3 output is limited to 44.1/48 kHz by the LAME encoder; at 96 kHz,
+the UI blocks MP3 delivery and points to WAV/FLAC or a lower render rate.
 Browser FLAC acceptance, round-trip vectors and supported browser/OS profiles
 remain open; this update does not broaden the validated support matrix.

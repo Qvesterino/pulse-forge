@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { encodeMp3 } from "../../src/export/mp3";
 
 function fakeBuffer(seconds: number, channels = 2, sampleRate = 44100): AudioBuffer {
@@ -41,6 +41,10 @@ describe("encodeMp3", () => {
     expect(b0).toBe(0xff);
   });
 
+  it("rejects 96 kHz instead of encoding an invalid MPEG sample rate", async () => {
+    await expect(encodeMp3(fakeBuffer(0.1, 2, 96_000))).rejects.toThrow(/MP3 export does not support 96000 Hz/);
+  });
+
   it("higher bitrate produces a larger file", async () => {
     const low = await encodeMp3(fakeBuffer(2), { kbps: 128 });
     const high = await encodeMp3(fakeBuffer(2), { kbps: 320 });
@@ -79,6 +83,52 @@ describe("encodeMp3 — cancellation (release roadmap 1.4)", () => {
       },
     });
     await expect(blobPromise).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("clears a pending quantization yield and aborts without waiting for its timer", async () => {
+    const controller = new AbortController();
+    const originalSetTimeout = globalThis.setTimeout.bind(globalThis);
+    const originalClearTimeout = globalThis.clearTimeout.bind(globalThis);
+    let reachedYield: (() => void) | null = null;
+    let blockedTimer: ReturnType<typeof setTimeout> | null = null;
+    let timerCleared = false;
+    const yielded = new Promise<void>((resolve) => {
+      reachedYield = resolve;
+    });
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout").mockImplementation((handler, timeout) => {
+      if (timeout === 0 && blockedTimer === null) {
+        blockedTimer = 73 as unknown as ReturnType<typeof setTimeout>;
+        return blockedTimer;
+      }
+      return originalSetTimeout(handler, timeout);
+    });
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout").mockImplementation((timer) => {
+      if (timer === blockedTimer) {
+        timerCleared = true;
+        return;
+      }
+      originalClearTimeout(timer);
+    });
+
+    try {
+      const encoding = encodeMp3(fakeBuffer(4), {
+        signal: controller.signal,
+        onProgress: (fraction) => {
+          if (fraction > 0 && reachedYield) {
+            reachedYield();
+            reachedYield = null;
+          }
+        },
+      });
+      await yielded;
+      controller.abort();
+      await expect(encoding).rejects.toMatchObject({ name: "AbortError" });
+      expect(timerCleared).toBe(true);
+    } finally {
+      controller.abort();
+      setTimeoutSpy.mockRestore();
+      clearTimeoutSpy.mockRestore();
+    }
   });
 
   it("a signal that never aborts produces a normal Blob", async () => {

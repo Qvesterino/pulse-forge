@@ -6,6 +6,7 @@ import {
   createBextMetadata,
   downloadWav,
   encodeWavAsync,
+  encodeWavBlobAsync,
   sanitizeFilename,
   type WavBextMetadata,
 } from "../rendering/wav";
@@ -16,6 +17,18 @@ import { canExportVideo, recordVideo } from "../export/video";
 import { downloadBlob } from "../export/download";
 import { loadFlacEncoder } from "../export/flac-loader";
 import { assertFlacExportWorkingSetBudget, estimateFlacOutputWorkingSetBytes } from "../export/flac-limits";
+import {
+  assertMp3ExportWorkingSetBudget,
+  estimateMp3ExportAdditionalWorkingSetBytes,
+  MAX_MP3_EXPORT_WORKING_SET_BYTES,
+} from "../export/mp3-limits";
+import {
+  assertWavExportWorkingSetBudget,
+  canDecodeWavAsAudioBuffer,
+  estimateWavExportAdditionalWorkingSetBytes,
+  estimateWavEncodedFileBytes,
+  MAX_WAV_EXPORT_WORKING_SET_BYTES,
+} from "../export/wav-limits";
 import { encodeShareCode, shareAppUrl, embedUrl, embedSnippet } from "../export/shareCode";
 import type { WavBitDepth } from "../rendering/wav";
 import type { PlayMode } from "../project-model/types";
@@ -40,6 +53,7 @@ import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import { slicesFromOnsets } from "../audio-engine/transients";
 import { resolveDeliveryTarget, type MasterProfile } from "../mastering/profiles";
 import { masteringVersionSuffix } from "../mastering/deliveryFilename";
+import { isMp3SampleRateSupported } from "../export/mp3-capabilities";
 import { inspectEncodedMaster, type EncodedMasterInspection } from "../mastering/encodedInspection";
 import {
   createMasterRenderReport,
@@ -285,6 +299,8 @@ export function ExportPanel({
   const integerMasterPeakOverRange = Boolean(
     masteringMode && masterReport && !masterRenderStale && integerMasterDelivery && masterReport.measurements.peak > 1,
   );
+  const masteringMp3RateUnsupported =
+    masteringMode && format.startsWith("mp3") && !isMp3SampleRateSupported(sampleRate);
   const baseName = sanitizeFilename(doc.name);
   const versionSuffix = masteringMode ? masteringVersionSuffix(masterVersion) : "";
   // Keep the workspace preflight tied to the renderer's exact duration/tail
@@ -294,6 +310,26 @@ export function ExportPanel({
   const renderPcmLimitMiB = Math.floor(MAX_OFFLINE_RENDER_PCM_BYTES / (1024 * 1024));
   const renderPcmWithinBudget =
     Number.isFinite(renderPcmBytes) && renderPcmBytes > 0 && renderPcmBytes <= MAX_OFFLINE_RENDER_PCM_BYTES;
+  const estimatedWavFileBytes = estimateWavEncodedFileBytes(renderPcmBytes, bitDepth);
+  const masteringWavCopies = canDecodeWavAsAudioBuffer(estimatedWavFileBytes, renderPcmBytes) ? 2 : 1;
+  const wavDeliveryAdditionalBytes =
+    format === "wav"
+      ? estimateWavExportAdditionalWorkingSetBytes(renderPcmBytes, bitDepth, masteringMode ? masteringWavCopies : 2)
+      : 0;
+  const wavDeliveryTotalBytes = renderPcmBytes + wavDeliveryAdditionalBytes;
+  const wavDeliveryWithinBudget =
+    format !== "wav" ||
+    (Number.isSafeInteger(wavDeliveryTotalBytes) && wavDeliveryTotalBytes <= MAX_WAV_EXPORT_WORKING_SET_BYTES);
+  const mp3BitrateKbps = format === "mp3-320" ? 320 : 192;
+  const mp3DeliveryAdditionalBytes =
+    masteringMode && format.startsWith("mp3")
+      ? estimateMp3ExportAdditionalWorkingSetBytes(renderPcmBytes, sampleRate, mp3BitrateKbps, 2)
+      : 0;
+  const mp3DeliveryTotalBytes = renderPcmBytes + mp3DeliveryAdditionalBytes;
+  const mp3DeliveryWithinBudget =
+    !masteringMode ||
+    !format.startsWith("mp3") ||
+    (Number.isSafeInteger(mp3DeliveryTotalBytes) && mp3DeliveryTotalBytes <= MAX_MP3_EXPORT_WORKING_SET_BYTES);
   const groups = nonEmptyStemGroups(doc);
   const videoSupported = canExportVideo();
   const activePatternName = patterns.find((p) => p.id === activePatternId)?.name ?? "pattern";
@@ -307,6 +343,29 @@ export function ExportPanel({
   };
 
   const exportMaster = async (download = true) => {
+    if (download && masteringMp3RateUnsupported) {
+      setStatus({
+        kind: "error",
+        label:
+          "MP3 delivery in this workspace supports 44.1 or 48 kHz renders. Choose WAV/FLAC for 96 kHz or lower the render rate.",
+      });
+      return;
+    }
+    if (download && masteringMode && format.startsWith("mp3")) {
+      try {
+        assertMp3ExportWorkingSetBudget(
+          renderPcmBytes,
+          estimateMp3ExportAdditionalWorkingSetBytes(renderPcmBytes, sampleRate, mp3BitrateKbps, 2),
+        );
+      } catch (error) {
+        setStatus({
+          kind: "error",
+          label:
+            error instanceof Error ? error.message : "KYX could not estimate the memory needed for this MP3 export.",
+        });
+        return;
+      }
+    }
     const signal = beginExport();
     const projectRevisionAtStart = projectRevisionIdFor(doc);
     let sampleBankRevisionAtStart = services.bank.revision;
@@ -464,18 +523,33 @@ export function ExportPanel({
       // Audit 11 (reliability wave): async encode — the per-sample loop
       // yields per 64k-frame block, keeps the UI alive, reports progress
       // and honors Cancel. Byte-identical to the sync encoder.
-      const wavBytes = await encodeWavAsync(buffer, bitDepth, {
+      const renderedPcmBytes = buffer.length * buffer.numberOfChannels * Float32Array.BYTES_PER_ELEMENT;
+      assertWavExportWorkingSetBudget(
+        renderedPcmBytes,
+        estimateWavExportAdditionalWorkingSetBytes(
+          renderedPcmBytes,
+          bitDepth,
+          masteringMode
+            ? canDecodeWavAsAudioBuffer(estimateWavEncodedFileBytes(renderedPcmBytes, bitDepth), renderedPcmBytes)
+              ? 2
+              : 1
+            : 2,
+        ),
+      );
+      const wavOptions = {
         bext: bextFor(`${doc.name} — KYX master`, summary, sampleRate, bitDepth),
         ...(masteringMode ? { integerOverflowPolicy: "reject" as const } : {}),
-        onProgress: (f) => setStatus({ kind: "busy", label: `Encoding WAV… ${Math.round(f * 100)}%` }),
+        onProgress: (f: number) => setStatus({ kind: "busy", label: `Encoding WAV… ${Math.round(f * 100)}%` }),
         signal,
-      });
-      const wavBlob = new Blob([wavBytes], { type: "audio/wav" });
+      };
+      const wavBlob = masteringMode
+        ? await encodeWavBlobAsync(buffer, bitDepth, wavOptions)
+        : new Blob([await encodeWavAsync(buffer, bitDepth, wavOptions)], { type: "audio/wav" });
       buffer = null;
       setStatus({ kind: "busy", label: "Checking encoded WAV…" });
       const encodedDelivery = await inspectEncodedMaster({
         format: "wav",
-        bytes: wavBytes,
+        bytes: wavBlob,
         fingerprintBlob: masteringMode ? wavBlob : undefined,
         expectedDurationSeconds: renderedDurationSeconds,
         sourceMeasurements: summary,
@@ -1108,6 +1182,23 @@ export function ExportPanel({
               : "RENDER SIZE UNAVAILABLE · Check the project tempo and render scope before analyzing or exporting."}
           </span>
         )}
+        {masteringMp3RateUnsupported && (
+          <span className="export-policy-warning" role="alert">
+            THIS WORKSPACE OFFERS MP3 AT 44.1/48 kHz · choose WAV or FLAC for this 96 kHz render, or lower the rate and
+            render again. Analysis remains available.
+          </span>
+        )}
+        {format === "wav" && !wavDeliveryWithinBudget && (
+          <span className="export-policy-warning" role="alert">
+            WAV DELIVERY EXCEEDS KYX&apos;S 512 MiB WORKING-SET LIMIT · shorten the render, lower the bit depth or use
+            FLAC.
+          </span>
+        )}
+        {masteringMode && format.startsWith("mp3") && !mp3DeliveryWithinBudget && (
+          <span className="export-policy-warning" role="alert">
+            MP3 DELIVERY EXCEEDS KYX&apos;S 512 MiB WORKING-SET LIMIT · shorten the render or export a section.
+          </span>
+        )}
         {markerCount > 0 && (
           <span className="export-policy-warning">
             MARKERS: {markerCount} cue one-shots are included in SCOREPACK, not the master WAV.
@@ -1127,14 +1218,24 @@ export function ExportPanel({
               type="button"
               className="btn btn-export"
               disabled={
-                busy || !renderPcmWithinBudget || integerMasterPeakOverRange || (format === "video" && !videoSupported)
+                busy ||
+                !renderPcmWithinBudget ||
+                !wavDeliveryWithinBudget ||
+                !mp3DeliveryWithinBudget ||
+                integerMasterPeakOverRange ||
+                masteringMp3RateUnsupported ||
+                (format === "video" && !videoSupported)
               }
               title={
                 integerMasterPeakOverRange
                   ? "Integer master delivery exceeds 0 dBFS sample peak. Lower the master level or choose 32-bit-float WAV."
                   : !renderPcmWithinBudget
                     ? `The estimated stereo PCM render exceeds KYX's ${renderPcmLimitMiB} MiB safety limit.`
-                    : undefined
+                    : masteringMp3RateUnsupported
+                      ? "MP3 delivery in this workspace supports 44.1 or 48 kHz renders. Choose WAV/FLAC or lower the render rate."
+                      : !mp3DeliveryWithinBudget
+                        ? `The estimated MP3 delivery working set exceeds KYX's ${Math.floor(MAX_MP3_EXPORT_WORKING_SET_BYTES / (1024 * 1024))} MiB safety limit.`
+                        : undefined
               }
               onClick={() => void exportMaster(true)}
             >
@@ -1276,7 +1377,13 @@ export function ExportPanel({
       </div>
       {((status.kind === "done" && (!masteringMode || masterReport)) ||
         (status.kind === "error" && masteringMode && masterReport)) && (
-        <div className="master-render-measurement">
+        <div
+          className="master-render-measurement"
+          id={masteringMode ? "mastering-review-findings" : undefined}
+          role={masteringMode ? "group" : undefined}
+          aria-label={masteringMode ? "Mastering analysis findings and delivery verdict" : undefined}
+          tabIndex={masteringMode ? -1 : undefined}
+        >
           {masteringMode && <strong>RENDER PCM · PRE-ENCODE</strong>}
           <ExportSummary
             summary={status.kind === "done" ? status.summary : (masterReport?.measurements ?? EMPTY_EXPORT_SUMMARY)}

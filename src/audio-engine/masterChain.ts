@@ -1005,14 +1005,71 @@ export class MasterChain {
   }
 
   /**
-   * Splice the look-ahead limiter into an ALREADY-BUILT live master chain —
-   * used once AudioWorklet modules finish loading on a context that started
-   * rendering before they were ready. Never touches OfflineAudioContexts:
-   * mutating their graph mid-render is undefined behavior.
+   * Replace master fallbacks and splice the look-ahead limiter into an
+   * ALREADY-BUILT live chain once core AudioWorklet modules finish loading.
+   * Never touches OfflineAudioContexts: mutating their graph mid-render is
+   * undefined behavior.
    */
   upgradeMasterDynamics(): void {
     const ctx = this.deps.ctx();
     if (!isLiveAudioContext(ctx)) return;
+
+    let upgradedStage = false;
+    if (this.masterTape?.degraded && isWorkletReady("tapeSat", ctx) && this.masterInputGain && this.masterMs) {
+      const fallback = this.masterTape;
+      try {
+        this.masterInputGain.disconnect(fallback.input);
+        fallback.output.disconnect(this.masterMs.input);
+      } catch {
+        /* already disconnected */
+      }
+      fallback.dispose();
+      this.masterTape = createTapeNode(ctx, {
+        params: { drive: 0.35, hysteresis: 0.3, tone: 6500, mix: 1, output: 0 },
+      });
+      this.masterInputGain.connect(this.masterTape.input);
+      this.masterTape.output.connect(this.masterMs.input);
+      upgradedStage = true;
+    }
+
+    if (
+      this.masterGlue?.degraded &&
+      isWorkletReady("compressor", ctx) &&
+      this.masterTiltHigh &&
+      this.masterInsertInput
+    ) {
+      const fallback = this.masterGlue;
+      try {
+        this.masterTiltHigh.disconnect(fallback.input);
+        fallback.output.disconnect(this.masterInsertInput);
+      } catch {
+        /* already disconnected */
+      }
+      fallback.dispose();
+      this.masterGlueNative = null;
+      this.masterGlue = createCompressorNode(ctx, {
+        params: {
+          threshold: -6,
+          ratio: 2,
+          attack: 0.03,
+          release: 0.3,
+          knee: 6,
+          detector: 0,
+          scHpf: 20,
+          makeup: 0,
+          mix: 1,
+        },
+      });
+      this.masterTiltHigh.connect(this.masterGlue.input);
+      this.masterGlue.output.connect(this.masterInsertInput);
+      upgradedStage = true;
+    }
+
+    if (upgradedStage) {
+      this.applyMasterConfig(this.deps.doc()?.master ?? defaultMasterConfig());
+      this.syncMonitorBypassLatency();
+    }
+
     if (
       !this.master ||
       !this.masterClipper ||

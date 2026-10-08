@@ -50,12 +50,12 @@ export default defineConfig({
     },
     {
       // Keep a focused external-mastering acceptance set in Firefox without
-      // duplicating the full Chromium E2E matrix. It covers delivery, local
-      // storage failures and render cancellation on another audio engine.
+      // duplicating the full Chromium E2E matrix. It covers delivery, FLAC
+      // decoding, long offline renders, storage failures, source analysis and render cancellation on another audio engine.
       name: "firefox-mastering-session",
       use: { ...devices["Desktop Firefox"] },
       testMatch: /17-mastering-workspace\.spec\.ts/,
-      grep: /cancels external master and A\/B renders|renders, encodes, checks, and re-imports a mastering-session WAV|shows a clear message when browser storage quota blocks (a source import|a comparison reference)|explains when browser permissions block the local mastering database/,
+      grep: /cancels external master and A\/B renders|cancels external source baseline analysis|measures the original source as a separate baseline|renders, analyzes, and exports a 12-minute master through the final feedback-delay echo|renders, encodes, checks, and re-imports a mastering-session WAV|round-trips project and external-session FLAC at 96 kHz|streams a two-hour PCM programme through the real analysis worker|terminates a silent mastering analysis worker at its idle watchdog|external-WAV-memory-soak completes WAV delivery and preflights oversized five-minute FLAC and MP3|shows a clear message when browser storage quota blocks (a source import|a comparison reference)|explains when browser permissions block the local mastering database|keeps an external MP3 delivery honest when browser decoding is unavailable|rejects malformed FLAC STREAMINFO edges/,
     },
     {
       // Safari-engine coverage on Windows: the same scenarios through the

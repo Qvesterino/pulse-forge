@@ -177,6 +177,8 @@ export interface GenerationPlan {
 export interface GenerationContext {
   project: ProjectDocument;
   mode: "preview" | "apply";
+  /** Keeps pattern, section and whole-song preference evidence separate. */
+  preferenceTask?: import("./preference-ledger-core").PreferenceTask;
 }
 
 export interface GenerationDiagnostics {
@@ -226,7 +228,7 @@ export interface RankerSelectionMeta {
   /** Final candidate after every enabled selection stage. */
   selectedIndex?: number;
   /** Present only when audio-fit reordering displaced the first-pass winner. */
-  audioRerank?: { displacedCandidateIndex: number; selectedCandidateIndex: number };
+  audioRerank?: { displacedCandidateIndex: number; selectedCandidateIndex: number; personalized?: boolean };
 }
 
 /** Full provider ranking output — proposal plus the auditionable bank. */
@@ -252,8 +254,14 @@ export interface RankedCandidate {
   modelScore: number | null;
   /** Non-personal selector score before any Producer DNA residual is applied. */
   globalScore?: number;
+  /** Symbolic personal score before the offline audio-fit stage. */
+  personalScore?: number;
   /** Version of the non-personal selector used to calculate `globalScore`. */
   globalScoreVersion?: string;
+  /** Normalized, ephemeral summary of this rendered candidate (no PCM retained). */
+  audioFeatures?: import("./preference-ledger-core").AudioPreferenceVector;
+  /** True when a learned audio preference model contributed to finalist order. */
+  audioPreferenceApplied?: boolean;
   contentHash: string;
   pattern: Pattern;
   search?: CandidateSearchInfo;

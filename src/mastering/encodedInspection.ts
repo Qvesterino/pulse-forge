@@ -10,6 +10,8 @@ import { fingerprintEncodedMasterAsync, type EncodedMasterFingerprint } from "./
 import type { MasterProfile } from "./profiles";
 import { decodeBwfLoudnessValue, encodeBwfLoudnessValue, type WavBextLoudnessField } from "../rendering/wav";
 import { parseMp3FrameHeader, type Mp3FrameHeader } from "./mp3Frames";
+import { canDecodeWavAsAudioBuffer, MAX_WAV_DECODE_BYTES } from "../export/wav-limits";
+import { MAX_MP3_DECODE_BYTES, MAX_MP3_DECODE_PCM_BYTES } from "../export/mp3-limits";
 
 export type EncodedMasterFormat = "wav" | "mp3" | "flac";
 export type MasteringReferenceFormat = EncodedMasterFormat;
@@ -55,8 +57,6 @@ export interface EncodedMasterInspection {
   };
 }
 
-const MAX_WAV_DECODE_BYTES = 96 * 1024 * 1024;
-const MAX_MP3_DECODE_BYTES = 12 * 1024 * 1024;
 const MAX_FLAC_DECODE_BYTES = 96 * 1024 * 1024;
 const MAX_FLAC_DECODE_PCM_BYTES = 64 * 1024 * 1024;
 const MAX_FLAC_DECODE_WORKING_SET_BYTES = 512 * 1024 * 1024;
@@ -124,15 +124,18 @@ function readAscii(view: DataView, offset: number, length: number): string {
 }
 
 /** Inspect the RIFF chunks emitted by KYX before asking a browser to decode the file. */
-function parseWav(bytes: ArrayBuffer): ParsedWav {
+function parseWav(bytes: ArrayBuffer, fileByteLength = bytes.byteLength): ParsedWav {
   if (bytes.byteLength < 44) throw new Error("The WAV file is shorter than its header.");
+  if (!Number.isSafeInteger(fileByteLength) || fileByteLength < bytes.byteLength) {
+    throw new Error("The WAV file length is invalid.");
+  }
   const view = new DataView(bytes);
   if (readFourCc(view, 0) !== "RIFF" || readFourCc(view, 8) !== "WAVE") {
     throw new Error("The exported file does not have a RIFF/WAVE header.");
   }
 
   const declaredEnd = view.getUint32(4, true) + 8;
-  if (declaredEnd > bytes.byteLength) throw new Error("The WAV RIFF size extends beyond the exported file.");
+  if (declaredEnd > fileByteLength) throw new Error("The WAV RIFF size extends beyond the exported file.");
 
   let formatCode = 0;
   let channels = 0;
@@ -145,12 +148,15 @@ function parseWav(bytes: ArrayBuffer): ParsedWav {
   let bext: EncodedMasterFileDetails["bext"];
   let offset = 12;
 
-  while (offset + 8 <= declaredEnd) {
+  while (offset + 8 <= declaredEnd && offset + 8 <= bytes.byteLength) {
     const chunkId = readFourCc(view, offset);
     const chunkSize = view.getUint32(offset + 4, true);
     const chunkStart = offset + 8;
     const chunkEnd = chunkStart + chunkSize;
     if (chunkEnd > declaredEnd) throw new Error(`The WAV ${chunkId} chunk extends beyond the RIFF boundary.`);
+    if (chunkEnd > bytes.byteLength && chunkId !== "data") {
+      throw new Error(`The WAV ${chunkId} metadata chunk exceeds the inspected header.`);
+    }
 
     if (chunkId === "fmt ") {
       if (chunkSize < 16) throw new Error("The WAV format chunk is incomplete.");
@@ -184,6 +190,7 @@ function parseWav(bytes: ArrayBuffer): ParsedWav {
     }
 
     offset = chunkEnd + (chunkSize & 1);
+    if (offset > bytes.byteLength) break;
   }
 
   if (!channels || !sampleRate || !blockAlign || !dataBytes)
@@ -461,11 +468,20 @@ export async function inspectEncodedMaster(input: {
   let decoderBytes: ArrayBuffer;
   let parsedWav: ParsedWav | null = null;
   if (format === "wav") {
-    if (blobInput) throw new Error("WAV inspection requires the encoded RIFF byte buffer.");
-    decoderBytes = bytes as ArrayBuffer;
-    parsedWav = parseWav(decoderBytes);
+    if (blobInput) {
+      decoderBytes = await awaitWithAbort(blobInput.slice(0, Math.min(byteLength, 1024 * 1024)).arrayBuffer(), signal);
+      parsedWav = parseWav(decoderBytes, byteLength);
+      const decodedPcmBytes = parsedWav.frameCount * parsedWav.channels * Float32Array.BYTES_PER_ELEMENT;
+      if (canDecodeWavAsAudioBuffer(byteLength, decodedPcmBytes)) {
+        decoderBytes = await awaitWithAbort(blobInput.arrayBuffer(), signal);
+        parsedWav = parseWav(decoderBytes);
+      }
+    } else {
+      decoderBytes = bytes as ArrayBuffer;
+      parsedWav = parseWav(decoderBytes);
+    }
     file = publicWavDetails(parsedWav);
-  } else if (format === "mp3" && blobInput && byteLength > MAX_MP3_DECODE_BYTES) {
+  } else if (format === "mp3" && blobInput) {
     const frameWindow = await mp3MetadataWindow(blobInput, signal);
     const sampledFile = parseMp3(frameWindow);
     file = {
@@ -474,6 +490,12 @@ export async function inspectEncodedMaster(input: {
       durationAccuracy: "estimated",
     };
     decoderBytes = frameWindow;
+    const projectedDecodePcmBytes =
+      file.channels * file.sampleRate * file.durationSeconds * Float32Array.BYTES_PER_ELEMENT;
+    if (byteLength <= MAX_MP3_DECODE_BYTES && projectedDecodePcmBytes <= MAX_MP3_DECODE_PCM_BYTES) {
+      decoderBytes = await awaitWithAbort(blobInput.arrayBuffer(), signal);
+      file = parseMp3(decoderBytes);
+    }
   } else if (format === "flac" && blobInput) {
     // FLAC output has a short STREAMINFO header. Keep container inspection
     // bounded for large files; only fetch the full file when decoding is
@@ -553,7 +575,11 @@ export async function inspectEncodedMaster(input: {
     }
   }
 
-  if (format === "wav" && byteLength > MAX_WAV_DECODE_BYTES && parsedWav) {
+  if (
+    format === "wav" &&
+    parsedWav &&
+    !canDecodeWavAsAudioBuffer(byteLength, parsedWav.frameCount * parsedWav.channels * Float32Array.BYTES_PER_ELEMENT)
+  ) {
     try {
       onProgress?.({ progress: 0.15, stage: "Reading encoded WAV PCM in bounded chunks" });
       const analysis = await analyzeMasterPcmStreamAsync(
@@ -561,7 +587,16 @@ export async function inspectEncodedMaster(input: {
           sampleRate: parsedWav.sampleRate,
           channelCount: parsedWav.channels,
           frameCount: parsedWav.frameCount,
-          readChunk: (offset, length) => decodeWavPcmRange(decoderBytes, parsedWav!, offset, length),
+          readChunk: async (offset, length) => {
+            if (!blobInput) return decodeWavPcmRange(decoderBytes, parsedWav!, offset, length);
+            const byteOffset = parsedWav!.dataOffset + offset * parsedWav!.blockAlign;
+            const byteLength = length * parsedWav!.blockAlign;
+            const chunk = await awaitWithAbort(
+              blobInput.slice(byteOffset, byteOffset + byteLength).arrayBuffer(),
+              signal,
+            );
+            return decodeWavPcmRange(chunk, { ...parsedWav!, dataOffset: 0 }, 0, length);
+          },
         },
         profile,
         { onProgress: analysisProgress, signal },
@@ -606,7 +641,13 @@ export async function inspectEncodedMaster(input: {
     }
   }
 
-  if (format === "mp3" && blobInput && byteLength > MAX_MP3_DECODE_BYTES) {
+  const projectedMp3DecodePcmBytes =
+    format === "mp3" ? file.channels * file.sampleRate * file.durationSeconds * Float32Array.BYTES_PER_ELEMENT : 0;
+  if (
+    format === "mp3" &&
+    blobInput &&
+    (byteLength > MAX_MP3_DECODE_BYTES || projectedMp3DecodePcmBytes > MAX_MP3_DECODE_PCM_BYTES)
+  ) {
     try {
       const result = await analyzeMp3BlobAsync(
         blobInput,

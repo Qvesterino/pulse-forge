@@ -17,6 +17,11 @@ import type { ProjectDocument } from "../project-model/types";
 import { useServices } from "./context";
 import { MasteringAssistant } from "./MasteringAssistant";
 import { MasteringReferenceCompare } from "./MasteringReferenceCompare";
+import {
+  MASTERING_RENDER_SAMPLE_RATE_LABELS,
+  MASTERING_RENDER_SAMPLE_RATES,
+  type MasteringRenderSampleRate,
+} from "../mastering/sampleRates";
 
 interface ComparedMaster {
   buffer: AudioBuffer;
@@ -101,7 +106,7 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
   const services = useServices();
   const [sampleBankRevision, setSampleBankRevision] = useState(services.bank.revision);
   const [session, setSession] = useState<MasteringABSession>(() => loadMasteringABSession(doc));
-  const [sampleRate, setSampleRate] = useState(48000);
+  const [sampleRate, setSampleRate] = useState<MasteringRenderSampleRate>(48_000);
   const [levelMatch, setLevelMatch] = useState(true);
   const [comparison, setComparison] = useState<Comparison | null>(null);
   const [busy, setBusy] = useState(false);
@@ -490,10 +495,13 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
           <select
             value={sampleRate}
             disabled={busy || Boolean(blindListen)}
-            onChange={(event) => setSampleRate(Number(event.target.value))}
+            onChange={(event) => setSampleRate(Number(event.target.value) as MasteringRenderSampleRate)}
           >
-            <option value={44100}>44.1 kHz</option>
-            <option value={48000}>48 kHz</option>
+            {MASTERING_RENDER_SAMPLE_RATES.map((rate) => (
+              <option key={rate} value={rate}>
+                {MASTERING_RENDER_SAMPLE_RATE_LABELS[rate]}
+              </option>
+            ))}
           </select>
         </label>
         <label className="master-ab-match">

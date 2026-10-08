@@ -15,6 +15,7 @@ import {
 import { planGeneration } from "./plan";
 import { patternStyleExampleFromProject } from "./pattern-style-example";
 import { preferredStyleGenre } from "./style-example-ledger";
+import { currentProducerMemorySessionId } from "./producer-memory-session";
 
 const MIN_FEATURE_DELTA = 0.02;
 
@@ -71,20 +72,27 @@ export function learnFromPatternCorrection(
     if (!Number.isFinite(featureDelta) || featureDelta < MIN_FEATURE_DELTA) return false;
 
     const context = preferenceContextForIntent(plan.intent);
+    const beforeContentHash = contentHash(canonicalizePattern(beforeDoc, before));
+    const afterContentHash = contentHash(canonicalizePattern(afterDoc, after));
     const observation = createPreferenceObservation(
       context,
       {
-        contentHash: contentHash(canonicalizePattern(afterDoc, after)),
+        contentHash: afterContentHash,
         features: afterFeatures,
       },
       {
-        contentHash: contentHash(canonicalizePattern(beforeDoc, before)),
+        contentHash: beforeContentHash,
         features: beforeFeatures,
       },
       "a",
       { source: "edit" },
     );
-    return observation ? recordPreferenceObservation(observation) : false;
+    return observation
+      ? recordPreferenceObservation(observation, {
+          sessionId: currentProducerMemorySessionId(),
+          lineageId: beforeContentHash,
+        })
+      : false;
   } catch {
     // Local learning is advisory and must never interrupt a user's edit.
     return false;

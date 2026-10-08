@@ -10,7 +10,7 @@ import {
   preferenceContextForIntent,
   readPreferenceLedger,
 } from "../../intent/preference-ledger";
-import { rerankWithPersonalPreferences } from "../../intent/personal-ranker";
+import { scoreWithPersonalPreferences } from "../../intent/personal-ranker";
 import { diversifyCandidateOrder } from "../../intent/candidate-diversity";
 
 /**
@@ -41,6 +41,7 @@ export async function rankCandidatesWithModel(
   doc: ProjectDocument,
   candidates: readonly CandidateBankEntry[],
   plan: GenerationPlan,
+  preferenceTask: import("../../intent/preference-ledger-core").PreferenceTask = "pattern",
 ): Promise<RankerRanking> {
   const heuristicOrder = rankCandidateBank(doc, candidates);
   const mode = rankerMode();
@@ -110,13 +111,23 @@ export async function rankCandidatesWithModel(
     }));
     let order = globallyScored;
     if (needsPersonalFeatures) {
-      order = rerankWithPersonalPreferences(
+      const personalScores = scoreWithPersonalPreferences(
         globallyScored,
         globallyScored.map((entry) => entry.globalScore ?? entry.score),
         personalFeatureByHash,
         observations,
-        preferenceContextForIntent(plan.intent),
+        preferenceContextForIntent(plan.intent, preferenceTask),
       );
+      if (personalScores) {
+        order = personalScores
+          .map(({ candidate, score }) => ({ ...candidate, personalScore: score }))
+          .sort(
+            (a, b) =>
+              (b.personalScore ?? b.globalScore ?? b.score) - (a.personalScore ?? a.globalScore ?? a.score) ||
+              a.candidateIndex - b.candidateIndex ||
+              a.contentHash.localeCompare(b.contentHash),
+          );
+      }
     }
     if (needsDiversity) order = diversifyCandidateOrder(order, featureByHash);
     return {

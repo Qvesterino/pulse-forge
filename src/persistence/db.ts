@@ -1,5 +1,5 @@
 export const DB_NAME = "pulse-forge";
-export const DB_VERSION = 13;
+export const DB_VERSION = 15;
 export const STORE_PROJECTS = "projects";
 export const STORE_META = "meta";
 export const STORE_PRESETS = "presets";
@@ -31,6 +31,10 @@ export const STORE_MORPH_PRESETS = "morph-presets";
  * a stale personal model. See PersonalModelRepository.
  */
 export const STORE_PERSONAL_MODELS = "personal-models";
+/** Local-only, versioned Producer DNA history. Never part of ProjectDocument. */
+export const STORE_PRODUCER_MEMORY_EVENTS = "producer-memory-events";
+/** Local-only snapshots for continuing an earlier generation branch. */
+export const STORE_PRODUCER_LINEAGE = "producer-lineage";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -73,6 +77,18 @@ export function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(STORE_PERSONAL_MODELS)) {
         // Out-of-line key: `<kind>#<baseModelHash>`.
         db.createObjectStore(STORE_PERSONAL_MODELS);
+      }
+      if (!db.objectStoreNames.contains(STORE_PRODUCER_MEMORY_EVENTS)) {
+        const events = db.createObjectStore(STORE_PRODUCER_MEMORY_EVENTS, { keyPath: "id" });
+        events.createIndex("by-created-at", "createdAt", { unique: false });
+        events.createIndex("by-session-id", "sessionId", { unique: false });
+        events.createIndex("by-lineage-id", "lineageId", { unique: false });
+      }
+      if (!db.objectStoreNames.contains(STORE_PRODUCER_LINEAGE)) {
+        const lineage = db.createObjectStore(STORE_PRODUCER_LINEAGE, { keyPath: "id" });
+        lineage.createIndex("by-project-key", "projectKey", { unique: false });
+        lineage.createIndex("by-created-at", "createdAt", { unique: false });
+        lineage.createIndex("by-content-hash", "contentHash", { unique: false });
       }
     };
     // Another tab still holds an older DB version — the open stays pending

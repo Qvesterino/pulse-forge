@@ -3,6 +3,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ExportPanel } from "../../src/ui/ExportPanel";
 import { awaitMasteringSampleBankReady } from "../../src/mastering/readiness";
+import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { mockServices, renderWithContext } from "../helpers";
 
 vi.mock("../../src/rendering/renderer", async (importOriginal) => {
@@ -117,6 +118,24 @@ describe("ExportPanel", () => {
     renderWithContext(<ExportPanel />, { services: mockServices() });
     await user.selectOptions(screen.getByLabelText("FORMAT"), "mp3-192");
     expect(screen.getByRole("button", { name: /^EXPORT MASTER.*MP3/ })).toBeInTheDocument();
+  });
+
+  it("blocks MP3 delivery before render when the estimated working set exceeds 512 MiB", async () => {
+    const user = userEvent.setup();
+    const project = createProjectFromTemplate("house");
+    const longProject = {
+      ...project,
+      arrangement: {
+        ...project.arrangement,
+        clips: project.arrangement.clips.map((clip) => ({ ...clip, startBar: 0, lengthBars: 450 })),
+      },
+    };
+    renderWithContext(<ExportPanel masteringMode />, { services: mockServices(longProject) });
+
+    await user.selectOptions(screen.getByLabelText("FORMAT"), "mp3-320");
+
+    expect(screen.getByRole("button", { name: /^EXPORT MASTER.*MP3/ })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/MP3 DELIVERY EXCEEDS KYX'S 512 MiB WORKING-SET LIMIT/);
   });
 
   it("switching RATE to 48 kHz records 48000 as selected value", async () => {

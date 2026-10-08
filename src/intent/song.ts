@@ -41,6 +41,10 @@ import type { VocalProfile } from "../vocal/types";
 import { EFFECT_META } from "../effects/definitions";
 import { createSongSectionIntent } from "./song-section-intent";
 import { hashString } from "../shared/rng";
+import { songPreferenceCandidate } from "./song-preferences";
+import { scoreWithPersonalPreferences } from "./personal-ranker";
+import { scoreWithSongDramaturgyPreferences } from "./song-dramaturgy-ranker";
+import { isPreferenceLearningEnabled, preferenceContextForIntent, readPreferenceLedger } from "./preference-ledger";
 
 /**
  * SONG BUILDER (INTENT_ENGINE.md A2) — one intent → a whole arranged song.
@@ -2268,6 +2272,8 @@ export interface SongBuild {
   totalBars: number;
   /** Number of deterministic alternatives considered for each section. */
   candidateCount: number;
+  /** Personal DNA suggestion after enough explicit full-song choices; undefined means cold start. */
+  recommendedLane?: SearchLane | null;
 }
 
 export interface BuildSongOptions {
@@ -2391,6 +2397,7 @@ export async function buildSong(
         ? await generateAsyncResult(doc, sectionIntent, {
             mode: "apply",
             includeBank: true,
+            preferenceTask: "section",
             ...(options.bank
               ? {
                   sound: {
@@ -2463,7 +2470,7 @@ export async function buildSong(
 
   const nameParts: string[] = [baseIntent.genre];
   if (baseIntent.style) nameParts.push(baseIntent.style);
-  return dedupeSongBuildAlternatives(doc, {
+  const build = dedupeSongBuildAlternatives(doc, {
     name: `${nameParts.join(" ")} — song`,
     baseIntent,
     resolvedBpm,
@@ -2473,6 +2480,41 @@ export async function buildSong(
     totalBars: form.totalBars,
     candidateCount,
   });
+  if (!isPreferenceLearningEnabled()) return build;
+  const choices = [build.sections, ...build.alternatives.map((alternative) => alternative.sections)];
+  const preferenceCandidates = choices.flatMap((candidateSections, index) => {
+    const candidate = songPreferenceCandidate(doc, baseIntent, candidateSections, index);
+    return candidate ? [candidate] : [];
+  });
+  if (preferenceCandidates.length < 2) return build;
+  const observations = readPreferenceLedger();
+  const context = preferenceContextForIntent(baseIntent, "song");
+  const baseScores = preferenceCandidates.map((candidate) => candidate.globalScore ?? 0.5);
+  const symbolicScores = scoreWithPersonalPreferences(
+    preferenceCandidates,
+    baseScores,
+    new Map(preferenceCandidates.map((candidate) => [candidate.contentHash, candidate.features])),
+    observations,
+    context,
+  );
+  const dramaturgyScores = scoreWithSongDramaturgyPreferences(preferenceCandidates, baseScores, observations, context);
+  if (!symbolicScores && !dramaturgyScores) return build;
+  const scored = preferenceCandidates.map((candidate, index) => {
+    const base = baseScores[index] ?? 0.5;
+    const symbolic =
+      symbolicScores?.find((item) => item.candidate.contentHash === candidate.contentHash)?.score ?? base;
+    const dramaturgy =
+      dramaturgyScores?.candidates.find((item) => item.candidate.contentHash === candidate.contentHash)?.score ?? base;
+    const residual = Math.max(-0.2, Math.min(0.2, symbolic - base + dramaturgy - base));
+    return { candidate, score: clamp01(base + residual) };
+  });
+  const recommended = [...scored].sort(
+    (a, b) => b.score - a.score || a.candidate.candidateIndex - b.candidate.candidateIndex,
+  )[0]?.candidate.candidateIndex;
+  return {
+    ...build,
+    recommendedLane: recommended === 0 ? null : build.alternatives[recommended - 1]?.lane,
+  };
 }
 
 /**

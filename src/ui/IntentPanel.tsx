@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useSelectionStore, useServices } from "./context";
 import { notifyOnboardingProgress } from "./OnboardingHint";
 import { warmFactoryPresets } from "../presets/factory-loader";
+import { canonicalizePattern, contentHash } from "../ai/evaluation";
 import { parseIntentText, styleCandidatesForPrompt } from "../intent/text-parser";
 import { generateAsyncResult, resultForCandidate } from "../intent/pipeline";
 import { parseChaseIntent } from "../intent/chaseIntent";
@@ -27,6 +28,7 @@ import {
   rememberGeneration,
   rememberPrompt,
   resolveSessionReference,
+  type SessionGeneration,
 } from "../intent/session-context";
 import { setMasterConfig, duplicateTimeRange } from "../commands/commands";
 import { applyExactIntentCommand, applyProductionIntentCommand, exactReadback } from "../commands/intentRouting";
@@ -157,7 +159,7 @@ import type { NoteEvent } from "../project-model/types";
 import { BAR_TICKS, PPQ } from "../project-model/types";
 import { rankerMode } from "../ai/ranking/ranker-client";
 import { playAuditionBuffer, renderAuditionBuffer, renderSongAuditionBuffer, stopAudition } from "../intent/audition";
-import { resetSemanticCorpusCache, semanticIntentFor } from "../intent/semantic";
+import { semanticIntentFor } from "../intent/semantic";
 import { takeIntentPrefill, takeRegenFlag } from "../landing/handoff";
 import { freshRegenSeed, intentSnapshotOfDoc, promptFromIntent } from "../gallery/intentCarry";
 import { PublishToGalleryButton } from "../gallery/PublishButton";
@@ -177,7 +179,6 @@ import { CandidateLaneReceipt } from "./CandidateLaneReceipt";
 import { runPersonalTrainingFromShipped } from "../intent/personal-melodic-flow";
 import {
   automaticStyleLearningEnabled,
-  clearStyleExamples,
   countStyleExamples,
   recordStyleExample,
   setAutomaticStyleLearningEnabled,
@@ -192,11 +193,143 @@ import {
   personalStyleProfile,
 } from "../intent/personal-style";
 import {
-  clearPreferenceLedger,
+  createPreferenceObservation,
+  isPreferenceLearningEnabled,
   PREFERENCE_LEDGER_CHANGED_EVENT,
+  forgetProducerMemoryEvent as forgetStoredProducerMemoryEvent,
+  preferenceContextForIntent,
+  recordPreferenceObservation,
+  recordIntentCorrection,
+  recordProducerMemoryWorkflowEvent,
   readPreferenceLedger,
+  setPreferenceLearningEnabled,
 } from "../intent/preference-ledger";
-import { resetStyleVector } from "../intent/style-vector";
+import { personalPreferenceEvidence } from "../intent/personal-ranker";
+import {
+  intentCorrectionSuggestions,
+  patchForIntentCorrection,
+  type IntentCorrectionSuggestion,
+} from "../intent/intent-correction-memory";
+import { clearAllProducerMemory } from "../intent/producer-memory-management";
+import { currentProducerMemorySessionId } from "../intent/producer-memory-session";
+import type {
+  ProducerMemoryEvent,
+  ProducerMemoryIntentField,
+  ProducerMemoryScalar,
+} from "../intent/producer-memory-core";
+import { listProducerMemoryEvents } from "../persistence/ProducerMemoryRepository";
+import { projectKeyForLineage, type ProducerLineageNodeV1 } from "../intent/producer-lineage-core";
+import {
+  forgetProducerLineageBranch,
+  listProducerLineageNodes,
+  saveProducerLineageDraft,
+} from "../persistence/ProducerLineageRepository";
+import {
+  rankRenderedSongPreferences,
+  songPreferenceCandidate,
+  type SongPreferenceCandidate,
+} from "../intent/song-preferences";
+import { SONG_PREFERENCE_FOCUS_OPTIONS, type SongPreferenceFocus } from "../ai/features/song-dramaturgy-v1";
+import {
+  scoreSectionPreferencePair,
+  sectionPreferenceCandidate,
+  type SectionPreferenceCandidate,
+} from "../intent/section-preferences";
+
+const BRIEF_CORRECTION_FIELDS: readonly { inputKey: keyof IntentInput; field: ProducerMemoryIntentField }[] = [
+  { inputKey: "genre", field: "genre" },
+  { inputKey: "style", field: "style" },
+  { inputKey: "productionProfile", field: "productionProfile" },
+  { inputKey: "mood", field: "mood" },
+  { inputKey: "energy", field: "energy" },
+  { inputKey: "density", field: "density" },
+  { inputKey: "complexity", field: "complexity" },
+  { inputKey: "variation", field: "variation" },
+  { inputKey: "bpmRange", field: "bpm" },
+  { inputKey: "roles", field: "role" },
+];
+
+const CORRECTION_FIELD_LABELS: Readonly<Record<ProducerMemoryIntentField, string>> = {
+  genre: "žáner",
+  style: "štýl",
+  productionProfile: "produkčný profil",
+  mood: "nálada",
+  energy: "energia",
+  density: "hustota",
+  complexity: "zložitosť",
+  variation: "variácia",
+  bpm: "tempo",
+  role: "cieľová rola",
+};
+
+function correctionValueLabel(field: ProducerMemoryIntentField, value: ProducerMemoryScalar): string {
+  if (value === null) return "nezadané";
+  if (typeof value !== "number") return value;
+  if (field === "bpm") return `${value} BPM`;
+  return `${Math.round(value * 100)} %`;
+}
+
+function correctionValue(field: ProducerMemoryIntentField, value: unknown): ProducerMemoryScalar | undefined {
+  if (value === undefined) return null;
+  if (value === null) return null;
+  if (field === "bpm") {
+    if (
+      Array.isArray(value) &&
+      value.length >= 2 &&
+      value.every((part) => typeof part === "number" && Number.isFinite(part))
+    ) {
+      return Math.round(((value[0] as number) + (value[1] as number)) / 2);
+    }
+    return typeof value === "number" && Number.isFinite(value) ? Math.round(value) : undefined;
+  }
+  if (field === "role") {
+    if (!Array.isArray(value)) return undefined;
+    const roles = value.filter((role): role is string => typeof role === "string");
+    return roles.length === 1 ? roles[0] : null;
+  }
+  if (field === "energy" || field === "density" || field === "complexity" || field === "variation") {
+    return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : undefined;
+  }
+  if (typeof value !== "string") return undefined;
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "-");
+  return /^[a-z0-9][a-z0-9._-]{0,39}$/.test(normalized) ? normalized : undefined;
+}
+
+function producerMemoryEventLabel(event: ProducerMemoryEvent): string | null {
+  switch (event.type) {
+    case "intent-correction":
+      return `${CORRECTION_FIELD_LABELS[event.field]}: ${correctionValueLabel(event.field, event.predictedValue)} → ${correctionValueLabel(event.field, event.confirmedValue)}`;
+    case "pairwise-choice":
+      return `A/B · ${event.observation.context.genre} · ${event.observation.choice === "a" ? "A" : event.observation.choice === "b" ? "B" : event.observation.choice === "neither" ? "ani jeden" : "oba dobré"}`;
+    case "settled-edit":
+      return `Ustálená úprava · ${event.observation.context.genre}`;
+    case "apply":
+      return "Použitý návrh";
+    case "undo":
+      return "Vrátený návrh";
+    case "dismiss":
+      return "Zahodené porovnanie";
+    case "forget":
+      return null;
+  }
+}
+
+function sessionGenerationFromLineage(node: ProducerLineageNodeV1, docId: string): SessionGeneration {
+  const intent = normalizeIntent({ ...node.intent, seed: `producer-lineage-${node.contentHash}` });
+  return {
+    text: "uložený take",
+    intent,
+    candidates: [{ index: 0, pattern: node.pattern, intent }],
+    appliedIndex: null,
+    docId,
+    at: node.createdAt,
+  };
+}
 
 // The Audiotool connector is an explicit opt-in path. Keep its UI and adapter
 // out of the regular Intent bundle until the user chooses to export a take.
@@ -318,10 +451,22 @@ export function IntentPanel() {
   const [styleMemoryMessage, setStyleMemoryMessage] = useState<string | null>(null);
   const [automaticLearning, setAutomaticLearning] = useState(automaticStyleLearningEnabled);
   const [styleMemoryRevision, setStyleMemoryRevision] = useState(0);
+  const [producerMemoryEvents, setProducerMemoryEvents] = useState<
+    Awaited<ReturnType<typeof listProducerMemoryEvents>>
+  >([]);
+  const [producerLineageNodes, setProducerLineageNodes] = useState<ProducerLineageNodeV1[]>([]);
+  const [selectedProducerLineageNodeId, setSelectedProducerLineageNodeId] = useState<string | null>(null);
   // A1 audition state — the ranked bank lives on the result; buffers are
   // cached per candidate so replaying is instant after the first render.
   const [bankResult, setBankResult] = useState<GenerationResult | null>(null);
+  const [blindPilotCandidateBankHidden, setBlindPilotCandidateBankHidden] = useState(false);
+  const [blindPilotArmed, setBlindPilotArmed] = useState(false);
+  const [blindPilotArmRevision, setBlindPilotArmRevision] = useState(0);
+  const [generationRevision, setGenerationRevision] = useState(0);
   const [iterationReferencePattern, setIterationReferencePattern] = useState<Pattern | null>(null);
+  useEffect(() => {
+    if (bankResult === null && !blindPilotArmed) setBlindPilotCandidateBankHidden(false);
+  }, [bankResult, blindPilotArmed]);
   const [audiotoolExport, setAudiotoolExport] = useState<{
     candidateIndex: number;
     pattern: Pattern;
@@ -341,6 +486,11 @@ export function IntentPanel() {
   // Fáza 2 stale guard — the document revision the current preview was
   // computed against; USE blocks while the store's doc has moved on.
   const previewDocRef = useRef<ProjectDocument | null>(null);
+  const appliedCandidateUndoRef = useRef<{
+    contentHash: string;
+    patternId: string;
+    lineageId: string;
+  } | null>(null);
   // Audition-first section proposal. Pattern edits and scene-FX edits share
   // one stale-guarded command; the preview callback renders exactly what the
   // stored command would apply.
@@ -605,6 +755,7 @@ export function IntentPanel() {
     setSongRendering(false);
     songBufferRef.current = null;
     sectionBuffersRef.current = new Map();
+    sectionPreferenceBuffersRef.current.clear();
     setBankResult(null);
     setIterationReferencePattern(null);
     setPlayingIndex(null);
@@ -619,7 +770,31 @@ export function IntentPanel() {
     takeTokenRef.current += 1;
     setTakeProfile(null);
     setTakeRef(null);
+    appliedCandidateUndoRef.current = null;
   }, [services]);
+
+  useEffect(() => {
+    appliedCandidateUndoRef.current = null;
+    let previousDepth = services.store.undoStackLength;
+    const unsubscribe = services.store.subscribe(() => {
+      const depth = services.store.undoStackLength;
+      const pending = appliedCandidateUndoRef.current;
+      if (depth < previousDepth && pending) {
+        const currentDoc = services.store.getDoc();
+        const pattern = currentDoc.patterns.find((candidate) => candidate.id === pending.patternId);
+        const currentHash = pattern ? contentHash(canonicalizePattern(currentDoc, pattern)) : null;
+        if (currentHash !== pending.contentHash) {
+          recordProducerMemoryWorkflowEvent("undo", pending.contentHash, {
+            sessionId: currentProducerMemorySessionId(),
+            lineageId: pending.lineageId,
+          });
+          appliedCandidateUndoRef.current = null;
+        }
+      }
+      previousDepth = depth;
+    });
+    return unsubscribe;
+  }, [services.store]);
 
   // Landing handoff (viral growth plan A2): the prompt that forged the beat
   // now playing pre-fills the field, so "tweak it and Forge another" is one
@@ -670,7 +845,9 @@ export function IntentPanel() {
       setLearnedPatternCount(countStyleExamples());
       setAutomaticLearning(automaticStyleLearningEnabled());
       setStyleMemoryRevision((revision) => revision + 1);
+      void listProducerMemoryEvents().then(setProducerMemoryEvents);
     };
+    refreshStyleMemory();
     window.addEventListener(STYLE_EXAMPLES_CHANGED_EVENT, refreshStyleMemory);
     window.addEventListener(PREFERENCE_LEDGER_CHANGED_EVENT, refreshStyleMemory);
     return () => {
@@ -678,6 +855,15 @@ export function IntentPanel() {
       window.removeEventListener(PREFERENCE_LEDGER_CHANGED_EVENT, refreshStyleMemory);
     };
   }, []);
+
+  useEffect(() => {
+    const refreshLineage = (): void => {
+      void listProducerLineageNodes(projectKeyForLineage(doc)).then(setProducerLineageNodes);
+    };
+    refreshLineage();
+    window.addEventListener(PREFERENCE_LEDGER_CHANGED_EVENT, refreshLineage);
+    return () => window.removeEventListener(PREFERENCE_LEDGER_CHANGED_EVENT, refreshLineage);
+  }, [doc.id]);
 
   const learnedStyle = useMemo(
     () => personalStyleProfile(parsed?.input.genre),
@@ -688,6 +874,11 @@ export function IntentPanel() {
     () => (learningGenre ? personalStyleCorrectionSummary(learningGenre, readPreferenceLedger()) : null),
     [learningGenre, styleMemoryRevision],
   );
+  const rankerEvidence = useMemo(() => {
+    if (!parsed) return null;
+    const context = preferenceContextForIntent(normalizeIntent(parsed.input), "pattern");
+    return personalPreferenceEvidence(readPreferenceLedger(), context);
+  }, [parsed, styleMemoryRevision]);
   const personalIntents = useMemo(
     () => personalStyleIntentSuggestions(learnedStyle, correctionSummary?.directions ?? []),
     [learnedStyle, correctionSummary],
@@ -713,23 +904,41 @@ export function IntentPanel() {
     setStyleMemoryMessage(`Zapamätané lokálne · ${example.genre} · ${count} príkladov štýlu.`);
   };
 
-  const forgetLearnedPatterns = () => {
-    if (learnedPatternCount === 0 && (correctionSummary?.correctionCount ?? 0) === 0) return;
+  const forgetLearnedPatterns = async () => {
     if (
       !window.confirm(
-        "Vymazať všetky lokálne príklady štýlu aj Producer DNA preferencie vrátane ručných opráv? Túto akciu nemožno vrátiť.",
+        "Vymazať všetky lokálne príklady štýlu, ★ a A/B dôkazy, ručné opravy aj osobné prior modely? Túto akciu nemožno vrátiť.",
       )
     )
       return;
-    if (!clearStyleExamples()) {
-      setStyleMemoryMessage("Pamäť sa nepodarilo vymazať.");
+    const cleared = await clearAllProducerMemory();
+    setLearnedPatternCount(0);
+    if (!cleared) {
+      setStyleMemoryMessage("Vymazanie sa dokončilo len čiastočne; niektorá lokálna pamäť nebola dostupná.");
       return;
     }
-    clearPreferenceLedger();
-    resetStyleVector();
-    resetSemanticCorpusCache();
-    setLearnedPatternCount(0);
-    setStyleMemoryMessage("Lokálny Producer DNA profil aj preferencie z ručných opráv boli vymazané.");
+    setStyleMemoryMessage("Lokálna Producer DNA pamäť a osobné modely boli vymazané. Projekty zostali nedotknuté.");
+  };
+
+  const forgetMemoryItem = async (eventId: string) => {
+    const forgotten = await forgetStoredProducerMemoryEvent(eventId);
+    if (!forgotten) {
+      setStyleMemoryMessage("Túto položku sa nepodarilo zabudnúť; lokálna pamäť zostala nezmenená.");
+      return;
+    }
+    setProducerMemoryEvents(await listProducerMemoryEvents());
+    setStyleMemoryMessage("Vybraná položka bola odstránená z lokálnej Producer DNA pamäte.");
+  };
+
+  const forgetLineageNode = async (nodeId: string) => {
+    const forgotten = await forgetProducerLineageBranch(nodeId);
+    if (!forgotten) {
+      setStyleMemoryMessage("Vetvu sa nepodarilo odstrániť z lokálnej pamäte.");
+      return;
+    }
+    setProducerLineageNodes(await listProducerLineageNodes(projectKeyForLineage(doc)));
+    setSelectedProducerLineageNodeId(null);
+    setStyleMemoryMessage("Vetva aj jej pokračovania boli odstránené z lokálnej pamäte.");
   };
 
   const toggleAutomaticLearning = () => {
@@ -739,10 +948,11 @@ export function IntentPanel() {
       return;
     }
     setAutomaticLearning(next);
+    setPreferenceLearningEnabled(next);
     setStyleMemoryMessage(
       next
-        ? "Automatické lokálne učenie je zapnuté. KYX si po ručných úpravách zapamätá iba hudobné súhrny."
-        : "Automatické učenie je pozastavené. Doterajšie lokálne príklady zostali uložené.",
+        ? "Lokálne Producer DNA učenie je zapnuté; ručné opravy a zmeny sa ukladajú iba ako štruktúrované údaje."
+        : "Všetko lokálne Producer DNA učenie je pozastavené. Doterajšia pamäť zostala uložená.",
     );
   };
 
@@ -778,6 +988,12 @@ export function IntentPanel() {
     () => ({ ...(parsed?.input ?? {}), ...projectBriefCorrections, ...briefFixes }),
     [parsed, projectBriefCorrections, briefFixes],
   );
+  const memoryCorrectionSuggestions = useMemo(() => {
+    if (!parsed?.input) return [];
+    const contextKey = preferenceContextForIntent(normalizeIntent(parsed.input)).key;
+    const currentInput = { ...parsed.input, ...projectBriefCorrections, ...briefFixes };
+    return intentCorrectionSuggestions(producerMemoryEvents, contextKey, currentInput);
+  }, [parsed, projectBriefCorrections, briefFixes, producerMemoryEvents]);
   const canSaveProjectBrief = useMemo(
     () => createProjectBriefFromContract(briefContract, briefInput, "2026-10-02T00:00:00.000Z") !== null,
     [briefContract, briefInput],
@@ -807,6 +1023,30 @@ export function IntentPanel() {
   const [justApplied, setJustApplied] = useState(false);
   const [videoBusy, setVideoBusy] = useState(false);
   const videoSupported = useMemo(() => canExportVideo(), []);
+
+  const persistLineageCandidates = async (
+    candidates: NonNullable<GenerationResult["bank"]>,
+    intent: GenerationResult["plan"]["intent"],
+    parentPattern: Pattern | null,
+  ): Promise<void> => {
+    if (candidates.length === 0) return;
+    const projectKey = projectKeyForLineage(doc);
+    const parentContentHash = parentPattern ? contentHash(canonicalizePattern(doc, parentPattern)) : null;
+    for (const candidate of candidates) {
+      await saveProducerLineageDraft({
+        projectKey,
+        contentHash: candidate.contentHash,
+        parentContentHash,
+        candidateIndex: candidate.candidateIndex,
+        intent,
+        pattern: candidate.pattern,
+      });
+    }
+    const currentDoc = services.store.getDoc();
+    if (projectKeyForLineage(currentDoc) === projectKey) {
+      setProducerLineageNodes(await listProducerLineageNodes(projectKey));
+    }
+  };
 
   const runGeneration = async (intentInput: IntentInput, controller: AbortController, promptText = text) => {
     try {
@@ -844,8 +1084,16 @@ export function IntentPanel() {
         docId: doc.id,
         at: Date.now(),
       });
+      void persistLineageCandidates(result.bank ?? [], result.plan.intent, null);
       rememberPrompt(promptText);
       setHistoryTick((tick) => tick + 1);
+      if (blindPilotArmed && (result.bank?.length ?? 0) > 1) {
+        setBlindPilotCandidateBankHidden(true);
+      } else if (blindPilotArmed) {
+        setBlindPilotArmed(false);
+        setBlindPilotCandidateBankHidden(false);
+      }
+      setGenerationRevision((revision) => revision + 1);
       setBankResult(result);
       // Fáza 2 stale guard: the preview belongs to THIS document revision.
       // Any command applied afterwards makes the bank stale — USE must not
@@ -920,11 +1168,15 @@ export function IntentPanel() {
     setSongRendering(false);
     songBufferRef.current = null;
     sectionBuffersRef.current = new Map();
+    sectionPreferenceBuffersRef.current.clear();
     // SESSION REFERENCE (vibe-code wave 2): "that second one, darker" —
     // apply the referenced candidate from the last generation, then run the
     // residual words through the normal pipeline (production/verbs/song).
-    const last = lastGeneration();
-    const reference = last ? resolveSessionReference(promptText, last.candidates) : null;
+    const selectedLineageNode = producerLineageNodes.find((node) => node.id === selectedProducerLineageNodeId) ?? null;
+    const last = selectedLineageNode ? sessionGenerationFromLineage(selectedLineageNode, doc.id) : lastGeneration();
+    const detectedReference = last ? resolveSessionReference(promptText, last.candidates) : null;
+    const reference = selectedLineageNode && !detectedReference ? { index: 0, rest: promptText } : detectedReference;
+    const iterationText = selectedLineageNode && !detectedReference ? `that one ${promptText}` : promptText;
     if (reference && last) {
       if (last.docId !== doc.id) {
         setError("Tento session kandidát patrí inému projektu. Vygeneruj kandidátov znova v aktuálnom projekte.");
@@ -941,7 +1193,7 @@ export function IntentPanel() {
       abortRef.current = iterationController;
       let iteration: Awaited<ReturnType<typeof compileIterationWithBank>>;
       try {
-        iteration = await compileIterationWithBank(promptText, last, doc, {
+        iteration = await compileIterationWithBank(iterationText, last, doc, {
           signal: iterationController.signal,
           soundBank: services.bank,
         });
@@ -968,6 +1220,8 @@ export function IntentPanel() {
         previewDocRef.current = doc;
         buffersRef.current = new Map();
         const nextCandidates = iteration.result.bank ?? [];
+        void persistLineageCandidates(nextCandidates, iteration.result.plan.intent, iteration.before);
+        setSelectedProducerLineageNodeId(null);
         rememberGeneration({
           text: promptText.trim(),
           intent: iteration.result.plan.intent,
@@ -1255,6 +1509,7 @@ export function IntentPanel() {
     setSongRendering(false);
     songBufferRef.current = null;
     sectionBuffersRef.current = new Map();
+    sectionPreferenceBuffersRef.current.clear();
     const picked = candidate ? resultForCandidate(bankResult, candidate.candidateIndex) : bankResult;
     const fx = picked.plan.intent.fx ?? null;
     // Artist mix signature (Vlna 8): when the generation intent carries a
@@ -1273,6 +1528,9 @@ export function IntentPanel() {
       services.store.execute(applyMixIntent(services.store.getDoc(), mixProfile!));
     }
     services.store.endUndoFrame();
+    const parentContentHash = iterationReferencePattern
+      ? contentHash(canonicalizePattern(doc, iterationReferencePattern))
+      : null;
     setBankResult(null);
     buffersRef.current = new Map();
     setStatus(
@@ -1287,11 +1545,29 @@ export function IntentPanel() {
     const appliedDoc = services.store.getDoc();
     const appliedPattern = appliedDoc.patterns.find((p) => p.id === appliedDoc.activePatternId);
     if (appliedPattern) {
+      const appliedPatternHash = contentHash(canonicalizePattern(appliedDoc, appliedPattern));
+      const lineageId = parentContentHash
+        ? (producerLineageNodes.find((node) => node.contentHash === parentContentHash)?.rootContentHash ??
+          parentContentHash)
+        : appliedPatternHash;
+      recordProducerMemoryWorkflowEvent("apply", candidate?.contentHash ?? appliedPatternHash, {
+        sessionId: currentProducerMemorySessionId(),
+        lineageId,
+      });
+      appliedCandidateUndoRef.current = { contentHash: appliedPatternHash, patternId: appliedPattern.id, lineageId };
       pushGhost(appliedPattern, nextGhostLabel(appliedPattern.name), text.trim() || null);
       const grown = listGhosts();
       setGhosts(grown);
       setGhostAId((prev) => prev ?? grown[grown.length - 2]?.id ?? grown[0]?.id ?? null);
       setGhostBId((prev) => prev ?? grown[grown.length - 1]?.id ?? null);
+    } else {
+      const proposalHash = contentHash(
+        canonicalizePattern(doc, picked.proposal?.pattern ?? bankResult.proposal.pattern),
+      );
+      recordProducerMemoryWorkflowEvent("apply", candidate?.contentHash ?? proposalHash, {
+        sessionId: currentProducerMemorySessionId(),
+        lineageId: parentContentHash ?? proposalHash,
+      });
     }
     // A3: the applied beat is the share moment — reveal Publish/Video/Copy.
     setJustApplied(true);
@@ -1522,10 +1798,68 @@ export function IntentPanel() {
     /** Structured report (goal/evidence/trade-off) behind the recommendation. */
     loudnessRecommendation: LoudnessRecommendation | null;
     audioReview: SongAudioReview | null;
+    /** Fully rendered, user-auditioned takes eligible for explicit song-level A/B. */
+    preferenceTakes?: SongPreferenceTake[];
+    /** Individual generated section takes, kept separate from song-level votes. */
+    sectionPreferenceTakes?: SectionPreferenceTake[];
+  }
+  interface SongPreferenceTake {
+    id: string;
+    label: string;
+    candidate: SongPreferenceCandidate;
+    auditioned: boolean;
+  }
+  interface SectionPreferenceTake {
+    id: string;
+    sectionIndex: number;
+    lane: SearchLane | null;
+    label: string;
+    candidate: SectionPreferenceCandidate;
+    auditioned: boolean;
+  }
+  interface SongPreferenceRank {
+    lane: SearchLane | null;
+    renderedLaneCount: number;
+    comparisonCount: number;
+    confidenceWeight: number;
+    audioPreferenceApplied: boolean;
+    dramaturgyComparisonCount: number;
+    dramaturgyConfidenceWeight: number;
+    dramaturgyPreferenceApplied: boolean;
   }
   const [songDraft, setSongDraft] = useState<SongDraft | null>(null);
+  const [songCompareA, setSongCompareA] = useState("");
+  const [songCompareB, setSongCompareB] = useState("");
+  const [songPreferenceFocus, setSongPreferenceFocus] = useState<SongPreferenceFocus>("overall");
+  const [songFeedbackMessage, setSongFeedbackMessage] = useState<string | null>(null);
+  const [sectionCompareSelections, setSectionCompareSelections] = useState<Record<string, { a: string; b: string }>>(
+    {},
+  );
+  const [sectionFeedbackMessages, setSectionFeedbackMessages] = useState<Record<string, string>>({});
   const [songPlaying, setSongPlaying] = useState(false);
   const [songRendering, setSongRendering] = useState(false);
+  const songAudioPreferenceRank = (draft: SongDraft, takes: readonly SongPreferenceTake[]) => {
+    if (!isPreferenceLearningEnabled()) return null;
+    const ranked = rankRenderedSongPreferences(
+      takes.map((take) => take.candidate),
+      readPreferenceLedger(),
+      draft.activeBuild.baseIntent,
+    );
+    const winner = ranked?.candidates[0]?.candidate;
+    if (!ranked || (!ranked.audioPreferenceApplied && !ranked.dramaturgyPreferenceApplied) || !winner) return null;
+    const lane =
+      winner.candidateIndex === 0 ? null : (draft.result.build.alternatives[winner.candidateIndex - 1]?.lane ?? null);
+    return {
+      lane,
+      renderedLaneCount: ranked.candidates.length,
+      comparisonCount: ranked.comparisonCount,
+      confidenceWeight: ranked.confidenceWeight,
+      audioPreferenceApplied: ranked.audioPreferenceApplied,
+      dramaturgyComparisonCount: ranked.dramaturgyComparisonCount,
+      dramaturgyConfidenceWeight: ranked.dramaturgyConfidenceWeight,
+      dramaturgyPreferenceApplied: ranked.dramaturgyPreferenceApplied,
+    } satisfies SongPreferenceRank;
+  };
   const songBufferRef = useRef<AudioBuffer | null>(null);
   const songTokenRef = useRef(0);
   const songTextRef = useRef("");
@@ -1572,6 +1906,9 @@ export function IntentPanel() {
     setStatus(`⟡ ${suggestion.reason} → ${outcome.label} — ▶ náhľad, ✓ potvrdiť alebo ✗ ponechať`);
   };
   const sectionBuffersRef = useRef<Map<string, AudioBuffer>>(new Map());
+  // A/B section renders can be relatively long AudioBuffers. Keep only the
+  // two most recently used preference takes resident in memory.
+  const sectionPreferenceBuffersRef = useRef<Map<string, AudioBuffer>>(new Map());
   const sectionTokenRef = useRef(0);
   useEffect(() => {
     if (briefContract.conflicts.length === 0) return;
@@ -1597,6 +1934,7 @@ export function IntentPanel() {
     sectionTokenRef.current++;
     songBufferRef.current = null;
     sectionBuffersRef.current.clear();
+    sectionPreferenceBuffersRef.current.clear();
   }, [briefContract.conflicts]);
 
   const invalidateBriefResults = () => {
@@ -1625,11 +1963,43 @@ export function IntentPanel() {
     sectionTokenRef.current++;
     songBufferRef.current = null;
     sectionBuffersRef.current.clear();
+    sectionPreferenceBuffersRef.current.clear();
   };
 
   const applyBriefPatch = (patch: IntentInput) => {
+    try {
+      const original = parsed?.input ?? {};
+      const contextKey = preferenceContextForIntent(normalizeIntent(original)).key;
+      for (const { inputKey, field } of BRIEF_CORRECTION_FIELDS) {
+        if (!(inputKey in patch)) continue;
+        const confirmedValue = correctionValue(field, patch[inputKey]);
+        if (confirmedValue === undefined || confirmedValue === null) continue;
+        const predictedValue = correctionValue(field, original[inputKey]);
+        if (predictedValue === undefined || predictedValue === confirmedValue) continue;
+        void recordIntentCorrection({
+          field,
+          predictedValue,
+          confirmedValue,
+          contextKey,
+          parserVersion: "intent-contract.v1",
+          sessionId: currentProducerMemorySessionId(),
+        });
+      }
+    } catch {
+      // Explicit corrections still apply when local memory is unavailable.
+    }
     invalidateBriefResults();
     setBriefFixes((previous) => ({ ...previous, ...patch }));
+  };
+
+  const applyMemoryCorrection = (suggestion: IntentCorrectionSuggestion) => {
+    const patch = patchForIntentCorrection(suggestion);
+    if (!patch) return;
+    invalidateBriefResults();
+    setBriefFixes((previous) => ({ ...previous, ...patch }));
+    setStatus(
+      `Použitá lokálna Producer DNA oprava: ${CORRECTION_FIELD_LABELS[suggestion.field]} ${correctionValueLabel(suggestion.field, suggestion.confirmedValue)}. Aktuálne zadanie má vždy prednosť.`,
+    );
   };
 
   const saveCurrentProjectBrief = () => {
@@ -1657,6 +2027,7 @@ export function IntentPanel() {
   const replacePrompt = (nextText: string, replay = false) => {
     invalidateBriefResults();
     setBriefFixes((previous) => (Object.keys(previous).length > 0 ? {} : previous));
+    if (replay || !nextText.trim().toLowerCase().startsWith("that one")) setSelectedProducerLineageNodeId(null);
     setText(nextText);
     historyReplayRef.current = replay ? nextText : null;
     if (replay) setHistoryReplayTick((tick) => tick + 1);
@@ -2120,6 +2491,7 @@ export function IntentPanel() {
     setPlayingSectionId(null);
     songBufferRef.current = null;
     sectionBuffersRef.current = new Map();
+    sectionPreferenceBuffersRef.current.clear();
     sectionTokenRef.current++;
     setSongRendering(false);
     // Guard token: a superseding build, DROP or USE during the awaits below
@@ -2193,7 +2565,14 @@ export function IntentPanel() {
         loudnessApplied: false,
         loudnessRecommendation: loud.recommendation,
         audioReview: null,
+        preferenceTakes: [],
+        sectionPreferenceTakes: [],
       });
+      setSongCompareA("");
+      setSongCompareB("");
+      setSongFeedbackMessage(null);
+      setSectionCompareSelections({});
+      setSectionFeedbackMessages({});
       const fxNote = result.build.baseIntent.fx || result.build.sections.some((s) => s.fx) ? " + FX" : "";
       const skipNote = result.skipped.length > 0 ? ` (skipped: ${result.skipped.length})` : "";
       setStatus(
@@ -2207,7 +2586,22 @@ export function IntentPanel() {
         if (songTokenRef.current !== token) return;
         songBufferRef.current = buffer;
         const audioReview = reviewSongAudio(buffer);
-        setSongDraft((prev) => (prev && prev.result === result ? { ...prev, audioReview, previewReady: true } : prev));
+        const songCandidate = songPreferenceCandidate(
+          baseDoc,
+          result.build.baseIntent,
+          result.build.sections,
+          0,
+          audioReview,
+        );
+        const firstTake = songCandidate
+          ? { id: "best", label: "BEST PER SECTION", candidate: songCandidate, auditioned: false }
+          : null;
+        setSongDraft((prev) =>
+          prev && prev.result === result
+            ? { ...prev, audioReview, previewReady: true, preferenceTakes: firstTake ? [firstTake] : [] }
+            : prev,
+        );
+        if (firstTake) setSongCompareA(firstTake.id);
         // Fáza 5 — per-section meters → evidence-based revival suggestions.
         const sectionMeters = analyzeSongSections(
           buffer,
@@ -2257,6 +2651,7 @@ export function IntentPanel() {
     setRenderingSectionId(null);
     songBufferRef.current = null;
     sectionBuffersRef.current = new Map();
+    sectionPreferenceBuffersRef.current.clear();
     setSongRendering(true);
     setSongDraft((current) =>
       current?.result === draft.result
@@ -2301,6 +2696,22 @@ export function IntentPanel() {
       if (songTokenRef.current !== token) return;
       songBufferRef.current = buffer;
       const audioReview = reviewSongAudio(buffer);
+      const lanePosition = lane === null ? -1 : draft.result.build.alternatives.findIndex((item) => item.lane === lane);
+      const preferenceCandidate = songPreferenceCandidate(
+        draft.baseDoc,
+        activeBuild.baseIntent,
+        activeBuild.sections,
+        lanePosition + 1,
+        audioReview,
+      );
+      const preferenceTake = preferenceCandidate
+        ? {
+            id: lane ?? "best",
+            label: lane ? `${lane.toUpperCase()} full-song direction` : "BEST PER SECTION",
+            candidate: preferenceCandidate,
+            auditioned: false,
+          }
+        : null;
       let measuredAfter: number | null = null;
       try {
         const channels = Array.from({ length: buffer.numberOfChannels }, (_, channel) =>
@@ -2311,11 +2722,23 @@ export function IntentPanel() {
       } catch {
         /* display-only — the rendered buffer remains valid for audition */
       }
-      setSongDraft((current) =>
-        current?.result === draft.result && current.activeBuild === activeBuild
-          ? { ...current, audioReview, measuredAfter, previewReady: true }
-          : current,
-      );
+      setSongDraft((current) => {
+        if (current?.result !== draft.result || current.activeBuild !== activeBuild) return current;
+        const preferenceTakes = preferenceTake
+          ? [...(current.preferenceTakes ?? []).filter((take) => take.id !== preferenceTake.id), preferenceTake]
+          : (current.preferenceTakes ?? []);
+        return {
+          ...current,
+          audioReview,
+          measuredAfter,
+          previewReady: true,
+          preferenceTakes,
+        };
+      });
+      if (preferenceTake) {
+        if (!songCompareA) setSongCompareA(preferenceTake.id);
+        else if (songCompareA !== preferenceTake.id && !songCompareB) setSongCompareB(preferenceTake.id);
+      }
       setStatus(
         `✓ ${lane ? lane.toUpperCase() : "BEST-PER-SECTION"} full-song preview ready — ${activeBuild.sections.length} sections, ${activeBuild.totalBars} bars. USE installs this exact arrangement.`,
       );
@@ -2333,6 +2756,292 @@ export function IntentPanel() {
     songTextRef.current = text;
     await buildSongDraft(sections);
   };
+  const recordSongPreference = (choice: "a" | "b" | "neither" | "both") => {
+    const draft = songDraft;
+    if (!draft || !isPreferenceLearningEnabled()) {
+      setSongFeedbackMessage("Zapni lokálne Producer DNA učenie, aby sa táto voľba uložila.");
+      return;
+    }
+    const takes = draft.preferenceTakes ?? [];
+    const takeA = takes.find((take) => take.id === songCompareA);
+    const takeB = takes.find((take) => take.id === songCompareB);
+    const candidateA = takeA?.candidate;
+    const candidateB = takeB?.candidate;
+    if (
+      !takeA?.auditioned ||
+      !takeB?.auditioned ||
+      !candidateA ||
+      !candidateB ||
+      candidateA.contentHash === candidateB.contentHash
+    ) {
+      setSongFeedbackMessage("Najprv vypočuj dve rozdielne kompletné skladby.");
+      return;
+    }
+    const currentSongRanking = rankRenderedSongPreferences(
+      takes.map((take) => take.candidate),
+      readPreferenceLedger(),
+      draft.activeBuild.baseIntent,
+    );
+    const recordedCandidateA =
+      currentSongRanking?.candidates.find((item) => item.candidate.contentHash === candidateA.contentHash)?.candidate ??
+      candidateA;
+    const recordedCandidateB =
+      currentSongRanking?.candidates.find((item) => item.candidate.contentHash === candidateB.contentHash)?.candidate ??
+      candidateB;
+    const observation = createPreferenceObservation(
+      preferenceContextForIntent(draft.activeBuild.baseIntent, "song"),
+      recordedCandidateA,
+      recordedCandidateB,
+      choice,
+      {
+        songReason: songPreferenceFocus,
+        ...(songPreferenceFocus === "sound" ? { reason: "timbre" as const } : {}),
+        ...(songPreferenceFocus === "mix" ? { reason: "mix" as const } : {}),
+      },
+    );
+    const lineage = songPreferenceCandidate(
+      draft.baseDoc,
+      draft.result.build.baseIntent,
+      draft.result.build.sections,
+      0,
+    )?.contentHash;
+    if (
+      !observation ||
+      !recordPreferenceObservation(observation, {
+        sessionId: currentProducerMemorySessionId(),
+        lineageId: lineage ?? null,
+      })
+    ) {
+      setSongFeedbackMessage("Voľbu celých skladieb sa nepodarilo uložiť lokálne.");
+      return;
+    }
+    const resultLabel =
+      choice === "a"
+        ? `Uprednostnil si A · ${takes.find((take) => take.id === songCompareA)?.label ?? "song"}.`
+        : choice === "b"
+          ? `Uprednostnil si B · ${takes.find((take) => take.id === songCompareB)?.label ?? "song"}.`
+          : choice === "neither"
+            ? "Ani jedna celá skladba nevyhovuje; neuložil sa smerový vkus."
+            : "Obe celé skladby sú prijateľné; neuložil sa víťaz.";
+    setSongFeedbackMessage(`${resultLabel} Uložené v samostatnom song kontexte.`);
+  };
+  const songComparisonReady = (() => {
+    const takes = songDraft?.preferenceTakes ?? [];
+    const takeA = takes.find((take) => take.id === songCompareA);
+    const takeB = takes.find((take) => take.id === songCompareB);
+    return Boolean(
+      takeA?.auditioned &&
+      takeB?.auditioned &&
+      takeA.id !== takeB.id &&
+      takeA.candidate.contentHash !== takeB.candidate.contentHash,
+    );
+  })();
+  const sectionPreferenceOptions = (draft: SongDraft, sectionIndex: number) => {
+    const baseline = draft.result.build.sections[sectionIndex];
+    if (!baseline) return [];
+    const options = [
+      {
+        id: `${sectionIndex}:best`,
+        label: "BEST PER SECTION",
+        lane: null as SearchLane | null,
+        candidateIndex: 0,
+        section: baseline,
+      },
+      ...draft.result.build.alternatives.map((alternative, index) => ({
+        id: `${sectionIndex}:${alternative.lane}`,
+        label: alternative.lane.toUpperCase(),
+        lane: alternative.lane,
+        candidateIndex: index + 1,
+        section: alternative.sections[sectionIndex],
+      })),
+    ];
+    return options.filter(
+      (option): option is (typeof options)[number] & { section: SongBuildSection } =>
+        Boolean(option.section) && option.section.role === baseline.role && option.section.bars === baseline.bars,
+    );
+  };
+  const sectionCompareSelection = (sectionIndex: number, options: ReturnType<typeof sectionPreferenceOptions>) => {
+    const stored = sectionCompareSelections[String(sectionIndex)];
+    return {
+      a: stored?.a ?? options[0]?.id ?? "",
+      b: stored?.b ?? options[1]?.id ?? "",
+    };
+  };
+  const playSectionPreferenceTake = async (sectionIndex: number, optionId: string) => {
+    const draft = songDraft;
+    if (!draft) return;
+    const option = sectionPreferenceOptions(draft, sectionIndex).find((item) => item.id === optionId);
+    if (!option) return;
+    const auditionId = `preference:${option.id}`;
+    if (playingSectionId === auditionId) {
+      stopAudition();
+      setPlayingSectionId(null);
+      return;
+    }
+    stopAudition();
+    setSongPlaying(false);
+    setPlayingSectionId(null);
+    const token = ++sectionTokenRef.current;
+    setRenderingSectionId(auditionId);
+    try {
+      const previewCandidate = sectionPreferenceCandidate(
+        draft.baseDoc,
+        draft.activeBuild.baseIntent,
+        option.section,
+        sectionIndex,
+        option.candidateIndex,
+        option.lane,
+      );
+      if (!previewCandidate) throw new Error("section snapshot could not be built");
+      let buffer = sectionPreferenceBuffersRef.current.get(previewCandidate.contentHash);
+      if (buffer) {
+        sectionPreferenceBuffersRef.current.delete(previewCandidate.contentHash);
+        sectionPreferenceBuffersRef.current.set(previewCandidate.contentHash, buffer);
+      } else {
+        buffer = await renderAuditionBuffer(
+          draft.baseDoc,
+          services.bank,
+          option.section.pattern,
+          option.section.fx ?? draft.activeBuild.baseIntent.fx ?? null,
+        );
+        sectionPreferenceBuffersRef.current.set(previewCandidate.contentHash, buffer);
+        while (sectionPreferenceBuffersRef.current.size > 2) {
+          const oldest = sectionPreferenceBuffersRef.current.keys().next().value;
+          if (oldest === undefined) break;
+          sectionPreferenceBuffersRef.current.delete(oldest);
+        }
+      }
+      if (sectionTokenRef.current !== token) return;
+      const candidate = sectionPreferenceCandidate(
+        draft.baseDoc,
+        draft.activeBuild.baseIntent,
+        option.section,
+        sectionIndex,
+        option.candidateIndex,
+        option.lane,
+        reviewSongAudio(buffer),
+      );
+      if (!candidate) throw new Error("section audio snapshot could not be built");
+      const take: SectionPreferenceTake = {
+        id: option.id,
+        sectionIndex,
+        lane: option.lane,
+        label: `${option.section.label} · ${option.label}`,
+        candidate,
+        auditioned: false,
+      };
+      setSongDraft((current) =>
+        current?.result === draft.result
+          ? {
+              ...current,
+              sectionPreferenceTakes: [
+                ...(current.sectionPreferenceTakes ?? []).filter(
+                  (existing) => existing.sectionIndex !== sectionIndex || existing.id !== option.id,
+                ),
+                take,
+              ],
+            }
+          : current,
+      );
+      playAuditionBuffer(buffer, () => {
+        if (sectionTokenRef.current !== token) return;
+        setRenderingSectionId(null);
+        setPlayingSectionId(null);
+        setSongDraft((current) => {
+          if (current?.result !== draft.result) return current;
+          return {
+            ...current,
+            sectionPreferenceTakes: (current.sectionPreferenceTakes ?? []).map((existing) =>
+              existing.id === option.id &&
+              existing.sectionIndex === sectionIndex &&
+              existing.candidate.contentHash === candidate.contentHash
+                ? { ...existing, auditioned: true }
+                : existing,
+            ),
+          };
+        });
+      });
+      setPlayingSectionId(auditionId);
+      setStatus(`▶ auditioning complete ${option.section.label} section · ${option.label}`);
+    } catch (err) {
+      if (sectionTokenRef.current === token) {
+        setError(`section preference render failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    } finally {
+      if (sectionTokenRef.current === token) setRenderingSectionId(null);
+    }
+  };
+  const recordSectionPreference = (sectionIndex: number, choice: "a" | "b" | "neither" | "both") => {
+    const draft = songDraft;
+    const key = String(sectionIndex);
+    if (!draft || !isPreferenceLearningEnabled()) {
+      setSectionFeedbackMessages((current) => ({ ...current, [key]: "Zapni lokálne Producer DNA učenie." }));
+      return;
+    }
+    const options = sectionPreferenceOptions(draft, sectionIndex);
+    const selection = sectionCompareSelection(sectionIndex, options);
+    const takes = draft.sectionPreferenceTakes ?? [];
+    const takeA = takes.find((take) => take.sectionIndex === sectionIndex && take.id === selection.a);
+    const takeB = takes.find((take) => take.sectionIndex === sectionIndex && take.id === selection.b);
+    if (!takeA?.auditioned || !takeB?.auditioned || takeA.candidate.contentHash === takeB.candidate.contentHash) {
+      setSectionFeedbackMessages((current) => ({
+        ...current,
+        [key]: "Najprv dopočúvaj dve rozdielne verzie tejto sekcie.",
+      }));
+      return;
+    }
+    const [recordedCandidateA, recordedCandidateB] = scoreSectionPreferencePair(
+      [takeA.candidate, takeB.candidate],
+      readPreferenceLedger(),
+    );
+    const observation = createPreferenceObservation(
+      preferenceContextForIntent(takeA.candidate.intent, "section"),
+      recordedCandidateA,
+      recordedCandidateB,
+      choice,
+    );
+    const lineage = songPreferenceCandidate(
+      draft.baseDoc,
+      draft.result.build.baseIntent,
+      draft.result.build.sections,
+      0,
+    )?.contentHash;
+    if (
+      !observation ||
+      observation.context.key !== preferenceContextForIntent(takeB.candidate.intent, "section").key ||
+      !recordPreferenceObservation(observation, {
+        sessionId: currentProducerMemorySessionId(),
+        lineageId: lineage ?? null,
+      })
+    ) {
+      setSectionFeedbackMessages((current) => ({ ...current, [key]: "Voľbu sekcie sa nepodarilo uložiť lokálne." }));
+      return;
+    }
+    const description =
+      choice === "a"
+        ? `Uprednostnil si A · ${takeA.label}.`
+        : choice === "b"
+          ? `Uprednostnil si B · ${takeB.label}.`
+          : choice === "neither"
+            ? "Ani jedna verzia sekcie nevyhovuje; neuložil sa smerový vkus."
+            : "Obe verzie sekcie sú prijateľné; neuložil sa víťaz.";
+    setSectionFeedbackMessages((current) => ({ ...current, [key]: `${description} Uložené v section kontexte.` }));
+  };
+  const learningEnabled = automaticLearning && isPreferenceLearningEnabled();
+  const audioRank = useMemo(
+    () => (songDraft && learningEnabled ? songAudioPreferenceRank(songDraft, songDraft.preferenceTakes ?? []) : null),
+    [songDraft?.result, songDraft?.preferenceTakes, learningEnabled, styleMemoryRevision],
+  );
+  const songDnaTipLane = learningEnabled
+    ? audioRank
+      ? audioRank.lane
+      : songDraft?.result.build.recommendedLane
+    : undefined;
+  const songDnaTipLabel = audioRank?.audioPreferenceApplied
+    ? audioRank.dramaturgyPreferenceApplied
+      ? "DNA SOUND + FORM TIP"
+      : "DNA AUDIO TIP"
+    : "DNA FORM TIP";
   const generateSong = async () => {
     if ((!text.trim() && !activeProjectBrief) || songBusy || busy) return;
     if (rejectUnresolvedBriefConflicts()) return;
@@ -2623,9 +3332,27 @@ export function IntentPanel() {
     }
     const buffer = songBufferRef.current;
     if (!buffer) return;
+    const draft = songDraft;
+    const auditionedTakeId = draft?.activeLane ?? "best";
+    const auditionedContentHash = draft?.preferenceTakes?.find((take) => take.id === auditionedTakeId)?.candidate
+      .contentHash;
     // Full-song and section auditions share one playback channel.
     setPlayingSectionId(null);
-    playAuditionBuffer(buffer, () => setSongPlaying(false));
+    playAuditionBuffer(buffer, () => {
+      setSongPlaying(false);
+      if (!draft || !auditionedContentHash) return;
+      setSongDraft((current) => {
+        if (current?.result !== draft.result) return current;
+        return {
+          ...current,
+          preferenceTakes: (current.preferenceTakes ?? []).map((take) =>
+            take.id === auditionedTakeId && take.candidate.contentHash === auditionedContentHash
+              ? { ...take, auditioned: true }
+              : take,
+          ),
+        };
+      });
+    });
     setSongPlaying(true);
     setStatus(`▶ auditioning full song — ${songDraft?.activeBuild.sections.length ?? 0} sections`);
   };
@@ -2716,6 +3443,7 @@ export function IntentPanel() {
     setPlayingSectionId(null);
     songBufferRef.current = null;
     sectionBuffersRef.current = new Map();
+    sectionPreferenceBuffersRef.current.clear();
     setSongDraft(null);
     setSongSuggestions([]);
     setStatus("Song draft discarded — nothing applied.");
@@ -2774,6 +3502,7 @@ export function IntentPanel() {
         songDraft.activeBuild.baseIntent.fx || songDraft.activeBuild.sections.some((s) => s.fx) ? " + FX" : "";
       songBufferRef.current = null;
       sectionBuffersRef.current = new Map();
+      sectionPreferenceBuffersRef.current.clear();
       setSongDraft(null);
       setSongSuggestions([]);
       setJustApplied(true);
@@ -3895,11 +4624,9 @@ export function IntentPanel() {
         >
           NAUČ SA Z AKTÍVNEHO PATTERNU
         </button>
-        {(learnedPatternCount > 0 || (correctionSummary?.correctionCount ?? 0) > 0) && (
-          <button type="button" className="btn btn-small" onClick={forgetLearnedPatterns}>
-            ZABUDNÚŤ NAUČENÉ
-          </button>
-        )}
+        <button type="button" className="btn btn-small" onClick={() => void forgetLearnedPatterns()}>
+          ZABUDNÚŤ NAUČENÉ
+        </button>
       </div>
       {learnedStyle && learnedStyle.exampleCount >= 3 && (
         <div className="intent-history" aria-label="Personalized intent suggestions">
@@ -3929,11 +4656,90 @@ export function IntentPanel() {
           ))}
         </div>
       )}
+      {rankerEvidence && (
+        <div className="intent-history" aria-label="Producer DNA preference evidence">
+          <span className="intent-history-label">
+            PERSONAL RANKER ·{" "}
+            {rankerEvidence.state === "cold-start"
+              ? "cold start"
+              : rankerEvidence.state === "weak-signal"
+                ? "slabý signál"
+                : rankerEvidence.state === "building"
+                  ? "kalibrácia"
+                  : "opakované dôkazy"}
+            {" · "}
+            {rankerEvidence.comparisonCount} orientačných porovnaní · {rankerEvidence.exactContextComparisons} presne v
+            tomto kontexte · efektívna váha {rankerEvidence.effectiveComparisonCount.toFixed(1)}
+            {rankerEvidence.audioComparisonCount > 0 &&
+              ` · audio vkus: ${rankerEvidence.audioComparisonCount} porovnaní · efektívna váha ${rankerEvidence.audioEffectiveComparisonCount.toFixed(1)}`}
+          </span>
+        </div>
+      )}
       {styleMemoryMessage && (
         <div role="status" className="intent-detected">
           {styleMemoryMessage}
         </div>
       )}
+      <details className="intent-history" aria-label="Manage local Producer DNA memory">
+        <summary className="intent-history-label">
+          SPRAVOVAŤ PAMÄŤ · {producerMemoryEvents.filter((event) => event.type !== "forget").length} položiek
+        </summary>
+        {producerMemoryEvents.filter((event) => event.type !== "forget").length === 0 ? (
+          <div className="intent-detected">Zatiaľ tu nie sú uložené explicitné Producer DNA signály.</div>
+        ) : (
+          <div className="intent-candidates">
+            {[...producerMemoryEvents]
+              .filter((event) => event.type !== "forget")
+              .slice(0, 20)
+              .map((event) => (
+                <div className="intent-candidate-row" key={event.id}>
+                  <span>{producerMemoryEventLabel(event)}</span>
+                  <time dateTime={new Date(event.createdAt).toISOString()}>
+                    {new Date(event.createdAt).toLocaleDateString()}
+                  </time>
+                  <button type="button" className="btn btn-small" onClick={() => void forgetMemoryItem(event.id)}>
+                    ZABUDNÚŤ
+                  </button>
+                </div>
+              ))}
+          </div>
+        )}
+      </details>
+      <details className="intent-history" aria-label="Saved Producer DNA branches">
+        <summary className="intent-history-label">
+          ULOŽENÉ VETVY · {producerLineageNodes.length} take-ov · iba lokálne
+        </summary>
+        {producerLineageNodes.length === 0 ? (
+          <div className="intent-detected">Po ďalšom generovaní sa tu objavia obnoviteľné take-y.</div>
+        ) : (
+          <div className="intent-candidates">
+            {producerLineageNodes.slice(0, 16).map((node) => (
+              <div className="intent-candidate-row" key={node.id}>
+                <span>
+                  {node.intent.genre} · #{node.candidateIndex + 1} · {node.parentContentHash ? "vetva" : "koreň"} ·{" "}
+                  {new Date(node.createdAt).toLocaleDateString()}
+                </span>
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  aria-pressed={selectedProducerLineageNodeId === node.id}
+                  onClick={() => {
+                    setSelectedProducerLineageNodeId(node.id);
+                    replacePrompt("that one, ");
+                    setStatus(`Pokračovanie z uloženého ${node.intent.genre} take-u. Doplň, čo chceš zmeniť.`);
+                    promptInputRef.current?.focus();
+                  }}
+                >
+                  {selectedProducerLineageNodeId === node.id ? "VYBRANÁ VETVA" : "POKRAČOVAŤ"}
+                </button>
+                <button type="button" className="btn btn-small" onClick={() => void forgetLineageNode(node.id)}>
+                  ZABUDNÚŤ VETVU
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </details>
       {doc.producerBrief && (
         <>
           <div className="intent-history" aria-label="Project Producer Brief memory">
@@ -4007,6 +4813,31 @@ export function IntentPanel() {
       })()}
       {(text.trim() !== "" || activeProjectBrief) && (
         <>
+          {memoryCorrectionSuggestions.length > 0 && (
+            <div className="intent-history" aria-label="Producer DNA intent correction suggestions">
+              <span className="intent-history-label">
+                TVOJE PREDCHÁDZAJÚCE OPRAVY · len tento podobný kontext · explicitný prompt má prednosť
+              </span>
+              {memoryCorrectionSuggestions.map((suggestion) => (
+                <button
+                  key={suggestion.field}
+                  type="button"
+                  className="btn btn-small"
+                  title={
+                    suggestion.conflicted
+                      ? "Opravy sa v minulosti líšili; použi najnovšiu iba ak ti stále sedí."
+                      : "Použiť túto tvoju predchádzajúcu opravu pre aktuálny brief."
+                  }
+                  onClick={() => applyMemoryCorrection(suggestion)}
+                >
+                  {CORRECTION_FIELD_LABELS[suggestion.field]}:{" "}
+                  {correctionValueLabel(suggestion.field, suggestion.predictedValue)} →{" "}
+                  {correctionValueLabel(suggestion.field, suggestion.confirmedValue)} · {suggestion.confirmationCount}×
+                  {suggestion.conflicted ? " · staršie opravy sa líšili" : ""}
+                </button>
+              ))}
+            </div>
+          )}
           <BriefContractSummary
             contract={briefContract}
             input={briefInput}
@@ -4196,6 +5027,23 @@ export function IntentPanel() {
         </div>
       )}
       <div className="intent-actions">
+        <label
+          className="intent-detected"
+          title="Local-only A/B study; the ranked bank stays hidden until your choice."
+        >
+          <input
+            type="checkbox"
+            aria-label="Opt in to a blind comparison of global and Producer DNA ranking on the next generation"
+            checked={blindPilotArmed}
+            disabled={!automaticLearning || busy || songBusy}
+            onChange={(event) => {
+              const armed = event.currentTarget.checked;
+              setBlindPilotArmed(armed);
+              if (armed) setBlindPilotArmRevision(generationRevision);
+            }}
+          />{" "}
+          SLEPÝ PILOT · ďalšie GENERATE
+        </label>
         <button
           type="button"
           className="btn intent-route-btn"
@@ -4510,7 +5358,7 @@ export function IntentPanel() {
           </div>
         </div>
       )}
-      {bankCompliance.length > 0 && (
+      {!blindPilotCandidateBankHidden && bankCompliance.length > 0 && (
         <div className="intent-compliance" aria-label="Brief compliance">
           {bankCompliance.map((item) => (
             <span
@@ -4534,7 +5382,7 @@ export function IntentPanel() {
           ))}
         </div>
       )}
-      {bankResult && (
+      {bankResult && !blindPilotCandidateBankHidden && (
         <CandidateLaneReceipt
           plan={bankResult.plan}
           candidates={bankResult.bank ?? []}
@@ -4597,12 +5445,12 @@ export function IntentPanel() {
           ))}
         </div>
       )}
-      {candidates && candidates.length > 1 && (
+      {!blindPilotCandidateBankHidden && candidates && candidates.length > 1 && (
         <div className="intent-detected" aria-label="Candidate ranking explanation">
           Poradie zohľadňuje plnenie briefu aj mieru hudobnej odlišnosti; nejde o objektívnu známku.
         </div>
       )}
-      {candidates && candidates.length > 0 && (
+      {!blindPilotCandidateBankHidden && candidates && candidates.length > 0 && (
         <div className="intent-candidates" aria-label="Candidate bank">
           {candidates.map((candidate) => {
             const isWinner = candidate.candidateIndex === bankResult?.bank?.[0]?.candidateIndex;
@@ -4722,6 +5570,18 @@ export function IntentPanel() {
             project={doc}
             result={bankResult}
             referencePattern={iterationReferencePattern}
+            lineageId={
+              iterationReferencePattern
+                ? (producerLineageNodes.find(
+                    (node) => node.contentHash === contentHash(canonicalizePattern(doc, iterationReferencePattern)),
+                  )?.rootContentHash ?? contentHash(canonicalizePattern(doc, iterationReferencePattern)))
+                : (candidates[0]?.contentHash ?? null)
+            }
+            blindPilotArmed={blindPilotArmed}
+            blindPilotArmRevision={blindPilotArmRevision}
+            generationRevision={generationRevision}
+            onBlindPilotArmedChange={setBlindPilotArmed}
+            onBlindPilotVisibilityChange={setBlindPilotCandidateBankHidden}
             onAudition={(candidate) => {
               void toggleAudition(candidate);
             }}
@@ -5003,7 +5863,7 @@ export function IntentPanel() {
                 onClick={() => void selectSongLane(null)}
                 title="Use the current best-ranked choice independently selected for each section"
               >
-                BEST PER SECTION
+                BEST PER SECTION{songDnaTipLane === null && audioRank ? ` · ${songDnaTipLabel}` : ""}
               </button>
               {songDraft.result.build.alternatives.map((alternative) => {
                 const modeNote =
@@ -5014,7 +5874,8 @@ export function IntentPanel() {
                       : alternative.mode === "mixed"
                         ? " · mixed context"
                         : "";
-                const label = `${alternative.lane.toUpperCase()}${modeNote}`;
+                const personalNote = songDnaTipLane === alternative.lane && audioRank ? ` · ${songDnaTipLabel}` : "";
+                const label = `${alternative.lane.toUpperCase()}${modeNote}${personalNote}`;
                 return (
                   <button
                     key={alternative.lane}
@@ -5034,11 +5895,117 @@ export function IntentPanel() {
                 Only complete, musically distinct alternatives are shown. USE stays disabled until a selected lane
                 renders.
               </small>
+              {audioRank ? (
+                <>
+                  {audioRank.audioPreferenceApplied && (
+                    <small>
+                      Sound DNA tip: {audioRank.lane?.toUpperCase() ?? "BEST PER SECTION"} spomedzi{" "}
+                      {audioRank.renderedLaneCount} už renderovaných celých smerov · {audioRank.comparisonCount}{" "}
+                      relevantných audio porovnaní · váha dôkazu {audioRank.confidenceWeight.toFixed(2)}.
+                    </small>
+                  )}
+                  {audioRank.dramaturgyPreferenceApplied && (
+                    <small>
+                      Song form DNA tip: {audioRank.lane?.toUpperCase() ?? "BEST PER SECTION"} podľa formy a vývoja ·{" "}
+                      {audioRank.dramaturgyComparisonCount} porovnaní · váha dôkazu{" "}
+                      {audioRank.dramaturgyConfidenceWeight.toFixed(2)}.
+                    </small>
+                  )}
+                </>
+              ) : learningEnabled && songDraft.result.build.recommendedLane !== undefined ? (
+                <small>
+                  Producer DNA odporúča {songDraft.result.build.recommendedLane?.toUpperCase() ?? "BEST PER SECTION"}{" "}
+                  podľa výslovných porovnaní celých skladieb.
+                </small>
+              ) : null}
             </div>
           )}
           {songDraft.result.build.candidateCount > 1 && songDraft.result.build.alternatives.length === 0 && (
             <div className="intent-detected" role="status">
               No complete alternate lane survived every section; this song uses the best-ranked candidate per section.
+            </div>
+          )}
+          {(songDraft.preferenceTakes?.length ?? 0) >= 2 && (
+            <div className="intent-share-actions" aria-label="Explicit full-song preference comparison">
+              <strong>UČIŤ VÝBER CELEJ SKLADBY</strong>
+              <span>Hlas sa odomkne až po dopočutí oboch kompletných renderov.</span>
+              <label>
+                ČO HODNOTÍŠ
+                <select
+                  aria-label="Full-song preference focus"
+                  value={songPreferenceFocus}
+                  onChange={(event) => setSongPreferenceFocus(event.target.value as SongPreferenceFocus)}
+                >
+                  {SONG_PREFERENCE_FOCUS_OPTIONS.map((focus) => (
+                    <option key={focus.value} value={focus.value}>
+                      {focus.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                A
+                <select
+                  aria-label="Full-song preference candidate A"
+                  value={songCompareA}
+                  onChange={(event) => setSongCompareA(event.target.value)}
+                >
+                  {(songDraft.preferenceTakes ?? []).map((take) => (
+                    <option key={take.id} value={take.id}>
+                      {take.label}
+                      {take.auditioned ? " · vypočuté" : " · treba vypočuť"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                B
+                <select
+                  aria-label="Full-song preference candidate B"
+                  value={songCompareB}
+                  onChange={(event) => setSongCompareB(event.target.value)}
+                >
+                  {(songDraft.preferenceTakes ?? []).map((take) => (
+                    <option key={take.id} value={take.id}>
+                      {take.label}
+                      {take.auditioned ? " · vypočuté" : " · treba vypočuť"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="btn btn-small"
+                onClick={() => recordSongPreference("a")}
+                disabled={!automaticLearning || !songComparisonReady}
+              >
+                NECHAL BY SOM A
+              </button>
+              <button
+                type="button"
+                className="btn btn-small"
+                onClick={() => recordSongPreference("b")}
+                disabled={!automaticLearning || !songComparisonReady}
+              >
+                NECHAL BY SOM B
+              </button>
+              <button
+                type="button"
+                className="btn btn-small"
+                onClick={() => recordSongPreference("neither")}
+                disabled={!automaticLearning || !songComparisonReady}
+              >
+                ANI JEDEN
+              </button>
+              <button
+                type="button"
+                className="btn btn-small"
+                onClick={() => recordSongPreference("both")}
+                disabled={!automaticLearning || !songComparisonReady}
+              >
+                OBA DOBRÉ
+              </button>
+              {songFeedbackMessage && <span role="status">{songFeedbackMessage}</span>}
             </div>
           )}
           {songDraft.audioReview && (
@@ -5067,10 +6034,21 @@ export function IntentPanel() {
             </div>
           )}
           <div className="intent-song-sections" aria-label="Song sections">
-            {songDraft.activeBuild.sections.map((section) => {
+            {songDraft.activeBuild.sections.map((section, sectionIndex) => {
               const id = section.pattern.id;
               const isPlaying = playingSectionId === id;
               const isRendering = renderingSectionId === id;
+              const options = sectionPreferenceOptions(songDraft, sectionIndex);
+              const selection = sectionCompareSelection(sectionIndex, options);
+              const takeA = (songDraft.sectionPreferenceTakes ?? []).find(
+                (take) => take.sectionIndex === sectionIndex && take.id === selection.a,
+              );
+              const takeB = (songDraft.sectionPreferenceTakes ?? []).find(
+                (take) => take.sectionIndex === sectionIndex && take.id === selection.b,
+              );
+              const comparisonReady = Boolean(
+                takeA?.auditioned && takeB?.auditioned && takeA.candidate.contentHash !== takeB.candidate.contentHash,
+              );
               return (
                 <div key={id} className="intent-candidate-row">
                   <button
@@ -5085,6 +6063,125 @@ export function IntentPanel() {
                   <span className="intent-candidate-score" title={section.roles.join("+")}>
                     {section.label} · {section.bars}b · {section.roles.join("+")}
                   </span>
+                  {options.length >= 2 && (
+                    <details className="intent-section-preference">
+                      <summary>UČIŤ VÝBER TEJTO SEKCIE</summary>
+                      <div className="intent-share-actions">
+                        <label>
+                          A
+                          <select
+                            aria-label={`${section.label} section preference candidate A`}
+                            value={selection.a}
+                            onChange={(event) => {
+                              const key = String(sectionIndex);
+                              setSectionCompareSelections((current) => ({
+                                ...current,
+                                [key]: { ...selection, a: event.target.value },
+                              }));
+                            }}
+                          >
+                            {options.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.label}
+                                {(songDraft.sectionPreferenceTakes ?? []).some(
+                                  (take) =>
+                                    take.sectionIndex === sectionIndex && take.id === option.id && take.auditioned,
+                                )
+                                  ? " · vypočuté"
+                                  : " · treba vypočuť"}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          className="btn btn-small"
+                          disabled={songBusy || songRendering || renderingSectionId !== null}
+                          onClick={() => void playSectionPreferenceTake(sectionIndex, selection.a)}
+                        >
+                          {renderingSectionId === `preference:${selection.a}`
+                            ? "… A"
+                            : playingSectionId === `preference:${selection.a}`
+                              ? "■ A"
+                              : "▶ A"}
+                        </button>
+                        <label>
+                          B
+                          <select
+                            aria-label={`${section.label} section preference candidate B`}
+                            value={selection.b}
+                            onChange={(event) => {
+                              const key = String(sectionIndex);
+                              setSectionCompareSelections((current) => ({
+                                ...current,
+                                [key]: { ...selection, b: event.target.value },
+                              }));
+                            }}
+                          >
+                            {options.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.label}
+                                {(songDraft.sectionPreferenceTakes ?? []).some(
+                                  (take) =>
+                                    take.sectionIndex === sectionIndex && take.id === option.id && take.auditioned,
+                                )
+                                  ? " · vypočuté"
+                                  : " · treba vypočuť"}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          className="btn btn-small"
+                          disabled={songBusy || songRendering || renderingSectionId !== null}
+                          onClick={() => void playSectionPreferenceTake(sectionIndex, selection.b)}
+                        >
+                          {renderingSectionId === `preference:${selection.b}`
+                            ? "… B"
+                            : playingSectionId === `preference:${selection.b}`
+                              ? "■ B"
+                              : "▶ B"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-small"
+                          disabled={!automaticLearning || !comparisonReady}
+                          onClick={() => recordSectionPreference(sectionIndex, "a")}
+                        >
+                          NECHAL BY SOM A
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-small"
+                          disabled={!automaticLearning || !comparisonReady}
+                          onClick={() => recordSectionPreference(sectionIndex, "b")}
+                        >
+                          NECHAL BY SOM B
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-small"
+                          disabled={!automaticLearning || !comparisonReady}
+                          onClick={() => recordSectionPreference(sectionIndex, "neither")}
+                        >
+                          ANI JEDEN
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-small"
+                          disabled={!automaticLearning || !comparisonReady}
+                          onClick={() => recordSectionPreference(sectionIndex, "both")}
+                        >
+                          OBA DOBRÉ
+                        </button>
+                        {sectionFeedbackMessages[String(sectionIndex)] && (
+                          <span role="status">{sectionFeedbackMessages[String(sectionIndex)]}</span>
+                        )}
+                        {!comparisonReady && <small>Hlas sa odomkne po dopočutí oboch samostatných renderov.</small>}
+                      </div>
+                    </details>
+                  )}
                 </div>
               );
             })}

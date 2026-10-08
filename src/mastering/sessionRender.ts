@@ -6,12 +6,13 @@ import { SampleBank } from "../sample-library/factory";
 import type { SampleBank as SampleBankType } from "../sample-library/factory";
 import { estimateRenderPcmBytes, renderProject } from "../rendering/renderer";
 import type { ExportQuality } from "../rendering/renderer";
+import type { MasteringRenderSampleRate } from "./sampleRates";
 
 export const MAX_MASTERING_SESSION_SECONDS = 12 * 60;
 export const MAX_MASTERING_SESSION_WORKING_SET_BYTES = 512 * 1024 * 1024;
 
 export interface MasteringSessionRenderOptions {
-  sampleRate: 44_100 | 48_000;
+  sampleRate: MasteringRenderSampleRate;
   quality?: ExportQuality;
   signal?: AbortSignal;
 }

@@ -15,13 +15,41 @@
  */
 import { FEATURE_CONTRACT, FEATURE_COUNT } from "../ai/features/pattern-features";
 import { FEATURE_CONTRACT_V2, FEATURE_V2_COUNT } from "../ai/features/pattern-features-v2";
+import {
+  cloneSongDramaturgyFeatureVector,
+  isSongDramaturgyFeatureVector,
+  type SongDramaturgyFeatureVectorV1,
+  type SongPreferenceFocus,
+} from "../ai/features/song-dramaturgy-v1";
 
 export const PREFERENCE_LEDGER_VERSION = 1 as const;
 export const PREFERENCE_LEDGER_CAP = 128;
 
 export type PreferenceTask = "pattern" | "section" | "song";
 export type PreferenceChoice = "a" | "b" | "neither" | "both";
-export type PreferenceReason = "groove" | "drums" | "bass" | "harmony" | "melody" | "space" | "energy" | "novelty";
+export interface BlindPilotAssignment {
+  /** Side that contained the global selector's top candidate before canonical ordering. */
+  globalSide: "a" | "b";
+  /** Side response as presented to the user; separate from canonical ledger choice. */
+  displayedChoice: PreferenceChoice;
+}
+export type PreferenceReason =
+  | "groove"
+  | "drums"
+  | "bass"
+  | "harmony"
+  | "melody"
+  | "space"
+  | "energy"
+  | "novelty"
+  | "brightness"
+  | "lowEnd"
+  | "dynamics"
+  | "level"
+  | "timbre"
+  | "voicing"
+  | "stereo"
+  | "mix";
 
 /** Feature contracts a stored snapshot may be recorded under (W4 dual-read). */
 export type PreferenceFeatureVersion = typeof FEATURE_CONTRACT.version | typeof FEATURE_CONTRACT_V2.version;
@@ -41,11 +69,39 @@ export interface PreferenceCandidateSnapshot {
   /** The contract the stored vector was recorded under — never re-bumped. */
   featureVersion: PreferenceFeatureVersion;
   features: number[];
+  /** Optional rendered-audio summary; raw PCM is never stored in Producer DNA. */
+  audioFeatures?: AudioPreferenceVector;
   /** Non-personal selector baseline; absent on legacy observations. */
   globalScore?: number;
   /** Identifies the global selector policy/model that produced the baseline. */
   globalScoreVersion?: string;
+  /** Exact local score after personal residuals at the time of this choice. */
+  personalScore?: number;
+  /** Task-specific sequence/form measurements; only valid for song choices. */
+  songDramaturgyFeatures?: SongDramaturgyFeatureVectorV1;
 }
+
+/** audio.v1: [RMS, peak, crest factor / 20, ZCR / 0.4, low-band ratio]. */
+export interface AudioPreferenceVectorV1 {
+  version: "audio.v1";
+  values: number[];
+}
+
+export const AUDIO_PREFERENCE_FEATURE_COUNT = 5;
+
+/**
+ * audio.v2 keeps the v1 prefix byte-for-byte, then adds timbre/voicing and
+ * optional stereo measurements. `available` prevents mono or legacy renders
+ * from being mistaken for measured stereo values.
+ */
+export interface AudioPreferenceVectorV2 {
+  version: "audio.v2";
+  values: number[];
+  available: boolean[];
+}
+
+export type AudioPreferenceVector = AudioPreferenceVectorV1 | AudioPreferenceVectorV2;
+export const AUDIO_PREFERENCE_V2_FEATURE_COUNT = 11;
 
 export interface PreferenceObservationV1 {
   version: typeof PREFERENCE_LEDGER_VERSION;
@@ -56,6 +112,12 @@ export interface PreferenceObservationV1 {
   reason?: PreferenceReason;
   /** Passive correction pair (edited result preferred over the prior state). */
   source?: "edit";
+  /** Focus explicitly selected for a whole-song comparison. */
+  songReason?: SongPreferenceFocus;
+  /** Explicit opt-in comparison of global-selector and personal-selector picks. */
+  study?: "producer-dna-blind-pilot";
+  /** Original display assignment, retained to audit randomization and side bias. */
+  pilotAssignment?: BlindPilotAssignment;
   createdAt: number;
 }
 
@@ -68,6 +130,16 @@ export interface PreferenceLedgerPackV1 {
 }
 
 const CHOICES = new Set<PreferenceChoice>(["a", "b", "neither", "both"]);
+const AUDIO_REASONS = new Set<PreferenceReason>([
+  "brightness",
+  "lowEnd",
+  "dynamics",
+  "level",
+  "timbre",
+  "voicing",
+  "stereo",
+  "mix",
+]);
 const REASONS = new Set<PreferenceReason>([
   "groove",
   "drums",
@@ -77,6 +149,7 @@ const REASONS = new Set<PreferenceReason>([
   "space",
   "energy",
   "novelty",
+  ...AUDIO_REASONS,
 ]);
 const TASKS = new Set<PreferenceTask>(["pattern", "section", "song"]);
 const HASH_RE = /^[a-zA-Z0-9._:-]{1,128}$/;
@@ -107,6 +180,39 @@ function isFeatureVector(value: unknown, width: number): value is number[] {
   );
 }
 
+export function isAudioPreferenceVector(value: unknown): value is AudioPreferenceVector {
+  if (!isRecord(value)) return false;
+  if (
+    value.version === "audio.v1" &&
+    Array.isArray(value.values) &&
+    value.values.length === AUDIO_PREFERENCE_FEATURE_COUNT &&
+    value.values.every(
+      (feature) => typeof feature === "number" && Number.isFinite(feature) && feature >= 0 && feature <= 1,
+    )
+  ) {
+    return true;
+  }
+  return (
+    value.version === "audio.v2" &&
+    Array.isArray(value.values) &&
+    value.values.length === AUDIO_PREFERENCE_V2_FEATURE_COUNT &&
+    value.values.every(
+      (feature) => typeof feature === "number" && Number.isFinite(feature) && feature >= 0 && feature <= 1,
+    ) &&
+    Array.isArray(value.available) &&
+    value.available.length === AUDIO_PREFERENCE_V2_FEATURE_COUNT &&
+    value.available.every((available) => typeof available === "boolean") &&
+    value.available.slice(0, 9).every((available) => available) &&
+    value.available[9] === value.available[10]
+  );
+}
+
+export function cloneAudioPreferenceVector(value: AudioPreferenceVector): AudioPreferenceVector {
+  return value.version === "audio.v1"
+    ? { version: "audio.v1", values: [...value.values] }
+    : { version: "audio.v2", values: [...value.values], available: [...value.available] };
+}
+
 function isCandidateSnapshot(value: unknown): value is PreferenceCandidateSnapshot {
   if (!isRecord(value)) return false;
   // W4 dual-read: accept either contract, validated against ITS OWN width, so
@@ -117,6 +223,7 @@ function isCandidateSnapshot(value: unknown): value is PreferenceCandidateSnapsh
     HASH_RE.test(value.contentHash) &&
     isPreferenceFeatureVersion(version) &&
     isFeatureVector(value.features, expectedFeatureCount(version)) &&
+    (value.audioFeatures === undefined || isAudioPreferenceVector(value.audioFeatures)) &&
     ((value.globalScore === undefined && value.globalScoreVersion === undefined) ||
       (typeof value.globalScore === "number" &&
         Number.isFinite(value.globalScore) &&
@@ -124,7 +231,13 @@ function isCandidateSnapshot(value: unknown): value is PreferenceCandidateSnapsh
         value.globalScore <= 1 &&
         typeof value.globalScoreVersion === "string" &&
         value.globalScoreVersion.length > 0 &&
-        value.globalScoreVersion.length <= 128))
+        value.globalScoreVersion.length <= 128)) &&
+    (value.personalScore === undefined ||
+      (typeof value.personalScore === "number" &&
+        Number.isFinite(value.personalScore) &&
+        value.personalScore >= 0 &&
+        value.personalScore <= 1)) &&
+    (value.songDramaturgyFeatures === undefined || isSongDramaturgyFeatureVector(value.songDramaturgyFeatures))
   );
 }
 
@@ -160,10 +273,65 @@ export function isValidPreferenceObservation(value: unknown): value is Preferenc
     (value.reason === undefined ||
       (typeof value.reason === "string" && REASONS.has(value.reason as PreferenceReason))) &&
     (value.source === undefined || value.source === "edit") &&
+    (value.songReason === undefined ||
+      (value.context.task === "song" &&
+        (value.songReason === "overall" ||
+          value.songReason === "development" ||
+          value.songReason === "transitions" ||
+          value.songReason === "contrast" ||
+          value.songReason === "harmony" ||
+          value.songReason === "sound" ||
+          value.songReason === "mix"))) &&
+    (value.context.task === "song" ||
+      (value.candidateA.songDramaturgyFeatures === undefined &&
+        value.candidateB.songDramaturgyFeatures === undefined)) &&
+    (value.study === undefined || value.study === "producer-dna-blind-pilot") &&
+    (value.pilotAssignment === undefined ||
+      (value.study === "producer-dna-blind-pilot" &&
+        isRecord(value.pilotAssignment) &&
+        (value.pilotAssignment.globalSide === "a" || value.pilotAssignment.globalSide === "b") &&
+        typeof value.pilotAssignment.displayedChoice === "string" &&
+        CHOICES.has(value.pilotAssignment.displayedChoice as PreferenceChoice))) &&
     typeof value.createdAt === "number" &&
     Number.isFinite(value.createdAt) &&
     value.createdAt >= 0
   );
+}
+
+/** Rebuild a validated observation using only the versioned public fields. */
+export function sanitizePreferenceObservation(value: unknown): PreferenceObservationV1 | null {
+  if (!isValidPreferenceObservation(value)) return null;
+  const snapshot = (candidate: PreferenceCandidateSnapshot): PreferenceCandidateSnapshot => ({
+    contentHash: candidate.contentHash,
+    featureVersion: candidate.featureVersion,
+    features: [...candidate.features],
+    ...(candidate.audioFeatures ? { audioFeatures: cloneAudioPreferenceVector(candidate.audioFeatures) } : {}),
+    ...(candidate.globalScore !== undefined ? { globalScore: candidate.globalScore } : {}),
+    ...(candidate.globalScoreVersion !== undefined ? { globalScoreVersion: candidate.globalScoreVersion } : {}),
+    ...(candidate.personalScore !== undefined ? { personalScore: candidate.personalScore } : {}),
+    ...(candidate.songDramaturgyFeatures
+      ? { songDramaturgyFeatures: cloneSongDramaturgyFeatureVector(candidate.songDramaturgyFeatures) }
+      : {}),
+  });
+  return {
+    version: value.version,
+    context: {
+      genre: value.context.genre,
+      productionProfile: value.context.productionProfile,
+      task: value.context.task,
+      roleScope: [...value.context.roleScope],
+      key: value.context.key,
+    },
+    candidateA: snapshot(value.candidateA),
+    candidateB: snapshot(value.candidateB),
+    choice: value.choice,
+    ...(value.reason ? { reason: value.reason } : {}),
+    ...(value.source ? { source: value.source } : {}),
+    ...(value.songReason ? { songReason: value.songReason } : {}),
+    ...(value.study ? { study: value.study } : {}),
+    ...(value.pilotAssignment ? { pilotAssignment: { ...value.pilotAssignment } } : {}),
+    createdAt: value.createdAt,
+  };
 }
 
 /** Deduplicate repeat comparisons of the same pair in the same context. */
@@ -176,7 +344,10 @@ export function dedupeAndCapPreferences(
   const retained = observations.filter((existing) => {
     if (
       existing.context.key !== observation.context.key ||
-      (existing.source ?? "comparison") !== (observation.source ?? "comparison")
+      (existing.source ?? "comparison") !== (observation.source ?? "comparison") ||
+      (existing.study ?? "ordinary") !== (observation.study ?? "ordinary") ||
+      existing.reason !== observation.reason ||
+      existing.songReason !== observation.songReason
     )
       return true;
     const existingPair = [existing.candidateA.contentHash, existing.candidateB.contentHash].sort().join("|");

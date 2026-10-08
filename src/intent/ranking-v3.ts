@@ -14,12 +14,19 @@
  * first-pass order untouched.
  */
 import type { RankedCandidate } from "./types";
-import { scoreCandidatesBySound, AUDIO_FEEDBACK_WEIGHT, type RenderCandidateFn } from "./audio-feedback";
+import {
+  scoreCandidatesBySound,
+  AUDIO_FEEDBACK_WEIGHT,
+  audioTargetFor,
+  type RenderCandidateFn,
+} from "./audio-feedback";
 import { readLearnedRerankWeight } from "./rerank-weights";
 import { recordAudioFitObservation } from "./audio-fit-ledger";
 import { hashString } from "../shared/rng";
 import type { SampleBank } from "../sample-library/factory";
 import type { ProjectDocument } from "../project-model/types";
+import { audioPreferenceVectorV2, scoreWithPersonalAudioPreferences } from "./audio-personal-ranker";
+import type { PreferenceContext, PreferenceObservationV1 } from "./preference-ledger-core";
 
 export interface SoundRerankOptions {
   /** Sample bank for rendering the finalists. */
@@ -30,16 +37,17 @@ export interface SoundRerankOptions {
   weight?: number;
   /** Injectable renderer (tests); default renders offline and downmixes. */
   render?: RenderCandidateFn;
+  /** Enabled local preferences; omitted when the user has paused learning. */
+  preferenceContext?: PreferenceContext;
+  observations?: readonly PreferenceObservationV1[];
 }
 
 export const DEFAULT_SOUND_FINALISTS = 3;
 
-/** Default renderer: offline audition render → mono PCM (44.1 kHz). */
+/** Default renderer: offline audition render; keep stereo available for DNA analysis. */
 const defaultRender: RenderCandidateFn = async (doc: ProjectDocument, bank: SampleBank, pattern) => {
   const { renderAuditionBuffer } = await import("./audition");
-  const { downmixToMono } = await import("../sample-library/audio-index");
-  const buffer = await renderAuditionBuffer(doc, bank, pattern);
-  return downmixToMono(buffer);
+  return renderAuditionBuffer(doc, bank, pattern);
 };
 
 /**
@@ -65,28 +73,80 @@ export async function rerankTopBySound(
       genre,
       async (d, pattern) => render(d, options.bank, pattern),
     );
-    const byIndex = new Map(audioScores.map((score) => [score.candidateIndex, score.audioScore]));
+    const byIndex = new Map(audioScores.map((score) => [score.candidateIndex, score]));
     // Finalists that failed to render keep their first-pass position (audio 0.5 neutral).
-    const audioFor = (entry: RankedCandidate): number | null => byIndex.get(entry.candidateIndex) ?? null;
+    const audioFor = (entry: RankedCandidate) => byIndex.get(entry.candidateIndex) ?? null;
     if (audioScores.length === 0) return [...bank];
 
-    // First-pass component on a RELATIVE scale (score / best finalist score):
+    // First-pass component on a bank-relative scale (score / best score):
     // the ranker stays dominant when its scores differ a lot, while a close
     // first-pass race lets a big audio-fit difference flip the winner.
-    const maxScore = Math.max(...finalists.map((entry) => entry.score), 1e-9);
-    const firstPassNorm = (entry: RankedCandidate): number => Math.max(0, Math.min(1, entry.score / maxScore));
+    const maxScore = Math.max(...bank.map((entry) => entry.globalScore ?? entry.score), 1e-9);
+    const normalize = (score: number): number => Math.max(0, Math.min(1, score / maxScore));
+    const globalBaseFor = (entry: RankedCandidate): number => entry.globalScore ?? entry.score;
+    const personalBaseFor = (entry: RankedCandidate): number => entry.personalScore ?? globalBaseFor(entry);
 
     // weight chain: explicit call option -> LEARNED (pf:rerank-weights, fitted
     // from ★ generations by the fit harness) -> shipped default.
     const weight = options.weight ?? readLearnedRerankWeight() ?? AUDIO_FEEDBACK_WEIGHT;
-    const combined = finalists.map((entry) => {
-      const audio = audioFor(entry);
-      const audioComponent = audio === null ? 0.5 : audio;
-      return { entry, combined: (1 - weight) * firstPassNorm(entry) + weight * audioComponent };
+    const globalAudioScore = (entry: RankedCandidate): number =>
+      (1 - weight) * normalize(globalBaseFor(entry)) + weight * (audioFor(entry)?.audioScore ?? 0.5);
+    const personalAudioBaseScores = finalists.map(
+      (entry) => (1 - weight) * normalize(personalBaseFor(entry)) + weight * (audioFor(entry)?.audioScore ?? 0.5),
+    );
+    const audioFeaturesByHash = new Map(
+      audioScores
+        .map((score) => {
+          const entry = finalists.find((candidate) => candidate.candidateIndex === score.candidateIndex);
+          return entry
+            ? ([entry.contentHash, audioPreferenceVectorV2(score.features, score.stereoFeatures)] as const)
+            : null;
+        })
+        .filter((item): item is readonly [string, ReturnType<typeof audioPreferenceVectorV2>] => item !== null),
+    );
+    const personalAudioScores =
+      options.preferenceContext && options.observations?.length
+        ? scoreWithPersonalAudioPreferences(
+            finalists,
+            personalAudioBaseScores,
+            audioFeaturesByHash,
+            options.observations,
+            options.preferenceContext,
+          )
+        : null;
+    const preAudioVersion = finalists[0]?.globalScoreVersion ?? "global-selector.v1:heuristic";
+    const targetFingerprint = hashString(JSON.stringify(audioTargetFor(genre)));
+    const globalScoreVersion = `global-selector.v3:${hashString(preAudioVersion)}:audio.v2:${targetFingerprint}:w${weight.toFixed(3)}`;
+    const globalScoresByIndex = new Map(bank.map((entry) => [entry.candidateIndex, globalAudioScore(entry)]));
+    const soundUpdatedBank = bank.map((entry) => ({
+      ...entry,
+      globalScore: globalScoresByIndex.get(entry.candidateIndex) ?? globalAudioScore(entry),
+      globalScoreVersion,
+      ...(audioFor(entry)
+        ? {
+            audioFeatures: audioPreferenceVectorV2(audioFor(entry)!.features, audioFor(entry)!.stereoFeatures),
+          }
+        : {}),
+    }));
+    const updatedFinalists = finalists.map((entry, index) => {
+      const personalScore = personalAudioScores?.[index] ?? personalAudioBaseScores[index] ?? globalAudioScore(entry);
+      return {
+        ...entry,
+        score: personalScore,
+        globalScore: globalAudioScore(entry),
+        globalScoreVersion,
+        personalScore,
+        ...(audioFor(entry)
+          ? {
+              audioFeatures: audioPreferenceVectorV2(audioFor(entry)!.features, audioFor(entry)!.stereoFeatures),
+            }
+          : {}),
+        ...(personalAudioScores ? { audioPreferenceApplied: true } : {}),
+      };
     });
-    combined.sort((a, b) => b.combined - a.combined);
-
-    const reorderedFinalists = combined.map((item) => item.entry);
+    const reorderedFinalists = [...updatedFinalists].sort(
+      (a, b) => b.score - a.score || a.candidateIndex - b.candidateIndex || a.contentHash.localeCompare(b.contentHash),
+    );
 
     // Phase: audio-fit ledger — the rendered audio scores are a training
     // signal; record the observation so `npm run rerank:fit` can learn the
@@ -101,15 +161,15 @@ export async function rerankTopBySound(
         selectedIndex: winnerPosition >= 0 ? winnerPosition : 0,
         candidates: finalists.map((entry) => ({
           candidateIndex: entry.candidateIndex,
-          firstPass: firstPassNorm(entry),
-          audio: audioFor(entry) ?? 0.5,
+          firstPass: normalize(globalBaseFor(entry)),
+          audio: audioFor(entry)?.audioScore ?? 0.5,
         })),
       });
     } catch {
       /* ledger is best-effort — selection must never depend on it */
     }
 
-    return [...reorderedFinalists, ...bank.slice(finalistCount)];
+    return [...reorderedFinalists, ...soundUpdatedBank.slice(finalistCount)];
   } catch {
     return [...bank];
   }

@@ -877,6 +877,36 @@
   border-radius: 6px;
 }
 
+.intent-section-preference {
+  flex: 1 1 100%;
+  min-width: 0;
+  margin: 2px 0 4px 28px;
+}
+
+.intent-section-preference > summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.intent-section-preference .intent-share-actions {
+  align-items: center;
+  margin-top: 5px;
+}
+
+.intent-section-preference label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+}
+
+.intent-section-preference select {
+  max-width: 150px;
+}
+
 .intent-candidate-row.winner {
   background: rgba(255, 208, 0, 0.08);
 }

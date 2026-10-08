@@ -16,6 +16,8 @@ export interface CandidateBankEntry {
   source?: CandidateSource;
   /** Score from the non-personal selector, captured before Producer DNA is applied. */
   globalScore?: number;
+  /** Score after symbolic Producer DNA, before rendered audio fit. */
+  personalScore?: number;
   /** Versioned identity of the non-personal score policy for later evaluation. */
   globalScoreVersion?: string;
   /** In-memory generation lane; persisted seed includes the policy/version for replay. */

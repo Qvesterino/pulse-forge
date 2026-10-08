@@ -9,7 +9,8 @@ import {
   type StreamTargetChunk,
 } from "mediabunny";
 import { assertIntegerPcmRange, mulberry32, quantizeInt16Sample } from "./quantize";
-import { FLAC_STREAM_CHUNK_BYTES, MAX_FLAC_OUTPUT_BYTES } from "./flac-limits";
+import { assertFlacOutputChunkRange, FLAC_STREAM_CHUNK_BYTES } from "./flac-limits";
+import { formatFlacSupportedSampleRates, isFlacSampleRateSupported } from "./flac-capabilities";
 
 export type FlacBitDepth = 16 | 24;
 
@@ -20,7 +21,6 @@ export interface FlacOptions {
 }
 
 const ENCODE_BLOCK_FRAMES = 65_536;
-const FLAC_SAMPLE_RATES = new Set([8000, 16000, 22050, 24000, 32000, 44100, 48000, 88200, 96000, 176400, 192000]);
 
 function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new DOMException("Export cancelled", "AbortError");
@@ -53,9 +53,9 @@ export async function encodeFlac(buffer: AudioBuffer, options: FlacOptions = {})
   throwIfAborted(options.signal);
   const bitDepth = options.bitDepth ?? 24;
   if (bitDepth !== 16 && bitDepth !== 24) throw new Error("FLAC delivery supports 16-bit or 24-bit integer PCM.");
-  if (!FLAC_SAMPLE_RATES.has(buffer.sampleRate)) {
+  if (!isFlacSampleRateSupported(buffer.sampleRate)) {
     throw new Error(
-      `FLAC export does not support ${buffer.sampleRate} Hz. Choose a supported project rate (44.1 or 48 kHz).`,
+      `FLAC export does not support ${buffer.sampleRate} Hz. Supported rates: ${formatFlacSupportedSampleRates()}.`,
     );
   }
   if (buffer.numberOfChannels < 1 || buffer.numberOfChannels > 8) {
@@ -68,12 +68,7 @@ export async function encodeFlac(buffer: AudioBuffer, options: FlacOptions = {})
   const target = new StreamTarget(
     new WritableStream<StreamTargetChunk>({
       write({ data, position }) {
-        const end = position + data.byteLength;
-        if (!Number.isSafeInteger(position) || position < 0 || end > MAX_FLAC_OUTPUT_BYTES) {
-          throw new Error(
-            `FLAC output exceeded KYX's ${Math.floor(MAX_FLAC_OUTPUT_BYTES / (1024 * 1024))} MiB in-memory export limit. Shorten the render or export a section.`,
-          );
-        }
+        const end = assertFlacOutputChunkRange(position, data.byteLength);
         if (position > outputByteLength) throw new Error("The FLAC encoder produced a file with a missing byte range.");
         let sourceOffset = 0;
         while (sourceOffset < data.byteLength) {

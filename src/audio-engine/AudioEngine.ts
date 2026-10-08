@@ -801,6 +801,10 @@ export class AudioEngine {
       .then(() => {
         if (this.workletRefreshQueuedFor === ctx) this.workletRefreshQueuedFor = null;
         if (this.ctx !== ctx || !this.doc) return;
+        // Master inserts can have been materialized as transparent fallbacks
+        // before the core modules landed. Force their factories to run again
+        // so the live master rack swaps to the real AudioWorklet runtimes.
+        this.masterFx.signature = "";
         for (const nodes of this.trackNodes.values()) nodes.fx.signature = "";
         for (const nodes of this.groupNodes.values()) nodes.fx.signature = "";
         for (const nodes of this.returnNodes.values()) nodes.fx.signature = "";

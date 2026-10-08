@@ -118,8 +118,10 @@ export function CandidateLaneReceipt({ plan, candidates, warnings, selection }: 
       </ul>
       {audioRerank && audioWinnerPosition >= 0 && displacedPosition >= 0 && (
         <p className="intent-lane-receipt-audio" aria-label="Audio rerank explanation">
-          Zvukový fit posunul kandidáta #{audioWinnerPosition + 1} pred #{displacedPosition + 1}. Je to technický
-          signál, nie objektívna známka kvality.
+          Zvukový fit posunul kandidáta #{audioWinnerPosition + 1} pred #{displacedPosition + 1}.
+          {audioRerank.personalized
+            ? " Lokálny audio vkus tiež upravil poradie."
+            : " Je to technický signál, nie objektívna známka kvality."}
         </p>
       )}
     </section>

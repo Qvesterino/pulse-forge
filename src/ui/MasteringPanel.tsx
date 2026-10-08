@@ -13,6 +13,7 @@ import { MasteringLoudnessTimeline } from "./MasteringLoudnessTimeline";
 import { MAX_OFFLINE_RENDER_PCM_BYTES } from "../rendering/renderer";
 import { MasteringFileSessionPanel } from "./MasteringFileSessionPanel";
 import { MasterProfileFileGuidance } from "./MasterProfileFileGuidance";
+import { MASTERING_RENDER_SAMPLE_RATE_LABELS, MASTERING_RENDER_SAMPLE_RATES } from "../mastering/sampleRates";
 
 const StableMasterMeter = memo(MasterMeter);
 const StableEffectRack = memo(EffectRack);
@@ -109,6 +110,30 @@ export function MasteringPanel() {
     overviewVerdict?.checks.filter((check) => check.status === "warn" || check.status === "fail").length ?? null;
   const findingCount =
     mixFindingCount == null || deliveryFindingCount == null ? null : mixFindingCount + deliveryFindingCount;
+  const findingsAreCurrent = Boolean(report && !reportIsStale && !isAnalyzing);
+  const findingActionLabel = isAnalyzing
+    ? "Mastering analysis is in progress"
+    : reportIsStale
+      ? "Mastering findings are stale; analyze again before reviewing them"
+      : findingCount == null
+        ? "Mastering findings are available after analysis"
+        : findingCount === 0
+          ? "No mastering findings to review"
+          : `Jump to ${findingCount} current mastering finding${findingCount === 1 ? "" : "s"}`;
+  const findingDetail = isAnalyzing
+    ? "Wait for the current analysis to finish"
+    : reportIsStale
+      ? "Earlier analysis · analyze again before review"
+      : findingCount == null
+        ? "Run an offline analysis"
+        : `${mixFindingCount} Mix Doctor · ${deliveryFindingCount} delivery flag${deliveryFindingCount === 1 ? "" : "s"}`;
+  const focusReviewFindings = useCallback(() => {
+    const target = document.getElementById("mastering-review-findings");
+    if (!target) return;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    target.focus({ preventScroll: true });
+  }, []);
   const masterTrack = useMemo<GroupTrack>(
     () => ({
       id: MASTER_EFFECT_OWNER_ID,
@@ -187,8 +212,11 @@ export function MasteringPanel() {
               value={workspaceState?.sampleRate ?? 44100}
               onChange={(event) => workspaceState?.setSampleRate(Number(event.target.value))}
             >
-              <option value={44100}>44.1 kHz</option>
-              <option value={48000}>48 kHz</option>
+              {MASTERING_RENDER_SAMPLE_RATES.map((rate) => (
+                <option key={rate} value={rate}>
+                  {MASTERING_RENDER_SAMPLE_RATE_LABELS[rate]}
+                </option>
+              ))}
             </select>
           </label>
           <label className="mastering-overview-select">
@@ -218,6 +246,11 @@ export function MasteringPanel() {
                 ? `${(workspaceState.renderPcmBytes / (1024 * 1024)).toFixed(1)} MiB`
                 : "Estimate unavailable"}{" "}
               / {renderPcmLimitMiB.toFixed(0)} MiB · stereo
+            </span>
+          )}
+          {workspaceState?.sampleRate === 96_000 && (
+            <span className="mastering-overview-rate-note" role="note">
+              96 kHz uses more render memory and cannot restore detail missing from the source.
             </span>
           )}
           <span>
@@ -277,15 +310,17 @@ export function MasteringPanel() {
                 : "Stereo compatibility needs a stereo programme"}
             </small>
           </div>
-          <div className="mastering-overview-metric">
+          <button
+            type="button"
+            className="mastering-overview-metric mastering-overview-findings-action"
+            disabled={!findingsAreCurrent || findingCount == null || findingCount === 0}
+            aria-label={findingActionLabel}
+            onClick={focusReviewFindings}
+          >
             <span>FINDINGS TO REVIEW</span>
-            <strong>{findingCount == null ? "—" : findingCount}</strong>
-            <small>
-              {findingCount == null
-                ? "Run an offline analysis"
-                : `${mixFindingCount} Mix Doctor · ${deliveryFindingCount} delivery flag${deliveryFindingCount === 1 ? "" : "s"}`}
-            </small>
-          </div>
+            <strong>{findingCount == null || reportIsStale ? "—" : findingCount}</strong>
+            <small>{findingDetail}</small>
+          </button>
           <div className="mastering-overview-metric">
             <span>LOUDNESS RANGE</span>
             <strong>{loudnessRangeLu == null ? "NOT MEASURED" : `${loudnessRangeLu.toFixed(1)} LU`}</strong>

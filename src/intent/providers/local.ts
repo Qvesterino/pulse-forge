@@ -78,7 +78,10 @@ export class LocalDeterministicProvider implements GenerationProvider {
     const candidateSeeds = plan.candidateSeeds.length > 0 ? plan.candidateSeeds : [plan.options.seed];
     const personalBias =
       searchLanes && isPreferenceLearningEnabled()
-        ? inferPersonalSearchBias(readPreferenceLedger(), preferenceContextForIntent(plan.intent))
+        ? inferPersonalSearchBias(
+            readPreferenceLedger(),
+            preferenceContextForIntent(plan.intent, context.preferenceTask ?? "pattern"),
+          )
         : null;
     let safeSyncopation: number | null = null;
 
@@ -291,7 +294,7 @@ export class LocalDeterministicProvider implements GenerationProvider {
     const mode = rankerMode();
     let ranked;
     try {
-      ranked = await rankCandidatesWithModel(context.project, candidates, plan);
+      ranked = await rankCandidatesWithModel(context.project, candidates, plan, context.preferenceTask ?? "pattern");
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       ranked = {

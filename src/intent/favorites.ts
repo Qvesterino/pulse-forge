@@ -17,7 +17,13 @@
  * without a storage import; this module re-exports it for compatibility.
  */
 
-import { dedupeAndCapLedger, isValidLedgerEntry, type FavoriteLedgerEntry, type FavoritesPack } from "./favorites-core";
+import {
+  dedupeAndCapLedger,
+  isValidLedgerEntry,
+  LEDGER_CAP,
+  type FavoriteLedgerEntry,
+  type FavoritesPack,
+} from "./favorites-core";
 
 export const FAVORITES_LEDGER_KEY = "pf:intent-favorites";
 
@@ -50,11 +56,13 @@ function safeRead(): FavoriteLedgerEntry[] {
   }
 }
 
-function safeWrite(entries: FavoriteLedgerEntry[]): void {
+function safeWrite(entries: FavoriteLedgerEntry[]): boolean {
   try {
     localStorage.setItem(FAVORITES_LEDGER_KEY, JSON.stringify(entries));
+    return true;
   } catch {
     /* quota/blocked — the ledger is best-effort */
+    return false;
   }
 }
 
@@ -67,11 +75,33 @@ export function readFavoriteLedger(): FavoriteLedgerEntry[] {
   return safeRead();
 }
 
-export function clearFavoriteLedger(): void {
+/** Merge explicitly imported local favorites, keeping the existing bounded FIFO policy. */
+export function mergeFavoriteLedgerEntries(entries: readonly FavoriteLedgerEntry[]): boolean {
+  const contentKey = (entry: FavoriteLedgerEntry) =>
+    JSON.stringify([
+      entry.savedAt,
+      entry.genre,
+      entry.grooveId,
+      entry.energy,
+      entry.density,
+      entry.complexity,
+      entry.variation,
+      entry.padIds.map((id) => entry.rows[id] ?? []),
+      entry.melodic?.map((part) => [part.role, part.notes]),
+    ]);
+  const byContent = new Map(safeRead().map((entry) => [contentKey(entry), entry]));
+  for (const entry of entries) byContent.set(contentKey(entry), entry);
+  const merged = [...byContent.values()].sort((a, b) => a.savedAt - b.savedAt);
+  return safeWrite(merged.slice(-LEDGER_CAP));
+}
+
+export function clearFavoriteLedger(): boolean {
   try {
-    localStorage.removeItem(FAVORITES_LEDGER_KEY);
+    if (typeof localStorage !== "undefined") localStorage.removeItem(FAVORITES_LEDGER_KEY);
+    return true;
   } catch {
     /* no-op */
+    return false;
   }
 }
 

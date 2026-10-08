@@ -1,4 +1,9 @@
-import { extractAudioFeatures } from "../ai/audio-features";
+import {
+  extractAudioFeaturesV2,
+  extractStereoAudioFeatures,
+  type AudioFeaturesV2,
+  type StereoAudioFeatures,
+} from "../ai/audio-features";
 
 export interface SongAudioFinding {
   code: "non-finite-samples" | "near-full-scale" | "near-silence" | "clipping";
@@ -16,6 +21,10 @@ export interface SongAudioReview {
   crestFactor: number;
   lowBandRatio: number;
   zeroCrossingRate: number;
+  /** Bounded v2 timbre/voicing summary from the exact audition render. */
+  audioFeatures: AudioFeaturesV2;
+  /** Missing for mono output; the ledger records stereo dimensions as unavailable. */
+  stereoFeatures?: StereoAudioFeatures;
   nonFiniteSamples: number;
   findings: SongAudioFinding[];
 }
@@ -65,11 +74,22 @@ export function reviewSongAudio(buffer: AudioBuffer): SongAudioReview {
     mono[frame] = mixedChannels > 0 ? mixed / mixedChannels : 0;
   }
 
-  const features = extractAudioFeatures(mono, sampleRate || 44100);
+  const left = channels[0];
+  const right = channels[1];
+  const stereoFeatures = left && right ? extractStereoAudioFeatures(left, right) : undefined;
   const rms = finiteSamples > 0 ? Math.sqrt(sumSquares / finiteSamples) : 0;
   const crestFactor = rms > 1e-10 ? peak / rms : 0;
   const peakDbfs = toDbfs(peak);
   const rmsDbfs = toDbfs(rms);
+  const monoFeatures = extractAudioFeaturesV2(mono, sampleRate || 44_100);
+  // Preserve the exact audio.v1 prefix used by existing song/section captures;
+  // only the four new mono dimensions come from the advanced extractor.
+  const audioFeatures: AudioFeaturesV2 = {
+    ...monoFeatures,
+    rms: 10 ** (rmsDbfs / 20),
+    peak: 10 ** (peakDbfs / 20),
+    crestFactor: Math.round(crestFactor * 100) / 100,
+  };
   const findings: SongAudioFinding[] = [];
 
   if (nonFiniteSamples > 0) {
@@ -115,8 +135,10 @@ export function reviewSongAudio(buffer: AudioBuffer): SongAudioReview {
     peakDbfs,
     rmsDbfs,
     crestFactor: Math.round(crestFactor * 100) / 100,
-    lowBandRatio: features.lowBandRatio,
-    zeroCrossingRate: features.zeroCrossingRate,
+    lowBandRatio: audioFeatures.lowBandRatio,
+    zeroCrossingRate: audioFeatures.zeroCrossingRate,
+    audioFeatures,
+    ...(stereoFeatures ? { stereoFeatures } : {}),
     nonFiniteSamples,
     findings,
   };

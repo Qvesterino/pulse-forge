@@ -134,14 +134,14 @@ function writeBextBody(view: DataView, offset: number, meta: WavBextMetadata, hi
   return BEXT_BASE_BYTES + history.length;
 }
 
-/** Internal: RIFF header + container sizing shared by sync/async encoders. */
-function createWavContainer(
+/** Internal: build the small RIFF/BWF prefix used by both contiguous and Blob-backed encoders. */
+function createWavHeader(
   numChannels: number,
   sampleRate: number,
   frames: number,
   bitDepth: WavBitDepth,
   bext?: WavBextMetadata,
-): { arrayBuffer: ArrayBuffer; view: DataView; dataSize: number; dataStart: number } {
+): { header: Uint8Array; dataSize: number; padByte: number } {
   const bytesPerSample = bitDepth / 8;
   const blockAlign = numChannels * bytesPerSample;
   const dataSize = frames * blockAlign;
@@ -161,7 +161,7 @@ function createWavContainer(
   // currently unreachable (all sources are stereo), but encodeWav is public
   // API and a future mono/odd-frame call would emit a spec-violating file.
   const padByte = dataSize % 2 === 1 ? 1 : 0;
-  const arrayBuffer = new ArrayBuffer(44 + bextChunk + dataSize + padByte);
+  const arrayBuffer = new ArrayBuffer(44 + bextChunk);
   const view = new DataView(arrayBuffer);
 
   const writeString = (offset: number, text: string) => {
@@ -193,7 +193,21 @@ function createWavContainer(
   }
   writeString(cursor, "data");
   view.setUint32(cursor + 4, dataSize, true);
-  return { arrayBuffer, view, dataSize, dataStart: cursor + 8 };
+  return { header: new Uint8Array(arrayBuffer), dataSize, padByte };
+}
+
+/** Internal: allocate the complete RIFF container for contiguous WAV encoders. */
+function createWavContainer(
+  numChannels: number,
+  sampleRate: number,
+  frames: number,
+  bitDepth: WavBitDepth,
+  bext?: WavBextMetadata,
+): { arrayBuffer: ArrayBuffer; view: DataView; dataSize: number; dataStart: number } {
+  const { header, dataSize, padByte } = createWavHeader(numChannels, sampleRate, frames, bitDepth, bext);
+  const arrayBuffer = new ArrayBuffer(header.byteLength + dataSize + padByte);
+  new Uint8Array(arrayBuffer).set(header);
+  return { arrayBuffer, view: new DataView(arrayBuffer), dataSize, dataStart: header.byteLength };
 }
 
 /** Internal: one sample write, shared by sync/async encoders. */
@@ -330,6 +344,52 @@ export async function encodeWavAsync(
     await yieldForNextTask(options.signal);
   }
   return arrayBuffer;
+}
+
+/**
+ * Encode a WAV as immutable, bounded Blob chunks instead of keeping a full
+ * encoded ArrayBuffer beside the final download Blob. Mastering exports use
+ * this path for long files so one resident PCM render plus one encoded file
+ * can fit the same published working-set limit.
+ */
+export async function encodeWavBlobAsync(
+  buffer: AudioBuffer,
+  bitDepth: WavBitDepth,
+  options: EncodeWavAsyncOptions = {},
+): Promise<Blob> {
+  if (options.signal?.aborted) throw new DOMException("Export cancelled", "AbortError");
+  const numChannels = buffer.numberOfChannels;
+  const sampleRate = buffer.sampleRate;
+  const frames = buffer.length;
+  const { header, dataSize, padByte } = createWavHeader(numChannels, sampleRate, frames, bitDepth, options.bext);
+  const bytesPerFrame = numChannels * (bitDepth / 8);
+  const integerOverflowPolicy = options.integerOverflowPolicy ?? "soft-knee";
+  const channels: Float32Array[] = [];
+  for (let ch = 0; ch < numChannels; ch++) channels.push(buffer.getChannelData(ch));
+
+  const parts: BlobPart[] = [header.buffer as ArrayBuffer];
+  const ditherRand = mulberry32(0x57415631);
+  for (let start = 0; start < frames; start += ENCODE_BLOCK_FRAMES) {
+    const end = Math.min(frames, start + ENCODE_BLOCK_FRAMES);
+    const chunkBuffer = new ArrayBuffer((end - start) * bytesPerFrame);
+    const chunkView = new DataView(chunkBuffer);
+    let offset = 0;
+    for (let frame = start; frame < end; frame++) {
+      for (let channel = 0; channel < numChannels; channel++) {
+        offset = writeSample(chunkView, offset, channels[channel][frame], bitDepth, ditherRand, integerOverflowPolicy);
+      }
+    }
+    parts.push(new Blob([chunkBuffer], { type: "application/octet-stream" }));
+    options.onProgress?.(end / frames);
+    if (options.signal?.aborted) throw new DOMException("Export cancelled", "AbortError");
+    await yieldForNextTask(options.signal);
+  }
+  if (padByte) parts.push(new ArrayBuffer(1));
+  const blob = new Blob(parts, { type: "audio/wav" });
+  if (blob.size !== header.byteLength + dataSize + padByte) {
+    throw new Error("The chunked WAV encoder produced an unexpected file length.");
+  }
+  return blob;
 }
 
 export function downloadWav(arrayBuffer: ArrayBuffer, filename: string): void {

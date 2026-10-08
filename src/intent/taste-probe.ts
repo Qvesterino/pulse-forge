@@ -1,7 +1,7 @@
 import { FEATURE_COUNT } from "../ai/features/pattern-features";
 import { FEATURE_V2_COUNT, isSupportedFeatureVector } from "../ai/features/pattern-features-v2";
-import { preferenceFeatureIndicesForReason } from "./personal-ranker";
-import type { PreferenceReason } from "./preference-ledger-core";
+import { createPreferencePairUncertaintyScorer, preferenceFeatureIndicesForReason } from "./personal-ranker";
+import type { PreferenceContext, PreferenceObservationV1, PreferenceReason } from "./preference-ledger-core";
 
 /**
  * W4: "bass" and "harmony" are real, measured axes since features.v2 — the
@@ -21,6 +21,7 @@ const MIN_AXIS_DELTA = 0.08;
 const MIN_AXIS_DOMINANCE = 1.5;
 const MIN_OFF_AXIS_FLOOR = 0.025;
 const MAX_GLOBAL_SCORE_GAP = 0.1;
+const PILOT_SCORE_TIE_EPSILON = 1e-9;
 
 export interface TasteProbeCandidate<T> {
   candidate: T;
@@ -42,6 +43,20 @@ export interface TasteProbePair<T> {
   globalScoreGap: number;
 }
 
+export interface BlindProducerDnaPilotCandidate<T> {
+  candidate: T;
+  candidateIndex: number;
+  contentHash: string;
+  globalScore?: number;
+  personalScore?: number;
+  globalScoreVersion?: string;
+}
+
+export interface BlindProducerDnaPilotPair<T> {
+  globalCandidate: BlindProducerDnaPilotCandidate<T>;
+  personalCandidate: BlindProducerDnaPilotCandidate<T>;
+}
+
 /** Stable key so a pair is recognized independently of its displayed A/B sides. */
 export function tasteProbePairKey(contentHashA: string, contentHashB: string): string {
   return JSON.stringify([contentHashA, contentHashB].sort());
@@ -53,6 +68,54 @@ export function orderTasteProbeSides<T>(
   swapSides: boolean,
 ): readonly [TasteProbeCandidate<T>, TasteProbeCandidate<T>] {
   return swapSides ? [pair.candidateB, pair.candidateA] : [pair.candidateA, pair.candidateB];
+}
+
+/**
+ * Compare the global and personal selector's top picks from one shared bank.
+ * Both selectors need a unique winner and matching global-policy versions;
+ * otherwise the pair cannot measure which ranking better matched the user.
+ */
+export function suggestBlindProducerDnaPilotPair<T>(
+  candidates: readonly BlindProducerDnaPilotCandidate<T>[],
+): BlindProducerDnaPilotPair<T> | null {
+  const usable = candidates.filter(
+    (candidate) =>
+      candidate.contentHash.length > 0 &&
+      typeof candidate.globalScore === "number" &&
+      Number.isFinite(candidate.globalScore) &&
+      candidate.globalScore >= 0 &&
+      candidate.globalScore <= 1 &&
+      typeof candidate.personalScore === "number" &&
+      Number.isFinite(candidate.personalScore) &&
+      candidate.personalScore >= 0 &&
+      candidate.personalScore <= 1 &&
+      typeof candidate.globalScoreVersion === "string" &&
+      candidate.globalScoreVersion.length > 0,
+  );
+  const versions = new Set(usable.map((candidate) => candidate.globalScoreVersion));
+  if (usable.length < 2 || versions.size !== 1) return null;
+
+  const byScore =
+    (score: "globalScore" | "personalScore") =>
+    (a: BlindProducerDnaPilotCandidate<T>, b: BlindProducerDnaPilotCandidate<T>) =>
+      (b[score] ?? 0) - (a[score] ?? 0) ||
+      a.candidateIndex - b.candidateIndex ||
+      a.contentHash.localeCompare(b.contentHash);
+  const globalRanking = [...usable].sort(byScore("globalScore"));
+  const personalRanking = [...usable].sort(byScore("personalScore"));
+  const globalCandidate = globalRanking[0];
+  const globalRunnerUp = globalRanking[1];
+  const personalCandidate = personalRanking[0];
+  const personalRunnerUp = personalRanking[1];
+  if (!globalCandidate || !globalRunnerUp || !personalCandidate || !personalRunnerUp) return null;
+  if (
+    globalCandidate.contentHash === personalCandidate.contentHash ||
+    (globalCandidate.globalScore ?? 0) - (globalRunnerUp.globalScore ?? 0) <= PILOT_SCORE_TIE_EPSILON ||
+    (personalCandidate.personalScore ?? 0) - (personalRunnerUp.personalScore ?? 0) <= PILOT_SCORE_TIE_EPSILON
+  ) {
+    return null;
+  }
+  return { globalCandidate, personalCandidate };
 }
 
 function isUsable(candidate: TasteProbeCandidate<unknown>): boolean {
@@ -97,6 +160,9 @@ function rmsDistance(
 export function suggestTasteProbePair<T>(
   candidates: readonly TasteProbeCandidate<T>[],
   excludedPairKeys: ReadonlySet<string> = new Set(),
+  reasonEvidenceCounts: Partial<Record<PreferenceReason, number>> = {},
+  preferenceObservations?: readonly PreferenceObservationV1[],
+  context?: PreferenceContext,
 ): TasteProbePair<T> | null {
   const usable = candidates
     .filter(isUsable)
@@ -107,6 +173,8 @@ export function suggestTasteProbePair<T>(
   // The off-axis set must cover the WIDER of the two contracts, so a v1 pair is
   // not "confounded" by the v2 axes it does not have.
   const allFeatureIndices = Array.from({ length: Math.max(FEATURE_COUNT, FEATURE_V2_COUNT) }, (_, index) => index);
+  const uncertaintyForPair =
+    preferenceObservations && context ? createPreferencePairUncertaintyScorer(preferenceObservations, context) : null;
   let best: (TasteProbePair<T> & { quality: number }) | null = null;
 
   for (let left = 0; left < usable.length; left++) {
@@ -130,7 +198,14 @@ export function suggestTasteProbePair<T>(
         if (axisDelta === null || offAxisDelta === null || axisDelta < MIN_AXIS_DELTA) continue;
         if (axisDelta < MIN_AXIS_DOMINANCE * Math.max(offAxisDelta, MIN_OFF_AXIS_FLOOR)) continue;
 
-        const quality = axisDelta - offAxisDelta - globalScoreGap * 0.25;
+        const measurableQuality = axisDelta - offAxisDelta - globalScoreGap * 0.25;
+        // Prefer an otherwise equally clean axis that has not been explicitly
+        // explored yet; this is an information-gain proxy, not a taste score.
+        const evidenceCount = Math.max(0, reasonEvidenceCounts[reason] ?? 0);
+        const uncertainty = uncertaintyForPair
+          ? uncertaintyForPair(reason, candidateA.features, candidateB.features)
+          : 1 / Math.sqrt(1 + evidenceCount);
+        const quality = measurableQuality * uncertainty;
         const next = { candidateA, candidateB, reason, axisDelta, offAxisDelta, globalScoreGap, quality };
         if (
           !best ||

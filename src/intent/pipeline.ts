@@ -7,6 +7,7 @@ import { normalizeIntent, intentFromGenerateOptions } from "./normalize";
 import { planGeneration } from "./plan";
 import { localDeterministicProvider } from "./providers/local";
 import type { GenerationContext, GenerationResult, IntentInput, IntentSpec, RankedCandidate } from "./types";
+import { isPreferenceLearningEnabled, preferenceContextForIntent, readPreferenceLedger } from "./preference-ledger";
 
 function resultFromProposal(
   plan: ReturnType<typeof planGeneration>,
@@ -64,6 +65,8 @@ export interface GenerateAsyncOptions {
   mode?: GenerationContext["mode"];
   /** Abort support: an aborted generation throws AbortError and produces no result. */
   signal?: AbortSignal;
+  /** Preference memory bucket for section/song composition; defaults to pattern. */
+  preferenceTask?: import("./preference-ledger-core").PreferenceTask;
   /**
    * A1 candidate audition: also return the FULL ranked candidate bank on the
    * result (`result.bank`) so the UI can audition every candidate and apply
@@ -113,7 +116,11 @@ export async function generateAsyncResult(
   }
   const ranked = await localDeterministicProvider.generateRanked(
     plan,
-    { project: doc, mode: options.mode ?? "apply" },
+    {
+      project: doc,
+      mode: options.mode ?? "apply",
+      ...(options.preferenceTask ? { preferenceTask: options.preferenceTask } : {}),
+    },
     options.signal,
   );
   const bank: RankedCandidate[] = ranked.ranked.map((entry, index) => ({
@@ -125,6 +132,7 @@ export async function generateAsyncResult(
     score: entry.score,
     modelScore: ranked.modelScores[index] ?? null,
     globalScore: entry.globalScore ?? entry.score,
+    ...(entry.personalScore !== undefined ? { personalScore: entry.personalScore } : {}),
     ...(entry.globalScoreVersion ? { globalScoreVersion: entry.globalScoreVersion } : {}),
     contentHash: entry.contentHash,
     pattern: entry.pattern,
@@ -141,6 +149,12 @@ export async function generateAsyncResult(
       ...(options.sound.finalists !== undefined ? { finalists: options.sound.finalists } : {}),
       ...(options.sound.weight !== undefined ? { weight: options.sound.weight } : {}),
       ...(options.sound.render ? { render: options.sound.render } : {}),
+      ...(isPreferenceLearningEnabled()
+        ? {
+            preferenceContext: preferenceContextForIntent(plan.intent, options.preferenceTask ?? "pattern"),
+            observations: readPreferenceLedger(),
+          }
+        : {}),
     });
   }
   const base = resultFromProposal(plan, ranked.proposal);
@@ -195,6 +209,7 @@ export async function generateAsyncResult(
               audioRerank: {
                 displacedCandidateIndex: firstPassSelectedIndex,
                 selectedCandidateIndex: selected.candidateIndex,
+                ...(selected.audioPreferenceApplied ? { personalized: true } : {}),
               },
             }
           : {}),

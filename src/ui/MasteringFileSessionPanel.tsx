@@ -41,14 +41,36 @@ import { decodeAudioData } from "../services/audio-decode";
 import { decodeFlacAudioBuffer, estimateFlacDecoderWorkingSetBytes } from "../mastering/flacDecode";
 import { uid } from "../shared/ids";
 import type { EffectInstance } from "../project-model/types";
-import { createBextMetadata, encodeWavAsync, sanitizeFilename } from "../rendering/wav";
+import { createBextMetadata, encodeWavBlobAsync, sanitizeFilename } from "../rendering/wav";
 import type { WavBitDepth } from "../rendering/wav";
 import { downloadBlob } from "../export/download";
+import { isMp3SampleRateSupported } from "../export/mp3-capabilities";
+import {
+  assertMp3ExportWorkingSetBudget,
+  estimateMp3ExportAdditionalWorkingSetBytes,
+  MAX_MP3_EXPORT_WORKING_SET_BYTES,
+} from "../export/mp3-limits";
 import { loadFlacEncoder } from "../export/flac-loader";
-import { assertFlacExportWorkingSetBudget, estimateFlacOutputWorkingSetBytes } from "../export/flac-limits";
+import {
+  assertFlacExportWorkingSetBudget,
+  estimateFlacOutputWorkingSetBytes,
+  MAX_FLAC_EXPORT_WORKING_SET_BYTES,
+} from "../export/flac-limits";
+import {
+  assertWavExportWorkingSetBudget,
+  canDecodeWavAsAudioBuffer,
+  estimateWavExportAdditionalWorkingSetBytes,
+  estimateWavEncodedFileBytes,
+  MAX_WAV_EXPORT_WORKING_SET_BYTES,
+} from "../export/wav-limits";
 import { useServices } from "./context";
 import { MasteringLoudnessTimeline } from "./MasteringLoudnessTimeline";
 import { MasteringFingerprint } from "./MasteringFingerprint";
+import {
+  MASTERING_RENDER_SAMPLE_RATE_LABELS,
+  MASTERING_RENDER_SAMPLE_RATES,
+  type MasteringRenderSampleRate,
+} from "../mastering/sampleRates";
 import { MasterProcessingControls } from "./MasterProcessingControls";
 import { MasteringSessionInsertRack } from "./MasteringSessionInsertRack";
 import { MasterProfileFileGuidance } from "./MasterProfileFileGuidance";
@@ -65,7 +87,7 @@ interface RenderedSession {
   loudnessTimeline: LoudnessTimeline | null;
   configRevision: number;
   renderedAt: string;
-  sampleRate: 44_100 | 48_000;
+  sampleRate: MasteringRenderSampleRate;
 }
 
 interface SourceSessionAnalysis extends ExternalMasteringInputBaseline {
@@ -80,7 +102,7 @@ interface SessionComparedVersion {
 interface SessionComparison {
   snapshotAId: string;
   snapshotBId: string;
-  sampleRate: 44_100 | 48_000;
+  sampleRate: MasteringRenderSampleRate;
   a: SessionComparedVersion;
   b: SessionComparedVersion;
 }
@@ -352,7 +374,7 @@ export function MasteringFileSessionPanel() {
   });
   const [inspection, setInspection] = useState<EncodedMasterInspection | null>(null);
   const [recentDeliveryReports, setRecentDeliveryReports] = useState<RecentDeliveryReport[]>([]);
-  const [sampleRate, setSampleRate] = useState<44_100 | 48_000>(44_100);
+  const [sampleRate, setSampleRate] = useState<MasteringRenderSampleRate>(44_100);
   const [bitDepth, setBitDepth] = useState<WavBitDepth>(24);
   const [deliveryFormat, setDeliveryFormat] = useState<SessionDeliveryFormat>("wav");
   const [mp3Bitrate, setMp3Bitrate] = useState<192 | 320>(320);
@@ -418,6 +440,7 @@ export function MasteringFileSessionPanel() {
     rendered.measurements.peak > 1 &&
     (deliveryFormat === "mp3" || deliveryFormat === "flac" || (deliveryFormat === "wav" && bitDepth !== 32)),
   );
+  const mp3RateUnsupported = deliveryFormat === "mp3" && !isMp3SampleRateSupported(sampleRate);
   const currentSourceAnalysis =
     session && sourceAnalysis?.sessionId === session.id && sourceAnalysis.sourceHash === session.sourceHash
       ? sourceAnalysis
@@ -426,6 +449,55 @@ export function MasteringFileSessionPanel() {
     source && draft
       ? estimateMasteringSessionWorkingSetBytes(source, draft, sampleRate) + bufferBytes(reference?.buffer ?? null)
       : 0;
+  const renderedPcmBytes = rendered
+    ? rendered.buffer.length * rendered.buffer.numberOfChannels * Float32Array.BYTES_PER_ELEMENT
+    : 0;
+  const wavDeliveryFileBytes = estimateWavEncodedFileBytes(renderedPcmBytes, bitDepth);
+  const wavDeliveryAdditionalCopies = canDecodeWavAsAudioBuffer(wavDeliveryFileBytes, renderedPcmBytes) ? 1 : 0;
+  const wavDeliveryAdditionalBytes =
+    deliveryFormat === "wav" && rendered
+      ? estimateWavExportAdditionalWorkingSetBytes(renderedPcmBytes, bitDepth, wavDeliveryAdditionalCopies)
+      : 0;
+  const wavDeliveryTotalBytes = estimatedBytes + wavDeliveryAdditionalBytes;
+  const wavDeliveryWithinBudget =
+    deliveryFormat !== "wav" ||
+    (Number.isSafeInteger(wavDeliveryTotalBytes) && wavDeliveryTotalBytes <= MAX_WAV_EXPORT_WORKING_SET_BYTES);
+  const mp3DeliveryAdditionalBytes =
+    deliveryFormat === "mp3" && rendered
+      ? estimateMp3ExportAdditionalWorkingSetBytes(
+          renderedPcmBytes,
+          sampleRate,
+          mp3Bitrate,
+          rendered.buffer.numberOfChannels,
+        )
+      : 0;
+  const mp3DeliveryTotalBytes = estimatedBytes + mp3DeliveryAdditionalBytes;
+  const mp3DeliveryWithinBudget =
+    deliveryFormat !== "mp3" ||
+    Boolean(
+      rendered &&
+      Number.isSafeInteger(mp3DeliveryTotalBytes) &&
+      mp3DeliveryTotalBytes <= MAX_MP3_EXPORT_WORKING_SET_BYTES,
+    );
+  const flacBitDepth = bitDepth === 16 ? 16 : 24;
+  const flacDeliveryAdditionalBytes =
+    deliveryFormat === "flac" && rendered ? estimateFlacOutputWorkingSetBytes(rendered.buffer, flacBitDepth) : 0;
+  const flacDeliveryTotalBytes = estimatedBytes + flacDeliveryAdditionalBytes;
+  const flacDeliveryWithinBudget =
+    deliveryFormat !== "flac" ||
+    Boolean(
+      rendered &&
+      Number.isSafeInteger(flacDeliveryTotalBytes) &&
+      flacDeliveryTotalBytes <= MAX_FLAC_EXPORT_WORKING_SET_BYTES,
+    );
+  const deliveryMemoryEstimateBytes =
+    deliveryFormat === "wav"
+      ? wavDeliveryTotalBytes
+      : deliveryFormat === "flac"
+        ? flacDeliveryTotalBytes
+        : deliveryFormat === "mp3"
+          ? mp3DeliveryTotalBytes
+          : estimatedBytes;
   const snapshotA = session?.snapshots.A ?? null;
   const snapshotB = session?.snapshots.B ?? null;
   const comparisonEstimateBytes =
@@ -1229,6 +1301,12 @@ export function MasteringFileSessionPanel() {
 
   const exportDelivery = useCallback(async () => {
     if (!session || !draft || !rendered || !renderCurrent) return;
+    if (mp3RateUnsupported) {
+      setError(
+        "MP3 delivery in this workspace supports 44.1 or 48 kHz renders. Choose WAV/FLAC for 96 kHz, or lower the render rate.",
+      );
+      return;
+    }
     const controller = new AbortController();
     operation.current?.abort();
     operation.current = controller;
@@ -1247,6 +1325,27 @@ export function MasteringFileSessionPanel() {
         assertFlacExportWorkingSetBudget(
           estimatedBytes,
           estimateFlacOutputWorkingSetBytes(rendered.buffer, flacBitDepth),
+        );
+      } else if (deliveryFormat === "wav") {
+        assertWavExportWorkingSetBudget(
+          estimatedBytes,
+          estimateWavExportAdditionalWorkingSetBytes(
+            renderedPcmBytes,
+            bitDepth,
+            canDecodeWavAsAudioBuffer(estimateWavEncodedFileBytes(renderedPcmBytes, bitDepth), renderedPcmBytes)
+              ? 1
+              : 0,
+          ),
+        );
+      } else if (deliveryFormat === "mp3") {
+        assertMp3ExportWorkingSetBudget(
+          estimatedBytes,
+          estimateMp3ExportAdditionalWorkingSetBytes(
+            renderedPcmBytes,
+            sampleRate,
+            mp3Bitrate,
+            rendered.buffer.numberOfChannels,
+          ),
         );
       }
       const versionSaveError = await persistDeliveryVersion();
@@ -1295,7 +1394,7 @@ export function MasteringFileSessionPanel() {
         });
         fileName = masteredFlacFileName(session, rendered.sampleRate, flacBitDepth, deliveryVersion);
       } else {
-        const wav = await encodeWavAsync(rendered.buffer, bitDepth, {
+        deliveryBlob = await encodeWavBlobAsync(rendered.buffer, bitDepth, {
           integerOverflowPolicy: "reject",
           signal: controller.signal,
           onProgress: (value) => setProgress(`Encoding WAV · ${Math.round(value * 100)}%`),
@@ -1311,14 +1410,10 @@ export function MasteringFileSessionPanel() {
             codingHistory: `A=PCM,F=${rendered.sampleRate},W=${bitDepth},M=stereo,T=KYX external mastering`,
           }),
         });
-        // Web Audio decodeAudioData may detach the ArrayBuffer passed to encoded
-        // inspection. Retain the delivery Blob before inspection so export bytes
-        // remain intact after the browser measures the encoded master.
-        deliveryBlob = new Blob([wav], { type: "audio/wav" });
         setBusy("Checking encoded WAV delivery…");
         checked = await inspectEncodedMaster({
           format: "wav",
-          bytes: wav,
+          bytes: deliveryBlob,
           fingerprintBlob: deliveryBlob,
           expectedDurationSeconds: rendered.buffer.duration,
           sourceMeasurements: rendered.measurements,
@@ -1402,9 +1497,12 @@ export function MasteringFileSessionPanel() {
     deliveryVersion,
     draft,
     currentSourceAnalysis,
+    estimatedBytes,
+    mp3RateUnsupported,
     mp3Bitrate,
     persistDeliveryVersion,
     renderCurrent,
+    renderedPcmBytes,
     rendered,
     session,
     stopSessionPreview,
@@ -1445,10 +1543,11 @@ export function MasteringFileSessionPanel() {
       <header className="mastering-file-session-heading">
         <div>
           <span className="mastering-panel-kicker">EXTERNAL FILE MASTERING</span>
-          <h3>Master a stereo mixdown</h3>
+          <h3>Master a mixdown</h3>
           <p>
-            Open a WAV, MP3 or FLAC, process it with KYX’s offline master chain, then inspect and export a checked WAV,
-            FLAC or MP3. This local session is separate from the KYX project above; its edits never change the project.
+            Open a mono or stereo WAV, MP3 or FLAC, process it with KYX’s offline master chain, then inspect and export
+            a checked WAV, FLAC or MP3. This local session is separate from the KYX project above; its edits never
+            change the project.
           </p>
         </div>
         <label
@@ -1462,7 +1561,10 @@ export function MasteringFileSessionPanel() {
             event.dataTransfer.dropEffect = busy ? "none" : "copy";
           }}
           onDragLeave={(event: DragEvent<HTMLLabelElement>) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setSourceDragActive(false);
+            const relatedTarget = event.relatedTarget;
+            if (!(relatedTarget instanceof Node) || !event.currentTarget.contains(relatedTarget)) {
+              setSourceDragActive(false);
+            }
           }}
           onDrop={(event: DragEvent<HTMLLabelElement>) => {
             event.preventDefault();
@@ -1846,7 +1948,10 @@ export function MasteringFileSessionPanel() {
                   event.dataTransfer.dropEffect = busy ? "none" : "copy";
                 }}
                 onDragLeave={(event: DragEvent<HTMLLabelElement>) => {
-                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setReferenceDragActive(false);
+                  const relatedTarget = event.relatedTarget;
+                  if (!(relatedTarget instanceof Node) || !event.currentTarget.contains(relatedTarget)) {
+                    setReferenceDragActive(false);
+                  }
                 }}
                 onDrop={(event: DragEvent<HTMLLabelElement>) => {
                   event.preventDefault();
@@ -1954,14 +2059,22 @@ export function MasteringFileSessionPanel() {
                 onChange={(event) => {
                   stopSessionPreview();
                   setComparison(null);
-                  setSampleRate(Number(event.target.value) as 44_100 | 48_000);
+                  setSampleRate(Number(event.target.value) as MasteringRenderSampleRate);
                   setRendered(null);
                   setInspection(null);
                 }}
               >
-                <option value={44_100}>44.1 kHz</option>
-                <option value={48_000}>48 kHz</option>
+                {MASTERING_RENDER_SAMPLE_RATES.map((rate) => (
+                  <option key={rate} value={rate}>
+                    {MASTERING_RENDER_SAMPLE_RATE_LABELS[rate]}
+                  </option>
+                ))}
               </select>
+              {sampleRate === 96_000 && (
+                <small className="export-version-hint" role="note">
+                  96 kHz uses more render memory and cannot restore detail missing from the source.
+                </small>
+              )}
             </label>
             <label>
               <strong>DELIVERY FORMAT</strong>
@@ -1986,6 +2099,12 @@ export function MasteringFileSessionPanel() {
                     ? "FLAC compresses without loss; choose 16- or 24-bit PCM below."
                     : "MP3 is a lossy listening copy; choose 192 or 320 kbps below."}
               </small>
+              {mp3RateUnsupported && (
+                <small className="mastering-file-session-overrange-warning" role="alert">
+                  This workspace offers MP3 at 44.1/48 kHz. Choose WAV/FLAC for this 96 kHz render, or lower the rate
+                  and render again.
+                </small>
+              )}
               {sourceIsLossyMp3 && (
                 <small className="mastering-file-session-lossy-source-warning" role="status" aria-live="polite">
                   {deliveryFormat === "wav"
@@ -2065,7 +2184,9 @@ export function MasteringFileSessionPanel() {
               </small>
             </label>
             <span className="mastering-file-session-budget">
-              RENDER MEMORY {estimatedBytes > 0 ? formatBytes(estimatedBytes) : "—"} / 512 MiB
+              {rendered && renderCurrent
+                ? `DELIVERY MEMORY ${Number.isFinite(deliveryMemoryEstimateBytes) && deliveryMemoryEstimateBytes > 0 ? formatBytes(deliveryMemoryEstimateBytes) : "—"} / 512 MiB`
+                : `RENDER MEMORY ${Number.isFinite(estimatedBytes) && estimatedBytes > 0 ? formatBytes(estimatedBytes) : "—"} / 512 MiB`}
             </span>
             <div className="mastering-file-session-history" role="group" aria-label="External session settings history">
               <button
@@ -2104,11 +2225,27 @@ export function MasteringFileSessionPanel() {
             <button
               type="button"
               className="btn btn-export"
-              disabled={Boolean(busy) || !renderCurrent || integerDeliveryOverRange}
+              disabled={
+                Boolean(busy) ||
+                !renderCurrent ||
+                !wavDeliveryWithinBudget ||
+                !flacDeliveryWithinBudget ||
+                !mp3DeliveryWithinBudget ||
+                integerDeliveryOverRange ||
+                mp3RateUnsupported
+              }
               title={
                 integerDeliveryOverRange
                   ? "Integer master delivery exceeds 0 dBFS sample peak. Lower the master level or choose 32-bit-float WAV."
-                  : undefined
+                  : mp3RateUnsupported
+                    ? "MP3 delivery in this workspace supports 44.1 or 48 kHz renders. Choose WAV/FLAC or lower the render rate."
+                    : !wavDeliveryWithinBudget
+                      ? `The estimated WAV delivery working set exceeds KYX's ${Math.floor(MAX_WAV_EXPORT_WORKING_SET_BYTES / (1024 * 1024))} MiB safety limit.`
+                      : !flacDeliveryWithinBudget
+                        ? `The estimated FLAC delivery working set exceeds KYX's ${Math.floor(MAX_FLAC_EXPORT_WORKING_SET_BYTES / (1024 * 1024))} MiB safety limit.`
+                        : !mp3DeliveryWithinBudget
+                          ? `The estimated MP3 delivery working set exceeds KYX's ${Math.floor(MAX_MP3_EXPORT_WORKING_SET_BYTES / (1024 * 1024))} MiB safety limit.`
+                          : undefined
               }
               onClick={() => void exportDelivery()}
             >
@@ -2118,6 +2255,22 @@ export function MasteringFileSessionPanel() {
           {estimatedBytes > 512 * 1024 * 1024 && (
             <p className="mastering-file-session-status" data-state="warn" role="status">
               This render exceeds the 512 MiB session limit. Try 44.1 kHz or import a shorter mixdown.
+            </p>
+          )}
+          {deliveryFormat === "wav" && rendered && renderCurrent && !wavDeliveryWithinBudget && (
+            <p className="mastering-file-session-status" data-state="warn" role="status">
+              This WAV delivery exceeds KYX&apos;s 512 MiB working-set limit. Shorten the source, lower the bit depth or
+              choose FLAC.
+            </p>
+          )}
+          {deliveryFormat === "mp3" && rendered && renderCurrent && !mp3DeliveryWithinBudget && (
+            <p className="mastering-file-session-status" data-state="warn" role="status">
+              This MP3 delivery exceeds KYX&apos;s 512 MiB working-set limit. Shorten the source or export a section.
+            </p>
+          )}
+          {deliveryFormat === "flac" && rendered && renderCurrent && !flacDeliveryWithinBudget && (
+            <p className="mastering-file-session-status" data-state="warn" role="status">
+              This FLAC delivery exceeds KYX&apos;s 512 MiB working-set limit. Shorten the source or export a section.
             </p>
           )}
         </>
@@ -2276,7 +2429,7 @@ export function MasteringFileSessionPanel() {
             <>
               <small>
                 {inspection.decode.status === "measured"
-                  ? `Decoded ${inspection.format.toUpperCase()} · ${inspection.decode.measurements?.lufsIntegrated.toFixed(1)} LUFS · ${inspection.decode.measurements?.truePeakDb.toFixed(1)} dBTP`
+                  ? `Decoded ${inspection.format.toUpperCase()} · ${inspection.decode.measurements?.lufsIntegrated.toFixed(1)} LUFS · ${inspection.decode.measurements?.truePeakDb.toFixed(1)} dBTP · ${inspection.decode.decoder}`
                   : `Encoded file metadata checked · post-decode measurement unavailable: ${inspection.decode.reason ?? "not measured"}`}
               </small>
               <MasteringFingerprint fingerprint={inspection.fingerprint} />

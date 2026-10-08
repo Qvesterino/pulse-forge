@@ -3,7 +3,13 @@ import { MasterAnalysisAccumulator, analyzeMasterPcm } from "../src/mastering/an
 import { inspectEncodedMaster, inspectMasteringReferenceContainer } from "../src/mastering/encodedInspection";
 import type { MasterProfile } from "../src/mastering/profiles";
 import { MASTER_PROFILES } from "../src/mastering/profiles";
-import { createBextMetadata, encodeWav, encodeWavAsync, type WavBextMetadata } from "../src/rendering/wav";
+import {
+  createBextMetadata,
+  encodeWav,
+  encodeWavAsync,
+  encodeWavBlobAsync,
+  type WavBextMetadata,
+} from "../src/rendering/wav";
 
 /**
  * BWF (Broadcast Wave) contract — EBU Tech 3285 `bext` chunk.
@@ -352,6 +358,17 @@ describe("WAV BWF bext chunk (EBU Tech 3285)", () => {
     expect(new Uint8Array(asyncBytes)).toEqual(new Uint8Array(sync));
   });
 
+  it.each([16, 24, 32] as const)(
+    "Blob-backed %i-bit encoding stays byte-identical to the contiguous encoder",
+    async (depth) => {
+      const bext = sampleBext({ loudness: { integratedLufs: -13.7, truePeakDbtp: -0.9 } });
+      const contiguous = await encodeWavAsync(toneBuffer(), depth, { bext, integerOverflowPolicy: "reject" });
+      const streamed = await encodeWavBlobAsync(toneBuffer(), depth, { bext, integerOverflowPolicy: "reject" });
+      expect(streamed.type).toBe("audio/wav");
+      expect(new Uint8Array(await streamed.arrayBuffer())).toEqual(new Uint8Array(contiguous));
+    },
+  );
+
   it("32-bit float path honors the shifted data offset", () => {
     const bytes = encodeWav(toneBuffer(), 32, { bext: sampleBext() });
     const view = new DataView(bytes);
@@ -447,6 +464,47 @@ describe("large encoded WAV mastering inspection", () => {
     },
     15_000,
   );
+
+  it("inspects a large Blob-backed WAV from a bounded header and PCM slices", async () => {
+    const sampleRate = 44_100;
+    const frameCount = sampleRate * 3 + 1_234;
+    const source = fakeBuffer(
+      2,
+      sampleRate,
+      frameCount,
+      (channel, frame) =>
+        (channel === 0 ? 0.31 : 0.23) * Math.sin((2 * Math.PI * (221 + channel) * frame) / sampleRate),
+    );
+    const profile = MASTER_PROFILES.find((candidate) => candidate.id === "streaming")!;
+    const originalAnalysis = analyzeMasterPcm(
+      [source.getChannelData(0), source.getChannelData(1)],
+      sampleRate,
+      profile,
+    );
+    const blob = new Blob([await encodeWavAsync(source, 24, { bext: sampleBext() })], { type: "audio/wav" });
+    Object.defineProperty(blob, "size", {
+      configurable: true,
+      value: 96 * 1024 * 1024 + 1,
+    });
+    vi.stubGlobal("Worker", MasteringAnalysisWorkerHarness as unknown as typeof Worker);
+    try {
+      const inspection = await inspectEncodedMaster({
+        format: "wav",
+        bytes: blob,
+        expectedDurationSeconds: frameCount / sampleRate,
+        sourceMeasurements: originalAnalysis.measurements,
+        profile,
+      });
+      expect(inspection.decode.status).toBe("measured");
+      if (inspection.decode.status !== "measured") throw new Error("Expected the streamed WAV Blob to be measured.");
+      expect(inspection.decode.decoder).toBe("KYX WAV PCM reader");
+      expect(inspection.decode.measurements?.rmsDb).toBeCloseTo(originalAnalysis.measurements.rmsDb, 5);
+      expect(inspection.decode.measurements?.truePeakDb).toBeCloseTo(originalAnalysis.measurements.truePeakDb, 5);
+    } finally {
+      Reflect.deleteProperty(blob, "size");
+      vi.unstubAllGlobals();
+    }
+  }, 15_000);
 });
 
 describe("large encoded MP3 mastering inspection", () => {

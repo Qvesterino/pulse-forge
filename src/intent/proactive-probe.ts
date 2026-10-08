@@ -1,4 +1,5 @@
 import { suggestTasteProbePair, tasteProbePairKey, type TasteProbeCandidate, type TasteProbePair } from "./taste-probe";
+import type { PreferenceContext, PreferenceObservationV1, PreferenceReason } from "./preference-ledger-core";
 
 /**
  * W3 — PROACTIVE TASTE PROBES.
@@ -31,6 +32,11 @@ export interface ProactiveProbeInput<T> {
   learningEnabled: boolean;
   /** Pair keys already compared in this context. */
   excludedPairKeys?: ReadonlySet<string>;
+  /** Directional evidence already collected per axis in this context. */
+  reasonEvidenceCounts?: Partial<Record<PreferenceReason, number>>;
+  /** Current ledger and ranking context used to estimate the model's uncertainty. */
+  preferenceObservations?: readonly PreferenceObservationV1[];
+  preferenceContext?: PreferenceContext;
 }
 
 export interface ProactiveProbeState<T> {
@@ -54,7 +60,13 @@ export function proactiveProbeState<T>(input: ProactiveProbeInput<T>): Proactive
     };
   }
   const excluded = input.excludedPairKeys ?? new Set<string>();
-  const proposal = suggestTasteProbePair(input.candidates, excluded);
+  const proposal = suggestTasteProbePair(
+    input.candidates,
+    excluded,
+    input.reasonEvidenceCounts,
+    input.preferenceObservations,
+    input.preferenceContext,
+  );
   if (!proposal) {
     // Either the bank cannot support a controlled question, or every viable
     // pair was already compared here. Both mean "ask nothing".
