@@ -766,6 +766,9 @@ export function MasteringFileSessionPanel() {
           durationSeconds: buffer.duration,
           channels: buffer.numberOfChannels as 1 | 2,
           sourceSampleRate: details.sampleRate,
+          ...(format !== "mp3" && details.wavEncoding !== "ieee-float" && details.bitDepth != null
+            ? { sourceBitDepth: details.bitDepth }
+            : {}),
           masterConfig: (await import("../project-model/schema")).defaultMasterConfig(),
         });
         ensureActive();
@@ -1368,7 +1371,13 @@ export function MasteringFileSessionPanel() {
           expectedDurationSeconds: rendered.buffer.duration,
           sourceMeasurements: rendered.measurements,
           profile: resolveDeliveryTarget(draft),
-          ...(source ? { sourceSampleRate: session.sourceSampleRate, decodedSourceSampleRate: source.sampleRate } : {}),
+          ...(source
+            ? {
+                sourceSampleRate: session.sourceSampleRate,
+                decodedSourceSampleRate: source.sampleRate,
+                ...(session.sourceBitDepth != null ? { sourceBitDepth: session.sourceBitDepth } : {}),
+              }
+            : {}),
           signal: controller.signal,
           onProgress: (update) => setProgress(`${update.stage} · ${Math.round(update.progress * 100)}%`),
         });
@@ -1389,7 +1398,13 @@ export function MasteringFileSessionPanel() {
           expectedDurationSeconds: rendered.buffer.duration,
           sourceMeasurements: rendered.measurements,
           profile: resolveDeliveryTarget(draft),
-          ...(source ? { sourceSampleRate: session.sourceSampleRate, decodedSourceSampleRate: source.sampleRate } : {}),
+          ...(source
+            ? {
+                sourceSampleRate: session.sourceSampleRate,
+                decodedSourceSampleRate: source.sampleRate,
+                ...(session.sourceBitDepth != null ? { sourceBitDepth: session.sourceBitDepth } : {}),
+              }
+            : {}),
           additionalWorkingSetBytes: estimatedBytes,
           signal: controller.signal,
           onProgress: (update) => setProgress(`${update.stage} · ${Math.round(update.progress * 100)}%`),
@@ -1420,7 +1435,13 @@ export function MasteringFileSessionPanel() {
           expectedDurationSeconds: rendered.buffer.duration,
           sourceMeasurements: rendered.measurements,
           profile: resolveDeliveryTarget(draft),
-          ...(source ? { sourceSampleRate: session.sourceSampleRate, decodedSourceSampleRate: source.sampleRate } : {}),
+          ...(source
+            ? {
+                sourceSampleRate: session.sourceSampleRate,
+                decodedSourceSampleRate: source.sampleRate,
+                ...(session.sourceBitDepth != null ? { sourceBitDepth: session.sourceBitDepth } : {}),
+              }
+            : {}),
           signal: controller.signal,
           onProgress: (update) => setProgress(`${update.stage} · ${Math.round(update.progress * 100)}%`),
         });

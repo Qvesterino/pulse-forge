@@ -3573,6 +3573,26 @@ test.describe("17 — mastering workspace", () => {
     await expect(session.getByRole("group", { name: "Profile file delivery check" })).toContainText(
       "preserves the source's 96,000 Hz sample rate",
     );
+    await expect(session.getByRole("group", { name: "Profile file delivery check" })).toContainText(
+      "24-bit output preserves the imported source's native PCM depth",
+    );
+    const sessionReportPromise = page.waitForEvent("download");
+    await session
+      .getByRole("group", { name: "Recent exported delivery report downloads" })
+      .getByRole("button", { name: `Download delivery report JSON for ${sessionDownload.suggestedFilename()}` })
+      .click();
+    const sessionReportDownload = await sessionReportPromise;
+    const sessionReportPath = testInfo.outputPath("external-session-96k-master-report.json");
+    await sessionReportDownload.saveAs(sessionReportPath);
+    const sessionReport = JSON.parse(await readFile(sessionReportPath, "utf8"));
+    expect(sessionReport.delivery.fileDelivery.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: "pass",
+          line: "24-bit output preserves the imported source's native PCM depth.",
+        }),
+      ]),
+    );
 
     await session.getByLabel("External mastering FLAC bit depth").selectOption("16");
     const first16BitDownloadPromise = page.waitForEvent("download");
@@ -4022,6 +4042,66 @@ test.describe("17 — mastering workspace", () => {
       expect(report.inputBaseline.sessionId).toBe(report.session.id);
       expect(report.inputBaseline.sourceSha256).toBe(report.source.sha256);
     }
+  });
+
+  test("checks Apple Music file rules and reports the encoder limit", async ({ page }, testInfo) => {
+    test.setTimeout(180_000);
+    test.skip(
+      testInfo.project.name !== "chromium",
+      "Apple Music external delivery acceptance currently runs in Chromium.",
+    );
+    await openHouseTemplate(page, { timeoutMs: 120_000 });
+    await clickPanelAction(page, "MASTER");
+
+    const session = page.getByRole("region", { name: "External file mastering session" });
+    await session.getByLabel("Import WAV, MP3 or FLAC mixdown").setInputFiles({
+      name: "apple-delivery-source.wav",
+      mimeType: "audio/wav",
+      buffer: makeStereoTestWav(1),
+    });
+    await expect(session.getByText(/Original saved locally/)).toBeVisible({ timeout: 60_000 });
+    await session.getByLabel("External mastering delivery profile").selectOption("apple");
+    await session.getByLabel("External mastering render sample rate").selectOption("44100");
+    await session.getByLabel("External mastering delivery format").selectOption("flac");
+    await session.getByLabel("External mastering FLAC bit depth").selectOption("16");
+    await session.getByRole("button", { name: "Apply settings" }).click();
+    await expect(session.getByRole("button", { name: "Render & analyze" })).toBeEnabled();
+    await session.getByRole("button", { name: "Render & analyze" }).click();
+    await expect(session.getByText(/2 ch · 44.1 kHz/)).toBeVisible({ timeout: 90_000 });
+
+    const downloadPromise = page.waitForEvent("download");
+    await session.getByRole("button", { name: "Encode & export FLAC" }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toMatch(/mastered-44100Hz-16bit\.flac$/);
+    const outputPath = testInfo.outputPath("apple-external-master-16bit.flac");
+    await download.saveAs(outputPath);
+    expect(readFlacFacts(await readFile(outputPath))).toMatchObject({ sampleRate: 44_100, channels: 2, bitDepth: 16 });
+
+    const fileCheck = session.getByRole("group", { name: "Profile file delivery check" });
+    await expect(fileCheck).toHaveAttribute("data-state", "not-measured");
+    await expect(fileCheck).toContainText("44,100 Hz is accepted by the checked source profile");
+    await expect(fileCheck).toContainText("16-bit is accepted by the checked source profile");
+    await expect(fileCheck).toContainText("qualified encoder");
+
+    const reportPromise = page.waitForEvent("download");
+    await session
+      .getByRole("group", { name: "Recent exported delivery report downloads" })
+      .getByRole("button", { name: `Download delivery report JSON for ${download.suggestedFilename()}` })
+      .click();
+    const reportDownload = await reportPromise;
+    const reportPath = testInfo.outputPath("apple-external-master-delivery-report.json");
+    await reportDownload.saveAs(reportPath);
+    const report = JSON.parse(await readFile(reportPath, "utf8"));
+    expect(report.delivery.fileDelivery).toMatchObject({ profileId: "apple", status: "not-measured" });
+    expect(report.delivery.fileDelivery.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ status: "pass", line: "16-bit is accepted by the checked source profile." }),
+        expect.objectContaining({ status: "not-measured", line: expect.stringContaining("qualified encoder") }),
+      ]),
+    );
+    expect(report.mastering.profileProvenance.fileSettingsSource.url).toContain(
+      "help.apple.com/itc/videoaudioassetguide",
+    );
   });
 
   test("external-MP3-memory-soak completes a four-minute external MP3 delivery under the memory preflight", async ({

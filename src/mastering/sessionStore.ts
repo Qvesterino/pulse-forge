@@ -23,6 +23,8 @@ export interface MasteringSessionRecord {
   durationSeconds: number;
   channels: 1 | 2;
   sourceSampleRate: number;
+  /** Native integer PCM depth when the imported WAV/FLAC header exposes it. */
+  sourceBitDepth?: number;
   masterConfig: MasterConfig;
   snapshots: MasteringSessionSnapshots;
   /** Optional additive revision label; old session records default to an empty string. */
@@ -190,6 +192,10 @@ function isMasteringSessionSummary(value: unknown): value is MasteringSessionSum
     Number.isInteger(value.sourceSampleRate) &&
     value.sourceSampleRate >= 8000 &&
     value.sourceSampleRate <= 192000 &&
+    (value.sourceBitDepth === undefined ||
+      (Number.isSafeInteger(value.sourceBitDepth) &&
+        (value.sourceBitDepth as number) >= 4 &&
+        (value.sourceBitDepth as number) <= 32)) &&
     normalizeSessionMasterConfig(value.masterConfig) !== null &&
     normalizeSessionSnapshots(value.snapshots) !== null &&
     (value.deliveryVersion === undefined ||
@@ -218,6 +224,7 @@ export function createMasteringSessionRecord(input: {
   durationSeconds: number;
   channels: 1 | 2;
   sourceSampleRate: number;
+  sourceBitDepth?: number;
   masterConfig: MasterConfig;
   createdAt?: string;
 }): MasteringSessionRecord {
@@ -233,6 +240,7 @@ export function createMasteringSessionRecord(input: {
     durationSeconds: input.durationSeconds,
     channels: input.channels,
     sourceSampleRate: input.sourceSampleRate,
+    ...(input.sourceBitDepth != null ? { sourceBitDepth: input.sourceBitDepth } : {}),
     masterConfig: cloneSessionMasterConfig(input.masterConfig),
     snapshots: { A: null, B: null },
     deliveryVersion: "",

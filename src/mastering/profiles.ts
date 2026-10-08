@@ -103,14 +103,26 @@ export const MASTER_PROFILE_FILE_SOURCES: Partial<Record<MasterProfileId, Master
     checkedAt: "2026-10-08",
     reviewIntervalDays: 180,
   },
+  apple: {
+    label: "Apple Music · Video and Audio Asset Guide",
+    url: "https://help.apple.com/itc/videoaudioassetguide/en.lproj/static.html",
+    checkedAt: "2026-10-08",
+    reviewIntervalDays: 180,
+  },
 };
 
 interface MasterProfileFileRules {
   acceptedFormats: readonly MasterFileFormat[];
-  preferredFormat: MasterFileFormat;
-  minSampleRateHz: number;
+  preferredFormat?: MasterFileFormat;
+  minSampleRateHz?: number;
+  acceptedSampleRatesHz?: readonly number[];
   channels: number;
-  maxBitDepth: number;
+  maxBitDepth?: number;
+  acceptedBitDepths?: readonly number[];
+  unlistedFormatStatus?: "warn" | "fail";
+  preserveNativeSampleRate?: boolean;
+  preserveNativeBitDepth?: boolean;
+  unverifiableCheck?: string;
 }
 
 /** Structured file rules are only defined when a current primary delivery brief supports them. */
@@ -121,6 +133,17 @@ const MASTER_PROFILE_FILE_RULES: Partial<Record<MasterProfileId, MasterProfileFi
     minSampleRateHz: 44_100,
     channels: 2,
     maxBitDepth: 24,
+    preserveNativeSampleRate: true,
+    preserveNativeBitDepth: true,
+  },
+  apple: {
+    acceptedFormats: ["wav", "flac"],
+    acceptedSampleRatesHz: [44_100, 48_000, 88_200, 96_000, 176_400, 192_000],
+    channels: 2,
+    acceptedBitDepths: [16, 24],
+    unlistedFormatStatus: "fail",
+    unverifiableCheck:
+      "The checked source also requires an Apple-qualified encoder; file metadata cannot verify encoder qualification or distributor acceptance.",
   },
 };
 
@@ -199,15 +222,18 @@ export const MASTER_PROFILES: readonly MasterProfile[] = [
   },
   {
     id: "apple",
-    label: "Quieter / dynamic",
+    label: "Apple Music",
     targetLufs: -16,
     targetToleranceLufs: 1,
     warningToleranceLufs: 2,
     maxTruePeakDb: -1,
     truePeakGraceDb: 0.3,
-    note: "A quieter starting point that leaves room for dynamic playback and lossy encoding.",
+    note: "−16 LUFS is a KYX quieter starting point; Apple's Music Audio Source Profile defines file delivery, not this loudness target.",
     recommendedFormat: masterProfileRecommendedFormat("apple"),
-    intendedUse: "A lower-loudness alternative; this is not an Apple Music certification profile.",
+    intendedUse:
+      "Checks the standard Apple Music source-file profile. Apple Digital Masters requires separate source-provenance and Apple AAC audition requirements that KYX does not certify.",
+    fileGuidanceNote:
+      "For KYX export formats, this profile checks stereo PCM WAV or FLAC at 16/24-bit and 44.1, 48, 88.2, 96, 176.4 or 192 kHz; MP3 is not accepted. KYX checks encoded metadata but cannot verify Apple's qualified-encoder requirement or final distributor acceptance.",
   },
   {
     id: "loud",
@@ -304,6 +330,8 @@ export interface MasterFileDeliveryMetadata {
   /** Original external-file header rate and the rate actually decoded for processing. */
   sourceSampleRate?: number;
   decodedSourceSampleRate?: number;
+  /** Native integer PCM bit depth, when exposed by an external WAV/FLAC source. */
+  sourceBitDepth?: number;
 }
 
 export interface MasterFileDeliveryVerdict {
@@ -442,14 +470,19 @@ export function evaluateMasterFileDelivery(
     checks.push({
       status: "pass",
       line:
-        file.format === rules.preferredFormat
-          ? `${file.format.toUpperCase()} is the preferred delivery format in the checked source.`
-          : `${file.format.toUpperCase()} is accepted by the checked source; ${rules.preferredFormat.toUpperCase()} is preferred.`,
+        rules.preferredFormat == null
+          ? `${file.format.toUpperCase()} is accepted by the checked source profile.`
+          : file.format === rules.preferredFormat
+            ? `${file.format.toUpperCase()} is the preferred delivery format in the checked source.`
+            : `${file.format.toUpperCase()} is accepted by the checked source; ${rules.preferredFormat.toUpperCase()} is preferred.`,
     });
   } else {
     checks.push({
-      status: "warn",
-      line: `${file.format.toUpperCase()} is not listed by the checked source; confirm the distributor's delivery brief.`,
+      status: rules.unlistedFormatStatus ?? "warn",
+      line:
+        rules.unlistedFormatStatus === "fail"
+          ? `${file.format.toUpperCase()} is not accepted by the checked source profile.`
+          : `${file.format.toUpperCase()} is not listed by the checked source; confirm the distributor's delivery brief.`,
     });
   }
 
@@ -466,20 +499,37 @@ export function evaluateMasterFileDelivery(
     );
   }
 
-  checks.push(
-    file.sampleRate >= rules.minSampleRateHz
-      ? {
-          status: "pass",
-          line: `${file.sampleRate.toLocaleString("en-US")} Hz meets the ${rules.minSampleRateHz.toLocaleString("en-US")} Hz minimum.`,
-        }
-      : {
-          status: "fail",
-          line: `Sample rate is below ${rules.minSampleRateHz.toLocaleString("en-US")} Hz; the checked source says this is not eligible for lossless playback.`,
-        },
-  );
+  if (rules.acceptedSampleRatesHz) {
+    checks.push(
+      rules.acceptedSampleRatesHz.includes(file.sampleRate)
+        ? {
+            status: "pass",
+            line: `${file.sampleRate.toLocaleString("en-US")} Hz is accepted by the checked source profile.`,
+          }
+        : {
+            status: "fail",
+            line: `${file.sampleRate.toLocaleString("en-US")} Hz is not one of the sample rates accepted by the checked source profile (${rules.acceptedSampleRatesHz.map((rate) => rate.toLocaleString("en-US")).join(", ")} Hz).`,
+          },
+    );
+  } else if (rules.minSampleRateHz != null) {
+    checks.push(
+      file.sampleRate >= rules.minSampleRateHz
+        ? {
+            status: "pass",
+            line: `${file.sampleRate.toLocaleString("en-US")} Hz meets the ${rules.minSampleRateHz.toLocaleString("en-US")} Hz minimum.`,
+          }
+        : {
+            status: "fail",
+            line: `Sample rate is below ${rules.minSampleRateHz.toLocaleString("en-US")} Hz; the checked source says this is not eligible for lossless playback.`,
+          },
+    );
+  } else {
+    checks.push({ status: "not-measured", line: "The checked source profile has no verifiable sample-rate rule." });
+  }
   const sourceSampleRate = file.sourceSampleRate;
   const decodedSourceSampleRate = file.decodedSourceSampleRate;
   if (
+    rules.preserveNativeSampleRate &&
     typeof sourceSampleRate === "number" &&
     Number.isSafeInteger(sourceSampleRate) &&
     sourceSampleRate > 0 &&
@@ -519,19 +569,65 @@ export function evaluateMasterFileDelivery(
         },
   );
 
-  if (file.bitDepth != null && file.bitDepth > rules.maxBitDepth) {
+  const sourceBitDepth =
+    rules.preserveNativeBitDepth &&
+    typeof file.sourceBitDepth === "number" &&
+    Number.isSafeInteger(file.sourceBitDepth) &&
+    file.sourceBitDepth >= 4 &&
+    file.sourceBitDepth <= 32
+      ? file.sourceBitDepth
+      : null;
+  if (rules.acceptedBitDepths) {
+    if (file.bitDepth == null) {
+      checks.push({ status: "not-measured", line: "The file's bit depth could not be confirmed from metadata." });
+    } else if (rules.acceptedBitDepths.includes(file.bitDepth)) {
+      checks.push({
+        status: "pass",
+        line: `${file.bitDepth}-bit is accepted by the checked source profile.`,
+      });
+    } else {
+      checks.push({
+        status: "fail",
+        line: `${file.bitDepth}-bit is not one of the bit depths accepted by the checked source profile (${rules.acceptedBitDepths.join(", ")}-bit).`,
+      });
+    }
+  } else if (file.bitDepth != null && rules.maxBitDepth != null && file.bitDepth > rules.maxBitDepth) {
     checks.push({
       status: "warn",
       line: `${file.bitDepth}-bit is above the source's ${rules.maxBitDepth}-bit delivery maximum; it says higher-depth files are reduced internally.`,
     });
   } else if (file.bitDepth === 16) {
-    checks.push({
-      status: "warn",
-      line: "The source permits 16-bit only when no higher-bit-depth master exists; KYX cannot verify that source condition.",
-    });
+    const line =
+      sourceBitDepth == null
+        ? "The source permits 16-bit only when no higher-bit-depth master exists; KYX cannot verify that source condition."
+        : sourceBitDepth === 16
+          ? "16-bit output matches the imported source depth, but the checked source permits it only when no higher-depth master exists."
+          : sourceBitDepth > 16
+            ? `16-bit output reduces the imported ${sourceBitDepth}-bit source; the checked source permits 16-bit only when no higher-depth master exists.`
+            : `16-bit output is above the imported ${sourceBitDepth}-bit source depth and adds no source detail.`;
+    checks.push({ status: "warn", line });
   } else if (file.bitDepth != null) {
-    checks.push({ status: "pass", line: `${file.bitDepth}-bit is within the source's stated maximum.` });
+    if (sourceBitDepth == null) {
+      checks.push({ status: "pass", line: `${file.bitDepth}-bit is within the source's stated maximum.` });
+    } else if (file.bitDepth === sourceBitDepth) {
+      checks.push({
+        status: "pass",
+        line: `${file.bitDepth}-bit output preserves the imported source's native PCM depth.`,
+      });
+    } else if (file.bitDepth < sourceBitDepth) {
+      checks.push({
+        status: "warn",
+        line: `${file.bitDepth}-bit output is below the imported ${sourceBitDepth}-bit source depth; the checked source advises preserving native bit depth.`,
+      });
+    } else {
+      checks.push({
+        status: "warn",
+        line: `${file.bitDepth}-bit output is above the imported ${sourceBitDepth}-bit source depth and adds no source detail.`,
+      });
+    }
   }
+
+  if (rules.unverifiableCheck) checks.push({ status: "not-measured", line: rules.unverifiableCheck });
 
   return { profileId: profile.id, status: worstStatus(checks), checks };
 }

@@ -831,6 +831,8 @@ export async function inspectEncodedMaster(input: {
   /** Original and decoded sample rates for an external source, when available. */
   sourceSampleRate?: number;
   decodedSourceSampleRate?: number;
+  /** Native integer PCM bit depth for external WAV/FLAC sources, when available. */
+  sourceBitDepth?: number;
   additionalWorkingSetBytes?: number;
   onProgress?: MasterAnalysisProgressListener;
   signal?: AbortSignal;
@@ -847,6 +849,7 @@ export async function inspectEncodedMaster(input: {
       ...(Number.isSafeInteger(input.decodedSourceSampleRate)
         ? { decodedSourceSampleRate: input.decodedSourceSampleRate }
         : {}),
+      ...(Number.isSafeInteger(input.sourceBitDepth) ? { sourceBitDepth: input.sourceBitDepth } : {}),
     },
     input.profile,
   );

@@ -94,6 +94,7 @@ function createTestMasteringSession(id: string) {
     durationSeconds: 1,
     channels: 2,
     sourceSampleRate: 44_100,
+    sourceBitDepth: 24,
     masterConfig: testDoc().master,
     createdAt: now,
   });
@@ -185,6 +186,7 @@ describe("external mastering session persistence", () => {
       expect(listed.find((item) => item.id === id)?.snapshots.A?.name).toBe("Approved master");
       expect(loaded?.snapshots.A?.masterConfig).toEqual(original.masterConfig);
       expect(loaded?.source.size).toBe(original.source.size);
+      expect(loaded?.sourceBitDepth).toBe(24);
       stage = "delete";
       await repository.delete(id);
       await expect(repository.get(id)).resolves.toBeNull();

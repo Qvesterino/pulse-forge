@@ -7,9 +7,11 @@ import type { ProjectDocument } from "../src/project-model/types";
 import { evaluateMasterVerdict } from "../src/audio-engine/metering";
 import {
   CUSTOM_PROFILE,
+  MASTER_PROFILE_FILE_SOURCES,
   evaluateDelivery,
   evaluateMasterFileDelivery,
   masterProfileExportSettings,
+  masterProfileProvenance,
   masterProfileRecommendedFormat,
 } from "../src/mastering/profiles";
 
@@ -83,6 +85,36 @@ describe("mastering platform profiles", () => {
     );
     expect(wav16?.status).toBe("warn");
     expect(wav16?.checks.at(-1)?.line).toContain("KYX cannot verify that source condition");
+
+    const native24Bit = evaluateMasterFileDelivery(
+      { format: "flac", sampleRate: 48_000, channels: 2, bitDepth: 24, sourceBitDepth: 24 },
+      streaming,
+      checkedAt,
+    );
+    expect(native24Bit?.checks.at(-1)).toMatchObject({
+      status: "pass",
+      line: "24-bit output preserves the imported source's native PCM depth.",
+    });
+
+    const reducedTo16Bit = evaluateMasterFileDelivery(
+      { format: "flac", sampleRate: 48_000, channels: 2, bitDepth: 16, sourceBitDepth: 24 },
+      streaming,
+      checkedAt,
+    );
+    expect(reducedTo16Bit?.checks.at(-1)).toMatchObject({
+      status: "warn",
+      line: expect.stringContaining("reduces the imported 24-bit source"),
+    });
+
+    const raisedFrom16Bit = evaluateMasterFileDelivery(
+      { format: "wav", sampleRate: 44_100, channels: 2, bitDepth: 24, sourceBitDepth: 16 },
+      streaming,
+      checkedAt,
+    );
+    expect(raisedFrom16Bit?.checks.at(-1)).toMatchObject({
+      status: "warn",
+      line: expect.stringContaining("above the imported 16-bit source depth"),
+    });
 
     const floatWav = evaluateMasterFileDelivery(
       { format: "wav", sampleRate: 48_000, channels: 2, bitDepth: 32, wavEncoding: "ieee-float" },
@@ -184,6 +216,69 @@ describe("mastering platform profiles", () => {
     expect(upsampledOnImport?.checks.find((check) => check.line.includes("upsample during decode"))).toMatchObject({
       status: "warn",
     });
+  });
+
+  it("checks Apple Music's verified source-file rules without claiming encoder certification", () => {
+    const apple = profileFor("apple")!;
+    const checkedAt = Date.parse("2026-10-08T00:00:00.000Z");
+    expect(MASTER_PROFILE_FILE_SOURCES.apple?.url).toContain("help.apple.com/itc/videoaudioassetguide");
+    expect(masterProfileProvenance("apple", checkedAt).fileSettingsReview).toBe("current");
+
+    const wav24 = evaluateMasterFileDelivery(
+      { format: "wav", sampleRate: 48_000, channels: 2, bitDepth: 24, wavEncoding: "pcm" },
+      apple,
+      checkedAt,
+    );
+    expect(wav24?.checks.map((check) => check.status)).toEqual([
+      "pass",
+      "pass",
+      "pass",
+      "pass",
+      "pass",
+      "not-measured",
+    ]);
+    expect(wav24?.status).toBe("not-measured");
+    expect(wav24?.checks.some((check) => check.line.includes("48,000 Hz is accepted"))).toBe(true);
+    expect(wav24?.checks.some((check) => check.line.includes("24-bit is accepted"))).toBe(true);
+
+    const flac16 = evaluateMasterFileDelivery(
+      {
+        format: "flac",
+        sampleRate: 44_100,
+        channels: 2,
+        bitDepth: 16,
+        sourceSampleRate: 96_000,
+        decodedSourceSampleRate: 96_000,
+        sourceBitDepth: 24,
+      },
+      apple,
+      checkedAt,
+    );
+    expect(flac16?.checks.some((check) => check.line.includes("16-bit is accepted"))).toBe(true);
+    expect(flac16?.checks.some((check) => check.line.includes("preserves the source"))).toBe(false);
+    expect(flac16?.checks.some((check) => check.line.includes("source depth"))).toBe(false);
+
+    const unsupportedWav = evaluateMasterFileDelivery(
+      { format: "wav", sampleRate: 32_000, channels: 2, bitDepth: 32, wavEncoding: "ieee-float" },
+      apple,
+      checkedAt,
+    );
+    expect(unsupportedWav?.status).toBe("fail");
+    expect(unsupportedWav?.checks.some((check) => check.status === "fail" && check.line.includes("32,000 Hz"))).toBe(
+      true,
+    );
+    expect(unsupportedWav?.checks.some((check) => check.status === "fail" && check.line.includes("32-bit"))).toBe(true);
+    expect(unsupportedWav?.checks.some((check) => check.line.includes("requires WAVE_FORMAT_PCM"))).toBe(true);
+
+    const mp3 = evaluateMasterFileDelivery({ format: "mp3", sampleRate: 48_000, channels: 2 }, apple, checkedAt);
+    expect(mp3?.status).toBe("fail");
+    expect(mp3?.checks[0]).toMatchObject({
+      status: "fail",
+      line: "MP3 is not accepted by the checked source profile.",
+    });
+    expect(
+      mp3?.checks.some((check) => check.status === "not-measured" && check.line.includes("qualified encoder")),
+    ).toBe(true);
   });
 
   it("verdict: within ±1 LU passes, hot true peak fails, vinyl carries the mono note", () => {
