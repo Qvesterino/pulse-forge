@@ -55,8 +55,13 @@ describe("mastering platform profiles", () => {
       preferred: { format: "flac", bitDepth: 24 },
       alternatives: [{ format: "wav", bitDepth: 24 }],
     });
-    for (const id of ["apple", "loud", "vinyl"] as const) {
-      expect(masterProfileExportSettings(id)).toEqual({ preferred: { format: "wav", bitDepth: 24 } });
+    expect(masterProfileExportSettings("apple")).toEqual({ preferred: { format: "wav", bitDepth: 24 } });
+    for (const id of ["loud", "vinyl"] as const) {
+      expect(masterProfileExportSettings(id)).toBeNull();
+      expect(masterProfileRecommendedFormat(id)).toBe("Choose a format for the delivery destination.");
+      expect(
+        evaluateMasterFileDelivery({ format: "wav", sampleRate: 48_000, channels: 2, bitDepth: 24 }, profileFor(id)!),
+      ).toBeNull();
     }
     expect(masterProfileExportSettings("custom")).toBeNull();
     expect(masterProfileRecommendedFormat("streaming")).toBe("24-bit FLAC · 24-bit PCM WAV alternative");

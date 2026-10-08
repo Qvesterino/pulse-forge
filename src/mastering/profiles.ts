@@ -29,8 +29,6 @@ const MASTER_PROFILE_EXPORT_SETTINGS: Partial<Record<MasterProfileId, MasterProf
     alternatives: [{ format: "wav", bitDepth: 24 }],
   },
   apple: { preferred: { format: "wav", bitDepth: 24 } },
-  loud: { preferred: { format: "wav", bitDepth: 24 } },
-  vinyl: { preferred: { format: "wav", bitDepth: 24 } },
 };
 
 /** Return a copy so an export panel cannot mutate the shared profile defaults. */

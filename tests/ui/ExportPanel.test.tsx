@@ -119,6 +119,17 @@ describe("ExportPanel", () => {
     expect(screen.getByLabelText("DEPTH")).toHaveValue("24");
   });
 
+  it.each(["loud", "vinyl"] as const)("leaves %s file delivery settings manual without a verified brief", (profile) => {
+    const project = createProjectFromTemplate("house");
+    project.master.deliveryProfileId = profile;
+    renderWithContext(<ExportPanel masteringMode />, { services: mockServices(project) });
+
+    expect(screen.getByText(/PROFILE SUGGESTION · Choose a format for the delivery destination\./)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "USE PROFILE FILE SETTINGS" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("FORMAT")).toBeEnabled();
+    expect(screen.getByLabelText("DEPTH")).toBeEnabled();
+  });
+
   it("presents source-backed file checks separately from the loudness verdict", () => {
     render(
       <MasterProfileFileCheck
