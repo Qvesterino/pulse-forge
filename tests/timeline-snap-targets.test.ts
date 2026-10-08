@@ -39,8 +39,11 @@ describe("ST1/ST2 snap targets vs grid", () => {
   it("target za prahom sa ignoruje (žiadny magnet na diaľku)", () => {
     // 1.2: od targetu 1.5 je to 0.3 > 0.25 → grid 1.0 vyhrá
     expect(snapBarToTargets(1.2, 1, [1.5], THRESHOLD)).toBe(1);
-    // target presne na prahu sa ešte chytí (<=)
-    expect(snapBarToTargets(1.25, 1, [1.5], THRESHOLD)).toBe(1.5);
+    // target presne na prahu sa ešte chytí (<= cap)...
+    expect(snapBarToTargets(1.26, 1, [1.5], THRESHOLD)).toBe(1.5);
+    // ...ale remíza (1.25 od oboch) vyhráva GRID — target predbehne grid len
+    // tým, že je STRIKTNE bližšie (predvídateľné tie-breakovanie).
+    expect(snapBarToTargets(1.25, 1, [1.5], THRESHOLD)).toBe(1);
   });
 
   it("bližší z viacerých targetov vyhrá; non-finite sa preskočí", () => {
