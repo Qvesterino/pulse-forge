@@ -164,3 +164,111 @@ export function planMasterSettings(m: MasterMeasurement): MasterAssistantStep[] 
 
   return steps;
 }
+
+export interface ReferenceSideMeasurement {
+  lufs: number | null;
+  crestDb: number;
+  correlation: number | null;
+  /** Energy shares 0..1 (loudness-invariant domain — the MATCH convention). */
+  hfShare: number;
+  lowEndShare: number;
+}
+
+export interface ReferencePair {
+  mine: ReferenceSideMeasurement;
+  reference: ReferenceSideMeasurement;
+  /** Explicit loudness target overrides the reference's own LUFS. */
+  targetLufs?: number;
+}
+
+const refBandDeltaDb = (mine: number, ref: number): number =>
+  10 * Math.log10(Math.max(mine, 1e-6) / Math.max(ref, 1e-6));
+
+/**
+ * REFERENCE MASTERING planner — "urob to ako tento track". The reference's
+ * own descriptors are NEVER the target (the F2 §2.2 rule): only the measured
+ * DIFFERENCE drives steps, and every step stays bounded and reversible.
+ * Loudness reuses planMasterSettings with the reference as target; tonal and
+ * space steps map the band deltas (dB-of-own-total, the MATCH convention)
+ * onto the same bounded macro surface as op:assist.
+ */
+export function planReferenceMastering(pair: ReferencePair): MasterAssistantStep[] {
+  const steps = planMasterSettings({
+    lufs: pair.mine.lufs,
+    peakDb: -1,
+    crestDb: pair.mine.crestDb,
+    correlation: pair.mine.correlation,
+    targetLufs: pair.targetLufs ?? pair.reference.lufs ?? undefined,
+  });
+
+  const airDelta = refBandDeltaDb(pair.mine.hfShare, pair.reference.hfShare);
+  if (airDelta > 1.5) {
+    steps.push({
+      device: "zenit",
+      param: "eqHigh",
+      value: clamp(-airDelta, -6, -0.5),
+      why: `your air sits ${airDelta.toFixed(1)} dB above the reference — AIR eased toward it`,
+    });
+  } else if (airDelta < -1.5) {
+    steps.push({
+      device: "zenit",
+      param: "eqHigh",
+      value: clamp(-airDelta, 0.5, 6),
+      why: `your air sits ${(-airDelta).toFixed(1)} dB under the reference — AIR opened toward it`,
+    });
+  }
+
+  const lowDelta = refBandDeltaDb(pair.mine.lowEndShare, pair.reference.lowEndShare);
+  if (lowDelta > 1.5) {
+    steps.push({
+      device: "zenit",
+      param: "eqLow",
+      value: clamp(-lowDelta, -6, -0.5),
+      why: `low end ${lowDelta.toFixed(1)} dB heavier than the reference — LOW eased`,
+    });
+  } else if (lowDelta < -1.5) {
+    steps.push({
+      device: "zenit",
+      param: "eqLow",
+      value: clamp(-lowDelta, 0.5, 6),
+      why: `low end ${(-lowDelta).toFixed(1)} dB thinner than the reference — LOW strengthened`,
+    });
+  }
+
+  if (pair.mine.correlation != null && pair.reference.correlation != null) {
+    if (pair.reference.correlation < pair.mine.correlation - 0.15) {
+      steps.push({
+        device: "sirka",
+        param: "midWidth",
+        value: 1.2,
+        why: `reference is wider (corr ${pair.reference.correlation.toFixed(2)} vs yours ${pair.mine.correlation.toFixed(2)}) — mids opened`,
+      });
+    } else if (pair.reference.correlation > pair.mine.correlation + 0.15) {
+      steps.push({
+        device: "sirka",
+        param: "midWidth",
+        value: 0.9,
+        why: `reference is tighter (corr ${pair.reference.correlation.toFixed(2)} vs yours ${pair.mine.correlation.toFixed(2)}) — mids focused`,
+      });
+    }
+  }
+
+  const crestDelta = pair.reference.crestDb - pair.mine.crestDb;
+  if (crestDelta > 2) {
+    steps.push({
+      device: "apeks",
+      param: "preserve",
+      value: 0.7,
+      why: `reference keeps ${crestDelta.toFixed(1)} dB more crest — PRESERVE up, dynamics respected`,
+    });
+  } else if (crestDelta < -2) {
+    steps.push({
+      device: "zenit",
+      param: "glue",
+      value: 0.4,
+      why: `reference is ${(-crestDelta).toFixed(1)} dB denser — GLUE toward its steadiness`,
+    });
+  }
+
+  return steps;
+}
