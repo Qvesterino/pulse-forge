@@ -487,8 +487,10 @@ describe("node wrappers — guard pins (source contract)", () => {
 
   it("limiter node stores only finite lookahead and reports a finite latency", () => {
     const s = src("src/audio-worklets/limiter-node.ts");
-    expect(s).toContain("if (Number.isFinite(value)) lookaheadMs = value;");
-    expect(s).toContain("Number.isFinite(lookaheadMs)");
+    expect(s).toContain("if (!Number.isFinite(value)) return;");
+    expect(s).toContain("if (!Number.isFinite(value)) return LIMITER_LOOKAHEAD_DEFAULT_MS;");
+    expect(s).toContain("Math.fround(effectiveMs / 1000)");
+    expect(s).toContain("Math.round(workletLookaheadSec * ctx.sampleRate) / ctx.sampleRate");
   });
 
   it("bitcrusher + chorus nodes guard their native (non-worklet) param writes", () => {

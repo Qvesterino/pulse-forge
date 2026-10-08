@@ -1,5 +1,6 @@
 import type { EffectRuntime } from "../effects/types";
 import type { EffectInstance } from "../project-model/types";
+import { createLatencyReportReadiness } from "./latencyReadiness";
 
 /**
  * Main-thread MORPH DYNAMICS node: an AudioWorkletNode wrapping the
@@ -44,6 +45,7 @@ export function createMorphDynamicsNode(
   // DSP latency arrives asynchronously over the port — the engine
   // subscribes via onLatencyChange to re-sync PDC the moment it lands.
   let latencySamples = 0;
+  const latencyReadiness = createLatencyReportReadiness();
   let meters: unknown = null;
   const latencyListeners = new Set<() => void>();
   let disposed = false;
@@ -57,8 +59,14 @@ export function createMorphDynamicsNode(
 
   node.port.onmessage = (event) => {
     const msg = event.data as { type?: string; samples?: number; meters?: unknown } | null;
-    if (msg?.type === "latency" && typeof msg.samples === "number") {
+    if (
+      msg?.type === "latency" &&
+      typeof msg.samples === "number" &&
+      Number.isSafeInteger(msg.samples) &&
+      msg.samples >= 0
+    ) {
       latencySamples = msg.samples;
+      latencyReadiness.markReported();
       if (!disposed) for (const listener of latencyListeners) listener();
     } else if (msg?.type === "meters") {
       if (metersWanted) meters = msg.meters;
@@ -75,6 +83,7 @@ export function createMorphDynamicsNode(
         latencyListeners.delete(listener);
       };
     },
+    waitForLatencyReport: (timeoutMs: number) => latencyReadiness.wait(timeoutMs),
     getMeters: () => meters,
     setParameter(id: string, value: number) {
       if (disposed) return;
@@ -120,6 +129,7 @@ export function createMorphDynamicsNode(
     dispose() {
       if (disposed) return; // idempotent — engine rebuild paths may re-dispose
       disposed = true;
+      latencyReadiness.dispose();
       latencyListeners.clear();
       metersWanted = false;
       meters = null;

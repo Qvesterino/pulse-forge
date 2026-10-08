@@ -1,6 +1,7 @@
 import { mix01ToPercent100 } from "./scale-bridges";
 import type { EffectRuntime } from "../effects/types";
 import type { EffectInstance } from "../project-model/types";
+import { createLatencyReportReadiness } from "./latencyReadiness";
 
 /**
  * Main-thread Ultina node: an AudioWorkletNode wrapping the vendored Ultina
@@ -60,6 +61,7 @@ export function createUltinaNode(
   // via onLatencyChange to re-sync PDC the moment it lands instead of
   // waiting for the next document sync.
   let latencySamples = 0;
+  const latencyReadiness = createLatencyReportReadiness();
   let meters: unknown = null;
   const latencyListeners = new Set<() => void>();
   let disposed = false;
@@ -79,8 +81,14 @@ export function createUltinaNode(
 
   node.port.onmessage = (event) => {
     const msg = event.data as { type?: string; samples?: number; meters?: unknown } | null;
-    if (msg?.type === "latency" && typeof msg.samples === "number") {
+    if (
+      msg?.type === "latency" &&
+      typeof msg.samples === "number" &&
+      Number.isSafeInteger(msg.samples) &&
+      msg.samples >= 0
+    ) {
       latencySamples = msg.samples;
+      latencyReadiness.markReported();
       if (!disposed) for (const listener of latencyListeners) listener();
     } else if (msg?.type === "meters") {
       if (metersWanted) meters = msg.meters;
@@ -97,6 +105,7 @@ export function createUltinaNode(
         latencyListeners.delete(listener);
       };
     },
+    waitForLatencyReport: (timeoutMs: number) => latencyReadiness.wait(timeoutMs),
     getMeters: () => meters,
     setParameter(id: string, value: number) {
       if (disposed) return;
@@ -153,6 +162,7 @@ export function createUltinaNode(
     dispose() {
       if (disposed) return; // idempotent — engine rebuild paths may re-dispose
       disposed = true;
+      latencyReadiness.dispose();
       latencyListeners.clear();
       metersWanted = false;
       meters = null; // no stale reads from a disposed runtime

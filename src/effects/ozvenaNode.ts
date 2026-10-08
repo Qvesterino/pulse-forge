@@ -1,5 +1,6 @@
 import type { EffectRuntime } from "../effects/types";
 import type { EffectInstance } from "../project-model/types";
+import { createLatencyReportReadiness } from "./latencyReadiness";
 import { capUserIrFrames } from "./ozvena-params";
 import { generateFactoryIr, generateFactoryIr4 } from "./ozvena-core/modules/factoryIr";
 import {
@@ -160,12 +161,19 @@ export function createOzvenaNode(
   // via onLatencyChange to re-sync PDC the moment it lands instead of
   // waiting for the next document sync.
   let latencySamples = 0;
+  const latencyReadiness = createLatencyReportReadiness();
   const latencyListeners = new Set<() => void>();
   let disposed = false;
   node.port.onmessage = (event) => {
     const msg = event.data as { type?: string; samples?: number; irId?: string; sampleRate?: number } | null;
-    if (msg?.type === "latency" && typeof msg.samples === "number") {
+    if (
+      msg?.type === "latency" &&
+      typeof msg.samples === "number" &&
+      Number.isSafeInteger(msg.samples) &&
+      msg.samples >= 0
+    ) {
       latencySamples = msg.samples;
+      latencyReadiness.markReported();
       if (!disposed) for (const listener of latencyListeners) listener();
     } else if (msg?.type === "irNeeded" && typeof msg.irId === "string") {
       // The worklet's factory-IR provider asks the main thread to generate.
@@ -196,6 +204,7 @@ export function createOzvenaNode(
         latencyListeners.delete(listener);
       };
     },
+    waitForLatencyReport: (timeoutMs: number) => latencyReadiness.wait(timeoutMs),
     setParameter(id: string, value: number) {
       if (disposed) return;
       node.port.postMessage({ type: "param", id, value: id === "global.dryWet" ? value * 100 : value });
@@ -257,6 +266,7 @@ export function createOzvenaNode(
     dispose() {
       if (disposed) return; // idempotent — engine rebuild paths may re-dispose
       disposed = true;
+      latencyReadiness.dispose();
       latencyListeners.clear();
       node.port.onmessage = null;
       try {

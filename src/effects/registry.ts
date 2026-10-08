@@ -14,6 +14,7 @@ import { createSidechainNode } from "../audio-worklets/sidechain-node";
 import { createLimiterNode } from "../audio-worklets/limiter-node";
 import { createCompressorNode } from "../audio-worklets/compressor-node";
 import { createStepGateNode } from "../audio-worklets/stepgate-node";
+import { createLatencyReportReadiness } from "./latencyReadiness";
 import { createSvFilterNode } from "../audio-worklets/svfilter-node";
 import { createFlangerNode } from "../audio-worklets/flanger-node";
 import { createTremoloNode } from "../audio-worklets/tremolo-node";
@@ -2251,11 +2252,18 @@ function createWorkletRuntime(
   // The gate reports its look-ahead delay once at construction (transient
   // never posts) — surface it so the engine's PDC keeps tracks aligned.
   let latencySamples = 0;
+  const latencyReadiness = processor === "gate-processor" ? createLatencyReportReadiness() : null;
   const latencyListeners = new Set<() => void>();
   node.port.onmessage = (event: MessageEvent<{ type?: string; samples?: number }>) => {
     const msg = event.data;
-    if (msg?.type === "latency" && typeof msg.samples === "number") {
+    if (
+      msg?.type === "latency" &&
+      typeof msg.samples === "number" &&
+      Number.isSafeInteger(msg.samples) &&
+      msg.samples >= 0
+    ) {
       latencySamples = msg.samples;
+      latencyReadiness?.markReported();
       for (const listener of latencyListeners) listener();
     }
   };
@@ -2276,10 +2284,12 @@ function createWorkletRuntime(
         latencyListeners.delete(listener);
       };
     },
+    ...(latencyReadiness ? { waitForLatencyReport: (timeoutMs: number) => latencyReadiness.wait(timeoutMs) } : {}),
     setParameter: (id, value) => apply(id, value, ctx.currentTime),
     setParameterAt: apply,
     dispose: () => {
       node.port.onmessage = null;
+      latencyReadiness?.dispose();
       node.disconnect();
       input.disconnect();
       output.disconnect();

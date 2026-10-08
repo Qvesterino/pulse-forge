@@ -1776,15 +1776,13 @@ export class AudioEngine {
    * OfflineAudioContext.startRendering().
    *
    * Two concerns in one gate:
-   * 1. Latency settle. Worklet processors (gate, limiter, fxeq, ultina,
-   *    ozvena, morph) post their DSP latency from the audio thread during
-   *    node construction; those port messages are MAIN-THREAD TASKS and
-   *    startRendering() does not wait for them. Rendering without the
-   *    yield races the reports: the export runs with delayTime 0 (whole
-   *    file misaligned against look-ahead chains) or a mid-render
-   *    syncPdc() mutates an OfflineAudioContext graph (spec-undefined).
-   *    Two macrotask turns let every constructor-time report land, then
-   *    syncPdc() sizes the graph from real figures.
+   * 1. Latency settle. Worklet processors post DSP latency from the audio
+   *    thread during node construction; those port messages are MAIN-THREAD
+   *    TASKS and startRendering() does not wait for them. Two macrotask turns
+   *    give startup a chance to run, then explicit readiness reports prove
+   *    the latency-bearing runtimes have answered. If one does not answer,
+   *    abort before rendering instead of exporting a file with delayTime 0.
+   *    The final syncPdc() sizes the graph from the reported figures.
    * 2. Exact writes. Arming switches syncPdc to setValueAtTime so the
    *    compensation is sample-exact from sample 0 (see syncPdc). Late
    *    straggler reports after arming early-return in syncPdc — a rendering
@@ -1796,6 +1794,36 @@ export class AudioEngine {
   async prepareOfflineRender(): Promise<void> {
     for (let turn = 0; turn < 2; turn++) {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+    // A fixed number of task turns is only a scheduling yield, not proof that
+    // every AudioWorklet has started. Firefox can deliver constructor-time
+    // latency messages later than Chromium; do not arm sample-exact PDC from
+    // a temporary zero-latency snapshot.
+    const latencyReportWaits: { owner: string; effectId: string; runtime: EffectRuntime }[] = [];
+    const collectLatencyWaits = (owner: string, runtimes: Map<string, EffectRuntime>): void => {
+      for (const [effectId, runtime] of runtimes) {
+        if (runtime.waitForLatencyReport) latencyReportWaits.push({ owner, effectId, runtime });
+      }
+    };
+    for (const [trackId, nodes] of this.trackNodes) collectLatencyWaits(`track ${trackId}`, nodes.fx.runtimes);
+    for (const [groupId, nodes] of this.groupNodes) collectLatencyWaits(`group ${groupId}`, nodes.fx.runtimes);
+    for (const [returnId, nodes] of this.returnNodes) collectLatencyWaits(`return ${returnId}`, nodes.fx.runtimes);
+    collectLatencyWaits("master", this.masterFx.runtimes);
+    const latencyReportTimeoutMs = 2_500;
+    const missingReports = await Promise.all(
+      latencyReportWaits.map(async ({ owner, effectId, runtime }) => {
+        try {
+          return (await runtime.waitForLatencyReport!(latencyReportTimeoutMs)) ? null : `${owner}, effect ${effectId}`;
+        } catch {
+          return `${owner}, effect ${effectId}`;
+        }
+      }),
+    );
+    const missing = missingReports.filter((entry): entry is string => entry !== null);
+    if (missing.length > 0) {
+      throw new Error(
+        `Offline render stopped before audio rendering because latency reports did not arrive for: ${missing.join("; ")}`,
+      );
     }
     // TSAR (and future event-queue instrument runtimes): build the seeded
     // worklet node NOW, after every note/automation is scheduled and before

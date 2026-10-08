@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { MasterChain } from "../src/audio-engine/masterChain";
 import type { MeteringRig } from "../src/audio-engine/meteringRig";
+import { createLimiterNode } from "../src/audio-worklets/limiter-node";
 import { defaultMasterConfig } from "../src/project-model/schema";
 import type { ProjectDocument } from "../src/project-model/types";
 
@@ -255,5 +256,86 @@ describe("MasterChain limiter delivery", () => {
     chain.applyMasterConfig({ ...defaultMasterConfig(), ceilingDb: -20, limiterEnabled: true });
     expect(workletParameters.ceiling).toBeCloseTo(-12.2, 10);
     expect(workletParameters.threshold).toBeCloseTo(-15.4, 10);
+  });
+
+  it("reports the limiter's realized integer-sample latency at mastering sample rates", () => {
+    class FakeAudioParam {
+      value = 0;
+      setValueAtTime(value: number) {
+        this.value = value;
+      }
+    }
+    class FakeGainNode {
+      gain = new FakeAudioParam();
+      connect<T>(destination: T): T {
+        return destination;
+      }
+      disconnect() {}
+    }
+    class FakeWorkletNode {
+      parameters = new Map(
+        ["ceiling", "threshold", "release", "lookahead", "link", "mix"].map((id) => [id, new FakeAudioParam()]),
+      );
+      port = { onmessage: null as ((event: MessageEvent) => void) | null, close() {} };
+      onprocessorerror: ((event: Event) => void) | null = null;
+      connect<T>(destination: T): T {
+        return destination;
+      }
+      disconnect() {}
+    }
+
+    vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
+    const expectedLatency = (lookaheadMs: number, sampleRate: number) =>
+      Math.round(Math.fround(lookaheadMs / 1000) * sampleRate) / sampleRate;
+    try {
+      for (const sampleRate of [44_100, 48_000, 96_000]) {
+        const context = {
+          currentTime: 0,
+          sampleRate,
+          createGain: () => new FakeGainNode(),
+        } as unknown as BaseAudioContext;
+        const runtime = createLimiterNode(context, { params: {} });
+        if (!runtime.getLatencySec || !runtime.setParameter || !runtime.getAudioParam || !runtime.dispose) {
+          throw new Error("Limiter runtime is missing its latency or parameter contract.");
+        }
+        expect(runtime.getLatencySec()).toBe(expectedLatency(5, sampleRate));
+
+        runtime.setParameter("lookaheadMs", 2.3);
+        expect(runtime.getLatencySec()).toBe(expectedLatency(2.3, sampleRate));
+
+        runtime.setParameter("lookaheadMs", 30);
+        expect(runtime.getLatencySec()).toBe(expectedLatency(20, sampleRate));
+        expect(runtime.getAudioParam("lookahead")?.value).toBe(0.02);
+
+        runtime.setParameter("lookaheadMs", 0.2);
+        expect(runtime.getLatencySec()).toBe(expectedLatency(1, sampleRate));
+        expect(runtime.getAudioParam("lookahead")?.value).toBe(0.001);
+
+        runtime.setParameter("lookaheadMs", Number.NaN);
+        expect(runtime.getLatencySec()).toBe(expectedLatency(1, sampleRate));
+        runtime.dispose();
+      }
+
+      const invalidInitialContext = {
+        currentTime: 0,
+        sampleRate: 44_100,
+        createGain: () => new FakeGainNode(),
+      } as unknown as BaseAudioContext;
+      const invalidInitialRuntime = createLimiterNode(invalidInitialContext, {
+        params: { lookaheadMs: Number.POSITIVE_INFINITY },
+      });
+      if (
+        !invalidInitialRuntime.getLatencySec ||
+        !invalidInitialRuntime.getAudioParam ||
+        !invalidInitialRuntime.dispose
+      ) {
+        throw new Error("Limiter runtime is missing its latency or parameter contract.");
+      }
+      expect(invalidInitialRuntime.getLatencySec()).toBe(expectedLatency(5, 44_100));
+      expect(invalidInitialRuntime.getAudioParam("lookahead")?.value).toBe(0.005);
+      invalidInitialRuntime.dispose();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

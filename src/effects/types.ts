@@ -101,6 +101,13 @@ export interface EffectRuntime {
    * notify a disposed runtime's listeners) after dispose().
    */
   onLatencyChange?(listener: () => void): () => void;
+  /**
+   * Wait until a worklet has delivered its initial latency report. Offline
+   * rendering uses this to size PDC from measured processor latency instead
+   * of racing AudioWorklet startup. Returns false when the report times out
+   * or the runtime is disposed first.
+   */
+  waitForLatencyReport?(timeoutMs: number): Promise<boolean>;
   /** Latest gain reduction in dB (dynamics processors), for metering. */
   getGainReductionDb?(): number;
   /** Live meter snapshot (spectrum, LUFS, GR…) — plugins with analysis DSP. */

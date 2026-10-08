@@ -1,13 +1,11 @@
 // Source-grep regression for the PDC export barrier (Wave 2).
 //
 // The offline renderer must call engine.prepareOfflineRender() BEFORE
-// OfflineAudioContext.startRendering(). The barrier settles the async
-// worklet latency reports (main-thread tasks startRendering does not wait
-// for) and switches PDC delay writes from the live glide to exact
-// setValueAtTime. A regression here reintroduces two export defects at
-// once: the whole file misaligned against look-ahead chains (delay still
-// 0 at render start) or the head of the file gliding into alignment over
-// ~100 ms of rendered audio.
+// OfflineAudioContext.startRendering(). The barrier waits for each latency-
+// reporting worklet's initial report (main-thread tasks startRendering does
+// not wait for), fails closed on timeout, and switches PDC delay writes from
+// the live glide to exact setValueAtTime. A regression can misalign the whole
+// file or leave its head gliding into alignment over ~100 ms of rendered audio.
 //
 // Guards:
 //   1. BARRIER EXISTS  - renderer.ts calls engine.prepareOfflineRender().
@@ -16,8 +14,9 @@
 //                        based; a fire-and-forget call settles nothing).
 //   4. ENGINE CONTRACT - AudioEngine exposes prepareOfflineRender and the
 //                        syncPdc lock flag pair (exact mode + render lock).
+//   5. CANCEL WINDOW   - abort is checked again after the bounded latency wait.
 //
-// Risk rationale: 0 source changes. Source-grep regression only.
+// These source assertions complement the behavioral cases in pdc-offline.test.ts.
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync } from "node:fs";
@@ -48,6 +47,16 @@ describe("renderer PDC export barrier (source-grep)", () => {
     // Inside the pre-render try: the cancellation window comment sits above.
     const windowIdx = rendererLines.findIndex((l) => /Last cancellation window before the un-abortable render/.test(l));
     expect(barrierIdx).toBeGreaterThan(windowIdx);
+  });
+
+  it("re-checks cancellation after the latency wait and before starting offline audio", () => {
+    const barrierIdx = rendererLines.findIndex((l) => /await\s+engine\.prepareOfflineRender\(\)/.test(l));
+    const abortIdx = rendererLines.findIndex(
+      (l, index) => index > barrierIdx && /throwIfAborted\(options\.signal\)/.test(l),
+    );
+    const renderIdx = rendererLines.findIndex((l) => /ctx\.startRendering\(\)/.test(l));
+    expect(abortIdx).toBeGreaterThan(barrierIdx);
+    expect(renderIdx).toBeGreaterThan(abortIdx);
   });
 
   it("AudioEngine implements the barrier contract", () => {

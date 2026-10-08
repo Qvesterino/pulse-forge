@@ -7,8 +7,9 @@ import { truePeakOversampled } from "../src/audio-engine/metering";
  *  - Core limiter (`limiter-processor.js`): the 4× Blackman-sinc true-peak
  *    detector catches ceiling-exceeding INTERSAMPLE peaks a sample-peak
  *    detector cannot see (fs/4 sine isolation test), while ordinary sines
- *    behave exactly like the legacy detector (regression pin), latency stays
- *    exactly `lookahead`, mix = 0 is unity, extremes stay finite + bounded.
+ *    behave exactly like the legacy detector (regression pin), latency follows
+ *    the Float32 AudioParam sample grid used by PDC, mix = 0 is unity, and
+ *    extremes stay finite + bounded.
  *  - Cubic-hermite delay reads (flanger / comb / ducking-delay): echo timing
  *    incl. fractional delays, feedback decay, mix = 0 unity, bounded soak.
  *    (Stutter is intentionally excluded — its loop length is quantized to
@@ -63,14 +64,15 @@ function renderStereo(
   seconds: number,
   prm: Record<string, Float32Array>,
   input: (n: number) => [number, number] = () => [0, 0],
+  sampleRate = SR,
 ): { L: Float32Array; R: Float32Array } {
-  const nBlocks = Math.ceil((seconds * SR) / BLOCK);
+  const nBlocks = Math.ceil((seconds * sampleRate) / BLOCK);
   const L = new Float32Array(nBlocks * BLOCK);
   const R = new Float32Array(nBlocks * BLOCK);
   for (let b = 0; b < nBlocks; b++) {
     // Advance the stubbed worklet clock — the limiter's ~20 Hz GR meter
     // posts against currentTime like the real AudioWorkletGlobalScope.
-    fakeNow += BLOCK / SR;
+    fakeNow += BLOCK / sampleRate;
     (globalThis as unknown as { currentTime: number }).currentTime = fakeNow;
     const inL = new Float32Array(BLOCK);
     const inR = new Float32Array(BLOCK);
@@ -186,6 +188,32 @@ describe("limiter true-peak detector", () => {
     for (let i = la; i < out.L.length; i++) {
       expect(Math.abs(out.L[i] - 0.4)).toBeLessThan(1e-5);
       expect(Math.abs(out.R[i] + 0.3)).toBeLessThan(1e-5);
+    }
+  });
+
+  it("uses the same whole-sample lookahead at 44.1, 48 and 96 kHz", () => {
+    const workletGlobals = globalThis as typeof globalThis & { sampleRate: number };
+    const originalSampleRate = workletGlobals.sampleRate;
+    try {
+      for (const sampleRate of [44_100, 48_000, 96_000]) {
+        workletGlobals.sampleRate = sampleRate;
+        const proc = new (registered.get("limiter-processor")!)();
+        const prm = params(LIM, {
+          threshold: -18,
+          ceiling: -1,
+          release: 0.05,
+          lookahead: 0.005,
+          link: 1,
+          mix: 1,
+        });
+        const { L } = renderStereo(proc, 0.02, prm, (n) => (n === 0 ? [1, 1] : [0, 0]), sampleRate);
+        const delaySamples = Math.round(Math.fround(0.005) * sampleRate);
+        expect(delaySamples).toBe(sampleRate === 44_100 ? 220 : sampleRate === 48_000 ? 240 : 480);
+        expect(peakAbs(L, 0, delaySamples)).toBeLessThan(1e-6);
+        expect(Math.abs(L[delaySamples]!)).toBeGreaterThan(0.5);
+      }
+    } finally {
+      workletGlobals.sampleRate = originalSampleRate;
     }
   });
 

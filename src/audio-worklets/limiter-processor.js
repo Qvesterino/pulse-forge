@@ -18,10 +18,11 @@
  * Program-dependent release: deeper recent gain reduction lengthens the
  * release time, which keeps sustained material from pumping on every beat.
  *
- * Latency: exactly `lookahead` samples (reported by the TS wrapper via
- * getLatencySec for the engine's PDC). The oversampled detector uses past
- * samples only, so it adds no latency. Metering posts `{ type: "gr", gr }`
- * messages (gain reduction in dB) roughly every 50 ms.
+ * Latency: exactly the integer sample count rounded from `lookahead` seconds
+ * (reported by the TS wrapper via getLatencySec for the engine's PDC). The
+ * oversampled detector uses past samples only, so it adds no latency. Metering
+ * posts `{ type: "gr", gr }` messages (gain reduction in dB) roughly every
+ * 50 ms.
  *
  * NOTE: this file is served RAW to AudioWorklet.addModule() via
  * `new URL(...)` — it must stay plain JavaScript with no imports and no

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createDrumTrackModel, createGroupTrackModel } from "../src/project-model/schema";
 import type { ProjectDocument } from "../src/project-model/types";
+import { createLatencyReportReadiness } from "../src/effects/latencyReadiness";
 
 /**
  * PDC Wave 2 — offline/export determinism.
@@ -11,14 +12,36 @@ import type { ProjectDocument } from "../src/project-model/types";
  * within one sample only after ~100 ms of rendered audio, so the head of
  * every export with a look-ahead chain was progressively misaligned.
  *
- * prepareOfflineRender() settles the async worklet latency reports (main-
- * thread tasks that startRendering() does not wait for), sizes the graph,
- * then ARMS: delay writes become exact setValueAtTime and further syncPdc()
- * calls early-return so a straggler report can never mutate a rendering
- * OfflineAudioContext graph.
+ * prepareOfflineRender() waits for the initial async worklet latency reports
+ * (main-thread tasks that startRendering() does not wait for), sizes the
+ * graph, then ARMS: delay writes become exact setValueAtTime and further
+ * syncPdc() calls early-return so a straggler report can never mutate a
+ * rendering OfflineAudioContext graph.
  */
 
 type ParamCall = { method: "setTargetAtTime" | "setValueAtTime"; value: number };
+
+describe("latency report readiness", () => {
+  it("resolves current and later waiters after the first valid report", async () => {
+    const readiness = createLatencyReportReadiness();
+    const pending = readiness.wait(100);
+    readiness.markReported();
+
+    await expect(pending).resolves.toBe(true);
+    await expect(readiness.wait(1)).resolves.toBe(true);
+    readiness.dispose();
+  });
+
+  it("times out and releases pending waits when the runtime is disposed", async () => {
+    const readiness = createLatencyReportReadiness();
+    await expect(readiness.wait(1)).resolves.toBe(false);
+
+    const pending = readiness.wait(100);
+    readiness.dispose();
+    await expect(pending).resolves.toBe(false);
+    await expect(readiness.wait(100)).resolves.toBe(false);
+  });
+});
 
 function mockNode() {
   const connections = new Set<unknown>();
@@ -125,16 +148,20 @@ async function makeEngine(doc: ProjectDocument) {
 }
 
 type DelayParam = { calls: ParamCall[]; value: number };
+type LatencyRuntime = {
+  getLatencySec?: () => number;
+  waitForLatencyReport?: (timeoutMs: number) => Promise<boolean>;
+};
 
 type Internals = {
   trackNodes: Map<
     string,
     {
-      fx: { runtimes: Map<string, { getLatencySec?: () => number }>; pdcDelay: { delayTime: DelayParam } | null };
+      fx: { runtimes: Map<string, LatencyRuntime>; pdcDelay: { delayTime: DelayParam } | null };
       sendDelays: Map<string, { delayTime: DelayParam }>;
     }
   >;
-  groupNodes: Map<string, { fx: { runtimes: Map<string, { getLatencySec?: () => number }> } }>;
+  groupNodes: Map<string, { fx: { runtimes: Map<string, LatencyRuntime> } }>;
   prepareOfflineRender: () => Promise<void>;
   syncPdc: () => void;
 };
@@ -144,7 +171,7 @@ function internalsOf(engine: unknown): Internals {
 }
 
 /** Simulate a look-ahead runtime of `ms` landing on a chain (post-build). */
-function addLatency(chain: { runtimes: Map<string, { getLatencySec?: () => number }> }, id: string, sec: number): void {
+function addLatency(chain: { runtimes: Map<string, LatencyRuntime> }, id: string, sec: number): void {
   chain.runtimes.set(id, { getLatencySec: () => sec });
 }
 
@@ -177,6 +204,58 @@ describe("PDC offline determinism (Wave 2)", () => {
       expect(exact, "an exact offline write must exist").toBeTruthy();
       expect(exact!.value).toBe(0);
     }
+  });
+
+  it("waits for a late worklet report before arming sample-exact PDC", async () => {
+    const { doc, trackA, trackB } = twoTrackDoc();
+    const engine = await makeEngine(doc);
+    const anyEngine = internalsOf(engine);
+    let reportLatency!: () => void;
+    let signalWaitStarted!: () => void;
+    let reported = false;
+    const report = new Promise<boolean>((resolve) => {
+      reportLatency = () => {
+        reported = true;
+        resolve(true);
+      };
+    });
+    const waitStarted = new Promise<void>((resolve) => {
+      signalWaitStarted = resolve;
+    });
+    anyEngine.trackNodes.get(trackA)!.fx.runtimes.set("late-gate", {
+      getLatencySec: () => (reported ? 0.0025 : 0),
+      waitForLatencyReport: () => {
+        signalWaitStarted();
+        return report;
+      },
+    });
+
+    const preparing = engine.prepareOfflineRender();
+    await waitStarted;
+    const dryDelay = anyEngine.trackNodes.get(trackB)!.fx.pdcDelay!.delayTime;
+    expect(dryDelay.calls.some((call) => call.method === "setValueAtTime")).toBe(false);
+
+    reportLatency();
+    await preparing;
+    const exact = dryDelay.calls.find((call) => call.method === "setValueAtTime");
+    expect(exact?.value).toBeCloseTo(0.0025, 6);
+  });
+
+  it("aborts before arming when a worklet never reports its initial latency", async () => {
+    const { doc, trackA, trackB } = twoTrackDoc();
+    const engine = await makeEngine(doc);
+    const anyEngine = internalsOf(engine);
+    anyEngine.trackNodes.get(trackA)!.fx.runtimes.set("silent-gate", {
+      getLatencySec: () => 0,
+      waitForLatencyReport: async () => false,
+    });
+
+    await expect(engine.prepareOfflineRender()).rejects.toThrow(/latency reports did not arrive.*silent-gate/);
+    const dryDelay = anyEngine.trackNodes.get(trackB)!.fx.pdcDelay!.delayTime;
+    const writesBefore = dryDelay.calls.length;
+    anyEngine.syncPdc();
+    expect(dryDelay.calls.length).toBe(writesBefore + 1);
+    expect(dryDelay.calls.some((call) => call.method === "setValueAtTime")).toBe(false);
   });
 
   it("arming locks the graph: post-arm syncPdc (straggler report) writes NOTHING", async () => {

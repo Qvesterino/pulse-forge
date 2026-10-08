@@ -2,6 +2,7 @@ import { snapCrossoverOrder } from "./fxeq-core/dsp/crossoverStage";
 import type { EffectRuntime } from "../effects/types";
 import type { EffectInstance } from "../project-model/types";
 import { mix01ToPercent100 } from "./scale-bridges";
+import { createLatencyReportReadiness } from "./latencyReadiness";
 
 /**
  * Rack ↔ core parameter-id translation. The rack surface (registry params,
@@ -112,6 +113,7 @@ export function createFxEqNode(
   // subscribes via onLatencyChange to re-sync PDC the moment it lands
   // (syncPdc would otherwise compensate 0 until the next document sync).
   let latencySamples = 0;
+  const latencyReadiness = createLatencyReportReadiness();
   // Band-peak metering + limiter gain reduction — pushed by the worklet only
   // while the panel has metering enabled (see setMetersEnabled), polled by
   // the panel through getMeters()/getGainReductionDb().
@@ -167,8 +169,14 @@ export function createFxEqNode(
       id?: string | null;
       value?: number;
     } | null;
-    if (msg?.type === "latency" && typeof msg.samples === "number") {
+    if (
+      msg?.type === "latency" &&
+      typeof msg.samples === "number" &&
+      Number.isSafeInteger(msg.samples) &&
+      msg.samples >= 0
+    ) {
       latencySamples = msg.samples;
+      latencyReadiness.markReported();
       if (!disposed) for (const listener of latencyListeners) listener();
     } else if (msg?.type === "bandPeaks" && msg.peaks instanceof Float32Array) {
       bandPeaks = msg.peaks;
@@ -195,6 +203,7 @@ export function createFxEqNode(
         latencyListeners.delete(listener);
       };
     },
+    waitForLatencyReport: (timeoutMs: number) => latencyReadiness.wait(timeoutMs),
     getMeters: () => (bandPeaks ? { bandPeaks, gainReductionDb } : null),
     getGainReductionDb: () => gainReductionDb,
     setMetersEnabled(enabled: boolean) {
@@ -313,6 +322,7 @@ export function createFxEqNode(
     },
     dispose() {
       disposed = true;
+      latencyReadiness.dispose();
       latencyListeners.clear();
       bandPeaks = null;
       gainReductionDb = 0;
