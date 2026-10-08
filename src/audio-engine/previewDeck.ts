@@ -37,6 +37,44 @@ interface PreviewVoice {
   source: AudioBufferSourceNode;
   gain: GainNode;
   masterCompare?: boolean;
+  comparePairId?: number;
+}
+
+export type MasterCompareSide = "project" | "reference";
+
+interface ComparePairRamp {
+  startAt: number;
+  endAt: number;
+  fromProject: number;
+  fromReference: number;
+  toProject: number;
+  toReference: number;
+}
+
+interface MasterComparePair {
+  id: number;
+  project: PreviewVoice;
+  reference: PreviewVoice;
+  selectedSide: MasterCompareSide;
+  projectGain: number;
+  referenceGain: number;
+  mono: boolean;
+  ramp: ComparePairRamp;
+  endedCount: number;
+  onEnded?: () => void;
+}
+
+const MASTER_COMPARE_CROSSFADE_SEC = 0.02;
+const MASTER_COMPARE_START_DELAY_SEC = 0.01;
+
+function clampPreviewGain(value: number): number {
+  return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+}
+
+function rampValue(from: number, to: number, startAt: number, endAt: number, time: number): number {
+  if (time <= startAt) return from;
+  if (time >= endAt || endAt <= startAt) return to;
+  return from + ((to - from) * (time - startAt)) / (endAt - startAt);
 }
 
 interface InstrumentPreviewVoice {
@@ -64,6 +102,8 @@ export interface PreviewDeckDeps {
 export class PreviewDeck {
   private previewVoices = new Set<PreviewVoice>();
   private instrumentPreviewVoices = new Set<InstrumentPreviewVoice>();
+  private masterComparePair: MasterComparePair | null = null;
+  private nextMasterComparePairId = 1;
 
   constructor(private readonly deps: PreviewDeckDeps) {}
 
@@ -220,6 +260,9 @@ export class PreviewDeck {
 
   stopPreview(): void {
     const ctx = this.deps.ctx();
+    const comparePair = this.masterComparePair;
+    this.masterComparePair = null;
+    comparePair?.onEnded?.();
     for (const voice of [...this.instrumentPreviewVoices]) this.disposeInstrumentPreviewVoice(voice);
     for (const voice of this.previewVoices) {
       try {
@@ -248,6 +291,9 @@ export class PreviewDeck {
 
   /** Hard dispose for context swaps / panic — no de-click tail, no timers left. */
   disposeAll(): void {
+    const comparePair = this.masterComparePair;
+    this.masterComparePair = null;
+    comparePair?.onEnded?.();
     for (const voice of [...this.instrumentPreviewVoices]) this.disposeInstrumentPreviewVoice(voice);
     this.instrumentPreviewVoices.clear();
     for (const voice of this.previewVoices) {
@@ -294,14 +340,180 @@ export class PreviewDeck {
   updateMasterComparePreview(gainValue: number, mono: boolean): void {
     const ctx = this.deps.ctx();
     if (!ctx) return;
-    const target = Math.max(0, Math.min(1, gainValue));
+    const target = clampPreviewGain(gainValue);
     for (const voice of this.previewVoices) {
-      if (!voice.masterCompare) continue;
+      if (!voice.masterCompare || voice.comparePairId !== undefined) continue;
       voice.gain.gain.setTargetAtTime(target, ctx.currentTime, 0.015);
-      voice.gain.channelCount = mono ? 1 : 2;
-      voice.gain.channelCountMode = mono ? "explicit" : "max";
-      voice.gain.channelInterpretation = "speakers";
+      this.setCompareMono(voice.gain, mono);
     }
+  }
+
+  /**
+   * Start two rendered masters against the same audition clock. Their source
+   * offsets may differ, but switching sides keeps the elapsed comparison time
+   * aligned and fades between direct-monitor gains without re-rendering.
+   */
+  previewMasterComparePair(
+    projectBuffer: AudioBuffer,
+    referenceBuffer: AudioBuffer,
+    projectGain: number,
+    referenceGain: number,
+    selectedSide: MasterCompareSide,
+    projectOffsetSec = 0,
+    referenceOffsetSec = 0,
+    mono = false,
+    onEnded?: () => void,
+  ): boolean {
+    this.deps.ensureContext();
+    const ctx = this.deps.ctx();
+    if (!ctx || projectBuffer.duration <= 0 || referenceBuffer.duration <= 0) return false;
+
+    const projectOffset = Math.max(0, Math.min(projectBuffer.duration, projectOffsetSec));
+    const referenceOffset = Math.max(0, Math.min(referenceBuffer.duration, referenceOffsetSec));
+    const commonDuration = Math.min(projectBuffer.duration - projectOffset, referenceBuffer.duration - referenceOffset);
+    if (!Number.isFinite(commonDuration) || commonDuration < 0.01) return false;
+
+    this.stopPreview();
+    const pairId = this.nextMasterComparePairId++;
+    const projectSource = ctx.createBufferSource();
+    const referenceSource = ctx.createBufferSource();
+    const projectGainNode = ctx.createGain();
+    const referenceGainNode = ctx.createGain();
+    projectSource.buffer = projectBuffer;
+    referenceSource.buffer = referenceBuffer;
+    projectSource.connect(projectGainNode).connect(ctx.destination);
+    referenceSource.connect(referenceGainNode).connect(ctx.destination);
+    this.setCompareMono(projectGainNode, mono);
+    this.setCompareMono(referenceGainNode, mono);
+
+    const targetProject = selectedSide === "project" ? clampPreviewGain(projectGain) : 0;
+    const targetReference = selectedSide === "reference" ? clampPreviewGain(referenceGain) : 0;
+    const startsAt = ctx.currentTime + MASTER_COMPARE_START_DELAY_SEC;
+    const ramp: ComparePairRamp = {
+      startAt: startsAt,
+      endAt: startsAt + MASTER_COMPARE_CROSSFADE_SEC,
+      fromProject: 0,
+      fromReference: 0,
+      toProject: targetProject,
+      toReference: targetReference,
+    };
+    projectGainNode.gain.setValueAtTime(0, startsAt);
+    referenceGainNode.gain.setValueAtTime(0, startsAt);
+    projectGainNode.gain.linearRampToValueAtTime(targetProject, ramp.endAt);
+    referenceGainNode.gain.linearRampToValueAtTime(targetReference, ramp.endAt);
+
+    const project: PreviewVoice = {
+      source: projectSource,
+      gain: projectGainNode,
+      masterCompare: true,
+      comparePairId: pairId,
+    };
+    const reference: PreviewVoice = {
+      source: referenceSource,
+      gain: referenceGainNode,
+      masterCompare: true,
+      comparePairId: pairId,
+    };
+    const pair: MasterComparePair = {
+      id: pairId,
+      project,
+      reference,
+      selectedSide,
+      projectGain: clampPreviewGain(projectGain),
+      referenceGain: clampPreviewGain(referenceGain),
+      mono,
+      ramp,
+      endedCount: 0,
+      onEnded,
+    };
+    this.masterComparePair = pair;
+    this.previewVoices.add(project);
+    this.previewVoices.add(reference);
+    projectSource.onended = () => this.finishMasterCompareVoice(project);
+    referenceSource.onended = () => this.finishMasterCompareVoice(reference);
+    try {
+      projectSource.start(startsAt, projectOffset, commonDuration);
+      referenceSource.start(startsAt, referenceOffset, commonDuration);
+    } catch {
+      this.stopPreview();
+      return false;
+    }
+    return true;
+  }
+
+  selectMasterComparePairSide(side: MasterCompareSide): void {
+    const pair = this.masterComparePair;
+    const ctx = this.deps.ctx();
+    if (!pair || !ctx || pair.selectedSide === side) return;
+    pair.selectedSide = side;
+    this.scheduleMasterComparePairLevels(pair, side, ctx.currentTime + MASTER_COMPARE_START_DELAY_SEC);
+  }
+
+  updateMasterComparePair(projectGain: number, referenceGain: number, side: MasterCompareSide, mono: boolean): void {
+    const pair = this.masterComparePair;
+    const ctx = this.deps.ctx();
+    if (!pair || !ctx) return;
+    const nextProjectGain = clampPreviewGain(projectGain);
+    const nextReferenceGain = clampPreviewGain(referenceGain);
+    const levelsChanged =
+      pair.projectGain !== nextProjectGain || pair.referenceGain !== nextReferenceGain || pair.selectedSide !== side;
+    if (pair.mono !== mono) {
+      pair.mono = mono;
+      this.setCompareMono(pair.project.gain, mono);
+      this.setCompareMono(pair.reference.gain, mono);
+    }
+    if (!levelsChanged) return;
+    pair.projectGain = nextProjectGain;
+    pair.referenceGain = nextReferenceGain;
+    this.scheduleMasterComparePairLevels(pair, side, ctx.currentTime + MASTER_COMPARE_START_DELAY_SEC);
+  }
+
+  private setCompareMono(gain: GainNode, mono: boolean): void {
+    gain.channelCount = mono ? 1 : 2;
+    gain.channelCountMode = mono ? "explicit" : "max";
+    gain.channelInterpretation = "speakers";
+  }
+
+  private scheduleMasterComparePairLevels(pair: MasterComparePair, side: MasterCompareSide, startsAt: number): void {
+    const fromProject = rampValue(
+      pair.ramp.fromProject,
+      pair.ramp.toProject,
+      pair.ramp.startAt,
+      pair.ramp.endAt,
+      startsAt,
+    );
+    const fromReference = rampValue(
+      pair.ramp.fromReference,
+      pair.ramp.toReference,
+      pair.ramp.startAt,
+      pair.ramp.endAt,
+      startsAt,
+    );
+    const toProject = side === "project" ? pair.projectGain : 0;
+    const toReference = side === "reference" ? pair.referenceGain : 0;
+    const endsAt = startsAt + MASTER_COMPARE_CROSSFADE_SEC;
+    for (const [param, from, to] of [
+      [pair.project.gain.gain, fromProject, toProject],
+      [pair.reference.gain.gain, fromReference, toReference],
+    ] as const) {
+      param.cancelScheduledValues(startsAt);
+      param.setValueAtTime(from, startsAt);
+      param.linearRampToValueAtTime(to, endsAt);
+    }
+    pair.selectedSide = side;
+    pair.ramp = { startAt: startsAt, endAt: endsAt, fromProject, fromReference, toProject, toReference };
+  }
+
+  private finishMasterCompareVoice(voice: PreviewVoice): void {
+    this.previewVoices.delete(voice);
+    voice.gain.disconnect();
+    voice.source.disconnect();
+    const pair = this.masterComparePair;
+    if (!pair || pair.id !== voice.comparePairId) return;
+    pair.endedCount++;
+    if (pair.endedCount < 2) return;
+    this.masterComparePair = null;
+    pair.onEnded?.();
   }
 
   previewBuffer(buffer: AudioBuffer, gainValue = 0.9, onEnded?: () => void, offsetSec = 0): void {

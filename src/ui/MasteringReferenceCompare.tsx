@@ -26,6 +26,7 @@ interface LoadedReference {
 
 interface RenderedProjectMaster {
   revisionId: string;
+  sampleBankRevision: number;
   sampleRate: number;
   buffer: AudioBuffer;
   summary: BufferSummary;
@@ -169,6 +170,7 @@ function trimLabel(gain: number): string {
 export function MasteringReferenceCompare({
   doc,
   revisionId,
+  sampleBankRevision,
   sampleRate,
   levelMatch,
   abRenderEpoch,
@@ -180,6 +182,7 @@ export function MasteringReferenceCompare({
 }: {
   doc: ProjectDocument;
   revisionId: string;
+  sampleBankRevision: number;
   sampleRate: number;
   levelMatch: boolean;
   abRenderEpoch: number;
@@ -292,10 +295,25 @@ export function MasteringReferenceCompare({
   }, [doc.id, revisionId, sampleRate, abRenderEpoch, services.engine]);
 
   useEffect(() => {
+    if (!projectMaster || projectMaster.sampleBankRevision === sampleBankRevision) return;
+    renderAbortRef.current?.abort();
+    if (playingRef.current) {
+      services.engine.stopPreview();
+      setPlaying(null);
+    }
+    setProjectMaster(null);
+    setProjectOffset(0);
+    setStatus("Sample bank changed. Render the current master again for a fresh reference comparison.");
+  }, [projectMaster, sampleBankRevision, services.engine]);
+
+  useEffect(() => {
     onReferenceBytes(bufferBytes(reference?.buffer ?? null));
   }, [reference, onReferenceBytes]);
 
-  const currentProjectMaster = projectMaster?.revisionId === revisionId && projectMaster.sampleRate === sampleRate;
+  const currentProjectMaster =
+    projectMaster?.revisionId === revisionId &&
+    projectMaster.sampleBankRevision === sampleBankRevision &&
+    projectMaster.sampleRate === sampleRate;
   const targetLufs = useMemo(() => {
     if (!reference || !currentProjectMaster) return null;
     const lufsProject = projectMaster.summary.lufsIntegrated;
@@ -309,11 +327,13 @@ export function MasteringReferenceCompare({
       ? previewTrim(projectMaster.summary, targetLufs, levelMatch) * dimGain
       : dimGain;
   const referenceGain = reference ? previewTrim(reference.summary, targetLufs, levelMatch) * dimGain : dimGain;
+  const comparePairReady = Boolean(currentProjectMaster && projectMaster && reference);
 
   useEffect(() => {
-    if (playing === "project") services.engine.updateMasterComparePreview(projectGain, mono);
-    if (playing === "reference") services.engine.updateMasterComparePreview(referenceGain, mono);
-  }, [mono, playing, projectGain, referenceGain, services.engine]);
+    if (!playing) return;
+    if (comparePairReady) services.engine.updateMasterComparePair(projectGain, referenceGain, playing, mono);
+    else if (playing === "reference") services.engine.updateMasterComparePreview(referenceGain, mono);
+  }, [comparePairReady, mono, playing, projectGain, referenceGain, services.engine]);
 
   const importFile = async (file: File) => {
     const projectId = doc.id;
@@ -467,7 +487,13 @@ export function MasteringReferenceCompare({
         throw new Error("The sample bank changed during analysis. The stale comparison was discarded.");
       }
       const summary = analysis.measurements;
-      setProjectMaster({ revisionId: startRevision, sampleRate, buffer, summary });
+      setProjectMaster({
+        revisionId: startRevision,
+        sampleBankRevision: sampleBankRevisionAtStart,
+        sampleRate,
+        buffer,
+        summary,
+      });
       setStatus("Project master ready. Project and reference playback start at their selected comparison points.");
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : String(caught);
@@ -482,25 +508,39 @@ export function MasteringReferenceCompare({
   const play = (source: "project" | "reference") => {
     if (source === "project" && (!currentProjectMaster || !projectMaster)) return;
     if (source === "reference" && !reference) return;
+    setError("");
+    if (playing && comparePairReady) {
+      services.engine.selectMasterComparePairSide(source);
+      setPlaying(source);
+      return;
+    }
+    const onPreviewEnded = () => {
+      if (aliveRef.current) setPlaying(null);
+    };
     services.engine.stopPreview();
-    setPlaying(source);
-    if (source === "project" && projectMaster) {
-      services.engine.previewMasterCompare(
+    if (comparePairReady && projectMaster && reference) {
+      const started = services.engine.previewMasterComparePair(
         projectMaster.buffer,
-        projectGain,
-        () => setPlaying(null),
-        projectOffset,
-        mono,
-      );
-    } else if (reference) {
-      services.engine.previewMasterCompare(
         reference.buffer,
+        projectGain,
         referenceGain,
-        () => setPlaying(null),
+        source,
+        projectOffset,
         referenceOffset,
         mono,
+        onPreviewEnded,
       );
+      if (!started) {
+        setPlaying(null);
+        setError("Choose a start point with at least 10 ms remaining on both sides.");
+        return;
+      }
+    } else if (source === "reference" && reference) {
+      services.engine.previewMasterCompare(reference.buffer, referenceGain, onPreviewEnded, referenceOffset, mono);
+    } else if (source === "project" && projectMaster) {
+      services.engine.previewMasterCompare(projectMaster.buffer, projectGain, onPreviewEnded, projectOffset, mono);
     }
+    setPlaying(source);
   };
 
   const removeReference = async () => {
@@ -606,10 +646,26 @@ export function MasteringReferenceCompare({
             onClick={() => play("project")}
             disabled={!currentProjectMaster || rendering || loading}
           >
-            {playing === "project" ? "Playing project…" : "Play project master"}
+            {comparePairReady
+              ? playing === "project"
+                ? "Selected · project master"
+                : playing
+                  ? "Switch to project master"
+                  : "Start A/B · project master"
+              : playing === "project"
+                ? "Playing project…"
+                : "Play project master"}
           </button>
           <button type="button" onClick={() => play("reference")} disabled={!reference || rendering || loading}>
-            {playing === "reference" ? "Playing reference…" : "Play reference"}
+            {comparePairReady
+              ? playing === "reference"
+                ? "Selected · reference"
+                : playing
+                  ? "Switch to reference"
+                  : "Start A/B · reference"
+              : playing === "reference"
+                ? "Playing reference…"
+                : "Play reference"}
           </button>
           {playing && (
             <button type="button" onClick={stop}>
@@ -665,9 +721,10 @@ export function MasteringReferenceCompare({
                 max={renderProjectMax}
                 step={1}
                 value={projectOffset}
-                onChange={(event) =>
-                  setProjectOffset(Math.min(renderProjectMax, Math.max(0, Number(event.target.value) || 0)))
-                }
+                onChange={(event) => {
+                  if (playing) stop();
+                  setProjectOffset(Math.min(renderProjectMax, Math.max(0, Number(event.target.value) || 0)));
+                }}
               />{" "}
               s
             </label>
@@ -679,14 +736,17 @@ export function MasteringReferenceCompare({
                 max={renderReferenceMax}
                 step={1}
                 value={referenceOffset}
-                onChange={(event) =>
-                  setReferenceOffset(Math.min(renderReferenceMax, Math.max(0, Number(event.target.value) || 0)))
-                }
+                onChange={(event) => {
+                  if (playing) stop();
+                  setReferenceOffset(Math.min(renderReferenceMax, Math.max(0, Number(event.target.value) || 0)));
+                }}
               />{" "}
               s
             </label>
             <span>
-              Switching sides starts each at its chosen point. Both use the same audition dim and mono setting.
+              {comparePairReady
+                ? "Start both at these points, then switch sides without stopping. The shared audition ends when the shorter excerpt ends."
+                : "Each side starts at its chosen point. Both use the same audition dim and mono setting."}
             </span>
           </div>
         </>

@@ -84,6 +84,11 @@ another DAW.
 - At a neutral master config, the result is sample-aligned to the source and
   includes only the documented render tail; edits use the same master chain
   as project export.
+- Project/reference audition starts both direct-monitor buffers against one
+  AudioContext clock with independent source offsets. A/B selection changes
+  complementary gain ramps without restarting either source, and playback
+  ends after the shorter remaining excerpt. This audition clock is independent
+  of the live project transport and cannot feed a project or export graph.
 - The encoded file is parsed and decoded/measured before download when the
   available browser decoder supports it; the browser acceptance test then
   imports the delivered WAV again as a new session. The external-session MP3
@@ -133,3 +138,18 @@ rate. MP3 output is limited to 44.1/48 kHz by the LAME encoder; at 96 kHz,
 the UI blocks MP3 delivery and points to WAV/FLAC or a lower render rate.
 Browser FLAC acceptance, round-trip vectors and supported browser/OS profiles
 remain open; this update does not broaden the validated support matrix.
+
+## Implementation update — 2026-10-09
+
+The project reference comparison now starts its rendered-master and reference
+buffers together at their selected offsets. Both continue on the same monitor
+clock while the user switches sides through a 20 ms complementary gain ramp;
+the pair ends at the shorter remaining duration. Loudness matching, dim and
+mono controls update both sides without unmuting the selected-out side. A
+reference can still be auditioned alone before a current-project render exists.
+This does not synchronize the pair to the project transport. PreviewDeck unit
+coverage checks common start time, offset/duration pairing, crossfade scheduling,
+live loudness/mono updates and short-excerpt rejection (**11/11**). Chromium E2E
+imports a reference, renders the current project, toggles to both aligned sides
+and stops playback (**1/1**); broader browser/OS and hardware-listening coverage
+remains open.

@@ -164,7 +164,6 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
     }
     setComparison(null);
     setBlindListen(null);
-    setAbRenderEpoch((epoch) => epoch + 1);
     setComparisonEpoch((epoch) => epoch + 1);
     setStatus("");
     setError("");
@@ -610,6 +609,7 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
         <MasteringReferenceCompare
           doc={doc}
           revisionId={revisionId}
+          sampleBankRevision={sampleBankRevision}
           sampleRate={sampleRate}
           levelMatch={levelMatch}
           abRenderEpoch={abRenderEpoch}
@@ -617,7 +617,6 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
           onBeforeRender={() => {
             setComparison(null);
             setPlaying(null);
-            setAbRenderEpoch((epoch) => epoch + 1);
             setComparisonEpoch((epoch) => epoch + 1);
             services.engine.stopPreview();
           }}

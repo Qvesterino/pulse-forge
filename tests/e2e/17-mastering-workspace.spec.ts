@@ -686,11 +686,14 @@ test.describe("17 — mastering workspace", () => {
       const audioEngineModulePath = ["/src", "audio-engine", "AudioEngine.ts"].join("/");
       const templatesModulePath = ["/src", "project-model", "templates.ts"].join("/");
       const workletLoaderPath = ["/src", "audio-worklets", "loader.ts"].join("/");
-      const [{ AudioEngine }, { createProjectFromTemplate }, { loadCoreWorklets }] = await Promise.all([
-        import(audioEngineModulePath),
-        import(templatesModulePath),
-        import(workletLoaderPath),
-      ]);
+      const effectRegistryPath = ["/src", "effects", "registry.ts"].join("/");
+      const [{ AudioEngine }, { createProjectFromTemplate }, { loadCoreWorklets }, { defaultParamsOf }] =
+        await Promise.all([
+          import(audioEngineModulePath),
+          import(templatesModulePath),
+          import(workletLoaderPath),
+          import(effectRegistryPath),
+        ]);
       const sampleRate = 44100;
       const waitFor = async (predicate: () => boolean, label: string, timeoutMs = 8000) => {
         const deadline = performance.now() + timeoutMs;
@@ -715,10 +718,22 @@ test.describe("17 — mastering workspace", () => {
           mix: 1,
         },
       };
+      const eqEffect = {
+        id: "master-tone-eq",
+        type: "eq" as const,
+        bypassed: false,
+        params: { ...defaultParamsOf("eq"), highShelfFreq: 2500, highShelfGain: 6 },
+      };
+      const compressorEffect = {
+        id: "master-dynamics-compressor",
+        type: "compressor" as const,
+        bypassed: true,
+        params: { ...defaultParamsOf("compressor"), threshold: -24, ratio: 4, mix: 0.25 },
+      };
       const doc = createProjectFromTemplate("empty");
       doc.master = {
         ...doc.master,
-        effects: [gateEffect],
+        effects: [gateEffect, eqEffect, compressorEffect],
         tapeEnabled: true,
         glueEnabled: true,
         limiterEnabled: true,
@@ -730,8 +745,14 @@ test.describe("17 — mastering workspace", () => {
       };
       type EngineInternals = {
         projectPromise: Promise<void> | null;
-        masterFx: { runtimes: Map<string, { getLatencySec?: () => number }> };
-        masterChain: { input: AudioNode; masterBypassDelay: DelayNode };
+        masterFx: {
+          runtimes: Map<string, { getLatencySec?: () => number; getGainReductionDb?: () => number }>;
+        };
+        masterChain: {
+          input: AudioNode;
+          masterBypassDelay: DelayNode;
+          masterLimiterWorklet: { getGainReductionDb?: () => number } | null;
+        };
       };
       const makeEngineInternals = (engine: InstanceType<typeof AudioEngine>) => engine as unknown as EngineInternals;
       const settleProject = async (engine: InstanceType<typeof AudioEngine>) => {
@@ -743,10 +764,12 @@ test.describe("17 — mastering workspace", () => {
       if (liveContext.state === "suspended") await liveContext.resume();
       const nativeNodeConstructor = window.AudioWorkletNode;
       const trackedGateNodes: { node: AudioWorkletNode; disconnectCalls: number }[] = [];
+      const trackedEqNodes: { node: AudioWorkletNode; disconnectCalls: number }[] = [];
+      const trackedCompressorNodes: { node: AudioWorkletNode; disconnectCalls: number }[] = [];
       window.AudioWorkletNode = new Proxy(nativeNodeConstructor, {
         construct(target, args) {
           const node = Reflect.construct(target, args) as AudioWorkletNode;
-          if (args[1] === "gate-processor") {
+          if (args[1] === "gate-processor" || args[1] === "eq-processor" || args[1] === "compressor-processor") {
             const tracked = { node, disconnectCalls: 0 };
             const originalDisconnect = node.disconnect.bind(node);
             Object.defineProperty(node, "disconnect", {
@@ -756,7 +779,9 @@ test.describe("17 — mastering workspace", () => {
                 return Reflect.apply(originalDisconnect, node, disconnectArgs);
               },
             });
-            trackedGateNodes.push(tracked);
+            if (args[1] === "gate-processor") trackedGateNodes.push(tracked);
+            else if (args[1] === "eq-processor") trackedEqNodes.push(tracked);
+            else trackedCompressorNodes.push(tracked);
           }
           return node;
         },
@@ -817,18 +842,36 @@ test.describe("17 — mastering workspace", () => {
         );
       }, "the worklet processors and delayed gate latency report");
 
+      const bypassedCompressorWasOmitted = !internals.masterFx.runtimes.has(compressorEffect.id);
+      compressorEffect.bypassed = false;
+      engine.setProject(doc);
+      await settleProject(engine);
+      await waitFor(() => {
+        const rebuiltGateLatency = internals.masterFx.runtimes.get(gateEffect.id)?.getLatencySec?.() ?? 0;
+        return (
+          internals.masterFx.runtimes.has(compressorEffect.id) &&
+          trackedCompressorNodes.some((entry) => entry.node.context === liveContext) &&
+          rebuiltGateLatency > 0 &&
+          (latencyWrites.at(-1) ?? 0) > rebuiltGateLatency
+        );
+      }, "the enabled master compressor and rebuilt Gate/PDC latency reports");
+      const compressorDegraded = engine
+        .getDegradedFx()
+        .some((item: { fxId: string }) => item.fxId === compressorEffect.id);
+
       const gateLatencySec = internals.masterFx.runtimes.get(gateEffect.id)?.getLatencySec?.() ?? 0;
       const bypassLatencyTargetSec = Math.max(...latencyWrites);
       const liveGateNode = trackedGateNodes.findLast((entry) => entry.node.context === liveContext);
       if (!liveGateNode) throw new Error("The live master gate did not create an AudioWorkletNode.");
+      const liveEqNode = trackedEqNodes.findLast((entry) => entry.node.context === liveContext);
+      if (!liveEqNode) throw new Error("The live master EQ insert did not create an AudioWorkletNode.");
+      const liveCompressorNode = trackedCompressorNodes.findLast((entry) => entry.node.context === liveContext);
+      if (!liveCompressorNode) throw new Error("The live master compressor insert did not create an AudioWorkletNode.");
       const liveHandlerWasInstalled = liveGateNode.node.port.onmessage !== null;
 
-      // Exercise the full hot-swap above, then park optional color/dynamics
-      // stages so this null comparison isolates the same gate + master route
-      // in both contexts instead of comparing different realtime warm-up.
-      doc.master = { ...doc.master, tapeEnabled: false, glueEnabled: false, limiterEnabled: false };
-      engine.setProject(doc);
-      await settleProject(engine);
+      // Compare the complete project master path after the hot-swap. The hot
+      // fixture below drives Tape, Glue and the limiter above their working
+      // thresholds so this checks real processing, not only node presence.
       const activeBypassLatencyTargetSec = latencyWrites.at(-1) ?? Number.NaN;
 
       const captureModuleUrl = new URL("/parity-capture-worklet.js", location.href).href;
@@ -837,7 +880,7 @@ test.describe("17 — mastering workspace", () => {
       const liveInput = liveBuffer.getChannelData(0);
       for (let index = 0; index < liveInput.length; index++) {
         const time = index / sampleRate;
-        liveInput[index] = 0.22 * Math.sin(2 * Math.PI * 997 * time) + 0.09 * Math.sin(2 * Math.PI * 3701 * time);
+        liveInput[index] = 0.8 * Math.sin(2 * Math.PI * 997 * time) + 0.4 * Math.sin(2 * Math.PI * 3701 * time);
       }
       const liveSource = liveContext.createBufferSource();
       liveSource.buffer = liveBuffer;
@@ -874,6 +917,17 @@ test.describe("17 — mastering workspace", () => {
       liveCaptureNode.disconnect();
       liveSource.stop();
       liveSource.disconnect();
+      await waitFor(
+        () => (internals.masterChain.masterLimiterWorklet?.getGainReductionDb?.() ?? 0) > 0.1,
+        "the master limiter to reduce the hot parity signal",
+      );
+      const liveLimiterGainReductionDb = internals.masterChain.masterLimiterWorklet?.getGainReductionDb?.() ?? 0;
+      await waitFor(
+        () => (internals.masterFx.runtimes.get(compressorEffect.id)?.getGainReductionDb?.() ?? 0) > 0.1,
+        "the master insert compressor to reduce the hot parity signal",
+      );
+      const liveCompressorGainReductionDb =
+        internals.masterFx.runtimes.get(compressorEffect.id)?.getGainReductionDb?.() ?? 0;
 
       // Capture the live output while toggling monitor bypass in both directions.
       // A deliberately closed gate makes the aligned dry leg carry real signal,
@@ -994,28 +1048,32 @@ test.describe("17 — mastering workspace", () => {
       );
       const liveMonitorTransientRatio = transitionPeakCurvature / Math.max(steadyPeakCurvature, 1e-9);
 
-      const offlineContext = new OfflineAudioContext(2, sampleRate, sampleRate);
-      await loadCoreWorklets(offlineContext);
-      engine.useContext(offlineContext);
-      engine.setProject(doc);
-      await settleProject(engine);
+      const renderMasterConfig = async () => {
+        const context = new OfflineAudioContext(2, sampleRate, sampleRate);
+        await loadCoreWorklets(context);
+        engine.useContext(context);
+        engine.setProject(doc);
+        await settleProject(engine);
+        const buffer = context.createBuffer(1, sampleRate, sampleRate);
+        const input = buffer.getChannelData(0);
+        for (let index = 0; index < input.length; index++) {
+          const time = index / sampleRate;
+          input[index] = 0.8 * Math.sin(2 * Math.PI * 997 * time) + 0.4 * Math.sin(2 * Math.PI * 3701 * time);
+        }
+        const source = context.createBufferSource();
+        source.buffer = buffer;
+        source.loop = true;
+        source.connect(makeEngineInternals(engine).masterChain.input);
+        source.start(0);
+        await engine.prepareOfflineRender();
+        return (await context.startRendering()).getChannelData(0);
+      };
+      const offlineSamples = await renderMasterConfig();
       const oldGateDisposed =
         liveGateNode.disconnectCalls > 0 && liveGateNode.node.port.onmessage === null && liveHandlerWasInstalled;
-
-      const offlineBuffer = offlineContext.createBuffer(1, sampleRate, sampleRate);
-      const offlineInput = offlineBuffer.getChannelData(0);
-      for (let index = 0; index < offlineInput.length; index++) {
-        const time = index / sampleRate;
-        offlineInput[index] = 0.22 * Math.sin(2 * Math.PI * 997 * time) + 0.09 * Math.sin(2 * Math.PI * 3701 * time);
-      }
-      const offlineSource = offlineContext.createBufferSource();
-      offlineSource.buffer = offlineBuffer;
-      offlineSource.loop = true;
-      offlineSource.connect(makeEngineInternals(engine).masterChain.input);
-      offlineSource.start(0);
-      await engine.prepareOfflineRender();
-      const offlineRendered = await offlineContext.startRendering();
-      const offlineSamples = offlineRendered.getChannelData(0);
+      const oldEqDisposed = liveEqNode.disconnectCalls > 0;
+      const oldCompressorDisposed =
+        liveCompressorNode.disconnectCalls > 0 && liveCompressorNode.node.port.onmessage === null;
       const expectedOffset = Math.max(0, Math.round((liveCapture.originTime - sourceStartTime) * sampleRate));
       const compareFrames = 4096;
       let best = { offset: 0, correlation: -1, nullDb: Number.POSITIVE_INFINITY };
@@ -1045,6 +1103,32 @@ test.describe("17 — mastering workspace", () => {
         }
       }
 
+      const differenceDb = (reference: Float32Array, candidate: Float32Array) => {
+        let referenceEnergy = 0;
+        let differenceEnergy = 0;
+        const frames = Math.min(reference.length, candidate.length);
+        for (let index = 0; index < frames; index++) {
+          referenceEnergy += reference[index] * reference[index];
+          const difference = reference[index] - candidate[index];
+          differenceEnergy += difference * difference;
+        }
+        return 10 * Math.log10((differenceEnergy + 1e-30) / Math.max(1e-30, referenceEnergy));
+      };
+
+      compressorEffect.bypassed = true;
+      const bypassedCompressorSamples = await renderMasterConfig();
+      const compressorRuntimeOmittedAfterBypass = !internals.masterFx.runtimes.has(compressorEffect.id);
+      const compressorBypassDifferenceDb = differenceDb(offlineSamples, bypassedCompressorSamples);
+
+      compressorEffect.bypassed = false;
+      eqEffect.params = { ...eqEffect.params, highShelfGain: 15 };
+      compressorEffect.params = { ...compressorEffect.params, threshold: -18, ratio: 20, mix: 1 };
+      doc.master = { ...doc.master, effects: [gateEffect, eqEffect, compressorEffect] };
+      const orderedStressSamples = await renderMasterConfig();
+      doc.master = { ...doc.master, effects: [gateEffect, compressorEffect, eqEffect] };
+      const reorderedStressSamples = await renderMasterConfig();
+      const compressorReorderDifferenceDb = differenceDb(orderedStressSamples, reorderedStressSamples);
+
       await liveContext.close();
       window.AudioWorkletNode = nativeNodeConstructor;
       return {
@@ -1052,8 +1136,15 @@ test.describe("17 — mastering workspace", () => {
         gateLatencySec,
         bypassLatencyTargetSec,
         activeBypassLatencyTargetSec,
+        bypassedCompressorWasOmitted,
+        compressorDegraded,
+        compressorRuntimeOmittedAfterBypass,
+        liveLimiterGainReductionDb,
+        liveCompressorGainReductionDb,
         liveGateHandlerInstalled: liveHandlerWasInstalled,
         oldGateDisposed,
+        oldEqDisposed,
+        oldCompressorDisposed,
         dryMonitorPeak,
         transitionPeakDelta,
         steadyPeakDelta,
@@ -1067,6 +1158,8 @@ test.describe("17 — mastering workspace", () => {
         liveOfflineCorrelation: best.correlation,
         liveOfflineNullDb: best.nullDb,
         liveOfflineAlignmentSamples: best.offset,
+        compressorBypassDifferenceDb,
+        compressorReorderDifferenceDb,
       };
     });
 
@@ -1076,17 +1169,28 @@ test.describe("17 — mastering workspace", () => {
     expect(facts.gateLatencySec).toBeLessThan(0.0026);
     expect(facts.bypassLatencyTargetSec).toBeGreaterThan(facts.gateLatencySec);
     expect(facts.bypassLatencyTargetSec).toBeLessThan(facts.gateLatencySec + 0.0003);
-    expect(Math.abs(facts.activeBypassLatencyTargetSec - facts.gateLatencySec) * 44100).toBeLessThanOrEqual(1);
+    expect(Math.abs(facts.activeBypassLatencyTargetSec - facts.bypassLatencyTargetSec) * 44100).toBeLessThanOrEqual(1);
+    expect(facts.bypassedCompressorWasOmitted).toBe(true);
+    expect(facts.compressorRuntimeOmittedAfterBypass).toBe(true);
+    expect(facts.compressorDegraded, JSON.stringify(facts)).toBe(false);
+    expect(facts.liveLimiterGainReductionDb, JSON.stringify(facts)).toBeGreaterThan(0.1);
+    expect(facts.liveCompressorGainReductionDb, JSON.stringify(facts)).toBeGreaterThan(0.1);
     expect(facts.liveGateHandlerInstalled).toBe(true);
     expect(
       facts.oldGateDisposed,
       "context replacement should disconnect the old insert and clear its port handler",
     ).toBe(true);
+    expect(facts.oldEqDisposed, "context replacement should disconnect the old master EQ insert").toBe(true);
+    expect(facts.oldCompressorDisposed, "context replacement should dispose the old master compressor insert").toBe(
+      true,
+    );
     expect(facts.dryMonitorPeak, "live monitor bypass should deliver aligned dry audio").toBeGreaterThan(0.1);
     expect(facts.liveMonitorTransientRatio, JSON.stringify(facts)).toBeLessThan(1.6);
     expect(facts.liveOfflineCorrelation, JSON.stringify(facts)).toBeGreaterThan(0.99);
     expect(facts.liveOfflineNullDb).toBeLessThan(-40);
     expect(Math.abs(facts.liveOfflineAlignmentSamples)).toBeLessThanOrEqual(256);
+    expect(facts.compressorBypassDifferenceDb, JSON.stringify(facts)).toBeGreaterThan(-40);
+    expect(facts.compressorReorderDifferenceDb, JSON.stringify(facts)).toBeGreaterThan(-40);
   });
 
   test("opens the simple view and follows signal-flow keyboard focus into advanced controls", async ({ page }) => {
@@ -1189,6 +1293,33 @@ test.describe("17 — mastering workspace", () => {
     expect(facts.byteLength).toBe(8);
     expect(facts.bytes).toEqual([0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4]);
     expect(facts.removed).toBe(true);
+  });
+
+  test("switches a rendered project and reference without restarting their aligned audition", async ({ page }) => {
+    test.setTimeout(180_000);
+    await openHouseTemplate(page, { timeoutMs: 120_000 });
+    await clickPanelAction(page, "MASTER");
+
+    const comparison = page.getByRole("region", { name: "Reference audio comparison" });
+    await expect(comparison).toBeVisible();
+    await comparison.locator('input[type="file"]').setInputFiles({
+      name: "reference-ab.wav",
+      mimeType: "audio/wav",
+      buffer: makeStereoTestWav(4),
+    });
+    await expect(comparison.getByRole("status")).toContainText("Reference imported and saved", { timeout: 30_000 });
+
+    await comparison.getByRole("button", { name: "Render current master" }).click();
+    await expect(comparison.getByRole("button", { name: "Re-render current master" })).toBeVisible({ timeout: 90_000 });
+
+    await comparison.getByRole("button", { name: "Start A/B · project master" }).click();
+    await expect(comparison.getByRole("button", { name: "Selected · project master" })).toBeVisible();
+    await comparison.getByRole("button", { name: "Switch to reference" }).click();
+    await expect(comparison.getByRole("button", { name: "Selected · reference" })).toBeVisible();
+    await comparison.getByRole("button", { name: "Switch to project master" }).click();
+    await expect(comparison.getByRole("button", { name: "Selected · project master" })).toBeVisible();
+    await comparison.getByRole("button", { name: "Stop" }).click();
+    await expect(comparison.getByRole("button", { name: "Start A/B · project master" })).toBeVisible();
   });
 
   test("cancels a mastering render without leaving a report or download", async ({ page }) => {

@@ -42,22 +42,82 @@ class FakeBufferSource {
   started = false;
   stopped = false;
   disconnected = false;
+  startArgs: number[] = [];
   onended: (() => void) | null = null;
   buffer: unknown = null;
   playbackRate = { value: 1 };
   connect(dest: unknown) {
     this.gainConnectedTo = dest;
-    return this;
+    return dest as this;
   }
   disconnect() {
     this.disconnected = true;
   }
-  start() {
+  start(...args: number[]) {
     this.started = true;
+    this.startArgs = args;
   }
   stop() {
     this.stopped = true;
   }
+}
+
+function makeCompareContext() {
+  const sources: FakeBufferSource[] = [];
+  const gains: Array<{
+    gain: {
+      value: number;
+      calls: Array<[string, number, number?]>;
+      cancelScheduledValues: (time: number) => void;
+      setValueAtTime: (value: number, time: number) => void;
+      linearRampToValueAtTime: (value: number, time: number) => void;
+      setTargetAtTime: (value: number, time: number, constant: number) => void;
+    };
+    channelCount: number;
+    channelCountMode: string;
+    channelInterpretation: string;
+    connect: (destination: unknown) => unknown;
+    disconnect: () => void;
+  }> = [];
+  const destination = { destination: true };
+  const ctx = {
+    currentTime: 5,
+    destination,
+    createBufferSource: () => {
+      const source = new FakeBufferSource();
+      sources.push(source);
+      return source;
+    },
+    createGain: () => {
+      const param = {
+        value: 1,
+        calls: [] as Array<[string, number, number?]>,
+        cancelScheduledValues(time: number) {
+          this.calls.push(["cancel", time]);
+        },
+        setValueAtTime(value: number, time: number) {
+          this.calls.push(["set", value, time]);
+        },
+        linearRampToValueAtTime(value: number, time: number) {
+          this.calls.push(["ramp", value, time]);
+        },
+        setTargetAtTime(value: number, time: number, constant: number) {
+          this.calls.push(["target", value, time + constant]);
+        },
+      };
+      const gain = {
+        gain: param,
+        channelCount: 2,
+        channelCountMode: "max",
+        channelInterpretation: "speakers",
+        connect: (target: unknown) => target,
+        disconnect: () => {},
+      };
+      gains.push(gain);
+      return gain;
+    },
+  };
+  return { ctx, sources, gains, destination };
 }
 
 describe("PreviewDeck (Wave 4c)", () => {
@@ -175,6 +235,123 @@ describe("PreviewDeck (Wave 4c)", () => {
     expect(source.stopped).toBe(true);
     expect(deck.voiceCounts().samples).toBe(0);
     expect(DECLICK_TAIL_SEC).toBe(0.002);
+  });
+
+  it("starts project and reference at independent offsets on one clock and crossfades selection", () => {
+    const fake = makeCompareContext();
+    let ended = 0;
+    const deck = new PreviewDeck(makeDeps({ ctx: () => fake.ctx as unknown as BaseAudioContext }));
+    const started = deck.previewMasterComparePair(
+      { duration: 10 } as AudioBuffer,
+      { duration: 7 } as AudioBuffer,
+      0.8,
+      0.6,
+      "project",
+      2,
+      1,
+      false,
+      () => ended++,
+    );
+
+    expect(started).toBe(true);
+    expect(fake.sources).toHaveLength(2);
+    expect(fake.sources.map((source) => source.startArgs)).toEqual([
+      [5.01, 2, 6],
+      [5.01, 1, 6],
+    ]);
+    expect(fake.gains[0]?.gain.calls.at(-1)?.[0]).toBe("ramp");
+    expect(fake.gains[0]?.gain.calls.at(-1)?.[1]).toBeCloseTo(0.8, 9);
+    expect(fake.gains[0]?.gain.calls.at(-1)?.[2]).toBeCloseTo(5.03, 9);
+    expect(fake.gains[1]?.gain.calls.at(-1)?.[1]).toBe(0);
+    expect(fake.gains[1]?.gain.calls.at(-1)?.[2]).toBeCloseTo(5.03, 9);
+
+    fake.ctx.currentTime = 5.015;
+    deck.selectMasterComparePairSide("reference");
+    expect(fake.gains[0]?.gain.calls.at(-2)?.[1]).toBeCloseTo(0.6, 9);
+    expect(fake.gains[0]?.gain.calls.at(-2)?.[2]).toBeCloseTo(5.025, 9);
+    expect(fake.gains[0]?.gain.calls.at(-1)?.[1]).toBe(0);
+    expect(fake.gains[0]?.gain.calls.at(-1)?.[2]).toBeCloseTo(5.045, 9);
+    expect(fake.gains[1]?.gain.calls.at(-2)?.[1]).toBe(0);
+    expect(fake.gains[1]?.gain.calls.at(-2)?.[2]).toBeCloseTo(5.025, 9);
+    expect(fake.gains[1]?.gain.calls.at(-1)?.[1]).toBeCloseTo(0.6, 9);
+    expect(fake.gains[1]?.gain.calls.at(-1)?.[2]).toBeCloseTo(5.045, 9);
+
+    fake.ctx.currentTime = 5.02;
+    deck.selectMasterComparePairSide("project");
+    expect(fake.gains[0]?.gain.calls.at(-2)?.[1]).toBeCloseTo(0.45, 9);
+    expect(fake.gains[1]?.gain.calls.at(-2)?.[1]).toBeCloseTo(0.15, 9);
+    expect(fake.gains[0]?.gain.calls.at(-1)?.[1]).toBeCloseTo(0.8, 9);
+    expect(fake.gains[1]?.gain.calls.at(-1)?.[1]).toBe(0);
+
+    fake.sources[0]?.onended?.();
+    expect(ended).toBe(0);
+    fake.sources[1]?.onended?.();
+    expect(ended).toBe(1);
+    expect(deck.voiceCounts().samples).toBe(0);
+  });
+
+  it("updates pair loudness and mono without unmuting the unselected side", () => {
+    const fake = makeCompareContext();
+    const deck = new PreviewDeck(makeDeps({ ctx: () => fake.ctx as unknown as BaseAudioContext }));
+    deck.previewMasterComparePair(
+      { duration: 5 } as AudioBuffer,
+      { duration: 5 } as AudioBuffer,
+      0.7,
+      0.5,
+      "reference",
+    );
+    fake.ctx.currentTime = 5.05;
+    deck.updateMasterComparePair(0.4, 0.3, "reference", true);
+    expect(fake.gains.map((gain) => [gain.channelCount, gain.channelCountMode])).toEqual([
+      [1, "explicit"],
+      [1, "explicit"],
+    ]);
+    expect(fake.gains[0]?.gain.calls.at(-2)).toEqual(["set", 0, 5.06]);
+    expect(fake.gains[0]?.gain.calls.at(-1)?.[1]).toBe(0);
+    expect(fake.gains[0]?.gain.calls.at(-1)?.[2]).toBeCloseTo(5.08, 9);
+    expect(fake.gains[1]?.gain.calls.at(-2)).toEqual(["set", 0.5, 5.06]);
+    expect(fake.gains[1]?.gain.calls.at(-1)?.[1]).toBeCloseTo(0.3, 9);
+    expect(fake.gains[1]?.gain.calls.at(-1)?.[2]).toBeCloseTo(5.08, 9);
+  });
+
+  it("refuses an A/B excerpt when either selected start point has no shared duration", () => {
+    const fake = makeCompareContext();
+    const deck = new PreviewDeck(makeDeps({ ctx: () => fake.ctx as unknown as BaseAudioContext }));
+    expect(
+      deck.previewMasterComparePair(
+        { duration: 10 } as AudioBuffer,
+        { duration: 4 } as AudioBuffer,
+        1,
+        1,
+        "project",
+        2,
+        3.995,
+      ),
+    ).toBe(false);
+    expect(fake.sources).toHaveLength(0);
+  });
+
+  it("ends pair state once when another preview stops the audition", () => {
+    const fake = makeCompareContext();
+    let ended = 0;
+    const deck = new PreviewDeck(makeDeps({ ctx: () => fake.ctx as unknown as BaseAudioContext }));
+    deck.previewMasterComparePair(
+      { duration: 5 } as AudioBuffer,
+      { duration: 5 } as AudioBuffer,
+      1,
+      1,
+      "project",
+      0,
+      0,
+      false,
+      () => ended++,
+    );
+
+    deck.stopPreview();
+    expect(fake.sources.every((source) => source.stopped)).toBe(true);
+    expect(ended).toBe(1);
+    fake.sources.forEach((source) => source.onended?.());
+    expect(ended).toBe(1);
   });
 
   it("declick helpers re-exported from AudioEngine keep their contracts", () => {

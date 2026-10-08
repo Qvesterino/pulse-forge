@@ -30,7 +30,7 @@ import {
   type PluginWorkletType,
 } from "../audio-worklets/loader";
 import { MeteringRig, measureTruePeak as measureTruePeakImpl } from "./meteringRig";
-import { PreviewDeck } from "./previewDeck";
+import { PreviewDeck, type MasterCompareSide } from "./previewDeck";
 import { AutomationBridge } from "./automationBridge";
 import { WarpManager } from "./warpManager";
 import { TriggerEngine } from "./triggerEngine";
@@ -2253,6 +2253,38 @@ export class AudioEngine {
   /** Audition an already mastered comparison render straight to the monitor output. */
   previewMasterCompare(buffer: AudioBuffer, gainValue = 0.9, onEnded?: () => void, offsetSec = 0, mono = false): void {
     this.previewDeck.previewMasterCompare(buffer, gainValue, onEnded, offsetSec, mono);
+  }
+
+  previewMasterComparePair(
+    projectBuffer: AudioBuffer,
+    referenceBuffer: AudioBuffer,
+    projectGain: number,
+    referenceGain: number,
+    selectedSide: MasterCompareSide,
+    projectOffsetSec = 0,
+    referenceOffsetSec = 0,
+    mono = false,
+    onEnded?: () => void,
+  ): boolean {
+    return this.previewDeck.previewMasterComparePair(
+      projectBuffer,
+      referenceBuffer,
+      projectGain,
+      referenceGain,
+      selectedSide,
+      projectOffsetSec,
+      referenceOffsetSec,
+      mono,
+      onEnded,
+    );
+  }
+
+  selectMasterComparePairSide(side: MasterCompareSide): void {
+    this.previewDeck.selectMasterComparePairSide(side);
+  }
+
+  updateMasterComparePair(projectGain: number, referenceGain: number, side: MasterCompareSide, mono: boolean): void {
+    this.previewDeck.updateMasterComparePair(projectGain, referenceGain, side, mono);
   }
 
   updateMasterComparePreview(gainValue: number, mono: boolean): void {

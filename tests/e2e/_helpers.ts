@@ -85,7 +85,7 @@ export async function openHouseTemplateFromLanding(page: Page): Promise<void> {
     );
   }
   await page.waitForSelector(".project-browser", { timeout: 60_000 });
-  await page.evaluate(() => document.querySelectorAll<HTMLElement>(".pb-template")[0]?.click());
+  await page.locator(".pb-template").first().click();
   await page.waitForSelector(".topbar", { timeout: 60_000 });
   await page.waitForSelector(".sequencer", { timeout: 60_000 });
   await completeOnboardingTourIfPresent(page);
@@ -113,7 +113,7 @@ export async function openHouseTemplate(page: Page, options: { timeoutMs?: numbe
   });
   await page.goto("/", { waitUntil: "domcontentloaded", timeout: timeoutMs });
   await page.waitForSelector(".project-browser", { timeout: timeoutMs });
-  await page.evaluate(() => document.querySelectorAll<HTMLElement>(".pb-template")[0]?.click());
+  await page.locator(".pb-template").first().click();
   await page.waitForSelector(".topbar", { timeout: timeoutMs });
   await page.waitForSelector(".sequencer", { timeout: timeoutMs });
   await completeOnboardingTourIfPresent(page);
