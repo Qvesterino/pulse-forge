@@ -92,6 +92,43 @@ describe("fxeq node async latency reporting", () => {
     rt.dispose();
   });
 
+  it("waits for a valid initial latency message before reporting the runtime ready", async () => {
+    let lastPort: FakePort | null = null;
+    class CapturingNode extends FakeAudioWorkletNode {
+      constructor(ctx: unknown, name: string, opts: Record<string, unknown>) {
+        super(ctx, name, opts);
+        lastPort = this.port;
+      }
+    }
+    vi.stubGlobal("AudioWorkletNode", CapturingNode);
+
+    const rt = createFxEqNode(fakeCtx(), instance(), {});
+    const port = lastPort!;
+    let settled = false;
+    const readiness = rt.waitForLatencyReport!(100).then((ready) => {
+      settled = true;
+      return ready;
+    });
+
+    port.onmessage!({ data: { type: "latency", samples: Number.NaN } });
+    port.onmessage!({ data: { type: "latency", samples: -1 } });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    port.onmessage!({ data: { type: "latency", samples: 512 } });
+    await expect(readiness).resolves.toBe(true);
+    rt.dispose();
+  });
+
+  it("resolves a pending latency wait as not-ready when disposed", async () => {
+    vi.stubGlobal("AudioWorkletNode", FakeAudioWorkletNode);
+
+    const rt = createFxEqNode(fakeCtx(), instance(), {});
+    const pending = rt.waitForLatencyReport!(100);
+    rt.dispose();
+    await expect(pending).resolves.toBe(false);
+  });
+
   it("dispose clears the port handler and stops notifying listeners", () => {
     let lastPort: FakePort | null = null;
     class CapturingNode extends FakeAudioWorkletNode {
