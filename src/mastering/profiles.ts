@@ -28,7 +28,6 @@ const MASTER_PROFILE_EXPORT_SETTINGS: Partial<Record<MasterProfileId, MasterProf
     preferred: { format: "flac", bitDepth: 24 },
     alternatives: [{ format: "wav", bitDepth: 24 }],
   },
-  apple: { preferred: { format: "wav", bitDepth: 24 } },
 };
 
 /** Return a copy so an export panel cannot mutate the shared profile defaults. */
@@ -104,7 +103,7 @@ export const MASTER_PROFILE_FILE_SOURCES: Partial<Record<MasterProfileId, Master
   apple: {
     label: "Apple Music · Video and Audio Asset Guide",
     url: "https://help.apple.com/itc/videoaudioassetguide/en.lproj/static.html",
-    checkedAt: "2026-10-08",
+    checkedAt: "2026-10-09",
     reviewIntervalDays: 180,
   },
 };

@@ -55,10 +55,11 @@ describe("mastering platform profiles", () => {
       preferred: { format: "flac", bitDepth: 24 },
       alternatives: [{ format: "wav", bitDepth: 24 }],
     });
-    expect(masterProfileExportSettings("apple")).toEqual({ preferred: { format: "wav", bitDepth: 24 } });
-    for (const id of ["loud", "vinyl"] as const) {
+    for (const id of ["apple", "loud", "vinyl"] as const) {
       expect(masterProfileExportSettings(id)).toBeNull();
       expect(masterProfileRecommendedFormat(id)).toBe("Choose a format for the delivery destination.");
+    }
+    for (const id of ["loud", "vinyl"] as const) {
       expect(
         evaluateMasterFileDelivery({ format: "wav", sampleRate: 48_000, channels: 2, bitDepth: 24 }, profileFor(id)!),
       ).toBeNull();
@@ -225,7 +226,7 @@ describe("mastering platform profiles", () => {
 
   it("checks Apple Music's verified source-file rules without claiming encoder certification", () => {
     const apple = profileFor("apple")!;
-    const checkedAt = Date.parse("2026-10-08T00:00:00.000Z");
+    const checkedAt = Date.parse("2026-10-09T00:00:00.000Z");
     expect(MASTER_PROFILE_FILE_SOURCES.apple?.url).toContain("help.apple.com/itc/videoaudioassetguide");
     expect(masterProfileProvenance("apple", checkedAt).fileSettingsReview).toBe("current");
 
