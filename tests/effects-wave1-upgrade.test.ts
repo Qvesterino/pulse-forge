@@ -141,32 +141,52 @@ describe("gate hysteresis + look-ahead", () => {
     expect(windowLa).toBeGreaterThan(windowNo * 2);
   });
 
-  it("delays stereo audio by the exact fixed latency it reports to PDC", () => {
-    const latency = Math.round(SR * 0.0025);
-    for (const lookahead of [0, 1]) {
-      const proc = make("gate-processor");
-      const messages = (proc as unknown as { messages: unknown[] }).messages;
-      expect(messages).toEqual([{ type: "latency", samples: latency }]);
+  it("delays stereo audio by the exact fixed latency it reports to PDC at supported rates", () => {
+    const scope = globalThis as unknown as { sampleRate: number };
+    const originalSampleRate = scope.sampleRate;
+    try {
+      for (const sampleRate of [44_100, 48_000, 96_000]) {
+        scope.sampleRate = sampleRate;
+        const latency = Math.round(sampleRate * 0.0025);
+        for (const lookahead of [0, 1]) {
+          const proc = make("gate-processor");
+          const messages = (proc as unknown as { messages: unknown[] }).messages;
+          expect(messages).toEqual([{ type: "latency", samples: latency }]);
 
-      const left = new Float32Array(BLOCK);
-      const right = new Float32Array(BLOCK);
-      const outLeft = new Float32Array(BLOCK);
-      const outRight = new Float32Array(BLOCK);
-      left[0] = 0.75;
-      right[1] = -0.5;
-      proc.process([[left, right]], [[outLeft, outRight]], {
-        ...Object.fromEntries(Object.entries(base).map(([key, value]) => [key, new Float32Array([value])])),
-        lookahead: new Float32Array([lookahead]),
-        hysteresis: new Float32Array([0]),
-        // Keep the gate out of this latency contract; only the audio ring is
-        // under test here.
-        range: new Float32Array([0]),
-        mix: new Float32Array([0]),
-      });
+          const renderedLeft = new Float32Array(latency + BLOCK);
+          const renderedRight = new Float32Array(latency + BLOCK);
+          const blocks = Math.ceil(renderedLeft.length / BLOCK);
+          for (let block = 0; block < blocks; block++) {
+            const left = new Float32Array(BLOCK);
+            const right = new Float32Array(BLOCK);
+            const outLeft = new Float32Array(BLOCK);
+            const outRight = new Float32Array(BLOCK);
+            if (block === 0) {
+              left[0] = 0.75;
+              right[1] = -0.5;
+            }
+            proc.process([[left, right]], [[outLeft, outRight]], {
+              ...Object.fromEntries(Object.entries(base).map(([key, value]) => [key, new Float32Array([value])])),
+              lookahead: new Float32Array([lookahead]),
+              hysteresis: new Float32Array([0]),
+              // Keep the gate out of this latency contract; only the audio
+              // ring is under test here.
+              range: new Float32Array([0]),
+              mix: new Float32Array([0]),
+            });
+            const outputOffset = block * BLOCK;
+            const copyFrames = Math.min(BLOCK, renderedLeft.length - outputOffset);
+            renderedLeft.set(outLeft.subarray(0, copyFrames), outputOffset);
+            renderedRight.set(outRight.subarray(0, copyFrames), outputOffset);
+          }
 
-      expect(outLeft[latency]).toBeCloseTo(0.75, 6);
-      expect(outRight[latency + 1]).toBeCloseTo(-0.5, 6);
-      expect(outLeft.slice(0, latency).some((sample) => sample !== 0)).toBe(false);
+          expect(renderedLeft[latency]).toBeCloseTo(0.75, 6);
+          expect(renderedRight[latency + 1]).toBeCloseTo(-0.5, 6);
+          expect(renderedLeft.slice(0, latency).some((sample) => sample !== 0)).toBe(false);
+        }
+      }
+    } finally {
+      scope.sampleRate = originalSampleRate;
     }
   });
 });
