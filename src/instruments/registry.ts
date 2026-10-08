@@ -6483,9 +6483,9 @@ const drumsynth: InstrumentDefinition = {
  * fallback that would diverge.
  *
  * A context WITHOUT the worklet module (jsdom, a failed network fetch, a
- * pre-worklet browser) gets an honest silent runtime: the inspector shows
- * the track and the panel warns, but nothing is invented — the same honesty
- * rule as the transcription lanes.
+ * pre-worklet browser) gets an audible native subtractive fallback so the
+ * track never silently disappears. Once the worklet loads, AudioEngine
+ * replaces this runtime with the full hybrid processor.
  */
 const tsar: InstrumentDefinition = {
   kind: "tsar",
@@ -6509,6 +6509,7 @@ const tsar: InstrumentDefinition = {
             processorOptions,
           }),
         offline,
+        bpm: env.bpm,
         track,
         getSample: (id) => env.getSample(id),
       });

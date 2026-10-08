@@ -30,6 +30,8 @@ interface Archetype {
   useCase: "bass" | "lead" | "keys" | "pad" | "pluck" | "texture" | "vocal" | "drums" | "fx";
   moods: PresetMood[];
   tags: string[];
+  /** Factory audio required by this archetype's selected source engine. */
+  sampleId?: string;
   /** Param deltas over DEFAULTS. */
   params: Record<string, number>;
 }
@@ -202,6 +204,7 @@ const ARCHETYPES: Archetype[] = [
     useCase: "texture",
     moods: ["atmosphere", "dark"],
     tags: ["texture", "granular", "ambient"],
+    sampleId: "factory.tonal.keys",
     params: {
       srcAEngine: 2,
       srcALevel: 0.5,
@@ -358,6 +361,7 @@ function buildPreset(archetype: Archetype, profile: GenreProfile): InstrumentPre
       license: "internal",
     },
     params,
+    ...(archetype.sampleId ? { sampleId: archetype.sampleId } : {}),
   };
 }
 

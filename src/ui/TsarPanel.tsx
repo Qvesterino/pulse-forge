@@ -46,17 +46,72 @@ function ParamRow({
   onParam: (paramId: string, value: number) => void;
 }) {
   const def = tsarParams.find((param) => param.id === id)!;
+  const discreteOptions =
+    def.kind === "discrete" && def.step && !def.options
+      ? Array.from({ length: Math.floor((def.max - def.min) / def.step) + 1 }, (_, index) => {
+          const value = def.min + index * def.step!;
+          return { value, label: def.format ? def.format(value) : `${value}` };
+        })
+      : undefined;
+  const options = def.options ?? discreteOptions;
+  const currentValue = track.params[id] ?? def.default;
+
+  if (options && options.length > 0) {
+    const selectedValue = options.some((option) => option.value === currentValue) ? currentValue : options[0]!.value;
+    return (
+      <label className="tsar-param-select">
+        <span className="slider-label">{def.label}</span>
+        <select
+          aria-label={def.label}
+          value={selectedValue}
+          onChange={(event) => onParam(id, Number(event.target.value))}
+        >
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+
+  if (def.kind === "toggle") {
+    const enabled = currentValue >= 0.5;
+    return (
+      <div className="tsar-param-toggle">
+        <span className="slider-label">{def.label}</span>
+        <button
+          type="button"
+          role="switch"
+          aria-label={def.label}
+          aria-checked={enabled}
+          className={`tsar-toggle-button${enabled ? " active" : ""}`}
+          onClick={() => onParam(id, enabled ? 0 : 1)}
+        >
+          {enabled ? "ON" : "OFF"}
+        </button>
+      </div>
+    );
+  }
+
+  const lfoRateLocked = id === "lfoRate" && Math.round(track.params.lfoSync ?? 0) > 0;
   return (
     <Slider
       compact
-      label={def.label}
-      hint={`${def.label} - ${def.min}…${def.max}${def.unit ? ` ${def.unit}` : ""}`}
-      value={track.params[id] ?? def.default}
+      label={lfoRateLocked ? "LFO FREE RATE" : def.label}
+      hint={
+        lfoRateLocked
+          ? "Used while LFO SYNC is OFF"
+          : `${def.label} - ${def.min}…${def.max}${def.unit ? ` ${def.unit}` : ""}`
+      }
+      value={currentValue}
       min={def.min}
       max={def.max}
       defaultValue={def.default}
       format={def.format}
       taper={def.taper}
+      disabled={lfoRateLocked}
       onCommit={(value) => onParam(id, value)}
     />
   );

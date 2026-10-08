@@ -21,7 +21,7 @@
  *  - OUTPUT: morph A↔B balance, tone tilt, tanh drive, stereo width.
  *
  * EVENT MODEL (the offline-parity contract):
- *  - every timed message (noteOn/noteOff/param/pressure/panic) enters ONE
+ *  - every timed message (noteOn/noteOff/param/pressure/panic/BPM) enters ONE
  *    queue with an absolute time in context seconds;
  *  - `process()` applies each event at its own sample boundary — live the
  *    events arrive ahead of time via port, offline the whole list is seeded
@@ -30,6 +30,8 @@
  * Determinism: no Math.random. Noise is a seeded LCG advanced per sample;
  * LFO phases derive from the voice index. Same events -> same samples.
  */
+
+import { syncedLfoHz } from "../../effects/tempo-sync";
 
 const MAX_VOICES = 16;
 const UNISON_MAX = 8;
@@ -46,13 +48,14 @@ const FALLBACK_TABLE = (() => {
 })();
 /** Golden-ratio phase spread for decorrelated per-voice LFOs. */
 const GOLDEN = 0.6180339887498949;
+const DRIFT_GOLDEN = 0.7548776662466927;
 /** One-pole smoothing coefficient for click-free voice gain (≈2 ms @ 44.1k). */
 const GAIN_RAMP_SEC = 0.002;
 
 export type TsarEngine = 0 | 1 | 2; // sample | wavetable | granular
 
 export interface TsarEvent {
-  type: "noteOn" | "noteOff" | "param" | "pressure" | "panic";
+  type: "noteOn" | "noteOff" | "param" | "pressure" | "panic" | "bpm";
   /** Absolute context time in seconds. */
   when: number;
   pitch?: number;
@@ -92,6 +95,7 @@ interface Voice {
   posB: Float32Array;
   subPhase: number;
   lfoPhase: number;
+  driftPhase: number;
   envA: Adsr;
   envB: Adsr;
   /** SVF integrators per source. */
@@ -105,6 +109,7 @@ interface Voice {
 
 export interface TsarInitOptions {
   sampleRate: number;
+  bpm?: number;
   /** Pre-seeded events (offline): applied at their absolute times. */
   events?: TsarEvent[];
 }
@@ -175,6 +180,7 @@ export class TsarProcessor {
 
   constructor(options: TsarInitOptions) {
     this.sampleRate = options.sampleRate > 0 ? options.sampleRate : 48000;
+    if (options.bpm !== undefined) this.setBpm(options.bpm);
     for (let i = 0; i < MAX_VOICES; i++) this.voices.push(this.makeVoice(i));
     if (options.events) for (const event of options.events) this.postEvent(event);
   }
@@ -194,6 +200,7 @@ export class TsarProcessor {
       posB: new Float32Array(UNISON_MAX),
       subPhase: 0,
       lfoPhase: (index * GOLDEN) % 1,
+      driftPhase: (index * DRIFT_GOLDEN) % 1,
       envA: { stage: 0, value: 0 },
       envB: { stage: 0, value: 0 },
       svfA1: 0,
@@ -227,7 +234,15 @@ export class TsarProcessor {
     this.sources[slot].pcmRootHz = rootHz > 0 ? rootHz : 261.63;
   }
 
-  /** Tempo for the arp clock (engine `syncBpm`). */
+  /** Remove a user sample and restore the built-in wavetable fallback. */
+  clearSource(slot: 0 | 1): void {
+    this.sources[slot].table = null;
+    this.sources[slot].frameCount = 0;
+    this.sources[slot].pcm = null;
+    this.sources[slot].pcmRootHz = 261.63;
+  }
+
+  /** Tempo for the arp clock and tempo-synced LFO. */
   private bpm = 120;
 
   /** Tempo update from the engine (arp step length derives from it). */
@@ -238,7 +253,9 @@ export class TsarProcessor {
   /** True when a slot has anything to read (silence honesty in tests/UI). */
   hasSource(slot: 0 | 1): boolean {
     const source = this.sources[slot];
-    return (source.table !== null && source.frameCount > 0) || source.pcm !== null;
+    const prefix = slot === 0 ? "srcA" : "srcB";
+    const usesBuiltInWavetable = Math.round(this.params[`${prefix}Engine`] ?? (slot === 0 ? 1 : 0)) === 1;
+    return (source.table !== null && source.frameCount > 0) || source.pcm !== null || usesBuiltInWavetable;
   }
 
   /** Post a timed event (port message or constructor seed — same contract). */
@@ -282,6 +299,9 @@ export class TsarProcessor {
           voice.gate = false;
           voice.gain = 0;
         }
+        break;
+      case "bpm":
+        this.setBpm(event.value ?? this.bpm);
         break;
     }
   }
@@ -521,6 +541,7 @@ export class TsarProcessor {
     morph: number,
     scan: number,
     detuneCents: number,
+    baseHz: number,
   ): number {
     const data = this.sources[slot];
     const prefix = slot === 0 ? "srcA" : "srcB";
@@ -531,7 +552,7 @@ export class TsarProcessor {
     let sum = 0;
     for (let u = 0; u < unison; u++) {
       const spreadOffset = unison === 1 ? 0 : ((u / (unison - 1)) * 2 - 1) * spread;
-      const f = voice.f0 * Math.pow(2, (detuneCents + spreadOffset) / 1200);
+      const f = baseHz * Math.pow(2, (detuneCents + spreadOffset) / 1200);
       let pos = positions[u]!;
       if (engine === 2) {
         // GRANULAR: normalized scan position sweeping slowly; raised-cosine
@@ -581,7 +602,7 @@ export class TsarProcessor {
     }
     let eventCursor = 0;
 
-    const lfoRate = this.params.lfoRate ?? 2;
+    const lfoRate = syncedLfoHz(this.bpm, this.params.lfoSync ?? 0, this.params.lfoRate ?? 2);
     const lfoShape = Math.round(this.params.lfoShape ?? 0);
     const morphBase = clamp(this.params.morph ?? 0, 0, 1);
     const subLevel = this.params.sub ?? 0;
@@ -594,6 +615,7 @@ export class TsarProcessor {
     const level = this.params.level ?? 0.8;
     const glide = this.params.glide ?? 0;
     const velAmount = this.params.velocity ?? 0.7;
+    const drift = clamp(this.params.drift ?? 0, 0, 1);
 
     const engineA = clamp(Math.round(this.params.srcAEngine ?? 1), 0, 2) as TsarEngine;
     const engineB = clamp(Math.round(this.params.srcBEngine ?? 0), 0, 2) as TsarEngine;
@@ -698,6 +720,10 @@ export class TsarProcessor {
         voice.lfoPhase += lfoRate / sr;
         if (voice.lfoPhase >= 1) voice.lfoPhase -= 1;
         const lfo = this.lfoValue(lfoShape, voice.lfoPhase);
+        voice.driftPhase += (0.12 + (voice.index % 5) * 0.031) / sr;
+        if (voice.driftPhase >= 1) voice.driftPhase -= 1;
+        const driftCents = Math.sin(2 * Math.PI * voice.driftPhase) * drift * 8;
+        const voiceHz = voice.f0 * Math.pow(2, driftCents / 1200);
 
         let modAMorph = 0;
         let modBMorph = 0;
@@ -745,6 +771,7 @@ export class TsarProcessor {
             clamp((this.params.srcAMorph ?? 0) + modAMorph, 0, 1),
             this.params.srcAScan ?? 0,
             detuneA,
+            voiceHz,
           ) *
           envA *
           levelA;
@@ -756,6 +783,7 @@ export class TsarProcessor {
             clamp((this.params.srcBMorph ?? 0) + modBMorph, 0, 1),
             this.params.srcBScan ?? 0,
             detuneB,
+            voiceHz,
           ) *
           envB *
           levelB;
@@ -788,7 +816,7 @@ export class TsarProcessor {
 
         let sub = 0;
         if (subLevel > 0) {
-          voice.subPhase += (voice.f0 * Math.pow(2, subOct)) / sr;
+          voice.subPhase += (voiceHz * Math.pow(2, subOct)) / sr;
           if (voice.subPhase >= 1) voice.subPhase -= 1;
           sub = Math.sin(2 * Math.PI * voice.subPhase) * subLevel * envA;
         }

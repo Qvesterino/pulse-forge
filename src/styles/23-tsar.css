@@ -74,6 +74,43 @@
   gap: 4px 10px;
 }
 
+.tsar-param-select,
+.tsar-param-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 78px;
+}
+
+.tsar-param-select select,
+.tsar-toggle-button {
+  min-height: 22px;
+  padding: 0 5px;
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.tsar-param-select select:focus,
+.tsar-toggle-button:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.tsar-toggle-button {
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-dim);
+}
+
+.tsar-toggle-button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .tsar-mod-grid {
   display: flex;
   flex-direction: column;

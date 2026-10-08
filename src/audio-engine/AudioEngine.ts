@@ -24,6 +24,7 @@ import {
   ensureWorkletsForDoc,
   isWorkletReady,
   loadCoreWorklets,
+  loadInstrumentWorklet,
   loadPluginWorklet,
   PLUGIN_WORKLET_TYPES,
   type PluginWorkletType,
@@ -177,7 +178,11 @@ interface InstrumentState {
   /** Applied normalization in dB — diffed so preset switches are the only writes. */
   normGainDb: number;
   params: Record<string, number>;
+  instrument: InstrumentTrack["instrument"];
+  /** Whether TSAR was built on its real worklet or its audible fallback. */
+  tsarWorkletBacked: boolean;
   sampleId: string | null;
+  sampleIdB: string | null;
   /** Reference-compared against the track — sampler velocity/RR layers. */
   layers: SampleLayer[] | undefined;
   pitchBend: number; // semitones offset from MIDI pitch bend
@@ -414,6 +419,7 @@ export class AudioEngine {
   private sceneBpmOverride: number | null = null;
 
   private bankUnsubscribe: (() => void) | null = null;
+  private readonly tsarWorkletLoads = new WeakSet<BaseAudioContext>();
 
   attachBank(bank: SampleBank): void {
     this.bank = bank;
@@ -429,6 +435,7 @@ export class AudioEngine {
     this.bankUnsubscribe = bank.onSampleAdded((id) => {
       for (const state of this.instruments.values()) {
         if (state.sampleId === id) state.runtime.setSample?.(id);
+        if (state.sampleIdB === id) state.runtime.setSampleB?.(id);
       }
     });
   }
@@ -697,7 +704,10 @@ export class AudioEngine {
     this.disposeFxChainForContextSwap(this.masterFx);
     this.ctx = ctx;
     this.masterChain.build();
-    if (this.doc) this.syncProject(this.doc);
+    if (this.doc) {
+      this.syncProject(this.doc);
+      this.queueTsarWorkletLoad(ctx, this.doc);
+    }
     this.queueWorkletRefresh(ctx);
     // Defect 1.2 (lifecycle audit): Chrome / iOS Safari / Firefox
     // suspend the AudioContext on tab-switch, screen lock, OS sleep and
@@ -839,6 +849,30 @@ export class AudioEngine {
       });
   }
 
+  /** Load TSAR when a project starts using it, then replace any fallback runtime. */
+  private queueTsarWorkletLoad(ctx: BaseAudioContext, doc: ProjectDocument): void {
+    const hasTsar = doc.tracks.some((track) => track.kind === "instrument" && track.instrument === "tsar");
+    if (!hasTsar || isWorkletReady("tsar", ctx) || this.tsarWorkletLoads.has(ctx)) return;
+    this.tsarWorkletLoads.add(ctx);
+    void loadInstrumentWorklet(ctx, "tsar")
+      .then(() => {
+        this.tsarWorkletLoads.delete(ctx);
+        const currentDoc = this.doc;
+        if (
+          this.ctx === ctx &&
+          isWorkletReady("tsar", ctx) &&
+          currentDoc?.tracks.some((track) => track.kind === "instrument" && track.instrument === "tsar")
+        ) {
+          // syncInstrument notices the fallback→worklet transition and
+          // rebuilds only the TSAR runtime against the now-ready processor.
+          this.setProject(currentDoc);
+        }
+      })
+      .catch(() => {
+        this.tsarWorkletLoads.delete(ctx);
+      });
+  }
+
   ensureContext(): BaseAudioContext {
     if (!this.ctx || this.ctx.state === "closed") {
       if (typeof AudioContext === "undefined") {
@@ -898,7 +932,10 @@ export class AudioEngine {
         // pollute the diagnostics panel of the newly opened project.
         this.missedAssets.clear();
       }
-      if (this.ctx) this.syncProject(target);
+      if (this.ctx) {
+        this.syncProject(target);
+        this.queueTsarWorkletLoad(this.ctx, target);
+      }
     };
     this.projectPromise = (async () => {
       try {
@@ -1824,6 +1861,11 @@ export class AudioEngine {
     const ctx = this.ctx;
     if (!ctx) return;
     let state = this.instruments.get(track.id);
+    const tsarWorkletBacked = track.instrument === "tsar" && isWorkletReady("tsar", ctx);
+    if (state && (state.instrument !== track.instrument || state.tsarWorkletBacked !== tsarWorkletBacked)) {
+      this.disposeInstrumentRuntime(track.id);
+      state = undefined;
+    }
     if (!state) {
       const runtime = INSTRUMENT_DEFS[track.instrument].factory(ctx, track, {
         bpm: this.doc?.bpm ?? 124,
@@ -1838,7 +1880,10 @@ export class AudioEngine {
         normGain,
         normGainDb,
         params: { ...track.params },
+        instrument: track.instrument,
+        tsarWorkletBacked,
         sampleId: track.sampleId,
+        sampleIdB: track.sampleIdB ?? null,
         layers: track.velocityLayers,
         pitchBend: 0,
       };
@@ -1855,6 +1900,11 @@ export class AudioEngine {
     if (state.sampleId !== track.sampleId) {
       state.runtime.setSample?.(track.sampleId);
       state.sampleId = track.sampleId;
+    }
+    const sampleIdB = track.sampleIdB ?? null;
+    if (state.sampleIdB !== sampleIdB) {
+      state.runtime.setSampleB?.(sampleIdB);
+      state.sampleIdB = sampleIdB;
     }
     if (state.layers !== track.velocityLayers) {
       // Reference compare — setVelocityLayersCommand swaps in a fresh array.

@@ -13,8 +13,10 @@
  *  { type: "noteOn", pitch, velocity, when }    absolute ctx time
  *  { type: "noteOff", pitch, when }
  *  { type: "pressure", pitch, value }
+ *  { type: "bpm", bpm, when? }
  *  { type: "wavetable", slot, frames, frameCount }  slot 0|1
  *  { type: "sample", slot, pcm, rootHz }
+ *  { type: "clearSource", slot }  slot 0|1
  *  { type: "panic" }
  *
  * OFFLINE PARITY: `processorOptions.events` pre-seeds the same queue the port
@@ -40,8 +42,11 @@ class TsarWorkletProcessor extends AudioWorkletProcessor {
     // Chromium (measured: a processorOptions-only offline render produced
     // digital silence until this contract was fixed).
     const opts = (options && options.processorOptions) || {};
-    this.proc = new TsarProcessor({ sampleRate, events: Array.isArray(opts.events) ? opts.events : undefined });
-    if (opts.bpm) this.proc.setBpm(opts.bpm);
+    this.proc = new TsarProcessor({
+      sampleRate,
+      bpm: typeof opts.bpm === "number" ? opts.bpm : undefined,
+      events: Array.isArray(opts.events) ? opts.events : undefined,
+    });
     if (opts.params) {
       this.proc.applyParams(opts.params);
       this.initialized = true;
@@ -71,7 +76,12 @@ class TsarWorkletProcessor extends AudioWorkletProcessor {
         this.proc.setParam(message.name, message.value);
         break;
       case "bpm":
-        this.proc.setBpm(message.bpm);
+        if (!Number.isFinite(message.bpm)) break;
+        this.proc.postEvent({
+          type: "bpm",
+          when: typeof message.when === "number" ? message.when : currentTime,
+          value: message.bpm,
+        });
         break;
       case "noteOn":
       case "noteOff":
@@ -86,10 +96,17 @@ class TsarWorkletProcessor extends AudioWorkletProcessor {
         });
         break;
       case "wavetable":
-        this.proc.setWavetable(message.slot, message.frames, message.frameCount);
+        if ((message.slot === 0 || message.slot === 1) && message.frames instanceof Float32Array) {
+          this.proc.setWavetable(message.slot, message.frames, message.frameCount);
+        }
         break;
       case "sample":
-        this.proc.setSample(message.slot, message.pcm, message.rootHz);
+        if ((message.slot === 0 || message.slot === 1) && message.pcm instanceof Float32Array) {
+          this.proc.setSample(message.slot, message.pcm, message.rootHz);
+        }
+        break;
+      case "clearSource":
+        if (message.slot === 0 || message.slot === 1) this.proc.clearSource(message.slot);
         break;
     }
   }

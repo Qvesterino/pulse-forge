@@ -44,6 +44,8 @@ export interface TsarRuntimeOptions {
   createGain: () => GainNode;
   createNode: (processorOptions: Record<string, unknown>) => AudioWorkletNode;
   offline: boolean;
+  /** Initial project tempo for the arp and tempo-synced LFO. */
+  bpm: number;
   track: InstrumentTrack;
   getSample(id: string | null): AudioBuffer | undefined;
 }
@@ -148,7 +150,7 @@ export function createTsarRuntime(options: TsarRuntimeOptions): TsarRuntime {
   const { offline, getSample } = options;
   const output = options.createGain();
   const pendingEvents: TsarEvent[] = [];
-  let pendingBpm: number | null = null;
+  let pendingBpm: number | null = Number.isFinite(options.bpm) && options.bpm > 0 ? options.bpm : 120;
   let currentTrack = { ...options.track };
   let node: AudioWorkletNode | null = null;
 
@@ -232,7 +234,7 @@ export function createTsarRuntime(options: TsarRuntimeOptions): TsarRuntime {
       if (upload) {
         node.port.postMessage({ type: "wavetable", ...upload.wavetable });
         node.port.postMessage({ type: "sample", ...upload.sample });
-      }
+      } else node.port.postMessage({ type: "clearSource", slot: 0 });
     },
     setSampleB(id) {
       currentTrack = { ...currentTrack, sampleIdB: id };
@@ -241,18 +243,22 @@ export function createTsarRuntime(options: TsarRuntimeOptions): TsarRuntime {
       if (upload) {
         node.port.postMessage({ type: "wavetable", ...upload.wavetable });
         node.port.postMessage({ type: "sample", ...upload.sample });
-      }
+      } else node.port.postMessage({ type: "clearSource", slot: 1 });
     },
     setVelocityLayers() {
       // Keyzones / round-robin are sampler features, not TSAR.
     },
-    syncBpm(bpm) {
-      // The arp clock derives its step length from the project tempo; relay
-      // it to the worklet (live and offline both — offline the tempo map is
-      // applied by the renderer before startRendering).
+    syncBpm(bpm, when) {
+      // The arp clock and tempo-synced LFO derive their rates from project
+      // tempo. Offline changes carry their exact event time into the queue.
       if (!Number.isFinite(bpm) || bpm <= 0) return;
-      if (node) node.port.postMessage({ type: "bpm", bpm });
-      else pendingBpm = bpm;
+      if (node) {
+        node.port.postMessage({ type: "bpm", bpm, ...(when !== undefined ? { when } : {}) });
+      } else if (offline && when !== undefined) {
+        pendingEvents.push({ type: "bpm", when, value: bpm });
+      } else {
+        pendingBpm = bpm;
+      }
     },
     setParameter(name, value) {
       if (!Number.isFinite(value)) return;

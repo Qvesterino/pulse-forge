@@ -12,6 +12,7 @@
  */
 
 import type { ParamDef } from "../effects/types";
+import { LFO_SYNC_DIVISIONS } from "../effects/tempo-sync";
 
 const pct = (value: number): string => `${Math.round(value * 100)}%`;
 const signed = (value: number): string => `${value > 0 ? "+" : ""}${value.toFixed(0)}`;
@@ -64,7 +65,16 @@ export const tsarParams: ParamDef[] = [
     unit: "Hz",
     format: (v) => (v < 0.02 ? "OFF" : `${v.toFixed(2)} Hz`),
   },
-  { id: "srcAUnison", label: "A UNISON", min: 1, max: 8, default: 1, format: (v) => `${Math.round(v)}×` },
+  {
+    id: "srcAUnison",
+    label: "A UNISON",
+    min: 1,
+    max: 8,
+    default: 1,
+    step: 1,
+    kind: "discrete",
+    format: (v) => `${Math.round(v)}×`,
+  },
   { id: "srcASpread", label: "A SPREAD", min: 0, max: 50, default: 0, unit: "ct", format: (v) => `${v.toFixed(0)} ct` },
   { id: "srcAAtk", label: "A ATTACK", min: 0, max: 4, default: 0.005, unit: "s", taper: "log" },
   { id: "srcADec", label: "A DECAY", min: 0.01, max: 8, default: 0.6, unit: "s", taper: "log" },
@@ -101,7 +111,16 @@ export const tsarParams: ParamDef[] = [
     unit: "Hz",
     format: (v) => (v < 0.02 ? "OFF" : `${v.toFixed(2)} Hz`),
   },
-  { id: "srcBUnison", label: "B UNISON", min: 1, max: 8, default: 1, format: (v) => `${Math.round(v)}×` },
+  {
+    id: "srcBUnison",
+    label: "B UNISON",
+    min: 1,
+    max: 8,
+    default: 1,
+    step: 1,
+    kind: "discrete",
+    format: (v) => `${Math.round(v)}×`,
+  },
   { id: "srcBSpread", label: "B SPREAD", min: 0, max: 50, default: 0, unit: "ct", format: (v) => `${v.toFixed(0)} ct` },
   { id: "srcBAtk", label: "B ATTACK", min: 0, max: 4, default: 0.005, unit: "s", taper: "log" },
   { id: "srcBDec", label: "B DECAY", min: 0.01, max: 8, default: 0.6, unit: "s", taper: "log" },
@@ -124,7 +143,16 @@ export const tsarParams: ParamDef[] = [
   // ── Morph + shared source ───────────────────────────────────────────────
   { id: "morph", label: "MORPH", min: 0, max: 1, default: 0, format: pct },
   { id: "sub", label: "SUB", min: 0, max: 1, default: 0, format: pct },
-  { id: "subOct", label: "SUB OCT", min: -2, max: -1, default: -1, step: 1, kind: "discrete" },
+  {
+    id: "subOct",
+    label: "SUB OCT",
+    min: -2,
+    max: -1,
+    default: -1,
+    step: 1,
+    kind: "discrete",
+    format: (v) => `${Math.abs(Math.round(v))} OCT`,
+  },
   { id: "noise", label: "NOISE", min: 0, max: 1, default: 0, format: pct },
   { id: "noiseColor", label: "N COLOR", min: 0, max: 1, default: 0.5, format: pct },
 
@@ -148,7 +176,16 @@ export const tsarParams: ParamDef[] = [
   // ── LFO (shared global modulator) ───────────────────────────────────────
   { id: "lfoRate", label: "LFO RATE", min: 0.01, max: 24, default: 2, unit: "Hz", taper: "log" },
   { id: "lfoShape", label: "LFO SHAPE", min: 0, max: 3, default: 0, options: [...TSAR_LFO_SHAPE_OPTIONS] },
-  { id: "lfoSync", label: "LFO SYNC", min: 0, max: 1, default: 0, kind: "toggle" },
+  {
+    id: "lfoSync",
+    label: "LFO SYNC",
+    min: 0,
+    max: LFO_SYNC_DIVISIONS.length - 1,
+    default: 0,
+    step: 1,
+    kind: "discrete",
+    options: LFO_SYNC_DIVISIONS.map(({ value, label }) => ({ value, label })),
+  },
 
   // ── Tone / output ───────────────────────────────────────────────────────
   { id: "tone", label: "TONE", min: -1, max: 1, default: 0, format: signed },

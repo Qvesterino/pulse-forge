@@ -28,6 +28,8 @@ export interface InstrumentRuntime {
   setParameter(id: string, value: number, when?: number): void;
   setParameterAt?(id: string, value: number, when: number): void;
   setSample?(id: string | null): void;
+  /** Optional second source upload for hybrid instruments such as TSAR. */
+  setSampleB?(id: string | null): void;
   /** Replace the sampler's velocity/round-robin layers (see SampleLayer). */
   setVelocityLayers?(layers: SampleLayer[]): void;
   /** Tempo changed — re-derive tempo-synced modulators (LFO sync, delay time…). `when` = scheduled offline application (see EffectRuntime.syncBpm). */
