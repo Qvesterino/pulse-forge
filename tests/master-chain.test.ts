@@ -142,6 +142,9 @@ describe("MasterChain monitor bypass", () => {
         master.tapeEnabled = tape;
         master.glueEnabled = glue;
       },
+      setTime: (time: number) => {
+        Object.assign(ctx, { currentTime: time });
+      },
     };
   };
 
@@ -186,30 +189,50 @@ describe("MasterChain monitor bypass", () => {
     expect(delayTime.calls.at(-1)).toEqual({ method: "setTargetAtTime", args: [0.024, 2, 0.015] });
   });
 
-  it("crossfades wet and latency-aligned dry paths over 40ms and holds automation on rapid toggles", () => {
-    const { chain, wetGain, dryGain } = makeHarness();
+  it("schedules a paired 40ms crossfade ahead of the render clock and holds automation on rapid toggles", () => {
+    const { chain, wetGain, dryGain, setTime } = makeHarness();
 
     chain.setBypassed(true);
     expect(chain.isBypassed).toBe(true);
-    expect(wetGain.calls.slice(-2)).toEqual([
-      { method: "cancelAndHoldAtTime", args: [2] },
-      { method: "linearRampToValueAtTime", args: [0, 2.04] },
+    expect(wetGain.calls.slice(-3)).toEqual([
+      { method: "cancelScheduledValues", args: [2.01] },
+      { method: "setValueAtTime", args: [1, 2.01] },
+      { method: "linearRampToValueAtTime", args: [0, 2.05] },
     ]);
-    expect(dryGain.calls.slice(-2)).toEqual([
-      { method: "cancelAndHoldAtTime", args: [2] },
-      { method: "linearRampToValueAtTime", args: [1, 2.04] },
+    expect(dryGain.calls.slice(-3)).toEqual([
+      { method: "cancelScheduledValues", args: [2.01] },
+      { method: "setValueAtTime", args: [0, 2.01] },
+      { method: "linearRampToValueAtTime", args: [1, 2.05] },
     ]);
 
+    // A toggle during the first ramp must resume from its value at the next
+    // scheduled start, even if AudioParam.value still reports the base value.
+    setTime(2.03);
     chain.setBypassed(false);
     expect(chain.isBypassed).toBe(false);
-    expect(wetGain.calls.slice(-2)).toEqual([
-      { method: "cancelAndHoldAtTime", args: [2] },
-      { method: "linearRampToValueAtTime", args: [1, 2.04] },
+    const resumedWetCalls = wetGain.calls.slice(-3);
+    expect(resumedWetCalls.map((call) => call.method)).toEqual([
+      "cancelScheduledValues",
+      "setValueAtTime",
+      "linearRampToValueAtTime",
     ]);
-    expect(dryGain.calls.slice(-2)).toEqual([
-      { method: "cancelAndHoldAtTime", args: [2] },
-      { method: "linearRampToValueAtTime", args: [0, 2.04] },
+    expect(resumedWetCalls[0].args[0]).toBeCloseTo(2.04, 12);
+    expect(resumedWetCalls[1].args[0]).toBeCloseTo(0.25, 12);
+    expect(resumedWetCalls[1].args[1]).toBeCloseTo(2.04, 12);
+    expect(resumedWetCalls[2].args[0]).toBe(1);
+    expect(resumedWetCalls[2].args[1]).toBeCloseTo(2.08, 12);
+
+    const resumedDryCalls = dryGain.calls.slice(-3);
+    expect(resumedDryCalls.map((call) => call.method)).toEqual([
+      "cancelScheduledValues",
+      "setValueAtTime",
+      "linearRampToValueAtTime",
     ]);
+    expect(resumedDryCalls[0].args[0]).toBeCloseTo(2.04, 12);
+    expect(resumedDryCalls[1].args[0]).toBeCloseTo(0.75, 12);
+    expect(resumedDryCalls[1].args[1]).toBeCloseTo(2.04, 12);
+    expect(resumedDryCalls[2].args[0]).toBe(0);
+    expect(resumedDryCalls[2].args[1]).toBeCloseTo(2.08, 12);
   });
 });
 
