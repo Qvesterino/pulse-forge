@@ -35,7 +35,7 @@ export function MasterProfileFileCheck({ verdict }: { verdict: MasterFileDeliver
       role="group"
       aria-label="Profile file delivery check"
     >
-      <strong>VERIFIED FILE DELIVERY CHECK · {verdict.status.toUpperCase()}</strong>
+      <strong>PROFILE FILE DELIVERY CHECK · {verdict.status.toUpperCase()}</strong>
       {verdict.checks.map((check, index) => (
         <small key={`${check.line}-${index}`} data-state={check.status}>
           {check.line}

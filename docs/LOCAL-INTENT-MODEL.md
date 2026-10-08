@@ -182,12 +182,25 @@ artifact loader (ONNX now / wllama-GGUF later).
   Ollama system prompt (`prompt.txt`, pinned by
   tests/intent-model-sft-prompt.test.ts). Targets are FLATTENED
   ({kind, intent} → root slots) — the runtime adapters and the eval
-  compare flat. The committed LFM2.5 report records 773 training examples
-  and 34/60 raw teacher-exact after epoch 3; a separate historical runtime
-  eval reported 45/51 attempted-exact, 1 wrong-kind and 9/60 abstain. Those
-  metrics use different scoring paths and are not merged or claimed as a
-  reproducible current LFM result. The LFM candidate, quantized artifact,
-  tokenizer, training data and evaluator still need one pinned report.
+  compare flat.
+  **Three scorecards with three different denominators — never compare them:**
+  | scorecard | rows | v32 result |
+  | --- | --- | --- |
+  | trainer quick-val (`sft-report.json`, `--val-limit 60`) | 60 of 298 (20 % sample) | 58/60 exact, 59/60 kindOK, 1790 training examples |
+  | independent A/B on the full val (`.sound-audit/eval-v3*.log`) | 294 | **91.0 %** attempted-exact, wrongKind 4, abstain 20.4 % |
+  | production default `kyx-intent-v30-q8`, same val | 294 | **92.5 %** attempted-exact, abstain 0.7 % |
+  The trainer's 58/60 is a 60-row subset and flatters the model; on the full
+  294-row val v32 is **91.0 % vs v31's 91.9 %** — a wash, with wrongKind cut
+  6→4. Verdict at commit `957ed711` is **NO FLIP: `kyx-intent-v30-q8` stays
+  the production default.** Earlier generations recorded 45/51 (88.2 %) on a
+  different checkpoint and evaluator — a third denominator, also not merged.
+  The measured curriculum for the next SFT generation is the eval dump-fails
+  list: `loudness` 0/6 and `preset` 0/4 attempted-exact in BOTH v31 and v32
+  (100 % miss rate on those families), because the model emits the whole
+  preset JSON blob / drops the numeric LUFS target instead of the minimal
+  serialized form — a convention gap, not a corpus-volume gap. The LFM
+  candidate, quantized artifact, tokenizer, training data and evaluator
+  still need one pinned report before any release claim.
   Deployment: merge → convert_hf_to_gguf → `ollama create <model-tag>`.
   The evaluator entry point is `npm run intent-model:sft-eval`.
   NOTE (2026-09-29, f27406b9): the Ollama request sends NO JSON-schema

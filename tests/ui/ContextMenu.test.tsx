@@ -336,9 +336,7 @@ describe("ContextMenu — zone duplicate failure routing", () => {
       const command = (services.store.execute as any).mock.calls.at(-1)?.[0];
       expect(command).toBeDefined();
       const muted = command.execute(project);
-      expect(
-        (muted.arrangement.audioClips ?? []).find((c: { id: string }) => c.id === audioClip.id)?.muted,
-      ).toBe(true);
+      expect((muted.arrangement.audioClips ?? []).find((c: { id: string }) => c.id === audioClip.id)?.muted).toBe(true);
       rendered.unmount();
     });
 

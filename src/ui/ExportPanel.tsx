@@ -54,6 +54,7 @@ import { slicesFromOnsets } from "../audio-engine/transients";
 import {
   masterProfileExportSettings,
   resolveDeliveryTarget,
+  type MasterFileDeliveryVerdict,
   type MasterFileFormat,
   type MasterProfile,
 } from "../mastering/profiles";
@@ -125,7 +126,11 @@ function isAbortError(error: unknown): boolean {
   return typeof error === "object" && error !== null && "name" in error && error.name === "AbortError";
 }
 
-function screenReaderExportStatus(status: Status, reportStale: boolean): string {
+function screenReaderExportStatus(
+  status: Status,
+  reportStale: boolean,
+  fileDelivery: MasterFileDeliveryVerdict | null,
+): string {
   const label =
     status.kind === "idle"
       ? "Offline render uses the same engine, instruments and effects as playback, plus a 2 second tail for reverb and delay."
@@ -136,7 +141,14 @@ function screenReaderExportStatus(status: Status, reportStale: boolean): string 
     ? message.replace(progressMatch[0], `${Math.floor(Number(progressMatch[0].slice(0, -1)) / 10) * 10}%`)
     : message;
   const staleMessage = reportStale ? "Master report is stale. Analyze again before delivery." : null;
-  return [announcedMessage, staleMessage].filter(Boolean).join(" ");
+  const fileDeliveryMessage =
+    status.kind === "done" && fileDelivery
+      ? [
+          `Profile file delivery check: ${fileDelivery.status.replace("-", " ")}.`,
+          ...fileDelivery.checks.filter((check) => check.status !== "pass").map((check) => check.line),
+        ].join(" ")
+      : null;
+  return [announcedMessage, staleMessage, fileDeliveryMessage].filter(Boolean).join(" ");
 }
 
 type RecSourceKind = "master" | "track" | "mic";
@@ -1372,7 +1384,13 @@ export function ExportPanel({
         aria-live={status.kind === "error" ? "assertive" : "polite"}
         aria-atomic="true"
       >
-        {screenReaderExportStatus(status, reportStale)}
+        {screenReaderExportStatus(
+          status,
+          reportStale,
+          status.kind === "done" && masteringMode && !reportStale
+            ? (masterReport?.encodedDelivery?.fileDelivery ?? null)
+            : null,
+        )}
       </div>
       {((status.kind === "done" && (!masteringMode || masterReport)) ||
         (status.kind === "error" && masteringMode && masterReport)) && (

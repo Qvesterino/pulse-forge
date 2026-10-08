@@ -9,13 +9,17 @@
 > **Historical runbook; current release status is in
 > `docs/LOCAL-INTENT-MODEL.md` and
 > `docs/IMPLEMENTATION-ROADMAP-AI-FIRST-PRODUCER.md`.** The LFM2 92 %
-> result and the LFM2.5 numbers in §10 came from different checkpoints and
-> eval paths. The latest committed LFM2.5 training report records
-> 773 examples and 34/60 raw exact after epoch 3; a separate historical
-> Ollama runtime eval reported 45/51 attempted-exact, 1 wrong-kind and
-> 9/60 abstain. Neither number set is a current pinned release verdict.
-> Re-run the exact model artifact against a candidate-disjoint holdout
-> before claiming generalization or producer quality.
+> result came from an older checkpoint and evaluator. The current
+> LFM2.5 generation (`kyx-intent-v32`, commit `957ed711`) has TWO scores
+> with DIFFERENT denominators, and quoting either alone misleads:
+> the trainer's own 60-row quick-val says 58/60 exact (59/60 kindOK,
+> 1790 training examples), while the independent eval on the full
+> 294-row val says **91.0 %** attempted-exact / wrongKind 4 / abstain
+> 20.4 %. The 60 rows are a 20 % sample of the val — 58/60 is NOT
+> comparable to 91.0 %, and it is NOT evidence of a better model.
+> Neither number set is a current pinned release verdict. Re-run the
+> exact model artifact against a candidate-disjoint holdout before
+> claiming generalization or producer quality.
 
 ---
 
@@ -250,11 +254,30 @@ real failure signal even though many ambiguous asks abstained.
 
 ### Comparison table — the whole SFT story
 
-| Model                              | Method                                               | KYX val exact                               | Notes                                                                                          |
-| ---------------------------------- | ---------------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| LFM2-1.2B base (prompted)          | few-shot prompt                                      | ~14-30 % (unconditioned measurement issues) | hallucinates kind names                                                                        |
-| **LFM2 SFT (kyx-intent-sft)**      | Historical LoRA run, 1,479 examples                  | **92 %** (55/60)                            | Old evaluator/checkpoint; not a current release verdict                                        |
-| **LFM2.5 SFT (kyx-intent-sft-25)** | Historical LoRA run; trainer report has 773 examples | **88.2 %** (45/51 attempted)                | Separate runtime eval; 1 wrong-kind, 9/60 abstain; not a creative-brief or music-quality score |
+Rows marked **294-row** were all measured on the IDENTICAL full val.jsonl
+and ARE directly comparable to each other. Rows measured on a 60-row or
+51-row subset are **not** comparable to them — a smaller honest sample and
+a bigger honest sample are different denominators, not different models.
+
+| Model                              | Method                                    | Score                        | Denominator | Notes                                                                                         |
+| ---------------------------------- | ----------------------------------------- | ---------------------------- | ----------- | --------------------------------------------------------------------------------------------- |
+| LFM2-1.2B base (prompted)          | few-shot prompt                           | ~14-30 %                     | 204 cases   | unconditioned measurement issues; hallucinates kind names                                     |
+| **LFM2 SFT (kyx-intent-sft)**      | Historical LoRA run, 1,479 examples       | **92 %** (55/60)             | 60 rows     | Old evaluator/checkpoint; NOT comparable to the 294-row rows below                            |
+| LFM2.5 SFT (kyx-intent-sft-25)     | Historical LoRA run, 779 examples         | **88.2 %** (45/51 attempted) | 51 rows     | Separate runtime eval; 1 wrong-kind, 9/60 abstain; older checkpoint                            |
+| LFM2.5 SFT (kyx-intent-v31)        | LoRA, 1949-pair corpus                    | 91.9 % attempted-exact       | **294 rows**| wrongKind 6, abstain 19.7 %                                                                    |
+| **LFM2.5 SFT (kyx-intent-v32)**    | LoRA r16/α32, 1790 examples, wave-8      | **91.0 %** attempted-exact   | **294 rows**| wrongKind **4** (−2 vs v31), abstain 20.4 %; trainer quick-val 58/60 is a 20 % subset, not this |
+| **kyx-intent-v30-q8 (SHIPPED)**    | Quantized production default              | **92.5 %** attempted-exact   | **294 rows**| wrongKind 8 but **abstain 0.7 %**; STAYS the production default — no flip at `957ed711`        |
+
+**Reading the table honestly:** v32 improved wrong-kind behaviour (6→4) and
+trained on the newest corpus, but it did NOT beat v31 on exact match and
+both lose to the shipped v30-q8. Per-kind tail on the full val (identical in
+v31 and v32): `loudness` 0/6, `preset` 0/4 — a 100 % miss rate on both
+families. Those are serialization-convention failures (the model dumps the
+full preset blob, or emits `detected:["AI"]` and drops the numeric LUFS
+target), not evidence of insufficient corpus volume. More rows of the same
+shape will not fix them; the next SFT generation must change the target
+convention or move to a bigger base. The eval dump-fails list is the
+curriculum.
 
 ### Eval harness rules learned (apply to every future eval)
 

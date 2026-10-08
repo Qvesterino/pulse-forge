@@ -28,9 +28,7 @@ WORKFLOW: WHOLE TRACK IN ONE CALL
   kyx_song {genre, length?, mix?, loudness?} — generates the genre form
   (patterns per section), lays out scenes/clips/markers and applies the
   measured mix profile in ONE undo step; loudness adds a render-backed
-  trim as a second step. Slow (full generation) but the biggest gesture
-  an agent can make. Use the fine-grained loop below when you want
-  control over individual patterns.
+  trim as a second step. For finer control, use the loop below.
 
 WORKFLOW: BEAT FROM SCRATCH
   1. kyx_generate {genre, seed, bars?, bpm?} — deterministic; same seed
@@ -95,7 +93,7 @@ WORKFLOW: ARRANGEMENT PASS
   {op: add/resize/reorder} -> kyx_clips {op: move/duplicate} ->
   kyx_markers {op: add}.
 
-TOOL INDEX (all 34 — grouped by job)
+TOOL INDEX (all 37 — grouped by job)
   read:        kyx_state (subjects incl. mixer) · kyx_meter · kyx_catalog
                (effects/instruments) · kyx://project/* resources
   compose:     kyx_generate (seedable) · kyx_notes (melodic) ·
@@ -114,6 +112,7 @@ TOOL INDEX (all 34 — grouped by job)
                fixes) · kyx_export · kyx_publish_gallery (agent badge)
   control:     kyx_intent (EN/SK; 🤖 model fallback) · kyx_batch (10 in
                one undo) · kyx_undo · kyx_takes (vocal comps)
+  transcribe:  kyx_unsuno {action: transcribe, sourceId}; restyle · regen · similarity
 
 TOKEN ECONOMY (your context is finite)
 - Prefer the structured tools over free-text kyx_intent: typed arguments

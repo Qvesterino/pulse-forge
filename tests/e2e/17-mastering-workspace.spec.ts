@@ -1432,6 +1432,99 @@ test.describe("17 — mastering workspace", () => {
     });
   });
 
+  test("checks Apple file rules in a project master export", async ({ page }, testInfo) => {
+    test.setTimeout(240_000);
+    test.skip(
+      !["chromium", "firefox-mastering-session"].includes(testInfo.project.name),
+      "Apple Music project delivery acceptance runs in Chromium and focused Firefox.",
+    );
+    await openHouseTemplate(page, { timeoutMs: 120_000 });
+    await clickPanelAction(page, "MASTER");
+    await page.getByLabel("Master delivery profile").selectOption("apple");
+    await expect(page.getByRole("link", { name: "Apple Music · Video and Audio Asset Guide" }).first()).toBeVisible();
+    await expect(page.locator(".mastering-profile-note")).toContainText(
+      "Apple's Music Audio Source Profile defines file delivery, not this loudness target.",
+    );
+
+    const exportPanel = page.locator(".mastering-render-section");
+    await page.getByRole("button", { name: "ANALYZE FULL SONG" }).click();
+    const report = page.getByRole("note", { name: "Master render report details" });
+    await expect(report).toBeVisible({ timeout: 120_000 });
+
+    const downloadPromise = page.waitForEvent("download");
+    await exportPanel.getByRole("button", { name: "EXPORT MASTER" }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toMatch(/\.wav$/i);
+    const filePath = testInfo.outputPath("apple-project-master.wav");
+    await download.saveAs(filePath);
+    expect(readMasterWavFacts(await readFile(filePath))).toMatchObject({
+      formatCode: 1,
+      channels: 2,
+      sampleRate: 44_100,
+      bitDepth: 24,
+      bextVersion: 2,
+    });
+
+    const encodedCheck = page.getByRole("region", { name: "Encoded master file check" });
+    await expect(encodedCheck).toContainText("FINAL FILE · DECODED + MEASURED", { timeout: 120_000 });
+    const fileCheck = encodedCheck.getByRole("group", { name: "Profile file delivery check" });
+    await expect(fileCheck).toHaveAttribute("data-state", "not-measured");
+    await expect(fileCheck).toContainText("WAV is accepted by the checked source profile");
+    await expect(fileCheck).toContainText("44,100 Hz is accepted by the checked source profile");
+    await expect(fileCheck).toContainText("24-bit is accepted by the checked source profile");
+    await expect(fileCheck).toContainText("qualified encoder");
+
+    const reportDownloadPromise = page.waitForEvent("download");
+    await report.getByRole("button", { name: "Download mastering report JSON" }).click();
+    const reportDownload = await reportDownloadPromise;
+    const reportPath = testInfo.outputPath("apple-project-master-report.json");
+    await reportDownload.saveAs(reportPath);
+    const deliveryReport = JSON.parse(await readFile(reportPath, "utf8"));
+    expect(deliveryReport.report.encodedDelivery.fileDelivery).toMatchObject({
+      profileId: "apple",
+      status: "not-measured",
+    });
+    expect(deliveryReport.profileProvenance.fileSettingsSource.url).toContain(
+      "help.apple.com/itc/videoaudioassetguide",
+    );
+    expect(deliveryReport.profileProvenance.fileSettingsReview).toBe("current");
+    expect(deliveryReport.profileProvenance.fileSettingsSource.checkedAt).toBe("2026-10-08");
+
+    await exportPanel.getByRole("combobox", { name: "FORMAT" }).selectOption("flac");
+    await page.getByLabel("DEPTH").selectOption("16");
+    const flacDownloadPromise = page.waitForEvent("download");
+    await exportPanel.getByRole("button", { name: "EXPORT MASTER (FLAC)" }).click();
+    const flacDownload = await flacDownloadPromise;
+    expect(flacDownload.suggestedFilename()).toMatch(/\.flac$/i);
+    const flacPath = testInfo.outputPath("apple-project-master-16bit.flac");
+    await flacDownload.saveAs(flacPath);
+    expect(readFlacFacts(await readFile(flacPath))).toMatchObject({
+      sampleRate: 44_100,
+      channels: 2,
+      bitDepth: 16,
+    });
+    await expect(encodedCheck).toContainText("FLAC · 16-bit", { timeout: 120_000 });
+    await expect(encodedCheck).toContainText("FINAL FILE · DECODED + MEASURED");
+    await expect(fileCheck).toHaveAttribute("data-state", "not-measured");
+    await expect(fileCheck).toContainText("FLAC is accepted by the checked source profile");
+    await expect(fileCheck).toContainText("16-bit is accepted by the checked source profile");
+    const exportAnnouncement = exportPanel.locator(".sr-only");
+    await expect(exportAnnouncement).toHaveAttribute("role", "status");
+    await expect(exportAnnouncement).toContainText("Profile file delivery check: not measured.");
+    await expect(exportAnnouncement).toContainText("Apple-qualified encoder");
+
+    const flacReportDownloadPromise = page.waitForEvent("download");
+    await report.getByRole("button", { name: "Download mastering report JSON" }).click();
+    const flacReportDownload = await flacReportDownloadPromise;
+    const flacReportPath = testInfo.outputPath("apple-project-master-16bit-report.json");
+    await flacReportDownload.saveAs(flacReportPath);
+    const flacDeliveryReport = JSON.parse(await readFile(flacReportPath, "utf8"));
+    expect(flacDeliveryReport.report.encodedDelivery.fileDelivery).toMatchObject({
+      profileId: "apple",
+      status: "not-measured",
+    });
+  });
+
   test("inspects a large MP3 in a real worker or reports unsupported browser decoding", async ({ page }) => {
     test.setTimeout(150_000);
     await page.goto("/", { waitUntil: "domcontentloaded", timeout: 120_000 });
@@ -4047,8 +4140,8 @@ test.describe("17 — mastering workspace", () => {
   test("checks Apple Music file rules and reports the encoder limit", async ({ page }, testInfo) => {
     test.setTimeout(180_000);
     test.skip(
-      testInfo.project.name !== "chromium",
-      "Apple Music external delivery acceptance currently runs in Chromium.",
+      !["chromium", "firefox-mastering-session"].includes(testInfo.project.name),
+      "Apple Music external delivery acceptance runs in Chromium and focused Firefox.",
     );
     await openHouseTemplate(page, { timeoutMs: 120_000 });
     await clickPanelAction(page, "MASTER");
@@ -4079,6 +4172,7 @@ test.describe("17 — mastering workspace", () => {
 
     const fileCheck = session.getByRole("group", { name: "Profile file delivery check" });
     await expect(fileCheck).toHaveAttribute("data-state", "not-measured");
+    await expect(fileCheck).toContainText("PROFILE FILE DELIVERY CHECK · NOT-MEASURED");
     await expect(fileCheck).toContainText("44,100 Hz is accepted by the checked source profile");
     await expect(fileCheck).toContainText("16-bit is accepted by the checked source profile");
     await expect(fileCheck).toContainText("qualified encoder");

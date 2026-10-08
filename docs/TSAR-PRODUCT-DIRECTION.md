@@ -1,8 +1,10 @@
 # TSAR — produktová vízia a ďalšie vlny vývoja
 
-**Stav:** produktový smer a navrhovaný roadmap · **Aktualizované:** 2026-10-07  
-**Aktuálna implementácia:** T0–T7 dodané; pozri [TSAR-ROADMAP.md](TSAR-ROADMAP.md) a [CURRENT-STATE.md](CURRENT-STATE.md).  
-**Architektonické rozhodnutie:** [ADR 0023](adr/0023-tsar-hybrid-engine.md).
+**Stav:** produktový smer a navrhovaný roadmap · **Aktualizované:** 2026-10-08
+
+- **Aktuálna implementácia:** T0–T7 dodané; pozri [TSAR-ROADMAP.md](TSAR-ROADMAP.md) a [CURRENT-STATE.md](CURRENT-STATE.md).
+- **Poradie implementácie ďalších fáz:** [TSAR-IMPLEMENTATION-ROADMAP.md](TSAR-IMPLEMENTATION-ROADMAP.md).
+- **Architektonické rozhodnutie:** [ADR 0023](adr/0023-tsar-hybrid-engine.md).
 
 ## Produkt jednou vetou
 

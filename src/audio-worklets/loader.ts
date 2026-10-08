@@ -103,7 +103,10 @@ const pluginInflight = new Map<BaseAudioContext, Map<PluginWorkletType, Promise<
 const readyInstrumentTypes = new WeakMap<BaseAudioContext, Set<InstrumentWorkletType>>();
 const instrumentInflight = new Map<BaseAudioContext, Map<InstrumentWorkletType, Promise<void>>>();
 
-export function isWorkletReady(type: WorkletType | InstrumentWorkletType, ctx: BaseAudioContext | null | undefined): boolean {
+export function isWorkletReady(
+  type: WorkletType | InstrumentWorkletType,
+  ctx: BaseAudioContext | null | undefined,
+): boolean {
   if (!ctx || !readyContexts.has(ctx)) return false;
   if ((PLUGIN_WORKLET_TYPES as readonly string[]).includes(type)) {
     return readyPluginTypes.get(ctx)?.has(type as PluginWorkletType) ?? false;

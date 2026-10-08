@@ -13,7 +13,7 @@
 //     the singleton and confuse subsequent tabs
 //
 // Guards:
-//   1. PUBLIC CONSTANTS - DB_NAME, DB_VERSION, and 15 STORE_* constants
+//   1. PUBLIC CONSTANTS - DB_NAME, DB_VERSION, and the STORE_* constants
 //      must stay exported and immutable.
 //   2. PUBLIC FUNCTIONS - openDb and tx (and only those two) are
 //      exported.
@@ -84,6 +84,8 @@ const STORE_CONSTS: string[] = [
   // W4: the ★-trained personal prior payloads (out-of-line key:
   // `<kind>#<baseModelHash>`), see PersonalModelRepository.
   "STORE_PERSONAL_MODELS",
+  "STORE_PRODUCER_MEMORY_EVENTS",
+  "STORE_PRODUCER_LINEAGE",
 ];
 
 const PUBLIC_FUNCTIONS: string[] = ["openDb", "tx"];

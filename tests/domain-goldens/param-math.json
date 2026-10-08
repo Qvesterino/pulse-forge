@@ -561,7 +561,13 @@
             "tone": 0,
             "drive": 0,
             "width": 0.5,
-            "level": 0.8
+            "level": 0.8,
+            "arpOn": 0,
+            "arpMode": 0,
+            "arpRate": 8,
+            "arpOctaves": 1,
+            "arpGate": 0.5,
+            "arpSwing": 0
           }
         }
       ]

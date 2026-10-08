@@ -58,6 +58,7 @@ function makeEngine(): AudioEngine {
     automationReset: vi.fn(),
     transportStarted: vi.fn(),
     restartFrozenSources: vi.fn(),
+    stopVoicesForOwner: vi.fn(),
     setEffectiveBpm: vi.fn(),
     // MRT2 context lifecycle (concurrent session's openProject wiring)
     subscribeLiveContext: vi.fn(() => () => undefined),

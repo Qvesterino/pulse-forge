@@ -70,6 +70,7 @@ function makeEngine(): AudioEngine {
     automationReset: vi.fn(),
     transportStarted: vi.fn(),
     restartFrozenSources: vi.fn(),
+    stopVoicesForOwner: vi.fn(),
     setEffectiveBpm: vi.fn(),
     stopPreview: vi.fn(),
     getDiagnostics: vi.fn(() => ({ contextState: "closed", workletCount: 0, missedAssets: 0 })),

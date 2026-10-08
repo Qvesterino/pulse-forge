@@ -135,9 +135,30 @@ describe("ExportPanel", () => {
 
     const fileCheck = screen.getByRole("group", { name: "Profile file delivery check" });
     expect(fileCheck).toHaveAttribute("data-state", "warn");
-    expect(fileCheck).toHaveTextContent("VERIFIED FILE DELIVERY CHECK · WARN");
+    expect(fileCheck).toHaveTextContent("PROFILE FILE DELIVERY CHECK · WARN");
     expect(fileCheck).toHaveTextContent("FLAC is the preferred delivery format");
     expect(fileCheck).not.toHaveTextContent("LUFS");
+  });
+
+  it("does not present an unverifiable delivery verdict as verified", () => {
+    render(
+      <MasterProfileFileCheck
+        verdict={{
+          profileId: "apple",
+          status: "not-measured",
+          checks: [
+            { status: "pass", line: "16-bit is accepted by the checked source profile." },
+            { status: "not-measured", line: "Apple-qualified encoder could not be verified from metadata." },
+          ],
+        }}
+      />,
+    );
+
+    const fileCheck = screen.getByRole("group", { name: "Profile file delivery check" });
+    expect(fileCheck).toHaveAttribute("data-state", "not-measured");
+    expect(fileCheck).toHaveTextContent("PROFILE FILE DELIVERY CHECK · NOT-MEASURED");
+    expect(fileCheck).not.toHaveTextContent("VERIFIED");
+    expect(fileCheck).toHaveTextContent("Apple-qualified encoder could not be verified");
   });
 
   it("announces mastering progress in a polite atomic live region", async () => {
