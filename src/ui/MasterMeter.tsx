@@ -28,8 +28,8 @@ interface ReadState {
 }
 
 const EMPTY: ChannelLevels = { peak: 0, rms: 0, peakDb: -120, rmsDb: -120 };
-const MASTER_CLIP_HOLD_SECONDS = 0.6;
-const STATUS_BAR_CLIP_HOLD_SECONDS = 0.8;
+const MASTER_CLIP_HOLD_MS = 600;
+const STATUS_BAR_CLIP_HOLD_MS = 800;
 
 /**
  * Master metering wall: spectrum + loudness history in the centre, goniometer
@@ -74,7 +74,7 @@ export function MasterMeter() {
     warnings: [],
   });
   const lastStateRef = useRef(state);
-  const clipHoldRef = useRef(MASTER_CLIP_HOLD_SECONDS);
+  const clipHoldUntilRef = useRef(0);
   const phaseSinceRef = useRef<number | null>(null);
   const imbalanceSinceRef = useRef<number | null>(null);
 
@@ -102,9 +102,8 @@ export function MasterMeter() {
         // conservative -0.3 dB sample threshold created false red flashes.
         const truePeakDb = snapshot?.truePeakDb ?? peakDb;
         const nowOver = truePeakDb > -0.1 || peakDb > 0;
-        if (nowOver) clipHoldRef.current = 0;
-        clipHoldRef.current += 0.033;
-        const clipping = clipHoldRef.current < MASTER_CLIP_HOLD_SECONDS;
+        if (nowOver) clipHoldUntilRef.current = t + MASTER_CLIP_HOLD_MS;
+        const clipping = t < clipHoldUntilRef.current;
         const phaseSince = levels.correlation < 0 ? (phaseSinceRef.current ?? t) : null;
         const imbalance = snapshot?.lrImbalanceDb ?? Math.abs(left.rmsDb - right.rmsDb);
         const imbalanceSince = imbalance > 6 ? (imbalanceSinceRef.current ?? t) : null;
@@ -457,7 +456,7 @@ export function MasterStereoMeters() {
     clipping: false,
   });
   const lastStateRef = useRef(state);
-  const clipHoldRef = useRef(MASTER_CLIP_HOLD_SECONDS);
+  const clipHoldUntilRef = useRef(0);
 
   useEffect(() => {
     let lastRead = 0;
@@ -477,9 +476,8 @@ export function MasterStereoMeters() {
       // can still intersample-clip.
       const truePeakDb = snapshot?.truePeakDb ?? peakDb;
       const nowOver = truePeakDb > -0.1 || peakDb > 0;
-      if (nowOver) clipHoldRef.current = 0;
-      clipHoldRef.current += 0.033;
-      const clipping = clipHoldRef.current < MASTER_CLIP_HOLD_SECONDS;
+      if (nowOver) clipHoldUntilRef.current = t + MASTER_CLIP_HOLD_MS;
+      const clipping = t < clipHoldUntilRef.current;
       const gainReductionDb =
         Math.round((snapshot ? snapshot.gainReductionDb : (services.engine.getMasterGainReductionDb?.() ?? 0)) * 10) /
         10;
@@ -628,7 +626,7 @@ export function MasterMiniMeter() {
     clip: false,
   });
   const lastStateRef = useRef(state);
-  const clipHoldRef = useRef(STATUS_BAR_CLIP_HOLD_SECONDS);
+  const clipHoldUntilRef = useRef(0);
 
   useEffect(() => {
     let lastRead = 0;
@@ -644,15 +642,14 @@ export function MasterMiniMeter() {
       // Same intersample-clip policy as the wall and the strip meters.
       const truePeakDb = snapshot?.truePeakDb ?? peakDb;
       const nowOver = truePeakDb > -0.1 || peakDb > 0;
-      if (nowOver) clipHoldRef.current = 0;
-      clipHoldRef.current += 0.04;
+      if (nowOver) clipHoldUntilRef.current = t + STATUS_BAR_CLIP_HOLD_MS;
       const next = {
         lPeak: levels.left.peakDb,
         lRms: levels.left.rmsDb,
         rPeak: levels.right.peakDb,
         rRms: levels.right.rmsDb,
         hold: snapshot?.peakHoldDb ?? services.engine.getMasterPeakHoldDb(),
-        clip: clipHoldRef.current < STATUS_BAR_CLIP_HOLD_SECONDS,
+        clip: t < clipHoldUntilRef.current,
       };
       const prev = lastStateRef.current;
       const changed =

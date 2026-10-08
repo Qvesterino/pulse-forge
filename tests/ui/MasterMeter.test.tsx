@@ -3,11 +3,19 @@ import { act, screen } from "@testing-library/react";
 import { MasterMeter, MasterMiniMeter, MasterStereoMeters } from "../../src/ui/MasterMeter";
 import { renderWithContext } from "../helpers";
 
-function withFirstSilentMeterFrame(
-  renderMeter: () => ReturnType<typeof renderWithContext>,
-  timestamp: number,
-  assertFrame: (container: HTMLElement) => void,
-) {
+const CLIP_RED_STYLE = "rgb(248, 113, 113)";
+
+type MeterTestEngine = ReturnType<typeof renderWithContext>["services"]["engine"] & {
+  getMasterGainReductionDb: () => number;
+};
+
+interface MeterFrameStep {
+  timestamp: number;
+  beforeFrame?: (engine: MeterTestEngine) => void;
+  assertFrame: (container: HTMLElement) => void;
+}
+
+function withMeterFrames(renderMeter: () => ReturnType<typeof renderWithContext>, steps: MeterFrameStep[]) {
   const frames: FrameRequestCallback[] = [];
   const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
   const originalCancelAnimationFrame = globalThis.cancelAnimationFrame;
@@ -21,14 +29,15 @@ function withFirstSilentMeterFrame(
   try {
     const rendered = renderMeter();
     unmount = rendered.unmount;
-    const engine = rendered.services.engine as typeof rendered.services.engine & {
-      getMasterGainReductionDb: () => number;
-    };
+    const engine = rendered.services.engine as MeterTestEngine;
     engine.getMasterGainReductionDb = vi.fn(() => 0);
-    const firstFrame = frames.shift();
-    expect(firstFrame).toBeDefined();
-    act(() => firstFrame?.(timestamp));
-    assertFrame(rendered.container);
+    for (const step of steps) {
+      step.beforeFrame?.(engine);
+      const frame = frames.shift();
+      expect(frame).toBeDefined();
+      act(() => frame?.(step.timestamp));
+      step.assertFrame(rendered.container);
+    }
   } finally {
     unmount();
     vi.stubGlobal("requestAnimationFrame", originalRequestAnimationFrame);
@@ -48,12 +57,41 @@ describe("MasterMeter", () => {
   });
 
   it("does not announce clipping on the first silent meter frame", () => {
-    withFirstSilentMeterFrame(
+    withMeterFrames(
       () => renderWithContext(<MasterMeter />),
-      33,
-      () => {
-        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-      },
+      [
+        {
+          timestamp: 33,
+          assertFrame: () => {
+            expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+          },
+        },
+      ],
+    );
+  });
+
+  it("expires the clip alert by elapsed time after a delayed meter frame", () => {
+    withMeterFrames(
+      () => renderWithContext(<MasterMeter />),
+      [
+        {
+          timestamp: 33,
+          beforeFrame: (engine) => {
+            const silent = engine.getMasterLevels();
+            const clipped = { ...silent, left: { ...silent.left, peak: 1, peakDb: 0 } };
+            engine.getMasterLevels = vi.fn().mockReturnValueOnce(clipped).mockReturnValue(silent);
+          },
+          assertFrame: () => {
+            expect(screen.getByRole("alert")).toBeInTheDocument();
+          },
+        },
+        {
+          timestamp: 1000,
+          assertFrame: () => {
+            expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+          },
+        },
+      ],
     );
   });
 });
@@ -87,24 +125,87 @@ describe("MasterStereoMeters", () => {
   });
 
   it("does not color the headroom indicator as clipping on the first silent frame", () => {
-    withFirstSilentMeterFrame(
+    withMeterFrames(
       () => renderWithContext(<MasterStereoMeters />),
-      33,
-      (container) => {
-        expect(container.querySelector(".master-headroom-bar")?.getAttribute("style")).not.toContain("#f87171");
-      },
+      [
+        {
+          timestamp: 33,
+          assertFrame: (container) => {
+            expect(container.querySelector(".master-headroom-bar")?.getAttribute("style")).not.toContain(
+              CLIP_RED_STYLE,
+            );
+          },
+        },
+      ],
+    );
+  });
+
+  it("expires the headroom clip indicator by elapsed time after a delayed frame", () => {
+    withMeterFrames(
+      () => renderWithContext(<MasterStereoMeters />),
+      [
+        {
+          timestamp: 33,
+          beforeFrame: (engine) => {
+            const silent = engine.getMasterLevels();
+            const clipped = { ...silent, left: { ...silent.left, peak: 1, peakDb: 0 } };
+            engine.getMasterLevels = vi.fn().mockReturnValueOnce(clipped).mockReturnValue(silent);
+          },
+          assertFrame: (container) => {
+            expect(container.querySelector(".master-headroom-bar")?.getAttribute("style")).toContain(CLIP_RED_STYLE);
+          },
+        },
+        {
+          timestamp: 1000,
+          assertFrame: (container) => {
+            expect(container.querySelector(".master-headroom-bar")?.getAttribute("style")).not.toContain(
+              CLIP_RED_STYLE,
+            );
+          },
+        },
+      ],
     );
   });
 
   it("does not mark the compact status meter as clipping on the first silent frame", () => {
-    withFirstSilentMeterFrame(
+    withMeterFrames(
       () => renderWithContext(<MasterMiniMeter />),
-      40,
-      (container) => {
-        const bars = [...container.querySelectorAll(".statusbar-meter-bar")];
-        expect(bars).toHaveLength(2);
-        expect(bars.some((bar) => bar.classList.contains("clipping"))).toBe(false);
-      },
+      [
+        {
+          timestamp: 40,
+          assertFrame: (container) => {
+            const bars = [...container.querySelectorAll(".statusbar-meter-bar")];
+            expect(bars).toHaveLength(2);
+            expect(bars.some((bar) => bar.classList.contains("clipping"))).toBe(false);
+          },
+        },
+      ],
+    );
+  });
+
+  it("expires the compact clip indicator by elapsed time after a delayed frame", () => {
+    withMeterFrames(
+      () => renderWithContext(<MasterMiniMeter />),
+      [
+        {
+          timestamp: 40,
+          beforeFrame: (engine) => {
+            const silent = engine.getMasterLevels();
+            const clipped = { ...silent, left: { ...silent.left, peak: 1, peakDb: 0 } };
+            engine.getMasterLevels = vi.fn().mockReturnValueOnce(clipped).mockReturnValue(silent);
+          },
+          assertFrame: (container) => {
+            expect(container.querySelector(".statusbar-meter-bar")?.classList.contains("clipping")).toBe(true);
+          },
+        },
+        {
+          timestamp: 1000,
+          assertFrame: (container) => {
+            const bars = [...container.querySelectorAll(".statusbar-meter-bar")];
+            expect(bars.some((bar) => bar.classList.contains("clipping"))).toBe(false);
+          },
+        },
+      ],
     );
   });
 });
