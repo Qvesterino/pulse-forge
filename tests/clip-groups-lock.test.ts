@@ -65,7 +65,7 @@ describe("G1 groupClips", () => {
     const store = new ProjectStore(doc);
     store.execute(groupClips(store.doc, [arrId, audioId]));
     expect(groupsOf(store.doc)).toHaveLength(1);
-    expect(groupsOf(store.doc)[0]!.clipIds.sort()).toEqual([arrId, audioId].sort());
+    expect([...groupsOf(store.doc)[0]!.clipIds].sort()).toEqual([arrId, audioId].sort());
 
     // Regroup: adding a third clip creates the new group and removes both
     // members from the old one (one-group-per-clip).
@@ -101,18 +101,18 @@ describe("G2 ungroupClips", () => {
     const store = new ProjectStore(doc);
     store.execute(groupClips(store.doc, [arrId, audioId]));
     store.execute(groupClips(store.doc, [audio2, audioId])); // audioId moves to the new group
-    expect(groupsOf(store.doc)).toHaveLength(1); // the old group died (1 member left → dropped? no: arrId alone → dropped)
-    // The old group had [arrId, audioId]; audioId left → [arrId] alone → dropped.
+    expect(groupsOf(store.doc)).toHaveLength(1); // the old group died: [arrId] alone is not a group
     const last = groupsOf(store.doc)[0]!;
-    expect(last.clipIds.sort()).toEqual([audio2, audioId].sort());
+    expect([...last.clipIds].sort()).toEqual([audio2, audioId].sort());
 
     store.execute(ungroupClips(store.doc, [arrId, audioId, audio2]));
     expect(groupsOf(store.doc)).toHaveLength(0);
     store.undo();
     expect(groupsOf(store.doc)).toHaveLength(1);
-    // Ungrouping clips that are in no group: no-op, no history entry.
+    // Ungrouping a clip that is in NO group: no-op, no history entry.
+    // (arrId left its group in the regroup above — it must not resurrect it.)
     const before = store.undoStackLength;
-    store.execute(ungroupClips(store.doc, [audioId]));
+    store.execute(ungroupClips(store.doc, [arrId]));
     expect(store.undoStackLength).toBe(before);
   });
 });
@@ -123,9 +123,10 @@ describe("G3 delete prunes membership", () => {
     const store = new ProjectStore(doc);
     store.execute(groupClips(store.doc, [arrId, audioId]));
     store.execute(deleteArrangementClip(store.doc, arrId));
-    expect(groupsOf(store.doc)[0]!.clipIds).toEqual([audioId]);
+    // A group down to a single member is not a group — it dies with the delete.
+    expect(groupsOf(store.doc)).toHaveLength(0);
     store.undo();
-    expect(groupsOf(store.doc)[0]!.clipIds.sort()).toEqual([arrId, audioId].sort());
+    expect([...groupsOf(store.doc)[0]!.clipIds].sort()).toEqual([arrId, audioId].sort());
     void audioId;
   });
 });
@@ -135,16 +136,15 @@ describe("G4 split carries group membership", () => {
     const { doc, arrId, audioId } = docWithMixed();
     const store = new ProjectStore(doc);
     store.execute(groupClips(store.doc, [arrId, audioId]));
-    console.log("G4 after group:", JSON.stringify(groupsOf(store.doc)));
-    console.log("G4 groupClips cmd type:", groupClips(store.doc, [arrId, audioId]).type);
     store.execute(splitArrangementClipAtTick(store.doc, arrId, 2 * BAR));
-    console.log("G4 after split:", JSON.stringify(groupsOf(store.doc)));
-    console.log("G4 clips:", JSON.stringify(store.doc.arrangement.clips.map((c) => c.id)));
     const groups = groupsOf(store.doc)[0]!;
     const fragments = store.doc.arrangement.clips.map((c) => c.id);
-    expect(groups.clipIds.sort()).toEqual([...fragments, audioId].sort());
+    // Copy-before-sort: these arrays live in store.doc, and an in-place sort
+    // would corrupt the index-anchored undo delta (order-dependent on random
+    // UUIDs — the source of a nasty flake).
+    expect([...groups.clipIds].sort()).toEqual([...fragments, audioId].sort());
     store.undo();
-    expect(groupsOf(store.doc)[0]!.clipIds.sort()).toEqual([arrId, audioId].sort());
+    expect([...groupsOf(store.doc)[0]!.clipIds].sort()).toEqual([arrId, audioId].sort());
   });
 });
 
@@ -153,10 +153,8 @@ describe("L1/L2 lock", () => {
     const { doc, arrId, audioId } = docWithMixed();
     const store = new ProjectStore(doc);
     store.execute(setClipsLocked(store.doc, [arrId, audioId], true));
-    console.log("L1 arr clip:", JSON.stringify(store.doc.arrangement.clips[0]));
-    console.log("L1 audio clip:", JSON.stringify((store.doc.arrangement.audioClips ?? [])[0]));
     expect(store.doc.arrangement.clips[0]!.locked).toBe(true);
-    expect(audioClipsMutedLocked(store.doc, audioId)).toBe(true);
+    expect(audioClipLocked(store.doc, audioId)).toBe(true);
     expect(store.undoStackLength).toBe(1);
     const before = store.undoStackLength;
     store.execute(setClipsLocked(store.doc, [arrId], true)); // already locked
@@ -185,7 +183,7 @@ describe("L1/L2 lock", () => {
 
     // Non-destructive verbs stay allowed: mute + duplicate work on locked clips.
     store.execute(setAudioClipsMute(store.doc, [audioId], true));
-    expect(audioClipsMutedLocked(store.doc, audioId)).toBe(true);
+    expect(audioClipLocked(store.doc, audioId)).toBe(true);
   });
 
   it("the guard is at the command, not the UI — a scripted caller cannot bypass it", () => {
@@ -230,6 +228,6 @@ function audioClipsOf2(doc: ProjectDocument) {
   return doc.arrangement.audioClips ?? [];
 }
 
-function audioClipsMutedLocked(doc: ProjectDocument, id: string): boolean | undefined {
-  return (doc.arrangement.audioClips ?? []).find((c) => c.id === id)?.muted;
+function audioClipLocked(doc: ProjectDocument, id: string): boolean | undefined {
+  return (doc.arrangement.audioClips ?? []).find((c) => c.id === id)?.locked;
 }

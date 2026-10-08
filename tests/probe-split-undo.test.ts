@@ -17,19 +17,17 @@ describe("probe split undo", () => {
 
     const store = new ProjectStore(doc);
     store.execute(groupClips(store.doc, [arrId, audioId]));
-    console.log("after group:", JSON.stringify(store.doc.arrangement.clipGroups));
     store.execute(splitArrangementClipAtTick(store.doc, arrId, 2 * BAR_TICKS));
-    console.log("after split:", JSON.stringify(store.doc.arrangement.clipGroups));
 
     const cmd = splitArrangementClipAtTick(store.doc, arrId, 2 * BAR_TICKS);
     const undoneRaw = cmd.undo(store.doc);
-    console.log("undone RAW groups:", JSON.stringify(undoneRaw.arrangement.clipGroups));
+    console.log("PROBE undoneRaw.groups:", JSON.stringify(undoneRaw.arrangement.clipGroups));
     const undoneNormalized = normalizeProject(undoneRaw);
-    console.log("undone NORMALIZED groups:", JSON.stringify(undoneNormalized.arrangement.clipGroups));
-    console.log("undone NORMALIZED clips:", JSON.stringify(undoneNormalized.arrangement.clips.map((c) => c.id)));
+    console.log("PROBE undoneNorm.groups:", JSON.stringify(undoneNormalized.arrangement.clipGroups));
+    console.log("PROBE undoneNorm.clips:", JSON.stringify(undoneNormalized.arrangement.clips.map((c) => c.id)));
 
     store.undo();
-    console.log("STORE after undo groups:", JSON.stringify(store.doc.arrangement.clipGroups));
-    console.log("STORE after undo clips:", JSON.stringify(store.doc.arrangement.clips.map((c) => c.id)));
+    console.log("PROBE storeUndo.groups:", JSON.stringify(store.doc.arrangement.clipGroups));
+    console.log("PROBE storeUndo.clips:", JSON.stringify(store.doc.arrangement.clips.map((c) => c.id)));
   });
 });

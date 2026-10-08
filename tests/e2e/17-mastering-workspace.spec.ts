@@ -1103,6 +1103,13 @@ test.describe("17 — mastering workspace", () => {
     await expect(page.getByRole("slider", { name: "TRIM", exact: true })).toBeVisible();
     await expect(page.getByRole("slider", { name: "TILT", exact: true })).toHaveCount(0);
 
+    await page.getByRole("slider", { name: "CEIL", exact: true }).focus();
+    const statusHint = page.getByRole("status");
+    await expect(statusHint).toHaveAttribute("aria-live", "polite");
+    await expect(statusHint).toHaveAttribute("aria-atomic", "true");
+    await expect(statusHint).toContainText("CEIL — Physical limiter ceiling in dBFS.");
+    await expect(statusHint).toContainText("-1.0 dB");
+
     await page.getByRole("button", { name: "Focus TILT controls" }).focus();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("button", { name: "Advanced" })).toHaveAttribute("aria-pressed", "true");
