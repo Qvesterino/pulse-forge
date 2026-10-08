@@ -51,7 +51,12 @@ import { setMasterConfig, chopSampleToPads } from "../commands/commands";
 import { deriveMixAutoFix, type MixHealthReport } from "../analysis/mixDoctor";
 import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
 import { slicesFromOnsets } from "../audio-engine/transients";
-import { resolveDeliveryTarget, type MasterProfile } from "../mastering/profiles";
+import {
+  masterProfileExportSettings,
+  resolveDeliveryTarget,
+  type MasterFileFormat,
+  type MasterProfile,
+} from "../mastering/profiles";
 import { masteringVersionSuffix } from "../mastering/deliveryFilename";
 import { isMp3SampleRateSupported } from "../export/mp3-capabilities";
 import { inspectEncodedMaster, type EncodedMasterInspection } from "../mastering/encodedInspection";
@@ -65,7 +70,7 @@ import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
 import { awaitMasteringSampleBankReady } from "../mastering/readiness";
 import { IntegerPcmDeliveryError } from "../export/quantize";
 import { MasteringFingerprint } from "./MasteringFingerprint";
-import { MasterProfileFileGuidance } from "./MasterProfileFileGuidance";
+import { MasterProfileFileCheck, MasterProfileFileGuidance } from "./MasterProfileFileGuidance";
 
 type Status =
   | { kind: "idle" }
@@ -91,20 +96,14 @@ export interface MasteringWorkspaceState {
   analyze: () => void;
 }
 
-type MasterFormat = "wav" | "flac" | "mp3-192" | "mp3-320" | "video";
+type MasterFormat = Exclude<MasterFileFormat, "mp3"> | "mp3-192" | "mp3-320" | "video";
 type ProfileExportRecommendation = { format: Exclude<MasterFormat, "video">; bitDepth?: WavBitDepth };
 
 function profileExportRecommendation(profile: MasterProfile): ProfileExportRecommendation | null {
-  const recommendation = profile.recommendedFormat.toLowerCase();
-  const bitDepthMatch = recommendation.match(/\b(16|24|32)-bit\b/);
-  const bitDepth = bitDepthMatch ? (Number(bitDepthMatch[1]) as WavBitDepth) : undefined;
-  if (recommendation.includes("flac")) return { format: "flac", bitDepth: bitDepth === 16 ? 16 : 24 };
-  if (recommendation.includes("wav") && bitDepth) return { format: "wav", bitDepth };
-  if (recommendation.includes("mp3")) {
-    const bitrate = recommendation.match(/\b(192|320)\s*kbps\b/);
-    if (bitrate) return { format: `mp3-${bitrate[1]}` as "mp3-192" | "mp3-320" };
-  }
-  return null;
+  const preferred = masterProfileExportSettings(profile.id)?.preferred;
+  if (!preferred) return null;
+  if (preferred.format === "mp3") return { format: `mp3-${preferred.bitrateKbps}` };
+  return { format: preferred.format, bitDepth: preferred.bitDepth };
 }
 
 const EMPTY_EXPORT_SUMMARY: BufferSummary = {
@@ -1557,6 +1556,7 @@ function EncodedDeliveryCheck({
           Post-encode audio measurements not available: {decode.reason ?? "decoder result unavailable"}
         </p>
       )}
+      <MasterProfileFileCheck verdict={inspection.fileDelivery} />
       {decode.warnings.length > 0 && (
         <ul className="master-delivery-warnings" aria-label="File check warnings">
           {decode.warnings.map((warning) => (

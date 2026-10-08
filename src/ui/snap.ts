@@ -75,6 +75,74 @@ export function snapTick(tick: number, bars: number | null): number {
   return Math.round(tick / gridTicks) * gridTicks;
 }
 
+/**
+ * Snap to the nearest SECONDARY target (another clip's edge, a marker, a loop
+ * boundary) when one sits within the pull threshold — targets win over the
+ * grid only by being closer, so the grid stays the default answer and edges
+ * "catch" the pointer near them. Grid OFF stays completely free: secondary
+ * targets are part of snapping, not a separate always-on layer.
+ */
+export function snapBarToTargets(
+  bar: number,
+  bars: number | null,
+  targets: readonly number[],
+  thresholdBars: number,
+): number {
+  const gridded = snapBar(bar, bars);
+  if (bars === null || !(thresholdBars > 0) || targets.length === 0) return gridded;
+  let best = gridded;
+  for (const target of targets) {
+    if (!Number.isFinite(target)) continue;
+    const distance = Math.abs(target - bar);
+    if (distance <= thresholdBars && distance < Math.abs(best - bar)) best = target;
+  }
+  return best;
+}
+
+/* ---------------- controller (keyboard + toolbar share one state) ---------------- */
+
+/**
+ * The snap grid is one UI-wide preference — the toolbar select and the J
+ * key must not disagree — so the value lives in a tiny pub/sub controller
+ * instead of panel-local state (the SelectionStore pattern, scoped to a view
+ * preference: nothing here enters the project document).
+ */
+export class SnapController {
+  private grid: SnapGridId = loadSnapGrid();
+  /** Remembered non-off grid, restored by the toggle after an off period. */
+  private lastNonOff: SnapGridId = "1";
+  private listeners = new Set<() => void>();
+
+  getGrid = (): SnapGridId => this.grid;
+
+  subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  };
+
+  setGrid = (id: SnapGridId): void => {
+    if (id === this.grid) return;
+    if (id !== "off") this.lastNonOff = id;
+    this.grid = id;
+    storeSnapGrid(id);
+    this.emit();
+  };
+
+  /** J key: suspend the grid entirely, or restore what was last active. */
+  toggleEnabled = (): void => {
+    this.setGrid(this.grid === "off" ? this.lastNonOff : "off");
+  };
+
+  private emit(): void {
+    for (const listener of this.listeners) listener();
+  }
+}
+
+/** UI-wide singleton — snap is a view preference, not per-mount state. */
+export const snapController = new SnapController();
+
 /* ---------------- persistence (view preference) ---------------- */
 
 export const SNAP_STORAGE_KEY = "pf:arr-snap";

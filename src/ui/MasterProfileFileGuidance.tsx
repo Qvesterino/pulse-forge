@@ -1,4 +1,9 @@
-import { MASTER_PROFILE_FILE_SOURCES, isMasterProfileSourceReviewDue, type MasterProfile } from "../mastering/profiles";
+import {
+  MASTER_PROFILE_FILE_SOURCES,
+  isMasterProfileSourceReviewDue,
+  type MasterFileDeliveryVerdict,
+  type MasterProfile,
+} from "../mastering/profiles";
 
 export function MasterProfileFileGuidance({ profile }: { profile: MasterProfile }) {
   if (!profile.fileGuidanceNote) return null;
@@ -18,5 +23,24 @@ export function MasterProfileFileGuidance({ profile }: { profile: MasterProfile 
         </>
       )}
     </small>
+  );
+}
+
+export function MasterProfileFileCheck({ verdict }: { verdict: MasterFileDeliveryVerdict | null }) {
+  if (!verdict) return null;
+  return (
+    <div
+      className="mastering-file-session-verdict"
+      data-state={verdict.status}
+      role="group"
+      aria-label="Profile file delivery check"
+    >
+      <strong>VERIFIED FILE DELIVERY CHECK · {verdict.status.toUpperCase()}</strong>
+      {verdict.checks.map((check, index) => (
+        <small key={`${check.line}-${index}`} data-state={check.status}>
+          {check.line}
+        </small>
+      ))}
+    </div>
   );
 }

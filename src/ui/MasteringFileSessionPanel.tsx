@@ -73,7 +73,7 @@ import {
 } from "../mastering/sampleRates";
 import { MasterProcessingControls } from "./MasterProcessingControls";
 import { MasteringSessionInsertRack } from "./MasteringSessionInsertRack";
-import { MasterProfileFileGuidance } from "./MasterProfileFileGuidance";
+import { MasterProfileFileCheck, MasterProfileFileGuidance } from "./MasterProfileFileGuidance";
 
 const MAX_DECODED_SOURCE_BYTES = 128 * 1024 * 1024;
 const MAX_RECENT_DELIVERY_REPORTS = 6;
@@ -1368,6 +1368,7 @@ export function MasteringFileSessionPanel() {
           expectedDurationSeconds: rendered.buffer.duration,
           sourceMeasurements: rendered.measurements,
           profile: resolveDeliveryTarget(draft),
+          ...(source ? { sourceSampleRate: session.sourceSampleRate, decodedSourceSampleRate: source.sampleRate } : {}),
           signal: controller.signal,
           onProgress: (update) => setProgress(`${update.stage} · ${Math.round(update.progress * 100)}%`),
         });
@@ -1388,6 +1389,7 @@ export function MasteringFileSessionPanel() {
           expectedDurationSeconds: rendered.buffer.duration,
           sourceMeasurements: rendered.measurements,
           profile: resolveDeliveryTarget(draft),
+          ...(source ? { sourceSampleRate: session.sourceSampleRate, decodedSourceSampleRate: source.sampleRate } : {}),
           additionalWorkingSetBytes: estimatedBytes,
           signal: controller.signal,
           onProgress: (update) => setProgress(`${update.stage} · ${Math.round(update.progress * 100)}%`),
@@ -1418,6 +1420,7 @@ export function MasteringFileSessionPanel() {
           expectedDurationSeconds: rendered.buffer.duration,
           sourceMeasurements: rendered.measurements,
           profile: resolveDeliveryTarget(draft),
+          ...(source ? { sourceSampleRate: session.sourceSampleRate, decodedSourceSampleRate: source.sampleRate } : {}),
           signal: controller.signal,
           onProgress: (update) => setProgress(`${update.stage} · ${Math.round(update.progress * 100)}%`),
         });
@@ -2448,6 +2451,7 @@ export function MasteringFileSessionPanel() {
               ))}
             </div>
           )}
+          <MasterProfileFileCheck verdict={inspection?.fileDelivery ?? null} />
           {stageAdjustment && !stageAdjustment.noop && (
             <div
               className="mastering-file-session-auto-stage"

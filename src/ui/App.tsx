@@ -57,6 +57,7 @@ import {
   splitAudioClipAtTick,
 } from "../commands/commands";
 import { applyRangeCrossfade } from "./rangeCrossfade";
+import { snapController } from "./snap";
 import { buildClipClipboard, cutClips, pasteClips, toggleAudioClipsMute } from "../commands/commands";
 import type { ClipClipboard } from "../commands/commands";
 import { detectTransientsAsync } from "../audio-workers/onset-detector-client";
@@ -737,6 +738,11 @@ export function App({
         } catch (e) {
           window.dispatchEvent(new CustomEvent("pf-arrangement-action-error", { detail: String(e) }));
         }
+        return;
+      }
+      case "toggleSnap": {
+        event?.preventDefault();
+        snapController.toggleEnabled();
         return;
       }
       case "toggleClipMute": {

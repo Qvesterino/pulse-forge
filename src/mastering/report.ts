@@ -75,7 +75,11 @@ export interface MasterRenderReportV10 extends Omit<MasterRenderReportV9, "versi
   version: 10;
 }
 
-export type MasterRenderReport = MasterRenderReportV10;
+export interface MasterRenderReportV11 extends Omit<MasterRenderReportV10, "version"> {
+  version: 11;
+}
+
+export type MasterRenderReport = MasterRenderReportV11;
 
 let nextRunId = 1;
 let nextRevisionId = 1;
@@ -91,10 +95,10 @@ export function projectRevisionIdFor(doc: ProjectDocument): string {
 }
 
 export function createMasterRenderReport(
-  input: Omit<MasterRenderReportV10, "version" | "runId" | "createdAt" | "encodedDelivery" | "measurementTap">,
-): MasterRenderReportV10 {
+  input: Omit<MasterRenderReportV11, "version" | "runId" | "createdAt" | "encodedDelivery" | "measurementTap">,
+): MasterRenderReportV11 {
   return {
-    version: 10,
+    version: 11,
     runId: `master-render-${Date.now().toString(36)}-${nextRunId++}`,
     createdAt: new Date().toISOString(),
     encodedDelivery: null,
@@ -108,7 +112,7 @@ export function serializeMasterReportSidecar(report: MasterRenderReport, generat
   return JSON.stringify(
     {
       schema: "kyx.master-report",
-      schemaVersion: 10,
+      schemaVersion: 11,
       generatedAt: generatedAt.toISOString(),
       application: {
         product: packageMetadata.productName,

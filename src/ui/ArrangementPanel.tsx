@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   useArrangement,
@@ -79,7 +79,7 @@ import {
 } from "../project-model/scene-time";
 import { timelineItemsOf } from "../project-model/timeline";
 import { usePointerDragGuard } from "./usePointerDragGuard";
-import { SNAP_GRIDS, loadSnapGrid, snapBar, snapBarsFor, snapDelta, snapTick, storeSnapGrid } from "./snap";
+import { SNAP_GRIDS, snapBar, snapBarToTargets, snapBarsFor, snapController, snapDelta, snapTick } from "./snap";
 import type { SnapGridId } from "./snap";
 import { computeSceneIntensity } from "../project-model/intensity";
 import type {
@@ -2392,11 +2392,10 @@ export function ArrangementPanel() {
   // Snap grid (view preference, persisted per-browser — see ./snap.ts for the
   // scope/precision/modifier contracts). "off" keeps the exact pre-snap
   // behavior (free position at tick storage precision).
-  const [snapGrid, setSnapGrid] = useState<SnapGridId>(loadSnapGrid);
-  const changeSnapGrid = (id: SnapGridId): void => {
-    setSnapGrid(id);
-    storeSnapGrid(id);
-  };
+  // One UI-wide snap preference: the toolbar select AND the J key read the
+  // same controller, so they can never disagree.
+  const snapGrid = useSyncExternalStore(snapController.subscribe, snapController.getGrid);
+  const changeSnapGrid = (id: SnapGridId): void => snapController.setGrid(id);
   /** Delete arrangement clips (single or multi) as ONE undoable gesture + toast. */
   const deleteClipsWithToast = (ids: string[], ripple = false) => {
     if (ids.length === 0) return;
@@ -2550,6 +2549,25 @@ export function ArrangementPanel() {
     if (mode === "gain") setAudioGainLive({ clipId, gain: clip.gain ?? 1 });
     setAudioDragLive({ startBar: clip.startBar, lengthBars: clip.lengthBars });
   };
+  /**
+   * Secondary snap targets for an audio gesture (in bars): every OTHER audio
+   * clip's start/end edges, marker ticks and the transport loop bounds.
+   * Recomputed per event — clip counts are small and the answer must always
+   * be live (a neighbour added mid-gesture still catches the pointer).
+   */
+  const audioSnapTargetBars = (draggedClipId: string): number[] => {
+    const targets: number[] = [];
+    for (const clip of audioClips) {
+      if (clip.id === draggedClipId) continue;
+      targets.push(clip.startBar, clip.startBar + clip.lengthBars);
+    }
+    for (const marker of doc.markers ?? []) targets.push(marker.tick / BAR_TICKS);
+    if (services.transport.loopEnabled) {
+      targets.push(services.transport.loopStart / BAR_TICKS, services.transport.loopEnd / BAR_TICKS);
+    }
+    return targets;
+  };
+
   const onAudioPointerMove = (event: React.PointerEvent) => {
     const cur = audioDragRef.current;
     if (!cur) return;
@@ -2561,6 +2579,14 @@ export function ArrangementPanel() {
     // Snap grid for THIS event: Shift suspends it (the DAW convention).
     // Fades/gain/slip live in source-time/audio-rate domains — never snapped.
     const grid = event.shiftKey ? null : snapBarsFor(snapGrid);
+    // Secondary snap targets (B-vlna): other clips' edges, markers and loop
+    // bounds catch the pointer within an 8 px pull, overriding a closer grid
+    // line — "snap my start to the neighbour" is the everyday case. Grid OFF
+    // stays completely free; targets are part of snapping, not a separate
+    // always-on layer.
+    const snapTargets = grid === null ? [] : audioSnapTargetBars(cur.clipId);
+    const snapThresholdBars = 8 / cur.barWidth;
+    const snapTo = (bar: number): number => snapBarToTargets(bar, grid, snapTargets, snapThresholdBars);
     // Block move: one shared delta for every selected audio clip, floored so
     // the leftmost clip cannot cross bar 0 (mirrors the scene block move).
     // Delta-snapped (not per-clip absolute): the block's internal spacing
@@ -2571,16 +2597,16 @@ export function ArrangementPanel() {
     }
     if (cur.mode === "move")
       setAudioDragLive({
-        startBar: Math.max(0, snapBar(cur.origStart + delta, grid)),
+        startBar: Math.max(0, snapTo(cur.origStart + delta)),
         lengthBars: cur.origLength,
       });
     else if (cur.mode === "resize") {
       // Snap the END edge (musical: land on a grid line), start stays put.
-      const endEdge = snapBar(cur.origStart + cur.origLength + delta, grid);
+      const endEdge = snapTo(cur.origStart + cur.origLength + delta);
       setAudioDragLive({ startBar: cur.origStart, lengthBars: Math.max(0.25, endEdge - cur.origStart) });
     } else if (cur.mode === "trimStart") {
       // Snap the START edge; the length is whatever remains up to the fixed end.
-      const newStart = Math.max(0, snapBar(cur.origStart + delta, grid));
+      const newStart = Math.max(0, snapTo(cur.origStart + delta));
       const newLen = Math.max(0.25, cur.origStart + cur.origLength - newStart);
       setAudioDragLive({ startBar: newStart, lengthBars: newLen });
     } else if (cur.mode === "stretch") {
@@ -2589,14 +2615,14 @@ export function ArrangementPanel() {
       // filling the clip. Right edge pins the start (snap the end edge like
       // resize), left edge pins the end (snap the start like trimStart).
       if (cur.edge === "right") {
-        const newLen = Math.max(0.25, snapBar(cur.origStart + cur.origLength + delta, grid) - cur.origStart);
+        const newLen = Math.max(0.25, snapTo(cur.origStart + cur.origLength + delta) - cur.origStart);
         setAudioDragLive({ startBar: cur.origStart, lengthBars: newLen });
         setAudioStretchLive({
           clipId: cur.clipId,
           rate: previewStretchRate(cur.origRate, cur.origLength, newLen),
         });
       } else {
-        const newStart = Math.max(0, snapBar(cur.origStart + delta, grid));
+        const newStart = Math.max(0, snapTo(cur.origStart + delta));
         const newLen = Math.max(0.25, cur.origStart + cur.origLength - newStart);
         setAudioDragLive({ startBar: newStart, lengthBars: newLen });
         setAudioStretchLive({

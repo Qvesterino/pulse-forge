@@ -1319,10 +1319,17 @@ test.describe("17 — mastering workspace", () => {
     test.setTimeout(300_000);
     await openHouseTemplate(page, { timeoutMs: 120_000 });
     await clickPanelAction(page, "MASTER");
+    await page.getByLabel("Master delivery profile").selectOption("streaming");
 
     const overviewStatus = page.locator(".mastering-overview-status");
+    const exportPanel = page.locator(".mastering-render-section");
+    const screenReaderStatus = exportPanel.locator(".sr-only");
     await page.getByRole("button", { name: "ANALYZE FULL SONG" }).click();
     await expect(overviewStatus).toHaveAttribute("data-state", "busy");
+    await expect(screenReaderStatus).toHaveAttribute("role", "status");
+    await expect(screenReaderStatus).toHaveAttribute("aria-live", "polite");
+    await expect(screenReaderStatus).toHaveAttribute("aria-atomic", "true");
+    await expect(screenReaderStatus).toContainText("Analyzing master");
     const report = page.getByRole("note", { name: "Master render report details" });
     await expect(report).toBeVisible({ timeout: 120_000 });
     await expect(report).toContainText("FULL SONG");
@@ -1333,13 +1340,13 @@ test.describe("17 — mastering workspace", () => {
     await page.keyboard.press("ArrowRight");
     await expect(overviewStatus).toHaveText("STALE · ANALYZE AGAIN");
     await expect(page.locator(".export-status .export-policy-warning")).toContainText("STALE REPORT");
+    await expect(screenReaderStatus).toContainText("Master report is stale. Analyze again before delivery.");
 
     await page.getByRole("button", { name: "ANALYZE FULL SONG" }).click();
     await expect(report).toBeVisible({ timeout: 120_000 });
     await expect(overviewStatus).not.toHaveText("STALE · ANALYZE AGAIN");
     await expect(page.locator(".export-status .export-policy-warning")).toHaveCount(0);
 
-    const exportPanel = page.locator(".mastering-render-section");
     await page.getByLabel("DEPTH").selectOption("16");
     const downloadPromise = page.waitForEvent("download");
     await exportPanel.getByRole("button", { name: "EXPORT MASTER" }).click();
@@ -1352,6 +1359,9 @@ test.describe("17 — mastering workspace", () => {
     await expect(encodedCheck).toContainText("BWF v2 source PCM");
     await expect(encodedCheck).toContainText("FINAL FILE · DECODED + MEASURED");
     await expect(encodedCheck.getByRole("list", { name: "File check warnings" })).toHaveCount(0);
+    const profileFileCheck = encodedCheck.getByRole("group", { name: "Profile file delivery check" });
+    await expect(profileFileCheck).toHaveAttribute("data-state", "warn");
+    await expect(profileFileCheck).toContainText("16-bit only when no higher-bit-depth master exists");
 
     const firstPath = await download.path();
     expect(firstPath).toBeTruthy();
@@ -1372,6 +1382,7 @@ test.describe("17 — mastering workspace", () => {
       await expect(encodedCheck).toContainText("BWF v2 source PCM");
       await expect(encodedCheck).toContainText("FINAL FILE · DECODED + MEASURED");
       await expect(encodedCheck.getByRole("list", { name: "File check warnings" })).toHaveCount(0);
+      await expect(profileFileCheck).toHaveAttribute("data-state", depth === 32 ? "fail" : "pass");
 
       const deliveredPath = await delivered.path();
       expect(deliveredPath).toBeTruthy();
@@ -1403,6 +1414,17 @@ test.describe("17 — mastering workspace", () => {
     const reportPath = testInfo.outputPath("project-master-delivery-report.json");
     await reportDownload.saveAs(reportPath);
     const deliveryReport = JSON.parse(await readFile(reportPath, "utf8"));
+    expect(deliveryReport.schemaVersion).toBe(11);
+    expect(deliveryReport.report.version).toBe(11);
+    expect(deliveryReport.report.encodedDelivery.fileDelivery).toMatchObject({
+      profileId: "streaming",
+      status: "fail",
+    });
+    expect(
+      deliveryReport.report.encodedDelivery.fileDelivery.checks.some((check: { line: string }) =>
+        check.line.includes("requires WAVE_FORMAT_PCM"),
+      ),
+    ).toBe(true);
     expect(deliveryReport.report.encodedDelivery.fingerprint).toMatchObject({
       algorithm: "SHA-256",
       status: "computed",
@@ -1912,7 +1934,60 @@ test.describe("17 — mastering workspace", () => {
       "The long offline mastering render and delivery soak require browser Web Audio APIs.",
     );
     await page.goto("/", { waitUntil: "domcontentloaded", timeout: 120_000 });
+    const cdpSession = testInfo.project.name === "chromium" ? await page.context().newCDPSession(page) : null;
+    let cdpMemoryStage: "inactive" | "encode" | "inspection" = "inactive";
+    let cdpMemoryBaselineBytes: number | null = null;
+    let cdpMemoryEncodePeakBytes = 0;
+    let cdpMemoryInspectionBaselineBytes: number | null = null;
+    let cdpMemoryInspectionPeakBytes = 0;
+    let cdpMemorySampleCount = 0;
+    let cdpMemorySampleInFlight = false;
+    const readCdpJsHeapBytes = async (): Promise<number | null> => {
+      if (!cdpSession) return null;
+      const { metrics } = await cdpSession.send("Performance.getMetrics");
+      const usedHeap = metrics.find(({ name }) => name === "JSHeapUsedSize")?.value;
+      return typeof usedHeap === "number" && Number.isFinite(usedHeap) ? usedHeap : null;
+    };
+    const sampleCdpJsHeap = async (stage: "encode" | "inspection"): Promise<number | null> => {
+      if (!cdpSession || cdpMemorySampleInFlight) return null;
+      cdpMemorySampleInFlight = true;
+      try {
+        const usedBytes = await readCdpJsHeapBytes();
+        if (usedBytes === null) return null;
+        cdpMemorySampleCount++;
+        if (stage === "encode") cdpMemoryEncodePeakBytes = Math.max(cdpMemoryEncodePeakBytes, usedBytes);
+        if (stage === "inspection") cdpMemoryInspectionPeakBytes = Math.max(cdpMemoryInspectionPeakBytes, usedBytes);
+        return usedBytes;
+      } catch {
+        return null;
+      } finally {
+        cdpMemorySampleInFlight = false;
+      }
+    };
+    if (cdpSession) await cdpSession.send("Performance.enable");
+    const cdpMemorySampler = cdpSession
+      ? setInterval(() => {
+          if (cdpMemoryStage !== "inactive") void sampleCdpJsHeap(cdpMemoryStage);
+        }, 250)
+      : null;
+    const stopCdpMemorySampler = () => {
+      if (cdpMemorySampler !== null) clearInterval(cdpMemorySampler);
+    };
+    page.on("close", () => {
+      stopCdpMemorySampler();
+      if (cdpSession) void cdpSession.detach().catch(() => undefined);
+    });
     await page.exposeFunction("__kyxMarkMasteringMemoryStage", async (stage: string) => {
+      if (stage === "encode-start") {
+        cdpMemoryBaselineBytes = await readCdpJsHeapBytes();
+        cdpMemoryEncodePeakBytes = cdpMemoryBaselineBytes ?? 0;
+        cdpMemoryStage = "encode";
+      } else if (stage === "inspection-start") {
+        await sampleCdpJsHeap("encode");
+        cdpMemoryInspectionBaselineBytes = await readCdpJsHeapBytes();
+        cdpMemoryInspectionPeakBytes = cdpMemoryInspectionBaselineBytes ?? 0;
+        cdpMemoryStage = "inspection";
+      }
       await markMasteringMemoryStage(stage);
     });
     const downloadPromise = page.waitForEvent("download");
@@ -2112,6 +2187,19 @@ test.describe("17 — mastering workspace", () => {
     });
     const [result, download] = await Promise.all([resultPromise, downloadPromise]);
     console.log("12-minute WAV mastering JavaScript heap samples:", result.javascriptHeap);
+    if (cdpSession) {
+      await sampleCdpJsHeap("inspection");
+      cdpMemoryStage = "inactive";
+      stopCdpMemorySampler();
+      console.log("12-minute WAV mastering Chromium CDP JS heap samples:", {
+        baselineBytes: cdpMemoryBaselineBytes,
+        encodePeakBytes: cdpMemoryEncodePeakBytes,
+        inspectionBaselineBytes: cdpMemoryInspectionBaselineBytes,
+        inspectionPeakBytes: cdpMemoryInspectionPeakBytes,
+        sampleCount: cdpMemorySampleCount,
+      });
+      await cdpSession.detach();
+    }
     const outputPath = testInfo.outputPath("kyx-12-minute-master-24bit.wav");
     await download.saveAs(outputPath);
     const outputStats = await stat(outputPath);
@@ -2137,6 +2225,10 @@ test.describe("17 — mastering workspace", () => {
     expect(result.deliveryDecodeStatus).toBe("measured");
     expect(result.deliveryDecoder).toBe("KYX WAV PCM reader");
     expect(result.deliveryDurationSeconds).toBeCloseTo(12 * 60 + 6, 6);
+    if (cdpSession) {
+      expect(cdpMemoryBaselineBytes).not.toBeNull();
+      expect(cdpMemorySampleCount).toBeGreaterThan(0);
+    }
     expect(result.deliveryFingerprintStatus).toBe("computed");
     expect(result.deliveryBextVersion).toBeGreaterThanOrEqual(2);
     expect(outputStats.size).toBeGreaterThan(180_000_000);
@@ -3458,6 +3550,7 @@ test.describe("17 — mastering workspace", () => {
     expect(importedSourceRate).toBe(96_000);
 
     await session.getByLabel("External mastering render sample rate").selectOption("96000");
+    await session.getByLabel("External mastering delivery profile").selectOption("streaming");
     await session.getByLabel("External mastering delivery format").selectOption("flac");
     await session.getByLabel("External mastering FLAC bit depth").selectOption("24");
     await session.getByRole("button", { name: "Render & analyze" }).click();
@@ -3477,6 +3570,9 @@ test.describe("17 — mastering workspace", () => {
       session.getByRole("status").filter({ hasText: /Encoded FLAC parsed and decoded audio measured/ }),
     ).toBeVisible({ timeout: 120_000 });
     await expect(session.getByText("DECODED FLAC · POST-ENCODE", { exact: true })).toBeVisible();
+    await expect(session.getByRole("group", { name: "Profile file delivery check" })).toContainText(
+      "preserves the source's 96,000 Hz sample rate",
+    );
 
     await session.getByLabel("External mastering FLAC bit depth").selectOption("16");
     const first16BitDownloadPromise = page.waitForEvent("download");
@@ -3835,6 +3931,7 @@ test.describe("17 — mastering workspace", () => {
       buffer: makeStereoTestWav(2),
     });
     await expect(session.getByText(/Original saved locally/)).toBeVisible({ timeout: 60_000 });
+    await session.getByLabel("External mastering delivery profile").selectOption("streaming");
     await session.getByRole("button", { name: "Analyze original external mastering input" }).click();
     await expect(session.locator('[aria-label="Original input baseline measurements"]')).toBeVisible({
       timeout: 90_000,
@@ -3854,6 +3951,10 @@ test.describe("17 — mastering workspace", () => {
       await download.saveAs(outputPath);
       const output = await readFile(outputPath);
       expect(readMp3Facts(output)).toMatchObject({ sampleRate: 44_100, channels: 2, bitrateKbps: bitrate });
+      const profileFileCheck = session.getByRole("group", { name: "Profile file delivery check" });
+      await expect(profileFileCheck).toHaveAttribute("data-state", "warn");
+      await expect(profileFileCheck).toContainText("MP3 is not listed");
+      await expect(profileFileCheck).toContainText("preserves the source's 44,100 Hz sample rate");
       await expect(
         session.getByRole("status").filter({ hasText: /Encoded MP3 parsed and decoded audio measured/ }),
       ).toBeVisible({ timeout: 120_000 });
@@ -3895,7 +3996,7 @@ test.describe("17 — mastering workspace", () => {
       const report = JSON.parse(await readFile(reportPath, "utf8"));
       expect(report).toMatchObject({
         schema: "kyx.external-mastering-report",
-        schemaVersion: 5,
+        schemaVersion: 6,
         inputBaseline: {
           status: "measured",
           decodedSampleRate: 44_100,
@@ -3907,6 +4008,7 @@ test.describe("17 — mastering workspace", () => {
           fileName: delivery.fileName,
           format: "mp3",
           byteLength: delivery.output.byteLength,
+          fileDelivery: { profileId: "streaming", status: "warn" },
           fingerprint: {
             algorithm: "SHA-256",
             status: "computed",
@@ -4112,7 +4214,7 @@ test.describe("17 — mastering workspace", () => {
     const report = JSON.parse(await readFile(reportPath, "utf8"));
     expect(report).toMatchObject({
       schema: "kyx.external-mastering-report",
-      schemaVersion: 5,
+      schemaVersion: 6,
       inputBaseline: {
         status: "not-measured",
         reason: "Input baseline analysis was not run before this delivery export.",
@@ -4219,7 +4321,7 @@ test.describe("17 — mastering workspace", () => {
     const report = JSON.parse(await readFile(reportPath, "utf8"));
     expect(report).toMatchObject({
       schema: "kyx.external-mastering-report",
-      schemaVersion: 5,
+      schemaVersion: 6,
       delivery: {
         fileName: delivery.suggestedFilename(),
         format: "mp3",

@@ -8,6 +8,60 @@
 
 export type MasterProfileId = "streaming" | "apple" | "loud" | "vinyl" | "custom";
 
+export type MasterFileFormat = "wav" | "flac" | "mp3";
+export type MasterFileBitDepth = 16 | 24 | 32;
+export type MasterFlacBitDepth = 16 | 24;
+
+export type MasterFileEncodingSuggestion =
+  | { format: "wav"; bitDepth: MasterFileBitDepth }
+  | { format: "flac"; bitDepth: MasterFlacBitDepth }
+  | { format: "mp3"; bitrateKbps: 192 | 320 };
+
+export interface MasterProfileExportSettings {
+  preferred: MasterFileEncodingSuggestion;
+  alternatives?: readonly MasterFileEncodingSuggestion[];
+}
+
+/** Machine-readable export defaults are kept separate from the profile's display copy. */
+const MASTER_PROFILE_EXPORT_SETTINGS: Partial<Record<MasterProfileId, MasterProfileExportSettings>> = {
+  streaming: {
+    preferred: { format: "flac", bitDepth: 24 },
+    alternatives: [{ format: "wav", bitDepth: 24 }],
+  },
+  apple: { preferred: { format: "wav", bitDepth: 24 } },
+  loud: { preferred: { format: "wav", bitDepth: 24 } },
+  vinyl: { preferred: { format: "wav", bitDepth: 24 } },
+};
+
+/** Return a copy so an export panel cannot mutate the shared profile defaults. */
+export function masterProfileExportSettings(profileId: MasterProfileId): MasterProfileExportSettings | null {
+  const settings = MASTER_PROFILE_EXPORT_SETTINGS[profileId];
+  return settings
+    ? {
+        preferred: { ...settings.preferred },
+        ...(settings.alternatives
+          ? { alternatives: settings.alternatives.map((alternative) => ({ ...alternative })) }
+          : {}),
+      }
+    : null;
+}
+
+function describeMasterFileEncoding(suggestion: MasterFileEncodingSuggestion): string {
+  if (suggestion.format === "wav") return `${suggestion.bitDepth}-bit PCM WAV`;
+  if (suggestion.format === "flac") return `${suggestion.bitDepth}-bit FLAC`;
+  return `${suggestion.bitrateKbps} kbps MP3`;
+}
+
+/** Human-facing recommendation copy derived from the same settings used by export actions. */
+export function masterProfileRecommendedFormat(profileId: MasterProfileId): string {
+  const settings = MASTER_PROFILE_EXPORT_SETTINGS[profileId];
+  if (!settings) return "Choose a format for the delivery destination.";
+  const preferred = describeMasterFileEncoding(settings.preferred);
+  const alternatives = settings.alternatives ?? [];
+  if (alternatives.length === 0) return preferred;
+  return `${preferred} · ${alternatives.map(describeMasterFileEncoding).join(" · ")} alternative`;
+}
+
 export interface MasterProfile {
   id: MasterProfileId;
   label: string;
@@ -17,6 +71,7 @@ export interface MasterProfile {
   maxTruePeakDb: number;
   truePeakGraceDb: number;
   note: string;
+  /** Human-readable copy only; export behavior uses `masterProfileExportSettings`. */
   recommendedFormat: string;
   intendedUse: string;
   /** Verified file-delivery limitations or requirements; never used to auto-change export settings. */
@@ -45,8 +100,27 @@ export const MASTER_PROFILE_FILE_SOURCES: Partial<Record<MasterProfileId, Master
   streaming: {
     label: "Spotify for Artists · Audio file formats",
     url: "https://support.spotify.com/us/artists/article/audio-file-formats/",
-    checkedAt: "2026-10-07",
+    checkedAt: "2026-10-08",
     reviewIntervalDays: 180,
+  },
+};
+
+interface MasterProfileFileRules {
+  acceptedFormats: readonly MasterFileFormat[];
+  preferredFormat: MasterFileFormat;
+  minSampleRateHz: number;
+  channels: number;
+  maxBitDepth: number;
+}
+
+/** Structured file rules are only defined when a current primary delivery brief supports them. */
+const MASTER_PROFILE_FILE_RULES: Partial<Record<MasterProfileId, MasterProfileFileRules>> = {
+  streaming: {
+    acceptedFormats: ["flac", "wav"],
+    preferredFormat: "flac",
+    minSampleRateHz: 44_100,
+    channels: 2,
+    maxBitDepth: 24,
   },
 };
 
@@ -117,7 +191,7 @@ export const MASTER_PROFILES: readonly MasterProfile[] = [
     maxTruePeakDb: -1,
     truePeakGraceDb: 0.3,
     note: "−14 LUFS / −1 dBTP start; Spotify advises < −2 dBTP above −14 LUFS.",
-    recommendedFormat: "24-bit FLAC · 24-bit PCM WAV alternative",
+    recommendedFormat: masterProfileRecommendedFormat("streaming"),
     intendedUse:
       "General starting point, not a universal platform specification. Spotify's conditional peak guidance is shown as an advisory.",
     fileGuidanceNote:
@@ -132,7 +206,7 @@ export const MASTER_PROFILES: readonly MasterProfile[] = [
     maxTruePeakDb: -1,
     truePeakGraceDb: 0.3,
     note: "A quieter starting point that leaves room for dynamic playback and lossy encoding.",
-    recommendedFormat: "24-bit PCM WAV",
+    recommendedFormat: masterProfileRecommendedFormat("apple"),
     intendedUse: "A lower-loudness alternative; this is not an Apple Music certification profile.",
   },
   {
@@ -144,7 +218,7 @@ export const MASTER_PROFILES: readonly MasterProfile[] = [
     maxTruePeakDb: -0.3,
     truePeakGraceDb: 0.3,
     note: "High loudness can increase distortion after encoding and on playback systems.",
-    recommendedFormat: "24-bit PCM WAV",
+    recommendedFormat: masterProfileRecommendedFormat("loud"),
     intendedUse: "A loudness-oriented starting point for club and DJ playback.",
   },
   {
@@ -156,7 +230,7 @@ export const MASTER_PROFILES: readonly MasterProfile[] = [
     maxTruePeakDb: -2,
     truePeakGraceDb: 0.3,
     note: "A conservative digital handoff target; the cutting engineer sets final requirements.",
-    recommendedFormat: "24-bit PCM WAV",
+    recommendedFormat: masterProfileRecommendedFormat("vinyl"),
     intendedUse: "Pre-master handoff for a cutting engineer; this does not replace lacquer-specific checks.",
   },
 ];
@@ -170,7 +244,7 @@ export const CUSTOM_PROFILE: MasterProfile = {
   maxTruePeakDb: -1,
   truePeakGraceDb: 0.3,
   note: "User-defined loudness and true-peak limits.",
-  recommendedFormat: "Choose a format for the delivery destination.",
+  recommendedFormat: masterProfileRecommendedFormat("custom"),
   intendedUse: "A custom delivery target defined by the user.",
 };
 
@@ -219,6 +293,23 @@ export interface DeliveryVerdict {
   status: DeliveryCheck["status"];
   checks: DeliveryCheck[];
   loudnessDeltaDb: number;
+}
+
+export interface MasterFileDeliveryMetadata {
+  format: MasterFileFormat;
+  sampleRate: number;
+  channels: number;
+  bitDepth?: number;
+  wavEncoding?: "pcm" | "ieee-float";
+  /** Original external-file header rate and the rate actually decoded for processing. */
+  sourceSampleRate?: number;
+  decodedSourceSampleRate?: number;
+}
+
+export interface MasterFileDeliveryVerdict {
+  profileId: MasterProfileId;
+  status: DeliveryCheck["status"];
+  checks: DeliveryCheck[];
 }
 
 /** Evaluate all available measurements against one delivery target. */
@@ -325,6 +416,124 @@ export function worstStatus(checks: DeliveryCheck[]): DeliveryCheck["status"] {
   if (checks.some((check) => check.status === "warn")) return "warn";
   if (checks.some((check) => check.status === "not-measured")) return "not-measured";
   return "pass";
+}
+
+/** Check the encoded file against profile file rules only when a current primary source exists. */
+export function evaluateMasterFileDelivery(
+  file: MasterFileDeliveryMetadata,
+  profile: MasterProfile,
+  asOf = Date.now(),
+): MasterFileDeliveryVerdict | null {
+  const rules = MASTER_PROFILE_FILE_RULES[profile.id];
+  const source = MASTER_PROFILE_FILE_SOURCES[profile.id];
+  if (!rules || !source) return null;
+  if (isMasterProfileSourceReviewDue(source, asOf)) {
+    const checks: DeliveryCheck[] = [
+      {
+        status: "not-measured",
+        line: `${profile.label} file rules are withheld because their primary source needs review.`,
+      },
+    ];
+    return { profileId: profile.id, status: "not-measured", checks };
+  }
+
+  const checks: DeliveryCheck[] = [];
+  if (rules.acceptedFormats.includes(file.format)) {
+    checks.push({
+      status: "pass",
+      line:
+        file.format === rules.preferredFormat
+          ? `${file.format.toUpperCase()} is the preferred delivery format in the checked source.`
+          : `${file.format.toUpperCase()} is accepted by the checked source; ${rules.preferredFormat.toUpperCase()} is preferred.`,
+    });
+  } else {
+    checks.push({
+      status: "warn",
+      line: `${file.format.toUpperCase()} is not listed by the checked source; confirm the distributor's delivery brief.`,
+    });
+  }
+
+  if (file.format === "wav") {
+    checks.push(
+      file.wavEncoding === "pcm"
+        ? { status: "pass", line: "WAV uses integer PCM encoding." }
+        : file.wavEncoding === "ieee-float"
+          ? {
+              status: "fail",
+              line: "WAV uses IEEE floating-point encoding; the checked source requires WAVE_FORMAT_PCM.",
+            }
+          : { status: "not-measured", line: "WAV encoding type could not be confirmed from the file header." },
+    );
+  }
+
+  checks.push(
+    file.sampleRate >= rules.minSampleRateHz
+      ? {
+          status: "pass",
+          line: `${file.sampleRate.toLocaleString("en-US")} Hz meets the ${rules.minSampleRateHz.toLocaleString("en-US")} Hz minimum.`,
+        }
+      : {
+          status: "fail",
+          line: `Sample rate is below ${rules.minSampleRateHz.toLocaleString("en-US")} Hz; the checked source says this is not eligible for lossless playback.`,
+        },
+  );
+  const sourceSampleRate = file.sourceSampleRate;
+  const decodedSourceSampleRate = file.decodedSourceSampleRate;
+  if (
+    typeof sourceSampleRate === "number" &&
+    Number.isSafeInteger(sourceSampleRate) &&
+    sourceSampleRate > 0 &&
+    typeof decodedSourceSampleRate === "number" &&
+    Number.isSafeInteger(decodedSourceSampleRate) &&
+    decodedSourceSampleRate > 0
+  ) {
+    if (decodedSourceSampleRate !== sourceSampleRate) {
+      checks.push({
+        status: "warn",
+        line:
+          decodedSourceSampleRate < sourceSampleRate
+            ? `The source file is ${sourceSampleRate.toLocaleString("en-US")} Hz but KYX decoded it at ${decodedSourceSampleRate.toLocaleString("en-US")} Hz; source detail above the decoded rate may have been lost before mastering.`
+            : `The source file is ${sourceSampleRate.toLocaleString("en-US")} Hz but KYX decoded it at ${decodedSourceSampleRate.toLocaleString("en-US")} Hz; this upsample during decode adds no source detail.`,
+      });
+    } else if (file.sampleRate === sourceSampleRate) {
+      checks.push({
+        status: "pass",
+        line: `The export preserves the source's ${sourceSampleRate.toLocaleString("en-US")} Hz sample rate.`,
+      });
+    } else {
+      checks.push({
+        status: "warn",
+        line:
+          file.sampleRate < sourceSampleRate
+            ? `The ${file.sampleRate.toLocaleString("en-US")} Hz export is below the ${sourceSampleRate.toLocaleString("en-US")} Hz source rate; the checked source advises preserving the original rate.`
+            : `The ${file.sampleRate.toLocaleString("en-US")} Hz export is above the ${sourceSampleRate.toLocaleString("en-US")} Hz source rate; this upsample does not add source detail.`,
+      });
+    }
+  }
+  checks.push(
+    file.channels === rules.channels
+      ? { status: "pass", line: `The file has the required ${rules.channels}-channel stereo layout.` }
+      : {
+          status: "fail",
+          line: `The file has ${file.channels} channels; the checked source requires ${rules.channels}-channel stereo delivery.`,
+        },
+  );
+
+  if (file.bitDepth != null && file.bitDepth > rules.maxBitDepth) {
+    checks.push({
+      status: "warn",
+      line: `${file.bitDepth}-bit is above the source's ${rules.maxBitDepth}-bit delivery maximum; it says higher-depth files are reduced internally.`,
+    });
+  } else if (file.bitDepth === 16) {
+    checks.push({
+      status: "warn",
+      line: "The source permits 16-bit only when no higher-bit-depth master exists; KYX cannot verify that source condition.",
+    });
+  } else if (file.bitDepth != null) {
+    checks.push({ status: "pass", line: `${file.bitDepth}-bit is within the source's stated maximum.` });
+  }
+
+  return { profileId: profile.id, status: worstStatus(checks), checks };
 }
 
 /** Legacy MCP API retained while the shared profile contract moves out of MCP. */

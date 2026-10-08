@@ -7,7 +7,7 @@ import type { MasterAnalysisProgressListener } from "./analysis";
 import { analyzeMasterBufferAsync, analyzeMasterPcmStreamAsync } from "./analysisClient";
 import { analyzeMp3BlobAsync } from "./mp3AnalysisClient";
 import { fingerprintEncodedMasterAsync, type EncodedMasterFingerprint } from "./fingerprintClient";
-import type { MasterProfile } from "./profiles";
+import { evaluateMasterFileDelivery, type MasterFileDeliveryVerdict, type MasterProfile } from "./profiles";
 import { decodeBwfLoudnessValue, encodeBwfLoudnessValue, type WavBextLoudnessField } from "../rendering/wav";
 import { parseMp3FrameHeader, type Mp3FrameHeader } from "./mp3Frames";
 import { canDecodeWavAsAudioBuffer, MAX_WAV_DECODE_BYTES } from "../export/wav-limits";
@@ -22,6 +22,7 @@ export interface EncodedMasterFileDetails {
   durationSeconds: number;
   durationAccuracy: "exact" | "estimated";
   bitDepth?: number;
+  wavEncoding?: "pcm" | "ieee-float";
   averageBitrateKbps?: number;
   bext?: {
     version: number;
@@ -41,6 +42,8 @@ export interface EncodedMasterInspection {
   byteLength: number;
   file: EncodedMasterFileDetails;
   fingerprint: EncodedMasterFingerprint;
+  /** Source-backed file-format/sample-rate/channel checks; null when no verified rules exist. */
+  fileDelivery: MasterFileDeliveryVerdict | null;
   decode: {
     status: "measured" | "not-measured";
     decoder:
@@ -56,6 +59,8 @@ export interface EncodedMasterInspection {
     warnings: string[];
   };
 }
+
+type EncodedMasterInspectionBase = Omit<EncodedMasterInspection, "fileDelivery">;
 
 const MAX_FLAC_DECODE_BYTES = 96 * 1024 * 1024;
 const MAX_FLAC_DECODE_PCM_BYTES = 64 * 1024 * 1024;
@@ -228,6 +233,7 @@ function publicWavDetails(wav: ParsedWav): EncodedMasterFileDetails {
     durationSeconds: wav.durationSeconds,
     durationAccuracy: wav.durationAccuracy,
     bitDepth: wav.bitDepth,
+    wavEncoding: wav.formatCode === 1 ? "pcm" : "ieee-float",
     ...(wav.bext ? { bext: wav.bext } : {}),
   };
 }
@@ -430,12 +436,12 @@ function notMeasured(
   warnings: string[],
   fingerprint: EncodedMasterFingerprint,
   decoder: EncodedMasterInspection["decode"]["decoder"] = "not invoked",
-): EncodedMasterInspection {
+): EncodedMasterInspectionBase {
   return { format, byteLength, file, fingerprint, decode: { status: "not-measured", decoder, reason, warnings } };
 }
 
 /** Verify the finished WAV/MP3/FLAC container, then measure the browser-decoded deliverable. */
-export async function inspectEncodedMaster(input: {
+async function inspectEncodedMasterBase(input: {
   format: EncodedMasterFormat;
   bytes: ArrayBuffer | Blob;
   /** Exact download Blob for bounded output hashing when `bytes` is an ArrayBuffer. */
@@ -447,7 +453,7 @@ export async function inspectEncodedMaster(input: {
   additionalWorkingSetBytes?: number;
   onProgress?: MasterAnalysisProgressListener;
   signal?: AbortSignal;
-}): Promise<EncodedMasterInspection> {
+}): Promise<EncodedMasterInspectionBase> {
   const {
     format,
     bytes,
@@ -812,4 +818,37 @@ export async function inspectEncodedMaster(input: {
       decoderName,
     );
   }
+}
+
+/** Inspect and measure the exact encoded file, then evaluate any verified profile-specific file rules. */
+export async function inspectEncodedMaster(input: {
+  format: EncodedMasterFormat;
+  bytes: ArrayBuffer | Blob;
+  fingerprintBlob?: Blob;
+  expectedDurationSeconds: number;
+  sourceMeasurements: BufferSummary;
+  profile: MasterProfile;
+  /** Original and decoded sample rates for an external source, when available. */
+  sourceSampleRate?: number;
+  decodedSourceSampleRate?: number;
+  additionalWorkingSetBytes?: number;
+  onProgress?: MasterAnalysisProgressListener;
+  signal?: AbortSignal;
+}): Promise<EncodedMasterInspection> {
+  const inspection = await inspectEncodedMasterBase(input);
+  const fileDelivery = evaluateMasterFileDelivery(
+    {
+      format: inspection.format,
+      sampleRate: inspection.file.sampleRate,
+      channels: inspection.file.channels,
+      ...(inspection.file.bitDepth != null ? { bitDepth: inspection.file.bitDepth } : {}),
+      ...(inspection.file.wavEncoding ? { wavEncoding: inspection.file.wavEncoding } : {}),
+      ...(Number.isSafeInteger(input.sourceSampleRate) ? { sourceSampleRate: input.sourceSampleRate } : {}),
+      ...(Number.isSafeInteger(input.decodedSourceSampleRate)
+        ? { decodedSourceSampleRate: input.decodedSourceSampleRate }
+        : {}),
+    },
+    input.profile,
+  );
+  return { ...inspection, fileDelivery };
 }

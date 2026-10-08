@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ExportPanel } from "../../src/ui/ExportPanel";
+import { MasterProfileFileCheck } from "../../src/ui/MasterProfileFileGuidance";
 import { awaitMasteringSampleBankReady } from "../../src/mastering/readiness";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { mockServices, renderWithContext } from "../helpers";
@@ -104,6 +105,81 @@ describe("ExportPanel", () => {
     expect(screen.getByLabelText("FORMAT")).toBeInTheDocument();
     expect(screen.getByLabelText("RATE")).toBeInTheDocument();
     expect(screen.getByLabelText("DEPTH")).toBeInTheDocument();
+  });
+
+  it("applies the typed streaming file suggestion only after explicit selection", async () => {
+    const user = userEvent.setup();
+    const project = createProjectFromTemplate("house");
+    project.master.deliveryProfileId = "streaming";
+    renderWithContext(<ExportPanel masteringMode />, { services: mockServices(project) });
+
+    expect(screen.getByLabelText("FORMAT")).toHaveValue("wav");
+    await user.click(screen.getByRole("button", { name: "USE PROFILE FILE SETTINGS" }));
+    expect(screen.getByLabelText("FORMAT")).toHaveValue("flac");
+    expect(screen.getByLabelText("DEPTH")).toHaveValue("24");
+  });
+
+  it("presents source-backed file checks separately from the loudness verdict", () => {
+    render(
+      <MasterProfileFileCheck
+        verdict={{
+          profileId: "streaming",
+          status: "warn",
+          checks: [
+            { status: "pass", line: "FLAC is the preferred delivery format in the checked source." },
+            { status: "warn", line: "The native source depth could not be confirmed." },
+          ],
+        }}
+      />,
+    );
+
+    const fileCheck = screen.getByRole("group", { name: "Profile file delivery check" });
+    expect(fileCheck).toHaveAttribute("data-state", "warn");
+    expect(fileCheck).toHaveTextContent("VERIFIED FILE DELIVERY CHECK · WARN");
+    expect(fileCheck).toHaveTextContent("FLAC is the preferred delivery format");
+    expect(fileCheck).not.toHaveTextContent("LUFS");
+  });
+
+  it("announces mastering progress in a polite atomic live region", async () => {
+    const user = userEvent.setup();
+    const { container } = renderWithContext(<ExportPanel />, { services: mockServices() });
+    const announcement = container.querySelector<HTMLElement>(".sr-only");
+    if (!announcement) throw new Error("The screen-reader export status is missing.");
+    expect(announcement).toHaveAttribute("role", "status");
+    expect(announcement).toHaveAttribute("aria-live", "polite");
+    expect(announcement).toHaveAttribute("aria-atomic", "true");
+
+    const analysisClient = await import("../../src/mastering/analysisClient");
+    const originalAnalysis = vi.mocked(analysisClient.analyzeMasterBufferAsync).getMockImplementation();
+    if (!originalAnalysis) throw new Error("The mastering analysis test implementation is missing.");
+    let releaseAnalysis: (() => void) | undefined;
+    vi.mocked(analysisClient.analyzeMasterBufferAsync).mockImplementationOnce(async (buffer, profile, options) => {
+      const report = await originalAnalysis(buffer, profile);
+      options?.onProgress?.({ progress: 0.47, stage: "Checking loudness" });
+      return new Promise((resolve) => {
+        releaseAnalysis = () => resolve(report);
+      });
+    });
+
+    await user.click(screen.getByRole("button", { name: /^EXPORT MASTER/ }));
+    await waitFor(() => expect(announcement).toHaveTextContent("Analyzing master… 40% · Checking loudness"));
+    await user.click(screen.getByRole("button", { name: "Cancel export" }));
+    releaseAnalysis?.();
+    await waitFor(() => expect(announcement).toHaveTextContent(/Master export cancelled/));
+  });
+
+  it("announces a mastering export failure as an assertive alert", async () => {
+    const user = userEvent.setup();
+    const renderer = await import("../../src/rendering/renderer");
+    vi.mocked(renderer.renderProject).mockRejectedValueOnce(new Error("simulated render failure"));
+    const { container } = renderWithContext(<ExportPanel />, { services: mockServices() });
+
+    await user.click(screen.getByRole("button", { name: /^EXPORT MASTER/ }));
+    const announcement = await screen.findByRole("alert");
+    expect(announcement).toHaveAttribute("aria-live", "assertive");
+    expect(announcement).toHaveAttribute("aria-atomic", "true");
+    expect(announcement).toHaveTextContent("simulated render failure");
+    expect(container.querySelector(".sr-only")).toBe(announcement);
   });
 
   it("default export button is labelled EXPORT MASTER (WAV)", () => {

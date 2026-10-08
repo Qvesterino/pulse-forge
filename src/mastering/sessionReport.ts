@@ -46,7 +46,7 @@ export function serializeExternalMasteringReport(
   return JSON.stringify(
     {
       schema: "kyx.external-mastering-report",
-      schemaVersion: 5,
+      schemaVersion: 6,
       generatedAt: generatedAt.toISOString(),
       application: {
         product: packageMetadata.productName,
@@ -107,6 +107,7 @@ export function serializeExternalMasteringReport(
         byteLength: inspection.byteLength,
         file: inspection.file,
         fingerprint: inspection.fingerprint,
+        fileDelivery: inspection.fileDelivery,
         postEncode: {
           status: inspection.decode.status,
           decoder: inspection.decode.decoder,

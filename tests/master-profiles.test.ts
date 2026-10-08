@@ -5,7 +5,13 @@ import { createProjectFromTemplate } from "../src/project-model/templates";
 import { executeMcpTool, type McpToolContext } from "../src/mcp/tools";
 import type { ProjectDocument } from "../src/project-model/types";
 import { evaluateMasterVerdict } from "../src/audio-engine/metering";
-import { CUSTOM_PROFILE, evaluateDelivery } from "../src/mastering/profiles";
+import {
+  CUSTOM_PROFILE,
+  evaluateDelivery,
+  evaluateMasterFileDelivery,
+  masterProfileExportSettings,
+  masterProfileRecommendedFormat,
+} from "../src/mastering/profiles";
 
 /** Minimal local fixtures (the ones in mcp-tools.test.ts are file-local). */
 function datasetDoc(): ProjectDocument {
@@ -39,6 +45,145 @@ describe("mastering platform profiles", () => {
     expect(profileFor("apple")!.targetLufs).toBe(-16);
     expect(profileFor("vinyl")!.maxTruePeakDb).toBe(-2);
     expect(profileFor("nope")).toBeNull();
+  });
+
+  it("keeps explicit export settings in the typed profile contract", () => {
+    const streamingSettings = masterProfileExportSettings("streaming");
+    expect(streamingSettings).toEqual({
+      preferred: { format: "flac", bitDepth: 24 },
+      alternatives: [{ format: "wav", bitDepth: 24 }],
+    });
+    for (const id of ["apple", "loud", "vinyl"] as const) {
+      expect(masterProfileExportSettings(id)).toEqual({ preferred: { format: "wav", bitDepth: 24 } });
+    }
+    expect(masterProfileExportSettings("custom")).toBeNull();
+    expect(masterProfileRecommendedFormat("streaming")).toBe("24-bit FLAC · 24-bit PCM WAV alternative");
+    expect(masterProfileRecommendedFormat("custom")).toBe("Choose a format for the delivery destination.");
+    expect(profileFor("streaming")?.recommendedFormat).toBe(masterProfileRecommendedFormat("streaming"));
+
+    if (streamingSettings) streamingSettings.preferred = { format: "wav", bitDepth: 16 };
+    expect(masterProfileExportSettings("streaming")?.preferred).toEqual({ format: "flac", bitDepth: 24 });
+  });
+
+  it("checks encoded file metadata only for a current, source-backed delivery brief", () => {
+    const streaming = profileFor("streaming")!;
+    const checkedAt = Date.parse("2026-10-08T00:00:00.000Z");
+    const flac = evaluateMasterFileDelivery(
+      { format: "flac", sampleRate: 96_000, channels: 2, bitDepth: 24 },
+      streaming,
+      checkedAt,
+    );
+    expect(flac?.status).toBe("pass");
+    expect(flac?.checks.map((check) => check.status)).toEqual(["pass", "pass", "pass", "pass"]);
+
+    const wav16 = evaluateMasterFileDelivery(
+      { format: "wav", sampleRate: 44_100, channels: 2, bitDepth: 16 },
+      streaming,
+      checkedAt,
+    );
+    expect(wav16?.status).toBe("warn");
+    expect(wav16?.checks.at(-1)?.line).toContain("KYX cannot verify that source condition");
+
+    const floatWav = evaluateMasterFileDelivery(
+      { format: "wav", sampleRate: 48_000, channels: 2, bitDepth: 32, wavEncoding: "ieee-float" },
+      streaming,
+      checkedAt,
+    );
+    expect(floatWav?.status).toBe("fail");
+    expect(floatWav?.checks.some((check) => check.line.includes("requires WAVE_FORMAT_PCM"))).toBe(true);
+
+    const incompatible = evaluateMasterFileDelivery(
+      { format: "mp3", sampleRate: 32_000, channels: 1 },
+      streaming,
+      checkedAt,
+    );
+    expect(incompatible?.status).toBe("fail");
+    expect(incompatible?.checks.map((check) => check.status)).toEqual(["warn", "fail", "fail"]);
+
+    expect(
+      evaluateMasterFileDelivery(
+        { format: "wav", sampleRate: 48_000, channels: 2, bitDepth: 24 },
+        profileFor("vinyl")!,
+        checkedAt,
+      ),
+    ).toBeNull();
+
+    const staleSource = evaluateMasterFileDelivery(
+      { format: "flac", sampleRate: 48_000, channels: 2, bitDepth: 24 },
+      streaming,
+      Date.parse("2027-04-06T00:00:00.000Z"),
+    );
+    expect(staleSource?.status).toBe("not-measured");
+    expect(staleSource?.checks[0]?.line).toContain("needs review");
+  });
+
+  it("checks external streaming sample-rate preservation against the decoded source", () => {
+    const streaming = profileFor("streaming")!;
+    const checkedAt = Date.parse("2026-10-08T00:00:00.000Z");
+
+    const preserved = evaluateMasterFileDelivery(
+      {
+        format: "flac",
+        sampleRate: 96_000,
+        channels: 2,
+        bitDepth: 24,
+        sourceSampleRate: 96_000,
+        decodedSourceSampleRate: 96_000,
+      },
+      streaming,
+      checkedAt,
+    );
+    expect(preserved?.checks.find((check) => check.line.includes("preserves the source"))).toMatchObject({
+      status: "pass",
+    });
+
+    const downsampled = evaluateMasterFileDelivery(
+      {
+        format: "flac",
+        sampleRate: 44_100,
+        channels: 2,
+        bitDepth: 24,
+        sourceSampleRate: 96_000,
+        decodedSourceSampleRate: 96_000,
+      },
+      streaming,
+      checkedAt,
+    );
+    expect(downsampled?.checks.find((check) => check.line.includes("export is below"))).toMatchObject({
+      status: "warn",
+    });
+
+    const resampledOnImport = evaluateMasterFileDelivery(
+      {
+        format: "wav",
+        sampleRate: 96_000,
+        channels: 2,
+        bitDepth: 24,
+        sourceSampleRate: 96_000,
+        decodedSourceSampleRate: 44_100,
+      },
+      streaming,
+      checkedAt,
+    );
+    expect(
+      resampledOnImport?.checks.find((check) => check.line.includes("source detail above the decoded rate")),
+    ).toMatchObject({ status: "warn" });
+
+    const upsampledOnImport = evaluateMasterFileDelivery(
+      {
+        format: "wav",
+        sampleRate: 44_100,
+        channels: 2,
+        bitDepth: 24,
+        sourceSampleRate: 32_000,
+        decodedSourceSampleRate: 44_100,
+      },
+      streaming,
+      checkedAt,
+    );
+    expect(upsampledOnImport?.checks.find((check) => check.line.includes("upsample during decode"))).toMatchObject({
+      status: "warn",
+    });
   });
 
   it("verdict: within ±1 LU passes, hot true peak fails, vinyl carries the mono note", () => {

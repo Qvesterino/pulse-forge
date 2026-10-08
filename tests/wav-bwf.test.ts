@@ -452,6 +452,10 @@ describe("large encoded WAV mastering inspection", () => {
         expect(inspection.decode.decoder).toBe("KYX WAV PCM reader");
         expect(inspection.decode.sampleRate).toBe(sampleRate);
         expect(inspection.decode.channels).toBe(2);
+        expect(inspection.file.wavEncoding).toBe(bitDepth === 32 ? "ieee-float" : "pcm");
+        expect(inspection.fileDelivery?.checks.find((check) => check.line.includes("WAV uses"))?.status).toBe(
+          bitDepth === 32 ? "fail" : "pass",
+        );
         expect(inspection.decode.durationSeconds).toBeCloseTo(frameCount / sampleRate, 9);
         expect(inspection.decode.measurements?.rmsDb).toBeCloseTo(expected.measurements.rmsDb, 5);
         expect(inspection.decode.measurements?.truePeakDb).toBeCloseTo(expected.measurements.truePeakDb, 5);
@@ -538,6 +542,8 @@ describe("large encoded MP3 mastering inspection", () => {
       expect(inspection.decode.decoder).toBe("WebCodecs MP3 worker");
       expect(inspection.decode.reason).toContain("does not support MP3 through WebCodecs");
       expect(inspection.file.durationAccuracy).toBe("estimated");
+      expect(inspection.fileDelivery?.status).toBe("warn");
+      expect(inspection.fileDelivery?.checks[0]?.line).toContain("MP3 is not listed");
     } finally {
       vi.unstubAllGlobals();
     }
