@@ -1740,16 +1740,7 @@ export function App({
                 <LinkChip services={services} />
                 {/* I/O opener sits LEFT of the perf readout: the QMR HUD orb
                     owns the very corner and would swallow meter clicks. */}
-                <button
-                  type="button"
-                  className="statusbar-io"
-                  onClick={() => setIoOpen((open) => !open)}
-                  aria-label="Studio I/O — audio device settings"
-                  aria-expanded={ioOpen}
-                  title="Studio I/O — output / input devices, ASIO drivers"
-                >
-                  <MasterMiniMeter />
-                </button>
+                <MasterMiniMeter onOpenAudioSettings={() => setIoOpen((open) => !open)} audioSettingsOpen={ioOpen} />
                 <PerformanceReadout engine={services.engine} scheduler={services.scheduler} />
               </footer>
               {ioOpen && (

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { act, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { MasterMeter, MasterMiniMeter, MasterStereoMeters } from "../../src/ui/MasterMeter";
 import { renderWithContext } from "../helpers";
 
@@ -8,6 +8,10 @@ const CLIP_RED_STYLE = "rgb(248, 113, 113)";
 type MeterTestEngine = ReturnType<typeof renderWithContext>["services"]["engine"] & {
   getMasterGainReductionDb: () => number;
 };
+
+function renderMasterMiniMeter() {
+  return renderWithContext(<MasterMiniMeter onOpenAudioSettings={vi.fn()} audioSettingsOpen={false} />);
+}
 
 interface MeterFrameStep {
   timestamp: number;
@@ -168,44 +172,74 @@ describe("MasterStereoMeters", () => {
   });
 
   it("does not mark the compact status meter as clipping on the first silent frame", () => {
-    withMeterFrames(
-      () => renderWithContext(<MasterMiniMeter />),
-      [
-        {
-          timestamp: 40,
-          assertFrame: (container) => {
-            const bars = [...container.querySelectorAll(".statusbar-meter-bar")];
-            expect(bars).toHaveLength(2);
-            expect(bars.some((bar) => bar.classList.contains("clipping"))).toBe(false);
-          },
+    withMeterFrames(renderMasterMiniMeter, [
+      {
+        timestamp: 40,
+        assertFrame: (container) => {
+          const bars = [...container.querySelectorAll(".statusbar-meter-bar")];
+          expect(bars).toHaveLength(2);
+          expect(bars.some((bar) => bar.classList.contains("clipping"))).toBe(false);
         },
-      ],
-    );
+      },
+    ]);
+  });
+
+  it("keeps the Studio I/O meter opener keyboard-accessible and clickable", () => {
+    const onOpenAudioSettings = vi.fn();
+    renderWithContext(<MasterMiniMeter onOpenAudioSettings={onOpenAudioSettings} audioSettingsOpen={false} />);
+
+    const button = screen.getByRole("button", { name: "Studio I/O — audio device settings" });
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(button);
+    expect(onOpenAudioSettings).toHaveBeenCalledOnce();
   });
 
   it("expires the compact clip indicator by elapsed time after a delayed frame", () => {
-    withMeterFrames(
-      () => renderWithContext(<MasterMiniMeter />),
-      [
-        {
-          timestamp: 40,
-          beforeFrame: (engine) => {
-            const silent = engine.getMasterLevels();
-            const clipped = { ...silent, left: { ...silent.left, peak: 1, peakDb: 0 } };
-            engine.getMasterLevels = vi.fn().mockReturnValueOnce(clipped).mockReturnValue(silent);
-          },
-          assertFrame: (container) => {
-            expect(container.querySelector(".statusbar-meter-bar")?.classList.contains("clipping")).toBe(true);
-          },
+    withMeterFrames(renderMasterMiniMeter, [
+      {
+        timestamp: 40,
+        beforeFrame: (engine) => {
+          const silent = engine.getMasterLevels();
+          const clipped = { ...silent, left: { ...silent.left, peak: 1, peakDb: 0 } };
+          engine.getMasterLevels = vi.fn().mockReturnValueOnce(clipped).mockReturnValue(silent);
         },
-        {
-          timestamp: 1000,
-          assertFrame: (container) => {
-            const bars = [...container.querySelectorAll(".statusbar-meter-bar")];
-            expect(bars.some((bar) => bar.classList.contains("clipping"))).toBe(false);
-          },
+        assertFrame: (container) => {
+          expect(container.querySelector(".statusbar-meter-bar")?.classList.contains("clipping")).toBe(true);
         },
-      ],
-    );
+      },
+      {
+        timestamp: 1000,
+        assertFrame: (container) => {
+          const bars = [...container.querySelectorAll(".statusbar-meter-bar")];
+          expect(bars.some((bar) => bar.classList.contains("clipping"))).toBe(false);
+        },
+      },
+    ]);
+  });
+
+  it("announces compact-meter clipping politely and clears it after the hold", () => {
+    withMeterFrames(renderMasterMiniMeter, [
+      {
+        timestamp: 40,
+        beforeFrame: (engine) => {
+          const silent = engine.getMasterLevels();
+          const clipped = { ...silent, left: { ...silent.left, peak: 1, peakDb: 0 } };
+          engine.getMasterLevels = vi.fn().mockReturnValueOnce(clipped).mockReturnValue(silent);
+        },
+        assertFrame: () => {
+          const status = screen.getByRole("status");
+          expect(status).toHaveTextContent("Master output clipping.");
+          expect(status.closest("button")).toBeNull();
+          expect(screen.getByRole("button", { name: "Studio I/O — audio device settings" })).toBeInTheDocument();
+        },
+      },
+      {
+        timestamp: 1000,
+        assertFrame: () => {
+          expect(screen.getByRole("status")).toBeEmptyDOMElement();
+          expect(screen.getByRole("button", { name: "Studio I/O — audio device settings" })).toBeInTheDocument();
+        },
+      },
+    ]);
   });
 });

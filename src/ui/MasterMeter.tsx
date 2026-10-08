@@ -615,7 +615,13 @@ function dbToPct(db: number): number {
  * line and a clip dot, fed by the same cheap engine snapshot the strip
  * meters read (25 Hz — statusbar chrome, not a mix-decision surface).
  */
-export function MasterMiniMeter() {
+export function MasterMiniMeter({
+  onOpenAudioSettings,
+  audioSettingsOpen,
+}: {
+  onOpenAudioSettings: () => void;
+  audioSettingsOpen: boolean;
+}) {
   const services = useServices();
   const [state, setState] = useState({
     lPeak: -120,
@@ -671,22 +677,31 @@ export function MasterMiniMeter() {
   const pos = (db: number) => `${Math.min(100, Math.max(0, (1 + db / 60) * 100))}%`;
   const hold = Math.min(100, Math.max(0, (1 + state.hold / 60) * 100));
   return (
-    <div
-      className="statusbar-meter"
-      role="img"
-      aria-label="Master output level"
-      title={`Master out — L ${state.lPeak.toFixed(1)} dB · R ${state.rPeak.toFixed(1)} dB · hold ${state.hold.toFixed(1)} dB`}
-    >
-      <span className={`statusbar-meter-bar${state.clip ? " clipping" : ""}`}>
-        <i className="statusbar-meter-rms" style={{ height: pos(state.lRms) }} />
-        <i className="statusbar-meter-fill" style={{ height: pos(state.lPeak) }} />
-        {hold > 1 && <i className="statusbar-meter-hold" style={{ bottom: `${hold}%` }} />}
+    <>
+      <button
+        type="button"
+        className="statusbar-io"
+        onClick={onOpenAudioSettings}
+        aria-label="Studio I/O — audio device settings"
+        aria-expanded={audioSettingsOpen}
+        title={`Studio I/O — output / input devices, ASIO drivers · Master out — L ${state.lPeak.toFixed(1)} dB · R ${state.rPeak.toFixed(1)} dB · hold ${state.hold.toFixed(1)} dB`}
+      >
+        <span className="statusbar-meter" aria-hidden="true">
+          <span className={`statusbar-meter-bar${state.clip ? " clipping" : ""}`}>
+            <i className="statusbar-meter-rms" style={{ height: pos(state.lRms) }} />
+            <i className="statusbar-meter-fill" style={{ height: pos(state.lPeak) }} />
+            {hold > 1 && <i className="statusbar-meter-hold" style={{ bottom: `${hold}%` }} />}
+          </span>
+          <span className={`statusbar-meter-bar${state.clip ? " clipping" : ""}`}>
+            <i className="statusbar-meter-rms" style={{ height: pos(state.rRms) }} />
+            <i className="statusbar-meter-fill" style={{ height: pos(state.rPeak) }} />
+            {hold > 1 && <i className="statusbar-meter-hold" style={{ bottom: `${hold}%` }} />}
+          </span>
+        </span>
+      </button>
+      <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {state.clip ? "Master output clipping." : ""}
       </span>
-      <span className={`statusbar-meter-bar${state.clip ? " clipping" : ""}`}>
-        <i className="statusbar-meter-rms" style={{ height: pos(state.rRms) }} />
-        <i className="statusbar-meter-fill" style={{ height: pos(state.rPeak) }} />
-        {hold > 1 && <i className="statusbar-meter-hold" style={{ bottom: `${hold}%` }} />}
-      </span>
-    </div>
+    </>
   );
 }
