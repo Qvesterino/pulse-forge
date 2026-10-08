@@ -50,6 +50,7 @@ import {
   transitionsForClips,
   resizeArrangementClipRipple,
   moveArrangementClipRipple,
+  trimArrangementClipStart,
   deleteArrangementClipRipple,
   setArrangementClipScene,
   setArrangementClipLoop,
@@ -273,7 +274,7 @@ const SCENE_ROLES: Array<{ value: SceneRole | ""; label: string }> = [
 const TRANSITION_TYPES: ArrangementTransitionType[] = ["fill", "riser", "impact", "drop", "break", "custom"];
 
 interface DragState {
-  mode: "move" | "resize";
+  mode: "move" | "resize" | "trimStart";
   clipId: string;
   /**
    * The pointer this gesture captured. Terminals read it from here rather than
@@ -2159,7 +2160,7 @@ export function ArrangementPanel() {
       .reduce((max, c) => Math.max(max, c.startBar + c.lengthBars), 0);
   };
 
-  const beginClipDrag = (event: React.PointerEvent, clipId: string, mode: "move" | "resize") => {
+  const beginClipDrag = (event: React.PointerEvent, clipId: string, mode: "move" | "resize" | "trimStart") => {
     if (event.button !== 0) return;
     event.stopPropagation();
     const clip = clips.find((candidate) => candidate.id === clipId);
@@ -2244,6 +2245,11 @@ export function ArrangementPanel() {
       if (rippleMode)
         startBar = Math.max(startBar, ripplePredecessorEnd([current.clipId], { [current.clipId]: current.origStart }));
       setClipDrag({ startBar, lengthBars: current.origLength });
+    } else if (current.mode === "trimStart") {
+      // Left-trim: the START edge moves right (whole-bar contract), the end
+      // edge never moves — at least one whole bar must remain.
+      const newStart = Math.max(current.origStart + 1, Math.floor(bar));
+      setClipDrag({ startBar: newStart, lengthBars: current.origStart + current.origLength - newStart });
     } else {
       setClipDrag({ startBar: current.origStart, lengthBars: Math.max(1, bar - current.origStart + 1) });
     }
@@ -2367,6 +2373,13 @@ export function ArrangementPanel() {
       try {
         if (rippleMode) execute(resizeArrangementClipRipple(services.store.doc, current.clipId, finalDrag.lengthBars));
         else execute(resizeArrangementClip(services.store.doc, current.clipId, finalDrag.lengthBars));
+      } catch {
+        /* same mid-drag deletion race */
+      }
+    }
+    if (current.mode === "trimStart" && finalDrag.startBar !== current.origStart) {
+      try {
+        execute(trimArrangementClipStart(services.store.doc, current.clipId, finalDrag.startBar));
       } catch {
         /* same mid-drag deletion race */
       }
@@ -4358,11 +4371,14 @@ export function ArrangementPanel() {
                       }
                       clipLongPressTargetRef.current = clip.id;
                       clipLongPress.onPointerDown(event);
-                      beginClipDrag(
-                        event,
-                        clip.id,
-                        event.clientX > event.currentTarget.getBoundingClientRect().right - 10 ? "resize" : "move",
-                      );
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      const zone =
+                        event.clientX < rect.left + 10
+                          ? "trimStart"
+                          : event.clientX > rect.right - 10
+                            ? "resize"
+                            : "move";
+                      beginClipDrag(event, clip.id, zone);
                     }}
                     onPointerMove={(event) => {
                       clipLongPress.onPointerMove();

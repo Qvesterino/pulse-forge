@@ -266,3 +266,57 @@ export function duplicateArrangementClip(doc: ProjectDocument, clipId: string): 
   };
   return snapshot("duplicateArrangementClip", "Duplicate clip", doc, next);
 }
+
+/**
+ * TRIM the START edge of an arrangement clip (move it right, end stays) —
+ * the scene-clip twin of trimAudioClipStart.
+ *
+ * Trimming the start advances WHERE in the scene's content the clip begins:
+ * pattern phase wraps modulo the source pattern (the pattern loops) and the
+ * scene-automation offset grows unbounded (intensity does not loop) — the
+ * same continuity math splitArrangementClipAtTick applies to its right
+ * fragment, so a trim followed by a split and a split followed by a trim
+ * land in identical content. Scene clips are integer-bar by contract: the
+ * new start is rounded and must land strictly inside the clip, leaving at
+ * least one whole bar. The end edge never moves, so the no-overlap contract
+ * cannot be violated and transitions referencing the clip stay ordered.
+ */
+export function trimArrangementClipStart(doc: ProjectDocument, clipId: string, newStartBar: number): Command {
+  const clip = doc.arrangement.clips.find((c) => c.id === clipId);
+  if (!clip) throw new Error(`Clip ${clipId} not found`);
+  if (!Number.isFinite(newStartBar)) throw new Error("Trim start must be a finite bar position");
+  const startBar = Math.round(newStartBar);
+  const endBar = clip.startBar + clip.lengthBars;
+  if (startBar <= clip.startBar) {
+    throw new Error("Trim start must move the clip's start right (extend-left is a separate verb)");
+  }
+  if (startBar >= endBar) throw new Error("Trim start must leave at least one whole bar");
+  const elapsedTicks = (startBar - clip.startBar) * BAR_TICKS;
+  const scene = doc.scenes.find((s) => s.id === clip.sceneId);
+  const pattern = scene ? doc.patterns.find((p) => p.id === scene.patternId) : undefined;
+  const patternTicks = pattern ? pattern.stepCount * STEP_TICKS : 0;
+  const phase = clip.phaseOffsetTicks ?? 0;
+  const phaseOffsetTicks =
+    patternTicks > 0
+      ? (((phase + elapsedTicks) % patternTicks) + patternTicks) % patternTicks
+      : Math.max(0, phase + elapsedTicks);
+  const sceneOffsetTicks = (clip.sceneOffsetTicks ?? 0) + elapsedTicks;
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: {
+      ...doc.arrangement,
+      clips: doc.arrangement.clips.map((c) =>
+        c.id === clipId
+          ? {
+              ...c,
+              startBar,
+              lengthBars: endBar - startBar,
+              ...(phaseOffsetTicks > 0 ? { phaseOffsetTicks } : {}),
+              ...(sceneOffsetTicks > 0 ? { sceneOffsetTicks } : {}),
+            }
+          : c,
+      ),
+    },
+  };
+  return snapshot("trimArrangementClipStart", `Trim clip start to bar ${startBar + 1}`, doc, next);
+}
