@@ -79,16 +79,24 @@ export function setClipsLocked(doc: ProjectDocument, clipIds: readonly string[],
   if (ids.size === 0) return snapshot("setClipsLocked", "Lock clips (no-op)", doc, doc);
   const arrangement = doc.arrangement.clips.some((c) => ids.has(c.id) && (c.locked === true) !== locked);
   const audio = (doc.arrangement.audioClips ?? []).some((c) => ids.has(c.id) && (c.locked === true) !== locked);
-  if (!arrangement && !audio) return snapshot("setClipsLocked", locked ? "Lock clips (no-op)" : "Unlock clips (no-op)", doc, doc);
+  if (!arrangement && !audio)
+    return snapshot("setClipsLocked", locked ? "Lock clips (no-op)" : "Unlock clips (no-op)", doc, doc);
   const next: ProjectDocument = {
     ...doc,
     arrangement: {
       ...doc.arrangement,
       clips: doc.arrangement.clips.map((c) => (ids.has(c.id) ? { ...c, locked: locked === true } : c)),
-      audioClips: (doc.arrangement.audioClips ?? []).map((c) => (ids.has(c.id) ? { ...c, locked: locked === true } : c)),
+      audioClips: (doc.arrangement.audioClips ?? []).map((c) =>
+        ids.has(c.id) ? { ...c, locked: locked === true } : c,
+      ),
     },
   };
-  return snapshot("setClipsLocked", `${locked ? "Lock" : "Unlock"} ${ids.size} ${ids.size === 1 ? "clip" : "clips"}`, doc, next);
+  return snapshot(
+    "setClipsLocked",
+    `${locked ? "Lock" : "Unlock"} ${ids.size} ${ids.size === 1 ? "clip" : "clips"}`,
+    doc,
+    next,
+  );
 }
 
 function jsonEqualGroups(a: ClipGroup[] | undefined, b: ClipGroup[] | undefined): boolean {

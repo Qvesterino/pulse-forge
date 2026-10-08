@@ -14,6 +14,7 @@ import { buildStemProject } from "../rendering/stems";
 import { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
+import { assertClipEditable } from "./clipGroups";
 import { addAudioClip, audioClipDurationSec, clampClipFades } from "./audioClips";
 
 /* ---------------- clip editing ---------------- */
@@ -286,6 +287,7 @@ export function splitAudioClipAtTickWithMinimumFragment(
 ): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  assertClipEditable(clip, "split");
   if (!Number.isFinite(splitTick)) throw new Error("Split point must be a finite arrangement tick");
   if (!Number.isFinite(minimumFragmentBars) || minimumFragmentBars < 0) {
     throw new Error("Minimum split fragment must be a finite non-negative bar length");

@@ -170,9 +170,9 @@ describe("L1/L2 lock", () => {
 
     expect(() => moveAudioClip(store.doc, audioId, 20)).toThrow(/locked/);
     expect(() => resizeAudioClip(store.doc, audioId, 3)).toThrow(/locked/);
-    expect(() =>
-      trimAudioClipStart(store.doc, audioId, { lengthBars: 1, trimStart: 0.5, offsetSec: 0 }),
-    ).toThrow(/locked/);
+    expect(() => trimAudioClipStart(store.doc, audioId, { lengthBars: 1, trimStart: 0.5, offsetSec: 0 })).toThrow(
+      /locked/,
+    );
     expect(() => slipAudioClip(store.doc, audioId, 1)).toThrow(/locked/);
     expect(() => stretchAudioClip(store.doc, audioId, 2, 1.5)).toThrow(/locked/);
     expect(() => splitAudioClipAtTick(store.doc, audioId, BAR)).toThrow(/locked/);
@@ -197,6 +197,9 @@ describe("L3 normalize round-trip", () => {
   it("locked survives as true, absent for unlocked; groups round-trip with dead ids stripped", () => {
     expect(SCHEMA_VERSION).toBe(15);
     let doc: ProjectDocument = createDefaultProject();
+    // The default project ships arrangement clips from bar 0 — clear them so
+    // the fixture owns the timeline (same pattern as the other audit suites).
+    for (const c of doc.arrangement.clips) doc = deleteArrangementClip(doc, c.id).execute(doc);
     const trackId = doc.tracks[0]!.id;
     doc = addArrangementClip(doc, doc.scenes[0]!.id, 0, 4).execute(doc);
     doc = addAudioClip(doc, trackId, "buf-1", 0, 2).execute(doc);

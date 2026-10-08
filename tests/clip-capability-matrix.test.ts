@@ -44,6 +44,10 @@ const MATRIX: MatrixRow[] = [
   { verb: "mute", audio: "setAudioClipsMute", arrangement: null },
   { verb: "slip", audio: "slipAudioClip", arrangement: null },
   { verb: "stretch", audio: "stretchAudioClip", arrangement: null },
+  // Cross-system verbs (one command serves both lanes — membership is shared):
+  { verb: "group", audio: "groupClips", arrangement: "groupClips" },
+  { verb: "ungroup", audio: "ungroupClips", arrangement: "ungroupClips" },
+  { verb: "lock", audio: "setClipsLocked", arrangement: "setClipsLocked" },
 ];
 
 const audioFixture = (): { doc: ProjectDocument; clipId: string } => {

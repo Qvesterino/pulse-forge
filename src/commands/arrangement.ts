@@ -176,10 +176,10 @@ export function deleteArrangementClip(doc: ProjectDocument, clipId: string): Com
         (transition) => transition.fromClipId !== clipId && transition.toClipId !== clipId,
       ),
       // Group membership dies with the clip; an emptied group dies with it.
-      ...((() => {
+      ...(() => {
         const groups = clipGroupsWithoutIds(doc.arrangement.clipGroups, [clipId]);
         return groups !== doc.arrangement.clipGroups ? { clipGroups: groups } : {};
-      })()),
+      })(),
     },
   };
   return snapshot("deleteArrangementClip", "Delete clip", doc, next);
