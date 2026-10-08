@@ -601,10 +601,13 @@ export function crossfadeAudioClips(
   laterId: string,
   options: { curve?: "linear" | "equal" } = {},
 ): Command {
-  const earlier = (doc.arrangement.audioClips ?? []).find((c) => c.id === earlierId);
-  const later = (doc.arrangement.audioClips ?? []).find((c) => c.id === laterId);
-  if (!earlier) throw new Error(`AudioClip ${earlierId} not found`);
-  if (!later) throw new Error(`AudioClip ${laterId} not found`);
+  const first = (doc.arrangement.audioClips ?? []).find((c) => c.id === earlierId);
+  const second = (doc.arrangement.audioClips ?? []).find((c) => c.id === laterId);
+  if (!first) throw new Error(`AudioClip ${earlierId} not found`);
+  if (!second) throw new Error(`AudioClip ${laterId} not found`);
+  // Direction-safe: arguments may come in either order — "earlier" is always
+  // the clip that starts first on the timeline.
+  const [earlier, later] = second.startBar < first.startBar ? [second, first] : [first, second];
   if (earlier.trackId !== later.trackId) throw new Error("Crossfade requires both clips on the same track");
   const eStart = earlier.startBar * BAR_TICKS;
   const eEnd = eStart + earlier.lengthBars * BAR_TICKS;
@@ -615,7 +618,13 @@ export function crossfadeAudioClips(
   const scenes = doc.scenes;
   const overlapSec = Math.max(
     0,
-    arrangementSecondsBetweenTicks(doc.arrangement.clips, scenes, Math.max(eStart, lStart), Math.min(eEnd, lEnd), doc.bpm),
+    arrangementSecondsBetweenTicks(
+      doc.arrangement.clips,
+      scenes,
+      Math.max(eStart, lStart),
+      Math.min(eEnd, lEnd),
+      doc.bpm,
+    ),
   );
   const eDur = Math.max(0, arrangementSecondsBetweenTicks(doc.arrangement.clips, scenes, eStart, eEnd, doc.bpm));
   const lDur = Math.max(0, arrangementSecondsBetweenTicks(doc.arrangement.clips, scenes, lStart, lEnd, doc.bpm));
@@ -628,17 +637,17 @@ export function crossfadeAudioClips(
     arrangement: {
       ...doc.arrangement,
       audioClips: (doc.arrangement.audioClips ?? []).map((c) => {
-        if (c.id === earlierId) {
+        if (c.id === earlier.id) {
           return {
             ...c,
-            fadeOut: round(Math.min(2, earlierFade)),
+            fadeOut: round(earlierFade),
             ...(curve ? { fadeCurve: curve } : {}),
           };
         }
-        if (c.id === laterId) {
+        if (c.id === later.id) {
           return {
             ...c,
-            fadeIn: round(Math.min(2, laterFade)),
+            fadeIn: round(laterFade),
             ...(curve ? { fadeCurve: curve } : {}),
           };
         }
@@ -646,11 +655,5 @@ export function crossfadeAudioClips(
       }),
     },
   };
-  return snapshot(
-    "crossfadeAudioClips",
-    `Crossfade ${round(earlierFade)}s`,
-    doc,
-    normalizeProject(next),
-  );
+  return snapshot("crossfadeAudioClips", `Crossfade ${round(earlierFade)}s`, doc, normalizeProject(next));
 }
-

@@ -194,6 +194,26 @@ describe("MasterStereoMeters", () => {
     expect(onOpenAudioSettings).toHaveBeenCalledOnce();
   });
 
+  it("describes the current L/R peaks and hold when the meter button receives focus", () => {
+    withMeterFrames(
+      () => renderWithContext(<MasterMiniMeter onOpenAudioSettings={vi.fn()} audioSettingsOpen={false} />),
+      [
+        {
+          timestamp: 40,
+          assertFrame: (container) => {
+            const button = screen.getByRole("button", { name: "Studio I/O — audio device settings" });
+            const descriptionId = button.getAttribute("aria-describedby");
+            expect(descriptionId).toBeTruthy();
+            expect(document.getElementById(descriptionId ?? "")).toHaveTextContent(
+              "Master output level: left -60.0 dB peak, right -60.0 dB peak, hold -60.0 dB.",
+            );
+            expect(container.querySelectorAll(".statusbar-meter-bar")).toHaveLength(2);
+          },
+        },
+      ],
+    );
+  });
+
   it("expires the compact clip indicator by elapsed time after a delayed frame", () => {
     withMeterFrames(renderMasterMiniMeter, [
       {

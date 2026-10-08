@@ -195,7 +195,7 @@ describe("L1/L2 lock", () => {
 
 describe("L3 normalize round-trip", () => {
   it("locked survives as true, absent for unlocked; groups round-trip with dead ids stripped", () => {
-    expect(SCHEMA_VERSION).toBe(15);
+    expect(SCHEMA_VERSION).toBe(16);
     let doc: ProjectDocument = createDefaultProject();
     // The default project ships arrangement clips from bar 0 — clear them so
     // the fixture owns the timeline (same pattern as the other audit suites).

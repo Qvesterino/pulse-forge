@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useMaster, useServices, useTracks } from "./context";
 import type { ChannelLevels } from "../audio-engine/metering";
 import { registerRaf, unregisterRaf } from "../services/rafLoop";
@@ -623,6 +623,7 @@ export function MasterMiniMeter({
   audioSettingsOpen: boolean;
 }) {
   const services = useServices();
+  const meterDescriptionId = useId();
   const [state, setState] = useState({
     lPeak: -120,
     lRms: -120,
@@ -683,6 +684,7 @@ export function MasterMiniMeter({
         className="statusbar-io"
         onClick={onOpenAudioSettings}
         aria-label="Studio I/O — audio device settings"
+        aria-describedby={meterDescriptionId}
         aria-expanded={audioSettingsOpen}
         title={`Studio I/O — output / input devices, ASIO drivers · Master out — L ${state.lPeak.toFixed(1)} dB · R ${state.rPeak.toFixed(1)} dB · hold ${state.hold.toFixed(1)} dB`}
       >
@@ -699,6 +701,9 @@ export function MasterMiniMeter({
           </span>
         </span>
       </button>
+      <span id={meterDescriptionId} className="sr-only">
+        {`Master output level: left ${state.lPeak.toFixed(1)} dB peak, right ${state.rPeak.toFixed(1)} dB peak, hold ${state.hold.toFixed(1)} dB${state.clip ? ". Clipping hold active." : "."}`}
+      </span>
       <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {state.clip ? "Master output clipping." : ""}
       </span>

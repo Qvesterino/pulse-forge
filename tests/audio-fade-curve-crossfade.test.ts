@@ -11,6 +11,7 @@ import {
 } from "../src/commands/commands";
 import { applyRangeCrossfade } from "../src/ui/rangeCrossfade";
 import { BAR_TICKS } from "../src/project-model/types";
+import { arrangementSecondsBetweenTicks } from "../src/project-model/scene-time";
 import type { AudioClip, ProjectDocument } from "../src/project-model/types";
 
 /**
@@ -42,15 +43,25 @@ const pairFixture = (bStart = 3, bLen = 4): { doc: ProjectDocument; a: string; b
 
 const clipsOf = (doc: ProjectDocument): AudioClip[] => doc.arrangement.audioClips ?? [];
 
+/** Overlap seconds by the command's own math (scene-tempo aware). */
+const overlapSecOf = (doc: ProjectDocument): number => {
+  const a = clipsOf(doc).find((c) => c.bufferId === "buf-a")!;
+  const b = clipsOf(doc).find((c) => c.bufferId === "buf-b")!;
+  const from = Math.max(a.startBar, b.startBar) * BAR_TICKS;
+  const to = Math.min(a.startBar + a.lengthBars, b.startBar + b.lengthBars) * BAR_TICKS;
+  return arrangementSecondsBetweenTicks(doc.arrangement.clips, doc.scenes, from, to, doc.bpm);
+};
+
 describe("X1 crossfadeAudioClips", () => {
   it("an overlapping pair gets complementary equal-power fades over the overlap", () => {
     const { doc, a, b } = pairFixture(3, 4); // overlap: bars 3–4 = 1 bar = 2s @120bpm
     const store = new ProjectStore(doc);
     store.execute(crossfadeAudioClips(store.doc, a, b));
+    const overlap = overlapSecOf(store.doc);
     const earlier = clipsOf(store.doc).find((c) => c.id === a)!;
     const later = clipsOf(store.doc).find((c) => c.id === b)!;
-    expect(earlier.fadeOut).toBeCloseTo(2, 3);
-    expect(later.fadeIn).toBeCloseTo(2, 3);
+    expect(earlier.fadeOut).toBeCloseTo(overlap, 3);
+    expect(later.fadeIn).toBeCloseTo(overlap, 3);
     expect(earlier.fadeCurve).toBe("equal");
     expect(later.fadeCurve).toBe("equal");
     expect(store.undoStackLength).toBe(1);
@@ -63,21 +74,25 @@ describe("X1 crossfadeAudioClips", () => {
     const store = new ProjectStore(doc);
     // Later passed first: the earlier clip still gets the fadeOUT, the later the fadeIN.
     store.execute(crossfadeAudioClips(store.doc, b, a));
+    const overlap = overlapSecOf(store.doc);
     const earlier = clipsOf(store.doc).find((c) => c.id === a)!;
     const later = clipsOf(store.doc).find((c) => c.id === b)!;
-    expect(earlier.fadeOut).toBeCloseTo(2, 3);
-    expect(later.fadeIn).toBeCloseTo(2, 3);
+    expect(earlier.fadeOut).toBeCloseTo(overlap, 3);
+    expect(later.fadeIn).toBeCloseTo(overlap, 3);
   });
 
   it("non-overlapping clips refuse; different tracks refuse", () => {
     const { doc, a, b } = pairFixture(4, 4); // adjacent, not overlapping
     expect(() => crossfadeAudioClips(doc, a, b)).toThrow(/do not overlap/);
-    const otherTrack = createProjectFromTemplate("house");
-    const otherTrackId = otherTrack.tracks.find((t) => t.kind === "drum")!.id;
-    let otherDoc = addAudioClip(otherTrack, otherTrackId, "buf-c", 3, 4).execute(otherTrack);
+    // Two clips on DIFFERENT tracks of the SAME document.
+    let otherDoc = createProjectFromTemplate("house");
+    const drumTrackId = otherDoc.tracks.find((t) => t.kind === "drum")!.id;
+    const instTrackId = otherDoc.tracks.find((t) => t.kind === "instrument")!.id;
+    otherDoc = addAudioClip(otherDoc, drumTrackId, "buf-c", 3, 4).execute(otherDoc);
+    otherDoc = addAudioClip(otherDoc, instTrackId, "buf-d", 3, 4).execute(otherDoc);
     const c = clipsOf(otherDoc).find((x) => x.bufferId === "buf-c")!;
-    const { a: aId } = pairFixture(3, 4);
-    expect(() => crossfadeAudioClips(otherDoc, aId, c.id)).toThrow(/same track/);
+    const d = clipsOf(otherDoc).find((x) => x.bufferId === "buf-d")!;
+    expect(() => crossfadeAudioClips(otherDoc, c.id, d.id)).toThrow(/same track/);
   });
 
   it("a fully-contained overlap clamps each fade to its own clip's duration", () => {
@@ -87,10 +102,18 @@ describe("X1 crossfadeAudioClips", () => {
     store.execute(crossfadeAudioClips(store.doc, a, b));
     const earlier = clipsOf(store.doc).find((c) => c.id === a)!;
     const later = clipsOf(store.doc).find((c) => c.id === b)!;
-    // Overlap = the whole of A (2 bars = 4s); A's fade clamps to its own 4s,
-    // B's fade also caps at the overlap span (4s), not B's full 8s.
-    expect(earlier.fadeOut).toBeCloseTo(4, 3);
-    expect(later.fadeIn).toBeCloseTo(4, 3);
+    // Overlap = the whole of A (bars 1..3). A's fade clamps to its own span;
+    // B's fade also caps at the overlap span, not B's full length.
+    const overlap = overlapSecOf(store.doc);
+    const aDur = arrangementSecondsBetweenTicks(
+      doc.arrangement.clips,
+      doc.scenes,
+      earlier.startBar * BAR,
+      (earlier.startBar + earlier.lengthBars) * BAR,
+      doc.bpm,
+    );
+    expect(earlier.fadeOut).toBeCloseTo(Math.min(overlap, aDur), 3);
+    expect(later.fadeIn).toBeCloseTo(Math.min(overlap, aDur), 3);
   });
 });
 
@@ -99,10 +122,11 @@ describe("X3 the X shortcut crossfades overlapping pairs", () => {
     const { doc, a, b } = pairFixture(3, 4);
     const store = new ProjectStore(doc);
     applyRangeCrossfade(store, store.doc, { timeRange: { fromTick: 0, toTick: 8 * BAR }, clipIds: [] });
+    const overlap = overlapSecOf(store.doc);
     const earlier = clipsOf(store.doc).find((c) => c.id === a)!;
     const later = clipsOf(store.doc).find((c) => c.id === b)!;
-    expect(earlier.fadeOut).toBeCloseTo(2, 3);
-    expect(later.fadeIn).toBeCloseTo(2, 3);
+    expect(earlier.fadeOut).toBeCloseTo(overlap, 3);
+    expect(later.fadeIn).toBeCloseTo(overlap, 3);
     expect(earlier.fadeCurve).toBe("equal");
     // ONE undo entry for the whole press (frame contract).
     expect(store.undoStackLength).toBe(1);
@@ -143,7 +167,8 @@ describe("F1 fadeCurve storage + carry", () => {
     const withCurve = updateAudioClip(doc, a, { fadeCurve: "equal", fadeIn: 0.5, fadeOut: 0.5 }).execute(doc);
     // Duplicate carries it.
     const duped = duplicateAudioClip(withCurve, a).execute(withCurve);
-    expect(clipsOf(duped).find((c) => c.id !== a)!.fadeCurve).toBe("equal");
+    const dup = clipsOf(duped).find((c) => c.bufferId === "buf-a" && c.id !== a)!;
+    expect(dup.fadeCurve).toBe("equal");
     // Split fragments carry it.
     const split = splitAudioClipAtTick(withCurve, a, 2 * BAR).execute(withCurve);
     for (const c of clipsOf(split)) {
