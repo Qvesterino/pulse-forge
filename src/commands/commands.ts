@@ -41,6 +41,7 @@ export * from "./effectInstances";
 export * from "./effectParams";
 export * from "./audioClips";
 export * from "./clipClipboard";
+export * from "./clipGroups";
 export * from "./drumContent";
 // NOT `export *`: splitAudioClipAtTickWithMinimumFragment is exported from ./clipEditing because
 // ./timeRange calls it, but it was internal before the split — a star re-export would publish it

@@ -65,7 +65,7 @@ export function MasterProcessingControls({
           <Slider
             compact
             label="CEIL"
-            hint="Physical limiter ceiling in dBFS. Delivery profile true-peak targets are checked separately."
+            hint="Physical limiter ceiling in dBFS. The look-ahead worklet keeps a 0.2 dB reserve below it; the native fallback cannot guarantee inter-sample peaks and is marked Degraded. Delivery profile true-peak targets are checked separately."
             value={master.ceilingDb}
             min={-12}
             max={0}

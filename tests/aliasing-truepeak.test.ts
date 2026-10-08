@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { truePeakOversampled } from "../src/audio-engine/metering";
 
 /**
  * Aliasing + true-peak battery:
@@ -146,6 +147,29 @@ describe("limiter true-peak detector", () => {
     expect(peak).toBeGreaterThan(ceilingLin * 0.95);
     const grMsgs = (proc.port.messages as { type?: string; gr?: number }[]).filter((m) => m?.type === "gr");
     expect(Math.max(...grMsgs.map((m) => m.gr ?? 0))).toBeGreaterThan(3);
+  });
+
+  it("holds oversampled output below the ceiling with the master safety margin", () => {
+    const ceilingDb = -1;
+    const internalCeilingDb = ceilingDb - 0.2;
+    const proc = new (registered.get("limiter-processor")!)();
+    const prm = params(LIM, {
+      threshold: internalCeilingDb - 3.2,
+      ceiling: internalCeilingDb,
+      release: 0.05,
+      lookahead: 0.005,
+      link: 1,
+      mix: 1,
+    });
+    const { L, R } = renderStereo(proc, 1, prm, (n) => {
+      const v = 1.2 * Math.sin((Math.PI / 2) * n + Math.PI / 4);
+      return [v, v];
+    });
+    const from = Math.floor(SR * 0.5);
+    const truePeak = truePeakOversampled([L.subarray(from), R.subarray(from)]);
+    const truePeakDb = 20 * Math.log10(truePeak);
+
+    expect(truePeakDb).toBeLessThanOrEqual(ceilingDb + 0.05);
   });
 
   it("latency stays exactly lookahead and mix = 0 is unity", () => {

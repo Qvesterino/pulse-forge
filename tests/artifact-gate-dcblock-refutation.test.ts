@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { analyzeArtifacts, evaluateArtifacts } from "../src/audio-engine/artifactGate";
 
 /**
- * The artifact gate reports "N isolated discontinuity(ies) at ~492-502" for
- * ALL EIGHT genre renders (house 492/495/496/498, techno 498/502, trap
- * 498/502, drill 492/493/498/502, ...). That consistency across completely
- * different content says the artifact is time-deterministic, not
- * content-dependent.
+ * The fixed 12 Hz master DC blocker is not the source of the click candidates
+ * reported by the full-mix probe. On 2026-10-08, normal-tail Chromium renders
+ * produced 4–316 curvature candidates per genre. That PCM-only heuristic
+ * cannot establish whether a candidate is an audible defect or an intentional
+ * transient, so complete-program checks report those candidates for review.
  *
  * FIRST HYPOTHESIS (tested and REFUTED here): the master chain's fixed 12 Hz
  * DC blocker, which is ALWAYS on (masterChain.ts — "fixed 12 Hz highpass,
@@ -17,13 +17,9 @@ import { analyzeArtifacts, evaluateArtifacts } from "../src/audio-engine/artifac
  * (`clickIndices: []`, clean verdict). The timing was never a real match either
  * (585 vs 492).
  *
- * This test is kept so the refutation is permanent and nobody re-runs the same
- * investigation. The remaining open question is recorded in the test below and
- * is NOT settled: the gate's click model excludes only `attackIndex` (the first
- * sample above the noise floor) and then scans the whole body — a model written
- * for a single one-shot applied to a full drum render full of sharp transients.
- * Distinguishing "the gate flags legitimate drum attacks" from "a real click in
- * a sample" needs a real render, not a synthetic one.
+ * This test is kept so the DC-blocker refutation is permanent. It does not
+ * claim to classify the full-mix candidates; resolving those requires either
+ * source-aware event analysis or a listening check.
  */
 
 const SR = 44100;
@@ -86,24 +82,5 @@ describe("artifact gate — the 12 Hz master DC blocker is NOT the click source"
     const tauSamples = SR / (2 * Math.PI * 12);
     expect(tauSamples).toBeGreaterThan(500);
     expect(tauSamples).toBeLessThan(650);
-  });
-
-  it("OPEN: the click model excludes only the first attack, so multi-hit renders may false-positive", () => {
-    // Two sharp transients 11 ms apart, each decaying smoothly. The gate's
-    // documented model is "one one-shot, one intentional attack"; a genre
-    // render has dozens. This documents the shape of the still-open question
-    // without asserting a verdict either way.
-    const n = Math.floor(SR * 0.5);
-    const sig = new Float32Array(n);
-    for (const start of [0, Math.floor(0.011 * SR)]) {
-      for (let i = start; i < n; i++) {
-        const dt = (i - start) / SR;
-        sig[i] += 0.8 * Math.exp(-dt / 0.02) * Math.sin(2 * Math.PI * 60 * dt);
-      }
-    }
-    const r = analyzeArtifacts([sig]);
-    // Recorded, not asserted: the point is that a multi-transient body is the
-    // next thing to check against a real genre render.
-    expect(r.clickIndices.length).toBeGreaterThanOrEqual(0);
   });
 });

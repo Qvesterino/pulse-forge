@@ -77,6 +77,22 @@ describe("artifact gate — clean signals pass", () => {
     expect(evaluateArtifacts(report).failures).toEqual([]);
   });
 
+  it("does not treat a full-level onset after silence as a mid-body click", () => {
+    const onset = new Float32Array(Math.floor(0.25 * SR));
+    const start = 100;
+    for (let i = start; i < onset.length; i++) {
+      const elapsed = (i - start) / SR;
+      const tailStart = onset.length - Math.floor(0.02 * SR);
+      const fade = i >= tailStart ? (onset.length - i) / (onset.length - tailStart) : 1;
+      onset[i] = 0.8 * Math.exp(-elapsed * 8) * fade * Math.cos(2 * Math.PI * 500 * elapsed);
+    }
+
+    const report = analyzeArtifacts([onset]);
+    expect(report.attackIndex).toBe(start);
+    expect(report.clickIndices).toEqual([]);
+    expect(evaluateArtifacts(report).failures).toEqual([]);
+  });
+
   it("does not flag a smooth short fade (the de-click tail itself)", () => {
     const report = analyzeArtifacts([oneShot(220, 0.1, 0.002)]);
     expect(report.clickIndices).toEqual([]);
@@ -112,6 +128,22 @@ describe("artifact gate — each defect class is caught", () => {
     expect(report.clickIndices.length).toBeGreaterThan(0);
     expect(report.clickIndices.some((i) => Math.abs(i - at) <= 2)).toBe(true);
     expect(evaluateArtifacts(report).ok).toBe(false);
+  });
+
+  it("can report ambiguous program transients for review without hiding other failures", () => {
+    const signal = oneShot(220, 0.4, 0.02);
+    const at = Math.floor(0.24 * SR);
+    const spliceEnd = at + Math.floor(0.01 * SR);
+    for (let i = at; i < spliceEnd; i++) signal[i] += 0.4;
+    const report = analyzeArtifacts([signal]);
+
+    const review = evaluateArtifacts(report, { clickSeverity: "review" });
+    expect(review.ok).toBe(true);
+    expect(review.failures).toEqual([]);
+    expect(review.warnings[0]).toMatch(/potential discontinuity candidate/);
+    expect(evaluateArtifacts({ ...report, finite: false }, { clickSeverity: "review" }).failures).toContain(
+      "non-finite samples",
+    );
   });
 
   it("catches non-finite samples", () => {

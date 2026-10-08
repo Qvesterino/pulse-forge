@@ -11,6 +11,8 @@ import { MASTER_SIGNAL_NODE_ORDER, type MasterSignalNodeId } from "../mastering/
 import { isLiveAudioContext, isOfflineAudioContext } from "./liveContext";
 import type { MeteringRig } from "./meteringRig";
 
+const MASTER_MONITOR_BYPASS_FADE_SECONDS = 0.04;
+
 /** Master-stage handles the metering rig (and diagnostics) read. */
 export interface MasterStage {
   limiter: DynamicsCompressorNode | null;
@@ -177,12 +179,16 @@ export class MasterChain {
     const delayTime = this.masterBypassDelay?.delayTime;
     if (!ctx || !delayTime) return;
 
+    const config = this.deps.doc()?.master ?? defaultMasterConfig();
+
     const latencyOf = (runtime: EffectRuntime | null): number => {
       const value = runtime?.getLatencySec?.() ?? 0;
       return Number.isFinite(value) && value > 0 ? value : 0;
     };
     const requestedLatency =
-      latencyOf(this.masterTape) + latencyOf(this.masterGlue) + Math.max(0, this.deps.masterInsertLatencySec());
+      ((config.tapeEnabled ?? false) ? latencyOf(this.masterTape) : 0) +
+      ((config.glueEnabled ?? true) ? latencyOf(this.masterGlue) : 0) +
+      Math.max(0, this.deps.masterInsertLatencySec());
     const maximumAlignmentSec = 0.999;
     const target = Math.min(requestedLatency, maximumAlignmentSec);
     this.monitorBypassLatencyWarning =
@@ -229,7 +235,7 @@ export class MasterChain {
         param.cancelScheduledValues(now);
         param.setValueAtTime(current, now);
       }
-      param.linearRampToValueAtTime(target, now + 0.015);
+      param.linearRampToValueAtTime(target, now + MASTER_MONITOR_BYPASS_FADE_SECONDS);
     };
     setPath(wet, enabled ? 0 : 1);
     setPath(dry, enabled ? 1 : 0);
@@ -969,11 +975,14 @@ export class MasterChain {
     if (worklet) {
       // The look-ahead worklet drives limiting; the native node is held at a
       // neutral pass-through so the post-native metering tap measures the
-      // true final signal. Master settings: threshold rides the ceiling
-      // (soft-knee onset right where peaks must stop) with musical defaults.
+      // true final signal. Keep 0.2 dB below the user's true-peak ceiling to
+      // cover residual overshoot in the time-varying gain/reconstruction path;
+      // start full limiting 3.2 dB below that internal safety ceiling.
       const ceilingParam = Math.min(0, Math.max(-12, config.ceilingDb));
-      worklet.setParameter("ceiling", ceilingParam);
-      worklet.setParameter("threshold", ceilingParam);
+      const workletCeilingParam = ceilingParam - 0.2;
+      const thresholdParam = Math.max(-24, workletCeilingParam - 3.2);
+      worklet.setParameter("ceiling", workletCeilingParam);
+      worklet.setParameter("threshold", thresholdParam);
       worklet.setParameter("release", 0.12);
       worklet.setParameter("lookaheadMs", 5);
       worklet.setParameter("link", 1);

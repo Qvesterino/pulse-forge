@@ -14,6 +14,7 @@ import { tempoAtTick } from "../project-model/scene-time";
 import { normalizeProject } from "../project-model/schema";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
+import { assertClipEditable, clipGroupsWithoutIds } from "./clipGroups";
 import { unlinkMarkersOfClips } from "./docOps";
 
 /* ---------------- audioClips ---------------- */
@@ -413,15 +414,21 @@ export function compAudioTakeRange(
 }
 
 export function deleteAudioClip(doc: ProjectDocument, clipId: string): Command {
+  const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
+  assertClipEditable(clip ?? { locked: false }, "delete");
   // Markers linked to the deleted clip are unlinked in-command (same contract
   // as deleteArrangementClip) so no stale linkedClipId survives in saves.
   const unlinked = unlinkMarkersOfClips(doc.markers, new Set([clipId]));
+  // Group membership dies with the clip; a group down to zero members dies
+  // with it (same contract as deleteArrangementClip).
+  const clipGroups = clipGroupsWithoutIds(doc.arrangement.clipGroups, [clipId]);
   const next: ProjectDocument = {
     ...doc,
     ...(unlinked !== undefined ? { markers: unlinked } : {}),
     arrangement: {
       ...doc.arrangement,
       audioClips: (doc.arrangement.audioClips ?? []).filter((c) => c.id !== clipId),
+      ...(clipGroups !== doc.arrangement.clipGroups ? { clipGroups } : {}),
     },
   };
   return snapshot("deleteAudioClip", "Delete audio clip", doc, next);
@@ -482,6 +489,7 @@ export function clampClipFades(
 export function moveAudioClip(doc: ProjectDocument, clipId: string, startBar: number): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  assertClipEditable(clip, "move");
   if (!Number.isFinite(startBar)) return snapshot("moveAudioClip", "Move audio clip (no-op)", doc, doc);
   const bar = Math.max(0, quantizeAudioBar(startBar));
   const next: ProjectDocument = {
@@ -511,6 +519,7 @@ export function moveAudioClip(doc: ProjectDocument, clipId: string, startBar: nu
 export function slipAudioClip(doc: ProjectDocument, clipId: string, offsetSec: number): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  assertClipEditable(clip, "slip");
   const nextOffset = Number.isFinite(offsetSec) ? Math.max(0, offsetSec) : (clip.offsetSec ?? 0);
   if (nextOffset === (clip.offsetSec ?? 0)) return snapshot("slipAudioClip", "Slip audio clip (no-op)", doc, doc);
   const next: ProjectDocument = {
@@ -597,6 +606,7 @@ export function stretchAudioClip(
 ): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  assertClipEditable(clip, "stretch");
   if (!Number.isFinite(lengthBars)) return snapshot("stretchAudioClip", "Stretch audio clip (no-op)", doc, doc);
   const bars = Math.max(0.25, quantizeAudioBar(lengthBars));
   const rate = Number.isFinite(stretchRate) ? Math.round(Math.min(4, Math.max(0.25, stretchRate)) * 100) / 100 : 1;
@@ -617,6 +627,7 @@ export function stretchAudioClip(
 export function resizeAudioClip(doc: ProjectDocument, clipId: string, lengthBars: number): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  assertClipEditable(clip, "resize");
   if (!Number.isFinite(lengthBars)) return snapshot("resizeAudioClip", "Resize audio clip (no-op)", doc, doc);
   const bars = Math.max(0.25, quantizeAudioBar(lengthBars));
   // Fades must stay inside the resized clip (audit §8): the engine clamps
@@ -650,6 +661,7 @@ export function trimAudioClipStart(
 ): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  assertClipEditable(clip, "trim");
   const bars = Number.isFinite(patch.lengthBars) ? Math.max(0.25, quantizeAudioBar(patch.lengthBars)) : clip.lengthBars;
   const trimStart = Number.isFinite(patch.trimStart) ? Math.max(0, patch.trimStart) : clip.trimStart;
   const offsetSec = Number.isFinite(patch.offsetSec) ? Math.max(0, patch.offsetSec) : clip.offsetSec;

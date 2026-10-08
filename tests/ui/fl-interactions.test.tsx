@@ -91,25 +91,30 @@ describe("FL wheel adjust (ROADMAP-UI-2027 V3)", () => {
 });
 
 describe("StatusHint (live hint bar)", () => {
-  it("shows the hovered control's data-hint + value, falls back when nothing is hovered", async () => {
+  it("shows hovered or keyboard-focused control hints and falls back when none is active", async () => {
     const user = userEvent.setup();
     render(
-      <div>
+      <>
         <StatusHint fallback={<span data-testid="fallback">STATIC</span>} />
-        <div data-hint="TILT — tone tilt" data-hint-value="+3.0 dB">
-          <button type="button">the control</button>
-        </div>
-      </div>,
+        <Slider label="TILT" hint="tone tilt" value={3} min={-12} max={12} defaultValue={0} onCommit={() => {}} />
+      </>,
     );
     expect(screen.getByTestId("fallback")).toBeInTheDocument();
 
-    await user.hover(screen.getByRole("button", { name: "the control" }));
+    const control = screen.getByRole("slider", { name: "TILT" });
+    await user.hover(control);
     expect(screen.getByText("TILT — tone tilt")).toBeInTheDocument();
-    expect(screen.getByText("+3.0 dB")).toBeInTheDocument();
+    expect(screen.getByRole("status").textContent).toContain("3.00");
     expect(screen.queryByTestId("fallback")).not.toBeInTheDocument();
 
     await user.hover(document.body);
     expect(screen.getByTestId("fallback")).toBeInTheDocument();
+
+    await user.tab();
+    const liveHint = screen.getByRole("status");
+    expect(liveHint).toHaveAttribute("aria-live", "polite");
+    expect(liveHint).toHaveAttribute("aria-atomic", "true");
+    expect(liveHint).toHaveTextContent("TILT — tone tilt3.00");
   });
 
   it("Slider and DragNumber publish data-hint", () => {

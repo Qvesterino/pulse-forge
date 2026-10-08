@@ -14,7 +14,8 @@ import { toDb, truePeakOversampled } from "./metering";
  *  - a hard cut at the end of a one-shot (the de-click invariant) — measured
  *    as the amplitude of the last audible sample relative to the peak, which
  *    works whether or not the render has a silent tail;
- *  - isolated discontinuities inside the decay (a `length` p-lock or slice cut
+ *  - potential isolated discontinuities inside the decay (for example a
+ *    `length` p-lock or slice cut
  *    mid-body) via a curvature residual vs the local body, which ignores the
  *    intentional attack, smooth transients and smooth fades;
  *  - DC offset (asymmetric saturation leaking into the tail) via a sliding
@@ -70,7 +71,7 @@ export interface ArtifactReport {
    * hard cut reads ~0.5; a properly faded tail reads ≈ the tail threshold.
    */
   tailStepRatio: number;
-  /** Indices of isolated discontinuities after the attack. */
+  /** Indices of potential isolated discontinuities after the attack. */
   clickIndices: number[];
   /** Largest residual found, as a fraction of peak (diagnostics). */
   maxResidualRatio: number;
@@ -188,14 +189,15 @@ export function analyzeArtifacts(channels: readonly Float32Array[], options: Art
   }
   const tailStepRatio = peak > 0 && lastAudible >= 0 ? Math.abs(primary[lastAudible]) / peak : 0;
 
-  // Isolated discontinuities AFTER the attack. The attack itself is an
-  // intentional instantaneous onset (a kick starts at full amplitude).
+  // Isolated discontinuities after the attack neighborhood. Curvature at the
+  // onset sample also depends on its first following sample, so scan from two
+  // samples later to keep an intentional instantaneous onset out of the test.
   const clickIndices: number[] = [];
   let maxResidualRatio = 0;
   if (finite && peak > 0) {
     const window = Math.max(4, Math.round(cfg.clickWindow));
     const absoluteFloor = peak * cfg.clickResidualRatio;
-    for (let i = Math.max(attackIndex, 1); i < primary.length - 1; i++) {
+    for (let i = Math.max(attackIndex + 2, 1); i < primary.length - 1; i++) {
       const r = residualAt(primary, i);
       if (r <= absoluteFloor) continue;
       const rNorm = r / peak;
@@ -224,9 +226,16 @@ export function analyzeArtifacts(channels: readonly Float32Array[], options: Art
 export interface ArtifactVerdict {
   ok: boolean;
   failures: string[];
+  warnings: string[];
 }
 
 export interface ArtifactVerdictOptions extends ArtifactGateOptions {
+  /**
+   * Whether the isolated-discontinuity heuristic blocks a verdict or asks
+   * for review. Use `review` on complete mixes, where intentional transients
+   * cannot be distinguished from clicks using PCM curvature alone.
+   */
+  clickSeverity?: "error" | "review";
   /**
    * True-peak ceiling the render was expected to respect (the master limiter
    * ceiling); pass a value slightly above it to allow oversampling slack.
@@ -241,11 +250,12 @@ export interface ArtifactVerdictOptions extends ArtifactGateOptions {
 }
 
 /**
- * Evaluate a report against the gate. Returns every failure so a caller can
- * see all defects at once, not just the first.
+ * Evaluate a report against the gate. Returns every failure and review warning
+ * so a caller can see all findings at once, not just the first.
  */
 export function evaluateArtifacts(report: ArtifactReport, options: ArtifactVerdictOptions = {}): ArtifactVerdict {
   const failures: string[] = [];
+  const warnings: string[] = [];
   if (!report.finite) failures.push("non-finite samples");
   if (report.peak <= 0) failures.push("silent render");
   if (options.dcCeilingDb !== undefined && report.dcOffsetDb > options.dcCeilingDb) {
@@ -255,14 +265,14 @@ export function evaluateArtifacts(report: ArtifactReport, options: ArtifactVerdi
     failures.push(`hard tail cut (last sample ${report.tailStepRatio.toFixed(3)} of peak)`);
   }
   if (report.clickIndices.length > 0) {
-    failures.push(
-      `${report.clickIndices.length} isolated discontinuity(ies) at ${report.clickIndices.slice(0, 4).join(",")}`,
-    );
+    const discontinuity = `${report.clickIndices.length} potential discontinuity candidate(s) at ${report.clickIndices.slice(0, 4).join(",")}`;
+    if (options.clickSeverity === "review") warnings.push(discontinuity);
+    else failures.push(discontinuity);
   }
   if (options.ceilingDb !== undefined && report.truePeakDb > options.ceilingDb) {
     failures.push(`true peak ${report.truePeakDb.toFixed(2)} dBTP over ceiling ${options.ceilingDb} dBTP`);
   }
-  return { ok: failures.length === 0, failures };
+  return { ok: failures.length === 0, failures, warnings };
 }
 
 /**

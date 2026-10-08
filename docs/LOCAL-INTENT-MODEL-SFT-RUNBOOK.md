@@ -219,8 +219,13 @@ capability (competition-grade or mix/mastering control):
 ## 10. Historical eval snapshots — LFM2.5 SFT (2026-09-30)
 
 These are checkpoint-specific historical measurements, not the pinned
-release baseline. The SFT trainer's raw teacher-exact score (34/60) and this
-runtime evaluator's attempted-exact score (45/51) are different metrics.
+release baseline. This snapshot's runtime evaluator (45/51 attempted-exact,
+51 rows) and the trainer's own quick-val are different metrics on different
+denominators. The trainer score quoted in earlier revisions of this file
+(34/60) does not match any committed `sft-report.json` — the v31 report
+recorded 26/60 and the v32 report 58/60 — so treat it as a transcription
+error, not a measurement. Current generation figures are in the comparison
+table below.
 The repository currently lacks a single machine-readable report that binds
 both to one exact GGUF/model hash, tokenizer, quantization, dataset hashes
 and evaluator revision.

@@ -692,6 +692,13 @@ export interface ArrangementClip {
   sceneOffsetTicks?: number;
   /** Per-clip loop flag. Falls back to the referenced scene's `loop` if absent. */
   loop?: boolean;
+  /**
+   * Clip-level lock: direct editing verbs (move/resize/trim/split/delete)
+   * refuse the clip at command level, so every entry point — UI, MCP, intent
+   * — is covered. Non-destructive verbs (mute, duplicate, selection) stay
+   * allowed. Absent = unlocked.
+   */
+  locked?: boolean;
 }
 
 export interface ArrangementTransition {
@@ -754,6 +761,13 @@ export interface AudioClip {
    */
   warpMarkers?: Array<{ timeSec: number; tick: number }>;
   /**
+   * Clip-level lock: direct editing verbs (move/resize/trim/split/slip/
+   * stretch/delete) refuse the clip at command level, so every entry point —
+   * UI, MCP, intent — is covered. Non-destructive verbs (mute, duplicate,
+   * selection) stay allowed. Absent = unlocked.
+   */
+  locked?: boolean;
+  /**
    * Clip-level mute (B3): the clip is skipped by playback entirely —
    * `audioClipsForPlayback` filters it out, so scheduler, offline render and
    * the live-editing resume all agree through one choke point. Absent =
@@ -773,11 +787,25 @@ export interface AudioTakeGroup {
   compTakeId?: ID;
 }
 
+/**
+ * A user-declared group of timeline clips (B3-follow-up "grouping"): moving
+ * any member moves the whole group, and selection gestures expand to the
+ * members. A clip belongs to at most ONE group — `groupClips` moves
+ * membership — and a group dies with its last member. Membership references
+ * BOTH clip systems; groups are pure edit ergonomics (no audio semantics).
+ */
+export interface ClipGroup {
+  id: ID;
+  name?: string;
+  clipIds: ID[];
+}
+
 export interface Arrangement {
   clips: ArrangementClip[];
   audioClips?: AudioClip[];
   takeGroups?: AudioTakeGroup[];
   transitions?: ArrangementTransition[];
+  clipGroups?: ClipGroup[];
 }
 
 export type AutomationParamKind = "trackGain" | "trackPan" | "fxParam" | "instParam";

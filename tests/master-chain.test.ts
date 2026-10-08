@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { MasterChain } from "../src/audio-engine/masterChain";
 import type { MeteringRig } from "../src/audio-engine/meteringRig";
+import { defaultMasterConfig } from "../src/project-model/schema";
+import type { ProjectDocument } from "../src/project-model/types";
 
 /**
  * Wave 4b (AudioEngine decomposition) — MasterChain pins.
@@ -107,12 +109,14 @@ describe("MasterChain monitor bypass", () => {
     const wetGain = makeParam(1);
     const dryGain = makeParam(0);
     const ctx = { currentTime: 2, sampleRate: 48_000 } as BaseAudioContext;
+    const master = { ...defaultMasterConfig(), tapeEnabled: true, glueEnabled: true };
+    const document = { master } as ProjectDocument;
     let tapeLatency = 0.004;
     let glueLatency = 0.01;
     let insertLatency = 0.02;
     const chain = new MasterChain({
       ctx: () => ctx,
-      doc: () => null,
+      doc: () => document,
       metering: {} as MeteringRig,
       masterInsertLatencySec: () => insertLatency,
     });
@@ -132,6 +136,10 @@ describe("MasterChain monitor bypass", () => {
         tapeLatency = tape;
         glueLatency = glue;
         insertLatency = inserts;
+      },
+      setStagesEnabled: (tape: boolean, glue: boolean) => {
+        master.tapeEnabled = tape;
+        master.glueEnabled = glue;
       },
     };
   };
@@ -165,29 +173,86 @@ describe("MasterChain monitor bypass", () => {
     expect(delayTime.calls.some((call) => call.method === "setTargetAtTime")).toBe(false);
   });
 
-  it("crossfades wet and latency-aligned dry paths together and holds automation on rapid toggles", () => {
+  it("excludes disabled built-in stages from monitor-bypass latency alignment", () => {
+    const { chain, delayTime, setStagesEnabled } = makeHarness();
+
+    setStagesEnabled(false, false);
+    chain.syncMonitorBypassLatency();
+    expect(delayTime.calls.at(-1)).toEqual({ method: "setTargetAtTime", args: [0.02, 2, 0.015] });
+
+    setStagesEnabled(true, false);
+    chain.syncMonitorBypassLatency();
+    expect(delayTime.calls.at(-1)).toEqual({ method: "setTargetAtTime", args: [0.024, 2, 0.015] });
+  });
+
+  it("crossfades wet and latency-aligned dry paths over 40ms and holds automation on rapid toggles", () => {
     const { chain, wetGain, dryGain } = makeHarness();
 
     chain.setBypassed(true);
     expect(chain.isBypassed).toBe(true);
     expect(wetGain.calls.slice(-2)).toEqual([
       { method: "cancelAndHoldAtTime", args: [2] },
-      { method: "linearRampToValueAtTime", args: [0, 2.015] },
+      { method: "linearRampToValueAtTime", args: [0, 2.04] },
     ]);
     expect(dryGain.calls.slice(-2)).toEqual([
       { method: "cancelAndHoldAtTime", args: [2] },
-      { method: "linearRampToValueAtTime", args: [1, 2.015] },
+      { method: "linearRampToValueAtTime", args: [1, 2.04] },
     ]);
 
     chain.setBypassed(false);
     expect(chain.isBypassed).toBe(false);
     expect(wetGain.calls.slice(-2)).toEqual([
       { method: "cancelAndHoldAtTime", args: [2] },
-      { method: "linearRampToValueAtTime", args: [1, 2.015] },
+      { method: "linearRampToValueAtTime", args: [1, 2.04] },
     ]);
     expect(dryGain.calls.slice(-2)).toEqual([
       { method: "cancelAndHoldAtTime", args: [2] },
-      { method: "linearRampToValueAtTime", args: [0, 2.015] },
+      { method: "linearRampToValueAtTime", args: [0, 2.04] },
     ]);
+  });
+});
+
+describe("MasterChain limiter delivery", () => {
+  it("applies the user ceiling, internal true-peak reserve, and knee to the live worklet", () => {
+    const nativeParam = () => ({ value: 123 });
+    const nativeLimiter = {
+      threshold: nativeParam(),
+      knee: nativeParam(),
+      ratio: nativeParam(),
+      attack: nativeParam(),
+      release: nativeParam(),
+    } as unknown as DynamicsCompressorNode;
+    const workletParameters: Record<string, number> = {};
+    const chain = new MasterChain({
+      ctx: () => null,
+      doc: () => null,
+      metering: {} as MeteringRig,
+    });
+    Object.assign(chain, {
+      master: {},
+      masterClipper: { curve: null },
+      masterLimiter: nativeLimiter,
+      masterLimiterWorklet: {
+        setParameter: (name: string, value: number) => {
+          workletParameters[name] = value;
+        },
+      },
+    });
+
+    chain.applyMasterConfig({ ...defaultMasterConfig(), ceilingDb: -1, limiterEnabled: true });
+    expect(workletParameters).toEqual({
+      ceiling: -1.2,
+      threshold: -4.4,
+      release: 0.12,
+      lookaheadMs: 5,
+      link: 1,
+      mix: 1,
+    });
+    expect(nativeLimiter.threshold.value).toBe(0);
+    expect(nativeLimiter.ratio.value).toBe(1);
+
+    chain.applyMasterConfig({ ...defaultMasterConfig(), ceilingDb: -20, limiterEnabled: true });
+    expect(workletParameters.ceiling).toBeCloseTo(-12.2, 10);
+    expect(workletParameters.threshold).toBeCloseTo(-15.4, 10);
   });
 });

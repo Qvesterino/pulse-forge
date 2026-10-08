@@ -1,5 +1,5 @@
 export type AssetCategory =
-  "Kick" | "Snare" | "Clap" | "Hat" | "Cymbal" | "Crash" | "Tom" | "Rim" | "Percussion" | "Bass" | "Tonal" | "FX";
+  "Kick" | "Snare" | "Clap" | "Hat" | "Cymbal" | "Crash" | "Tom" | "Rim" | "Percussion" | "Bass" | "Tonal" | "Lead" | "FX";
 
 /** Mood/usage descriptors for curated browsing (FEATURES.md §23 character tags). */
 export type AssetMood = "dark" | "bright" | "warm" | "aggressive" | "clean" | "deep" | "atmosphere";
@@ -649,6 +649,114 @@ export const FACTORY_ASSETS: FactoryAsset[] = [
     character: "Saturated, Mid-Forward",
     tags: ["bass", "drive", "distorted", "phonk", "drill"],
     mood: ["aggressive", "warm"],
+  },
+
+  /* ---------------- Bass expand (Priority 1 wave, UN-SUNO bass-lane feed) ---------------- */
+  {
+    id: "factory.bass.808.soft",
+    name: "808 Soft",
+    category: "Bass",
+    character: "Melodic 808, Short and Clean",
+    tags: ["bass", "808", "melodic", "trap", "soft"],
+    mood: ["deep", "clean"],
+  },
+  {
+    id: "factory.bass.808.medium",
+    name: "808 Medium",
+    category: "Bass",
+    character: "Melodic 808, Medium Drive",
+    tags: ["bass", "808", "melodic", "trap"],
+    mood: ["deep", "dark"],
+  },
+  {
+    id: "factory.bass.808.hard",
+    name: "808 Hard",
+    category: "Bass",
+    character: "Melodic 808, Long and Driven",
+    tags: ["bass", "808", "melodic", "trap", "hard"],
+    mood: ["aggressive", "dark"],
+  },
+  {
+    id: "factory.bass.subsine",
+    name: "Sub Sine",
+    category: "Bass",
+    character: "Held Pure Sub",
+    tags: ["bass", "sub", "held", "deep-house", "techno"],
+    mood: ["deep", "clean"],
+  },
+  {
+    id: "factory.bass.subsquare",
+    name: "Sub Square",
+    category: "Bass",
+    character: "Held Hollow Sub",
+    tags: ["bass", "sub", "square", "grime", "dubstep"],
+    mood: ["dark", "aggressive"],
+  },
+  {
+    id: "factory.bass.upright",
+    name: "Upright Jazz Bass",
+    category: "Bass",
+    character: "Plucked Acoustic, Walking",
+    tags: ["bass", "upright", "jazz", "acoustic", "boombap"],
+    mood: ["warm", "clean"],
+  },
+  {
+    id: "factory.bass.acid.fast",
+    name: "Acid Bass Fast",
+    category: "Bass",
+    character: "303 Squelch, Short Accent",
+    tags: ["bass", "acid", "303", "fast", "techno"],
+    mood: ["aggressive", "bright"],
+  },
+  {
+    id: "factory.bass.acid.slow",
+    name: "Acid Bass Slow",
+    category: "Bass",
+    character: "303 Squelch, Held Line",
+    tags: ["bass", "acid", "303", "slow", "techno"],
+    mood: ["dark", "aggressive"],
+  },
+
+  /* ---------------- Lead (Priority 1 wave, UN-SUNO lead-lane feed) ---------------- */
+  {
+    id: "factory.lead.saw",
+    name: "Saw Lead",
+    category: "Lead",
+    character: "Workhorse Detuned Saw",
+    tags: ["lead", "saw", "mono", "default"],
+    mood: ["bright", "aggressive"],
+  },
+  {
+    id: "factory.lead.supersaw",
+    name: "Supersaw Lead",
+    category: "Lead",
+    character: "Seven-Saw Anthem Stack",
+    tags: ["lead", "supersaw", "wide", "anthem", "trance"],
+    mood: ["bright", "aggressive"],
+  },
+  {
+    id: "factory.lead.square",
+    name: "Square Lead",
+    category: "Lead",
+    character: "Hollow Chiptune Lead",
+    tags: ["lead", "square", "chiptune", "eurodance"],
+    mood: ["bright", "clean"],
+  },
+  {
+    id: "factory.lead.pluck.bright",
+    name: "Lead Pluck Bright",
+    category: "Lead",
+    character: "Trance Filter Pluck",
+    tags: ["lead", "pluck", "trance", "bright", "filter"],
+    mood: ["bright", "aggressive"],
+  },
+  {
+    id: "factory.lead.pluck.dark",
+    name: "Lead Pluck Dark",
+    category: "Lead",
+    character: "Progressive Dark Pluck",
+    tags: ["lead", "pluck", "prog", "dark", "filter"],
+    mood: ["dark", "warm"],
   },
 
   /* ---------------- FX & transitions ---------------- */

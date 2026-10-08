@@ -829,6 +829,7 @@ test.describe("17 — mastering workspace", () => {
       doc.master = { ...doc.master, tapeEnabled: false, glueEnabled: false, limiterEnabled: false };
       engine.setProject(doc);
       await settleProject(engine);
+      const activeBypassLatencyTargetSec = latencyWrites.at(-1) ?? Number.NaN;
 
       const captureModuleUrl = new URL("/parity-capture-worklet.js", location.href).href;
       await originalAddModule(captureModuleUrl);
@@ -1050,6 +1051,7 @@ test.describe("17 — mastering workspace", () => {
         fallback,
         gateLatencySec,
         bypassLatencyTargetSec,
+        activeBypassLatencyTargetSec,
         liveGateHandlerInstalled: liveHandlerWasInstalled,
         oldGateDisposed,
         dryMonitorPeak,
@@ -1074,6 +1076,7 @@ test.describe("17 — mastering workspace", () => {
     expect(facts.gateLatencySec).toBeLessThan(0.0026);
     expect(facts.bypassLatencyTargetSec).toBeGreaterThan(facts.gateLatencySec);
     expect(facts.bypassLatencyTargetSec).toBeLessThan(facts.gateLatencySec + 0.0003);
+    expect(Math.abs(facts.activeBypassLatencyTargetSec - facts.gateLatencySec) * 44100).toBeLessThanOrEqual(1);
     expect(facts.liveGateHandlerInstalled).toBe(true);
     expect(
       facts.oldGateDisposed,

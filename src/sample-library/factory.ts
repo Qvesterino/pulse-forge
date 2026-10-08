@@ -748,6 +748,111 @@ function shakerLong(): Builder {
 
 const C4 = 261.63;
 
+/** Saw lead — the workhorse mono lead: a saw at A3 with a slight detune
+ * pair, medium-lowpass body and a fast-decaying vibrato-free envelope.
+ * The "default melody voice" the lead lane never had — bright enough to
+ * cut, dark enough to sit. */
+function leadSaw(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 220; // A3
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = 3200;
+    lpf.Q.value = 0.7;
+    lpf.connect(dest);
+    for (const detune of [-6, 6]) {
+      const osc = ctx.createOscillator();
+      osc.type = "sawtooth";
+      osc.frequency.value = f;
+      osc.detune.value = detune;
+      osc.connect(env(ctx, t0, 0.3, 0.5)).connect(lpf);
+      osc.start(t0);
+      osc.stop(t0 + 1.1);
+    }
+  };
+}
+
+/** Supersaw — the big-room stack: seven detuned saws across ±22 cents with
+ * a slow-attack body and a bright highpass shelf so the width reads even
+ * on a mono render. The ANTHEM voice. */
+function leadSupersaw(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 220; // A3
+    const hpf = ctx.createBiquadFilter();
+    hpf.type = "highpass";
+    hpf.frequency.value = 180;
+    hpf.connect(dest);
+    const detunes = [-22, -15, -8, 0, 8, 15, 22];
+    detunes.forEach((detune, index) => {
+      const osc = ctx.createOscillator();
+      osc.type = "sawtooth";
+      osc.frequency.value = f;
+      osc.detune.value = detune;
+      osc.connect(env(ctx, t0, 0.13, 0.8)).connect(hpf);
+      osc.start(t0 + index * 0.004);
+      osc.stop(t0 + 1.4);
+    });
+  };
+}
+
+/** Square lead — the chiptune/eurodance lead: a hollow square at A3 with
+ * PWM feel via a 2nd square an octave up at low level. Bright and
+ * synthetic — the 8-bit/eurodance pocket. */
+function leadSquare(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 220; // A3
+    const vca = ctx.createGain();
+    vca.gain.setValueAtTime(0, t0);
+    vca.gain.linearRampToValueAtTime(1, t0 + 0.01);
+    vca.gain.setTargetAtTime(0.0005, t0 + 0.04, 0.3);
+    vca.connect(dest);
+    const osc = ctx.createOscillator();
+    osc.type = "square";
+    osc.frequency.value = f;
+    osc.connect(vca);
+    osc.start(t0);
+    osc.stop(t0 + 0.9);
+    const oct = ctx.createOscillator();
+    oct.type = "square";
+    oct.frequency.value = f * 2;
+    const g = ctx.createGain();
+    g.gain.value = 0.22;
+    oct.connect(g).connect(vca);
+    oct.start(t0);
+    oct.stop(t0 + 0.9);
+  };
+}
+
+/** Lead pluck BRIGHT — the trance/progressive pluck: a saw at A4 through a
+ * resonant lowpass with a FAST filter drop. The "pluck.lead" pocket the
+ * tonal family's bright pluck fills on the tonal side; this one is the
+ * LEAD side: brighter (5.6 kHz), longer (0.45 s), detune pair for width. */
+function leadPluck(bright: boolean): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 440; // A4
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.setValueAtTime(bright ? 5600 : 1900, t0);
+    lpf.frequency.exponentialRampToValueAtTime(bright ? 900 : 420, t0 + 0.3);
+    lpf.Q.value = bright ? 1.9 : 1.1;
+    lpf.connect(dest);
+    const decay = bright ? 0.3 : 0.55;
+    for (const detune of bright ? [-4, 4] : [0]) {
+      const osc = ctx.createOscillator();
+      osc.type = "sawtooth";
+      osc.frequency.value = f;
+      osc.detune.value = detune;
+      osc.connect(env(ctx, t0, 0.34, decay)).connect(lpf);
+      osc.start(t0);
+      osc.stop(t0 + 0.9);
+    }
+  };
+}
+
 function pluck(): Builder {
   return (ctx, dest) => {
     const t0 = ctx.currentTime;
@@ -1456,6 +1561,174 @@ function bassPluck(): Builder {
       .connect(bp)
       .connect(env(ctx, t0, 0.22, 0.012))
       .connect(dest);
+  };
+}
+
+/** 808 VELOCITY — the melodic-trap 808 as a velocity-expressive voice: a
+ * pitch-dropping sine whose ATTACK CLICK, DRIVE and DECAY all scale with
+ * velocity. This is the single-asset stand-in for the 3-zone velocity bank
+ * (soft = short+clean, medium = medium drive, hard = long+driven): the
+ * builder takes the velocity zone at render time, so the seed script emits
+ * three WAVs from one voice. Zone parameters measured against the
+ * sub808/808drive kicks so the melodic voice stays its own pocket. */
+export function bass808(zone: "soft" | "medium" | "hard"): Builder {
+  const cfg = {
+    soft: { startHz: 90, endHz: 36.71, drive: 0.0, click: 0.12, decay: 0.35 }, // F1
+    medium: { startHz: 120, endHz: 36.71, drive: 0.18, click: 0.3, decay: 0.55 },
+    hard: { startHz: 150, endHz: 36.71, drive: 0.32, click: 0.45, decay: 0.85 },
+  }[zone];
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const vca = ctx.createGain();
+    vca.gain.setValueAtTime(0, t0);
+    vca.gain.linearRampToValueAtTime(1, t0 + 0.008);
+    vca.gain.setTargetAtTime(0.0005, t0 + 0.09, cfg.decay);
+    const shaper = ctx.createWaveShaper();
+    const curve = new Float32Array(1024);
+    for (let i = 0; i < 1024; i++) {
+      const x = (i / 1023) * 2 - 1;
+      curve[i] = Math.tanh(x * (1 + cfg.drive * 6)) / Math.tanh(1 + cfg.drive * 6);
+    }
+    shaper.curve = curve;
+    vca.connect(shaper).connect(dest);
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(cfg.startHz, t0);
+    osc.frequency.exponentialRampToValueAtTime(cfg.endHz, t0 + 0.07);
+    osc.connect(vca);
+    osc.start(t0);
+    osc.stop(t0 + 1.6);
+    if (cfg.click > 0) {
+      const click = noiseSource(ctx, 71, 0.006, t0);
+      const hp = ctx.createBiquadFilter();
+      hp.type = "highpass";
+      hp.frequency.value = 900;
+      click.connect(hp).connect(env(ctx, t0, cfg.click, 0.01)).connect(dest);
+    }
+  };
+}
+
+/** Sub sine — the deep-house/techno sub layer: pure sine at F1 with the
+ * barest 2nd harmonic so a phone speaker still hints the pitch. The quiet
+ * counterpart to the 808's drive: no click, no pitch drop — a HELD sub. */
+function bassSubSine(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 43.65; // F1
+    const vca = ctx.createGain();
+    vca.gain.setValueAtTime(0, t0);
+    vca.gain.linearRampToValueAtTime(1, t0 + 0.02);
+    vca.gain.setValueAtTime(1, t0 + 1.1);
+    vca.gain.setTargetAtTime(0.0005, t0 + 1.1, 0.18);
+    vca.connect(dest);
+    for (const [ratio, level] of [
+      [1, 0.95],
+      [2, 0.05],
+    ] as [number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = f * ratio;
+      const g = ctx.createGain();
+      g.gain.value = level;
+      osc.connect(g).connect(vca);
+      osc.start(t0);
+      osc.stop(t0 + 1.8);
+    }
+  };
+}
+
+/** Sub square — the grime/dubstep sub: a square at F1 lowpassed just enough
+ * to keep the odd harmonics (that hollow reed) without buzz. Sits between
+ * the sine (pure) and the wobble (moving). */
+function bassSubSquare(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 43.65; // F1
+    const vca = ctx.createGain();
+    vca.gain.setValueAtTime(0, t0);
+    vca.gain.linearRampToValueAtTime(1, t0 + 0.012);
+    vca.gain.setTargetAtTime(0.0005, t0 + 0.5, 0.5);
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = 260;
+    lpf.Q.value = 0.8;
+    vca.connect(lpf).connect(dest);
+    const osc = ctx.createOscillator();
+    osc.type = "square";
+    osc.frequency.value = f;
+    osc.connect(vca);
+    osc.start(t0);
+    osc.stop(t0 + 1.8);
+  };
+}
+
+/** Upright jazz bass — the walking-bass voice: a plucked fundamental at E1
+ * with a soft thump body, short percussive attack (the finger), and a
+ * woody 3rd partial. Dark and round — the anti-synth bass, which is the
+ * point: jazz/boombap/lounge lanes finally have their instrument. */
+function bassUpright(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 41.2; // E1
+    const vca = ctx.createGain();
+    vca.gain.setValueAtTime(0, t0);
+    vca.gain.linearRampToValueAtTime(1, t0 + 0.01);
+    vca.gain.setTargetAtTime(0.0005, t0 + 0.06, 0.22);
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = 480;
+    vca.connect(lpf).connect(dest);
+    for (const [ratio, level] of [
+      [1, 0.78],
+      [2, 0.1],
+      [3, 0.07],
+    ] as [number, number][]) {
+      const osc = ctx.createOscillator();
+      osc.type = "triangle";
+      osc.frequency.value = f * ratio;
+      const g = ctx.createGain();
+      g.gain.value = level;
+      osc.connect(g).connect(vca);
+      osc.start(t0);
+      osc.stop(t0 + 1.0);
+    }
+    // The finger thump: a soft low noise burst, the humanizing attack.
+    const thump = noiseSource(ctx, 91, 0.03, t0);
+    const lp2 = ctx.createBiquadFilter();
+    lp2.type = "lowpass";
+    lp2.frequency.value = 700;
+    thump.connect(lp2).connect(env(ctx, t0, 0.25, 0.03)).connect(dest);
+  };
+}
+
+/** Acid bass — the 303 voice: a saw at C2 into a resonant lowpass whose
+ * frequency SWEEPS with the envelope (the squelch). Two rata: `fast` is
+ * the classic short accent (decay 0.14), `slow` the held filter-fodder
+ * line (decay 0.5, deeper sweep). */
+export function bassAcid(rate: "fast" | "slow"): Builder {
+  const cfg = rate === "fast" ? { decay: 0.14, sweep: 2400, q: 7 } : { decay: 0.5, sweep: 3400, q: 9 };
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const f = 65.41; // C2
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.setValueAtTime(cfg.sweep, t0);
+    lpf.frequency.exponentialRampToValueAtTime(220, t0 + cfg.decay * 1.6);
+    lpf.Q.value = cfg.q;
+    lpf.connect(dest);
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.value = f;
+    osc.connect(lpf).connect(env(ctx, t0, 0.55, cfg.decay));
+    osc.start(t0);
+    osc.stop(t0 + 1.0);
+    // Sub anchor under the squelch (a bare 303 thins on small speakers).
+    const sub = ctx.createOscillator();
+    sub.type = "sine";
+    sub.frequency.value = f;
+    sub.connect(env(ctx, t0, 0.3, cfg.decay * 1.2)).connect(dest);
+    sub.start(t0);
+    sub.stop(t0 + 1.0);
   };
 }
 
@@ -3433,6 +3706,17 @@ export const BUILDERS: Record<string, Builder> = {
     lpfHz: 9000,
   }),
   "factory.tonal.wurli": wurli(),
+
+  // Lead expand wave (Priority 1, UN-SUNO lead-lane feed): the mono lead
+  // voices the bank never had. The sampler's default was a tonal pluck —
+  // every UN-SUNO lead sounded like the same pluck. Now the lead lane has
+  // a real palette: workhorse saw, anthem supersaw, chiptune square, and
+  // two filter plucks (bright trance / dark prog).
+  "factory.lead.saw": leadSaw(),
+  "factory.lead.supersaw": leadSupersaw(),
+  "factory.lead.square": leadSquare(),
+  "factory.lead.pluck.bright": leadPluck(true),
+  "factory.lead.pluck.dark": leadPluck(false),
   "factory.tonal.organ": organ(),
   "factory.tonal.acousticguitar": acousticGuitar(),
   "factory.tonal.choirpad": choirPad(),
@@ -3464,6 +3748,18 @@ export const BUILDERS: Record<string, Builder> = {
   "factory.bass.pluck": bassPluck(),
   "factory.bass.wobble": bassWobble(),
   "factory.bass.dist": bassDist(),
+
+  // Bass expand wave (Priority 1, UN-SUNO bass-lane feed): the melodic 808
+  // as velocity zones, held subs, the upright jazz voice, and the acid
+  // squelch at two rates — every one a pocket the six originals leave open.
+  "factory.bass.808.soft": bass808("soft"),
+  "factory.bass.808.medium": bass808("medium"),
+  "factory.bass.808.hard": bass808("hard"),
+  "factory.bass.subsine": bassSubSine(),
+  "factory.bass.subsquare": bassSubSquare(),
+  "factory.bass.upright": bassUpright(),
+  "factory.bass.acid.fast": bassAcid("fast"),
+  "factory.bass.acid.slow": bassAcid("slow"),
 
   // Pop wave (vocal-first + thin-spot fill): tight pop kick, stacked pop
   // clap, bright crash, floor tom, clicky rim, driving shaker, kalimba and
@@ -3642,6 +3938,19 @@ export const DURATIONS: Record<string, number> = {
   "factory.bass.pluck": 0.5,
   "factory.bass.wobble": 1.8,
   "factory.bass.dist": 1.5,
+  "factory.bass.808.soft": 1.2,
+  "factory.bass.808.medium": 1.5,
+  "factory.bass.808.hard": 1.8,
+  "factory.bass.subsine": 1.8,
+  "factory.bass.subsquare": 1.8,
+  "factory.bass.upright": 1.0,
+  "factory.bass.acid.fast": 0.6,
+  "factory.bass.acid.slow": 1.1,
+  "factory.lead.saw": 1.1,
+  "factory.lead.supersaw": 1.4,
+  "factory.lead.square": 0.9,
+  "factory.lead.pluck.bright": 0.9,
+  "factory.lead.pluck.dark": 0.9,
 };
 
 /**

@@ -12,6 +12,7 @@ import type { AudioClip, IntensityPoint, ProjectDocument } from "../project-mode
 import { MAX_ARRANGEMENT_CLIP_BARS } from "../project-model/schema";
 import { snapshot } from "./core";
 import { markerClampPatch, unlinkMarkersOfClips } from "./docOps";
+import { assertClipEditable } from "./clipGroups";
 import { transitionsForClips } from "./arrangement";
 
 /* ---------------- scenes (intensity / loop) ---------------- */ export function setSceneIntensity(
@@ -130,6 +131,9 @@ function rippleShiftAudioClips(
 export function moveArrangementClipRipple(doc: ProjectDocument, clipId: string, startBar: number): Command {
   const clip = doc.arrangement.clips.find((c) => c.id === clipId);
   if (!clip) throw new Error(`Clip ${clipId} not found`);
+  // Lock guard covers the RIPPLE TARGET; tail clips flowing past a locked
+  // clip are a documented v1 boundary.
+  assertClipEditable(clip, "move");
   if (!Number.isFinite(startBar)) return snapshot("moveArrangementClipRipple", "Ripple move (no-op)", doc, doc);
   // RIPPLE LEFT FLOOR: the moved clip stops at the end of whatever sits
   // before it (0 when the lane is clear to the origin). An unclamped
@@ -169,6 +173,9 @@ export function moveArrangementClipRipple(doc: ProjectDocument, clipId: string, 
 export function resizeArrangementClipRipple(doc: ProjectDocument, clipId: string, lengthBars: number): Command {
   const clip = doc.arrangement.clips.find((c) => c.id === clipId);
   if (!clip) throw new Error(`Clip ${clipId} not found`);
+  // Lock guard covers the RIPPLE TARGET; tail clips flowing past a locked
+  // clip are a documented v1 boundary.
+  assertClipEditable(clip, "resize");
   if (!Number.isFinite(lengthBars)) return snapshot("resizeArrangementClipRipple", "Ripple resize (no-op)", doc, doc);
   // Same rendering invariant as resizeArrangementClip — see the comment there.
   const bars = Math.min(MAX_ARRANGEMENT_CLIP_BARS, Math.max(1, Math.round(lengthBars)));
@@ -200,6 +207,9 @@ export function resizeArrangementClipRipple(doc: ProjectDocument, clipId: string
 export function deleteArrangementClipRipple(doc: ProjectDocument, clipId: string): Command {
   const clip = doc.arrangement.clips.find((c) => c.id === clipId);
   if (!clip) throw new Error(`Clip ${clipId} not found`);
+  // Lock guard covers the RIPPLE TARGET; tail clips flowing past a locked
+  // clip are a documented v1 boundary.
+  assertClipEditable(clip, "delete");
   const oldEnd = clip.startBar + clip.lengthBars;
   const clips = doc.arrangement.clips
     .filter((c) => c.id !== clipId)

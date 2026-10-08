@@ -261,7 +261,7 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     expect(queueFx).toMatch(/this\.ctx\s*!==\s*ctx/);
   });
 
-  it("applyMasterConfig() passes the master ceiling to the native limiter in dBFS", () => {
+  it("applyMasterConfig() derives a true-peak limiter knee below the master ceiling", () => {
     // DynamicsCompressorNode.threshold is a dBFS AudioParam. A regression to
     // the old linear-amplitude conversion makes negative ceilings invalid,
     // causes browser warnings, and silently changes the limiter's behaviour.
@@ -271,6 +271,10 @@ describe("AudioEngine — lifecycle hardening (source-grep)", () => {
     expect(body, "applyMasterConfig not found in masterChain.ts").not.toBe("");
     expect(body).toMatch(/const ceilingDb\s*=\s*Math\.min\(0,\s*Math\.max\(-12,\s*config\.ceilingDb\)\)/);
     expect(body).toMatch(/this\.masterLimiter\.threshold\.value\s*=\s*ceilingDb/);
+    expect(body).toMatch(/const workletCeilingParam\s*=\s*ceilingParam\s*-\s*0\.2/);
+    expect(body).toMatch(/const thresholdParam\s*=\s*Math\.max\(-24,\s*workletCeilingParam\s*-\s*3\.2\)/);
+    expect(body).toMatch(/worklet\.setParameter\("ceiling",\s*workletCeilingParam\)/);
+    expect(body).toMatch(/worklet\.setParameter\("threshold",\s*thresholdParam\)/);
     expect(body).not.toMatch(/Math\.pow\(10,\s*config\.ceilingDb\s*\/\s*20\)/);
   });
 

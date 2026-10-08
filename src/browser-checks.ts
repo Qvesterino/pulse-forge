@@ -3914,27 +3914,29 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
   {
     // ARTIFACT GATE — the numerical defect check over REAL renders. This is
     // what locks the de-click tail and the round-robin work into CI: a broken
-    // fade, a slice cut, a NaN stage or an over-ceiling true peak fails here
-    // instead of shipping. Renders a representative spread of genres (each
-    // with its own kit swaps, layers and groove feel) plus a p-locked length
-    // cut, which is the exact case the de-click tail exists for.
+    // fade, a NaN stage or an over-ceiling true peak fails here instead of
+    // shipping. The PCM-only one-shot discontinuity heuristic reports
+    // full-mix candidates for review; it cannot identify intentional attacks.
+    // Renders use representative genres and the renderer's normal effect tail.
     const failures: string[] = [];
     const reports: string[] = [];
     for (const templateId of ["house", "techno", "trap", "drill", "phonk", "jersey", "dnb", "ambient"] as const) {
       try {
         const doc = createProjectFromTemplate(templateId);
-        const rendered = await renderProject(doc, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.4 });
+        const rendered = await renderProject(doc, bank, { mode: "pattern", sampleRate: SR });
         const channels = Array.from({ length: rendered.numberOfChannels }, (_, ch) => rendered.getChannelData(ch));
         const report = analyzeArtifacts(channels);
-        const verdict = evaluateArtifacts(report, { ceilingDb: -0.5 });
+        const verdict = evaluateArtifacts(report, { ceilingDb: -0.5, clickSeverity: "review" });
         if (!verdict.ok) failures.push(`${templateId}: ${verdict.failures.join("; ")}`);
-        reports.push(`${templateId} tail=${report.tailStepRatio.toFixed(3)} tp=${report.truePeakDb.toFixed(1)}`);
+        reports.push(
+          `${templateId} reviewCandidates=${report.clickIndices.length}[${report.clickIndices.slice(0, 4).join(",")}] tail=${report.tailStepRatio.toFixed(3)} tp=${report.truePeakDb.toFixed(1)}`,
+        );
       } catch (error) {
         failures.push(`${templateId}: ${String(error)}`);
       }
     }
     check(
-      "artifact gate: every genre render is finite, de-clicked, click-free and under ceiling",
+      "artifact gate: genre renders are finite, tail-safe and under ceiling (transient candidates reported for review)",
       failures.length === 0,
       failures.length > 0 ? failures.join(" | ") : reports.join(" "),
     );
@@ -4320,8 +4322,8 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
   }
 
   // Master stage with AudioWorklets: renderProject preloads processors, so the
-  // export path runs through the look-ahead limiter — peaks must sit exactly
-  // AT ceiling (brickwall anticipation) rather than being loosely pulled down.
+  // export path runs through the look-ahead true-peak limiter. Verify both the
+  // sample ceiling and the oversampled true-peak delivery ceiling.
   try {
     const project = createDefaultProject();
     for (const track of project.tracks) track.gain = 1.5;
@@ -4333,18 +4335,18 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     project.master.limiterEnabled = true;
     project.master.clipperEnabled = false;
     const mastered = await renderProject(project, bank, { mode: "pattern", sampleRate: SR, tailSeconds: 0.2 });
+    const masteredChannels = Array.from({ length: mastered.numberOfChannels }, (_, ch) => mastered.getChannelData(ch));
     let masteredPeak = 0;
-    for (let ch = 0; ch < mastered.numberOfChannels; ch++) {
-      masteredPeak = Math.max(masteredPeak, peakOf(mastered.getChannelData(ch)));
-    }
+    for (const channel of masteredChannels) masteredPeak = Math.max(masteredPeak, peakOf(channel));
+    const masteredTruePeakDb = analyzeArtifacts(masteredChannels).truePeakDb;
     const ceilingLin = Math.pow(10, -3 / 20);
     check(
-      "master limiter: look-ahead brickwall pins export at ceiling",
-      masteredPeak <= ceilingLin + 0.02 && masteredPeak >= ceilingLin * 0.6,
-      `peak=${masteredPeak.toFixed(3)} ceiling=${ceilingLin.toFixed(3)}`,
+      "master limiter: look-ahead true peak stays below the delivery ceiling",
+      masteredPeak <= ceilingLin + 0.02 && masteredPeak >= ceilingLin * 0.6 && masteredTruePeakDb <= -2.9,
+      `samplePeak=${masteredPeak.toFixed(3)} truePeak=${masteredTruePeakDb.toFixed(2)} dBTP ceiling=-3.00 dBTP`,
     );
   } catch (error) {
-    check("master limiter: look-ahead brickwall pins export at ceiling", false, String(error));
+    check("master limiter: look-ahead true peak stays below the delivery ceiling", false, String(error));
   }
 
   // ---------------- Track modulators (random S&H / step / envFollower) ----------------

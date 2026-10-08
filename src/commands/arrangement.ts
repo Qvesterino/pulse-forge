@@ -10,6 +10,7 @@ import { uid } from "../shared/ids";
 import { snapshot } from "./core";
 import { makeSceneVariation } from "./scenes";
 import { markerClampPatch, unlinkMarkersOfClips } from "./docOps";
+import { assertClipEditable, clipGroupsWithoutIds } from "./clipGroups";
 
 /* ---------------- arrangement ---------------- */
 
@@ -103,6 +104,7 @@ export function createVariationAndPlaceClip(
 export function moveArrangementClip(doc: ProjectDocument, clipId: string, startBar: number): Command {
   const clip = doc.arrangement.clips.find((c) => c.id === clipId);
   if (!clip) throw new Error(`Clip ${clipId} not found`);
+  assertClipEditable(clip, "move");
   // NaN passes Math.max/round through — clamp to 0 like addArrangementClip.
   const bar = Number.isFinite(startBar) ? Math.max(0, Math.round(startBar)) : 0;
   if (clipsOverlap(doc.arrangement.clips, clipId, bar, clip.lengthBars)) {
@@ -129,6 +131,7 @@ export function moveArrangementClip(doc: ProjectDocument, clipId: string, startB
 export function resizeArrangementClip(doc: ProjectDocument, clipId: string, lengthBars: number): Command {
   const clip = doc.arrangement.clips.find((c) => c.id === clipId);
   if (!clip) throw new Error(`Clip ${clipId} not found`);
+  assertClipEditable(clip, "resize");
   // NaN passes Math.max/round through — clamp to 1 (minimum clip length).
   // The upper bound is a rendering invariant, not a musical one: the
   // arrangement view allocates one bar-grid node PER BAR, so an unbounded
@@ -150,6 +153,8 @@ export function resizeArrangementClip(doc: ProjectDocument, clipId: string, leng
 
 export function deleteArrangementClip(doc: ProjectDocument, clipId: string): Command {
   const remainingClips = doc.arrangement.clips.filter((c) => c.id !== clipId);
+  const deleted = doc.arrangement.clips.find((c) => c.id === clipId);
+  assertClipEditable(deleted ?? { locked: false }, "delete");
   // Markers linked to the deleted clip must be unlinked in-command: the
   // stale id would survive every save (schema keeps any string) and undo
   // could not restore the link if it were left to a post-apply normalize.
@@ -170,6 +175,11 @@ export function deleteArrangementClip(doc: ProjectDocument, clipId: string): Com
       transitions: doc.arrangement.transitions?.filter(
         (transition) => transition.fromClipId !== clipId && transition.toClipId !== clipId,
       ),
+      // Group membership dies with the clip; an emptied group dies with it.
+      ...((() => {
+        const groups = clipGroupsWithoutIds(doc.arrangement.clipGroups, [clipId]);
+        return groups !== doc.arrangement.clipGroups ? { clipGroups: groups } : {};
+      })()),
     },
   };
   return snapshot("deleteArrangementClip", "Delete clip", doc, next);
@@ -198,6 +208,7 @@ export function splitArrangementClipAtTick(doc: ProjectDocument, clipId: string,
   const clip = doc.arrangement.clips.find((c) => c.id === clipId);
   if (!clip) throw new Error(`Clip ${clipId} not found`);
   if (!Number.isFinite(splitTick)) throw new Error("Split point must be a finite arrangement tick");
+  assertClipEditable(clip, "split");
   const startTick = clip.startBar * BAR_TICKS;
   const endTick = startTick + clip.lengthBars * BAR_TICKS;
   if (splitTick <= startTick || splitTick >= endTick) throw new Error("Split point outside clip");
@@ -228,6 +239,13 @@ export function splitArrangementClipAtTick(doc: ProjectDocument, clipId: string,
   const nextClips = doc.arrangement.clips
     .flatMap((c) => (c.id === clipId ? [left, right] : [c]))
     .sort((a, b) => a.startBar - b.startBar);
+  // Split of a GROUPED clip: both fragments inherit the membership (the left
+  // fragment keeps the original id, the right joins by id replacement).
+  const clipGroups = doc.arrangement.clipGroups?.map((group) =>
+    group.clipIds.includes(clipId)
+      ? { ...group, clipIds: group.clipIds.flatMap((id) => (id === clipId ? [left.id, right.id] : [id])) }
+      : group,
+  );
   const next: ProjectDocument = {
     ...doc,
     arrangement: {
@@ -237,6 +255,7 @@ export function splitArrangementClipAtTick(doc: ProjectDocument, clipId: string,
       // touching it is still ordered against the shrunken left edge — re-run
       // the same sanitize move/resize run rather than trusting that.
       transitions: sanitizeArrangementTransitions(doc.arrangement.transitions, nextClips),
+      ...(clipGroups !== doc.arrangement.clipGroups ? { clipGroups } : {}),
     },
   };
   return snapshot("splitArrangementClip", `Split clip at bar ${splitBar + 1}`, doc, next);
@@ -284,6 +303,7 @@ export function duplicateArrangementClip(doc: ProjectDocument, clipId: string): 
 export function trimArrangementClipStart(doc: ProjectDocument, clipId: string, newStartBar: number): Command {
   const clip = doc.arrangement.clips.find((c) => c.id === clipId);
   if (!clip) throw new Error(`Clip ${clipId} not found`);
+  assertClipEditable(clip, "trim");
   if (!Number.isFinite(newStartBar)) throw new Error("Trim start must be a finite bar position");
   const startBar = Math.round(newStartBar);
   const endBar = clip.startBar + clip.lengthBars;

@@ -48,7 +48,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -650,6 +650,7 @@ export function sanitizeAudioClips(
       ...(stretchMode ? { stretchMode } : {}),
       ...(warpMarkers ? { warpMarkers } : {}),
       ...(raw.muted === true ? { muted: true } : {}),
+      ...(raw.locked === true ? { locked: true } : {}),
     });
   }
   out.sort((a, b) => a.startBar - b.startBar);
@@ -1616,12 +1617,16 @@ function normalizeArrangementDomain(s: NormalizeState): void {
           : 0;
       const phaseChanged = normalizedPhase > 1e-9 ? rawPhase !== normalizedPhase : rawPhase !== undefined;
       const sceneOffsetChanged = sceneOffset > 1e-9 ? rawSceneOffset !== sceneOffset : rawSceneOffset !== undefined;
-      if (!phaseChanged && !sceneOffsetChanged) return clip;
+      // Clip lock (v15): stored only when true.
+      const rawLocked = (clip as { locked?: unknown }).locked;
+      const lockedChanged = rawLocked !== undefined && rawLocked !== true;
+      if (!phaseChanged && !sceneOffsetChanged && !lockedChanged) return clip;
       const normalized: ArrangementClip = { ...clip };
       if (normalizedPhase > 1e-9) normalized.phaseOffsetTicks = normalizedPhase;
       else delete normalized.phaseOffsetTicks;
       if (sceneOffset > 1e-9) normalized.sceneOffsetTicks = sceneOffset;
       else delete normalized.sceneOffsetTicks;
+      if (lockedChanged) delete normalized.locked;
       return normalized;
     })
     .sort((a, b) => a.startBar - b.startBar);
@@ -1671,7 +1676,38 @@ function normalizeArrangementDomain(s: NormalizeState): void {
   const transitionsChanged = !jsonEqual(transitions, arrangement.transitions);
   const audioChanged = !jsonEqual(audioClips, (arrangement as unknown as Record<string, unknown>).audioClips);
   const takeGroupsChanged = !jsonEqual(takeGroups, (arrangement as unknown as Record<string, unknown>).takeGroups);
-  if (clipsChanged || transitionsChanged || audioChanged || takeGroupsChanged) {
+  // Clip groups (v15): membership is clamped to LIVE clips of both systems
+  // (dead ids stripped, duplicates collapsed), empty groups are dropped — a
+  // group dies with its last member. A hand-edited or partially-merged file
+  // can never keep a group pointing at nothing.
+  const validClipIds = new Set<string>([
+    ...sorted.map((clip) => clip.id),
+    ...(audioClips ?? []).map((clip) => clip.id),
+  ]);
+  const rawClipGroups = (arrangement as unknown as Record<string, unknown>).clipGroups;
+  const clipGroups = Array.isArray(rawClipGroups)
+    ? (rawClipGroups as { id?: unknown; name?: unknown; clipIds?: unknown }[])
+        .filter((group) => typeof group?.id === "string" && group.id !== "" && Array.isArray(group.clipIds))
+        .map((group) => {
+          const seen = new Set<string>();
+          const clipIds: string[] = [];
+          for (const id of group.clipIds as unknown[]) {
+            if (typeof id === "string" && validClipIds.has(id) && !seen.has(id)) {
+              seen.add(id);
+              clipIds.push(id);
+            }
+          }
+          const name = typeof group.name === "string" && group.name.trim() !== "" ? group.name.trim() : undefined;
+          return {
+            id: group.id as string,
+            ...(name ? { name } : {}),
+            clipIds,
+          };
+        })
+        .filter((group) => group.clipIds.length > 0)
+    : undefined;
+  const clipGroupsChanged = !jsonEqual(clipGroups, rawClipGroups);
+  if (clipsChanged || transitionsChanged || audioChanged || takeGroupsChanged || clipGroupsChanged) {
     s.doc = {
       ...doc,
       arrangement: {
@@ -1679,6 +1715,7 @@ function normalizeArrangementDomain(s: NormalizeState): void {
         ...(audioClips ? { audioClips } : {}),
         ...(takeGroups ? { takeGroups } : {}),
         ...(transitions !== undefined ? { transitions } : {}),
+        ...(clipGroups ? { clipGroups } : {}),
       },
     };
     s.changed = true;
@@ -2584,6 +2621,9 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // v12 adds the explicit mastering delivery profile, true-peak target, and final-sum insert chain.
   // v13 adds the optional `InstrumentTrack.sampleIdB` (TSAR Source B identity; ADR 0023).
   // v14 adds the optional `AudioClip.muted` clip-level mute (absent = audible).
+  // v15 adds clip groups (`Arrangement.clipGroups`, membership by clip id) and
+  // the optional clip-level `locked` flag on BOTH clip systems (absent =
+  // unlocked).
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);
