@@ -11,6 +11,9 @@ import { presetsForEffect } from "../effects/presets";
 import { planMasterSettings } from "./master-assistant";
 import { profileFor, resolveDeliveryTarget, verdictAgainst, worstStatus } from "./master-profiles";
 import { stemMasteringPlan, stemRoleOf } from "./stem-mastering";
+import { collectDevices, diffSnapshots, snapshotSummary, type AbSnapshot } from "./master-ab";
+
+const masterAbStore = new Map<string, import("./master-ab").AbSnapshot>();
 import { MASTER_SIGNAL_FLOW, type MasterSignalFlowStageId } from "../mastering/signalFlow";
 import { isCreativeBriefRoute } from "../intent/model-fallback-policy";
 import { applyFaderIntent, applyTempoIntent } from "../intent/conversation";
@@ -1383,7 +1386,7 @@ export const MCP_TOOLS: McpToolDef[] = [
       properties: {
         op: {
           type: "string",
-          enum: ["add", "preset", "trim", "assist", "land", "platform", "stems", "remove", "status"],
+          enum: ["add", "preset", "trim", "assist", "land", "platform", "stems", "ab", "remove", "status"],
         },
         trackId: { type: "string", description: "Exact track id — overrides family when present" },
         family: {
@@ -1416,6 +1419,11 @@ export const MCP_TOOLS: McpToolDef[] = [
         insert: {
           type: "boolean",
           description: "For op:assist — insert any missing mastering devices on the bus before applying the plan",
+        },
+        action: {
+          type: "string",
+          enum: ["save", "list", "compare", "restore"],
+          description: "For op:ab — snapshot action",
         },
         trimDb: {
           type: "number",
@@ -5300,6 +5308,80 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
       text: `stem mastering applied on ${matched} lane(s), one undo step:\n${lines.join("\n")}\nland the master with op:land after a fresh measure`,
       mutated: true,
     };
+  }
+
+  if (op === "ab") {
+    // MASTER A/B SNAPSHOTS — save/compare/restore the WHOLE mastering state
+    // of the resolved bus (session store, never the project document).
+    // Restore folds every param + trim write into ONE undoable snapshot.
+    const action = String(record.action ?? "list");
+    if (action === "list") {
+      const names = [...masterAbStore.keys()];
+      return {
+        text:
+          names.length === 0
+            ? "no snapshots — op:ab {action:save, name} captures the bus mastering state"
+            : names.map((n) => snapshotSummary(masterAbStore.get(n)!)).join("\n"),
+        mutated: false,
+      };
+    }
+    const name = typeof record.name === "string" ? record.name.trim() : "";
+    if (action === "save") {
+      if (name === "") return { text: "save needs a snapshot name", mutated: false };
+      const devices = ids.flatMap((id) => {
+        const track = doc.tracks.find((t) => t.id === id)!;
+        return collectDevices(track);
+      });
+      if (devices.length === 0) {
+        return { text: "no mastering devices on the bus — add ZENIT/APEKS/ŠÍRKA/PRÚD first", mutated: false };
+      }
+      masterAbStore.set(name, { name, savedAt: new Date().toISOString(), devices });
+      return {
+        text: `snapshot '${name}' saved — ${devices.length} device(s); mutate freely, then compare/restore`,
+        mutated: false,
+      };
+    }
+    const snap = masterAbStore.get(name);
+    if (!snap) return { text: `no snapshot '${name}' — op:ab {action:list}`, mutated: false };
+    if (action === "compare") {
+      const current: AbSnapshot = {
+        name: "current",
+        savedAt: new Date().toISOString(),
+        devices: ids.flatMap((id) => collectDevices(doc.tracks.find((t) => t.id === id)!)),
+      };
+      const rows = diffSnapshots(snap, current);
+      const body =
+        rows.length === 0
+          ? "identical to the current state"
+          : rows
+              .map(
+                (row) =>
+                  `${row.track} · ${row.device}.${row.param}: ${row.a == null ? "—" : row.a.toFixed(2)} → ${row.b == null ? "—" : row.b.toFixed(2)}`,
+              )
+              .join("\n") + "\nlevel-match hint: restore, then offset op:trim by the trims shown in the list";
+      return { text: `'${name}' vs current:\n${body}`, mutated: false };
+    }
+    if (action === "restore") {
+      let next = doc;
+      const applied: string[] = [];
+      for (const device of snap.devices) {
+        const track = next.tracks.find((t) => t.id === device.trackId);
+        if (!track) continue;
+        // Match the instance by type on the same track (ids churn across undo).
+        const instance = track.effects.find((fx) => fx.type === device.type);
+        if (!instance) continue;
+        for (const [paramId, value] of Object.entries(device.params))
+          next = setEffectParam(next, track.id, instance.id, paramId, value).execute(next);
+        if (device.outputTrimDb != null)
+          next = setEffectOutputTrimDb(next, track.id, instance.id, device.outputTrimDb).execute(next);
+        applied.push(`${track.name}/${device.type}`);
+      }
+      if (applied.length === 0)
+        return { text: "nothing to restore — the mastering devices are gone from the bus", mutated: false };
+      ctx.execute(snapshot("mcpMasterAbRestore", `MCP: restore A/B '${name}'`, doc, next));
+      return { text: `restored '${name}' on ${applied.join(", ")} — one undo step`, mutated: true };
+    }
+    return { text: `unknown op:ab action: ${action} (save | list | compare | restore)`, mutated: false, isError: true };
   }
 
   if (op === "assist") {

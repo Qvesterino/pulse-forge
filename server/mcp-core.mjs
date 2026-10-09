@@ -1653,7 +1653,7 @@ export const MCP_TOOL_DEFS = [
       properties: {
         op: {
           type: "string",
-          enum: ["add", "preset", "trim", "assist", "land", "platform", "stems", "remove", "status"],
+          enum: ["add", "preset", "trim", "assist", "land", "platform", "stems", "ab", "remove", "status"],
         },
         trackId: {
           type: "string",
@@ -1689,6 +1689,11 @@ export const MCP_TOOL_DEFS = [
         insert: {
           type: "boolean",
           description: "For op:assist — insert any missing mastering devices on the bus before applying the plan",
+        },
+        action: {
+          type: "string",
+          enum: ["save", "list", "compare", "restore"],
+          description: "For op:ab — snapshot action",
         },
         trimDb: {
           type: "number",
