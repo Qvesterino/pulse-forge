@@ -166,3 +166,77 @@ describe("PRÚD dynamic EQ", () => {
     }
   });
 });
+
+describe("APEKS true-peak ceiling (ceilingMode, sinc detector)", () => {
+  /** Independent 8× sinc true-peak estimator (L=8, 32-tap sinc/Blackman). */
+  function sincTruePeak8(data: Float32Array): number {
+    const L = 8;
+    const TAPS = 32;
+    const sinc = (x: number) => (Math.abs(x) < 1e-9 ? 1 : Math.sin(Math.PI * x) / (Math.PI * x));
+    const proto = new Float64Array(TAPS);
+    let sum = 0;
+    for (let m = 0; m < TAPS; m++) {
+      const center = (m - (TAPS - 1) / 2) / L;
+      const w = 0.42 - 0.5 * Math.cos((2 * Math.PI * m) / (TAPS - 1)) + 0.08 * Math.cos((4 * Math.PI * m) / (TAPS - 1));
+      proto[m] = sinc(center) * w;
+      sum += proto[m];
+    }
+    for (let m = 0; m < TAPS; m++) proto[m] /= sum;
+    const phases: Float64Array[] = [];
+    for (let p = 0; p < L; p++) {
+      const taps: number[] = [];
+      let psum = 0;
+      for (let m = p; m < TAPS; m += L) {
+        taps.push(proto[m]);
+        psum += proto[m];
+      }
+      for (let i = 0; i < taps.length; i++) taps[i] /= psum;
+      phases.push(Float64Array.from(taps));
+    }
+    const hist = new Float32Array(TAPS);
+    let peak = 0;
+    for (let i = 0; i < data.length; i++) {
+      for (let j = TAPS - 1; j > 0; j--) hist[j] = hist[j - 1];
+      hist[0] = data[i];
+      for (const taps of phases) {
+        let acc = 0;
+        for (let k = 0; k < taps.length; k++) acc += taps[k] * hist[k];
+        peak = Math.max(peak, Math.abs(acc));
+      }
+    }
+    return peak;
+  }
+
+  /** Flat-topped clipped pseudo-noise — the ISP-rich signal class. */
+  const ispTone = (i: number): [number, number] => {
+    const n = Math.max(-1, Math.min(1, ((Math.sin(i * 12.9898) * 43758.5453) % 1) * 2.2));
+    return [n * 1.2, n * 1.2];
+  };
+
+  it("THE DISCRIMINATOR: TP mode holds the reconstructed ceiling; SAMPLE mode lets ISPs escape", () => {
+    const cls = registered.get("apeks-processor");
+    const ceilLin = Math.pow(10, -6 / 20);
+    const tp = run(cls, paramsOf(cls, { drive: 0, ceiling: -6, ceilingMode: 1, release: 0.05 }), 16, ispTone);
+    const sample = run(cls, paramsOf(cls, { drive: 0, ceiling: -6, ceilingMode: 0, release: 0.05 }), 16, ispTone);
+    const tpPeak = sincTruePeak8(tp.lastL);
+    const samplePeakOut = sincTruePeak8(sample.lastL);
+    // Sample peak holds in BOTH modes (the limiter always works there).
+    expect(sample.peakL).toBeLessThanOrEqual(ceilLin * 1.03);
+    // TRUE peak: TP mode guarantees the ceiling; SAMPLE mode measurably
+    // overshoots it — strictly more true peak than the TP-mode result.
+    expect(tpPeak).toBeLessThanOrEqual(ceilLin * 1.08);
+    expect(samplePeakOut).toBeGreaterThan(ceilLin);
+    expect(samplePeakOut).toBeGreaterThan(tpPeak);
+  });
+
+  it("TP mode renders finite at the extremes", () => {
+    const cls = registered.get("apeks-processor");
+    const hot = run(
+      cls,
+      paramsOf(cls, { drive: 1, ceiling: -12, ceilingMode: 1, preserve: 1, release: 0.5, output: 12 }),
+      8,
+      ispTone,
+    );
+    for (const v of hot.lastL) expect(Number.isFinite(v)).toBe(true);
+  });
+});

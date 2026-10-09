@@ -85,7 +85,7 @@ function makeStereoWorkletRuntime(
   };
 }
 
-const APEKS_PARAMS = ["drive", "ceiling", "release", "preserve", "mix", "output"];
+const APEKS_PARAMS = ["drive", "ceiling", "ceilingMode", "release", "preserve", "mix", "output"];
 
 /** Create the APEKS maximizer worklet node (M2). */
 export function createApeksNode(ctx: BaseAudioContext, instance: { params: Record<string, number> }): EffectRuntime {

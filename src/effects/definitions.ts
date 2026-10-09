@@ -1920,6 +1920,15 @@ export const apeksParams: ParamDef[] = [
   { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.5, format: formatPct },
   { id: "ceiling", label: "CEIL", min: -12, max: 0, default: -1, unit: "dB", format: formatDb },
   {
+    id: "ceilingMode",
+    label: "TP",
+    min: 0,
+    max: 1,
+    default: 1,
+    kind: "toggle",
+    format: (v) => (v >= 0.5 ? "TRUE PEAK" : "SAMPLE"),
+  },
+  {
     id: "release",
     label: "RELEASE",
     min: 0.05,
