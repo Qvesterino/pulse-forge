@@ -7,7 +7,10 @@ export const MASTERING_SESSION_DATABASE = "kyx-mastering-sessions";
 export const MASTERING_SESSION_STORE = "sessions";
 export const MASTERING_SESSION_SOURCE_STORE = "sources";
 export const MASTERING_SESSION_REFERENCE_STORE = "references";
-export const MASTERING_SESSION_DATABASE_VERSION = 3;
+export const MASTERING_SESSION_DELIVERY_REPORT_STORE = "delivery-reports";
+export const MASTERING_SESSION_DELIVERY_REPORT_LIMIT = 6;
+export const MASTERING_SESSION_DELIVERY_REPORT_JSON_LIMIT_BYTES = 2 * 1024 * 1024;
+export const MASTERING_SESSION_DATABASE_VERSION = 4;
 export const MASTERING_SESSION_SCHEMA_VERSION = 2;
 export const MASTERING_SESSION_FILE_LIMIT_BYTES = 96 * 1024 * 1024;
 export const MASTERING_SESSION_HISTORY_LIMIT = 50;
@@ -63,6 +66,19 @@ export interface MasteringSessionReferenceRecord {
   importedAt: string;
 }
 
+export interface MasteringSessionDeliveryReportRecord {
+  /** Stable session + output-name key; a repeat export replaces this report. */
+  id: string;
+  sessionId: string;
+  sourceFileName: string;
+  sourceHash: string;
+  fileName: string;
+  reportFileName: string;
+  createdAt: string;
+  /** Bounded JSON sidecar. It contains report data, never audio. */
+  reportJson: string;
+}
+
 function isMasteringSessionReference(value: unknown): value is MasteringSessionReferenceRecord {
   if (!isObject(value)) return false;
   const source = value.source;
@@ -94,6 +110,75 @@ function isMasteringSessionReference(value: unknown): value is MasteringSessionR
     typeof value.importedAt === "string" &&
     Number.isFinite(Date.parse(value.importedAt))
   );
+}
+
+function isMasteringSessionDeliveryReport(value: unknown): value is MasteringSessionDeliveryReportRecord {
+  if (!isObject(value) || typeof value.reportJson !== "string") return false;
+  if (value.reportJson.length === 0 || value.reportJson.length > MASTERING_SESSION_DELIVERY_REPORT_JSON_LIMIT_BYTES) {
+    return false;
+  }
+  try {
+    if (new TextEncoder().encode(value.reportJson).byteLength > MASTERING_SESSION_DELIVERY_REPORT_JSON_LIMIT_BYTES) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+  let sidecar: unknown;
+  try {
+    sidecar = JSON.parse(value.reportJson);
+  } catch {
+    return false;
+  }
+  if (!isObject(sidecar)) return false;
+  const session = sidecar.session;
+  const source = sidecar.source;
+  const delivery = sidecar.delivery;
+  return (
+    typeof value.id === "string" &&
+    typeof value.sessionId === "string" &&
+    typeof value.fileName === "string" &&
+    value.id === `${value.sessionId}:${value.fileName}` &&
+    value.id.length <= 480 &&
+    value.sessionId.length > 0 &&
+    value.sessionId.length <= 160 &&
+    value.id.startsWith(`${value.sessionId}:`) &&
+    typeof value.sourceFileName === "string" &&
+    value.sourceFileName.length > 0 &&
+    value.sourceFileName.length <= 255 &&
+    typeof value.sourceHash === "string" &&
+    /^[a-f0-9]{64}$/i.test(value.sourceHash) &&
+    value.fileName.length > 0 &&
+    value.fileName.length <= 255 &&
+    /\.(wav|mp3|flac)$/i.test(value.fileName) &&
+    typeof value.reportFileName === "string" &&
+    value.reportFileName.length > 0 &&
+    value.reportFileName.length <= 255 &&
+    value.reportFileName === value.fileName.replace(/\.(wav|mp3|flac)$/i, "-report.json") &&
+    typeof value.createdAt === "string" &&
+    Number.isFinite(Date.parse(value.createdAt)) &&
+    sidecar.schema === "kyx.external-mastering-report" &&
+    sidecar.schemaVersion === 6 &&
+    typeof sidecar.generatedAt === "string" &&
+    Number.isFinite(Date.parse(sidecar.generatedAt)) &&
+    sidecar.generatedAt === value.createdAt &&
+    isObject(session) &&
+    session.id === value.sessionId &&
+    Number.isSafeInteger(session.revision) &&
+    isObject(source) &&
+    source.fileName === value.sourceFileName &&
+    typeof source.sha256 === "string" &&
+    source.sha256.toLowerCase() === value.sourceHash.toLowerCase() &&
+    isObject(delivery) &&
+    delivery.fileName === value.fileName
+  );
+}
+
+function validateLoadedDeliveryReport(value: unknown): MasteringSessionDeliveryReportRecord {
+  if (!isMasteringSessionDeliveryReport(value)) {
+    throw new Error("A saved mastering delivery report is invalid, oversized or uses an unsupported schema.");
+  }
+  return value;
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -363,6 +448,10 @@ function openDatabase(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(MASTERING_SESSION_REFERENCE_STORE)) {
         db.createObjectStore(MASTERING_SESSION_REFERENCE_STORE, { keyPath: "sessionId" });
       }
+      if (!db.objectStoreNames.contains(MASTERING_SESSION_DELIVERY_REPORT_STORE)) {
+        const reports = db.createObjectStore(MASTERING_SESSION_DELIVERY_REPORT_STORE, { keyPath: "id" });
+        reports.createIndex("sessionId", "sessionId", { unique: false });
+      }
       if ((event as IDBVersionChangeEvent).oldVersion < 2) {
         const sessions = request.transaction?.objectStore(MASTERING_SESSION_STORE);
         const cursorRequest = sessions?.openCursor();
@@ -525,6 +614,108 @@ export class MasteringSessionRepository {
     return rows.map(validateLoadedSummary).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
+  async listRecentDeliveryReports(): Promise<MasteringSessionDeliveryReportRecord[]> {
+    const reports = await transactAcross<MasteringSessionDeliveryReportRecord[]>(
+      [MASTERING_SESSION_STORE, MASTERING_SESSION_DELIVERY_REPORT_STORE],
+      (transaction, complete, fail) => {
+        const request = transaction.objectStore(MASTERING_SESSION_DELIVERY_REPORT_STORE).getAll();
+        request.onsuccess = () => {
+          let reports: MasteringSessionDeliveryReportRecord[];
+          try {
+            reports = (request.result as unknown[])
+              .map(validateLoadedDeliveryReport)
+              .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
+              .slice(0, MASTERING_SESSION_DELIVERY_REPORT_LIMIT);
+          } catch (error) {
+            fail(error);
+            return;
+          }
+          if (reports.length === 0) {
+            complete(reports);
+            return;
+          }
+          const sessions = transaction.objectStore(MASTERING_SESSION_STORE);
+          let remaining = reports.length;
+          reports.forEach((report) => {
+            const sessionRequest = sessions.get(report.sessionId);
+            sessionRequest.onsuccess = () => {
+              try {
+                const session = validateLoadedSummary(sessionRequest.result);
+                if (
+                  session.fileName !== report.sourceFileName ||
+                  session.sourceHash.toLowerCase() !== report.sourceHash.toLowerCase()
+                ) {
+                  throw new Error("A saved delivery report does not match its local mastering session.");
+                }
+                remaining--;
+                if (remaining === 0) complete(reports);
+              } catch (error) {
+                fail(error);
+              }
+            };
+            sessionRequest.onerror = () =>
+              fail(sessionRequest.error ?? new Error("Could not verify a saved delivery report session."));
+          });
+        };
+        request.onerror = () => fail(request.error ?? new Error("Could not load recent delivery reports."));
+      },
+    );
+    return reports;
+  }
+
+  async putDeliveryReport(report: MasteringSessionDeliveryReportRecord): Promise<void> {
+    const validated = validateLoadedDeliveryReport(report);
+    await transactAcross<undefined>(
+      [MASTERING_SESSION_STORE, MASTERING_SESSION_DELIVERY_REPORT_STORE],
+      (transaction, complete, fail) => {
+        const sessionRequest = transaction.objectStore(MASTERING_SESSION_STORE).get(validated.sessionId);
+        sessionRequest.onsuccess = () => {
+          let session: MasteringSessionSummary;
+          try {
+            session = validateLoadedSummary(sessionRequest.result);
+          } catch (error) {
+            fail(new Error(`The mastering session is unavailable for report storage: ${String(error)}`));
+            return;
+          }
+          if (
+            session.fileName !== validated.sourceFileName ||
+            session.sourceHash.toLowerCase() !== validated.sourceHash.toLowerCase()
+          ) {
+            fail(new Error("The delivery report source fingerprint does not match its local mastering session."));
+            return;
+          }
+          const store = transaction.objectStore(MASTERING_SESSION_DELIVERY_REPORT_STORE);
+          const write = store.put(validated);
+          write.onerror = () => fail(write.error ?? new Error("Could not save the delivery report locally."));
+          write.onsuccess = () => {
+            const listRequest = store.getAll();
+            listRequest.onsuccess = () => {
+              let reports: MasteringSessionDeliveryReportRecord[];
+              try {
+                reports = (listRequest.result as unknown[]).map(validateLoadedDeliveryReport);
+              } catch (error) {
+                fail(error);
+                return;
+              }
+              reports
+                .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
+                .slice(MASTERING_SESSION_DELIVERY_REPORT_LIMIT)
+                .forEach((oldest) => {
+                  const deletion = store.delete(oldest.id);
+                  deletion.onerror = () => fail(deletion.error ?? new Error("Could not prune old delivery reports."));
+                });
+              complete(undefined);
+            };
+            listRequest.onerror = () =>
+              fail(listRequest.error ?? new Error("Could not bound the saved delivery report history."));
+          };
+        };
+        sessionRequest.onerror = () =>
+          fail(sessionRequest.error ?? new Error("Could not verify the session for its delivery report."));
+      },
+    );
+  }
+
   async get(id: string): Promise<MasteringSessionRecord | null> {
     return transactAcross<MasteringSessionRecord | null>(
       [MASTERING_SESSION_STORE, MASTERING_SESSION_SOURCE_STORE],
@@ -633,11 +824,31 @@ export class MasteringSessionRepository {
 
   async delete(id: string): Promise<void> {
     await transactAcross<undefined>(
-      [MASTERING_SESSION_STORE, MASTERING_SESSION_SOURCE_STORE, MASTERING_SESSION_REFERENCE_STORE],
-      (transaction, complete) => {
+      [
+        MASTERING_SESSION_STORE,
+        MASTERING_SESSION_SOURCE_STORE,
+        MASTERING_SESSION_REFERENCE_STORE,
+        MASTERING_SESSION_DELIVERY_REPORT_STORE,
+      ],
+      (transaction, complete, fail) => {
         transaction.objectStore(MASTERING_SESSION_STORE).delete(id);
         transaction.objectStore(MASTERING_SESSION_SOURCE_STORE).delete(id);
         transaction.objectStore(MASTERING_SESSION_REFERENCE_STORE).delete(id);
+        const reports = transaction
+          .objectStore(MASTERING_SESSION_DELIVERY_REPORT_STORE)
+          .index("sessionId")
+          .openCursor(id);
+        reports.onsuccess = () => {
+          const cursor = reports.result;
+          if (!cursor) return;
+          try {
+            cursor.delete();
+            cursor.continue();
+          } catch (error) {
+            fail(error);
+          }
+        };
+        reports.onerror = () => fail(reports.error ?? new Error("Could not remove session delivery reports."));
         complete(undefined);
       },
     );

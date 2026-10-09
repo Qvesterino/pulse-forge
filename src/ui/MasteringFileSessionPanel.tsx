@@ -32,12 +32,17 @@ import {
   captureMasteringSessionSnapshot,
   clearMasteringSessionSnapshot,
   createMasteringSessionRecord,
+  MASTERING_SESSION_DELIVERY_REPORT_LIMIT,
   MasteringSessionRepository,
   redoMasteringSessionConfig,
   undoMasteringSessionConfig,
   updateMasteringSessionConfig,
 } from "../mastering/sessionStore";
-import type { MasteringSessionRecord, MasteringSessionReferenceRecord } from "../mastering/sessionStore";
+import type {
+  MasteringSessionDeliveryReportRecord,
+  MasteringSessionRecord,
+  MasteringSessionReferenceRecord,
+} from "../mastering/sessionStore";
 import type { MasteringSessionSlot, MasteringSessionSummary } from "../mastering/sessionStore";
 import { decodeAudioData } from "../services/audio-decode";
 import { decodeFlacAudioBuffer, estimateFlacDecoderWorkingSetBytes } from "../mastering/flacDecode";
@@ -80,7 +85,6 @@ import { MasterProfileFileCheck, MasterProfileFileGuidance } from "./MasterProfi
 import { useMasteringExcerptLoudness } from "./useMasteringExcerptLoudness";
 
 const MAX_DECODED_SOURCE_BYTES = 128 * 1024 * 1024;
-const MAX_RECENT_DELIVERY_REPORTS = 6;
 const DECODE_SAMPLE_RATE = 44_100;
 const AUDIO_EXTENSION = /\.(wav|wave|mp3|flac)$/i;
 
@@ -116,6 +120,7 @@ type SessionDeliveryFormat = "wav" | "flac" | "mp3";
 
 interface RecentDeliveryReport {
   key: string;
+  sessionId: string;
   sourceFileName: string;
   fileName: string;
   reportFileName: string;
@@ -151,6 +156,17 @@ function setItem(items: MasteringSessionSummary[], record: MasteringSessionRecor
   return [sessionSummary(record), ...items.filter((item) => item.id !== record.id)].sort((a, b) =>
     b.updatedAt.localeCompare(a.updatedAt),
   );
+}
+
+function recentDeliveryReportFromRecord(record: MasteringSessionDeliveryReportRecord): RecentDeliveryReport {
+  return {
+    key: record.id,
+    sessionId: record.sessionId,
+    sourceFileName: record.sourceFileName,
+    fileName: record.fileName,
+    reportFileName: record.reportFileName,
+    reportJson: record.reportJson,
+  };
 }
 
 function formatBytes(bytes: number): string {
@@ -389,6 +405,7 @@ export function MasteringFileSessionPanel({
   });
   const [inspection, setInspection] = useState<EncodedMasterInspection | null>(null);
   const [recentDeliveryReports, setRecentDeliveryReports] = useState<RecentDeliveryReport[]>([]);
+  const [reportHistoryWarning, setReportHistoryWarning] = useState("");
   const [sampleRate, setSampleRate] = useState<MasteringRenderSampleRate>(44_100);
   const [bitDepth, setBitDepth] = useState<WavBitDepth>(24);
   const [deliveryFormat, setDeliveryFormat] = useState<SessionDeliveryFormat>("wav");
@@ -402,6 +419,7 @@ export function MasteringFileSessionPanel({
   const operation = useRef<AbortController | null>(null);
   const blockNewWorkRef = useRef(blockNewWork);
   const selectionEpoch = useRef(0);
+  const reportHistoryEpoch = useRef(0);
   const playingRef = useRef<SessionPreviewSelection | null>(null);
   const previewGeneration = useRef(0);
   playingRef.current = playing;
@@ -431,10 +449,24 @@ export function MasteringFileSessionPanel({
 
   useEffect(() => {
     let active = true;
+    const initialReportHistoryEpoch = reportHistoryEpoch.current;
     void repository.list().then(
       (records) => active && setSessions(records),
       (reason: unknown) =>
         active && setError(masteringSessionErrorMessage(reason, "Could not load local mastering sessions.")),
+    );
+    void repository.listRecentDeliveryReports().then(
+      (records) => {
+        if (!active || reportHistoryEpoch.current !== initialReportHistoryEpoch) return;
+        setRecentDeliveryReports(records.map(recentDeliveryReportFromRecord));
+        setReportHistoryWarning("");
+      },
+      (reason: unknown) => {
+        if (!active || reportHistoryEpoch.current !== initialReportHistoryEpoch) return;
+        setReportHistoryWarning(
+          masteringSessionErrorMessage(reason, "Could not load recent delivery reports from this device."),
+        );
+      },
     );
     return () => {
       active = false;
@@ -1663,35 +1695,67 @@ export function MasteringFileSessionPanel({
         },
         resolveDeliveryTarget(draft),
       );
-      const reportJson = serializeExternalMasteringReport({
-        session,
-        masterConfig: draft,
-        profile: resolveDeliveryTarget(draft),
-        renderedAt: rendered.renderedAt,
-        renderConfigRevision: rendered.configRevision,
-        sampleRate: rendered.sampleRate,
-        durationSeconds: rendered.buffer.duration,
-        sourceMeasurements: rendered.measurements,
-        sourceMixHealth: rendered.mixHealth,
-        sourceLoudnessTimeline: rendered.loudnessTimeline,
-        inputBaseline: currentSourceAnalysis,
-        inspection: checked,
-        exportedFileName: fileName,
-        deliveryVerdict: reportDeliveryVerdict,
-      });
+      const reportCreatedAt = new Date();
+      const reportJson = serializeExternalMasteringReport(
+        {
+          session,
+          masterConfig: draft,
+          profile: resolveDeliveryTarget(draft),
+          renderedAt: rendered.renderedAt,
+          renderConfigRevision: rendered.configRevision,
+          sampleRate: rendered.sampleRate,
+          durationSeconds: rendered.buffer.duration,
+          sourceMeasurements: rendered.measurements,
+          sourceMixHealth: rendered.mixHealth,
+          sourceLoudnessTimeline: rendered.loudnessTimeline,
+          inputBaseline: currentSourceAnalysis,
+          inspection: checked,
+          exportedFileName: fileName,
+          deliveryVerdict: reportDeliveryVerdict,
+        },
+        reportCreatedAt,
+      );
       const reportFileName = fileName.replace(/\.(wav|mp3|flac)$/i, "-report.json");
+      const reportKey = `${session.id}:${fileName}`;
       const savedReport: RecentDeliveryReport = {
-        key: `${session.id}:${fileName}`,
+        key: reportKey,
+        sessionId: session.id,
         sourceFileName: session.fileName,
         fileName,
         reportFileName,
         reportJson,
       };
+      const persistentReport: MasteringSessionDeliveryReportRecord = {
+        id: reportKey,
+        sessionId: session.id,
+        sourceFileName: session.fileName,
+        sourceHash: session.sourceHash,
+        fileName,
+        reportFileName,
+        createdAt: reportCreatedAt.toISOString(),
+        reportJson,
+      };
+      reportHistoryEpoch.current++;
       setRecentDeliveryReports((current) =>
-        [savedReport, ...current.filter((item) => item.key !== savedReport.key)].slice(0, MAX_RECENT_DELIVERY_REPORTS),
+        [savedReport, ...current.filter((item) => item.key !== savedReport.key)].slice(
+          0,
+          MASTERING_SESSION_DELIVERY_REPORT_LIMIT,
+        ),
       );
+      setReportHistoryWarning("");
       setInspection(checked);
       downloadBlob(deliveryBlob, fileName);
+      setBusy("Saving checked report history on this device…");
+      setProgress("");
+      operation.current = null;
+      let reportPersistenceError = "";
+      try {
+        await repository.putDeliveryReport(persistentReport);
+      } catch (reason) {
+        reportPersistenceError = masteringSessionErrorMessage(reason, "Could not save the delivery report locally.");
+        setReportHistoryWarning(reportPersistenceError);
+      }
+      if (selectionEpoch.current !== epoch) return;
       const versionSaveNote = versionSaveError ? ` Revision was not saved locally: ${versionSaveError}` : "";
       const inspectionNote =
         checked.decode.status === "measured"
@@ -1701,7 +1765,10 @@ export function MasteringFileSessionPanel({
             : deliveryFormat === "flac"
               ? `FLAC header checked; post-decode audio was not measured: ${checked.decode.reason ?? "not measured"}.`
               : `WAV container checked; post-decode audio was not measured: ${checked.decode.reason ?? "not measured"}.`;
-      setNotice(`Exported ${fileName} · ${inspectionNote}${versionSaveNote}`);
+      const reportHistoryNote = reportPersistenceError
+        ? ` The audio was delivered, but local report history could not be saved: ${reportPersistenceError}`
+        : " The checked JSON report was saved with this local session.";
+      setNotice(`Exported ${fileName} · ${inspectionNote}${versionSaveNote}${reportHistoryNote}`);
     } catch (reason) {
       if (selectionEpoch.current !== epoch) return;
       if (controller.signal.aborted || (reason instanceof DOMException && reason.name === "AbortError")) {
@@ -1730,6 +1797,7 @@ export function MasteringFileSessionPanel({
     renderCurrent,
     renderedPcmBytes,
     rendered,
+    repository,
     session,
     stopSessionPreview,
   ]);
@@ -1744,14 +1812,17 @@ export function MasteringFileSessionPanel({
     setBusy("Deleting local session…");
     try {
       await repository.delete(session.id);
+      reportHistoryEpoch.current++;
       setSessions((current) => current.filter((item) => item.id !== session.id));
+      setRecentDeliveryReports((current) => current.filter((item) => item.sessionId !== session.id));
+      setReportHistoryWarning("");
       setSession(null);
       setSource(null);
       setReference(null);
       setDraft(null);
       setRendered(null);
       setInspection(null);
-      setNotice("Local session, source file and comparison reference were deleted.");
+      setNotice("Local session, source file, comparison reference and its delivery reports were deleted.");
     } catch (reason) {
       setError(masteringSessionErrorMessage(reason, "Could not delete the local mastering session."));
     } finally {
@@ -2856,30 +2927,40 @@ export function MasteringFileSessionPanel({
           )}
         </div>
       )}
-      {recentDeliveryReports.length > 0 && (
+      {(recentDeliveryReports.length > 0 || reportHistoryWarning) && (
         <div
           className="mastering-file-session-delivery-reports"
           role="group"
           aria-label="Recent exported delivery report downloads"
         >
           <strong>RECENT DELIVERY REPORTS · THIS WORKSPACE</strong>
-          <div className="mastering-file-session-delivery-report-list">
-            {recentDeliveryReports.map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                className="btn btn-small"
-                title={item.reportFileName}
-                aria-label={`Download delivery report JSON for ${item.fileName}`}
-                onClick={() =>
-                  downloadBlob(new Blob([item.reportJson], { type: "application/json" }), item.reportFileName)
-                }
-              >
-                {item.sourceFileName} → {item.fileName} · JSON
-              </button>
-            ))}
-          </div>
-          <small>Reports remain available while this workspace is open; download JSON to keep them.</small>
+          {reportHistoryWarning && (
+            <p className="mastering-file-session-status" data-state="warn" role="status">
+              Report history warning: {reportHistoryWarning}
+            </p>
+          )}
+          {recentDeliveryReports.length > 0 && (
+            <div className="mastering-file-session-delivery-report-list">
+              {recentDeliveryReports.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  className="btn btn-small"
+                  title={item.reportFileName}
+                  aria-label={`Download delivery report JSON for ${item.fileName}`}
+                  onClick={() =>
+                    downloadBlob(new Blob([item.reportJson], { type: "application/json" }), item.reportFileName)
+                  }
+                >
+                  {item.sourceFileName} → {item.fileName} · JSON
+                </button>
+              ))}
+            </div>
+          )}
+          <small>
+            Up to six recent reports are saved on this device with no audio. Deleting a source session deletes its
+            reports; repeated exports with the same name replace the earlier report.
+          </small>
         </div>
       )}
       <p className="mastering-file-session-note">

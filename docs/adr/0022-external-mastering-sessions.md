@@ -69,13 +69,14 @@ another DAW.
   the scratch project, session source, or export. After a checked WAV, MP3 or FLAC export,
   the session can download a JSON report sidecar tied to the source hash,
   processing revision, delivery profile, render measurements and encoded-file
-  inspection. The report is not automatically persisted in IndexedDB and
-  contains no audio; the open workspace retains the six most recent distinct
-  delivery reports for explicit download. The session report surface presents LRA, short-term
+  inspection. In the first implementation, reports were not automatically
+  persisted in IndexedDB; the open workspace retained the six most recent
+  distinct reports for explicit download. ADR 0033 later records their bounded
+  local persistence. Reports contain no audio. The session report surface presents LRA, short-term
   loudness timeline, stereo checks and Mix Doctor diagnostics from the decoded
   delivered file when measured; otherwise it labels the source-PCM fallback and does not
-  substitute source data for missing post-encode analysis. The bounded slice still does not provide streaming,
-  automatic report persistence, or validated cross-browser length claims.
+  substitute source data for missing post-encode analysis. The bounded slice still does not provide streaming
+  or validated cross-browser length claims.
 
 ## Validation contract
 
@@ -155,3 +156,11 @@ rejection (**11/11**). Chromium E2E imports a project reference, renders the
 current project, toggles to both aligned sides and stops playback (**1/1**);
 broader browser/OS and hardware-listening coverage remains open. This update
 does not add new automated acceptance coverage for the external session UI.
+
+## Subsequent decision
+
+ADR 0033 partially supersedes decision 2 and the report-history consequence
+above: the active render buffer and current working analysis remain runtime
+only, while a bounded history of checked external-delivery JSON sidecars is
+persisted locally. Reopening a sidecar does not restore an audio buffer or
+make the delivery current for the session's present settings.

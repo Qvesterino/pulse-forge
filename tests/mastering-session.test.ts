@@ -149,7 +149,7 @@ describe("external mastering session persistence", () => {
     const repository = new MasteringSessionRepository();
     const listed = await repository.list();
     const loaded = await repository.get("legacy-v1-session");
-    expect(MASTERING_SESSION_DATABASE_VERSION).toBe(3);
+    expect(MASTERING_SESSION_DATABASE_VERSION).toBe(4);
     expect(MASTERING_SESSION_SCHEMA_VERSION).toBe(2);
     expect(listed[0]).toMatchObject({ version: 2, snapshots: { A: null, B: null } });
     expect(loaded?.snapshots).toEqual({ A: null, B: null });
