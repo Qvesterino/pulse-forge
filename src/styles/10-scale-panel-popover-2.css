@@ -290,6 +290,13 @@ html {
   color: #f8fafc;
 }
 
+.prud-cut-help {
+  margin: 4px 0 0;
+  color: var(--text-dim);
+  font-size: 8px;
+  line-height: 1.35;
+}
+
 .fx-sidechain-picker {
   display: flex;
   gap: 8px;

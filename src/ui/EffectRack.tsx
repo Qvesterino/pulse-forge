@@ -1275,6 +1275,9 @@ function PrudMaxCutPreview({ params, sampleRate }: { params: Record<string, numb
         <span className="prud-cut-legend-two">BAND 2</span>
         <span className="prud-cut-legend-combined">COMBINED</span>
       </div>
+      <p className="prud-cut-help">
+        Dashed curves show each band’s maximum cut; live GR meters below show current reduction.
+      </p>
     </div>
   );
 }
