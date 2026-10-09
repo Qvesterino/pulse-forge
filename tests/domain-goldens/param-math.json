@@ -1119,6 +1119,7 @@
           "defaults": {
             "drive": 0.5,
             "ceiling": -1,
+            "ceilingMode": 1,
             "release": 0.15,
             "preserve": 0.5,
             "mix": 1,
