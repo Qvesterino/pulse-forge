@@ -134,6 +134,10 @@ function isMasteringSessionDeliveryReport(value: unknown): value is MasteringSes
   const session = sidecar.session;
   const source = sidecar.source;
   const delivery = sidecar.delivery;
+  const render = sidecar.render;
+  const supportedSchema = sidecar.schemaVersion === 6 || sidecar.schemaVersion === 7;
+  const hasValidRuntimeDiagnostics =
+    sidecar.schemaVersion === 6 || (isObject(render) && isOfflineRenderRuntimeDiagnostics(render.runtimeDiagnostics));
   return (
     typeof value.id === "string" &&
     typeof value.sessionId === "string" &&
@@ -158,7 +162,8 @@ function isMasteringSessionDeliveryReport(value: unknown): value is MasteringSes
     typeof value.createdAt === "string" &&
     Number.isFinite(Date.parse(value.createdAt)) &&
     sidecar.schema === "kyx.external-mastering-report" &&
-    sidecar.schemaVersion === 6 &&
+    supportedSchema &&
+    hasValidRuntimeDiagnostics &&
     typeof sidecar.generatedAt === "string" &&
     Number.isFinite(Date.parse(sidecar.generatedAt)) &&
     sidecar.generatedAt === value.createdAt &&
@@ -172,6 +177,33 @@ function isMasteringSessionDeliveryReport(value: unknown): value is MasteringSes
     isObject(delivery) &&
     delivery.fileName === value.fileName
   );
+}
+
+function isOfflineRenderRuntimeDiagnostics(value: unknown): boolean {
+  if (!isObject(value) || !Array.isArray(value.degradedEffects) || !Array.isArray(value.degradedMasterStages)) {
+    return false;
+  }
+  if (value.degradedEffects.length > 4096 || value.degradedMasterStages.length > 16) return false;
+  const effectsAreValid = value.degradedEffects.every(
+    (effect) =>
+      isObject(effect) &&
+      isBoundedString(effect.trackId, 160) &&
+      isBoundedString(effect.ownerName, 255) &&
+      isBoundedString(effect.fxId, 160) &&
+      isBoundedString(effect.effectType, 48) &&
+      isBoundedString(effect.reason, 1000),
+  );
+  const stagesAreValid = value.degradedMasterStages.every(
+    (stage) =>
+      isObject(stage) &&
+      (stage.stageId === "tape" || stage.stageId === "glue" || stage.stageId === "limiter") &&
+      isBoundedString(stage.reason, 1000),
+  );
+  return effectsAreValid && stagesAreValid;
+}
+
+function isBoundedString(value: unknown, maxLength: number): value is string {
+  return typeof value === "string" && value.length <= maxLength;
 }
 
 function validateLoadedDeliveryReport(value: unknown): MasteringSessionDeliveryReportRecord {
