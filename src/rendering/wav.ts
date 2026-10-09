@@ -1,7 +1,7 @@
 import {
-  assertIntegerPcmRange,
   mulberry32,
   quantizeInt16Sample,
+  quantizeInt24Sample,
   softClipSample,
   type IntegerOverflowPolicy,
 } from "../export/quantize";
@@ -223,22 +223,21 @@ function writeSample(
     view.setInt16(offset, quantizeInt16Sample(input, ditherRand, integerOverflowPolicy), true);
     return offset + 2;
   }
+  if (bitDepth === 24) {
+    const value = quantizeInt24Sample(input, ditherRand, integerOverflowPolicy);
+    view.setUint8(offset, value & 0xff);
+    view.setUint8(offset + 1, (value >> 8) & 0xff);
+    view.setUint8(offset + 2, (value >> 16) & 0xff);
+    return offset + 3;
+  }
   // Keep non-finite render artefacts from poisoning float output. Strict
   // mastering PCM rejects them before the finite fallback can mask them.
-  if (bitDepth === 24 && integerOverflowPolicy === "reject") assertIntegerPcmRange(input);
   const sample = Number.isFinite(input) ? input : 0;
   // 32-bit float is the interchange/mastering format: retain finite
   // over-range samples and let the receiving DAW preserve the headroom.
   // Legacy integer exports use the soft-knee; mastering delivery can instead
   // pass every in-range sample unchanged after its explicit overflow check.
   const clipped = bitDepth === 32 || integerOverflowPolicy === "reject" ? sample : softClipSample(sample);
-  if (bitDepth === 24) {
-    const value = Math.round(clipped * (clipped < 0 ? 0x800000 : 0x7fffff));
-    view.setUint8(offset, value & 0xff);
-    view.setUint8(offset + 1, (value >> 8) & 0xff);
-    view.setUint8(offset + 2, (value >> 16) & 0xff);
-    return offset + 3;
-  }
   view.setFloat32(offset, clipped, true);
   return offset + 4;
 }
@@ -261,7 +260,7 @@ export function encodeWav(buffer: AudioBuffer, bitDepth: WavBitDepth, options: E
   for (let ch = 0; ch < numChannels; ch++) channels.push(buffer.getChannelData(ch));
 
   let offset = dataStart;
-  // TPDF dither PRNG for the 16-bit path (seeded → byte-reproducible exports)
+  // Shared seeded TPDF stream keeps 16/24-bit PCM byte-reproducible.
   const ditherRand = mulberry32(0x57415631);
   for (let i = 0; i < frames; i++) {
     for (let ch = 0; ch < numChannels; ch++) {

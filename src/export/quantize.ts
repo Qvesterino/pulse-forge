@@ -1,5 +1,6 @@
 /**
- * Master-safe quantization for consumer PCM formats (16-bit MP3 / WAV).
+ * Master-safe quantization for integer PCM formats (16/24-bit WAV and FLAC,
+ * plus 16-bit MP3).
  *
  * 1. Legacy exports can apply a soft-knee clip: content below ≈ −0.45 dBFS
  *    passes untouched; hotter samples are rounded off with a tanh knee. Master
@@ -74,6 +75,19 @@ export function quantizeInt16Sample(
   const input = overflowPolicy === "soft-knee" ? softClipSample(x) : x;
   const v = Math.round(input * 0x8000 + dither);
   return Math.max(-0x8000, Math.min(0x7fff, v));
+}
+
+/** Soft-knee (or pass through), TPDF-dither and quantize one sample to 24-bit PCM. */
+export function quantizeInt24Sample(
+  x: number,
+  rand: () => number,
+  overflowPolicy: IntegerOverflowPolicy = "soft-knee",
+): number {
+  if (overflowPolicy === "reject") assertIntegerPcmRange(x);
+  const dither = rand() + rand() - 1; // TPDF: triangular, ±1 LSB peak
+  const input = overflowPolicy === "soft-knee" ? softClipSample(x) : x;
+  const value = Math.round(input * 0x800000 + dither);
+  return Math.max(-0x800000, Math.min(0x7fffff, value));
 }
 
 /** Soft-clip + TPDF-dither + quantize a channel to 16-bit PCM. */

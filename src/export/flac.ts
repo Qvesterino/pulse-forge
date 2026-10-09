@@ -8,7 +8,7 @@ import {
   StreamTarget,
   type StreamTargetChunk,
 } from "mediabunny";
-import { assertIntegerPcmRange, mulberry32, quantizeInt16Sample } from "./quantize";
+import { mulberry32, quantizeInt16Sample, quantizeInt24Sample } from "./quantize";
 import { assertFlacOutputChunkRange, FLAC_STREAM_CHUNK_BYTES } from "./flac-limits";
 import { formatFlacSupportedSampleRates, isFlacSampleRateSupported } from "./flac-capabilities";
 
@@ -133,10 +133,7 @@ export async function encodeFlac(buffer: AudioBuffer, options: FlacOptions = {})
           const input = channels[channel];
           const channelOffset = channel * frameCount;
           for (let frame = 0; frame < frameCount; frame++) {
-            const value = input[start + frame];
-            assertIntegerPcmRange(value);
-            const dither = random() + random() - 1;
-            const quantized = Math.max(-0x800000, Math.min(0x7fffff, Math.round(value * 0x800000 + dither)));
+            const quantized = quantizeInt24Sample(input[start + frame], random, "reject");
             data[channelOffset + frame] = quantized * 256;
           }
         }
