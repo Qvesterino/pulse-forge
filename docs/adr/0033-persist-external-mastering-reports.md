@@ -45,6 +45,7 @@ fingerprint and verification basis, and contains no audio.
   available until the workspace closes.
 - Deleting an external session also deletes that session's report history.
 - Users can clear report history independently without removing session audio.
+- Each history entry exposes its saved timestamp and originating session revision.
 - Project-master analysis reports and live render buffers remain runtime-only.
 - The database version changes independently from the external session record
   schema, which remains version 2.
@@ -53,7 +54,8 @@ fingerprint and verification basis, and contains no audio.
 
 - Database version 3 sessions open unchanged after the version 4 upgrade.
 - New reports survive repository close/reopen and appear in the workspace
-  history with their original source/output names.
+  history with their original source/output names, saved timestamp and session
+  revision.
 - The history retains at most six distinct reports; same-session/name exports
   replace, and the oldest report is pruned after a seventh distinct output.
 - Deleting a session removes only its reports and leaves other sessions'

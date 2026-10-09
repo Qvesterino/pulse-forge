@@ -124,6 +124,8 @@ interface RecentDeliveryReport {
   sourceFileName: string;
   fileName: string;
   reportFileName: string;
+  createdAt: string;
+  configRevision: number | null;
   reportJson: string;
 }
 
@@ -159,12 +161,27 @@ function setItem(items: MasteringSessionSummary[], record: MasteringSessionRecor
 }
 
 function recentDeliveryReportFromRecord(record: MasteringSessionDeliveryReportRecord): RecentDeliveryReport {
+  let configRevision: number | null = null;
+  try {
+    const sidecar: unknown = JSON.parse(record.reportJson);
+    if (typeof sidecar === "object" && sidecar !== null && !Array.isArray(sidecar)) {
+      const session = (sidecar as Record<string, unknown>).session;
+      if (typeof session === "object" && session !== null && !Array.isArray(session)) {
+        const revision = (session as Record<string, unknown>).revision;
+        if (typeof revision === "number" && Number.isSafeInteger(revision)) configRevision = revision;
+      }
+    }
+  } catch {
+    // The repository validates report JSON; keep the entry usable if a future schema changes its revision field.
+  }
   return {
     key: record.id,
     sessionId: record.sessionId,
     sourceFileName: record.sourceFileName,
     fileName: record.fileName,
     reportFileName: record.reportFileName,
+    createdAt: record.createdAt,
+    configRevision,
     reportJson: record.reportJson,
   };
 }
@@ -1723,6 +1740,8 @@ export function MasteringFileSessionPanel({
         sourceFileName: session.fileName,
         fileName,
         reportFileName,
+        createdAt: reportCreatedAt.toISOString(),
+        configRevision: session.configRevision,
         reportJson,
       };
       const persistentReport: MasteringSessionDeliveryReportRecord = {
@@ -2970,18 +2989,25 @@ export function MasteringFileSessionPanel({
           {recentDeliveryReports.length > 0 && (
             <div className="mastering-file-session-delivery-report-list">
               {recentDeliveryReports.map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  className="btn btn-small"
-                  title={item.reportFileName}
-                  aria-label={`Download delivery report JSON for ${item.fileName}`}
-                  onClick={() =>
-                    downloadBlob(new Blob([item.reportJson], { type: "application/json" }), item.reportFileName)
-                  }
-                >
-                  {item.sourceFileName} → {item.fileName} · JSON
-                </button>
+                <div key={item.key} className="mastering-file-session-delivery-report">
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    title={item.reportFileName}
+                    aria-label={`Download delivery report JSON for ${item.fileName}`}
+                    onClick={() =>
+                      downloadBlob(new Blob([item.reportJson], { type: "application/json" }), item.reportFileName)
+                    }
+                  >
+                    {item.sourceFileName} → {item.fileName} · JSON
+                  </button>
+                  <small>
+                    <time dateTime={item.createdAt}>Saved {new Date(item.createdAt).toLocaleString()}</time>
+                    {item.configRevision == null
+                      ? " · session revision unavailable"
+                      : ` · session revision ${item.configRevision}`}
+                  </small>
+                </div>
               ))}
             </div>
           )}

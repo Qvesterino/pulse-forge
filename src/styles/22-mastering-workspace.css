@@ -580,15 +580,24 @@
 }
 
 .mastering-file-session-delivery-report-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
+  display: grid;
+  gap: 8px;
 }
 
-.mastering-file-session-delivery-report-list button {
+.mastering-file-session-delivery-report {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+}
+
+.mastering-file-session-delivery-report button {
   max-width: 100%;
   overflow-wrap: anywhere;
   text-align: left;
+}
+
+.mastering-file-session-delivery-report > small {
+  color: var(--text-faint);
 }
 
 .mastering-file-session-delivery-reports > small {
