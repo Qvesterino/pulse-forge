@@ -2363,8 +2363,8 @@ export function MasteringFileSessionPanel({
                       <button
                         type="button"
                         className="btn btn-small"
-                        aria-label="Cancel selected-excerpt loudness match"
-                        title="Stop measuring and use native audition levels"
+                        aria-label="Cancel selected-excerpt loudness measurement and use native levels for session auditions"
+                        title="Stop measuring and use native audition levels for this session"
                         onClick={() => setMatchLoudness(false)}
                       >
                         Cancel match

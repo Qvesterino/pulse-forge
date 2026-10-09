@@ -797,8 +797,8 @@ export function MasteringReferenceCompare({
               <button
                 type="button"
                 className="btn btn-small"
-                aria-label="Cancel selected-excerpt loudness match"
-                title="Stop measuring and use native audition levels"
+                aria-label="Cancel selected-excerpt loudness measurement and use native levels for master comparisons"
+                title="Stop measuring and use native audition levels for master comparisons"
                 onClick={onCancelLoudnessMatch}
               >
                 Cancel match
