@@ -189,12 +189,7 @@ export function MasteringPanel() {
             <span className="mastering-panel-kicker">MASTER CHECK</span>
             <h3>Analysis overview</h3>
           </div>
-          <span
-            className="mastering-overview-status"
-            data-state={reportStatus.state}
-            role="status"
-            aria-live={isAnalyzing ? "off" : "polite"}
-          >
+          <span className="mastering-overview-status" data-state={reportStatus.state}>
             {reportStatus.label}
           </span>
         </div>
