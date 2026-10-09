@@ -602,7 +602,6 @@ export function MasteringABCompare({
       setMasterTestToneStatus("Stopping test tone…");
       return;
     }
-    services.engine.stopPreview();
     setPlaying(null);
     const generation = ++masterTestToneGenerationRef.current;
     const estimatedTailSeconds = resolveRenderTailSeconds(doc, 2, "master");

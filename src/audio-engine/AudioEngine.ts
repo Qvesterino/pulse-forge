@@ -2762,10 +2762,11 @@ export class AudioEngine {
       source.type = "sine";
       source.frequency.value = 440;
       const now = ctx.currentTime;
+      const startsAt = now + 0.02;
       const duration = Number.isFinite(durationSec) ? Math.max(0.5, Math.min(5, durationSec)) : 2.5;
-      const end = now + duration;
-      gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(0.03, now + 0.015);
+      const end = startsAt + duration;
+      gain.gain.setValueAtTime(0, startsAt);
+      gain.gain.linearRampToValueAtTime(0.03, startsAt + 0.015);
       gain.gain.setValueAtTime(0.03, end - 0.015);
       gain.gain.linearRampToValueAtTime(0, end);
       source.onended = () => {
@@ -2783,17 +2784,20 @@ export class AudioEngine {
         onEnded?.();
       };
       source.connect(gain).connect(input);
+      // PreviewDeck fades its voices out over about 13 ms; leave 7 ms of
+      // audio-clock headroom before the monitor-path test tone starts.
+      this.stopPreview();
       this.masterMonitorTestTone = {
         context: ctx,
         source,
         gain,
         stopping: false,
-        startedAt: now,
+        startedAt: startsAt,
         endAt: end,
         tailSeconds: boundedTailSeconds,
       };
       this.oneShotSources.add(source);
-      source.start(now);
+      source.start(startsAt);
       source.stop(end);
       return { status: "ok" };
     } catch (err) {
