@@ -175,6 +175,7 @@ export function MasteringReferenceCompare({
   blockNewWork,
   onBeforeRender,
   onBusyChange,
+  onCancelLoudnessMatch,
   onReferenceBytes,
   assistantBytes,
   comparisonBytes,
@@ -189,6 +190,7 @@ export function MasteringReferenceCompare({
   blockNewWork: boolean;
   onBeforeRender(): void;
   onBusyChange(busy: boolean, excerptPending: boolean): void;
+  onCancelLoudnessMatch(): void;
   onReferenceBytes(bytes: number): void;
   assistantBytes: number;
   comparisonBytes: number;
@@ -791,6 +793,17 @@ export function MasteringReferenceCompare({
             <span role="status" aria-live="polite" aria-atomic="true" title={currentExcerptLoudness?.reason}>
               Audition trim — {auditionTrimLabel}
             </span>
+            {excerptLoudnessPending && (
+              <button
+                type="button"
+                className="btn btn-small"
+                aria-label="Cancel selected-excerpt loudness match"
+                title="Stop measuring and use native audition levels"
+                onClick={onCancelLoudnessMatch}
+              >
+                Cancel match
+              </button>
+            )}
           </div>
           <div className="master-reference-offsets">
             <div className="master-reference-offset-control">

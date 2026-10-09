@@ -149,6 +149,7 @@ export function MasteringABCompare({
     setReferenceBusy(referenceWorkBusy);
     setReferenceExcerptPending(excerptPending);
   }, []);
+  const cancelReferenceLoudnessMatch = useCallback(() => setLevelMatch(false), []);
   const [masterBypassed, setMasterBypassed] = useState(() => services.engine.isMasterBypassed());
   const abortRef = useRef<AbortController | null>(null);
   const bypassMatchAbortRef = useRef<AbortController | null>(null);
@@ -883,6 +884,7 @@ export function MasteringABCompare({
           abRenderEpoch={abRenderEpoch}
           blockNewWork={comparisonWorkBusy || blockNewWork || Boolean(blindListen)}
           onBusyChange={reportReferenceBusy}
+          onCancelLoudnessMatch={cancelReferenceLoudnessMatch}
           comparisonBytes={comparisonBytes}
           onBeforeRender={() => {
             bypassMatchAbortRef.current?.abort();

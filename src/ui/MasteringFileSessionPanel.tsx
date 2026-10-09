@@ -2359,6 +2359,17 @@ export function MasteringFileSessionPanel({
                           : "Measuring selected excerpt loudness… A/B is ready when the measurement finishes."
                         : `Shared A/B excerpt: ${referenceCompareDuration.toFixed(2)} s. Both sides start together and switch without stopping.`}
                     </span>
+                    {referenceExcerptLoudness.pending && (
+                      <button
+                        type="button"
+                        className="btn btn-small"
+                        aria-label="Cancel selected-excerpt loudness match"
+                        title="Stop measuring and use native audition levels"
+                        onClick={() => setMatchLoudness(false)}
+                      >
+                        Cancel match
+                      </button>
+                    )}
                   </div>
                 )}
                 {renderCurrent && rendered && (
