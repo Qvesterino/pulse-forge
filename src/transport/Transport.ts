@@ -56,7 +56,22 @@ export class Transport {
   }
 
   private notifyPlayingListeners(): void {
-    for (const listener of [...this.playingListeners]) listener(this.playing_);
+    const playing = this.playing_;
+    for (const listener of [...this.playingListeners]) {
+      try {
+        listener(playing);
+      } catch (error) {
+        console.error("[transport] play-state listener failed:", error);
+      }
+    }
+  }
+
+  private emitPlaybackGesture(): void {
+    try {
+      this.onGesture?.(this);
+    } finally {
+      this.notifyPlayingListeners();
+    }
   }
 
   constructor(
@@ -119,8 +134,7 @@ export class Transport {
     this.contentStartTick_ = startTick + (useLeadIn ? this.leadInBars() * this.barTicks_ : 0);
     this.playing_ = true;
     this.paused_ = false;
-    this.onGesture?.(this);
-    this.notifyPlayingListeners();
+    this.emitPlaybackGesture();
   }
 
   pause(): void {
@@ -128,8 +142,7 @@ export class Transport {
     this.pauseTick = this.tickAt(this.clock.now());
     this.playing_ = false;
     this.paused_ = true;
-    this.onGesture?.(this);
-    this.notifyPlayingListeners();
+    this.emitPlaybackGesture();
   }
 
   stop(): void {
@@ -139,8 +152,7 @@ export class Transport {
     this.pauseTick = 0;
     this.paused_ = false;
     this.contentStartTick_ = 0;
-    this.onGesture?.(this);
-    this.notifyPlayingListeners();
+    this.emitPlaybackGesture();
   }
 
   seek(tick: number): void {
