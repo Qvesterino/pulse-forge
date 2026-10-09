@@ -1,6 +1,6 @@
 import type { BufferSummary } from "../audio-engine/metering";
 import type { MixHealthReport } from "../analysis/mixDoctor";
-import type { ProjectDocument } from "../project-model/types";
+import type { MasterConfig, ProjectDocument } from "../project-model/types";
 import packageMetadata from "../../package.json";
 import type { EncodedMasterInspection } from "./encodedInspection";
 import { masterProfileProvenance, type MasterProfile } from "./profiles";
@@ -86,7 +86,13 @@ export interface MasterRenderReportV12 extends Omit<MasterRenderReportV11, "vers
   renderDiagnostics: OfflineRenderRuntimeDiagnostics;
 }
 
-export type MasterRenderReport = MasterRenderReportV12;
+export interface MasterRenderReportV13 extends Omit<MasterRenderReportV12, "version"> {
+  version: 13;
+  /** Exact master controls and insert chain used for this render, copied out of the project document. */
+  masterConfig: MasterConfig;
+}
+
+export type MasterRenderReport = MasterRenderReportV13;
 
 let nextRunId = 1;
 let nextRevisionId = 1;
@@ -102,15 +108,16 @@ export function projectRevisionIdFor(doc: ProjectDocument): string {
 }
 
 export function createMasterRenderReport(
-  input: Omit<MasterRenderReportV12, "version" | "runId" | "createdAt" | "encodedDelivery" | "measurementTap">,
-): MasterRenderReportV12 {
+  input: Omit<MasterRenderReportV13, "version" | "runId" | "createdAt" | "encodedDelivery" | "measurementTap">,
+): MasterRenderReportV13 {
   return {
-    version: 12,
+    version: 13,
     runId: `master-render-${Date.now().toString(36)}-${nextRunId++}`,
     createdAt: new Date().toISOString(),
     encodedDelivery: null,
     measurementTap: { id: "master-output", position: "post-limiter", fileStage: "pre-encode" },
     ...input,
+    masterConfig: JSON.parse(JSON.stringify(input.masterConfig)) as MasterConfig,
   };
 }
 
@@ -119,7 +126,7 @@ export function serializeMasterReportSidecar(report: MasterRenderReport, generat
   return JSON.stringify(
     {
       schema: "kyx.master-report",
-      schemaVersion: 12,
+      schemaVersion: 13,
       generatedAt: generatedAt.toISOString(),
       application: {
         product: packageMetadata.productName,

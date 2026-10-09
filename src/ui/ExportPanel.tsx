@@ -450,6 +450,7 @@ export function ExportPanel({
           mixHealth: mixHealthReport,
           verdict,
           renderDiagnostics,
+          masterConfig: doc.master,
         }),
       );
 

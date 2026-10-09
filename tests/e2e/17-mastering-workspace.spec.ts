@@ -1555,8 +1555,8 @@ test.describe("17 — mastering workspace", () => {
     const reportPath = testInfo.outputPath("project-master-delivery-report.json");
     await reportDownload.saveAs(reportPath);
     const deliveryReport = JSON.parse(await readFile(reportPath, "utf8"));
-    expect(deliveryReport.schemaVersion).toBe(12);
-    expect(deliveryReport.report.version).toBe(12);
+    expect(deliveryReport.schemaVersion).toBe(13);
+    expect(deliveryReport.report.version).toBe(13);
     expect(deliveryReport.report.encodedDelivery.fileDelivery).toMatchObject({
       profileId: "streaming",
       status: "fail",
