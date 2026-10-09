@@ -142,7 +142,7 @@ remain open; this update does not broaden the validated support matrix.
 ## Implementation update — 2026-10-09
 
 Project and external-session reference comparisons start their rendered-master
-and reference buffers together at selected offsets. Both continue on the same
+and reference buffers together at selected offsets, with a one-click reset to both file beginnings. Both continue on the same
 monitor clock while the user switches sides through a 20 ms complementary gain
 ramp; the pair ends at the shorter remaining duration. Project comparison also
 supports dim and mono controls. Both paths measure audition loudness over the

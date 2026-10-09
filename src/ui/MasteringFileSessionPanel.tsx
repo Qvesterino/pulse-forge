@@ -699,6 +699,11 @@ export function MasteringFileSessionPanel() {
     const currentOffset = side === "master" ? masterCompareOffset : referenceCompareOffset;
     updateReferenceCompareOffset(side, currentOffset + deltaSeconds);
   };
+  const resetReferenceCompareOffsets = () => {
+    stopSessionPreview();
+    setMasterCompareOffset(0);
+    setReferenceCompareOffset(0);
+  };
 
   const loadSession = useCallback(
     async (id: string) => {
@@ -2283,6 +2288,15 @@ export function MasteringFileSessionPanel() {
                         </button>
                       </div>
                     </div>
+                    <button
+                      type="button"
+                      className="btn btn-small"
+                      aria-label="Reset session master and reference starts to the beginning"
+                      disabled={Boolean(busy) || (masterCompareOffset === 0 && referenceCompareOffset === 0)}
+                      onClick={resetReferenceCompareOffsets}
+                    >
+                      Reset both starts
+                    </button>
                     <span
                       id="mastering-session-reference-offset-status"
                       role="status"

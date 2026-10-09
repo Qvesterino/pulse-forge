@@ -615,6 +615,11 @@ export function MasteringReferenceCompare({
     const currentOffset = side === "project" ? projectOffset : referenceOffset;
     updateOffset(side, currentOffset + deltaSeconds);
   };
+  const resetOffsets = () => {
+    if (playing) stop();
+    setProjectOffset(0);
+    setReferenceOffset(0);
+  };
 
   return (
     <section className="master-reference-section" aria-label="Reference audio comparison">
@@ -826,6 +831,15 @@ export function MasteringReferenceCompare({
                 </button>
               </div>
             </div>
+            <button
+              type="button"
+              className="btn btn-small"
+              aria-label="Reset project and reference starts to the beginning"
+              disabled={projectOffset === 0 && referenceOffset === 0}
+              onClick={resetOffsets}
+            >
+              Reset both starts
+            </button>
             <span>
               {comparePairReady
                 ? `Shared A/B excerpt: ${compareExcerptDuration.toFixed(2)} s. Start both at these points, then switch sides without stopping.`
