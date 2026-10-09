@@ -83,11 +83,13 @@ function MasteringSessionInsertRackContents({
         track={track}
         mode="devices"
         isMaster
+        showLiveRuntimeStatus={false}
         statusScopeId={`session-${sessionId}-master`}
         allowUserImpulseResponses={false}
       />
       <small className="mastering-session-inserts-note">
-        Insert edits stay in this local session. User impulse-response files are not attached to the live project.
+        This offline session does not show live GR or runtime status. Render and inspect the report or A/B audition to
+        evaluate its processing. User impulse-response files are not attached to the live project.
       </small>
       <span className="sr-only" aria-live="polite">
         {services.store.getDoc().master.effects?.length ?? 0} master inserts

@@ -82,6 +82,8 @@ type EffectRackProps = {
   mode?: "rack" | "devices";
   selectedPadId?: string;
   isMaster?: boolean;
+  /** Disable engine telemetry when this rack edits an offline-only master config. */
+  showLiveRuntimeStatus?: boolean;
   /** Distinguishes simultaneous isolated master racks from the project master rack. */
   statusScopeId?: string;
   /** External mastering sessions cannot attach a transient user IR to the live engine graph. */
@@ -93,6 +95,7 @@ export function EffectRack({
   mode = "rack",
   selectedPadId = "",
   isMaster = false,
+  showLiveRuntimeStatus = true,
   statusScopeId,
   allowUserImpulseResponses = true,
 }: EffectRackProps) {
@@ -191,6 +194,12 @@ export function EffectRack({
   // Observer-only poll: degraded fallbacks surface as warning badges, while
   // metered dynamics devices expose live GR readings without owning audio state.
   useEffect(() => {
+    if (!showLiveRuntimeStatus) {
+      setFallbacks({});
+      setGainReduction({});
+      setGainReductionBreakdown({});
+      return;
+    }
     let last = 0;
     let fallbackSig = "";
     let grSig = "";
@@ -258,7 +267,7 @@ export function EffectRack({
       }
     });
     return () => unregisterRaf(`fx-status-${statusKey}`);
-  }, [services, statusScopeId, track]);
+  }, [services, showLiveRuntimeStatus, statusScopeId, track]);
 
   if (devicesMode) {
     const selectedFx = track.effects.find((fx) => fx.id === activeDeviceId);
