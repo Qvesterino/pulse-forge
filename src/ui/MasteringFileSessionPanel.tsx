@@ -2229,6 +2229,7 @@ export function MasteringFileSessionPanel() {
                           step={0.001}
                           value={masterCompareOffset}
                           aria-label="Session master start offset in seconds"
+                          aria-describedby="mastering-session-reference-offset-status"
                           disabled={Boolean(busy)}
                           onChange={(event) => updateReferenceCompareOffset("master", Number(event.target.value) || 0)}
                         />
@@ -2264,6 +2265,7 @@ export function MasteringFileSessionPanel() {
                           step={0.001}
                           value={referenceCompareOffset}
                           aria-label="Reference start offset in seconds"
+                          aria-describedby="mastering-session-reference-offset-status"
                           disabled={Boolean(busy)}
                           onChange={(event) =>
                             updateReferenceCompareOffset("reference", Number(event.target.value) || 0)
@@ -2281,7 +2283,12 @@ export function MasteringFileSessionPanel() {
                         </button>
                       </div>
                     </div>
-                    <span>
+                    <span
+                      id="mastering-session-reference-offset-status"
+                      role="status"
+                      aria-live="polite"
+                      aria-atomic="true"
+                    >
                       {referenceExcerptLoudness.pending
                         ? "Measuring selected excerpt loudness… A/B is ready when the measurement finishes."
                         : `Shared A/B excerpt: ${referenceCompareDuration.toFixed(2)} s. Both sides start together and switch without stopping.`}
@@ -2292,15 +2299,22 @@ export function MasteringFileSessionPanel() {
                   <span>
                     Master: {rendered.measurements.lufsIntegrated.toFixed(1)} LUFS-I ·{" "}
                     {rendered.measurements.truePeakDb.toFixed(1)} dBTP · audition trims{" "}
-                    {!matchLoudness
-                      ? "off"
-                      : referenceExcerptLoudness.pending
-                        ? "measuring selected excerpt…"
-                        : referenceExcerptLoudness.current?.status === "unavailable"
-                          ? "unavailable; using native levels"
-                          : referenceMatchTarget === null
-                            ? "not matched; selected excerpt is too short or too quiet"
-                            : `selected excerpt ${formatCompareGain(referenceMasterGain)} / ${formatCompareGain(referenceAudioGain)}`}
+                    <span
+                      role="status"
+                      aria-live="polite"
+                      aria-atomic="true"
+                      title={referenceExcerptLoudness.current?.reason}
+                    >
+                      {!matchLoudness
+                        ? "off"
+                        : referenceExcerptLoudness.pending
+                          ? "measuring selected excerpt…"
+                          : referenceExcerptLoudness.current?.status === "unavailable"
+                            ? `unavailable; using native levels${referenceExcerptLoudness.current.reason ? ` · ${referenceExcerptLoudness.current.reason.slice(0, 120)}` : ""}`
+                            : referenceMatchTarget === null
+                              ? "not matched; selected excerpt is too short or too quiet"
+                              : `selected excerpt ${formatCompareGain(referenceMasterGain)} / ${formatCompareGain(referenceAudioGain)}`}
+                    </span>
                   </span>
                 )}
               </div>
