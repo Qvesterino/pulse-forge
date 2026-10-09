@@ -5,6 +5,7 @@ import { planMasterSettings, type MasterAssistantStep } from "../mcp/master-assi
 import { defaultParamsOf, EFFECT_META, clampEffectParam } from "../effects/definitions";
 import { resolveDeliveryTarget, evaluateDelivery } from "../mastering/profiles";
 import { projectRevisionIdFor } from "../mastering/report";
+import { formatAuditionTrim, getLoudnessMatchGain, resolveLoudnessMatchTarget } from "../mastering/audition";
 import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
 import { awaitMasteringSampleBankReady } from "../mastering/readiness";
 import { estimateRenderPcmBytes, renderProject } from "../rendering/renderer";
@@ -51,32 +52,17 @@ function formatDb(value: number, unit: string): string {
   return Number.isFinite(value) && value > -119 ? `${value.toFixed(1)} ${unit}` : `−∞ ${unit}`;
 }
 
-function formatAuditionTrim(gain: number): string {
-  return `${(20 * Math.log10(Math.max(1e-12, gain))).toFixed(1)} dB`;
-}
-
 function getAuditionMatchGains(
   currentLufs: number | null,
   proposalLufs: number | null,
   enabled: boolean,
 ): { current: number; proposal: number; available: boolean } {
-  const available =
-    enabled &&
-    currentLufs !== null &&
-    proposalLufs !== null &&
-    Number.isFinite(currentLufs) &&
-    Number.isFinite(proposalLufs) &&
-    currentLufs > -119 &&
-    proposalLufs > -119;
-  if (!available || currentLufs === null || proposalLufs === null) {
-    return { current: 1, proposal: 1, available: false };
-  }
-
-  const targetLufs = Math.min(currentLufs, proposalLufs);
+  const targetLufs = enabled ? resolveLoudnessMatchTarget([currentLufs, proposalLufs]) : null;
+  const available = targetLufs !== null;
   return {
-    current: Math.min(1, Math.pow(10, (targetLufs - currentLufs) / 20)),
-    proposal: Math.min(1, Math.pow(10, (targetLufs - proposalLufs) / 20)),
-    available: true,
+    current: getLoudnessMatchGain(currentLufs, targetLufs, available),
+    proposal: getLoudnessMatchGain(proposalLufs, targetLufs, available),
+    available,
   };
 }
 

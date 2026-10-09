@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { BufferSummary } from "../audio-engine/metering";
+import { resolveLoudnessMatchTarget } from "../mastering/audition";
 import { measureMasterBufferRangeLufsAsync } from "../mastering/analysisClient";
 
 export interface MasteringExcerptLoudnessMatch {
@@ -53,9 +54,7 @@ export function useMasteringExcerptLoudness({
   const current = isCurrent ? match : null;
   const pending = Boolean(enabled && pairReady && (!current || current.status === "measuring"));
   const targetLufs =
-    current?.status === "ready" && current.projectLufs !== null && current.referenceLufs !== null
-      ? Math.min(current.projectLufs, current.referenceLufs)
-      : null;
+    current?.status === "ready" ? resolveLoudnessMatchTarget([current.projectLufs, current.referenceLufs]) : null;
 
   useEffect(() => {
     if (!pairReady || !projectBuffer || !projectSummary || !referenceBuffer || !referenceSummary) {

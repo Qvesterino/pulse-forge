@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BufferSummary } from "../audio-engine/metering";
+import { formatAuditionTrim, getLoudnessMatchGain, resolveLoudnessMatchTarget } from "../mastering/audition";
 import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
 import { awaitMasteringSampleBankReady } from "../mastering/readiness";
 import { resolveDeliveryTarget } from "../mastering/profiles";
@@ -52,15 +53,6 @@ const MAX_SHARED_COMPARE_BYTES = 320 * 1024 * 1024;
 
 function formatDb(value: number, suffix: string): string {
   return Number.isFinite(value) && value > -120 ? `${value.toFixed(1)} ${suffix}` : `−∞ ${suffix}`;
-}
-
-function normalizeGain(summary: BufferSummary, targetLufs: number | null, enabled: boolean): number {
-  if (!enabled || targetLufs === null || summary.lufsIntegrated <= -119) return 1;
-  return Math.min(1, Math.pow(10, (targetLufs - summary.lufsIntegrated) / 20));
-}
-
-function gainLabel(gain: number): string {
-  return `${(20 * Math.log10(Math.max(1e-12, gain))).toFixed(1)} dB`;
 }
 
 function randomizedFirstSlot(): MasteringABSlot {
@@ -139,13 +131,14 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
   );
   const matchTarget = useMemo(() => {
     if (!comparisonReady) return null;
-    const loudnessA = comparison.a.summary.lufsIntegrated;
-    const loudnessB = comparison.b.summary.lufsIntegrated;
-    if (loudnessA <= -119 || loudnessB <= -119) return null;
-    return Math.min(loudnessA, loudnessB);
+    return resolveLoudnessMatchTarget([comparison.a.summary.lufsIntegrated, comparison.b.summary.lufsIntegrated]);
   }, [comparison, comparisonReady]);
-  const gainA = comparisonReady ? normalizeGain(comparison.a.summary, matchTarget, levelMatch) : 1;
-  const gainB = comparisonReady ? normalizeGain(comparison.b.summary, matchTarget, levelMatch) : 1;
+  const gainA = comparisonReady
+    ? getLoudnessMatchGain(comparison.a.summary.lufsIntegrated, matchTarget, levelMatch)
+    : 1;
+  const gainB = comparisonReady
+    ? getLoudnessMatchGain(comparison.b.summary.lufsIntegrated, matchTarget, levelMatch)
+    : 1;
   const comparisonBytes = comparison
     ? comparison.a.buffer.length * comparison.a.buffer.numberOfChannels * Float32Array.BYTES_PER_ELEMENT +
       comparison.b.buffer.length * comparison.b.buffer.numberOfChannels * Float32Array.BYTES_PER_ELEMENT
@@ -373,7 +366,7 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
               </div>
               <div>
                 <dt>Audition trim</dt>
-                <dd>{levelMatch && matchTarget === null ? "unavailable" : gainLabel(gain)}</dd>
+                <dd>{levelMatch && matchTarget === null ? "unavailable" : formatAuditionTrim(gain)}</dd>
               </div>
             </dl>
             <small>
@@ -409,7 +402,7 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
           </div>
           <div>
             <dt>Audition trim</dt>
-            <dd>{levelMatch && matchTarget === null ? "unavailable" : gainLabel(gain)}</dd>
+            <dd>{levelMatch && matchTarget === null ? "unavailable" : formatAuditionTrim(gain)}</dd>
           </div>
         </dl>
         <button type="button" onClick={() => play(slot)} disabled={!comparisonReady}>

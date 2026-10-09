@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { BufferSummary } from "../audio-engine/metering";
+import { formatAuditionTrim, getLoudnessMatchGain } from "../mastering/audition";
 import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
 import { awaitMasteringSampleBankReady } from "../mastering/readiness";
 import {
@@ -160,12 +161,7 @@ function formatDb(value: number, suffix: string): string {
 }
 
 function previewTrim(lufsIntegrated: number | null, target: number | null, enabled: boolean): number {
-  if (!enabled || target === null || lufsIntegrated === null || lufsIntegrated <= -119) return 1;
-  return Math.min(1, Math.pow(10, (target - lufsIntegrated) / 20));
-}
-
-function trimLabel(gain: number): string {
-  return `${(20 * Math.log10(Math.max(1e-12, gain))).toFixed(1)} dB`;
+  return getLoudnessMatchGain(lufsIntegrated, target, enabled);
 }
 
 export function MasteringReferenceCompare({
@@ -357,7 +353,7 @@ export function MasteringReferenceCompare({
         ? `unavailable; using native levels${currentExcerptLoudness.reason ? ` · ${currentExcerptLoudness.reason.slice(0, 120)}` : ""}`
         : targetLufs === null
           ? "not matched; selected excerpt is too short or too quiet to measure"
-          : `selected excerpt — project ${trimLabel(previewTrim(currentExcerptLoudness.projectLufs, targetLufs, true))}; reference ${trimLabel(previewTrim(currentExcerptLoudness.referenceLufs, targetLufs, true))}`;
+          : `selected excerpt — project ${formatAuditionTrim(previewTrim(currentExcerptLoudness.projectLufs, targetLufs, true))}; reference ${formatAuditionTrim(previewTrim(currentExcerptLoudness.referenceLufs, targetLufs, true))}`;
 
   useEffect(() => {
     if (!excerptLoudnessPending || !playingRef.current) return;

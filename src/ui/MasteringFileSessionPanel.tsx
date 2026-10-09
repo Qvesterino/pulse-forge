@@ -4,6 +4,7 @@ import { computeStageAdjustment } from "../audio-engine/metering";
 import type { BufferSummary } from "../audio-engine/metering";
 import type { LoudnessTimeline } from "../audio-engine/kweighting";
 import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
+import { formatAuditionTrim, getLoudnessMatchGain, resolveLoudnessMatchTarget } from "../mastering/audition";
 import {
   inspectEncodedMaster,
   inspectMasteringReferenceContainer,
@@ -132,21 +133,11 @@ function compareGain(measurements: BufferSummary, targetLufs: number | null, ena
 }
 
 function compareLufsGain(lufsIntegrated: number | null, targetLufs: number | null, enabled: boolean): number {
-  if (
-    !enabled ||
-    targetLufs === null ||
-    lufsIntegrated === null ||
-    !Number.isFinite(targetLufs) ||
-    !Number.isFinite(lufsIntegrated) ||
-    lufsIntegrated <= -119
-  ) {
-    return 1;
-  }
-  return Math.min(1, Math.pow(10, (targetLufs - lufsIntegrated) / 20));
+  return getLoudnessMatchGain(lufsIntegrated, targetLufs, enabled);
 }
 
 function formatCompareGain(gain: number): string {
-  return `${(20 * Math.log10(Math.max(1e-12, gain))).toFixed(1)} dB`;
+  return formatAuditionTrim(gain);
 }
 
 function sessionSummary(record: MasteringSessionRecord): MasteringSessionSummary {
@@ -534,10 +525,10 @@ export function MasteringFileSessionPanel() {
   );
   const comparisonMatchTarget = useMemo(() => {
     if (!comparisonCurrent || !comparison) return null;
-    const loudnessA = comparison.a.measurements.lufsIntegrated;
-    const loudnessB = comparison.b.measurements.lufsIntegrated;
-    if (loudnessA <= -119 || loudnessB <= -119) return null;
-    return Math.min(loudnessA, loudnessB);
+    return resolveLoudnessMatchTarget([
+      comparison.a.measurements.lufsIntegrated,
+      comparison.b.measurements.lufsIntegrated,
+    ]);
   }, [comparison, comparisonCurrent]);
   const comparisonGainA =
     comparisonCurrent && comparison ? compareGain(comparison.a.measurements, comparisonMatchTarget, matchLoudness) : 1;
