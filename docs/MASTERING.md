@@ -174,7 +174,7 @@ V efektovom reťazci sú dostupné aj samostatné nástroje:
 
 APEKS v otvorenom editore zobrazuje GR: maximálnu redukciu svojej gain trajektórie zachytenú v poslednom 50 ms meracom okne. PRESERVE časť úderu čiastočne vynecháva z tejto redukcie, preto GR nie je meraním výsledného true peaku.
 
-PRÚD zobrazuje osobitne maximálnu redukciu **BAND 1** a **BAND 2** v rovnakom 50 ms okne. Ovládač CUT určuje hornú mieru dynamického útlmu, nie trvalý statický rez; nulové GR znamená, že detektor práve neuberá.
+PRÚD zobrazuje osobitne maximálnu redukciu **BAND 1** a **BAND 2** v rovnakom 50 ms okne. Náhľad **MAX CUT** kreslí prerušovanou čiarou maximálnu odozvu každého pásma pri dosiahnutí jeho CUT a plnou čiarou ich súčet. Je to cieľový rozsah útlmu; aktuálne správanie ukazujú GR metre. Ovládač CUT určuje hornú mieru dynamického útlmu, nie trvalý statický rez; nulové GR znamená, že detektor práve neuberá.
 
 Presety APEKS, ŠÍRKA a PRÚD sú štartovacie body. Pri šírke vždy skontroluj koreláciu a mono; pri dynamickom EQ nastav prah tak, aby efekt nereagoval stále; pri maximizeri vyhodnoť aj údernosť a skreslenie.
 

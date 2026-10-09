@@ -839,7 +839,10 @@ function Device({
             />
           )}
           {fx.type === "prud" && (
-            <PrudMaxCutPreview params={fx.params} sampleRate={services.engine.getLiveAudioContext()?.sampleRate ?? 48_000} />
+            <PrudMaxCutPreview
+              params={fx.params}
+              sampleRate={services.engine.getLiveAudioContext()?.sampleRate ?? 48_000}
+            />
           )}
           {fx.type === "eq" && <EqResponseCurve params={fx.params} />}
           {(fx.type === "limiter" ||
@@ -1154,7 +1157,13 @@ function EqResponseCurve({ params }: { params: Record<string, number> }) {
   );
 }
 
-function peakingCutMagnitudeDb(freqHz: number, centerHz: number, q: number, gainDb: number, sampleRate: number): number {
+function peakingCutMagnitudeDb(
+  freqHz: number,
+  centerHz: number,
+  q: number,
+  gainDb: number,
+  sampleRate: number,
+): number {
   if (gainDb >= 0) return 0;
   const a = Math.pow(10, gainDb / 40);
   const omega = (2 * Math.PI * freqHz) / sampleRate;
@@ -1171,7 +1180,10 @@ function peakingCutMagnitudeDb(freqHz: number, centerHz: number, q: number, gain
   const a1 = (-2 * Math.cos(centerOmega)) / denominator;
   const a2 = (1 - alpha / a) / denominator;
   const numerator = Math.hypot(b0 + b1 * cosOmega + b2 * cosDoubleOmega, -(b1 * sinOmega + b2 * sinDoubleOmega));
-  const denominatorMagnitude = Math.hypot(1 + a1 * cosOmega + a2 * cosDoubleOmega, -(a1 * sinOmega + a2 * sinDoubleOmega));
+  const denominatorMagnitude = Math.hypot(
+    1 + a1 * cosOmega + a2 * cosDoubleOmega,
+    -(a1 * sinOmega + a2 * sinDoubleOmega),
+  );
   if (denominatorMagnitude < 1e-12) return 0;
   const magnitudeDb = 20 * Math.log10(Math.max(1e-9, numerator / denominatorMagnitude));
   return Number.isFinite(magnitudeDb) ? Math.min(0, magnitudeDb) : 0;
@@ -1245,6 +1257,9 @@ function PrudMaxCutPreview({ params, sampleRate }: { params: Record<string, numb
         </text>
         <text x="247" y="88" className="prud-cut-axis-label">
           10k
+        </text>
+        <text x="280" y="88" textAnchor="end" className="prud-cut-axis-label">
+          20k
         </text>
         <polyline points={line((point) => point.band1Y)} className="prud-cut-band prud-cut-band-one" />
         <polyline points={line((point) => point.band2Y)} className="prud-cut-band prud-cut-band-two" />
