@@ -662,7 +662,7 @@ export function MasteringReferenceCompare({
           <input
             type="file"
             accept=".wav,.wave,.mp3,.flac,audio/wav,audio/mpeg,audio/flac"
-            disabled={loading || rendering || blockNewWork}
+            disabled={loading || rendering || blockNewWork || excerptLoudnessPending}
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];
               if (file) void importFile(file);
@@ -711,7 +711,7 @@ export function MasteringReferenceCompare({
           <button
             type="button"
             onClick={() => void renderProjectMaster()}
-            disabled={rendering || loading || blockNewWork}
+            disabled={rendering || loading || blockNewWork || excerptLoudnessPending}
           >
             {rendering
               ? "Rendering project…"

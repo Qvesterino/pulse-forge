@@ -566,6 +566,8 @@ export function MasteringFileSessionPanel({
   useEffect(() => {
     onBusyChange?.(Boolean(busy) || referenceExcerptLoudness.pending);
   }, [busy, onBusyChange, referenceExcerptLoudness.pending]);
+  const excerptAnalysisPending = referenceExcerptLoudness.pending;
+  blockNewWorkRef.current = blockNewWork || excerptAnalysisPending;
   const referenceMatchTarget = referenceExcerptLoudness.targetLufs;
   const referenceMasterLufs =
     matchLoudness && referencePairReady
@@ -1778,11 +1780,11 @@ export function MasteringFileSessionPanel({
           className={`btn btn-small mastering-file-session-import${sourceDragActive ? " is-drag-over" : ""}`}
           onDragEnter={(event: DragEvent<HTMLLabelElement>) => {
             event.preventDefault();
-            if (!busy && !blockNewWork) setSourceDragActive(true);
+            if (!busy && !blockNewWork && !excerptAnalysisPending) setSourceDragActive(true);
           }}
           onDragOver={(event: DragEvent<HTMLLabelElement>) => {
             event.preventDefault();
-            event.dataTransfer.dropEffect = busy || blockNewWork ? "none" : "copy";
+            event.dataTransfer.dropEffect = busy || blockNewWork || excerptAnalysisPending ? "none" : "copy";
           }}
           onDragLeave={(event: DragEvent<HTMLLabelElement>) => {
             const relatedTarget = event.relatedTarget;
@@ -1793,7 +1795,7 @@ export function MasteringFileSessionPanel({
           onDrop={(event: DragEvent<HTMLLabelElement>) => {
             event.preventDefault();
             setSourceDragActive(false);
-            if (busy || blockNewWork) return;
+            if (busy || blockNewWork || excerptAnalysisPending) return;
             const file = event.dataTransfer.files[0];
             if (file) void importFile(file);
           }}
@@ -1803,7 +1805,7 @@ export function MasteringFileSessionPanel({
             type="file"
             aria-label="Import WAV, MP3 or FLAC mixdown"
             accept=".wav,.wave,.mp3,.flac,audio/wav,audio/mpeg,audio/flac"
-            disabled={Boolean(busy) || blockNewWork}
+            disabled={Boolean(busy) || blockNewWork || excerptAnalysisPending}
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];
               event.currentTarget.value = "";
@@ -1819,7 +1821,7 @@ export function MasteringFileSessionPanel({
           <select
             aria-label="Saved mastering sessions"
             value={session?.id ?? ""}
-            disabled={Boolean(busy) || blockNewWork}
+            disabled={Boolean(busy) || blockNewWork || excerptAnalysisPending}
             onChange={(event) => void loadSession(event.target.value)}
           >
             <option value="">Choose a saved session…</option>
@@ -2045,6 +2047,7 @@ export function MasteringFileSessionPanel({
                 disabled={
                   Boolean(busy) ||
                   blockNewWork ||
+                  excerptAnalysisPending ||
                   dirty ||
                   !source ||
                   !snapshotA ||
@@ -2160,11 +2163,11 @@ export function MasteringFileSessionPanel({
                 className={`mastering-session-reference-import${referenceDragActive ? " is-drag-over" : ""}`}
                 onDragEnter={(event: DragEvent<HTMLLabelElement>) => {
                   event.preventDefault();
-                  if (!busy && !blockNewWork) setReferenceDragActive(true);
+                  if (!busy && !blockNewWork && !excerptAnalysisPending) setReferenceDragActive(true);
                 }}
                 onDragOver={(event: DragEvent<HTMLLabelElement>) => {
                   event.preventDefault();
-                  event.dataTransfer.dropEffect = busy || blockNewWork ? "none" : "copy";
+                  event.dataTransfer.dropEffect = busy || blockNewWork || excerptAnalysisPending ? "none" : "copy";
                 }}
                 onDragLeave={(event: DragEvent<HTMLLabelElement>) => {
                   const relatedTarget = event.relatedTarget;
@@ -2175,7 +2178,7 @@ export function MasteringFileSessionPanel({
                 onDrop={(event: DragEvent<HTMLLabelElement>) => {
                   event.preventDefault();
                   setReferenceDragActive(false);
-                  if (busy || blockNewWork) return;
+                  if (busy || blockNewWork || excerptAnalysisPending) return;
                   const file = event.dataTransfer.files[0];
                   if (file) void importReference(file);
                 }}
@@ -2191,7 +2194,7 @@ export function MasteringFileSessionPanel({
                   type="file"
                   aria-label="Import external mastering reference WAV, MP3 or FLAC"
                   accept=".wav,.wave,.mp3,.flac,audio/wav,audio/mpeg,audio/flac"
-                  disabled={Boolean(busy) || blockNewWork}
+                  disabled={Boolean(busy) || blockNewWork || excerptAnalysisPending}
                   onChange={(event) => {
                     const file = event.currentTarget.files?.[0];
                     if (file) void importReference(file);
@@ -2394,7 +2397,7 @@ export function MasteringFileSessionPanel({
               type="button"
               className="btn btn-small"
               aria-label="Analyze original external mastering input"
-              disabled={Boolean(busy) || blockNewWork || !source}
+              disabled={Boolean(busy) || blockNewWork || excerptAnalysisPending || !source}
               onClick={() => void analyzeSource()}
             >
               {currentSourceAnalysis ? "Re-analyze input" : "Analyze input"}
@@ -2566,7 +2569,14 @@ export function MasteringFileSessionPanel({
             <button
               type="button"
               className="btn btn-export"
-              disabled={Boolean(busy) || blockNewWork || !source || dirty || estimatedBytes > 512 * 1024 * 1024}
+              disabled={
+                Boolean(busy) ||
+                blockNewWork ||
+                excerptAnalysisPending ||
+                !source ||
+                dirty ||
+                estimatedBytes > 512 * 1024 * 1024
+              }
               onClick={() => void renderAndAnalyze()}
             >
               Render &amp; analyze
@@ -2577,6 +2587,7 @@ export function MasteringFileSessionPanel({
               disabled={
                 Boolean(busy) ||
                 blockNewWork ||
+                excerptAnalysisPending ||
                 !renderCurrent ||
                 !wavDeliveryWithinBudget ||
                 !flacDeliveryWithinBudget ||
