@@ -565,7 +565,15 @@
   background: var(--bg);
 }
 
-.mastering-file-session-delivery-reports > strong {
+.mastering-file-session-delivery-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.mastering-file-session-delivery-heading > strong {
   color: var(--text-faint);
   font: 700 9px var(--mono);
   letter-spacing: 0.08em;

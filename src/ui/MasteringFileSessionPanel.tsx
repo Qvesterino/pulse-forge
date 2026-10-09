@@ -1830,6 +1830,23 @@ export function MasteringFileSessionPanel({
     }
   }, [repository, session, stopSessionPreview]);
 
+  const clearDeliveryReportHistory = useCallback(async () => {
+    setBusy("Clearing local delivery report history…");
+    try {
+      await repository.clearDeliveryReports();
+      reportHistoryEpoch.current++;
+      setRecentDeliveryReports([]);
+      setReportHistoryWarning("");
+      setNotice("Recent delivery reports were cleared. Mastering sessions, source audio and references were kept.");
+    } catch (reason) {
+      setReportHistoryWarning(
+        masteringSessionErrorMessage(reason, "Could not clear recent delivery reports from this device."),
+      );
+    } finally {
+      setBusy("");
+    }
+  }, [repository]);
+
   const historyLabel = useMemo(() => {
     if (!session) return "No mastering session selected";
     return `${session.fileName} · ${session.durationSeconds.toFixed(1)} s · ${session.channels} ch · ${formatBytes(session.byteLength)}`;
@@ -2933,7 +2950,18 @@ export function MasteringFileSessionPanel({
           role="group"
           aria-label="Recent exported delivery report downloads"
         >
-          <strong>RECENT DELIVERY REPORTS · THIS WORKSPACE</strong>
+          <div className="mastering-file-session-delivery-heading">
+            <strong>RECENT DELIVERY REPORTS · THIS WORKSPACE</strong>
+            <button
+              type="button"
+              className="btn btn-small"
+              disabled={Boolean(busy)}
+              aria-label="Clear all saved delivery reports without deleting mastering sessions, source audio or references"
+              onClick={() => void clearDeliveryReportHistory()}
+            >
+              Clear report history
+            </button>
+          </div>
           {reportHistoryWarning && (
             <p className="mastering-file-session-status" data-state="warn" role="status">
               Report history warning: {reportHistoryWarning}
@@ -2959,7 +2987,8 @@ export function MasteringFileSessionPanel({
           )}
           <small>
             Up to six recent reports are saved on this device with no audio. Deleting a source session deletes its
-            reports; repeated exports with the same name replace the earlier report.
+            reports; repeated exports with the same name replace the earlier report. Clear report history removes only
+            these JSON sidecars and keeps session audio and references.
           </small>
         </div>
       )}

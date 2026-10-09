@@ -716,6 +716,14 @@ export class MasteringSessionRepository {
     );
   }
 
+  async clearDeliveryReports(): Promise<void> {
+    await transactAcross<undefined>([MASTERING_SESSION_DELIVERY_REPORT_STORE], (transaction, complete, fail) => {
+      const request = transaction.objectStore(MASTERING_SESSION_DELIVERY_REPORT_STORE).clear();
+      request.onsuccess = () => complete(undefined);
+      request.onerror = () => fail(request.error ?? new Error("Could not clear local delivery report history."));
+    });
+  }
+
   async get(id: string): Promise<MasteringSessionRecord | null> {
     return transactAcross<MasteringSessionRecord | null>(
       [MASTERING_SESSION_STORE, MASTERING_SESSION_SOURCE_STORE],

@@ -33,6 +33,9 @@ fingerprint and verification basis, and contains no audio.
    session from opening; surface a report-history warning instead.
 7. Reopening a session restores the saved sidecar list only. The user must
    render and inspect again to obtain a current working report.
+8. Provide an explicit clear-history action. It deletes all saved delivery
+   sidecars while preserving mastering sessions, source audio and references;
+   this also lets the user recover from an unsupported or damaged report row.
 
 ## Consequences
 
@@ -41,6 +44,7 @@ fingerprint and verification basis, and contains no audio.
   delivered remains valid, and the in-memory JSON download action remains
   available until the workspace closes.
 - Deleting an external session also deletes that session's report history.
+- Users can clear report history independently without removing session audio.
 - Project-master analysis reports and live render buffers remain runtime-only.
 - The database version changes independently from the external session record
   schema, which remains version 2.
@@ -54,6 +58,8 @@ fingerprint and verification basis, and contains no audio.
   replace, and the oldest report is pruned after a seventh distinct output.
 - Deleting a session removes only its reports and leaves other sessions'
   reports intact.
+- Clearing report history removes sidecars while preserving sessions, source
+  blobs and references.
 - Invalid JSON, unsupported report schema, mismatched session/source identity,
   and oversized report records are rejected without blocking source-session
   loading.
