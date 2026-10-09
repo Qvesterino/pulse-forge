@@ -274,6 +274,7 @@ export function ExportPanel({
   const [recError, setRecError] = useState<string | null>(null);
   const recorderRef = useRef<LiveRecorder | PcmMicRecorder | null>(null);
   const stoppingRecordingRef = useRef(false);
+  const masterTapRecordingReleaseRef = useRef<(() => void) | null>(null);
   /** Last finished take — kept for one-click AUTO-CHOP to pads. */
   const [lastTake, setLastTake] = useState<{ assetId: string; name: string; buffer: AudioBuffer } | null>(null);
   const [chopping, setChopping] = useState(false);
@@ -850,6 +851,13 @@ export function ExportPanel({
       setRecError("Audio engine not ready");
       return;
     }
+    // Do not let a second master-tap start replace the first take's lease.
+    // The button state updates immediately, but this ref also protects rapid
+    // repeated activation and a second mounted capture surface.
+    if (masterTapRecordingReleaseRef.current && recSource !== "mic") {
+      setRecError("A master recording is already starting or active.");
+      return;
+    }
     // Audit 07 D5: enter "starting" IMMEDIATELY — the mic permission prompt
     // can take seconds, and a second click used to construct a competing
     // recorder whose claim error surfaced while the first prompt was open.
@@ -862,6 +870,17 @@ export function ExportPanel({
         : recSource === "track" && selectedTrackId
           ? { kind: "track", trackId: selectedTrackId }
           : { kind: "master" };
+    if (source.kind === "master") {
+      const release = services.engine.beginMasterTapRecording();
+      if (!release) {
+        setRecState("idle");
+        setRecError(
+          "Stop the master-path test tone, or wait for the current master recording to finish; let any master effects tail decay before recording.",
+        );
+        return;
+      }
+      masterTapRecordingReleaseRef.current = release;
+    }
     try {
       if (source.kind === "mic") {
         const { PcmMicRecorder } = await import("../audio-engine/PcmMicRecorder");
@@ -912,6 +931,8 @@ export function ExportPanel({
       const recorder = recorderRef.current;
       if (recorder) await Promise.resolve(recorder.cancel()).catch(() => undefined);
       recorderRef.current = null;
+      masterTapRecordingReleaseRef.current?.();
+      masterTapRecordingReleaseRef.current = null;
       setRecState("idle"); // back off "starting" — retry must be possible
       setRecError(err instanceof Error ? err.message : "Recording failed");
     }
@@ -924,6 +945,8 @@ export function ExportPanel({
     setRecState("saving");
     try {
       const take = await recorder.stop();
+      masterTapRecordingReleaseRef.current?.();
+      masterTapRecordingReleaseRef.current = null;
       if (!take) {
         setRecError("Nothing was captured. Any staged microphone audio remains available for recovery.");
         setRecState("idle");
@@ -986,6 +1009,8 @@ export function ExportPanel({
       setRecState("idle");
     } finally {
       recorderRef.current = null;
+      masterTapRecordingReleaseRef.current?.();
+      masterTapRecordingReleaseRef.current = null;
       stoppingRecordingRef.current = false;
     }
   };
@@ -1007,6 +1032,8 @@ export function ExportPanel({
       recorderRef.current = null;
       if (recorder && "onError" in recorder) recorder.onError = null;
       if (recorder) void Promise.resolve(recorder.cancel()).catch(() => undefined);
+      masterTapRecordingReleaseRef.current?.();
+      masterTapRecordingReleaseRef.current = null;
     },
     [],
   );

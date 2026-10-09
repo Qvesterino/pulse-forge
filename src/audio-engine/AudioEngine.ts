@@ -414,6 +414,8 @@ export class AudioEngine {
     startedAt: number;
     endAt: number;
   } | null = null;
+  /** Master-path test tones are excluded while a live master tap is recording. */
+  private activeMasterTapRecordings = 0;
   /**
    * Clip identity for the subset of one-shot sources that belong to an
    * AudioClip (straight source or warp segment). Keyed by source node; a
@@ -2713,6 +2715,9 @@ export class AudioEngine {
    * It is engine-owned and never enters the project model or offline render.
    */
   playMasterMonitorTestTone(durationSec = 2.5, onEnded?: () => void): { status: "ok" | "error"; message?: string } {
+    if (this.activeMasterTapRecordings > 0) {
+      return { status: "error", message: "The master-path test tone is unavailable during live master recording." };
+    }
     if (this.masterMonitorTestTone) {
       return { status: "error", message: "A master monitor test tone is already playing" };
     }
@@ -2819,6 +2824,22 @@ export class AudioEngine {
       /* already stopped by its natural end or a transport panic */
     }
     return true;
+  }
+
+  /**
+   * Acquire a lease while a live post-limiter master recording is active.
+   * Returning null prevents a test tone already feeding the master chain
+   * from being printed into the take.
+   */
+  beginMasterTapRecording(): (() => void) | null {
+    if (this.masterMonitorTestTone || this.activeMasterTapRecordings > 0) return null;
+    this.activeMasterTapRecordings += 1;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.activeMasterTapRecordings = Math.max(0, this.activeMasterTapRecordings - 1);
+    };
   }
 
   /** Start an engine-owned, non-persistent audition for one reviewed FX proposal. */

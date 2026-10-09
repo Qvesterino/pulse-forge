@@ -576,7 +576,9 @@ export function MasteringABCompare({
     const result = services.engine.playMasterMonitorTestTone(2.5, () => {
       if (!masterTestToneMountedRef.current || generation !== masterTestToneGenerationRef.current) return;
       setMasterTestToneActive(false);
-      setMasterTestToneStatus("Test tone ended.");
+      setMasterTestToneStatus(
+        "Test tone ended. Let any master effects tail decay before starting a live master recording.",
+      );
     });
     if (result.status === "error") {
       setMasterTestToneActive(false);
@@ -706,8 +708,9 @@ export function MasteringABCompare({
         <section className="master-ab-monitor-tone" aria-label="Master output path test">
           <p>
             Play a quiet 440 Hz tone through the live master chain for 2.5 seconds. Stop transport playback first for a
-            clean check; use native levels if bypass loudness matching is active. The tone never changes the project or
-            its exports.
+            clean check; use native levels if bypass loudness matching is active. The tone never changes project
+            settings or offline exports. Wait for any master effects tail to decay before a live master recording; the
+            tone is unavailable while a master recording is active.
           </p>
           <div>
             <button
