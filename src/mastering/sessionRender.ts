@@ -143,12 +143,7 @@ export function assertMasteringSessionWorkingSetBudget(estimatedBytes: number): 
 
 /** Browser decode retains the input bytes, a decoder copy, PCM output and runtime reserve. */
 export function estimateMasteringSessionBrowserDecodeWorkingSetBytes(encodedBytes: number, pcmBytes: number): number {
-  if (
-    !Number.isSafeInteger(encodedBytes) ||
-    encodedBytes <= 0 ||
-    !Number.isSafeInteger(pcmBytes) ||
-    pcmBytes <= 0
-  ) {
+  if (!Number.isSafeInteger(encodedBytes) || encodedBytes <= 0 || !Number.isSafeInteger(pcmBytes) || pcmBytes <= 0) {
     return Number.POSITIVE_INFINITY;
   }
   const estimatedBytes = encodedBytes * 2 + pcmBytes + MASTERING_SESSION_BROWSER_DECODE_RESERVE_BYTES;

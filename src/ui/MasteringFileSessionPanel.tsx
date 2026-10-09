@@ -288,7 +288,10 @@ async function decodeMasteringInputWithSessionAbort(
     return buffer;
   } catch (reason) {
     if (signal?.aborted || (reason instanceof DOMException && reason.name === "AbortError")) throw reason;
-    throw reason;
+    const detail = reason instanceof Error && reason.message ? ` ${reason.message}` : "";
+    throw new Error(
+      `This browser could not decode the source at its native ${details.sampleRate} Hz sample rate.${detail} Use another browser or convert it to PCM WAV at a supported rate.`,
+    );
   }
 }
 
@@ -386,13 +389,7 @@ async function decodeSessionReference(
       ? estimateFlacDecoderWorkingSetBytes(bytes.byteLength, estimatedBytes)
       : estimateMasteringSessionBrowserDecodeWorkingSetBytes(bytes.byteLength, estimatedBytes);
   assertMasteringSessionWorkingSetBudget(decodeWorkingSetBytes);
-  const buffer = await decodeMasteringInputWithSessionAbort(
-    bytes,
-    format,
-    details,
-    signal,
-    "Reference load cancelled",
-  );
+  const buffer = await decodeMasteringInputWithSessionAbort(bytes, format, details, signal, "Reference load cancelled");
   if (
     buffer.numberOfChannels !== record.channels ||
     buffer.sampleRate !== details.sampleRate ||
