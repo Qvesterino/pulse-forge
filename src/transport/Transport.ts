@@ -44,6 +44,20 @@ export class Transport {
    * its own lock — see openProject's follow logic.
    */
   onGesture: ((transport: Transport) => void) | null = null;
+  private readonly playingListeners = new Set<(playing: boolean) => void>();
+
+  /** Subscribe to play/pause/stop changes without polling the transport clock. */
+  subscribePlaying(listener: (playing: boolean) => void): () => void {
+    this.playingListeners.add(listener);
+    listener(this.playing_);
+    return () => {
+      this.playingListeners.delete(listener);
+    };
+  }
+
+  private notifyPlayingListeners(): void {
+    for (const listener of [...this.playingListeners]) listener(this.playing_);
+  }
 
   constructor(
     private clock: Clock,
@@ -106,6 +120,7 @@ export class Transport {
     this.playing_ = true;
     this.paused_ = false;
     this.onGesture?.(this);
+    this.notifyPlayingListeners();
   }
 
   pause(): void {
@@ -114,6 +129,7 @@ export class Transport {
     this.playing_ = false;
     this.paused_ = true;
     this.onGesture?.(this);
+    this.notifyPlayingListeners();
   }
 
   stop(): void {
@@ -124,6 +140,7 @@ export class Transport {
     this.paused_ = false;
     this.contentStartTick_ = 0;
     this.onGesture?.(this);
+    this.notifyPlayingListeners();
   }
 
   seek(tick: number): void {

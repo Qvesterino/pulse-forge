@@ -260,8 +260,8 @@ export function MasteringABCompare({
 
   useEffect(() => {
     if (!masterTestToneActive) return;
-    const stopToneForTransport = () => {
-      if (!services.transport.playing) return;
+    return services.transport.subscribePlaying((transportPlaying) => {
+      if (!transportPlaying) return;
       if (!services.engine.stopMasterMonitorTestTone()) return;
       masterTestToneGenerationRef.current += 1;
       const remaining = services.engine.getMasterMonitorToneTailRemainingSeconds();
@@ -272,9 +272,7 @@ export function MasteringABCompare({
           ? `Test tone stopped because transport playback started. Recording and auditions unlock in about ${remaining.toFixed(1)} seconds; wait longer if you can still hear the tail.`
           : "Test tone stopped because transport playback started.",
       );
-    };
-    const interval = window.setInterval(stopToneForTransport, 25);
-    return () => window.clearInterval(interval);
+    });
   }, [masterTestToneActive, services.engine, services.transport]);
 
   useEffect(() => {
