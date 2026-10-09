@@ -1,4 +1,10 @@
 import type { DrumSynthPreset, InstrumentPreset } from "./types";
+import {
+  FACTORY_808_VELOCITY,
+  FACTORY_ACID_VELOCITY,
+  FACTORY_PLUCK_VELOCITY,
+  FACTORY_SUB_VELOCITY,
+} from "../sample-library/velocity-layers";
 
 /**
  * Factory presets are pure data, curated by genre and mood. Parameter values
@@ -8662,7 +8668,7 @@ export const FACTORY_PRESETS: InstrumentPreset[] = [
     mood: ["deep", "clean"],
     tags: ["bass", "808", "soft", "glide"],
     sampleId: "factory.bass.808.soft",
-    params: { root: 26, attack: 0.003, release: 0.5, cutoff: 400, resonance: 0.6, gain: 0.9 },
+    params: { root: 26, attack: 0.003, release: 0.5, cutoff: 600, resonance: 0.6, gain: 0.9 },
   },
   {
     id: "factory.sampler.trap.808medium",
@@ -8692,7 +8698,7 @@ export const FACTORY_PRESETS: InstrumentPreset[] = [
     mood: ["deep", "clean"],
     tags: ["bass", "sub", "sine", "held"],
     sampleId: "factory.bass.subsine",
-    params: { root: 29, attack: 0.005, release: 0.6, cutoff: 450, resonance: 0.5, gain: 0.9 },
+    params: { root: 29, attack: 0.005, release: 0.6, cutoff: 600, resonance: 0.5, gain: 0.9 },
   },
   {
     id: "factory.sampler.dnb.subsquare",
@@ -8783,6 +8789,59 @@ export const FACTORY_PRESETS: InstrumentPreset[] = [
     tags: ["lead", "pluck", "dark", "score"],
     sampleId: "factory.lead.pluck.dark",
     params: { root: 69, attack: 0.002, release: 0.4, cutoff: 6000, resonance: 0.7, gain: 0.8 },
+  },
+
+  /* ================= Velocity-dynamics presets (2026-10-09) =================
+     The first factory presets that carry `velocityLayers` — until now only
+     the piano/VSCO packs used the multi-sample surface. Each preset layers
+     zone voices of the SAME recorded root (velocity changes timbre, never
+     pitch) with disjoint windows partitioning 0..1, so a played dynamic
+     range picks one timbre per band while the preset's single-zone siblings
+     stay available for a fixed timbre. The sets live in
+     sample-library/velocity-layers.ts next to the drum-side dynamics. */
+  {
+    id: "factory.sampler.trap.808dynamics",
+    name: "808 Dynamics",
+    instrument: "sampler",
+    genre: "trap",
+    mood: ["deep", "clean"],
+    tags: ["bass", "808", "dynamics", "velocity"],
+    sampleId: "factory.bass.808.medium",
+    velocityLayers: FACTORY_808_VELOCITY,
+    params: { root: 26, attack: 0.003, release: 0.5, cutoff: 1800, resonance: 0.6, gain: 0.9 },
+  },
+  {
+    id: "factory.sampler.dnb.subdynamics",
+    name: "Sub Dynamics",
+    instrument: "sampler",
+    genre: "dnb",
+    mood: ["dark", "deep"],
+    tags: ["bass", "sub", "dynamics", "sine", "square"],
+    sampleId: "factory.bass.subsine",
+    velocityLayers: FACTORY_SUB_VELOCITY,
+    params: { root: 29, attack: 0.004, release: 0.5, cutoff: 800, resonance: 0.8, gain: 0.88 },
+  },
+  {
+    id: "factory.sampler.techno.aciddynamics",
+    name: "Acid Dynamics",
+    instrument: "sampler",
+    genre: "techno",
+    mood: ["dark", "aggressive"],
+    tags: ["bass", "acid", "dynamics", "303"],
+    sampleId: "factory.bass.acid.slow",
+    velocityLayers: FACTORY_ACID_VELOCITY,
+    params: { root: 36, attack: 0.002, release: 0.3, cutoff: 12000, resonance: 0.5, gain: 0.85 },
+  },
+  {
+    id: "factory.sampler.house.pluckdynamics",
+    name: "Pluck Dynamics",
+    instrument: "sampler",
+    genre: "house",
+    mood: ["bright", "clean"],
+    tags: ["lead", "pluck", "dynamics", "velocity"],
+    sampleId: "factory.lead.pluck.dark",
+    velocityLayers: FACTORY_PLUCK_VELOCITY,
+    params: { root: 69, attack: 0.002, release: 0.3, cutoff: 10000, resonance: 0.6, gain: 0.82 },
   },
   {
     id: "factory.808.trap.pop808",

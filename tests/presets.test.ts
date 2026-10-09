@@ -62,12 +62,18 @@ describe("factory presets", () => {
     }
   });
 
-  it("sample-driven presets reference a real factory sample (tonal + mallet + perc/phonk pack)", () => {
+  it("sample-driven presets reference a real sample (bank asset or pack zone)", async () => {
+    const { FACTORY_ASSETS } = await import("../src/sample-library/manifest");
+    const bankIds = new Set(FACTORY_ASSETS.map((a) => a.id));
     for (const preset of FACTORY_PRESETS.filter((p) => ["sampler", "granular", "vocalchop"].includes(p.instrument))) {
       expect(preset.sampleId).toBeTruthy();
-      expect(preset.sampleId).toMatch(
-        /^factory\.(tonal\.(pluck|stab|keys|bell|memphisguitar|darkstrings|rhodes|trumpet|animepluck|sadpiano|padwarm|harp|sitar|erhu|wurli|organ|acousticguitar|choirpad|cello|violin|pizzicato|nylonguitar|orchestrahit)|mallet\.(vibes|marimba|celesta|kalimba|musicbox)|perc\.(cowbell\.dark|cowbell\.scream|cowbell\.drill|cowbell\.bright)|bass\.(clean|reese|fm|pluck|wobble|dist)|piano\.[a-gs]+\d\.z[1-4]|vsco\.[a-z][a-z0-9-]*\.r\d+)$/,
-      );
+      const id = preset.sampleId as string;
+      // Real-instrument pack zones (Salamander piano, VSCO2 round robins)
+      // resolve through their pack loaders; everything else must be a bank
+      // asset. A frozen id enumeration would rot on every expand wave — the
+      // 808/lead/world-perc voices already proved that.
+      const isPackZone = /^factory\.(piano\.[a-gs]+\d\.z[1-4]|vsco\.[a-z][a-z0-9-]*\.r\d+)$/.test(id);
+      expect(isPackZone || bankIds.has(id), `preset ${preset.id} sample ${id}`).toBe(true);
     }
   });
 

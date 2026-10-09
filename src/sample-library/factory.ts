@@ -1715,7 +1715,7 @@ function bassPluck(): Builder {
  * sub808/808drive kicks so the melodic voice stays its own pocket. */
 export function bass808(zone: "soft" | "medium" | "hard"): Builder {
   const cfg = {
-    soft: { startHz: 90, endHz: 36.71, drive: 0.0, click: 0.12, decay: 0.35 }, // F1
+    soft: { startHz: 90, endHz: 36.71, drive: 0.0, click: 0.12, decay: 0.35 }, // D1 rest
     medium: { startHz: 120, endHz: 36.71, drive: 0.18, click: 0.3, decay: 0.55 },
     hard: { startHz: 150, endHz: 36.71, drive: 0.32, click: 0.45, decay: 0.85 },
   }[zone];

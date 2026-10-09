@@ -8,6 +8,15 @@ import type { SampleLayer } from "../project-model/types";
  * NOTE every zone must reference a REAL bank id: a missing id silently drops
  * the zone (the sampler skips candidates it cannot resolve), which used to
  * mute the loudest kick zone (`factory.kick.sub` — the bank ships `sub808`).
+ *
+ * PITCH HAZARD (since the bank-wide semitone snap): the four kick voices no
+ * longer share a tuning — soft F1, punch G#1, deep F#1, sub808 D#1 — so these
+ * velocity zones now STEP PITCH across the velocity range (a ghost kick and a
+ * full kick read as two different tuned drums, up to 5 semitones apart). Kept
+ * for the manual Inspector/SFZ-style mapping flows; deliberately NOT carried
+ * by any factory preset — the melodic dynamics sets below are the shared-root
+ * template, and the drum-side dynamics ride DrumPad.layers via the snare/hat
+ * sets (whose members are timbre- not pitch-separated).
  */
 export const FACTORY_KICK_LAYERS: SampleLayer[] = [
   { id: "layer.kick.soft", sampleId: "factory.kick.soft", min: 0, max: 0.25 },
@@ -109,6 +118,41 @@ export const FACTORY_HAT_DYNAMIC: SampleLayer[] = dynamicLayers({
   mainSampleIds: ["factory.hat.closed", "factory.hat.closed.rr2", "factory.hat.closed.rr3"],
   ghostMax: 0.35,
 });
+
+/**
+ * Melodic velocity-dynamics sets for the factory SAMPLER presets — the
+ * melodic counterpart of the drum-side DYNAMIC sets above. The contract that
+ * makes a set musical: every member voice shares ONE recorded root (velocity
+ * must change TIMBRE, never pitch — a detuned bass beats against tuned
+ * melodies) and the windows partition 0..1 disjointly, so each velocity band
+ * plays exactly one timbre. Consumed by the `*.dynamics` sampler presets,
+ * which carry them as `velocityLayers` onto the track via
+ * applyInstrumentPreset; roots are the documented recorded fundamentals of
+ * the builders (808 D1=26, subs F1=29, acid C2=36, plucks A4=69).
+ */
+export const FACTORY_808_VELOCITY: SampleLayer[] = [
+  { id: "layer.808.soft", sampleId: "factory.bass.808.soft", min: 0, max: 0.45 },
+  { id: "layer.808.medium", sampleId: "factory.bass.808.medium", min: 0.45, max: 0.78 },
+  { id: "layer.808.hard", sampleId: "factory.bass.808.hard", min: 0.78, max: 1 },
+];
+
+/** Held-sub dynamics: the pure sine under soft hits, the gritty square growl takes over once the hit bites. */
+export const FACTORY_SUB_VELOCITY: SampleLayer[] = [
+  { id: "layer.sub.sine", sampleId: "factory.bass.subsine", min: 0, max: 0.5 },
+  { id: "layer.sub.square", sampleId: "factory.bass.subsquare", min: 0.5, max: 1 },
+];
+
+/** Acid dynamics: the held filter-fodder line under soft hits, the short squelch accent on hard ones. */
+export const FACTORY_ACID_VELOCITY: SampleLayer[] = [
+  { id: "layer.acid.line", sampleId: "factory.bass.acid.slow", min: 0, max: 0.5 },
+  { id: "layer.acid.accent", sampleId: "factory.bass.acid.fast", min: 0.5, max: 1 },
+];
+
+/** Lead-pluck dynamics: darker pluck under the ghost band, the bright trance pluck takes the accents. */
+export const FACTORY_PLUCK_VELOCITY: SampleLayer[] = [
+  { id: "layer.pluck.dark", sampleId: "factory.lead.pluck.dark", min: 0, max: 0.55 },
+  { id: "layer.pluck.bright", sampleId: "factory.lead.pluck.bright", min: 0.55, max: 1 },
+];
 
 /** Curated beat kits ready for `setVelocityLayersCommand`. */
 export const FACTORY_BEAT_RR_KITS: Record<string, SampleLayer[]> = {

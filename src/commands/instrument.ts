@@ -91,14 +91,16 @@ export function applyInstrumentPreset(doc: ProjectDocument, trackId: string, pre
     velocityLayers: import("../project-model/types").SampleLayer[] | null,
   ): ProjectDocument => ({
     ...d,
-    tracks: d.tracks.map((t) =>
+    tracks: d.tracks.map((t) => {
+      if (t.kind !== "instrument" || t.id !== trackId) return t;
       // Copy the params map on every apply: the closure-owned next/prev maps
       // are shared by execute and every undo/redo cycle — inserting them by
       // reference would alias one mutable object across doc revisions.
-      t.kind === "instrument" && t.id === trackId
-        ? { ...t, params: { ...params }, sampleId, presetId, ...(velocityLayers ? { velocityLayers } : {}) }
-        : t,
-    ),
+      const next: InstrumentTrack = { ...t, params: { ...params }, sampleId, presetId };
+      if (velocityLayers) next.velocityLayers = velocityLayers;
+      else delete next.velocityLayers;
+      return next;
+    }),
   });
   return {
     type: "applyInstrumentPreset",
