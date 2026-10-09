@@ -137,12 +137,15 @@ export function MasteringABCompare({
   const [storageNotice, setStorageNotice] = useState("");
   const [playing, setPlaying] = useState<MasteringABSlot | null>(null);
   const [blindListen, setBlindListen] = useState<BlindListenSession | null>(null);
+  const [masterTestToneActive, setMasterTestToneActive] = useState(false);
+  const [masterTestToneStatus, setMasterTestToneStatus] = useState("");
   const [referenceBytes, setReferenceBytes] = useState(0);
   const [referenceProjectBytes, setReferenceProjectBytes] = useState(0);
   const [assistantBytes, setAssistantBytes] = useState(0);
   const [abRenderEpoch, setAbRenderEpoch] = useState(0);
   const [comparisonEpoch, setComparisonEpoch] = useState(0);
   const playingRef = useRef<MasteringABSlot | null>(null);
+  const masterTestToneMountedRef = useRef(false);
   const comparisonControlsBusy = busy || bypassMatchBusy || assistantBusy || referenceBusy;
   const comparisonWorkBusy = comparisonControlsBusy || referenceExcerptPending;
   const reportReferenceBusy = useCallback((referenceWorkBusy: boolean, excerptPending: boolean) => {
@@ -207,6 +210,9 @@ export function MasteringABCompare({
 
   useEffect(() => {
     abortRef.current?.abort();
+    services.engine.stopMasterMonitorTestTone();
+    setMasterTestToneActive(false);
+    setMasterTestToneStatus("");
     if (playingRef.current) {
       services.engine.stopPreview();
       setPlaying(null);
@@ -228,6 +234,14 @@ export function MasteringABCompare({
   }, [comparison, sampleBankRevision]);
 
   useEffect(() => () => abortRef.current?.abort(), [services.engine]);
+
+  useEffect(() => {
+    masterTestToneMountedRef.current = true;
+    return () => {
+      masterTestToneMountedRef.current = false;
+      services.engine.stopMasterMonitorTestTone();
+    };
+  }, [services.engine]);
 
   useEffect(() => {
     onBusyChange?.(comparisonWorkBusy);
@@ -545,6 +559,30 @@ export function MasteringABCompare({
     setMasterBypassed(next);
   };
 
+  const toggleMasterTestTone = () => {
+    if (masterTestToneActive) {
+      services.engine.stopMasterMonitorTestTone();
+      setMasterTestToneStatus("Stopping test tone…");
+      return;
+    }
+    if (playingRef.current) {
+      services.engine.stopPreview();
+      setPlaying(null);
+    }
+    const result = services.engine.playMasterMonitorTestTone(2.5, () => {
+      if (!masterTestToneMountedRef.current) return;
+      setMasterTestToneActive(false);
+      setMasterTestToneStatus("Test tone ended.");
+    });
+    if (result.status === "error") {
+      setMasterTestToneActive(false);
+      setMasterTestToneStatus(result.message ?? "Could not start the master-path test tone.");
+      return;
+    }
+    setMasterTestToneActive(true);
+    setMasterTestToneStatus("Playing 440 Hz for up to 2.5 seconds. Toggle Live monitor bypass to compare paths.");
+  };
+
   const stopComparePreview = () => {
     services.engine.stopPreview();
     setPlaying(null);
@@ -552,6 +590,8 @@ export function MasteringABCompare({
 
   const startBlindListen = () => {
     if (!comparisonReady || comparisonWorkBusy || blockNewWork || blindListen) return;
+    services.engine.stopMasterMonitorTestTone();
+    setMasterTestToneActive(false);
     services.engine.stopPreview();
     setPlaying(null);
     setBlindListen({ first: randomizedFirstSlot(), preference: null, revealed: false });
@@ -656,6 +696,28 @@ export function MasteringABCompare({
           Bypass skips master trim and processing for live monitoring. The final limiter stays in the path with its
           current settings; exports use the saved master setup.
         </p>
+      )}
+      {!blindListen && (
+        <section className="master-ab-monitor-tone" aria-label="Master output path test">
+          <p>
+            Play a quiet 440 Hz tone through the live master chain for 2.5 seconds. Stop transport playback first for a
+            clean check; use native levels if bypass loudness matching is active. The tone never changes the project or
+            its exports.
+          </p>
+          <div>
+            <button
+              type="button"
+              aria-pressed={masterTestToneActive}
+              onClick={toggleMasterTestTone}
+              disabled={!masterTestToneActive && (comparisonWorkBusy || blockNewWork)}
+            >
+              {masterTestToneActive ? "Stop test tone" : "Play master-path test tone"}
+            </button>
+          </div>
+          <p role="status" aria-live="polite" aria-atomic="true">
+            {masterTestToneStatus}
+          </p>
+        </section>
       )}
       {!blindListen && (
         <section className="master-ab-bypass-match" aria-label="Live monitor bypass loudness match">

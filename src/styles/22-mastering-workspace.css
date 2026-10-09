@@ -1458,6 +1458,29 @@
   background: var(--bg);
 }
 
+.master-ab-monitor-tone {
+  display: grid;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  background: var(--bg);
+}
+
+.master-ab-monitor-tone p {
+  margin: 0;
+}
+
+.master-ab-monitor-tone > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.master-ab-monitor-tone [role="status"] {
+  min-height: 1.45em;
+}
+
 .master-ab-bypass-match {
   display: grid;
   gap: 6px;

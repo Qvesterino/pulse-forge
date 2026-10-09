@@ -52,6 +52,8 @@ Pred spracovaním môžeš použiť **Analyze input**. KYX zmeria pôvodný dek�
 
 ## Férové A/B porovnanie mastera
 
+V projektovom **MASTER** môžeš pred posluchovým overením použiť **Play master-path test tone**. KYX prehrá tichý sínus 440 Hz cez aktuálny živý master chain po dobu 2,5 sekundy; počas tónu prepni **Live monitor bypass** a porovnaj obe monitorovacie vetvy. Tón má 15 ms nábeh a dobeh, dá sa zastaviť skôr a nevkladá sa do projektu ani exportu. Pre čistú kontrolu najprv zastav transport a pri aktívnom **Match bypass loudness** použi **Use native levels**. Ide o kontrolu signálovej trasy, nie o kalibráciu hlasitosti alebo dôkaz správnosti systémového mixeru či fyzického zariadenia.
+
 V časti **Core master controls** môžeš prepínať medzi jednoduchým a rozšíreným pohľadom. Jednoduchý pohľad ukazuje hlavné úrovňové ovládače **IN**, **TRIM**, **CEIL** a **LIMIT**. Pokročilé procesory a master inserts ostávajú aktívne podľa uložených nastavení, aj keď ich ovládače skryje jednoduchý pohľad. Rozšírený pohľad sprístupní všetky vstavané stupne a zariadenia; zmena v ňom upravuje ten istý stav projektu ako master strip v MIX.
 
 V paneli MASTER otvor **Master A/B**. Pred úpravou stlač **Capture current** pri A, uprav master a ulož druhý stav do B. Snapshot zahŕňa celý master config vrátane profilu, master parametrov a insertov; je oddelený od Undo a platí iba v aktuálnom browser tab-e. KYX nemení projekt ani zdieľaný stav, keď snapshot vytvoríš.

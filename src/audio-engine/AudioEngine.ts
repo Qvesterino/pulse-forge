@@ -406,6 +406,14 @@ export class AudioEngine {
    * cues. Bounded: each source removes itself on `onended`.
    */
   private oneShotSources = new Set<AudioScheduledSourceNode>();
+  /** Short monitor-only tone routed through the project master chain. */
+  private masterMonitorTestTone: {
+    source: OscillatorNode;
+    gain: GainNode;
+    stopping: boolean;
+    startedAt: number;
+    endAt: number;
+  } | null = null;
   /**
    * Clip identity for the subset of one-shot sources that belong to an
    * AudioClip (straight source or warp segment). Keyed by source node; a
@@ -2321,6 +2329,7 @@ export class AudioEngine {
    * ahead, so seek/stop must reach these too, not just `voices`.
    */
   private stopOneShotSources(): void {
+    this.masterMonitorTestTone = null;
     for (const source of this.oneShotSources) {
       try {
         source.stop();
@@ -2696,6 +2705,120 @@ export class AudioEngine {
     } catch (err) {
       return { status: "error", message: err instanceof Error ? err.message : String(err) };
     }
+  }
+
+  /**
+   * Mastering monitor-path check: a quiet 440 Hz tone enters the live master
+   * chain, so its processed and monitor-bypassed paths can be auditioned.
+   * It is engine-owned and never enters the project model or offline render.
+   */
+  playMasterMonitorTestTone(durationSec = 2.5, onEnded?: () => void): { status: "ok" | "error"; message?: string } {
+    if (this.masterMonitorTestTone) {
+      return { status: "error", message: "A master monitor test tone is already playing" };
+    }
+
+    let ctx: BaseAudioContext;
+    try {
+      ctx = this.ensureContext();
+    } catch (err) {
+      return { status: "error", message: err instanceof Error ? err.message : String(err) };
+    }
+    const input = this.masterChain.input;
+    if (!isLiveAudioContext(ctx) || ctx.state === "closed") {
+      return { status: "error", message: "No active live audio context" };
+    }
+    if (!input) return { status: "error", message: "The project master output is not ready" };
+
+    let source: OscillatorNode | null = null;
+    let gain: GainNode | null = null;
+    try {
+      source = ctx.createOscillator();
+      gain = ctx.createGain();
+      source.type = "sine";
+      source.frequency.value = 440;
+      const now = ctx.currentTime;
+      const duration = Number.isFinite(durationSec) ? Math.max(0.5, Math.min(5, durationSec)) : 2.5;
+      const end = now + duration;
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.03, now + 0.015);
+      gain.gain.setValueAtTime(0.03, end - 0.015);
+      gain.gain.linearRampToValueAtTime(0, end);
+      source.onended = () => {
+        this.oneShotSources.delete(source!);
+        if (this.masterMonitorTestTone?.source === source) this.masterMonitorTestTone = null;
+        try {
+          source!.disconnect();
+          gain!.disconnect();
+        } catch {
+          /* nodes may already be disconnected during panic or context swap */
+        }
+        onEnded?.();
+      };
+      source.connect(gain).connect(input);
+      this.masterMonitorTestTone = { source, gain, stopping: false, startedAt: now, endAt: end };
+      this.oneShotSources.add(source);
+      source.start(now);
+      source.stop(end);
+      return { status: "ok" };
+    } catch (err) {
+      if (source) {
+        source.onended = null;
+        this.oneShotSources.delete(source);
+        try {
+          source.stop();
+        } catch {
+          /* oscillator may not have started */
+        }
+        try {
+          source.disconnect();
+        } catch {
+          /* already disconnected */
+        }
+      }
+      try {
+        gain?.disconnect();
+      } catch {
+        /* already disconnected */
+      }
+      if (this.masterMonitorTestTone?.source === source) this.masterMonitorTestTone = null;
+      return { status: "error", message: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  /** Fade out and stop the current mastering monitor-path test tone. */
+  stopMasterMonitorTestTone(): boolean {
+    const tone = this.masterMonitorTestTone;
+    if (!tone) return false;
+    if (tone.stopping) return true;
+    tone.stopping = true;
+    const ctx = this.ctx;
+    if (!ctx || ctx.state === "closed") {
+      try {
+        tone.source.stop();
+      } catch {
+        /* already stopped by its natural end or a transport panic */
+      }
+      return true;
+    }
+    const now = ctx.currentTime;
+    try {
+      const fadeSec = 0.015;
+      const elapsed = Math.max(0, Math.min(now - tone.startedAt, tone.endAt - tone.startedAt));
+      const remaining = tone.endAt - tone.startedAt - elapsed;
+      const currentLevel =
+        elapsed < fadeSec ? (0.03 * elapsed) / fadeSec : remaining < fadeSec ? (0.03 * remaining) / fadeSec : 0.03;
+      tone.gain.gain.cancelScheduledValues(now);
+      tone.gain.gain.setValueAtTime(currentLevel, now);
+      tone.gain.gain.linearRampToValueAtTime(0, now + fadeSec);
+    } catch {
+      /* the context may have closed during the stop request */
+    }
+    try {
+      tone.source.stop(now + 0.02);
+    } catch {
+      /* already stopped by its natural end or a transport panic */
+    }
+    return true;
   }
 
   /** Start an engine-owned, non-persistent audition for one reviewed FX proposal. */
