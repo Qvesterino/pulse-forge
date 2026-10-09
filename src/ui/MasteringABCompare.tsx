@@ -707,7 +707,6 @@ export function MasteringABCompare({
           <div>
             <button
               type="button"
-              aria-pressed={masterTestToneActive}
               onClick={toggleMasterTestTone}
               disabled={!masterTestToneActive && (comparisonWorkBusy || blockNewWork)}
             >

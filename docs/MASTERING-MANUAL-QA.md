@@ -73,17 +73,18 @@ Klávesnicou prejdi MASTER od profilových ovládačov po report a export. Pre k
 udalosť zapíš skutočne vyslovený text, jeho načasovanie a to, či bolo možné
 pokračovať bez opustenia kontextu.
 
-| ID  | Stav alebo úkon                                                                                                                         | Výsledok a vyslovený text |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
-| A1  | Spusti analýzu. Počuj busy stav a potom výsledok; potvrď, že ten istý výsledok nie je oznámený duplicitne.                              |                           |
-| A2  | Zruš analýzu alebo export. Počuj, že úloha bola zrušená a nebola označená ako úspešne dokončená.                                        |                           |
-| A3  | Zmeň INPUT po hotovom meraní. Počuj, že report je zastaraný; over, že starý výsledok sa nevydáva za aktuálny.                           |                           |
-| A4  | Spusti export. Over stav busy, zmysluplný priebeh, chybu alebo dokončenie a výsledný názov súboru.                                      |                           |
-| A5  | Vyvolaj clipping. Over jedno globálne oznámenie peak/hold údajov; lokálny CLIP badge nesmie udalosť oznámiť druhýkrát.                  |                           |
-| A6  | V externej session zmeň excerpt offset počas loudness merania. Over stav fronty, Cancel match a readout až po dokončení nového merania. |                           |
-| A7  | Otvor report history. Over názov download akcie, čas uloženia a pôvodnú revíziu session.                                                |                           |
-| A8  | Vymaž report history. Over oznámenie výsledku a potvrď, že session, source audio a referencia zostali zachované.                        |                           |
-| A9  | Otestuj úzky viewport aj zväčšené písmo. Over, že statusy, ovládače a mená súborov sa dajú prečítať bez horizontálneho posúvania.       |                           |
+| ID  | Stav alebo úkon                                                                                                                                           | Výsledok a vyslovený text |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
+| A1  | Spusti analýzu. Počuj busy stav a potom výsledok; potvrď, že ten istý výsledok nie je oznámený duplicitne.                                                |                           |
+| A2  | Zruš analýzu alebo export. Počuj, že úloha bola zrušená a nebola označená ako úspešne dokončená.                                                          |                           |
+| A3  | Zmeň INPUT po hotovom meraní. Počuj, že report je zastaraný; over, že starý výsledok sa nevydáva za aktuálny.                                             |                           |
+| A4  | Spusti export. Over stav busy, zmysluplný priebeh, chybu alebo dokončenie a výsledný názov súboru.                                                        |                           |
+| A5  | Vyvolaj clipping. Over jedno globálne oznámenie peak/hold údajov; lokálny CLIP badge nesmie udalosť oznámiť druhýkrát.                                    |                           |
+| A6  | V externej session zmeň excerpt offset počas loudness merania. Over stav fronty, Cancel match a readout až po dokončení nového merania.                   |                           |
+| A7  | Otvor report history. Over názov download akcie, čas uloženia a pôvodnú revíziu session.                                                                  |                           |
+| A8  | Vymaž report history. Over oznámenie výsledku a potvrď, že session, source audio a referencia zostali zachované.                                          |                           |
+| A9  | Otestuj úzky viewport aj zväčšené písmo. Over, že statusy, ovládače a mená súborov sa dajú prečítať bez horizontálneho posúvania.                         |                           |
+| A10 | Spusti a zastav **Play master-path test tone**. Over dostupný názov akcie, oznámenie prehrávania/zastavenia a to, že nevznikne hlásenie o zmene projektu. |                           |
 
 ## Zhrnutie a podpora
 
