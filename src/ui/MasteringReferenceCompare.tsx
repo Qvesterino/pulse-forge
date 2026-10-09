@@ -783,6 +783,7 @@ export function MasteringReferenceCompare({
                   step={0.001}
                   value={projectOffset}
                   aria-label="Project start offset in seconds"
+                  aria-describedby="master-reference-offset-status"
                   onChange={(event) => updateOffset("project", Number(event.target.value) || 0)}
                 />
                 <span aria-hidden="true">s</span>
@@ -817,6 +818,7 @@ export function MasteringReferenceCompare({
                   step={0.001}
                   value={referenceOffset}
                   aria-label="Reference start offset in seconds"
+                  aria-describedby="master-reference-offset-status"
                   onChange={(event) => updateOffset("reference", Number(event.target.value) || 0)}
                 />
                 <span aria-hidden="true">s</span>
@@ -840,7 +842,7 @@ export function MasteringReferenceCompare({
             >
               Reset both starts
             </button>
-            <span>
+            <span id="master-reference-offset-status" role="status" aria-live="polite" aria-atomic="true">
               {comparePairReady
                 ? `Shared A/B excerpt: ${compareExcerptDuration.toFixed(2)} s. Start both at these points, then switch sides without stopping.`
                 : "Each side starts at its chosen point. Both use the same audition dim and mono setting."}
