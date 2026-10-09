@@ -335,7 +335,7 @@ export function MasteringPanel() {
         </div>
         {report && <MasteringLoudnessTimeline timeline={loudnessTimeline} />}
         <div className="mastering-overview-action">
-          <p aria-live="polite">
+          <p aria-live={isAnalyzing ? "off" : "polite"}>
             {isAnalyzing
               ? (workspaceState?.activity ?? "Rendering and measuring the current master…")
               : reportIsStale
