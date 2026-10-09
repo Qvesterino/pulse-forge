@@ -26,10 +26,10 @@ export function MasteringLevelMatchControl({
         />
         Match audition loudness
       </label>
-      <p id={helpId} className="mastering-level-match-help">
-        When enabled, audition only attenuates the louder side to the quieter measured LUFS-I; it never boosts. If
-        LUFS-I cannot be measured, playback uses native levels. The trim does not change project or saved settings,
-        snapshots, or exports.
+      <p id={helpId} className="mastering-level-match-help" aria-live="polite" aria-atomic="true">
+        {checked
+          ? "On: audition only attenuates the louder side to the quieter measured LUFS-I; it never boosts. If LUFS-I cannot be measured, playback uses native levels. Project settings, snapshots, and exports are unchanged."
+          : "Off: auditions use native levels with no match trim. Project settings, snapshots, and exports are unchanged."}
       </p>
     </div>
   );
