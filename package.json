@@ -2,6 +2,7 @@
   "name": "pulse-forge",
   "private": true,
   "version": "0.1.0",
+  "license": "UNLICENSED",
   "type": "module",
   "productName": "KYX",
   "main": "desktop/main.cjs",
