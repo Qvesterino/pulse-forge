@@ -132,6 +132,8 @@ describe("kyx_master op:ab — save / list / compare / restore", () => {
     expect(missing.text).toContain("no snapshot");
     const listed = await executeMcpTool(ctx, "kyx_master", { op: "ab", action: "list" });
     expect(listed.mutated).toBe(false);
-    expect(listed.text).toContain("club"); // the session store persists across ops
+    // The A/B store is PROJECT-SCOPED (10b0483b): a fresh project lists
+    // nothing even though another project saved a snapshot.
+    expect(listed.text).toContain("no snapshots");
   });
 });
