@@ -402,7 +402,11 @@ export function MasterMeter() {
         ))}
       </div>
       {state.clipping && (
-        <span className="master-clip-warning" role="alert" title="Master is clipping — pull down IN or engage LIMIT">
+        <span
+          className="master-clip-warning"
+          aria-hidden="true"
+          title="Master is clipping — pull down IN or engage LIMIT"
+        >
           CLIP
         </span>
       )}
