@@ -259,6 +259,25 @@ export function MasteringABCompare({
   }, [services.engine]);
 
   useEffect(() => {
+    if (!masterTestToneActive) return;
+    const stopToneForTransport = () => {
+      if (!services.transport.playing) return;
+      if (!services.engine.stopMasterMonitorTestTone()) return;
+      masterTestToneGenerationRef.current += 1;
+      const remaining = services.engine.getMasterMonitorToneTailRemainingSeconds();
+      setMasterTestToneActive(false);
+      setMasterTestToneTailRemaining(remaining > 0 ? remaining : null);
+      setMasterTestToneStatus(
+        remaining > 0
+          ? `Test tone stopped because transport playback started. Recording and auditions unlock in about ${remaining.toFixed(1)} seconds; wait longer if you can still hear the tail.`
+          : "Test tone stopped because transport playback started.",
+      );
+    };
+    const interval = window.setInterval(stopToneForTransport, 25);
+    return () => window.clearInterval(interval);
+  }, [masterTestToneActive, services.engine, services.transport]);
+
+  useEffect(() => {
     if (!masterTestToneTailPending || masterTestToneActive) return;
     const updateTailCountdown = () => {
       const remaining = services.engine.getMasterMonitorToneTailRemainingSeconds();
@@ -604,6 +623,10 @@ export function MasteringABCompare({
     if (masterTestToneActive) {
       services.engine.stopMasterMonitorTestTone();
       setMasterTestToneStatus("Stopping test tone…");
+      return;
+    }
+    if (services.transport.playing) {
+      setMasterTestToneStatus("Stop transport playback before testing the live master output path.");
       return;
     }
     setPlaying(null);
