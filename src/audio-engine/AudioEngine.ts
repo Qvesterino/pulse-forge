@@ -2843,12 +2843,20 @@ export class AudioEngine {
     return remaining;
   }
 
+  /** Remaining seconds in the test-tone tail guard, measured on the live audio clock. */
+  getMasterMonitorToneTailRemainingSeconds(): number {
+    const context = this.getLiveAudioContext();
+    if (!context || context.state === "closed") return 0;
+    return this.masterMonitorToneTailSeconds(context);
+  }
+
   /** Fade out and stop the current mastering monitor-path test tone. */
   stopMasterMonitorTestTone(): boolean {
     const tone = this.masterMonitorTestTone;
     if (!tone) return false;
     if (tone.stopping) return true;
     tone.stopping = true;
+    this.armMasterMonitorToneTail(tone.context, tone.tailSeconds);
     const ctx = this.ctx;
     if (!ctx || ctx.state === "closed") {
       try {

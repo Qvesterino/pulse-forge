@@ -177,6 +177,7 @@ export function MasteringAssistant({
   referencePcmBytes,
   comparisonEpoch,
   blockNewWork,
+  blockAudition,
   onBeforeRender,
   onBusyChange,
   onPreviewBytes,
@@ -188,6 +189,7 @@ export function MasteringAssistant({
   referencePcmBytes: number;
   comparisonEpoch: number;
   blockNewWork: boolean;
+  blockAudition: boolean;
   onBeforeRender(): void;
   onBusyChange(busy: boolean): void;
   onPreviewBytes(bytes: number): void;
@@ -499,7 +501,7 @@ export function MasteringAssistant({
   };
 
   const playCurrent = async () => {
-    if (!analysisIsCurrent || !analysis || busy) return;
+    if (!analysisIsCurrent || !analysis || busy || blockAudition) return;
     const revisionAtStart = currentRevision(services, doc.id);
     if (revisionAtStart !== analysis.revisionId) {
       setError("Projekt sa zmenil. Spusti novú analýzu pred audition.");
@@ -551,7 +553,7 @@ export function MasteringAssistant({
   };
 
   const playProposed = () => {
-    if (!previewIsCurrent || !candidatePreview || !previewBuffer) return;
+    if (!previewIsCurrent || !candidatePreview || !previewBuffer || blockAudition) return;
     stopPlayback();
     setPlaying("proposed");
     services.engine.previewMasterCompare(previewBuffer, auditionGains.proposal, () => setPlaying(null));
@@ -816,13 +818,17 @@ export function MasteringAssistant({
                 >
                   {busy === "preview" ? "Rendering draft…" : "Render selected preview"}
                 </button>
-                <button type="button" onClick={playCurrent} disabled={workBlocked || !analysisIsCurrent}>
+                <button
+                  type="button"
+                  onClick={playCurrent}
+                  disabled={workBlocked || !analysisIsCurrent || blockAudition}
+                >
                   {currentPreviewBuffer ? "Play current" : "Render & play current"}
                 </button>
                 <button
                   type="button"
                   onClick={playProposed}
-                  disabled={!previewIsCurrent || !previewBuffer || workBlocked}
+                  disabled={!previewIsCurrent || !previewBuffer || workBlocked || blockAudition}
                 >
                   Play proposal
                 </button>

@@ -139,6 +139,12 @@ export function MasteringABCompare({
   const [blindListen, setBlindListen] = useState<BlindListenSession | null>(null);
   const [masterTestToneActive, setMasterTestToneActive] = useState(false);
   const [masterTestToneStatus, setMasterTestToneStatus] = useState("");
+  const [masterTestToneTailRemaining, setMasterTestToneTailRemaining] = useState<number | null>(() => {
+    const remaining = services.engine.getMasterMonitorToneTailRemainingSeconds();
+    return remaining > 0 ? remaining : null;
+  });
+  const masterTestToneTailPending = masterTestToneTailRemaining !== null;
+  const monitorToneSettling = masterTestToneActive || masterTestToneTailPending;
   const [referenceBytes, setReferenceBytes] = useState(0);
   const [referenceProjectBytes, setReferenceProjectBytes] = useState(0);
   const [assistantBytes, setAssistantBytes] = useState(0);
@@ -215,6 +221,8 @@ export function MasteringABCompare({
     services.engine.stopMasterMonitorTestTone();
     setMasterTestToneActive(false);
     setMasterTestToneStatus("");
+    const remainingToneTail = services.engine.getMasterMonitorToneTailRemainingSeconds();
+    setMasterTestToneTailRemaining(remainingToneTail > 0 ? remainingToneTail : null);
     if (playingRef.current) {
       services.engine.stopPreview();
       setPlaying(null);
@@ -245,6 +253,26 @@ export function MasteringABCompare({
       services.engine.stopMasterMonitorTestTone();
     };
   }, [services.engine]);
+
+  useEffect(() => {
+    if (!masterTestToneTailPending || masterTestToneActive) return;
+    const updateTailCountdown = () => {
+      const remaining = services.engine.getMasterMonitorToneTailRemainingSeconds();
+      if (remaining <= 0) {
+        setMasterTestToneTailRemaining(null);
+        setMasterTestToneStatus(
+          "Estimated master-effects tail elapsed. Wait longer before recording or auditioning if you can still hear it.",
+        );
+        return;
+      }
+      setMasterTestToneTailRemaining((current) =>
+        current !== null && Math.ceil(current) === Math.ceil(remaining) ? current : remaining,
+      );
+    };
+    updateTailCountdown();
+    const interval = window.setInterval(updateTailCountdown, 150);
+    return () => window.clearInterval(interval);
+  }, [masterTestToneActive, masterTestToneTailPending, services.engine]);
 
   useEffect(() => {
     onBusyChange?.(comparisonWorkBusy);
@@ -310,7 +338,7 @@ export function MasteringABCompare({
   };
 
   const renderComparison = async () => {
-    if (!snapshotA || !snapshotB || comparisonWorkBusy || blockNewWork || blindListen) return;
+    if (!snapshotA || !snapshotB || comparisonWorkBusy || blockNewWork || blindListen || monitorToneSettling) return;
     const revisionAtStart = currentRevision(services, doc.id);
     let bankRevisionAtStart = services.bank.revision;
     if (!revisionAtStart || revisionAtStart !== revisionId) {
@@ -417,7 +445,7 @@ export function MasteringABCompare({
   };
 
   const matchLiveBypassLoudness = async () => {
-    if (comparisonWorkBusy || blockNewWork || blindListen) return;
+    if (comparisonWorkBusy || blockNewWork || blindListen || monitorToneSettling) return;
     const sourceDoc = services.store.getDoc();
     const revisionAtStart = sourceDoc.id === doc.id ? projectRevisionIdFor(sourceDoc) : null;
     if (!revisionAtStart || revisionAtStart !== revisionId) {
@@ -549,6 +577,12 @@ export function MasteringABCompare({
 
   const play = (slot: MasteringABSlot) => {
     if (!comparisonReady) return;
+    const remainingToneTail = services.engine.getMasterMonitorToneTailRemainingSeconds();
+    if (masterTestToneActive || remainingToneTail > 0) {
+      setMasterTestToneTailRemaining(remainingToneTail > 0 ? remainingToneTail : null);
+      setMasterTestToneStatus("Wait for the master-path test tone and its effects tail before auditioning snapshots.");
+      return;
+    }
     const side = slot === "A" ? comparison.a : comparison.b;
     const gain = slot === "A" ? gainA : gainB;
     services.engine.stopPreview();
@@ -568,10 +602,8 @@ export function MasteringABCompare({
       setMasterTestToneStatus("Stopping test tone…");
       return;
     }
-    if (playingRef.current) {
-      services.engine.stopPreview();
-      setPlaying(null);
-    }
+    services.engine.stopPreview();
+    setPlaying(null);
     const generation = ++masterTestToneGenerationRef.current;
     const estimatedTailSeconds = resolveRenderTailSeconds(doc, 2, "master");
     const result = services.engine.playMasterMonitorTestTone(
@@ -579,17 +611,22 @@ export function MasteringABCompare({
       () => {
         if (!masterTestToneMountedRef.current || generation !== masterTestToneGenerationRef.current) return;
         setMasterTestToneActive(false);
+        const remaining = services.engine.getMasterMonitorToneTailRemainingSeconds();
+        setMasterTestToneTailRemaining(remaining > 0 ? remaining : null);
         setMasterTestToneStatus(
-          `Test tone ended. Master recording unlocks after an estimated ${estimatedTailSeconds.toFixed(1)} second master-effects tail; wait longer if you can still hear it.`,
+          `Test tone ended. Master recording and auditions unlock after an estimated ${estimatedTailSeconds.toFixed(1)} second master-effects tail; wait longer if you can still hear it.`,
         );
       },
       estimatedTailSeconds,
     );
     if (result.status === "error") {
       setMasterTestToneActive(false);
+      const remaining = services.engine.getMasterMonitorToneTailRemainingSeconds();
+      setMasterTestToneTailRemaining(remaining > 0 ? remaining : null);
       setMasterTestToneStatus(result.message ?? "Could not start the master-path test tone.");
       return;
     }
+    setMasterTestToneTailRemaining(null);
     setMasterTestToneActive(true);
     setMasterTestToneStatus("Playing 440 Hz for up to 2.5 seconds. Toggle Live monitor bypass to compare paths.");
   };
@@ -600,10 +637,12 @@ export function MasteringABCompare({
   };
 
   const startBlindListen = () => {
-    if (!comparisonReady || comparisonWorkBusy || blockNewWork || blindListen) return;
+    if (!comparisonReady || comparisonWorkBusy || blockNewWork || blindListen || monitorToneSettling) return;
     masterTestToneGenerationRef.current += 1;
     services.engine.stopMasterMonitorTestTone();
     setMasterTestToneActive(false);
+    const remainingToneTail = services.engine.getMasterMonitorToneTailRemainingSeconds();
+    setMasterTestToneTailRemaining(remainingToneTail > 0 ? remainingToneTail : null);
     services.engine.stopPreview();
     setPlaying(null);
     setBlindListen({ first: randomizedFirstSlot(), preference: null, revealed: false });
@@ -649,7 +688,7 @@ export function MasteringABCompare({
         ) : (
           <p>Measurements hidden until you reveal the snapshot identities.</p>
         )}
-        <button type="button" onClick={() => play(slot)} disabled={!comparisonReady}>
+        <button type="button" onClick={() => play(slot)} disabled={!comparisonReady || monitorToneSettling}>
           {playing === slot ? `Playing version ${label}…` : `Listen to version ${label}`}
         </button>
       </article>
@@ -678,7 +717,7 @@ export function MasteringABCompare({
             <dd>{levelMatch && matchTarget === null ? "unavailable" : formatAuditionTrim(gain)}</dd>
           </div>
         </dl>
-        <button type="button" onClick={() => play(slot)} disabled={!comparisonReady}>
+        <button type="button" onClick={() => play(slot)} disabled={!comparisonReady || monitorToneSettling}>
           {playing === slot ? `Playing ${slot}…` : `Play ${slot}`}
         </button>
       </article>
@@ -698,7 +737,12 @@ export function MasteringABCompare({
         </div>
         {!blindListen && (
           <label className="master-ab-bypass">
-            <input type="checkbox" checked={masterBypassed} onChange={toggleMonitorBypass} />
+            <input
+              type="checkbox"
+              checked={masterBypassed}
+              onChange={toggleMonitorBypass}
+              disabled={masterTestToneTailPending}
+            />
             <span>Live monitor bypass</span>
           </label>
         )}
@@ -714,14 +758,18 @@ export function MasteringABCompare({
           <p>
             Play a quiet 440 Hz tone through the live master chain for 2.5 seconds. Stop transport playback first for a
             clean check; use native levels if bypass loudness matching is active. The tone never changes project
-            settings or offline exports. Wait for any master effects tail to decay before a live master recording; the
-            tone is unavailable while a master recording is active.
+            settings or offline exports. The panel shows the estimated master-effects tail countdown; wait longer if you
+            can still hear it before recording or auditioning. A/B, reference and assistant auditions pause during the
+            tone and estimated tail. The tone is unavailable while a master recording is active.
           </p>
           <div>
             <button
               type="button"
               onClick={toggleMasterTestTone}
-              disabled={!masterTestToneActive && (comparisonWorkBusy || blockNewWork)}
+              disabled={
+                !masterTestToneActive &&
+                (comparisonWorkBusy || blockNewWork || Boolean(blindListen) || assistantBusy || referenceBusy)
+              }
             >
               {masterTestToneActive ? "Stop test tone" : "Play master-path test tone"}
             </button>
@@ -729,6 +777,11 @@ export function MasteringABCompare({
           <p role="status" aria-live="polite" aria-atomic="true">
             {masterTestToneStatus}
           </p>
+          {masterTestToneTailRemaining !== null && (
+            <p className="master-ab-tone-tail-countdown" aria-hidden="true">
+              Master-effects tail · about {Math.ceil(masterTestToneTailRemaining)} s remaining
+            </p>
+          )}
         </section>
       )}
       {!blindListen && (
@@ -741,7 +794,7 @@ export function MasteringABCompare({
             <button
               type="button"
               onClick={() => void matchLiveBypassLoudness()}
-              disabled={comparisonWorkBusy || blockNewWork || Boolean(blindListen)}
+              disabled={comparisonWorkBusy || blockNewWork || Boolean(blindListen) || monitorToneSettling}
             >
               {bypassMatchBusy
                 ? "Measuring bypass match…"
@@ -753,7 +806,7 @@ export function MasteringABCompare({
               <button
                 type="button"
                 onClick={clearLiveBypassMatch}
-                disabled={comparisonWorkBusy || blockNewWork || Boolean(blindListen)}
+                disabled={comparisonWorkBusy || blockNewWork || Boolean(blindListen) || monitorToneSettling}
               >
                 Use native levels
               </button>
@@ -816,6 +869,7 @@ export function MasteringABCompare({
           revisionId={revisionId}
           sampleRate={sampleRate}
           blockNewWork={comparisonWorkBusy || blockNewWork || Boolean(blindListen)}
+          blockAudition={monitorToneSettling}
           onBusyChange={setAssistantBusy}
           reservedPcmBytes={referenceBytes + referenceProjectBytes + comparisonBytes}
           referencePcmBytes={referenceBytes}
@@ -847,21 +901,30 @@ export function MasteringABCompare({
         </label>
         <MasteringLevelMatchControl
           checked={levelMatch}
-          disabled={comparisonControlsBusy || blockNewWork || Boolean(blindListen)}
+          disabled={comparisonControlsBusy || blockNewWork || Boolean(blindListen) || monitorToneSettling}
           labelClassName="master-ab-match"
           onChange={setLevelMatch}
         />
         <button
           type="button"
           onClick={() => void renderComparison()}
-          disabled={!snapshotA || !snapshotB || comparisonWorkBusy || blockNewWork || Boolean(blindListen)}
+          disabled={
+            !snapshotA ||
+            !snapshotB ||
+            comparisonWorkBusy ||
+            blockNewWork ||
+            Boolean(blindListen) ||
+            monitorToneSettling
+          }
         >
           {busy ? "Rendering…" : "Render A/B"}
         </button>
         <button
           type="button"
           onClick={startBlindListen}
-          disabled={!comparisonReady || comparisonWorkBusy || blockNewWork || Boolean(blindListen)}
+          disabled={
+            !comparisonReady || comparisonWorkBusy || blockNewWork || Boolean(blindListen) || monitorToneSettling
+          }
         >
           Blind listen
         </button>
@@ -957,6 +1020,7 @@ export function MasteringABCompare({
           levelMatch={levelMatch}
           abRenderEpoch={abRenderEpoch}
           blockNewWork={comparisonWorkBusy || blockNewWork || Boolean(blindListen)}
+          blockAudition={monitorToneSettling}
           onBusyChange={reportReferenceBusy}
           onCancelLoudnessMatch={cancelReferenceLoudnessMatch}
           comparisonBytes={comparisonBytes}

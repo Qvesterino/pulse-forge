@@ -173,6 +173,7 @@ export function MasteringReferenceCompare({
   levelMatch,
   abRenderEpoch,
   blockNewWork,
+  blockAudition,
   onBeforeRender,
   onBusyChange,
   onCancelLoudnessMatch,
@@ -188,6 +189,7 @@ export function MasteringReferenceCompare({
   levelMatch: boolean;
   abRenderEpoch: number;
   blockNewWork: boolean;
+  blockAudition: boolean;
   onBeforeRender(): void;
   onBusyChange(busy: boolean, excerptPending: boolean): void;
   onCancelLoudnessMatch(): void;
@@ -570,7 +572,7 @@ export function MasteringReferenceCompare({
   };
 
   const play = (source: "project" | "reference") => {
-    if (excerptLoudnessPending) return;
+    if (excerptLoudnessPending || blockAudition) return;
     if (source === "project" && (!currentProjectMaster || !projectMaster)) return;
     if (source === "reference" && !reference) return;
     setError("");
@@ -729,7 +731,7 @@ export function MasteringReferenceCompare({
           <button
             type="button"
             onClick={() => play("project")}
-            disabled={!currentProjectMaster || rendering || loading || excerptLoudnessPending}
+            disabled={!currentProjectMaster || rendering || loading || excerptLoudnessPending || blockAudition}
           >
             {comparePairReady
               ? playing === "project"
@@ -744,7 +746,7 @@ export function MasteringReferenceCompare({
           <button
             type="button"
             onClick={() => play("reference")}
-            disabled={!reference || rendering || loading || excerptLoudnessPending}
+            disabled={!reference || rendering || loading || excerptLoudnessPending || blockAudition}
           >
             {comparePairReady
               ? playing === "reference"
