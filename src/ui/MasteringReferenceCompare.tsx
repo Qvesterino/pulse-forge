@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { BufferSummary } from "../audio-engine/metering";
-import { analyzeMasterBufferAsync, measureMasterBufferRangeLufsAsync } from "../mastering/analysisClient";
+import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
 import { awaitMasteringSampleBankReady } from "../mastering/readiness";
 import {
   inspectMasteringReferenceContainer,
@@ -16,6 +16,7 @@ import { decodeFlacAudioBuffer, estimateFlacDecoderWorkingSetBytes } from "../ma
 import { estimateRenderPcmBytes, renderProject } from "../rendering/renderer";
 import type { ProjectDocument } from "../project-model/types";
 import { useServices } from "./context";
+import { useMasteringExcerptLoudness } from "./useMasteringExcerptLoudness";
 
 interface LoadedReference {
   record: MasteringReferenceRecord;
@@ -30,18 +31,6 @@ interface RenderedProjectMaster {
   sampleRate: number;
   buffer: AudioBuffer;
   summary: BufferSummary;
-}
-
-interface ExcerptLoudnessMatch {
-  status: "measuring" | "ready" | "unavailable";
-  projectBuffer: AudioBuffer;
-  referenceBuffer: AudioBuffer;
-  projectOffset: number;
-  referenceOffset: number;
-  durationSeconds: number;
-  projectLufs: number | null;
-  referenceLufs: number | null;
-  reason?: string;
 }
 
 const MAX_REFERENCE_FILE_BYTES = 96 * 1024 * 1024;
@@ -218,7 +207,6 @@ export function MasteringReferenceCompare({
   const [dimDb, setDimDb] = useState(-6);
   const [projectOffset, setProjectOffset] = useState(0);
   const [referenceOffset, setReferenceOffset] = useState(0);
-  const [excerptLoudness, setExcerptLoudness] = useState<ExcerptLoudnessMatch | null>(null);
   const decodeJobRef = useRef(0);
   const decodeAbortRef = useRef<AbortController | null>(null);
   const renderAbortRef = useRef<AbortController | null>(null);
@@ -334,26 +322,19 @@ export function MasteringReferenceCompare({
     Math.min(renderProjectMax - projectOffset, renderReferenceMax - referenceOffset),
   );
   const comparePairReady = Boolean(currentProjectMaster && projectMaster && reference);
-  const excerptLoudnessIsCurrent = Boolean(
-    excerptLoudness &&
-    projectMaster &&
-    reference &&
-    excerptLoudness.projectBuffer === projectMaster.buffer &&
-    excerptLoudness.referenceBuffer === reference.buffer &&
-    excerptLoudness.projectOffset === projectOffset &&
-    excerptLoudness.referenceOffset === referenceOffset &&
-    excerptLoudness.durationSeconds === compareExcerptDuration,
-  );
-  const currentExcerptLoudness = excerptLoudnessIsCurrent ? excerptLoudness : null;
-  const excerptLoudnessPending = Boolean(
-    levelMatch && comparePairReady && (!currentExcerptLoudness || currentExcerptLoudness.status === "measuring"),
-  );
-  const targetLufs =
-    currentExcerptLoudness?.status === "ready" &&
-    currentExcerptLoudness.projectLufs !== null &&
-    currentExcerptLoudness.referenceLufs !== null
-      ? Math.min(currentExcerptLoudness.projectLufs, currentExcerptLoudness.referenceLufs)
-      : null;
+  const excerptLoudness = useMasteringExcerptLoudness({
+    enabled: levelMatch && comparePairReady,
+    projectBuffer: projectMaster?.buffer ?? null,
+    projectSummary: projectMaster?.summary ?? null,
+    referenceBuffer: reference?.buffer ?? null,
+    referenceSummary: reference?.summary ?? null,
+    projectOffset,
+    referenceOffset,
+    durationSeconds: compareExcerptDuration,
+  });
+  const currentExcerptLoudness = excerptLoudness.current;
+  const excerptLoudnessPending = excerptLoudness.pending;
+  const targetLufs = excerptLoudness.targetLufs;
   const projectAuditionLufs =
     levelMatch && comparePairReady
       ? (currentExcerptLoudness?.projectLufs ?? null)
@@ -379,91 +360,10 @@ export function MasteringReferenceCompare({
           : `selected excerpt — project ${trimLabel(previewTrim(currentExcerptLoudness.projectLufs, targetLufs, true))}; reference ${trimLabel(previewTrim(currentExcerptLoudness.referenceLufs, targetLufs, true))}`;
 
   useEffect(() => {
-    if (!levelMatch || !comparePairReady || !projectMaster || !reference || !currentProjectMaster) {
-      setExcerptLoudness(null);
-      return;
-    }
-
-    const controller = new AbortController();
-    let active = true;
-    if (playingRef.current) {
-      services.engine.stopPreview();
-      setPlaying(null);
-    }
-    setExcerptLoudness({
-      status: "measuring",
-      projectBuffer: projectMaster.buffer,
-      referenceBuffer: reference.buffer,
-      projectOffset,
-      referenceOffset,
-      durationSeconds: compareExcerptDuration,
-      projectLufs: null,
-      referenceLufs: null,
-    });
-
-    const timer = window.setTimeout(() => {
-      const measureSide = (
-        buffer: AudioBuffer,
-        fullSummary: BufferSummary,
-        startSeconds: number,
-      ): Promise<number | null> => {
-        const selectedFrames = Math.round(compareExcerptDuration * buffer.sampleRate);
-        if (startSeconds <= 0 && selectedFrames >= buffer.length - 1) {
-          return Promise.resolve(fullSummary.lufsIntegrated > -119 ? fullSummary.lufsIntegrated : null);
-        }
-        return measureMasterBufferRangeLufsAsync(buffer, startSeconds, compareExcerptDuration, controller.signal);
-      };
-
-      void Promise.all([
-        measureSide(projectMaster.buffer, projectMaster.summary, projectOffset),
-        measureSide(reference.buffer, reference.summary, referenceOffset),
-      ])
-        .then(([projectLufs, referenceLufs]) => {
-          if (!active || controller.signal.aborted) return;
-          setExcerptLoudness({
-            status: "ready",
-            projectBuffer: projectMaster.buffer,
-            referenceBuffer: reference.buffer,
-            projectOffset,
-            referenceOffset,
-            durationSeconds: compareExcerptDuration,
-            projectLufs,
-            referenceLufs,
-          });
-        })
-        .catch((caught: unknown) => {
-          if (!active || controller.signal.aborted) return;
-          controller.abort();
-          setExcerptLoudness({
-            status: "unavailable",
-            projectBuffer: projectMaster.buffer,
-            referenceBuffer: reference.buffer,
-            projectOffset,
-            referenceOffset,
-            durationSeconds: compareExcerptDuration,
-            projectLufs: null,
-            referenceLufs: null,
-            reason: caught instanceof Error ? caught.message : String(caught),
-          });
-        });
-    }, 250);
-
-    return () => {
-      active = false;
-      window.clearTimeout(timer);
-      controller.abort();
-    };
-  }, [
-    compareExcerptDuration,
-    comparePairReady,
-    currentProjectMaster,
-    levelMatch,
-    projectMaster,
-    projectOffset,
-    reference,
-    referenceOffset,
-    services.engine,
-  ]);
+    if (!excerptLoudnessPending || !playingRef.current) return;
+    services.engine.stopPreview();
+    setPlaying(null);
+  }, [excerptLoudnessPending, services.engine]);
 
   useEffect(() => {
     if (!playing) return;

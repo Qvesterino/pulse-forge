@@ -74,6 +74,7 @@ import {
 import { MasterProcessingControls } from "./MasterProcessingControls";
 import { MasteringSessionInsertRack } from "./MasteringSessionInsertRack";
 import { MasterProfileFileCheck, MasterProfileFileGuidance } from "./MasterProfileFileGuidance";
+import { useMasteringExcerptLoudness } from "./useMasteringExcerptLoudness";
 
 const MAX_DECODED_SOURCE_BYTES = 128 * 1024 * 1024;
 const MAX_RECENT_DELIVERY_REPORTS = 6;
@@ -126,8 +127,21 @@ interface LoadedSessionReference {
 }
 
 function compareGain(measurements: BufferSummary, targetLufs: number | null, enabled: boolean): number {
-  if (!enabled || targetLufs === null || measurements.lufsIntegrated <= -119) return 1;
-  return Math.min(1, Math.pow(10, (targetLufs - measurements.lufsIntegrated) / 20));
+  return compareLufsGain(measurements.lufsIntegrated, targetLufs, enabled);
+}
+
+function compareLufsGain(lufsIntegrated: number | null, targetLufs: number | null, enabled: boolean): number {
+  if (
+    !enabled ||
+    targetLufs === null ||
+    lufsIntegrated === null ||
+    !Number.isFinite(targetLufs) ||
+    !Number.isFinite(lufsIntegrated) ||
+    lufsIntegrated <= -119
+  ) {
+    return 1;
+  }
+  return Math.min(1, Math.pow(10, (targetLufs - lufsIntegrated) / 20));
 }
 
 function formatCompareGain(gain: number): string {
@@ -367,6 +381,8 @@ export function MasteringFileSessionPanel() {
   const [rendered, setRendered] = useState<RenderedSession | null>(null);
   const [comparison, setComparison] = useState<SessionComparison | null>(null);
   const [matchLoudness, setMatchLoudness] = useState(true);
+  const [masterCompareOffset, setMasterCompareOffset] = useState(0);
+  const [referenceCompareOffset, setReferenceCompareOffset] = useState(0);
   const [playing, setPlaying] = useState<SessionPreviewSelection | null>(null);
   const [versionNames, setVersionNames] = useState<Record<MasteringSessionSlot, string>>({
     A: "Version A",
@@ -387,6 +403,7 @@ export function MasteringFileSessionPanel() {
   const operation = useRef<AbortController | null>(null);
   const selectionEpoch = useRef(0);
   const playingRef = useRef<SessionPreviewSelection | null>(null);
+  const previewGeneration = useRef(0);
   playingRef.current = playing;
   const sourceIsLossyMp3 = Boolean(session?.fileName.toLowerCase().endsWith(".mp3"));
   const deliveryVersion = session?.deliveryVersion ?? "";
@@ -422,6 +439,7 @@ export function MasteringFileSessionPanel() {
       active = false;
       selectionEpoch.current++;
       operation.current?.abort();
+      previewGeneration.current++;
       if (playingRef.current) services.engine.stopPreview();
     };
   }, [repository, services.engine]);
@@ -524,16 +542,36 @@ export function MasteringFileSessionPanel() {
     comparisonCurrent && comparison ? compareGain(comparison.a.measurements, comparisonMatchTarget, matchLoudness) : 1;
   const comparisonGainB =
     comparisonCurrent && comparison ? compareGain(comparison.b.measurements, comparisonMatchTarget, matchLoudness) : 1;
-  const referenceMatchTarget = useMemo(() => {
-    if (!renderCurrent || !rendered || !reference) return null;
-    const masterLufs = rendered.measurements.lufsIntegrated;
-    const referenceLufs = reference.measurements.lufsIntegrated;
-    if (masterLufs <= -119 || referenceLufs <= -119) return null;
-    return Math.min(masterLufs, referenceLufs);
-  }, [reference, renderCurrent, rendered]);
+  const referencePairReady = Boolean(renderCurrent && rendered && reference);
+  const referenceCompareDuration = Math.max(
+    0,
+    Math.min(
+      (renderCurrent && rendered ? rendered.buffer.duration : 0) - masterCompareOffset,
+      (reference?.buffer.duration ?? 0) - referenceCompareOffset,
+    ),
+  );
+  const referenceExcerptLoudness = useMasteringExcerptLoudness({
+    enabled: matchLoudness && referencePairReady,
+    projectBuffer: referencePairReady && rendered ? rendered.buffer : null,
+    projectSummary: referencePairReady && rendered ? rendered.measurements : null,
+    referenceBuffer: referencePairReady && reference ? reference.buffer : null,
+    referenceSummary: referencePairReady && reference ? reference.measurements : null,
+    projectOffset: masterCompareOffset,
+    referenceOffset: referenceCompareOffset,
+    durationSeconds: referenceCompareDuration,
+  });
+  const referenceMatchTarget = referenceExcerptLoudness.targetLufs;
+  const referenceMasterLufs =
+    matchLoudness && referencePairReady
+      ? (referenceExcerptLoudness.current?.projectLufs ?? null)
+      : (rendered?.measurements.lufsIntegrated ?? null);
+  const referenceAudioLufs =
+    matchLoudness && referencePairReady
+      ? (referenceExcerptLoudness.current?.referenceLufs ?? null)
+      : (reference?.measurements.lufsIntegrated ?? null);
   const referenceMasterGain =
-    rendered && renderCurrent ? compareGain(rendered.measurements, referenceMatchTarget, matchLoudness) : 1;
-  const referenceAudioGain = reference ? compareGain(reference.measurements, referenceMatchTarget, matchLoudness) : 1;
+    rendered && renderCurrent ? compareLufsGain(referenceMasterLufs, referenceMatchTarget, matchLoudness) : 1;
+  const referenceAudioGain = reference ? compareLufsGain(referenceAudioLufs, referenceMatchTarget, matchLoudness) : 1;
   const outputMeasurements = useMemo(() => {
     if (!rendered) return null;
     if (inspection?.decode.status === "measured") {
@@ -592,15 +630,75 @@ export function MasteringFileSessionPanel() {
   useEffect(() => {
     if (playing === "A") services.engine.updateMasterComparePreview(comparisonGainA, false);
     if (playing === "B") services.engine.updateMasterComparePreview(comparisonGainB, false);
-    if (playing === "master") services.engine.updateMasterComparePreview(referenceMasterGain, false);
-    if (playing === "reference") services.engine.updateMasterComparePreview(referenceAudioGain, false);
-  }, [comparisonGainA, comparisonGainB, playing, referenceAudioGain, referenceMasterGain, services.engine]);
+    if (playing === "master" || playing === "reference") {
+      if (referencePairReady) {
+        services.engine.updateMasterComparePair(
+          referenceMasterGain,
+          referenceAudioGain,
+          playing === "master" ? "project" : "reference",
+          false,
+        );
+      } else {
+        services.engine.updateMasterComparePreview(
+          playing === "master" ? referenceMasterGain : referenceAudioGain,
+          false,
+        );
+      }
+    }
+  }, [
+    comparisonGainA,
+    comparisonGainB,
+    playing,
+    referenceAudioGain,
+    referenceMasterGain,
+    referencePairReady,
+    services.engine,
+  ]);
+
+  useEffect(() => {
+    if (referencePairReady || (playingRef.current !== "master" && playingRef.current !== "reference")) {
+      return;
+    }
+    previewGeneration.current++;
+    services.engine.stopPreview();
+    playingRef.current = null;
+    setPlaying(null);
+  }, [referencePairReady, services.engine]);
+
+  useEffect(() => {
+    if (!referenceExcerptLoudness.pending || (playingRef.current !== "master" && playingRef.current !== "reference")) {
+      return;
+    }
+    previewGeneration.current++;
+    services.engine.stopPreview();
+    playingRef.current = null;
+    setPlaying(null);
+  }, [referenceExcerptLoudness.pending, services.engine]);
+
+  useEffect(() => {
+    setMasterCompareOffset(0);
+    setReferenceCompareOffset(0);
+  }, [reference?.buffer, rendered?.buffer]);
 
   const stopSessionPreview = useCallback(() => {
+    previewGeneration.current++;
     if (playingRef.current) services.engine.stopPreview();
     playingRef.current = null;
     setPlaying(null);
   }, [services.engine]);
+
+  const updateReferenceCompareOffset = (side: "master" | "reference", nextOffset: number) => {
+    stopSessionPreview();
+    const maximum = side === "master" ? (rendered?.buffer.duration ?? 0) : (reference?.buffer.duration ?? 0);
+    const finiteOffset = Number.isFinite(nextOffset) ? nextOffset : 0;
+    const offset = Math.min(maximum, Math.max(0, Math.round(Math.min(maximum, finiteOffset) * 1000) / 1000));
+    if (side === "master") setMasterCompareOffset(offset);
+    else setReferenceCompareOffset(offset);
+  };
+  const nudgeReferenceCompareOffset = (side: "master" | "reference", deltaSeconds: number) => {
+    const currentOffset = side === "master" ? masterCompareOffset : referenceCompareOffset;
+    updateReferenceCompareOffset(side, currentOffset + deltaSeconds);
+  };
 
   const loadSession = useCallback(
     async (id: string) => {
@@ -1165,20 +1263,65 @@ export function MasteringFileSessionPanel() {
 
   const playReferenceComparison = useCallback(
     (selection: "master" | "reference") => {
-      if (!renderCurrent || !rendered || !reference) return;
-      const buffer = selection === "master" ? rendered.buffer : reference.buffer;
-      const gain = selection === "master" ? referenceMasterGain : referenceAudioGain;
-      stopSessionPreview();
-      playingRef.current = selection;
-      setPlaying(selection);
-      services.engine.previewMasterCompare(buffer, gain, () => {
-        if (playingRef.current === selection) {
+      if (!reference) return;
+      setError("");
+      const createOnPreviewEnded = () => {
+        const generation = previewGeneration.current;
+        return () => {
+          if (previewGeneration.current !== generation) return;
           playingRef.current = null;
           setPlaying(null);
-        }
-      });
+        };
+      };
+      if (!referencePairReady || !rendered) {
+        if (selection !== "reference") return;
+        stopSessionPreview();
+        services.engine.previewMasterCompare(reference.buffer, referenceAudioGain, createOnPreviewEnded());
+        playingRef.current = selection;
+        setPlaying(selection);
+        return;
+      }
+      if (referenceExcerptLoudness.pending) return;
+      const side = selection === "master" ? "project" : "reference";
+      if (playing === "master" || playing === "reference") {
+        services.engine.selectMasterComparePairSide(side);
+        playingRef.current = selection;
+        setPlaying(selection);
+        return;
+      }
+      stopSessionPreview();
+      const onPreviewEnded = createOnPreviewEnded();
+      const started = services.engine.previewMasterComparePair(
+        rendered.buffer,
+        reference.buffer,
+        referenceMasterGain,
+        referenceAudioGain,
+        side,
+        masterCompareOffset,
+        referenceCompareOffset,
+        false,
+        onPreviewEnded,
+      );
+      if (!started) {
+        setError("Choose start points with at least 10 ms remaining on both comparison sides.");
+        return;
+      }
+      playingRef.current = selection;
+      setPlaying(selection);
     },
-    [reference, referenceAudioGain, referenceMasterGain, renderCurrent, rendered, services.engine, stopSessionPreview],
+    [
+      masterCompareOffset,
+      playing,
+      reference,
+      referenceAudioGain,
+      referenceCompareOffset,
+      referenceExcerptLoudness.pending,
+      referenceMasterGain,
+      referencePairReady,
+      rendered,
+      services.engine,
+      stopSessionPreview,
+    ],
   );
 
   const updateDraft = useCallback(
@@ -2021,18 +2164,34 @@ export function MasteringFileSessionPanel() {
                   <button
                     type="button"
                     className="btn btn-small"
-                    disabled={!renderCurrent || Boolean(busy)}
+                    disabled={!referencePairReady || Boolean(busy) || referenceExcerptLoudness.pending}
                     onClick={() => playReferenceComparison("master")}
                   >
-                    {playing === "master" ? "Playing session master…" : "Listen to session master"}
+                    {referencePairReady
+                      ? playing === "master"
+                        ? "Selected · session master"
+                        : playing === "reference"
+                          ? "Switch to session master"
+                          : "Start A/B · session master"
+                      : playing === "master"
+                        ? "Playing session master…"
+                        : "Listen to session master"}
                   </button>
                   <button
                     type="button"
                     className="btn btn-small"
-                    disabled={!renderCurrent || Boolean(busy)}
+                    disabled={Boolean(busy) || (referencePairReady && referenceExcerptLoudness.pending)}
                     onClick={() => playReferenceComparison("reference")}
                   >
-                    {playing === "reference" ? "Playing reference…" : "Listen to reference"}
+                    {referencePairReady
+                      ? playing === "reference"
+                        ? "Selected · reference"
+                        : playing === "master"
+                          ? "Switch to reference"
+                          : "Start A/B · reference"
+                      : playing === "reference"
+                        ? "Playing reference…"
+                        : "Listen to reference"}
                   </button>
                   {(playing === "master" || playing === "reference") && (
                     <button type="button" className="btn btn-small" onClick={stopSessionPreview}>
@@ -2048,13 +2207,100 @@ export function MasteringFileSessionPanel() {
                     Remove reference
                   </button>
                 </div>
+                {referencePairReady && rendered && (
+                  <div className="master-reference-offsets">
+                    <div className="master-reference-offset-control">
+                      <label htmlFor="mastering-session-master-offset">Session master start</label>
+                      <div className="master-reference-offset-input">
+                        <button
+                          type="button"
+                          aria-label="Move session master start 10 milliseconds earlier"
+                          title="Move 10 milliseconds earlier"
+                          disabled={Boolean(busy) || masterCompareOffset <= 0}
+                          onClick={() => nudgeReferenceCompareOffset("master", -0.01)}
+                        >
+                          −10 ms
+                        </button>
+                        <input
+                          id="mastering-session-master-offset"
+                          type="number"
+                          min={0}
+                          max={rendered.buffer.duration}
+                          step={0.001}
+                          value={masterCompareOffset}
+                          aria-label="Session master start offset in seconds"
+                          disabled={Boolean(busy)}
+                          onChange={(event) => updateReferenceCompareOffset("master", Number(event.target.value) || 0)}
+                        />
+                        <span aria-hidden="true">s</span>
+                        <button
+                          type="button"
+                          aria-label="Move session master start 10 milliseconds later"
+                          title="Move 10 milliseconds later"
+                          disabled={Boolean(busy) || masterCompareOffset >= rendered.buffer.duration}
+                          onClick={() => nudgeReferenceCompareOffset("master", 0.01)}
+                        >
+                          +10 ms
+                        </button>
+                      </div>
+                    </div>
+                    <div className="master-reference-offset-control">
+                      <label htmlFor="mastering-session-reference-offset">Reference start</label>
+                      <div className="master-reference-offset-input">
+                        <button
+                          type="button"
+                          aria-label="Move reference start 10 milliseconds earlier"
+                          title="Move 10 milliseconds earlier"
+                          disabled={Boolean(busy) || referenceCompareOffset <= 0}
+                          onClick={() => nudgeReferenceCompareOffset("reference", -0.01)}
+                        >
+                          −10 ms
+                        </button>
+                        <input
+                          id="mastering-session-reference-offset"
+                          type="number"
+                          min={0}
+                          max={reference.buffer.duration}
+                          step={0.001}
+                          value={referenceCompareOffset}
+                          aria-label="Reference start offset in seconds"
+                          disabled={Boolean(busy)}
+                          onChange={(event) =>
+                            updateReferenceCompareOffset("reference", Number(event.target.value) || 0)
+                          }
+                        />
+                        <span aria-hidden="true">s</span>
+                        <button
+                          type="button"
+                          aria-label="Move reference start 10 milliseconds later"
+                          title="Move 10 milliseconds later"
+                          disabled={Boolean(busy) || referenceCompareOffset >= reference.buffer.duration}
+                          onClick={() => nudgeReferenceCompareOffset("reference", 0.01)}
+                        >
+                          +10 ms
+                        </button>
+                      </div>
+                    </div>
+                    <span>
+                      {referenceExcerptLoudness.pending
+                        ? "Measuring selected excerpt loudness… A/B is ready when the measurement finishes."
+                        : `Shared A/B excerpt: ${referenceCompareDuration.toFixed(2)} s. Both sides start together and switch without stopping.`}
+                    </span>
+                  </div>
+                )}
                 {renderCurrent && rendered && (
                   <span>
                     Master: {rendered.measurements.lufsIntegrated.toFixed(1)} LUFS-I ·{" "}
                     {rendered.measurements.truePeakDb.toFixed(1)} dBTP · audition trims{" "}
-                    {matchLoudness && referenceMatchTarget === null
-                      ? "unavailable"
-                      : `${formatCompareGain(referenceMasterGain)} / ${formatCompareGain(referenceAudioGain)}`}
+                    {!matchLoudness
+                      ? "off"
+                      : referenceExcerptLoudness.pending
+                        ? "measuring selected excerpt…"
+                        : referenceExcerptLoudness.current?.status === "unavailable"
+                          ? "unavailable; using native levels"
+                          : referenceMatchTarget === null
+                            ? "not matched; selected excerpt is too short or too quiet"
+                            : `selected excerpt ${formatCompareGain(referenceMasterGain)} / ${formatCompareGain(referenceAudioGain)}`}
                   </span>
                 )}
               </div>

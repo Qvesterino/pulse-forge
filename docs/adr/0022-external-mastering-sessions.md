@@ -141,15 +141,17 @@ remain open; this update does not broaden the validated support matrix.
 
 ## Implementation update — 2026-10-09
 
-The project reference comparison now starts its rendered-master and reference
-buffers together at their selected offsets. Both continue on the same monitor
-clock while the user switches sides through a 20 ms complementary gain ramp;
-the pair ends at the shorter remaining duration. Loudness matching, dim and
-mono controls update both sides without unmuting the selected-out side. A
-reference can still be auditioned alone before a current-project render exists.
-This does not synchronize the pair to the project transport. PreviewDeck unit
-coverage checks common start time, offset/duration pairing, crossfade scheduling,
-live loudness/mono updates and short-excerpt rejection (**11/11**). Chromium E2E
-imports a reference, renders the current project, toggles to both aligned sides
-and stops playback (**1/1**); broader browser/OS and hardware-listening coverage
-remains open.
+Project and external-session reference comparisons start their rendered-master
+and reference buffers together at selected offsets. Both continue on the same
+monitor clock while the user switches sides through a 20 ms complementary gain
+ramp; the pair ends at the shorter remaining duration. Project comparison also
+supports dim and mono controls. Both paths measure audition loudness over the
+selected shared excerpt and pause an active pair while a changed excerpt is
+being measured. The external session can still audition its reference alone
+before a current session render exists. Neither pair follows the project
+transport. PreviewDeck unit coverage checks common start time, offset/duration
+pairing, crossfade scheduling, live loudness/mono updates and short-excerpt
+rejection (**11/11**). Chromium E2E imports a project reference, renders the
+current project, toggles to both aligned sides and stops playback (**1/1**);
+broader browser/OS and hardware-listening coverage remains open. This update
+does not add new automated acceptance coverage for the external session UI.
