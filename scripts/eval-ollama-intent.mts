@@ -6,7 +6,8 @@
  *   baseline:  npx vite-node scripts/eval-ollama-intent.mts
  *   SFT model: npx vite-node scripts/eval-ollama-intent.mts --model kyx-intent-sft
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -17,9 +18,40 @@ import {
 } from "../src/intent/model-ollama";
 import { getIntentModelProvider, tryModelRoute } from "../src/intent/model-resolver";
 import { canonicalModelJson } from "../src/intent/model-decoder";
+import { warmFactoryPresets } from "../src/presets/factory-loader";
+import { ENGINE_FILLED_FIELDS } from "../src/intent/model-schema";
 import { datasetDoc } from "./intent-sft-doc.mts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+const ENGINE_FILLED = new Set(ENGINE_FILLED_FIELDS);
+
+/**
+ * Strip the engine-filled contract fields from BOTH sides of the comparison.
+ *
+ * ENGINE_FILLED_FIELDS (src/intent/model-schema.ts) pins `detected`,
+ * `matchedBy`, `sourceText` and `suggestions` as values the ENGINE computes
+ * after routing — the architecture forbids them as model output, yet the SFT
+ * corpus still teaches the model to emit them. Scoring them byte-exact
+ * therefore measures a field the runtime overwrites anyway: a miss there is a
+ * serialization artifact, not a behavioural defect.
+ *
+ * Stripping both sides keeps the comparison symmetric (same rule on truth and
+ * on model) and scores only what the model is actually responsible for. The
+ * `detected:["AI"]` degeneration seen in the v31/v32 evals is exactly this
+ * case — `loudness` scored 0/6 on a field that is a pure function of
+ * `targetDb` (src/intent/loudness.ts).
+ */
+function stripEngineFilled(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripEngineFilled);
+  if (value === null || typeof value !== "object") return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+    if (ENGINE_FILLED.has(key)) continue;
+    out[key] = stripEngineFilled(val);
+  }
+  return out;
+}
 
 function trueLang(instruction: string): string {
   return /[äôúľščťžýáíé]/i.test(instruction.normalize("NFD")) ? "sk" : "en";
@@ -53,6 +85,12 @@ console.log(`rows: ${limit} from val.jsonl\n`);
 // name the dataset's role scenes and clips (Intro/Drop, clip-test-*) —
 // against any other doc they are unanswerable by construction.
 const doc = datasetDoc();
+// The preset bank is a lazily-imported module: routeIntentText →
+// parsePresetIntent → resolvePresetByName → factoryPresets() throws
+// "factory preset bank not warmed" on the FIRST preset val row without this.
+// Measured 2026-10-09: the full-val run died at row 1 of 298 until it was
+// awaited here. A 60-row sample that happens to miss presets hides this.
+await warmFactoryPresets();
 const rows = readFileSync(path.join(ROOT, "scripts", "data", "intent-sft", "val.jsonl"), "utf8")
   .split("\n")
   .filter((line) => line.trim() !== "")
@@ -138,7 +176,7 @@ for (const row of rows) {
       }),
     };
   }
-  if (canonicalModelJson(comparable) === canonicalModelJson(truth)) {
+  if (canonicalModelJson(stripEngineFilled(comparable)) === canonicalModelJson(stripEngineFilled(truth))) {
     exact += 1;
     bucket.exact += 1;
   } else {
@@ -169,4 +207,129 @@ for (const [kind, bucket] of [...perKind.entries()].sort()) {
   console.log(
     `  ${kind.padEnd(14)} rows=${bucket.rows} exact=${bucket.exact}/${bucket.attempted} wrongKind=${bucket.wrongKind} abstain=${bucket.abstain}`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Pinned report. Until 2026-10-09 this script only console.logged, so every
+// LFM2.5 number in the docs was hand-transcribed from stdout into markdown —
+// which is exactly how the corpus drifted out from under three different
+// "pinned" scorecards. A number that only lives in a terminal is not evidence.
+const OLLAMA_BASE = "http://127.0.0.1:11434";
+
+function sha256File(rel: string): string {
+  return createHash("sha256")
+    .update(readFileSync(path.join(ROOT, rel)))
+    .digest("hex");
+}
+
+async function ollamaProvenance(tag: string): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = { requestedTag: tag, configuredDefault: ollamaIntentModel() };
+  try {
+    const version = (await (await fetch(`${OLLAMA_BASE}/api/version`)).json()) as { version?: string };
+    out.ollamaVersion = version.version ?? null;
+  } catch {
+    out.ollamaVersion = null;
+  }
+  try {
+    const tags = (await (await fetch(`${OLLAMA_BASE}/api/tags`)).json()) as {
+      models?: Array<Record<string, unknown>>;
+    };
+    const all = tags.models ?? [];
+    const hit = all.find((m) => m.name === tag) ?? all.find((m) => String(m.name).startsWith(tag.split(":")[0]));
+    if (!hit) {
+      out.registeredInOllama = false;
+      return out;
+    }
+    out.registeredInOllama = true;
+    out.ollamaModelName = hit.name ?? null;
+    out.ollamaDigest = hit.digest ?? null;
+    out.sizeBytes = hit.size ?? null;
+    out.details = hit.details ?? null;
+  } catch {
+    out.registeredInOllama = null;
+  }
+  return out;
+}
+
+const reportPath =
+  arg("report") ??
+  path.join(
+    ROOT,
+    "scripts",
+    "data",
+    "intent-sft",
+    `lfm-runtime-evaluation-${new Date().toISOString().slice(0, 10)}.json`,
+  );
+
+if (!process.argv.includes("--no-report")) {
+  let manifest: { datasetVersion?: number; total?: number; train?: number; val?: number; golden?: number } = {};
+  try {
+    manifest = JSON.parse(readFileSync(path.join(ROOT, "scripts/data/intent-sft/manifest.json"), "utf8"));
+  } catch {
+    manifest = {};
+  }
+  const report = {
+    reportVersion: 2,
+    createdAt: new Date().toISOString().slice(0, 10),
+    // Not a release qualification: labeled action routing on the val split,
+    // nothing about musical quality, generalization or human usefulness.
+    status: "measured-action-routing-validation-not-release-qualification",
+    scope: {
+      task: "intent action/slot routing against the labeled validation corpus",
+      protocol: `scripts/eval-ollama-intent.mts --limit ${limit}`,
+      comparison:
+        "canonicalModelJson(stripEngineFilled(route)) vs the labeled response; clips bar indexing normalized on the model side",
+      notEvaluated: [
+        "musical or beat quality",
+        "creative brief interpretation beyond the labeled action schema",
+        "candidate-family-disjoint generalization",
+        "human preference or usability",
+      ],
+    },
+    model: await ollamaProvenance(requestedModel ?? model ?? "unknown"),
+    dataset: {
+      version: manifest.datasetVersion ?? null,
+      split: "val",
+      rows: rows.length,
+      limitRequested: limit,
+      counts: { train: manifest.train ?? null, val: manifest.val ?? null, golden: manifest.golden ?? null },
+      // train.jsonl was MISSING from every earlier report, so a training run
+      // could not be tied back to the exact rows it learned from.
+      sha256: {
+        trainJsonl: sha256File("scripts/data/intent-sft/train.jsonl"),
+        valJsonl: sha256File("scripts/data/intent-sft/val.jsonl"),
+        goldenJsonl: sha256File("scripts/data/intent-sft/golden.jsonl"),
+        promptTxt: sha256File("scripts/data/intent-sft/prompt.txt"),
+        manifestJson: sha256File("scripts/data/intent-sft/manifest.json"),
+      },
+    },
+    runtime: { node: process.version },
+    metrics: {
+      rows: rows.length,
+      attempted,
+      exact,
+      attemptedExactRate: Number((exact / Math.max(1, attempted)).toFixed(10)),
+      wrongKind,
+      abstain,
+      abstainRate: Number((abstain / Math.max(1, rows.length)).toFixed(10)),
+      schemaInvalid,
+    },
+    perKind: Object.fromEntries([...perKind.entries()].sort()),
+    fails,
+    sourceHashes: {
+      "scripts/eval-ollama-intent.mts": sha256File("scripts/eval-ollama-intent.mts"),
+      "src/intent/model-ollama.ts": sha256File("src/intent/model-ollama.ts"),
+      "src/intent/model-resolver.ts": sha256File("src/intent/model-resolver.ts"),
+      "src/intent/model-decoder.ts": sha256File("src/intent/model-decoder.ts"),
+      "src/intent/model-schema.ts": sha256File("src/intent/model-schema.ts"),
+    },
+    limitations: [
+      "The validation split measures labeled action routing only; exact-match does not establish musical usefulness.",
+      "warm and cold Ollama runs are NOT comparable: the first generate pays the VRAM model load and can abort inside the 45 s timeout.",
+      "Full-val runs are required for a verdict — a --limit 60 sample both flatters the model and can miss the preset rows entirely.",
+      "golden.jsonl overlaps train/val after NFKC+whitespace normalization, so it is a regression set, not an independent holdout.",
+    ],
+  };
+  writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+  console.log(`\nreport: ${path.relative(ROOT, reportPath)}`);
 }

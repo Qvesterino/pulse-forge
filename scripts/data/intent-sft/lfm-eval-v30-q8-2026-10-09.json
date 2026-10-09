@@ -1,0 +1,387 @@
+{
+  "reportVersion": 2,
+  "createdAt": "2026-10-09",
+  "status": "measured-action-routing-validation-not-release-qualification",
+  "scope": {
+    "task": "intent action/slot routing against the labeled validation corpus",
+    "protocol": "scripts/eval-ollama-intent.mts --limit 298",
+    "comparison": "canonicalModelJson(stripEngineFilled(route)) vs the labeled response; clips bar indexing normalized on the model side",
+    "notEvaluated": [
+      "musical or beat quality",
+      "creative brief interpretation beyond the labeled action schema",
+      "candidate-family-disjoint generalization",
+      "human preference or usability"
+    ]
+  },
+  "model": {
+    "requestedTag": "kyx-intent-v30-q8",
+    "configuredDefault": "kyx-intent-v30-q8",
+    "ollamaVersion": "0.40.1",
+    "registeredInOllama": true,
+    "ollamaModelName": "kyx-intent-v30-q8:latest",
+    "ollamaDigest": "df24a022bee1c891ffa822da3736cdb48e8b57f8f76e10b180df1d8e78eefa62",
+    "sizeBytes": 1246257281,
+    "details": {
+      "parent_model": "kyx-intent-v30-q8.gguf",
+      "format": "gguf",
+      "family": "lfm2",
+      "families": [
+        "lfm2"
+      ],
+      "parameter_size": "1.2B",
+      "quantization_level": "Q8_0",
+      "context_length": 128000,
+      "embedding_length": 2048,
+      "runner": "llamacpp"
+    }
+  },
+  "dataset": {
+    "version": 4,
+    "split": "val",
+    "rows": 298,
+    "limitRequested": 298,
+    "counts": {
+      "train": 1790,
+      "val": 298,
+      "golden": 74
+    },
+    "sha256": {
+      "trainJsonl": "e4dd10ef4783a331d872770de52c7cb88185fbbc4eb1ad959f2a7e42171bb25e",
+      "valJsonl": "5b33d956c242fcbc6340e94a67dcbff5d0ba82b8416617dcfbaf7c87bf55887f",
+      "goldenJsonl": "321785b46c371c78c76f8c19f078f7927593ff5273debaa11709e9a52db227c5",
+      "promptTxt": "79e7d97868150217ee878ca0b77076ea6ac31578870bbc70d9819148c7830efb",
+      "manifestJson": "16154fd979be875e7e24dabb01d44f2b5a323da788ab0d8d4c2bce19c372649c"
+    }
+  },
+  "runtime": {
+    "node": "v24.11.0"
+  },
+  "metrics": {
+    "rows": 298,
+    "attempted": 240,
+    "exact": 215,
+    "attemptedExactRate": 0.8958333333,
+    "wrongKind": 7,
+    "abstain": 58,
+    "abstainRate": 0.1946308725,
+    "schemaInvalid": 0
+  },
+  "perKind": {
+    "arrange": {
+      "rows": 10,
+      "attempted": 8,
+      "exact": 8,
+      "wrongKind": 0,
+      "abstain": 2
+    },
+    "bypassIntent": {
+      "rows": 6,
+      "attempted": 3,
+      "exact": 3,
+      "wrongKind": 0,
+      "abstain": 3
+    },
+    "clarify": {
+      "rows": 7,
+      "attempted": 5,
+      "exact": 5,
+      "wrongKind": 0,
+      "abstain": 2
+    },
+    "clips": {
+      "rows": 5,
+      "attempted": 5,
+      "exact": 3,
+      "wrongKind": 0,
+      "abstain": 0
+    },
+    "compound": {
+      "rows": 7,
+      "attempted": 7,
+      "exact": 7,
+      "wrongKind": 0,
+      "abstain": 0
+    },
+    "effectIntent": {
+      "rows": 51,
+      "attempted": 26,
+      "exact": 19,
+      "wrongKind": 6,
+      "abstain": 25
+    },
+    "exact": {
+      "rows": 78,
+      "attempted": 66,
+      "exact": 65,
+      "wrongKind": 0,
+      "abstain": 12
+    },
+    "export": {
+      "rows": 3,
+      "attempted": 3,
+      "exact": 3,
+      "wrongKind": 0,
+      "abstain": 0
+    },
+    "fader": {
+      "rows": 61,
+      "attempted": 58,
+      "exact": 57,
+      "wrongKind": 0,
+      "abstain": 3
+    },
+    "loudness": {
+      "rows": 8,
+      "attempted": 8,
+      "exact": 1,
+      "wrongKind": 0,
+      "abstain": 0
+    },
+    "mix": {
+      "rows": 12,
+      "attempted": 12,
+      "exact": 9,
+      "wrongKind": 1,
+      "abstain": 0
+    },
+    "preset": {
+      "rows": 4,
+      "attempted": 4,
+      "exact": 0,
+      "wrongKind": 0,
+      "abstain": 0
+    },
+    "production": {
+      "rows": 16,
+      "attempted": 11,
+      "exact": 11,
+      "wrongKind": 0,
+      "abstain": 5
+    },
+    "revise": {
+      "rows": 8,
+      "attempted": 8,
+      "exact": 8,
+      "wrongKind": 0,
+      "abstain": 0
+    },
+    "select": {
+      "rows": 2,
+      "attempted": 2,
+      "exact": 2,
+      "wrongKind": 0,
+      "abstain": 0
+    },
+    "sendIntent": {
+      "rows": 12,
+      "attempted": 6,
+      "exact": 6,
+      "wrongKind": 0,
+      "abstain": 6
+    },
+    "tempo": {
+      "rows": 4,
+      "attempted": 4,
+      "exact": 4,
+      "wrongKind": 0,
+      "abstain": 0
+    },
+    "transport": {
+      "rows": 4,
+      "attempted": 4,
+      "exact": 4,
+      "wrongKind": 0,
+      "abstain": 0
+    }
+  },
+  "fails": [
+    {
+      "instruction": "copy the intro clip to bar 9",
+      "trueKind": "clips",
+      "gotKind": "clips",
+      "reason": "wrongSlots",
+      "detail": "want={\"kind\":\"clips\",\"ops\":[{\"op\":\"copyClip\",\"clipId\":\"clip-test-0010\",\"toBar\":8}]} got={\"kind\":\"clips\",\"ops\":[{\"op\":\"copyClip\",\"clipId\":\"clip-test-0010\",\"toBar\":7}]}"
+    },
+    {
+      "instruction": "loudness na -9",
+      "trueKind": "loudness",
+      "gotKind": "loudness",
+      "reason": "wrongSlots",
+      "detail": "want={\"kind\":\"loudness\",\"parse\":{\"direction\":\"louder\",\"targetDb\":-9,\"detected\":[\"loudness -9 LUFS\"]}} got={\"kind\":\"loudness\",\"parse\":{\"direction\":\"louder\",\"detected\":[\"AI\"]}}"
+    },
+    {
+      "instruction": "unmute the claps",
+      "trueKind": "exact",
+      "gotKind": "exact",
+      "reason": "wrongSlots",
+      "detail": "want={\"kind\":\"exact\",\"ops\":[{\"kind\":\"mute\",\"target\":\"snare\",\"value\":false}]} got={\"kind\":\"exact\",\"ops\":[{\"kind\":\"mute\",\"target\":\"mix\",\"value\":false}]}"
+    },
+    {
+      "instruction": "load the Reese preset on the bass",
+      "trueKind": "preset",
+      "gotKind": "preset",
+      "reason": "wrongSlots",
+      "detail": "want={\"kind\":\"preset\",\"preset\":{\"id\":\"factory.bass.techno.reese\",\"name\":\"Reese\"},\"target\":\"bass\",\"matchedBy\":\"exact\"} got={\"kind\":\"preset\",\"intent\":{\"preset\":{\"id\":\"factory.bass.techno.reese\",\"name\":\"Reese\",\"instrument\":\"bass\",\"genre\":\"techno\",\"mood\":[\"dark\",\"aggressive\"],\"tags\":[\"reese\",\"wide\",\"moving\"],\"params\":{\"sub\":0.65,\"body\":0.72,\"pu"
+    },
+    {
+      "instruction": "add delay to the drop",
+      "trueKind": "effectIntent",
+      "gotKind": "arrange",
+      "reason": "wrongKind",
+      "detail": "{\"kind\":\"arrange\",\"ops\":[{\"op\":\"addRole\",\"role\":\"drop\",\"beforeSceneId\":null}],\"unrecognized\":[]}"
+    },
+    {
+      "instruction": "add distortion to the drop",
+      "trueKind": "effectIntent",
+      "gotKind": "arrange",
+      "reason": "wrongKind",
+      "detail": "{\"kind\":\"arrange\",\"ops\":[{\"op\":\"addRole\",\"role\":\"drop\",\"beforeSceneId\":null}],\"unrecognized\":[]}"
+    },
+    {
+      "instruction": "add saturation to the drop",
+      "trueKind": "effectIntent",
+      "gotKind": "arrange",
+      "reason": "wrongKind",
+      "detail": "{\"kind\":\"arrange\",\"ops\":[{\"op\":\"addRole\",\"role\":\"drop\",\"beforeSceneId\":null}],\"unrecognized\":[]}"
+    },
+    {
+      "instruction": "add compressor to the drop",
+      "trueKind": "effectIntent",
+      "gotKind": "arrange",
+      "reason": "wrongKind",
+      "detail": "{\"kind\":\"arrange\",\"ops\":[{\"op\":\"addRole\",\"role\":\"drop\",\"beforeSceneId\":null}],\"unrecognized\":[]}"
+    },
+    {
+      "instruction": "add eq to the drop",
+      "trueKind": "effectIntent",
+      "gotKind": "arrange",
+      "reason": "wrongKind",
+      "detail": "{\"kind\":\"arrange\",\"ops\":[{\"op\":\"addRole\",\"role\":\"drop\",\"beforeSceneId\":null}],\"unrecognized\":[]}"
+    },
+    {
+      "instruction": "-7 lufs",
+      "trueKind": "loudness",
+      "gotKind": "loudness",
+      "reason": "wrongSlots",
+      "detail": "want={\"kind\":\"loudness\",\"parse\":{\"direction\":\"louder\",\"targetDb\":-7,\"detected\":[\"loudness -7 LUFS\"]}} got={\"kind\":\"loudness\",\"parse\":{\"direction\":\"louder\",\"detected\":[\"AI\"]}}"
+    },
+    {
+      "instruction": "more pumping",
+      "trueKind": "mix",
+      "gotKind": "mix",
+      "reason": "wrongSlots",
+      "detail": "want={\"kind\":\"mix\",\"overrides\":{\"pump\":\"on\"},\"detected\":[\"pump on\"]} got={\"kind\":\"mix\",\"overrides\":{\"pump\":\"more\"},\"detected\":[\"AI\"]}"
+    },
+    {
+      "instruction": "loudness na -8",
+      "trueKind": "loudness",
+      "gotKind": "loudness",
+      "reason": "wrongSlots",
+      "detail": "want={\"kind\":\"loudness\",\"parse\":{\"direction\":\"louder\",\"targetDb\":-8,\"detected\":[\"loudness -8 LUFS\"]}} got={\"kind\":\"loudness\",\"parse\":{\"direction\":\"louder\",\"detected\":[\"AI\"]}}"
+    },
+    {
+      "instruction": "copy the clip at bar 1 to bar 5",
+      "trueKind": "clips",
+      "gotKind": "clips",
+      "reason": "wrongSlots",
+      "detail": "want={\"kind\":\"clips\",\"ops\":[{\"op\":\"copyClip\",\"clipId\":\"clip-test-0010\",\"toBar\":4}]} got={\"kind\":\"clips\",\"ops\":[{\"op\":\"copyClip\",\"clipId\":\"clip-test-0010\",\"toBar\":3}]}"
+    },
+    {
+      "instruction": "load the Warm Pad preset on the chords",
+      "trueKind": "preset",
+      "gotKind": "preset",
+      "reason": "wrongSlots",
+      "detail": "want={\"kind\":\"preset\",\"preset\":{\"id\":\"factory.texture.techno.warmpad\",\"name\":\"Warm Pad\"},\"target\":\"chords\",\"matchedBy\":\"exact\"} got={\"kind\":\"preset\",\"intent\":{\"preset\":{\"id\":\"factory.texture.techno.warmpad\",\"name\":\"Warm Pad\",\"instrument\":\"texture\",\"genre\":\"techno\",\"mood\":[\"warm\",\"clean\"],\"tags\":[\"pad\",\"warm\",\"clean\"],\"params\":{\"color\":0.55,\"motion\":0"
+    },
+    {
+      "instruction": "-13 lufs",
+      "trueKind": "loudness",
+      "gotKind": "loudness",
+      "reason": "wrongSlots",
+      "detail": "want={\"kind\":\"loudness\",\"parse\":{\"direction\":\"louder\",\"targetDb\":-13,\"detected\":[\"loudness -13 LUFS\"]}} got={\"kind\":\"loudness\",\"parse\":{\"direction\":\"louder\",\"detected\":[\"AI\"]}}"
+    },
+    {
+      "instruction": "make the mix -9 lufs",
+      "trueKind": "loudness",
+      "gotKind": "loudness",
+      "reason": "wrongSlots",
+      "detail": "want={\"kind\":\"loudness\",\"parse\":{\"direction\":\"louder\",\"targetDb\":-9,\"detected\":[\"loudness -9 LUFS\"]}} got={\"kind\":\"loudness\",\"parse\":{\"direction\":\"louder\",\"detected\":[\"AI\"]}}"
+    },
+    {
+      "instruction": "make the mix -7 lufs",
+      "trueKind": "loudness",
+      "gotKind": "loudness",
+      "reason": "wrongSlots",
+      "detail": "want={\"kind\":\"loudness\",\"parse\":{\"direction\":\"louder\",\"targetDb\":-7,\"detected\":[\"loudness -7 LUFS\"]}} got={\"kind\":\"loudness\",\"parse\":{\"direction\":\"louder\",\"detected\":[\"AI\"]}}"
+    },
+    {
+      "instruction": "load the Warm Sustain preset on the chords",
+      "trueKind": "preset",
+      "gotKind": "preset",
+      "reason": "wrongSlots",
+      "detail": "want={\"kind\":\"preset\",\"preset\":{\"id\":\"factory.sampler.score.warmsustain\",\"name\":\"Warm Sustain\"},\"target\":\"chords\",\"matchedBy\":\"exact\"} got={\"kind\":\"preset\",\"intent\":{\"preset\":{\"id\":\"factory.sampler.score.warmsustain\",\"name\":\"Warm Sustain\",\"instrument\":\"sampler\",\"genre\":\"score\",\"mood\":[\"warm\",\"deep\"],\"tags\":[\"sustain\",\"warm\",\"loop\",\"cinematic\"],\"sampleId\":\"f"
+    },
+    {
+      "instruction": "add phaser to the intro",
+      "trueKind": "effectIntent",
+      "gotKind": "arrange",
+      "reason": "wrongKind",
+      "detail": "{\"kind\":\"arrange\",\"ops\":[{\"op\":\"addRole\",\"role\":\"intro\",\"beforeSceneId\":null}],\"unrecognized\":[]}"
+    },
+    {
+      "instruction": "obri dozvuk",
+      "trueKind": "mix",
+      "gotKind": "mix",
+      "reason": "wrongSlots",
+      "detail": "want={\"kind\":\"mix\",\"overrides\":{\"reverb\":\"huge\"},\"detected\":[\"huge reverb\"]} got={\"kind\":\"mix\",\"overrides\":{\"reverb\":\"more\"},\"detected\":[\"AI\"]}"
+    },
+    {
+      "instruction": "načítaj preset bright lead na lead",
+      "trueKind": "preset",
+      "gotKind": "preset",
+      "reason": "wrongSlots",
+      "detail": "want={\"kind\":\"preset\",\"preset\":{\"id\":\"factory.wavetable.house.brightlead\",\"name\":\"Bright Lead\"},\"target\":\"lead\",\"matchedBy\":\"exact\"} got={\"kind\":\"preset\",\"intent\":{\"preset\":{\"id\":\"factory.wavetable.house.brightlead\",\"name\":\"Bright Lead\",\"instrument\":\"wavetable\",\"genre\":\"house\",\"mood\":[\"bright\",\"clean\"],\"tags\":[\"lead\",\"bright\",\"saw\"],\"params\":{\"table\":0,\"m"
+    },
+    {
+      "instruction": "menej dozvuku v mixi",
+      "trueKind": "mix",
+      "gotKind": "clarify",
+      "reason": "wrongKind",
+      "detail": "{\"kind\":\"clarify\",\"reason\":\"AI navrhuje — vyber:\",\"suggestions\":[\"less reverb on the drums\",\"less reverb on the bass\",\"less reverb on the chords\",\"less reverb on the lead\"]}"
+    },
+    {
+      "instruction": "nastav master na 80 percent",
+      "trueKind": "fader",
+      "gotKind": "fader",
+      "reason": "wrongSlots",
+      "detail": "want={\"kind\":\"fader\",\"intent\":{\"targets\":[\"master\"],\"pads\":[\"perc\"],\"direction\":\"set\",\"percent\":80}} got={\"kind\":\"fader\",\"intent\":{\"targets\":[\"master\"],\"pads\":[],\"direction\":\"set\",\"percent\":80}}"
+    },
+    {
+      "instruction": "hlasitosť na -7",
+      "trueKind": "loudness",
+      "gotKind": "loudness",
+      "reason": "wrongSlots",
+      "detail": "want={\"kind\":\"loudness\",\"parse\":{\"direction\":\"louder\",\"targetDb\":-7,\"detected\":[\"loudness -7 LUFS\"]}} got={\"kind\":\"loudness\",\"parse\":{\"direction\":\"louder\",\"detected\":[\"AI\"]}}"
+    },
+    {
+      "instruction": "pridaj saturáciu na chorus",
+      "trueKind": "effectIntent",
+      "gotKind": "effectIntent",
+      "reason": "wrongSlots",
+      "detail": "want={\"kind\":\"effectIntent\",\"intent\":{\"effectType\":\"saturation\",\"targets\":[\"drums\",\"bass\",\"chords\",\"lead\"],\"direction\":\"more\",\"amount\":\"medium\",\"detected\":[\"more saturation\",\"→ drums+bass+chords+lead\"]}} got={\"kind\":\"effectIntent\",\"intent\":{\"effectType\":\"chorus\",\"targets\":[\"drums\",\"bass\",\"chords\",\"lead\"],\"direction\":\"more\",\"amount\":\"medium\",\"detected\":[\"AI\"]}}"
+    }
+  ],
+  "sourceHashes": {
+    "scripts/eval-ollama-intent.mts": "8b3422d5f214c3db94d41c7ee561d88b936a4932d61072646e0b470de315ec2a",
+    "src/intent/model-ollama.ts": "36748a166642674540f2c85892d522b4c964053055cff388ded6daac19ceec74",
+    "src/intent/model-resolver.ts": "53d49ccaf68cb047f6b1c81cbd2148c49fd52e4cb881f01b32191d88f4ee789e",
+    "src/intent/model-decoder.ts": "a9f16f93c114b7aa4e253f79e7506c5b1589f41f36b9f5079b8e4cb308cc3034",
+    "src/intent/model-schema.ts": "d33464716990662d8af7a2942633bd36513b567ed32b4206a82a4bc07d927cbc"
+  },
+  "limitations": [
+    "The validation split measures labeled action routing only; exact-match does not establish musical usefulness.",
+    "warm and cold Ollama runs are NOT comparable: the first generate pays the VRAM model load and can abort inside the 45 s timeout.",
+    "Full-val runs are required for a verdict — a --limit 60 sample both flatters the model and can miss the preset rows entirely.",
+    "golden.jsonl overlaps train/val after NFKC+whitespace normalization, so it is a regression set, not an independent holdout."
+  ]
+}

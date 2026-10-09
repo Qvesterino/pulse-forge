@@ -26,19 +26,39 @@ import type { ProjectDocument } from "../project-model/types";
  * `localStorage["pf:intent-model-ollama"] = "off"` is the kill switch;
  * a model-routed action always announces itself (🤖 status in the panel).
  *
- * The DEFAULT_MODEL is the SFT recipe-wave winner (LoRA r32/α64, 4 epochs on
- * the 1906-pair corpus) in Q8_0: 95.6% attempted-exact, wrongKind 0, abstain
- * 1/272 on the 272-row val — equal-or-better than its own f16 (94.5%/1/0)
- * at HALF the footprint (1.16 vs 2.18 GB, ~150 ms vs seconds per ask on the
- * 6GB card where f16 fights everything else for VRAM). The few-shot examples
- * below are PART OF THE TRAINING PROMPT (prompt.txt is built from them) —
- * never edit them without retraining.
+ * The DEFAULT_MODEL is `kyx-intent-v33-q8`: LFM2.5-1.2B-Instruct + LoRA
+ * r32/α64, 4 epochs on the 1790-pair wave-8 corpus, in Q8_0.
+ *
+ * Measured 2026-10-09 on the FULL 298-row val, all four candidates on one
+ * instrument (scripts/eval-ollama-intent.mts --limit 298, each model warmed
+ * before measuring so the cold VRAM load could not pollute the result):
+ *
+ *   model              quant  attempted-exact   wrongKind  abstain   VRAM
+ *   kyx-intent-v30-q8  Q8_0      215/240 89.6%   7        58/298   1.71 GB
+ *   kyx-intent-v31     F16       219/240 91.3%   6        58/298   2.64 GB
+ *   kyx-intent-v33     F16       219/239 91.6%   3        59/298   2.73 GB
+ *   kyx-intent-v33-q8  Q8_0      220/240 91.7%   3        58/298   1.71 GB   <-- default
+ *
+ * The previous default (v30-q8) was the WEAKEST of the four. Its claimed
+ * 95.6%/wrongKind 0/abstain 1 and 92.5%/abstain 0.7% never reproduced: it
+ * measures 89.6% with wrongKind 7 and abstain 58/298 here, and two
+ * independent runs gave byte-identical numbers, so this is the instrument
+ * being deterministic, not the docs being close.
+ *
+ * v33-q8 wins on every metric at the SAME VRAM and disk footprint as the old
+ * default, which is what made v30-q8 attractive in the first place (f16 fights
+ * everything else for VRAM on the 6GB card).
+ *
+ * Pinned evidence, one report per model:
+ *   scripts/data/intent-sft/lfm-eval-{v30-q8,v31,v33,v33-q8}-2026-10-09.json
+ * The few-shot examples below are PART OF THE TRAINING PROMPT (prompt.txt is
+ * built from them) — never edit them without retraining.
  */
 
 export type OllamaIntentMode = "off" | "on";
 
 const OLLAMA_BASE = "http://127.0.0.1:11434";
-const DEFAULT_MODEL = "kyx-intent-v30-q8";
+const DEFAULT_MODEL = "kyx-intent-v33-q8";
 const PROBE_TIMEOUT_MS = 10_000; // a busy machine (training, model import, inference) can stall the loopback probe — 3s was measurably too tight
 const GENERATE_TIMEOUT_MS = 45_000; // the FIRST generate on a cold server pays the VRAM model load (2.3GB f16 ≫ 20s once); keep_alive keeps the rest fast
 
@@ -184,7 +204,16 @@ async function generate(instruction: string, _doc: ProjectDocument): Promise<str
         // in-process greedy collapsing to 2-9% through the schema path).
         // The fine-tune already emits valid teacher-shaped JSON greedily;
         // validateModelAction downstream remains the legality gate.
-        options: { temperature: 0, num_predict: 256 },
+        //
+        // num_predict stays >= 300 per SFT runbook §8 "Grammar responses need
+        // tokens" (80 truncates schema-forced JSON). Note: raising 256 → 384
+        // on 2026-10-09 changed NOTHING measurable — the smoke script's
+        // `[${JSON.stringify(parsed).slice(0, 90)}]` preview looked like a
+        // mid-value cut, but the raw output was already fully parsed and
+        // schema-legal (8/8). The two apparent failures there are a wrong
+        // routed `kind` from tryModelRoute, not a token budget problem. Do
+        // not "fix" this number again on the strength of that preview.
+        options: { temperature: 0, num_predict: 384 },
         messages: [
           { role: "system", content: systemPromptInternal() },
           { role: "user", content: instruction },

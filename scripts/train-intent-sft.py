@@ -253,7 +253,10 @@ def main() -> None:
 
     (SFT_DIR / "sft-report.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf8")
     print(f"adapter: {adapter_dir}")
-    print(f"merged:  {merged_dir}  (next: convert_hf_to_gguf → ollama create)")
+    # ASCII only: a non-ASCII arrow here crashed the run AFTER the adapter,
+    # the merged model and the report were already written (UnicodeEncodeError
+    # under the Windows cp1250 console), so a finished run reported exit code 1.
+    print(f"merged:  {merged_dir}  (next: convert_hf_to_gguf -> ollama create)")
 
 
 if __name__ == "__main__":

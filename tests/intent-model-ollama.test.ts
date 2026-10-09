@@ -82,10 +82,10 @@ describe("ollama provider wiring", () => {
 
   it("ACTIVE BY DEFAULT: no flag + server with the SFT model → registers", async () => {
     vi_stubFetch(
-      async () => new Response(JSON.stringify({ models: [{ name: "kyx-intent-v30-q8" }] }), { status: 200 }),
+      async () => new Response(JSON.stringify({ models: [{ name: "kyx-intent-v33-q8" }] }), { status: 200 }),
     );
-    await expect(ensureOllamaIntentProvider()).resolves.toBe("kyx-intent-v30-q8");
-    expect(getIntentModelProvider()?.id).toBe("ollama.kyx-intent-v30-q8");
+    await expect(ensureOllamaIntentProvider()).resolves.toBe("kyx-intent-v33-q8");
+    expect(getIntentModelProvider()?.id).toBe("ollama.kyx-intent-v33-q8");
   });
 
   it("server without the model → no registration (the probe is the real gate)", async () => {
@@ -99,7 +99,7 @@ describe("ollama provider wiring", () => {
     vi_stubFetch(async (_url, init) => {
       const url = String(_url);
       if (url.endsWith("/api/tags")) {
-        return new Response(JSON.stringify({ models: [{ name: "kyx-intent-v30-q8" }] }), { status: 200 });
+        return new Response(JSON.stringify({ models: [{ name: "kyx-intent-v33-q8" }] }), { status: 200 });
       }
       bodies.push(JSON.parse(String(init?.body)));
       return new Response(JSON.stringify({ message: { content: '{"kind":"transport","action":"stop"}' } }), {
@@ -107,9 +107,9 @@ describe("ollama provider wiring", () => {
       });
     });
     const model = await ensureOllamaIntentProvider();
-    expect(model).toBe("kyx-intent-v30-q8");
+    expect(model).toBe("kyx-intent-v33-q8");
     const provider = getIntentModelProvider();
-    expect(provider?.id).toBe("ollama.kyx-intent-v30-q8");
+    expect(provider?.id).toBe("ollama.kyx-intent-v33-q8");
     const text = await provider!.generate("stop", {} as never);
     expect(JSON.parse(text)).toEqual({ kind: "transport", action: "stop" });
     // NO format constraint (measured 2026-09-29: the schema grammar flips the
