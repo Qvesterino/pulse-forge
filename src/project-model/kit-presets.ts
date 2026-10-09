@@ -1,4 +1,4 @@
-import type { DrumSynthConfig } from "./types";
+import type { DrumSynthConfig, SampleLayer } from "./types";
 
 export interface KitPreset {
   id: string;
@@ -13,16 +13,76 @@ export interface KitPreset {
     pan?: number;
     chokeGroup?: number | null;
     pitch?: number;
+    /**
+     * Round-robin / velocity variant set carried onto the pad by the dice kit
+     * swap (resolveKitAssignments). Members must resolve in the factory bank
+     * (asset or a derived `.rr2/.rr3` variant) and MUST include the pad's own
+     * assetId — a set that drops the pad's voice would change its sound.
+     */
+    layers?: SampleLayer[];
   }>;
 }
 
 function s(
   idx: number,
   assetId: string | null,
-  opts: Partial<{ synth: DrumSynthConfig | null; gain: number; pan: number; chokeGroup: number | null }> = {},
+  opts: Partial<{
+    synth: DrumSynthConfig | null;
+    gain: number;
+    pan: number;
+    chokeGroup: number | null;
+    layers: SampleLayer[];
+  }> = {},
 ): KitPreset["pads"][number] {
-  return { idx, assetId, synth: opts.synth ?? null, gain: opts.gain, pan: opts.pan, chokeGroup: opts.chokeGroup };
+  return {
+    idx,
+    assetId,
+    synth: opts.synth ?? null,
+    gain: opts.gain,
+    pan: opts.pan,
+    chokeGroup: opts.chokeGroup,
+    ...(opts.layers ? { layers: opts.layers } : {}),
+  };
 }
+
+/** Full-window round-robin set over the bank's derived variants (RR_VARIATIONS). */
+function rr(sampleId: string): SampleLayer[] {
+  return [sampleId, `${sampleId}.rr2`, `${sampleId}.rr3`].map((id, i) => ({
+    id: `layer.kit.rr.${i}`,
+    sampleId: id,
+    min: 0,
+    max: 1,
+  }));
+}
+
+/** Velocity-DYNAMIC set: ghost timbre under soft hits, the body pool rotating, an optional hard accent. */
+function dyn(ghost: string, mains: string[], accent?: string): SampleLayer[] {
+  const ghostMax = 0.35;
+  const bodyMax = accent ? 0.8 : 1;
+  const layers: SampleLayer[] = [{ id: "layer.kit.dyn.ghost", sampleId: ghost, min: 0, max: ghostMax }];
+  mains.forEach((sampleId, i) => {
+    layers.push({ id: `layer.kit.dyn.main.${i}`, sampleId, min: ghostMax, max: bodyMax });
+  });
+  if (accent) layers.push({ id: "layer.kit.dyn.accent", sampleId: accent, min: 0.8, max: 1 });
+  return layers;
+}
+
+/** The stock-kit dynamic sets, mirrored inline (kit-presets stays project-model-local — no sample-library import). */
+const SNARE_DYNAMIC = dyn(
+  "factory.snare.tight",
+  ["factory.snare.main", "factory.snare.main.rr2", "factory.snare.main.rr3"],
+  "factory.snare.punch",
+);
+const HAT_DYNAMIC = dyn("factory.hat.closed.soft", [
+  "factory.hat.closed",
+  "factory.hat.closed.rr2",
+  "factory.hat.closed.rr3",
+]);
+const KICK_PUNCH_RR = rr("factory.kick.punch");
+const TIMBALE_RR = rr("factory.perc.timbale");
+const BONGOS_RR = rr("factory.perc.bongos");
+const CONGA_HIGH_RR = rr("factory.perc.conga.high");
+const SHAKER_FAST_RR = rr("factory.shaker.fast");
 
 export const KIT_PRESETS: KitPreset[] = [
   {
@@ -227,11 +287,11 @@ export const KIT_PRESETS: KitPreset[] = [
       s(1, "factory.kick.deep", { chokeGroup: 1, gain: 0.85 }),
       s(2, "factory.perc.cajon", { chokeGroup: 1, gain: 0.9 }),
       s(3, "factory.rim.chip", { gain: 0.7 }),
-      s(4, "factory.perc.timbale", { gain: 0.9 }),
+      s(4, "factory.perc.timbale", { gain: 0.9, layers: TIMBALE_RR }),
       s(5, "factory.clap.soft", { gain: 0.7 }),
-      s(6, "factory.perc.bongos", { gain: 0.9 }),
-      s(7, "factory.perc.conga.high", { gain: 0.85, pan: -0.1 }),
-      s(8, "factory.shaker.fast", { chokeGroup: 2 }),
+      s(6, "factory.perc.bongos", { gain: 0.9, layers: BONGOS_RR }),
+      s(7, "factory.perc.conga.high", { gain: 0.85, pan: -0.1, layers: CONGA_HIGH_RR }),
+      s(8, "factory.shaker.fast", { chokeGroup: 2, layers: SHAKER_FAST_RR }),
       s(9, "factory.perc.agogo", { gain: 0.8, pan: 0.15 }),
       s(10, "factory.perc.conga", { gain: 0.8 }),
       s(11, "factory.perc.tambourine", { chokeGroup: 2, gain: 0.7 }),
@@ -252,10 +312,10 @@ export const KIT_PRESETS: KitPreset[] = [
       s(2, "factory.perc.cajon", { gain: 0.7 }),
       s(3, "factory.rim.chip", { gain: 0.8 }),
       s(4, "factory.snare.tight", { gain: 0.8 }),
-      s(5, "factory.snare.main", { gain: 0.7 }),
+      s(5, "factory.snare.main", { gain: 0.7, layers: SNARE_DYNAMIC }),
       s(6, "factory.clap.soft", { gain: 0.5 }),
-      s(7, "factory.perc.conga.high", { gain: 0.6, pan: -0.08 }),
-      s(8, "factory.hat.closed.soft", { chokeGroup: 2, gain: 0.7 }),
+      s(7, "factory.perc.conga.high", { gain: 0.6, pan: -0.08, layers: CONGA_HIGH_RR }),
+      s(8, "factory.hat.closed.soft", { chokeGroup: 2, gain: 0.7, layers: HAT_DYNAMIC }),
       s(9, "factory.hat.pedal", { chokeGroup: 2, gain: 0.6 }),
       s(10, "factory.ride.jazz", { chokeGroup: 2, gain: 0.9 }),
       s(11, "factory.ride.bell", { chokeGroup: 2, gain: 0.65 }),
@@ -271,15 +331,15 @@ export const KIT_PRESETS: KitPreset[] = [
     genre: "rock",
     description: "Rock backline — cracking snare, china accent, full toms",
     pads: [
-      s(0, "factory.kick.punch", { chokeGroup: 1 }),
+      s(0, "factory.kick.punch", { chokeGroup: 1, layers: KICK_PUNCH_RR }),
       s(1, "factory.kick.deep", { chokeGroup: 1, gain: 0.9 }),
       s(2, "factory.kick.techno", { chokeGroup: 1, gain: 0.8 }),
       s(3, "factory.rim.chip", { gain: 0.6 }),
-      s(4, "factory.snare.main", { gain: 0.95 }),
+      s(4, "factory.snare.main", { gain: 0.95, layers: SNARE_DYNAMIC }),
       s(5, "factory.snare.punch", { gain: 0.9 }),
       s(6, "factory.clap.main", { gain: 0.7 }),
       s(7, "factory.perc.cowbell", { gain: 0.65 }),
-      s(8, "factory.hat.closed", { chokeGroup: 2 }),
+      s(8, "factory.hat.closed", { chokeGroup: 2, layers: HAT_DYNAMIC }),
       s(9, "factory.hat.open.short", { chokeGroup: 2, gain: 0.8 }),
       s(10, "factory.ride.ping", { chokeGroup: 2, gain: 0.85 }),
       s(11, "factory.crash.china", { chokeGroup: 2, gain: 0.65 }),

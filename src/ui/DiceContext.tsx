@@ -702,6 +702,9 @@ export function DiceProvider({
                 gain: patch.gain !== undefined ? patch.gain! : p.gain,
                 pan: patch.pan !== undefined ? patch.pan! : p.pan,
                 chokeGroup: patch.chokeGroup !== undefined ? patch.chokeGroup : p.chokeGroup,
+                // Variant set rides with the kit patch ([] clears — the map
+                // guarantees a covering set whenever the asset changed).
+                layers: patch.layers !== undefined ? patch.layers : p.layers,
                 sliceStart: patch.assetId !== undefined ? undefined : p.sliceStart,
                 sliceEnd: patch.assetId !== undefined ? undefined : p.sliceEnd,
                 sliceFadeIn: patch.assetId !== undefined ? undefined : p.sliceFadeIn,

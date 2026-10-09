@@ -82,6 +82,8 @@ export interface KitPadCapture {
   pan?: number;
   chokeGroup?: number | null;
   pitch?: number;
+  /** Variant set round-trip (capture → apply). Absent = leave the pad's own. */
+  layers?: DrumTrack["pads"][number]["layers"];
 }
 
 /** Read a drum track's pad mapping into a portable kit object. */
@@ -96,13 +98,16 @@ export function captureKitFromTrack(doc: ProjectDocument, trackId: string): KitP
     pan: pad.pan,
     chokeGroup: pad.chokeGroup ?? null,
     pitch: pad.pitch ?? 0,
+    ...(pad.layers ? { layers: pad.layers } : {}),
   }));
 }
 
 /**
  * Apply a kit's pad mapping onto a drum track (one undo entry). Pads with
  * `assetId: null` in the kit keep their current sample; everything else
- * (sample, synth, gain, pan, choke, pitch) is replaced.
+ * (sample, synth, gain, pan, choke, pitch) is replaced. Layers ride with the
+ * capture; an asset swap without a captured set clears them — stale layers
+ * would make the new voice play the old kit's samples.
  */
 export function applyKitToDrumTrack(
   doc: ProjectDocument,
@@ -123,7 +128,8 @@ export function applyKitToDrumTrack(
         pads: drum.pads.map((pad, idx) => {
           const k = byIdx.get(idx);
           if (!k || k.assetId === null) return pad;
-          return {
+          const swapped = k.assetId !== pad.assetId;
+          const nextPad = {
             ...pad,
             assetId: k.assetId,
             synth: k.synth ?? null,
@@ -132,6 +138,13 @@ export function applyKitToDrumTrack(
             chokeGroup: k.chokeGroup ?? pad.chokeGroup,
             pitch: k.pitch ?? pad.pitch ?? 0,
           };
+          if (k.layers) return { ...nextPad, layers: k.layers };
+          if (swapped) {
+            const cleared = { ...nextPad };
+            delete cleared.layers;
+            return cleared;
+          }
+          return nextPad;
         }),
       };
     }),

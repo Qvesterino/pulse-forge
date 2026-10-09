@@ -51,6 +51,9 @@ export class GhostPreviewPlayer {
             gain: patch.gain !== undefined ? patch.gain! : p.gain,
             pan: patch.pan !== undefined ? patch.pan! : p.pan,
             chokeGroup: patch.chokeGroup !== undefined ? patch.chokeGroup : p.chokeGroup,
+            // Preview parity: the variant set must audition exactly what the
+            // apply will write ([] clears — see resolveKitAssignments).
+            layers: patch.layers !== undefined ? patch.layers : p.layers,
           };
         });
         return { ...t, pads };

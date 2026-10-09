@@ -1,6 +1,6 @@
 import { FACTORY_ASSETS } from "./manifest";
 import { forkRandom } from "../shared/rng";
-import type { DrumPad, DrumSynthConfig } from "../project-model/types";
+import type { DrumPad, DrumSynthConfig, SampleLayer } from "../project-model/types";
 import { classifyPads } from "../assist/patternOps";
 import type { DiceLocks } from "../intent/dice";
 import { resolveKitPreset, kitPresetById } from "../project-model/kit-presets";
@@ -155,8 +155,22 @@ export function resolveKitAssignments(
 
     // Only push if differs from current pad (avoid noop)
     const cur = pad;
+    const assetChanged = assetId !== cur.assetId;
+    // Layer hygiene: a preset's variant set rides only when the (possibly
+    // jitter-replaced) asset is one of its members; ANY asset change without
+    // a covering set clears the pad's layers — stale layers would make the
+    // new voice play the old kit's samples.
+    const presetLayers = presetPad?.layers;
+    let outLayers: SampleLayer[] | undefined;
+    if (presetLayers !== undefined && presetLayers.some((l) => l.sampleId === assetId)) {
+      outLayers = presetLayers;
+    } else if (assetChanged) {
+      outLayers = [];
+    }
+    const layersChanged = outLayers !== undefined && JSON.stringify(outLayers) !== JSON.stringify(cur.layers ?? null);
     const differs =
-      assetId !== cur.assetId ||
+      assetChanged ||
+      layersChanged ||
       JSON.stringify(synth) !== JSON.stringify(cur.synth ?? null) ||
       (finalGain !== undefined && Math.abs(finalGain - cur.gain) > 0.01) ||
       (finalPan !== undefined && Math.abs(finalPan - cur.pan) > 0.01) ||
@@ -166,6 +180,7 @@ export function resolveKitAssignments(
       out.set(pad.id, {
         assetId: assetId ?? null,
         synth: synth ?? null,
+        ...(outLayers !== undefined ? { layers: outLayers } : {}),
         gain: finalGain,
         pan: finalPan,
         chokeGroup: finalChoke,
