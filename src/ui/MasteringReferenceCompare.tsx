@@ -224,10 +224,6 @@ export function MasteringReferenceCompare({
   }, [onProjectMasterBytes, projectMasterPcmBytes]);
 
   useEffect(() => {
-    onBusyChange(loading || rendering);
-  }, [loading, onBusyChange, rendering]);
-
-  useEffect(() => {
     aliveRef.current = true;
     return () => {
       aliveRef.current = false;
@@ -346,6 +342,9 @@ export function MasteringReferenceCompare({
   const currentExcerptLoudness = excerptLoudness.current;
   const excerptLoudnessPending = excerptLoudness.pending;
   const targetLufs = excerptLoudness.targetLufs;
+  useEffect(() => {
+    onBusyChange(loading || rendering || excerptLoudnessPending);
+  }, [excerptLoudnessPending, loading, onBusyChange, rendering]);
   const projectAuditionLufs =
     levelMatch && comparePairReady
       ? (currentExcerptLoudness?.projectLufs ?? null)

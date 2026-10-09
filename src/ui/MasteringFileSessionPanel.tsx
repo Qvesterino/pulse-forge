@@ -445,10 +445,6 @@ export function MasteringFileSessionPanel({
     };
   }, [repository, services.engine]);
 
-  useEffect(() => {
-    onBusyChange?.(Boolean(busy));
-  }, [busy, onBusyChange]);
-
   useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
 
   const dirty = Boolean(session && draft && JSON.stringify(draft) !== JSON.stringify(session.masterConfig));
@@ -567,6 +563,9 @@ export function MasteringFileSessionPanel({
     referenceOffset: referenceCompareOffset,
     durationSeconds: referenceCompareDuration,
   });
+  useEffect(() => {
+    onBusyChange?.(Boolean(busy) || referenceExcerptLoudness.pending);
+  }, [busy, onBusyChange, referenceExcerptLoudness.pending]);
   const referenceMatchTarget = referenceExcerptLoudness.targetLufs;
   const referenceMasterLufs =
     matchLoudness && referencePairReady

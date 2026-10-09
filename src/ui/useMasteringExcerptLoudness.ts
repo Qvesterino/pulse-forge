@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { BufferSummary } from "../audio-engine/metering";
 import { resolveLoudnessMatchTarget } from "../mastering/audition";
 import { measureMasterBufferRangeLufsAsync } from "../mastering/analysisClient";
+import { acquireMasteringWork } from "../mastering/workGate";
 
 export interface MasteringExcerptLoudnessMatch {
   status: "measuring" | "ready" | "unavailable";
@@ -76,23 +77,27 @@ export function useMasteringExcerptLoudness({
     });
 
     const timer = window.setTimeout(() => {
-      const measureSide = (
-        buffer: AudioBuffer,
-        fullSummary: BufferSummary,
-        startSeconds: number,
-      ): Promise<number | null> => {
-        const selectedFrames = Math.round(durationSeconds * buffer.sampleRate);
-        if (startSeconds <= 0 && selectedFrames >= buffer.length - 1) {
-          return Promise.resolve(fullSummary.lufsIntegrated > -119 ? fullSummary.lufsIntegrated : null);
-        }
-        return measureMasterBufferRangeLufsAsync(buffer, startSeconds, durationSeconds, controller.signal);
-      };
+      void (async () => {
+        const releaseMasteringWork = await acquireMasteringWork(controller.signal);
+        if (!releaseMasteringWork) return;
 
-      void Promise.all([
-        measureSide(projectBuffer, projectSummary, projectOffset),
-        measureSide(referenceBuffer, referenceSummary, referenceOffset),
-      ])
-        .then(([projectLufs, referenceLufs]) => {
+        const measureSide = (
+          buffer: AudioBuffer,
+          fullSummary: BufferSummary,
+          startSeconds: number,
+        ): Promise<number | null> => {
+          const selectedFrames = Math.round(durationSeconds * buffer.sampleRate);
+          if (startSeconds <= 0 && selectedFrames >= buffer.length - 1) {
+            return Promise.resolve(fullSummary.lufsIntegrated > -119 ? fullSummary.lufsIntegrated : null);
+          }
+          return measureMasterBufferRangeLufsAsync(buffer, startSeconds, durationSeconds, controller.signal);
+        };
+
+        try {
+          const [projectLufs, referenceLufs] = await Promise.all([
+            measureSide(projectBuffer, projectSummary, projectOffset),
+            measureSide(referenceBuffer, referenceSummary, referenceOffset),
+          ]);
           if (!active || controller.signal.aborted) return;
           setMatch({
             status: "ready",
@@ -104,8 +109,7 @@ export function useMasteringExcerptLoudness({
             projectLufs,
             referenceLufs,
           });
-        })
-        .catch((reason: unknown) => {
+        } catch (reason: unknown) {
           if (!active || controller.signal.aborted) return;
           controller.abort();
           setMatch({
@@ -119,7 +123,10 @@ export function useMasteringExcerptLoudness({
             referenceLufs: null,
             reason: reason instanceof Error ? reason.message : String(reason),
           });
-        });
+        } finally {
+          releaseMasteringWork();
+        }
+      })();
     }, 250);
 
     return () => {
