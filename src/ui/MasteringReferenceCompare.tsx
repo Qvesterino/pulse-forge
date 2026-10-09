@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { BufferSummary } from "../audio-engine/metering";
-import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
+import { analyzeMasterBufferAsync, measureMasterBufferRangeLufsAsync } from "../mastering/analysisClient";
 import { awaitMasteringSampleBankReady } from "../mastering/readiness";
 import {
   inspectMasteringReferenceContainer,
@@ -30,6 +30,18 @@ interface RenderedProjectMaster {
   sampleRate: number;
   buffer: AudioBuffer;
   summary: BufferSummary;
+}
+
+interface ExcerptLoudnessMatch {
+  status: "measuring" | "ready" | "unavailable";
+  projectBuffer: AudioBuffer;
+  referenceBuffer: AudioBuffer;
+  projectOffset: number;
+  referenceOffset: number;
+  durationSeconds: number;
+  projectLufs: number | null;
+  referenceLufs: number | null;
+  reason?: string;
 }
 
 const MAX_REFERENCE_FILE_BYTES = 96 * 1024 * 1024;
@@ -158,9 +170,9 @@ function formatDb(value: number, suffix: string): string {
   return Number.isFinite(value) && value > -120 ? `${value.toFixed(1)} ${suffix}` : `−∞ ${suffix}`;
 }
 
-function previewTrim(summary: BufferSummary, target: number | null, enabled: boolean): number {
-  if (!enabled || target === null || summary.lufsIntegrated <= -119) return 1;
-  return Math.min(1, Math.pow(10, (target - summary.lufsIntegrated) / 20));
+function previewTrim(lufsIntegrated: number | null, target: number | null, enabled: boolean): number {
+  if (!enabled || target === null || lufsIntegrated === null || lufsIntegrated <= -119) return 1;
+  return Math.min(1, Math.pow(10, (target - lufsIntegrated) / 20));
 }
 
 function trimLabel(gain: number): string {
@@ -206,6 +218,7 @@ export function MasteringReferenceCompare({
   const [dimDb, setDimDb] = useState(-6);
   const [projectOffset, setProjectOffset] = useState(0);
   const [referenceOffset, setReferenceOffset] = useState(0);
+  const [excerptLoudness, setExcerptLoudness] = useState<ExcerptLoudnessMatch | null>(null);
   const decodeJobRef = useRef(0);
   const decodeAbortRef = useRef<AbortController | null>(null);
   const renderAbortRef = useRef<AbortController | null>(null);
@@ -314,20 +327,143 @@ export function MasteringReferenceCompare({
     projectMaster?.revisionId === revisionId &&
     projectMaster.sampleBankRevision === sampleBankRevision &&
     projectMaster.sampleRate === sampleRate;
-  const targetLufs = useMemo(() => {
-    if (!reference || !currentProjectMaster) return null;
-    const lufsProject = projectMaster.summary.lufsIntegrated;
-    const lufsReference = reference.summary.lufsIntegrated;
-    if (lufsProject <= -119 || lufsReference <= -119) return null;
-    return Math.min(lufsProject, lufsReference);
-  }, [currentProjectMaster, projectMaster, reference]);
+  const renderProjectMax = currentProjectMaster && projectMaster ? projectMaster.buffer.duration : 0;
+  const renderReferenceMax = reference?.buffer.duration ?? 0;
+  const compareExcerptDuration = Math.max(
+    0,
+    Math.min(renderProjectMax - projectOffset, renderReferenceMax - referenceOffset),
+  );
+  const comparePairReady = Boolean(currentProjectMaster && projectMaster && reference);
+  const excerptLoudnessIsCurrent = Boolean(
+    excerptLoudness &&
+    projectMaster &&
+    reference &&
+    excerptLoudness.projectBuffer === projectMaster.buffer &&
+    excerptLoudness.referenceBuffer === reference.buffer &&
+    excerptLoudness.projectOffset === projectOffset &&
+    excerptLoudness.referenceOffset === referenceOffset &&
+    excerptLoudness.durationSeconds === compareExcerptDuration,
+  );
+  const currentExcerptLoudness = excerptLoudnessIsCurrent ? excerptLoudness : null;
+  const excerptLoudnessPending = Boolean(
+    levelMatch && comparePairReady && (!currentExcerptLoudness || currentExcerptLoudness.status === "measuring"),
+  );
+  const targetLufs =
+    currentExcerptLoudness?.status === "ready" &&
+    currentExcerptLoudness.projectLufs !== null &&
+    currentExcerptLoudness.referenceLufs !== null
+      ? Math.min(currentExcerptLoudness.projectLufs, currentExcerptLoudness.referenceLufs)
+      : null;
+  const projectAuditionLufs =
+    levelMatch && comparePairReady
+      ? (currentExcerptLoudness?.projectLufs ?? null)
+      : (projectMaster?.summary.lufsIntegrated ?? null);
+  const referenceAuditionLufs =
+    levelMatch && comparePairReady
+      ? (currentExcerptLoudness?.referenceLufs ?? null)
+      : (reference?.summary.lufsIntegrated ?? null);
   const dimGain = Math.pow(10, dimDb / 20);
   const projectGain =
     currentProjectMaster && projectMaster
-      ? previewTrim(projectMaster.summary, targetLufs, levelMatch) * dimGain
+      ? previewTrim(projectAuditionLufs, targetLufs, levelMatch) * dimGain
       : dimGain;
-  const referenceGain = reference ? previewTrim(reference.summary, targetLufs, levelMatch) * dimGain : dimGain;
-  const comparePairReady = Boolean(currentProjectMaster && projectMaster && reference);
+  const referenceGain = reference ? previewTrim(referenceAuditionLufs, targetLufs, levelMatch) * dimGain : dimGain;
+  const auditionTrimLabel = !levelMatch
+    ? "off"
+    : !currentExcerptLoudness || currentExcerptLoudness.status === "measuring"
+      ? "measuring selected excerpt…"
+      : currentExcerptLoudness.status === "unavailable"
+        ? `unavailable; using native levels${currentExcerptLoudness.reason ? ` · ${currentExcerptLoudness.reason.slice(0, 120)}` : ""}`
+        : targetLufs === null
+          ? "not matched; selected excerpt is too short or too quiet to measure"
+          : `selected excerpt — project ${trimLabel(previewTrim(currentExcerptLoudness.projectLufs, targetLufs, true))}; reference ${trimLabel(previewTrim(currentExcerptLoudness.referenceLufs, targetLufs, true))}`;
+
+  useEffect(() => {
+    if (!levelMatch || !comparePairReady || !projectMaster || !reference || !currentProjectMaster) {
+      setExcerptLoudness(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    let active = true;
+    if (playingRef.current) {
+      services.engine.stopPreview();
+      setPlaying(null);
+    }
+    setExcerptLoudness({
+      status: "measuring",
+      projectBuffer: projectMaster.buffer,
+      referenceBuffer: reference.buffer,
+      projectOffset,
+      referenceOffset,
+      durationSeconds: compareExcerptDuration,
+      projectLufs: null,
+      referenceLufs: null,
+    });
+
+    const timer = window.setTimeout(() => {
+      const measureSide = (
+        buffer: AudioBuffer,
+        fullSummary: BufferSummary,
+        startSeconds: number,
+      ): Promise<number | null> => {
+        const selectedFrames = Math.round(compareExcerptDuration * buffer.sampleRate);
+        if (startSeconds <= 0 && selectedFrames >= buffer.length - 1) {
+          return Promise.resolve(fullSummary.lufsIntegrated > -119 ? fullSummary.lufsIntegrated : null);
+        }
+        return measureMasterBufferRangeLufsAsync(buffer, startSeconds, compareExcerptDuration, controller.signal);
+      };
+
+      void Promise.all([
+        measureSide(projectMaster.buffer, projectMaster.summary, projectOffset),
+        measureSide(reference.buffer, reference.summary, referenceOffset),
+      ])
+        .then(([projectLufs, referenceLufs]) => {
+          if (!active || controller.signal.aborted) return;
+          setExcerptLoudness({
+            status: "ready",
+            projectBuffer: projectMaster.buffer,
+            referenceBuffer: reference.buffer,
+            projectOffset,
+            referenceOffset,
+            durationSeconds: compareExcerptDuration,
+            projectLufs,
+            referenceLufs,
+          });
+        })
+        .catch((caught: unknown) => {
+          if (!active || controller.signal.aborted) return;
+          controller.abort();
+          setExcerptLoudness({
+            status: "unavailable",
+            projectBuffer: projectMaster.buffer,
+            referenceBuffer: reference.buffer,
+            projectOffset,
+            referenceOffset,
+            durationSeconds: compareExcerptDuration,
+            projectLufs: null,
+            referenceLufs: null,
+            reason: caught instanceof Error ? caught.message : String(caught),
+          });
+        });
+    }, 250);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [
+    compareExcerptDuration,
+    comparePairReady,
+    currentProjectMaster,
+    levelMatch,
+    projectMaster,
+    projectOffset,
+    reference,
+    referenceOffset,
+    services.engine,
+  ]);
 
   useEffect(() => {
     if (!playing) return;
@@ -506,6 +642,7 @@ export function MasteringReferenceCompare({
   };
 
   const play = (source: "project" | "reference") => {
+    if (excerptLoudnessPending) return;
     if (source === "project" && (!currentProjectMaster || !projectMaster)) return;
     if (source === "reference" && !reference) return;
     setError("");
@@ -565,8 +702,19 @@ export function MasteringReferenceCompare({
     setPlaying(null);
   };
 
-  const renderProjectMax = currentProjectMaster && projectMaster ? projectMaster.buffer.duration : 0;
-  const renderReferenceMax = reference?.buffer.duration ?? 0;
+  const updateOffset = (side: "project" | "reference", nextOffset: number) => {
+    if (playing) stop();
+    const maximum = side === "project" ? renderProjectMax : renderReferenceMax;
+    const finiteOffset = Number.isFinite(nextOffset) ? nextOffset : 0;
+    const boundedOffset = Math.max(0, Math.min(maximum, finiteOffset));
+    const offset = Math.min(maximum, Math.round(boundedOffset * 1000) / 1000);
+    if (side === "project") setProjectOffset(offset);
+    else setReferenceOffset(offset);
+  };
+  const nudgeOffset = (side: "project" | "reference", deltaSeconds: number) => {
+    const currentOffset = side === "project" ? projectOffset : referenceOffset;
+    updateOffset(side, currentOffset + deltaSeconds);
+  };
 
   return (
     <section className="master-reference-section" aria-label="Reference audio comparison">
@@ -644,7 +792,7 @@ export function MasteringReferenceCompare({
           <button
             type="button"
             onClick={() => play("project")}
-            disabled={!currentProjectMaster || rendering || loading}
+            disabled={!currentProjectMaster || rendering || loading || excerptLoudnessPending}
           >
             {comparePairReady
               ? playing === "project"
@@ -656,7 +804,11 @@ export function MasteringReferenceCompare({
                 ? "Playing project…"
                 : "Play project master"}
           </button>
-          <button type="button" onClick={() => play("reference")} disabled={!reference || rendering || loading}>
+          <button
+            type="button"
+            onClick={() => play("reference")}
+            disabled={!reference || rendering || loading || excerptLoudnessPending}
+          >
             {comparePairReady
               ? playing === "reference"
                 ? "Selected · reference"
@@ -701,51 +853,82 @@ export function MasteringReferenceCompare({
               Reference: {formatDb(reference.summary.lufsIntegrated, "LUFS-I")} ·{" "}
               {formatDb(reference.summary.truePeakDb, "dBTP")}
             </span>
-            <span>
-              Audition trim — project{" "}
-              {levelMatch && targetLufs === null
-                ? "unavailable"
-                : trimLabel(previewTrim(projectMaster.summary, targetLufs, levelMatch))}
-              ; reference{" "}
-              {levelMatch && targetLufs === null
-                ? "unavailable"
-                : trimLabel(previewTrim(reference.summary, targetLufs, levelMatch))}
+            <span role="status" aria-live="polite" aria-atomic="true" title={currentExcerptLoudness?.reason}>
+              Audition trim — {auditionTrimLabel}
             </span>
           </div>
           <div className="master-reference-offsets">
-            <label>
-              Project start
-              <input
-                type="number"
-                min={0}
-                max={renderProjectMax}
-                step={1}
-                value={projectOffset}
-                onChange={(event) => {
-                  if (playing) stop();
-                  setProjectOffset(Math.min(renderProjectMax, Math.max(0, Number(event.target.value) || 0)));
-                }}
-              />{" "}
-              s
-            </label>
-            <label>
-              Reference start
-              <input
-                type="number"
-                min={0}
-                max={renderReferenceMax}
-                step={1}
-                value={referenceOffset}
-                onChange={(event) => {
-                  if (playing) stop();
-                  setReferenceOffset(Math.min(renderReferenceMax, Math.max(0, Number(event.target.value) || 0)));
-                }}
-              />{" "}
-              s
-            </label>
+            <div className="master-reference-offset-control">
+              <label htmlFor="master-reference-project-offset">Project start</label>
+              <div className="master-reference-offset-input">
+                <button
+                  type="button"
+                  aria-label="Move project start 10 milliseconds earlier"
+                  title="Move 10 milliseconds earlier"
+                  disabled={projectOffset <= 0}
+                  onClick={() => nudgeOffset("project", -0.01)}
+                >
+                  −10 ms
+                </button>
+                <input
+                  id="master-reference-project-offset"
+                  type="number"
+                  min={0}
+                  max={renderProjectMax}
+                  step={0.001}
+                  value={projectOffset}
+                  aria-label="Project start offset in seconds"
+                  onChange={(event) => updateOffset("project", Number(event.target.value) || 0)}
+                />
+                <span aria-hidden="true">s</span>
+                <button
+                  type="button"
+                  aria-label="Move project start 10 milliseconds later"
+                  title="Move 10 milliseconds later"
+                  disabled={projectOffset >= renderProjectMax}
+                  onClick={() => nudgeOffset("project", 0.01)}
+                >
+                  +10 ms
+                </button>
+              </div>
+            </div>
+            <div className="master-reference-offset-control">
+              <label htmlFor="master-reference-reference-offset">Reference start</label>
+              <div className="master-reference-offset-input">
+                <button
+                  type="button"
+                  aria-label="Move reference start 10 milliseconds earlier"
+                  title="Move 10 milliseconds earlier"
+                  disabled={referenceOffset <= 0}
+                  onClick={() => nudgeOffset("reference", -0.01)}
+                >
+                  −10 ms
+                </button>
+                <input
+                  id="master-reference-reference-offset"
+                  type="number"
+                  min={0}
+                  max={renderReferenceMax}
+                  step={0.001}
+                  value={referenceOffset}
+                  aria-label="Reference start offset in seconds"
+                  onChange={(event) => updateOffset("reference", Number(event.target.value) || 0)}
+                />
+                <span aria-hidden="true">s</span>
+                <button
+                  type="button"
+                  aria-label="Move reference start 10 milliseconds later"
+                  title="Move 10 milliseconds later"
+                  disabled={referenceOffset >= renderReferenceMax}
+                  onClick={() => nudgeOffset("reference", 0.01)}
+                >
+                  +10 ms
+                </button>
+              </div>
+            </div>
             <span>
               {comparePairReady
-                ? "Start both at these points, then switch sides without stopping. The shared audition ends when the shorter excerpt ends."
+                ? `Shared A/B excerpt: ${compareExcerptDuration.toFixed(2)} s. Start both at these points, then switch sides without stopping.`
                 : "Each side starts at its chosen point. Both use the same audition dim and mono setting."}
             </span>
           </div>

@@ -1921,14 +1921,26 @@
   font: 9px var(--mono);
 }
 
-.master-reference-offsets label {
-  display: inline-flex;
+.master-reference-offset-control {
+  display: flex;
+  flex: 1 1 280px;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: 4px 8px;
   color: var(--text-dim);
 }
 
-.master-reference-offsets input {
+.master-reference-offset-control label {
+  color: var(--text-dim);
+}
+
+.master-reference-offset-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.master-reference-offset-input input {
   width: 68px;
   min-height: 24px;
   padding: 3px 5px;
@@ -1936,6 +1948,28 @@
   border-radius: 3px;
   background: var(--bg-raise);
   color: var(--text);
+}
+
+.master-reference-offset-input button {
+  min-width: 46px;
+  min-height: 24px;
+  padding: 2px 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-raise);
+  color: var(--text-dim);
+  font: 8px var(--mono);
+  cursor: pointer;
+}
+
+.master-reference-offset-input button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.master-reference-offset-input button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .master-reference-offsets > span {

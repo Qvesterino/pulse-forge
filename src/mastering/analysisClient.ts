@@ -1,6 +1,6 @@
 import type { MasterBufferAnalysis, MasterAnalysisProgressListener } from "./analysis";
 import { analyzeMasterBuffer } from "./analysis";
-import type { MasterProfile } from "./profiles";
+import { CUSTOM_PROFILE, type MasterProfile } from "./profiles";
 import type { LoudnessTimeline } from "../audio-engine/kweighting";
 
 const WORKER_MIN_SECONDS = 0.5;
@@ -396,4 +396,52 @@ export function analyzeMasterBufferAsync(
     profile,
     options,
   );
+}
+
+/** Measure integrated loudness for one selected PCM range in the analysis worker. */
+export async function measureMasterBufferRangeLufsAsync(
+  buffer: AudioBuffer,
+  startSeconds: number,
+  durationSeconds: number,
+  signal?: AbortSignal,
+): Promise<number | null> {
+  if (signal?.aborted) throw abortError();
+  if (
+    buffer.numberOfChannels < 1 ||
+    buffer.numberOfChannels > 2 ||
+    !Number.isSafeInteger(buffer.length) ||
+    buffer.length <= 0 ||
+    !Number.isFinite(buffer.sampleRate) ||
+    buffer.sampleRate < 8000 ||
+    buffer.sampleRate > 384000 ||
+    !Number.isFinite(startSeconds) ||
+    startSeconds < 0 ||
+    !Number.isFinite(durationSeconds) ||
+    durationSeconds < 0
+  ) {
+    throw new Error("Selected excerpt has invalid audio bounds or format.");
+  }
+
+  const startFrame = Math.min(buffer.length, Math.round(startSeconds * buffer.sampleRate));
+  const frameCount = Math.min(buffer.length - startFrame, Math.round(durationSeconds * buffer.sampleRate));
+  if (frameCount < Math.ceil(0.4 * buffer.sampleRate)) return null;
+
+  const analysis = await analyzeMasterPcmStreamAsync(
+    {
+      sampleRate: buffer.sampleRate,
+      channelCount: buffer.numberOfChannels,
+      frameCount,
+      readChunk(offset, length) {
+        return Array.from({ length: buffer.numberOfChannels }, (_, channel) => {
+          const channelData = buffer.getChannelData(channel);
+          const rangeStart = startFrame + offset;
+          return new Float32Array(channelData.subarray(rangeStart, rangeStart + length));
+        });
+      },
+    },
+    CUSTOM_PROFILE,
+    { signal },
+  );
+  const lufs = analysis.measurements.lufsIntegrated;
+  return lufs > -119 ? lufs : null;
 }
