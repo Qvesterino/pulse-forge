@@ -62,6 +62,7 @@ import {
   buildClipClipboard,
   cutClips,
   groupClips,
+  nudgeClips,
   pasteClips,
   setClipsLocked,
   toggleAudioClipsMute,
@@ -1430,6 +1431,20 @@ export function App({
           }
         }
         // let PianoRoll's Ctrl+B duplicate notes handle it (don't prevent)
+      }
+
+      // Clip nudge (←/→): selected clips (both systems) move one bar;
+      // Shift = fine 1/16. PianoRoll's step-entry cursor owns the arrows when
+      // armed — it preventDefaults, which the handler bail above respects.
+      if ((event.code === "ArrowLeft" || event.code === "ArrowRight") && selection.clipIds.length > 0) {
+        event.preventDefault();
+        const direction = event.code === "ArrowRight" ? 1 : -1;
+        try {
+          services.store.execute(nudgeClips(doc, selection.clipIds, direction * (event.shiftKey ? 0.0625 : 1)));
+        } catch (e) {
+          window.dispatchEvent(new CustomEvent("pf-arrangement-action-error", { detail: String(e) }));
+        }
+        return;
       }
 
       // Range Tool: X crossfade (Cubase) — for audioClips/transitions inside timeRange or selected clips.

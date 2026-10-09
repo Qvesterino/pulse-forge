@@ -349,6 +349,11 @@ export const EDITOR_SHORTCUTS: EditorShortcut[] = [
   },
   {
     area: "Arrangement keys",
+    label: "Nudge the selected clips (Shift = fine 1/16)",
+    bindings: ["← / →"],
+  },
+  {
+    area: "Arrangement keys",
     label: "Group / ungroup the selected clips",
     bindings: ["Ctrl + G", "Ctrl + Shift + G"],
   },

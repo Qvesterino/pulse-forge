@@ -11,6 +11,7 @@ import type { AudioClip, ProjectDocument } from "../project-model/types";
 import { BAR_TICKS, PPQ } from "../project-model/types";
 import { arrangementSecondsBetweenTicks, tempoAtTick } from "../project-model/scene-time";
 import { normalizeProject } from "../project-model/schema";
+import { clipsOverlap } from "./arrangement";
 import { buildStemProject } from "../rendering/stems";
 import { warpBufferTimeAtTick } from "../project-model/audio-clip-warp";
 import { uid } from "../shared/ids";
@@ -656,4 +657,58 @@ export function crossfadeAudioClips(
     },
   };
   return snapshot("crossfadeAudioClips", `Crossfade ${round(earlierFade)}s`, doc, normalizeProject(next));
+}
+
+/**
+ * NUDGE selected clips (both systems) by `deltaBars` — the keyboard-move verb
+ * (←/→, Shift = fine). Semantics:
+ *  - locked clips are skipped (same outcome as the command-level lock guard,
+ *    but a nudge over a mixed selection must stay partial, not fail whole);
+ *  - audio clips layer freely, floored at bar 0;
+ *  - arrangement clips respect the no-overlap lane: a clip whose target would
+ *    collide stays put while the rest of the selection moves (partial
+ *    application, never a thrown-away whole gesture);
+ *  - grouped clips: selecting one member nudges the whole group (same rule
+ *    as the drag gesture — otherwise nudge and drag would disagree);
+ *  - nothing moved = no-op history entry. One command, one undo step.
+ */
+export function nudgeClips(doc: ProjectDocument, clipIds: readonly string[], deltaBars: number): Command {
+  if (!Number.isFinite(deltaBars) || deltaBars === 0) return snapshot("nudgeClips", "Nudge clips (no-op)", doc, doc);
+  const ids = new Set(clipIds);
+  // Group expansion: any group containing a selected clip contributes all of
+  // its members (drag parity).
+  for (const group of doc.arrangement.clipGroups ?? []) {
+    if (group.clipIds.some((id) => ids.has(id))) for (const id of group.clipIds) ids.add(id);
+  }
+  const movedArrangement = new Map<string, number>();
+  for (const clip of doc.arrangement.clips) {
+    if (!ids.has(clip.id) || clip.locked) continue;
+    const target = Math.max(0, Math.round(clip.startBar + deltaBars));
+    if (target === clip.startBar) continue;
+    if (clipsOverlap(doc.arrangement.clips, clip.id, target, clip.lengthBars)) continue;
+    movedArrangement.set(clip.id, target);
+  }
+  const movedAudio = new Map<string, number>();
+  for (const clip of doc.arrangement.audioClips ?? []) {
+    if (!ids.has(clip.id) || clip.locked) continue;
+    const target = Math.max(0, Math.round((clip.startBar + deltaBars) * 100) / 100);
+    if (target !== clip.startBar) movedAudio.set(clip.id, target);
+  }
+  if (movedArrangement.size === 0 && movedAudio.size === 0) {
+    return snapshot("nudgeClips", "Nudge clips (no-op)", doc, doc);
+  }
+  const next: ProjectDocument = {
+    ...doc,
+    arrangement: {
+      ...doc.arrangement,
+      clips: doc.arrangement.clips
+        .map((c) => (movedArrangement.has(c.id) ? { ...c, startBar: movedArrangement.get(c.id)! } : c))
+        .sort((a, b) => a.startBar - b.startBar),
+      audioClips: (doc.arrangement.audioClips ?? [])
+        .map((c) => (movedAudio.has(c.id) ? { ...c, startBar: movedAudio.get(c.id)! } : c))
+        .sort((a, b) => a.startBar - b.startBar),
+    },
+  };
+  const count = movedArrangement.size + movedAudio.size;
+  return snapshot("nudgeClips", `Nudge ${count} ${count === 1 ? "clip" : "clips"}`, doc, next);
 }

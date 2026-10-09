@@ -143,6 +143,15 @@ import { SceneLauncher, useSceneRuntimeState } from "./SceneLauncher";
 import { StretchDialog } from "./StretchDialog";
 
 const BASE_BAR_WIDTH = 30;
+/**
+ * Arrangement zoom range (× on BASE_BAR_WIDTH): 0.05× = 1.5 px/bar shows a
+ * 1300-bar project in one viewport; 40× = 1200 px/bar is sample-editor
+ * territory. The old 0.35–4 could show ~190 bars max — a long arrangement
+ * never fit the screen. Grid/ruler marks and clip windowing stay legible at
+ * both extremes (marks every 4 bars are ≥ 6 px apart at min zoom).
+ */
+const MIN_ZOOM = 0.05;
+const MAX_ZOOM = 40;
 const LANE_HEIGHT = 56;
 /**
  * Extra bars rendered either side of the viewport.
@@ -748,7 +757,7 @@ export function ArrangementPanel() {
       const rect = el.getBoundingClientRect();
       const cursorX = event.clientX - rect.left;
       const tickAtCursor = ((el.scrollLeft + cursorX) / (BASE_BAR_WIDTH * zoomRef.current)) * BAR_TICKS;
-      const next = Math.min(4, Math.max(0.35, zoomRef.current * Math.exp(-event.deltaY * 0.002)));
+      const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoomRef.current * Math.exp(-event.deltaY * 0.002)));
       if (next === zoomRef.current) return;
       // Keep the tick under the cursor stable across the zoom.
       zoomAnchorRef.current = { tick: tickAtCursor, cursorX };
@@ -3592,7 +3601,7 @@ export function ArrangementPanel() {
                 type="button"
                 className="btn btn-small"
                 aria-label="Zoom out"
-                onClick={() => setZoom((value) => Math.max(0.35, value / 1.4))}
+                onClick={() => setZoom((value) => Math.max(MIN_ZOOM, value / 1.4))}
               >
                 −
               </button>
@@ -3603,7 +3612,7 @@ export function ArrangementPanel() {
                 title="Fit the whole arrangement into the view"
                 onClick={() => {
                   const viewport = scrollRef.current?.clientWidth ?? 800;
-                  setZoom(Math.max(0.35, Math.min(4, viewport / Math.max(1, totalBars * BASE_BAR_WIDTH))));
+                  setZoom(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, viewport / Math.max(1, totalBars * BASE_BAR_WIDTH))));
                   if (scrollRef.current) scrollRef.current.scrollLeft = 0;
                 }}
               >
@@ -3613,7 +3622,7 @@ export function ArrangementPanel() {
                 type="button"
                 className="btn btn-small"
                 aria-label="Zoom in"
-                onClick={() => setZoom((value) => Math.min(4, value * 1.4))}
+                onClick={() => setZoom((value) => Math.min(MAX_ZOOM, value * 1.4))}
               >
                 +
               </button>

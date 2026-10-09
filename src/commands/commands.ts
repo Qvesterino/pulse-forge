@@ -57,6 +57,7 @@ export {
   stripSilenceAudioClip,
   consolidateAudioClips,
   crossfadeAudioClips,
+  nudgeClips,
 } from "./clipEditing";
 export type { FittedLoopPlacement } from "./clipEditing";
 export * from "./timeRange";
