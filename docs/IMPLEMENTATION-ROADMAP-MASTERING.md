@@ -281,6 +281,7 @@ Implementácia snapshotov, monitor bypassu a referenčného porovnávania je v p
 - [x] Zdieľať čisté deterministické plánovanie s MCP cez `src/mcp/master-assistant.ts`; UI aj MCP používajú rovnaký planner.
 - [x] Karty ukazujú merací dôkaz, dôvod, zariadenie/parameter, starú a novú hodnotu, trade-off a nízku istotu heuristiky.
 - [x] Preview sa renderuje na draft dokumente mimo projektu. Aktuálny master sa dá znovu vyrenderovať a porovnať pri loudness match; analýza sama nič nezapíše.
+- [x] Preview readout ukazuje presný audition trim každej verzie v dB a oznamuje, či sa použilo loudness matching alebo natívne úrovne.
 - [x] **Apply selected**, **Apply all**, **Dismiss** a **Reset to snapshot**; apply je jedna pomenovaná undoable zmena a vyžaduje preview presne vybranej kombinácie.
 - [x] Pri explicitnom delivery contracte navrhovať len najmenšiu bezpečnú korekciu podloženú meraním: pri true-peak prekročení upraviť bounded limiter ceiling. LUFS, crest, korelácia, low end a spektrálne podiely ostávajú report-only, kým samy osebe nepreukazujú bezpečný master-bus zásah; master gain sa nepoužíva na zakrytie nevyváženej stopy.
 - [x] Neodhadovať výsledný LUFS/true peak z parametrov. Po apply sa znovu renderuje a zobrazia sa skutočne zmerané metriky.

@@ -51,6 +51,35 @@ function formatDb(value: number, unit: string): string {
   return Number.isFinite(value) && value > -119 ? `${value.toFixed(1)} ${unit}` : `−∞ ${unit}`;
 }
 
+function formatAuditionTrim(gain: number): string {
+  return `${(20 * Math.log10(Math.max(1e-12, gain))).toFixed(1)} dB`;
+}
+
+function getAuditionMatchGains(
+  currentLufs: number | null,
+  proposalLufs: number | null,
+  enabled: boolean,
+): { current: number; proposal: number; available: boolean } {
+  const available =
+    enabled &&
+    currentLufs !== null &&
+    proposalLufs !== null &&
+    Number.isFinite(currentLufs) &&
+    Number.isFinite(proposalLufs) &&
+    currentLufs > -119 &&
+    proposalLufs > -119;
+  if (!available || currentLufs === null || proposalLufs === null) {
+    return { current: 1, proposal: 1, available: false };
+  }
+
+  const targetLufs = Math.min(currentLufs, proposalLufs);
+  return {
+    current: Math.min(1, Math.pow(10, (targetLufs - currentLufs) / 20)),
+    proposal: Math.min(1, Math.pow(10, (targetLufs - proposalLufs) / 20)),
+    available: true,
+  };
+}
+
 function formatValue(device: MasterDevice, param: string, value: number): string {
   const definition = EFFECT_META[device].params.find((candidate) => candidate.id === param);
   return definition?.format ? definition.format(value) : `${value.toFixed(2)}`;
@@ -213,6 +242,11 @@ export function MasteringAssistant({
   );
   const appliedIsCurrent = Boolean(appliedSnapshot && appliedSnapshot.revisionId === revisionId);
   const target = useMemo(() => resolveDeliveryTarget(doc.master), [doc.master]);
+  const auditionGains = getAuditionMatchGains(
+    analysis?.summary.lufsIntegrated ?? null,
+    candidatePreview?.summary.lufsIntegrated ?? null,
+    levelMatch,
+  );
 
   const stopPlayback = useCallback(() => {
     services.engine.stopPreview();
@@ -244,33 +278,11 @@ export function MasteringAssistant({
 
   useEffect(() => {
     if (playing === "current" && analysis) {
-      const targetLufs =
-        levelMatch && analysis.summary.lufsIntegrated > -119
-          ? Math.min(
-              analysis.summary.lufsIntegrated,
-              candidatePreview?.summary.lufsIntegrated && candidatePreview.summary.lufsIntegrated > -119
-                ? candidatePreview.summary.lufsIntegrated
-                : analysis.summary.lufsIntegrated,
-            )
-          : null;
-      const gain =
-        targetLufs === null ? 1 : Math.min(1, Math.pow(10, (targetLufs - analysis.summary.lufsIntegrated) / 20));
-      services.engine.updateMasterComparePreview(gain, false);
+      services.engine.updateMasterComparePreview(auditionGains.current, false);
     } else if (playing === "proposed" && candidatePreview) {
-      const targetLufs =
-        levelMatch &&
-        analysis &&
-        analysis.summary.lufsIntegrated > -119 &&
-        candidatePreview.summary.lufsIntegrated > -119
-          ? Math.min(analysis.summary.lufsIntegrated, candidatePreview.summary.lufsIntegrated)
-          : null;
-      const gain =
-        targetLufs === null
-          ? 1
-          : Math.min(1, Math.pow(10, (targetLufs - candidatePreview.summary.lufsIntegrated) / 20));
-      services.engine.updateMasterComparePreview(gain, false);
+      services.engine.updateMasterComparePreview(auditionGains.proposal, false);
     }
-  }, [analysis, candidatePreview, levelMatch, playing, services.engine]);
+  }, [analysis, auditionGains.current, auditionGains.proposal, candidatePreview, playing, services.engine]);
 
   useEffect(() => {
     if (comparisonEpoch === 0) return;
@@ -480,18 +492,9 @@ export function MasteringAssistant({
       return;
     }
     const playBuffer = (buffer: AudioBuffer) => {
-      const targetLufs =
-        levelMatch &&
-        analysis.summary.lufsIntegrated > -119 &&
-        candidatePreview?.summary.lufsIntegrated !== undefined &&
-        candidatePreview.summary.lufsIntegrated > -119
-          ? Math.min(analysis.summary.lufsIntegrated, candidatePreview.summary.lufsIntegrated)
-          : null;
-      const gain =
-        targetLufs === null ? 1 : Math.min(1, Math.pow(10, (targetLufs - analysis.summary.lufsIntegrated) / 20));
       stopPlayback();
       setPlaying("current");
-      services.engine.previewMasterCompare(buffer, gain, () => setPlaying(null));
+      services.engine.previewMasterCompare(buffer, auditionGains.current, () => setPlaying(null));
       setStatus("Prehráva sa aktuálny master. Prepni na Play proposal pri zapnutom loudness match.");
     };
     if (currentPreviewBuffer) {
@@ -527,15 +530,9 @@ export function MasteringAssistant({
 
   const playProposed = () => {
     if (!previewIsCurrent || !candidatePreview || !previewBuffer) return;
-    const targetLufs =
-      levelMatch && analysis && analysis.summary.lufsIntegrated > -119 && candidatePreview.summary.lufsIntegrated > -119
-        ? Math.min(analysis.summary.lufsIntegrated, candidatePreview.summary.lufsIntegrated)
-        : null;
-    const gain =
-      targetLufs === null ? 1 : Math.min(1, Math.pow(10, (targetLufs - candidatePreview.summary.lufsIntegrated) / 20));
     stopPlayback();
     setPlaying("proposed");
-    services.engine.previewMasterCompare(previewBuffer, gain, () => setPlaying(null));
+    services.engine.previewMasterCompare(previewBuffer, auditionGains.proposal, () => setPlaying(null));
     setStatus("Prehráva sa navrhnutý master. Prepínaj s Play current pri zapnutom loudness match.");
   };
 
@@ -856,6 +853,20 @@ export function MasteringAssistant({
               )
                 .checks.map((check) => check.line)
                 .join(" · ")}
+            </span>
+          </div>
+          <div role="status" aria-live="polite" aria-atomic="true" aria-label="Master assistant audition trims">
+            <strong>Audition trim</strong>
+            <span>
+              Current {formatAuditionTrim(auditionGains.current)} · Proposal{" "}
+              {formatAuditionTrim(auditionGains.proposal)}
+            </span>
+            <span>
+              {!levelMatch
+                ? "Loudness matching is off; audition uses native levels."
+                : auditionGains.available
+                  ? "Only the louder side is attenuated to the quieter measured LUFS-I."
+                  : "Loudness matching is unavailable for these readings; audition uses native levels."}
             </span>
           </div>
           <ul className="master-assistant-flags" aria-label="Draft mix checks">
