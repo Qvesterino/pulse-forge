@@ -22,11 +22,14 @@ class ApeksProcessor extends AudioWorkletProcessor {
     ];
   }
 
-  constructor() {
+  constructor(options) {
     super();
     this.fastEnv = [0, 0];
     this.slowEnv = [0, 0];
     this.gr = 1;
+    this.meteringEnabled = options?.processorOptions?.metering === true;
+    this.meterFrames = 0;
+    this.meterMinGain = 1;
   }
 
   process(inputs, outputs, parameters) {
@@ -54,6 +57,7 @@ class ApeksProcessor extends AudioWorkletProcessor {
     const relBlend = 1 - Math.exp(-1 / (sr * release));
     const fastCoef = Math.exp(-1 / (sr * 0.002));
     const slowCoef = Math.exp(-1 / (sr * 0.05));
+    let quantumMinGain = 1;
 
     // Pass 1: linked block peak after input gain.
     let peak = 0;
@@ -82,6 +86,7 @@ class ApeksProcessor extends AudioWorkletProcessor {
         slow += (ax - slow) * slowCoef;
         if (gr < grTarget) gr += (grTarget - gr) * 0.5;
         else gr += (grTarget - gr) * relBlend;
+        quantumMinGain = Math.min(quantumMinGain, gr);
         const r = Math.min(1, (fast - slow) / (ax + 1e-6));
         const grTransient = Math.min(1, gr + preserve * (1 - gr));
         let y = gr * x * (1 - r) + grTransient * x * r;
@@ -93,6 +98,16 @@ class ApeksProcessor extends AudioWorkletProcessor {
       this.fastEnv[Math.min(ch, 1)] = fast;
       this.slowEnv[Math.min(ch, 1)] = slow;
       if (ch === 0) this.gr = gr;
+    }
+    if (this.meteringEnabled) {
+      this.meterMinGain = Math.min(this.meterMinGain, quantumMinGain);
+      this.meterFrames += output[0]?.length ?? 0;
+      if (this.meterFrames >= sr * 0.05) {
+        const gainReductionDb = -20 * Math.log10(Math.max(this.meterMinGain, 1e-6));
+        this.port.postMessage({ type: "gainReduction", gainReductionDb });
+        this.meterFrames = 0;
+        this.meterMinGain = 1;
+      }
     }
     return true;
   }

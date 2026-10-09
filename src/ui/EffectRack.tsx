@@ -188,8 +188,8 @@ export function EffectRack({
     services.store.execute(setEffectMacroParams(services.store.getDoc(), track.id, edits));
   };
 
-  // Observer-only poll: degraded fallbacks (worklet DSP unavailable) surface
-  // as warning badges; limiters report gain reduction for a live GR meter.
+  // Observer-only poll: degraded fallbacks surface as warning badges, while
+  // metered dynamics devices expose live GR readings without owning audio state.
   useEffect(() => {
     let last = 0;
     let fallbackSig = "";
@@ -218,7 +218,13 @@ export function EffectRack({
           }));
           continue;
         }
-        if (fx.type !== "limiter" && fx.type !== "compressor" && fx.type !== "drumBuss" && fx.type !== "bassBuss")
+        if (
+          fx.type !== "limiter" &&
+          fx.type !== "compressor" &&
+          fx.type !== "drumBuss" &&
+          fx.type !== "bassBuss" &&
+          fx.type !== "apeks"
+        )
           continue;
         const value = engineWithReport.getFxGainReductionDb?.(track.id, fx.id);
         if (value != null && value > 0.05) nextGr[fx.id] = Math.round(value * 2) / 2;
@@ -833,7 +839,11 @@ function Device({
             />
           )}
           {fx.type === "eq" && <EqResponseCurve params={fx.params} />}
-          {(fx.type === "limiter" || fx.type === "compressor" || fx.type === "drumBuss" || fx.type === "bassBuss") && (
+          {(fx.type === "limiter" ||
+            fx.type === "compressor" ||
+            fx.type === "drumBuss" ||
+            fx.type === "bassBuss" ||
+            fx.type === "apeks") && (
             <div className="fx-gr" aria-label="Gain reduction">
               <div className="fx-gr-track">
                 <div

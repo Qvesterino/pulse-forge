@@ -1,4 +1,5 @@
 import type { EffectRuntime } from "../effects/types";
+import { isOfflineAudioContext } from "../audio-engine/liveContext";
 
 import { attachProcessorErrorGuard } from "./processor-errors";
 import { safeApplyAudioParam } from "./safeAudioParam";
@@ -15,6 +16,7 @@ function makeStereoWorkletRuntime(
   processorName: string,
   instance: { params: Record<string, number> },
   paramIds: string[],
+  processorOptions?: Record<string, boolean>,
 ): EffectRuntime {
   const node = new AudioWorkletNode(ctx, processorName, {
     numberOfInputs: 1,
@@ -22,12 +24,28 @@ function makeStereoWorkletRuntime(
     outputChannelCount: [2],
     channelCount: 2,
     channelInterpretation: "speakers",
+    ...(processorOptions ? { processorOptions } : {}),
   });
   attachProcessorErrorGuard(node, processorName);
   const input = ctx.createGain();
   const output = ctx.createGain();
   input.connect(node);
   node.connect(output);
+  let gainReductionDb = 0;
+  const meteringEnabled = processorOptions?.metering === true;
+  if (meteringEnabled) {
+    node.port.onmessage = (event: MessageEvent<unknown>) => {
+      const data = event.data as { type?: unknown; gainReductionDb?: unknown } | null;
+      if (
+        data?.type === "gainReduction" &&
+        typeof data.gainReductionDb === "number" &&
+        Number.isFinite(data.gainReductionDb) &&
+        data.gainReductionDb >= 0
+      ) {
+        gainReductionDb = data.gainReductionDb;
+      }
+    };
+  }
   for (const id of paramIds) safeApplyAudioParam(node, id, instance.params[id] ?? 0);
   return {
     input,
@@ -38,6 +56,7 @@ function makeStereoWorkletRuntime(
     setParameterAt(id, value, when) {
       safeApplyAudioParam(node, id, value, when);
     },
+    ...(meteringEnabled ? { getGainReductionDb: () => gainReductionDb } : {}),
     dispose() {
       node.port.onmessage = null;
       node.port.close();
@@ -52,7 +71,9 @@ const APEKS_PARAMS = ["drive", "ceiling", "release", "preserve", "mix", "output"
 
 /** Create the APEKS maximizer worklet node (M2). */
 export function createApeksNode(ctx: BaseAudioContext, instance: { params: Record<string, number> }): EffectRuntime {
-  return makeStereoWorkletRuntime(ctx, "apeks-processor", instance, APEKS_PARAMS);
+  return makeStereoWorkletRuntime(ctx, "apeks-processor", instance, APEKS_PARAMS, {
+    metering: !isOfflineAudioContext(ctx),
+  });
 }
 
 const SIRKA_PARAMS = ["lowFreq", "highFreq", "lowWidth", "midWidth", "highWidth", "mix"];

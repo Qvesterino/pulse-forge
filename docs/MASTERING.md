@@ -162,7 +162,7 @@ ZENIT skladá existujúce spracovanie v pevnom poradí:
 | **CEIL**             | Strop clippera a limitera.                                                                         |
 | **LIMIT**            | Miera zásahu limitera. Pri 0 leží jeho prah na nastavenom ceilingu; vyššie hodnoty ho tlačia viac. |
 
-Factory presety zahŕňajú **Streaming −14**, **Club Push** a **Vinyl Safe**. Sú to východiskové nastavenia tvaru a dynamiky, nie automatické dorovnanie na uvedenú hlasitosť ani záruka pripravenosti pre platformu. Po výbere presetu zmeraj výstup. Ak používaš ZENIT na skupine, počítaj s tým, že globálny master limiter a glue spracujú jeho výstup ešte raz. Sleduj súčet gain reduction a nenechávaj dva limitery bez zámeru tvrdo pracovať naraz.
+Factory presety zahŕňajú **Streaming −14**, **Club Push** a **Vinyl Safe**. Sú to východiskové nastavenia tvaru a dynamiky, nie automatické dorovnanie na uvedenú hlasitosť ani záruka pripravenosti pre platformu. Po výbere presetu zmeraj výstup. Ak používaš ZENIT na skupine, počítaj s tým, že globálny master limiter a glue spracujú jeho výstup ešte raz. V DEV sleduj zvlášť GR interného ZENIT GLUE a LIMITERu; v MASTER zvlášť globálne GLUE a LIMITER metre. Tieto údaje nesčítavaj — patria rôznym stupňom signálovej cesty. Vyhni sa tomu, aby viac stupňov bez zámeru tvrdo pracovalo naraz.
 
 ### Ďalšie masteringové efekty
 
@@ -171,6 +171,8 @@ V efektovom reťazci sú dostupné aj samostatné nástroje:
 - **APEKS** — maximizer na zvýšenie hustoty/hlasitosti s ovládačmi DRIVE, CEIL, RELEASE, PRESERVE, MIX a OUTPUT. PRESERVE pomáha zachovať špičku úderu; vysoký DRIVE môže zvuk výrazne stlačiť.
 - **ŠÍRKA** — stereo imager zvlášť pre nízke, stredné a vysoké pásmo. Hodnota 100 % je neutrálna; nízke pásmo môžeš zúžiť a vyššie pásma opatrne rozšíriť.
 - **PRÚD** — dvojpásmový dynamický EQ, ktorý pásma pri prekročení prahu uberá. Hodí sa na sykavé, ostré alebo rezonujúce miesta, ktoré sa objavujú len pri hlasnejších úderoch.
+
+APEKS v otvorenom editore zobrazuje GR: maximálnu redukciu svojej gain trajektórie zachytenú v poslednom 50 ms meracom okne. PRESERVE časť úderu čiastočne vynecháva z tejto redukcie, preto GR nie je meraním výsledného true peaku.
 
 Presety APEKS, ŠÍRKA a PRÚD sú štartovacie body. Pri šírke vždy skontroluj koreláciu a mono; pri dynamickom EQ nastav prah tak, aby efekt nereagoval stále; pri maximizeri vyhodnoť aj údernosť a skreslenie.
 
