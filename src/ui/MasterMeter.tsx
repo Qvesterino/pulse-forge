@@ -31,6 +31,21 @@ const EMPTY: ChannelLevels = { peak: 0, rms: 0, peakDb: -120, rmsDb: -120 };
 const MASTER_CLIP_HOLD_MS = 600;
 const STATUS_BAR_CLIP_HOLD_MS = 800;
 
+function sameMixWarnings(previous: ReadState["warnings"], next: ReadState["warnings"]): boolean {
+  return (
+    previous.length === next.length &&
+    previous.every((warning, index) => {
+      const candidate = next[index];
+      return (
+        candidate !== undefined &&
+        warning.code === candidate.code &&
+        warning.severity === candidate.severity &&
+        warning.message === candidate.message
+      );
+    })
+  );
+}
+
 /**
  * Master metering wall: spectrum + loudness history in the centre, goniometer
  * + print-ready verdict on the right. Pulls fresh frames from the engine on a
@@ -147,7 +162,7 @@ export function MasterMeter() {
           Math.abs(prev.gainReductionDb - gainReductionDb) > 0.15 ||
           Math.abs(prev.glueReductionDb - glueReductionDb) > 0.15 ||
           Math.abs(prev.lrImbalanceDb - imbalance) > 0.3 ||
-          prev.warnings.length !== warnings.length ||
+          !sameMixWarnings(prev.warnings, warnings) ||
           prev.clipping !== clipping;
         if (changed) {
           const next: ReadState = {
