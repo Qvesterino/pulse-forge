@@ -23,6 +23,12 @@ interface FlowStage {
   state: FlowState;
 }
 
+interface InsertLatencyReport {
+  fxId: string;
+  status: "reported" | "pending" | "unreported";
+  latencySec: number | null;
+}
+
 function controlSelector(stageId: MasterSignalFlowStageId, master: MasterConfig): string | null {
   const controls = ".mastering-core-controls";
   switch (stageId) {
@@ -182,6 +188,7 @@ export function MasteringSignalFlow({ master, onShowAdvanced }: { master: Master
   const services = useServices();
   const [degradedById, setDegradedById] = useState<Record<string, string>>({});
   const [degradedStagesById, setDegradedStagesById] = useState<Record<string, string>>({});
+  const [insertLatencyById, setInsertLatencyById] = useState<Record<string, InsertLatencyReport>>({});
   useEffect(() => {
     let lastPoll = 0;
     let previousSignature = "";
@@ -198,29 +205,46 @@ export function MasteringSignalFlow({ master, onShowAdvanced }: { master: Master
         .getDegradedMasterStages()
         .map((item) => [item.stageId, item.reason] as const)
         .sort(([a], [b]) => a.localeCompare(b));
+      const insertLatency = services.engine
+        .getMasterInsertLatencyReports()
+        .sort((a, b) => a.fxId.localeCompare(b.fxId));
       const signature = [
         ...degraded.map(([id, reason]) => `fx:${id}:${reason}`),
         ...degradedStages.map(([id, reason]) => `stage:${id}:${reason}`),
+        ...insertLatency.map((item) => `latency:${item.fxId}:${item.status}:${item.latencySec ?? ""}`),
       ].join("|");
       if (signature === previousSignature) return;
       previousSignature = signature;
       setDegradedById(Object.fromEntries(degraded));
       setDegradedStagesById(Object.fromEntries(degradedStages));
+      setInsertLatencyById(Object.fromEntries(insertLatency.map((item) => [item.fxId, item])));
     });
     return () => unregisterRaf(rafId);
   }, [services.engine]);
 
-  const inserts: FlowStage[] = (master.effects ?? []).map((effect) => ({
-    id: effect.id,
-    effectId: effect.id,
-    label: EFFECT_META[effect.type].name,
-    detail: effect.bypassed
+  const inserts: FlowStage[] = (master.effects ?? []).map((effect) => {
+    const report = insertLatencyById[effect.id];
+    const latencyDetail =
+      report?.status === "reported"
+        ? `${((report.latencySec ?? 0) * 1000).toFixed(2)} ms runtime latency`
+        : report?.status === "pending"
+          ? "latency report pending"
+          : report?.status === "unreported"
+            ? "latency not reported by runtime"
+            : "runtime not ready";
+    const detail = effect.bypassed
       ? "Master insert · bypassed"
       : degradedById[effect.id]
-        ? `Fallback: ${degradedById[effect.id]}`
-        : "Master insert · enabled",
-    state: effect.bypassed ? "bypassed" : degradedById[effect.id] ? "degraded" : "active",
-  }));
+        ? `Fallback: ${degradedById[effect.id]} · ${latencyDetail}`
+        : `Master insert · enabled · ${latencyDetail}`;
+    return {
+      id: effect.id,
+      effectId: effect.id,
+      label: EFFECT_META[effect.type].name,
+      detail,
+      state: effect.bypassed ? "bypassed" : degradedById[effect.id] ? "degraded" : "active",
+    };
+  });
   const details = stageDetails(master, inserts, degradedStagesById);
   const stages: FlowStage[] = MASTER_SIGNAL_FLOW.flatMap(({ id, label }) => {
     const stage = { id, controlId: id, label, ...details[id] };
@@ -284,7 +308,8 @@ export function MasteringSignalFlow({ master, onShowAdvanced }: { master: Master
       <p className="mastering-flow-note">
         Delivery profile targets check the measured output; they do not change this chain. The meter reads after the
         limiter, while encoded-file checks run after export. Enabled/flat/bypassed labels reflect saved processing
-        settings; runtime fallbacks are shown when the engine reports them. Master bypass in A/B is monitor-only and
+        settings; runtime fallbacks are shown when the engine reports them. Insert latency is shown from the active
+        runtime; pending or unavailable reports are never presented as zero. Master bypass in A/B is monitor-only and
         rejoins before the shared safety limiter.
       </p>
     </section>

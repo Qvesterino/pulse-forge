@@ -2278,6 +2278,7 @@ function createWorkletRuntime(
     input,
     output,
     getLatencySec: () => latencySamples / ctx.sampleRate,
+    ...(latencyReadiness ? { hasLatencyReport: () => latencyReadiness.isReported() } : {}),
     onLatencyChange(listener: () => void) {
       latencyListeners.add(listener);
       return () => {
@@ -3533,6 +3534,17 @@ const zenit: EffectDefinition = {
       setParameter: (id, value) => apply(id, value),
       setParameterAt: (id, value, when) => apply(id, value, when),
       getLatencySec: () => subs.reduce((sum, s) => sum + (s.getLatencySec?.() ?? 0), 0),
+      hasLatencyReport: () => subs.every((s) => s.hasLatencyReport?.() ?? true),
+      waitForLatencyReport: async (timeoutMs) => {
+        const readiness = await Promise.all(subs.map((sub) => sub.waitForLatencyReport?.(timeoutMs) ?? true));
+        return readiness.every(Boolean);
+      },
+      onLatencyChange(listener) {
+        const unsubscribe = subs
+          .map((sub) => sub.onLatencyChange?.(listener))
+          .filter((cleanup): cleanup is () => void => cleanup !== undefined);
+        return () => unsubscribe.forEach((cleanup) => cleanup());
+      },
       syncBpm: (bpm, when) => subs.forEach((s) => s.syncBpm?.(bpm, when)),
       dispose: () => {
         for (const sub of subs) {

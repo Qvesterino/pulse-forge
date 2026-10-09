@@ -2514,6 +2514,25 @@ export class AudioEngine {
     return out;
   }
 
+  /** Current runtime latency reports for the serial master insert chain. */
+  getMasterInsertLatencyReports(): {
+    fxId: string;
+    status: "reported" | "pending" | "unreported";
+    latencySec: number | null;
+  }[] {
+    return [...this.masterFx.runtimes].map(([fxId, runtime]) => {
+      if (!runtime.getLatencySec) return { fxId, status: "unreported", latencySec: null };
+      try {
+        if (runtime.hasLatencyReport?.() === false) return { fxId, status: "pending", latencySec: null };
+        const latencySec = runtime.getLatencySec();
+        if (!Number.isFinite(latencySec) || latencySec < 0) return { fxId, status: "unreported", latencySec: null };
+        return { fxId, status: "reported", latencySec };
+      } catch {
+        return { fxId, status: "unreported", latencySec: null };
+      }
+    });
+  }
+
   /** Built-in master processors using reduced or bypass fallbacks. */
   getDegradedMasterStages(): {
     stageId: "tape" | "glue" | "limiter" | "monitorBypass";

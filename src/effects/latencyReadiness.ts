@@ -1,5 +1,6 @@
 /** Tracks whether a processor has delivered its first authoritative latency report. */
 export interface LatencyReportReadiness {
+  isReported(): boolean;
   wait(timeoutMs: number): Promise<boolean>;
   markReported(): void;
   dispose(): void;
@@ -15,6 +16,7 @@ export function createLatencyReportReadiness(): LatencyReportReadiness {
   };
 
   return {
+    isReported: () => reported,
     wait(timeoutMs) {
       if (reported) return Promise.resolve(true);
       if (disposed) return Promise.resolve(false);

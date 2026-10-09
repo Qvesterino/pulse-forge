@@ -92,6 +92,8 @@ export interface EffectRuntime {
    * Polled every sync by the engine's minimal PDC (see AudioEngine.syncPdc).
    */
   getLatencySec?(): number;
+  /** True after an asynchronous worklet latency report has arrived. */
+  hasLatencyReport?(): boolean;
   /**
    * Subscribe to asynchronous latency changes (e.g. a worklet reporting DSP
    * latency over its port after construction, or a param edit flipping an

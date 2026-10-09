@@ -99,6 +99,7 @@ export function createUltinaNode(
     input,
     output,
     getLatencySec: () => latencySamples / ctx.sampleRate,
+    hasLatencyReport: () => latencyReadiness.isReported(),
     onLatencyChange(listener: () => void) {
       latencyListeners.add(listener);
       return () => {
