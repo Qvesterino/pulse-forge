@@ -139,10 +139,22 @@ export interface StageAdjustment {
   noop: boolean;
   /** New masterGain in 0..2 (equals the current gain when noop). */
   masterGain: number;
-  /** Applied delta in dB before output clamping (≤ +something, display only). */
+  /** Profile-safe requested input-gain delta before the masterGain range is applied. */
   deltaDb: number;
+  /** Actual input-gain delta after clamping masterGain to its supported range. */
+  appliedDeltaDb: number;
+  /** Constraints that made the achievable step smaller than the requested step. */
+  limitation: "profile-true-peak" | "master-input-range" | "profile-and-input-range" | null;
   /** Human-readable applied steps (empty when noop). */
   applied: string[];
+}
+
+export function describeStageAdjustmentLimitation(limitation: StageAdjustment["limitation"]): string | null {
+  if (limitation === "profile-true-peak") return "The delivery profile's true-peak limit takes priority for this step.";
+  if (limitation === "master-input-range") return "The supported master IN gain range limits this step.";
+  if (limitation === "profile-and-input-range")
+    return "The delivery profile's true-peak limit takes priority, and the supported master IN gain range also limits this step.";
+  return null;
 }
 
 /**
@@ -159,25 +171,43 @@ export function computeStageAdjustment(
   lufsTarget: number,
   ceilingDb: number,
 ): StageAdjustment {
-  const noop = { noop: true, masterGain: currentGain, deltaDb: 0, applied: [] as string[] };
-  if (!Number.isFinite(currentGain) || currentGain <= 0) return noop;
-  if (input.lufsIntegrated <= -119) return noop;
-  if (!Number.isFinite(input.truePeakDb) || !Number.isFinite(input.lufsIntegrated)) return noop;
+  const noop = (limitation: StageAdjustment["limitation"] = null): StageAdjustment => ({
+    noop: true,
+    masterGain: currentGain,
+    deltaDb: 0,
+    appliedDeltaDb: 0,
+    limitation,
+    applied: [],
+  });
+  if (!Number.isFinite(currentGain) || currentGain <= 0) return noop();
+  if (input.lufsIntegrated <= -119) return noop();
+  if (!Number.isFinite(input.truePeakDb) || !Number.isFinite(input.lufsIntegrated)) return noop();
 
   const peakDelta = ceilingDb - 1 - input.truePeakDb;
   // Positive when the mix is quiet (raise IN), negative when loud.
   const loudDelta = lufsTarget - input.lufsIntegrated;
   const loud = Math.abs(input.lufsIntegrated - lufsTarget) > 1 ? loudDelta : 0;
   const delta = Math.min(peakDelta, loud);
-  if (Math.abs(delta) < 0.05) return noop;
 
   const masterGain = Math.max(0, Math.min(2, currentGain * Math.pow(10, delta / 20)));
-  if (masterGain === currentGain) return noop;
-  const actualDb = 20 * Math.log10(masterGain / currentGain);
+  const profileLimited = peakDelta < loud - 0.05;
+  const actualDb = masterGain === currentGain ? 0 : 20 * Math.log10(masterGain / currentGain);
+  const inputRangeLimited = !Number.isFinite(actualDb) || Math.abs(actualDb - delta) >= 0.05;
+  const limitation =
+    profileLimited && inputRangeLimited
+      ? "profile-and-input-range"
+      : profileLimited
+        ? "profile-true-peak"
+        : inputRangeLimited
+          ? "master-input-range"
+          : null;
+  if (Math.abs(actualDb) < 0.05) return noop(limitation);
   return {
     noop: false,
     masterGain,
     deltaDb: delta,
+    appliedDeltaDb: actualDb,
+    limitation,
     applied: [
       `Master IN ${actualDb >= 0 ? "+" : ""}${actualDb.toFixed(1)} dB — ` +
         `peak ≈ ${(input.truePeakDb + actualDb).toFixed(1)} dBTP, ` +

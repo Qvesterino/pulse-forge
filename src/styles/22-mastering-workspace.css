@@ -1788,6 +1788,35 @@
   font: 10px var(--sans, sans-serif);
 }
 
+.master-assistant-reference {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.master-assistant-reference-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--text-dim);
+  font-size: 9px;
+}
+
+.master-assistant-reference-heading strong {
+  color: var(--text);
+}
+
+.master-assistant-reference-heading span {
+  overflow-wrap: anywhere;
+}
+
+.master-assistant-reference-measurements {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
+  gap: 6px;
+}
+
 .master-assistant-measurements {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
@@ -1795,6 +1824,7 @@
 }
 
 .master-assistant-measurements article,
+.master-assistant-reference-measurements article,
 .master-assistant-preview-results > div,
 .master-assistant-applied > div {
   display: grid;
@@ -1807,6 +1837,7 @@
 }
 
 .master-assistant-measurements span,
+.master-assistant-reference-measurements span,
 .master-assistant-preview-results span,
 .master-assistant-applied span {
   color: var(--text-faint);
@@ -1814,6 +1845,7 @@
 }
 
 .master-assistant-measurements strong,
+.master-assistant-reference-measurements strong,
 .master-assistant-preview-results strong,
 .master-assistant-applied strong {
   color: var(--text);

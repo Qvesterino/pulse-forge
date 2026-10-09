@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { MixHealthReport } from "../analysis/mixDoctor";
 import type { BufferSummary } from "../audio-engine/metering";
+import type { MasteringReferenceMeasurement, ReferenceSideMeasurement } from "../mcp/master-assistant";
 import { formatAuditionTrim, getLoudnessMatchGain } from "../mastering/audition";
 import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
 import { acquireMasteringWork, tryAcquireMasteringWork } from "../mastering/workGate";
@@ -17,13 +19,16 @@ import { decodeAudioData } from "../services/audio-decode";
 import { decodeFlacAudioBuffer, estimateFlacDecoderWorkingSetBytes } from "../mastering/flacDecode";
 import { estimateRenderPcmBytes, renderProject } from "../rendering/renderer";
 import type { ProjectDocument } from "../project-model/types";
+import { uid } from "../shared/ids";
 import { useServices } from "./context";
 import { useMasteringExcerptLoudness } from "./useMasteringExcerptLoudness";
 
 interface LoadedReference {
+  identity: string;
   record: MasteringReferenceRecord;
   buffer: AudioBuffer;
   summary: BufferSummary;
+  health: MixHealthReport;
   details: EncodedMasterFileDetails;
 }
 
@@ -126,7 +131,40 @@ async function decodeReferenceBytes(
     signal,
     onProgress: (update) => onProgress?.(update.progress, update.stage),
   });
-  return { record, buffer, summary: analysis.measurements, details };
+  return {
+    identity: uid("mastering-reference"),
+    record,
+    buffer,
+    summary: analysis.measurements,
+    health: analysis.mixHealth,
+    details,
+  };
+}
+
+function referenceMeasurementFor(reference: LoadedReference | null): MasteringReferenceMeasurement | null {
+  if (!reference) return null;
+  const { health, summary, record } = reference;
+  const hasSignal = health.durationSec >= 0.4 && health.peak > 1e-5;
+  const safeShare = (value: number): number | null =>
+    hasSignal && Number.isFinite(value) && value >= 0 && value <= 1 ? value : null;
+  const measurement: ReferenceSideMeasurement = {
+    lufs:
+      hasSignal && Number.isFinite(summary.lufsIntegrated) && summary.lufsIntegrated > -119
+        ? summary.lufsIntegrated
+        : null,
+    crestDb: hasSignal && Number.isFinite(health.crestDb) ? health.crestDb : null,
+    correlation:
+      hasSignal && health.stereoCorrelation != null && Number.isFinite(health.stereoCorrelation)
+        ? health.stereoCorrelation
+        : null,
+    hfShare: safeShare(health.bandShares.high + health.bandShares.air),
+    lowEndShare: safeShare(health.lowEndShare),
+  };
+  return {
+    id: reference.identity,
+    fileName: record.fileName,
+    measurement,
+  };
 }
 
 async function decodeReference(
@@ -181,6 +219,7 @@ export function MasteringReferenceCompare({
   assistantBytes,
   comparisonBytes,
   onProjectMasterBytes,
+  onAssistantReferenceChange,
 }: {
   doc: ProjectDocument;
   revisionId: string;
@@ -197,6 +236,7 @@ export function MasteringReferenceCompare({
   assistantBytes: number;
   comparisonBytes: number;
   onProjectMasterBytes(bytes: number): void;
+  onAssistantReferenceChange(reference: MasteringReferenceMeasurement | null): void;
 }) {
   const services = useServices();
   const repository = useMemo(() => new MasteringReferenceRepository(), []);
@@ -219,6 +259,7 @@ export function MasteringReferenceCompare({
   const playingRef = useRef(playing);
   playingRef.current = playing;
   const projectMasterPcmBytes = bufferBytes(projectMaster?.buffer ?? null);
+  const assistantReference = useMemo(() => referenceMeasurementFor(reference), [reference]);
   const residentWorkingSetBytesRef = useRef(0);
   residentWorkingSetBytesRef.current =
     assistantBytes + comparisonBytes + projectMasterPcmBytes + bufferBytes(reference?.buffer ?? null);
@@ -321,6 +362,11 @@ export function MasteringReferenceCompare({
   useEffect(() => {
     onReferenceBytes(bufferBytes(reference?.buffer ?? null));
   }, [reference, onReferenceBytes]);
+
+  useEffect(() => {
+    onAssistantReferenceChange(assistantReference);
+    return () => onAssistantReferenceChange(null);
+  }, [assistantReference, onAssistantReferenceChange]);
 
   const currentProjectMaster =
     projectMaster?.revisionId === revisionId &&

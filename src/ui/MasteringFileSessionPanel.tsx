@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import type { MixHealthReport } from "../analysis/mixDoctor";
-import { computeStageAdjustment } from "../audio-engine/metering";
+import { computeStageAdjustment, describeStageAdjustmentLimitation } from "../audio-engine/metering";
 import type { BufferSummary } from "../audio-engine/metering";
 import type { LoudnessTimeline } from "../audio-engine/kweighting";
 import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
@@ -2968,13 +2968,19 @@ export function MasteringFileSessionPanel({
             >
               <p>{stageAdjustment.applied[0]}</p>
               <button type="button" className="btn btn-small" disabled={Boolean(busy)} onClick={stageMasterGain}>
-                Use AUTO STAGE · {stageAdjustment.deltaDb > 0 ? "+" : ""}
-                {stageAdjustment.deltaDb.toFixed(1)} dB INPUT
+                Use AUTO STAGE · {stageAdjustment.appliedDeltaDb > 0 ? "+" : ""}
+                {stageAdjustment.appliedDeltaDb.toFixed(1)} dB INPUT
               </button>
               <small>
                 Estimate from this source render only. It changes the session draft; Apply settings saves one undo step.
                 Render again to measure the result.
+                {stageAdjustment.limitation && ` ${describeStageAdjustmentLimitation(stageAdjustment.limitation)}`}
               </small>
+            </div>
+          )}
+          {stageAdjustment?.noop && stageAdjustment.limitation && (
+            <div className="mastering-file-session-auto-stage" role="note">
+              <small>AUTO STAGE unavailable: {describeStageAdjustmentLimitation(stageAdjustment.limitation)}</small>
             </div>
           )}
           {outputMixHealth && (

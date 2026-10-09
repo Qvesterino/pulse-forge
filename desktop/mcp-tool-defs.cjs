@@ -1533,10 +1533,32 @@ const MCP_TOOL_DEFS = [
           enum: ["save", "list", "compare", "restore"],
           description: "For op:ab — snapshot action",
         },
+        import: {
+          type: "array",
+          description:
+            "For op:stems — stem buffers to import as project lanes BEFORE mastering: [{role, bufferId, durationSec}] (roles: vocals/drums/bass/other). The lanes land in one STEMS bus, then get their per-role mastering shapes.",
+          items: {
+            type: "object",
+            properties: {
+              role: {
+                type: "string",
+                enum: ["vocals", "drums", "bass", "other"],
+              },
+              bufferId: {
+                type: "string",
+              },
+              durationSec: {
+                type: "number",
+                minimum: 0.1,
+              },
+            },
+            required: ["role", "bufferId", "durationSec"],
+          },
+        },
         reference: {
           type: "object",
           description:
-            "For op:assist — reference measurement (lufs, crestDb, correlation, hfShare, lowEndShare); the plan moves toward the measured DIFFERENCE",
+            "For op:assist — measured reference values. Each supplied field is compared only with the same measured field on the live master; missing values are skipped, never estimated.",
           properties: {
             lufs: {
               type: "number",

@@ -8,9 +8,10 @@ import type { Command } from "../commands/types";
 import { routeIntentText, type RoutedIntent } from "../intent/route";
 import { routeIsDestructive } from "../intent/route-guard";
 import { presetsForEffect } from "../effects/presets";
-import { planMasterSettings, planReferenceMastering } from "./master-assistant";
+import { planMasterSettings, planReferenceMastering, resolveMasterAssistantStepValue } from "./master-assistant";
 import { profileFor, resolveDeliveryTarget, verdictAgainst, worstStatus } from "./master-profiles";
-import { stemMasteringPlan, stemRoleOf } from "./stem-mastering";
+import { stemMasteringPlan, stemRoleOf, type StemRole } from "./stem-mastering";
+import { addStemTracksCommand } from "../commands/stemTracks";
 import { collectDevices, diffSnapshots, snapshotSummary, type AbSnapshot } from "./master-ab";
 
 const masterAbStore = new Map<string, Map<string, AbSnapshot>>();
@@ -1426,10 +1427,24 @@ export const MCP_TOOLS: McpToolDef[] = [
           enum: ["save", "list", "compare", "restore"],
           description: "For op:ab — snapshot action",
         },
+        import: {
+          type: "array",
+          description:
+            "For op:stems — stem buffers to import as project lanes BEFORE mastering: [{role, bufferId, durationSec}] (roles: vocals/drums/bass/other). The lanes land in one STEMS bus, then get their per-role mastering shapes.",
+          items: {
+            type: "object",
+            properties: {
+              role: { type: "string", enum: ["vocals", "drums", "bass", "other"] },
+              bufferId: { type: "string" },
+              durationSec: { type: "number", minimum: 0.1 },
+            },
+            required: ["role", "bufferId", "durationSec"],
+          },
+        },
         reference: {
           type: "object",
           description:
-            "For op:assist — reference measurement (lufs, crestDb, correlation, hfShare, lowEndShare); the plan moves toward the measured DIFFERENCE",
+            "For op:assist — measured reference values. Each supplied field is compared only with the same measured field on the live master; missing values are skipped, never estimated.",
           properties: {
             lufs: { type: "number" },
             crestDb: { type: "number" },
@@ -5107,7 +5122,7 @@ async function executeUnsunoTool(ctx: McpToolContext, record: Record<string, unk
 
 function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>): McpToolResult {
   const op = String(record.op ?? "status");
-  const doc = ctx.getDoc();
+  let doc = ctx.getDoc();
   if (op === "status") {
     const rows: string[] = [];
     for (const track of doc.tracks) {
@@ -5283,6 +5298,31 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
     // (vocals/drums/bass/other). Lanes are matched by NAME; a lane without
     // a stem role is reported, never touched. ONE snapshot for everything.
     const plan = stemMasteringPlan();
+    // OPTIONAL IMPORT (the separation→mastering full flow): stem buffers
+    // become project lanes (Vocals/Drums/Bass/Other in one STEMS bus) in the
+    // SAME op — then the per-role shapes land on them.
+    const importSpecs = Array.isArray(record.import) ? (record.import as Record<string, unknown>[]) : [];
+    if (importSpecs.length > 0) {
+      const specs = importSpecs
+        .map((spec) => ({
+          role: String(spec.role ?? "") as StemRole,
+          bufferId: String(spec.bufferId ?? ""),
+          durationSec: Number(spec.durationSec),
+        }))
+        .filter((spec) => ["vocals", "drums", "bass", "other"].includes(spec.role) && spec.bufferId !== "");
+      if (specs.length === 0) {
+        return {
+          text: "import needs entries {role: vocals|drums|bass|other, bufferId, durationSec}",
+          mutated: false,
+        };
+      }
+      doc = addStemTracksCommand(doc, specs).execute(doc);
+      // The imported lanes are the mastering targets (matched by role name).
+      const importedIds = doc.tracks
+        .filter((t) => t.kind === "instrument" && stemRoleOf(t.name) !== null)
+        .map((t) => t.id);
+      ids.splice(0, ids.length, ...importedIds);
+    }
     let next = doc;
     const lines: string[] = [];
     let matched = 0;
@@ -5432,7 +5472,8 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
     }
     const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
     const lufs = num(master.lufsIntegrated) ?? num(master.lufsShortTerm);
-    const peakDb = num(master.truePeakDb) ?? num(master.peakHoldDb) ?? 0;
+    const measuredPeakDb = num(master.truePeakDb) ?? num(master.peakHoldDb);
+    const peakDb = measuredPeakDb ?? 0;
     const rmsDb = num(master.rmsDb);
     const crestDb = num(master.crestDb) ?? (peakDb != null && rmsDb != null ? peakDb - rmsDb : 10);
     const correlation = num(master.correlation);
@@ -5444,28 +5485,37 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
     // REFERENCE MASTERING: when the caller supplies a reference measurement,
     // the plan moves toward the measured DIFFERENCE (F2 §2.2 — the
     // reference's absolute shape is never the target).
-    const referenceIn = record.reference as
-      { lufs?: number; crestDb?: number; correlation?: number; hfShare?: number; lowEndShare?: number } | undefined;
-    const referencePlan =
-      referenceIn && typeof referenceIn === "object"
-        ? planReferenceMastering({
-            mine: {
-              lufs,
-              crestDb,
-              correlation,
-              hfShare: 0.2,
-              lowEndShare: 0.25,
-            },
-            reference: {
-              lufs: typeof referenceIn.lufs === "number" ? referenceIn.lufs : null,
-              crestDb: typeof referenceIn.crestDb === "number" ? referenceIn.crestDb : 11,
-              correlation: typeof referenceIn.correlation === "number" ? referenceIn.correlation : null,
-              hfShare: typeof referenceIn.hfShare === "number" ? referenceIn.hfShare : 0.2,
-              lowEndShare: typeof referenceIn.lowEndShare === "number" ? referenceIn.lowEndShare : 0.25,
-            },
-            targetLufs: typeof record.targetLufs === "number" ? record.targetLufs : undefined,
-          })
-        : null;
+    const referenceRaw = record.reference;
+    const referenceRequested = referenceRaw !== undefined && referenceRaw !== null;
+    const referenceIn =
+      typeof referenceRaw === "object" && !Array.isArray(referenceRaw) ? (referenceRaw as Record<string, unknown>) : {};
+    const referenceMineLufs = lufs != null && lufs > -119 ? lufs : null;
+    const referenceMineHasSignal = referenceMineLufs != null;
+    const boundedNumber = (value: unknown, min: number, max: number): number | null => {
+      const parsed = num(value);
+      return parsed != null && parsed >= min && parsed <= max ? parsed : null;
+    };
+    const referencePlan = referenceRequested
+      ? planReferenceMastering({
+          mine: {
+            lufs: referenceMineLufs,
+            crestDb: referenceMineHasSignal
+              ? (num(master.crestDb) ?? (measuredPeakDb != null && rmsDb != null ? measuredPeakDb - rmsDb : null))
+              : null,
+            correlation: referenceMineHasSignal ? boundedNumber(correlation, -1, 1) : null,
+            hfShare: null,
+            lowEndShare: null,
+          },
+          reference: {
+            lufs: boundedNumber(referenceIn.lufs, -119, 12),
+            crestDb: boundedNumber(referenceIn.crestDb, -100, 100),
+            correlation: boundedNumber(referenceIn.correlation, -1, 1),
+            hfShare: boundedNumber(referenceIn.hfShare, 0, 1),
+            lowEndShare: boundedNumber(referenceIn.lowEndShare, 0, 1),
+          },
+          targetLufs: boundedNumber(record.targetLufs, -24, 0) ?? undefined,
+        })
+      : null;
     const plan =
       referencePlan ??
       planMasterSettings({
@@ -5477,7 +5527,14 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
         targetTruePeakDb:
           typeof record.targetTruePeakDb === "number" ? record.targetTruePeakDb : assistantProfile.maxTruePeakDb,
       });
-    if (plan.length === 0) return { text: "assist found nothing to change", mutated: false };
+    if (plan.length === 0) {
+      return {
+        text: referenceRequested
+          ? "assist found no actionable difference in the supplied reference measurements"
+          : "assist found nothing to change",
+        mutated: false,
+      };
+    }
 
     const wantedTypeOf: Record<string, "zenit" | "apeks" | "sirka"> = {
       zenit: "zenit",
@@ -5486,7 +5543,14 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
     };
     let next = doc;
     const lines: string[] = [];
+    let appliedCount = 0;
     for (const step of plan) {
+      if (step.device === "master")
+        return {
+          text: "track-scoped kyx_master assist cannot change the final project limiter",
+          mutated: false,
+          isError: true,
+        };
       for (const id of ids) {
         const track = next.tracks.find((t) => t.id === id)!;
         let fxId = pickZenitInstance(next, id, record);
@@ -5494,6 +5558,22 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
         if (step.device !== "zenit") {
           const sameDevice = track.effects.find((fx) => fx.type === wantedType);
           fxId = sameDevice?.id ?? null;
+        }
+        const existing = fxId ? track.effects.find((fx) => fx.id === fxId) : undefined;
+        const definition = EFFECT_META[wantedType].params.find((candidate) => candidate.id === step.param);
+        const currentValue = clampEffectParam(
+          wantedType,
+          step.param,
+          existing?.params[step.param] ?? definition?.default ?? 0,
+        );
+        const value = clampEffectParam(
+          wantedType,
+          step.param,
+          resolveMasterAssistantStepValue(step, currentValue, definition?.min, definition?.max),
+        );
+        if (Math.abs(value - currentValue) <= 1e-9) {
+          lines.push(`${track.name} · ${step.device}.${step.param} already meets the suggested direction — skipped`);
+          continue;
         }
         if (!fxId) {
           if (record.insert !== true) {
@@ -5511,13 +5591,23 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
             return { text: `insert of ${step.device} failed on ${track.name}`, mutated: false, isError: true };
           fxId = created.id;
         }
-        next = setEffectParam(next, id, fxId, step.param, step.value).execute(next);
-        lines.push(`${track.name} · ${step.device}.${step.param} = ${step.value.toFixed(2)} — ${step.why}`);
+        if (existing?.bypassed) next = toggleEffectBypass(next, id, fxId).execute(next);
+        next = setEffectParam(next, id, fxId, step.param, value).execute(next);
+        appliedCount++;
+        lines.push(
+          `${track.name} · ${step.device}.${step.param} ${currentValue.toFixed(2)} → ${value.toFixed(2)}${existing?.bypassed ? " · device enabled" : ""} — ${step.why}`,
+        );
       }
+    }
+    if (appliedCount === 0) {
+      return {
+        text: `assist found no applicable setting changes${lines.length ? `:\n${lines.join("\n")}` : ""}`,
+        mutated: false,
+      };
     }
     ctx.execute(snapshot("mcpMasterAssist", "MCP: master assistant plan", doc, next));
     return {
-      text: `master assistant applied ${plan.length} step(s), one undo step:\n${lines.join("\n")}\nmeasure again (kyx_loudness) and fine-land with op:trim`,
+      text: `master assistant applied ${appliedCount} setting change(s), one undo step:\n${lines.join("\n")}\nmeasure again (kyx_loudness) and fine-land with op:trim`,
       mutated: true,
     };
   }

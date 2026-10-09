@@ -132,6 +132,26 @@ export function MasteringPanel() {
       : findingCount == null
         ? "Run an offline analysis"
         : `${mixFindingCount} Mix Doctor · ${deliveryFindingCount} delivery flag${deliveryFindingCount === 1 ? "" : "s"}`;
+  const overviewAnnouncement =
+    report && overviewMeasurements
+      ? [
+          `${decodedDelivery ? "Final file audio measured after decoding" : finalFileNotMeasured ? "Only source PCM measured; final-file audio not measured" : "Rendered source PCM measured"}; ${report.scope === "song" ? "full song" : "active pattern"}, ${report.quality === "studio" ? "Studio HQ" : "Live"}, ${decodedDelivery?.sampleRate ?? report.encodedDelivery?.file.sampleRate ?? report.sampleRate} hertz.`,
+          finalFileNotMeasured ? (report.encodedDelivery?.decode.reason ?? "Post-encode audio was unavailable.") : null,
+          loudnessMeasured
+            ? `Integrated loudness ${overviewMeasurements.lufsIntegrated.toFixed(1)} LUFS-I.`
+            : "Integrated loudness not measured.",
+          `True peak ${overviewMeasurements.truePeakDb.toFixed(1)} dBTP${truePeakMargin == null ? "." : truePeakMargin >= 0 ? `, ${truePeakMargin.toFixed(1)} dB below the ${report.profile.label} target of ${report.profile.maxTruePeakDb} dBTP.` : `, ${Math.abs(truePeakMargin).toFixed(1)} dB over the ${report.profile.label} target of ${report.profile.maxTruePeakDb} dBTP.`}`,
+          overviewMeasurements.channelCount >= 2
+            ? `Stereo correlation ${overviewMeasurements.correlation.toFixed(2)}; mono loss ${overviewMeasurements.monoLossDb.toFixed(1)} dB.`
+            : "Stereo compatibility not measured.",
+          finalFileNotMeasured
+            ? `Source PCM verdict: ${overviewVerdict?.headline ?? "unavailable"}. Final-file verdict not measured.`
+            : `${decodedDelivery ? "Final-file" : "Rendered PCM"} verdict: ${overviewVerdict?.headline ?? "unavailable"}.`,
+          findingCount == null
+            ? "Finding count unavailable."
+            : `${findingCount} finding${findingCount === 1 ? "" : "s"} to review.`,
+        ].join(" ")
+      : null;
   const focusReviewFindings = useCallback(() => {
     const target = document.getElementById("mastering-review-findings");
     if (!target) return;
@@ -346,7 +366,7 @@ export function MasteringPanel() {
         </div>
         {report && <MasteringLoudnessTimeline timeline={loudnessTimeline} />}
         <div className="mastering-overview-action">
-          <p aria-live={isAnalyzing ? "off" : "polite"}>
+          <p aria-live="off">
             {isAnalyzing
               ? (workspaceState?.activity ?? "Rendering and measuring the current master…")
               : reportIsStale
@@ -361,6 +381,9 @@ export function MasteringPanel() {
                       workspaceState?.activity ??
                       "Analyze the rendered programme to create a current report.")}
           </p>
+          <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+            {!isAnalyzing && !reportIsStale ? (overviewAnnouncement ?? "") : ""}
+          </div>
           <button
             type="button"
             className="btn btn-export mastering-overview-analyze"

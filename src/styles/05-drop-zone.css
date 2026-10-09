@@ -438,6 +438,20 @@
   color: var(--text-faint);
 }
 
+.export-auto-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+
+.export-auto-stage small {
+  max-width: 620px;
+  color: var(--text-faint);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .export-busy {
   color: var(--accent);
 }

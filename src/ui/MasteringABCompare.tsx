@@ -16,6 +16,7 @@ import {
 import { projectRevisionIdFor } from "../mastering/report";
 import { estimateRenderPcmBytes, renderProject, resolveRenderTailSeconds } from "../rendering/renderer";
 import type { ProjectDocument } from "../project-model/types";
+import type { MasteringReferenceMeasurement } from "../mcp/master-assistant";
 import { useServices } from "./context";
 import { MasteringAssistant } from "./MasteringAssistant";
 import { MasteringLevelMatchControl } from "./MasteringLevelMatchControl";
@@ -148,6 +149,7 @@ export function MasteringABCompare({
   const [referenceBytes, setReferenceBytes] = useState(0);
   const [referenceProjectBytes, setReferenceProjectBytes] = useState(0);
   const [assistantBytes, setAssistantBytes] = useState(0);
+  const [assistantReference, setAssistantReference] = useState<MasteringReferenceMeasurement | null>(null);
   const [abRenderEpoch, setAbRenderEpoch] = useState(0);
   const [comparisonEpoch, setComparisonEpoch] = useState(0);
   const playingRef = useRef<MasteringABSlot | null>(null);
@@ -158,6 +160,9 @@ export function MasteringABCompare({
   const reportReferenceBusy = useCallback((referenceWorkBusy: boolean, excerptPending: boolean) => {
     setReferenceBusy(referenceWorkBusy);
     setReferenceExcerptPending(excerptPending);
+  }, []);
+  const reportAssistantReference = useCallback((reference: MasteringReferenceMeasurement | null) => {
+    setAssistantReference(reference);
   }, []);
   const cancelReferenceLoudnessMatch = useCallback(() => setLevelMatch(false), []);
   const [masterBypassed, setMasterBypassed] = useState(() => services.engine.isMasterBypassed());
@@ -892,6 +897,7 @@ export function MasteringABCompare({
           doc={doc}
           revisionId={revisionId}
           sampleRate={sampleRate}
+          referenceMeasurement={assistantReference}
           blockNewWork={comparisonWorkBusy || blockNewWork || Boolean(blindListen)}
           blockAudition={monitorToneSettling}
           onBusyChange={setAssistantBusy}
@@ -1058,6 +1064,7 @@ export function MasteringABCompare({
           onReferenceBytes={reportReferenceBytes}
           assistantBytes={assistantBytes}
           onProjectMasterBytes={reportReferenceProjectBytes}
+          onAssistantReferenceChange={reportAssistantReference}
         />
       </div>
     </section>

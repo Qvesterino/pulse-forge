@@ -42,6 +42,7 @@ import {
   evaluateExportMonoGuard,
   evaluateMasterVerdict,
   computeStageAdjustment,
+  describeStageAdjustmentLimitation,
   type BufferSummary,
   type MasterVerdict,
 } from "../audio-engine/metering";
@@ -1715,22 +1716,32 @@ function AutoStageButton({ summary }: { summary: BufferSummary }) {
     deliveryProfile.targetLufs,
     deliveryProfile.maxTruePeakDb,
   );
-  if (adj.noop) return null;
+  const limitation = describeStageAdjustmentLimitation(adj.limitation);
+  if (adj.noop) {
+    return limitation ? (
+      <div className="export-auto-stage">
+        <small role="note">AUTO STAGE unavailable: {limitation}</small>
+      </div>
+    ) : null;
+  }
   return (
-    <button
-      type="button"
-      className="btn btn-export"
-      disabled={staged}
-      title="Apply the gain verdict as one undoable step (master IN only — re-export to verify)"
-      onClick={() => {
-        services.store.execute(setMasterConfig(services.store.getDoc(), { masterGain: adj.masterGain }));
-        setStaged(true);
-      }}
-    >
-      {staged
-        ? `STAGED ✓ ${adj.applied[0]} — re-export to verify`
-        : `AUTO STAGE (${adj.deltaDb >= 0 ? "+" : ""}${adj.deltaDb.toFixed(1)} dB)`}
-    </button>
+    <div className="export-auto-stage">
+      <button
+        type="button"
+        className="btn btn-export"
+        disabled={staged}
+        title="Apply the achievable master IN gain change as one undoable step — re-export to verify"
+        onClick={() => {
+          services.store.execute(setMasterConfig(services.store.getDoc(), { masterGain: adj.masterGain }));
+          setStaged(true);
+        }}
+      >
+        {staged
+          ? `STAGED ✓ ${adj.applied[0]} — re-export to verify`
+          : `AUTO STAGE (${adj.appliedDeltaDb >= 0 ? "+" : ""}${adj.appliedDeltaDb.toFixed(1)} dB)`}
+      </button>
+      {limitation && <small role="note">{limitation} Re-export and analyze to verify the resulting loudness.</small>}
+    </div>
   );
 }
 

@@ -1,6 +1,6 @@
 # KOPA + KOREŇ — implementačný plán
 
-**Stav:** návrh na implementáciu · **Aktualizované:** 2026-10-09
+**Stav:** návrh na implementáciu — **rozhodnutia (1) rename lazy worklet zoznamu a (2) KOPA v preset-intent rodinách zapracované** · **Aktualizované:** 2026-10-10
 **Rozsah:** dva nové flagship výstupy — **KOPA** (kick designer, nový `InstrumentKind`) a **KOREŇ** (missing-fundamental bass exciter, nový core efekt).
 **Predpoklad:** aktuálny strom (23 inštrumentov, 52 efektov, `SCHEMA_VERSION = 16`, TSAR T0–T7, ADR 0023 hotové).
 **Nadväzuje na:** `docs/NEW-EFFECT-CHECKLIST.md` (povinný), ADR 0004 (AudioWorklet boundary), ADR 0003 (project model ↔ runtime), ADR 0023 (worklet lazy-load precedent), `docs/TSAR-IMPLEMENTATION-ROADMAP.md` (§ štýl fáz a brán), `docs/CURRENT-STATE.md` (jediný zdroj počtov).
@@ -171,20 +171,34 @@ script + vlastný budget riadok (vzor TSAR, `scripts/build-tsar-worklet.mjs` +
    bundluje do `public/bass-harmonic-worklet.js`. **Nutný `bass-harmonic-processor.d.ts` stub**
    (`export {};`, house pattern `apeks-processor.d.ts`) — plain-JS procesor importovaný z TS
    testov by inak neprešel `tsc --noEmit` (`allowJs` nie je zapnutý).
-6. `src/audio-worklets/loader.ts` — **odporúčanie: rozšíriť `PLUGIN_WORKLET_TYPES` o `"bassHarmonic"`**
-   (+ `PLUGIN_MODULE_URLS.bassHarmonic = assetUrl("/bass-harmonic-worklet.js")`). Dôvody:
-   - `pluginTypesInDoc` (loader.ts:265) skenuje typy efektov voči `PLUGIN_WORKLET_TYPES` →
+6. `src/audio-worklets/loader.ts` — **ROZHODNUTÉ: najprv mechanický rename `PLUGIN_WORKLET_TYPES`
+   → `LAZY_WORKLET_TYPES`** (samostatný prvý commit Fázy 1, žiadna logika sa nemení), **potom**
+   rozšírenie premenovaného zoznamu o `"bassHarmonic"`
+   (+ `LAZY_MODULE_URLS.bassHarmonic = assetUrl("/bass-harmonic-worklet.js")`). Rename scope
+   (presné miesta, `rg` overené 2026-10-10):
+   - `src/audio-worklets/loader.ts`: `PLUGIN_WORKLET_TYPES` → `LAZY_WORKLET_TYPES`,
+     `PluginWorkletType` → `LazyWorkletType`, `PLUGIN_MODULE_URLS` → `LAZY_MODULE_URLS`,
+     `readyPluginTypes`/`pluginInflight` → `readyLazyTypes`/`lazyInflight`, `loadPluginWorklet` →
+     `loadLazyWorklet`, `pluginTypesInDoc` → `lazyWorkletTypesInDoc`; komentárový blok hlavičky
+     („Modules come in two weight classes…") prepísať na LAZY slovník.
+   - `src/audio-engine/AudioEngine.ts:28-30,1080-1083` (import + použitie).
+   - `scripts/measure-fx-preset-loudness.mjs:171`.
+   - `tests/audio-worklets.test.ts:9-10,47,52,73-76,111` (importy + názvy testov).
+   - `tests/browser-compat.test.ts:76` (komentár).
+   - `AGENTS.md:129` (cheat-list „Adding a new vendored plugin suite", krok 5) — jediná
+     dokumentačná referencia, ktorá sa musí premenovať. Historické roadmapy
+     (`docs/TSAR-ROADMAP.md:228`) sa NEmenia (archív, `docs/ROADMAP.md`).
+   - Overenie commitu: `rg "PLUGIN_WORKLET_TYPES|PluginWorkletType|loadPluginWorklet|pluginTypesInDoc" src scripts tests AGENTS.md`
+     → 0 hitov; `npm run typecheck && npm run test && npm run format:check`.
+   Dôvody pre lazy zoznam (po rename):
+   - `lazyWorkletTypesInDoc` (loader.ts:265) skenuje typy efektov voči `LAZY_WORKLET_TYPES` →
      `ensureWorkletsForDoc` ho načíta **len keď ho projekt používa** (live aj renderer);
    - `AudioEngine.ts:1080` hot-swap fallback→worklet je viazaný na ten istý zoznam → funguje
      bez ďalšej zmeny enginu;
-   - `scripts/measure-fx-preset-loudness.mjs:171` načíta `PLUGIN_WORKLET_TYPES` → meranie
+   - `scripts/measure-fx-preset-loudness.mjs:171` načíta `LAZY_WORKLET_TYPES` → meranie
      prejde bez úpravy skriptu.
-     Názov „PLUGIN" je pri first-party efekte mierne zavádzajúci — **riešenie: premenovať na
-     `LAZY_WORKLET_TYPES` v samostatnom čisto-mechanickom commite** (grep-and-rename naprieč
-     loader/engine/skripty/testy), aby aditívna vlna nebola zamiešaná s rename difom.
-     Alternatíva (nový `LAZY_CORE_WORKLET_TYPES`) znamená dotknúť sa 4 miest (loader scan,
-     engine hot-swap, loudness skript, `loadAllWorklets`) — viac priestoru na chybu za krajší názov.
-     **Rozhodnutie + dôsledky zapísať do ADR (viď §5).**
+     Názov „LAZY" teraz sedí aj na first-party efekt (KOREŇ je lazy, nie vendored) — to je
+     zmysel rename. **Rozhodnutie + dôsledky zapísať do ADR 0034 (viď §5).**
 7. `scripts/build-bass-harmonic-worklet.mjs` — esbuild bundle `public/bass-harmonic-worklet.js`
    (vzor `build-tsar-worklet.mjs`).
 8. `package.json` — `build:bassHarmonic`; pridať do `predev`/`prebuild` reťaze.

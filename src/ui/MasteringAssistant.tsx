@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MixHealthReport } from "../analysis/mixDoctor";
 import type { BufferSummary } from "../audio-engine/metering";
-import { planMasterSettings, type MasterAssistantStep } from "../mcp/master-assistant";
+import {
+  planMasterSettings,
+  planReferenceMastering,
+  resolveMasterAssistantStepValue,
+  type MasterAssistantDevice,
+  type MasterAssistantStep,
+  type MasteringReferenceMeasurement,
+} from "../mcp/master-assistant";
 import { defaultParamsOf, EFFECT_META, clampEffectParam } from "../effects/definitions";
 import { resolveDeliveryTarget, evaluateDelivery } from "../mastering/profiles";
 import { projectRevisionIdFor } from "../mastering/report";
@@ -19,6 +26,7 @@ import { MasteringLevelMatchControl } from "./MasteringLevelMatchControl";
 const MAX_ASSISTANT_PCM_BYTES = 320 * 1024 * 1024;
 
 type MasterDevice = MasterAssistantStep["device"];
+type MasterInsertDevice = Exclude<MasterAssistantDevice, "master">;
 type DeviceEffectType = Extract<EffectType, "zenit" | "apeks" | "sirka">;
 
 interface AssistantAnalysis {
@@ -26,10 +34,12 @@ interface AssistantAnalysis {
   revisionId: string;
   bankRevision: number;
   sampleRate: number;
+  referenceId: string | null;
+  usedReference: boolean;
   summary: BufferSummary;
   health: MixHealthReport;
   plan: MasterAssistantStep[];
-  addedIds: Partial<Record<MasterDevice, string>>;
+  addedIds: Partial<Record<MasterInsertDevice, string>>;
 }
 
 interface AssistantPreview {
@@ -43,6 +53,8 @@ interface AssistantPreview {
 interface AppliedSnapshot {
   revisionId: string;
   effects: EffectInstance[];
+  ceilingDb: number;
+  limiterEnabled: boolean;
 }
 
 function bytesOf(buffer: AudioBuffer | null): number {
@@ -51,6 +63,10 @@ function bytesOf(buffer: AudioBuffer | null): number {
 
 function formatDb(value: number, unit: string): string {
   return Number.isFinite(value) && value > -119 ? `${value.toFixed(1)} ${unit}` : `−∞ ${unit}`;
+}
+
+function formatOptional(value: number | null, unit: string, digits = 1): string {
+  return value != null && Number.isFinite(value) ? `${value.toFixed(digits)}${unit ? ` ${unit}` : ""}` : "Not measured";
 }
 
 function getAuditionMatchGains(
@@ -68,18 +84,28 @@ function getAuditionMatchGains(
 }
 
 function formatValue(device: MasterDevice, param: string, value: number): string {
+  if (device === "master") {
+    if (param === "limiterEnabled") return value >= 0.5 ? "On" : "Off";
+    if (param === "ceilingDb") return `${value.toFixed(1)} dBFS`;
+    return value.toFixed(2);
+  }
   const definition = EFFECT_META[device].params.find((candidate) => candidate.id === param);
   return definition?.format ? definition.format(value) : `${value.toFixed(2)}`;
 }
 
 function deviceName(device: MasterDevice): string {
+  if (device === "master") return "Final master limiter";
   return EFFECT_META[device].name;
 }
 
 function tradeoffFor(step: MasterAssistantStep): string {
   if (step.param === "limit" || step.param === "drive")
     return "More density can reduce transient punch and increase distortion. Compare at matched loudness.";
-  if (step.param === "ceiling")
+  if (step.device === "master" && step.param === "ceilingDb")
+    return "The final limiter ceiling is in dBFS while the profile limit is in dBTP; only the rendered preview confirms the true-peak result. A lower ceiling may increase limiter activity and change loudness.";
+  if (step.device === "master" && step.param === "limiterEnabled")
+    return "The final limiter can control peaks, but it may change transients. The rendered preview shows its actual effect on this mix.";
+  if (step.param === "ceiling" || step.param === "ceilingDb")
     return "A lower ceiling can reduce peak overs. It may increase limiter activity and change loudness.";
   if (step.param === "preserve")
     return "More transient preservation can make the result less dense. The source mix may already be compressed.";
@@ -93,9 +119,11 @@ function tradeoffFor(step: MasterAssistantStep): string {
 }
 
 function confidenceFor(step: MasterAssistantStep): string {
-  return step.param === "ceiling"
-    ? "Confidence: medium · measured true-peak miss; the encoded file still needs a post-export check."
-    : "Confidence: low · broad mix heuristics; audition on speakers and headphones.";
+  if (step.param === "ceiling" || step.param === "ceilingDb" || step.param === "limiterEnabled")
+    return "Confidence: medium · measured true-peak miss; the encoded file still needs a post-export check.";
+  if (step.param === "midWidth" || step.param === "lowWidth" || step.param === "highWidth")
+    return "Confidence: low · stereo correlation is a mono-compatibility clue, not a direct width measurement.";
+  return "Confidence: low · broad mix heuristics; audition on speakers and headphones.";
 }
 
 function evidenceFor(
@@ -104,15 +132,28 @@ function evidenceFor(
   health: MixHealthReport,
   targetLufs: number,
   targetTruePeakDb: number,
+  referenceMeasurement: MasteringReferenceMeasurement | null,
 ): string {
-  if (step.param === "ceiling")
+  if (step.param === "ceiling" || step.param === "ceilingDb" || step.param === "limiterEnabled")
     return `Measured true peak ${formatDb(summary.truePeakDb, "dBTP")} vs delivery limit ${targetTruePeakDb.toFixed(1)} dBTP.`;
+  if ((step.param === "limit" || step.param === "drive") && referenceMeasurement?.measurement.lufs != null)
+    return `Measured ${formatDb(summary.lufsIntegrated, "LUFS-I")} vs reference ${formatDb(referenceMeasurement.measurement.lufs, "LUFS-I")} · true peak ${formatDb(summary.truePeakDb, "dBTP")}.`;
   if (step.param === "limit" || step.param === "drive")
     return `Measured ${formatDb(summary.lufsIntegrated, "LUFS-I")} · ${formatDb(summary.truePeakDb, "dBTP")} · delivery target ${targetLufs} LUFS.`;
-  if (step.param === "preserve" || step.param === "glue")
+  if (step.param === "preserve" || step.param === "glue") {
+    if (referenceMeasurement?.measurement.crestDb != null)
+      return `Measured crest ${health.crestDb.toFixed(1)} dB vs reference ${referenceMeasurement.measurement.crestDb.toFixed(1)} dB.`;
     return `Measured crest ${health.crestDb.toFixed(1)} dB from the full SONG render.`;
-  if (step.param.toLowerCase().includes("width"))
+  }
+  if (step.param.toLowerCase().includes("width")) {
+    if (referenceMeasurement?.measurement.correlation != null && health.stereoCorrelation != null)
+      return `Measured correlation ${health.stereoCorrelation.toFixed(2)} vs reference ${referenceMeasurement.measurement.correlation.toFixed(2)}.`;
     return `Measured stereo correlation ${summary.correlation.toFixed(2)} · mono loss ${summary.monoLossDb.toFixed(1)} dB.`;
+  }
+  if (step.param === "eqLow" && referenceMeasurement?.measurement.lowEndShare != null)
+    return `Measured low-end share ${(health.lowEndShare * 100).toFixed(0)}% vs reference ${(referenceMeasurement.measurement.lowEndShare * 100).toFixed(0)}%.`;
+  if (step.param === "eqHigh" && referenceMeasurement?.measurement.hfShare != null)
+    return `Measured high + air share ${((health.bandShares.high + health.bandShares.air) * 100).toFixed(0)}% vs reference ${(referenceMeasurement.measurement.hfShare * 100).toFixed(0)}%.`;
   const hfShare = health.bandShares.high + health.bandShares.air;
   return `Measured high + air energy share ${(hfShare * 100).toFixed(0)}% in the full SONG render.`;
 }
@@ -127,16 +168,64 @@ function isPlanConsistent(plan: readonly MasterAssistantStep[]): boolean {
   return !(increasesZenitLimit && addsApeksDrive);
 }
 
+function resolvePlanAgainstMaster(
+  source: ProjectDocument,
+  steps: readonly MasterAssistantStep[],
+): MasterAssistantStep[] {
+  const effects = source.master.effects ?? [];
+  const resolvedParams = new Map<string, number>();
+  const resolved: MasterAssistantStep[] = [];
+  for (const step of steps) {
+    if (step.device === "master") {
+      const key = `${step.device}:${step.param}`;
+      const current =
+        resolvedParams.get(key) ??
+        (step.param === "limiterEnabled" ? Number(source.master.limiterEnabled) : source.master.ceilingDb);
+      const isToggle = step.param === "limiterEnabled";
+      const target = resolveMasterAssistantStepValue(step, current, isToggle ? 0 : -12, isToggle ? 1 : 0);
+      const quantizedTarget = isToggle ? (target >= 0.5 ? 1 : 0) : target;
+      resolvedParams.set(key, quantizedTarget);
+      if (Math.abs(quantizedTarget - current) <= 1e-9) continue;
+      resolved.push({ ...step, value: quantizedTarget });
+      continue;
+    }
+    const type = step.device as DeviceEffectType;
+    const effect =
+      effects.find((item) => item.type === type && !item.bypassed) ?? effects.find((item) => item.type === type);
+    const definition = EFFECT_META[type].params.find((candidate) => candidate.id === step.param);
+    const key = `${step.device}:${step.param}`;
+    const current =
+      resolvedParams.get(key) ??
+      clampEffectParam(type, step.param, effect?.params[step.param] ?? defaultParamsOf(type)[step.param] ?? 0);
+    const target = clampEffectParam(
+      type,
+      step.param,
+      resolveMasterAssistantStepValue(step, current, definition?.min, definition?.max),
+    );
+    resolvedParams.set(key, target);
+    if (Math.abs(target - current) <= 1e-9) continue;
+    resolved.push({ ...step, value: target });
+  }
+  return resolved;
+}
+
 function buildDraft(
   source: ProjectDocument,
   plan: readonly MasterAssistantStep[],
   selected: readonly number[],
-  addedIds: Partial<Record<MasterDevice, string>>,
+  addedIds: Partial<Record<MasterInsertDevice, string>>,
 ): ProjectDocument {
   const effects = [...(source.master.effects ?? [])];
+  let ceilingDb = source.master.ceilingDb;
+  let limiterEnabled = source.master.limiterEnabled;
   for (const index of selected) {
     const step = plan[index];
     if (!step) continue;
+    if (step.device === "master") {
+      if (step.param === "limiterEnabled") limiterEnabled = step.value >= 0.5;
+      else if (step.param === "ceilingDb") ceilingDb = Math.max(-12, Math.min(0, step.value));
+      continue;
+    }
     const type = step.device as DeviceEffectType;
     let effectIndex = effects.findIndex((effect) => effect.type === type && !effect.bypassed);
     if (effectIndex < 0) effectIndex = effects.findIndex((effect) => effect.type === type);
@@ -156,7 +245,7 @@ function buildDraft(
       },
     };
   }
-  return { ...source, master: { ...source.master, effects } };
+  return { ...source, master: { ...source.master, effects, ceilingDb, limiterEnabled } };
 }
 
 function currentRevision(services: ReturnType<typeof useServices>, projectId: string): string | null {
@@ -173,6 +262,7 @@ export function MasteringAssistant({
   doc,
   revisionId,
   sampleRate,
+  referenceMeasurement,
   reservedPcmBytes,
   referencePcmBytes,
   comparisonEpoch,
@@ -185,6 +275,7 @@ export function MasteringAssistant({
   doc: ProjectDocument;
   revisionId: string;
   sampleRate: number;
+  referenceMeasurement: MasteringReferenceMeasurement | null;
   reservedPcmBytes: number;
   referencePcmBytes: number;
   comparisonEpoch: number;
@@ -206,6 +297,7 @@ export function MasteringAssistant({
   });
   const [playing, setPlaying] = useState<"current" | "proposed" | null>(null);
   const [levelMatch, setLevelMatch] = useState(true);
+  const [useReferenceForPlan, setUseReferenceForPlan] = useState(false);
   const [busy, setBusy] = useState<"analyze" | "preview" | "verify" | null>(null);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
@@ -214,6 +306,7 @@ export function MasteringAssistant({
   const abortRef = useRef<AbortController | null>(null);
   const expectedRevisionRef = useRef<string | null>(null);
   const observedRevisionRef = useRef(revisionId);
+  const observedAssistantReferenceRef = useRef("off:");
   const playingRef = useRef(playing);
   playingRef.current = playing;
   const workBlocked = blockNewWork || busy !== null;
@@ -232,7 +325,9 @@ export function MasteringAssistant({
   const analysisIsCurrent =
     analysis?.revisionId === revisionId &&
     analysis.sampleRate === sampleRate &&
-    analysis.bankRevision === services.bank.revision;
+    analysis.bankRevision === services.bank.revision &&
+    analysis.usedReference === useReferenceForPlan &&
+    analysis.referenceId === (useReferenceForPlan ? (referenceMeasurement?.id ?? null) : null);
   const previewIsCurrent = Boolean(
     analysisIsCurrent &&
     candidatePreview &&
@@ -242,6 +337,11 @@ export function MasteringAssistant({
   );
   const appliedIsCurrent = Boolean(appliedSnapshot && appliedSnapshot.revisionId === revisionId);
   const target = useMemo(() => resolveDeliveryTarget(doc.master), [doc.master]);
+  const activeReferenceId = useReferenceForPlan ? (referenceMeasurement?.id ?? null) : null;
+  const activeReferenceKey = `${useReferenceForPlan ? "on" : "off"}:${activeReferenceId ?? ""}`;
+  const referenceMeasurementCount = referenceMeasurement
+    ? Object.values(referenceMeasurement.measurement).filter((value) => value != null && Number.isFinite(value)).length
+    : 0;
   const auditionGains = getAuditionMatchGains(
     analysis?.summary.lufsIntegrated ?? null,
     candidatePreview?.summary.lufsIntegrated ?? null,
@@ -289,6 +389,17 @@ export function MasteringAssistant({
     if (playingRef.current) stopPlayback();
     releasePreview();
   }, [comparisonEpoch, releasePreview, stopPlayback]);
+
+  useEffect(() => {
+    if (observedAssistantReferenceRef.current === activeReferenceKey) return;
+    observedAssistantReferenceRef.current = activeReferenceKey;
+    abortRef.current?.abort();
+    if (playingRef.current) stopPlayback();
+    releasePreview();
+    setCandidatePreview(null);
+    setAppliedCheck(null);
+    if (analysis) setStatus("Reference measurements changed. Analyze the master again before reviewing proposals.");
+  }, [activeReferenceKey, analysis, releasePreview, stopPlayback]);
 
   useEffect(() => {
     if (observedRevisionRef.current === revisionId) return;
@@ -351,6 +462,11 @@ export function MasteringAssistant({
   };
 
   const analyze = async () => {
+    if (useReferenceForPlan && !referenceMeasurement) {
+      setError("Import and measure a reference file before using reference measurements in the assistant.");
+      return;
+    }
+    const referenceAtStart = useReferenceForPlan ? referenceMeasurement : null;
     const revisionAtStart = currentRevision(services, doc.id);
     if (!revisionAtStart || revisionAtStart !== revisionId) {
       setError("Projekt sa zmenil. Počkaj na aktualizáciu MASTER pracoviska a skús znova.");
@@ -396,19 +512,45 @@ export function MasteringAssistant({
       if (services.bank.revision !== bankRevisionAtStart)
         throw new Error("Sample bank sa počas merania zmenil. Spusti nový render.");
       const usableSignal = health.durationSec >= 0.4 && summary.peak > 1e-5;
-      const plan = usableSignal
-        ? planMasterSettings({
-            lufs: summary.lufsIntegrated > -119 ? summary.lufsIntegrated : null,
-            peakDb: summary.truePeakDb,
-            crestDb: health.crestDb,
-            correlation: summary.correlation,
-            hfShare: health.bandShares.high + health.bandShares.air,
-            targetLufs: target.targetLufs,
-            targetTruePeakDb: target.maxTruePeakDb,
-          })
+      const suggestedPlan = usableSignal
+        ? referenceAtStart
+          ? [
+              ...planReferenceMastering({
+                mine: {
+                  lufs: summary.lufsIntegrated > -119 ? summary.lufsIntegrated : null,
+                  crestDb: health.crestDb,
+                  correlation: health.stereoCorrelation,
+                  hfShare: health.bandShares.high + health.bandShares.air,
+                  lowEndShare: health.lowEndShare,
+                },
+                reference: referenceAtStart.measurement,
+              }),
+              ...planMasterSettings({
+                lufs: null,
+                peakDb: summary.truePeakDb,
+                crestDb: health.crestDb,
+                correlation: null,
+                targetTruePeakDb: target.maxTruePeakDb,
+                targetScope: "master",
+                masterLimiterEnabled: doc.master.limiterEnabled,
+              }).filter((step) => step.device === "master"),
+            ]
+          : planMasterSettings({
+              lufs: summary.lufsIntegrated > -119 ? summary.lufsIntegrated : null,
+              peakDb: summary.truePeakDb,
+              crestDb: health.crestDb,
+              correlation: summary.correlation,
+              hfShare: health.bandShares.high + health.bandShares.air,
+              targetLufs: target.targetLufs,
+              targetTruePeakDb: target.maxTruePeakDb,
+              targetScope: "master",
+              masterLimiterEnabled: doc.master.limiterEnabled,
+            })
         : [];
-      const addedIds: Partial<Record<MasterDevice, string>> = {};
+      const plan = resolvePlanAgainstMaster(doc, suggestedPlan);
+      const addedIds: Partial<Record<MasterInsertDevice, string>> = {};
       for (const step of plan) {
+        if (step.device === "master") continue;
         if (!(doc.master.effects ?? []).some((effect) => effect.type === step.device))
           addedIds[step.device] ??= uid("fx");
       }
@@ -417,16 +559,23 @@ export function MasteringAssistant({
         revisionId: revisionAtStart,
         bankRevision: bankRevisionAtStart,
         sampleRate,
+        referenceId: referenceAtStart?.id ?? null,
+        usedReference: referenceAtStart !== null,
         summary,
         health,
         plan,
         addedIds,
       });
       setSelected(plan.map((_, index) => index));
+      const measurementAnnouncement = usableSignal
+        ? `Measured ${formatDb(summary.lufsIntegrated, "LUFS-I")}, true peak ${formatDb(summary.truePeakDb, "dBTP")} against ${target.maxTruePeakDb.toFixed(1)} dBTP, crest ${health.crestDb.toFixed(1)} dB, and stereo correlation ${summary.correlation.toFixed(2)}.`
+        : "No usable signal was measured; the render was silent or shorter than 0.4 seconds.";
       setStatus(
-        plan.length > 0
-          ? `Analýza hotová. Planner našiel ${plan.length} návrh${plan.length === 1 ? "" : "y"}; nič sa zatiaľ nezmenilo.`
-          : "Analýza hotová. Z nameraných údajov nevznikol návrh na bezpečnú zmenu master insertov.",
+        `${
+          plan.length > 0
+            ? `Analýza hotová. Planner našiel ${plan.length} návrh${plan.length === 1 ? "" : "y"}; nič sa zatiaľ nezmenilo.`
+            : "Analýza hotová. Z nameraných údajov nevznikol návrh na bezpečnú zmenu master chainu."
+        } ${measurementAnnouncement}${referenceAtStart ? ` Reference: ${referenceAtStart.fileName}.` : ""}`,
       );
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : String(caught);
@@ -629,7 +778,11 @@ export function MasteringAssistant({
     }
     try {
       const committedDraft = buildDraft(analysis.source, analysis.plan, indices, analysis.addedIds);
-      const command = setMasterConfig(liveDoc, { effects: committedDraft.master.effects ?? [] });
+      const command = setMasterConfig(liveDoc, {
+        effects: committedDraft.master.effects ?? [],
+        ceilingDb: committedDraft.master.ceilingDb,
+        limiterEnabled: committedDraft.master.limiterEnabled,
+      });
       services.engine.stopPreview();
       setPlaying(null);
       releasePreview();
@@ -637,7 +790,12 @@ export function MasteringAssistant({
       const appliedDoc = services.store.getDoc();
       const appliedRevision = projectRevisionIdFor(appliedDoc);
       expectedRevisionRef.current = appliedRevision;
-      setAppliedSnapshot({ revisionId: appliedRevision, effects: analysis.source.master.effects ?? [] });
+      setAppliedSnapshot({
+        revisionId: appliedRevision,
+        effects: analysis.source.master.effects ?? [],
+        ceilingDb: analysis.source.master.ceilingDb,
+        limiterEnabled: analysis.source.master.limiterEnabled,
+      });
       setAppliedCheck(null);
       setError("");
       void verifyApplied(
@@ -667,7 +825,11 @@ export function MasteringAssistant({
     setPlaying(null);
     releasePreview();
     abortRef.current?.abort();
-    const command = setMasterConfig(liveDoc, { effects: appliedSnapshot.effects });
+    const command = setMasterConfig(liveDoc, {
+      effects: appliedSnapshot.effects,
+      ceilingDb: appliedSnapshot.ceilingDb,
+      limiterEnabled: appliedSnapshot.limiterEnabled,
+    });
     services.store.execute({ ...command, label: "Reset MASTER to assistant snapshot" });
     const restored = services.store.getDoc();
     expectedRevisionRef.current = projectRevisionIdFor(restored);
@@ -678,7 +840,7 @@ export function MasteringAssistant({
     setCandidatePreview(null);
     setError("");
     updateBusy(null);
-    setStatus("Master inserts boli obnovené do snapshotu zachyteného pred návrhom.");
+    setStatus("Master chain bol obnovený do snapshotu zachyteného pred návrhom.");
   };
 
   const dismiss = () => {
@@ -695,9 +857,29 @@ export function MasteringAssistant({
 
   const toggleStep = (index: number) => {
     stopPlayback();
-    setSelected((previous) =>
-      previous.includes(index) ? previous.filter((item) => item !== index) : [...previous, index],
-    );
+    setSelected((previous) => {
+      const wasSelected = previous.includes(index);
+      const step = analysis?.plan[index];
+      let next = wasSelected ? previous.filter((item) => item !== index) : [...previous, index];
+      if (step?.device === "master" && step.param === "limiterEnabled") {
+        const ceilingIndex = analysis?.plan.findIndex(
+          (candidate) => candidate.device === "master" && candidate.param === "ceilingDb",
+        );
+        if (ceilingIndex != null && ceilingIndex >= 0) {
+          next = wasSelected
+            ? next.filter((item) => item !== ceilingIndex)
+            : next.includes(ceilingIndex)
+              ? next
+              : [...next, ceilingIndex];
+        }
+      } else if (step?.device === "master" && step.param === "ceilingDb" && !wasSelected) {
+        const enableIndex = analysis?.plan.findIndex(
+          (candidate) => candidate.device === "master" && candidate.param === "limiterEnabled",
+        );
+        if (enableIndex != null && enableIndex >= 0 && !previous.includes(enableIndex)) next = [...next, enableIndex];
+      }
+      return next;
+    });
     setCandidatePreview(null);
     setAppliedCheck(null);
     releaseProposalPreview();
@@ -710,8 +892,8 @@ export function MasteringAssistant({
           <span className="mastering-panel-kicker">MEASURE → REVIEW → APPLY</span>
           <h3>Master assistant</h3>
           <p>
-            Deterministic suggestions from a full SONG render. The assistant edits only final-sum inserts; every change
-            needs an exact draft preview and remains one Undo step.
+            Deterministic suggestions from a full SONG render. The assistant edits final-sum inserts and the built-in
+            limiter; every change needs an exact draft preview and remains one Undo step.
           </p>
         </div>
         <div className="master-assistant-proposal-actions">
@@ -720,13 +902,41 @@ export function MasteringAssistant({
               Dismiss
             </button>
           )}
-          <button type="button" onClick={() => void analyze()} disabled={workBlocked}>
+          <button
+            type="button"
+            onClick={() => void analyze()}
+            disabled={workBlocked || (useReferenceForPlan && !referenceMeasurement)}
+          >
             {busy === "analyze" ? "Analyzing…" : "Analyze master"}
           </button>
         </div>
       </header>
       <div className="master-assistant-controls">
         <MasteringLevelMatchControl checked={levelMatch} onChange={setLevelMatch} />
+        <label className="master-assistant-reference-control">
+          <input
+            type="checkbox"
+            checked={useReferenceForPlan}
+            onChange={(event) => {
+              stopPlayback();
+              setUseReferenceForPlan(event.target.checked);
+              setCandidatePreview(null);
+              setAppliedCheck(null);
+              releaseProposalPreview();
+            }}
+            disabled={workBlocked}
+          />
+          Use measured reference in proposals
+        </label>
+        <span className="master-assistant-reference-status" role="status">
+          {useReferenceForPlan
+            ? referenceMeasurement
+              ? referenceMeasurementCount > 0
+                ? `Using ${referenceMeasurementCount} measured reference values; missing fields are skipped.`
+                : `Reference ${referenceMeasurement.fileName} has no usable measurements.`
+              : "Import a reference in Compare with a reference track."
+            : "Reference measurements are off."}
+        </span>
         {busy && (
           <button type="button" onClick={() => abortRef.current?.abort()}>
             Cancel render
@@ -752,6 +962,52 @@ export function MasteringAssistant({
         )}
         <span>SONG · {sampleRate / 1000} kHz · Studio HQ</span>
       </div>
+      {useReferenceForPlan && referenceMeasurement && (
+        <section className="master-assistant-reference" aria-label="Measured reference input">
+          <div className="master-assistant-reference-heading">
+            <strong>Measured reference</strong>
+            <span>{referenceMeasurement.fileName}</span>
+          </div>
+          <div className="master-assistant-reference-measurements" role="group" aria-label="Reference measurements">
+            <article>
+              <span>Integrated</span>
+              <strong>{formatOptional(referenceMeasurement.measurement.lufs, "LUFS-I")}</strong>
+            </article>
+            <article>
+              <span>Crest</span>
+              <strong>{formatOptional(referenceMeasurement.measurement.crestDb, "dB")}</strong>
+            </article>
+            <article>
+              <span>Stereo correlation</span>
+              <strong>{formatOptional(referenceMeasurement.measurement.correlation, "", 2)}</strong>
+            </article>
+            <article>
+              <span>High + air</span>
+              <strong>
+                {formatOptional(
+                  referenceMeasurement.measurement.hfShare == null
+                    ? null
+                    : referenceMeasurement.measurement.hfShare * 100,
+                  "%",
+                  0,
+                )}
+              </strong>
+            </article>
+            <article>
+              <span>Low end</span>
+              <strong>
+                {formatOptional(
+                  referenceMeasurement.measurement.lowEndShare == null
+                    ? null
+                    : referenceMeasurement.measurement.lowEndShare * 100,
+                  "%",
+                  0,
+                )}
+              </strong>
+            </article>
+          </div>
+        </section>
+      )}
       {analysisIsCurrent && analysis && (
         <>
           <div className="master-assistant-measurements" aria-label="Measured source master">
@@ -776,6 +1032,12 @@ export function MasteringAssistant({
               <strong>{((analysis.health.bandShares.high + analysis.health.bandShares.air) * 100).toFixed(0)}%</strong>
             </article>
           </div>
+          {analysis.referenceId && referenceMeasurement && (
+            <p className="master-assistant-reference-note">
+              Proposals compare this SONG render with “{referenceMeasurement.fileName}”. Missing measurements are
+              skipped.
+            </p>
+          )}
           <ul className="master-assistant-flags" aria-label="Source mix checks">
             {reportLines(analysis.health).map((line) => (
               <li key={line}>{line}</li>
@@ -834,13 +1096,30 @@ export function MasteringAssistant({
                 </button>
               </div>
               {analysis.plan.map((step, index) => {
+                const isMasterStep = step.device === "master";
                 const effect =
-                  (analysis.source.master.effects ?? []).find(
-                    (candidate) => candidate.type === step.device && !candidate.bypassed,
-                  ) ?? (analysis.source.master.effects ?? []).find((candidate) => candidate.type === step.device);
-                const definition = EFFECT_META[step.device].params.find((candidate) => candidate.id === step.param);
-                const before = effect?.params[step.param] ?? definition?.default ?? 0;
-                const inserted = !effect;
+                  step.device === "master"
+                    ? undefined
+                    : ((analysis.source.master.effects ?? []).find(
+                        (candidate) => candidate.type === step.device && !candidate.bypassed,
+                      ) ?? (analysis.source.master.effects ?? []).find((candidate) => candidate.type === step.device));
+                const definition =
+                  step.device === "master"
+                    ? undefined
+                    : EFFECT_META[step.device].params.find((candidate) => candidate.id === step.param);
+                const before =
+                  step.device === "master"
+                    ? step.param === "limiterEnabled"
+                      ? Number(analysis.source.master.limiterEnabled)
+                      : analysis.source.master.ceilingDb
+                    : (effect?.params[step.param] ?? definition?.default ?? 0);
+                const label =
+                  step.device === "master"
+                    ? step.param === "limiterEnabled"
+                      ? "Enable final limiter"
+                      : "Final limiter ceiling"
+                    : (definition?.label ?? step.param);
+                const inserted = !isMasterStep && !effect;
                 return (
                   <article className="master-assistant-proposal" key={`${step.device}-${step.param}-${index}`}>
                     <label className="master-assistant-select">
@@ -851,7 +1130,7 @@ export function MasteringAssistant({
                         disabled={workBlocked}
                       />
                       <span>
-                        {deviceName(step.device)} · {definition?.label ?? step.param}
+                        {deviceName(step.device)} · {label}
                       </span>
                     </label>
                     <div className="master-assistant-value">
@@ -865,7 +1144,14 @@ export function MasteringAssistant({
                     </div>
                     <p>{step.why}</p>
                     <small>
-                      {evidenceFor(step, analysis.summary, analysis.health, target.targetLufs, target.maxTruePeakDb)}
+                      {evidenceFor(
+                        step,
+                        analysis.summary,
+                        analysis.health,
+                        target.targetLufs,
+                        target.maxTruePeakDb,
+                        referenceMeasurement,
+                      )}
                     </small>
                     <small>{tradeoffFor(step)}</small>
                     <small className="master-assistant-confidence">{confidenceFor(step)}</small>
@@ -875,7 +1161,8 @@ export function MasteringAssistant({
             </div>
           ) : (
             <p className="master-assistant-empty">
-              No insert proposal. The flags below still help locate work that belongs in the mix or needs listening.
+              No master chain proposal. The flags below still help locate work that belongs in the mix or needs
+              listening.
             </p>
           )}
         </>
