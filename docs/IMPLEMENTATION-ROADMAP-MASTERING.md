@@ -203,6 +203,7 @@ MASTER
 - [x] Počet aktuálnych nálezov v MASTER overview je prístupná skratka na podrobný masteringový report; presunie fokus aj viewport a rešpektuje nastavenie obmedzeného pohybu. Pri zastaranom reporte alebo bez nálezov je neaktívna.
 - [x] Projektový MASTER ponúka 44,1/48/96 kHz; 96 kHz upozorní na vyššiu pamäť a nedeklaruje obnovu detailov zo zdroja. A/B, referenčný posluch a asistent používajú tie isté podporované render rate vo svojom porovnávacom toku.
 - [x] Zobraziť skutočné poradie globálneho master chainu a jeho aktuálne active/flat/bypassed stavy; tracky, groupy a returns pomenovať ako vstupný súčet a user inserts oddeliť od clipper/limiter safety stupňov.
+- [x] Pri aktívnych master insertoch zobrazovať runtime-reported latenciu a odlíšiť `reported`, `pending`, `unreported` a neaktívny runtime; nezaobchádzať s čakajúcou alebo chýbajúcou hodnotou ako s nulovou latenciou. Kompozitný ZENIT runtime propaguje pripravenosť, čakacie bariéry aj zmeny latencie podriadených stupňov.
 - [x] Zobrazovať degradation status vstavaného Tape/Glue/Limiter fallbacku aj master insert runtime; `getDegradedFx()` zahŕňa master FX rack a `getDegradedMasterStages()` vstavané DSP stupne.
 - [x] Zobraziť vstavané master ovládače priamo v MASTER a znovu použiť ten istý project-backed komponent v MIX; pridať chýbajúci explicitný M/S enable prepínač.
 - [x] Umožniť klávesnicovým výberom v signal-flow prehľade presunúť fokus na jestvujúci vstavaný ovládač alebo vybrať konkrétny master insert v jeho existujúcom racku; nové parametre ani samostatný stav sa nevytvárajú.
