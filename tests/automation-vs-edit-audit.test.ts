@@ -18,7 +18,7 @@ import {
 } from "../src/commands/commands";
 import { sceneBaseTickForClip } from "../src/project-model/events";
 import { BAR_TICKS } from "../src/project-model/types";
-import type { AutomationTarget, ProjectDocument, SceneAutomation } from "../src/project-model/types";
+import type { AutomationTarget, ProjectDocument } from "../src/project-model/types";
 
 /**
  * AUTOMATION-VS-EDIT AUDIT — does scene automation follow the clip through
@@ -73,8 +73,6 @@ const fixture = (): Fixture => {
   store.execute(addSceneAutomationPoint(store.doc, laneId, 3840, 0.4));
   return { doc: store.doc, store, clipId: store.doc.arrangement.clips[0]!.id, laneId, trackId };
 };
-
-const laneOf = (doc: ProjectDocument): SceneAutomation => (doc.sceneAutomation ?? [])[0]!;
 
 /** Value of the lane at an ABSOLUTE arrangement tick inside the given clip —
  *  mirrors applySceneAutomationLane's linear interpolation. */
@@ -161,7 +159,7 @@ describe("A5/A6 dangling-lane pruning", () => {
   it("deleteScene prunes the scene's lanes in-command (undo restores both)", () => {
     const f = fixture();
     // The fixture has only ONE scene — create a spare so scenes[0] can go.
-    f.store.execute(createScene(f.store.doc, { name: "Spare" }));
+    f.store.execute(createScene(f.store.doc, "Spare"));
     f.store.execute(addArrangementClip(f.store.doc, f.store.doc.scenes[1]!.id, 16, 4));
     f.store.execute(deleteScene(f.store.doc, f.store.doc.scenes[0]!.id));
     expect((f.store.doc.sceneAutomation ?? []).filter((l) => l.id === f.laneId)).toHaveLength(0);
