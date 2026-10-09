@@ -73,6 +73,7 @@ import {
 } from "../mastering/sampleRates";
 import { MasterProcessingControls } from "./MasterProcessingControls";
 import { MasteringSessionInsertRack } from "./MasteringSessionInsertRack";
+import { MasteringLevelMatchControl } from "./MasteringLevelMatchControl";
 import { MasterProfileFileCheck, MasterProfileFileGuidance } from "./MasterProfileFileGuidance";
 import { useMasteringExcerptLoudness } from "./useMasteringExcerptLoudness";
 
@@ -1979,20 +1980,14 @@ export function MasteringFileSessionPanel() {
             <header>
               <div>
                 <strong>SESSION VERSIONS</strong>
-                <p>
-                  Save two settings or compare the current master with a reference; matching only changes audition
-                  level.
-                </p>
+                <p>Save two settings or compare the current master with a reference.</p>
               </div>
-              <label className="mastering-session-match">
-                <input
-                  type="checkbox"
-                  checked={matchLoudness}
-                  disabled={Boolean(busy)}
-                  onChange={(event) => setMatchLoudness(event.target.checked)}
-                />
-                Match audition loudness
-              </label>
+              <MasteringLevelMatchControl
+                checked={matchLoudness}
+                disabled={Boolean(busy)}
+                labelClassName="mastering-session-match"
+                onChange={setMatchLoudness}
+              />
               <button
                 type="button"
                 className="btn btn-export"

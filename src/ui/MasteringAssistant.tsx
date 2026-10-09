@@ -12,6 +12,7 @@ import type { EffectInstance, EffectType, ProjectDocument } from "../project-mod
 import { uid } from "../shared/ids";
 import { setMasterConfig } from "../commands/master";
 import { useServices } from "./context";
+import { MasteringLevelMatchControl } from "./MasteringLevelMatchControl";
 
 const MAX_ASSISTANT_PCM_BYTES = 320 * 1024 * 1024;
 
@@ -681,10 +682,7 @@ export function MasteringAssistant({
         </div>
       </header>
       <div className="master-assistant-controls">
-        <label>
-          <input type="checkbox" checked={levelMatch} onChange={(event) => setLevelMatch(event.target.checked)} />
-          Match audition loudness
-        </label>
+        <MasteringLevelMatchControl checked={levelMatch} onChange={setLevelMatch} />
         {busy && (
           <button type="button" onClick={() => abortRef.current?.abort()}>
             Cancel render

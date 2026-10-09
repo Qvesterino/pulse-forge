@@ -16,6 +16,7 @@ import { estimateRenderPcmBytes, renderProject } from "../rendering/renderer";
 import type { ProjectDocument } from "../project-model/types";
 import { useServices } from "./context";
 import { MasteringAssistant } from "./MasteringAssistant";
+import { MasteringLevelMatchControl } from "./MasteringLevelMatchControl";
 import { MasteringReferenceCompare } from "./MasteringReferenceCompare";
 import {
   MASTERING_RENDER_SAMPLE_RATE_LABELS,
@@ -503,15 +504,12 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
             ))}
           </select>
         </label>
-        <label className="master-ab-match">
-          <input
-            type="checkbox"
-            checked={levelMatch}
-            disabled={busy || Boolean(blindListen)}
-            onChange={(event) => setLevelMatch(event.target.checked)}
-          />
-          Match audition loudness
-        </label>
+        <MasteringLevelMatchControl
+          checked={levelMatch}
+          disabled={busy || Boolean(blindListen)}
+          labelClassName="master-ab-match"
+          onChange={setLevelMatch}
+        />
         <button
           type="button"
           onClick={() => void renderComparison()}
