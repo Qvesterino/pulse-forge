@@ -8,18 +8,17 @@
 >
 > **Historical runbook; current release status is in
 > `docs/LOCAL-INTENT-MODEL.md` and
-> `docs/IMPLEMENTATION-ROADMAP-AI-FIRST-PRODUCER.md`.** The LFM2 92 %
-> result came from an older checkpoint and evaluator. The current
-> LFM2.5 generation (`kyx-intent-v32`, commit `957ed711`) has TWO scores
-> with DIFFERENT denominators, and quoting either alone misleads:
-> the trainer's own 60-row quick-val says 58/60 exact (59/60 kindOK,
-> 1790 training examples), while the independent eval on the full
-> 294-row val says **91.0 %** attempted-exact / wrongKind 4 / abstain
-> 20.4 %. The 60 rows are a 20 % sample of the val — 58/60 is NOT
-> comparable to 91.0 %, and it is NOT evidence of a better model.
-> Neither number set is a current pinned release verdict. Re-run the
-> exact model artifact against a candidate-disjoint holdout before
-> claiming generalization or producer quality.
+> `docs/IMPLEMENTATION-ROADMAP-AI-FIRST-PRODUCER.md`.** §11 below holds the
+> authoritative pinned scorecard: four models on the full **298-row** val,
+> one evaluator revision, each warmed before measuring, every row backed by a
+> machine-readable report in `scripts/data/intent-sft/lfm-eval-*.json`.
+> Current production default is **`kyx-intent-v33-q8`** (220/240 = 91,67 %,
+> wrongKind 3) per commit `81e94af5`. Earlier numbers in this file — 92 %,
+> 88,2 %, 92,5 %, 95,6 %, the 294- and 272-row denominators, and the
+> "abstain 0,7 %" claim — are **superseded and not reproducible**; see §11 for
+> what replaced them. Re-run the exact model artifact against a
+> candidate-disjoint holdout before claiming generalization or producer
+> quality.
 
 ---
 
@@ -259,37 +258,133 @@ real failure signal even though many ambiguous asks abstained.
 
 ### Comparison table — the whole SFT story
 
-Rows marked **294-row** were all measured on the IDENTICAL full val.jsonl
-and ARE directly comparable to each other. Rows measured on a 60-row or
-51-row subset are **not** comparable to them — a smaller honest sample and
-a bigger honest sample are different denominators, not different models.
+**Only rows marked 298-row are directly comparable.** They were measured on
+the identical `val.jsonl` (sha256 `5b33d956…`, manifest v4) with one evaluator
+revision. Rows measured on 60-, 51- or 294-row samples are **not** comparable
+to them, and the 294/272-row figures belong to an older 1761/294 corpus that is
+no longer the val split. The authoritative current set is §11.
 
-| Model                              | Method                                    | Score                        | Denominator | Notes                                                                                         |
-| ---------------------------------- | ----------------------------------------- | ---------------------------- | ----------- | --------------------------------------------------------------------------------------------- |
-| LFM2-1.2B base (prompted)          | few-shot prompt                           | ~14-30 %                     | 204 cases   | unconditioned measurement issues; hallucinates kind names                                     |
-| **LFM2 SFT (kyx-intent-sft)**      | Historical LoRA run, 1,479 examples       | **92 %** (55/60)             | 60 rows     | Old evaluator/checkpoint; NOT comparable to the 294-row rows below                            |
-| LFM2.5 SFT (kyx-intent-sft-25)     | Historical LoRA run, 779 examples         | **88.2 %** (45/51 attempted) | 51 rows     | Separate runtime eval; 1 wrong-kind, 9/60 abstain; older checkpoint                            |
-| LFM2.5 SFT (kyx-intent-v31)        | LoRA, 1949-pair corpus                    | 91.9 % attempted-exact       | **294 rows**| wrongKind 6, abstain 19.7 %                                                                    |
-| **LFM2.5 SFT (kyx-intent-v32)**    | LoRA r16/α32, 1790 examples, wave-8      | **91.0 %** attempted-exact   | **294 rows**| wrongKind **4** (−2 vs v31), abstain 20.4 %; trainer quick-val 58/60 is a 20 % subset, not this |
-| **kyx-intent-v30-q8 (SHIPPED)**    | Quantized production default              | **92.5 %** attempted-exact   | **294 rows**| wrongKind 8 but **abstain 0.7 %**; STAYS the production default — no flip at `957ed711`        |
+| Model                              | Method                              | Score                        | Denominator  | Notes                                                                      |
+| ---------------------------------- | ----------------------------------- | ---------------------------- | ------------ | -------------------------------------------------------------------------- |
+| LFM2-1.2B base (prompted)          | few-shot prompt                     | ~14-30 %                     | 204 cases    | unconditioned measurement issues; hallucinates kind names                  |
+| **LFM2 SFT (kyx-intent-sft)**      | Historical LoRA run, 1,479 examples | **92 %** (55/60)             | 60 rows      | Old evaluator/checkpoint; NOT comparable to any 298-row row                |
+| LFM2.5 SFT (kyx-intent-sft-25)     | Historical LoRA run, 779 examples   | **88.2 %** (45/51 attempted) | 51 rows      | Separate runtime eval; older checkpoint                                    |
+| LFM2.5 SFT (kyx-intent-v30-q8)     | Quantized, ex-default               | **89,58 %** (215/240)        | **298 rows** | wrongKind 7, abstain 19,5 %; measured WORST of four; superseded as default |
+| LFM2.5 SFT (kyx-intent-v31)        | F16                                 | 91,25 % (219/240)            | **298 rows** | wrongKind 6, abstain 19,5 %                                                |
+| LFM2.5 SFT (kyx-intent-v33)        | F16                                 | 91,63 % (219/239)            | **298 rows** | wrongKind 3, abstain 19,8 %                                                |
+| **LFM2.5 SFT (kyx-intent-v33-q8)** | Q8_0, **CURRENT DEFAULT**           | **91,67 %** (220/240)        | **298 rows** | wrongKind **3**, abstain 19,5 %; `effectIntent` wrongKind 6 → 0            |
 
-**Reading the table honestly:** v32 improved wrong-kind behaviour (6→4) and
-trained on the newest corpus, but it did NOT beat v31 on exact match and
-both lose to the shipped v30-q8. Per-kind tail on the full val (identical in
-v31 and v32): `loudness` 0/6, `preset` 0/4 — a 100 % miss rate on both
-families. Those are serialization-convention failures (the model dumps the
-full preset blob, or emits `detected:["AI"]` and drops the numeric LUFS
-target), not evidence of insufficient corpus volume. More rows of the same
-shape will not fix them; the next SFT generation must change the target
-convention or move to a bigger base. The eval dump-fails list is the
-curriculum.
+**Reading the table honestly:** the old `NO FLIP` verdict and its stated
+reason — that v30-q8 had "the best abstention profile by two orders of
+magnitude" — do not survive measurement. All four models abstain ~19,5 %;
+abstention was never a differentiator, and v30-q8 is in fact the weakest of
+the four. The default moved to `kyx-intent-v33-q8` (commit `81e94af5`), which
+wins on every metric at the same VRAM and disk footprint.
+
+Per-kind tail: `preset` is **0/4 in all four models** — no recipe moved it,
+and the cause is confirmed experimental rather than inferred: the model applies
+the compound envelope to a standalone preset and emits the full catalogue blob.
+`loudness` sits at 0/8 on v33 because `direction` is right and the numeric
+`targetDb` slot is simply absent — slot loss, not a serialization convention.
+`detected` is already stripped from the comparison, so those misses are not
+engine-filled-field artifacts. More rows of the same shape will not fix
+either; see §11 for the curriculum.
 
 ### Eval harness rules learned (apply to every future eval)
 
 1. Send the system prompt — an eval that omits it measures an
    unconditioned model (our first run: 14 % was this bug).
-2. num_predict ≥ 300 for schema-forced JSON (80 truncates → fake parse failures).
+2. `num_predict ≥ 300` for schema-forced JSON (80 truncates → fake parse
+   failures). **Production shipped at 256, below this threshold** — that
+   truncated two semantically CORRECT intents into unparseable JSON and
+   presented them as model failures. Production now sends
+   `num_predict: 384` with `temperature: 0` (`src/intent/model-ollama.ts`).
 3. exact-match metrics need a semantic-fail analysis pass: probe every
    "failed" row and classify serialization-diff vs true semantic error.
 4. Latency numbers are only valid on an idle GPU — never measure during
    concurrent training.
+5. **Warm the model before measuring.** The first `generate` call pays the
+   VRAM load and can abort inside the 45 s timeout. Cold runs read ~2 points
+   lower and the aborted rows are a load artifact, not a model defect.
+6. **Await `warmFactoryPresets()` before the first row.** Without it the run
+   dies on row 1 of 298 with "factory preset bank not warmed" — and
+   `--limit 60` sails past, so the subset run looks healthy while the full
+   run cannot start at all.
+7. **Always measure the full val.** `--limit 60` both flatters the model and
+   can miss the 4 `preset` rows entirely, hiding a 0/4 family.
+8. **The eval must WRITE its report.** Every number below comes from a
+   machine-pinned JSON with the ollama digest, SHA-256 of train/val/golden/
+   prompt/manifest and the evaluator source hashes. Earlier revisions printed
+   only to stdout, so every documented figure was hand-transcribed — which is
+   the mechanical reason the corpus grew three mutually contradictory
+   "pinned" scorecards. `--no-report` skips the write, `--report <path>`
+   redirects it.
+
+---
+
+## 11. PINNED scorecard — 298-row val, one instrument (2026-10-09)
+
+Four models, one corpus (`val.jsonl` sha256 `5b33d956…`, manifest v4 =
+1790 train / 298 val / 74 golden), one evaluator revision, each warmed before
+measuring. Reproducible from `scripts/data/intent-sft/lfm-eval-*.json`.
+
+**`attempted-exact` is divided by `attempted` (≈240), NOT by `rows` (298).**
+Abstained rows leave the denominator, so the rate and the abstain column must
+always be read together.
+
+| model                   | quant | attempted-exact | rate        | wrongKind | abstain          |
+| ----------------------- | ----- | --------------- | ----------- | --------- | ---------------- |
+| `kyx-intent-v30-q8`     | Q8_0  | 215/240         | 89,58 %     | 7         | 58/298 (19,46 %) |
+| `kyx-intent-v31`        | F16   | 219/240         | 91,25 %     | 6         | 58/298 (19,46 %) |
+| `kyx-intent-v33`        | F16   | 219/239         | 91,63 %     | 3         | 59/298 (19,80 %) |
+| **`kyx-intent-v33-q8`** | Q8_0  | **220/240**     | **91,67 %** | **3**     | 58/298 (19,46 %) |
+
+**`kyx-intent-v33-q8` is the production default** (`81e94af5`), at the same
+VRAM and disk footprint as the v30-q8 it replaced — the only reason v30-q8 had
+been chosen originally.
+
+### Per-kind delta that justified the flip (v30-q8 → v33-q8)
+
+| kind           | v30-q8             | v33-q8                 | delta               |
+| -------------- | ------------------ | ---------------------- | ------------------- |
+| `effectIntent` | 19/26, wrongKind 6 | **24/26, wrongKind 0** | **the win**         |
+| `exact`        | 65/66              | 67/67                  | +2                  |
+| `compound`     | 7/7                | 6/7, wrongKind 1       | **regression**      |
+| `loudness`     | 1/8                | 0/8, wrongKind 1       | **regression**      |
+| `production`   | 11/11              | 10/11                  | **regression**      |
+| `mix`          | 9/12, wrongKind 1  | 10/11, wrongKind 1     | attempted 12 → 11   |
+| `preset`       | 0/4                | 0/4                    | **0/4 in all four** |
+| abstain        | 19,5 %             | 19,5 %                 | flat                |
+
+### Curriculum for the next generation
+
+1. **`preset` 0/4 in every model measured.** The model applies the compound
+   envelope to a standalone preset request and emits the full catalogue blob
+   (`intent` + `instrument/genre/mood/tags/params`) where the teacher emits
+   `{preset:{id,name}, target, matchedBy}`. Confirmed across four checkpoints,
+   so this is the corpus shape, not a single bad run.
+2. **`loudness` 0/8.** `direction` correct, numeric `targetDb` slot absent,
+   `detected` receives a hallucinated `"AI"` sentinel that occurs **zero
+   times** in train/val/golden. `detected` is stripped from the comparison, so
+   the counted miss is `targetDb` itself — slot loss at 1.2B, not a convention.
+3. **v33's regressions are the price of the `effectIntent` win.** `compound`
+   6/7 and `production` 10/11 now absorb rows v33 moved out of
+   `effectIntent`. Count it as a trade, not a clean gain.
+
+### Numbers that must not be cited again
+
+- **92,5 % / abstain 0,7 %** (`INTENT-MINING`, commit `957ed711`) — not
+  reproducible; real v30-q8 is 89,58 % / 19,46 %.
+- **95,6 % / wrongKind 0 / abstain 1 z 272** (`CURRENT-STATE`) — not
+  reproducible. Two independent full-val runs of v30-q8 returned identical
+  metrics, so this is instrument determinism rather than documentation drift.
+- **"best abstention profile by two orders of magnitude"** — dead; all four
+  models abstain ~19,5 %.
+- **274/295 = 92,88 %, abstain 3/298** (`lfm-runtime-evaluation-2026-10-02.json`)
+  — v31's weights are provably the same file (sha256 `19628fcd…`) and the val
+  split is byte-identical (`5b33d956…` in both reports), yet today's v31
+  measures 219/240 with abstain 58/298. Same weights, same data, different
+  number ⇒ the delta lives in the **instrument or the abstention definition**.
+  **1,01 % is not a citable property of v31.**
+- **294- and 272-row denominators** — those belong to the older 1761/294
+  corpus. The current val is **298**.

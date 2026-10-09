@@ -838,6 +838,9 @@ function Device({
               }
             />
           )}
+          {fx.type === "prud" && (
+            <PrudMaxCutPreview params={fx.params} sampleRate={services.engine.getLiveAudioContext()?.sampleRate ?? 48_000} />
+          )}
           {fx.type === "eq" && <EqResponseCurve params={fx.params} />}
           {(fx.type === "limiter" ||
             fx.type === "compressor" ||
@@ -1147,6 +1150,116 @@ function EqResponseCurve({ params }: { params: Record<string, number> }) {
         <polyline points={points} className="eq-response-line" />
       </svg>
       <span>RESPONSE</span>
+    </div>
+  );
+}
+
+function peakingCutMagnitudeDb(freqHz: number, centerHz: number, q: number, gainDb: number, sampleRate: number): number {
+  if (gainDb >= 0) return 0;
+  const a = Math.pow(10, gainDb / 40);
+  const omega = (2 * Math.PI * freqHz) / sampleRate;
+  const centerOmega = (2 * Math.PI * centerHz) / sampleRate;
+  const alpha = Math.sin(centerOmega) / (2 * q);
+  const cosOmega = Math.cos(omega);
+  const sinOmega = Math.sin(omega);
+  const cosDoubleOmega = Math.cos(2 * omega);
+  const sinDoubleOmega = Math.sin(2 * omega);
+  const denominator = 1 + alpha / a;
+  const b0 = (1 + alpha * a) / denominator;
+  const b1 = (-2 * Math.cos(centerOmega)) / denominator;
+  const b2 = (1 - alpha * a) / denominator;
+  const a1 = (-2 * Math.cos(centerOmega)) / denominator;
+  const a2 = (1 - alpha / a) / denominator;
+  const numerator = Math.hypot(b0 + b1 * cosOmega + b2 * cosDoubleOmega, -(b1 * sinOmega + b2 * sinDoubleOmega));
+  const denominatorMagnitude = Math.hypot(1 + a1 * cosOmega + a2 * cosDoubleOmega, -(a1 * sinOmega + a2 * sinDoubleOmega));
+  if (denominatorMagnitude < 1e-12) return 0;
+  const magnitudeDb = 20 * Math.log10(Math.max(1e-9, numerator / denominatorMagnitude));
+  return Number.isFinite(magnitudeDb) ? Math.min(0, magnitudeDb) : 0;
+}
+
+function PrudMaxCutPreview({ params, sampleRate }: { params: Record<string, number>; sampleRate: number }) {
+  const read = (id: string, fallback: number, min: number, max: number) => {
+    const value = params[id];
+    return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+  };
+  const bands = [
+    {
+      freq: read("freq1", 900, 80, 8000),
+      q: read("q1", 2, 0.5, 8),
+      cut: read("amount1", -6, -12, 0),
+    },
+    {
+      freq: read("freq2", 3200, 80, 12000),
+      q: read("q2", 2, 0.5, 8),
+      cut: read("amount2", -6, -12, 0),
+    },
+  ] as const;
+  const points = Array.from({ length: 65 }, (_, index) => {
+    const t = index / 64;
+    const freq = 20 * Math.pow(1000, t);
+    const x = 26 + t * 254;
+    const band1Db = peakingCutMagnitudeDb(freq, bands[0].freq, bands[0].q, bands[0].cut, sampleRate);
+    const band2Db = peakingCutMagnitudeDb(freq, bands[1].freq, bands[1].q, bands[1].cut, sampleRate);
+    return {
+      x,
+      band1Y: 14 + (Math.min(0, band1Db) / -24) * 58,
+      band2Y: 14 + (Math.min(0, band2Db) / -24) * 58,
+      combinedY: 14 + (Math.max(-24, Math.min(0, band1Db + band2Db)) / -24) * 58,
+    };
+  });
+  const line = (pick: (point: (typeof points)[number]) => number) =>
+    points.map((point) => `${point.x.toFixed(1)},${pick(point).toFixed(1)}`).join(" ");
+  const markerX = (freq: number) => 26 + (Math.log10(freq / 20) / 3) * 254;
+  const markerY = (cut: number) => 14 + (cut / -24) * 58;
+
+  return (
+    <div className="prud-cut-preview">
+      <svg
+        viewBox="0 0 300 100"
+        preserveAspectRatio="none"
+        role="img"
+        aria-label="PRÚD maximum cut response preview. Dashed lines show each band's maximum cut; the solid line shows their combined maximum response."
+      >
+        <line x1="26" y1="14" x2="280" y2="14" className="prud-cut-grid" />
+        <line x1="26" y1="43" x2="280" y2="43" className="prud-cut-grid" />
+        <line x1="26" y1="72" x2="280" y2="72" className="prud-cut-grid" />
+        <line x1="26" y1="14" x2="26" y2="72" className="prud-cut-grid" />
+        <line x1="280" y1="14" x2="280" y2="72" className="prud-cut-grid" />
+        <text x="2" y="17" className="prud-cut-axis-label">
+          0 dB
+        </text>
+        <text x="2" y="46" className="prud-cut-axis-label">
+          −12
+        </text>
+        <text x="2" y="75" className="prud-cut-axis-label">
+          −24
+        </text>
+        <text x="22" y="88" className="prud-cut-axis-label">
+          20
+        </text>
+        <text x="79" y="88" className="prud-cut-axis-label">
+          100
+        </text>
+        <text x="163" y="88" className="prud-cut-axis-label">
+          1k
+        </text>
+        <text x="247" y="88" className="prud-cut-axis-label">
+          10k
+        </text>
+        <polyline points={line((point) => point.band1Y)} className="prud-cut-band prud-cut-band-one" />
+        <polyline points={line((point) => point.band2Y)} className="prud-cut-band prud-cut-band-two" />
+        <polyline points={line((point) => point.combinedY)} className="prud-cut-combined" />
+        <circle cx={markerX(bands[0].freq)} cy={markerY(bands[0].cut)} r="2.5" className="prud-cut-marker-one" />
+        <circle cx={markerX(bands[1].freq)} cy={markerY(bands[1].cut)} r="2.5" className="prud-cut-marker-two" />
+        <text x="257" y="10" className="prud-cut-axis-label prud-cut-caption">
+          MAX CUT
+        </text>
+      </svg>
+      <div className="prud-cut-legend" aria-hidden="true">
+        <span className="prud-cut-legend-one">BAND 1</span>
+        <span className="prud-cut-legend-two">BAND 2</span>
+        <span className="prud-cut-legend-combined">COMBINED</span>
+      </div>
     </div>
   );
 }

@@ -176,36 +176,109 @@ artifact loader (ONNX now / wllama-GGUF later).
   verifies the report hashes against the current corpus. The existing model
   report predates this pin and is intentionally refused by the writer until
   the model is retrained; its provenance is not fabricated retroactively.
-- **SFT (historical reports; not a current release verdict)**:
-  `scripts/train-intent-sft.py` — LoRA
-  (r16/α32, all-linear, bf16, 3 epochs) on the corpus with the EXACT
+- **SFT (pinned trainer report; not a release verdict)**:
+  `scripts/train-intent-sft.py` — LoRA, all-linear, bf16, lr 2e-4, on the
+  wave-8 corpus (**1790** pairs) with the EXACT
   Ollama system prompt (`prompt.txt`, pinned by
   tests/intent-model-sft-prompt.test.ts). Targets are FLATTENED
   ({kind, intent} → root slots) — the runtime adapters and the eval
-  compare flat.
-  **Three scorecards with three different denominators — never compare them:**
-  | scorecard | rows | v32 result |
-  | --- | --- | --- |
-  | trainer quick-val (`sft-report.json`, `--val-limit 60`) | 60 of 298 (20 % sample) | 58/60 exact, 59/60 kindOK, 1790 training examples |
-  | independent A/B on the full val (`.sound-audit/eval-v3*.log`) | 294 | **91.0 %** attempted-exact, wrongKind 4, abstain 20.4 % |
-  | production default `kyx-intent-v30-q8`, same val | 294 | **92.5 %** attempted-exact, abstain 0.7 % |
-  The trainer's 58/60 is a 60-row subset and flatters the model; on the full
-  294-row val v32 is **91.0 % vs v31's 91.9 %** — a wash, with wrongKind cut
-  6→4. Verdict at commit `957ed711` is **NO FLIP: `kyx-intent-v30-q8` stays
-  the production default.** Earlier generations recorded 45/51 (88.2 %) on a
-  different checkpoint and evaluator — a third denominator, also not merged.
-  The measured curriculum for the next SFT generation is the eval dump-fails
-  list: `loudness` 0/6 and `preset` 0/4 attempted-exact in BOTH v31 and v32
-  (100 % miss rate on those families), because the model emits the whole
-  preset JSON blob / drops the numeric LUFS target instead of the minimal
-  serialized form — a convention gap, not a corpus-volume gap. The LFM
-  candidate, quantized artifact, tokenizer, training data and evaluator
-  still need one pinned report before any release claim.
-  Deployment: merge → convert_hf_to_gguf → `ollama create <model-tag>`.
-  The evaluator entry point is `npm run intent-model:sft-eval`.
+  compare flat. Deployment: merge → convert_hf_to_gguf → `ollama create
+<model-tag>`. The evaluator entry point is `npm run intent-model:sft-eval`.
+  **The shipped default's recipe is r32/α64 over 4 epochs** (`sft-report.json`);
+  the earlier v32 run's r16/α32 over 3 epochs is archived as
+  `sft-report-v32.json`.
+  **The trainer's own quick-val is never a verdict:** on its 60-row
+  `--val-limit` sample it reports **60/60 exact, 60/60 kindOK — 100 %**, while
+  the pinned full-val eval of the very same model reports **220/240 = 91,67 %**.
+  Those 60 rows are a 20 % sample and they saturate. The 8-case live smoke is
+  coarser still (6/8 expected-kind on both the old and the new default), which
+  is exactly why it cannot discriminate between them.
   NOTE (2026-09-29, f27406b9): the Ollama request sends NO JSON-schema
   constraint — the schema grammar flipped the tuned model's kinds; output
   validity stays with validateModelAction.
+
+#### LFM scorecards — PINNED, full 298-row val, one instrument (2026-10-09)
+
+Four models, one corpus, one evaluator revision, each warmed before measuring.
+Every row is reproducible from a machine-pinned report in
+`scripts/data/intent-sft/lfm-eval-*.json` (ollama digest, SHA-256 of
+train/val/golden/prompt/manifest, evaluator source hashes, dumped fails).
+
+**The denominator of `attempted-exact` is `attempted` (≈240), NOT `rows`
+(298).** The abstain rows are excluded from the numerator's denominator — read
+the rate and the abstain column together or the number lies by ~17 points.
+
+| model                   | quant | attempted-exact | rate        | wrongKind | abstain         |
+| ----------------------- | ----- | --------------- | ----------- | --------- | --------------- |
+| `kyx-intent-v30-q8`     | Q8_0  | 215/240         | **89,58 %** | 7         | 58/298 (19,5 %) |
+| `kyx-intent-v31`        | F16   | 219/240         | 91,25 %     | 6         | 58/298 (19,5 %) |
+| `kyx-intent-v33`        | F16   | 219/239         | 91,63 %     | 3         | 59/298 (19,8 %) |
+| **`kyx-intent-v33-q8`** | Q8_0  | **220/240**     | **91,67 %** | **3**     | 58/298 (19,5 %) |
+
+**`kyx-intent-v33-q8` is the production default** (`src/intent/model-ollama.ts`,
+commit `81e94af5`). The earlier `NO FLIP — v30-q8 stays` verdict at `957ed711`
+is **OBSOLETE**: v30-q8 measured worst of the four, and v33-q8 beats it on
+every metric at identical VRAM and disk footprint — which was the only reason
+v30-q8 had been chosen in the first place.
+
+Per-kind, v30-q8 → v33-q8 (the whole point of the flip):
+
+| kind           | v30-q8             | v33-q8                 | delta                         |
+| -------------- | ------------------ | ---------------------- | ----------------------------- |
+| `effectIntent` | 19/26, wrongKind 6 | **24/26, wrongKind 0** | **the win: wrongKind 6 → 0**  |
+| `exact`        | 65/66              | 67/67                  | +2                            |
+| `compound`     | 7/7                | 6/7, wrongKind 1       | **regression**                |
+| `loudness`     | 1/8                | 0/8, wrongKind 1       | **regression**                |
+| `production`   | 11/11              | 10/11                  | **regression**                |
+| `preset`       | 0/4                | 0/4                    | **unchanged, 0/4 everywhere** |
+| abstain        | 19,5 %             | 19,5 %                 | flat — nobody abstains better |
+
+**Curriculum for the next generation, from the dumped fails:**
+
+1. **`preset` 0/4 in ALL FOUR models** — the one failure no recipe moved.
+   The model applies the compound envelope to a standalone preset request and
+   emits the full catalogue blob (`intent` + `instrument/genre/mood/tags/params`)
+   where the teacher emits `{preset:{id,name}, target, matchedBy}`. Confirmed
+   experimentally across four checkpoints, not merely by inspection.
+2. **`loudness` 0/8** — `direction` is correct, the numeric `targetDb` slot is
+   simply absent, and `detected` receives a hallucinated `"AI"` sentinel that
+   appears **zero times** in train/val/golden. This is slot loss, not a
+   convention gap; `detected` is already stripped from the comparison, so the
+   miss is `targetDb` itself.
+3. **The new v33 regressions** (`compound` 6/7, `production` 10/11) are the
+   price of the `effectIntent` win — v33 moved rows out of `effectIntent` and
+   the remaining `compound`/`production` rows now absorb them. Treat as trade,
+   not as a clean improvement.
+
+**What the new measurements refute — do not cite these again:**
+
+- **92,5 % / abstain 0,7 %** (from `INTENT-MINING` and the `957ed711` commit
+  message) — never reproduced. Real: 89,58 % / abstain 19,5 %.
+- **95,6 % / wrongKind 0 / abstain 1 z 272** (`CURRENT-STATE`) — never
+  reproduced either. Two independent full-val runs of v30-q8 returned
+  byte-identical metrics, so this is instrument determinism, not doc drift.
+- **"v30-q8 has the best abstention profile by two orders of magnitude"** —
+  dead. All four models abstain ~19,5 %; abstention was never a differentiator.
+- **`274/295 = 92,88 %`, abstain 3/298 (1,01 %)** from
+  `lfm-runtime-evaluation-2026-10-02.json` — the weights are verifiably the same
+  v31 (sha256 `19628fcd…` matches that report's pin) and the val split is
+  byte-identical (`valJsonl 5b33d956…` in both reports), yet today's v31 measures
+  219/240 = 91,25 % with abstain 58/298. Same weights, same data, different
+  number → the difference is in the **instrument or the abstention definition**,
+  not in the model. **1,01 % is not a citable property of v31.**
+- **Row counts 272 and 294 are not today's corpus.** INTENT-MINING's
+  "IDENTICAL 294-row val" is an older 1761/294 split. The current val is
+  **298** rows (manifest v4: 1790 train / 298 val / 74 golden).
+
+**Standing limitations of this scorecard** (from the reports themselves): it
+measures labelled action routing only and establishes no musical usefulness;
+warm and cold Ollama runs are NOT comparable because the first `generate` pays
+the VRAM model load and can abort inside the 45 s timeout; `golden.jsonl`
+overlaps train/val after NFKC + whitespace normalization, so it is a regression
+set and not an independent holdout. A `--limit 60` sample both flatters the
+model and can miss the 4 `preset` rows entirely — full-val runs are the only
+basis for a verdict.
+
 - **Augment (optional, phase 2)**: paraphrase pass with a larger offline
   model to multiply instructions per action — validation always against the
   deterministic teacher, never the generator.
