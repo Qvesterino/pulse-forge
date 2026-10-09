@@ -66,9 +66,17 @@ export class Transport {
     }
   }
 
-  private emitPlaybackGesture(): void {
+  private emitGesture(): void {
     try {
       this.onGesture?.(this);
+    } catch (error) {
+      console.error("[transport] gesture listener failed:", error);
+    }
+  }
+
+  private emitPlaybackGesture(): void {
+    try {
+      this.emitGesture();
     } finally {
       this.notifyPlayingListeners();
     }
@@ -173,7 +181,7 @@ export class Transport {
     } else {
       this.pauseTick = tick;
     }
-    this.onGesture?.(this);
+    this.emitGesture();
   }
 
   setBpm(bpm: number): void {
