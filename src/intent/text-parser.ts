@@ -276,8 +276,9 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   // Folk / bluegrass / gospel — the Americana family rides house (the
   // countrypop route).
   [/\bbluegrass\b|\bgospel\b|\bfolk\b|\bfolkov\w*/, "house"],
-  // Jazz proper — rides boombap (the jazz-break floor).
-  [/\bbebop\b|\bbig ?band\b|\bswing jazz\b|\bjazz proper\b/, "boombap"],
+  // Jazz proper — the swing tradition now owns its genre (the bebop/swing/
+  // big-band grooves moved out of the boombap lanes with the promotion).
+  [/\bbebop\b|\bbig ?band\b|\bswing jazz\b|\bjazz proper\b/, "jazz"],
   [/\breggaeton\b|\bdembow\b|\blatin(?:o|a)? pop\b|\bpop latino\b|\blatinsk\w* pop\b/, "house"],
   // Trance school compounds MUST sit above the techno acid/tech entries:
   // "acid trance" / "tech trance" are trance, not techno.
@@ -318,6 +319,20 @@ const GENRE_PHRASES: ReadonlyArray<readonly [RegExp, IntentGenre]> = [
   [/\bdirty ?ambient\b|\bdirtyambient\b/, "ambient"],
   [/\bscore\b|\bscene\b|\bsoundscape\b|\bcinematic\b/, "ambient"],
   [/\bdnb\b|\bdrum ?n ?bass\b|\bdrum and bass\b|\bjungle\b|\bliquid dnb\b/, "dnb"],
+  // Jazz proper — the swing tradition promoted to a first-class genre (the
+  // bebop/swing/big-band grooves own it now). Kept LAST on purpose: every
+  // compound keeps its earlier lane — "jazz rap"/"jazz hop" ride boombap
+  // (above), "nu jazz"/"jazz fusion" keep their house lane, "post-rock" its
+  // own genre.
+  [/\bjazz\b|\bbebop\b|\bbop\b|\bbig ?band\b|\bswing\b|\bstandards?\b/, "jazz"],
+  // Rock proper — the backline genre (classic/hard/punk/metal cores). Same
+  // tail rule: alt/indie rock keep their house lanes, krautrock stays
+  // techno, post-rock stays postrock — only the BARE rock/metal words land
+  // here.
+  [
+    /\brock\b|\bmetal\b|\bgrunge\b|\bpunk\b|\bhard rock\b|\bclassic rock\b|\bstoner\b|\bthrash\b|\briff(?:s|y)?\b/,
+    "rock",
+  ],
 ];
 
 /**

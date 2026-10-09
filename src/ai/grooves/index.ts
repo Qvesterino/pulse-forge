@@ -19,6 +19,7 @@ import { POSTROCK_GROOVES } from "./postrock";
 import { CHIPTUNE_GROOVES } from "./chiptune";
 import { EURODANCE_GROOVES } from "./eurodance";
 import { LATIN_GROOVES } from "./latin";
+import { ROCK_GROOVES } from "./rock";
 import { AFRICAN_GROOVES } from "./african";
 import { FOLK_GROOVES } from "./folk";
 import { JAZZ_GROOVES } from "./jazz";
@@ -48,6 +49,7 @@ export const GROOVE_LIBRARY: readonly GrooveData[] = [
   ...CHIPTUNE_GROOVES,
   ...EURODANCE_GROOVES,
   ...LATIN_GROOVES,
+  ...ROCK_GROOVES,
   ...AFRICAN_GROOVES,
   ...FOLK_GROOVES,
   ...JAZZ_GROOVES,

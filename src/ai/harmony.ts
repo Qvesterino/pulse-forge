@@ -770,6 +770,70 @@ const DRONE_PROGRESSIONS: ChordProgression[] = [
     ],
   },
 ];
+const JAZZ_PROGRESSIONS: ChordProgression[] = [
+  {
+    name: "ii-V-I (the standard turnaround)",
+    genre: "jazz",
+    events: [
+      { degree: 1, quality: "min7", duration: 2, func: "S" },
+      { degree: 4, quality: "dom7", duration: 2, func: "D" },
+      { degree: 0, quality: "maj7", duration: 4, func: "T" },
+    ],
+  },
+  {
+    name: "I-VI-ii-V (rhythm changes bridge)",
+    genre: "jazz",
+    events: [
+      { degree: 0, quality: "maj7", duration: 2, func: "T" },
+      { degree: 5, quality: "dom7", duration: 2, func: "D" },
+      { degree: 1, quality: "min7", duration: 2, func: "S" },
+      { degree: 4, quality: "dom7", duration: 2, func: "D" },
+    ],
+  },
+  {
+    name: "ii-V-i (minor pocket)",
+    genre: "jazz",
+    events: [
+      { degree: 1, quality: "min7", duration: 4, func: "S" },
+      { degree: 4, quality: "dom7", duration: 4, func: "D" },
+      { degree: 0, quality: "min7", duration: 8, func: "T" },
+    ],
+  },
+];
+
+const ROCK_PROGRESSIONS: ChordProgression[] = [
+  {
+    name: "I-IV-V (the classic engine)",
+    genre: "rock",
+    events: [
+      { degree: 0, quality: "maj", duration: 4, func: "T" },
+      { degree: 3, quality: "maj", duration: 4, func: "S" },
+      { degree: 4, quality: "maj", duration: 4, func: "D" },
+      { degree: 0, quality: "maj", duration: 4, func: "T" },
+    ],
+  },
+  {
+    name: "I-V-vi-IV (the anthemic loop)",
+    genre: "rock",
+    events: [
+      { degree: 0, quality: "maj", duration: 4, func: "T" },
+      { degree: 4, quality: "maj", duration: 4, func: "D" },
+      { degree: 5, quality: "min", duration: 4, func: "S" },
+      { degree: 3, quality: "maj", duration: 4, func: "S" },
+    ],
+  },
+  {
+    name: "i-VII-VI-V (the minor-rock descent)",
+    genre: "rock",
+    events: [
+      { degree: 0, quality: "min", duration: 4, func: "T" },
+      { degree: 6, quality: "maj", duration: 4, func: "S" },
+      { degree: 5, quality: "maj", duration: 4, func: "S" },
+      { degree: 4, quality: "maj", duration: 4, func: "D" },
+    ],
+  },
+];
+
 export const PROGRESSIONS_BY_GENRE: Record<string, ChordProgression[]> = {
   house: HOUSE_PROGRESSIONS,
   techno: TECHNO_PROGRESSIONS,
@@ -790,6 +854,8 @@ export const PROGRESSIONS_BY_GENRE: Record<string, ChordProgression[]> = {
   eurodance: EURODANCE_PROGRESSIONS,
   latin: LATIN_PROGRESSIONS,
   drone: DRONE_PROGRESSIONS,
+  jazz: JAZZ_PROGRESSIONS,
+  rock: ROCK_PROGRESSIONS,
 };
 
 /**

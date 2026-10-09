@@ -63,10 +63,11 @@ const WAVE_7_GROOVES: Array<{
   { id: "house.folk", genre: "house", name: "Folk", bpm: [90, 120], phrase: "folk" },
   { id: "house.bluegrass", genre: "house", name: "Bluegrass", bpm: [108, 140], phrase: "bluegrass" },
   { id: "house.gospel", genre: "house", name: "Gospel", bpm: [72, 96], phrase: "gospel" },
-  // Jazz proper + turntablism (boombap)
-  { id: "boombap.bebop", genre: "boombap", name: "Bebop", bpm: [200, 260], phrase: "bebop" },
-  { id: "boombap.swing", genre: "boombap", name: "Swing", bpm: [120, 180], phrase: "swing jazz" },
-  { id: "boombap.bigband", genre: "boombap", name: "Big Band", bpm: [130, 190], phrase: "big band" },
+  // Jazz proper (first-class genre 2026-10-09 — the swing tradition moved
+  // out of the boombap lanes; turntablism stays behind).
+  { id: "jazz.bebop", genre: "jazz", name: "Bebop", bpm: [200, 260], phrase: "bebop" },
+  { id: "jazz.swing", genre: "jazz", name: "Swing", bpm: [120, 180], phrase: "swing jazz" },
+  { id: "jazz.bigband", genre: "jazz", name: "Big Band", bpm: [130, 190], phrase: "big band" },
   {
     id: "boombap.turntablism",
     genre: "boombap",
@@ -175,7 +176,7 @@ describe("groove wave 7 — vocabulary-gap completion", () => {
       "house.highlife",
       "eurodance.eurobeat",
       "house.gospel",
-      "boombap.bebop",
+      "jazz.bebop",
       "house.complextro",
       "eurodance.manele",
       "hyperpop.dariacore",

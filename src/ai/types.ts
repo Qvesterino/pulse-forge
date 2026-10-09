@@ -14,28 +14,33 @@ export interface PadMarkovModel {
   initial: Uint32Array;
 }
 
-/** Groove data — one style variation within a genre */
 /** All available genres (song forms, grooves and intent parsing key off this). */
-export type Genre =
-  | "house"
-  | "techno"
-  | "trap"
-  | "ambient"
-  | "drill"
-  | "phonk"
-  | "jersey"
-  | "dnb"
-  | "hyperpop"
-  | "ukg"
-  | "boombap"
-  | "amapiano"
-  | "trance"
-  | "detroit"
-  | "postrock"
-  | "chiptune"
-  | "eurodance"
-  | "latin"
-  | "drone";
+export const GENRES = [
+  "house",
+  "techno",
+  "trap",
+  "ambient",
+  "drill",
+  "phonk",
+  "jersey",
+  "dnb",
+  "hyperpop",
+  "ukg",
+  "boombap",
+  "amapiano",
+  "trance",
+  "detroit",
+  "postrock",
+  "chiptune",
+  "eurodance",
+  "latin",
+  "drone",
+  "jazz",
+  "rock",
+] as const;
+
+/** Single source of truth: the runtime list IS the type (a promotion edits one place). */
+export type Genre = (typeof GENRES)[number];
 
 export interface GrooveData {
   id: string;
@@ -138,27 +143,6 @@ export const DEFAULT_GENERATE_OPTIONS: GenerateOptions = {
 };
 
 /** All available genres */
-export const GENRES = [
-  "house",
-  "techno",
-  "trap",
-  "ambient",
-  "drill",
-  "phonk",
-  "jersey",
-  "dnb",
-  "hyperpop",
-  "ukg",
-  "boombap",
-  "amapiano",
-  "trance",
-  "detroit",
-  "postrock",
-  "chiptune",
-  "eurodance",
-  "latin",
-  "drone",
-] as const;
 
 /** Pad index → name mapping (matches makeKit in schema.ts) */
 export const PAD_NAMES: readonly string[] = [

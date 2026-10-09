@@ -4,6 +4,7 @@ import {
   FACTORY_BONGOS_RR,
   FACTORY_CONGA_HIGH_RR,
   FACTORY_HAT_DYNAMIC,
+  FACTORY_KICK_PUNCH_RR,
   FACTORY_SHAKER_SOFT_RR,
   FACTORY_SNARE_DYNAMIC,
   roundRobinLayers,
@@ -184,6 +185,30 @@ export const GENRE_KIT_SWAPS: Partial<Record<GenerateOptions["genre"], GenrePadS
     { index: 4, assetId: "factory.snare.lofi" },
     { index: 7, assetId: "factory.shaker.soft" },
   ],
+  jazz: [
+    // The swing kit: the feathered soft kick (the bop floor never slams),
+    // the tight comping snare up front with the main snare's DYNAMIC set on
+    // the second slot (ghost → body → accent IS comping), the soft pedal
+    // hat, and the WASHEY ride (pad 11 is the genre's spine — the grooves'
+    // ride patterns land there) over the ping's bell for shout choruses.
+    { index: 0, assetId: "factory.kick.soft" },
+    { index: 4, assetId: "factory.snare.tight" },
+    { index: 5, assetId: "factory.snare.main", layers: FACTORY_SNARE_DYNAMIC },
+    { index: 8, assetId: "factory.hat.closed.soft" },
+    { index: 11, assetId: "factory.ride.jazz" },
+  ],
+  rock: [
+    // The backline: the punch kick rotating its RR pool (the 8th-note kick
+    // churn is where the machine-gun read lives), the cracking main snare
+    // with its velocity dynamics (tight ghost → main body → punch accent),
+    // the hard closed hat with its pool, and the crash roll on the fx pad
+    // — fills land there instead of a blip.
+    { index: 0, assetId: "factory.kick.punch", layers: FACTORY_KICK_PUNCH_RR },
+    { index: 1, assetId: "factory.kick.deep" },
+    { index: 4, assetId: "factory.snare.main", layers: FACTORY_SNARE_DYNAMIC },
+    { index: 8, assetId: "factory.hat.closed", layers: FACTORY_HAT_DYNAMIC },
+    { index: 15, assetId: "factory.crash.roll", name: "Crash Roll" },
+  ],
   chiptune: [
     // The chip kit: a tight punch kick (the 2A03 kick is a short pitched
     // blip, never a deep 808), the tight snare for the noise-channel crack,
@@ -296,6 +321,15 @@ export const GENRE_FEEL: Partial<
   latin: { humanizeTiming: 0.14, humanizeVelocity: 0.2 },
   // Drone keeps a steady pulse (Reich-precise) but lets the texture breathe.
   drone: { humanizeTiming: 0.1, humanizeVelocity: 0.16 },
+  // Jazz is PLAYED — the ride swing carries the pocket (the grooves own the
+  // swing value), the humanize adds the comping breath on top. Modest
+  // velocity jitter: the dynamics ARE the phrasing, the kit's dynamic set
+  // turns them into timbre.
+  jazz: { humanizeTiming: 0.12, humanizeVelocity: 0.14 },
+  // Rock is the tightest played genre — the backbeat is metronomic by
+  // design (the energy IS the grid), a slight velocity breath keeps the
+  // 8ths human without softening the hit.
+  rock: { humanizeTiming: 0.04, humanizeVelocity: 0.09 },
 };
 /**
  * Apply a genre's feel to the document groove WITHOUT touching user values:

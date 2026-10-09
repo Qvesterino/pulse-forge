@@ -2,8 +2,11 @@ import type { GrooveData } from "../types";
 import { decodeGrooves } from "./compact";
 
 /**
- * Jazz proper + turntablism — the swing tradition riding the BOOMBAP genre
- * (boom bap IS jazz-break culture; the dusty kit is the shared instrument).
+ * Jazz proper + turntablism — the swing tradition as a FIRST-CLASS genre
+ * (promoted 2026-10-09: a "jazz" prompt lands the swing kit — washey ride,
+ * soft kick, comping snare — instead of a house beat). Boom bap keeps the
+ * turntablist lane: boom bap IS jazz-break culture, the dusty kit is the
+ * shared instrument, and the scratch crews ride the boom-bap floor.
  *
  *   bebop        — the 200+ club floor: feathered kick, comping snare,
  *                  the ride carries everything, 200–260.
@@ -20,8 +23,8 @@ import { decodeGrooves } from "./compact";
 export const JAZZ_GROOVES: GrooveData[] = decodeGrooves([
   // ── Bebop ────────────────────────────────────────────────
   {
-    id: "boombap.bebop",
-    genre: "boombap",
+    id: "jazz.bebop",
+    genre: "jazz",
     name: "Bebop",
     bpm: [200, 260],
     swing: 0.58,
@@ -46,8 +49,8 @@ export const JAZZ_GROOVES: GrooveData[] = decodeGrooves([
   },
   // ── Swing ────────────────────────────────────────────────
   {
-    id: "boombap.swing",
-    genre: "boombap",
+    id: "jazz.swing",
+    genre: "jazz",
     name: "Swing",
     bpm: [120, 180],
     swing: 0.62,
@@ -72,8 +75,8 @@ export const JAZZ_GROOVES: GrooveData[] = decodeGrooves([
   },
   // ── Big band ─────────────────────────────────────────────
   {
-    id: "boombap.bigband",
-    genre: "boombap",
+    id: "jazz.bigband",
+    genre: "jazz",
     name: "Big Band",
     bpm: [130, 190],
     swing: 0.6,

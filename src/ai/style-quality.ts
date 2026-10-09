@@ -65,6 +65,12 @@ const GENRE_PROFILES: Record<GrooveData["genre"], StyleQualityProfile> = {
   // Latin: the percussion section is polyrhythmic by nature - wide
   // syncopation range (clave displacement is idiomatic), high density.
   latin: { densityRange: [0.14, 0.82], syncopationRange: [0.18, 0.9], maxDistance: 1.15 },
+  // Jazz: comping density swings wide (sparse head, dense solos) and the
+  // syncopation tolerance is the widest in the library — the ride skip and
+  // the pushed accents ARE the genre. Rock: the straightest grid (syncopation
+  // stays narrow), density in the backbeat band.
+  jazz: { densityRange: [0.1, 0.78], syncopationRange: [0.12, 0.92], maxDistance: 1.2 },
+  rock: { densityRange: [0.12, 0.72], syncopationRange: [0.06, 0.5], maxDistance: 1.0 },
 };
 
 const STYLE_OVERRIDES: Record<string, Partial<StyleQualityProfile>> = {

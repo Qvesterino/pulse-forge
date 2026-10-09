@@ -46,4 +46,6 @@ export const GENRE_REFERENCE: Record<string, GenreSongReference> = {
   eurodance: { integrated: -11.9, punchPlrDb: 10.9, tiltDb: 14.6, bars: 104 },
   latin: { integrated: -10.8, punchPlrDb: 9.8, tiltDb: 25.4, bars: 96 },
   drone: { integrated: -10.4, punchPlrDb: 9.4, tiltDb: 26.9, bars: 176 },
+  jazz: { integrated: -13.1, punchPlrDb: 11.9, tiltDb: 24.5, bars: 52 },
+  rock: { integrated: -11.5, punchPlrDb: 10.3, tiltDb: 16.1, bars: 56 },
 };

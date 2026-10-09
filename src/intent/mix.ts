@@ -128,6 +128,11 @@ const GENRE_TONE_DEFAULT: Partial<Record<IntentSpec["genre"], keyof typeof TONE_
   chiptune: "cold",
   // Eurodance is the bright euphoric-lift genre (supersaw air, 90s radio).
   eurodance: "bright",
+  // Jazz is the warm acoustic genre — upright bass and a washey ride never
+  // read cold.
+  jazz: "warm",
+  // Rock is the warm backline genre — guitar amps and a cracking snare.
+  rock: "warm",
   // Latin is the warm hand-drum genre (conga/wood body, live room).
   latin: "warm",
 };

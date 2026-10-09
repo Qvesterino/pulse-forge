@@ -55,6 +55,8 @@ const GENRES = [
   "eurodance",
   "latin",
   "drone",
+  "jazz",
+  "rock",
 ];
 const SEEDS = ["ref-a", "ref-b"];
 

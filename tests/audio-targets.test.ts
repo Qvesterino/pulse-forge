@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { GENERATED_AUDIO_TARGETS } from "../src/intent/audio-targets.generated";
 import { audioTargetFor, scoreAudioFit, AUDIO_TARGETS } from "../src/intent/audio-feedback";
+import { GENRES } from "../src/ai/types";
 
 /**
  * W0.1 (intent-killer-feature-plan) — audio rerank targets for ALL genres.
@@ -10,28 +11,8 @@ import { audioTargetFor, scoreAudioFit, AUDIO_TARGETS } from "../src/intent/audi
  * out-of-union strings.
  */
 
-/** The 19-genre union from src/ai/types.ts — kept in sync via the test below. */
-const ALL_GENRES: readonly string[] = [
-  "house",
-  "techno",
-  "trap",
-  "ambient",
-  "drill",
-  "phonk",
-  "jersey",
-  "dnb",
-  "hyperpop",
-  "ukg",
-  "boombap",
-  "amapiano",
-  "trance",
-  "detroit",
-  "postrock",
-  "chiptune",
-  "eurodance",
-  "latin",
-  "drone",
-];
+/** The genre union from src/ai/types.ts — single source, no hand-list to rot. */
+const ALL_GENRES: readonly string[] = GENRES;
 
 describe("audio targets — 19/19 measured coverage (W0.1)", () => {
   it("every Genre-union member has its own MEASURED target — no house fallback", () => {
