@@ -146,6 +146,7 @@ export function MasteringABCompare({
   const [comparisonEpoch, setComparisonEpoch] = useState(0);
   const playingRef = useRef<MasteringABSlot | null>(null);
   const masterTestToneMountedRef = useRef(false);
+  const masterTestToneGenerationRef = useRef(0);
   const comparisonControlsBusy = busy || bypassMatchBusy || assistantBusy || referenceBusy;
   const comparisonWorkBusy = comparisonControlsBusy || referenceExcerptPending;
   const reportReferenceBusy = useCallback((referenceWorkBusy: boolean, excerptPending: boolean) => {
@@ -210,6 +211,7 @@ export function MasteringABCompare({
 
   useEffect(() => {
     abortRef.current?.abort();
+    masterTestToneGenerationRef.current += 1;
     services.engine.stopMasterMonitorTestTone();
     setMasterTestToneActive(false);
     setMasterTestToneStatus("");
@@ -239,6 +241,7 @@ export function MasteringABCompare({
     masterTestToneMountedRef.current = true;
     return () => {
       masterTestToneMountedRef.current = false;
+      masterTestToneGenerationRef.current += 1;
       services.engine.stopMasterMonitorTestTone();
     };
   }, [services.engine]);
@@ -569,8 +572,9 @@ export function MasteringABCompare({
       services.engine.stopPreview();
       setPlaying(null);
     }
+    const generation = ++masterTestToneGenerationRef.current;
     const result = services.engine.playMasterMonitorTestTone(2.5, () => {
-      if (!masterTestToneMountedRef.current) return;
+      if (!masterTestToneMountedRef.current || generation !== masterTestToneGenerationRef.current) return;
       setMasterTestToneActive(false);
       setMasterTestToneStatus("Test tone ended.");
     });
@@ -590,6 +594,7 @@ export function MasteringABCompare({
 
   const startBlindListen = () => {
     if (!comparisonReady || comparisonWorkBusy || blockNewWork || blindListen) return;
+    masterTestToneGenerationRef.current += 1;
     services.engine.stopMasterMonitorTestTone();
     setMasterTestToneActive(false);
     services.engine.stopPreview();
