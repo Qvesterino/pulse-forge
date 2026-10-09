@@ -4,6 +4,7 @@ import { computeStageAdjustment } from "../audio-engine/metering";
 import type { BufferSummary } from "../audio-engine/metering";
 import type { LoudnessTimeline } from "../audio-engine/kweighting";
 import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
+import { tryAcquireMasteringWork } from "../mastering/workGate";
 import { formatAuditionTrim, getLoudnessMatchGain, resolveLoudnessMatchTarget } from "../mastering/audition";
 import {
   inspectEncodedMaster,
@@ -714,6 +715,14 @@ export function MasteringFileSessionPanel({
   const loadSession = useCallback(
     async (id: string) => {
       if (blockNewWorkRef.current) return;
+      let releaseMasteringWork: (() => void) | null = null;
+      if (id) {
+        releaseMasteringWork = tryAcquireMasteringWork();
+        if (!releaseMasteringWork) {
+          setNotice("Another MASTER audio task is in progress. Select this session again when it finishes.");
+          return;
+        }
+      }
       const epoch = ++selectionEpoch.current;
       operation.current?.abort();
       operation.current = null;
@@ -787,6 +796,7 @@ export function MasteringFileSessionPanel({
       } finally {
         if (operation.current === controller) operation.current = null;
         if (epoch === selectionEpoch.current) setBusy("");
+        releaseMasteringWork?.();
       }
     },
     [repository, sampleRate, stopSessionPreview],
@@ -795,6 +805,11 @@ export function MasteringFileSessionPanel({
   const importFile = useCallback(
     async (file?: File) => {
       if (!file || blockNewWorkRef.current) return;
+      const releaseMasteringWork = tryAcquireMasteringWork();
+      if (!releaseMasteringWork) {
+        setNotice("Another MASTER audio task is in progress. Try importing this source again when it finishes.");
+        return;
+      }
       const epoch = ++selectionEpoch.current;
       operation.current?.abort();
       const controller = new AbortController();
@@ -909,6 +924,7 @@ export function MasteringFileSessionPanel({
           setBusy("");
           setProgress("");
         }
+        releaseMasteringWork();
       }
     },
     [comparison, estimatedBytes, rendered, repository, stopSessionPreview],
@@ -917,6 +933,11 @@ export function MasteringFileSessionPanel({
   const importReference = useCallback(
     async (file?: File) => {
       if (!file || !session || !source || !draft || blockNewWorkRef.current) return;
+      const releaseMasteringWork = tryAcquireMasteringWork();
+      if (!releaseMasteringWork) {
+        setNotice("Another MASTER audio task is in progress. Try importing this reference again when it finishes.");
+        return;
+      }
       operation.current?.abort();
       const controller = new AbortController();
       operation.current = controller;
@@ -1037,6 +1058,7 @@ export function MasteringFileSessionPanel({
           setBusy("");
           setProgress("");
         }
+        releaseMasteringWork();
       }
     },
     [comparison, draft, reference, rendered, repository, sampleRate, session, source, stopSessionPreview],
@@ -1172,6 +1194,11 @@ export function MasteringFileSessionPanel({
 
   const renderComparison = useCallback(async () => {
     if (!session || !source || !snapshotA || !snapshotB || dirty || busy || blockNewWorkRef.current) return;
+    const releaseMasteringWork = tryAcquireMasteringWork();
+    if (!releaseMasteringWork) {
+      setNotice("Another MASTER audio task is in progress. Try the A/B render again when it finishes.");
+      return;
+    }
     const controller = new AbortController();
     operation.current?.abort();
     operation.current = controller;
@@ -1241,6 +1268,7 @@ export function MasteringFileSessionPanel({
         setBusy("");
         setProgress("");
       }
+      releaseMasteringWork();
     }
   }, [
     busy,
@@ -1348,6 +1376,11 @@ export function MasteringFileSessionPanel({
   );
   const analyzeSource = useCallback(async () => {
     if (!session || !source || !draft || blockNewWorkRef.current) return;
+    const releaseMasteringWork = tryAcquireMasteringWork();
+    if (!releaseMasteringWork) {
+      setNotice("Another MASTER audio task is in progress. Try source analysis again when it finishes.");
+      return;
+    }
     const controller = new AbortController();
     operation.current?.abort();
     operation.current = controller;
@@ -1387,6 +1420,7 @@ export function MasteringFileSessionPanel({
         setBusy("");
         setProgress("");
       }
+      releaseMasteringWork();
     }
   }, [draft, session, source, stopSessionPreview]);
   const stageMasterGain = useCallback(() => {
@@ -1400,6 +1434,11 @@ export function MasteringFileSessionPanel({
 
   const renderAndAnalyze = useCallback(async () => {
     if (!session || !source || !draft || dirty || blockNewWorkRef.current) return;
+    const releaseMasteringWork = tryAcquireMasteringWork();
+    if (!releaseMasteringWork) {
+      setNotice("Another MASTER audio task is in progress. Try the studio render again when it finishes.");
+      return;
+    }
     const controller = new AbortController();
     operation.current?.abort();
     operation.current = controller;
@@ -1454,6 +1493,7 @@ export function MasteringFileSessionPanel({
         setBusy("");
         setProgress("");
       }
+      releaseMasteringWork();
     }
   }, [dirty, draft, estimatedBytes, sampleRate, services, session, source, stopSessionPreview]);
 
@@ -1463,6 +1503,11 @@ export function MasteringFileSessionPanel({
       setError(
         "MP3 delivery in this workspace supports 44.1 or 48 kHz renders. Choose WAV/FLAC for 96 kHz, or lower the render rate.",
       );
+      return;
+    }
+    const releaseMasteringWork = tryAcquireMasteringWork();
+    if (!releaseMasteringWork) {
+      setNotice("Another MASTER audio task is in progress. Try delivery export again when it finishes.");
       return;
     }
     const controller = new AbortController();
@@ -1669,6 +1714,7 @@ export function MasteringFileSessionPanel({
         setBusy("");
         setProgress("");
       }
+      releaseMasteringWork();
     }
   }, [
     bitDepth,

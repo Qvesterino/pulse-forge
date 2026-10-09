@@ -8,6 +8,7 @@ import { projectRevisionIdFor } from "../mastering/report";
 import { formatAuditionTrim, getLoudnessMatchGain, resolveLoudnessMatchTarget } from "../mastering/audition";
 import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
 import { awaitMasteringSampleBankReady } from "../mastering/readiness";
+import { tryAcquireMasteringWork } from "../mastering/workGate";
 import { estimateRenderPcmBytes, renderProject } from "../rendering/renderer";
 import type { EffectInstance, EffectType, ProjectDocument } from "../project-model/types";
 import { uid } from "../shared/ids";
@@ -353,16 +354,23 @@ export function MasteringAssistant({
       setError("Projekt sa zmenil. Počkaj na aktualizáciu MASTER pracoviska a skús znova.");
       return;
     }
-    releasePreview();
-    const { controller } = beginRender();
-    let bankRevisionAtStart = services.bank.revision;
-    setAnalysis(null);
-    setSelected([]);
-    setCandidatePreview(null);
-    setAppliedCheck(null);
-    setStatus("Pripravujem sample audio pre masteringové meranie…");
-    updateBusy("analyze");
+    const releaseMasteringWork = tryAcquireMasteringWork();
+    if (!releaseMasteringWork) {
+      setStatus("Iná MASTER úloha práve spracúva audio. Počkaj na jej dokončenie a skús znova.");
+      return;
+    }
+    let activeController: AbortController | null = null;
     try {
+      releasePreview();
+      const { controller } = beginRender();
+      activeController = controller;
+      let bankRevisionAtStart = services.bank.revision;
+      setAnalysis(null);
+      setSelected([]);
+      setCandidatePreview(null);
+      setAppliedCheck(null);
+      setStatus("Pripravujem sample audio pre masteringové meranie…");
+      updateBusy("analyze");
       assertMemory(doc);
       await awaitMasteringSampleBankReady(services.core.initialSampleBankHydration, controller.signal);
       bankRevisionAtStart = services.bank.revision;
@@ -423,8 +431,9 @@ export function MasteringAssistant({
       if (message.toLowerCase().includes("cancelled")) setStatus("Analýza bola zrušená.");
       else setError(message);
     } finally {
-      if (abortRef.current === controller) abortRef.current = null;
+      if (activeController && abortRef.current === activeController) abortRef.current = null;
       updateBusy(null);
+      releaseMasteringWork();
     }
   };
 
@@ -435,13 +444,20 @@ export function MasteringAssistant({
       setError("Projekt sa zmenil. Spusti novú analýzu pred renderom návrhu.");
       return;
     }
-    releaseProposalPreview();
-    const { controller } = beginRender();
-    const bankRevisionAtStart = analysis.bankRevision;
-    setCandidatePreview(null);
-    setStatus("Renderujem presne vybrané zmeny na draft dokumente…");
-    updateBusy("preview");
+    const releaseMasteringWork = tryAcquireMasteringWork();
+    if (!releaseMasteringWork) {
+      setStatus("Iná MASTER úloha práve spracúva audio. Počkaj na jej dokončenie a skús znova.");
+      return;
+    }
+    let activeController: AbortController | null = null;
     try {
+      releaseProposalPreview();
+      const { controller } = beginRender();
+      activeController = controller;
+      const bankRevisionAtStart = analysis.bankRevision;
+      setCandidatePreview(null);
+      setStatus("Renderujem presne vybrané zmeny na draft dokumente…");
+      updateBusy("preview");
       assertMemory(draft);
       const buffer = await renderProject(draft, services.bank, renderOptions(controller.signal));
       if (controller.signal.aborted) throw new DOMException("Assistant render cancelled", "AbortError");
@@ -476,8 +492,9 @@ export function MasteringAssistant({
       if (message.toLowerCase().includes("cancelled")) setStatus("Render návrhu bol zrušený.");
       else setError(message);
     } finally {
-      if (abortRef.current === controller) abortRef.current = null;
+      if (activeController && abortRef.current === activeController) abortRef.current = null;
       updateBusy(null);
+      releaseMasteringWork();
     }
   };
 
@@ -498,11 +515,18 @@ export function MasteringAssistant({
       playBuffer(currentPreviewBuffer);
       return;
     }
-    const { controller } = beginRender();
-    const bankRevisionAtStart = analysis.bankRevision;
-    updateBusy("preview");
-    setStatus("Renderujem aktuálny master na porovnanie…");
+    const releaseMasteringWork = tryAcquireMasteringWork();
+    if (!releaseMasteringWork) {
+      setStatus("Iná MASTER úloha práve spracúva audio. Počkaj na jej dokončenie a skús znova.");
+      return;
+    }
+    let activeController: AbortController | null = null;
     try {
+      const { controller } = beginRender();
+      activeController = controller;
+      const bankRevisionAtStart = analysis.bankRevision;
+      updateBusy("preview");
+      setStatus("Renderujem aktuálny master na porovnanie…");
       assertMemory(analysis.source, reservedPcmBytes + bytesOf(previewBuffersRef.current.proposed));
       const buffer = await renderProject(analysis.source, services.bank, renderOptions(controller.signal));
       if (controller.signal.aborted) throw new DOMException("Assistant render cancelled", "AbortError");
@@ -520,8 +544,9 @@ export function MasteringAssistant({
       if (message.toLowerCase().includes("cancelled")) setStatus("Audition bolo zrušené.");
       else setError(message);
     } finally {
-      if (abortRef.current === controller) abortRef.current = null;
+      if (activeController && abortRef.current === activeController) abortRef.current = null;
       updateBusy(null);
+      releaseMasteringWork();
     }
   };
 
@@ -538,13 +563,16 @@ export function MasteringAssistant({
     appliedRevision: string,
     bankRevisionAtApply: number,
     selectionAtApply: string,
+    releaseMasteringWork: () => void,
   ) => {
-    const controller = new AbortController();
-    abortRef.current = controller;
-    onBeforeRender();
-    updateBusy("verify");
-    setStatus("Zmena je aplikovaná jedným Undo krokom. Znova renderujem a overujem výsledný master…");
+    let activeController: AbortController | null = null;
     try {
+      const controller = new AbortController();
+      activeController = controller;
+      abortRef.current = controller;
+      onBeforeRender();
+      updateBusy("verify");
+      setStatus("Zmena je aplikovaná jedným Undo krokom. Znova renderujem a overujem výsledný master…");
       assertMemory(appliedDoc, referencePcmBytes);
       const buffer = await renderProject(appliedDoc, services.bank, renderOptions(controller.signal));
       if (controller.signal.aborted) throw new DOMException("Verification render cancelled", "AbortError");
@@ -569,8 +597,9 @@ export function MasteringAssistant({
         setStatus("Post-apply overenie bolo zrušené; zmenu môžeš vrátiť cez Undo.");
       else setError(`Zmena bola aplikovaná, ale post-apply meranie sa nepodarilo: ${message}`);
     } finally {
-      if (abortRef.current === controller) abortRef.current = null;
+      if (activeController && abortRef.current === activeController) abortRef.current = null;
       updateBusy(null);
+      releaseMasteringWork();
     }
   };
 
@@ -591,19 +620,38 @@ export function MasteringAssistant({
       setError("Sample bank sa od analýzy zmenil. Spusti nový render pred aplikovaním.");
       return;
     }
-    const committedDraft = buildDraft(analysis.source, analysis.plan, indices, analysis.addedIds);
-    const command = setMasterConfig(liveDoc, { effects: committedDraft.master.effects ?? [] });
-    services.engine.stopPreview();
-    setPlaying(null);
-    releasePreview();
-    services.store.execute({ ...command, label: "Apply MASTER assistant plan" });
-    const appliedDoc = services.store.getDoc();
-    const appliedRevision = projectRevisionIdFor(appliedDoc);
-    expectedRevisionRef.current = appliedRevision;
-    setAppliedSnapshot({ revisionId: appliedRevision, effects: analysis.source.master.effects ?? [] });
-    setAppliedCheck(null);
-    setError("");
-    void verifyApplied(appliedDoc, appliedRevision, analysis.bankRevision, selectedKey(indices));
+    const releaseMasteringWork = tryAcquireMasteringWork();
+    if (!releaseMasteringWork) {
+      setError("Iná MASTER úloha práve spracúva audio. Počkaj na jej dokončenie a potom návrh aplikuj znova.");
+      return;
+    }
+    try {
+      const committedDraft = buildDraft(analysis.source, analysis.plan, indices, analysis.addedIds);
+      const command = setMasterConfig(liveDoc, { effects: committedDraft.master.effects ?? [] });
+      services.engine.stopPreview();
+      setPlaying(null);
+      releasePreview();
+      services.store.execute({ ...command, label: "Apply MASTER assistant plan" });
+      const appliedDoc = services.store.getDoc();
+      const appliedRevision = projectRevisionIdFor(appliedDoc);
+      expectedRevisionRef.current = appliedRevision;
+      setAppliedSnapshot({ revisionId: appliedRevision, effects: analysis.source.master.effects ?? [] });
+      setAppliedCheck(null);
+      setError("");
+      void verifyApplied(
+        appliedDoc,
+        appliedRevision,
+        analysis.bankRevision,
+        selectedKey(indices),
+        releaseMasteringWork,
+      ).catch((caught: unknown) => {
+        releaseMasteringWork();
+        setError(caught instanceof Error ? caught.message : "Could not verify the applied MASTER proposal.");
+      });
+    } catch (caught) {
+      releaseMasteringWork();
+      setError(caught instanceof Error ? caught.message : "Could not apply the MASTER assistant proposal.");
+    }
   };
 
   const resetToSnapshot = () => {

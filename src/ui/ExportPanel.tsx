@@ -69,6 +69,7 @@ import {
 } from "../mastering/report";
 import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
 import { awaitMasteringSampleBankReady } from "../mastering/readiness";
+import { tryAcquireMasteringWork } from "../mastering/workGate";
 import { IntegerPcmDeliveryError } from "../export/quantize";
 import { MasteringFingerprint } from "./MasteringFingerprint";
 import { MasterProfileFileCheck, MasterProfileFileGuidance } from "./MasterProfileFileGuidance";
@@ -380,21 +381,26 @@ export function ExportPanel({
         return;
       }
     }
-    const signal = beginExport();
-    const projectRevisionAtStart = projectRevisionIdFor(doc);
-    let sampleBankRevisionAtStart = services.bank.revision;
-    const assertMasterSourceCurrent = (): void => {
-      if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
-      const current = services.store.getDoc();
-      if (current.id !== doc.id || projectRevisionIdFor(current) !== projectRevisionAtStart) {
-        throw new Error("The project changed during mastering. The stale result was discarded; analyze again.");
-      }
-      if (services.bank.revision !== sampleBankRevisionAtStart) {
-        throw new Error("The sample bank changed during mastering. The stale result was discarded; analyze again.");
-      }
-    };
-    setStatus({ kind: "busy", label: "Preparing sample audio for a consistent mastering render…" });
+    const releaseMasteringWork = masteringMode ? tryAcquireMasteringWork() : null;
+    if (masteringMode && !releaseMasteringWork) {
+      setStatus({ kind: "error", label: "Another MASTER audio task is in progress. Try again when it finishes." });
+      return;
+    }
     try {
+      const signal = beginExport();
+      const projectRevisionAtStart = projectRevisionIdFor(doc);
+      let sampleBankRevisionAtStart = services.bank.revision;
+      const assertMasterSourceCurrent = (): void => {
+        if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
+        const current = services.store.getDoc();
+        if (current.id !== doc.id || projectRevisionIdFor(current) !== projectRevisionAtStart) {
+          throw new Error("The project changed during mastering. The stale result was discarded; analyze again.");
+        }
+        if (services.bank.revision !== sampleBankRevisionAtStart) {
+          throw new Error("The sample bank changed during mastering. The stale result was discarded; analyze again.");
+        }
+      };
+      setStatus({ kind: "busy", label: "Preparing sample audio for a consistent mastering render…" });
       await awaitMasteringSampleBankReady(services.core.initialSampleBankHydration, signal);
       sampleBankRevisionAtStart = services.bank.revision;
       assertMasterSourceCurrent();
@@ -585,6 +591,8 @@ export function ExportPanel({
     } catch (error) {
       if (!isAbortError(error) && !(error instanceof IntegerPcmDeliveryError)) setMasterReport(null);
       cancelOrElse(error, `Export failed: {err}`, download ? "Master export cancelled" : "Master analysis cancelled");
+    } finally {
+      releaseMasteringWork?.();
     }
   };
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BufferSummary } from "../audio-engine/metering";
 import { formatAuditionTrim, getLoudnessMatchGain, resolveLoudnessMatchTarget } from "../mastering/audition";
 import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
+import { tryAcquireMasteringWork } from "../mastering/workGate";
 import { awaitMasteringSampleBankReady } from "../mastering/readiness";
 import { resolveDeliveryTarget } from "../mastering/profiles";
 import {
@@ -292,6 +293,11 @@ export function MasteringABCompare({
       setError("Projekt sa práve zmenil. Počkaj na aktualizáciu pracoviska a skús render znova.");
       return;
     }
+    const releaseMasteringWork = tryAcquireMasteringWork();
+    if (!releaseMasteringWork) {
+      setError("Another MASTER audio task is in progress. Try the comparison again when it finishes.");
+      return;
+    }
     const controller = new AbortController();
     abortRef.current = controller;
     services.engine.stopPreview();
@@ -382,6 +388,7 @@ export function MasteringABCompare({
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
       setBusy(false);
+      releaseMasteringWork();
     }
   };
 
@@ -394,6 +401,11 @@ export function MasteringABCompare({
       return;
     }
 
+    const releaseMasteringWork = tryAcquireMasteringWork();
+    if (!releaseMasteringWork) {
+      setError("Another MASTER audio task is in progress. Try loudness matching again when it finishes.");
+      return;
+    }
     const controller = new AbortController();
     bypassMatchAbortRef.current = controller;
     let bankRevisionAtStart = services.bank.revision;
@@ -500,6 +512,7 @@ export function MasteringABCompare({
     } finally {
       if (bypassMatchAbortRef.current === controller) bypassMatchAbortRef.current = null;
       setBypassMatchBusy(false);
+      releaseMasteringWork();
     }
   };
 

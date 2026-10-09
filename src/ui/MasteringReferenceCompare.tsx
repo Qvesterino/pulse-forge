@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { BufferSummary } from "../audio-engine/metering";
 import { formatAuditionTrim, getLoudnessMatchGain } from "../mastering/audition";
 import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
+import { acquireMasteringWork, tryAcquireMasteringWork } from "../mastering/workGate";
 import { awaitMasteringSampleBankReady } from "../mastering/readiness";
 import {
   inspectMasteringReferenceContainer,
@@ -251,6 +252,7 @@ export function MasteringReferenceCompare({
     setStorageMessage("");
     setLoading(true);
     setStatus("Checking local reference…");
+    let releaseMasteringWork: (() => void) | null = null;
     void repository
       .get(projectId)
       .then(async (record) => {
@@ -259,6 +261,9 @@ export function MasteringReferenceCompare({
           setStatus("No reference saved for this project.");
           return;
         }
+        setStatus("Waiting for the MASTER workspace to become available…");
+        releaseMasteringWork = await acquireMasteringWork(controller.signal);
+        if (!releaseMasteringWork) return;
         setStatus("Decoding saved reference…");
         const decoded = await decodeReference(
           record,
@@ -280,6 +285,7 @@ export function MasteringReferenceCompare({
         setStatus("");
       })
       .finally(() => {
+        releaseMasteringWork?.();
         if (aliveRef.current && decodeJobRef.current === job) setLoading(false);
       });
     return () => {
@@ -395,6 +401,11 @@ export function MasteringReferenceCompare({
       );
       return;
     }
+    const releaseMasteringWork = tryAcquireMasteringWork();
+    if (!releaseMasteringWork) {
+      setError("Another MASTER audio task is in progress. Try importing this reference again when it finishes.");
+      return;
+    }
     services.engine.stopPreview();
     setPlaying(null);
     setLoading(true);
@@ -453,6 +464,7 @@ export function MasteringReferenceCompare({
     } finally {
       if (decodeAbortRef.current === controller) decodeAbortRef.current = null;
       if (aliveRef.current && decodeJobRef.current === job) setLoading(false);
+      releaseMasteringWork();
     }
   };
 
@@ -461,6 +473,11 @@ export function MasteringReferenceCompare({
     const startRevision = projectRevisionIdFor(services.store.getDoc());
     if (services.store.getDoc().id !== doc.id || startRevision !== revisionId) {
       setError("The project changed. Wait for the MASTER panel to update, then render again.");
+      return;
+    }
+    const releaseMasteringWork = tryAcquireMasteringWork();
+    if (!releaseMasteringWork) {
+      setError("Another MASTER audio task is in progress. Try the reference render again when it finishes.");
       return;
     }
     onBeforeRender();
@@ -543,6 +560,7 @@ export function MasteringReferenceCompare({
     } finally {
       if (renderAbortRef.current === controller) renderAbortRef.current = null;
       setRendering(false);
+      releaseMasteringWork();
     }
   };
 
