@@ -10,6 +10,13 @@ The web build also ships as a standalone Windows desktop app (ADR 0010/0011), cu
 
 ---
 
+## User guide
+
+The **[KYX user manual](docs/manual/README.md)** walks through the studio from
+the first beat to export — including the full keyboard reference.
+
+---
+
 ## Table of contents
 
 1. [What KYX is designed for](#1-what-kyx-is-designed-for)
