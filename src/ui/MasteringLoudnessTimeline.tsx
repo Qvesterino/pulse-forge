@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useEffect, useId, useState } from "react";
 import type { LoudnessTimeline } from "../audio-engine/kweighting";
 
 const VIEW_WIDTH = 1000;
@@ -25,10 +25,29 @@ function formatTime(seconds: number): string {
   return `${minutes}:${String(wholeSeconds % 60).padStart(2, "0")}`;
 }
 
+function formatBucketTime(seconds: number): string {
+  const safeSeconds = Math.max(0, seconds);
+  if (safeSeconds < 60) return `${safeSeconds.toFixed(2)} s`;
+  const totalCentiseconds = Math.round(safeSeconds * 100);
+  const totalWholeSeconds = Math.floor(totalCentiseconds / 100);
+  const centiseconds = String(totalCentiseconds % 100).padStart(2, "0");
+  const secondPart = `${String(totalWholeSeconds % 60).padStart(2, "0")}.${centiseconds}`;
+  const totalMinutes = Math.floor(totalWholeSeconds / 60);
+  if (totalMinutes < 60) return `${totalMinutes}:${secondPart}`;
+  return `${Math.floor(totalMinutes / 60)}:${String(totalMinutes % 60).padStart(2, "0")}:${secondPart}`;
+}
+
 export function MasteringLoudnessTimeline({ timeline }: { timeline: LoudnessTimeline | null }) {
   const instanceId = useId().replaceAll(":", "");
+  const [showValues, setShowValues] = useState(false);
+  const hasValues = Boolean(timeline && timeline.points.length > 0);
   const titleId = `mastering-loudness-title-${instanceId}`;
   const descriptionId = `mastering-loudness-description-${instanceId}`;
+
+  useEffect(() => {
+    if (!hasValues) setShowValues(false);
+  }, [hasValues]);
+
   if (!timeline || timeline.points.length === 0) {
     return (
       <section className="mastering-loudness-timeline" aria-label="Short-term loudness timeline">
@@ -141,6 +160,36 @@ export function MasteringLoudnessTimeline({ timeline }: { timeline: LoudnessTime
       <p className="mastering-loudness-footnote">
         Shading shows the min–max range within each display bucket; long renders are condensed to at most 1,200 buckets.
       </p>
+      <details className="mastering-loudness-data" onToggle={(event) => setShowValues(event.currentTarget.open)}>
+        <summary>View loudness values ({timeline.points.length} buckets)</summary>
+        {showValues && (
+          <div className="mastering-loudness-table-wrap" role="region" aria-label="Loudness values table" tabIndex={0}>
+            <table className="mastering-loudness-table">
+              <caption>
+                Three-second short-term loudness windows. Min, mean and max summarize each display bucket.
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">Bucket center</th>
+                  <th scope="col">Min LUFS</th>
+                  <th scope="col">Mean LUFS</th>
+                  <th scope="col">Max LUFS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {timeline.points.map((point, index) => (
+                  <tr key={`${point.timeSeconds}-${index}`}>
+                    <th scope="row">{formatBucketTime(point.timeSeconds)}</th>
+                    <td>{point.lowLufs.toFixed(1)}</td>
+                    <td>{point.meanLufs.toFixed(1)}</td>
+                    <td>{point.highLufs.toFixed(1)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </details>
     </section>
   );
 }
