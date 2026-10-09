@@ -1647,7 +1647,7 @@ export const MCP_TOOL_DEFS = [
   {
     name: "kyx_master",
     description:
-      "Mastering read-back and ZENIT controls. status reports the ordered global KYX MASTER signal path, delivery profile, runtime fallbacks and a live meter snapshot when available; it also lists ZENIT instances. Other ops insert or manage the ZENIT composite mastering device (ADR 0020) on a track/group bus. A group-hosted ZENIT shapes that stem before the final global master chain. Use platform/land for profile checks and explicit loudness adjustment; live meter snapshots are not full-song reports.",
+      "Mastering read-back and ZENIT controls. status reports the ordered global KYX MASTER signal path, delivery profile, runtime fallbacks and a live meter snapshot when available; it also lists ZENIT instances. Other ops insert or manage the ZENIT composite mastering device (ADR 0020) on a track/group bus. op:ab saves, compares and restores session-only snapshots of ZENIT/APEKS/ŠÍRKA/PRÚD parameters and output trims. A group-hosted ZENIT shapes that stem before the final global master chain. Use platform/land for profile checks and explicit loudness adjustment; live meter snapshots are not full-song reports.",
     inputSchema: {
       type: "object",
       properties: {

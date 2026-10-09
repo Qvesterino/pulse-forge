@@ -13,7 +13,7 @@ import { profileFor, resolveDeliveryTarget, verdictAgainst, worstStatus } from "
 import { stemMasteringPlan, stemRoleOf } from "./stem-mastering";
 import { collectDevices, diffSnapshots, snapshotSummary, type AbSnapshot } from "./master-ab";
 
-const masterAbStore = new Map<string, import("./master-ab").AbSnapshot>();
+const masterAbStore = new Map<string, Map<string, AbSnapshot>>();
 import { MASTER_SIGNAL_FLOW, type MasterSignalFlowStageId } from "../mastering/signalFlow";
 import { isCreativeBriefRoute } from "../intent/model-fallback-policy";
 import { applyFaderIntent, applyTempoIntent } from "../intent/conversation";
@@ -1378,7 +1378,8 @@ export const MCP_TOOLS: McpToolDef[] = [
       "KYX MASTER signal path, delivery profile, runtime fallbacks and a live " +
       "meter snapshot when available; it also lists ZENIT instances. Other ops " +
       "insert or manage the ZENIT composite mastering device (ADR 0020) on a " +
-      "track/group bus. A group-hosted ZENIT shapes that stem before the final " +
+      "track/group bus. op:ab saves, compares and restores session-only " +
+      "snapshots of ZENIT/APEKS/ŠÍRKA/PRÚD parameters and output trims. A group-hosted ZENIT shapes that stem before the final " +
       "global master chain. Use platform/land for profile checks and explicit " +
       "loudness adjustment; live meter snapshots are not full-song reports.",
     inputSchema: {
@@ -5311,17 +5312,20 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
   }
 
   if (op === "ab") {
-    // MASTER A/B SNAPSHOTS — save/compare/restore the WHOLE mastering state
-    // of the resolved bus (session store, never the project document).
+    // MASTER A/B SNAPSHOTS — scope names to this project and keep the snapshots
+    // session-only, never in the project document.
     // Restore folds every param + trim write into ONE undoable snapshot.
+    const projectId = doc.id !== "" ? doc.id : `unnamed:${doc.name}`;
+    const snapshots = masterAbStore.get(projectId) ?? new Map<string, AbSnapshot>();
+    masterAbStore.set(projectId, snapshots);
     const action = String(record.action ?? "list");
     if (action === "list") {
-      const names = [...masterAbStore.keys()];
+      const names = [...snapshots.keys()];
       return {
         text:
           names.length === 0
             ? "no snapshots — op:ab {action:save, name} captures the bus mastering state"
-            : names.map((n) => snapshotSummary(masterAbStore.get(n)!)).join("\n"),
+            : names.map((n) => snapshotSummary(snapshots.get(n)!)).join("\n"),
         mutated: false,
       };
     }
@@ -5335,13 +5339,13 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
       if (devices.length === 0) {
         return { text: "no mastering devices on the bus — add ZENIT/APEKS/ŠÍRKA/PRÚD first", mutated: false };
       }
-      masterAbStore.set(name, { name, savedAt: new Date().toISOString(), devices });
+      snapshots.set(name, { name, savedAt: new Date().toISOString(), devices });
       return {
         text: `snapshot '${name}' saved — ${devices.length} device(s); mutate freely, then compare/restore`,
         mutated: false,
       };
     }
-    const snap = masterAbStore.get(name);
+    const snap = snapshots.get(name);
     if (!snap) return { text: `no snapshot '${name}' — op:ab {action:list}`, mutated: false };
     if (action === "compare") {
       const current: AbSnapshot = {
@@ -5354,32 +5358,50 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
         rows.length === 0
           ? "identical to the current state"
           : rows
-              .map(
-                (row) =>
-                  `${row.track} · ${row.device}.${row.param}: ${row.a == null ? "—" : row.a.toFixed(2)} → ${row.b == null ? "—" : row.b.toFixed(2)}`,
-              )
+              .map((row) => {
+                const device = `${row.track} · ${row.device}${row.instanceIndex === undefined ? "" : ` #${row.instanceIndex + 1}`}`;
+                if (row.presenceChange === "missing-in-current") return `${device}: present in snapshot, missing now`;
+                if (row.presenceChange === "new-in-current") return `${device}: added since snapshot`;
+                return `${device}.${row.param}: ${row.a == null ? "—" : row.a.toFixed(2)} → ${row.b == null ? "—" : row.b.toFixed(2)}`;
+              })
               .join("\n") + "\nlevel-match hint: restore, then offset op:trim by the trims shown in the list";
       return { text: `'${name}' vs current:\n${body}`, mutated: false };
     }
     if (action === "restore") {
       let next = doc;
       const applied: string[] = [];
+      const skipped: string[] = [];
       for (const device of snap.devices) {
         const track = next.tracks.find((t) => t.id === device.trackId);
-        if (!track) continue;
-        // Match the instance by type on the same track (ids churn across undo).
-        const instance = track.effects.find((fx) => fx.type === device.type);
-        if (!instance) continue;
+        const instanceLabel = `${device.trackName}/${device.type}${device.instanceIndex === undefined ? "" : ` #${device.instanceIndex + 1}`}`;
+        if (!track) {
+          skipped.push(instanceLabel);
+          continue;
+        }
+        // Prefer the saved ID when it survived; the per-type occurrence handles recreated IDs.
+        const matchingDevices = track.effects.filter((fx) => fx.type === device.type);
+        const instance =
+          matchingDevices.find((fx) => fx.id === device.fxId) ?? matchingDevices[device.instanceIndex ?? 0];
+        if (!instance) {
+          skipped.push(instanceLabel);
+          continue;
+        }
         for (const [paramId, value] of Object.entries(device.params))
           next = setEffectParam(next, track.id, instance.id, paramId, value).execute(next);
         if (device.outputTrimDb != null)
           next = setEffectOutputTrimDb(next, track.id, instance.id, device.outputTrimDb).execute(next);
-        applied.push(`${track.name}/${device.type}`);
+        applied.push(
+          `${track.name}/${device.type}${device.instanceIndex === undefined ? "" : ` #${device.instanceIndex + 1}`}`,
+        );
       }
       if (applied.length === 0)
-        return { text: "nothing to restore — the mastering devices are gone from the bus", mutated: false };
+        return {
+          text: `nothing to restore — the saved mastering devices are missing: ${skipped.join(", ") || "unknown"}`,
+          mutated: false,
+        };
       ctx.execute(snapshot("mcpMasterAbRestore", `MCP: restore A/B '${name}'`, doc, next));
-      return { text: `restored '${name}' on ${applied.join(", ")} — one undo step`, mutated: true };
+      const skippedReadback = skipped.length > 0 ? `; skipped missing ${skipped.join(", ")}` : "";
+      return { text: `restored '${name}' on ${applied.join(", ")}${skippedReadback} — one undo step`, mutated: true };
     }
     return { text: `unknown op:ab action: ${action} (save | list | compare | restore)`, mutated: false, isError: true };
   }

@@ -21,6 +21,8 @@ export interface AbDeviceState {
   trackName: string;
   fxId: string;
   type: MasterDeviceType;
+  /** Zero-based occurrence among this device type on the track; omitted when unique. */
+  instanceIndex?: number;
   params: Record<string, number>;
   outputTrimDb: number | null;
 }
@@ -39,16 +41,32 @@ export function collectDevices(track: {
   name: string;
   effects: { id: string; type: string; params: Record<string, number>; outputTrimDb?: number }[];
 }): AbDeviceState[] {
-  return track.effects
-    .filter((fx): fx is typeof fx & { type: MasterDeviceType } => (AB_DEVICES as string[]).includes(fx.type))
-    .map((fx) => ({
+  const totals = new Map<MasterDeviceType, number>();
+  for (const fx of track.effects) {
+    if ((AB_DEVICES as string[]).includes(fx.type)) {
+      const type = fx.type as MasterDeviceType;
+      totals.set(type, (totals.get(type) ?? 0) + 1);
+    }
+  }
+
+  const occurrences = new Map<MasterDeviceType, number>();
+  const devices: AbDeviceState[] = [];
+  for (const fx of track.effects) {
+    if (!(AB_DEVICES as string[]).includes(fx.type)) continue;
+    const type = fx.type as MasterDeviceType;
+    const instanceIndex = occurrences.get(type) ?? 0;
+    occurrences.set(type, instanceIndex + 1);
+    devices.push({
       trackId: track.id,
       trackName: track.name,
       fxId: fx.id,
-      type: fx.type,
+      type,
+      ...(totals.get(type)! > 1 ? { instanceIndex } : {}),
       params: { ...fx.params },
       outputTrimDb: fx.outputTrimDb ?? null,
-    }));
+    });
+  }
+  return devices;
 }
 
 /** Parameter-level diff of two snapshots (same devices matched by type+track). */
@@ -58,20 +76,37 @@ export interface AbDiffRow {
   param: string;
   a: number | null;
   b: number | null;
+  instanceIndex?: number;
+  presenceChange?: "missing-in-current" | "new-in-current";
 }
 
 export function diffSnapshots(a: AbSnapshot, b: AbSnapshot): AbDiffRow[] {
-  const key = (d: AbDeviceState) => `${d.trackId}::${d.type}`;
+  const key = (d: AbDeviceState) => `${d.trackId}::${d.type}::${d.instanceIndex ?? 0}`;
+  const aKeys = new Set(a.devices.map(key));
   const bMap = new Map(b.devices.map((d) => [key(d), d]));
   const rows: AbDiffRow[] = [];
   for (const da of a.devices) {
     const db = bMap.get(key(da));
-    if (!db) continue;
+    if (!db) {
+      rows.push({
+        device: da.type,
+        track: da.trackName,
+        param: "device",
+        a: 1,
+        b: null,
+        ...(da.instanceIndex === undefined ? {} : { instanceIndex: da.instanceIndex }),
+        presenceChange: "missing-in-current",
+      });
+      continue;
+    }
+    const rowIdentity = da.instanceIndex === undefined ? {} : { instanceIndex: da.instanceIndex };
     const ids = new Set([...Object.keys(da.params), ...Object.keys(db.params)]);
     for (const param of ids) {
       const av = da.params[param];
       const bv = db.params[param];
-      if (av !== bv) rows.push({ device: da.type, track: da.trackName, param, a: av ?? null, b: bv ?? null });
+      if (av !== bv) {
+        rows.push({ device: da.type, track: da.trackName, param, a: av ?? null, b: bv ?? null, ...rowIdentity });
+      }
     }
     if (da.outputTrimDb !== db.outputTrimDb)
       rows.push({
@@ -80,7 +115,20 @@ export function diffSnapshots(a: AbSnapshot, b: AbSnapshot): AbDiffRow[] {
         param: "outputTrimDb",
         a: da.outputTrimDb,
         b: db.outputTrimDb,
+        ...rowIdentity,
       });
+  }
+  for (const db of b.devices) {
+    if (aKeys.has(key(db))) continue;
+    rows.push({
+      device: db.type,
+      track: db.trackName,
+      param: "device",
+      a: null,
+      b: 1,
+      ...(db.instanceIndex === undefined ? {} : { instanceIndex: db.instanceIndex }),
+      presenceChange: "new-in-current",
+    });
   }
   return rows;
 }
@@ -89,6 +137,9 @@ export function diffSnapshots(a: AbSnapshot, b: AbSnapshot): AbDiffRow[] {
 export function snapshotSummary(s: AbSnapshot): string {
   const trims = s.devices
     .filter((d) => d.outputTrimDb != null && d.outputTrimDb !== 0)
-    .map((d) => `${d.trackName}/${d.type} ${d.outputTrimDb! > 0 ? "+" : ""}${d.outputTrimDb!.toFixed(1)} dB`);
+    .map(
+      (d) =>
+        `${d.trackName}/${d.type}${d.instanceIndex === undefined ? "" : ` #${d.instanceIndex + 1}`} ${d.outputTrimDb! > 0 ? "+" : ""}${d.outputTrimDb!.toFixed(1)} dB`,
+    );
   return `${s.name}: ${s.devices.length} device(s)${trims.length > 0 ? ` · trims ${trims.join(", ")}` : ""}`;
 }
