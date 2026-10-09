@@ -27,6 +27,8 @@ export function MasteringPanel() {
   const profileSource = MASTER_PROFILE_SOURCES[profile.id];
   const profileSourceReviewDue = profileSource ? isMasterProfileSourceReviewDue(profileSource) : false;
   const [workspaceState, setWorkspaceState] = useState<MasteringWorkspaceState | null>(null);
+  const [comparisonBusy, setComparisonBusy] = useState(false);
+  const [fileSessionBusy, setFileSessionBusy] = useState(false);
   const [controlView, setControlView] = useState<"simple" | "advanced">("simple");
   const renderPcmLimitMiB = MAX_OFFLINE_RENDER_PCM_BYTES / (1024 * 1024);
   const handleWorkspaceStateChange = useCallback((state: MasteringWorkspaceState) => {
@@ -351,7 +353,13 @@ export function MasteringPanel() {
           <button
             type="button"
             className="btn btn-export mastering-overview-analyze"
-            disabled={!workspaceState || isAnalyzing || !workspaceState.renderPcmWithinBudget}
+            disabled={
+              !workspaceState ||
+              isAnalyzing ||
+              comparisonBusy ||
+              fileSessionBusy ||
+              !workspaceState.renderPcmWithinBudget
+            }
             onClick={() => workspaceState?.analyze()}
           >
             {isAnalyzing
@@ -413,7 +421,18 @@ export function MasteringPanel() {
           </button>
         </div>
       )}
-      <MasteringABCompare doc={doc} revisionId={revisionId ?? `${doc.id}:${doc.updatedAt}`} />
+      {(isAnalyzing || comparisonBusy || fileSessionBusy) && (
+        <p className="mastering-overview-stale" role="status" aria-live="polite" aria-atomic="true">
+          A MASTER offline task is running. Other analyses, comparisons and external file renders wait until it
+          finishes.
+        </p>
+      )}
+      <MasteringABCompare
+        doc={doc}
+        revisionId={revisionId ?? `${doc.id}:${doc.updatedAt}`}
+        blockNewWork={isAnalyzing || fileSessionBusy}
+        onBusyChange={setComparisonBusy}
+      />
       <section className="mastering-render-section" aria-label="Master render analysis and delivery">
         <header>
           <span className="mastering-panel-kicker">OFFLINE CHECK</span>
@@ -426,10 +445,11 @@ export function MasteringPanel() {
         <ExportPanel
           masteringMode
           revisionId={revisionId}
+          blockMasteringWork={comparisonBusy || fileSessionBusy}
           onMasteringWorkspaceStateChange={handleWorkspaceStateChange}
         />
       </section>
-      <MasteringFileSessionPanel />
+      <MasteringFileSessionPanel blockNewWork={comparisonBusy || isAnalyzing} onBusyChange={setFileSessionBusy} />
     </section>
   );
 }

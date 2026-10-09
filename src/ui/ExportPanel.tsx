@@ -188,12 +188,14 @@ export function ExportPanel({
   selectedTrackName,
   masteringMode = false,
   revisionId,
+  blockMasteringWork = false,
   onMasteringWorkspaceStateChange,
 }: {
   selectedTrackId?: string;
   selectedTrackName?: string;
   masteringMode?: boolean;
   revisionId?: string;
+  blockMasteringWork?: boolean;
   onMasteringWorkspaceStateChange?: (state: MasteringWorkspaceState) => void;
 } = {}) {
   const services = useServices();
@@ -354,6 +356,7 @@ export function ExportPanel({
   };
 
   const exportMaster = async (download = true) => {
+    if (masteringMode && blockMasteringWork) return;
     if (download && masteringMp3RateUnsupported) {
       setStatus({
         kind: "error",
@@ -586,7 +589,7 @@ export function ExportPanel({
   };
 
   analyzeActionRef.current = () => {
-    if (masteringMode && !busy) void exportMaster(false);
+    if (masteringMode && !busy && !blockMasteringWork) void exportMaster(false);
   };
 
   useEffect(() => {
@@ -1230,6 +1233,7 @@ export function ExportPanel({
               className="btn btn-export"
               disabled={
                 busy ||
+                blockMasteringWork ||
                 !renderPcmWithinBudget ||
                 !wavDeliveryWithinBudget ||
                 !mp3DeliveryWithinBudget ||

@@ -107,7 +107,17 @@ function currentRevision(services: ReturnType<typeof useServices>, projectId: st
   return current.id === projectId ? projectRevisionIdFor(current) : null;
 }
 
-export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; revisionId: string }) {
+export function MasteringABCompare({
+  doc,
+  revisionId,
+  blockNewWork = false,
+  onBusyChange,
+}: {
+  doc: ProjectDocument;
+  revisionId: string;
+  blockNewWork?: boolean;
+  onBusyChange?(busy: boolean): void;
+}) {
   const services = useServices();
   const [sampleBankRevision, setSampleBankRevision] = useState(services.bank.revision);
   const [session, setSession] = useState<MasteringABSession>(() => loadMasteringABSession(doc));
@@ -212,6 +222,12 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
   useEffect(() => () => abortRef.current?.abort(), [services.engine]);
 
   useEffect(() => {
+    onBusyChange?.(comparisonWorkBusy);
+  }, [comparisonWorkBusy, onBusyChange]);
+
+  useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
+
+  useEffect(() => {
     bypassMatchAbortRef.current?.abort();
     setLiveBypassMatch(null);
     setBypassMatchStatus("");
@@ -269,7 +285,7 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
   };
 
   const renderComparison = async () => {
-    if (!snapshotA || !snapshotB || comparisonWorkBusy || blindListen) return;
+    if (!snapshotA || !snapshotB || comparisonWorkBusy || blockNewWork || blindListen) return;
     const revisionAtStart = currentRevision(services, doc.id);
     let bankRevisionAtStart = services.bank.revision;
     if (!revisionAtStart || revisionAtStart !== revisionId) {
@@ -370,7 +386,7 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
   };
 
   const matchLiveBypassLoudness = async () => {
-    if (comparisonWorkBusy || blindListen) return;
+    if (comparisonWorkBusy || blockNewWork || blindListen) return;
     const sourceDoc = services.store.getDoc();
     const revisionAtStart = sourceDoc.id === doc.id ? projectRevisionIdFor(sourceDoc) : null;
     if (!revisionAtStart || revisionAtStart !== revisionId) {
@@ -515,7 +531,7 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
   };
 
   const startBlindListen = () => {
-    if (!comparisonReady || comparisonWorkBusy || blindListen) return;
+    if (!comparisonReady || comparisonWorkBusy || blockNewWork || blindListen) return;
     services.engine.stopPreview();
     setPlaying(null);
     setBlindListen({ first: randomizedFirstSlot(), preference: null, revealed: false });
@@ -631,7 +647,7 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
             <button
               type="button"
               onClick={() => void matchLiveBypassLoudness()}
-              disabled={comparisonWorkBusy || Boolean(blindListen)}
+              disabled={comparisonWorkBusy || blockNewWork || Boolean(blindListen)}
             >
               {bypassMatchBusy
                 ? "Measuring bypass match…"
@@ -643,7 +659,7 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
               <button
                 type="button"
                 onClick={clearLiveBypassMatch}
-                disabled={comparisonWorkBusy || Boolean(blindListen)}
+                disabled={comparisonWorkBusy || blockNewWork || Boolean(blindListen)}
               >
                 Use native levels
               </button>
@@ -705,7 +721,7 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
           doc={doc}
           revisionId={revisionId}
           sampleRate={sampleRate}
-          blockNewWork={comparisonWorkBusy || Boolean(blindListen)}
+          blockNewWork={comparisonWorkBusy || blockNewWork || Boolean(blindListen)}
           onBusyChange={setAssistantBusy}
           reservedPcmBytes={referenceBytes + referenceProjectBytes + comparisonBytes}
           referencePcmBytes={referenceBytes}
@@ -725,7 +741,7 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
           Compare sample rate
           <select
             value={sampleRate}
-            disabled={comparisonWorkBusy || Boolean(blindListen)}
+            disabled={comparisonWorkBusy || blockNewWork || Boolean(blindListen)}
             onChange={(event) => setSampleRate(Number(event.target.value) as MasteringRenderSampleRate)}
           >
             {MASTERING_RENDER_SAMPLE_RATES.map((rate) => (
@@ -737,21 +753,21 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
         </label>
         <MasteringLevelMatchControl
           checked={levelMatch}
-          disabled={comparisonWorkBusy || Boolean(blindListen)}
+          disabled={comparisonWorkBusy || blockNewWork || Boolean(blindListen)}
           labelClassName="master-ab-match"
           onChange={setLevelMatch}
         />
         <button
           type="button"
           onClick={() => void renderComparison()}
-          disabled={!snapshotA || !snapshotB || comparisonWorkBusy || Boolean(blindListen)}
+          disabled={!snapshotA || !snapshotB || comparisonWorkBusy || blockNewWork || Boolean(blindListen)}
         >
           {busy ? "Rendering…" : "Render A/B"}
         </button>
         <button
           type="button"
           onClick={startBlindListen}
-          disabled={!comparisonReady || comparisonWorkBusy || Boolean(blindListen)}
+          disabled={!comparisonReady || comparisonWorkBusy || blockNewWork || Boolean(blindListen)}
         >
           Blind listen
         </button>
@@ -846,7 +862,7 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
           sampleRate={sampleRate}
           levelMatch={levelMatch}
           abRenderEpoch={abRenderEpoch}
-          blockNewWork={comparisonWorkBusy || Boolean(blindListen)}
+          blockNewWork={comparisonWorkBusy || blockNewWork || Boolean(blindListen)}
           onBusyChange={setReferenceBusy}
           comparisonBytes={comparisonBytes}
           onBeforeRender={() => {

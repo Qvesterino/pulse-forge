@@ -361,7 +361,13 @@ function masteringSessionErrorMessage(reason: unknown, fallback: string): string
   return reason instanceof Error ? reason.message : fallback;
 }
 
-export function MasteringFileSessionPanel() {
+export function MasteringFileSessionPanel({
+  blockNewWork = false,
+  onBusyChange,
+}: {
+  blockNewWork?: boolean;
+  onBusyChange?(busy: boolean): void;
+} = {}) {
   const services = useServices();
   const repository = useMemo(() => new MasteringSessionRepository(), []);
   const [sessions, setSessions] = useState<MasteringSessionSummary[]>([]);
@@ -393,10 +399,12 @@ export function MasteringFileSessionPanel() {
   const [sourceDragActive, setSourceDragActive] = useState(false);
   const [referenceDragActive, setReferenceDragActive] = useState(false);
   const operation = useRef<AbortController | null>(null);
+  const blockNewWorkRef = useRef(blockNewWork);
   const selectionEpoch = useRef(0);
   const playingRef = useRef<SessionPreviewSelection | null>(null);
   const previewGeneration = useRef(0);
   playingRef.current = playing;
+  blockNewWorkRef.current = blockNewWork;
   const sourceIsLossyMp3 = Boolean(session?.fileName.toLowerCase().endsWith(".mp3"));
   const deliveryVersion = session?.deliveryVersion ?? "";
   const setDeliveryVersion = (value: string) => {
@@ -435,6 +443,12 @@ export function MasteringFileSessionPanel() {
       if (playingRef.current) services.engine.stopPreview();
     };
   }, [repository, services.engine]);
+
+  useEffect(() => {
+    onBusyChange?.(Boolean(busy));
+  }, [busy, onBusyChange]);
+
+  useEffect(() => () => onBusyChange?.(false), [onBusyChange]);
 
   const dirty = Boolean(session && draft && JSON.stringify(draft) !== JSON.stringify(session.masterConfig));
   const renderCurrent = Boolean(
@@ -699,6 +713,7 @@ export function MasteringFileSessionPanel() {
 
   const loadSession = useCallback(
     async (id: string) => {
+      if (blockNewWorkRef.current) return;
       const epoch = ++selectionEpoch.current;
       operation.current?.abort();
       operation.current = null;
@@ -779,7 +794,7 @@ export function MasteringFileSessionPanel() {
 
   const importFile = useCallback(
     async (file?: File) => {
-      if (!file) return;
+      if (!file || blockNewWorkRef.current) return;
       const epoch = ++selectionEpoch.current;
       operation.current?.abort();
       const controller = new AbortController();
@@ -901,7 +916,7 @@ export function MasteringFileSessionPanel() {
 
   const importReference = useCallback(
     async (file?: File) => {
-      if (!file || !session || !source || !draft) return;
+      if (!file || !session || !source || !draft || blockNewWorkRef.current) return;
       operation.current?.abort();
       const controller = new AbortController();
       operation.current = controller;
@@ -1156,7 +1171,7 @@ export function MasteringFileSessionPanel() {
   );
 
   const renderComparison = useCallback(async () => {
-    if (!session || !source || !snapshotA || !snapshotB || dirty || busy) return;
+    if (!session || !source || !snapshotA || !snapshotB || dirty || busy || blockNewWorkRef.current) return;
     const controller = new AbortController();
     operation.current?.abort();
     operation.current = controller;
@@ -1332,7 +1347,7 @@ export function MasteringFileSessionPanel() {
     [stopSessionPreview],
   );
   const analyzeSource = useCallback(async () => {
-    if (!session || !source || !draft) return;
+    if (!session || !source || !draft || blockNewWorkRef.current) return;
     const controller = new AbortController();
     operation.current?.abort();
     operation.current = controller;
@@ -1384,7 +1399,7 @@ export function MasteringFileSessionPanel() {
   const updateDraftEffects = useCallback((effects: EffectInstance[]) => updateDraft({ effects }), [updateDraft]);
 
   const renderAndAnalyze = useCallback(async () => {
-    if (!session || !source || !draft || dirty) return;
+    if (!session || !source || !draft || dirty || blockNewWorkRef.current) return;
     const controller = new AbortController();
     operation.current?.abort();
     operation.current = controller;
@@ -1443,7 +1458,7 @@ export function MasteringFileSessionPanel() {
   }, [dirty, draft, estimatedBytes, sampleRate, services, session, source, stopSessionPreview]);
 
   const exportDelivery = useCallback(async () => {
-    if (!session || !draft || !rendered || !renderCurrent) return;
+    if (!session || !draft || !rendered || !renderCurrent || blockNewWorkRef.current) return;
     if (mp3RateUnsupported) {
       setError(
         "MP3 delivery in this workspace supports 44.1 or 48 kHz renders. Choose WAV/FLAC for 96 kHz, or lower the render rate.",
@@ -1718,11 +1733,11 @@ export function MasteringFileSessionPanel() {
           className={`btn btn-small mastering-file-session-import${sourceDragActive ? " is-drag-over" : ""}`}
           onDragEnter={(event: DragEvent<HTMLLabelElement>) => {
             event.preventDefault();
-            if (!busy) setSourceDragActive(true);
+            if (!busy && !blockNewWork) setSourceDragActive(true);
           }}
           onDragOver={(event: DragEvent<HTMLLabelElement>) => {
             event.preventDefault();
-            event.dataTransfer.dropEffect = busy ? "none" : "copy";
+            event.dataTransfer.dropEffect = busy || blockNewWork ? "none" : "copy";
           }}
           onDragLeave={(event: DragEvent<HTMLLabelElement>) => {
             const relatedTarget = event.relatedTarget;
@@ -1733,7 +1748,7 @@ export function MasteringFileSessionPanel() {
           onDrop={(event: DragEvent<HTMLLabelElement>) => {
             event.preventDefault();
             setSourceDragActive(false);
-            if (busy) return;
+            if (busy || blockNewWork) return;
             const file = event.dataTransfer.files[0];
             if (file) void importFile(file);
           }}
@@ -1743,7 +1758,7 @@ export function MasteringFileSessionPanel() {
             type="file"
             aria-label="Import WAV, MP3 or FLAC mixdown"
             accept=".wav,.wave,.mp3,.flac,audio/wav,audio/mpeg,audio/flac"
-            disabled={Boolean(busy)}
+            disabled={Boolean(busy) || blockNewWork}
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];
               event.currentTarget.value = "";
@@ -1759,7 +1774,7 @@ export function MasteringFileSessionPanel() {
           <select
             aria-label="Saved mastering sessions"
             value={session?.id ?? ""}
-            disabled={Boolean(busy)}
+            disabled={Boolean(busy) || blockNewWork}
             onChange={(event) => void loadSession(event.target.value)}
           >
             <option value="">Choose a saved session…</option>
@@ -1984,6 +1999,7 @@ export function MasteringFileSessionPanel() {
                 className="btn btn-export"
                 disabled={
                   Boolean(busy) ||
+                  blockNewWork ||
                   dirty ||
                   !source ||
                   !snapshotA ||
@@ -2099,11 +2115,11 @@ export function MasteringFileSessionPanel() {
                 className={`mastering-session-reference-import${referenceDragActive ? " is-drag-over" : ""}`}
                 onDragEnter={(event: DragEvent<HTMLLabelElement>) => {
                   event.preventDefault();
-                  if (!busy) setReferenceDragActive(true);
+                  if (!busy && !blockNewWork) setReferenceDragActive(true);
                 }}
                 onDragOver={(event: DragEvent<HTMLLabelElement>) => {
                   event.preventDefault();
-                  event.dataTransfer.dropEffect = busy ? "none" : "copy";
+                  event.dataTransfer.dropEffect = busy || blockNewWork ? "none" : "copy";
                 }}
                 onDragLeave={(event: DragEvent<HTMLLabelElement>) => {
                   const relatedTarget = event.relatedTarget;
@@ -2114,7 +2130,7 @@ export function MasteringFileSessionPanel() {
                 onDrop={(event: DragEvent<HTMLLabelElement>) => {
                   event.preventDefault();
                   setReferenceDragActive(false);
-                  if (busy) return;
+                  if (busy || blockNewWork) return;
                   const file = event.dataTransfer.files[0];
                   if (file) void importReference(file);
                 }}
@@ -2130,7 +2146,7 @@ export function MasteringFileSessionPanel() {
                   type="file"
                   aria-label="Import external mastering reference WAV, MP3 or FLAC"
                   accept=".wav,.wave,.mp3,.flac,audio/wav,audio/mpeg,audio/flac"
-                  disabled={Boolean(busy)}
+                  disabled={Boolean(busy) || blockNewWork}
                   onChange={(event) => {
                     const file = event.currentTarget.files?.[0];
                     if (file) void importReference(file);
@@ -2329,7 +2345,7 @@ export function MasteringFileSessionPanel() {
               type="button"
               className="btn btn-small"
               aria-label="Analyze original external mastering input"
-              disabled={Boolean(busy) || !source}
+              disabled={Boolean(busy) || blockNewWork || !source}
               onClick={() => void analyzeSource()}
             >
               {currentSourceAnalysis ? "Re-analyze input" : "Analyze input"}
@@ -2501,7 +2517,7 @@ export function MasteringFileSessionPanel() {
             <button
               type="button"
               className="btn btn-export"
-              disabled={Boolean(busy) || !source || dirty || estimatedBytes > 512 * 1024 * 1024}
+              disabled={Boolean(busy) || blockNewWork || !source || dirty || estimatedBytes > 512 * 1024 * 1024}
               onClick={() => void renderAndAnalyze()}
             >
               Render &amp; analyze
@@ -2511,6 +2527,7 @@ export function MasteringFileSessionPanel() {
               className="btn btn-export"
               disabled={
                 Boolean(busy) ||
+                blockNewWork ||
                 !renderCurrent ||
                 !wavDeliveryWithinBudget ||
                 !flacDeliveryWithinBudget ||

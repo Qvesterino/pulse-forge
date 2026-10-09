@@ -223,6 +223,10 @@ export function MasteringReferenceCompare({
   }, [onProjectMasterBytes, projectMasterPcmBytes]);
 
   useEffect(() => {
+    onBusyChange(loading || rendering);
+  }, [loading, onBusyChange, rendering]);
+
+  useEffect(() => {
     aliveRef.current = true;
     return () => {
       aliveRef.current = false;
@@ -466,7 +470,6 @@ export function MasteringReferenceCompare({
     setError("");
     setStorageMessage("");
     setStatus("Preparing sample audio for a consistent reference comparison…");
-    onBusyChange(true);
     setRendering(true);
     const controller = new AbortController();
     renderAbortRef.current = controller;
@@ -540,7 +543,6 @@ export function MasteringReferenceCompare({
     } finally {
       if (renderAbortRef.current === controller) renderAbortRef.current = null;
       setRendering(false);
-      onBusyChange(false);
     }
   };
 
