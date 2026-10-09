@@ -220,9 +220,13 @@ export function MasteringABCompare({
     masterTestToneGenerationRef.current += 1;
     services.engine.stopMasterMonitorTestTone();
     setMasterTestToneActive(false);
-    setMasterTestToneStatus("");
     const remainingToneTail = services.engine.getMasterMonitorToneTailRemainingSeconds();
     setMasterTestToneTailRemaining(remainingToneTail > 0 ? remainingToneTail : null);
+    setMasterTestToneStatus(
+      remainingToneTail > 0
+        ? `A master-effects tail is still settling. Recording and auditions unlock in about ${remainingToneTail.toFixed(1)} seconds; wait longer if you can still hear it.`
+        : "",
+    );
     if (playingRef.current) {
       services.engine.stopPreview();
       setPlaying(null);
