@@ -10,6 +10,7 @@ import type { MasteringRenderSampleRate } from "./sampleRates";
 
 export const MAX_MASTERING_SESSION_SECONDS = 12 * 60;
 export const MAX_MASTERING_SESSION_WORKING_SET_BYTES = 512 * 1024 * 1024;
+export const MASTERING_SESSION_BROWSER_DECODE_RESERVE_BYTES = 64 * 1024 * 1024;
 
 export interface MasteringSessionRenderOptions {
   sampleRate: MasteringRenderSampleRate;
@@ -138,6 +139,20 @@ export function assertMasteringSessionWorkingSetBudget(estimatedBytes: number): 
       `This file-mastering operation needs about ${estimateMiB} MiB across source, render, and output buffers, above KYX's ${limitMiB} MiB session limit. Use a shorter source or lower the render rate.`,
     );
   }
+}
+
+/** Browser decode retains the input bytes, a decoder copy, PCM output and runtime reserve. */
+export function estimateMasteringSessionBrowserDecodeWorkingSetBytes(encodedBytes: number, pcmBytes: number): number {
+  if (
+    !Number.isSafeInteger(encodedBytes) ||
+    encodedBytes <= 0 ||
+    !Number.isSafeInteger(pcmBytes) ||
+    pcmBytes <= 0
+  ) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const estimatedBytes = encodedBytes * 2 + pcmBytes + MASTERING_SESSION_BROWSER_DECODE_RESERVE_BYTES;
+  return Number.isSafeInteger(estimatedBytes) ? estimatedBytes : Number.POSITIVE_INFINITY;
 }
 
 /** Render a decoded mono/stereo source through an isolated copy of a sample bank. */

@@ -4396,6 +4396,30 @@ export const RR_VARIATIONS: Record<string, Array<{ rate: number; gain: number }>
     { rate: 1.016, gain: 1.04 },
     { rate: 0.986, gain: 0.95 },
   ],
+  // Latin-perc hand voices (kit humanize follow-up 2026-10-09): the martillo
+  // (bongos), güira (shakers) and cascara (timbale) cells repeat at 8th/16th
+  // rate — the most exposed machine-gun reads in the new kits. Same subtle
+  // ±1.5 % pitch/length, ±4 % level shape as the rest of the map.
+  "factory.shaker.fast": [
+    { rate: 1.016, gain: 1.04 },
+    { rate: 0.988, gain: 0.95 },
+  ],
+  "factory.shaker.soft": [
+    { rate: 1.014, gain: 1.03 },
+    { rate: 0.99, gain: 0.96 },
+  ],
+  "factory.perc.bongos": [
+    { rate: 1.018, gain: 1.04 },
+    { rate: 0.984, gain: 0.95 },
+  ],
+  "factory.perc.conga.high": [
+    { rate: 1.016, gain: 1.05 },
+    { rate: 0.986, gain: 0.94 },
+  ],
+  "factory.perc.timbale": [
+    { rate: 1.012, gain: 1.03 },
+    { rate: 0.99, gain: 0.96 },
+  ],
 };
 
 /** Derive one variation: linear-resample (pitch + length together) and scale. */

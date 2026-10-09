@@ -51,6 +51,40 @@ export const FACTORY_HAT_CLOSED_RR = roundRobinLayers([
 /** Open-hat RR set. */
 export const FACTORY_HAT_OPEN_RR = roundRobinLayers(["factory.hat.open.short", "factory.hat.open.short.rr2"]);
 
+/**
+ * Latin-percussion RR sets (kit humanize 2026-10-09) — the hand voices of the
+ * Latin kit and the latin genre swap. The martillo (bongos), güira (shakers)
+ * and cascara (timbale) cells repeat at 8th/16th rate, which makes them the
+ * most exposed machine-gun reads in the library; the `.rr2/.rr3` variants are
+ * derived at bank build from `RR_VARIATIONS` (same subtle ±1.5 % / ±4 % shape
+ * as the drum sets).
+ */
+export const FACTORY_SHAKER_SOFT_RR = roundRobinLayers([
+  "factory.shaker.soft",
+  "factory.shaker.soft.rr2",
+  "factory.shaker.soft.rr3",
+]);
+export const FACTORY_SHAKER_FAST_RR = roundRobinLayers([
+  "factory.shaker.fast",
+  "factory.shaker.fast.rr2",
+  "factory.shaker.fast.rr3",
+]);
+export const FACTORY_BONGOS_RR = roundRobinLayers([
+  "factory.perc.bongos",
+  "factory.perc.bongos.rr2",
+  "factory.perc.bongos.rr3",
+]);
+export const FACTORY_CONGA_HIGH_RR = roundRobinLayers([
+  "factory.perc.conga.high",
+  "factory.perc.conga.high.rr2",
+  "factory.perc.conga.high.rr3",
+]);
+export const FACTORY_TIMBALE_RR = roundRobinLayers([
+  "factory.perc.timbale",
+  "factory.perc.timbale.rr2",
+  "factory.perc.timbale.rr3",
+]);
+
 /** Kick RR set — kicks vary less than snares, two takes are enough. */
 export const FACTORY_KICK_PUNCH_RR = roundRobinLayers([
   "factory.kick.punch",

@@ -1,6 +1,13 @@
 import type { ProjectDocument } from "../project-model/types";
 import type { GenerateOptions } from "../ai/types";
-import { FACTORY_HAT_DYNAMIC, FACTORY_SNARE_DYNAMIC, roundRobinLayers } from "../sample-library/velocity-layers";
+import {
+  FACTORY_BONGOS_RR,
+  FACTORY_CONGA_HIGH_RR,
+  FACTORY_HAT_DYNAMIC,
+  FACTORY_SHAKER_SOFT_RR,
+  FACTORY_SNARE_DYNAMIC,
+  roundRobinLayers,
+} from "../sample-library/velocity-layers";
 /**
  * Genre kit colouring (sound-quality pass): a genre's identity lives in its
  * kick/snare CHARACTER, not only its groove. Pad ids (and therefore patterns,
@@ -202,16 +209,20 @@ export const GENRE_KIT_SWAPS: Partial<Record<GenerateOptions["genre"], GenrePadS
   latin: [
     // The Latin kit: the warm deep kick (the bass drum role), the soft snare
     // for brushed work, and the soft closed hat where a güira would sit.
-    // The hand-drum voice lives on the tom pads (12/13) which the default
-    // kit already carries — no swap needed there. The clave lands on the rim
-    // pad (3): the latin grooves' son-clave cell is written there, and the
-    // dry 3-2 click IS the voice that pattern was written for (the wooden
-    // cavity of rim.chip reads as a generic tick under a 200 BPM salsa).
+    // The clave lands on the rim pad (3): the latin grooves' son-clave cell
+    // is written there, and the dry 3-2 click IS the voice that pattern was
+    // written for (the wooden cavity of rim.chip reads as a generic tick
+    // under a 200 BPM salsa). The hand drums own the tom pads (12/13) — the
+    // world-perc voices (conga quinto + bongos) with their round-robin
+    // pools, since a martillo or a 2-3 son montuno cell is exactly the
+    // repetition read that machine-guns without variants.
     { index: 0, assetId: "factory.kick.deep" },
     { index: 3, assetId: "factory.perc.clave", name: "Clave" },
     { index: 4, assetId: "factory.snare.main" },
-    { index: 7, assetId: "factory.shaker.soft" },
+    { index: 7, assetId: "factory.shaker.soft", layers: FACTORY_SHAKER_SOFT_RR },
     { index: 8, assetId: "factory.hat.closed.soft" },
+    { index: 12, assetId: "factory.perc.conga.high", name: "Conga Quinto", layers: FACTORY_CONGA_HIGH_RR },
+    { index: 13, assetId: "factory.perc.bongos", name: "Bongos", layers: FACTORY_BONGOS_RR },
   ],
 };
 
@@ -324,7 +335,15 @@ export function applyGenreKitToDoc(doc: ProjectDocument, genre: GenerateOptions[
         trackChanged = true;
         anyChanged = true;
         const next = { ...pad, assetId: swap.assetId, ...(swap.name ? { name: swap.name } : {}) };
-        return nextLayers ? { ...next, layers: nextLayers } : next;
+        if (nextLayers) return { ...next, layers: nextLayers };
+        // A swap WITHOUT its own variant set must CLEAR the pad's layers:
+        // layers reference the previous asset's sample ids, and keeping them
+        // would make the new voice play the old kit's samples (a re-genre
+        // from boombap left the room-snare RR pool playing under a swapped
+        // backbeat). Set members always cover the swap's own asset.
+        const cleared = { ...next };
+        delete cleared.layers;
+        return cleared;
       }
       if (nextLayers && pad.layers !== nextLayers) {
         // A default-set pad whose active sample is NOT part of the set would
