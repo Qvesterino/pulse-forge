@@ -26,8 +26,11 @@ class PrudProcessor extends AudioWorkletProcessor {
     ];
   }
 
-  constructor() {
+  constructor(options) {
     super();
+    this.meteringEnabled = options?.processorOptions?.metering === true;
+    this.meterFrames = 0;
+    this.meterMaxGrDb = [0, 0];
     this.det = [
       { z1: 0, z2: 0, env: 0, grDb: 0 },
       { z1: 0, z2: 0, env: 0, grDb: 0 },
@@ -100,6 +103,7 @@ class PrudProcessor extends AudioWorkletProcessor {
     ];
     const detCoeffs = [{}, {}];
     for (let b = 0; b < 2; b++) PrudProcessor.bandCoeffs(bands[b].freq, bands[b].q, detCoeffs[b]);
+    const quantumMaxGrDb = [0, 0];
 
     for (let ch = 0; ch < output.length; ch++) {
       const inData = input[Math.min(ch, input.length - 1)];
@@ -126,6 +130,7 @@ class PrudProcessor extends AudioWorkletProcessor {
           const over = Math.max(0, envDb - bands[b].thresh);
           const target = Math.max(bands[b].amount, -over);
           grDb += (target - grDb) * 0.15;
+          quantumMaxGrDb[b] = Math.max(quantumMaxGrDb[b], -grDb);
           if (Math.abs(grDb - c.gainDb) > 0.05) PrudProcessor.peakCoeffs(bands[b].freq, bands[b].q, grDb, c);
           const y = c.b0 * x + c.b1 * c.x1 + c.b2 * c.x2 - c.a1 * c.y1 - c.a2 * c.y2;
           c.x2 = c.x1;
@@ -140,6 +145,16 @@ class PrudProcessor extends AudioWorkletProcessor {
         det.grDb = grDb;
       }
       for (let i = 0; i < outData.length; i++) outData[i] *= outGain;
+    }
+    if (this.meteringEnabled) {
+      for (let b = 0; b < 2; b++) this.meterMaxGrDb[b] = Math.max(this.meterMaxGrDb[b], quantumMaxGrDb[b]);
+      this.meterFrames += output[0]?.length ?? 0;
+      if (this.meterFrames >= sr * 0.05) {
+        this.port.postMessage({ type: "gainReductionBands", bandsDb: this.meterMaxGrDb });
+        this.meterFrames = 0;
+        this.meterMaxGrDb[0] = 0;
+        this.meterMaxGrDb[1] = 0;
+      }
     }
     return true;
   }

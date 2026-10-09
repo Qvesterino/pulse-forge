@@ -1,4 +1,4 @@
-import type { EffectRuntime } from "../effects/types";
+import type { EffectGainReductionReading, EffectRuntime } from "../effects/types";
 import { isOfflineAudioContext } from "../audio-engine/liveContext";
 
 import { attachProcessorErrorGuard } from "./processor-errors";
@@ -16,8 +16,10 @@ function makeStereoWorkletRuntime(
   processorName: string,
   instance: { params: Record<string, number> },
   paramIds: string[],
-  processorOptions?: Record<string, boolean>,
+  meterMode?: "apeks" | "prud",
 ): EffectRuntime {
+  const meteringEnabled = meterMode !== undefined && !isOfflineAudioContext(ctx);
+  const processorOptions = meterMode ? { metering: meteringEnabled } : undefined;
   const node = new AudioWorkletNode(ctx, processorName, {
     numberOfInputs: 1,
     numberOfOutputs: 1,
@@ -32,17 +34,25 @@ function makeStereoWorkletRuntime(
   input.connect(node);
   node.connect(output);
   let gainReductionDb = 0;
-  const meteringEnabled = processorOptions?.metering === true;
+  let bandGainReductionDb: [number, number] = [0, 0];
   if (meteringEnabled) {
     node.port.onmessage = (event: MessageEvent<unknown>) => {
-      const data = event.data as { type?: unknown; gainReductionDb?: unknown } | null;
-      if (
-        data?.type === "gainReduction" &&
-        typeof data.gainReductionDb === "number" &&
-        Number.isFinite(data.gainReductionDb) &&
-        data.gainReductionDb >= 0
+      const data = event.data as { type?: unknown; gainReductionDb?: unknown; bandsDb?: unknown } | null;
+      if (data?.type === "gainReduction") {
+        if (
+          typeof data.gainReductionDb === "number" &&
+          Number.isFinite(data.gainReductionDb) &&
+          data.gainReductionDb >= 0
+        ) {
+          gainReductionDb = data.gainReductionDb;
+        }
+      } else if (
+        data?.type === "gainReductionBands" &&
+        Array.isArray(data.bandsDb) &&
+        data.bandsDb.length === 2 &&
+        data.bandsDb.every((value) => typeof value === "number" && Number.isFinite(value) && value >= 0)
       ) {
-        gainReductionDb = data.gainReductionDb;
+        bandGainReductionDb = [data.bandsDb[0], data.bandsDb[1]];
       }
     };
   }
@@ -56,7 +66,15 @@ function makeStereoWorkletRuntime(
     setParameterAt(id, value, when) {
       safeApplyAudioParam(node, id, value, when);
     },
-    ...(meteringEnabled ? { getGainReductionDb: () => gainReductionDb } : {}),
+    ...(meteringEnabled && meterMode === "apeks" ? { getGainReductionDb: () => gainReductionDb } : {}),
+    ...(meteringEnabled && meterMode === "prud"
+      ? {
+          getGainReductionBreakdown: (): readonly EffectGainReductionReading[] => [
+            { label: "BAND 1", gainReductionDb: bandGainReductionDb[0] },
+            { label: "BAND 2", gainReductionDb: bandGainReductionDb[1] },
+          ],
+        }
+      : {}),
     dispose() {
       node.port.onmessage = null;
       node.port.close();
@@ -71,9 +89,7 @@ const APEKS_PARAMS = ["drive", "ceiling", "release", "preserve", "mix", "output"
 
 /** Create the APEKS maximizer worklet node (M2). */
 export function createApeksNode(ctx: BaseAudioContext, instance: { params: Record<string, number> }): EffectRuntime {
-  return makeStereoWorkletRuntime(ctx, "apeks-processor", instance, APEKS_PARAMS, {
-    metering: !isOfflineAudioContext(ctx),
-  });
+  return makeStereoWorkletRuntime(ctx, "apeks-processor", instance, APEKS_PARAMS, "apeks");
 }
 
 const SIRKA_PARAMS = ["lowFreq", "highFreq", "lowWidth", "midWidth", "highWidth", "mix"];
@@ -99,5 +115,5 @@ const PRUD_PARAMS = [
 
 /** Create the PRÚD dynamic EQ worklet node (M2). */
 export function createPrudNode(ctx: BaseAudioContext, instance: { params: Record<string, number> }): EffectRuntime {
-  return makeStereoWorkletRuntime(ctx, "prud-processor", instance, PRUD_PARAMS);
+  return makeStereoWorkletRuntime(ctx, "prud-processor", instance, PRUD_PARAMS, "prud");
 }
