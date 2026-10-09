@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useServices, useTracks } from "./context";
 import type { EffectType, Track } from "../project-model/types";
+import type { EffectGainReductionReading } from "../effects/types";
 import { FxAddPopover } from "./FxAddPopover";
 import { FxIntentBar } from "./FxIntentBar";
 import { EmptyState, PanelHeader } from "./PanelChrome";
@@ -118,6 +119,9 @@ export function EffectRack({
   ];
   const [fallbacks, setFallbacks] = useState<Record<string, string>>({});
   const [gainReduction, setGainReduction] = useState<Record<string, number>>({});
+  const [gainReductionBreakdown, setGainReductionBreakdown] = useState<
+    Record<string, readonly EffectGainReductionReading[]>
+  >({});
   // Accordion focus: one device editor renders full-width at a time. null =
   // auto (the newest effect), "" = all collapsed, otherwise the focused id.
   // Four flagship editors side by side squeezed each into a ~260px column —
@@ -190,6 +194,7 @@ export function EffectRack({
     let last = 0;
     let fallbackSig = "";
     let grSig = "";
+    let grBreakdownSig = "";
     const statusKey = statusScopeId ?? track.id;
     registerRaf(`fx-status-${statusKey}`, (t) => {
       if (t - last < 60) return;
@@ -198,13 +203,23 @@ export function EffectRack({
       const engineWithReport = services.engine as typeof services.engine & {
         getDegradedFx?: () => { fxId: string; reason: string }[];
         getFxGainReductionDb?: (trackId: string, fxId: string) => number | null;
+        getFxGainReductionBreakdown?: (trackId: string, fxId: string) => readonly EffectGainReductionReading[] | null;
       };
       for (const item of engineWithReport.getDegradedFx?.() ?? []) nextFallbacks[item.fxId] = item.reason;
       const nextGr: Record<string, number> = {};
+      const nextGrBreakdown: Record<string, readonly EffectGainReductionReading[]> = {};
       for (const fx of track.effects) {
+        if (fx.bypassed) continue;
+        const breakdown = engineWithReport.getFxGainReductionBreakdown?.(track.id, fx.id);
+        if (breakdown?.length) {
+          nextGrBreakdown[fx.id] = breakdown.map((reading) => ({
+            label: reading.label,
+            gainReductionDb: Math.round(reading.gainReductionDb * 2) / 2,
+          }));
+          continue;
+        }
         if (fx.type !== "limiter" && fx.type !== "compressor" && fx.type !== "drumBuss" && fx.type !== "bassBuss")
           continue;
-        if (fx.bypassed) continue;
         const value = engineWithReport.getFxGainReductionDb?.(track.id, fx.id);
         if (value != null && value > 0.05) nextGr[fx.id] = Math.round(value * 2) / 2;
       }
@@ -216,6 +231,13 @@ export function EffectRack({
         .sort()
         .map(([k, v]) => `${k}:${v}`)
         .join("|");
+      const nextGrBreakdownSig = Object.entries(nextGrBreakdown)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(
+          ([fxId, readings]) =>
+            `${fxId}:${readings.map(({ label, gainReductionDb }) => `${label}=${gainReductionDb}`).join(",")}`,
+        )
+        .join("|");
       if (nextFallbackSig !== fallbackSig) {
         fallbackSig = nextFallbackSig;
         setFallbacks(nextFallbacks);
@@ -223,6 +245,10 @@ export function EffectRack({
       if (nextGrSig !== grSig) {
         grSig = nextGrSig;
         setGainReduction(nextGr);
+      }
+      if (nextGrBreakdownSig !== grBreakdownSig) {
+        grBreakdownSig = nextGrBreakdownSig;
+        setGainReductionBreakdown(nextGrBreakdown);
       }
     });
     return () => unregisterRaf(`fx-status-${statusKey}`);
@@ -438,6 +464,7 @@ export function EffectRack({
               count={track.effects.length}
               fallbackReason={fallbacks[selectedFx.id]}
               gainReductionDb={gainReduction[selectedFx.id]}
+              gainReductionBreakdown={gainReductionBreakdown[selectedFx.id]}
               allowUserImpulseResponses={allowUserImpulseResponses}
               expanded
               devicesMode
@@ -521,6 +548,7 @@ export function EffectRack({
               count={track.effects.length}
               fallbackReason={fallbacks[fx.id]}
               gainReductionDb={gainReduction[fx.id]}
+              gainReductionBreakdown={gainReductionBreakdown[fx.id]}
               allowUserImpulseResponses={allowUserImpulseResponses}
               expanded={fx.id === effectiveExpandedFxId}
               onToggleFocus={() => setExpandedFxId(fx.id === effectiveExpandedFxId ? "" : fx.id)}
@@ -539,6 +567,7 @@ function Device({
   count,
   fallbackReason,
   gainReductionDb,
+  gainReductionBreakdown,
   allowUserImpulseResponses = true,
   expanded,
   onToggleFocus,
@@ -550,6 +579,7 @@ function Device({
   count: number;
   fallbackReason?: string;
   gainReductionDb?: number;
+  gainReductionBreakdown?: readonly EffectGainReductionReading[];
   allowUserImpulseResponses?: boolean;
   expanded: boolean;
   /** Omit when the host has no expand state (the devices dock's single editor). */
@@ -812,6 +842,19 @@ function Device({
                 />
               </div>
               <span className="fx-gr-label">GR {(gainReductionDb ?? 0).toFixed(1)} dB</span>
+            </div>
+          )}
+          {gainReductionBreakdown && gainReductionBreakdown.length > 0 && (
+            <div className="fx-gr-breakdown" role="group" aria-label={`${def.name} stage gain reduction`}>
+              {gainReductionBreakdown.map(({ label, gainReductionDb: stageReductionDb }) => (
+                <div className="fx-gr-breakdown-row" key={label}>
+                  <span className="fx-gr-breakdown-stage">{label}</span>
+                  <div className="fx-gr-track" aria-hidden="true">
+                    <div className="fx-gr-fill" style={{ width: `${Math.min(100, (stageReductionDb / 12) * 100)}%` }} />
+                  </div>
+                  <span className="fx-gr-label">{stageReductionDb.toFixed(1)} dB</span>
+                </div>
+              ))}
             </div>
           )}
           {(fx.type === "sidechain" ||

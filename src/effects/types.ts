@@ -29,6 +29,13 @@ export interface ParamDef {
   aliasOf?: string;
 }
 
+/** A labelled gain-reduction reading for multi-stage dynamics processors. */
+export interface EffectGainReductionReading {
+  label: string;
+  /** Positive dB amount removed by this stage. */
+  gainReductionDb: number;
+}
+
 export interface EffectRuntime {
   input: AudioNode;
   output: AudioNode;
@@ -112,6 +119,8 @@ export interface EffectRuntime {
   waitForLatencyReport?(timeoutMs: number): Promise<boolean>;
   /** Latest gain reduction in dB (dynamics processors), for metering. */
   getGainReductionDb?(): number;
+  /** Separate gain-reduction readings when one device contains multiple dynamics stages. */
+  getGainReductionBreakdown?(): readonly EffectGainReductionReading[];
   /** Live meter snapshot (spectrum, LUFS, GR…) — plugins with analysis DSP. */
   getMeters?(): unknown;
   /**

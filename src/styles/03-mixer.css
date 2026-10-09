@@ -882,6 +882,27 @@
   text-align: right;
 }
 
+.fx-gr-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.fx-gr-breakdown-row {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) 58px;
+  align-items: center;
+  gap: 6px;
+}
+
+.fx-gr-breakdown-stage {
+  color: var(--text-dim);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
 /* ---------- Modulator step grid ---------- */
 
 .mod-step-grid-wrap {

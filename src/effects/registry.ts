@@ -3545,6 +3545,10 @@ const zenit: EffectDefinition = {
           .filter((cleanup): cleanup is () => void => cleanup !== undefined);
         return () => unsubscribe.forEach((cleanup) => cleanup());
       },
+      getGainReductionBreakdown: () => [
+        { label: "GLUE", gainReductionDb: Math.max(0, comp!.getGainReductionDb?.() ?? 0) },
+        { label: "LIMITER", gainReductionDb: Math.max(0, lim!.getGainReductionDb?.() ?? 0) },
+      ],
       syncBpm: (bpm, when) => subs.forEach((s) => s.syncBpm?.(bpm, when)),
       dispose: () => {
         for (const sub of subs) {

@@ -146,6 +146,8 @@ Meter dopĺňajú spektrálny analyzér, spektrogram, goniometer a história hla
 
 **ZENIT** je efekt, ktorý môžeš vložiť do efektového reťazca stopy alebo skupinovej zbernice. V paneli **DEV** pridaj ZENIT na vybraný kanál a jeho makrá dolaď v editore efektu. Na skupinovej zbernici ním spracuješ daný stem. Výstup tejto zbernice potom stále prechádza globálnym master chainom.
 
+Po rozbalení ZENIT editora uvidíš samostatné GR pre jeho **GLUE** kompresor a interný **LIMITER**. Master stereo meter zobrazuje globálny limiter zvlášť; tieto hodnoty nepredstavujú spoločné číslo a každá opisuje redukciu na inom mieste signálovej cesty.
+
 ZENIT skladá existujúce spracovanie v pevnom poradí:
 
 **EQ → páskový drive → glue kompresia → šírka a mono basy → clipper → limiter**

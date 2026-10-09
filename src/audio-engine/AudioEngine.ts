@@ -15,7 +15,7 @@ import { hashString } from "../shared/rng";
 import { PPQ } from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
 import { EFFECT_DEFS, clampEffectParam } from "../effects/registry";
-import type { EffectRuntime } from "../effects/types";
+import type { EffectGainReductionReading, EffectRuntime } from "../effects/types";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
 import { dbToLinear, presetNormalizationGainDb } from "../presets/normalization";
 import type { InstrumentRuntime } from "../instruments/types";
@@ -2549,6 +2549,26 @@ export class AudioEngine {
       this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
       this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
     return rt?.getGainReductionDb?.() ?? null;
+  }
+
+  /** Current separate dynamics-stage readings for a composite effect such as ZENIT. */
+  getFxGainReductionBreakdown(trackId: string, fxId: string): readonly EffectGainReductionReading[] | null {
+    const rt =
+      (trackId === MASTER_EFFECT_OWNER_ID ? this.masterFx.runtimes.get(fxId) : undefined) ??
+      this.trackNodes.get(trackId)?.fx.runtimes.get(fxId) ??
+      this.groupNodes.get(trackId)?.fx.runtimes.get(fxId) ??
+      this.returnNodes.get(trackId)?.fx.runtimes.get(fxId);
+    const readings = rt?.getGainReductionBreakdown?.();
+    if (!readings) return null;
+    return readings
+      .filter(
+        (reading) =>
+          typeof reading.label === "string" &&
+          reading.label.length > 0 &&
+          Number.isFinite(reading.gainReductionDb) &&
+          reading.gainReductionDb >= 0,
+      )
+      .map((reading) => ({ ...reading }));
   }
 
   /**
