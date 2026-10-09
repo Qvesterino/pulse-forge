@@ -14,7 +14,7 @@ import {
   type MasteringABSlot,
 } from "../mastering/snapshots";
 import { projectRevisionIdFor } from "../mastering/report";
-import { estimateRenderPcmBytes, renderProject } from "../rendering/renderer";
+import { estimateRenderPcmBytes, renderProject, resolveRenderTailSeconds } from "../rendering/renderer";
 import type { ProjectDocument } from "../project-model/types";
 import { useServices } from "./context";
 import { MasteringAssistant } from "./MasteringAssistant";
@@ -573,13 +573,18 @@ export function MasteringABCompare({
       setPlaying(null);
     }
     const generation = ++masterTestToneGenerationRef.current;
-    const result = services.engine.playMasterMonitorTestTone(2.5, () => {
-      if (!masterTestToneMountedRef.current || generation !== masterTestToneGenerationRef.current) return;
-      setMasterTestToneActive(false);
-      setMasterTestToneStatus(
-        "Test tone ended. Let any master effects tail decay before starting a live master recording.",
-      );
-    });
+    const estimatedTailSeconds = resolveRenderTailSeconds(doc, 2, "master");
+    const result = services.engine.playMasterMonitorTestTone(
+      2.5,
+      () => {
+        if (!masterTestToneMountedRef.current || generation !== masterTestToneGenerationRef.current) return;
+        setMasterTestToneActive(false);
+        setMasterTestToneStatus(
+          `Test tone ended. Master recording unlocks after an estimated ${estimatedTailSeconds.toFixed(1)} second master-effects tail; wait longer if you can still hear it.`,
+        );
+      },
+      estimatedTailSeconds,
+    );
     if (result.status === "error") {
       setMasterTestToneActive(false);
       setMasterTestToneStatus(result.message ?? "Could not start the master-path test tone.");

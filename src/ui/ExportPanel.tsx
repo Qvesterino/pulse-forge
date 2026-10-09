@@ -854,7 +854,7 @@ export function ExportPanel({
     // Do not let a second master-tap start replace the first take's lease.
     // The button state updates immediately, but this ref also protects rapid
     // repeated activation and a second mounted capture surface.
-    if (masterTapRecordingReleaseRef.current && recSource !== "mic") {
+    if (masterTapRecordingReleaseRef.current) {
       setRecError("A master recording is already starting or active.");
       return;
     }
@@ -871,15 +871,21 @@ export function ExportPanel({
           ? { kind: "track", trackId: selectedTrackId }
           : { kind: "master" };
     if (source.kind === "master") {
-      const release = services.engine.beginMasterTapRecording();
-      if (!release) {
+      const lease = services.engine.beginMasterTapRecording();
+      if (lease.status !== "ok") {
         setRecState("idle");
-        setRecError(
-          "Stop the master-path test tone, or wait for the current master recording to finish; let any master effects tail decay before recording.",
-        );
+        if (lease.status === "test-tone") {
+          setRecError("Wait for the master-path test tone to end before recording the master.");
+        } else if (lease.status === "effects-tail") {
+          setRecError(`Wait about ${lease.remainingSeconds.toFixed(1)} seconds for the master effects tail to decay.`);
+        } else if (lease.status === "recording") {
+          setRecError("A master recording is already starting or active.");
+        } else {
+          setRecError("The live master output is not ready for recording.");
+        }
         return;
       }
-      masterTapRecordingReleaseRef.current = release;
+      masterTapRecordingReleaseRef.current = lease.release;
     }
     try {
       if (source.kind === "mic") {

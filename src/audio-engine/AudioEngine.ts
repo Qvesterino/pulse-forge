@@ -408,12 +408,16 @@ export class AudioEngine {
   private oneShotSources = new Set<AudioScheduledSourceNode>();
   /** Short monitor-only tone routed through the project master chain. */
   private masterMonitorTestTone: {
+    context: AudioContext;
     source: OscillatorNode;
     gain: GainNode;
     stopping: boolean;
     startedAt: number;
     endAt: number;
+    tailSeconds: number;
   } | null = null;
+  /** Conservative time-based master insert tail after the monitor tone ends. */
+  private masterMonitorToneTail: { context: AudioContext; endsAt: number } | null = null;
   /** Master-path test tones are excluded while a live master tap is recording. */
   private activeMasterTapRecordings = 0;
   /**
@@ -2331,6 +2335,8 @@ export class AudioEngine {
    * ahead, so seek/stop must reach these too, not just `voices`.
    */
   private stopOneShotSources(): void {
+    const testTone = this.masterMonitorTestTone;
+    if (testTone) this.armMasterMonitorToneTail(testTone.context, testTone.tailSeconds);
     this.masterMonitorTestTone = null;
     for (const source of this.oneShotSources) {
       try {
@@ -2713,8 +2719,14 @@ export class AudioEngine {
    * Mastering monitor-path check: a quiet 440 Hz tone enters the live master
    * chain, so its processed and monitor-bypassed paths can be auditioned.
    * It is engine-owned and never enters the project model or offline render.
+   * `tailSeconds` blocks another tone or a live master recording while the
+   * estimated master-insert tail decays; it is a time estimate, not metering.
    */
-  playMasterMonitorTestTone(durationSec = 2.5, onEnded?: () => void): { status: "ok" | "error"; message?: string } {
+  playMasterMonitorTestTone(
+    durationSec = 2.5,
+    onEnded?: () => void,
+    tailSeconds = 2,
+  ): { status: "ok" | "error"; message?: string } {
     if (this.activeMasterTapRecordings > 0) {
       return { status: "error", message: "The master-path test tone is unavailable during live master recording." };
     }
@@ -2733,10 +2745,18 @@ export class AudioEngine {
       return { status: "error", message: "No active live audio context" };
     }
     if (!input) return { status: "error", message: "The project master output is not ready" };
+    const remainingTail = this.masterMonitorToneTailSeconds(ctx);
+    if (remainingTail > 0) {
+      return {
+        status: "error",
+        message: `Wait about ${remainingTail.toFixed(1)} seconds for the master effects tail to decay before playing another test tone.`,
+      };
+    }
 
     let source: OscillatorNode | null = null;
     let gain: GainNode | null = null;
     try {
+      const boundedTailSeconds = Number.isFinite(tailSeconds) ? Math.max(0, Math.min(12, tailSeconds)) : 2;
       source = ctx.createOscillator();
       gain = ctx.createGain();
       source.type = "sine";
@@ -2750,7 +2770,10 @@ export class AudioEngine {
       gain.gain.linearRampToValueAtTime(0, end);
       source.onended = () => {
         this.oneShotSources.delete(source!);
-        if (this.masterMonitorTestTone?.source === source) this.masterMonitorTestTone = null;
+        if (this.masterMonitorTestTone?.source === source) {
+          this.masterMonitorTestTone = null;
+          this.armMasterMonitorToneTail(ctx, boundedTailSeconds);
+        }
         try {
           source!.disconnect();
           gain!.disconnect();
@@ -2760,7 +2783,15 @@ export class AudioEngine {
         onEnded?.();
       };
       source.connect(gain).connect(input);
-      this.masterMonitorTestTone = { source, gain, stopping: false, startedAt: now, endAt: end };
+      this.masterMonitorTestTone = {
+        context: ctx,
+        source,
+        gain,
+        stopping: false,
+        startedAt: now,
+        endAt: end,
+        tailSeconds: boundedTailSeconds,
+      };
       this.oneShotSources.add(source);
       source.start(now);
       source.stop(end);
@@ -2788,6 +2819,28 @@ export class AudioEngine {
       if (this.masterMonitorTestTone?.source === source) this.masterMonitorTestTone = null;
       return { status: "error", message: err instanceof Error ? err.message : String(err) };
     }
+  }
+
+  private armMasterMonitorToneTail(context: AudioContext, tailSeconds: number): void {
+    const tail = Number.isFinite(tailSeconds) ? Math.max(0, Math.min(12, tailSeconds)) : 2;
+    const endsAt = context.currentTime + tail;
+    const current = this.masterMonitorToneTail;
+    this.masterMonitorToneTail = {
+      context,
+      endsAt: current?.context === context ? Math.max(current.endsAt, endsAt) : endsAt,
+    };
+  }
+
+  private masterMonitorToneTailSeconds(context: AudioContext): number {
+    const tail = this.masterMonitorToneTail;
+    if (!tail) return 0;
+    if (tail.context !== context) {
+      this.masterMonitorToneTail = null;
+      return 0;
+    }
+    const remaining = Math.max(0, tail.endsAt - context.currentTime);
+    if (remaining <= 0) this.masterMonitorToneTail = null;
+    return remaining;
   }
 
   /** Fade out and stop the current mastering monitor-path test tone. */
@@ -2828,17 +2881,30 @@ export class AudioEngine {
 
   /**
    * Acquire a lease while a live post-limiter master recording is active.
-   * Returning null prevents a test tone already feeding the master chain
-   * from being printed into the take.
+   * The result explains whether the test tone, its estimated tail, another
+   * master take, or an unavailable output currently prevents recording.
    */
-  beginMasterTapRecording(): (() => void) | null {
-    if (this.masterMonitorTestTone || this.activeMasterTapRecordings > 0) return null;
+  beginMasterTapRecording():
+    | { status: "ok"; release: () => void }
+    | { status: "test-tone" }
+    | { status: "effects-tail"; remainingSeconds: number }
+    | { status: "recording" }
+    | { status: "unavailable" } {
+    if (this.masterMonitorTestTone) return { status: "test-tone" };
+    const context = this.getLiveAudioContext();
+    if (!context || context.state === "closed") return { status: "unavailable" };
+    const remainingTail = this.masterMonitorToneTailSeconds(context);
+    if (remainingTail > 0) return { status: "effects-tail", remainingSeconds: remainingTail };
+    if (this.activeMasterTapRecordings > 0) return { status: "recording" };
     this.activeMasterTapRecordings += 1;
     let released = false;
-    return () => {
-      if (released) return;
-      released = true;
-      this.activeMasterTapRecordings = Math.max(0, this.activeMasterTapRecordings - 1);
+    return {
+      status: "ok",
+      release: () => {
+        if (released) return;
+        released = true;
+        this.activeMasterTapRecordings = Math.max(0, this.activeMasterTapRecordings - 1);
+      },
     };
   }
 

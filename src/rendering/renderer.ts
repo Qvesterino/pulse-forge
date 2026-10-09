@@ -216,9 +216,14 @@ export function renderQualityBumps(doc: ProjectDocument): {
  * pads). Feedback delays use their longest active tap and a conservative
  * repeat count down to -80 dB. Capped so pathological decay/feedback cannot
  * balloon an export. Bypassed instances are ignored. Returns the fallback
- * when no supported effect tail is present.
+ * when no supported effect tail is present. `effectScope: "master"` limits
+ * the estimate to global master inserts for the live monitor test tone.
  */
-export function resolveRenderTailSeconds(doc: ProjectDocument, fallback = 2): number {
+export function resolveRenderTailSeconds(
+  doc: ProjectDocument,
+  fallback = 2,
+  effectScope: "project" | "master" = "project",
+): number {
   let maxMs = 0;
   let maxReverbDecaySec = 0;
   let maxDelayTailSec = 0;
@@ -234,11 +239,14 @@ export function resolveRenderTailSeconds(doc: ProjectDocument, fallback = 2): nu
     const repeats = boundedFeedback > 0 ? Math.ceil(Math.log(1e-4) / Math.log(boundedFeedback)) : 1;
     return Math.min(12, delaySeconds * Math.max(1, repeats) + 0.5);
   };
-  const effectLists = [
-    ...(doc.tracks ?? []).map((track) => track.effects ?? []),
-    ...(doc.returns ?? []).map((track) => track.effects ?? []),
-    doc.master?.effects ?? [],
-  ];
+  const effectLists =
+    effectScope === "master"
+      ? [doc.master?.effects ?? []]
+      : [
+          ...(doc.tracks ?? []).map((track) => track.effects ?? []),
+          ...(doc.returns ?? []).map((track) => track.effects ?? []),
+          doc.master?.effects ?? [],
+        ];
   for (const effects of effectLists) {
     for (const fx of effects) {
       if (fx.bypassed) continue;
