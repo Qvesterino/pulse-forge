@@ -361,8 +361,12 @@ export function MasteringReferenceCompare({
   const referenceGain = reference ? previewTrim(referenceAuditionLufs, targetLufs, levelMatch) * dimGain : dimGain;
   const auditionTrimLabel = !levelMatch
     ? "off"
-    : !currentExcerptLoudness || currentExcerptLoudness.status === "measuring"
-      ? "measuring selected excerpt…"
+    : !currentExcerptLoudness ||
+        currentExcerptLoudness.status === "measuring" ||
+        currentExcerptLoudness.status === "waiting"
+      ? currentExcerptLoudness?.status === "waiting"
+        ? "waiting for another MASTER audio task…"
+        : "measuring selected excerpt…"
       : currentExcerptLoudness.status === "unavailable"
         ? `unavailable; using native levels${currentExcerptLoudness.reason ? ` · ${currentExcerptLoudness.reason.slice(0, 120)}` : ""}`
         : targetLufs === null

@@ -2351,7 +2351,9 @@ export function MasteringFileSessionPanel({
                       aria-atomic="true"
                     >
                       {referenceExcerptLoudness.pending
-                        ? "Measuring selected excerpt loudness… A/B is ready when the measurement finishes."
+                        ? referenceExcerptLoudness.current?.status === "waiting"
+                          ? "Waiting for another MASTER audio task… A/B is ready when the measurement finishes."
+                          : "Measuring selected excerpt loudness… A/B is ready when the measurement finishes."
                         : `Shared A/B excerpt: ${referenceCompareDuration.toFixed(2)} s. Both sides start together and switch without stopping.`}
                     </span>
                   </div>
@@ -2369,7 +2371,9 @@ export function MasteringFileSessionPanel({
                       {!matchLoudness
                         ? "off"
                         : referenceExcerptLoudness.pending
-                          ? "measuring selected excerpt…"
+                          ? referenceExcerptLoudness.current?.status === "waiting"
+                            ? "waiting for another MASTER audio task…"
+                            : "measuring selected excerpt…"
                           : referenceExcerptLoudness.current?.status === "unavailable"
                             ? `unavailable; using native levels${referenceExcerptLoudness.current.reason ? ` · ${referenceExcerptLoudness.current.reason.slice(0, 120)}` : ""}`
                             : referenceMatchTarget === null

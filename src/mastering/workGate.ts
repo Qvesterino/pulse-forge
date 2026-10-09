@@ -43,10 +43,11 @@ export function tryAcquireMasteringWork(): (() => void) | null {
 }
 
 /** Waits in order for a workspace lease; used by automatic local restore work. */
-export function acquireMasteringWork(signal?: AbortSignal): Promise<(() => void) | null> {
+export function acquireMasteringWork(signal?: AbortSignal, onWaiting?: () => void): Promise<(() => void) | null> {
   const release = tryAcquireMasteringWork();
   if (release) return Promise.resolve(release);
   if (signal?.aborted) return Promise.resolve(null);
+  onWaiting?.();
 
   return new Promise((resolve) => {
     const waiting: WaitingWork = { resolve, ...(signal ? { signal } : {}) };

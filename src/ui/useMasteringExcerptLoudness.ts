@@ -5,7 +5,7 @@ import { measureMasterBufferRangeLufsAsync } from "../mastering/analysisClient";
 import { acquireMasteringWork } from "../mastering/workGate";
 
 export interface MasteringExcerptLoudnessMatch {
-  status: "measuring" | "ready" | "unavailable";
+  status: "waiting" | "measuring" | "ready" | "unavailable";
   projectBuffer: AudioBuffer;
   referenceBuffer: AudioBuffer;
   projectOffset: number;
@@ -53,7 +53,9 @@ export function useMasteringExcerptLoudness({
     match.durationSeconds === durationSeconds,
   );
   const current = isCurrent ? match : null;
-  const pending = Boolean(enabled && pairReady && (!current || current.status === "measuring"));
+  const pending = Boolean(
+    enabled && pairReady && (!current || current.status === "waiting" || current.status === "measuring"),
+  );
   const targetLufs =
     current?.status === "ready" ? resolveLoudnessMatchTarget([current.projectLufs, current.referenceLufs]) : null;
 
@@ -65,21 +67,28 @@ export function useMasteringExcerptLoudness({
 
     const controller = new AbortController();
     let active = true;
-    setMatch({
-      status: "measuring",
-      projectBuffer,
-      referenceBuffer,
-      projectOffset,
-      referenceOffset,
-      durationSeconds,
-      projectLufs: null,
-      referenceLufs: null,
-    });
+    const setMeasurementStatus = (status: "waiting" | "measuring") => {
+      if (!active || controller.signal.aborted) return;
+      setMatch({
+        status,
+        projectBuffer,
+        referenceBuffer,
+        projectOffset,
+        referenceOffset,
+        durationSeconds,
+        projectLufs: null,
+        referenceLufs: null,
+      });
+    };
+    setMeasurementStatus("measuring");
 
     const timer = window.setTimeout(() => {
       void (async () => {
-        const releaseMasteringWork = await acquireMasteringWork(controller.signal);
+        const releaseMasteringWork = await acquireMasteringWork(controller.signal, () =>
+          setMeasurementStatus("waiting"),
+        );
         if (!releaseMasteringWork) return;
+        setMeasurementStatus("measuring");
 
         const measureSide = (
           buffer: AudioBuffer,
