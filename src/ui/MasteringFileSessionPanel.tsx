@@ -2327,7 +2327,7 @@ export function MasteringFileSessionPanel() {
                             ? `unavailable; using native levels${referenceExcerptLoudness.current.reason ? ` · ${referenceExcerptLoudness.current.reason.slice(0, 120)}` : ""}`
                             : referenceMatchTarget === null
                               ? "not matched; selected excerpt is too short or too quiet"
-                              : `selected excerpt ${formatCompareGain(referenceMasterGain)} / ${formatCompareGain(referenceAudioGain)}`}
+                              : `selected excerpt — session master ${formatCompareGain(referenceMasterGain)}; reference ${formatCompareGain(referenceAudioGain)}`}
                     </span>
                   </span>
                 )}
