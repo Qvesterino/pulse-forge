@@ -6,6 +6,7 @@ import type { EncodedMasterInspection } from "./encodedInspection";
 import { masterProfileProvenance, type MasterProfile } from "./profiles";
 import type { MasterVerdict } from "../audio-engine/metering";
 import type { LoudnessTimeline } from "../audio-engine/kweighting";
+import type { OfflineRenderRuntimeDiagnostics } from "../rendering/renderer";
 
 export interface MasterRenderReportV1 {
   version: 1;
@@ -79,7 +80,13 @@ export interface MasterRenderReportV11 extends Omit<MasterRenderReportV10, "vers
   version: 11;
 }
 
-export type MasterRenderReport = MasterRenderReportV11;
+export interface MasterRenderReportV12 extends Omit<MasterRenderReportV11, "version"> {
+  version: 12;
+  /** Fallback/degradation state captured from the exact offline engine that produced the PCM. */
+  renderDiagnostics: OfflineRenderRuntimeDiagnostics;
+}
+
+export type MasterRenderReport = MasterRenderReportV12;
 
 let nextRunId = 1;
 let nextRevisionId = 1;
@@ -95,10 +102,10 @@ export function projectRevisionIdFor(doc: ProjectDocument): string {
 }
 
 export function createMasterRenderReport(
-  input: Omit<MasterRenderReportV11, "version" | "runId" | "createdAt" | "encodedDelivery" | "measurementTap">,
-): MasterRenderReportV11 {
+  input: Omit<MasterRenderReportV12, "version" | "runId" | "createdAt" | "encodedDelivery" | "measurementTap">,
+): MasterRenderReportV12 {
   return {
-    version: 11,
+    version: 12,
     runId: `master-render-${Date.now().toString(36)}-${nextRunId++}`,
     createdAt: new Date().toISOString(),
     encodedDelivery: null,
@@ -112,7 +119,7 @@ export function serializeMasterReportSidecar(report: MasterRenderReport, generat
   return JSON.stringify(
     {
       schema: "kyx.master-report",
-      schemaVersion: 11,
+      schemaVersion: 12,
       generatedAt: generatedAt.toISOString(),
       application: {
         product: packageMetadata.productName,

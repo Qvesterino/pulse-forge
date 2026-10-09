@@ -50,6 +50,7 @@ import { uid } from "../shared/ids";
 import type { EffectInstance } from "../project-model/types";
 import { createBextMetadata, encodeWavBlobAsync, sanitizeFilename } from "../rendering/wav";
 import type { WavBitDepth } from "../rendering/wav";
+import type { OfflineRenderRuntimeDiagnostics } from "../rendering/renderer";
 import { downloadBlob } from "../export/download";
 import { isMp3SampleRateSupported } from "../export/mp3-capabilities";
 import {
@@ -73,6 +74,7 @@ import {
 import { useServices } from "./context";
 import { MasteringLoudnessTimeline } from "./MasteringLoudnessTimeline";
 import { MasteringFingerprint } from "./MasteringFingerprint";
+import { MasteringRuntimeStatus } from "./MasteringRuntimeStatus";
 import {
   MASTERING_RENDER_SAMPLE_RATE_LABELS,
   MASTERING_RENDER_SAMPLE_RATES,
@@ -90,6 +92,7 @@ const AUDIO_EXTENSION = /\.(wav|wave|mp3|flac)$/i;
 
 interface RenderedSession {
   buffer: AudioBuffer;
+  renderDiagnostics: OfflineRenderRuntimeDiagnostics;
   measurements: BufferSummary;
   mixHealth: MixHealthReport;
   loudnessTimeline: LoudnessTimeline | null;
@@ -1505,11 +1508,16 @@ export function MasteringFileSessionPanel({
       assertMasteringSessionWorkingSetBudget(estimatedBytes);
       await awaitMasteringSampleBankReady(services.core.initialSampleBankHydration, controller.signal);
       setBusy("Rendering source through the master chain…");
+      let renderDiagnostics: OfflineRenderRuntimeDiagnostics | null = null;
       const buffer = await renderMasteringSessionSource(source, draft, services.bank, {
         sampleRate,
         quality: "studio",
         signal: controller.signal,
+        onRuntimeDiagnostics: (diagnostics) => {
+          renderDiagnostics = diagnostics;
+        },
       });
+      if (!renderDiagnostics) throw new Error("The offline renderer did not report its processor runtime status.");
       if (controller.signal.aborted) throw new DOMException("Render cancelled", "AbortError");
       const renderedAt = new Date().toISOString();
       setBusy("Analyzing rendered master…");
@@ -1520,6 +1528,7 @@ export function MasteringFileSessionPanel({
       if (controller.signal.aborted) throw new DOMException("Analysis cancelled", "AbortError");
       setRendered({
         buffer,
+        renderDiagnostics,
         measurements: analysis.measurements,
         mixHealth: analysis.mixHealth,
         loudnessTimeline: analysis.loudnessTimeline,
@@ -1719,6 +1728,7 @@ export function MasteringFileSessionPanel({
           masterConfig: draft,
           profile: resolveDeliveryTarget(draft),
           renderedAt: rendered.renderedAt,
+          renderDiagnostics: rendered.renderDiagnostics,
           renderConfigRevision: rendered.configRevision,
           sampleRate: rendered.sampleRate,
           durationSeconds: rendered.buffer.duration,
@@ -2833,6 +2843,7 @@ export function MasteringFileSessionPanel({
               ? ` · ${inspection.file.averageBitrateKbps} kbps MP3`
               : ""}
           </span>
+          <MasteringRuntimeStatus diagnostics={rendered.renderDiagnostics} />
           {outputMeasurements && (
             <div className="mastering-overview-metrics mastering-session-metrics">
               <div className="mastering-overview-metric">

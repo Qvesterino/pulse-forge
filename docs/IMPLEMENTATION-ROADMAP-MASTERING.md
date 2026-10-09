@@ -343,6 +343,8 @@ Implementácia snapshotov, monitor bypassu a referenčného porovnávania je v p
 
 **Akceptácia:** uložený finálny audio buffer/file je zdrojom post-encode reportu. Round-trip decode nameria očakávané sample rate, dĺžku, peak/loudness a metadata. Ak sa zmení bit depth, codec alebo quality mode, výsledok prejde novým meraním.
 
+- [x] Project master report v12 a external session report v7 ukladajú fallback/degradation stavy z toho istého offline `AudioEngine`, ktorý vytvoril meraný PCM. MASTER aj externý session report zobrazujú konkrétny processor, ownera a dôvod; monitor-only bypass upozornenia sa nepripisujú exportovanému signálu.
+
 ## Etapa 8 — mastering externého stereo súboru (oddelené rozhodnutie)
 
 **Výstup:** používateľ môže pripraviť master z hotového stereo mixu bez plného multitrack projektu KYX.

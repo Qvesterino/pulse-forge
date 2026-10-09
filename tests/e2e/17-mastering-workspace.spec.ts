@@ -1555,8 +1555,8 @@ test.describe("17 — mastering workspace", () => {
     const reportPath = testInfo.outputPath("project-master-delivery-report.json");
     await reportDownload.saveAs(reportPath);
     const deliveryReport = JSON.parse(await readFile(reportPath, "utf8"));
-    expect(deliveryReport.schemaVersion).toBe(11);
-    expect(deliveryReport.report.version).toBe(11);
+    expect(deliveryReport.schemaVersion).toBe(12);
+    expect(deliveryReport.report.version).toBe(12);
     expect(deliveryReport.report.encodedDelivery.fileDelivery).toMatchObject({
       profileId: "streaming",
       status: "fail",
@@ -4250,7 +4250,7 @@ test.describe("17 — mastering workspace", () => {
       const report = JSON.parse(await readFile(reportPath, "utf8"));
       expect(report).toMatchObject({
         schema: "kyx.external-mastering-report",
-        schemaVersion: 6,
+        schemaVersion: 7,
         inputBaseline: {
           status: "measured",
           decodedSampleRate: 44_100,
@@ -4529,7 +4529,7 @@ test.describe("17 — mastering workspace", () => {
     const report = JSON.parse(await readFile(reportPath, "utf8"));
     expect(report).toMatchObject({
       schema: "kyx.external-mastering-report",
-      schemaVersion: 6,
+      schemaVersion: 7,
       inputBaseline: {
         status: "not-measured",
         reason: "Input baseline analysis was not run before this delivery export.",
@@ -4636,7 +4636,7 @@ test.describe("17 — mastering workspace", () => {
     const report = JSON.parse(await readFile(reportPath, "utf8"));
     expect(report).toMatchObject({
       schema: "kyx.external-mastering-report",
-      schemaVersion: 6,
+      schemaVersion: 7,
       delivery: {
         fileName: delivery.suggestedFilename(),
         format: "mp3",

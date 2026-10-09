@@ -4,6 +4,7 @@ import type { BufferSummary } from "../audio-engine/metering";
 import type { LoudnessTimeline } from "../audio-engine/kweighting";
 import type { MasterConfig } from "../project-model/types";
 import type { EncodedMasterInspection } from "./encodedInspection";
+import type { OfflineRenderRuntimeDiagnostics } from "../rendering/renderer";
 import { masterProfileProvenance, type DeliveryVerdict, type MasterProfile } from "./profiles";
 import type { MasteringSessionRecord } from "./sessionStore";
 
@@ -12,6 +13,7 @@ export interface ExternalMasteringReportInput {
   masterConfig: MasterConfig;
   profile: MasterProfile;
   renderedAt: string;
+  renderDiagnostics: OfflineRenderRuntimeDiagnostics;
   renderConfigRevision: number;
   sampleRate: number;
   durationSeconds: number;
@@ -46,7 +48,7 @@ export function serializeExternalMasteringReport(
   return JSON.stringify(
     {
       schema: "kyx.external-mastering-report",
-      schemaVersion: 6,
+      schemaVersion: 7,
       generatedAt: generatedAt.toISOString(),
       application: {
         product: packageMetadata.productName,
@@ -97,6 +99,7 @@ export function serializeExternalMasteringReport(
         quality: "studio",
         sampleRate: input.sampleRate,
         durationSeconds: input.durationSeconds,
+        runtimeDiagnostics: input.renderDiagnostics,
         sourcePcmMeasurements: input.sourceMeasurements,
         sourcePcmMixHealth: input.sourceMixHealth,
         sourcePcmLoudnessTimeline: input.sourceLoudnessTimeline,

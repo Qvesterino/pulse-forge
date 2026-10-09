@@ -2,7 +2,14 @@ import { AudioEngine } from "../audio-engine/AudioEngine";
 import { curatedReadyWithin } from "../sample-library/curated-layer";
 import { userSamplesReadyWithin } from "../persistence/UserSampleRepository";
 import type { SampleBank } from "../sample-library/factory";
-import type { AutomationPoint, Pattern, PlayMode, ProjectDocument } from "../project-model/types";
+import type {
+  AutomationPoint,
+  EffectInstance,
+  EffectType,
+  Pattern,
+  PlayMode,
+  ProjectDocument,
+} from "../project-model/types";
 import { BAR_TICKS, MASTER_EFFECT_OWNER_ID, PPQ, STEP_TICKS, getActivePattern } from "../project-model/types";
 import { drumHitsInWindow } from "../project-model/groove";
 import { noteEventsInWindow, patternBaseTickForClip, sceneBaseTickForClip } from "../project-model/events";
@@ -11,6 +18,20 @@ import { ensureWorkletsForDoc } from "../audio-worklets/loader";
 import { audioClipsForPlayback } from "../project-model/audio-takes";
 
 export type ExportQuality = "live" | "studio";
+
+export interface OfflineRenderDegradedEffect {
+  trackId: string;
+  ownerName: string;
+  fxId: string;
+  effectType: EffectType | "lfo" | "unknown";
+  reason: string;
+}
+
+/** Runtime degradation reported by the exact throwaway engine that rendered the PCM. */
+export interface OfflineRenderRuntimeDiagnostics {
+  degradedEffects: OfflineRenderDegradedEffect[];
+  degradedMasterStages: Array<{ stageId: "tape" | "glue" | "limiter"; reason: string }>;
+}
 
 export interface RenderOptions {
   mode: PlayMode;
@@ -59,6 +80,8 @@ export interface RenderOptions {
    * setup fails fast instead of rendering a buffer the caller throws away.
    */
   signal?: AbortSignal;
+  /** Captures fallback/degradation state from this exact offline render before PCM rendering starts. */
+  onRuntimeDiagnostics?: (diagnostics: OfflineRenderRuntimeDiagnostics) => void;
 }
 
 /**
@@ -590,6 +613,7 @@ export async function renderProject(
     // to the bounded worklet-start deadline. Honor a cancel received during
     // that wait before starting the otherwise un-abortable audio render.
     throwIfAborted(options.signal);
+    options.onRuntimeDiagnostics?.(collectOfflineRenderRuntimeDiagnostics(engine, renderDoc));
     // Audit 11 (reliability wave): OfflineAudioContext.startRendering is
     // itself un-abortable — but the CALLER should not stay wedged in
     // "exporting" for a 10-minute render after pressing Cancel. Race the
@@ -705,6 +729,59 @@ function scheduleNotes(
       slideFrom ? timeAt(slideFrom.tick) : undefined,
     );
   }
+}
+
+function collectOfflineRenderRuntimeDiagnostics(
+  engine: AudioEngine,
+  doc: ProjectDocument,
+): OfflineRenderRuntimeDiagnostics {
+  const ownerNames = new Map<string, string>([
+    [MASTER_EFFECT_OWNER_ID, "Master"],
+    ...doc.tracks.map((track) => [track.id, track.name] as const),
+    ...doc.returns.map((track) => [track.id, track.name] as const),
+  ]);
+  const effectsById = new Map<string, EffectInstance>();
+  for (const effect of doc.master.effects ?? []) effectsById.set(effect.id, effect);
+  for (const track of doc.tracks) {
+    for (const effect of track.effects) effectsById.set(effect.id, effect);
+  }
+  for (const track of doc.returns) {
+    for (const effect of track.effects) effectsById.set(effect.id, effect);
+  }
+  const lfoIds = new Set(doc.lfos.map((lfo) => lfo.id));
+  const degradedEffects: OfflineRenderDegradedEffect[] = engine
+    .getDegradedFx()
+    .flatMap(({ trackId, fxId, reason }): OfflineRenderDegradedEffect[] => {
+      const effect = effectsById.get(fxId);
+      if (effect?.bypassed) return [];
+      const isLfo = !effect && lfoIds.has(fxId);
+      if (!effect && !isLfo) {
+        return [
+          {
+            trackId,
+            ownerName: ownerNames.get(trackId) ?? "Unknown owner",
+            fxId,
+            effectType: "unknown" as const,
+            reason,
+          },
+        ];
+      }
+      return [
+        {
+          trackId,
+          ownerName: ownerNames.get(trackId) ?? "Unknown owner",
+          fxId,
+          effectType: effect?.type ?? (isLfo ? "lfo" : "unknown"),
+          reason,
+        },
+      ];
+    })
+    .sort((a, b) => a.trackId.localeCompare(b.trackId) || a.fxId.localeCompare(b.fxId));
+  const degradedMasterStages = engine
+    .getDegradedMasterStages()
+    .flatMap((stage) => (stage.stageId === "monitorBypass" ? [] : [{ stageId: stage.stageId, reason: stage.reason }]))
+    .sort((a, b) => a.stageId.localeCompare(b.stageId));
+  return { degradedEffects, degradedMasterStages };
 }
 
 /**

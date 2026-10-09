@@ -36,6 +36,9 @@ export function MasteringPanel() {
   }, []);
   const showAdvancedControls = useCallback(() => setControlView("advanced"), []);
   const report = workspaceState?.report ?? null;
+  const renderDegradationCount = report
+    ? report.renderDiagnostics.degradedEffects.length + report.renderDiagnostics.degradedMasterStages.length
+    : 0;
   const reportIsStale = workspaceState?.reportStale ?? false;
   const isAnalyzing = workspaceState?.busy ?? false;
   const decodedDelivery = report?.encodedDelivery?.decode.status === "measured" ? report.encodedDelivery.decode : null;
@@ -272,6 +275,14 @@ export function MasteringPanel() {
             <span>
               <strong>PROGRAM</strong> {report.durationSeconds.toFixed(1)} s · {report.sampleRate} Hz ·{" "}
               {report.quality === "studio" ? "Studio HQ" : "Live"}
+            </span>
+          )}
+          {report && (
+            <span className="mastering-overview-runtime" data-state={renderDegradationCount > 0 ? "warn" : "ok"}>
+              <strong>RENDER RUNTIME</strong>{" "}
+              {renderDegradationCount > 0
+                ? `${renderDegradationCount} fallback status${renderDegradationCount === 1 ? "" : "es"} · details below`
+                : "No fallback reported"}
             </span>
           )}
           {report && reportIsStale && (

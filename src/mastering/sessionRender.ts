@@ -5,7 +5,7 @@ import { uid } from "../shared/ids";
 import { SampleBank } from "../sample-library/factory";
 import type { SampleBank as SampleBankType } from "../sample-library/factory";
 import { estimateRenderPcmBytes, renderProject } from "../rendering/renderer";
-import type { ExportQuality } from "../rendering/renderer";
+import type { ExportQuality, OfflineRenderRuntimeDiagnostics } from "../rendering/renderer";
 import type { MasteringRenderSampleRate } from "./sampleRates";
 
 export const MAX_MASTERING_SESSION_SECONDS = 12 * 60;
@@ -15,6 +15,7 @@ export interface MasteringSessionRenderOptions {
   sampleRate: MasteringRenderSampleRate;
   quality?: ExportQuality;
   signal?: AbortSignal;
+  onRuntimeDiagnostics?: (diagnostics: OfflineRenderRuntimeDiagnostics) => void;
 }
 
 /**
@@ -160,6 +161,7 @@ export async function renderMasteringSessionSource(
       sampleRate: options.sampleRate,
       quality: options.quality ?? "studio",
       signal: options.signal,
+      onRuntimeDiagnostics: options.onRuntimeDiagnostics,
     });
     if (options.signal?.aborted) throw new DOMException("File mastering render cancelled", "AbortError");
     return rendered;

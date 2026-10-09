@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useActivePatternId, useMarkers, useMaster, usePatterns, useServices, useTracks } from "./context";
-import { estimateRenderPcmBytes, MAX_OFFLINE_RENDER_PCM_BYTES, renderProject } from "../rendering/renderer";
+import {
+  estimateRenderPcmBytes,
+  MAX_OFFLINE_RENDER_PCM_BYTES,
+  renderProject,
+  type OfflineRenderRuntimeDiagnostics,
+} from "../rendering/renderer";
 import { buildStemProject, nonEmptyStemGroups } from "../rendering/stems";
 import {
   createBextMetadata,
@@ -72,6 +77,7 @@ import { awaitMasteringSampleBankReady } from "../mastering/readiness";
 import { tryAcquireMasteringWork } from "../mastering/workGate";
 import { IntegerPcmDeliveryError } from "../export/quantize";
 import { MasteringFingerprint } from "./MasteringFingerprint";
+import { MasteringRuntimeStatus } from "./MasteringRuntimeStatus";
 import { MasterProfileFileCheck, MasterProfileFileGuidance } from "./MasterProfileFileGuidance";
 
 type Status =
@@ -406,12 +412,17 @@ export function ExportPanel({
       sampleBankRevisionAtStart = services.bank.revision;
       assertMasterSourceCurrent();
       setStatus({ kind: "busy", label: download ? "Rendering master…" : "Analyzing master…" });
+      let renderDiagnostics: OfflineRenderRuntimeDiagnostics | null = null;
       let buffer: AudioBuffer | null = await renderProject(doc, services.bank, {
         mode,
         sampleRate,
         quality,
         signal,
+        onRuntimeDiagnostics: (diagnostics) => {
+          renderDiagnostics = diagnostics;
+        },
       });
+      if (!renderDiagnostics) throw new Error("The offline renderer did not report its processor runtime status.");
       assertMasterSourceCurrent();
       const renderedDurationSeconds = buffer.duration;
       const profile = resolveDeliveryTarget(master);
@@ -438,6 +449,7 @@ export function ExportPanel({
           loudnessTimeline: analysis.loudnessTimeline,
           mixHealth: mixHealthReport,
           verdict,
+          renderDiagnostics,
         }),
       );
 
@@ -1477,6 +1489,7 @@ export function ExportPanel({
               DOWNLOAD REPORT JSON
             </button>
           </div>
+          <MasteringRuntimeStatus diagnostics={masterReport.renderDiagnostics} />
           {masterReport.encodedDelivery ? (
             <EncodedDeliveryCheck inspection={masterReport.encodedDelivery} deliveryProfile={masterReport.profile} />
           ) : status.kind === "error" ? (
