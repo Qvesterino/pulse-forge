@@ -456,6 +456,8 @@ Implementácia snapshotov, monitor bypassu a referenčného porovnávania je v p
 
 ### Manuálne posluchové gate-y
 
+Záznam podmienok, jednotlivých scenárov a výsledkov: [`docs/MASTERING-MANUAL-QA.md`](MASTERING-MANUAL-QA.md). Tento hárok prípravu testu nenahrádza; gate ostáva otvorený, kým ho nevykoná človek na zapísanom zariadení/browser/OS.
+
 - [ ] WAV kontrola v mono, stereo, nízkej hlasitosti, slúchadlách, bežných reproduktoroch a aspoň jednom kontrolnom zariadení; zaznamenať tester, dátum, browser/OS a konfiguráciu.
 - [ ] Porovnať RAW/master bypass, mastering A/B a referenciu s výstupmi dorovnanými na rovnakú hlasitosť.
 - [ ] Poslúchať najtichšiu časť, najhlasnejší drop/transient, subbas, sykavé/high-frequency pasáže, prechody a koniec/tail.

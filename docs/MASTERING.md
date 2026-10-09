@@ -70,6 +70,8 @@ Ak chceš bypass porovnať bez hlasitostnej ilúzie, stlač **Match bypass loudn
 
 Master A/B, projektová referencia aj externá file-session referencia sa prehrávajú cez aktívny browser audio výstup. V hornom paneli otvor **Studio I/O**, kde môžeš vybrať výstup, ak ho browser podporuje, a zobraziť nahlásenú base/output latency. Tieto čísla pochádzajú z browser audio contextu; KYX nimi nemeria hardware round-trip latency ani nekalibruje frekvenčnú odozvu monitorov. Windows Electron zatiaľ používa ten istý Web Audio výstup; zobrazenie ASIO driverov samo osebe neznamená ASIO audio streaming. Pred odovzdaním preto skontroluj master na známych slúchadlách alebo reproduktoroch a vypočuj ho aj v mono.
 
+Na zaznamenanie manuálneho posluchu, použitých zariadení, browser/OS a screen-reader výsledkov slúži [Mastering Manual QA Record](MASTERING-MANUAL-QA.md). Každý záznam platí iba pre skutočne odskúšanú konfiguráciu.
+
 ### Master assistant
 
 Klikni **Analyze master** na celú skladbu. KYX vykoná SONG render v Studio HQ a zmeria LUFS-I, true peak, crest, stereo koreláciu a podiel energie vo výškach. Zdieľaný deterministický planner MCP/UI navrhne ZENIT CEIL len vtedy, keď nameraný true peak prekročí zvolený limit o viac než 0,3 dB. Ostatné merania ostávajú diagnostické: samotná korelácia, LUFS, crest ani široké pásmové podiely neprezrádzajú bezpečnú opravu. Pri tichu alebo príliš krátkom vstupe sa návrh nevytvorí.
