@@ -188,7 +188,7 @@ export function MasteringReferenceCompare({
   abRenderEpoch: number;
   blockNewWork: boolean;
   onBeforeRender(): void;
-  onBusyChange(busy: boolean): void;
+  onBusyChange(busy: boolean, excerptPending: boolean): void;
   onReferenceBytes(bytes: number): void;
   assistantBytes: number;
   comparisonBytes: number;
@@ -231,7 +231,7 @@ export function MasteringReferenceCompare({
       decodeAbortRef.current?.abort();
       renderAbortRef.current?.abort();
       if (playingRef.current) services.engine.stopPreview();
-      onBusyChange(false);
+      onBusyChange(false, false);
     };
   }, [onBusyChange, services.engine]);
 
@@ -343,7 +343,7 @@ export function MasteringReferenceCompare({
   const excerptLoudnessPending = excerptLoudness.pending;
   const targetLufs = excerptLoudness.targetLufs;
   useEffect(() => {
-    onBusyChange(loading || rendering || excerptLoudnessPending);
+    onBusyChange(loading || rendering, excerptLoudnessPending);
   }, [excerptLoudnessPending, loading, onBusyChange, rendering]);
   const projectAuditionLufs =
     levelMatch && comparePairReady

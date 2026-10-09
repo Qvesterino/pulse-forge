@@ -130,6 +130,7 @@ export function MasteringABCompare({
   const [bypassMatchBusy, setBypassMatchBusy] = useState(false);
   const [assistantBusy, setAssistantBusy] = useState(false);
   const [referenceBusy, setReferenceBusy] = useState(false);
+  const [referenceExcerptPending, setReferenceExcerptPending] = useState(false);
   const [status, setStatus] = useState("");
   const [bypassMatchStatus, setBypassMatchStatus] = useState("");
   const [error, setError] = useState("");
@@ -142,7 +143,12 @@ export function MasteringABCompare({
   const [abRenderEpoch, setAbRenderEpoch] = useState(0);
   const [comparisonEpoch, setComparisonEpoch] = useState(0);
   const playingRef = useRef<MasteringABSlot | null>(null);
-  const comparisonWorkBusy = busy || bypassMatchBusy || assistantBusy || referenceBusy;
+  const comparisonControlsBusy = busy || bypassMatchBusy || assistantBusy || referenceBusy;
+  const comparisonWorkBusy = comparisonControlsBusy || referenceExcerptPending;
+  const reportReferenceBusy = useCallback((referenceWorkBusy: boolean, excerptPending: boolean) => {
+    setReferenceBusy(referenceWorkBusy);
+    setReferenceExcerptPending(excerptPending);
+  }, []);
   const [masterBypassed, setMasterBypassed] = useState(() => services.engine.isMasterBypassed());
   const abortRef = useRef<AbortController | null>(null);
   const bypassMatchAbortRef = useRef<AbortController | null>(null);
@@ -766,7 +772,7 @@ export function MasteringABCompare({
         </label>
         <MasteringLevelMatchControl
           checked={levelMatch}
-          disabled={comparisonWorkBusy || blockNewWork || Boolean(blindListen)}
+          disabled={comparisonControlsBusy || blockNewWork || Boolean(blindListen)}
           labelClassName="master-ab-match"
           onChange={setLevelMatch}
         />
@@ -876,7 +882,7 @@ export function MasteringABCompare({
           levelMatch={levelMatch}
           abRenderEpoch={abRenderEpoch}
           blockNewWork={comparisonWorkBusy || blockNewWork || Boolean(blindListen)}
-          onBusyChange={setReferenceBusy}
+          onBusyChange={reportReferenceBusy}
           comparisonBytes={comparisonBytes}
           onBeforeRender={() => {
             bypassMatchAbortRef.current?.abort();
