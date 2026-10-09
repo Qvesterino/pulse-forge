@@ -2378,7 +2378,7 @@ export function MasteringFileSessionPanel({
                     {rendered.measurements.truePeakDb.toFixed(1)} dBTP · audition trims{" "}
                     <span
                       role="status"
-                      aria-live="polite"
+                      aria-live={referenceExcerptLoudness.pending ? "off" : "polite"}
                       aria-atomic="true"
                       title={referenceExcerptLoudness.current?.reason}
                     >
