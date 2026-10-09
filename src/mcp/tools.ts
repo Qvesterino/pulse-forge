@@ -8,7 +8,7 @@ import type { Command } from "../commands/types";
 import { routeIntentText, type RoutedIntent } from "../intent/route";
 import { routeIsDestructive } from "../intent/route-guard";
 import { presetsForEffect } from "../effects/presets";
-import { planMasterSettings } from "./master-assistant";
+import { planMasterSettings, planReferenceMastering } from "./master-assistant";
 import { profileFor, resolveDeliveryTarget, verdictAgainst, worstStatus } from "./master-profiles";
 import { stemMasteringPlan, stemRoleOf } from "./stem-mastering";
 import { collectDevices, diffSnapshots, snapshotSummary, type AbSnapshot } from "./master-ab";
@@ -1425,6 +1425,18 @@ export const MCP_TOOLS: McpToolDef[] = [
           type: "string",
           enum: ["save", "list", "compare", "restore"],
           description: "For op:ab — snapshot action",
+        },
+        reference: {
+          type: "object",
+          description:
+            "For op:assist — reference measurement (lufs, crestDb, correlation, hfShare, lowEndShare); the plan moves toward the measured DIFFERENCE",
+          properties: {
+            lufs: { type: "number" },
+            crestDb: { type: "number" },
+            correlation: { type: "number", minimum: -1, maximum: 1 },
+            hfShare: { type: "number", minimum: 0, maximum: 1 },
+            lowEndShare: { type: "number", minimum: 0, maximum: 1 },
+          },
         },
         trimDb: {
           type: "number",
@@ -5429,15 +5441,42 @@ function executeMasterTool(ctx: McpToolContext, record: Record<string, unknown>)
       requestedProfile === "custom"
         ? resolveDeliveryTarget({ ...doc.master, deliveryProfileId: "custom" })
         : (profileFor(requestedProfile) ?? resolveDeliveryTarget(doc.master));
-    const plan = planMasterSettings({
-      lufs,
-      peakDb,
-      crestDb,
-      correlation,
-      targetLufs: typeof record.targetLufs === "number" ? record.targetLufs : assistantProfile.targetLufs,
-      targetTruePeakDb:
-        typeof record.targetTruePeakDb === "number" ? record.targetTruePeakDb : assistantProfile.maxTruePeakDb,
-    });
+    // REFERENCE MASTERING: when the caller supplies a reference measurement,
+    // the plan moves toward the measured DIFFERENCE (F2 §2.2 — the
+    // reference's absolute shape is never the target).
+    const referenceIn = record.reference as
+      { lufs?: number; crestDb?: number; correlation?: number; hfShare?: number; lowEndShare?: number } | undefined;
+    const referencePlan =
+      referenceIn && typeof referenceIn === "object"
+        ? planReferenceMastering({
+            mine: {
+              lufs,
+              crestDb,
+              correlation,
+              hfShare: 0.2,
+              lowEndShare: 0.25,
+            },
+            reference: {
+              lufs: typeof referenceIn.lufs === "number" ? referenceIn.lufs : null,
+              crestDb: typeof referenceIn.crestDb === "number" ? referenceIn.crestDb : 11,
+              correlation: typeof referenceIn.correlation === "number" ? referenceIn.correlation : null,
+              hfShare: typeof referenceIn.hfShare === "number" ? referenceIn.hfShare : 0.2,
+              lowEndShare: typeof referenceIn.lowEndShare === "number" ? referenceIn.lowEndShare : 0.25,
+            },
+            targetLufs: typeof record.targetLufs === "number" ? record.targetLufs : undefined,
+          })
+        : null;
+    const plan =
+      referencePlan ??
+      planMasterSettings({
+        lufs,
+        peakDb,
+        crestDb,
+        correlation,
+        targetLufs: typeof record.targetLufs === "number" ? record.targetLufs : assistantProfile.targetLufs,
+        targetTruePeakDb:
+          typeof record.targetTruePeakDb === "number" ? record.targetTruePeakDb : assistantProfile.maxTruePeakDb,
+      });
     if (plan.length === 0) return { text: "assist found nothing to change", mutated: false };
 
     const wantedTypeOf: Record<string, "zenit" | "apeks" | "sirka"> = {

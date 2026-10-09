@@ -1695,6 +1695,34 @@ export const MCP_TOOL_DEFS = [
           enum: ["save", "list", "compare", "restore"],
           description: "For op:ab — snapshot action",
         },
+        reference: {
+          type: "object",
+          description:
+            "For op:assist — reference measurement (lufs, crestDb, correlation, hfShare, lowEndShare); the plan moves toward the measured DIFFERENCE",
+          properties: {
+            lufs: {
+              type: "number",
+            },
+            crestDb: {
+              type: "number",
+            },
+            correlation: {
+              type: "number",
+              minimum: -1,
+              maximum: 1,
+            },
+            hfShare: {
+              type: "number",
+              minimum: 0,
+              maximum: 1,
+            },
+            lowEndShare: {
+              type: "number",
+              minimum: 0,
+              maximum: 1,
+            },
+          },
+        },
         trimDb: {
           type: "number",
           minimum: -18,

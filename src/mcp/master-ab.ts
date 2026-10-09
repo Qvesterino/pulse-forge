@@ -69,7 +69,7 @@ export function collectDevices(track: {
   return devices;
 }
 
-/** Parameter-level diff of two snapshots (same devices matched by type+track). */
+/** Parameter-level diff; stable IDs survive reordering and per-type order survives ID churn. */
 export interface AbDiffRow {
   device: string;
   track: string;
@@ -81,12 +81,24 @@ export interface AbDiffRow {
 }
 
 export function diffSnapshots(a: AbSnapshot, b: AbSnapshot): AbDiffRow[] {
-  const key = (d: AbDeviceState) => `${d.trackId}::${d.type}::${d.instanceIndex ?? 0}`;
-  const aKeys = new Set(a.devices.map(key));
-  const bMap = new Map(b.devices.map((d) => [key(d), d]));
+  const familyKey = (d: AbDeviceState) => JSON.stringify([d.trackId, d.type]);
+  const remaining = new Map<string, AbDeviceState[]>();
+  for (const device of b.devices) {
+    const key = familyKey(device);
+    const matches = remaining.get(key) ?? [];
+    matches.push(device);
+    remaining.set(key, matches);
+  }
+
   const rows: AbDiffRow[] = [];
   for (const da of a.devices) {
-    const db = bMap.get(key(da));
+    const matches = remaining.get(familyKey(da)) ?? [];
+    let matchIndex = da.fxId ? matches.findIndex((candidate) => candidate.fxId === da.fxId) : -1;
+    if (matchIndex < 0) {
+      const instanceIndex = da.instanceIndex ?? 0;
+      matchIndex = matches.findIndex((candidate) => (candidate.instanceIndex ?? 0) === instanceIndex);
+    }
+    const db = matchIndex >= 0 ? matches.splice(matchIndex, 1)[0] : undefined;
     if (!db) {
       rows.push({
         device: da.type,
@@ -99,7 +111,8 @@ export function diffSnapshots(a: AbSnapshot, b: AbSnapshot): AbDiffRow[] {
       });
       continue;
     }
-    const rowIdentity = da.instanceIndex === undefined ? {} : { instanceIndex: da.instanceIndex };
+    const instanceIndex = da.instanceIndex ?? db.instanceIndex;
+    const rowIdentity = instanceIndex === undefined ? {} : { instanceIndex };
     const ids = new Set([...Object.keys(da.params), ...Object.keys(db.params)]);
     for (const param of ids) {
       const av = da.params[param];
@@ -118,17 +131,18 @@ export function diffSnapshots(a: AbSnapshot, b: AbSnapshot): AbDiffRow[] {
         ...rowIdentity,
       });
   }
-  for (const db of b.devices) {
-    if (aKeys.has(key(db))) continue;
-    rows.push({
-      device: db.type,
-      track: db.trackName,
-      param: "device",
-      a: null,
-      b: 1,
-      ...(db.instanceIndex === undefined ? {} : { instanceIndex: db.instanceIndex }),
-      presenceChange: "new-in-current",
-    });
+  for (const matches of remaining.values()) {
+    for (const db of matches) {
+      rows.push({
+        device: db.type,
+        track: db.trackName,
+        param: "device",
+        a: null,
+        b: 1,
+        ...(db.instanceIndex === undefined ? {} : { instanceIndex: db.instanceIndex }),
+        presenceChange: "new-in-current",
+      });
+    }
   }
   return rows;
 }
