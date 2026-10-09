@@ -40,6 +40,14 @@ interface Comparison {
   b: ComparedMaster;
 }
 
+interface LiveBypassMatch {
+  revisionId: string;
+  sampleBankRevision: number;
+  sampleRate: number;
+  processedLufs: number;
+  bypassedLufs: number;
+}
+
 type BlindPreference = "first" | "second" | "none";
 
 interface BlindListenSession {
@@ -53,6 +61,10 @@ const MAX_SHARED_COMPARE_BYTES = 320 * 1024 * 1024;
 
 function formatDb(value: number, suffix: string): string {
   return Number.isFinite(value) && value > -120 ? `${value.toFixed(1)} ${suffix}` : `−∞ ${suffix}`;
+}
+
+function formatMeasuredLufs(value: number): string {
+  return Number.isFinite(value) && value > -119 ? `${value.toFixed(1)} LUFS-I` : "not measured";
 }
 
 function randomizedFirstSlot(): MasteringABSlot {
@@ -102,8 +114,13 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
   const [sampleRate, setSampleRate] = useState<MasteringRenderSampleRate>(48_000);
   const [levelMatch, setLevelMatch] = useState(true);
   const [comparison, setComparison] = useState<Comparison | null>(null);
+  const [liveBypassMatch, setLiveBypassMatch] = useState<LiveBypassMatch | null>(null);
   const [busy, setBusy] = useState(false);
+  const [bypassMatchBusy, setBypassMatchBusy] = useState(false);
+  const [assistantBusy, setAssistantBusy] = useState(false);
+  const [referenceBusy, setReferenceBusy] = useState(false);
   const [status, setStatus] = useState("");
+  const [bypassMatchStatus, setBypassMatchStatus] = useState("");
   const [error, setError] = useState("");
   const [storageNotice, setStorageNotice] = useState("");
   const [playing, setPlaying] = useState<MasteringABSlot | null>(null);
@@ -114,8 +131,10 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
   const [abRenderEpoch, setAbRenderEpoch] = useState(0);
   const [comparisonEpoch, setComparisonEpoch] = useState(0);
   const playingRef = useRef<MasteringABSlot | null>(null);
+  const comparisonWorkBusy = busy || bypassMatchBusy || assistantBusy || referenceBusy;
   const [masterBypassed, setMasterBypassed] = useState(() => services.engine.isMasterBypassed());
   const abortRef = useRef<AbortController | null>(null);
+  const bypassMatchAbortRef = useRef<AbortController | null>(null);
   const observedBankRevisionRef = useRef(sampleBankRevision);
   playingRef.current = playing;
   const activeSession = session.projectId === doc.id ? session : loadMasteringABSession(doc);
@@ -139,6 +158,24 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
   const gainB = comparisonReady
     ? getLoudnessMatchGain(comparison.b.summary.lufsIntegrated, matchTarget, levelMatch)
     : 1;
+  const liveBypassMatchReady = Boolean(
+    liveBypassMatch &&
+    liveBypassMatch.revisionId === revisionId &&
+    liveBypassMatch.sampleBankRevision === sampleBankRevision &&
+    liveBypassMatch.sampleRate === sampleRate,
+  );
+  const liveBypassMatchTarget =
+    liveBypassMatchReady && liveBypassMatch
+      ? resolveLoudnessMatchTarget([liveBypassMatch.processedLufs, liveBypassMatch.bypassedLufs])
+      : null;
+  const liveBypassProcessedGain =
+    liveBypassMatchReady && liveBypassMatch
+      ? getLoudnessMatchGain(liveBypassMatch.processedLufs, liveBypassMatchTarget, liveBypassMatchTarget !== null)
+      : 1;
+  const liveBypassDryGain =
+    liveBypassMatchReady && liveBypassMatch
+      ? getLoudnessMatchGain(liveBypassMatch.bypassedLufs, liveBypassMatchTarget, liveBypassMatchTarget !== null)
+      : 1;
   const comparisonBytes = comparison
     ? comparison.a.buffer.length * comparison.a.buffer.numberOfChannels * Float32Array.BYTES_PER_ELEMENT +
       comparison.b.buffer.length * comparison.b.buffer.numberOfChannels * Float32Array.BYTES_PER_ELEMENT
@@ -175,6 +212,29 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
   useEffect(() => () => abortRef.current?.abort(), [services.engine]);
 
   useEffect(() => {
+    bypassMatchAbortRef.current?.abort();
+    setLiveBypassMatch(null);
+    setBypassMatchStatus("");
+    services.engine.setMasterBypassMatchGains(1, 1);
+  }, [revisionId, sampleBankRevision, sampleRate, services.engine]);
+
+  useEffect(() => {
+    if (!liveBypassMatch) return;
+    services.engine.setMasterBypassMatchGains(
+      liveBypassMatchReady ? liveBypassProcessedGain : 1,
+      liveBypassMatchReady ? liveBypassDryGain : 1,
+    );
+  }, [liveBypassDryGain, liveBypassMatch, liveBypassMatchReady, liveBypassProcessedGain, services.engine]);
+
+  useEffect(
+    () => () => {
+      bypassMatchAbortRef.current?.abort();
+      services.engine.setMasterBypassMatchGains(1, 1, true);
+    },
+    [services.engine],
+  );
+
+  useEffect(() => {
     if (playing === "A") services.engine.updateMasterComparePreview(gainA, false);
     if (playing === "B") services.engine.updateMasterComparePreview(gainB, false);
   }, [gainA, gainB, playing, services.engine]);
@@ -209,7 +269,7 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
   };
 
   const renderComparison = async () => {
-    if (!snapshotA || !snapshotB || busy) return;
+    if (!snapshotA || !snapshotB || comparisonWorkBusy || blindListen) return;
     const revisionAtStart = currentRevision(services, doc.id);
     let bankRevisionAtStart = services.bank.revision;
     if (!revisionAtStart || revisionAtStart !== revisionId) {
@@ -309,6 +369,131 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
     }
   };
 
+  const matchLiveBypassLoudness = async () => {
+    if (comparisonWorkBusy || blindListen) return;
+    const sourceDoc = services.store.getDoc();
+    const revisionAtStart = sourceDoc.id === doc.id ? projectRevisionIdFor(sourceDoc) : null;
+    if (!revisionAtStart || revisionAtStart !== revisionId) {
+      setError("Projekt sa práve zmenil. Počkaj na aktualizáciu pracoviska a skús meranie znova.");
+      return;
+    }
+
+    const controller = new AbortController();
+    bypassMatchAbortRef.current = controller;
+    let bankRevisionAtStart = services.bank.revision;
+    const ensureCurrent = () => {
+      if (controller.signal.aborted) throw new DOMException("Bypass loudness match cancelled", "AbortError");
+      if (currentRevision(services, doc.id) !== revisionAtStart) {
+        throw new Error("Projekt sa počas bypass merania zmenil. Výsledok bol zahodený.");
+      }
+      if (services.bank.revision !== bankRevisionAtStart) {
+        throw new Error("Sample bank sa počas bypass merania zmenil. Výsledok bol zahodený.");
+      }
+    };
+
+    setBypassMatchBusy(true);
+    setBypassMatchStatus("Preparing a matched live-bypass audition…");
+    setError("");
+    try {
+      await awaitMasteringSampleBankReady(services.core.initialSampleBankHydration, controller.signal);
+      bankRevisionAtStart = services.bank.revision;
+      ensureCurrent();
+
+      const estimatedPcmBytes = estimateRenderPcmBytes(sourceDoc, { mode: "song", sampleRate });
+      const otherPcmBytes = comparisonBytes + referenceBytes + referenceProjectBytes + assistantBytes;
+      if (estimatedPcmBytes > MAX_COMPARE_BYTES || estimatedPcmBytes + otherPcmBytes > MAX_SHARED_COMPARE_BYTES) {
+        throw new Error(
+          `Bypass matching needs about ${(estimatedPcmBytes / 1024 / 1024).toFixed(0)} MiB for a SONG render plus ${(otherPcmBytes / 1024 / 1024).toFixed(0)} MiB of other comparison audio. Clear a preview, shorten the song, or lower the sample rate if it exceeds the 320 MiB comparison budget.`,
+        );
+      }
+
+      const measure = async (label: string, masterBypassed: boolean): Promise<number> => {
+        setBypassMatchStatus(`Rendering ${label} · SONG · ${sampleRate / 1000} kHz · Studio HQ…`);
+        let buffer: AudioBuffer | null = await renderProject(sourceDoc, services.bank, {
+          mode: "song",
+          sampleRate,
+          quality: "studio",
+          masterBypassed,
+          signal: controller.signal,
+        });
+        ensureCurrent();
+        const outputBytes = buffer.length * buffer.numberOfChannels * Float32Array.BYTES_PER_ELEMENT;
+        if (outputBytes > MAX_COMPARE_BYTES || outputBytes + otherPcmBytes > MAX_SHARED_COMPARE_BYTES) {
+          throw new Error(
+            "A bypass loudness render exceeded the available comparison memory. Shorten the song or lower the sample rate.",
+          );
+        }
+        setBypassMatchStatus(`Analyzing ${label} loudness…`);
+        let lastProgressStep = -1;
+        const analysis = await analyzeMasterBufferAsync(buffer, resolveDeliveryTarget(sourceDoc.master), {
+          signal: controller.signal,
+          onProgress: ({ progress }) => {
+            const step = Math.floor(progress * 10);
+            if (step > lastProgressStep) {
+              lastProgressStep = step;
+              setBypassMatchStatus(`Analyzing ${label} loudness · ${Math.round(progress * 100)}%…`);
+            }
+          },
+        });
+        ensureCurrent();
+        const loudness = analysis.measurements.lufsIntegrated;
+        buffer = null;
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        ensureCurrent();
+        return loudness;
+      };
+
+      const processedLufs = await measure("processed master", false);
+      const bypassedLufs = await measure("monitor bypass", true);
+      const targetLufs = resolveLoudnessMatchTarget([processedLufs, bypassedLufs]);
+      const processedGain = getLoudnessMatchGain(processedLufs, targetLufs, targetLufs !== null);
+      const bypassedGain = getLoudnessMatchGain(bypassedLufs, targetLufs, targetLufs !== null);
+      const result = {
+        revisionId: revisionAtStart,
+        sampleBankRevision: bankRevisionAtStart,
+        sampleRate,
+        processedLufs,
+        bypassedLufs,
+      };
+      setLiveBypassMatch(result);
+      setBypassMatchStatus(
+        targetLufs === null
+          ? "Loudness matching is unavailable for these readings; live bypass uses native monitor levels."
+          : `Monitor match ready · processed master ${formatAuditionTrim(processedGain)} · bypass mix ${formatAuditionTrim(bypassedGain)}. This trim affects monitoring only.`,
+      );
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : String(caught);
+      if (controller.signal.aborted || (caught instanceof DOMException && caught.name === "AbortError")) {
+        const previousMatchRemainsCurrent = Boolean(
+          liveBypassMatch &&
+          currentRevision(services, doc.id) === liveBypassMatch.revisionId &&
+          services.bank.revision === liveBypassMatch.sampleBankRevision &&
+          sampleRate === liveBypassMatch.sampleRate,
+        );
+        setBypassMatchStatus(
+          previousMatchRemainsCurrent
+            ? "Remeasurement was cancelled; the previous measured bypass match remains active."
+            : "Bypass loudness matching was cancelled; live bypass uses native monitor levels.",
+        );
+      } else {
+        setBypassMatchStatus(
+          liveBypassMatchReady ? "Remeasurement failed; the previous measured bypass match remains active." : "",
+        );
+        setError(message);
+      }
+    } finally {
+      if (bypassMatchAbortRef.current === controller) bypassMatchAbortRef.current = null;
+      setBypassMatchBusy(false);
+    }
+  };
+
+  const clearLiveBypassMatch = () => {
+    bypassMatchAbortRef.current?.abort();
+    setLiveBypassMatch(null);
+    setBypassMatchStatus("Live bypass uses native monitor levels.");
+    services.engine.setMasterBypassMatchGains(1, 1);
+  };
+
   const play = (slot: MasteringABSlot) => {
     if (!comparisonReady) return;
     const side = slot === "A" ? comparison.a : comparison.b;
@@ -330,7 +515,7 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
   };
 
   const startBlindListen = () => {
-    if (!comparisonReady) return;
+    if (!comparisonReady || comparisonWorkBusy || blindListen) return;
     services.engine.stopPreview();
     setPlaying(null);
     setBlindListen({ first: randomizedFirstSlot(), preference: null, revealed: false });
@@ -436,6 +621,56 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
           current settings; exports use the saved master setup.
         </p>
       )}
+      {!blindListen && (
+        <section className="master-ab-bypass-match" aria-label="Live monitor bypass loudness match">
+          <p>
+            Measure full SONG LUFS-I for the processed master and bypass mix at the selected sample rate. Matching trims
+            the louder monitor output after the safety limiter; MASTER meters and export remain untrimmed.
+          </p>
+          <div>
+            <button
+              type="button"
+              onClick={() => void matchLiveBypassLoudness()}
+              disabled={comparisonWorkBusy || Boolean(blindListen)}
+            >
+              {bypassMatchBusy
+                ? "Measuring bypass match…"
+                : liveBypassMatchReady
+                  ? "Re-measure bypass match"
+                  : "Match bypass loudness"}
+            </button>
+            {liveBypassMatchReady && (
+              <button
+                type="button"
+                onClick={clearLiveBypassMatch}
+                disabled={comparisonWorkBusy || Boolean(blindListen)}
+              >
+                Use native levels
+              </button>
+            )}
+            {bypassMatchBusy && (
+              <button
+                type="button"
+                onClick={() => {
+                  setBypassMatchStatus("Cancellation requested; an active offline render must finish first.");
+                  bypassMatchAbortRef.current?.abort();
+                }}
+              >
+                Cancel match
+              </button>
+            )}
+          </div>
+          <p role="status" aria-live="polite" aria-atomic="true">
+            {bypassMatchBusy
+              ? bypassMatchStatus
+              : liveBypassMatchReady && liveBypassMatch
+                ? liveBypassMatchTarget === null
+                  ? bypassMatchStatus
+                  : `${bypassMatchStatus} Processed ${formatMeasuredLufs(liveBypassMatch.processedLufs)}; bypass ${formatMeasuredLufs(liveBypassMatch.bypassedLufs)}.`
+                : bypassMatchStatus || "Live bypass currently uses native monitor levels."}
+          </p>
+        </section>
+      )}
       {blindListen ? (
         <div className="master-ab-blind-shield" role="status">
           {blindListen.revealed
@@ -470,10 +705,13 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
           doc={doc}
           revisionId={revisionId}
           sampleRate={sampleRate}
+          blockNewWork={comparisonWorkBusy || Boolean(blindListen)}
+          onBusyChange={setAssistantBusy}
           reservedPcmBytes={referenceBytes + referenceProjectBytes + comparisonBytes}
           referencePcmBytes={referenceBytes}
           comparisonEpoch={comparisonEpoch}
           onBeforeRender={() => {
+            bypassMatchAbortRef.current?.abort();
             setComparison(null);
             setPlaying(null);
             setAbRenderEpoch((epoch) => epoch + 1);
@@ -487,7 +725,7 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
           Compare sample rate
           <select
             value={sampleRate}
-            disabled={busy || Boolean(blindListen)}
+            disabled={comparisonWorkBusy || Boolean(blindListen)}
             onChange={(event) => setSampleRate(Number(event.target.value) as MasteringRenderSampleRate)}
           >
             {MASTERING_RENDER_SAMPLE_RATES.map((rate) => (
@@ -499,18 +737,22 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
         </label>
         <MasteringLevelMatchControl
           checked={levelMatch}
-          disabled={busy || Boolean(blindListen)}
+          disabled={comparisonWorkBusy || Boolean(blindListen)}
           labelClassName="master-ab-match"
           onChange={setLevelMatch}
         />
         <button
           type="button"
           onClick={() => void renderComparison()}
-          disabled={!snapshotA || !snapshotB || busy || Boolean(blindListen)}
+          disabled={!snapshotA || !snapshotB || comparisonWorkBusy || Boolean(blindListen)}
         >
           {busy ? "Rendering…" : "Render A/B"}
         </button>
-        <button type="button" onClick={startBlindListen} disabled={!comparisonReady || busy || Boolean(blindListen)}>
+        <button
+          type="button"
+          onClick={startBlindListen}
+          disabled={!comparisonReady || comparisonWorkBusy || Boolean(blindListen)}
+        >
           Blind listen
         </button>
         {busy && (
@@ -604,8 +846,11 @@ export function MasteringABCompare({ doc, revisionId }: { doc: ProjectDocument; 
           sampleRate={sampleRate}
           levelMatch={levelMatch}
           abRenderEpoch={abRenderEpoch}
+          blockNewWork={comparisonWorkBusy || Boolean(blindListen)}
+          onBusyChange={setReferenceBusy}
           comparisonBytes={comparisonBytes}
           onBeforeRender={() => {
+            bypassMatchAbortRef.current?.abort();
             setComparison(null);
             setPlaying(null);
             setComparisonEpoch((epoch) => epoch + 1);

@@ -617,6 +617,11 @@ export class AudioEngine {
     this.masterChain.setBypassed(enabled, immediate);
   }
 
+  /** Apply monitor-only loudness match gains to the processed and bypass paths. */
+  setMasterBypassMatchGains(wetGain: number, dryGain: number, immediate = false): void {
+    this.masterChain.setBypassMatchGains(wetGain, dryGain, immediate);
+  }
+
   isMasterBypassed(): boolean {
     return this.masterChain.isBypassed;
   }

@@ -175,7 +175,9 @@ export function MasteringAssistant({
   reservedPcmBytes,
   referencePcmBytes,
   comparisonEpoch,
+  blockNewWork,
   onBeforeRender,
+  onBusyChange,
   onPreviewBytes,
 }: {
   doc: ProjectDocument;
@@ -184,7 +186,9 @@ export function MasteringAssistant({
   reservedPcmBytes: number;
   referencePcmBytes: number;
   comparisonEpoch: number;
+  blockNewWork: boolean;
   onBeforeRender(): void;
+  onBusyChange(busy: boolean): void;
   onPreviewBytes(bytes: number): void;
 }) {
   const services = useServices();
@@ -209,6 +213,13 @@ export function MasteringAssistant({
   const observedRevisionRef = useRef(revisionId);
   const playingRef = useRef(playing);
   playingRef.current = playing;
+  const workBlocked = blockNewWork || busy !== null;
+  const updateBusy = (next: "analyze" | "preview" | "verify" | null) => {
+    setBusy(next);
+    onBusyChange(next !== null);
+  };
+
+  useEffect(() => () => onBusyChange(false), [onBusyChange]);
 
   const selection = useMemo(() => selectedKey(selected), [selected]);
   const draft = useMemo(
@@ -286,7 +297,7 @@ export function MasteringAssistant({
     abortRef.current?.abort();
     if (playingRef.current) stopPlayback();
     releasePreview();
-    setBusy(null);
+    updateBusy(null);
     setStatus("Projekt sa zmenil. Starý návrh je stale; spusti novú analýzu.");
   }, [releasePreview, revisionId, stopPlayback]);
 
@@ -350,7 +361,7 @@ export function MasteringAssistant({
     setCandidatePreview(null);
     setAppliedCheck(null);
     setStatus("Pripravujem sample audio pre masteringové meranie…");
-    setBusy("analyze");
+    updateBusy("analyze");
     try {
       assertMemory(doc);
       await awaitMasteringSampleBankReady(services.core.initialSampleBankHydration, controller.signal);
@@ -413,7 +424,7 @@ export function MasteringAssistant({
       else setError(message);
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
-      setBusy(null);
+      updateBusy(null);
     }
   };
 
@@ -429,7 +440,7 @@ export function MasteringAssistant({
     const bankRevisionAtStart = analysis.bankRevision;
     setCandidatePreview(null);
     setStatus("Renderujem presne vybrané zmeny na draft dokumente…");
-    setBusy("preview");
+    updateBusy("preview");
     try {
       assertMemory(draft);
       const buffer = await renderProject(draft, services.bank, renderOptions(controller.signal));
@@ -466,7 +477,7 @@ export function MasteringAssistant({
       else setError(message);
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
-      setBusy(null);
+      updateBusy(null);
     }
   };
 
@@ -489,7 +500,7 @@ export function MasteringAssistant({
     }
     const { controller } = beginRender();
     const bankRevisionAtStart = analysis.bankRevision;
-    setBusy("preview");
+    updateBusy("preview");
     setStatus("Renderujem aktuálny master na porovnanie…");
     try {
       assertMemory(analysis.source, reservedPcmBytes + bytesOf(previewBuffersRef.current.proposed));
@@ -510,7 +521,7 @@ export function MasteringAssistant({
       else setError(message);
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
-      setBusy(null);
+      updateBusy(null);
     }
   };
 
@@ -531,7 +542,7 @@ export function MasteringAssistant({
     const controller = new AbortController();
     abortRef.current = controller;
     onBeforeRender();
-    setBusy("verify");
+    updateBusy("verify");
     setStatus("Zmena je aplikovaná jedným Undo krokom. Znova renderujem a overujem výsledný master…");
     try {
       assertMemory(appliedDoc, referencePcmBytes);
@@ -559,7 +570,7 @@ export function MasteringAssistant({
       else setError(`Zmena bola aplikovaná, ale post-apply meranie sa nepodarilo: ${message}`);
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
-      setBusy(null);
+      updateBusy(null);
     }
   };
 
@@ -616,7 +627,7 @@ export function MasteringAssistant({
     setSelected([]);
     setCandidatePreview(null);
     setError("");
-    setBusy(null);
+    updateBusy(null);
     setStatus("Master inserts boli obnovené do snapshotu zachyteného pred návrhom.");
   };
 
@@ -628,7 +639,7 @@ export function MasteringAssistant({
     setSelected([]);
     setCandidatePreview(null);
     setError("");
-    setBusy(null);
+    updateBusy(null);
     setStatus("Návrh zatvorený. Dismiss túto analýzu nezapisuje do projektu.");
   };
 
@@ -655,11 +666,11 @@ export function MasteringAssistant({
         </div>
         <div className="master-assistant-proposal-actions">
           {analysis && !appliedSnapshot && (
-            <button type="button" onClick={dismiss} disabled={busy === "verify"}>
+            <button type="button" onClick={dismiss} disabled={workBlocked}>
               Dismiss
             </button>
           )}
-          <button type="button" onClick={() => void analyze()} disabled={busy !== null}>
+          <button type="button" onClick={() => void analyze()} disabled={workBlocked}>
             {busy === "analyze" ? "Analyzing…" : "Analyze master"}
           </button>
         </div>
@@ -684,7 +695,7 @@ export function MasteringAssistant({
               releasePreview();
               setStatus("Audition cache cleared; measured proposal data is still available for review.");
             }}
-            disabled={busy !== null}
+            disabled={workBlocked}
           >
             Clear audition cache
           </button>
@@ -734,7 +745,7 @@ export function MasteringAssistant({
                     setCandidatePreview(null);
                     releaseProposalPreview();
                   }}
-                  disabled={busy !== null}
+                  disabled={workBlocked}
                 >
                   Select all
                 </button>
@@ -746,24 +757,24 @@ export function MasteringAssistant({
                     setCandidatePreview(null);
                     releaseProposalPreview();
                   }}
-                  disabled={busy !== null}
+                  disabled={workBlocked}
                 >
                   Select none
                 </button>
                 <button
                   type="button"
                   onClick={() => void renderProposal()}
-                  disabled={busy !== null || selected.length === 0}
+                  disabled={workBlocked || selected.length === 0}
                 >
                   {busy === "preview" ? "Rendering draft…" : "Render selected preview"}
                 </button>
-                <button type="button" onClick={playCurrent} disabled={busy !== null || !analysisIsCurrent}>
+                <button type="button" onClick={playCurrent} disabled={workBlocked || !analysisIsCurrent}>
                   {currentPreviewBuffer ? "Play current" : "Render & play current"}
                 </button>
                 <button
                   type="button"
                   onClick={playProposed}
-                  disabled={!previewIsCurrent || !previewBuffer || busy !== null}
+                  disabled={!previewIsCurrent || !previewBuffer || workBlocked}
                 >
                   Play proposal
                 </button>
@@ -783,7 +794,7 @@ export function MasteringAssistant({
                         type="checkbox"
                         checked={selected.includes(index)}
                         onChange={() => toggleStep(index)}
-                        disabled={busy !== null}
+                        disabled={workBlocked}
                       />
                       <span>
                         {deviceName(step.device)} · {definition?.label ?? step.param}
@@ -867,13 +878,13 @@ export function MasteringAssistant({
             </p>
           )}
           <div className="master-assistant-proposal-actions">
-            <button type="button" onClick={() => apply(false)} disabled={busy !== null || selected.length === 0}>
+            <button type="button" onClick={() => apply(false)} disabled={workBlocked || selected.length === 0}>
               Apply selected
             </button>
             <button
               type="button"
               onClick={() => apply(true)}
-              disabled={busy !== null || selected.length !== analysis.plan.length || !isPlanConsistent(analysis.plan)}
+              disabled={workBlocked || selected.length !== analysis.plan.length || !isPlanConsistent(analysis.plan)}
             >
               Apply all
             </button>
@@ -893,7 +904,7 @@ export function MasteringAssistant({
               <span>Waiting for a fresh post-apply render…</span>
             )}
           </div>
-          <button type="button" onClick={resetToSnapshot} disabled={!appliedIsCurrent || busy !== null}>
+          <button type="button" onClick={resetToSnapshot} disabled={!appliedIsCurrent || workBlocked}>
             Reset to snapshot
           </button>
         </div>

@@ -1441,6 +1441,31 @@
   background: var(--bg);
 }
 
+.master-ab-bypass-match {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border-soft);
+  background: var(--bg);
+}
+
+.master-ab-bypass-match p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.master-ab-bypass-match > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.master-ab-bypass-match [role="status"] {
+  min-height: 1.45em;
+}
+
 .master-ab-snapshots {
   align-items: stretch;
   margin-top: 8px;

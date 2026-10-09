@@ -171,7 +171,9 @@ export function MasteringReferenceCompare({
   sampleRate,
   levelMatch,
   abRenderEpoch,
+  blockNewWork,
   onBeforeRender,
+  onBusyChange,
   onReferenceBytes,
   assistantBytes,
   comparisonBytes,
@@ -183,7 +185,9 @@ export function MasteringReferenceCompare({
   sampleRate: number;
   levelMatch: boolean;
   abRenderEpoch: number;
+  blockNewWork: boolean;
   onBeforeRender(): void;
+  onBusyChange(busy: boolean): void;
   onReferenceBytes(bytes: number): void;
   assistantBytes: number;
   comparisonBytes: number;
@@ -226,8 +230,9 @@ export function MasteringReferenceCompare({
       decodeAbortRef.current?.abort();
       renderAbortRef.current?.abort();
       if (playingRef.current) services.engine.stopPreview();
+      onBusyChange(false);
     };
-  }, [services.engine]);
+  }, [onBusyChange, services.engine]);
 
   useEffect(() => {
     const projectId = doc.id;
@@ -448,7 +453,7 @@ export function MasteringReferenceCompare({
   };
 
   const renderProjectMaster = async () => {
-    if (rendering) return;
+    if (rendering || blockNewWork) return;
     const startRevision = projectRevisionIdFor(services.store.getDoc());
     if (services.store.getDoc().id !== doc.id || startRevision !== revisionId) {
       setError("The project changed. Wait for the MASTER panel to update, then render again.");
@@ -461,6 +466,7 @@ export function MasteringReferenceCompare({
     setError("");
     setStorageMessage("");
     setStatus("Preparing sample audio for a consistent reference comparison…");
+    onBusyChange(true);
     setRendering(true);
     const controller = new AbortController();
     renderAbortRef.current = controller;
@@ -534,6 +540,7 @@ export function MasteringReferenceCompare({
     } finally {
       if (renderAbortRef.current === controller) renderAbortRef.current = null;
       setRendering(false);
+      onBusyChange(false);
     }
   };
 
@@ -632,7 +639,7 @@ export function MasteringReferenceCompare({
           <input
             type="file"
             accept=".wav,.wave,.mp3,.flac,audio/wav,audio/mpeg,audio/flac"
-            disabled={loading || rendering}
+            disabled={loading || rendering || blockNewWork}
             onChange={(event) => {
               const file = event.currentTarget.files?.[0];
               if (file) void importFile(file);
@@ -671,14 +678,18 @@ export function MasteringReferenceCompare({
           <span>
             {formatDb(reference.summary.lufsIntegrated, "LUFS-I")} · {formatDb(reference.summary.truePeakDb, "dBTP")}
           </span>
-          <button type="button" onClick={() => void removeReference()} disabled={loading || rendering}>
+          <button type="button" onClick={() => void removeReference()} disabled={loading || rendering || blockNewWork}>
             Remove reference
           </button>
         </div>
       )}
       {reference && (
         <div className="master-reference-controls">
-          <button type="button" onClick={() => void renderProjectMaster()} disabled={rendering || loading}>
+          <button
+            type="button"
+            onClick={() => void renderProjectMaster()}
+            disabled={rendering || loading || blockNewWork}
+          >
             {rendering
               ? "Rendering project…"
               : currentProjectMaster

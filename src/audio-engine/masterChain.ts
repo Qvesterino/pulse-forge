@@ -21,6 +21,8 @@ type MonitorBypassAutomation = {
   wetEnd: number;
   dryStart: number;
   dryEnd: number;
+  outputStart: number;
+  outputEnd: number;
 };
 
 /** Master-stage handles the metering rig (and diagnostics) read. */
@@ -68,12 +70,16 @@ export class MasterChain {
   /** Complementary monitor paths that rejoin before the common safety limiter. */
   private masterBypassWet: GainNode | null = null;
   private masterBypassDry: GainNode | null = null;
+  /** Monitor-only gain after the safety limiter; keeps bypass matching linear and export-safe. */
+  private monitorBypassOutputGain: GainNode | null = null;
   /** Aligns the raw audition branch with reported latency in the master path. */
   private masterBypassDelay: DelayNode | null = null;
   /** Mirrors our private wet/dry automation so rapid toggles do not rely on AudioParam.value. */
   private monitorBypassAutomation: MonitorBypassAutomation | null = null;
   private monitorBypassLatencyWarning: string | null = null;
   private masterBypassed = false;
+  private monitorBypassWetMatchGain = 1;
+  private monitorBypassDryMatchGain = 1;
   private masterClipper: WaveShaperNode | null = null;
   private masterInsertInput: GainNode | null = null;
   private masterInsertOutput: GainNode | null = null;
@@ -232,7 +238,8 @@ export class MasterChain {
     const ctx = this.deps.ctx();
     const wet = this.masterBypassWet?.gain;
     const dry = this.masterBypassDry?.gain;
-    if (!ctx || !wet || !dry) return;
+    const output = this.monitorBypassOutputGain?.gain;
+    if (!ctx || !wet || !dry || !output) return;
     // AudioContext.currentTime can trail the render thread by a quantum. Give
     // both live ramps a short future start so they reach the audio timeline
     // together before either path becomes audible.
@@ -240,6 +247,7 @@ export class MasterChain {
     const startTime = immediate ? now : now + MASTER_MONITOR_BYPASS_SCHEDULE_AHEAD_SECONDS;
     const wetTarget = enabled ? 0 : 1;
     const dryTarget = enabled ? 1 : 0;
+    const outputTarget = enabled ? this.monitorBypassDryMatchGain : this.monitorBypassWetMatchGain;
     const previous = this.monitorBypassAutomation;
     const valueAt = (start: number, end: number, startValue: number, endValue: number): number => {
       if (end <= start || startTime >= end) return endValue;
@@ -253,6 +261,9 @@ export class MasterChain {
     const dryStart = previous
       ? valueAt(previous.startTime, previous.endTime, previous.dryStart, previous.dryEnd)
       : dry.value;
+    const outputStart = previous
+      ? valueAt(previous.startTime, previous.endTime, previous.outputStart, previous.outputEnd)
+      : output.value;
     const setPath = (param: AudioParam, target: number, heldValue: number) => {
       if (immediate) {
         param.cancelScheduledValues(now);
@@ -267,6 +278,7 @@ export class MasterChain {
     };
     setPath(wet, wetTarget, wetStart);
     setPath(dry, dryTarget, dryStart);
+    setPath(output, outputTarget, outputStart);
     this.monitorBypassAutomation = immediate
       ? {
           startTime: now,
@@ -275,6 +287,8 @@ export class MasterChain {
           wetEnd: wetTarget,
           dryStart: dryTarget,
           dryEnd: dryTarget,
+          outputStart: outputTarget,
+          outputEnd: outputTarget,
         }
       : {
           startTime,
@@ -283,7 +297,17 @@ export class MasterChain {
           wetEnd: wetTarget,
           dryStart,
           dryEnd: dryTarget,
+          outputStart,
+          outputEnd: outputTarget,
         };
+  }
+
+  /** Apply measured, monitor-only loudness compensation after the shared safety limiter. */
+  setBypassMatchGains(wetGain: number, dryGain: number, immediate = false): void {
+    const safeGain = (gain: number) => (Number.isFinite(gain) ? Math.max(0, Math.min(1, gain)) : 1);
+    this.monitorBypassWetMatchGain = safeGain(wetGain);
+    this.monitorBypassDryMatchGain = safeGain(dryGain);
+    this.setBypassed(this.masterBypassed, immediate);
   }
 
   /** Entry and exit of the user insert slot before the final safety stages. */
@@ -335,6 +359,7 @@ export class MasterChain {
       this.masterInputGain?.disconnect();
       this.masterBypassWet?.disconnect();
       this.masterBypassDry?.disconnect();
+      this.monitorBypassOutputGain?.disconnect();
       this.masterBypassDelay?.disconnect();
     } catch {
       /* already disconnected */
@@ -342,6 +367,7 @@ export class MasterChain {
     this.masterInputGain = null;
     this.masterBypassWet = null;
     this.masterBypassDry = null;
+    this.monitorBypassOutputGain = null;
     this.masterBypassDelay = null;
     this.monitorBypassAutomation = null;
     this.monitorBypassLatencyWarning = null;
@@ -662,10 +688,14 @@ export class MasterChain {
     this.masterInsertOutput = ctx.createGain();
     this.masterBypassWet = ctx.createGain();
     this.masterBypassDry = ctx.createGain();
+    this.monitorBypassOutputGain = ctx.createGain();
     this.masterBypassDelay = ctx.createDelay(1);
     this.masterBypassDelay.delayTime.value = 0;
     this.masterBypassWet.gain.value = this.masterBypassed ? 0 : 1;
     this.masterBypassDry.gain.value = this.masterBypassed ? 1 : 0;
+    this.monitorBypassOutputGain.gain.value = this.masterBypassed
+      ? this.monitorBypassDryMatchGain
+      : this.monitorBypassWetMatchGain;
     const bypassGain = this.masterBypassed ? 1 : 0;
     const bypassStartTime = ctx.currentTime;
     this.monitorBypassAutomation = {
@@ -675,6 +705,8 @@ export class MasterChain {
       wetEnd: this.masterBypassed ? 0 : 1,
       dryStart: bypassGain,
       dryEnd: bypassGain,
+      outputStart: this.masterBypassed ? this.monitorBypassDryMatchGain : this.monitorBypassWetMatchGain,
+      outputEnd: this.masterBypassed ? this.monitorBypassDryMatchGain : this.monitorBypassWetMatchGain,
     };
     this.masterClipper.oversample = "4x";
     this.masterClipper.curve = null;
@@ -801,7 +833,8 @@ export class MasterChain {
     this.masterBypassDelay.connect(stageNodes.limiter.input);
     // The serial master path and dry monitor-bypass branch share the same safety-limiter input.
     this.masterLimiter.connect(masterAnalyser);
-    masterAnalyser.connect(ctx.destination);
+    masterAnalyser.connect(this.monitorBypassOutputGain);
+    this.monitorBypassOutputGain.connect(ctx.destination);
     // Stereo tap: limiter → splitter → per-channel analysers (metering sinks).
     const masterSplitter = ctx.createChannelSplitter(2);
     const masterAnalyserL = ctx.createAnalyser();
