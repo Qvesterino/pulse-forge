@@ -49,21 +49,23 @@ export class Transport {
   /** Subscribe to play/pause/stop changes without polling the transport clock. */
   subscribePlaying(listener: (playing: boolean) => void): () => void {
     this.playingListeners.add(listener);
-    listener(this.playing_);
+    this.notifyPlayingListener(listener, this.playing_);
     return () => {
       this.playingListeners.delete(listener);
     };
   }
 
+  private notifyPlayingListener(listener: (playing: boolean) => void, playing: boolean): void {
+    try {
+      listener(playing);
+    } catch (error) {
+      console.error("[transport] play-state listener failed:", error);
+    }
+  }
+
   private notifyPlayingListeners(): void {
     const playing = this.playing_;
-    for (const listener of [...this.playingListeners]) {
-      try {
-        listener(playing);
-      } catch (error) {
-        console.error("[transport] play-state listener failed:", error);
-      }
-    }
+    for (const listener of [...this.playingListeners]) this.notifyPlayingListener(listener, playing);
   }
 
   private emitGesture(): void {
