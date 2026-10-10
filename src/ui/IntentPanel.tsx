@@ -1764,6 +1764,8 @@ export function IntentPanel() {
   // transitions, scoped FX, length words) + mix profile + loudness pass.
   // Undo per stage; the loudness render must run AFTER install.
   const [songBusy, setSongBusy] = useState(false);
+  /** Structured full-song build progress (section X/N) — drives the progress bar. */
+  const [songProgress, setSongProgress] = useState<{ done: number; total: number; label: string } | null>(null);
   // SONG DRAFT (audition-before-apply): compose builds the song + mix off to
   // the side, the user HEARS the whole arrangement through the offline
   // renderer first, then USE installs it (fresh commands against the latest
@@ -2494,6 +2496,7 @@ export function IntentPanel() {
     sectionPreferenceBuffersRef.current.clear();
     sectionTokenRef.current++;
     setSongRendering(false);
+    setSongProgress(null);
     // Guard token: a superseding build, DROP or USE during the awaits below
     // bumps songTokenRef and this run must not install a stale draft.
     const buildToken = ++songTokenRef.current;
@@ -2518,7 +2521,10 @@ export function IntentPanel() {
         ...(takeProfile?.measured ? { vocalProfile: takeProfile } : {}),
         bank: services.bank,
         candidateCount: 3,
-        onProgress: (label) => setStatus(`⚡ SUNO MODE — ${label}`),
+        onProgress: (label, progress) => {
+          setStatus(`⚡ SUNO MODE — ${label}`);
+          if (progress) setSongProgress(progress);
+        },
       });
       // Preview doc for the audition render only — nothing is applied yet.
       // Song command is whole-doc; mix is a delta — fold mix over the song
@@ -2548,6 +2554,7 @@ export function IntentPanel() {
           : loud.measured !== null
             ? ` · 🔊 ${loud.measured} LUFS (v cieli)`
             : "";
+      setSongProgress(null);
       setSongDraft({
         result,
         activeBuild: result.build,
@@ -2629,6 +2636,7 @@ export function IntentPanel() {
         if (songTokenRef.current === token) setSongRendering(false);
       }
     } catch (err) {
+      setSongProgress(null);
       setError(err instanceof Error ? err.message : String(err));
     }
   };
@@ -5003,6 +5011,26 @@ export function IntentPanel() {
       {status && (
         <div className="intent-status" role="status">
           {status}
+        </div>
+      )}
+      {songBusy && songProgress && (
+        <div
+          className="intent-song-progress"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={songProgress.total}
+          aria-valuenow={songProgress.done}
+          aria-label={`Building song: ${songProgress.label}`}
+        >
+          <div className="intent-song-progress-track">
+            <div
+              className="intent-song-progress-fill"
+              style={{ width: `${Math.round((songProgress.done / Math.max(1, songProgress.total)) * 100)}%` }}
+            />
+          </div>
+          <span className="intent-song-progress-label">
+            {songProgress.done}/{songProgress.total} · {songProgress.label}
+          </span>
         </div>
       )}
       {personalStatus && (

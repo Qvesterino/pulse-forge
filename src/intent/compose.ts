@@ -153,7 +153,14 @@ export interface ComposeResult {
 
 export interface ComposeOptions {
   /** Called between stages and per section — for status lines. */
-  onProgress?: (label: string) => void;
+  /**
+   * Progress line. The optional second argument is the STRUCTURED section
+   * progress ({ done, total, label }) — surfaces that can render a real
+   * progress bar read it; the string stays the single source for text-only
+   * callers (MCP, legacy panels). Absent during the indeterminate phases
+   * (composing start, loudness measure).
+   */
+  onProgress?: (label: string, progress?: { done: number; total: number; label: string }) => void;
   /** Length override; default parses the text ("short", "3 minutes", "epic journey"). */
   length?: SongLengthHint | null;
   /**
@@ -255,7 +262,8 @@ export async function composeFullTrack(
       ...(options.candidateCount !== undefined ? { candidateCount: options.candidateCount } : {}),
       ...(options.bank ? { bank: options.bank } : {}),
       ...(options.renderCandidate ? { renderCandidate: options.renderCandidate } : {}),
-      onProgress: (done, label, total) => options.onProgress?.(`section ${label} (${done}/${total})`),
+      onProgress: (done, label, total) =>
+        options.onProgress?.(`section ${label} (${done}/${total})`, { done, total, label }),
     },
   );
 
@@ -365,7 +373,11 @@ export async function composeFullTrack(
     }
   }
 
-  options.onProgress?.(`ready — ${build.sections.length} sections, ${build.totalBars} bars`);
+  options.onProgress?.(`ready — ${build.sections.length} sections, ${build.totalBars} bars`, {
+    done: build.sections.length,
+    total: build.sections.length,
+    label: "ready",
+  });
   // Hum & harmonize: when the hum requested the backing stack, the song
   // command installs a dedicated "Hum Harmony" instrument track (created
   // here, one id, deterministic) and the wrapper keeps ONE undo step for
