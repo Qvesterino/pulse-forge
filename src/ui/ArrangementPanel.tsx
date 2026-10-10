@@ -81,6 +81,9 @@ import {
 import { timelineItemsOf } from "../project-model/timeline";
 import { usePointerDragGuard } from "./usePointerDragGuard";
 import { SNAP_GRIDS, snapBar, snapBarToTargets, snapBarsFor, snapController, snapDelta, snapTick } from "./snap";
+import { chordName } from "../project-model/chords";
+import { addChord, moveChord, removeChord, resizeChord, setChord } from "../commands/chordTrack";
+import type { ChordQuality } from "../project-model/chords";
 import type { SnapGridId } from "./snap";
 import { computeSceneIntensity } from "../project-model/intensity";
 import type {
@@ -1504,6 +1507,23 @@ export function ArrangementPanel() {
     setAudioMultiDrag(null);
   };
   const [audioMenu, setAudioMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);
+  // CHORD TRACK (v17): selection + gesture state for the chord lane.
+  const [chordSel, setChordSel] = useState<string | null>(null);
+  const [chordDrag, setChordDrag] = useState<{ startBar: number; lengthBars: number } | null>(null);
+  const chordDragLiveRef = useRef<{ startBar: number; lengthBars: number } | null>(null);
+  const chordDragRef = useRef<{
+    mode: "move" | "resize";
+    chordId: string;
+    pointerId: number;
+    grabBar: number;
+    origStart: number;
+    origLength: number;
+    barWidth: number;
+  } | null>(null);
+  const setChordDragLive = (next: { startBar: number; lengthBars: number } | null) => {
+    chordDragLiveRef.current = next;
+    setChordDrag(next);
+  };
   const clipLongPressTargetRef = useRef<string | null>(null);
   const audioLongPressTargetRef = useRef<{ clipId: string; x: number; y: number } | null>(null);
   const markerLongPressTargetRef = useRef<string | null>(null);
@@ -2884,6 +2904,9 @@ export function ArrangementPanel() {
     audioStretchLiveRef.current = null;
     audioSlipLiveRef.current = null;
     audioMultiDragLiveRef.current = null;
+    chordDragRef.current = null;
+    chordDragLiveRef.current = null;
+    setChordDrag(null);
     setAudioDrag(null);
     setAudioFadePreview(null);
     setAudioGainPreview(null);
@@ -4219,6 +4242,156 @@ export function ArrangementPanel() {
               />
             )}
             <ArrPlayheadLine transport={services.transport} barWidth={barWidth} className="arr-playhead" />
+          </div>
+          <div
+            className="arr-chord-lane"
+            style={{ width: totalBars * barWidth }}
+            aria-label="Chord track"
+            title="Chord track — click empty space to add a chord · drag to move · right edge resizes · click a chord to edit it"
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+              const lane = laneRef.current;
+              if (!lane) return;
+              const bar = Math.max(0, Math.floor((event.clientX - lane.getBoundingClientRect().left) / barWidth));
+              const block = (event.target as HTMLElement).closest(".arr-chord") as HTMLElement | null;
+              if (block) {
+                const chordId = block.dataset.chordId!;
+                const chord = (doc.arrangement.chords ?? []).find((c) => c.id === chordId)!;
+                setChordSel(chordId);
+                event.currentTarget.setPointerCapture(event.pointerId);
+                chordDragRef.current = {
+                  mode: event.clientX > block.getBoundingClientRect().right - 10 ? "resize" : "move",
+                  chordId,
+                  pointerId: event.pointerId,
+                  grabBar: bar,
+                  origStart: chord.startBar,
+                  origLength: chord.lengthBars,
+                  barWidth,
+                };
+                setChordDragLive({ startBar: chord.startBar, lengthBars: chord.lengthBars });
+                return;
+              }
+              setChordSel(null);
+              const startBar = Math.max(0, Math.floor(bar));
+              try {
+                execute(addChord(services.store.doc, startBar, 2, 0, "maj"));
+                setChordSel(
+                  (services.store.doc.arrangement.chords ?? []).find((c) => c.startBar === startBar)?.id ?? null,
+                );
+              } catch (error) {
+                setActionError(String(error));
+              }
+            }}
+            onPointerMove={(event) => {
+              const cur = chordDragRef.current;
+              if (!cur) return;
+              const lane = laneRef.current;
+              if (!lane) return;
+              const bar = Math.max(0, (event.clientX - lane.getBoundingClientRect().left) / cur.barWidth);
+              const next =
+                cur.mode === "move"
+                  ? Math.max(0, cur.origStart + Math.round(bar - cur.grabBar))
+                  : Math.max(cur.origStart + 1, Math.round(bar));
+              const length = cur.mode === "move" ? cur.origLength : next - cur.origStart;
+              setChordDragLive({ startBar: cur.mode === "move" ? next : cur.origStart, lengthBars: length });
+            }}
+            onPointerUp={() => {
+              const cur = chordDragRef.current;
+              if (!cur) return;
+              const final = chordDragLiveRef.current;
+              chordDragRef.current = null;
+              setChordDragLive(null);
+              if (!final) return;
+              try {
+                if (cur.mode === "move" && final.startBar !== cur.origStart) {
+                  execute(moveChord(services.store.doc, cur.chordId, final.startBar));
+                } else if (cur.mode === "resize" && final.lengthBars !== cur.origLength) {
+                  execute(resizeChord(services.store.doc, cur.chordId, final.lengthBars));
+                }
+              } catch (error) {
+                setActionError(String(error));
+              }
+            }}
+            onPointerCancel={() => {
+              chordDragRef.current = null;
+              setChordDragLive(null);
+            }}
+          >
+            {(doc.arrangement.chords ?? []).map((chord) => {
+              const drag = chordDrag && chordSel === chord.id && chordDragRef.current ? chordDrag : null;
+              const startBar = drag ? drag.startBar : chord.startBar;
+              const lengthBars = drag ? drag.lengthBars : chord.lengthBars;
+              const selected = chordSel === chord.id;
+              return (
+                <div
+                  key={chord.id}
+                  data-chord-id={chord.id}
+                  className={`arr-chord${selected ? " selected" : ""}`}
+                  style={{ left: startBar * barWidth, width: lengthBars * barWidth - 2 }}
+                  title={`${chordName(chord.root, chord.quality)} · bars ${chord.startBar + 1}–${chord.startBar + chord.lengthBars}`}
+                >
+                  {chordName(chord.root, chord.quality)}
+                </div>
+              );
+            })}
+            {chordSel &&
+              chordDrag === null &&
+              (() => {
+                const selected = (doc.arrangement.chords ?? []).find((c) => c.id === chordSel);
+                if (!selected) return null;
+                return (
+                  <div className="arr-chord-editor" style={{ left: 6 }}>
+                    <select
+                      aria-label="Chord root"
+                      value={selected.root}
+                      onChange={(event) => {
+                        try {
+                          execute(setChord(services.store.doc, selected.id, { root: Number(event.target.value) }));
+                        } catch (error) {
+                          setActionError(String(error));
+                        }
+                      }}
+                    >
+                      {["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"].map((name, index) => (
+                        <option key={name} value={index}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      aria-label="Chord quality"
+                      value={selected.quality}
+                      onChange={(event) => {
+                        try {
+                          execute(
+                            setChord(services.store.doc, selected.id, {
+                              quality: event.target.value as ChordQuality,
+                            }),
+                          );
+                        } catch (error) {
+                          setActionError(String(error));
+                        }
+                      }}
+                    >
+                      {(["maj", "min", "dim", "dom7", "maj7", "min7", "sus4", "sus2"] as const).map((quality) => (
+                        <option key={quality} value={quality}>
+                          {chordName(selected.root, quality)}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      aria-label="Remove chord"
+                      onClick={() => {
+                        execute(removeChord(services.store.doc, selected.id));
+                        setChordSel(null);
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                );
+              })()}
           </div>
           <div
             className={`arr-lane${tool === "cut" ? " arr-cut-tool" : ""}`}

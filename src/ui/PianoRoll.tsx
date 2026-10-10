@@ -19,6 +19,7 @@ import {
 } from "../commands/commands";
 import { clamp, uid } from "../shared/ids";
 import { getScalePitchesInRange, isInScale, snapToScale, scaleDegreeLabel } from "../project-model/scales";
+import { chordAtTick, nearestChordPitch } from "../project-model/chords";
 import { usePublishCursor, useRemoteCursors } from "./remoteCursors";
 import { usePointerDragGuard } from "./usePointerDragGuard";
 import { MELODIC_OFFSETS, melodicKeys } from "./melodicKeys";
@@ -413,6 +414,8 @@ export function PianoRollTrack({
   const [humOpen, setHumOpen] = useState(false);
   const [entrySteps, setEntrySteps] = useState(2);
   const [cursor, setCursor] = useState({ pitch: 60, step: 0 });
+  // Chord-snap: notes land on tones of the chord-track chord under them.
+  const [chordSnap, setChordSnap] = useState(false);
   const cursorRef = useRef(cursor);
   cursorRef.current = cursor;
   useEffect(() => {
@@ -522,6 +525,12 @@ export function PianoRollTrack({
     let pitch = PITCH_MAX - Math.floor(y / ROW_HEIGHT);
     if (scaleSnap && projectKey) {
       pitch = snapToScale(pitch, projectKey);
+    }
+    if (chordSnap) {
+      // A pattern has no single absolute position (scenes can place it
+      // anywhere) — the chord under the PLAYHEAD is the musical context.
+      const chord = chordAtTick(doc.arrangement.chords ?? [], services.transport.position);
+      if (chord) pitch = nearestChordPitch(pitch, chord);
     }
     return {
       stepF: (x / rect.width) * pattern.stepCount,
@@ -792,6 +801,10 @@ export function PianoRollTrack({
       let newPitch = clamp(current.basePitch + current.dPitch, PITCH_MIN, PITCH_MAX);
       if (scaleSnap && projectKey) {
         newPitch = snapToScale(newPitch, projectKey);
+      }
+      if (chordSnap) {
+        const chord = chordAtTick(doc.arrangement.chords ?? [], services.transport.position);
+        if (chord) newPitch = clamp(nearestChordPitch(newPitch, chord), PITCH_MIN, PITCH_MAX);
       }
       executeUserEdit(
         services.store,
@@ -1487,6 +1500,14 @@ export function PianoRollTrack({
             }
           >
             HUM
+          </button>
+          <button
+            type="button"
+            className={`btn btn-small${chordSnap ? " active-solo" : ""}`}
+            title="Snap notes to the chord track chord under them"
+            onClick={() => setChordSnap((on) => !on)}
+          >
+            CHORD
           </button>
           <button
             type="button"

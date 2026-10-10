@@ -31,6 +31,7 @@ import type {
 } from "./types";
 import { BAR_TICKS, PPQ, STEP_TICKS, STEPS_PER_PATTERN, isMusicalKey } from "./types";
 import { tempoAtTick } from "./scene-time";
+import { CHORD_QUALITIES } from "./chords";
 import { sanitizeProjectProducerBrief } from "./producer-brief";
 import { sanitizeGateSteps, sanitizeLfo, sanitizeManglerSteps } from "./modulators";
 import { uid } from "../shared/ids";
@@ -48,7 +49,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 16;
+export const SCHEMA_VERSION = 17;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -1708,7 +1709,47 @@ function normalizeArrangementDomain(s: NormalizeState): void {
         .filter((group) => group.clipIds.length > 0)
     : undefined;
   const clipGroupsChanged = !jsonEqual(clipGroups, rawClipGroups);
-  if (clipsChanged || transitionsChanged || audioChanged || takeGroupsChanged || clipGroupsChanged) {
+  // Chord track (v17): whole-bar events; only shape-valid ones survive and
+  // they are kept time-sorted. Overlap is a COMMAND-level contract (like
+  // scene clips) — normalize deliberately does not drop overlapping chords.
+  const rawChords = (arrangement as unknown as Record<string, unknown>).chords;
+  const chords = Array.isArray(rawChords)
+    ? (
+        rawChords as {
+          id?: unknown;
+          startBar?: unknown;
+          lengthBars?: unknown;
+          root?: unknown;
+          quality?: unknown;
+        }[]
+      )
+        .filter(
+          (chord) =>
+            typeof chord?.id === "string" &&
+            chord.id !== "" &&
+            Number.isFinite(chord.startBar as number) &&
+            (chord.startBar as number) >= 0 &&
+            Number.isFinite(chord.lengthBars as number) &&
+            (chord.lengthBars as number) >= 1 &&
+            Number.isInteger(chord.startBar as number) &&
+            Number.isInteger(chord.lengthBars as number) &&
+            Number.isInteger(chord.root as number) &&
+            (chord.root as number) >= 0 &&
+            (chord.root as number) <= 11 &&
+            typeof chord.quality === "string",
+        )
+        .filter((chord) => CHORD_QUALITIES.includes(chord.quality as never))
+        .map((chord) => ({
+          id: chord.id as string,
+          startBar: chord.startBar as number,
+          lengthBars: chord.lengthBars as number,
+          root: chord.root as number,
+          quality: chord.quality as import("./chords").ChordQuality,
+        }))
+        .sort((a, b) => a.startBar - b.startBar)
+    : undefined;
+  const chordsChanged = !jsonEqual(chords, rawChords);
+  if (clipsChanged || transitionsChanged || audioChanged || takeGroupsChanged || clipGroupsChanged || chordsChanged) {
     s.doc = {
       ...doc,
       arrangement: {
@@ -1717,6 +1758,7 @@ function normalizeArrangementDomain(s: NormalizeState): void {
         ...(takeGroups ? { takeGroups } : {}),
         ...(transitions !== undefined ? { transitions } : {}),
         ...(clipGroups ? { clipGroups } : {}),
+        ...(chords ? { chords } : {}),
       },
     };
     s.changed = true;
@@ -2627,6 +2669,8 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // unlocked).
   // v16 adds the optional `AudioClip.fadeCurve` ("equal" = equal-power
   // sine/cosine fades; absent = linear).
+  // v17 adds the chord track (`Arrangement.chords` — whole-bar harmonic
+  // skeleton events).
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

@@ -68,6 +68,43 @@ make clips immune to editing — a locked clip refuses moves, trims, splits and
 deletes from every surface, keyboard included. Muting and duplication still
 work on locked clips.
 
+## Chord track
+
+The violet lane above the timeline is the **chord track** — the song's harmonic
+skeleton. Chords span whole bars and never overlap.
+
+- **Add**: click empty space in the lane — a two-bar C major chord appears at
+  that bar.
+- **Edit**: click a chord; an editor with root and quality selectors (major,
+  minor, dominant 7, maj 7, min 7, sus, dim) opens in the lane.
+- **Move / resize**: drag the chord; drag its right edge.
+- **Remove**: the ✕ button in the editor.
+- **Detect**: the editor's detection uses the notes of the active pattern —
+  `suggestChordFromPitches` scores every root and quality against the pattern's
+  pitch classes (see the project-model chords module).
+
+The chord track is not just decoration: with **CHORD** toggled in the piano
+roll toolbar, inserted and dragged notes snap to the tones of the chord under
+the playhead — write a progression, then improvise melodies that always fit.
+
+## Chord track
+
+The violet lane above the timeline is the **chord track** — the song's harmonic
+skeleton. Chords span whole bars and never overlap.
+
+- **Add**: click empty space in the lane — a two-bar C major chord appears at
+  that bar.
+- **Edit**: click a chord; an editor with root and quality selectors (major,
+  minor, dominant 7, maj 7, min 7, sus, dim) opens in the lane.
+- **Move / resize**: drag the chord; drag its right edge.
+- **Remove**: the ✕ button in the editor.
+- **Detect**: the editor scores every root and quality against the notes of
+  the active pattern and picks the best match.
+
+The chord track is not just decoration: with **CHORD** toggled in the piano
+roll toolbar, inserted and dragged notes snap to the tones of the chord under
+the playhead — write a progression, then improvise melodies that always fit.
+
 ## Automation
 
 Scenes can drive track parameters over time: add a scene automation lane

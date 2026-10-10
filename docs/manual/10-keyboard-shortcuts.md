@@ -35,20 +35,21 @@ text field.
 
 ## Clips and arrangement
 
-| Key                            | Action                                             |
-| ------------------------------ | -------------------------------------------------- |
-| `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copy / cut / paste clips (paste at playhead)       |
-| `←` / `→`                      | Nudge selected clips one bar (`Shift` = fine 1/16) |
-| `M`                            | Mute / unmute selected audio clips                 |
-| `Ctrl+E`                       | Separate the audio clip at the playhead            |
-| `X`                            | Crossfade the selected clips                       |
-| `Ctrl+B`                       | Bounce the selected range to an audio clip         |
-| `P`                            | Locators to selection (loop)                       |
-| `J`                            | Toggle the snap grid (restores the last grid)      |
-| `Ctrl+G` / `Ctrl+Shift+G`      | Group / ungroup selected clips                     |
-| `Shift+L`                      | Lock / unlock selected clips                       |
-| `A`                            | Capture the last take (after stop/pause)           |
-| `Alt`+drag body / edge         | Slip content / time-stretch                        |
+| Key                            | Action                                                              |
+| ------------------------------ | ------------------------------------------------------------------- |
+| `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copy / cut / paste clips (paste at playhead)                        |
+| `←` / `→`                      | Nudge selected clips one bar (`Shift` = fine 1/16)                  |
+| `M`                            | Mute / unmute selected audio clips                                  |
+| `Ctrl+E`                       | Separate the audio clip at the playhead                             |
+| `X`                            | Crossfade the selected clips                                        |
+| `Ctrl+B`                       | Bounce the selected range to an audio clip                          |
+| `P`                            | Locators to selection (loop)                                        |
+| `J`                            | Toggle the snap grid (restores the last grid)                       |
+| `Ctrl+G` / `Ctrl+Shift+G`      | Group / ungroup selected clips                                      |
+| `Shift+L`                      | Lock / unlock selected clips                                        |
+| `A`                            | Capture the last take (after stop/pause)                            |
+| —                              | Chord track: click adds, drag moves/reshapes, click a chord to edit |
+| `Alt`+drag body / edge         | Slip content / time-stretch                                         |
 
 ## Piano roll
 

@@ -67,7 +67,8 @@ export type EffectType =
   | "fxeq"
   | "ultina"
   | "ozvena"
-  | "morphdynamics";
+  | "morphdynamics"
+  | "bassHarmonic";
 
 export type InstrumentKind =
   | "sampler"
@@ -807,12 +808,28 @@ export interface ClipGroup {
   clipIds: ID[];
 }
 
+/**
+ * A chord event on the arrangement's chord track (schema v17): a harmonic
+ * skeleton spanning whole bars. Same integer-bar, no-overlap lane contract
+ * as scene clips. Pitch is a CLASS (0–11, C = 0) — voicing belongs to the
+ * instruments; the chord track is the harmonic map, not a voice.
+ */
+export interface ChordEvent {
+  id: ID;
+  startBar: number;
+  lengthBars: number;
+  /** Root pitch class: 0–11, where 0 = C. */
+  root: number;
+  quality: import("./chords").ChordQuality;
+}
+
 export interface Arrangement {
   clips: ArrangementClip[];
   audioClips?: AudioClip[];
   takeGroups?: AudioTakeGroup[];
   transitions?: ArrangementTransition[];
   clipGroups?: ClipGroup[];
+  chords?: ChordEvent[];
 }
 
 export type AutomationParamKind = "trackGain" | "trackPan" | "fxParam" | "instParam";
