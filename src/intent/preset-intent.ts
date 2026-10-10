@@ -8,7 +8,7 @@ import type { ExactTarget } from "./exact";
 
 /**
  * PRESET INTENT — "load the Warm Sub preset on the bass" /
- * "načítaj preset deep sub na basu".
+ * "načítaj preset deep sub na basu" / "load the trap long preset on the drums".
  *
  * The word "preset" is REQUIRED (bounded v1 — "load deep sub on the bass"
  * stays a generation prompt). Names match against the FACTORY registry
@@ -17,15 +17,14 @@ import type { ExactTarget } from "./exact";
  * named target. An unknown name is an EXPLICIT unknownPreset result with
  * family suggestions — never a silent fall-through to generation.
  *
- * Target families are the strict exact-target ones (bass/lead/chords): the
- * applier folds `applyInstrumentPreset` over EVERY track of the family (same
- * family-wide etiquette as the fader) as ONE undoable snapshot — params,
- * sampleId and presetId all restore on undo. Drums are not a preset target:
- * instrument presets do not apply to drum tracks (the drum-synth preset bank
- * has no intent surface yet).
+ * Target families are bass/lead/chords plus the KICK family `drums` (KOPA,
+ * ADR 0035): "drums" resolves to drum-role INSTRUMENT tracks whose kind is in
+ * `FAMILY_INSTRUMENTS.drums` — the drum rack pads keep their own preset bank
+ * and are NOT a preset target. `resolveExactTargetTracks` (fader/exact ops)
+ * is deliberately unchanged: "mute the drums" still means the drum rack.
  */
 
-export type PresetTargetFamily = Extract<ExactTarget, "bass" | "lead" | "chords">;
+export type PresetTargetFamily = Extract<ExactTarget, "bass" | "lead" | "chords" | "drums">;
 
 export interface PresetIntent {
   preset: InstrumentPreset;
@@ -42,12 +41,18 @@ const deaccent = (value: string): string =>
 const TARGET_WORDS: ReadonlyArray<readonly [RegExp, PresetTargetFamily]> = [
   [/\b(?:bass|808|bas[auy])\b/, "bass"],
   [/\b(?:chords?|keys?|akord\w*)\b/, "chords"],
+  // Deaccented text: "kopák" → "kopak", "bicích" → "bicich"; Slovak
+  // declension means "na kopu"/"na kope" — `kop\w*` covers kopa/kopu/kopak.
+  [/\b(?:drums?|bic(?:ie|i|ich)?|bubn\w*|kick|kop\w*)\b/, "drums"],
   [/\b(?:lead(?:e|om|u|a)?|synth\w*|melodi\w*)\b/, "lead"],
 ];
 
 export const FAMILY_INSTRUMENTS: Record<PresetTargetFamily, ReadonlySet<string>> = {
   bass: new Set(["bass", "808", "logdrum"]),
   chords: new Set(["keys", "analog", "organ", "strings", "bell", "texture"]),
+  // v1: only KOPA — the drum-synth instrument presets stay outside the family
+  // until they have a kick-designer equivalent (ADR 0035).
+  drums: new Set(["kopa"]),
   lead: new Set([
     "pluck",
     "spectral",
@@ -64,7 +69,7 @@ export const FAMILY_INSTRUMENTS: Record<PresetTargetFamily, ReadonlySet<string>>
 };
 
 const PRESET_ASK =
-  /\b(?:load|apply|use|nacitaj|pouzi|nahraj)\s+(?:the\s+)?(?:presets?\s+)?["']?(.+?)["']?\s*(?:presets?)?\s+(?:on|to|na)\s+(?:the\s+)?(bass|808|bas(?:a|u|y|i|ou)?|chords?|keys|akord\w*|lead(?:e|om|u|a)?|synth\w*|melodi\w*)\b/;
+  /\b(?:load|apply|use|nacitaj|pouzi|nahraj)\s+(?:the\s+)?(?:presets?\s+)?["']?(.+?)["']?\s*(?:presets?)?\s+(?:on|to|na)\s+(?:the\s+)?(bass|808|bas(?:a|u|y|i|ou)?|chords?|keys|akord\w*|drums?|bic(?:ie|i|ich)?|bubn\w*|kick|kop\w*|lead(?:e|om|u|a)?|synth\w*|melodi\w*)\b/;
 
 export type ParsedPresetIntent =
   { ok: true; intent: PresetIntent } | { ok: false; name: string; suggestions: string[] };
@@ -123,12 +128,31 @@ export function resolvePresetByName(
 }
 
 /**
+ * Family-aware track resolution for preset intents. `drums` lives on
+ * INSTRUMENT tracks here (KOPA), NOT the drum rack — `resolveExactTargetTracks`
+ * must keep meaning the rack for exact/fader ops ("mute the drums"). Other
+ * families delegate to the exact resolver (their instruments already live on
+ * instrument tracks).
+ */
+export function resolvePresetFamilyTracks(doc: ProjectDocument, family: PresetTargetFamily): string[] {
+  if (family === "drums") {
+    return doc.tracks
+      .filter(
+        (track): track is InstrumentTrack =>
+          track.kind === "instrument" && FAMILY_INSTRUMENTS.drums.has(track.instrument),
+      )
+      .map((track) => track.id);
+  }
+  return resolveExactTargetTracks(doc, family);
+}
+
+/**
  * Fold the preset over EVERY track of the target family (the fader's
  * family-wide etiquette) as ONE undoable snapshot. Throws when the family
  * has no track in this project — an explicit ask lands or fails loudly.
  */
 export function applyPresetIntentCommand(doc: ProjectDocument, intent: PresetIntent): Command {
-  const ids = resolveExactTargetTracks(doc, intent.target);
+  const ids = resolvePresetFamilyTracks(doc, intent.target);
   if (ids.length === 0) {
     throw new Error(`no track matches the "${intent.target}" family — add the track first or pick another target`);
   }
@@ -143,7 +167,7 @@ export function applyPresetIntentCommand(doc: ProjectDocument, intent: PresetInt
  * ✓ per track; ✗ would mean the fold missed (a bug worth surfacing).
  */
 export function presetReadback(after: ProjectDocument, intent: PresetIntent): string {
-  const ids = resolveExactTargetTracks(after, intent.target);
+  const ids = resolvePresetFamilyTracks(after, intent.target);
   const entries = ids.map((id) => {
     const track = after.tracks.find((candidate): candidate is InstrumentTrack => candidate.id === id);
     if (!track) return "✗";

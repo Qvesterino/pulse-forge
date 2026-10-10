@@ -128,7 +128,7 @@ function presetFrom(m: ModelAction): RoutedIntent {
   }
   let best: { intent: PresetIntent; rank: number } | null = null;
   let fallbackSuggestions: string[] = [];
-  for (const family of ["bass", "chords", "lead"] as const) {
+  for (const family of ["bass", "chords", "lead", "drums"] as const) {
     const resolved = resolvePresetByName(name, want, family);
     if (resolved.ok) {
       const rank = resolved.intent.matchedBy === "exact" ? 3 : resolved.intent.matchedBy === "prefix" ? 2 : 1;
