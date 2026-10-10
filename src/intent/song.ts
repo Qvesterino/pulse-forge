@@ -1,4 +1,14 @@
-import type { ArrangementTransitionType, EffectType, InstrumentTrack, Marker, MusicalKey, NoteEvent, Pattern, ProjectDocument, SceneRole } from "../project-model/types";
+import type {
+  ArrangementTransitionType,
+  EffectType,
+  InstrumentTrack,
+  Marker,
+  MusicalKey,
+  NoteEvent,
+  Pattern,
+  ProjectDocument,
+  SceneRole,
+} from "../project-model/types";
 import { BAR_TICKS } from "../project-model/types";
 import { normalizeIntent, intentFromGenerateOptions } from "./normalize";
 import { generateOptionsFromIntent, planGeneration } from "./plan";
@@ -2400,15 +2410,22 @@ const SONG_SEARCH_LANES: readonly SearchLane[] = ["safe", "personal", "experimen
  */
 const HOOK_ROLES: ReadonlySet<string> = new Set(["chorus", "drop"]);
 
-/** Repeat the donor motif to fill a target length (wraps at the donor's own length). */
+/**
+ * Repeat the donor motif to fill a target length (wraps at the donor's own
+ * length). NOTE UNITS: NoteEvent times are TICKS (a 16th = BAR_TICKS / 16)
+ * while section stepCounts are 16th STEPS — convert before offsetting.
+ */
 function repeatMotif(notes: NoteEvent[], donorSteps: number, targetSteps: number): NoteEvent[] {
+  const stepTicks = BAR_TICKS / 16;
+  const donorTicks = donorSteps * stepTicks;
+  const targetTicks = targetSteps * stepTicks;
   const sorted = [...notes].sort((a, b) => a.start - b.start);
   const out: NoteEvent[] = [];
-  for (let offset = 0; offset < targetSteps; offset += donorSteps) {
+  for (let offset = 0; offset < targetTicks; offset += donorTicks) {
     for (const note of sorted) {
       const start = note.start + offset;
-      if (start >= targetSteps) continue;
-      out.push({ ...note, start, duration: Math.min(note.duration, targetSteps - start) });
+      if (start >= targetTicks) continue;
+      out.push({ ...note, start, duration: Math.min(note.duration, targetTicks - start) });
     }
   }
   return out;
@@ -2634,7 +2651,11 @@ export async function buildSong(
       doc,
       options.hookReprise === false
         ? laneBuild.filter((section): section is SongBuildSection => section !== null)
-        : applyLeadHook(doc, laneBuild.filter((section): section is SongBuildSection => section !== null), hookScope),
+        : applyLeadHook(
+            doc,
+            laneBuild.filter((section): section is SongBuildSection => section !== null),
+            hookScope,
+          ),
     );
     const modes = laneModes.get(lane) ?? new Set<CandidateSearchInfo["mode"]>();
     alternatives.push({

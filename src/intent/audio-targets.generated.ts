@@ -134,15 +134,15 @@ export const GENERATED_AUDIO_TARGETS: Record<
     bassRange: [0.7177, 0.95],
   },
   jazz: {
-    rmsRange: [0.0868, 0.5425],
-    crestRange: [1.2, 12.1],
-    zcrRange: [0.0103, 0.0643],
-    bassRange: [0.7162, 0.95],
+    rmsRange: [0.1466, 0.9165],
+    crestRange: [1.2, 10.4],
+    zcrRange: [0.0035, 0.0217],
+    bassRange: [0.617, 0.917],
   },
   rock: {
-    rmsRange: [0.0782, 0.4888],
-    crestRange: [1.2, 12.6],
-    zcrRange: [0.0231, 0.1443],
-    bassRange: [0.5751, 0.8751],
+    rmsRange: [0.1467, 0.917],
+    crestRange: [1.2, 10.4],
+    zcrRange: [0.0076, 0.0478],
+    bassRange: [0.6123, 0.9123],
   },
 };

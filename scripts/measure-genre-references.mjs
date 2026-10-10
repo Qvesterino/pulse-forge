@@ -33,8 +33,15 @@ const outFile = path.join(root, "src", "intent", "genre-reference.generated.ts")
 const outTargetsFile = path.join(root, "src", "intent", "audio-targets.generated.ts");
 /** Export loudness every generated song is trimmed toward. */
 const TARGET_LUFS = -14;
-/** Hard clamp mirrored by the song builder's trim computation. */
-const TRIM_LIMIT_DB = 6;
+/**
+ * Hard clamp mirrored by the song builder's trim computation (regenerated
+ * into genre-reference.generated.ts). 9 dB: full-band genres (the promoted
+ * rock/jazz render drums + walking bass + comping + lead) legitimately
+ * measure ~7 dB above the −14 target pre-trim — the drums-era 6 dB window
+ * capped their correction and left them the hottest references in the
+ * library.
+ */
+const TRIM_LIMIT_DB = 9;
 const GENRES = [
   "house",
   "techno",
@@ -148,7 +155,7 @@ async function measureGenre(genre, seeds, targetLufs) {
   for (let attempt = 1; attempt <= 5; attempt++) {
     try {
       return await page.evaluate(
-        async ({ genre, seeds, targetLufs }) => {
+        async ({ genre, seeds, targetLufs, trimLimitDb }) => {
           const templates = await import("/src/project-model/templates.ts");
           const normalize = await import("/src/intent/normalize.ts");
           const song = await import("/src/intent/song.ts");
@@ -260,10 +267,10 @@ async function measureGenre(genre, seeds, targetLufs) {
             measured: readings.every((r) => r.measured),
             seconds: medianOf("seconds"),
             bars: medianOf("bars"),
-            trimDb: Math.max(-6, Math.min(6, Math.round((targetLufs - integrated) * 10) / 10)),
+            trimDb: Math.max(-trimLimitDb, Math.min(trimLimitDb, Math.round((targetLufs - integrated) * 10) / 10)),
           };
         },
-        { genre, seeds, targetLufs },
+        { genre, seeds, targetLufs, trimLimitDb: TRIM_LIMIT_DB },
       );
     } catch (error) {
       if (attempt >= 5 || !isReloadRace(error)) throw error;

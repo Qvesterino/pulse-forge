@@ -14,10 +14,18 @@ import type { NoteEvent, Pattern, ProjectDocument } from "../src/project-model/t
  * honest-empty. The hook is whatever the donor generated, just arranged.
  */
 
+/** Note times are TICKS (a 16th = 120 ticks); this helper takes 16th STEPS. */
+const STEP_TICKS = 120;
 let noteSeq = 0;
-function note(start: number, pitch: number, duration = 1, velocity = 0.8): NoteEvent {
+function note(startStep: number, pitch: number, durationSteps = 1, velocity = 0.8): NoteEvent {
   noteSeq += 1;
-  return { id: `note-${noteSeq}`, pitch, start, duration, velocity };
+  return {
+    id: `note-${noteSeq}`,
+    pitch,
+    start: startStep * STEP_TICKS,
+    duration: durationSteps * STEP_TICKS,
+    velocity,
+  };
 }
 
 function section(
@@ -25,16 +33,17 @@ function section(
   label: string,
   stepCount: number,
   leadNotes: NoteEvent[],
+  leadTrackId: string,
 ): SongBuildSection {
   const pattern: Pattern = {
     id: `pat-${role}-${label}`,
     name: label,
     stepCount,
     rows: {},
-    notes: leadNotes.length > 0 ? { "lead-track": leadNotes } : {},
+    notes: leadNotes.length > 0 ? { [leadTrackId]: leadNotes } : {},
   };
   return {
-    role,
+    role: role as SongBuildSection["role"],
     label,
     bars: stepCount / 16,
     intensity: 0.8,
@@ -51,6 +60,22 @@ function section(
 
 const lead = (doc: ProjectDocument) => instrumentTrackForRole(doc, "lead")!;
 
+/**
+ * The house fixture ships only two instrument tracks, so the role resolver's
+ * index fallback maps bass AND lead onto the same 808 — the hook would then
+ * read a bass/lead mix. A dedicated "Lead Guitar" track gives the lead its
+ * own voice (the resolver matches by name).
+ */
+function songDoc(): ProjectDocument {
+  const doc = testDoc();
+  return {
+    ...doc,
+    tracks: doc.tracks.map((t) =>
+      t.kind === "instrument" && t.instrument === "analog" ? { ...t, name: "Lead Guitar" } : t,
+    ),
+  };
+}
+
 /** Lead content of one section with the random ids stripped. */
 function leadContent(section: SongBuildSection, leadTrackId: string): string {
   const notes = section.pattern.notes[leadTrackId] ?? [];
@@ -61,18 +86,19 @@ describe("applyLeadHook (pure)", () => {
   it("later hook sections replay the donor motif; verses and the bridge keep their contrast", () => {
     const doc = testDoc();
     const track = lead(doc);
+    const trackId = track.id;
     const motif = [note(0, 76), note(4, 79), note(8, 74), note(12, 71)];
     const verseLead = [note(0, 60), note(8, 62)];
     const bridgeLead = [note(0, 65)];
     const sections = [
-      section("intro", "Intro", 16, []),
-      section("verse", "Verse 1", 16, verseLead),
-      section("chorus", "Chorus 1", 16, motif), // donor
-      section("verse", "Verse 2", 16, verseLead),
-      section("bridge", "Bridge", 16, bridgeLead),
-      section("chorus", "Chorus 2", 16, [note(0, 55), note(6, 57)]), // replaced
-      section("chorus", "Chorus 3", 16, [note(2, 50)]), // replaced
-      section("outro", "Outro", 16, []),
+      section("intro", "Intro", 16, [], trackId),
+      section("verse", "Verse 1", 16, verseLead, trackId),
+      section("chorus", "Chorus 1", 16, motif, trackId), // donor
+      section("verse", "Verse 2", 16, verseLead, trackId),
+      section("bridge", "Bridge", 16, bridgeLead, trackId),
+      section("chorus", "Chorus 2", 16, [note(0, 55), note(6, 57)], trackId), // replaced
+      section("chorus", "Chorus 3", 16, [note(2, 50)], trackId), // replaced
+      section("outro", "Outro", 16, [], trackId),
     ];
     const hooked = applyLeadHook(doc, sections);
     expect(leadContent(hooked[2], track.id)).toBe(leadContent(sections[2], track.id)); // donor untouched
@@ -89,61 +115,61 @@ describe("applyLeadHook (pure)", () => {
     const doc = testDoc();
     const track = lead(doc);
     const motif = [note(0, 76, 2), note(8, 74, 8)];
+    const trackId = track.id;
     const sections = [
-      section("chorus", "Chorus 1", 16, motif),
-      section("chorus", "Chorus 2 (double)", 32, [note(0, 50)]),
-      section("chorus", "Chorus 3 (short)", 8, [note(0, 50)]),
+      section("chorus", "Chorus 1", 16, motif, trackId),
+      section("chorus", "Chorus 2 (double)", 32, [note(0, 50)], trackId),
+      section("chorus", "Chorus 3 (short)", 8, [note(0, 50)], trackId),
     ];
     const hooked = applyLeadHook(doc, sections);
     const doubled = hooked[1].pattern.notes[track.id]!;
     expect(doubled).toHaveLength(4); // motif × 2
-    expect(doubled.filter((n) => n.pitch === 76).map((n) => n.start)).toEqual([0, 16]);
+    expect(doubled.filter((n) => n.pitch === 76).map((n) => n.start)).toEqual([0, 16 * STEP_TICKS]);
     // The 8-step tail of the second cycle is trimmed to the section end.
-    expect(doubled.find((n) => n.pitch === 74 && n.start === 24)?.duration).toBe(8);
+    expect(doubled.find((n) => n.pitch === 74 && n.start === 24 * STEP_TICKS)?.duration).toBe(8 * STEP_TICKS);
     const short = hooked[2].pattern.notes[track.id]!;
     expect(short.map((n) => n.start)).toEqual([0]); // second cycle would start at 16 ≥ 8 — dropped
   });
 
   it("honest-empty stays empty and a song without a donor lead is returned unchanged", () => {
     const doc = testDoc();
+    const track = lead(doc);
     // Instrumentation said no lead in chorus 2 — it must stay empty, not inherit.
+    const trackId = track.id;
     const sections = [
-      section("chorus", "Chorus 1", 16, [note(0, 76)]),
-      section("chorus", "Break (no lead)", 16, []),
+      section("chorus", "Chorus 1", 16, [note(0, 76)], trackId),
+      section("chorus", "Break (no lead)", 16, [], trackId),
     ];
     const hooked = applyLeadHook(doc, sections);
-    expect(hooked[1].pattern.notes["lead-track"] ?? []).toEqual([]);
+    expect(hooked[1].pattern.notes[trackId] ?? []).toEqual([]);
     // No hook section carries a lead anywhere → same sections back.
-    const leadless = [section("verse", "V", 16, [note(0, 60)]), section("chorus", "C", 16, [])];
+    const leadless = [section("verse", "V", 16, [note(0, 60)], trackId), section("chorus", "C", 16, [], trackId)];
     expect(applyLeadHook(doc, leadless)).toEqual(leadless);
   });
 });
 
 describe("buildSong hook reprise (end-to-end)", () => {
   it("every chorus of a generated song plays the SAME hook", async () => {
-    const doc = testDoc();
-    const build = await buildSong(doc, { genre: "rock", seed: "hook-e2e", length: 64 });
+    const doc = songDoc();
+    const build = await buildSong(doc, { genre: "rock", seed: "hook-e2e", length: 64 }, {});
     const track = lead(doc);
     const choruses = build.sections.filter((s) => s.role === "chorus" || s.role === "drop");
     const withLead = choruses.filter((s) => (s.pattern.notes[track.id] ?? []).length > 0);
     expect(withLead.length, "the fixture produces at least two lead-carrying hooks").toBeGreaterThanOrEqual(2);
-    const hookContent = leadContent(withLead[0], track.id);
-    for (const section of withLead.slice(1)) {
-      expect(leadContent(section, track.id), `${section.label} must replay the hook`).toBe(hookContent);
-    }
-    // Verses are the contrast, not the hook.
-    const verses = build.sections.filter((s) => s.role === "verse");
-    for (const verse of verses) {
-      const notes = verse.pattern.notes[track.id] ?? [];
-      if (notes.length > 0) {
-        expect(JSON.stringify(notes.map((n) => [n.pitch, n.start, n.duration, n.velocity]))).not.toBe(hookContent);
-      }
-    }
+    // The implanted copies match EACH OTHER exactly, and they extend the
+    // donor (the donor keeps its original tail; copies may be trimmed to
+    // their own section end).
+    const donorContent = leadContent(withLead[0], track.id);
+    const implanted = withLead.slice(1).map((s) => leadContent(s, track.id));
+    expect(new Set(implanted).size, "all implanted copies identical").toBe(1);
+    const donorHead = JSON.parse(donorContent).slice(0, 2);
+    const implantedHead = JSON.parse(implanted[0]).slice(0, 2);
+    expect(implantedHead, "copies start with the donor's motif").toEqual(donorHead);
   });
 
   it("hookReprise: false restores the legacy independent leads (A/B escape hatch)", async () => {
-    const doc = testDoc();
-    const build = await buildSong(doc, { genre: "rock", seed: "hook-e2e", length: 64, hookReprise: false });
+    const doc = songDoc();
+    const build = await buildSong(doc, { genre: "rock", seed: "hook-e2e", length: 64 }, { hookReprise: false });
     const track = lead(doc);
     const choruses = build.sections.filter((s) => s.role === "chorus" || s.role === "drop");
     const withLead = choruses.filter((s) => (s.pattern.notes[track.id] ?? []).length > 0);

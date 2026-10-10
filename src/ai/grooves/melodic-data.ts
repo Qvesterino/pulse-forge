@@ -349,12 +349,158 @@ const METAL_LEAD: MelodicPatternData = {
 
 // ── Registry ───────────────────────────────────────────
 
+// ── Rock + jazz genre tables (2026-10-10 — the promotion's melodic half) ──
+// Authored as literal MelodicNote arrays (degree: -1 rest, 0 root, 2 third,
+// 3 fourth, 4 fifth, 5 sixth, 6 seventh; duration in 16th steps) — readable
+// by design, same shape the codec decodes to.
+//
+// ROCK is the pentatonic backline: the bass CHUGS roots in straight 8ths
+// (fifth accents), chords are held power shapes, the lead states a
+// signature riff and leaves space — the riff IS the hook the reprise
+// replays.
+const ROCK_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 2, velocity: 0.58 },
+      { degree: 0, duration: 2, velocity: 0.46 },
+      { degree: 0, duration: 2, velocity: 0.58 },
+      { degree: 4, duration: 2, velocity: 0.49 },
+      { degree: 0, duration: 2, velocity: 0.58 },
+      { degree: 0, duration: 2, velocity: 0.46 },
+      { degree: 5, duration: 2, velocity: 0.52 },
+      { degree: 4, duration: 2, velocity: 0.49 },
+    ],
+    [
+      { degree: 0, duration: 2, velocity: 0.59 },
+      { degree: 0, duration: 2, velocity: 0.44 },
+      { degree: 3, duration: 2, velocity: 0.53 },
+      { degree: 0, duration: 2, velocity: 0.44 },
+      { degree: 0, duration: 2, velocity: 0.59 },
+      { degree: 4, duration: 2, velocity: 0.49 },
+      { degree: 0, duration: 2, velocity: 0.58 },
+      { degree: 0, duration: 2, velocity: 0.46 },
+    ],
+  ],
+};
+const ROCK_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 6, velocity: 0.46 },
+      { degree: 4, duration: 2, velocity: 0.41 },
+      { degree: 3, duration: 4, velocity: 0.46 },
+      { degree: -1, duration: 4, velocity: 0 },
+    ],
+    [
+      { degree: 0, duration: 4, velocity: 0.48 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.42 },
+      { degree: 5, duration: 4, velocity: 0.43 },
+      { degree: 4, duration: 4, velocity: 0.44 },
+    ],
+  ],
+};
+const ROCK_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 1,
+  sequences: [
+    [
+      { degree: 4, duration: 2, velocity: 0.61 },
+      { degree: 5, duration: 2, velocity: 0.52 },
+      { degree: 6, duration: 4, velocity: 0.58 },
+      { degree: 4, duration: 2, velocity: 0.49 },
+      { degree: 2, duration: 2, velocity: 0.52 },
+      { degree: 0, duration: 4, velocity: 0.59 },
+    ],
+    [
+      { degree: 0, duration: 2, velocity: 0.59 },
+      { degree: 3, duration: 1, velocity: 0.49 },
+      { degree: 4, duration: 1, velocity: 0.52 },
+      { degree: 5, duration: 4, velocity: 0.59 },
+      { degree: 3, duration: 2, velocity: 0.49 },
+      { degree: 2, duration: 2, velocity: 0.53 },
+      { degree: 0, duration: 4, velocity: 0.62 },
+    ],
+  ],
+};
+
+// JAZZ is the swinging acoustic combo: the bass WALKS quarters through the
+// scale, the chords comp syncopated off-beat stabs (the Charleston push),
+// and the lead phrases loose 8ths with room to breathe.
+const JAZZ_BASS: MelodicPatternData = {
+  role: "bass",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: 0, duration: 4, velocity: 0.53 },
+      { degree: 2, duration: 4, velocity: 0.44 },
+      { degree: 4, duration: 4, velocity: 0.49 },
+      { degree: 6, duration: 4, velocity: 0.46 },
+    ],
+    [
+      { degree: 0, duration: 4, velocity: 0.53 },
+      { degree: 4, duration: 4, velocity: 0.47 },
+      { degree: 5, duration: 4, velocity: 0.44 },
+      { degree: 3, duration: 4, velocity: 0.49 },
+    ],
+  ],
+};
+const JAZZ_CHORD: MelodicPatternData = {
+  role: "chord",
+  octaveOffset: 0,
+  sequences: [
+    [
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 0, duration: 2, velocity: 0.43 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.4 },
+      { degree: 2, duration: 2, velocity: 0.41 },
+      { degree: -1, duration: 4, velocity: 0 },
+    ],
+    [
+      { degree: 0, duration: 2, velocity: 0.41 },
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.4 },
+      { degree: -1, duration: 6, velocity: 0 },
+      { degree: 2, duration: 4, velocity: 0.43 },
+    ],
+  ],
+};
+const JAZZ_LEAD: MelodicPatternData = {
+  role: "lead",
+  octaveOffset: 1,
+  sequences: [
+    [
+      { degree: -1, duration: 2, velocity: 0 },
+      { degree: 4, duration: 2, velocity: 0.52 },
+      { degree: 5, duration: 1, velocity: 0.44 },
+      { degree: 6, duration: 3, velocity: 0.53 },
+      { degree: 4, duration: 2, velocity: 0.46 },
+      { degree: 2, duration: 4, velocity: 0.5 },
+      { degree: 0, duration: 2, velocity: 0.55 },
+    ],
+    [
+      { degree: 6, duration: 2, velocity: 0.5 },
+      { degree: 5, duration: 2, velocity: 0.44 },
+      { degree: 4, duration: 1, velocity: 0.47 },
+      { degree: 2, duration: 3, velocity: 0.52 },
+      { degree: -1, duration: 4, velocity: 0 },
+      { degree: 0, duration: 4, velocity: 0.56 },
+    ],
+  ],
+};
+
 export const MELODIC_BY_GENRE: Record<string, MelodicPatternData[]> = {
   house: [HOUSE_BASS, HOUSE_CHORD, HOUSE_LEAD],
   techno: [TECHNO_BASS, TECHNO_CHORD, TECHNO_LEAD],
   trap: [TRAP_BASS, TRAP_CHORD, TRAP_LEAD],
   ambient: [AMBIENT_BASS, AMBIENT_CHORD, AMBIENT_LEAD],
   dnb: [DNB_BASS, DNB_CHORD, DNB_LEAD],
+  rock: [ROCK_BASS, ROCK_CHORD, ROCK_LEAD],
+  jazz: [JAZZ_BASS, JAZZ_CHORD, JAZZ_LEAD],
 };
 
 /**
