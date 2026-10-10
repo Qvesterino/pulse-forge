@@ -31,7 +31,7 @@ export const BRIGHT_LEVEL = 1;
 export type EnergyFamily = "drums" | "bass" | "harmony" | "lead" | "fx" | "other";
 
 const BASS_KINDS = new Set(["bass", "808", "logdrum", "reese", "acid"]);
-const DRUM_KINDS = new Set(["drum", "drumsynth"]);
+const DRUM_KINDS = new Set(["drum", "drumsynth", "kopa"]);
 const LEAD_KINDS = new Set(["lead", "pluck", "spectral", "flute", "brass", "vocalchop"]);
 const HARMONY_KINDS = new Set(["keys", "organ", "strings", "bell", "texture", "wavetable", "granular", "fm", "clav"]);
 /** One-shot FX / percussion colours by name — the first thing that dies at low energy. */

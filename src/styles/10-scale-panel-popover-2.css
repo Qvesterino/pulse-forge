@@ -537,6 +537,53 @@ html {
   background: linear-gradient(180deg, rgba(20, 184, 166, 0.24), rgba(20, 184, 166, 0.1));
   border-color: rgba(45, 212, 191, 0.72);
 }
+/* Chord track (v17): the harmonic skeleton lane above the arrangement. */
+.arr-chord-lane {
+  position: relative;
+  height: 26px;
+  background: rgba(15, 17, 21, 0.6);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.arr-chord {
+  position: absolute;
+  top: 2px;
+  height: 22px;
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgba(168, 85, 247, 0.30), rgba(168, 85, 247, 0.12));
+  border: 1px solid rgba(192, 132, 252, 0.55);
+  color: #e9d5ff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 20px;
+  padding-left: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  cursor: grab;
+}
+.arr-chord.selected {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, rgba(168, 85, 247, 0.45), rgba(168, 85, 247, 0.2));
+}
+.arr-chord-editor {
+  position: absolute;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  background: rgba(15, 17, 21, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 1px 4px;
+}
+.arr-chord-editor select,
+.arr-chord-editor button {
+  font-size: 10px;
+  background: #1b1d22;
+  color: #e4e4e7;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
 /* Clip lock + group (v15): locked reads as "structure, hands off" (dashed,
    dimmed), grouped reads as "moves with its friends" (a solid group bar on
    top). Both apply to BOTH clip systems. */

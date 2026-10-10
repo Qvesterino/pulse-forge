@@ -1102,6 +1102,48 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     );
   }
 
+  // KOPA (ADR 0035) — the kick designer takes the same event-queue worklet
+  // path as TSAR. Its module is LAZY (not in the core bundle), so this check
+  // also proves the loader can fetch + register a second instrument worklet.
+  try {
+    const ctx = new OfflineAudioContext(2, SR, SR);
+    await loadCoreWorklets(ctx);
+    await loadInstrumentWorklet(ctx, "kopa");
+    const track: InstrumentTrack = {
+      id: "check-kopa",
+      kind: "instrument",
+      instrument: "kopa",
+      name: "kopa",
+      gain: 1,
+      pan: 0,
+      mute: false,
+      solo: false,
+      sampleId: null,
+      params: { ...defaultInstrumentParams("kopa"), level: -3 },
+      effects: [],
+      sends: {},
+    };
+    const rt = INSTRUMENT_DEFS.kopa.factory(ctx, track, { bpm: 124, getSample: (id) => bank.get(id) });
+    rt.output.connect(ctx.destination);
+    rt.noteOn(36, 1, 0.02);
+    const prepared = rt as { prepareOfflineRender?: () => void };
+    prepared.prepareOfflineRender?.();
+    const buffer = await ctx.startRendering();
+    rt.dispose();
+    const kopaPeak = peakOf(buffer.getChannelData(0));
+    check(
+      "KOPA: offline export is audible through the event-queue worklet (lazy load + processorOptions seed)",
+      kopaPeak > 0.005,
+      `peak=${kopaPeak.toFixed(4)}`,
+    );
+  } catch (error) {
+    check(
+      "KOPA: offline export is audible through the event-queue worklet (lazy load + processorOptions seed)",
+      false,
+      String(error),
+    );
+  }
+
   // Phase 4 (plugin-audit follow-up) — LIVE worklet-path audibility for the
   // event-queue voice worklets. Offline renders route them through native
   // graphs (determinism fix above); the LIVE path runs the real worklets and

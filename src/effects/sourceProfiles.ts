@@ -165,6 +165,7 @@ export function sourceProfileForTrack(track: Track, selectedPadId = ""): SourceP
     return "kick";
   }
   if (track.kind === "instrument") {
+    if (track.instrument === "kopa") return "kick";
     if (track.instrument === "808" || track.instrument === "bass" || track.instrument === "logdrum") return "808";
     if (track.instrument === "vocalchop" || /vocal|vox|voice|chop/.test(track.name.toLowerCase())) return "vocalChop";
     return "loop";

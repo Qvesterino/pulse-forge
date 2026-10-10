@@ -860,6 +860,69 @@ export const drumsynthParams: ParamDef[] = [
   { id: "level", label: "LEVEL", min: -24, max: 6, default: -6, unit: "dB", format: formatDb },
 ];
 
+/* ---------------- KOPA kick designer ---------------- */
+
+export const KOPA_PITCH_CURVE_OPTIONS = [
+  { value: 0, label: "EXP" },
+  { value: 1, label: "LIN" },
+  { value: 2, label: "SNAP" },
+  { value: 3, label: "HOLD" },
+] as const;
+
+export const KOPA_CLICK_TYPE_OPTIONS = [
+  { value: 0, label: "NOISE" },
+  { value: 1, label: "HP NOISE" },
+  { value: 2, label: "SINE" },
+  { value: 3, label: "IMPULSE" },
+] as const;
+
+export const KOPA_BODY_WAVE_OPTIONS = [
+  { value: 0, label: "SINE" },
+  { value: 1, label: "TRI" },
+  { value: 2, label: "SAW" },
+] as const;
+
+export const KOPA_DRIVE_TYPE_OPTIONS = [
+  { value: 0, label: "SOFT" },
+  { value: 1, label: "TUBE" },
+  { value: 2, label: "HARD" },
+  { value: 3, label: "FOLD" },
+] as const;
+
+export const kopaParams: ParamDef[] = [
+  // PITCH
+  { id: "pitchAmount", label: "PITCH", min: 0, max: 48, default: 24, unit: "st", format: (v) => `${v.toFixed(0)} st` },
+  { id: "pitchTime", label: "P TIME", min: 5, max: 200, default: 40, unit: "ms", taper: "log", format: (v) => `${v.toFixed(0)} ms` },
+  { id: "pitchCurve", label: "P CURVE", min: 0, max: 3, default: 0, options: [...KOPA_PITCH_CURVE_OPTIONS] },
+  { id: "keyTrack", label: "KEY TRACK", min: 0, max: 1, default: 1, options: [{ value: 0, label: "FIXED" }, { value: 1, label: "ON" }] },
+  // CLICK
+  { id: "clickType", label: "CLICK", min: 0, max: 3, default: 0, options: [...KOPA_CLICK_TYPE_OPTIONS] },
+  { id: "clickTone", label: "C TONE", min: 300, max: 9000, default: 2500, unit: "Hz", taper: "log", format: formatHz },
+  { id: "clickDecay", label: "C DECAY", min: 0.2, max: 20, default: 3, unit: "ms", taper: "log", format: (v) => `${v.toFixed(1)} ms` },
+  { id: "clickLevel", label: "C LEVEL", min: 0, max: 1, default: 0.35, format: formatPct },
+  // BODY
+  { id: "bodyTune", label: "B TUNE", min: -24, max: 24, default: 0, unit: "st", format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(0)} st` },
+  { id: "bodyDecay", label: "B DECAY", min: 0.03, max: 2, default: 0.35, unit: "s", taper: "log", format: formatSec },
+  { id: "bodyHollow", label: "B HOLLOW", min: 0, max: 1, default: 0.25, format: formatPct },
+  { id: "bodyWave", label: "B WAVE", min: 0, max: 2, default: 0, options: [...KOPA_BODY_WAVE_OPTIONS] },
+  // TAIL
+  { id: "tailDecay", label: "T DECAY", min: 0.05, max: 3, default: 0.4, unit: "s", taper: "log", format: formatSec },
+  { id: "tailLevel", label: "T LEVEL", min: 0, max: 1, default: 0.25, format: formatPct },
+  { id: "tailTune", label: "T TUNE", min: -24, max: 24, default: 0, unit: "st", format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(0)} st` },
+  // SUB
+  { id: "subLevel", label: "SUB", min: 0, max: 1, default: 0.3, format: formatPct },
+  { id: "subTune", label: "SUB TUNE", min: -12, max: 12, default: 0, unit: "st", format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(0)} st` },
+  // CHARACTER
+  { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.25, format: formatPct },
+  { id: "driveType", label: "DRIVE TYPE", min: 0, max: 3, default: 0, options: [...KOPA_DRIVE_TYPE_OPTIONS] },
+  { id: "punch", label: "PUNCH", min: 0, max: 1, default: 0.2, format: formatPct },
+  { id: "stereo", label: "STEREO", min: 0, max: 1, default: 0, format: formatPct },
+  // OUTPUT
+  { id: "level", label: "LEVEL", min: -24, max: 6, default: -6, unit: "dB", format: formatDb },
+  // MOD MATRIX — KOPA has no filter, so CUTOFF must not be a destination.
+  ...modMatrixParams(false, { cutoff: false }),
+];
+
 /* ---------------- pure registry ---------------- */
 
 /** Metadata half of an instrument definition (params without the runtime). */
@@ -894,6 +957,7 @@ export const INSTRUMENT_META: Record<InstrumentKind, InstrumentDefinitionMeta> =
   vocalchop: { kind: "vocalchop", name: "Vocal Chop", params: vocalchopParams },
   drumsynth: { kind: "drumsynth", name: "Drum Synth", params: drumsynthParams },
   tsar: { kind: "tsar", name: "TSAR", params: tsarParams },
+  kopa: { kind: "kopa", name: "KOPA", params: kopaParams },
 };
 
 export const INSTRUMENT_ORDER: InstrumentKind[] = [
@@ -920,6 +984,7 @@ export const INSTRUMENT_ORDER: InstrumentKind[] = [
   "vocalchop",
   "drumsynth",
   "tsar",
+  "kopa",
 ];
 
 export function defaultInstrumentParams(kind: InstrumentKind): Record<string, number> {

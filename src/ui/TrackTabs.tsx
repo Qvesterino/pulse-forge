@@ -37,6 +37,7 @@ const KIND_BADGE: Record<"drum" | "group" | InstrumentKind, string> = {
   vocalchop: "VCX",
   drumsynth: "DSY",
   tsar: "TSR",
+  kopa: "KPA",
 };
 
 export function trackBadge(track: Track): string {
@@ -179,6 +180,7 @@ export function TrackTabs({
         <option value="spectral">Spectral Pad</option>
         <option value="vocalchop">Vocal Chop</option>
         <option value="drumsynth">Drum Synth</option>
+        <option value="kopa">KOPA Kick Designer</option>
         <option value="group">Group</option>
       </select>
     </div>

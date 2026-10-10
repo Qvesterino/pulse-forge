@@ -101,6 +101,7 @@ const INSTRUMENT_KIND_WORDS: ReadonlyArray<readonly [RegExp, InstrumentKind]> = 
   [/\bsampler\b/i, "sampler"],
   [/\bvocal ?chops?\b/i, "vocalchop"],
   [/\bdrum ?synth\b/i, "drumsynth"],
+  [/\bkopa\b|\bkick ?design/i, "kopa"],
   [/\bsynth\b|\banalog\b/i, "analog"],
 ];
 

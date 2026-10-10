@@ -312,6 +312,7 @@ export const DEFAULT_GM_PROGRAM_BY_INSTRUMENT: Readonly<Record<InstrumentKind, n
   vocalchop: 54,
   drumsynth: 38,
   tsar: 81,
+  kopa: 38,
 };
 
 type DrumMappingResult =

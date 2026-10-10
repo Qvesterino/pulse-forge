@@ -89,14 +89,16 @@ export type WorkletType = (typeof CORE_TYPES)[number] | LazyWorkletType;
 /**
  * FLAGSHIP INSTRUMENT worklets - loaded on demand like plugin effects, NOT in
  * the core boot bundle. TSAR is ~22 KB minified (measured 2026-10-06) and a
- * beat that never adds a TSAR track must not pay for it. Instrument kind ->
+ * beat that never adds a TSAR track must not pay for it; KOPA is a lazy
+ * first-party kick designer with its own budget row. Instrument kind ->
  * worklet module (the doc-scan lives in `instrumentWorkletTypesInDoc`).
  */
-export const INSTRUMENT_WORKLET_TYPES = ["tsar"] as const;
+export const INSTRUMENT_WORKLET_TYPES = ["tsar", "kopa"] as const;
 export type InstrumentWorkletType = (typeof INSTRUMENT_WORKLET_TYPES)[number];
 
 const INSTRUMENT_MODULE_URLS: Record<InstrumentWorkletType, string> = {
   tsar: new URL(assetUrl("/tsar-worklet.js"), import.meta.url).href,
+  kopa: new URL(assetUrl("/kopa-worklet.js"), import.meta.url).href,
 };
 
 const readyLazyTypes = new WeakMap<BaseAudioContext, Set<LazyWorkletType>>();

@@ -372,6 +372,22 @@ console.log(
   `[size-budget] KOREŇ worklet: ${bassHarmonicWorkletKb.toFixed(0)} KB (budget ${BASS_HARMONIC_WORKLET_BUDGET_KB})`,
 );
 
+// KOPA kick-designer instrument worklet: a LAZY instrument module (loaded only
+// for projects with a KOPA track). TSAR precedent: own budget instead of the
+// core boot bundle. Measured ~6 KB at implementation; 32 KB is the ceiling
+// (16 voices, simpler DSP than TSAR's 48 KB budget).
+const KOPA_WORKLET_BUDGET_KB = 32;
+let kopaWorkletKb = 0;
+{
+  const path = join(dist, "kopa-worklet.js");
+  if (!statSync(path).isFile()) {
+    console.error("[size-budget] FAIL — missing KOPA worklet: dist/kopa-worklet.js");
+    process.exit(1);
+  }
+  kopaWorkletKb = statSync(path).size / 1024;
+}
+console.log(`[size-budget] KOPA worklet: ${kopaWorkletKb.toFixed(0)} KB (budget ${KOPA_WORKLET_BUDGET_KB})`);
+
 let failed = false;
 if (entryKb > ENTRY_BUDGET_KB) {
   console.error(`[size-budget] FAIL — entry chunk over budget: ${entryKb.toFixed(0)} > ${ENTRY_BUDGET_KB} KB.`);
@@ -482,6 +498,12 @@ if (tsarWorkletKb > TSAR_WORKLET_BUDGET_KB) {
 if (bassHarmonicWorkletKb > BASS_HARMONIC_WORKLET_BUDGET_KB) {
   console.error(
     `[size-budget] FAIL — KOREŇ worklet over budget: ${bassHarmonicWorkletKb.toFixed(0)} > ${BASS_HARMONIC_WORKLET_BUDGET_KB} KB.`,
+  );
+  failed = true;
+}
+if (kopaWorkletKb > KOPA_WORKLET_BUDGET_KB) {
+  console.error(
+    `[size-budget] FAIL — KOPA worklet over budget: ${kopaWorkletKb.toFixed(0)} > ${KOPA_WORKLET_BUDGET_KB} KB.`,
   );
   failed = true;
 }

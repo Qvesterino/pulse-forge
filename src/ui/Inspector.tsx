@@ -72,6 +72,7 @@ const SIMPLE_PARAM_IDS: Partial<Record<InstrumentKind, readonly string[]>> = {
   spectral: ["profile", "partials", "spacing", "shimmer", "attack", "release"],
   vocalchop: ["root", "vowel", "color", "shift", "sharp", "morph"],
   drumsynth: ["type", "tune", "tone", "decay", "snap", "body", "drive"],
+  kopa: ["pitchAmount", "pitchTime", "clickLevel", "bodyDecay", "tailDecay", "drive", "level"],
 };
 
 /** Instruments that play a sample/browser source, with their panel labels. */

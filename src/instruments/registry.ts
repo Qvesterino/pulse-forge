@@ -7,6 +7,7 @@ import { scheduleDahdsr } from "./envelope";
 import { createWtVoiceRuntime } from "./wtvoiceNode";
 import { createGrainVoiceRuntime, grainProcessorOptions } from "./granularNode";
 import { createTsarRuntime, createTsarFallbackRuntime } from "./tsarNode";
+import { createKopaRuntime, createKopaFallbackRuntime } from "./kopaNode";
 import { tsarParams } from "../tsar/params";
 import { scheduleVoiceModMatrix, updateVoiceModMatrix } from "./modmatrix";
 import { shapeOscillator } from "./bandlimited";
@@ -35,6 +36,7 @@ import {
   spectralParams,
   vocalchopParams,
   drumsynthParams,
+  kopaParams,
   WAVE_NAMES,
   SYNC_BEATS,
   syncRateHz,
@@ -6518,6 +6520,41 @@ const tsar: InstrumentDefinition = {
   },
 };
 
+/**
+ * KOPA — the kick designer (KOPA plan §3, ADR 0035). The whole voice runs
+ * per-sample in `kopa-processor`; this factory is the bridge. Like TSAR it
+ * takes the SAME worklet path offline: the runtime buffers every scheduled
+ * event and `prepareOfflineRender()` seeds it through `processorOptions`, so
+ * an export sounds EXACTLY like live.
+ *
+ * A context WITHOUT the worklet module gets an audible native kick fallback
+ * (osc + pitch ramp + noise click) so the track never silently disappears;
+ * once the module loads, AudioEngine replaces the fallback hot.
+ */
+const kopa: InstrumentDefinition = {
+  kind: "kopa",
+  name: "KOPA",
+  params: kopaParams,
+  factory(ctx, track) {
+    const offline = offlineRenderContext(ctx);
+    if (isWorkletReady("kopa", ctx)) {
+      return createKopaRuntime({
+        createGain: () => ctx.createGain(),
+        createNode: (processorOptions) =>
+          new AudioWorkletNode(ctx, "kopa-processor", {
+            numberOfInputs: 0,
+            numberOfOutputs: 1,
+            outputChannelCount: [2],
+            processorOptions,
+          }),
+        offline,
+        track,
+      });
+    }
+    return createKopaFallbackRuntime(ctx, track);
+  },
+};
+
 /* ---------------- registry ---------------- */
 
 export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
@@ -6544,6 +6581,7 @@ export const INSTRUMENT_DEFS: Record<InstrumentKind, InstrumentDefinition> = {
   vocalchop,
   drumsynth,
   tsar,
+  kopa,
 };
 
 export function instrumentTrackKindLabel(track: InstrumentTrack): string {

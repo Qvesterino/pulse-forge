@@ -7,7 +7,7 @@ export interface StemGroup {
 }
 
 export const STEM_GROUPS: StemGroup[] = [
-  { id: "drums", label: "Drums", filter: (t) => t.kind === "drum" },
+  { id: "drums", label: "Drums", filter: (t) => t.kind === "drum" || (t.kind === "instrument" && t.instrument === "kopa") },
   {
     id: "bass",
     label: "Bass",

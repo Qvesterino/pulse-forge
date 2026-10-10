@@ -39,6 +39,9 @@ function inferUseCase(preset: Pick<InstrumentPreset, "instrument" | "name" | "ta
   // loudness (-30.9) lands ~18 dB off at the clamp (factory.bass.house.pluck
   // measured -13.2 → -17.7; factory.808.score.impact measured -2.4 → -18.0).
   if (["bass", "808", "logdrum"].includes(preset.instrument)) return "bass";
+  // KOPA is a kick DESIGNER (drums role), not a bass-role instrument — the
+  // token fallback would send "body"/"808" tags to the bass plateau.
+  if (preset.instrument === "kopa") return "drums";
   const tokens = tokensOf(preset);
   for (const entry of TOKEN_USE_CASES) if (hasAny(tokens, entry.tokens)) return entry.useCase;
   if (preset.instrument === "drumsynth") return "drums";

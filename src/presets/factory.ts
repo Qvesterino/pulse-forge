@@ -1,4 +1,5 @@
 import type { DrumSynthPreset, InstrumentPreset } from "./types";
+import { KOPA_FACTORY_PRESETS } from "./kopa-factory";
 import {
   FACTORY_808_VELOCITY,
   FACTORY_ACID_VELOCITY,
@@ -9303,6 +9304,7 @@ export const FACTORY_PRESETS: InstrumentPreset[] = [
       gain: 0.85,
     },
   },
+  ...KOPA_FACTORY_PRESETS,
 ];
 
 export const DRUM_FACTORY_PRESETS: DrumSynthPreset[] = [
