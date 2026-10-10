@@ -2344,6 +2344,13 @@ export interface SongBuild {
   baseIntent: IntentSpec;
   resolvedBpm: number | null;
   key: MusicalKey | null;
+  /**
+   * The song's harmonic plan — verse progression + the bridge's related turn
+   * (names resolvable via findProgression(genre, name)). applySongCommand
+   * mirrors this onto the CHORD TRACK: every section's span gets its
+   * progression laid as whole-bar chord events.
+   */
+  harmonyPlan: { verseName: string; turnName: string };
   sections: SongBuildSection[];
   /**
    * Complete, internally coherent full-song choices. These are transient
@@ -2483,6 +2490,12 @@ function applySongTransitions(doc: ProjectDocument, sections: readonly SongBuild
       ...outgoing,
       pattern: applyTransitionToPattern(doc, outgoing.pattern, section.transitionIn, {
         allowDrums: outgoing.roles.includes("drums"),
+        // The fill vocabulary reads the BOUNDARY: the incoming section's
+        // intensity gates the recipe tier, and the boundary key (outgoing
+        // pattern id + incoming label) seeds the pick — same boundary, same
+        // fill; different boundaries vary.
+        intensity: section.intensity,
+        fillSeed: `${outgoing.pattern.id}|${section.label}`,
       }),
     };
   }
@@ -2672,6 +2685,7 @@ export async function buildSong(
     baseIntent,
     resolvedBpm,
     key,
+    harmonyPlan,
     sections: transitionedSections,
     alternatives,
     totalBars: form.totalBars,

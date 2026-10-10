@@ -320,6 +320,7 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
     lowCut: 55,
     range: 3,
     attack: 0.004,
+    character: 2,
     mix: 0.7,
   }),
   preset("bassharmonic-subtle-body", "Subtle Body", "bassHarmonic", {

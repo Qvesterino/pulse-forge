@@ -89,6 +89,27 @@ function sineAt(hz: number, amp = 0.5): (i: number) => number {
   return (i) => amp * Math.sin((2 * Math.PI * hz * i) / SR);
 }
 
+function sineAtPhase(hz: number, amp: number, phase: number): (i: number) => number {
+  return (i) => amp * Math.sin((2 * Math.PI * hz * i) / SR + phase);
+}
+
+/** Phase of the `hz` component in `signal` (x = A·sin(ωi + p) → returns p). */
+function phaseAt(signal: Float32Array, hz: number): number {
+  const from = Math.floor(signal.length * 0.6);
+  const w = (2 * Math.PI * hz) / SR;
+  let iPart = 0;
+  let qPart = 0;
+  for (let i = from; i < signal.length; i++) {
+    iPart += signal[i]! * Math.cos(w * i);
+    qPart += signal[i]! * Math.sin(w * i);
+  }
+  return Math.atan2(iPart, qPart);
+}
+
+function wrapPi(angle: number): number {
+  return Math.atan2(Math.sin(angle), Math.cos(angle));
+}
+
 describe("KOREŇ registry contract", () => {
   it("registers on all surfaces with the declared params", () => {
     expect(EFFECT_DEFS.bassHarmonic.params).toEqual(EFFECT_META.bassHarmonic.params);
@@ -201,5 +222,90 @@ describe("KOREŇ processor behavior", () => {
         expect(peak, `${d.name}@${extreme} runaway (peak=${peak})`).toBeLessThan(bound);
       }
     }
+  });
+});
+
+describe("KOREŇ wave-2 DSP (YIN tracker, phase coherence, deficit, CHARACTER)", () => {
+  it("YIN stays on the true fundamental under a strong 2nd harmonic (no octave confusion)", () => {
+    // The wave-1 zero-crossing estimator read this as 110 Hz and generated
+    // 220/330; YIN's period-difference dip sits at 55 Hz (218 decimated
+    // samples), so the 3rd harmonic lands at 165. The input's own 110 Hz
+    // also exercises the deficit: the generated 2nd is suppressed.
+    const cls = registered.get("bass-harmonic-processor");
+    const params = paramsOf(cls, { drive: 0.9, mix: 1, subAnchor: 0, focusHz: 60, harmonics: 1, range: 2 });
+    const out = renderProcessor(
+      cls,
+      params,
+      1.5,
+      (i) => 0.5 * Math.sin((2 * Math.PI * 55 * i) / SR) + 0.5 * Math.sin((2 * Math.PI * 110 * i) / SR),
+    );
+    const h3 = goertzelAt(out, 165);
+    const wrongOctaveH3 = goertzelAt(out, 330);
+    const h2 = goertzelAt(out, 110);
+    expect(h3).toBeGreaterThan(0.1);
+    expect(wrongOctaveH3).toBeLessThan(h3 * 0.05); // would be the 110-root's 3rd
+    expect(h2).toBeLessThan(h3 * 0.1); // deficit: input already carries 110
+  });
+
+  it("generated harmonics stay phase-locked to the dry fundamental across input phases", () => {
+    // With subAnchor 0 the output IS the generated layer. At every accepted
+    // rising edge of the detection band the accumulators are nudged to 0
+    // phase, so the 2nd harmonic's phase p must satisfy p = 2φ + c with the
+    // same c for any input phase φ (c ≈ −2·atan(f0/300), the detection
+    // filter's phase lag). A free-running generator cannot track φ at all.
+    const cls = registered.get("bass-harmonic-processor");
+    const params = paramsOf(cls, { drive: 0.9, mix: 1, subAnchor: 0, focusHz: 90, harmonics: 0, range: 1 });
+    const offsets: number[] = [];
+    for (const phi of [0, 0.35 * Math.PI, 0.8 * Math.PI]) {
+      const out = renderProcessor(cls, params, 1.2, sineAtPhase(100, 0.5, phi));
+      const locked = wrapPi(phaseAt(out, 200) - 2 * phi);
+      offsets.push(locked);
+      // Absolute lock: the filter-lag theory value −2·atan(100/300).
+      expect(Math.abs(wrapPi(locked + 0.6435)), `phi=${phi}`).toBeLessThan(0.2);
+    }
+    for (let i = 1; i < offsets.length; i++) {
+      expect(Math.abs(wrapPi(offsets[i]! - offsets[0]!)), `phase drift offset[${i}]`).toBeLessThan(0.1);
+    }
+  });
+
+  it("deficit generation suppresses partials the input already carries", () => {
+    // Pure 55 Hz → full generated 2nd (deficit 1). 55 + 110 at ratio 0.5 →
+    // ratio above the 0.35 target, so the generated 2nd tapers to zero.
+    const cls = registered.get("bass-harmonic-processor");
+    const params = paramsOf(cls, { drive: 0.9, mix: 1, subAnchor: 0, focusHz: 90, harmonics: 0, range: 1 });
+    const pure = renderProcessor(cls, params, 1.5, sineAt(55));
+    const rich = renderProcessor(
+      cls,
+      params,
+      1.5,
+      (i) => 0.5 * Math.sin((2 * Math.PI * 55 * i) / SR) + 0.25 * Math.sin((2 * Math.PI * 110 * i) / SR),
+    );
+    const h2Pure = goertzelAt(pure, 110);
+    const h2Rich = goertzelAt(rich, 110);
+    expect(h2Pure).toBeGreaterThan(0.05);
+    expect(h2Rich).toBeLessThan(h2Pure * 0.1);
+  });
+
+  it("CHARACTER SAT and FOLD add odd-harmonic energy the CLEAN curve does not", () => {
+    const cls = registered.get("bass-harmonic-processor");
+    const render = (character: number) =>
+      renderProcessor(
+        cls,
+        paramsOf(cls, { drive: 0.9, mix: 1, subAnchor: 0, focusHz: 90, harmonics: 0, range: 1, character }),
+        1.2,
+        sineAt(55),
+      );
+    const clean = render(0);
+    const sat = render(1);
+    const fold = render(2);
+    const clean3 = goertzelAt(clean, 330);
+    const sat3 = goertzelAt(sat, 330);
+    const fold3 = goertzelAt(fold, 330);
+    expect(clean3).toBeLessThan(0.001); // pure 2nd stack
+    expect(sat3).toBeGreaterThan(clean3 * 10);
+    expect(fold3).toBeGreaterThan(clean3 * 10);
+    // Both curves still generate the fundamental's 2nd (audible effect).
+    expect(goertzelAt(sat, 110)).toBeGreaterThan(0.05);
+    expect(goertzelAt(fold, 110)).toBeGreaterThan(0.05);
   });
 });

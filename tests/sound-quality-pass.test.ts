@@ -98,6 +98,7 @@ function fakeBuild(genre: GenerateOptions["genre"], suffix: string, bpm: number 
     baseIntent: normalizeIntent({ genre, seed: `sq-${suffix}` }),
     resolvedBpm: bpm,
     key: null,
+    harmonyPlan: { verseName: "I-vi-IV-V (pop hook)", turnName: "i-VII-VI-VII (deep minor loop)" },
     sections,
     alternatives: [],
     totalBars: 20,

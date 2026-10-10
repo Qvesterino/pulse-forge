@@ -1986,11 +1986,15 @@ export const prudParams: ParamDef[] = [
 ];
 
 /**
- * KOREŇ (bassHarmonic) — missing-fundamental bass exciter. Tracks the bass
- * fundamental and synthesizes a phase-locked harmonic stack so subs read on
- * phones and small speakers; `subAnchor` keeps the original low end while
- * the harmonics sit on top.
+ * KOREŇ (bassHarmonic) — missing-fundamental bass exciter. YIN-tracks the
+ * bass fundamental and synthesizes a phase-locked harmonic stack so subs read
+ * on phones and small speakers; `subAnchor` keeps the original low end while
+ * the harmonics sit on top, harmonic-deficit generation avoids doubling
+ * partials the input already carries, and `character` shapes the generated
+ * layer (CLEAN / SAT / FOLD).
  */
+export const KOREN_CHARACTER_LABELS = ["CLEAN", "SAT", "FOLD"] as const;
+
 export const bassHarmonicParams: ParamDef[] = [
   { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.45, format: formatPct },
   {
@@ -2035,6 +2039,17 @@ export const bassHarmonicParams: ParamDef[] = [
     unit: "s",
     format: (v) => `${(v * 1000).toFixed(0)} ms`,
     taper: "log",
+  },
+  {
+    id: "character",
+    label: "CHARACTER",
+    min: 0,
+    max: 2,
+    default: 0,
+    kind: "enum",
+    step: 1,
+    options: KOREN_CHARACTER_LABELS.map((label, value) => ({ value, label })),
+    format: (v) => KOREN_CHARACTER_LABELS[Math.max(0, Math.min(2, Math.round(v)))],
   },
   { id: "mix", label: "MIX", min: 0, max: 1, default: 0.6, format: formatPct },
   { id: "output", label: "OUTPUT", min: -18, max: 12, default: 0, unit: "dB", format: formatDb },

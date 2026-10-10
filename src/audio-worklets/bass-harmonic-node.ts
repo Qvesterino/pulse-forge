@@ -21,6 +21,7 @@ const BASS_HARMONIC_PARAMS = [
   "range",
   "attack",
   "release",
+  "character",
   "mix",
   "output",
 ] as const;
