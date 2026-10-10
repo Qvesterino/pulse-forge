@@ -123,3 +123,38 @@ odd-harmonic energy (SAT/FOLD vs the CLEAN floor). The four `bassharmonic-*`
 preset gains were re-measured (`presets:fx-loudness`): 808 Phone 0.9 → 0.7 dB,
 Drill Growl 2.9 → 3.4 dB. Determinism, `mix = 0` bit-exactness and the
 `degraded` fallback contract are unchanged.
+
+## Addendum 2 (2026-10-10) — wave-3 performance controls
+
+Three new AudioParams, all defaulting to the legacy behavior except `retrig`
+(which is the point of the feature; effects normalize against `EFFECT_META`,
+and a `retrig = 0` value restores the pre-wave-3 render):
+
+1. **`sustain` (0..1, default 0)** — generator-target envelope compression:
+   the target becomes `env^gamma` with gamma `1 → 0.5` as sustain rises, so
+   quiet bass passages still generate readable harmonics (measured: a
+   0.06-amplitude 55 Hz note lifts from 0.016 to 0.085 generated 2nd). The
+   curve fades to linear below `SUSTAIN_FLOOR = 0.01` so the noise bottom is
+   never pumped.
+2. **`retrig` (0/1 toggle, default 1)** — a fast/slow envelope-rise
+   detector (1 ms follower vs its 20 ms lag) fires on note-ons: harmonic
+   phases reset to 0 and the generator envelope restarts, so staccato lines
+   glue to the attack instead of trailing the previous note like a pad.
+   Guarded by a 0.005 level floor, a 0.35 rise ratio and a 40 ms minimum gap
+   so sustained notes and slow pads never re-trigger.
+3. **`width` (0..1, default 0)** — the generated partials above 120 Hz are
+   emitted as mid + quadrature-side and rotated ±φ (φ = width · 0.6 rad) per
+   channel; the sub stays mono by construction and `width = 0` is the
+   bit-exact legacy mono stack. Test pins: side energy at 110 Hz ≈ 0 while
+   220 Hz carries it, and the L/R phase difference at 220 Hz equals 2φ.
+4. **`focusHz` automation** — no DSP was added: the param was always a plain
+   AudioParam, so automating it is a free performance FX. A ramp from 40 to
+   220 sweeps the tracking window past a 55 Hz note and mutes the
+   generation. Pinned by a per-block automated-focus render.
+
+`bassharmonic-drill-growl` ships FOLD + sustain 0.5 + width 0.5; the other
+presets carry sustain (0.3–0.6) and width (0–0.3). Loudness re-measured
+(`presets:fx-loudness`): Drill Growl 3.4 → 3.7 dB. Note the measurement
+harness is environment-sensitive for pulse-shaped presets (stepgate/stutter
+rows flipped between two consecutive runs and were left at the second,
+consistent pass; `stutter-chop` remains the known nondeterministic entry).

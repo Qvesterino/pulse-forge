@@ -407,10 +407,10 @@ describe("KOREŇ wave-3 performance controls (SUSTAIN, RETRIG, WIDTH, focus auto
       return 0;
     };
     const onsetRatio = (retrig: number): number => {
-      const params = (gap: number) =>
+      const params = () =>
         paramsOf(cls, { drive: 0.9, mix: 1, subAnchor: 0, focusHz: 90, harmonics: 0, range: 1, retrig });
-      const a = renderProcessorStereo(cls, params(0.08), 0.2 + 0.08 + 0.4, sequence(0.08));
-      const b = renderProcessorStereo(cls, params(0.13), 0.2 + 0.13 + 0.4, sequence(0.13));
+      const a = renderProcessorStereo(cls, params(), 0.2 + 0.08 + 0.4, sequence(0.08));
+      const b = renderProcessorStereo(cls, params(), 0.2 + 0.13 + 0.4, sequence(0.13));
       const onA = Math.round((0.2 + 0.08 + 0.005) * SR);
       const onB = Math.round((0.2 + 0.13 + 0.005) * SR);
       const win = Math.round(0.04 * SR);

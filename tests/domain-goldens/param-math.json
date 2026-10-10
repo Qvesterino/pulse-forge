@@ -590,6 +590,11 @@
             "tailTune": 0,
             "subLevel": 0.3,
             "subTune": 0,
+            "harmonicLevel": 0.25,
+            "harmonicTone": 0.35,
+            "harmonicRange": 2,
+            "harmonicDecay": 0.25,
+            "harmonicCharacter": 0,
             "drive": 0.25,
             "driveType": 0,
             "punch": 0.2,
@@ -1304,7 +1309,10 @@
             "range": 2,
             "attack": 0.008,
             "release": 0.12,
+            "sustain": 0,
+            "retrig": 1,
             "character": 0,
+            "width": 0,
             "mix": 0.6,
             "output": 0
           }
