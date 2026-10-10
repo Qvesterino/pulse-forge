@@ -14,6 +14,10 @@ export class FlacDataError extends Error {
 
 const FLAC_COPY_CHUNK_FRAMES = 131_072;
 const FLAC_WORKER_OPERATION_TIMEOUT_MS = 120_000;
+const FLAC_BLOB_READ_CHUNK_BYTES = 256 * 1024;
+const FLAC_STREAM_DECODE_BASE_RESERVE_BYTES = 128 * 1024 * 1024;
+const FLAC_STREAM_DECODE_CHUNK_RESERVE_BYTES = 4 * 1024 * 1024;
+const FLAC_MAX_ENCODED_BYTES = 96 * 1024 * 1024;
 
 /** Peak retained memory while the decoder worker owns a file clone and PCM is copied into AudioBuffer. */
 export function estimateFlacDecoderWorkingSetBytes(encodedBytes: number, pcmBytes: number, encodedCopies = 2): number {
@@ -29,6 +33,17 @@ export function estimateFlacDecoderWorkingSetBytes(encodedBytes: number, pcmByte
     return Number.POSITIVE_INFINITY;
   }
   const estimate = encodedBytes * encodedCopies + pcmBytes * 2;
+  return Number.isSafeInteger(estimate) ? estimate : Number.POSITIVE_INFINITY;
+}
+
+/**
+ * Estimate FLAC Blob decoding with bounded compressed input and one destination
+ * AudioBuffer. The reserve covers the WASM decoder, worker protocol and one
+ * decoded frame batch; the full encoded file is never copied into JavaScript.
+ */
+export function estimateFlacBlobDecoderWorkingSetBytes(pcmBytes: number): number {
+  if (!Number.isSafeInteger(pcmBytes) || pcmBytes <= 0) return Number.POSITIVE_INFINITY;
+  const estimate = pcmBytes + FLAC_STREAM_DECODE_BASE_RESERVE_BYTES + FLAC_STREAM_DECODE_CHUNK_RESERVE_BYTES;
   return Number.isSafeInteger(estimate) ? estimate : Number.POSITIVE_INFINITY;
 }
 
@@ -79,6 +94,165 @@ function awaitWithFlacAbort<T>(
 
 function nextTask(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/** Decode a FLAC Blob as bounded compressed ranges and copy each decoded frame batch into one AudioBuffer. */
+export async function decodeFlacBlobToAudioBuffer(
+  blob: Blob,
+  expected: FlacAudioDescriptor,
+  options: {
+    maxPcmBytes: number;
+    signal?: AbortSignal;
+    onProgress?: (progress: number, stage: string) => void;
+  },
+): Promise<AudioBuffer> {
+  const { signal, maxPcmBytes, onProgress } = options;
+  if (signal?.aborted) throw cancelledError();
+  if (!(blob instanceof Blob) || blob.size < 42 || blob.size > FLAC_MAX_ENCODED_BYTES) {
+    throw new Error("The FLAC source is empty or exceeds KYX's 96 MiB mastering-file limit.");
+  }
+  if (
+    !Number.isSafeInteger(expected.sampleRate) ||
+    expected.sampleRate < 8000 ||
+    expected.sampleRate > 192000 ||
+    !Number.isInteger(expected.channels) ||
+    expected.channels < 1 ||
+    expected.channels > 8 ||
+    !Number.isFinite(expected.durationSeconds) ||
+    expected.durationSeconds <= 0 ||
+    (expected.bitDepth !== undefined &&
+      (!Number.isInteger(expected.bitDepth) || expected.bitDepth < 4 || expected.bitDepth > 32))
+  ) {
+    throw new Error("The FLAC decoder received invalid file metadata.");
+  }
+  const expectedFrames = Math.round(expected.durationSeconds * expected.sampleRate);
+  const pcmBytes = expectedFrames * expected.channels * Float32Array.BYTES_PER_ELEMENT;
+  if (
+    !Number.isSafeInteger(expectedFrames) ||
+    expectedFrames <= 0 ||
+    !Number.isSafeInteger(pcmBytes) ||
+    !Number.isSafeInteger(maxPcmBytes) ||
+    maxPcmBytes <= 0 ||
+    pcmBytes > maxPcmBytes
+  ) {
+    throw new Error("The decoded FLAC would exceed KYX's working-memory limit.");
+  }
+
+  let FLACDecoderWebWorker: typeof import("@wasm-audio-decoders/flac").FLACDecoderWebWorker;
+  try {
+    ({ FLACDecoderWebWorker } = await awaitWithFlacAbort(import("@wasm-audio-decoders/flac"), signal, () => undefined));
+  } catch (reason) {
+    if (signal?.aborted || (reason instanceof DOMException && reason.name === "AbortError")) throw reason;
+    throw new Error("KYX could not load its FLAC decoder. Check the connection, then retry or use a WAV file.");
+  }
+  if (signal?.aborted) throw cancelledError();
+
+  let decoder: InstanceType<typeof FLACDecoderWebWorker> & { terminate(): void };
+  try {
+    decoder = new FLACDecoderWebWorker() as InstanceType<typeof FLACDecoderWebWorker> & { terminate(): void };
+  } catch {
+    throw new Error(
+      "This browser could not start KYX's FLAC decoder worker. Allow Web Workers and WebAssembly, or use WAV.",
+    );
+  }
+  let decoderTerminated = false;
+  let decoderFreed = false;
+  const terminateDecoder = () => {
+    if (decoderTerminated || decoderFreed) return;
+    decoderTerminated = true;
+    decoder.terminate();
+  };
+
+  try {
+    await awaitWithFlacAbort(decoder.ready, signal, terminateDecoder);
+    const context = new OfflineAudioContext(1, 1, expected.sampleRate);
+    const buffer = context.createBuffer(expected.channels, expectedFrames, expected.sampleRate);
+    let framesWritten = 0;
+    let lastProgress = 0;
+
+    const copyDecoded = async (decoded: Awaited<ReturnType<typeof decoder.decode>>): Promise<void> => {
+      if (
+        !decoded ||
+        !Array.isArray(decoded.errors) ||
+        !Array.isArray(decoded.channelData) ||
+        !Number.isSafeInteger(decoded.samplesDecoded) ||
+        decoded.samplesDecoded < 0 ||
+        !Number.isInteger(decoded.sampleRate) ||
+        !Number.isInteger(decoded.bitDepth)
+      ) {
+        throw new FlacDataError("The FLAC decoder returned incomplete audio metadata.");
+      }
+      if (decoded.errors.length > 0) {
+        const firstMessage = decoded.errors[0]?.message;
+        const firstError = typeof firstMessage === "string" ? firstMessage.slice(0, 240) : "frame decode error";
+        throw new FlacDataError(
+          `The FLAC contains ${decoded.errors.length} damaged or unreadable frame(s): ${firstError}`,
+        );
+      }
+      if (decoded.samplesDecoded === 0) return;
+      if (
+        decoded.sampleRate !== expected.sampleRate ||
+        decoded.channelData.length !== expected.channels ||
+        (expected.bitDepth !== undefined && decoded.bitDepth !== expected.bitDepth) ||
+        framesWritten + decoded.samplesDecoded > expectedFrames
+      ) {
+        throw new FlacDataError("The decoded FLAC sample count or audio metadata does not match STREAMINFO.");
+      }
+
+      for (let channel = 0; channel < decoded.channelData.length; channel++) {
+        const source = decoded.channelData[channel];
+        const destination = buffer.getChannelData(channel);
+        if (!(source instanceof Float32Array) || source.length !== decoded.samplesDecoded) {
+          throw new FlacDataError("The FLAC decoder returned an incomplete channel.");
+        }
+        for (let start = 0; start < source.length; start += FLAC_COPY_CHUNK_FRAMES) {
+          if (signal?.aborted) throw cancelledError();
+          const end = Math.min(source.length, start + FLAC_COPY_CHUNK_FRAMES);
+          for (let frame = start; frame < end; frame++) {
+            if (!Number.isFinite(source[frame]))
+              throw new FlacDataError("The FLAC decoder returned a non-finite sample.");
+          }
+          destination.set(source.subarray(start, end), framesWritten + start);
+          if (end < source.length) await nextTask();
+        }
+      }
+      framesWritten += decoded.samplesDecoded;
+    };
+
+    for (let offset = 0; offset < blob.size; offset += FLAC_BLOB_READ_CHUNK_BYTES) {
+      if (signal?.aborted) throw cancelledError();
+      const end = Math.min(blob.size, offset + FLAC_BLOB_READ_CHUNK_BYTES);
+      const bytes = await awaitWithFlacAbort(blob.slice(offset, end).arrayBuffer(), signal, terminateDecoder);
+      if (bytes.byteLength !== end - offset) throw new Error("The FLAC source changed during bounded decoding.");
+      const decoded = await awaitWithFlacAbort(decoder.decode(new Uint8Array(bytes)), signal, terminateDecoder);
+      await copyDecoded(decoded);
+      const progress = Math.min(0.95, (end / blob.size) * 0.95);
+      if (progress >= lastProgress + 0.01 || end === blob.size) {
+        lastProgress = progress;
+        try {
+          onProgress?.(progress, "Decoding FLAC frames in bounded worker chunks");
+        } catch {
+          // Progress UI must not fail a decoded source.
+        }
+      }
+    }
+
+    if (signal?.aborted) throw cancelledError();
+    await copyDecoded(await awaitWithFlacAbort(decoder.flush(), signal, terminateDecoder));
+    if (framesWritten !== expectedFrames) {
+      throw new FlacDataError("The decoded FLAC sample count or audio metadata does not match STREAMINFO.");
+    }
+    try {
+      onProgress?.(1, "FLAC decode complete");
+    } catch {
+      // Progress UI must not fail a decoded source.
+    }
+    await awaitWithFlacAbort(decoder.free(), signal, terminateDecoder);
+    decoderFreed = true;
+    return buffer;
+  } finally {
+    if (!decoderFreed && !decoderTerminated) await decoder.free().catch(() => undefined);
+  }
 }
 
 /** Decode FLAC in a terminable worker and reject any file with skipped/corrupt frames. */

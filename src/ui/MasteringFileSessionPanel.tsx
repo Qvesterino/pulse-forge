@@ -7,12 +7,15 @@ import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
 import { tryAcquireMasteringWork } from "../mastering/workGate";
 import { formatAuditionTrim, getLoudnessMatchGain, resolveLoudnessMatchTarget } from "../mastering/audition";
 import {
+  decodeMasteringWavBlob,
   inspectEncodedMaster,
-  inspectMasteringReferenceContainer,
+  inspectMasteringReferenceBlob,
+  isBoundedMasteringWavDecodeAvailable,
   masteringReferenceFormatFromFileName,
   type EncodedMasterFileDetails,
   type EncodedMasterInspection,
 } from "../mastering/encodedInspection";
+import { fingerprintEncodedMasterAsync } from "../mastering/fingerprintClient";
 import { awaitMasteringSampleBankReady } from "../mastering/readiness";
 import {
   evaluateDelivery,
@@ -28,6 +31,7 @@ import {
   estimateMasteringSessionBrowserDecodeWorkingSetBytes,
   estimateMasteringSessionComparisonBytes,
   estimateMasteringSessionWorkingSetBytes,
+  estimateMasteringSessionWavDecodeWorkingSetBytes,
   renderMasteringSessionSource,
 } from "../mastering/sessionRender";
 import {
@@ -35,6 +39,7 @@ import {
   clearMasteringSessionSnapshot,
   createMasteringSessionRecord,
   MASTERING_SESSION_DELIVERY_REPORT_LIMIT,
+  MASTERING_SESSION_FILE_LIMIT_BYTES,
   MasteringSessionRepository,
   redoMasteringSessionConfig,
   undoMasteringSessionConfig,
@@ -47,7 +52,12 @@ import type {
 } from "../mastering/sessionStore";
 import type { MasteringSessionSlot, MasteringSessionSummary } from "../mastering/sessionStore";
 import { decodeAudioData } from "../services/audio-decode";
-import { decodeFlacAudioBuffer, estimateFlacDecoderWorkingSetBytes } from "../mastering/flacDecode";
+import {
+  decodeFlacAudioBuffer,
+  decodeFlacBlobToAudioBuffer,
+  estimateFlacBlobDecoderWorkingSetBytes,
+} from "../mastering/flacDecode";
+import { decodeMp3BlobToAudioBuffer, isBoundedMasteringMp3DecodeAvailable } from "../mastering/mp3PcmDecodeClient";
 import { uid } from "../shared/ids";
 import type { EffectInstance } from "../project-model/types";
 import { createBextMetadata, encodeWavBlobAsync, sanitizeFilename } from "../rendering/wav";
@@ -279,7 +289,10 @@ async function decodeMasteringInputWithSessionAbort(
     return decodeFlacAudioBuffer(bytes, details, { maxPcmBytes: MAX_DECODED_SOURCE_BYTES, signal });
   }
   try {
-    const buffer = await decodeAudioDataWithSessionAbort(bytes.slice(0), details.sampleRate, signal, message);
+    // Web Audio consumes this decode input. Callers fingerprint and inspect the
+    // source Blob first, so keeping a second full encoded-file copy here is
+    // unnecessary and can double the largest import allocation.
+    const buffer = await decodeAudioDataWithSessionAbort(bytes, details.sampleRate, signal, message);
     if (buffer.sampleRate !== details.sampleRate) {
       throw new Error(
         `The browser decoded the source at ${buffer.sampleRate} Hz instead of its native ${details.sampleRate} Hz.`,
@@ -293,6 +306,51 @@ async function decodeMasteringInputWithSessionAbort(
       `This browser could not decode the source at its native ${details.sampleRate} Hz sample rate.${detail} Use another browser or convert it to PCM WAV at a supported rate.`,
     );
   }
+}
+
+async function decodeMasteringBlobWithSessionAbort(
+  blob: Blob,
+  format: "wav" | "mp3" | "flac",
+  details: EncodedMasterFileDetails,
+  signal: AbortSignal | undefined,
+  message: string,
+  onProgress?: (update: { progress: number; stage: string }) => void,
+): Promise<AudioBuffer> {
+  if (format === "wav" && isBoundedMasteringWavDecodeAvailable()) {
+    return decodeMasteringWavBlob(blob, { signal, maxPcmBytes: MAX_DECODED_SOURCE_BYTES, onProgress });
+  }
+  if (format === "flac") {
+    return decodeFlacBlobToAudioBuffer(blob, details, {
+      signal,
+      maxPcmBytes: MAX_DECODED_SOURCE_BYTES,
+      onProgress: onProgress ? (progress, stage) => onProgress({ progress, stage }) : undefined,
+    });
+  }
+  if (format === "mp3" && isBoundedMasteringMp3DecodeAvailable()) {
+    const decoded = await decodeMp3BlobToAudioBuffer(blob, details, {
+      signal,
+      maxPcmBytes: MAX_DECODED_SOURCE_BYTES,
+      onProgress: onProgress ? (progress, stage) => onProgress({ progress, stage }) : undefined,
+    });
+    if (decoded.status === "decoded") return decoded.buffer;
+    if (signal?.aborted) throw new DOMException(message, "AbortError");
+    onProgress?.({ progress: 0, stage: "Using the browser's built-in MP3 decoder" });
+  }
+  const bytes = await awaitWithSessionAbort(blob.arrayBuffer(), signal, message);
+  if (signal?.aborted) throw new DOMException(message, "AbortError");
+  return decodeMasteringInputWithSessionAbort(bytes, format, details, signal, message);
+}
+
+function estimateMasteringFileDecodeWorkingSetBytes(
+  format: "wav" | "mp3" | "flac",
+  encodedBytes: number,
+  pcmBytes: number,
+): number {
+  if (format === "flac") return estimateFlacBlobDecoderWorkingSetBytes(pcmBytes);
+  if (format === "wav" && isBoundedMasteringWavDecodeAvailable()) {
+    return estimateMasteringSessionWavDecodeWorkingSetBytes(pcmBytes);
+  }
+  return estimateMasteringSessionBrowserDecodeWorkingSetBytes(encodedBytes, pcmBytes);
 }
 
 async function auditDecodedAudio(buffer: AudioBuffer, signal?: AbortSignal): Promise<void> {
@@ -312,36 +370,57 @@ async function auditDecodedAudio(buffer: AudioBuffer, signal?: AbortSignal): Pro
   }
 }
 
-async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
-  if (!globalThis.crypto?.subtle) throw new Error("This browser cannot calculate a source-file fingerprint.");
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
-  return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+async function fingerprintMasteringBlob(
+  blob: Blob,
+  signal?: AbortSignal,
+  onProgress?: (update: { progress: number; stage: string }) => void,
+): Promise<string> {
+  const fingerprint = await fingerprintEncodedMasterAsync(blob, { signal, onProgress });
+  if (signal?.aborted) throw new DOMException("Master fingerprint cancelled", "AbortError");
+  if (fingerprint.status !== "computed" || !fingerprint.hex) {
+    throw new Error(fingerprint.reason ?? "KYX could not calculate a source-file fingerprint.");
+  }
+  return fingerprint.hex;
 }
 
 async function decodeSessionSource(record: MasteringSessionRecord, signal?: AbortSignal): Promise<AudioBuffer> {
-  if (record.byteLength <= 0 || record.source.size !== record.byteLength) {
-    throw new Error("The saved source file is incomplete.");
+  if (
+    record.byteLength <= 0 ||
+    record.byteLength > MASTERING_SESSION_FILE_LIMIT_BYTES ||
+    record.source.size !== record.byteLength
+  ) {
+    throw new Error("The saved source file is incomplete or exceeds KYX's 96 MiB limit.");
   }
-  const bytes = await awaitWithSessionAbort(record.source.arrayBuffer(), signal, "Session load cancelled");
-  if (signal?.aborted) throw new DOMException("Session load cancelled", "AbortError");
-  if ((await awaitWithSessionAbort(sha256Hex(bytes), signal, "Session load cancelled")) !== record.sourceHash)
-    throw new Error("The saved source file does not match its session fingerprint.");
-  if (signal?.aborted) throw new DOMException("Session load cancelled", "AbortError");
   const format = masteringReferenceFormatFromFileName(record.fileName);
-  const details = inspectMasteringReferenceContainer(format, bytes);
-  if (details.channels !== record.channels || details.sampleRate !== record.sourceSampleRate) {
+  const details = await inspectMasteringReferenceBlob(format, record.source, signal);
+  if (
+    details.channels !== record.channels ||
+    details.sampleRate !== record.sourceSampleRate ||
+    details.durationSeconds < 0.8 ||
+    details.durationSeconds > 12 * 60 ||
+    details.sampleRate < 8000 ||
+    details.sampleRate > 192000
+  ) {
     throw new Error("The saved file metadata no longer matches this mastering session.");
   }
-  if (format === "flac") {
-    const pcmBytes = Math.ceil(details.durationSeconds * details.sampleRate) * details.channels * 4;
-    assertMasteringSessionWorkingSetBudget(estimateFlacDecoderWorkingSetBytes(bytes.byteLength, pcmBytes));
-  } else {
-    const pcmBytes = Math.ceil(details.durationSeconds * details.sampleRate) * details.channels * 4;
-    assertMasteringSessionWorkingSetBudget(
-      estimateMasteringSessionBrowserDecodeWorkingSetBytes(bytes.byteLength, pcmBytes),
-    );
+  const pcmBytes = Math.ceil(details.durationSeconds * details.sampleRate) * details.channels * 4;
+  if (!Number.isSafeInteger(pcmBytes) || pcmBytes > MAX_DECODED_SOURCE_BYTES) {
+    throw new Error("The saved source exceeds KYX's 128 MiB decoded-source limit.");
   }
-  const buffer = await decodeMasteringInputWithSessionAbort(bytes, format, details, signal, "Session load cancelled");
+  assertMasteringSessionWorkingSetBudget(
+    estimateMasteringFileDecodeWorkingSetBytes(format, record.byteLength, pcmBytes),
+  );
+  if ((await fingerprintMasteringBlob(record.source, signal)) !== record.sourceHash) {
+    throw new Error("The saved source file does not match its session fingerprint.");
+  }
+  if (signal?.aborted) throw new DOMException("Session load cancelled", "AbortError");
+  const buffer = await decodeMasteringBlobWithSessionAbort(
+    record.source,
+    format,
+    details,
+    signal,
+    "Session load cancelled",
+  );
   if (signal?.aborted) throw new DOMException("Session load cancelled", "AbortError");
   if (
     buffer.numberOfChannels !== record.channels ||
@@ -361,35 +440,43 @@ async function decodeSessionReference(
   profile: ReturnType<typeof resolveDeliveryTarget>,
   signal?: AbortSignal,
 ): Promise<LoadedSessionReference> {
-  if (record.byteLength <= 0 || record.source.size !== record.byteLength || record.byteLength > 96 * 1024 * 1024) {
+  if (
+    record.byteLength <= 0 ||
+    record.source.size !== record.byteLength ||
+    record.byteLength > MASTERING_SESSION_FILE_LIMIT_BYTES
+  ) {
     throw new Error("The saved mastering-session reference is incomplete or exceeds the 96 MiB limit.");
   }
-  const bytes = await awaitWithSessionAbort(record.source.arrayBuffer(), signal, "Reference load cancelled");
-  if (signal?.aborted) throw new DOMException("Reference load cancelled", "AbortError");
-  if ((await awaitWithSessionAbort(sha256Hex(bytes), signal, "Reference load cancelled")) !== record.sourceHash) {
-    throw new Error("The saved reference file does not match its session fingerprint.");
-  }
-  if (signal?.aborted) throw new DOMException("Reference load cancelled", "AbortError");
   const format = masteringReferenceFormatFromFileName(record.fileName);
-  const details = inspectMasteringReferenceContainer(format, bytes);
+  const details = await inspectMasteringReferenceBlob(format, record.source, signal);
   if (
     details.channels !== record.channels ||
     details.sampleRate !== record.sampleRate ||
-    details.durationSeconds > 12 * 60
+    details.durationSeconds < 0.8 ||
+    details.durationSeconds > 12 * 60 ||
+    details.sampleRate < 8000 ||
+    details.sampleRate > 192000
   ) {
     throw new Error("The saved reference metadata no longer matches its file.");
   }
   const decodedSampleRate = details.sampleRate;
   const estimatedBytes = Math.ceil(details.durationSeconds * decodedSampleRate) * details.channels * 4;
-  if (estimatedBytes > MAX_DECODED_SOURCE_BYTES) {
+  if (!Number.isSafeInteger(estimatedBytes) || estimatedBytes > MAX_DECODED_SOURCE_BYTES) {
     throw new Error("The decoded reference exceeds KYX's 128 MiB memory limit.");
   }
-  const decodeWorkingSetBytes =
-    format === "flac"
-      ? estimateFlacDecoderWorkingSetBytes(bytes.byteLength, estimatedBytes)
-      : estimateMasteringSessionBrowserDecodeWorkingSetBytes(bytes.byteLength, estimatedBytes);
+  const decodeWorkingSetBytes = estimateMasteringFileDecodeWorkingSetBytes(format, record.byteLength, estimatedBytes);
   assertMasteringSessionWorkingSetBudget(decodeWorkingSetBytes);
-  const buffer = await decodeMasteringInputWithSessionAbort(bytes, format, details, signal, "Reference load cancelled");
+  if ((await fingerprintMasteringBlob(record.source, signal)) !== record.sourceHash) {
+    throw new Error("The saved reference file does not match its session fingerprint.");
+  }
+  if (signal?.aborted) throw new DOMException("Reference load cancelled", "AbortError");
+  const buffer = await decodeMasteringBlobWithSessionAbort(
+    record.source,
+    format,
+    details,
+    signal,
+    "Reference load cancelled",
+  );
   if (
     buffer.numberOfChannels !== record.channels ||
     buffer.sampleRate !== details.sampleRate ||
@@ -837,10 +924,11 @@ export function MasteringFileSessionPanel({
             const referenceBytes =
               Math.ceil(savedReference.durationSeconds * referenceSampleRate) * savedReference.channels * 4;
             const baseBytes = estimateMasteringSessionWorkingSetBytes(buffer, record.masterConfig, sampleRate);
-            const decodeWorkingSetBytes =
-              referenceFormat === "flac"
-                ? estimateFlacDecoderWorkingSetBytes(savedReference.byteLength, referenceBytes)
-                : estimateMasteringSessionBrowserDecodeWorkingSetBytes(savedReference.byteLength, referenceBytes);
+            const decodeWorkingSetBytes = estimateMasteringFileDecodeWorkingSetBytes(
+              referenceFormat,
+              savedReference.byteLength,
+              referenceBytes,
+            );
             assertMasteringSessionWorkingSetBudget(baseBytes + decodeWorkingSetBytes);
             loadedReference = await decodeSessionReference(
               savedReference,
@@ -897,15 +985,14 @@ export function MasteringFileSessionPanel({
       setBusy("Reading source file…");
       try {
         if (!AUDIO_EXTENSION.test(file.name)) throw new Error("Choose a WAV, MP3 or FLAC mixdown.");
-        if (file.size <= 0 || file.size > 96 * 1024 * 1024) {
+        if (file.size <= 0 || file.size > MASTERING_SESSION_FILE_LIMIT_BYTES) {
           throw new Error("External mastering accepts files up to 96 MiB.");
         }
-        const bytes = await awaitWithSessionAbort(file.arrayBuffer(), controller.signal, "Source import cancelled");
-        ensureActive();
         const format = masteringReferenceFormatFromFileName(file.name);
         const sourceMimeType =
           file.type || (format === "wav" ? "audio/wav" : format === "mp3" ? "audio/mpeg" : "audio/flac");
-        const details = inspectMasteringReferenceContainer(format, bytes);
+        const details = await inspectMasteringReferenceBlob(format, file, controller.signal);
+        ensureActive();
         if (details.channels !== 1 && details.channels !== 2) throw new Error("Use a mono or stereo source file.");
         if (
           !Number.isFinite(details.durationSeconds) ||
@@ -925,21 +1012,25 @@ export function MasteringFileSessionPanel({
         const currentRenderBytes =
           bufferBytes(rendered?.buffer ?? null) +
           (comparison ? bufferBytes(comparison.a.buffer) + bufferBytes(comparison.b.buffer) : 0);
-        const decodeWorkingSetBytes =
-          format === "flac"
-            ? estimateFlacDecoderWorkingSetBytes(bytes.byteLength, estimatedDecodeBytes)
-            : estimateMasteringSessionBrowserDecodeWorkingSetBytes(bytes.byteLength, estimatedDecodeBytes);
+        const decodeWorkingSetBytes = estimateMasteringFileDecodeWorkingSetBytes(
+          format,
+          file.size,
+          estimatedDecodeBytes,
+        );
         assertMasteringSessionWorkingSetBudget(estimatedBytes + currentRenderBytes + decodeWorkingSetBytes);
         setBusy("Fingerprinting source file…");
-        const sourceHash = await awaitWithSessionAbort(sha256Hex(bytes), controller.signal, "Source import cancelled");
+        const sourceHash = await fingerprintMasteringBlob(file, controller.signal, ({ progress: value, stage }) =>
+          setProgress(`${stage} · ${Math.round(value * 100)}%`),
+        );
         ensureActive();
         setProgress("Decoding source audio…");
-        const buffer = await decodeMasteringInputWithSessionAbort(
-          bytes,
+        const buffer = await decodeMasteringBlobWithSessionAbort(
+          file,
           format,
           details,
           controller.signal,
           "Source import cancelled",
+          ({ progress: value, stage }) => setProgress(`${stage} · ${Math.round(value * 100)}%`),
         );
         ensureActive();
         if (
@@ -1026,15 +1117,14 @@ export function MasteringFileSessionPanel({
       setBusy("Validating comparison reference…");
       try {
         if (!AUDIO_EXTENSION.test(file.name)) throw new Error("Choose a WAV, MP3 or FLAC reference file.");
-        if (file.size <= 0 || file.size > 96 * 1024 * 1024) {
+        if (file.size <= 0 || file.size > MASTERING_SESSION_FILE_LIMIT_BYTES) {
           throw new Error("Comparison references must be between 1 byte and 96 MiB.");
         }
-        const bytes = await awaitWithSessionAbort(file.arrayBuffer(), controller.signal, "Reference import cancelled");
-        ensureActive();
         const format = masteringReferenceFormatFromFileName(file.name);
         const referenceMimeType =
           file.type || (format === "wav" ? "audio/wav" : format === "mp3" ? "audio/mpeg" : "audio/flac");
-        const details = inspectMasteringReferenceContainer(format, bytes);
+        const details = await inspectMasteringReferenceBlob(format, file, controller.signal);
+        ensureActive();
         if (details.channels !== 1 && details.channels !== 2) {
           throw new Error("Use a mono or stereo comparison reference.");
         }
@@ -1056,28 +1146,28 @@ export function MasteringFileSessionPanel({
         }
         const baseBytes =
           estimateMasteringSessionWorkingSetBytes(source, draft, sampleRate) + bufferBytes(reference?.buffer ?? null);
-        const decodeWorkingSetBytes =
-          format === "flac"
-            ? estimateFlacDecoderWorkingSetBytes(bytes.byteLength, estimatedReferenceBytes)
-            : estimateMasteringSessionBrowserDecodeWorkingSetBytes(bytes.byteLength, estimatedReferenceBytes);
+        const decodeWorkingSetBytes = estimateMasteringFileDecodeWorkingSetBytes(
+          format,
+          file.size,
+          estimatedReferenceBytes,
+        );
         const currentRenderBytes =
           bufferBytes(rendered?.buffer ?? null) +
           (comparison ? bufferBytes(comparison.a.buffer) + bufferBytes(comparison.b.buffer) : 0);
         assertMasteringSessionWorkingSetBudget(baseBytes + currentRenderBytes + decodeWorkingSetBytes);
         setBusy("Fingerprinting comparison reference…");
-        const sourceHash = await awaitWithSessionAbort(
-          sha256Hex(bytes),
-          controller.signal,
-          "Reference import cancelled",
+        const sourceHash = await fingerprintMasteringBlob(file, controller.signal, ({ progress: value, stage }) =>
+          setProgress(`${stage} · ${Math.round(value * 100)}%`),
         );
         ensureActive();
         setBusy("Decoding comparison reference…");
-        const buffer = await decodeMasteringInputWithSessionAbort(
-          bytes,
+        const buffer = await decodeMasteringBlobWithSessionAbort(
+          file,
           format,
           details,
           controller.signal,
           "Reference import cancelled",
+          ({ progress: value, stage }) => setProgress(`${stage} · ${Math.round(value * 100)}%`),
         );
         ensureActive();
         if (

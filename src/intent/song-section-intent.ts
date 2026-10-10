@@ -10,6 +10,8 @@ export interface SongSectionIntentOverrides {
   complexity: number;
   candidateCount: number;
   roles: readonly IntentRole[];
+  /** Song-level harmony plan (see IntentSpec.progression) — omitted on legacy paths. */
+  progression?: string;
 }
 
 /**
@@ -28,5 +30,6 @@ export function createSongSectionIntent(baseIntent: IntentSpec, section: SongSec
     complexity: section.complexity,
     candidateCount: section.candidateCount,
     roles: section.roles,
+    ...(section.progression ? { progression: section.progression } : {}),
   });
 }

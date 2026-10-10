@@ -9,9 +9,11 @@ import { analyzeMp3BlobAsync } from "./mp3AnalysisClient";
 import { fingerprintEncodedMasterAsync, type EncodedMasterFingerprint } from "./fingerprintClient";
 import { evaluateMasterFileDelivery, type MasterFileDeliveryVerdict, type MasterProfile } from "./profiles";
 import { decodeBwfLoudnessValue, encodeBwfLoudnessValue, type WavBextLoudnessField } from "../rendering/wav";
-import { parseMp3FrameHeader, type Mp3FrameHeader } from "./mp3Frames";
+import { parseMp3FrameHeader, sameMp3Stream, type Mp3FrameHeader } from "./mp3Frames";
 import { canDecodeWavAsAudioBuffer, MAX_WAV_DECODE_BYTES } from "../export/wav-limits";
 import { MAX_MP3_DECODE_BYTES, MAX_MP3_DECODE_PCM_BYTES } from "../export/mp3-limits";
+import { decodeWavPcmBlobToAudioBuffer } from "./wavPcmDecodeClient";
+import type { WavPcmDecodeDescriptor, WavPcmDecodeProgress } from "./wavPcmDecodeClient";
 
 export type EncodedMasterFormat = "wav" | "mp3" | "flac";
 export type MasteringReferenceFormat = EncodedMasterFormat;
@@ -405,6 +407,370 @@ export function inspectMasteringReferenceContainer(
   if (format === "wav") return publicWavDetails(parseWav(bytes));
   if (format === "mp3") return parseMp3(bytes);
   return parseFlac(bytes);
+}
+
+const MASTERING_CONTAINER_READ_BYTES = 1024 * 1024;
+const MASTERING_CONTAINER_CHUNK_LIMIT = 4096;
+const MASTERING_MP3_SCAN_BYTES = 64 * 1024;
+const MASTERING_MP3_DURATION_LIMIT_SECONDS = 12 * 60;
+
+async function readBlobRange(blob: Blob, start: number, end: number, signal?: AbortSignal): Promise<ArrayBuffer> {
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end <= start || end > blob.size) {
+    throw new Error("The mastering source contains an invalid container range.");
+  }
+  const bytes = await awaitWithAbort(blob.slice(start, end).arrayBuffer(), signal);
+  if (bytes.byteLength !== end - start) throw new Error("The mastering source changed during container inspection.");
+  return bytes;
+}
+
+async function parseMasteringWavBlob(blob: Blob, signal?: AbortSignal): Promise<ParsedWav> {
+  if (blob.size < 44) throw new Error("The WAV file is shorter than its header.");
+  const riffBytes = await readBlobRange(blob, 0, 12, signal);
+  const riff = new DataView(riffBytes);
+  if (readFourCc(riff, 0) !== "RIFF" || readFourCc(riff, 8) !== "WAVE") {
+    throw new Error("The source file does not have a RIFF/WAVE header.");
+  }
+  const declaredEnd = riff.getUint32(4, true) + 8;
+  if (declaredEnd > blob.size || declaredEnd < 44) throw new Error("The WAV RIFF size is invalid for this file.");
+
+  let formatCode = 0;
+  let channels = 0;
+  let sampleRate = 0;
+  let blockAlign = 0;
+  let bitDepth = 0;
+  let byteRate = 0;
+  let dataBytes = 0;
+  let dataOffset = 0;
+  let bext: EncodedMasterFileDetails["bext"];
+  let offset = 12;
+  let chunkCount = 0;
+
+  while (offset + 8 <= declaredEnd) {
+    if (++chunkCount > MASTERING_CONTAINER_CHUNK_LIMIT) {
+      throw new Error("The WAV contains too many metadata chunks to inspect safely.");
+    }
+    const chunkHeader = new DataView(await readBlobRange(blob, offset, offset + 8, signal));
+    const chunkId = readFourCc(chunkHeader, 0);
+    const chunkSize = chunkHeader.getUint32(4, true);
+    const chunkStart = offset + 8;
+    const chunkEnd = chunkStart + chunkSize;
+    if (!Number.isSafeInteger(chunkEnd) || chunkEnd > declaredEnd) {
+      throw new Error(`The WAV ${chunkId} chunk extends beyond the RIFF boundary.`);
+    }
+
+    if (chunkId === "fmt ") {
+      if (chunkSize < 16) throw new Error("The WAV format chunk is incomplete.");
+      const format = new DataView(await readBlobRange(blob, chunkStart, chunkStart + 16, signal));
+      formatCode = format.getUint16(0, true);
+      channels = format.getUint16(2, true);
+      sampleRate = format.getUint32(4, true);
+      byteRate = format.getUint32(8, true);
+      blockAlign = format.getUint16(12, true);
+      bitDepth = format.getUint16(14, true);
+    } else if (chunkId === "data") {
+      dataBytes = chunkSize;
+      dataOffset = chunkStart;
+    } else if (chunkId === "bext") {
+      if (chunkSize < 602) throw new Error("The WAV broadcast metadata (bext) chunk is incomplete.");
+      const metadata = new DataView(await readBlobRange(blob, chunkStart, chunkStart + 602, signal));
+      const version = metadata.getUint16(346, true);
+      bext = {
+        version,
+        description: readAscii(metadata, 0, 256),
+        ...(version >= 2
+          ? {
+              loudness: {
+                integratedLufs: decodeBwfLoudnessValue(metadata.getInt16(412, true), "integratedLufs"),
+                rangeLu: decodeBwfLoudnessValue(metadata.getInt16(414, true), "rangeLu"),
+                truePeakDbtp: decodeBwfLoudnessValue(metadata.getInt16(416, true), "truePeakDbtp"),
+                momentaryLufs: decodeBwfLoudnessValue(metadata.getInt16(418, true), "momentaryLufs"),
+                shortTermLufs: decodeBwfLoudnessValue(metadata.getInt16(420, true), "shortTermLufs"),
+              },
+            }
+          : {}),
+      };
+    }
+
+    offset = chunkEnd + (chunkSize & 1);
+    if (offset > declaredEnd) throw new Error(`The WAV ${chunkId} chunk is missing its RIFF padding byte.`);
+  }
+
+  if (!channels || !sampleRate || !blockAlign || !dataBytes) {
+    throw new Error("The WAV is missing audio format or sample data.");
+  }
+  if ((formatCode !== 1 && formatCode !== 3) || ![16, 24, 32].includes(bitDepth)) {
+    throw new Error(`Unsupported WAV encoding (${formatCode}, ${bitDepth}-bit).`);
+  }
+  if (formatCode === 1 && bitDepth === 32) {
+    throw new Error("The exported 32-bit WAV must contain floating-point samples.");
+  }
+  if (formatCode === 3 && bitDepth !== 32) throw new Error("The exported floating-point WAV must be 32-bit.");
+  if (blockAlign !== channels * (bitDepth / 8) || byteRate !== sampleRate * blockAlign) {
+    throw new Error("The WAV sample layout does not match its channel, rate or bit-depth fields.");
+  }
+  if (dataBytes % blockAlign !== 0) throw new Error("The WAV audio data is not aligned to complete sample frames.");
+
+  return {
+    sampleRate,
+    channels,
+    durationSeconds: dataBytes / blockAlign / sampleRate,
+    durationAccuracy: "exact",
+    bitDepth: bitDepth as 16 | 24 | 32,
+    formatCode: formatCode as 1 | 3,
+    blockAlign,
+    dataBytes,
+    dataOffset,
+    frameCount: dataBytes / blockAlign,
+    ...(bext ? { bext } : {}),
+  };
+}
+
+async function inspectMasteringWavBlob(blob: Blob, signal?: AbortSignal): Promise<EncodedMasterFileDetails> {
+  return publicWavDetails(await parseMasteringWavBlob(blob, signal));
+}
+
+async function inspectMasteringFlacBlob(blob: Blob, signal?: AbortSignal): Promise<EncodedMasterFileDetails> {
+  if (blob.size < 42) throw new Error("The FLAC file is missing its marker or STREAMINFO block.");
+  const marker = await readBlobRange(blob, 0, 4, signal);
+  if (readFourCc(new DataView(marker), 0) !== "fLaC") {
+    throw new Error("The FLAC file is missing its marker or STREAMINFO block.");
+  }
+
+  let offset = 4;
+  let streamInfo: { sampleRate: number; channels: number; bitDepth: number; totalSamples: number } | null = null;
+  let isLastBlock = false;
+  let blockCount = 0;
+  while (!isLastBlock) {
+    if (++blockCount > MASTERING_CONTAINER_CHUNK_LIMIT) {
+      throw new Error("The FLAC contains too many metadata blocks to inspect safely.");
+    }
+    const header = new DataView(await readBlobRange(blob, offset, offset + 4, signal));
+    const headerByte = header.getUint8(0);
+    const blockType = headerByte & 0x7f;
+    isLastBlock = (headerByte & 0x80) !== 0;
+    const blockLength = (header.getUint8(1) << 16) | (header.getUint8(2) << 8) | header.getUint8(3);
+    const blockStart = offset + 4;
+    const blockEnd = blockStart + blockLength;
+    if (!Number.isSafeInteger(blockEnd) || blockEnd > blob.size) {
+      throw new Error("The FLAC metadata block extends beyond the file.");
+    }
+    if (offset === 4 && (blockType !== 0 || blockLength !== 34)) {
+      throw new Error("The FLAC file must begin with a 34-byte STREAMINFO block.");
+    }
+    if (blockType === 0) {
+      if (blockLength !== 34 || streamInfo) throw new Error("The FLAC STREAMINFO block is invalid or duplicated.");
+      const packed = new Uint8Array(await readBlobRange(blob, blockStart + 10, blockStart + 18, signal));
+      const sampleRate = (packed[0] << 12) | (packed[1] << 4) | (packed[2] >>> 4);
+      const channels = ((packed[2] >>> 1) & 0x07) + 1;
+      const bitDepth = (((packed[2] & 0x01) << 4) | (packed[3] >>> 4)) + 1;
+      const totalSamples =
+        (packed[3] & 0x0f) * 0x1_0000_0000 +
+        packed[4] * 0x1_000_000 +
+        packed[5] * 0x1_0000 +
+        packed[6] * 0x100 +
+        packed[7];
+      if (
+        sampleRate < 1 ||
+        channels < 1 ||
+        channels > 8 ||
+        bitDepth < 4 ||
+        bitDepth > 32 ||
+        !Number.isSafeInteger(totalSamples) ||
+        totalSamples <= 0
+      ) {
+        throw new Error("The FLAC STREAMINFO audio fields are invalid or do not include a known duration.");
+      }
+      streamInfo = { sampleRate, channels, bitDepth, totalSamples };
+    }
+    offset = blockEnd;
+  }
+
+  if (!streamInfo) throw new Error("The FLAC file does not contain a STREAMINFO block.");
+  const frameMarker = new Uint8Array(await readBlobRange(blob, offset, offset + 2, signal));
+  if (frameMarker[0] !== 0xff || (frameMarker[1] & 0xfc) !== 0xf8) {
+    throw new Error("The FLAC metadata is not followed by an audio frame.");
+  }
+  return {
+    sampleRate: streamInfo.sampleRate,
+    channels: streamInfo.channels,
+    durationSeconds: streamInfo.totalSamples / streamInfo.sampleRate,
+    durationAccuracy: "exact",
+    bitDepth: streamInfo.bitDepth,
+  };
+}
+
+async function isMp3Id3v1Footer(blob: Blob, offset: number, signal?: AbortSignal): Promise<boolean> {
+  if (blob.size - offset !== 128) return false;
+  const marker = new Uint8Array(await readBlobRange(blob, offset, offset + 3, signal));
+  return marker[0] === 0x54 && marker[1] === 0x41 && marker[2] === 0x47;
+}
+
+async function inspectMasteringMp3Blob(blob: Blob, signal?: AbortSignal): Promise<EncodedMasterFileDetails> {
+  if (blob.size < 4) throw new Error("The MP3 file is too short to contain an audio frame.");
+  let offset = 0;
+  if (blob.size >= 10) {
+    const header = new DataView(await readBlobRange(blob, 0, 10, signal));
+    if (header.getUint8(0) === 0x49 && header.getUint8(1) === 0x44 && header.getUint8(2) === 0x33) {
+      const tagSize =
+        ((header.getUint8(6) & 0x7f) << 21) |
+        ((header.getUint8(7) & 0x7f) << 14) |
+        ((header.getUint8(8) & 0x7f) << 7) |
+        (header.getUint8(9) & 0x7f);
+      offset = 10 + tagSize + ((header.getUint8(5) & 0x10) !== 0 ? 10 : 0);
+      if (offset >= blob.size) throw new Error("The MP3 ID3 tag contains no following audio frames.");
+    }
+  }
+
+  const searchStart = offset;
+  const searchEnd = Math.min(blob.size, searchStart + MASTERING_MP3_SCAN_BYTES + 4);
+  let windowStart = searchStart;
+  let window = await readBlobRange(blob, searchStart, searchEnd, signal);
+  let windowView = new DataView(window);
+  const searchView = windowView;
+  let first: Mp3FrameHeader | null = null;
+  let firstOffset = -1;
+  for (
+    let localOffset = 0;
+    localOffset + 4 <= window.byteLength && localOffset <= MASTERING_MP3_SCAN_BYTES;
+    localOffset++
+  ) {
+    const frame = parseMp3FrameHeader(searchView, localOffset);
+    if (!frame || frame.frameBytes < 4 || searchStart + localOffset + frame.frameBytes + 4 > blob.size) continue;
+    const nextOffset = localOffset + frame.frameBytes;
+    const nextFrame =
+      nextOffset + 4 <= searchView.byteLength
+        ? parseMp3FrameHeader(searchView, nextOffset)
+        : parseMp3FrameHeader(
+            new DataView(await readBlobRange(blob, searchStart + nextOffset, searchStart + nextOffset + 4, signal)),
+            0,
+          );
+    if (nextFrame && sameMp3Stream(frame, nextFrame)) {
+      first = frame;
+      firstOffset = searchStart + localOffset;
+      break;
+    }
+  }
+  if (!first || firstOffset < 0) throw new Error("No valid MPEG Layer III frame was found in the MP3 source.");
+
+  let frames = 0;
+  let bitrateSum = 0;
+  offset = firstOffset;
+  while (offset + 4 <= blob.size) {
+    if (offset < windowStart || offset + 4 > windowStart + window.byteLength) {
+      windowStart = offset;
+      window = await readBlobRange(
+        blob,
+        windowStart,
+        Math.min(blob.size, windowStart + MASTERING_CONTAINER_READ_BYTES),
+        signal,
+      );
+      windowView = new DataView(window);
+    }
+    const frame = parseMp3FrameHeader(windowView, offset - windowStart);
+    if (!frame) {
+      if (frames > 0 && (await isMp3Id3v1Footer(blob, offset, signal))) {
+        offset = blob.size;
+        break;
+      }
+      throw new Error(`Invalid or truncated MP3 frame sequence at byte ${offset}.`);
+    }
+    if (!sameMp3Stream(first, frame)) {
+      throw new Error("The MP3 changes sample rate, channel count or MPEG version mid-file.");
+    }
+    if (frame.frameBytes < 4 || offset + frame.frameBytes > blob.size) {
+      throw new Error(`The MP3 contains a truncated audio frame at byte ${offset}.`);
+    }
+    frames++;
+    bitrateSum += frame.bitrateKbps;
+    offset += frame.frameBytes;
+    if ((frames * first.samplesPerFrame) / first.sampleRate > MASTERING_MP3_DURATION_LIMIT_SECONDS) {
+      throw new Error("The MP3 source exceeds KYX's 12-minute mastering-session duration limit.");
+    }
+  }
+  if (frames === 0) throw new Error("The MP3 source contains no complete audio frames.");
+  if (offset !== blob.size) throw new Error("The MP3 ends with an incomplete audio frame.");
+  return {
+    sampleRate: first.sampleRate,
+    channels: first.channels,
+    durationSeconds: (frames * first.samplesPerFrame) / first.sampleRate,
+    durationAccuracy: "exact",
+    averageBitrateKbps: bitrateSum / frames,
+  };
+}
+
+/** Inspect a source Blob in bounded ranges before allocating a full decoder input buffer. */
+export async function inspectMasteringReferenceBlob(
+  format: MasteringReferenceFormat,
+  blob: Blob,
+  signal?: AbortSignal,
+): Promise<EncodedMasterFileDetails> {
+  if (!(blob instanceof Blob) || blob.size <= 0) throw new Error("The mastering source file is empty or unavailable.");
+  if (format === "wav") return inspectMasteringWavBlob(blob, signal);
+  if (format === "mp3") return inspectMasteringMp3Blob(blob, signal);
+  return inspectMasteringFlacBlob(blob, signal);
+}
+
+/** The file-mastering WAV path avoids whole-file Web Audio decoder copies where workers are available. */
+export function isBoundedMasteringWavDecodeAvailable(): boolean {
+  return typeof AudioBuffer !== "undefined" && typeof Worker !== "undefined";
+}
+
+/** Decode PCM WAV ranges in a worker directly into the destination AudioBuffer. */
+export async function decodeMasteringWavBlob(
+  blob: Blob,
+  options: {
+    signal?: AbortSignal;
+    maxPcmBytes?: number;
+    onProgress?: (progress: WavPcmDecodeProgress) => void;
+  } = {},
+): Promise<AudioBuffer> {
+  const { signal, onProgress } = options;
+  const maxPcmBytes = options.maxPcmBytes ?? 128 * 1024 * 1024;
+  if (!isBoundedMasteringWavDecodeAvailable()) {
+    throw new Error("This browser cannot run KYX's bounded PCM WAV decoder.");
+  }
+  if (!(blob instanceof Blob) || blob.size <= 0 || blob.size > MAX_WAV_DECODE_BYTES) {
+    throw new Error("The WAV source is empty or exceeds KYX's 96 MiB mastering-file limit.");
+  }
+  if (!Number.isSafeInteger(maxPcmBytes) || maxPcmBytes <= 0) {
+    throw new Error("KYX could not validate the decoded WAV memory limit.");
+  }
+
+  const wav = await parseMasteringWavBlob(blob, signal);
+  if (
+    wav.channels < 1 ||
+    wav.channels > 2 ||
+    wav.sampleRate < 8000 ||
+    wav.sampleRate > 192000 ||
+    wav.durationSeconds < 0.8 ||
+    wav.durationSeconds > 12 * 60
+  ) {
+    throw new Error("The WAV is outside KYX's supported mastering duration, channel or sample-rate limits.");
+  }
+  const pcmBytes = wav.frameCount * wav.channels * Float32Array.BYTES_PER_ELEMENT;
+  if (!Number.isSafeInteger(pcmBytes) || pcmBytes <= 0 || pcmBytes > maxPcmBytes) {
+    throw new Error("The decoded WAV would exceed KYX's source-memory limit.");
+  }
+
+  const descriptor: WavPcmDecodeDescriptor = {
+    channels: wav.channels,
+    dataBytes: wav.dataBytes,
+    dataOffset: wav.dataOffset,
+    bitDepth: wav.bitDepth,
+    blockAlign: wav.blockAlign,
+    formatCode: wav.formatCode,
+    frameCount: wav.frameCount,
+    sampleRate: wav.sampleRate,
+  };
+  let target: AudioBuffer;
+  try {
+    target = new AudioBuffer({ numberOfChannels: wav.channels, length: wav.frameCount, sampleRate: wav.sampleRate });
+  } catch (error) {
+    const detail = error instanceof Error && error.message ? ` ${error.message}` : "";
+    throw new Error(`The browser could not allocate the WAV destination buffer.${detail}`);
+  }
+  await decodeWavPcmBlobToAudioBuffer(blob, descriptor, target, { signal, onProgress });
+  return target;
 }
 
 async function mp3MetadataWindow(blob: Blob, signal?: AbortSignal): Promise<ArrayBuffer> {

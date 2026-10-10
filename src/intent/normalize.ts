@@ -92,6 +92,12 @@ export function normalizeIntent(input: IntentInput | unknown = {}): IntentSpec {
     ...(source.flow === "straight" || source.flow === "triplet" || source.flow === "offbeat"
       ? { flow: source.flow }
       : {}),
+    // Song-level harmony plan name — omitted when absent so legacy canonical
+    // hashes are unchanged. Resolution validates against the genre's own
+    // table downstream (an unknown name falls back to the seeded pick).
+    ...(typeof source.progression === "string" && source.progression.trim().length > 0
+      ? { progression: source.progression.trim().slice(0, 128) }
+      : {}),
     mood: text(source.mood),
     energy: unit(source.energy, 0.7),
     density: unit(source.density, 0.5),
@@ -155,6 +161,7 @@ export function intentFromGenerateOptions(options: GenerateOptions): IntentSpec 
       velocityVariation: options.velocityVariation,
       temperature: options.temperature,
     },
+    ...(options.progression ? { progression: options.progression } : {}),
     targetTracks: {
       drumTrackId: options.drumTrackId ?? null,
       instrumentTrackIds: options.instrumentTrackIds ?? [],

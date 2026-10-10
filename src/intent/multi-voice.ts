@@ -4,7 +4,15 @@ import { parseKey, SCALE_INTERVALS, snapToScale } from "../project-model/scales"
 import { uid } from "../shared/ids";
 import { forkRandom } from "../shared/rng";
 import { MELODIC_BY_GENRE, MELODIC_BY_PROFILE } from "../ai/grooves/melodic-data";
-import { selectProgression, expandProgression, chordToneSemitones, voiceLead, type ChordEvent } from "../ai/harmony";
+import {
+  selectProgression,
+  findProgression,
+  expandProgression,
+  chordToneSemitones,
+  voiceLead,
+  type ChordEvent,
+  type ChordProgression,
+} from "../ai/harmony";
 
 /**
  * MULTI-VOICE ORCHESTRATOR (INTENT_ENGINE.md #1+2) — the three melodic voices
@@ -95,9 +103,19 @@ export function generateMultiVoice(
   complexity = 0.5,
   productionProfile?: ProductionProfile,
   flow?: "straight" | "triplet" | "offbeat",
+  /**
+   * Song-level harmony plan: a progression NAME from the genre's own table.
+   * When present (and the name resolves in this genre) the voices play THAT
+   * progression — every section of one song shares one harmonic identity —
+   * instead of the per-seed pick. Absent or unresolvable = the legacy
+   * seeded pick, bit-identical to the pre-plan behavior.
+   */
+  progressionOverride?: string,
 ): MultiVoiceResult {
   const rand = forkRandom(`${seed}|harmony`, "stream");
-  const progression = selectProgression(genre, seed);
+  const override =
+    progressionOverride !== undefined ? findProgression(genre, progressionOverride) : null;
+  const progression: ChordProgression = override ?? selectProgression(genre, seed);
   const expanded = expandProgression(progression, stepCount);
   const slots = expandToSlots(expanded, stepCount);
   const spaceyProfile = productionProfile === "spacey-melodic-rap" || productionProfile === "spacey-dark-trap";

@@ -48,6 +48,15 @@ export interface IntentSpec {
    * (the trap/detroit bounce) or offbeat push. Absent = generator default.
    */
   flow?: "straight" | "triplet" | "offbeat";
+  /**
+   * Song-level harmony plan: the NAME of a progression from the genre's own
+   * table (src/ai/harmony.ts). Set by buildSong so every melodic section of
+   * one song shares ONE harmonic identity (the bridge takes the related
+   * turn — the next progression in the table) instead of each section
+   * rolling its own dice. Absent = the legacy per-generation pick, so
+   * standalone pattern generations and canonical hashes are unchanged.
+   */
+  progression?: string;
   mood: string | null;
   energy: number;
   density: number;

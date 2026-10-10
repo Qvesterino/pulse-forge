@@ -11,6 +11,7 @@ import type { MasteringRenderSampleRate } from "./sampleRates";
 export const MAX_MASTERING_SESSION_SECONDS = 12 * 60;
 export const MAX_MASTERING_SESSION_WORKING_SET_BYTES = 512 * 1024 * 1024;
 export const MASTERING_SESSION_BROWSER_DECODE_RESERVE_BYTES = 64 * 1024 * 1024;
+export const MASTERING_SESSION_WAV_DECODE_CHUNK_RESERVE_BYTES = 4 * 1024 * 1024;
 
 export interface MasteringSessionRenderOptions {
   sampleRate: MasteringRenderSampleRate;
@@ -147,6 +148,14 @@ export function estimateMasteringSessionBrowserDecodeWorkingSetBytes(encodedByte
     return Number.POSITIVE_INFINITY;
   }
   const estimatedBytes = encodedBytes * 2 + pcmBytes + MASTERING_SESSION_BROWSER_DECODE_RESERVE_BYTES;
+  return Number.isSafeInteger(estimatedBytes) ? estimatedBytes : Number.POSITIVE_INFINITY;
+}
+
+/** The PCM WAV path reads one encoded range at a time and retains only the destination PCM. */
+export function estimateMasteringSessionWavDecodeWorkingSetBytes(pcmBytes: number): number {
+  if (!Number.isSafeInteger(pcmBytes) || pcmBytes <= 0) return Number.POSITIVE_INFINITY;
+  const estimatedBytes =
+    pcmBytes + MASTERING_SESSION_BROWSER_DECODE_RESERVE_BYTES + MASTERING_SESSION_WAV_DECODE_CHUNK_RESERVE_BYTES;
   return Number.isSafeInteger(estimatedBytes) ? estimatedBytes : Number.POSITIVE_INFINITY;
 }
 

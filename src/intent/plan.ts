@@ -28,6 +28,7 @@ export function generateOptionsFromIntent(intent: IntentSpec): GenerateOptions {
     stepCount: intent.length,
     key: intent.key,
     bpmRange: intent.bpmRange,
+    ...(intent.progression ? { progression: intent.progression } : {}),
     candidateCount: intent.candidateCount ?? 1,
     roles: intent.roles.filter((role) => !preserved.includes(role)),
     constraints: intent.constraints,

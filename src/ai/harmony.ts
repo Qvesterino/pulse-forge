@@ -859,6 +859,23 @@ export const PROGRESSIONS_BY_GENRE: Record<string, ChordProgression[]> = {
 };
 
 /**
+ * Find a progression BY NAME inside its genre's own table (the song-level
+ * harmony plan resolves this way). Null when the genre has no such name —
+ * callers fall back to the seeded pick, so a stale plan name can never
+ * reject a generation.
+ */
+export function findProgression(genre: string, name: string): ChordProgression | null {
+  const list = PROGRESSIONS_BY_GENRE[genre];
+  if (!list) return null;
+  return list.find((progression) => progression.name === name) ?? null;
+}
+
+/** The genre's full progression table (the song-level bridge turn rotates through it). */
+export function progressionsForGenre(genre: string): readonly ChordProgression[] {
+  return PROGRESSIONS_BY_GENRE[genre] ?? [];
+}
+
+/**
  * Select a progression deterministically from the seed.
  * The index is seed % progressions.length — simple, reproducible.
  */

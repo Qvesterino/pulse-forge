@@ -14,6 +14,7 @@ import { generateOptionsFromIntent, planGeneration } from "./plan";
 import { generateAsyncResult, generateLocalResult } from "./pipeline";
 import { generateMultiVoice } from "./multi-voice";
 import { instrumentTrackForRole } from "../ai/role-targets";
+import { selectProgression, progressionsForGenre } from "../ai/harmony";
 import { attachProvenance } from "./providers/candidate";
 import { refreshPatternQuality } from "./quality";
 import type { RenderCandidateFn } from "./audio-feedback";
@@ -2373,6 +2374,11 @@ export interface BuildSongOptions {
    */
   sections?: SectionParse;
   /**
+   * Explicit harmony override (producer surfaces): the progression NAME the
+   * whole song plays. Absent = planSongHarmony picks it from the song seed.
+   */
+  progressionOverride?: string;
+  /**
    * #6 dynamic song form — length words ("short", "radio edit", "extended",
    * "epic journey", "3 minutes", "2:30") scale the core cycles.
    */
@@ -2429,6 +2435,27 @@ export function dedupeSongBuildAlternatives(doc: ProjectDocument, build: SongBui
  * rendered offline and scored by the shared audio-feedback pipeline. Sections
  * share the base seed namespace, so the song feels like ONE idea arranged.
  */
+/**
+ * The SONG-level harmony plan: one progression is the song's harmonic
+ * identity and every non-bridge section plays it (the chorus/verse contrast
+ * comes from arrangement, not from a different chord loop), while a bridge
+ * section takes the RELATED TURN — the next progression in the genre's own
+ * table, so the departure stays inside the genre's harmonic vocabulary and
+ * returns home for the last head. Selection is deterministic from the song
+ * seed (the same derivation the melodic voices use standalone).
+ */
+export function planSongHarmony(
+  genre: IntentSpec["genre"],
+  seed: string,
+): { verseName: string; turnName: string } {
+  const seedNumber = (parseInt(seed.slice(-8), 36) || 42) >>> 0;
+  const progression = selectProgression(genre, seedNumber);
+  const table = progressionsForGenre(genre);
+  const index = table.findIndex((entry) => entry.name === progression.name);
+  const turn = table.length > 1 ? table[(index + 1 + table.length) % table.length] : null;
+  return { verseName: progression.name, turnName: turn?.name ?? progression.name };
+}
+
 export async function buildSong(
   doc: ProjectDocument,
   input: IntentInput | IntentSpec,
@@ -2448,6 +2475,12 @@ export async function buildSong(
 
   const ALL_ROLES: IntentRole[] = ["drums", "bass", "chords", "lead"];
   const userRoles = baseIntent.roles ?? ALL_ROLES;
+  // The song's harmonic identity — computed ONCE, shared by every section
+  // (the bridge takes the related turn). Absent on user-override paths.
+  const harmonyPlan =
+    options.progressionOverride !== undefined
+      ? { verseName: options.progressionOverride, turnName: options.progressionOverride }
+      : planSongHarmony(baseIntent.genre, baseIntent.seed);
 
   // V2 vocal-driven form: running bar cursor lets the voice bend each
   // section toward what the take does in that span (peaks lift, pauses
@@ -2470,6 +2503,7 @@ export async function buildSong(
       complexity: section.complexityDelta,
       candidateCount,
       roles: sectionRoles,
+      progression: section.role === "bridge" ? harmonyPlan.turnName : harmonyPlan.verseName,
     });
     const result =
       candidateCount > 1

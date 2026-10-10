@@ -99,6 +99,13 @@ export interface GenerateOptions {
    * holds a dozen lanes inside one tempo band.
    */
   grooveLanes?: readonly string[] | null;
+  /**
+   * Song-level harmony plan: a progression NAME from the genre's own table
+   * (set by buildSong). When present the melodic voices play THIS
+   * progression instead of the per-seed pick, so every section of one song
+   * shares one harmonic identity. Absent = legacy per-generation pick.
+   */
+  progression?: string;
   /** Enabled semantic output roles. Omitted means all roles for backwards compatibility. */
   roles?: readonly GenerationRole[];
   /** Hard generation constraints. Omitted means the legacy permissive defaults. */
