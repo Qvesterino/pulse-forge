@@ -4,7 +4,7 @@ import type { ChordQuality } from "../project-model/chords";
 import { CHORD_QUALITIES } from "../project-model/chords";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
-import { expandProgression, PROGRESSIONS_BY_GENRE, selectProgression } from "../ai/harmony";
+import { PROGRESSIONS_BY_GENRE, selectProgression } from "../ai/harmony";
 
 /**
  * CHORD TRACK commands (schema v17) — the arrangement's harmonic skeleton.
@@ -181,27 +181,25 @@ export function generateChordProgression(
   const progression = selectProgression(genre, options.progressionIndex ?? 0);
   const scale = options.mode === "major" ? MAJOR_SCALE : NATURAL_MINOR_SCALE;
 
-  const expanded = expandProgression(progression, span * 16); // 16 steps per bar
-  const weights = expanded.map((event) => event.duration);
+  // STRETCH-TO-FILL layout (largest-remainder) over ONE loop of the
+  // progression: each event's exact share of the span is proportional to its
+  // duration; whole-bar rounding distributes the remainder to the events
+  // with the largest fractional part. A dense loop (more events than bars —
+  // a 1-bar I-vi-IV-V over an 8-bar span) collapses to one bar per event in
+  // progression order; a sparse loop stretches (4 chords over 8 bars = two
+  // bars each — the classic harmonic sentence).
+  const events = progression.events;
+  const weights = events.map((event) => event.duration);
   const totalSteps = weights.reduce((sum, w) => sum + w, 0);
-  if (totalSteps <= 0) throw new Error("Progression has no content");
-
-  // STRETCH-TO-FILL layout (largest-remainder): each event's exact share of
-  // the span is proportional to its duration; whole-bar rounding distributes
-  // the remainder to the events with the largest fractional part. More
-  // events than bars (a dense 1-bar loop over an 8-bar span) collapses to
-  // one bar per event in progression order — the loop's musical order
-  // survives, only the count is capped.
+  if (totalSteps <= 0 || events.length === 0) throw new Error("Progression has no content");
   let bars: number[];
-  if (expanded.length >= span) {
-    bars = expanded.slice(0, span).map(() => 1);
+  if (events.length >= span) {
+    bars = events.slice(0, span).map(() => 1);
   } else {
     const exact = weights.map((w) => (w * span) / totalSteps);
     bars = exact.map((b) => Math.max(1, Math.floor(b + 1e-9)));
     let leftover = span - bars.reduce((sum, b) => sum + b, 0);
-    const order = exact
-      .map((share, i) => ({ i, frac: share - Math.floor(share) }))
-      .sort((a, b) => b.frac - a.frac);
+    const order = exact.map((share, i) => ({ i, frac: share - Math.floor(share) })).sort((a, b) => b.frac - a.frac);
     let k = 0;
     while (leftover > 0) {
       bars[order[k % order.length]!.i]! += 1;
@@ -219,9 +217,9 @@ export function generateChordProgression(
   let cursor = start;
   let index = 0;
   let remaining = span;
-  while (remaining > 0 && index < bars.length) {
-    const event = expanded[index]!;
-    const barsForEvent = Math.min(bars[index]!, remaining);
+  while (remaining > 0) {
+    const event = events[index % events.length]!;
+    const barsForEvent = Math.min(bars[index % bars.length]!, remaining);
     generated.push({
       id: uid("chord"),
       startBar: cursor,
@@ -244,11 +242,5 @@ export function generateChordProgression(
     ...doc,
     arrangement: { ...doc.arrangement, chords: [...kept, ...generated].sort((a, b) => a.startBar - b.startBar) },
   };
-  return snapshot(
-    "generateChordProgression",
-    `Generate "${progression.name}" (${generated.length} chords)`,
-    doc,
-    next,
-  );
+  return snapshot("generateChordProgression", `Generate "${progression.name}" (${generated.length} chords)`, doc, next);
 }
-

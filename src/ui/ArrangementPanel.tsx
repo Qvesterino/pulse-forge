@@ -82,7 +82,15 @@ import { timelineItemsOf } from "../project-model/timeline";
 import { usePointerDragGuard } from "./usePointerDragGuard";
 import { SNAP_GRIDS, snapBar, snapBarToTargets, snapBarsFor, snapController, snapDelta, snapTick } from "./snap";
 import { chordName } from "../project-model/chords";
-import { addChord, moveChord, removeChord, resizeChord, setChord } from "../commands/chordTrack";
+import {
+  addChord,
+  generateChordProgression,
+  moveChord,
+  removeChord,
+  resizeChord,
+  setChord,
+} from "../commands/chordTrack";
+import { PROGRESSIONS_BY_GENRE, progressionsForGenre } from "../ai/harmony";
 import type { ChordQuality } from "../project-model/chords";
 import type { SnapGridId } from "./snap";
 import { computeSceneIntensity } from "../project-model/intensity";
@@ -1509,6 +1517,23 @@ export function ArrangementPanel() {
   const [audioMenu, setAudioMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);
   // CHORD TRACK (v17): selection + gesture state for the chord lane.
   const [chordSel, setChordSel] = useState<string | null>(null);
+  // Progression generator form state (deterministic — same form = same chords).
+  const [chordGenOpen, setChordGenOpen] = useState(false);
+  const [chordGen, setChordGen] = useState<{
+    genre: string;
+    tonic: number;
+    mode: "major" | "minor";
+    bars: number;
+    startBar: number;
+    index: number;
+  }>({
+    genre: "house",
+    tonic: 0,
+    mode: "minor",
+    bars: 8,
+    startBar: 0,
+    index: 0,
+  });
   const [chordDrag, setChordDrag] = useState<{ startBar: number; lengthBars: number } | null>(null);
   const chordDragLiveRef = useRef<{ startBar: number; lengthBars: number } | null>(null);
   const chordDragRef = useRef<{
@@ -4028,7 +4053,137 @@ export function ArrangementPanel() {
             </select>
           </label>
           <span className="arr-ripple-hint">Shift suspends during a drag</span>
+          <button
+            type="button"
+            className={`arr-ripple-toggle${chordGenOpen ? " on" : ""}`}
+            aria-pressed={chordGenOpen}
+            title="Generate a chord progression onto the chord track — genre tables from the AI harmony library, deterministic by progression index"
+            onClick={() => setChordGenOpen((open) => !open)}
+          >
+            ✨ GEN
+          </button>
         </div>
+        {chordGenOpen && (
+          <div className="arr-ripple-row" aria-label="Chord progression generator">
+            <label className="arr-snap-label">
+              GEN
+              <select
+                className="arr-arm-select"
+                aria-label="Progression genre"
+                value={chordGen.genre}
+                onChange={(event) => {
+                  const genre = event.target.value;
+                  setChordGen((form) => ({ ...form, genre, index: 0 }));
+                }}
+              >
+                {Object.keys(PROGRESSIONS_BY_GENRE).map((genre) => (
+                  <option key={genre} value={genre}>
+                    {genre.toUpperCase()}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="arr-snap-label">
+              ROOT
+              <select
+                className="arr-arm-select"
+                aria-label="Progression tonic"
+                value={chordGen.tonic}
+                onChange={(event) => setChordGen((form) => ({ ...form, tonic: Number(event.target.value) }))}
+              >
+                {["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"].map((name, index) => (
+                  <option key={name} value={index}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="arr-snap-label">
+              MODE
+              <select
+                className="arr-arm-select"
+                aria-label="Progression mode"
+                value={chordGen.mode}
+                onChange={(event) =>
+                  setChordGen((form) => ({ ...form, mode: event.target.value as "major" | "minor" }))
+                }
+              >
+                <option value="minor">MIN</option>
+                <option value="major">MAJ</option>
+              </select>
+            </label>
+            <label className="arr-snap-label">
+              BARS
+              <input
+                className="arr-arm-select"
+                type="number"
+                min={1}
+                max={256}
+                aria-label="Progression length in bars"
+                value={chordGen.bars}
+                onChange={(event) =>
+                  setChordGen((form) => ({
+                    ...form,
+                    bars: Math.max(1, Math.min(256, Number(event.target.value) || 1)),
+                  }))
+                }
+              />
+            </label>
+            <label className="arr-snap-label">
+              AT
+              <input
+                className="arr-arm-select"
+                type="number"
+                min={0}
+                max={9999}
+                aria-label="Generation start bar"
+                value={chordGen.startBar}
+                onChange={(event) =>
+                  setChordGen((form) => ({
+                    ...form,
+                    startBar: Math.max(0, Math.min(9999, Number(event.target.value) || 0)),
+                  }))
+                }
+              />
+            </label>
+            <label className="arr-snap-label">
+              PROG
+              <select
+                className="arr-arm-select"
+                aria-label="Progression"
+                value={chordGen.index}
+                onChange={(event) => setChordGen((form) => ({ ...form, index: Number(event.target.value) }))}
+              >
+                {progressionsForGenre(chordGen.genre).map((progression, index) => (
+                  <option key={progression.name} value={index}>
+                    {progression.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="arr-ripple-toggle"
+              onClick={() => {
+                try {
+                  execute(
+                    generateChordProgression(services.store.doc, chordGen.startBar, chordGen.bars, {
+                      genre: chordGen.genre,
+                      tonic: chordGen.tonic,
+                      mode: chordGen.mode,
+                      progressionIndex: chordGen.index,
+                    }),
+                  );
+                  setActionError(null);
+                } catch (error) {
+                  setActionError(error instanceof Error ? error.message : String(error));
+                }
+              }}
+            >
+              ⚡ GENERATE
+            </button>
+          </div>
+        )}
 
         <div className="arr-role-flow" aria-label="Arrangement role flow">
           {clips.length === 0 ? (

@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
+import type { ProjectDocument } from "../src/project-model/types";
 import { createProjectFromTemplate } from "../src/project-model/templates";
 import { ProjectStore } from "../src/store/ProjectStore";
-import {
-  addChord,
-  generateChordProgression,
-} from "../src/commands/chordTrack";
+import { addChord, generateChordProgression } from "../src/commands/chordTrack";
 import { chordName, chordPitchClasses } from "../src/project-model/chords";
 import { PROGRESSIONS_BY_GENRE } from "../src/ai/harmony";
 
@@ -84,7 +82,10 @@ describe("GP4 determinism", () => {
     const b = store();
     a.execute(generateChordProgression(a.doc, 0, 8, { tonic: 0, mode: "minor", genre: "house", progressionIndex: 1 }));
     b.execute(generateChordProgression(b.doc, 0, 8, { tonic: 0, mode: "minor", genre: "house", progressionIndex: 1 }));
-    expect(a.doc.arrangement.chords).toEqual(b.doc.arrangement.chords);
+    // Ids are random UUIDs — compare the musical shape, not identities.
+    const shape = (d: ProjectDocument) =>
+      (d.arrangement.chords ?? []).map((c) => [c.startBar, c.lengthBars, c.root, c.quality]);
+    expect(shape(a.doc)).toEqual(shape(b.doc));
 
     a.execute(generateChordProgression(a.doc, 0, 8, { tonic: 0, mode: "minor", genre: "house", progressionIndex: 2 }));
     const first = JSON.stringify(a.doc.arrangement.chords);
@@ -115,7 +116,9 @@ describe("GP5 guards", () => {
   it("zero span and unknown genre refuse", () => {
     const s = store();
     expect(() => generateChordProgression(s.doc, 0, 0, { tonic: 0 })).toThrow(/at least one whole bar/);
-    expect(() => generateChordProgression(s.doc, 0, 8, { tonic: 0, genre: "gregorian" })).toThrow(/Unknown genre/);
+    expect(() => generateChordProgression(s.doc, 0, 8, { tonic: 0, genre: "gregorian" })).toThrow(
+      /Unknown progression genre/,
+    );
   });
 
   it("generated chords are legal pitch-class sets (render + snap safe)", () => {
