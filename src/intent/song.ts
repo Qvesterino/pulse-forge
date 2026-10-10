@@ -15,7 +15,8 @@ import { generateOptionsFromIntent, planGeneration } from "./plan";
 import { generateAsyncResult, generateLocalResult } from "./pipeline";
 import { generateMultiVoice } from "./multi-voice";
 import { instrumentTrackForRole } from "../ai/role-targets";
-import { selectProgression, progressionsForGenre } from "../ai/harmony";
+import { findProgression, selectProgression, progressionsForGenre, expandProgression } from "../ai/harmony";
+import { NOTE_NAMES } from "../project-model/chords";
 import { attachProvenance } from "./providers/candidate";
 import { refreshPatternQuality } from "./quality";
 import type { RenderCandidateFn } from "./audio-feedback";
@@ -2750,10 +2751,12 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
   const transitions: NonNullable<ProjectDocument["arrangement"]["transitions"]> = [];
   const seams: TransitionSeam[] = [];
   let bar = 0;
+  const sectionSpans: { startBar: number; bars: number; role: SceneRole }[] = [];
   let previousClipId: string | null = null;
   let previousBars = 0;
 
   for (const section of build.sections) {
+    sectionSpans.push({ startBar: bar, bars: section.bars, role: section.role });
     const sceneId = `scene-${section.pattern.id}`;
     next = {
       ...next,
@@ -2994,6 +2997,52 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
   const keptMarkers = (next.markers ?? []).filter(
     (marker) => !(marker.linkedClipId && oldClipIds.has(marker.linkedClipId)),
   );
+  // CHORD TRACK (v2): the song's harmony plan mirrored onto the chord lane —
+  // each section's span gets its progression (verse; the bridge takes the
+  // related turn) as whole-bar chord events, exactly filling the section.
+  // Tonic/mode resolve from the build's MusicalKey; without a key the chord
+  // track stays empty (no assumed harmony).
+  const chordEvents: import("../project-model/types").ChordEvent[] = [];
+  if (build.key) {
+    const tonicName = build.key.split(" ")[0] ?? "C";
+    const tonicIndex = NOTE_NAMES.indexOf(tonicName as (typeof NOTE_NAMES)[number]);
+    const tonic = tonicIndex >= 0 ? tonicIndex : 0;
+    const scale = /Minor/i.test(build.key) ? [0, 2, 3, 5, 7, 8, 10] : [0, 2, 4, 5, 7, 9, 11];
+    for (const span of sectionSpans) {
+      const progressionName = span.role === "bridge" ? build.harmonyPlan.turnName : build.harmonyPlan.verseName;
+      const progression =
+        findProgression(build.baseIntent.genre, progressionName) ?? selectProgression(build.baseIntent.genre, 0);
+      const events = expandProgression(progression, span.bars * 16);
+      let cursorStep = 0;
+      let sectionChords: import("../project-model/types").ChordEvent[] = [];
+      for (const event of events) {
+        const evStart = cursorStep;
+        const evEnd = Math.min(cursorStep + event.duration, span.bars * 16);
+        cursorStep += event.duration;
+        if (evEnd <= evStart) continue;
+        const startBar = span.startBar + Math.floor(evStart / 16);
+        const endBar = span.startBar + Math.ceil(evEnd / 16);
+        const root = (tonic + scale[((event.degree % 7) + 7) % 7]) % 12;
+        const previous = sectionChords[sectionChords.length - 1];
+        if (previous && previous.startBar === startBar) continue; // same-bar event: first color wins
+        sectionChords.push({
+          id: `chord-${span.startBar}-${startBar}-${sectionChords.length}`,
+          startBar,
+          lengthBars: Math.max(1, endBar - startBar),
+          root,
+          quality: event.quality,
+        });
+        if (endBar >= span.startBar + span.bars) break;
+      }
+      // extend the last chord to the section's end bar
+      const lastSectionChord = sectionChords[sectionChords.length - 1];
+      if (lastSectionChord) {
+        lastSectionChord.lengthBars = span.startBar + span.bars - lastSectionChord.startBar;
+      }
+      chordEvents.push(...sectionChords);
+    }
+  }
+
   next = {
     ...next,
     tracks: existingFx ? next.tracks : [...next.tracks, fxTrack],
@@ -3007,6 +3056,11 @@ export function applySongCommand(doc: ProjectDocument, build: SongBuild): import
       // Replace only THIS lane's previous cue clips — user clips (recorded
       // takes, imported audio) on other tracks survive a re-generate.
       audioClips: [...(next.arrangement.audioClips ?? []).filter((c) => c.trackId !== fxTrack.id), ...cueClips],
+      // CHORD TRACK (v2): the song's harmony plan mirrored one-to-one — each
+      // section's span gets its progression as whole-bar chord events. The
+      // song owns the timeline (clips are fully replaced), so the chord
+      // track IS the plan, not an overlay.
+      chords: chordEvents,
     },
     markers: [...keptMarkers, ...markers],
     activePatternId: build.sections[build.sections.length - 1].pattern.id,
