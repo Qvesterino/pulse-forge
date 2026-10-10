@@ -4,7 +4,7 @@ import { createSongSectionIntent } from "../src/intent/song-section-intent";
 import { normalizeIntent } from "../src/intent/normalize";
 import { generateOptionsFromIntent } from "../src/intent/plan";
 import { generateMultiVoice } from "../src/intent/multi-voice";
-import { findProgression, selectProgression, expandProgression } from "../src/ai/harmony";
+import { findProgression, selectProgression } from "../src/ai/harmony";
 import { testDoc } from "./fixtures/doc";
 import type { ProjectDocument } from "../src/project-model/types";
 

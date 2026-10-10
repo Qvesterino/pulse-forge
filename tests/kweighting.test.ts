@@ -310,6 +310,18 @@ describe("true peak — 4× polyphase oversampling", () => {
     expect(truePeak).toBeGreaterThan(samplePeak * 0.98);
     expect(truePeak).toBeLessThan(samplePeak * 1.06);
   });
+
+  it("never reports less than the sample peak near Nyquist", () => {
+    const sampleRate = 48000;
+    const channel = new Float32Array(sampleRate);
+    for (let i = 0; i < channel.length; i++) {
+      channel[i] = 0.87 * Math.sin(2 * Math.PI * 0.47 * i + Math.PI / 7);
+    }
+    let samplePeak = 0;
+    for (let i = 0; i < channel.length; i++) samplePeak = Math.max(samplePeak, Math.abs(channel[i]!));
+
+    expect(truePeakOversampled([channel])).toBeGreaterThanOrEqual(samplePeak);
+  });
 });
 
 describe("K-weighting coefficients", () => {

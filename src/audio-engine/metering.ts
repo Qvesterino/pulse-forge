@@ -557,41 +557,34 @@ export function summarizePcm(
 }
 
 /**
- * True-peak via 4× polyphase oversampling (ITU BS.1770 style): each input
- * sample is zero-stuffed ×4 and low-passed with a windowed-sinc prototype
- * (decomposed into 4 phases of 16 taps, DC-normalized). Catches intersample
- * peaks — the classic fs/4 sine at 45° phase reads ~+3 dB over sample peak,
- * which the old parabolic estimate could not see.
+ * True-peak via the ITU-R BS.1770-5 Annex 2 order-48, four-phase FIR
+ * interpolator. The reported maximum includes both original samples and the
+ * reconstructed intersample estimates, so it cannot under-read the sample peak.
  */
 const TP_PHASES = 4;
-const TP_TAPS_PER_PHASE = 16;
+const TP_TAPS_PER_PHASE = 12;
 
-const TRUE_PEAK_FILTER: Float32Array[] = (() => {
-  const prototype = new Float64Array(TP_PHASES * TP_TAPS_PER_PHASE);
-  const center = (prototype.length - 1) / 2;
-  for (let n = 0; n < prototype.length; n++) {
-    const x = (n - center) / TP_PHASES;
-    const sinc = x === 0 ? 1 : Math.sin(Math.PI * x) / (Math.PI * x);
-    // Blackman window for clean stopband.
-    const w =
-      0.42 -
-      0.5 * Math.cos((2 * Math.PI * n) / (prototype.length - 1)) +
-      0.08 * Math.cos((4 * Math.PI * n) / (prototype.length - 1));
-    prototype[n] = sinc * w;
-  }
-  const phases: Float32Array[] = [];
-  for (let p = 0; p < TP_PHASES; p++) {
-    const taps = new Float32Array(TP_TAPS_PER_PHASE);
-    let sum = 0;
-    for (let j = 0; j < TP_TAPS_PER_PHASE; j++) {
-      taps[j] = prototype[j * TP_PHASES + p];
-      sum += taps[j];
-    }
-    for (let j = 0; j < TP_TAPS_PER_PHASE; j++) taps[j] /= sum; // DC gain = 1
-    phases.push(taps);
-  }
-  return phases;
-})();
+// ITU-R BS.1770-5 Annex 2, order-48, four-phase interpolating FIR.
+// Keeping these coefficients in the meter and limiter worklet identical makes
+// the live output correction agree with offline and post-encode dBTP reports.
+const TRUE_PEAK_FILTER: Float32Array[] = [
+  new Float32Array([
+    0.001708984375, 0.010986328125, -0.0196533203125, 0.033203125, -0.0594482421875, 0.1373291015625, 0.97216796875,
+    -0.102294921875, 0.047607421875, -0.026611328125, 0.014892578125, -0.00830078125,
+  ]),
+  new Float32Array([
+    -0.0291748046875, 0.029296875, -0.0517578125, 0.089111328125, -0.16650390625, 0.465087890625, 0.77978515625,
+    -0.2003173828125, 0.1015625, -0.0582275390625, 0.0330810546875, -0.0189208984375,
+  ]),
+  new Float32Array([
+    -0.0189208984375, 0.0330810546875, -0.0582275390625, 0.1015625, -0.2003173828125, 0.77978515625, 0.465087890625,
+    -0.16650390625, 0.089111328125, -0.0517578125, 0.029296875, -0.0291748046875,
+  ]),
+  new Float32Array([
+    -0.00830078125, 0.014892578125, -0.026611328125, 0.047607421875, -0.102294921875, 0.97216796875, 0.1373291015625,
+    -0.0594482421875, 0.033203125, -0.0196533203125, 0.010986328125, 0.001708984375,
+  ]),
+];
 
 /** One-channel true-peak state that keeps only the FIR history between chunks. */
 export class TruePeakChannelAccumulator {
@@ -601,7 +594,9 @@ export class TruePeakChannelAccumulator {
 
   processSample(raw: number): void {
     const index = this.frameCount;
-    this.history[index % TP_TAPS_PER_PHASE] = Number.isFinite(raw) ? raw : 0;
+    const sample = Number.isFinite(raw) ? raw : 0;
+    this.history[index % TP_TAPS_PER_PHASE] = sample;
+    this.maximum = Math.max(this.maximum, Math.abs(sample));
     for (let phase = 0; phase < TP_PHASES; phase++) {
       const taps = TRUE_PEAK_FILTER[phase];
       let acc = 0;

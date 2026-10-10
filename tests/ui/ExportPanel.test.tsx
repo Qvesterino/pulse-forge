@@ -1,17 +1,24 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ExportPanel } from "../../src/ui/ExportPanel";
+import { ExportPanel, type MasteringWorkspaceState } from "../../src/ui/ExportPanel";
+import { MasteringCodecPreview } from "../../src/ui/MasteringCodecPreview";
 import { MasterProfileFileCheck } from "../../src/ui/MasterProfileFileGuidance";
 import { awaitMasteringSampleBankReady } from "../../src/mastering/readiness";
+import { decodeMp3BlobToAudioBuffer } from "../../src/mastering/mp3PcmDecodeClient";
+import { measureMasterBufferRangeLufsAsync } from "../../src/mastering/analysisClient";
+import { encodeMp3 } from "../../src/export/mp3";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
+import { projectRevisionIdFor } from "../../src/mastering/report";
+import type { RenderOptions } from "../../src/rendering/renderer";
 import { mockServices, renderWithContext } from "../helpers";
 
 vi.mock("../../src/rendering/renderer", async (importOriginal) => {
   const mod = await importOriginal<typeof import("../../src/rendering/renderer")>();
   return {
     ...mod,
-    renderProject: vi.fn(async () => {
+    renderProject: vi.fn(async (_doc: unknown, _bank: unknown, options?: RenderOptions) => {
+      options?.onRuntimeDiagnostics?.({ degradedEffects: [], degradedMasterStages: [] });
       const data = new Float32Array(44100).fill(0.95);
       return {
         numberOfChannels: 2,
@@ -29,6 +36,14 @@ vi.mock("../../src/rendering/wav", async (importOriginal) => {
   return { ...mod, downloadWav: vi.fn() };
 });
 
+vi.mock("../../src/export/mp3", () => ({
+  encodeMp3: vi.fn(async () => new Blob([new Uint8Array(128)], { type: "audio/mpeg" })),
+}));
+
+vi.mock("../../src/mastering/mp3PcmDecodeClient", () => ({
+  decodeMp3BlobToAudioBuffer: vi.fn(),
+}));
+
 vi.mock("../../src/mastering/analysisClient", async (importOriginal) => {
   const [mod, analysis] = await Promise.all([
     importOriginal<typeof import("../../src/mastering/analysisClient")>(),
@@ -36,6 +51,7 @@ vi.mock("../../src/mastering/analysisClient", async (importOriginal) => {
   ]);
   return {
     ...mod,
+    measureMasterBufferRangeLufsAsync: vi.fn(),
     analyzeMasterBufferAsync: vi.fn(
       async (
         buffer: AudioBuffer,
@@ -45,6 +61,18 @@ vi.mock("../../src/mastering/analysisClient", async (importOriginal) => {
     ),
   };
 });
+
+function fakeCodecBuffer(duration: number, sampleRate = 44_100, channels = 2): AudioBuffer {
+  const length = Math.floor(duration * sampleRate);
+  const channelData = Array.from({ length: channels }, () => new Float32Array(length));
+  return {
+    duration,
+    sampleRate,
+    numberOfChannels: channels,
+    length,
+    getChannelData: (channel: number) => channelData[channel]!,
+  } as unknown as AudioBuffer;
+}
 
 // Rhythmic take: four decaying 60 Hz bursts (detector-grade attacks).
 function impulseTake(): { buffer: AudioBuffer; blob: Blob } {
@@ -86,6 +114,113 @@ vi.mock("../../src/audio-engine/recorder", async (importOriginal) => {
 });
 
 describe("ExportPanel", () => {
+  it("keeps the analyzed render available for Codec Preview while its source report is current", async () => {
+    const project = createProjectFromTemplate("house");
+    const renderer = await import("../../src/rendering/renderer");
+    const originalRenderer = vi.mocked(renderer.renderProject).getMockImplementation();
+    if (!originalRenderer) throw new Error("The renderer test implementation is missing.");
+    vi.mocked(renderer.renderProject).mockImplementationOnce(async (_doc, _bank, options) => {
+      options.onRuntimeDiagnostics?.({ degradedEffects: [], degradedMasterStages: [] });
+      return originalRenderer(_doc, _bank, options);
+    });
+    let latestState: MasteringWorkspaceState | null = null;
+    renderWithContext(
+      <ExportPanel
+        masteringMode
+        revisionId={projectRevisionIdFor(project)}
+        onMasteringWorkspaceStateChange={(state) => {
+          latestState = state;
+        }}
+      />,
+      { services: mockServices(project) },
+    );
+
+    await waitFor(() => expect(latestState).not.toBeNull());
+    await act(async () => latestState?.analyze());
+
+    expect(await screen.findByRole("region", { name: "Codec preview" })).toBeInTheDocument();
+  });
+
+  it("encodes a selected excerpt and auditions level-matched source/MP3 A/B", async () => {
+    const user = userEvent.setup();
+    const source = fakeCodecBuffer(60);
+    const decoded = fakeCodecBuffer(15.1);
+    const services = mockServices();
+    const previewMasterCompare = vi.fn();
+    services.engine.previewMasterCompare = previewMasterCompare;
+    vi.mocked(encodeMp3).mockClear();
+    vi.mocked(decodeMp3BlobToAudioBuffer).mockResolvedValue({ status: "decoded", buffer: decoded });
+    vi.mocked(measureMasterBufferRangeLufsAsync).mockImplementation(async (buffer) => (buffer === source ? -14 : -16));
+
+    renderWithContext(<MasteringCodecPreview sourceBuffer={source} sourceKey="master-run-1" />, { services });
+
+    await user.selectOptions(screen.getByLabelText("Codec preview bitrate"), "320");
+    const startInput = screen.getByLabelText("Codec preview start time in seconds");
+    await user.clear(startInput);
+    await user.type(startInput, "12");
+    await user.click(screen.getByRole("button", { name: "CREATE MP3 PREVIEW" }));
+
+    await screen.findByRole("group", { name: "Codec preview A/B audition" });
+    expect(encodeMp3).toHaveBeenCalledWith(
+      source,
+      expect.objectContaining({
+        kbps: 320,
+        startFrame: 12 * source.sampleRate,
+        endFrame: 27 * source.sampleRate,
+        integerOverflowPolicy: "reject",
+      }),
+    );
+    expect(decodeMp3BlobToAudioBuffer).toHaveBeenCalledWith(
+      expect.any(Blob),
+      { sampleRate: source.sampleRate, channels: 2 },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+
+    await user.click(screen.getByRole("button", { name: /PLAY SOURCE/ }));
+    expect(previewMasterCompare).toHaveBeenLastCalledWith(
+      source,
+      expect.closeTo(Math.pow(10, -2 / 20)),
+      expect.any(Function),
+      12,
+      false,
+      15,
+    );
+    await user.click(screen.getByRole("button", { name: /PLAY MP3 320/ }));
+    expect(previewMasterCompare).toHaveBeenLastCalledWith(decoded, 1, expect.any(Function), 0, false, 15);
+  });
+
+  it("explains when the source render uses an unsupported MP3 sample rate", () => {
+    const source = fakeCodecBuffer(1, 96_000);
+    vi.mocked(encodeMp3).mockClear();
+    renderWithContext(<MasteringCodecPreview sourceBuffer={source} sourceKey="high-rate" />, {
+      services: mockServices(),
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "CREATE MP3 PREVIEW" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/MP3 preview is available at supported render rates/);
+    expect(encodeMp3).not.toHaveBeenCalled();
+  });
+
+  it("refuses Codec Preview before encoding when the shared memory budget would be exceeded", async () => {
+    const user = userEvent.setup();
+    const source = fakeCodecBuffer(60);
+    vi.mocked(encodeMp3).mockClear();
+    renderWithContext(
+      <MasteringCodecPreview
+        sourceBuffer={source}
+        sourceKey="over-budget"
+        residentWorkingSetBytes={512 * 1024 * 1024}
+      />,
+      { services: mockServices() },
+    );
+
+    await user.click(screen.getByRole("button", { name: "CREATE MP3 PREVIEW" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/above KYX's 512 MiB working-set limit/);
+    expect(encodeMp3).not.toHaveBeenCalled();
+  });
+
   it("allows cancelling while boot-time sample hydration is still pending", async () => {
     let resolveHydration: (() => void) | undefined;
     const hydration = new Promise<void>((resolve) => {

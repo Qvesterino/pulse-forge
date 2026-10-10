@@ -392,6 +392,10 @@ export interface MasterConfig {
   ceilingDb: number;
   limiterEnabled: boolean;
   clipperEnabled: boolean;
+  /** Master true-peak limiter look-ahead in milliseconds (1–20, default 5). */
+  limiterLookaheadMs?: number;
+  /** Master limiter recovery time in milliseconds (10–2000, default 120). */
+  limiterReleaseMs?: number;
   /** Tape saturation on master (post-gain, pre-limiter). */
   tapeEnabled?: boolean;
   tapeDrive?: number;

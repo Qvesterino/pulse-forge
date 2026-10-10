@@ -177,7 +177,12 @@ const ENTRY_BUDGET_KB = 1070;
 // metric that reflects the win. Remaining known anchors: App shell 621 KB,
 // sample-library/factory 316 KB (contract), intent/normalize 61 KB +
 // preference-ledger group 162 KB (dice/style internals — next diet).
-const TOTAL_BUDGET_KB = 5000;
+// 2026-10-10: measured direct Vite build at 5006 KB after the album
+// batch-delivery path gained per-track encoding verification and
+// gain-only loudness matching with a true-peak guard. The change adds a
+// bounded album delivery workflow with decoded reports; keep this small
+// 15 KB margin explicit and retain the independent 2200 KB boot-path cap.
+const TOTAL_BUDGET_KB = 5020;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, and ONNX Runtime for the
 // symbolic/ranker workers. Keep these optional runtimes under one existing
@@ -245,7 +250,35 @@ const LANDING_ROUTE_BUDGET_KB = 600;
 // FORBIDDEN: the optional buckets must never become boot-critical — a
 // static import of any of them into the boot graph fails loudly here
 // (failsafe: a renamed optional chunk falls back into DAW TOTAL instead).
-const BOOT_PATH_BUDGET_KB = 2400;
+//
+// MEASURED FIVE DAYS OF WAVES (2026-10-04 → 2026-10-10), the evidence this
+// whole line rests on:
+//   DAW SUM   3778 → 4975 KB  (+1197 KB, +32 %)
+//   BOOT PATH 2123 →  2017 KB  ( −106 KB,  −5 %)
+// The waves landed in LAZY chunks. The sum metric grew by a third while the
+// payload a waiting user actually parses and evaluates got 5 % SMALLER. That
+// is the empirical version of the anchor-diet note above and the reason the
+// DAW TOTAL can be loose without costing startup: it cannot see the seam, this
+// number can. It also means the 5000 cap is a graph-size guard, not a
+// responsiveness budget — do not read a rising total as a user getting slower.
+//
+// Budget: 2400 → 2200, measured 2017 KB across 21 chunks (2026-10-10). At 2400
+// the guard had 383 KB (19 %) of dead slack — a guard that cannot fire protects
+// nothing, which is the same failure as no guard at all. 2200 is +9 % headroom,
+// comfortable because this number is trending DOWN, not up.
+// To make it bite again you need a diet, and the composition is known — the
+// closure is 21 chunks, and these four are 77 % of it:
+//   App- 570.6 · curated-layer 355.7 · index(shared) 284.2 ·
+//   preference-ledger 198.0
+// curated-layer and preference-ledger are NOT one careless import each: ~58
+// chunks statically reach them, so Rollup hoisted them as shared chunks. They
+// leave the boot path only by removing the underlying imports across callers,
+// not by moving one file behind a dynamic import.
+//
+// FALSIFIED, not assumed: dropping this to 2000 produced
+//   FAIL — studio boot path over budget: 2017 > 2000 KB   (exit 1)
+// so the line is live. Restored to 2200 after the check.
+const BOOT_PATH_BUDGET_KB = 2200;
 const BOOT_ENTRY_PREFIX = "App-";
 const BOOT_FORBIDDEN_PREFIXES = [
   "pack-presets-",

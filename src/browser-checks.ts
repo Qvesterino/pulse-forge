@@ -2313,7 +2313,7 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
           break;
         }
       }
-      const expectedDelay = Math.round((limiterParams.lookaheadMs / 1000) * SR);
+      const expectedDelay = Math.round((rt.getLatencySec?.() ?? limiterParams.lookaheadMs / 1000) * SR);
       const onsetOk = onset >= Math.round(expectedDelay * 0.9) && onset <= expectedDelay + 512;
       check(
         "limiter: look-ahead worklet limits, meters and anticipates",
@@ -6314,6 +6314,74 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     }
   } catch (error) {
     check("scheduler driver browser suite", false, String(error));
+  }
+
+  // ── Lossy share delivery: OGG (Opus) + M4A (AAC) round-trip ───────────────
+  // These encode through WebCodecs `AudioEncoder` and a container muxer, so the
+  // vitest suite can only reach the guard paths — jsdom has no WebCodecs. The
+  // claim "OGG/M4A export works" therefore lives or dies HERE, in a real
+  // browser: encode a tone, decode the file back, and confirm the audio
+  // survived. Right magic bytes alone would only prove a header.
+  try {
+    const { encodeCompressedAudio } = await import("./export/compressed-audio");
+    const { canEncodeCompressedAudio } = await import("./export/compressed-audio-capabilities");
+    const probeCtx = new AudioContext();
+    try {
+      if (probeCtx.state === "suspended") await probeCtx.resume();
+      const sampleRate = probeCtx.sampleRate;
+      const seconds = 0.5;
+      const tone = new AudioBuffer({
+        length: Math.floor(seconds * sampleRate),
+        sampleRate,
+        numberOfChannels: 2,
+      });
+      for (let channel = 0; channel < 2; channel++) {
+        const data = tone.getChannelData(channel);
+        for (let i = 0; i < data.length; i++) {
+          data[i] = 0.6 * Math.sin((i / sampleRate) * 440 * 2 * Math.PI);
+        }
+      }
+      // A 0.6-amplitude sine has RMS 0.6/√2 ≈ 0.4243. Lossy codecs sit a little
+      // either side of it; the tolerance is generous enough for a real encode
+      // and tight enough to catch a silent or clipped file.
+      const expectedRms = 0.6 / Math.SQRT2;
+      for (const target of ["ogg-opus", "m4a-aac"] as const) {
+        const codec = target === "ogg-opus" ? "opus" : "aac";
+        if (!(await canEncodeCompressedAudio(codec))) {
+          // Firefox cannot encode AAC at all; record it as skipped-but-not-broken
+          // rather than letting a browser limitation read as a KYX regression.
+          record({
+            name: `lossy share delivery · ${target}`,
+            ok: true,
+            message: "skipped: browser cannot encode codec",
+          });
+          continue;
+        }
+        const blob = await encodeCompressedAudio(tone, { target });
+        const bytes = await blob.arrayBuffer();
+        const decoded = await probeCtx.decodeAudioData(bytes.slice(0));
+        const samples = decoded.getChannelData(0);
+        let sumSquares = 0;
+        let peak = 0;
+        for (let i = 0; i < samples.length; i++) {
+          sumSquares += samples[i] * samples[i];
+          peak = Math.max(peak, Math.abs(samples[i]));
+        }
+        const rms = Math.sqrt(sumSquares / Math.max(1, samples.length));
+        check(
+          `lossy share delivery · ${target} (${blob.size} B, ${decoded.duration.toFixed(2)}s, rms ${rms.toFixed(3)})`,
+          decoded.numberOfChannels === 2 &&
+            decoded.duration > seconds * 0.9 &&
+            Math.abs(rms - expectedRms) < 0.08 &&
+            peak < 1.05,
+          `container round-trip: rms ${rms.toFixed(4)} (expected ~${expectedRms.toFixed(4)}), peak ${peak.toFixed(4)}`,
+        );
+      }
+    } finally {
+      await probeCtx.close();
+    }
+  } catch (error) {
+    check("lossy share delivery · ogg/m4a", false, String(error));
   }
 
   return results;

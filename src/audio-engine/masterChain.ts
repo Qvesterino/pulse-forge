@@ -13,6 +13,10 @@ import type { MeteringRig } from "./meteringRig";
 
 const MASTER_MONITOR_BYPASS_FADE_SECONDS = 0.04;
 const MASTER_MONITOR_BYPASS_SCHEDULE_AHEAD_SECONDS = 0.01;
+// Keep a small working reserve in the look-ahead stage. The limiter also
+// delays its output by 32 samples and runs a linked true-peak correction pass
+// before releasing audio to the master meter/output.
+const MASTER_LIMITER_TRUE_PEAK_RESERVE_DB = 0.2;
 
 type MonitorBypassAutomation = {
   startTime: number;
@@ -1064,16 +1068,24 @@ export class MasterChain {
     if (worklet) {
       // The look-ahead worklet drives limiting; the native node is held at a
       // neutral pass-through so the post-native metering tap measures the
-      // true final signal. Keep 0.2 dB below the user's true-peak ceiling to
-      // cover residual overshoot in the time-varying gain/reconstruction path;
-      // start full limiting 3.2 dB below that internal safety ceiling.
+      // true final signal. The worklet applies a separate output-side true-peak
+      // correction pass after its look-ahead gain stage; keep 0.2 dB of working
+      // reserve and start full limiting 3.2 dB below the requested ceiling.
       const ceilingParam = Math.min(0, Math.max(-12, config.ceilingDb));
-      const workletCeilingParam = ceilingParam - 0.2;
+      const workletCeilingParam = ceilingParam - MASTER_LIMITER_TRUE_PEAK_RESERVE_DB;
       const thresholdParam = Math.max(-24, workletCeilingParam - 3.2);
+      const limiterReleaseMs =
+        typeof config.limiterReleaseMs === "number" && Number.isFinite(config.limiterReleaseMs)
+          ? Math.min(2000, Math.max(10, config.limiterReleaseMs))
+          : 120;
+      const limiterLookaheadMs =
+        typeof config.limiterLookaheadMs === "number" && Number.isFinite(config.limiterLookaheadMs)
+          ? Math.min(20, Math.max(1, config.limiterLookaheadMs))
+          : 5;
       worklet.setParameter("ceiling", workletCeilingParam);
       worklet.setParameter("threshold", thresholdParam);
-      worklet.setParameter("release", 0.12);
-      worklet.setParameter("lookaheadMs", 5);
+      worklet.setParameter("release", limiterReleaseMs / 1000);
+      worklet.setParameter("lookaheadMs", limiterLookaheadMs);
       worklet.setParameter("link", 1);
       worklet.setParameter("mix", config.limiterEnabled ? 1 : 0);
       this.masterLimiter.threshold.value = 0;

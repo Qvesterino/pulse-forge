@@ -5,12 +5,18 @@ import { isMp3SampleRateSupported, MP3_SUPPORTED_SAMPLE_RATES } from "./mp3-capa
 export interface Mp3Options {
   /** Target bitrate in kbps (default 192). */
   kbps?: number;
+  /** First source frame to encode (inclusive). */
+  startFrame?: number;
+  /** First source frame not to encode (exclusive). */
+  endFrame?: number;
   /** Progress callback, fraction 0..1. */
   onProgress?: (fraction: number) => void;
   /** Abort support (release roadmap 1.4): checked at every yield point. */
   signal?: AbortSignal;
   /** Use `reject` for mastering delivery to prevent automatic saturation before MP3 encoding. */
   integerOverflowPolicy?: IntegerOverflowPolicy;
+  /** Apply TPDF before lossy encoding. Defaults to false; PCM delivery should keep dither enabled. */
+  dither?: boolean;
 }
 
 function yieldToEventLoop(signal?: AbortSignal): Promise<void> {
@@ -40,6 +46,7 @@ async function quantizeChannelAsync(
   onProgress: ((fraction: number) => void) | undefined,
   signal: AbortSignal | undefined,
   overflowPolicy: IntegerOverflowPolicy,
+  ditherEnabled: boolean,
 ): Promise<Int16Array<ArrayBuffer>> {
   const rand = mulberry32(seed);
   const output = new Int16Array(input.length);
@@ -47,7 +54,7 @@ async function quantizeChannelAsync(
   for (let offset = 0; offset < input.length; offset += chunkSize) {
     const end = Math.min(input.length, offset + chunkSize);
     for (let index = offset; index < end; index++) {
-      output[index] = quantizeInt16Sample(input[index], rand, overflowPolicy);
+      output[index] = quantizeInt16Sample(input[index], rand, overflowPolicy, ditherEnabled);
     }
     onProgress?.(((completedSamplesBeforeChannel + end) / Math.max(1, totalSamples)) * 0.2);
     await yieldToEventLoop(signal);
@@ -78,33 +85,48 @@ export async function encodeMp3(buffer: AudioBuffer, options: Mp3Options = {}): 
       `MP3 export does not support ${buffer.sampleRate} Hz — supported rates: ${MP3_SUPPORTED_SAMPLE_RATES.join(", ")} Hz.`,
     );
   }
+  const startFrame = options.startFrame ?? 0;
+  const endFrame = options.endFrame ?? buffer.length;
+  if (
+    !Number.isSafeInteger(startFrame) ||
+    !Number.isSafeInteger(endFrame) ||
+    startFrame < 0 ||
+    endFrame > buffer.length ||
+    endFrame <= startFrame
+  ) {
+    throw new Error("MP3 export received an invalid source frame range.");
+  }
   const encoder = new Mp3Encoder(channelCount, buffer.sampleRate, kbps);
 
   // Legacy exports retain the soft-knee policy; mastering delivery can opt
   // into rejection so the encoder never changes over-range samples silently.
-  // Seeds differ per channel to decorrelate dither and keep output reproducible.
+  // Seeds differ per channel when dither is explicitly enabled. The default is
+  // undithered rounding because MP3 is lossy and will quantize the PCM again.
   const overflowPolicy = options.integerOverflowPolicy ?? "soft-knee";
-  const channelLength = buffer.length;
+  const ditherEnabled = options.dither ?? false;
+  const channelLength = endFrame - startFrame;
   const totalSamples = channelLength * channelCount;
   const left = await quantizeChannelAsync(
-    buffer.getChannelData(0),
+    buffer.getChannelData(0).subarray(startFrame, endFrame),
     0x4c4631,
     0,
     totalSamples,
     options.onProgress,
     options.signal,
     overflowPolicy,
+    ditherEnabled,
   );
   const right =
     channelCount === 2
       ? await quantizeChannelAsync(
-          buffer.getChannelData(1),
+          buffer.getChannelData(1).subarray(startFrame, endFrame),
           0x4c4632,
           channelLength,
           totalSamples,
           options.onProgress,
           options.signal,
           overflowPolicy,
+          ditherEnabled,
         )
       : null;
   if (options.signal?.aborted) throw new DOMException("Export cancelled", "AbortError");

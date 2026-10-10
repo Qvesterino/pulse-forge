@@ -28,37 +28,33 @@
  * `new URL(...)` — it must stay plain JavaScript with no imports and no
  * TypeScript syntax.
  */
-// 4× true-peak polyphase bank: Blackman-windowed sinc prototype, decomposed
-// into 4 phases of 16 taps, DC-normalized per phase. Sample-rate independent
-// (cutoff is defined relative to the input Nyquist), so one shared table.
+// ITU-R BS.1770-5 Annex 2 order-48, 4× true-peak interpolator. Keep this
+// coefficient table identical to src/audio-engine/metering.ts so limiter
+// correction, offline analysis, and post-encode reports use the same estimator.
 const TP_PHASES = 4;
-const TP_TAPS = 16;
-const TP_TABLE = (() => {
-  const prototype = new Float64Array(TP_PHASES * TP_TAPS);
-  const center = (prototype.length - 1) / 2;
-  for (let n = 0; n < prototype.length; n++) {
-    const x = (n - center) / TP_PHASES;
-    const sinc = x === 0 ? 1 : Math.sin(Math.PI * x) / (Math.PI * x);
-    const w =
-      0.42 -
-      0.5 * Math.cos((2 * Math.PI * n) / (prototype.length - 1)) +
-      0.08 * Math.cos((4 * Math.PI * n) / (prototype.length - 1));
-    prototype[n] = sinc * w;
-  }
-  const phases = [];
-  for (let p = 0; p < TP_PHASES; p++) {
-    const taps = new Float32Array(TP_TAPS);
-    let sum = 0;
-    for (let j = 0; j < TP_TAPS; j++) {
-      taps[j] = prototype[j * TP_PHASES + p];
-      sum += taps[j];
-    }
-    const inv = sum !== 0 ? 1 / sum : 1;
-    for (let j = 0; j < TP_TAPS; j++) taps[j] *= inv;
-    phases.push(taps);
-  }
-  return phases;
-})();
+const TP_TAPS = 12;
+// Hold one extra 32-sample window after the main limiter. This lets the
+// output-side detector see the reconstructed waveform before it is emitted.
+const POST_TP_DELAY_SAMPLES = 32;
+const POST_TP_MARGIN_DB = 0.1;
+const TP_TABLE = [
+  new Float32Array([
+    0.001708984375, 0.010986328125, -0.0196533203125, 0.033203125, -0.0594482421875, 0.1373291015625, 0.97216796875,
+    -0.102294921875, 0.047607421875, -0.026611328125, 0.014892578125, -0.00830078125,
+  ]),
+  new Float32Array([
+    -0.0291748046875, 0.029296875, -0.0517578125, 0.089111328125, -0.16650390625, 0.465087890625, 0.77978515625,
+    -0.2003173828125, 0.1015625, -0.0582275390625, 0.0330810546875, -0.0189208984375,
+  ]),
+  new Float32Array([
+    -0.0189208984375, 0.0330810546875, -0.0582275390625, 0.1015625, -0.2003173828125, 0.77978515625, 0.465087890625,
+    -0.16650390625, 0.089111328125, -0.0517578125, 0.029296875, -0.0291748046875,
+  ]),
+  new Float32Array([
+    -0.00830078125, 0.014892578125, -0.026611328125, 0.047607421875, -0.102294921875, 0.97216796875, 0.1373291015625,
+    -0.0594482421875, 0.033203125, -0.0196533203125, 0.010986328125, 0.001708984375,
+  ]),
+];
 class MaxDeque {
   constructor(capacity) {
     // Float64 keeps absolute step counters exact far beyond int32; indices are
@@ -110,7 +106,7 @@ class LimiterProcessor extends AudioWorkletProcessor {
     this.step = 0;
     this.gainL = 1;
     this.gainR = 1;
-    // True-peak detector history: last 16 input samples per channel,
+    // True-peak detector history: last 12 input samples per channel,
     // each with its own write position (a shared counter would interleave
     // the two channels into the same slots and corrupt both histories).
     this.histL = new Float32Array(TP_TAPS);
@@ -118,6 +114,14 @@ class LimiterProcessor extends AudioWorkletProcessor {
     this.histPosL = 0;
     this.histPosR = 0;
     this.tpOut = 0;
+    this.postDelayL = new Float32Array(cap);
+    this.postDelayR = new Float32Array(cap);
+    this.postPeak = new MaxDeque(cap);
+    this.postHistL = new Float64Array(TP_TAPS);
+    this.postHistR = new Float64Array(TP_TAPS);
+    this.postHistPosL = 0;
+    this.postHistPosR = 0;
+    this.postCorrectionGain = 1;
     this.postedGr = -1;
     this.grAccumulator = 0;
     this.grWindowStart = typeof globalThis.currentTime === "number" ? globalThis.currentTime : 0;
@@ -157,6 +161,7 @@ class LimiterProcessor extends AudioWorkletProcessor {
 
     const ceilingDb = parameters.ceiling[0];
     const ceilingLin = Math.pow(10, ceilingDb / 20);
+    const postCorrectionCeiling = ceilingLin * Math.pow(10, -POST_TP_MARGIN_DB / 20);
     const thresholdDb = parameters.threshold[0];
     const releaseSec = parameters.release[0];
     const laSamples = Math.max(1, Math.min(this.cap - 2, Math.round(parameters.lookahead[0] * sr)));
@@ -164,6 +169,7 @@ class LimiterProcessor extends AudioWorkletProcessor {
     const mix = parameters.mix[0];
     const perChannel = outR !== null && link < 0.999;
     const attackCoef = 1 - Math.exp(-1 / (sr * 0.0005));
+    const postCorrectionAttackCoef = 1 - Math.exp(-1 / (sr * 0.00005));
 
     let blockGrDb = 0;
 
@@ -240,10 +246,45 @@ class LimiterProcessor extends AudioWorkletProcessor {
       if (wetR > ceilingLin) wetR = ceilingLin;
       else if (wetR < -ceilingLin) wetR = -ceilingLin;
 
-      outL[i] = mix * wetL + (1 - mix) * this.delayL[readIdx];
-      if (outR) outR[i] = mix * wetR + (1 - mix) * this.delayR[readIdx];
+      const preCorrectionL = mix * wetL + (1 - mix) * this.delayL[readIdx];
+      const preCorrectionR = mix * wetR + (1 - mix) * this.delayR[readIdx];
+      this.postDelayL[w] = preCorrectionL;
+      this.postDelayR[w] = preCorrectionR;
 
-      const depth = 1 - (this.gainL < this.gainR ? this.gainL : this.gainR);
+      let postTarget = 1;
+      if (mix >= 0.999) {
+        this.postHistPosL = this.truePeakStep(this.postHistL, this.postHistPosL, this.postDelayL[w]);
+        const postPeakL = this.tpOut;
+        this.postHistPosR = this.truePeakStep(this.postHistR, this.postHistPosR, this.postDelayR[w]);
+        const postPeakR = this.tpOut;
+        this.postPeak.push(postPeakL > postPeakR ? postPeakL : postPeakR, s);
+        const postWindowPeak = this.postPeak.front(s - POST_TP_DELAY_SAMPLES);
+        if (postWindowPeak > postCorrectionCeiling) postTarget = postCorrectionCeiling / postWindowPeak;
+        this.postCorrectionGain = this.smoothGain(
+          this.postCorrectionGain,
+          postTarget,
+          sr,
+          releaseSec,
+          postCorrectionAttackCoef,
+        );
+      } else {
+        this.postCorrectionGain = 1;
+      }
+
+      const postReadIdx = (((s - POST_TP_DELAY_SAMPLES) % this.cap) + this.cap) % this.cap;
+      const correctionGain = mix >= 0.999 ? this.postCorrectionGain : 1;
+      let finalL = this.postDelayL[postReadIdx] * correctionGain;
+      let finalR = this.postDelayR[postReadIdx] * correctionGain;
+      if (mix >= 0.999) {
+        if (finalL > postCorrectionCeiling) finalL = postCorrectionCeiling;
+        else if (finalL < -postCorrectionCeiling) finalL = -postCorrectionCeiling;
+        if (finalR > postCorrectionCeiling) finalR = postCorrectionCeiling;
+        else if (finalR < -postCorrectionCeiling) finalR = -postCorrectionCeiling;
+      }
+      outL[i] = finalL;
+      if (outR) outR[i] = finalR;
+
+      const depth = Math.max(1 - (this.gainL < this.gainR ? this.gainL : this.gainR), 1 - correctionGain);
       if (depth > this.grAccumulator) this.grAccumulator = depth;
     }
 
@@ -271,21 +312,20 @@ class LimiterProcessor extends AudioWorkletProcessor {
    * copies the peak before stepping the other channel).
    */
   truePeakStep(hist, pos, newest) {
-    let v = newest;
-    if (v < 1e-20 && v > -1e-20) v = 0;
-    hist[pos & (TP_TAPS - 1)] = v;
-    const nextPos = (pos + 1) & 0xfffffff; // monotone counter, exact in float64
-    let peak = 0;
+    const sample = Number.isFinite(newest) ? newest : 0;
+    hist[pos % TP_TAPS] = Math.abs(sample) < 1e-20 ? 0 : sample;
+    const nextPos = pos + 1;
+    let peak = Math.abs(sample);
+    const base = nextPos - TP_TAPS;
     for (let p = 0; p < TP_PHASES; p++) {
       const taps = TP_TABLE[p];
       let acc = 0;
-      // taps[j] weights the j-th oldest sample (metering.ts convention):
-      // newest sits at nextPos - 1, oldest at nextPos - TP_TAPS.
       for (let j = 0; j < TP_TAPS; j++) {
-        acc += taps[j] * hist[(nextPos - TP_TAPS + j) & (TP_TAPS - 1)];
+        const sourceIndex = base + j;
+        if (sourceIndex >= 0) acc += hist[sourceIndex % TP_TAPS] * taps[j];
       }
-      if (acc < 0) acc = -acc;
-      if (acc > peak) peak = acc;
+      const value = Math.abs(acc);
+      if (value > peak) peak = value;
     }
     this.tpOut = peak;
     return nextPos;

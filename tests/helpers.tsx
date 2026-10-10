@@ -233,6 +233,7 @@ export function mockServices(doc?: ProjectDocument): Services {
       // safe path instead of throwing TypeError. Tests that need a real
       // live context (spectral edit APPLY, export) override this.
       getLiveAudioContext: vi.fn(() => null),
+      beginMasterTapRecording: vi.fn(() => ({ status: "ok" as const, release: vi.fn() })),
       getMasterLevels: vi.fn(() => ({
         left: { peak: 0, rms: 0, peakDb: -60, rmsDb: -70 },
         right: { peak: 0, rms: 0, peakDb: -60, rmsDb: -70 },

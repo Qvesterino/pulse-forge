@@ -63,6 +63,21 @@ describe("export quantizeInt16", () => {
     }
     expect(nonZero).toBeGreaterThan(1000); // the tail is audible noise, not silence
   });
+
+  it("can round MP3 input without injecting TPDF noise before the lossy encoder", () => {
+    let randomCalls = 0;
+    const sample = quantizeInt16Sample(
+      2e-6,
+      () => {
+        randomCalls++;
+        return 0.75;
+      },
+      "reject",
+      false,
+    );
+    expect(sample).toBe(0);
+    expect(randomCalls).toBe(0);
+  });
 });
 
 describe("wav 16-bit sample quantizer", () => {

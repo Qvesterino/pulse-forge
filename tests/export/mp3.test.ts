@@ -34,11 +34,47 @@ describe("encodeMp3", () => {
     expect(b1! & 0xe0).toBe(0xe0); // MPEG audio frame sync (layer + version bits)
   });
 
+  it("defaults to undithered PCM and keeps TPDF as an explicit compatibility option", async () => {
+    const buffer = fakeBuffer(1);
+    const defaultOutput = await encodeMp3(buffer, { kbps: 192 });
+    const noDitherOutput = await encodeMp3(buffer, { kbps: 192, dither: false });
+    const ditheredOutput = await encodeMp3(buffer, { kbps: 192, dither: true });
+    const defaultBytes = new Uint8Array(await defaultOutput.arrayBuffer());
+    const noDitherBytes = new Uint8Array(await noDitherOutput.arrayBuffer());
+    const ditheredBytes = new Uint8Array(await ditheredOutput.arrayBuffer());
+
+    expect(Array.from(defaultBytes)).toEqual(Array.from(noDitherBytes));
+    expect(Array.from(ditheredBytes)).not.toEqual(Array.from(noDitherBytes));
+  });
+
   it("encodes mono buffers", async () => {
     const blob = await encodeMp3(fakeBuffer(0.5, 1), { kbps: 128 });
     expect(blob.size).toBeGreaterThan(3_000);
     const [b0] = await firstBytes(blob, 1);
     expect(b0).toBe(0xff);
+  });
+
+  it("encodes only an inclusive/exclusive source frame range when requested", async () => {
+    const buffer = fakeBuffer(5);
+    const full = await encodeMp3(buffer, { kbps: 192 });
+    const excerpt = await encodeMp3(buffer, {
+      kbps: 192,
+      startFrame: 2 * buffer.sampleRate,
+      endFrame: 3 * buffer.sampleRate,
+    });
+
+    expect(excerpt.type).toBe("audio/mpeg");
+    expect(excerpt.size).toBeGreaterThan(10_000);
+    expect(excerpt.size).toBeLessThan(full.size / 2);
+  });
+
+  it.each([
+    { startFrame: -1, endFrame: 20 },
+    { startFrame: 20, endFrame: 20 },
+    { startFrame: 20, endFrame: 44_101 },
+    { startFrame: 1.5, endFrame: 20 },
+  ])("rejects an invalid source frame range (%#)", async (range) => {
+    await expect(encodeMp3(fakeBuffer(1), range)).rejects.toThrow(/invalid source frame range/i);
   });
 
   it("rejects 96 kHz instead of encoding an invalid MPEG sample rate", async () => {

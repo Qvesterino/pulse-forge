@@ -103,7 +103,7 @@ describe("MU2 one-entry multi mute", () => {
 
 describe("MU3 persistence normalization", () => {
   it("muted survives normalizeProject; unmuted clips store no key; schema is v14", () => {
-    expect(SCHEMA_VERSION).toBe(17);
+    expect(SCHEMA_VERSION).toBe(18);
     const base = createDefaultProject();
     const trackId = base.tracks[0]!.id;
     const doc = addAudioClip(base, trackId, "buf-1", 0, 2).execute(base);

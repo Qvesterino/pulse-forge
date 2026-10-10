@@ -137,10 +137,26 @@ describe("domain purity (GOAL 02)", () => {
   });
 
   it("share-code encoders are React-free", () => {
-    for (const rel of ["src/export/packCode.ts", "src/export/themeCode.ts", "src/export/bindsCode.ts"]) {
+    for (const rel of [
+      "src/export/packCode.ts",
+      "src/export/themeCode.ts",
+      "src/export/layoutCode.ts",
+      "src/export/bindsCode.ts",
+    ]) {
       const closure = transitiveClosure(resolve(process.cwd(), rel));
       expectNoMatches(closure, NO_REACT);
     }
+  });
+
+  it("shared/layout-data is Node-pure (ADR 0036 — the layout contract)", () => {
+    // The layout contract must stay executable in bare Node so any future host
+    // (Electron, non-browser embed) can consume it, and so the migration path is
+    // testable without a DOM. Touching storage or the document here would drag
+    // the whole state contract into the browser.
+    const entry = resolve(process.cwd(), "src/shared/layout-data.ts");
+    const closure = transitiveClosure(entry);
+    expectNoMatches(closure, [...NO_REACT, ...NO_AUDIO_RUNTIME]);
+    expectNoBrowserSource(readFileSync(entry, "utf8"), "shared/layout-data.ts");
   });
 
   it("effects/definitions is Node-pure (no React, no audio runtime, no browser globals)", () => {

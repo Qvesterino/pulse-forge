@@ -6,6 +6,8 @@ import { safeApplyAudioParam } from "./safeAudioParam";
 const LIMITER_LOOKAHEAD_DEFAULT_MS = 5;
 const LIMITER_LOOKAHEAD_MIN_MS = 1;
 const LIMITER_LOOKAHEAD_MAX_MS = 20;
+/** Fixed output-side reconstruction window in the worklet, included in PDC. */
+export const LIMITER_OUTPUT_TRUEPEAK_CORRECTION_SAMPLES = 32;
 
 function clampLimiterLookaheadMs(value: number): number {
   if (!Number.isFinite(value)) return LIMITER_LOOKAHEAD_DEFAULT_MS;
@@ -17,9 +19,9 @@ function clampLimiterLookaheadMs(value: number): number {
  * The processor module MUST be pre-loaded via `loadWorkletModules()` first
  * (callers check `isWorkletReady("limiter", ctx)` before constructing).
  *
- * Latency contract: the processor rounds `lookahead` to a whole sample.
- * getLatencySec() reports that realized delay so the engine's minimal PDC
- * keeps tracks with a limiter sample-aligned with dry tracks.
+ * Latency contract: the processor rounds `lookahead` to a whole sample and
+ * adds a fixed 32-sample output-side true-peak correction window.
+ * getLatencySec() reports both delays so PDC keeps tracks sample-aligned.
  */
 export function createLimiterNode(ctx: BaseAudioContext, instance: { params: Record<string, number> }): EffectRuntime {
   const node = new AudioWorkletNode(ctx, "limiter-processor", {
@@ -83,7 +85,8 @@ export function createLimiterNode(ctx: BaseAudioContext, instance: { params: Rec
       // at rates such as 44.1 kHz where 5 ms is 220.5 samples in JS precision.
       const effectiveMs = clampLimiterLookaheadMs(lookaheadMs);
       const workletLookaheadSec = Math.fround(effectiveMs / 1000);
-      return Math.round(workletLookaheadSec * ctx.sampleRate) / ctx.sampleRate;
+      const lookaheadSamples = Math.round(workletLookaheadSec * ctx.sampleRate);
+      return (lookaheadSamples + LIMITER_OUTPUT_TRUEPEAK_CORRECTION_SAMPLES) / ctx.sampleRate;
     },
     getGainReductionDb() {
       return lastGrDb;

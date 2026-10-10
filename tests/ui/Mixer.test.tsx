@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Mixer } from "../../src/ui/Mixer";
+import { MasterProcessingControls } from "../../src/ui/MasterProcessingControls";
 import { renderWithContext, mockServices } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
+import { defaultMasterConfig } from "../../src/project-model/schema";
 import type { ProjectDocument } from "../../src/project-model/types";
 
 describe("Mixer performance workflow", () => {
@@ -76,6 +78,43 @@ describe("Mixer performance workflow", () => {
 
     expect(screen.getByRole("slider", { name: "TILT" })).toHaveAttribute("aria-valuenow", "0");
     expect(screen.getByRole("slider", { name: "TRIM" })).toHaveAttribute("aria-valuenow", "0");
+  });
+
+  it("shows limiter timing controls and stores keyboard edits through the master command", () => {
+    const doc = createProjectFromTemplate("house");
+    const services = mockServices(doc);
+    renderWithContext(<Mixer />, { services });
+
+    const lookahead = screen.getByRole("slider", { name: "LOOK" });
+    const release = screen.getByRole("slider", { name: "REL" });
+    expect(lookahead).toHaveAttribute("aria-valuenow", "5");
+    expect(lookahead).toHaveAttribute("aria-valuetext", "5.0 ms");
+    expect(lookahead.getAttribute("aria-description")).toContain("delays the whole master output");
+    expect(release).toHaveAttribute("aria-valuenow", "120");
+    expect(release).toHaveAttribute("aria-valuetext", "120 ms");
+
+    fireEvent.keyDown(lookahead, { key: "ArrowRight" });
+    const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as
+      { type: string; execute: (project: ProjectDocument) => ProjectDocument } | undefined;
+    expect(executed?.type).toBe("setMasterConfig");
+    expect(executed?.execute(doc).master.limiterLookaheadMs).toBeGreaterThan(5);
+  });
+
+  it("routes isolated-session limiter timing edits into its draft callback", () => {
+    const onChange = vi.fn();
+    renderWithContext(
+      <MasterProcessingControls view="advanced-extras" config={defaultMasterConfig()} onChange={onChange} />,
+      { services: mockServices() },
+    );
+
+    const release = screen.getByRole("slider", { name: "REL" });
+    expect(release).toHaveAttribute("aria-valuenow", "120");
+    expect(release).toHaveAttribute("aria-valuetext", "120 ms");
+    fireEvent.keyDown(release, { key: "ArrowRight" });
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange.mock.calls[0]?.[0]).toEqual({ limiterReleaseMs: expect.any(Number) });
+    expect(onChange.mock.calls[0]?.[0].limiterReleaseMs).toBeGreaterThan(120);
   });
 });
 

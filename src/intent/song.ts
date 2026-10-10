@@ -1,13 +1,4 @@
-import type {
-  ArrangementTransitionType,
-  EffectType,
-  InstrumentTrack,
-  Marker,
-  MusicalKey,
-  Pattern,
-  ProjectDocument,
-  SceneRole,
-} from "../project-model/types";
+import type { ArrangementTransitionType, EffectType, InstrumentTrack, Marker, MusicalKey, NoteEvent, Pattern, ProjectDocument, SceneRole } from "../project-model/types";
 import { BAR_TICKS } from "../project-model/types";
 import { normalizeIntent, intentFromGenerateOptions } from "./normalize";
 import { generateOptionsFromIntent, planGeneration } from "./plan";
@@ -2379,6 +2370,13 @@ export interface BuildSongOptions {
    */
   progressionOverride?: string;
   /**
+   * Lead motif reprise (the chorus hook): later hook sections replay the
+   * first hook section's lead motif. Default TRUE — a song without a
+   * returning hook is just a playlist; false restores the legacy
+   * independent-per-section leads (A/B).
+   */
+  hookReprise?: boolean;
+  /**
    * #6 dynamic song form — length words ("short", "radio edit", "extended",
    * "epic journey", "3 minutes", "2:30") scale the core cycles.
    */
@@ -2394,6 +2392,69 @@ export interface BuildSongOptions {
 const yieldToUi = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 const SONG_SEARCH_LANES: readonly SearchLane[] = ["safe", "personal", "experimental"];
+
+/**
+ * The hook roles — the sections a song's lead motif must return to. The
+ * chorus IS the hook in every form vocabulary this file ships ("drop" is
+ * the same promise in the trap/hyperpop forms).
+ */
+const HOOK_ROLES: ReadonlySet<string> = new Set(["chorus", "drop"]);
+
+/** Repeat the donor motif to fill a target length (wraps at the donor's own length). */
+function repeatMotif(notes: NoteEvent[], donorSteps: number, targetSteps: number): NoteEvent[] {
+  const sorted = [...notes].sort((a, b) => a.start - b.start);
+  const out: NoteEvent[] = [];
+  for (let offset = 0; offset < targetSteps; offset += donorSteps) {
+    for (const note of sorted) {
+      const start = note.start + offset;
+      if (start >= targetSteps) continue;
+      out.push({ ...note, start, duration: Math.min(note.duration, targetSteps - start) });
+    }
+  }
+  return out;
+}
+
+/**
+ * Lead motif reprise — the chorus hook: the FIRST hook section that carries
+ * a lead becomes the donor, and every later hook section plays THAT motif
+ * (repeated to its own length), so the song has a signature you can hum.
+ * Verses and the bridge keep their generated contrast; a hook section whose
+ * instrumentation said "no lead here" stays honest-empty. Pure and
+ * deterministic — the hook is whatever the donor generated, just arranged.
+ */
+export function applyLeadHook(
+  doc: ProjectDocument,
+  sections: readonly SongBuildSection[],
+  options: { instrumentTrackIds?: readonly string[] } = {},
+): SongBuildSection[] {
+  const leadTrack = instrumentTrackForRole(doc, "lead", options.instrumentTrackIds);
+  if (!leadTrack) return [...sections];
+  let donor: SongBuildSection | null = null;
+  let donorNotes: NoteEvent[] = [];
+  for (const section of sections) {
+    if (!HOOK_ROLES.has(section.role)) continue;
+    const notes = section.pattern.notes[leadTrack.id] ?? [];
+    if (notes.length > 0) {
+      donor = section;
+      donorNotes = notes;
+      break;
+    }
+  }
+  if (!donor) return [...sections];
+  let changed = false;
+  const hooked = sections.map((section) => {
+    if (!HOOK_ROLES.has(section.role)) return section;
+    if ((section.pattern.notes[leadTrack.id] ?? []).length === 0) return section;
+    if (section === donor) return section;
+    const motif = repeatMotif(donorNotes, donor.stepCount, section.stepCount);
+    changed = true;
+    return {
+      ...section,
+      pattern: { ...section.pattern, notes: { ...section.pattern.notes, [leadTrack.id]: motif } },
+    };
+  });
+  return changed ? hooked : [...sections];
+}
 
 function applySongTransitions(doc: ProjectDocument, sections: readonly SongBuildSection[]): SongBuildSection[] {
   const transitioned = [...sections];
@@ -2558,17 +2619,22 @@ export async function buildSong(
     }
   }
 
-  // Bake the same deterministic transitions into the mixed default and every
-  // lane alternative. A lane is therefore a complete arrangement, not a set of
+  // The hook returns BEFORE transitions carve section tails: the motif the
+  // first chorus generated is implanted into every later chorus, then the
+  // deterministic transitions bake their fills/breaks on top. A lane is therefore a complete arrangement, not a set of
   // unrelated section previews.
-  const transitionedSections = applySongTransitions(doc, sections);
+  const hookScope = { instrumentTrackIds: baseIntent.targetTracks.instrumentTrackIds };
+  const hookSections = options.hookReprise === false ? sections : applyLeadHook(doc, sections, hookScope);
+  const transitionedSections = applySongTransitions(doc, hookSections);
   const alternatives: SongBuildAlternative[] = [];
   for (const lane of SONG_SEARCH_LANES) {
     const laneBuild = laneSections.get(lane);
     if (!laneBuild || laneBuild.some((section) => section === null)) continue;
     const completeSections = applySongTransitions(
       doc,
-      laneBuild.filter((section): section is SongBuildSection => section !== null),
+      options.hookReprise === false
+        ? laneBuild.filter((section): section is SongBuildSection => section !== null)
+        : applyLeadHook(doc, laneBuild.filter((section): section is SongBuildSection => section !== null), hookScope),
     );
     const modes = laneModes.get(lane) ?? new Set<CandidateSearchInfo["mode"]>();
     alternatives.push({

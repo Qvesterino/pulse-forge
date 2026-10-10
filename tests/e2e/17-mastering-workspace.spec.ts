@@ -4250,7 +4250,7 @@ test.describe("17 — mastering workspace", () => {
       const report = JSON.parse(await readFile(reportPath, "utf8"));
       expect(report).toMatchObject({
         schema: "kyx.external-mastering-report",
-        schemaVersion: 7,
+        schemaVersion: 8,
         inputBaseline: {
           status: "measured",
           decodedSampleRate: 44_100,
@@ -4529,7 +4529,7 @@ test.describe("17 — mastering workspace", () => {
     const report = JSON.parse(await readFile(reportPath, "utf8"));
     expect(report).toMatchObject({
       schema: "kyx.external-mastering-report",
-      schemaVersion: 7,
+      schemaVersion: 8,
       inputBaseline: {
         status: "not-measured",
         reason: "Input baseline analysis was not run before this delivery export.",
@@ -4636,7 +4636,7 @@ test.describe("17 — mastering workspace", () => {
     const report = JSON.parse(await readFile(reportPath, "utf8"));
     expect(report).toMatchObject({
       schema: "kyx.external-mastering-report",
-      schemaVersion: 7,
+      schemaVersion: 8,
       delivery: {
         fileName: delivery.suggestedFilename(),
         format: "mp3",

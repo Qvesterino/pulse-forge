@@ -4,6 +4,7 @@ import { computeStageAdjustment, describeStageAdjustmentLimitation } from "../au
 import type { BufferSummary } from "../audio-engine/metering";
 import type { LoudnessTimeline } from "../audio-engine/kweighting";
 import { analyzeMasterBufferAsync } from "../mastering/analysisClient";
+import { applyMasteringAlbumGainInPlace, planMasteringAlbumGainAdjustment } from "../mastering/albumNormalization";
 import { tryAcquireMasteringWork } from "../mastering/workGate";
 import { formatAuditionTrim, getLoudnessMatchGain, resolveLoudnessMatchTarget } from "../mastering/audition";
 import {
@@ -25,7 +26,11 @@ import {
   resolveDeliveryTarget,
 } from "../mastering/profiles";
 import { masteringVersionSuffix } from "../mastering/deliveryFilename";
-import { serializeExternalMasteringReport, type ExternalMasteringInputBaseline } from "../mastering/sessionReport";
+import {
+  serializeExternalMasteringReport,
+  type ExternalAlbumNormalizationReport,
+  type ExternalMasteringInputBaseline,
+} from "../mastering/sessionReport";
 import {
   assertMasteringSessionWorkingSetBudget,
   estimateMasteringSessionBrowserDecodeWorkingSetBytes,
@@ -97,6 +102,14 @@ import { MasteringSessionInsertRack } from "./MasteringSessionInsertRack";
 import { MasteringLevelMatchControl } from "./MasteringLevelMatchControl";
 import { MasterProfileFileCheck, MasterProfileFileGuidance } from "./MasterProfileFileGuidance";
 import { useMasteringExcerptLoudness } from "./useMasteringExcerptLoudness";
+import { MasteringCodecPreview } from "./MasteringCodecPreview";
+import { MasteringAlbumPanel } from "./MasteringAlbumPanel";
+import type { MasteringAlbumBatchExportOptions, MasteringAlbumGainNormalizationOptions } from "./MasteringAlbumPanel";
+import {
+  MasteringAlbumRepository,
+  type MasteringAlbumDeliverySummary,
+  type MasteringAlbumRecord,
+} from "../mastering/albumStore";
 
 const MAX_DECODED_SOURCE_BYTES = 128 * 1024 * 1024;
 const AUDIO_EXTENSION = /\.(wav|wave|mp3|flac)$/i;
@@ -206,6 +219,32 @@ function formatBytes(bytes: number): string {
 
 function bufferBytes(buffer: AudioBuffer | null): number {
   return buffer ? buffer.length * buffer.numberOfChannels * Float32Array.BYTES_PER_ELEMENT : 0;
+}
+
+function sameMasteringAlbumSequence(expected: MasteringAlbumRecord, current: MasteringAlbumRecord | null): boolean {
+  if (
+    !current ||
+    expected.id !== current.id ||
+    expected.title !== current.title ||
+    expected.updatedAt !== current.updatedAt ||
+    expected.tracks.length !== current.tracks.length
+  ) {
+    return false;
+  }
+  return expected.tracks.every((track, index) => {
+    const currentTrack = current.tracks[index];
+    return Boolean(
+      currentTrack &&
+      track.id === currentTrack.id &&
+      track.sessionId === currentTrack.sessionId &&
+      track.gapAfterSeconds === currentTrack.gapAfterSeconds,
+    );
+  });
+}
+
+function albumBatchFileName(albumTitle: string, trackIndex: number, trackCount: number, fileName: string): string {
+  const prefix = `${sanitizeFilename(albumTitle).slice(0, 24)}-${String(trackIndex + 1).padStart(2, "0")}-of-${String(trackCount).padStart(2, "0")}`;
+  return `${prefix}-${fileName}`.slice(0, 240);
 }
 
 function masteredWavFileName(
@@ -513,7 +552,11 @@ export function MasteringFileSessionPanel({
 } = {}) {
   const services = useServices();
   const repository = useMemo(() => new MasteringSessionRepository(), []);
+  const albumRepository = useMemo(() => new MasteringAlbumRepository(), []);
   const [sessions, setSessions] = useState<MasteringSessionSummary[]>([]);
+  const [albumDeliveryRefreshToken, setAlbumDeliveryRefreshToken] = useState(0);
+  const [auditioningAlbumId, setAuditioningAlbumId] = useState<string | null>(null);
+  const [albumAuditionStatus, setAlbumAuditionStatus] = useState("");
   const [session, setSession] = useState<MasteringSessionRecord | null>(null);
   const [source, setSource] = useState<AudioBuffer | null>(null);
   const [reference, setReference] = useState<LoadedSessionReference | null>(null);
@@ -548,6 +591,11 @@ export function MasteringFileSessionPanel({
   const reportHistoryEpoch = useRef(0);
   const playingRef = useRef<SessionPreviewSelection | null>(null);
   const previewGeneration = useRef(0);
+  const albumAuditionRun = useRef<{
+    albumId: string;
+    busyLabel: string;
+    controller: AbortController;
+  } | null>(null);
   playingRef.current = playing;
   blockNewWorkRef.current = blockNewWork;
   const sourceIsLossyMp3 = Boolean(session?.fileName.toLowerCase().endsWith(".mp3"));
@@ -599,7 +647,9 @@ export function MasteringFileSessionPanel({
       selectionEpoch.current++;
       operation.current?.abort();
       previewGeneration.current++;
-      if (playingRef.current) services.engine.stopPreview();
+      albumAuditionRun.current?.controller.abort();
+      if (playingRef.current || albumAuditionRun.current) services.engine.stopPreview();
+      albumAuditionRun.current = null;
     };
   }, [repository, services.engine]);
 
@@ -852,6 +902,239 @@ export function MasteringFileSessionPanel({
     playingRef.current = null;
     setPlaying(null);
   }, [services.engine]);
+
+  const stopAlbumAudition = useCallback(() => {
+    const run = albumAuditionRun.current;
+    if (!run) return;
+    albumAuditionRun.current = null;
+    run.controller.abort();
+    services.engine.stopPreview();
+    setAuditioningAlbumId(null);
+    setAlbumAuditionStatus("Album audition stopped.");
+    setBusy((current) => (current === run.busyLabel ? "" : current));
+  }, [services.engine]);
+
+  const auditionAlbum = useCallback(
+    async (album: MasteringAlbumRecord, normalization?: MasteringAlbumGainNormalizationOptions) => {
+      if (busy || blockNewWorkRef.current || albumAuditionRun.current || album.tracks.length === 0) return;
+      if (normalization) {
+        try {
+          planMasteringAlbumGainAdjustment({ ...normalization, sourceLufs: null, sourceTruePeakDbtp: null });
+        } catch (reason) {
+          setError(masteringSessionErrorMessage(reason, "Choose valid album loudness and peak-guard settings."));
+          return;
+        }
+      }
+      const controller = new AbortController();
+      const busyLabel = `${normalization ? "Auditioning gain-matched album" : "Auditioning album"} “${album.title}”…`;
+      const run = { albumId: album.id, busyLabel, controller };
+      albumAuditionRun.current = run;
+      setAuditioningAlbumId(album.id);
+      setAlbumAuditionStatus(
+        `Preparing ${album.title} at ${sampleRate / 1000} kHz · Studio HQ${normalization ? ` · target ${normalization.targetLufs.toFixed(1)} LUFS-I` : ""}…`,
+      );
+      setError("");
+      setBusy(busyLabel);
+      stopSessionPreview();
+
+      const ensureActive = () => {
+        if (albumAuditionRun.current !== run || controller.signal.aborted) {
+          throw new DOMException("Album audition cancelled", "AbortError");
+        }
+      };
+      const retainedUiBytes =
+        bufferBytes(source) +
+        bufferBytes(rendered?.buffer ?? null) +
+        bufferBytes(reference?.buffer ?? null) +
+        (comparison ? bufferBytes(comparison.a.buffer) + bufferBytes(comparison.b.buffer) : 0);
+      let sequenceBankRevision: number | null = null;
+      const renderTrack = async (
+        record: MasteringSessionRecord,
+        retainedAlbumAudioBytes: number,
+      ): Promise<{
+        buffer: AudioBuffer;
+        gainDb: number;
+        peakLimited: boolean;
+        maximumGainLimited: boolean;
+        status: "disabled" | "applied" | "loudness-unavailable" | "true-peak-unavailable";
+      }> => {
+        ensureActive();
+        const releaseMasteringWork = tryAcquireMasteringWork();
+        if (!releaseMasteringWork) {
+          throw new Error("Another MASTER audio task is in progress. Stop it before auditioning this album.");
+        }
+        try {
+          const format = masteringReferenceFormatFromFileName(record.fileName);
+          const pcmBytes =
+            Math.ceil(record.durationSeconds * record.sourceSampleRate) *
+            record.channels *
+            Float32Array.BYTES_PER_ELEMENT;
+          assertMasteringSessionWorkingSetBudget(
+            estimateMasteringFileDecodeWorkingSetBytes(format, record.byteLength, pcmBytes) +
+              retainedUiBytes +
+              retainedAlbumAudioBytes,
+          );
+          const trackSource = await decodeSessionSource(record, controller.signal);
+          ensureActive();
+          assertMasteringSessionWorkingSetBudget(
+            estimateMasteringSessionWorkingSetBytes(trackSource, record.masterConfig, sampleRate) +
+              retainedUiBytes +
+              retainedAlbumAudioBytes,
+          );
+          await awaitMasteringSampleBankReady(services.core.initialSampleBankHydration, controller.signal);
+          ensureActive();
+          if (sequenceBankRevision === null) sequenceBankRevision = services.bank.revision;
+          else if (services.bank.revision !== sequenceBankRevision) {
+            throw new Error("The sample library changed during album preparation. Restart the audition.");
+          }
+          const mastered = await renderMasteringSessionSource(trackSource, record.masterConfig, services.bank, {
+            sampleRate,
+            quality: "studio",
+            signal: controller.signal,
+          });
+          ensureActive();
+          if (services.bank.revision !== sequenceBankRevision) {
+            throw new Error("The sample library changed while a track was rendering. Restart the audition.");
+          }
+          assertMasteringSessionWorkingSetBudget(retainedUiBytes + retainedAlbumAudioBytes + bufferBytes(mastered));
+          if (!normalization) {
+            return { buffer: mastered, gainDb: 0, peakLimited: false, maximumGainLimited: false, status: "disabled" };
+          }
+          setAlbumAuditionStatus(`Measuring ${record.fileName} for gain-only audition…`);
+          const profile = resolveDeliveryTarget(record.masterConfig);
+          const sourceAnalysis = await analyzeMasterBufferAsync(mastered, profile, { signal: controller.signal });
+          ensureActive();
+          const gainPlan = planMasteringAlbumGainAdjustment({
+            ...normalization,
+            sourceLufs: sourceAnalysis.measurements.lufsIntegrated,
+            sourceTruePeakDbtp: sourceAnalysis.measurements.truePeakDb,
+          });
+          if (gainPlan.appliedGainDb !== 0) {
+            applyMasteringAlbumGainInPlace(mastered, gainPlan.appliedGainDb);
+            const verification = await analyzeMasterBufferAsync(mastered, profile, { signal: controller.signal });
+            ensureActive();
+            if (verification.measurements.truePeakDb > gainPlan.truePeakCeilingDbtp + 0.05) {
+              throw new Error(`Gain-only audition could not verify the true-peak ceiling for “${record.fileName}”.`);
+            }
+          }
+          return {
+            buffer: mastered,
+            gainDb: gainPlan.appliedGainDb,
+            peakLimited: gainPlan.peakLimited,
+            maximumGainLimited: gainPlan.maximumGainLimited,
+            status: gainPlan.status,
+          };
+        } finally {
+          releaseMasteringWork();
+        }
+      };
+      const describeNormalization = (prepared: Awaited<ReturnType<typeof renderTrack>>) => {
+        if (!normalization) return "";
+        const gain = `${prepared.gainDb >= 0 ? "+" : ""}${prepared.gainDb.toFixed(1)} dB gain`;
+        const guard = prepared.peakLimited
+          ? " · peak-limited"
+          : prepared.maximumGainLimited
+            ? " · maximum boost reached"
+            : "";
+        const measurement = prepared.status === "loudness-unavailable" ? " · loudness unavailable" : "";
+        const peakUnavailable = prepared.status === "true-peak-unavailable" ? " · true peak unavailable" : "";
+        return ` · ${gain}${guard}${measurement}${peakUnavailable}`;
+      };
+      const scheduleTrack = (buffer: AudioBuffer, requestedStart: number) => {
+        let finish!: () => void;
+        const ended = new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+        const actualStart = services.engine.previewMasterCompareAt(buffer, requestedStart, finish);
+        if (actualStart === null) throw new Error("The audio engine could not start album audition playback.");
+        return { actualStart, ended };
+      };
+      const resolveTrackRecord = async (item: {
+        track: MasteringAlbumRecord["tracks"][number];
+        summary: MasteringSessionSummary;
+      }) => {
+        const record = await repository.get(item.track.sessionId);
+        ensureActive();
+        if (!record) throw new Error(`Album session “${item.summary.fileName}” is missing from this device.`);
+        if (record.sourceHash !== item.summary.sourceHash || record.configRevision !== item.summary.configRevision) {
+          throw new Error(`“${item.summary.fileName}” changed after this audition started. Start the sequence again.`);
+        }
+        return record;
+      };
+
+      try {
+        const albumTracks = album.tracks.map((track) => {
+          const summary = sessions.find((item) => item.id === track.sessionId);
+          if (!summary) throw new Error(`Album session “${track.sessionId}” is missing from this device.`);
+          return { track, summary };
+        });
+        ensureActive();
+        let activeItem = albumTracks[0]!;
+        let activePrepared = await renderTrack(await resolveTrackRecord(activeItem), 0);
+        let activeBuffer = activePrepared.buffer;
+        ensureActive();
+        let activeVoice = scheduleTrack(activeBuffer, 0);
+        setAlbumAuditionStatus(
+          `Playing track 1 of ${albumTracks.length}: ${activeItem.summary.fileName}${describeNormalization(activePrepared)}`,
+        );
+
+        for (let index = 1; index < albumTracks.length; index++) {
+          ensureActive();
+          const previous = activeItem;
+          const next = albumTracks[index]!;
+          setAlbumAuditionStatus(
+            `Preparing track ${index + 1} of ${albumTracks.length} while ${previous.summary.fileName} plays…`,
+          );
+          const nextRecord = await resolveTrackRecord(next);
+          const nextPrepared = await renderTrack(nextRecord, bufferBytes(activeBuffer));
+          const nextBuffer = nextPrepared.buffer;
+          ensureActive();
+          const targetStart = activeVoice.actualStart + activeBuffer!.duration + previous.track.gapAfterSeconds;
+          const nextVoice = scheduleTrack(nextBuffer, targetStart);
+          const lateBy = Math.max(0, nextVoice.actualStart - targetStart);
+          setAlbumAuditionStatus(
+            lateBy > 0.05
+              ? `Playing track ${index + 1} of ${albumTracks.length}: ${next.summary.fileName} · preparation extended the gap by ${lateBy.toFixed(1)} s${describeNormalization(nextPrepared)}`
+              : `Playing track ${index + 1} of ${albumTracks.length}: ${next.summary.fileName}${describeNormalization(nextPrepared)}`,
+          );
+          await awaitWithSessionAbort(activeVoice.ended, controller.signal, "Album audition cancelled");
+          ensureActive();
+          activePrepared = nextPrepared;
+          activeBuffer = nextBuffer;
+          activeVoice = nextVoice;
+          activeItem = next;
+        }
+        await awaitWithSessionAbort(activeVoice.ended, controller.signal, "Album audition cancelled");
+        ensureActive();
+        setAlbumAuditionStatus(`Album audition finished · ${album.title}.`);
+      } catch (reason) {
+        if (controller.signal.aborted || (reason instanceof DOMException && reason.name === "AbortError")) return;
+        setError(reason instanceof Error ? reason.message : "Could not audition this album sequence.");
+        setAlbumAuditionStatus("Album audition stopped because a track could not be prepared.");
+        services.engine.stopPreview();
+      } finally {
+        if (albumAuditionRun.current === run) {
+          albumAuditionRun.current = null;
+          setAuditioningAlbumId(null);
+          setBusy((current) => (current === busyLabel ? "" : current));
+        }
+      }
+    },
+    [
+      busy,
+      comparison,
+      reference,
+      rendered,
+      repository,
+      sampleRate,
+      sessions,
+      services.bank,
+      services.core.initialSampleBankHydration,
+      services.engine,
+      source,
+      stopSessionPreview,
+    ],
+  );
 
   const updateReferenceCompareOffset = (side: "master" | "reference", nextOffset: number) => {
     stopSessionPreview();
@@ -1667,6 +1950,487 @@ export function MasteringFileSessionPanel({
     }
   }, [dirty, draft, estimatedBytes, sampleRate, services, session, source, stopSessionPreview]);
 
+  const exportAlbumBatch = useCallback(
+    async (album: MasteringAlbumRecord, options: MasteringAlbumBatchExportOptions) => {
+      if (busy || blockNewWorkRef.current || operation.current || albumAuditionRun.current) return;
+      if (options.format === "mp3" && !isMp3SampleRateSupported(options.sampleRate)) {
+        setError("Album MP3 delivery supports 44.1 or 48 kHz. Choose WAV/FLAC or lower the render rate.");
+        return;
+      }
+      if (options.normalizeToLufs !== null) {
+        try {
+          planMasteringAlbumGainAdjustment({
+            targetLufs: options.normalizeToLufs,
+            truePeakCeilingDbtp: options.truePeakCeilingDbtp,
+            maximumGainDb: options.maximumGainDb,
+            sourceLufs: null,
+            sourceTruePeakDbtp: null,
+          });
+        } catch (reason) {
+          setError(masteringSessionErrorMessage(reason, "Choose valid album loudness and peak-guard settings."));
+          return;
+        }
+      }
+      if (album.tracks.length === 0) return;
+      const releaseMasteringWork = tryAcquireMasteringWork();
+      if (!releaseMasteringWork) {
+        setNotice("Another MASTER audio task is in progress. Try the album export again when it finishes.");
+        return;
+      }
+
+      const controller = new AbortController();
+      operation.current = controller;
+      const expectedAlbum = album;
+      const retainedUiBytes =
+        bufferBytes(source) +
+        bufferBytes(rendered?.buffer ?? null) +
+        bufferBytes(reference?.buffer ?? null) +
+        (comparison ? bufferBytes(comparison.a.buffer) + bufferBytes(comparison.b.buffer) : 0);
+      let completed = 0;
+      let finalPeakCeilingExceedances = 0;
+      let tracksWithoutLoudnessMeasure = 0;
+      let albumStorageWarning = "";
+      let reportStorageWarning = "";
+      let expectedBankRevision: number | null = null;
+      const activeDownloadArtifacts: Array<{ expiresAt: number; bytes: number }> = [];
+      const activeDownloadBytes = () => {
+        const now = Date.now();
+        for (let index = activeDownloadArtifacts.length - 1; index >= 0; index--) {
+          if (activeDownloadArtifacts[index]!.expiresAt <= now) activeDownloadArtifacts.splice(index, 1);
+        }
+        return activeDownloadArtifacts.reduce((bytes, artifact) => bytes + artifact.bytes, 0);
+      };
+      const formatLabel = options.format.toUpperCase();
+      const assertRunning = () => {
+        if (controller.signal.aborted) throw new DOMException("Album batch export cancelled", "AbortError");
+      };
+      const checkSnapshot = async (track: MasteringAlbumRecord["tracks"][number], record: MasteringSessionRecord) => {
+        assertRunning();
+        if (expectedBankRevision !== null && services.bank.revision !== expectedBankRevision) {
+          const stale = new Error(
+            "The sample library changed during album export. Remaining tracks were not exported.",
+          );
+          stale.name = "StaleMasteringAlbumError";
+          throw stale;
+        }
+        const latestAlbum = await albumRepository.get(expectedAlbum.id);
+        if (!sameMasteringAlbumSequence(expectedAlbum, latestAlbum)) {
+          const stale = new Error("The album order or gaps changed during export. Remaining tracks were not exported.");
+          stale.name = "StaleMasteringAlbumError";
+          throw stale;
+        }
+        const latestSession = await repository.get(track.sessionId);
+        if (
+          !latestSession ||
+          latestSession.sourceHash !== record.sourceHash ||
+          latestSession.configRevision !== record.configRevision ||
+          latestSession.deliveryVersion !== record.deliveryVersion
+        ) {
+          const stale = new Error(`“${record.fileName}” changed during export. Remaining tracks were not exported.`);
+          stale.name = "StaleMasteringAlbumError";
+          throw stale;
+        }
+        assertRunning();
+      };
+
+      setBusy(`Preparing album batch · ${formatLabel}…`);
+      setError("");
+      setNotice("");
+      setProgress("");
+      stopSessionPreview();
+      try {
+        await awaitMasteringSampleBankReady(services.core.initialSampleBankHydration, controller.signal);
+        expectedBankRevision = services.bank.revision;
+        if (!sameMasteringAlbumSequence(expectedAlbum, await albumRepository.get(expectedAlbum.id))) {
+          throw new Error("The album sequence changed before export started. Review it and start again.");
+        }
+
+        for (let index = 0; index < expectedAlbum.tracks.length; index++) {
+          assertRunning();
+          const track = expectedAlbum.tracks[index]!;
+          const sessionSummaryItem = sessions.find((item) => item.id === track.sessionId);
+          if (!sessionSummaryItem) throw new Error(`Album session “${track.sessionId}” is missing from this device.`);
+          const record = await repository.get(track.sessionId);
+          assertRunning();
+          if (!record) throw new Error(`Album session “${sessionSummaryItem.fileName}” is missing from this device.`);
+          if (
+            record.sourceHash !== sessionSummaryItem.sourceHash ||
+            record.configRevision !== sessionSummaryItem.configRevision
+          ) {
+            const stale = new Error(
+              `“${record.fileName}” changed before its turn. Remaining tracks were not exported.`,
+            );
+            stale.name = "StaleMasteringAlbumError";
+            throw stale;
+          }
+          await checkSnapshot(track, record);
+          setBusy(`Rendering album track ${index + 1} of ${expectedAlbum.tracks.length} · ${formatLabel}…`);
+          setProgress(`${record.fileName} · preparing source`);
+
+          const sourcePcmBytes = Math.ceil(record.durationSeconds * record.sourceSampleRate) * record.channels * 4;
+          const sourceDecodeBytes = estimateMasteringFileDecodeWorkingSetBytes(
+            masteringReferenceFormatFromFileName(record.fileName),
+            record.byteLength,
+            sourcePcmBytes,
+          );
+          assertMasteringSessionWorkingSetBudget(sourceDecodeBytes + retainedUiBytes + activeDownloadBytes());
+          const trackSource = await decodeSessionSource(record, controller.signal);
+          assertRunning();
+          assertMasteringSessionWorkingSetBudget(
+            estimateMasteringSessionWorkingSetBytes(trackSource, record.masterConfig, options.sampleRate) +
+              retainedUiBytes +
+              activeDownloadBytes(),
+          );
+
+          setProgress(`${record.fileName} · rendering and measuring`);
+          let renderDiagnostics: OfflineRenderRuntimeDiagnostics | null = null;
+          const mastered = await renderMasteringSessionSource(trackSource, record.masterConfig, services.bank, {
+            sampleRate: options.sampleRate,
+            quality: "studio",
+            signal: controller.signal,
+            onRuntimeDiagnostics: (diagnostics) => {
+              renderDiagnostics = diagnostics;
+            },
+          });
+          assertRunning();
+          if (services.bank.revision !== expectedBankRevision) {
+            const stale = new Error(
+              "The sample library changed during album export. Remaining tracks were not exported.",
+            );
+            stale.name = "StaleMasteringAlbumError";
+            throw stale;
+          }
+          if (!renderDiagnostics) throw new Error("The offline renderer did not report this track’s processor status.");
+          const renderedAt = new Date().toISOString();
+          const profile = resolveDeliveryTarget(record.masterConfig);
+          let analysis = await analyzeMasterBufferAsync(mastered, profile, {
+            signal: controller.signal,
+            onProgress: (update) =>
+              setProgress(`${record.fileName} · ${update.stage} · ${Math.round(update.progress * 100)}%`),
+          });
+          assertRunning();
+          const albumGainPlan =
+            options.normalizeToLufs === null
+              ? null
+              : planMasteringAlbumGainAdjustment({
+                  targetLufs: options.normalizeToLufs,
+                  truePeakCeilingDbtp: options.truePeakCeilingDbtp,
+                  maximumGainDb: options.maximumGainDb,
+                  sourceLufs: analysis.measurements.lufsIntegrated,
+                  sourceTruePeakDbtp: analysis.measurements.truePeakDb,
+                });
+          if (albumGainPlan) {
+            if (albumGainPlan.status === "loudness-unavailable") tracksWithoutLoudnessMeasure++;
+            if (albumGainPlan.appliedGainDb !== 0) {
+              applyMasteringAlbumGainInPlace(mastered, albumGainPlan.appliedGainDb);
+              analysis = await analyzeMasterBufferAsync(mastered, profile, {
+                signal: controller.signal,
+                onProgress: (update) =>
+                  setProgress(
+                    `${record.fileName} · verifying gain-only result · ${Math.round(update.progress * 100)}%`,
+                  ),
+              });
+              assertRunning();
+            }
+          }
+
+          const renderedPcmBytes = bufferBytes(mastered);
+          const residentBytes =
+            estimateMasteringSessionWorkingSetBytes(trackSource, record.masterConfig, options.sampleRate) +
+            retainedUiBytes +
+            activeDownloadBytes();
+          let deliveryBlob: Blob;
+          let checked: EncodedMasterInspection;
+          let rawFileName: string;
+          if (options.format === "mp3") {
+            assertMp3ExportWorkingSetBudget(
+              residentBytes,
+              estimateMp3ExportAdditionalWorkingSetBytes(
+                renderedPcmBytes,
+                options.sampleRate,
+                options.mp3Bitrate,
+                mastered.numberOfChannels,
+              ),
+            );
+            const { encodeMp3 } = await import("../export/mp3");
+            deliveryBlob = await encodeMp3(mastered, {
+              kbps: options.mp3Bitrate,
+              integerOverflowPolicy: "reject",
+              signal: controller.signal,
+              onProgress: (value) => setProgress(`${record.fileName} · encoding MP3 · ${Math.round(value * 100)}%`),
+            });
+            rawFileName = masteredMp3FileName(
+              record,
+              options.sampleRate,
+              options.mp3Bitrate,
+              record.deliveryVersion ?? "",
+            );
+            checked = await inspectEncodedMaster({
+              format: "mp3",
+              bytes: deliveryBlob,
+              fingerprintBlob: deliveryBlob,
+              expectedDurationSeconds: mastered.duration,
+              sourceMeasurements: analysis.measurements,
+              profile,
+              sourceSampleRate: record.sourceSampleRate,
+              decodedSourceSampleRate: trackSource.sampleRate,
+              ...(record.sourceBitDepth != null ? { sourceBitDepth: record.sourceBitDepth } : {}),
+              signal: controller.signal,
+              onProgress: (update) =>
+                setProgress(`${record.fileName} · ${update.stage} · ${Math.round(update.progress * 100)}%`),
+            });
+          } else if (options.format === "flac") {
+            const outputBitDepth = options.bitDepth === 16 ? 16 : 24;
+            assertFlacExportWorkingSetBudget(
+              residentBytes,
+              estimateFlacOutputWorkingSetBytes(mastered, outputBitDepth),
+            );
+            const { encodeFlac } = await loadFlacEncoder();
+            deliveryBlob = await encodeFlac(mastered, {
+              bitDepth: outputBitDepth,
+              signal: controller.signal,
+              onProgress: (value) => setProgress(`${record.fileName} · encoding FLAC · ${Math.round(value * 100)}%`),
+            });
+            rawFileName = masteredFlacFileName(
+              record,
+              options.sampleRate,
+              outputBitDepth,
+              record.deliveryVersion ?? "",
+            );
+            checked = await inspectEncodedMaster({
+              format: "flac",
+              bytes: deliveryBlob,
+              fingerprintBlob: deliveryBlob,
+              expectedDurationSeconds: mastered.duration,
+              sourceMeasurements: analysis.measurements,
+              profile,
+              sourceSampleRate: record.sourceSampleRate,
+              decodedSourceSampleRate: trackSource.sampleRate,
+              ...(record.sourceBitDepth != null ? { sourceBitDepth: record.sourceBitDepth } : {}),
+              additionalWorkingSetBytes: residentBytes,
+              signal: controller.signal,
+              onProgress: (update) =>
+                setProgress(`${record.fileName} · ${update.stage} · ${Math.round(update.progress * 100)}%`),
+            });
+          } else {
+            const outputBitDepth = options.bitDepth;
+            assertWavExportWorkingSetBudget(
+              residentBytes,
+              estimateWavExportAdditionalWorkingSetBytes(
+                renderedPcmBytes,
+                outputBitDepth,
+                canDecodeWavAsAudioBuffer(
+                  estimateWavEncodedFileBytes(renderedPcmBytes, outputBitDepth),
+                  renderedPcmBytes,
+                )
+                  ? 1
+                  : 0,
+              ),
+            );
+            deliveryBlob = await encodeWavBlobAsync(mastered, outputBitDepth, {
+              integerOverflowPolicy: "reject",
+              signal: controller.signal,
+              onProgress: (value) => setProgress(`${record.fileName} · encoding WAV · ${Math.round(value * 100)}%`),
+              bext: createBextMetadata({
+                description: `KYX mastered delivery · ${record.fileName}`,
+                loudness: {
+                  integratedLufs: analysis.measurements.lufsIntegrated,
+                  rangeLu: analysis.measurements.loudnessRangeLu,
+                  truePeakDbtp: analysis.measurements.truePeakDb,
+                  momentaryLufs: analysis.measurements.lufsMomentary,
+                  shortTermLufs: analysis.measurements.lufsShortTerm,
+                },
+                codingHistory: `A=PCM,F=${options.sampleRate},W=${outputBitDepth},M=stereo,T=KYX external mastering`,
+              }),
+            });
+            rawFileName = masteredWavFileName(record, options.sampleRate, outputBitDepth, record.deliveryVersion ?? "");
+            checked = await inspectEncodedMaster({
+              format: "wav",
+              bytes: deliveryBlob,
+              fingerprintBlob: deliveryBlob,
+              expectedDurationSeconds: mastered.duration,
+              sourceMeasurements: analysis.measurements,
+              profile,
+              sourceSampleRate: record.sourceSampleRate,
+              decodedSourceSampleRate: trackSource.sampleRate,
+              ...(record.sourceBitDepth != null ? { sourceBitDepth: record.sourceBitDepth } : {}),
+              signal: controller.signal,
+              onProgress: (update) =>
+                setProgress(`${record.fileName} · ${update.stage} · ${Math.round(update.progress * 100)}%`),
+            });
+          }
+
+          const fileName = albumBatchFileName(expectedAlbum.title, index + 1, expectedAlbum.tracks.length, rawFileName);
+          const createdAt = new Date();
+          const reportFileName = fileName.replace(/\.(wav|mp3|flac)$/i, "-report.json");
+          const reportMeasurements =
+            checked.decode.status === "measured"
+              ? (checked.decode.measurements ?? analysis.measurements)
+              : analysis.measurements;
+          const decodedTruePeak =
+            checked.decode.status === "measured" ? (checked.decode.measurements?.truePeakDb ?? null) : null;
+          const decodedLufs =
+            checked.decode.status === "measured"
+              ? (checked.decode.measurements?.lufsIntegrated ?? null)
+              : analysis.measurements.lufsIntegrated;
+          const postEncodeCeilingExceeded =
+            albumGainPlan && decodedTruePeak !== null ? decodedTruePeak > albumGainPlan.truePeakCeilingDbtp : null;
+          const normalizationReport: ExternalAlbumNormalizationReport | null = albumGainPlan
+            ? {
+                status: albumGainPlan.status,
+                targetLufs: albumGainPlan.targetLufs,
+                truePeakCeilingDbtp: albumGainPlan.truePeakCeilingDbtp,
+                maximumGainDb: albumGainPlan.maximumGainDb,
+                sourceLufs: albumGainPlan.sourceLufs,
+                sourceTruePeakDbtp: albumGainPlan.sourceTruePeakDbtp,
+                requestedGainDb: albumGainPlan.requestedGainDb,
+                appliedGainDb: albumGainPlan.appliedGainDb,
+                peakLimited: albumGainPlan.peakLimited,
+                maximumGainLimited: albumGainPlan.maximumGainLimited,
+                targetReached: decodedLufs === null ? null : Math.abs(decodedLufs - albumGainPlan.targetLufs) <= 0.5,
+                postEncodeTruePeakDbtp: decodedTruePeak,
+                postEncodeCeilingExceeded,
+              }
+            : null;
+          const deliveryVerdict = evaluateDelivery(
+            {
+              lufs: reportMeasurements.lufsIntegrated,
+              truePeakDb: reportMeasurements.truePeakDb,
+              correlation: reportMeasurements.correlation,
+              monoLossDb: reportMeasurements.monoLossDb,
+              lrImbalanceDb: reportMeasurements.lrImbalanceDb,
+            },
+            profile,
+          );
+          const reportJson = serializeExternalMasteringReport(
+            {
+              session: record,
+              masterConfig: record.masterConfig,
+              profile,
+              renderedAt,
+              renderDiagnostics,
+              renderConfigRevision: record.configRevision,
+              sampleRate: options.sampleRate,
+              durationSeconds: mastered.duration,
+              sourceMeasurements: analysis.measurements,
+              sourceMixHealth: analysis.mixHealth,
+              sourceLoudnessTimeline: analysis.loudnessTimeline,
+              inputBaseline: null,
+              inspection: checked,
+              exportedFileName: fileName,
+              deliveryVerdict,
+              albumNormalization: normalizationReport,
+            },
+            createdAt,
+          );
+
+          await checkSnapshot(track, record);
+          assertRunning();
+          const reportBlob = new Blob([reportJson], { type: "application/json" });
+          downloadBlob(deliveryBlob, fileName);
+          downloadBlob(reportBlob, reportFileName);
+          activeDownloadArtifacts.push({ expiresAt: Date.now() + 5000, bytes: deliveryBlob.size + reportBlob.size });
+          completed++;
+          if (postEncodeCeilingExceeded) finalPeakCeilingExceedances++;
+
+          const savedReport: RecentDeliveryReport = {
+            key: `${record.id}:${fileName}`,
+            sessionId: record.id,
+            sourceFileName: record.fileName,
+            fileName,
+            reportFileName,
+            createdAt: createdAt.toISOString(),
+            configRevision: record.configRevision,
+            reportJson,
+          };
+          const persistentReport: MasteringSessionDeliveryReportRecord = {
+            id: savedReport.key,
+            sessionId: record.id,
+            sourceFileName: record.fileName,
+            sourceHash: record.sourceHash,
+            fileName,
+            reportFileName,
+            createdAt: createdAt.toISOString(),
+            reportJson,
+          };
+          try {
+            await repository.putDeliveryReport(persistentReport);
+            setRecentDeliveryReports((current) =>
+              [savedReport, ...current.filter((item) => item.key !== savedReport.key)].slice(
+                0,
+                MASTERING_SESSION_DELIVERY_REPORT_LIMIT,
+              ),
+            );
+          } catch (reason) {
+            reportStorageWarning ||= masteringSessionErrorMessage(
+              reason,
+              "Could not save a batch delivery report locally.",
+            );
+          }
+
+          const deliveryMetrics = checked.decode.status === "measured" ? checked.decode.measurements : undefined;
+          try {
+            const updatedAlbums = await albumRepository.updateSessionDeliverySummary(record.id, {
+              sourceHash: record.sourceHash,
+              configRevision: record.configRevision,
+              generatedAt: createdAt.toISOString(),
+              fileName,
+              format: checked.format,
+              decodeStatus: checked.decode.status,
+              lufsIntegrated: deliveryMetrics?.lufsIntegrated ?? null,
+              truePeakDb: deliveryMetrics?.truePeakDb ?? null,
+            });
+            if (updatedAlbums > 0) setAlbumDeliveryRefreshToken((current) => current + 1);
+          } catch (reason) {
+            albumStorageWarning ||= masteringSessionErrorMessage(reason, "Could not update album delivery metrics.");
+          }
+          setProgress(`Completed ${completed} of ${expectedAlbum.tracks.length} · ${fileName}`);
+        }
+
+        const normalizationNote =
+          options.normalizeToLufs === null
+            ? ""
+            : ` Gain-only target ${options.normalizeToLufs.toFixed(1)} LUFS-I · ${finalPeakCeilingExceedances} decoded file(s) measured above the ${options.truePeakCeilingDbtp.toFixed(1)} dBTP ceiling${tracksWithoutLoudnessMeasure > 0 ? ` · loudness unavailable for ${tracksWithoutLoudnessMeasure} track(s)` : ""}.`;
+        setNotice(
+          `Exported and checked ${completed} ${formatLabel} tracks with JSON reports.${normalizationNote}${
+            reportStorageWarning ? ` Some local report history could not be saved: ${reportStorageWarning}` : ""
+          }${albumStorageWarning ? ` Album consistency metrics may be incomplete: ${albumStorageWarning}` : ""}`,
+        );
+      } catch (reason) {
+        const name = typeof reason === "object" && reason !== null && "name" in reason ? String(reason.name) : "";
+        const message = reason instanceof Error ? reason.message : String(reason);
+        if (controller.signal.aborted || name === "AbortError") {
+          setNotice(
+            `Album export cancelled after ${completed} of ${expectedAlbum.tracks.length} tracks. Completed downloads are kept.`,
+          );
+        } else if (name === "StaleMasteringAlbumError") {
+          setNotice(`Album export stopped after ${completed} of ${expectedAlbum.tracks.length} tracks. ${message}`);
+        } else if (completed > 0) {
+          setError(`Album export stopped after ${completed} of ${expectedAlbum.tracks.length} tracks. ${message}`);
+        } else {
+          setError(masteringSessionErrorMessage(reason, "Could not export this album sequence."));
+        }
+      } finally {
+        if (operation.current === controller) operation.current = null;
+        setBusy("");
+        setProgress("");
+        releaseMasteringWork();
+      }
+    },
+    [
+      albumRepository,
+      busy,
+      comparison,
+      reference,
+      rendered,
+      repository,
+      services,
+      sessions,
+      source,
+      stopSessionPreview,
+    ],
+  );
+
   const exportDelivery = useCallback(async () => {
     if (!session || !draft || !rendered || !renderCurrent || blockNewWorkRef.current) return;
     if (mp3RateUnsupported) {
@@ -1896,6 +2660,25 @@ export function MasteringFileSessionPanel({
         setReportHistoryWarning(reportPersistenceError);
       }
       if (selectionEpoch.current !== epoch) return;
+      const deliveryMetrics = checked.decode.status === "measured" ? checked.decode.measurements : undefined;
+      const albumDeliverySummary: MasteringAlbumDeliverySummary = {
+        sourceHash: session.sourceHash,
+        configRevision: rendered.configRevision,
+        generatedAt: reportCreatedAt.toISOString(),
+        fileName,
+        format: checked.format,
+        decodeStatus: checked.decode.status,
+        lufsIntegrated: deliveryMetrics?.lufsIntegrated ?? null,
+        truePeakDb: deliveryMetrics?.truePeakDb ?? null,
+      };
+      let albumSummaryError = "";
+      try {
+        const updatedAlbums = await albumRepository.updateSessionDeliverySummary(session.id, albumDeliverySummary);
+        if (updatedAlbums > 0) setAlbumDeliveryRefreshToken((current) => current + 1);
+      } catch (reason) {
+        albumSummaryError = masteringSessionErrorMessage(reason, "Could not update album delivery metrics.");
+      }
+      if (selectionEpoch.current !== epoch) return;
       const versionSaveNote = versionSaveError ? ` Revision was not saved locally: ${versionSaveError}` : "";
       const inspectionNote =
         checked.decode.status === "measured"
@@ -1908,7 +2691,10 @@ export function MasteringFileSessionPanel({
       const reportHistoryNote = reportPersistenceError
         ? ` The audio was delivered, but local report history could not be saved: ${reportPersistenceError}`
         : " The checked JSON report was saved with this local session.";
-      setNotice(`Exported ${fileName} · ${inspectionNote}${versionSaveNote}${reportHistoryNote}`);
+      const albumSummaryNote = albumSummaryError
+        ? ` Album consistency metrics were not cached: ${albumSummaryError}`
+        : "";
+      setNotice(`Exported ${fileName} · ${inspectionNote}${versionSaveNote}${reportHistoryNote}${albumSummaryNote}`);
     } catch (reason) {
       if (selectionEpoch.current !== epoch) return;
       if (controller.signal.aborted || (reason instanceof DOMException && reason.name === "AbortError")) {
@@ -1937,6 +2723,7 @@ export function MasteringFileSessionPanel({
     renderCurrent,
     renderedPcmBytes,
     rendered,
+    albumRepository,
     repository,
     session,
     stopSessionPreview,
@@ -2070,6 +2857,19 @@ export function MasteringFileSessionPanel({
           </button>
         )}
       </div>
+
+      <MasteringAlbumPanel
+        sessions={sessions}
+        activeSessionId={session?.id ?? null}
+        deliveryRefreshToken={albumDeliveryRefreshToken}
+        auditioningAlbumId={auditioningAlbumId}
+        auditionStatus={albumAuditionStatus}
+        externallyBusy={Boolean(busy)}
+        onBatchExport={(album, options) => void exportAlbumBatch(album, options)}
+        onAudition={(album, normalization) => void auditionAlbum(album, normalization)}
+        onStopAudition={stopAlbumAudition}
+        onOpenSession={(id) => void loadSession(id)}
+      />
 
       {session && draft && (
         <>
@@ -3090,6 +3890,15 @@ export function MasteringFileSessionPanel({
             </div>
           )}
         </div>
+      )}
+      {rendered && renderCurrent && session && (
+        <MasteringCodecPreview
+          key={`${session.id}:${rendered.configRevision}:${rendered.sampleRate}:${rendered.renderedAt}`}
+          sourceBuffer={rendered.buffer}
+          sourceKey={`${session.id}:${rendered.configRevision}:${rendered.sampleRate}:${rendered.renderedAt}`}
+          disabled={Boolean(busy) || dirty || blockNewWork}
+          residentWorkingSetBytes={estimatedBytes}
+        />
       )}
       {(recentDeliveryReports.length > 0 || reportHistoryWarning) && (
         <div

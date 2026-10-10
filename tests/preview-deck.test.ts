@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { PreviewDeck } from "../src/audio-engine/previewDeck";
@@ -207,6 +207,44 @@ describe("PreviewDeck (Wave 4c)", () => {
     deck.previewAsset("factory.gone");
     expect(missed).toEqual(["factory.gone"]);
     expect(deck.voiceCounts().samples).toBe(0);
+  });
+
+  it("limits a master audition to the requested offset and duration", () => {
+    const fake = makeCompareContext();
+    const deck = new PreviewDeck(makeDeps({ ctx: () => fake.ctx as unknown as BaseAudioContext }));
+
+    deck.previewMasterCompare({ duration: 10 } as AudioBuffer, 0.8, undefined, 2, false, 3);
+
+    expect(fake.sources[0]?.startArgs).toEqual([5.005, 2, 3]);
+  });
+
+  it("clamps a bounded master audition to the source buffer tail", () => {
+    const fake = makeCompareContext();
+    const deck = new PreviewDeck(makeDeps({ ctx: () => fake.ctx as unknown as BaseAudioContext }));
+
+    deck.previewMasterCompare({ duration: 10 } as AudioBuffer, 0.8, undefined, 8, false, 5);
+
+    expect(fake.sources[0]?.startArgs).toEqual([5.005, 8, 2]);
+  });
+
+  it("schedules an already mastered buffer on the requested clock and lets Stop cancel it", () => {
+    const fake = makeCompareContext();
+    const ended = vi.fn();
+    const deck = new PreviewDeck(makeDeps({ ctx: () => fake.ctx as unknown as BaseAudioContext }));
+
+    const actualStart = deck.previewMasterCompareAt({ duration: 12 } as AudioBuffer, 7.25, ended, 1);
+
+    expect(actualStart).toBe(7.25);
+    expect(fake.sources[0]?.startArgs).toEqual([7.25]);
+    expect(fake.sources[0]?.gainConnectedTo).toBe(fake.gains[0]);
+    expect(fake.gains[0]?.gain.value).toBe(1);
+    expect(deck.voiceCounts().samples).toBe(1);
+
+    deck.stopPreview();
+
+    expect(fake.sources[0]?.stopped).toBe(true);
+    expect(deck.voiceCounts().samples).toBe(0);
+    expect(ended).not.toHaveBeenCalled();
   });
 
   it("stopPreview de-clicks: cancel + setTargetAtTime + stop after 4 tails", () => {

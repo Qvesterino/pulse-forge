@@ -65,7 +65,7 @@ export function MasterProcessingControls({
           <Slider
             compact
             label="CEIL"
-            hint="Physical limiter ceiling in dBFS. The look-ahead worklet keeps a 0.2 dB reserve below it; the native fallback cannot guarantee inter-sample peaks and is marked Degraded. Delivery profile true-peak targets are checked separately."
+            hint="Requested output ceiling in dBFS. The look-ahead worklet uses a 0.2 dB reserve, then applies an output-side true-peak correction with 32 samples of added latency. Confirm exported dBTP in the delivery report. The native fallback cannot guarantee inter-sample peaks and is marked Degraded."
             value={master.ceilingDb}
             min={-12}
             max={0}
@@ -100,6 +100,37 @@ export function MasterProcessingControls({
               onCommit={(tiltDb) => commit({ tiltDb: Math.round(tiltDb * 2) / 2 })}
             />
           )}
+        </div>
+      )}
+
+      {advanced && (
+        <div className="master-core-control-bank">
+          <Slider
+            compact
+            label="LOOK"
+            hint="How far ahead the master limiter sees peaks. More look-ahead can catch fast transients but softens attacks and delays the whole master output; all tracks share this stage."
+            value={master.limiterLookaheadMs ?? 5}
+            min={1}
+            max={20}
+            defaultValue={5}
+            format={(value) => `${value.toFixed(1)} ms`}
+            taper="log"
+            disabled={disabled}
+            onCommit={(limiterLookaheadMs) => commit({ limiterLookaheadMs: Math.round(limiterLookaheadMs * 10) / 10 })}
+          />
+          <Slider
+            compact
+            label="REL"
+            hint="Base recovery time after gain reduction; deeper limiting recovers more slowly. Faster recovery can increase loudness but may pump, while slower recovery can hold gain reduction longer. Compare at matched loudness."
+            value={master.limiterReleaseMs ?? 120}
+            min={10}
+            max={2000}
+            defaultValue={120}
+            format={(value) => `${Math.round(value)} ms`}
+            taper="log"
+            disabled={disabled}
+            onCommit={(limiterReleaseMs) => commit({ limiterReleaseMs: Math.round(limiterReleaseMs) })}
+          />
         </div>
       )}
 

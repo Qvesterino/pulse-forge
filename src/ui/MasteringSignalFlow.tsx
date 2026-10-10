@@ -176,7 +176,7 @@ function stageDetails(
       detail: degradedStages.limiter
         ? `Fallback: ${degradedStages.limiter}`
         : master.limiterEnabled
-          ? `On · ceiling ${master.ceilingDb.toFixed(1)} dBFS`
+          ? `On · requested ceiling ${master.ceilingDb.toFixed(1)} dBFS · output TP correction · +32 samples`
           : "Off",
       state: degradedStages.limiter ? "degraded" : master.limiterEnabled ? "active" : "bypassed",
     },

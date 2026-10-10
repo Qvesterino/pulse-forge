@@ -146,7 +146,7 @@ describe("X3 the X shortcut crossfades overlapping pairs", () => {
 
 describe("F1 fadeCurve storage + carry", () => {
   it("updateAudioClip stores only equal; normalize round-trips; schema is v16", () => {
-    expect(SCHEMA_VERSION).toBe(17);
+    expect(SCHEMA_VERSION).toBe(18);
     const { doc, a } = pairFixture();
     const store = new ProjectStore(doc);
     store.execute(updateAudioClip(store.doc, a, { fadeCurve: "equal" }));

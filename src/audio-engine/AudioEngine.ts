@@ -2285,8 +2285,20 @@ export class AudioEngine {
   }
 
   /** Audition an already mastered comparison render straight to the monitor output. */
-  previewMasterCompare(buffer: AudioBuffer, gainValue = 0.9, onEnded?: () => void, offsetSec = 0, mono = false): void {
-    this.previewDeck.previewMasterCompare(buffer, gainValue, onEnded, offsetSec, mono);
+  previewMasterCompare(
+    buffer: AudioBuffer,
+    gainValue = 0.9,
+    onEnded?: () => void,
+    offsetSec = 0,
+    mono = false,
+    durationSec?: number,
+  ): void {
+    this.previewDeck.previewMasterCompare(buffer, gainValue, onEnded, offsetSec, mono, durationSec);
+  }
+
+  /** Schedule an already rendered master directly to monitor output. Returns its actual start time. */
+  previewMasterCompareAt(buffer: AudioBuffer, when: number, onEnded?: () => void, gainValue = 0.9): number | null {
+    return this.previewDeck.previewMasterCompareAt(buffer, when, onEnded, gainValue);
   }
 
   previewMasterComparePair(

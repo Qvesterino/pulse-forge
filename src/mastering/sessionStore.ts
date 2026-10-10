@@ -135,9 +135,14 @@ function isMasteringSessionDeliveryReport(value: unknown): value is MasteringSes
   const source = sidecar.source;
   const delivery = sidecar.delivery;
   const render = sidecar.render;
-  const supportedSchema = sidecar.schemaVersion === 6 || sidecar.schemaVersion === 7;
+  const supportedSchema = sidecar.schemaVersion === 6 || sidecar.schemaVersion === 7 || sidecar.schemaVersion === 8;
   const hasValidRuntimeDiagnostics =
     sidecar.schemaVersion === 6 || (isObject(render) && isOfflineRenderRuntimeDiagnostics(render.runtimeDiagnostics));
+  const hasValidAlbumNormalization =
+    !isObject(delivery) ||
+    !Object.prototype.hasOwnProperty.call(delivery, "albumNormalization") ||
+    delivery.albumNormalization === null ||
+    isExternalAlbumNormalizationReport(delivery.albumNormalization);
   return (
     typeof value.id === "string" &&
     typeof value.sessionId === "string" &&
@@ -164,6 +169,7 @@ function isMasteringSessionDeliveryReport(value: unknown): value is MasteringSes
     sidecar.schema === "kyx.external-mastering-report" &&
     supportedSchema &&
     hasValidRuntimeDiagnostics &&
+    hasValidAlbumNormalization &&
     typeof sidecar.generatedAt === "string" &&
     Number.isFinite(Date.parse(sidecar.generatedAt)) &&
     sidecar.generatedAt === value.createdAt &&
@@ -200,6 +206,42 @@ function isOfflineRenderRuntimeDiagnostics(value: unknown): boolean {
       isBoundedString(stage.reason, 1000),
   );
   return effectsAreValid && stagesAreValid;
+}
+
+function isExternalAlbumNormalizationReport(value: unknown): boolean {
+  if (!isObject(value)) return false;
+  const nullableNumber = (candidate: unknown) =>
+    candidate === null || (typeof candidate === "number" && Number.isFinite(candidate));
+  return (
+    (value.status === "applied" ||
+      value.status === "loudness-unavailable" ||
+      value.status === "true-peak-unavailable") &&
+    typeof value.targetLufs === "number" &&
+    Number.isFinite(value.targetLufs) &&
+    value.targetLufs >= -24 &&
+    value.targetLufs <= -6 &&
+    typeof value.truePeakCeilingDbtp === "number" &&
+    Number.isFinite(value.truePeakCeilingDbtp) &&
+    value.truePeakCeilingDbtp >= -6 &&
+    value.truePeakCeilingDbtp <= 0 &&
+    typeof value.maximumGainDb === "number" &&
+    Number.isFinite(value.maximumGainDb) &&
+    value.maximumGainDb >= 0 &&
+    value.maximumGainDb <= 24 &&
+    nullableNumber(value.sourceLufs) &&
+    nullableNumber(value.sourceTruePeakDbtp) &&
+    nullableNumber(value.requestedGainDb) &&
+    typeof value.appliedGainDb === "number" &&
+    Number.isFinite(value.appliedGainDb) &&
+    value.appliedGainDb >= -200 &&
+    value.appliedGainDb <= 24 &&
+    typeof value.peakLimited === "boolean" &&
+    typeof value.maximumGainLimited === "boolean" &&
+    typeof value.targetReached === "boolean" &&
+    nullableNumber(value.postEncodeTruePeakDbtp) &&
+    (value.postEncodeCeilingExceeded === null || typeof value.postEncodeCeilingExceeded === "boolean") &&
+    (value.targetReached === null || typeof value.targetReached === "boolean")
+  );
 }
 
 function isBoundedString(value: unknown, maxLength: number): value is string {

@@ -49,7 +49,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 18;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -252,6 +252,8 @@ export function defaultMasterConfig(): MasterConfig {
     ceilingDb: -1,
     limiterEnabled: true,
     clipperEnabled: false,
+    limiterLookaheadMs: 5,
+    limiterReleaseMs: 120,
     tapeEnabled: false,
     tapeDrive: 0.35,
     msEnabled: false,
@@ -2143,6 +2145,14 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
     const dc = clampCeilingDb(m.ceilingDb);
     const dl = typeof m.limiterEnabled === "boolean" ? m.limiterEnabled : true;
     const dcl = typeof m.clipperEnabled === "boolean" ? m.clipperEnabled : false;
+    const limiterLookaheadMs =
+      typeof m.limiterLookaheadMs === "number" && Number.isFinite(m.limiterLookaheadMs)
+        ? Math.min(20, Math.max(1, m.limiterLookaheadMs))
+        : 5;
+    const limiterReleaseMs =
+      typeof m.limiterReleaseMs === "number" && Number.isFinite(m.limiterReleaseMs)
+        ? Math.min(2000, Math.max(10, m.limiterReleaseMs))
+        : 120;
     const tapeEnabled = typeof m.tapeEnabled === "boolean" ? m.tapeEnabled : false;
     const tapeDrive =
       typeof m.tapeDrive === "number" && Number.isFinite(m.tapeDrive) ? Math.min(1, Math.max(0, m.tapeDrive)) : 0.35;
@@ -2208,6 +2218,8 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
       dc !== m.ceilingDb ||
       dl !== m.limiterEnabled ||
       dcl !== m.clipperEnabled ||
+      limiterLookaheadMs !== m.limiterLookaheadMs ||
+      limiterReleaseMs !== m.limiterReleaseMs ||
       tapeEnabled !== m.tapeEnabled ||
       tapeDrive !== m.tapeDrive ||
       msEnabled !== m.msEnabled ||
@@ -2231,6 +2243,8 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
           ceilingDb: dc,
           limiterEnabled: dl,
           clipperEnabled: dcl,
+          limiterLookaheadMs,
+          limiterReleaseMs,
           tapeEnabled,
           tapeDrive,
           msEnabled,
@@ -2672,6 +2686,7 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // sine/cosine fades; absent = linear).
   // v17 adds the chord track (`Arrangement.chords` — whole-bar harmonic
   // skeleton events).
+  // v18 adds adjustable built-in master limiter look-ahead and release times.
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

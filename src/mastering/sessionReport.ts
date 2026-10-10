@@ -24,6 +24,23 @@ export interface ExternalMasteringReportInput {
   inspection: EncodedMasterInspection;
   exportedFileName: string;
   deliveryVerdict: DeliveryVerdict;
+  albumNormalization?: ExternalAlbumNormalizationReport | null;
+}
+
+export interface ExternalAlbumNormalizationReport {
+  status: "applied" | "loudness-unavailable" | "true-peak-unavailable";
+  targetLufs: number;
+  truePeakCeilingDbtp: number;
+  maximumGainDb: number;
+  sourceLufs: number | null;
+  sourceTruePeakDbtp: number | null;
+  requestedGainDb: number | null;
+  appliedGainDb: number;
+  peakLimited: boolean;
+  maximumGainLimited: boolean;
+  targetReached: boolean | null;
+  postEncodeTruePeakDbtp: number | null;
+  postEncodeCeilingExceeded: boolean | null;
 }
 
 export interface ExternalMasteringInputBaseline {
@@ -48,7 +65,7 @@ export function serializeExternalMasteringReport(
   return JSON.stringify(
     {
       schema: "kyx.external-mastering-report",
-      schemaVersion: 7,
+      schemaVersion: 8,
       generatedAt: generatedAt.toISOString(),
       application: {
         product: packageMetadata.productName,
@@ -125,6 +142,7 @@ export function serializeExternalMasteringReport(
         },
         measurementBasis: decoded ? "decoded-exported-file" : "pre-encode-render-pcm-only",
         verdict: input.deliveryVerdict,
+        albumNormalization: input.albumNormalization ?? null,
       },
     },
     null,

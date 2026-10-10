@@ -66,6 +66,14 @@ import {
 } from "../mastering/profiles";
 import { masteringVersionSuffix } from "../mastering/deliveryFilename";
 import { isMp3SampleRateSupported } from "../export/mp3-capabilities";
+import {
+  COMPRESSED_AUDIO_FORMATS,
+  compressedAudioUnavailableReason,
+  findCompressedAudioFormat,
+  supportedCompressedAudioFormats,
+  type CompressedAudioFormat,
+  type CompressedAudioFormatId,
+} from "../export/compressed-audio-capabilities";
 import { inspectEncodedMaster, type EncodedMasterInspection } from "../mastering/encodedInspection";
 import {
   createMasterRenderReport,
@@ -80,6 +88,7 @@ import { IntegerPcmDeliveryError } from "../export/quantize";
 import { MasteringFingerprint } from "./MasteringFingerprint";
 import { MasteringRuntimeStatus } from "./MasteringRuntimeStatus";
 import { MasterProfileFileCheck, MasterProfileFileGuidance } from "./MasterProfileFileGuidance";
+import { MasteringCodecPreview } from "./MasteringCodecPreview";
 
 type Status =
   | { kind: "idle" }
@@ -105,8 +114,21 @@ export interface MasteringWorkspaceState {
   analyze: () => void;
 }
 
-type MasterFormat = Exclude<MasterFileFormat, "mp3"> | "mp3-192" | "mp3-320" | "video";
-type ProfileExportRecommendation = { format: Exclude<MasterFormat, "video">; bitDepth?: WavBitDepth };
+type MasterFormat = Exclude<MasterFileFormat, "mp3"> | "mp3-192" | "mp3-320" | "video" | CompressedAudioFormatId;
+type ProfileExportRecommendation = {
+  format: Exclude<MasterFormat, "video" | CompressedAudioFormatId>;
+  bitDepth?: WavBitDepth;
+};
+
+/**
+ * Lossy web/preview formats (OGG + M4A). They bypass the delivery-profile
+ * report on purpose: `MasterFileFormat` and the profile verdicts describe what a
+ * *master* must look like for Apple/streaming/vinyl, and an OGG preview must
+ * never appear to satisfy (or violate) such a checklist.
+ */
+function isShareFormat(format: MasterFormat): format is CompressedAudioFormatId {
+  return format === "ogg-opus" || format === "m4a-aac";
+}
 
 function profileExportRecommendation(profile: MasterProfile): ProfileExportRecommendation | null {
   const preferred = masterProfileExportSettings(profile.id)?.preferred;
@@ -231,6 +253,32 @@ export function ExportPanel({
     else setStandardBitDepth(depth);
   };
   const [format, setFormat] = useState<MasterFormat>("wav");
+  /**
+   * OGG/M4A encode through WebCodecs, which is absent in Firefox and pre-26
+   * Safari. Probed once per mount; `null` means "still checking", which is why
+   * the menu renders those entries disabled-but-visible rather than guessing.
+   */
+  const [shareFormats, setShareFormats] = useState<CompressedAudioFormat[] | null>(null);
+  useEffect(() => {
+    let active = true;
+    void supportedCompressedAudioFormats().then(
+      (formats) => {
+        if (active) setShareFormats(formats);
+      },
+      () => {
+        if (active) setShareFormats([]);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, []);
+  // `masteringMode` is a prop and can flip while the panel stays mounted. Share
+  // formats are hidden there, so a format selected before the flip would leave
+  // the <select> pointing at an option that no longer renders.
+  useEffect(() => {
+    if (masteringMode && isShareFormat(format)) setFormat("wav");
+  }, [masteringMode, format]);
   // Global Live/Export quality switch — defaults to STUDIO: the export has
   // no realtime CPU budget, so PRISM's 8× saturation oversampling and VØID's
   // render tier (default-tier instances only; explicit eco/high/render
@@ -241,6 +289,9 @@ export function ExportPanel({
   const [clipSeconds, setClipSeconds] = useState(15);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [masterReport, setMasterReport] = useState<MasterRenderReport | null>(null);
+  const [masteringPreviewRender, setMasteringPreviewRender] = useState<{ buffer: AudioBuffer; runId: string } | null>(
+    null,
+  );
   const [masterVersion, setMasterVersion] = useState("");
   const [masterDeliveryFileName, setMasterDeliveryFileName] = useState<string | null>(null);
 
@@ -252,6 +303,7 @@ export function ExportPanel({
   const beginExport = (): AbortSignal => {
     cancelRequestedByUserRef.current = false;
     setMasterReport(null);
+    setMasteringPreviewRender(null);
     setMasterDeliveryFileName(null);
     const controller = new AbortController();
     abortRef.current = controller;
@@ -300,6 +352,7 @@ export function ExportPanel({
   const encodedSettingsStale = Boolean(
     masterReport?.encodedDelivery &&
     (format === "video" ||
+      isShareFormat(format) ||
       masterReport.encodedDelivery.format !== (format.startsWith("mp3") ? "mp3" : format === "flac" ? "flac" : "wav") ||
       ((masterReport.encodedDelivery.format === "wav" || masterReport.encodedDelivery.format === "flac") &&
         masterReport.encodedDelivery.file.bitDepth !== bitDepth) ||
@@ -317,7 +370,11 @@ export function ExportPanel({
       masterReport.quality !== quality),
   );
   const reportStale = Boolean(masteringMode && masterReport && (masterRenderStale || encodedSettingsStale));
-  const integerMasterDelivery = format.startsWith("mp3") || format === "flac" || (format === "wav" && bitDepth !== 32);
+  useEffect(() => {
+    if (!masteringMode || !masterReport || masterRenderStale) setMasteringPreviewRender(null);
+  }, [masteringMode, masterReport, masterRenderStale]);
+  const integerMasterDelivery =
+    format.startsWith("mp3") || format === "flac" || isShareFormat(format) || (format === "wav" && bitDepth !== 32);
   const integerMasterPeakOverRange = Boolean(
     masteringMode && masterReport && !masterRenderStale && integerMasterDelivery && masterReport.measurements.peak > 1,
   );
@@ -434,29 +491,29 @@ export function ExportPanel({
       });
       assertMasterSourceCurrent();
       const { measurements: summary, mixHealth: mixHealthReport, verdict } = analysis;
-      setMasterReport(
-        createMasterRenderReport({
-          projectId: doc.id,
-          projectName: doc.name,
-          projectRevisionId: revisionId ?? projectRevisionAtStart,
-          sampleBankRevision: sampleBankRevisionAtStart,
-          scope: mode,
-          sampleRate: buffer.sampleRate,
-          quality,
-          durationSeconds: renderedDurationSeconds,
-          sampleRange: { startFrame: 0, endFrame: buffer.length },
-          profile,
-          measurements: summary,
-          loudnessTimeline: analysis.loudnessTimeline,
-          mixHealth: mixHealthReport,
-          verdict,
-          renderDiagnostics,
-          masterConfig: doc.master,
-        }),
-      );
+      const renderReport = createMasterRenderReport({
+        projectId: doc.id,
+        projectName: doc.name,
+        projectRevisionId: revisionId ?? projectRevisionAtStart,
+        sampleBankRevision: sampleBankRevisionAtStart,
+        scope: mode,
+        sampleRate: buffer.sampleRate,
+        quality,
+        durationSeconds: renderedDurationSeconds,
+        sampleRange: { startFrame: 0, endFrame: buffer.length },
+        profile,
+        measurements: summary,
+        loudnessTimeline: analysis.loudnessTimeline,
+        mixHealth: mixHealthReport,
+        verdict,
+        renderDiagnostics,
+        masterConfig: doc.master,
+      });
+      setMasterReport(renderReport);
 
       if (!download) {
         assertMasterSourceCurrent();
+        setMasteringPreviewRender({ buffer, runId: renderReport.runId });
         setStatus({
           kind: "done",
           label: `Analysis complete (${mode === "song" ? "full song" : "active pattern"}, ${buffer.duration.toFixed(1)}s, ${sampleRate} Hz, ${quality === "studio" ? "Studio HQ" : "Live"})`,
@@ -515,6 +572,30 @@ export function ExportPanel({
         setStatus({
           kind: "done",
           label: `MP3 exported (${renderedDurationSeconds.toFixed(1)}s, ${kbps} kbps, ${(blob.size / 1e6).toFixed(2)} MB) as ${fileName} — ${encodedDelivery.decode.status === "measured" ? "decoded file measured" : "header checked; audio not measured"}`,
+          summary,
+        });
+        return;
+      }
+
+      if (isShareFormat(format)) {
+        const shareFormat = findCompressedAudioFormat(format);
+        // Mediabunny + WebCodecs stay out of the eager bundle until a share
+        // export is actually requested (same discipline as the FLAC encoder).
+        const { encodeCompressedAudio } = await import("../export/compressed-audio");
+        const blob = await encodeCompressedAudio(buffer, {
+          target: format,
+          signal,
+          onProgress: (f) =>
+            setStatus({ kind: "busy", label: `Encoding ${shareFormat.label}… ${Math.round(f * 100)}%` }),
+        });
+        buffer = null;
+        assertMasterSourceCurrent();
+        const fileName = `${baseName}-share${versionSuffix}.${shareFormat.extension}`;
+        downloadBlob(blob, fileName);
+        setStatus({
+          kind: "done",
+          // No delivery-profile verdict is claimed here on purpose — see isShareFormat.
+          label: `${shareFormat.label} exported (${renderedDurationSeconds.toFixed(1)}s, ${sampleRate} Hz, ${(blob.size / 1e6).toFixed(2)} MB) as ${fileName}`,
           summary,
         });
         return;
@@ -1136,13 +1217,34 @@ export function ExportPanel({
               if (nextFormat === "flac" && bitDepth === 32) setBitDepth(24);
             }}
           >
-            <option value="wav">WAV (studio)</option>
-            <option value="flac">FLAC (lossless)</option>
-            <option value="mp3-192">MP3 192 (share)</option>
-            <option value="mp3-320">MP3 320 (hq share)</option>
-            <option value="video" disabled={!videoSupported || masteringMode} hidden={masteringMode}>
-              VIDEO {videoSupported ? "(Reels/TikTok)" : "(unsupported)"}
-            </option>
+            <optgroup label="Master · lossless">
+              <option value="wav">WAV (studio)</option>
+              <option value="flac">FLAC (lossless)</option>
+            </optgroup>
+            <optgroup label="Share / web · lossy">
+              <option value="mp3-192">MP3 192 (share)</option>
+              <option value="mp3-320">MP3 320 (hq share)</option>
+              {COMPRESSED_AUDIO_FORMATS.map((candidate) => {
+                const available = shareFormats?.some((offered) => offered.id === candidate.id) === true;
+                const pending = shareFormats === null;
+                return (
+                  <option
+                    key={candidate.id}
+                    value={candidate.id}
+                    disabled={!available}
+                    hidden={masteringMode}
+                    title={compressedAudioUnavailableReason(candidate)}
+                  >
+                    {candidate.label} {pending ? "(checking…)" : available ? "" : "(unsupported)"}
+                  </option>
+                );
+              })}
+            </optgroup>
+            <optgroup label="Social">
+              <option value="video" disabled={!videoSupported || masteringMode} hidden={masteringMode}>
+                VIDEO {videoSupported ? "(Reels/TikTok)" : "(unsupported)"}
+              </option>
+            </optgroup>
           </select>
         </label>
         {!masteringMode && (
@@ -1506,6 +1608,18 @@ export function ExportPanel({
           )}
         </>
       )}
+      {masteringMode &&
+        status.kind === "done" &&
+        masterReport &&
+        masteringPreviewRender?.runId === masterReport.runId &&
+        !masterRenderStale && (
+          <MasteringCodecPreview
+            key={masterReport.runId}
+            sourceBuffer={masteringPreviewRender.buffer}
+            sourceKey={masterReport.runId}
+            disabled={busy || blockMasteringWork}
+          />
+        )}
       {status.kind === "done" && deliveredMixHealth && (
         <MixHealthLine health={deliveredMixHealth} stage={mixHealthStage} />
       )}

@@ -7,20 +7,13 @@ import { useEffect, useRef, useState } from "react";
  * Preferences persist in localStorage (per-user UI prefs, not project data).
  */
 
-export const PANEL_KEYS = [
-  "mixer",
-  "devices",
-  "tsar",
-  "arr",
-  "mod",
-  "exp",
-  "master",
-  "midi",
-  "dice",
-  "intent",
-  "reference",
-] as const;
-export type BottomPanel = (typeof PANEL_KEYS)[number] | "fx" | "plugin";
+// The panel registry moved to shared/layout-data.ts (ADR 0036) so the layout
+// state contract and the dock chrome cannot disagree about which panels exist.
+// It is re-exported here unchanged — every existing importer of
+// `ui/dockLayout` keeps working.
+import { PANEL_KEYS, type BottomPanel } from "../shared/layout-data";
+export { PANEL_KEYS };
+export type { BottomPanel };
 
 export interface DockState {
   /** Dock height in px (applied as --dock-height). */

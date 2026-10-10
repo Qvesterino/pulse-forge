@@ -85,6 +85,37 @@ describe("schema migration contract", () => {
     expect(masterChain).toContain("this.applyMasterConfig(this.deps.doc()?.master ?? defaultMasterConfig())");
   });
 
+  it("backfills the built-in limiter timing when migrating an older master config", async () => {
+    const schema = await import("../src/project-model/schema");
+    const legacyMaster = { ...schema.defaultMasterConfig() };
+    delete legacyMaster.limiterLookaheadMs;
+    delete legacyMaster.limiterReleaseMs;
+    const oldProject = {
+      schemaVersion: schema.SCHEMA_VERSION - 1,
+      id: "legacy-limiter-timing",
+      name: "Legacy Limiter Timing",
+      bpm: 120,
+      timeSignature: { numerator: 4, denominator: 4 },
+      tracks: [],
+      patterns: [],
+      scenes: [],
+      arrangement: { clips: [], transitions: [] },
+      markers: [],
+      master: legacyMaster,
+    };
+
+    const migrated = schema.migrateProject(oldProject as never);
+    expect(migrated.master?.limiterLookaheadMs).toBe(5);
+    expect(migrated.master?.limiterReleaseMs).toBe(120);
+
+    const clamped = schema.normalizeProject({
+      ...migrated,
+      master: { ...migrated.master!, limiterLookaheadMs: 100, limiterReleaseMs: 2 },
+    });
+    expect(clamped.master?.limiterLookaheadMs).toBe(20);
+    expect(clamped.master?.limiterReleaseMs).toBe(10);
+  });
+
   it("migrateProject throws for FUTURE versions (newer than supported)", async () => {
     const schema = await import("../src/project-model/schema");
     const version = schema.SCHEMA_VERSION;

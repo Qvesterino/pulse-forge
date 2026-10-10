@@ -1,13 +1,15 @@
 /**
  * Master-safe quantization for integer PCM formats (16/24-bit WAV and FLAC,
- * plus 16-bit MP3).
+ * plus 16-bit MP3 input).
  *
  * 1. Legacy exports can apply a soft-knee clip: content below ≈ −0.45 dBFS
  *    passes untouched; hotter samples are rounded off with a tanh knee. Master
  *    delivery can instead reject over-range samples and preserve in-range PCM.
- * 2. TPDF dither at ±1 LSB: two independent uniform randoms per sample
+ * 2. TPDF dither at ±1 LSB for PCM delivery: two independent uniform randoms per sample
  *    decorrelate the quantization error, so quiet passages and reverb tails
  *    fade into level-dependent noise instead of digital silence.
+ *    Lossy MP3 input defaults to undithered rounding; dither is configurable
+ *    for callers that need to reproduce a legacy encode.
  *
  * The PRNG is seeded, so identical renders produce byte-identical files.
  */
@@ -69,9 +71,10 @@ export function quantizeInt16Sample(
   x: number,
   rand: () => number,
   overflowPolicy: IntegerOverflowPolicy = "soft-knee",
+  ditherEnabled = true,
 ): number {
   if (overflowPolicy === "reject") assertIntegerPcmRange(x);
-  const dither = rand() + rand() - 1; // TPDF: triangular, ±1 LSB peak
+  const dither = ditherEnabled ? rand() + rand() - 1 : 0; // TPDF: triangular, ±1 LSB peak
   const input = overflowPolicy === "soft-knee" ? softClipSample(x) : x;
   const v = Math.round(input * 0x8000 + dither);
   return Math.max(-0x8000, Math.min(0x7fff, v));

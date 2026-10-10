@@ -650,6 +650,62 @@ silently-absent coverage.
 
 ---
 
+## Bundle budget: the responsiveness number is not the one we were watching
+
+### What was already there
+
+The `studio boot path` gate — `BOOT_PATH_BUDGET_KB`, a BFS over the **static**
+import closure of the `App-` chunk — already existed. No new gate was written.
+What was missing was evidence of whether it could fire, and whether its number
+still meant anything.
+
+### Falsification
+
+Dropping the budget to 2000 produced `FAIL — studio boot path over budget:
+2017 > 2000 KB` with exit 1. The line is live, not decoration. Restored after.
+
+### The measurement that settles the 5 MB question
+
+| Metric               | 2026-10-04 | 2026-10-10  | Δ over five days of waves |
+| -------------------- | ---------- | ----------- | ------------------------- |
+| DAW **sum**          | 3778 KB    | **4975 KB** | **+1197 KB** (+32 %)      |
+| **Studio boot path** | 2123 KB    | **2017 KB** | **−106 KB** (−5 %)        |
+
+The waves landed in **lazy chunks**. The sum grew by a third while the payload a
+waiting user actually parses and evaluates got smaller. This is the empirical
+version of the anchor-diet note in the budget script, and it is why the 5000 cap
+can be loose without costing startup: a rising total is **not** a user getting
+slower.
+
+### Tightened: 2400 → 2200
+
+At 2400 the guard held 383 KB (19 %) of dead slack against a number trending
+**down**. A guard that cannot fire protects nothing. 2200 is +9 % headroom.
+
+### The diet, and why it is not one import
+
+The closure is 21 chunks; four are 77 % of it:
+
+| KB    | chunk                |
+| ----- | -------------------- |
+| 570.6 | `App-`               |
+| 355.7 | `curated-layer-`     |
+| 284.2 | `index-` (shared)    |
+| 198.0 | `preference-ledger-` |
+
+`curated-layer` and `preference-ledger` are **not** single careless imports —
+~58 chunks statically reach each, so Rollup hoisted them as shared chunks. They
+leave the boot path only by removing the underlying imports across callers, not
+by moving one file behind a dynamic import. Anyone promising a 300 KB quick win
+here is promising the wrong shape of work.
+
+A caveat that held on this build and is worth re-checking: the walker reads only
+the first 8000 characters of each chunk for static edges. An audit found **zero**
+edges beyond that prologue here, so no closure was silently truncated — but that
+is a property of this build, not a guarantee.
+
+---
+
 ## Gates
 
 | Gate                                                              | Result                                                                                                                           |

@@ -451,9 +451,11 @@ export function Slider({
         // click-does-not-focus policy.
         data-allow-focus=""
         aria-label={label}
+        aria-description={hint || undefined}
         aria-valuemin={min}
         aria-valuemax={max}
         aria-valuenow={shown}
+        aria-valuetext={format ? format(shown) : undefined}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}

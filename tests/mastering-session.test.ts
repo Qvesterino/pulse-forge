@@ -2,10 +2,13 @@ import "fake-indexeddb/auto";
 import { createHash } from "node:crypto";
 import { Blob as NodeBlob } from "node:buffer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { fingerprintEncodedMasterAsync } from "../src/mastering/fingerprintClient";
 import { IncrementalSha256 } from "../src/mastering/sha256";
 import { MasterAnalysisAccumulator } from "../src/mastering/analysis";
 import { analyzeMasterPcmStreamAsync } from "../src/mastering/analysisClient";
+import { applyMasteringAlbumGainInPlace, planMasteringAlbumGainAdjustment } from "../src/mastering/albumNormalization";
 import { MASTER_PROFILES } from "../src/mastering/profiles";
 
 type FlacDecoderMock = {
@@ -76,6 +79,20 @@ import {
 } from "../src/mastering/sessionRender";
 import { MASTERING_RENDER_SAMPLE_RATES } from "../src/mastering/sampleRates";
 import { decodeFlacAudioBuffer } from "../src/mastering/flacDecode";
+import {
+  addMasteringAlbumTrack,
+  createMasteringAlbum,
+  estimateMasteringAlbumDuration,
+  MasteringAlbumRepository,
+  moveMasteringAlbumTrack,
+  summarizeMasteringAlbumDelivery,
+  setMasteringAlbumGap,
+  updateMasteringAlbumTrackDelivery,
+  validateMasteringAlbum,
+  type MasteringAlbumDeliverySummary,
+} from "../src/mastering/albumStore";
+import { MasteringAlbumPanel } from "../src/ui/MasteringAlbumPanel";
+import type { MasteringSessionSummary } from "../src/mastering/sessionStore";
 import type { SampleBank } from "../src/sample-library/factory";
 import { testDoc } from "./fixtures/doc";
 
@@ -98,6 +115,28 @@ function createTestMasteringSession(id: string) {
     masterConfig: testDoc().master,
     createdAt: now,
   });
+}
+
+function testAlbumDeliverySummary(
+  overrides: Partial<MasteringAlbumDeliverySummary> = {},
+): MasteringAlbumDeliverySummary {
+  return {
+    sourceHash: "a".repeat(64),
+    configRevision: 0,
+    generatedAt: "2026-10-10T12:00:00.000Z",
+    fileName: "mastered.wav",
+    format: "wav",
+    decodeStatus: "measured",
+    lufsIntegrated: -14,
+    truePeakDb: -1,
+    ...overrides,
+  };
+}
+
+function createTestMasteringSummary(id: string): MasteringSessionSummary {
+  const { source, ...summary } = createTestMasteringSession(id);
+  void source;
+  return summary;
 }
 
 async function seedVersionOneMasteringDatabase(): Promise<void> {
@@ -195,6 +234,61 @@ describe("external mastering session persistence", () => {
     }
   });
 
+  it("stores bounded schema-v8 gain-normalization metadata in checked delivery reports", async () => {
+    const repository = new MasteringSessionRepository();
+    const session = createTestMasteringSession(`gain-report-${Date.now()}`);
+    const fileName = "gain-report-mastered.wav";
+    const reportFileName = fileName.replace(/\.wav$/i, "-report.json");
+    const createdAt = new Date().toISOString();
+    const albumNormalization = {
+      status: "applied",
+      targetLufs: -14,
+      truePeakCeilingDbtp: -1.5,
+      maximumGainDb: 12,
+      sourceLufs: -18,
+      sourceTruePeakDbtp: -8,
+      requestedGainDb: 4,
+      appliedGainDb: 4,
+      peakLimited: false,
+      maximumGainLimited: false,
+      targetReached: true,
+      postEncodeTruePeakDbtp: -4,
+      postEncodeCeilingExceeded: false,
+    };
+    const reportJson = JSON.stringify({
+      schema: "kyx.external-mastering-report",
+      schemaVersion: 8,
+      generatedAt: createdAt,
+      session: { id: session.id, revision: session.configRevision },
+      source: { fileName: session.fileName, sha256: session.sourceHash },
+      render: { runtimeDiagnostics: { degradedEffects: [], degradedMasterStages: [] } },
+      delivery: { fileName, albumNormalization },
+    });
+    try {
+      await repository.put(session);
+      const report = {
+        id: `${session.id}:${fileName}`,
+        sessionId: session.id,
+        sourceFileName: session.fileName,
+        sourceHash: session.sourceHash,
+        fileName,
+        reportFileName,
+        createdAt,
+        reportJson,
+      };
+      await repository.putDeliveryReport(report);
+      expect(await repository.listRecentDeliveryReports()).toEqual([report]);
+
+      const invalidSidecar = JSON.parse(reportJson);
+      invalidSidecar.delivery.albumNormalization.status = "unknown";
+      await expect(
+        repository.putDeliveryReport({ ...report, reportJson: JSON.stringify(invalidSidecar) }),
+      ).rejects.toThrow(/invalid, oversized or uses an unsupported schema/);
+    } finally {
+      await repository.delete(session.id);
+    }
+  });
+
   it("persists each reference in a separate session store and deletes it with its session", async () => {
     const repository = new MasteringSessionRepository();
     const id = `reference-session-${Date.now()}`;
@@ -272,6 +366,283 @@ describe("external mastering session persistence", () => {
       });
     }
     await repository.delete(id);
+  });
+});
+
+describe("external mastering album sequences", () => {
+  it("applies one uniform gain to the rendered PCM without dynamics processing", () => {
+    const left = new Float32Array([0.5, -0.25]);
+    const right = new Float32Array([-0.125, 0.0625]);
+    const channels = [left, right];
+    const buffer = {
+      numberOfChannels: channels.length,
+      getChannelData: (channel: number) => channels[channel]!,
+    } as unknown as AudioBuffer;
+    applyMasteringAlbumGainInPlace(buffer, 20 * Math.log10(2));
+    expect(Array.from(left)).toEqual([1, -0.5]);
+    expect(Array.from(right)).toEqual([-0.25, 0.125]);
+  });
+
+  it("uses gain-only loudness matching with a true-peak guard and explicit boost cap", () => {
+    const matched = planMasteringAlbumGainAdjustment({
+      targetLufs: -14,
+      truePeakCeilingDbtp: -1.5,
+      maximumGainDb: 12,
+      sourceLufs: -18,
+      sourceTruePeakDbtp: -8,
+    });
+    expect(matched).toMatchObject({ status: "applied", requestedGainDb: 4, appliedGainDb: 4, targetReached: true });
+
+    const peakLimited = planMasteringAlbumGainAdjustment({
+      targetLufs: -14,
+      truePeakCeilingDbtp: -1,
+      maximumGainDb: 12,
+      sourceLufs: -18,
+      sourceTruePeakDbtp: -2,
+    });
+    expect(peakLimited).toMatchObject({ appliedGainDb: 1, peakLimited: true, targetReached: false });
+
+    const boostLimited = planMasteringAlbumGainAdjustment({
+      targetLufs: -14,
+      truePeakCeilingDbtp: -1,
+      maximumGainDb: 12,
+      sourceLufs: -35,
+      sourceTruePeakDbtp: -30,
+    });
+    expect(boostLimited).toMatchObject({ appliedGainDb: 12, maximumGainLimited: true, peakLimited: false });
+
+    const peakOnly = planMasteringAlbumGainAdjustment({
+      targetLufs: -14,
+      truePeakCeilingDbtp: -1.5,
+      maximumGainDb: 12,
+      sourceLufs: null,
+      sourceTruePeakDbtp: -0.1,
+    });
+    expect(peakOnly).toMatchObject({ status: "loudness-unavailable", appliedGainDb: -1.4, targetReached: false });
+
+    const noPeakMeasure = planMasteringAlbumGainAdjustment({
+      targetLufs: -14,
+      truePeakCeilingDbtp: -1.5,
+      maximumGainDb: 12,
+      sourceLufs: -18,
+      sourceTruePeakDbtp: null,
+    });
+    expect(noPeakMeasure).toMatchObject({ status: "true-peak-unavailable", appliedGainDb: 0, targetReached: false });
+  });
+
+  it("persists an ordered session list and estimates runtime including editable gaps", async () => {
+    const repository = new MasteringAlbumRepository();
+    const id = `album-${Date.now()}`;
+    let album = createMasteringAlbum("Night Drive", "2026-10-10T12:00:00.000Z");
+    album = { ...album, id };
+    album = addMasteringAlbumTrack(album, "session-a", "2026-10-10T12:01:00.000Z");
+    album = addMasteringAlbumTrack(album, "session-b", "2026-10-10T12:02:00.000Z");
+    expect(album.tracks[0]?.gapAfterSeconds).toBe(2);
+
+    album = moveMasteringAlbumTrack(album, album.tracks[1]!.id, -1, "2026-10-10T12:03:00.000Z");
+    album = setMasteringAlbumGap(album, album.tracks[0]!.id, 1.25, "2026-10-10T12:04:00.000Z");
+    expect(album.tracks.map((track) => track.sessionId)).toEqual(["session-b", "session-a"]);
+    expect(album.tracks[0]?.gapAfterSeconds).toBe(1.3);
+    expect(
+      estimateMasteringAlbumDuration(
+        album,
+        new Map([
+          ["session-a", 5],
+          ["session-b", 10],
+        ]),
+      ),
+    ).toBe(16.3);
+    expect(estimateMasteringAlbumDuration(album, new Map([["session-a", 5]]))).toBeNull();
+
+    try {
+      await repository.save(album);
+      await expect(repository.list()).resolves.toEqual([album]);
+    } finally {
+      await repository.delete(id);
+    }
+  });
+
+  it("rejects duplicate sessions, invalid gaps, and malformed saved records", () => {
+    let album = createMasteringAlbum("EP", "2026-10-10T12:00:00.000Z");
+    album = addMasteringAlbumTrack(album, "session-a", "2026-10-10T12:01:00.000Z");
+    expect(() => addMasteringAlbumTrack(album, "session-a")).toThrow(/already in the album/);
+    expect(() => setMasteringAlbumGap(album, album.tracks[0]!.id, 31)).toThrow(/between 0 and 30/);
+    expect(() =>
+      validateMasteringAlbum({ ...album, tracks: [{ ...album.tracks[0], gapAfterSeconds: Number.NaN }] }),
+    ).toThrow(/invalid metadata or track links/);
+  });
+
+  it("summarizes only current decoded delivery revisions and labels stale or unmeasured tracks", () => {
+    let album = createMasteringAlbum("Night Drive", "2026-10-10T12:00:00.000Z");
+    album = addMasteringAlbumTrack(album, "track-loud");
+    album = addMasteringAlbumTrack(album, "track-quiet");
+    album = addMasteringAlbumTrack(album, "track-stale");
+    album = addMasteringAlbumTrack(album, "track-header-only");
+    album = updateMasteringAlbumTrackDelivery(
+      album,
+      "track-loud",
+      testAlbumDeliverySummary({ lufsIntegrated: -12.5, truePeakDb: -0.8, fileName: "loud.wav" }),
+    );
+    album = updateMasteringAlbumTrackDelivery(
+      album,
+      "track-quiet",
+      testAlbumDeliverySummary({ lufsIntegrated: -14.5, truePeakDb: -1.4, fileName: "quiet.flac", format: "flac" }),
+    );
+    album = updateMasteringAlbumTrackDelivery(
+      album,
+      "track-stale",
+      testAlbumDeliverySummary({ lufsIntegrated: -16, truePeakDb: -2, fileName: "stale.mp3", format: "mp3" }),
+    );
+    album = updateMasteringAlbumTrackDelivery(
+      album,
+      "track-header-only",
+      testAlbumDeliverySummary({
+        fileName: "header-only.mp3",
+        format: "mp3",
+        decodeStatus: "not-measured",
+        lufsIntegrated: null,
+        truePeakDb: null,
+      }),
+    );
+    const sessionMap = new Map([
+      ["track-loud", { id: "track-loud", fileName: "loud.wav", sourceHash: "a".repeat(64), configRevision: 0 }],
+      ["track-quiet", { id: "track-quiet", fileName: "quiet.flac", sourceHash: "a".repeat(64), configRevision: 0 }],
+      ["track-stale", { id: "track-stale", fileName: "stale.mp3", sourceHash: "a".repeat(64), configRevision: 1 }],
+      [
+        "track-header-only",
+        { id: "track-header-only", fileName: "header-only.mp3", sourceHash: "a".repeat(64), configRevision: 0 },
+      ],
+    ]);
+
+    const report = summarizeMasteringAlbumDelivery(album, sessionMap);
+    expect(report.currentReportCount).toBe(3);
+    expect(report.measuredTrackCount).toBe(2);
+    expect(report.lufsMeasuredTrackCount).toBe(2);
+    expect(report.lufsMedian).toBe(-13.5);
+    expect(report.lufsSpreadDb).toBe(2);
+    expect(report.truePeakMeasuredTrackCount).toBe(2);
+    expect(report.truePeakMaxDb).toBe(-0.8);
+    expect(report.tracks.map((track) => track.state)).toEqual(["measured", "measured", "stale", "not-measured"]);
+    expect(report.tracks[0]?.lufsOffsetFromMedianDb).toBe(1);
+    expect(report.tracks[1]?.lufsOffsetFromMedianDb).toBe(-1);
+    expect(report.tracks[2]?.lufsOffsetFromMedianDb).toBeNull();
+  });
+
+  it("persists compact delivery summaries across albums without overwriting concurrent sequence edits", async () => {
+    const repository = new MasteringAlbumRepository();
+    const firstId = `delivery-album-a-${Date.now()}`;
+    const secondId = `delivery-album-b-${Date.now()}`;
+    const summary = testAlbumDeliverySummary({ lufsIntegrated: -13.2, truePeakDb: -1.3 });
+    const first = addMasteringAlbumTrack({ ...createMasteringAlbum("Album A"), id: firstId }, "delivery-session");
+    const second = addMasteringAlbumTrack({ ...createMasteringAlbum("Album B"), id: secondId }, "delivery-session");
+    try {
+      await repository.save(first);
+      await repository.save(second);
+      await expect(repository.updateSessionDeliverySummary("delivery-session", summary)).resolves.toBe(2);
+
+      // This edit is based on a pre-report album object, as can happen if a
+      // user reorders while an export finishes. The repository keeps the
+      // report for surviving track IDs while applying the sequence edit.
+      await repository.save({ ...first, title: "Album A revised", updatedAt: "2026-10-10T13:00:00.000Z" });
+      const records = await repository.list();
+      expect(records.find((album) => album.id === firstId)?.tracks[0]?.deliverySummary).toEqual(summary);
+      expect(records.find((album) => album.id === firstId)?.title).toBe("Album A revised");
+      expect(records.find((album) => album.id === secondId)?.tracks[0]?.deliverySummary).toEqual(summary);
+    } finally {
+      await repository.delete(firstId);
+      await repository.delete(secondId);
+    }
+  });
+
+  it("lets a user create an album, add sessions, and reorder the track list", async () => {
+    const repository = new MasteringAlbumRepository();
+    const sessions = [createTestMasteringSummary("ui-song-a"), createTestMasteringSummary("ui-song-b")];
+    const onAudition = vi.fn();
+    const onBatchExport = vi.fn();
+    const view = render(
+      createElement(MasteringAlbumPanel, {
+        sessions,
+        activeSessionId: "ui-song-a",
+        onOpenSession: vi.fn(),
+        onAudition,
+        onBatchExport,
+      }),
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "New album title" }), {
+      target: { value: "Road EP" },
+    });
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Create album" }));
+      await screen.findByText("Created album sequence “Road EP”.");
+      fireEvent.click(screen.getByRole("button", { name: "Add track" }));
+      await waitFor(() =>
+        expect(within(screen.getByRole("list", { name: "Road EP track order" })).getAllByRole("listitem")).toHaveLength(
+          1,
+        ),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Audition album sequence" }));
+      expect(onAudition).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Road EP", tracks: [expect.objectContaining({ sessionId: "ui-song-a" })] }),
+      );
+
+      fireEvent.change(screen.getByRole("combobox", { name: "Mastering session to add to album" }), {
+        target: { value: "ui-song-b" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Add track" }));
+      await waitFor(() =>
+        expect(within(screen.getByRole("list", { name: "Road EP track order" })).getAllByRole("listitem")).toHaveLength(
+          2,
+        ),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Move ui-song-b.wav up" }));
+
+      await waitFor(() => {
+        const rows = within(screen.getByRole("list", { name: "Road EP track order" })).getAllByRole("listitem");
+        expect(rows[0]).toHaveTextContent("ui-song-b.wav");
+        expect(rows[1]).toHaveTextContent("ui-song-a.wav");
+      });
+      expect(screen.getByText("Estimated sequence duration: 0:02")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("checkbox", { name: "Match album track loudness using gain only" }));
+      fireEvent.change(screen.getByRole("spinbutton", { name: "Album batch target integrated loudness in LUFS" }), {
+        target: { value: "-16" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Audition gain-matched sequence" }));
+      expect(onAudition).toHaveBeenLastCalledWith(expect.objectContaining({ title: "Road EP" }), {
+        targetLufs: -16,
+        truePeakCeilingDbtp: -1.5,
+        maximumGainDb: 12,
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Export 2 tracks" }));
+      expect(onBatchExport).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Road EP", tracks: expect.any(Array) }),
+        expect.objectContaining({
+          format: "wav",
+          sampleRate: 44_100,
+          bitDepth: 24,
+          normalizeToLufs: -16,
+          truePeakCeilingDbtp: -1.5,
+          maximumGainDb: 12,
+        }),
+      );
+
+      await repository.updateSessionDeliverySummary("ui-song-a", testAlbumDeliverySummary());
+      view.rerender(
+        createElement(MasteringAlbumPanel, {
+          sessions,
+          activeSessionId: "ui-song-a",
+          deliveryRefreshToken: 1,
+          onOpenSession: vi.fn(),
+        }),
+      );
+      expect(await screen.findByText(/1\/2 current export reports · 1 decoded/)).toBeInTheDocument();
+      expect(await screen.findByText(/Current WAV · -14\.0 LUFS-I · -1\.0 dBTP · mastered\.wav/)).toBeInTheDocument();
+    } finally {
+      for (const album of await repository.list()) {
+        if (album.title === "Road EP") await repository.delete(album.id);
+      }
+    }
   });
 });
 

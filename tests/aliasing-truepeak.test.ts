@@ -1,10 +1,11 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { truePeakOversampled } from "../src/audio-engine/metering";
+import { LIMITER_OUTPUT_TRUEPEAK_CORRECTION_SAMPLES } from "../src/audio-worklets/limiter-node";
 
 /**
  * Aliasing + true-peak battery:
  *
- *  - Core limiter (`limiter-processor.js`): the 4× Blackman-sinc true-peak
+ *  - Core limiter (`limiter-processor.js`): the ITU-R four-phase true-peak
  *    detector catches ceiling-exceeding INTERSAMPLE peaks a sample-peak
  *    detector cannot see (fs/4 sine isolation test), while ordinary sines
  *    behave exactly like the legacy detector (regression pin), latency follows
@@ -105,9 +106,32 @@ function peakAbs(buf: Float32Array, from = 0, to = buf.length): number {
   return m;
 }
 
+function rmsBetween(buf: Float32Array, from: number, to: number): number {
+  let sumSquares = 0;
+  for (let i = from; i < to; i++) sumSquares += buf[i]! * buf[i]!;
+  return Math.sqrt(sumSquares / Math.max(1, to - from));
+}
+
 const LIM = ["threshold", "ceiling", "release", "lookahead", "link", "mix"];
 
 describe("limiter true-peak detector", () => {
+  it("matches the ITU-R report estimator, including sampled peaks", () => {
+    const input = Float32Array.from({ length: 4096 }, (_, n) => {
+      const high = 0.67 * Math.sin(2 * Math.PI * 0.47 * n + Math.PI / 7);
+      const low = 0.22 * Math.sin(2 * Math.PI * 0.071 * n + 0.3);
+      return high + low;
+    });
+    const proc = new (registered.get("limiter-processor")!)();
+    let position = 0;
+    let workletPeak = 0;
+    for (const sample of input) {
+      position = proc.truePeakStep(proc.histL, position, sample);
+      workletPeak = Math.max(workletPeak, proc.tpOut);
+    }
+
+    expect(workletPeak).toBeCloseTo(truePeakOversampled([input]), 6);
+  });
+
   it("catches an intersample peak a sample detector cannot see", () => {
     // fs/4 sine at 45°: samples alternate ±A/√2, true peak A. With A = 1.2
     // the sample peak (−1.42 dBFS) sits UNDER threshold (−0.5 dB) — a legacy
@@ -151,7 +175,7 @@ describe("limiter true-peak detector", () => {
     expect(Math.max(...grMsgs.map((m) => m.gr ?? 0))).toBeGreaterThan(3);
   });
 
-  it("holds oversampled output below the ceiling with the master safety margin", () => {
+  it("holds reconstructed output below the delivery ceiling with a small master reserve", () => {
     const ceilingDb = -1;
     const internalCeilingDb = ceilingDb - 0.2;
     const proc = new (registered.get("limiter-processor")!)();
@@ -174,11 +198,83 @@ describe("limiter true-peak detector", () => {
     expect(truePeakDb).toBeLessThanOrEqual(ceilingDb + 0.05);
   });
 
-  it("latency stays exactly lookahead and mix = 0 is unity", () => {
+  it("keeps reconstructed output below the delivery ceiling for hostile spectra at supported master rates", () => {
+    const workletGlobals = globalThis as typeof globalThis & { sampleRate: number };
+    const originalSampleRate = workletGlobals.sampleRate;
+    const deliveryCeilingDb = -1;
+    // The output-side true-peak corrector should make a 0.2 dB working reserve
+    // sufficient even when the main limiter's time-varying gain reconstructs
+    // near-Nyquist material above its input-side ceiling.
+    const workletCeilingDb = deliveryCeilingDb - 0.2;
+    const ceilingLin = Math.pow(10, deliveryCeilingDb / 20);
+    const scenarios = [
+      {
+        name: "near-Nyquist intersample tone",
+        input: (n: number, _sr: number): [number, number] => {
+          const phase = 2 * Math.PI * 0.47 * n + Math.PI / 7;
+          return [1.45 * Math.sin(phase), 1.45 * Math.sin(phase + 0.19)];
+        },
+      },
+      {
+        name: "dense multitone",
+        input: (n: number, sr: number): [number, number] => {
+          const frequencies = [37, 173, 997, 3_007, 8_113, 0.43 * sr];
+          let left = 0;
+          let right = 0;
+          for (let i = 0; i < frequencies.length; i++) {
+            const phase = (2 * Math.PI * frequencies[i]! * n) / sr;
+            const amplitude = i === frequencies.length - 1 ? 0.19 : 0.31;
+            left += amplitude * Math.sin(phase + i * 0.61);
+            right += amplitude * Math.sin(phase + i * 1.17 + 0.07);
+          }
+          return [left * 1.35, right * 1.35];
+        },
+      },
+      {
+        name: "alternating transient train",
+        input: (n: number): [number, number] => {
+          const phase = n % 113;
+          const left = phase === 0 ? 2.4 : phase === 1 ? -1.6 : 0;
+          const right = phase === 0 ? -1.9 : phase === 1 ? 2.1 : 0;
+          return [left, right];
+        },
+      },
+    ];
+
+    try {
+      for (const sampleRate of [44_100, 48_000, 96_000]) {
+        workletGlobals.sampleRate = sampleRate;
+        for (const scenario of scenarios) {
+          const proc = new (registered.get("limiter-processor")!)();
+          const prm = params(LIM, {
+            threshold: workletCeilingDb - 3.2,
+            ceiling: workletCeilingDb,
+            release: 0.05,
+            lookahead: 0.005,
+            link: 1,
+            mix: 1,
+          });
+          const { L, R } = renderStereo(proc, 0.3, prm, (n) => scenario.input(n, sampleRate), sampleRate);
+          const truePeak = truePeakOversampled([L, R]);
+          if (scenario.name === "near-Nyquist intersample tone") {
+            expect(proc.postCorrectionGain, `${sampleRate} Hz output correction engages`).toBeLessThan(0.999);
+          }
+          expect(
+            truePeak,
+            `${scenario.name} at ${sampleRate} Hz: ${20 * Math.log10(truePeak)} dBTP`,
+          ).toBeLessThanOrEqual(ceilingLin * 1.006);
+        }
+      }
+    } finally {
+      workletGlobals.sampleRate = originalSampleRate;
+    }
+  });
+
+  it("latency includes lookahead plus output correction and mix = 0 stays unity", () => {
     const proc = new (registered.get("limiter-processor")!)();
     const prm = params(LIM, { threshold: -18, ceiling: -1, release: 0.05, lookahead: 0.005, link: 1, mix: 1 });
     const { L } = renderStereo(proc, 0.5, prm, (n) => (n === 0 ? [1, 1] : [0, 0]));
-    const la = Math.round(0.005 * SR);
+    const la = Math.round(0.005 * SR) + LIMITER_OUTPUT_TRUEPEAK_CORRECTION_SAMPLES;
     expect(peakAbs(L, 0, la)).toBeLessThan(1e-6);
     expect(Math.abs(L[la])).toBeGreaterThan(0.5);
 
@@ -207,14 +303,45 @@ describe("limiter true-peak detector", () => {
           mix: 1,
         });
         const { L } = renderStereo(proc, 0.02, prm, (n) => (n === 0 ? [1, 1] : [0, 0]), sampleRate);
-        const delaySamples = Math.round(Math.fround(0.005) * sampleRate);
-        expect(delaySamples).toBe(sampleRate === 44_100 ? 220 : sampleRate === 48_000 ? 240 : 480);
+        const delaySamples = Math.round(Math.fround(0.005) * sampleRate) + LIMITER_OUTPUT_TRUEPEAK_CORRECTION_SAMPLES;
+        expect(delaySamples).toBe(
+          (sampleRate === 44_100 ? 220 : sampleRate === 48_000 ? 240 : 480) +
+            LIMITER_OUTPUT_TRUEPEAK_CORRECTION_SAMPLES,
+        );
         expect(peakAbs(L, 0, delaySamples)).toBeLessThan(1e-6);
         expect(Math.abs(L[delaySamples]!)).toBeGreaterThan(0.5);
       }
     } finally {
       workletGlobals.sampleRate = originalSampleRate;
     }
+  });
+
+  it("uses the configured release for recovery after a limited burst", () => {
+    const renderWithRelease = (release: number) => {
+      const proc = new (registered.get("limiter-processor")!)();
+      const prm = params(LIM, { threshold: -4.2, ceiling: -1.2, release, lookahead: 0.005, link: 1, mix: 1 });
+      const { L } = renderStereo(proc, 2.8, prm, (n) => {
+        const seconds = n / SR;
+        const level = seconds < 0.25 ? 1.3 : 0.2;
+        const sample = level * Math.sin((2 * Math.PI * 440 * n) / SR);
+        return [sample, sample];
+      });
+      return L;
+    };
+
+    const delaySamples = Math.round(Math.fround(0.005) * SR) + LIMITER_OUTPUT_TRUEPEAK_CORRECTION_SAMPLES;
+    const releaseStart = Math.round(0.25 * SR) + delaySamples;
+    const earlyFrom = releaseStart + Math.round(0.04 * SR);
+    const earlyTo = releaseStart + Math.round(0.09 * SR);
+    const lateFrom = releaseStart + Math.round(2.2 * SR);
+    const lateTo = releaseStart + Math.round(2.3 * SR);
+    const fast = renderWithRelease(0.05);
+    const slow = renderWithRelease(0.5);
+
+    expect(rmsBetween(fast, earlyFrom, earlyTo)).toBeGreaterThan(rmsBetween(slow, earlyFrom, earlyTo) * 1.15);
+    expect(Math.abs(rmsBetween(fast, lateFrom, lateTo) - rmsBetween(slow, lateFrom, lateTo))).toBeLessThan(
+      rmsBetween(fast, lateFrom, lateTo) * 0.02,
+    );
   });
 
   it("extremes soak: finite, bounded, no NaN", () => {

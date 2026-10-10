@@ -537,10 +537,21 @@ export class PreviewDeck {
   }
 
   /** Play a rendered master comparison directly to the monitor, avoiding a second master pass. */
-  previewMasterCompare(buffer: AudioBuffer, gainValue = 0.9, onEnded?: () => void, offsetSec = 0, mono = false): void {
+  previewMasterCompare(
+    buffer: AudioBuffer,
+    gainValue = 0.9,
+    onEnded?: () => void,
+    offsetSec = 0,
+    mono = false,
+    durationSec?: number,
+  ): void {
     this.deps.ensureContext();
     const ctx = this.deps.ctx();
     if (!ctx) return;
+    const offset = Math.max(0, Math.min(buffer.duration, offsetSec));
+    const availableDuration = Math.max(0, buffer.duration - offset);
+    const duration = durationSec === undefined ? undefined : Math.min(availableDuration, durationSec);
+    if (duration !== undefined && (!Number.isFinite(duration) || duration <= 0)) return;
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     const gain = ctx.createGain();
@@ -553,13 +564,37 @@ export class PreviewDeck {
     source.connect(gain).connect(ctx.destination);
     const voice: PreviewVoice = { source, gain, masterCompare: true };
     this.previewVoices.add(voice);
-    source.start(ctx.currentTime + 0.005, Math.max(0, Math.min(buffer.duration, offsetSec)));
+    if (duration === undefined) source.start(ctx.currentTime + 0.005, offset);
+    else source.start(ctx.currentTime + 0.005, offset, duration);
     source.onended = () => {
       this.previewVoices.delete(voice);
       gain.disconnect();
       source.disconnect();
       onEnded?.();
     };
+  }
+
+  /** Schedule a rendered master at an absolute AudioContext time. */
+  previewMasterCompareAt(buffer: AudioBuffer, when: number, onEnded?: () => void, gainValue = 0.9): number | null {
+    this.deps.ensureContext();
+    const ctx = this.deps.ctx();
+    if (!ctx || buffer.duration <= 0) return null;
+    const startsAt = Math.max(ctx.currentTime + 0.005, Number.isFinite(when) ? when : ctx.currentTime + 0.005);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    const gain = ctx.createGain();
+    gain.gain.value = Math.max(0, Math.min(1, gainValue));
+    source.connect(gain).connect(ctx.destination);
+    const voice: PreviewVoice = { source, gain, masterCompare: true };
+    this.previewVoices.add(voice);
+    source.onended = () => {
+      this.previewVoices.delete(voice);
+      gain.disconnect();
+      source.disconnect();
+      onEnded?.();
+    };
+    source.start(startsAt);
+    return startsAt;
   }
 
   /**

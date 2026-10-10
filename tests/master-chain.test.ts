@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { MasterChain } from "../src/audio-engine/masterChain";
 import type { MeteringRig } from "../src/audio-engine/meteringRig";
-import { createLimiterNode } from "../src/audio-worklets/limiter-node";
+import { createLimiterNode, LIMITER_OUTPUT_TRUEPEAK_CORRECTION_SAMPLES } from "../src/audio-worklets/limiter-node";
 import { defaultMasterConfig } from "../src/project-model/schema";
 import type { ProjectDocument } from "../src/project-model/types";
 
@@ -109,6 +109,7 @@ describe("MasterChain monitor bypass", () => {
     const delayTime = makeParam();
     const wetGain = makeParam(1);
     const dryGain = makeParam(0);
+    const outputGain = makeParam(1);
     const ctx = { currentTime: 2, sampleRate: 48_000 } as BaseAudioContext;
     const master = { ...defaultMasterConfig(), tapeEnabled: true, glueEnabled: true };
     const document = { master } as ProjectDocument;
@@ -127,12 +128,14 @@ describe("MasterChain monitor bypass", () => {
       masterBypassDelay: { delayTime: delayTime.param },
       masterBypassWet: { gain: wetGain.param },
       masterBypassDry: { gain: dryGain.param },
+      monitorBypassOutputGain: { gain: outputGain.param },
     });
     return {
       chain,
       delayTime,
       wetGain,
       dryGain,
+      outputGain,
       setLatency: (tape: number, glue: number, inserts: number) => {
         tapeLatency = tape;
         glueLatency = glue;
@@ -190,7 +193,7 @@ describe("MasterChain monitor bypass", () => {
   });
 
   it("schedules a paired 40ms crossfade ahead of the render clock and holds automation on rapid toggles", () => {
-    const { chain, wetGain, dryGain, setTime } = makeHarness();
+    const { chain, wetGain, dryGain, outputGain, setTime } = makeHarness();
 
     chain.setBypassed(true);
     expect(chain.isBypassed).toBe(true);
@@ -202,6 +205,11 @@ describe("MasterChain monitor bypass", () => {
     expect(dryGain.calls.slice(-3)).toEqual([
       { method: "cancelScheduledValues", args: [2.01] },
       { method: "setValueAtTime", args: [0, 2.01] },
+      { method: "linearRampToValueAtTime", args: [1, 2.05] },
+    ]);
+    expect(outputGain.calls.slice(-3)).toEqual([
+      { method: "cancelScheduledValues", args: [2.01] },
+      { method: "setValueAtTime", args: [1, 2.01] },
       { method: "linearRampToValueAtTime", args: [1, 2.05] },
     ]);
 
@@ -233,6 +241,18 @@ describe("MasterChain monitor bypass", () => {
     expect(resumedDryCalls[1].args[1]).toBeCloseTo(2.04, 12);
     expect(resumedDryCalls[2].args[0]).toBe(0);
     expect(resumedDryCalls[2].args[1]).toBeCloseTo(2.08, 12);
+
+    const resumedOutputCalls = outputGain.calls.slice(-3);
+    expect(resumedOutputCalls.map((call) => call.method)).toEqual([
+      "cancelScheduledValues",
+      "setValueAtTime",
+      "linearRampToValueAtTime",
+    ]);
+    expect(resumedOutputCalls[0].args[0]).toBeCloseTo(2.04, 12);
+    expect(resumedOutputCalls[1].args[0]).toBe(1);
+    expect(resumedOutputCalls[1].args[1]).toBeCloseTo(2.04, 12);
+    expect(resumedOutputCalls[2].args[0]).toBe(1);
+    expect(resumedOutputCalls[2].args[1]).toBeCloseTo(2.08, 12);
   });
 });
 
@@ -279,6 +299,22 @@ describe("MasterChain limiter delivery", () => {
     chain.applyMasterConfig({ ...defaultMasterConfig(), ceilingDb: -20, limiterEnabled: true });
     expect(workletParameters.ceiling).toBeCloseTo(-12.2, 10);
     expect(workletParameters.threshold).toBeCloseTo(-15.4, 10);
+
+    chain.applyMasterConfig({
+      ...defaultMasterConfig(),
+      limiterLookaheadMs: 8.5,
+      limiterReleaseMs: 420,
+    });
+    expect(workletParameters.lookaheadMs).toBe(8.5);
+    expect(workletParameters.release).toBe(0.42);
+
+    chain.applyMasterConfig({
+      ...defaultMasterConfig(),
+      limiterLookaheadMs: Number.POSITIVE_INFINITY,
+      limiterReleaseMs: Number.NaN,
+    });
+    expect(workletParameters.lookaheadMs).toBe(5);
+    expect(workletParameters.release).toBe(0.12);
   });
 
   it("reports the limiter's realized integer-sample latency at mastering sample rates", () => {
@@ -309,7 +345,8 @@ describe("MasterChain limiter delivery", () => {
 
     vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
     const expectedLatency = (lookaheadMs: number, sampleRate: number) =>
-      Math.round(Math.fround(lookaheadMs / 1000) * sampleRate) / sampleRate;
+      (Math.round(Math.fround(lookaheadMs / 1000) * sampleRate) + LIMITER_OUTPUT_TRUEPEAK_CORRECTION_SAMPLES) /
+      sampleRate;
     try {
       for (const sampleRate of [44_100, 48_000, 96_000]) {
         const context = {
