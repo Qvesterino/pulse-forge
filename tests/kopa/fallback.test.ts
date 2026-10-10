@@ -79,7 +79,13 @@ function fakeContext(): {
     },
     createBuffer(channels: number, length: number) {
       const data = [Float32Array.from({ length }, (_, i) => (i % 2 === 0 ? 0.5 : -0.5))];
-      return { numberOfChannels: channels, length, sampleRate: 48000, duration: length / 48000, getChannelData: () => data[0]! };
+      return {
+        numberOfChannels: channels,
+        length,
+        sampleRate: 48000,
+        duration: length / 48000,
+        getChannelData: () => data[0]!,
+      };
     },
     createBufferSource() {
       const node = mkNode();

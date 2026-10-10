@@ -295,9 +295,12 @@ export class KopaProcessor {
         voice.pitchT = pitchTimeSec > 0 ? Math.min(1, voice.samples / (pitchTimeSec * sr)) : 1;
         const t = voice.pitchT;
         let pitchEnv: number;
-        if (pitchCurve === 0) pitchEnv = (1 - t) * (1 - t); // exp
-        else if (pitchCurve === 1) pitchEnv = 1 - t; // lin
-        else if (pitchCurve === 2) pitchEnv = t < 0.35 ? 1 : 0; // snap
+        if (pitchCurve === 0)
+          pitchEnv = (1 - t) * (1 - t); // exp
+        else if (pitchCurve === 1)
+          pitchEnv = 1 - t; // lin
+        else if (pitchCurve === 2)
+          pitchEnv = t < 0.35 ? 1 : 0; // snap
         else pitchEnv = t < 0.15 ? 1 : Math.max(0, 1 - (t - 0.15) / 0.85); // hold
         const f0 = voice.targetF0 * Math.pow(2, (pitchAmount * pitchEnv) / 12);
 
@@ -331,7 +334,8 @@ export class KopaProcessor {
 
         let body: number;
         if (bodyWave === 0) body = Math.sin(voice.bodyPhase);
-        else if (bodyWave === 1) body = 1 - 2 * Math.abs(voice.bodyPhase / Math.PI - 1); // tri
+        else if (bodyWave === 1)
+          body = 1 - 2 * Math.abs(voice.bodyPhase / Math.PI - 1); // tri
         else body = voice.bodyPhase / Math.PI - 1; // saw (-1..1)
         const bodySignal = (body + bodyHollow * Math.sin(2 * voice.bodyPhase)) / (1 + bodyHollow);
 

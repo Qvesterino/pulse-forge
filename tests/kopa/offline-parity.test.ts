@@ -38,9 +38,7 @@ const SCRIPT: KopaEvent[] = [
 ];
 
 function renderFull(events: KopaEvent[], seed: boolean): { left: Float32Array; right: Float32Array } {
-  const processor = seed
-    ? new KopaProcessor({ sampleRate: SR, events })
-    : new KopaProcessor({ sampleRate: SR });
+  const processor = seed ? new KopaProcessor({ sampleRate: SR, events }) : new KopaProcessor({ sampleRate: SR });
   processor.applyParams(defaultParams());
   const frames = Math.ceil(1.6 * SR);
   const left = new Float32Array(frames);
@@ -72,7 +70,10 @@ describe("KOPA offline parity", () => {
 
   it("a different event script produces different audio (the identity is not vacuous)", () => {
     const a = renderFull(SCRIPT, true);
-    const shifted = renderFull(SCRIPT.map((event) => ({ ...event, when: event.when + 0.013 })), true);
+    const shifted = renderFull(
+      SCRIPT.map((event) => ({ ...event, when: event.when + 0.013 })),
+      true,
+    );
     let differing = 0;
     for (let i = 0; i < a.left.length; i++) if (a.left[i] !== shifted.left[i]) differing++;
     expect(differing).toBeGreaterThan(0);
