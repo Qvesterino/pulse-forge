@@ -85,6 +85,7 @@ const EFFECT_PROC_PAIRS: [EffectType, string][] = [
   ["apeks", "apeks-processor"],
   ["sirka", "sirka-processor"],
   ["prud", "prud-processor"],
+  ["bassHarmonic", "bass-harmonic-processor"],
 ];
 
 const EPS = 1e-9;

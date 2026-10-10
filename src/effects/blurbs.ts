@@ -15,6 +15,7 @@ export const EFFECT_BLURBS: Partial<Record<EffectType, string>> = {
   apeks: "Loudness maximizer — pushes level while keeping the hit tip alive",
   sirka: "Per-band stereo width — mono-tight lows, wide airy tops",
   prud: "Dynamic EQ — tames resonances only when they actually ring",
+  bassHarmonic: "Adds readable bass harmonics so subs carry on phones and small speakers",
   tapeSat: "Warm tape drive — glues a track and softens harsh tops",
   vinyl: "Age and dust — crackle, wobble and 1950s tone in one knob",
   distortion: "Hard drive — grit and aggression from edge to full shred",

@@ -43,6 +43,7 @@ import { createApeksNode, createSirkaNode, createPrudNode } from "../audio-workl
 import { createReverseSwellNode } from "../audio-worklets/reverseswell-node";
 import { createGranularFreezeNode } from "../audio-worklets/granularfreeze-node";
 import { createReverbNode } from "../audio-worklets/reverb-node";
+import { createBassHarmonicNode } from "../audio-worklets/bass-harmonic-node";
 import { characterCurve, type CharacterMode } from "./characterCurve";
 import {
   eqParams,
@@ -98,6 +99,7 @@ import {
   reverseSwellParams,
   granularFreezeParams,
   kaskadaParams,
+  bassHarmonicParams,
   FXEQ_PARAM_DEFAULTS,
   ULTINA_PARAM_DEFAULTS,
   MORPH_PARAM_DEFAULTS,
@@ -244,6 +246,9 @@ export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded"
   apeks: "critical",
   sirka: "critical",
   prud: "critical",
+  // KOREŇ is a lazy first-party effect: honest 1:1 bypass until its module
+  // lands in the context (the engine hot-swaps the chain when it does).
+  bassHarmonic: "degraded",
 };
 
 export type EffectProcessorStatus = "ok" | "bypassed" | "fallback";
@@ -3607,6 +3612,23 @@ const prud: EffectDefinition = {
   },
 };
 
+/**
+ * KOREŇ (bassHarmonic) — missing-fundamental bass exciter. First-party DSP,
+ * LAZY worklet module (public/bass-harmonic-worklet.js): a project that never
+ * uses it never fetches it. Honest 1:1 bypass until the module lands (the
+ * engine hot-swaps the chain when it does).
+ */
+const bassHarmonic: EffectDefinition = {
+  type: "bassHarmonic",
+  name: "KOREŇ",
+  category: "character",
+  params: bassHarmonicParams,
+  factory(ctx, instance) {
+    if (isWorkletReady("bassHarmonic", ctx)) return createBassHarmonicNode(ctx, instance);
+    return bypassRuntime(ctx, "AudioWorklet unavailable — bass harmonic bypassed (1:1 signal)");
+  },
+};
+
 /** Stable beat-repeat division ids. Existing projects start with 1/1…1/32;
  * dotted and triplet ids are appended so saved parameter values stay valid. */
 
@@ -3744,6 +3766,7 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   vocoder,
   reverseSwell,
   granularFreeze,
+  bassHarmonic,
 };
 
 /** Effects intentionally exposed in the new mixer Add Effect menu. */

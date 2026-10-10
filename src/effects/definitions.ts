@@ -259,6 +259,7 @@ export const EFFECT_ORDER: EffectType[] = [
   "apeks",
   "sirka",
   "prud",
+  "bassHarmonic",
 ];
 
 export const CORE_EFFECT_ORDER: EffectType[] = [
@@ -292,6 +293,7 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "apeks",
   "sirka",
   "prud",
+  "bassHarmonic",
 ];
 
 export const FLAGSHIP_EFFECT_ORDER: EffectType[] = ["fxeq", "ultina", "ozvena", "kaskada", "morphdynamics"];
@@ -1983,6 +1985,61 @@ export const prudParams: ParamDef[] = [
   { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
 ];
 
+/**
+ * KOREŇ (bassHarmonic) — missing-fundamental bass exciter. Tracks the bass
+ * fundamental and synthesizes a phase-locked harmonic stack so subs read on
+ * phones and small speakers; `subAnchor` keeps the original low end while
+ * the harmonics sit on top.
+ */
+export const bassHarmonicParams: ParamDef[] = [
+  { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.45, format: formatPct },
+  {
+    id: "focusHz",
+    label: "FOCUS",
+    min: 40,
+    max: 220,
+    default: 90,
+    unit: "Hz",
+    format: formatHz,
+    taper: "log",
+  },
+  { id: "harmonics", label: "HARMONICS", min: 0, max: 1, default: 0.5, format: formatPct },
+  { id: "subAnchor", label: "SUB ANCHOR", min: 0, max: 1, default: 0.7, format: formatPct },
+  { id: "lowCut", label: "LOW CUT", min: 20, max: 200, default: 45, unit: "Hz", format: formatHz, taper: "log" },
+  {
+    id: "range",
+    label: "RANGE",
+    min: 1,
+    max: 4,
+    default: 2,
+    step: 1,
+    kind: "discrete",
+    format: (v) => `${Math.round(v)} OCT`,
+  },
+  {
+    id: "attack",
+    label: "ATTACK",
+    min: 0.001,
+    max: 0.1,
+    default: 0.008,
+    unit: "s",
+    format: (v) => `${(v * 1000).toFixed(1)} ms`,
+    taper: "log",
+  },
+  {
+    id: "release",
+    label: "RELEASE",
+    min: 0.01,
+    max: 1,
+    default: 0.12,
+    unit: "s",
+    format: (v) => `${(v * 1000).toFixed(0)} ms`,
+    taper: "log",
+  },
+  { id: "mix", label: "MIX", min: 0, max: 1, default: 0.6, format: formatPct },
+  { id: "output", label: "OUTPUT", min: -18, max: 12, default: 0, unit: "dB", format: formatDb },
+];
+
 export const vinylParams: ParamDef[] = [
   // Master macro first — the "one knob" path for people who just want AGE.
   { id: "amount", label: "AGE", min: 0, max: 1, default: 0.5, format: formatPct },
@@ -2420,4 +2477,5 @@ export const EFFECT_META: Record<EffectType, EffectDefinitionMeta> = {
   reverseSwell: { type: "reverseSwell", name: "Reverse Swell", category: "movement", params: reverseSwellParams },
   granularFreeze: { type: "granularFreeze", name: "Granular Freeze", category: "space", params: granularFreezeParams },
   kaskada: { type: "kaskada", name: "RYFT", category: "space", params: kaskadaParams },
+  bassHarmonic: { type: "bassHarmonic", name: "KOREŇ", category: "character", params: bassHarmonicParams },
 };

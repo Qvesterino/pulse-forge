@@ -677,6 +677,7 @@ export const EFFECT_KNOB: Partial<Record<EffectType, string>> = {
   bitcrusher: "mix",
   compressor: "ratio",
   pump: "amount",
+  bassHarmonic: "drive",
 };
 
 const EFFECT_WORDS: ReadonlyArray<readonly [RegExp, EffectType]> = [
@@ -692,6 +693,7 @@ const EFFECT_WORDS: ReadonlyArray<readonly [RegExp, EffectType]> = [
   [/\bbitcrush|\bcrush/, "bitcrusher"],
   [/\bcompress|\bkompres/, "compressor"],
   [/\bsidechain|\bpump(?:a|e|u)?/, "pump"],
+  [/\bbass.?harmon|\bkoren\b|\bharmonik/, "bassHarmonic"],
   [/\beq\b|\bfilter|\bfiltr|\bekvaliz/, "eq"],
 ];
 
