@@ -190,7 +190,7 @@ script + vlastný budget riadok (vzor TSAR, `scripts/build-tsar-worklet.mjs` +
      (`docs/TSAR-ROADMAP.md:228`) sa NEmenia (archív, `docs/ROADMAP.md`).
    - Overenie commitu: `rg "PLUGIN_WORKLET_TYPES|PluginWorkletType|loadPluginWorklet|pluginTypesInDoc" src scripts tests AGENTS.md`
      → 0 hitov; `npm run typecheck && npm run test && npm run format:check`.
-   Dôvody pre lazy zoznam (po rename):
+     Dôvody pre lazy zoznam (po rename):
    - `lazyWorkletTypesInDoc` (loader.ts:265) skenuje typy efektov voči `LAZY_WORKLET_TYPES` →
      `ensureWorkletsForDoc` ho načíta **len keď ho projekt používa** (live aj renderer);
    - `AudioEngine.ts:1080` hot-swap fallback→worklet je viazaný na ten istý zoznam → funguje
@@ -234,7 +234,7 @@ script + vlastný budget riadok (vzor TSAR, `scripts/build-tsar-worklet.mjs` +
 | `tests/param-range-coherence.test.ts` (rozšírenie)   | def↔descriptor bounds (riadok v `EFFECT_PROC_PAIRS`).                                                                                                                                                                                                                                                                                                                     |
 | `tests/plugin-functional-audit.test.ts` (rozšírenie) | `WORKLET_CASES` záznam; min AJ max hýbu meranou metrikou.                                                                                                                                                                                                                                                                                                                 |
 | `tests/fx-catalog.test.ts` (auto)                    | blurb + ≥2 presety + presety v rozsahoch — prejde, keď §2.4 body 10-11 sedia.                                                                                                                                                                                                                                                                                             |
-| `npm run presets:fx-loudness`                        | vygeneruje `FACTORY_FX_PRESET_GAIN_DB` pre nové presety; pri `PLUGIN_WORKLET_TYPES` rozšírení prejde bez úpravy skriptu (vid §2.4 bod 6).                                                                                                                                                                                                                                 |
+| `npm run presets:fx-loudness`                        | vygeneruje `FACTORY_FX_PRESET_GAIN_DB` pre nové presety; pri `LAZY_WORKLET_TYPES` rozšírení prejde bez úpravy skriptu (vid §2.4 bod 6).                                                                                                                                                                                                                                   |
 | `npm run test:browser`                               | reálne prehratie KOREŇ v reťazci: efekt znie, meter sa hýbe, determinizmus; **musí bežať s `loadAllWorklets`** (checklist §6).                                                                                                                                                                                                                                            |
 | `npm run drift:check`                                | count bump + `param-math.json` golden (defaults/clamp) pre nový typ sa pregeneruje `npm run goldens:capture` → skontrolovať diff → `drift:bless`.                                                                                                                                                                                                                         |
 
@@ -380,10 +380,60 @@ KOPA worklet reálne zmeraný a zapísaný (nie odhad).
 
 ## 4. FÁZA 3 — obsah a dokončenie
 
-1. **Intent/AI routing:** `FAMILY_INSTRUMENTS` v `src/intent/preset-intent.ts:48` — KOPA patrí
-   do `drums`? (family je bass/chords/lead; kick nie je v žiadnej) — rozhodnúť: buď pridať
-   `drums` family (a napojiť na dice/kit), alebo KOPA explicitne mimo preset-intent rodín
-   (jednoduchšie a čestnejšie pre v1). Zdokumentovať v ADR.
+1. **Preset-intent rodina `drums` (ROZHODNUTÉ: KOPA patrí do `FAMILY_INSTRUMENTS`).**
+   KOPA sa stáva plnohodnotným cieľom preset vety: „load the trap long preset on the drums",
+   „načítaj trap long preset na bicie". Implementácia je **engine-side** (deterministický parser
+   - resolver + MCP); **`src/intent/model-schema.ts` (`MODEL_ACTIONS`/`VOCAB`) sa NEMENÍ** — jeho
+     zmena mení `toGbnfGrammar()`, čím padá pinned `grammarSha256`
+     (`tests/intent-model-artifact.test.ts:104-107`, `public/models/intent-model-v1.manifest.json`)
+     aj `schemaSourceSha256` vo validation reporte a vyžadovala by retrain
+     (`npm run intent-model:all`) — samostatná AI vlna, nie súčasť KOPA shipnutia (ADR 0035).
+     **Pozor: platí to aj na komentáre** — `schemaSourceSha256` je `sha256` celého súboru
+     (`tests/intent-model-artifact.test.ts:141-143`), takže aj veta v komentári
+     („best-scored across the three lanes") rozbije artifact lock; nechať tak, opraví to
+     až retrain vlna.
+     Presné kroky:
+   * `src/intent/preset-intent.ts`:
+     - `PresetTargetFamily` rozšíriť o `"drums"`:
+       `Extract<ExactTarget, "bass" | "lead" | "chords" | "drums">`.
+     - `FAMILY_INSTRUMENTS.drums = new Set(["kopa"])` — **v1 len KOPA**; `drumsynth` instrument
+       presety zostávajú mimo rodiny (ADR 0035 zdôvodní).
+     - `TARGET_WORDS`: pridať `[/\bdrums?\b|\bbic(?:ie|i|ich)?\b|\bbubn\w*|\bkick\b|\bkopa\w*/i, "drums"]`
+       (pozor: text je pred matchovaním **deaccentovaný** — „kopák" je „kopak", „bicích" je „bicich",
+       preto `kopa\w*` a `ich`, nie `ích`).
+     - `PRESET_ASK` target alternatívu rozšíriť o `|drums?|kick|kopa\w*|bic(?:ie|i|ich)?|bubn\w*`.
+     - **Family-aware resolution trackov (KRITICKÉ):** `applyPresetIntentCommand` aj
+       `presetReadback` dnes volajú `resolveExactTargetTracks(doc, intent.target)`, ktorá pre
+       `"drums"` vracia **drum-rack tracky** (`kind === "drum"`); `applyInstrumentPreset` na ne
+       nevie aplikovať (vyžaduje `kind === "instrument"`) → throw. Zaviesť v `preset-intent.ts`
+       `resolvePresetFamilyTracks(doc, family)`: pre `"drums"` vráti instrument tracky, ktorých
+       `instrument ∈ FAMILY_INSTRUMENTS.drums`; pre ostatné rodiny deleguje na
+       `resolveExactTargetTracks`. Použiť v oboch funkciách.
+     - **`resolveExactTargetTracks` sa NEMENÍ** — exact/fader „drums" musí ostať drum rack
+       („mute the drums" nesmie mutnúť KOPA stopu); regresné testy
+       (`tests/intent-e2e-audit.test.ts:358`, exact suite) zostávajú zelené.
+     - Prepísať hlavičkový komentár („Drums are not a preset target…"): drums rodina teraz kryje
+       drum-role **instrument** tracky (KOPA); drum-rack pady (`DRUM_FACTORY_PRESETS`) ostávajú
+       bez preset-intent povrchu.
+   * `src/intent/model-resolver.ts:131` — fallback slučka rodín, keď model vynechá `target`
+     (`["bass", "chords", "lead"]`), sa rozšíri o `"drums"`, aby aj model cesta dohľadala KOPA
+     preset podľa mena. (Schéma sa nemení — model naďalej neemituje `target:"drums"`, engine
+     fallback ho pokryje.)
+   * MCP `kyx_tracks` `loadPreset`/`listPresets` s `family:"drums"`: enum ju už obsahuje
+     (`src/mcp/tools.ts:639`), ale `loadPreset` dnes na `"drums"` spadne (viď resolution vyššie);
+     po zmene funguje. `listPresets` (`tools.ts:2386`) už fitting-first funguje cez
+     `PRESET_FAMILY_INSTRUMENTS[family]`.
+   * Testy:
+     - `tests/preset-intent-drums.test.ts` (nový): parse EN+SK („on the drums" / „na bicie")
+       → `PresetIntent.target === "drums"` a preset je KOPA; project s KOPA stopou + drum-rack
+       stopou → fold zasiahne len KOPA instrument stopu; project bez KOPA → honest throw
+       („no track matches the drums family"); apply + undo = jedna akcia; readback ✓.
+     - `tests/mcp-tools.test.ts`: `kyx_tracks {op:"loadPreset", family:"drums", presetName}`
+       prejde a vráti per-track readback; `listPresets family:"drums"` hlási fitting ≥ 1.
+     - `tests/intent-model-resolver.test.ts`: model cesta bez `target` dohľadá KOPA preset.
+     - `tests/intent-wrongkind-wave.test.ts`: SK inflected variants („na bicie", „na kopu").
+   * **KOPA factory presety (Fáza 2) sú podmienka** — bez nich suggestion list drums rodiny
+     nemá čo ponúkať; poradie commitov to reflektuje.
 2. **MCP surface:** `kyx_catalog` (`src/mcp/tools.ts:4742`) enumeruje `INSTRUMENT_DEFS` →
    KOPA sa objaví automaticky; skontrolovať, že `EFFECT_KNOB` má `bassHarmonic` a že
    `kyx_effect` tool funguje (test `tests/mcp-tools.test.ts`).
@@ -402,12 +452,15 @@ KOPA worklet reálne zmeraný a zapísaný (nie odhad).
 
 - **ADR 0035 — KOPA kick designer** (pred implementáciou Fázy 2): prečo nový instrument (nie
   rozšírenie drumsynth), prečo worklet s event queue, prečo lazy instrument modul, čo je
-  fallback, aký je budget, prečo žiadny schema bump, a **zapísaný kompromis loudness merania**
-  (fallback vs worklet cesta, §3.4 caveat).
+  fallback, aký je budget, prečo žiadny schema bump, **zapísaný kompromis loudness merania**
+  (fallback vs worklet cesta, §3.4 caveat) a **rozhodnutie preset-intent rodiny `drums`**:
+  KOPA v `FAMILY_INSTRUMENTS` (v1 len kopa), family-aware resolution oddelená od
+  `resolveExactTargetTracks`, `model-schema.ts` zámerne zmrazená (grammar/artifact pin) a
+  `drumsynth` instrument presety mimo rodiny s dôvodom.
 - **ADR 0034 — KOREŇ bass harmonic exciter:** rozhodnutie použiť M2 AudioParam pattern (nie port
-  messages), rozšírenie lazy worklet zoznamu o first-party efekt (+ plánovaný rename na
-  `LAZY_WORKLET_TYPES` v samostatnom commite), dôsledky pre `check-bundle-size`
-  a `ensureWorkletsForDoc`, a prečo žiadny schema bump.
+  messages), rozšírenie lazy worklet zoznamu o first-party efekt (+ **rename
+  `PLUGIN_WORKLET_TYPES` → `LAZY_WORKLET_TYPES` je rozhodnutý** — samostatný prvý commit Fázy 1),
+  dôsledky pre `check-bundle-size` a `ensureWorkletsForDoc`, a prečo žiadny schema bump.
 - **CURRENT-STATE bump** v každej fáze (inštrumenty 23→24, efekty 52→53, presety, spec files).
 - **NEW-EFFECT-CHECKLIST.md** prejsť bod po bode v PR popise (dôkaz, nie tvrdenie).
 
@@ -417,8 +470,8 @@ KOPA worklet reálne zmeraný a zapísaný (nie odhad).
 
 ```text
 FÁZA 1 (KOREŇ)
-  chore(loader): rename PLUGIN_WORKLET_TYPES -> LAZY_WORKLET_TYPES (mechanický, ak ADR schváli)
-  chore(loader): lazy core worklet seam — bassHarmonic v lazy zozname + budget riadok
+  chore(loader): rename PLUGIN_WORKLET_TYPES -> LAZY_WORKLET_TYPES (mechanický, ROZHODNUTÉ)
+  chore(loader): lazy worklet seam — bassHarmonic v LAZY_WORKLET_TYPES + budget riadok
   feat(fx): bassHarmonic DSP worklet + golden testy
   feat(fx): KOREŇ registrácia, node wrapper (M2 AudioParam), fallback, blurb
   feat(fx): KOREŇ presety + role preset + fx-loudness meranie
@@ -433,6 +486,11 @@ FÁZA 2 (KOPA)
   feat(ui): KOPA inspector/hobby view + add-track
   test(browser): KOPA lazy-load + live/offline parita
   docs: ADR 0035 + CURRENT-STATE
+
+FÁZA 3 (obsah)
+  feat(intent): drums preset-intent rodina — FAMILY_INSTRUMENTS.kopa + family-aware resolver
+                + TARGET_WORDS/PRESET_ASK + model-resolver fallback + MCP testy
+  test(intent): preset-intent-drums suite (EN/SK, fold-only-KOPA, honest throw bez KOPA)
   chore: drift:bless, gen:mcp-mirrors, finálny sweep
 ```
 
@@ -452,6 +510,8 @@ pred merge gate tabuľka z `AGENTS.md` §6.
 | `Record<InstrumentKind,...>` typecheck vlny (mapping.ts, INSTRUMENT_NAMES, KIND_BADGE, badge mapy) | presný zoznam povrchov v §3.4; `tsc` ich odhalí — prejsť `rg "Record<InstrumentKind"` pred PR                              |
 | Loudness gate padne na nové presety                                                                | meranie hneď po presetoch (`presets:loudness` / `presets:fx-loudness`), clamp ±18 dB = fix family, nie cap                 |
 | Preset gate „každý inštrument má preset"                                                           | KOPA presety v tom istom commite ako registrácia (test `plugin-functional-audit.test.ts:587`)                              |
+| „drums" preset-target rodina omylom trafí drum-rack stopy                                          | family-aware resolver v `preset-intent.ts`; `resolveExactTargetTracks("drums")` sa nemení; test s KOPA + drum-rack stopou  |
+| „drums" rodina rozbije pinned local intent model                                                   | `model-schema.ts` sa NEMENÍ (grammarSha256/schemaSourceSha256 pin); rodina je engine-side, retrain je samostatná vlna      |
 | Drift gate (param-math golden, count rows)                                                         | `npm run goldens:capture` → skontrolovať diff → `drift:bless` v tom istom commite                                          |
 | Multi-agent shared tree                                                                            | commitovať po každej fáze; stage len vlastné cesty (`AGENTS.md` §7)                                                        |
 
@@ -464,6 +524,7 @@ pred merge gate tabuľka z `AGENTS.md` §6.
 - **KOPA:** 24. inštrument, worklet + offline event queue, natívny fallback (audible),
   lazy load s vlastným budget riadkom, ≥16 presetov s meraným gainom (všetky počuteľné),
   badge/menu/Inspector/hobby view, live↔offline bit-parita, browser factory-preset QA,
+  **`FAMILY_INSTRUMENTS.drums` s KOPA + family-aware resolver + MCP `loadPreset` family:"drums"**,
   ADR, CURRENT-STATE bump.
 - `npm run typecheck`, `npm run test`, `npm run test:expectations`, `npm run drift:check`,
   `npm run format:check`, `npm run build`, `npm run test:browser`, `npm run test:browser:factory-presets`,
