@@ -27,6 +27,8 @@ import {
   loadInstrumentWorklet,
   loadLazyWorklet,
   LAZY_WORKLET_TYPES,
+  INSTRUMENT_WORKLET_TYPES,
+  type InstrumentWorkletType,
   type LazyWorkletType,
 } from "../audio-worklets/loader";
 import { MeteringRig, measureTruePeak as measureTruePeakImpl } from "./meteringRig";
@@ -433,7 +435,12 @@ export class AudioEngine {
   private sceneBpmOverride: number | null = null;
 
   private bankUnsubscribe: (() => void) | null = null;
-  private readonly tsarWorkletLoads = new WeakSet<BaseAudioContext>();
+  /**
+   * Per-context set of instrument worklet modules already queued for load.
+   * Keyed by the instrument TYPE (tsar, kopa, …) so adding a second lazy
+   * instrument does not duplicate the queue machinery.
+   */
+  private readonly instrumentWorkletLoads = new WeakMap<BaseAudioContext, Set<InstrumentWorkletType>>();
 
   attachBank(bank: SampleBank): void {
     this.bank = bank;
@@ -725,7 +732,7 @@ export class AudioEngine {
     this.masterChain.build();
     if (this.doc) {
       this.syncProject(this.doc);
-      this.queueTsarWorkletLoad(ctx, this.doc);
+      this.queueInstrumentWorkletLoad(ctx, this.doc);
     }
     this.queueWorkletRefresh(ctx);
     // Defect 1.2 (lifecycle audit): Chrome / iOS Safari / Firefox
@@ -868,28 +875,36 @@ export class AudioEngine {
       });
   }
 
-  /** Load TSAR when a project starts using it, then replace any fallback runtime. */
-  private queueTsarWorkletLoad(ctx: BaseAudioContext, doc: ProjectDocument): void {
-    const hasTsar = doc.tracks.some((track) => track.kind === "instrument" && track.instrument === "tsar");
-    if (!hasTsar || isWorkletReady("tsar", ctx) || this.tsarWorkletLoads.has(ctx)) return;
-    this.tsarWorkletLoads.add(ctx);
-    void loadInstrumentWorklet(ctx, "tsar")
-      .then(() => {
-        this.tsarWorkletLoads.delete(ctx);
-        const currentDoc = this.doc;
-        if (
-          this.ctx === ctx &&
-          isWorkletReady("tsar", ctx) &&
-          currentDoc?.tracks.some((track) => track.kind === "instrument" && track.instrument === "tsar")
-        ) {
-          // syncInstrument notices the fallback→worklet transition and
-          // rebuilds only the TSAR runtime against the now-ready processor.
-          this.setProject(currentDoc);
-        }
-      })
-      .catch(() => {
-        this.tsarWorkletLoads.delete(ctx);
-      });
+  /** Load any lazy instrument worklet the project uses, then replace fallback runtimes. */
+  private queueInstrumentWorkletLoad(ctx: BaseAudioContext, doc: ProjectDocument): void {
+    for (const type of INSTRUMENT_WORKLET_TYPES) {
+      const hasInstrument = doc.tracks.some((track) => track.kind === "instrument" && track.instrument === type);
+      if (!hasInstrument || isWorkletReady(type, ctx)) continue;
+      let queued = this.instrumentWorkletLoads.get(ctx);
+      if (!queued) {
+        queued = new Set();
+        this.instrumentWorkletLoads.set(ctx, queued);
+      }
+      if (queued.has(type)) continue;
+      queued.add(type);
+      void loadInstrumentWorklet(ctx, type)
+        .then(() => {
+          queued!.delete(type);
+          const currentDoc = this.doc;
+          if (
+            this.ctx === ctx &&
+            isWorkletReady(type, ctx) &&
+            currentDoc?.tracks.some((track) => track.kind === "instrument" && track.instrument === type)
+          ) {
+            // syncInstrument notices the fallback→worklet transition and
+            // rebuilds only the affected runtime against the ready processor.
+            this.setProject(currentDoc);
+          }
+        })
+        .catch(() => {
+          queued!.delete(type);
+        });
+    }
   }
 
   ensureContext(): BaseAudioContext {
@@ -953,7 +968,7 @@ export class AudioEngine {
       }
       if (this.ctx) {
         this.syncProject(target);
-        this.queueTsarWorkletLoad(this.ctx, target);
+        this.queueInstrumentWorkletLoad(this.ctx, target);
       }
     };
     this.projectPromise = (async () => {
