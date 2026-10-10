@@ -354,6 +354,24 @@ let tsarWorkletKb = 0;
 }
 console.log(`[size-budget] TSAR worklet: ${tsarWorkletKb.toFixed(0)} KB (budget ${TSAR_WORKLET_BUDGET_KB})`);
 
+// KOREŇ bass-harmonic effect worklet: a LAZY effect module (loaded only for
+// projects that use the effect — first-party DSP, not a vendored suite), so
+// it carries its own budget instead of inflating the core boot bundle.
+// Measured ~6 KB at implementation; 24 KB leaves room for tuning additions.
+const BASS_HARMONIC_WORKLET_BUDGET_KB = 24;
+let bassHarmonicWorkletKb = 0;
+{
+  const path = join(dist, "bass-harmonic-worklet.js");
+  if (!statSync(path).isFile()) {
+    console.error("[size-budget] FAIL — missing KOREŇ worklet: dist/bass-harmonic-worklet.js");
+    process.exit(1);
+  }
+  bassHarmonicWorkletKb = statSync(path).size / 1024;
+}
+console.log(
+  `[size-budget] KOREŇ worklet: ${bassHarmonicWorkletKb.toFixed(0)} KB (budget ${BASS_HARMONIC_WORKLET_BUDGET_KB})`,
+);
+
 let failed = false;
 if (entryKb > ENTRY_BUDGET_KB) {
   console.error(`[size-budget] FAIL — entry chunk over budget: ${entryKb.toFixed(0)} > ${ENTRY_BUDGET_KB} KB.`);
@@ -458,6 +476,12 @@ if (coreWorkletKb > CORE_WORKLET_BUDGET_KB) {
 if (tsarWorkletKb > TSAR_WORKLET_BUDGET_KB) {
   console.error(
     `[size-budget] FAIL — TSAR worklet over budget: ${tsarWorkletKb.toFixed(0)} > ${TSAR_WORKLET_BUDGET_KB} KB.`,
+  );
+  failed = true;
+}
+if (bassHarmonicWorkletKb > BASS_HARMONIC_WORKLET_BUDGET_KB) {
+  console.error(
+    `[size-budget] FAIL — KOREŇ worklet over budget: ${bassHarmonicWorkletKb.toFixed(0)} > ${BASS_HARMONIC_WORKLET_BUDGET_KB} KB.`,
   );
   failed = true;
 }
