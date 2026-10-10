@@ -23,6 +23,7 @@ import { renderProject, type RenderOptions } from "../rendering/renderer";
 import { buildStemProject } from "../rendering/stems";
 import { encodeWavAsync } from "../rendering/wav";
 import { roleOfTrack } from "../effects/role-presets";
+import { buildVisualScore, VISUAL_SCORE_ARTIFACT_TYPE, type VisualScore } from "./visualScore";
 import type { SampleBank } from "../sample-library/factory";
 import { publishStemProfile } from "./qvesterProfileBus";
 
@@ -313,6 +314,7 @@ export function buildBeatHandoffPacket(
   record: BeatHandoffRecord,
   doc: ProjectDocument,
   sourceMap: KyxSourceMapEntry[] = [],
+  visualScore?: VisualScore | null,
 ): BeatHandoffPacket {
   const createdAt = Date.now();
   const key = keyToCamelot(doc.key);
@@ -348,6 +350,19 @@ export function buildBeatHandoffPacket(
       uri: `qvester-blob:${record.hash}`,
       value: JSON.stringify({ stems: sourceMap }),
       metadata: { roles: [...new Set(sourceMap.map((e) => e.role))] },
+    });
+  }
+  if (visualScore) {
+    inputs.push({
+      type: VISUAL_SCORE_ARTIFACT_TYPE,
+      label: `Visual score — ${visualScore.sections.length} section(s), ${visualScore.chords.length} chord(s)`,
+      uri: `qvester-blob:${record.hash}`,
+      value: JSON.stringify(visualScore),
+      metadata: {
+        format: "application/json",
+        sections: String(visualScore.sections.length),
+        chords: String(visualScore.chords.length),
+      },
     });
   }
   return {
@@ -614,7 +629,12 @@ export async function prepareBeatHandoff(
     });
   }
 
-  const packet = buildBeatHandoffPacket(record, doc, sourceMap);
+  // Visual score (v3): the declarative dramaturgy (sections/markers/chords/
+  // intensity) for Audio Canvas — replaces heuristic section detection with
+  // the truth the project authored. Built from the rendered timeline so the
+  // seconds align with the WAV.
+  const visualScore = buildVisualScore(doc, buffer.duration);
+  const packet = buildBeatHandoffPacket(record, doc, sourceMap, visualScore);
   if (!persistBeatHandoffPacket(packet)) {
     throw new Error("WebStorage rejected the handoff packet (private mode or quota) — nothing was sent.");
   }
