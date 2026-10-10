@@ -4,7 +4,7 @@
 
 KYX (internally known as **Pulse Forge**, the repository name) is a local-first digital audio workstation with two target profiles: KYX Web and KYX Studio. It is built around **Sound, Rhythm, Composition, Recording, Processing, Arrangement, and Export**. The expanded full-DAW target is recorded in ADR 0014; roadmap items below are not claims that those capabilities already ship.
 
-KYX already captures one selected browser audio input to one armed arrangement track as recoverable Float32 PCM. That input can be a guitar or other instrument when an audio interface exposes it to the browser; the current UI and routing remain single-input. Simultaneous multichannel recording, take lanes/comping, native low-latency device I/O and third-party plug-in hosting are not yet shipped. The existing product includes 15 native instruments, 47 native effects (including 5 flagship DSP suites), a 16/32-step sequencer plus piano roll, arrangement, scene-based launching, real-time collaboration, a deterministic offline renderer, and export to WAV, MP3, vertical video and a packaged score.
+KYX already captures one selected browser audio input to one armed arrangement track as recoverable Float32 PCM. That input can be a guitar or other instrument when an audio interface exposes it to the browser; the current UI and routing remain single-input. Simultaneous multichannel recording, take lanes/comping, native low-latency device I/O and third-party plug-in hosting are not yet shipped. The existing product includes 24 native instruments, 53 native effects (including 5 flagship DSP suites), a 16/32-step sequencer plus piano roll, arrangement, scene-based launching, real-time collaboration, a deterministic offline renderer, and export to WAV, MP3, vertical video and a packaged score.
 
 The web build also ships as a standalone Windows desktop app (ADR 0010/0011), currently a thin Electron shell around the same Web Audio application, with auto-update through GitHub Releases. That package is not yet the native-audio KYX Studio target; see [the full-DAW roadmap](docs/ROADMAP-FULL-DAW.md) and [capability audit](docs/DAW-CAPABILITY-AUDIT-2026-09.md).
 
@@ -82,7 +82,7 @@ Practically, that covers:
 - **Multi-select steps** — shift+drag rectangle, `Delete` clears, vertical drag scales velocity for the whole selection.
 - One shared deterministic groove module feeds both the realtime scheduler and the offline renderer — exports groove exactly like playback.
 
-### 14 melodic instruments (`src/instruments/registry.ts`)
+### 24 melodic instruments (`src/instruments/registry.ts`)
 
 | #   | Instrument          | Engine highlights                                                                                                                                                                                                   |
 | --- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -100,10 +100,20 @@ Practically, that covers:
 | 12  | **Spectral Pad**    | additive pad up to 8 sine partials with per-partial amplitude, decay and stereo placement; profiles (Harmonic, Bright, Odd, Formant, Bell)                                                                          |
 | 13  | **Vocal Chop**      | parallel three-band formant bank (A/E/I/O/U Peterson-Barney formants), consonant transient, vibrato, glide, MORPH through vowel table                                                                               |
 | 14  | **Drum Synth**      | 13 analytically-modelled drum voices (Kick / Snare / Hat C / Hat O / Clap / Perc / …) played chromatically from the piano roll, with choke on the hats                                                              |
+| 15  | **Flute**           | breath noise + delayed vibrato (depth ramps in after the wind-player delay) + legato glide + overblow harmonic + formant/drive body; 10 factory presets                                                              |
+| 16  | **Organ**           | additive drawbar tone via a cached PeriodicWave per quantized tilt + grit (SVF drive) and a rotary/Leslie section                                                                                                  |
+| 17  | **Strings**         | bowed section: three deterministic detune offsets, slow bow attack + long release, rosin low-mid lift, bowed glissando on slides                                                                                   |
+| 18  | **Bell**            | inharmonic 2-op FM body + filtered-noise strike transient; velocity nudges the modal ratio (harder strikes excite different modes)                                                                                |
+| 19  | **Reese**           | two detuned saws (the beating IS the sound), slow LFO filter walk for the morph                                                                                                                                    |
+| 20  | **Clavinet**        | tangent strike + pickup network v3 (C/D/E/F rocker voicings incl. the out-of-phase funk scoop), DAMP-driven decay                                                                                                   |
+| 21  | **Acid 303**        | strictly mono saw/square with glide and accent; SVF squelch envelope slams open and decays back                                                                                                                    |
+| 22  | **Synth Brass**     | three-detuned-saw tight section, quick brass attack, velocity-scaled cutoff swoosh + high-shelf bite                                                                                                               |
+| 23  | **TSAR**            | flagship hybrid sample + wavetable + granular engine (16 voices, dual sources, arp, 4-slot mod matrix, filter env); lazy event-queue worklet, offline export audio-identical                                        |
+| 24  | **KOPA**            | kick designer: pitch envelope (exp/lin/snap/hold, optional key tracking), click transient, sine/tri/saw body + hollow, tail, phase-locked sub, 4 drive curves; lazy event-queue worklet with an audible native fallback |
 
 Plus a **drum rack** with 16 pads per drum track (gain/pan/pitch/mute/solo/choke groups) and a separate **7-voice synth drum kit** that the rack's pads map onto. All instruments support mod matrix routes (MOD A / B with ENV/LFO/VEL/PRESS → CUTOFF/AMP/MORPH), MPE poly aftertouch and per-note timbre (CC74), and live parameter changes that propagate to sounding voices.
 
-### 47 effects — 42 native/core + 5 flagship (`src/effects/registry.ts`)
+### 53 effects — 48 native/core + 5 flagship (`src/effects/registry.ts`)
 
 **Flagship plugin suites** (AudioWorklet DSP with dedicated regression/golden coverage):
 
@@ -115,7 +125,7 @@ Plus a **drum rack** with 16 pads per drum track (gain/pan/pitch/mute/solo/choke
 | `kaskada`       | **Kaskáda Delay** | tempo-synced multi-tap delay                                                                                       |
 | `morphdynamics` | **MORPH**         | macro-driven dynamics, character, motion and space processing                                                      |
 
-**Native/core mix effects** (native Web Audio / AudioWorklet — 40 of them): EQ, M/S EQ, Multiband, Haas Widener, Compressor, Saturation, Tape Sat, Clipper, Reverb, Delay, Pump, Distortion, Bitcrusher, Chorus, Phaser, Sidechain, Transient Shaper, Gate, Shimmer, Drum Buss, Bass Buss, Utility, Limiter, Step Gate, SV Filter, Flanger, Tremolo, Autowah, Stutter, Comb, Vowel, Duck Delay, Multi-Tap Delay, Ring Mod, Tape Stop, Frequency Shifter, Pitch Shift, Vinyl, Beat Mangler, Vocoder.
+**Native/core mix effects** (native Web Audio / AudioWorklet — 48 of them): EQ, M/S EQ, Multiband, Haas Widener, Compressor, Saturation, Tape Sat, Clipper, Reverb, Delay, Pump, Distortion, Bitcrusher, Chorus, Phaser, Sidechain, Transient Shaper, Gate, Shimmer, Drum Buss, Bass Buss, Utility, Limiter, Step Gate, SV Filter, Flanger, Tremolo, Autowah, Stutter, Comb, Vowel, Duck Delay, Multi-Tap Delay, Ring Mod, Tape Stop, Frequency Shifter, Pitch Shift, Pitch Correct, Vinyl, Beat Mangler, Vocoder, Reverse Swell, Granular Freeze, ZENIT, APEKS, ŠÍRKA, PRÚD, KOREŇ. **KOREŇ** (bass harmonic exciter) tracks the bass fundamental and synthesizes a phase-locked harmonic stack on top of the sub anchor — missing-fundamental bass that carries on phones and small speakers; lazy worklet, four factory presets, honest 1:1 bypass until the module loads.
 
 Each effect is a shared `EffectDefinition` → `EffectRuntime`; structural chain changes rebuild the runtime, parameter tweaks are diffed and applied smoothly; track deletion disposes nodes and runtimes; BPM changes propagate `syncBpm` to tempo-synced runtimes.
 
@@ -375,7 +385,7 @@ pulse-forge/
 │  ├─ commands/            ← Command system, undo/redo, yjs bridge
 │  ├─ store/               ← ProjectStore, SelectionStore, ToolStore
 │  ├─ instruments/         ← Instrument registry (14 kinds), mod matrix, randomize
-│  ├─ effects/             ← Effect registry (47 types), fxeq-core, ultina-core, ozvena-core vendored cores
+│  ├─ effects/             ← Effect registry (53 types), fxeq-core, ultina-core, ozvena-core vendored cores
 │  ├─ sample-library/      ← Manifest, factory synthesis, curated layer, kit pools, velocity layers
 │  ├─ presets/             ← Factory presets (319 + 6), normalization, similarity, audio quality
 │  ├─ rendering/           ← renderProject, bounce, stems, WAV encoder
