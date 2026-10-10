@@ -37,6 +37,9 @@ const TP_TAPS = 12;
 // output-side detector see the reconstructed waveform before it is emitted.
 const POST_TP_DELAY_SAMPLES = 32;
 const POST_TP_MARGIN_DB = 0.1;
+function clampLink(value) {
+  return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 1;
+}
 const TP_TABLE = [
   new Float32Array([
     0.001708984375, 0.010986328125, -0.0196533203125, 0.033203125, -0.0594482421875, 0.1373291015625, 0.97216796875,
@@ -134,6 +137,8 @@ class LimiterProcessor extends AudioWorkletProcessor {
       { name: "release", defaultValue: 0.12, minValue: 0.01, maxValue: 2, automationRate: "k-rate" },
       { name: "lookahead", defaultValue: 0.005, minValue: 0.001, maxValue: 0.02, automationRate: "k-rate" },
       { name: "link", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+      { name: "transientLink", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+      { name: "releaseLink", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "mix", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
     ];
   }
@@ -165,9 +170,13 @@ class LimiterProcessor extends AudioWorkletProcessor {
     const thresholdDb = parameters.threshold[0];
     const releaseSec = parameters.release[0];
     const laSamples = Math.max(1, Math.min(this.cap - 2, Math.round(parameters.lookahead[0] * sr)));
-    const link = parameters.link[0];
+    // `link` remains as a compatibility ceiling for older effect instances
+    // and direct worklet users. New master controls use separate link stages.
+    const legacyLink = clampLink(parameters.link[0]);
+    const transientLink = Math.min(legacyLink, clampLink(parameters.transientLink[0]));
+    const releaseLink = Math.min(legacyLink, clampLink(parameters.releaseLink[0]));
     const mix = parameters.mix[0];
-    const perChannel = outR !== null && link < 0.999;
+    const perChannel = outR !== null && (transientLink < 0.999 || releaseLink < 0.999);
     const attackCoef = 1 - Math.exp(-1 / (sr * 0.0005));
     const postCorrectionAttackCoef = 1 - Math.exp(-1 / (sr * 0.00005));
 
@@ -225,8 +234,10 @@ class LimiterProcessor extends AudioWorkletProcessor {
       if (perChannel) {
         const gl = applyKnee(this.leftPeak.front(windowStart));
         const gr2 = applyKnee(this.rightPeak.front(windowStart));
-        targetL = link * targetLinked + (1 - link) * gl;
-        targetR = link * targetLinked + (1 - link) * gr2;
+        const linkL = targetLinked < this.gainL ? transientLink : releaseLink;
+        const linkR = targetLinked < this.gainR ? transientLink : releaseLink;
+        targetL = linkL * targetLinked + (1 - linkL) * gl;
+        targetR = linkR * targetLinked + (1 - linkR) * gr2;
       }
 
       // Gain smoothing: fast dive (the look-ahead already paid for it),

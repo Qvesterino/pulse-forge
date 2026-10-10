@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { open, readFile, stat, writeFile } from "node:fs/promises";
-import { expect, test, type Page } from "playwright/test";
+import { expect, test, type Download, type Page } from "playwright/test";
+import type { ExternalAlbumNormalizationReport } from "../../src/mastering/sessionReport";
 import { clickPanelAction, openHouseTemplate } from "./_helpers";
 
 function readMasterWavFacts(bytes: Buffer) {
@@ -149,7 +150,47 @@ function readMp3Facts(bytes: Buffer) {
   throw new Error("The delivered MP3 contains no valid MPEG Layer III frame.");
 }
 
-function makeStereoTestWav(durationSeconds = 1): Buffer {
+function corruptMp3FrameHeader(bytes: Buffer, frameIndex: number): Buffer {
+  const copy = Buffer.from(bytes);
+  let offset = 0;
+  if (copy.subarray(0, 3).toString("ascii") === "ID3") {
+    const tagSize =
+      ((copy[6]! & 0x7f) << 21) | ((copy[7]! & 0x7f) << 14) | ((copy[8]! & 0x7f) << 7) | (copy[9]! & 0x7f);
+    offset = 10 + tagSize + ((copy[5]! & 0x10) !== 0 ? 10 : 0);
+  }
+  const mpeg1Bitrates = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0];
+  const mpeg2Bitrates = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0];
+  for (let index = 0; index <= frameIndex; index++) {
+    if (offset + 4 > copy.length) throw new Error("The MP3 ended before the requested frame header.");
+    const header = copy.readUInt32BE(offset);
+    const versionBits = (header >>> 19) & 0b11;
+    const bitrateIndex = (header >>> 12) & 0b1111;
+    const sampleRateIndex = (header >>> 10) & 0b11;
+    if (
+      header >>> 21 !== 0x7ff ||
+      versionBits === 1 ||
+      bitrateIndex === 0 ||
+      bitrateIndex === 15 ||
+      sampleRateIndex === 3
+    ) {
+      throw new Error(`The MP3 frame ${index} has an invalid header before corruption.`);
+    }
+    if (index === frameIndex) {
+      copy[offset] = 0;
+      copy[offset + 1] = 0;
+      return copy;
+    }
+    const version = versionBits === 3 ? 1 : versionBits === 2 ? 2 : 2.5;
+    const baseSampleRate = [44_100, 48_000, 32_000][sampleRateIndex]!;
+    const sampleRate = baseSampleRate / (version === 1 ? 1 : version === 2 ? 2 : 4);
+    const bitrateKbps = (version === 1 ? mpeg1Bitrates : mpeg2Bitrates)[bitrateIndex]!;
+    const padding = (header >>> 9) & 1;
+    offset += Math.floor(((version === 1 ? 144 : 72) * bitrateKbps * 1000) / sampleRate) + padding;
+  }
+  throw new Error("Could not corrupt the requested MP3 frame header.");
+}
+
+function makeStereoTestWav(durationSeconds = 1, amplitude = 0.12): Buffer {
   const sampleRate = 44_100;
   const channels = 2;
   const bitsPerSample = 16;
@@ -171,12 +212,47 @@ function makeStereoTestWav(durationSeconds = 1): Buffer {
   wav.write("data", 36);
   wav.writeUInt32LE(dataBytes, 40);
   for (let frame = 0; frame < frames; frame++) {
-    const left = Math.round(Math.sin((2 * Math.PI * 440 * frame) / sampleRate) * 0.12 * 0x7fff);
-    const right = Math.round(Math.sin((2 * Math.PI * 443 * frame) / sampleRate) * 0.1 * 0x7fff);
+    const left = Math.round(Math.sin((2 * Math.PI * 440 * frame) / sampleRate) * amplitude * 0x7fff);
+    const right = Math.round(Math.sin((2 * Math.PI * 443 * frame) / sampleRate) * amplitude * (5 / 6) * 0x7fff);
     wav.writeInt16LE(left, 44 + frame * blockAlign);
     wav.writeInt16LE(right, 44 + frame * blockAlign + 2);
   }
   return wav;
+}
+
+type MasteringSessionProcessingSnapshot = {
+  id: string;
+  configRevision: number;
+  masterGain: number;
+  ceilingDb: number;
+};
+
+async function readMasteringSessionProcessingSnapshots(
+  page: Page,
+  ids: string[],
+): Promise<Array<MasteringSessionProcessingSnapshot | null>> {
+  return page.evaluate(async (sessionIds: string[]) => {
+    const sessionStorePath = ["/src", "mastering", "sessionStore.ts"].join("/");
+    const { MasteringSessionRepository } = await import(sessionStorePath);
+    const repository = new MasteringSessionRepository() as {
+      get(id: string): Promise<{
+        id: string;
+        configRevision: number;
+        masterConfig: { masterGain: number; ceilingDb: number };
+      } | null>;
+    };
+    const records = await Promise.all(sessionIds.map((id) => repository.get(id)));
+    return records.map((record) =>
+      record
+        ? {
+            id: record.id,
+            configRevision: record.configRevision,
+            masterGain: record.masterConfig.masterGain,
+            ceilingDb: record.masterConfig.ceilingDb,
+          }
+        : null,
+    );
+  }, ids);
 }
 
 async function markMasteringMemoryStage(stage: string): Promise<void> {
@@ -195,21 +271,60 @@ function makeMinimalFlac(): Buffer {
   return bytes;
 }
 
-async function makeBrowserFlacSource(page: Page): Promise<Buffer> {
+async function makeBrowserFlacSource(
+  page: Page,
+  options: { durationSeconds?: number; noise?: boolean } = {},
+): Promise<Buffer> {
+  await page.goto("/", { waitUntil: "domcontentloaded", timeout: 120_000 });
+  const bytes = await page.evaluate(
+    async ({ durationSeconds, noise }) => {
+      const encoderPath = ["/src", "export", "flac.ts"].join("/");
+      const { encodeFlac } = await import(encoderPath);
+      const sampleRate = 44_100;
+      const source = new AudioBuffer({
+        length: Math.round(sampleRate * durationSeconds),
+        numberOfChannels: 2,
+        sampleRate,
+      });
+      for (let channel = 0; channel < source.numberOfChannels; channel++) {
+        const samples = source.getChannelData(channel);
+        if (noise) {
+          let state = channel === 0 ? 0x12345678 : 0x87654321;
+          for (let frame = 0; frame < samples.length; frame++) {
+            state ^= state << 13;
+            state ^= state >>> 17;
+            state ^= state << 5;
+            samples[frame] = ((state >>> 0) / 0x1_0000_0000) * 0.8 - 0.4;
+          }
+        } else {
+          const frequency = channel === 0 ? 440 : 443;
+          for (let frame = 0; frame < samples.length; frame++) {
+            samples[frame] = 0.2 * Math.sin((2 * Math.PI * frequency * frame) / sampleRate);
+          }
+        }
+      }
+      const encoded = await encodeFlac(source, { bitDepth: 16 });
+      return Array.from(new Uint8Array(await encoded.arrayBuffer()));
+    },
+    { durationSeconds: options.durationSeconds ?? 1, noise: options.noise ?? false },
+  );
+  return Buffer.from(bytes);
+}
+
+async function makeBrowserMp3Source(page: Page): Promise<Buffer> {
   await page.goto("/", { waitUntil: "domcontentloaded", timeout: 120_000 });
   const bytes = await page.evaluate(async () => {
-    const encoderPath = ["/src", "export", "flac.ts"].join("/");
-    const { encodeFlac } = await import(encoderPath);
+    const encoderPath = ["/src", "export", "mp3.ts"].join("/");
+    const { encodeMp3 } = await import(encoderPath);
     const sampleRate = 44_100;
-    const source = new AudioBuffer({ length: sampleRate, numberOfChannels: 2, sampleRate });
-    for (let channel = 0; channel < source.numberOfChannels; channel++) {
-      const samples = source.getChannelData(channel);
-      const frequency = channel === 0 ? 440 : 443;
-      for (let frame = 0; frame < samples.length; frame++) {
-        samples[frame] = 0.2 * Math.sin((2 * Math.PI * frequency * frame) / sampleRate);
-      }
+    const durationSeconds = 4;
+    const source = new AudioBuffer({ length: sampleRate * durationSeconds, numberOfChannels: 2, sampleRate });
+    for (let frame = 0; frame < source.length; frame++) {
+      const time = frame / sampleRate;
+      source.getChannelData(0)[frame] = 0.24 * Math.sin(2 * Math.PI * 221 * time);
+      source.getChannelData(1)[frame] = 0.19 * Math.sin(2 * Math.PI * 223 * time);
     }
-    const encoded = await encodeFlac(source, { bitDepth: 16 });
+    const encoded = await encodeMp3(source, { kbps: 320 });
     return Array.from(new Uint8Array(await encoded.arrayBuffer()));
   });
   return Buffer.from(bytes);
@@ -221,6 +336,7 @@ async function installMasteringSessionRenderGate(page: Page): Promise<void> {
       armed: boolean;
       arm: () => void;
       waitForStart: () => Promise<void>;
+      release: () => void;
     };
     let startedResolve: (() => void) | null = null;
     let started = Promise.resolve();
@@ -233,6 +349,7 @@ async function installMasteringSessionRenderGate(page: Page): Promise<void> {
         gate.armed = true;
       },
       waitForStart: () => started,
+      release: () => undefined,
     };
     Object.defineProperty(window, "__masteringSessionRenderGate", { configurable: true, value: gate });
 
@@ -246,7 +363,12 @@ async function installMasteringSessionRenderGate(page: Page): Promise<void> {
         gate.armed = false;
         startedResolve?.();
         startedResolve = null;
-        return new Promise<AudioBuffer>(() => undefined);
+        return new Promise<AudioBuffer>((resolve, reject) => {
+          gate.release = () => {
+            gate.release = () => undefined;
+            void originalStartRendering.call(this).then(resolve, reject);
+          };
+        });
       },
     });
   });
@@ -267,6 +389,15 @@ async function waitForMasteringSessionRenderStart(page: Page): Promise<void> {
       .__masteringSessionRenderGate;
     if (!gate) throw new Error("The mastering-session render gate was not installed.");
     await gate.waitForStart();
+  });
+}
+
+async function releaseMasteringSessionRenderGate(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const gate = (window as Window & { __masteringSessionRenderGate?: { release: () => void } })
+      .__masteringSessionRenderGate;
+    if (!gate) throw new Error("The mastering-session render gate was not installed.");
+    gate.release();
   });
 }
 
@@ -1664,6 +1795,231 @@ test.describe("17 — mastering workspace", () => {
       profileId: "apple",
       status: "not-measured",
     });
+  });
+
+  test("preserves a quiet MP3 fade-out after LAME encode/decode with and without pre-dither", async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(150_000);
+    test.skip(
+      testInfo.project.name !== "chromium",
+      "The LAME fade-out round-trip requires Chromium's Web Audio decoder.",
+    );
+    await page.goto("/", { waitUntil: "domcontentloaded", timeout: 120_000 });
+    const result = await page.evaluate(async () => {
+      const mp3ModulePath = ["/src", "export", "mp3.ts"].join("/");
+      const { encodeMp3 } = await import(mp3ModulePath);
+      const sampleRate = 44_100;
+      const durationSeconds = 4;
+      const frameCount = sampleRate * durationSeconds;
+      const source = new AudioBuffer({ length: frameCount, numberOfChannels: 2, sampleRate });
+      for (let frame = 0; frame < frameCount; frame++) {
+        const time = frame / sampleRate;
+        const fade = Math.max(0, Math.min(1, (time - 1.5) / 2.25));
+        const amplitude = 0.32 * Math.pow(10, (-45 * fade) / 20);
+        const sample = amplitude * Math.sin((2 * Math.PI * 997 * frame) / sampleRate);
+        source.getChannelData(0)[frame] = sample;
+        source.getChannelData(1)[frame] = sample;
+      }
+
+      const unditheredBlob = await encodeMp3(source, { kbps: 320 });
+      const ditheredBlob = await encodeMp3(source, { kbps: 320, dither: true });
+      const decode = async (blob: Blob) => {
+        const context = new OfflineAudioContext(2, 1, sampleRate);
+        return context.decodeAudioData(await blob.arrayBuffer());
+      };
+      const [undithered, dithered] = await Promise.all([decode(unditheredBlob), decode(ditheredBlob)]);
+      const windows = [1.25, 1.75, 2.25, 2.75, 3.25];
+      const windowSeconds = 0.25;
+      const rmsDb = (buffer: AudioBuffer, startSeconds: number) => {
+        const channel = buffer.getChannelData(0);
+        const start = Math.floor(startSeconds * buffer.sampleRate);
+        const end = Math.min(channel.length, Math.floor((startSeconds + windowSeconds) * buffer.sampleRate));
+        let sumSquares = 0;
+        for (let frame = start; frame < end; frame++) sumSquares += channel[frame]! * channel[frame]!;
+        return 10 * Math.log10(sumSquares / Math.max(1, end - start));
+      };
+      const sourceDb = windows.map((start) => rmsDb(source, start));
+      const unditheredDb = windows.map((start) => rmsDb(undithered, start));
+      const ditheredDb = windows.map((start) => rmsDb(dithered, start));
+      return {
+        sourceDuration: source.duration,
+        unditheredDuration: undithered.duration,
+        ditheredDuration: dithered.duration,
+        sourceDb,
+        unditheredDb,
+        ditheredDb,
+      };
+    });
+
+    expect(result.unditheredDuration).toBeGreaterThan(3.8);
+    expect(result.unditheredDuration).toBeLessThan(4.2);
+    expect(result.ditheredDuration).toBeGreaterThan(3.8);
+    expect(result.ditheredDuration).toBeLessThan(4.2);
+    expect(result.sourceDb[0]! - result.sourceDb.at(-1)!).toBeGreaterThan(35);
+    expect(result.unditheredDb[0]! - result.unditheredDb.at(-1)!).toBeGreaterThan(30);
+    expect(result.ditheredDb[0]! - result.ditheredDb.at(-1)!).toBeGreaterThan(30);
+    for (let index = 0; index < result.unditheredDb.length; index++) {
+      expect(Math.abs(result.unditheredDb[index]! - result.ditheredDb[index]!)).toBeLessThan(1.5);
+    }
+  });
+
+  test("measures true peak after decoded WAV, FLAC and MP3 delivery", async ({ page }, testInfo) => {
+    test.setTimeout(600_000);
+    test.skip(
+      testInfo.project.name !== "chromium",
+      "The three-format decode acceptance uses Chromium Web Audio and WASM.",
+    );
+    await page.goto("/", { waitUntil: "domcontentloaded", timeout: 120_000 });
+    const result = await page.evaluate(async () => {
+      const modules = [
+        ["/src", "rendering", "wav.ts"].join("/"),
+        ["/src", "export", "flac.ts"].join("/"),
+        ["/src", "export", "mp3.ts"].join("/"),
+        ["/src", "mastering", "encodedInspection.ts"].join("/"),
+        ["/src", "mastering", "profiles.ts"].join("/"),
+        ["/src", "mastering", "analysis.ts"].join("/"),
+        ["/src", "audio-engine", "metering.ts"].join("/"),
+      ];
+      const [wav, flac, mp3, inspection, profiles, analysis, metering] = await Promise.all(
+        modules.map((path) => import(path)),
+      );
+      const profile = profiles.MASTER_PROFILES.find((candidate: { id: string }) => candidate.id === "streaming");
+      if (!profile) throw new Error("The streaming mastering profile is unavailable.");
+      const measurements = [];
+      const sourcePeaks = [];
+      const durationSeconds = 3;
+      for (const sampleRate of [44_100, 48_000, 96_000]) {
+        const frameCount = sampleRate * durationSeconds;
+        const buffer = new AudioBuffer({ length: frameCount, numberOfChannels: 2, sampleRate });
+        const channels = [buffer.getChannelData(0), buffer.getChannelData(1)];
+        const periodSamples = Math.round(sampleRate * 0.2);
+        const burstSamples = Math.round(sampleRate * 0.008);
+        const channelPhases = [0, 0.23];
+        const frequencies = [37, 173, 997, 3100, sampleRate * 0.18];
+        const amplitudes = [0.18, 0.16, 0.13, 0.11, 0.14];
+        const low = (channel: number, frame: number, frequency: number, amplitude: number, offset: number) =>
+          amplitude * Math.sin((2 * Math.PI * frequency * frame) / sampleRate + offset + channelPhases[channel]!);
+        for (let frame = 0; frame < frameCount; frame++) {
+          const section = Math.floor(frame / sampleRate);
+          const phase = (Math.PI / 2) * frame + Math.PI / 4;
+          if (section === 0) {
+            channels[0]![frame] = 0.72 * Math.sin(phase) + low(0, frame, 997, 0.11, 0.31);
+            channels[1]![frame] = 0.68 * Math.sin(phase + 0.23) + low(1, frame, 397, 0.08, -0.17);
+          } else if (section === 1) {
+            for (let channel = 0; channel < 2; channel++) {
+              channels[channel]![frame] = frequencies.reduce(
+                (sum, frequency, index) => sum + low(channel, frame, frequency, amplitudes[index]!, index * 0.61),
+                0,
+              );
+            }
+          } else {
+            const burstPhase = frame % periodSamples;
+            const burst =
+              burstPhase < burstSamples
+                ? 1.2 *
+                  Math.exp(-burstPhase / (sampleRate * 0.002)) *
+                  Math.sin((2 * Math.PI * 3000 * burstPhase) / sampleRate)
+                : 0;
+            channels[0]![frame] = low(0, frame, 73, 0.12, 0) + burst;
+            channels[1]![frame] = low(1, frame, 73, 0.12, 0) + burst * 0.72;
+          }
+        }
+
+        const targetDbtp = -2;
+        const scale = Math.pow(10, targetDbtp / 20) / metering.truePeakOversampled(channels);
+        for (const channel of channels) {
+          for (let frame = 0; frame < frameCount; frame++) channel[frame] *= scale;
+        }
+        const sourceAnalysis = analysis.analyzeMasterPcm(channels, sampleRate, profile);
+        sourcePeaks.push({ sampleRate, truePeakDb: sourceAnalysis.measurements.truePeakDb });
+        const deliveries: Array<{
+          format: "wav" | "flac" | "mp3";
+          bytes: Blob | ArrayBuffer;
+          expectedBitDepth: 16 | 24 | 32 | null;
+        }> = [];
+        for (const bitDepth of [16, 24, 32] as const) {
+          deliveries.push({
+            format: "wav",
+            bytes: new Blob([wav.encodeWav(buffer, bitDepth)], { type: "audio/wav" }),
+            expectedBitDepth: bitDepth,
+          });
+        }
+        for (const bitDepth of [16, 24] as const) {
+          deliveries.push({
+            format: "flac",
+            bytes: await flac.encodeFlac(buffer, { bitDepth }),
+            expectedBitDepth: bitDepth,
+          });
+        }
+        if (sampleRate !== 96_000) {
+          deliveries.push({
+            format: "mp3",
+            bytes: await mp3.encodeMp3(buffer, { kbps: 320, integerOverflowPolicy: "reject" }),
+            expectedBitDepth: null,
+          });
+        }
+        for (const delivery of deliveries) {
+          const measured = await inspection.inspectEncodedMaster({
+            format: delivery.format,
+            bytes: delivery.bytes,
+            expectedDurationSeconds: durationSeconds,
+            sourceMeasurements: sourceAnalysis.measurements,
+            profile,
+          });
+          measurements.push({
+            format: measured.format,
+            sourceSampleRate: sampleRate,
+            status: measured.decode.status,
+            decoder: measured.decode.decoder,
+            sampleRate: measured.decode.sampleRate ?? null,
+            channels: measured.decode.channels ?? null,
+            durationSeconds: measured.decode.durationSeconds ?? null,
+            bitDepth: measured.file.bitDepth ?? null,
+            expectedBitDepth: delivery.expectedBitDepth,
+            sourceTruePeakDb: sourceAnalysis.measurements.truePeakDb,
+            truePeakDb: measured.decode.measurements?.truePeakDb ?? null,
+          });
+        }
+      }
+      return { sourcePeaks, measurements };
+    });
+
+    expect(result.sourcePeaks).toHaveLength(3);
+    for (const source of result.sourcePeaks) expect(source.truePeakDb).toBeCloseTo(-2, 1);
+    const expectedFormatDepths = [
+      ["wav", 16],
+      ["wav", 24],
+      ["wav", 32],
+      ["flac", 16],
+      ["flac", 24],
+      ["mp3", null],
+    ];
+    const expectedCases = [44_100, 48_000, 96_000].flatMap((sampleRate) =>
+      expectedFormatDepths
+        .filter(([format]) => sampleRate !== 96_000 || format !== "mp3")
+        .map(([format, bitDepth]) => `${sampleRate}/${format}/${bitDepth ?? "lossy"}`),
+    );
+    expect(
+      result.measurements.map(
+        (measurement) =>
+          `${measurement.sourceSampleRate}/${measurement.format}/${measurement.expectedBitDepth ?? "lossy"}`,
+      ),
+    ).toEqual(expectedCases);
+    for (const measurement of result.measurements) {
+      expect(measurement.status, `${measurement.format}: ${JSON.stringify(measurement)}`).toBe("measured");
+      const expectedDecoder = measurement.format === "flac" ? "KYX FLAC WebAssembly worker" : "Web Audio";
+      expect(measurement.decoder).toBe(expectedDecoder);
+      expect(measurement.sampleRate).toBe(measurement.sourceSampleRate);
+      expect(measurement.channels).toBe(2);
+      expect(measurement.durationSeconds).toBeGreaterThan(2.8);
+      expect(measurement.durationSeconds).toBeLessThan(3.2);
+      expect(measurement.bitDepth, JSON.stringify(measurement)).toBe(measurement.expectedBitDepth);
+      expect(Number.isFinite(measurement.truePeakDb), JSON.stringify(measurement)).toBe(true);
+      expect(measurement.truePeakDb, JSON.stringify(measurement)).toBeLessThanOrEqual(-1);
+      const peakDelta = Math.abs(measurement.truePeakDb! - measurement.sourceTruePeakDb!);
+      expect(peakDelta, JSON.stringify(measurement)).toBeLessThan(measurement.format === "mp3" ? 0.75 : 0.02);
+    }
   });
 
   test("inspects a large MP3 in a real worker or reports unsupported browser decoding", async ({ page }) => {
@@ -3069,6 +3425,313 @@ test.describe("17 — mastering workspace", () => {
     expect(flacDecoderStarts).toBe(0);
   });
 
+  test("streams an external FLAC source, matches whole-file PCM and restores its saved audio", async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    test.skip(
+      testInfo.project.name !== "chromium",
+      "Bounded FLAC source decode acceptance currently runs in Chromium.",
+    );
+    const flacSource = await makeBrowserFlacSource(page, { durationSeconds: 4, noise: true });
+    expect(flacSource.byteLength).toBeGreaterThan(512 * 1024);
+
+    await openHouseTemplate(page, { timeoutMs: 120_000 });
+    await clickPanelAction(page, "MASTER");
+
+    const session = page.getByRole("region", { name: "External file mastering session" });
+    await session.getByLabel("Import WAV, MP3 or FLAC mixdown").setInputFiles({
+      name: "streamed-flac-source.flac",
+      mimeType: "audio/flac",
+      buffer: flacSource,
+    });
+    await expect(session.locator(".mastering-file-session-source")).toContainText("streamed-flac-source.flac", {
+      timeout: 60_000,
+    });
+
+    const savedSessions = session.getByLabel("Saved mastering sessions").locator("option");
+    const sessionId = await savedSessions.evaluateAll((options) => {
+      const option = options
+        .map((candidate) => candidate as HTMLOptionElement)
+        .find((candidate) => candidate.textContent?.includes("streamed-flac-source.flac"));
+      return option?.value ?? "";
+    });
+    expect(sessionId).toBeTruthy();
+
+    const decodeParity = await page.evaluate(async (id: string) => {
+      const repositoryPath = ["/src", "mastering", "sessionStore.ts"].join("/");
+      const decoderPath = ["/src", "mastering", "flacDecode.ts"].join("/");
+      const { MasteringSessionRepository } = await import(repositoryPath);
+      const { decodeFlacAudioBuffer, decodeFlacBlobToAudioBuffer } = await import(decoderPath);
+      const record = await new MasteringSessionRepository().get(id);
+      if (!record) throw new Error("The imported FLAC session did not persist its source record.");
+      const descriptor = {
+        sampleRate: record.sourceSampleRate,
+        channels: record.channels,
+        durationSeconds: record.durationSeconds,
+        bitDepth: record.sourceBitDepth,
+      };
+      const maxPcmBytes = 128 * 1024 * 1024;
+      const wholeFile = await decodeFlacAudioBuffer(await record.source.arrayBuffer(), descriptor, { maxPcmBytes });
+      const streamed = await decodeFlacBlobToAudioBuffer(record.source, descriptor, { maxPcmBytes });
+      let maximumDifference = 0;
+      let nonFiniteSamples = 0;
+      for (let channel = 0; channel < descriptor.channels; channel++) {
+        const wholeChannel = wholeFile.getChannelData(channel);
+        const streamedChannel = streamed.getChannelData(channel);
+        for (let frame = 0; frame < streamedChannel.length; frame++) {
+          const wholeSample = wholeChannel[frame]!;
+          const streamedSample = streamedChannel[frame]!;
+          if (!Number.isFinite(wholeSample) || !Number.isFinite(streamedSample)) nonFiniteSamples++;
+          maximumDifference = Math.max(maximumDifference, Math.abs(wholeSample - streamedSample));
+        }
+      }
+      return {
+        sampleRate: streamed.sampleRate,
+        channels: streamed.numberOfChannels,
+        frames: streamed.length,
+        wholeFileFrames: wholeFile.length,
+        sourceBytes: record.byteLength,
+        maximumDifference,
+        nonFiniteSamples,
+      };
+    }, sessionId);
+    expect(decodeParity).toMatchObject({
+      sampleRate: 44_100,
+      channels: 2,
+      frames: 176_400,
+      wholeFileFrames: 176_400,
+      sourceBytes: flacSource.byteLength,
+      nonFiniteSamples: 0,
+    });
+    expect(decodeParity.maximumDifference).toBeLessThan(1e-7);
+
+    await session.getByLabel("Saved mastering sessions").selectOption("");
+    await expect(session.locator(".mastering-file-session-source")).not.toContainText("streamed-flac-source.flac");
+    await session.getByLabel("Saved mastering sessions").selectOption(sessionId);
+    await expect(session.locator(".mastering-file-session-source")).toContainText("streamed-flac-source.flac", {
+      timeout: 60_000,
+    });
+
+    const corruptFlac = Buffer.from(flacSource);
+    corruptFlac[corruptFlac.length - 1] ^= 0x80;
+    await session.getByLabel("Import WAV, MP3 or FLAC mixdown").setInputFiles({
+      name: "corrupt-flac-frame.flac",
+      mimeType: "audio/flac",
+      buffer: corruptFlac,
+    });
+    await expect(session.getByRole("alert")).toContainText(/FLAC.*(damaged|unreadable|sample count|metadata)/i, {
+      timeout: 60_000,
+    });
+    await expect(session.getByLabel("Saved mastering sessions").locator("option")).toHaveCount(2);
+    await expect(session.locator(".mastering-file-session-source")).not.toContainText("corrupt-flac-frame.flac");
+  });
+
+  test("decodes an external MP3 through both bounded passes and restores its saved audio", async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(240_000);
+    test.skip(
+      testInfo.project.name !== "chromium",
+      "The MP3 WebCodecs source-decode acceptance currently runs in Chromium.",
+    );
+    const mp3Source = await makeBrowserMp3Source(page);
+    expect(mp3Source.byteLength).toBeGreaterThan(128 * 1024);
+
+    await openHouseTemplate(page, { timeoutMs: 120_000 });
+    await clickPanelAction(page, "MASTER");
+
+    const session = page.getByRole("region", { name: "External file mastering session" });
+    await session.getByLabel("Import WAV, MP3 or FLAC mixdown").setInputFiles({
+      name: "streamed-mp3-source.mp3",
+      mimeType: "audio/mpeg",
+      buffer: mp3Source,
+    });
+    await expect(session.locator(".mastering-file-session-source")).toContainText("streamed-mp3-source.mp3", {
+      timeout: 60_000,
+    });
+
+    const sessionId = await session
+      .getByLabel("Saved mastering sessions")
+      .locator("option")
+      .evaluateAll((options) => {
+        const option = options
+          .map((candidate) => candidate as HTMLOptionElement)
+          .find((candidate) => candidate.textContent?.includes("streamed-mp3-source.mp3"));
+        return option?.value ?? "";
+      });
+    expect(sessionId).toBeTruthy();
+
+    const decodeComparison = await page.evaluate(async (id: string) => {
+      const repositoryPath = ["/src", "mastering", "sessionStore.ts"].join("/");
+      const decoderPath = ["/src", "mastering", "mp3PcmDecodeClient.ts"].join("/");
+      const { MasteringSessionRepository } = await import(repositoryPath);
+      const { decodeMp3BlobToAudioBuffer } = await import(decoderPath);
+      const record = await new MasteringSessionRepository().get(id);
+      if (!record) throw new Error("The imported MP3 session did not persist its source record.");
+      const streamed = await decodeMp3BlobToAudioBuffer(
+        record.source,
+        { sampleRate: record.sourceSampleRate, channels: record.channels },
+        { maxPcmBytes: 128 * 1024 * 1024 },
+      );
+      if (streamed.status !== "decoded") throw new Error(`WebCodecs MP3 decode was unavailable: ${streamed.reason}`);
+      const referenceContext = new OfflineAudioContext(record.channels, 1, record.sourceSampleRate);
+      const reference = await referenceContext.decodeAudioData(await record.source.arrayBuffer());
+      const web = streamed.buffer.getChannelData(0);
+      const native = reference.getChannelData(0);
+      const margin = Math.floor(record.sourceSampleRate * 0.3);
+      const start = margin;
+      const end = Math.min(web.length, native.length) - margin;
+      const correlation = (lag: number, stride: number): number => {
+        let dot = 0;
+        let webPower = 0;
+        let nativePower = 0;
+        let count = 0;
+        for (let frame = start; frame < end; frame += stride) {
+          const other = frame + lag;
+          if (other < 0 || other >= native.length) continue;
+          const a = web[frame]!;
+          const b = native[other]!;
+          dot += a * b;
+          webPower += a * a;
+          nativePower += b * b;
+          count++;
+        }
+        return count > 0 && webPower > 0 && nativePower > 0 ? dot / Math.sqrt(webPower * nativePower) : 0;
+      };
+      let coarseLag = 0;
+      let bestCorrelation = -1;
+      for (let lag = -4_608; lag <= 4_608; lag += 16) {
+        const score = correlation(lag, 8);
+        if (score > bestCorrelation) {
+          bestCorrelation = score;
+          coarseLag = lag;
+        }
+      }
+      let bestLag = coarseLag;
+      bestCorrelation = -1;
+      for (let lag = coarseLag - 16; lag <= coarseLag + 16; lag++) {
+        const score = correlation(lag, 1);
+        if (score > bestCorrelation) {
+          bestCorrelation = score;
+          bestLag = lag;
+        }
+      }
+      return {
+        sampleRate: streamed.buffer.sampleRate,
+        channels: streamed.buffer.numberOfChannels,
+        webCodecsFrames: streamed.buffer.length,
+        nativeFrames: reference.length,
+        declaredFrames: Math.round(record.durationSeconds * record.sourceSampleRate),
+        sourceBytes: record.byteLength,
+        bestLagFrames: bestLag,
+        bestCorrelation,
+      };
+    }, sessionId);
+    expect(decodeComparison).toMatchObject({
+      sampleRate: 44_100,
+      channels: 2,
+      sourceBytes: mp3Source.byteLength,
+    });
+    expect(decodeComparison.webCodecsFrames).toBe(decodeComparison.declaredFrames);
+    expect(Math.abs(decodeComparison.webCodecsFrames - decodeComparison.nativeFrames)).toBeLessThanOrEqual(2_304);
+    expect(decodeComparison.bestCorrelation, JSON.stringify(decodeComparison)).toBeGreaterThan(0.95);
+
+    await session.getByLabel("Saved mastering sessions").selectOption("");
+    await expect(session.locator(".mastering-file-session-source")).not.toContainText("streamed-mp3-source.mp3");
+    await session.getByLabel("Saved mastering sessions").selectOption(sessionId);
+    await expect(session.locator(".mastering-file-session-source")).toContainText("streamed-mp3-source.mp3", {
+      timeout: 60_000,
+    });
+
+    await session.getByLabel("Import WAV, MP3 or FLAC mixdown").setInputFiles({
+      name: "corrupt-mp3-source.mp3",
+      mimeType: "audio/mpeg",
+      buffer: corruptMp3FrameHeader(mp3Source, 8),
+    });
+    await expect(session.getByRole("alert")).toContainText(/invalid or truncated MP3 frame sequence/i, {
+      timeout: 60_000,
+    });
+    await expect(session.getByLabel("Saved mastering sessions").locator("option")).toHaveCount(2);
+    await expect(session.locator(".mastering-file-session-source")).not.toContainText("corrupt-mp3-source.mp3");
+  });
+
+  test("cancels MP3 source decoding during each WebCodecs pass and terminates the worker", async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(180_000);
+    test.skip(
+      testInfo.project.name !== "chromium",
+      "MP3 WebCodecs cancellation acceptance currently runs in Chromium.",
+    );
+    const mp3Source = await makeBrowserMp3Source(page);
+    expect(mp3Source.byteLength).toBeGreaterThan(128 * 1024);
+
+    const cancellation = await page.evaluate(
+      async ({ bytes, sampleRate, channels }) => {
+        const decoderPath = ["/src", "mastering", "mp3PcmDecodeClient.ts"].join("/");
+        const { decodeMp3BlobToAudioBuffer } = await import(decoderPath);
+        const source = new Blob([Uint8Array.from(bytes)], { type: "audio/mpeg" });
+        const run = async (stagePrefix: string) => {
+          const workerDescriptor = Object.getOwnPropertyDescriptor(globalThis, "Worker");
+          const WorkerConstructor = globalThis.Worker;
+          if (!workerDescriptor || typeof WorkerConstructor !== "function") {
+            throw new Error("The WebCodecs MP3 decoder requires browser Workers.");
+          }
+          let terminationCount = 0;
+          const trackedWorker = new Proxy(WorkerConstructor, {
+            construct(target, argumentsList, newTarget) {
+              const worker = Reflect.construct(target, argumentsList, newTarget);
+              const terminate = worker.terminate.bind(worker);
+              worker.terminate = () => {
+                terminationCount++;
+                terminate();
+              };
+              return worker;
+            },
+          });
+          Object.defineProperty(globalThis, "Worker", { ...workerDescriptor, value: trackedWorker });
+          const controller = new AbortController();
+          let observedStage = "";
+          let errorName = "none";
+          try {
+            await decodeMp3BlobToAudioBuffer(
+              source,
+              { sampleRate, channels },
+              {
+                maxPcmBytes: 128 * 1024 * 1024,
+                signal: controller.signal,
+                onProgress: (_progress: number, stage: string) => {
+                  if (!observedStage && stage.startsWith(stagePrefix)) {
+                    observedStage = stage;
+                    controller.abort();
+                  }
+                },
+              },
+            );
+          } catch (error) {
+            errorName = error instanceof Error ? error.name : "unknown";
+          } finally {
+            Object.defineProperty(globalThis, "Worker", workerDescriptor);
+          }
+          return { observedStage, errorName, terminationCount };
+        };
+        return {
+          firstPass: await run("Measuring MP3 decode length"),
+          secondPass: await run("Decoding MP3 in bounded frame blocks"),
+        };
+      },
+      { bytes: Array.from(mp3Source), sampleRate: 44_100, channels: 2 },
+    );
+
+    expect(cancellation.firstPass.observedStage).toContain("Measuring MP3 decode length");
+    expect(cancellation.firstPass.errorName).toBe("AbortError");
+    expect(cancellation.firstPass.terminationCount).toBe(1);
+    expect(cancellation.secondPass.observedStage).toContain("Decoding MP3 in bounded frame blocks");
+    expect(cancellation.secondPass.errorName).toBe("AbortError");
+    expect(cancellation.secondPass.terminationCount).toBe(1);
+  });
+
   test("fails a FLAC source import clearly when the browser cannot start its decoder worker", async ({
     page,
   }, testInfo) => {
@@ -4276,6 +4939,330 @@ test.describe("17 — mastering workspace", () => {
       expect(report.inputBaseline.sessionId).toBe(report.session.id);
       expect(report.inputBaseline.sourceSha256).toBe(report.source.sha256);
     }
+  });
+
+  test("batch-delivers an album with gain-only matching and decoded reports", async ({ page }, testInfo) => {
+    test.setTimeout(600_000);
+    test.skip(testInfo.project.name !== "chromium", "Album batch delivery acceptance currently runs in Chromium.");
+    await openHouseTemplate(page, { timeoutMs: 120_000 });
+    await clickPanelAction(page, "MASTER");
+
+    const session = page.getByRole("region", { name: "External file mastering session" });
+    const importMixdown = session.getByLabel("Import WAV, MP3 or FLAC mixdown");
+    const savedSessions = session.getByLabel("Saved mastering sessions");
+    const importSource = async (fileName: string, amplitude: number) => {
+      await importMixdown.setInputFiles({
+        name: fileName,
+        mimeType: "audio/wav",
+        buffer: makeStereoTestWav(2, amplitude),
+      });
+      await expect(session.locator(".mastering-file-session-source")).toContainText(fileName, { timeout: 60_000 });
+    };
+
+    await importSource("album-loud-track.wav", 0.2);
+    await importSource("album-quiet-track.wav", 0.055);
+    const sessionOptions = await savedSessions.locator("option").evaluateAll((options) =>
+      options
+        .map((option) => option as HTMLOptionElement)
+        .filter((option) => option.value)
+        .map((option) => ({ value: option.value, label: option.textContent ?? "" })),
+    );
+    const loudSessionId = sessionOptions.find((option) => option.label.includes("album-loud-track.wav"))?.value;
+    const quietSessionId = sessionOptions.find((option) => option.label.includes("album-quiet-track.wav"))?.value;
+    expect(loudSessionId).toBeTruthy();
+    expect(quietSessionId).toBeTruthy();
+    expect(loudSessionId).not.toBe(quietSessionId);
+
+    const sessionSnapshotsBefore = await readMasteringSessionProcessingSnapshots(page, [
+      loudSessionId!,
+      quietSessionId!,
+    ]);
+    expect(sessionSnapshotsBefore.every(Boolean)).toBe(true);
+
+    const album = session.getByRole("region", { name: "Plan track order and gaps" });
+    await album.getByRole("textbox", { name: "New album title" }).fill("Album Gain Check");
+    await album.getByRole("button", { name: "Create album" }).click();
+    await expect(album.getByText("Created album sequence “Album Gain Check”.")).toBeVisible();
+    const addSession = album.getByLabel("Mastering session to add to album");
+    const addTrack = album.getByRole("button", { name: "Add track" });
+    await addSession.selectOption(loudSessionId!);
+    await addTrack.click();
+    await expect(album.getByRole("list", { name: "Album Gain Check track order" }).getByRole("listitem")).toHaveCount(
+      1,
+    );
+    await addSession.selectOption(quietSessionId!);
+    await addTrack.click();
+    const trackList = album.getByRole("list", { name: "Album Gain Check track order" });
+    await expect(trackList.getByRole("listitem")).toHaveCount(2);
+
+    await album.getByRole("checkbox", { name: "Match album track loudness using gain only" }).check();
+    await album.getByRole("spinbutton", { name: "Album batch target integrated loudness in LUFS" }).fill("-22");
+    await album.getByRole("spinbutton", { name: "Album batch true-peak ceiling in dBTP" }).fill("-1.5");
+    await album.getByRole("button", { name: "Export 2 tracks" }).waitFor({ state: "visible" });
+
+    const normalizationReports: ExternalAlbumNormalizationReport[] = [];
+    const batchFormat = album.getByLabel("Album batch export format");
+    const exportBatch = async (format: "wav" | "flac" | "mp3") => {
+      await batchFormat.selectOption(format);
+      if (format === "flac") {
+        await album.getByLabel("Album batch FLAC bit depth").selectOption("24");
+      } else if (format === "mp3") {
+        await album.getByLabel("Album batch MP3 bitrate").selectOption("320");
+      }
+      const downloads: Download[] = [];
+      const collectDownload = (download: Download) => downloads.push(download);
+      page.on("download", collectDownload);
+      await album.getByRole("button", { name: "Export 2 tracks" }).click();
+      try {
+        await expect(
+          session
+            .getByRole("status")
+            .filter({ hasText: new RegExp(`Exported and checked 2 ${format.toUpperCase()} tracks with JSON reports`) }),
+        ).toBeVisible({ timeout: 300_000 });
+      } finally {
+        page.off("download", collectDownload);
+      }
+      expect(downloads).toHaveLength(4);
+
+      const deliveredFiles = await Promise.all(
+        downloads.map(async (download, index) => {
+          const fileName = download.suggestedFilename();
+          const path = testInfo.outputPath(`album-batch-${format}-${index + 1}-${fileName}`);
+          await download.saveAs(path);
+          return { fileName, path, bytes: await readFile(path) };
+        }),
+      );
+      const extension = `.${format}`;
+      const audioFiles = deliveredFiles.filter((file) => file.fileName.endsWith(extension));
+      const reportFiles = deliveredFiles.filter((file) => file.fileName.endsWith("-report.json"));
+      expect(audioFiles).toHaveLength(2);
+      expect(reportFiles).toHaveLength(2);
+
+      for (const audioFile of audioFiles) {
+        expect(audioFile.fileName).toMatch(/^Album-Gain-Check-\d{2}-of-02-/);
+        if (format === "wav") {
+          const facts = readMasterWavFacts(audioFile.bytes);
+          expect(facts).toMatchObject({
+            formatCode: 1,
+            channels: 2,
+            sampleRate: 44_100,
+            bitDepth: 24,
+            bextVersion: 2,
+          });
+          expect(facts.rms).toBeGreaterThan(0.01);
+        } else if (format === "flac") {
+          expect(readFlacFacts(audioFile.bytes)).toMatchObject({ sampleRate: 44_100, channels: 2, bitDepth: 24 });
+        } else {
+          expect(readMp3Facts(audioFile.bytes)).toMatchObject({ sampleRate: 44_100, channels: 2, bitrateKbps: 320 });
+        }
+        const reportFile = reportFiles.find(
+          (candidate) => candidate.fileName === audioFile.fileName.replace(/\.(wav|flac|mp3)$/i, "-report.json"),
+        );
+        expect(reportFile).toBeDefined();
+        const report = JSON.parse(reportFile!.bytes.toString("utf8"));
+        expect(report).toMatchObject({
+          schema: "kyx.external-mastering-report",
+          schemaVersion: 8,
+          delivery: {
+            fileName: audioFile.fileName,
+            format,
+            byteLength: audioFile.bytes.byteLength,
+            measurementBasis: "decoded-exported-file",
+            postEncode: { status: "measured", sampleRate: 44_100, channels: 2 },
+            albumNormalization: {
+              status: "applied",
+              targetLufs: -22,
+              truePeakCeilingDbtp: -1.5,
+              postEncodeCeilingExceeded: false,
+            },
+          },
+        });
+        expect(report.delivery.postEncode.measurements.lufsIntegrated).toBeCloseTo(-22, 0);
+        expect(report.delivery.postEncode.measurements.truePeakDb).toBeLessThan(-1.5);
+        expect(report.delivery.albumNormalization.postEncodeTruePeakDbtp).toBe(
+          report.delivery.postEncode.measurements.truePeakDb,
+        );
+        normalizationReports.push(report.delivery.albumNormalization);
+      }
+    };
+
+    await exportBatch("wav");
+    await exportBatch("flac");
+    await exportBatch("mp3");
+    expect(normalizationReports.map((report) => report.appliedGainDb).some((gain) => gain < -1)).toBe(true);
+    expect(normalizationReports.map((report) => report.appliedGainDb).some((gain) => gain > 1)).toBe(true);
+    expect(normalizationReports).toHaveLength(6);
+    expect(normalizationReports.every((report) => report.targetReached === true)).toBe(true);
+
+    const sessionSnapshotsAfter = await readMasteringSessionProcessingSnapshots(page, [
+      loudSessionId!,
+      quietSessionId!,
+    ]);
+    expect(sessionSnapshotsAfter).toEqual(sessionSnapshotsBefore);
+    const deliveryConsistency = album.getByRole("group", { name: "Album delivery consistency report" });
+    await expect(deliveryConsistency).toContainText("2/2 current export reports · 2 decoded");
+    await expect(deliveryConsistency).toContainText("LUFS-I spread");
+  });
+
+  test("cancels an album batch before it downloads partial deliveries", async ({ page }, testInfo) => {
+    test.setTimeout(180_000);
+    test.skip(testInfo.project.name !== "chromium", "Album batch cancellation acceptance currently runs in Chromium.");
+    await installMasteringSessionRenderGate(page);
+    await openHouseTemplate(page, { timeoutMs: 120_000 });
+    await clickPanelAction(page, "MASTER");
+
+    const session = page.getByRole("region", { name: "External file mastering session" });
+    const importMixdown = session.getByLabel("Import WAV, MP3 or FLAC mixdown");
+    await importMixdown.setInputFiles({
+      name: "album-cancel-first.wav",
+      mimeType: "audio/wav",
+      buffer: makeStereoTestWav(1, 0.12),
+    });
+    await expect(session.locator(".mastering-file-session-source")).toContainText("album-cancel-first.wav", {
+      timeout: 60_000,
+    });
+    await importMixdown.setInputFiles({
+      name: "album-cancel-second.wav",
+      mimeType: "audio/wav",
+      buffer: makeStereoTestWav(1, 0.08),
+    });
+    await expect(session.locator(".mastering-file-session-source")).toContainText("album-cancel-second.wav", {
+      timeout: 60_000,
+    });
+
+    const savedSessions = await session
+      .getByLabel("Saved mastering sessions")
+      .locator("option")
+      .evaluateAll((options) =>
+        options
+          .map((option) => option as HTMLOptionElement)
+          .filter((option) => option.value)
+          .map((option) => ({ id: option.value, label: option.textContent ?? "" })),
+      );
+    const firstSessionId = savedSessions.find((option) => option.label.includes("album-cancel-first.wav"))?.id;
+    const secondSessionId = savedSessions.find((option) => option.label.includes("album-cancel-second.wav"))?.id;
+    expect(firstSessionId).toBeTruthy();
+    expect(secondSessionId).toBeTruthy();
+
+    const album = session.getByRole("region", { name: "Plan track order and gaps" });
+    await album.getByRole("textbox", { name: "New album title" }).fill("Album Cancel Check");
+    await album.getByRole("button", { name: "Create album" }).click();
+    await expect(album.getByText("Created album sequence “Album Cancel Check”.")).toBeVisible();
+    const addSession = album.getByLabel("Mastering session to add to album");
+    const addTrack = album.getByRole("button", { name: "Add track" });
+    await addSession.selectOption(firstSessionId!);
+    await addTrack.click();
+    await expect(album.getByRole("list", { name: "Album Cancel Check track order" }).getByRole("listitem")).toHaveCount(
+      1,
+    );
+    await addSession.selectOption(secondSessionId!);
+    await addTrack.click();
+    await expect(album.getByRole("list", { name: "Album Cancel Check track order" }).getByRole("listitem")).toHaveCount(
+      2,
+    );
+
+    const downloads: Download[] = [];
+    const collectDownload = (download: Download) => downloads.push(download);
+    page.on("download", collectDownload);
+    await armMasteringSessionRenderGate(page);
+    await album.getByRole("button", { name: "Export 2 tracks" }).click();
+    await waitForMasteringSessionRenderStart(page);
+    await expect(session.getByRole("status").filter({ hasText: "Rendering album track 1 of 2" })).toBeVisible();
+    await session.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(
+      session.getByRole("status").filter({ hasText: "Album export cancelled after 0 of 2 tracks" }),
+    ).toBeVisible();
+    page.off("download", collectDownload);
+    expect(downloads).toHaveLength(0);
+    await expect(album.getByRole("group", { name: "Album delivery consistency report" })).toContainText(
+      "0/2 current export reports · 0 decoded",
+    );
+  });
+
+  test("stops an album batch when its saved track order changes during render", async ({ page }, testInfo) => {
+    test.setTimeout(180_000);
+    test.skip(testInfo.project.name !== "chromium", "Album batch stale-state acceptance currently runs in Chromium.");
+    await installMasteringSessionRenderGate(page);
+    await openHouseTemplate(page, { timeoutMs: 120_000 });
+    await clickPanelAction(page, "MASTER");
+
+    const session = page.getByRole("region", { name: "External file mastering session" });
+    const importMixdown = session.getByLabel("Import WAV, MP3 or FLAC mixdown");
+    await importMixdown.setInputFiles({
+      name: "album-stale-first.wav",
+      mimeType: "audio/wav",
+      buffer: makeStereoTestWav(1, 0.12),
+    });
+    await expect(session.locator(".mastering-file-session-source")).toContainText("album-stale-first.wav", {
+      timeout: 60_000,
+    });
+    await importMixdown.setInputFiles({
+      name: "album-stale-second.wav",
+      mimeType: "audio/wav",
+      buffer: makeStereoTestWav(1, 0.08),
+    });
+    await expect(session.locator(".mastering-file-session-source")).toContainText("album-stale-second.wav", {
+      timeout: 60_000,
+    });
+
+    const savedSessions = await session
+      .getByLabel("Saved mastering sessions")
+      .locator("option")
+      .evaluateAll((options) =>
+        options
+          .map((option) => option as HTMLOptionElement)
+          .filter((option) => option.value)
+          .map((option) => ({ id: option.value, label: option.textContent ?? "" })),
+      );
+    const firstSessionId = savedSessions.find((option) => option.label.includes("album-stale-first.wav"))?.id;
+    const secondSessionId = savedSessions.find((option) => option.label.includes("album-stale-second.wav"))?.id;
+    expect(firstSessionId).toBeTruthy();
+    expect(secondSessionId).toBeTruthy();
+
+    const album = session.getByRole("region", { name: "Plan track order and gaps" });
+    await album.getByRole("textbox", { name: "New album title" }).fill("Album Stale Check");
+    await album.getByRole("button", { name: "Create album" }).click();
+    await expect(album.getByText("Created album sequence “Album Stale Check”.")).toBeVisible();
+    const addSession = album.getByLabel("Mastering session to add to album");
+    const addTrack = album.getByRole("button", { name: "Add track" });
+    await addSession.selectOption(firstSessionId!);
+    await addTrack.click();
+    await expect(album.getByRole("list", { name: "Album Stale Check track order" }).getByRole("listitem")).toHaveCount(
+      1,
+    );
+    await addSession.selectOption(secondSessionId!);
+    await addTrack.click();
+    await expect(album.getByRole("list", { name: "Album Stale Check track order" }).getByRole("listitem")).toHaveCount(
+      2,
+    );
+    const albumId = await album.getByLabel("Saved album sequences").inputValue();
+
+    const downloads: Download[] = [];
+    const collectDownload = (download: Download) => downloads.push(download);
+    page.on("download", collectDownload);
+    await armMasteringSessionRenderGate(page);
+    await album.getByRole("button", { name: "Export 2 tracks" }).click();
+    await waitForMasteringSessionRenderStart(page);
+    const changedOrder = await page.evaluate(async (savedAlbumId: string) => {
+      const albumStorePath = ["/src", "mastering", "albumStore.ts"].join("/");
+      const { MasteringAlbumRepository, moveMasteringAlbumTrack } = await import(albumStorePath);
+      const repository = new MasteringAlbumRepository();
+      const savedAlbum = await repository.get(savedAlbumId);
+      if (!savedAlbum || savedAlbum.tracks.length !== 2) throw new Error("The album sequence changed unexpectedly.");
+      const reordered = moveMasteringAlbumTrack(savedAlbum, savedAlbum.tracks[1]!.id, -1);
+      await repository.save(reordered);
+      return reordered.tracks.map((track: { sessionId: string }) => track.sessionId);
+    }, albumId);
+    expect(changedOrder).toEqual([secondSessionId, firstSessionId]);
+    await releaseMasteringSessionRenderGate(page);
+    await expect(
+      session.getByRole("status").filter({ hasText: "Album export stopped after 0 of 2 tracks" }),
+    ).toContainText("The album order or gaps changed during export");
+    page.off("download", collectDownload);
+    expect(downloads).toHaveLength(0);
+    await expect(album.getByRole("group", { name: "Album delivery consistency report" })).toContainText(
+      "0/2 current export reports · 0 decoded",
+    );
   });
 
   test("checks Apple Music file rules and reports the encoder limit", async ({ page }, testInfo) => {

@@ -177,11 +177,11 @@ const ENTRY_BUDGET_KB = 1070;
 // metric that reflects the win. Remaining known anchors: App shell 621 KB,
 // sample-library/factory 316 KB (contract), intent/normalize 61 KB +
 // preference-ledger group 162 KB (dice/style internals — next diet).
-// 2026-10-10: measured direct Vite build at 5006 KB after the album
+// 2026-10-10: measured direct Vite build at 5009 KB after the album
 // batch-delivery path gained per-track encoding verification and
 // gain-only loudness matching with a true-peak guard. The change adds a
 // bounded album delivery workflow with decoded reports; keep this small
-// 15 KB margin explicit and retain the independent 2200 KB boot-path cap.
+// 11 KB margin explicit and retain the independent 2200 KB boot-path cap.
 const TOTAL_BUDGET_KB = 5020;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, and ONNX Runtime for the

@@ -1013,7 +1013,10 @@ export function MasteringFileSessionPanel({
             applyMasteringAlbumGainInPlace(mastered, gainPlan.appliedGainDb);
             const verification = await analyzeMasterBufferAsync(mastered, profile, { signal: controller.signal });
             ensureActive();
-            if (verification.measurements.truePeakDb > gainPlan.truePeakCeilingDbtp + 0.05) {
+            if (
+              !Number.isFinite(verification.measurements.truePeakDb) ||
+              verification.measurements.truePeakDb > gainPlan.truePeakCeilingDbtp + 0.05
+            ) {
               throw new Error(`Gain-only audition could not verify the true-peak ceiling for “${record.fileName}”.`);
             }
           }

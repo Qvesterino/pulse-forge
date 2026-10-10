@@ -255,13 +255,14 @@ export function ExportPanel({
   const [format, setFormat] = useState<MasterFormat>("wav");
   /**
    * OGG/M4A encode through WebCodecs, which is absent in Firefox and pre-26
-   * Safari. Probed once per mount; `null` means "still checking", which is why
-   * the menu renders those entries disabled-but-visible rather than guessing.
+   * Safari. Probe the selected sample rate; `null` means "still checking", so
+   * the menu keeps those entries disabled-but-visible instead of guessing.
    */
   const [shareFormats, setShareFormats] = useState<CompressedAudioFormat[] | null>(null);
   useEffect(() => {
     let active = true;
-    void supportedCompressedAudioFormats().then(
+    setShareFormats(null);
+    void supportedCompressedAudioFormats({ sampleRate, numberOfChannels: 2 }).then(
       (formats) => {
         if (active) setShareFormats(formats);
       },
@@ -272,13 +273,17 @@ export function ExportPanel({
     return () => {
       active = false;
     };
-  }, []);
+  }, [sampleRate]);
   // `masteringMode` is a prop and can flip while the panel stays mounted. Share
   // formats are hidden there, so a format selected before the flip would leave
   // the <select> pointing at an option that no longer renders.
   useEffect(() => {
     if (masteringMode && isShareFormat(format)) setFormat("wav");
   }, [masteringMode, format]);
+  useEffect(() => {
+    if (shareFormats === null || !isShareFormat(format)) return;
+    if (!shareFormats.some((candidate) => candidate.id === format)) setFormat("wav");
+  }, [format, shareFormats]);
   // Global Live/Export quality switch — defaults to STUDIO: the export has
   // no realtime CPU budget, so PRISM's 8× saturation oversampling and VØID's
   // render tier (default-tier instances only; explicit eco/high/render

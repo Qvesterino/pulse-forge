@@ -20,6 +20,13 @@
  */
 
 export type CompressedAudioCodec = "opus" | "aac";
+export type CompressedAudioQuality = "medium" | "high" | "very-high";
+
+export interface CompressedAudioSupportOptions {
+  sampleRate?: number;
+  numberOfChannels?: number;
+  quality?: CompressedAudioQuality;
+}
 
 export interface CompressedAudioFormat {
   id: CompressedAudioFormatId;
@@ -74,20 +81,41 @@ export function isCompressedAudioSampleRateSupported(sampleRate: number): boolea
  * surface is missing entirely. Never throws: a browser without `AudioEncoder`
  * is a supported configuration, not an error.
  */
-export async function canEncodeCompressedAudio(codec: CompressedAudioCodec): Promise<boolean> {
+export async function canEncodeCompressedAudio(
+  codec: CompressedAudioCodec,
+  options: CompressedAudioSupportOptions = {},
+): Promise<boolean> {
   if (typeof AudioEncoder === "undefined") return false;
+  const sampleRate = options.sampleRate ?? 48_000;
+  const numberOfChannels = options.numberOfChannels ?? 2;
+  if (
+    !isCompressedAudioSampleRateSupported(sampleRate) ||
+    !Number.isInteger(numberOfChannels) ||
+    numberOfChannels < 1 ||
+    numberOfChannels > 8
+  ) {
+    return false;
+  }
   try {
-    const { canEncodeAudio } = await import("mediabunny");
-    return await canEncodeAudio(codec);
+    const { probeCompressedAudioCodec } = await import("./compressed-audio-probe");
+    return await probeCompressedAudioCodec(codec, {
+      sampleRate,
+      numberOfChannels,
+      quality: options.quality ?? "high",
+    });
   } catch {
     return false;
   }
 }
 
 /** The formats this browser can actually produce, in menu order. */
-export async function supportedCompressedAudioFormats(): Promise<CompressedAudioFormat[]> {
+export async function supportedCompressedAudioFormats(
+  options: CompressedAudioSupportOptions = {},
+): Promise<CompressedAudioFormat[]> {
   const results = await Promise.all(
-    COMPRESSED_AUDIO_FORMATS.map(async (format) => ((await canEncodeCompressedAudio(format.codec)) ? format : null)),
+    COMPRESSED_AUDIO_FORMATS.map(async (format) =>
+      (await canEncodeCompressedAudio(format.codec, options)) ? format : null,
+    ),
   );
   return results.filter((format): format is CompressedAudioFormat => format !== null);
 }

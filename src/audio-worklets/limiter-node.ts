@@ -52,31 +52,35 @@ export function createLimiterNode(ctx: BaseAudioContext, instance: { params: Rec
   safeApplyAudioParam(node, "release", instance.params.release ?? 0.12);
   safeApplyAudioParam(node, "lookahead", clampLimiterLookaheadMs(lookaheadMs) / 1000);
   safeApplyAudioParam(node, "link", instance.params.link ?? 1);
+  safeApplyAudioParam(node, "transientLink", instance.params.transientLink ?? 1);
+  safeApplyAudioParam(node, "releaseLink", instance.params.releaseLink ?? 1);
   safeApplyAudioParam(node, "mix", instance.params.mix ?? 1);
+
+  const setParameter = (id: string, value: number, when = ctx.currentTime) => {
+    if (id === "lookaheadMs") {
+      // A non-finite value would poison getLatencySec() → NaN PDC delay
+      // time → TypeError in syncPdc; safeApplyAudioParam drops the param
+      // write, so the stored latency must stay on the last valid value.
+      if (!Number.isFinite(value)) return;
+      lookaheadMs = value;
+      safeApplyAudioParam(node, "lookahead", clampLimiterLookaheadMs(value) / 1000, when);
+      return;
+    }
+    if (id === "link") {
+      safeApplyAudioParam(node, "link", value, when);
+      return;
+    }
+    safeApplyAudioParam(node, id, value, when);
+  };
 
   return {
     input,
     output,
     setParameter(id, value) {
-      if (id === "lookaheadMs") {
-        // A non-finite value would poison getLatencySec() → NaN PDC delay
-        // time → TypeError in syncPdc; safeApplyAudioParam drops the param
-        // write, so the stored latency must stay on the last valid value.
-        if (!Number.isFinite(value)) return;
-        lookaheadMs = value;
-        safeApplyAudioParam(node, "lookahead", clampLimiterLookaheadMs(value) / 1000, ctx.currentTime);
-        return;
-      }
-      safeApplyAudioParam(node, id, value, ctx.currentTime);
+      setParameter(id, value);
     },
     setParameterAt(id, value, when) {
-      if (id === "lookaheadMs") {
-        if (!Number.isFinite(value)) return;
-        lookaheadMs = value;
-        safeApplyAudioParam(node, "lookahead", clampLimiterLookaheadMs(value) / 1000, when);
-        return;
-      }
-      safeApplyAudioParam(node, id, value, when);
+      setParameter(id, value, when);
     },
     getAudioParam: (paramId: string) => node.parameters.get(paramId) ?? null,
     getLatencySec() {

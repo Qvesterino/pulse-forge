@@ -17,7 +17,6 @@
 import {
   AudioSample,
   AudioSampleSource,
-  canEncodeAudio,
   Mp4OutputFormat,
   OggOutputFormat,
   Output,
@@ -31,12 +30,12 @@ import {
   findCompressedAudioFormat,
   isCompressedAudioSampleRateSupported,
   COMPRESSED_AUDIO_SAMPLE_RATES,
+  type CompressedAudioQuality,
   type CompressedAudioFormatId,
 } from "./compressed-audio-capabilities";
+export type { CompressedAudioQuality } from "./compressed-audio-capabilities";
 
 /** Mediabunny quality tiers, named without importing the deprecated constants. */
-export type CompressedAudioQuality = "medium" | "high" | "very-high";
-
 export interface CompressedAudioOptions {
   target: CompressedAudioFormatId;
   quality?: CompressedAudioQuality;
@@ -105,7 +104,14 @@ export async function encodeCompressedAudio(buffer: AudioBuffer, options: Compre
     throw new Error("Compressed audio export supports between 1 and 8 channels.");
   }
 
-  if (!(await canEncodeCompressedAudio(target.codec))) {
+  const quality = options.quality ?? "high";
+  if (
+    !(await canEncodeCompressedAudio(target.codec, {
+      sampleRate: buffer.sampleRate,
+      numberOfChannels: buffer.numberOfChannels,
+      quality,
+    }))
+  ) {
     throw new Error(
       target.codec === "aac"
         ? "This browser cannot encode AAC. Chrome, Edge or Safari 26+ can; Firefox cannot."
@@ -119,17 +125,12 @@ export async function encodeCompressedAudio(buffer: AudioBuffer, options: Compre
   const output = new Output({ format: container, target: bufferTarget });
   const source = new AudioSampleSource({
     codec: target.codec,
-    quality: new Quality(QUALITY_TIERS[options.quality ?? "high"]),
+    quality: new Quality(QUALITY_TIERS[quality]),
   });
   output.addAudioTrack(source);
   let finalized = false;
 
   try {
-    // Guard against Mediabunny's internal probe disagreeing with the pre-check
-    // (e.g. the AudioEncoder appeared but rejected this exact configuration).
-    if (!(await canEncodeAudio(target.codec))) {
-      throw new Error(`This browser rejected the ${target.codec} encoder configuration for this render.`);
-    }
     await output.start();
     for (let start = 0; start < buffer.length; start += ENCODE_BLOCK_FRAMES) {
       throwIfAborted(options.signal);

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   COMPRESSED_AUDIO_FORMATS,
   COMPRESSED_AUDIO_SAMPLE_RATES,
@@ -9,6 +9,11 @@ import {
   supportedCompressedAudioFormats,
 } from "../../src/export/compressed-audio-capabilities";
 import { encodeCompressedAudio } from "../../src/export/compressed-audio";
+
+const probeCompressedAudioCodec = vi.hoisted(() => vi.fn());
+vi.mock("../../src/export/compressed-audio-probe", () => ({ probeCompressedAudioCodec }));
+
+import { probeCompressedAudioCodec as mockedProbeCompressedAudioCodec } from "../../src/export/compressed-audio-probe";
 
 function fakeBuffer(seconds: number, channels = 2, sampleRate = 48000): AudioBuffer {
   const length = Math.floor(seconds * sampleRate);
@@ -75,6 +80,33 @@ describe("compressed audio capability probe", () => {
 
   it("offers no share formats when nothing can be encoded", async () => {
     await expect(supportedCompressedAudioFormats()).resolves.toEqual([]);
+  });
+
+  it("checks the selected sample rate, channel count and quality in the lazy probe", async () => {
+    vi.stubGlobal("AudioEncoder", class AudioEncoder {});
+    vi.mocked(mockedProbeCompressedAudioCodec).mockResolvedValue(true);
+
+    await expect(
+      canEncodeCompressedAudio("opus", { sampleRate: 44_100, numberOfChannels: 1, quality: "very-high" }),
+    ).resolves.toBe(true);
+    expect(mockedProbeCompressedAudioCodec).toHaveBeenCalledWith("opus", {
+      sampleRate: 44_100,
+      numberOfChannels: 1,
+      quality: "very-high",
+    });
+  });
+
+  it("fails closed before loading the probe for unsupported channels or rates", async () => {
+    vi.stubGlobal("AudioEncoder", class AudioEncoder {});
+
+    await expect(canEncodeCompressedAudio("aac", { sampleRate: 96_000 })).resolves.toBe(false);
+    await expect(canEncodeCompressedAudio("aac", { numberOfChannels: 0 })).resolves.toBe(false);
+    expect(mockedProbeCompressedAudioCodec).not.toHaveBeenCalled();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.mocked(mockedProbeCompressedAudioCodec).mockReset();
   });
 });
 

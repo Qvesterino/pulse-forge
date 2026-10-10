@@ -1082,11 +1082,24 @@ export class MasterChain {
         typeof config.limiterLookaheadMs === "number" && Number.isFinite(config.limiterLookaheadMs)
           ? Math.min(20, Math.max(1, config.limiterLookaheadMs))
           : 5;
+      const legacyLimiterStereoLink =
+        typeof config.limiterStereoLink === "number" && Number.isFinite(config.limiterStereoLink)
+          ? Math.min(1, Math.max(0, config.limiterStereoLink))
+          : 1;
+      const limiterTransientLink =
+        typeof config.limiterTransientLink === "number" && Number.isFinite(config.limiterTransientLink)
+          ? Math.min(1, Math.max(0, config.limiterTransientLink))
+          : legacyLimiterStereoLink;
+      const limiterReleaseLink =
+        typeof config.limiterReleaseLink === "number" && Number.isFinite(config.limiterReleaseLink)
+          ? Math.min(1, Math.max(0, config.limiterReleaseLink))
+          : legacyLimiterStereoLink;
       worklet.setParameter("ceiling", workletCeilingParam);
       worklet.setParameter("threshold", thresholdParam);
       worklet.setParameter("release", limiterReleaseMs / 1000);
       worklet.setParameter("lookaheadMs", limiterLookaheadMs);
-      worklet.setParameter("link", 1);
+      worklet.setParameter("transientLink", limiterTransientLink);
+      worklet.setParameter("releaseLink", limiterReleaseLink);
       worklet.setParameter("mix", config.limiterEnabled ? 1 : 0);
       this.masterLimiter.threshold.value = 0;
       this.masterLimiter.knee.value = 0;

@@ -49,7 +49,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 18;
+export const SCHEMA_VERSION = 20;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -254,6 +254,8 @@ export function defaultMasterConfig(): MasterConfig {
     clipperEnabled: false,
     limiterLookaheadMs: 5,
     limiterReleaseMs: 120,
+    limiterTransientLink: 1,
+    limiterReleaseLink: 1,
     tapeEnabled: false,
     tapeDrive: 0.35,
     msEnabled: false,
@@ -2153,6 +2155,18 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
       typeof m.limiterReleaseMs === "number" && Number.isFinite(m.limiterReleaseMs)
         ? Math.min(2000, Math.max(10, m.limiterReleaseMs))
         : 120;
+    const legacyLimiterStereoLink =
+      typeof m.limiterStereoLink === "number" && Number.isFinite(m.limiterStereoLink)
+        ? Math.min(1, Math.max(0, m.limiterStereoLink))
+        : 1;
+    const limiterTransientLink =
+      typeof m.limiterTransientLink === "number" && Number.isFinite(m.limiterTransientLink)
+        ? Math.min(1, Math.max(0, m.limiterTransientLink))
+        : legacyLimiterStereoLink;
+    const limiterReleaseLink =
+      typeof m.limiterReleaseLink === "number" && Number.isFinite(m.limiterReleaseLink)
+        ? Math.min(1, Math.max(0, m.limiterReleaseLink))
+        : legacyLimiterStereoLink;
     const tapeEnabled = typeof m.tapeEnabled === "boolean" ? m.tapeEnabled : false;
     const tapeDrive =
       typeof m.tapeDrive === "number" && Number.isFinite(m.tapeDrive) ? Math.min(1, Math.max(0, m.tapeDrive)) : 0.35;
@@ -2220,6 +2234,9 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
       dcl !== m.clipperEnabled ||
       limiterLookaheadMs !== m.limiterLookaheadMs ||
       limiterReleaseMs !== m.limiterReleaseMs ||
+      limiterTransientLink !== m.limiterTransientLink ||
+      limiterReleaseLink !== m.limiterReleaseLink ||
+      m.limiterStereoLink !== undefined ||
       tapeEnabled !== m.tapeEnabled ||
       tapeDrive !== m.tapeDrive ||
       msEnabled !== m.msEnabled ||
@@ -2236,32 +2253,33 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
       loudnessTrimDb !== m.loudnessTrimDb ||
       matchEqChanged
     ) {
-      doc = {
-        ...doc,
-        master: {
-          masterGain: dg,
-          ceilingDb: dc,
-          limiterEnabled: dl,
-          clipperEnabled: dcl,
-          limiterLookaheadMs,
-          limiterReleaseMs,
-          tapeEnabled,
-          tapeDrive,
-          msEnabled,
-          msMidGain,
-          msSideGain,
-          lufsTarget,
-          deliveryProfileId,
-          deliveryTruePeakDb,
-          effects,
-          glueEnabled,
-          bassMonoEnabled,
-          bassMonoFreq,
-          tiltDb,
-          loudnessTrimDb,
-          ...(matchEqChanged ? { matchEq } : {}),
-        },
+      const normalizedMaster: MasterConfig = {
+        masterGain: dg,
+        ceilingDb: dc,
+        limiterEnabled: dl,
+        clipperEnabled: dcl,
+        limiterLookaheadMs,
+        limiterReleaseMs,
+        limiterTransientLink,
+        limiterReleaseLink,
+        tapeEnabled,
+        tapeDrive,
+        msEnabled,
+        msMidGain,
+        msSideGain,
+        lufsTarget,
+        deliveryProfileId,
+        deliveryTruePeakDb,
+        effects,
+        glueEnabled,
+        bassMonoEnabled,
+        bassMonoFreq,
+        tiltDb,
+        loudnessTrimDb,
+        ...(matchEqChanged ? { matchEq } : {}),
       };
+      delete normalizedMaster.limiterStereoLink;
+      doc = { ...doc, master: normalizedMaster };
       s.changed = true;
     }
   }
@@ -2686,7 +2704,9 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // sine/cosine fades; absent = linear).
   // v17 adds the chord track (`Arrangement.chords` — whole-bar harmonic
   // skeleton events).
-  // v18 adds adjustable built-in master limiter look-ahead and release times.
+  // v18 adds adjustable built-in master limiter look-ahead and release times;
+  // v19 adds one master stereo link; v20 splits it into transient/release
+  // links while mapping the v19 value to both.
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

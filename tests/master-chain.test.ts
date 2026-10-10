@@ -290,7 +290,8 @@ describe("MasterChain limiter delivery", () => {
       threshold: -4.4,
       release: 0.12,
       lookaheadMs: 5,
-      link: 1,
+      transientLink: 1,
+      releaseLink: 1,
       mix: 1,
     });
     expect(nativeLimiter.threshold.value).toBe(0);
@@ -304,17 +305,25 @@ describe("MasterChain limiter delivery", () => {
       ...defaultMasterConfig(),
       limiterLookaheadMs: 8.5,
       limiterReleaseMs: 420,
+      limiterTransientLink: 0.35,
+      limiterReleaseLink: 0.8,
     });
     expect(workletParameters.lookaheadMs).toBe(8.5);
     expect(workletParameters.release).toBe(0.42);
+    expect(workletParameters.transientLink).toBe(0.35);
+    expect(workletParameters.releaseLink).toBe(0.8);
 
     chain.applyMasterConfig({
       ...defaultMasterConfig(),
       limiterLookaheadMs: Number.POSITIVE_INFINITY,
       limiterReleaseMs: Number.NaN,
+      limiterTransientLink: Number.NaN,
+      limiterReleaseLink: Number.NaN,
     });
     expect(workletParameters.lookaheadMs).toBe(5);
     expect(workletParameters.release).toBe(0.12);
+    expect(workletParameters.transientLink).toBe(1);
+    expect(workletParameters.releaseLink).toBe(1);
   });
 
   it("reports the limiter's realized integer-sample latency at mastering sample rates", () => {
@@ -333,7 +342,10 @@ describe("MasterChain limiter delivery", () => {
     }
     class FakeWorkletNode {
       parameters = new Map(
-        ["ceiling", "threshold", "release", "lookahead", "link", "mix"].map((id) => [id, new FakeAudioParam()]),
+        ["ceiling", "threshold", "release", "lookahead", "link", "transientLink", "releaseLink", "mix"].map((id) => [
+          id,
+          new FakeAudioParam(),
+        ]),
       );
       port = { onmessage: null as ((event: MessageEvent) => void) | null, close() {} };
       onprocessorerror: ((event: Event) => void) | null = null;
@@ -355,10 +367,25 @@ describe("MasterChain limiter delivery", () => {
           createGain: () => new FakeGainNode(),
         } as unknown as BaseAudioContext;
         const runtime = createLimiterNode(context, { params: {} });
-        if (!runtime.getLatencySec || !runtime.setParameter || !runtime.getAudioParam || !runtime.dispose) {
+        if (
+          !runtime.getLatencySec ||
+          !runtime.setParameter ||
+          !runtime.setParameterAt ||
+          !runtime.getAudioParam ||
+          !runtime.dispose
+        ) {
           throw new Error("Limiter runtime is missing its latency or parameter contract.");
         }
         expect(runtime.getLatencySec()).toBe(expectedLatency(5, sampleRate));
+
+        runtime.setParameter("link", 0.4);
+        expect(runtime.getAudioParam("link")?.value).toBe(0.4);
+        expect(runtime.getAudioParam("transientLink")?.value).toBe(1);
+        expect(runtime.getAudioParam("releaseLink")?.value).toBe(1);
+        runtime.setParameter("transientLink", 0.6);
+        runtime.setParameterAt("releaseLink", 0.7, 0.25);
+        expect(runtime.getAudioParam("transientLink")?.value).toBe(0.6);
+        expect(runtime.getAudioParam("releaseLink")?.value).toBe(0.7);
 
         runtime.setParameter("lookaheadMs", 2.3);
         expect(runtime.getLatencySec()).toBe(expectedLatency(2.3, sampleRate));

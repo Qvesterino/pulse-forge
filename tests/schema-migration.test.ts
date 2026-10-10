@@ -90,6 +90,9 @@ describe("schema migration contract", () => {
     const legacyMaster = { ...schema.defaultMasterConfig() };
     delete legacyMaster.limiterLookaheadMs;
     delete legacyMaster.limiterReleaseMs;
+    delete legacyMaster.limiterTransientLink;
+    delete legacyMaster.limiterReleaseLink;
+    legacyMaster.limiterStereoLink = 0.35;
     const oldProject = {
       schemaVersion: schema.SCHEMA_VERSION - 1,
       id: "legacy-limiter-timing",
@@ -107,13 +110,24 @@ describe("schema migration contract", () => {
     const migrated = schema.migrateProject(oldProject as never);
     expect(migrated.master?.limiterLookaheadMs).toBe(5);
     expect(migrated.master?.limiterReleaseMs).toBe(120);
+    expect(migrated.master?.limiterTransientLink).toBe(0.35);
+    expect(migrated.master?.limiterReleaseLink).toBe(0.35);
+    expect(migrated.master?.limiterStereoLink).toBeUndefined();
 
     const clamped = schema.normalizeProject({
       ...migrated,
-      master: { ...migrated.master!, limiterLookaheadMs: 100, limiterReleaseMs: 2 },
+      master: {
+        ...migrated.master!,
+        limiterLookaheadMs: 100,
+        limiterReleaseMs: 2,
+        limiterTransientLink: -0.5,
+        limiterReleaseLink: 1.5,
+      },
     });
     expect(clamped.master?.limiterLookaheadMs).toBe(20);
     expect(clamped.master?.limiterReleaseMs).toBe(10);
+    expect(clamped.master?.limiterTransientLink).toBe(0);
+    expect(clamped.master?.limiterReleaseLink).toBe(1);
   });
 
   it("migrateProject throws for FUTURE versions (newer than supported)", async () => {

@@ -396,6 +396,12 @@ export interface MasterConfig {
   limiterLookaheadMs?: number;
   /** Master limiter recovery time in milliseconds (10–2000, default 120). */
   limiterReleaseMs?: number;
+  /** Limiter gain linking while reducing gain for transients (0–1, default 1). */
+  limiterTransientLink?: number;
+  /** Limiter gain linking while recovering after reduction (0–1, default 1). */
+  limiterReleaseLink?: number;
+  /** @deprecated Schema v19 combined transient/release link; normalized into both controls. */
+  limiterStereoLink?: number;
   /** Tape saturation on master (post-gain, pre-limiter). */
   tapeEnabled?: boolean;
   tapeDrive?: number;

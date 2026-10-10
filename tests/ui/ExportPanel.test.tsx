@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ExportPanel, type MasteringWorkspaceState } from "../../src/ui/ExportPanel";
@@ -10,8 +10,15 @@ import { measureMasterBufferRangeLufsAsync } from "../../src/mastering/analysisC
 import { encodeMp3 } from "../../src/export/mp3";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 import { projectRevisionIdFor } from "../../src/mastering/report";
+import { COMPRESSED_AUDIO_FORMATS } from "../../src/export/compressed-audio-capabilities";
 import type { RenderOptions } from "../../src/rendering/renderer";
 import { mockServices, renderWithContext } from "../helpers";
+
+const supportedCompressedAudioFormatsMock = vi.hoisted(() => vi.fn());
+vi.mock("../../src/export/compressed-audio-capabilities", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../../src/export/compressed-audio-capabilities")>();
+  return { ...mod, supportedCompressedAudioFormats: supportedCompressedAudioFormatsMock };
+});
 
 vi.mock("../../src/rendering/renderer", async (importOriginal) => {
   const mod = await importOriginal<typeof import("../../src/rendering/renderer")>();
@@ -114,6 +121,40 @@ vi.mock("../../src/audio-engine/recorder", async (importOriginal) => {
 });
 
 describe("ExportPanel", () => {
+  beforeEach(() => {
+    supportedCompressedAudioFormatsMock.mockReset().mockResolvedValue([]);
+  });
+
+  it("rechecks lossy codec availability at the selected rate and falls back from a stale format", async () => {
+    const user = userEvent.setup();
+    const [ogg] = COMPRESSED_AUDIO_FORMATS;
+    if (!ogg) throw new Error("The OGG capability definition is missing.");
+    let resolveAt48k: ((formats: (typeof COMPRESSED_AUDIO_FORMATS)[number][]) => void) | undefined;
+    supportedCompressedAudioFormatsMock.mockImplementation(({ sampleRate }: { sampleRate?: number } = {}) => {
+      if (sampleRate === 48_000) {
+        return new Promise((resolve) => {
+          resolveAt48k = resolve;
+        });
+      }
+      return Promise.resolve([ogg]);
+    });
+
+    renderWithContext(<ExportPanel />, { services: mockServices() });
+    const formatSelect = screen.getByLabelText("FORMAT");
+    await waitFor(() => expect(formatSelect.querySelector('option[value="ogg-opus"]')).toBeEnabled());
+    expect(supportedCompressedAudioFormatsMock).toHaveBeenCalledWith({ sampleRate: 44_100, numberOfChannels: 2 });
+
+    await user.selectOptions(formatSelect, "ogg-opus");
+    expect(formatSelect).toHaveValue("ogg-opus");
+    await user.selectOptions(screen.getByLabelText("RATE"), "48000");
+    await waitFor(() => expect(formatSelect.querySelector('option[value="ogg-opus"]')).toBeDisabled());
+    expect(formatSelect).toHaveValue("ogg-opus");
+
+    resolveAt48k?.([]);
+    await waitFor(() => expect(formatSelect).toHaveValue("wav"));
+    expect(supportedCompressedAudioFormatsMock).toHaveBeenLastCalledWith({ sampleRate: 48_000, numberOfChannels: 2 });
+  });
+
   it("keeps the analyzed render available for Codec Preview while its source report is current", async () => {
     const project = createProjectFromTemplate("house");
     const renderer = await import("../../src/rendering/renderer");

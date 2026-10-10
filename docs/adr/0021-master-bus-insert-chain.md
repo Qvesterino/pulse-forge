@@ -52,6 +52,13 @@ same target.
 6. Shared pure delivery rules define loudness tolerance, true-peak tolerance,
    and available stereo checks. MIX, export, and MCP consume those rules. A
    measurement report must distinguish measured values from target guidance.
+7. The built-in master limiter exposes separate persisted transient and
+   recovery link amounts. `1.0` fully links left and right gains in that phase;
+   `0.0` lets each channel follow its own detector, with intermediate values
+   blending linked and independent targets. The output-side true-peak safety
+   correction stays stereo-linked. Both controls default to `1.0`; lower
+   values warn that the stereo image may shift and should be compared at
+   matched loudness. Schema v20 maps the v19 combined value to both controls.
 
 ## Consequences
 
@@ -67,6 +74,10 @@ same target.
 - The rack is project-global and follows the master bus in both realtime and
   offline graphs. Existing track/group effect state and solo rules do not
   change.
+- Project schema v20 adds separate master limiter transient and recovery link
+  amounts. A v19 combined link migrates to both values; older projects and
+  external mastering sessions default to fully linked (`1.0`) so existing
+  image and limiter behavior are preserved.
 - Codec-specific post-encode analysis and externally supplied stereo mixes
   remain separate roadmap work; neither can be implied by a pre-encode render
   report.
@@ -80,6 +91,10 @@ same target.
   and project reopen preserve the serialized chain.
 - Monitor bypass crossfades between paths aligned to the same reported
   pre-limiter processor latency; an alignment-range fallback is visible.
+- Transient and recovery link controls independently alter limiter gain
+  behavior, with the final true-peak guard always linked. Project and external
+  session controls persist and restore through the same `MasterConfig`
+  normalization path; v19 combined settings migrate to both values.
 - Pre-master/stem output does not accidentally include master inserts.
 - The final clipper/limiter stays downstream of all master inserts.
 
@@ -91,3 +106,7 @@ same target.
   below −2 dBTP when the master is louder than −14 LUFS. KYX surfaces the
   conditional limit as an advisory; these remain Spotify recommendations, not
   universal delivery requirements.
+- FabFilter, [Pro-L 2 Advanced settings](https://www.fabfilter.com/help/pro-l/using/advancedsettings),
+  accessed 2026-10-10. The manual describes separate transient and release
+  channel-link controls and recommends starting with linked release processing
+  to avoid unintended stereo-image changes.

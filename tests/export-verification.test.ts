@@ -31,6 +31,7 @@ import {
   MAX_MP3_EXPORT_WORKING_SET_BYTES,
 } from "../src/export/mp3-limits";
 import { parseFlac } from "../src/mastering/encodedInspection";
+import { truePeakOversampled } from "../src/audio-engine/metering";
 
 /**
  * AUDIT 11 Wave 4 — export verification without a browser.
@@ -127,6 +128,46 @@ describe("export verification — WAV encode contract (audit 11 wave 4)", () => 
     // anti-digital-silence policy, NOT a bug. Assert the noise floor stays
     // inaudible rather than demanding exact zero.
     expect(parsed.peak).toBeLessThan(1 / 8000);
+  });
+
+  it.each([16, 24] as const)("keeps dithered %i-bit WAV PCM below the −1 dBTP delivery ceiling", (bitDepth) => {
+    const sampleRate = 48_000;
+    const frames = sampleRate;
+    const targetLinearPeak = Math.pow(10, -1.05 / 20);
+    const unitSignal = Float32Array.from({ length: frames }, (_, frame) =>
+      Math.sin((Math.PI / 2) * frame + Math.PI / 4),
+    );
+    const amplitude = targetLinearPeak / truePeakOversampled([unitSignal]);
+    const buffer = fakeBuffer(
+      2,
+      sampleRate,
+      frames,
+      (_channel, frame) => amplitude * Math.sin((Math.PI / 2) * frame + Math.PI / 4),
+    );
+    const bytes = encodeWav(buffer, bitDepth);
+    const view = new DataView(bytes);
+    const bytesPerSample = bitDepth / 8;
+    const channels: Float32Array[] = Array.from({ length: 2 }, () => new Float32Array(frames));
+
+    for (let frame = 0; frame < frames; frame++) {
+      for (let channel = 0; channel < 2; channel++) {
+        const offset = 44 + (frame * 2 + channel) * bytesPerSample;
+        if (bitDepth === 16) {
+          channels[channel]![frame] = view.getInt16(offset, true) / 0x8000;
+        } else {
+          let sample = view.getUint8(offset) | (view.getUint8(offset + 1) << 8) | (view.getUint8(offset + 2) << 16);
+          if (sample & 0x800000) sample -= 0x1000000;
+          channels[channel]![frame] = sample / 0x800000;
+        }
+      }
+    }
+
+    // Drop the FIR startup region; the PCM values below are reconstructed
+    // from the bytes actually written to the WAV, including deterministic TPDF.
+    const truePeak = truePeakOversampled(channels.map((channel) => channel.subarray(64, frames - 64)));
+    const truePeakDbtp = 20 * Math.log10(truePeak);
+    expect(truePeakDbtp, `${bitDepth}-bit WAV measured ${truePeakDbtp.toFixed(4)} dBTP`).toBeLessThanOrEqual(-1);
+    expect(truePeakDbtp).toBeGreaterThan(-1.2);
   });
 
   it("32-bit float path preserves over-range headroom (no soft-clip bake-in)", () => {

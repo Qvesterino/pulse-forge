@@ -131,6 +131,32 @@ export function MasterProcessingControls({
             disabled={disabled}
             onCommit={(limiterReleaseMs) => commit({ limiterReleaseMs: Math.round(limiterReleaseMs) })}
           />
+          <Slider
+            compact
+            label="TRANS LINK"
+            hint="Links limiter gain reduction across left and right while cutting a transient. 100% keeps the channels together; lower values let each channel limit more independently and may shift the stereo image. The native limiter fallback does not support channel-link controls and is marked Degraded. Start at 100% and compare at matched loudness."
+            value={(master.limiterTransientLink ?? 1) * 100}
+            min={0}
+            max={100}
+            defaultValue={100}
+            format={(value) => `${Math.round(value)}%`}
+            disabled={disabled}
+            onCommit={(limiterTransientLink) =>
+              commit({ limiterTransientLink: Math.round(limiterTransientLink) / 100 })
+            }
+          />
+          <Slider
+            compact
+            label="REL LINK"
+            hint="Links limiter gain recovery across left and right after a transient. 100% recovers together; lower values let each channel recover more independently and may shift the stereo image. The output true-peak safety correction remains linked. The native limiter fallback does not support channel-link controls and is marked Degraded."
+            value={(master.limiterReleaseLink ?? 1) * 100}
+            min={0}
+            max={100}
+            defaultValue={100}
+            format={(value) => `${Math.round(value)}%`}
+            disabled={disabled}
+            onCommit={(limiterReleaseLink) => commit({ limiterReleaseLink: Math.round(limiterReleaseLink) / 100 })}
+          />
         </div>
       )}
 

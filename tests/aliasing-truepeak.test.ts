@@ -93,7 +93,11 @@ function renderStereo(
 
 function params(names: string[], values: Record<string, number> = {}): Record<string, Float32Array> {
   const out: Record<string, Float32Array> = {};
-  for (const n of names) out[n] = Float32Array.from([values[n] ?? 0]);
+  const legacyLink = values.link ?? 1;
+  for (const n of names) {
+    const fallback = n === "transientLink" || n === "releaseLink" ? legacyLink : n === "link" ? 1 : 0;
+    out[n] = Float32Array.from([values[n] ?? fallback]);
+  }
   return out;
 }
 
@@ -112,7 +116,7 @@ function rmsBetween(buf: Float32Array, from: number, to: number): number {
   return Math.sqrt(sumSquares / Math.max(1, to - from));
 }
 
-const LIM = ["threshold", "ceiling", "release", "lookahead", "link", "mix"];
+const LIM = ["threshold", "ceiling", "release", "lookahead", "link", "transientLink", "releaseLink", "mix"];
 
 describe("limiter true-peak detector", () => {
   it("matches the ITU-R report estimator, including sampled peaks", () => {
@@ -196,6 +200,121 @@ describe("limiter true-peak detector", () => {
     const truePeakDb = 20 * Math.log10(truePeak);
 
     expect(truePeakDb).toBeLessThanOrEqual(ceilingDb + 0.05);
+  });
+
+  it.each(["left", "right"] as const)("holds true peak when the independent transient is in the %s channel", (side) => {
+    const deliveryCeilingDb = -1;
+    const workletCeilingDb = deliveryCeilingDb - 0.2;
+    const proc = new (registered.get("limiter-processor")!)();
+    const prm = params(LIM, {
+      threshold: workletCeilingDb - 3.2,
+      ceiling: workletCeilingDb,
+      release: 0.05,
+      lookahead: 0.005,
+      link: 1,
+      mix: 1,
+    });
+    const { L, R } = renderStereo(proc, 0.4, prm, (n) => {
+      const transient = 1.35 * Math.sin(2 * Math.PI * 0.47 * n + Math.PI / 5);
+      const companion = 0.12 * Math.sin(2 * Math.PI * 0.17 * n + 0.3);
+      return side === "left" ? [transient, companion] : [companion, transient];
+    });
+
+    const truePeak = truePeakOversampled([L, R]);
+    const activeChannel = side === "left" ? L : R;
+    const ceilingLin = Math.pow(10, deliveryCeilingDb / 20);
+    expect(truePeak, `${side}-channel dBTP ${20 * Math.log10(truePeak)}`).toBeLessThanOrEqual(ceilingLin * 1.006);
+    expect(peakAbs(activeChannel, Math.floor(SR * 0.2))).toBeGreaterThan(0.3);
+  });
+
+  it("preserves stereo ratio with linked transients and permits independent transient gain", () => {
+    const proc = new (registered.get("limiter-processor")!)();
+    const prm = params(LIM, {
+      threshold: -6,
+      ceiling: -1,
+      release: 0.05,
+      lookahead: 0.005,
+      link: 1,
+      transientLink: 1,
+      releaseLink: 1,
+      mix: 1,
+    });
+    const { L, R } = renderStereo(proc, 0.5, prm, (n) => {
+      const left = 1.1 * Math.sin(2 * Math.PI * 0.47 * n + Math.PI / 5);
+      const right = 0.25 * left;
+      return [left, right];
+    });
+    const from = Math.round(0.1 * SR);
+    let maxRatioError = 0;
+    for (let i = from; i < L.length; i++) {
+      maxRatioError = Math.max(maxRatioError, Math.abs(R[i]! - 0.25 * L[i]!));
+    }
+
+    expect(maxRatioError).toBeLessThan(1e-6);
+
+    const unlinked = new (registered.get("limiter-processor")!)();
+    const unlinkedParams = params(LIM, {
+      threshold: -6,
+      ceiling: -1,
+      release: 0.05,
+      lookahead: 0.005,
+      link: 1,
+      transientLink: 0,
+      releaseLink: 1,
+      mix: 1,
+    });
+    const independent = renderStereo(unlinked, 0.5, unlinkedParams, (n) => {
+      const left = 1.1 * Math.sin(2 * Math.PI * 0.47 * n + Math.PI / 5);
+      return [left, 0.25 * left];
+    });
+    let independentRatioError = 0;
+    for (let i = from; i < independent.L.length; i++) {
+      independentRatioError = Math.max(independentRatioError, Math.abs(independent.R[i]! - 0.25 * independent.L[i]!));
+    }
+    expect(independentRatioError).toBeGreaterThan(0.02);
+    expect(truePeakOversampled([independent.L, independent.R])).toBeLessThanOrEqual(Math.pow(10, -1 / 20) * 1.006);
+  });
+
+  it("links channel gain recovery independently from transient gain reduction", () => {
+    const render = (releaseLink: number) => {
+      const proc = new (registered.get("limiter-processor")!)();
+      const prm = params(LIM, {
+        threshold: -7,
+        ceiling: -1,
+        release: 0.8,
+        lookahead: 0.005,
+        link: 1,
+        transientLink: 0,
+        releaseLink,
+        mix: 1,
+      });
+      return renderStereo(proc, 0.5, prm, (n) => {
+        const time = n / SR;
+        const leftBurstTime = time - 0.04;
+        const rightBurstTime = time - 0.12;
+        const leftBurst =
+          leftBurstTime >= 0 && leftBurstTime < 0.025 ? 1.7 * Math.sin(2 * Math.PI * 1300 * leftBurstTime) : 0;
+        const rightBurst =
+          rightBurstTime >= 0 && rightBurstTime < 0.22
+            ? 1.65 * Math.exp(-rightBurstTime / 0.055) * Math.sin(2 * Math.PI * 1700 * rightBurstTime)
+            : 0;
+        const bed = 0.08 * Math.sin((2 * Math.PI * 180 * n) / SR);
+        return [bed + leftBurst, bed + rightBurst];
+      });
+    };
+
+    const independentRelease = render(0);
+    const linkedRelease = render(1);
+    const delaySamples = Math.round(Math.fround(0.005) * SR) + LIMITER_OUTPUT_TRUEPEAK_CORRECTION_SAMPLES;
+    const from = delaySamples + Math.round(0.16 * SR);
+    const to = delaySamples + Math.round(0.22 * SR);
+    const independentRms = rmsBetween(independentRelease.L, from, to);
+    const linkedRms = rmsBetween(linkedRelease.L, from, to);
+
+    expect(independentRms).toBeGreaterThan(linkedRms * 1.01);
+    const deliveryCeiling = Math.pow(10, -1 / 20) * 1.006;
+    expect(truePeakOversampled([independentRelease.L, independentRelease.R])).toBeLessThanOrEqual(deliveryCeiling);
+    expect(truePeakOversampled([linkedRelease.L, linkedRelease.R])).toBeLessThanOrEqual(deliveryCeiling);
   });
 
   it("keeps reconstructed output below the delivery ceiling for hostile spectra at supported master rates", () => {
@@ -342,6 +461,37 @@ describe("limiter true-peak detector", () => {
     expect(Math.abs(rmsBetween(fast, lateFrom, lateTo) - rmsBetween(slow, lateFrom, lateTo))).toBeLessThan(
       rmsBetween(fast, lateFrom, lateTo) * 0.02,
     );
+  });
+
+  it("recovers between repeated transient bursts without accumulating gain reduction", () => {
+    const periodSeconds = 0.75;
+    const periodSamples = Math.round(periodSeconds * SR);
+    const burstSamples = Math.round(0.008 * SR);
+    const proc = new (registered.get("limiter-processor")!)();
+    const prm = params(LIM, { threshold: -5, ceiling: -1, release: 0.12, lookahead: 0.005, link: 1, mix: 1 });
+    const { L } = renderStereo(proc, 12, prm, (n) => {
+      const bed = 0.12 * Math.sin((2 * Math.PI * 73 * n) / SR);
+      const phase = n % periodSamples;
+      const transient =
+        phase < burstSamples ? 1.65 * Math.exp(-phase / (0.002 * SR)) * Math.sin((2 * Math.PI * 1300 * phase) / SR) : 0;
+      const signal = bed + transient;
+      return [signal, signal * 0.72];
+    });
+
+    const grMessages = (proc.port.messages as { type?: string; gr?: number }[]).filter(
+      (message) => message?.type === "gr",
+    );
+    expect(Math.max(...grMessages.map((message) => message.gr ?? 0))).toBeGreaterThan(2);
+
+    const delaySamples = Math.round(Math.fround(0.005) * SR) + LIMITER_OUTPUT_TRUEPEAK_CORRECTION_SAMPLES;
+    const referenceBedRms = 0.12 / Math.SQRT2;
+    const settledRms = Array.from({ length: 16 }, (_, beat) => {
+      const start = delaySamples + Math.round((beat * periodSeconds + 0.52) * SR);
+      const end = start + Math.round(0.08 * SR);
+      return rmsBetween(L, start, end);
+    });
+    expect(Math.min(...settledRms)).toBeGreaterThan(referenceBedRms * 0.9);
+    expect(Math.max(...settledRms) - Math.min(...settledRms)).toBeLessThan(referenceBedRms * 0.03);
   });
 
   it("extremes soak: finite, bounded, no NaN", () => {

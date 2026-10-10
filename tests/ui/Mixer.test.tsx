@@ -87,17 +87,26 @@ describe("Mixer performance workflow", () => {
 
     const lookahead = screen.getByRole("slider", { name: "LOOK" });
     const release = screen.getByRole("slider", { name: "REL" });
+    const transientLink = screen.getByRole("slider", { name: "TRANS LINK" });
+    const releaseLink = screen.getByRole("slider", { name: "REL LINK" });
     expect(lookahead).toHaveAttribute("aria-valuenow", "5");
     expect(lookahead).toHaveAttribute("aria-valuetext", "5.0 ms");
     expect(lookahead.getAttribute("aria-description")).toContain("delays the whole master output");
     expect(release).toHaveAttribute("aria-valuenow", "120");
     expect(release).toHaveAttribute("aria-valuetext", "120 ms");
+    expect(transientLink).toHaveAttribute("aria-valuenow", "100");
+    expect(transientLink).toHaveAttribute("aria-valuetext", "100%");
+    expect(transientLink.getAttribute("aria-description")).toContain("may shift the stereo image");
+    expect(releaseLink).toHaveAttribute("aria-valuetext", "100%");
+    expect(releaseLink.getAttribute("aria-description")).toContain(
+      "native limiter fallback does not support channel-link controls",
+    );
 
-    fireEvent.keyDown(lookahead, { key: "ArrowRight" });
+    fireEvent.keyDown(transientLink, { key: "ArrowLeft" });
     const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as
       { type: string; execute: (project: ProjectDocument) => ProjectDocument } | undefined;
     expect(executed?.type).toBe("setMasterConfig");
-    expect(executed?.execute(doc).master.limiterLookaheadMs).toBeGreaterThan(5);
+    expect(executed?.execute(doc).master.limiterTransientLink).toBeLessThan(1);
   });
 
   it("routes isolated-session limiter timing edits into its draft callback", () => {
@@ -110,11 +119,13 @@ describe("Mixer performance workflow", () => {
     const release = screen.getByRole("slider", { name: "REL" });
     expect(release).toHaveAttribute("aria-valuenow", "120");
     expect(release).toHaveAttribute("aria-valuetext", "120 ms");
-    fireEvent.keyDown(release, { key: "ArrowRight" });
+    const releaseLink = screen.getByRole("slider", { name: "REL LINK" });
+    expect(releaseLink).toHaveAttribute("aria-valuetext", "100%");
+    fireEvent.keyDown(releaseLink, { key: "ArrowLeft" });
 
     expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange.mock.calls[0]?.[0]).toEqual({ limiterReleaseMs: expect.any(Number) });
-    expect(onChange.mock.calls[0]?.[0].limiterReleaseMs).toBeGreaterThan(120);
+    expect(onChange.mock.calls[0]?.[0]).toEqual({ limiterReleaseLink: expect.any(Number) });
+    expect(onChange.mock.calls[0]?.[0].limiterReleaseLink).toBeLessThan(1);
   });
 });
 
