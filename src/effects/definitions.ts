@@ -2040,6 +2040,16 @@ export const bassHarmonicParams: ParamDef[] = [
     format: (v) => `${(v * 1000).toFixed(0)} ms`,
     taper: "log",
   },
+  { id: "sustain", label: "SUSTAIN", min: 0, max: 1, default: 0, format: formatPct },
+  {
+    id: "retrig",
+    label: "RETRIG",
+    min: 0,
+    max: 1,
+    default: 1,
+    format: (v) => (v >= 0.5 ? "ON" : "OFF"),
+    kind: "toggle",
+  },
   {
     id: "character",
     label: "CHARACTER",
@@ -2051,6 +2061,7 @@ export const bassHarmonicParams: ParamDef[] = [
     options: KOREN_CHARACTER_LABELS.map((label, value) => ({ value, label })),
     format: (v) => KOREN_CHARACTER_LABELS[Math.max(0, Math.min(2, Math.round(v)))],
   },
+  { id: "width", label: "WIDTH", min: 0, max: 1, default: 0, format: formatPct },
   { id: "mix", label: "MIX", min: 0, max: 1, default: 0.6, format: formatPct },
   { id: "output", label: "OUTPUT", min: -18, max: 12, default: 0, unit: "dB", format: formatDb },
 ];

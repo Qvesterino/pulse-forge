@@ -89,6 +89,73 @@ function sineAt(hz: number, amp = 0.5): (i: number) => number {
   return (i) => amp * Math.sin((2 * Math.PI * hz * i) / SR);
 }
 
+/** Same as renderProcessor but returns both output channels. */
+function renderProcessorStereo(
+  cls: any,
+  params: Record<string, Float32Array>,
+  seconds: number,
+  input: (i: number) => number,
+): { L: Float32Array; R: Float32Array } {
+  const proc = new cls();
+  const total = Math.ceil(seconds * SR);
+  const outL = new Float32Array(total);
+  const outR = new Float32Array(total);
+  for (let offset = 0; offset < total; offset += BLOCK) {
+    const len = Math.min(BLOCK, total - offset);
+    const inp = [Float32Array.from({ length: len }, (_, i) => input(offset + i))];
+    const out = [new Float32Array(len), new Float32Array(len)];
+    proc.process([inp], [out], params);
+    outL.set(out[0]!.subarray(0, len), offset);
+    outR.set(out[1]!.subarray(0, len), offset);
+  }
+  return { L: outL, R: outR };
+}
+
+/** Render with a per-block automated focusHz (a-rate style values per sample). */
+function renderProcessorAutomated(
+  cls: any,
+  base: Record<string, number>,
+  seconds: number,
+  input: (i: number) => number,
+  focusAt: (t: number) => number,
+): Float32Array {
+  const proc = new cls();
+  const total = Math.ceil(seconds * SR);
+  const outAll = new Float32Array(total);
+  for (let offset = 0; offset < total; offset += BLOCK) {
+    const len = Math.min(BLOCK, total - offset);
+    const params: Record<string, Float32Array> = {};
+    for (const d of cls.parameterDescriptors as { name: string; defaultValue: number }[]) {
+      params[d.name] =
+        d.name === "focusHz"
+          ? Float32Array.from({ length: len }, (_, i) => focusAt((offset + i) / SR))
+          : Float32Array.from([base[d.name] ?? d.defaultValue]);
+    }
+    const inp = [Float32Array.from({ length: len }, (_, i) => input(offset + i))];
+    const out = [new Float32Array(len), new Float32Array(len)];
+    proc.process([inp], [out], params);
+    outAll.set(out[0]!.subarray(0, len), offset);
+  }
+  return outAll;
+}
+
+/** Goertzel magnitude at `hz` over a fractional window of `signal`. */
+function goertzelRange(signal: Float32Array, hz: number, fromFrac: number, toFrac: number): number {
+  const from = Math.floor(signal.length * fromFrac);
+  const to = Math.floor(signal.length * toFrac);
+  const n = to - from;
+  const coeff = 2 * Math.cos((2 * Math.PI * hz) / SR);
+  let s0 = 0;
+  let s1 = 0;
+  let s2 = 0;
+  for (let i = from; i < to; i++) {
+    s0 = signal[i]! + coeff * s1 - s2;
+    s2 = s1;
+    s1 = s0;
+  }
+  return Math.sqrt(Math.max(0, s1 * s1 + s2 * s2 - coeff * s1 * s2)) / n;
+}
+
 function sineAtPhase(hz: number, amp: number, phase: number): (i: number) => number {
   return (i) => amp * Math.sin((2 * Math.PI * hz * i) / SR + phase);
 }
@@ -307,5 +374,89 @@ describe("KOREŇ wave-2 DSP (YIN tracker, phase coherence, deficit, CHARACTER)",
     // Both curves still generate the fundamental's 2nd (audible effect).
     expect(goertzelAt(sat, 110)).toBeGreaterThan(0.05);
     expect(goertzelAt(fold, 110)).toBeGreaterThan(0.05);
+  });
+});
+
+describe("KOREŇ wave-3 performance controls (SUSTAIN, RETRIG, WIDTH, focus automation)", () => {
+  it("SUSTAIN compresses the generator envelope so quiet notes stay readable", () => {
+    // A 0.06-amplitude note generates at 0.016 with the linear envelope;
+    // the env^0.5 compression lifts the generated 2nd to ~0.085 (5×).
+    const cls = registered.get("bass-harmonic-processor");
+    const quiet = (i: number) => 0.06 * Math.sin((2 * Math.PI * 55 * i) / SR);
+    const params = (sustain: number) =>
+      paramsOf(cls, { drive: 0.7, mix: 1, subAnchor: 0, focusHz: 90, harmonics: 0, range: 1, sustain });
+    const off = renderProcessor(cls, params(0), 1.2, quiet);
+    const on = renderProcessor(cls, params(1), 1.2, quiet);
+    expect(goertzelAt(off, 110)).toBeGreaterThan(0.005);
+    expect(goertzelAt(on, 110)).toBeGreaterThan(goertzelAt(off, 110) * 2.5);
+  });
+
+  it("RETRIG restarts the generated layer on note-ons (staccato note-on glue)", () => {
+    // Two staccato sequences with different gaps (80 vs 130 ms). With the
+    // reset, the post-onset-2 waveform restarts from the same phase state in
+    // both runs, so the onset windows match; free-running, they diverge by
+    // the gap-dependent phase.
+    const cls = registered.get("bass-harmonic-processor");
+    const sequence = (gap: number) => (i: number) => {
+      const t = i / SR;
+      if (t < 0.2) return 0.5 * Math.sin((2 * Math.PI * 55 * i) / SR);
+      if (t >= 0.2 + gap && t < 0.2 + gap + 0.4) {
+        const k = i - Math.round((0.2 + gap) * SR);
+        return 0.5 * Math.sin((2 * Math.PI * 55 * k) / SR);
+      }
+      return 0;
+    };
+    const onsetRatio = (retrig: number): number => {
+      const params = (gap: number) =>
+        paramsOf(cls, { drive: 0.9, mix: 1, subAnchor: 0, focusHz: 90, harmonics: 0, range: 1, retrig });
+      const a = renderProcessorStereo(cls, params(0.08), 0.2 + 0.08 + 0.4, sequence(0.08));
+      const b = renderProcessorStereo(cls, params(0.13), 0.2 + 0.13 + 0.4, sequence(0.13));
+      const onA = Math.round((0.2 + 0.08 + 0.005) * SR);
+      const onB = Math.round((0.2 + 0.13 + 0.005) * SR);
+      const win = Math.round(0.04 * SR);
+      let maxDiff = 0;
+      let peak = 0;
+      for (let k = 0; k < win; k++) {
+        maxDiff = Math.max(maxDiff, Math.abs(a.L[onA + k]! - b.L[onB + k]!));
+        peak = Math.max(peak, Math.abs(a.L[onA + k]!), Math.abs(b.L[onB + k]!));
+      }
+      return maxDiff / peak;
+    };
+    expect(onsetRatio(1)).toBeLessThan(0.5);
+    expect(onsetRatio(0)).toBeGreaterThan(1.0);
+  });
+
+  it("WIDTH keeps the sub mono and rotates only the upper partials", () => {
+    const cls = registered.get("bass-harmonic-processor");
+    const base = { drive: 0.9, mix: 1, subAnchor: 0, focusHz: 90, harmonics: 0, range: 2 };
+    const mono = renderProcessorStereo(cls, paramsOf(cls, { ...base, width: 0 }), 1.2, sineAt(55));
+    expect(mono.L).toEqual(mono.R); // width 0 is the legacy bit-exact mono stack
+    const wide = renderProcessorStereo(cls, paramsOf(cls, { ...base, width: 1 }), 1.2, sineAt(55));
+    const side = Float32Array.from(wide.L, (v, i) => (v - wide.R[i]!) / 2);
+    const sideLow = goertzelAt(side, 110); // 2nd partial = 110 Hz ≤ 120: mono
+    const sideHigh = goertzelAt(side, 220); // 4th partial = 220 Hz: rotated
+    expect(sideHigh).toBeGreaterThan(0.003);
+    expect(sideLow).toBeLessThan(sideHigh * 0.05);
+    const diffPhase = wrapPi(phaseAt(wide.L, 220) - phaseAt(wide.R, 220));
+    expect(Math.abs(wrapPi(diffPhase - 1.2))).toBeLessThan(0.15); // ±φ = 2·0.6 rad
+  });
+
+  it("focusHz automation sweeps the tracking window (drop performance FX)", () => {
+    // focus 40 (window 20–80) tracks the 55 Hz note; the automated ramp to
+    // 220 (window 110–440) drops it out, so the generated 2nd mutes — the
+    // sweep is pure native AudioParam automation, no extra DSP.
+    const cls = registered.get("bass-harmonic-processor");
+    const focusAt = (t: number) => (t < 0.5 ? 40 : t < 0.75 ? 40 * Math.pow(5.5, (t - 0.5) / 0.25) : 220);
+    const out = renderProcessorAutomated(
+      cls,
+      { drive: 0.9, mix: 1, subAnchor: 0, harmonics: 0, range: 1 },
+      1.2,
+      sineAt(55),
+      focusAt,
+    );
+    const early = goertzelRange(out, 110, 0.15, 0.45);
+    const late = goertzelRange(out, 110, 0.9, 1.0);
+    expect(early).toBeGreaterThan(0.05);
+    expect(late).toBeLessThan(early * 0.05);
   });
 });

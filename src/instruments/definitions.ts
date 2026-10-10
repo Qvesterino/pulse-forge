@@ -889,6 +889,12 @@ export const KOPA_DRIVE_TYPE_OPTIONS = [
   { value: 3, label: "FOLD" },
 ] as const;
 
+const KOPA_HARMONIC_CHARACTER_OPTIONS = [
+  { value: 0, label: "CLEAN" },
+  { value: 1, label: "SAT" },
+  { value: 2, label: "FOLD" },
+] as const;
+
 export const kopaParams: ParamDef[] = [
   // PITCH
   { id: "pitchAmount", label: "PITCH", min: 0, max: 48, default: 24, unit: "st", format: (v) => `${v.toFixed(0)} st` },
@@ -963,6 +969,46 @@ export const kopaParams: ParamDef[] = [
     default: 0,
     unit: "st",
     format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(0)} st`,
+  },
+  // BASS HARMONIC — a phase-locked upper-partial layer; the root is omitted.
+  { id: "harmonicLevel", label: "B HARMONICS", min: 0, max: 1, default: 0.25, format: formatPct },
+  {
+    id: "harmonicTone",
+    label: "B H TONE",
+    min: 0,
+    max: 1,
+    default: 0.35,
+    format: (v) => (v < 0.5 ? "2ND" : "3RD"),
+  },
+  {
+    id: "harmonicRange",
+    label: "B H RANGE",
+    min: 1,
+    max: 4,
+    default: 2,
+    step: 1,
+    kind: "discrete",
+    format: (v) => `${Math.pow(2, Math.round(v))} PARTIALS`,
+  },
+  {
+    id: "harmonicDecay",
+    label: "B H DECAY",
+    min: 0.03,
+    max: 2,
+    default: 0.25,
+    unit: "s",
+    taper: "log",
+    format: formatSec,
+  },
+  {
+    id: "harmonicCharacter",
+    label: "B H CHAR",
+    min: 0,
+    max: 2,
+    default: 0,
+    step: 1,
+    kind: "enum",
+    options: [...KOPA_HARMONIC_CHARACTER_OPTIONS],
   },
   // CHARACTER
   { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.25, format: formatPct },

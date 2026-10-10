@@ -656,6 +656,8 @@ describe("mastering A/B session snapshots", () => {
       masterGain: 1.35,
       deliveryProfileId: "vinyl" as const,
       deliveryTruePeakDb: -2,
+      limiterTransientLink: 0.35,
+      limiterReleaseLink: 0.65,
       effects: [
         {
           id: "master-zenit-snapshot",
@@ -677,6 +679,8 @@ describe("mastering A/B session snapshots", () => {
       masterGain: 1.35,
       deliveryProfileId: "vinyl",
       deliveryTruePeakDb: -2,
+      limiterTransientLink: 0.35,
+      limiterReleaseLink: 0.65,
       effects: [{ id: "master-zenit-snapshot", type: "zenit", params: { ceiling: -1.5 } }],
     });
     expect(loadMasteringABSession(projectWithId("snapshot-project-b"))).toMatchObject({ a: null, b: null });
@@ -722,6 +726,8 @@ describe("external mastering session render document", () => {
       ...original.master,
       masterGain: 1.25,
       tiltDb: 1.5,
+      limiterTransientLink: 0.35,
+      limiterReleaseLink: 0.65,
       effects: [
         {
           id: "session-compressor",

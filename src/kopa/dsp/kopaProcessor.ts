@@ -19,6 +19,9 @@
  *  - TAIL: long `tailDecay` sine at `tailTune` for 808-style booms.
  *  - SUB: phase-locked sine one octave under the body (`subTune`), phase
  *    derived from the body oscillator — deterministic, no free runner.
+ *  - BASS HARMONIC: a missing-fundamental exciter adds a phase-locked stack
+ *    from the 2nd partial upward. It follows the body pitch envelope without
+ *    re-estimating a fundamental the kick engine already knows.
  *  - CHARACTER: 4 drive curves (soft/tube/hard/fold), `punch` glue and
  *    `stereo` spread; OUTPUT `level` in dB.
  *
@@ -66,6 +69,7 @@ interface Voice {
   clickEnv: number;
   bodyEnv: number;
   tailEnv: number;
+  harmonicEnv: number;
   /** Click noise LCG state. */
   noiseLcg: number;
   /** Previous noise value (HP click type). */
@@ -108,6 +112,8 @@ export class KopaProcessor {
   private events: KopaEvent[] = [];
   private voiceCounter = 0;
   private blockEvents: KopaEvent[] = [];
+  /** Reused each block so the audio callback does not allocate scratch data. */
+  private harmonicWeights = new Float64Array(17);
 
   constructor(options: KopaInitOptions) {
     this.sampleRate = options.sampleRate > 0 ? options.sampleRate : 44100;
@@ -131,6 +137,7 @@ export class KopaProcessor {
       clickEnv: 0,
       bodyEnv: 0,
       tailEnv: 0,
+      harmonicEnv: 0,
       noiseLcg: (0x9e3779b9 + index * 0x85ebca6b) >>> 0,
       noisePrev: 0,
       gain: 0,
@@ -179,6 +186,7 @@ export class KopaProcessor {
     voice.clickEnv = clamp(velocity > 0 ? velocity : 1, 0, 1);
     voice.bodyEnv = 1;
     voice.tailEnv = 1;
+    voice.harmonicEnv = 1;
     voice.noiseLcg = (0x9e3779b9 + voice.index * 0x85ebca6b) >>> 0;
     voice.noisePrev = 0;
     voice.age = ++this.voiceCounter;
@@ -255,6 +263,12 @@ export class KopaProcessor {
     const tailTune = this.params.tailTune ?? 0;
     const subLevel = clamp(this.params.subLevel ?? 0.3, 0, 1);
     const subTune = this.params.subTune ?? 0;
+    const harmonicLevel = clamp(this.params.harmonicLevel ?? 0.25, 0, 1);
+    const harmonicTone = clamp(this.params.harmonicTone ?? 0.35, 0, 1);
+    const harmonicRange = Math.round(clamp(this.params.harmonicRange ?? 2, 1, 4));
+    const harmonicMaxPartial = Math.pow(2, harmonicRange);
+    const harmonicDecay = clamp(this.params.harmonicDecay ?? 0.25, 0.03, 2);
+    const harmonicCharacter = Math.round(clamp(this.params.harmonicCharacter ?? 0, 0, 2));
     const drive = clamp(this.params.drive ?? 0.25, 0, 1);
     const driveType = Math.round(clamp(this.params.driveType ?? 0, 0, 3));
     const punch = clamp(this.params.punch ?? 0.2, 0, 1);
@@ -275,8 +289,29 @@ export class KopaProcessor {
     const clickCoef = Math.min(1, 1 / (clickDecaySec * sr * 0.33));
     const bodyCoef = Math.min(1, 1 / (bodyDecay * sr * 0.33));
     const tailCoef = Math.min(1, 1 / (tailDecay * sr * 0.33));
+    const harmonicCoef = Math.min(1, 1 / (harmonicDecay * sr * 0.33));
     const gainCoeff = Math.min(1, 1 / (GAIN_RAMP_SEC * sr));
     const twoPi = 2 * Math.PI;
+
+    // The layer deliberately omits the fundamental. Tone blends the 2nd and
+    // 3rd partials; higher partials extend the stack at a restrained level.
+    // Normalize once per block so range changes the spectrum, not peak gain.
+    const harmonicWeights = this.harmonicWeights;
+    harmonicWeights.fill(0);
+    let harmonicWeightSum = 0;
+    for (let partial = 2; partial <= harmonicMaxPartial; partial++) {
+      const weight =
+        partial === 2 && harmonicMaxPartial >= 3
+          ? 1 - harmonicTone
+          : partial === 3
+            ? harmonicTone
+            : partial === 2
+              ? 1
+              : 0.25 / (partial - 1);
+      harmonicWeights[partial] = weight;
+      harmonicWeightSum += weight;
+    }
+    const harmonicNorm = harmonicWeightSum > 0 ? 1 / harmonicWeightSum : 0;
 
     for (let frame = 0; frame < frames; frame++) {
       const frameTime = (currentFrame + frame) / sr;
@@ -308,13 +343,15 @@ export class KopaProcessor {
         voice.clickEnv = Math.max(0, voice.clickEnv - voice.clickEnv * clickCoef);
         voice.bodyEnv = Math.max(0, voice.bodyEnv - voice.bodyEnv * bodyCoef);
         voice.tailEnv = Math.max(0, voice.tailEnv - voice.tailEnv * tailCoef);
+        voice.harmonicEnv = Math.max(0, voice.harmonicEnv - voice.harmonicEnv * harmonicCoef);
         if (!voice.gate) {
           // noteOff chokes a percussive one-shot quickly.
           voice.bodyEnv *= 0.98;
           voice.tailEnv *= 0.99;
           voice.clickEnv *= 0.9;
+          voice.harmonicEnv *= 0.98;
         }
-        if (voice.bodyEnv < 1e-5 && voice.tailEnv < 1e-5 && voice.clickEnv < 1e-5) {
+        if (voice.bodyEnv < 1e-5 && voice.tailEnv < 1e-5 && voice.clickEnv < 1e-5 && voice.harmonicEnv < 1e-5) {
           voice.active = false;
           continue;
         }
@@ -343,6 +380,21 @@ export class KopaProcessor {
         // the body phase at noteOn => phase-locked, deterministic, mono.
         const subSignal = Math.sin(voice.subPhase);
 
+        // Bass Harmonic: synthesize upper partials from the same body phase.
+        // Starting at partial 2 creates the missing-fundamental illusion;
+        // partials above Nyquist are skipped instead of aliasing back down.
+        let harmonicSignal = 0;
+        if (harmonicLevel > 0 && harmonicNorm > 0) {
+          for (let partial = 2; partial <= harmonicMaxPartial; partial++) {
+            const frequency = bodyF * partial;
+            if (frequency >= sr * 0.45) continue;
+            harmonicSignal += harmonicWeights[partial]! * Math.sin(voice.bodyPhase * partial);
+          }
+          harmonicSignal *= harmonicNorm;
+          if (harmonicCharacter === 1) harmonicSignal = Math.tanh(harmonicSignal * 1.7) * 0.86;
+          else if (harmonicCharacter === 2) harmonicSignal = Math.sin(harmonicSignal * Math.PI);
+        }
+
         // Click transient (deterministic noise via LCG).
         const lcg = (Math.imul(voice.noiseLcg, 1664525) + 1013904223) >>> 0;
         voice.noiseLcg = lcg;
@@ -360,6 +412,7 @@ export class KopaProcessor {
           bodySignal * voice.bodyEnv * 0.9 +
           Math.sin(voice.tailPhase) * voice.tailEnv * tailLevel * 0.9 +
           subSignal * Math.max(voice.bodyEnv, voice.tailEnv) * subLevel * 0.5 +
+          harmonicSignal * voice.harmonicEnv * harmonicLevel * 0.55 +
           click * voice.clickEnv * clickLevel;
 
         // --- modulation (AMP destination only) ----------------------------

@@ -811,7 +811,8 @@ test.describe("17 — mastering workspace", () => {
   }, testInfo) => {
     test.skip(testInfo.project.name !== "chromium", "This acceptance uses realtime and offline AudioWorklet audio.");
     test.setTimeout(150_000);
-    await page.goto("/", { waitUntil: "domcontentloaded", timeout: 120_000 });
+    // This probe imports the engine directly; booting the full React DAW is unrelated to its audio-path check.
+    await page.goto("/apple-touch-icon.png", { waitUntil: "domcontentloaded", timeout: 120_000 });
 
     const facts = await page.evaluate(async () => {
       const audioEngineModulePath = ["/src", "audio-engine", "AudioEngine.ts"].join("/");
@@ -855,6 +856,18 @@ test.describe("17 — mastering workspace", () => {
         bypassed: false,
         params: { ...defaultParamsOf("eq"), highShelfFreq: 2500, highShelfGain: 6 },
       };
+      const multibandEffect = {
+        id: "master-three-band",
+        type: "multiband" as const,
+        bypassed: false,
+        params: { ...defaultParamsOf("multiband"), lowGain: -1.5, midGain: 0.8, highGain: -0.8, comp: 0.45 },
+      };
+      const distortionEffect = {
+        id: "master-subtle-saturation",
+        type: "distortion" as const,
+        bypassed: false,
+        params: { ...defaultParamsOf("distortion"), drive: 0.18, character: 2, bias: 0.04, mix: 0.25, output: -0.5 },
+      };
       const compressorEffect = {
         id: "master-dynamics-compressor",
         type: "compressor" as const,
@@ -864,7 +877,7 @@ test.describe("17 — mastering workspace", () => {
       const doc = createProjectFromTemplate("empty");
       doc.master = {
         ...doc.master,
-        effects: [gateEffect, eqEffect, compressorEffect],
+        effects: [gateEffect, eqEffect, multibandEffect, distortionEffect, compressorEffect],
         tapeEnabled: true,
         glueEnabled: true,
         limiterEnabled: true,
@@ -872,7 +885,10 @@ test.describe("17 — mastering workspace", () => {
         msEnabled: false,
         bassMonoEnabled: false,
         masterGain: 1,
-        ceilingDb: -1,
+        // Keep limiter reduction measurable after the compressor-heavy insert chain settles.
+        ceilingDb: -12,
+        limiterTransientLink: 0.35,
+        limiterReleaseLink: 0.65,
       };
       type EngineInternals = {
         projectPromise: Promise<void> | null;
@@ -1007,11 +1023,30 @@ test.describe("17 — mastering workspace", () => {
 
       const captureModuleUrl = new URL("/parity-capture-worklet.js", location.href).href;
       await originalAddModule(captureModuleUrl);
-      const liveBuffer = liveContext.createBuffer(1, sampleRate, sampleRate);
-      const liveInput = liveBuffer.getChannelData(0);
-      for (let index = 0; index < liveInput.length; index++) {
+      const liveBuffer = liveContext.createBuffer(2, sampleRate, sampleRate);
+      const liveLeft = liveBuffer.getChannelData(0);
+      const liveRight = liveBuffer.getChannelData(1);
+      const transientPeriodFrames = Math.round(sampleRate * 0.035);
+      const rightTransientOffset = Math.round(transientPeriodFrames / 2);
+      const parityStressGain = 3;
+      for (let index = 0; index < liveLeft.length; index++) {
         const time = index / sampleRate;
-        liveInput[index] = 0.8 * Math.sin(2 * Math.PI * 997 * time) + 0.4 * Math.sin(2 * Math.PI * 3701 * time);
+        const leftPhase = index % transientPeriodFrames;
+        const rightPhase = (index + rightTransientOffset) % transientPeriodFrames;
+        const leftTransient = leftPhase < sampleRate * 0.006;
+        const rightTransient = rightPhase < sampleRate * 0.008;
+        liveLeft[index] =
+          0.12 * Math.sin(2 * Math.PI * 997 * time) +
+          0.06 * Math.sin(2 * Math.PI * 3701 * time) +
+          (leftTransient ? Math.sin(2 * Math.PI * 997 * time) + 0.45 * Math.sin(2 * Math.PI * 3701 * time) : 0);
+        liveLeft[index] *= parityStressGain;
+        liveRight[index] =
+          0.1 * Math.sin(2 * Math.PI * 997 * time + 0.23) +
+          0.05 * Math.sin(2 * Math.PI * 2203 * time + 0.51) +
+          (rightTransient
+            ? 0.85 * Math.sin(2 * Math.PI * 997 * time + 0.23) + 0.4 * Math.sin(2 * Math.PI * 2203 * time + 0.51)
+            : 0);
+        liveRight[index] *= parityStressGain;
       }
       const liveSource = liveContext.createBufferSource();
       liveSource.buffer = liveBuffer;
@@ -1019,7 +1054,7 @@ test.describe("17 — mastering workspace", () => {
       liveSource.connect(internals.masterChain.input);
       const sourceStartTime = liveContext.currentTime + 0.05;
       liveSource.start(sourceStartTime);
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      await new Promise((resolve) => setTimeout(resolve, 500));
       const liveCaptureNode = new AudioWorkletNode(liveContext, "capture-processor", {
         numberOfInputs: 1,
         numberOfOutputs: 0,
@@ -1046,8 +1081,6 @@ test.describe("17 — mastering workspace", () => {
       liveCaptureNode.port.onmessage = null;
       liveMasterTap.disconnect(liveCaptureNode);
       liveCaptureNode.disconnect();
-      liveSource.stop();
-      liveSource.disconnect();
       await waitFor(
         () => (internals.masterChain.masterLimiterWorklet?.getGainReductionDb?.() ?? 0) > 0.1,
         "the master limiter to reduce the hot parity signal",
@@ -1059,6 +1092,8 @@ test.describe("17 — mastering workspace", () => {
       );
       const liveCompressorGainReductionDb =
         internals.masterFx.runtimes.get(compressorEffect.id)?.getGainReductionDb?.() ?? 0;
+      liveSource.stop();
+      liveSource.disconnect();
 
       // Capture the live output while toggling monitor bypass in both directions.
       // A deliberately closed gate makes the aligned dry leg carry real signal,
@@ -1180,16 +1215,32 @@ test.describe("17 — mastering workspace", () => {
       const liveMonitorTransientRatio = transitionPeakCurvature / Math.max(steadyPeakCurvature, 1e-9);
 
       const renderMasterConfig = async () => {
-        const context = new OfflineAudioContext(2, sampleRate, sampleRate);
+        const context = new OfflineAudioContext(2, sampleRate * 2, sampleRate);
         await loadCoreWorklets(context);
         engine.useContext(context);
         engine.setProject(doc);
         await settleProject(engine);
-        const buffer = context.createBuffer(1, sampleRate, sampleRate);
-        const input = buffer.getChannelData(0);
-        for (let index = 0; index < input.length; index++) {
+        const buffer = context.createBuffer(2, sampleRate, sampleRate);
+        const inputLeft = buffer.getChannelData(0);
+        const inputRight = buffer.getChannelData(1);
+        for (let index = 0; index < inputLeft.length; index++) {
           const time = index / sampleRate;
-          input[index] = 0.8 * Math.sin(2 * Math.PI * 997 * time) + 0.4 * Math.sin(2 * Math.PI * 3701 * time);
+          const leftPhase = index % transientPeriodFrames;
+          const rightPhase = (index + rightTransientOffset) % transientPeriodFrames;
+          const leftTransient = leftPhase < sampleRate * 0.006;
+          const rightTransient = rightPhase < sampleRate * 0.008;
+          inputLeft[index] =
+            0.12 * Math.sin(2 * Math.PI * 997 * time) +
+            0.06 * Math.sin(2 * Math.PI * 3701 * time) +
+            (leftTransient ? Math.sin(2 * Math.PI * 997 * time) + 0.45 * Math.sin(2 * Math.PI * 3701 * time) : 0);
+          inputLeft[index] *= parityStressGain;
+          inputRight[index] =
+            0.1 * Math.sin(2 * Math.PI * 997 * time + 0.23) +
+            0.05 * Math.sin(2 * Math.PI * 2203 * time + 0.51) +
+            (rightTransient
+              ? 0.85 * Math.sin(2 * Math.PI * 997 * time + 0.23) + 0.4 * Math.sin(2 * Math.PI * 2203 * time + 0.51)
+              : 0);
+          inputRight[index] *= parityStressGain;
         }
         const source = context.createBufferSource();
         source.buffer = buffer;
@@ -1254,9 +1305,15 @@ test.describe("17 — mastering workspace", () => {
       compressorEffect.bypassed = false;
       eqEffect.params = { ...eqEffect.params, highShelfGain: 15 };
       compressorEffect.params = { ...compressorEffect.params, threshold: -18, ratio: 20, mix: 1 };
-      doc.master = { ...doc.master, effects: [gateEffect, eqEffect, compressorEffect] };
+      doc.master = {
+        ...doc.master,
+        effects: [gateEffect, eqEffect, multibandEffect, distortionEffect, compressorEffect],
+      };
       const orderedStressSamples = await renderMasterConfig();
-      doc.master = { ...doc.master, effects: [gateEffect, compressorEffect, eqEffect] };
+      doc.master = {
+        ...doc.master,
+        effects: [gateEffect, distortionEffect, multibandEffect, compressorEffect, eqEffect],
+      };
       const reorderedStressSamples = await renderMasterConfig();
       const compressorReorderDifferenceDb = differenceDb(orderedStressSamples, reorderedStressSamples);
 
@@ -1318,7 +1375,7 @@ test.describe("17 — mastering workspace", () => {
     expect(facts.dryMonitorPeak, "live monitor bypass should deliver aligned dry audio").toBeGreaterThan(0.1);
     expect(facts.liveMonitorTransientRatio, JSON.stringify(facts)).toBeLessThan(1.6);
     expect(facts.liveOfflineCorrelation, JSON.stringify(facts)).toBeGreaterThan(0.99);
-    expect(facts.liveOfflineNullDb).toBeLessThan(-40);
+    expect(facts.liveOfflineNullDb, JSON.stringify(facts)).toBeLessThan(-40);
     expect(Math.abs(facts.liveOfflineAlignmentSamples)).toBeLessThanOrEqual(256);
     expect(facts.compressorBypassDifferenceDb, JSON.stringify(facts)).toBeGreaterThan(-40);
     expect(facts.compressorReorderDifferenceDb, JSON.stringify(facts)).toBeGreaterThan(-40);

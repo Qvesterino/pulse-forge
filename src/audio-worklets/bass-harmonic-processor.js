@@ -37,6 +37,23 @@
  *    (the sub anchor and dry stay untouched) — soft tanh saturation
  *    (≈unity small-signal gain) or a sine wavefolder for growl timbres.
  *
+ * Wave 3 adds performance controls:
+ *
+ * 5. SUSTAIN — the generator target envelope is compressed (`env^gamma`,
+ *    gamma 1 → 0.5) so quiet bass passages still generate readable
+ *    harmonics; the curve fades to linear below a floor so the silence
+ *    bottom is never pumped.
+ * 6. RETRIG — a fast/slow envelope-rise detector fires on note onsets
+ *    (staccato re-attacks): harmonic phases and the generator envelope
+ *    restart from zero, so the generated layer glues to note-on instead of
+ *    trailing the previous note like a pad.
+ * 7. WIDTH — above 120 Hz the generated partials are rotated ±φ per channel
+ *    (mid + quadrature-side); the sub stays mono, only the upper harmonics
+ *    gain stereo width. width = 0 is the legacy mono stack, bit-for-bit.
+ * 8. `focusHz` is a plain AudioParam, so automating it is a free live
+ *    performance FX: sweeping the focus window up drops the tracked
+ *    fundamental out of range and mutes the generation — no extra DSP.
+ *
  * Parameter surface: plain AudioParams (M2 pattern, zenit-m2-nodes.ts) —
  * no port messages, so offline automation works natively via
  * setValueAtTime. All per-sample smoothing uses per-sample coefficients
@@ -60,6 +77,12 @@ const DEFICIT_SMOOTH = 0.35; // per-update one-pole over the detection cadence
 const PLL_GAIN = 0.5; // phase nudge per accepted crossing
 const PLL_MAX_RAD = 0.35; // clamp on that nudge
 const EDGE_MIN_FRAC = 0.45; // accepted rising-edge spacing vs the tracked period
+const WIDTH_XOVER_HZ = 120; // generated partials at/below this stay mono
+const WIDTH_MAX_PHASE = 0.6; // rad of L/R rotation per channel at width = 1
+const SUSTAIN_FLOOR = 0.01; // below this level the sustain curve fades to linear
+const RETRIG_FLOOR = 0.005; // fast-envelope level a note-on must cross
+const RETRIG_RATIO = 0.35; // (fast - lag)/fast rise that counts as a transient
+const RETRIG_MIN_GAP = 0.04; // s between accepted note-on resets
 
 /**
  * YIN-style pitch detection over the whole decimated ring (`bufLen` samples;
@@ -181,7 +204,10 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
       { name: "range", minValue: 1, maxValue: 4, defaultValue: 2 },
       { name: "attack", minValue: 0.001, maxValue: 0.1, defaultValue: 0.008 },
       { name: "release", minValue: 0.01, maxValue: 1, defaultValue: 0.12 },
+      { name: "sustain", minValue: 0, maxValue: 1, defaultValue: 0 },
+      { name: "retrig", minValue: 0, maxValue: 1, defaultValue: 1 },
       { name: "character", minValue: 0, maxValue: 2, defaultValue: 0 },
+      { name: "width", minValue: 0, maxValue: 1, defaultValue: 0 },
       { name: "mix", minValue: 0, maxValue: 1, defaultValue: 0.6 },
       { name: "output", minValue: -18, maxValue: 12, defaultValue: 0 },
     ];
@@ -200,6 +226,9 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     this.untrackedPasses = 0; // consecutive failed detection passes
     this.envLow = 0; // fast low-band amplitude follower
     this.envGen = 0; // generator gain envelope
+    this.envFast = 0; // 1 ms follower for note-on detection
+    this.envLag = 0; // 20 ms lag of envFast; fast − lag = transient rise
+    this.sinceRetrig = 1e9; // samples since the last accepted note-on reset
     // Decimated detection domain (YIN + deficit share one ring/window).
     this.decRate = sr / DECIM;
     this.decBufLen = Math.min(8192, Math.max(1024, Math.ceil((this.decRate / TRACK_MIN_HZ) * 2.5)));
@@ -292,7 +321,10 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     const range = clamp(parameters.range[0], 1, 4);
     const attack = clamp(parameters.attack[0], 0.001, 0.1);
     const release = clamp(parameters.release[0], 0.01, 1);
+    const sustain = clamp(parameters.sustain[0], 0, 1);
+    const retrig = parameters.retrig[0] >= 0.5;
     const character = Math.round(clamp(parameters.character[0], 0, 2));
+    const width = clamp(parameters.width[0], 0, 1);
     const mix = clamp(parameters.mix[0], 0, 1);
     const outGain = Math.pow(10, clamp(parameters.output[0], -18, 12) / 20);
 
@@ -304,6 +336,17 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     const genAtkCoef = 1 - Math.exp(-1 / (sr * attack));
     const genRelCoef = 1 - Math.exp(-1 / (sr * release));
     const hpA = Math.exp((-2 * Math.PI * lowCut) / sr);
+    const fastAtkCoef = 1 - Math.exp(-1 / (sr * 0.001));
+    const fastRelCoef = 1 - Math.exp(-1 / (sr * 0.015));
+    const lagCoef = 1 - Math.exp(-1 / (sr * 0.02));
+    // SUSTAIN: env^gamma compression, fading to linear below the floor so
+    // the noise bottom is not pumped.
+    const gamma = 1 - 0.5 * sustain;
+    const susFloorInv = 1 / SUSTAIN_FLOOR;
+    // WIDTH: per-channel rotation of the generated upper partials.
+    const phaseOff = width * WIDTH_MAX_PHASE;
+    const cosPhase = Math.cos(phaseOff);
+    const sinPhase = Math.sin(phaseOff);
 
     // Harmonic stack: n = 2..N (N = 2^range capped at 10). Weight blend:
     // `harmonics` 0 → 2nd dominant, 1 → 3rd-lean; n ≥ 4 sit low.
@@ -346,6 +389,23 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
         this.decWrite++;
       }
 
+      // --- note-on transient detector (RETRIG) ---------------------------
+      this.envFast += (absLp > this.envFast ? fastAtkCoef : fastRelCoef) * (absLp - this.envFast);
+      this.envLag += lagCoef * (this.envFast - this.envLag);
+      this.sinceRetrig++;
+      if (
+        retrig &&
+        this.sinceRetrig > sr * RETRIG_MIN_GAP &&
+        this.envFast > RETRIG_FLOOR &&
+        this.envFast - this.envLag > RETRIG_RATIO * this.envFast
+      ) {
+        // Fresh note: restart the generated layer from phase 0 so it glues
+        // to note-on instead of trailing the previous note like a pad.
+        this.sinceRetrig = 0;
+        for (let n = 2; n <= count; n++) this.phase[n] = 0;
+        this.envGen = 0;
+      }
+
       // --- rising-edge PLL (phase coherence with the dry fundamental) ---
       const sign = this.lp > 0.005 ? 1 : this.lp < -0.005 ? -1 : this.lastSign;
       this.sinceCross++;
@@ -372,25 +432,54 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
       const inWindow = this.f0 >= fMin && this.f0 <= fMax;
 
       // --- generator gain envelope --------------------------------------
-      const genTarget = inWindow ? drive * this.envLow : 0;
+      let genTarget = inWindow ? drive * this.envLow : 0;
+      if (sustain > 0 && genTarget > 0) {
+        const curved = Math.pow(genTarget, gamma);
+        const fade = Math.min(1, genTarget * susFloorInv);
+        genTarget = genTarget + (curved - genTarget) * fade;
+      }
       this.envGen += (genTarget > this.envGen ? genAtkCoef : genRelCoef) * (genTarget - this.envGen);
       if (this.envGen < 1e-20) this.envGen = 0;
 
       // --- phase-locked harmonic stack ----------------------------------
-      let gen = 0;
+      let genL = 0;
+      let genR = 0;
       if (this.envGen > 1e-6 && this.f0 > 0) {
+        let mLow = 0;
+        let mHigh = 0;
+        let qHigh = 0;
         for (let n = 2; n <= count; n++) {
           let p = this.phase[n] + (twoPi * n * this.f0) / sr;
           if (p >= twoPi) p -= twoPi * Math.floor(p / twoPi);
           this.phase[n] = p;
-          gen += weights[n] * Math.sin(p);
+          const w = weights[n];
+          // Mono at/below the crossover (the sub reads center); the upper
+          // stack is generated as mid + quadrature side and rotated ±φ per
+          // channel, so L and R carry the same partials out of phase.
+          if (n * this.f0 <= WIDTH_XOVER_HZ) {
+            mLow += w * Math.sin(p);
+          } else {
+            mHigh += w * Math.sin(p);
+            qHigh += w * Math.cos(p);
+          }
         }
-        gen *= normScale * this.envGen;
+        const scaled = normScale * this.envGen;
+        const low = mLow * scaled;
+        const highM = mHigh * scaled;
+        const highQ = qHigh * scaled;
+        genL = low + cosPhase * highM + sinPhase * highQ;
+        genR = low + cosPhase * highM - sinPhase * highQ;
         // CHARACTER shapes the generated layer only.
-        if (character === 1) gen = Math.tanh(gen * 2.2) / Math.tanh(2.2);
-        else if (character === 2) gen = Math.sin(gen * 4.5) / 4.5;
+        if (character === 1) {
+          genL = Math.tanh(genL * 2.2) / Math.tanh(2.2);
+          genR = Math.tanh(genR * 2.2) / Math.tanh(2.2);
+        } else if (character === 2) {
+          genL = Math.sin(genL * 4.5) / 4.5;
+          genR = Math.sin(genR * 4.5) / 4.5;
+        }
       }
-      if (!Number.isFinite(gen)) gen = 0;
+      if (!Number.isFinite(genL)) genL = 0;
+      if (!Number.isFinite(genR)) genR = 0;
 
       // --- sub-anchor branch: one-pole HP at lowCut per channel ---------
       const hpL = hpA * (this.hpY[0] + l - this.hpX[0]);
@@ -400,8 +489,8 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
       this.hpX[1] = r;
       this.hpY[1] = Math.abs(hpR) < 1e-20 ? 0 : hpR;
 
-      const wetL = hpL * subAnchor + gen;
-      const wetR = hpR * subAnchor + gen;
+      const wetL = hpL * subAnchor + genL;
+      const wetR = hpR * subAnchor + genR;
       let oL = (l * (1 - mix) + wetL * mix) * outGain;
       let oR = (r * (1 - mix) + wetR * mix) * outGain;
       // mix = 0 must stay bit-exact dry: dry * 1 + wet * 0. outGain at the

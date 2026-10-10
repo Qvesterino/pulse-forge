@@ -100,6 +100,24 @@ Consequences that block customization:
 - Layout is per-user, not per-project. A shared project opens in the
   recipient's own layout.
 
+## Confirmed scope (2026-10-10)
+
+Product decisions taken alongside this ADR, so later waves do not re-litigate
+them:
+
+1. **A token editor IS in scope** — per-variable color fields (hex and friends)
+   over the `colorOverrides` map this module already carries. It is the highest-
+   value piece of "really modifiable", and `sanitizeColorOverrides` already
+   validates what such an editor would write. ADR 0036 itself still ships only
+   the data half; the UI arrives in a later wave. It must come with an explicit
+   reset-to-preset per variable, or an override becomes permanent and invisible.
+2. **Both targets** — KYX Web and KYX Studio. Electron shares the renderer, so
+   the same layout code covers both; nothing in this module may assume a browser
+   beyond the optional DOM applier, which is exactly why the data half is pure.
+3. **Layout stays local** (per-user), NOT inside the project document — the
+   boundary this ADR already established. A saved mix carries audio and musical
+   decisions, never someone's window size or palette.
+
 ## Non-goals for this ADR
 
 No responsive/fluid grid rewrite (Vlna B), no resize grips (Vlna C), no token

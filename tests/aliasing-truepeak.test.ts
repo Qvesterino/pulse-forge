@@ -317,6 +317,82 @@ describe("limiter true-peak detector", () => {
     expect(truePeakOversampled([linkedRelease.L, linkedRelease.R])).toBeLessThanOrEqual(deliveryCeiling);
   });
 
+  it("matches golden stereo samples for separate transient and recovery linking", () => {
+    const render = (transientLink: number, releaseLink: number) => {
+      const proc = new (registered.get("limiter-processor")!)();
+      const prm = params(LIM, {
+        threshold: -7,
+        ceiling: -1,
+        release: 0.8,
+        lookahead: 0.005,
+        link: 1,
+        transientLink,
+        releaseLink,
+        mix: 1,
+      });
+      return renderStereo(proc, 0.5, prm, (n) => {
+        const time = n / SR;
+        const leftBurstTime = time - 0.04;
+        const rightBurstTime = time - 0.12;
+        const leftBurst =
+          leftBurstTime >= 0 && leftBurstTime < 0.025 ? 1.7 * Math.sin(2 * Math.PI * 1300 * leftBurstTime) : 0;
+        const rightBurst =
+          rightBurstTime >= 0 && rightBurstTime < 0.22
+            ? 1.65 * Math.exp(-rightBurstTime / 0.055) * Math.sin(2 * Math.PI * 1700 * rightBurstTime)
+            : 0;
+        const bed = 0.08 * Math.sin((2 * Math.PI * 180 * n) / SR);
+        return [bed + leftBurst, bed + rightBurst];
+      });
+    };
+
+    const delaySamples = Math.round(Math.fround(0.005) * SR) + LIMITER_OUTPUT_TRUEPEAK_CORRECTION_SAMPLES;
+    const sampleIndices = [0.038, 0.041, 0.046, 0.052, 0.061, 0.068, 0.123, 0.136, 0.161, 0.186, 0.218, 0.257].map(
+      (time) => delaySamples + Math.round(time * SR),
+    );
+    const pick = (buffer: Float32Array) => sampleIndices.map((index) => Number(buffer[index]!.toFixed(6)));
+    const linked = render(1, 1);
+    const transientPartial = render(0.35, 1);
+    const recoveryPartial = render(0.35, 0.65);
+    const vector = {
+      linked: { left: pick(linked.L), right: pick(linked.R) },
+      transientPartial: { left: pick(transientPartial.L), right: pick(transientPartial.R) },
+      recoveryPartial: { left: pick(recoveryPartial.L), right: pick(recoveryPartial.R) },
+    };
+
+    expect(vector).toEqual({
+      linked: {
+        left: [
+          -0.033906, 0.827046, -0.761179, -0.464039, 0.795006, 0.039665, 0.031779, 0.005187, -0.005294, 0.005441,
+          0.044769, 0.046454,
+        ],
+        right: [
+          -0.033906, 0.027096, 0.038886, 0.030508, -0.004961, 0.039665, 0.505235, 0.612103, -0.398436, 0.261908,
+          -0.046772, -0.000288,
+        ],
+      },
+      transientPartial: {
+        left: [
+          -0.033906, 0.827046, -0.761179, -0.464039, 0.795006, 0.039665, 0.032484, 0.0053, -0.005403, 0.005547,
+          0.045583, 0.04723,
+        ],
+        right: [
+          -0.055772, 0.044672, 0.064111, 0.050296, -0.008179, 0.065213, 0.505233, 0.612101, -0.398435, 0.261908,
+          -0.046772, -0.000288,
+        ],
+      },
+      recoveryPartial: {
+        left: [
+          -0.033906, 0.827046, -0.761179, -0.464039, 0.795006, 0.039665, 0.03251, 0.005326, -0.005443, 0.005586,
+          0.04588, 0.047514,
+        ],
+        right: [
+          -0.055772, 0.044672, 0.064111, 0.050296, -0.008179, 0.065213, 0.505233, 0.612101, -0.398435, 0.261908,
+          -0.046772, -0.000288,
+        ],
+      },
+    });
+  });
+
   it("keeps reconstructed output below the delivery ceiling for hostile spectra at supported master rates", () => {
     const workletGlobals = globalThis as typeof globalThis & { sampleRate: number };
     const originalSampleRate = workletGlobals.sampleRate;

@@ -301,6 +301,7 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
     subAnchor: 0.8,
     lowCut: 45,
     range: 2,
+    sustain: 0.45,
     mix: 0.65,
   }),
   preset("bassharmonic-club-sub", "Club Sub", "bassHarmonic", {
@@ -310,6 +311,8 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
     subAnchor: 0.85,
     lowCut: 60,
     range: 2,
+    sustain: 0.3,
+    width: 0.3,
     mix: 0.4,
   }),
   preset("bassharmonic-drill-growl", "Drill Growl", "bassHarmonic", {
@@ -320,7 +323,9 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
     lowCut: 55,
     range: 3,
     attack: 0.004,
+    sustain: 0.5,
     character: 2,
+    width: 0.5,
     mix: 0.7,
   }),
   preset("bassharmonic-subtle-body", "Subtle Body", "bassHarmonic", {
@@ -330,6 +335,8 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
     subAnchor: 0.9,
     lowCut: 40,
     range: 2,
+    sustain: 0.6,
+    width: 0.2,
     mix: 0.35,
   }),
   preset("utility-mono", "Mono Bass", "utility", { width: 1, monoBassFrequency: 120 }),

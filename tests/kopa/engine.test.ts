@@ -217,6 +217,139 @@ describe("KopaProcessor — layers", () => {
     expect(energy(0.9)).toBeGreaterThan(energy(0) * 4);
   });
 
+  it("Bass Harmonic adds an upper-partial stack while omitting the root", () => {
+    const harmonicEnergy = (harmonicLevel: number, hz: number): number => {
+      const processor = makeProcessor({
+        pitchAmount: 0,
+        bodyHollow: 0,
+        bodyDecay: 2,
+        clickLevel: 0,
+        tailLevel: 0,
+        subLevel: 0,
+        harmonicLevel,
+        harmonicTone: 0.5,
+        harmonicRange: 2,
+        drive: 0,
+        punch: 0,
+        level: 0,
+      });
+      processor.postEvent(noteOn(36));
+      const { left } = render(processor, 0.6);
+      return goertzelAt(left, hz, 0.1);
+    };
+    const rootHz = 65.40639132514966;
+    const dryRoot = harmonicEnergy(0, rootHz);
+    const wetRoot = harmonicEnergy(1, rootHz);
+    const dryUpper = harmonicEnergy(0, rootHz * 2) + harmonicEnergy(0, rootHz * 3);
+    const wetUpper = harmonicEnergy(1, rootHz * 2) + harmonicEnergy(1, rootHz * 3);
+
+    expect(wetUpper).toBeGreaterThan(dryUpper + 0.005);
+    expect(wetRoot).toBeCloseTo(dryRoot, 3);
+  });
+
+  it("harmonicTone crossfades the generated 2nd and 3rd partials", () => {
+    const partials = (harmonicTone: number): [number, number] => {
+      const processor = makeProcessor({
+        pitchAmount: 0,
+        bodyHollow: 0,
+        bodyDecay: 2,
+        clickLevel: 0,
+        tailLevel: 0,
+        subLevel: 0,
+        harmonicLevel: 1,
+        harmonicTone,
+        drive: 0,
+        punch: 0,
+        level: 0,
+      });
+      processor.postEvent(noteOn(36));
+      const { left } = render(processor, 0.6);
+      const rootHz = 65.40639132514966;
+      return [goertzelAt(left, rootHz * 2, 0.1), goertzelAt(left, rootHz * 3, 0.1)];
+    };
+    const secondLeaning = partials(0);
+    const thirdLeaning = partials(1);
+    expect(secondLeaning[0]).toBeGreaterThan(secondLeaning[1] * 3);
+    expect(thirdLeaning[1]).toBeGreaterThan(thirdLeaning[0] * 3);
+  });
+
+  it("harmonicRange adds upper partials without changing the root layer", () => {
+    const fourthPartial = (harmonicRange: number): number => {
+      const processor = makeProcessor({
+        pitchAmount: 0,
+        bodyHollow: 0,
+        bodyDecay: 2,
+        clickLevel: 0,
+        tailLevel: 0,
+        subLevel: 0,
+        harmonicLevel: 1,
+        harmonicRange,
+        harmonicTone: 0.5,
+        drive: 0,
+        punch: 0,
+        level: 0,
+      });
+      processor.postEvent(noteOn(36));
+      const { left } = render(processor, 0.6);
+      return goertzelAt(left, 65.40639132514966 * 4, 0.1);
+    };
+    expect(fourthPartial(2)).toBeGreaterThan(fourthPartial(1) * 2);
+  });
+
+  it("harmonicDecay shapes the layer independently from the kick body", () => {
+    const lateHarmonicRms = (harmonicDecay: number): number => {
+      const processor = makeProcessor({
+        pitchAmount: 0,
+        bodyHollow: 0,
+        bodyDecay: 0.03,
+        clickLevel: 0,
+        tailLevel: 0,
+        subLevel: 0,
+        harmonicLevel: 1,
+        harmonicDecay,
+        harmonicRange: 2,
+        drive: 0,
+        punch: 0,
+        level: 0,
+      });
+      processor.postEvent(noteOn(36));
+      const { left } = render(processor, 0.5);
+      return rms(left.subarray(Math.floor(0.2 * SR)));
+    };
+    expect(lateHarmonicRms(1.5)).toBeGreaterThan(lateHarmonicRms(0.05) * 8);
+  });
+
+  it("harmonicCharacter shapes only the generated layer", () => {
+    const samples = (harmonicCharacter: number): Float32Array => {
+      const processor = makeProcessor({
+        pitchAmount: 0,
+        bodyHollow: 0,
+        bodyDecay: 2,
+        clickLevel: 0,
+        tailLevel: 0,
+        subLevel: 0,
+        harmonicLevel: 1,
+        harmonicCharacter,
+        harmonicRange: 2,
+        drive: 0,
+        punch: 0,
+        level: 0,
+      });
+      processor.postEvent(noteOn(36));
+      return render(processor, 0.2).left;
+    };
+    const clean = samples(0);
+    const sat = samples(1);
+    const fold = samples(2);
+    const difference = (a: Float32Array, b: Float32Array): number => {
+      let sum = 0;
+      for (let i = 0; i < a.length; i++) sum += Math.pow(a[i]! - b[i]!, 2);
+      return Math.sqrt(sum / Math.max(1, a.length));
+    };
+    expect(difference(clean, sat)).toBeGreaterThan(0.001);
+    expect(difference(clean, fold)).toBeGreaterThan(0.01);
+  });
+
   it("clickLevel controls the transient (peak in the first 5 ms)", () => {
     const transientPeak = (clickLevel: number): number => {
       const processor = makeProcessor({ clickLevel, bodyDecay: 1, tailLevel: 0, subLevel: 0 });

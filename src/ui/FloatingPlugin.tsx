@@ -224,7 +224,7 @@ const HOBBY_PARAMS: Record<string, string[]> = {
   keys: ["tine", "bell", "ratio", "level"],
   pluck: ["pick", "body", "decay", "level"],
   logdrum: ["decay", "tone", "body", "level"],
-  kopa: ["pitchAmount", "bodyDecay", "clickLevel", "drive", "level"],
+  kopa: ["pitchAmount", "harmonicLevel", "bodyDecay", "clickLevel", "drive", "level"],
 };
 
 function InstrumentPluginContent({

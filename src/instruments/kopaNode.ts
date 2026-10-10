@@ -29,6 +29,25 @@ import type { InstrumentRuntime } from "./types";
 import type { InstrumentTrack } from "../project-model/types";
 import type { KopaEvent } from "../kopa/dsp/kopaProcessor";
 
+function clampParam(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function harmonicPartialWeight(partial: number, maxPartial: number, tone: number): number {
+  if (partial === 2) return maxPartial >= 3 ? 1 - tone : 1;
+  if (partial === 3) return tone;
+  return 0.25 / (partial - 1);
+}
+
+function makeHarmonicCharacterCurve(character: number): Float32Array<ArrayBuffer> {
+  const curve = new Float32Array(257);
+  for (let i = 0; i < curve.length; i++) {
+    const x = (i / (curve.length - 1)) * 2 - 1;
+    curve[i] = character === 1 ? Math.tanh(x * 1.7) * 0.86 : Math.sin(x * Math.PI);
+  }
+  return curve;
+}
+
 export interface KopaRuntime extends InstrumentRuntime {
   /** OFFLINE ONLY — build the seeded worklet and connect it into `output`. */
   prepareOfflineRender?: () => void;
@@ -84,6 +103,12 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
       const pitchTime = Math.max(0.005, (params.pitchTime ?? 40) / 1000);
       const level = Math.pow(10, (params.level ?? -6) / 20);
       const vel = velocity > 0 ? velocity : 1;
+      const harmonicLevel = clampParam(params.harmonicLevel ?? 0.25, 0, 1);
+      const harmonicRange = Math.round(clampParam(params.harmonicRange ?? 2, 1, 4));
+      const harmonicMaxPartial = Math.pow(2, harmonicRange);
+      const harmonicTone = clampParam(params.harmonicTone ?? 0.35, 0, 1);
+      const harmonicCharacter = Math.round(clampParam(params.harmonicCharacter ?? 0, 0, 2));
+      const harmonicDecay = clampParam(params.harmonicDecay ?? 0.25, 0.03, 2);
       const id = voiceId++;
       const gain = ctx.createGain();
       gain.connect(output);
@@ -101,6 +126,47 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
       body.connect(bodyGain).connect(gain);
       body.start(when);
       oscs.push(body);
+      // Match the worklet layer: partials start from the body's pitch sweep,
+      // all share its phase, and the fundamental itself is never re-added.
+      if (harmonicLevel > 0.001) {
+        const firstBodyF = bodyF * Math.pow(2, pitchAmount / 12);
+        const partials: { partial: number; weight: number }[] = [];
+        let weightSum = 0;
+        for (let partial = 2; partial <= harmonicMaxPartial; partial++) {
+          if (firstBodyF * partial >= ctx.sampleRate * 0.45) continue;
+          const weight = harmonicPartialWeight(partial, harmonicMaxPartial, harmonicTone);
+          if (weight <= 0) continue;
+          partials.push({ partial, weight });
+          weightSum += weight;
+        }
+        if (weightSum > 0) {
+          const harmonicBus = ctx.createGain();
+          const harmonicShaper = harmonicCharacter > 0 ? ctx.createWaveShaper() : null;
+          if (harmonicShaper) {
+            harmonicShaper.curve = makeHarmonicCharacterCurve(harmonicCharacter);
+            harmonicShaper.oversample = "2x";
+            harmonicBus.connect(harmonicShaper);
+          }
+          const harmonicEnvelope = ctx.createGain();
+          harmonicEnvelope.gain.setValueAtTime(harmonicLevel * 0.55 * vel, when);
+          harmonicEnvelope.gain.setTargetAtTime(0, when, Math.max(0.01, harmonicDecay * 0.33));
+          if (harmonicShaper) harmonicShaper.connect(harmonicEnvelope);
+          else harmonicBus.connect(harmonicEnvelope);
+          harmonicEnvelope.connect(gain);
+
+          for (const { partial, weight } of partials) {
+            const harmonic = ctx.createOscillator();
+            harmonic.type = "sine";
+            harmonic.frequency.setValueAtTime(firstBodyF * partial, when);
+            harmonic.frequency.exponentialRampToValueAtTime(bodyF * partial, when + pitchTime);
+            const partialGain = ctx.createGain();
+            partialGain.gain.value = weight / weightSum;
+            harmonic.connect(partialGain).connect(harmonicBus);
+            harmonic.start(when);
+            oscs.push(harmonic);
+          }
+        }
+      }
       // Sub, phase-locked by construction (starts with the body).
       const subLevel = params.subLevel ?? 0.3;
       if (subLevel > 0.001) {

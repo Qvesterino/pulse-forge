@@ -25,6 +25,8 @@
     events = [];
     voiceCounter = 0;
     blockEvents = [];
+    /** Reused each block so the audio callback does not allocate scratch data. */
+    harmonicWeights = new Float64Array(17);
     constructor(options) {
       this.sampleRate = options.sampleRate > 0 ? options.sampleRate : 44100;
       for (let i = 0; i < MAX_VOICES; i++) this.voices.push(this.makeVoice(i));
@@ -46,6 +48,7 @@
         clickEnv: 0,
         bodyEnv: 0,
         tailEnv: 0,
+        harmonicEnv: 0,
         noiseLcg: 2654435769 + index * 2246822507 >>> 0,
         noisePrev: 0,
         gain: 0,
@@ -89,6 +92,7 @@
       voice.clickEnv = clamp(velocity > 0 ? velocity : 1, 0, 1);
       voice.bodyEnv = 1;
       voice.tailEnv = 1;
+      voice.harmonicEnv = 1;
       voice.noiseLcg = 2654435769 + voice.index * 2246822507 >>> 0;
       voice.noisePrev = 0;
       voice.age = ++this.voiceCounter;
@@ -157,6 +161,12 @@
       const tailTune = this.params.tailTune ?? 0;
       const subLevel = clamp(this.params.subLevel ?? 0.3, 0, 1);
       const subTune = this.params.subTune ?? 0;
+      const harmonicLevel = clamp(this.params.harmonicLevel ?? 0.25, 0, 1);
+      const harmonicTone = clamp(this.params.harmonicTone ?? 0.35, 0, 1);
+      const harmonicRange = Math.round(clamp(this.params.harmonicRange ?? 2, 1, 4));
+      const harmonicMaxPartial = Math.pow(2, harmonicRange);
+      const harmonicDecay = clamp(this.params.harmonicDecay ?? 0.25, 0.03, 2);
+      const harmonicCharacter = Math.round(clamp(this.params.harmonicCharacter ?? 0, 0, 2));
       const drive = clamp(this.params.drive ?? 0.25, 0, 1);
       const driveType = Math.round(clamp(this.params.driveType ?? 0, 0, 3));
       const punch = clamp(this.params.punch ?? 0.2, 0, 1);
@@ -173,8 +183,18 @@
       const clickCoef = Math.min(1, 1 / (clickDecaySec * sr * 0.33));
       const bodyCoef = Math.min(1, 1 / (bodyDecay * sr * 0.33));
       const tailCoef = Math.min(1, 1 / (tailDecay * sr * 0.33));
+      const harmonicCoef = Math.min(1, 1 / (harmonicDecay * sr * 0.33));
       const gainCoeff = Math.min(1, 1 / (GAIN_RAMP_SEC * sr));
       const twoPi = 2 * Math.PI;
+      const harmonicWeights = this.harmonicWeights;
+      harmonicWeights.fill(0);
+      let harmonicWeightSum = 0;
+      for (let partial = 2; partial <= harmonicMaxPartial; partial++) {
+        const weight = partial === 2 && harmonicMaxPartial >= 3 ? 1 - harmonicTone : partial === 3 ? harmonicTone : partial === 2 ? 1 : 0.25 / (partial - 1);
+        harmonicWeights[partial] = weight;
+        harmonicWeightSum += weight;
+      }
+      const harmonicNorm = harmonicWeightSum > 0 ? 1 / harmonicWeightSum : 0;
       for (let frame = 0; frame < frames; frame++) {
         const frameTime = (currentFrame2 + frame) / sr;
         while (eventCursor < blockEvents.length && blockEvents[eventCursor].when <= frameTime) {
@@ -199,12 +219,14 @@
           voice.clickEnv = Math.max(0, voice.clickEnv - voice.clickEnv * clickCoef);
           voice.bodyEnv = Math.max(0, voice.bodyEnv - voice.bodyEnv * bodyCoef);
           voice.tailEnv = Math.max(0, voice.tailEnv - voice.tailEnv * tailCoef);
+          voice.harmonicEnv = Math.max(0, voice.harmonicEnv - voice.harmonicEnv * harmonicCoef);
           if (!voice.gate) {
             voice.bodyEnv *= 0.98;
             voice.tailEnv *= 0.99;
             voice.clickEnv *= 0.9;
+            voice.harmonicEnv *= 0.98;
           }
-          if (voice.bodyEnv < 1e-5 && voice.tailEnv < 1e-5 && voice.clickEnv < 1e-5) {
+          if (voice.bodyEnv < 1e-5 && voice.tailEnv < 1e-5 && voice.clickEnv < 1e-5 && voice.harmonicEnv < 1e-5) {
             voice.active = false;
             continue;
           }
@@ -224,6 +246,17 @@
           else body = voice.bodyPhase / Math.PI - 1;
           const bodySignal = (body + bodyHollow * Math.sin(2 * voice.bodyPhase)) / (1 + bodyHollow);
           const subSignal = Math.sin(voice.subPhase);
+          let harmonicSignal = 0;
+          if (harmonicLevel > 0 && harmonicNorm > 0) {
+            for (let partial = 2; partial <= harmonicMaxPartial; partial++) {
+              const frequency = bodyF * partial;
+              if (frequency >= sr * 0.45) continue;
+              harmonicSignal += harmonicWeights[partial] * Math.sin(voice.bodyPhase * partial);
+            }
+            harmonicSignal *= harmonicNorm;
+            if (harmonicCharacter === 1) harmonicSignal = Math.tanh(harmonicSignal * 1.7) * 0.86;
+            else if (harmonicCharacter === 2) harmonicSignal = Math.sin(harmonicSignal * Math.PI);
+          }
           const lcg = Math.imul(voice.noiseLcg, 1664525) + 1013904223 >>> 0;
           voice.noiseLcg = lcg;
           const noise = lcg / 4294967295 * 2 - 1;
@@ -234,7 +267,7 @@
             voice.noisePrev = noise;
           } else if (clickType === 2) click = Math.sin(twoPi * clickTone * frame / sr);
           else click = voice.age <= 2 ? 1 : 0;
-          let sample = bodySignal * voice.bodyEnv * 0.9 + Math.sin(voice.tailPhase) * voice.tailEnv * tailLevel * 0.9 + subSignal * Math.max(voice.bodyEnv, voice.tailEnv) * subLevel * 0.5 + click * voice.clickEnv * clickLevel;
+          let sample = bodySignal * voice.bodyEnv * 0.9 + Math.sin(voice.tailPhase) * voice.tailEnv * tailLevel * 0.9 + subSignal * Math.max(voice.bodyEnv, voice.tailEnv) * subLevel * 0.5 + harmonicSignal * voice.harmonicEnv * harmonicLevel * 0.55 + click * voice.clickEnv * clickLevel;
           const lfo = Math.sin(twoPi * (lfoBase + voice.index * 0.6180339887498949));
           if (modADst === 3) {
             const src = modASrc === 0 ? voice.bodyEnv : modASrc === 1 ? lfo : modASrc === 2 ? clamp(voice.clickEnv, 0, 1) : 0;
