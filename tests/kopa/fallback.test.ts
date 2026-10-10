@@ -115,9 +115,11 @@ const track: InstrumentTrack = {
   pan: 0,
   mute: false,
   solo: false,
-  groupId: null,
+  sampleId: null,
+  effects: [],
+  sends: {},
   params: {},
-} as InstrumentTrack;
+} as unknown as InstrumentTrack;
 
 describe("KOPA native fallback runtime", () => {
   it("a noteOn builds a live graph with scheduled sources (audible, never silent)", () => {
@@ -135,7 +137,7 @@ describe("KOPA native fallback runtime", () => {
     const runtime = createKopaFallbackRuntime(ctx, track);
     runtime.noteOn(36, 1, 0, 0.5);
     runtime.noteOn(38, 0.8, 0.1, 0.5);
-    expect(() => runtime.noteOff(36, 0.5)).not.toThrow();
+    expect(() => runtime.noteOff!(36, 0.5)).not.toThrow();
     expect(() => runtime.panic()).not.toThrow();
     expect(() => runtime.dispose()).not.toThrow();
   });
@@ -175,7 +177,7 @@ describe("KOPA worklet runtime bridge (offline parity)", () => {
       track,
     });
     runtime.noteOn(36, 1, 0.01, 0.5);
-    runtime.noteOff(36, 0.5);
+    runtime.noteOff!(36, 0.5);
     runtime.setParameter("drive", 0.9);
     expect(built).toHaveLength(1); // live builds immediately
     const types = (node.port.messages as Array<{ type: string }>).map((m) => m.type);

@@ -569,6 +569,40 @@
             "arpGate": 0.5,
             "arpSwing": 0
           }
+        },
+        {
+          "kind": "kopa",
+          "defaults": {
+            "pitchAmount": 24,
+            "pitchTime": 40,
+            "pitchCurve": 0,
+            "keyTrack": 1,
+            "clickType": 0,
+            "clickTone": 2500,
+            "clickDecay": 3,
+            "clickLevel": 0.35,
+            "bodyTune": 0,
+            "bodyDecay": 0.35,
+            "bodyHollow": 0.25,
+            "bodyWave": 0,
+            "tailDecay": 0.4,
+            "tailLevel": 0.25,
+            "tailTune": 0,
+            "subLevel": 0.3,
+            "subTune": 0,
+            "drive": 0.25,
+            "driveType": 0,
+            "punch": 0.2,
+            "stereo": 0,
+            "level": -6,
+            "modASrc": 0,
+            "modADst": 0,
+            "modAAmt": 0,
+            "modBSrc": 0,
+            "modBDst": 0,
+            "modBAmt": 0,
+            "modLfoRate": 2
+          }
         }
       ]
     },
@@ -1780,6 +1814,28 @@
         1,
         2,
         2
+      ]
+    },
+    {
+      "name": "clampInstrumentParam kopa:pitchAmount",
+      "operation": "clampInstrumentParam",
+      "input": {
+        "kind": "kopa",
+        "paramId": "pitchAmount",
+        "probes": [
+          -100,
+          0,
+          24,
+          48,
+          148
+        ]
+      },
+      "expected": [
+        0,
+        0,
+        24,
+        48,
+        48
       ]
     },
     {

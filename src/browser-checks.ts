@@ -1125,7 +1125,7 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     };
     const rt = INSTRUMENT_DEFS.kopa.factory(ctx, track, { bpm: 124, getSample: (id) => bank.get(id) });
     rt.output.connect(ctx.destination);
-    rt.noteOn(36, 1, 0.02);
+    rt.noteOn(36, 1, 0.02, 0.8);
     const prepared = rt as { prepareOfflineRender?: () => void };
     prepared.prepareOfflineRender?.();
     const buffer = await ctx.startRendering();

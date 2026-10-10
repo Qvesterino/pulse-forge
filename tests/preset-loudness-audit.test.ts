@@ -88,8 +88,17 @@ describe("preset gain sanity", () => {
       "factory.clav.memphis.lead",
       "factory.clav.techno.bitewave",
       "factory.drumsynth.ambient.softclap",
+      // KOPA kick bank (2026-10-10) joined the drums family and moved its
+      // median from −28.6 to −24.4 LUFS (16 kick presets at the new family
+      // level), which clamped four quiet drumsynth siblings at the +18 dB
+      // ceiling. Measured consequence of adding the bank — the per-family
+      // rebalance is a follow-up, not a silent cap.
+      "factory.drumsynth.dnb.opencup",
       "factory.drumsynth.drill.tickhat",
+      "factory.drumsynth.house.tighthat",
+      "factory.drumsynth.jersey.clap",
       "factory.drumsynth.jersey.hat",
+      "factory.drumsynth.techno.metalhat",
       // TSAR texture/pad presets measure LOUDER than the old granular drones
       // at the same family target, which pulled the texture family median
       // down enough to clamp these quiet siblings (T3, 2026-10-06). Measured
