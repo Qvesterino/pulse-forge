@@ -49,7 +49,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 20;
+export const SCHEMA_VERSION = 21;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -254,6 +254,7 @@ export function defaultMasterConfig(): MasterConfig {
     clipperEnabled: false,
     limiterLookaheadMs: 5,
     limiterReleaseMs: 120,
+    limiterCharacter: "transparent",
     limiterTransientLink: 1,
     limiterReleaseLink: 1,
     tapeEnabled: false,
@@ -2155,6 +2156,8 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
       typeof m.limiterReleaseMs === "number" && Number.isFinite(m.limiterReleaseMs)
         ? Math.min(2000, Math.max(10, m.limiterReleaseMs))
         : 120;
+    const limiterCharacter =
+      m.limiterCharacter === "punch" || m.limiterCharacter === "smooth" ? m.limiterCharacter : "transparent";
     const legacyLimiterStereoLink =
       typeof m.limiterStereoLink === "number" && Number.isFinite(m.limiterStereoLink)
         ? Math.min(1, Math.max(0, m.limiterStereoLink))
@@ -2234,6 +2237,7 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
       dcl !== m.clipperEnabled ||
       limiterLookaheadMs !== m.limiterLookaheadMs ||
       limiterReleaseMs !== m.limiterReleaseMs ||
+      limiterCharacter !== m.limiterCharacter ||
       limiterTransientLink !== m.limiterTransientLink ||
       limiterReleaseLink !== m.limiterReleaseLink ||
       m.limiterStereoLink !== undefined ||
@@ -2260,6 +2264,7 @@ function normalizeMasterAndReturnsDomain(s: NormalizeState): void {
         clipperEnabled: dcl,
         limiterLookaheadMs,
         limiterReleaseMs,
+        limiterCharacter,
         limiterTransientLink,
         limiterReleaseLink,
         tapeEnabled,
@@ -2706,7 +2711,8 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // skeleton events).
   // v18 adds adjustable built-in master limiter look-ahead and release times;
   // v19 adds one master stereo link; v20 splits it into transient/release
-  // links while mapping the v19 value to both.
+  // links while mapping the v19 value to both; v21 adds opt-in limiter
+  // character modes while preserving the old envelope as the default.
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

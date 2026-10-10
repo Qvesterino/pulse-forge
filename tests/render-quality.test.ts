@@ -49,25 +49,27 @@ describe("PRISM offline render quality", () => {
 
 describe("global Live/Export quality switch", () => {
   it("studio enables both plugins, live enables neither", () => {
-    expect(resolveRenderQuality({ quality: "studio" })).toEqual({ fxeq: true, ozvena: true });
-    expect(resolveRenderQuality({ quality: "live" })).toEqual({ fxeq: false, ozvena: false });
+    expect(resolveRenderQuality({ quality: "studio" })).toEqual({ fxeq: true, ozvena: true, limiter: true });
+    expect(resolveRenderQuality({ quality: "live" })).toEqual({ fxeq: false, ozvena: false, limiter: false });
   });
 
   it("the global switch wins over legacy per-plugin flags", () => {
     expect(resolveRenderQuality({ quality: "live", fxeqRenderQuality: true, ozvenaRenderQuality: true })).toEqual({
       fxeq: false,
       ozvena: false,
+      limiter: false,
     });
     expect(resolveRenderQuality({ quality: "studio", fxeqRenderQuality: false })).toEqual({
       fxeq: true,
       ozvena: true,
+      limiter: true,
     });
   });
 
   it("legacy flags keep working when the switch is absent (default: live tier)", () => {
-    expect(resolveRenderQuality({})).toEqual({ fxeq: false, ozvena: false });
-    expect(resolveRenderQuality({ fxeqRenderQuality: true })).toEqual({ fxeq: true, ozvena: false });
-    expect(resolveRenderQuality({ ozvenaRenderQuality: true })).toEqual({ fxeq: false, ozvena: true });
+    expect(resolveRenderQuality({})).toEqual({ fxeq: false, ozvena: false, limiter: false });
+    expect(resolveRenderQuality({ fxeqRenderQuality: true })).toEqual({ fxeq: true, ozvena: false, limiter: false });
+    expect(resolveRenderQuality({ ozvenaRenderQuality: true })).toEqual({ fxeq: false, ozvena: true, limiter: false });
   });
 
   it("unified bumps cover PRISM bands and default-tier VØID", () => {

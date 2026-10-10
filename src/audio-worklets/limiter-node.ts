@@ -2,6 +2,7 @@ import type { EffectRuntime } from "../effects/types";
 
 import { attachProcessorErrorGuard } from "./processor-errors";
 import { safeApplyAudioParam } from "./safeAudioParam";
+import { LIMITER_OVERSAMPLER_LATENCY_SAMPLES } from "./limiter-oversampler.js";
 
 const LIMITER_LOOKAHEAD_DEFAULT_MS = 5;
 const LIMITER_LOOKAHEAD_MIN_MS = 1;
@@ -19,9 +20,10 @@ function clampLimiterLookaheadMs(value: number): number {
  * The processor module MUST be pre-loaded via `loadWorkletModules()` first
  * (callers check `isWorkletReady("limiter", ctx)` before constructing).
  *
- * Latency contract: the processor rounds `lookahead` to a whole sample and
- * adds a fixed 32-sample output-side true-peak correction window.
- * getLatencySec() reports both delays so PDC keeps tracks sample-aligned.
+ * Latency contract: the processor rounds `lookahead` to whole samples, adds
+ * a fixed 32-sample output-side correction window, and adds the 64-sample FIR
+ * oversampler delay only in Studio HQ mode. getLatencySec() reports all three
+ * so PDC keeps tracks sample-aligned.
  */
 export function createLimiterNode(ctx: BaseAudioContext, instance: { params: Record<string, number> }): EffectRuntime {
   const node = new AudioWorkletNode(ctx, "limiter-processor", {
@@ -40,6 +42,7 @@ export function createLimiterNode(ctx: BaseAudioContext, instance: { params: Rec
   input.connect(node).connect(output);
 
   let lookaheadMs = instance.params.lookaheadMs ?? LIMITER_LOOKAHEAD_DEFAULT_MS;
+  let oversampleFactor = 1;
   let lastGrDb = 0;
   node.port.onmessage = (event: MessageEvent) => {
     const data = event.data as { type?: string; gr?: number } | null;
@@ -54,6 +57,7 @@ export function createLimiterNode(ctx: BaseAudioContext, instance: { params: Rec
   safeApplyAudioParam(node, "link", instance.params.link ?? 1);
   safeApplyAudioParam(node, "transientLink", instance.params.transientLink ?? 1);
   safeApplyAudioParam(node, "releaseLink", instance.params.releaseLink ?? 1);
+  safeApplyAudioParam(node, "character", instance.params.character ?? 0);
   safeApplyAudioParam(node, "mix", instance.params.mix ?? 1);
 
   const setParameter = (id: string, value: number, when = ctx.currentTime) => {
@@ -64,6 +68,12 @@ export function createLimiterNode(ctx: BaseAudioContext, instance: { params: Rec
       if (!Number.isFinite(value)) return;
       lookaheadMs = value;
       safeApplyAudioParam(node, "lookahead", clampLimiterLookaheadMs(value) / 1000, when);
+      return;
+    }
+    if (id === "oversample") {
+      if (!Number.isFinite(value)) return;
+      oversampleFactor = value >= 1.5 ? 2 : 1;
+      safeApplyAudioParam(node, "oversample", oversampleFactor, when);
       return;
     }
     if (id === "link") {
@@ -90,7 +100,10 @@ export function createLimiterNode(ctx: BaseAudioContext, instance: { params: Rec
       const effectiveMs = clampLimiterLookaheadMs(lookaheadMs);
       const workletLookaheadSec = Math.fround(effectiveMs / 1000);
       const lookaheadSamples = Math.round(workletLookaheadSec * ctx.sampleRate);
-      return (lookaheadSamples + LIMITER_OUTPUT_TRUEPEAK_CORRECTION_SAMPLES) / ctx.sampleRate;
+      const oversamplerSamples = oversampleFactor === 2 ? LIMITER_OVERSAMPLER_LATENCY_SAMPLES : 0;
+      return (
+        lookaheadSamples + LIMITER_OUTPUT_TRUEPEAK_CORRECTION_SAMPLES + oversamplerSamples
+      ) / ctx.sampleRate;
     },
     getGainReductionDb() {
       return lastGrDb;

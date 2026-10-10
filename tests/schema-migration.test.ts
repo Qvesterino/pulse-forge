@@ -130,6 +130,32 @@ describe("schema migration contract", () => {
     expect(clamped.master?.limiterReleaseLink).toBe(1);
   });
 
+  it("defaults legacy limiter character to transparent and rejects unknown values", async () => {
+    const schema = await import("../src/project-model/schema");
+    const oldProject = {
+      schemaVersion: schema.SCHEMA_VERSION - 1,
+      id: "legacy-limiter-character",
+      name: "Legacy Limiter Character",
+      bpm: 120,
+      timeSignature: { numerator: 4, denominator: 4 },
+      tracks: [],
+      patterns: [],
+      scenes: [],
+      arrangement: { clips: [], transitions: [] },
+      markers: [],
+      master: { ...schema.defaultMasterConfig(), limiterCharacter: undefined },
+    };
+
+    const migrated = schema.migrateProject(oldProject as never);
+    expect(migrated.master?.limiterCharacter).toBe("transparent");
+
+    const normalized = schema.normalizeProject({
+      ...migrated,
+      master: { ...migrated.master!, limiterCharacter: "unknown" as never },
+    });
+    expect(normalized.master?.limiterCharacter).toBe("transparent");
+  });
+
   it("migrateProject throws for FUTURE versions (newer than supported)", async () => {
     const schema = await import("../src/project-model/schema");
     const version = schema.SCHEMA_VERSION;

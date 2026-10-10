@@ -18,16 +18,16 @@
  * Program-dependent release: deeper recent gain reduction lengthens the
  * release time, which keeps sustained material from pumping on every beat.
  *
- * Latency: exactly the integer sample count rounded from `lookahead` seconds
- * (reported by the TS wrapper via getLatencySec for the engine's PDC). The
- * oversampled detector uses past samples only, so it adds no latency. Metering
- * posts `{ type: "gr", gr }` messages (gain reduction in dB) roughly every
- * 50 ms.
+ * Latency: the integer sample count rounded from `lookahead` seconds, plus
+ * the fixed 32-sample output correction window and (in 2× Studio HQ mode) the
+ * measured FIR oversampler latency. The TS wrapper reports this for PDC.
+ * Metering posts `{ type: "gr", gr }` messages roughly every 50 ms.
  *
- * NOTE: this file is served RAW to AudioWorklet.addModule() via
- * `new URL(...)` — it must stay plain JavaScript with no imports and no
- * TypeScript syntax.
+ * NOTE: scripts/build-core-worklets.mjs bundles this entry and its pure DSP
+ * helper into the self-contained AudioWorklet module served by addModule().
  */
+import { LimiterOversampler2x } from "./limiter-oversampler.js";
+
 // ITU-R BS.1770-5 Annex 2 order-48, 4× true-peak interpolator. Keep this
 // coefficient table identical to src/audio-engine/metering.ts so limiter
 // correction, offline analysis, and post-encode reports use the same estimator.
@@ -99,7 +99,9 @@ class LimiterProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     const sr = globalThis.sampleRate || 44100;
-    const cap = 1 << Math.ceil(Math.log2(0.03 * sr + 256));
+    // Enough room for the maximum 20 ms lookahead and output correction at
+    // 2×, with headroom for the monotonic-deque window.
+    const cap = 1 << Math.ceil(Math.log2(0.045 * sr + 512));
     this.cap = cap;
     this.delayL = new Float32Array(cap);
     this.delayR = new Float32Array(cap);
@@ -128,6 +130,8 @@ class LimiterProcessor extends AudioWorkletProcessor {
     this.postedGr = -1;
     this.grAccumulator = 0;
     this.grWindowStart = typeof globalThis.currentTime === "number" ? globalThis.currentTime : 0;
+    this.oversampler = new LimiterOversampler2x();
+    this.oversampleSilence = new Float32Array(2048);
   }
 
   static get parameterDescriptors() {
@@ -139,17 +143,19 @@ class LimiterProcessor extends AudioWorkletProcessor {
       { name: "link", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "transientLink", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
       { name: "releaseLink", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+      { name: "character", defaultValue: 0, minValue: 0, maxValue: 2, automationRate: "k-rate" },
       { name: "mix", defaultValue: 1, minValue: 0, maxValue: 1, automationRate: "k-rate" },
+      { name: "oversample", defaultValue: 1, minValue: 1, maxValue: 2, automationRate: "k-rate" },
     ];
   }
 
   /** Soft-knee gain curve — a method so the render path allocates nothing. */
-  applyKneeGain(peak, thresholdDb, ceilingDb) {
+  applyKneeGain(peak, thresholdDb, ceilingDb, kneeWidthDb) {
     if (peak <= 1e-8) return 1;
     const peakDb = 20 * Math.log10(peak);
     const over = peakDb - thresholdDb;
     if (over <= 0) return 1;
-    const gDb = Math.min(0, Math.min(1, over / 3) * (ceilingDb - peakDb));
+    const gDb = Math.min(0, Math.min(1, over / kneeWidthDb) * (ceilingDb - peakDb));
     return Math.pow(10, gDb / 20);
   }
 
@@ -163,13 +169,26 @@ class LimiterProcessor extends AudioWorkletProcessor {
     const inR = input && input.length > 1 && input[1] && input[1].length ? input[1] : null;
     const len = outL.length;
     const sr = globalThis.sampleRate || 44100;
+    const requestedOversample = parameters.oversample?.[0] ?? 1;
+    const factor = Number.isFinite(requestedOversample) && requestedOversample >= 1.5 ? 2 : 1;
+    const processingRate = sr * factor;
+    const processingFrames = len * factor;
+    const sourceL = inL ?? this.oversampleSilence;
+    const sourceR = inR ?? inL ?? this.oversampleSilence;
+    const processInL = factor === 2 ? this.oversampler.upsample(sourceL, len, 0) : inL;
+    const processInR = factor === 2 ? this.oversampler.upsample(sourceR, len, 1) : inR;
+    const postCorrectionDelay = POST_TP_DELAY_SAMPLES * factor;
 
     const ceilingDb = parameters.ceiling[0];
     const ceilingLin = Math.pow(10, ceilingDb / 20);
     const postCorrectionCeiling = ceilingLin * Math.pow(10, -POST_TP_MARGIN_DB / 20);
     const thresholdDb = parameters.threshold[0];
     const releaseSec = parameters.release[0];
-    const laSamples = Math.max(1, Math.min(this.cap - 2, Math.round(parameters.lookahead[0] * sr)));
+    const character = Math.round(Math.min(2, Math.max(0, parameters.character[0])));
+    const kneeWidthDb = character === 1 ? 1.5 : character === 2 ? 4.5 : 3;
+    const releaseScale = character === 1 ? 0.75 : character === 2 ? 1.25 : 1;
+    const attackMs = character === 1 ? 0.35 : character === 2 ? 1.2 : 0.5;
+    const laSamples = Math.max(1, Math.min(this.cap - 2, Math.round(parameters.lookahead[0] * processingRate)));
     // `link` remains as a compatibility ceiling for older effect instances
     // and direct worklet users. New master controls use separate link stages.
     const legacyLink = clampLink(parameters.link[0]);
@@ -177,19 +196,19 @@ class LimiterProcessor extends AudioWorkletProcessor {
     const releaseLink = Math.min(legacyLink, clampLink(parameters.releaseLink[0]));
     const mix = parameters.mix[0];
     const perChannel = outR !== null && (transientLink < 0.999 || releaseLink < 0.999);
-    const attackCoef = 1 - Math.exp(-1 / (sr * 0.0005));
-    const postCorrectionAttackCoef = 1 - Math.exp(-1 / (sr * 0.00005));
+    const attackCoef = 1 - Math.exp(-1 / (processingRate * attackMs * 0.001));
+    const postCorrectionAttackCoef = 1 - Math.exp(-1 / (processingRate * 0.00005));
 
     let blockGrDb = 0;
 
     // Soft-knee gain for the per-channel path — the per-block arrow closure
     // still allocated a fresh function object every render quantum; the knee
     // math now lives in a method taking the (k-rate) thresholds.
-    const applyKnee = (peak) => this.applyKneeGain(peak, thresholdDb, ceilingDb);
+    const applyKnee = (peak) => this.applyKneeGain(peak, thresholdDb, ceilingDb, kneeWidthDb);
 
-    for (let i = 0; i < len; i++, this.step++) {
-      const l = inL ? inL[i] : 0;
-      const r = inR ? inR[i] : l;
+    for (let i = 0; i < processingFrames; i++, this.step++) {
+      const l = processInL ? processInL[i] : 0;
+      const r = processInR ? processInR[i] : l;
       const s = this.step;
       const w = s % this.cap;
       this.delayL[w] = l;
@@ -225,7 +244,7 @@ class LimiterProcessor extends AudioWorkletProcessor {
         const peakDb = 20 * Math.log10(peakLinked);
         const over = peakDb - thresholdDb;
         if (over > 0) {
-          const gDb = Math.min(0, Math.min(1, over / 3) * (ceilingDb - peakDb));
+          const gDb = Math.min(0, Math.min(1, over / kneeWidthDb) * (ceilingDb - peakDb));
           targetLinked = Math.pow(10, gDb / 20);
         }
       }
@@ -243,8 +262,8 @@ class LimiterProcessor extends AudioWorkletProcessor {
       // Gain smoothing: fast dive (the look-ahead already paid for it),
       // program-dependent recovery — deeper recent reduction releases slower,
       // so kick-driven material does not pump on every hit.
-      this.gainL = this.smoothGain(this.gainL, targetL, sr, releaseSec, attackCoef);
-      this.gainR = this.smoothGain(this.gainR, targetR, sr, releaseSec, attackCoef);
+      this.gainL = this.smoothGain(this.gainL, targetL, processingRate, releaseSec, attackCoef, releaseScale);
+      this.gainR = this.smoothGain(this.gainR, targetR, processingRate, releaseSec, attackCoef, releaseScale);
       if (Math.abs(this.gainL) < 1e-20) this.gainL = 0;
       if (Math.abs(this.gainR) < 1e-20) this.gainR = 0;
 
@@ -269,12 +288,12 @@ class LimiterProcessor extends AudioWorkletProcessor {
         this.postHistPosR = this.truePeakStep(this.postHistR, this.postHistPosR, this.postDelayR[w]);
         const postPeakR = this.tpOut;
         this.postPeak.push(postPeakL > postPeakR ? postPeakL : postPeakR, s);
-        const postWindowPeak = this.postPeak.front(s - POST_TP_DELAY_SAMPLES);
+        const postWindowPeak = this.postPeak.front(s - postCorrectionDelay);
         if (postWindowPeak > postCorrectionCeiling) postTarget = postCorrectionCeiling / postWindowPeak;
         this.postCorrectionGain = this.smoothGain(
           this.postCorrectionGain,
           postTarget,
-          sr,
+          processingRate,
           releaseSec,
           postCorrectionAttackCoef,
         );
@@ -282,7 +301,7 @@ class LimiterProcessor extends AudioWorkletProcessor {
         this.postCorrectionGain = 1;
       }
 
-      const postReadIdx = (((s - POST_TP_DELAY_SAMPLES) % this.cap) + this.cap) % this.cap;
+      const postReadIdx = (((s - postCorrectionDelay) % this.cap) + this.cap) % this.cap;
       const correctionGain = mix >= 0.999 ? this.postCorrectionGain : 1;
       let finalL = this.postDelayL[postReadIdx] * correctionGain;
       let finalR = this.postDelayR[postReadIdx] * correctionGain;
@@ -292,11 +311,25 @@ class LimiterProcessor extends AudioWorkletProcessor {
         if (finalR > postCorrectionCeiling) finalR = postCorrectionCeiling;
         else if (finalR < -postCorrectionCeiling) finalR = -postCorrectionCeiling;
       }
-      outL[i] = finalL;
-      if (outR) outR[i] = finalR;
+      if (factor === 1) {
+        outL[i] = finalL;
+        if (outR) outR[i] = finalR;
+      } else {
+        this.oversampler.processBufferL[i] = finalL;
+        this.oversampler.processBufferR[i] = finalR;
+      }
 
       const depth = Math.max(1 - (this.gainL < this.gainR ? this.gainL : this.gainR), 1 - correctionGain);
       if (depth > this.grAccumulator) this.grAccumulator = depth;
+    }
+
+    if (factor === 2) {
+      const downL = this.oversampler.downsample(this.oversampler.processBufferL, len, 0);
+      const downR = this.oversampler.downsample(this.oversampler.processBufferR, len, 1);
+      for (let i = 0; i < len; i++) {
+        outL[i] = downL[i];
+        if (outR) outR[i] = downR[i];
+      }
     }
 
     // Metering: post gain reduction ~20x/sec at most.
@@ -342,10 +375,10 @@ class LimiterProcessor extends AudioWorkletProcessor {
     return nextPos;
   }
 
-  smoothGain(current, target, sr, releaseSec, attackCoef) {
+  smoothGain(current, target, sr, releaseSec, attackCoef, releaseScale = 1) {
     if (target < current) return target + (current - target) * (1 - attackCoef);
     const depth = 1 - current;
-    const effRelease = Math.max(0.002, releaseSec * (0.35 + 0.65 * Math.min(1, depth * 4)));
+    const effRelease = Math.max(0.002, releaseSec * releaseScale * (0.35 + 0.65 * Math.min(1, depth * 4)));
     const rc = 1 - Math.exp(-1 / (sr * effRelease));
     return current + (target - current) * rc;
   }

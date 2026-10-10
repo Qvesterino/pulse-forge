@@ -59,6 +59,13 @@ same target.
    correction stays stereo-linked. Both controls default to `1.0`; lower
    values warn that the stereo image may shift and should be compared at
    matched loudness. Schema v20 maps the v19 combined value to both controls.
+8. The built-in master limiter exposes three persisted character voicings:
+   `transparent` (legacy response; default), `punch` (1.5 dB knee, 0.35 ms
+   gain attack and 0.75× program-dependent recovery), and `smooth` (4.5 dB
+   knee, 1.2 ms gain attack and 1.25× recovery). They all retain the same
+   linked output-side true-peak correction and requested ceiling. Schema v21
+   backfills old projects to `transparent`. These are alternate starting
+   responses, not an automatic quality ranking; use matched-loudness audition.
 
 ## Consequences
 
@@ -78,6 +85,9 @@ same target.
   amounts. A v19 combined link migrates to both values; older projects and
   external mastering sessions default to fully linked (`1.0`) so existing
   image and limiter behavior are preserved.
+- Project schema v21 adds opt-in master limiter character voicings. Missing or
+  unknown values normalize to `transparent`, which keeps the previous default
+  response for existing sessions; final true-peak safety remains shared.
 - Codec-specific post-encode analysis and externally supplied stereo mixes
   remain separate roadmap work; neither can be implied by a pre-encode render
   report.
@@ -95,6 +105,10 @@ same target.
   behavior, with the final true-peak guard always linked. Project and external
   session controls persist and restore through the same `MasterConfig`
   normalization path; v19 combined settings migrate to both values.
+- Each limiter character changes the measured envelope response under
+  transient stress while retaining the final true-peak ceiling and finite
+  output. The project default must remain bit-stable with the prior transparent
+  response; subjective ranking still requires level-matched listening.
 - Pre-master/stem output does not accidentally include master inserts.
 - The final clipper/limiter stays downstream of all master inserts.
 

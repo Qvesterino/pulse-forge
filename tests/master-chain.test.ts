@@ -284,14 +284,21 @@ describe("MasterChain limiter delivery", () => {
       },
     });
 
-    chain.applyMasterConfig({ ...defaultMasterConfig(), ceilingDb: -1, limiterEnabled: true });
+    chain.applyMasterConfig({
+      ...defaultMasterConfig(),
+      ceilingDb: -1,
+      limiterEnabled: true,
+      limiterCharacter: "smooth",
+    });
     expect(workletParameters).toEqual({
       ceiling: -1.2,
       threshold: -4.4,
       release: 0.12,
+      character: 2,
       lookaheadMs: 5,
       transientLink: 1,
       releaseLink: 1,
+      oversample: 1,
       mix: 1,
     });
     expect(nativeLimiter.threshold.value).toBe(0);
@@ -342,10 +349,17 @@ describe("MasterChain limiter delivery", () => {
     }
     class FakeWorkletNode {
       parameters = new Map(
-        ["ceiling", "threshold", "release", "lookahead", "link", "transientLink", "releaseLink", "mix"].map((id) => [
-          id,
-          new FakeAudioParam(),
-        ]),
+        [
+          "ceiling",
+          "threshold",
+          "release",
+          "lookahead",
+          "link",
+          "transientLink",
+          "releaseLink",
+          "mix",
+          "oversample",
+        ].map((id) => [id, new FakeAudioParam()]),
       );
       port = { onmessage: null as ((event: MessageEvent) => void) | null, close() {} };
       onprocessorerror: ((event: Event) => void) | null = null;
@@ -356,8 +370,10 @@ describe("MasterChain limiter delivery", () => {
     }
 
     vi.stubGlobal("AudioWorkletNode", FakeWorkletNode);
-    const expectedLatency = (lookaheadMs: number, sampleRate: number) =>
-      (Math.round(Math.fround(lookaheadMs / 1000) * sampleRate) + LIMITER_OUTPUT_TRUEPEAK_CORRECTION_SAMPLES) /
+    const expectedLatency = (lookaheadMs: number, sampleRate: number, oversample = 1) =>
+      (Math.round(Math.fround(lookaheadMs / 1000) * sampleRate) +
+        LIMITER_OUTPUT_TRUEPEAK_CORRECTION_SAMPLES +
+        (oversample === 2 ? 64 : 0)) /
       sampleRate;
     try {
       for (const sampleRate of [44_100, 48_000, 96_000]) {
@@ -376,6 +392,12 @@ describe("MasterChain limiter delivery", () => {
         ) {
           throw new Error("Limiter runtime is missing its latency or parameter contract.");
         }
+        expect(runtime.getLatencySec()).toBe(expectedLatency(5, sampleRate));
+
+        runtime.setParameter("oversample", 2);
+        expect(runtime.getLatencySec()).toBe(expectedLatency(5, sampleRate, 2));
+        expect(runtime.getAudioParam("oversample")?.value).toBe(2);
+        runtime.setParameter("oversample", 1);
         expect(runtime.getLatencySec()).toBe(expectedLatency(5, sampleRate));
 
         runtime.setParameter("link", 0.4);
@@ -424,5 +446,43 @@ describe("MasterChain limiter delivery", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("enables oversampling only for Studio HQ renders with the limiter active", () => {
+    const config = { ...defaultMasterConfig(), limiterEnabled: true };
+    let project = { master: config } as ProjectDocument;
+    const parameters: Record<string, number> = {};
+    const chain = new MasterChain({
+      ctx: () => null,
+      doc: () => project,
+      metering: {} as MeteringRig,
+      masterInsertLatencySec: () => 0,
+    });
+    const nativeParam = () => ({ value: 0 });
+    Object.assign(chain, {
+      master: {},
+      masterClipper: { curve: null },
+      masterLimiter: {
+        threshold: nativeParam(),
+        knee: nativeParam(),
+        ratio: nativeParam(),
+        attack: nativeParam(),
+        release: nativeParam(),
+      },
+      masterLimiterWorklet: {
+        setParameter: (name: string, value: number) => {
+          parameters[name] = value;
+        },
+      },
+    });
+
+    chain.setStudioLimiterOversampling(true);
+    expect(parameters.oversample).toBe(2);
+    chain.applyMasterConfig({ ...config, limiterEnabled: false });
+    expect(parameters.oversample).toBe(1);
+    chain.applyMasterConfig(config);
+    expect(parameters.oversample).toBe(2);
+    chain.setStudioLimiterOversampling(false);
+    expect(parameters.oversample).toBe(1);
   });
 });

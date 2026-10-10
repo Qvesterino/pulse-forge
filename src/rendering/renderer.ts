@@ -54,10 +54,10 @@ export interface RenderOptions {
   masterBypassed?: boolean;
   /**
    * Global Live/Export quality switch. "studio" (default in the export UI)
-   * bumps every PRISM instance to 8× saturation oversampling and every
-   * default-tier VØID instance to the render tier for the duration of THIS
-   * render — no realtime CPU budget offline, so the cleaner aliasing floor
-   * and tails are free. "live" renders exactly what you hear, faster.
+   * bumps every PRISM instance to 8× saturation oversampling, every
+   * default-tier VØID instance to the render tier, and the enabled master
+   * limiter to 2× FIR oversampling for the duration of THIS render. "live"
+   * renders the saved effect settings without these quality bumps.
    * The document itself is never modified; bumps ride the runtime parameter
    * preview path. When set, it wins over the legacy per-plugin flags below.
    */
@@ -146,12 +146,13 @@ export function resolveRenderQuality(
 ): {
   fxeq: boolean;
   ozvena: boolean;
+  limiter: boolean;
 } {
   if (options.quality !== undefined) {
     const hq = options.quality === "studio";
-    return { fxeq: hq, ozvena: hq };
+    return { fxeq: hq, ozvena: hq, limiter: hq };
   }
-  return { fxeq: options.fxeqRenderQuality === true, ozvena: options.ozvenaRenderQuality === true };
+  return { fxeq: options.fxeqRenderQuality === true, ozvena: options.ozvenaRenderQuality === true, limiter: false };
 }
 
 /**
@@ -528,6 +529,7 @@ export async function renderProject(
   // same resolver.
   {
     const resolved = resolveRenderQuality(options);
+    engine.setMasterLimiterOversampling(options.masterProcessing !== false && resolved.limiter);
     if (resolved.fxeq) {
       for (const bump of fxeqRenderQualityBumps(doc)) {
         engine.previewFxParam(bump.trackId, bump.fxId, bump.paramId, bump.value);

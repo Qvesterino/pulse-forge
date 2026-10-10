@@ -638,6 +638,11 @@ export class AudioEngine {
     this.masterChain.setBypassed(enabled, immediate);
   }
 
+  /** Select render-only master limiter quality; does not alter project state. */
+  setMasterLimiterOversampling(enabled: boolean): void {
+    this.masterChain.setStudioLimiterOversampling(enabled);
+  }
+
   /** Apply monitor-only loudness match gains to the processed and bypass paths. */
   setMasterBypassMatchGains(wetGain: number, dryGain: number, immediate = false): void {
     this.masterChain.setBypassMatchGains(wetGain, dryGain, immediate);

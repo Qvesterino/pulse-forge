@@ -15,7 +15,8 @@ const MASTER_MONITOR_BYPASS_FADE_SECONDS = 0.04;
 const MASTER_MONITOR_BYPASS_SCHEDULE_AHEAD_SECONDS = 0.01;
 // Keep a small working reserve in the look-ahead stage. The limiter also
 // delays its output by 32 samples and runs a linked true-peak correction pass
-// before releasing audio to the master meter/output.
+// before releasing audio to the master meter/output. Studio HQ adds the
+// limiter's separate 64-sample FIR oversampling latency when enabled.
 const MASTER_LIMITER_TRUE_PEAK_RESERVE_DB = 0.2;
 
 type MonitorBypassAutomation = {
@@ -98,6 +99,8 @@ export class MasterChain {
    * stays a neutral pass-through and only takes over again without worklets.
    */
   private masterLimiterWorklet: EffectRuntime | null = null;
+  /** Render-only HQ mode; never persisted in the project document. */
+  private studioLimiterOversampling = false;
   /** K-weighted loudness meter (BS.1770) — sink branch off the master limiter. */
   private kwMeter: KwMeterHandle | null = null;
   /** Audio-thread load / xrun probe — sink branch off the master limiter. */
@@ -193,6 +196,13 @@ export class MasterChain {
       out.push({ stageId: "monitorBypass", reason: this.monitorBypassLatencyWarning });
     }
     return out;
+  }
+
+  /** Select offline limiter quality without changing the saved project. */
+  setStudioLimiterOversampling(enabled: boolean): void {
+    this.studioLimiterOversampling = enabled;
+    const config = this.deps.doc()?.master ?? defaultMasterConfig();
+    this.masterLimiterWorklet?.setParameter("oversample", enabled && config.limiterEnabled ? 2 : 1);
   }
 
   /** Keep the monitor-only raw branch aligned with fixed latency before the limiter. */
@@ -1078,6 +1088,7 @@ export class MasterChain {
         typeof config.limiterReleaseMs === "number" && Number.isFinite(config.limiterReleaseMs)
           ? Math.min(2000, Math.max(10, config.limiterReleaseMs))
           : 120;
+      const limiterCharacter = config.limiterCharacter === "punch" ? 1 : config.limiterCharacter === "smooth" ? 2 : 0;
       const limiterLookaheadMs =
         typeof config.limiterLookaheadMs === "number" && Number.isFinite(config.limiterLookaheadMs)
           ? Math.min(20, Math.max(1, config.limiterLookaheadMs))
@@ -1097,9 +1108,11 @@ export class MasterChain {
       worklet.setParameter("ceiling", workletCeilingParam);
       worklet.setParameter("threshold", thresholdParam);
       worklet.setParameter("release", limiterReleaseMs / 1000);
+      worklet.setParameter("character", limiterCharacter);
       worklet.setParameter("lookaheadMs", limiterLookaheadMs);
       worklet.setParameter("transientLink", limiterTransientLink);
       worklet.setParameter("releaseLink", limiterReleaseLink);
+      worklet.setParameter("oversample", this.studioLimiterOversampling && config.limiterEnabled ? 2 : 1);
       worklet.setParameter("mix", config.limiterEnabled ? 1 : 0);
       this.masterLimiter.threshold.value = 0;
       this.masterLimiter.knee.value = 0;

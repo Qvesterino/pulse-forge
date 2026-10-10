@@ -385,6 +385,9 @@ export interface ReturnTrack {
 /** Stable owner id used by effect, automation, and MCP targets on the stereo master bus. */
 export const MASTER_EFFECT_OWNER_ID = "master";
 
+/** Built-in master limiter envelope/knee voicing. */
+export type MasterLimiterCharacter = "transparent" | "punch" | "smooth";
+
 export interface MasterConfig {
   /** Master input trim (0..2 → -∞..+6 dB). Pull this down before the limiter if the mix peaks. */
   masterGain: number;
@@ -396,6 +399,8 @@ export interface MasterConfig {
   limiterLookaheadMs?: number;
   /** Master limiter recovery time in milliseconds (10–2000, default 120). */
   limiterReleaseMs?: number;
+  /** Limiter envelope voicing; transparent keeps the original v20 algorithm. */
+  limiterCharacter?: MasterLimiterCharacter;
   /** Limiter gain linking while reducing gain for transients (0–1, default 1). */
   limiterTransientLink?: number;
   /** Limiter gain linking while recovering after reduction (0–1, default 1). */

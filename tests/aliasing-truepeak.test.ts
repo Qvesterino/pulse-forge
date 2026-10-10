@@ -1,6 +1,10 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { truePeakOversampled } from "../src/audio-engine/metering";
 import { LIMITER_OUTPUT_TRUEPEAK_CORRECTION_SAMPLES } from "../src/audio-worklets/limiter-node";
+import {
+  LimiterOversampler2x,
+  LIMITER_OVERSAMPLER_LATENCY_SAMPLES,
+} from "../src/audio-worklets/limiter-oversampler";
 
 /**
  * Aliasing + true-peak battery:
@@ -95,7 +99,8 @@ function params(names: string[], values: Record<string, number> = {}): Record<st
   const out: Record<string, Float32Array> = {};
   const legacyLink = values.link ?? 1;
   for (const n of names) {
-    const fallback = n === "transientLink" || n === "releaseLink" ? legacyLink : n === "link" ? 1 : 0;
+    const fallback =
+      n === "transientLink" || n === "releaseLink" ? legacyLink : n === "link" || n === "oversample" ? 1 : 0;
     out[n] = Float32Array.from([values[n] ?? fallback]);
   }
   return out;
@@ -116,7 +121,114 @@ function rmsBetween(buf: Float32Array, from: number, to: number): number {
   return Math.sqrt(sumSquares / Math.max(1, to - from));
 }
 
-const LIM = ["threshold", "ceiling", "release", "lookahead", "link", "transientLink", "releaseLink", "mix"];
+function toneAmplitude(buf: Float32Array, frequency: number, sampleRate: number, from: number, to: number): number {
+  let real = 0;
+  let imaginary = 0;
+  for (let i = from; i < to; i++) {
+    const phase = (2 * Math.PI * frequency * i) / sampleRate;
+    real += buf[i]! * Math.cos(phase);
+    imaginary -= buf[i]! * Math.sin(phase);
+  }
+  return (2 * Math.hypot(real, imaginary)) / (to - from);
+}
+
+const LIM = [
+  "threshold",
+  "ceiling",
+  "release",
+  "lookahead",
+  "link",
+  "transientLink",
+  "releaseLink",
+  "character",
+  "mix",
+  "oversample",
+];
+
+describe("master limiter 2× oversampling", () => {
+  it("preserves DC and places the FIR impulse peak at its declared latency", () => {
+    const oversampler = new LimiterOversampler2x();
+    const impulse = new Float32Array(256);
+    impulse[0] = 1;
+    const up = oversampler.upsample(impulse, impulse.length, 0);
+    const output = oversampler.downsample(up, impulse.length, 0);
+    let peakIndex = 0;
+    for (let i = 1; i < output.length; i++) {
+      if (Math.abs(output[i]!) > Math.abs(output[peakIndex]!)) peakIndex = i;
+    }
+    expect(LIMITER_OVERSAMPLER_LATENCY_SAMPLES).toBe(64);
+    expect(peakIndex).toBe(LIMITER_OVERSAMPLER_LATENCY_SAMPLES);
+    expect(Math.abs(output[peakIndex]!)).toBeGreaterThan(0.2);
+
+    const dc = new Float32Array(256).fill(0.25);
+    const dcUp = oversampler.upsample(dc, dc.length, 0);
+    const dcOut = oversampler.downsample(dcUp, dc.length, 0);
+    let mean = 0;
+    for (let i = 128; i < dc.length; i++) mean += dcOut[i]!;
+    mean /= dc.length - 128;
+    expect(mean).toBeCloseTo(0.25, 4);
+  });
+
+  it("adds declared PDC latency only when the HQ oversampler is enabled", () => {
+    const render = (oversample: number) => {
+      const proc = new (registered.get("limiter-processor")!)();
+      const prm = params(LIM, {
+        threshold: 0,
+        ceiling: 0,
+        release: 0.05,
+        lookahead: 0.005,
+        link: 1,
+        mix: 1,
+        oversample,
+      });
+      const { L } = renderStereo(proc, 0.03, prm, (n) => (n === 0 ? [0.7, 0.7] : [0, 0]));
+      let peakIndex = 0;
+      for (let i = 1; i < L.length; i++) if (Math.abs(L[i]!) > Math.abs(L[peakIndex]!)) peakIndex = i;
+      return peakIndex;
+    };
+    const baseLatency = Math.round(Math.fround(0.005) * SR) + LIMITER_OUTPUT_TRUEPEAK_CORRECTION_SAMPLES;
+    expect(render(1)).toBe(baseLatency);
+    expect(render(2)).toBe(baseLatency + LIMITER_OVERSAMPLER_LATENCY_SAMPLES);
+  });
+
+  it("rejects folded products around a nonlinear stage compared with base-rate processing", () => {
+    const sampleCount = 32_768;
+    const blockSize = 128;
+    const input = new Float32Array(sampleCount);
+    const baseRate = new Float32Array(sampleCount);
+    const studio = new Float32Array(sampleCount);
+    for (let i = 0; i < sampleCount; i++) {
+      input[i] =
+        0.72 * Math.sin((2 * Math.PI * 14_000 * i) / SR) + 0.72 * Math.sin((2 * Math.PI * 11_000 * i) / SR);
+      baseRate[i] = Math.tanh(2.2 * input[i]!);
+    }
+
+    const oversampler = new LimiterOversampler2x();
+    for (let offset = 0; offset < sampleCount; offset += blockSize) {
+      const inputBlock = input.subarray(offset, offset + blockSize);
+      const highRate = oversampler.upsample(inputBlock, blockSize, 0);
+      for (let i = 0; i < blockSize * 2; i++) oversampler.processBufferL[i] = Math.tanh(2.2 * highRate[i]!);
+      const outputBlock = oversampler.downsample(oversampler.processBufferL, blockSize, 0);
+      studio.set(outputBlock.subarray(0, blockSize), offset);
+    }
+
+    const from = 4096;
+    const to = 28_672;
+    // These bins are folded products of the 14 kHz + 11 kHz input tones;
+    // neither frequency exists in the input signal.
+    const foldedBins = [3_000, 9_000];
+    const baseEnergy = foldedBins.reduce((sum, frequency) => {
+      const value = toneAmplitude(baseRate, frequency, SR, from, to);
+      return sum + value * value;
+    }, 0);
+    const studioEnergy = foldedBins.reduce((sum, frequency) => {
+      const value = toneAmplitude(studio, frequency, SR, from, to);
+      return sum + value * value;
+    }, 0);
+    expect(baseEnergy).toBeGreaterThan(1e-4);
+    expect(studioEnergy).toBeLessThan(baseEnergy * 0.1);
+  });
+});
 
 describe("limiter true-peak detector", () => {
   it("matches the ITU-R report estimator, including sampled peaks", () => {
@@ -177,6 +289,53 @@ describe("limiter true-peak detector", () => {
     expect(peak).toBeGreaterThan(ceilingLin * 0.95);
     const grMsgs = (proc.port.messages as { type?: string; gr?: number }[]).filter((m) => m?.type === "gr");
     expect(Math.max(...grMsgs.map((m) => m.gr ?? 0))).toBeGreaterThan(3);
+  });
+
+  it("limiter characters change envelope response while retaining the true-peak ceiling", () => {
+    const renderCharacter = (character: number) => {
+      const proc = new (registered.get("limiter-processor")!)();
+      const prm = params(LIM, {
+        threshold: -5.2,
+        ceiling: -1.2,
+        release: 0.1,
+        lookahead: 0.005,
+        link: 1,
+        mix: 1,
+        character,
+      });
+      const rendered = renderStereo(proc, 1.1, prm, (n) => {
+        const bed = 0.32 * Math.sin((2 * Math.PI * 220 * n) / SR);
+        const phase = n % Math.round(0.12 * SR);
+        const transient = phase < Math.round(0.006 * SR) ? 1.35 * Math.exp(-phase / (0.0015 * SR)) : 0;
+        const sample = bed + transient;
+        return [sample, sample * 0.83];
+      });
+      return rendered;
+    };
+
+    const transparent = renderCharacter(0);
+    const punch = renderCharacter(1);
+    const smooth = renderCharacter(2);
+    const compareFrom = Math.floor(SR * 0.25);
+    const compareTo = Math.floor(SR * 1.0);
+    const difference = (a: Float32Array, b: Float32Array) => {
+      let sum = 0;
+      for (let i = compareFrom; i < compareTo; i++) sum += Math.abs(a[i]! - b[i]!);
+      return sum / (compareTo - compareFrom);
+    };
+
+    expect(difference(transparent.L, punch.L)).toBeGreaterThan(1e-5);
+    expect(difference(transparent.L, smooth.L)).toBeGreaterThan(1e-5);
+    for (const output of [transparent, punch, smooth]) {
+      expect(truePeakOversampled([output.L, output.R])).toBeLessThanOrEqual(Math.pow(10, -1.2 / 20) * 1.002);
+      for (const channel of [output.L, output.R]) {
+        let finite = true;
+        for (const sample of channel) {
+          if (!Number.isFinite(sample)) finite = false;
+        }
+        expect(finite).toBe(true);
+      }
+    }
   });
 
   it("holds reconstructed output below the delivery ceiling with a small master reserve", () => {
@@ -439,25 +598,28 @@ describe("limiter true-peak detector", () => {
     try {
       for (const sampleRate of [44_100, 48_000, 96_000]) {
         workletGlobals.sampleRate = sampleRate;
-        for (const scenario of scenarios) {
-          const proc = new (registered.get("limiter-processor")!)();
-          const prm = params(LIM, {
-            threshold: workletCeilingDb - 3.2,
-            ceiling: workletCeilingDb,
-            release: 0.05,
-            lookahead: 0.005,
-            link: 1,
-            mix: 1,
-          });
-          const { L, R } = renderStereo(proc, 0.3, prm, (n) => scenario.input(n, sampleRate), sampleRate);
-          const truePeak = truePeakOversampled([L, R]);
-          if (scenario.name === "near-Nyquist intersample tone") {
-            expect(proc.postCorrectionGain, `${sampleRate} Hz output correction engages`).toBeLessThan(0.999);
+        for (const oversample of [1, 2]) {
+          for (const scenario of scenarios) {
+            const proc = new (registered.get("limiter-processor")!)();
+            const prm = params(LIM, {
+              threshold: workletCeilingDb - 3.2,
+              ceiling: workletCeilingDb,
+              release: 0.05,
+              lookahead: 0.005,
+              link: 1,
+              mix: 1,
+              oversample,
+            });
+            const { L, R } = renderStereo(proc, 0.3, prm, (n) => scenario.input(n, sampleRate), sampleRate);
+            const truePeak = truePeakOversampled([L, R]);
+            if (scenario.name === "near-Nyquist intersample tone") {
+              expect(proc.postCorrectionGain, `${sampleRate} Hz ${oversample}× correction engages`).toBeLessThan(0.999);
+            }
+            expect(
+              truePeak,
+              `${scenario.name} at ${sampleRate} Hz / ${oversample}×: ${20 * Math.log10(truePeak)} dBTP`,
+            ).toBeLessThanOrEqual(ceilingLin * 1.006);
           }
-          expect(
-            truePeak,
-            `${scenario.name} at ${sampleRate} Hz: ${20 * Math.log10(truePeak)} dBTP`,
-          ).toBeLessThanOrEqual(ceilingLin * 1.006);
         }
       }
     } finally {

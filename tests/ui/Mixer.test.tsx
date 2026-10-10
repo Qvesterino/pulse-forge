@@ -127,6 +127,33 @@ describe("Mixer performance workflow", () => {
     expect(onChange.mock.calls[0]?.[0]).toEqual({ limiterReleaseLink: expect.any(Number) });
     expect(onChange.mock.calls[0]?.[0].limiterReleaseLink).toBeLessThan(1);
   });
+
+  it("routes limiter character changes through the project command", async () => {
+    const doc = createProjectFromTemplate("house");
+    const services = mockServices(doc);
+    renderWithContext(<Mixer />, { services });
+
+    await userEvent.setup().selectOptions(screen.getByRole("combobox", { name: "Limiter character" }), "punch");
+
+    const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as
+      { type: string; execute: (project: ProjectDocument) => ProjectDocument } | undefined;
+    expect(executed?.type).toBe("setMasterConfig");
+    expect(executed?.execute(doc).master.limiterCharacter).toBe("punch");
+  });
+
+  it("routes isolated-session limiter characters into the session draft", async () => {
+    const onChange = vi.fn();
+    renderWithContext(
+      <MasterProcessingControls view="advanced-extras" config={defaultMasterConfig()} onChange={onChange} />,
+      { services: mockServices() },
+    );
+
+    const character = screen.getByRole("combobox", { name: "Limiter character" });
+    expect(character.getAttribute("aria-description")).toContain("Compare at matched loudness");
+    await userEvent.setup().selectOptions(character, "smooth");
+
+    expect(onChange).toHaveBeenCalledWith({ limiterCharacter: "smooth" });
+  });
 });
 
 /* -----------------------------------------------------------------------

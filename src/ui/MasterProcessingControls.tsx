@@ -65,7 +65,7 @@ export function MasterProcessingControls({
           <Slider
             compact
             label="CEIL"
-            hint="Requested output ceiling in dBFS. The look-ahead worklet uses a 0.2 dB reserve, then applies an output-side true-peak correction with 32 samples of added latency. Confirm exported dBTP in the delivery report. The native fallback cannot guarantee inter-sample peaks and is marked Degraded."
+            hint="Requested output ceiling in dBFS. The look-ahead worklet uses a 0.2 dB reserve, then applies an output-side true-peak correction with 32 samples of added latency. Studio HQ adds 64 samples when its 2× FIR limiter oversampling is active; both delays are included in PDC. Confirm exported dBTP in the delivery report. The native fallback cannot guarantee inter-sample peaks and is marked Degraded."
             value={master.ceilingDb}
             min={-12}
             max={0}
@@ -105,6 +105,24 @@ export function MasterProcessingControls({
 
       {advanced && (
         <div className="master-core-control-bank">
+          <label className="generate-field generate-label">
+            LIMITER CHARACTER
+            <select
+              className="generate-select"
+              aria-label="Limiter character"
+              aria-description="Transparent preserves the previous limiter response. Punch recovers faster; Smooth uses a wider knee and slower recovery. Compare at matched loudness."
+              value={master.limiterCharacter ?? "transparent"}
+              disabled={disabled}
+              onChange={(event) =>
+                commit({ limiterCharacter: event.target.value as NonNullable<MasterConfig["limiterCharacter"]> })
+              }
+              title="Transparent preserves the original limiter response. Punch recovers faster; Smooth uses a wider knee and slower recovery. Compare at matched loudness."
+            >
+              <option value="transparent">Transparent</option>
+              <option value="punch">Punch</option>
+              <option value="smooth">Smooth</option>
+            </select>
+          </label>
           <Slider
             compact
             label="LOOK"
