@@ -2444,10 +2444,7 @@ export function dedupeSongBuildAlternatives(doc: ProjectDocument, build: SongBui
  * returns home for the last head. Selection is deterministic from the song
  * seed (the same derivation the melodic voices use standalone).
  */
-export function planSongHarmony(
-  genre: IntentSpec["genre"],
-  seed: string,
-): { verseName: string; turnName: string } {
+export function planSongHarmony(genre: IntentSpec["genre"], seed: string): { verseName: string; turnName: string } {
   const seedNumber = (parseInt(seed.slice(-8), 36) || 42) >>> 0;
   const progression = selectProgression(genre, seedNumber);
   const table = progressionsForGenre(genre);

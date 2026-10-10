@@ -88,17 +88,83 @@ describe("progression threading", () => {
 });
 
 describe("generateMultiVoice override", () => {
-  it("an unresolvable name falls back BIT-IDENTICAL to the legacy seeded pick", () => {
-    const base = { genre: "jazz", seed: 4242, stepCount: 32, key: null, energy: 0.7, velocityVariation: 0.3, density: 0.5, complexity: 0.5 } as const;
-    const legacy = generateMultiVoice(doc, base.genre, base.seed, base.stepCount, base.key, base.energy, base.velocityVariation, base.density, base.complexity);
-    const fallback = generateMultiVoice(doc, base.genre, base.seed, base.stepCount, base.key, base.energy, base.velocityVariation, base.density, base.complexity, undefined, undefined, "no such progression");
-    expect(fallback).toEqual(legacy);
+  it("an unresolvable name falls back content-identical to the legacy seeded pick", () => {
+    const base = {
+      genre: "jazz",
+      seed: 4242,
+      stepCount: 32,
+      key: null,
+      energy: 0.7,
+      velocityVariation: 0.3,
+      density: 0.5,
+      complexity: 0.5,
+    } as const;
+    const legacy = generateMultiVoice(
+      doc,
+      base.genre,
+      base.seed,
+      base.stepCount,
+      base.key,
+      base.energy,
+      base.velocityVariation,
+      base.density,
+      base.complexity,
+    );
+    const fallback = generateMultiVoice(
+      doc,
+      base.genre,
+      base.seed,
+      base.stepCount,
+      base.key,
+      base.energy,
+      base.velocityVariation,
+      base.density,
+      base.complexity,
+      undefined,
+      undefined,
+      "no such progression",
+    );
+    // Notes carry random ids — compare CONTENT (everything but the id fields).
+    const content = (result: unknown): string => JSON.stringify(result, (k, v) => (k === "id" ? undefined : v));
+    expect(content(fallback)).toBe(content(legacy));
   });
 
   it("a real plan name changes the harmony to THAT progression's chord roots", () => {
-    const args = { genre: "jazz", seed: 4242, stepCount: 32, key: null, energy: 0.7, velocityVariation: 0.3, density: 0.5, complexity: 0.5 } as const;
-    const legacy = generateMultiVoice(doc, args.genre, args.seed, args.stepCount, args.key, args.energy, args.velocityVariation, args.density, args.complexity);
-    const overridden = generateMultiVoice(doc, args.genre, args.seed, args.stepCount, args.key, args.energy, args.velocityVariation, args.density, args.complexity, undefined, undefined, "ii-V-i (minor pocket)");
+    const args = {
+      genre: "jazz",
+      seed: 4242,
+      stepCount: 32,
+      key: null,
+      energy: 0.7,
+      velocityVariation: 0.3,
+      density: 0.5,
+      complexity: 0.5,
+    } as const;
+    const legacy = generateMultiVoice(
+      doc,
+      args.genre,
+      args.seed,
+      args.stepCount,
+      args.key,
+      args.energy,
+      args.velocityVariation,
+      args.density,
+      args.complexity,
+    );
+    const overridden = generateMultiVoice(
+      doc,
+      args.genre,
+      args.seed,
+      args.stepCount,
+      args.key,
+      args.energy,
+      args.velocityVariation,
+      args.density,
+      args.complexity,
+      undefined,
+      undefined,
+      "ii-V-i (minor pocket)",
+    );
     expect(overridden).not.toEqual(legacy);
     // The override must be exactly the named progression's harmony: the
     // minor-pocket loop is MINOR on the tonic, so its chords sit lower than

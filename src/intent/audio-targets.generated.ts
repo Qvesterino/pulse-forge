@@ -15,7 +15,10 @@
  */
 
 /** Ranges for scoring candidate audio fit per genre (see audio-feedback.ts). */
-export const GENERATED_AUDIO_TARGETS: Record<string, { rmsRange: [number, number]; crestRange: [number, number]; zcrRange: [number, number]; bassRange: [number, number] }> = {
+export const GENERATED_AUDIO_TARGETS: Record<
+  string,
+  { rmsRange: [number, number]; crestRange: [number, number]; zcrRange: [number, number]; bassRange: [number, number] }
+> = {
   house: {
     rmsRange: [0.1368, 0.8553],
     crestRange: [1.2, 10.7],

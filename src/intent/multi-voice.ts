@@ -113,8 +113,7 @@ export function generateMultiVoice(
   progressionOverride?: string,
 ): MultiVoiceResult {
   const rand = forkRandom(`${seed}|harmony`, "stream");
-  const override =
-    progressionOverride !== undefined ? findProgression(genre, progressionOverride) : null;
+  const override = progressionOverride !== undefined ? findProgression(genre, progressionOverride) : null;
   const progression: ChordProgression = override ?? selectProgression(genre, seed);
   const expanded = expandProgression(progression, stepCount);
   const slots = expandToSlots(expanded, stepCount);

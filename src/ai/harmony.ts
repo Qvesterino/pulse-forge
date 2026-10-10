@@ -775,19 +775,19 @@ const JAZZ_PROGRESSIONS: ChordProgression[] = [
     name: "ii-V-I (the standard turnaround)",
     genre: "jazz",
     events: [
-      { degree: 1, quality: "min7", duration: 2, func: "S" },
-      { degree: 4, quality: "dom7", duration: 2, func: "D" },
-      { degree: 0, quality: "maj7", duration: 4, func: "T" },
+      { degree: 1, quality: "min7", duration: 4, func: "S" },
+      { degree: 4, quality: "dom7", duration: 4, func: "D" },
+      { degree: 0, quality: "maj7", duration: 8, func: "T" },
     ],
   },
   {
     name: "I-VI-ii-V (rhythm changes bridge)",
     genre: "jazz",
     events: [
-      { degree: 0, quality: "maj7", duration: 2, func: "T" },
-      { degree: 5, quality: "dom7", duration: 2, func: "D" },
-      { degree: 1, quality: "min7", duration: 2, func: "S" },
-      { degree: 4, quality: "dom7", duration: 2, func: "D" },
+      { degree: 0, quality: "maj7", duration: 4, func: "T" },
+      { degree: 5, quality: "dom7", duration: 4, func: "D" },
+      { degree: 1, quality: "min7", duration: 4, func: "S" },
+      { degree: 4, quality: "dom7", duration: 4, func: "D" },
     ],
   },
   {
