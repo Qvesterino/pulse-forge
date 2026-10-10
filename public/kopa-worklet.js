@@ -42,6 +42,7 @@
         pitchT: 0,
         bodyPhase: 0,
         tailPhase: 0,
+        subPhase: 0,
         clickEnv: 0,
         bodyEnv: 0,
         tailEnv: 0,
@@ -84,6 +85,7 @@
       voice.pitchT = 0;
       voice.bodyPhase = 0;
       voice.tailPhase = 0;
+      voice.subPhase = 0;
       voice.clickEnv = clamp(velocity > 0 ? velocity : 1, 0, 1);
       voice.bodyEnv = 1;
       voice.tailEnv = 1;
@@ -186,9 +188,12 @@
           voice.pitchT = pitchTimeSec > 0 ? Math.min(1, voice.samples / (pitchTimeSec * sr)) : 1;
           const t = voice.pitchT;
           let pitchEnv;
-          if (pitchCurve === 0) pitchEnv = (1 - t) * (1 - t);
-          else if (pitchCurve === 1) pitchEnv = 1 - t;
-          else if (pitchCurve === 2) pitchEnv = t < 0.35 ? 1 : 0;
+          if (pitchCurve === 0)
+            pitchEnv = (1 - t) * (1 - t);
+          else if (pitchCurve === 1)
+            pitchEnv = 1 - t;
+          else if (pitchCurve === 2)
+            pitchEnv = t < 0.35 ? 1 : 0;
           else pitchEnv = t < 0.15 ? 1 : Math.max(0, 1 - (t - 0.15) / 0.85);
           const f0 = voice.targetF0 * Math.pow(2, pitchAmount * pitchEnv / 12);
           voice.clickEnv = Math.max(0, voice.clickEnv - voice.clickEnv * clickCoef);
@@ -205,16 +210,20 @@
           }
           const bodyF = f0 * Math.pow(2, bodyTune / 12);
           const tailF = voice.targetF0 * Math.pow(2, tailTune / 12);
+          const subF = bodyF / 2 * Math.pow(2, subTune / 12);
           voice.bodyPhase += twoPi * bodyF / sr;
           voice.tailPhase += twoPi * tailF / sr;
+          voice.subPhase += twoPi * subF / sr;
           if (voice.bodyPhase >= twoPi) voice.bodyPhase -= twoPi;
           if (voice.tailPhase >= twoPi) voice.tailPhase -= twoPi;
+          if (voice.subPhase >= twoPi) voice.subPhase -= twoPi;
           let body;
           if (bodyWave === 0) body = Math.sin(voice.bodyPhase);
-          else if (bodyWave === 1) body = 1 - 2 * Math.abs(voice.bodyPhase / Math.PI - 1);
+          else if (bodyWave === 1)
+            body = 1 - 2 * Math.abs(voice.bodyPhase / Math.PI - 1);
           else body = voice.bodyPhase / Math.PI - 1;
           const bodySignal = (body + bodyHollow * Math.sin(2 * voice.bodyPhase)) / (1 + bodyHollow);
-          const subSignal = Math.sin(voice.bodyPhase + subTune * Math.PI / 12);
+          const subSignal = Math.sin(voice.subPhase);
           const lcg = Math.imul(voice.noiseLcg, 1664525) + 1013904223 >>> 0;
           voice.noiseLcg = lcg;
           const noise = lcg / 4294967295 * 2 - 1;
