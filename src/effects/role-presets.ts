@@ -93,6 +93,10 @@ const ROLE_PRESETS: Partial<Record<EffectType, RoleTable>> = {
     lead: { delayMs: 14, width: 0.5 },
     chords: { delayMs: 18, width: 0.6 },
   },
+  bassHarmonic: {
+    bass: { drive: 0.5, focusHz: 85, subAnchor: 0.75, mix: 0.6 },
+    drums: { drive: 0.45, focusHz: 80, subAnchor: 0.7, lowCut: 55, mix: 0.5 },
+  },
 };
 
 /**
