@@ -73,7 +73,7 @@ describe("browser compatibility — feature detection", () => {
   });
 
   it("worklet loader refuses to load into contexts without audioWorklet", () => {
-    // Existing hardening: loadCoreWorklets / loadPluginWorklet short-
+    // Existing hardening: loadCoreWorklets / loadLazyWorklet short-
     // circuit when `ctx.audioWorklet` is undefined (jsdom, sandboxed
     // iframes, future engines). Pin the gate so a refactor that
     // drops it falls back to throwing on addModule() instead.

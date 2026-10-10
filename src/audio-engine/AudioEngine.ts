@@ -25,9 +25,9 @@ import {
   isWorkletReady,
   loadCoreWorklets,
   loadInstrumentWorklet,
-  loadPluginWorklet,
-  PLUGIN_WORKLET_TYPES,
-  type PluginWorkletType,
+  loadLazyWorklet,
+  LAZY_WORKLET_TYPES,
+  type LazyWorkletType,
 } from "../audio-worklets/loader";
 import { MeteringRig, measureTruePeak as measureTruePeakImpl } from "./meteringRig";
 import { PreviewDeck, type MasterCompareSide } from "./previewDeck";
@@ -1073,14 +1073,14 @@ export class AudioEngine {
       if (fx.bypassed) continue;
       const def = EFFECT_DEFS[fx.type];
       if (!def) continue;
-      // Vendored plugin modules load on demand: the first chain build runs
+      // Lazy worklet modules load on demand: the first chain build runs
       // the honest bypass runtime, the module fetch kicks off here, and the
       // rebuild hot-swaps the real processor once it lands.
       if (
-        (PLUGIN_WORKLET_TYPES as readonly string[]).includes(fx.type) &&
-        !isWorkletReady(fx.type as PluginWorkletType, ctx)
+        (LAZY_WORKLET_TYPES as readonly string[]).includes(fx.type) &&
+        !isWorkletReady(fx.type as LazyWorkletType, ctx)
       ) {
-        void loadPluginWorklet(ctx, fx.type as PluginWorkletType)
+        void loadLazyWorklet(ctx, fx.type as LazyWorkletType)
           .then(() => {
             if (isLiveAudioContext(ctx)) this.queueFxRebuild(ctx);
           })

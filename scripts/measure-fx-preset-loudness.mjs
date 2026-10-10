@@ -23,7 +23,11 @@ const GAIN_MIN_DB = -18;
 const GAIN_MAX_DB = 12;
 const PEAK_CEILING_DB = -1;
 
-const server = await createServer({ root, logLevel: "error", server: { port: PORT, host: "127.0.0.1", strictPort: true } });
+const server = await createServer({
+  root,
+  logLevel: "error",
+  server: { port: PORT, host: "127.0.0.1", strictPort: true },
+});
 await server.listen();
 const browser = await chromium.launch();
 const page = await browser.newPage();
@@ -72,12 +76,12 @@ try {
       };
       if (name === "drums") {
         for (let beat = 0; beat < 8; beat++) {
-          const start = Math.round((beat * 60 / 120) * SR);
+          const start = Math.round(((beat * 60) / 120) * SR);
           if (beat % 2 === 0) {
             for (let i = 0; i < Math.round(0.24 * SR); i++) {
               const t = i / SR;
               const env = Math.exp(-t * 18);
-              const phase = 2 * Math.PI * (48 * t + 24 * (1 - Math.exp(-t * 22)) / 22);
+              const phase = 2 * Math.PI * (48 * t + (24 * (1 - Math.exp(-t * 22))) / 22);
               const sample = 0.68 * env * Math.sin(phase);
               add(left, start + i, sample);
               add(right, start + i, sample * 0.98);
@@ -86,14 +90,15 @@ try {
             for (let i = 0; i < Math.round(0.15 * SR); i++) {
               const t = i / SR;
               const noise = random() * 2 - 1;
-              const sample = 0.32 * Math.exp(-t * 28) * noise + 0.12 * Math.exp(-t * 20) * Math.sin(2 * Math.PI * 185 * t);
+              const sample =
+                0.32 * Math.exp(-t * 28) * noise + 0.12 * Math.exp(-t * 20) * Math.sin(2 * Math.PI * 185 * t);
               add(left, start + i, sample);
               add(right, start + i, sample * 0.88);
             }
           }
         }
         for (let sixteenth = 0; sixteenth < 32; sixteenth++) {
-          const start = Math.round((sixteenth * 0.125) * SR);
+          const start = Math.round(sixteenth * 0.125 * SR);
           for (let i = 0; i < Math.round(0.028 * SR); i++) {
             const t = i / SR;
             const sample = 0.075 * Math.exp(-t * 115) * (random() * 2 - 1);
@@ -104,7 +109,7 @@ try {
       } else if (name === "harmonic") {
         const notes = [55, 82.41, 110, 164.81, 220];
         for (let beat = 0; beat < 8; beat++) {
-          const start = Math.round((beat * 0.5) * SR);
+          const start = Math.round(beat * 0.5 * SR);
           const root = beat < 4 ? 0 : 2;
           for (let i = 0; i < Math.round(0.48 * SR); i++) {
             const t = i / SR;
@@ -120,7 +125,7 @@ try {
         // A vowel-like additive voice with slow formant movement and a light
         // breath component. It is a deterministic reference, not a vocal IR.
         for (let beat = 0; beat < 8; beat += 2) {
-          const start = Math.round((beat * 0.5) * SR);
+          const start = Math.round(beat * 0.5 * SR);
           for (let i = 0; i < Math.round(0.82 * SR); i++) {
             const t = i / SR;
             const env = Math.min(1, t * 45) * Math.exp(-t * 1.35);
@@ -128,7 +133,8 @@ try {
             let sample = 0;
             for (let harmonic = 1; harmonic <= 32; harmonic++) {
               const hz = f0 * harmonic;
-              const formant = 0.75 * Math.exp(-Math.pow((hz - 720) / 420, 2)) +
+              const formant =
+                0.75 * Math.exp(-Math.pow((hz - 720) / 420, 2)) +
                 0.5 * Math.exp(-Math.pow((hz - 1450) / 650, 2)) +
                 0.3 * Math.exp(-Math.pow((hz - 2600) / 900, 2));
               sample += (formant / harmonic) * Math.sin(2 * Math.PI * hz * t);
@@ -146,7 +152,8 @@ try {
 
     function makeInstance(preset, probeName) {
       const params = registry.defaultParamsOf(preset.type);
-      for (const [id, value] of Object.entries(preset.params)) params[id] = registry.clampEffectParam(preset.type, id, value);
+      for (const [id, value] of Object.entries(preset.params))
+        params[id] = registry.clampEffectParam(preset.type, id, value);
       return {
         id: `fx-loudness-${preset.id}-${probeName}`,
         type: preset.type,
@@ -168,7 +175,7 @@ try {
       const ctx = new OfflineAudioContext(2, Math.ceil(SR * RENDER_SECONDS), SR);
       await worklets.loadCoreWorklets(ctx);
       for (const type of neededTypes) {
-        if ((worklets.PLUGIN_WORKLET_TYPES).includes(type)) await worklets.loadPluginWorklet(ctx, type);
+        if (worklets.LAZY_WORKLET_TYPES.includes(type)) await worklets.loadLazyWorklet(ctx, type);
         if (registry.WORKLET_EFFECTS[type] && !worklets.isWorkletReady(type, ctx)) {
           throw new Error(`Required worklet ${type} did not load`);
         }
@@ -210,7 +217,11 @@ try {
         return { lufs: reading.integrated, measured: reading.measured, peakDb: peakDb(channels) };
       } finally {
         for (const runtime of runtimes) {
-          try { runtime.dispose(); } catch { /* render already finished */ }
+          try {
+            runtime.dispose();
+          } catch {
+            /* render already finished */
+          }
         }
       }
     }
@@ -229,11 +240,18 @@ try {
       for (const probe of probeNames) {
         readings.push(await renderChain([preset], probe));
       }
-      const valid = readings.filter((reading) => reading.measured && Number.isFinite(reading.lufs) && reading.lufs > -70);
+      const valid = readings.filter(
+        (reading) => reading.measured && Number.isFinite(reading.lufs) && reading.lufs > -70,
+      );
       const loudness = valid.map((reading) => reading.lufs).sort((a, b) => a - b);
       const median = loudness.length ? loudness[Math.floor(loudness.length / 2)] : null;
       const peaks = valid.map((reading) => reading.peakDb);
-      measurements.push({ id: preset.id, type: preset.type, lufs: median, peakDb: peaks.length ? Math.max(...peaks) : -120 });
+      measurements.push({
+        id: preset.id,
+        type: preset.type,
+        lufs: median,
+        peakDb: peaks.length ? Math.max(...peaks) : -120,
+      });
       if ((index + 1) % 10 === 0 || index + 1 === corePresets.length) {
         console.log(`measured ${index + 1}/${corePresets.length} FX presets`);
       }
@@ -252,7 +270,9 @@ try {
 
     const typeTargets = {};
     for (const type of new Set(measurements.map((entry) => entry.type))) {
-      const values = measurements.filter((entry) => entry.type === type && entry.lufs !== null).map((entry) => entry.lufs);
+      const values = measurements
+        .filter((entry) => entry.type === type && entry.lufs !== null)
+        .map((entry) => entry.lufs);
       if (values.length) typeTargets[type] = Math.round(medianOf(values) * 10) / 10;
     }
     const presetGains = {};
@@ -309,10 +329,11 @@ try {
     };
   });
 
-  const entries = (record, precision = 1) => Object.entries(record)
-    .filter(([, value]) => value !== null && Number.isFinite(value))
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([id, value]) => `  ${JSON.stringify(id)}: ${Number(value).toFixed(precision)},`);
+  const entries = (record, precision = 1) =>
+    Object.entries(record)
+      .filter(([, value]) => value !== null && Number.isFinite(value))
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([id, value]) => `  ${JSON.stringify(id)}: ${Number(value).toFixed(precision)},`);
   const file = `/**
  * GENERATED by scripts/measure-fx-preset-loudness.mjs — do not edit by hand.
  * Probe: deterministic two-bar drum, harmonic and voice-like loops at 120 BPM,
@@ -343,10 +364,15 @@ ${entries(result.chainTargets).join("\n")}
 `;
   writeFileSync(outFile, file, "utf8");
   console.log(`[fx-loudness] wrote ${outFile}`);
-  console.log(`[fx-loudness] ${Object.keys(result.presetGains).length} presets, ${Object.keys(result.chainGains).length} chains`);
-  if (result.unmeasured.length) console.warn(`[fx-loudness] unmeasured (left at 0 dB): ${result.unmeasured.join(", ")}`);
-  if (result.unsafePresets.length) console.warn(`[fx-loudness] preset peaks still above -1 dBFS: ${JSON.stringify(result.unsafePresets)}`);
-  if (result.unsafeChains.length) console.warn(`[fx-loudness] chain peaks still above -1 dBFS: ${JSON.stringify(result.unsafeChains)}`);
+  console.log(
+    `[fx-loudness] ${Object.keys(result.presetGains).length} presets, ${Object.keys(result.chainGains).length} chains`,
+  );
+  if (result.unmeasured.length)
+    console.warn(`[fx-loudness] unmeasured (left at 0 dB): ${result.unmeasured.join(", ")}`);
+  if (result.unsafePresets.length)
+    console.warn(`[fx-loudness] preset peaks still above -1 dBFS: ${JSON.stringify(result.unsafePresets)}`);
+  if (result.unsafeChains.length)
+    console.warn(`[fx-loudness] chain peaks still above -1 dBFS: ${JSON.stringify(result.unsafeChains)}`);
 } finally {
   await browser.close();
   await server.close();

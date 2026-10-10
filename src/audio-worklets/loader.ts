@@ -12,12 +12,12 @@ import { assetUrl } from "../shared/assetUrls";
  * Modules come in two weight classes:
  *  - CORE (bitcrusher + core-processor: sidechain, transient, gate, limiter,
  *    envFollower, compressor) — a few KB, used by stock effects everywhere.
- *  - PLUGIN (fxeq / ultina / ozvena) — vendored DSP suites, 120–260 KB each.
- *    They load on demand: only when a project actually uses the effect (see
- *    ensureWorkletsForDoc) or when the engine builds its chain (which then
- *    hot-swaps the bypass runtime once the module lands). Loading ~500 KB of
- *    reverb EQ a beat never touches would be pure waste on metered/mobile
- *    connections.
+ *  - LAZY (fxeq / ultina / ozvena / morphdynamics / bassHarmonic) — heavier
+ *    DSP (vendored suites + first-party processors), loaded on demand: only
+ *    when a project actually uses the effect (see ensureWorkletsForDoc) or
+ *    when the engine builds its chain (which then hot-swaps the bypass
+ *    runtime once the module lands). Loading ~500 KB of reverb EQ a beat
+ *    never touches would be pure waste on metered/mobile connections.
  *
  * All failures are swallowed: loaders never reject, callers fire-and-forget,
  * and factories keep the fallback/bypass implementation for contexts that
@@ -28,11 +28,11 @@ const readyContexts = new WeakSet<BaseAudioContext>();
 const failedContexts = new WeakSet<BaseAudioContext>();
 const inflight = new Map<BaseAudioContext, Promise<void>>();
 
-/** Vendored plugin DSP suites — loaded per effect type, on demand. */
-export const PLUGIN_WORKLET_TYPES = ["fxeq", "ultina", "ozvena", "morphdynamics"] as const;
-export type PluginWorkletType = (typeof PLUGIN_WORKLET_TYPES)[number];
+/** Lazy worklet DSP modules (vendored suites + first-party) — per effect type, on demand. */
+export const LAZY_WORKLET_TYPES = ["fxeq", "ultina", "ozvena", "morphdynamics"] as const;
+export type LazyWorkletType = (typeof LAZY_WORKLET_TYPES)[number];
 
-const PLUGIN_MODULE_URLS: Record<PluginWorkletType, string> = {
+const LAZY_MODULE_URLS: Record<LazyWorkletType, string> = {
   fxeq: new URL(assetUrl("/fxeq-worklet.js"), import.meta.url).href,
   ultina: new URL(assetUrl("/ultina-worklet.js"), import.meta.url).href,
   ozvena: new URL(assetUrl("/ozvena-worklet.js"), import.meta.url).href,
@@ -83,7 +83,7 @@ const CORE_TYPES = [
   "generativePlayer",
 ] as const;
 
-export type WorkletType = (typeof CORE_TYPES)[number] | PluginWorkletType;
+export type WorkletType = (typeof CORE_TYPES)[number] | LazyWorkletType;
 
 /**
  * FLAGSHIP INSTRUMENT worklets - loaded on demand like plugin effects, NOT in
@@ -98,8 +98,8 @@ const INSTRUMENT_MODULE_URLS: Record<InstrumentWorkletType, string> = {
   tsar: new URL(assetUrl("/tsar-worklet.js"), import.meta.url).href,
 };
 
-const readyPluginTypes = new WeakMap<BaseAudioContext, Set<PluginWorkletType>>();
-const pluginInflight = new Map<BaseAudioContext, Map<PluginWorkletType, Promise<void>>>();
+const readyLazyTypes = new WeakMap<BaseAudioContext, Set<LazyWorkletType>>();
+const lazyInflight = new Map<BaseAudioContext, Map<LazyWorkletType, Promise<void>>>();
 const readyInstrumentTypes = new WeakMap<BaseAudioContext, Set<InstrumentWorkletType>>();
 const instrumentInflight = new Map<BaseAudioContext, Map<InstrumentWorkletType, Promise<void>>>();
 
@@ -108,8 +108,8 @@ export function isWorkletReady(
   ctx: BaseAudioContext | null | undefined,
 ): boolean {
   if (!ctx || !readyContexts.has(ctx)) return false;
-  if ((PLUGIN_WORKLET_TYPES as readonly string[]).includes(type)) {
-    return readyPluginTypes.get(ctx)?.has(type as PluginWorkletType) ?? false;
+  if ((LAZY_WORKLET_TYPES as readonly string[]).includes(type)) {
+    return readyLazyTypes.get(ctx)?.has(type as LazyWorkletType) ?? false;
   }
   if ((INSTRUMENT_WORKLET_TYPES as readonly string[]).includes(type)) {
     return readyInstrumentTypes.get(ctx)?.has(type as InstrumentWorkletType) ?? false;
@@ -139,7 +139,7 @@ export async function loadCoreWorklets(ctx: BaseAudioContext): Promise<void> {
   ])
     .then(() => {
       readyContexts.add(ctx);
-      readyPluginTypes.set(ctx, new Set());
+      readyLazyTypes.set(ctx, new Set());
       // Instrument worklets (TSAR) track readiness on the same per-context
       // mark; without this set the loader could never report a loaded
       // instrument module (measured by the E2E lazy-load check).
@@ -157,36 +157,37 @@ export async function loadCoreWorklets(ctx: BaseAudioContext): Promise<void> {
 }
 
 /**
- * Load ONE vendored plugin module (fxeq/ultina/ozvena) into the context.
- * Must run after (or together with) the core modules — plugin readiness is
- * tracked on top of the core "context ready" mark. Idempotent per context.
+ * Load ONE lazy worklet module (fxeq/ultina/ozvena/morphdynamics/bassHarmonic)
+ * into the context. Must run after (or together with) the core modules — lazy
+ * readiness is tracked on top of the core "context ready" mark. Idempotent
+ * per context.
  */
-export async function loadPluginWorklet(ctx: BaseAudioContext, type: PluginWorkletType): Promise<void> {
+export async function loadLazyWorklet(ctx: BaseAudioContext, type: LazyWorkletType): Promise<void> {
   if (!ctx?.audioWorklet) return;
   await loadCoreWorklets(ctx);
   if (failedContexts.has(ctx)) return;
-  const pluginSet = readyPluginTypes.get(ctx);
-  if (pluginSet?.has(type)) return;
+  const lazySet = readyLazyTypes.get(ctx);
+  if (lazySet?.has(type)) return;
 
-  let perCtx = pluginInflight.get(ctx);
+  let perCtx = lazyInflight.get(ctx);
   if (perCtx?.get(type)) return perCtx.get(type);
 
   const load = ctx.audioWorklet
-    .addModule(PLUGIN_MODULE_URLS[type])
+    .addModule(LAZY_MODULE_URLS[type])
     .then(() => {
-      readyPluginTypes.get(ctx)?.add(type);
+      readyLazyTypes.get(ctx)?.add(type);
     })
     .catch((err) => {
       console.warn(`[audio-worklets] ${type} module load failed, effect stays bypassed:`, err);
     })
     .finally(() => {
-      perCtx = pluginInflight.get(ctx);
+      perCtx = lazyInflight.get(ctx);
       perCtx?.delete(type);
-      if (perCtx && perCtx.size === 0) pluginInflight.delete(ctx);
+      if (perCtx && perCtx.size === 0) lazyInflight.delete(ctx);
     });
   if (!perCtx) {
     perCtx = new Map();
-    pluginInflight.set(ctx, perCtx);
+    lazyInflight.set(ctx, perCtx);
   }
   perCtx.set(type, load);
   return load;
@@ -194,7 +195,7 @@ export async function loadPluginWorklet(ctx: BaseAudioContext, type: PluginWorkl
 
 /**
  * Load ONE flagship INSTRUMENT module (tsar) into the context. Same contract
- * as the plugin loader: idempotent per context, never rejects, and the
+ * as the lazy loader: idempotent per context, never rejects, and the
  * factory keeps a fallback for contexts where the module is unavailable.
  */
 export async function loadInstrumentWorklet(ctx: BaseAudioContext, type: InstrumentWorkletType): Promise<void> {
@@ -229,18 +230,18 @@ export async function loadInstrumentWorklet(ctx: BaseAudioContext, type: Instrum
 }
 
 /**
- * Load the plugin + instrument worklet modules a PROJECT actually uses into
- * the context. Returns the set of PLUGIN types that are ready afterwards —
+ * Load the lazy effect + instrument worklet modules a PROJECT actually uses
+ * into the context. Returns the set of LAZY types that are ready afterwards —
  * callers use it to decide whether an FX rebuild is worth it. Instrument
  * worklets are fire-and-forget from the caller's perspective (the factory
  * hot-swaps when the module lands).
  */
-export async function ensureWorkletsForDoc(doc: unknown, ctx: BaseAudioContext): Promise<PluginWorkletType[]> {
+export async function ensureWorkletsForDoc(doc: unknown, ctx: BaseAudioContext): Promise<LazyWorkletType[]> {
   await loadCoreWorklets(ctx);
-  const wanted = pluginTypesInDoc(doc);
+  const wanted = lazyWorkletTypesInDoc(doc);
   const instrumentWanted = instrumentWorkletTypesInDoc(doc);
   await Promise.all([
-    ...wanted.map((type) => loadPluginWorklet(ctx, type)),
+    ...wanted.map((type) => loadLazyWorklet(ctx, type)),
     ...instrumentWanted.map((type) => loadInstrumentWorklet(ctx, type)),
   ]);
   return wanted.filter((type) => isWorkletReady(type, ctx));
@@ -261,16 +262,16 @@ export function instrumentWorkletTypesInDoc(doc: unknown): InstrumentWorkletType
   return [...found];
 }
 
-/** Which vendored plugin effects does the project reference (pure). */
-export function pluginTypesInDoc(doc: unknown): PluginWorkletType[] {
+/** Which lazy worklet effects does the project reference (pure). */
+export function lazyWorkletTypesInDoc(doc: unknown): LazyWorkletType[] {
   if (typeof doc !== "object" || doc === null) return [];
-  const found = new Set<PluginWorkletType>();
+  const found = new Set<LazyWorkletType>();
   const scan = (effects: unknown) => {
     if (!Array.isArray(effects)) return;
     for (const effect of effects) {
       const type = (effect as { type?: unknown } | null)?.type;
-      if (typeof type === "string" && (PLUGIN_WORKLET_TYPES as readonly string[]).includes(type)) {
-        found.add(type as PluginWorkletType);
+      if (typeof type === "string" && (LAZY_WORKLET_TYPES as readonly string[]).includes(type)) {
+        found.add(type as LazyWorkletType);
       }
     }
   };
@@ -284,13 +285,13 @@ export function pluginTypesInDoc(doc: unknown): PluginWorkletType[] {
 }
 
 /**
- * Legacy entry point: core + ALL plugin modules (the pre-lazy behavior).
+ * Legacy entry point: core + ALL lazy modules (the pre-lazy behavior).
  * Kept for the browser check suite, which exercises every worklet path.
  */
 export async function loadAllWorklets(ctx: BaseAudioContext): Promise<void> {
   await loadCoreWorklets(ctx);
   await Promise.all([
-    ...PLUGIN_WORKLET_TYPES.map((type) => loadPluginWorklet(ctx, type)),
+    ...LAZY_WORKLET_TYPES.map((type) => loadLazyWorklet(ctx, type)),
     ...INSTRUMENT_WORKLET_TYPES.map((type) => loadInstrumentWorklet(ctx, type)),
   ]);
 }

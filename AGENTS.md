@@ -126,7 +126,7 @@ These are the rules every coding agent must follow. They are encoded in `ARCHITE
 2. Mirror the upstream source into `src/effects/<name>-core/` and add a reconciliation script under `scripts/vendor-<name>.mjs`. Refuse to drop reconciliation markers the upstream snapshot lacks.
 3. Add a worklet entry under `src/audio-worklets/` and a build script `scripts/build-<name>-worklet.mjs`.
 4. Add a golden-vector test suite under `tests/<name>-vectors/` (input → expected output, bit-exact).
-5. Wire the load order into `src/audio-worklets/loader.ts` (`PLUGIN_WORKLET_TYPES`).
+5. Wire the load order into `src/audio-worklets/loader.ts` (`LAZY_WORKLET_TYPES`).
 6. Add a panel under `src/ui/<Name>Panel.tsx` and wire it into `src/ui/dockLayout.ts`.
 7. Update `docs/CURRENT-STATE.md` (bump the 5 flagship count + add a row to the flagship table).
 

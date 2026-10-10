@@ -1,6 +1,6 @@
 /**
  * TSAR AudioWorklet entry - bundled by scripts/build-tsar-worklet.mjs into
- * public/tsar-worklet.js (loaded on demand; see PLUGIN_WORKLET_TYPES in
+ * public/tsar-worklet.js (loaded on demand; see LAZY_WORKLET_TYPES in
  * src/audio-worklets/loader.ts and docs/TSAR-ROADMAP.md T1).
  *
  * Thin wrapper: ALL DSP lives in src/tsar/dsp/tsarProcessor.ts (typed,
