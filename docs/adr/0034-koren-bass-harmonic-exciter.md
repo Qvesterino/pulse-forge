@@ -79,3 +79,47 @@ Two technical seams needed a decision:
   surfaces (`EFFECT_ORDER`, `CORE_EFFECT_ORDER`) include the type.
 - `npm run presets:fx-loudness` regenerated `FACTORY_FX_PRESET_GAIN_DB` with
   the four `bassharmonic-*` presets.
+
+## Addendum (2026-10-10) — wave-2 DSP: YIN tracking, phase coherence, deficit, CHARACTER
+
+The wave-1 detector was a zero-crossing-rate estimator: on harmonic-rich
+basses the extra edges read an octave high (a 55 + 110 Hz signal tracked as
+110 Hz and generated 220/330 — harmonics on the wrong root). Wave 2 replaces
+it and adds three DSP features:
+
+1. **YIN tracker.** A DECIM = 4 decimated copy of the 300 Hz detection band
+   feeds a control-rate YIN detector (cumulative-difference
+   absolute-threshold pick + parabolic refinement, the exact detector ported
+   from `pitchcorrect-processor.js`) every 1024 native samples (~21 ms). The
+   search range IS the focus window × [0.5, 2], floored at 20 Hz; clarity
+   gate 0.85. Pitches outside the window can never be tracked — the "no
+   invented harmonics" contract is preserved by construction.
+2. **Phase coherence.** Each accepted rising zero crossing of the detection
+   band (spacing ≥ 0.45 × the tracked period — harmonic-induced extra edges
+   are rejected) nudges every active harmonic accumulator toward 0 phase
+   (gain 0.5, clamped ±0.35 rad/crossing). The generated layer stays
+   phase-locked to the dry fundamental (measured lock offset matches the
+   detection filter's phase lag, −2·atan(f0/300) for the 2nd harmonic)
+   instead of beating against it.
+3. **Deficit generation.** Hann-windowed Goertzel magnitudes at f0/2f0/3f0
+   over the decimated ring, compensated for the one-pole response
+   (`1/sqrt(1+(f/300)²)`), measure the input's existing 2nd/3rd-harmonic
+   ratios. Generated partials scale with the deficit against targets
+   0.35/0.30 (one-pole 0.35 smoothing at the detection cadence); higher
+   partials ride the 2nd-harmonic deficit as an even proxy. An already-fat
+   bass is not doubled; a pure sine gets the full stack.
+4. **`character` (0 CLEAN / 1 SAT / 2 FOLD)** shapes the generated layer
+   only — soft `tanh` saturation or a sine wavefolder. `bassharmonic-drill-growl`
+   ships FOLD. The AudioParam descriptor matches the def (FULL SWEEP); no
+   schema bump — effect instances normalize against `EFFECT_META`, so
+   absent params clamp to the declared default 0 (CLEAN).
+
+Validation additions (`tests/bass-harmonic.test.ts`, wave-2 block): octave
+safety (55 + strong 110 still tracks 55 — 3rd lands at 165, not 330),
+phase-lock invariance across input phases (φ ∈ {0, 0.35π, 0.8π} → the 2nd
+harmonic's phase minus 2φ is constant and matches the theory offset),
+deficit suppression (a rich input's generated 2nd collapses), CHARACTER
+odd-harmonic energy (SAT/FOLD vs the CLEAN floor). The four `bassharmonic-*`
+preset gains were re-measured (`presets:fx-loudness`): 808 Phone 0.9 → 0.7 dB,
+Drill Growl 2.9 → 3.4 dB. Determinism, `mix = 0` bit-exactness and the
+`degraded` fallback contract are unchanged.

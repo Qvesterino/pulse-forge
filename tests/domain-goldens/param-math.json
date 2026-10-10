@@ -1304,6 +1304,7 @@
             "range": 2,
             "attack": 0.008,
             "release": 0.12,
+            "character": 0,
             "mix": 0.6,
             "output": 0
           }
