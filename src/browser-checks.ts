@@ -30,7 +30,7 @@ import { applyGenerationResultCommand } from "./commands/aiPattern";
 import { generateAsyncResult } from "./intent/pipeline";
 import { ProjectStore } from "./store/ProjectStore";
 import { PPQ } from "./project-model/types";
-import { loadAllWorklets, isWorkletReady } from "./audio-worklets/loader";
+import { loadAllWorklets, loadLazyWorklet, isWorkletReady } from "./audio-worklets/loader";
 import { createBitcrusherNode } from "./audio-worklets/bitcrusher-node";
 import { AudioEngine } from "./audio-engine/AudioEngine";
 import { LiveRecorder } from "./audio-engine/recorder";
@@ -1139,6 +1139,65 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
   } catch (error) {
     check(
       "KOPA: offline export is audible through the event-queue worklet (lazy load + processorOptions seed)",
+      false,
+      String(error),
+    );
+  }
+
+  // KOREŇ (ADR 0034) — the lazy bass-harmonic effect worklet on a real render:
+  // a 55 Hz sine through the loaded module must gain measurable 110 Hz (2nd
+  // harmonic) energy at DRIVE max. This is the host-level proof the checklist
+  // §6/§13 demands (worklet actually loaded via loadLazyWorklet, min/max moves
+  // a measured metric).
+  try {
+    const ctx = new OfflineAudioContext(1, SR, SR);
+    await loadCoreWorklets(ctx);
+    await loadLazyWorklet(ctx, "bassHarmonic");
+    const def = EFFECT_DEFS.bassHarmonic;
+    const rt = def.factory(
+      ctx,
+      {
+        id: "check-koren",
+        type: "bassHarmonic",
+        bypassed: false,
+        params: { ...defaultParamsOf("bassHarmonic"), drive: 1, mix: 1, subAnchor: 0.2, focusHz: 90 },
+      },
+      { bpm: 124 },
+    );
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = 55;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.5;
+    osc.connect(gain).connect(rt.input);
+    rt.output.connect(ctx.destination);
+    osc.start(0);
+    const buffer = await ctx.startRendering();
+    rt.dispose();
+    const data = buffer.getChannelData(0);
+    const goertzel = (hz: number): number => {
+      const from = Math.floor(data.length * 0.5);
+      const n = data.length - from;
+      const coeff = 2 * Math.cos((2 * Math.PI * hz) / SR);
+      let s1 = 0;
+      let s2 = 0;
+      for (let i = from; i < data.length; i++) {
+        const s0 = data[i]! + coeff * s1 - s2;
+        s2 = s1;
+        s1 = s0;
+      }
+      return Math.sqrt(Math.max(0, s1 * s1 + s2 * s2 - coeff * s1 * s2)) / n;
+    };
+    const h2 = goertzel(110);
+    const h1 = goertzel(55);
+    check(
+      "KOREŇ: lazy worklet generates the missing fundamental's 2nd harmonic on a real render",
+      isWorkletReady("bassHarmonic", ctx) && h2 > 0.005 && h2 > h1 * 0.1,
+      `ready=${isWorkletReady("bassHarmonic", ctx)} h2=${h2.toFixed(4)} h1=${h1.toFixed(4)}`,
+    );
+  } catch (error) {
+    check(
+      "KOREŇ: lazy worklet generates the missing fundamental's 2nd harmonic on a real render",
       false,
       String(error),
     );
