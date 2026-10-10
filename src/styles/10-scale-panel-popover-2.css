@@ -549,7 +549,7 @@ html {
   top: 2px;
   height: 22px;
   border-radius: 6px;
-  background: linear-gradient(180deg, rgba(168, 85, 247, 0.30), rgba(168, 85, 247, 0.12));
+  background: linear-gradient(180deg, rgba(168, 85, 247, 0.3), rgba(168, 85, 247, 0.12));
   border: 1px solid rgba(192, 132, 252, 0.55);
   color: #e9d5ff;
   font-size: 10px;
@@ -575,6 +575,14 @@ html {
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
   padding: 1px 4px;
+}
+.arr-chord-editor-sep {
+  width: 1px;
+  height: 14px;
+  background: rgba(255, 255, 255, 0.15);
+}
+.arr-chord-editor .arr-chord-edit-apply:disabled {
+  opacity: 0.4;
 }
 .arr-chord-editor select,
 .arr-chord-editor button {

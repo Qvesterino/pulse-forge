@@ -103,7 +103,7 @@ describe("C4 setChord", () => {
 
 describe("C5 normalize round-trip", () => {
   it("valid chords survive sorted; invalid shapes drop; schema includes the chord track", () => {
-    expect(SCHEMA_VERSION).toBe(18);
+    expect(SCHEMA_VERSION).toBe(20);
     const { store, chordId } = fixture();
     store.execute(addChord(store.doc, 4, 4, 7, "min7"));
     const normalized = normalizeProject(store.doc);

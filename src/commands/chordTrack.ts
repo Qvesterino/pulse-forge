@@ -1,7 +1,8 @@
 import type { Command } from "./types";
 import type { ChordEvent, ProjectDocument } from "../project-model/types";
 import type { ChordQuality } from "../project-model/chords";
-import { CHORD_QUALITIES } from "../project-model/chords";
+import { CHORD_QUALITIES, chordAtTick, nearestChordPitch } from "../project-model/chords";
+import { patternBaseTickForClip } from "../project-model/events";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
 import { PROGRESSIONS_BY_GENRE, selectProgression } from "../ai/harmony";
@@ -243,4 +244,127 @@ export function generateChordProgression(
     arrangement: { ...doc.arrangement, chords: [...kept, ...generated].sort((a, b) => a.startBar - b.startBar) },
   };
   return snapshot("generateChordProgression", `Generate "${progression.name}" (${generated.length} chords)`, doc, next);
+}
+
+/**
+ * Transpose the pitched notes played by the given SCENE clips by `semitones`.
+ *
+ * A scene clip plays its scene's pattern; the pattern's `notes` are the
+ * melodic content (drum steps live in `rows` and are deliberately NOT
+ * transposed — a kick is a kick in every key). The transposition is shared
+ * state: two clips playing the SAME pattern transpose together, exactly as
+ * they play the same edits together. Pitches clamp to 0–127; cumulative
+ * nudges past the boundary simply stop moving the clamped notes (standard
+ * MIDI-clip behavior).
+ *
+ * Audio clips are not transposable — the engine has no independent pitch
+ * shift for audio (`stretchRate` couples pitch and tempo), and silently
+ * speeding up a loop is not a transposition. Documented boundary.
+ */
+export function transposeInstrumentClips(doc: ProjectDocument, clipIds: readonly string[], semitones: number): Command {
+  if (!Number.isFinite(semitones) || semitones === 0) {
+    return snapshot("transposeInstrumentClips", "Transpose clips (no-op)", doc, doc);
+  }
+  const sceneIds = new Set(doc.arrangement.clips.filter((c) => clipIds.includes(c.id)).map((c) => c.sceneId));
+  if (sceneIds.size === 0) throw new Error("Select at least one scene clip to transpose");
+  const shifted = new Set<string>();
+  const next: ProjectDocument = {
+    ...doc,
+    patterns: doc.patterns.map((pattern) => {
+      const notes = pattern.notes ?? {};
+      const trackIds = Object.keys(notes);
+      if (trackIds.length === 0) return pattern;
+      let touched = false;
+      const transposed: Record<string, import("../project-model/types").NoteEvent[]> = {};
+      for (const trackId of trackIds) {
+        transposed[trackId] = (notes[trackId] ?? []).map((note) => {
+          const pitch = Math.max(0, Math.min(127, note.pitch + Math.round(semitones)));
+          if (pitch !== note.pitch) touched = true;
+          return { ...note, pitch };
+        });
+      }
+      if (!touched) return pattern;
+      shifted.add(pattern.id);
+      return { ...pattern, notes: transposed };
+    }),
+  };
+  if (shifted.size === 0) return snapshot("transposeInstrumentClips", "Transpose clips (no-op)", doc, doc);
+  return snapshot(
+    "transposeInstrumentClips",
+    `Transpose ${sceneIds.size === 1 ? "1 clip" : `${sceneIds.size} clips`} ${semitones > 0 ? "+" : ""}${Math.round(semitones)} st`,
+    doc,
+    next,
+  );
+}
+
+/**
+ * CONFORM the pitched notes played by the given SCENE clips to the chord
+ * track: every note snaps (pitch only — timing NEVER changes) to the nearest
+ * tone of the chord covering the note's absolute arrangement tick. Notes
+ * outside any chord are left alone. Snap is idempotent — conforming twice
+ * changes nothing the second time.
+ *
+ * Requires the chord track to actually cover the clips: a clip with no
+ * chords under it refuses with an error (silently doing nothing would look
+ * exactly like a bug). Shared-pattern caveat applies: the pattern is
+ * conformed, so every clip playing it conforms with it.
+ */
+export function conformInstrumentClipsToChordTrack(doc: ProjectDocument, clipIds: readonly string[]): Command {
+  const chords = doc.arrangement.chords ?? [];
+  if (chords.length === 0) throw new Error("The chord track has no chords to conform to");
+  const sceneClips = doc.arrangement.clips.filter((c) => clipIds.includes(c.id));
+  if (sceneClips.length === 0) throw new Error("Select at least one scene clip to conform");
+
+  // Group the selected clips by the pattern they play; the conform anchor is
+  // the FIRST selected clip's base per pattern (multiple selected clips
+  // sharing one pattern with different positions conform against the first —
+  // bounded v1 choice, documented).
+  const anchorBaseByPattern = new Map<string, number>();
+  for (const clip of sceneClips) {
+    const scene = doc.scenes.find((s) => s.id === clip.sceneId);
+    const patternId = scene?.patternId;
+    if (!patternId || anchorBaseByPattern.has(patternId)) continue;
+    anchorBaseByPattern.set(patternId, patternBaseTickForClip(clip));
+  }
+  if (anchorBaseByPattern.size === 0) throw new Error("The selected clips have no melodic content to conform");
+
+  let touchedAny = false;
+  const conformedCount = anchorBaseByPattern.size;
+  console.log("[conform-dbg] patterns with anchor:", JSON.stringify([...anchorBaseByPattern.entries()]));
+  const next: ProjectDocument = {
+    ...doc,
+    patterns: doc.patterns.map((pattern) => {
+      const anchorBase = anchorBaseByPattern.get(pattern.id);
+      if (anchorBase === undefined) return pattern;
+      const notes = pattern.notes ?? {};
+      const trackIds = Object.keys(notes);
+      if (trackIds.length === 0) return pattern;
+      let touched = false;
+      console.log("[conform-dbg] pattern", pattern.id, "notes keys:", JSON.stringify(Object.keys(pattern.notes ?? {})));
+      const outNotes: Record<string, import("../project-model/types").NoteEvent[]> = {};
+      for (const trackId of trackIds) {
+        outNotes[trackId] = (notes[trackId] ?? []).map((note) => {
+          // Absolute arrangement tick of the note: pattern base + note start.
+          // PITCH only snaps — note timing never changes.
+          const chord = chordAtTick(chords, anchorBase + note.start);
+          if (!chord) return note;
+          const pitch = nearestChordPitch(note.pitch, chord, { min: 0, max: 127 });
+          if (pitch !== note.pitch) touched = true;
+          return pitch === note.pitch ? note : { ...note, pitch };
+        });
+      }
+      if (touched) touchedAny = true;
+      console.log("[conform-dbg] outNotes:", JSON.stringify(outNotes));
+      return { ...pattern, notes: outNotes };
+    }),
+  };
+  if (!touchedAny) {
+    return snapshot("conformInstrumentClipsToChordTrack", "Conform to chord track (no-op)", doc, doc);
+  }
+  return snapshot(
+    "conformInstrumentClipsToChordTrack",
+    `Conform ${conformedCount === 1 ? "1 pattern" : `${conformedCount} patterns`} to chord track`,
+    doc,
+    next,
+  );
 }

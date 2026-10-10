@@ -84,11 +84,13 @@ import { SNAP_GRIDS, snapBar, snapBarToTargets, snapBarsFor, snapController, sna
 import { chordName } from "../project-model/chords";
 import {
   addChord,
+  conformInstrumentClipsToChordTrack,
   generateChordProgression,
   moveChord,
   removeChord,
   resizeChord,
   setChord,
+  transposeInstrumentClips,
 } from "../commands/chordTrack";
 import { PROGRESSIONS_BY_GENRE, progressionsForGenre } from "../ai/harmony";
 import type { ChordQuality } from "../project-model/chords";
@@ -4494,6 +4496,9 @@ export function ArrangementPanel() {
               (() => {
                 const selected = (doc.arrangement.chords ?? []).find((c) => c.id === chordSel);
                 if (!selected) return null;
+                // Transpose/conform operate on the shared CLIP selection's
+                // scene clips (audio clips have no pitch to move).
+                const hasSceneClipSelection = doc.arrangement.clips.some((c) => selection.clipIds.includes(c.id));
                 return (
                   <div className="arr-chord-editor" style={{ left: 6 }}>
                     <select
@@ -4543,6 +4548,52 @@ export function ArrangementPanel() {
                       }}
                     >
                       ✕
+                    </button>
+                    <span className="arr-chord-editor-sep" aria-hidden="true" />
+                    <button
+                      type="button"
+                      className="arr-chord-edit-apply"
+                      title="Transpose the selected scene clips' notes one octave up"
+                      disabled={!hasSceneClipSelection}
+                      onClick={() => {
+                        try {
+                          execute(transposeInstrumentClips(services.store.doc, selection.clipIds, 12));
+                        } catch (error) {
+                          setActionError(error instanceof Error ? error.message : String(error));
+                        }
+                      }}
+                    >
+                      +12
+                    </button>
+                    <button
+                      type="button"
+                      className="arr-chord-edit-apply"
+                      title="Transpose the selected scene clips' notes one octave down"
+                      disabled={!hasSceneClipSelection}
+                      onClick={() => {
+                        try {
+                          execute(transposeInstrumentClips(services.store.doc, selection.clipIds, -12));
+                        } catch (error) {
+                          setActionError(error instanceof Error ? error.message : String(error));
+                        }
+                      }}
+                    >
+                      −12
+                    </button>
+                    <button
+                      type="button"
+                      className="arr-chord-edit-apply"
+                      title="Snap the selected scene clips' notes to the tones of the chord under them (chord track)"
+                      disabled={!hasSceneClipSelection}
+                      onClick={() => {
+                        try {
+                          execute(conformInstrumentClipsToChordTrack(services.store.doc, selection.clipIds));
+                        } catch (error) {
+                          setActionError(error instanceof Error ? error.message : String(error));
+                        }
+                      }}
+                    >
+                      CONFORM
                     </button>
                   </div>
                 );
