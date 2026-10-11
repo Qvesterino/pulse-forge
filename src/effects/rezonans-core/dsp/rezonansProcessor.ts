@@ -35,6 +35,7 @@ import {
   VOICE_COUNT,
 } from "../contracts/parameters.js";
 import { FrameEngine } from "./frame.js";
+import { FORMANT_BAND_COUNT, FormantBands, sampleEnvelopeLogSpaced } from "./formantBands.js";
 import {
   HarmonyBus,
   MusicalClock,
@@ -48,6 +49,17 @@ import {
 import { HarmonySolver, SOLVER_VOICES, type SolverContext } from "./solver.js";
 
 const MODES: HarmonyMode[] = ["off", "interval", "degrees", "chordTones"];
+
+/**
+ * Points in the log-spaced envelope the panel draws (ADR 0041 decision 8).
+ * 48 at the ~20 Hz meter cadence is under a thousand floats per second across
+ * the MessagePort — far cheaper than the panel re-deriving an envelope it
+ * could only get wrong.
+ */
+const ENVELOPE_METER_POINTS = 48;
+/** Low / high end of that log axis, matching the panel's frequency axis. */
+const ENVELOPE_METER_F_LO = 70;
+const ENVELOPE_METER_F_HI = 11000;
 
 export interface HarmonyContextInit {
   keyRootPc: number;
@@ -81,12 +93,22 @@ export interface RezMeters {
    * exists to prevent. `-1` means "not solved yet" (never voiced).
    */
   voiceMidi: number[];
+  /**
+   * The vocal-tract envelope, `ENVELOPE_METER_POINTS` log-spaced samples in dB
+   * between `ENVELOPE_METER_F_LO` and `ENVELOPE_METER_F_HI`. This is the SAME
+   * array the warp samples — the panel must draw the envelope the device uses,
+   * not a re-derivation that could disagree with the audio.
+   */
+  envelopeDb: Float32Array;
+  /** Detected formant centres in Hz; `-1` where that band found nothing. */
+  formants: Float32Array;
 }
 
 export class RezonansProcessor {
   private params: Record<string, number> = buildDefaultParams();
 
   private frame = new FrameEngine();
+  private bands = new FormantBands();
   private bus = new HarmonyBus();
   private solver = new HarmonySolver();
   private clock = new MusicalClock();
@@ -153,6 +175,8 @@ export class RezonansProcessor {
     voicedRatio: 0,
     claritySum: 0,
     voiceMidi: new Array<number>(VOICE_COUNT).fill(-1),
+    envelopeDb: new Float32Array(0),
+    formants: new Float32Array(FORMANT_BAND_COUNT).fill(-1),
   };
 
   // ── lifecycle ────────────────────────────────────────────────────────
@@ -169,6 +193,7 @@ export class RezonansProcessor {
 
   reset(): void {
     this.frame.reset();
+    this.bands.reset();
     this.bus.reset();
     this.solver.reset();
     this.clock.reset();
@@ -200,6 +225,9 @@ export class RezonansProcessor {
     const hop = hopFor(fftSize);
 
     this.frame.prepare(this.sampleRate, fftSize, hop);
+    this.bands.prepare(this.sampleRate, fftSize);
+    this.meters.envelopeDb = new Float32Array(ENVELOPE_METER_POINTS);
+    this.meters.formants = new Float32Array(FORMANT_BAND_COUNT).fill(-1);
     this.bus.prepare(this.sampleRate, fftSize, hop);
 
     // The dry ring is sized from the NEW latency, so this must come after
@@ -345,6 +373,20 @@ export class RezonansProcessor {
     for (let i = 0; i < VOICE_COUNT; i++) {
       this.meters.voiceMidi[i] = this.solver.lastMidi[i]!;
     }
+    // Envelope + formant telemetry is rebuilt only while a panel is attached,
+    // so a closed panel costs nothing on the audio thread.
+    if (this.metersOn) {
+      sampleEnvelopeLogSpaced(
+        this.frame.renderLogEnv,
+        this.frame.halfSpectrum,
+        this.sampleRate,
+        ENVELOPE_METER_F_LO,
+        ENVELOPE_METER_F_HI,
+        this.meters.envelopeDb,
+      );
+      const centers = this.bands.centerHz;
+      for (let b = 0; b < FORMANT_BAND_COUNT; b++) this.meters.formants[b] = centers[b]!;
+    }
     return this.meters;
   }
 
@@ -483,6 +525,11 @@ export class RezonansProcessor {
     }
 
     this.bus.setBus(1, this.params[REZ_PARAM.width] ?? 1);
+    // Band detection runs on the SAME envelope the warp is about to sample, and
+    // once per frame for the whole device — the formant structure belongs to
+    // the singer, not to a harmony voice (ADR 0041 decision 1). v2 P1 wires the
+    // detection and its telemetry only; the warp still ignores the bands.
+    this.bands.update(this.frame.renderLogEnv, this.frame.halfSpectrum);
     this.bus.renderFrame(
       this.frame.mag,
       this.frame.phase,

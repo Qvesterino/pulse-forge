@@ -145,6 +145,20 @@ export function RezonansPanel({
       const midi = Array.isArray(raw.voiceMidi)
         ? (raw.voiceMidi as unknown[]).map((v) => (typeof v === "number" && Number.isFinite(v) ? v : -1))
         : null;
+      // Envelope and formant arrays crossed a MessagePort and are treated as
+      // untrusted. A short or non-numeric array must degrade to "not shown",
+      // never to a curve drawn from undefined values.
+      const floats = (v: unknown): Float32Array | null => {
+        if (!(v instanceof Float32Array) && !Array.isArray(v)) return null;
+        const arr = v as ArrayLike<number>;
+        if (arr.length < 3) return null;
+        const out = new Float32Array(arr.length);
+        for (let i = 0; i < arr.length; i++) {
+          const n = arr[i];
+          out[i] = typeof n === "number" && Number.isFinite(n) ? n : Number.NaN;
+        }
+        return out;
+      };
       return {
         f0: num("f0"),
         clarity: num("clarity"),
@@ -152,6 +166,8 @@ export function RezonansPanel({
         latencySamples: num("latencySamples"),
         sampleRate: num("sampleRate"),
         voiceMidi: midi,
+        envelopeDb: floats(raw.envelopeDb),
+        formants: floats(raw.formants),
       };
     };
 
@@ -195,6 +211,73 @@ export function RezonansPanel({
         c2d.lineTo(x, warpH);
         c2d.stroke();
         c2d.fillText(f >= 1000 ? `${f / 1000}k` : `${f}`, x + 2, warpH - 3);
+      }
+
+      // ── the real vocal tract (ADR 0041 decision 8) ─────────────────────
+      // This is the array the warp samples, sent as-is. Drawing anything else
+      // here would put an envelope on screen that the device is not using,
+      // which is the one thing this panel must never do.
+      const env = m?.envelopeDb;
+      if (env && env.length >= 8) {
+        // dB → pixels, anchored to the measured range so a quiet vocal still
+        // fills the box instead of hugging the bottom.
+        let lo = Infinity;
+        let hi = -Infinity;
+        for (const v of env) {
+          if (!Number.isFinite(v)) continue;
+          if (v < lo) lo = v;
+          if (v > hi) hi = v;
+        }
+        if (Number.isFinite(lo) && Number.isFinite(hi)) {
+          const span = Math.max(12, hi - lo);
+          const envTop = warpH * 0.16;
+          const envH = warpH * 0.66;
+          const yEnv = (db: number) => envTop + envH - ((db - lo) / span) * envH;
+          const n = env.length;
+          c2d.beginPath();
+          for (let i = 0; i < n; i++) {
+            const v = env[i]!;
+            if (!Number.isFinite(v)) continue;
+            const x = (i / (n - 1)) * cw;
+            const y = yEnv(v);
+            if (i === 0) c2d.moveTo(x, y);
+            else c2d.lineTo(x, y);
+          }
+          c2d.strokeStyle = "rgba(150, 220, 255, 0.85)";
+          c2d.lineWidth = 1.5;
+          c2d.stroke();
+          c2d.lineWidth = 1;
+          c2d.fillStyle = "rgba(150, 220, 255, 0.45)";
+          c2d.font = "9px monospace";
+          c2d.fillText("VOCAL TRACT", 4, envTop - 3);
+
+          // Formant markers sit ON the curve, at the frequencies the detector
+          // reports. `-1` means that band found nothing this frame.
+          const forms = m?.formants;
+          if (forms) {
+            for (let b = 0; b < forms.length && b < 3; b++) {
+              const f = forms[b]!;
+              if (!Number.isFinite(f) || f <= 0) continue;
+              const x = xOf(f);
+              if (x < 0 || x > cw) continue;
+              const y = yEnv(
+                env[Math.min(n - 1, Math.round((Math.log(f / F_LO) / Math.log(F_HI / F_LO)) * (n - 1)))] ?? lo,
+              );
+              c2d.strokeStyle = "rgba(255, 255, 255, 0.55)";
+              c2d.setLineDash([2, 2]);
+              c2d.beginPath();
+              c2d.moveTo(x, y);
+              c2d.lineTo(x, warpH - 10);
+              c2d.stroke();
+              c2d.setLineDash([]);
+              c2d.fillStyle = "rgba(255, 255, 255, 0.9)";
+              c2d.beginPath();
+              c2d.arc(x, y, 3, 0, Math.PI * 2);
+              c2d.fill();
+              c2d.fillText(`F${b + 1}`, x + 5, Math.max(9, y - 4));
+            }
+          }
+        }
       }
 
       // Zero displacement.
