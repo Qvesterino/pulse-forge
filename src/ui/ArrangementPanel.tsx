@@ -5931,8 +5931,18 @@ export function ArrangementPanel() {
             detectedBpm={stretchDetectedBpm}
             projectBpm={tempoAtTick(doc.arrangement.clips, doc.scenes, stretchTarget.startBar * BAR_TICKS, doc.bpm)}
             onApply={(rate, mode) => {
-              execute(updateAudioClip(services.store.doc, stretchTarget.id, { stretchRate: rate, stretchMode: mode }));
-              setStretchClipId(null);
+              // The factory throws before `execute`'s guard can run: stretch is
+              // a direct editing verb, so a locked clip refuses here exactly as
+              // it does on the stretch drag (`stretchAudioClip`). Without this
+              // the refusal left the handler as an uncaught exception.
+              try {
+                execute(
+                  updateAudioClip(services.store.doc, stretchTarget.id, { stretchRate: rate, stretchMode: mode }),
+                );
+                setStretchClipId(null);
+              } catch (err) {
+                setActionError(err instanceof Error ? err.message : "Stretch failed");
+              }
             }}
             onClose={() => setStretchClipId(null)}
           />
