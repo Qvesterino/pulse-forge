@@ -27,7 +27,12 @@ import {
   chordAtStep,
   type MelodicFeatureInputV3,
 } from "../src/ai/symbolic/melodic-features-v3";
-import { MELODIC_DURATION_VALUES, durationClass, melodicGenreOf, type MelodicRole } from "../src/ai/symbolic/melodic-features";
+import {
+  MELODIC_DURATION_VALUES,
+  durationClass,
+  melodicGenreOf,
+  type MelodicRole,
+} from "../src/ai/symbolic/melodic-features";
 import { MELODIC_BY_GENRE, MELODIC_BY_STYLE } from "../src/ai/grooves/melodic-data";
 import { expandProgression, selectProgression, type ChordEvent } from "../src/ai/harmony";
 
@@ -72,7 +77,13 @@ function collectSequence(
   const ladder = chordLadder(genre, totalSteps, chordSeed);
 
   let cumulative = 0;
-  const emit = (noteIndex: number, startStep: number, prevDegree: number, prevDuration: number, prevPrevDegree: number) => {
+  const emit = (
+    noteIndex: number,
+    startStep: number,
+    prevDegree: number,
+    prevDuration: number,
+    prevPrevDegree: number,
+  ) => {
     const note = sequence[noteIndex];
     const { chord, nextChord, stepsIntoChord } = chordAtStep(ladder, startStep);
     const motifSeed = startStep < 2 ? 1 : startStep % 8 < 4 ? 2 : 3; // positional motif slot
@@ -120,14 +131,7 @@ function collectLibraryRole(
   for (const pattern of patterns) {
     const role = pattern.role as MelodicRole;
     for (const [sequenceIndex, sequence] of pattern.sequences.entries()) {
-      collectSequence(
-        samples,
-        genreKey,
-        role,
-        sequence,
-        `${groupPrefix}#${role}#${sequenceIndex}`,
-        sequenceIndex,
-      );
+      collectSequence(samples, genreKey, role, sequence, `${groupPrefix}#${role}#${sequenceIndex}`, sequenceIndex);
       sampleCount += 1;
     }
   }
@@ -156,8 +160,12 @@ interface MidiV1Dataset {
 }
 
 const MIDI_SOURCES = [
-  "midi-melodic-dataset-no-chord-8000.json",
-  "midi-melodic-dataset-bass-only-4000.json",
+  // F5 kampane: the FULL W2 corpus (29 730 v1-rows / 645 classical.* groups,
+  // license-manifested). The two curated subset names this list carried
+  // before ("no-chord-8000", "bass-only-4000") were never-committed W2-era
+  // exports — the silent skip is why the shipped v3 manifest reports
+  // midiCorpusSamples: 0.
+  "midi-melodic-dataset.json",
 ] as const;
 
 const midiDatasets: MidiV1Dataset[] = [];
@@ -202,7 +210,7 @@ function genreFamilyFor(group: string): string {
 
 for (const [group, sequence] of groupSequences) {
   if (sequence.length === 0) continue;
-  const roleRaw = (group.split("#").pop() ?? "bass");
+  const roleRaw = group.split("#").pop() ?? "bass";
   const role = (["bass", "chords", "lead"].includes(roleRaw) ? roleRaw : "bass") as MelodicRole;
   const genreFamily = genreFamilyFor(group);
   collectSequence(

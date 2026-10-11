@@ -261,6 +261,30 @@ deployed smoke URL.
   worktree PO každom checkoute; jedno F3 overenie bežalo omylom na F1
   baseline.
 
+### F5 predfixované pravidlá (ZAPÍSANÉ 2026-10-11, PRED tréningom)
+
+**Experiment M1 — melodic prior v3 + MIDI korpus.** Shipped
+`symbolic-melodic-v3` trénoval výhradne na knižnici (manifest:
+`midiCorpusSamples: 0`, valDegreeAcc 0.5699 / valDurationAcc 0.5) — v3
+dataset generator odmietol dva nikdy-necommitnuté subset súbory ticho.
+F5 posiela do tréningu PLNÝ W2 korpus (`midi-melodic-dataset.json`,
+29 730 v1-riadkov / 645 grup classical.* rodín, Public Domain, license
+manifest) re-embeddovaný cez chord ladders, TRAIN-only; validácia ostáva
+knižnične čistá.
+
+- **Aktivačné pravidlo (predregistrované):** SHIP corpus-trained v3 iba ak
+  `valDegreeAcc ≥ 0.5899` (+0.02 nad shipped) **a** `valDurationAcc ≥ 0.49`
+  (v šume shipped). Inak **FAIL** → shipped artefakty sa nedotknú, čísla sa
+  dokumentujú. Zdôvodnenie prahu: val ~1.4k riadkov → binomické 95 % CI
+  ±2.6 pp — jednosplitové delty pod 2 pp sú šum (lekcia z melodic auditu).
+- **Čestnosť:** numpy retrain nie je bit-deterministický → pri SHIPe sa
+  manifest regeneruje vždy; report sa ukladá. Porovnanie je výhradne proti
+  shipped manifestu na rovnakom protokole (knižnične čistá validácia);
+  žiadne miešanie s v1/v2 číslami z iných splitov.
+- **Ranker z reálnych ★:** ak neexistuje exportovaný favorites pack
+  (ledger žije v prehliadači), signál NEexistuje → NESÍNTETIZOVAŤ; owner
+  akcia = ★ počas dogfoodingu + `favorites:retrain`.
+
 _Celkový odhad: ~8–14 dní fokusnej práce pri plnom prechode; F0+F1 spolu
 jeden dlhší večer. F2/F4/F5 sú navzájom nezávislé — poradie F2→F3→F4→F5
 je odporúčané (najprv pravda a defekty, potom štruktúra, potom kvalita),
