@@ -190,8 +190,9 @@ existing pattern rather than inventing one.
 ADR 0014 line 69: _"Recording remains raw, recoverable audio until the user
 chooses processing or commit."_
 
-The `baked` mode relaxes this. That is a deliberate, owner-approved departure and
-it is why phase 1 below is the ADR, not the code. `baked` must retain the raw
+The `baked` mode relaxes this. That is a deliberate, owner-approved departure,
+now written up in [`adr/0039-input-insert-chain-raw-baked.md`](adr/0039-input-insert-chain-raw-baked.md)
+rather than left implicit in code. `baked` must retain the raw
 take alongside the processed one — otherwise the `raw`/`baked` switch destroys
 the double-tracking that is the entire reason to keep a raw take.
 
@@ -199,18 +200,21 @@ the double-tracking that is the entire reason to keep a raw take.
 
 ## 4. Phases
 
-### Phase 1 — ADR 0015 (architecture, no code)
+### Phase 1 — ADR 0039 (architecture, no code) — **DONE 2026-10-11**
 
-- [ ] Record the `TrackInputInsert` model and where it sits in the graph.
-- [ ] State precisely how `baked` relaxes ADR 0014 §3 and what `raw` keeps.
-- [ ] Define PDC/latency compensation obligations for the insert chain.
-- [ ] Define what "committed" means for each mode (undo, recovery, crash).
-- [ ] Decide whether insert-chain state is project state or device state — this
-      interacts with ADR 0006 device-state-slot.
+- [x] Record the `TrackInputInsert` model and where it sits in the graph.
+- [x] State precisely how `baked` relaxes ADR 0014 §3 and what `raw` keeps.
+- [x] Define PDC/latency compensation obligations for the insert chain.
+- [x] Define what "committed" means for each mode (undo, recovery, crash).
+- [x] Decide whether insert-chain state is project state or device state —
+      project state, on `DrumTrack` / `InstrumentTrack` only.
 
-**Exit:** the model, both modes and their recovery contracts are written down
-and the owner has signed it. If this phase produces disagreement, phases 2–7 do
-not start.
+Written up as
+[`adr/0039-input-insert-chain-raw-baked.md`](adr/0039-input-insert-chain-raw-baked.md),
+which also carries the spike measurements and the alternatives rejected on
+evidence.
+
+**Exit:** met. Phases 2 and 3 are done; the engine half is Phase 4.
 
 ### Phase 2 — F0 verification in the test harness — **DONE 2026-10-11**
 
@@ -299,7 +303,7 @@ as low-latency anywhere — not in README, not in the store listing.
 | Risk                                                                      | Why it is real                                                                                                       | Mitigation                                                                                                                                    |
 | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Rebuilding VØID's live latency is a shared change, not a CAB-only one** | Lowering the floor changes reverb latency for every existing project. It is a behavioural change to a shipped effect | Spike shows output is bit-equivalent after alignment; Phase 2 pins the value and Phase 4 confirms render parity before any floor change lands |
-| `baked` silently destroys double-tracking                                 | ADR 0014 §3 exists precisely to prevent this                                                                         | Raw take is retained regardless of mode; Phase 1 ADR decides                                                                                  |
+| `baked` silently destroys double-tracking                                 | ADR 0014 §3 exists precisely to prevent this                                                                         | ADR 0039 §3 makes raw-take retention mandatory in both modes; Phase 4 must prove the raw take actually survives a baked commit                |
 | Browser latency makes it unplayable unboxed                               | ~20 ms device round trip on WASAPI shared, before any DSP                                                            | Measured and disclosed; Studio + ASIO exclusive (~3 ms) is the low-latency target                                                             |
 | An input chain that only exists live                                      | Would break render parity                                                                                            | Phase 4 exit condition is an export that matches playback                                                                                     |
 | Licenses                                                                  | AGPL competition cannot be vendored                                                                                  | Phase 1 ships only self-made or CC0 assets                                                                                                    |
@@ -336,7 +340,12 @@ as low-latency anywhere — not in README, not in the store listing.
    hardware gate runs, not a new selection.
 3. **Eight genre cabinets**, not three generic ones (Phase 5).
 
-**Still open — needed before Phase 4 can start:**
+**ADR number: settled — 0039.** `0015` was already taken by
+`0015-live-take-lane-audition.md` and `0038` turned out to be taken twice
+(`0038-rezonans-vocal-formant-harmonizer`, `0038-portal-spectral-delay`), so
+0039 was the next free slot. The 0035/0036/0038 collisions predate this work.
+
+**Still open:**
 
 1. **The named eight.** "Eight genre cabinets" is only a decidable acceptance
    condition once the eight are listed. Proposed starting set for discussion:
@@ -344,10 +353,5 @@ as low-latency anywhere — not in README, not in the store listing.
    metal tight, bass 4x10, bass 8x10. The bassist half matters more than the
    guitarist half — a bass DI through a guitar cab is one of the most common
    first-run mistakes, and this is the insert chain's chance to prevent it.
-2. **ADR number.** `0015` is taken by `0015-live-take-lane-audition.md`, which
-   is adjacent to this work and must be read before a new ADR is drafted — it
-   may already own part of the live-monitoring contract. Separately, `0035` and
-   `0036` are each used twice in `docs/adr/`, so the numbering already has
-   collisions that should not be repeated.
-3. **When the Volt 276 gets connected.** Phases 6–7 cannot be evidence-backed
+2. **When the Volt 276 gets connected.** Phases 6–7 cannot be evidence-backed
    until it does. Everything above is software-only evidence.
