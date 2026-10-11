@@ -33,6 +33,15 @@ export const BEATMAKING_EFFECT_CHAINS: BeatmakingEffectChain[] = [
     ],
   },
   {
+    id: "phase-throw",
+    name: "PHASE THROW",
+    description: "Disperse the attack around the body band, then lift the air so the click leads.",
+    effects: [
+      { type: "skrutka", presetId: "skrutka-808-throw" },
+      { type: "eq", presetId: "eq-air" },
+    ],
+  },
+  {
     id: "kick-punch",
     name: "KICK PUNCH",
     description: "Bring the transient forward, then catch peaks with a soft ceiling.",

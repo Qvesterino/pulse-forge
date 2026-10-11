@@ -48,11 +48,11 @@ describe("theme", () => {
   });
 
   it("an invalid persisted state falls back to defaults", () => {
-    localStorage.setItem("pf-theme-v1", "{not json");
+    localStorage.setItem("pf-layout-v1", "{not json");
     const state = initTheme();
     expect(state.preset).toBe("molten");
     // Unknown preset ids fall back to the default preset.
-    localStorage.setItem("pf-theme-v1", JSON.stringify({ preset: "nope" }));
+    localStorage.setItem("pf-layout-v1", JSON.stringify({ preset: "nope" }));
     expect(initTheme().preset).toBe("molten");
   });
 

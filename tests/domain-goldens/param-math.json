@@ -1317,6 +1317,17 @@
             "mix": 0.6,
             "output": 0
           }
+        },
+        {
+          "type": "skrutka",
+          "defaults": {
+            "dispersion": 0.35,
+            "punch": 0,
+            "focusHz": 220,
+            "spread": 0,
+            "mix": 1,
+            "output": 0
+          }
         }
       ]
     },

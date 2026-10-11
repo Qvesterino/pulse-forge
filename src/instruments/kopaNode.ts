@@ -126,7 +126,7 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
       body.connect(bodyGain).connect(gain);
       body.start(when);
       oscs.push(body);
-      // Match the worklet layer: partials start from the body's pitch sweep,
+      // Match the KOPA kick-harmonic layer: partials follow the body's pitch sweep,
       // all share its phase, and the fundamental itself is never re-added.
       if (harmonicLevel > 0.001) {
         const firstBodyF = bodyF * Math.pow(2, pitchAmount / 12);

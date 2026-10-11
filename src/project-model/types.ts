@@ -68,7 +68,8 @@ export type EffectType =
   | "ultina"
   | "ozvena"
   | "morphdynamics"
-  | "bassHarmonic";
+  | "bassHarmonic"
+  | "skrutka";
 
 export type InstrumentKind =
   | "sampler"

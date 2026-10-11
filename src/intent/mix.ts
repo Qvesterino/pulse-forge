@@ -678,6 +678,7 @@ export const EFFECT_KNOB: Partial<Record<EffectType, string>> = {
   compressor: "ratio",
   pump: "amount",
   bassHarmonic: "drive",
+  skrutka: "dispersion",
 };
 
 const EFFECT_WORDS: ReadonlyArray<readonly [RegExp, EffectType]> = [
@@ -694,6 +695,7 @@ const EFFECT_WORDS: ReadonlyArray<readonly [RegExp, EffectType]> = [
   [/\bcompress|\bkompres/, "compressor"],
   [/\bsidechain|\bpump(?:a|e|u)?/, "pump"],
   [/\bbass.?harmon|\bkoren\b|\bharmonik/, "bassHarmonic"],
+  [/\bskrutka|\bdispers/, "skrutka"],
   [/\beq\b|\bfilter|\bfiltr|\bekvaliz/, "eq"],
 ];
 

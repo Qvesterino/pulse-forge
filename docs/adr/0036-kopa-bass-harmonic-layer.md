@@ -1,4 +1,4 @@
-# ADR 0036 — KOPA Bass Harmonic layer
+# ADR 0036 — KOPA kick-harmonic layer
 
 Date: 2026-10-10 · Status: Accepted · Scope: KOPA DSP, instrument parameters, fallback voice
 
@@ -10,14 +10,15 @@ already owns the kick's fundamental and its pitch envelope. Running another
 pitch detector inside that voice would add delay and tracking failure modes
 without providing new information. The kick needs its own upper-harmonic layer
 that stays locked to the designed pitch sweep and renders identically in live
-and offline paths.
+and offline paths. This layer is source-synchronous kick synthesis; KOREŇ stays
+the general-purpose effect for arbitrary bass audio. They can be used together
+when the KOPA kick needs additional tracked processing after synthesis.
 
 ## Decision
 
-1. Add a Bass Harmonic layer inside the existing KOPA instrument. It is not a
-   second instrument or an insert effect. The generated stack starts at the
-   2nd partial and omits the fundamental, so the KOPA body remains the sole
-   owner of the root.
+1. Add a kick-specific harmonic layer inside the existing KOPA instrument.
+   The generated stack starts at the 2nd partial and omits the fundamental,
+   so the KOPA body remains the sole owner of the root.
 2. Derive each partial from KOPA's tuned body phase and instantaneous pitch.
    This is deterministic and follows the same exp/lin/snap/hold envelope in
    the worklet's one shared live/offline processor. Skip partials at or above
@@ -39,9 +40,9 @@ and offline paths.
   inserted effect or a second pitch tracker. Existing KOPA instances that
   already store parameter defaults remain controllable through the same
   instrument UI.
-- The generated layer can extend a kick's audibility on small speakers while
-  preserving the body fundamental and allowing independent level, spectrum,
-  decay, and saturation/folding control.
+- The kick-specific partial layer can extend a kick's audibility on small
+  speakers while preserving the body fundamental and allowing independent
+  level, spectrum, decay, and saturation/folding control.
 - The additional per-sample work is bounded by 15 upper partials per active
   voice, with phase/weight scratch storage allocated once per processor.
 

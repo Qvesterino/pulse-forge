@@ -3,6 +3,7 @@ import { galleryBaseUrl } from "../gallery/galleryApi";
 import type { UserSampleAsset } from "../persistence/UserSampleRepository";
 import { useServices } from "./context";
 import { importAudioFile } from "./sample-import";
+import { base64ToAudioBytes } from "../audio-import-capabilities";
 
 /**
  * SEND-TO-KYX intake tray (2. vlna) — receives audio pushed from the browser
@@ -69,9 +70,12 @@ export function IntakeTray({
         const body = (await res.json()) as { item?: { name?: string; dataB64?: string } };
         const dataB64 = body.item?.dataB64 ?? "";
         if (!dataB64) throw new Error("intake item has no audio payload");
-        const binary = atob(dataB64);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+        // Bounded from the ENCODED length, before atob: this payload arrives
+        // over HTTP and the old inline loop materialised it whole in the main
+        // thread, so an oversized body cost ~3× its size before any decode
+        // ceiling could apply. importAudioFile still re-checks the decoded
+        // size; this is the cheap first gate.
+        const bytes = base64ToAudioBytes(dataB64);
         const file = new File([bytes], item.name, { type: "audio/wav" });
         const asset = await importAudioFile(services, file);
         onImported?.(asset);

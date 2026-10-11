@@ -11,7 +11,8 @@ import { useEffect, useRef, useState } from "react";
 // state contract and the dock chrome cannot disagree about which panels exist.
 // It is re-exported here unchanged — every existing importer of
 // `ui/dockLayout` keeps working.
-import { PANEL_KEYS, type BottomPanel } from "../shared/layout-data";
+import { PANEL_KEYS, normalizePanelId, type BottomPanel } from "../shared/layout-data";
+import { initLayout, setLayout } from "./layout";
 export { PANEL_KEYS };
 export type { BottomPanel };
 
@@ -29,7 +30,6 @@ export const DOCK_MIN_HEIGHT = 160;
 // priority. A 800 px dock (the old ceiling) could cover two thirds of a 900 px
 // screen and starve the primary writing area.
 export const DOCK_MAX_HEIGHT = 560;
-const DOCK_STORAGE_KEY = "pf-dock-v1";
 
 const isPanel = (value: unknown): value is BottomPanel =>
   typeof value === "string" &&
@@ -73,11 +73,18 @@ export function loadDockLayout(raw: string | null, maxInner: number): DockState 
 }
 
 export function persistDockLayout(state: DockState): void {
-  try {
-    localStorage.setItem(DOCK_STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    /* cosmetic preference — quota/private mode stays silent */
-  }
+  // Bridge: the dock no longer owns a storage key. It writes its fields into
+  // the unified layout store (ADR 0036), so a dock height and a palette can no
+  // longer drift apart. The DEBOUNCE that wraps this call is unchanged — the
+  // write is still synchronous and main-thread blocking.
+  setLayout({
+    dockHeight: state.height,
+    // normalizePanelId (not the local normalizePanel) because the layout store
+    // accepts the canonical LayoutPanel union. The local helper still returns
+    // the wider BottomPanel type, which would let "fx" leak past normalization.
+    slotA: normalizePanelId(state.slotA),
+    slotB: normalizePanelId(state.slotB),
+  });
 }
 
 /**
@@ -148,8 +155,16 @@ const PERSIST_DEBOUNCE_MS = 200;
  */
 export function useDockLayout(maxInner: number): [DockState, (next: DockState) => void] {
   const [state, setState] = useState<DockState>(() => {
-    if (typeof localStorage === "undefined") return loadDockLayout(null, maxInner);
-    return loadDockLayout(localStorage.getItem(DOCK_STORAGE_KEY), maxInner);
+    // Seed from the unified layout store (ADR 0036). initLayout is idempotent
+    // and cheap, and running it here means the dock works even when the hook
+    // mounts before main.tsx's boot call — no second storage path to keep in
+    // sync.
+    const layout = initLayout();
+    return {
+      height: clampDockHeight(layout.dockHeight, maxInner),
+      slotA: layout.slotA,
+      slotB: layout.slotB,
+    };
   });
   const pendingRef = useRef<DockState | null>(null);
   const timerRef = useRef<number | null>(null);

@@ -2,23 +2,28 @@ import type { UserSampleAsset } from "../persistence/UserSampleRepository";
 import { userSampleId } from "../persistence/UserSampleRepository";
 import { detectLoopBpm } from "../audio-engine/bpm-detect";
 import type { Services } from "../services";
-
-/** Identical acceptance rules to the DropZone (single source via this helper —
- * both the drag-and-drop path and the SEND-TO-KYX intake tray import here). */
-export const ACCEPTED_IMPORT_EXTENSIONS = /\.(wav|mp3|ogg|flac|aiff|opus)$/i;
-
-/** Import ceiling mirrored from DropZone (decoded PCM is ~5–10× the file size). */
-export const MAX_AUDIO_IMPORT_BYTES = 25 * 1024 * 1024;
+import { assertAudioImportSize } from "../audio-import-capabilities";
 
 /**
  * Decode one audio File into a playable, persisted user sample — the exact
- * DropZone per-file body, extracted so the SEND-TO-KYX intake tray imports
- * through the SAME path (same acceptance, same persistence, same BPM probe).
+ * DropZone per-file body, extracted so the SEND-TO-KYX intake tray and the
+ * TSAR forge import through the SAME path (same persistence, same BPM probe).
  * Throws on decode/persist failure; the caller owns the error surface.
+ *
+ * The size ceiling is enforced HERE rather than at each call site on purpose:
+ * this function is reached from the drop zone, the network intake tray and the
+ * forge file picker, and the ceiling is what stops a hostile or merely huge
+ * file from reaching `decodeAudioData` (decoded PCM is 5–10× the encoded
+ * bytes). A guard that only the drag-and-drop path applies is not a guard.
+ * Extension acceptance lives in `audio-import-capabilities.ts` and is applied
+ * by the surfaces that show a file picker or receive a drop.
  */
 export async function importAudioFile(services: Services, file: File): Promise<UserSampleAsset> {
   const ctx = services.engine.context;
   if (!ctx) throw new Error("Audio engine not ready");
+  // Before arrayBuffer(): reading an oversized file first is the failure mode
+  // the ceiling exists to prevent.
+  assertAudioImportSize(file.size);
   // Read the encoded bytes once: decodeAudioData detaches the buffer it
   // receives, so hand it a copy and keep the original for IDB.
   const raw = await file.arrayBuffer();

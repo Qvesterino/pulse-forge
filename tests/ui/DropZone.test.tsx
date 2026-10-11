@@ -90,4 +90,29 @@ describe("DropZone", () => {
       category: "Custom",
     });
   });
+
+  it("accepts an .m4a it exported itself — the export→import round-trip", async () => {
+    // KYX writes M4A (AAC) from the export menu but the drop zone used to
+    // reject it, making the format a one-way door. Pure capability coverage
+    // lives in tests/audio-import-capabilities.test.ts; this pins the panel.
+    const onImport = vi.fn();
+    const { container } = renderWithContext(<DropZone onImport={onImport} />);
+    const node = container.querySelector(".drop-zone") as HTMLElement;
+    dropFiles(node, [makeFile("master.m4a", "audio/mp4")]);
+    await vi.waitFor(() => {
+      expect(onImport).toHaveBeenCalled();
+    });
+    expect(onImport.mock.calls[0][0]).toMatchObject({ fileName: "master.m4a", name: "master" });
+    expect(screen.queryByText(/Unsupported format/i)).not.toBeInTheDocument();
+  });
+
+  it("offers every decode-capable container in the picker, not just the hint text", () => {
+    // The accept attribute and the visible hint were both hard-coded and had
+    // drifted apart; both now derive from the shared capability module.
+    const { container } = renderWithContext(<DropZone onImport={vi.fn()} />);
+    const accept = (container.querySelector('input[type="file"]') as HTMLInputElement).getAttribute("accept") ?? "";
+    for (const extension of ["m4a", "aac", "opus", "oga", "webm", "flac", "mp3", "aif", "wave"]) {
+      expect(accept).toContain(`.${extension}`);
+    }
+  });
 });

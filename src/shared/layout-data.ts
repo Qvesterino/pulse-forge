@@ -44,6 +44,8 @@ export const PANEL_KEYS = [
   "reference",
 ] as const;
 
+import { presetById } from "./theme-data";
+
 /** Panel id as stored. "fx"/"plugin" are legacy spellings of "devices". */
 export type LayoutPanel = (typeof PANEL_KEYS)[number];
 export type BottomPanel = LayoutPanel | "fx" | "plugin";
@@ -210,7 +212,10 @@ export function normalizeLayoutState(partial: Partial<LayoutState>): LayoutState
   const slotA = src.slotA === undefined ? DEFAULT_LAYOUT_STATE.slotA : normalizePanelId(src.slotA);
   const slotB = src.slotB === undefined ? DEFAULT_LAYOUT_STATE.slotB : normalizePanelId(src.slotB);
   return {
-    preset: typeof src.preset === "string" && src.preset.length > 0 ? src.preset : DEFAULT_LAYOUT_STATE.preset,
+    // An unknown preset id must NOT survive: presetById() would silently map it
+    // to the first preset while the stored id still said something else, so the
+    // applier and the stored state would disagree about the active palette.
+    preset: typeof src.preset === "string" ? presetById(src.preset).id : DEFAULT_LAYOUT_STATE.preset,
     hue: isFiniteNumber(src.hue) && src.hue >= b.hue.min && src.hue <= b.hue.max ? Math.round(src.hue) : null,
     uiScale: num(src.uiScale, b.uiScale.min, b.uiScale.max, DEFAULT_LAYOUT_STATE.uiScale),
     typeScale: num(src.typeScale, b.typeScale.min, b.typeScale.max, DEFAULT_LAYOUT_STATE.typeScale),
@@ -337,4 +342,14 @@ export function resolveLayoutState(
  */
 export function isCompactDensity(density: Density): boolean {
   return density === "compact";
+}
+
+/**
+ * Effective accent for a layout: a custom hue wins over the preset accent.
+ * Reads only the two fields it needs, so callers never have to fabricate a
+ * whole ThemeState just to resolve a colour.
+ */
+export function accentOfLayout(state: Pick<LayoutState, "preset" | "hue">): string {
+  if (state.hue !== null) return `hsl(${state.hue}, 85%, 60%)`;
+  return presetById(state.preset).accent;
 }

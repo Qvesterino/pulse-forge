@@ -137,6 +137,15 @@ describe("layout-data · normalization clamps and rejects", () => {
     expect(DENSITY_LEVELS).toContain(normalizeLayoutState({ density: "dense" }).density);
   });
 
+  it("replaces an unknown preset id with the default — the applier and the stored id must agree", () => {
+    // presetById() silently maps an unknown id to the first preset. If the
+    // stored id were kept as-is, applyLayoutToDocument and getLayoutSnapshot
+    // would disagree about which palette is active.
+    expect(normalizeLayoutState({ preset: "nope" }).preset).toBe("molten");
+    expect(normalizeLayoutState({ preset: "" }).preset).toBe("molten");
+    expect(normalizeLayoutState({ preset: "cyan" }).preset).toBe("cyan");
+  });
+
   it("hue rounds, and an out-of-band hue falls back to the preset (null)", () => {
     expect(normalizeLayoutState({ hue: 120.6 }).hue).toBe(121);
     expect(normalizeLayoutState({ hue: 999 }).hue).toBeNull();

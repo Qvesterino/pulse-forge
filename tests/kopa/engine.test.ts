@@ -217,7 +217,7 @@ describe("KopaProcessor — layers", () => {
     expect(energy(0.9)).toBeGreaterThan(energy(0) * 4);
   });
 
-  it("Bass Harmonic adds an upper-partial stack while omitting the root", () => {
+  it("KOPA kick harmonics add an upper-partial stack while omitting the root", () => {
     const harmonicEnergy = (harmonicLevel: number, hz: number): number => {
       const processor = makeProcessor({
         pitchAmount: 0,

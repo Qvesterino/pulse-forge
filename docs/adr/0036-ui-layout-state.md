@@ -88,6 +88,18 @@ Consequences that block customization:
   instead of a new ad-hoc localStorage key.
 - `PFLYT1:` makes a look shareable as a whole — colors _and_ geometry — which
   is what "send someone your console" actually means.
+- **The bridge is live.** `ui/layout.ts` is now the only writer of
+  `pf-layout-v1` and the only thing that touches the document root. `theme.ts`
+  is a transparent view over it and `dockLayout.ts` writes its fields into the
+  same state, so a dock height and a palette can no longer drift apart.
+  `initTheme()` and `useDockLayout()` both delegate to `initLayout()`, and
+  calling it twice is harmless.
+- `theme.ts` deliberately keeps the legacy `ThemeState` shape. Shared packs
+  (`packCode.ts`) already carry that object on other people's machines; changing
+  it would orphan them. The mapping lives in exactly two functions, `toTheme`
+  and `fromTheme`, so the compatibility cost stays visible.
+- The dock's debounce is unchanged — only the key and the persisted field moved
+  (`pf-dock-v1`/`.height` → `pf-layout-v1`/`.dockHeight`).
 - The two-sources-of-truth hazard is removed at the data level in Vlna A, before
   any pixels move. Vlna A is deliberately additive: no CSS changes, so the
   rendered UI is identical before and after, and every existing test keeps its
@@ -122,3 +134,7 @@ them:
 
 No responsive/fluid grid rewrite (Vlna B), no resize grips (Vlna C), no token
 editor UI, no change to `:root` defaults, no bundle-budget change.
+
+The bridge already writes `--inspector-width`, `--steps-label`, `--rack-columns`
+and `--type-scale` to the document root using the CURRENT values, so the tokens
+exist for the CSS that reads them next. Nothing moves until that CSS changes.

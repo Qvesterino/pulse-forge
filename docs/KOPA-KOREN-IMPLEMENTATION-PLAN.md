@@ -1,14 +1,22 @@
 # KOPA + KOREŇ — implementačný plán
 
-**Stav:** návrh na implementáciu — **rozhodnutia (1) rename lazy worklet zoznamu a (2) KOPA v preset-intent rodinách zapracované** · **Aktualizované:** 2026-10-10
+**Stav:** KOREŇ a KOPA sú implementované; ide o historický realizačný plán · **Aktualizované:** 2026-10-11
 **Rozsah:** dva nové flagship výstupy — **KOPA** (kick designer, nový `InstrumentKind`) a **KOREŇ** (missing-fundamental bass exciter, nový core efekt).
-**Predpoklad:** aktuálny strom (23 inštrumentov, 52 efektov, `SCHEMA_VERSION = 16`, TSAR T0–T7, ADR 0023 hotové).
+**Východiskový stav v čase písania:** 23 inštrumentov, 52 efektov, `SCHEMA_VERSION = 16`, TSAR T0–T7 a ADR 0023 hotové.
 **Nadväzuje na:** `docs/NEW-EFFECT-CHECKLIST.md` (povinný), ADR 0004 (AudioWorklet boundary), ADR 0003 (project model ↔ runtime), ADR 0023 (worklet lazy-load precedent), `docs/TSAR-IMPLEMENTATION-ROADMAP.md` (§ štýl fáz a brán), `docs/CURRENT-STATE.md` (jediný zdroj počtov).
 
-> Pracovné mená: **KOPA** = slov. „kopa" (úder/kick), kód `kopa`. **KOREŇ** = slov. „koreň"
-> (root — missing _fundamental_ = chýbajúci koreň), kód `bassHarmonic`. Mená sú návrh;
-> pred UI implementáciou sa dajú zmeniť (rovnako ako TSAR „ORBIT" v R6). **ID v schéme
-> (`kopa`, `bassHarmonic`) sa po shipnutí nemení.**
+## Aktuálne rozdelenie KOPA a KOREŇA
+
+KOPA si ponecháva vlastnú vrstvu **KICK HARMONICS**: čiastkové tóny sú fázovo
+zamknuté na jej telo a sledujú presne známy pitch sweep kicku. KOREŇ je
+samostatný **Bass Harmonic Processor** pre existujúci audio signál; fundament
+odhadzuje trackerom a dopĺňa chýbajúce harmonické. Vrstva KOPA je súčasťou
+syntézy kicku, KOREŇ je všeobecný insert efekt. Môžu sa použiť aj spolu, keď
+chceme na hotový KOPA kick pridať ďalšie spracovanie.
+
+> Produkčné názvy: **KOPA** = slov. „kopa" (úder/kick), kód `kopa`; **KOREŇ** = slov.
+> „koreň" (root — missing _fundamental_ = chýbajúci koreň), kód `bassHarmonic`.
+> **ID v schéme (`kopa`, `bassHarmonic`) sa po shipnutí nemení.**
 
 ---
 

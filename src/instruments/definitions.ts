@@ -970,11 +970,11 @@ export const kopaParams: ParamDef[] = [
     unit: "st",
     format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(0)} st`,
   },
-  // BASS HARMONIC — a phase-locked upper-partial layer; the root is omitted.
-  { id: "harmonicLevel", label: "B HARMONICS", min: 0, max: 1, default: 0.25, format: formatPct },
+  // KICK HARMONICS: body-phase-locked partials, separate from KOREŇ's tracked input effect.
+  { id: "harmonicLevel", label: "KICK HARM", min: 0, max: 1, default: 0.25, format: formatPct },
   {
     id: "harmonicTone",
-    label: "B H TONE",
+    label: "HARM TONE",
     min: 0,
     max: 1,
     default: 0.35,
@@ -982,7 +982,7 @@ export const kopaParams: ParamDef[] = [
   },
   {
     id: "harmonicRange",
-    label: "B H RANGE",
+    label: "HARM RANGE",
     min: 1,
     max: 4,
     default: 2,
@@ -992,7 +992,7 @@ export const kopaParams: ParamDef[] = [
   },
   {
     id: "harmonicDecay",
-    label: "B H DECAY",
+    label: "HARM DECAY",
     min: 0.03,
     max: 2,
     default: 0.25,
@@ -1002,7 +1002,7 @@ export const kopaParams: ParamDef[] = [
   },
   {
     id: "harmonicCharacter",
-    label: "B H CHAR",
+    label: "HARM COLOR",
     min: 0,
     max: 2,
     default: 0,

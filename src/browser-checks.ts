@@ -1203,6 +1203,60 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     );
   }
 
+  // SKRUTKA (ADR 0037) — lazy phase-dispersion effect worklet on a real
+  // render: a 200 Hz sine through the loaded module keeps its level (all-pass
+  // |H| = 1) while the waveform shifts against the dry reference. Host-level
+  // proof the module actually loaded and processes.
+  try {
+    const renderSkrutka = async (mix: number) => {
+      const ctx = new OfflineAudioContext(1, SR, SR);
+      await loadCoreWorklets(ctx);
+      await loadLazyWorklet(ctx, "skrutka");
+      const rt = EFFECT_DEFS.skrutka.factory(
+        ctx,
+        {
+          id: "check-skrutka",
+          type: "skrutka",
+          bypassed: false,
+          params: { ...defaultParamsOf("skrutka"), dispersion: 1, punch: 0, focusHz: 200, mix },
+        },
+        { bpm: 124 },
+      );
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = 200;
+      const gain = ctx.createGain();
+      gain.gain.value = 0.5;
+      osc.connect(gain).connect(rt.input);
+      rt.output.connect(ctx.destination);
+      osc.start(0);
+      const buffer = await ctx.startRendering();
+      rt.dispose();
+      return { data: buffer.getChannelData(0), ready: isWorkletReady("skrutka", ctx) };
+    };
+    const wet = await renderSkrutka(1);
+    const dry = await renderSkrutka(0);
+    const rms = (data: Float32Array): number => {
+      const from = Math.floor(data.length * 0.4);
+      let sum = 0;
+      for (let i = from; i < data.length; i++) sum += data[i]! * data[i]!;
+      return Math.sqrt(sum / (data.length - from));
+    };
+    let maxDiff = 0;
+    for (let i = Math.floor(wet.data.length * 0.4); i < wet.data.length; i++) {
+      maxDiff = Math.max(maxDiff, Math.abs(wet.data[i]! - dry.data[i]!));
+    }
+    const wetRms = rms(wet.data);
+    const dryRms = rms(dry.data);
+    check(
+      "SKRUTKA: lazy worklet shifts the phase of a real render while preserving its level",
+      wet.ready && wetRms > dryRms * 0.95 && wetRms < dryRms * 1.05 && dryRms > 0.2 && maxDiff > 0.05,
+      `ready=${wet.ready} wetRms=${wetRms.toFixed(3)} dryRms=${dryRms.toFixed(3)} maxDiff=${maxDiff.toFixed(3)}`,
+    );
+  } catch (error) {
+    check("SKRUTKA: lazy worklet shifts the phase of a real render while preserving its level", false, String(error));
+  }
+
   // Phase 4 (plugin-audit follow-up) — LIVE worklet-path audibility for the
   // event-queue voice worklets. Offline renders route them through native
   // graphs (determinism fix above); the LIVE path runs the real worklets and

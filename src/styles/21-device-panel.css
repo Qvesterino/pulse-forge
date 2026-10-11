@@ -360,6 +360,45 @@
   background: color-mix(in srgb, var(--bg-raise) 30%, transparent);
 }
 
+/* SKRUTKA panel — group-delay curve (device editor inline). */
+.skrutka-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.skrutka-panel .skrutka-degraded {
+  padding: 3px 8px;
+  border-radius: 3px;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.55);
+  color: #f59e0b;
+  font-size: 10px;
+}
+.skrutka-panel .skrutka-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.skrutka-panel .skrutka-readout {
+  font-family: var(--mono);
+  font-size: 12px;
+  min-width: 130px;
+}
+.skrutka-panel .skrutka-hint {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  flex: 1;
+}
+.skrutka-panel .skrutka-viz {
+  width: 100%;
+  height: 96px;
+  display: block;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--bg-raise) 30%, transparent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .device-chain-item,
   .device-editor .fx-device-buttons .btn-small {

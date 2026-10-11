@@ -19,9 +19,9 @@
  *  - TAIL: long `tailDecay` sine at `tailTune` for 808-style booms.
  *  - SUB: phase-locked sine one octave under the body (`subTune`), phase
  *    derived from the body oscillator — deterministic, no free runner.
- *  - BASS HARMONIC: a missing-fundamental exciter adds a phase-locked stack
- *    from the 2nd partial upward. It follows the body pitch envelope without
- *    re-estimating a fundamental the kick engine already knows.
+ *  - KICK HARMONICS: a body-phase-locked partial layer starts at the 2nd
+ *    partial and follows KOPA's known pitch envelope. The separate KOREŇ FX
+ *    tracks arbitrary incoming bass; this layer is part of kick synthesis.
  *  - CHARACTER: 4 drive curves (soft/tube/hard/fold), `punch` glue and
  *    `stereo` spread; OUTPUT `level` in dB.
  *
@@ -380,7 +380,7 @@ export class KopaProcessor {
         // the body phase at noteOn => phase-locked, deterministic, mono.
         const subSignal = Math.sin(voice.subPhase);
 
-        // Bass Harmonic: synthesize upper partials from the same body phase.
+        // Kick harmonics: synthesize upper partials from the same body phase.
         // Starting at partial 2 creates the missing-fundamental illusion;
         // partials above Nyquist are skipped instead of aliasing back down.
         let harmonicSignal = 0;

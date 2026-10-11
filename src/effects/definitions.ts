@@ -260,6 +260,7 @@ export const EFFECT_ORDER: EffectType[] = [
   "sirka",
   "prud",
   "bassHarmonic",
+  "skrutka",
 ];
 
 export const CORE_EFFECT_ORDER: EffectType[] = [
@@ -294,6 +295,7 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "sirka",
   "prud",
   "bassHarmonic",
+  "skrutka",
 ];
 
 export const FLAGSHIP_EFFECT_ORDER: EffectType[] = ["fxeq", "ultina", "ozvena", "kaskada", "morphdynamics"];
@@ -2079,6 +2081,30 @@ export const bassHarmonicParams: ParamDef[] = [
   { id: "output", label: "OUTPUT", min: -18, max: 12, default: 0, unit: "dB", format: formatDb },
 ];
 
+/**
+ * SKRUTKA (skrutka) — frequency-dependent phase dispersion ("disperser").
+ * All-pass only: a steady tone keeps its level while its ARRIVAL TIME is
+ * warped around FOCUS (the transient character no EQ or saturation can
+ * produce). DISPERSION is the long 8-section smear; PUNCH is the signed
+ * short 4-section transient tilt (positive = lows delayed, attack forward);
+ * SPREAD offsets the focus per channel (0 = bit-exact mono).
+ */
+export const skrutkaParams: ParamDef[] = [
+  { id: "dispersion", label: "DISPERSION", min: 0, max: 1, default: 0.35, format: formatPct },
+  {
+    id: "punch",
+    label: "PUNCH",
+    min: -1,
+    max: 1,
+    default: 0,
+    format: (v) => `${v > 0 ? "+" : ""}${Math.round(v * 100)}%`,
+  },
+  { id: "focusHz", label: "FOCUS", min: 40, max: 4000, default: 220, unit: "Hz", format: formatHz, taper: "log" },
+  { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0, format: formatPct },
+  { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
+  { id: "output", label: "OUTPUT", min: -18, max: 12, default: 0, unit: "dB", format: formatDb },
+];
+
 export const vinylParams: ParamDef[] = [
   // Master macro first — the "one knob" path for people who just want AGE.
   { id: "amount", label: "AGE", min: 0, max: 1, default: 0.5, format: formatPct },
@@ -2517,4 +2543,5 @@ export const EFFECT_META: Record<EffectType, EffectDefinitionMeta> = {
   granularFreeze: { type: "granularFreeze", name: "Granular Freeze", category: "space", params: granularFreezeParams },
   kaskada: { type: "kaskada", name: "RYFT", category: "space", params: kaskadaParams },
   bassHarmonic: { type: "bassHarmonic", name: "KOREŇ", category: "character", params: bassHarmonicParams },
+  skrutka: { type: "skrutka", name: "SKRUTKA", category: "character", params: skrutkaParams },
 };

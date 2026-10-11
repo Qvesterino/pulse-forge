@@ -236,6 +236,7 @@ const WORKLET_CASES: { effect: EffectType; proc: string; reg: string }[] = [
   { effect: "beatMangler", proc: "beatmangler-processor", reg: "beatmangler-processor" },
   { effect: "bassBuss", proc: "bassbuss-sub-processor", reg: "bassbuss-sub-processor" },
   { effect: "bassHarmonic", proc: "bass-harmonic-processor", reg: "bass-harmonic-processor" },
+  { effect: "skrutka", proc: "skrutka-processor", reg: "skrutka-processor" },
 ];
 
 /**

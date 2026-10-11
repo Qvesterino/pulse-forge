@@ -45,7 +45,12 @@ import { unsunoCommand } from "../reference/unsuno";
 import { downloadBlob } from "../export/download";
 import { encodeWav } from "../rendering/wav";
 import { sanitizeFilename } from "../rendering/wav";
-import { MAX_AUDIO_IMPORT_BYTES } from "./DropZone";
+import {
+  audioImportAcceptAttribute,
+  describeAudioImportFormats,
+  isAudioImportFile,
+  MAX_AUDIO_IMPORT_BYTES,
+} from "../audio-import-capabilities";
 import { type ProjectDocument } from "../project-model/types";
 import type { SampleBank } from "../sample-library/factory";
 import type { Command } from "../commands/types";
@@ -77,7 +82,6 @@ import { useDoc } from "./context";
  * comment would itself trip the check.
  */
 
-const ACCEPTED_EXTENSIONS = /\.(wav|wave|mp3|ogg|oga|flac|aiff|aif|m4a|aac|opus|webm)$/i;
 const MIN_BPM = 20;
 const MAX_BPM = 400;
 
@@ -159,8 +163,8 @@ export function ReferenceMapPanel() {
       setSourceFingerprint(null);
       setSimilarity(null);
 
-      if (!ACCEPTED_EXTENSIONS.test(file.name)) {
-        setError("Unsupported file. Use WAV, MP3, OGG, FLAC, AIFF, M4A or OPUS.");
+      if (!isAudioImportFile(file)) {
+        setError(`Unsupported file. Use ${describeAudioImportFormats()}.`);
         return;
       }
       // Ceiling checked BEFORE decode: decoding a 400 MB file first and
@@ -755,7 +759,7 @@ export function ReferenceMapPanel() {
         <input
           ref={inputRef}
           type="file"
-          accept="audio/*,.wav,.mp3,.ogg,.flac,.aiff,.m4a,.opus"
+          accept={audioImportAcceptAttribute()}
           onChange={onPick}
           style={{ display: "none" }}
           data-testid="reference-file-input"
@@ -763,7 +767,10 @@ export function ReferenceMapPanel() {
         {stage && stage !== "done" ? (
           <span data-testid="reference-stage">{REFERENCE_STAGE_LABELS[stage]}…</span>
         ) : (
-          <span>Drop a track or click to choose — WAV / MP3 / FLAC / OGG / M4A, up to 25 MB</span>
+          <span>
+            Drop a track or click to choose — {describeAudioImportFormats()}, up to{" "}
+            {Math.floor(MAX_AUDIO_IMPORT_BYTES / 1024 / 1024)} MB
+          </span>
         )}
       </div>
 

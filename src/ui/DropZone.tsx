@@ -4,6 +4,12 @@ import type { UserSampleAsset } from "../persistence/UserSampleRepository";
 import { addAudioClip, fittedLoopPlacement, type FittedLoopPlacement } from "../commands/commands";
 import { BAR_TICKS } from "../project-model/types";
 import { importAudioFile } from "./sample-import";
+import {
+  audioImportAcceptAttribute,
+  describeAudioImportFormats,
+  isAudioImportFile,
+  MAX_AUDIO_IMPORT_BYTES,
+} from "../audio-import-capabilities";
 
 interface DropZoneProps {
   onImport: (asset: UserSampleAsset) => void;
@@ -16,28 +22,11 @@ interface DropZoneProps {
   className?: string;
 }
 
-const ACCEPTED_TYPES = [
-  "audio/wav",
-  "audio/wave",
-  "audio/x-wav",
-  "audio/mpeg",
-  "audio/mp3",
-  "audio/ogg",
-  "audio/flac",
-  "audio/aiff",
-  "audio/x-aiff",
-];
-const ACCEPTED_EXTENSIONS = /\.(wav|mp3|ogg|flac|aiff|opus)$/i;
-
-// Import size ceiling (release roadmap 1.4): decoded PCM is ~5–10× the file
-// size — a 25 MB cap keeps the worst-case decode well under tab-killing
-// memory while comfortably above any musical one-shot/loop.
-export const MAX_AUDIO_IMPORT_BYTES = 25 * 1024 * 1024;
-
 /**
- * Drag & drop zone for importing audio files. Accepts WAV, MP3, OGG, FLAC,
- * AIFF files, decodes them via AudioContext, and adds them to the user
- * sample bank + IndexedDB.
+ * Drag & drop zone for importing audio files. Accepts every container a browser
+ * can decode (see `audio-import-capabilities.ts` — the list is decode-driven and
+ * deliberately wider than what KYX can export), decodes them via AudioContext,
+ * and adds them to the user sample bank + IndexedDB.
  */
 export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) {
   const services = useServices();
@@ -93,7 +82,7 @@ export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) 
       for (const file of fileArray) {
         // Validate file type — SKIP (not abort): dropping 20 WAVs where #3 is
         // a .txt must not silently discard files 4–20 (Audit 10 D2).
-        const isAccepted = ACCEPTED_TYPES.includes(file.type) || ACCEPTED_EXTENSIONS.test(file.name);
+        const isAccepted = isAudioImportFile(file);
         if (!isAccepted) {
           skipped.push(file.name);
           continue;
@@ -213,7 +202,7 @@ export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) 
       <input
         ref={fileInputRef}
         type="file"
-        accept=".wav,.mp3,.ogg,.flac,.aiff,.opus"
+        accept={audioImportAcceptAttribute()}
         multiple
         style={{ display: "none" }}
         onChange={handleFileChange}
@@ -267,7 +256,7 @@ export function DropZone({ onImport, onBatchImport, className }: DropZoneProps) 
       ) : (
         <>
           <span className="drop-zone-text">{dragOver ? "Drop to import" : "Drop audio or click"}</span>
-          <span className="drop-zone-hint">WAV · MP3 · OGG · FLAC · AIFF</span>
+          <span className="drop-zone-hint">{describeAudioImportFormats()}</span>
         </>
       )}
     </div>

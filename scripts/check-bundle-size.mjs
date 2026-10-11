@@ -182,7 +182,13 @@ const ENTRY_BUDGET_KB = 1070;
 // gain-only loudness matching with a true-peak guard. The change adds a
 // bounded album delivery workflow with decoded reports; keep this small
 // 11 KB margin explicit and retain the independent 2200 KB boot-path cap.
-const TOTAL_BUDGET_KB = 5020;
+// 2026-10-11: measured 5031 KB after the KOREŇ content-surfaces wave, then
+// 5043 KB with SKRUTKA (ADR 0037) — a 3.7 KB lazy panel chunk plus ~8 KB of
+// effect data/registration (definitions, presets, role landings, blurbs).
+// The boot-path line moved only 2028 → 2036 KB (budget 2200), which is the
+// metric a waiting user parses; budget raised 5020 → 5080 with this measured
+// justification and a ~37 KB margin.
+const TOTAL_BUDGET_KB = 5080;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, and ONNX Runtime for the
 // symbolic/ranker workers. Keep these optional runtimes under one existing
@@ -421,6 +427,22 @@ let kopaWorkletKb = 0;
 }
 console.log(`[size-budget] KOPA worklet: ${kopaWorkletKb.toFixed(0)} KB (budget ${KOPA_WORKLET_BUDGET_KB})`);
 
+// SKRUTKA phase-dispersion effect worklet: a LAZY first-party effect module
+// (loaded only for projects that use the effect), so it carries its own
+// budget row instead of inflating the core boot bundle. All-pass-only DSP —
+// no tables, no IRs; 16 KB is a comfortable ceiling (KOREŇ measures ~6 KB).
+const SKRUTKA_WORKLET_BUDGET_KB = 16;
+let skrutkaWorkletKb = 0;
+{
+  const path = join(dist, "skrutka-worklet.js");
+  if (!statSync(path).isFile()) {
+    console.error("[size-budget] FAIL — missing SKRUTKA worklet: dist/skrutka-worklet.js");
+    process.exit(1);
+  }
+  skrutkaWorkletKb = statSync(path).size / 1024;
+}
+console.log(`[size-budget] SKRUTKA worklet: ${skrutkaWorkletKb.toFixed(0)} KB (budget ${SKRUTKA_WORKLET_BUDGET_KB})`);
+
 let failed = false;
 if (entryKb > ENTRY_BUDGET_KB) {
   console.error(`[size-budget] FAIL — entry chunk over budget: ${entryKb.toFixed(0)} > ${ENTRY_BUDGET_KB} KB.`);
@@ -537,6 +559,12 @@ if (bassHarmonicWorkletKb > BASS_HARMONIC_WORKLET_BUDGET_KB) {
 if (kopaWorkletKb > KOPA_WORKLET_BUDGET_KB) {
   console.error(
     `[size-budget] FAIL — KOPA worklet over budget: ${kopaWorkletKb.toFixed(0)} > ${KOPA_WORKLET_BUDGET_KB} KB.`,
+  );
+  failed = true;
+}
+if (skrutkaWorkletKb > SKRUTKA_WORKLET_BUDGET_KB) {
+  console.error(
+    `[size-budget] FAIL — SKRUTKA worklet over budget: ${skrutkaWorkletKb.toFixed(0)} > ${SKRUTKA_WORKLET_BUDGET_KB} KB.`,
   );
   failed = true;
 }

@@ -164,7 +164,7 @@ describe("audit16 · dock resize does not block the main thread per pointermove"
   const originalCancel = globalThis.cancelAnimationFrame;
 
   beforeEach(() => {
-    window.localStorage.removeItem("pf-dock-v1");
+    window.localStorage.removeItem("pf-layout-v1");
     let n = 0;
     globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
       cb(++n * 16);
@@ -176,7 +176,7 @@ describe("audit16 · dock resize does not block the main thread per pointermove"
   afterEach(() => {
     globalThis.requestAnimationFrame = originalRaf;
     globalThis.cancelAnimationFrame = originalCancel;
-    window.localStorage.removeItem("pf-dock-v1");
+    window.localStorage.removeItem("pf-layout-v1");
   });
 
   it("coalesces a burst of resize moves instead of one storage write per event", () => {
@@ -216,7 +216,7 @@ describe("audit16 · dock resize does not block the main thread per pointermove"
     }
     fireEvent.pointerUp(window, { pointerId: 1 });
 
-    const writes = setItem.mock.calls.filter(([k]) => k === "pf-dock-v1").length;
+    const writes = setItem.mock.calls.filter(([k]) => k === "pf-layout-v1").length;
     setItem.mockRestore();
     // The resize must still TRACK the pointer — no dropped moves.
     expect(latest).toBe(begin + 40);
@@ -236,14 +236,16 @@ describe("audit16 · dock resize does not block the main thread per pointermove"
     act(() => api!(360));
     expect(getByTestId("d").textContent).toBe("360");
     // The write is debounced, so it has not happened yet — that IS the fix.
-    expect(setItem.mock.calls.filter(([k]) => k === "pf-dock-v1").length).toBe(0);
+    expect(setItem.mock.calls.filter(([k]) => k === "pf-layout-v1").length).toBe(0);
     await act(async () => {
       await new Promise((r) => setTimeout(r, 260));
     });
-    const writes = setItem.mock.calls.filter(([k]) => k === "pf-dock-v1");
+    const writes = setItem.mock.calls.filter(([k]) => k === "pf-layout-v1");
     setItem.mockRestore();
     expect(writes.length).toBe(1);
-    expect(JSON.parse(String(writes[0][1])).height).toBe(360);
+    // ADR 0036: the dock writes into the unified layout store, so the persisted
+    // object is the whole LayoutState and the height lives under `dockHeight`.
+    expect(JSON.parse(String(writes[0][1])).dockHeight).toBe(360);
   });
 
   it("flushes the pending write on unmount so a reload keeps the last size", async () => {
@@ -258,10 +260,10 @@ describe("audit16 · dock resize does not block the main thread per pointermove"
     act(() => api!(444));
     // Unmount inside the debounce window — the write must still land.
     unmount();
-    const writes = setItem.mock.calls.filter(([k]) => k === "pf-dock-v1");
+    const writes = setItem.mock.calls.filter(([k]) => k === "pf-layout-v1");
     setItem.mockRestore();
     expect(writes.length).toBe(1);
-    expect(JSON.parse(String(writes[0][1])).height).toBe(444);
+    expect(JSON.parse(String(writes[0][1])).dockHeight).toBe(444);
   });
 
   it("re-clamps the dock when the viewport ceiling shrinks", () => {

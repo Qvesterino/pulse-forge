@@ -116,11 +116,12 @@ describe("AudioWorklet loader", () => {
     const addModule = vi.fn(async () => {});
     const ctx = mockCtx(addModule);
     await loadAllWorklets(ctx);
-    expect(addModule).toHaveBeenCalledTimes(9); // 2 core + 5 lazy + 2 instrument (tsar, kopa)
+    expect(addModule).toHaveBeenCalledTimes(10); // 2 core + 6 lazy + 2 instrument (tsar, kopa)
     expect(isWorkletReady("fxeq", ctx)).toBe(true);
     expect(isWorkletReady("ultina", ctx)).toBe(true);
     expect(isWorkletReady("ozvena", ctx)).toBe(true);
     expect(isWorkletReady("bassHarmonic", ctx)).toBe(true);
+    expect(isWorkletReady("skrutka", ctx)).toBe(true);
   });
 
   it("resolves silently without audioWorklet (jsdom)", async () => {

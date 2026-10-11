@@ -53,6 +53,7 @@ const OzvenaPanel = lazy(() => import("./OzvenaPanel").then((m) => ({ default: m
 const KaskadaPanel = lazy(() => import("./KaskadaPanel").then((m) => ({ default: m.KaskadaPanel })));
 const MorphDynamicsPanel = lazy(() => import("./MorphDynamicsPanel").then((m) => ({ default: m.MorphDynamicsPanel })));
 const KorenPanel = lazy(() => import("./KorenPanel").then((m) => ({ default: m.KorenPanel })));
+const SkrutkaPanel = lazy(() => import("./SkrutkaPanel").then((m) => ({ default: m.SkrutkaPanel })));
 import { BeatManglerEditor } from "./BeatManglerEditor";
 import { presetsForEffect } from "../effects/presets";
 import { BEATMAKING_EFFECT_CHAINS } from "../effects/chains";
@@ -1112,6 +1113,9 @@ function Device({
                 degraded={!!fallbackReason}
                 docked={devicesMode}
               />
+            )}
+            {fx.type === "skrutka" && (
+              <SkrutkaPanel params={fx.params} degraded={!!fallbackReason} docked={devicesMode} />
             )}
           </Suspense>
           {fx.type === "morphdynamics" && (

@@ -12,8 +12,8 @@ import { assetUrl } from "../shared/assetUrls";
  * Modules come in two weight classes:
  *  - CORE (bitcrusher + core-processor: sidechain, transient, gate, limiter,
  *    envFollower, compressor) — a few KB, used by stock effects everywhere.
- *  - LAZY (fxeq / ultina / ozvena / morphdynamics / bassHarmonic) — heavier
- *    DSP (vendored suites + first-party processors), loaded on demand: only
+ *  - LAZY (fxeq / ultina / ozvena / morphdynamics / bassHarmonic / skrutka) —
+ *    heavier DSP (vendored suites + first-party processors), loaded on demand: only
  *    when a project actually uses the effect (see ensureWorkletsForDoc) or
  *    when the engine builds its chain (which then hot-swaps the bypass
  *    runtime once the module lands). Loading ~500 KB of reverb EQ a beat
@@ -29,7 +29,7 @@ const failedContexts = new WeakSet<BaseAudioContext>();
 const inflight = new Map<BaseAudioContext, Promise<void>>();
 
 /** Lazy worklet DSP modules (vendored suites + first-party) — per effect type, on demand. */
-export const LAZY_WORKLET_TYPES = ["fxeq", "ultina", "ozvena", "morphdynamics", "bassHarmonic"] as const;
+export const LAZY_WORKLET_TYPES = ["fxeq", "ultina", "ozvena", "morphdynamics", "bassHarmonic", "skrutka"] as const;
 export type LazyWorkletType = (typeof LAZY_WORKLET_TYPES)[number];
 
 const LAZY_MODULE_URLS: Record<LazyWorkletType, string> = {
@@ -38,6 +38,7 @@ const LAZY_MODULE_URLS: Record<LazyWorkletType, string> = {
   ozvena: new URL(assetUrl("/ozvena-worklet.js"), import.meta.url).href,
   morphdynamics: new URL(assetUrl("/morph-dynamics-worklet.js"), import.meta.url).href,
   bassHarmonic: new URL(assetUrl("/bass-harmonic-worklet.js"), import.meta.url).href,
+  skrutka: new URL(assetUrl("/skrutka-worklet.js"), import.meta.url).href,
 };
 
 const CORE_TYPES = [
@@ -160,7 +161,8 @@ export async function loadCoreWorklets(ctx: BaseAudioContext): Promise<void> {
 }
 
 /**
- * Load ONE lazy worklet module (fxeq/ultina/ozvena/morphdynamics/bassHarmonic)
+ * Load ONE lazy worklet module
+ * (fxeq/ultina/ozvena/morphdynamics/bassHarmonic/skrutka)
  * into the context. Must run after (or together with) the core modules — lazy
  * readiness is tracked on top of the core "context ready" mark. Idempotent
  * per context.
