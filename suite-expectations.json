@@ -130,6 +130,34 @@
       "addedAt": "2026-10-06",
       "flaky": true,
       "evidence": "F1 worktree at 36d3afbb: CURED in run A, NEW in run B, identical tree"
+    },
+    {
+      "id": "tests/preset-loudness-audit.test.ts > preset gain sanity > clamp-hits equal the pinned inventory (fix the family/level, don't cap)",
+      "owner": "GROW preset/loudness wave (892801b2)",
+      "reason": "pinned clamp-hits inventory (74 entries) vs regenerated preset-loudness.generated.ts after the GROW PHASE/TILT preset adoption (70 entries); re-pin the inventory when the wave owner blesses the map",
+      "addedAt": "2026-10-11",
+      "evidence": "F1 campaign baseline 2026-10-11, clean worktree at 3beef964: expected Array(74) vs received Array(70); preset-loudness.generated.ts last changed by 892801b2 (2026-10-11), test pin from d4115dcd (2026-10-10)"
+    },
+    {
+      "id": "tests/intent-master-decisions.test.ts > planMixProfile — master loudness bound (Phase 2 slice 3) > a loud artist lifts the target but never past the trim limit",
+      "owner": "GROW preset/loudness wave (892801b2)",
+      "reason": "master loudness bound expectations (-5 LUFS lift) vs moved artist loudness calibration (-7); measured-loudness GROW work changed planMixProfile targets after the 2026-09-28 pin",
+      "addedAt": "2026-10-11",
+      "evidence": "F1 campaign baseline 2026-10-11, clean worktree at 3beef964: travis-scott expected -5, received -7 at intent-master-decisions.test.ts:124"
+    },
+    {
+      "id": "tests/intent-master-decisions.test.ts > planMixProfile — master loudness bound (Phase 2 slice 3) > the loudest artist still respects the cap (Excision -6 would need 8 dB)",
+      "owner": "GROW preset/loudness wave (892801b2)",
+      "reason": "master loudness cap expectation (-5 LUFS) vs moved calibration (-6); same measured-loudness recalibration as the sibling test",
+      "addedAt": "2026-10-11",
+      "evidence": "F1 campaign baseline 2026-10-11, clean worktree at 3beef964: excision expected -5, received -6 at intent-master-decisions.test.ts:133"
+    },
+    {
+      "id": "tests/preference-evaluation.test.ts > Producer DNA held-out evaluation > compares future preference predictions against the captured global selector",
+      "owner": "Producer DNA wave (ADR 0026-0032)",
+      "reason": "caveat wording pin: test matches /prompt\\/session groups are not stored/ but the report now says the holdout is 'chronological, candidate-hash-disjoint ... diagnostic, not a statistically independent user study' — privacy claim still present, reworded; re-pin the string",
+      "addedAt": "2026-10-11",
+      "evidence": "F1 campaign baseline 2026-10-11, clean worktree at 3beef964: caveat regex mismatch at preference-evaluation.test.ts:75"
     }
   ]
 }

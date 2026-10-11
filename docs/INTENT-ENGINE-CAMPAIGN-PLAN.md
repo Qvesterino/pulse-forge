@@ -116,7 +116,7 @@ Deliverable: `docs/INTENT-AUDIT-2026-10.md`.
 ### F4 — IntentPanel dekompozícia (2–3 dni, architektonická)
 
 **Cieľ:** 6 276 riadkov → panel shell + collaborator moduly, fasáda
- nezmenená (precedent: AudioEngine 6 140 → 2 497 cez 9 collaboratorov).
+nezmenená (precedent: AudioEngine 6 140 → 2 497 cez 9 collaboratorov).
 
 - Extrahovať do `src/ui/intent/` (alebo hooks/): audition playback + bank
   UI stav, audio referencia, voice idea (YIN/IDEA flow), producer session
@@ -171,26 +171,51 @@ deployed smoke URL.
 
 ## 4. Riziká a guardrails
 
-| Riziko | Mitigácia |
-| --- | --- |
-| Súbežné session v jednom worktree | commit skoro, len vlastné cesty, worktree pre falsifikáciu |
-| Zlomené golden rendery tichou zmenou | fast-path pravidlo, `drift:bless` + review, žiadne tiché regenerácie |
-| Self-deprivácia metrík (malé validácie) | predfixované aktivačné pravidlá, CI ľúbivosť, leak-guard na grupách |
-| Numpy retrain nedeterminizmus | manifest regen vždy, hash v commite, validátor proti manifestu |
-| Bundle budget (F4) | boot-path riadok (static closure App chunku) pred/po, nie celkový total |
-| Rozbehnutá kampaň bez konca | GO bod po každej fáze, každá fáza samostatne cenná |
+| Riziko                                  | Mitigácia                                                               |
+| --------------------------------------- | ----------------------------------------------------------------------- |
+| Súbežné session v jednom worktree       | commit skoro, len vlastné cesty, worktree pre falsifikáciu              |
+| Zlomené golden rendery tichou zmenou    | fast-path pravidlo, `drift:bless` + review, žiadne tiché regenerácie    |
+| Self-deprivácia metrík (malé validácie) | predfixované aktivačné pravidlá, CI ľúbivosť, leak-guard na grupách     |
+| Numpy retrain nedeterminizmus           | manifest regen vždy, hash v commite, validátor proti manifestu          |
+| Bundle budget (F4)                      | boot-path riadok (static closure App chunku) pred/po, nie celkový total |
+| Rozbehnutá kampaň bez konca             | GO bod po každej fáze, každá fáza samostatne cenná                      |
 
 ## 5. Stav / tracking
 
-| Fáza | Stav | Commit / dôkaz |
-| --- | --- | --- |
-| F0 dokumentová pravda | ⏳ čaká na GO | — |
-| F1 zelený baseline | ⏳ čaká na GO | — |
-| F2 audit porozumenia + routeru | ⏳ | — |
-| F3 opravy z auditu | ⏳ | — |
-| F4 IntentPanel dekompozícia | ⏳ | — |
-| F5 dáta a retrainty | ⏳ | — |
-| F6 uzavretie slučky | ⏳ | — |
+| Fáza                           | Stav                 | Commit / dôkaz                                                                                                                                       |
+| ------------------------------ | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F0 dokumentová pravda          | ✅ HOTOVÉ 2026-10-11 | `INTENT_ENGINE.md` revízia ⟦10-11⟧ (§3 vlny 09/10, §5.20, §7.2 update, T0 8 modelov, crosslink na master doc) + `CURRENT-STATE.md` melodic v3 riadok |
+| F1 zelený baseline             | ✅ HOTOVÉ 2026-10-11 | čistý worktree `D:\pulse-forge-f1` @ 3beef964; detaily nižšie                                                                                        |
+| F2 audit porozumenia + routeru | ⏳ čaká na GO        | 2 podozrivé nálezy z F1 čakajú                                                                                                                       |
+| F3 opravy z auditu             | ⏳                   | —                                                                                                                                                    |
+| F4 IntentPanel dekompozícia    | ⏳                   | —                                                                                                                                                    |
+| F5 dáta a retrainty            | ⏳                   | —                                                                                                                                                    |
+| F6 uzavretie slučky            | ⏳                   | —                                                                                                                                                    |
+
+### F1 výsledky (2026-10-11, čistý worktree @ 3beef964 + junction node_modules)
+
+- **Gates:** `typecheck` ✅ exit 0; `format:check` ✅ (čerstvý LF checkout);
+  intent test rodina: **125 súborov / 1 757 testov → 1 741 zelených,
+  16 červených v 11 súboroch** (dva behy: 17↔16 — flap vysvetlený nižšie).
+- **Klasifikácia 16 červených:**
+  - **10× už owned** v `suite-expectations.json` (ownery „intent-model wave",
+    „concurrent symbolic/grooves retrain wave") — známe, očakávané.
+  - **4× NOVÉ stale pins → zapísané do ledgeru** (tento commit): `preset-loudness-audit`
+    (pin 74 vs regenerovaných 70 clamp-hitov), `intent-master-decisions` ×2
+    (loudness kalibrácia −5 → −7/−6), `preference-evaluation` (rewordovaný
+    caveat text). Všetky s ownerom vlny, ktorá dáta posunula (GROW 892801b2,
+    Producer DNA ADR 0026–0032).
+  - **2× NESCLASSIFIKOVANÉ — zámerne NEblessnuté, idú do F2:**
+    1. `tests/intent-sections-fx.test.ts > is deterministic for a fixed seed` —
+       `buildSong` dvakrát z rovnakého docu dáva rozdielny obsah sekcií →
+       **možná reálna nedeterminizmus (F2 P1)**.
+    2. `tests/release-gate-ai-producer.test.ts > brief fidelity "explicit BPM
+       - genre"`— proposal nesie violation`"empty"`, test očakáva žiadnu →
+         **možný reálny defekt brief gateu (F2 P2)**.
+- **Flap 17↔16:** `intent-model-artifact` (flaky: true v ledgeri, mimo môjho
+  filtra rodiny) — potvrdené ako flaky machine-state, nie nový nález.
+- **Worktree nechávam stáť** (`D:\pulse-forge-f1`, junction na node_modules)
+  — F2 ho reuseduje na falsifikáciu.
 
 _Celkový odhad: ~8–14 dní fokusnej práce pri plnom prechode; F0+F1 spolu
 jeden dlhší večer. F2/F4/F5 sú navzájom nezávislé — poradie F2→F3→F4→F5
