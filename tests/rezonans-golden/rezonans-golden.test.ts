@@ -314,10 +314,35 @@ describe("REZONANS solver — key and chord", () => {
     expect(nthScaleTone(C_MAJOR, 0, 0)).toBe(0);
     expect(nthScaleTone(C_MAJOR, 0, 2)).toBe(4);
     expect(nthScaleTone(C_MINOR, 0, 2)).toBe(3);
-    expect(nthScaleTone(C_MAJOR, 0, 99)).toBe(-1);
     expect(nearestAllowedPc(C_TRIAD, 2)).toBe(4); // D → E
     expect(nearestAllowedPc(C_TRIAD, 6)).toBe(7); // F# → G
     expect(nearestAllowedPc(C_TRIAD, 4)).toBe(4); // already in the chord
+  });
+
+  it("degrees WRAP past the end of the scale instead of running out", () => {
+    // Every scale in the project model has 5 or 7 tones, so a 0..14 degree
+    // range used to leave the octave and above resolving to "no tone", which
+    // the solver degrades to a unison doubling. Wrapping keeps them musical.
+    const tones = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].filter((b) => (C_MAJOR & (1 << b)) !== 0).length;
+    expect(tones).toBe(7);
+    expect(nthScaleTone(C_MAJOR, 0, 7)).toBe(nthScaleTone(C_MAJOR, 0, 0));
+    expect(nthScaleTone(C_MAJOR, 0, 99)).toBe(nthScaleTone(C_MAJOR, 0, 99 % 7));
+    // An empty mask is the only genuine "no tone", and it must stay negative
+    // so the solver can distinguish "no scale yet" from "degree 0".
+    expect(nthScaleTone(0, 0, 0)).toBe(-1);
+    expect(nthScaleTone(C_MAJOR, 0, -1)).toBe(-1);
+  });
+
+  it("an octave in INTERVAL mode is an octave, not a unison", () => {
+    // Going through the pitch-class search made interval 12 resolve to the
+    // singer's own note — the nearest note with that pitch class is the note
+    // being sung. An interval is a semitone count, so it is applied directly.
+    const ctx: SolverContext = { mode: "interval", keyRootPc: 0, scaleMask: C_MAJOR, chordMask: 0, chordFollow: 0 };
+    const out = new Float64Array(4);
+    const solver = new HarmonySolver();
+    solver.solve(220, ctx, new Float64Array([12, 7, 0, 0]), out);
+    expect(solver.lastMidi[0]! - solver.lastMidi[2]!).toBe(12);
+    expect(solver.lastMidi[1]! - solver.lastMidi[2]!).toBe(7);
   });
 });
 

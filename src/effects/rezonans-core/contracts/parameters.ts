@@ -72,10 +72,15 @@ export interface RezParamDef {
   def: number;
 }
 
-/** Default per-voice values: a 3rd / 5th / octave / octave-below stack. */
+/** Default per-voice values: a 3rd / 5th / 7th / tonic stack. */
 const VOICE_DEFAULTS: Record<VoiceField, number[]> = {
   enabled: [1, 1, 1, 0],
-  degree: [3, 7, 12, 0],
+  // Degrees stay inside a heptatonic scale (0..6). Higher indices are NOT
+  // silently wrong — `nthScaleTone` wraps them — but a default that depends on
+  // the wrap to mean anything is a default the user cannot predict: asking a
+  // 7-note scale for degree 7 lands on degree 0, which is a unison doubling
+  // rather than the octave the number suggests.
+  degree: [2, 4, 6, 0],
   level: [0.7, 0.7, 0.7, 0.7],
   pan: [-0.6, -0.2, 0.2, 0.6],
   formant: [0, 0, 0, 0],

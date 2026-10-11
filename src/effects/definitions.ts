@@ -263,6 +263,11 @@ export const EFFECT_ORDER: EffectType[] = [
   "bassHarmonic",
   "skrutka",
   "portal",
+  // REZONANS is a FLAGSHIP suite (own panel, own worklet bundle, ADR 0040),
+  // so it is listed here for the inventory and surfaced through
+  // FLAGSHIP_EFFECT_ORDER — NOT in CORE_EFFECT_ORDER, which would print it a
+  // second time inside the core Add Effect group.
+  "rezonans",
 ];
 
 export const CORE_EFFECT_ORDER: EffectType[] = [
@@ -283,7 +288,6 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "duckDelay",
   "multiTapDelay",
   "portal",
-  "rezonans",
   "tapeSat",
   "vocoder",
   "reverseSwell",
@@ -2240,8 +2244,7 @@ export const skrutkaParams: ParamDef[] = [
     min: -1,
     max: 1,
     default: 0,
-    format: (v) =>
-      Math.abs(v) < 0.005 ? "STEREO" : `${Math.round(Math.abs(v) * 100)}% ${v > 0 ? "SIDE" : "MID"}`,
+    format: (v) => (Math.abs(v) < 0.005 ? "STEREO" : `${Math.round(Math.abs(v) * 100)}% ${v > 0 ? "SIDE" : "MID"}`),
   },
   {
     id: "dyn",

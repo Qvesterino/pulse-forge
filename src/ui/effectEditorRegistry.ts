@@ -35,6 +35,11 @@ const EDITOR_OVERRIDES: Partial<Record<EffectType, Pick<EffectEditorSpec, "prima
   // back and where it sits in the mix. Everything spectral — focus band, feed
   // shift, diffusion, freeze, drive, tone — lives on the details page.
   portal: { primaryParamIds: ["mode", "time", "feedback", "mix"] },
+  // REZONANS: the four decisions that define the sound — how far the formants
+  // move, which musical rule the voices obey, how many of them sing, and how
+  // far they are spread. Detection and output live on the details page; the
+  // 24 per-voice parameters are edited in the panel's own voice table.
+  rezonans: { primaryParamIds: ["formant", "harmony.mode", "harmony.voices", "harmony.spread"] },
 };
 
 /**

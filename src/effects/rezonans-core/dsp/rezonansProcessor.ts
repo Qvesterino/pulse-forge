@@ -68,6 +68,16 @@ export interface RezMeters {
   /** Share of frames that passed the clarity gate (diagnostic, P1 A2). */
   voicedRatio: number;
   claritySum: number;
+  /**
+   * Resolved MIDI target per voice, read straight off the solver.
+   *
+   * The panel draws these instead of re-deriving targets from the chord lane:
+   * a host-side recomputation would have to guess the same masks AND the same
+   * clarity-gated hold behaviour, and any disagreement between the drawing and
+   * the audio is exactly the "instrument lies to the user" defect this meter
+   * exists to prevent. `-1` means "not solved yet" (never voiced).
+   */
+  voiceMidi: number[];
 }
 
 export class RezonansProcessor {
@@ -135,6 +145,7 @@ export class RezonansProcessor {
     latencySamples: 0,
     voicedRatio: 0,
     claritySum: 0,
+    voiceMidi: new Array<number>(VOICE_COUNT).fill(-1),
   };
 
   // ── lifecycle ────────────────────────────────────────────────────────
@@ -315,6 +326,9 @@ export class RezonansProcessor {
     let active = 0;
     for (let i = 0; i < VOICE_COUNT; i++) if (this.voiceGain[i]! > 0.001) active++;
     this.meters.activeVoices = active;
+    for (let i = 0; i < VOICE_COUNT; i++) {
+      this.meters.voiceMidi[i] = this.solver.lastMidi[i]!;
+    }
     return this.meters;
   }
 

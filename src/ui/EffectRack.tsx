@@ -54,6 +54,7 @@ const KaskadaPanel = lazy(() => import("./KaskadaPanel").then((m) => ({ default:
 const MorphDynamicsPanel = lazy(() => import("./MorphDynamicsPanel").then((m) => ({ default: m.MorphDynamicsPanel })));
 const KorenPanel = lazy(() => import("./KorenPanel").then((m) => ({ default: m.KorenPanel })));
 const SkrutkaPanel = lazy(() => import("./SkrutkaPanel").then((m) => ({ default: m.SkrutkaPanel })));
+const RezonansPanel = lazy(() => import("./RezonansPanel").then((m) => ({ default: m.RezonansPanel })));
 import { BeatManglerEditor } from "./BeatManglerEditor";
 import { presetsForEffect } from "../effects/presets";
 import { BEATMAKING_EFFECT_CHAINS } from "../effects/chains";
@@ -1125,6 +1126,20 @@ function Device({
                   services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))
                 }
                 onGestureStart={() => services.store.beginUndoFrame("TWIST curve drag")}
+                onGestureEnd={() => services.store.endUndoFrame()}
+              />
+            )}
+            {fx.type === "rezonans" && (
+              <RezonansPanel
+                trackId={track.id}
+                fxId={fx.id}
+                params={fx.params}
+                degraded={!!fallbackReason}
+                docked={devicesMode}
+                onParam={(paramId, value) =>
+                  services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))
+                }
+                onGestureStart={() => services.store.beginUndoFrame("REZONANS formant drag")}
                 onGestureEnd={() => services.store.endUndoFrame()}
               />
             )}

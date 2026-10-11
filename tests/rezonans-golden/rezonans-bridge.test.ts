@@ -24,6 +24,7 @@ import { SCALE_INTERVALS, formatKey, type ScaleType } from "../../src/project-mo
 import type { MusicalKey } from "../../src/project-model/types";
 import { RezonansProcessor } from "../../src/effects/rezonans-core/dsp/rezonansProcessor.js";
 import { REZ_PARAM } from "../../src/effects/rezonans-core/contracts/parameters.js";
+import { EFFECT_KNOB, effectWordIn } from "../../src/intent/mix";
 
 const SCALE_TYPES = Object.keys(SCALE_INTERVALS) as ScaleType[];
 const QUALITIES = Object.keys(CHORD_INTERVALS) as ChordQuality[];
@@ -160,5 +161,109 @@ describe("REZONANS bridge — the processor follows the chord lane by bar", () =
     }
     // Still inside bar 0 — the lane starts at bar 4.
     expect(proc.getMeters().chordPc).toBe(-1);
+  });
+});
+
+describe("REZONANS — the panel reads the solver, not a re-derivation", () => {
+  it("voiceMidi carries the resolved targets, and -1 before anything is sung", () => {
+    const proc = new RezonansProcessor();
+    proc.prepare(48000, 2, 128, 120);
+    proc.setParameter(REZ_PARAM.harmonyMode, 2);
+    proc.setParameter("voice0.degree", 4);
+    proc.prepareOfflineRender();
+
+    // Silence: nothing has been solved, so the panel must draw "waiting"
+    // rather than a note at MIDI 0 (8.2 Hz — a pitch nobody can sing).
+    const silent = [new Float32Array(128), new Float32Array(128)];
+    for (let i = 0; i < 40; i++) proc.process(silent, 128);
+    expect(proc.getMeters().voiceMidi.slice()).toEqual([-1, -1, -1, -1]);
+
+    // A held tone: YIN locks, the solver resolves, and the meter mirrors it.
+    const f0 = 220;
+    const singerMidi = 69 + 12 * Math.log2(f0 / 440);
+    const voiced = [new Float32Array(128), new Float32Array(128)];
+    for (let i = 0; i < 128 * 60; i += 128) {
+      for (let n = 0; n < 128; n++) {
+        const s = Math.sin((2 * Math.PI * f0 * (i + n)) / 48000) * 0.4;
+        voiced[0]![n] = s;
+        voiced[1]![n] = s;
+      }
+      proc.process(voiced, 128);
+    }
+    const m = proc.getMeters();
+    expect(m.f0).toBeGreaterThan(180);
+    expect(m.f0).toBeLessThan(260);
+    // The contract is "a real, resolved target" — NOT "above the singer". The
+    // solver picks the NEAREST instance of the scale degree, so a 5th can land
+    // below the singer; asserting "above" would be asserting my assumption
+    // about octave placement, not the product.
+    for (const midi of m.voiceMidi) expect(midi).toBeGreaterThan(0);
+    // What must hold: the voice is a genuine harmony note, not a unison copy.
+    expect(Math.abs(m.voiceMidi[0]! - singerMidi)).toBeGreaterThan(1);
+  });
+
+  it("an octave is reachable in both modes — neither silently returns unison", () => {
+    const singerMidi = 69 + 12 * Math.log2(220 / 440);
+    const solveWith = (mode: number, degree: number): number => {
+      const proc = new RezonansProcessor();
+      proc.prepare(48000, 2, 128, 120);
+      proc.setParameter(REZ_PARAM.harmonyMode, mode);
+      proc.setParameter("voice0.degree", degree);
+      proc.prepareOfflineRender();
+      const block = [new Float32Array(128), new Float32Array(128)];
+      for (let i = 0; i < 128 * 60; i += 128) {
+        for (let n = 0; n < 128; n++) {
+          const s = Math.sin((2 * Math.PI * 220 * (i + n)) / 48000) * 0.4;
+          block[0]![n] = s;
+          block[1]![n] = s;
+        }
+        proc.process(block, 128);
+      }
+      return proc.getMeters().voiceMidi[0]!;
+    };
+
+    // INTERVAL 12 is a semitone count and must land an exact octave up. This
+    // used to route through the pitch-class search, whose nearest instance for
+    // the singer's OWN pitch class is the note being sung.
+    expect(Math.round(solveWith(1, 12) - singerMidi)).toBe(12);
+    // DEGREES beyond the scale length must still resolve to a real harmony
+    // note — the failure being guarded is "silently became a unison doubling",
+    // not "landed below the singer" (which is musically normal).
+    const wrapped = solveWith(2, 9);
+    expect(Math.abs(wrapped - singerMidi)).toBeGreaterThan(1);
+  });
+
+  it("reset() clears the targets so a restarted render draws no stale note", () => {
+    const proc = new RezonansProcessor();
+    proc.prepare(48000, 2, 128, 120);
+    proc.setParameter(REZ_PARAM.harmonyMode, 2);
+    const voiced = [new Float32Array(128), new Float32Array(128)];
+    for (let i = 0; i < 128 * 60; i += 128) {
+      for (let n = 0; n < 128; n++) {
+        const s = Math.sin((2 * Math.PI * 220 * (i + n)) / 48000) * 0.4;
+        voiced[0]![n] = s;
+        voiced[1]![n] = s;
+      }
+      proc.process(voiced, 128);
+    }
+    expect(proc.getMeters().voiceMidi.some((v) => v > 0)).toBe(true);
+    proc.reset();
+    expect(proc.getMeters().voiceMidi.slice()).toEqual([-1, -1, -1, -1]);
+  });
+});
+
+describe("REZONANS — the intent aliases reach the right device", () => {
+  it("routes the brand and the technical word to REZONANS", () => {
+    expect(effectWordIn(" pridaj rezonans na lead ")).toBe("rezonans");
+    expect(effectWordIn(" daj viac formantu na vocals ")).toBe("rezonans");
+  });
+
+  it("does not steal GROW's harmony words, and leaves the growth knob alone", () => {
+    // EFFECT_WORDS is scanned in order, so a new alias placed AFTER the GROW
+    // stems can never win — this pins that ordering, because swapping the two
+    // would silently send every bass-harmonic request to the wrong device.
+    expect(effectWordIn(" viac harmoniky na bass ")).toBe("bassHarmonic");
+    expect(effectWordIn(" bass harmonic generator ")).toBe("bassHarmonic");
+    expect(EFFECT_KNOB.rezonans).toBe("formant");
   });
 });

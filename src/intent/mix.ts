@@ -679,6 +679,9 @@ export const EFFECT_KNOB: Partial<Record<EffectType, string>> = {
   pump: "amount",
   bassHarmonic: "drive",
   skrutka: "dispersion",
+  // REZONANS: a "more/less" request turns the formant — the control that
+  // actually changes the voice's character, not the wet/dry mix.
+  rezonans: "formant",
 };
 
 const EFFECT_WORDS: ReadonlyArray<readonly [RegExp, EffectType]> = [
@@ -696,6 +699,10 @@ const EFFECT_WORDS: ReadonlyArray<readonly [RegExp, EffectType]> = [
   [/\bsidechain|\bpump(?:a|e|u)?/, "pump"],
   [/\bbass.?harmon|\bkoren\b|\bharmonik/, "bassHarmonic"],
   [/\bskrutka|\bdispers/, "skrutka"],
+  // Formant is the word beatmakers actually reach for; "harmony" already
+  // routes to GROW above, so the match is deliberately vowel-anchored on
+  // "rezonan" plus explicit formant/voice words rather than a bare \bharmon.
+  [/\brezonan|\bformant/, "rezonans"],
   [/\beq\b|\bfilter|\bfiltr|\bekvaliz/, "eq"],
 ];
 

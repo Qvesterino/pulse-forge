@@ -17,7 +17,9 @@ export const EFFECT_BLURBS: Partial<Record<EffectType, string>> = {
   prud: "Dynamic EQ — tames resonances only when they actually ring",
   bassHarmonic:
     "GROW — Bass Harmonic Processor; tracks incoming pitch and adds missing harmonics to 808s, samples, and bass tracks",
-  skrutka: "TWIST — phase dispersion; warps arrival time around FOCUS for throw and depth",
+  skrutka: "TWIST - phase dispersion; warps arrival time around FOCUS for throw and depth",
+  rezonans:
+    "REZONANS - formant shift + key-aware harmony; resizes the vocal and sings 4 voices that follow your chords",
   tapeSat: "Warm tape drive — glues a track and softens harsh tops",
   vinyl: "Age and dust — crackle, wobble and 1950s tone in one knob",
   distortion: "Hard drive — grit and aggression from edge to full shred",

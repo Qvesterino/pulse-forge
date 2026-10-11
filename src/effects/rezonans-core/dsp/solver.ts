@@ -47,7 +47,13 @@ function nearestMidiWithPc(refMidi: number, pc: number): number {
 export const SOLVER_VOICES = 4;
 
 export class HarmonySolver {
-  /** Resolved MIDI target per voice — diagnostics and hold-on-unvoiced. */
+  /**
+   * Resolved MIDI target per voice — diagnostics and hold-on-unvoiced.
+   *
+   * Reset fills `-1`, not `0`: MIDI 0 is 8.2 Hz, a pitch that could never be
+   * sung, and the panel reads this array directly as "no target yet". Zero
+   * would render as a bogus sub-bass note before the first sung vowel.
+   */
   readonly lastMidi = new Float64Array(SOLVER_VOICES);
 
   /**
@@ -68,8 +74,11 @@ export class HarmonySolver {
 
       switch (ctx.mode) {
         case "interval": {
-          const pc = (((refPc + d) % 12) + 12) % 12;
-          targetMidi = nearestMidiWithPc(refMidi, pc);
+          // An interval IS a semitone count, so it is applied directly. Going
+          // through the pitch-class search here would make interval 12 return
+          // the singer's OWN note — the nearest note with that pitch class is
+          // the one being sung — so "an octave up" would have been silent.
+          targetMidi = Math.round(refMidi) + d;
           break;
         }
 
@@ -113,6 +122,6 @@ export class HarmonySolver {
   }
 
   reset(): void {
-    this.lastMidi.fill(0);
+    this.lastMidi.fill(-1);
   }
 }

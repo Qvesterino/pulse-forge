@@ -1314,6 +1314,92 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     check("TWIST: KEY PUMP moves the render on a real key feed (bit-exact without one)", false, String(error));
   }
 
+  // REZONANS (ADR 0040) — the lazy flagship worklet on a real render. Two
+  // claims only a browser can close, because both live on the module path the
+  // DSP goldens never touch (fetch → registration → processorOptions → port
+  // sync): that the lazy module really loads, and that BOTH halves move
+  // audio — the harmony stack adds energy the dry voice does not have, and a
+  // +8 st formant raises the high-band share without moving the pitch.
+  //
+  // A sawtooth feeds YIN a harmonic comb to lock onto. A sine would prove the
+  // module loaded, but it proves nothing about the SOLVER — a single pure
+  // tone is exactly the case where "harmony is on but you cannot hear it" is
+  // the most plausible failure.
+  try {
+    const renderRez = async (params: Record<string, number>) => {
+      const ctx = new OfflineAudioContext(1, SR * 2, SR);
+      await loadCoreWorklets(ctx);
+      await loadLazyWorklet(ctx, "rezonans");
+      const rt = EFFECT_DEFS.rezonans.factory(
+        ctx,
+        {
+          id: "check-rezonans",
+          type: "rezonans",
+          bypassed: false,
+          params: { ...defaultParamsOf("rezonans"), quality: 2, mix: 1, ...params },
+        },
+        { bpm: 120 },
+      );
+      const osc = ctx.createOscillator();
+      osc.type = "sawtooth";
+      osc.frequency.value = 220;
+      const gain = ctx.createGain();
+      gain.gain.value = 0.5;
+      osc.connect(gain).connect(rt.input);
+      rt.output.connect(ctx.destination);
+      osc.start(0);
+      const buffer = await ctx.startRendering();
+      rt.dispose();
+      return { data: buffer.getChannelData(0), ready: isWorkletReady("rezonans", ctx) };
+    };
+
+    // One-pole split at ~1.5 kHz: `low` is the band below, and `x - low` is
+    // the band above. A centroid without an FFT would be hand-waved; this is
+    // an actual measurement of the quantity the formant warp is supposed to
+    // move.
+    const bandRatio = (data: Float32Array): number => {
+      const from = Math.floor(data.length * 0.4);
+      const coef = Math.exp((-2 * Math.PI * 1500) / SR);
+      let low = 0;
+      let lowEnergy = 0;
+      let highEnergy = 0;
+      for (let i = from; i < data.length; i++) {
+        const x = data[i]!;
+        low = coef * low + (1 - coef) * x;
+        const high = x - low;
+        lowEnergy += low * low;
+        highEnergy += high * high;
+      }
+      return highEnergy / Math.max(lowEnergy, 1e-12);
+    };
+
+    const noHarmony = await renderRez({ "harmony.mode": 0 });
+    const withHarmony = await renderRez({ "harmony.mode": 2 });
+    const dryFormant = await renderRez({ "harmony.mode": 0, formant: 0 });
+    const raisedFormant = await renderRez({ "harmony.mode": 0, formant: 8 });
+
+    let maxDiff = 0;
+    for (let i = 0; i < withHarmony.data.length; i++) {
+      maxDiff = Math.max(maxDiff, Math.abs(withHarmony.data[i]! - noHarmony.data[i]!));
+    }
+    const baseRatio = bandRatio(dryFormant.data);
+    const raisedRatio = bandRatio(raisedFormant.data);
+
+    check(
+      "REZONANS: lazy worklet loads and its harmony stack moves a real render",
+      withHarmony.ready && maxDiff > 0.02,
+      `ready=${withHarmony.ready} maxDiff=${maxDiff.toFixed(4)}`,
+    );
+    check(
+      "REZONANS: +8 st formant raises the high-band share on a real render",
+      raisedRatio > baseRatio * 1.15,
+      `base=${baseRatio.toFixed(3)} raised=${raisedRatio.toFixed(3)}`,
+    );
+  } catch (error) {
+    check("REZONANS: lazy worklet loads and its harmony stack moves a real render", false, String(error));
+    check("REZONANS: +8 st formant raises the high-band share on a real render", false, String(error));
+  }
+
   // Phase 4 (plugin-audit follow-up) — LIVE worklet-path audibility for the
   // event-queue voice worklets. Offline renders route them through native
   // graphs (determinism fix above); the LIVE path runs the real worklets and

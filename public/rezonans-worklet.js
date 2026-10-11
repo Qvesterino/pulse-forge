@@ -1124,7 +1124,13 @@
   }
   var SOLVER_VOICES = 4;
   var HarmonySolver = class {
-    /** Resolved MIDI target per voice — diagnostics and hold-on-unvoiced. */
+    /**
+     * Resolved MIDI target per voice — diagnostics and hold-on-unvoiced.
+     *
+     * Reset fills `-1`, not `0`: MIDI 0 is 8.2 Hz, a pitch that could never be
+     * sung, and the panel reads this array directly as "no target yet". Zero
+     * would render as a bogus sub-bass note before the first sung vowel.
+     */
     lastMidi = new Float64Array(SOLVER_VOICES);
     /**
      * Resolve one pitch ratio per voice into `out`.
@@ -1176,7 +1182,7 @@
       }
     }
     reset() {
-      this.lastMidi.fill(0);
+      this.lastMidi.fill(-1);
     }
   };
 
@@ -1236,7 +1242,8 @@
       activeVoices: 0,
       latencySamples: 0,
       voicedRatio: 0,
-      claritySum: 0
+      claritySum: 0,
+      voiceMidi: new Array(VOICE_COUNT).fill(-1)
     };
     // ── lifecycle ────────────────────────────────────────────────────────
     prepare(sampleRate2, channels = 2, blockSize = 128, bpm = 120) {
@@ -1381,6 +1388,9 @@
       let active = 0;
       for (let i = 0; i < VOICE_COUNT; i++) if (this.voiceGain[i] > 1e-3) active++;
       this.meters.activeVoices = active;
+      for (let i = 0; i < VOICE_COUNT; i++) {
+        this.meters.voiceMidi[i] = this.solver.lastMidi[i];
+      }
       return this.meters;
     }
     // ── render ───────────────────────────────────────────────────────────

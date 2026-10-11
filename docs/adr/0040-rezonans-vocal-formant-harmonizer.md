@@ -135,6 +135,27 @@ rootPc, chordMask }] }`, populated at the FX-chain build site where `doc` is
 16. **Fallback is honest:** `WORKLET_EFFECTS.rezonans = "degraded"` — a 1:1
     bypass with `degradedReason` until the module lands, replaced by the
     engine's hot-swap when ready.
+17. **`interval` mode applies the semitone count directly; `degrees` mode
+    resolves a pitch class to its nearest instance.** These are two different
+    operations and must not share code. An interval IS a distance, so it is
+    `round(f0_midi) + d`. Degrees and chord tones name a pitch CLASS, and the
+    solver picks the nearest instance of it. Routing both through the
+    pitch-class search made "an octave up" resolve to the singer's own note —
+    the nearest note carrying the singer's pitch class is the note being sung
+    — so the most basic request the mode exists for was silently a unison.
+18. **Scale degrees WRAP past the end of the scale.** Every scale in the
+    project model has 5 or 7 tones, so with a `0..14` degree range the octave
+    and everything above it (degrees 7..14) resolved to "no tone", which the
+    solver degrades to unison. Half the default four-voice stack was silent
+    doubling. `nthScaleTone` now returns `degree mod scaleLength`, and `-1` is
+    reserved for a mask that allows nothing — the one case that genuinely means
+    "no scale yet" and must stay distinguishable from degree 0.
+19. **The panel reads the solver's answer, never re-derives it.** The meter
+    carries `voiceMidi` straight off `HarmonySolver.lastMidi`. A host-side
+    recomputation would have to replicate the mask, the clarity gate and the
+    unvoiced hold to match, and any divergence draws a harmony the audio is
+    not producing — an instrument that lies about itself. Where the meter is
+    absent the panel says "waiting" instead of guessing.
 
 ## Consequences
 

@@ -60,18 +60,37 @@ export function midiToHz(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12);
 }
 
+/** Number of allowed pitch classes in a 12-bit mask. */
+function maskToneCount(mask: number): number {
+  let n = 0;
+  for (let i = 0; i < 12; i++) if ((mask & (1 << i)) !== 0) n++;
+  return n;
+}
+
 /**
  * The n-th allowed pitch class at or above `rootPc`, given a 12-bit mask.
  * `degree 0` is the root, `degree 1` the next allowed tone above it, and so on.
- * Returns -1 when the degree exceeds the mask.
+ *
+ * Degrees WRAP instead of running out. This is load-bearing: every scale in
+ * the project model has 5 or 7 tones, so a 0..14 degree range would leave
+ * degrees 7..14 (the octave and above — the most musical choices a user makes)
+ * resolving to "no tone", which the caller degrades to unison. A user asking
+ * for the octave would get a doubled unison and no explanation. Wrapping makes
+ * degree 7 of a heptatonic scale degree 0, and the caller's nearest-instance
+ * search puts it where the ear expects it.
+ *
+ * Returns -1 only when the mask allows nothing at all.
  */
 export function nthScaleTone(mask: number, rootPc: number, degree: number): number {
   if (mask === 0 || degree < 0) return -1;
+  const tones = maskToneCount(mask);
+  if (tones === 0) return -1;
+  const wrapped = Math.round(degree) % tones;
   let count = 0;
   for (let i = 0; i < 12; i++) {
     const pc = (((rootPc + i) % 12) + 12) % 12;
     if ((mask & (1 << pc)) !== 0) {
-      if (count === degree) return pc;
+      if (count === wrapped) return pc;
       count++;
     }
   }

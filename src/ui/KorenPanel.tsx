@@ -168,6 +168,7 @@ export function KorenPanel({
               clarity: typeof raw.clarity === "number" ? raw.clarity : 0,
               harm: typeof raw.harm === "number" ? raw.harm : 0,
               key: typeof raw.key === "number" ? raw.key : 1,
+              hint: typeof raw.hint === "number" ? raw.hint : 0,
               partials: raw.partials instanceof Float32Array ? raw.partials : null,
             }
           : null;

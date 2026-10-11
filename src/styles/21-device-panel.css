@@ -446,6 +446,101 @@
   padding: 1px 5px;
 }
 
+/* REZONANS panel — formant warp + pitch ladder, then the voice table. */
+.rezonans-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rezonans-panel .rezonans-degraded {
+  padding: 3px 8px;
+  border-radius: 3px;
+  background: rgba(245, 158, 11, 0.14);
+  font-size: 10px;
+}
+.rezonans-panel .rezonans-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rezonans-panel .rezonans-readout {
+  font-family: var(--mono);
+  font-size: 12px;
+  min-width: 170px;
+}
+.rezonans-panel .rezonans-hint {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  flex: 1;
+}
+.rezonans-panel .rezonans-viz {
+  width: 100%;
+  height: 168px;
+  display: block;
+  cursor: ns-resize;
+  touch-action: none;
+}
+.rezonans-panel .rezonans-voices {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rezonans-panel .rezonans-voice {
+  display: grid;
+  grid-template-columns: 34px repeat(5, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  opacity: 0.55;
+}
+/* A muted voice stays legible — it is off, not broken — so the row dims
+   rather than disappearing from the layout. */
+.rezonans-panel .rezonans-voice.on {
+  opacity: 1;
+  border-color: var(--border);
+}
+.rezonans-panel .rezonans-voice-toggle {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 2px 4px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.rezonans-panel .rezonans-voice.on .rezonans-voice-toggle {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.rezonans-panel .rezonans-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.rezonans-panel .rezonans-chip {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.4px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
+/* Screen-reader-only: the canvas state is otherwise invisible to assistive
+   tech, which would hear nothing about the detected pitch or the mode. */
+.rezonans-panel .rezonans-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .device-chain-item,
   .device-editor .fx-device-buttons .btn-small {
