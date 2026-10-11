@@ -36,6 +36,8 @@ import {
   loadEffectAbSlot,
   applyTwistScenePair,
   twistMorphIntensityBound,
+  applyKorenScenePair,
+  korenSceneIntensityBound,
   toggleEffectBypass,
 } from "../commands/commands";
 import {
@@ -1118,6 +1120,9 @@ function Device({
                 params={fx.params}
                 degraded={!!fallbackReason}
                 docked={devicesMode}
+                deviceState={fx.deviceState}
+                sceneBound={korenSceneIntensityBound(doc, track.id, fx.id)}
+                onApplyScenePair={(pair) => services.store.execute(applyKorenScenePair(doc, track.id, fx.id, pair))}
               />
             )}
             {fx.type === "skrutka" && (

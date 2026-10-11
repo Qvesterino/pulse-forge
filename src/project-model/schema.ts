@@ -866,6 +866,7 @@ export function sanitizeDeviceState(raw: unknown): DeviceState | undefined {
   if (ds.kind === "ultina-ab-v1" || ds.kind === "effect-ab-v1") return sanitizeAbState(ds.kind, ds.data);
   if (ds.kind === "morph-scenes-v1") return sanitizeMorphScenesState(ds.data);
   if (ds.kind === "twist-curves-v1") return sanitizeTwistCurvesState(ds.data);
+  if (ds.kind === "koren-scene-v1") return sanitizeKorenSceneState(ds.data);
   return undefined;
 }
 
@@ -953,6 +954,40 @@ function sanitizeTwistCurvesState(data: Record<string, unknown>): DeviceState | 
   }
   if (!hasValidSlot) return undefined;
   return { kind: "twist-curves-v1", data: { slots } };
+}
+
+const KOREN_SCENE_PARAM_IDS = new Set(EFFECT_META.bassHarmonic.params.map((param) => param.id));
+
+/**
+ * GROW scene pack (koren-scene-v1): the applied A/B param maps. Unlike the
+ * TWIST slots (the node falls back for unknown ids), these are display state —
+ * unknown ids are dropped and known ids clamp against the GROW catalog so a
+ * hand-edited blob can never surface an out-of-range value in the panel.
+ */
+function sanitizeKorenSceneState(data: Record<string, unknown>): DeviceState | undefined {
+  const rawSlots = (data.slots ?? null) as Record<string, unknown> | null;
+  if (typeof rawSlots !== "object" || rawSlots === null || Array.isArray(rawSlots)) return undefined;
+  const slots: Record<string, Record<string, number>> = {};
+  let hasValidSlot = false;
+  for (const slot of ["A", "B"] as const) {
+    const raw = rawSlots[slot];
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) continue;
+    hasValidSlot = true;
+    const clean: Record<string, number> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>).slice(0, DEVICE_STATE_SLOT_KEYS_MAX)) {
+      if (
+        key.length <= DEVICE_STATE_KEY_MAX &&
+        typeof value === "number" &&
+        Number.isFinite(value) &&
+        KOREN_SCENE_PARAM_IDS.has(key)
+      ) {
+        clean[key] = clampEffectParam("bassHarmonic", key, value);
+      }
+    }
+    slots[slot] = clean;
+  }
+  if (!hasValidSlot) return undefined;
+  return { kind: "koren-scene-v1", data: { slots } };
 }
 
 /**

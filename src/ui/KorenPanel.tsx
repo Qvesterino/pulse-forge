@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { KorenMeterFrame } from "../audio-worklets/bass-harmonic-node";
+import { readKorenSceneState } from "../effects/koren-scene";
+import { KOREN_SCENE_PACK, findKorenScenePair, type KorenScenePair } from "../effects/koren-scene-pack";
 import { useServices } from "./context";
 
 /**
@@ -20,6 +22,12 @@ import { useServices } from "./context";
  *
  * The panel is display + audition only: every AudioParam edit stays on the
  * generic device grid below it (single command path, one undo per gesture).
+ *
+ * SCENE PACK: the select applies a curated A/B pair (commands/korenScene.ts)
+ * — both maps land in deviceState, the live params take the midpoint and every
+ * difference becomes an intensity-sourced mapping, so the intro scene lands
+ * side A and the drop lands B. The select reads CUSTOM when the stored slots
+ * come from anything but a pack pair; the chip reports the armed binding.
  */
 export function KorenPanel({
   trackId,
@@ -27,12 +35,18 @@ export function KorenPanel({
   params,
   degraded,
   docked = false,
+  deviceState,
+  sceneBound = false,
+  onApplyScenePair,
 }: {
   trackId: string;
   fxId: string;
   params: Record<string, number>;
   degraded: boolean;
   docked?: boolean;
+  deviceState?: { kind: string; data: Record<string, unknown> } | null;
+  sceneBound?: boolean;
+  onApplyScenePair?: (pair: KorenScenePair) => void;
 }) {
   const services = useServices();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -203,6 +217,9 @@ export function KorenPanel({
     engine.setMonitorHighpass?.(next ? 350 : null);
   };
 
+  const sceneState = readKorenSceneState(deviceState);
+  const activePair = findKorenScenePair(sceneState?.slots);
+
   return (
     <section className={`koren-panel${docked ? " docked" : ""}`} aria-label="GROW visualizer">
       {degraded && <div className="koren-degraded">AudioWorklet unavailable — GROW is bypassed (1:1 signal)</div>}
@@ -228,6 +245,32 @@ export function KorenPanel({
         >
           PHONE CHECK
         </button>
+        <select
+          className="koren-pack"
+          aria-label="Scene pack"
+          value={activePair?.id ?? ""}
+          disabled={!onApplyScenePair}
+          title="Curated A/B pairs for the scene-intensity arc — the phone intro leans A, the drop lands B"
+          onChange={(event) => {
+            const pair = KOREN_SCENE_PACK.find((candidate) => candidate.id === event.target.value);
+            if (pair) onApplyScenePair?.(pair);
+          }}
+        >
+          {!activePair && <option value="">CUSTOM</option>}
+          {KOREN_SCENE_PACK.map((pair) => (
+            <option key={pair.id} value={pair.id}>
+              {pair.genre} — {pair.label}
+            </option>
+          ))}
+        </select>
+        {sceneBound && (
+          <span
+            className="koren-chip"
+            title="The pair rides the project's scene intensity — intro scenes lean A, drops land B"
+          >
+            SCENE-INTENSITY
+          </span>
+        )}
       </div>
       <canvas ref={canvasRef} className="koren-viz" />
     </section>

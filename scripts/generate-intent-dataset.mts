@@ -16,7 +16,7 @@
  *
  * Run: npx vite-node scripts/generate-intent-dataset.mts
  */
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { datasetDoc } from "./intent-sft-doc.mts";
 import { routeIntentText } from "../src/intent/route";
@@ -24,6 +24,7 @@ import { compactIntentResponse } from "../src/intent/dataset";
 
 const DATASET_VERSION = 4;
 const OUT_DIR = path.join(process.cwd(), "scripts", "data", "intent-sft");
+const MINED_CORPUS_PATH = path.join(process.cwd(), "scripts", "data", "intent-mined-corpus.json");
 
 interface Pair {
   instruction: string;
@@ -1736,7 +1737,43 @@ function augmentation(): Array<{ lang: "en" | "sk"; instructions: string[] }> {
 
 // ── Generation ──────────────────────────────────────────────────────────────
 
-function main(): void {
+/**
+ * MINED REGRESSION CORPUS (2026-10-11) — resolved rows from the intent
+ * mining cycle (npm run intent:cycle). A mined prompt that TODAY routes to
+ * a real action joins the corpus as a teacher pair, PINNING the resolution
+ * against regression: a future parser or engine change that breaks a past
+ * failure's resolution now fails the dataset build. The file is LOCAL ONLY
+ * (mined producer prompts never leave the machine — the failure-log
+ * etiquette) and optional: no file, zero rows.
+ */
+function minedCorpus(doc: ProjectDocument): Array<Pair & { source: string }> {
+  const minedPath = MINED_CORPUS_PATH;
+  if (!existsSync(minedPath)) return [];
+  try {
+    const parsed = JSON.parse(readFileSync(minedPath, "utf8")) as {
+      rows?: Array<{ instruction?: string; lang?: string; kind?: string; hits?: number }>;
+    };
+    const rows = Array.isArray(parsed.rows) ? parsed.rows : [];
+    const out: Array<Pair & { source: string }> = [];
+    for (const row of rows) {
+      if (typeof row.instruction !== "string" || row.instruction.trim().length === 0) continue;
+      const lang = row.lang === "sk" ? "sk" : "en";
+      const collected = collect(doc, lang, [row.instruction]);
+      for (const pair of collected) out.push({ ...pair, source: `mined:${row.kind ?? "?"}×${row.hits ?? 1}` });
+    }
+    console.log(`[dataset] mined regression corpus: ${out.length} row(s) from ${rows.length} mined`);
+    return out;
+  } catch (error) {
+    console.log(`[dataset] mined corpus unreadable (${error instanceof Error ? error.message : String(error)}) — continuing without it`);
+    return [];
+  }
+}
+
+async function main(): Promise<void> {
+  // The preset lazy seam (2026-10-04) throws on a cold bank — the dataset
+  // teacher parses preset intents, so warm before routing.
+  const { warmFactoryPresets } = await import("../src/presets/factory-loader");
+  await warmFactoryPresets();
   const doc = datasetDoc();
   const all: Array<Pair & { index: number }> = [];
   let index = 0;
@@ -1744,6 +1781,9 @@ function main(): void {
     for (const pair of collect(doc, lang, instructions)) {
       all.push({ ...pair, index: index++ });
     }
+  }
+  for (const pair of minedCorpus(doc)) {
+    all.push({ ...pair, index: index++ });
   }
 
   // determinism double-run: identical route on a second pass
@@ -1886,4 +1926,4 @@ function main(): void {
   console.log(`kinds: ${[...kindCounts.entries()].map(([k, n]) => `${k}=${n}`).join(", ")}`);
 }
 
-main();
+await main();

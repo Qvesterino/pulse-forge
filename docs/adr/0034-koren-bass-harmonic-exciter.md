@@ -427,3 +427,42 @@ flush: deficit2 decays to 4.94e-324 (the smallest Float64 denormal) within
 120 s of a 55 + 110 Hz input — the soak's internal counter fires on every
 10 s check. The flushes are in the same commit; the soak is the regression
 pin for them.
+
+## Addendum 12 (2026-10-11) — SCENE PACK (A/B pairs bound to scene intensity)
+
+Nine curated A/B pairs (`src/effects/koren-scene-pack.ts`, Drill Phone →
+Growl through Ambient Still → Bloom) carry the phone-intro → drop arc per
+genre. GROW has no DSP-side morph scalar (unlike TWIST), so the pair
+materializes through the engine's own modulation law instead of new DSP:
+`applyKorenScenePair` (commands/korenScene.ts) is ONE undoable command that
+
+1. stores both param maps on the effect's deviceState as `koren-scene-v1`
+   (sanitized, known ids clamped against the GROW catalog, unknown dropped),
+2. writes each param's MIDPOINT `(a + b)/2` as the live base, and
+3. adds an intensity-sourced mapping per differing param with
+   `amount = (b − a)/(max − min)`.
+
+The engine resolves an intensity fxParam mapping as
+`(max − min)/2 · bipolar · amount` around the persisted base
+(`bipolar = intensity·2 − 1`), so intensity 0 lands side A exactly and
+intensity 1 side B exactly — the intro scene is the phone-ready voicing, the
+drop lands the growl, with no lanes to draw. Stepped ids (CHARACTER, RANGE,
+RETRIG) cannot interpolate; the DSP rounds, so they switch at their rounding
+boundary mid-swing (a CLEAN → SAT → FOLD character sweep plays as the three
+characters, not a smear) — pinned by tests rather than described as morphing.
+
+The command OWNS the effect's scene-intensity binding: any pre-existing
+intensity mapping that targets this effect — wherever it lives — is rewritten
+in the same command (two offset mappings to one param would stack and double
+the swing), while macro-sourced mappings are left untouched. The binding is
+idempotent across pair switches and the whole apply is one undo step.
+
+Validation: `tests/koren-scene-pack.test.ts` pins the pack inside the rack
+ranges (clamp identity, stepped ids integer), the A/B key PARITY the command
+relies on, the ≥ 2-param contrast, the exact-match finder, the sanitizer
+(clamp known, drop unknown, reject hostile blobs), the midpoint bases and the
+endpoint arithmetic (`base ± halfspan = a/b`), the one-macro/one-mapping-per-
+diff shape, the rewrite-not-stack behavior across pair switches AND against a
+hand-made intensity mapping, and the non-GROW refusal. The panel suite covers
+the select → apply wiring, the SCENE-INTENSITY chip, and the CUSTOM fallback
+for hand-stored slots.

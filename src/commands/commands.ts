@@ -19,6 +19,7 @@ export * from "./notes";
 export * from "./quantize";
 export * from "./plugins";
 export * from "./twistScene";
+export * from "./korenScene";
 export * from "./project";
 export * from "./groove";
 export * from "./patterns";

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { createProjectFromTemplate } from "../src/project-model/templates";
@@ -49,6 +49,13 @@ function readJsonl(file: string): SftPair[] {
 }
 
 describe("intent SFT dataset (LLM-as-sound-engineer distillation)", () => {
+  // The preset lazy seam throws on a cold bank — the golden pairs include
+  // preset intents, so the teacher's bank must be warm before routing.
+  beforeAll(async () => {
+    const { warmFactoryPresets } = await import("../src/presets/factory-loader");
+    await warmFactoryPresets();
+  });
+
   const doc = datasetDoc();
   const golden = readJsonl(GOLDEN_PATH);
   const train = readJsonl(TRAIN_PATH);

@@ -148,3 +148,8 @@ tests/unsuno/golden-wav/
 
 # htdemucs ONNX checkpoint (S3) — fetched via npm run stem:fetch, never committed
 public/models/stem/*.onnx
+
+# intent mining — producer prompts stay LOCAL (failure-log etiquette)
+scripts/data/intent-mined.json
+scripts/data/intent-mined-corpus.json
+scripts/data/intent-cycle-report.json

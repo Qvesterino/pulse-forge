@@ -374,6 +374,26 @@
   color: var(--accent);
   background: rgba(245, 158, 11, 0.16);
 }
+.koren-panel .koren-pack {
+  max-width: 150px;
+  min-width: 90px;
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--text-dim);
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+.koren-panel .koren-chip {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.4px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  white-space: nowrap;
+}
 .koren-panel .koren-viz {
   width: 100%;
   height: 96px;
