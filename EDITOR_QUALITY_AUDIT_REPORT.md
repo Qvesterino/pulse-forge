@@ -1538,3 +1538,86 @@ once (one Playwright scenario passed, others reached interaction before timing
 out). Those items stay open, and the correct next step is a run on an idle box
 against a **production build** — where the module graph is pre-bundled and the
 982 KB dev transform does not apply — not a third attempt here.
+
+---
+
+## Wave 8 — 2026-10-11 — the production build, the budget gate, and the answer to wave 7
+
+Wave 7 ended with an open question: *is the boot stall an application defect or a
+dev-server artefact?* The way to answer it is to remove the dev server.
+
+### `npm run build` — FAILED, and not on our code
+
+```
+> build:rezonans
+X [ERROR] Failed to write to output file:
+  open D:\pulse-forge\public\rezonans-worklet.js:
+  The requested operation cannot be performed on a file with a user-mapped section open.
+```
+
+A **Windows memory-mapped-file lock** — another process has that worklet bundle
+mapped. This is the shared-worktree hazard `AGENTS.md` §7 warns about, not a
+compile error: every worklet before it (bass-harmonic, kopa, skrutka, spectral)
+built cleanly, and the failure is a file-open, not a syntax error.
+
+### `npx vite build` — SUCCEEDED
+
+```
+dist/assets/ArrangementPanel-CE73adNp.js   150.55 kB │ gzip: 46.92 kB
+✓ built in 42.12s
+PWA v1.3.0 … precache 442 entries (283887.34 KiB) … dist/sw.js
+```
+
+Skipping only the `prebuild` worklet hooks (whose outputs already exist) gives
+the pre-bundled graph the browser needs.
+
+### `node scripts/check-bundle-size.mjs` — **OK (exit 0)**
+
+```
+[size-budget] entry: 300 KB (budget 1070)
+[size-budget] DAW JS chunks: 5134 KB (budget 5160)
+[size-budget] optional on-demand runtimes: 640 KB (budget 650)
+[size-budget] optional FLAC codec: 570 KB (budget 600)
+[size-budget] optional Audiotool Nexus: 713 KB (budget 750)
+[size-budget] shipped JS total: 7225 KB
+[size-budget] core worklets: 149 KB (budget 150)
+[size-budget] studio boot path: 2101 KB across 22 chunks (budget 2200)
+[size-budget] OK
+```
+
+**Four budgets are within a rounding error of their limit**, and this is worth
+more than the pass itself:
+
+| Budget | Actual | Headroom |
+| --- | --- | --- |
+| core worklets | 149 / 150 KB | **1 KB** |
+| optional codecs | 168 / 170 KB | 2 KB |
+| optional on-demand runtimes | 640 / 650 KB | 10 KB |
+| DAW JS chunks | 5134 / 5160 KB | 26 KB |
+
+One more worklet of ~1 KB, or one modest feature import, turns the build red.
+That is a **merge risk for every session in the repo**, not a defect, and it is
+the kind of thing that gets discovered as an unrelated "the build broke" report
+rather than as a budget conversation. Raised here for the owner.
+
+### The answer to wave 7
+
+Serving `dist/` and loading it in the in-app browser:
+
+```
+open_tab  http://127.0.0.1:4173/   →  success, navigation detected, loaded, 532 ms
+```
+
+**532 ms**, against a dev server that never finished in five minutes. That
+settles the question: **the boot stall is Vite's cold transform, not an
+application fault.** The §20 "eternal loading state" finding stands as a
+*robustness gap* (the fallback has no watchdog), but it is not manifesting as a
+real boot bug, and this report should not be read as claiming one.
+
+Every Browser operation *after* that navigation timed out at the tool's 275 s
+ceiling — the control channel, not the page (navigation had already reported
+`loaded`). Interactive browser verification was therefore unavailable to this
+wave, and §17 / §33 / §35-browser / take-lane remain **unverified**. What this
+wave did establish is that they are *runnable*: the production build is fast,
+budget-clean and available, so those checks need a working Browser session on
+this machine, not another rewrite of the same gate.
