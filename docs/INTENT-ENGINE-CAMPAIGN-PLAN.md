@@ -214,6 +214,11 @@ deployed smoke URL.
          **možný reálny defekt brief gateu (F2 P2)**.
 - **Flap 17↔16:** `intent-model-artifact` (flaky: true v ledgeri, mimo môjho
   filtra rodiny) — potvrdené ako flaky machine-state, nie nový nález.
+- **`drift:check` @ 8c25f081:** mcp-mirrors ✅, CURRENT-STATE counts ✅;
+  **domain-goldens `param-math.json` stale — zaviedol ju `cd5e8603`**
+  (melodic table coverage, 18:18) zmenou `definitions.ts` PO poslednom
+  blese zlatého (c6680cbf, 17:52). Neblessujem — owner je vlna cd5e8603;
+  `npm run drift:bless` + review na nej.
 - **Worktree nechávam stáť** (`D:\pulse-forge-f1`, junction na node_modules)
   — F2 ho reuseduje na falsifikáciu.
 
