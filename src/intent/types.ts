@@ -290,5 +290,10 @@ export interface GenerationProvider {
   id: string;
   version: string;
   capabilities: readonly string[];
-  generate(plan: GenerationPlan, context: GenerationContext, signal?: AbortSignal): Promise<GenerationProposal>;
+  /**
+   * Null when the provider could not produce ANY valid candidate (including
+   * its own fallback) — the D3 rejected contract. Callers treat a null
+   * proposal as "generation rejected", never as an applyable pattern.
+   */
+  generate(plan: GenerationPlan, context: GenerationContext, signal?: AbortSignal): Promise<GenerationProposal | null>;
 }

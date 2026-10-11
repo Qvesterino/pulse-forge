@@ -10,6 +10,7 @@ import type {
   SceneRole,
 } from "../project-model/types";
 import { BAR_TICKS } from "../project-model/types";
+import { emptyPattern } from "../project-model/templates";
 import { normalizeIntent, intentFromGenerateOptions } from "./normalize";
 import { generateOptionsFromIntent, planGeneration } from "./plan";
 import { generateAsyncResult, generateLocalResult } from "./pipeline";
@@ -2615,6 +2616,26 @@ export async function buildSong(
           })
         : generateLocalResult(doc, sectionIntent, "apply");
     if (!result.proposal) {
+      // A melodic-only section on a document that has NO tracks for its
+      // roles (e.g. building a song on an empty pre-song document) cannot
+      // produce content — that is not a generation failure. The section
+      // stays an honest empty body: applySongCommand lays the harmony plan
+      // onto the chord track it creates. Anything else (drums wanted, or
+      // resolvable tracks that still produced nothing) stays a hard error
+      // — the D3 rejected contract must not be papered over here.
+      const melodicWanted = sectionRoles.filter((role) => role !== "drums");
+      const melodicTargetsExist =
+        melodicWanted.length === 0 || melodicWanted.some((role) => instrumentTrackForRole(doc, role) !== null);
+      if (!sectionRoles.includes("drums") && !melodicTargetsExist) {
+        sections.push({
+          ...section,
+          pattern: emptyPattern(`${section.label} (empty)`, [], section.bars * 16),
+          stepCount: section.bars * 16,
+          roles: sectionRoles,
+        });
+        options.onProgress?.(index + 1, section.label, form.sections.length);
+        continue;
+      }
       throw new Error(`section "${section.label}" failed generation: ${result.diagnostics.errors[0] ?? "rejected"}`);
     }
     if (resolvedBpm === null) resolvedBpm = result.plan.resolvedBpm;
