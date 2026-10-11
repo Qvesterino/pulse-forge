@@ -90,6 +90,19 @@
  *    vibrato, bends). The hint clears to 0 on note-off — pure YIN falls back.
  *    Not a user knob: absent from EFFECT_META, like kaskada's hidden `bpm`.
  *
+ * Wave 9 adds the timbre profilers:
+ *
+ * 13. `phase` (0..1, default 0) — a Schroeder-style quadratic PHASE profile
+ *    over the partials. At 1 every partial carries a different static phase
+ *    offset, so the stack's impulse-like crest collapses (~half the peak at
+ *    the same RMS/spectrum): the classic low-crest-factor waveform — the
+ *    generator sounds smoother and can be pushed louder without clipping.
+ *    phase = 0 is the legacy aligned stack, bit-exactly.
+ * 14. `tilt` (−1..+1, default 0) — a spectral slope across the stack:
+ *    +1 flattens the tail toward a saw-like 1/n (buzzier, richer), −1
+ *    steepens toward 1/n² (darker, rounder). Applied before normalization,
+ *    so it redistributes rather than raising the level.
+ *
  * Parameter surface: plain AudioParams (M2 pattern, zenit-m2-nodes.ts) —
  * no port messages for parameters, so offline automation works natively via
  * setValueAtTime. All per-sample smoothing uses per-sample coefficients

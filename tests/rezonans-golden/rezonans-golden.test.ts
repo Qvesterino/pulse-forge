@@ -14,6 +14,9 @@
  *   A6  every sample finite
  */
 
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { RezonansProcessor } from "../../src/effects/rezonans-core/dsp/rezonansProcessor.js";
 import {
@@ -26,7 +29,9 @@ import {
 import { HarmonySolver, type SolverContext } from "../../src/effects/rezonans-core/dsp/solver.js";
 import { midiToHz, nthScaleTone, nearestAllowedPc } from "../../src/effects/rezonans-core/dsp/harmony.js";
 import { CepstralEnvelope, FormantWarp } from "../../src/effects/rezonans-core/dsp/cepstrum.js";
+import { FrameEngine } from "../../src/effects/rezonans-core/dsp/frame.js";
 import { fft, hannWindow } from "../../src/effects/rezonans-core/dsp/fft.js";
+import { PhaseLocker } from "../../src/effects/rezonans-core/dsp/phaseLock.js";
 
 const SR = 48000;
 const BLOCK = 128;
@@ -40,14 +45,39 @@ describe("REZONANS formant parameter resolution", () => {
   });
 });
 
-/** Harmonic-rich, vibrato'd, amplitude-modulated tone — a vocal stand-in. */
-function makeVocal(seconds: number, f0 = 220, sampleRate = SR): Float32Array {
+describe("REZONANS identity phase locking", () => {
+  it("keeps each bin's wrapped analysis offset from its propagated peak", () => {
+    const locker = new PhaseLocker();
+    locker.prepare(16);
+    const magnitude = new Float64Array([0, 0, 0.2, 1, 0.2, 0, 0.2, 0.6, 0]);
+    const analysisPhase = new Float64Array(9);
+    analysisPhase[2] = -2.8;
+    analysisPhase[3] = 2.8;
+    const synthesisPhase = new Float64Array(9);
+    synthesisPhase[2] = -9;
+    synthesisPhase[3] = 10.2;
+
+    locker.findPeaks(magnitude, 8);
+    locker.applyLock(synthesisPhase, analysisPhase, 8);
+
+    const expectedOffset = -5.6 + 2 * Math.PI;
+    expect(synthesisPhase[3]).toBe(10.2);
+    expect(synthesisPhase[2]).toBeCloseTo(10.2 + expectedOffset, 12);
+  });
+});
+
+/** Harmonic-rich, smoothly vibrato'd, amplitude-modulated tone — a vocal stand-in. */
+function makeVocal(seconds: number, f0 = 220, sampleRate = SR, vibratoDepth = 0.01): Float32Array {
   const n = Math.floor(seconds * sampleRate);
   const out = new Float32Array(n);
+  const vibratoRate = 5.2;
   for (let i = 0; i < n; i++) {
     const t = i / sampleRate;
-    const vib = 1 + 0.01 * Math.sin(2 * Math.PI * 5.2 * t);
-    const ph = 2 * Math.PI * f0 * vib * t;
+    // Integrate the instantaneous frequency. Multiplying f0*t by a changing
+    // vibrato factor makes pitch drift grow with time and is not a realistic
+    // singer; this closed form yields f(t) = f0 * (1 + depth * sin(rate*t)).
+    const vibPhase = 2 * Math.PI * vibratoRate * t;
+    const ph = 2 * Math.PI * f0 * t + ((f0 * vibratoDepth) / vibratoRate) * (1 - Math.cos(vibPhase));
     let s = 0;
     for (let h = 1; h <= 14; h++) s += Math.sin(ph * h) / h;
     // Sustained phrase with short gaps: transients plus body, like a sung line.
@@ -60,7 +90,9 @@ function makeVocal(seconds: number, f0 = 220, sampleRate = SR): Float32Array {
 interface RenderOpts {
   seconds?: number;
   f0?: number;
+  sampleRate?: number;
   params?: Record<string, number>;
+  onBlock?: (processor: RezonansProcessor, offset: number) => void;
   harmonyContext?: {
     keyRootPc: number;
     scaleMask: number;
@@ -74,8 +106,9 @@ function render(
   opts: RenderOpts = {},
   rightInput: Float32Array = input,
 ): { l: Float32Array; r: Float32Array; latency: number; proc: RezonansProcessor } {
+  const sampleRate = opts.sampleRate ?? SR;
   const proc = new RezonansProcessor();
-  proc.prepare(SR, 2, BLOCK, opts.bpm ?? 120);
+  proc.prepare(sampleRate, 2, BLOCK, opts.bpm ?? 120);
   for (const [id, v] of Object.entries(opts.params ?? {})) proc.setParameter(id, v);
   if (opts.harmonyContext) proc.setHarmonyContext(opts.harmonyContext);
   proc.prepareOfflineRender();
@@ -88,10 +121,45 @@ function render(
     scratch[0].set(input.subarray(pos, pos + frames));
     scratch[1].set(rightInput.subarray(pos, pos + frames));
     proc.process(scratch, frames);
+    opts.onBlock?.(proc, pos);
     l.set(scratch[0].subarray(0, frames), pos);
     r.set(scratch[1].subarray(0, frames), pos);
   }
   return { l, r, latency: proc.getLatencySamples(), proc };
+}
+
+function decodeMonoPcm16Wav(bytes: Buffer): { samples: Float32Array; sampleRate: number } {
+  if (bytes.toString("ascii", 0, 4) !== "RIFF" || bytes.toString("ascii", 8, 12) !== "WAVE") {
+    throw new Error("Expected a RIFF/WAVE fixture");
+  }
+  let format = 0;
+  let channels = 0;
+  let sampleRate = 0;
+  let bitsPerSample = 0;
+  let dataOffset = -1;
+  let dataLength = 0;
+  for (let offset = 12; offset + 8 <= bytes.length;) {
+    const chunkId = bytes.toString("ascii", offset, offset + 4);
+    const chunkLength = bytes.readUInt32LE(offset + 4);
+    const payload = offset + 8;
+    if (chunkId === "fmt ") {
+      format = bytes.readUInt16LE(payload);
+      channels = bytes.readUInt16LE(payload + 2);
+      sampleRate = bytes.readUInt32LE(payload + 4);
+      bitsPerSample = bytes.readUInt16LE(payload + 14);
+    } else if (chunkId === "data") {
+      dataOffset = payload;
+      dataLength = chunkLength;
+      break;
+    }
+    offset = payload + chunkLength + (chunkLength & 1);
+  }
+  if (format !== 1 || channels !== 1 || bitsPerSample !== 16 || dataOffset < 0 || dataLength % 2 !== 0) {
+    throw new Error("Expected mono 16-bit PCM WAV data");
+  }
+  const samples = new Float32Array(dataLength / 2);
+  for (let i = 0; i < samples.length; i++) samples[i] = bytes.readInt16LE(dataOffset + i * 2) / 32768;
+  return { samples, sampleRate };
 }
 
 function rms(a: Float32Array): number {
@@ -157,7 +225,7 @@ describe("REZONANS golden — A1 determinism", () => {
 
 describe("REZONANS golden — A2 formant identity (α = 1)", () => {
   it("formant = 0 leaves the spectral centroid where it was", () => {
-    const input = makeVocal(0.8);
+    const input = makeVocal(0.8, 220, SR, 0);
     // Single voice, unity interval, full wet, no formant shift: the spectral
     // content reaching the output must stay put. A formant shifter whose
     // identity setting colours the voice is a defect users hear on note one.
@@ -166,6 +234,7 @@ describe("REZONANS golden — A2 formant identity (α = 1)", () => {
       [REZ_PARAM.voices]: 1,
       [REZ_PARAM.mix]: 1,
       [REZ_PARAM.bodyGate]: 0,
+      [REZ_PARAM.clarity]: 0,
       [voiceParamId(0, "enabled")]: 1,
       [voiceParamId(0, "degree")]: 0, // unison → ratio 1
       [voiceParamId(0, "humanize")]: 0,
@@ -180,7 +249,8 @@ describe("REZONANS golden — A2 formant identity (α = 1)", () => {
     // eslint-disable-next-line no-console
     console.log(
       `REZONANS A2: source centroid ${srcCentroid.toFixed(0)} Hz → wet(α=1) ${wetCentroid.toFixed(0)} Hz ` +
-        `(${((relDrift - 1) * 100).toFixed(1)} % drift), wet rms ${rms(out.l).toFixed(4)} vs src ${rms(input).toFixed(4)}; ` +
+        `(${(relDrift * 100).toFixed(1)} % absolute drift), wet rms ${rms(out.l).toFixed(4)} vs src ${rms(input).toFixed(4)}; ` +
+        `f0 ${m.f0.toFixed(1)} Hz, target ${m.voiceMidi[0]?.toFixed(2)} MIDI, ` +
         `clarity ${m.claritySum.toFixed(3)}, voiced ${(m.voicedRatio * 100).toFixed(1)} %`,
     );
     expect(relDrift).toBeLessThan(0.12);
@@ -263,14 +333,14 @@ describe("REZONANS golden — deterministic per-voice humanization", () => {
 });
 
 describe("REZONANS golden — A4 latency contract", () => {
-  it("reports N/2 samples and stays far below the 200 ms PDC ceiling", () => {
+  it("reports the measured N - 1 wet-path delay and stays below the PDC ceiling", () => {
     for (const [quality, fftSize] of [
       [QUALITY_ECONOMY, 1024],
       [1, 2048],
       [QUALITY_FINE, 4096],
     ] as const) {
       const out = render(makeVocal(0.3), { params: { [REZ_PARAM.quality]: quality } });
-      expect(out.latency).toBe(fftSize >> 1);
+      expect(out.latency).toBe(fftSize - 1);
       expect(out.latency / SR).toBeLessThan(0.2);
     }
   });
@@ -280,7 +350,57 @@ describe("REZONANS golden — A4 latency contract", () => {
     proc.prepare(44100, 2, 128, 120);
     const meters = proc.getMeters();
     expect(meters.sampleRate).toBe(44100);
-    expect(meters.latencySamples / meters.sampleRate).toBeCloseTo(1024 / 44100, 12);
+    expect(meters.latencySamples / meters.sampleRate).toBeCloseTo(2047 / 44100, 12);
+  });
+
+  it("measures the wet-path transient delay against the source event", () => {
+    const input = new Float32Array(SR);
+    for (let i = Math.floor(0.05 * SR); i < Math.floor(0.95 * SR); i++) {
+      const phase = (2 * Math.PI * 220 * i) / SR;
+      let vowel = 0;
+      for (let h = 1; h <= 12; h++) vowel += Math.sin(phase * h) / h;
+      input[i] = 0.04 * vowel;
+    }
+    const impulseIndex = Math.floor(0.5 * SR);
+    const withTransient = new Float32Array(input);
+    withTransient[impulseIndex] = 1;
+    const baseParams: Record<string, number> = {
+      [REZ_PARAM.harmonyMode]: 1,
+      [REZ_PARAM.voices]: 1,
+      [REZ_PARAM.mix]: 1,
+      [REZ_PARAM.bodyGate]: 0,
+      [REZ_PARAM.clarity]: 0,
+      [REZ_PARAM.width]: 1,
+      [voiceParamId(0, "enabled")]: 1,
+      [voiceParamId(0, "degree")]: 0,
+      [voiceParamId(0, "level")]: 1,
+      [voiceParamId(0, "pan")]: 0,
+      [voiceParamId(0, "humanize")]: 0,
+    };
+    for (const [quality, fftSize] of [
+      [QUALITY_ECONOMY, 1024],
+      [1, 2048],
+      [QUALITY_FINE, 4096],
+    ] as const) {
+      const params = { ...baseParams, [REZ_PARAM.quality]: quality };
+      const baseline = render(input, { params });
+      const rendered = render(withTransient, { params });
+      let peakLag = 0;
+      let peak = 0;
+      for (let lag = 0; lag < 2 * fftSize; lag++) {
+        const delta = Math.abs(rendered.l[impulseIndex + lag]! - baseline.l[impulseIndex + lag]!);
+        if (delta > peak) {
+          peak = delta;
+          peakLag = lag;
+        }
+      }
+      // eslint-disable-next-line no-console
+      console.log(
+        `REZONANS impulse delay q${quality}: ${peakLag} samples (reported ${rendered.latency}), peak=${peak.toFixed(3)}`,
+      );
+      expect(peak).toBeGreaterThan(0.01);
+      expect(peakLag).toBe(fftSize - 1);
+    }
   });
 
   it("quality upgrade resizes the voice rings and keeps the fine render finite", () => {
@@ -342,7 +462,7 @@ describe("REZONANS golden — bypass", () => {
     const out = render(input, { params }, rightInput);
 
     // Compare well inside the consonant, after the pitch hold has released.
-    // The dry delay is part of the declared N/2 latency contract.
+    // The dry delay is part of the declared N - 1 wet-path latency contract.
     const from = Math.floor(0.55 * SR);
     const to = Math.floor(0.75 * SR);
     const assertSourcePass = (rendered: Float32Array, source: Float32Array, channel: string) => {
@@ -361,6 +481,55 @@ describe("REZONANS golden — bypass", () => {
     };
     assertSourcePass(out.l, input, "left");
     assertSourcePass(out.r, rightInput, "right");
+  });
+});
+
+describe("REZONANS real-phrase speech smoke", () => {
+  it("tracks and renders a recorded CC0 phrase at its native sample rate", () => {
+    // Wikimedia Commons, "Do you mind if I open the window.wav" by Czechcamp.
+    // CC0 1.0; source page: https://commons.wikimedia.org/wiki/File:Do_you_mind_if_I_open_the_window.wav
+    // SHA-1 pins the 194,766-byte fixture so this listening reference cannot drift silently.
+    const wav = readFileSync(join(process.cwd(), "tests/fixtures/rezonans-cc0-female-speech.wav"));
+    expect(createHash("sha1").update(wav).digest("hex")).toBe("1bf2d93eb310128ed323457ddc70ef2b0b9f980b");
+    const { samples, sampleRate } = decodeMonoPcm16Wav(wav);
+    expect(sampleRate).toBe(24000);
+
+    const trace: Array<{ offset: number; f0: number; activeVoices: number }> = [];
+    const params: Record<string, number> = {
+      [REZ_PARAM.quality]: QUALITY_ECONOMY,
+      [REZ_PARAM.harmonyMode]: 1,
+      [REZ_PARAM.voices]: 1,
+      [REZ_PARAM.mix]: 1,
+      [voiceParamId(0, "enabled")]: 1,
+      [voiceParamId(0, "degree")]: 7,
+      [voiceParamId(0, "level")]: 1,
+      [voiceParamId(0, "humanize")]: 0,
+    };
+    const out = render(samples, {
+      sampleRate,
+      params,
+      onBlock: (processor, offset) => {
+        const meters = processor.getMeters();
+        trace.push({ offset, f0: meters.f0, activeVoices: meters.activeVoices });
+      },
+    });
+
+    const voicedBlocks = trace.filter((frame) => frame.f0 > 0).length;
+    const activeVoiceBlocks = trace.filter((frame) => frame.activeVoices > 0).length;
+    const sourceRms = rms(samples);
+    const wetRms = rms(out.l);
+    const allFinite = Array.from(out.l).every(Number.isFinite) && Array.from(out.r).every(Number.isFinite);
+    // eslint-disable-next-line no-console
+    console.log(
+      `REZONANS recorded phrase: source=${sourceRms.toFixed(3)} RMS, wet=${wetRms.toFixed(3)} RMS, ` +
+        `voiced blocks=${voicedBlocks}, active voice blocks=${activeVoiceBlocks}, latency=${out.latency} samples @ ${sampleRate} Hz`,
+    );
+    expect(voicedBlocks).toBeGreaterThan(0);
+    expect(activeVoiceBlocks).toBeGreaterThan(0);
+    expect(sourceRms).toBeGreaterThan(0.02);
+    expect(wetRms).toBeGreaterThan(0.02);
+    expect(out.latency).toBe(1023);
+    expect(allFinite).toBe(true);
   });
 });
 
@@ -585,6 +754,26 @@ describe("REZONANS envelope — cepstral lifter + warp", () => {
       expect(Number.isFinite(env.valueAtBin(k))).toBe(true);
       expect(env.valueAtBin(k)).toBeGreaterThan(0);
     }
+  });
+
+  it("updates the quefrency scale when the sample rate changes at the same FFT size", () => {
+    const N = 1024;
+    const half = N >> 1;
+    const frame = new FrameEngine();
+    const magnitude = new Float64Array(half + 1);
+    for (let k = 0; k <= half; k++) magnitude[k] = Math.exp(0.5 * Math.cos((2 * Math.PI * 90 * k) / N));
+
+    frame.prepare(SR, N, N >> 2);
+    frame.envelope.compute(magnitude, half);
+    const at48k = new Float64Array(frame.envelope.logEnv);
+
+    frame.prepare(SR / 2, N, N >> 2);
+    frame.envelope.compute(magnitude, half);
+
+    let maxDifference = 0;
+    for (let k = 0; k <= half; k++)
+      maxDifference = Math.max(maxDifference, Math.abs(at48k[k]! - frame.envelope.logEnv[k]!));
+    expect(maxDifference, "the 2.5 ms lifter cutoff must stay in seconds across contexts").toBeGreaterThan(0.1);
   });
 });
 

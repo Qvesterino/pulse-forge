@@ -1,11 +1,16 @@
 # PORTAL — Spectral Delay / Resonator
 
-**Status:** `DRAFT — awaiting 4 decisions` (see §12)
+**Status:** `IMPLEMENTED — see accepted ADR 0038 and the current source/tests`
 **Type:** implementation roadmap
 **Display name:** `PORTAL` (collision-checked 2026-10-11 against all 54 effect names — free)
 **Area:** new core effect, AudioWorklet DSP, lazy worklet packaging
 **Prepared:** 2026-10-11
-**Baseline:** `cc7e3409`
+**Planning baseline:** `cc7e3409`
+
+> This is the historical implementation handoff. The four decisions listed in
+> §12 were resolved in `docs/adr/0038-portal-spectral-delay.md`; that ADR and
+> the source/tests are authoritative for shipped behavior. The proposed values
+> and F0–F5 sequence below are retained as design history, not pending work.
 
 ---
 
@@ -194,13 +199,18 @@ pumping that no parameter sweep will explain.
 
 ### 6.2 Latency is real and must be declared
 
-Report latency = hop size and post it to the main thread, as
-`morph-dynamics-worklet.entry.js` does (`postLatency()`). Do not hide it.
+Report the STFT engine's measured latency, `fftSize - hop`, and post it to the
+main thread, as `morph-dynamics-worklet.entry.js` does (`postLatency()`). Delay
+PORTAL's dry path by the same number of samples so dry/wet blends stay aligned;
+the host can then compensate the rest of the project through PDC. Do not report
+only the hop size or hide the latency.
 
 ### 6.3 Frame-size-changing parameters are k-rate only
 
 A parameter that changes FFT size or hop must be applied **once per block**, never
-per sample. Per-sample application of a block-rate coefficient is checklist bug #4
+per sample. PORTAL reads each control once per render quantum, so each descriptor
+must explicitly declare `automationRate: "k-rate"`; the Web Audio default is
+`a-rate`. Per-sample application of a block-rate coefficient is checklist bug #4
 (vowel/svfilter glides ran ~100× slow).
 
 ### 6.4 Denormals in per-bin feedback
@@ -215,10 +225,12 @@ Spectral feedback is the ideal place for an explosion — a single Inf in one bi
 poisons every bin through the delay ring. Clamp per bin every frame, and treat
 `feedback` as a bounded, contractive value (§5 marks it hard-clamped).
 
-### 6.6 Bypass must pass the block through
+### 6.6 Bypass must preserve source samples and declared latency
 
 An AudioWorklet that outputs silence at `mix = 0` is the phaser wet-chain incident
-(checklist bug #1). Copy the input block on the bypass path.
+(checklist bug #1). PORTAL's dry path is latency-aligned with the STFT, so the
+expected bypass is zeroes for the declared latency followed by bit-exact source
+samples. Test that contract in both the source processor and shipped bundle.
 
 ### 6.7 Determinism
 

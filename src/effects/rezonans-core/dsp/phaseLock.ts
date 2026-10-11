@@ -9,10 +9,11 @@
  * of formant quality hides it.
  *
  * Laroche & Dolson's identity phase locking fixes this by treating each
- * spectral PEAK as a single partial: only the peaks carry propagated phase, and
- * every bin in a peak's region of influence inherits that peak's phase. Energy
- * inside a partial's main lobe therefore moves as one rigid object instead of
- * smearing across the lobe, which is what preserves attack shape.
+ * spectral PEAK as a single partial: only the peaks carry propagated phase,
+ * while every bin in a peak's region of influence keeps its analysis-phase
+ * offset from that peak. A partial therefore moves as one rigid object without
+ * collapsing the phases inside its main lobe, preserving both attack shape
+ * and level.
  *
  * Deterministic and allocation-free after `prepare()`; no RNG anywhere.
  */
@@ -117,14 +118,20 @@ export class PhaseLocker {
   }
 
   /**
-   * Overwrite every non-peak bin's phase with its owning peak's phase.
-   * Mutates `outPhase` in place; peak bins keep their propagated value.
+   * Preserve the original relative phase inside each peak's region while
+   * following the peak's propagated synthesis phase. Mutates `outPhase` in
+   * place; peak bins keep their propagated value.
    */
-  applyLock(outPhase: Float64Array, half: number): void {
+  applyLock(outPhase: Float64Array, analysisPhase: Float64Array, half: number): void {
     const owner = this.owner;
     for (let k = 0; k <= half; k++) {
       const p = owner[k]!;
-      if (p >= 0 && p !== k) outPhase[k] = outPhase[p]!;
+      if (p >= 0 && p !== k) {
+        let relative = analysisPhase[k]! - analysisPhase[p]!;
+        if (relative > Math.PI) relative -= 2 * Math.PI;
+        else if (relative < -Math.PI) relative += 2 * Math.PI;
+        outPhase[k] = outPhase[p]! + relative;
+      }
     }
   }
 }

@@ -34,6 +34,7 @@ export const MAX_DELAY_SEC = 2;
 const RING_MARGIN = 2;
 /** Keep the loop strictly contractive, even at the rack's 100% setting. */
 const MAX_DELAY_FEEDBACK = 0.95;
+const TWO_PI = 2 * Math.PI;
 
 export interface SpectralDelayParams {
   /** Delay time in seconds (0.02 .. 2). */
@@ -202,10 +203,14 @@ export class SpectralDelayBank {
       // pure function of (frames elapsed, diffuse) — identical in the live and
       // offline paths, and identical across reloads. It carries no RNG and no
       // persisted seed, so it is deterministic WITHOUT depending on the effect
-      // instance id.
+      // instance id. Wrap the phase each frame: an unbounded Float32 accumulator
+      // loses phase precision after long sessions even though the rotation is
+      // periodic.
       if (diffuse > 0) {
-        this.drift[k] = this.drift[k] + diffuse * 0.35 + 1e-4;
-        const ang = this.drift[k];
+        let ang = this.drift[k]! + diffuse * 0.35 + 1e-4;
+        if (ang >= TWO_PI) ang -= TWO_PI;
+        this.drift[k] = ang;
+        ang = this.drift[k]!;
         const c = Math.cos(ang);
         const s = Math.sin(ang);
         const nr = shiftedRe * c - shiftedIm * s;

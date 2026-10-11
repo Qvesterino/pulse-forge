@@ -1,9 +1,13 @@
 # REZONANS — Vocal Formant + Key-Aware Harmonizer
 
-**Status:** plan approved for execution (owner decisions D1–D5 below)
+**Status:** implementation delivered; current behavior and validation live in ADR 0040
 **Date:** 2026-10-11
 **Effect type id:** `rezonans`
 **Class:** flagship suite (6th, after `fxeq`, `ultina`, `ozvena`, `kaskada`, `morphdynamics`)
+
+This document is the historical design plan. The implementation and measured
+latency contract supersede estimates below; unresolved listening and workload
+questions remain listed in §13.
 
 ---
 
@@ -30,13 +34,13 @@ cannot make a hyperpop / drill / house / R&B vocal:
 
 ## 1. Owner decisions
 
-| #   | Decision                                                                              | Rationale (as given)                               |
-| --- | ------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| D1  | **Spectral** formant from the start (cepstral lifter + axis warp, ~43 ms latency)     | prefer the real thing over the cheap approximation |
-| D2  | **Key + per-bar chord following** (chord-tone mode)                                   | harmony should react to the arrangement            |
-| D3  | **Full production integration** — flagship class, own core, panel, goldens, soak, ADR |                                                    |
-| D4  | **4 harmony voices**                                                                  | matches `HARM_VOICE_COUNT` precedent in MORPH      |
-| D5  | **Name: REZONANS**                                                                    | fits the KOREN / SKRUTKA / KOPA series             |
+| #   | Decision                                                                                         | Rationale (as given)                               |
+| --- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------- |
+| D1  | **Spectral** formant from the start (cepstral lifter + axis warp; 21–85 ms by quality at 48 kHz) | prefer the real thing over the cheap approximation |
+| D2  | **Key + per-bar chord following** (chord-tone mode)                                              | harmony should react to the arrangement            |
+| D3  | **Full production integration** — flagship class, own core, panel, goldens, soak, ADR            |                                                    |
+| D4  | **4 harmony voices**                                                                             | matches `HARM_VOICE_COUNT` precedent in MORPH      |
+| D5  | **Name: REZONANS**                                                                               | fits the KOREN / SKRUTKA / KOPA series             |
 
 ---
 
@@ -272,11 +276,12 @@ user scale" a V2 feature that costs ~10 lines rather than a worklet rebuild.
 
 ### 4.4 Latency budget and its honest ceiling
 
-PV with N=2048, Hs=512 needs analysis lookahead. The zero-latency trick MORPH uses
+The streaming overlap-add path's measured transient latency is `N - 1` samples:
+21.3 ms (economy), 42.6 ms (balanced), or 85.3 ms (fine) at 48 kHz. The zero-latency trick MORPH uses
 (`harmony.ts:201-203`, reads pinned to end at the write line) is **deliberately given up
-in V1** — a spectral formant shifter cannot be causal. Expect ~32–43 ms algorithmic
-delay; the exact figure must be measured and reported through `getLatencySec()` /
-the `latency` port message, never guessed.
+in V1** — a spectral formant shifter cannot be causal. This measured value is reported
+through `getLatencySec()` / the `latency` port message and drives the latency-matched
+source path.
 
 Constraints to respect:
 
@@ -576,11 +581,19 @@ Three rules from `docs/NEW-EFFECT-CHECKLIST.md` that will bite here:
 These are measurement questions, deliberately not answered in this plan because
 guessing them is how formant shifters end up shipping wrong:
 
-1. Exact algorithmic latency of N=2048 / Hs=512 at 48 kHz with the chosen lookahead.
+1. **Resolved:** measured wet-transient latency is `N - 1` samples at all three
+   quality tiers; `tests/rezonans-golden/rezonans-golden.test.ts` pins the measured
+   output and the reported PDC value together.
 2. Whether `envelopeSmooth` every-2nd-frame interpolation is inaudible at 4096.
 3. The clarity threshold under real hyperpop vocals (double-tracked, heavily compressed,
    de-essed) — the 0.75 figure was calibrated on a clean tone and a chord mush, not on
    a mastered drill vocal.
 4. Peak-locking neighbourhood width: ±2 bins is a starting point, not a result.
-5. Whether `quality=fine` (4096) is viable at 4 voices or whether `fine` should be
-   1–2 voices only.
+5. **Preliminary CPU measurement recorded; realtime suitability remains open.**
+   `npm run benchmark:rezonans` on 2026-10-11 (Node 24.11.0, Windows x64,
+   Ryzen 7 5800H) processed the pinned CC0 speech fixture at 48 kHz, 4096 FFT,
+   four voices. The four 8-second runs used 18.2–22.8% of one core (18.6%
+   median); median per-run p95 block time was 3.61 ms against a 2.67 ms audio
+   block deadline, with a 9.81 ms maximum. This is a local TypeScript-core
+   measurement, not an AudioWorklet deadline guarantee: validate in Chromium
+   and on a lower-tier device before deciding whether Fine should cap voices.

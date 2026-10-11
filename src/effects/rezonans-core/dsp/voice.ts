@@ -141,9 +141,14 @@ export class HarmonyVoice {
     this.primed = true;
     this.first = false;
 
-    // Peak-lock before resynthesis (DC and Nyquist stay real and unphaseable).
-    this.locker.findPeaks(magV, half);
-    this.locker.applyLock(outPhase, half);
+    // Peak-lock before resynthesis when a spectral transformation is active.
+    // At the exact identity point the unmodified propagated phases are already
+    // the correct solution; applying a peak lock there can add needless phase
+    // motion to a signal that should round-trip unchanged.
+    if (Math.abs(this.ratio - 1) > 1e-6 || Math.abs(this.alpha - 1) > 1e-6) {
+      this.locker.findPeaks(magV, half);
+      this.locker.applyLock(outPhase, phase, half);
+    }
     outPhase[0] = 0;
     outPhase[half] = 0;
 

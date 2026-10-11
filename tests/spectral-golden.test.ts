@@ -14,7 +14,7 @@ import { SpectralDelayBank } from "../src/effects/spectral-core/dsp/spectralDela
  * reason the vectors below can be hard numbers rather than tolerances.
  *
  * Three things are pinned, in increasing order of honesty:
- *   1. mix = 0 is a BIT-EXACT passthrough (the phaser wet-chain defect, §1)
+ *   1. mix = 0 is bit-exact after PORTAL's declared fixed latency
  *   2. the STFT round-trips — silence in gives silence out, and a tone comes
  *      back at the right level and the right time (proves OLA normalisation)
  *   3. the actual golden numbers for each MODE
@@ -137,15 +137,17 @@ describe("PORTAL — deterministic golden vectors", () => {
     for (let i = 0; i < total; i++) expect(Number.isFinite(out[i])).toBe(true);
   }, 60000);
 
-  it("mix = 0 is a bit-exact passthrough", () => {
+  it("mix = 0 is a bit-exact passthrough aligned to the declared latency", () => {
     const { outL, outR } = render({ seconds: 0.1, input: twoTone, params: { mix: 0 } });
     // Compare against the Float32 samples that actually went in, not the Float64
-    // expression: the engine copies the block verbatim, and comparing a Float32
-    // result to a Float64 source can never be equal at the sample.
+    // expression. The fixed dry delay keeps bypass aligned with the wet STFT
+    // path, while preserving the exact source samples after that offset.
+    const latency = 768;
     const inL = Float32Array.from({ length: 2048 }, (_, i) => twoTone(i));
     for (let i = 0; i < 2048; i++) {
-      expect(outL[i]).toBe(inL[i]);
-      expect(outR[i]).toBe(inL[i]);
+      const expected = i < latency ? 0 : inL[i - latency]!;
+      expect(outL[i]).toBe(expected);
+      expect(outR[i]).toBe(expected);
     }
   });
 

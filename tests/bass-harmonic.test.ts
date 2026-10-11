@@ -829,3 +829,48 @@ describe("GROW wave-6 presence band (phone readability)", () => {
     expect(presence).toBeGreaterThan(legacy * 1.4); // presence is the fix
   });
 });
+
+describe("GROW wave-9 phase/tilt profiles (timbre, same spectrum)", () => {
+  const base = { drive: 0.9, mix: 1, subAnchor: 0, focusHz: 90, harmonics: 0.5, range: 4, presence: 1 };
+  const crest = (sig: Float32Array) => {
+    let peak = 0;
+    const from = Math.floor(sig.length * 0.6);
+    for (let i = from; i < sig.length; i++) peak = Math.max(peak, Math.abs(sig[i]!));
+    return peak / Math.max(rmsAt(sig), 1e-9);
+  };
+
+  it("PHASE collapses the presence-band crest at identical spectrum and RMS", () => {
+    // With the presence band active the stack has ~7 comparable partials in
+    // 385–880 Hz — the aligned (legacy) waveform crests at ~11.4 dB while the
+    // Schroeder phases spread the zero crossings and crest ~5.6 dB: same
+    // energy, same spectrum, a smoother waveform that fits more level.
+    const cls = registered.get("bass-harmonic-processor");
+    const p0 = renderProcessor(cls, paramsOf(cls, { ...base, phase: 0 }), 1.5, sineAt(55));
+    const p5 = renderProcessor(cls, paramsOf(cls, { ...base, phase: 0.5 }), 1.5, sineAt(55));
+    const p1 = renderProcessor(cls, paramsOf(cls, { ...base, phase: 1 }), 1.5, sineAt(55));
+    expect(crest(p0)).toBeGreaterThan(crest(p1) * 1.6);
+    expect(crest(p5)).toBeLessThan(crest(p0));
+    expect(crest(p5)).toBeGreaterThan(crest(p1));
+    // Same energy and spectrum — only the waveform's time shape changes.
+    expect(rmsAt(p1)).toBeCloseTo(rmsAt(p0), 2);
+    for (const hz of [110, 165, 220, 385, 440]) {
+      expect(goertzelAt(p1, hz)).toBeCloseTo(goertzelAt(p0, hz), 3);
+    }
+  });
+
+  it("TILT redistributes the stack: saw-like up, darker down", () => {
+    const cls = registered.get("bass-harmonic-processor");
+    const hiBand = (sig: Float32Array) => {
+      let acc = 0;
+      for (let n = 7; n <= 16; n++) acc += goertzelAt(sig, n * 55) ** 2;
+      return Math.sqrt(acc);
+    };
+    const down = renderProcessor(cls, paramsOf(cls, { ...base, presence: 0, tilt: -1 }), 1.5, sineAt(55));
+    const mid = renderProcessor(cls, paramsOf(cls, { ...base, presence: 0, tilt: 0 }), 1.5, sineAt(55));
+    const up = renderProcessor(cls, paramsOf(cls, { ...base, presence: 0, tilt: 1 }), 1.5, sineAt(55));
+    expect(hiBand(up)).toBeGreaterThan(hiBand(mid) * 1.8);
+    expect(hiBand(down)).toBeLessThan(hiBand(mid) * 0.6);
+    expect(goertzelAt(up, 110)).toBeLessThan(goertzelAt(mid, 110));
+    expect(goertzelAt(down, 110)).toBeGreaterThan(goertzelAt(mid, 110));
+  });
+});

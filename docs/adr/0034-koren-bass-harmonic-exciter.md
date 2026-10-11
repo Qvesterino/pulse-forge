@@ -295,6 +295,21 @@ trades up to 16 partials instead of 10.
    across three reference loops. These are bundle and reference-loop readings,
    not tracker-quality or mono-compatibility evidence on arbitrary sources.
 
+## Addendum 7 (2026-10-11) — stale-lock release vs RETRIG
+
+The untracked gate (Addendum 6.2) and the RETRIG note-on reset (wave 3)
+interact on staccato lines: the YIN ring needs ~80–100 ms to refill after a
+gap, so the gate muted the very attack RETRIG exists to glue (measured: a
+70 ms dropout right after the second note, with the previous committed test
+flipping red). The gate now **yields to a fresh note-on** — a transient is
+evidence of pitched content, so generation continues from the held root for
+150 ms after an accepted reset (`retrigHold`). Gaps with NO note-on (fades,
+polyphonic mush) still mute exactly as designed. Re-measured on the pinned
+retrig fixture: the glue window converges (onset divergence 0.30, fresh
+attack audible at 0.17 RMS) while the free-running reference still diverges
+(1.26) — both contract assertions hold again. `retrig = 0` keeps the pure
+stale-lock behavior.
+
 ## Addendum 8 (2026-10-11) — GLIDE tracking refinement
 
 YIN owns octave disambiguation but its 125 ms window lags a pitch sweep
@@ -357,17 +372,26 @@ hint hands back to YIN with no gap. Locked by
 most-recent-wins, panic clear, safety) and the wave-8 block in
 `tests/bass-harmonic.test.ts`.
 
-## Addendum 7 (2026-10-11) — stale-lock release vs RETRIG
+## Addendum 10 (2026-10-11) — timbre profilers: PHASE + TILT
 
-The untracked gate (Addendum 6.2) and the RETRIG note-on reset (wave 3)
-interact on staccato lines: the YIN ring needs ~80–100 ms to refill after a
-gap, so the gate muted the very attack RETRIG exists to glue (measured: a
-70 ms dropout right after the second note, with the previous committed test
-flipping red). The gate now **yields to a fresh note-on** — a transient is
-evidence of pitched content, so generation continues from the held root for
-150 ms after an accepted reset (`retrigHold`). Gaps with NO note-on (fades,
-polyphonic mush) still mute exactly as designed. Re-measured on the pinned
-retrig fixture: the glue window converges (onset divergence 0.30, fresh
-attack audible at 0.17 RMS) while the free-running reference still diverges
-(1.26) — both contract assertions hold again. `retrig = 0` keeps the pure
-stale-lock behavior.
+Two character axes over the generated stack, both bit-exact at their defaults:
+
+1. **`phase` (0..1)** — a Schroeder-style quadratic profile (psi_n = phase x pi(n-2)^2/15)
+   added as a static per-partial offset inside the output (`sin(p + psi_n)`,
+   quadrature included) while the PLL keeps locking the accumulators to the
+   input crossings. The spectrum and RMS are untouched — only the waveform's
+   time shape changes: with the presence band active the ~7 comparable
+   partials in 385–880 Hz crest at 11.4 dB aligned vs 5.6 dB dispersed
+   (measured), so a phone-ready preset fits substantially more level under
+   the same limiter. `phase = 0` is the legacy aligned stack, bit-exactly.
+2. **`tilt` (−1..+1)** — a spectral slope `w_n *= n^tilt` applied to the raw
+   weights before normalization: +1 flattens the tail toward a saw-like 1/n
+   (buzzier, richer — measured high-band x2.4 vs neutral), −1 steepens toward
+   1/n² (darker, rounder — high-band x0.33). Normalization keeps it a
+   redistribution, not a level change at the full output.
+
+Presets deliberately keep both at 0 for now: adopting them is a
+loudness-measured preset decision, not a DSP one. Locked by the wave-9 block
+in `tests/bass-harmonic.test.ts` (crest collapse with spectrum/RMS
+invariance across phases; monotone phase ordering; tilt high-band
+redistribution and 2nd-harmonic trade against neutral).

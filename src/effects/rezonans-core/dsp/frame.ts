@@ -6,11 +6,9 @@
  * voices differ only in the phase-increment multiplier (pitch) and the warp
  * factor (formant). See `voice.ts` for why the analysis advance never moves.
  *
- * Latency: the analysis window covers the N samples ENDING at the write
- * position, so the stream is delayed by N/2 samples — 1024 samples ≈ 21.3 ms at
- * 48 kHz. That is the entire algorithmic latency of REZONANS and it is
- * reported honestly (ADR 0040 §12) rather than hidden behind a "zero-latency"
- * claim the architecture cannot make.
+ * Latency: the streaming overlap-add path emits a transient's peak at N - 1
+ * samples after its source event. The reported latency follows that measured
+ * wet-path delay so PDC and the latency-matched source path stay aligned.
  */
 
 import { CepstralEnvelope } from "./cepstrum.js";
@@ -81,9 +79,9 @@ export class FrameEngine {
     return this.hop;
   }
 
-  /** Algorithmic latency in samples (N/2 — the analysis window's tail). */
+  /** Measured wet-path transient latency in samples. */
   get latencySamples(): number {
-    return this.n >> 1;
+    return Math.max(0, this.n - 1);
   }
 
   get previousPhase(): Float64Array {
@@ -101,6 +99,9 @@ export class FrameEngine {
   prepare(sampleRate: number, fftSize: number, hop: number): void {
     this.sampleRate = sampleRate;
     this.hop = Math.max(16, hop);
+    // Quefrency is expressed in seconds, so the envelope estimator must see
+    // every context's sample rate even when the FFT size stays unchanged.
+    this.env.prepare(this.sampleRate, fftSize);
     if (this.n === fftSize) {
       this.pitch.prepare(this.sampleRate, this.n, 70, 800);
       return;
@@ -124,7 +125,6 @@ export class FrameEngine {
     this.envLin = new Float64Array(this.half + 1);
     this.envLin.fill(1);
 
-    this.env.prepare(this.sampleRate, this.n);
     this.pitch.prepare(this.sampleRate, this.n, 70, 800);
 
     this.writePos = 0;

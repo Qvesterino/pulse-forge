@@ -28,6 +28,7 @@
     "build:kopa": "node scripts/build-kopa-worklet.mjs",
     "build:skrutka": "node scripts/build-skrutka-worklet.mjs",
     "build:rezonans": "node scripts/build-rezonans-worklet.mjs",
+    "benchmark:rezonans": "vite-node scripts/benchmark-rezonans.mts",
     "build:spectral": "node scripts/build-spectral-worklet.mjs",
     "build:fxeq": "node scripts/build-fxeq-worklet.mjs",
     "build:morph-dynamics": "node scripts/build-morph-dynamics-worklet.mjs",

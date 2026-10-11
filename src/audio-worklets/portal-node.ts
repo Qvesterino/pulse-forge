@@ -2,6 +2,7 @@ import type { EffectRuntime } from "../effects/types";
 
 import { attachProcessorErrorGuard } from "./processor-errors";
 import { safeApplyAudioParam } from "./safeAudioParam";
+import { createLatencyReportReadiness } from "../effects/latencyReadiness";
 
 /**
  * PORTAL (portal) node wrapper.
@@ -73,6 +74,9 @@ export function createPortalNode(ctx: BaseAudioContext, instance: { params: Reco
   let meters: PortalMeterFrame | null = null;
   let metersWanted = false;
   let disposed = false;
+  let latencySamples = 0;
+  const latencyReadiness = createLatencyReportReadiness();
+  const latencyListeners = new Set<() => void>();
 
   // App-side default: panels opt IN. A PORTAL with no panel open must not post
   // a telemetry frame per hop.
@@ -82,7 +86,12 @@ export function createPortalNode(ctx: BaseAudioContext, instance: { params: Reco
     if (!msg || typeof msg !== "object") return;
     const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
     if (msg.type === "latency") {
-      if (finite(msg.frames)) reportedLatency = msg.frames;
+      if (!finite(msg.frames) || !Number.isSafeInteger(msg.frames) || msg.frames < 0) return;
+      const changed = latencySamples !== msg.frames;
+      latencySamples = msg.frames;
+      reportedLatency = msg.frames;
+      latencyReadiness.markReported();
+      if (changed && !disposed) for (const listener of latencyListeners) listener();
       return;
     }
     if (msg.type !== "meters" || !metersWanted) return;
@@ -93,6 +102,15 @@ export function createPortalNode(ctx: BaseAudioContext, instance: { params: Reco
   return {
     input,
     output,
+    getLatencySec: () => latencySamples / ctx.sampleRate,
+    hasLatencyReport: () => latencyReadiness.isReported(),
+    onLatencyChange(listener) {
+      latencyListeners.add(listener);
+      return () => {
+        latencyListeners.delete(listener);
+      };
+    },
+    waitForLatencyReport: (timeoutMs) => latencyReadiness.wait(timeoutMs),
     setParameter: (id, value) => safeApplyAudioParam(node, id, value),
     setParameterAt: (id, value, when) => safeApplyAudioParam(node, id, value, when),
     syncBpm(bpm, when) {
@@ -108,6 +126,8 @@ export function createPortalNode(ctx: BaseAudioContext, instance: { params: Reco
     dispose() {
       if (disposed) return; // idempotent — engine rebuild paths may re-dispose
       disposed = true;
+      latencyReadiness.dispose();
+      latencyListeners.clear();
       meters = null;
       // No port.close(): a dropped MessagePort can discard already-queued
       // messages; dropping the last JS reference closes it after delivery.

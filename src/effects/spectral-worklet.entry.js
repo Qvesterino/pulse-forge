@@ -75,21 +75,21 @@ class PortalWorkletProcessor extends AudioWorkletProcessor {
    */
   static get parameterDescriptors() {
     return [
-      { name: "mode", minValue: 0, maxValue: 2, defaultValue: 0 },
-      { name: "time", minValue: 20, maxValue: 2000, defaultValue: 320 },
-      { name: "sync", minValue: 0, maxValue: 5, defaultValue: 0 },
+      { name: "mode", minValue: 0, maxValue: 2, defaultValue: 0, automationRate: "k-rate" },
+      { name: "time", minValue: 20, maxValue: 2000, defaultValue: 320, automationRate: "k-rate" },
+      { name: "sync", minValue: 0, maxValue: 5, defaultValue: 0, automationRate: "k-rate" },
       { name: "bpm", minValue: 20, maxValue: 300, defaultValue: 120, automationRate: "k-rate" },
-      { name: "feedback", minValue: 0, maxValue: 1, defaultValue: 0.55 },
-      { name: "decay", minValue: 0, maxValue: 1, defaultValue: 0.5 },
-      { name: "resonance", minValue: 0, maxValue: 1, defaultValue: 0.35 },
-      { name: "focus", minValue: 20, maxValue: 18000, defaultValue: 1200 },
-      { name: "focusWidth", minValue: 0.1, maxValue: 4, defaultValue: 1 },
-      { name: "shift", minValue: -24, maxValue: 24, defaultValue: 0 },
-      { name: "diffuse", minValue: 0, maxValue: 1, defaultValue: 0.3 },
-      { name: "freeze", minValue: 0, maxValue: 1, defaultValue: 0 },
-      { name: "drive", minValue: 0, maxValue: 1, defaultValue: 0 },
-      { name: "tone", minValue: -24, maxValue: 24, defaultValue: 0 },
-      { name: "mix", minValue: 0, maxValue: 1, defaultValue: 0.35 },
+      { name: "feedback", minValue: 0, maxValue: 1, defaultValue: 0.55, automationRate: "k-rate" },
+      { name: "decay", minValue: 0, maxValue: 1, defaultValue: 0.5, automationRate: "k-rate" },
+      { name: "resonance", minValue: 0, maxValue: 1, defaultValue: 0.35, automationRate: "k-rate" },
+      { name: "focus", minValue: 20, maxValue: 18000, defaultValue: 1200, automationRate: "k-rate" },
+      { name: "focusWidth", minValue: 0.1, maxValue: 4, defaultValue: 1, automationRate: "k-rate" },
+      { name: "shift", minValue: -24, maxValue: 24, defaultValue: 0, automationRate: "k-rate" },
+      { name: "diffuse", minValue: 0, maxValue: 1, defaultValue: 0.3, automationRate: "k-rate" },
+      { name: "freeze", minValue: 0, maxValue: 1, defaultValue: 0, automationRate: "k-rate" },
+      { name: "drive", minValue: 0, maxValue: 1, defaultValue: 0, automationRate: "k-rate" },
+      { name: "tone", minValue: -24, maxValue: 24, defaultValue: 0, automationRate: "k-rate" },
+      { name: "mix", minValue: 0, maxValue: 1, defaultValue: 0.35, automationRate: "k-rate" },
     ];
   }
 

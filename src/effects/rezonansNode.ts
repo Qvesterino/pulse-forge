@@ -17,9 +17,9 @@ import { createLatencyReportReadiness } from "./latencyReadiness";
  * times and the worklet applies them when the render clock reaches them. An
  * un-timed write would collapse an offline render to its last value.
  *
- * Latency is real (~21 ms at balanced quality) and arrives asynchronously over
- * the port; the engine subscribes via `onLatencyChange` to re-sync PDC the
- * moment it lands, which is what keeps a 55-effect project phase-aligned.
+ * Latency is real (~42.6 ms at balanced quality, 48 kHz) and arrives
+ * asynchronously over the port; the engine subscribes via `onLatencyChange`
+ * to re-sync PDC the moment it lands, which keeps a 55-effect project aligned.
  */
 export function createRezonansNode(
   ctx: BaseAudioContext,

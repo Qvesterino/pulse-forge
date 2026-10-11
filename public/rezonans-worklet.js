@@ -558,9 +558,9 @@
     get synthesisHop() {
       return this.hop;
     }
-    /** Algorithmic latency in samples (N/2 — the analysis window's tail). */
+    /** Measured wet-path transient latency in samples. */
     get latencySamples() {
-      return this.n >> 1;
+      return Math.max(0, this.n - 1);
     }
     get previousPhase() {
       return this.prevPhase;
@@ -574,6 +574,7 @@
     prepare(sampleRate2, fftSize, hop) {
       this.sampleRate = sampleRate2;
       this.hop = Math.max(16, hop);
+      this.env.prepare(this.sampleRate, fftSize);
       if (this.n === fftSize) {
         this.pitch.prepare(this.sampleRate, this.n, 70, 800);
         return;
@@ -593,7 +594,6 @@
       this.prevPhase = new Float64Array(this.half + 1);
       this.envLin = new Float64Array(this.half + 1);
       this.envLin.fill(1);
-      this.env.prepare(this.sampleRate, this.n);
       this.pitch.prepare(this.sampleRate, this.n, 70, 800);
       this.writePos = 0;
       this.sinceHop = 0;
@@ -758,14 +758,20 @@
       }
     }
     /**
-     * Overwrite every non-peak bin's phase with its owning peak's phase.
-     * Mutates `outPhase` in place; peak bins keep their propagated value.
+     * Preserve the original relative phase inside each peak's region while
+     * following the peak's propagated synthesis phase. Mutates `outPhase` in
+     * place; peak bins keep their propagated value.
      */
-    applyLock(outPhase, half2) {
+    applyLock(outPhase, analysisPhase, half2) {
       const owner = this.owner;
       for (let k = 0; k <= half2; k++) {
         const p = owner[k];
-        if (p >= 0 && p !== k) outPhase[k] = outPhase[p];
+        if (p >= 0 && p !== k) {
+          let relative = analysisPhase[k] - analysisPhase[p];
+          if (relative > Math.PI) relative -= 2 * Math.PI;
+          else if (relative < -Math.PI) relative += 2 * Math.PI;
+          outPhase[k] = outPhase[p] + relative;
+        }
       }
     }
   };
@@ -848,8 +854,10 @@
       }
       this.primed = true;
       this.first = false;
-      this.locker.findPeaks(magV, half2);
-      this.locker.applyLock(outPhase, half2);
+      if (Math.abs(this.ratio - 1) > 1e-6 || Math.abs(this.alpha - 1) > 1e-6) {
+        this.locker.findPeaks(magV, half2);
+        this.locker.applyLock(outPhase, phase, half2);
+      }
       outPhase[0] = 0;
       outPhase[half2] = 0;
       const re = this.re;
@@ -1258,10 +1266,13 @@
     chords = [];
     chordCursor = 0;
     currentChordPc = -1;
-    /** Dry delay line so the wet path's inherent latency is matched. */
-    dryRing = new Float32Array(0);
+    /** Per-channel dry delay lines keep unvoiced consonants stereo and PDC-aligned. */
+    dryRingL = new Float32Array(0);
+    dryRingR = new Float32Array(0);
     dryMask = 0;
     dryWrite = 0;
+    /** Crossfade from harmonies to the latency-matched source on transients/unvoiced frames. */
+    sourcePassGain = 1;
     gate = 1;
     gateCoef = 0;
     envFast = 0;
@@ -1308,8 +1319,10 @@
       this.ratioSm.fill(1);
       this.alpha.fill(1);
       this.voiceGain.fill(0);
-      this.dryRing?.fill(0);
+      this.dryRingL.fill(0);
+      this.dryRingR.fill(0);
       this.dryWrite = 0;
+      this.sourcePassGain = 1;
       this.gate = 1;
       this.envFast = 0;
       this.envSlow = 0;
@@ -1331,8 +1344,9 @@
       const latency = this.frame.latencySamples;
       let ringLen = 1;
       while (ringLen < latency + 8) ringLen <<= 1;
-      if (ringLen !== this.dryRing.length) {
-        this.dryRing = new Float32Array(ringLen);
+      if (ringLen !== this.dryRingL.length) {
+        this.dryRingL = new Float32Array(ringLen);
+        this.dryRingR = new Float32Array(ringLen);
         this.dryMask = ringLen - 1;
         this.dryWrite = 0;
       }
@@ -1475,22 +1489,29 @@
         if (due) this.renderFrame();
         this.bus.read(this.out);
         const voiced = this.frame.clarity >= (this.params[REZ_PARAM.clarity] ?? 0.75) && this.frame.f0 > 0;
+        let hasVoice = false;
         for (let v = 0; v < VOICE_COUNT; v++) {
           const enabled = this.params[voiceParamId(v, "enabled")] > 0.5;
           const level = enabled ? (this.params[voiceParamId(v, "level")] ?? 0) * this.gate : 0;
+          if (level > 5e-4) hasVoice = true;
           const g = voiced ? level : 0;
           this.voiceGain[v] = this.voiceGain[v] + (g - this.voiceGain[v]) * (1 - this.gateSmCoef);
           this.bus.setVoiceGain(v, this.voiceGain[v]);
         }
-        this.dryRing[this.dryWrite & this.dryMask] = mono;
+        const sourcePassTarget = !voiced || !hasVoice ? 1 : 1 - this.gate;
+        this.sourcePassGain += (sourcePassTarget - this.sourcePassGain) * (1 - this.gateSmCoef);
+        const dryWritePos = this.dryWrite & this.dryMask;
+        this.dryRingL[dryWritePos] = l;
+        this.dryRingR[dryWritePos] = r;
         this.dryWrite++;
         const dryPos = this.dryWrite - 1 - delay & this.dryMask;
-        const dryDelayed = this.dryRing[dryPos];
+        const dryDelayedL = this.dryRingL[dryPos];
+        const dryDelayedR = this.dryRingR[dryPos];
         this.mixSm += (mix - this.mixSm) * (1 - this.mixSmCoef);
         const wet = this.out;
         const m = this.mixSm;
-        left[i] = dryDelayed * (1 - m) + wet.l * m;
-        right[i] = dryDelayed * (1 - m) + wet.r * m;
+        left[i] = dryDelayedL * (1 - m) + (wet.l + dryDelayedL * this.sourcePassGain) * m;
+        right[i] = dryDelayedR * (1 - m) + (wet.r + dryDelayedR * this.sourcePassGain) * m;
       }
     }
     /** One synthesis frame: resolve musical targets, then render all voices. */

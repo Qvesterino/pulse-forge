@@ -11,7 +11,7 @@
  * exactly the failure this bridge exists to prevent.
  */
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   CHROMATIC_MASK,
   chordMaskFor,
@@ -23,11 +23,59 @@ import { CHORD_INTERVALS, type ChordQuality } from "../../src/project-model/chor
 import { SCALE_INTERVALS, formatKey, type ScaleType } from "../../src/project-model/scales";
 import type { MusicalKey } from "../../src/project-model/types";
 import { RezonansProcessor } from "../../src/effects/rezonans-core/dsp/rezonansProcessor.js";
-import { REZ_PARAM } from "../../src/effects/rezonans-core/contracts/parameters.js";
+import { QUALITY_BALANCED, QUALITY_ECONOMY, REZ_PARAM } from "../../src/effects/rezonans-core/contracts/parameters.js";
 import { EFFECT_KNOB, effectWordIn } from "../../src/intent/mix";
 
 const SCALE_TYPES = Object.keys(SCALE_INTERVALS) as ScaleType[];
 const QUALITIES = Object.keys(CHORD_INTERVALS) as ChordQuality[];
+
+interface PostedLatency {
+  type?: string;
+  samples?: number;
+}
+
+class WorkletPort {
+  onmessage: ((event: { data: unknown }) => void) | null = null;
+  posted: PostedLatency[] = [];
+
+  postMessage(message: unknown): void {
+    this.posted.push(message as PostedLatency);
+  }
+}
+
+class WorkletProcessorBase {
+  port = new WorkletPort();
+}
+
+interface RezonansWorklet {
+  port: WorkletPort;
+  process(inputs: Float32Array[][] | [], outputs: Float32Array[][]): boolean;
+}
+
+type RezonansWorkletCtor = new (options?: {
+  processorOptions?: { params?: Record<string, number> };
+}) => RezonansWorklet;
+
+let RegisteredRezonansWorklet: RezonansWorkletCtor;
+let workletNow = 0;
+
+beforeAll(async () => {
+  (globalThis as unknown as { sampleRate: number }).sampleRate = 48_000;
+  (globalThis as unknown as { AudioWorkletProcessor: unknown }).AudioWorkletProcessor = WorkletProcessorBase;
+  (globalThis as unknown as { registerProcessor: unknown }).registerProcessor = (
+    name: string,
+    ctor: RezonansWorkletCtor,
+  ) => {
+    if (name === "rezonans-processor") RegisteredRezonansWorklet = ctor;
+  };
+  Object.defineProperty(globalThis, "currentTime", {
+    get: () => workletNow,
+    configurable: true,
+  });
+  // @ts-expect-error the worklet entry is an untyped classic-script source
+  await import("../../src/effects/rezonans-worklet.entry.js");
+  if (!RegisteredRezonansWorklet) throw new Error('registerProcessor("rezonans-processor") did not run');
+});
 
 describe("REZONANS bridge — mask derivation matches the interval tables", () => {
   it("every scale type produces a mask containing exactly its intervals", () => {
@@ -61,6 +109,28 @@ describe("REZONANS bridge — mask derivation matches the interval tables", () =
     for (let root = 0; root < 12; root++) {
       expect(maskFromIntervals(root, [0])).toBe(1 << root);
     }
+  });
+});
+
+describe("REZONANS worklet — quality automation latency reporting", () => {
+  it("reports the new latency when a time-stamped quality event takes effect", () => {
+    workletNow = 0;
+    const proc = new RegisteredRezonansWorklet({
+      processorOptions: { params: { [REZ_PARAM.quality]: QUALITY_ECONOMY } },
+    });
+    const latencyReports = () => proc.port.posted.filter((message) => message.type === "latency");
+    expect(latencyReports().map((message) => message.samples)).toEqual([1023]);
+
+    proc.port.onmessage?.({
+      data: { type: "paramAt", id: REZ_PARAM.quality, value: QUALITY_BALANCED, when: 0.003 },
+    });
+    const input = [new Float32Array(128), new Float32Array(128)];
+    const output = [[new Float32Array(128), new Float32Array(128)]];
+    proc.process([input], output);
+    workletNow = 128 / 48_000;
+    proc.process([input], output);
+
+    expect(latencyReports().map((message) => message.samples)).toEqual([1023, 2047]);
   });
 });
 

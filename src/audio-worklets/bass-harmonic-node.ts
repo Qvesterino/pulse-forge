@@ -35,6 +35,8 @@ const BASS_HARMONIC_PARAMS = [
   "sustain",
   "retrig",
   "character",
+  "phase",
+  "tilt",
   "width",
   "presence",
   "keyMode",

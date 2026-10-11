@@ -107,6 +107,12 @@ export class SpectralProcessor {
   /** Per-path sample-domain scratch, allocated once and reused every block. */
   private readonly scratchMid: Float32Array;
   private readonly scratchSide: Float32Array;
+  private dryDelayL = new Float32Array(0);
+  private dryDelayR = new Float32Array(0);
+  private dryDelayMask = 0;
+  private dryWrite = 0;
+  private readonly dryScratchL = new Float32Array(MAX_BLOCK);
+  private readonly dryScratchR = new Float32Array(MAX_BLOCK);
 
   private readonly params: SpectralParams = { ...DEFAULT_SPECTRAL_PARAMS };
 
@@ -152,6 +158,7 @@ export class SpectralProcessor {
     this.scratchMid = new Float32Array(MAX_BLOCK);
     this.scratchSide = new Float32Array(MAX_BLOCK);
     this.installFrameCallbacks();
+    this.allocateDryDelay();
   }
 
   /**
@@ -175,6 +182,7 @@ export class SpectralProcessor {
     this.resoMid = new ResonatorBank(bins, sampleRate);
     this.resoSide = new ResonatorBank(bins, sampleRate);
     this.installFrameCallbacks();
+    this.allocateDryDelay();
     this.reset();
   }
 
@@ -217,6 +225,11 @@ export class SpectralProcessor {
     this.delaySide.reset();
     this.resoMid.reset();
     this.resoSide.reset();
+    this.dryDelayL.fill(0);
+    this.dryDelayR.fill(0);
+    this.dryScratchL.fill(0);
+    this.dryScratchR.fill(0);
+    this.dryWrite = 0;
     this.mixSmooth = clamp01(this.params.mix);
     this.toneSmooth = this.params.tone;
     this.driveSmooth = clamp01(this.params.drive);
@@ -250,6 +263,7 @@ export class SpectralProcessor {
   process(left: Float32Array, right: Float32Array, outL: Float32Array, outR: Float32Array, blockLen: number): void {
     if (!this.ready || blockLen <= 0) return;
     const n = Math.min(blockLen, MAX_BLOCK);
+    this.delayDry(left, right, n);
 
     const mixK = blockSmoothingCoefficient(n, SMOOTHING_TC, this.sampleRate);
     const mixTarget = clamp01(this.params.mix);
@@ -266,8 +280,8 @@ export class SpectralProcessor {
     // be bit-exact, so the test can pin it to the sample.
     if (mixTarget <= 1e-4) {
       this.mixSmooth = 0;
-      outL.set(left.subarray(0, n));
-      outR.set(right.subarray(0, n));
+      outL.set(this.dryScratchL.subarray(0, n));
+      outR.set(this.dryScratchR.subarray(0, n));
       return;
     }
     this.mixSmooth += (mixTarget - this.mixSmooth) * mixK;
@@ -293,14 +307,13 @@ export class SpectralProcessor {
     const tone = this.toneSmooth;
 
     for (let i = 0; i < n; i++) {
-      const l = left[i];
-      const r = right[i];
-
       const wetM = this.toneAndDrive(wetMid[i], drive, tone, lpCoef, hpCoef, true);
       const wetS = this.toneAndDrive(wetSide[i], drive, tone, lpCoef, hpCoef, false);
 
-      const dryM = (l + r) * 0.5;
-      const dryS = (l - r) * 0.5;
+      const dryL = this.dryScratchL[i]!;
+      const dryR = this.dryScratchR[i]!;
+      const dryM = (dryL + dryR) * 0.5;
+      const dryS = (dryL - dryR) * 0.5;
       const mid = dryM * (1 - mix) + wetM * mix;
       const side = dryS * (1 - mix) + wetS * mix;
 
@@ -313,6 +326,32 @@ export class SpectralProcessor {
     this.meters.activity = dm.activity;
     this.meters.delaySec = n2;
     this.meters.frames = this.engineMid.frameCount;
+  }
+
+  /** Allocate the source path used to line up dry with the streaming STFT. */
+  private allocateDryDelay(): void {
+    const latency = this.engineMid.latencySamples();
+    let ringLength = 1;
+    while (ringLength <= latency) ringLength <<= 1;
+    this.dryDelayL = new Float32Array(ringLength);
+    this.dryDelayR = new Float32Array(ringLength);
+    this.dryDelayMask = ringLength - 1;
+    this.dryWrite = 0;
+  }
+
+  /** Push the source into a fixed ring and read the sample aligned to the wet path. */
+  private delayDry(left: Float32Array, right: Float32Array, frames: number): void {
+    const latency = this.engineMid.latencySamples();
+    const mask = this.dryDelayMask;
+    for (let i = 0; i < frames; i++) {
+      const write = this.dryWrite & mask;
+      this.dryDelayL[write] = left[i]!;
+      this.dryDelayR[write] = right[i]!;
+      const read = (this.dryWrite - latency) & mask;
+      this.dryScratchL[i] = this.dryDelayL[read]!;
+      this.dryScratchR[i] = this.dryDelayR[read]!;
+      this.dryWrite++;
+    }
   }
 
   /** Resolve MODE to one of the three paths, defaulting defensively. */

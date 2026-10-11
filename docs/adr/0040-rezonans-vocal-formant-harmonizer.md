@@ -80,11 +80,13 @@ that is in key _and_ re-coloured — and every existing tool supplies at most on
      aligned with the rendered warp.
 7. **Ratio is clamped to [0.5, 2.0] (±12 st).** Past that the PV quality and
    vocal intelligibility both fall apart.
-8. **The unvoiced gate reuses MORPH's approach, not a new invention.** Low YIN
-   clarity or a closed body mask holds the last ratio and fades the voice over
-   ~10 ms. The dry is never reconstructed or phase-shifted, so consonants cannot
-   comb against the harmony — the invariant MORPH relies on at
-   `harmony.ts:33-36`.
+8. **Unvoiced and transient source material stays audible at every wet mix.**
+   Low YIN clarity holds the last ratio and fades the harmony voices over
+   ~10 ms. A separate per-channel source delay is aligned to the STFT latency:
+   its gain is full when no voice is being synthesized, follows the complement
+   of the body gate on attacks, and falls away on voiced sustain. This preserves
+   consonants and stereo image at 100% wet without pitch-shifting or phase-warping
+   the source; the normal mix control remains bit-exact at zero.
 9. **Harmony modes:** `off` (bit-exact bypass), `interval` (fixed semitones
    that preserve the singer's fractional pitch), `degrees` (target = key root +
    scale degree, nearest octave to the detected f0), `chordTones` (each voice's
@@ -116,8 +118,10 @@ rootPc, chordMask }] }`, populated at the FX-chain build site where `doc` is
     `onTransportStarted`. Chord lookup is by **absolute** integer bar
     (`ChordEvent.startBar`, `types.ts:834-841`), so seek and loop simply
     re-resolve.
-12. **Latency is a declared contract, ~32–43 ms.** REZONANS deliberately gives
-    up MORPH's zero-latency past-only read invariant (`harmony.ts:201-203`) — a
+12. **Latency is a declared contract, FFT size − 1 samples.** At 48 kHz the
+    economy, balanced and fine tiers report 21.3, 42.6 and 85.3 ms. REZONANS
+    deliberately gives up MORPH's zero-latency past-only read invariant
+    (`harmony.ts:201-203`) — a
     spectral formant shifter cannot be causal. The processor reports measured
     latency over the port; `getLatencySec()` feeds `syncPdc()`
     (`AudioEngine.ts:1754-1760`), and `prepareOfflineRender()` writes exact
@@ -182,8 +186,9 @@ rootPc, chordMask }] }`, populated at the FX-chain build site where `doc` is
 - Registry counts move **54 → 55 effects**; flagship count **5 → 6**; the
   Add-Effect menu gains one entry. Re-measured in the same commit
   (`docs/CURRENT-STATE.md`).
-- Latency: a REZONANS insert adds ~40 ms to that track's chain, compensated by
-  PDC against the rest of the graph. Offline export is exact, not glided.
+- Latency depends on quality: at 48 kHz REZONANS adds 21.3, 42.6 or 85.3 ms
+  (economy / balanced / fine), compensated by PDC against the rest of the
+  graph. Offline export is exact, not glided.
 - The worklet DSP is new code that never existed here, so its golden vectors are
   the only thing standing between a formant shifter and a very expensive reverb.
 
@@ -206,8 +211,9 @@ and it is deliberately before any of the 15 integration files.
   chord changes: bit-identical.
 - **P3/C3** saved instance survives save → load → reload (the `EFFECT_META` trap).
 - **P3/C4** `harmonyMode = off` passes audio 1:1 from a cold instance.
-- **P4/D2** unvoiced material never produces harmony garbage; **P4/D3** ratio
-  never leaves [0.5, 2.0].
+- **P4/D2** unvoiced material never produces harmony garbage and remains
+  source-audible at 100% wet (synthetic sibilant regression);
+  **P4/D3** ratio never leaves [0.5, 2.0].
 - Registration binds: `EFFECT_PROC_PAIRS` + `WORKLET_CASES`,
   `tests/param-range-coherence.test.ts`, `tests/plugin-functional-audit.test.ts`,
   golden suite at `tests/rezonans-golden/` (precedent:

@@ -34,6 +34,7 @@ import { EFFECT_META } from "../src/effects/definitions";
 
 const SR = 48000;
 const BLOCK = 128;
+const PORTAL_LATENCY = 768; // 1024-point STFT with a 256-sample hop
 
 class FakePort {
   onmessage: ((e: unknown) => void) | null = null;
@@ -89,7 +90,13 @@ type Processor = {
 };
 
 /** The descriptor shape the Web Audio spec builds AudioParams from. */
-type Descriptor = { name: string; minValue: number; maxValue: number; defaultValue: number };
+type Descriptor = {
+  name: string;
+  minValue: number;
+  maxValue: number;
+  defaultValue: number;
+  automationRate?: string;
+};
 /** A processor constructor as `registerProcessor` hands it over (takes options). */
 type ProcessorCtor = new (options?: unknown) => any;
 
@@ -184,6 +191,13 @@ describe("PORTAL worklet: every rack param is reachable through AudioParams", ()
     expect(descriptorsOf(Cls()).map((d) => d.name)).toContain("bpm");
   });
 
+  it("declares every control k-rate because the processor reads once per block", () => {
+    const aRate = descriptorsOf(Cls())
+      .filter((descriptor) => descriptor.automationRate !== "k-rate")
+      .map((descriptor) => descriptor.name);
+    expect(aRate).toEqual([]);
+  });
+
   it("descriptor ranges cover the rack defs (never narrower)", () => {
     const d = new Map(descriptorsOf(Cls()).map((x) => [x.name as string, x]));
     for (const p of EFFECT_META.portal.params) {
@@ -210,7 +224,7 @@ describe("PORTAL worklet: every rack param is reachable through AudioParams", ()
     expect(peakOf(b)).toBeGreaterThan(0);
   });
 
-  it("writing MIX crosses from passthrough to wet", () => {
+  it("writing MIX crosses from latency-aligned passthrough to wet", () => {
     const dry = makeSurface(Cls(), { mix: 0 });
     const wet = makeSurface(Cls(), { mix: 1 });
     const sig = (i: number) => Math.sin((i / SR) * 2 * Math.PI * 220);
@@ -218,11 +232,12 @@ describe("PORTAL worklet: every rack param is reachable through AudioParams", ()
     for (let i = 0; i < inBlock.length; i++) inBlock[i] = sig(i);
 
     const d = render(dry.instance, dry.params, 16, sig);
-    // mix = 0 is the documented bit-exact passthrough.
-    expect(Array.from(d)).toEqual(Array.from(inBlock));
+    // mix = 0 is bit-exact after the fixed STFT latency.
+    const delayedInput = Float32Array.from(inBlock, (_, i) => (i < PORTAL_LATENCY ? 0 : inBlock[i - PORTAL_LATENCY]!));
+    expect(Array.from(d)).toEqual(Array.from(delayedInput));
 
     const w = render(wet.instance, wet.params, 16, sig);
-    expect(Array.from(w)).not.toEqual(Array.from(inBlock));
+    expect(Array.from(w)).not.toEqual(Array.from(d));
     expect(finite(w)).toBe(true);
   });
 
@@ -419,6 +434,7 @@ describe("PORTAL shipped bundle (the file the browser loads)", () => {
       expect(s.minValue, `${d.name} shipped min`).toBe(d.minValue);
       expect(s.maxValue, `${d.name} shipped max`).toBe(d.maxValue);
       expect(s.defaultValue, `${d.name} shipped default`).toBe(d.defaultValue);
+      expect(s.automationRate, `${d.name} shipped automation rate`).toBe(d.automationRate);
     }
   });
 
@@ -436,12 +452,17 @@ describe("PORTAL shipped bundle (the file the browser loads)", () => {
     expect(finite(b)).toBe(true);
   });
 
-  it("mix = 0 through the SHIPPED bundle is a bit-exact passthrough", () => {
+  it("mix = 0 through the SHIPPED bundle is bit-exact after the fixed latency", () => {
     const Cls = loadShippedBundle();
     const dry = makeSurface(Cls, { mix: 0 });
     const sig = (i: number) => Math.sin((i / SR) * 2 * Math.PI * 220);
     const input = new Float32Array(2048);
     for (let i = 0; i < input.length; i++) input[i] = sig(i);
-    expect(Array.from(render(dry.instance, dry.params, 16, sig))).toEqual(Array.from(input));
+    const delayedInput = Float32Array.from(input, (_, i) => (i < PORTAL_LATENCY ? 0 : input[i - PORTAL_LATENCY]!));
+    const dryOutput = render(dry.instance, dry.params, 16, sig);
+    expect(Array.from(dryOutput)).toEqual(Array.from(delayedInput));
+
+    const wet = makeSurface(Cls, { mix: 1 });
+    expect(Array.from(render(wet.instance, wet.params, 16, sig))).not.toEqual(Array.from(dryOutput));
   });
 });

@@ -6,10 +6,10 @@
  *                          ├─ HarmonySolver → per-voice ratio  (key / chord)
  *                          └─ HarmonyBus    → per-voice render   (warp · PV · lock)
  *                                    │
- *   dry ──► delay(N/2) ───────────────┴─► mix → out
+ *   dry ──► delay(N - 1) ─────────────┴─► mix → out
  *
  * DRY/WET ALIGNMENT. A spectral formant shifter cannot be causal, so the wet
- * path is N/2 samples behind the dry. The dry is therefore delayed by the SAME
+ * path's transient peak is N - 1 samples behind the dry. The dry is therefore delayed by the SAME
  * amount INSIDE the processor, so the mix stays coherent and the whole insert
  * reports its latency honestly through `getLatencySamples()` for PDC to
  * compensate against the rest of the graph (ADR 0040 §12).

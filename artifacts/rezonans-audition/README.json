@@ -1,0 +1,42 @@
+{
+  "source": "tests/fixtures/rezonans-cc0-female-speech.wav",
+  "sampleRate": 24000,
+  "durationSeconds": 4.056,
+  "latencyCompensatedSamples": 1023,
+  "method": "Direct RezonansProcessor core render, Economy, one centered voice; output trimmed by reported N-1 latency; each render RMS matched to source when peak cap allows.",
+  "dry": {
+    "file": "01-dry-reference.wav",
+    "rms": 0.08885446297859968,
+    "peak": 0.579254150390625,
+    "gain": 1
+  },
+  "cases": [
+    {
+      "file": "02-rezonans-unison.wav",
+      "name": "Unison, neutral formant",
+      "inputRms": 0.08885446297859968,
+      "outputRms": 0.08885446291936286,
+      "peak": 0.7491849660873413,
+      "gain": 1.4296582579659414,
+      "latencySamples": 1023
+    },
+    {
+      "file": "03-rezonans-fifth.wav",
+      "name": "Harmony, +7 semitones",
+      "inputRms": 0.08885446297859968,
+      "outputRms": 0.08885446297841405,
+      "peak": 0.8703964352607727,
+      "gain": 1.6609641991053783,
+      "latencySamples": 1023
+    },
+    {
+      "file": "04-rezonans-formant-up.wav",
+      "name": "Unison, formant +8 semitones",
+      "inputRms": 0.08885446297859968,
+      "outputRms": 0.0888544629491118,
+      "peak": 0.8195620179176331,
+      "gain": 1.6983881343969427,
+      "latencySamples": 1023
+    }
+  ]
+}
