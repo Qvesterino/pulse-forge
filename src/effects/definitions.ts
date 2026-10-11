@@ -2172,6 +2172,15 @@ export const bassHarmonicParams: ParamDef[] = [
     options: KOREN_CHARACTER_LABELS.map((label, value) => ({ value, label })),
     format: (v) => KOREN_CHARACTER_LABELS[Math.max(0, Math.min(2, Math.round(v)))],
   },
+  { id: "phase", label: "PHASE", min: 0, max: 1, default: 0, format: formatPct },
+  {
+    id: "tilt",
+    label: "TILT",
+    min: -1,
+    max: 1,
+    default: 0,
+    format: (v) => `${v > 0 ? "+" : ""}${Math.round(v * 100)}%`,
+  },
   { id: "width", label: "WIDTH", min: 0, max: 1, default: 0, format: formatPct },
   {
     id: "presence",

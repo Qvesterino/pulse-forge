@@ -188,7 +188,11 @@ const ENTRY_BUDGET_KB = 1070;
 // The boot-path line moved only 2028 → 2036 KB (budget 2200), which is the
 // metric a waiting user parses; budget raised 5020 → 5080 with this measured
 // justification and a ~37 KB margin.
-const TOTAL_BUDGET_KB = 5080;
+// 2026-10-11 (later): measured 5086 KB after the PORTAL (spectral delay)
+// and REZONANS registration waves plus SKRUTKA v2.2 (DYNAMIC PUNCH: param +
+// panel band, ~2 KB). Boot path 2078/2200 — still the healthy number.
+// Budget raised 5080 → 5120 with a ~34 KB margin.
+const TOTAL_BUDGET_KB = 5120;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, and ONNX Runtime for the
 // symbolic/ranker workers. Keep these optional runtimes under one existing
