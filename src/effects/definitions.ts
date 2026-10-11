@@ -2076,6 +2076,14 @@ export const bassHarmonicParams: ParamDef[] = [
   },
   { id: "width", label: "WIDTH", min: 0, max: 1, default: 0, format: formatPct },
   {
+    id: "presence",
+    label: "PRESENCE",
+    min: 0,
+    max: 1,
+    default: 0,
+    format: formatPct,
+  },
+  {
     id: "keyMode",
     label: "KEY MODE",
     min: 0,
