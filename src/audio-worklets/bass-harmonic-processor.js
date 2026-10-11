@@ -525,7 +525,14 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
       const inWindow = this.f0 >= fMin && this.f0 <= fMax;
 
       // --- generator gain envelope --------------------------------------
-      let genTarget = inWindow && this.untrackedPasses <= UNTRACKED_RELEASE_PASSES ? drive * this.envLow : 0;
+      // A recent note-on (RETRIG) is evidence the input is still pitched: the
+      // YIN ring needs ~80–100 ms to refill after a staccato gap, and muting
+      // the fresh attack is exactly what the RETRIG feature exists to prevent.
+      // Keep generating from the held root through that re-lock window; the
+      // untracked gate still mutes gaps with NO note-on (fades, mush).
+      const retrigHold = retrig && this.sinceRetrig < sr * 0.15;
+      let genTarget =
+        inWindow && (this.untrackedPasses <= UNTRACKED_RELEASE_PASSES || retrigHold) ? drive * this.envLow : 0;
       if (sustain > 0 && genTarget > 0) {
         const curved = Math.pow(genTarget, gamma);
         const fade = Math.min(1, genTarget * susFloorInv);

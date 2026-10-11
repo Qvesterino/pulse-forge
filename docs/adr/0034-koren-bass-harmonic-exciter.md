@@ -277,26 +277,35 @@ committed-but-unblessed `tpSafe` (ZENIT) and SKRUTKA param defaults in the
 domain golden. `presence = 0` keeps the legacy curve; only `range 4` now
 trades up to 16 partials instead of 10.
 
-## Addendum 5 (2026-10-11) — phone presence, stale-lock release and Nyquist taper
+## Addendum 6 (2026-10-11) — stale-lock release, Nyquist taper and measurements
 
-1. **`presence` (0..1, default 0)** redistributes the generated partial stack
-   toward a log-frequency hump centered at 650 Hz (σ = 0.45). It multiplies
-   partial weights before normalization, so the control changes where the
-   harmonic energy sits without raising the stack's normalized total. The
-   effect remains opt-in and the default value preserves the previous
-   presence weighting.
-2. **Range 4 reaches 16 partials.** The panel visualizes through 1.4 kHz and
-   marks 350 Hz, the lower edge used by PHONE CHECK. Partial weights fade
-   smoothly from 0.42 to 0.48 × sample rate, before Nyquist, including at
-   low sample rates.
-3. **Stale tracking releases safely.** After two failed detector windows the
-   generator target ramps down; the last f0 remains temporarily available to
-   the UI as HOLD, then clears to SEARCH. Telemetry now exposes confidence
-   beside the LOCKED/HOLD/SEARCH label. Corpus, alias-energy and release-click
-   measurements remain required before calling this behavior regression-
-   validated.
-4. **Measured build footprint (2026-10-11):** KOREŇ's worklet is 9 KB against
+1. **Nyquist taper:** generated partials fade smoothly from 0.42 to 0.48 ×
+   sample rate, before Nyquist, including at low sample rates. `presence` and
+   the 16-partial range remain as specified in Addendum 5.
+2. **Stale tracking releases safely.** After two consecutive detector misses,
+   the generator target ramps down on the next missed window; the last f0
+   remains available to the UI as HOLD for up to 250 ms, then clears to SEARCH.
+   Telemetry exposes confidence beside the LOCKED/HOLD/SEARCH label. Corpus,
+   alias-energy and release-click measurements remain required before calling
+   this behavior regression-validated.
+3. **Measured build footprint (2026-10-11):** KOREŇ's worklet is 9 KB against
    its 24 KB cap; KOPA's is 16 KB against 32 KB. Factory FX loudness measured
-   all four KOREŇ presets, with generated corrections from −0.6 to +3.5 dB.
-   These are bundle and integrated-loudness readings, not tracker-quality or
-   mono-compatibility evidence.
+   all four KOREŇ presets, with generated corrections from −0.6 to +3.5 dB;
+   the meter constrains preset and chain trims to a −1 dBFS sample-peak ceiling
+   across three reference loops. These are bundle and reference-loop readings,
+   not tracker-quality or mono-compatibility evidence on arbitrary sources.
+
+## Addendum 7 (2026-10-11) — stale-lock release vs RETRIG
+
+The untracked gate (Addendum 6.2) and the RETRIG note-on reset (wave 3)
+interact on staccato lines: the YIN ring needs ~80–100 ms to refill after a
+gap, so the gate muted the very attack RETRIG exists to glue (measured: a
+70 ms dropout right after the second note, with the previous committed test
+flipping red). The gate now **yields to a fresh note-on** — a transient is
+evidence of pitched content, so generation continues from the held root for
+150 ms after an accepted reset (`retrigHold`). Gaps with NO note-on (fades,
+polyphonic mush) still mute exactly as designed. Re-measured on the pinned
+retrig fixture: the glue window converges (onset divergence 0.30, fresh
+attack audible at 0.17 RMS) while the free-running reference still diverges
+(1.26) — both contract assertions hold again. `retrig = 0` keeps the pure
+stale-lock behavior.
