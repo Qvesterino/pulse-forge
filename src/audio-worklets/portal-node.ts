@@ -105,10 +105,6 @@ export function createPortalNode(ctx: BaseAudioContext, instance: { params: Reco
       if (!enabled) meters = null;
       node.port.postMessage({ type: "setMeters", enabled });
     },
-    /** Algorithm latency in samples, 0 until the processor reports it. */
-    getLatencyFrames(): number {
-      return reportedLatency;
-    },
     dispose() {
       if (disposed) return; // idempotent — engine rebuild paths may re-dispose
       disposed = true;

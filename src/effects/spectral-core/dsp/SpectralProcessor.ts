@@ -355,7 +355,8 @@ export class SpectralProcessor {
     }
     if (toneDb < -1e-3) {
       const c = lpCoef * Math.min(1, -toneDb / 24);
-      const next = (isMid ? this.lpStateMid : this.lpStateSide) + (v - (isMid ? this.lpStateMid : this.lpStateSide)) * c;
+      const next =
+        (isMid ? this.lpStateMid : this.lpStateSide) + (v - (isMid ? this.lpStateMid : this.lpStateSide)) * c;
       if (isMid) this.lpStateMid = next;
       else this.lpStateSide = next;
       v = next;
@@ -459,4 +460,3 @@ function toneCoef(cutoffHz: number, blockLen: number, sampleRate: number): numbe
   const tau = 1 / (2 * Math.PI * cutoffHz);
   return blockSmoothingCoefficient(blockLen, tau, sampleRate);
 }
-

@@ -88,13 +88,7 @@ export class ResonatorBank {
    *                  always stays: output = source + wetWeight · recursion.
    *                  0 is a bit-exact passthrough, 1 is the full resonator.
    */
-  process(
-    re: Float64Array,
-    im: Float64Array,
-    binCount: number,
-    params: ResonatorParams,
-    wetWeight: number,
-  ): void {
+  process(re: Float64Array, im: Float64Array, binCount: number, params: ResonatorParams, wetWeight: number): void {
     const n = Math.min(binCount, this.binCount);
     const res = Number.isFinite(params.resonance) ? Math.min(1, Math.max(0, params.resonance)) : 0;
     const wet = Number.isFinite(wetWeight) ? Math.min(1, Math.max(0, wetWeight)) : 0;

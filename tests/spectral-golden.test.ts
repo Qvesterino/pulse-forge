@@ -61,7 +61,8 @@ function render({ params = {}, seconds, input, right }: RenderOpts) {
 }
 
 /** A two-tone input: fundamental plus a partial, so per-bin behaviour is visible. */
-const twoTone = (i: number) => 0.5 * Math.sin((2 * Math.PI * 220 * i) / SR) + 0.25 * Math.sin((2 * Math.PI * 660 * i) / SR);
+const twoTone = (i: number) =>
+  0.5 * Math.sin((2 * Math.PI * 220 * i) / SR) + 0.25 * Math.sin((2 * Math.PI * 660 * i) / SR);
 
 const silence = () => 0;
 
@@ -165,7 +166,7 @@ describe("PORTAL — deterministic golden vectors", () => {
   });
 
   it("DELAY mode produces an echo at the configured time", () => {
-    const { outL } = render({
+    const { outL, proc } = render({
       seconds: 0.5,
       input: twoTone,
       params: { mode: 0, feedback: 0, time: 100, mix: 1, diffuse: 0 },
@@ -179,6 +180,9 @@ describe("PORTAL — deterministic golden vectors", () => {
     expect(earlyRms).toBeLessThan(1e-6);
     expect(lateRms).toBeGreaterThan(0.05);
     expect(lateRms).toBeLessThan(1.5);
+    // The engine reports which delay it engaged, so a TIME that silently failed
+    // to reach the bank shows up as a number that does not match the knob.
+    expect(proc.getMeters().delaySec).toBeCloseTo(delaySec, 3);
   });
 
   it("is bit-identical across repeated renders (NEW-EFFECT-CHECKLIST §10)", () => {

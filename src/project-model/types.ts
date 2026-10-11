@@ -70,6 +70,7 @@ export type EffectType =
   | "morphdynamics"
   | "bassHarmonic"
   | "skrutka"
+  | "rezonans"
   | "portal";
 
 export type InstrumentKind =

@@ -28,6 +28,7 @@ import { defaultOzvenaStateV1 } from "./ozvena-core/v2/types";
 import { OZVENA_AUDIO_PARAM_SECTIONS, OZVENA_ENUM_VALUES, clampOzvenaParam } from "./ozvena-params";
 import { LFO_SYNC_DIVISIONS } from "./tempo-sync";
 import { CHARACTER_MODE_LABELS } from "./characterCurve";
+import { REZONANS_PARAMS } from "./rezonans-core/contracts/parameters";
 
 export const formatDb = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`;
 
@@ -282,6 +283,7 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "duckDelay",
   "multiTapDelay",
   "portal",
+  "rezonans",
   "tapeSat",
   "vocoder",
   "reverseSwell",
@@ -300,7 +302,7 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "skrutka",
 ];
 
-export const FLAGSHIP_EFFECT_ORDER: EffectType[] = ["fxeq", "ultina", "ozvena", "kaskada", "morphdynamics"];
+export const FLAGSHIP_EFFECT_ORDER: EffectType[] = ["fxeq", "ultina", "ozvena", "kaskada", "morphdynamics", "rezonans"];
 
 export function defaultParamsOf(type: EffectType): Record<string, number> {
   return Object.fromEntries(EFFECT_META[type].params.map((p) => [p.id, p.default]));
@@ -1288,6 +1290,91 @@ export const ozvenaParams: ParamDef[] = [
   },
   { id: "global.quality", label: "QUALITY", min: 0, max: 3, default: 1, options: OZVENA_QUALITY_OPTIONS },
 ];
+
+// ═══════════════════════════════════════════════════════════
+// REZONANS — vocal formant + key-aware harmonizer (ADR 0040)
+//
+// Ids, ranges and defaults are NOT restated here: they come from the core
+// contract, which is the same source the processor clamps against. Restating
+// them in two places is how a parameter ends up declared at 0..1 in the doc
+// while the DSP expects 0..100 — the exact defect `scale-bridges.ts` exists
+// to paper over. REZONANS uses ONE scale, so it needs no bridge.
+// ═══════════════════════════════════════════════════════════
+
+/** Harmony mode labels — the four musical policies in ADR 0040 §8. */
+export const REZONANS_MODE_OPTIONS = [
+  { value: 0, label: "OFF" },
+  { value: 1, label: "INTERVAL" },
+  { value: 2, label: "DEGREES" },
+  { value: 3, label: "CHORD TONES" },
+];
+
+/** Quality tiers — the FFT size behind each, which also sets the latency. */
+export const REZONANS_QUALITY_OPTIONS = [
+  { value: 0, label: "ECONOMY 1024" },
+  { value: 1, label: "BALANCED 2048" },
+  { value: 2, label: "FINE 4096" },
+];
+
+const REZONANS_LABELS: Record<string, { label: string; unit?: string; fmt?: (v: number) => string }> = {
+  mix: { label: "MIX", fmt: formatPct },
+  glide: { label: "GLIDE", fmt: formatPct },
+  quality: { label: "QUALITY" },
+  formant: { label: "FORMANT", unit: "st", fmt: (v) => `${v > 0 ? "+" : ""}${v.toFixed(1)} st` },
+  "formant.voiceScale": { label: "PER-VOICE MORPH", fmt: formatPct },
+  "envelope.smooth": { label: "ENVELOPE", fmt: formatPct },
+  "harmony.mode": { label: "HARMONY" },
+  "harmony.voices": { label: "VOICES" },
+  "harmony.spread": { label: "SPREAD", fmt: formatPct },
+  "harmony.width": { label: "WIDTH", fmt: formatPct },
+  "harmony.chordFollow": { label: "CHORD FOLLOW", fmt: formatPct },
+  "harmony.bodyGate": { label: "CONSONANT GATE", fmt: formatPct },
+  "detect.minHz": { label: "LOW CUT", unit: "Hz", fmt: formatHz },
+  "detect.clarity": { label: "PITCH CONFIDENCE", fmt: formatPct },
+};
+
+const REZONANS_VOICE_LABELS: Record<string, string> = {
+  enabled: "ON",
+  degree: "DEGREE",
+  level: "LEVEL",
+  pan: "PAN",
+  formant: "FORMANT",
+  humanize: "HUMANIZE",
+};
+
+const REZONANS_OPTIONS: Record<string, { value: number; label: string }[]> = {
+  "harmony.mode": REZONANS_MODE_OPTIONS,
+  quality: REZONANS_QUALITY_OPTIONS,
+};
+
+/** Label/unit/format for a REZONANS parameter id; ids fall back to themselves. */
+function rezonansLabelFor(id: string): { label: string; unit?: string; fmt?: (v: number) => string } {
+  return REZONANS_LABELS[id] ?? { label: id };
+}
+
+export const rezonansParams: ParamDef[] = REZONANS_PARAMS.map((p) => {
+  const voiceMatch = /^voice(\d)\.(.+)$/.exec(p.id);
+  const meta = rezonansLabelFor(p.id);
+  const label = voiceMatch
+    ? `${voiceMatch[1] as string} · ${REZONANS_VOICE_LABELS[voiceMatch[2] as string] ?? voiceMatch[2]}`
+    : meta.label;
+  const options = REZONANS_OPTIONS[p.id];
+  return {
+    id: p.id,
+    label,
+    min: p.min,
+    max: p.max,
+    default: p.def,
+    ...(meta.unit ? { unit: meta.unit } : {}),
+    ...(meta.fmt ? { format: meta.fmt } : {}),
+    ...(options ? { options } : {}),
+    kind: options
+      ? ("enum" as const)
+      : voiceMatch && voiceMatch[2] === "enabled"
+        ? ("toggle" as const)
+        : ("continuous" as const),
+  };
+});
 
 export const morphdynamicsParams: ParamDef[] = [
   { id: "global.inputGainDb", label: "IN", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
@@ -2666,6 +2753,7 @@ export const EFFECT_META: Record<EffectType, EffectDefinitionMeta> = {
   ultina: { type: "ultina", name: "VLYX", category: "dynamics", params: ultinaParams },
   ozvena: { type: "ozvena", name: "DRIFT", category: "space", params: ozvenaParams },
   morphdynamics: { type: "morphdynamics", name: "MORPH", category: "dynamics", params: morphdynamicsParams },
+  rezonans: { type: "rezonans", name: "REZONANS", category: "character", params: rezonansParams },
   drumBuss: { type: "drumBuss", name: "Drum Buss", category: "character", params: drumBussParams },
   bassBuss: { type: "bassBuss", name: "Bass Buss", category: "character", params: bassBussParams },
   utility: { type: "utility", name: "Utility", category: "tone", params: utilityParams },

@@ -31,6 +31,10 @@ const EDITOR_OVERRIDES: Partial<Record<EffectType, Pick<EffectEditorSpec, "prima
   // TWIST: the character controls first — smear amount, transient tilt,
   // where the hump sits, and stereo split; mix/output live on the details page.
   skrutka: { primaryParamIds: ["dispersion", "punch", "focusHz", "spread"] },
+  // PORTAL: which engine you are driving, how long it rings, how hard it feeds
+  // back and where it sits in the mix. Everything spectral — focus band, feed
+  // shift, diffusion, freeze, drive, tone — lives on the details page.
+  portal: { primaryParamIds: ["mode", "time", "feedback", "mix"] },
 };
 
 /**

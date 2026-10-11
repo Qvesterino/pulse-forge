@@ -10,6 +10,7 @@ import { createFxEqNode } from "./fxeqNode";
 import { createUltinaNode } from "./ultinaNode";
 import { createOzvenaNode } from "./ozvenaNode";
 import { createMorphDynamicsNode } from "./morphDynamicsNode";
+import { createRezonansNode } from "./rezonansNode";
 import { createSidechainNode } from "../audio-worklets/sidechain-node";
 import { createLimiterNode } from "../audio-worklets/limiter-node";
 import { createCompressorNode } from "../audio-worklets/compressor-node";
@@ -72,6 +73,7 @@ import {
   ultinaParams,
   ozvenaParams,
   morphdynamicsParams,
+  rezonansParams,
   drumBussParams,
   bassBussParams,
   utilityParams,
@@ -232,6 +234,7 @@ export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded"
   ozvena: "degraded",
   kaskada: "degraded",
   morphdynamics: "degraded",
+  rezonans: "degraded",
   // FX expansion (docs/FX-EXPANSION-ROADMAP.md): real DSP lives in the
   // always-loaded core worklet bundle; the fallback is an honest bypass.
   ringMod: "critical",
@@ -2581,7 +2584,7 @@ const ozvena: EffectDefinition = {
       // already matches the project tempo (syncBpm keeps it live after).
       return createOzvenaNode(ctx, instance, OZVENA_PARAM_DEFAULTS, env?.bpm ?? 120);
     }
-    return bypassRuntime(ctx, "AudioWorklet unavailable — VØID bypassed (1:1 signal)");
+    return bypassRuntime(ctx, "AudioWorklet unavailable — DRIFT bypassed (1:1 signal)");
   },
 };
 
@@ -2605,6 +2608,32 @@ const morphdynamics: EffectDefinition = {
       return createMorphDynamicsNode(ctx, instance, MORPH_PARAM_DEFAULTS);
     }
     return bypassRuntime(ctx, "AudioWorklet unavailable — MORPH bypassed (1:1 signal)");
+  },
+};
+
+/**
+ * REZONANS — spectral formant shifting + key-aware vocal harmony (ADR 0040).
+ *
+ * The first effect whose parameters are derived from PROJECT MUSICAL CONTEXT:
+ * the factory receives `env.harmonyContext` (key root + scale mask + the
+ * arrangement's chord lane, all host-computed) and hands it to the processor at
+ * construction. That is the whole bridge — the scheduler, the automation
+ * bridge and the renderer are untouched.
+ *
+ * Unlike MORPH (6 macros for the rack), REZONANS exposes its full surface in
+ * `params`: the 4-voice stack and the key/chord modes are the product, not
+ * detail. `RezonansPanel` edits the same ids.
+ */
+const rezonans: EffectDefinition = {
+  type: "rezonans",
+  name: "REZONANS",
+  category: "character",
+  params: rezonansParams,
+  factory(ctx, instance, env) {
+    if (isWorkletReady("rezonans", ctx)) {
+      return createRezonansNode(ctx, instance, { bpm: env.bpm, harmonyContext: env.harmonyContext });
+    }
+    return bypassRuntime(ctx, "AudioWorklet unavailable — REZONANS bypassed (1:1 signal)");
   },
 };
 
@@ -3764,7 +3793,7 @@ const kaskada: EffectDefinition = {
   params: kaskadaParams,
   factory(ctx, instance) {
     if (isWorkletReady("kaskada", ctx)) return createKaskadaNode(ctx, instance);
-    return bypassRuntime(ctx, "AudioWorklet unavailable — RYFT delay bypassed (1:1 signal)");
+    return bypassRuntime(ctx, "AudioWorklet unavailable — RIFT delay bypassed (1:1 signal)");
   },
 };
 
@@ -3808,6 +3837,7 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   ozvena,
   kaskada,
   morphdynamics,
+  rezonans,
   multiTapDelay,
   ringMod,
   tapeStop,

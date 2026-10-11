@@ -588,6 +588,7 @@
             "tailDecay": 0.4,
             "tailLevel": 0.25,
             "tailTune": 0,
+            "triggerMode": 1,
             "subLevel": 0.3,
             "subTune": 0,
             "harmonicLevel": 0.25,
@@ -1338,6 +1339,25 @@
             "lfoDepth": 0,
             "mix": 1,
             "output": 0
+          }
+        },
+        {
+          "type": "portal",
+          "defaults": {
+            "mode": 0,
+            "time": 320,
+            "sync": 0,
+            "feedback": 0.55,
+            "decay": 0.5,
+            "resonance": 0.35,
+            "focus": 1200,
+            "focusWidth": 1,
+            "shift": 0,
+            "diffuse": 0.3,
+            "freeze": 0,
+            "drive": 0,
+            "tone": 0,
+            "mix": 0.35
           }
         }
       ]

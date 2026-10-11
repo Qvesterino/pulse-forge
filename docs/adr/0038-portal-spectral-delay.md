@@ -19,11 +19,11 @@ three places**, and the correction changes the architecture.
 
 ### What the candidates actually are
 
-| Candidate | Assumed | Measured | Source |
-|---|---|---|---|
-| `kaskada` (RYFT) | an FFT delay | 43.5 KB **time-domain** dual ring buffer with cubic-Hermite fractional read, per-channel biquad EQ, tanh drive with 2× oversampling. **No FFT.** | `src/audio-worklets/kaskada-processor.js:1-30` |
-| `ozvena` (VOID) | spectral DSP | `fftPartitioned.ts` is uniform-partitioned **convolution** (Gardner 1994) for IR reverb. FFT, but convolution — not STFT-frame DSP | `src/effects/ozvena-core/dsp/fftPartitioned.ts:17-31` |
-| `ultina` `fft.ts` | a full FFT | `// @ts-nocheck`, vendored, **magnitude spectrum only**, no IFFT | `src/effects/ultina-core/dsp/fft.ts:15-19,29-90` |
+| Candidate         | Assumed      | Measured                                                                                                                                         | Source                                                |
+| ----------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| `kaskada` (RYFT)  | an FFT delay | 43.5 KB **time-domain** dual ring buffer with cubic-Hermite fractional read, per-channel biquad EQ, tanh drive with 2× oversampling. **No FFT.** | `src/audio-worklets/kaskada-processor.js:1-30`        |
+| `ozvena` (VOID)   | spectral DSP | `fftPartitioned.ts` is uniform-partitioned **convolution** (Gardner 1994) for IR reverb. FFT, but convolution — not STFT-frame DSP               | `src/effects/ozvena-core/dsp/fftPartitioned.ts:17-31` |
+| `ultina` `fft.ts` | a full FFT   | `// @ts-nocheck`, vendored, **magnitude spectrum only**, no IFFT                                                                                 | `src/effects/ultina-core/dsp/fft.ts:15-19,29-90`      |
 
 ### What is actually reusable
 
@@ -76,14 +76,14 @@ Own esbuild entry → own `public/spectral-worklet.js`, own build script, a new
 `LazyWorkletType` in `LAZY_WORKLET_TYPES` + `LAZY_MODULE_URLS`, and its own budget
 row. Follows the MORPH / KOREŃ / SKRUTKA first-party pattern.
 
-*Rationale:* forced by the 1,2 KB headroom; confirmed by the kaskada precedent;
+_Rationale:_ forced by the 1,2 KB headroom; confirmed by the kaskada precedent;
 a beat that never uses PORTAL must not pay for it (AGENTS.md §4).
 
 ### D2 — Import the vendored FFT; do not copy it
 
 `import { fft, hannWindow, isPow2 } from "../ozvena-core/dsp/fft.js"`.
 
-*Rationale:* `phase-vocoder.ts:33` establishes this as existing practice, not a
+_Rationale:_ `phase-vocoder.ts:33` establishes this as existing practice, not a
 loophole. A copy would drift from the upstream oracle and break the shared golden
 vectors that `tests/ozvena-golden.test.ts` and `tests/ultina-vectors.test.ts`
 depend on. Importing keeps one FFT implementation in the repo.
@@ -92,13 +92,13 @@ depend on. Importing keeps one FFT implementation in the repo.
 
 `MODE`: `DELAY` / `RESONATOR` / `FREEZE` — one FFT engine with three parameter paths.
 
-*Rationale:* three effects would mean three full registration surfaces, three
+_Rationale:_ three effects would mean three full registration surfaces, three
 panels and three golden-vector sets for one engine. Revisit only if usage shows
 they behave as genuinely separate instruments.
 
 ### D4 — Category `space`; no new category
 
-*Rationale:* `category` is a closed 5-member union (`src/effects/types.ts:185`);
+_Rationale:_ `category` is a closed 5-member union (`src/effects/types.ts:185`);
 a new category changes the union, `CORE_EFFECT_GROUP_ORDER`, the group labels,
 CSS, and any test counting groups. **"Spectral" is a technique, not a function** —
 a user wants an echo, not an STFT. Granular Freeze already lives in `space` for
@@ -109,7 +109,7 @@ the same reason. Reopen only when 3+ spectral effects exist and the UX asks for 
 Per-bin feedback clamped to a contractive bound, plus a per-frame non-finite sweep
 that zeroes any poisoned bin.
 
-*Rationale:* spectral feedback has no natural bound the way kaskada's contractive
+_Rationale:_ spectral feedback has no natural bound the way kaskada's contractive
 tanh drive does. One `Infinity` in one bin poisons the whole delay ring through
 every subsequent frame. A user who loses their audio graph has to reload — that is
 not a reversible mistake.
@@ -121,13 +121,13 @@ not a reversible mistake.
 `WaveShaper` + `DelayNode(0.11 s)` + feedback + lowpass + a **constant** ±12 st
 pitch shift. No FFT, no worklet.
 
-| | Shimmer (existing) | PORTAL |
-|---|---|---|
-| Mechanism | native delay + constant shift + saturation | STFT, per-bin delay + feedback |
-| Frequency tracking | none — the shift is uniform | per-bin, follows the material |
-| Partial behaviour | smeared octave halo | individually tuned, ringing partials |
+|                    | Shimmer (existing)                         | PORTAL                               |
+| ------------------ | ------------------------------------------ | ------------------------------------ |
+| Mechanism          | native delay + constant shift + saturation | STFT, per-bin delay + feedback       |
+| Frequency tracking | none — the shift is uniform                | per-bin, follows the material        |
+| Partial behaviour  | smeared octave halo                        | individually tuned, ringing partials |
 
-*Rationale:* if PORTAL cannot be described as **selective, partial-level control**,
+_Rationale:_ if PORTAL cannot be described as **selective, partial-level control**,
 it is a duplicate and should not be built. This constraint binds the ADR, the
 panel copy and `docs/CURRENT-STATE.md`.
 
@@ -153,13 +153,13 @@ panel copy and `docs/CURRENT-STATE.md`.
 
 ## Alternatives considered
 
-| Option | Rejected because |
-|---|---|
-| Add PORTAL to `core-processor.js` | 1,2 KB free; spectral DSP already filled this bundle once (kaskada). |
-| Own copy of the FFT in `spectral-core` | Duplicates the vendored oracle; drift against shared golden vectors. |
-| Three separate effects | 3× registration surface, panels and golden sets for one engine. |
-| New `spectral` category | Technique masquerading as function; broadens a closed union for one member. |
-| Native-graph fallback for the effect | A spectral effect has no honest native approximation; `bypassRuntime` with a real reason string is the correct fallback. |
+| Option                                 | Rejected because                                                                                                         |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Add PORTAL to `core-processor.js`      | 1,2 KB free; spectral DSP already filled this bundle once (kaskada).                                                     |
+| Own copy of the FFT in `spectral-core` | Duplicates the vendored oracle; drift against shared golden vectors.                                                     |
+| Three separate effects                 | 3× registration surface, panels and golden sets for one engine.                                                          |
+| New `spectral` category                | Technique masquerading as function; broadens a closed union for one member.                                              |
+| Native-graph fallback for the effect   | A spectral effect has no honest native approximation; `bypassRuntime` with a real reason string is the correct fallback. |
 
 ---
 

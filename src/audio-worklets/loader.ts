@@ -36,6 +36,7 @@ export const LAZY_WORKLET_TYPES = [
   "morphdynamics",
   "bassHarmonic",
   "skrutka",
+  "rezonans",
   "portal",
 ] as const;
 export type LazyWorkletType = (typeof LAZY_WORKLET_TYPES)[number];
@@ -47,6 +48,7 @@ const LAZY_MODULE_URLS: Record<LazyWorkletType, string> = {
   morphdynamics: new URL(assetUrl("/morph-dynamics-worklet.js"), import.meta.url).href,
   bassHarmonic: new URL(assetUrl("/bass-harmonic-worklet.js"), import.meta.url).href,
   skrutka: new URL(assetUrl("/skrutka-worklet.js"), import.meta.url).href,
+  rezonans: new URL(assetUrl("/rezonans-worklet.js"), import.meta.url).href,
   portal: new URL(assetUrl("/spectral-worklet.js"), import.meta.url).href,
 };
 
