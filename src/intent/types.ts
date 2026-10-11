@@ -242,7 +242,17 @@ export interface RankerSelectionMeta {
 
 /** Full provider ranking output — proposal plus the auditionable bank. */
 export interface GenerationRanked {
-  proposal: GenerationProposal;
+  /**
+   * The winning proposal — null when EVERY candidate (including the
+   * deterministic fallback) failed the gates. A rejected run must not expose
+   * an applyable pattern: the panel and applyGenerationResultCommand both
+   * guard on `proposal` being absent (INTENT-AUDIT-2026-10 D3 — a rejected
+   * result used to carry its failed fallback pattern and could be installed
+   * over the user's active pattern).
+   */
+  proposal: GenerationProposal | null;
+  /** Provider diagnostics for runs without a proposal (rejected). */
+  diagnostics?: GenerationDiagnostics;
   /** Valid candidates, best first. Empty on fallback/rejected runs. */
   ranked: readonly CandidateBankEntry[];
   /** Model scores parallel to `ranked` (null where the model did not score). */

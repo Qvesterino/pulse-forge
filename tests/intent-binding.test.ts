@@ -94,8 +94,9 @@ describe("truthful local generation diagnostics", () => {
       };
     });
 
-    const proposal = brokenProvider.generateSync(plan, { project: doc, mode: "preview" });
-    expect(proposal.status).toBe("repaired");
+    const { proposal } = brokenProvider.generateSync(plan, { project: doc, mode: "preview" });
+    expect(proposal).toBeTruthy();
+    expect(proposal!.status).toBe("repaired");
     expect(proposal.diagnostics.repairs.length).toBeGreaterThan(0);
     expect(proposal.diagnostics.errors).toEqual([]);
     expect(inspectPatternInvariants(doc, proposal.pattern).ok).toBe(true);
@@ -108,8 +109,9 @@ describe("truthful local generation diagnostics", () => {
       throw new Error("synthetic generator failure");
     });
 
-    const proposal = failingProvider.generateSync(plan, { project: doc, mode: "preview" });
-    expect(proposal.status).toBe("fallback");
+    const { proposal } = failingProvider.generateSync(plan, { project: doc, mode: "preview" });
+    expect(proposal).toBeTruthy();
+    expect(proposal!.status).toBe("fallback");
     expect(proposal.diagnostics.repairs).toEqual([]);
     expect(proposal.diagnostics.fallbackReason).toContain("synthetic generator failure");
     expect(inspectPatternInvariants(doc, proposal.pattern).ok).toBe(true);
@@ -141,9 +143,10 @@ describe("offline candidate bank", () => {
       };
     });
 
-    const proposal = provider.generateSync(plan, { project: doc, mode: "preview" });
+    const { proposal } = provider.generateSync(plan, { project: doc, mode: "preview" });
     expect(seenSeeds).toEqual(plan.candidateSeeds);
-    expect(proposal.status).toBe("accepted");
+    expect(proposal).toBeTruthy();
+    expect(proposal!.status).toBe("accepted");
     expect(proposal.diagnostics.repairs).toEqual([]);
     expect(proposal.diagnostics.warnings).toContain("candidate-bank-enabled");
     expect(proposal.diagnostics.warnings).toContain("candidate-bank-selected:2:template");

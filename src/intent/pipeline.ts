@@ -6,13 +6,41 @@ import type { Pattern, ProjectDocument } from "../project-model/types";
 import { normalizeIntent, intentFromGenerateOptions } from "./normalize";
 import { planGeneration } from "./plan";
 import { localDeterministicProvider } from "./providers/local";
-import type { GenerationContext, GenerationResult, IntentInput, IntentSpec, RankedCandidate } from "./types";
+import type {
+  GenerationContext,
+  GenerationDiagnostics,
+  GenerationProposal,
+  GenerationResult,
+  IntentInput,
+  IntentSpec,
+  RankedCandidate,
+} from "./types";
 import { isPreferenceLearningEnabled, preferenceContextForIntent, readPreferenceLedger } from "./preference-ledger";
 
 function resultFromProposal(
   plan: ReturnType<typeof planGeneration>,
-  proposal: NonNullable<GenerationResult["proposal"]>,
+  proposal: GenerationProposal | null,
+  diagnostics?: GenerationDiagnostics,
 ): GenerationResult {
+  if (!proposal) {
+    // D3 contract: rejected runs expose NO proposal — the panel and
+    // applyGenerationResultCommand both guard on its absence.
+    return {
+      status: "rejected",
+      plan,
+      proposal: undefined,
+      diagnostics: diagnostics ?? {
+        warnings: [],
+        repairs: [],
+        errors: ["generation rejected"],
+        fallbackReason: "fallback-failed-invariant-or-preserve-gate",
+      },
+      provider: {
+        id: localDeterministicProvider.id,
+        version: localDeterministicProvider.version,
+      },
+    };
+  }
   return {
     status: proposal.status ?? (proposal.diagnostics.errors.length > 0 ? "rejected" : "accepted"),
     plan,
@@ -48,8 +76,8 @@ export function generateLocalResult(
   mode: GenerationContext["mode"] = "apply",
 ): GenerationResult {
   const plan = planGeneration(input, doc);
-  const proposal = localDeterministicProvider.generateSync(plan, { project: doc, mode });
-  return resultFromProposal(plan, proposal);
+  const sync = localDeterministicProvider.generateSync(plan, { project: doc, mode });
+  return resultFromProposal(plan, sync.proposal, sync.diagnostics);
 }
 
 export function generateLocalResultFromOptions(
@@ -107,12 +135,15 @@ export async function generateAsyncResult(
 ): Promise<GenerationResult> {
   const plan = planGeneration(input, doc);
   if (!options.includeBank) {
-    const proposal = await localDeterministicProvider.generate(
+    // generateRanked (not the thin generate() wrapper) so a rejected run
+    // keeps the provider diagnostics the panel surfaces (D3 contract).
+    const ranked = await localDeterministicProvider.generateRanked(
       plan,
       { project: doc, mode: options.mode ?? "apply" },
       options.signal,
+      false,
     );
-    return resultFromProposal(plan, proposal);
+    return resultFromProposal(plan, ranked.proposal, ranked.diagnostics);
   }
   const ranked = await localDeterministicProvider.generateRanked(
     plan,

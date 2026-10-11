@@ -185,7 +185,10 @@ export class LocalDeterministicProvider implements GenerationProvider {
     return { candidates, failures, candidateSeeds, safeSyncopation };
   }
 
-  generateSync(plan: GenerationPlan, context: GenerationContext): GenerationProposal {
+  generateSync(
+    plan: GenerationPlan,
+    context: GenerationContext,
+  ): { proposal: GenerationProposal | null; diagnostics?: GenerationDiagnostics } {
     const { candidates, failures, candidateSeeds } = this.collectCandidates(plan, context);
 
     const ranked = rankCandidateBank(context.project, candidates);
@@ -200,9 +203,11 @@ export class LocalDeterministicProvider implements GenerationProvider {
           : [];
       if (failures.length > 0) bankWarnings.push(...failures.map((failure) => `candidate-bank-skipped:${failure}`));
       return {
-        status: selected.status,
-        pattern: selected.pattern,
-        diagnostics: diagnosticsFor(selected.pattern, selected.repairs, bankWarnings),
+        proposal: {
+          status: selected.status,
+          pattern: selected.pattern,
+          diagnostics: diagnosticsFor(selected.pattern, selected.repairs, bankWarnings),
+        },
       };
     }
 
@@ -212,21 +217,25 @@ export class LocalDeterministicProvider implements GenerationProvider {
     const fallback = evaluatedFallback?.pattern ?? attachProvenance(fallbackCandidate, plan, context.project);
     if (evaluatedFallback) {
       return {
-        status: "fallback",
-        pattern: fallback,
-        diagnostics: diagnosticsFor(
-          fallback,
-          [],
-          ["local-generator-fallback", ...failures],
-          [],
-          failures.length > 0 ? failures.join("|") : "candidate-bank-no-valid-candidate",
-        ),
+        proposal: {
+          status: "fallback",
+          pattern: fallback,
+          diagnostics: diagnosticsFor(
+            fallback,
+            [],
+            ["local-generator-fallback", ...failures],
+            [],
+            failures.length > 0 ? failures.join("|") : "candidate-bank-no-valid-candidate",
+          ),
+        },
       };
     }
 
+    // D3 contract: a fully rejected run exposes NO proposal — attaching the
+    // failed fallback pattern here let UI/apply guards install an empty
+    // pattern over the user's active one (INTENT-AUDIT-2026-10).
     return {
-      status: "rejected",
-      pattern: fallback,
+      proposal: null,
       diagnostics: diagnosticsFor(fallback, [], [], fallbackFailures, "fallback-failed-invariant-or-preserve-gate"),
     };
   }
@@ -249,8 +258,10 @@ export class LocalDeterministicProvider implements GenerationProvider {
     // degrades to exactly that when the model is off.
     const symbolic = symbolicWanted(plan);
     if (!symbolic && plan.candidateSeeds.length <= 1 && !((plan.options.candidateCount ?? 0) > 1)) {
+      const sync = this.generateSync(plan, context);
       return {
-        proposal: this.generateSync(plan, context),
+        proposal: sync.proposal,
+        ...(sync.diagnostics ? { diagnostics: sync.diagnostics } : {}),
         ranked: [],
         modelScores: [],
         ranker: {
@@ -394,18 +405,15 @@ export class LocalDeterministicProvider implements GenerationProvider {
       };
     }
     return {
-      proposal: {
-        status: "rejected",
-        pattern: fallback,
-        diagnostics: diagnosticsFor(fallback, [], [], fallbackFailures, "fallback-failed-invariant-or-preserve-gate"),
-      },
+      proposal: null,
+      diagnostics: diagnosticsFor(fallback, [], [], fallbackFailures, "fallback-failed-invariant-or-preserve-gate"),
       ranked: [],
       modelScores: ranked.modelScores,
       ranker: rankerMeta,
     };
   }
 
-  async generate(plan: GenerationPlan, context: GenerationContext, signal?: AbortSignal): Promise<GenerationProposal> {
+  async generate(plan: GenerationPlan, context: GenerationContext, signal?: AbortSignal): Promise<GenerationProposal | null> {
     // The compact non-audition path preserves legacy one-click behavior. The
     // SAFE/PERSONAL/EXPERIMENTAL search is reserved for the explicit bank UI.
     const { proposal } = await this.generateRanked(plan, context, signal, false);
