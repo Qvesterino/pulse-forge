@@ -18,16 +18,16 @@
 
 ## 1. Súhrn
 
-| ID | Titul | Závažnosť | Owner vlny | Stav |
-| --- | --- | --- | --- | --- |
-| D1 | Fill recept seedovaný náhodným `pattern.id` → buildSong nedeterminizmus | **P1** | `61607f31` (fill vocabulary) | root-caused, čaká F3 |
-| D2 | Lead-only generácia dáva všetkých kandidátov prázdnych (harmony-first regresia) | **P1** | `3971f0c1` (multi-voice) | root-caused, čaká F3 |
-| D3 | Rejected výsledok nesie definovaný prázdny proposal → UI môže inštalovať ticho | **P1** | kontrakt (pipeline/UI) | root-caused, čaká F3 |
-| D5 | SK exact slovná zásoba: „soluj" neexistuje | P2 | parser vlny | repro v korpuse |
-| D6 | SK diakritika/slovná zásoba nekonzistentná naprieč vrstvami (mix, loudness) | P2 | parser vlny | repro v korpuse |
-| D7 | Preset intent nedosiahnuteľný z plain textu; `presetUnknown` never fires | P2 | preset-intent v1 | repro v korpuse |
-| D8 | Komparatívy hijackujú žánrové prompty („darker techno at 130" → mix) | P3 (dizajn) | documented §5.7 | rozhodnutie ownera |
-| D9 | SK arrange duplicitné synonymá chýbajú úplne | P2 | arrangeWords vlny | repro v korpuse |
+| ID  | Titul                                                                           | Závažnosť   | Owner vlny                   | Stav                 |
+| --- | ------------------------------------------------------------------------------- | ----------- | ---------------------------- | -------------------- |
+| D1  | Fill recept seedovaný náhodným `pattern.id` → buildSong nedeterminizmus         | **P1**      | `61607f31` (fill vocabulary) | root-caused, čaká F3 |
+| D2  | Lead-only generácia dáva všetkých kandidátov prázdnych (harmony-first regresia) | **P1**      | `3971f0c1` (multi-voice)     | root-caused, čaká F3 |
+| D3  | Rejected výsledok nesie definovaný prázdny proposal → UI môže inštalovať ticho  | **P1**      | kontrakt (pipeline/UI)       | root-caused, čaká F3 |
+| D5  | SK exact slovná zásoba: „soluj" neexistuje                                      | P2          | parser vlny                  | repro v korpuse      |
+| D6  | SK diakritika/slovná zásoba nekonzistentná naprieč vrstvami (mix, loudness)     | P2          | parser vlny                  | repro v korpuse      |
+| D7  | Preset intent nedosiahnuteľný z plain textu; `presetUnknown` never fires        | P2          | preset-intent v1             | repro v korpuse      |
+| D8  | Komparatívy hijackujú žánrové prompty („darker techno at 130" → mix)            | P3 (dizajn) | documented §5.7              | rozhodnutie ownera   |
+| D9  | SK arrange duplicitné synonymá chýbajú úplne                                    | P2          | arrangeWords vlny            | repro v korpuse      |
 
 Číslovanie D1–D9 rezervované; D4 bolo v priebehu auditu zlúčené do D2
 („with lead" scope sémantika je PINUTÁ v `tests/intent-text-parser.test.ts:95`,
@@ -40,7 +40,7 @@ teda nie je defekt — defekt je čo sa stane potom, D2/D3).
 ### D1 — buildSong nedeterminizmus: fill seedovaný náhodným id
 
 - **Symptom:** `tests/intent-sections-fx.test.ts > is deterministic for a
-  fixed seed` červený od F1 baselineu. Dva buildy z rovnakého dokumentu a
+fixed seed` červený od F1 baselineu. Dva buildy z rovnakého dokumentu a
   seedu sa líšia v obsahu posledného baru sekcií (velocity rampy 0.3→0.9
   vs iný recept/ticho).
 - **Root cause (dokázaný):** `src/intent/song.ts:2499` seeduje výber fill
@@ -62,7 +62,7 @@ teda nie je defekt — defekt je čo sa stane potom, D2/D3).
 ### D2 — lead-only generácia: všetci kandidáti prázdni
 
 - **Symptom:** `tests/release-gate-ai-producer.test.ts > GATE brief fidelity
-  "explicit BPM + genre"` červený: `hardFactViolations(proposal) = ["empty"]`.
+"explicit BPM + genre"` červený: `hardFactViolations(proposal) = ["empty"]`.
 - **Reťaz:** „dark rolling techno at 140 **with lead**" → parser dá
   `roles: ["lead"]` (scope-replacement sémantika — **pinutá ako zámerná**,
   `tests/intent-text-parser.test.ts:95`) → generácia s touto rolou vyprodukuje
@@ -162,6 +162,6 @@ frekvencia v UI) — follow-up pre ďalšiu korpusovú vlnu.
 ## 6. Odporúčané poradie F3
 
 1. D3 (kontrakt, malý diff, odstraňuje data-loss mínu) → 2. D1 (fill seed,
-  jeden riadok + test) → 3. D2 (multi-voice lead-only, najťažšie) →
-4. D5/D6/D9 (SK vocab vlna, mechanické) → 5. D7 (preset router grammar) →
-6. D8 (owner rozhodnutie, potom pin flip).
+   jeden riadok + test) → 3. D2 (multi-voice lead-only, najťažšie) →
+2. D5/D6/D9 (SK vocab vlna, mechanické) → 5. D7 (preset router grammar) →
+3. D8 (owner rozhodnutie, potom pin flip).
