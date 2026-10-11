@@ -5,6 +5,7 @@ import { uid } from "../shared/ids";
 import { getGroovesForGenre, getGrooveById, preferGroovesByLanes, preferGroovesForWindow } from "./grooves/index";
 import { generateDrumPattern } from "./drums";
 import { generateMelodicParts } from "./melodic";
+import { generateMultiVoice } from "../intent/multi-voice";
 import { drumTrackForTarget, instrumentTargets, instrumentTrackForRole } from "./role-targets";
 import { inferPadRole } from "./pad-roles";
 import { canonicalizePattern, contentHash, createGenerationRecipe } from "./evaluation";
@@ -291,6 +292,49 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
     lead: leadRand,
   });
 
+  // HARMONY-FIRST MELODY (2026-10-10): the multi-voice engine (chord
+  // progressions + voice leading) is the PRIMARY melodic source on every
+  // generation path. For years it was reachable only from the never-invoked
+  // symbolic-prior branch, so real generations played Markov templates that
+  // knew nothing about the progression tables — and the song-level harmony
+  // plan (options.progression) had no living consumer. The template parts
+  // stay as the fallback. The switch is ALL-OR-NOTHING per candidate: bass,
+  // chords and lead are one harmonic decision and are never mixed across
+  // engines.
+  const melodicRolesWanted = !roles || roles.some((r) => r === "bass" || r === "chords" || r === "lead");
+  let parts = melodicParts;
+  if (melodicRolesWanted) {
+    const seedNumber = (parseInt(String(effectiveSeed).slice(-8), 36) || 42) >>> 0;
+    const multiVoice = generateMultiVoice(
+      doc,
+      options.genre,
+      seedNumber,
+      safeStepCount,
+      effectiveKey ?? null,
+      options._diceEnergy ?? 0.7,
+      options.velocityVariation,
+      options._diceDensity ?? 0.5,
+      options._diceComplexity ?? 0.5,
+      options.productionProfile,
+      undefined,
+      options.progression,
+    );
+    const hasContent = multiVoice.bass.length > 0 || multiVoice.chord.length > 0 || multiVoice.lead.length > 0;
+    if (hasContent) {
+      // The role scope (dice drums+bass beats, "no lead" briefs) cuts across
+      // the engine exactly like it cuts across the templates.
+      const allowed = (role: "bass" | "chord" | "lead"): boolean => {
+        const intentRole = role === "chord" ? "chords" : role;
+        return !roles || roles.includes(intentRole);
+      };
+      parts = {
+        bass: allowed("bass") ? multiVoice.bass : [],
+        chord: allowed("chord") ? multiVoice.chord : [],
+        lead: allowed("lead") ? multiVoice.lead : [],
+      };
+    }
+  }
+
   // Build notes Record<ID, NoteEvent[]>
   const notesRecord: Record<string, NoteEvent[]> = {};
   const targetTracks = instrumentTargets(doc, options.instrumentTrackIds);
@@ -315,7 +359,7 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
           }
         }
       }
-      const part = melodicParts[role];
+      const part = parts[role];
       if (part.length === 0) continue;
       const track = instrumentTrackForRole(doc, role, options.instrumentTrackIds);
       if (!track) continue;
