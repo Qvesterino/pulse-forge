@@ -114,7 +114,7 @@ export class ResonatorBank {
       // recursion there would move energy into the mirrored half and alias it
       // back into the audible band.
       if (k === 0 || k === n - 1) {
-        const pole = this.poleRe[k] === 0 ? 0 : this.poleRe[k];
+        const pole = this.poleRe[k];
         const src = re[k];
         const st = this.poleTrim[k] * src + pole * this.stateRe[k];
         this.stateRe[k] = flushDenormal(st);

@@ -29,7 +29,7 @@ Toto nie je funkcia „pošli text modelu a zapíš čísla do pluginu“. Je to
 
 ### Dôležité rozlíšenie
 
-„Plugin“ tu znamená vstavaný FX nástroj v Pulse Forge (napr. PRISM/FXEQ, VLYX/Ultina, VØID/Ozvena alebo RYFT/Kaskáda), nie ľubovoľný plugin tretej strany. Inštrumentové pluginy sú samostatná budúca vetva: majú iný target, inú ontológiu aj odlišné riziká.
+„Plugin“ tu znamená vstavaný FX nástroj v Pulse Forge (napr. PRISM/FXEQ, VLYX/Ultina, DRIFT/Ozvena alebo RIFT/Kaskáda), nie ľubovoľný plugin tretej strany. Inštrumentové pluginy sú samostatná budúca vetva: majú iný target, inú ontológiu aj odlišné riziká.
 
 ---
 

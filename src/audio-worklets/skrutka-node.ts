@@ -39,6 +39,7 @@ const SKRUTKA_PARAMS = [
   "focusHz",
   "shape",
   "spread",
+  "field",
   "dyn",
   "keyMode",
   "lfoShape",

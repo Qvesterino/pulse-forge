@@ -2235,6 +2235,15 @@ export const skrutkaParams: ParamDef[] = [
   },
   { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0, format: formatPct },
   {
+    id: "field",
+    label: "FIELD",
+    min: -1,
+    max: 1,
+    default: 0,
+    format: (v) =>
+      Math.abs(v) < 0.005 ? "STEREO" : `${Math.round(Math.abs(v) * 100)}% ${v > 0 ? "SIDE" : "MID"}`,
+  },
+  {
     id: "dyn",
     label: "DYNAMIC",
     min: -1,

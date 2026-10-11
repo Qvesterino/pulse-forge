@@ -94,6 +94,7 @@ const SM_KEYS = [
   "focusHz",
   "shape",
   "spread",
+  "field",
   "dyn",
   "keyMode",
   "lfoHz",
@@ -146,6 +147,7 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
       { name: "focusHz", minValue: 40, maxValue: 4000, defaultValue: 220 },
       { name: "shape", minValue: 0, maxValue: 3, defaultValue: 0 },
       { name: "spread", minValue: 0, maxValue: 1, defaultValue: 0 },
+      { name: "field", minValue: -1, maxValue: 1, defaultValue: 0 },
       { name: "dyn", minValue: -1, maxValue: 1, defaultValue: 0 },
       { name: "keyMode", minValue: 0, maxValue: 2, defaultValue: 0 },
       { name: "lfoHz", minValue: 0, maxValue: 20, defaultValue: 0.5 },
@@ -173,6 +175,7 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
       focusHz: 220,
       shape: 0,
       spread: 0,
+      field: 0,
       dyn: 0,
       keyMode: 0,
       lfoHz: 0.5,
@@ -227,6 +230,7 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
       focusHz: clamp(parameters.focusHz[0], FOCUS_MIN_HZ, 4000),
       shape: Math.round(clamp(parameters.shape[0], 0, 3)),
       spread: clamp(parameters.spread[0], 0, 1),
+      field: clamp(parameters.field[0], -1, 1),
       dyn: clamp(parameters.dyn[0], -1, 1),
       keyMode: Math.round(clamp(parameters.keyMode[0], 0, 2)),
       lfoHz: Math.max(0, parameters.lfoHz[0]),
@@ -305,9 +309,22 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
     this.lastRadius = radius;
 
     // --- DISPERSION angles (shape → per-section pole cosines) ------------
+    // FIELD picks the topology: |field| <= 1e-4 is the legacy stereo path
+    // (independent L/R chains, spread offsets L vs R); otherwise the chains
+    // process the MID and SIDE components with a continuous FIELD crossfade
+    // (mid dry at +1, side dry at −1). With the same coefficients the M/S
+    // topology is mathematically the L/R topology (linearity), so the
+    // crossfade is phase-continuous.
+    const fieldActive = Math.abs(sm.field) > 1e-4;
+    const midAmount = sm.field <= 0 ? 1 : 1 - sm.field;
+    const sideAmount = sm.field >= 0 ? 1 : 1 + sm.field;
     const focusEff = clamp(sm.focusHz * lfoFactor, FOCUS_MIN_HZ, 4000);
-    const fL = clamp(focusEff * (1 - SPREAD_OFFSET * sm.spread), FOCUS_MIN_HZ, SECTION_MAX_HZ);
-    const fR = clamp(focusEff * (1 + SPREAD_OFFSET * sm.spread), FOCUS_MIN_HZ, SECTION_MAX_HZ);
+    const fA = clamp(
+      fieldActive ? focusEff : focusEff * (1 - SPREAD_OFFSET * sm.spread),
+      FOCUS_MIN_HZ,
+      SECTION_MAX_HZ,
+    );
+    const fB = clamp(focusEff * (1 + SPREAD_OFFSET * sm.spread), FOCUS_MIN_HZ, SECTION_MAX_HZ);
     const cosL = this.cosL;
     const cosR = this.cosR;
     for (let s = 0; s < LONG_SECTIONS; s++) {
@@ -317,8 +334,8 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
       else if (sm.shape === 2)
         factor = s % 2 === 0 ? 1 / PUNCH_BAND_RATIO : PUNCH_BAND_RATIO; // DOUBLE
       else factor = 1; // GULP / RESO
-      const wl = Math.min((2 * Math.PI * clamp(fL * factor, SECTION_MIN_HZ, SECTION_MAX_HZ)) / sr, Math.PI * 0.95);
-      const wr = Math.min((2 * Math.PI * clamp(fR * factor, SECTION_MIN_HZ, SECTION_MAX_HZ)) / sr, Math.PI * 0.95);
+      const wl = Math.min((2 * Math.PI * clamp(fA * factor, SECTION_MIN_HZ, SECTION_MAX_HZ)) / sr, Math.PI * 0.95);
+      const wr = Math.min((2 * Math.PI * clamp(fB * factor, SECTION_MIN_HZ, SECTION_MAX_HZ)) / sr, Math.PI * 0.95);
       cosL[s] = Math.cos(wl);
       cosR[s] = Math.cos(wr);
     }
@@ -370,40 +387,87 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
         if (this.keyEnv < DENORM) this.keyEnv = 0;
       }
 
-      // --- DISPERSION stage (L) -----------------------------------------
-      let xl = l;
-      {
-        const st = long[0];
-        const x1 = st.x1;
-        const x2 = st.x2;
-        const y1 = st.y1;
-        const y2 = st.y2;
-        for (let s = 0; s < LONG_SECTIONS; s++) {
-          const c1 = -2 * radius * cosL[s];
-          const y = c2 * xl + c1 * x1[s] + x2[s] - c1 * y1[s] - c2 * y2[s];
-          x2[s] = x1[s];
-          x1[s] = xl;
-          y2[s] = y1[s];
-          y1[s] = Math.abs(y) < DENORM ? 0 : y;
-          xl = y1[s];
+      // --- DISPERSION stage ---------------------------------------------
+      // Legacy stereo (|field| ≤ 1e-4): two independent L/R chains. FIELD
+      // mode: the same two chains process the MID and SIDE components and
+      // the FIELD crossfade blends each against its dry component — at
+      // field = +1 the mid is bit-exact dry (sides-only dispersion is
+      // bit-transparent for mono content), at field = −1 the side is.
+      let xl;
+      let xr;
+      if (fieldActive) {
+        const mid = (l + r) * 0.5;
+        const side = (l - r) * 0.5;
+        let midD = mid;
+        let sideD = side;
+        {
+          const st = long[0];
+          const x1 = st.x1;
+          const x2 = st.x2;
+          const y1 = st.y1;
+          const y2 = st.y2;
+          for (let s = 0; s < LONG_SECTIONS; s++) {
+            const c1 = -2 * radius * cosL[s];
+            const y = c2 * midD + c1 * x1[s] + x2[s] - c1 * y1[s] - c2 * y2[s];
+            x2[s] = x1[s];
+            x1[s] = midD;
+            y2[s] = y1[s];
+            y1[s] = Math.abs(y) < DENORM ? 0 : y;
+            midD = y1[s];
+          }
+          const stS = long[1];
+          const sx1 = stS.x1;
+          const sx2 = stS.x2;
+          const sy1 = stS.y1;
+          const sy2 = stS.y2;
+          for (let s = 0; s < LONG_SECTIONS; s++) {
+            const c1 = -2 * radius * cosR[s];
+            const y = c2 * sideD + c1 * sx1[s] + sx2[s] - c1 * sy1[s] - c2 * sy2[s];
+            sx2[s] = sx1[s];
+            sx1[s] = sideD;
+            sy2[s] = sy1[s];
+            sy1[s] = Math.abs(y) < DENORM ? 0 : y;
+            sideD = sy1[s];
+          }
         }
-      }
-      // --- DISPERSION stage (R) -----------------------------------------
-      let xr = r;
-      {
-        const st = long[1];
-        const x1 = st.x1;
-        const x2 = st.x2;
-        const y1 = st.y1;
-        const y2 = st.y2;
-        for (let s = 0; s < LONG_SECTIONS; s++) {
-          const c1 = -2 * radius * cosR[s];
-          const y = c2 * xr + c1 * x1[s] + x2[s] - c1 * y1[s] - c2 * y2[s];
-          x2[s] = x1[s];
-          x1[s] = xr;
-          y2[s] = y1[s];
-          y1[s] = Math.abs(y) < DENORM ? 0 : y;
-          xr = y1[s];
+        const midOut = mid + (midD - mid) * midAmount;
+        const sideOut = side + (sideD - side) * sideAmount;
+        xl = midOut + sideOut;
+        xr = midOut - sideOut;
+      } else {
+        xl = l;
+        xr = r;
+        {
+          const st = long[0];
+          const x1 = st.x1;
+          const x2 = st.x2;
+          const y1 = st.y1;
+          const y2 = st.y2;
+          for (let s = 0; s < LONG_SECTIONS; s++) {
+            const c1 = -2 * radius * cosL[s];
+            const y = c2 * xl + c1 * x1[s] + x2[s] - c1 * y1[s] - c2 * y2[s];
+            x2[s] = x1[s];
+            x1[s] = xl;
+            y2[s] = y1[s];
+            y1[s] = Math.abs(y) < DENORM ? 0 : y;
+            xl = y1[s];
+          }
+        }
+        {
+          const st = long[1];
+          const x1 = st.x1;
+          const x2 = st.x2;
+          const y1 = st.y1;
+          const y2 = st.y2;
+          for (let s = 0; s < LONG_SECTIONS; s++) {
+            const c1 = -2 * radius * cosR[s];
+            const y = c2 * xr + c1 * x1[s] + x2[s] - c1 * y1[s] - c2 * y2[s];
+            x2[s] = x1[s];
+            x1[s] = xr;
+            y2[s] = y1[s];
+            y1[s] = Math.abs(y) < DENORM ? 0 : y;
+            xr = y1[s];
+          }
         }
       }
       const longL = xl;

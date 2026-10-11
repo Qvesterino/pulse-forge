@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { EFFECT_DEFS, WORKLET_EFFECTS, defaultParamsOf } from "../src/effects/registry";
 import { EFFECT_META, clampEffectParam } from "../src/effects/definitions";
 import { createSkrutkaNode, type SkrutkaMeterFrame } from "../src/audio-worklets/skrutka-node";
-import { skrutkaGroupDelaySamples } from "../src/effects/skrutka-curve";
+import { skrutkaFieldAmounts, skrutkaFocusForChannel, skrutkaGroupDelaySamples } from "../src/effects/skrutka-curve";
 import type { EffectInstance } from "../src/project-model/types";
 
 /**
@@ -82,6 +82,7 @@ function renderProcessorStereo(
   params: Record<string, Float32Array>,
   seconds: number,
   input: (i: number) => number,
+  right?: (i: number) => number,
 ): { L: Float32Array; R: Float32Array } {
   const proc = new cls();
   const total = Math.ceil(seconds * SR);
@@ -89,7 +90,10 @@ function renderProcessorStereo(
   const outR = new Float32Array(total);
   for (let offset = 0; offset < total; offset += BLOCK) {
     const len = Math.min(BLOCK, total - offset);
-    const inp = [Float32Array.from({ length: len }, (_, i) => input(offset + i))];
+    const inp = [
+      Float32Array.from({ length: len }, (_, i) => input(offset + i)),
+      Float32Array.from({ length: len }, (_, i) => (right ?? input)(offset + i)),
+    ];
     const out = [new Float32Array(len), new Float32Array(len)];
     proc.process([inp], [out], params);
     outL.set(out[0]!.subarray(0, len), offset);

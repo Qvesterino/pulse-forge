@@ -76,7 +76,7 @@ export const SOURCE_PROFILES: readonly SourceProfile[] = [
   {
     id: "hat",
     label: "HAT",
-    description: "Stereo taps and a filtered RYFT tail for hats.",
+    description: "Stereo taps and a filtered RIFT tail for hats.",
     chainId: "hat-space",
     macros: [
       macro("WIDTH", 0.65, [

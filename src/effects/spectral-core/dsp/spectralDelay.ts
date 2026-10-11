@@ -46,8 +46,6 @@ export interface SpectralDelayParams {
   diffuse: number;
   /** Hold the most recent analysed spectrum instead of following the input. */
   freeze: number;
-  /** Deterministic seed for the phase drift (persisted seed contract). */
-  seed: number;
 }
 
 export interface SpectralDelayMeters {
@@ -74,7 +72,6 @@ export class SpectralDelayBank {
 
   /** Per-bin deterministic phase-drift accumulator (the DIFFUSE texture). */
   private readonly drift: Float32Array;
-  private driftPos = 0;
 
   private readonly meters: SpectralDelayMeters = { peak: 0, activity: 0 };
 
@@ -109,7 +106,6 @@ export class SpectralDelayBank {
     this.drift.fill(0);
     this.writeFrame = 0;
     this.readFrame = 0;
-    this.driftPos = 0;
     this.frozen = false;
     this.meters.peak = 0;
     this.meters.activity = 0;
@@ -196,9 +192,12 @@ export class SpectralDelayBank {
       let wetRe = dRe;
       let wetIm = dIm;
 
-      // DIFFUSE: a deterministic per-bin phase rotation. Seeded from the
-      // persisted id, so the texture is stable across reloads and identical in
-      // the live and offline paths.
+      // DIFFUSE: a deterministic per-bin phase rotation. The accumulator starts
+      // at zero and advances by a fixed increment per frame, so the texture is a
+      // pure function of (frames elapsed, diffuse) — identical in the live and
+      // offline paths, and identical across reloads. It carries no RNG and no
+      // persisted seed, so it is deterministic WITHOUT depending on the effect
+      // instance id.
       if (diffuse > 0) {
         this.drift[k] = this.drift[k] + diffuse * 0.35 + 1e-4;
         const ang = this.drift[k];
@@ -226,7 +225,6 @@ export class SpectralDelayBank {
 
     this.writeFrame = this.writeFrame + 1 < maxFrames ? this.writeFrame + 1 : 0;
     this.readFrame = this.readFrame + 1 < maxFrames ? this.readFrame + 1 : 0;
-    this.driftPos = (this.driftPos + 1) % n;
 
     this.meters.peak = peak;
     this.meters.activity = n > 0 ? active / n : 0;

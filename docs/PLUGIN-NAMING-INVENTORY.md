@@ -5,12 +5,13 @@ KYX / Pulse Forge, each with one line on what it actually does. This is the refe
 for the naming pass — **it describes what ships today, it does not propose new names.**
 
 **Verified:** 2026-10-11 by direct read of `src/effects/registry.ts` (`EFFECT_DEFS`,
-54 entries), `src/instruments/registry.ts` (`INSTRUMENT_DEFS`, 24 entries),
+55 entries), `src/instruments/registry.ts` (`INSTRUMENT_DEFS`, 24 entries),
 `src/effects/blurbs.ts` and the `EffectType` / `InstrumentKind` unions in
 `src/project-model/types.ts`.
 
-Counts match `docs/CURRENT-STATE.md`: 54 effects (49 native/core + 5 flagship suites),
-24 instruments.
+Counts match `docs/CURRENT-STATE.md`: 55 effects (50 native/core + 5 flagship suites),
+24 instruments. The 55th effect, **PORTAL** (spectral delay / resonator, ADR 0038), was
+missing from the first version of this list and is now included.
 
 ---
 
@@ -23,13 +24,13 @@ dedicated panels, and carry a vendored DSP core or a custom worklet.
 | --- | --- | --- |
 | **PRISM** | flagship FX | 8-band paintable EQ with M/S — tone surgery by drawing curves. |
 | **VLYX** | flagship FX | Mix Assist — analyzes the mix and proposes corrective moves. |
-| **VØID** | flagship FX | Reverb network where every frequency band has its own decay time. |
+| **DRIFT** | flagship FX | Reverb network where every frequency band has its own decay time. |
 | **MORPH** | flagship FX | Dynamics that morph continuously between pressure curves. |
-| **RYFT** | flagship FX | Reverse sweeps, freeze and spectral ducking in one space device. |
+| **RIFT** | flagship FX | Reverse sweeps, freeze and spectral ducking in one space device. |
 
 ---
 
-## 2. Effects (54) by category
+## 2. Effects (55) by category
 
 Categories are the ones used in `EFFECT_DEFS`.
 
@@ -40,11 +41,11 @@ Categories are the ones used in `EFFECT_DEFS`.
 | Pitch Shift | `pitchShift` | Moves sound up or down in pitch — 808 depth and glide glue. |
 | Pitch Correct | `pitchCorrect` | Snaps off-pitch notes to a scale, from polish to hard autotune. |
 | ZENIT | `zenit` | Mastering strip: EQ, glue, drive, width and a safe loudness ceiling. |
-| APEKS | `apeks` | Loudness maximizer — pushes level up while keeping the peak tip alive. |
-| ŠÍRKA | `sirka` | Per-band stereo width — mono-tight lows, wide airy tops. |
-| PRÚD | `prud` | Dynamic EQ — tames a resonance only while it actually rings. |
-| KOREŇ | `bassHarmonic` | Bass harmonic processor — tracks incoming pitch and adds missing harmonics. |
-| SKRUTKA | `skrutka` | Phase dispersion — warps arrival time around the focus for throw and depth. |
+| APEX | `apeks` | Loudness maximizer — pushes level up while keeping the peak tip alive. |
+| SPAN | `sirka` | Per-band stereo width — mono-tight lows, wide airy tops. |
+| TIDE | `prud` | Dynamic EQ — tames a resonance only while it actually rings. |
+| GROW | `bassHarmonic` | Bass harmonic processor — tracks incoming pitch and adds missing harmonics. |
+| TWIST | `skrutka` | Phase dispersion — warps arrival time around the focus for throw and depth. |
 | Tape Sat | `tapeSat` | Warm tape drive — glues the track and softens harsh tops. |
 | Vinyl Suite | `vinyl` | Age and dust — crackle, wow/flutter and 1950s tone in one control. |
 | Distortion | `distortion` | Hard drive — grit and aggression from edge to full shred. |
@@ -104,8 +105,19 @@ character devices in the rack — see the note in section 5.)*
 | Duck Delay | `duckDelay` | Delay that ducks under the hit — echoes only in the gaps. |
 | Multi-Tap | `multiTapDelay` | Several echoes at once — rhythmic delay patterns. |
 | Granular Freeze | `granularFreeze` | Freezes audio into a pad — infinite sustain from one moment. |
-| RYFT | `kaskada` | Flagship reverse/freeze/spectral device, see section 1. |
-| VØID | `ozvena` | Flagship per-frequency decay reverb, see section 1. |
+| RIFT | `kaskada` | Flagship reverse/freeze/spectral device, see section 1. |
+### Space (8)
+
+| Current name | Type key | What it is |
+| --- | --- | --- |
+| Reverb | `reverb` | Places the sound in a room — tight booth to endless hall. |
+| Delay | `delay` | Echoes the phrase — slapback to endless dub tails. |
+| Duck Delay | `duckDelay` | Delay that ducks under the hit — echoes only in the gaps. |
+| Multi-Tap | `multiTapDelay` | Several echoes at once — rhythmic delay patterns. |
+| Granular Freeze | `granularFreeze` | Freezes audio into a pad — infinite sustain from a moment. |
+| RIFT | `kaskada` | Flagship reverse/freeze/spectral device, see section 1. |
+| DRIFT | `ozvena` | Flagship per-frequency decay reverb, see section 1. |
+| PORTAL | `portal` | Spectral delay / resonator (ADR 0038) — the 55th effect. |
 
 ### Tone (4)
 

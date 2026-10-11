@@ -118,7 +118,6 @@ export class SpectralProcessor {
     shiftSemitones: 0,
     diffuse: 0,
     freeze: 0,
-    seed: 0,
   };
 
   /** Pre-allocated resonator parameter frame — mutated per frame, never rebuilt. */

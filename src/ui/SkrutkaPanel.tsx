@@ -2,12 +2,12 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { SKRUTKA_LFO_SHAPE_LABELS, SKRUTKA_SHAPE_LABELS } from "../effects/definitions";
 import {
   SKRUTKA_R_HARD_MAX,
-  skrutkaCurve,
-  skrutkaCurveWithRadius,
+  skrutkaComponentCurve,
   skrutkaDelayAt,
   skrutkaDispersionForPeakMs,
   skrutkaLfoFocusRange,
   skrutkaPeakDelay,
+  type SkrutkaChannel,
   type SkrutkaCurveParams,
 } from "../effects/skrutka-curve";
 import type { SkrutkaMeterFrame } from "../audio-worklets/skrutka-node";
@@ -110,13 +110,22 @@ export function SkrutkaPanel({
         focusHz: p.focusHz ?? 220,
         spread: p.spread ?? 0,
         shape: p.shape ?? 0,
+        field: p.field ?? 0,
       };
-      const base = skrutkaCurve(cp, 48000, 160, F_LO, F_HI);
+      // FIELD switches the drawn components: legacy L/R, or the M/S field.
+      const fieldActive = Math.abs(cp.field ?? 0) > 1e-4;
+      const chA: SkrutkaChannel = fieldActive ? "M" : "L";
+      const chB: SkrutkaChannel = fieldActive ? "S" : "R";
+      const curveA = skrutkaComponentCurve(cp, 48000, chA, 160, F_LO, F_HI);
+      const curveB = skrutkaComponentCurve(cp, 48000, chB, 160, F_LO, F_HI);
       const dynArmed = Math.abs(p.dyn ?? 0) > 1e-4 || (p.keyMode ?? 0) > 0;
-      const driven = dynArmed ? skrutkaCurveWithRadius(cp, 48000, SKRUTKA_R_HARD_MAX, 160, F_LO, F_HI) : null;
+      const driven = dynArmed
+        ? skrutkaComponentCurve(cp, 48000, chA, 160, F_LO, F_HI, SKRUTKA_R_HARD_MAX)
+        : null;
       let maxMs = 0.05;
-      for (const point of base) maxMs = Math.max(maxMs, point.lMs, point.rMs);
-      if (driven) for (const point of driven) maxMs = Math.max(maxMs, point.lMs, point.rMs);
+      for (const point of curveA) maxMs = Math.max(maxMs, point.ms);
+      for (const point of curveB) maxMs = Math.max(maxMs, point.ms);
+      if (driven) for (const point of driven) maxMs = Math.max(maxMs, point.ms);
       maxMs *= 1.12;
 
       const yOf = (ms: number) => ch - (ms / maxMs) * (ch - 6) - 3;
@@ -134,8 +143,8 @@ export function SkrutkaPanel({
       if (driven) {
         c2d.fillStyle = "rgba(255, 190, 120, 0.12)";
         c2d.beginPath();
-        for (let i = 0; i < base.length; i++) c2d.lineTo(xOf(base[i]!.freqHz, cw), yOf(base[i]!.lMs));
-        for (let i = driven.length - 1; i >= 0; i--) c2d.lineTo(xOf(driven[i]!.freqHz, cw), yOf(driven[i]!.lMs));
+        for (let i = 0; i < curveA.length; i++) c2d.lineTo(xOf(curveA[i]!.freqHz, cw), yOf(curveA[i]!.ms));
+        for (let i = driven.length - 1; i >= 0; i--) c2d.lineTo(xOf(driven[i]!.freqHz, cw), yOf(driven[i]!.ms));
         c2d.closePath();
         c2d.fill();
         c2d.strokeStyle = "rgba(255, 190, 120, 0.35)";
@@ -143,7 +152,7 @@ export function SkrutkaPanel({
         c2d.beginPath();
         for (let i = 0; i < driven.length; i++) {
           const x = xOf(driven[i]!.freqHz, cw);
-          const y = yOf(driven[i]!.lMs);
+          const y = yOf(driven[i]!.ms);
           if (i === 0) c2d.moveTo(x, y);
           else c2d.lineTo(x, y);
         }
@@ -174,15 +183,15 @@ export function SkrutkaPanel({
       c2d.stroke();
       c2d.setLineDash([]);
 
-      // L curve (solid accent) and R curve (dashed).
-      const strokeCurve = (key: "lMs" | "rMs", color: string, dash: number[]) => {
+      // Component A (solid accent) and B (dashed).
+      const strokeCurve = (curve: { freqHz: number; ms: number }[], color: string, dash: number[]) => {
         c2d.strokeStyle = color;
         c2d.lineWidth = 1.5;
         c2d.setLineDash(dash);
         c2d.beginPath();
-        for (let i = 0; i < base.length; i++) {
-          const x = xOf(base[i]!.freqHz, cw);
-          const y = yOf(base[i]![key]);
+        for (let i = 0; i < curve.length; i++) {
+          const x = xOf(curve[i]!.freqHz, cw);
+          const y = yOf(curve[i]!.ms);
           if (i === 0) c2d.moveTo(x, y);
           else c2d.lineTo(x, y);
         }
@@ -190,8 +199,8 @@ export function SkrutkaPanel({
         c2d.setLineDash([]);
         c2d.lineWidth = 1;
       };
-      strokeCurve("lMs", "rgba(255, 170, 120, 0.95)", []);
-      strokeCurve("rMs", "rgba(120, 200, 255, 0.85)", [4, 4]);
+      strokeCurve(curveA, "rgba(255, 170, 120, 0.95)", []);
+      strokeCurve(curveB, "rgba(120, 200, 255, 0.85)", [4, 4]);
 
       // Live dot: the processor's current radius + LFO-moderated focus.
       const frame = frameRef.current;
@@ -204,7 +213,7 @@ export function SkrutkaPanel({
               : Math.sin(2 * Math.PI * frame.lfo); // random shape is unknown to the panel
         const fEff = Math.min(4000, Math.max(40, cp.focusHz * Math.pow(2, (p.lfoDepth ?? 0) * wave)));
         const radius = Math.min(SKRUTKA_R_HARD_MAX, Math.max(0.02, frame.radius));
-        const ms = (skrutkaDelayAt(cp, 48000, fEff, radius, "L") / 48000) * 1000;
+        const ms = (skrutkaDelayAt(cp, 48000, fEff, radius, chA) / 48000) * 1000;
         const x = xOf(fEff, cw);
         const y = yOf(Math.min(ms, maxMs));
         c2d.fillStyle = "rgba(255, 255, 255, 0.92)";
@@ -214,7 +223,7 @@ export function SkrutkaPanel({
       }
 
       // Readout: base peak.
-      const peak = skrutkaPeakDelay(cp, 48000);
+      const peak = skrutkaPeakDelay(cp, 48000, chA);
       if (readoutRef.current) {
         readoutRef.current.textContent =
           peak.ms > 0.01 ? `+${peak.ms.toFixed(1)} ms @ ${Math.round(peak.freqHz)} Hz` : "— no delay hump";
@@ -279,18 +288,24 @@ export function SkrutkaPanel({
       focusHz: focus,
       spread: paramsRef.current.spread ?? 0,
       shape: paramsRef.current.shape ?? 0,
+      field: paramsRef.current.field ?? 0,
     };
     // The y axis maps to the same normalization the draw uses for the NEW
     // focus/dispersion, so the peak follows the pointer exactly.
-    const maxMs = Math.max(0.05, skrutkaPeakDelay(cp, 48000).ms * 1.12);
+    const dragChannel: SkrutkaChannel = Math.abs(cp.field ?? 0) > 1e-4 ? "M" : "L";
+    const maxMs = Math.max(0.05, skrutkaPeakDelay(cp, 48000, dragChannel).ms * 1.12);
     const targetMs = Math.max(0, ((ch - 3 - y) / (ch - 6)) * maxMs);
     const dispersion = skrutkaDispersionForPeakMs(cp, 48000, targetMs);
     onParam("focusHz", Math.round(focus));
     onParam("dispersion", Math.round(dispersion * 1000) / 1000);
   };
 
+  const fieldActive = Math.abs(params.field ?? 0) > 1e-4;
   const chips = [
     `SHAPE ${SKRUTKA_SHAPE_LABELS[Math.max(0, Math.min(3, Math.round(params.shape ?? 0)))]}`,
+    fieldActive
+      ? `FIELD ${Math.round(Math.abs(params.field ?? 0) * 100)}% ${(params.field ?? 0) > 0 ? "SIDE" : "MID"}`
+      : "FIELD STEREO",
     Math.abs(params.dyn ?? 0) > 1e-4
       ? `DYN ${(params.dyn ?? 0) > 0 ? "ATTACK" : "BODY"} ${Math.round(Math.abs(params.dyn ?? 0) * 100)}%`
       : "DYN OFF",
@@ -307,7 +322,9 @@ export function SkrutkaPanel({
         <span className="skrutka-readout" ref={readoutRef}>
           — no delay hump
         </span>
-        <span className="skrutka-hint">drag: focus × dispersion — L solid, R dashed</span>
+        <span className="skrutka-hint">
+          {fieldActive ? "drag: focus × dispersion — M solid, S dashed" : "drag: focus × dispersion — L solid, R dashed"}
+        </span>
         <button
           type="button"
           className={`btn btn-small skrutka-solo${soloOn ? " on" : ""}`}

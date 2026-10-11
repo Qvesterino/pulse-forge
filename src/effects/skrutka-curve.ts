@@ -46,6 +46,17 @@ export interface SkrutkaCurveParams {
   shape?: number;
   punchHz?: number;
   punchMix?: number;
+  /** M/S field (−1 mid-only … +1 side-only); 0 = legacy stereo topology. */
+  field?: number;
+}
+
+/** Which chain a curve describes: legacy L/R or the M/S field components. */
+export type SkrutkaChannel = "L" | "R" | "M" | "S";
+
+/** FIELD crossfade amounts (matches the processor). */
+export function skrutkaFieldAmounts(field: number): { mid: number; side: number } {
+  const f = clamp(field, -1, 1);
+  return { mid: f <= 0 ? 1 : 1 - f, side: f >= 0 ? 1 : 1 + f };
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
@@ -88,11 +99,16 @@ export function skrutkaPunchFocus(focusHz: number, punch: number, punchHz: numbe
   return clamp(center, SKRUTKA_FOCUS_MIN_HZ, Math.min(SKRUTKA_PUNCH_FOCUS_MAX_HZ, sampleRate * 0.45));
 }
 
-/** Focus pole frequency for one channel after the SPREAD offset. */
-export function skrutkaFocusForChannel(focusHz: number, spread: number, channel: "L" | "R"): number {
+/**
+ * Focus pole frequency for one chain after the SPREAD offset.
+ * L/R are the legacy stereo chains (opposite offsets); M/S are the FIELD
+ * components (mid centered, side takes the offset).
+ */
+export function skrutkaFocusForChannel(focusHz: number, spread: number, channel: SkrutkaChannel): number {
   const f = clamp(focusHz, SKRUTKA_FOCUS_MIN_HZ, SKRUTKA_FOCUS_MAX_HZ);
   const s = clamp(spread, 0, 1);
-  const factor = channel === "L" ? 1 - SKRUTKA_SPREAD_OFFSET * s : 1 + SKRUTKA_SPREAD_OFFSET * s;
+  const factor =
+    channel === "M" ? 1 : channel === "L" ? 1 - SKRUTKA_SPREAD_OFFSET * s : 1 + SKRUTKA_SPREAD_OFFSET * s;
   return clamp(f * factor, SKRUTKA_FOCUS_MIN_HZ, SKRUTKA_SECTION_MAX_HZ);
 }
 
@@ -146,7 +162,7 @@ function skrutkaPhaseAt(
   params: SkrutkaCurveParams,
   sampleRate: number,
   omega: number,
-  channel: "L" | "R",
+  channel: SkrutkaChannel,
   radiusOverride?: number,
 ): number {
   const shape = Math.round(clamp(params.shape ?? 0, 0, 3));
@@ -193,7 +209,7 @@ export function skrutkaGroupDelaySamples(
   params: SkrutkaCurveParams,
   sampleRate: number,
   freqHz: number,
-  channel: "L" | "R" = "L",
+  channel: SkrutkaChannel = "L",
   radiusOverride?: number,
 ): number {
   const omega = clamp((2 * Math.PI * freqHz) / sampleRate, 1e-4, Math.PI - 1e-4);
@@ -208,7 +224,7 @@ export function skrutkaDelayAt(
   sampleRate: number,
   freqHz: number,
   radius: number,
-  channel: "L" | "R" = "L",
+  channel: SkrutkaChannel = "L",
 ): number {
   return skrutkaGroupDelaySamples(params, sampleRate, freqHz, channel, radius);
 }
@@ -244,6 +260,28 @@ export function skrutkaCurveWithRadius(
   return curveWith(params, sampleRate, radius, points, fLo, fHi);
 }
 
+/** One chain's group-delay curve (L/R legacy or M/S field components). */
+export function skrutkaComponentCurve(
+  params: SkrutkaCurveParams,
+  sampleRate: number,
+  channel: SkrutkaChannel,
+  points = 160,
+  fLo = 30,
+  fHi = 16000,
+  radiusOverride?: number,
+): { freqHz: number; ms: number }[] {
+  const out: { freqHz: number; ms: number }[] = [];
+  const ratio = Math.log(fHi / fLo);
+  for (let i = 0; i < points; i++) {
+    const freqHz = fLo * Math.exp((i / (points - 1)) * ratio);
+    out.push({
+      freqHz,
+      ms: (skrutkaGroupDelaySamples(params, sampleRate, freqHz, channel, radiusOverride) / sampleRate) * 1000,
+    });
+  }
+  return out;
+}
+
 function curveWith(
   params: SkrutkaCurveParams,
   sampleRate: number,
@@ -265,11 +303,15 @@ function curveWith(
   return out;
 }
 
-/** Peak group delay of the L channel (ms) and the frequency it lands at. */
-export function skrutkaPeakDelay(params: SkrutkaCurveParams, sampleRate: number): { ms: number; freqHz: number } {
+/** Peak group delay of one chain (ms) and the frequency it lands at. */
+export function skrutkaPeakDelay(
+  params: SkrutkaCurveParams,
+  sampleRate: number,
+  channel: SkrutkaChannel = "L",
+): { ms: number; freqHz: number } {
   let best = { ms: 0, freqHz: 0 };
-  for (const point of skrutkaCurve(params, sampleRate, 240)) {
-    if (point.lMs > best.ms) best = { ms: point.lMs, freqHz: point.freqHz };
+  for (const point of skrutkaComponentCurve(params, sampleRate, channel, 240)) {
+    if (point.ms > best.ms) best = { ms: point.ms, freqHz: point.freqHz };
   }
   return best;
 }
