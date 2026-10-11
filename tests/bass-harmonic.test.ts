@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { EFFECT_DEFS, WORKLET_EFFECTS, defaultParamsOf } from "../src/effects/registry";
 import { EFFECT_META, clampEffectParam } from "../src/effects/definitions";
+import { CORE_EFFECT_PRESETS } from "../src/effects/presets";
 import { createBassHarmonicNode, type KorenMeterFrame } from "../src/audio-worklets/bass-harmonic-node";
 import type { EffectInstance } from "../src/project-model/types";
 
@@ -872,5 +873,21 @@ describe("GROW wave-9 phase/tilt profiles (timbre, same spectrum)", () => {
     expect(hiBand(down)).toBeLessThan(hiBand(mid) * 0.6);
     expect(goertzelAt(up, 110)).toBeLessThan(goertzelAt(mid, 110));
     expect(goertzelAt(down, 110)).toBeGreaterThan(goertzelAt(mid, 110));
+  });
+});
+
+describe("GROW factory preset adoption (wave-9 axes)", () => {
+  it("the preset bank carries the adopted phase/tilt characters", () => {
+    const byId = new Map(CORE_EFFECT_PRESETS.map((preset) => [preset.id, preset]));
+    // 808 Phone rides the crest-reduced phase profile for phone level.
+    expect(byId.get("bassharmonic-808-phone")!.params.phase).toBeGreaterThan(0.2);
+    // Club Sub deliberately stays the legacy aligned reference.
+    expect(byId.get("bassharmonic-club-sub")!.params.phase ?? 0).toBe(0);
+    expect(byId.get("bassharmonic-club-sub")!.params.tilt ?? 0).toBe(0);
+    // Drill Growl leans saw-like (buzzier tail) through FOLD.
+    expect(byId.get("bassharmonic-drill-growl")!.params.tilt).toBeGreaterThan(0.2);
+    // Subtle Body is smooth and round: high phase, negative tilt.
+    expect(byId.get("bassharmonic-subtle-body")!.params.phase).toBeGreaterThan(0.4);
+    expect(byId.get("bassharmonic-subtle-body")!.params.tilt).toBeLessThan(0);
   });
 });

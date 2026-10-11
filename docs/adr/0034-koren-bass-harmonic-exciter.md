@@ -390,8 +390,15 @@ Two character axes over the generated stack, both bit-exact at their defaults:
    1/n² (darker, rounder — high-band x0.33). Normalization keeps it a
    redistribution, not a level change at the full output.
 
-Presets deliberately keep both at 0 for now: adopting them is a
-loudness-measured preset decision, not a DSP one. Locked by the wave-9 block
-in `tests/bass-harmonic.test.ts` (crest collapse with spectrum/RMS
-invariance across phases; monotone phase ordering; tilt high-band
-redistribution and 2nd-harmonic trade against neutral).
+**Preset adoption (loudness-measured, same wave):** 808 Phone `phase 0.4`
+(the crest-reduced profile fits more phone-band level), Drill Growl
+`phase 0.3` + `tilt 0.4` (saw-leaning buzz feeding FOLD), Subtle Body
+`phase 0.6` + `tilt −0.25` (smooth and round); Club Sub deliberately stays
+the legacy aligned reference (0/0). Re-measured with
+`presets:fx-loudness`: Drill Growl target −25.0 → −24.9 LUFS (gain 3.5 → 3.4 dB)
+and the BASS PHONE READY chain gain 0.7 → 0.6 dB; 808 Phone and Subtle Body
+measured unchanged. Locked by the wave-9 block in
+`tests/bass-harmonic.test.ts` (crest collapse with spectrum/RMS invariance
+across phases; monotone phase ordering; tilt high-band redistribution and
+2nd-harmonic trade against neutral) plus the preset-adoption pin (the bank
+carries the characters; Club Sub stays neutral).

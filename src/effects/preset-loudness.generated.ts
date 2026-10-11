@@ -18,7 +18,7 @@ export const FACTORY_FX_PRESET_GAIN_DB: Record<string, number> = {
   "bass-sub": -0.9,
   "bassharmonic-808-phone": 0.7,
   "bassharmonic-club-sub": 0.0,
-  "bassharmonic-drill-growl": 3.5,
+  "bassharmonic-drill-growl": 3.4,
   "bassharmonic-subtle-body": -0.6,
   "beatmangler-halftime": 0.0,
   "beatmangler-skip": 2.3,
@@ -234,7 +234,7 @@ export const FACTORY_FX_PRESET_TARGET_LUFS: Record<string, number> = {
   "bass-sub": -18.8,
   "bassharmonic-808-phone": -22.2,
   "bassharmonic-club-sub": -21.5,
-  "bassharmonic-drill-growl": -25.0,
+  "bassharmonic-drill-growl": -24.9,
   "bassharmonic-subtle-body": -20.9,
   "beatmangler-halftime": -21.0,
   "beatmangler-skip": -23.5,
@@ -495,7 +495,7 @@ export const FACTORY_FX_TYPE_TARGET_LUFS: Record<string, number> = {
 
 export const FACTORY_FX_CHAIN_GAIN_DB: Record<string, number> = {
   "808-harmonics": -14.0,
-  "bass-phone-ready": 0.7,
+  "bass-phone-ready": 0.6,
   "drum-glue": -1.9,
   "dusty-loop": -9.6,
   "hat-space": 8.6,
