@@ -1,10 +1,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { truePeakOversampled } from "../src/audio-engine/metering";
 import { LIMITER_OUTPUT_TRUEPEAK_CORRECTION_SAMPLES } from "../src/audio-worklets/limiter-node";
-import {
-  LimiterOversampler2x,
-  LIMITER_OVERSAMPLER_LATENCY_SAMPLES,
-} from "../src/audio-worklets/limiter-oversampler";
+import { LIMITER_OVERSAMPLER_LATENCY_SAMPLES } from "../src/audio-worklets/limiter-oversampler-constants";
+import { LimiterOversampler2x } from "../src/audio-worklets/limiter-oversampler";
 
 /**
  * Aliasing + true-peak battery:
@@ -198,8 +196,7 @@ describe("master limiter 2× oversampling", () => {
     const baseRate = new Float32Array(sampleCount);
     const studio = new Float32Array(sampleCount);
     for (let i = 0; i < sampleCount; i++) {
-      input[i] =
-        0.72 * Math.sin((2 * Math.PI * 14_000 * i) / SR) + 0.72 * Math.sin((2 * Math.PI * 11_000 * i) / SR);
+      input[i] = 0.72 * Math.sin((2 * Math.PI * 14_000 * i) / SR) + 0.72 * Math.sin((2 * Math.PI * 11_000 * i) / SR);
       baseRate[i] = Math.tanh(2.2 * input[i]!);
     }
 

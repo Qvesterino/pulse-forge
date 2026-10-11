@@ -1,5 +1,3 @@
-export const LIMITER_OVERSAMPLER_LATENCY_SAMPLES: number;
-
 export class LimiterOversampler2x {
   readonly upBufferL: Float32Array;
   readonly upBufferR: Float32Array;

@@ -1,3 +1,5 @@
+import { LIMITER_OVERSAMPLER_LATENCY_SAMPLES } from "./limiter-oversampler-constants.js";
+
 /**
  * 2× streaming half-band FIR oversampler for the master limiter.
  *
@@ -5,7 +7,7 @@
  * Upsampling plus decimation adds 64 base-rate samples; all channel histories
  * and work buffers are allocated once and reused by each worklet quantum.
  */
-export const LIMITER_OVERSAMPLER_LATENCY_SAMPLES = 64;
+export { LIMITER_OVERSAMPLER_LATENCY_SAMPLES } from "./limiter-oversampler-constants.js";
 
 const FACTOR = 2;
 const TAPS = 129;
@@ -33,7 +35,7 @@ function designHalfBandKernel() {
   for (let n = 0; n < TAPS; n++) {
     const k = n - CENTER;
     // Ideal half-band low-pass: 0.25 cycles per oversampled sample.
-    const ideal = k === 0 ? 0.5 : k % 2 === 0 ? 0 : Math.sin((Math.PI * 0.5 * k)) / (Math.PI * k);
+    const ideal = k === 0 ? 0.5 : k % 2 === 0 ? 0 : Math.sin(Math.PI * 0.5 * k) / (Math.PI * k);
     const position = k / CENTER;
     const window = besselI0(beta * Math.sqrt(Math.max(0, 1 - position * position))) / denominator;
     const value = ideal * window;

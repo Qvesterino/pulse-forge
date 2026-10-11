@@ -22,8 +22,8 @@ import type { ChordEvent, ProjectDocument } from "../src/project-model/types";
  */
 
 const buildAndApply = async (
-  input: Parameters<typeof normalizeIntent>[0],
-  key: ProjectDocument["key"],
+  _input: Parameters<typeof normalizeIntent>[0],
+  key: ProjectDocument["key"] | undefined,
 ): Promise<{
   before: ProjectDocument;
   after: ProjectDocument;
@@ -40,7 +40,7 @@ const buildAndApply = async (
       yieldBetweenSections: false,
     },
   );
-  const buildWithKey: typeof build = { ...build, key };
+  const buildWithKey: typeof build = { ...build, key: key ?? null };
   store.execute(applySongCommand(store.doc, buildWithKey));
   return { before, after: store.doc, store, build };
 };
@@ -121,7 +121,7 @@ describe("I4/I5 undo and key-less honesty", () => {
   });
 
   it("without a build key the chord track stays empty (no assumed harmony)", async () => {
-    const { after } = await buildAndApply({ genre: "house", seed: "i5" }, null);
+    const { after } = await buildAndApply({ genre: "house", seed: "i5" }, undefined);
     expect(chordsOf(after)).toHaveLength(0);
   });
 });

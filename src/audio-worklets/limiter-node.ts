@@ -2,7 +2,7 @@ import type { EffectRuntime } from "../effects/types";
 
 import { attachProcessorErrorGuard } from "./processor-errors";
 import { safeApplyAudioParam } from "./safeAudioParam";
-import { LIMITER_OVERSAMPLER_LATENCY_SAMPLES } from "./limiter-oversampler.js";
+import { LIMITER_OVERSAMPLER_LATENCY_SAMPLES } from "./limiter-oversampler-constants.js";
 
 const LIMITER_LOOKAHEAD_DEFAULT_MS = 5;
 const LIMITER_LOOKAHEAD_MIN_MS = 1;
@@ -101,9 +101,7 @@ export function createLimiterNode(ctx: BaseAudioContext, instance: { params: Rec
       const workletLookaheadSec = Math.fround(effectiveMs / 1000);
       const lookaheadSamples = Math.round(workletLookaheadSec * ctx.sampleRate);
       const oversamplerSamples = oversampleFactor === 2 ? LIMITER_OVERSAMPLER_LATENCY_SAMPLES : 0;
-      return (
-        lookaheadSamples + LIMITER_OUTPUT_TRUEPEAK_CORRECTION_SAMPLES + oversamplerSamples
-      ) / ctx.sampleRate;
+      return (lookaheadSamples + LIMITER_OUTPUT_TRUEPEAK_CORRECTION_SAMPLES + oversamplerSamples) / ctx.sampleRate;
     },
     getGainReductionDb() {
       return lastGrDb;
