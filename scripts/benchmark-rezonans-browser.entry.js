@@ -17,6 +17,11 @@ import {
 const BLOCK = 128;
 const C_MAJOR = 0b101010110101;
 
+function percentile(values, q) {
+  const sorted = values.slice().sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * q))] ?? 0;
+}
+
 function makeProcessor(sampleRate) {
   const processor = new RezonansProcessor();
   processor.prepare(sampleRate, 2, BLOCK, 120);
@@ -47,8 +52,9 @@ export function benchmarkRezonansBrowser(source, sampleRate, warmupSeconds, meas
   const channels = [left, right];
   const processor = makeProcessor(sampleRate);
 
-  const processBlocks = (blocks) => {
+  const processBlocks = (blocks, collectBlockTimes = false) => {
     let sourceCursor = 0;
+    const blockTimes = collectBlockTimes ? new Float64Array(blocks) : null;
     const startedAt = performance.now();
     for (let block = 0; block < blocks; block++) {
       for (let i = 0; i < BLOCK; i++) {
@@ -58,10 +64,12 @@ export function benchmarkRezonansBrowser(source, sampleRate, warmupSeconds, meas
         sourceCursor++;
         if (sourceCursor === source.length) sourceCursor = 0;
       }
+      const blockStartedAt = collectBlockTimes ? performance.now() : 0;
       processor.process(channels, BLOCK);
+      if (blockTimes) blockTimes[block] = performance.now() - blockStartedAt;
     }
     const elapsedMs = performance.now() - startedAt;
-    return { elapsedMs };
+    return { elapsedMs, blockTimes };
   };
 
   processBlocks(Math.ceil((warmupSeconds * sampleRate) / BLOCK));
@@ -69,16 +77,20 @@ export function benchmarkRezonansBrowser(source, sampleRate, warmupSeconds, meas
 
   const repeats = [];
   for (let repeat = 0; repeat < 3; repeat++) {
-    const measured = processBlocks(blocksPerRun);
+    const measured = processBlocks(blocksPerRun, true);
     const audioMs = (blocksPerRun * BLOCK * 1000) / sampleRate;
+    const p95BlockTimeMs = percentile(measured.blockTimes, 0.95);
     repeats.push({
       cpuPercent: (measured.elapsedMs / audioMs) * 100,
       meanLoopTimePerBlockMs: measured.elapsedMs / blocksPerRun,
+      p95BlockTimeMs,
+      maxBlockTimeMs: Math.max(...measured.blockTimes),
       elapsedMs: measured.elapsedMs,
     });
   }
   const cpuSamples = repeats.map((repeat) => repeat.cpuPercent).sort((a, b) => a - b);
   const blockTimeSamples = repeats.map((repeat) => repeat.meanLoopTimePerBlockMs).sort((a, b) => a - b);
+  const p95BlockTimeSamples = repeats.map((repeat) => repeat.p95BlockTimeMs).sort((a, b) => a - b);
   return {
     sampleRate,
     blockFrames: BLOCK,
@@ -90,5 +102,8 @@ export function benchmarkRezonansBrowser(source, sampleRate, warmupSeconds, meas
     cpuPercentMedian: cpuSamples[Math.floor((cpuSamples.length - 1) * 0.5)] ?? 0,
     cpuPercentMax: Math.max(...cpuSamples),
     meanLoopTimePerBlockMedianMs: blockTimeSamples[Math.floor((blockTimeSamples.length - 1) * 0.5)] ?? 0,
+    p95BlockTimeMedianMs: p95BlockTimeSamples[Math.floor((p95BlockTimeSamples.length - 1) * 0.5)] ?? 0,
+    maxBlockTimeMs: Math.max(...repeats.map((repeat) => repeat.maxBlockTimeMs)),
+    audioBlockDeadlineMs: (BLOCK / sampleRate) * 1000,
   };
 }

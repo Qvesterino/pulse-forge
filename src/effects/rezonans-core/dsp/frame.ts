@@ -13,7 +13,7 @@
 
 import { CepstralEnvelope } from "./cepstrum.js";
 import { PitchTracker } from "./pitchTrack.js";
-import { fft, hannWindow } from "./fft.js";
+import { fft, hannWindow, princarg } from "./fft.js";
 
 const ENV_MIN = 1e-6;
 const ENV_MAX = 1e6;
@@ -43,6 +43,8 @@ export class FrameEngine {
   /** Current frame — public because voices read it directly. */
   mag = new Float64Array(0);
   phase = new Float64Array(0);
+  /** Per-bin instantaneous phase advance, shared by all harmony voices. */
+  phaseAdvance = new Float64Array(0);
   /** Previous frame's analysis phase: read-only for voices, owned here. */
   private prevPhase = new Float64Array(0);
   private havePrev = false;
@@ -128,6 +130,7 @@ export class FrameEngine {
     this.im = new Float64Array(fftSize);
     this.mag = new Float64Array(this.half + 1);
     this.phase = new Float64Array(this.half + 1);
+    this.phaseAdvance = new Float64Array(this.half + 1);
     this.prevPhase = new Float64Array(this.half + 1);
     this.envLin = new Float64Array(this.half + 1);
     this.envLin.fill(1);
@@ -160,6 +163,7 @@ export class FrameEngine {
     this.havePrev = false;
     this.mag.fill(0);
     this.phase.fill(0);
+    this.phaseAdvance.fill(0);
     this.prevPhase.fill(0);
     this.envLin.fill(1);
     this.renderLogEnv.fill(0);
@@ -206,6 +210,19 @@ export class FrameEngine {
       const ii = im[k]!;
       mag[k] = Math.sqrt(rr * rr + ii * ii);
       phase[k] = Math.atan2(ii, rr);
+    }
+
+    // Instantaneous frequency belongs to the shared input analysis, not to
+    // each output voice. Precomputing it once removes repeated phase wrapping
+    // from every voice's resynthesis loop.
+    const phaseAdvance = this.phaseAdvance;
+    if (this.havePrev) {
+      const previous = this.prevPhase;
+      const hop = this.hop;
+      for (let k = 0; k <= half; k++) {
+        const omega = (2 * Math.PI * k) / n;
+        phaseAdvance[k] = omega + princarg(phase[k]! - previous[k]! - omega * hop) / hop;
+      }
     }
 
     // Refresh every other frame to halve cepstrum cost, then glide between

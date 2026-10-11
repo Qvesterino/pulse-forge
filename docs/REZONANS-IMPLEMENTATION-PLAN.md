@@ -588,7 +588,17 @@ guessing them is how formant shifters end up shipping wrong:
    log envelope from 90% to 100% across the two-frame refresh cycle. The golden
    test pins the interpolation and confirms the identity, pitch and formant
    response gates still pass. Audibility at 4096 with consonant-dense, heavily
-   processed vocals still needs listening review.
+   processed vocals still needs listening review. A latency-aligned, RMS-matched
+   reference set is at `artifacts/rezonans-listening-review/README.md`; it covers
+   identity, +7 semitones, and ±6-semitone formant shifts on the pinned CC0 speech
+   fixture. A second, latency-aligned set at
+   `artifacts/rezonans-singing-review/README.md` now covers a CC0 female sung
+   single-note improvisation through the same Fine identity / fifth / formant
+   comparisons. The default detector reports 0.821 mean clarity and 83.5% voiced
+   frames on that source; these are source diagnostics, not a pitch-accuracy
+   result. This clip has no lyric-rich consonants and is not a double-tracked or
+   heavily processed vocal. Both sets are listening aids, not passes; the sung
+   review and a real production-vocal review remain open.
 3. The clarity threshold under real hyperpop vocals (double-tracked, heavily compressed,
    de-essed) — the 0.75 figure was calibrated on a clean tone and a chord mush, not on
    a mastered drill vocal.
@@ -611,3 +621,20 @@ guessing them is how formant shifters end up shipping wrong:
    Existing browser checks exercise the actual worklet render path, but do not
    certify deadline headroom. Repeat with lower-tier hardware and an audio
    underrun/trace monitor before deciding whether Fine should cap voices.
+   The Chromium probe now records each `process()` call as well as the whole
+   run, so frame spikes are visible instead of hidden by the mean. A fresh
+   three-run measurement after the shared phase/YIN work reductions measured
+   20.9–25.4% of one core (25.0% median), with 4.9 ms median p95 block time and
+   7.2 ms maximum against the 2.67 ms 48 kHz/128-sample reference deadline.
+   This remains main-thread DSP-core timing, not AudioWorklet scheduling, and
+   therefore does not settle realtime suitability. The latest detector update
+   preserves its physical observation window while low-pass decimating its
+   input 2:1; its 36-case synthetic pitch matrix stays within 15 cents across
+   24/44.1/48 kHz and all three FFT sizes. Actual worklet deadline headroom and
+   lower-tier hardware remain open.
+6. **Resolved: 300 s Fine/four-voice soak.** `tests/rezonans-soak.test.ts`
+   processed a steady harmonic voice with four active voices and per-voice
+   formant shifts. The run produced no non-finite or subnormal samples, peak
+   0.287, loudness drift 0.00034 dB and 0.3 MB retained heap growth. The two
+   RMS windows are aligned to the same source and STFT phase so the 0.003 dB
+   drift gate measures long-run movement rather than overlap-add window phase.

@@ -111,7 +111,7 @@ export class HarmonyVoice {
   renderFrame(
     mag: Float64Array,
     phase: Float64Array,
-    prevPhase: Float64Array,
+    phaseAdvance: Float64Array,
     envLin: Float64Array,
     logEnv: Float64Array,
     outRing: Float32Array,
@@ -169,10 +169,8 @@ export class HarmonyVoice {
         outPhase[k] = sourcePhase;
         continue;
       }
-      const omegaLo = (2 * Math.PI * lo) / n;
-      const omegaHi = (2 * Math.PI * hi) / n;
-      const instLo = omegaLo + princarg(phase[lo]! - prevPhase[lo]! - omegaLo * hs) / hs;
-      const instHi = omegaHi + princarg(phase[hi]! - prevPhase[hi]! - omegaHi * hs) / hs;
+      const instLo = phaseAdvance[lo]!;
+      const instHi = phaseAdvance[hi]!;
       const inst = instLo + (instHi - instLo) * frac;
       outPhase[k] = outPhase[k]! + inst * hs * ratio;
     }

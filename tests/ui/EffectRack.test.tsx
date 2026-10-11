@@ -354,6 +354,24 @@ describe("EffectRack — FXEQ panel", () => {
     expect(executed.some((command) => command.type === "setEffectSidechainSource")).toBe(true);
   });
 
+  it("exposes TWIST's key-source picker and records a source command", async () => {
+    const user = userEvent.setup();
+    const doc = createProjectFromTemplate("house");
+    const track = doc.tracks.find((candidate) => candidate.kind === "instrument")!;
+    track.effects = [{ id: "twist", type: "skrutka", bypassed: false, params: { keyMode: 2 } }];
+    const services = mockServices(doc);
+    renderWithContext(<EffectRack track={track} />, { services });
+
+    const source = screen.getByLabelText("SOURCE") as HTMLSelectElement;
+    const candidate = doc.tracks.find((item) => item.id !== track.id)!;
+    await user.selectOptions(source, candidate.id);
+
+    const executed = (services.store.execute as ReturnType<typeof vi.fn>).mock.calls.map(
+      (call: unknown[]) => call[0] as { type: string },
+    );
+    expect(executed.some((command) => command.type === "setEffectSidechainSource")).toBe(true);
+  });
+
   it("uses one persisted A/B controller and hydrates PRISM morph slots", async () => {
     const { doc, track } = fxEqDoc();
     track.effects[0].deviceState = {

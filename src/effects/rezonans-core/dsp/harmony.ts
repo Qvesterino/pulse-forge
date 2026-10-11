@@ -278,7 +278,7 @@ export class HarmonyBus {
   renderFrame(
     mag: Float64Array,
     phase: Float64Array,
-    prevPhase: Float64Array,
+    phaseAdvance: Float64Array,
     envLin: Float64Array,
     logEnv: Float64Array,
   ): void {
@@ -306,7 +306,7 @@ export class HarmonyBus {
 
     for (let i = 0; i < HARMONY_VOICE_COUNT; i++) {
       if (!this.voiceEverActive[i]) continue;
-      this.voices[i]!.renderFrame(mag, phase, prevPhase, envLin, logEnv, this.rings[i]!, this.outPos, this.ringMask);
+      this.voices[i]!.renderFrame(mag, phase, phaseAdvance, envLin, logEnv, this.rings[i]!, this.outPos, this.ringMask);
     }
     this.outPos = (this.outPos + this.hop) & this.ringMask;
     this.started = true;

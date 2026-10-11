@@ -1,0 +1,88 @@
+{
+  "source": {
+    "file": "source-owstu-cc0.mp3",
+    "title": "female vocal long.wav",
+    "creator": "owstu",
+    "sourcePage": "https://freesound.org/people/owstu/sounds/628817/",
+    "license": "CC0 1.0 Universal",
+    "sourceDescription": "Female voice singing single-note improvisation; Freesound lists 44.1 kHz, mono, 16-bit WAV. The locally included file is Freesound's high-quality MP3 preview because the original download requires sign-in.",
+    "sha256": "D13858C476B5A8D9401419682E2A3324539768FF1DDD1541885CFB654AA70C2C"
+  },
+  "decoded": {
+    "sampleRate": 48000,
+    "channels": 1,
+    "frames": 521164
+  },
+  "render": {
+    "sampleRate": 48000,
+    "sourceFrames": 521164,
+    "durationSeconds": 10.857583333333332,
+    "fftSize": 4096,
+    "latencySamples": 4095,
+    "latencyMs": 85.3125,
+    "quality": "fine",
+    "mix": 1,
+    "clarityThreshold": 0.75,
+    "bodyGate": 0.5,
+    "humanize": 0,
+    "sharedPeakGain": 1,
+    "outputs": [
+      {
+        "file": "00-reference-aligned.wav",
+        "label": "Sung source, latency aligned",
+        "rms": 0.08129379975865239,
+        "peak": 0.3074435293674469,
+        "rmsMatchGain": 1,
+        "meters": null
+      },
+      {
+        "file": "01-fine-identity.wav",
+        "label": "Fine, unison, neutral formant",
+        "rms": 0.08129379976576971,
+        "peak": 0.30744197964668274,
+        "rmsMatchGain": 1.0000024602298703,
+        "meters": {
+          "clarity": 0.820682081419166,
+          "voicedRatio": 0.8352713178294574,
+          "latencySamples": 4095
+        }
+      },
+      {
+        "file": "02-fine-fifth.wav",
+        "label": "Fine, perfect fifth (+7 st)",
+        "rms": 0.08129379975858017,
+        "peak": 0.6072120666503906,
+        "rmsMatchGain": 2.0234168117987332,
+        "meters": {
+          "clarity": 0.820682081419166,
+          "voicedRatio": 0.8352713178294574,
+          "latencySamples": 4095
+        }
+      },
+      {
+        "file": "03-fine-fifth-formant-up.wav",
+        "label": "Fine, fifth + formant (+6 st)",
+        "rms": 0.0812937997597096,
+        "peak": 0.4942511022090912,
+        "rmsMatchGain": 1.324553612575,
+        "meters": {
+          "clarity": 0.820682081419166,
+          "voicedRatio": 0.8352713178294574,
+          "latencySamples": 4095
+        }
+      },
+      {
+        "file": "04-fine-fifth-formant-down.wav",
+        "label": "Fine, fifth + formant (-6 st)",
+        "rms": 0.08129379974733826,
+        "peak": 0.5746276378631592,
+        "rmsMatchGain": 1.331761063151141,
+        "meters": {
+          "clarity": 0.820682081419166,
+          "voicedRatio": 0.8352713178294574,
+          "latencySamples": 4095
+        }
+      }
+    ]
+  }
+}

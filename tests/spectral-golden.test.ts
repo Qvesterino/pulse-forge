@@ -291,7 +291,22 @@ describe("PORTAL — deterministic golden vectors", () => {
       input: twoTone,
       params: { mode: 1, resonance: 0.8, focus: 660, focusWidth: 1, mix: 1 },
     });
-    expect({ peak: q(peakOf(outL)), rms: q(rms(outL, 0, outL.length)) }).toEqual({ peak: 0.375493, rms: 0.172423 });
+    expect({ peak: q(peakOf(outL)), rms: q(rms(outL, 0, outL.length)) }).toEqual({ peak: 0.422945, rms: 0.237657 });
+  });
+
+  it("RESONATOR preserves focused on-bin and off-bin partials without phase combing", () => {
+    const bins = [12, 12.25, 12.5, 13, 14, 15, 16, 17, 18];
+    for (const bin of bins) {
+      const frequency = (bin * SR) / 1024;
+      const { outL } = render({
+        seconds: 0.3,
+        input: (i) => (i < 0.3 * SR ? 0.2 * Math.sin((2 * Math.PI * frequency * i) / SR) : 0),
+        params: { mode: 1, resonance: 0.8, focus: frequency, focusWidth: 0.1, mix: 1 },
+      });
+      const activeRms = rms(outL, Math.floor(0.12 * SR), Math.floor(0.25 * SR));
+      expect(activeRms, `focused bin ${bin} at ${frequency.toFixed(2)} Hz`).toBeGreaterThan(0.13);
+      expect(activeRms, `focused bin ${bin} at ${frequency.toFixed(2)} Hz`).toBeLessThan(0.15);
+    }
   });
 
   it("RESONATOR with zero resonance adds no hidden delay beyond reported STFT latency", () => {
@@ -320,6 +335,6 @@ describe("PORTAL — deterministic golden vectors", () => {
       input: twoTone,
       params: { mode: 2, feedback: 0.5, time: 120, mix: 1 },
     });
-    expect({ peak: q(peakOf(outL)) }).toEqual({ peak: 0.091014 });
+    expect({ peak: q(peakOf(outL)) }).toEqual({ peak: 0.090957 });
   });
 });

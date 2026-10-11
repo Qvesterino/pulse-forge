@@ -198,3 +198,13 @@ frekvencia v UI) — follow-up pre ďalšiu korpusovú vlnu.
   prompt); korpus pinuje shipped správanie s odkazom sem.
 - **Korpus** po F3: všetkých 8 `it.fails` defekt pinov premenených na
   bežné očakávania, 106/106 zelených.
+- **Follow-up `c71486b9` (D3 v prirodzenom prostredí):** chord-track a
+  intent-song suity padli PO D3 — buildSong hádzal „section Break failed
+  generation: brief-gate:empty" na EMPTY template (žiadne inštrumentové
+  tracky). Pre-D3 sa takáto melodic-only sekcia (break/bridge) ticho
+  inštalovala ako prázdny pattern — presne ten hazard, ktorý D3 zaviera.
+  Fix: buildSong toleruje melodic-only sekciu, keď dokument nemá cieľové
+  tracky (čestné prázdne telo; applySongCommand kreslí harmonickú planu na
+  chord track, ktorý sám vytvára); s bicími alebo resolvovateľnými trackami
+  ostáva tvrdá chyba. Plus: `GenerationProvider.generate` teraz kontraktovo
+  môže resolve-núť `null` (D3 je interface, nie len lokálny provider).

@@ -142,6 +142,9 @@ does not feed the audible resonator path. Every mode therefore has only the
 declared STFT latency (`fftSize - hop`); SHIFT remains a delay-feedback control.
 Upward shifts divide output and recirculated magnitudes by the bin expansion
 factor, and feedback remains below unity even when the rack control is at 100%.
+Factory presets store only controls active in their selected mode. RESONATOR
+presets do not carry hidden delay values, and the FREEZE mode does not store the
+FREEZE amount because selecting that mode already holds the spectrum.
 
 _Rationale:_ routing the delay read into RESONATOR added a hidden hop and made
 SHIFT appear to control the resonator only because the wrong signal path was
@@ -149,6 +152,21 @@ audible. Mode-specific controls must affect the mode they name, and reported PDC
 must include every sample of actual latency. An octave expansion duplicates each
 source bin across more output bins; the gain correction keeps that frequency
 mapping from creating level growth or turning maximum feedback into a runaway.
+
+### D8 — Resonator poles follow each bin's measured STFT phase advance
+
+Each active bin measures the phase difference between adjacent input spectra
+and rotates its complex pole by that amount. The last valid advance is held as
+the input fades, so the tail keeps the partial's actual frequency. Phase
+history clears on bypass and while another PORTAL mode runs; it does not erase
+the resonator tail. A shared phase rotation, or a rotation based only on the
+bin center, can comb or attenuate off-bin partials.
+
+_Rationale:_ a focused resonator must preserve a steady partial at its focus and
+control how long it rings after the source stops, including tones between FFT
+bin centers. The measured phasor advance lets the per-bin decay radius shape
+the tail without imposing a frequency-grid pitch shift. `tests/spectral-golden.test.ts`
+pins focused tones both on and between bin centers.
 
 ---
 

@@ -939,7 +939,8 @@ function Device({
             fx.type === "fxeq" ||
             fx.type === "pump" ||
             fx.type === "bassHarmonic" ||
-            fx.type === "morphdynamics") && (
+            fx.type === "morphdynamics" ||
+            fx.type === "skrutka") && (
             <div className="fx-sidechain-picker">
               <label className="fx-param-select">
                 <span className="slider-label">SOURCE</span>

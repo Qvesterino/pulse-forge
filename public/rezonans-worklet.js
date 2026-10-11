@@ -367,6 +367,7 @@
   var PitchTracker = class {
     sampleRate = 48e3;
     windowW = 2048;
+    sourceWindowW = 4096;
     minHz = 70;
     maxHz = 800;
     x = new Float32Array(0);
@@ -388,8 +389,9 @@
       return this.lastClarity;
     }
     prepare(sampleRate2, windowW = 2048, minHz = 70, maxHz = 800) {
-      this.sampleRate = sampleRate2;
-      this.windowW = Math.max(256, windowW);
+      this.sampleRate = sampleRate2 / 2;
+      this.windowW = Math.max(128, Math.floor(windowW / 2));
+      this.sourceWindowW = this.windowW * 2;
       this.minHz = Math.max(20, minHz);
       this.maxHz = Math.max(this.minHz + 1, maxHz);
       const maxLag = Math.min(Math.floor(this.sampleRate / this.minHz), this.windowW - 64);
@@ -425,12 +427,12 @@
       const x = this.x;
       const d = this.d;
       const nd = this.nd;
-      const start = writePos - windowW;
+      const start = writePos - this.sourceWindowW;
+      const ringMask = ringLen - 1;
       let rms = 0;
       for (let i = 0; i < windowW; i++) {
-        let p = (start + i) % ringLen;
-        if (p < 0) p += ringLen;
-        const v = ring[p];
+        const p = start + i * 2 & ringMask;
+        const v = 0.25 * (ring[p - 1 & ringMask] + 2 * ring[p] + ring[p + 1 & ringMask]);
         x[i] = v;
         rms += v * v;
       }
@@ -441,7 +443,7 @@
         return NO_PITCH;
       }
       let runningSum = 0;
-      for (let lag = minLag; lag <= maxLag; lag++) {
+      for (let lag = 1; lag <= maxLag; lag++) {
         let sum = 0;
         for (let i = 0; i < m; i++) {
           const diff = x[i] - x[i + lag];
@@ -456,9 +458,9 @@
         return NO_PITCH;
       }
       let cumulative = 0;
-      for (let lag = minLag; lag <= maxLag; lag++) {
+      for (let lag = 1; lag <= maxLag; lag++) {
         cumulative += d[lag];
-        nd[lag] = cumulative > 0 ? d[lag] * (lag - minLag + 1) / cumulative : Infinity;
+        nd[lag] = cumulative > 0 ? d[lag] * lag / cumulative : Infinity;
       }
       let picked = -1;
       let pickedValue = Infinity;
@@ -485,10 +487,10 @@
       }
       const clarity = Math.max(0, Math.min(1, 1 - pickedValue));
       let center = picked;
-      if (picked > minLag && d[picked - 1] < d[picked]) center = picked - 1;
+      if (picked > 1 && d[picked - 1] < d[picked]) center = picked - 1;
       else if (picked < maxLag && d[picked + 1] < d[picked]) center = picked + 1;
       let lagF = center;
-      if (center > minLag && center < maxLag) {
+      if (center > 1 && center < maxLag) {
         const a = d[center - 1];
         const b = d[center];
         const c = d[center + 1];
@@ -531,6 +533,8 @@
     /** Current frame — public because voices read it directly. */
     mag = new Float64Array(0);
     phase = new Float64Array(0);
+    /** Per-bin instantaneous phase advance, shared by all harmony voices. */
+    phaseAdvance = new Float64Array(0);
     /** Previous frame's analysis phase: read-only for voices, owned here. */
     prevPhase = new Float64Array(0);
     havePrev = false;
@@ -596,6 +600,7 @@
       this.im = new Float64Array(fftSize);
       this.mag = new Float64Array(this.half + 1);
       this.phase = new Float64Array(this.half + 1);
+      this.phaseAdvance = new Float64Array(this.half + 1);
       this.prevPhase = new Float64Array(this.half + 1);
       this.envLin = new Float64Array(this.half + 1);
       this.envLin.fill(1);
@@ -623,6 +628,7 @@
       this.havePrev = false;
       this.mag.fill(0);
       this.phase.fill(0);
+      this.phaseAdvance.fill(0);
       this.prevPhase.fill(0);
       this.envLin.fill(1);
       this.renderLogEnv.fill(0);
@@ -665,6 +671,15 @@
         const ii = im[k];
         mag[k] = Math.sqrt(rr * rr + ii * ii);
         phase[k] = Math.atan2(ii, rr);
+      }
+      const phaseAdvance = this.phaseAdvance;
+      if (this.havePrev) {
+        const previous = this.prevPhase;
+        const hop = this.hop;
+        for (let k = 0; k <= half2; k++) {
+          const omega = 2 * Math.PI * k / n;
+          phaseAdvance[k] = omega + princarg(phase[k] - previous[k] - omega * hop) / hop;
+        }
       }
       const hadEnvelope = this.env.ready;
       const refreshEnvelope = this.frameCount % ENVELOPE_STRIDE === 0 || !hadEnvelope;
@@ -857,7 +872,7 @@
      * identical for all of them, so the window normalisation is identical too.
      * Sharing them is what makes per-voice formant cost nothing but arithmetic.
      */
-    renderFrame(mag, phase, prevPhase, envLin, logEnv, outRing, outPos, ringMask) {
+    renderFrame(mag, phase, phaseAdvance, envLin, logEnv, outRing, outPos, ringMask) {
       const n = this.n;
       const half2 = this.half;
       const hs = this.hop;
@@ -894,10 +909,8 @@
           outPhase[k] = sourcePhase;
           continue;
         }
-        const omegaLo = 2 * Math.PI * lo / n;
-        const omegaHi = 2 * Math.PI * hi / n;
-        const instLo = omegaLo + princarg(phase[lo] - prevPhase[lo] - omegaLo * hs) / hs;
-        const instHi = omegaHi + princarg(phase[hi] - prevPhase[hi] - omegaHi * hs) / hs;
+        const instLo = phaseAdvance[lo];
+        const instHi = phaseAdvance[hi];
         const inst = instLo + (instHi - instLo) * frac;
         outPhase[k] = outPhase[k] + inst * hs * ratio;
       }
@@ -1114,7 +1127,7 @@
      * Render one synthesis frame into every voice's ring.
      * Called when FrameEngine reports a hop boundary.
      */
-    renderFrame(mag, phase, prevPhase, envLin, logEnv) {
+    renderFrame(mag, phase, phaseAdvance, envLin, logEnv) {
       const smooth = 1 - Math.exp(-this.hop / (0.03 * 48e3));
       this.busGain += (this.busGainTarget - this.busGain) * smooth;
       this.widthSm += (this.widthTarget - this.widthSm) * smooth;
@@ -1128,7 +1141,7 @@
       }
       for (let i = 0; i < HARMONY_VOICE_COUNT; i++) {
         if (!this.voiceEverActive[i]) continue;
-        this.voices[i].renderFrame(mag, phase, prevPhase, envLin, logEnv, this.rings[i], this.outPos, this.ringMask);
+        this.voices[i].renderFrame(mag, phase, phaseAdvance, envLin, logEnv, this.rings[i], this.outPos, this.ringMask);
       }
       this.outPos = this.outPos + this.hop & this.ringMask;
       this.started = true;
@@ -1604,7 +1617,7 @@
       this.bus.renderFrame(
         this.frame.mag,
         this.frame.phase,
-        this.frame.previousPhase,
+        this.frame.phaseAdvance,
         this.frame.envLin,
         this.frame.renderLogEnv
       );

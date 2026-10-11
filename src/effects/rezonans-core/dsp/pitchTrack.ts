@@ -18,6 +18,11 @@
  * `bass-harmonic-processor.js` carries its own private `yinDetect` copy.
  * If the two ever drift, REZONANS's own goldens are what catch it.
  *
+ * The detector uses a 3-tap low-pass before 2:1 decimation. It keeps the same
+ * physical observation window and pitch range while reducing the quadratic
+ * YIN loop by roughly 4×. The 24 kHz detection Nyquist remains far above the
+ * 800 Hz search ceiling and keeps vocal harmonics useful for periodicity.
+ *
  * Allocation-free after `prepare()`: the scratch buffers are sized once and
  * reused, because this runs on the audio thread every HOP samples and a
  * per-call allocation would churn the GC inside the render callback.
@@ -43,6 +48,7 @@ const NO_PITCH: PitchEstimate = { hz: 0, clarity: 0 };
 export class PitchTracker {
   private sampleRate = 48000;
   private windowW = 2048;
+  private sourceWindowW = 4096;
   private minHz = 70;
   private maxHz = 800;
 
@@ -69,8 +75,9 @@ export class PitchTracker {
   }
 
   prepare(sampleRate: number, windowW = 2048, minHz = 70, maxHz = 800): void {
-    this.sampleRate = sampleRate;
-    this.windowW = Math.max(256, windowW);
+    this.sampleRate = sampleRate / 2;
+    this.windowW = Math.max(128, Math.floor(windowW / 2));
+    this.sourceWindowW = this.windowW * 2;
     this.minHz = Math.max(20, minHz);
     this.maxHz = Math.max(this.minHz + 1, maxHz);
 
@@ -113,12 +120,12 @@ export class PitchTracker {
     const nd = this.nd;
 
     // Unwrap the window out of the ring, and measure its level in one pass.
-    const start = writePos - windowW;
+    const start = writePos - this.sourceWindowW;
+    const ringMask = ringLen - 1;
     let rms = 0;
     for (let i = 0; i < windowW; i++) {
-      let p = (start + i) % ringLen;
-      if (p < 0) p += ringLen;
-      const v = ring[p]!;
+      const p = (start + i * 2) & ringMask;
+      const v = 0.25 * (ring[(p - 1) & ringMask]! + 2 * ring[p]! + ring[(p + 1) & ringMask]!);
       x[i] = v;
       rms += v * v;
     }
@@ -129,9 +136,11 @@ export class PitchTracker {
       return NO_PITCH;
     }
 
-    // YIN difference function.
+    // YIN difference function. Compute short lags too: they are outside the
+    // selectable pitch range, but still belong in the cumulative-mean
+    // normalization for every in-range lag.
     let runningSum = 0;
-    for (let lag = minLag; lag <= maxLag; lag++) {
+    for (let lag = 1; lag <= maxLag; lag++) {
       let sum = 0;
       for (let i = 0; i < m; i++) {
         const diff = x[i]! - x[i + lag]!;
@@ -148,9 +157,9 @@ export class PitchTracker {
 
     // Cumulative mean normalized difference.
     let cumulative = 0;
-    for (let lag = minLag; lag <= maxLag; lag++) {
+    for (let lag = 1; lag <= maxLag; lag++) {
       cumulative += d[lag]!;
-      nd[lag] = cumulative > 0 ? (d[lag]! * (lag - minLag + 1)) / cumulative : Infinity;
+      nd[lag] = cumulative > 0 ? (d[lag]! * lag) / cumulative : Infinity;
     }
 
     // Absolute-threshold pick: the SMALLEST lag under the threshold is the
@@ -184,10 +193,10 @@ export class PitchTracker {
 
     // Parabolic interpolation around the LOCAL d minimum.
     let center = picked;
-    if (picked > minLag && d[picked - 1]! < d[picked]!) center = picked - 1;
+    if (picked > 1 && d[picked - 1]! < d[picked]!) center = picked - 1;
     else if (picked < maxLag && d[picked + 1]! < d[picked]!) center = picked + 1;
     let lagF = center;
-    if (center > minLag && center < maxLag) {
+    if (center > 1 && center < maxLag) {
       const a = d[center - 1]!;
       const b = d[center]!;
       const c = d[center + 1]!;

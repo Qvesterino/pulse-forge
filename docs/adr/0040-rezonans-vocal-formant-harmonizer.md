@@ -168,6 +168,19 @@ rootPc, chordMask }] }`, populated at the FX-chain build site where `doc` is
     unvoiced hold to match, and any divergence draws a harmony the audio is
     not producing — an instrument that lies about itself. Where the meter is
     absent the panel says "waiting" instead of guessing.
+20. **Pitch tracking preserves its observation time while reducing work.**
+    `PitchTracker` uses a 3-tap low-pass before a 2:1 input decimation and halves both its sample
+    rate and window size, so the physical observation window and the 70–800 Hz
+    search range stay unchanged while the quadratic YIN comparison count drops
+    by about 4×. Cumulative-mean normalization includes lags below the
+    selectable range, and interpolation can use the bin just below `minLag`;
+    otherwise a note just under the 800 Hz ceiling can snap to the ceiling.
+    `FrameEngine` also computes each input-bin instantaneous phase advance once
+    per frame and shares it across the four voices instead of repeating the
+    same wrapped phase calculation during each resynthesis. The regression
+    matrix covers 24/44.1/48 kHz, all three FFT tiers and four pitches, with
+    error below 15 cents. These changes preserve the existing FFT and latency
+    tiers; they do not yet certify realtime deadline headroom.
 
 ## Consequences
 
@@ -216,9 +229,11 @@ and it is deliberately before any of the 15 integration files.
   **P4/D3** ratio never leaves [0.5, 2.0].
 - Registration binds: `EFFECT_PROC_PAIRS` + `WORKLET_CASES`,
   `tests/param-range-coherence.test.ts`, `tests/plugin-functional-audit.test.ts`,
-  golden suite at `tests/rezonans-golden/` (precedent:
-  `tests/morph-dynamics-golden/`, `tests/ultina-vectors/`), soak for heap /
-  drift / zero non-finite, and a real-browser check through the shipped bundle.
+  pitch accuracy matrix at `tests/rezonans-pitchtrack.test.ts`, golden suite at
+  `tests/rezonans-golden/` (precedent: `tests/morph-dynamics-golden/`,
+  `tests/ultina-vectors/`), 300 s heap / drift / finite-output soak at
+  `tests/rezonans-soak.test.ts`, and a real-browser check through the shipped
+  bundle.
 
 **Stop condition.** If peak phase locking cannot make consonants clean in P1, the
 honest move is to stop and re-scope to the cascade approximation (per-voice

@@ -291,6 +291,8 @@ export class SpectralProcessor {
     // be bit-exact, so the test can pin it to the sample.
     if (mixTarget <= 1e-4) {
       this.mixSmooth = 0;
+      this.resoMid.clearPhaseHistory();
+      this.resoSide.clearPhaseHistory();
       outL.set(this.dryScratchL.subarray(0, n));
       outR.set(this.dryScratchR.subarray(0, n));
       return;
@@ -453,6 +455,8 @@ export class SpectralProcessor {
       clampBinMagnitude(re, im, binCount);
       return;
     }
+
+    reso.clearPhaseHistory();
 
     const freeze = mode === SPECTRAL_MODE_FREEZE ? true : this.params.freeze >= 0.5;
     delay.process(

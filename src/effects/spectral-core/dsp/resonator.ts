@@ -10,7 +10,7 @@
  *
  * COMPLEX ONE-POLE
  * ----------------
- *     y[k] = x[k] + a[k] * y[k-1],   a[k] = g[k] * e^{i·phi}
+ *     yₘ[k] = (1-g[k])xₘ[k] + g[k]e^{i·Δφₘ[k]}yₘ₋₁[k]
  *
  * `g[k]` is always < 1, so the recursion is contractive and the resonator decays
  * on its own — it cannot run away the way an unclamped feedback delay can. That
@@ -24,11 +24,10 @@
 
 import { clampBinGain, flushDenormal } from "./stft";
 
-/** Slight phase advance so the partials ring rather than sit still. */
-const RESONATOR_PHASE = 0.15;
-
 /** Largest pole radius; keeps the tail bounded and the soak stable. */
 const MAX_POLE = 0.995;
+/** Ignore numerical noise when estimating a bin's frame-to-frame phase. */
+const PHASE_HISTORY_FLOOR_SQ = 1e-16;
 
 export interface ResonatorParams {
   /** Pole strength 0..1. Zero is a bit-exact passthrough. */
@@ -43,9 +42,14 @@ export class ResonatorBank {
   private readonly binCount: number;
   private readonly stateRe: Float64Array;
   private readonly stateIm: Float64Array;
-  /** Per-bin pole radius, recomputed only when a focus control moves. */
-  private readonly poleRe: Float64Array;
-  private readonly poleIm: Float64Array;
+  /** Per-bin pole radius, recomputed as resonance and focus move. */
+  private readonly poleRadius: Float64Array;
+  /** Last measured phase advance and input phasor for each STFT bin. */
+  private readonly phaseRe: Float64Array;
+  private readonly phaseIm: Float64Array;
+  private readonly previousRe: Float64Array;
+  private readonly previousIm: Float64Array;
+  private readonly hasPrevious: Uint8Array;
   /**
    * Per-bin input trim `1 - |pole|`. Without it the one-pole's DC gain is
    * `1/(1-|pole|)`: at the 0.995 ceiling that is a 200x boost, so a resonator
@@ -62,8 +66,13 @@ export class ResonatorBank {
     this.binCount = binCount;
     this.stateRe = new Float64Array(binCount);
     this.stateIm = new Float64Array(binCount);
-    this.poleRe = new Float64Array(binCount);
-    this.poleIm = new Float64Array(binCount);
+    this.poleRadius = new Float64Array(binCount);
+    this.phaseRe = new Float64Array(binCount);
+    this.phaseIm = new Float64Array(binCount);
+    this.phaseRe.fill(1);
+    this.previousRe = new Float64Array(binCount);
+    this.previousIm = new Float64Array(binCount);
+    this.hasPrevious = new Uint8Array(binCount);
     this.poleTrim = new Float64Array(binCount);
     this.binHz = new Float64Array(binCount);
     const nyquist = sampleRate / 2;
@@ -77,7 +86,17 @@ export class ResonatorBank {
   reset(): void {
     this.stateRe.fill(0);
     this.stateIm.fill(0);
+    this.phaseRe.fill(1);
+    this.phaseIm.fill(0);
+    this.previousRe.fill(0);
+    this.previousIm.fill(0);
+    this.hasPrevious.fill(0);
     this.peak = 0;
+  }
+
+  /** Forget the input phase baseline while retaining the current resonator tail. */
+  clearPhaseHistory(): void {
+    this.hasPrevious.fill(0);
   }
 
   /**
@@ -100,6 +119,7 @@ export class ResonatorBank {
         this.stateRe[k] = flushDenormal(this.stateRe[k]);
         this.stateIm[k] = flushDenormal(this.stateIm[k]);
       }
+      this.clearPhaseHistory();
       this.peak = 0;
       return;
     }
@@ -114,8 +134,9 @@ export class ResonatorBank {
       // recursion there would move energy into the mirrored half and alias it
       // back into the audible band.
       if (k === 0 || k === n - 1) {
-        const pole = this.poleRe[k];
         const src = re[k];
+        this.updatePhaseAdvance(k, src, im[k]!);
+        const pole = this.poleRadius[k]! * this.phaseRe[k]!;
         const st = this.poleTrim[k] * src + pole * this.stateRe[k];
         this.stateRe[k] = flushDenormal(st);
         const out = src * oneMinusWet + st * wet;
@@ -127,16 +148,18 @@ export class ResonatorBank {
 
       const sr = this.stateRe[k];
       const si = this.stateIm[k];
-      const recRe = sr * this.poleRe[k] - si * this.poleIm[k];
-      const recIm = sr * this.poleIm[k] + si * this.poleRe[k];
       const srcRe = re[k];
       const srcIm = im[k];
+      this.updatePhaseAdvance(k, srcRe, srcIm);
+      const poleRadius = this.poleRadius[k]!;
+      const poleRe = poleRadius * this.phaseRe[k]!;
+      const poleIm = poleRadius * this.phaseIm[k]!;
 
       // Trimmed recursion: steady state is `trim/(1-|pole|)` = 1, so a fully
       // open resonator neither boosts nor ducks the material it rings.
       const trim = this.poleTrim[k];
-      const stRe = trim * srcRe + recRe;
-      const stIm = trim * srcIm + recIm;
+      const stRe = trim * srcRe + sr * poleRe - si * poleIm;
+      const stIm = trim * srcIm + sr * poleIm + si * poleRe;
       this.stateRe[k] = flushDenormal(stRe);
       this.stateIm[k] = flushDenormal(stIm);
 
@@ -165,12 +188,34 @@ export class ResonatorBank {
       const d = f > 0 ? (Math.log2(f) - logFocus) * invWidth : -Infinity;
       const w = Math.exp(-0.5 * d * d);
       const g = strength * w;
-      // A constant phase advance, pre-rotated into the pole so the per-frame
-      // loop stays two multiplies instead of four.
-      this.poleRe[k] = g * Math.cos(RESONATOR_PHASE);
-      this.poleIm[k] = g * Math.sin(RESONATOR_PHASE);
+      this.poleRadius[k] = g;
       this.poleTrim[k] = 1 - g;
     }
+  }
+
+  /** Track the measured complex phase advance, including off-bin partials. */
+  private updatePhaseAdvance(k: number, re: number, im: number): void {
+    const magnitudeSq = re * re + im * im;
+    if (magnitudeSq < PHASE_HISTORY_FLOOR_SQ) {
+      this.hasPrevious[k] = 0;
+      return;
+    }
+
+    if (this.hasPrevious[k] !== 0) {
+      const previousRe = this.previousRe[k]!;
+      const previousIm = this.previousIm[k]!;
+      const crossRe = re * previousRe + im * previousIm;
+      const crossIm = im * previousRe - re * previousIm;
+      const crossMagnitude = Math.hypot(crossRe, crossIm);
+      if (crossMagnitude > 1e-20) {
+        this.phaseRe[k] = crossRe / crossMagnitude;
+        this.phaseIm[k] = crossIm / crossMagnitude;
+      }
+    }
+
+    this.previousRe[k] = re;
+    this.previousIm[k] = im;
+    this.hasPrevious[k] = 1;
   }
 }
 
