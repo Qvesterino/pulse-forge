@@ -46,6 +46,7 @@ const NEW_CONCEPTS = [
   "wide",
   "sub",
   "air",
+  "phone",
 ] as const satisfies readonly ProductionConcept[];
 
 /* ------------------------------------------------------------------ */
@@ -75,6 +76,8 @@ describe("level 3 — English detection", () => {
     ["wide stereo on the chords", "wide"],
     ["more sub on the bass", "sub"],
     ["more air on the lead", "air"],
+    ["make the bass phone-ready", "phone"],
+    ["the bass should read on small speakers", "phone"],
   ])("%s detects %s", (text, concept) => {
     const intent = parseProductionIntent(text);
     expect(intent).not.toBeNull();
@@ -85,6 +88,7 @@ describe("level 3 — English detection", () => {
     expect(parseProductionIntent("pridaj phaser na lead")!.goals.map((g) => g.concept)).toContain("phaser");
     expect(parseProductionIntent("hustý sub na bas")!.goals.map((g) => g.concept)).toContain("sub");
     expect(parseProductionIntent("spätný lead")!.goals.map((g) => g.concept)).toContain("reverse");
+    expect(parseProductionIntent("sprav bas čitateľný na telefóne")!.goals.map((g) => g.concept)).toContain("phone");
   });
 });
 
@@ -105,6 +109,8 @@ describe("level 3 — the planner emits real effect actions", () => {
     ["wide stereo on the chords", "haasWidener"],
     ["more sub on the bass", "bassBuss"],
     ["more air on the lead", "eq"],
+    ["make the bass phone-ready", "bassHarmonic"],
+    ["the bass should read on small speakers", "eq"],
   ])("%s plans a %s action", (text, effectType) => {
     const result = actionsFor(text);
     expect(result).not.toBeNull();
@@ -151,6 +157,7 @@ describe("level 3 — planned params survive normalizeProject", () => {
     ["wide stereo on the chords", "haasWidener"],
     ["more sub on the bass", "bassBuss"],
     ["more air on the lead", "eq"],
+    ["make the bass phone-ready", "bassHarmonic"],
   ])("%s keeps its %s params after normalizeProject", (text, effectType) => {
     // normalizeEffects keeps ONLY the keys in the effect's own ParamDef
     // list, so an action whose param id is not whitelisted is silently
@@ -221,6 +228,18 @@ describe("level 3 — the degree ladder reaches the new concepts", () => {
       expect(action.params.bits).toBeGreaterThanOrEqual(3);
     }
   });
+
+  it("a stronger phone-ready ask drives harder and lifts more air", () => {
+    const gentle = actionsFor("make the bass slightly phone-ready")!.actions;
+    const hard = actionsFor("make the bass much phone-ready")!.actions;
+    const gentleKoren = gentle.find((a) => a.type === "bassHarmonic")!;
+    const hardKoren = hard.find((a) => a.type === "bassHarmonic")!;
+    expect(hardKoren.params.drive).toBeGreaterThan(gentleKoren.params.drive);
+    expect(hardKoren.params.mix).toBeGreaterThan(gentleKoren.params.mix);
+    const gentleAir = gentle.find((a) => a.type === "eq")!;
+    const hardAir = hard.find((a) => a.type === "eq")!;
+    expect(hardAir.params.highShelfGain).toBeGreaterThan(gentleAir.params.highShelfGain);
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -249,6 +268,29 @@ describe("level 3 — the new concepts stay distinct from the old ones", () => {
     expect(parseProductionIntent("add vinyl crackle to the drums")!.goals.map((g) => g.concept)).toContain("vinyl");
     // "lofi" is declared earlier in CONCEPTS order and owns the bare word.
     expect(parseProductionIntent("make it vintage")!.goals.map((g) => g.concept)).toContain("lofi");
+  });
+
+  it("'phone-ready bass' is the KOREŇ readability ask, not the telephone device", () => {
+    const intent = parseProductionIntent("make the bass phone-ready")!;
+    const concepts = intent.goals.map((g) => g.concept);
+    expect(concepts).toContain("phone");
+    expect(concepts).not.toContain("telephone");
+    const { actions } = actionsFor("make the bass phone-ready")!;
+    expect(actions.map((a) => a.type)).toContain("bassHarmonic");
+    expect(actions.map((a) => a.type)).not.toContain("svFilter");
+  });
+
+  it("SK 'na telefóne' resolves to phone readability, and telephone survives alone", () => {
+    // "na telefóne" matches BOTH word families; the parser drops the
+    // telephone goal in that clause instead of stacking a handset band-pass.
+    const sk = parseProductionIntent("sprav bas čitateľný na telefóne")!;
+    const concepts = sk.goals.map((g) => g.concept);
+    expect(concepts).toContain("phone");
+    expect(concepts).not.toContain("telephone");
+    // The device ask on its own still reaches the telephone chain.
+    const telephone = actionsFor("add telephone to the lead")!;
+    expect(telephone.actions.map((a) => a.type)).toContain("svFilter");
+    expect(telephone.actions.map((a) => a.type)).not.toContain("bassHarmonic");
   });
 });
 

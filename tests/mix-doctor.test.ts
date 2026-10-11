@@ -112,6 +112,35 @@ describe("mix doctor — the pre-fix disaster zone is red", () => {
   });
 });
 
+describe("mix doctor — harmonic deficit advisory (phone readability)", () => {
+  it("a sub-only bass raises the advisory and names KOREŇ", () => {
+    const report = analyzeMixHealth([sine(50, 2, 0.5)], SR);
+    const flag = report.flags.find((f) => f.check === "harmonic-deficit");
+    expect(flag).toBeDefined();
+    expect(flag!.severity).toBe("yellow");
+    expect(flag!.detail).toContain("KOREŇ");
+  });
+
+  it("a harmonic-rich bass does not raise it (the deficit is already filled)", () => {
+    const seconds = 2;
+    const rich = mix([sine(50, seconds, 0.5), sine(150, seconds, 0.25), sine(250, seconds, 0.2)]);
+    const report = analyzeMixHealth([rich], SR);
+    expect(report.flags.some((f) => f.check === "harmonic-deficit")).toBe(false);
+  });
+
+  it("a mid-only mix never fires (the sub must carry real weight)", () => {
+    const report = analyzeMixHealth([sine(220, 2, 0.4)], SR);
+    expect(report.flags.some((f) => f.check === "harmonic-deficit")).toBe(false);
+  });
+
+  it("stays diagnosis-only: removing the flag does not change the auto-fix", () => {
+    const report = analyzeMixHealth([sine(50, 2, 0.5)], SR);
+    expect(report.flags.some((f) => f.check === "harmonic-deficit")).toBe(true);
+    const without = { ...report, flags: report.flags.filter((f) => f.check !== "harmonic-deficit") };
+    expect(deriveMixAutoFix(report)).toEqual(deriveMixAutoFix(without));
+  });
+});
+
 describe("mix doctor — purity and degenerate inputs", () => {
   it("DC offset is a red flag", () => {
     const left = healthyMix();

@@ -24,6 +24,15 @@ export const BEATMAKING_EFFECT_CHAINS: BeatmakingEffectChain[] = [
     ],
   },
   {
+    id: "bass-phone-ready",
+    name: "BASS PHONE READY",
+    description: "Missing-fundamental harmonics plus an air lift so the bass reads on phone speakers.",
+    effects: [
+      { type: "bassHarmonic", presetId: "bassharmonic-808-phone" },
+      { type: "eq", presetId: "eq-air" },
+    ],
+  },
+  {
     id: "kick-punch",
     name: "KICK PUNCH",
     description: "Bring the transient forward, then catch peaks with a soft ceiling.",

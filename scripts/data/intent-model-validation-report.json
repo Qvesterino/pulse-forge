@@ -2,14 +2,14 @@
   "schemaVersion": 1,
   "kind": "intent-action-model-validation",
   "taskBoundary": "Closed-set action/slot decoding only; not a creative-brief or musical-quality evaluation.",
-  "generatedAt": "2026-10-03T00:50:53.714Z",
+  "generatedAt": "2026-10-11T01:52:57.227Z",
   "model": {
     "version": "intent-model.v1",
     "runtime": "onnxruntime-web@1.29.0/wasm",
     "modelBytes": 6799814,
     "modelSha256": "1d44f70bc639087cd2dfa1ca92ab277bdd82ba39b94ae1660ecef95dd51488e0",
-    "vocabularySha256": "050535f922f8acadd9ea5f45c3db9d9bb55daa4567d41d73c9a5d78925cc4d2a",
-    "grammarSha256": "0a854e71e3ef2f5e83776cebf5a218eb43036b0a1c7c0edef7398737ea54d810",
+    "vocabularySha256": "dce5be5f10ba30fa2bc4e9d6872b7e2a60babfcd3d45aa48be1123713587f345",
+    "grammarSha256": "d6a554c411a20db5ca7b11b2e5d99553961432236255b9cefd15a6b6d8ca3602",
     "trainingReport": {
       "trainRows": 1790,
       "valRows": 298,
@@ -56,7 +56,7 @@
   "evaluator": {
     "validatorSha256": "501861bd36a23749c2cfc90bc322034865e3e31bb78afe32744a410e96270989",
     "decoderSha256": "a9f16f93c114b7aa4e253f79e7506c5b1589f41f36b9f5079b8e4cb308cc3034",
-    "schemaSourceSha256": "d33464716990662d8af7a2942633bd36513b567ed32b4206a82a4bc07d927cbc",
+    "schemaSourceSha256": "e98ae8bb9a614ca897ef5b7ef8c67e044badef07ce0a7e5551355661fbd06ecb",
     "environment": {
       "platform": "win32",
       "arch": "x64",

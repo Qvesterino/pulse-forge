@@ -169,8 +169,9 @@ MIX PROFILE (measured, whole-mix):
 PRODUCTION CONCEPTS (target-aware, per family: drums/bass/lead/chords):
   deeper, punchier, warmer, darker, brighter, wider, grittier, glue, lofi,
   wobbly, robotic, metallic, filter, sidechain, notch, phaser, chorus,
-  sharper, reverse, crunchy, vinyl, wide, sub, air, deess
-  ("make the bass deeper", "warmer 808 please", "wobbly drill" -> generation)
+  sharper, reverse, crunchy, vinyl, wide, sub, air, deess, phone
+  ("make the bass deeper", "warmer 808 please", "wobbly drill" -> generation,
+  "phone-ready bass" / "na telefóne" -> KOREŇ harmonics + air EQ)
 COMPLAINTS (the listening loop — measured diagnosis + executable proposals):
   empty / thin / muddy / harsh / no punch + role or family
   ("the drop is empty", "the lead is harsh", "no punch")

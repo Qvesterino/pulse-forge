@@ -207,3 +207,34 @@ no-write, the live-only wiring branch); KorenPanel pins (telemetry readouts,
 PHONE CHECK toggling `setMonitorHighpass(350/null)`, release on unmount,
 degraded notice); and a real-browser check through the shipped bundle (keyed
 PUMP raises the generated 2nd ×1.78, telemetry reports f0 = 54.9 Hz).
+
+## Addendum 4 (2026-10-10) — content surfaces: chain, intent concept, Mix Doctor
+
+1. **BASS PHONE READY chain** (`BEATMAKING_EFFECT_CHAINS`): KOREŇ
+   (`bassharmonic-808-phone`) then `eq-air`, applied through the existing
+   `applyEffectChainPreset` fold (one undo, output trims from the measured
+   loudness map). A coherence test now pins every chain item to a real
+   factory preset of the same type — a dead entry fails at insert time, so
+   the table gets a compile-adjacent pin.
+2. **`phone` production concept**: "phone-ready bass", "on/through/for a
+   phone | mobile | small speakers", "small/laptop speakers", SK "na
+   telefóne", "na mobile", "na malých reprákoch", "malé repro". Targets bass
+   by default; plans KOREŇ (drive/mix/sustain scaled by the amount) plus an
+   air-EQ lift, folded into ONE undo step by the existing intent applier.
+   Precedence: when `phone` and `telephone` match the same clause — SK "na
+   telefóne" hits both word families — the telephone goal is dropped, so the
+   readability ask never stacks a handset band-pass on the harmonics it
+   wants; "add telephone to the lead" still reaches the telephone chain.
+   Schema flow: "phone" joins `VOCAB.productionConcept`, so the GBNF grammar
+   hash changed and the artifact was re-pinned with
+   `intent-model:manifest` + `intent-model:validate` (the ONNX model itself
+   is unchanged — its head classes are a subset and no retrain is implied).
+3. **Mix Doctor `harmonic-deficit` advisory**: a yellow flag that fires when
+   the sub carries ≥ 25 % of the mix energy while 120–350 Hz — the band a
+   phone speaker can actually reproduce — carries less than a fifth of the
+   sub's share. The detail names KOREŇ as the repair path. Diagnosis only:
+   the auto-fix derivation produces an identical result with the flag
+   removed (pinned), and the flag never escalates to red.
+4. Deliberately NOT built yet: the MATCH-tab owner-strip proposal ("the
+   reference bass has more 100–350 Hz — this is a KOREŇ job") waits for the
+   match surface's proposal pipeline.

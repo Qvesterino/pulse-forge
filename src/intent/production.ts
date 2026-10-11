@@ -22,6 +22,7 @@ export type ProductionConcept =
   | "wider"
   | "grittier"
   | "telephone"
+  | "phone"
   | "tape"
   | "stutter"
   | "glue"
@@ -137,6 +138,7 @@ export const PRODUCTION_CONCEPTS: readonly ProductionConcept[] = [
   "sub",
   "air",
   "deess",
+  "phone",
 ];
 
 export const PRODUCTION_TARGETS: readonly ProductionTarget[] = ["drums", "bass", "lead", "chords"];
@@ -229,6 +231,26 @@ export const CONCEPTS: readonly ConceptDef[] = [
     concept: "telephone",
     defaultTarget: "lead",
     patterns: [/\btele?phone\b/, /\btelef\u00f3n/i, /\bhandset\b/, /\bhouka\u010dk/i],
+  },
+  {
+    concept: "phone",
+    defaultTarget: "bass",
+    // The phone-READABILITY ask, distinct from the telephone lo-fi device:
+    // "make the bass readable on a phone" is a harmonic-deficit problem
+    // (the sub vanishes on small speakers), not a handset filter. SK
+    // "na telefóne" matches the telephone word family too — the parser's
+    // precedence filter drops the telephone goal when both fire in one
+    // clause, so this ask lands on KOREŇ + air EQ, never on a band-pass.
+    patterns: [
+      /\bphone-?ready\b/,
+      /\b(?:on|through|for) (?:a |the )?(?:phone|mobile|small speakers?|laptop speakers?)\b/,
+      /\bsmall speakers?\b/,
+      /\blaptop speakers?\b/,
+      /\bna telef[oó]ne\b/,
+      /\bna mobile\b/,
+      /\bna mal[e\u00fd]ch repr[áa]k/,
+      /\bmal[eé] repro/,
+    ],
   },
   {
     concept: "tape",
@@ -567,6 +589,33 @@ export function parseProductionIntent(text: string): ProductionIntent | null {
       if (matched) break;
     }
   }
+
+  // Phone-readability precedence: the SK phrase "na telefóne" matches the
+  // telephone device family as well, but a request that also asks for the
+  // `phone` concept clearly means small-speaker readability — stacking a
+  // handset band-pass on top would fight the very harmonics the ask wants.
+  // Clause-scoped, so "telephone lead, phone-ready bass" keeps both goals.
+  const droppedTelephone = new Set<number>();
+  for (let i = 0; i < goals.length; i++) {
+    if (goals[i]!.concept !== "telephone") continue;
+    if (goals.some((other, j) => j !== i && other.concept === "phone" && clauseOfConcept[j] === clauseOfConcept[i])) {
+      droppedTelephone.add(i);
+    }
+  }
+  if (droppedTelephone.size > 0) {
+    const keptGoals: ProductionGoal[] = [];
+    const keptClauses: string[] = [];
+    goals.forEach((goal, index) => {
+      if (droppedTelephone.has(index)) return;
+      keptGoals.push(goal);
+      keptClauses.push(clauseOfConcept[index]!);
+    });
+    goals.length = 0;
+    goals.push(...keptGoals);
+    clauseOfConcept.length = 0;
+    clauseOfConcept.push(...keptClauses);
+  }
+
   if (goals.length === 0) return null;
 
   // Every target named anywhere, for the last-resort branch above.
@@ -797,6 +846,37 @@ export function planProductionActions(
             params: { drive: Math.min(1, 0.25 + goal.amount * 0.3), tone: 5200, mix: 1 },
           });
           break;
+        case "phone": {
+          // Phone-ready bass: KOREŇ generates the 2nd/3rd partials a sub
+          // cannot deliver on a small speaker (the missing-fundamental
+          // job), then a scaled air lift so the upper harmonics carry.
+          // The sub anchor stays high — this ADDS harmonics, it does not
+          // trade the low end away.
+          actions.push({
+            trackId,
+            type: "bassHarmonic",
+            params: {
+              drive: Math.min(1, 0.45 + goal.amount * 0.45),
+              focusHz: 80,
+              harmonics: 0.5,
+              subAnchor: 0.8,
+              lowCut: 45,
+              range: 2,
+              sustain: 0.4,
+              mix: Math.min(1, 0.5 + goal.amount * 0.35),
+            },
+          });
+          actions.push({
+            trackId,
+            type: "eq",
+            params: {
+              highShelfFreq: 6500,
+              highShelfGain: Math.round((1.5 + goal.amount * 1.5) * 10) / 10,
+              lowMidGain: -1,
+            },
+          });
+          break;
+        }
         case "tape":
           // Heavier than "warmer" — full tape saturation, tone pulled down.
           actions.push({

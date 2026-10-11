@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BEATMAKING_EFFECT_CHAINS } from "../src/effects/chains";
+import { CORE_EFFECT_PRESETS } from "../src/effects/presets";
 import { SOURCE_PROFILE_IDS, SOURCE_PROFILES } from "../src/effects/sourceProfiles";
 
 /**
@@ -76,5 +77,29 @@ describe("SOURCE_PROFILES — macro targets are chain-coherent", () => {
         expect(macroDef.targets.length, `${profile.id}.${macroDef.label}`).toBeGreaterThanOrEqual(1);
       }
     }
+  });
+});
+
+describe("BEATMAKING_EFFECT_CHAINS — every item resolves to a real factory preset", () => {
+  const presetById = new Map(CORE_EFFECT_PRESETS.map((preset) => [preset.id, preset]));
+
+  it("preset ids exist and match the declared effect type", () => {
+    // applyEffectChainPreset throws on a missing/mismatched preset — a dead
+    // chain entry would surface as a broken +CHAIN item, not a silent no-op.
+    for (const chain of BEATMAKING_EFFECT_CHAINS) {
+      for (const item of chain.effects) {
+        const preset = presetById.get(item.presetId);
+        expect(preset, `${chain.id} → ${item.presetId}`).toBeDefined();
+        expect(preset!.type, `${chain.id} → ${item.presetId}`).toBe(item.type);
+      }
+    }
+  });
+
+  it("ships the BASS PHONE READY chain (KOREŇ + air EQ)", () => {
+    const chain = BEATMAKING_EFFECT_CHAINS.find((candidate) => candidate.id === "bass-phone-ready");
+    expect(chain).toBeDefined();
+    expect(chain!.effects.map((item) => item.type)).toEqual(["bassHarmonic", "eq"]);
+    expect(chain!.effects[0]!.presetId).toBe("bassharmonic-808-phone");
+    expect(chain!.effects[1]!.presetId).toBe("eq-air");
   });
 });

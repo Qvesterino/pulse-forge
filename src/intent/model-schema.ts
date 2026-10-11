@@ -105,6 +105,7 @@ export const VOCAB = {
     "sub",
     "air",
     "deess",
+    "phone",
   ] as const,
   transportAction: ["play", "pause", "stop", "metronomeOn", "metronomeOff", "loopOn", "loopOff"] as const,
   exportFormat: ["wav", "mp3"] as const,
