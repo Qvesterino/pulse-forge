@@ -1187,3 +1187,100 @@ zoom does. Whether a drag should also freeze the scroll *origin* it grabbed
 against is a genuine product decision (a user who scrolls mid-drag may expect
 either "keep dragging in the original scale" or "follow the new view"), and it
 is recorded for human review rather than decided here.
+
+---
+
+## Wave 3 — 2026-10-11 — §32/§36 malformed clip data
+
+Wave 2 closed the locking and clipboard contracts. Wave 3 asks the question
+§36 poses directly: *one bad entity should not crash the entire editor when
+isolation is possible* — and builds documents by writing **past the command
+layer** on purpose, because `normalizeProject` sanitises on load and a
+malformed clip therefore cannot arrive from a normal import. The realistic
+sources are a **collab peer applying a remote update** (CRDT updates bypass
+`normalizeProject`) and a project written by an older build.
+
+## D12 — One clip at `1e308` unmounts the whole timeline (P0, CONFIRMED)
+
+### Root cause
+
+```ts
+const totalBars = Math.max(
+  16,
+  ...clips.map((clip) => clip.startBar + clip.lengthBars + 4),
+  ...audioClips.map((c) => c.startBar + c.lengthBars + 4),
+);
+```
+
+`Math.max` **propagates NaN**, and any finite-but-absurd position passes
+straight through. That number is the grid extent:
+
+```ts
+(visibleBarIndices ?? Array.from({ length: totalBars }, (_, index) => index))
+```
+
+`visibleBarIndices` is null exactly when the viewport has **never been
+measured** — which is the **first render of every session**, before
+`measureViewport()`'s effect runs. So the fallback is not an edge case: it is
+the frame the user sees on open, every time.
+
+`Array.from({ length: 1e308 })` throws `RangeError: Invalid array length`,
+React unmounts the subtree, and the editor is blank. Measured, pre-fix:
+
+```
+[probe grid] {"finite":"grid=16 clips=1",
+              "NaN":"grid=16 clips=0",
+              "huge":"THREW RangeError: Invalid array length"}
+```
+
+`RangeError: Invalid array length` / *"The above error occurred in the
+`<ArrangementPanel>` component"*. Priority model: **P0 — editor action
+crashing the application.**
+
+### The NaN case, measured rather than assumed
+
+The same probe shows NaN does **not** crash: `clips=0` — the malformed clip is
+simply not drawn, because the window test `startBar + lengthBars >= firstBar` is
+false for NaN, so the window skips it. That is already correct isolation, and
+the report's first draft of this finding claimed a blanked grid that measurement
+says does not happen. The spec stayed, but as a **guard**, not as a pin for this
+fix: it was green before and after.
+
+### Fix
+
+`timelineExtentBars(clips, audioClips)` replaces the spread. Non-finite
+contributions are **dropped, not clamped into range** — a NaN position has no
+position to clamp, and inventing one (0) would drag the entire timeline to bar
+0 — and the result is bounded by `UNMEASURED_GRID_BAR_CAP = 512`, a documented
+budget for the one pre-measurement frame (the measured path stays windowed).
+
+Post-fix, same probe:
+
+```
+[probe grid] {"finite":"grid=16 clips=1",     ← unchanged: no behaviour change for valid documents
+              "NaN":"grid=16 clips=0",        ← unchanged: already isolated
+              "huge":"grid=512 clips=1"}      ← was THREW
+```
+
+The `finite` row is the one that matters for the no-regression claim: **the fix
+changes nothing for a valid document.**
+
+### Regression coverage
+
+`tests/ui/malformed-clip-render.test.tsx` — 8 specs: a control document, then
+NaN / Infinity / 1e308 / negative lengthBars / dead `sceneId` / a malformed
+audio clip, plus "one malformed clip does not hide its healthy neighbour"
+(the bad one is skipped, the good one still renders at the right offset).
+
+**Falsification:** restoring the pre-fix spread turns the 1e308 spec red
+(`1 failed | 7 passed`) with the `RangeError` back. The NaN guard stays green in
+both directions, which is what makes it a guard and not a pin.
+
+### One honest note on the cap
+
+A project longer than 512 bars now renders 512 grid cells in the
+never-measured frame instead of N. That is one frame, on a path the very next
+effect replaces with a windowed render, and the alternative was an unbounded
+allocation from untrusted document content. Named and bounded rather than
+silent — the shape of clamp that §41 allows, as opposed to the scattered
+clamps it forbids.

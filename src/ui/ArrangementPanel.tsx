@@ -331,6 +331,38 @@ interface DragState {
 }
 
 /**
+ * Grid cells the UNMEASURED fallback will build. The windowed path renders only
+ * what the viewport shows; this one runs before the first measurement and
+ * exists so that frame is never empty. It must therefore stay a number the
+ * browser can allocate, whatever the document claims.
+ */
+const UNMEASURED_GRID_BAR_CAP = 512;
+
+/**
+ * Timeline extent in bars: the furthest bar any clip reaches, plus 4 bars of
+ * tail, floored at 16 and capped at the unmeasured-grid budget.
+ *
+ * Non-finite contributions are dropped rather than clamped into range. A clip
+ * whose position is NaN has no position to clamp, and inventing one (0) would
+ * drag the whole timeline to bar 0; an absurd FINITE position is a real
+ * distance, so it is capped — which shortens the ruler's tail, not the song.
+ */
+function timelineExtentBars(
+  clips: readonly Pick<ArrangementClip, "startBar" | "lengthBars">[],
+  audioClips: readonly Pick<AudioClip, "startBar" | "lengthBars">[],
+): number {
+  let extent = 16;
+  for (const list of [clips, audioClips]) {
+    for (const clip of list) {
+      const end = clip.startBar + clip.lengthBars + 4;
+      if (!Number.isFinite(end)) continue;
+      if (end > extent) extent = end;
+    }
+  }
+  return Math.min(UNMEASURED_GRID_BAR_CAP, Math.max(16, Math.ceil(extent)));
+}
+
+/**
  * Release pointer capture without ever throwing.
  *
  * `releasePointerCapture` throws `NotFoundError` when the element is not
@@ -1630,11 +1662,19 @@ export function ArrangementPanel() {
   // Playhead leaves own the 1/8-bar rAF subscription (see ArrPlayheadLine);
   // the panel itself only re-renders when the playhead CROSSES a clip.
   const currentClipId = useCurrentItemId(clips, services.transport);
-  const totalBars = Math.max(
-    16,
-    ...clips.map((clip) => clip.startBar + clip.lengthBars + 4),
-    ...audioClips.map((c) => c.startBar + c.lengthBars + 4),
-  );
+  /**
+   * Timeline extent, in bars, used for the ruler and the grid.
+   *
+   * `Math.max` PROPAGATES NaN, so one clip with a non-finite position used to
+   * poison this number for the whole document: NaN silently emptied the grid,
+   * and a finite-but-absurd position (`1e308` from a collab peer or an older
+   * build) reached `Array.from({ length: totalBars })` on the unmeasured-
+   * viewport path — which is the FIRST render of every session, before
+   * `measureViewport()` runs — and threw `RangeError: Invalid array length`,
+   * unmounting the panel. §36 asks the editor to isolate one bad entity, and a
+   * non-finite position is not a position: it is skipped, not rendered around.
+   */
+  const totalBars = timelineExtentBars(clips, audioClips);
 
   /**
    * VIEWPORT WINDOWING.
