@@ -243,10 +243,7 @@ const SECTION_TRANSITION_VERB = new RegExp("\\b(?:add|pridaj|daj|insert|vkldaj|z
  * deliberately not part of this grammar.
  */
 export function parseSectionTransitionIntent(text: string): SectionTransitionParse | null {
-  const lower = ` ${text
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")} `;
+  const lower = ` ${text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")} `;
   if (!SECTION_TRANSITION_VERB.test(lower)) return null;
   const targetRole = reviseRoleIn(lower);
   if (!targetRole) return null;
@@ -542,13 +539,45 @@ export function routeIntentText(
   // PRESET — "load the Warm Sub preset on the bass". Requires the word
   // "preset" and an explicit target family. An unknown name is an EXPLICIT
   // presetUnknown route (with family suggestions) — never a silent fall
-  // through to generation.
-  const presetIntent = parsePresetIntent(text);
-  if (presetIntent) {
-    if (presetIntent.ok) {
-      return { kind: "preset", intent: presetIntent.intent };
+  // through to generation. Two guards keep that promise (D7): the bank can
+  // be COLD (parsePresetIntent throws before warmFactoryPresets — the ask
+  // becomes a clarify, not a beat), and a target-less ask clarifies the
+  // family instead of silently generating new music.
+  const lowerText = ` ${text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")} `;
+  if (/\bpresets?\b/.test(lowerText) && /\b(?:load|apply|use|nacitaj|pouzi|nahraj)\b/.test(lowerText)) {
+    let presetIntent: ReturnType<typeof parsePresetIntent> = null;
+    let bankCold = false;
+    try {
+      presetIntent = parsePresetIntent(text);
+    } catch {
+      bankCold = true;
     }
-    return { kind: "presetUnknown", name: presetIntent.name, suggestions: presetIntent.suggestions };
+    if (presetIntent) {
+      if (presetIntent.ok) {
+        return { kind: "preset", intent: presetIntent.intent };
+      }
+      return { kind: "presetUnknown", name: presetIntent.name, suggestions: presetIntent.suggestions };
+    }
+    if (bankCold) {
+      return {
+        kind: "clarify",
+        reason: "preset-bank-cold",
+        suggestions: [
+          "preset banka sa ešte načítava — skús to o chvíľu",
+          "preset bank is still warming up — try again",
+        ],
+      };
+    }
+    if (!/\b(?:on|to|na)\b/.test(lowerText)) {
+      return {
+        kind: "clarify",
+        reason: "preset-target",
+        suggestions: ["na bas / 808", "na akordy", "na lead", "na bicie", "on the bass", "on the lead"],
+      };
+    }
   }
   const fader = parseFaderIntent(text);
   if (fader) {
