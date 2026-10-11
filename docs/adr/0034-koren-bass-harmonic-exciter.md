@@ -402,3 +402,28 @@ measured unchanged. Locked by the wave-9 block in
 across phases; monotone phase ordering; tilt high-band redistribution and
 2nd-harmonic trade against neutral) plus the preset-adoption pin (the bank
 carries the characters; Club Sub stays neutral).
+
+## Addendum 11 (2026-10-11) — 300 s flagship soak + denormal flushes
+
+    ests/bass-harmonic-soak.test.ts gives GROW the AGENTS hardening gate
+
+(parity with PRISM/VLYX/VØID/TWIST): two 300 s runs at 44.1 kHz over a
+strictly loop-periodic staccato bass pattern (four notes, the last one
+gliding, key pulses and per-note engine hints):
+
+- **MOTION** (FOLD character, phase 1, presence 1, width 1, key PUMP, hint
+  cycling): zero non-finite, zero subnormal outputs, zero subnormal internal
+  one-poles, peak 0.670, flat CPU (early median 0.2045 ms → late 0.0971 ms
+  per 128-sample block; the late run is the JIT-warmed one), heap growth
+  1.1 MB.
+- **STATIC** (pure YIN, no key/hint): drift between the 10 s and the 280 s
+  windows 0.00025 dB (gate ≤ 0.003 dB, 12x margin), zero subnormals, heap
+  0.0 MB.
+
+The soak immediately justified a real fix: deficit2/3, nvFast and
+nvLag were the only stateful one-poles without the 1e-20 flush, and their
+targets sit at 0 for minutes on rich input or silence. Measured without the
+flush: deficit2 decays to 4.94e-324 (the smallest Float64 denormal) within
+120 s of a 55 + 110 Hz input — the soak's internal counter fires on every
+10 s check. The flushes are in the same commit; the soak is the regression
+pin for them.

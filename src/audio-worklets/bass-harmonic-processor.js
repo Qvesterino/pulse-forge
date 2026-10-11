@@ -419,6 +419,11 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     const d3 = Math.max(0, Math.min(1, (DEFICIT_TARGET3 - ratio3) / DEFICIT_TARGET3));
     this.deficit2 += DEFICIT_SMOOTH * (d2 - this.deficit2);
     this.deficit3 += DEFICIT_SMOOTH * (d3 - this.deficit3);
+    // The one-poles decay toward zero asymptotically — a rich input holds
+    // the target at 0 for minutes, so the deep tail must be flushed to zero
+    // (same 1e-20 idiom as the envelope states) or it denormalizes.
+    if (this.deficit2 < 1e-20) this.deficit2 = 0;
+    if (this.deficit3 < 1e-20) this.deficit3 = 0;
   }
 
   process(inputs, outputs, parameters) {
@@ -562,7 +567,9 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
 
       // --- note-on transient detector (RETRIG) ---------------------------
       this.envFast += (absLp > this.envFast ? fastAtkCoef : fastRelCoef) * (absLp - this.envFast);
+      if (this.envFast < 1e-20) this.envFast = 0;
       this.envLag += lagCoef * (this.envFast - this.envLag);
+      if (this.envLag < 1e-20) this.envLag = 0;
       this.sinceRetrig++;
       if (
         retrig &&
