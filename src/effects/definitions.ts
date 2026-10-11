@@ -1917,6 +1917,15 @@ export const zenitParams: ParamDef[] = [
   },
   { id: "ceiling", label: "CEIL", min: -6, max: 0, default: -1, unit: "dB", format: formatDb },
   { id: "limit", label: "LIMIT", min: 0, max: 1, default: 0, format: formatPct },
+  {
+    id: "tpSafe",
+    label: "TP SAFE",
+    min: 0,
+    max: 1,
+    default: 1,
+    kind: "toggle",
+    format: (v) => (v >= 0.5 ? "ON (+1 dB headroom)" : "OFF"),
+  },
 ];
 
 /** APEKS (M2) — transient-preserving maximizer macro surface. */
@@ -2082,13 +2091,19 @@ export const bassHarmonicParams: ParamDef[] = [
 ];
 
 /**
- * SKRUTKA (skrutka) — frequency-dependent phase dispersion ("disperser").
+ * SKRUTKA (skrutka) — frequency-dependent phase dispersion ("disperser"), v2.
  * All-pass only: a steady tone keeps its level while its ARRIVAL TIME is
- * warped around FOCUS (the transient character no EQ or saturation can
- * produce). DISPERSION is the long 8-section smear; PUNCH is the signed
- * short 4-section transient tilt (positive = lows delayed, attack forward);
- * SPREAD offsets the focus per channel (0 = bit-exact mono).
+ * warped around FOCUS. DISPERSION is the long 8-section smear (SHAPE
+ * redistributes the section angles/radius); PUNCH is the signed short
+ * transient tilt with its own band and mix; DYNAMIC makes the hump breathe
+ * with the signal (ATTACK/BODY); KEY mode throws/clears the phase from a
+ * sidechain key; the LFO sweeps FOCUS (tempo-sync host-side); SPREAD offsets
+ * the focus per channel (0 = bit-exact mono).
  */
+export const SKRUTKA_SHAPE_LABELS = ["GULP", "CHIRP", "DOUBLE", "RESO"] as const;
+export const SKRUTKA_KEY_MODE_LABELS = ["OFF", "PUMP", "DUCK"] as const;
+export const SKRUTKA_LFO_SHAPE_LABELS = ["SINE", "TRI", "RAND"] as const;
+
 export const skrutkaParams: ParamDef[] = [
   { id: "dispersion", label: "DISPERSION", min: 0, max: 1, default: 0.35, format: formatPct },
   {
@@ -2099,8 +2114,78 @@ export const skrutkaParams: ParamDef[] = [
     default: 0,
     format: (v) => `${v > 0 ? "+" : ""}${Math.round(v * 100)}%`,
   },
+  {
+    id: "punchHz",
+    label: "PUNCH FOCUS",
+    min: 0,
+    max: 6000,
+    default: 0,
+    unit: "Hz",
+    format: (v) => (v <= 0 ? "AUTO" : formatHz(v)),
+  },
+  { id: "punchMix", label: "PUNCH MIX", min: 0, max: 1, default: 1, format: formatPct },
   { id: "focusHz", label: "FOCUS", min: 40, max: 4000, default: 220, unit: "Hz", format: formatHz, taper: "log" },
+  {
+    id: "shape",
+    label: "SHAPE",
+    min: 0,
+    max: 3,
+    default: 0,
+    kind: "enum",
+    step: 1,
+    options: SKRUTKA_SHAPE_LABELS.map((label, value) => ({ value, label })),
+    format: (v) => SKRUTKA_SHAPE_LABELS[Math.max(0, Math.min(3, Math.round(v)))],
+  },
   { id: "spread", label: "SPREAD", min: 0, max: 1, default: 0, format: formatPct },
+  {
+    id: "dyn",
+    label: "DYNAMIC",
+    min: -1,
+    max: 1,
+    default: 0,
+    format: (v) => (Math.abs(v) < 0.005 ? "OFF" : `${v > 0 ? "ATTACK" : "BODY"} ${Math.round(Math.abs(v) * 100)}%`),
+  },
+  {
+    id: "keyMode",
+    label: "KEY MODE",
+    min: 0,
+    max: 2,
+    default: 0,
+    kind: "enum",
+    step: 1,
+    options: SKRUTKA_KEY_MODE_LABELS.map((label, value) => ({ value, label })),
+    format: (v) => SKRUTKA_KEY_MODE_LABELS[Math.max(0, Math.min(2, Math.round(v)))],
+  },
+  {
+    id: "lfoRate",
+    label: "LFO RATE",
+    min: 0.05,
+    max: 8,
+    default: 0.5,
+    unit: "Hz",
+    format: (v) => `${v.toFixed(2)} Hz`,
+    taper: "log",
+  },
+  {
+    id: "lfoSync",
+    label: "LFO SYNC",
+    min: 0,
+    max: LFO_SYNC_DIVISIONS.length - 1,
+    default: 0,
+    options: LFO_SYNC_DIVISIONS.map(({ value, label }) => ({ value, label })),
+  },
+  {
+    id: "lfoShape",
+    label: "LFO SHAPE",
+    min: 0,
+    max: 2,
+    default: 0,
+    kind: "enum",
+    step: 1,
+    options: SKRUTKA_LFO_SHAPE_LABELS.map((label, value) => ({ value, label })),
+    format: (v) => SKRUTKA_LFO_SHAPE_LABELS[Math.max(0, Math.min(2, Math.round(v)))],
+  },
+  { id: "lfoDepth", label: "LFO DEPTH", min: 0, max: 1, default: 0, format: formatPct },
   { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   { id: "output", label: "OUTPUT", min: -18, max: 12, default: 0, unit: "dB", format: formatDb },
 ];

@@ -3472,6 +3472,12 @@ const zenit: EffectDefinition = {
     for (let i = 0; i < subs.length - 1; i++) subs[i]!.output.connect(subs[i + 1]!.input);
     const [eq, tape, comp, util, clip, lim] = subs;
     let ceilingValue = instance.params.ceiling ?? -1;
+    // TP SAFE (default on): the clipper/limiter stages enforce the ceiling on
+    // SAMPLE peaks — reconstruction between samples overshoots (inter-sample
+    // peaks). TP SAFE trims 1 dB of headroom so the RECONSTRUCTED master sits
+    // at the stated ceiling. (APEKS is the precision self-calibrating tool;
+    // this is the strip's always-on safety.)
+    let tpSafe = (instance.params.tpSafe ?? 1) >= 0.5;
     // The LIMIT macro derives the limiter threshold FROM the ceiling — the
     // two macros are state-coupled, so ceiling moves must re-derive the
     // threshold (and iteration order over the stored params object must not
@@ -3524,7 +3530,8 @@ const zenit: EffectDefinition = {
           // 0 = limiter idle (threshold rides the ceiling the clipper already
           // caught); >0 pushes the threshold harder for loudness.
           limitValue = v;
-          push(lim!, "threshold", limitThreshold(v, ceilingValue));
+          limitValue = v;
+          push(lim!, "threshold", limitThreshold(v, zenitEffectiveCeiling(tpSafe, ceilingValue)));
           break;
       }
     };
@@ -3576,6 +3583,11 @@ const zenit: EffectDefinition = {
 export function limitThreshold(limit: number, ceilingDb: number): number {
   if (limit <= 0) return ceilingDb;
   return ceilingDb - 1 - limit * 11;
+}
+
+/** TP SAFE trims 1 dB of reconstruction headroom below the stated ceiling. */
+export function zenitEffectiveCeiling(tpSafeOn: boolean, ceilingDb: number): number {
+  return tpSafeOn ? ceilingDb - 1 : ceilingDb;
 }
 
 /**
@@ -3637,15 +3649,17 @@ const bassHarmonic: EffectDefinition = {
  * SKRUTKA (skrutka) — frequency-dependent phase dispersion ("disperser").
  * First-party DSP, LAZY worklet module (public/skrutka-worklet.js): a project
  * that never uses it never fetches it. Honest 1:1 bypass until the module
- * lands (the engine hot-swaps the chain when it does).
+ * lands (the engine hot-swaps the chain when it does). The factory forwards
+ * `env` so the node gets the tempo (LFO sync) and the persisted seed
+ * (random-step LFO shape).
  */
 const skrutka: EffectDefinition = {
   type: "skrutka",
   name: "SKRUTKA",
   category: "character",
   params: skrutkaParams,
-  factory(ctx, instance) {
-    if (isWorkletReady("skrutka", ctx)) return createSkrutkaNode(ctx, instance);
+  factory(ctx, instance, env) {
+    if (isWorkletReady("skrutka", ctx)) return createSkrutkaNode(ctx, instance, env);
     return bypassRuntime(ctx, "AudioWorklet unavailable — phase dispersion bypassed (1:1 signal)");
   },
 };
