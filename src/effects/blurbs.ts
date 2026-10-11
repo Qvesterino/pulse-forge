@@ -15,11 +15,9 @@ export const EFFECT_BLURBS: Partial<Record<EffectType, string>> = {
   apeks: "Loudness maximizer — pushes level while keeping the hit tip alive",
   sirka: "Per-band stereo width — mono-tight lows, wide airy tops",
   prud: "Dynamic EQ — tames resonances only when they actually ring",
-  bassHarmonic:
-    "GROW — Bass Harmonic Processor; tracks incoming pitch and adds missing harmonics to 808s, samples, and bass tracks",
+  bassHarmonic: "GROW - bass harmonic processor; tracks pitch and adds the missing harmonics",
   skrutka: "TWIST - phase dispersion; warps arrival time around FOCUS for throw and depth",
-  rezonans:
-    "REZONANS - formant shift + key-aware harmony; resizes the vocal and sings 4 voices that follow your chords",
+  rezonans: "REZONANS - formant shift + key-aware harmony - 4 voices that follow your chords",
   tapeSat: "Warm tape drive — glues a track and softens harsh tops",
   vinyl: "Age and dust — crackle, wobble and 1950s tone in one knob",
   distortion: "Hard drive — grit and aggression from edge to full shred",
@@ -67,6 +65,7 @@ export const EFFECT_BLURBS: Partial<Record<EffectType, string>> = {
   granularFreeze: "Freezes audio into a pad — infinite sustain from a moment",
   kaskada: "Flagship RIFT — reverse sweeps, freeze and spectral ducking",
   ozvena: "Flagship DRIFT — per-frequency decay reverb network",
+  portal: "Spectral portal — slides, twists and freezes in frequency, not in time",
 
   // ── tone ───────────────────────────────────────────────────────────────
   eq: "4-band paint — boost highs, cut mud, shape the whole tone",
