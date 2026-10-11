@@ -9,7 +9,7 @@
  * `SCALE_INTERVALS` / `CHORD_INTERVALS` tables the piano roll reads, so the
  * worklet carries no scale table at all. That is what makes an arbitrary
  * user-editable scale a parameter change rather than a worklet rebuild
- * (ADR 0038 §4.3d).
+ * (ADR 0040 §4.3d).
  *
  * Safe degradation is deliberate — this runs on the audio-chain build path,
  * where a throw would take down every effect on the track:

@@ -9,7 +9,7 @@
  * Latency: the analysis window covers the N samples ENDING at the write
  * position, so the stream is delayed by N/2 samples — 1024 samples ≈ 21.3 ms at
  * 48 kHz. That is the entire algorithmic latency of REZONANS and it is
- * reported honestly (ADR 0038 §12) rather than hidden behind a "zero-latency"
+ * reported honestly (ADR 0040 §12) rather than hidden behind a "zero-latency"
  * claim the architecture cannot make.
  */
 
@@ -19,7 +19,7 @@ import { fft, hannWindow } from "./fft.js";
 
 const ENV_MIN = 1e-6;
 const ENV_MAX = 1e6;
-/** Envelope refresh stride in frames (see ADR 0038 decision 4). */
+/** Envelope refresh stride in frames (see ADR 0040 decision 4). */
 const ENVELOPE_STRIDE = 2;
 
 export class FrameEngine {

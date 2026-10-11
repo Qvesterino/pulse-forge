@@ -12,7 +12,7 @@
  * path is N/2 samples behind the dry. The dry is therefore delayed by the SAME
  * amount INSIDE the processor, so the mix stays coherent and the whole insert
  * reports its latency honestly through `getLatencySamples()` for PDC to
- * compensate against the rest of the graph (ADR 0038 §12).
+ * compensate against the rest of the graph (ADR 0040 §12).
  *
  * UNVOICED. Below the clarity gate the harmony voices fade out over ~10 ms and
  * their ratio is HELD, never chased — consonants and sibilants pass through as
@@ -406,7 +406,7 @@ export class RezonansProcessor {
       this.degree[v] = this.params[voiceParamId(v, "degree")] ?? 0;
       const vf = this.params[voiceParamId(v, "formant")] ?? 0;
       // Per-voice α is free because the warp is applied during synthesis
-      // (ADR 0038 decision 6) — no extra transform, only arithmetic.
+      // (ADR 0040 decision 6) — no extra transform, only arithmetic.
       this.alpha[v] = globalAlpha * Math.pow(2, (vf * clamp(voiceScale, 0, 1)) / 12);
     }
 

@@ -23,7 +23,7 @@ import { hannWindow } from "./fft.js";
 
 export const HARMONY_VOICE_COUNT = 4;
 
-/** Ratio bounds — ±12 semitones (ADR 0038 decision 7). */
+/** Ratio bounds — ±12 semitones (ADR 0040 decision 7). */
 export const MIN_RATIO = 0.5;
 export const MAX_RATIO = 2;
 

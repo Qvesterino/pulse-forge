@@ -1,5 +1,5 @@
 /**
- * REZONANS — the key/chord bridge (ADR 0038 §4.3).
+ * REZONANS — the key/chord bridge (ADR 0040 §4.3).
  *
  * This is the first test in the repo that proves PROJECT MUSICAL CONTEXT
  * reaches the audio thread. Before it, `doc.key` was metadata only — its own

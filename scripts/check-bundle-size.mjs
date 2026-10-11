@@ -443,6 +443,26 @@ let skrutkaWorkletKb = 0;
 }
 console.log(`[size-budget] SKRUTKA worklet: ${skrutkaWorkletKb.toFixed(0)} KB (budget ${SKRUTKA_WORKLET_BUDGET_KB})`);
 
+// REZONANS spectral formant + key-aware harmony (ADR 0040): a LAZY flagship
+// module for the same reason SKRUTKA and PORTAL are — the core boot bundle has
+// no room. This one is genuinely larger than its siblings because it carries a
+// radix-2 FFT, the cepstral lifter, the per-voice phase vocoder and its inverse
+// (four IFFTs per hop at balanced quality), measured ~54 KB unminified. It pays
+// only for projects that actually insert it; the boot-path line is unaffected.
+const REZONANS_WORKLET_BUDGET_KB = 64;
+let rezonansWorkletKb = 0;
+{
+  const path = join(dist, "rezonans-worklet.js");
+  if (!statSync(path).isFile()) {
+    console.error("[size-budget] FAIL — missing REZONANS worklet: dist/rezonans-worklet.js");
+    process.exit(1);
+  }
+  rezonansWorkletKb = statSync(path).size / 1024;
+}
+console.log(
+  `[size-budget] REZONANS worklet: ${rezonansWorkletKb.toFixed(0)} KB (budget ${REZONANS_WORKLET_BUDGET_KB})`,
+);
+
 // PORTAL spectral delay / resonator (ADR 0038): a LAZY first-party effect module
 // for the same reason SKRUTKA is one — the core boot bundle has no room. The core
 // bundle measures ~149/150 KB and check-bundle-size.mjs records that kaskada's
@@ -584,6 +604,12 @@ if (kopaWorkletKb > KOPA_WORKLET_BUDGET_KB) {
 if (skrutkaWorkletKb > SKRUTKA_WORKLET_BUDGET_KB) {
   console.error(
     `[size-budget] FAIL — SKRUTKA worklet over budget: ${skrutkaWorkletKb.toFixed(0)} > ${SKRUTKA_WORKLET_BUDGET_KB} KB.`,
+  );
+  failed = true;
+}
+if (rezonansWorkletKb > REZONANS_WORKLET_BUDGET_KB) {
+  console.error(
+    `[size-budget] FAIL — REZONANS worklet over budget: ${rezonansWorkletKb.toFixed(0)} > ${REZONANS_WORKLET_BUDGET_KB} KB.`,
   );
   failed = true;
 }

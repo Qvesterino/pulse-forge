@@ -6,7 +6,7 @@
  * supplied, what pitch should this voice sing?" Everything downstream is DSP.
  *
  * The input masks (scale, chord) are computed HOST-SIDE from
- * `SCALE_INTERVALS` / `CHORD_INTERVALS` (ADR 0038 decision 10), so this module
+ * `SCALE_INTERVALS` / `CHORD_INTERVALS` (ADR 0040 decision 10), so this module
  * never carries a scale table and an arbitrary user scale costs no worklet
  * change.
  *

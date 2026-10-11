@@ -59,6 +59,25 @@ export interface EffectRuntime {
    */
   setPattern?(steps: readonly number[]): void;
   /**
+   * REZONANS (ADR 0040 §4.3c): re-push the key/chord lane. The context also
+   * rides `processorOptions` at construction, so this exists for the LIVE path
+   * — a chord edited while playing must reach the worklet without rebuilding
+   * the chain. Optional; no other effect implements it.
+   */
+  setHarmonyContext?(context: HarmonyContextInit): void;
+  /**
+   * The engine calls this before an offline render starts, once the graph is
+   * armed and before `startRendering()`. Runtimes with their own musical or
+   * positional state seed it here — REZONANS (ADR 0040 §4.3b) starts its
+   * clock at position 0, because the renderer replays tempo per window and
+   * never calls `onTransportStarted`.
+   *
+   * Declared here because the engine already invoked it unconditionally at
+   * `AudioEngine.prepareOfflineRender()`; it was an undeclared optional member
+   * until REZONANS needed it.
+   */
+  prepareOfflineRender?(): void;
+  /**
    * Tempo changed — re-derive tempo-synced modulators (LFO sync, delay time…).
    * `when` (audio-context time) schedules the change for offline renders so
    * each clip window's scene BPM lands at its own window start instead of the
@@ -176,7 +195,7 @@ export interface EffectEnv {
   /** Stable project/track/effect seed shared by live and offline DSP. */
   seed?: number;
   /**
-   * REZONANS (ADR 0038 §4.3a): project musical context for key-aware harmony.
+   * REZONANS (ADR 0040 §4.3a): project musical context for key-aware harmony.
    *
    * `doc.key` has never reached audio before — its own docstring says
    * "display + scorepack" and nothing in `src/audio-engine/` reads it. This

@@ -1,4 +1,4 @@
-# ADR 0038 — REZONANS: spectral formant shifting + key-aware vocal harmony (flagship suite)
+# ADR 0040 — REZONANS: spectral formant shifting + key-aware vocal harmony (flagship suite)
 
 Date: 2026-10-11 · Status: Accepted · Scope: effects registry, flagship suite, `EffectEnv` contract, worklet latency/PDC, project musical context reaching the audio thread
 

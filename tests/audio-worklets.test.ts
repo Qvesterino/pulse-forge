@@ -3,7 +3,9 @@ import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   ensureWorkletsForDoc,
+  INSTRUMENT_WORKLET_TYPES,
   isWorkletReady,
+  LAZY_WORKLET_TYPES,
   loadAllWorklets,
   loadCoreWorklets,
   loadLazyWorklet,
@@ -116,12 +118,17 @@ describe("AudioWorklet loader", () => {
     const addModule = vi.fn(async () => {});
     const ctx = mockCtx(addModule);
     await loadAllWorklets(ctx);
-    expect(addModule).toHaveBeenCalledTimes(10); // 2 core + 6 lazy + 2 instrument (tsar, kopa)
+    // DERIVED, not pinned. This was a hardcoded 10 and it went stale twice:
+    // PORTAL took it to 11 and REZONANS to 12, both times with a green-looking
+    // comment. Reading the count off the loader's own lists makes a new lazy
+    // module update this assertion instead of quietly rotting it.
+    expect(addModule).toHaveBeenCalledTimes(2 + LAZY_WORKLET_TYPES.length + INSTRUMENT_WORKLET_TYPES.length);
     expect(isWorkletReady("fxeq", ctx)).toBe(true);
     expect(isWorkletReady("ultina", ctx)).toBe(true);
     expect(isWorkletReady("ozvena", ctx)).toBe(true);
     expect(isWorkletReady("bassHarmonic", ctx)).toBe(true);
     expect(isWorkletReady("skrutka", ctx)).toBe(true);
+    expect(isWorkletReady("rezonans", ctx)).toBe(true);
   });
 
   it("resolves silently without audioWorklet (jsdom)", async () => {
