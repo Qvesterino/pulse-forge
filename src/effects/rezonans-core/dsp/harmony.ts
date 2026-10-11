@@ -69,7 +69,7 @@ export function nthScaleTone(mask: number, rootPc: number, degree: number): numb
   if (mask === 0 || degree < 0) return -1;
   let count = 0;
   for (let i = 0; i < 12; i++) {
-    const pc = ((rootPc + i) % 12 + 12) % 12;
+    const pc = (((rootPc + i) % 12) + 12) % 12;
     if ((mask & (1 << pc)) !== 0) {
       if (count === degree) return pc;
       count++;
@@ -84,7 +84,7 @@ export function nearestAllowedPc(mask: number, pc: number): number {
   for (let d = 0; d <= 6; d++) {
     const up = (pc + d) % 12;
     if ((mask & (1 << up)) !== 0) return up;
-    const down = ((pc - d) % 12 + 12) % 12;
+    const down = (((pc - d) % 12) + 12) % 12;
     if ((mask & (1 << down)) !== 0) return down;
   }
   return pc;
@@ -251,7 +251,7 @@ export class HarmonyBus {
   }
 
   /**
- * Render one synthesis frame into every voice's ring.
+   * Render one synthesis frame into every voice's ring.
    * Called when FrameEngine reports a hop boundary.
    */
   renderFrame(
@@ -287,16 +287,7 @@ export class HarmonyBus {
     }
 
     for (let i = 0; i < HARMONY_VOICE_COUNT; i++) {
-      this.voices[i]!.renderFrame(
-        mag,
-        phase,
-        prevPhase,
-        envLin,
-        logEnv,
-        this.rings[i]!,
-        this.outPos,
-        this.ringMask,
-      );
+      this.voices[i]!.renderFrame(mag, phase, prevPhase, envLin, logEnv, this.rings[i]!, this.outPos, this.ringMask);
     }
     this.outPos = (this.outPos + this.hop) & this.ringMask;
     this.started = true;

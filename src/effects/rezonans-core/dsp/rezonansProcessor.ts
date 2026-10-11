@@ -22,9 +22,27 @@
  * Determinism: no RNG anywhere in the signal path.
  */
 
-import { REZONANS_PARAMS, REZ_PARAM, QUALITY_FFT_SIZE, QUALITY_FINE, buildDefaultParams, clampParam, hopFor, voiceParamId, VOICE_COUNT } from "../contracts/parameters.js";
+import {
+  REZONANS_PARAMS,
+  REZ_PARAM,
+  QUALITY_FFT_SIZE,
+  QUALITY_FINE,
+  buildDefaultParams,
+  clampParam,
+  hopFor,
+  voiceParamId,
+  VOICE_COUNT,
+} from "../contracts/parameters.js";
 import { FrameEngine } from "./frame.js";
-import { HarmonyBus, MusicalClock, MAX_RATIO, MIN_RATIO, clamp, type ChordLaneEntry, type HarmonyMode } from "./harmony.js";
+import {
+  HarmonyBus,
+  MusicalClock,
+  MAX_RATIO,
+  MIN_RATIO,
+  clamp,
+  type ChordLaneEntry,
+  type HarmonyMode,
+} from "./harmony.js";
 import { HarmonySolver, SOLVER_VOICES, type SolverContext } from "./solver.js";
 
 const MODES: HarmonyMode[] = ["off", "interval", "degrees", "chordTones"];
@@ -224,7 +242,12 @@ export class RezonansProcessor {
       }
       return;
     }
-    if (id === REZ_PARAM.envelopeSmooth || id === REZ_PARAM.minHz || id === REZ_PARAM.harmonyMode || id === REZ_PARAM.chordFollow) {
+    if (
+      id === REZ_PARAM.envelopeSmooth ||
+      id === REZ_PARAM.minHz ||
+      id === REZ_PARAM.harmonyMode ||
+      id === REZ_PARAM.chordFollow
+    ) {
       this.recomputeCoefficients();
     }
   }
@@ -412,7 +435,13 @@ export class RezonansProcessor {
     }
 
     this.bus.setBus(voiceCount, 1, this.params[REZ_PARAM.width] ?? 1);
-    this.bus.renderFrame(this.frame.mag, this.frame.phase, this.frame.previousPhase, this.frame.envLin, this.frame.envelope.logEnv);
+    this.bus.renderFrame(
+      this.frame.mag,
+      this.frame.phase,
+      this.frame.previousPhase,
+      this.frame.envLin,
+      this.frame.envelope.logEnv,
+    );
     this.frame.commitFrame();
   }
 

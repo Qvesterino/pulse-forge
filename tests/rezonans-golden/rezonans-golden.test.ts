@@ -16,7 +16,12 @@
 
 import { describe, expect, it } from "vitest";
 import { RezonansProcessor } from "../../src/effects/rezonans-core/dsp/rezonansProcessor.js";
-import { REZ_PARAM, QUALITY_ECONOMY, QUALITY_FINE, voiceParamId } from "../../src/effects/rezonans-core/contracts/parameters.js";
+import {
+  REZ_PARAM,
+  QUALITY_ECONOMY,
+  QUALITY_FINE,
+  voiceParamId,
+} from "../../src/effects/rezonans-core/contracts/parameters.js";
 import { HarmonySolver, type SolverContext } from "../../src/effects/rezonans-core/dsp/solver.js";
 import { nthScaleTone, nearestAllowedPc } from "../../src/effects/rezonans-core/dsp/harmony.js";
 import { CepstralEnvelope, FormantWarp } from "../../src/effects/rezonans-core/dsp/cepstrum.js";
@@ -46,11 +51,18 @@ interface RenderOpts {
   seconds?: number;
   f0?: number;
   params?: Record<string, number>;
-  harmonyContext?: { keyRootPc: number; scaleMask: number; chords: Array<{ startBar: number; lengthBars: number; rootPc: number; chordMask: number }> };
+  harmonyContext?: {
+    keyRootPc: number;
+    scaleMask: number;
+    chords: Array<{ startBar: number; lengthBars: number; rootPc: number; chordMask: number }>;
+  };
   bpm?: number;
 }
 
-function render(input: Float32Array, opts: RenderOpts = {}): { l: Float32Array; r: Float32Array; latency: number } {
+function render(
+  input: Float32Array,
+  opts: RenderOpts = {},
+): { l: Float32Array; r: Float32Array; latency: number; proc: RezonansProcessor } {
   const proc = new RezonansProcessor();
   proc.prepare(SR, 2, BLOCK, opts.bpm ?? 120);
   for (const [id, v] of Object.entries(opts.params ?? {})) proc.setParameter(id, v);
@@ -272,7 +284,13 @@ describe("REZONANS solver — key and chord", () => {
   });
 
   it("chordTones lands on a chord tone when chordFollow is 1", () => {
-    const ctx: SolverContext = { mode: "chordTones", keyRootPc: 0, scaleMask: C_MAJOR, chordMask: C_TRIAD, chordFollow: 1 };
+    const ctx: SolverContext = {
+      mode: "chordTones",
+      keyRootPc: 0,
+      scaleMask: C_MAJOR,
+      chordMask: C_TRIAD,
+      chordFollow: 1,
+    };
     const degree = new Float64Array([0, 0, 0, 0]);
     const out = new Float64Array(4);
     const solver = new HarmonySolver();
@@ -390,7 +408,8 @@ describe("REZONANS envelope — cepstral lifter + warp", () => {
     const half = N >> 1;
     const re = new Float64Array(N);
     const im = new Float64Array(N);
-    for (let i = 0; i < N; i++) re[i] = Math.sin((2 * Math.PI * 220 * i) / SR) + 0.4 * Math.sin((2 * Math.PI * 1100 * i) / SR);
+    for (let i = 0; i < N; i++)
+      re[i] = Math.sin((2 * Math.PI * 220 * i) / SR) + 0.4 * Math.sin((2 * Math.PI * 1100 * i) / SR);
     fft(re, im);
     const mag = new Float64Array(half + 1);
     for (let k = 0; k <= half; k++) mag[k] = Math.sqrt(re[k]! * re[k]! + im[k]! * im[k]!);
@@ -425,6 +444,8 @@ describe("REZONANS golden — A3 CPU budget", () => {
     // accidental O(n²) or a missed scratch reuse, not to pin a CI machine.
     expect(ratio).toBeGreaterThan(1);
     // eslint-disable-next-line no-console
-    console.log(`REZONANS A3: 4 voices @ fine = ${ratio.toFixed(1)}x realtime (${ms.toFixed(1)} ms for ${inputSeconds.toFixed(2)} s)`);
+    console.log(
+      `REZONANS A3: 4 voices @ fine = ${ratio.toFixed(1)}x realtime (${ms.toFixed(1)} ms for ${inputSeconds.toFixed(2)} s)`,
+    );
   });
 });

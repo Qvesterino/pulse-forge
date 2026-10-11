@@ -15,14 +15,7 @@
  * live/offline parity golden meaningful.
  */
 
-import {
-  hzToMidi,
-  MAX_RATIO,
-  MIN_RATIO,
-  nearestAllowedPc,
-  nthScaleTone,
-  type HarmonyMode,
-} from "./harmony.js";
+import { hzToMidi, MAX_RATIO, MIN_RATIO, nearestAllowedPc, nthScaleTone, type HarmonyMode } from "./harmony.js";
 
 export interface SolverContext {
   mode: HarmonyMode;

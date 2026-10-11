@@ -192,7 +192,6 @@ export class FormantWarp {
     if (Math.abs(alpha - this.cachedAlpha) < 1e-4 && this.cachedAlpha > 0) return;
     this.cachedAlpha = alpha;
 
-
     const invAlpha = 1 / Math.max(alpha, 1e-6);
     for (let k = 0; k <= half; k++) {
       // Source frequency f/α expressed as a source bin index.

@@ -166,8 +166,5 @@ export function cubicAt(data: Float32Array, pos: number): number {
   const p1 = i1 >= 0 && i1 < len ? data[i1]! : 0;
   const p2 = i1 + 1 >= 0 && i1 + 1 < len ? data[i1 + 1]! : 0;
   const p3 = i1 + 2 >= 0 && i1 + 2 < len ? data[i1 + 2]! : 0;
-  return (
-    p1 +
-    0.5 * frac * (p2 - p0 + frac * (2 * p0 - 5 * p1 + 4 * p2 - p3 + frac * (3 * (p1 - p2) + p3 - p0)))
-  );
+  return p1 + 0.5 * frac * (p2 - p0 + frac * (2 * p0 - 5 * p1 + 4 * p2 - p3 + frac * (3 * (p1 - p2) + p3 - p0)));
 }
