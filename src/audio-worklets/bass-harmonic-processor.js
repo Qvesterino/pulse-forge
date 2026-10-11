@@ -54,8 +54,22 @@
  *    performance FX: sweeping the focus window up drops the tracked
  *    fundamental out of range and mutes the generation — no extra DSP.
  *
+ * Wave 4 adds routing + live telemetry:
+ *
+ * 9. KEY MODE (OFF / PUMP / DUCK) — a second worklet input carries a
+ *    sidechain key (the engine routes the source track's pre-insert bus
+ *    there, same contract as the sidechain effect). A 2 ms/180 ms key
+ *    envelope scales the GENERATED layer only: PUMP blooms the harmonics on
+ *    every kick (×1..2 — the "phone pump" without touching the sub), DUCK
+ *    pulls them down (×0.15..1) so the kick punches through. OFF, or any
+ *    mode without a key connected, is a bit-exact no-op.
+ * 10. Live telemetry — a small throttled port frame (~20 Hz, `{ type:"koren",
+ *    f0, clarity, harm, key, partials }`) feeds the KOREŇ panel visualizer
+ *    and the rack mini meter. Port traffic never touches the sample path;
+ *    offline renders post into the void exactly like compressor GR frames.
+ *
  * Parameter surface: plain AudioParams (M2 pattern, zenit-m2-nodes.ts) —
- * no port messages, so offline automation works natively via
+ * no port messages for parameters, so offline automation works natively via
  * setValueAtTime. All per-sample smoothing uses per-sample coefficients
  * (NEW-EFFECT-CHECKLIST §4). No RNG — deterministic.
  *
@@ -83,6 +97,12 @@ const SUSTAIN_FLOOR = 0.01; // below this level the sustain curve fades to linea
 const RETRIG_FLOOR = 0.005; // fast-envelope level a note-on must cross
 const RETRIG_RATIO = 0.35; // (fast - lag)/fast rise that counts as a transient
 const RETRIG_MIN_GAP = 0.04; // s between accepted note-on resets
+const KEY_ATK_S = 0.002; // sidechain-key envelope attack
+const KEY_REL_S = 0.18; // sidechain-key envelope release
+const KEY_PUMP_MAX = 1; // PUMP bloom on top at full key (×1..2)
+const KEY_DUCK_DEPTH = 0.85; // DUCK floor at full key (×0.15..1)
+const METER_INTERVAL_S = 0.05; // telemetry cadence (~20 Hz)
+const HARM_DB_MAX = 36; // clamp on the "+x dB harmonics" reading
 
 /**
  * YIN-style pitch detection over the whole decimated ring (`bufLen` samples;
@@ -208,6 +228,7 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
       { name: "retrig", minValue: 0, maxValue: 1, defaultValue: 1 },
       { name: "character", minValue: 0, maxValue: 2, defaultValue: 0 },
       { name: "width", minValue: 0, maxValue: 1, defaultValue: 0 },
+      { name: "keyMode", minValue: 0, maxValue: 2, defaultValue: 0 },
       { name: "mix", minValue: 0, maxValue: 1, defaultValue: 0.6 },
       { name: "output", minValue: -18, maxValue: 12, defaultValue: 0 },
     ];
@@ -229,6 +250,15 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     this.envFast = 0; // 1 ms follower for note-on detection
     this.envLag = 0; // 20 ms lag of envFast; fast − lag = transient rise
     this.sinceRetrig = 1e9; // samples since the last accepted note-on reset
+    this.keyEnv = 0; // sidechain-key envelope (PUMP/DUCK)
+    this.lastKeyGain = 1; // key scaler applied to the last generated sample
+    this.clarity = 0; // last accepted YIN clarity (telemetry)
+    this.harmRatio = 0; // input (2nd+3rd)/fundamental ratio (telemetry)
+    this.lastNormScale = 0; // per-block values mirrored for the meter frame
+    this.lastWeightSum = 0;
+    this.meterSamples = 0;
+    this.meterPartials = new Float32Array(9);
+    this.meterFrame = { type: "koren", f0: 0, clarity: 0, harm: 0, key: 1, partials: this.meterPartials };
     // Decimated detection domain (YIN + deficit share one ring/window).
     this.decRate = sr / DECIM;
     this.decBufLen = Math.min(8192, Math.max(1024, Math.ceil((this.decRate / TRACK_MIN_HZ) * 2.5)));
@@ -263,13 +293,17 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
       // One-pole smoothing: YIN re-locks at ~21 ms cadence; the generator's
       // PLL nudge absorbs the small residual frequency error per period.
       this.f0 = this.f0 > 0 ? this.f0 + 0.5 * (result.hz - this.f0) : result.hz;
+      this.clarity = result.clarity;
       this.untrackedPasses = 0;
       this.updateDeficit(this.f0);
     } else {
       this.untrackedPasses++;
       // ~0.25 s of untracked audio releases the estimate (the generator's own
       // release envelope is the fast mute; this stops stale harmonics).
-      if (this.untrackedPasses * DETECT_HOP > this.sampleRate * 0.25) this.f0 = 0;
+      if (this.untrackedPasses * DETECT_HOP > this.sampleRate * 0.25) {
+        this.f0 = 0;
+        this.clarity = 0;
+      }
     }
   }
 
@@ -295,6 +329,7 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     const c3 = Math.sqrt(1 + Math.pow((f0 * 3) / LP_HZ, 2));
     const ratio2 = (goertzelMag(win, n, f0 * 2, rate) * c2) / mag1;
     const ratio3 = (goertzelMag(win, n, f0 * 3, rate) * c3) / mag1;
+    this.harmRatio = Math.sqrt(ratio2 * ratio2 + ratio3 * ratio3);
     const d2 = Math.max(0, Math.min(1, (DEFICIT_TARGET2 - ratio2) / DEFICIT_TARGET2));
     const d3 = Math.max(0, Math.min(1, (DEFICIT_TARGET3 - ratio3) / DEFICIT_TARGET3));
     this.deficit2 += DEFICIT_SMOOTH * (d2 - this.deficit2);
@@ -307,6 +342,9 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     if (!output || !output[0]) return true;
     const inL = input && input[0] && input[0].length ? input[0] : null;
     const inR = input && input.length > 1 && input[1] && input[1].length ? input[1] : null;
+    const key = inputs[1];
+    const keyL = key && key[0] && key[0].length ? key[0] : null;
+    const keyR = key && key.length > 1 && key[1] && key[1].length ? key[1] : null;
     const outL = output[0];
     const outR = output.length > 1 && output[1] ? output[1] : null;
     const len = outL.length;
@@ -325,6 +363,7 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     const retrig = parameters.retrig[0] >= 0.5;
     const character = Math.round(clamp(parameters.character[0], 0, 2));
     const width = clamp(parameters.width[0], 0, 1);
+    const keyMode = Math.round(clamp(parameters.keyMode[0], 0, 2));
     const mix = clamp(parameters.mix[0], 0, 1);
     const outGain = Math.pow(10, clamp(parameters.output[0], -18, 12) / 20);
 
@@ -339,6 +378,8 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     const fastAtkCoef = 1 - Math.exp(-1 / (sr * 0.001));
     const fastRelCoef = 1 - Math.exp(-1 / (sr * 0.015));
     const lagCoef = 1 - Math.exp(-1 / (sr * 0.02));
+    const keyAtkCoef = 1 - Math.exp(-1 / (sr * KEY_ATK_S));
+    const keyRelCoef = 1 - Math.exp(-1 / (sr * KEY_REL_S));
     // SUSTAIN: env^gamma compression, fading to linear below the floor so
     // the noise bottom is not pumped.
     const gamma = 1 - 0.5 * sustain;
@@ -362,9 +403,13 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     const normScale = norm > 1e-9 ? 0.9 / norm : 0;
     // Deficit: the input's own partials taper the generated ones (normScale
     // stays on the raw stack — the leftover is headroom, not gain).
+    let weightSum = 0;
     for (let n = 2; n <= count; n++) {
       weights[n] *= n === 2 ? this.deficit2 : n === 3 ? this.deficit3 : this.deficit2;
+      weightSum += weights[n];
     }
+    this.lastNormScale = normScale;
+    this.lastWeightSum = weightSum;
     const fMin = focus * 0.5;
     const fMax = focus * 2;
     const twoPi = 2 * Math.PI;
@@ -406,6 +451,13 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
         this.envGen = 0;
       }
 
+      // --- sidechain key envelope (PUMP/DUCK) ----------------------------
+      if (keyMode > 0) {
+        const k = keyL ? Math.abs(keyR ? (keyL[i] + keyR[i]) * 0.5 : keyL[i]) : 0;
+        this.keyEnv += (k > this.keyEnv ? keyAtkCoef : keyRelCoef) * (k - this.keyEnv);
+        if (this.keyEnv < 1e-20) this.keyEnv = 0;
+      }
+
       // --- rising-edge PLL (phase coherence with the dry fundamental) ---
       const sign = this.lp > 0.005 ? 1 : this.lp < -0.005 ? -1 : this.lastSign;
       this.sinceCross++;
@@ -442,6 +494,12 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
       if (this.envGen < 1e-20) this.envGen = 0;
 
       // --- phase-locked harmonic stack ----------------------------------
+      // KEY: the sidechain scaler touches the GENERATED layer only — the sub
+      // anchor and dry stay untouched (PUMP blooms, DUCK clears the way).
+      let keyGain = 1;
+      if (keyMode === 1) keyGain = 1 + KEY_PUMP_MAX * this.keyEnv;
+      else if (keyMode === 2) keyGain = Math.max(1 - KEY_DUCK_DEPTH, 1 - KEY_DUCK_DEPTH * this.keyEnv);
+      this.lastKeyGain = keyGain;
       let genL = 0;
       let genR = 0;
       if (this.envGen > 1e-6 && this.f0 > 0) {
@@ -463,7 +521,7 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
             qHigh += w * Math.cos(p);
           }
         }
-        const scaled = normScale * this.envGen;
+        const scaled = normScale * this.envGen * keyGain;
         const low = mLow * scaled;
         const highM = mHigh * scaled;
         const highQ = qHigh * scaled;
@@ -507,6 +565,33 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     if (this.detectSince >= DETECT_HOP) {
       this.detectSince = 0;
       this.detect(focus);
+    }
+
+    // Live telemetry (panel visualizer + rack mini meter). Pure observer:
+    // no effect on the sample path, one small cloned frame at ~20 Hz.
+    this.meterSamples += len;
+    if (this.meterSamples >= sr * METER_INTERVAL_S) {
+      this.meterSamples = 0;
+      const genAmp = this.lastNormScale * this.envGen * this.lastWeightSum * this.lastKeyGain;
+      const inputHarm = this.harmRatio * this.envLow;
+      let harmDb = 0;
+      if (genAmp > 1e-4) {
+        // "+x dB harmonics": the generated stack PLUS the input's own 2nd/3rd
+        // against the input's own 2nd/3rd — how much louder the phone-band
+        // partials get. Deficit suppression reads honestly near 0 dB.
+        harmDb = 20 * Math.log10((genAmp + inputHarm) / Math.max(inputHarm, 0.001));
+        harmDb = Math.max(0, Math.min(HARM_DB_MAX, harmDb));
+      }
+      const frame = this.meterFrame;
+      frame.f0 = this.f0 > 0 ? this.f0 : 0;
+      frame.clarity = this.f0 > 0 ? this.clarity : 0;
+      frame.harm = harmDb;
+      frame.key = this.lastKeyGain;
+      const partials = this.meterPartials;
+      for (let n = 2; n <= 10; n++) {
+        partials[n - 2] = weights[n] * this.lastNormScale * this.envGen * this.lastKeyGain;
+      }
+      this.port.postMessage(frame);
     }
     return true;
   }

@@ -485,4 +485,63 @@ describe("MasterChain limiter delivery", () => {
     chain.setStudioLimiterOversampling(false);
     expect(parameters.oversample).toBe(1);
   });
+
+  it("PHONE CHECK glides the monitor highpass on live contexts and writes nothing offline", () => {
+    class FakeAudioContext {}
+    vi.stubGlobal("AudioContext", FakeAudioContext);
+    const makeFreqParam = (value = 20) => {
+      const calls: { method: string; args: number[] }[] = [];
+      const param = {
+        value,
+        setTargetAtTime: (next: number, time: number, constant: number) =>
+          calls.push({ method: "setTargetAtTime", args: [next, time, constant] }),
+      } as unknown as AudioParam;
+      return { param, calls };
+    };
+    try {
+      const freq = makeFreqParam(20);
+      const liveCtx = Object.assign(new FakeAudioContext(), {
+        currentTime: 2,
+        sampleRate: 48_000,
+      }) as unknown as AudioContext;
+      const chain = new MasterChain({
+        ctx: () => liveCtx,
+        doc: () => ({ master: defaultMasterConfig() }) as ProjectDocument,
+        metering: {} as MeteringRig,
+        masterInsertLatencySec: () => 0,
+      });
+      Object.assign(chain, { monitorHighpass: { frequency: freq.param } });
+
+      chain.setMonitorHighpass(350);
+      expect(freq.calls.at(-1)).toEqual({ method: "setTargetAtTime", args: [350, 2, 0.02] });
+      chain.setMonitorHighpass(null);
+      expect(freq.calls.at(-1)).toEqual({ method: "setTargetAtTime", args: [20, 2, 0.02] });
+      // Out-of-range and garbage input clamp to OFF.
+      chain.setMonitorHighpass(5);
+      expect(freq.calls.at(-1)).toEqual({ method: "setTargetAtTime", args: [20, 2, 0.02] });
+      chain.setMonitorHighpass(Number.NaN);
+      expect(freq.calls.at(-1)).toEqual({ method: "setTargetAtTime", args: [20, 2, 0.02] });
+
+      // Offline/no-context chains never receive the audition write.
+      const idle = makeFreqParam(20);
+      const offlineChain = new MasterChain({
+        ctx: () => null,
+        doc: () => ({ master: defaultMasterConfig() }) as ProjectDocument,
+        metering: {} as MeteringRig,
+        masterInsertLatencySec: () => 0,
+      });
+      Object.assign(offlineChain, { monitorHighpass: { frequency: idle.param } });
+      offlineChain.setMonitorHighpass(350);
+      expect(idle.calls).toEqual([]);
+
+      // The build wiring keeps the filter OFF the offline path — a render
+      // must never inherit the audition highpass.
+      const src = readFileSync(CHAIN, "utf8");
+      expect(src).toMatch(
+        /if \(isLiveAudioContext\(ctx\)\) \{\s*\n\s*this\.monitorBypassOutputGain\.connect\(this\.monitorHighpass\)/,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

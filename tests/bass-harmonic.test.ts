@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { EFFECT_DEFS, WORKLET_EFFECTS, defaultParamsOf } from "../src/effects/registry";
 import { EFFECT_META, clampEffectParam } from "../src/effects/definitions";
+import { createBassHarmonicNode, type KorenMeterFrame } from "../src/audio-worklets/bass-harmonic-node";
 import type { EffectInstance } from "../src/project-model/types";
 
 /**
@@ -21,7 +22,10 @@ import type { EffectInstance } from "../src/project-model/types";
 
 class FakePort {
   onmessage: ((e: unknown) => void) | null = null;
-  postMessage() {}
+  posted: unknown[] = [];
+  postMessage(message: unknown) {
+    this.posted.push(message);
+  }
 }
 class FakeAudioWorkletProcessor {
   port = new FakePort();
@@ -54,15 +58,20 @@ function renderProcessor(
   params: Record<string, Float32Array>,
   seconds: number,
   input: (i: number) => number,
+  extras?: { key?: (i: number) => number; proc?: (proc: any) => void },
 ): Float32Array {
   const proc = new cls();
+  extras?.proc?.(proc);
   const total = Math.ceil(seconds * SR);
   const outAll = new Float32Array(total);
   for (let offset = 0; offset < total; offset += BLOCK) {
     const len = Math.min(BLOCK, total - offset);
-    const inp = [Float32Array.from({ length: len }, (_, i) => input(offset + i))];
+    const inputs: Float32Array[][] = [[Float32Array.from({ length: len }, (_, i) => input(offset + i))]];
+    if (extras?.key) {
+      inputs.push([Float32Array.from({ length: len }, (_, i) => extras.key!(offset + i))]);
+    }
     const out = [new Float32Array(len), new Float32Array(len)];
-    proc.process([inp], [out], params);
+    proc.process(inputs, [out], params);
     outAll.set(out[0]!.subarray(0, len), offset);
   }
   return outAll;
@@ -458,5 +467,143 @@ describe("KOREŇ wave-3 performance controls (SUSTAIN, RETRIG, WIDTH, focus auto
     const late = goertzelRange(out, 110, 0.9, 1.0);
     expect(early).toBeGreaterThan(0.05);
     expect(late).toBeLessThan(early * 0.05);
+  });
+});
+
+describe("KOREŇ wave-4 key modes (PUMP / DUCK)", () => {
+  const keyBurst = (i: number) => {
+    const t = i / SR;
+    return t >= 0.5 && t < 0.7 ? 0.8 * Math.sin((2 * Math.PI * 60 * i) / SR) : 0;
+  };
+  const keyParams = (keyMode: number) =>
+    paramsOf(registered.get("bass-harmonic-processor"), {
+      drive: 0.9,
+      mix: 1,
+      subAnchor: 0,
+      focusHz: 90,
+      harmonics: 0,
+      range: 1,
+      keyMode,
+    });
+
+  it("PUMP blooms the generated harmonics on the key hit; DUCK pulls them down", () => {
+    const cls = registered.get("bass-harmonic-processor");
+    const pre = (sig: Float32Array) => goertzelRange(sig, 110, 0.3, 0.45);
+    const during = (sig: Float32Array) => goertzelRange(sig, 110, 0.55, 0.68);
+    const off = renderProcessor(cls, keyParams(0), 1.0, sineAt(55), { key: keyBurst });
+    const pump = renderProcessor(cls, keyParams(1), 1.0, sineAt(55), { key: keyBurst });
+    const duck = renderProcessor(cls, keyParams(2), 1.0, sineAt(55), { key: keyBurst });
+    // OFF ignores the key entirely — bit-identical output.
+    const plain = renderProcessor(cls, keyParams(0), 1.0, sineAt(55));
+    expect(off).toEqual(plain);
+    // PUMP: up to ×2 on the generated layer (energy ratio ~2, attack lag).
+    expect(pre(pump)).toBeGreaterThan(0.05);
+    expect(during(pump) / pre(pump)).toBeGreaterThan(1.3);
+    // DUCK: down to ×0.15 (energy ratio deep below 1).
+    expect(during(duck) / pre(duck)).toBeLessThan(0.5);
+  });
+
+  it("key mode without a key feed is a bit-exact no-op (PUMP and DUCK)", () => {
+    const cls = registered.get("bass-harmonic-processor");
+    const plain = renderProcessor(cls, keyParams(0), 1.0, sineAt(55));
+    expect(renderProcessor(cls, keyParams(1), 1.0, sineAt(55))).toEqual(plain);
+    expect(renderProcessor(cls, keyParams(2), 1.0, sineAt(55))).toEqual(plain);
+  });
+
+  it("posts a throttled koren telemetry frame with f0, clarity, boost and partials", () => {
+    const cls = registered.get("bass-harmonic-processor");
+    let proc: any = null;
+    renderProcessor(cls, paramsOf(cls, { drive: 0.9, mix: 1 }), 1.0, sineAt(55), { proc: (p) => (proc = p) });
+    const posts = proc.port.posted as {
+      type: string;
+      f0: number;
+      clarity: number;
+      harm: number;
+      key: number;
+      partials: Float32Array;
+    }[];
+    expect(posts.length).toBeGreaterThanOrEqual(15); // ~20 Hz over 1 s
+    expect(posts.length).toBeLessThanOrEqual(25);
+    for (const frame of posts) expect(frame.type).toBe("koren");
+    const settled = posts.at(-1)!;
+    expect(settled.f0).toBeGreaterThan(54);
+    expect(settled.f0).toBeLessThan(56);
+    expect(settled.clarity).toBeGreaterThan(0.8);
+    expect(settled.harm).toBeGreaterThan(6); // pure sine = full harmonic deficit
+    expect(settled.key).toBe(1);
+    expect(settled.partials.length).toBe(9);
+    expect(settled.partials[0]).toBeGreaterThan(0.05); // the generated 2nd
+  });
+});
+
+describe("KOREŇ node wrapper (key input + telemetry cache)", () => {
+  class FakeWorkletNode {
+    static instances: FakeWorkletNode[] = [];
+    port = new FakePort();
+    parameters = { get: () => ({ value: 0, setValueAtTime() {} }) };
+    onprocessorerror: (() => void) | null = null;
+    options: unknown;
+    constructor(_ctx: unknown, _name: string, options: unknown) {
+      this.options = options;
+      FakeWorkletNode.instances.push(this);
+    }
+    connect() {}
+    disconnect() {}
+  }
+
+  const makeCtx = () =>
+    ({
+      createGain: () => ({ gain: { value: 1 }, connect: () => {}, disconnect: () => {} }),
+      currentTime: 0,
+      sampleRate: SR,
+    }) as unknown as BaseAudioContext;
+
+  const makeSource = (calls: string[]): AudioNode =>
+    ({
+      connect: (_target: unknown, output?: number, input?: number) => calls.push(`connect:${output}:${input}`),
+      disconnect: (_target: unknown, output?: number, input?: number) => calls.push(`disconnect:${output}:${input}`),
+    }) as unknown as AudioNode;
+
+  beforeAll(() => {
+    (globalThis as unknown as { AudioWorkletNode: unknown }).AudioWorkletNode = FakeWorkletNode;
+  });
+
+  it("creates a 2-input node and wires/detaches the key with identical-repoint no-ops", () => {
+    const runtime = createBassHarmonicNode(makeCtx(), { params: { drive: 0.5 } });
+    const node = FakeWorkletNode.instances.at(-1)!;
+    expect((node.options as { numberOfInputs: number }).numberOfInputs).toBe(2);
+    const calls: string[] = [];
+    const source = makeSource(calls);
+    runtime.setSidechainInput!(source);
+    expect(calls).toEqual(["connect:0:1"]);
+    runtime.setSidechainInput!(source); // engine re-asserts on every sync
+    expect(calls).toEqual(["connect:0:1"]);
+    const replacement = makeSource(calls);
+    runtime.setSidechainInput!(replacement);
+    expect(calls).toEqual(["connect:0:1", "disconnect:0:1", "connect:0:1"]);
+    runtime.setSidechainInput!(null);
+    expect(calls.at(-1)).toBe("disconnect:0:1");
+    runtime.dispose();
+    runtime.dispose(); // idempotent
+  });
+
+  it("caches only validated koren frames for getMeters", () => {
+    const runtime = createBassHarmonicNode(makeCtx(), { params: {} });
+    const node = FakeWorkletNode.instances.at(-1)!;
+    expect(runtime.getMeters!()).toBeNull();
+    node.port.onmessage!({
+      data: { type: "koren", f0: 55.2, clarity: 0.95, harm: 12.5, key: 1, partials: new Float32Array(9) },
+    });
+    const frame = runtime.getMeters!() as KorenMeterFrame;
+    expect(frame.f0).toBe(55.2);
+    expect(frame.harm).toBe(12.5);
+    expect(frame.partials).toBeInstanceOf(Float32Array);
+    // Shape violations and foreign messages never replace the cached frame.
+    node.port.onmessage!({ data: { type: "koren", f0: Number.NaN, clarity: 1, harm: 1, key: 1 } });
+    node.port.onmessage!({ data: { type: "other", f0: 1, clarity: 1, harm: 1, key: 1 } });
+    node.port.onmessage!({ data: null });
+    expect(runtime.getMeters!()).toBe(frame);
+    runtime.dispose();
+    expect(runtime.getMeters!()).toBeNull();
   });
 });

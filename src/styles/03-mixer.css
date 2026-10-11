@@ -882,6 +882,35 @@
   text-align: right;
 }
 
+/* KOREŇ "+x dB harmonics" mini meter — the phone-band boost the exciter adds. */
+.fx-harm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fx-harm-track {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.fx-harm-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #4ade80, #38bdf8);
+}
+
+.fx-harm-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  min-width: 128px;
+  text-align: right;
+}
+
 .fx-gr-breakdown {
   display: flex;
   flex-direction: column;

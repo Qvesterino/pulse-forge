@@ -77,6 +77,14 @@ export class MasterChain {
   private masterBypassDry: GainNode | null = null;
   /** Monitor-only gain after the safety limiter; keeps bypass matching linear and export-safe. */
   private monitorBypassOutputGain: GainNode | null = null;
+  /**
+   * Monitor-only small-speaker simulation (PHONE CHECK): a highpass on the
+   * final listening path, after the monitor gain and before the destination.
+   * Live contexts only — offline renders connect straight to their
+   * destination, so exports can never inherit the audition filter.
+   */
+  private monitorHighpass: BiquadFilterNode | null = null;
+  private monitorHighpassHz: number | null = null;
   /** Aligns the raw audition branch with reported latency in the master path. */
   private masterBypassDelay: DelayNode | null = null;
   /** Mirrors our private wet/dry automation so rapid toggles do not rely on AudioParam.value. */
@@ -324,6 +332,21 @@ export class MasterChain {
     this.setBypassed(this.masterBypassed, immediate);
   }
 
+  /**
+   * PHONE CHECK — monitor-only small-speaker simulation on the live listening
+   * path (null = off). Not project state: no command, no undo, and offline
+   * renders bypass it by construction (build() branches the wiring).
+   */
+  setMonitorHighpass(hz: number | null): void {
+    this.monitorHighpassHz = hz != null && Number.isFinite(hz) ? Math.max(20, Math.min(20000, hz)) : null;
+    const filter = this.monitorHighpass;
+    const ctx = this.deps.ctx();
+    if (!filter || !ctx || !isLiveAudioContext(ctx)) return;
+    // A short glide keeps the toggle click-free — the filter type never
+    // changes, only its corner frequency.
+    filter.frequency.setTargetAtTime(this.monitorHighpassHz ?? 20, ctx.currentTime, 0.02);
+  }
+
   /** Entry and exit of the user insert slot before the final safety stages. */
   get insertInput(): GainNode | null {
     return this.masterInsertInput;
@@ -374,6 +397,7 @@ export class MasterChain {
       this.masterBypassWet?.disconnect();
       this.masterBypassDry?.disconnect();
       this.monitorBypassOutputGain?.disconnect();
+      this.monitorHighpass?.disconnect();
       this.masterBypassDelay?.disconnect();
     } catch {
       /* already disconnected */
@@ -382,6 +406,7 @@ export class MasterChain {
     this.masterBypassWet = null;
     this.masterBypassDry = null;
     this.monitorBypassOutputGain = null;
+    this.monitorHighpass = null;
     this.masterBypassDelay = null;
     this.monitorBypassAutomation = null;
     this.monitorBypassLatencyWarning = null;
@@ -703,6 +728,13 @@ export class MasterChain {
     this.masterBypassWet = ctx.createGain();
     this.masterBypassDry = ctx.createGain();
     this.monitorBypassOutputGain = ctx.createGain();
+    this.monitorHighpass = ctx.createBiquadFilter();
+    this.monitorHighpass.type = "highpass";
+    // 20 Hz floor while PHONE CHECK is off — inaudible on the monitor path,
+    // and the live/offline branch below keeps this node out of render paths
+    // entirely, so exports never inherit an audition filter.
+    this.monitorHighpass.frequency.value = this.monitorHighpassHz ?? 20;
+    this.monitorHighpass.Q.value = 0.707;
     this.masterBypassDelay = ctx.createDelay(1);
     this.masterBypassDelay.delayTime.value = 0;
     this.masterBypassWet.gain.value = this.masterBypassed ? 0 : 1;
@@ -848,7 +880,15 @@ export class MasterChain {
     // The serial master path and dry monitor-bypass branch share the same safety-limiter input.
     this.masterLimiter.connect(masterAnalyser);
     masterAnalyser.connect(this.monitorBypassOutputGain);
-    this.monitorBypassOutputGain.connect(ctx.destination);
+    // PHONE CHECK lives on the LIVE listening path only; offline renders tap
+    // the same analyser but connect straight to their destination so the
+    // audition highpass can never color an export.
+    if (isLiveAudioContext(ctx)) {
+      this.monitorBypassOutputGain.connect(this.monitorHighpass);
+      this.monitorHighpass.connect(ctx.destination);
+    } else {
+      this.monitorBypassOutputGain.connect(ctx.destination);
+    }
     // Stereo tap: limiter → splitter → per-channel analysers (metering sinks).
     const masterSplitter = ctx.createChannelSplitter(2);
     const masterAnalyserL = ctx.createAnalyser();

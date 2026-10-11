@@ -638,6 +638,15 @@ export class AudioEngine {
     this.masterChain.setBypassed(enabled, immediate);
   }
 
+  /**
+   * PHONE CHECK — monitor-only small-speaker simulation (~350 Hz highpass)
+   * on the live listening path; `null` turns it off. Never project state and
+   * never part of a render (the master chain branches it out offline).
+   */
+  setMonitorHighpass(hz: number | null): void {
+    this.masterChain.setMonitorHighpass(hz);
+  }
+
   /** Select render-only master limiter quality; does not alter project state. */
   setMasterLimiterOversampling(enabled: boolean): void {
     this.masterChain.setStudioLimiterOversampling(enabled);

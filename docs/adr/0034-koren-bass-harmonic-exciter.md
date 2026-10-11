@@ -158,3 +158,52 @@ presets carry sustain (0.3–0.6) and width (0–0.3). Loudness re-measured
 harness is environment-sensitive for pulse-shaped presets (stepgate/stutter
 rows flipped between two consecutive runs and were left at the second,
 consistent pass; `stutter-chop` remains the known nondeterministic entry).
+
+## Addendum 3 (2026-10-10) — wave 4: key routing, live telemetry, panel + PHONE CHECK
+
+1. **KEY MODE (`keyMode`: 0 OFF / 1 PUMP / 2 DUCK, default 0).** The node gets
+   a second worklet input (`numberOfInputs: 2`) with the same duck-typed
+   `setSidechainInput` contract as sidechain-node/compressor-node — identical
+   repoints early-return because `syncFxSidechains` re-asserts wiring on every
+   project sync. The engine needed ZERO changes: it already taps the source
+   track's pre-insert input for any runtime exposing the method, live and
+   offline through the same code path. The processor runs a 2 ms/180 ms key
+   envelope on the key's mono sum and scales the GENERATED layer only — PUMP
+   blooms the harmonics ×1..2 on every kick (the "phone pump", no sub clipping),
+   DUCK pulls them to ×0.15..1 so the kick clears its own way. keyMode 0, or
+   any mode without a key connected, is bit-exact to wave 3 (pinned by test).
+2. **Live telemetry (observer-only).** The processor posts a ~20 Hz
+   `{ type:"koren", f0, clarity, harm, key, partials: Float32Array(9) }` frame;
+   the node wrapper caches the last VALIDATED frame behind `getMeters()` (the
+   kaskada/ultina pull-cache pattern). No enable gate — a few scalars per
+   frame, the same discipline as the compressor's unconditional GR posts.
+   Port traffic never touches the sample path; offline renders post into the
+   void (the existing `renderer` engine has no consumers).
+3. **`harm` = the "+x dB harmonics" reading** — (generated stack + the input's
+   own 2nd/3rd) against the input's own 2nd/3rd, both from the deficit
+   Goertzel estimates, clamped 0..36. A pure 808 reads at the cap, an
+   already-rich bass reads near 0 — the deficit generator made legible.
+4. **KorenPanel** — a lazy inline device panel (the flagship-effect pattern,
+   injected beside FxEqPanel/UltinaPanel): a live canvas with the log-frequency
+   axis, the focus-window shade, the 120 Hz mono/width split line, the tracked
+   f0 marker and the generated harmonic bars (green ≤ 120 Hz, amber above);
+   f0/boost readouts update through refs on a 15 Hz poll — no React state on
+   the hot path.
+5. **PHONE CHECK** — `AudioEngine.setMonitorHighpass(hz)` on the new MasterChain
+   monitor stage: a highpass gliding (20 ms) to 350 Hz, inserted after the
+   monitor output gain on the LIVE listening path only. `build()` branches the
+   wiring, so an offline render connects straight to its destination and an
+   export can never inherit the audition filter; the panel releases it on
+   unmount. Monitor-only: no command, no undo, no project state.
+6. **Rack mini meter** — the EffectRack status poll reads the KOREŇ telemetry
+   cache (no new engine API; `getFxMeters` already resolves track/group/return/
+   master runtimes) and renders `+x dB HARMONICS` beside the GR bars.
+
+Validation additions: processor pins (PUMP/Duck bloom ratios on a keyed burst,
+bit-exact no-key no-op, telemetry cadence/frame shape at ~20 Hz); node wrapper
+pins (2 inputs, key connect/detach/repoint no-op, validated frame cache,
+idempotent dispose); MasterChain pins (live frequency glide on/off, offline
+no-write, the live-only wiring branch); KorenPanel pins (telemetry readouts,
+PHONE CHECK toggling `setMonitorHighpass(350/null)`, release on unmount,
+degraded notice); and a real-browser check through the shipped bundle (keyed
+PUMP raises the generated 2nd ×1.78, telemetry reports f0 = 54.9 Hz).

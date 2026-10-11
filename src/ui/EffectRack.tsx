@@ -52,6 +52,7 @@ const UltinaPanel = lazy(() => import("./UltinaPanel").then((m) => ({ default: m
 const OzvenaPanel = lazy(() => import("./OzvenaPanel").then((m) => ({ default: m.OzvenaPanel })));
 const KaskadaPanel = lazy(() => import("./KaskadaPanel").then((m) => ({ default: m.KaskadaPanel })));
 const MorphDynamicsPanel = lazy(() => import("./MorphDynamicsPanel").then((m) => ({ default: m.MorphDynamicsPanel })));
+const KorenPanel = lazy(() => import("./KorenPanel").then((m) => ({ default: m.KorenPanel })));
 import { BeatManglerEditor } from "./BeatManglerEditor";
 import { presetsForEffect } from "../effects/presets";
 import { BEATMAKING_EFFECT_CHAINS } from "../effects/chains";
@@ -125,6 +126,9 @@ export function EffectRack({
   const [gainReductionBreakdown, setGainReductionBreakdown] = useState<
     Record<string, readonly EffectGainReductionReading[]>
   >({});
+  // KOREŇ's "+x dB harmonics" mini meter — a scalar frame polled off the
+  // runtime's telemetry cache, formatted in the device row.
+  const [harmonics, setHarmonics] = useState<Record<string, number>>({});
   // Accordion focus: one device editor renders full-width at a time. null =
   // auto (the newest effect), "" = all collapsed, otherwise the focused id.
   // Four flagship editors side by side squeezed each into a ~260px column —
@@ -198,12 +202,14 @@ export function EffectRack({
       setFallbacks({});
       setGainReduction({});
       setGainReductionBreakdown({});
+      setHarmonics({});
       return;
     }
     let last = 0;
     let fallbackSig = "";
     let grSig = "";
     let grBreakdownSig = "";
+    let harmSig = "";
     const statusKey = statusScopeId ?? track.id;
     registerRaf(`fx-status-${statusKey}`, (t) => {
       if (t - last < 60) return;
@@ -213,10 +219,12 @@ export function EffectRack({
         getDegradedFx?: () => { fxId: string; reason: string }[];
         getFxGainReductionDb?: (trackId: string, fxId: string) => number | null;
         getFxGainReductionBreakdown?: (trackId: string, fxId: string) => readonly EffectGainReductionReading[] | null;
+        getFxMeters?: (trackId: string, fxId: string) => unknown;
       };
       for (const item of engineWithReport.getDegradedFx?.() ?? []) nextFallbacks[item.fxId] = item.reason;
       const nextGr: Record<string, number> = {};
       const nextGrBreakdown: Record<string, readonly EffectGainReductionReading[]> = {};
+      const nextHarmonics: Record<string, number> = {};
       for (const fx of track.effects) {
         if (fx.bypassed) continue;
         const breakdown = engineWithReport.getFxGainReductionBreakdown?.(track.id, fx.id);
@@ -225,6 +233,19 @@ export function EffectRack({
             label: reading.label,
             gainReductionDb: Math.round(reading.gainReductionDb * 2) / 2,
           }));
+          continue;
+        }
+        if (fx.type === "bassHarmonic") {
+          const meters = engineWithReport.getFxMeters?.(track.id, fx.id) as { f0?: number; harm?: number } | null;
+          if (
+            meters &&
+            typeof meters.f0 === "number" &&
+            meters.f0 > 0 &&
+            typeof meters.harm === "number" &&
+            meters.harm > 0.05
+          ) {
+            nextHarmonics[fx.id] = Math.round(meters.harm * 10) / 10;
+          }
           continue;
         }
         if (
@@ -253,6 +274,10 @@ export function EffectRack({
             `${fxId}:${readings.map(({ label, gainReductionDb }) => `${label}=${gainReductionDb}`).join(",")}`,
         )
         .join("|");
+      const nextHarmSig = Object.entries(nextHarmonics)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => `${k}:${v}`)
+        .join("|");
       if (nextFallbackSig !== fallbackSig) {
         fallbackSig = nextFallbackSig;
         setFallbacks(nextFallbacks);
@@ -264,6 +289,10 @@ export function EffectRack({
       if (nextGrBreakdownSig !== grBreakdownSig) {
         grBreakdownSig = nextGrBreakdownSig;
         setGainReductionBreakdown(nextGrBreakdown);
+      }
+      if (nextHarmSig !== harmSig) {
+        harmSig = nextHarmSig;
+        setHarmonics(nextHarmonics);
       }
     });
     return () => unregisterRaf(`fx-status-${statusKey}`);
@@ -564,6 +593,7 @@ export function EffectRack({
               fallbackReason={fallbacks[fx.id]}
               gainReductionDb={gainReduction[fx.id]}
               gainReductionBreakdown={gainReductionBreakdown[fx.id]}
+              harmonicsDb={harmonics[fx.id]}
               allowUserImpulseResponses={allowUserImpulseResponses}
               expanded={fx.id === effectiveExpandedFxId}
               onToggleFocus={() => setExpandedFxId(fx.id === effectiveExpandedFxId ? "" : fx.id)}
@@ -583,6 +613,7 @@ function Device({
   fallbackReason,
   gainReductionDb,
   gainReductionBreakdown,
+  harmonicsDb,
   allowUserImpulseResponses = true,
   expanded,
   onToggleFocus,
@@ -595,6 +626,8 @@ function Device({
   fallbackReason?: string;
   gainReductionDb?: number;
   gainReductionBreakdown?: readonly EffectGainReductionReading[];
+  /** KOREŇ "+x dB harmonics" reading (input-relative phone-band boost). */
+  harmonicsDb?: number;
   allowUserImpulseResponses?: boolean;
   expanded: boolean;
   /** Omit when the host has no expand state (the devices dock's single editor). */
@@ -854,6 +887,16 @@ function Device({
             />
           )}
           {fx.type === "eq" && <EqResponseCurve params={fx.params} />}
+          {fx.type === "bassHarmonic" && (
+            <div className="fx-harm" aria-label="Added harmonics in the phone band">
+              <div className="fx-harm-track">
+                <div className="fx-harm-fill" style={{ width: `${Math.min(100, ((harmonicsDb ?? 0) / 36) * 100)}%` }} />
+              </div>
+              <span className="fx-harm-label">
+                {harmonicsDb != null ? `+${harmonicsDb.toFixed(1)} dB HARMONICS` : "HARMONICS —"}
+              </span>
+            </div>
+          )}
           {(fx.type === "limiter" ||
             fx.type === "compressor" ||
             fx.type === "drumBuss" ||
@@ -886,6 +929,7 @@ function Device({
             fx.type === "compressor" ||
             fx.type === "fxeq" ||
             fx.type === "pump" ||
+            fx.type === "bassHarmonic" ||
             fx.type === "morphdynamics") && (
             <div className="fx-sidechain-picker">
               <label className="fx-param-select">
@@ -1058,6 +1102,15 @@ function Device({
                     setDeviceState(doc, track.id, fx.id, { kind: "morph-scenes-v1", data: { ...next } }),
                   )
                 }
+              />
+            )}
+            {fx.type === "bassHarmonic" && (
+              <KorenPanel
+                trackId={track.id}
+                fxId={fx.id}
+                params={fx.params}
+                degraded={!!fallbackReason}
+                docked={devicesMode}
               />
             )}
           </Suspense>
