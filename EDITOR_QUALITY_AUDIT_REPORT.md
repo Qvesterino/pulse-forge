@@ -1358,3 +1358,54 @@ not the fixture.
   a zero or negative length would loop forever. Every clip that reaches the
   clipboard has passed the boundary, which requires `lengthBars > 0`. The
   loop cannot spin.
+
+---
+
+## Wave 5 — 2026-10-11 — §35 memory and cleanup, measured
+
+The §35 requirement is *"repeated mount/unmount … listeners … must not leak"*,
+and until now the evidence behind it was **reading the effects and seeing a
+`return () => …`**. That is evidence that someone wrote a cleanup, not that the
+counts balance. This wave measures the balance instead.
+
+`tests/ui/mount-unmount-balance.test.tsx` wraps `addEventListener` /
+`removeEventListener` / `setInterval` / `clearInterval` and asserts:
+
+- a single mount/unmount cycle registers and releases the **same** number of
+  window listeners;
+- **five** consecutive cycles register a stable count (no per-cycle growth);
+- five cycles balance document listeners and intervals as well;
+- a cycle that unmounts **mid-gesture** — pointer captured, preview live —
+  releases everything it armed.
+
+Result: **all pass. No leak.** The panel's cleanup is genuinely disciplined,
+including the `usePointerDragGuard` terminator that wave 1 added.
+
+### A wrong assertion, caught by measurement
+
+The mid-gesture spec first asserted that a mid-gesture cycle registers the
+*same* listeners as a clean one. Measurement said 9 vs 4 — and the 9 is
+**correct**: arming a live capture registers the guard's own pointer routing.
+The assertion was wrong, not the code. Rewritten to the invariant that actually
+matters: arming registers *extra* listeners, and **every one of them comes
+back**.
+
+This is the same shape as the `snapController` finding (D10): a test that fails
+for a reason nobody intended is a test that will be "fixed" by weakening a
+correct behaviour.
+
+### Falsification
+
+Deleting one line — `window.removeEventListener("pointercancel",
+cancelAllArrangementGestures)` — turns **3 of the 4 specs red**. Source
+restored byte-identical afterwards (`git diff` empty). The specs measure the
+cleanup, not the fixture.
+
+### What this does and does not prove
+
+It proves **registrations balance** across repeated mount/unmount cycles,
+including mid-gesture. It does **not** prove heap stability: canvas backing
+stores, waveform peak caches, the bank and the engine's node graph are not
+observable from a listener count. §35's memory half still wants the real-browser
+pass (`npm run test:browser`), which this wave could not run — see the open
+items below.
