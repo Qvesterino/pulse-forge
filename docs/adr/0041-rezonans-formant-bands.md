@@ -17,14 +17,14 @@ v1 warps the vocal tract with a single scalar:
 E'(f) = E(f / α),    α = 2^(semitones/12)
 ```
 
-That is *physically correct for size*. A vocal tract of length L resonates at
+That is _physically correct for size_. A vocal tract of length L resonates at
 c·n/2L, so shortening the tube moves every formant by the same ratio. v1 can
 therefore make a voice bigger or smaller, and nothing else.
 
 But a real singer's formant structure is **articulatory**, not just tubular:
 F1 tracks mouth opening, F2 tongue position, F3 lip rounding. A singer can
 say "open mouth, tongue forward" without changing size at all. A single α
-cannot express that — every formant moves together, so the *relative*
+cannot express that — every formant moves together, so the _relative_
 spacing is preserved and the result reads as "the same voice, shifted" rather
 than "a different singer".
 
@@ -41,7 +41,7 @@ Three facts make this cheap rather than a rewrite:
    four voices (`voice.ts:116`). Peak-picking it for F1/F2/F3 costs one linear
    pass per hop, not per voice.
 3. The panel already draws a formant curve. Today that curve is an
-   illustration; once it carries the *real* envelope and real formant markers
+   illustration; once it carries the _real_ envelope and real formant markers
    it becomes the control.
 
 ---
@@ -67,7 +67,7 @@ interpolation on the log-envelope.
 LPC would be more accurate on noisy frames. It is rejected for three reasons:
 it needs an all-pole solve per frame that we would be adding to the hot path;
 its accuracy advantage does not matter when the result is only ever used as a
-*warping target*; and it would give the panel a different envelope than the DSP
+_warping target_; and it would give the panel a different envelope than the DSP
 uses, which is exactly the "instrument that lies to the user" defect ADR 0040
 decision 19 forbids.
 
@@ -90,7 +90,7 @@ Band edges sit at the log-frequency midpoint between neighbouring formants.
 Across a boundary of 1/6 octave the two neighbouring warps crossfade linearly.
 
 Rationale: a hard edge would put a step discontinuity in the warped envelope,
-which is audible as a click or a zipper on note attacks. A *smooth* blend over
+which is audible as a click or a zipper on note attacks. A _smooth_ blend over
 the whole band would smear the formant peaks and defeat the purpose — the point
 is that the bands move independently. A 1/6-octave crossfade is narrow enough
 to preserve the peaks and wide enough to kill the step.
@@ -132,7 +132,7 @@ panel must draw the envelope the DSP used**, not a re-derivation, per decision
 ### 9. Consonant band crossfade is explicitly deferred, not committed
 
 v1 routes unvoiced frames to the latency-matched dry source via one scalar
-gain (`rezonansProcessor.ts:419`). v2 *could* make that blend frequency-
+gain (`rezonansProcessor.ts:419`). v2 _could_ make that blend frequency-
 dependent — sibilants live above ~4 kHz and have no formant structure to warp.
 
 It is **not** in the committed v2 scope. The owner judged v1's consonant
@@ -154,7 +154,7 @@ listening pass finds sibilance problems.
   Per-voice cost is unchanged: same table, same shape, one extra branch per
   bin to select the band.
 - The panel gains a genuine, honest visualisation. It also gains a new way to
-  *lie*: if the drawn envelope ever diverges from the one the warp sampled,
+  _lie_: if the drawn envelope ever diverges from the one the warp sampled,
   the panel becomes worse than the abstract line it replaces. Decision 8 pins
   the source to `logEnv` for exactly this reason.
 
