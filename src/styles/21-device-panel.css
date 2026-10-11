@@ -436,6 +436,22 @@
   flex-wrap: wrap;
   gap: 4px;
 }
+.skrutka-panel .skrutka-curves {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.skrutka-panel .skrutka-curves .btn-small.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(245, 158, 11, 0.16);
+}
+.skrutka-panel .skrutka-morph {
+  flex: 1;
+  min-width: 60px;
+  accent-color: var(--accent);
+  height: 14px;
+}
 .skrutka-panel .skrutka-chip {
   font-family: var(--mono);
   font-size: 9px;

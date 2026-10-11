@@ -1,25 +1,38 @@
 import type { EffectRuntime } from "../effects/types";
+import {
+  TWIST_CURVE_PARAM_IDS,
+  morphTwistParams,
+  readTwistCurvesState,
+  type TwistCurvesState,
+} from "../effects/skrutka-curves";
 import { LFO_SYNC_DIVISIONS, createLfoSyncController, lfoSyncIndex } from "../effects/tempo-sync";
 import { attachProcessorErrorGuard } from "./processor-errors";
 import { safeApplyAudioParam } from "./safeAudioParam";
 
 /**
- * TWIST (skrutka) node wrapper — v2.
+ * TWIST (skrutka) node wrapper — v2 + CURVE SNAPSHOTS (v2.3).
  *
- * Plain AudioParam surface (M2 pattern): every rack parameter is an
- * AudioParam on the processor, so live writes and offline automation both
- * work without port messages. Two extra host-side contracts:
+ * Plain AudioParam surface (M2 pattern): every DSP parameter is an AudioParam
+ * on the processor, so live writes and offline automation both work without
+ * port messages. Host-side contracts on top:
  *
- *  - LFO tempo sync (the flanger/tremolo contract): `lfoRate` stays Hz on
- *    the document; `lfoSync` picks a musical division and
- *    `createLfoSyncController` writes the effective Hz into the worklet's
- *    `lfoHz` param, following BPM pushes via `syncBpm`.
+ *  - LFO tempo sync (the flanger/tremolo contract): `lfoRate` stays Hz on the
+ *    document; `lfoSync` picks a musical division and `createLfoSyncController`
+ *    writes the effective Hz into the worklet's `lfoHz` param, following BPM
+ *    pushes via `syncBpm`.
  *  - LFO phase anchor: `onTransportStarted` writes `lfoPhase` (0..1) at the
  *    transport start time so the sweep is phase-locked to the grid; the
  *    processor free-runs from 0 when no anchor lands (deterministic).
+ *  - CURVE SNAPSHOTS: the A/B snapshots ride `instance.deviceState`
+ *    (kind "twist-curves-v1") and the `morph` rack param blends between them.
+ *    The interpolation is HOST-side (`morphTwistParams`): `morph` is a real
+ *    param, so an automation lane or an intensity-sourced macro drives it;
+ *    `setCurves` re-seeds the snapshots live after a STORE/CLEAR (a later
+ *    chain rebuild re-reads `deviceState` and lands on the same sound).
+ *    With no snapshots stored `morph` is a no-op and the render is untouched.
  *
  * Two inputs: [0] main audio, [1] sidechain KEY (PUMP/DUCK) — the same
- * duck-typed `setSidechainInput` contract as GROW; identical repoints
+ * duck-typed `setSidechainInput` contract as KOREŇ; identical repoints
  * early-return because the engine re-asserts wiring on every project sync.
  *
  * The processor posts a small throttled telemetry frame (`type:"skrutka"`)
@@ -59,11 +72,19 @@ export interface SkrutkaMeterFrame {
   punch: number;
 }
 
+/** Extra runtime surface used by the panel (not part of EffectRuntime). */
+export interface SkrutkaCurveRuntime {
+  setCurves(a: Record<string, number> | null, b: Record<string, number> | null): void;
+}
+
 export function createSkrutkaNode(
   ctx: BaseAudioContext,
-  instance: { params: Record<string, number> },
+  instance: {
+    params: Record<string, number>;
+    deviceState?: { kind: string; data: Record<string, unknown> } | null;
+  },
   env?: { bpm?: number; seed?: number },
-): EffectRuntime {
+): EffectRuntime & SkrutkaCurveRuntime {
   const node = new AudioWorkletNode(ctx, "skrutka-processor", {
     numberOfInputs: 2,
     numberOfOutputs: 1,
@@ -97,6 +118,37 @@ export function createSkrutkaNode(
     safeApplyAudioParam(node, id, instance.params[id] ?? 0);
   }
 
+  // --- CURVE SNAPSHOTS (v2.3) --------------------------------------------
+  const base: Record<string, number> = { ...instance.params };
+  let curves: TwistCurvesState | null = readTwistCurvesState(instance.deviceState) ?? null;
+  let morphValue = Math.min(1, Math.max(0, instance.params.morph ?? 0));
+  const hasCurves = (): boolean => !!(curves?.slots.A || curves?.slots.B);
+
+  /** Write a full parameter map through the right routing (LFO ids included). */
+  const writeMap = (map: Record<string, number>, when?: number): void => {
+    for (const id of TWIST_CURVE_PARAM_IDS) {
+      const value = map[id];
+      if (value === undefined) continue;
+      if (id === "lfoRate") {
+        lfo.parameter("lfoHz", value, when ?? null);
+        continue;
+      }
+      if (id === "lfoSync") {
+        syncIndex = lfoSyncIndex(value);
+        lfo.parameter("sync", value, when ?? null);
+        continue;
+      }
+      safeApplyAudioParam(node, id, value, when);
+    }
+  };
+
+  /** Write the effective (morphed) parameter map; a no-op without snapshots. */
+  const applyEffective = (when?: number): void => {
+    if (!hasCurves()) return;
+    writeMap(morphTwistParams(base, curves, morphValue), when);
+  };
+  applyEffective(ctx.currentTime);
+
   // Current key feed on worklet input 1 — tracked so a repoint (or dispose)
   // detaches the PREVIOUS source; otherwise the old subgraph stays connected
   // into the key envelope forever and both feeds sum.
@@ -129,28 +181,54 @@ export function createSkrutkaNode(
     input,
     output,
     setParameter(id, value) {
+      if (id === "morph") {
+        if (typeof value === "number" && Number.isFinite(value)) {
+          morphValue = Math.min(1, Math.max(0, value));
+          applyEffective(ctx.currentTime);
+        }
+        return;
+      }
       if (id === "lfoRate") {
+        base.lfoRate = value;
         lfo.parameter("lfoHz", value, null);
+        applyEffective(ctx.currentTime);
         return;
       }
       if (id === "lfoSync") {
+        base.lfoSync = value;
         syncIndex = lfoSyncIndex(value);
         lfo.parameter("sync", value, null);
+        applyEffective(ctx.currentTime);
         return;
       }
-      safeApplyAudioParam(node, id, value, ctx.currentTime);
+      base[id] = value;
+      if (hasCurves()) applyEffective(ctx.currentTime);
+      else safeApplyAudioParam(node, id, value, ctx.currentTime);
     },
     setParameterAt(id, value, when) {
+      if (id === "morph") {
+        if (typeof value === "number" && Number.isFinite(value)) {
+          morphValue = Math.min(1, Math.max(0, value));
+          applyEffective(when);
+        }
+        return;
+      }
       if (id === "lfoRate") {
+        base.lfoRate = value;
         lfo.parameter("lfoHz", value, when);
+        applyEffective(when);
         return;
       }
       if (id === "lfoSync") {
+        base.lfoSync = value;
         syncIndex = lfoSyncIndex(value);
         lfo.parameter("sync", value, when);
+        applyEffective(when);
         return;
       }
-      safeApplyAudioParam(node, id, value, when);
+      base[id] = value;
+      if (hasCurves()) applyEffective(when);
+      else safeApplyAudioParam(node, id, value, when);
     },
     syncBpm(bpm, when) {
       lfo.syncBpm(bpm, when ?? ctx.currentTime);
@@ -176,6 +254,13 @@ export function createSkrutkaNode(
         next.connect(node, 0, 1);
         sidechainSource = next;
       }
+    },
+    setCurves(a, b) {
+      const hadCurves = hasCurves();
+      curves = a || b ? { slots: { ...(a ? { A: { ...a } } : {}), ...(b ? { B: { ...b } } : {}) } } : null;
+      // Clearing restores the live knob values; storing re-seeds the morph.
+      if (curves) applyEffective(ctx.currentTime);
+      else if (hadCurves) writeMap(base, ctx.currentTime);
     },
     getMeters: () => meters,
     dispose() {

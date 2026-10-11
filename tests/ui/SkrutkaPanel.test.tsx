@@ -4,6 +4,7 @@ import { SkrutkaPanel, skrutkaPanelSampleRate } from "../../src/ui/SkrutkaPanel"
 import { skrutkaPeakDelay } from "../../src/effects/skrutka-curve";
 import { renderWithContext, mockServices } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
+import { ServicesContext } from "../../src/ui/context";
 
 /**
  * SkrutkaPanel — v2 curve editor + BAND SOLO audition.
@@ -204,5 +205,111 @@ describe("SkrutkaPanel", () => {
       { services },
     );
     expect(screen.getByText("FIELD 60% MID")).toBeInTheDocument();
+  });
+
+  it("STORE A captures the rack params and re-seeds the live runtime", () => {
+    const services = mockServices(createProjectFromTemplate("house"));
+    const setCurves = vi.fn();
+    (services.engine as unknown as Record<string, unknown>).getFxRuntime = vi.fn(() => ({ setCurves }));
+    (services.engine as unknown as Record<string, unknown>).getFxMeters = vi.fn(() => null);
+    const onCurvesStateChange = vi.fn();
+    const { container } = renderWithContext(
+      <SkrutkaPanel
+        trackId="t1"
+        fxId="fx1"
+        params={{ ...paramsOf(), dispersion: 0.7 }}
+        degraded={false}
+        onParam={vi.fn()}
+        onCurvesStateChange={onCurvesStateChange}
+      />,
+      { services },
+    );
+    vi.spyOn(container.querySelector("canvas")!, "getContext").mockReturnValue(stub2dContext());
+
+    fireEvent.click(screen.getByRole("button", { name: "STORE A" }));
+    expect(onCurvesStateChange).toHaveBeenCalledWith({
+      slots: { A: expect.objectContaining({ dispersion: 0.7, focusHz: 220 }) },
+    });
+    expect(setCurves).toHaveBeenCalledWith(expect.objectContaining({ dispersion: 0.7 }), null);
+  });
+
+  it("re-seeds the live runtime when persisted curve state changes (undo/redo)", () => {
+    const services = mockServices(createProjectFromTemplate("house"));
+    const setCurves = vi.fn();
+    (services.engine as unknown as Record<string, unknown>).getFxRuntime = vi.fn(() => ({ setCurves }));
+    (services.engine as unknown as Record<string, unknown>).getFxMeters = vi.fn(() => null);
+    const props = {
+      trackId: "t1",
+      fxId: "fx1",
+      params: paramsOf(),
+      degraded: false,
+      onCurvesStateChange: vi.fn(),
+    };
+    const { rerender } = renderWithContext(
+      <SkrutkaPanel {...props} deviceState={{ kind: "twist-curves-v1", data: { slots: { A: { focusHz: 100 } } } }} />,
+      { services },
+    );
+    expect(setCurves).toHaveBeenLastCalledWith({ focusHz: 100 }, null);
+
+    rerender(
+      <ServicesContext.Provider value={services}>
+        <SkrutkaPanel
+          {...props}
+          deviceState={{ kind: "twist-curves-v1", data: { slots: { A: { focusHz: 300 }, B: { focusHz: 900 } } } }}
+        />
+      </ServicesContext.Provider>,
+    );
+    expect(setCurves).toHaveBeenLastCalledWith({ focusHz: 300 }, { focusHz: 900 });
+  });
+
+  it("CLEAR forgets both curves and restores the runtime", () => {
+    const services = mockServices(createProjectFromTemplate("house"));
+    const setCurves = vi.fn();
+    (services.engine as unknown as Record<string, unknown>).getFxRuntime = vi.fn(() => ({ setCurves }));
+    (services.engine as unknown as Record<string, unknown>).getFxMeters = vi.fn(() => null);
+    const onCurvesStateChange = vi.fn();
+    const { container } = renderWithContext(
+      <SkrutkaPanel
+        trackId="t1"
+        fxId="fx1"
+        params={{ ...paramsOf(), morph: 0.5 }}
+        degraded={false}
+        deviceState={{ kind: "twist-curves-v1", data: { slots: { A: { focusHz: 100 }, B: { focusHz: 900 } } } }}
+        onParam={vi.fn()}
+        onCurvesStateChange={onCurvesStateChange}
+      />,
+      { services },
+    );
+    vi.spyOn(container.querySelector("canvas")!, "getContext").mockReturnValue(stub2dContext());
+
+    fireEvent.click(screen.getByRole("button", { name: "CLEAR" }));
+    expect(onCurvesStateChange).toHaveBeenCalledWith({ slots: {} });
+    expect(setCurves).toHaveBeenCalledWith(null, null);
+  });
+
+  it("reports the MORPH mode chip and the morph slider only with stored curves", () => {
+    const services = mockServices(createProjectFromTemplate("house"));
+    (services.engine as unknown as Record<string, unknown>).getFxMeters = vi.fn(() => null);
+    const { unmount } = renderWithContext(
+      <SkrutkaPanel
+        trackId="t1"
+        fxId="fx1"
+        params={{ ...paramsOf(), morph: 0.4 }}
+        degraded={false}
+        deviceState={{ kind: "twist-curves-v1", data: { slots: { A: { focusHz: 100 }, B: { focusHz: 900 } } } }}
+        onParam={vi.fn()}
+      />,
+      { services },
+    );
+    expect(screen.getByText("MORPH 40% A→B")).toBeInTheDocument();
+    const slider = screen.getByLabelText("Curve morph") as HTMLInputElement;
+    expect(slider.disabled).toBe(false);
+    unmount();
+
+    renderWithContext(<SkrutkaPanel trackId="t1" fxId="fx1" params={paramsOf()} degraded={false} onParam={vi.fn()} />, {
+      services,
+    });
+    expect(screen.getByText("MORPH OFF")).toBeInTheDocument();
+    expect((screen.getByLabelText("Curve morph") as HTMLInputElement).disabled).toBe(true);
   });
 });

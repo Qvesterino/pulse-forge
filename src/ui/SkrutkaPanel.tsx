@@ -13,6 +13,14 @@ import {
   type SkrutkaChannel,
   type SkrutkaCurveParams,
 } from "../effects/skrutka-curve";
+import {
+  TWIST_CURVE_SLOTS,
+  morphTwistParams,
+  pickTwistCurveParams,
+  readTwistCurvesState,
+  type TwistCurveSlot,
+  type TwistCurvesState,
+} from "../effects/skrutka-curves";
 import type { SkrutkaMeterFrame } from "../audio-worklets/skrutka-node";
 import { useServices } from "./context";
 
@@ -26,7 +34,7 @@ export function skrutkaPanelSampleRate(sampleRate: number | null | undefined): n
 
 /**
  * TWIST (skrutka) panel — v2: the group-delay curve that IS the effect,
- * now editable and dynamic-aware.
+ * now editable, dynamic-aware and morphable.
  *
  * The curve is the analytic model (src/effects/skrutka-curve — the same math
  * the worklet runs): how much LATER each frequency arrives. FOCUS marks the
@@ -37,9 +45,14 @@ export function skrutkaPanelSampleRate(sampleRate: number | null | undefined): n
  * DRAG THE CURVE: horizontal = FOCUS, vertical = DISPERSION (bisection over
  * the peak-delay mapping). The whole gesture is ONE undo frame.
  *
+ * CURVE SNAPSHOTS (v2.3): STORE A / STORE B capture the current rack params;
+ * the MORPH knob (a real rack param, so automation lanes and intensity-sourced
+ * macros can drive it) blends between the stored curves — the drawn live
+ * curve is the EFFECTIVE one, and A/B ghosts show where you morphed from.
+ *
  * BAND SOLO auditions only the band the hump moves (monitor-only, live path,
- * released on unmount). The live dot follows the processor telemetry
- * (lfo phase + current radius) so the automation is visible, not inferred.
+ * released on unmount). The live dots follow the processor telemetry
+ * (lfo phase + current radius/punch) so the automation is visible, not inferred.
  */
 export function SkrutkaPanel({
   trackId,
@@ -47,18 +60,22 @@ export function SkrutkaPanel({
   params,
   degraded,
   docked = false,
+  deviceState,
   onParam,
   onGestureStart,
   onGestureEnd,
+  onCurvesStateChange,
 }: {
   trackId: string;
   fxId: string;
   params: Record<string, number>;
   degraded: boolean;
   docked?: boolean;
+  deviceState?: { kind: string; data: Record<string, unknown> } | null;
   onParam?: (paramId: string, value: number) => void;
   onGestureStart?: () => void;
   onGestureEnd?: () => void;
+  onCurvesStateChange?: (next: TwistCurvesState) => void;
 }) {
   const services = useServices();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -66,6 +83,9 @@ export function SkrutkaPanel({
   const frameRef = useRef<SkrutkaMeterFrame | null>(null);
   const paramsRef = useRef(params);
   paramsRef.current = params;
+  const curves = readTwistCurvesState(deviceState);
+  const curvesRef = useRef<TwistCurvesState | undefined>(curves);
+  curvesRef.current = curves;
   const [soloOn, setSoloOn] = useState(false);
   const draggingRef = useRef(false);
 
@@ -113,23 +133,49 @@ export function SkrutkaPanel({
       c2d.clearRect(0, 0, cw, ch);
 
       const sampleRate = skrutkaPanelSampleRate(engine.getLiveAudioContext()?.sampleRate);
-      const p = paramsRef.current;
-      const cp: SkrutkaCurveParams = {
-        dispersion: p.dispersion ?? 0.35,
-        punch: p.punch ?? 0,
-        punchHz: p.punchHz ?? 0,
-        punchMix: p.punchMix ?? 1,
-        focusHz: p.focusHz ?? 220,
-        spread: p.spread ?? 0,
-        shape: p.shape ?? 0,
-        field: p.field ?? 0,
-      };
+      const baseParams = paramsRef.current;
+      const cpOf = (map: Record<string, number>): SkrutkaCurveParams => ({
+        dispersion: map.dispersion ?? 0.35,
+        punch: map.punch ?? 0,
+        punchHz: map.punchHz ?? 0,
+        punchMix: map.punchMix ?? 1,
+        focusHz: map.focusHz ?? 220,
+        spread: map.spread ?? 0,
+        shape: map.shape ?? 0,
+        field: map.field ?? 0,
+      });
+      // CURVE SNAPSHOTS: everything drawn/below is the EFFECTIVE (morphed)
+      // state, so the panel always shows what the DSP is playing.
+      const curveState = curvesRef.current;
+      const p = morphTwistParams(baseParams, curveState, baseParams.morph ?? 0);
+      const cp = cpOf(p);
       // FIELD switches the drawn components: legacy L/R, or the M/S field.
       const fieldActive = Math.abs(cp.field ?? 0) > 1e-4;
       const chA: SkrutkaChannel = fieldActive ? "M" : "L";
       const chB: SkrutkaChannel = fieldActive ? "S" : "R";
       const curveA = skrutkaComponentCurve(cp, sampleRate, chA, 160, F_LO, F_HI);
       const curveB = skrutkaComponentCurve(cp, sampleRate, chB, 160, F_LO, F_HI);
+      // Stored-curve ghosts (A then B): where the MORPH knob can travel.
+      const ghostA = curveState?.slots.A
+        ? skrutkaComponentCurve(
+            cpOf(morphTwistParams(baseParams, { slots: { A: curveState.slots.A } }, 0)),
+            sampleRate,
+            chA,
+            160,
+            F_LO,
+            F_HI,
+          )
+        : null;
+      const ghostB = curveState?.slots.B
+        ? skrutkaComponentCurve(
+            cpOf(morphTwistParams(baseParams, { slots: { B: curveState.slots.B } }, 0)),
+            sampleRate,
+            chA,
+            160,
+            F_LO,
+            F_HI,
+          )
+        : null;
       const dynArmed = Math.abs(p.dyn ?? 0) > 1e-4 || (p.keyMode ?? 0) > 0;
       const driven = dynArmed ? skrutkaComponentCurve(cp, sampleRate, chA, 160, F_LO, F_HI, SKRUTKA_R_HARD_MAX) : null;
       // DYNAMIC PUNCH (v2.2): the punch radius is driven from its static
@@ -143,9 +189,28 @@ export function SkrutkaPanel({
       for (const point of curveB) maxMs = Math.max(maxMs, point.ms);
       if (driven) for (const point of driven) maxMs = Math.max(maxMs, point.ms);
       if (drivenPunch) for (const point of drivenPunch) maxMs = Math.max(maxMs, point.ms);
+      if (ghostA) for (const point of ghostA) maxMs = Math.max(maxMs, point.ms);
+      if (ghostB) for (const point of ghostB) maxMs = Math.max(maxMs, point.ms);
       maxMs *= 1.12;
 
       const yOf = (ms: number) => ch - (ms / maxMs) * (ch - 6) - 3;
+
+      // Stored-curve ghosts (faint, dotted): A amber, B blue.
+      const strokeGhost = (curve: { freqHz: number; ms: number }[], color: string) => {
+        c2d.strokeStyle = color;
+        c2d.setLineDash([2, 3]);
+        c2d.beginPath();
+        for (let i = 0; i < curve.length; i++) {
+          const x = xOf(curve[i]!.freqHz, cw);
+          const y = yOf(curve[i]!.ms);
+          if (i === 0) c2d.moveTo(x, y);
+          else c2d.lineTo(x, y);
+        }
+        c2d.stroke();
+        c2d.setLineDash([]);
+      };
+      if (ghostA) strokeGhost(ghostA, "rgba(255, 190, 120, 0.5)");
+      if (ghostB) strokeGhost(ghostB, "rgba(120, 200, 255, 0.45)");
 
       // LFO focus sweep shade (x axis).
       if ((p.lfoDepth ?? 0) > 1e-4) {
@@ -343,23 +408,68 @@ export function SkrutkaPanel({
     onParam("dispersion", Math.round(dispersion * 1000) / 1000);
   };
 
-  const fieldActive = Math.abs(params.field ?? 0) > 1e-4;
+  // The chips report the EFFECTIVE (morphed) state — what the DSP plays.
+  const displayed = morphTwistParams(params, curves, params.morph ?? 0);
+  const fieldActive = Math.abs(displayed.field ?? 0) > 1e-4;
+  const hasCurve = !!(curves?.slots.A || curves?.slots.B);
+  const morphPct = Math.round((params.morph ?? 0) * 100);
+  const morphMode =
+    !curves?.slots.A && !curves?.slots.B
+      ? "OFF"
+      : curves?.slots.A && curves?.slots.B
+        ? "A→B"
+        : curves?.slots.A
+          ? "A→LIVE"
+          : "LIVE→B";
   const chips = [
-    `SHAPE ${SKRUTKA_SHAPE_LABELS[Math.max(0, Math.min(3, Math.round(params.shape ?? 0)))]}`,
+    `SHAPE ${SKRUTKA_SHAPE_LABELS[Math.max(0, Math.min(3, Math.round(displayed.shape ?? 0)))]}`,
     fieldActive
-      ? `FIELD ${Math.round(Math.abs(params.field ?? 0) * 100)}% ${(params.field ?? 0) > 0 ? "SIDE" : "MID"}`
+      ? `FIELD ${Math.round(Math.abs(displayed.field ?? 0) * 100)}% ${(displayed.field ?? 0) > 0 ? "SIDE" : "MID"}`
       : "FIELD STEREO",
-    Math.abs(params.dyn ?? 0) > 1e-4
-      ? `DYN ${(params.dyn ?? 0) > 0 ? "ATTACK" : "BODY"} ${Math.round(Math.abs(params.dyn ?? 0) * 100)}%`
+    Math.abs(displayed.dyn ?? 0) > 1e-4
+      ? `DYN ${(displayed.dyn ?? 0) > 0 ? "ATTACK" : "BODY"} ${Math.round(Math.abs(displayed.dyn ?? 0) * 100)}%`
       : "DYN OFF",
-    Math.abs(params.dynPunch ?? 0) > 1e-4
-      ? `PUNCH-DYN ${(params.dynPunch ?? 0) > 0 ? "ATTACK" : "BODY"} ${Math.round(Math.abs(params.dynPunch ?? 0) * 100)}%`
+    Math.abs(displayed.dynPunch ?? 0) > 1e-4
+      ? `PUNCH-DYN ${(displayed.dynPunch ?? 0) > 0 ? "ATTACK" : "BODY"} ${Math.round(Math.abs(displayed.dynPunch ?? 0) * 100)}%`
       : "PUNCH-DYN OFF",
-    `KEY ${["OFF", "PUMP", "DUCK"][Math.max(0, Math.min(2, Math.round(params.keyMode ?? 0)))]}`,
-    (params.lfoDepth ?? 0) > 1e-4
-      ? `LFO ${SKRUTKA_LFO_SHAPE_LABELS[Math.max(0, Math.min(2, Math.round(params.lfoShape ?? 0)))]} ${Math.round((params.lfoDepth ?? 0) * 100)}%`
+    `KEY ${["OFF", "PUMP", "DUCK"][Math.max(0, Math.min(2, Math.round(displayed.keyMode ?? 0)))]}`,
+    (displayed.lfoDepth ?? 0) > 1e-4
+      ? `LFO ${SKRUTKA_LFO_SHAPE_LABELS[Math.max(0, Math.min(2, Math.round(displayed.lfoShape ?? 0)))]} ${Math.round((displayed.lfoDepth ?? 0) * 100)}%`
       : "LFO OFF",
+    hasCurve ? `MORPH ${morphPct}% ${morphMode}` : "MORPH OFF",
   ];
+
+  /** Push the curve state straight into the live runtime (mirrors MORPH scenes). */
+  const runtimeSetCurves = (a: Record<string, number> | null, b: Record<string, number> | null) => {
+    const engine = services.engine as unknown as {
+      getFxRuntime?: (trackId: string, fxId: string) => unknown;
+    };
+    const runtime = engine.getFxRuntime?.(trackId, fxId) as {
+      setCurves?: (a: Record<string, number> | null, b: Record<string, number> | null) => void;
+    } | null;
+    runtime?.setCurves?.(a, b);
+  };
+
+  // Undo/redo and project reload can change the persisted snapshots without a
+  // STORE/CLEAR click in this panel. Keep the live worklet on the document's
+  // authoritative device state whenever that state changes.
+  useEffect(() => {
+    const state = readTwistCurvesState(deviceState);
+    runtimeSetCurves(state?.slots.A ?? null, state?.slots.B ?? null);
+  }, [deviceState, fxId, services.engine, trackId]);
+
+  const captureCurve = (slot: TwistCurveSlot) => {
+    if (!onCurvesStateChange) return;
+    const next: TwistCurvesState = { slots: { ...(curves?.slots ?? {}), [slot]: pickTwistCurveParams(params) } };
+    onCurvesStateChange(next);
+    runtimeSetCurves(next.slots.A ?? null, next.slots.B ?? null);
+  };
+
+  const clearCurves = () => {
+    if (!onCurvesStateChange) return;
+    onCurvesStateChange({ slots: {} });
+    runtimeSetCurves(null, null);
+  };
 
   return (
     <section className={`skrutka-panel${docked ? " docked" : ""}`} aria-label="TWIST group delay">
@@ -409,6 +519,44 @@ export function SkrutkaPanel({
           onGestureEnd?.();
         }}
       />
+      <div className="skrutka-curves" role="group" aria-label="Curve snapshots">
+        {TWIST_CURVE_SLOTS.map((slot) => (
+          <button
+            key={slot}
+            type="button"
+            className={`btn btn-small${curves?.slots[slot] ? " on" : ""}`}
+            aria-pressed={!!curves?.slots[slot]}
+            onClick={() => captureCurve(slot)}
+            disabled={!onCurvesStateChange}
+            title={`Store the current rack settings as curve ${slot}`}
+          >
+            STORE {slot}
+          </button>
+        ))}
+        <button
+          type="button"
+          className="btn btn-small"
+          onClick={clearCurves}
+          disabled={!onCurvesStateChange || !hasCurve}
+          title="Forget both stored curves"
+        >
+          CLEAR
+        </button>
+        <input
+          type="range"
+          className="skrutka-morph"
+          min={0}
+          max={1}
+          step={0.01}
+          value={params.morph ?? 0}
+          aria-label="Curve morph"
+          disabled={!hasCurve || !onParam}
+          title="Blend between the stored curves — automatable, and an intensity-sourced macro can drive it"
+          onPointerDown={() => onGestureStart?.()}
+          onPointerUp={() => onGestureEnd?.()}
+          onChange={(event) => onParam?.("morph", Number(event.target.value))}
+        />
+      </div>
       <div className="skrutka-chips">
         {chips.map((chip) => (
           <span key={chip} className="skrutka-chip">

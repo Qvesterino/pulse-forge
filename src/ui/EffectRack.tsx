@@ -1125,6 +1125,12 @@ function Device({
                 params={fx.params}
                 degraded={!!fallbackReason}
                 docked={devicesMode}
+                deviceState={fx.deviceState}
+                onCurvesStateChange={(next) =>
+                  services.store.execute(
+                    setDeviceState(doc, track.id, fx.id, { kind: "twist-curves-v1", data: { ...next } }),
+                  )
+                }
                 onParam={(paramId, value) =>
                   services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))
                 }

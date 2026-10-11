@@ -2319,6 +2319,14 @@ export const skrutkaParams: ParamDef[] = [
   { id: "lfoDepth", label: "LFO DEPTH", min: 0, max: 1, default: 0, format: formatPct },
   { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
   { id: "output", label: "OUTPUT", min: -18, max: 12, default: 0, unit: "dB", format: formatDb },
+  {
+    id: "morph",
+    label: "MORPH",
+    min: 0,
+    max: 1,
+    default: 0,
+    format: (v) => `${Math.round(v * 100)}%`,
+  },
 ];
 
 export const vinylParams: ParamDef[] = [

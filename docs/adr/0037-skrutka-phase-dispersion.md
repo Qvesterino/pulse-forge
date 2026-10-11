@@ -252,3 +252,48 @@ on sustain and the two directions are complementary), bit-exactness at
 `dynPunch = 0`, the model's punch-ceiling contract, the panel chip, and the
 motion soak now includes the drive in its worst-case surface (the static
 drift soak keeps it off).
+
+## Addendum 4 (2026-10-11) — v2.3: CURVE SNAPSHOTS (A/B + MORPH)
+
+Two stored curves and a morph position that an automation lane or an
+intensity-sourced macro can ride: intro = curve A (center gulp) → drop =
+curve B (sides shimmer).
+
+1. **Snapshots** live on the effect's `deviceState` (kind
+   `twist-curves-v1`, A/B maps, sanitized in `project-model/schema.ts` like
+   the other device-state kinds). STORE A/B commits the current rack params
+   as ONE undoable `setDeviceState` command (the MORPH-scenes pattern).
+2. **`morph` is a real rack parameter** (0..1, default 0) — deliberately not
+   a deviceState value, so the existing automation lanes and the
+   `MacroMapping { source: "intensity", target }` path drive it without any
+   engine change.
+3. **The blend is host-side in the node** (`morphTwistParams`, shared with
+   the panel so the drawn curve is always the effective one):
+   - no slot stored → morph is a strict no-op (the rack params are the sound);
+   - only one slot → morph blends that snapshot ↔ the live/base params
+     (store A, dial the drop, morph — no second capture needed);
+   - both stored → morph blends A → B;
+   - a missing id on one side falls back to the base value (partial snapshots
+     and imported projects stay musical).
+   `morph` rides `setParameterAt` like any other param, so offline automation
+   is native and live == offline holds; a chain rebuild re-reads
+   `deviceState` and lands on the same sound (STORE/CLEAR additionally
+   re-seed the live runtime via `setCurves`, the MORPH `morphToParams`
+   precedent, so the change is audible without a rebuild). Log-tapered FOCUS
+   and LFO RATE interpolate geometrically; continuous controls interpolate
+   linearly; enums and the `punchHz = 0` AUTO sentinel switch at the midpoint.
+4. **Panel** — STORE A / STORE B / CLEAR buttons, a MORPH slider (disabled
+   until a slot exists), dotted ghost curves for the stored sides, a
+   `MORPH x% A→B / A→LIVE / LIVE→B` chip, and the state chips report the
+   EFFECTIVE (morphed) values. With no snapshots the panel degrades exactly
+   to the v2.2 behaviour and the DSP render is untouched (bit-exact).
+
+Validation (`tests/skrutka-curves.test.ts`, panel suite): the capture surface
+is exactly `skrutkaParams − morph` (drift guard), the sanitizer drops hostile
+blobs, the pure blend semantics (no-slot identity, one-slot live blend,
+A→B, fallbacks, clamps), node-level construction at morph > 0, live morph
+moves and `setParameterAt` scheduling, `setCurves` re-seeding and CLEAR
+restoring the live knobs, undo/redo re-seeding from the document, perceptual
+frequency interpolation, enum/AUTO midpoint behavior, and the curve-less node
+treating morph as a strict no-op. The `morph` param is context-coupled (audible
+only with a stored curve), the same class as `lfoRate`/`keyMode`.

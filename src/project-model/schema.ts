@@ -865,6 +865,7 @@ export function sanitizeDeviceState(raw: unknown): DeviceState | undefined {
   if (typeof ds.data !== "object" || ds.data === null || Array.isArray(ds.data)) return undefined;
   if (ds.kind === "ultina-ab-v1" || ds.kind === "effect-ab-v1") return sanitizeAbState(ds.kind, ds.data);
   if (ds.kind === "morph-scenes-v1") return sanitizeMorphScenesState(ds.data);
+  if (ds.kind === "twist-curves-v1") return sanitizeTwistCurvesState(ds.data);
   return undefined;
 }
 
@@ -926,6 +927,32 @@ function sanitizeMorphScenesState(data: Record<string, unknown>): DeviceState | 
   }
   if (!hasValidSlot) return undefined;
   return { kind: "morph-scenes-v1", data: { slots } };
+}
+
+/**
+ * TWIST curve snapshots (A/B) — two full rack-parameter maps the MORPH knob
+ * blends between. Values are numeric-validated and size-bounded; the node
+ * falls back to the live base value for any id a partial snapshot misses.
+ */
+function sanitizeTwistCurvesState(data: Record<string, unknown>): DeviceState | undefined {
+  const rawSlots = (data.slots ?? null) as Record<string, unknown> | null;
+  if (typeof rawSlots !== "object" || rawSlots === null || Array.isArray(rawSlots)) return undefined;
+  const slots: Record<string, Record<string, number>> = {};
+  let hasValidSlot = false;
+  for (const slot of ["A", "B"] as const) {
+    const raw = rawSlots[slot];
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) continue;
+    hasValidSlot = true;
+    const clean: Record<string, number> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>).slice(0, DEVICE_STATE_SLOT_KEYS_MAX)) {
+      if (key.length <= DEVICE_STATE_KEY_MAX && typeof value === "number" && Number.isFinite(value)) {
+        clean[key] = value;
+      }
+    }
+    slots[slot] = clean;
+  }
+  if (!hasValidSlot) return undefined;
+  return { kind: "twist-curves-v1", data: { slots } };
 }
 
 /**

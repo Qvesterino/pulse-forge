@@ -5,6 +5,17 @@ import { parseKey, snapToScale, SCALE_INTERVALS } from "../project-model/scales"
 import { uid } from "../shared/ids";
 import { MELODIC_BY_GENRE, MELODIC_BY_PROFILE, MELODIC_BY_STYLE } from "./grooves/melodic-data";
 
+/**
+ * True when the prompt's STYLE names a melodic DIALECT for the genre (the
+ * `genre.style` key in MELODIC_BY_STYLE). A dialect is an explicit identity
+ * statement — the caller lets it REPLACE the harmony engine for that
+ * generation instead of being buried under it.
+ */
+export function hasMelodicDialect(genre: string, style?: string): boolean {
+  if (!style) return false;
+  return !!MELODIC_BY_STYLE[`${genre}.${style.toLowerCase()}`];
+}
+
 const DEGREE_MIN = -1; // rest
 const DEGREE_MAX = 6; // 7th
 const DEGREE_COUNT = DEGREE_MAX - DEGREE_MIN + 1; // 8

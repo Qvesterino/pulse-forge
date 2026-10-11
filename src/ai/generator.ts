@@ -4,7 +4,7 @@ import { forkRandom, hashString } from "../shared/rng";
 import { uid } from "../shared/ids";
 import { getGroovesForGenre, getGrooveById, preferGroovesByLanes, preferGroovesForWindow } from "./grooves/index";
 import { generateDrumPattern } from "./drums";
-import { generateMelodicParts } from "./melodic";
+import { generateMelodicParts, hasMelodicDialect } from "./melodic";
 import { generateMultiVoice } from "../intent/multi-voice";
 import { drumTrackForTarget, instrumentTargets, instrumentTrackForRole } from "./role-targets";
 import { inferPadRole } from "./pad-roles";
@@ -303,7 +303,14 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
   // engines.
   const melodicRolesWanted = !roles || roles.some((r) => r === "bass" || r === "chords" || r === "lead");
   let parts = melodicParts;
-  if (melodicRolesWanted) {
+  // DIALECT PRECEDENCE: a matched style dialect is an explicit identity
+  // statement and REPLACES the engine (it is a self-contained musical
+  // statement — the log drum, the metal gallop). The engine serves every
+  // generation WITHOUT a dialect match; the plain genre table is the
+  // engine's fallback and never overrides it.
+  const dialectMatched = melodicRolesWanted && hasMelodicDialect(options.genre, options.style);
+  if (dialectMatched) parts = melodicParts;
+  if (melodicRolesWanted && !dialectMatched) {
     const seedNumber = (parseInt(String(effectiveSeed).slice(-8), 36) || 42) >>> 0;
     const multiVoice = generateMultiVoice(
       doc,
