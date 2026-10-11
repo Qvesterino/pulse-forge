@@ -517,12 +517,64 @@ describe("TWIST v2.1 (FIELD — M/S dispersion field)", () => {
     expect(nearZero).toEqual(legacy);
   });
 
+  it("keeps the automated transition out of the legacy FIELD basis click-safe", () => {
+    const cls = registered.get("skrutka-processor");
+    const left = (i: number) =>
+      0.24 * Math.sin((2 * Math.PI * 83 * i) / SR) + 0.12 * Math.sin((2 * Math.PI * 1700 * i) / SR);
+    const right = (i: number) =>
+      0.18 * Math.sin((2 * Math.PI * 137 * i) / SR + 0.3) + 0.09 * Math.sin((2 * Math.PI * 2700 * i) / SR);
+    const base = { dispersion: 0.75, focusHz: 320, spread: 0.8, mix: 1, field: 0 };
+    const seconds = 0.8;
+    const transitionSample = Math.floor((seconds * SR) / 2 / BLOCK) * BLOCK;
+    const baseline = renderProcessorStereo(cls, paramsOf(cls, base), seconds, left, right);
+    const proc = new cls();
+    const params = paramsOf(cls, base);
+    const total = Math.ceil(seconds * SR);
+    const outL = new Float32Array(total);
+    const outR = new Float32Array(total);
+
+    for (let offset = 0; offset < total; offset += BLOCK) {
+      if (offset >= transitionSample) params.field![0] = 0.8;
+      const len = Math.min(BLOCK, total - offset);
+      const inputs = [
+        Float32Array.from({ length: len }, (_, i) => left(offset + i)),
+        Float32Array.from({ length: len }, (_, i) => right(offset + i)),
+      ];
+      const outputs = [new Float32Array(len), new Float32Array(len)];
+      proc.process([inputs], [outputs], params);
+      outL.set(outputs[0]!.subarray(0, len), offset);
+      outR.set(outputs[1]!.subarray(0, len), offset);
+    }
+
+    let firstBlockPeakDelta = 0;
+    let firstSampleDeltaStep = 0;
+    let settledDelta = 0;
+    for (let i = transitionSample; i < Math.min(total, transitionSample + Math.floor(0.12 * SR)); i++) {
+      const deltaL = outL[i]! - baseline.L[i]!;
+      const deltaR = outR[i]! - baseline.R[i]!;
+      settledDelta = Math.max(settledDelta, Math.abs(deltaL), Math.abs(deltaR));
+      if (i < transitionSample + BLOCK)
+        firstBlockPeakDelta = Math.max(firstBlockPeakDelta, Math.abs(deltaL), Math.abs(deltaR));
+      if (i === transitionSample) {
+        firstSampleDeltaStep = Math.max(
+          Math.abs(deltaL - (outL[i - 1]! - baseline.L[i - 1]!)),
+          Math.abs(deltaR - (outR[i - 1]! - baseline.R[i - 1]!)),
+        );
+      }
+    }
+    expect(settledDelta).toBeGreaterThan(0.01);
+    expect(firstSampleDeltaStep).toBeLessThan(0.01);
+    expect(firstBlockPeakDelta).toBeLessThan(0.05);
+  });
+
   it("the curve model exposes the FIELD amounts and the M/S focus split", () => {
     expect(skrutkaFieldAmounts(1)).toEqual({ mid: 0, side: 1 });
     expect(skrutkaFieldAmounts(-1)).toEqual({ mid: 1, side: 0 });
     expect(skrutkaFieldAmounts(0.5)).toEqual({ mid: 0.5, side: 1 });
     expect(skrutkaFieldAmounts(-0.5)).toEqual({ mid: 1, side: 0.5 });
     expect(skrutkaFocusForChannel(220, 1, "M")).toBeCloseTo(220, 6);
+    expect(skrutkaFocusForChannel(220, 1, "M", 0)).toBeCloseTo(220 * 0.88, 6);
+    expect(skrutkaFocusForChannel(220, 1, "M", 0.5)).toBeCloseTo(220 * 0.94, 6);
     expect(skrutkaFocusForChannel(220, 1, "S")).toBeGreaterThan(skrutkaFocusForChannel(220, 1, "M"));
     // SPREAD splits the component curves: M (centered) and S (offset) carry
     // measurably different arrival times.

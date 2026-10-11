@@ -39,7 +39,7 @@ export function parseLoudnessIntent(text: string): LoudnessIntentParse | null {
       lower,
     );
   const isLouder = /\bmake it louder\b|\blouder\b|\bmore loud\b|\bhlas(?:it|ie|ej)/.test(lower);
-  const isQuieter = /\bmake it quieter\b|\bquieter\b|\bquieter mix\b|\btich(?:ie|si)|\bmenej hlas|\bsofter mix\b/.test(
+  const isQuieter = /\bmake it quieter\b|\bquieter\b|\bquieter mix\b|\btich(?:ie|si)|\bpotichu\b|\bticho\b|\bmenej hlas|\bsofter mix\b/.test(
     lower,
   );
   if (targetMatch) {

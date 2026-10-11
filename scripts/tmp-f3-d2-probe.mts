@@ -4,7 +4,7 @@ import { normalizeIntent } from "../src/intent/normalize";
 import { planGeneration } from "../src/intent/plan";
 import { generatePattern } from "../src/ai/generator";
 import { generateMultiVoice } from "../src/intent/multi-voice";
-import { instrumentTargets, instrumentTrackForRole } from "../src/ai/melodic";
+import { instrumentTargets, instrumentTrackForRole } from "../src/ai/role-targets";
 
 const doc = testDoc();
 console.log("doc tracks:", doc.tracks.map((t) => `${t.kind}:${t.name}`).join(", "));

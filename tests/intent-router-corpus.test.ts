@@ -56,6 +56,7 @@ const CASES: Case[] = [
   { text: "unmute drums", kind: "exact" },
   { text: "mute everything", kind: "exact" },
   { text: "solo the bass", kind: "exact" },
+  { text: "soluj basu", kind: "exact" },
   { text: "pan the bass left 30", kind: "exact" },
   { text: "transpose the lead up one octave", kind: "exact" },
   { text: "posun lead hore o 2 semitony", kind: "exact" },
@@ -87,6 +88,7 @@ const CASES: Case[] = [
   { text: "loudness na −9", kind: "loudness" },
   { text: "loudness to -9 lufs", kind: "loudness" },
   { text: "hlasitejši", kind: "loudness" },
+  { text: "potichu", kind: "loudness" },
   { text: "quieter", kind: "loudness" },
 
   // ── TEMPO — explicit tempo words (no genre context) ────────────────────
@@ -115,6 +117,7 @@ const CASES: Case[] = [
   { text: "punchier", kind: "mix" },
   { text: "darker mix", kind: "mix" },
   { text: "tmavsi zvuk", kind: "mix" },
+  { text: "tmavší zvuk", kind: "mix" },
   { text: "viac dozvuku", kind: "mix" },
   { text: "bez pumpy", kind: "mix" },
   { text: "darker", kind: "mix" },
@@ -150,6 +153,8 @@ const CASES: Case[] = [
   { text: "add a break before the drop", kind: "arrange", scenes: true },
   { text: "pridaj break pred drop", kind: "arrange", scenes: true },
   { text: "duplicate the chorus", kind: "arrange", scenes: true },
+  { text: "zdvojnásob refren", kind: "arrange", scenes: true },
+  { text: "duplikuj refren", kind: "arrange", scenes: true },
   { text: "remove the bridge", kind: "arrange", scenes: true },
 
   // ── TRANSPORT / SAVE / EXPORT / RECORD ─────────────────────────────────

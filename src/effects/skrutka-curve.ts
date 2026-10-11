@@ -101,14 +101,20 @@ export function skrutkaPunchFocus(focusHz: number, punch: number, punchHz: numbe
 }
 
 /**
- * Focus pole frequency for one chain after the SPREAD offset.
- * L/R are the legacy stereo chains (opposite offsets); M/S are the FIELD
- * components (mid centered, side takes the offset).
+ * Focus pole frequency for one chain after the SPREAD/FIELD offset.
+ * L/R are the legacy stereo chains; in FIELD mode the first chain glides from
+ * the left offset toward center while the second chain keeps the side offset.
  */
-export function skrutkaFocusForChannel(focusHz: number, spread: number, channel: SkrutkaChannel): number {
+export function skrutkaFocusForChannel(focusHz: number, spread: number, channel: SkrutkaChannel, field = 1): number {
   const f = clamp(focusHz, SKRUTKA_FOCUS_MIN_HZ, SKRUTKA_FOCUS_MAX_HZ);
   const s = clamp(spread, 0, 1);
-  const factor = channel === "M" ? 1 : channel === "L" ? 1 - SKRUTKA_SPREAD_OFFSET * s : 1 + SKRUTKA_SPREAD_OFFSET * s;
+  const fieldBlend = clamp(Math.abs(field), 0, 1);
+  const factor =
+    channel === "M"
+      ? 1 - SKRUTKA_SPREAD_OFFSET * s * (1 - fieldBlend)
+      : channel === "L"
+        ? 1 - SKRUTKA_SPREAD_OFFSET * s
+        : 1 + SKRUTKA_SPREAD_OFFSET * s;
   return clamp(f * factor, SKRUTKA_FOCUS_MIN_HZ, SKRUTKA_SECTION_MAX_HZ);
 }
 
@@ -169,7 +175,7 @@ function skrutkaPhaseAt(
   const shape = Math.round(clamp(params.shape ?? 0, 0, 3));
   const radius = radiusOverride ?? skrutkaRadius(params.dispersion, shape);
   const c2 = radius * radius;
-  const focus = skrutkaFocusForChannel(params.focusHz, params.spread, channel);
+  const focus = skrutkaFocusForChannel(params.focusHz, params.spread, channel, params.field ?? 0);
   const factors = skrutkaSectionFactors(shape);
   let phase = 0;
   for (let s = 0; s < SKRUTKA_LONG_SECTIONS; s++) {

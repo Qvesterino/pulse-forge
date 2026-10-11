@@ -94,7 +94,7 @@ const VERBS = {
   makeSize: /\b(make|set|turn|resize)/,
   add: /\b(add|insert|put|pridaj|prida|vloz|daj)\b/,
   remove: /\b(remove|delete|take out|strip|odstra|odstran|vymaz|vyhod)\b/,
-  duplicate: /\b(duplicate|double|copy|zdvoj|skopir|opakuj)\b/,
+  duplicate: /\b(duplicate|double|copy|zdvoj(?:n[aá]sob)?|duplikuj|skopir(?:uj)?|opakuj)\b/,
   move: /\b(move|shift|push|posun)/,
   arrange: /\b(arrange|usporiadaj|usporiad|into a song|do pesnicky|do piesne)/,
 };

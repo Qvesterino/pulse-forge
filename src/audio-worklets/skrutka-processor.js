@@ -338,17 +338,19 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
     this.lastRadius = radius;
 
     // --- DISPERSION angles (shape → per-section pole cosines) ------------
-    // FIELD picks the topology: |field| <= 1e-4 is the legacy stereo path
-    // (independent L/R chains, spread offsets L vs R); otherwise the chains
-    // process the MID and SIDE components with a continuous FIELD crossfade
-    // (mid dry at +1, side dry at −1). With the same coefficients the M/S
-    // topology is mathematically the L/R topology (linearity), so the
-    // crossfade is phase-continuous.
+    // FIELD smoothly rotates the two filter states from the legacy L/R basis
+    // toward an orthogonal M/S basis. This avoids a topology switch (and its
+    // state discontinuity) when automation leaves zero. The tiny deadband
+    // keeps the legacy default bit-exact.
     const fieldActive = Math.abs(sm.field) > 1e-4;
+    const fieldBlend = fieldActive ? Math.abs(sm.field) : 0;
+    const fieldAngle = fieldBlend * (Math.PI / 4);
+    const fieldCos = Math.cos(fieldAngle);
+    const fieldSin = Math.sin(fieldAngle);
     const midAmount = sm.field <= 0 ? 1 : 1 - sm.field;
     const sideAmount = sm.field >= 0 ? 1 : 1 + sm.field;
     const focusEff = clamp(sm.focusHz * lfoFactor, FOCUS_MIN_HZ, 4000);
-    const fA = clamp(fieldActive ? focusEff : focusEff * (1 - SPREAD_OFFSET * sm.spread), FOCUS_MIN_HZ, SECTION_MAX_HZ);
+    const fA = clamp(focusEff * (1 - SPREAD_OFFSET * sm.spread * (1 - fieldBlend)), FOCUS_MIN_HZ, SECTION_MAX_HZ);
     const fB = clamp(focusEff * (1 + SPREAD_OFFSET * sm.spread), FOCUS_MIN_HZ, SECTION_MAX_HZ);
     const cosL = this.cosL;
     const cosR = this.cosR;
@@ -436,18 +438,14 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
       }
 
       // --- DISPERSION stage ---------------------------------------------
-      // Legacy stereo (|field| ≤ 1e-4): two independent L/R chains. FIELD
-      // mode: the same two chains process the MID and SIDE components and
-      // the FIELD crossfade blends each against its dry component — at
-      // field = +1 the mid is bit-exact dry (sides-only dispersion is
-      // bit-transparent for mono content), at field = −1 the side is.
+      // At field = 0 the two chains are the legacy L/R pair. As FIELD moves,
+      // their input basis rotates continuously toward M/S and the inverse
+      // rotation decodes the outputs before the signed M/S wet crossfade.
       let xl;
       let xr;
       if (fieldActive) {
-        const mid = (l + r) * 0.5;
-        const side = (l - r) * 0.5;
-        let midD = mid;
-        let sideD = side;
+        let basisA = fieldCos * l + fieldSin * r;
+        let basisB = -fieldSin * l + fieldCos * r;
         {
           const st = long[0];
           const x1 = st.x1;
@@ -456,12 +454,12 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
           const y2 = st.y2;
           for (let s = 0; s < LONG_SECTIONS; s++) {
             const c1 = -2 * radius * cosL[s];
-            const y = c2 * midD + c1 * x1[s] + x2[s] - c1 * y1[s] - c2 * y2[s];
+            const y = c2 * basisA + c1 * x1[s] + x2[s] - c1 * y1[s] - c2 * y2[s];
             x2[s] = x1[s];
-            x1[s] = midD;
+            x1[s] = basisA;
             y2[s] = y1[s];
             y1[s] = Math.abs(y) < DENORM ? 0 : y;
-            midD = y1[s];
+            basisA = y1[s];
           }
           const stS = long[1];
           const sx1 = stS.x1;
@@ -470,16 +468,22 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
           const sy2 = stS.y2;
           for (let s = 0; s < LONG_SECTIONS; s++) {
             const c1 = -2 * radius * cosR[s];
-            const y = c2 * sideD + c1 * sx1[s] + sx2[s] - c1 * sy1[s] - c2 * sy2[s];
+            const y = c2 * basisB + c1 * sx1[s] + sx2[s] - c1 * sy1[s] - c2 * sy2[s];
             sx2[s] = sx1[s];
-            sx1[s] = sideD;
+            sx1[s] = basisB;
             sy2[s] = sy1[s];
             sy1[s] = Math.abs(y) < DENORM ? 0 : y;
-            sideD = sy1[s];
+            basisB = sy1[s];
           }
         }
-        const midOut = mid + (midD - mid) * midAmount;
-        const sideOut = side + (sideD - side) * sideAmount;
+        const filteredL = fieldCos * basisA - fieldSin * basisB;
+        const filteredR = fieldSin * basisA + fieldCos * basisB;
+        const dryMid = (l + r) * 0.5;
+        const drySide = (l - r) * 0.5;
+        const filteredMid = (filteredL + filteredR) * 0.5;
+        const filteredSide = (filteredL - filteredR) * 0.5;
+        const midOut = dryMid + (filteredMid - dryMid) * midAmount;
+        const sideOut = drySide + (filteredSide - drySide) * sideAmount;
         xl = midOut + sideOut;
         xr = midOut - sideOut;
       } else {

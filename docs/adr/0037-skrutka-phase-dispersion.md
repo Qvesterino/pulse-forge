@@ -187,18 +187,20 @@ The display name moved to **TWIST** (the effect id stays `skrutka`; see
 `docs/PLUGIN-NAMING-INVENTORY.md`) — identifiers, schema and saved projects
 are untouched. Two additions:
 
-1. **FIELD (`field`, −1..+1, default 0).** The two all-pass chains can now
-   process the MID and SIDE components instead of L/R, with a continuous
-   crossfade: `field = +1` leaves the mid bit-exact dry (sides-only
+1. **FIELD (`field`, −1..+1, default 0).** The two all-pass chains rotate
+   continuously from the legacy L/R basis toward an orthogonal M/S basis as
+   `|field|` rises; the existing 30 ms parameter glide also glides that basis.
+   At `field = +1` the mid remains bit-exactly dry (sides-only
    dispersion is **bit-transparent for mono content** — a mono render comes
    out sample-identical), `field = −1` leaves the side dry (center-phase
    smear only), and everything between blends each component between dry and
-   dispersed. In FIELD mode SPREAD is repurposed: the SIDE focus takes the
-   offset while the mid stays centered, so the component humps split.
+   dispersed. In FIELD mode SPREAD moves the first chain's focus continuously
+   from the legacy left offset toward center while the second chain keeps the
+   side offset. The 1e-4 deadband retains bit-exact v1/v2 at the default.
    `|field| ≤ 1e-4` is the legacy stereo path — bit-exact v1/v2, so the
-   frozen hash and every existing project are untouched. With identical
-   coefficients the M/S topology is mathematically the L/R topology
-   (linearity), which keeps the knob musically continuous.
+   frozen hash and every existing project are untouched. Rotating the filter
+   basis avoids the state discontinuity caused by switching from L/R filter
+   history to M/S history at the deadband edge.
 2. **300 s flagship hardening** (`tests/skrutka-soak.test.ts`, AGENTS parity
    with PRISM/VLYX/VØID): a MOTION soak (full cascade + dyn + key + 8 Hz
    random LFO + FIELD, 300 s) proves zero non-finite, zero subnormals, flat
@@ -216,6 +218,9 @@ output), mid/side isolation at ±1 (the untouched component matches the dry
 render to ≤ 1e-6 while the other moves), the threshold bit-exactness at
 `field = 5e-5`, the model's `skrutkaFieldAmounts` contract and the M/S
 focus split, panel chips for FIELD STEREO/SIDE/MID, and the two 300 s soaks.
+The transition regression measures the first output step and first-block
+deviation when automating FIELD out of zero (baseline 0.1099 / 0.7101; rotated
+basis 0.0067 / 0.0335 on the pinned stereo probe).
 
 ## Addendum 3 (2026-10-11) — v2.2: DYNAMIC PUNCH
 
@@ -275,13 +280,13 @@ curve B (sides shimmer).
    - both stored → morph blends A → B;
    - a missing id on one side falls back to the base value (partial snapshots
      and imported projects stay musical).
-   `morph` rides `setParameterAt` like any other param, so offline automation
-   is native and live == offline holds; a chain rebuild re-reads
-   `deviceState` and lands on the same sound (STORE/CLEAR additionally
-   re-seed the live runtime via `setCurves`, the MORPH `morphToParams`
-   precedent, so the change is audible without a rebuild). Log-tapered FOCUS
-   and LFO RATE interpolate geometrically; continuous controls interpolate
-   linearly; enums and the `punchHz = 0` AUTO sentinel switch at the midpoint.
+     `morph` rides `setParameterAt` like any other param, so offline automation
+     is native and live == offline holds; a chain rebuild re-reads
+     `deviceState` and lands on the same sound (STORE/CLEAR additionally
+     re-seed the live runtime via `setCurves`, the MORPH `morphToParams`
+     precedent, so the change is audible without a rebuild). Log-tapered FOCUS
+     and LFO RATE interpolate geometrically; continuous controls interpolate
+     linearly; enums and the `punchHz = 0` AUTO sentinel switch at the midpoint.
 4. **Panel** — STORE A / STORE B / CLEAR buttons, a MORPH slider (disabled
    until a slot exists), dotted ghost curves for the stored sides, a
    `MORPH x% A→B / A→LIVE / LIVE→B` chip, and the state chips report the
@@ -309,7 +314,7 @@ only with a stored curve), the same class as `lfoRate`/`keyMode`.
    - `ghost-pad` — `skrutka-side-shimmer` → `portal-time-cap`;
    - `hyper-glitch` — `pitchshift-down` → `skrutka-chirp-rise` →
      `portal-sync-stutter`.
-   Chain trims are measured by the FX loudness harness (13 chains now).
+     Chain trims are measured by the FX loudness harness (13 chains now).
 2. **Semantic MOVES** in the targeted-effect parser (`src/intent/mix.ts`):
    "make the 808 throw", "wider hats, mono safe", "smear the attack on the
    lead" resolve to TWIST without naming a parameter or the device. A move is

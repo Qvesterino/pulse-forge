@@ -198,7 +198,7 @@ export function parseExactIntent(text: string): ExactIntentPlan | null {
   // expands to EVERY track for mute/solo ("mute everything" is a real ask).
   const muteMatch = /\b(mute|st\u00eds|vypni)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
   const unmuteMatch = /\b(unmute|zapni)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
-  const soloMatch = /\b(solo)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
+  const soloMatch = /\b(solo|soluj|zosoluj)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
   const unsoloMatch = /\b(?:unsolo|solo\s+off|zrus\s+solo)\s+(?:the\s+)?([a-z-]+)\b/.exec(lower);
   if (unmuteMatch) {
     const target = firstTarget(unmuteMatch[2], true);

@@ -598,12 +598,20 @@ describe("ReferenceMapPanel — MATCH (ako ďaleko som od referencie)", () => {
         getChannelData: () => pcm,
       };
     })();
-    renderProjectSpy.mockImplementation(async (renderDoc: { tracks: Array<{ instrument?: string }> }) => {
-      if (renderDoc?.tracks?.length === 1) {
-        return renderDoc.tracks[0]!.instrument === "bass" ? tone(55, 0.4, 4)() : silent();
-      }
-      return tone(55, 0.5, 4)();
-    });
+    renderProjectSpy.mockImplementation(
+      async (renderDoc: { tracks: Array<{ kind?: string; instrument?: string }> }) => {
+        // The house template's bass track is instrument "808" — classify by the
+        // same kinds the preset metadata treats as bass. Only that stem gets a
+        // measurable tone; other stems render silent (lufs null → not ranked).
+        const songTracks = (renderDoc?.tracks ?? []).filter((track) => track.kind !== "group");
+        if (songTracks.length === 1) {
+          return new Set(["bass", "808", "logdrum"]).has(songTracks[0]!.instrument ?? "")
+            ? tone(55, 0.4, 4)()
+            : silent();
+        }
+        return tone(55, 0.5, 4)();
+      },
+    );
 
     setup(ref);
     fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("deficit.wav")] } });

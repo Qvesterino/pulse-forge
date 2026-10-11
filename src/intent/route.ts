@@ -75,7 +75,13 @@ const COMPARATIVE =
   /\bdarker\b|\bbrighter\b|\bwarmer\b|\bcolder\b|\btmavsi|\bsvetlejsi|\bteplejsi|\bstudenlejsi|\brazantnejsi/;
 
 export function isMixIntentText(text: string): boolean {
-  const normalized = text.toLowerCase();
+  // Same normalization parseMixIntent applies — the guard must never be
+  // stricter than the parser (an accented "tmavší zvuk" used to fail here
+  // and fall through to generation — INTENT-AUDIT-2026-10 D6).
+  const normalized = ` ${text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")} `;
   return MIX_NOUN_VERB.test(normalized) || COMPARATIVE.test(normalized);
 }
 
