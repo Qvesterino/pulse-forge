@@ -24,7 +24,7 @@
  *    timbre that users describe as "phasey".
  */
 
-import { fft, ifftInto } from "./fft.js";
+import { fftRealInto, ifftRealInto } from "./fft.js";
 
 /** Magnitude floor for the log — keeps a silent bin from becoming -Infinity. */
 const LOG_FLOOR = 1e-9;
@@ -47,6 +47,8 @@ export class CepstralEnvelope {
   /** Cepstrum / liftered log-envelope workspace (real + imaginary). */
   private cepstrum = new Float64Array(0);
   private cepImag = new Float64Array(0);
+  private fftScratchRe = new Float64Array(0);
+  private fftScratchIm = new Float64Array(0);
   /** Output: log envelope over the half spectrum, geometric mean removed. */
   logEnv = new Float64Array(0);
   private sampleRate = 48000;
@@ -62,7 +64,9 @@ export class CepstralEnvelope {
     this.half = fftSize >> 1;
     this.logFull = new Float64Array(fftSize);
     this.cepstrum = new Float64Array(fftSize);
-    this.cepImag = new Float64Array(fftSize);
+    this.cepImag = new Float64Array(this.half + 1);
+    this.fftScratchRe = new Float64Array(this.half);
+    this.fftScratchIm = new Float64Array(this.half);
     this.logEnv = new Float64Array(this.half + 1);
     this.primed = false;
   }
@@ -109,7 +113,12 @@ export class CepstralEnvelope {
     const cepIm = this.cepImag;
     cep.set(logFull);
     cepIm.fill(0);
-    ifftInto(cep, cepIm);
+    ifftRealInto(cep, cepIm, this.fftScratchRe, this.fftScratchIm);
+    // The original complex inverse path is intentionally unnormalised; the
+    // following forward FFT then produces N·logSpectrum and the 1/N below
+    // returns the same envelope scale. Restore that convention after the real
+    // inverse, whose shared helper normalises its output for synthesis use.
+    for (let i = 0; i < n; i++) cep[i] *= n;
 
     // 3. Lifter: keep only low quefrency bins (the vocal tract is a short
     //    filter — roughly 2-3 ms), mirrored so the result stays real and even.
@@ -118,7 +127,7 @@ export class CepstralEnvelope {
     for (let i = q + 2; i < n - q - 1; i++) cep[i] = 0;
 
     // 4. Back to the frequency domain: the lifted cepstrum IS the log envelope.
-    fft(cep, cepIm);
+    fftRealInto(cep, cep, cepIm, this.fftScratchRe, this.fftScratchIm);
     const invN = 1 / n;
 
     // Remove the DC (quefrency-0) coefficient so the envelope has geometric

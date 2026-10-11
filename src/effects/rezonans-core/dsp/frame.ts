@@ -13,7 +13,7 @@
 
 import { CepstralEnvelope } from "./cepstrum.js";
 import { PitchTracker } from "./pitchTrack.js";
-import { fft, hannWindow, princarg } from "./fft.js";
+import { fftRealInto, hannWindow, princarg } from "./fft.js";
 
 const ENV_MIN = 1e-6;
 const ENV_MAX = 1e6;
@@ -39,6 +39,8 @@ export class FrameEngine {
 
   private re = new Float64Array(0);
   private im = new Float64Array(0);
+  private fftScratchRe = new Float64Array(0);
+  private fftScratchIm = new Float64Array(0);
 
   /** Current frame — public because voices read it directly. */
   mag = new Float64Array(0);
@@ -128,8 +130,10 @@ export class FrameEngine {
 
     this.frame = new Float32Array(fftSize);
     this.window = hannWindow(fftSize);
-    this.re = new Float64Array(fftSize);
-    this.im = new Float64Array(fftSize);
+    this.re = new Float64Array(this.half + 1);
+    this.im = new Float64Array(this.half + 1);
+    this.fftScratchRe = new Float64Array(this.half);
+    this.fftScratchIm = new Float64Array(this.half);
     this.mag = new Float64Array(this.half + 1);
     this.phase = new Float64Array(this.half + 1);
     this.phaseAdvance = new Float64Array(this.half + 1);
@@ -201,11 +205,8 @@ export class FrameEngine {
     const im = this.im;
 
     for (let i = 0; i < n; i++) frame[i] = ring[(start + i) & mask]!;
-    for (let i = 0; i < n; i++) {
-      re[i] = frame[i]! * win[i]!;
-      im[i] = 0;
-    }
-    fft(re, im);
+    for (let i = 0; i < n; i++) frame[i] *= win[i]!;
+    fftRealInto(frame, re, im, this.fftScratchRe, this.fftScratchIm);
 
     const mag = this.mag;
     const phase = this.phase;

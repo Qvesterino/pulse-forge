@@ -30,7 +30,7 @@ import { HarmonySolver, type SolverContext } from "../../src/effects/rezonans-co
 import { midiToHz, nthScaleTone, nearestAllowedPc } from "../../src/effects/rezonans-core/dsp/harmony.js";
 import { CepstralEnvelope, FormantWarp } from "../../src/effects/rezonans-core/dsp/cepstrum.js";
 import { FrameEngine } from "../../src/effects/rezonans-core/dsp/frame.js";
-import { fft, hannWindow, ifftInto, ifftRealInto } from "../../src/effects/rezonans-core/dsp/fft.js";
+import { fft, fftRealInto, hannWindow, ifftInto, ifftRealInto } from "../../src/effects/rezonans-core/dsp/fft.js";
 import { PhaseLocker } from "../../src/effects/rezonans-core/dsp/phaseLock.js";
 import { HarmonyVoice } from "../../src/effects/rezonans-core/dsp/voice.js";
 
@@ -101,7 +101,7 @@ describe("REZONANS real inverse FFT", () => {
     for (const n of [2, 4, 16, 64, 256]) {
       const half = n >> 1;
       const positiveRe = new Float64Array(n);
-      const positiveIm = new Float64Array(n);
+      const positiveIm = new Float64Array(half + 1);
       for (let k = 0; k <= half; k++) {
         positiveRe[k] = Math.sin(k * 0.37) * (k + 1);
         positiveIm[k] = Math.cos(k * 0.23) * (k + 1) * 0.25;
@@ -127,6 +127,33 @@ describe("REZONANS real inverse FFT", () => {
       for (let i = 0; i < n; i++) {
         expect(positiveRe[i], `N=${n}, sample=${i}`).toBeCloseTo(fullRe[i]! / n, 10);
       }
+    }
+  });
+});
+
+describe("REZONANS real forward FFT", () => {
+  it("matches the positive bins of the full complex FFT for real signals", () => {
+    for (const n of [2, 4, 16, 64, 256, 4096]) {
+      const half = n >> 1;
+      const input = new Float64Array(n);
+      for (let i = 0; i < n; i++) input[i] = Math.sin(i * 0.173) * 0.7 + Math.cos(i * 0.071) * 0.2;
+
+      const fullRe = input.slice();
+      const fullIm = new Float64Array(n);
+      fft(fullRe, fullIm);
+
+      const outRe = new Float64Array(half + 1);
+      const outIm = new Float64Array(half + 1);
+      const scratchRe = new Float64Array(half);
+      const scratchIm = new Float64Array(half);
+      fftRealInto(input, outRe, outIm, scratchRe, scratchIm);
+
+      for (let k = 0; k <= half; k++) {
+        expect(Math.abs(outRe[k]! - fullRe[k]!), `N=${n}, bin=${k}, real`).toBeLessThan(1e-9);
+        expect(Math.abs(outIm[k]! - fullIm[k]!), `N=${n}, bin=${k}, imag`).toBeLessThan(1e-9);
+      }
+      expect(outIm[0]).toBe(0);
+      expect(outIm[half]).toBe(0);
     }
   });
 });

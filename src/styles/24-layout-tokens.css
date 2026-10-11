@@ -29,10 +29,24 @@
    property on purpose: an inline value on <html> outranks every stylesheet
    rule and would permanently kill the 760px breakpoint in
    12-floating-instrument-plugin-2.css that narrows the label to 112px on
-   phones. Classes lose to media queries, so the responsive behaviour survives
-   and the user's width applies only where no breakpoint has an opinion. */
+   phones. The user's width applies only where no breakpoint has an opinion —
+   see the phone re-declaration below, which is what actually delivers that. */
 .user-label-width {
   --steps-label: var(--user-steps-label, 168px);
+}
+
+/* D14 sibling. The comment above used to claim "classes lose to media
+   queries" — they do not. A media query adds no specificity, so this
+   same-specificity rule beat `:root { --steps-label: 112px }` from
+   12-floating-instrument-plugin-2.css at EVERY width. Measured at 720x900 in
+   Chromium: without the class the label column was 112px (breakpoint alive),
+   and after applying exactly what ui/layout.ts:108-113 does for a user who
+   picked 220px it became 220px (breakpoint dead, eating 30% of a phone
+   screen). Re-declaring the phone step HERE restores the documented intent. */
+@media (max-width: 760px) {
+  :root {
+    --steps-label: 112px;
+  }
 }
 
 /* ---------- Fluid inspector ---------- */

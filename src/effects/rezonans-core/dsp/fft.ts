@@ -118,6 +118,63 @@ export function fft(re: Float64Array, im: Float64Array): void {
 }
 
 /**
+ * Forward real FFT from `real` into the positive-frequency bins `0..N/2`.
+ *
+ * The real input is packed as even/odd samples into one complex transform of
+ * length N/2. `outRe`/`outIm` need only N/2+1 slots, and the caller-owned
+ * scratch arrays need N/2 slots. The input may alias `outRe`: all samples are
+ * packed before any output bin is written. Only positive-frequency output
+ * bins are defined on return.
+ */
+export function fftRealInto(
+  real: Float32Array | Float64Array,
+  outRe: Float64Array,
+  outIm: Float64Array,
+  scratchRe: Float64Array,
+  scratchIm: Float64Array,
+): void {
+  const n = real.length;
+  if (!isPow2(n) || n < 2) throw new Error(`fftRealInto: input must be a power of two >= 2, got ${n}`);
+  const half = n >> 1;
+  if (outRe.length < half + 1 || outIm.length < half + 1) {
+    throw new Error(`fftRealInto: output arrays must hold ${half + 1} bins`);
+  }
+  if (scratchRe.length !== half || scratchIm.length !== half) {
+    throw new Error(`fftRealInto: scratch arrays must be length ${half}`);
+  }
+
+  for (let i = 0; i < half; i++) {
+    scratchRe[i] = real[2 * i]!;
+    scratchIm[i] = real[2 * i + 1]!;
+  }
+  fft(scratchRe, scratchIm);
+
+  const { cos, sin } = fftPlan(n);
+  const packedMask = half - 1;
+  for (let k = 0; k <= half; k++) {
+    const a = k === half ? 0 : k;
+    const b = (half - k) & packedMask;
+    const ar = scratchRe[a]!;
+    const ai = scratchIm[a]!;
+    const br = scratchRe[b]!;
+    const bi = -scratchIm[b]!;
+    const evenRe = 0.5 * (ar + br);
+    const evenIm = 0.5 * (ai + bi);
+    const diffRe = 0.5 * (ar - br);
+    const diffIm = 0.5 * (ai - bi);
+    // X[k] = E[k] + exp(-i·2πk/N) O[k], with O = -i·(A-B)/2.
+    const oddRe = diffIm;
+    const oddIm = -diffRe;
+    const c = cos[k]!;
+    const s = sin[k]!;
+    outRe[k] = evenRe + c * oddRe - s * oddIm;
+    outIm[k] = evenIm + c * oddIm + s * oddRe;
+  }
+  outIm[0] = 0;
+  outIm[half] = 0;
+}
+
+/**
  * In-place inverse FFT via the conjugate trick: IFFT(X) = conj(FFT(conj(X))) / n.
  *
  * The forward transform is negation-symmetric, so there is no second table —
@@ -134,8 +191,9 @@ export function ifftInto(re: Float64Array, im: Float64Array): void {
  * In-place inverse real FFT from bins `0..N/2`, using one packed complex
  * inverse FFT of length `N/2` rather than a full complex inverse of length N.
  *
- * `re` and `im` hold the positive-frequency spectrum on entry. `scratchRe`
- * and `scratchIm` are caller-owned arrays of length N/2, so the realtime path
+ * `re` holds N slots, with the positive-frequency real bins in `0..N/2`; `im`
+ * needs only N/2+1 slots for their imaginary parts. `scratchRe` and
+ * `scratchIm` are caller-owned arrays of length N/2, so the realtime path
  * allocates nothing. On return `re` contains N real time-domain samples; `im`
  * is scratch input and has no output contract. The output is normalized by N.
  */
@@ -146,8 +204,8 @@ export function ifftRealInto(
   scratchIm: Float64Array,
 ): void {
   const n = re.length;
-  if (n !== im.length || !isPow2(n) || n < 2) {
-    throw new Error(`ifftRealInto: spectrum must be equal-length power-of-two arrays, got ${n}/${im.length}`);
+  if (!isPow2(n) || n < 2 || im.length < (n >> 1) + 1) {
+    throw new Error(`ifftRealInto: spectrum must contain ${(n >> 1) + 1} positive-frequency bins for size ${n}`);
   }
   const half = n >> 1;
   if (scratchRe.length !== half || scratchIm.length !== half) {

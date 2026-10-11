@@ -182,6 +182,44 @@
       }
     }
   }
+  function fftRealInto(real, outRe, outIm, scratchRe, scratchIm) {
+    const n = real.length;
+    if (!isPow2(n) || n < 2) throw new Error(`fftRealInto: input must be a power of two >= 2, got ${n}`);
+    const half2 = n >> 1;
+    if (outRe.length < half2 + 1 || outIm.length < half2 + 1) {
+      throw new Error(`fftRealInto: output arrays must hold ${half2 + 1} bins`);
+    }
+    if (scratchRe.length !== half2 || scratchIm.length !== half2) {
+      throw new Error(`fftRealInto: scratch arrays must be length ${half2}`);
+    }
+    for (let i = 0; i < half2; i++) {
+      scratchRe[i] = real[2 * i];
+      scratchIm[i] = real[2 * i + 1];
+    }
+    fft(scratchRe, scratchIm);
+    const { cos, sin } = fftPlan(n);
+    const packedMask = half2 - 1;
+    for (let k = 0; k <= half2; k++) {
+      const a = k === half2 ? 0 : k;
+      const b = half2 - k & packedMask;
+      const ar = scratchRe[a];
+      const ai = scratchIm[a];
+      const br = scratchRe[b];
+      const bi = -scratchIm[b];
+      const evenRe = 0.5 * (ar + br);
+      const evenIm = 0.5 * (ai + bi);
+      const diffRe = 0.5 * (ar - br);
+      const diffIm = 0.5 * (ai - bi);
+      const oddRe = diffIm;
+      const oddIm = -diffRe;
+      const c = cos[k];
+      const s = sin[k];
+      outRe[k] = evenRe + c * oddRe - s * oddIm;
+      outIm[k] = evenIm + c * oddIm + s * oddRe;
+    }
+    outIm[0] = 0;
+    outIm[half2] = 0;
+  }
   function ifftInto(re, im) {
     const n = re.length;
     for (let k = 0; k < n; k++) im[k] = -im[k];
@@ -189,8 +227,8 @@
   }
   function ifftRealInto(re, im, scratchRe, scratchIm) {
     const n = re.length;
-    if (n !== im.length || !isPow2(n) || n < 2) {
-      throw new Error(`ifftRealInto: spectrum must be equal-length power-of-two arrays, got ${n}/${im.length}`);
+    if (!isPow2(n) || n < 2 || im.length < (n >> 1) + 1) {
+      throw new Error(`ifftRealInto: spectrum must contain ${(n >> 1) + 1} positive-frequency bins for size ${n}`);
     }
     const half2 = n >> 1;
     if (scratchRe.length !== half2 || scratchIm.length !== half2) {
@@ -247,6 +285,8 @@
     /** Cepstrum / liftered log-envelope workspace (real + imaginary). */
     cepstrum = new Float64Array(0);
     cepImag = new Float64Array(0);
+    fftScratchRe = new Float64Array(0);
+    fftScratchIm = new Float64Array(0);
     /** Output: log envelope over the half spectrum, geometric mean removed. */
     logEnv = new Float64Array(0);
     sampleRate = 48e3;
@@ -261,7 +301,9 @@
       this.half = fftSize >> 1;
       this.logFull = new Float64Array(fftSize);
       this.cepstrum = new Float64Array(fftSize);
-      this.cepImag = new Float64Array(fftSize);
+      this.cepImag = new Float64Array(this.half + 1);
+      this.fftScratchRe = new Float64Array(this.half);
+      this.fftScratchIm = new Float64Array(this.half);
       this.logEnv = new Float64Array(this.half + 1);
       this.primed = false;
     }
@@ -298,11 +340,12 @@
       const cepIm = this.cepImag;
       cep.set(logFull);
       cepIm.fill(0);
-      ifftInto(cep, cepIm);
+      ifftRealInto(cep, cepIm, this.fftScratchRe, this.fftScratchIm);
+      for (let i = 0; i < n; i++) cep[i] *= n;
       const q = Math.max(1, Math.min(this.half - 1, Math.round(this.quefrencyCutSec * this.sampleRate)));
       cep[q + 1] = 0;
       for (let i = q + 2; i < n - q - 1; i++) cep[i] = 0;
-      fft(cep, cepIm);
+      fftRealInto(cep, cep, cepIm, this.fftScratchRe, this.fftScratchIm);
       const invN = 1 / n;
       const mean = cep[0] * invN;
       for (let k = 0; k <= this.half; k++) {
@@ -569,6 +612,8 @@
     window = new Float32Array(0);
     re = new Float64Array(0);
     im = new Float64Array(0);
+    fftScratchRe = new Float64Array(0);
+    fftScratchIm = new Float64Array(0);
     /** Current frame — public because voices read it directly. */
     mag = new Float64Array(0);
     phase = new Float64Array(0);
@@ -637,8 +682,10 @@
       this.inMask = ringLen - 1;
       this.frame = new Float32Array(fftSize);
       this.window = hannWindow(fftSize);
-      this.re = new Float64Array(fftSize);
-      this.im = new Float64Array(fftSize);
+      this.re = new Float64Array(this.half + 1);
+      this.im = new Float64Array(this.half + 1);
+      this.fftScratchRe = new Float64Array(this.half);
+      this.fftScratchIm = new Float64Array(this.half);
       this.mag = new Float64Array(this.half + 1);
       this.phase = new Float64Array(this.half + 1);
       this.phaseAdvance = new Float64Array(this.half + 1);
@@ -702,11 +749,8 @@
       const re = this.re;
       const im = this.im;
       for (let i = 0; i < n; i++) frame[i] = ring[start + i & mask];
-      for (let i = 0; i < n; i++) {
-        re[i] = frame[i] * win[i];
-        im[i] = 0;
-      }
-      fft(re, im);
+      for (let i = 0; i < n; i++) frame[i] *= win[i];
+      fftRealInto(frame, re, im, this.fftScratchRe, this.fftScratchIm);
       const mag = this.mag;
       const phase = this.phase;
       for (let k = 0; k <= half2; k++) {

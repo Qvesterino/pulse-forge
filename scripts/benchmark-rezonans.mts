@@ -101,19 +101,14 @@ function processSeconds(
   processor: RezonansProcessor,
   source: Float32Array,
   seconds: number,
-): { elapsedMs: number; blockMs: number[]; peak: number; allFinite: boolean } {
+): { elapsedMs: number; cpuMs: number; blockMs: number[]; peak: number; allFinite: boolean } {
   const frames = Math.floor(seconds * TARGET_RATE);
-  const left = new Float32Array(BLOCK);
-  const right = new Float32Array(BLOCK);
-  const blocks = [left, right];
-  const blockMs: number[] = [];
+  const prepared: Array<{ channels: Float32Array[]; frames: number }> = [];
   let sourceCursor = 0;
-  let peak = 0;
-  let allFinite = true;
-  const start = performance.now();
-
   for (let done = 0; done < frames;) {
     const length = Math.min(BLOCK, frames - done);
+    const left = new Float32Array(length);
+    const right = new Float32Array(length);
     for (let i = 0; i < length; i++) {
       const sample = source[sourceCursor]!;
       left[i] = sample;
@@ -121,20 +116,41 @@ function processSeconds(
       sourceCursor++;
       if (sourceCursor === source.length) sourceCursor = 0;
     }
-
-    const blockStart = performance.now();
-    processor.process(blocks, length);
-    blockMs.push(performance.now() - blockStart);
-    for (let i = 0; i < length; i++) {
-      const l = left[i]!;
-      const r = right[i]!;
-      if (!Number.isFinite(l) || !Number.isFinite(r)) allFinite = false;
-      peak = Math.max(peak, Math.abs(l), Math.abs(r));
-    }
+    prepared.push({ channels: [left, right], frames: length });
     done += length;
   }
 
-  return { elapsedMs: performance.now() - start, blockMs, peak, allFinite };
+  const blockMs: number[] = [];
+  const start = performance.now();
+  const cpuStart = process.cpuUsage();
+
+  for (const block of prepared) {
+    const blockStart = performance.now();
+    processor.process(block.channels, block.frames);
+    blockMs.push(performance.now() - blockStart);
+  }
+
+  const elapsedMs = performance.now() - start;
+  const cpu = process.cpuUsage(cpuStart);
+  let peak = 0;
+  let allFinite = true;
+  for (const block of prepared) {
+    const [left, right] = block.channels;
+    for (let i = 0; i < block.frames; i++) {
+      const l = left![i]!;
+      const r = right![i]!;
+      if (!Number.isFinite(l) || !Number.isFinite(r)) allFinite = false;
+      peak = Math.max(peak, Math.abs(l), Math.abs(r));
+    }
+  }
+
+  return {
+    elapsedMs,
+    cpuMs: (cpu.user + cpu.system) / 1000,
+    blockMs,
+    peak,
+    allFinite,
+  };
 }
 
 const fixture = readMonoPcm16Wav(SOURCE_PATH);
@@ -142,8 +158,14 @@ if (fixture.sampleRate !== SOURCE_RATE) {
   throw new Error(`Expected the pinned ${SOURCE_RATE} Hz fixture, got ${fixture.sampleRate} Hz`);
 }
 const source = resampleLinear(fixture.samples, fixture.sampleRate, TARGET_RATE);
-const results: Array<{ cpuPercent: number; p95BlockMs: number; maxBlockMs: number; peak: number; allFinite: boolean }> =
-  [];
+const results: Array<{
+  cpuPercent: number;
+  cpuTimePercent: number;
+  p95BlockMs: number;
+  maxBlockMs: number;
+  peak: number;
+  allFinite: boolean;
+}> = [];
 
 for (let repeat = 0; repeat < REPEATS; repeat++) {
   const processor = makeProcessor();
@@ -153,6 +175,7 @@ for (let repeat = 0; repeat < REPEATS; repeat++) {
   const audioMs = MEASURE_SECONDS * 1000;
   results.push({
     cpuPercent: (measured.elapsedMs / audioMs) * 100,
+    cpuTimePercent: (measured.cpuMs / audioMs) * 100,
     p95BlockMs: percentile(measured.blockMs, 0.95),
     maxBlockMs: Math.max(...measured.blockMs),
     peak: measured.peak,
@@ -185,6 +208,10 @@ const report = {
     results.map((r) => r.cpuPercent),
     0.95,
   ),
+  cpuTimePercentMedian: percentile(
+    results.map((r) => r.cpuTimePercent),
+    0.5,
+  ),
   blockTimeP95MsMedian: percentile(
     results.map((r) => r.p95BlockMs),
     0.5,
@@ -195,7 +222,7 @@ const report = {
   peak: Math.max(...results.map((r) => r.peak)),
   repeatsDetail: results,
   caveat:
-    "Local TypeScript core on this Node runtime only; browser AudioWorklet, mobile CPUs and concurrent project load need separate measurements.",
+    "CPU-time fields isolate the Node process from host scheduling pauses; wall-time and per-block fields include them. Both time the local TypeScript core, not browser AudioWorklet scheduling or mobile CPUs.",
 };
 
 console.log(JSON.stringify(report, null, 2));

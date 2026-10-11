@@ -46,9 +46,9 @@ function probeLayout() {
     genHit =
       hit === gen || gen.contains(hit)
         ? "GEN"
-        : `${(hit as HTMLElement | null)?.tagName ?? "null"}.${((hit as HTMLElement | null)?.className || "")
-            .toString()
-            .split(" ")[0]}`;
+        : `${(hit as HTMLElement | null)?.tagName ?? "null"}.${
+            ((hit as HTMLElement | null)?.className || "").toString().split(" ")[0]
+          }`;
   }
   return {
     columnTracks: workspace ? getComputedStyle(workspace).gridTemplateColumns.split(" ").length : 0,
@@ -65,9 +65,7 @@ function probeLayout() {
 type Layout = ReturnType<typeof probeLayout>;
 
 test.describe("19 — workspace layout (D14)", () => {
-  test("the workspace keeps three grid tracks and gives the sequencer column to workspace-main", async ({
-    page,
-  }) => {
+  test("the workspace keeps three grid tracks and gives the sequencer column to workspace-main", async ({ page }) => {
     test.setTimeout(120_000);
     await page.setViewportSize({ width: 1280, height: 720 });
     await openHouseTemplate(page);
@@ -116,5 +114,37 @@ test.describe("19 — workspace layout (D14)", () => {
     // Pre-fix: 256x20 everywhere, with 618px of grid scrolling inside it.
     expect(layout.sequencer!.h, `sequencer height at ${layout.viewport}`).toBeGreaterThan(120);
     expect(layout.sequencer!.w, `sequencer width at ${layout.viewport}`).toBeGreaterThan(400);
+  });
+
+  test("the phone label breakpoint survives a user-chosen label width", async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 720, height: 900 });
+    await openHouseTemplate(page);
+
+    const read = () =>
+      page.evaluate(() => {
+        const root = document.documentElement;
+        const row = document.querySelector(".sequencer-row");
+        return {
+          declared: getComputedStyle(root).getPropertyValue("--steps-label").trim(),
+          labelColumn: row ? getComputedStyle(row).gridTemplateColumns.split(" ")[0] : "no-row",
+        };
+      });
+
+    // Baseline: no user preference → the phone breakpoint owns the value.
+    const withoutUserWidth = await read();
+    expect(withoutUserWidth.declared, "phone breakpoint inactive without a user width").toBe("112px");
+
+    // Exactly what ui/layout.ts:108-113 does for a user who picked a width.
+    await page.evaluate(() => {
+      document.documentElement.classList.add("user-label-width");
+      document.documentElement.style.setProperty("--user-steps-label", "220px");
+    });
+    const withUserWidth = await read();
+
+    // A 220px label column on a 720px screen eats 30% of the width; the
+    // 760px step exists to stop exactly that. Pre-fix this measured 220px.
+    expect(withUserWidth.declared, "a user label width overrode the phone breakpoint").toBe("112px");
+    expect(withUserWidth.labelColumn).toBe("112px");
   });
 });
