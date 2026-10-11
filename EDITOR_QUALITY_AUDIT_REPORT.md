@@ -1737,3 +1737,264 @@ Recorded because it is the second time in this audit that "my suite is green"
 and "the repo gate is green" turned out to be different claims (the first was
 the registry audit in wave 2). The file was committed at `b241bfb6` with the
 whole project red; `npm run typecheck` was not run at that boundary.
+
+---
+
+## Wave 10 — 2026-10-11 — the Browser blocker was not the page. The page was broken.
+
+Wave 9 (another session) got a loaded page and immediately found a P1 in the
+arrangement lane. This wave starts where wave 8 stopped: the in-app Browser
+reported `loaded: true` in 532 ms and then refused every operation that touched
+the page for 275 s. Wave 8 attributed that to "the control channel, not the
+page" and left it as an assumption. The assumption was right, and it was worth
+settling — because the moment the page became drivable, the studio turned out
+to be broken at **every viewport size**.
+
+### The blocker, settled by measurement
+
+Same build, same preview server, two drivers:
+
+| driver | result |
+| --- | --- |
+| in-app Browser — `open_tab` | `loaded: true`, **678 ms** |
+| in-app Browser — `inspect`, `query(console)` | `BROWSER_OPERATION_TIMEOUT` at the **275 s** ceiling, twice |
+| Playwright — `page.goto(waitUntil: "commit")` | **183 ms** |
+| Playwright — `page.evaluate(() => …)` ×5 | **205 / 789 / 1331 / 1874 / 2414 ms**, all returned |
+| Playwright — console errors during boot | **0** |
+
+`document.readyState` went `loading → complete` inside 789 ms and the DOM grew
+to 134 nodes by 1.9 s. A slow boot and a dead renderer look identical from
+outside; only this measurement separates them, and it says the renderer was
+never blocked. Playwright also has its own timeouts, which turns "the page never
+answered" from a 275 s wall into an attributable failure — that is the whole
+reason the measurement is possible at all.
+
+### The machine was also contaminated, and it matters for reading waves 6–8
+
+Two processes, `scripts/measure-genre-references.mjs`, belonging to another
+session, were running with **2418 s** and **2388 s** of accumulated CPU since
+10:43 and 11:59 — and still burning **128%** and **124%** of a core at the
+moment of measurement (+7.69 s and +7.47 s over a 6 s sample). That is the
+honest explanation available for wave 6's "44 node processes and ~1219 s of
+accumulated CPU", and it means every earlier "starved renderer" reading was
+taken on a box with two cores pinned by someone else's job.
+
+**Not killed.** They are another session's work and `AGENTS.md` §7 is explicit
+about not interfering in a shared worktree. It is the owner's call, and it is
+recorded here because two pinned cores explain a lot of the flakiness that
+waves 6–8 kept hitting.
+
+### D14 — the workspace had two grid columns instead of three (P0, CONFIRMED)
+
+`main.workspace` has **three** children: `BrowserStrip`, `.workspace-main`
+(TrackTabs + PatternBar + Sequencer) and the Inspector. It was rendering with
+**two** grid tracks.
+
+Measured in Chromium against the production build, at four viewports:
+
+| viewport | `grid-template-columns` | `.workspace-main` | `.sequencer` | GEN hit test |
+| --- | --- | --- | --- | --- |
+| 1280×720 | `1000px 280px` | 280 × 173 | **256 × 20** | `BUTTON.dock-resize-handle` |
+| 1366×768 | `1086px 280px` | 280 × 197 | **256 × 20** | GEN |
+| 1440×900 | `1160px 280px` | 280 × 263 | **256 × 20** | GEN |
+| 1920×1080 | `1640px 280px` | 280 × 353 | **256 × 20** | GEN |
+
+Two things in that table are worse than the GEN button:
+
+1. **`.workspace-main` — the column that holds the sequencer — was 280 px wide
+   at every viewport.** The Inspector got the fluid track and the sequencer got
+   the clamped one.
+2. **`.sequencer` was 256 × 20 with `scrollHeight` 618.** The step sequencer —
+   the reason the application exists — rendered as a 20 px window onto 618 px
+   of grid, at 1920×1080 as well as at 1280×720. The screenshot at 1280×720
+   shows the consequence plainly: a large empty black rectangle where the
+   editor should be.
+
+`elementFromPoint` at the centre of GEN returned `BUTTON.dock-resize-handle`:
+the pattern bar had overflowed out of its column into the dock band, and the
+dock — a later sibling — won the hit test. **The flagship GENERATE action was
+unclickable**, which is why `03-generate-flow`, `04-persistence-roundtrip` and
+`05-keyboard-shortcuts` all failed on the same line.
+
+### Root cause: cascade order, not specificity
+
+```
+01-base.css:532          .workspace { grid-template-columns: minmax(0,1fr) 280px }
+20-control-kit.css:472   .workspace { grid-template-columns: auto minmax(0,1fr) 280px }
+24-layout-tokens.css:45  .workspace { grid-template-columns: minmax(0,1fr) clamp(180px, var(--inspector-width,280px), 420px) }
+```
+
+All three are `.workspace` — identical specificity. `src/styles/index.css`
+imports `24-layout-tokens.css` **last** (added today in `fe072bbf`, 16:38), so
+the two-column rule silently replaced the three-column template. Grid
+auto-placement then did exactly what two tracks imply with three children:
+`.workspace-main` into column 2, the Inspector into a second **row**.
+
+The file's own comment recorded the mistaken belief that produced it:
+
+> the clamp above is overridden by the existing 01-base.css block, which stays
+> as the single owner of that layout switch
+
+`01-base.css` cannot override anything — it is imported *first*. A media query
+does not add specificity either, so the same mistake also killed the
+`@media (max-width: 860px)` "inspector becomes a row" switch declared in
+`20-control-kit.css:479`.
+
+### Fix
+
+`24-layout-tokens.css` now declares the three tracks
+(`auto | minmax(0,1fr) | clamp(...)`) and re-declares the ladder's own two
+breakpoints **inside itself**, mirroring `20-control-kit.css:474-484` verbatim.
+Restoring the previous behaviour, not inventing new behaviour. The wrong
+comment is replaced by the measurement.
+
+### Falsification — the guard was made to fail on the old build
+
+Injecting the pre-fix rule into the built CSS
+(`.workspace{grid-template-columns:minmax(0,1fr) clamp(180px,var(--inspector-width,280px),420px)}`)
+makes all three layout assertions fail with the exact measured symptoms:
+`columns were "1000px 280px"`, `GEN hit test at 1280x720` ≠ GEN, `sequencer
+height at 1440x900` ≤ 120. The suite also stays green on the fixed build, so
+the assertions describe the defect and not the fix.
+
+### Suite result, production build, Chromium
+
+| | before the fix | after the fix |
+| --- | --- | --- |
+| specs 01–08 | **8 passed / 5 failed** | **15 passed / 1 failed** |
+| failing | 01, 03, 04, 05, 07 | 07 only |
+| new `19-workspace-layout` | — | 4 passed |
+
+Four product specs turned green — landing→studio, GEN generate flow,
+persistence roundtrip and keyboard shortcuts — all of them downstream of GEN
+being unclickable.
+
+### D14 sibling — the same mistake killed the phone label breakpoint (P2)
+
+`.user-label-width` in the same file sets `--steps-label` on `<html>` with the
+same specificity as `:root { --steps-label: 112px }` from
+`12-floating-instrument-plugin-2.css`'s `@media (max-width: 760px)`, and is
+loaded later. Its comment claimed "classes lose to media queries, so the
+responsive behaviour survives". Measured at 720×900 in Chromium:
+
+```
+default user            -> --steps-label: 112px   (breakpoint alive)
+user chose 220px        -> --steps-label: 220px   (breakpoint dead)
+```
+
+Scope is narrow and was measured before anything was claimed: `ui/layout.ts`
+only adds the class when the user has changed the label width, so this affects
+that subset, on phones only. But 220 px of a 720 px screen is 30% of the
+width, which is exactly what the 760 px step exists to prevent. Fixed by
+re-declaring the phone step after the class rule, and falsified the same way
+(220 px vs 112 px).
+
+### What this wave does not close
+
+- **The sequencer still gets ~20 px at a 720 px viewport height.** With the
+  columns restored it is 732 × 20 at 1280×720: the dock (266 px), the rack
+  strip (~151 px) and the pattern bar (~149 px) leave nothing. This is a
+  vertical-space **policy** question — what gives when the screen is short —
+  and §56 puts it outside an autonomous fix. Measured and recorded, not
+  silently resized.
+- **Six e2e specs can only run against the dev server**: `07`, `10`, `11`,
+  `12`, `13`, `18-tsar` import `/src/*.ts` from inside the page (67 call
+  sites). They exercise source modules, not the shipped bundle, so they have
+  never validated a production build. `07` is the one red in the table above
+  and it is red for that reason, not because of a product defect.
+- **The boot watchdog (§20)** from wave 7 is still open, still an architecture
+  decision.
+
+## Wave 10 - 2026-10-11 - the rest of the 42 chain, run for real (P1/P2, one new defect)
+
+With the production build served and the page controllable, the chaos spec was
+extended from "move / undo / redo / zoom" to the chain the objective actually
+names. Two findings came out of it - one a real defect, one a false alarm that
+measurement killed.
+
+### D15 - the onboarding hint bar ate clip presses at 900x700 (P2, CONFIRMED)
+
+Found by the §33 stage: at a 900x700 viewport the pointer at the clip's own
+centre resolved to
+
+```
+narrowViewport={"ok":false,"why":"span.onboarding-text","rect":{"x":436,"y":599,"w":114,"h":44}}
+```
+
+`OnboardingHint` renders `.onboarding` as `position: fixed; bottom: 40px;
+z-index: 60`. At 1280x720 that bar sits below the lane and nothing is wrong; at
+900x700 the arrangement lane comes up under it, and an ordinary positioned box
+answers `elementFromPoint` for whatever is beneath. The first run of this stage
+was **red exactly here**, and green at the same line after one CSS change -
+that is the falsification, in the useful order: red, then fix, then green, with
+every preceding stage green in both runs.
+
+Fix (two lines, no behaviour change): the bar is a status bar, not a control
+surface, so it is `pointer-events: none` and its own buttons opt back in. The
+identical twin `.install-prompt` (`position: fixed; right: 14px; bottom: 40px`)
+was fixed in the same commit - same shape, same reason, and §38 asks for the
+sibling sweep rather than the single occurrence.
+
+```
+narrowViewport={"ok":true,"why":"span.arr-clip-name","rect":{"x":436,"y":599,"w":114,"h":44}}
+```
+
+### The false alarm: "the toolbar removed one clip from a two-clip selection"
+
+The chain ctrl-selected two clips, pressed the arrangement toolbar's `DEL`,
+and measured **3 clips before, 2 after** - one clip removed from a two-clip
+selection, which reads exactly like the §14 grouped-edit defect this audit is
+looking for.
+
+It is not a defect. `ArrangementPanel.tsx:3817` and `:3834` show the toolbar
+`DUP`/`DEL` keyed to the panel's single `selectedClipId`, while the keyboard path
+(`:1610`) and the context menu (`:4927`) pass the whole selection. Both are
+self-consistent; the surviving selected clip is a legitimate member of the
+multi-selection that the single-clip action did not touch. Recorded as a
+**human review item**, not fixed - "toolbar acts on the active clip, keyboard
+acts on the selection" is a product convention, not a bug.
+
+The assertion was rewritten anyway, because the first version was measuring the
+wrong thing. It compared *counts*, and "1 selected before, 1 after" reads
+identically whether the selection was pruned correctly or a dead id was swapped
+for a survivor. It now compares **identities**: every clip still marked selected
+must still exist, and no removed clip may remain rendered.
+
+### What the chain verified, in a real browser, on the default configuration
+
+| Section | Stage | Measured result |
+| --- | --- | --- |
+| 19/33 | pointer identity at the drag origin | `div.arr-clip` (was `.arr-intensity-lane`, D14) |
+| 5 | move, undo, redo | positions move, restore exactly, re-apply |
+| 6 | trim via `.arr-clip-resize` | committed width changes, clip count unchanged |
+| 7 | split with CUT | 1 clip -> 2 |
+| 8 | duplicate + move the copy | copy moves, original does not |
+| 4/14 | ctrl+click multi-select | 2 clips selected |
+| 9/4 | remove a clip | one gone, no dead id left selected |
+| 22 | undo/redo that removal | counts restore and re-apply exactly |
+| 13 | horizontal scroll | no unmount, no timing change |
+| 17 | play -> edit during playback -> stop | playhead 0px -> 29.4px -> seeked 543.9px, one clip `.playing`, clip count stable through a live drag, playhead frozen after Stop, zero `.playing` clips |
+| 33 | 900x700 viewport | clip is the pointer target |
+
+`1 passed (37.6 s)`, **jsErrors = 0** across the whole chain.
+
+Two of these were environment artefacts before they were test facts, and both
+are worth recording because each would have become a false defect report:
+
+- **`Space` did not start the transport.** It does in a fresh studio (measured:
+  playhead 0 -> 11.25 -> 26.25 px). In the chain, focus was still on the Undo
+  button from the previous stage, and Space activates a focused button. Standard
+  browser behaviour, not an editor defect; the spec now drives the transport by
+  the button.
+- **No clip reported `.playing`.** The transport was running; the playhead had
+  simply walked through bar 0, where - after trim, split, duplicate, move and one
+  removal - there is no clip. The assertion now seeks to a real clip first,
+  because "a clip is playing" is only a claim about a clip the playhead is
+  inside.
+
+### Still not verified in a browser
+
+Fades/crossfades (§10) need an audio clip; the default template renders one
+scene clip and zero audio clips, so the fade handle was never under the pointer.
+Take lanes need a recorded take. Ripple (§16) has its own toggle and was not
+exercised. These remain open.

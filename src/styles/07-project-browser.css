@@ -546,6 +546,19 @@
   border-radius: 5px;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
   z-index: 60;
+  /* Both bottom-anchored bars are FIXED viewport overlays, and at 900x700 the
+     arrangement lane comes up under them. Being ordinary positioned boxes they
+     answered `elementFromPoint` for the clip underneath: a press aimed at a
+     clip hit the hint text instead of the clip (measured, D15). They are
+     status bars, not control surfaces, so they are click-through — their own
+     buttons opt back in immediately below. */
+  pointer-events: none;
+}
+
+/* Each bar's own controls keep their hit target. */
+.onboarding button,
+.install-prompt button {
+  pointer-events: auto;
 }
 
 .onboarding-step {
@@ -571,6 +584,7 @@
   border-radius: 5px;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
   z-index: 60;
+  pointer-events: none;
 }
 
 .install-prompt-icon {

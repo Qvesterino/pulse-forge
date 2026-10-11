@@ -354,9 +354,21 @@ test("the editing chain stays coherent and the console stays clean", async ({ pa
   await page.waitForTimeout(700);
   const playingNow = await playheadLeft();
   expect(playingNow, `the transport did not advance the playhead (${beforePlay} → ${playingNow})`).not.toBe(beforePlay);
+
+  // Seek to the first clip before asserting the `.playing` flag: by this point
+  // the clips have been trimmed, split, duplicated, moved and one deleted, and
+  // the playhead starts at bar 0 — where, after those edits, there may be no
+  // clip at all. "A clip is playing" is only a meaningful claim about a clip
+  // the playhead is actually inside.
+  const firstBox = (await page.locator(".arr-clip").first().boundingBox())!;
+  const rulerBox = (await page.locator(".arr-ruler").first().boundingBox())!;
+  await page.mouse.click(firstBox.x + firstBox.width / 2, rulerBox.y + rulerBox.height / 2);
+  await page.waitForTimeout(400);
+  const seeked = await playheadLeft();
+  console.info(`[chaos] playback: playhead ${beforePlay} -> ${playingNow} -> seeked ${seeked}`);
   expect(
     await page.locator(".arr-clip.playing").count(),
-    "a clip under the playhead must report itself playing",
+    `no clip under the playhead reported itself playing (playhead at ${seeked})`,
   ).toBeGreaterThan(0);
 
   const duringCount = await page.locator(".arr-clip").count();
@@ -382,6 +394,23 @@ test("the editing chain stays coherent and the console stays clean", async ({ pa
   // ── RESPONSIVE (§33): a narrow viewport must keep the clip hit-testable ──
   await page.setViewportSize({ width: 900, height: 700 });
   await page.waitForTimeout(500);
+
+  // A first-time gesture in this chain (trim, split, duplicate) fires the
+  // one-shot hint toast, and the toast sits OVER the timeline for 4.5 s. It
+  // is a real overlay and it really did answer `elementFromPoint` for the clip
+  // — so it is asserted rather than wished away: it must be dismissible, and
+  // the layout is measured with it gone.
+  const dismissHint = page.getByRole("button", { name: "Dismiss hint" });
+  const hintWasUp = await dismissHint.isVisible().catch(() => false);
+  if (hintWasUp) {
+    await dismissHint.click();
+    await page.waitForTimeout(250);
+    expect(await dismissHint.isVisible().catch(() => false), "the gesture hint did not go away when dismissed").toBe(
+      false,
+    );
+  }
+  console.info(`[chaos] gestureHintToast=${hintWasUp}`);
+
   const narrow = await page.evaluate(() => {
     const clip = document.querySelector(".arr-clip") as HTMLElement | null;
     if (!clip) return { ok: false, why: "no clip rendered at 900px" };
