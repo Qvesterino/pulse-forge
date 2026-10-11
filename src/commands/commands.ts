@@ -78,6 +78,7 @@ export {
   duplicateSceneAsVariation,
   renameScene,
   reorderScenes,
+  setScenePack,
   setScenePattern,
   setSceneRole,
 } from "./scenes";

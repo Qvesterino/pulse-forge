@@ -5,6 +5,7 @@ import {
   applyTwistScenePair,
   korenSceneIntensityBound,
   setSceneIntensity,
+  setScenePack,
   twistMorphIntensityBound,
 } from "../commands/commands";
 import { EFFECT_DEFS } from "../effects/registry";
@@ -39,8 +40,12 @@ interface SceneFxRow {
  * which one the engine will follow), and one row per TWIST/GROW device shows
  * its active A/B pair with a quick picker that applies a pack pair —
  * arming the intensity binding through the same one-undo commands the device
- * panels use. The track name selects the strip's track so a row is one click
- * from the device in the mixer.
+ * panels use. The SECOND picker on a row is the PER-SCENE pair
+ * (`Scene.packs`): while this scene (or clip) plays, the engine overrides
+ * the effect's applied pair with it at the clip boundary — intro/build/drop
+ * scenes switch pairs automatically, live and in exports, without touching
+ * the document baseline. The track name selects the strip's track so a row
+ * is one click from the device in the mixer.
  */
 export function SceneStrip({ sceneId }: { sceneId?: string }) {
   const services = useServices();
@@ -196,6 +201,29 @@ export function SceneStrip({ sceneId }: { sceneId?: string }) {
                     onChange={(event) => applyPair(row, event.target.value)}
                   >
                     {!row.pairId && <option value="">CUSTOM</option>}
+                    {pairs.map((pair) => (
+                      <option key={pair.id} value={pair.id}>
+                        {pair.genre} — {pair.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="scene-strip-pair scene-strip-pair-scene"
+                    aria-label={`Scene pair for ${row.effectName} on ${row.trackName}`}
+                    value={scene?.packs?.[row.fxId] ?? ""}
+                    disabled={!scene}
+                    title={
+                      scene
+                        ? `Which pair "${scene.name}" plays — the effect switches at the clip boundary; empty = the effect's own applied pair`
+                        : "Select a scene first"
+                    }
+                    onChange={(event) => {
+                      if (!scene) return;
+                      const value = event.target.value;
+                      services.store.execute(setScenePack(doc, scene.id, row.fxId, value === "" ? null : value));
+                    }}
+                  >
+                    <option value="">—</option>
                     {pairs.map((pair) => (
                       <option key={pair.id} value={pair.id}>
                         {pair.genre} — {pair.label}

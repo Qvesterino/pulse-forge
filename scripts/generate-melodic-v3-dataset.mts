@@ -39,7 +39,10 @@ import { expandProgression, selectProgression, type ChordEvent } from "../src/ai
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.join(here, "..");
 const outDir = path.join(root, "scripts", "data");
-const OUT_FILE = path.join(outDir, "melodic-v3-dataset.json");
+// Optional --out <name.json>: experiments write a SEPARATE file so the
+// shipped artifact's exact training data stays on disk untouched.
+const outArg = process.argv.indexOf("--out");
+const OUT_FILE = path.join(outDir, outArg > -1 ? process.argv[outArg + 1]! : "melodic-v3-dataset.json");
 
 const DATASET_VERSION = "symbolic-melodic-v3-ds.v1";
 

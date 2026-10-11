@@ -711,6 +711,14 @@ export interface Scene {
    * at this tempo (switching at the clip boundary); absent = project tempo.
    */
   bpm?: number;
+  /**
+   * Per-scene TWIST/GROW scene-pack selection: fxId → pack pair id. While a
+   * clip of this scene plays (or the scene is the active pattern), the
+   * effect's stored pair is overridden LIVE at the clip boundary — the doc
+   * keeps its own applied pair as the stopped-state baseline. Pair ids are
+   * validated at use time (an unknown id is simply ignored).
+   */
+  packs?: Record<string, string>;
 }
 
 export interface IntensityPoint {

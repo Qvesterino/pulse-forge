@@ -189,7 +189,7 @@ deployed smoke URL.
 | F2 audit porozumenia + routeru | ✅ HOTOVÉ 2026-10-11 | `4368577a` — korpus 106 promptov + `docs/INTENT-AUDIT-2026-10.md`; 3× P1 root-caused (D1/D2/D3), detaily nižšie                                                      |
 | F3 opravy z auditu             | ✅ HOTOVÉ 2026-10-11 | D3 `9eb9df47`, D1 `a0917742`, D2 `8866dceb`, D5/D6/D7/D9 `42f21c66` (+ časť pohltila kolegova vlna `cf8ad5af`); D8 = owner; detail `docs/INTENT-AUDIT-2026-10.md` §7 |
 | F4 IntentPanel dekompozícia    | ⏳                   | —                                                                                                                                                                    |
-| F5 dáta a retrainty            | ⏳                   | —                                                                                                                                                                    |
+| F5 dáta a retrainty            | ✅ HOTOVÉ 2026-10-11 | M1 **FAIL** podľa predfixovaného pravidla (degree 0.546 < 0.590) — shipped artefakty nedotknuté; ranker ★ 1/3 pod floorom → owner akcia; detaily nižšie              |
 | F6 uzavretie slučky            | ⏳                   | —                                                                                                                                                                    |
 
 ### F1 výsledky (2026-10-11, čistý worktree @ 3beef964 + junction node_modules)
@@ -284,6 +284,31 @@ knižnične čistá.
 - **Ranker z reálnych ★:** ak neexistuje exportovaný favorites pack
   (ledger žije v prehliadači), signál NEexistuje → NESÍNTETIZOVAŤ; owner
   akcia = ★ počas dogfoodingu + `favorites:retrain`.
+
+### F5 výsledky (2026-10-11)
+
+- **M1 (v3 + MIDI korpus): HONEST FAIL.** Korpus (29 730 v1-riadkov / 645
+  classical.* grup) prešiel cez chord ladders do v3 datasetu
+  (30 428 vzoriek / 934 grup) a tréning (report-only, artifacts nedotknuté)
+  dal **valDegreeAcc 0.5461 / valDurationAcc 0.5597** — degree prah
+  0.5899 nesplnený → **neposlané**, shipped `symbolic-melodic-v3` ostáva.
+  W2 záver sa potvrdil aj pre chord-aware architektúru: klasický kontrapunkt
+  trénovaný spolu s elektronickou knižnicou degree hlave nepomáha.
+  **Kvalifikácia čestnosti:** val kompozícia sa proti shipped manifestu
+  líši (knižnica narástla o rock/jazz/drill; val 293 riadkov) — porovnanie
+  je protokolovo anchored na shipped manifest čísla podľa predfixovaného
+  pravidla; delta nie je čisto atribuovateľná korpusu.
+- **Follow-up (ak sa niekto vráti k corpu):** per-fold gate nad v3 receptom
+  (gate skript dnes podporuje len v1/v2), alebo corpus ako per-žáner mixture
+  component s vlastnou váhou — nie merge 1:1 do trénu.
+- **Ranker ★:** pack `listening/favorites-pack.json` existuje, ale **1
+  entry** < confidence floor 3 → retrain by pretrénoval na jednej rolke.
+  Owner akcia: ★ nazbierať aspoň 3 (ideálne 10+) počas dogfoodingu, potom
+  `npm run favorites:retrain -- listening/favorites-pack.json`.
+- **Tooling:** v3 dataset generator má `--out <file>` (experimenty píšu do
+  separátneho súboru; shipped tréningové dáta ostávajú na disku) a
+  MIDI_SOURCES ukazuje na reálny plný korpus (tiché skipy phantom subsetov
+  boli príčinou `midiCorpusSamples: 0`).
 
 _Celkový odhad: ~8–14 dní fokusnej práce pri plnom prechode; F0+F1 spolu
 jeden dlhší večer. F2/F4/F5 sú navzájom nezávislé — poradie F2→F3→F4→F5

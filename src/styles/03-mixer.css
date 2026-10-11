@@ -290,6 +290,12 @@
   border-radius: 3px;
 }
 
+/* The per-scene picker (scene.packs) — accent-bordered so the scene
+   override reads as distinct from the effect's own applied pair. */
+.scene-strip-pair-scene {
+  border-color: var(--accent);
+}
+
 .scene-strip-chip {
   font-family: var(--mono);
   font-size: 9px;

@@ -146,4 +146,27 @@ describe("SceneStrip", () => {
     renderWithContext(<SceneStrip />, { services });
     expect(screen.getByText("No TWIST or GROW devices in the project")).toBeInTheDocument();
   });
+
+  it("writes the per-scene pair override and renders a stored one", () => {
+    const { doc, drumId, twistId } = withSceneFx();
+    const drumName = doc.tracks.find((track) => track.id === drumId)!.name;
+    const scene = doc.scenes.find((candidate) => candidate.patternId === doc.activePatternId) ?? doc.scenes[0]!;
+    const services = mockServices(doc);
+    const { unmount } = renderWithContext(<SceneStrip />, { services });
+
+    const select = screen.getByLabelText(`Scene pair for TWIST on ${drumName}`) as HTMLSelectElement;
+    expect(select.value).toBe("");
+    fireEvent.change(select, { target: { value: "trap-center-shimmer" } });
+    const after = lastCommand(services.store.execute).execute(doc);
+    expect(after.scenes.find((candidate) => candidate.id === scene.id)!.packs?.[twistId]).toBe("trap-center-shimmer");
+    unmount();
+
+    // A stored scene selection renders as the scene picker's value.
+    const withScenePack = lastCommand(services.store.execute).execute(doc);
+    const services2 = mockServices(withScenePack);
+    renderWithContext(<SceneStrip />, { services: services2 });
+    expect((screen.getByLabelText(`Scene pair for TWIST on ${drumName}`) as HTMLSelectElement).value).toBe(
+      "trap-center-shimmer",
+    );
+  });
 });

@@ -49,7 +49,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 22;
+export const SCHEMA_VERSION = 23;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -2071,8 +2071,38 @@ function normalizeSceneDetailsDomain(s: NormalizeState): void {
     if (!sceneChanged) return scene;
     return { ...scene, intensity, intensityCurve: curve, loop, role, bpm };
   });
+
+  // Scene pack selections (v23): fxId → pair id. Shape-only cleanup — pair
+  // ids are matched against the packs at use time, so an unknown id is
+  // dropped by the engine instead of corrupting playback.
+  let packsChanged = false;
+  const packedScenes = cleanedScenes.map((scene) => {
+    if (scene.packs === undefined) return scene;
+    const raw = scene.packs as unknown;
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+      packsChanged = true;
+      return { ...scene, packs: undefined };
+    }
+    const clean: Record<string, string> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>).slice(0, 64)) {
+      if (typeof value === "string" && value.length > 0 && value.length <= 64 && key.length > 0 && key.length <= 64) {
+        clean[key] = value;
+      }
+    }
+    const next = Object.keys(clean).length > 0 ? clean : undefined;
+    if (JSON.stringify(next) !== JSON.stringify(scene.packs)) {
+      packsChanged = true;
+      return { ...scene, packs: next };
+    }
+    return scene;
+  });
+  if (packsChanged) {
+    s.doc = { ...s.doc, scenes: packedScenes };
+    s.changed = true;
+  }
+
   if (scenesChanged) {
-    s.doc = { ...s.doc, scenes: cleanedScenes };
+    s.doc = { ...s.doc, scenes: packedScenes };
     s.changed = true;
   }
 }
@@ -2778,6 +2808,9 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // v22 adds the optional per-track `inputInsert` (armed-input chain + raw vs
   // baked recording mode). Absent = dry monitoring, so older files are
   // unchanged and carry no insert.
+  // v23 adds the optional per-scene `packs` (fxId → scene-pack pair id; the
+  // performance override applied at clip boundaries). Absent = play the
+  // effect's own applied pair.
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

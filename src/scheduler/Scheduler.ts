@@ -75,10 +75,13 @@ export interface SchedulerDeps {
   onSongWindow?(fromTick: number, toTick: number, mode: PlayMode): void;
   /** Trigger a marker cue at the absolute project tick (asset id may be null). */
   triggerMarker?(assetId: string | null, when: number, trackId?: string): void;
-  /** Update the live scene intensity signal (0..1). */
-  setSceneIntensity?(intensity: number): void;
+  /** Update the live scene intensity signal (0..1) and the active scene's pack selection. */
+  setSceneIntensity?(intensity: number, packs?: Record<string, string> | null): void;
   /** Schedule future scene-intensity changes inside the look-ahead window. */
-  scheduleSceneIntensity?(points: Array<{ tick: number; value: number }>, timeAt: (tick: number) => number): void;
+  scheduleSceneIntensity?(
+    points: Array<{ tick: number; value: number; packs?: Record<string, string> | null }>,
+    timeAt: (tick: number) => number,
+  ): void;
   /** Apply the active scene's tempo (null = follow the project tempo). */
   applySceneTempo?(bpm: number | null): void;
   /** The transport's tempo actually changed (flip commit) — tempo-synced engine runtimes follow. */
@@ -857,7 +860,10 @@ export class Scheduler {
       const activeScene =
         currentDoc.scenes.find((s) => s.id === currentDoc.activePatternId) ??
         currentDoc.scenes.find((s) => s.patternId === currentDoc.activePatternId);
-      this.deps.setSceneIntensity?.(activeScene ? Math.max(0, Math.min(1, activeScene.intensity)) : 0.7);
+      this.deps.setSceneIntensity?.(
+        activeScene ? Math.max(0, Math.min(1, activeScene.intensity)) : 0.7,
+        activeScene?.packs ?? null,
+      );
       // Pattern mode has no arrangement context — follow the project tempo.
       this.applyTempo(null);
     } else {
@@ -919,9 +925,12 @@ export class Scheduler {
       // the fallback for engines without the exact path.
       if (this.deps.setSceneIntensity && !this.deps.scheduleSceneIntensity) {
         if (activeScene) {
-          this.deps.setSceneIntensity(computeSceneIntensity(activeScene, activeClipStart, contentWindowStart));
+          this.deps.setSceneIntensity(
+            computeSceneIntensity(activeScene, activeClipStart, contentWindowStart),
+            activeScene.packs ?? null,
+          );
         } else {
-          this.deps.setSceneIntensity(0.7);
+          this.deps.setSceneIntensity(0.7, null);
         }
       }
       // Scene tempo (release roadmap 2.2): while inside a clip whose scene
@@ -1227,8 +1236,10 @@ function sceneIntensityPointsForWindow(
   scenesById: Map<string, ProjectDocument["scenes"][number]>,
   fromTick: number,
   toTick: number,
-): Array<{ tick: number; value: number }> {
-  const points: Array<{ tick: number; value: number }> = [];
+): Array<{ tick: number; value: number; packs?: Record<string, string> | null }> {
+  const points: Array<{ tick: number; value: number; packs?: Record<string, string> | null }> = [];
+  const packsOf = (scene: ProjectDocument["scenes"][number] | undefined): Record<string, string> | null =>
+    scene?.packs && Object.keys(scene.packs).length > 0 ? scene.packs : null;
   let cursor = fromTick;
   for (const clip of clips) {
     const clipStart = clip.startBar * BAR_TICKS;
@@ -1242,12 +1253,16 @@ function sceneIntensityPointsForWindow(
       points.push({ tick: from, value: 0.7 }, { tick: to, value: 0.7 });
     } else {
       const sceneBase = sceneBaseTickForClip(clip);
-      points.push({ tick: from, value: computeSceneIntensity(scene, sceneBase, from) });
+      const packs = packsOf(scene);
+      const withPacks = packs ? { packs } : {};
+      points.push({ tick: from, value: computeSceneIntensity(scene, sceneBase, from), ...withPacks });
       for (const curvePoint of scene.intensityCurve ?? []) {
         const tick = sceneBase + curvePoint.offset;
-        if (tick > from && tick < to) points.push({ tick, value: computeSceneIntensity(scene, sceneBase, tick) });
+        if (tick > from && tick < to) {
+          points.push({ tick, value: computeSceneIntensity(scene, sceneBase, tick), ...withPacks });
+        }
       }
-      points.push({ tick: to, value: computeSceneIntensity(scene, sceneBase, to) });
+      points.push({ tick: to, value: computeSceneIntensity(scene, sceneBase, to), ...withPacks });
     }
     cursor = Math.max(cursor, to);
   }
@@ -1257,17 +1272,19 @@ function sceneIntensityPointsForWindow(
   // clip seam the LATER point is authoritative (the next scene wins at its
   // exact start). Without this the closing value of the old scene and the
   // opening value of the new one share the tick and live carries a duplicate
-  // the export never writes.
+  // the export never writes. The pack selection follows the same rule — the
+  // later point's `packs` (null in a gap) is the one the bridge applies.
   const ordered = points.slice().sort((a, b) => a.tick - b.tick);
-  const deduped: Array<{ tick: number; value: number }> = [];
+  const deduped: Array<{ tick: number; value: number; packs?: Record<string, string> | null }> = [];
   for (const point of ordered) {
     const previous = deduped[deduped.length - 1];
-    if (previous && previous.tick === point.tick) previous.value = point.value;
-    else deduped.push(point);
+    if (previous && previous.tick === point.tick) {
+      previous.value = point.value;
+      previous.packs = point.packs;
+    } else deduped.push(point);
   }
   return deduped;
 }
-
 /** Map a marker type to its auto-trigger asset (or null for no cue). */
 function mapMarkerTypeToAsset(type: import("../project-model/types").Marker["type"]): string | null {
   switch (type) {

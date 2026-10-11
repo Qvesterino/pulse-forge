@@ -378,3 +378,37 @@ persists (`pf-scene-strip-collapsed`), and the CUSTOM fallback marks slots
 stored by manual STOREs. Locked by `tests/ui/SceneStrip.test.tsx` (4 specs:
 intensity commit through the command, per-device pair apply writing the
 slots, SCENE chip on bound rows, CUSTOM fallback; plus the empty state).
+
+## Addendum 8 (2026-10-11) — per-scene packs (v2.6)
+
+A scene can now PIN which pack pair an effect plays: `Scene.packs`
+(fxId → pair id, SCHEMA_VERSION 23, shape-sanitized in normalizeProject —
+unknown pair ids are inert, pair data is matched at use time). The picker
+lives on the scene strip's FX rows (accent-bordered, `setScenePack` — ONE
+undoable command; null clears and drops the empty record).
+
+The override is PERFORMANCE state, never a document write — the doc keeps
+the effect's own applied pair as the stopped-state baseline:
+
+- the scheduler resolves the active clip's scene per window and attaches its
+  `packs` to the scene-intensity points (`sceneIntensityPointsForWindow`, and
+  `buildSceneIntensityPoints` for exports — seam rule: the later point wins,
+  so a pair swaps exactly on the boundary tick);
+- the bridge (`scheduleSceneIntensity` / `setSceneIntensity(value, packs)`)
+  resolves the pair from the shipped packs and writes it at each point:
+  GROW gets `mid + (b − a)/2 · bipolar` on every pair param (the exact
+  endpoint law of the pack apply), TWIST gets `setCurves(a, b, when)` — the
+  node's reseed now takes an optional `when` so the slot swap lands on the
+  boundary — plus `morph = intensity`;
+- while an fx is overridden, its intensity/macro mappings on pair params are
+  skipped (one writer per param); leaving the override (scene without packs,
+  gap, or stop via `automationReset`) re-seeds the doc slots/values, so
+  exports and the stopped mix match the project.
+
+Live and offline use the same point pipeline, so an intro/build/drop
+arrangement switches pairs identically in playback and render. Validation:
+`tests/scene-packs.test.ts` (command + undo + validation, sanitizer, seam
+points carrying the scene's packs, GROW endpoint law at points, armed-mapping
+guard, TWIST slot swap + morph = intensity, exit restore, stop takeover) and
+the scene-strip suite (per-scene picker writes `setScenePack`, stored
+selection renders).

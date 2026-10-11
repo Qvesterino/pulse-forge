@@ -141,6 +141,43 @@ export function setScenePattern(doc: ProjectDocument, sceneId: string, patternId
   };
 }
 
+/**
+ * Per-scene scene-pack selection (v23): which pack pair a TWIST/GROW effect
+ * plays while this scene is active. The engine applies it as a live override
+ * at clip boundaries; the doc keeps the effect's own applied pair as the
+ * stopped-state baseline. Pair ids are shape-checked here only — an unknown
+ * id is inert (the engine cannot resolve it), and validating against the
+ * packs would drag ~8 KB of pack data into the eager command barrel.
+ */
+export function setScenePack(doc: ProjectDocument, sceneId: string, fxId: string, pairId: string | null): Command {
+  const scene = doc.scenes.find((candidate) => candidate.id === sceneId);
+  if (!scene) throw new Error(`Scene ${sceneId} not found`);
+  const fx = doc.tracks.flatMap((track) => ("effects" in track ? track.effects : [])).find((e) => e.id === fxId);
+  if (!fx || (fx.type !== "skrutka" && fx.type !== "bassHarmonic")) {
+    throw new Error(`Effect ${fxId} is not a scene-pack effect`);
+  }
+  if (pairId !== null && (typeof pairId !== "string" || pairId.length === 0 || pairId.length > 64)) {
+    throw new Error("Invalid scene pair id");
+  }
+  const apply = (d: ProjectDocument, value: string | null): ProjectDocument => ({
+    ...d,
+    scenes: d.scenes.map((candidate) => {
+      if (candidate.id !== sceneId) return candidate;
+      const packs = { ...(candidate.packs ?? {}) };
+      if (value === null) delete packs[fxId];
+      else packs[fxId] = value;
+      const next = Object.keys(packs).length > 0 ? packs : undefined;
+      return { ...candidate, packs: next };
+    }),
+  });
+  return snapshot(
+    "setScenePack",
+    pairId === null ? `Clear ${scene.name} scene pair` : `Set ${scene.name} scene pair`,
+    doc,
+    apply(doc, pairId),
+  );
+}
+
 export function deleteScene(doc: ProjectDocument, sceneId: string): Command {
   if (doc.scenes.length <= 1) throw new Error("Cannot delete the last scene");
   const target = doc.scenes.find((s) => s.id === sceneId);

@@ -74,7 +74,8 @@ export interface SkrutkaMeterFrame {
 
 /** Extra runtime surface used by the panel (not part of EffectRuntime). */
 export interface SkrutkaCurveRuntime {
-  setCurves(a: Record<string, number> | null, b: Record<string, number> | null): void;
+  /** `when` schedules the reseed (scene-pack switches at clip boundaries). */
+  setCurves(a: Record<string, number> | null, b: Record<string, number> | null, when?: number): void;
 }
 
 export function createSkrutkaNode(
@@ -255,12 +256,15 @@ export function createSkrutkaNode(
         sidechainSource = next;
       }
     },
-    setCurves(a, b) {
+    setCurves(a: Record<string, number> | null, b: Record<string, number> | null, when?: number) {
       const hadCurves = hasCurves();
       curves = a || b ? { slots: { ...(a ? { A: { ...a } } : {}), ...(b ? { B: { ...b } } : {}) } } : null;
       // Clearing restores the live knob values; storing re-seeds the morph.
-      if (curves) applyEffective(ctx.currentTime);
-      else if (hadCurves) writeMap(base, ctx.currentTime);
+      // `when` schedules the write instead of applying it immediately — the
+      // scene-pack override swaps slots exactly at a clip boundary.
+      const at = when ?? ctx.currentTime;
+      if (curves) applyEffective(at);
+      else if (hadCurves) writeMap(base, at);
     },
     getMeters: () => meters,
     dispose() {

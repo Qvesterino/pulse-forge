@@ -10,6 +10,10 @@ import { clampTargetValue, targetParamDef } from "../project-model/targets";
 import { interpolateAutomationPoints, valueAt } from "../project-model/automation";
 import { isWorkletReady } from "../audio-worklets/loader";
 import { createEnvFollowerNode, type EnvFollowerHandle } from "../audio-worklets/envfollower-node";
+import type { SkrutkaCurveRuntime } from "../audio-worklets/skrutka-node";
+import { TWIST_CURVE_PARAM_IDS, readTwistCurvesState } from "../effects/skrutka-curves";
+import { TWIST_SCENE_PACK } from "../effects/skrutka-scene-pack";
+import { KOREN_SCENE_PACK } from "../effects/koren-scene-pack";
 import type { DeviceLookup, TrackOrGroupView, ReturnView } from "./deviceLookup";
 
 /**
@@ -37,6 +41,28 @@ import type { DeviceLookup, TrackOrGroupView, ReturnView } from "./deviceLookup"
  */
 
 const LFO_DIVISION_MULTS = [1 / 4, 1 / 2, 1, 2, 4];
+
+/**
+ * One scene-intensity point. `packs` carries the per-scene scene-pack
+ * selection (fxId → pair id) active at that tick — the scheduler and the
+ * offline renderer attach it so the bridge can swap TWIST/GROW pairs exactly
+ * at clip boundaries.
+ */
+export interface SceneIntensityPoint {
+  tick: number;
+  value: number;
+  packs?: Record<string, string> | null;
+}
+
+interface ScenePackEntry {
+  trackId: string;
+  fxId: string;
+  kind: "twist" | "grow";
+  a: Record<string, number>;
+  b: Record<string, number>;
+  /** Param ids this entry owns while overridden (doc mappings on them skip). */
+  params: Set<string>;
+}
 
 interface OscModRuntime {
   osc: OscillatorNode;
@@ -176,6 +202,10 @@ export class AutomationBridge {
   private lfos = new Map<string, LfoRuntimeState>();
   private macroCache = new Map<string, { gain: number; pan: number }>();
   private currentSceneIntensity = 0.7;
+  /** Live scene-pack override (fxId → pair id), null = play the doc state. */
+  private currentScenePacks: Record<string, string> | null = null;
+  /** Resolved override entries for `currentScenePacks` (invalidated with it). */
+  private scenePackEntries: Map<string, ScenePackEntry> | null = null;
 
   constructor(
     private readonly deps: AutomationBridgeDeps,
@@ -203,6 +233,151 @@ export class AutomationBridge {
 
   clearMacroCache(): void {
     this.macroCache.clear();
+  }
+
+  // ── Scene-pack overrides ────────────────────────────────────────────────
+  //
+  // A scene may pin which TWIST/GROW pack pair an effect plays (Scene.packs).
+  // The override is PERFORMANCE state, never a document write: the doc keeps
+  // the effect's own applied pair as the stopped-state baseline, the bridge
+  // resolves the pinned pair from the shipped packs and writes the pair's
+  // values around the scene intensity (TWIST: slot swap + morph = intensity;
+  // GROW: midpoint ± half-span, the exact endpoint law of the pack apply).
+  // While an fx is overridden, doc mappings targeting ITS pair params are
+  // skipped (one writer per param); dropping the override restores the doc
+  // values, so exports and the stopped mix match the project.
+
+  private resolveScenePacks(
+    doc: ProjectDocument,
+    packs: Record<string, string> | null | undefined,
+  ): Map<string, ScenePackEntry> {
+    const entries = new Map<string, ScenePackEntry>();
+    if (!packs) return entries;
+    const fxById = new Map<string, { trackId: string; type: string; deviceState?: unknown }>();
+    for (const track of doc.tracks) {
+      if (!("effects" in track) || !Array.isArray(track.effects)) continue;
+      for (const fx of track.effects)
+        fxById.set(fx.id, { trackId: track.id, type: fx.type, deviceState: fx.deviceState });
+    }
+    for (const [fxId, pairId] of Object.entries(packs)) {
+      const found = fxById.get(fxId);
+      if (!found) continue;
+      if (found.type === "skrutka") {
+        const pair = TWIST_SCENE_PACK.find((candidate) => candidate.id === pairId);
+        if (!pair) continue;
+        entries.set(fxId, {
+          trackId: found.trackId,
+          fxId,
+          kind: "twist",
+          a: pair.a,
+          b: pair.b,
+          params: new Set([...TWIST_CURVE_PARAM_IDS, "morph"]),
+        });
+      } else if (found.type === "bassHarmonic") {
+        const pair = KOREN_SCENE_PACK.find((candidate) => candidate.id === pairId);
+        if (!pair) continue;
+        entries.set(fxId, {
+          trackId: found.trackId,
+          fxId,
+          kind: "grow",
+          a: pair.a,
+          b: pair.b,
+          params: new Set([...Object.keys(pair.a), ...Object.keys(pair.b)]),
+        });
+      }
+    }
+    return entries;
+  }
+
+  private scenePackEntriesFor(doc: ProjectDocument): Map<string, ScenePackEntry> {
+    if (!this.scenePackEntries) this.scenePackEntries = this.resolveScenePacks(doc, this.currentScenePacks);
+    return this.scenePackEntries;
+  }
+
+  private packGuards(entries: Map<string, ScenePackEntry>): Map<string, Set<string>> {
+    const guards = new Map<string, Set<string>>();
+    for (const entry of entries.values()) guards.set(entry.fxId, entry.params);
+    return guards;
+  }
+
+  /** Write the overridden pair values (intensity 0 → side A, 1 → side B). */
+  private writeScenePackTargets(
+    doc: ProjectDocument,
+    entries: Map<string, ScenePackEntry>,
+    intensity: number,
+    when?: number,
+  ): void {
+    const bipolar = Math.max(-1, Math.min(1, intensity * 2 - 1));
+    for (const entry of entries.values()) {
+      if (entry.kind === "twist") {
+        const runtime = this.lookup.effectRuntimeForTarget({
+          kind: "fxParam",
+          trackId: entry.trackId,
+          fxId: entry.fxId,
+          paramId: "morph",
+        }) as (SkrutkaCurveRuntime & { setParameterAt?: (id: string, value: number, when: number) => void }) | null;
+        runtime?.setCurves?.(entry.a, entry.b, when);
+        const morph = Math.max(0, Math.min(1, intensity));
+        const target = { kind: "fxParam" as const, trackId: entry.trackId, fxId: entry.fxId, paramId: "morph" };
+        if (when === undefined) this.lookup.writeDeviceTargetAt(target, morph);
+        else this.lookup.writeDeviceTargetAt(target, morph, when);
+        continue;
+      }
+      for (const id of Object.keys(entry.a)) {
+        const target = { kind: "fxParam" as const, trackId: entry.trackId, fxId: entry.fxId, paramId: id };
+        if (!targetParamDef(doc, target)) continue;
+        const a = entry.a[id] ?? 0;
+        const b = entry.b[id] ?? a;
+        const value = (a + b) / 2 + ((b - a) / 2) * bipolar;
+        if (when === undefined) this.lookup.writeDeviceTargetAt(target, value);
+        else this.lookup.writeDeviceTargetAt(target, value, when);
+      }
+    }
+  }
+
+  /**
+   * Hand an fx whose override just ended back to its document state: TWIST
+   * re-seeds the doc slots, GROW writes the doc value for every pair param
+   * the doc composition did not already write at this point.
+   */
+  private restoreScenePackTargets(
+    doc: ProjectDocument,
+    entries: Map<string, ScenePackEntry>,
+    composed: Map<string, { target: AutomationTarget; delta: number }> | null,
+    when?: number,
+  ): void {
+    for (const entry of entries.values()) {
+      if (entry.kind === "twist") {
+        const fx = doc.tracks
+          .flatMap((track) => ("effects" in track ? track.effects : []))
+          .find((candidate) => candidate.id === entry.fxId);
+        const runtime = this.lookup.effectRuntimeForTarget({
+          kind: "fxParam",
+          trackId: entry.trackId,
+          fxId: entry.fxId,
+          paramId: "morph",
+        }) as SkrutkaCurveRuntime | null;
+        const slots = readTwistCurvesState(fx?.deviceState);
+        runtime?.setCurves?.(slots?.slots.A ?? null, slots?.slots.B ?? null, when);
+        const morphTarget = { kind: "fxParam" as const, trackId: entry.trackId, fxId: entry.fxId, paramId: "morph" };
+        const base = this.lookup.baseValueForTarget(doc, morphTarget);
+        if (base !== null) {
+          const composedMorph = composed?.get(`fx:${entry.trackId}:${entry.fxId}:morph`);
+          const value = composedMorph ? base + composedMorph.delta : base;
+          if (when === undefined) this.lookup.writeDeviceTargetAt(morphTarget, value);
+          else this.lookup.writeDeviceTargetAt(morphTarget, value, when);
+        }
+        continue;
+      }
+      for (const id of Object.keys(entry.a)) {
+        if (composed?.has(`fx:${entry.trackId}:${entry.fxId}:${id}`)) continue;
+        const target = { kind: "fxParam" as const, trackId: entry.trackId, fxId: entry.fxId, paramId: id };
+        const base = this.lookup.baseValueForTarget(doc, target);
+        if (base === null) continue;
+        if (when === undefined) this.lookup.writeDeviceTargetAt(target, base);
+        else this.lookup.writeDeviceTargetAt(target, base, when);
+      }
+    }
   }
 
   private lfoFrequency(lfo: Lfo): number {
@@ -391,6 +566,10 @@ export class AutomationBridge {
       next.set(ret.id, { gain: 1, pan: 0 });
     }
     const deviceOffsets = new Map<string, { target: AutomationTarget; delta: number }>();
+    // Scene-pack overrides own their pair params: doc mappings on them are
+    // skipped here and the override writes land after the composition below.
+    const packEntries = this.scenePackEntriesFor(doc);
+    const packGuards = this.packGuards(packEntries);
     // Writer composition rule (one writer per chain):
     // - macro/intensity performance offsets resolve FX/inst params as
     //   base ± half-range·bipolar·amount around the PERSISTED doc value —
@@ -412,6 +591,7 @@ export class AutomationBridge {
       }
       if (target.kind === "fxParam") {
         if (!target.fxId || !target.paramId) return;
+        if (packGuards.get(target.fxId)?.has(target.paramId)) return;
         const def = targetParamDef(doc, target);
         if (!def) return;
         const delta = ((def.max - def.min) / 2) * bipolar * amount;
@@ -469,6 +649,12 @@ export class AutomationBridge {
       const base = this.lookup.baseValueForTarget(doc, target);
       if (base !== null) this.lookup.writeDeviceTargetAt(target, base + delta);
     }
+    // The live scene-pack override re-asserts itself AFTER the doc
+    // composition on every sync, so a param edit landed mid-performance can
+    // never leave the pair half-applied until the next clip boundary.
+    if (packEntries.size > 0) {
+      this.writeScenePackTargets(doc, packEntries, this.currentSceneIntensity);
+    }
     for (const [trackId, offsets] of next) {
       // Gain offsets had no ceiling: N stacked macros × full-positive mappings
       // composed an unbounded channel multiplier (runaway gain). Cap at 2
@@ -498,11 +684,21 @@ export class AutomationBridge {
     }
   }
 
-  /** Update the live scene intensity signal. Idempotent. */
-  setSceneIntensity(value: number): void {
+  /**
+   * Update the live scene intensity signal. Idempotent. `packs` carries the
+   * active scene's scene-pack selection (pattern mode calls this per tick);
+   * a changed map re-resolves the overrides and recomposes immediately.
+   */
+  setSceneIntensity(value: number, packs?: Record<string, string> | null): void {
     const next = Math.max(0, Math.min(1, value));
-    if (next === this.currentSceneIntensity) return;
+    const nextPacks = packs && Object.keys(packs).length > 0 ? packs : null;
+    const packsChanged = JSON.stringify(nextPacks ?? null) !== JSON.stringify(this.currentScenePacks ?? null);
+    if (next === this.currentSceneIntensity && !packsChanged) return;
     this.currentSceneIntensity = next;
+    if (packsChanged) {
+      this.currentScenePacks = nextPacks;
+      this.scenePackEntries = null;
+    }
     // The signal is a live modulation source, not merely UI state. Recompose
     // the same macro writer immediately so scheduler intensity changes are
     // audible in realtime and use the exact same mapping semantics as export.
@@ -515,8 +711,12 @@ export class AutomationBridge {
    * scheduler updates this signal at control rate; an offline render must
    * write the same composed macro/intensity values onto the audio timeline or
    * exports will silently stay at the default 0.7 intensity.
+   *
+   * Points may carry the per-scene scene-pack selection (`packs`): the
+   * override is (re)written at each point — TWIST slots + morph, GROW pair
+   * params — and an fx that leaves the override is handed back to the doc.
    */
-  scheduleSceneIntensity(points: Array<{ tick: number; value: number }>, timeAt: (tick: number) => number): void {
+  scheduleSceneIntensity(points: SceneIntensityPoint[], timeAt: (tick: number) => number): void {
     const ctx = this.deps.ctx();
     const doc = this.deps.doc();
     if (!ctx || !doc || points.length === 0) return;
@@ -525,11 +725,22 @@ export class AutomationBridge {
       .filter((point) => Number.isFinite(point.tick) && Number.isFinite(point.value))
       .slice()
       .sort((a, b) => a.tick - b.tick);
+    // Live guard heuristic: the window's first point describes what is
+    // playing NOW, so a doc sync between ticks composes against the same
+    // overrides the next points will re-assert.
+    const firstPacks = ordered[0]?.packs ?? null;
+    if (JSON.stringify(firstPacks ?? null) !== JSON.stringify(this.currentScenePacks ?? null)) {
+      this.currentScenePacks = firstPacks && Object.keys(firstPacks).length > 0 ? firstPacks : null;
+      this.scenePackEntries = null;
+    }
+    let previousEntries = new Map<string, ScenePackEntry>();
     for (const point of ordered) {
       const next = new Map<string, { gain: number; pan: number }>();
       for (const track of doc.tracks) next.set(track.id, { gain: 1, pan: 0 });
       for (const ret of doc.returns) next.set(ret.id, { gain: 1, pan: 0 });
 
+      const pointEntries = this.resolveScenePacks(doc, point.packs ?? null);
+      const packGuards = this.packGuards(pointEntries);
       const deviceOffsets = new Map<string, { target: AutomationTarget; delta: number }>();
       const applyToTarget = (target: AutomationTarget, bipolar: number, amount: number): void => {
         if (target.kind === "trackGain" || target.kind === "trackPan") {
@@ -541,6 +752,7 @@ export class AutomationBridge {
         }
         if (target.kind !== "fxParam" && target.kind !== "instParam") return;
         if (!target.paramId) return;
+        if (target.fxId && packGuards.get(target.fxId)?.has(target.paramId)) return;
         const def = targetParamDef(doc, target);
         if (!def) return;
         const delta = ((def.max - def.min) / 2) * bipolar * amount;
@@ -573,6 +785,17 @@ export class AutomationBridge {
         const base = this.lookup.baseValueForTarget(doc, target);
         if (base !== null) this.lookup.writeDeviceTargetAt(target, base + delta, when);
       }
+      // Fxs whose override ended at this point return to their doc state;
+      // fxs entering or staying get the pinned pair written at its intensity.
+      if (previousEntries.size > 0) {
+        const leaving = new Map<string, ScenePackEntry>();
+        for (const [fxId, entry] of previousEntries) {
+          if (!pointEntries.has(fxId)) leaving.set(fxId, entry);
+        }
+        if (leaving.size > 0) this.restoreScenePackTargets(doc, leaving, deviceOffsets, when);
+      }
+      if (pointEntries.size > 0) this.writeScenePackTargets(doc, pointEntries, point.value, when);
+      previousEntries = pointEntries;
       for (const [trackId, offsets] of next) {
         const gain = Math.max(0, offsets.gain);
         const pan = Math.min(1, Math.max(-1, offsets.pan));
@@ -1000,6 +1223,15 @@ export class AutomationBridge {
     for (const target of deviceTargets.values()) {
       const base = this.lookup.baseValueForTarget(this.deps.doc()!, target);
       if (base !== null) this.lookup.writeDeviceTargetAt(target, base);
+    }
+    // Scene-pack overrides are performance state: a stop hands the pairs
+    // back to the doc so the stopped mix matches the project, not the last
+    // clip. syncMacros below then re-composes the doc values.
+    if (this.currentScenePacks) {
+      const stopDoc = this.deps.doc();
+      if (stopDoc) this.restoreScenePackTargets(stopDoc, this.scenePackEntriesFor(stopDoc), null);
+      this.currentScenePacks = null;
+      this.scenePackEntries = null;
     }
     if (this.deps.doc()) {
       // Return and device macros share the same canonical base writer after a
