@@ -1047,3 +1047,103 @@ Recorded when each ran; see the final wave summary for the aggregate.
 | `tests/clip-clipboard-integrity.test.ts` | 11 passed (1 red under falsification) |
 | Wave-1 editor suites re-run after the changes | 65 passed |
 | `prettier --check` on every touched file | `All matched files use Prettier code style!` |
+
+---
+
+## D10 — A snap-grid test passed alone and failed in file order (P3, CONFIRMED)
+
+Found by the full-suite gate, not by reading the editor: the editor-surface
+regression run came back with `tests/ui/audio-selection-parity.test.tsx` red on
+*"SNAP OFF keeps the exact pre-snap free behavior"* — the drag landed on the
+1/2 grid (1.5 bars) where the test expected free placement (1.3 bars).
+
+`snapController` is a deliberate UI-wide singleton (`src/ui/snap.ts:143` — "snap
+is a view preference, not per-mount state"), and that is correct: snap *is* a
+user preference, and it should survive unmount. The spec's `afterEach` cleared
+`localStorage["pf:arr-snap"]` only, so the in-memory grid stayed at the `1/2` its
+predecessor had set and leaked into the next spec.
+
+**Attribution was measured, not assumed.** This failure sat next to files I had
+just changed, which is exactly when a red gets misfiled. Two checks:
+
+- `git log -S "movingHasLocked"` isolates this wave's panel diff — every changed
+  line is lock- or catch-related; not one touches `snapDelta`, the grid id, or
+  any snap state.
+- The spec **passes when run alone** (`-t "SNAP OFF"` → 1 passed, 10 skipped)
+  and fails only behind its predecessor. An order-dependent red cannot be caused
+  by a change that does not touch the order.
+
+Fix: the `afterEach` resets `snapController.setGrid("off")` as well as the
+persisted key, so no spec in that block depends on the one before it. File
+result: 11 passed.
+
+This is also the one place in this audit where the honest reading of a red
+required *disproving* my own change first. A red next to your own diff is not
+evidence that your diff caused it.
+
+---
+
+## Wave-2 gates — what actually ran, and what it did not cover
+
+Recorded as executed. This repo is shared with at least two other sessions
+(intent, rezonans) and they hold it dirty, so repo-wide gates cannot report a
+clean baseline; each row below says what it covered and what it could not.
+
+| Gate | Command | Result |
+| --- | --- | --- |
+| Wave-2 specs | `npx vitest run tests/clip-lock-verbs.test.ts tests/ui/clip-lock-block-drag.test.tsx tests/clip-clipboard-integrity.test.ts` | 9 + 6 + 11 passed |
+| Falsification | audio block guard disabled / dead-scene refusal disabled | 1 red each, controls stayed green |
+| Wave-1 editor suites, re-run after the changes | `npx vitest run` on the 6 wave-1 suites | 65 passed |
+| Snap-parity isolation | `npx vitest run tests/ui/audio-selection-parity.test.tsx` | 11 passed |
+| Editor-surface sweep | 137 suites matched `clip\|arrangement\|editor\|drag\|trim\|split\|select\|snap\|undo\|waveform\|audio\|track\|marker\|automation\|transport\|zoom\|viewport\|command` | see final summary |
+| `tsc --noEmit` (repo-wide) | `npx tsc --noEmit` | **EXIT 2** — errors confined to `src/intent/providers/local.ts` + `tests/intent-binding.test.ts`, another session's in-flight work. Zero errors in any file this audit touched. |
+| `prettier --check` | on every file this wave changed | `All matched files use Prettier code style!` |
+| `tests/drift-check.test.ts` | `npx vitest run tests/drift-check.test.ts` | passed with the updated spec count |
+
+**Not run in this wave:** `npm run build`, `npm run test:expectations`,
+`npm run drift:check`, `npm run test:browser`, `npm run test:e2e` — each reads
+repo-wide state that other sessions had dirty, and a red from them would say
+nothing about this work. They remain the merge owner's gates.
+
+---
+
+## Final sweep — attribution of the 4 red files
+
+The editor-surface sweep (137 suites matching
+`clip|arrangement|editor|drag|trim|split|select|snap|undo|waveform|audio|track|marker|automation|transport|zoom|viewport|command`)
+finished **4 failed / 133 passed files, 9 failed / 1314 passed / 1 skipped tests**.
+Every red was attributed before being dismissed:
+
+| Failing file | Failure | Owner |
+| --- | --- | --- |
+| `tests/audio-engine-lifecycle.test.ts` | source-grep: `applyMasterConfig` limiter-knee pattern | concurrent session — this audit touched no engine file |
+| `tests/audio-metering-purity.test.ts` | *"Novel export(s) in metering.ts not yet tracked: `describeStageAdjustmentLimitation` — add them to KNOWN_EXPORTS"* | concurrent session — the repo's own no-orphan-export guard doing its job |
+| `tests/chord-track-intent.test.ts` | `section "Break"/"Bridge" failed generation: candidate-0:brief-gate:empty` | intent wave |
+| `tests/probe-split-undo.test.ts` | a committed scratch probe (`it("probe")`, console.log only, no assertions) | concurrent session — left in place, not mine to delete |
+
+**Zero reds in any file this audit changed.** That claim is not "the suites I
+wrote pass" — it is the full 137-suite sweep filtered against the diff, with the
+two source-grep failures read to confirm they name symbols this audit never
+touched.
+
+### Final state of every suite this wave depends on
+
+```
+tests/clip-lock-verbs               9 passed
+tests/ui/clip-lock-block-drag       6 passed
+tests/clip-clipboard-integrity     11 passed
+tests/ui/audio-selection-parity    11 passed
+tests/editor-hardening-audit        green (wave 1)
+tests/editor-hardening-chaos        green (wave 1)
+tests/editor-ultra-hardening        green (wave 1)
+tests/ui/editor-hardening-interactions  green (wave 1)
+tests/ui/editor-ultra-hardening     green (wave 1)
+tests/clip-fade-bounds-invariant    green (wave 1)
+
+Test Files  10 passed (10)
+      Tests  102 passed (102)
+```
+
+A dead duplicate lock check was removed from the scene block commit during this
+final pass — the first `movingHasLocked` branch returns before it, so the second
+was unreachable code left by writing the guard twice.

@@ -2391,10 +2391,6 @@ export function ArrangementPanel() {
       // the overlap guard with length 0 — drag only what is still live.
       const movingIds = current.movingIds.filter((id) => beforeDoc.arrangement.clips.some((c) => c.id === id));
       if (movingIds.length === 0) return;
-      if (current.movingHasLocked) {
-        setActionError("Selection contains a locked clip — unlock it to move the block");
-        return;
-      }
       if (rippleMode) {
         // RIPPLE multi-move: the block and every later clip slide by the
         // same delta — gaps after the strip stay exactly as before. No

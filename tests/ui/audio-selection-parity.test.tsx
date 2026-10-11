@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { act, fireEvent, screen } from "@testing-library/react";
 import { ArrangementPanel } from "../../src/ui/ArrangementPanel";
+import { snapController } from "../../src/ui/snap";
 import { useSelection } from "../../src/ui/context";
 import { ProjectStore } from "../../src/store/ProjectStore";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
@@ -230,6 +231,12 @@ describe("Ctrl+E split-failure bridge", () => {
 describe("snap grid drives audio-clip drags", () => {
   afterEach(() => {
     localStorage.removeItem("pf:arr-snap");
+    // `snapController` is a UI-wide singleton that survives unmount, so
+    // clearing the persisted key alone left the previous test's grid (1/2)
+    // in memory and leaked it into "SNAP OFF keeps the exact pre-snap free
+    // behavior", which passed alone and failed in file order. Reset the
+    // controller too, so no spec in this block depends on the one before it.
+    snapController.setGrid("off");
   });
 
   function setSnap(value: string): void {
