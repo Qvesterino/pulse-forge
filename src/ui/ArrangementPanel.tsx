@@ -5181,18 +5181,26 @@ export function ArrangementPanel() {
                 </div>
               );
             })}
-            {showIntensity && (
-              <IntensityLane
-                scenes={scenes}
-                clips={clips}
-                totalBars={totalBars}
-                transport={services.transport}
-                barWidth={barWidth}
-                cancelEpoch={overlayCancelEpoch}
-                onEdit={(sceneId, curve) => execute(setSceneIntensityCurve(services.store.doc, sceneId, curve))}
-              />
-            )}
           </div>
+          {/* The intensity strip is a SIBLING of the clip lane, not its last
+              child. Inside a fixed-height `.arr-lane` the 44px strip overflowed
+              the clips (both `z-index: auto`, so tree order gave the strip the
+              top hit): with INT on — the default — every press on a scene clip
+              landed on the strip, so clips could be neither selected nor
+              dragged. In flow below the lane it is what the toolbar title and
+              this component's own doc comment already promise: one strip
+              UNDER the clip lane. */}
+          {showIntensity && (
+            <IntensityLane
+              scenes={scenes}
+              clips={clips}
+              totalBars={totalBars}
+              transport={services.transport}
+              barWidth={barWidth}
+              cancelEpoch={overlayCancelEpoch}
+              onEdit={(sceneId, curve) => execute(setSceneIntensityCurve(services.store.doc, sceneId, curve))}
+            />
+          )}
           {showAudioTakeLanes && selectedAudioTakeGroup && (
             <section
               id="arr-audio-take-lanes"

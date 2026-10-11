@@ -321,10 +321,13 @@
 }
 
 /* Scene-intensity lane (VISION §11): a 0..1 editable curve strip under the
-   clip lane. Point handles are DOM spans; the curve is one SVG per lane. */
+   clip lane. Point handles are DOM spans; the curve is one SVG per lane.
+   Rendered as a SIBLING of `.arr-lane` in flow — nesting it inside the
+   fixed-height lane made it paint over, and hit-test instead of, the clips. */
 .arr-intensity-lane {
   position: relative;
   height: 44px;
+  margin-top: 4px;
   background: rgba(255, 255, 255, 0.02);
   border-bottom: 1px solid #23262d;
   touch-action: none;

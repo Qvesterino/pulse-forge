@@ -51,22 +51,35 @@ function instrument(): Balance {
   const rawSetInterval = globalThis.setInterval.bind(globalThis);
   const rawClearInterval = globalThis.clearInterval.bind(globalThis);
 
-  vi.spyOn(window, "addEventListener").mockImplementation((type: string, listener: never, options?: never) => {
-    balance.windowAdded++;
-    return winAdd(type, listener, options);
-  });
-  vi.spyOn(window, "removeEventListener").mockImplementation((type: string, listener: never, options?: never) => {
-    balance.windowRemoved++;
-    return winRemove(type, listener, options);
-  });
-  vi.spyOn(document, "addEventListener").mockImplementation((type: string, listener: never, options?: never) => {
-    balance.docAdded++;
-    return docAdd(type, listener, options);
-  });
-  vi.spyOn(document, "removeEventListener").mockImplementation((type: string, listener: never, options?: never) => {
-    balance.docRemoved++;
-    return docRemove(type, listener, options);
-  });
+  // `addEventListener` is an OVERLOADED method: `vi.spyOn` demands an
+  // implementation assignable to every overload, so the listener parameter
+  // has to be the general `EventListenerOrEventListenerObject` form. Typing it
+  // `never` (the shape that "compiles" against a single overload) collapses the
+  // overload set to `never` and `tsc` rejects all four spies.
+  vi.spyOn(window, "addEventListener").mockImplementation(
+    (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) => {
+      balance.windowAdded++;
+      winAdd(type, listener, options);
+    },
+  );
+  vi.spyOn(window, "removeEventListener").mockImplementation(
+    (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions) => {
+      balance.windowRemoved++;
+      winRemove(type, listener, options);
+    },
+  );
+  vi.spyOn(document, "addEventListener").mockImplementation(
+    (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) => {
+      balance.docAdded++;
+      docAdd(type, listener, options);
+    },
+  );
+  vi.spyOn(document, "removeEventListener").mockImplementation(
+    (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions) => {
+      balance.docRemoved++;
+      docRemove(type, listener, options);
+    },
+  );
   vi.spyOn(globalThis, "setInterval").mockImplementation(((handler: never, timeout?: never, ...args: never[]) => {
     balance.intervals++;
     return rawSetInterval(handler, timeout, ...args);

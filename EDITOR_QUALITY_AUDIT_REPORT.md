@@ -1621,3 +1621,119 @@ wave, and §17 / §33 / §35-browser / take-lane remain **unverified**. What thi
 wave did establish is that they are *runnable*: the production build is fast,
 budget-clean and available, so those checks need a working Browser session on
 this machine, not another rewrite of the same gate.
+
+## Wave 9 - 2026-10-11 - the intensity strip was sitting ON the clips (P1, CONFIRMED)
+
+Wave 8 left the editor loaded but untested. With a real page finally available,
+the first thing the §42 chaos spec asked was not "does the drag work" but "what
+is actually under the pointer" - and the answer ended this wave.
+
+### The measurement (Chromium, 1280x720, production build, INT = default ON)
+
+```
+clip      {"x":330,"y":534,"w":116,"h":44}  position:absolute  z-index:auto
+intensity {"x":330,"y":529,"w":480,"h":44}  position:relative   z-index:auto
+lane      {"x":329,"y":528,"w":480,"h":56}
+
+elementFromPoint(clip centre) = div.arr-intensity-lane
+chain: div.arr-intensity-lane < div.arr-lane < div.arr-lane-scroll < div.arr-timeline
+```
+
+The strip occupies **the same vertical band as the clips** (529..573 vs
+534..578) across the **full lane width** - not a strip *under* the clips. With
+`showIntensity` initialised to `true` (`ArrangementPanel.tsx:455`), a mouse
+press anywhere on any scene clip landed on the strip. Consequence, at the
+default configuration: **scene clips could be neither clicked nor dragged.**
+
+### Root cause: tree order, not z-index
+
+Neither element declares a `z-index`, so both sit at `auto` and CSS painting
+order falls through to **tree order**. `.arr-clip` is
+`position:absolute` (`.arr-clip`, `04-arrangement.css:621`) and the intensity
+strip is the **last in-flow child** of `.arr-lane` (`ArrangementPanel.tsx`
+rendered it immediately before the lane's closing tag), i.e. a *later* sibling.
+Later wins. The lane itself is `height: LANE_HEIGHT` (56px, inline), the strip
+is `height: 44px`, and being in flow it placed itself at the top of the lane's
+content box - squarely on top of the clips.
+
+Two comments in the tree already described the intended design and neither
+matched the render:
+
+- `src/styles/04-arrangement.css:323` - "a 0..1 editable curve strip **under
+  the clip lane**"
+- `IntensityLane`'s own doc comment - "One strip **under the clip lane**"
+- the toolbar `title` - "Show the scene-intensity lane **under the clip lane**"
+
+So this is not a design decision awaiting a product call: the code contradicted
+its own three-times-stated contract, and the contract is unambiguous.
+
+### Fix
+
+One structural move, no geometry maths, no new state: the strip is rendered as
+a **sibling of `.arr-lane`** in the scroll flow instead of its last child
+(`ArrangementPanel.tsx`, plus `margin-top: 4px` on the class so the band reads
+as separate). `IntensityLane` measures only its own ref
+(`localFromEvent` -> `laneRef`), and it already takes `totalBars * barWidth` as
+an inline width, so it needed no other adaptation.
+
+After the fix, same probe, same build path:
+
+```
+intensity {"x":329,"y":588,"w":480,"h":44}      <- 588 = lane bottom (584) + margin
+elementFromPoint(clip centre) = span.arr-clip-role
+chain: span.arr-clip-role < span.arr-clip-copy < div.arr-clip < div. < div.arr-lane
+```
+
+### Regression coverage, and its falsification
+
+`tests/e2e/18-editor-chaos-chain.spec.ts` asserts the invariant as an
+assertion rather than a log line:
+
+```ts
+expect(probe.closestToClip,
+  `pointer at the clip centre resolved to ${probe.top} (...)`).toBe(true);
+```
+
+plus `expect(await int.getAttribute("aria-pressed")).toBe("true")` - the spec
+must run in the **default** configuration. An earlier revision of this very
+spec turned INT off to let a drag through; that is the exact shape of a test
+that hides the defect it exists to catch, and it was removed rather than kept.
+
+`tests/ui/ArrangementPanel.test.tsx` gains a structural pin: the strip must not
+be a descendant of `.arr-lane`. It is honestly labelled in the file as what it
+is - jsdom has no layout engine, so it cannot observe hit-testing; the
+behavioural guard lives in the browser spec.
+
+**Falsification.** Re-nesting the strip (the one-line inverse), rebuilding and
+re-running:
+
+```
+1 failed
+  [chromium] 18-editor-chaos-chain.spec.ts:160
+  Expected: true
+  Received: false
+```
+
+One changed thing, one failure, at exactly the new assertion - and every step
+before it (boot, project open, ARR tab, INT-on assertion) stayed green. The
+guard is not blind. The fix was restored, rebuilt and re-run: **1 passed
+(19.2 s)**, zero JS errors, and the whole §42 chain (move, undo, redo,
+drag/undo/drag, zoom, final click) completed on the default configuration for
+the first time.
+
+## Wave 9b - the wave-5 test file was red under `tsc` since it was written
+
+`npx tsc --noEmit` on the whole project reported **4 errors, all in my own
+`tests/ui/mount-unmount-balance.test.tsx`** - the four `addEventListener`
+spies were typed `listener: never`, which collapses `vi.spyOn`'s overload set
+and makes every call site unassignable. Vitest never saw it: the specs pass,
+because the parameter type is erased at runtime.
+
+Fixed by typing the listener as `EventListenerOrEventListenerObject` with the
+real options union, which is what an implementation of an overloaded method has
+to accept. `npx tsc --noEmit` -> **exit 0**, and those 4 specs still pass.
+
+Recorded because it is the second time in this audit that "my suite is green"
+and "the repo gate is green" turned out to be different claims (the first was
+the registry audit in wave 2). The file was committed at `b241bfb6` with the
+whole project red; `npm run typecheck` was not run at that boundary.

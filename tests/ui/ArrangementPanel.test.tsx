@@ -185,6 +185,25 @@ describe("ArrangementPanel — scene intensity lane", () => {
     await user.click(screen.getByRole("button", { name: "INT" }));
     expect(container.querySelector(".arr-intensity-lane")).not.toBeNull();
   });
+
+  it("renders the strip as a SIBLING of the clip lane, never nested inside it", () => {
+    const { container } = renderWithCurve();
+    const lane = container.querySelector(".arr-lane");
+    const strip = container.querySelector(".arr-intensity-lane");
+    expect(lane, "the clip lane must exist for this to mean anything").not.toBeNull();
+    expect(strip).not.toBeNull();
+    // D14: nested inside the fixed-height `.arr-lane`, the 44px strip was a
+    // LATER sibling of the absolutely positioned clips with equal
+    // `z-index: auto`, so it painted and hit-tested over them — with INT on
+    // (the default) no press reached a clip at all.
+    //
+    // jsdom has no layout engine, so it cannot observe that hit-test; it can
+    // only pin the structure that permitted it. The behavioural guard for the
+    // same defect is `tests/e2e/18-editor-chaos-chain.spec.ts`, which asks
+    // `document.elementFromPoint` at the clip's centre in a real browser.
+    expect(lane!.querySelector(".arr-intensity-lane")).toBeNull();
+    expect((strip as HTMLElement).closest(".arr-lane")).toBeNull();
+  });
 });
 
 describe("ArrangementPanel — arrangement ergonomics", () => {
