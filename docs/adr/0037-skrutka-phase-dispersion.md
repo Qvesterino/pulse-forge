@@ -118,7 +118,9 @@ over a 1.2 s tonal + kick probe, pinned in `tests/skrutka-golden.test.ts`).
 2. **KEY (`keyMode`: 0 OFF / 1 PUMP / 2 DUCK, default 0).** A second worklet
    input carries a sidechain key through the engine's generic
    `setSidechainInput` contract (KOREŇ wave-4 precedent; zero engine
-   changes). A 2 ms/180 ms key envelope drives the radius: PUMP deepens it
+   changes). The Effect Rack exposes the shared SOURCE selector and KICK
+   shortcut for TWIST, so a key-mode preset can receive an actual track instead
+   of running without a key. A 2 ms/180 ms key envelope drives the radius: PUMP deepens it
    toward the ceiling on every kick, DUCK thins it (×0.3..1) so the kick
    clears its own phase smear. No key connected is bit-exact to OFF.
 3. **MOTION (`lfoRate` Hz + `lfoSync` division + `lfoShape` SINE/TRI/RAND +
@@ -358,3 +360,21 @@ ranges (clamp identity), the A/B contrast (≥ 2 differing ids), the exact-match
 single-binding idempotence across pair switches, and the non-TWIST refusal;
 the panel suite covers the select → `onApplyScenePair` + live `setCurves`
 seeding, the SCENE-INTENSITY chip and the CUSTOM fallback.
+
+## Addendum 7 (2026-10-11) — shared SCENE STRIP (Mixer + Arrangement)
+
+`src/ui/SceneStrip.tsx` mounts once under the mixer toolbar and once in the
+arrangement scenes sidebar and plays both scene packs from one place: one
+row edits the resolved scene's static intensity (`setSceneIntensity` — the
+active scene from `activePatternId` in the mixer, the selected scene in the
+arrangement; a STATIC/CURVE chip reports whether the arrangement INTENSITY
+lane's curve or the static value drives playback), and one row per TWIST or
+GROW device carries its active A/B pair with the same pack pickers the
+device panels use. The picker executes `applyTwistScenePair` /
+`applyKorenScenePair` unchanged — the strip is a second surface over the
+same one-undo commands, never a parallel write path; the track name selects
+the strip's track so a row is one click from the device. Collapse state
+persists (`pf-scene-strip-collapsed`), and the CUSTOM fallback marks slots
+stored by manual STOREs. Locked by `tests/ui/SceneStrip.test.tsx` (4 specs:
+intensity commit through the command, per-device pair apply writing the
+slots, SCENE chip on bound rows, CUSTOM fallback; plus the empty state).

@@ -17,6 +17,7 @@ import { notifyOnboardingProgress } from "./OnboardingHint";
 import { publishSessionRecordingState, IDLE_SESSION_STATE } from "./sessionStateSurface";
 import { useActivePatternId } from "./context";
 import { SpectralEditPanel } from "./SpectralEditPanel";
+import { SceneStrip } from "./SceneStrip";
 import {
   addArrangementClip,
   addArrangementTransition,
@@ -3330,6 +3331,7 @@ export function ArrangementPanel() {
             VARIATION
           </button>
         </div>
+        <SceneStrip sceneId={selectedScene?.id} />
         <SceneLauncher
           variant="panel"
           currentClipId={currentClipId}

@@ -31,6 +31,7 @@ import { MasterProcessingControls } from "./MasterProcessingControls";
 import { trackBadge } from "./TrackTabs";
 import { FreezeButton } from "./FreezeButton";
 import { MacroPerformanceBar } from "./MacroPerformanceBar";
+import { SceneStrip } from "./SceneStrip";
 
 /** Gain → dB readout matching MasterMeter's convention: the display floor
  * (linear 0 / −60 dB) reads "-INF" instead of a bogus "-60.0". */
@@ -186,6 +187,7 @@ export function Mixer({ onOpenFxPanel }: { onOpenFxPanel?: () => void } = {}) {
         </button>
         <MacroPerformanceBar />
       </div>
+      <SceneStrip />
       <div className="mixer-strips">
         {visibleTracks.map((track) => (
           <ChannelStrip key={track.id} track={track} canDelete={tracks.length > 1} />

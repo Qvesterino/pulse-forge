@@ -175,6 +175,136 @@
   color: var(--text-dim);
   letter-spacing: 0.5px;
 }
+
+/* SCENE STRIP — scene intensity + the TWIST/GROW scene pairs in one row.
+   Mounted under the mixer toolbar and in the arrangement scenes sidebar;
+   flex-wrap keeps both narrow columns usable. */
+.scene-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 8px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.scene-strip-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--accent);
+  font: 700 10px var(--mono);
+  letter-spacing: 1px;
+}
+
+.scene-strip-scene {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 3px 7px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+}
+
+.scene-strip-name {
+  max-width: 130px;
+  overflow: hidden;
+  color: var(--text-dim);
+  font: 700 10px var(--mono);
+  letter-spacing: 0.6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-strip-intensity {
+  flex: 0 1 180px;
+  min-width: 120px;
+}
+
+.scene-strip-intensity .slider-header {
+  display: none;
+}
+
+.scene-strip-intensity .slider-compact .slider-track {
+  height: 22px;
+}
+
+.scene-strip-fx {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.scene-strip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 7px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+}
+
+.scene-strip-track {
+  max-width: 120px;
+  padding: 0;
+  overflow: hidden;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-dim);
+  font: 700 10px var(--mono);
+  letter-spacing: 0.4px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-strip-track:hover {
+  color: var(--accent);
+}
+
+.scene-strip-kind {
+  font: 700 9px var(--mono);
+  letter-spacing: 0.6px;
+  color: var(--text-faint);
+}
+
+.scene-strip-pair {
+  max-width: 150px;
+  min-width: 90px;
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--text-dim);
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+
+.scene-strip-chip {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.4px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+
+.scene-strip-empty {
+  color: var(--text-faint);
+  font: 9px var(--mono);
+}
 .channel-strip.drag-over {
   outline: 2px dashed var(--accent);
   outline-offset: -2px;
