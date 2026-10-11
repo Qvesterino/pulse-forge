@@ -59,6 +59,7 @@ const MorphDynamicsPanel = lazy(() => import("./MorphDynamicsPanel").then((m) =>
 const KorenPanel = lazy(() => import("./KorenPanel").then((m) => ({ default: m.KorenPanel })));
 const SkrutkaPanel = lazy(() => import("./SkrutkaPanel").then((m) => ({ default: m.SkrutkaPanel })));
 const RezonansPanel = lazy(() => import("./RezonansPanel").then((m) => ({ default: m.RezonansPanel })));
+const PortalPanel = lazy(() => import("./PortalPanel").then((m) => ({ default: m.PortalPanel })));
 import { BeatManglerEditor } from "./BeatManglerEditor";
 import { presetsForEffect } from "../effects/presets";
 import { BEATMAKING_EFFECT_CHAINS } from "../effects/chains";
@@ -1160,6 +1161,15 @@ function Device({
                 }
                 onGestureStart={() => services.store.beginUndoFrame("REZONANS formant drag")}
                 onGestureEnd={() => services.store.endUndoFrame()}
+              />
+            )}
+            {fx.type === "portal" && (
+              <PortalPanel
+                trackId={track.id}
+                fxId={fx.id}
+                params={fx.params}
+                degraded={!!fallbackReason}
+                docked={devicesMode}
               />
             )}
           </Suspense>

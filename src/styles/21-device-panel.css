@@ -593,3 +593,56 @@
     transition: none;
   }
 }
+
+/* PORTAL - the spectral trace. Two lines, one axis: what arrived (IN, dim)
+   and what the mode produced (OUT, bright). The gap between them is the
+   effect, which is why a single spectrum cannot be what this panel draws. */
+.portal-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.portal-panel__readout {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.portal-panel__state {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.portal-panel__readouts {
+  display: flex;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.portal-panel__canvas {
+  width: 100%;
+  height: 132px;
+  display: block;
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.28);
+}
+.portal-panel[data-docked="1"] .portal-panel__canvas {
+  height: 108px;
+}
+.portal-panel__legend {
+  display: flex;
+  gap: 12px;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-faint);
+}
+.portal-panel__legend-in {
+  color: rgba(150, 170, 200, 0.85);
+}
+.portal-panel__legend-out {
+  color: var(--accent);
+}
