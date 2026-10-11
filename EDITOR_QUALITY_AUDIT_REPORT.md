@@ -1470,3 +1470,71 @@ not: **playback editing / ghost audio, responsive layout, heap stability, and
 the take-lane click suppression all remain unverified**, and this wave is the
 attempt that did not close them. They should be run on an idle machine before
 the audit can honestly claim completion.
+
+---
+
+## Wave 7 — 2026-10-11 — the boot screen has no watchdog (P2, observed — attribution deliberately left open)
+
+Wave 6 called the browser gate inconclusive. This wave repeated it on a quieter
+box and instrumented properly, which turned an unexplained stall into two
+separate findings: one that is **not** a defect, and one that is.
+
+### What it is not: a failed module
+
+Repeated in a real Chromium at 1280×720 against the dev server:
+
+- console: `[vite] connecting…` → React chunk loaded → `[vite] connected.`
+  **Zero errors, zero warnings.**
+- network: **no failed, no 5xx, no pending** requests.
+- `inspect` returns in ~33 ms — the renderer is responsive, not wedged.
+- the body contains exactly `KYX — loading…` and nothing else.
+
+And the dev server, probed directly:
+
+```
+main.tsx             HTTP 200  53 KB   0–3 s
+ArrangementPanel.tsx HTTP 200 982 KB  20 s
+```
+
+A single module costs 20 s to transform and serve. The studio route's chunk
+graph contains hundreds of them. **That is what the stall is**: Vite cold
+transform on a contended machine, not an application fault. Nothing in this
+audit's commits runs before the studio route resolves — the lock guards, the
+clipboard refusal and the grid extent all live *inside* the chunk that never
+finished loading.
+
+### What it is: an eternal loading state with no recovery surface (§20, §36)
+
+```ts
+// src/main.tsx:121
+const ROUTE_FALLBACK = <div className="boot">KYX — loading…</div>;
+```
+
+That is a plain React `<Suspense>` fallback. It has:
+
+- **no timeout** — a chunk that never resolves and a chunk that resolves in 4
+  minutes are pixel-identical;
+- **no error surface** — §36 asks that failures not be swallowed, and a stalled
+  import fails *silently* by construction here;
+- **no retry or reload affordance** — §20 asks that nothing leave the user
+  "permanently stuck in dragging, trimming, **loading**, or disabled state".
+
+Reproduced twice (two independent loads, ~5 min and ~2 min, both still on the
+fallback). The browser's own view is unchanged: an idle page, no console
+output, no failed requests, forever.
+
+**Not fixed here.** A boot watchdog changes application startup architecture —
+it decides what the user sees when the app cannot start — which is §40's human
+review boundary, and `main.tsx` is shared surface that other sessions are
+editing. The honest disposition is to name it, with a reproduction: *load the
+dev server on a cold module cache and watch the boot screen; there is no state
+in which it admits it is stuck.*
+
+### Why this still does not complete the DoD
+
+The §17 playback, §33 responsive-layout, §35 heap and take-lane items need a
+**loaded** editor. Two attempts on this machine produced a loaded page at most
+once (one Playwright scenario passed, others reached interaction before timing
+out). Those items stay open, and the correct next step is a run on an idle box
+against a **production build** — where the module graph is pre-bundled and the
+982 KB dev transform does not apply — not a third attempt here.
