@@ -19,6 +19,8 @@ const ENV_MIN = 1e-6;
 const ENV_MAX = 1e6;
 /** Envelope refresh stride in frames (see ADR 0040 decision 4). */
 const ENVELOPE_STRIDE = 2;
+/** Keep most of a fresh estimate immediate while smoothing its last small step. */
+const ENVELOPE_REFRESH_BLEND = 0.9;
 
 export class FrameEngine {
   private sampleRate = 48000;
@@ -47,6 +49,11 @@ export class FrameEngine {
 
   /** Linear envelope of the current frame (geometric mean 1). */
   envLin = new Float64Array(0);
+  /** Log envelope interpolated between cepstral refreshes, consumed by voices. */
+  renderLogEnv = new Float64Array(0);
+
+  /** Previous cepstral estimate used as the start of a two-frame glide. */
+  private previousLogEnv = new Float64Array(0);
 
   private env = new CepstralEnvelope();
   private pitch = new PitchTracker();
@@ -124,6 +131,8 @@ export class FrameEngine {
     this.prevPhase = new Float64Array(this.half + 1);
     this.envLin = new Float64Array(this.half + 1);
     this.envLin.fill(1);
+    this.renderLogEnv = new Float64Array(this.half + 1);
+    this.previousLogEnv = new Float64Array(this.half + 1);
 
     this.pitch.prepare(this.sampleRate, this.n, 70, 800);
 
@@ -153,6 +162,8 @@ export class FrameEngine {
     this.phase.fill(0);
     this.prevPhase.fill(0);
     this.envLin.fill(1);
+    this.renderLogEnv.fill(0);
+    this.previousLogEnv.fill(0);
     this.env.reset();
     this.pitch.reset();
     this.lastHz = 0;
@@ -197,16 +208,29 @@ export class FrameEngine {
       phase[k] = Math.atan2(ii, rr);
     }
 
-    // Envelope refresh stride. The envelope changes far slower than 93 fps,
-    // so holding the previous estimate between refreshes is inaudible and
-    // halves the cepstrum cost.
-    if (this.frameCount % ENVELOPE_STRIDE === 0 || !this.env.ready) {
+    // Refresh every other frame to halve cepstrum cost, then glide between
+    // estimates in log space. Holding a fresh estimate for an entire hop pair
+    // creates a small but avoidable step in the spectral colour of the voice.
+    const hadEnvelope = this.env.ready;
+    const refreshEnvelope = this.frameCount % ENVELOPE_STRIDE === 0 || !hadEnvelope;
+    if (refreshEnvelope) {
+      if (hadEnvelope) this.previousLogEnv.set(this.env.logEnv);
       this.env.compute(mag, half);
+      // First frame and a changed lifter have no valid prior estimate to glide
+      // from, so seed both ends with the newly computed envelope.
+      if (!hadEnvelope) this.previousLogEnv.set(this.env.logEnv);
     }
     if (this.env.ready) {
       const logEnv = this.env.logEnv;
+      // Apply most of a fresh estimate immediately; the next frame lands on it.
+      // This avoids an audible envelope step without dulling strong formant shifts.
+      const blend = hadEnvelope && refreshEnvelope ? ENVELOPE_REFRESH_BLEND : 1;
+      const previousLogEnv = this.previousLogEnv;
+      const renderLogEnv = this.renderLogEnv;
       for (let k = 0; k <= half; k++) {
-        const v = Math.exp(logEnv[k]!);
+        const interpolatedLog = previousLogEnv[k]! + (logEnv[k]! - previousLogEnv[k]!) * blend;
+        renderLogEnv[k] = interpolatedLog;
+        const v = Math.exp(interpolatedLog);
         this.envLin[k] = v < ENV_MIN ? ENV_MIN : v > ENV_MAX ? ENV_MAX : v;
       }
     }

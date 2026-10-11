@@ -488,7 +488,7 @@ export class RezonansProcessor {
       this.frame.phase,
       this.frame.previousPhase,
       this.frame.envLin,
-      this.frame.envelope.logEnv,
+      this.frame.renderLogEnv,
     );
     this.frame.commitFrame();
   }

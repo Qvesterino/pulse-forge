@@ -213,6 +213,45 @@ export function parseSectionFlowIntent(text: string): SectionFlowParse | null {
   return { targetRole, flow, detected: [`${targetRole} §`, `${flow} flow`] };
 }
 
+export type SectionTransitionKind = "fill" | "riser" | "break";
+
+export interface SectionTransitionParse {
+  targetRole: SceneRole;
+  transition: SectionTransitionKind;
+  detected: string[];
+}
+
+const SECTION_TRANSITION_WORDS: ReadonlyArray<readonly [SectionTransitionKind, RegExp]> = [
+  ["fill", new RegExp("\\bfill(?:y|ov)?\\b|\\bfil(?:l|luj)\\b")],
+  ["riser", new RegExp("\\bris(?:er|y)\\b|\\brywajz\\b")],
+  ["break", new RegExp("\\bbreak\\b|\\bbrejk\\b")],
+];
+const SECTION_TRANSITION_VERB = new RegExp("\\b(?:add|pridaj|daj|insert|vkldaj|zapni)\\b");
+
+/**
+ * STRUCTURAL ARRANGEMENT COMMAND (2026-10-11): "add a fill before every
+ * chorus" / "pridaj riser pred drop" — a transition KIND targeting the
+ * section it leads INTO. Fill/riser/break paint onto the PREDECESSOR
+ * section's pattern (the same treatments the song builder bakes); drop and
+ * impact are cue-asset transitions with no pattern shape and are
+ * deliberately not part of this grammar.
+ */
+export function parseSectionTransitionIntent(text: string): SectionTransitionParse | null {
+  const lower = ` ${text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")} `;
+  if (!SECTION_TRANSITION_VERB.test(lower)) return null;
+  const targetRole = reviseRoleIn(lower);
+  if (!targetRole) return null;
+  for (const [transition, re] of SECTION_TRANSITION_WORDS) {
+    if (re.test(lower)) {
+      return { targetRole, transition, detected: [`${transition} → ${targetRole} §`] };
+    }
+  }
+  return null;
+}
+
 /** Parse "more energetic"-style content revisions. Null = not a revise. */
 export function parseReviseIntent(text: string): ReviseParse | null {
   const lower = ` ${text
@@ -275,6 +314,7 @@ export type RoutedIntent =
   | { kind: "production"; intent: ProductionIntent }
   | { kind: "mix"; overrides: MixOverrides; detected: string[] }
   | ({ kind: "sectionFlow" } & SectionFlowParse)
+  | ({ kind: "sectionTransition" } & SectionTransitionParse)
   | { kind: "sectionProduction"; targetRole: SceneRole; intent: ProductionIntent; detected: string[] }
   | {
       kind: "revise";
@@ -542,6 +582,12 @@ export function routeIntentText(
   const pattern = parseIntentText(text);
   const genreSignal = Boolean(pattern.input.genre || pattern.detected.some((chip) => chip.startsWith("♪")));
   const sectionRequests = parseSectionRequests(text);
+  // STRUCTURAL ARRANGEMENT COMMANDS before content revises — "add a fill
+  // before every chorus" is an arrangement statement, not a slider move.
+  const sectionTransition = parseSectionTransitionIntent(text);
+  if (sectionTransition) {
+    return { kind: "sectionTransition", ...sectionTransition };
+  }
   const sectionFlow = parseSectionFlowIntent(text);
   if (sectionFlow && sectionRequests?.scopedFx.length) {
     return {

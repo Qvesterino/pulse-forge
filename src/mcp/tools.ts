@@ -40,6 +40,7 @@ import {
   type SourceCompositionFingerprint,
 } from "../analysis/similarity-advisory";
 import type { SongSectionSpec } from "../intent/song";
+import { reviseSectionTransitions } from "../intent/song";
 import { applyCompoundIntent } from "../intent/compound";
 import { productionReadback } from "../intent/production";
 import {
@@ -6170,6 +6171,16 @@ function executeRoutedIntent(ctx: McpToolContext, route: RoutedIntent): McpToolR
       done += 1;
     }
     return { text: `${route.intent.kind} ×${done}`, mutated: done > 0 };
+  }
+  if (route.kind === "sectionTransition") {
+    // Structural arrangement repaint — a plain doc mutation, one undo step,
+    // terse read-back (MCP P3): the label IS the summary.
+    const outcome = reviseSectionTransitions(ctx.getDoc(), route.targetRole, route.transition);
+    if (!outcome.ok || !outcome.command) {
+      return { text: outcome.error ?? "transition failed", mutated: false };
+    }
+    ctx.execute(outcome.command);
+    return { text: outcome.label ?? "transition applied", mutated: true };
   }
   if (routeIsDestructive(route) && !destructiveAllowedWithCheckpoint(ctx, "kyx_intent")) return destructiveRefusal();
 

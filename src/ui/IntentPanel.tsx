@@ -46,6 +46,7 @@ import {
 import {
   reviseSection,
   reviseSectionFlow,
+  reviseSectionTransitions,
   replacePatternInPlaceCommand,
   applySongCommand,
   type SongBuild,
@@ -4336,6 +4337,25 @@ export function IntentPanel() {
         const profile = planMixProfile(normalizeIntent(intentInput), route.overrides);
         services.store.execute(applyMixIntent(doc, profile));
         setStatus(`⚡ mix: ${profile.summary.join(" · ") || `${profile.decisions.length} updates`}`);
+      } else if (route.kind === "sectionTransition") {
+        stopAudition();
+        if (busy) return;
+        setBusy(true);
+        setError(null);
+        setStatus(null);
+        try {
+          const outcome = reviseSectionTransitions(doc, route.targetRole, route.transition);
+          if (!outcome.ok || !outcome.command) {
+            setStatus(`⚡ ${outcome.error ?? "transition failed"}`);
+            return;
+          }
+          setStatus(`↻ ${outcome.label} — ✓ potvrdiť alebo ✗ ponechať`);
+          proposeSectionChange(outcome.label ?? "section transition", doc, outcome.command, async () =>
+            renderAuditionBuffer(doc, services.bank, outcome.pattern ?? doc.patterns[0], null),
+          );
+        } finally {
+          setBusy(false);
+        }
       } else if (route.kind === "sectionProduction" || route.kind === "sectionFlow") {
         stopAudition();
         if (busy) return;

@@ -319,6 +319,15 @@ interface DragState {
   /** Multi-select move: every selected clip id + its start when the drag began. */
   movingIds?: string[];
   origStarts?: Record<string, number>;
+  /**
+   * §29: a block move writes the document by hand, so it never reaches
+   * `assertClipEditable` the way the single-clip drag does — the lock has to
+   * be captured here, at pointerdown, and enforced by the commit. Sampled
+   * once for the whole gesture (like `barWidth`): the lock state belongs to
+   * the gesture, and re-reading it per pointermove would let a mid-drag lock
+   * flip the preview and the commit apart.
+   */
+  movingHasLocked?: boolean;
 }
 
 /**
@@ -1450,6 +1459,9 @@ export function ArrangementPanel() {
     /** Block move: every selected audio clip slides by one shared delta. */
     movingIds?: string[];
     origStarts?: Record<string, number>;
+    /** §29 — see DragState.movingHasLocked: the block move writes the document
+     * by hand, so the lock has to be sampled here and enforced at the commit. */
+    movingHasLocked?: boolean;
   } | null>(null);
   const [audioStretchPreview, setAudioStretchPreview] = useState<{ clipId: string; rate: number } | null>(null);
   const [audioDrag, setAudioDrag] = useState<{ startBar: number; lengthBars: number } | null>(null);
@@ -2256,6 +2268,7 @@ export function ArrangementPanel() {
         barWidth,
         movingIds,
         origStarts,
+        movingHasLocked: movingIds.some((id) => clips.find((c) => c.id === id)?.locked === true),
       };
       setClipDrag({ startBar: clip.startBar, lengthBars: clip.lengthBars });
       setClipMultiDrag(0);
@@ -2311,6 +2324,14 @@ export function ArrangementPanel() {
     // `barWidth` mid-drag, and mixing the two scales silently mis-places the clip.
     const bar = barFromEventAt(event, current.barWidth);
     if (current.movingIds) {
+      // A locked member refuses the whole block: the ghost must not promise a
+      // move the commit will reject. The preview still writes 0 rather than
+      // null — the commit distinguishes "no pointermove at all" (a plain
+      // click, which must stay silent) from "moved, but refused" by that.
+      if (current.movingHasLocked) {
+        setClipMultiDrag(0);
+        return;
+      }
       let delta = Math.max(bar - current.grabBar, -Math.min(...Object.values(current.origStarts ?? { 0: 0 })));
       // Ripple preview never crosses the stationary predecessor — the ghost
       // must show the position the commit actually writes.
@@ -2357,6 +2378,12 @@ export function ArrangementPanel() {
     setClipMultiDrag(null);
     if (!current || !finalDrag) return;
     if (current.movingIds) {
+      // Ahead of the `!delta` short-circuit: a click on a locked selection is
+      // still just a selection, so only a gesture that actually moved reports.
+      if (current.movingHasLocked) {
+        if (delta !== null) setActionError("Selection contains a locked clip — unlock it to move the block");
+        return;
+      }
       if (!delta) return;
       const beforeDoc = services.store.doc;
       // A clip in the block can be deleted mid-drag (undo/collab). Moving a
@@ -2364,6 +2391,10 @@ export function ArrangementPanel() {
       // the overlap guard with length 0 — drag only what is still live.
       const movingIds = current.movingIds.filter((id) => beforeDoc.arrangement.clips.some((c) => c.id === id));
       if (movingIds.length === 0) return;
+      if (current.movingHasLocked) {
+        setActionError("Selection contains a locked clip — unlock it to move the block");
+        return;
+      }
       if (rippleMode) {
         // RIPPLE multi-move: the block and every later clip slide by the
         // same delta — gaps after the strip stay exactly as before. No
@@ -2447,24 +2478,26 @@ export function ArrangementPanel() {
       try {
         if (rippleMode) execute(moveArrangementClipRipple(services.store.doc, current.clipId, finalDrag.startBar));
         else execute(moveArrangementClip(services.store.doc, current.clipId, finalDrag.startBar));
-      } catch {
-        // Clip deleted mid-drag (undo/collab) — the factory throws before
-        // execute's own guard can; drop silently like the cancel path.
+      } catch (error) {
+        // The factory throws before `execute`'s guard can run. Surfaced rather
+        // than swallowed: a locked clip refused here is information the user
+        // needs, and "drag did nothing" is not a self-explaining outcome.
+        setActionError(error instanceof Error ? error.message : "Operation failed");
       }
     }
     if (current.mode === "resize" && finalDrag.lengthBars !== current.origLength) {
       try {
         if (rippleMode) execute(resizeArrangementClipRipple(services.store.doc, current.clipId, finalDrag.lengthBars));
         else execute(resizeArrangementClip(services.store.doc, current.clipId, finalDrag.lengthBars));
-      } catch {
-        /* same mid-drag deletion race */
+      } catch (error) {
+        setActionError(error instanceof Error ? error.message : "Operation failed");
       }
     }
     if (current.mode === "trimStart" && finalDrag.startBar !== current.origStart) {
       try {
         execute(trimArrangementClipStart(services.store.doc, current.clipId, finalDrag.startBar));
-      } catch {
-        /* same mid-drag deletion race */
+      } catch (error) {
+        setActionError(error instanceof Error ? error.message : "Operation failed");
       }
     }
   };
@@ -2643,7 +2676,13 @@ export function ArrangementPanel() {
       barWidth,
       grabY: event.clientY,
       secPerBar: clip.lengthBars > 0 ? clipWallSec / clip.lengthBars : (BAR_TICKS * 60) / (doc.bpm * PPQ),
-      ...(multiMoving !== undefined ? { movingIds: multiMoving, origStarts } : {}),
+      ...(multiMoving !== undefined
+        ? {
+            movingIds: multiMoving,
+            origStarts,
+            movingHasLocked: multiMoving.some((id) => audioClips.find((c) => c.id === id)?.locked === true),
+          }
+        : {}),
     };
     dragGuard.arm();
     if (multiMoving !== undefined) setAudioMultiDragLive(0);
@@ -2695,6 +2734,12 @@ export function ArrangementPanel() {
     // Delta-snapped (not per-clip absolute): the block's internal spacing
     // must survive — absolute snapping would collapse between-grid offsets.
     if (cur.movingIds) {
+      if (cur.movingHasLocked) {
+        // 0, not null — see the scene block move: the commit needs to tell a
+        // refused drag apart from a click that never moved.
+        setAudioMultiDragLive(0);
+        return;
+      }
       setAudioMultiDragLive(Math.max(snapDelta(delta, grid), -Math.min(...Object.values(cur.origStarts ?? { 0: 0 }))));
       return;
     }
@@ -2784,6 +2829,13 @@ export function ArrangementPanel() {
     // documented overlap contract means no collision guard, unlike the scene
     // block move. 0.01-bar quantize matches moveAudioClip.
     if (cur.movingIds) {
+      // Ahead of the `!multiDelta` short-circuit, for the same reason as the
+      // scene block move: a click is silent, a refused drag reports.
+
+      if (cur.movingHasLocked) {
+        if (multiDelta !== null) setActionError("Selection contains a locked clip — unlock it to move the block");
+        return;
+      }
       // Press+release without movement is a click — selection already changed
       // at pointerdown; nothing to commit (mirrors the scene block move).
       if (!multiDelta) return;
@@ -2792,6 +2844,7 @@ export function ArrangementPanel() {
       // only what is still live (same discipline as the scene block move).
       const movingIds = cur.movingIds.filter((id) => (beforeDoc.arrangement.audioClips ?? []).some((c) => c.id === id));
       if (movingIds.length === 0) return;
+
       const nextAudioClips = (beforeDoc.arrangement.audioClips ?? [])
         .map((c) =>
           movingIds.includes(c.id)
@@ -2816,64 +2869,76 @@ export function ArrangementPanel() {
       });
       return;
     }
-    if (cur.mode === "move" && final && final.startBar !== cur.origStart)
-      execute(moveAudioClip(services.store.doc, cur.clipId, final.startBar));
-    else if (cur.mode === "resize" && final && final.lengthBars !== cur.origLength)
-      execute(resizeAudioClip(services.store.doc, cur.clipId, final.lengthBars));
-    else if (cur.mode === "stretch" && final && stretchPrev && stretchPrev.clipId === cur.clipId) {
-      const rateChanged = Math.abs(stretchPrev.rate - cur.origRate) > 0.005;
-      if (final.lengthBars !== cur.origLength || rateChanged)
-        execute(stretchAudioClip(services.store.doc, cur.clipId, final.lengthBars, stretchPrev.rate));
-    } else if (cur.mode === "trimStart" && final) {
-      // Source-time delta of the drag, integrated at the scenes' effective
-      // tempos (signed: a leftward trim goes negative). doc.bpm here wrote
-      // trim/offset against a wall clock nothing plays at under a pinned
-      // scene — the trim handle and the audible skip disagreed.
-      const deltaSec = arrangementSecondsBetweenTicks(
-        clips,
-        scenes,
-        cur.origStart * BAR_TICKS,
-        final.startBar * BAR_TICKS,
-        doc.bpm,
-      );
-      const lengthChanged = final.lengthBars !== cur.origLength;
-      if (Math.abs(deltaSec) > 0.001 || lengthChanged) {
-        // The clip can be edited or deleted under this gesture (collab merge,
-        // undo). `audioClips` is a render-scope memo, so it still holds the
-        // PRE-change offsetSec here — passing that to a command that runs
-        // against the LIVE document writes the new length onto the old source
-        // position. `trimAudioClipStart` throws on a missing clip, so only a
-        // changed offset slipped through: silently, the clip played the wrong
-        // region of its sample. Same reasoning as the mid-drag dead-id filter
-        // in `onClipPointerUp`; read the live clip, never the memo.
-        const liveClip = (services.store.doc.arrangement.audioClips ?? []).find((c) => c.id === cur.clipId);
-        if (!liveClip) return;
-        // ONE command for the whole trim: the source offset and the new length
-        // are the same gesture. Two commands here meant a single Ctrl+Z undid
-        // only the resize, leaving the clip playing a different region of the
-        // sample at its original length.
-        execute(
-          trimAudioClipStart(services.store.doc, cur.clipId, {
-            lengthBars: final.lengthBars,
-            trimStart: cur.origTrimStart + deltaSec,
-            offsetSec: liveClip.offsetSec + deltaSec,
-          }),
+    // The command FACTORIES below throw before `execute`'s own try/catch can
+    // run — `execute(factory(...))` evaluates the factory first. A locked clip
+    // (or a clip deleted mid-drag) therefore reached this handler as an
+    // UNCAUGHT exception: no message, no commit, an error in the console. One
+    // guard here covers every branch below, exactly like `execute` covers the
+    // store call itself.
+    try {
+      if (cur.mode === "move" && final && final.startBar !== cur.origStart)
+        execute(moveAudioClip(services.store.doc, cur.clipId, final.startBar));
+      else if (cur.mode === "resize" && final && final.lengthBars !== cur.origLength)
+        execute(resizeAudioClip(services.store.doc, cur.clipId, final.lengthBars));
+      else if (cur.mode === "stretch" && final && stretchPrev && stretchPrev.clipId === cur.clipId) {
+        const rateChanged = Math.abs(stretchPrev.rate - cur.origRate) > 0.005;
+        if (final.lengthBars !== cur.origLength || rateChanged)
+          execute(stretchAudioClip(services.store.doc, cur.clipId, final.lengthBars, stretchPrev.rate));
+      } else if (cur.mode === "trimStart" && final) {
+        // Source-time delta of the drag, integrated at the scenes' effective
+        // tempos (signed: a leftward trim goes negative). doc.bpm here wrote
+        // trim/offset against a wall clock nothing plays at under a pinned
+        // scene — the trim handle and the audible skip disagreed.
+        const deltaSec = arrangementSecondsBetweenTicks(
+          clips,
+          scenes,
+          cur.origStart * BAR_TICKS,
+          final.startBar * BAR_TICKS,
+          doc.bpm,
         );
+        const lengthChanged = final.lengthBars !== cur.origLength;
+        if (Math.abs(deltaSec) > 0.001 || lengthChanged) {
+          // The clip can be edited or deleted under this gesture (collab merge,
+          // undo). `audioClips` is a render-scope memo, so it still holds the
+          // PRE-change offsetSec here — passing that to a command that runs
+          // against the LIVE document writes the new length onto the old source
+          // position. `trimAudioClipStart` throws on a missing clip, so only a
+          // changed offset slipped through: silently, the clip played the wrong
+          // region of its sample. Same reasoning as the mid-drag dead-id filter
+          // in `onClipPointerUp`; read the live clip, never the memo.
+          const liveClip = (services.store.doc.arrangement.audioClips ?? []).find((c) => c.id === cur.clipId);
+          if (!liveClip) return;
+          // ONE command for the whole trim: the source offset and the new length
+          // are the same gesture. Two commands here meant a single Ctrl+Z undid
+          // only the resize, leaving the clip playing a different region of the
+          // sample at its original length.
+          execute(
+            trimAudioClipStart(services.store.doc, cur.clipId, {
+              lengthBars: final.lengthBars,
+              trimStart: cur.origTrimStart + deltaSec,
+              offsetSec: liveClip.offsetSec + deltaSec,
+            }),
+          );
+        }
+      } else if (cur.mode === "slip" && slipPrev && slipPrev.clipId === cur.clipId) {
+        // 1 ms quantize: slip is audio-position precision, not a 2dp UI knob.
+        if (Math.abs(slipPrev.offsetSec - cur.origOffsetSec) > 0.001)
+          execute(slipAudioClip(services.store.doc, cur.clipId, Math.round(slipPrev.offsetSec * 1000) / 1000));
+      } else if (cur.mode === "fadeIn" && fadePrev && fadePrev.clipId === cur.clipId) {
+        if (Math.abs(fadePrev.fadeIn - cur.origFadeIn) > 0.005)
+          execute(updateAudioClip(services.store.doc, cur.clipId, { fadeIn: Math.round(fadePrev.fadeIn * 100) / 100 }));
+      } else if (cur.mode === "fadeOut" && fadePrev && fadePrev.clipId === cur.clipId) {
+        if (Math.abs(fadePrev.fadeOut - cur.origFadeOut) > 0.005)
+          execute(
+            updateAudioClip(services.store.doc, cur.clipId, { fadeOut: Math.round(fadePrev.fadeOut * 100) / 100 }),
+          );
+      } else if (cur.mode === "gain" && gainPrev && gainPrev.clipId === cur.clipId) {
+        if (Math.abs(gainPrev.gain - cur.origGain) > 0.01)
+          execute(updateAudioClip(services.store.doc, cur.clipId, { gain: Math.round(gainPrev.gain * 100) / 100 }));
+        void event;
       }
-    } else if (cur.mode === "slip" && slipPrev && slipPrev.clipId === cur.clipId) {
-      // 1 ms quantize: slip is audio-position precision, not a 2dp UI knob.
-      if (Math.abs(slipPrev.offsetSec - cur.origOffsetSec) > 0.001)
-        execute(slipAudioClip(services.store.doc, cur.clipId, Math.round(slipPrev.offsetSec * 1000) / 1000));
-    } else if (cur.mode === "fadeIn" && fadePrev && fadePrev.clipId === cur.clipId) {
-      if (Math.abs(fadePrev.fadeIn - cur.origFadeIn) > 0.005)
-        execute(updateAudioClip(services.store.doc, cur.clipId, { fadeIn: Math.round(fadePrev.fadeIn * 100) / 100 }));
-    } else if (cur.mode === "fadeOut" && fadePrev && fadePrev.clipId === cur.clipId) {
-      if (Math.abs(fadePrev.fadeOut - cur.origFadeOut) > 0.005)
-        execute(updateAudioClip(services.store.doc, cur.clipId, { fadeOut: Math.round(fadePrev.fadeOut * 100) / 100 }));
-    } else if (cur.mode === "gain" && gainPrev && gainPrev.clipId === cur.clipId) {
-      if (Math.abs(gainPrev.gain - cur.origGain) > 0.01)
-        execute(updateAudioClip(services.store.doc, cur.clipId, { gain: Math.round(gainPrev.gain * 100) / 100 }));
-      void event;
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : "Operation failed");
     }
   };
 

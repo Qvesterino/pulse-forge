@@ -568,4 +568,56 @@ describe("ReferenceMapPanel — MATCH (ako ďaleko som od referencie)", () => {
       expect(screen.getByTestId("reference-match-table")).toBeInTheDocument();
     }
   });
+
+  it("renders the GROW owner strip when the low-mid gap is a harmonics job", async () => {
+    // The harmonic-deficit shape: the mix has the sub body (55 Hz only) while
+    // the reference carries the 120–350 Hz band (55 + 220 Hz). The bass stem is
+    // the only measured strip, so it owns Low-mid outright — the panel must
+    // propose the GROW insert (not a fader move) and arm APPLY.
+    const tone = (hz: number, amp: number, seconds: number) => () => {
+      const pcm = new Float32Array(FIXTURE_SR * seconds);
+      for (let i = 0; i < pcm.length; i++) pcm[i] = amp * Math.sin((2 * Math.PI * hz * i) / FIXTURE_SR);
+      return { sampleRate: FIXTURE_SR, numberOfChannels: 1, length: pcm.length, getChannelData: () => pcm };
+    };
+    const silent = () => ({
+      sampleRate: FIXTURE_SR,
+      numberOfChannels: 1,
+      length: FIXTURE_SR,
+      getChannelData: () => new Float32Array(FIXTURE_SR),
+    });
+    const ref = (() => {
+      const pcm = new Float32Array(FIXTURE_SR * 4);
+      for (let i = 0; i < pcm.length; i++)
+        pcm[i] =
+          0.5 * Math.sin((2 * Math.PI * 55 * i) / FIXTURE_SR) + 0.45 * Math.sin((2 * Math.PI * 220 * i) / FIXTURE_SR);
+      return {
+        duration: 4,
+        sampleRate: FIXTURE_SR,
+        numberOfChannels: 1,
+        length: pcm.length,
+        getChannelData: () => pcm,
+      };
+    })();
+    renderProjectSpy.mockImplementation(async (renderDoc: { tracks: Array<{ instrument?: string }> }) => {
+      if (renderDoc?.tracks?.length === 1) {
+        return renderDoc.tracks[0]!.instrument === "bass" ? tone(55, 0.4, 4)() : silent();
+      }
+      return tone(55, 0.5, 4)();
+    });
+
+    setup(ref);
+    fireEvent.change(screen.getByTestId("reference-file-input"), { target: { files: [makeFile("deficit.wav")] } });
+    await waitFor(() => expect(screen.getByTestId("reference-primary").textContent).toBeDefined());
+    fireEvent.click(screen.getByTestId("reference-tab-match"));
+    fireEvent.click(screen.getByTestId("reference-match-run"));
+    await waitFor(() => expect(screen.getByTestId("reference-match-summary").textContent).toBeDefined());
+
+    const card = screen.queryByTestId("reference-match-device");
+    expect(card).toBeInTheDocument();
+    expect(card!.textContent).toMatch(/GROW job/);
+    expect(card!.textContent).toMatch(/PRESENCE/);
+    // The device proposal alone arms the APPLY button.
+    const apply = screen.getByTestId("reference-match-apply");
+    expect((apply as HTMLButtonElement).disabled).toBe(false);
+  });
 });

@@ -19,6 +19,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildReferenceMatch,
   MATCH_DEADZONE_DB,
+  MATCH_DEVICE_MIN_DELTA_DB,
+  matchDeviceMoves,
   matchStripMoves,
   rankMatchBandOwnership,
   applyMatchCommand,
@@ -394,5 +396,121 @@ describe("reference match — determinism", () => {
     const a = buildReferenceMatch(mix, ref);
     const b = buildReferenceMatch(mix, ref);
     expect(b).toEqual(a);
+  });
+});
+
+describe("reference match — the GROW owner strip (device proposals)", () => {
+  /** A sub-heavy mix vs a reference that carries the 120–350 Hz body. */
+  const deficitPair = () => {
+    const mix = (() => {
+      const pcm = new Float32Array(SR * 3);
+      for (let i = 0; i < pcm.length; i++) pcm[i] = 0.5 * Math.sin((2 * Math.PI * 55 * i) / SR);
+      return pcm;
+    })();
+    const ref = (() => {
+      const pcm = new Float32Array(SR * 3);
+      for (let i = 0; i < pcm.length; i++)
+        pcm[i] = 0.5 * Math.sin((2 * Math.PI * 55 * i) / SR) + 0.45 * Math.sin((2 * Math.PI * 220 * i) / SR);
+      return pcm;
+    })();
+    return buildReferenceMatch(
+      { channels: correlated(mix), sampleRate: SR },
+      { channels: correlated(ref), sampleRate: SR },
+    );
+  };
+
+  const bassStrip = (overrides: Partial<MatchStrip> = {}): MatchStrip => ({
+    id: "bass",
+    name: "Bass",
+    kind: "instrument",
+    lufs: -10,
+    bandShares: { sub: 0.7, low: 0.15, lowmid: 0.05, mid: 0.05, himid: 0.03, high: 0.01, air: 0.01 },
+    hasContent: true,
+    muted: false,
+    ...overrides,
+  });
+
+  it("fires on a Low-mid gap the sub does not share, with measured starting values", () => {
+    const report = deficitPair();
+    const sub = report.bands.find((b) => b.band === "sub")!;
+    const lowmid = report.bands.find((b) => b.band === "lowmid")!;
+    // The fixture must actually BE the harmonic-deficit shape.
+    expect(lowmid.deltaDb).toBeGreaterThanOrEqual(MATCH_DEVICE_MIN_DELTA_DB);
+    expect(sub.deltaDb).toBeLessThan(MATCH_DEADZONE_DB);
+    const moves = matchDeviceMoves(report, [bassStrip()]);
+    expect(moves).toHaveLength(1);
+    const move = moves[0]!;
+    expect(move.effectType).toBe("bassHarmonic");
+    expect(move.owner.strip.id).toBe("bass");
+    expect(move.params.presence).toBeGreaterThanOrEqual(0.4);
+    expect(move.params.presence).toBeLessThanOrEqual(1);
+    expect(move.params.tilt).toBeGreaterThanOrEqual(0);
+    expect(move.params.tilt).toBeLessThanOrEqual(0.3);
+    // Measured, rounded to the 0.05 grid — never invented decimals.
+    for (const value of [move.params.presence!, move.params.tilt!]) {
+      expect(Math.abs(value / 0.05 - Math.round(value / 0.05))).toBeLessThan(1e-9);
+    }
+    expect(move.params.range).toBe(4);
+    expect(move.reason).toContain("GROW job");
+    // The fader move for that band is superseded by the device proposal.
+    expect(matchStripMoves(report, [bassStrip()]).some((m) => m.band.band === "lowmid")).toBe(false);
+    // Deterministic repeat.
+    expect(matchDeviceMoves(report, [bassStrip()])).toEqual(moves);
+  });
+
+  it("stays silent when the mix is thin in sub too, on a drum owner, or on a muted owner", () => {
+    // Sub is ALSO thin — a body problem first, not a harmonics one.
+    const subThin = buildReferenceMatch(
+      { channels: correlated(makeNoise(7, 3)), sampleRate: SR },
+      { channels: correlated(toneBoostedNoise(11, 50, 3, 0.9)), sampleRate: SR },
+    );
+    expect(subThin.bands.find((b) => b.band === "sub")!.deltaDb).toBeGreaterThanOrEqual(MATCH_DEADZONE_DB);
+    expect(matchDeviceMoves(subThin, [bassStrip()])).toHaveLength(0);
+    // The deficit shape, but the owner is a drum strip or muted: no device move.
+    const report = deficitPair();
+    expect(matchDeviceMoves(report, [bassStrip({ kind: "drum", id: "kit", name: "Kit" })])).toHaveLength(0);
+    expect(matchDeviceMoves(report, [bassStrip({ muted: true })])).toHaveLength(0);
+  });
+
+  it("APPLY MATCH inserts GROW with the measured values; a re-run re-tunes, never duplicates", async () => {
+    const { createProjectFromTemplate } = await import("../../src/project-model/templates");
+    const doc = createProjectFromTemplate("house");
+    const bass =
+      doc.tracks.find((t) => t.kind === "instrument" && t.instrument === "bass") ??
+      doc.tracks.find((t) => t.kind === "instrument");
+    expect(bass).toBeDefined();
+    const report = deficitPair();
+    const deviceMoves = matchDeviceMoves(report, [bassStrip({ id: bass!.id, name: bass!.name })]);
+    expect(deviceMoves).toHaveLength(1);
+
+    const command = applyMatchCommand(doc, report, [], deviceMoves);
+    expect(command).not.toBeNull();
+    const after = command!.execute(doc);
+    const afterBass = after.tracks.find((t) => t.id === bass!.id)!;
+    const fx = afterBass.effects.find((f) => f.type === "bassHarmonic");
+    expect(fx).toBeDefined();
+    expect(fx!.params.presence).toBeCloseTo(deviceMoves[0]!.params.presence!, 5);
+    expect(fx!.params.tilt).toBeCloseTo(deviceMoves[0]!.params.tilt!, 5);
+    // One undo removes the insert.
+    const undone = command?.undo ? command.undo(after) : after;
+    expect(undone.tracks.find((t) => t.id === bass!.id)!.effects.some((f) => f.type === "bassHarmonic")).toBe(false);
+
+    // A second run re-tunes the existing GROW instead of adding another.
+    const withFx: ProjectDocument = {
+      ...doc,
+      tracks: doc.tracks.map((t) =>
+        t.id === bass!.id
+          ? {
+              ...t,
+              effects: [...t.effects, { id: "fx-grow", type: "bassHarmonic" as const, bypassed: false, params: {} }],
+            }
+          : t,
+      ),
+    };
+    const retune = applyMatchCommand(withFx, report, [], deviceMoves);
+    const after2 = retune!.execute(withFx);
+    const grows = after2.tracks.find((t) => t.id === bass!.id)!.effects.filter((f) => f.type === "bassHarmonic");
+    expect(grows).toHaveLength(1);
+    expect(grows[0]!.params.presence).toBeCloseTo(deviceMoves[0]!.params.presence!, 5);
   });
 });

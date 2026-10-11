@@ -20,6 +20,15 @@ import { assertClipEditable } from "./clipGroups";
 import { addAudioClip, audioClipDurationSec, clampClipFades } from "./audioClips";
 
 /* ---------------- clip editing ---------------- */
+/**
+ * §29 lock: the fields of the generic patch verb that ARE direct editing
+ * verbs — slip (offsetSec), trim (trimStart/trimEnd) and stretch
+ * (stretchRate/stretchMode). `assertClipEditable` is applied to these only:
+ * gain, fades, mute, loop, reverse and source props are not in the contract's
+ * verb list, so a locked clip must still be mixable and mutable.
+ */
+const LOCKED_VERB_FIELDS = ["offsetSec", "trimStart", "trimEnd", "stretchRate", "stretchMode"] as const;
+
 export function updateAudioClip(
   doc: ProjectDocument,
   clipId: string,
@@ -45,6 +54,9 @@ export function updateAudioClip(
 ): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  if (LOCKED_VERB_FIELDS.some((field) => patch[field] !== undefined)) {
+    assertClipEditable(clip, "edit the source position of");
+  }
   // sanitizeAudioClips drops non-finite numbers on load; match that here so a
   // NaN patch (parse bug in a caller) can never poison the in-memory doc —
   // a NaN stretchRate would throw inside the scheduler's audio window.
@@ -134,6 +146,7 @@ export function fittedLoopPlacement(
 export function fitAudioClipTempo(doc: ProjectDocument, clipId: string, detectedBpm: number): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  assertClipEditable(clip, "stretch");
   if (!Number.isFinite(detectedBpm) || detectedBpm < 40 || detectedBpm > 240) {
     throw new Error(`Detected tempo ${detectedBpm} out of range — refusing to fit`);
   }
@@ -164,6 +177,9 @@ export function fitAudioClipTempo(doc: ProjectDocument, clipId: string, detected
 export function sliceAudioClipToArrangement(doc: ProjectDocument, clipId: string, sliceTimesSec: number[]): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  // Slicing DELETES the clip and writes fragments in its place — the lock
+  // contract names split/delete as refusing verbs, so this path must too.
+  assertClipEditable(clip, "slice");
   if (sliceTimesSec.length === 0) throw new Error("No slice points provided");
   if (clip.reverse === true) throw new Error("Slice is not supported on reversed clips");
   if (clip.loop === true) throw new Error("Slice is not supported on looping clips");
@@ -449,6 +465,8 @@ export function stripSilenceAudioClip(
 ): Command {
   const clip = (doc.arrangement.audioClips ?? []).find((c) => c.id === clipId);
   if (!clip) throw new Error(`AudioClip ${clipId} not found`);
+  // Same reason as slice: stripping DELETES the clip and writes segments.
+  assertClipEditable(clip, "strip silence");
   if (segments.length === 0) throw new Error("No non-silent segments");
   if (clip.reverse === true) throw new Error("Strip silence is not supported on reversed clips");
   if (clip.loop === true) throw new Error("Strip silence is not supported on looping clips");
@@ -531,6 +549,9 @@ export function consolidateAudioClips(doc: ProjectDocument, clipIds: string[], b
   if (!bufferId) throw new Error("Rendered audio buffer ID is required");
   const first = clips[0];
   if (!first) throw new Error("No audio clips selected");
+  // Consolidate replaces every selected clip with one new clip, so a locked
+  // member is a delete no matter which clip survives.
+  for (const clip of clips) assertClipEditable(clip, "consolidate");
   if (clips.some((clip) => clip.trackId !== first.trackId)) {
     throw new Error("Consolidate requires clips on the same track");
   }

@@ -182,12 +182,27 @@ export class SpectralDelayBank {
       // Source mappings beyond Nyquist get silence, NOT the last bin. Clamping
       // to `n - 1` would point hundreds of bins at the same state and pump it
       // hundreds of times over — measured 7030× input peak at +12 semitones.
-      const shifted = Math.round(k / shiftRatio);
-      const inRange = shifted >= 0 && shifted < n;
-      const srcBin = inRange ? shifted : 0;
-      const rIdx = readBase + srcBin;
-      const dRe = inRange ? this.re[rIdx] : 0;
-      const dIm = inRange ? this.im[rIdx] : 0;
+      const sourcePos = k / shiftRatio;
+      const inRange = sourcePos >= 0 && sourcePos < n;
+      const lo = inRange ? Math.floor(sourcePos) : 0;
+      const hi = inRange ? Math.min(n - 1, lo + 1) : 0;
+      const frac = inRange ? sourcePos - lo : 0;
+      const loIdx = readBase + lo;
+      const hiIdx = readBase + hi;
+      // Interpolate the complex bin in-place so fractional semitone values
+      // move energy smoothly across the spectrum instead of rounding every
+      // output bin to the same staircase contour. Exact integer mappings keep
+      // frac = 0 and preserve the original value bit-for-bit.
+      const dRe = inRange
+        ? frac === 0
+          ? this.re[loIdx]!
+          : this.re[loIdx]! + (this.re[hiIdx]! - this.re[loIdx]!) * frac
+        : 0;
+      const dIm = inRange
+        ? frac === 0
+          ? this.im[loIdx]!
+          : this.im[loIdx]! + (this.im[hiIdx]! - this.im[loIdx]!) * frac
+        : 0;
 
       // DECAY shapes the feedback per bin: a one-pole tilt that removes more low
       // end as the control rises, so a long tail thins out into the top rather

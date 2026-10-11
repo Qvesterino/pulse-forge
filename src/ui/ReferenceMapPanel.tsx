@@ -15,6 +15,7 @@ import {
   grooveCommand,
   keyCommand,
   markerCommand,
+  matchDeviceMoves,
   matchStripMoves,
   applyMatchCommand,
   sectionMarkerCommand,
@@ -693,9 +694,11 @@ export function ReferenceMapPanel() {
   const applyMatch = useCallback(() => {
     if (!matchReport) return;
     // ONE command: master match-EQ curve + loudness trim + every unmuted
-    // per-track fader move folded into a single undo step.
+    // per-track fader move + the device proposals ("this is a GROW job")
+    // folded into a single undo step.
     const moves = matchStripMoves(matchReport, matchStrips);
-    const command = applyMatchCommand(doc, matchReport, moves);
+    const deviceMoves = matchDeviceMoves(matchReport, matchStrips);
+    const command = applyMatchCommand(doc, matchReport, moves, deviceMoves);
     if (!command) {
       setApplied("Nothing worth applying — the mix already matches.");
       return;
@@ -1190,7 +1193,8 @@ export function ReferenceMapPanel() {
                   matchReport !== null &&
                   (matchReport.curve !== null ||
                     matchReport.loudnessTrimDb !== null ||
-                    matchStripMoves(matchReport, matchStrips).some((m) => m.gainDb !== 0))
+                    matchStripMoves(matchReport, matchStrips).some((m) => m.gainDb !== 0) ||
+                    matchDeviceMoves(matchReport, matchStrips).length > 0)
                 }
               />
             )}
@@ -1549,6 +1553,7 @@ function MatchTab({
   // Per-track attribution is derived from the measured report + strips — pure,
   // computed at render, so it can never drift from the table above it.
   const moves = report ? matchStripMoves(report, strips) : [];
+  const deviceMoves = report ? matchDeviceMoves(report, strips) : [];
   const attributions = report ? attributeMatchToStrips(report, strips) : [];
   // Resonances come from the per-strip spectra; show only strips that found a
   // narrow problem peak, worst-first.
@@ -1680,6 +1685,32 @@ function MatchTab({
               <p className="panel-sub">
                 Ownership is energy-weighted (loudness × band share), the same math the agent's mix diagnosis uses.
                 Moves are half the measured gap, clamped ±3 dB, and apply as one undo.
+              </p>
+            </div>
+          )}
+
+          {/* Device proposals — a Low-mid gap a fader cannot close: the mix
+              has the sub body but is thin in 120–350 Hz, the band a phone
+              reproduces. The strip names the owning instrument and APPLY
+              MATCH inserts (or re-tunes) GROW there with measured starting
+              values — one undo step, applied together with the match. */}
+          {deviceMoves.length > 0 && (
+            <div className="reference-match-device" data-testid="reference-match-device">
+              <h4>This is a GROW job</h4>
+              <ul>
+                {deviceMoves.map((move) => (
+                  <li
+                    key={`${move.owner.strip.id}-${move.effectType}`}
+                    data-testid={`reference-match-device-${move.owner.strip.id}`}
+                  >
+                    {move.reason} · start at PRESENCE {move.params.presence!.toFixed(2)} / TILT{" "}
+                    {move.params.tilt!.toFixed(2)} / RANGE 4
+                  </li>
+                ))}
+              </ul>
+              <p className="panel-sub">
+                APPLY MATCH inserts (or re-tunes) GROW on the owner strip with these measured starting values — one undo
+                step, together with the match.
               </p>
             </div>
           )}

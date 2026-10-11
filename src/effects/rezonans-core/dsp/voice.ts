@@ -47,6 +47,7 @@ export class HarmonyVoice {
 
   private outPhase = new Float64Array(0);
   private magV = new Float64Array(0);
+  private phaseV = new Float64Array(0);
   private envWarp = new Float64Array(0);
   private re = new Float64Array(0);
   private im = new Float64Array(0);
@@ -72,6 +73,7 @@ export class HarmonyVoice {
     this.window = hannWindow(fftSize);
     this.outPhase = new Float64Array(this.half + 1);
     this.magV = new Float64Array(this.half + 1);
+    this.phaseV = new Float64Array(this.half + 1);
     this.envWarp = new Float64Array(this.half + 1);
     this.re = new Float64Array(fftSize);
     this.im = new Float64Array(fftSize);
@@ -135,23 +137,44 @@ export class HarmonyVoice {
 
     const magV = this.magV;
     const outPhase = this.outPhase;
+    const phaseV = this.phaseV;
+    const ratio = this.ratio;
 
-    // The PREVIOUS analysis phase is owned by the frame engine (it is the same
-    // for every voice), so this voice only reads it.
+    // Resample the shared excitation spectrum onto the destination pitch grid.
+    // Scaling phase increments alone leaves spectral energy at the source-bin
+    // locations; that shortcut loses the target note at Balanced/Fine window
+    // sizes. The envelope stays on the destination grid so formant and pitch
+    // remain independent.
     for (let k = 0; k <= half; k++) {
-      // Excitation × warped envelope: the whole point of REZONANS.
-      const env = envLin[k]!;
-      magV[k] = (mag[k]! / env) * this.envWarp[k]!;
-
-      if (this.first) {
-        outPhase[k] = phase[k]!;
+      const sourceBin = k / ratio;
+      if (sourceBin > half) {
+        magV[k] = 0;
+        phaseV[k] = 0;
+        outPhase[k] = 0;
         continue;
       }
-      const omega = (2 * Math.PI * k) / n;
-      const dphi = princarg(phase[k]! - prevPhase[k]! - omega * hs);
-      const inst = omega + dphi / hs;
-      // The pitch shift lives HERE — the analysis advance never moves.
-      outPhase[k] = outPhase[k]! + inst * hs * this.ratio;
+
+      const lo = Math.floor(sourceBin);
+      const hi = Math.min(half, lo + 1);
+      const frac = sourceBin - lo;
+      const sourcePhase = phase[lo]! + princarg(phase[hi]! - phase[lo]!) * frac;
+      phaseV[k] = sourcePhase;
+
+      // Excitation × warped destination envelope: the whole point of REZONANS.
+      const sourceMagnitude = mag[lo]! + (mag[hi]! - mag[lo]!) * frac;
+      const sourceEnvelope = envLin[lo]! + (envLin[hi]! - envLin[lo]!) * frac;
+      magV[k] = (sourceMagnitude / sourceEnvelope) * this.envWarp[k]!;
+
+      if (this.first) {
+        outPhase[k] = sourcePhase;
+        continue;
+      }
+      const omegaLo = (2 * Math.PI * lo) / n;
+      const omegaHi = (2 * Math.PI * hi) / n;
+      const instLo = omegaLo + princarg(phase[lo]! - prevPhase[lo]! - omegaLo * hs) / hs;
+      const instHi = omegaHi + princarg(phase[hi]! - prevPhase[hi]! - omegaHi * hs) / hs;
+      const inst = instLo + (instHi - instLo) * frac;
+      outPhase[k] = outPhase[k]! + inst * hs * ratio;
     }
 
     this.primed = true;
@@ -163,7 +186,7 @@ export class HarmonyVoice {
     // motion to a signal that should round-trip unchanged.
     if (Math.abs(this.ratio - 1) > 1e-6 || Math.abs(this.alphaSm - 1) > 1e-6) {
       this.locker.findPeaks(magV, half);
-      this.locker.applyLock(outPhase, phase, half);
+      this.locker.applyLock(outPhase, phaseV, half);
     }
     outPhase[0] = 0;
     outPhase[half] = 0;

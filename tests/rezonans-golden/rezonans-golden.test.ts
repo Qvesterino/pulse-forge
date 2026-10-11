@@ -537,7 +537,8 @@ describe("REZONANS golden — bypass", () => {
 describe("REZONANS rendered harmony pitch", () => {
   it("renders the solved interval into the wet audio, not just the meter", () => {
     const sampleRate = 48000;
-    const input = makeVocal(0.8, 220, sampleRate, 0);
+    const input = new Float32Array(Math.floor(0.8 * sampleRate));
+    for (let i = 0; i < input.length; i++) input[i] = Math.sin((2 * Math.PI * 220 * i) / sampleRate) * 0.4;
     const params: Record<string, number> = {
       [REZ_PARAM.harmonyMode]: 1,
       [REZ_PARAM.voices]: 1,
@@ -559,13 +560,9 @@ describe("REZONANS rendered harmony pitch", () => {
       const sourceAmp = amplitudeAt(out.l, wetStart, windowLength, sampleRate, sourceHz);
       const targetAmp = amplitudeAt(out.l, wetStart, windowLength, sampleRate, expectedHz);
       const peakHz = peakFrequency(out.l, wetStart, windowLength, sampleRate, 250, 400);
-      const debug = out.proc as unknown as { ratioSm: Float64Array };
-      // eslint-disable-next-line no-console
-      console.log(
-        `REZONANS quality ${quality}: ratio=${debug.ratioSm[0]?.toFixed(3)}, peak=${peakHz.toFixed(1)} Hz, ` +
-          `source/target=${sourceAmp}/${targetAmp}`,
-      );
       expect(targetAmp, `quality ${quality} must render the target pitch`).toBeGreaterThan(sourceAmp * 2);
+      const pitchErrorSemitones = 12 * Math.log2(peakHz / expectedHz);
+      expect(Math.abs(pitchErrorSemitones), `quality ${quality} output pitch error`).toBeLessThan(0.75);
     }
   });
 });
@@ -890,6 +887,58 @@ describe("REZONANS envelope — cepstral lifter + warp", () => {
       expect(Number.isFinite(env.valueAtBin(k))).toBe(true);
       expect(env.valueAtBin(k)).toBeGreaterThan(0);
     }
+  });
+
+  it("interpolates every-other-frame envelope refreshes in log space", () => {
+    const N = 1024;
+    const hop = N >> 2;
+    const frame = new FrameEngine();
+    frame.prepare(SR, N, hop);
+    const previousTarget = new Float64Array(N / 2 + 1);
+    let maxObservedTargetMove = 0;
+    let maxRefreshInterpolationError = 0;
+    let maxHoldError = 0;
+
+    const vocalSample = (sample: number, formantHz: number): number => {
+      let value = 0;
+      for (let harmonic = 1; harmonic <= 16; harmonic++) {
+        const hz = 180 * harmonic;
+        const envelope = 0.08 + Math.exp(-0.5 * ((hz - formantHz) / 260) ** 2);
+        value += (Math.sin((2 * Math.PI * hz * sample) / SR) * envelope) / harmonic;
+      }
+      return value * 0.2;
+    };
+
+    for (let sample = 0; sample < N * 12; sample++) {
+      const formantHz = sample < N * 4 ? 600 : 1900;
+      if (!frame.push(vocalSample(sample, formantHz))) continue;
+
+      const frameNumber = frame.frames;
+      const refreshed = frameNumber % 2 === 1;
+      const raw = frame.envelope.logEnv;
+      if (frameNumber > 1) {
+        if (refreshed) {
+          for (let k = 0; k < raw.length; k++) {
+            const movement = raw[k]! - previousTarget[k]!;
+            maxObservedTargetMove = Math.max(maxObservedTargetMove, Math.abs(movement));
+            const expected = previousTarget[k]! + movement * 0.9;
+            maxRefreshInterpolationError = Math.max(
+              maxRefreshInterpolationError,
+              Math.abs(frame.renderLogEnv[k]! - expected),
+            );
+          }
+        } else {
+          for (let k = 0; k < raw.length; k++) {
+            maxHoldError = Math.max(maxHoldError, Math.abs(frame.renderLogEnv[k]! - raw[k]!));
+          }
+        }
+      }
+      previousTarget.set(raw);
+    }
+
+    expect(maxObservedTargetMove).toBeGreaterThan(0.1);
+    expect(maxRefreshInterpolationError).toBeLessThan(1e-12);
+    expect(maxHoldError).toBeLessThan(1e-12);
   });
 
   it("updates the quefrency scale when the sample rate changes at the same FFT size", () => {

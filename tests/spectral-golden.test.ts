@@ -210,6 +210,27 @@ describe("PORTAL — deterministic golden vectors", () => {
     expect(up[5]).toBe(0);
   });
 
+  it("fractional SHIFT interpolates a delayed partial between neighboring bins", () => {
+    const params = { timeSec: 0.02, feedback: 0, decay: 0, shiftSemitones: 7, diffuse: 0, freeze: 0 };
+    const bank = new SpectralDelayBank(513, SR, 256);
+    let output = new Float64Array(513);
+    for (let frame = 0; frame < 5; frame++) {
+      const re = new Float64Array(513);
+      const im = new Float64Array(513);
+      if (frame === 0) re[5] = 1;
+      bank.process(re, im, 513, params, SR, 256);
+      if (frame === 4) output = re;
+    }
+
+    // +7 st maps source bin 5 to 7.4915. Linear complex interpolation splits
+    // the transposed partial according to its fractional destination position.
+    expect(output[7]).toBeCloseTo(0.448466, 5);
+    expect(output[8]).toBeCloseTo(0.440925, 5);
+    expect(output[7]).toBeGreaterThan(output[8]);
+    expect(output[6]).toBeCloseTo(0.003016, 5);
+    expect(output[9]).toBe(0);
+  });
+
   it("smooths automated SHIFT in audio time but starts static presets at their saved value", () => {
     const automated = new SpectralProcessor();
     automated.setParams({ ...DEFAULT_SPECTRAL_PARAMS, mode: 0, shift: 0, mix: 1, feedback: 0, diffuse: 0 });

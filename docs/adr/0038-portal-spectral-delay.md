@@ -133,8 +133,10 @@ panel copy and `docs/CURRENT-STATE.md`.
 
 ### D7 — Modes keep distinct signal paths and honest latency
 
-In DELAY, positive SHIFT transposes feedback upward: output bin `k` reads the
-delayed source at `k / 2^(shift/12)`. In RESONATOR, the delay bank may keep
+In DELAY, positive SHIFT transposes feedback upward: output bin `k` samples the
+delayed complex spectrum at `k / 2^(shift/12)`, linearly interpolating between
+adjacent bin centers for fractional semitone shifts; integer-bin mappings remain
+exact. Out-of-range reads produce silence. In RESONATOR, the delay bank may keep
 recording the input so a mode switch has recent material, but its delayed read
 does not feed the audible resonator path. Every mode therefore has only the
 declared STFT latency (`fftSize - hop`); SHIFT remains a delay-feedback control.

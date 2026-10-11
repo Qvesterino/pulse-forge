@@ -791,3 +791,259 @@ traverse `song.ts`) and then run `npm run references:genres` for real.
 
 The typecheck row above is therefore scoped to the files this audit changed: a repo-wide
 `tsc --noEmit` cannot pass while another session holds this repo in that state.
+
+---
+
+# Wave 2 — 2026-10-11 — locking (§29) and clipboard integrity (§30)
+
+Wave 1 audited geometry, selection, the gesture state machine and render cost. The
+areas it never reached are the ones this wave takes: **locking** and the
+**clipboard**. Both turned out to be load-bearing contracts with a real defect
+class, and both were found by asking one question — *does every code path that
+claims to honour a guard actually reach it?*
+
+Baseline before this wave — the editor hardening suites were green:
+
+```
+tests/editor-hardening-audit      tests/editor-ultra-hardening
+tests/editor-hardening-chaos     tests/ui/editor-hardening-interactions
+tests/clip-fade-bounds-invariant
+
+Test Files  6 passed (6)
+      Tests  65 passed (65)
+```
+
+---
+
+## D8 — The clip lock was enforced by the primitive verbs and bypassed by the compound ones (P1, CONFIRMED)
+
+### The contract
+
+`src/commands/clipGroups.ts` states it in its own module header:
+
+> Direct editing verbs (move/resize/trim/split/slip/stretch/delete) refuse locked
+> clips; non-destructive verbs (mute, duplicate, selection) stay allowed.
+> Compound/whole-range operations are lock-aware only for their TARGET clip in v1
+> — the ripple tail and range operations flowing around a locked clip are a
+> documented boundary.
+
+`assertClipEditable` is the single choke point for that contract. **Every entry
+point in the product shares it** — UI, MCP, the intent engine — which is
+exactly why it is worth asking which callers actually call it.
+
+### Root cause
+
+The guard is present in `audioClips.ts` and `arrangement.ts` (the primitives) and
+was missing in `clipEditing.ts` (the surgical/compound verbs) and in the panel's
+block-move commits.
+
+**A. Command layer — five verbs never called the guard**
+
+| Verb | What it does to a locked clip | Guard |
+| --- | --- | --- |
+| `moveAudioClip` / `resizeAudioClip` / `deleteAudioClip` | refuse | ✅ |
+| `sliceAudioClipToArrangement` | **deletes the clip, writes fragments** | ❌ |
+| `stripSilenceAudioClip` | **deletes the clip, writes segments** | ❌ |
+| `consolidateAudioClips` | **deletes every selected clip** | ❌ |
+| `fitAudioClipTempo` | rewrites `stretchMode`/`stretchRate` | ❌ |
+| `updateAudioClip` | slip / trim / stretch fields | ❌ |
+
+`splitAudioClipAtTick` — the one sibling in the same file — *does* guard. That is
+what makes this a defect and not a design: the author guarded the split and
+missed the other three ways of destroying a clip.
+
+**B. UI layer — the block drag never reaches the guard at all**
+
+The single-clip drag commits through `moveArrangementClip` / `moveAudioClip`, so
+the factory throws and the move is refused. The **block** drag does not call
+those factories: it maps a spread over the clips and commits the resulting
+`nextDoc` by hand (`ArrangementPanel.tsx:2429` scene, `:2795` audio) precisely so
+the whole selection moves as one undo entry. Building the document by hand is the
+right call for the transaction boundary — and it routes around the lock on the
+way.
+
+So the guard was not merely bypassable, it was **inverted**: dragging a locked
+clip alone was refused, and dragging it as part of a selection moved it.
+
+### Reproduction (measured, before the fix)
+
+```
+CONTROL: an unlocked block drag moves every selected clip     ✓ (moves +7 bars)
+a block drag refuses to move a LOCKED member                   ✗ expected [ {0, 4} ] to equal [ {0, 4} ]
+a refused gesture must not be undoable                         ✗ expected true to be false
+```
+
+The locked clip moved by the same +7 bars as its unlocked neighbour, and the
+gesture cost a real undo entry — a history entry the user has to Ctrl+Z through
+for an edit that should never have happened.
+
+### Fix
+
+**Commands** (`src/commands/clipEditing.ts`): `assertClipEditable` added to
+`sliceAudioClipToArrangement`, `stripSilenceAudioClip`, `consolidateAudioClips`
+(every member, since consolidation deletes all of them) and
+`fitAudioClipTempo`. `updateAudioClip` guards **only** the fields that *are*
+contract verbs — `offsetSec` (slip), `trimStart`/`trimEnd` (trim),
+`stretchRate`/`stretchMode` (stretch) — so gain, fades, mute, loop, reverse and
+source props stay editable on a locked clip, exactly as the contract requires.
+
+**Gestures** (`src/ui/ArrangementPanel.tsx`): the lock is sampled **once at
+pointerdown** and stored on the gesture record (`movingHasLocked`) alongside
+`barWidth`, for the same reason `barWidth` is: it is gesture state, and
+re-reading it per `pointermove` would let the preview and the commit disagree.
+A locked block writes a **0** delta rather than `null`, so the commit can tell
+"never moved" (a click, which must stay silent) from "moved and refused".
+
+**Policy chosen: refuse the whole gesture, with a message.** Not "skip the locked
+clip". A block move's entire meaning is that its members keep their relative
+spacing; a partial move silently produces a layout the user did not ask for.
+The keyboard nudge skips instead, and that is not a contradiction — a nudge moves
+each clip independently, so dropping one loses no spacing.
+
+### One more defect found on the way: refusals were silent, and one escaped entirely
+
+The scene commits wrapped their factories in `catch {}` with the comment *"clip
+deleted mid-drag — drop silently"*. That is correct for a clip deleted by a
+collab merge, and wrong for a lock refusal: the user drags a locked clip and
+nothing at all happens.
+
+The audio path was worse. `execute(moveAudioClip(...))` evaluates the **factory
+before** `execute`, so the throw bypassed `execute`'s own try/catch entirely and
+escaped the React event handler as an uncaught exception — no message, no commit,
+an error in the console. Every branch of `onAudioPointerUp` is now inside one
+guard that surfaces the message, and the scene catches report too.
+
+### Regression coverage
+
+- `tests/clip-lock-verbs.test.ts` — 9 specs. Written as a **contract test** over
+  the verb list quoted above, not as a per-bug pin, so a future verb added to
+  that enumeration has to be added here. Two controls: the primitive verbs refuse
+  (proving the harness measures the lock, not the arguments) and an unlocked clip
+  passes every verb.
+- `tests/ui/clip-lock-block-drag.test.tsx` — 6 specs across both lanes, plus
+  "the refusal costs no undo entry" and "unlocking restores the gesture".
+
+**Falsification.** Disabling the audio commit guard turns the audio spec red
+(`1 failed | 1 passed`) while its unlocked control stays green — the guard is
+load-bearing, not decoration. The scene guard was observed red on pre-fix HEAD.
+
+---
+
+## D9 — Paste could write a clip that evaporates on the next save (P1, CONFIRMED)
+
+### Correction to wave 1 first
+
+Wave 1's remaining-risk item 5 recorded: *"No clipboard in the arrangement
+timeline (VERIFIED absent) — `grep -ri clipboard src/` returns nothing."*
+
+**That was wrong, and wrong in a way that cost coverage.** `src/commands/clipClipboard.ts`
+landed on 2026-10-07 (copy/cut/paste for timeline clips, Ctrl+C/X/V) with callers
+in `App.tsx` and `ContextMenu.tsx`. The grep was run at a moment when the file
+did not exist and the conclusion was written down as a property of the editor
+rather than a property of that moment. §30 was therefore audited as *not
+applicable*. It is applicable, and it had a defect.
+
+### Root cause
+
+The clipboard payload is a `structuredClone` taken at copy time — deliberately,
+so it outlives the document it was cut from. That is what makes copy/paste work
+at all, and it is why every reference the payload carries must be re-validated at
+paste time.
+
+`pasteClips` re-validates exactly one of them. The audio lane checks the clip's
+`trackId` and falls back to a live track. The arrangement lane checks nothing:
+an `ArrangementClip` carries a `sceneId`, and `deleteScene` removes the clips that
+referenced it — but not the copy sitting in the clipboard.
+
+### Reproduction (measured, before the fix)
+
+```
+payload sceneId:      scene-f03e1911…
+after delete — scenes: scene-f4d9e721…      (the payload's scene is gone)
+after delete — clips:  0
+paste OK — clips now:  1
+PASTED CLIPS WITH A DEAD sceneId:  1
+tempoAtTick(orphan)  = 124            ← no crash, doc.bpm fallback
+secondsBetween(orphan) = 1.935…        ← no crash
+normalizeProject kept orphan?  0      ← THE DAMAGE
+```
+
+The paste **succeeds**. The clip renders, has a length, resolves a tempo, draws
+its role in the lane, and participates in undo exactly like a real clip. Then the
+next save/load runs `normalizeProject`, which prunes it — and the clip the user
+pasted is gone, with a history entry that no longer corresponds to anything.
+
+Nothing throws, so §36's "fail safely" and §24's "UI showing edits that did not
+commit" both apply: the editor showed an edit it did not commit.
+
+### Fix
+
+`pasteClips` refuses the paste with a named reason when any carried arrangement
+clip's scene no longer exists.
+
+**Why refuse rather than fall back**, when the audio lane right above it falls
+back for a dead track: a track is **routing** and the buffer is the content, so
+re-hosting a clip on a different track preserves exactly what it plays. A scene
+*is* the content — re-pointing the copy at an arbitrary live scene would play
+different material just as silently. Refusing is the honest answer: the user
+learns the copy cannot be pasted, and nothing is lost later.
+
+### Regression coverage
+
+`tests/clip-clipboard-integrity.test.ts` — 11 specs: deep-clone payload
+independence, paste as one undoable transaction, cut→paste as two steps,
+repeated paste (unique ids, no overlap), editing one copy leaving the others and
+the payload untouched, the audio dead-track fallback (pinned as the contract it
+is), the dead-scene refusal with a save/load survival check.
+
+**Falsification.** Disabling the refusal turns exactly that spec red
+(`1 failed | 10 passed`).
+
+---
+
+## Audited in this wave and NOT changed
+
+### `crossfadeAudioClips` writes fades on a locked clip — a scope question, not a bug
+
+The crossfade verb (the `X` key, range crossfade, comping) rewrites `fadeIn` /
+`fadeOut` without consulting the lock. Every verb the contract *names* refuses;
+fades are not in that list, and mute/gain/fades deliberately stayed editable in
+`updateAudioClip` for the same reason. Whether a lock should also freeze fades is
+a **product decision about what "locked" means**, so it is recorded here rather
+than decided here. If the answer is "yes", the fix is one `assertClipEditable`
+call and the guard in `updateAudioClip` becomes the whole story.
+
+### The waveform canvas does not re-render on resize (§26/§33, P3)
+
+The envelope effect depends on
+`[buffer, bufferId, sourceChannel, reverse, showOnsets, onsets, offsetSec, trimStart, trimEnd]`
+and reads `canvas.clientWidth` inside. Zooming or resizing changes the element's
+width with **no** dependency change, so the backing store keeps its old pixel
+size and the browser upscales it — the drawn window stays correct, its resolution
+goes soft.
+
+This is deliberate-looking and cheap to get wrong: a `ResizeObserver` would
+re-run a 240-column min/max reduction on every resize frame, which is precisely
+the main-thread cost the wave-1 windowing work was built to remove. Documented,
+not fixed. A DPR-and-size-aware redraw on zoom only (not on every resize frame)
+is the shape a fix should take.
+
+### `pasteClips` stacks a repeated audio paste exactly in place
+
+Pasting the same audio clip twice lands both copies on the same bars. Because
+audio clips layer by contract, that is a deliberate +6 dB doubling. Every DAW
+that pastes at the playhead behaves this way; changing it would be a UX decision.
+
+---
+
+## Gates for this wave
+
+Recorded when each ran; see the final wave summary for the aggregate.
+
+| Gate | Result |
+| --- | --- |
+| `tests/clip-lock-verbs.test.ts` | 9 passed |
+| `tests/ui/clip-lock-block-drag.test.tsx` | 6 passed (1 red under falsification) |
+| `tests/clip-clipboard-integrity.test.ts` | 11 passed (1 red under falsification) |
+| Wave-1 editor suites re-run after the changes | 65 passed |
+| `prettier --check` on every touched file | `All matched files use Prettier code style!` |

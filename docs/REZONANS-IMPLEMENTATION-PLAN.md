@@ -584,7 +584,11 @@ guessing them is how formant shifters end up shipping wrong:
 1. **Resolved:** measured wet-transient latency is `N - 1` samples at all three
    quality tiers; `tests/rezonans-golden/rezonans-golden.test.ts` pins the measured
    output and the reported PDC value together.
-2. Whether `envelopeSmooth` every-2nd-frame interpolation is inaudible at 4096.
+2. **Implemented; listening remains open:** the frame engine now interpolates the
+   log envelope from 90% to 100% across the two-frame refresh cycle. The golden
+   test pins the interpolation and confirms the identity, pitch and formant
+   response gates still pass. Audibility at 4096 with consonant-dense, heavily
+   processed vocals still needs listening review.
 3. The clarity threshold under real hyperpop vocals (double-tracked, heavily compressed,
    de-essed) — the 0.75 figure was calibrated on a clean tone and a chord mush, not on
    a mastered drill vocal.

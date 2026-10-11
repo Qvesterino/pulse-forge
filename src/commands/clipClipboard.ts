@@ -107,6 +107,21 @@ export function pasteClips(doc: ProjectDocument, clipboard: ClipClipboard, playh
   const hasArrangement = clipboard.arrangementClips.length > 0;
   if (!hasAudio && !hasArrangement) throw new Error("Clipboard is empty");
   if (!Number.isFinite(playheadTick)) throw new Error("Paste position must be finite");
+  // §30 — the payload outlives the entities it names. An arrangement clip
+  // REFERENCES its scene (which references the pattern), so a scene deleted
+  // after the copy leaves a clip with no content behind it: it renders, it
+  // has a tempo, it looks fine — and `normalizeProject` drops it on the next
+  // save/load, so the edit silently evaporates. The audio lane has an exact
+  // analogue handled below (a dead trackId falls back to a live track, which
+  // is safe because a track is ROUTING and the buffer is the content); a scene
+  // is the CONTENT, so re-pointing the copy at an arbitrary live scene would
+  // play the wrong material just as silently. Refuse, and say why.
+  const deadSceneId = clipboard.arrangementClips.find(
+    (clip) => !doc.scenes.some((s) => s.id === clip.sceneId),
+  )?.sceneId;
+  if (deadSceneId) {
+    throw new Error("Cannot paste — the scene this clip came from no longer exists");
+  }
   const deltaBars = (Math.max(0, playheadTick) - clipboard.anchorTick) / BAR_TICKS;
 
   let pasted = doc;

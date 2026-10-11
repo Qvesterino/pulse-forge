@@ -33,6 +33,8 @@ import { computeMatchEqCurve } from "../intent/match-eq";
 import { snapshot } from "../commands/core";
 import { setTrackParams } from "../commands/project";
 import { applyMasterMatchEqCommand } from "../commands/master";
+import { addEffect } from "../commands/tracks";
+import { setEffectParam } from "../commands/effectParams";
 import type { Command } from "../commands/types";
 import type { ProjectDocument } from "../project-model/types";
 import type { ResonancePeak } from "./resonance";
@@ -450,8 +452,12 @@ export interface MatchStripMove {
  * mute beats every fader value, so proposing one would be a dead move.
  */
 export function matchStripMoves(report: ReferenceMatchReport, strips: readonly MatchStrip[]): MatchStripMove[] {
+  // Bands consumed by a device proposal must not ALSO get a fader move —
+  // a gain would only make a harmonic deficit subbier (see matchDeviceMoves).
+  const deviceBands = new Set(matchDeviceMoves(report, strips).map((move) => move.band.band));
   const moves: MatchStripMove[] = [];
   for (const { band, owner } of attributeMatchToStrips(report, strips)) {
+    if (deviceBands.has(band.band)) continue;
     const raw = band.deltaDb * 0.5;
     const gainDb = round1(Math.max(-MATCH_STRIP_GAIN_LIMIT_DB, Math.min(MATCH_STRIP_GAIN_LIMIT_DB, raw)));
     const direction = band.deltaDb > 0 ? "thin" : "rich";
@@ -467,6 +473,81 @@ export function matchStripMoves(report: ReferenceMatchReport, strips: readonly M
   return moves;
 }
 
+/** A device proposal is a bigger commitment than a fader nudge — only past this gap. */
+export const MATCH_DEVICE_MIN_DELTA_DB = 2;
+/** The proposed GROW presence scales with the gap from the adopted phone base. */
+const DEVICE_PRESENCE_BASE = 0.4;
+const DEVICE_PRESENCE_PER_DB = 0.1;
+/** Starting values land on a 0.05 grid — measured, rounded, never invented. */
+const roundToStep = (value: number, step: number): number => Math.round(Math.round(value / step) * step * 100) / 100;
+
+/** One device-level proposal the panel renders as an owner strip ("this is a GROW job"). */
+export interface MatchDeviceMove {
+  /** The thin Low-mid row (120–350 Hz) that triggered the proposal. */
+  band: MatchBandRow;
+  /** The instrument strip that owns that band. */
+  owner: BandOwner;
+  effectType: "bassHarmonic";
+  /** Measured starting values (on the ParamDefs' own ranges, 0.05-grid rounded). */
+  params: Record<string, number>;
+  /** One-line evidence the panel renders. */
+  reason: string;
+}
+
+/**
+ * "This is a GROW job" — the harmonic-deficit owner strip.
+ *
+ * A Low-mid gap a fader cannot close: the mix already carries the sub body
+ * (sub is NOT thin) but is thin in 120–350 Hz — exactly the band a phone
+ * speaker reproduces and exactly what the GROW exciter generates. Raising the
+ * owner's gain would only make the mix subbier; the honest fix is the missing
+ * harmonics. Fires only when:
+ *   - the Low-mid row is a real, participating gap (delta ≥ +2 dB),
+ *   - the sub row is NOT thin (delta under the deadzone — the body is there),
+ *   - the owning strip is an unmuted INSTRUMENT track with a clear share.
+ *
+ * Params are measured starting values: presence scales with the gap (the
+ * module's 0.5×-broad-stroke spirit, floored at the adopted phone character),
+ * tilt opens only as far as the sub-vs-Low-mid shape asks (0..0.3).
+ */
+export function matchDeviceMoves(report: ReferenceMatchReport, strips: readonly MatchStrip[]): MatchDeviceMove[] {
+  const lowmid = report.bands.find((band) => band.band === "lowmid");
+  const sub = report.bands.find((band) => band.band === "sub");
+  if (!lowmid || !sub) return [];
+  if (lowmid.empty || lowmid.deltaDb < MATCH_DEVICE_MIN_DELTA_DB) return [];
+  if (sub.deltaDb >= MATCH_DEADZONE_DB) return []; // the mix is thin in sub too — body first, harmonics later
+  const owner = rankMatchBandOwnership(strips).find((candidate) => candidate.band === "lowmid");
+  if (!owner || owner.share < MATCH_OWNER_MIN_SHARE) return [];
+  if (owner.strip.muted) return []; // a mute beats every device move
+  if (owner.strip.kind !== "instrument") return []; // a GROW job names a pitched instrument strip
+  const presence = roundToStep(Math.min(1, DEVICE_PRESENCE_BASE + lowmid.deltaDb * DEVICE_PRESENCE_PER_DB), 0.05);
+  const tiltShape = (lowmid.deltaDb - Math.max(sub.deltaDb, 0)) * 0.05;
+  const tilt = roundToStep(Math.max(0, Math.min(0.3, tiltShape)), 0.05);
+  return [
+    {
+      band: lowmid,
+      owner,
+      effectType: "bassHarmonic",
+      params: {
+        drive: 0.6,
+        focusHz: 80,
+        harmonics: 0.5,
+        subAnchor: 0.8,
+        lowCut: 45,
+        range: 4,
+        sustain: 0.4,
+        phase: 0.4,
+        tilt,
+        presence,
+        mix: 0.6,
+      },
+      reason:
+        `${owner.strip.name} owns ${Math.round(owner.share * 100)}% of Low-mid · the mix is ` +
+        `${lowmid.deltaDb.toFixed(1)} dB thin there while sub is not — a GROW job (missing harmonics, not a fader)`,
+    },
+  ];
+}
+
 /**
  * The panel's APPLY: ONE command carrying the master match-EQ curve, the
  * loudness trim, and every unmuted per-track fader move as a single undo step.
@@ -478,6 +559,7 @@ export function applyMatchCommand(
   doc: ProjectDocument,
   report: ReferenceMatchReport,
   moves: readonly MatchStripMove[],
+  deviceMoves: readonly MatchDeviceMove[] = [],
 ): Command | null {
   const before = doc;
   let after = doc;
@@ -495,6 +577,25 @@ export function applyMatchCommand(
     // Linear gain from the current value; setTrackParams clamps [0,1.5].
     const nextGain = track.gain * Math.pow(10, move.gainDb / 20);
     after = setTrackParams(after, track.id, { gain: nextGain }).execute(after);
+    changed = true;
+  }
+
+  // Device proposals ("this is a GROW job"): insert the effect when the strip
+  // does not have one yet, otherwise re-tune the measured params in place.
+  // Both paths ride existing commands, all inside the same snapshot.
+  for (const device of deviceMoves) {
+    const track = after.tracks.find((candidate) => candidate.id === device.owner.strip.id);
+    if (!track || track.kind !== "instrument" || device.owner.strip.muted) continue;
+    let fx = track.effects.find((effect) => effect.type === device.effectType);
+    if (!fx) {
+      const add = addEffect(after, track.id, device.effectType);
+      after = add.execute(after);
+      fx = after.tracks.find((candidate) => candidate.id === track.id)?.effects.find((e) => e.id === add.effectId);
+      if (!fx) continue;
+    }
+    for (const [paramId, value] of Object.entries(device.params)) {
+      after = setEffectParam(after, track.id, fx.id, paramId, value).execute(after);
+    }
     changed = true;
   }
 

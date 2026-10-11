@@ -513,6 +513,7 @@
   var ENV_MIN2 = 1e-6;
   var ENV_MAX2 = 1e6;
   var ENVELOPE_STRIDE = 2;
+  var ENVELOPE_REFRESH_BLEND = 0.9;
   var FrameEngine = class {
     sampleRate = 48e3;
     n = 0;
@@ -535,6 +536,10 @@
     havePrev = false;
     /** Linear envelope of the current frame (geometric mean 1). */
     envLin = new Float64Array(0);
+    /** Log envelope interpolated between cepstral refreshes, consumed by voices. */
+    renderLogEnv = new Float64Array(0);
+    /** Previous cepstral estimate used as the start of a two-frame glide. */
+    previousLogEnv = new Float64Array(0);
     env = new CepstralEnvelope();
     pitch = new PitchTracker();
     frameCount = 0;
@@ -594,6 +599,8 @@
       this.prevPhase = new Float64Array(this.half + 1);
       this.envLin = new Float64Array(this.half + 1);
       this.envLin.fill(1);
+      this.renderLogEnv = new Float64Array(this.half + 1);
+      this.previousLogEnv = new Float64Array(this.half + 1);
       this.pitch.prepare(this.sampleRate, this.n, 70, 800);
       this.writePos = 0;
       this.sinceHop = 0;
@@ -618,6 +625,8 @@
       this.phase.fill(0);
       this.prevPhase.fill(0);
       this.envLin.fill(1);
+      this.renderLogEnv.fill(0);
+      this.previousLogEnv.fill(0);
       this.env.reset();
       this.pitch.reset();
       this.lastHz = 0;
@@ -657,13 +666,22 @@
         mag[k] = Math.sqrt(rr * rr + ii * ii);
         phase[k] = Math.atan2(ii, rr);
       }
-      if (this.frameCount % ENVELOPE_STRIDE === 0 || !this.env.ready) {
+      const hadEnvelope = this.env.ready;
+      const refreshEnvelope = this.frameCount % ENVELOPE_STRIDE === 0 || !hadEnvelope;
+      if (refreshEnvelope) {
+        if (hadEnvelope) this.previousLogEnv.set(this.env.logEnv);
         this.env.compute(mag, half2);
+        if (!hadEnvelope) this.previousLogEnv.set(this.env.logEnv);
       }
       if (this.env.ready) {
         const logEnv = this.env.logEnv;
+        const blend = hadEnvelope && refreshEnvelope ? ENVELOPE_REFRESH_BLEND : 1;
+        const previousLogEnv = this.previousLogEnv;
+        const renderLogEnv = this.renderLogEnv;
         for (let k = 0; k <= half2; k++) {
-          const v = Math.exp(logEnv[k]);
+          const interpolatedLog = previousLogEnv[k] + (logEnv[k] - previousLogEnv[k]) * blend;
+          renderLogEnv[k] = interpolatedLog;
+          const v = Math.exp(interpolatedLog);
           this.envLin[k] = v < ENV_MIN2 ? ENV_MIN2 : v > ENV_MAX2 ? ENV_MAX2 : v;
         }
       }
@@ -786,6 +804,7 @@
     window = new Float32Array(0);
     outPhase = new Float64Array(0);
     magV = new Float64Array(0);
+    phaseV = new Float64Array(0);
     envWarp = new Float64Array(0);
     re = new Float64Array(0);
     im = new Float64Array(0);
@@ -807,6 +826,7 @@
       this.window = hannWindow(fftSize);
       this.outPhase = new Float64Array(this.half + 1);
       this.magV = new Float64Array(this.half + 1);
+      this.phaseV = new Float64Array(this.half + 1);
       this.envWarp = new Float64Array(this.half + 1);
       this.re = new Float64Array(fftSize);
       this.im = new Float64Array(fftSize);
@@ -852,23 +872,40 @@
       this.warp.renderInto(logEnv, this.envWarp, this.alphaSm);
       const magV = this.magV;
       const outPhase = this.outPhase;
+      const phaseV = this.phaseV;
+      const ratio = this.ratio;
       for (let k = 0; k <= half2; k++) {
-        const env = envLin[k];
-        magV[k] = mag[k] / env * this.envWarp[k];
-        if (this.first) {
-          outPhase[k] = phase[k];
+        const sourceBin = k / ratio;
+        if (sourceBin > half2) {
+          magV[k] = 0;
+          phaseV[k] = 0;
+          outPhase[k] = 0;
           continue;
         }
-        const omega = 2 * Math.PI * k / n;
-        const dphi = princarg(phase[k] - prevPhase[k] - omega * hs);
-        const inst = omega + dphi / hs;
-        outPhase[k] = outPhase[k] + inst * hs * this.ratio;
+        const lo = Math.floor(sourceBin);
+        const hi = Math.min(half2, lo + 1);
+        const frac = sourceBin - lo;
+        const sourcePhase = phase[lo] + princarg(phase[hi] - phase[lo]) * frac;
+        phaseV[k] = sourcePhase;
+        const sourceMagnitude = mag[lo] + (mag[hi] - mag[lo]) * frac;
+        const sourceEnvelope = envLin[lo] + (envLin[hi] - envLin[lo]) * frac;
+        magV[k] = sourceMagnitude / sourceEnvelope * this.envWarp[k];
+        if (this.first) {
+          outPhase[k] = sourcePhase;
+          continue;
+        }
+        const omegaLo = 2 * Math.PI * lo / n;
+        const omegaHi = 2 * Math.PI * hi / n;
+        const instLo = omegaLo + princarg(phase[lo] - prevPhase[lo] - omegaLo * hs) / hs;
+        const instHi = omegaHi + princarg(phase[hi] - prevPhase[hi] - omegaHi * hs) / hs;
+        const inst = instLo + (instHi - instLo) * frac;
+        outPhase[k] = outPhase[k] + inst * hs * ratio;
       }
       this.primed = true;
       this.first = false;
       if (Math.abs(this.ratio - 1) > 1e-6 || Math.abs(this.alphaSm - 1) > 1e-6) {
         this.locker.findPeaks(magV, half2);
-        this.locker.applyLock(outPhase, phase, half2);
+        this.locker.applyLock(outPhase, phaseV, half2);
       }
       outPhase[0] = 0;
       outPhase[half2] = 0;
@@ -1378,7 +1415,7 @@
       this.mixSmCoef = Math.exp(-1 / (0.03 * sr));
       const glide = this.params[REZ_PARAM.glide] ?? 0.35;
       const glideTc = 0.08 - 0.075 * clamp(glide, 0, 1);
-      this.glideCoef = Math.exp(-1 / (glideTc * sr));
+      this.glideCoef = Math.exp(-this.frame.synthesisHop / (glideTc * sr));
       this.envCoefFast = Math.exp(-1 / (2e-3 * sr));
       this.envCoefSlow = Math.exp(-1 / (0.06 * sr));
       this.gateCoef = Math.exp(-1 / (0.04 * sr));
@@ -1396,12 +1433,13 @@
         const fftSize = QUALITY_FFT_SIZE[Math.round(v)] ?? 2048;
         if (fftSize !== this.frame.fftSize) {
           this.applyQuality(v);
+          this.recomputeCoefficients();
           this.frame.reset();
           this.bus.reset();
         }
         return;
       }
-      if (id === REZ_PARAM.envelopeSmooth || id === REZ_PARAM.minHz || id === REZ_PARAM.harmonyMode || id === REZ_PARAM.chordFollow) {
+      if (id === REZ_PARAM.envelopeSmooth || id === REZ_PARAM.minHz || id === REZ_PARAM.harmonyMode || id === REZ_PARAM.chordFollow || id === REZ_PARAM.glide) {
         this.recomputeCoefficients();
       }
     }
@@ -1568,7 +1606,7 @@
         this.frame.phase,
         this.frame.previousPhase,
         this.frame.envLin,
-        this.frame.envelope.logEnv
+        this.frame.renderLogEnv
       );
       this.frame.commitFrame();
     }

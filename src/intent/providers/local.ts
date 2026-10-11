@@ -413,7 +413,11 @@ export class LocalDeterministicProvider implements GenerationProvider {
     };
   }
 
-  async generate(plan: GenerationPlan, context: GenerationContext, signal?: AbortSignal): Promise<GenerationProposal | null> {
+  async generate(
+    plan: GenerationPlan,
+    context: GenerationContext,
+    signal?: AbortSignal,
+  ): Promise<GenerationProposal | null> {
     // The compact non-audition path preserves legacy one-click behavior. The
     // SAFE/PERSONAL/EXPERIMENTAL search is reserved for the explicit bank UI.
     const { proposal } = await this.generateRanked(plan, context, signal, false);
