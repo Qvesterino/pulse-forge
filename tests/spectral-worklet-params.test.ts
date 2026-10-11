@@ -1,4 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { EFFECT_META } from "../src/effects/definitions";
 
 /**
@@ -292,5 +294,84 @@ describe("PORTAL worklet: every rack param is reachable through AudioParams", ()
     // missing AudioParam. If the surface is complete this must never be
     // reachable from the rack; the guard below asserts it stays unreachable.
     expect(() => makeSurface(Cls(), { definitelyNotAPortalParam: 1 })).toThrow();
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* The SHIPPED artefact, loaded the way AudioWorklet.addModule() does  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Everything above tests the SOURCE module. The thing the browser actually loads
+ * is `public/spectral-worklet.js` — a generated bundle committed to the repo, and
+ * generated artifacts drift: change the DSP, forget the rebuild, and the source
+ * is correct while the shipped file still ships the old defect. That gap is
+ * invisible to every other test in this repo.
+ *
+ * So these load the shipped file itself, through the same globals the audio
+ * thread provides, and repeat the product assertion against it: a value written
+ * to the bundle's declared AudioParams must change the audio it emits.
+ *
+ * This is also the roadmap's "worklet-loaded probe" (§10) — the check that must
+ * go through the real worklet boundary, because offline determinism never
+ * covers live AudioParam delivery.
+ */
+const BUNDLE_PATH = "public/spectral-worklet.js";
+
+function loadShippedBundle(): ProcessorCtor {
+  const src = readFileSync(resolve(process.cwd(), BUNDLE_PATH), "utf-8");
+  const captured: ProcessorCtor[] = [];
+  (globalThis as unknown as { registerProcessor: unknown }).registerProcessor = (_name: string, cls: ProcessorCtor) => {
+    captured.push(cls);
+  };
+  // Classic-script bundle: it runs for its registerProcessor side effect.
+  new Function(src)();
+  const cls = captured.find((c) => c !== undefined);
+  expect(cls, `${BUNDLE_PATH} must call registerProcessor("portal")`).toBeDefined();
+  return cls!;
+}
+
+describe("PORTAL shipped bundle (the file the browser loads)", () => {
+  it("is committed to the repo", () => {
+    // Asserted, not skipped: a missing bundle is exactly the "shipped nothing"
+    // failure this block exists to catch, and a skip would satisfy it.
+    expect(existsSync(resolve(process.cwd(), BUNDLE_PATH)), `${BUNDLE_PATH} is committed`).toBe(true);
+  });
+
+  it("declares the SAME AudioParam surface as the source", () => {
+    const source = descriptorsOf(registered.get("portal")!);
+    const shipped = descriptorsOf(loadShippedBundle());
+    const names = (l: Descriptor[]) => l.map((d) => d.name).sort();
+    expect(names(shipped), "run `npm run build:spectral` — the shipped bundle is stale").toEqual(names(source));
+    const byName = new Map(shipped.map((d) => [d.name, d]));
+    for (const d of source) {
+      const s = byName.get(d.name)!;
+      expect(s.minValue, `${d.name} shipped min`).toBe(d.minValue);
+      expect(s.maxValue, `${d.name} shipped max`).toBe(d.maxValue);
+      expect(s.defaultValue, `${d.name} shipped default`).toBe(d.defaultValue);
+    }
+  });
+
+  it("a param write through the SHIPPED bundle changes the audio", () => {
+    const Cls = loadShippedBundle();
+    const sig = (i: number) => Math.sin((i / SR) * 2 * Math.PI * 220);
+    const short = makeSurface(Cls, { time: 20, feedback: 0.7, mix: 1 });
+    const long = makeSurface(Cls, { time: 2000, feedback: 0.7, mix: 1 });
+    const a = render(short.instance, short.params, 400, sig);
+    const b = render(long.instance, long.params, 400, sig);
+    expect(
+      a.every((v, i) => v === b[i]),
+      "the SHIPPED bundle must honour TIME",
+    ).toBe(false);
+    expect(finite(b)).toBe(true);
+  });
+
+  it("mix = 0 through the SHIPPED bundle is a bit-exact passthrough", () => {
+    const Cls = loadShippedBundle();
+    const dry = makeSurface(Cls, { mix: 0 });
+    const sig = (i: number) => Math.sin((i / SR) * 2 * Math.PI * 220);
+    const input = new Float32Array(2048);
+    for (let i = 0; i < input.length; i++) input[i] = sig(i);
+    expect(Array.from(render(dry.instance, dry.params, 16, sig))).toEqual(Array.from(input));
   });
 });
