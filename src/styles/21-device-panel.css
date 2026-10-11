@@ -452,6 +452,16 @@
   accent-color: var(--accent);
   height: 14px;
 }
+.skrutka-panel .skrutka-pack {
+  max-width: 150px;
+  min-width: 90px;
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--text-dim);
+  background: var(--bg-raise);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
 .skrutka-panel .skrutka-chip {
   font-family: var(--mono);
   font-size: 9px;

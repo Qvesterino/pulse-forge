@@ -18,6 +18,7 @@ export * from "./master";
 export * from "./notes";
 export * from "./quantize";
 export * from "./plugins";
+export * from "./twistScene";
 export * from "./project";
 export * from "./groove";
 export * from "./patterns";

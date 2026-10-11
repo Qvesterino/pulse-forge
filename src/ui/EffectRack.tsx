@@ -34,6 +34,8 @@ import {
   setDeviceState,
   loadUltinaAbSlot,
   loadEffectAbSlot,
+  applyTwistScenePair,
+  twistMorphIntensityBound,
   toggleEffectBypass,
 } from "../commands/commands";
 import {
@@ -1126,6 +1128,8 @@ function Device({
                 degraded={!!fallbackReason}
                 docked={devicesMode}
                 deviceState={fx.deviceState}
+                sceneBound={twistMorphIntensityBound(doc, track.id, fx.id)}
+                onApplyScenePair={(pair) => services.store.execute(applyTwistScenePair(doc, track.id, fx.id, pair))}
                 onCurvesStateChange={(next) =>
                   services.store.execute(
                     setDeviceState(doc, track.id, fx.id, { kind: "twist-curves-v1", data: { ...next } }),

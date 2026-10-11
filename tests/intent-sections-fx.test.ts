@@ -354,10 +354,24 @@ describe("song build end-to-end: 'wobbly drill with a 16-bar intro and a vinyl b
     const input = normalizeIntent({ genre: "drill", seed: "det-song" });
     const a = await buildSong(doc, input, { sections, yieldBetweenSections: false });
     const b = await buildSong(doc, input, { sections, yieldBetweenSections: false });
-    // Pattern content is seed-deterministic — ids are random uids.
+    // Pattern content is seed-deterministic — ids are random uids, so the
+    // note SERIALIZATION strips them (they are identity, not content; the
+    // un-stripped form made this test red on perfectly identical music once
+    // section patterns started carrying melodic notes — INTENT-AUDIT-2026-10 D1).
     const content = (build: typeof a) =>
       build.sections.map((s) =>
-        JSON.stringify({ rows: s.pattern.rows, notes: s.pattern.notes, role: s.role, bars: s.bars, label: s.label }),
+        JSON.stringify({
+          rows: s.pattern.rows,
+          notes: Object.fromEntries(
+            Object.entries(s.pattern.notes ?? {}).map(([trackId, notes]) => [
+              trackId,
+              notes.map(({ id: _noteId, ...note }) => note),
+            ]),
+          ),
+          role: s.role,
+          bars: s.bars,
+          label: s.label,
+        }),
       );
     expect(content(a)).toEqual(content(b));
     // Lane shape (kind, param, points order) is deterministic too.

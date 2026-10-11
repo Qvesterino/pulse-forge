@@ -21,6 +21,7 @@ import {
   type TwistCurveSlot,
   type TwistCurvesState,
 } from "../effects/skrutka-curves";
+import { TWIST_SCENE_PACK, findTwistScenePair, type TwistScenePair } from "../effects/skrutka-scene-pack";
 import type { SkrutkaMeterFrame } from "../audio-worklets/skrutka-node";
 import { useServices } from "./context";
 
@@ -65,6 +66,8 @@ export function SkrutkaPanel({
   onGestureStart,
   onGestureEnd,
   onCurvesStateChange,
+  sceneBound = false,
+  onApplyScenePair,
 }: {
   trackId: string;
   fxId: string;
@@ -76,6 +79,10 @@ export function SkrutkaPanel({
   onGestureStart?: () => void;
   onGestureEnd?: () => void;
   onCurvesStateChange?: (next: TwistCurvesState) => void;
+  /** True when MORPH already rides the project's scene intensity. */
+  sceneBound?: boolean;
+  /** Apply a curated scene pack pair (one undoable command in the rack). */
+  onApplyScenePair?: (pair: TwistScenePair) => void;
 }) {
   const services = useServices();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -412,6 +419,7 @@ export function SkrutkaPanel({
   const displayed = morphTwistParams(params, curves, params.morph ?? 0);
   const fieldActive = Math.abs(displayed.field ?? 0) > 1e-4;
   const hasCurve = !!(curves?.slots.A || curves?.slots.B);
+  const activePair = findTwistScenePair(curves?.slots);
   const morphPct = Math.round((params.morph ?? 0) * 100);
   const morphMode =
     !curves?.slots.A && !curves?.slots.B
@@ -437,6 +445,7 @@ export function SkrutkaPanel({
       ? `LFO ${SKRUTKA_LFO_SHAPE_LABELS[Math.max(0, Math.min(2, Math.round(displayed.lfoShape ?? 0)))]} ${Math.round((displayed.lfoDepth ?? 0) * 100)}%`
       : "LFO OFF",
     hasCurve ? `MORPH ${morphPct}% ${morphMode}` : "MORPH OFF",
+    ...(sceneBound ? ["SCENE-INTENSITY"] : []),
   ];
 
   /** Push the curve state straight into the live runtime (mirrors MORPH scenes). */
@@ -542,6 +551,26 @@ export function SkrutkaPanel({
         >
           CLEAR
         </button>
+        <select
+          className="skrutka-pack"
+          aria-label="Scene pack"
+          value={activePair?.id ?? ""}
+          disabled={!onApplyScenePair}
+          title="Curated A/B pairs for the scene-intensity arc — intro leans A, the drop lands B"
+          onChange={(event) => {
+            const pair = TWIST_SCENE_PACK.find((candidate) => candidate.id === event.target.value);
+            if (!pair) return;
+            onApplyScenePair?.(pair);
+            runtimeSetCurves({ ...pair.a }, { ...pair.b });
+          }}
+        >
+          {!activePair && <option value="">CUSTOM</option>}
+          {TWIST_SCENE_PACK.map((pair) => (
+            <option key={pair.id} value={pair.id}>
+              {pair.genre} — {pair.label}
+            </option>
+          ))}
+        </select>
         <input
           type="range"
           className="skrutka-morph"

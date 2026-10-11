@@ -312,4 +312,51 @@ describe("SkrutkaPanel", () => {
     expect(screen.getByText("MORPH OFF")).toBeInTheDocument();
     expect((screen.getByLabelText("Curve morph") as HTMLInputElement).disabled).toBe(true);
   });
+
+  it("applies a scene pack pair from the select and shows the SCENE-INTENSITY chip", () => {
+    const services = mockServices(createProjectFromTemplate("house"));
+    const setCurves = vi.fn();
+    (services.engine as unknown as Record<string, unknown>).getFxRuntime = vi.fn(() => ({ setCurves }));
+    (services.engine as unknown as Record<string, unknown>).getFxMeters = vi.fn(() => null);
+    const onApplyScenePair = vi.fn();
+    const { container } = renderWithContext(
+      <SkrutkaPanel
+        trackId="t1"
+        fxId="fx1"
+        params={{ ...paramsOf(), morph: 0 }}
+        degraded={false}
+        sceneBound
+        onParam={vi.fn()}
+        onApplyScenePair={onApplyScenePair}
+      />,
+      { services },
+    );
+    vi.spyOn(container.querySelector("canvas")!, "getContext").mockReturnValue(stub2dContext());
+
+    expect(screen.getByText("SCENE-INTENSITY")).toBeInTheDocument();
+    expect(screen.getByText("House — Tight → Liquid")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Scene pack"), { target: { value: "house-tight-liquid" } });
+    expect(onApplyScenePair).toHaveBeenCalledWith(expect.objectContaining({ id: "house-tight-liquid" }));
+    const call = setCurves.mock.calls.at(-1)!;
+    expect(call[0].focusHz).toBe(250);
+    expect(call[1].focusHz).toBe(900);
+  });
+
+  it("shows CUSTOM when the stored slots do not match any pack pair", () => {
+    const services = mockServices(createProjectFromTemplate("house"));
+    (services.engine as unknown as Record<string, unknown>).getFxMeters = vi.fn(() => null);
+    renderWithContext(
+      <SkrutkaPanel
+        trackId="t1"
+        fxId="fx1"
+        params={paramsOf()}
+        degraded={false}
+        deviceState={{ kind: "twist-curves-v1", data: { slots: { A: { focusHz: 123 }, B: { focusHz: 456 } } } }}
+        onParam={vi.fn()}
+        onApplyScenePair={vi.fn()}
+      />,
+      { services },
+    );
+    expect(screen.getByText("CUSTOM")).toBeInTheDocument();
+  });
 });

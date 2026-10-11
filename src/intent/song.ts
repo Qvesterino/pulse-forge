@@ -2492,11 +2492,14 @@ function applySongTransitions(doc: ProjectDocument, sections: readonly SongBuild
       pattern: applyTransitionToPattern(doc, outgoing.pattern, section.transitionIn, {
         allowDrums: outgoing.roles.includes("drums"),
         // The fill vocabulary reads the BOUNDARY: the incoming section's
-        // intensity gates the recipe tier, and the boundary key (outgoing
-        // pattern id + incoming label) seeds the pick — same boundary, same
-        // fill; different boundaries vary.
+        // intensity gates the recipe tier, and the boundary key seeds the
+        // pick — same boundary, same fill; different boundaries vary. The
+        // key MUST be plan-stable: the outgoing pattern's CONTENT hash, not
+        // its id — ids are fresh random uids per build, and seeding by id
+        // made the same request produce different fills per build
+        // (INTENT-AUDIT-2026-10 D1).
         intensity: section.intensity,
-        fillSeed: `${outgoing.pattern.id}|${section.label}`,
+        fillSeed: `${contentHash(canonicalizePattern(doc, outgoing.pattern))}|${section.label}`,
       }),
     };
   }
@@ -3252,6 +3255,70 @@ export function reviseSectionFlow(
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+/**
+ * STRUCTURAL ARRANGEMENT COMMAND (2026-10-11): "add a fill before every
+ * chorus". Every scene of the target role gets its PREDECESSOR section's
+ * pattern re-painted with the transition treatment (the same vocabulary the
+ * song builder bakes — crescendo rolls, risers, dropouts), as ONE undoable
+ * snapshot. Honest limits: drop/impact are cue-asset transitions with no
+ * pattern shape (they route to generation instead), and REMOVING a baked
+ * treatment needs a regenerate — paint-over only.
+ */
+export interface SectionTransitionOutcome {
+  ok: boolean;
+  label?: string;
+  command?: Command;
+  /** The FIRST painted predecessor — the audition plays the fill itself. */
+  pattern?: Pattern;
+  error?: string;
+}
+
+export function reviseSectionTransitions(
+  doc: ProjectDocument,
+  targetRole: SceneRole,
+  transition: "fill" | "riser" | "break",
+): SectionTransitionOutcome {
+  const roleScenes = doc.scenes.filter((candidate) => sceneRoleOf(candidate) === targetRole);
+  if (roleScenes.length === 0) {
+    return { ok: false, error: `no ${targetRole} section in the project — build a song first` };
+  }
+  const replacements: Array<{ patternId: string; pattern: Pattern }> = [];
+  const sceneIndex = new Map(doc.scenes.map((scene, index) => [scene.id, index]));
+  const painted = new Set<string>();
+  for (const scene of roleScenes) {
+    const index = sceneIndex.get(scene.id);
+    if (index === undefined || index === 0) continue; // no predecessor — nothing to paint
+    const predecessor = doc.scenes[index - 1];
+    const pattern = doc.patterns.find((candidate) => candidate.id === predecessor.patternId);
+    if (!pattern || painted.has(pattern.id)) continue;
+    const painted2 = applyTransitionToPattern(doc, pattern, transition, { allowDrums: true });
+    if (painted2 !== pattern) {
+      replacements.push({ patternId: pattern.id, pattern: { ...painted2, id: pattern.id } });
+      painted.add(pattern.id);
+    }
+  }
+  if (replacements.length === 0) {
+    return { ok: false, error: `nothing to paint — the ${targetRole} boundary already carries this transition` };
+  }
+  const next: ProjectDocument = {
+    ...doc,
+    patterns: doc.patterns.map((candidate) => {
+      const replacement = replacements.find((entry) => entry.patternId === candidate.id);
+      return replacement ? replacement.pattern : candidate;
+    }),
+  };
+  const label =
+    replacements.length === 1
+      ? `${transition} before the ${targetRole} — predecessor repainted`
+      : `${transition} before all ${replacements.length} ${targetRole} sections — predecessors repainted`;
+  return {
+    ok: true,
+    label,
+    command: snapshot("reviseSectionTransitions", label, doc, next),
+    pattern: replacements[0].pattern,
+  };
 }
 
 /**

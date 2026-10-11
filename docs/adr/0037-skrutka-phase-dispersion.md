@@ -326,3 +326,30 @@ only with a stored curve), the same class as `lfoRate`/`keyMode`.
    the 808 and drum tracks, mono-safe precedence, one-command replay and
    read-back) and `tests/fx-chains.test.ts` (the four chains exist with their
    documented effect order, reference real presets, ids unique).
+
+## Addendum 6 (2026-10-11) — v2.5: SCENE PACK (A/B pairs bound to scene intensity)
+
+Nine curated A/B curve pairs (`src/effects/skrutka-scene-pack.ts`) carry the
+scene-intensity arc per genre — Trap Center → Shimmer, Drill Clean → Gulp,
+House Tight → Liquid, Techno Flat → Chirp, DnB Static → Reso, Amapiano
+Soft → Breath, Jersey Tick → Wide, Hyperpop Dry → Glitch, Ambient
+Static → Double. Curve A is the intro-safe voicing, curve B the drop.
+
+`applyTwistScenePair` (commands/twistScene.ts) is ONE undoable command that
+stores both snapshots, sets the MORPH base to the neutral midpoint and
+ensures the scene-intensity binding: a `TWIST` macro whose
+`source: "intensity"` mapping targets this effect's `morph` (amount 1). The
+engine resolves an intensity fxParam mapping as an offset of
+`(max − min)/2 · bipolar · amount` around the persisted base, so with
+`morph = 0.5` the intensity curve lands morph 0 at intensity 0 and morph 1 at
+intensity 1 — playing an intro scene leans A, the drop lands B, and the user
+draws nothing. The binding is idempotent (switching pairs never duplicates
+it; `twistMorphIntensityBound` is the panel/rack probe) and the panel's
+scene-pack select shows CUSTOM when the stored slots come from manual STOREs.
+
+Validation: `tests/twist-scene-pack.test.ts` pins the pack inside the rack
+ranges (clamp identity), the A/B contrast (≥ 2 differing ids), the exact-match
+`findTwistScenePair` probe, the command's one-step apply/undo, the
+single-binding idempotence across pair switches, and the non-TWIST refusal;
+the panel suite covers the select → `onApplyScenePair` + live `setCurves`
+seeding, the SCENE-INTENSITY chip and the CUSTOM fallback.
