@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 /**
- * SKRUTKA (skrutka) — determinism + transient-shaping pins.
+ * TWIST (skrutka) — determinism + transient-shaping pins.
  *
  * The processor has no RNG and no free-running phases: same input + params →
  * bit-identical output across any number of runs (two-variant alternation
@@ -55,7 +55,7 @@ const musicalInput = (i: number) =>
   0.12 * Math.sin((2 * Math.PI * 110 * i) / SR) +
   0.05 * Math.sin((2 * Math.PI * 330 * i) / SR);
 
-describe("SKRUTKA determinism", () => {
+describe("TWIST determinism", () => {
   it("three consecutive renders are sample-identical (no ping-pong)", () => {
     const opts = { dispersion: 0.7, punch: 0.4, focusHz: 260, spread: 0.5 };
     const r1 = render(opts, 0.8, musicalInput);
@@ -76,7 +76,7 @@ describe("SKRUTKA determinism", () => {
   });
 });
 
-describe("SKRUTKA v2 legacy compatibility (v1 renders bit-identically)", () => {
+describe("TWIST v2 legacy compatibility (v1 renders bit-identically)", () => {
   it("the v1 parameter set produces the frozen v1 hash (FNV-1a over the Float32 bits)", () => {
     // Frozen 2026-10-11 from the shipped v1 processor with this exact probe
     // (see ADR 0037 addendum): dispersion 0.6 / punch 0.4 / focus 320 /
@@ -113,7 +113,7 @@ describe("SKRUTKA v2 legacy compatibility (v1 renders bit-identically)", () => {
   });
 });
 
-describe("SKRUTKA transient shaping (all-pass spreads a click, not a tone)", () => {
+describe("TWIST transient shaping (all-pass spreads a click, not a tone)", () => {
   it("an impulse spreads: dispersion 1 keeps its energy but pushes it past sample 100", () => {
     const impulse = (i: number) => (i === 0 ? 1 : 0);
     const shaped = render({ dispersion: 1, punch: 0, focusHz: 900, mix: 1 }, 0.1, impulse);

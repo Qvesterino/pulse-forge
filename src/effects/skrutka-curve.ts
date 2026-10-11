@@ -1,5 +1,5 @@
 /**
- * SKRUTKA group-delay model — the pure analog of skrutka-processor.js (v2).
+ * TWIST group-delay model — the pure analog of skrutka-processor.js (v2).
  *
  * The processor is a cascade of all-pass sections plus a punch stage blended
  * against the long output; its group delay is a closed-form function of the

@@ -1,5 +1,5 @@
 /**
- * APEKS AudioWorkletProcessor — transient-preserving loudness maximizer.
+ * APEX AudioWorkletProcessor — transient-preserving loudness maximizer.
  *
  * Own algorithm (ADR 0020 lineage, M2): a dual-path gain split. A block peak
  * drives one linked gain-reduction trajectory toward the ceiling; each sample

@@ -78,7 +78,7 @@ describe("KorenPanel", () => {
     const services = mockServices(doc);
     (services.engine as unknown as Record<string, unknown>).getFxMeters = vi.fn(() => null);
     renderWithContext(<KorenPanel trackId="t1" fxId="fx1" params={{ focusHz: 90 }} degraded={true} />, { services });
-    expect(screen.getByText(/KOREŇ is bypassed/)).toBeInTheDocument();
+    expect(screen.getByText(/GROW is bypassed/)).toBeInTheDocument();
     expect(screen.getByText("— Hz")).toBeInTheDocument();
   });
 });

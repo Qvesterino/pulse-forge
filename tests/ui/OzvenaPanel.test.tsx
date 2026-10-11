@@ -11,9 +11,9 @@ const baseProps = {
 };
 
 describe("OzvenaPanel", () => {
-  it("renders the VØID reverb editor region with the engine-mix weights group", () => {
+  it("renders the DRIFT reverb editor region with the engine-mix weights group", () => {
     renderWithContext(<OzvenaPanel {...baseProps} />, { services: mockServices() });
-    expect(screen.getByLabelText("VØID reverb editor")).toBeInTheDocument();
+    expect(screen.getByLabelText("DRIFT reverb editor")).toBeInTheDocument();
     expect(screen.getByLabelText("Engine mix")).toBeInTheDocument();
   });
 

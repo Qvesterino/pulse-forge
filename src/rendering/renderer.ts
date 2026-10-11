@@ -55,7 +55,7 @@ export interface RenderOptions {
   /**
    * Global Live/Export quality switch. "studio" (default in the export UI)
    * bumps every PRISM instance to 8× saturation oversampling, every
-   * default-tier VØID instance to the render tier, and the enabled master
+   * default-tier DRIFT instance to the render tier, and the enabled master
    * limiter to 2× FIR oversampling for the duration of THIS render. "live"
    * renders the saved effect settings without these quality bumps.
    * The document itself is never modified; bumps ride the runtime parameter
@@ -156,7 +156,7 @@ export function resolveRenderQuality(
 }
 
 /**
- * The VØID quality bump for one document: {trackId, fxId, paramId, value}
+ * The DRIFT quality bump for one document: {trackId, fxId, paramId, value}
  * entries that the renderer feeds through engine.previewFxParam. Pure so the
  * export contract is testable without an audio context. Covers tracks,
  * returns and final master inserts through previewFxParam.
@@ -219,7 +219,7 @@ export function fxeqRenderQualityBumps(doc: ProjectDocument): {
 
 /**
  * The unified quality bump for one document: PRISM band-quality entries +
- * VØID render-tier entries that the renderer feeds through
+ * DRIFT render-tier entries that the renderer feeds through
  * engine.previewFxParam. Pure so the export contract is testable without an
  * audio context.
  */
@@ -234,7 +234,7 @@ export function renderQualityBumps(doc: ProjectDocument): {
 
 /**
  * Roadmap O7 / 2026-09-19 audit: derive the render tail from the longest
- * time-based effect tail actually in the document instead of a fixed 2 s. VØID E3 hall
+ * time-based effect tail actually in the document instead of a fixed 2 s. DRIFT E3 hall
  * supports up to a 24 s T60 and the core reports it via getTailSamples();
  * a 2 s tail audibly truncates exactly the flagship use case (long hall
  * pads). Feedback delays use their longest active tap and a conservative

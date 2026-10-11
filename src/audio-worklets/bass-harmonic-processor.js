@@ -1,5 +1,5 @@
 /**
- * KOREŇ (bassHarmonic) AudioWorkletProcessor — missing-fundamental bass
+ * GROW (bassHarmonic) AudioWorkletProcessor — missing-fundamental bass
  * exciter.
  *
  * Takes a bass signal, tracks its fundamental with a control-rate YIN
@@ -64,7 +64,7 @@
  *    pulls them down (×0.15..1) so the kick punches through. OFF, or any
  *    mode without a key connected, is a bit-exact no-op.
  * 10. Live telemetry — a small throttled port frame (~20 Hz, `{ type:"koren",
- *    f0, clarity, harm, key, partials }`) feeds the KOREŇ panel visualizer
+ *    f0, clarity, harm, key, partials }`) feeds the GROW panel visualizer
  *    and the rack mini meter. Port traffic never touches the sample path;
  *    offline renders post into the void exactly like compressor GR frames.
  *

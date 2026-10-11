@@ -14,7 +14,7 @@ import type { SkrutkaMeterFrame } from "../audio-worklets/skrutka-node";
 import { useServices } from "./context";
 
 /**
- * SKRUTKA (skrutka) panel — v2: the group-delay curve that IS the effect,
+ * TWIST (skrutka) panel — v2: the group-delay curve that IS the effect,
  * now editable and dynamic-aware.
  *
  * The curve is the analytic model (src/effects/skrutka-curve — the same math
@@ -301,8 +301,8 @@ export function SkrutkaPanel({
   ];
 
   return (
-    <section className={`skrutka-panel${docked ? " docked" : ""}`} aria-label="SKRUTKA group delay">
-      {degraded && <div className="skrutka-degraded">AudioWorklet unavailable — SKRUTKA is bypassed (1:1 signal)</div>}
+    <section className={`skrutka-panel${docked ? " docked" : ""}`} aria-label="TWIST group delay">
+      {degraded && <div className="skrutka-degraded">AudioWorklet unavailable — TWIST is bypassed (1:1 signal)</div>}
       <div className="skrutka-head">
         <span className="skrutka-readout" ref={readoutRef}>
           — no delay hump

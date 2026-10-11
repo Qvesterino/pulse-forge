@@ -68,6 +68,11 @@ class PortalWorkletProcessor extends AudioWorkletProcessor {
 
   constructor(options) {
     super();
+    // Parameters BEFORE prepare(): prepare() seeds the smoothed MIX from the
+    // current parameter value, so an effect that boots with MIX already at 1
+    // starts wet from sample 0 instead of fading in through 20 ms of dry.
+    const initial = options?.processorOptions?.params;
+    if (initial && typeof initial === "object") this.proc.setParams(initial);
     this.proc.prepare(sampleRate);
     this.postLatency();
     this.port.onmessage = (event) => {
@@ -77,8 +82,6 @@ class PortalWorkletProcessor extends AudioWorkletProcessor {
         this.metersEnabled = data.enabled === true;
       }
     };
-    const initial = options?.processorOptions?.params;
-    if (initial && typeof initial === "object") this.proc.setParams(initial);
   }
 
   postLatency() {

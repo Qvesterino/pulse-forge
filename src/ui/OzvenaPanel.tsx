@@ -271,12 +271,12 @@ export function OzvenaPanel({
   return (
     <div
       className={`fxeq-panel ultina-panel ozvena-panel${docked ? " ozvena-docked" : ""}`}
-      aria-label="VØID reverb editor"
+      aria-label="DRIFT reverb editor"
     >
-      {degraded && <div className="fxeq-degraded">AudioWorklet unavailable — VØID is bypassed (1:1 signal)</div>}
+      {degraded && <div className="fxeq-degraded">AudioWorklet unavailable — DRIFT is bypassed (1:1 signal)</div>}
 
       {docked && (
-        <div className="device-view-tabs" role="group" aria-label="VØID view">
+        <div className="device-view-tabs" role="group" aria-label="DRIFT view">
           {(
             [
               ["blend", "BLEND"],

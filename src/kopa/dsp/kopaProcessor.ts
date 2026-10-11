@@ -20,7 +20,7 @@
  *  - SUB: phase-locked sine one octave under the body (`subTune`), phase
  *    derived from the body oscillator — deterministic, no free runner.
  *  - KICK HARMONICS: a body-phase-locked partial layer starts at the 2nd
- *    partial and follows KOPA's known pitch envelope. The separate KOREŇ FX
+ *    partial and follows KOPA's known pitch envelope. The separate GROW FX
  *    tracks arbitrary incoming bass; this layer is part of kick synthesis.
  *  - CHARACTER: 4 drive curves (soft/tube/hard/fold), `punch` glue and
  *    `stereo` spread; OUTPUT `level` in dB.

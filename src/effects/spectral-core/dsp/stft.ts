@@ -88,12 +88,14 @@ export class StftEngine {
   frameCount = 0;
 
   /**
-   * Diagnostic read-out of the overlap-add accumulators. The soak and golden
-   * suites assert on this: a healthy engine keeps `normPeak` in the 1..4 band
-   * (the number of Hann windows overlapping a sample) while `normZero` — output
-   * positions produced with no window support at all — stays at 0.
+   * Diagnostic read-out of the overlap-add accumulator. The golden suite asserts
+   * on it: a healthy engine keeps `normPeak` in the 1..4 band — the number of
+   * Hann windows that overlap a sample at 75 % overlap. A normPeak far below 1
+   * is the signature of a normaliser that gets reset mid-flight, which divides
+   * the output by a window power it never accumulated (that defect measured
+   * 7030x input peak before it was found).
    */
-  readonly normStats = { normPeak: 0, normZero: 0 };
+  readonly normStats = { normPeak: 0 };
 
   constructor(sampleRate: number, config: StftConfig = {}) {
     if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
@@ -154,7 +156,6 @@ export class StftEngine {
     this.inputSinceFrame += blockLen;
 
     while (this.inputSinceFrame >= hop && this.processFrame) {
-      if (this.outWrite + N >= this.outBuf.length) this.collapseOutputRing();
       this.emitOneFrame();
       this.inputSinceFrame -= hop;
     }
@@ -162,26 +163,17 @@ export class StftEngine {
     // first real frame is not preceded by stale history.
     if (!this.processFrame) this.inputSinceFrame = 0;
 
-    const readEnd = this.outRead + blockLen;
+    const L = this.outBuf.length;
+    let pos = wrap(this.outRead, L);
     let normPeak = 0;
     for (let i = 0; i < blockLen; i++) {
-      const pos = this.outRead + i;
       const w = this.normBuf[pos];
       if (w > normPeak) normPeak = w;
-      if (w <= NORM_FLOOR) this.normStats.normZero++;
       out[i] = w > NORM_FLOOR ? this.outBuf[pos] / w : 0;
-      // Past the write cursor the data is stale by definition. Zero BOTH
-      // accumulators: leaving normBuf behind would let the next frame that
-      // writes into this position accumulate on top of a dead frame's window
-      // power, which makes the normaliser wrong in a way no clamp catches.
-      if (pos >= this.outWrite) {
-        this.outBuf[pos] = 0;
-        this.normBuf[pos] = 0;
-      }
+      pos = pos + 1 === L ? 0 : pos + 1;
     }
+    this.outRead += blockLen;
     this.normStats.normPeak = normPeak;
-    if (readEnd > this.outBuf.length) this.collapseOutputRing();
-    else this.outRead = readEnd;
   }
 
   /** Zero every state buffer — used on bypass and by the soak harness. */
@@ -194,23 +186,7 @@ export class StftEngine {
     this.inputSinceFrame = 0;
     this.re.fill(0);
     this.im.fill(0);
-  }
-
-  /**
-   * Re-centre the output ring before a frame would overrun it, sliding the live
-   * region back to offset 0 and keeping both cursors consistent.
-   */
-  private collapseOutputRing(): void {
-    const end = Math.min(this.outBuf.length, this.outWrite + this.fftSize);
-    const live = Math.max(0, end - this.outRead);
-    if (live > 0) {
-      this.outBuf.copyWithin(0, this.outRead, end);
-      this.normBuf.copyWithin(0, this.outRead, end);
-    }
-    this.outBuf.fill(0, live);
-    this.normBuf.fill(0, live);
-    this.outRead = 0;
-    this.outWrite = live;
+    this.normStats.normPeak = 0;
   }
 
   /** Analyse → process → resynthesise → overlap-add one frame. */
@@ -246,17 +222,38 @@ export class StftEngine {
     fft(re, im);
     const invN = 1 / N;
 
+    const L = this.outBuf.length;
+    const base = wrap(this.outWrite, L);
+
+    // Retire the leading `hop` positions before accumulating. Those samples have
+    // just aged out of every overlapping window (the window is 4*hop long), so
+    // whatever they still hold belongs to a frame from an earlier cycle. Leaving
+    // it there mixes two different stretches of audio into one output sample —
+    // measured as a steady-state tail at 0.395 against a 0.5 input, and as a
+    // 7030x output peak once spectral feedback amplified the mix-up.
+    for (let j = 0; j < hop; j++) {
+      const p = base + j < L ? base + j : base + j - L;
+      this.outBuf[p] = 0;
+      this.normBuf[p] = 0;
+    }
+
+    let pos = base;
     for (let n = 0; n < N; n++) {
-      const pos = this.outWrite + n;
-      if (pos >= this.outBuf.length) break;
       const w = window[n];
       this.outBuf[pos] += re[n] * invN * w;
       this.normBuf[pos] += w * w;
+      pos = pos + 1 === L ? 0 : pos + 1;
     }
     this.outWrite += hop;
     this.frameCount++;
     this.observer?.(binCount);
   }
+}
+
+/** Positive modulo — the cursors are unbounded counters. */
+function wrap(value: number, length: number): number {
+  const m = value % length;
+  return m < 0 ? m + length : m;
 }
 
 /**

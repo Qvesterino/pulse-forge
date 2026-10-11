@@ -313,7 +313,7 @@
   color: var(--text-faint);
 }
 
-/* KOREŇ panel — live visualizer + PHONE CHECK (device editor inline). */
+/* GROW panel — live visualizer + PHONE CHECK (device editor inline). */
 .kopa-preview-row {
   display: flex;
   align-items: center;
@@ -383,7 +383,7 @@
   background: color-mix(in srgb, var(--bg-raise) 30%, transparent);
 }
 
-/* SKRUTKA panel — group-delay curve (device editor inline). */
+/* TWIST panel — group-delay curve (device editor inline). */
 .skrutka-panel {
   display: flex;
   flex-direction: column;

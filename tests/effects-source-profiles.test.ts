@@ -95,7 +95,7 @@ describe("BEATMAKING_EFFECT_CHAINS — every item resolves to a real factory pre
     }
   });
 
-  it("ships the BASS PHONE READY chain (KOREŇ + air EQ)", () => {
+  it("ships the BASS PHONE READY chain (GROW + air EQ)", () => {
     const chain = BEATMAKING_EFFECT_CHAINS.find((candidate) => candidate.id === "bass-phone-ready");
     expect(chain).toBeDefined();
     expect(chain!.effects.map((item) => item.type)).toEqual(["bassHarmonic", "eq"]);

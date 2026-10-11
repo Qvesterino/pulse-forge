@@ -1,5 +1,5 @@
 /**
- * Type stub for the plain-JS KOREŇ bass-harmonic worklet processor (house
+ * Type stub for the plain-JS GROW bass-harmonic worklet processor (house
  * pattern: see apeks-processor.d.ts). The implementation stays plain JS
  * because it is bundled as a standalone lazy worklet module
  * (scripts/build-bass-harmonic-worklet.mjs) and exercised by vitest via a

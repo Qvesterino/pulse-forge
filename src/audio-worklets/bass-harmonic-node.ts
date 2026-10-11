@@ -3,7 +3,7 @@ import { attachProcessorErrorGuard } from "./processor-errors";
 import { safeApplyAudioParam } from "./safeAudioParam";
 
 /**
- * KOREŇ (bassHarmonic) node wrapper — plain AudioParam surface, same
+ * GROW (bassHarmonic) node wrapper — plain AudioParam surface, same
  * contract as the M2 mastering nodes (zenit-m2-nodes.ts): every parameter
  * is an AudioParam on the processor, so live writes and offline automation
  * (`setParameterAt` → setValueAtTime) both work without port messages.
@@ -14,7 +14,7 @@ import { safeApplyAudioParam } from "./safeAudioParam";
  * the engine re-asserts wiring on every project sync.
  *
  * The processor posts a small throttled telemetry frame (`type:"koren"`) for
- * the KOREŇ panel visualizer and the rack mini meter. The node caches the
+ * the GROW panel visualizer and the rack mini meter. The node caches the
  * last validated frame; `getMeters()` is the only consumer surface. Telemetry
  * needs no enable gate — it is a few scalars at ~20 Hz, same discipline as
  * the compressor's gain-reduction frames.

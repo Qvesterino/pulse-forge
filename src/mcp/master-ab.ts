@@ -1,6 +1,6 @@
 /**
  * MASTER A/B SNAPSHOTS (mastering wave) — the workflow backbone: save the
- * WHOLE mastering state of a bus (every ZENIT/APEKS/ŠÍRKA/PRÚD instance's
+ * WHOLE mastering state of a bus (every ZENIT/APEX/SPAN/TIDE instance's
  * params + output trim), compare snapshots parameter-by-parameter with a
  * level-match hint, and restore any snapshot as ONE undoable step.
  *

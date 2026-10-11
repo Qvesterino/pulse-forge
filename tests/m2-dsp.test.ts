@@ -3,9 +3,9 @@ import { beforeAll, describe, expect, it } from "vitest";
 /**
  * M2 mastering DSP behavioral pins (ADR 0020 lineage) — processor-level,
  * same harness as the chorus-extreme coherence test. These prove the DSP
- * does what its panel claims: APEKS caps at the ceiling, ŠÍRKA is a
+ * does what its panel claims: APEX caps at the ceiling, SPAN is a
  * mathematically neutral pass at width 1 and actually moves side energy,
- * PRÚD ducks a ringing band and stays static at amount 0.
+ * TIDE ducks a ringing band and stays static at amount 0.
  */
 
 class FakePort {
@@ -73,7 +73,7 @@ function run(
   return { peakL, peakR, rmsL: Math.sqrt(sumSq / Math.max(1, count)), lastL };
 }
 
-describe("APEKS maximizer", () => {
+describe("APEX maximizer", () => {
   it("loud input through heavy drive stays AT the ceiling (the GR trajectory caps peaks)", () => {
     const cls = registered.get("apeks-processor");
     const out = run(cls, paramsOf(cls, { drive: 1, ceiling: -6, release: 0.1 }), 12, (i) => [
@@ -98,7 +98,7 @@ describe("APEKS maximizer", () => {
   });
 });
 
-describe("ŠÍRKA imager", () => {
+describe("SPAN imager", () => {
   it("width 1 everywhere is a neutral pass-through (perfect-reconstruction splits)", () => {
     const cls = registered.get("sirka-processor");
     const out = run(cls, paramsOf(cls, { lowWidth: 1, midWidth: 1, highWidth: 1, mix: 1 }), 8, (i) => [
@@ -128,7 +128,7 @@ describe("ŠÍRKA imager", () => {
   });
 });
 
-describe("PRÚD dynamic EQ", () => {
+describe("TIDE dynamic EQ", () => {
   it("a ringing band above threshold gets ducked; amount 0 keeps the band static", () => {
     const cls = registered.get("prud-processor");
     const tone = (i: number): [number, number] => [
@@ -167,7 +167,7 @@ describe("PRÚD dynamic EQ", () => {
   });
 });
 
-describe("APEKS true-peak ceiling (ceilingMode, sinc detector)", () => {
+describe("APEX true-peak ceiling (ceilingMode, sinc detector)", () => {
   /** Independent 8× sinc true-peak estimator (L=8, 32-tap sinc/Blackman). */
   function sincTruePeak8(data: Float32Array): number {
     const L = 8;

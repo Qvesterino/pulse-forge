@@ -9,7 +9,7 @@ import {
 /**
  * Shared tempo-division contract — ONE musical order consumed by every
  * tempo-synced effect (delay, duckDelay, chorus, phaser, flanger, tremolo,
- * freqShifter, RYFT, stepGate, stutter). Projects persist NUMERIC ids, so a
+ * freqShifter, RIFT, stepGate, stutter). Projects persist NUMERIC ids, so a
  * re-order here would silently re-time every synced echo in every saved
  * project — these pins make the table itself load-bearing.
  */

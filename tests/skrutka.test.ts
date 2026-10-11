@@ -6,7 +6,7 @@ import { skrutkaGroupDelaySamples } from "../src/effects/skrutka-curve";
 import type { EffectInstance } from "../src/project-model/types";
 
 /**
- * SKRUTKA (skrutka) — behavioral pins.
+ * TWIST (skrutka) — behavioral pins.
  *
  * The effect is all-pass-only, so the DSP claims are about PHASE, not level:
  *   1. mix = 0 is a bit-exact dry passthrough (and the first block adopts the
@@ -146,10 +146,10 @@ function measuredGroupDelay(cls: any, base: Record<string, number>, hz: number, 
   return -(wrapPi(shift(hz + df) - shift(hz - df)) / (2 * dOmega));
 }
 
-describe("SKRUTKA registry contract", () => {
+describe("TWIST registry contract", () => {
   it("registers on all surfaces with the declared params", () => {
     expect(EFFECT_DEFS.skrutka.params).toEqual(EFFECT_META.skrutka.params);
-    expect(EFFECT_META.skrutka.name).toBe("SKRUTKA");
+    expect(EFFECT_META.skrutka.name).toBe("TWIST");
     expect(EFFECT_META.skrutka.category).toBe("character");
     expect(WORKLET_EFFECTS.skrutka).toBe("degraded");
   });
@@ -184,7 +184,7 @@ describe("SKRUTKA registry contract", () => {
   });
 });
 
-describe("SKRUTKA processor behavior (phase-only)", () => {
+describe("TWIST processor behavior (phase-only)", () => {
   it("MIX 0 is a bit-exact dry passthrough (first block adopts written params)", () => {
     const cls = registered.get("skrutka-processor");
     const out = renderProcessor(
@@ -290,7 +290,7 @@ describe("SKRUTKA processor behavior (phase-only)", () => {
   });
 });
 
-describe("SKRUTKA v2 (shape / dynamic / key / punch controls / LFO)", () => {
+describe("TWIST v2 (shape / dynamic / key / punch controls / LFO)", () => {
   it("SHAPE redistributes the hump: CHIRP / DOUBLE / RESO all differ from GULP", () => {
     const cls = registered.get("skrutka-processor");
     const base = { dispersion: 0.7, punch: 0, focusHz: 320, spread: 0 };
@@ -445,7 +445,7 @@ describe("SKRUTKA v2 (shape / dynamic / key / punch controls / LFO)", () => {
   });
 });
 
-describe("SKRUTKA node wrapper (key input + telemetry cache + LFO sync)", () => {
+describe("TWIST node wrapper (key input + telemetry cache + LFO sync)", () => {
   class FakeParam {
     value = 0;
     scheduled: number[] = [];

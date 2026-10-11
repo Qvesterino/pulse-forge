@@ -113,12 +113,12 @@ describe("mix doctor — the pre-fix disaster zone is red", () => {
 });
 
 describe("mix doctor — harmonic deficit advisory (phone readability)", () => {
-  it("a sub-only bass raises the advisory and names KOREŇ", () => {
+  it("a sub-only bass raises the advisory and names GROW", () => {
     const report = analyzeMixHealth([sine(50, 2, 0.5)], SR);
     const flag = report.flags.find((f) => f.check === "harmonic-deficit");
     expect(flag).toBeDefined();
     expect(flag!.severity).toBe("yellow");
-    expect(flag!.detail).toContain("KOREŇ");
+    expect(flag!.detail).toContain("GROW");
   });
 
   it("a harmonic-rich bass does not raise it (the deficit is already filled)", () => {

@@ -4,7 +4,7 @@ import { EFFECT_DEFS } from "../src/effects/registry";
 import type { KaskadaProcessorInstance } from "../src/audio-worklets/kaskada-processor";
 
 /**
- * KYX Kaskáda — processor test battery (step 1 of the Phase 1 continuation:
+ * KYX RIFT — processor test battery (step 1 of the Phase 1 continuation:
  * docs/kaskada-architecture.md §9 "Definition of Done" — the unit-test box).
  *
  * Runs the REAL worklet processor (src/audio-worklets/kaskada-processor.js)

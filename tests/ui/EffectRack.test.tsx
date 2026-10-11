@@ -80,8 +80,8 @@ describe("EffectRack", () => {
     renderWithContext(<EffectRack track={track} />, { services: mockServices(doc) });
     fireEvent.click(screen.getByRole("button", { name: "✚ ADD FX" }));
     // The grid speaks device names — flagships included.
-    // RYFT is the kaskada type's display name — five flagships, four panels.
-    for (const name of ["PRISM", "VLYX", "VØID", "RYFT"]) {
+    // RIFT is the kaskada type's display name — five flagships, four panels.
+    for (const name of ["PRISM", "VLYX", "DRIFT", "RIFT"]) {
       expect(screen.getByText(name)).toBeInTheDocument();
     }
   });
@@ -575,8 +575,8 @@ describe("EffectRack — flagship device shell contract (all four plugins)", () 
   const NAMES: Record<string, string> = {
     fxeq: "PRISM",
     ultina: "VLYX",
-    ozvena: "VØID",
-    kaskada: "RYFT",
+    ozvena: "DRIFT",
+    kaskada: "RIFT",
   };
 
   for (const type of ["fxeq", "ultina", "ozvena", "kaskada"] as const) {

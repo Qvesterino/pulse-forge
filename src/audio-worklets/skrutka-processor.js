@@ -1,5 +1,5 @@
 /**
- * SKRUTKA (skrutka) AudioWorkletProcessor — v2: dynamic phase dispersion.
+ * TWIST (skrutka) AudioWorkletProcessor — v2: dynamic phase dispersion.
  *
  * A linear, phase-only effect: no gain rides on the frequency axis, so a
  * steady tone passes at the same level while its PHASE is warped. Broadband
@@ -18,7 +18,7 @@
  *              transient and gulps the tail). `dyn = 0` is the v1 engine
  *              bit-exactly (the followers are not even updated).
  *   KEY      — a second worklet input carries a sidechain key (the engine's
- *              generic `setSidechainInput` contract, same as KOREŇ). PUMP
+ *              generic `setSidechainInput` contract, same as GROW). PUMP
  *              deepens the hump with the key envelope (the kick throws the
  *              phase), DUCK pulls the radius down (the kick clears its own
  *              phase smear). `keyMode = 0`, or any mode without a key

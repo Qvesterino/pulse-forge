@@ -1,5 +1,5 @@
 /**
- * SKRUTKA soak (v2 hardening — ADR 0037 addendum).
+ * TWIST soak (v2 hardening — ADR 0037 addendum).
  *
  * The all-pass engine has no feedback loop, but it runs 8 + 3 biquad sections
  * per channel under continuous parameter motion (envelope-driven radius, key

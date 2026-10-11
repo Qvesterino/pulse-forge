@@ -1,7 +1,7 @@
 /**
  * MASTER ASSISTANT planner (ADR 0020 lineage, M3) — pure, deterministic
- * measurement → parameter mapping for the mastering family (ZENIT, APEKS,
- * ŠÍRKA). No neural net: every step is a rule over the measured numbers with
+ * measurement → parameter mapping for the mastering family (ZENIT, APEX,
+ * SPAN). No neural net: every step is a rule over the measured numbers with
  * an explicit WHY line, so the agent (and the user) can audit each move.
  * The executor (kyx_master op:assist) applies the plan through the normal
  * command layer as ONE snapshot — the planner never touches the doc.
@@ -310,7 +310,7 @@ export function planReferenceMastering(pair: ReferencePair): MasterAssistantStep
         param: "drive",
         adjustment: "increase",
         value: 0.45,
-        why: "moderate APEKS drive supports the measured loudness move; compare transients in preview",
+        why: "moderate APEX drive supports the measured loudness move; compare transients in preview",
       });
     } else if (loudnessDelta >= 1) {
       steps.push({

@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 /**
- * KOREŇ (bassHarmonic) — determinism pins.
+ * GROW (bassHarmonic) — determinism pins.
  *
  * The processor has no RNG: same input + params → bit-identical output across
  * any number of runs (no ping-pong render-path defect, no free-running phase
@@ -53,7 +53,7 @@ const musicalInput = (i: number) =>
   0.12 * Math.sin((2 * Math.PI * 110 * i) / SR) +
   0.05 * Math.sin((2 * Math.PI * 330 * i) / SR);
 
-describe("KOREŇ determinism", () => {
+describe("GROW determinism", () => {
   it("three consecutive renders are sample-identical (no ping-pong)", () => {
     const opts = { drive: 0.9, mix: 0.8, focusHz: 80, harmonics: 0.6, range: 3 };
     const r1 = render(opts, 0.8, musicalInput);

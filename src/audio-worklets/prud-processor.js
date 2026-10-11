@@ -1,5 +1,5 @@
 /**
- * PRÚD AudioWorkletProcessor — two-band dynamic EQ.
+ * TIDE AudioWorkletProcessor — two-band dynamic EQ.
  *
  * Each band is a peaking cut whose gain rides the band's own level: a
  * band-passed detector envelope (attack/release shaped) above the band

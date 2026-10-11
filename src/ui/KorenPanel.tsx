@@ -3,7 +3,7 @@ import type { KorenMeterFrame } from "../audio-worklets/bass-harmonic-node";
 import { useServices } from "./context";
 
 /**
- * KOREŇ (bassHarmonic) panel — live missing-fundamental visualizer + PHONE
+ * GROW (bassHarmonic) panel — live missing-fundamental visualizer + PHONE
  * CHECK.
  *
  * Visualizer: a log axis (20–500 Hz) with the `focusHz` tracking window
@@ -203,8 +203,8 @@ export function KorenPanel({
   };
 
   return (
-    <section className={`koren-panel${docked ? " docked" : ""}`} aria-label="KOREŇ visualizer">
-      {degraded && <div className="koren-degraded">AudioWorklet unavailable — KOREŇ is bypassed (1:1 signal)</div>}
+    <section className={`koren-panel${docked ? " docked" : ""}`} aria-label="GROW visualizer">
+      {degraded && <div className="koren-degraded">AudioWorklet unavailable — GROW is bypassed (1:1 signal)</div>}
       <div className="koren-head">
         <span className="koren-readout" ref={f0Ref}>
           — Hz

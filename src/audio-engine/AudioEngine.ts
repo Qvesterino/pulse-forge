@@ -38,6 +38,7 @@ import { WarpManager } from "./warpManager";
 import { TriggerEngine } from "./triggerEngine";
 import type { TriggerTrackView, InstrumentStateView, ClipSourceMeta } from "./triggerEngine";
 import { audioClipsForPlayback } from "../project-model/audio-takes";
+import { resolveHarmonyContext } from "./harmonyContext";
 import type { TrackOrGroupView, ReturnView } from "./deviceLookup";
 import { targetOwner } from "../project-model/targets";
 import { DeviceLookup } from "./deviceLookup";
@@ -647,7 +648,7 @@ export class AudioEngine {
     this.masterChain.setMonitorHighpass(hz);
   }
 
-  /** BAND SOLO — monitor-only band-pass around `centerHz` (SKRUTKA panel). */
+  /** BAND SOLO — monitor-only band-pass around `centerHz` (TWIST panel). */
   setMonitorBand(centerHz: number | null): void {
     this.masterChain.setMonitorBand(centerHz);
   }
@@ -1123,7 +1124,7 @@ export class AudioEngine {
           });
       }
       const seed = this.doc ? hashString(`${this.doc.id}|${ownerId}|${fx.id}|fx-dsp-v1`) : undefined;
-      const rawRuntime = def.factory(ctx, fx, { bpm, seed });
+      const rawRuntime = def.factory(ctx, fx, { bpm, seed, harmonyContext: resolveHarmonyContext(this.doc) });
       const trimGain = ctx.createGain();
       trimGain.gain.value = dbToLinear(fx.outputTrimDb ?? 0);
       rawRuntime.output.connect(trimGain);

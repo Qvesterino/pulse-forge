@@ -270,7 +270,7 @@ describe("level 3 — the new concepts stay distinct from the old ones", () => {
     expect(parseProductionIntent("make it vintage")!.goals.map((g) => g.concept)).toContain("lofi");
   });
 
-  it("'phone-ready bass' is the KOREŇ readability ask, not the telephone device", () => {
+  it("'phone-ready bass' is the GROW readability ask, not the telephone device", () => {
     const intent = parseProductionIntent("make the bass phone-ready")!;
     const concepts = intent.goals.map((g) => g.concept);
     expect(concepts).toContain("phone");

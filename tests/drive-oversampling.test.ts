@@ -8,7 +8,7 @@ import { beforeAll, describe, expect, it } from "vitest";
  * clipper, distortion, drum/bass buss, shimmer) already ran 4× oversampled;
  * tapeSat 4× and svFilter 2× ship their own in-worklet stages. This wave
  * brought every remaining tanh drive onto the svfilter 2× pattern:
- * freqShifter, kaskada (RYFT), autowah (the hottest curve — up to ×10 into
+ * freqShifter, kaskada (RIFT), autowah (the hottest curve — up to ×10 into
  * tanh) and vinyl (tube saturation of the wet path). ringMod has no
  * saturator (carrier-sum fold is the aesthetic) and bitcrusher's aliasing
  * IS the effect — both documented, no OS by design.

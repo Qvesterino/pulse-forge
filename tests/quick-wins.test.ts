@@ -8,7 +8,7 @@ import type { ProjectDocument } from "../src/project-model/types";
 /**
  * Rýchle úpravy battery:
  *
- *  - VØID render-quality auto-switch: `ozvenaRenderQualityBumps` bumps only
+ *  - DRIFT render-quality auto-switch: `ozvenaRenderQualityBumps` bumps only
  *    default-tier, non-bypassed instances (tracks + returns, never master),
  *    respects explicit eco/high/render, never mutates the document.
  *  - Pump real sidechain: mock-context wiring (osc fallback → key → back),
@@ -46,7 +46,7 @@ function docWithFx(
   return { tracks, returns } as unknown as ProjectDocument;
 }
 
-describe("VØID offline render quality", () => {
+describe("DRIFT offline render quality", () => {
   it("bumps default-tier instances on tracks and returns, nothing else", () => {
     const std: FxFixture = { id: "v", type: "ozvena", bypassed: false, params: {} };
     const explicitEco: FxFixture = { id: "e", type: "ozvena", bypassed: false, params: { "global.quality": 0 } };

@@ -36,7 +36,7 @@ describe("EffectAbControls", () => {
     const onLoad = vi.fn();
     render(
       <EffectAbControls
-        effectName="VØID"
+        effectName="DRIFT"
         params={{ "global.dryWet": 100 }}
         deviceState={{
           kind: "effect-ab-v1",

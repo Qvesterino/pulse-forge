@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
  * docs/IMPLEMENTATION-ROADMAP-INPUT-FX-CAB.md.
  *
  * The question this file exists to answer, in one sentence: **can the existing
- * VØID convolution core run a cabinet IR at a latency a guitarist can play
+ * DRIFT convolution core run a cabinet IR at a latency a guitarist can play
  * against, or is the 2048 floor the blocker?**
  *
  * Everything asserted here was measured, not assumed:
@@ -19,7 +19,7 @@ import { describe, expect, it } from "vitest";
  * is linear time-invariant, so a different partition size must change WHEN
  * samples come out, not WHAT comes out. If that test ever fails, the "just
  * lower the floor" plan in the roadmap is dead and the CAB needs its own
- * engine rather than a VØID configuration change.
+ * engine rather than a DRIFT configuration change.
  */
 import { createConvolutionEngine } from "../src/effects/ozvena-core/engines/convolutionEngine.js";
 import { createPartitionedConvolver, recommendPartitionSize } from "../src/effects/ozvena-core/dsp/fftPartitioned.js";

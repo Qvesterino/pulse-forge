@@ -285,7 +285,7 @@ export function ExportPanel({
     if (!shareFormats.some((candidate) => candidate.id === format)) setFormat("wav");
   }, [format, shareFormats]);
   // Global Live/Export quality switch — defaults to STUDIO: the export has
-  // no realtime CPU budget, so PRISM's 8× saturation oversampling and VØID's
+  // no realtime CPU budget, so PRISM's 8× saturation oversampling and DRIFT's
   // render tier (default-tier instances only; explicit eco/high/render
   // choices are respected) apply across tracks, returns and master inserts.
   // LIVE keeps their stored runtime quality; freeze/bounce stay on that tier.
@@ -1255,7 +1255,7 @@ export function ExportPanel({
         {!masteringMode && (
           <label
             className="fx-param-select"
-            title="STUDIO: PRISM renders at 8x saturation oversampling and default-tier VØID at the render tier across tracks, returns and master inserts (explicit eco/high/render choices respected). Slower render, no effect on the live document. LIVE uses each effect's stored quality setting and renders faster."
+            title="STUDIO: PRISM renders at 8x saturation oversampling and default-tier DRIFT at the render tier across tracks, returns and master inserts (explicit eco/high/render choices respected). Slower render, no effect on the live document. LIVE uses each effect's stored quality setting and renders faster."
           >
             <span className="slider-label">QUALITY</span>
             <select value={quality} onChange={(event) => setQuality(event.target.value as "live" | "studio")}>

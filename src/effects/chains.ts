@@ -80,7 +80,7 @@ export const BEATMAKING_EFFECT_CHAINS: BeatmakingEffectChain[] = [
   {
     id: "hat-space",
     name: "HAT SPACE",
-    description: "Stagger light stereo hat taps into a short, filtered RYFT tail.",
+    description: "Stagger light stereo hat taps into a short, filtered RIFT tail.",
     effects: [
       { type: "multiTapDelay", presetId: "multitap-pingpong-hats" },
       { type: "kaskada", presetId: "kaskada-hat-sync" },

@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { SpectralProcessor, DEFAULT_SPECTRAL_PARAMS } from "../src/effects/spectral-core/dsp/SpectralProcessor";
-import { MAX_BLOCK } from "../src/effects/spectral-core/dsp/stft";
+import { MAX_BLOCK, StftEngine } from "../src/effects/spectral-core/dsp/stft";
 
 /**
  * PORTAL — bit-exact golden vectors + the determinism contract.
@@ -33,8 +33,10 @@ interface RenderOpts {
 /** Render `seconds` of stereo through a freshly prepared processor. */
 function render({ params = {}, seconds, input, right }: RenderOpts) {
   const proc = new SpectralProcessor();
-  proc.prepare(SR);
+  // Params before prepare() so the smoothed MIX is seeded correctly and the
+  // effect does not ramp through audible dry on the first blocks.
   proc.setParams({ ...DEFAULT_SPECTRAL_PARAMS, ...params });
+  proc.prepare(SR);
 
   const total = Math.ceil(seconds * SR);
   const outL = new Float32Array(total);
@@ -93,12 +95,55 @@ describe("PORTAL — deterministic golden vectors", () => {
     expect(peakOf(outL)).toBe(0);
   });
 
+  it("the STFT round-trips: analysis + resynthesis is a bit-exact passthrough", () => {
+    // The strongest statement the engine can make. A frame processor that does
+    // nothing must return its input: if the overlap-add normaliser, the window
+    // or the IFFT scale were wrong, this fails before any bank is involved.
+    const engine = new StftEngine(SR, { fftSize: 1024 });
+    engine.onFrame(() => {});
+    const total = SR / 2;
+    const out = new Float32Array(total);
+    const inBlk = new Float32Array(BLOCK);
+    const outBlk = new Float32Array(BLOCK);
+
+    for (let off = 0; off < total; off += BLOCK) {
+      const len = Math.min(BLOCK, total - off);
+      for (let i = 0; i < len; i++) inBlk[i] = twoTone(off + i);
+      engine.processBlock(inBlk, len, outBlk);
+      out.set(outBlk.subarray(0, len), off);
+    }
+
+    // Compare the steady tail against the input's ACTUAL peak — twoTone is a
+    // fundamental plus its third harmonic, so its peaks are where the two
+    // partials happen to align, not the arithmetic sum of their amplitudes.
+    const from = Math.floor(0.3 * SR);
+    let inputPeak = 0;
+    for (let i = 0; i < total; i++) {
+      const v = Math.abs(twoTone(i));
+      if (v > inputPeak) inputPeak = v;
+    }
+    let peak = 0;
+    for (let i = from; i < total; i++) {
+      const v = Math.abs(out[i]);
+      if (v > peak) peak = v;
+    }
+    // Reconstructed within 0.5 % of the source level, all the way to the end of
+    // the run — a normaliser that decayed with time would show up here as a
+    // falling envelope long before it clipped.
+    expect(peak).toBeGreaterThan(inputPeak * 0.995);
+    expect(peak).toBeLessThan(inputPeak * 1.005);
+    for (let i = 0; i < total; i++) expect(Number.isFinite(out[i])).toBe(true);
+  }, 60000);
+
   it("mix = 0 is a bit-exact passthrough", () => {
     const { outL, outR } = render({ seconds: 0.1, input: twoTone, params: { mix: 0 } });
-    // Bypass copies the input, so every sample must match exactly.
+    // Compare against the Float32 samples that actually went in, not the Float64
+    // expression: the engine copies the block verbatim, and comparing a Float32
+    // result to a Float64 source can never be equal at the sample.
+    const inL = Float32Array.from({ length: 2048 }, (_, i) => twoTone(i));
     for (let i = 0; i < 2048; i++) {
-      expect(outL[i]).toBe(twoTone(i));
-      expect(outR[i]).toBe(twoTone(i));
+      expect(outL[i]).toBe(inL[i]);
+      expect(outR[i]).toBe(inL[i]);
     }
   });
 
@@ -159,9 +204,9 @@ describe("PORTAL — deterministic golden vectors", () => {
       frames: proc.getMeters().frames,
       latency: proc.latencySamples(),
     }).toEqual({
-      samples: [0, 0, 0, 0, 0, 0, 0, 0, 0],
-      peak: 0,
-      frames: 0,
+      samples: [0, 0, 0, 0, 0, 0, 0, 0, 0.120026],
+      peak: 0.494242,
+      frames: 46,
       latency: 768,
     });
   });
@@ -172,7 +217,7 @@ describe("PORTAL — deterministic golden vectors", () => {
       input: twoTone,
       params: { mode: 1, resonance: 0.8, focus: 660, focusWidth: 1, mix: 1 },
     });
-    expect({ peak: q(peakOf(outL)), rms: q(rms(outL, 0, outL.length)) }).toEqual({ peak: 0, rms: 0 });
+    expect({ peak: q(peakOf(outL)), rms: q(rms(outL, 0, outL.length)) }).toEqual({ peak: 0.48001, rms: 0.181237 });
   });
 
   it("FREEZE golden vector is pinned", () => {
@@ -181,6 +226,6 @@ describe("PORTAL — deterministic golden vectors", () => {
       input: twoTone,
       params: { mode: 2, feedback: 0.5, time: 120, mix: 1 },
     });
-    expect({ peak: q(peakOf(outL)) }).toEqual({ peak: 0 });
+    expect({ peak: q(peakOf(outL)) }).toEqual({ peak: 0.091014 });
   });
 });

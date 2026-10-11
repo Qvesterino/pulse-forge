@@ -113,7 +113,7 @@ describe("offline render / live playback — shared engine surface", () => {
     // exports below the live behaviour.
     const renderer = readSrc(RENDERER_PATH);
     // The default tail resolves through resolveRenderTailSeconds (explicit
-    // override honored; fallback 2 scaled up to the deepest VØID reverb's
+    // override honored; fallback 2 scaled up to the deepest DRIFT reverb's
     // T60, bounded [2,12] — exports capture the real decay, not a fixed 2 s).
     expect(renderer).toMatch(/options\.tailSeconds\s*\?\?\s*resolveRenderTailSeconds\(doc\)/);
     // The tail must be added to the duration, not subtracted.

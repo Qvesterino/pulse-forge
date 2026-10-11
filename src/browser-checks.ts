@@ -1144,7 +1144,7 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     );
   }
 
-  // KOREŇ (ADR 0034) — the lazy bass-harmonic effect worklet on a real render:
+  // GROW (ADR 0034) — the lazy bass-harmonic effect worklet on a real render:
   // a 55 Hz sine through the loaded module must gain measurable 110 Hz (2nd
   // harmonic) energy at DRIVE max. This is the host-level proof the checklist
   // §6/§13 demands (worklet actually loaded via loadLazyWorklet, min/max moves
@@ -1191,19 +1191,15 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     const h2 = goertzel(110);
     const h1 = goertzel(55);
     check(
-      "KOREŇ: lazy worklet generates the missing fundamental's 2nd harmonic on a real render",
+      "GROW: lazy worklet generates the missing fundamental's 2nd harmonic on a real render",
       isWorkletReady("bassHarmonic", ctx) && h2 > 0.005 && h2 > h1 * 0.1,
       `ready=${isWorkletReady("bassHarmonic", ctx)} h2=${h2.toFixed(4)} h1=${h1.toFixed(4)}`,
     );
   } catch (error) {
-    check(
-      "KOREŇ: lazy worklet generates the missing fundamental's 2nd harmonic on a real render",
-      false,
-      String(error),
-    );
+    check("GROW: lazy worklet generates the missing fundamental's 2nd harmonic on a real render", false, String(error));
   }
 
-  // SKRUTKA (ADR 0037) — lazy phase-dispersion effect worklet on a real
+  // TWIST (ADR 0037) — lazy phase-dispersion effect worklet on a real
   // render: a 200 Hz sine through the loaded module keeps its level (all-pass
   // |H| = 1) while the waveform shifts against the dry reference. Host-level
   // proof the module actually loaded and processes.
@@ -1249,12 +1245,12 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     const wetRms = rms(wet.data);
     const dryRms = rms(dry.data);
     check(
-      "SKRUTKA: lazy worklet shifts the phase of a real render while preserving its level",
+      "TWIST: lazy worklet shifts the phase of a real render while preserving its level",
       wet.ready && wetRms > dryRms * 0.95 && wetRms < dryRms * 1.05 && dryRms > 0.2 && maxDiff > 0.05,
       `ready=${wet.ready} wetRms=${wetRms.toFixed(3)} dryRms=${dryRms.toFixed(3)} maxDiff=${maxDiff.toFixed(3)}`,
     );
   } catch (error) {
-    check("SKRUTKA: lazy worklet shifts the phase of a real render while preserving its level", false, String(error));
+    check("TWIST: lazy worklet shifts the phase of a real render while preserving its level", false, String(error));
   }
 
   // SKRUTKA v2 — the sidechain KEY input on a real render: PUMP with a key
@@ -1310,12 +1306,12 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
       noKeyDiff = Math.max(noKeyDiff, Math.abs(unkeyed[i]! - plain[i]!));
     }
     check(
-      "SKRUTKA: KEY PUMP moves the render on a real key feed (bit-exact without one)",
+      "TWIST: KEY PUMP moves the render on a real key feed (bit-exact without one)",
       keyDiff > 0.02 && noKeyDiff === 0,
       `keyDiff=${keyDiff.toFixed(4)} noKeyDiff=${noKeyDiff.toExponential(2)}`,
     );
   } catch (error) {
-    check("SKRUTKA: KEY PUMP moves the render on a real key feed (bit-exact without one)", false, String(error));
+    check("TWIST: KEY PUMP moves the render on a real key feed (bit-exact without one)", false, String(error));
   }
 
   // Phase 4 (plugin-audit follow-up) — LIVE worklet-path audibility for the

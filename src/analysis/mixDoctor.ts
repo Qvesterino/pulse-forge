@@ -161,7 +161,7 @@ const SILENCE_RMS = 1e-4;
 // Harmonic deficit (phone-readability advisory): the sub must carry real
 // weight AND 120–350 Hz — the band a phone speaker can actually reproduce —
 // must carry almost none of the sub's share. Diagnosis only, never an
-// auto-fix; the detail names the KOREŇ exciter as the repair path.
+// auto-fix; the detail names the GROW exciter as the repair path.
 const HARMONIC_DEFICIT_SUB_MIN = 0.25;
 const HARMONIC_DEFICIT_RATIO = 0.2;
 
@@ -231,7 +231,7 @@ function buildMixHealthReport(input: MixHealthMeasurements): MixHealthReport {
     flags.push({
       severity: "yellow",
       check: "harmonic-deficit",
-      detail: `sub ${(bandShares.sub * 100).toFixed(0)} % of energy vs ${(bandShares.lowmid * 100).toFixed(1)} % at 120–350 Hz — phone speakers will barely hear the bass; add the missing harmonics (KOREŇ)`,
+      detail: `sub ${(bandShares.sub * 100).toFixed(0)} % of energy vs ${(bandShares.lowmid * 100).toFixed(1)} % at 120–350 Hz — phone speakers will barely hear the bass; add the missing harmonics (GROW)`,
     });
   if (hfShare > HF_YELLOW)
     flags.push({

@@ -23,7 +23,7 @@ export interface ScorepackResult {
 export interface ScorepackOptions {
   /**
    * Global Live/Export quality switch for master and stems. "studio" bumps
-   * PRISM to 8× and default-tier VØID to the render tier. When set, it wins
+   * PRISM to 8× and default-tier DRIFT to the render tier. When set, it wins
    * over the legacy per-plugin flags below. Defaults to "studio".
    */
   quality?: ExportQuality;

@@ -882,7 +882,7 @@
   text-align: right;
 }
 
-/* KOREŇ "+x dB harmonics" mini meter — the phone-band boost the exciter adds. */
+/* GROW "+x dB harmonics" mini meter — the phone-band boost the exciter adds. */
 .fx-harm {
   display: flex;
   align-items: center;

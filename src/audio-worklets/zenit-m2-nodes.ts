@@ -5,8 +5,8 @@ import { attachProcessorErrorGuard } from "./processor-errors";
 import { safeApplyAudioParam } from "./safeAudioParam";
 
 /**
- * M2 mastering DSP node wrappers (ADR 0020 lineage): APEKS maximizer,
- * ŠÍRKA per-band imager, PRÚD dynamic EQ. All three are stereo worklets with
+ * M2 mastering DSP node wrappers (ADR 0020 lineage): APEX maximizer,
+ * SPAN per-band imager, TIDE dynamic EQ. All three are stereo worklets with
  * plain AudioParam surfaces — the shared defensive writer drops non-finite
  * values and no-ops unknown ids, exactly like every other effect node.
  * The processor module MUST be pre-loaded (core bundle) before construction.
@@ -87,14 +87,14 @@ function makeStereoWorkletRuntime(
 
 const APEKS_PARAMS = ["drive", "ceiling", "ceilingMode", "release", "preserve", "mix", "output"];
 
-/** Create the APEKS maximizer worklet node (M2). */
+/** Create the APEX maximizer worklet node (M2). */
 export function createApeksNode(ctx: BaseAudioContext, instance: { params: Record<string, number> }): EffectRuntime {
   return makeStereoWorkletRuntime(ctx, "apeks-processor", instance, APEKS_PARAMS, "apeks");
 }
 
 const SIRKA_PARAMS = ["lowFreq", "highFreq", "lowWidth", "midWidth", "highWidth", "mix"];
 
-/** Create the ŠÍRKA per-band imager worklet node (M2). */
+/** Create the SPAN per-band imager worklet node (M2). */
 export function createSirkaNode(ctx: BaseAudioContext, instance: { params: Record<string, number> }): EffectRuntime {
   return makeStereoWorkletRuntime(ctx, "sirka-processor", instance, SIRKA_PARAMS);
 }
@@ -113,7 +113,7 @@ const PRUD_PARAMS = [
   "output",
 ];
 
-/** Create the PRÚD dynamic EQ worklet node (M2). */
+/** Create the TIDE dynamic EQ worklet node (M2). */
 export function createPrudNode(ctx: BaseAudioContext, instance: { params: Record<string, number> }): EffectRuntime {
   return makeStereoWorkletRuntime(ctx, "prud-processor", instance, PRUD_PARAMS, "prud");
 }

@@ -6,7 +6,7 @@ import { safeApplyAudioParam } from "./safeAudioParam";
 /**
  * PORTAL (portal) node wrapper.
  *
- * Plain AudioParam surface (the M2 pattern, same contract as SKRUTKA and
+ * Plain AudioParam surface (the M2 pattern, same contract as TWIST and
  * KOREŃ): every rack parameter is an AudioParam on the processor, so live writes
  * and offline automation both work without port messages. That matters twice
  * over here — Chromium does not pump processor message queues mid-render

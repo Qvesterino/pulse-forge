@@ -5,7 +5,7 @@ import { renderWithContext, mockServices } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 
 /**
- * KaskadaPanel — dual-spectrum display for the Kaskáda delay.
+ * KaskadaPanel — dual-spectrum display for the RIFT delay.
  *
  * jsdom has no canvas implementation, so the draw path is exercised with a
  * stub 2D context (every method a no-op) — enough to run the real band
@@ -59,12 +59,12 @@ describe("KaskadaPanel", () => {
       <KaskadaPanel trackId="t1" fxId="fx1" params={{ toneLp: 4500, toneHp: 150 }} degraded={false} />,
       { services },
     );
-    expect(screen.getByText("RYFT / SPECTRUM")).toBeInTheDocument();
+    expect(screen.getByText("RIFT / SPECTRUM")).toBeInTheDocument();
     expect(screen.getByText("DRY")).toBeInTheDocument();
     expect(screen.getByText("DELAY")).toBeInTheDocument();
     expect(screen.getByText("LOOP EQ")).toBeInTheDocument();
     expect(screen.getByText("UNMASK")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: /RYFT dual spectrum/ })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /RIFT dual spectrum/ })).toBeInTheDocument();
     expect(setFxMetersEnabled).toHaveBeenCalledWith("t1", "fx1", true);
     unmount();
     expect(setFxMetersEnabled).toHaveBeenCalledWith("t1", "fx1", false);

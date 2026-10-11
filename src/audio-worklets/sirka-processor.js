@@ -1,5 +1,5 @@
 /**
- * ŠÍRKA AudioWorkletProcessor — per-band stereo imager.
+ * SPAN AudioWorkletProcessor — per-band stereo imager.
  *
  * Three-band split via two cascaded first-order complementary pairs
  * (low = LP1, rest = x − low; mid = LP2(rest), high = rest − mid) — each

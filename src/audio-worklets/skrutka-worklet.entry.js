@@ -1,5 +1,5 @@
 /**
- * SKRUTKA AudioWorklet entry — bundled by scripts/build-skrutka-worklet.mjs
+ * TWIST AudioWorklet entry — bundled by scripts/build-skrutka-worklet.mjs
  * into a single classic-script file (public/skrutka-worklet.js) that the
  * loader feeds to AudioWorklet.addModule() on demand (LAZY_WORKLET_TYPES).
  *

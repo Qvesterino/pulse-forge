@@ -127,7 +127,7 @@ export function EffectRack({
   const [gainReductionBreakdown, setGainReductionBreakdown] = useState<
     Record<string, readonly EffectGainReductionReading[]>
   >({});
-  // KOREŇ's "+x dB harmonics" mini meter — a scalar frame polled off the
+  // GROW's "+x dB harmonics" mini meter — a scalar frame polled off the
   // runtime's telemetry cache, formatted in the device row.
   const [harmonics, setHarmonics] = useState<Record<string, number>>({});
   // Accordion focus: one device editor renders full-width at a time. null =
@@ -627,7 +627,7 @@ function Device({
   fallbackReason?: string;
   gainReductionDb?: number;
   gainReductionBreakdown?: readonly EffectGainReductionReading[];
-  /** KOREŇ "+x dB harmonics" reading (input-relative phone-band boost). */
+  /** GROW "+x dB harmonics" reading (input-relative phone-band boost). */
   harmonicsDb?: number;
   allowUserImpulseResponses?: boolean;
   expanded: boolean;
@@ -775,7 +775,7 @@ function Device({
           </button>
         )}
         {allowUserImpulseResponses && fx.type === "ozvena" && (
-          <label className="btn btn-small fx-ir-load" title="Load a user impulse response (VØID convolution)">
+          <label className="btn btn-small fx-ir-load" title="Load a user impulse response (DRIFT convolution)">
             IR…
             <input
               type="file"
@@ -801,7 +801,7 @@ function Device({
                     // is "algorithmic" (the default) — the convolver only
                     // runs in hybrid/convolution mode. Flip to hybrid so
                     // the IR is actually audible; the user can switch back
-                    // to algorithmic (or to IR-only) in the VØID panel.
+                    // to algorithmic (or to IR-only) in the DRIFT panel.
                     // (Reconciled from Pulse Forge audit, 2026-09-19.)
                     const mode = Math.round(fx.params["convolution.mode"] ?? 0);
                     if (mode === 0) {
@@ -1124,7 +1124,7 @@ function Device({
                 onParam={(paramId, value) =>
                   services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))
                 }
-                onGestureStart={() => services.store.beginUndoFrame("SKRUTKA curve drag")}
+                onGestureStart={() => services.store.beginUndoFrame("TWIST curve drag")}
                 onGestureEnd={() => services.store.endUndoFrame()}
               />
             )}
@@ -1294,7 +1294,7 @@ function PrudMaxCutPreview({ params, sampleRate }: { params: Record<string, numb
         viewBox="0 0 300 100"
         preserveAspectRatio="none"
         role="img"
-        aria-label="PRÚD maximum cut response preview. Dashed lines show each band's maximum cut; the solid line shows their combined maximum response."
+        aria-label="TIDE maximum cut response preview. Dashed lines show each band's maximum cut; the solid line shows their combined maximum response."
       >
         <line x1="26" y1="14" x2="280" y2="14" className="prud-cut-grid" />
         <line x1="26" y1="43" x2="280" y2="43" className="prud-cut-grid" />

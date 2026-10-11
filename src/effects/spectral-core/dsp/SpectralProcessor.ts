@@ -21,7 +21,7 @@
  * reused for the processor's whole life.
  */
 
-import { ResonatorBank } from "./resonator";
+import { ResonatorBank, type ResonatorParams } from "./resonator";
 import { SpectralDelayBank, type SpectralDelayParams } from "./spectralDelay";
 import { MAX_BLOCK, StftEngine, blockSmoothingCoefficient, clampBinMagnitude } from "./stft";
 
@@ -110,6 +110,24 @@ export class SpectralProcessor {
 
   private readonly params: SpectralParams = { ...DEFAULT_SPECTRAL_PARAMS };
 
+  /** Pre-allocated delay parameter frame — see `delayParams`. */
+  private readonly delayScratch: SpectralDelayParams = {
+    timeSec: 0.2,
+    feedback: 0,
+    decay: 0.5,
+    shiftSemitones: 0,
+    diffuse: 0,
+    freeze: 0,
+    seed: 0,
+  };
+
+  /** Pre-allocated resonator parameter frame — mutated per frame, never rebuilt. */
+  private readonly resoScratch: ResonatorParams = {
+    resonance: 0,
+    focusHz: 1200,
+    focusWidthOct: 1,
+  };
+
   private syncBpm = 120;
 
   // Smoothed controls so a slider sweep never steps the output.
@@ -140,6 +158,12 @@ export class SpectralProcessor {
   /**
    * (Re)build the engines for a context. Safe to call again when the sample
    * rate changes — the whole state is rebuilt, so there is nothing to migrate.
+   *
+   * CALL THIS AFTER `setParams` on the first run. `reset()` seeds the smoothed
+   * MIX from the current parameter value, so an effect that boots with MIX
+   * already at 1 starts wet from sample 0 instead of ramping up through 20 ms of
+   * audible dry. Nothing breaks if the order is wrong — the smoothing still
+   * converges — but the effect audibly fades in on every context load.
    */
   prepare(sampleRate: number, fftSize: number = DEFAULT_FFT_SIZE): void {
     this.sampleRate = sampleRate;
@@ -171,6 +195,16 @@ export class SpectralProcessor {
   /** Ring allocation — the soak harness asserts this never changes. */
   ringFrames(): number {
     return this.delayMid.ringFrames;
+  }
+
+  /**
+   * Overlap-add normaliser diagnostic from the MID path. For Hann windows at
+   * 75 % overlap this settles around 1.5 (the squared-Hann sum) and must never
+   * sit far below 1 — a value there is the signature of a normaliser being reset
+   * mid-flight, which divides the output by window power it never accumulated.
+   */
+  stftNormPeak(): number {
+    return this.engineMid.normStats.normPeak;
   }
 
   get fftSizeUsed(): number {
@@ -219,18 +253,25 @@ export class SpectralProcessor {
     const n = Math.min(blockLen, MAX_BLOCK);
 
     const mixK = blockSmoothingCoefficient(n, SMOOTHING_TC, this.sampleRate);
-    this.mixSmooth += (clamp01(this.params.mix) - this.mixSmooth) * mixK;
+    const mixTarget = clamp01(this.params.mix);
     this.toneSmooth += (this.params.tone - this.toneSmooth) * mixK;
     this.driveSmooth += (clamp01(this.params.drive) - this.driveSmooth) * mixK;
 
-    // Fully closed = pure passthrough. A delay effect that is shut should also
-    // cost nothing — checklist §1 is the phaser that shipped with a silent wet
-    // chain because the bypass path was never exercised.
-    if (this.mixSmooth <= 1e-4) {
+    // Fully closed = pure passthrough, decided on the TARGET mix rather than
+    // the smoothed one: a knob dragged to zero must bypass immediately and
+    // bit-exactly, not ring out over the smoothing time. Smoothing governs how
+    // the control ENTERS the effect, never how it leaves it.
+    //
+    // This is also checklist §1 — the phaser shipped with a silent wet chain
+    // because its bypass path was never exercised. Here it additionally has to
+    // be bit-exact, so the test can pin it to the sample.
+    if (mixTarget <= 1e-4) {
+      this.mixSmooth = 0;
       outL.set(left.subarray(0, n));
       outR.set(right.subarray(0, n));
       return;
     }
+    this.mixSmooth += (mixTarget - this.mixSmooth) * mixK;
 
     for (let i = 0; i < n; i++) {
       const l = left[i];
@@ -348,41 +389,57 @@ export class SpectralProcessor {
   ): void {
     const mode = this.currentMode();
     const resonance = clamp01(this.params.resonance);
-    const focus = this.params.focus;
-    const focusWidth = this.params.focusWidth;
+    const rp = this.resoScratch;
+    rp.resonance = resonance;
+    rp.focusHz = this.params.focus;
+    rp.focusWidthOct = this.params.focusWidth;
 
     if (mode === SPECTRAL_MODE_RESONATOR) {
       // The resonator IS the effect here: the delay ring still receives the
       // spectrum so switching back to DELAY mid-flight has a tail to work with,
       // but its feedback is closed so it cannot colour the resonant output.
       delay.process(re, im, binCount, this.delayParams(0, false), this.sampleRate, this.engineMid.hop);
-      reso.process(re, im, binCount, { resonance, focusHz: focus, focusWidthOct: focusWidth }, 1);
+      reso.process(re, im, binCount, rp, 1);
       clampBinMagnitude(re, im, binCount);
       return;
     }
 
     const freeze = mode === SPECTRAL_MODE_FREEZE ? true : this.params.freeze >= 0.5;
-    delay.process(re, im, binCount, this.delayParams(this.effectiveDelaySeconds(), freeze), this.sampleRate, this.engineMid.hop);
+    delay.process(
+      re,
+      im,
+      binCount,
+      this.delayParams(this.effectiveDelaySeconds(), freeze),
+      this.sampleRate,
+      this.engineMid.hop,
+    );
 
     if (mode === SPECTRAL_MODE_FREEZE) {
       // A held frame alone is a static noise bed; the resonator's ringing is
       // what makes it sound alive once the input stops feeding it.
-      reso.process(re, im, binCount, { resonance: resonance * 0.7, focusHz: focus, focusWidthOct: focusWidth }, 0.6);
+      rp.resonance = resonance * 0.7;
+      reso.process(re, im, binCount, rp, 0.6);
     }
     clampBinMagnitude(re, im, binCount);
   }
 
-  /** Build the delay-bank parameter frame from the live controls. */
+  /**
+   * Build the delay-bank parameter frame from the live controls.
+   *
+   * Returns a PRE-ALLOCATED object, mutated in place: this runs once per frame
+   * per path (344 times a second each at 44.1 kHz), and handing the bank a fresh
+   * literal would be an allocation on the audio thread — exactly the per-block
+   * churn the soak's heap assertion exists to catch.
+   */
   private delayParams(delaySec: number, frozen: boolean): SpectralDelayParams {
-    return {
-      timeSec: delaySec,
-      feedback: frozen ? clamp01(this.params.feedback) * 0.85 : clamp01(this.params.feedback),
-      decay: clamp01(this.params.decay),
-      shiftSemitones: clampRange(this.params.shift, -24, 24),
-      diffuse: clamp01(this.params.diffuse),
-      freeze: frozen ? 1 : 0,
-      seed: 0,
-    };
+    const p = this.delayScratch;
+    p.timeSec = delaySec;
+    p.feedback = clamp01(this.params.feedback) * (frozen ? 0.85 : 1);
+    p.decay = clamp01(this.params.decay);
+    p.shiftSemitones = clampRange(this.params.shift, -24, 24);
+    p.diffuse = clamp01(this.params.diffuse);
+    p.freeze = frozen ? 1 : 0;
+    return p;
   }
 }
 
@@ -402,3 +459,4 @@ function toneCoef(cutoffHz: number, blockLen: number, sampleRate: number): numbe
   const tau = 1 / (2 * Math.PI * cutoffHz);
   return blockSmoothingCoefficient(blockLen, tau, sampleRate);
 }
+

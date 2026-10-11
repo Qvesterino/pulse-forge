@@ -410,7 +410,7 @@ export function applyOzvenaStatePatch(
   flatParams: Record<string, number>,
 ): Command {
   const target = trackEffectsOf(doc, trackId).find((f) => f.id === fxId);
-  if (!target || target.type !== "ozvena") throw new Error(`VØID effect ${fxId} not found`);
+  if (!target || target.type !== "ozvena") throw new Error(`DRIFT effect ${fxId} not found`);
   const normalized = normalizePluginParams("ozvena", { ...target.params, ...flatParams });
   const nextParams = normalized ?? { ...target.params };
   const previousParams = { ...target.params };

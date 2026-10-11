@@ -1930,7 +1930,7 @@ export const zenitParams: ParamDef[] = [
   },
 ];
 
-/** APEKS (M2) — transient-preserving maximizer macro surface. */
+/** APEX (M2) — transient-preserving maximizer macro surface. */
 export const apeksParams: ParamDef[] = [
   { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0.5, format: formatPct },
   { id: "ceiling", label: "CEIL", min: -12, max: 0, default: -1, unit: "dB", format: formatDb },
@@ -1957,7 +1957,7 @@ export const apeksParams: ParamDef[] = [
   { id: "output", label: "OUTPUT", min: -12, max: 12, default: 0, unit: "dB", format: formatDb },
 ];
 
-/** ŠÍRKA (M2) — per-band stereo imager; width 1 everywhere is a neutral pass. */
+/** SPAN (M2) — per-band stereo imager; width 1 everywhere is a neutral pass. */
 export const sirkaParams: ParamDef[] = [
   { id: "lowFreq", label: "LOW X", min: 60, max: 500, default: 120, unit: "Hz", format: formatHz, taper: "log" },
   { id: "highFreq", label: "HIGH X", min: 2000, max: 12000, default: 5000, unit: "Hz", format: formatHz, taper: "log" },
@@ -1967,7 +1967,7 @@ export const sirkaParams: ParamDef[] = [
   { id: "mix", label: "MIX", min: 0, max: 1, default: 1, format: formatPct },
 ];
 
-/** PRÚD (M2) — two-band dynamic EQ (ducking only, never boosting). */
+/** TIDE (M2) — two-band dynamic EQ (ducking only, never boosting). */
 export const prudParams: ParamDef[] = [
   { id: "freq1", label: "F1", min: 80, max: 8000, default: 900, unit: "Hz", format: formatHz, taper: "log" },
   { id: "thresh1", label: "THR 1", min: -60, max: 0, default: -18, unit: "dB", format: formatDb },
@@ -1999,7 +1999,7 @@ export const prudParams: ParamDef[] = [
 ];
 
 /**
- * KOREŇ (bassHarmonic) — missing-fundamental bass exciter. YIN-tracks the
+ * GROW (bassHarmonic) — missing-fundamental bass exciter. YIN-tracks the
  * bass fundamental and synthesizes a phase-locked harmonic stack so subs read
  * on phones and small speakers; `subAnchor` keeps the original low end while
  * the harmonics sit on top, harmonic-deficit generation avoids doubling
@@ -2101,7 +2101,7 @@ export const bassHarmonicParams: ParamDef[] = [
 ];
 
 /**
- * SKRUTKA (skrutka) — frequency-dependent phase dispersion ("disperser"), v2.
+ * TWIST (skrutka) — frequency-dependent phase dispersion ("disperser"), v2.
  * All-pass only: a steady tone keeps its level while its ARRIVAL TIME is
  * warped around FOCUS. DISPERSION is the long 8-section smear (SHAPE
  * redistributes the section angles/radius); PUNCH is the signed short
@@ -2664,7 +2664,7 @@ export const EFFECT_META: Record<EffectType, EffectDefinitionMeta> = {
   shimmer: { type: "shimmer", name: "Shimmer", category: "character", params: shimmerParams },
   fxeq: { type: "fxeq", name: "PRISM", category: "character", params: fxeqParams },
   ultina: { type: "ultina", name: "VLYX", category: "dynamics", params: ultinaParams },
-  ozvena: { type: "ozvena", name: "VØID", category: "space", params: ozvenaParams },
+  ozvena: { type: "ozvena", name: "DRIFT", category: "space", params: ozvenaParams },
   morphdynamics: { type: "morphdynamics", name: "MORPH", category: "dynamics", params: morphdynamicsParams },
   drumBuss: { type: "drumBuss", name: "Drum Buss", category: "character", params: drumBussParams },
   bassBuss: { type: "bassBuss", name: "Bass Buss", category: "character", params: bassBussParams },
@@ -2686,16 +2686,16 @@ export const EFFECT_META: Record<EffectType, EffectDefinitionMeta> = {
   pitchShift: { type: "pitchShift", name: "Pitch Shift", category: "character", params: pitchShiftParams },
   pitchCorrect: { type: "pitchCorrect", name: "Pitch Correct", category: "character", params: pitchCorrectParams },
   zenit: { type: "zenit", name: "ZENIT", category: "dynamics", params: zenitParams },
-  apeks: { type: "apeks", name: "APEKS", category: "dynamics", params: apeksParams },
-  sirka: { type: "sirka", name: "ŠÍRKA", category: "movement", params: sirkaParams },
-  prud: { type: "prud", name: "PRÚD", category: "tone", params: prudParams },
+  apeks: { type: "apeks", name: "APEX", category: "dynamics", params: apeksParams },
+  sirka: { type: "sirka", name: "SPAN", category: "movement", params: sirkaParams },
+  prud: { type: "prud", name: "TIDE", category: "tone", params: prudParams },
   vinyl: { type: "vinyl", name: "Vinyl Suite", category: "character", params: vinylParams },
   beatMangler: { type: "beatMangler", name: "Beat Mangler", category: "movement", params: beatManglerParams },
   vocoder: { type: "vocoder", name: "Vocoder", category: "character", params: vocoderParams },
   reverseSwell: { type: "reverseSwell", name: "Reverse Swell", category: "movement", params: reverseSwellParams },
   granularFreeze: { type: "granularFreeze", name: "Granular Freeze", category: "space", params: granularFreezeParams },
-  kaskada: { type: "kaskada", name: "RYFT", category: "space", params: kaskadaParams },
-  bassHarmonic: { type: "bassHarmonic", name: "KOREŇ", category: "character", params: bassHarmonicParams },
-  skrutka: { type: "skrutka", name: "SKRUTKA", category: "character", params: skrutkaParams },
+  kaskada: { type: "kaskada", name: "RIFT", category: "space", params: kaskadaParams },
+  bassHarmonic: { type: "bassHarmonic", name: "GROW", category: "character", params: bassHarmonicParams },
+  skrutka: { type: "skrutka", name: "TWIST", category: "character", params: skrutkaParams },
   portal: { type: "portal", name: "PORTAL", category: "space", params: portalParams },
 };

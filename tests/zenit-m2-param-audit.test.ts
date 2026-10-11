@@ -6,8 +6,8 @@ import type { EffectRuntime } from "../src/effects/types";
 import { zenitParams } from "../src/effects/definitions";
 
 /**
- * PARAM AUDIT — ZENIT (9 macros) + the M2 worklet processors (APEKS 6,
- * ŠÍRKA 6, PRÚD 11), per docs/NEW-EFFECT-CHECKLIST.md #13: min AND max must
+ * PARAM AUDIT — ZENIT (9 macros) + the M2 worklet processors (APEX 6,
+ * SPAN 6, TIDE 11), per docs/NEW-EFFECT-CHECKLIST.md #13: min AND max must
  * move a measured metric — "peak > 0" proved nothing when phaser's wet chain
  * was silent. Three layers are pinned here:
  *
@@ -134,17 +134,17 @@ describe("ZENIT macro → stage mapping (both extremes, checklist #13)", () => {
 });
 
 describe("M2 definition ranges match the processor parameterDescriptors", () => {
-  it("APEKS: same ids and clamps on both sides of the port", async () => {
+  it("APEX: same ids and clamps on both sides of the port", async () => {
     const cls = await processorClass("apeks-processor");
     compareRanges(apeksParams, cls.parameterDescriptors);
   });
 
-  it("ŠÍRKA: same ids and clamps on both sides of the port", async () => {
+  it("SPAN: same ids and clamps on both sides of the port", async () => {
     const cls = await processorClass("sirka-processor");
     compareRanges(sirkaParams, cls.parameterDescriptors);
   });
 
-  it("PRÚD: same ids and clamps on both sides of the port", async () => {
+  it("TIDE: same ids and clamps on both sides of the port", async () => {
     const cls = await processorClass("prud-processor");
     compareRanges(prudParams, cls.parameterDescriptors);
   });
@@ -254,7 +254,7 @@ describe("M2 per-param aliveness (min vs max must move the output)", () => {
     return [0.85 * on * Math.sin(2 * Math.PI * 220 * t), 0.8 * on * Math.sin(2 * Math.PI * 220 * t + 0.4)];
   };
 
-  it("APEKS: all six params alive", async () => {
+  it("APEX: all six params alive", async () => {
     await bootProcessors();
     const cls = registered.get("apeks-processor");
     // PRESERVE has a structurally NARROW audible window (probe-measured
@@ -282,11 +282,11 @@ describe("M2 per-param aliveness (min vs max must move the output)", () => {
     for (const [id, min, max, input, fix, threshold] of cases) {
       const a = runProcessor(cls, { ...fix, [id]: min }, input, 96);
       const b = runProcessor(cls, { ...fix, [id]: max }, input, 96);
-      expect(maxDelta(a, b), `APEKS ${id} min ${min} vs max ${max}`).toBeGreaterThan(threshold);
+      expect(maxDelta(a, b), `APEX ${id} min ${min} vs max ${max}`).toBeGreaterThan(threshold);
     }
   });
 
-  it("ŠÍRKA: all six params alive (splits measured with non-neutral widths)", async () => {
+  it("SPAN: all six params alive (splits measured with non-neutral widths)", async () => {
     await bootProcessors();
     const cls = registered.get("sirka-processor");
     const noise = lcg(4242);
@@ -304,11 +304,11 @@ describe("M2 per-param aliveness (min vs max must move the output)", () => {
     for (const [id, min, max, fix] of cases) {
       const a = runProcessor(cls, { ...fix, [id]: min }, wide, 64);
       const b = runProcessor(cls, { ...fix, [id]: max }, wide, 64);
-      expect(maxDelta(a, b), `ŠÍRKA ${id} min ${min} vs max ${max}`).toBeGreaterThan(ALIVE);
+      expect(maxDelta(a, b), `SPAN ${id} min ${min} vs max ${max}`).toBeGreaterThan(ALIVE);
     }
   });
 
-  it("PRÚD: all eleven params alive", async () => {
+  it("TIDE: all eleven params alive", async () => {
     await bootProcessors();
     const cls = registered.get("prud-processor");
     // Two tones inside the default bands (700 Hz in band 1, 4.5 kHz in band 2),
@@ -335,7 +335,7 @@ describe("M2 per-param aliveness (min vs max must move the output)", () => {
     for (const [id, min, max] of cases) {
       const a = runProcessor(cls, { [id]: min }, tone, 96);
       const b = runProcessor(cls, { [id]: max }, tone, 96);
-      expect(maxDelta(a, b), `PRÚD ${id} min ${min} vs max ${max}`).toBeGreaterThan(ALIVE);
+      expect(maxDelta(a, b), `TIDE ${id} min ${min} vs max ${max}`).toBeGreaterThan(ALIVE);
     }
   });
 

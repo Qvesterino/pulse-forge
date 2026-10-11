@@ -407,7 +407,7 @@ export function KaskadaPanel({
   return (
     <div className={`ryft-spectrum kaskada-spectrum${docked ? " is-docked" : ""}`} data-testid="kaskada-spectrum">
       <div className="ryft-spectrum-legend">
-        <span className="ryft-spectrum-title">RYFT / SPECTRUM</span>
+        <span className="ryft-spectrum-title">RIFT / SPECTRUM</span>
         <span className="ryft-spectrum-key">
           <span className="ryft-spectrum-swatch dry" aria-hidden="true" /> DRY
         </span>
@@ -432,7 +432,7 @@ export function KaskadaPanel({
           height: docked ? 88 : 110,
           touchAction: "none",
         }}
-        aria-label="RYFT dual spectrum — dry and delay bus, drag LP/HP handles"
+        aria-label="RIFT dual spectrum — dry and delay bus, drag LP/HP handles"
         role="img"
       />
     </div>

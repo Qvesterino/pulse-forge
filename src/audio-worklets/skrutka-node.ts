@@ -4,7 +4,7 @@ import { attachProcessorErrorGuard } from "./processor-errors";
 import { safeApplyAudioParam } from "./safeAudioParam";
 
 /**
- * SKRUTKA (skrutka) node wrapper — v2.
+ * TWIST (skrutka) node wrapper — v2.
  *
  * Plain AudioParam surface (M2 pattern): every rack parameter is an
  * AudioParam on the processor, so live writes and offline automation both
@@ -19,7 +19,7 @@ import { safeApplyAudioParam } from "./safeAudioParam";
  *    processor free-runs from 0 when no anchor lands (deterministic).
  *
  * Two inputs: [0] main audio, [1] sidechain KEY (PUMP/DUCK) — the same
- * duck-typed `setSidechainInput` contract as KOREŇ; identical repoints
+ * duck-typed `setSidechainInput` contract as GROW; identical repoints
  * early-return because the engine re-asserts wiring on every project sync.
  *
  * The processor posts a small throttled telemetry frame (`type:"skrutka"`)

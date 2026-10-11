@@ -25,10 +25,10 @@ const EDITOR_OVERRIDES: Partial<Record<EffectType, Pick<EffectEditorSpec, "prima
   // Vinyl Suite: the age macro + the three headline artefacts on page 1;
   // module detail (tones, decay, rates, drive, trims) lives on later pages.
   vinyl: { primaryParamIds: ["amount", "crackle", "hiss", "wow"] },
-  // KOREŇ: the four controls the "phone speakers" move actually turns —
+  // GROW: the four controls the "phone speakers" move actually turns —
   // generator strength, tracking focus, sub retention, blend.
   bassHarmonic: { primaryParamIds: ["drive", "focusHz", "presence", "mix"] },
-  // SKRUTKA: the character controls first — smear amount, transient tilt,
+  // TWIST: the character controls first — smear amount, transient tilt,
   // where the hump sits, and stereo split; mix/output live on the details page.
   skrutka: { primaryParamIds: ["dispersion", "punch", "focusHz", "spread"] },
 };

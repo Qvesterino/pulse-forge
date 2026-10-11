@@ -72,7 +72,7 @@ describe("global Live/Export quality switch", () => {
     expect(resolveRenderQuality({ ozvenaRenderQuality: true })).toEqual({ fxeq: false, ozvena: true, limiter: false });
   });
 
-  it("unified bumps cover PRISM bands and default-tier VØID", () => {
+  it("unified bumps cover PRISM bands and default-tier DRIFT", () => {
     const doc = {
       tracks: [
         {
@@ -129,7 +129,7 @@ describe("offline render PCM budget", () => {
   });
 });
 
-describe("VØID render tail (2026-09-19 audit)", () => {
+describe("DRIFT render tail (2026-09-19 audit)", () => {
   type OzvenaFixture = {
     id: string;
     type: "ozvena";
@@ -142,11 +142,11 @@ describe("VØID render tail (2026-09-19 audit)", () => {
       returns: returns.map((fx) => ({ id: "ret-1", effects: [fx] })),
     }) as unknown as ProjectDocument;
 
-  it("falls back to 2 s without a VØID reverb", () => {
+  it("falls back to 2 s without a DRIFT reverb", () => {
     expect(resolveRenderTailSeconds(docWithEffects([]))).toBe(2);
   });
 
-  it("extends the tail to the longest enabled VØID decay", () => {
+  it("extends the tail to the longest enabled DRIFT decay", () => {
     const doc = docWithOzvena([
       {
         id: "reverb",

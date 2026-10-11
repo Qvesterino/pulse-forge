@@ -350,7 +350,7 @@ export class MasterChain {
   }
 
   /**
-   * BAND SOLO — monitor-only band-pass around `centerHz` (SKRUTKA's audition
+   * BAND SOLO — monitor-only band-pass around `centerHz` (TWIST's audition
    * of what the dispersion hump actually moves). Same live-only contract as
    * PHONE CHECK: null restores the plain monitor path (and any active
    * PHONE CHECK corner), garbage clamps to OFF, offline renders never see it.

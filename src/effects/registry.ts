@@ -2572,7 +2572,7 @@ const OZVENA_PARAM_DEFAULTS: Record<string, number> = {
 
 const ozvena: EffectDefinition = {
   type: "ozvena",
-  name: "VØID",
+  name: "DRIFT",
   category: "space",
   params: ozvenaParams,
   factory(ctx, instance, env) {
@@ -3600,7 +3600,7 @@ export function zenitEffectiveCeiling(tpSafeOn: boolean, ceilingDb: number): num
  */
 const apeks: EffectDefinition = {
   type: "apeks",
-  name: "APEKS",
+  name: "APEX",
   category: "dynamics",
   params: apeksParams,
   factory(ctx, instance) {
@@ -3611,7 +3611,7 @@ const apeks: EffectDefinition = {
 
 const sirka: EffectDefinition = {
   type: "sirka",
-  name: "ŠÍRKA",
+  name: "SPAN",
   category: "movement",
   params: sirkaParams,
   factory(ctx, instance) {
@@ -3622,7 +3622,7 @@ const sirka: EffectDefinition = {
 
 const prud: EffectDefinition = {
   type: "prud",
-  name: "PRÚD",
+  name: "TIDE",
   category: "tone",
   params: prudParams,
   factory(ctx, instance) {
@@ -3639,7 +3639,7 @@ const prud: EffectDefinition = {
  */
 const bassHarmonic: EffectDefinition = {
   type: "bassHarmonic",
-  name: "KOREŇ",
+  name: "GROW",
   category: "character",
   params: bassHarmonicParams,
   factory(ctx, instance) {
@@ -3658,7 +3658,7 @@ const bassHarmonic: EffectDefinition = {
  */
 const skrutka: EffectDefinition = {
   type: "skrutka",
-  name: "SKRUTKA",
+  name: "TWIST",
   category: "character",
   params: skrutkaParams,
   factory(ctx, instance, env) {
@@ -3759,7 +3759,7 @@ const granularFreeze: EffectDefinition = {
 
 const kaskada: EffectDefinition = {
   type: "kaskada",
-  name: "RYFT",
+  name: "RIFT",
   category: "space",
   params: kaskadaParams,
   factory(ctx, instance) {

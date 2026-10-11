@@ -5,7 +5,7 @@ import { createBassHarmonicNode, type KorenMeterFrame } from "../src/audio-workl
 import type { EffectInstance } from "../src/project-model/types";
 
 /**
- * KOREŇ (bassHarmonic) — behavioral pins.
+ * GROW (bassHarmonic) — behavioral pins.
  *
  * Processor-level (same harness as tests/m2-dsp.test.ts) plus factory-level
  * contract: honest 1:1 bypass when the lazy worklet module is not loaded, NaN
@@ -222,10 +222,10 @@ function wrapPi(angle: number): number {
   return Math.atan2(Math.sin(angle), Math.cos(angle));
 }
 
-describe("KOREŇ registry contract", () => {
+describe("GROW registry contract", () => {
   it("registers on all surfaces with the declared params", () => {
     expect(EFFECT_DEFS.bassHarmonic.params).toEqual(EFFECT_META.bassHarmonic.params);
-    expect(EFFECT_META.bassHarmonic.name).toBe("KOREŇ");
+    expect(EFFECT_META.bassHarmonic.name).toBe("GROW");
     expect(EFFECT_META.bassHarmonic.category).toBe("character");
     expect(WORKLET_EFFECTS.bassHarmonic).toBe("degraded");
   });
@@ -260,7 +260,7 @@ describe("KOREŇ registry contract", () => {
   });
 });
 
-describe("KOREŇ processor behavior", () => {
+describe("GROW processor behavior", () => {
   it("55 Hz sine gains 2nd-harmonic energy with DRIVE up (Goertzel at 110 Hz)", () => {
     const cls = registered.get("bass-harmonic-processor");
     const wet = renderProcessor(cls, paramsOf(cls, { drive: 0.9, mix: 1, subAnchor: 0.5 }), 1.5, sineAt(55));
@@ -337,7 +337,7 @@ describe("KOREŇ processor behavior", () => {
   });
 });
 
-describe("KOREŇ wave-2 DSP (YIN tracker, phase coherence, deficit, CHARACTER)", () => {
+describe("GROW wave-2 DSP (YIN tracker, phase coherence, deficit, CHARACTER)", () => {
   it("YIN stays on the true fundamental under a strong 2nd harmonic (no octave confusion)", () => {
     // The wave-1 zero-crossing estimator read this as 110 Hz and generated
     // 220/330; YIN's period-difference dip sits at 55 Hz (218 decimated
@@ -422,7 +422,7 @@ describe("KOREŇ wave-2 DSP (YIN tracker, phase coherence, deficit, CHARACTER)",
   });
 });
 
-describe("KOREŇ wave-3 performance controls (SUSTAIN, RETRIG, WIDTH, focus automation)", () => {
+describe("GROW wave-3 performance controls (SUSTAIN, RETRIG, WIDTH, focus automation)", () => {
   it("SUSTAIN compresses the generator envelope so quiet notes stay readable", () => {
     // A 0.06-amplitude note generates at 0.016 with the linear envelope;
     // the env^0.5 compression lifts the generated 2nd to ~0.085 (5×).
@@ -506,7 +506,7 @@ describe("KOREŇ wave-3 performance controls (SUSTAIN, RETRIG, WIDTH, focus auto
   });
 });
 
-describe("KOREŇ wave-4 key modes (PUMP / DUCK)", () => {
+describe("GROW wave-4 key modes (PUMP / DUCK)", () => {
   const keyBurst = (i: number) => {
     const t = i / SR;
     return t >= 0.5 && t < 0.7 ? 0.8 * Math.sin((2 * Math.PI * 60 * i) / SR) : 0;
@@ -572,7 +572,7 @@ describe("KOREŇ wave-4 key modes (PUMP / DUCK)", () => {
   });
 });
 
-describe("KOREŇ node wrapper (key input + telemetry cache)", () => {
+describe("GROW node wrapper (key input + telemetry cache)", () => {
   class FakeWorkletNode {
     static instances: FakeWorkletNode[] = [];
     port = new FakePort();
@@ -644,7 +644,7 @@ describe("KOREŇ node wrapper (key input + telemetry cache)", () => {
   });
 });
 
-describe("KOREŇ wave-6 presence band (phone readability)", () => {
+describe("GROW wave-6 presence band (phone readability)", () => {
   it("PRESENCE redistributes the stack into the phone band (≥385 Hz at f0 = 55)", () => {
     // range 4 → 16 partials: 55 Hz × 7..16 = 385–880 Hz, inside a phone
     // speaker's usable band. presence lifts that band >3× while the 2nd
