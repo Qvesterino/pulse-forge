@@ -2625,7 +2625,8 @@ export async function buildSong(
       // — the D3 rejected contract must not be papered over here.
       const melodicWanted = sectionRoles.filter((role) => role !== "drums");
       const melodicTargetsExist =
-        melodicWanted.length === 0 || melodicWanted.some((role) => instrumentTrackForRole(doc, role) !== null);
+        melodicWanted.length === 0 ||
+        melodicWanted.some((role) => instrumentTrackForRole(doc, role === "chords" ? "chord" : role) !== null);
       if (!sectionRoles.includes("drums") && !melodicTargetsExist) {
         sections.push({
           ...section,
