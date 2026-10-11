@@ -182,15 +182,15 @@ deployed smoke URL.
 
 ## 5. Stav / tracking
 
-| Fáza                           | Stav                 | Commit / dôkaz                                                                                                                                       |
-| ------------------------------ | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| F0 dokumentová pravda          | ✅ HOTOVÉ 2026-10-11 | `INTENT_ENGINE.md` revízia ⟦10-11⟧ (§3 vlny 09/10, §5.20, §7.2 update, T0 8 modelov, crosslink na master doc) + `CURRENT-STATE.md` melodic v3 riadok |
-| F1 zelený baseline             | ✅ HOTOVÉ 2026-10-11 | čistý worktree `D:\pulse-forge-f1` @ 3beef964; detaily nižšie                                                                                        |
-| F2 audit porozumenia + routeru | ✅ HOTOVÉ 2026-10-11 | `4368577a` — korpus 106 promptov + `docs/INTENT-AUDIT-2026-10.md`; 3× P1 root-caused (D1/D2/D3), detaily nižšie                                      |
-| F3 opravy z auditu             | ⏳ čaká na GO        | poradie: D3 → D1 → D2 → SK vocab (D5/D6/D9) → D7 → D8 (owner)                                                                                        |
-| F4 IntentPanel dekompozícia    | ⏳                   | —                                                                                                                                                    |
-| F5 dáta a retrainty            | ⏳                   | —                                                                                                                                                    |
-| F6 uzavretie slučky            | ⏳                   | —                                                                                                                                                    |
+| Fáza                           | Stav                 | Commit / dôkaz                                                                                                                                                       |
+| ------------------------------ | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F0 dokumentová pravda          | ✅ HOTOVÉ 2026-10-11 | `INTENT_ENGINE.md` revízia ⟦10-11⟧ (§3 vlny 09/10, §5.20, §7.2 update, T0 8 modelov, crosslink na master doc) + `CURRENT-STATE.md` melodic v3 riadok                 |
+| F1 zelený baseline             | ✅ HOTOVÉ 2026-10-11 | čistý worktree `D:\pulse-forge-f1` @ 3beef964; detaily nižšie                                                                                                        |
+| F2 audit porozumenia + routeru | ✅ HOTOVÉ 2026-10-11 | `4368577a` — korpus 106 promptov + `docs/INTENT-AUDIT-2026-10.md`; 3× P1 root-caused (D1/D2/D3), detaily nižšie                                                      |
+| F3 opravy z auditu             | ✅ HOTOVÉ 2026-10-11 | D3 `9eb9df47`, D1 `a0917742`, D2 `8866dceb`, D5/D6/D7/D9 `42f21c66` (+ časť pohltila kolegova vlna `cf8ad5af`); D8 = owner; detail `docs/INTENT-AUDIT-2026-10.md` §7 |
+| F4 IntentPanel dekompozícia    | ⏳                   | —                                                                                                                                                                    |
+| F5 dáta a retrainty            | ⏳                   | —                                                                                                                                                                    |
+| F6 uzavretie slučky            | ⏳                   | —                                                                                                                                                                    |
 
 ### F1 výsledky (2026-10-11, čistý worktree @ 3beef964 + junction node_modules)
 
@@ -243,6 +243,23 @@ deployed smoke URL.
 - **Čisté:** model route (creative-brief guard 0 volaní, adoptácia, garbage
   fallback), prioritná reťaz, transport/save/export/record/undo/query/select,
   brief-gate engine-side enforcement, buildSong purita.
+
+### F3 výsledky (2026-10-11, detail: `docs/INTENT-AUDIT-2026-10.md` §7)
+
+- **7/8 defektov FIX, každý vlastným commitom s regress testom:**
+  D3 `9eb9df47` (rejected ⇒ žiadny applyable proposal — dátová mína
+  odstránená), D1 `a0917742` (fill seed = content hash; determinizmus test
+  navyše prestal serializovať náhodné note id-čka), D2 `8866dceb`
+  (leadRequired — koreň bol `energy > 0.4` brána v multi-voice; parserovo
+  „dark" = energy 0.3 = lead-only intent bez jedinej noty), D5/D6/D7/D9
+  `42f21c66` (SK slová + deaccent guardu + preset ask nikdy nový beat).
+- **D8 ostáva otvorené** (dizajnné rozhodnutie: komparatívy vs. žánrový
+  prompt) — korpus pinuje shipped správanie.
+- **Korpus:** 8 `it.fails` pinov → bežné očakávania, 106/106 zelených.
+- **Lekcia:** worktree checkout blokujú untracked súbory (vývoj korpusu
+  priamo vo worktree) a `--detach main` abortuje — overovať `git log -1`
+  worktree PO každom checkoute; jedno F3 overenie bežalo omylom na F1
+  baseline.
 
 _Celkový odhad: ~8–14 dní fokusnej práce pri plnom prechode; F0+F1 spolu
 jeden dlhší večer. F2/F4/F5 sú navzájom nezávislé — poradie F2→F3→F4→F5

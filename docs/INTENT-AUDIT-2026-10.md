@@ -18,16 +18,16 @@
 
 ## 1. Súhrn
 
-| ID  | Titul                                                                           | Závažnosť   | Owner vlny                   | Stav                 |
-| --- | ------------------------------------------------------------------------------- | ----------- | ---------------------------- | -------------------- |
-| D1  | Fill recept seedovaný náhodným `pattern.id` → buildSong nedeterminizmus         | **P1**      | `61607f31` (fill vocabulary) | root-caused, čaká F3 |
-| D2  | Lead-only generácia dáva všetkých kandidátov prázdnych (harmony-first regresia) | **P1**      | `3971f0c1` (multi-voice)     | root-caused, čaká F3 |
-| D3  | Rejected výsledok nesie definovaný prázdny proposal → UI môže inštalovať ticho  | **P1**      | kontrakt (pipeline/UI)       | root-caused, čaká F3 |
-| D5  | SK exact slovná zásoba: „soluj" neexistuje                                      | P2          | parser vlny                  | repro v korpuse      |
-| D6  | SK diakritika/slovná zásoba nekonzistentná naprieč vrstvami (mix, loudness)     | P2          | parser vlny                  | repro v korpuse      |
-| D7  | Preset intent nedosiahnuteľný z plain textu; `presetUnknown` never fires        | P2          | preset-intent v1             | repro v korpuse      |
-| D8  | Komparatívy hijackujú žánrové prompty („darker techno at 130" → mix)            | P3 (dizajn) | documented §5.7              | rozhodnutie ownera   |
-| D9  | SK arrange duplicitné synonymá chýbajú úplne                                    | P2          | arrangeWords vlny            | repro v korpuse      |
+| ID  | Titul                                                                           | Závažnosť   | Owner vlny                   | Stav                               |
+| --- | ------------------------------------------------------------------------------- | ----------- | ---------------------------- | ---------------------------------- |
+| D1  | Fill recept seedovaný náhodným `pattern.id` → buildSong nedeterminizmus         | **P1**      | `61607f31` (fill vocabulary) | ✅ FIX (F3, `a0917742`)            |
+| D2  | Lead-only generácia dáva všetkých kandidátov prázdnych (harmony-first regresia) | **P1**      | `3971f0c1` (multi-voice)     | ✅ FIX (F3, `8866dceb`)            |
+| D3  | Rejected výsledok nesie definovaný prázdny proposal → UI môže inštalovať ticho  | **P1**      | kontrakt (pipeline/UI)       | ✅ FIX (F3, `9eb9df47`)            |
+| D5  | SK exact slovná zásoba: „soluj" neexistuje                                      | P2          | parser vlny                  | ✅ FIX (F3, `42f21c66`/`cf8ad5af`) |
+| D6  | SK diakritika/slovná zásoba nekonzistentná naprieč vrstvami (mix, loudness)     | P2          | parser vlny                  | ✅ FIX (F3, `42f21c66`)            |
+| D7  | Preset intent nedosiahnuteľný z plain textu; `presetUnknown` never fires        | P2          | preset-intent v1             | ✅ FIX (F3, `42f21c66`)            |
+| D8  | Komparatívy hijackujú žánrové prompty („darker techno at 130" → mix)            | P3 (dizajn) | documented §5.7              | ⏳ rozhodnutie ownera              |
+| D9  | SK arrange duplicitné synonymá chýbajú úplne                                    | P2          | arrangeWords vlny            | ✅ FIX (F3, `cf8ad5af`)            |
 
 Číslovanie D1–D9 rezervované; D4 bolo v priebehu auditu zlúčené do D2
 („with lead" scope sémantika je PINUTÁ v `tests/intent-text-parser.test.ts:95`,
@@ -165,3 +165,36 @@ frekvencia v UI) — follow-up pre ďalšiu korpusovú vlnu.
    jeden riadok + test) → 3. D2 (multi-voice lead-only, najťažšie) →
 2. D5/D6/D9 (SK vocab vlna, mechanické) → 5. D7 (preset router grammar) →
 3. D8 (owner rozhodnutie, potom pin flip).
+
+## 7. F3 rozuzlenie (2026-10-11) — 7/8 defektov FIX, D8 čaká na ownera
+
+- **D3 `9eb9df47`** — `GenerationRanked.proposal` je pri totálnom rejekte
+  `null` (+ nové `diagnostics` pole); `resultFromProposal` mapuje na
+  `status: "rejected"` s `proposal: undefined`, takže panel guard aj
+  `applyGenerationResultCommand` (hádzanie na `!proposal`) konečne chránia
+  aktívny pattern. Regress: `tests/intent-rejected-contract.test.ts` (sync/
+  async/apply-refusal nad drum-only dokumentom — trigger ostáva rejektný
+  aj po D2 fixe).
+- **D1 `a0917742`** — fill seed = `contentHash(canonicalizePattern(...))`
+  odchádzajúceho patternu + label; **druhá vrstva**: determinizmus test
+  serializoval aj náhodné note id-čka (jeho vlastný komentár vraví „ids are
+  random uids") — id-stripping doplnený, obsah (rows + note pitch/start/
+  duration/velocity) je bit-identický medzi buildmi.
+- **D2 `8866dceb`** — skutočný koreň hlbšie než bisect naznačil: parserové
+  „dark" nastaví energy 0.3 a `generateMultiVoice` hodil lead voice PRÍSNE
+  von pod energy 0.4 (`if (energy > 0.4)`). Nový `leadRequired` parameter:
+  explicitná rolová žiadosť (roles obsahuje „lead") nechá lead vyznieť
+  riedko, ale nikdy nie na nulu; implicitný full-band ostáva pri legacy
+  bráne → goldens nedotknuté (ai-baseline zlyháva identicky aj na F1
+  baseline commite — owned ledger red, nie regresia).
+- **D5/D6/D9 `42f21c66` + `cf8ad5af` (pohltené kolegom)** — soluj/zosoluj,
+  `isMixIntentText` deaccentuje rovnako ako parseMixIntent (guard nikdy
+  nie je prísnejší než parser), potichu/ticho, zdvojnásob/duplikuj.
+- **D7 `42f21c66`** — studená factory banka hádzala výnimku (router padol
+  do patternu); teraz try/catch → clarify „banka sa načítava", target-less
+  ask → clarify cieľovej rodiny. Warm-bank cesty (preset/presetUnknown) sú
+  nezmenené.
+- **D8** ostáva otvorené ako dizajnové rozhodnutie (komparatívy vs. žánrový
+  prompt); korpus pinuje shipped správanie s odkazom sem.
+- **Korpus** po F3: všetkých 8 `it.fails` defekt pinov premenených na
+  bežné očakávania, 106/106 zelených.
