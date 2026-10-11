@@ -25,7 +25,19 @@ import type { EffectType } from "../src/project-model/types";
  *     sidechain 1 ms attack/release floor (code-level, source-pinned).
  */
 
-const FALLBACK_TYPES: EffectType[] = ["reverb", "compressor", "sidechain", "chorus", "delay", "bitcrusher", "eq"];
+const FALLBACK_TYPES: EffectType[] = [
+  "reverb",
+  "compressor",
+  "sidechain",
+  "chorus",
+  "delay",
+  "bitcrusher",
+  "eq",
+  // PORTAL degrades to an honest 1:1 bypass on a worklet-less context
+  // (registry.ts), so every knob must be accepted and dropped - never written
+  // to the wrong node. See ADR 0038.
+  "portal",
+];
 
 type Write = { param: string; value: number };
 let writes: Write[] = [];

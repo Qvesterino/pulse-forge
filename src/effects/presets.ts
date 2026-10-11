@@ -419,6 +419,86 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
     dyn: -0.7,
     mix: 1,
   }),
+  /* ── PORTAL (spectral delay / resonator, ADR 0038) ───────────────────────
+   * Three modes share one rack, so the presets are named by what they are for,
+   * not by which mode they use - a preset that silently re-routes to RESO when
+   * you expected DELAY is worse than no preset at all.
+   *
+   * Values stay inside portalParams ranges; tests/preset-loudness covers the
+   * gain side, tests/spectral-worklet-params covers reachability.
+   */
+  preset("portal-echo-dive", "Echo Dive", "portal", {
+    mode: 0, // DELAY
+    time: 480,
+    sync: 0,
+    feedback: 0.62,
+    decay: 0.45,
+    diffuse: 0.35,
+    tone: 0,
+    mix: 0.4,
+  }),
+  preset("portal-vocal-tunnel", "Vocal Tunnel", "portal", {
+    mode: 0, // DELAY
+    time: 140,
+    sync: 0,
+    feedback: 0.7,
+    decay: 0.6,
+    diffuse: 0.55,
+    tone: 3,
+    mix: 0.32,
+  }),
+  preset("portal-sync-stutter", "Sync Stutter", "portal", {
+    mode: 0, // DELAY
+    time: 250,
+    sync: 4, // 1/16
+    feedback: 0.5,
+    decay: 0.3,
+    diffuse: 0.2,
+    tone: -2,
+    mix: 0.45,
+  }),
+  preset("portal-formant-rise", "Formant Rise", "portal", {
+    mode: 1, // RESONATOR
+    time: 320,
+    sync: 0,
+    feedback: 0.35,
+    decay: 0.5,
+    resonance: 0.75,
+    focus: 900,
+    focusWidth: 1.2,
+    shift: 7,
+    diffuse: 0.25,
+    tone: 2,
+    mix: 0.5,
+  }),
+  preset("portal-air-drift", "Air Drift", "portal", {
+    mode: 1, // RESONATOR
+    time: 600,
+    sync: 0,
+    feedback: 0.3,
+    decay: 0.55,
+    resonance: 0.4,
+    focus: 3200,
+    focusWidth: 2.5,
+    shift: -5,
+    diffuse: 0.8,
+    tone: 4,
+    mix: 0.35,
+  }),
+  preset("portal-time-cap", "Time Cap", "portal", {
+    mode: 2, // FREEZE
+    time: 400,
+    sync: 0,
+    feedback: 0.8,
+    decay: 0.75,
+    resonance: 0.3,
+    focus: 1600,
+    focusWidth: 3,
+    freeze: 0.6,
+    diffuse: 0.65,
+    tone: 0,
+    mix: 0.55,
+  }),
   preset("skrutka-lfo-throw", "LFO Throw", "skrutka", {
     dispersion: 0.5,
     punch: 0,
@@ -492,7 +572,7 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
   }),
   preset("rezonans-choir-wide", "Choir Wide", "rezonans", {
     formant: 0,
-"harmony.mode": 3,
+    "harmony.mode": 3,
     "harmony.voices": 4,
     "harmony.spread": 1.4,
     "harmony.width": 1.4,
@@ -519,7 +599,7 @@ export const CORE_EFFECT_PRESETS: EffectPreset[] = [
   }),
   preset("rezonans-chipmunk", "Chipmunk", "rezonans", {
     formant: 7,
-"harmony.mode": 2,
+    "harmony.mode": 2,
     "harmony.voices": 2,
     "harmony.spread": 0.8,
     "harmony.width": 1.1,

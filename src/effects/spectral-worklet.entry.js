@@ -55,6 +55,44 @@ const PARAM_IDS = [
 ];
 
 class PortalWorkletProcessor extends AudioWorkletProcessor {
+  /**
+   * The AudioParam surface is the WHOLE parameter contract - an AudioWorklet
+   * creates its AudioParams from this list and from nothing else. A processor
+   * that forgets it does not degrade, it goes silent: `node.parameters.get(id)`
+   * is undefined, `safeApplyAudioParam` no-ops, and every knob reads as
+   * "no change" while the effect happily plays its baked-in defaults. That is
+   * indistinguishable from a working effect in a unit test that drives
+   * SpectralProcessor directly, which is exactly why the ranges below are
+   * pinned against EFFECT_META by tests/param-range-coherence.test.ts.
+   *
+   * Ranges mirror `portalParams` in src/effects/definitions.ts 1:1. Defaults
+   * mirror it too, so an unconfigured node boots at the rack default instead of
+   * at the AudioParam default.
+   *
+   * `bpm` is declared because SYNC is dead without it: portal-node.ts routes
+   * `syncBpm()` into this AudioParam and readParams() feeds it to
+   * SpectralProcessor.setBpm().
+   */
+  static get parameterDescriptors() {
+    return [
+      { name: "mode", minValue: 0, maxValue: 2, defaultValue: 0 },
+      { name: "time", minValue: 20, maxValue: 2000, defaultValue: 320 },
+      { name: "sync", minValue: 0, maxValue: 5, defaultValue: 0 },
+      { name: "bpm", minValue: 20, maxValue: 300, defaultValue: 120, automationRate: "k-rate" },
+      { name: "feedback", minValue: 0, maxValue: 1, defaultValue: 0.55 },
+      { name: "decay", minValue: 0, maxValue: 1, defaultValue: 0.5 },
+      { name: "resonance", minValue: 0, maxValue: 1, defaultValue: 0.35 },
+      { name: "focus", minValue: 20, maxValue: 18000, defaultValue: 1200 },
+      { name: "focusWidth", minValue: 0.1, maxValue: 4, defaultValue: 1 },
+      { name: "shift", minValue: -24, maxValue: 24, defaultValue: 0 },
+      { name: "diffuse", minValue: 0, maxValue: 1, defaultValue: 0.3 },
+      { name: "freeze", minValue: 0, maxValue: 1, defaultValue: 0 },
+      { name: "drive", minValue: 0, maxValue: 1, defaultValue: 0 },
+      { name: "tone", minValue: -24, maxValue: 24, defaultValue: 0 },
+      { name: "mix", minValue: 0, maxValue: 1, defaultValue: 0.35 },
+    ];
+  }
+
   proc = new SpectralProcessor();
 
   scratch = [new Float32Array(MAX_BLOCK), new Float32Array(MAX_BLOCK)];

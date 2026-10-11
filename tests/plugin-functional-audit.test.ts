@@ -109,7 +109,9 @@ describe("A. inventory & discovery", () => {
 /* B. Parameter metadata sanity                                        */
 /* ------------------------------------------------------------------ */
 
-const KNOWN_UNITS = new Set(["Hz", "dB", "ms", "s", "%", "st", "ct", "/s"]);
+// "oct" (octaves) joined the catalog with PORTAL's focusWidth (ADR 0038); it is
+// a span in log-frequency space, not a duration or a level.
+const KNOWN_UNITS = new Set(["Hz", "dB", "ms", "s", "%", "st", "ct", "/s", "oct"]);
 
 function checkParamSurface(surface: string, params: ParamDef[]) {
   const ids = new Set<string>();

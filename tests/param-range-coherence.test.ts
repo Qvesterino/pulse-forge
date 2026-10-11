@@ -87,6 +87,10 @@ const EFFECT_PROC_PAIRS: [EffectType, string][] = [
   ["prud", "prud-processor"],
   ["bassHarmonic", "bass-harmonic-processor"],
   ["skrutka", "skrutka-processor"],
+  // PORTAL registers as "portal"; its DSP + descriptor list live in
+  // src/effects/spectral-worklet.entry.js, reachable from here through the
+  // src/audio-worklets/portal-processor.js audit adapter.
+  ["portal", "portal"],
 ];
 
 const EPS = 1e-9;
@@ -106,6 +110,7 @@ beforeAll(async () => {
   const PROC_FILE: Record<string, string> = {
     "freqshift-processor": "freqshifter-processor",
     kaskada: "kaskada-processor",
+    portal: "portal-processor",
   };
   const swept = new Set(PROC_CASES.map((c) => c.proc));
   for (const [, proc] of EFFECT_PROC_PAIRS) {
@@ -139,15 +144,17 @@ describe("worklet descriptors cover EFFECT_META ranges", () => {
   it("FULL SWEEP: every def param that reaches a descriptor is covered by it (or bridged)", () => {
     let checked = 0;
     const offenders: string[] = [];
+    const undeclared: string[] = [];
     for (const [effect, proc] of EFFECT_PROC_PAIRS) {
       const cls = registered.get(proc);
       expect(cls, `${proc} self-registered at import`).toBeDefined();
-      const descriptors = new Map(
-        ((cls as any).parameterDescriptors as { name: string; minValue: number; maxValue: number }[]).map((d) => [
-          d.name,
-          d,
-        ]),
-      );
+      const list = ((cls as any).parameterDescriptors as { name: string; minValue: number; maxValue: number }[]) ?? [];
+      // A processor that declares NOTHING passes the coverage rule below for
+      // free: every def param is "absent from the descriptors" and gets skipped.
+      // PORTAL shipped for a while in exactly that state - the DSP was correct
+      // and every knob was inert in the browser - so the pair must be loud here.
+      if (list.length === 0) undeclared.push(`${effect} (${proc}) declares no parameterDescriptors`);
+      const descriptors = new Map(list.map((d) => [d.name, d]));
       for (const def of EFFECT_META[effect].params) {
         if (def.deprecated) continue;
         const desc = descriptors.get(def.id);
@@ -164,6 +171,7 @@ describe("worklet descriptors cover EFFECT_META ranges", () => {
     }
     // A mapping typo must not silently shrink the sweep to nothing.
     expect(checked, "sweep must cover a meaningful param count").toBeGreaterThanOrEqual(60);
+    expect(undeclared.join("; "), "every paired processor must declare its AudioParam surface").toBe("");
     expect(offenders.join("; ")).toBe("");
   });
 
