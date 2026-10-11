@@ -487,6 +487,7 @@ export class RezonansProcessor {
       this.frame.mag,
       this.frame.phase,
       this.frame.phaseAdvance,
+      this.frame.phaseDelta,
       this.frame.envLin,
       this.frame.renderLogEnv,
     );

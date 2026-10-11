@@ -78,6 +78,7 @@ export {
   duplicateSceneAsVariation,
   renameScene,
   reorderScenes,
+  setSceneMacro,
   setScenePack,
   setScenePattern,
   setSceneRole,

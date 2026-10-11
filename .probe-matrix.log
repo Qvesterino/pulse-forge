@@ -1,0 +1,28 @@
+
+Running 1 test using 1 worker
+
+MATRIX [
+ {
+  "vp": "1280x720",
+  "error": "main.workspace missing",
+  "present": 0
+ },
+ {
+  "vp": "1366x768",
+  "error": "main.workspace missing",
+  "present": 0
+ },
+ {
+  "vp": "1440x900",
+  "error": "main.workspace missing",
+  "present": 0
+ },
+ {
+  "vp": "1920x1080",
+  "error": "main.workspace missing",
+  "present": 0
+ }
+]
+  ok 1 [chromium] ÔÇ║ tests\e2e\zz-probe-matrix.spec.ts:29:1 ÔÇ║ sequencer height across the viewport matrix (2.0s)
+
+  1 passed (4.3s)

@@ -175,12 +175,19 @@ rootPc, chordMask }] }`, populated at the FX-chain build site where `doc` is
     by about 4×. Cumulative-mean normalization includes lags below the
     selectable range, and interpolation can use the bin just below `minLag`;
     otherwise a note just under the 800 Hz ceiling can snap to the ceiling.
-    `FrameEngine` also computes each input-bin instantaneous phase advance once
-    per frame and shares it across the four voices instead of repeating the
-    same wrapped phase calculation during each resynthesis. The regression
-    matrix covers 24/44.1/48 kHz, all three FFT tiers and four pitches, with
-    error below 15 cents. These changes preserve the existing FFT and latency
-    tiers; they do not yet certify realtime deadline headroom.
+    `FrameEngine` computes each input-bin instantaneous phase advance and
+    adjacent-bin interpolation delta once per frame and shares both across the
+    four voices instead of repeating phase wrapping during resynthesis. The
+    regression matrix covers 24/44.1/48 kHz, all three FFT tiers and four
+    pitches, with error below 15 cents. These changes preserve the existing
+    FFT and latency tiers; they do not yet certify realtime deadline headroom.
+21. **Synthesis uses a packed real inverse FFT.** Each voice builds only the
+    positive-frequency spectrum and reconstructs its N real samples with one
+    complex inverse FFT of length N/2. `ifftRealInto` uses caller-owned scratch
+    arrays, keeps the N-sample latency and existing window/overlap-add path, and
+    is tested against the full complex inverse for deterministic Hermitian
+    spectra at sizes 2–256. This reduces transform work without changing the
+    effect's parameter or project contracts.
 
 ## Consequences
 

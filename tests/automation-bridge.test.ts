@@ -77,7 +77,7 @@ describe("AutomationBridge (Wave 4d step 2)", () => {
     for (const marker of [
       "syncLfos(doc: ProjectDocument): void {",
       "syncMacros(doc: ProjectDocument): void {",
-      "setSceneIntensity(value: number, packs?: Record<string, string> | null): void {",
+      "setSceneIntensity(",
       "scheduleSceneIntensity(points:",
       "applySceneAutomationLane(",
       "applyModulators(fromTick:",

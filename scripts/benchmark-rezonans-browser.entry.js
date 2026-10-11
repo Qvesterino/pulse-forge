@@ -22,16 +22,16 @@ function percentile(values, q) {
   return sorted[Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * q))] ?? 0;
 }
 
-function makeProcessor(sampleRate) {
+function makeProcessor(sampleRate, harmonyVoices) {
   const processor = new RezonansProcessor();
   processor.prepare(sampleRate, 2, BLOCK, 120);
   const params = buildDefaultParams();
   params[REZ_PARAM.quality] = QUALITY_FINE;
   params[REZ_PARAM.harmonyMode] = 2;
-  params[REZ_PARAM.voices] = 4;
+  params[REZ_PARAM.voices] = harmonyVoices;
   params[REZ_PARAM.mix] = 1;
   params[REZ_PARAM.bodyGate] = 0.5;
-  for (let voice = 0; voice < 4; voice++) {
+  for (let voice = 0; voice < harmonyVoices; voice++) {
     params[voiceParamId(voice, "enabled")] = 1;
     params[voiceParamId(voice, "degree")] = [2, 4, 6, 8][voice];
     params[voiceParamId(voice, "level")] = 0.35;
@@ -44,13 +44,13 @@ function makeProcessor(sampleRate) {
   return processor;
 }
 
-export function benchmarkRezonansBrowser(source, sampleRate, warmupSeconds, measureSeconds) {
+export function benchmarkRezonansBrowser(source, sampleRate, warmupSeconds, measureSeconds, harmonyVoices = 4) {
   const framesPerRun = Math.floor(measureSeconds * sampleRate);
   const blocksPerRun = Math.ceil(framesPerRun / BLOCK);
   const left = new Float32Array(BLOCK);
   const right = new Float32Array(BLOCK);
   const channels = [left, right];
-  const processor = makeProcessor(sampleRate);
+  const processor = makeProcessor(sampleRate, harmonyVoices);
 
   const processBlocks = (blocks, collectBlockTimes = false) => {
     let sourceCursor = 0;
@@ -95,7 +95,7 @@ export function benchmarkRezonansBrowser(source, sampleRate, warmupSeconds, meas
     sampleRate,
     blockFrames: BLOCK,
     quality: "fine / 4096 FFT",
-    harmonyVoices: 4,
+    harmonyVoices,
     warmupSeconds,
     measuredSecondsPerRepeat: (blocksPerRun * BLOCK) / sampleRate,
     repeats,

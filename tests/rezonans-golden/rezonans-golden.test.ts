@@ -17,7 +17,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { RezonansProcessor } from "../../src/effects/rezonans-core/dsp/rezonansProcessor.js";
 import {
   REZ_PARAM,
@@ -30,8 +30,9 @@ import { HarmonySolver, type SolverContext } from "../../src/effects/rezonans-co
 import { midiToHz, nthScaleTone, nearestAllowedPc } from "../../src/effects/rezonans-core/dsp/harmony.js";
 import { CepstralEnvelope, FormantWarp } from "../../src/effects/rezonans-core/dsp/cepstrum.js";
 import { FrameEngine } from "../../src/effects/rezonans-core/dsp/frame.js";
-import { fft, hannWindow } from "../../src/effects/rezonans-core/dsp/fft.js";
+import { fft, hannWindow, ifftInto, ifftRealInto } from "../../src/effects/rezonans-core/dsp/fft.js";
 import { PhaseLocker } from "../../src/effects/rezonans-core/dsp/phaseLock.js";
+import { HarmonyVoice } from "../../src/effects/rezonans-core/dsp/voice.js";
 
 const SR = 48000;
 const BLOCK = 128;
@@ -63,6 +64,95 @@ describe("REZONANS identity phase locking", () => {
     const expectedOffset = -5.6 + 2 * Math.PI;
     expect(synthesisPhase[3]).toBe(10.2);
     expect(synthesisPhase[2]).toBeCloseTo(10.2 + expectedOffset, 12);
+  });
+});
+
+describe("REZONANS shared adjacent-bin phase", () => {
+  it("wraps adjacent input-bin phase once for all resynthesis voices", () => {
+    const frame = new FrameEngine();
+    frame.prepare(SR, 64, 16);
+    let sawWrappedPair = false;
+
+    for (let sample = 0; sample < 128; sample++) {
+      const input = Math.sin(2 * Math.PI * 0.137 * sample) + 0.35 * Math.cos(2 * Math.PI * 0.279 * sample);
+      if (!frame.push(input)) continue;
+
+      for (let k = 0; k < frame.halfSpectrum; k++) {
+        const raw = frame.phase[k + 1]! - frame.phase[k]!;
+        let expected = raw;
+        if (raw > Math.PI) {
+          expected -= 2 * Math.PI;
+          sawWrappedPair = true;
+        } else if (raw < -Math.PI) {
+          expected += 2 * Math.PI;
+          sawWrappedPair = true;
+        }
+        expect(frame.phaseDelta[k]).toBeCloseTo(expected, 12);
+      }
+      expect(frame.phaseDelta[frame.halfSpectrum]).toBe(0);
+    }
+
+    expect(sawWrappedPair).toBe(true);
+  });
+});
+
+describe("REZONANS real inverse FFT", () => {
+  it("matches the full complex inverse for deterministic Hermitian spectra", () => {
+    for (const n of [2, 4, 16, 64, 256]) {
+      const half = n >> 1;
+      const positiveRe = new Float64Array(n);
+      const positiveIm = new Float64Array(n);
+      for (let k = 0; k <= half; k++) {
+        positiveRe[k] = Math.sin(k * 0.37) * (k + 1);
+        positiveIm[k] = Math.cos(k * 0.23) * (k + 1) * 0.25;
+      }
+      positiveIm[0] = 0;
+      positiveIm[half] = 0;
+
+      const fullRe = new Float64Array(n);
+      const fullIm = new Float64Array(n);
+      for (let k = 0; k <= half; k++) {
+        fullRe[k] = positiveRe[k]!;
+        fullIm[k] = positiveIm[k]!;
+      }
+      for (let k = 1; k < half; k++) {
+        fullRe[n - k] = positiveRe[k]!;
+        fullIm[n - k] = -positiveIm[k]!;
+      }
+      ifftInto(fullRe, fullIm);
+
+      const scratchRe = new Float64Array(half);
+      const scratchIm = new Float64Array(half);
+      ifftRealInto(positiveRe, positiveIm, scratchRe, scratchIm);
+      for (let i = 0; i < n; i++) {
+        expect(positiveRe[i], `N=${n}, sample=${i}`).toBeCloseTo(fullRe[i]! / n, 10);
+      }
+    }
+  });
+});
+
+describe("REZONANS identity formant fast path", () => {
+  it("reuses the analyzed envelope at unity and keeps the warp for shifted formants", () => {
+    const renderWarp = vi.spyOn(FormantWarp.prototype, "renderInto");
+    try {
+      const voice = new HarmonyVoice();
+      voice.prepare(64, 16, SR);
+      const bins = new Float64Array(33);
+      const magnitude = new Float64Array(33).fill(1);
+      const envelope = new Float64Array(33).fill(1);
+      const logEnvelope = new Float64Array(33);
+      const outputRing = new Float32Array(128);
+
+      voice.setTargets(1, 1);
+      voice.renderFrame(magnitude, bins, bins, bins, envelope, logEnvelope, outputRing, 0, outputRing.length - 1);
+      expect(renderWarp).not.toHaveBeenCalled();
+
+      voice.setTargets(1, 2);
+      voice.renderFrame(magnitude, bins, bins, bins, envelope, logEnvelope, outputRing, 16, outputRing.length - 1);
+      expect(renderWarp).toHaveBeenCalledTimes(1);
+    } finally {
+      renderWarp.mockRestore();
+    }
   });
 });
 

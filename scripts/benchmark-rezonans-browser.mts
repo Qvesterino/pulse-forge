@@ -18,7 +18,7 @@ const ASSET_NAME = `rezonans-browser-benchmark-${process.pid}.js`;
 const ASSET_PATH = path.join(ROOT, "public", ASSET_NAME);
 const fixturePath = path.join(ROOT, "tests", "fixtures", "rezonans-cc0-female-speech.wav");
 const WARMUP_SECONDS = 2;
-const MEASURE_SECONDS = 8;
+const MEASURE_SECONDS = 2;
 const server = createHttpServer(async (request, response) => {
   const pathname = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
   if (request.method !== "GET") {
@@ -84,16 +84,19 @@ try {
               sampleRate: number,
               warmupSeconds: number,
               measureSeconds: number,
+              harmonyVoices: number,
             ) => Record<string, unknown>;
           };
         }
       ).RezonansBenchmark;
       if (!benchmark) throw new Error("The bundled REZONANS benchmark did not register");
-      const measured = benchmark.benchmarkRezonansBrowser(source, ctx.sampleRate, warmupSeconds, measureSeconds);
+      const profiles = [1, 2, 3, 4].map((harmonyVoices) =>
+        benchmark.benchmarkRezonansBrowser(source, ctx.sampleRate, warmupSeconds, measureSeconds, harmonyVoices),
+      );
       const browserContext = { sampleRate: ctx.sampleRate, baseLatency: ctx.baseLatency };
       await ctx.close();
       const decodedFixture = { sampleRate: buffer.sampleRate, frames: buffer.length, peak: fixturePeak };
-      return { measured, browserContext, decodedFixture };
+      return { profiles, browserContext, decodedFixture };
     },
     { assetName: ASSET_NAME, warmupSeconds: WARMUP_SECONDS, measureSeconds: MEASURE_SECONDS },
   );
@@ -109,7 +112,9 @@ try {
     browserContext: result.browserContext,
     decodedFixture: result.decodedFixture,
     fixture: "tests/fixtures/rezonans-cc0-female-speech.wav",
-    ...result.measured,
+    warmupSeconds: WARMUP_SECONDS,
+    measuredSecondsPerRepeat: MEASURE_SECONDS,
+    profiles: result.profiles,
     caveat:
       "This times the production DSP core in Chromium's main JavaScript runtime. It does not measure AudioWorklet scheduling or certify realtime deadlines; the project browser checks separately exercise the live worklet path.",
   };

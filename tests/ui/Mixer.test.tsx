@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Mixer } from "../../src/ui/Mixer";
 import { MasterProcessingControls } from "../../src/ui/MasterProcessingControls";
@@ -13,12 +13,15 @@ describe("Mixer performance workflow", () => {
     const doc = createProjectFromTemplate("house");
     renderWithContext(<Mixer />, { services: mockServices(doc) });
 
-    expect(screen.getByRole("group", { name: "Performance macros" })).toBeInTheDocument();
-    expect(screen.getByText("DRUMS")).toBeInTheDocument();
-    expect(screen.getByText("BASS")).toBeInTheDocument();
-    expect(screen.getByText("MUSIC")).toBeInTheDocument();
-    expect(screen.getByText("WIDTH")).toBeInTheDocument();
-    expect(screen.getByRole("slider", { name: "Macro DRUMS" })).toHaveAttribute("aria-valuenow", "0.5");
+    const macros = screen.getByRole("group", { name: "Performance macros" });
+    expect(macros).toBeInTheDocument();
+    // Scoped: the scene strip also renders the macro names (its scene-pin
+    // faders) — the bar owns the live controls.
+    expect(within(macros).getByText("DRUMS")).toBeInTheDocument();
+    expect(within(macros).getByText("BASS")).toBeInTheDocument();
+    expect(within(macros).getByText("MUSIC")).toBeInTheDocument();
+    expect(within(macros).getByText("WIDTH")).toBeInTheDocument();
+    expect(within(macros).getByRole("slider", { name: "Macro DRUMS" })).toHaveAttribute("aria-valuenow", "0.5");
   });
 
   it("reports the actual selected-track count in the batch FX toolbar", () => {

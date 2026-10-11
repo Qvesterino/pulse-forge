@@ -49,7 +49,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 23;
+export const SCHEMA_VERSION = 24;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -2101,8 +2101,36 @@ function normalizeSceneDetailsDomain(s: NormalizeState): void {
     s.changed = true;
   }
 
+  // Scene macro pins (v24): macroId → 0..1. Clamped here; macro existence is
+  // matched at use time (an unknown id is inert, like the pair ids).
+  let macrosChanged = false;
+  const macroScenes = packedScenes.map((scene) => {
+    if (scene.macros === undefined) return scene;
+    const raw = scene.macros as unknown;
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+      macrosChanged = true;
+      return { ...scene, macros: undefined };
+    }
+    const clean: Record<string, number> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>).slice(0, 64)) {
+      if (typeof value === "number" && Number.isFinite(value) && key.length > 0 && key.length <= 64) {
+        clean[key] = Math.min(1, Math.max(0, value));
+      }
+    }
+    const next = Object.keys(clean).length > 0 ? clean : undefined;
+    if (JSON.stringify(next) !== JSON.stringify(scene.macros)) {
+      macrosChanged = true;
+      return { ...scene, macros: next };
+    }
+    return scene;
+  });
+  if (macrosChanged) {
+    s.doc = { ...s.doc, scenes: macroScenes };
+    s.changed = true;
+  }
+
   if (scenesChanged) {
-    s.doc = { ...s.doc, scenes: packedScenes };
+    s.doc = { ...s.doc, scenes: macroScenes };
     s.changed = true;
   }
 }
@@ -2811,6 +2839,9 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // v23 adds the optional per-scene `packs` (fxId → scene-pack pair id; the
   // performance override applied at clip boundaries). Absent = play the
   // effect's own applied pair.
+  // v24 adds the optional per-scene `macros` (macroId → 0..1; pinned macro
+  // values that substitute the live macro in every macro-sourced mapping
+  // while the scene is active). Absent = play the doc macro values.
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

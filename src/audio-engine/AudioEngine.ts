@@ -2164,12 +2164,21 @@ export class AudioEngine {
     this.automation.syncMacros(doc);
   }
 
-  setSceneIntensity(value: number, packs?: Record<string, string> | null): void {
-    this.automation.setSceneIntensity(value, packs);
+  setSceneIntensity(
+    value: number,
+    packs?: Record<string, string> | null,
+    sceneMacros?: Record<string, number> | null,
+  ): void {
+    this.automation.setSceneIntensity(value, packs, sceneMacros);
   }
 
   scheduleSceneIntensity(
-    points: Array<{ tick: number; value: number; packs?: Record<string, string> | null }>,
+    points: Array<{
+      tick: number;
+      value: number;
+      packs?: Record<string, string> | null;
+      sceneMacros?: Record<string, number> | null;
+    }>,
     timeAt: (tick: number) => number,
   ): void {
     this.automation.scheduleSceneIntensity(points, timeAt);

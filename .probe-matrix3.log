@@ -1,0 +1,142 @@
+
+Running 1 test using 1 worker
+
+BODY KX
+KYX
+PROJECTS
+PATTERN
+ÔĆ║
+ÔľÂ
+Ôľá
+C┬Ě
+PR
+CLICK
+ÔćÂ
+ÔćĚ
+1.1.1
+LOOP
+BPM
+124.0
+TAP
+SAVED
+ÔîśK
+?
+HIST
+Ôő»
+SOUNDS
+Ôćĺ Kick Deep
+ÔŚé
+Drop audio
+BODY KX
+KYX
+PROJECTS
+PATTERN
+ÔĆ║
+ÔľÂ
+Ôľá
+COUNT-IN
+PRE-ROLL
+CLICK
+ÔćÂ
+ÔćĚ
+1.1.1
+LOOP
+BPM
+124.0
+TAP
+SAVED
+ÔîśK
+?
+HIST
+Ôő»
+SOUNDS
+Ôćĺ Kick Deep
+ÔŚé
+Drop audio or click
+WAV ┬Ě MP3 ┬Ě OGG ┬Ě FLAC ┬Ě AIFF ┬Ě M4A ┬Ě OPUS ┬Ě AAC ┬Ě WEBM
+FR
+MATRIX [
+ {
+  "vp": "1280x720",
+  "cols": "1000px 280px",
+  "workspaceMain": {
+   "x": 1000,
+   "y": 48,
+   "w": 280,
+   "h": 173
+  },
+  "sequencer": {
+   "x": 1012,
+   "y": 539,
+   "w": 256,
+   "h": 20
+  },
+  "sequencerScrollH": 618,
+  "dock": 266,
+  "genHit": "BUTTON.dock-resize-handle",
+  "seqCoveredByDock": true
+ },
+ {
+  "vp": "1366x768",
+  "cols": "1086px 280px",
+  "workspaceMain": {
+   "x": 1086,
+   "y": 48,
+   "w": 280,
+   "h": 197
+  },
+  "sequencer": {
+   "x": 1098,
+   "y": 539,
+   "w": 256,
+   "h": 20
+  },
+  "sequencerScrollH": 618,
+  "dock": 266,
+  "genHit": "GEN-OK",
+  "seqCoveredByDock": true
+ },
+ {
+  "vp": "1440x900",
+  "cols": "1160px 280px",
+  "workspaceMain": {
+   "x": 1160,
+   "y": 48,
+   "w": 280,
+   "h": 263
+  },
+  "sequencer": {
+   "x": 1172,
+   "y": 539,
+   "w": 256,
+   "h": 20
+  },
+  "sequencerScrollH": 618,
+  "dock": 266,
+  "genHit": "GEN-OK",
+  "seqCoveredByDock": false
+ },
+ {
+  "vp": "1920x1080",
+  "cols": "1640px 280px",
+  "workspaceMain": {
+   "x": 1640,
+   "y": 48,
+   "w": 280,
+   "h": 353
+  },
+  "sequencer": {
+   "x": 1652,
+   "y": 563,
+   "w": 256,
+   "h": 20
+  },
+  "sequencerScrollH": 618,
+  "dock": 266,
+  "genHit": "GEN-OK",
+  "seqCoveredByDock": false
+ }
+]
+  ok 1 [chromium] ÔÇ║ tests\e2e\zz-probe-matrix.spec.ts:29:1 ÔÇ║ sequencer height across the viewport matrix (7.9s)
+
+  1 passed (10.5s)

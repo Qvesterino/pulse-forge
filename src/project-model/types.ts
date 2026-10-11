@@ -719,6 +719,14 @@ export interface Scene {
    * validated at use time (an unknown id is simply ignored).
    */
   packs?: Record<string, string>;
+  /**
+   * Per-scene macro pins: macroId → value (0..1). While the scene is active
+   * the pinned value SUBSTITUTES the macro's live value in every
+   * `source: "macro"` mapping (effect params, track gain/pan), exactly like
+   * the scene-intensity source — live and in exports. The doc macro keeps
+   * its own value as the stopped-state baseline.
+   */
+  macros?: Record<string, number>;
 }
 
 export interface IntensityPoint {

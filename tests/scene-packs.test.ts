@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { testDoc } from "./fixtures/doc";
 import { defaultParamsOf } from "../src/effects/registry";
 import { normalizeProject } from "../src/project-model/schema";
-import { setScenePack } from "../src/commands/scenes";
+import { setSceneMacro, setScenePack } from "../src/commands/scenes";
 import { AutomationBridge } from "../src/audio-engine/automationBridge";
 import { DeviceLookup } from "../src/audio-engine/deviceLookup";
 import type { TrackOrGroupView } from "../src/audio-engine/deviceLookup";
@@ -168,6 +168,33 @@ describe("per-scene packs — model + command", () => {
     (hostile.scenes[0] as unknown as { packs: unknown }).packs = ["nope"];
     expect(normalizeProject(hostile).scenes[0]!.packs).toBeUndefined();
   });
+
+  it("sets, clamps and clears a scene macro pin with one undo step", () => {
+    const { doc } = docWithSceneFx();
+    const scene = doc.scenes[0]!;
+    const macroId = doc.macros[0]!.id;
+    const command = setSceneMacro(doc, scene.id, macroId, 1.4);
+    const after = command.execute(doc);
+    expect(after.scenes[0]!.macros).toEqual({ [macroId]: 1 });
+    expect(command.undo(after).scenes[0]!.macros).toBeUndefined();
+
+    expect(() => setSceneMacro(doc, scene.id, "nope", 0.5)).toThrow(/Macro nope not found/);
+    expect(() => setSceneMacro(doc, scene.id, macroId, Number.NaN)).toThrow(/Invalid scene macro value/);
+
+    const cleared = setSceneMacro(after, scene.id, macroId, null).execute(after);
+    expect(cleared.scenes[0]!.macros).toBeUndefined();
+  });
+
+  it("clamps scene.macros through normalizeProject", () => {
+    const { doc } = docWithSceneFx();
+    const dirty = JSON.parse(JSON.stringify(doc)) as ProjectDocument;
+    (dirty.scenes[0] as unknown as { macros: unknown }).macros = { m1: 1.7, m2: -3, junk: "x", nan: Number.NaN };
+    const normalized = normalizeProject(dirty);
+    expect(normalized.scenes[0]!.macros).toEqual({ m1: 1, m2: 0 });
+    const hostile = JSON.parse(JSON.stringify(doc)) as ProjectDocument;
+    (hostile.scenes[0] as unknown as { macros: unknown }).macros = 4;
+    expect(normalizeProject(hostile).scenes[0]!.macros).toBeUndefined();
+  });
 });
 
 describe("per-scene packs — scheduler hands the scene selection to the engine", () => {
@@ -181,6 +208,7 @@ describe("per-scene packs — scheduler hands the scene selection to the engine"
       patternId: patternB.id,
       intensity: 0.9,
       packs: { [growId]: "drill-phone-growl" },
+      macros: { [doc.macros[0]!.id]: 0.9 },
     };
     return {
       ...doc,
@@ -195,10 +223,17 @@ describe("per-scene packs — scheduler hands the scene selection to the engine"
     };
   }
 
-  it("attaches the active scene's packs at the seam (and none in gaps)", () => {
+  it("attaches the active scene's packs and macro pins at the seam", () => {
     const doc = songWithPacks();
     const seamTick = 4 * BAR_TICKS;
-    const scheduled: Array<Array<{ tick: number; value: number; packs?: Record<string, string> | null }>> = [];
+    const scheduled: Array<
+      Array<{
+        tick: number;
+        value: number;
+        packs?: Record<string, string> | null;
+        sceneMacros?: Record<string, number> | null;
+      }>
+    > = [];
     let audioTime = 10;
     const transport = new Transport({ now: () => audioTime }, doc.bpm);
     const scheduler = new Scheduler({
@@ -229,12 +264,14 @@ describe("per-scene packs — scheduler hands the scene selection to the engine"
       const seam = points.filter((point) => point.tick === seamTick);
       expect(seam).toHaveLength(1);
       expect(seam[0]!.packs).toEqual(sceneB.packs);
+      expect(seam[0]!.sceneMacros).toEqual(sceneB.macros);
     }
-    // Inside scene A (no packs) the points carry none.
+    // Inside scene A (no packs/macros) the points carry none.
     const insideA = scheduled.find((points) => points.some((point) => point.tick < seamTick));
     if (insideA) {
       for (const point of insideA.filter((candidate) => candidate.tick < seamTick)) {
         expect(point.packs).toBeUndefined();
+        expect(point.sceneMacros).toBeUndefined();
       }
     }
   });
@@ -317,5 +354,57 @@ describe("per-scene packs — bridge override", () => {
     const lastDrive = [...writes].reverse().find((write) => write.id === "drive");
     expect(lastDrive?.value).toBeCloseTo(defaultParamsOf("bassHarmonic").drive!, 9);
     expect(lastDrive?.when).toBeNull();
+  });
+
+  it("substitutes pinned macro values in macro-sourced mappings", () => {
+    const { doc, growId, trackId } = docWithSceneFx();
+    const macroId = doc.macros[0]!.id;
+    doc.macros[0]!.mappings.push({
+      id: "sc-macro-map",
+      trackId,
+      param: "fxParam",
+      amount: 0.5,
+      source: "macro",
+      target: { kind: "fxParam", trackId, fxId: growId, paramId: "drive" },
+    });
+    const { bridge, writes } = bridgeHarness(doc);
+    // Unpinned: the doc macro sits at center (bipolar 0) → the base value.
+    // (0.9 instead of the default 0.7 so the idempotence guard lets the
+    // recomposition run.)
+    bridge.setSceneIntensity(0.9);
+    const base = defaultParamsOf("bassHarmonic").drive!;
+    expect(writes.find((write) => write.id === "drive")?.value).toBeCloseTo(base, 9);
+    // Pinned to 1 → bipolar +1 → base + half-span·amount.
+    bridge.setSceneIntensity(0.7, null, { [macroId]: 1 });
+    const last = [...writes].reverse().find((write) => write.id === "drive");
+    expect(last?.value).toBeCloseTo(base + 0.5 * (1 / 2), 9);
+    expect(last?.when).toBeNull();
+  });
+
+  it("rides macro pins at scheduled points and drops them on stop", () => {
+    const { doc, growId, trackId } = docWithSceneFx();
+    const macroId = doc.macros[0]!.id;
+    doc.macros[0]!.mappings.push({
+      id: "sc-macro-map-2",
+      trackId,
+      param: "fxParam",
+      amount: 0.5,
+      source: "macro",
+      target: { kind: "fxParam", trackId, fxId: growId, paramId: "drive" },
+    });
+    const { bridge, writes } = bridgeHarness(doc);
+    bridge.scheduleSceneIntensity(
+      [
+        { tick: 0, value: 0.7, sceneMacros: { [macroId]: 1 } },
+        { tick: 1000, value: 0.7 },
+      ],
+      (tick) => tick / 1000,
+    );
+    const base = defaultParamsOf("bassHarmonic").drive!;
+    expect(writes.find((write) => write.id === "drive" && write.when === 0)?.value).toBeCloseTo(base + 0.25, 9);
+    expect(writes.find((write) => write.id === "drive" && write.when === 1)?.value).toBeCloseTo(base, 9);
+    bridge.automationReset();
+    const last = [...writes].reverse().find((write) => write.id === "drive");
+    expect(last?.value).toBeCloseTo(base, 9);
   });
 });

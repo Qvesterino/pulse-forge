@@ -23,7 +23,8 @@
  * formant warp. That is also why per-voice formant shift is free: the two
  * axes are separated before synthesis rather than tangled inside it.
  *
- * Cost per hop: 1 analysis FFT + 2 cepstrum transforms + 4 IFFT.
+ * Cost per hop: 1 analysis FFT + 2 cepstrum transforms + up to 4 packed
+ * inverse real FFTs (each a complex FFT of half the window length).
  *
  * Transients: phases are peak-locked (`phaseLock.ts`) — a precondition for
  * vocal intelligibility, not a quality pass.
@@ -34,7 +35,7 @@
 
 import { FormantWarp } from "./cepstrum.js";
 import { PhaseLocker } from "./phaseLock.js";
-import { hannWindow, ifftInto, princarg } from "./fft.js";
+import { hannWindow, ifftRealInto } from "./fft.js";
 
 export class HarmonyVoice {
   private static readonly FORMANT_SMOOTHING_SECONDS = 0.015;
@@ -51,6 +52,8 @@ export class HarmonyVoice {
   private envWarp = new Float64Array(0);
   private re = new Float64Array(0);
   private im = new Float64Array(0);
+  private ifftScratchRe = new Float64Array(0);
+  private ifftScratchIm = new Float64Array(0);
 
   private warp = new FormantWarp();
   private locker = new PhaseLocker();
@@ -77,6 +80,8 @@ export class HarmonyVoice {
     this.envWarp = new Float64Array(this.half + 1);
     this.re = new Float64Array(fftSize);
     this.im = new Float64Array(fftSize);
+    this.ifftScratchRe = new Float64Array(this.half);
+    this.ifftScratchIm = new Float64Array(this.half);
     this.warp.prepare(fftSize);
     this.locker.prepare(fftSize);
     this.primed = false;
@@ -112,6 +117,7 @@ export class HarmonyVoice {
     mag: Float64Array,
     phase: Float64Array,
     phaseAdvance: Float64Array,
+    phaseDelta: Float64Array,
     envLin: Float64Array,
     logEnv: Float64Array,
     outRing: Float32Array,
@@ -132,8 +138,14 @@ export class HarmonyVoice {
       const currentSemitones = 12 * Math.log2(this.alphaSm);
       this.alphaSm = Math.pow(2, (currentSemitones + (targetSemitones - currentSemitones) * this.formantSmooth) / 12);
     }
-    this.warp.update(this.alphaSm, logEnv);
-    this.warp.renderInto(logEnv, this.envWarp, this.alphaSm);
+    const envWarp = this.alphaSm === 1 ? envLin : this.envWarp;
+    if (envWarp !== envLin) {
+      // The identity formant setting already has its linear envelope from
+      // FrameEngine. Re-evaluating exp(logEnv[k]) and copying it for every
+      // voice and bin is redundant work in the common neutral-formant case.
+      this.warp.update(this.alphaSm, logEnv);
+      this.warp.renderInto(logEnv, this.envWarp, this.alphaSm);
+    }
 
     const magV = this.magV;
     const outPhase = this.outPhase;
@@ -157,13 +169,13 @@ export class HarmonyVoice {
       const lo = Math.floor(sourceBin);
       const hi = Math.min(half, lo + 1);
       const frac = sourceBin - lo;
-      const sourcePhase = phase[lo]! + princarg(phase[hi]! - phase[lo]!) * frac;
+      const sourcePhase = phase[lo]! + phaseDelta[lo]! * frac;
       phaseV[k] = sourcePhase;
 
       // Excitation × warped destination envelope: the whole point of REZONANS.
       const sourceMagnitude = mag[lo]! + (mag[hi]! - mag[lo]!) * frac;
       const sourceEnvelope = envLin[lo]! + (envLin[hi]! - envLin[lo]!) * frac;
-      magV[k] = (sourceMagnitude / sourceEnvelope) * this.envWarp[k]!;
+      magV[k] = (sourceMagnitude / sourceEnvelope) * envWarp[k]!;
 
       if (this.first) {
         outPhase[k] = sourcePhase;
@@ -201,18 +213,12 @@ export class HarmonyVoice {
     im[0] = 0;
     re[half] = magV[half]!;
     im[half] = 0;
-    for (let k = half + 1; k < n; k++) {
-      re[k] = re[n - k]!;
-      im[k] = -im[n - k]!;
-    }
+    ifftRealInto(re, im, this.ifftScratchRe, this.ifftScratchIm);
 
-    ifftInto(re, im);
-
-    const invN = 1 / n;
     const win = this.window;
     for (let i = 0; i < n; i++) {
       const pos = (outPos + i) & ringMask;
-      outRing[pos] = outRing[pos]! + re[i]! * invN * win[i]!;
+      outRing[pos] = outRing[pos]! + re[i]! * win[i]!;
     }
   }
 

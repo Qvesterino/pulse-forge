@@ -187,6 +187,45 @@
     for (let k = 0; k < n; k++) im[k] = -im[k];
     fft(re, im);
   }
+  function ifftRealInto(re, im, scratchRe, scratchIm) {
+    const n = re.length;
+    if (n !== im.length || !isPow2(n) || n < 2) {
+      throw new Error(`ifftRealInto: spectrum must be equal-length power-of-two arrays, got ${n}/${im.length}`);
+    }
+    const half2 = n >> 1;
+    if (scratchRe.length !== half2 || scratchIm.length !== half2) {
+      throw new Error(`ifftRealInto: scratch arrays must be length ${half2}, got ${scratchRe.length}/${scratchIm.length}`);
+    }
+    if (n === 2) {
+      const dc = re[0];
+      const nyquist = re[1];
+      re[0] = 0.5 * (dc + nyquist);
+      re[1] = 0.5 * (dc - nyquist);
+      return;
+    }
+    const { cos, sin } = fftPlan(n);
+    for (let k = 0; k < half2; k++) {
+      const mirror = half2 - k;
+      const ar = re[k];
+      const ai = im[k];
+      const br = re[mirror];
+      const bi = -im[mirror];
+      const evenRe = 0.5 * (ar + br);
+      const evenIm = 0.5 * (ai + bi);
+      const diffRe = 0.5 * (ar - br);
+      const diffIm = 0.5 * (ai - bi);
+      const oddRe = diffRe * cos[k] + diffIm * sin[k];
+      const oddIm = diffIm * cos[k] - diffRe * sin[k];
+      scratchRe[k] = evenRe - oddIm;
+      scratchIm[k] = evenIm + oddRe;
+    }
+    ifftInto(scratchRe, scratchIm);
+    const scale = 1 / half2;
+    for (let i = 0; i < half2; i++) {
+      re[2 * i] = scratchRe[i] * scale;
+      re[2 * i + 1] = -scratchIm[i] * scale;
+    }
+  }
   function princarg(x) {
     const tau = Math.PI * 2;
     let y = x % tau;
@@ -535,6 +574,8 @@
     phase = new Float64Array(0);
     /** Per-bin instantaneous phase advance, shared by all harmony voices. */
     phaseAdvance = new Float64Array(0);
+    /** Adjacent-bin phase deltas, wrapped once and shared by all voices. */
+    phaseDelta = new Float64Array(0);
     /** Previous frame's analysis phase: read-only for voices, owned here. */
     prevPhase = new Float64Array(0);
     havePrev = false;
@@ -601,6 +642,7 @@
       this.mag = new Float64Array(this.half + 1);
       this.phase = new Float64Array(this.half + 1);
       this.phaseAdvance = new Float64Array(this.half + 1);
+      this.phaseDelta = new Float64Array(this.half + 1);
       this.prevPhase = new Float64Array(this.half + 1);
       this.envLin = new Float64Array(this.half + 1);
       this.envLin.fill(1);
@@ -629,6 +671,7 @@
       this.mag.fill(0);
       this.phase.fill(0);
       this.phaseAdvance.fill(0);
+      this.phaseDelta.fill(0);
       this.prevPhase.fill(0);
       this.envLin.fill(1);
       this.renderLogEnv.fill(0);
@@ -672,6 +715,15 @@
         mag[k] = Math.sqrt(rr * rr + ii * ii);
         phase[k] = Math.atan2(ii, rr);
       }
+      const phaseDelta = this.phaseDelta;
+      const tau = 2 * Math.PI;
+      for (let k = 0; k < half2; k++) {
+        let delta = phase[k + 1] - phase[k];
+        if (delta > Math.PI) delta -= tau;
+        else if (delta < -Math.PI) delta += tau;
+        phaseDelta[k] = delta;
+      }
+      phaseDelta[half2] = 0;
       const phaseAdvance = this.phaseAdvance;
       if (this.havePrev) {
         const previous = this.prevPhase;
@@ -823,6 +875,8 @@
     envWarp = new Float64Array(0);
     re = new Float64Array(0);
     im = new Float64Array(0);
+    ifftScratchRe = new Float64Array(0);
+    ifftScratchIm = new Float64Array(0);
     warp = new FormantWarp();
     locker = new PhaseLocker();
     first = true;
@@ -845,6 +899,8 @@
       this.envWarp = new Float64Array(this.half + 1);
       this.re = new Float64Array(fftSize);
       this.im = new Float64Array(fftSize);
+      this.ifftScratchRe = new Float64Array(this.half);
+      this.ifftScratchIm = new Float64Array(this.half);
       this.warp.prepare(fftSize);
       this.locker.prepare(fftSize);
       this.primed = false;
@@ -872,7 +928,7 @@
      * identical for all of them, so the window normalisation is identical too.
      * Sharing them is what makes per-voice formant cost nothing but arithmetic.
      */
-    renderFrame(mag, phase, phaseAdvance, envLin, logEnv, outRing, outPos, ringMask) {
+    renderFrame(mag, phase, phaseAdvance, phaseDelta, envLin, logEnv, outRing, outPos, ringMask) {
       const n = this.n;
       const half2 = this.half;
       const hs = this.hop;
@@ -883,8 +939,11 @@
         const currentSemitones = 12 * Math.log2(this.alphaSm);
         this.alphaSm = Math.pow(2, (currentSemitones + (targetSemitones - currentSemitones) * this.formantSmooth) / 12);
       }
-      this.warp.update(this.alphaSm, logEnv);
-      this.warp.renderInto(logEnv, this.envWarp, this.alphaSm);
+      const envWarp = this.alphaSm === 1 ? envLin : this.envWarp;
+      if (envWarp !== envLin) {
+        this.warp.update(this.alphaSm, logEnv);
+        this.warp.renderInto(logEnv, this.envWarp, this.alphaSm);
+      }
       const magV = this.magV;
       const outPhase = this.outPhase;
       const phaseV = this.phaseV;
@@ -900,11 +959,11 @@
         const lo = Math.floor(sourceBin);
         const hi = Math.min(half2, lo + 1);
         const frac = sourceBin - lo;
-        const sourcePhase = phase[lo] + princarg(phase[hi] - phase[lo]) * frac;
+        const sourcePhase = phase[lo] + phaseDelta[lo] * frac;
         phaseV[k] = sourcePhase;
         const sourceMagnitude = mag[lo] + (mag[hi] - mag[lo]) * frac;
         const sourceEnvelope = envLin[lo] + (envLin[hi] - envLin[lo]) * frac;
-        magV[k] = sourceMagnitude / sourceEnvelope * this.envWarp[k];
+        magV[k] = sourceMagnitude / sourceEnvelope * envWarp[k];
         if (this.first) {
           outPhase[k] = sourcePhase;
           continue;
@@ -934,16 +993,11 @@
       im[0] = 0;
       re[half2] = magV[half2];
       im[half2] = 0;
-      for (let k = half2 + 1; k < n; k++) {
-        re[k] = re[n - k];
-        im[k] = -im[n - k];
-      }
-      ifftInto(re, im);
-      const invN = 1 / n;
+      ifftRealInto(re, im, this.ifftScratchRe, this.ifftScratchIm);
       const win = this.window;
       for (let i = 0; i < n; i++) {
         const pos = outPos + i & ringMask;
-        outRing[pos] = outRing[pos] + re[i] * invN * win[i];
+        outRing[pos] = outRing[pos] + re[i] * win[i];
       }
     }
     /** Window length — the bus owns the shared window-sum accumulation. */
@@ -1127,7 +1181,7 @@
      * Render one synthesis frame into every voice's ring.
      * Called when FrameEngine reports a hop boundary.
      */
-    renderFrame(mag, phase, phaseAdvance, envLin, logEnv) {
+    renderFrame(mag, phase, phaseAdvance, phaseDelta, envLin, logEnv) {
       const smooth = 1 - Math.exp(-this.hop / (0.03 * 48e3));
       this.busGain += (this.busGainTarget - this.busGain) * smooth;
       this.widthSm += (this.widthTarget - this.widthSm) * smooth;
@@ -1141,7 +1195,17 @@
       }
       for (let i = 0; i < HARMONY_VOICE_COUNT; i++) {
         if (!this.voiceEverActive[i]) continue;
-        this.voices[i].renderFrame(mag, phase, phaseAdvance, envLin, logEnv, this.rings[i], this.outPos, this.ringMask);
+        this.voices[i].renderFrame(
+          mag,
+          phase,
+          phaseAdvance,
+          phaseDelta,
+          envLin,
+          logEnv,
+          this.rings[i],
+          this.outPos,
+          this.ringMask
+        );
       }
       this.outPos = this.outPos + this.hop & this.ringMask;
       this.started = true;
@@ -1618,6 +1682,7 @@
         this.frame.mag,
         this.frame.phase,
         this.frame.phaseAdvance,
+        this.frame.phaseDelta,
         this.frame.envLin,
         this.frame.renderLogEnv
       );

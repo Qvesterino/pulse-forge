@@ -412,3 +412,33 @@ points carrying the scene's packs, GROW endpoint law at points, armed-mapping
 guard, TWIST slot swap + morph = intensity, exit restore, stop takeover) and
 the scene-strip suite (per-scene picker writes `setScenePack`, stored
 selection renders).
+
+## Addendum 9 (2026-10-11) — scene macro pins (v2.7)
+
+The same per-scene override now covers the OTHER modulation source: a scene
+can PIN macro values (`Scene.macros`: macroId → 0..1, SCHEMA_VERSION 24,
+shape-sanitized and clamped; unknown macro ids are inert), set by ONE
+undoable `setSceneMacro` command (null clears). While the scene is active
+the pinned value SUBSTITUTES the live macro in every `source: "macro"`
+mapping — effect params, instrument params and the track gain/pan macro
+offsets alike — through the exact same bipolar law, live and in exports:
+the scheduler attaches the active clip's `macros` to the scene-intensity
+points next to `packs` (`sceneIntensityPointsForWindow` +
+`buildSceneIntensityPoints`, seam rule: the later point wins), the bridge
+substitutes `macro.value` per point (and in `syncMacros` from the live
+`setSceneIntensity(value, packs, sceneMacros)` call), and a stop
+(`automationReset`) drops the pins so the doc macro values resume — the
+MacroPerformanceBar keeps owning the live values.
+
+UI: the scene strip gains a MACROS block — one compact fader per macro
+showing the EFFECTIVE value (pinned macros render accent-bordered with a ×
+that clears the pin); moving a fader pins that value to the scene. The
+mixer's performance bar is untouched (and the Mixer test now scopes its
+macro-name queries to the bar, since the strip legitimately renders the
+same names).
+
+Validation: extended `tests/scene-packs.test.ts` (command set/clamp/clear +
+undo, sanitizer, seam points carrying `sceneMacros`, pinned substitution in
+an armed macro-sourced mapping, scheduled pin points + stop restore) and the
+scene-strip suite (fader pins the scene value, stored pin renders the clear
+control, clearing restores the live macro).

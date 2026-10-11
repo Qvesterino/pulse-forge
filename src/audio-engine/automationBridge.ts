@@ -46,12 +46,15 @@ const LFO_DIVISION_MULTS = [1 / 4, 1 / 2, 1, 2, 4];
  * One scene-intensity point. `packs` carries the per-scene scene-pack
  * selection (fxId → pair id) active at that tick — the scheduler and the
  * offline renderer attach it so the bridge can swap TWIST/GROW pairs exactly
- * at clip boundaries.
+ * at clip boundaries. `sceneMacros` carries the scene's macro pins
+ * (macroId → 0..1) which substitute the live macro value in every
+ * macro-sourced mapping at that tick.
  */
 export interface SceneIntensityPoint {
   tick: number;
   value: number;
   packs?: Record<string, string> | null;
+  sceneMacros?: Record<string, number> | null;
 }
 
 interface ScenePackEntry {
@@ -206,6 +209,8 @@ export class AutomationBridge {
   private currentScenePacks: Record<string, string> | null = null;
   /** Resolved override entries for `currentScenePacks` (invalidated with it). */
   private scenePackEntries: Map<string, ScenePackEntry> | null = null;
+  /** Live scene macro pins (macroId → 0..1), null = play the doc macro values. */
+  private currentSceneMacros: Record<string, number> | null = null;
 
   constructor(
     private readonly deps: AutomationBridgeDeps,
@@ -614,7 +619,11 @@ export class AutomationBridge {
     };
     const intensityBipolar = Math.max(-1, Math.min(1, this.currentSceneIntensity * 2 - 1));
     for (const macro of doc.macros) {
-      const bipolar = Math.max(-1, Math.min(1, macro.value * 2 - 1));
+      // A scene may PIN this macro (Scene.macros): the pinned value
+      // substitutes the live macro — the same law, one source swap.
+      const pinned = this.currentSceneMacros?.[macro.id];
+      const macroValue = typeof pinned === "number" ? pinned : macro.value;
+      const bipolar = Math.max(-1, Math.min(1, macroValue * 2 - 1));
       for (const mapping of macro.mappings) {
         const amount = mapping.amount;
         if (mapping.source === "intensity") {
@@ -686,19 +695,27 @@ export class AutomationBridge {
 
   /**
    * Update the live scene intensity signal. Idempotent. `packs` carries the
-   * active scene's scene-pack selection (pattern mode calls this per tick);
-   * a changed map re-resolves the overrides and recomposes immediately.
+   * active scene's scene-pack selection and `sceneMacros` its macro pins
+   * (pattern mode calls this per tick); a changed map re-resolves/recomposes
+   * immediately.
    */
-  setSceneIntensity(value: number, packs?: Record<string, string> | null): void {
+  setSceneIntensity(
+    value: number,
+    packs?: Record<string, string> | null,
+    sceneMacros?: Record<string, number> | null,
+  ): void {
     const next = Math.max(0, Math.min(1, value));
     const nextPacks = packs && Object.keys(packs).length > 0 ? packs : null;
     const packsChanged = JSON.stringify(nextPacks ?? null) !== JSON.stringify(this.currentScenePacks ?? null);
-    if (next === this.currentSceneIntensity && !packsChanged) return;
+    const nextMacros = sceneMacros && Object.keys(sceneMacros).length > 0 ? sceneMacros : null;
+    const macrosChanged = JSON.stringify(nextMacros ?? null) !== JSON.stringify(this.currentSceneMacros ?? null);
+    if (next === this.currentSceneIntensity && !packsChanged && !macrosChanged) return;
     this.currentSceneIntensity = next;
     if (packsChanged) {
       this.currentScenePacks = nextPacks;
       this.scenePackEntries = null;
     }
+    if (macrosChanged) this.currentSceneMacros = nextMacros;
     // The signal is a live modulation source, not merely UI state. Recompose
     // the same macro writer immediately so scheduler intensity changes are
     // audible in realtime and use the exact same mapping semantics as export.
@@ -712,9 +729,11 @@ export class AutomationBridge {
    * write the same composed macro/intensity values onto the audio timeline or
    * exports will silently stay at the default 0.7 intensity.
    *
-   * Points may carry the per-scene scene-pack selection (`packs`): the
-   * override is (re)written at each point — TWIST slots + morph, GROW pair
-   * params — and an fx that leaves the override is handed back to the doc.
+   * Points may carry the per-scene scene-pack selection (`packs`) and the
+   * scene's macro pins (`sceneMacros`): the override is (re)written at each
+   * point — TWIST slots + morph, GROW pair params — and an fx that leaves
+   * the override is handed back to the doc. Macro pins substitute the live
+   * macro value in every macro-sourced mapping at their point.
    */
   scheduleSceneIntensity(points: SceneIntensityPoint[], timeAt: (tick: number) => number): void {
     const ctx = this.deps.ctx();
@@ -732,6 +751,10 @@ export class AutomationBridge {
     if (JSON.stringify(firstPacks ?? null) !== JSON.stringify(this.currentScenePacks ?? null)) {
       this.currentScenePacks = firstPacks && Object.keys(firstPacks).length > 0 ? firstPacks : null;
       this.scenePackEntries = null;
+    }
+    const firstMacros = ordered[0]?.sceneMacros ?? null;
+    if (JSON.stringify(firstMacros ?? null) !== JSON.stringify(this.currentSceneMacros ?? null)) {
+      this.currentSceneMacros = firstMacros && Object.keys(firstMacros).length > 0 ? firstMacros : null;
     }
     let previousEntries = new Map<string, ScenePackEntry>();
     for (const point of ordered) {
@@ -764,7 +787,9 @@ export class AutomationBridge {
 
       const intensityBipolar = Math.max(-1, Math.min(1, point.value * 2 - 1));
       for (const macro of doc.macros) {
-        const macroBipolar = Math.max(-1, Math.min(1, macro.value * 2 - 1));
+        const pinned = point.sceneMacros?.[macro.id];
+        const macroValue = typeof pinned === "number" ? pinned : macro.value;
+        const macroBipolar = Math.max(-1, Math.min(1, macroValue * 2 - 1));
         for (const mapping of macro.mappings) {
           const bipolar = mapping.source === "intensity" ? intensityBipolar : macroBipolar;
           if (mapping.target) {
@@ -1226,12 +1251,16 @@ export class AutomationBridge {
     }
     // Scene-pack overrides are performance state: a stop hands the pairs
     // back to the doc so the stopped mix matches the project, not the last
-    // clip. syncMacros below then re-composes the doc values.
-    if (this.currentScenePacks) {
+    // clip. syncMacros below then re-composes the doc values (macro pins
+    // drop with the same rule — the doc macro values resume).
+    if (this.currentScenePacks || this.currentSceneMacros) {
       const stopDoc = this.deps.doc();
-      if (stopDoc) this.restoreScenePackTargets(stopDoc, this.scenePackEntriesFor(stopDoc), null);
+      if (this.currentScenePacks && stopDoc) {
+        this.restoreScenePackTargets(stopDoc, this.scenePackEntriesFor(stopDoc), null);
+      }
       this.currentScenePacks = null;
       this.scenePackEntries = null;
+      this.currentSceneMacros = null;
     }
     if (this.deps.doc()) {
       // Return and device macros share the same canonical base writer after a

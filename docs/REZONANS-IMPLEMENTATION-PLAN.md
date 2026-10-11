@@ -632,6 +632,22 @@ guessing them is how formant shifters end up shipping wrong:
    input 2:1; its 36-case synthetic pitch matrix stays within 15 cents across
    24/44.1/48 kHz and all three FFT sizes. Actual worklet deadline headroom and
    lower-tier hardware remain open.
+   A subsequent four-profile Chromium run (same host, 48 kHz, Fine/4096, three
+   2 s repeats per profile) measured 15.3%, 17.3%, 19.1% and 23.7% median
+   main-thread CPU for one through four voices. Their median per-block p95s
+   were 2.5, 3.0, 3.5 and 4.1 ms against the 2.67 ms quantum. This still is
+   not a worklet deadline measurement. Against the same 2 s harness before the
+   packed real-IFFT change, the four-voice profile was 27.0% CPU and 4.9 ms
+   p95; the current run is 23.7% and 4.1 ms. The remaining real-time question
+   needs an AudioWorklet underrun/trace measurement, not another main-thread
+   estimate.
+   `npm run test:browser:rezonans` now loads the generated worklet directly in
+   Chromium's `OfflineAudioContext`, without booting the full studio. A Fine,
+   four-voice render reported the expected 4095-sample latency, finite audio,
+   RMS 0.0241 and peak 0.0834, with no processor error. This verifies the
+   shipped bundle path; it does not measure live AudioWorklet deadlines. The
+   broader `npm run test:browser` attempt timed out waiting for the full app's
+   initial `domcontentloaded` after 120 s, before it could report its checks.
 6. **Resolved: 300 s Fine/four-voice soak.** `tests/rezonans-soak.test.ts`
    processed a steady harmonic voice with four active voices and per-voice
    formant shifts. The run produced no non-finite or subnormal samples, peak

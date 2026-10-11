@@ -296,6 +296,62 @@
   border-color: var(--accent);
 }
 
+/* Scene macro pins (Scene.macros) — compact faders next to the pair rows. */
+.scene-strip-macros {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.scene-strip-macro {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 7px;
+  background: var(--bg-panel-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+}
+
+.scene-strip-macro.pinned {
+  border-color: var(--accent);
+}
+
+.scene-strip-macro-name {
+  max-width: 90px;
+  overflow: hidden;
+  color: var(--text-dim);
+  font: 700 10px var(--mono);
+  letter-spacing: 0.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-strip-macro-slider {
+  flex: 0 1 150px;
+  min-width: 110px;
+}
+
+.scene-strip-macro-slider .slider-header {
+  display: none;
+}
+
+.scene-strip-macro-slider .slider-compact .slider-track {
+  height: 20px;
+}
+
+.scene-strip-macro-clear {
+  padding: 0 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--accent);
+  font: 700 12px var(--mono);
+  line-height: 1;
+}
+
 .scene-strip-chip {
   font-family: var(--mono);
   font-size: 9px;

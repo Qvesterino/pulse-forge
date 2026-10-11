@@ -130,6 +130,67 @@ export function ifftInto(re: Float64Array, im: Float64Array): void {
   fft(re, im);
 }
 
+/**
+ * In-place inverse real FFT from bins `0..N/2`, using one packed complex
+ * inverse FFT of length `N/2` rather than a full complex inverse of length N.
+ *
+ * `re` and `im` hold the positive-frequency spectrum on entry. `scratchRe`
+ * and `scratchIm` are caller-owned arrays of length N/2, so the realtime path
+ * allocates nothing. On return `re` contains N real time-domain samples; `im`
+ * is scratch input and has no output contract. The output is normalized by N.
+ */
+export function ifftRealInto(
+  re: Float64Array,
+  im: Float64Array,
+  scratchRe: Float64Array,
+  scratchIm: Float64Array,
+): void {
+  const n = re.length;
+  if (n !== im.length || !isPow2(n) || n < 2) {
+    throw new Error(`ifftRealInto: spectrum must be equal-length power-of-two arrays, got ${n}/${im.length}`);
+  }
+  const half = n >> 1;
+  if (scratchRe.length !== half || scratchIm.length !== half) {
+    throw new Error(`ifftRealInto: scratch arrays must be length ${half}, got ${scratchRe.length}/${scratchIm.length}`);
+  }
+  if (n === 2) {
+    const dc = re[0]!;
+    const nyquist = re[1]!;
+    re[0] = 0.5 * (dc + nyquist);
+    re[1] = 0.5 * (dc - nyquist);
+    return;
+  }
+
+  const { cos, sin } = fftPlan(n);
+  for (let k = 0; k < half; k++) {
+    const mirror = half - k;
+    const ar = re[k]!;
+    const ai = im[k]!;
+    const br = re[mirror]!;
+    const bi = -im[mirror]!;
+    const evenRe = 0.5 * (ar + br);
+    const evenIm = 0.5 * (ai + bi);
+    const diffRe = 0.5 * (ar - br);
+    const diffIm = 0.5 * (ai - bi);
+
+    // The odd spectrum is multiplied by exp(+i·2πk/N). `sin[k]` stores
+    // sin(-2πk/N), matching the forward FFT twiddle convention.
+    const oddRe = diffRe * cos[k]! + diffIm * sin[k]!;
+    const oddIm = diffIm * cos[k]! - diffRe * sin[k]!;
+    scratchRe[k] = evenRe - oddIm;
+    scratchIm[k] = evenIm + oddRe;
+  }
+
+  ifftInto(scratchRe, scratchIm);
+  const scale = 1 / half;
+  for (let i = 0; i < half; i++) {
+    re[2 * i] = scratchRe[i]! * scale;
+    // ifftInto is optimized for Hermitian spectra and leaves the imaginary
+    // result conjugated; packed odd samples need its opposite sign restored.
+    re[2 * i + 1] = -scratchIm[i]! * scale;
+  }
+}
+
 /** Principal argument: wrap to (-π, π]. */
 export function princarg(x: number): number {
   const tau = Math.PI * 2;

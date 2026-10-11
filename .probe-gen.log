@@ -1,0 +1,156 @@
+
+Running 1 test using 1 worker
+
+GENPROBE {
+ "frames": [
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  },
+  {
+   "y": 395,
+   "h": 24
+  }
+ ],
+ "distinct": 1,
+ "hitTest": "button.dock-resize-handle",
+ "isSelf": false,
+ "runningAnimations": 0,
+ "rect": {
+  "x": 1186.109375,
+  "y": 395,
+  "w": 52,
+  "h": 24
+ },
+ "chain": [
+  "button.btn.btn-small box=1186.1,395.0,52.0x24.0 scrollH=22 clientH=22 overflow=visible/visible minH=auto flex=0 1 auto",
+  "div.toolbar-group box=1012.0,391.0,345.1x32.0 scrollH=32 clientH=30 overflow=visible/visible minH=auto flex=0 1 auto",
+  "div.pattern-actions.toolbar box=1012.0,353.0,345.1x138.0 scrollH=138 clientH=138 overflow=visible/visible minH=auto flex=0 1 auto",
+  "section.pattern-bar box=1012.0,276.0,256.0x255.0 scrollH=255 clientH=255 overflow=visible/visible minH=auto flex=0 1 auto",
+  "div.workspace-main box=1000.0,48.0,280.0x172.5 scrollH=511 clientH=173 overflow=visible/visible minH=0px flex=0 1 auto",
+  "main.workspace box=0.0,48.0,1280.0x349.0 scrollH=511 clientH=349 overflow=visible/visible minH=0px flex=0 1 auto",
+  "div.app box=0.0,0.0,1280.0x720.0 scrollH=720 clientH=720 overflow=hidden/hidden minH=0px flex=0 1 auto",
+  "div. box=0.0,0.0,1280.0x720.0 scrollH=720 clientH=720 overflow=visible/visible minH=0px flex=0 1 auto",
+  "body. box=0.0,0.0,1280.0x720.0 scrollH=720 clientH=720 overflow=hidden/hidden minH=0px flex=0 1 auto",
+  "html.density-comfortable box=0.0,0.0,1280.0x720.0 scrollH=720 clientH=720 overflow=visible/visible minH=0px flex=0 1 auto"
+ ],
+ "viewport": {
+  "w": 1280,
+  "h": 720
+ }
+}
+  ok 1 [chromium] ÔÇ║ tests\e2e\zz-probe-genclick.spec.ts:27:1 ÔÇ║ GEN button geometry over consecutive animation frames (5.7s)
+
+  1 passed (8.0s)

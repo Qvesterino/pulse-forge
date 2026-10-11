@@ -83,8 +83,8 @@ describe("SceneStrip", () => {
     const instName = doc.tracks.find((track) => track.id === instId)!.name;
     renderWithContext(<SceneStrip />, { services });
 
-    expect(screen.getByText("TWIST")).toBeInTheDocument();
-    expect(screen.getByText("GROW")).toBeInTheDocument();
+    expect(screen.getByText("TWIST", { selector: ".scene-strip-kind" })).toBeInTheDocument();
+    expect(screen.getByText("GROW", { selector: ".scene-strip-kind" })).toBeInTheDocument();
     expect(screen.getAllByText("SCENE", { selector: ".scene-strip-chip" })).toHaveLength(2);
 
     const twistSelect = screen.getByLabelText(`TWIST scene pair on ${drumName}`) as HTMLSelectElement;
@@ -168,5 +168,29 @@ describe("SceneStrip", () => {
     expect((screen.getByLabelText(`Scene pair for TWIST on ${drumName}`) as HTMLSelectElement).value).toBe(
       "trap-center-shimmer",
     );
+  });
+
+  it("pins a macro to the scene from the strip and clears it", () => {
+    const { doc } = withSceneFx();
+    const scene = doc.scenes.find((candidate) => candidate.patternId === doc.activePatternId) ?? doc.scenes[0]!;
+    const macro = doc.macros[0]!;
+    const services = mockServices(doc);
+    const { unmount } = renderWithContext(<SceneStrip />, { services });
+
+    const slider = screen.getByRole("slider", { name: `Scene macro ${macro.name}` });
+    vi.spyOn(slider, "getBoundingClientRect").mockReturnValue({ left: 0, width: 200 } as DOMRect);
+    fireEvent.pointerDown(slider, { button: 0, clientX: 200, clientY: 0, pointerType: "mouse" });
+    fireEvent.pointerUp(slider, { clientX: 200, clientY: 0 });
+    const after = lastCommand(services.store.execute).execute(doc);
+    expect(after.scenes.find((candidate) => candidate.id === scene.id)!.macros?.[macro.id]).toBeCloseTo(1, 9);
+    unmount();
+
+    // A pinned scene shows the clear control; clearing restores the live macro.
+    const services2 = mockServices(after);
+    renderWithContext(<SceneStrip />, { services: services2 });
+    const clear = screen.getByTitle(`Clear the ${macro.name} pin — the macro returns to its live value`);
+    fireEvent.click(clear);
+    const cleared = lastCommand(services2.store.execute).execute(after);
+    expect(cleared.scenes.find((candidate) => candidate.id === scene.id)!.macros).toBeUndefined();
   });
 });

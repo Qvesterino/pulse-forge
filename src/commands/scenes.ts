@@ -178,6 +178,39 @@ export function setScenePack(doc: ProjectDocument, sceneId: string, fxId: string
   );
 }
 
+/**
+ * Per-scene macro pin (v24): the value a macro plays while this scene is
+ * active — it substitutes the live macro value in every macro-sourced
+ * mapping (live + exports); the doc keeps its own macro value as the
+ * stopped-state baseline. `null` clears the pin.
+ */
+export function setSceneMacro(doc: ProjectDocument, sceneId: string, macroId: string, value: number | null): Command {
+  const scene = doc.scenes.find((candidate) => candidate.id === sceneId);
+  if (!scene) throw new Error(`Scene ${sceneId} not found`);
+  if (!doc.macros.some((macro) => macro.id === macroId)) throw new Error(`Macro ${macroId} not found`);
+  if (value !== null && (typeof value !== "number" || !Number.isFinite(value))) {
+    throw new Error("Invalid scene macro value");
+  }
+  const clamped = value === null ? null : Math.min(1, Math.max(0, value));
+  const apply = (d: ProjectDocument, nextValue: number | null): ProjectDocument => ({
+    ...d,
+    scenes: d.scenes.map((candidate) => {
+      if (candidate.id !== sceneId) return candidate;
+      const macros = { ...(candidate.macros ?? {}) };
+      if (nextValue === null) delete macros[macroId];
+      else macros[macroId] = nextValue;
+      const next = Object.keys(macros).length > 0 ? macros : undefined;
+      return { ...candidate, macros: next };
+    }),
+  });
+  return snapshot(
+    "setSceneMacro",
+    clamped === null ? `Clear ${scene.name} macro pin` : `Pin macro to ${scene.name}`,
+    doc,
+    apply(doc, clamped),
+  );
+}
+
 export function deleteScene(doc: ProjectDocument, sceneId: string): Command {
   if (doc.scenes.length <= 1) throw new Error("Cannot delete the last scene");
   const target = doc.scenes.find((s) => s.id === sceneId);

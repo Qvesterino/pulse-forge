@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
-import { useActivePatternId, useScenes, useSelectionStore, useServices, useTracks } from "./context";
+import { useActivePatternId, useMacros, useScenes, useSelectionStore, useServices, useTracks } from "./context";
 import {
   applyKorenScenePair,
   applyTwistScenePair,
   korenSceneIntensityBound,
   setSceneIntensity,
+  setSceneMacro,
   setScenePack,
   twistMorphIntensityBound,
 } from "../commands/commands";
@@ -14,6 +15,7 @@ import { TWIST_SCENE_PACK, findTwistScenePair } from "../effects/skrutka-scene-p
 import { readKorenSceneState } from "../effects/koren-scene";
 import { KOREN_SCENE_PACK, findKorenScenePair } from "../effects/koren-scene-pack";
 import { Slider } from "./controls";
+import { formatMacroValue } from "./MacroPerformanceBar";
 
 const COLLAPSE_KEY = "pf-scene-strip-collapsed";
 
@@ -44,14 +46,18 @@ interface SceneFxRow {
  * (`Scene.packs`): while this scene (or clip) plays, the engine overrides
  * the effect's applied pair with it at the clip boundary — intro/build/drop
  * scenes switch pairs automatically, live and in exports, without touching
- * the document baseline. The track name selects the strip's track so a row
- * is one click from the device in the mixer.
+ * the document baseline. The MACROS block pins macro values to the scene
+ * (`Scene.macros`): while the scene is active the pinned value substitutes
+ * the live macro in every macro-sourced mapping (effect params, gain/pan) —
+ * the × clears a pin back to the live value. The track name selects the
+ * strip's track so a row is one click from the device in the mixer.
  */
 export function SceneStrip({ sceneId }: { sceneId?: string }) {
   const services = useServices();
   const tracks = useTracks();
   const scenes = useScenes();
   const activePatternId = useActivePatternId();
+  const macros = useMacros();
   const selectionStore = useSelectionStore();
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -240,6 +246,56 @@ export function SceneStrip({ sceneId }: { sceneId?: string }) {
             })}
             {rows.length === 0 && <span className="scene-strip-empty">No TWIST or GROW devices in the project</span>}
           </div>
+          {macros.length > 0 && (
+            <div className="scene-strip-macros" role="group" aria-label="Scene macros">
+              {macros.map((macro) => {
+                const pinned = scene?.macros?.[macro.id];
+                const isPinned = typeof pinned === "number";
+                const effective = isPinned ? pinned : macro.value;
+                return (
+                  <div className={`scene-strip-macro${isPinned ? " pinned" : ""}`} key={macro.id}>
+                    <span
+                      className="scene-strip-macro-name"
+                      title={
+                        isPinned
+                          ? `${macro.name} is PINNED to this scene — every macro-sourced mapping follows the scene (× clears)`
+                          : `${macro.name} follows its live value until you move it here — moving pins it to this scene`
+                      }
+                    >
+                      {macro.name}
+                    </span>
+                    <div className="scene-strip-macro-slider">
+                      <Slider
+                        compact
+                        label={`Scene macro ${macro.name}`}
+                        value={effective}
+                        min={0}
+                        max={1}
+                        defaultValue={0.5}
+                        format={formatMacroValue}
+                        disabled={!scene}
+                        onCommit={(value) => {
+                          if (scene) services.store.execute(setSceneMacro(doc, scene.id, macro.id, value));
+                        }}
+                      />
+                    </div>
+                    {isPinned && (
+                      <button
+                        type="button"
+                        className="scene-strip-macro-clear"
+                        title={`Clear the ${macro.name} pin — the macro returns to its live value`}
+                        onClick={() => {
+                          if (scene) services.store.execute(setSceneMacro(doc, scene.id, macro.id, null));
+                        }}
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
     </section>

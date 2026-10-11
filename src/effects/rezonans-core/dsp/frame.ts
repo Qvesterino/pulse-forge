@@ -45,6 +45,8 @@ export class FrameEngine {
   phase = new Float64Array(0);
   /** Per-bin instantaneous phase advance, shared by all harmony voices. */
   phaseAdvance = new Float64Array(0);
+  /** Adjacent-bin phase deltas, wrapped once and shared by all voices. */
+  phaseDelta = new Float64Array(0);
   /** Previous frame's analysis phase: read-only for voices, owned here. */
   private prevPhase = new Float64Array(0);
   private havePrev = false;
@@ -131,6 +133,7 @@ export class FrameEngine {
     this.mag = new Float64Array(this.half + 1);
     this.phase = new Float64Array(this.half + 1);
     this.phaseAdvance = new Float64Array(this.half + 1);
+    this.phaseDelta = new Float64Array(this.half + 1);
     this.prevPhase = new Float64Array(this.half + 1);
     this.envLin = new Float64Array(this.half + 1);
     this.envLin.fill(1);
@@ -164,6 +167,7 @@ export class FrameEngine {
     this.mag.fill(0);
     this.phase.fill(0);
     this.phaseAdvance.fill(0);
+    this.phaseDelta.fill(0);
     this.prevPhase.fill(0);
     this.envLin.fill(1);
     this.renderLogEnv.fill(0);
@@ -211,6 +215,19 @@ export class FrameEngine {
       mag[k] = Math.sqrt(rr * rr + ii * ii);
       phase[k] = Math.atan2(ii, rr);
     }
+
+    // Voice resampling interpolates phase between neighbouring bins. That
+    // pair is common to every voice, so wrap it once here instead of running
+    // a modulo in each of four synthesis loops.
+    const phaseDelta = this.phaseDelta;
+    const tau = 2 * Math.PI;
+    for (let k = 0; k < half; k++) {
+      let delta = phase[k + 1]! - phase[k]!;
+      if (delta > Math.PI) delta -= tau;
+      else if (delta < -Math.PI) delta += tau;
+      phaseDelta[k] = delta;
+    }
+    phaseDelta[half] = 0;
 
     // Instantaneous frequency belongs to the shared input analysis, not to
     // each output voice. Precomputing it once removes repeated phase wrapping

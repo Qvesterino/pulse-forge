@@ -40,14 +40,46 @@
 /* The old rule was a fixed 280px (01-base.css:532) narrowed to 230px below
    1100px. clamp() keeps the user's chosen width but never lets it eat the
    sequencer: on a narrow window the inspector yields to a share of the
-   viewport instead of holding a fixed width that no longer fits. */
+   viewport instead of holding a fixed width that no longer fits.
+ *
+ * D14 (2026-10-11) — the THREE columns below are load-bearing, not
+ * decoration. `.workspace` has three children: BrowserStrip, `.workspace-main`
+ * (TrackTabs + PatternBar + Sequencer) and the Inspector. This rule used to
+ * declare only TWO tracks, and because this file is imported LAST the later,
+ * same-specificity rule silently replaced the three-column template from
+ * 20-control-kit.css:472. Auto-placement then dropped `.workspace-main` into
+ * the 280px inspector column and pushed the Inspector into a second grid row.
+ *
+ * Measured in Chromium against the production build at 1280x720, 1366x768,
+ * 1440x900 and 1920x1080 — every one of them: `.workspace-main` 280px wide and
+ * `.sequencer` 256x20 with 618px of content scrolling inside a 20px window. At
+ * 1280x720 the pattern bar overflowed far enough that the dock's resize handle
+ * won the hit test over GEN (elementFromPoint on the GEN centre returned
+ * BUTTON.dock-resize-handle), so the flagship GENERATE action was unclickable.
+ * The first `auto` track is the sounds strip; it collapses to zero on its own
+ * because 20-control-kit.css hides `.browser-strip` below 1250px. */
 .workspace {
-  grid-template-columns: minmax(0, 1fr) clamp(180px, var(--inspector-width, 280px), 420px);
+  grid-template-columns: auto minmax(0, 1fr) clamp(180px, var(--inspector-width, 280px), 420px);
 }
 
-/* Below the ladder's 860px step the inspector is already a row; the clamp
-   above is overridden by the existing 01-base.css block, which stays as the
-   single owner of that layout switch. */
+/* The ladder's own steps, re-declared HERE on purpose. A media query does not
+ * add specificity, so the plain rule above beats every breakpoint declared in
+ * an earlier file — the 860px "inspector becomes a row" switch was dead for as
+ * long as this file existed. The comment that used to sit here claimed
+ * 01-base.css remained "the single owner of that layout switch"; it cannot,
+ * it is imported first. The values mirror 20-control-kit.css:474-484 exactly,
+ * so this restores previous behaviour instead of inventing new behaviour. */
+@media (max-width: 1100px) {
+  .workspace {
+    grid-template-columns: auto minmax(0, 1fr) 230px;
+  }
+}
+@media (max-width: 860px) {
+  .workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+}
 
 /* ---------- Fluid rack ---------- */
 

@@ -1,0 +1,32 @@
+
+Running 1 test using 1 worker
+
+GRID before={"cols":"1000px 280px","workspaceMain":"1000,48 280x173","patternBar":"1012,276 256x255","sequencer":"1012,539 256x20","bottomPanels":"0,397 1280x266","genHit":"BUTTON.dock-resize-handle","seqVisibleInWorkspace":"OVERFLOWING"}
+GRID after={"cols":"244px 756px 280px","workspaceMain":"244,48 756x349","patternBar":"256,219 732x149","sequencer":"256,376 732x20","bottomPanels":"0,397 1280x266","genHit":"GEN-OK","seqVisibleInWorkspace":"OVERFLOWING"}
+  x  1 [chromium] ÔÇ║ tests\e2e\zz-probe-gridfix.spec.ts:60:1 ÔÇ║ three-column template repairs the layout (falsifier) (10.3s)
+
+
+  1) [chromium] ÔÇ║ tests\e2e\zz-probe-gridfix.spec.ts:60:1 ÔÇ║ three-column template repairs the layout (falsifier) 
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: "INSIDE"
+    Received: "OVERFLOWING"
+
+      74 |   expect(before.genHit).not.toBe("GEN-OK");
+      75 |   expect(after.genHit).toBe("GEN-OK");
+    > 76 |   expect(after.seqVisibleInWorkspace).toBe("INSIDE");
+         |                                       ^
+      77 | });
+        at D:\pulse-forge\tests\e2e\zz-probe-gridfix.spec.ts:76:39
+
+    Error: ENOENT: no such file or directory, unlink 'D:\pulse-forge\test-results\.playwright-artifacts-0\a30be51516356ec61bedfcc0abcbf7cd.zip'
+
+    attachment #1: screenshot (image/png) ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+    test-results\zz-probe-gridfix-three-col-b50a0-pairs-the-layout-falsifier--chromium\test-failed-1.png
+    ÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇÔöÇ
+
+    Error Context: test-results\zz-probe-gridfix-three-col-b50a0-pairs-the-layout-falsifier--chromium\error-context.md
+
+  1 failed
+    [chromium] ÔÇ║ tests\e2e\zz-probe-gridfix.spec.ts:60:1 ÔÇ║ three-column template repairs the layout (falsifier) 

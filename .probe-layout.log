@@ -1,0 +1,136 @@
+
+Running 1 test using 1 worker
+
+LAYOUT {
+ ".app": {
+  "box": "0,0 1280x720",
+  "client": "1280x720",
+  "scroll": "1357x720",
+  "position": "static",
+  "display": "grid",
+  "flex": "0 1 auto",
+  "overflow": "hidden/hidden",
+  "zIndex": "auto",
+  "minH": "0px",
+  "transform": "none",
+  "contains": "none",
+  "children": 6
+ },
+ ".topbar": {
+  "box": "0,0 1280x48",
+  "client": "1280x47",
+  "scroll": "1280x47",
+  "position": "relative",
+  "display": "flex",
+  "flex": "0 1 auto",
+  "overflow": "visible/visible",
+  "zIndex": "80",
+  "minH": "auto",
+  "transform": "none",
+  "contains": "none",
+  "children": 5
+ },
+ "main.workspace": {
+  "box": "0,48 1280x349",
+  "client": "1280x349",
+  "scroll": "1357x511",
+  "position": "static",
+  "display": "grid",
+  "flex": "0 1 auto",
+  "overflow": "visible/visible",
+  "zIndex": "auto",
+  "minH": "0px",
+  "transform": "none",
+  "contains": "none",
+  "children": 3
+ },
+ ".workspace-main": {
+  "box": "1000,48 280x173",
+  "client": "280x173",
+  "scroll": "357x511",
+  "position": "static",
+  "display": "flex",
+  "flex": "0 1 auto",
+  "overflow": "visible/visible",
+  "zIndex": "auto",
+  "minH": "0px",
+  "transform": "none",
+  "contains": "none",
+  "children": 3
+ },
+ ".pattern-bar": {
+  "box": "1012,276 256x255",
+  "client": "256x255",
+  "scroll": "345x255",
+  "position": "static",
+  "display": "flex",
+  "flex": "0 1 auto",
+  "overflow": "visible/visible",
+  "zIndex": "auto",
+  "minH": "auto",
+  "transform": "none",
+  "contains": "none",
+  "children": 4
+ },
+ ".sequencer": {
+  "box": "1012,539 256x20",
+  "client": "254x18",
+  "scroll": "254x618",
+  "position": "relative",
+  "display": "block",
+  "flex": "1 1 0%",
+  "overflow": "auto/auto",
+  "zIndex": "auto",
+  "minH": "0px",
+  "transform": "none",
+  "contains": "layout style",
+  "children": 1
+ },
+ ".bottom-panels": {
+  "box": "0,397 1280x266",
+  "client": "1280x265",
+  "scroll": "1280x265",
+  "position": "static",
+  "display": "flex",
+  "flex": "0 1 auto",
+  "overflow": "hidden/hidden",
+  "zIndex": "auto",
+  "minH": "0px",
+  "transform": "none",
+  "contains": "none",
+  "children": 2
+ },
+ ".dock-resize-handle": {
+  "box": "0,398 1280x10",
+  "client": "1280x10",
+  "scroll": "1280x10",
+  "position": "static",
+  "display": "flex",
+  "flex": "0 0 auto",
+  "overflow": "visible/visible",
+  "zIndex": "auto",
+  "minH": "auto",
+  "transform": "none",
+  "contains": "none",
+  "children": 3
+ },
+ ".dock-tabs": {
+  "box": "0,408 1280x36",
+  "client": "1280x35",
+  "scroll": "1280x35",
+  "position": "static",
+  "display": "flex",
+  "flex": "0 0 auto",
+  "overflow": "auto/hidden",
+  "zIndex": "auto",
+  "minH": "auto",
+  "transform": "none",
+  "contains": "none",
+  "children": 12
+ },
+ "__viewport": "1280x720",
+ "__dockVar": ""
+}
+  ok 1 [chromium] ÔÇ║ tests\e2e\zz-probe-layout.spec.ts:17:1 ÔÇ║ dump studio layout geometry at 1280x720 (5.8s)
+
+  1 passed (9.6s)

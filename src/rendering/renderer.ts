@@ -640,10 +640,18 @@ export function buildSceneIntensityPoints(
   doc: ProjectDocument,
   windows: ClipWindow[],
   totalTicks: number,
-): Array<{ tick: number; value: number; packs?: Record<string, string> | null }> {
-  const points: Array<{ tick: number; value: number; packs?: Record<string, string> | null }> = [
-    { tick: 0, value: 0.7 },
-  ];
+): Array<{
+  tick: number;
+  value: number;
+  packs?: Record<string, string> | null;
+  sceneMacros?: Record<string, number> | null;
+}> {
+  const points: Array<{
+    tick: number;
+    value: number;
+    packs?: Record<string, string> | null;
+    sceneMacros?: Record<string, number> | null;
+  }> = [{ tick: 0, value: 0.7 }];
   const sorted = [...windows].sort((a, b) => a.from - b.from);
   for (let index = 0; index < sorted.length; index++) {
     const window = sorted[index];
@@ -658,27 +666,28 @@ export function buildSceneIntensityPoints(
       continue;
     }
     const packs = scene.packs && Object.keys(scene.packs).length > 0 ? scene.packs : null;
-    const withPacks = packs ? { packs } : {};
+    const macros = scene.macros && Object.keys(scene.macros).length > 0 ? scene.macros : null;
+    const withScene = { ...(packs ? { packs } : {}), ...(macros ? { sceneMacros: macros } : {}) };
 
     if (window.sceneId) {
       const sceneBase = window.sceneBase ?? window.base;
-      points.push({ tick: window.from, value: computeSceneIntensity(scene, sceneBase, window.from), ...withPacks });
+      points.push({ tick: window.from, value: computeSceneIntensity(scene, sceneBase, window.from), ...withScene });
       for (const curvePoint of scene.intensityCurve ?? []) {
         const absoluteTick = sceneBase + curvePoint.offset;
         if (absoluteTick > window.from && absoluteTick < window.to) {
           points.push({
             tick: absoluteTick,
             value: computeSceneIntensity(scene, sceneBase, absoluteTick),
-            ...withPacks,
+            ...withScene,
           });
         }
       }
-      points.push({ tick: window.to, value: computeSceneIntensity(scene, sceneBase, window.to), ...withPacks });
+      points.push({ tick: window.to, value: computeSceneIntensity(scene, sceneBase, window.to), ...withScene });
     } else {
       // Pattern-mode live playback intentionally uses the scene's static
       // intensity; a curve belongs to an arrangement clip context.
       const value = Number.isFinite(scene.intensity) ? Math.max(0, Math.min(1, scene.intensity)) : 0.7;
-      points.push({ tick: window.from, value, ...withPacks }, { tick: window.to, value, ...withPacks });
+      points.push({ tick: window.from, value, ...withScene }, { tick: window.to, value, ...withScene });
     }
 
     const next = sorted[index + 1];
@@ -688,14 +697,20 @@ export function buildSceneIntensityPoints(
 
   // At clip boundaries the later point is authoritative (the next scene wins
   // at its exact start). Keep the timeline monotonic and deterministic; the
-  // pack selection follows the same rule so a seam swaps the pair exactly on
-  // the boundary tick.
-  const deduped: Array<{ tick: number; value: number; packs?: Record<string, string> | null }> = [];
+  // pack selection and macro pins follow the same rule so a seam swaps them
+  // exactly on the boundary tick.
+  const deduped: Array<{
+    tick: number;
+    value: number;
+    packs?: Record<string, string> | null;
+    sceneMacros?: Record<string, number> | null;
+  }> = [];
   for (const point of points.sort((a, b) => a.tick - b.tick)) {
     const previous = deduped[deduped.length - 1];
     if (previous && previous.tick === point.tick) {
       previous.value = point.value;
       previous.packs = point.packs;
+      previous.sceneMacros = point.sceneMacros;
     } else deduped.push(point);
   }
   return deduped;
