@@ -61,3 +61,30 @@ Full-suite beh na zdieľanom strome meria rozrobenú prácu ostatných vlán, ni
 projekt (2026-10-03: 6 typecheck chýb, všetky v cudzom pitchcorrect WIP).
 Baseline beh = worktree na HEAD (pravidlo 5), výsledok sa zapisuje do
 `docs/CURRENT-STATE.md` s commitom, na ktorom bežal.
+
+## 7. Konfliktné značky v hotovom súbore: najprv zisti, čie sú v nich veci
+
+Pravidlo 2 hovorí „nikdy stash". Zlyhanie pravidla sa dá napraviť, ale
+`git stash pop` zanechá v pracovnom strome `<<<<<<< Updated upstream` /
+`=======` / `>>>>>>> Stashed changes` a **zablokuje `tsc` pre celý repo**.
+
+Postup, ktorý funguje:
+
+1. `Select-String -Pattern "^(<<<<<<<|=======|>>>>>>>)"` — zisti, _kde_ sú.
+2. **Prečítaj obe strany a over, či je vnútri niečo cudzie.** Ak obe strany
+   patria tebe (napr. tvoj stary a nový zápis toho istého bloku), rozhodnutie
+   je jednoznačné a môžeš conflict vyriešiť sám. Ak vnútri je cudzí obsah,
+   **netlač na svoje riešenie** — označ to a nechaj vlánu, ktorá ten súbor
+   vlastní.
+3. Po oprave `git status --porcelain <súbor>` musí ukázať `M `, nie `UU`.
+   Kým ostáva `UU`, `git commit --only` cez ten súbor **zlyhá**.
+4. `git add <súbor>` až po vyčistení značiek — to je krok, ktorý zmení stav
+   z `UU` na staged.
+
+Pozor na to, že `presets.ts` a `definitions.ts` sú hotspoty: zdieľané
+presety aj parametre sa do nich píše z viacerých vĺn naraz.
+
+Incidencia 2026-10-12: pop cudzej vlany vrátil do `src/effects/presets.ts`
+dve verzie môjho vlastného bloku (starú s chybnými id a opravenú) a
+duplikoval 5 presetov. Obe strany boli moje, rozhodnutie bolo jednoznačné,
+ale `tsc` bol červený dovtedy, kým sa značky neodstránili.
