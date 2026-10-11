@@ -223,6 +223,36 @@ export interface FrozenState {
   sampleRate: number;
 }
 
+/**
+ * How an armed audio input is recorded relative to its insert chain.
+ *
+ * `"raw"` — the committed take is untouched input PCM; the insert chain runs on
+ * monitoring and on playback only. This is the ADR 0014 §3 contract ("recording
+ * remains raw, recoverable audio until the user chooses processing or commit").
+ *
+ * `"baked"` — the post-insert signal is what gets committed. An owner-approved
+ * relaxation of that contract. The raw take is retained alongside the processed
+ * one regardless, because a `baked` take that silently destroys the raw one
+ * also destroys the double-tracking that is the reason to record raw at all.
+ */
+export type InputInsertMode = "raw" | "baked";
+
+/**
+ * Input insert chain — runs on the armed audio input BEFORE the track FX, so a
+ * cabinet or amp stage colours the signal the way an interface input would
+ * instead of acting as a downstream rack effect.
+ *
+ * Absent = no insert chain, which is the dry-monitoring behaviour
+ * `AudioEngine.attachDryInputMonitor` was written for.
+ */
+export interface TrackInputInsert {
+  mode: InputInsertMode;
+  /** Same `EffectInstance` shape as a track rack, so panel and runtime code is shared. */
+  effects: EffectInstance[];
+  /** Id of the last applied insert preset; dangling/absent = "Custom". */
+  presetId?: string | null;
+}
+
 export interface DrumTrack {
   id: ID;
   kind: "drum";
@@ -240,6 +270,11 @@ export interface DrumTrack {
   color?: string;
   /** When set, the track is frozen — rendered to an AudioBuffer, saving CPU. */
   frozen?: FrozenState;
+  /**
+   * Input insert chain applied to the armed audio input before the track FX.
+   * Absent = dry monitoring, which is the unchanged default.
+   */
+  inputInsert?: TrackInputInsert;
 }
 
 /**
@@ -300,6 +335,11 @@ export interface InstrumentTrack {
   color?: string;
   /** When set, the track is frozen — rendered to an AudioBuffer, saving CPU. */
   frozen?: FrozenState;
+  /**
+   * Input insert chain applied to the armed audio input before the track FX.
+   * Absent = dry monitoring, which is the unchanged default.
+   */
+  inputInsert?: TrackInputInsert;
 }
 
 export interface GroupTrack {

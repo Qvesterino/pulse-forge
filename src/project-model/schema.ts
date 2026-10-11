@@ -49,7 +49,7 @@ import {
   targetParamDef,
 } from "./targets";
 
-export const SCHEMA_VERSION = 21;
+export const SCHEMA_VERSION = 22;
 /** Minimum BPM accepted by the transport. Matches the `setBpm` command clamp. */
 export const MIN_BPM = 20;
 /** Maximum BPM accepted by the transport. Matches the `setBpm` command clamp. */
@@ -2713,6 +2713,9 @@ export function migrateProject(doc: ProjectDocument): ProjectDocument {
   // v19 adds one master stereo link; v20 splits it into transient/release
   // links while mapping the v19 value to both; v21 adds opt-in limiter
   // character modes while preserving the old envelope as the default.
+  // v22 adds the optional per-track `inputInsert` (armed-input chain + raw vs
+  // baked recording mode). Absent = dry monitoring, so older files are
+  // unchanged and carry no insert.
   // Older files remain playable; legacy recipe fields stay absent.
   migrated = { ...migrated, schemaVersion: SCHEMA_VERSION };
   return normalizeProject(migrated);

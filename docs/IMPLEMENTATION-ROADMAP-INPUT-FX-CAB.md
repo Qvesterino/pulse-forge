@@ -228,12 +228,28 @@ The next person to lower the floor starts from evidence, not from this document.
 
 ### Phase 3 — `TrackInputInsert` in the project model
 
-- [ ] `SCHEMA_VERSION` 6 → 7 with a migration in `migrateProject`.
-- [ ] Command-based mutation with full undo, per ADR 0014 §6.
-- [ ] Loading code rejects unknown future versions.
+- [x] `SCHEMA_VERSION` 21 → 22 with the v22 note in `migrateProject`. Older
+      files carry no insert and stay byte-compatible (absent = dry monitoring).
+- [x] `TrackInputInsert` on `DrumTrack` + `InstrumentTrack`. Deliberately NOT on
+      `GroupTrack` (a routing bus has no armed input) and NOT on
+      `GenerativeTrack` (it produces audio, it does not capture it). Verified:
+      `Track = DrumTrack | InstrumentTrack | GroupTrack | GenerativeTrack` —
+      there is no `audio` kind, so recorded audio lives on `InstrumentTrack`.
+- [x] Commands with full undo: `setInputInsertMode`, `clearInputInsert`,
+      `addInputEffect`, `removeInputEffect`, plus `inputInsertOf` /
+      `inputEffectsOf` accessors.
+- [x] Undoing back to "no insert" removes the field rather than leaving an
+      empty husk, and `addInputEffect` clears `presetId` because editing a chain
+      invalidates the whole-chain preset identity.
+- [x] Loading code rejects unknown future versions — unchanged, `migrateProject`
+      already throws on a newer `schemaVersion`.
+- [x] 11 specs in `tests/input-insert-model.test.ts` pin the model contract.
 
-**Exit:** a project round-trips through IndexedDB with the insert intact, and
-unknown versions are refused.
+**Not in this phase (deliberately):** no normalization of `inputInsert` in
+`normalizeProject`, matching how `midiOutput`, `sampleIdB` and `velocityLayers`
+are trusted. The gate is that every writer goes through a command; a hostile-doc
+sanitizer for it belongs with the Phase 4 engine work, where the effects it holds
+actually execute.
 
 ### Phase 4 — CAB processor
 

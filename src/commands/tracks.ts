@@ -7,9 +7,11 @@ import type {
   GenerativeTrackConfig,
   InstrumentKind,
   InstrumentTrack,
+  InputInsertMode,
   MacroMapping,
   ProjectDocument,
   Track,
+  TrackInputInsert,
 } from "../project-model/types";
 import { MASTER_EFFECT_OWNER_ID } from "../project-model/types";
 import { DEFAULT_GATE_PATTERN } from "../project-model/modulators";
@@ -744,6 +746,115 @@ export function clearAllMutes(doc: ProjectDocument): Command {
   const count = doc.tracks.filter((t) => t.mute).length;
   if (count === 0) throw new Error("Nothing is muted");
   return snapshot("clearAllMutes", `Clear mute on ${count} tracks`, doc, touched);
+}
+
+/* ---------------- input insert ---------------- */
+
+/**
+ * Tracks that can be armed for audio capture and therefore own an input insert
+ * chain. A group is a routing bus with no input of its own; a generative track
+ * produces audio rather than capturing it.
+ */
+type InputInsertCapable = DrumTrack | InstrumentTrack;
+
+function isInputInsertCapable(track: Track): track is InputInsertCapable {
+  return track.kind === "drum" || track.kind === "instrument";
+}
+
+/** The armed-input insert chain of `trackId`, or undefined when there is none. */
+export function inputInsertOf(doc: ProjectDocument, trackId: string): TrackInputInsert | undefined {
+  const track = doc.tracks.find((c) => c.id === trackId);
+  return track && isInputInsertCapable(track) ? track.inputInsert : undefined;
+}
+
+/** Effects in the armed-input insert chain. Empty when there is no chain. */
+export function inputEffectsOf(doc: ProjectDocument, trackId: string): EffectInstance[] {
+  return inputInsertOf(doc, trackId)?.effects ?? [];
+}
+
+/**
+ * Apply `fn` to a track's input insert chain. A track without one gets the
+ * default empty `raw` insert, so the first edit is the same edit as later ones.
+ * Returning `undefined` from `fn` removes the chain entirely and restores dry
+ * monitoring.
+ */
+function withInputInsert(
+  doc: ProjectDocument,
+  trackId: string,
+  fn: (insert: TrackInputInsert) => TrackInputInsert | undefined,
+): ProjectDocument {
+  let matched = false;
+  const tracks = doc.tracks.map((track) => {
+    if (track.id !== trackId || !isInputInsertCapable(track)) return track;
+    matched = true;
+    const current: TrackInputInsert = track.inputInsert ?? { mode: "raw", effects: [] };
+    const next = fn(current);
+    if (next === undefined) {
+      if (track.inputInsert === undefined) return track;
+      const { inputInsert: _dropped, ...rest } = track;
+      return rest;
+    }
+    return { ...track, inputInsert: next };
+  });
+  if (!matched) throw new Error(`Track ${trackId} has no armed audio input`);
+  return { ...doc, tracks };
+}
+
+/**
+ * Switch how the armed input is recorded. `"raw"` keeps ADR 0014 §3: the
+ * committed take is untouched input PCM and the chain runs on monitoring and
+ * playback only. `"baked"` commits the post-insert signal instead.
+ */
+export function setInputInsertMode(doc: ProjectDocument, trackId: string, mode: InputInsertMode): Command {
+  const next = withInputInsert(doc, trackId, (insert) => ({ ...insert, mode }));
+  return snapshot("setInputInsertMode", `Input insert recording: ${mode}`, doc, next);
+}
+
+/** Clear the insert chain and return the track to dry monitoring. */
+export function clearInputInsert(doc: ProjectDocument, trackId: string): Command {
+  const next = withInputInsert(doc, trackId, () => undefined);
+  return snapshot("clearInputInsert", "Clear input insert", doc, next);
+}
+
+/** Add an effect to the armed-input insert chain, ahead of the track FX. */
+export function addInputEffect(
+  doc: ProjectDocument,
+  trackId: string,
+  type: EffectType,
+  insertAt?: number,
+): Command & { readonly effectId: string } {
+  const fx: EffectInstance = { id: uid("fx"), type, bypassed: false, params: defaultParamsOf(type) };
+  if (type === "stepGate") fx.steps = [...DEFAULT_GATE_PATTERN];
+  if (type === "stutter") fx.steps = Array.from({ length: 16 }, () => 1);
+  const initial = inputEffectsOf(doc, trackId);
+  const index = insertAt === undefined ? initial.length : Math.max(0, Math.min(initial.length, Math.floor(insertAt)));
+  return {
+    type: "addInputEffect",
+    label: `Add ${EFFECT_META[type].name} to input`,
+    effectId: fx.id,
+    execute: (d) =>
+      withInputInsert(d, trackId, (insert) => {
+        const effects = [...insert.effects];
+        effects.splice(Math.max(0, Math.min(effects.length, index)), 0, fx);
+        // Editing the chain drops any whole-chain preset identity.
+        return { ...insert, effects, presetId: null };
+      }),
+    undo: (d) =>
+      withInputInsert(d, trackId, (insert) => ({
+        ...insert,
+        effects: insert.effects.filter((f) => f.id !== fx.id),
+      })),
+  };
+}
+
+/** Remove one effect from the armed-input insert chain. */
+export function removeInputEffect(doc: ProjectDocument, trackId: string, effectId: string): Command {
+  const next = withInputInsert(doc, trackId, (insert) => ({
+    ...insert,
+    effects: insert.effects.filter((f) => f.id !== effectId),
+    presetId: null,
+  }));
+  return snapshot("removeInputEffect", "Remove input effect", doc, next);
 }
 
 /* ---------------- effects ---------------- */
