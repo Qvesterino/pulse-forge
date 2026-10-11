@@ -443,6 +443,25 @@ let skrutkaWorkletKb = 0;
 }
 console.log(`[size-budget] SKRUTKA worklet: ${skrutkaWorkletKb.toFixed(0)} KB (budget ${SKRUTKA_WORKLET_BUDGET_KB})`);
 
+// PORTAL spectral delay / resonator (ADR 0038): a LAZY first-party effect module
+// for the same reason SKRUTKA is one — the core boot bundle has no room. The core
+// bundle measures ~149/150 KB and check-bundle-size.mjs records that kaskada's
+// spectral DSP is what forced its budget from 120 to 150, so a second spectral
+// processor there was never an option (ADR 0038, D1). Measured ~14 KB: the FFT is
+// the vendored radix-2 oracle imported from ozvena-core, not a copy, so PORTAL
+// pays for the STFT framing and the two per-bin banks and nothing else.
+const SPECTRAL_WORKLET_BUDGET_KB = 24;
+let spectralWorkletKb = 0;
+{
+  const path = join(dist, "spectral-worklet.js");
+  if (!statSync(path).isFile()) {
+    console.error("[size-budget] FAIL — missing PORTAL worklet: dist/spectral-worklet.js");
+    process.exit(1);
+  }
+  spectralWorkletKb = statSync(path).size / 1024;
+}
+console.log(`[size-budget] PORTAL worklet: ${spectralWorkletKb.toFixed(0)} KB (budget ${SPECTRAL_WORKLET_BUDGET_KB})`);
+
 let failed = false;
 if (entryKb > ENTRY_BUDGET_KB) {
   console.error(`[size-budget] FAIL — entry chunk over budget: ${entryKb.toFixed(0)} > ${ENTRY_BUDGET_KB} KB.`);
@@ -565,6 +584,12 @@ if (kopaWorkletKb > KOPA_WORKLET_BUDGET_KB) {
 if (skrutkaWorkletKb > SKRUTKA_WORKLET_BUDGET_KB) {
   console.error(
     `[size-budget] FAIL — SKRUTKA worklet over budget: ${skrutkaWorkletKb.toFixed(0)} > ${SKRUTKA_WORKLET_BUDGET_KB} KB.`,
+  );
+  failed = true;
+}
+if (spectralWorkletKb > SPECTRAL_WORKLET_BUDGET_KB) {
+  console.error(
+    `[size-budget] FAIL — PORTAL worklet over budget: ${spectralWorkletKb.toFixed(0)} > ${SPECTRAL_WORKLET_BUDGET_KB} KB.`,
   );
   failed = true;
 }

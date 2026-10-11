@@ -63,10 +63,13 @@ graph cannot express (hundreds of nodes per voice; no hold curves).
   `scripts/measure-preset-loudness.mjs` loads KOPA's lazy worklet and calls
   `prepareOfflineRender()` before rendering. All 16 KOPA presets measured
   −32.6 to −24.8 LUFS before normalization, with generated corrections from
-  −2.5 to +2.6 dB in `src/presets/preset-loudness.generated.ts`. This pins
-  integrated loudness only; peak headroom, fallback parity and practical
-  preset-to-preset usefulness remain follow-up work. The live worklet path
-  keeps its audibility gate in `browser-checks.ts`.
+  −2.5 to +2.6 dB in `src/presets/preset-loudness.generated.ts`. The projected
+  sample peak after normalization and the 0.78 audition gain is −23.9 to
+  −16.9 dBFS (highest: `factory.kopa.house.thump`), leaving ample audition
+  sample-peak margin. This does not cover inter-sample true peak or arbitrary
+  mixer/master gain. Fallback parity and practical preset-to-preset usefulness
+  remain follow-up work. The live worklet path keeps its audibility gate in
+  `browser-checks.ts`.
 - Stems route KOPA tracks into the `drums` stem; embed energy classification
   counts KOPA as drums; intent exact parsing maps "kopa"/"kick design" to the
   instrument.

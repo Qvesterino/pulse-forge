@@ -45,6 +45,7 @@ import { createGranularFreezeNode } from "../audio-worklets/granularfreeze-node"
 import { createReverbNode } from "../audio-worklets/reverb-node";
 import { createBassHarmonicNode } from "../audio-worklets/bass-harmonic-node";
 import { createSkrutkaNode } from "../audio-worklets/skrutka-node";
+import { createPortalNode } from "../audio-worklets/portal-node";
 import { characterCurve, type CharacterMode } from "./characterCurve";
 import {
   eqParams,
@@ -102,6 +103,7 @@ import {
   kaskadaParams,
   bassHarmonicParams,
   skrutkaParams,
+  portalParams,
   FXEQ_PARAM_DEFAULTS,
   ULTINA_PARAM_DEFAULTS,
   MORPH_PARAM_DEFAULTS,
@@ -253,6 +255,7 @@ export const WORKLET_EFFECTS: Partial<Record<EffectType, "critical" | "degraded"
   bassHarmonic: "degraded",
   // SKRUTKA rides the same lazy first-party contract.
   skrutka: "degraded",
+  portal: "degraded",
 };
 
 export type EffectProcessorStatus = "ok" | "bypassed" | "fallback";
@@ -3660,7 +3663,26 @@ const skrutka: EffectDefinition = {
   params: skrutkaParams,
   factory(ctx, instance, env) {
     if (isWorkletReady("skrutka", ctx)) return createSkrutkaNode(ctx, instance, env);
-    return bypassRuntime(ctx, "AudioWorklet unavailable — phase dispersion bypassed (1:1 signal)");
+    return bypassRuntime(ctx, "AudioWorklet unavailable - phase dispersion bypassed (1:1 signal)");
+  },
+};
+
+/**
+ * PORTAL - spectral delay / resonator (ADR 0038).
+ *
+ * A spectral effect has no honest native approximation: an STFT delay cannot be
+ * expressed as a graph of native nodes. A context without the lazy module
+ * therefore gets the 1:1 bypass with a reason the user can act on, not a
+ * half-working comb delay that would be mistaken for the real thing.
+ */
+const portal: EffectDefinition = {
+  type: "portal",
+  name: "PORTAL",
+  category: "space",
+  params: portalParams,
+  factory(ctx, instance) {
+    if (isWorkletReady("portal", ctx)) return createPortalNode(ctx, instance);
+    return bypassRuntime(ctx, "AudioWorklet unavailable - PORTAL spectral delay bypassed (1:1 signal)");
   },
 };
 
@@ -3803,6 +3825,7 @@ export const EFFECT_DEFS: Record<EffectType, EffectDefinition> = {
   granularFreeze,
   bassHarmonic,
   skrutka,
+  portal,
 };
 
 /** Effects intentionally exposed in the new mixer Add Effect menu. */

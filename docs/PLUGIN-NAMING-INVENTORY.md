@@ -218,53 +218,83 @@ Seven devices, one problem: **the name says nothing, so the one-liner in the too
 becomes the only explanation.** That is the opposite of "understandable without
 opening it".
 
-### Two coherent directions
+### Direction chosen (2026-10-11)
 
-**Direction A — keep the Slavic layer, make it legible.**
-KOPA, TSAR, KOREŇ and ŠÍRKA are genuinely distinctive; they are the identity of the
-product and they do not sound like Ableton. Keep them, but require every one to carry
-a hint of function, and accept that the catalog is Czech/Slovak-flavoured.
+**No Czech/Slovak names in the catalog.** Direction A above is dropped: the Slavic layer
+was never wanted, it is to be removed, not repaired. The target is a **neutral, abstract,
+international naming system**:
 
-**Direction B — descriptive everywhere, one language.**
-Every effect named for what it does, in English, in the style of a hardware plugin
-list. Maximum clarity, zero distinctiveness. KOPA becomes "Kick Designer", PRISM becomes
-"Dynamic EQ". The product becomes competent and forgettable.
+- **3–5 letters**
+- **1–2 syllables**
+- **Abstract, but carrying a hint of what the device does**
+- Neutral to both Slovak and international users
+- Same register as PRISM, MORPH, ZENIT, VLYX — the names that already work
 
-**Recommendation: a hybrid with an explicit line.** Direction A for the seven devices
-that are genuinely engines, Direction B for everything else — which is already the case
-for ~47 of 54 effects. The catalog only *feels* inconsistent because seven devices
-break the pattern and nobody wrote the pattern down.
+Note that two of the "Slavic" names were not Slavic at all: `ozvena` (= echo) was
+replaced by **VØID**, and `kaskada` (= cascade) by **RYFT**. Those two lost their
+meaning in translation, which is a separate argument for changing them.
 
 ### What a name must pass
 
-For any rename, three tests:
+For any rename, four tests:
 
-1. **Does it predict the function?** Someone who has not opened it should guess
-   roughly what it does. (PRISM passes, APEKS fails.)
-2. **Is it pronounceable and typeable for the whole team?** Slovak and international
-   users both have to be able to say it.
-3. **Does it match the type key?** `kaskada` displaying as RYFT means the codebase
-   disagrees with itself.
+1. **Does it hint at the function?** Someone who has not opened it should guess roughly
+   what it does. (PRISM passes — light splits into a spectrum, mix splits into bands.
+   APEKS fails.)
+2. **3–5 letters, 1–2 syllables?** The catalog's shape, not an exception.
+3. **Neutral language?** No Czech/Slovak words.
+4. **Does it match the type key?** `kaskada` displaying as RYFT means the codebase
+   disagrees with itself. This is the strongest argument that RYFT should be reverted.
 
-### Suggested replacements (discussion, not applied)
+### Replacement proposals (discussion, not applied)
 
-Czech/Slavak layer, keeping the flavour but making each name self-explanatory:
+Target: 3–5 letters, 1–2 syllables, abstract, neutral, with a hint of function.
+Each row offers a primary and alternates.
 
-| Current | Proposal | Why |
-| --- | --- | --- |
-| VØID | **OZVĚNA** / **KOZUB** | "Ozvěna" = echo, literally describes it. "Kozub" (chimney) fits reverb-as-space. |
-| ŠÍRKA | **ŠÍRKA** (keep, add hint) | Correct and real; just needs the tooltip to arrive first. |
-| PRÚD | **PRÚD** (keep, add hint) | "Current" fits dynamic EQ taming resonances. |
-| SKRUTKA | **SKRUTKA** (keep) | "Screw/twist" genuinely fits phase dispersion. |
-| APEKS | **VRCHOL** (peak) or rename to **MASTERS** | "Vrchol" is the Slovak word for apex and is self-explanatory. |
-| RYFT | **KASKÁDA** (revert) | Fixes test 3 — the key is already `kaskada`, and cascade describes the falling sweep. |
+| Current | Type | Function | Primary | Alternates |
+| --- | --- | --- | --- | --- |
+| KOREŇ | `bassHarmonic` | Bass harmonic processor | **GROW** | HARM, SPROUT |
+| ŠÍRKA | `sirka` | Per-band stereo width | **SPAN** | WIDE, FLARE |
+| PRÚD | `prud` | Dynamic EQ | **TIDE** | FLOW, SURGE |
+| SKRUTKA | `skrutka` | Phase dispersion | **TWIST** | WARP, SKEW |
+| VØID | `ozvena` | Per-band decay reverb | **DRIFT** | HAZE, ECHO |
+| RYFT | `kaskada` | Reverse / freeze / spectral ducking | **RIFT** | RIFT→CASCADE too long; **ECHO** taken by reverb family; **DIVE** |
+| APEKS | `apeks` | Loudness maximizer | **APEX** | PEAK, CROWN |
 
-### One thing to settle before renaming
+Rationale per name:
 
-Which direction the product wants is a brand decision, not a technical one, and it
-changes most of the list. Worth deciding explicitly: **is KYX a Czech/Slovak-named
-product with English explanations, or an English-named product?** Everything else
-follows from that.
+- **GROW** — the device adds harmonics the source is missing; the sound literally grows
+  richer. Verb reads as action, which is what the plugin does.
+- **SPAN** — stereo *span*. One word that names the exact parameter, 4 letters, and does
+  not collide with Haas Widener (which is a different, single-delay trick).
+- **TIDE** — dynamic EQ tames resonances only while they ring: the energy comes and goes
+  like a tide. 4 letters, 1 syllable.
+- **TWIST** — phase dispersion *is* a time-domain twist. Already means something musical.
+- **DRIFT** — per-frequency decay means each band fades at its own rate; the tail drifts
+  apart. Abstract enough to be a brand, concrete enough to hint at space.
+- **RIFT** — a rift/tear in the sound, which is what a reverse sweep + freeze does to the
+  timeline. 4 letters, 1 syllable.
+- **APEX** — this is simply the correct spelling of what APEKS was reaching for. Highest
+  honesty fix in the list: the name already existed, with one letter missing.
+
+### Deliberately unchanged
+
+| Name | Why it stays |
+| --- | --- |
+| PRISM | Passes all four tests. The best name in the catalog. |
+| MORPH | The name *is* the function. |
+| ZENIT | Abstract, neutral, 5 letters; zenith implies "the top of the mastering chain". |
+| VLYX | Abstract, neutral, 4 letters; flagship Mix Assist. |
+| KOPA | Not a Czech word in use — a product name for the kick designer. 4 letters. |
+| TSAR | Neutral, 4 letters, hybrid engine. |
+
+### Notes on the wider catalog
+
+The same 3–5 letter test could be applied to the 47 descriptively named effects
+("Compressor", "Reverse Swell", "Transient Shaper"). That is a different and much larger
+decision — those names are already clear and functional. The cases that most need
+changing are the ones where the current name is neither clear nor consistent, which is
+the seven above.
 
 ---
 

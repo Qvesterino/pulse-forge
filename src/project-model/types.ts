@@ -69,7 +69,8 @@ export type EffectType =
   | "ozvena"
   | "morphdynamics"
   | "bassHarmonic"
-  | "skrutka";
+  | "skrutka"
+  | "portal";
 
 export type InstrumentKind =
   | "sampler"

@@ -1,6 +1,6 @@
 # KOPA + KOREŇ — V2 backlog
 
-**Stav:** implementácia prebieha; typecheck, oba worklet buildy a loudness merania prešli, regresné DSP merania ešte zostávajú · **Aktualizované:** 2026-10-11  
+**Stav:** implementácia prebieha; loudness/peak merania prešli, regresné DSP merania ešte zostávajú · **Aktualizované:** 2026-10-11
 **Rozsah:** KOPA je kick-design inštrument; KOREŇ je samostatný Bass Harmonic Processor insert.  
 **V1 kontext:** [historický implementačný plán](KOPA-KOREN-IMPLEMENTATION-PLAN.md), [ADR 0034 — KOREŇ](adr/0034-koren-bass-harmonic-exciter.md), [ADR 0035 — KOPA](adr/0035-kopa-kick-designer.md), [ADR 0036 — KOPA harmonics](adr/0036-kopa-bass-harmonic-layer.md).  
 **Povinná DSP brána:** [NEW-EFFECT-CHECKLIST.md](NEW-EFFECT-CHECKLIST.md).
@@ -18,7 +18,7 @@
 
 - [ ] **Zjednotiť velocity law medzi workletom a fallbackom.** Implementácia teraz aplikuje velocity raz na celý hlas a velocity modulation číta samostatnú hodnotu; fallback už velocity po druhý raz neaplikuje na click/harmonics. Zostáva pinovať RMS aj pomer click/body/harmonics pri velocity 0.2, 0.5 a 1 na oboch cestách.
 - [ ] **Zadefinovať zmluvu fallbacku.** Fallback teraz pokrýva pitch envelope, body waveform/hollow, tuning, click typy, harmonics a drive/punch. Stále treba zmerať všetky ovládače a rozhodnúť, ako používateľovi priznať rozdiely oproti workletu (najmä mod matrix a stereo spread).
-- [ ] **Zmerať presety cez skutočný KOPA worklet.** Loudness harness načíta lazy worklet a pred exportom nasadí offline event queue. Všetkých 16 presetov už má zmeraný LUFS priamo cez worklet (−32.6 až −24.8 LUFS pred korekciou; automatická korekcia −2.5 až +2.6 dB). Ešte zmerať peak/headroom a vzájomnú použiteľnosť presetov; native fallback ponechať ako samostatnú metriku.
+- [ ] **Zmerať presety cez skutočný KOPA worklet.** Loudness harness načíta lazy worklet a pred exportom nasadí offline event queue. Všetkých 16 presetov má zmeraný LUFS priamo cez worklet (−32.6 až −24.8 LUFS pred korekciou; automatická korekcia −2.5 až +2.6 dB). Sample peak po korekcii a audition gain-e 0.78 je −23.9 až −16.9 dBFS; najvyššie `house.thump`. Zostáva true-peak/produkčný gain kontext, fallback parity a hudobná použiteľnosť/odlišnosť presetov.
 - [ ] **Uzavrieť MIDI a one-shot kontrakt.** `TRIGGER` teraz ponúka `ONE SHOT` (dohrá obálku) a `GATED` (existujúce `noteOff` choke správanie, predvolená kompatibilná voľba). Otestovať krátke MIDI noty, oba režimy, choke, retrigger a voice-steal bez klikov či useknutého tailu.
 - [ ] **Prejsť parameter route od UI po DSP.** Každý viditeľný parameter musí mať zhodný rozsah/default v definícii, sanitizáciu v DSP, živú zmenu aj zmysluplný rozsah účinku. Zapísať testovateľný dôkaz, že minimum a maximum menia určenú zvukovú metriku.
 
@@ -28,7 +28,7 @@
 - [ ] **Zvýšiť istotu pitch trackingu bez falošných partialov.** Zostaviť vstupnú testovaciu sadu: čistá 808, silná 2. a 3. harmonická, pitch glide, krátke kicky, ticho/šum, stereo out-of-phase bas a kick súčasne s basou. Zmerať detekčnú chybu, čas lock/unlock a úroveň syntézy pri strate confidence. Pri nejasnom fundamentе má efekt harmoniky bezpečne stiahnuť, nie hádať oktávu.
 - [ ] **Doplniť hysterezis a plynulé odomknutie.** Generátor teraz začne uvoľňovať starý koreň po dvoch neúspešných detekčných oknách; UI ukazuje `LOCKED`/`HOLD`/`SEARCH` a confidence. Zmerať, že prechod nerobí pumpovanie/chvenie a doladiť hold/release podľa corpus testov.
 - [ ] **Zabezpečiť generátor proti aliasingu a nebezpečným sample rate.** Partialy sa teraz plynulo stlmia od 0.42× do 0.48× sample rate. Zmerať `range`/`f0`/sample-rate sweep vrátane SAT/FOLD charakteru; oversampling/ďalší anti-aliasing pridávať až keď meranie ukáže potrebu a CPU budget to dovolí.
-- [ ] **Zmerať gain a mono kompatibilitu.** FX loudness meter už zmeral 4 factory KOREŇ presety (korekcie −0.6 až +3.5 dB). Ešte porovnať bypass/wet na level-matched nastavení a zmerať sub energiu, pásmo 120–350 Hz, telefónnu oblasť a mono fold-down pri `mix`, `subAnchor`, `width`, `presence` a výstupe. „PHONE READY“ má znamenať viac čitateľného basu bez nečakaného skoku hlasitosti alebo vymazania subu.
+- [ ] **Zmerať gain a mono kompatibilitu.** FX loudness meter už zmeral 4 factory KOREŇ presety (korekcie −0.6 až +3.5 dB); peak-safe trim je obmedzený na −1 dBFS sample peak cez tri referenčné slučky. Ešte porovnať bypass/wet na level-matched nastavení a zmerať sub energiu, pásmo 120–350 Hz, telefónnu oblasť a mono fold-down pri `mix`, `subAnchor`, `width`, `presence` a výstupe. „PHONE READY“ má znamenať viac čitateľného basu bez nečakaného skoku hlasitosti alebo vymazania subu.
 - [ ] **Spriehľadniť stav trackera v paneli.** Vizuálne rozlíšiť „zamknutý fundament“, „hľadám tón“ a „mimo tracking okna“; ukázať confidence, nie iba odhad Hz. Keď sa nič nesyntetizuje, meter nesmie vyzerať, akoby efekt stále generoval harmoniky.
 - [ ] **Zmerať realtime rozpočet.** Soak/CPU meranie na 44.1/48/96 kHz a stereo v najdrahšom nastavení (`range`, width, key mode). KOREŇ musí bezpečne stíhať AudioWorklet deadline bez alokácií v `process()` a bez telemetry prevádzky závislej od otvoreného panelu.
 

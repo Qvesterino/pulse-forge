@@ -164,6 +164,8 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
       const bodyWave = Math.round(clampParam(params.bodyWave ?? 0, 0, 2));
       const bodyHollow = clampParam(params.bodyHollow ?? 0.25, 0, 1);
       const bodyDecay = clampParam(params.bodyDecay ?? 0.35, 0.03, 2);
+      const tailDecay = clampParam(params.tailDecay ?? 0.4, 0.05, 3);
+      const subDecay = Math.max(bodyDecay, tailDecay);
       const subTune = params.subTune ?? 0;
       const clickType = Math.round(clampParam(params.clickType ?? 0, 0, 3));
       const clickTone = clampParam(params.clickTone ?? 2500, 300, 9000);
@@ -268,7 +270,7 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
         const subGain = ctx.createGain();
         subGain.gain.setValueAtTime(0.0001, when);
         subGain.gain.exponentialRampToValueAtTime(Math.max(0.0001, subLevel * 0.5), when + 0.004);
-        subGain.gain.setTargetAtTime(0, when, Math.max(0.01, (params.tailDecay ?? 0.4) * 0.33));
+        subGain.gain.setTargetAtTime(0, when, Math.max(0.01, subDecay * 0.33));
         sub.connect(subGain).connect(voiceInput);
         sub.start(when);
         oscs.push(sub);
@@ -278,10 +280,12 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
       if (tailLevel > 0.001) {
         const tail = ctx.createOscillator();
         tail.type = "sine";
-        tail.frequency.setValueAtTime(Math.max(10, bodyF * Math.pow(2, (params.tailTune ?? 0) / 12)), when);
+        // The DSP core tunes the tail from the note's root; bodyTune and the
+        // transient pitch sweep belong to the body/sub/harmonic layers only.
+        tail.frequency.setValueAtTime(Math.max(10, base * Math.pow(2, (params.tailTune ?? 0) / 12)), when);
         const tailGain = ctx.createGain();
         tailGain.gain.setValueAtTime(Math.max(0.0001, tailLevel * 0.9), when);
-        tailGain.gain.setTargetAtTime(0, when, Math.max(0.01, (params.tailDecay ?? 0.4) * 0.33));
+        tailGain.gain.setTargetAtTime(0, when, Math.max(0.01, tailDecay * 0.33));
         tail.connect(tailGain).connect(voiceInput);
         tail.start(when);
         oscs.push(tail);
@@ -310,19 +314,17 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
             if (length > 2) data[2] = 0.25;
           } else {
             let seed = (0x9e3779b9 + id * 0x85ebca6b) >>> 0;
+            let previousNoise = 0;
             for (let i = 0; i < length; i++) {
               seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-              data[i] = ((seed / 0xffffffff) * 2 - 1) * (1 - i / length);
+              const noiseSample = (seed / 0xffffffff) * 2 - 1;
+              data[i] = clickType === 1 ? noiseSample - previousNoise : noiseSample;
+              previousNoise = noiseSample;
             }
           }
           const noise = ctx.createBufferSource();
           noise.buffer = buffer;
-          if (clickType === 1) {
-            const hp = ctx.createBiquadFilter();
-            hp.type = "highpass";
-            hp.frequency.setValueAtTime(clickTone, when);
-            noise.connect(hp).connect(clickGain);
-          } else noise.connect(clickGain);
+          noise.connect(clickGain);
           source = noise;
         }
         if (clickType === 2) source.connect(clickGain);
@@ -340,9 +342,10 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
         try {
           const maxDecay = Math.max(
             bodyDecay,
-            params.tailLevel === 0 ? 0 : clampParam(params.tailDecay ?? 0.4, 0.05, 3),
-            harmonicLevel === 0 ? 0 : harmonicDecay,
-            clickLevel === 0 ? 0 : clickDecay,
+            tailLevel <= 0.001 ? 0 : tailDecay,
+            subLevel <= 0.001 ? 0 : subDecay,
+            harmonicLevel <= 0.001 ? 0 : harmonicDecay,
+            clickLevel <= 0.001 ? 0 : clickDecay,
           );
           // The fallback is one-shot even when a host omits noteOff. Release
           // every oscillator after its longest audible envelope has fallen

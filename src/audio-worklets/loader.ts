@@ -29,7 +29,15 @@ const failedContexts = new WeakSet<BaseAudioContext>();
 const inflight = new Map<BaseAudioContext, Promise<void>>();
 
 /** Lazy worklet DSP modules (vendored suites + first-party) — per effect type, on demand. */
-export const LAZY_WORKLET_TYPES = ["fxeq", "ultina", "ozvena", "morphdynamics", "bassHarmonic", "skrutka"] as const;
+export const LAZY_WORKLET_TYPES = [
+  "fxeq",
+  "ultina",
+  "ozvena",
+  "morphdynamics",
+  "bassHarmonic",
+  "skrutka",
+  "portal",
+] as const;
 export type LazyWorkletType = (typeof LAZY_WORKLET_TYPES)[number];
 
 const LAZY_MODULE_URLS: Record<LazyWorkletType, string> = {
@@ -39,6 +47,7 @@ const LAZY_MODULE_URLS: Record<LazyWorkletType, string> = {
   morphdynamics: new URL(assetUrl("/morph-dynamics-worklet.js"), import.meta.url).href,
   bassHarmonic: new URL(assetUrl("/bass-harmonic-worklet.js"), import.meta.url).href,
   skrutka: new URL(assetUrl("/skrutka-worklet.js"), import.meta.url).href,
+  portal: new URL(assetUrl("/spectral-worklet.js"), import.meta.url).href,
 };
 
 const CORE_TYPES = [

@@ -223,30 +223,6 @@ if (measured.length === 0) {
   process.exit(1);
 }
 
-// KOPA is especially transient-heavy: report the projected peak after the
-// loudness correction as well as LUFS, so a good integrated match cannot hide
-// a preset whose transient has no remaining headroom in the audition path.
-const kopaPeakRows = measurements
-  .filter((m) => m.measured && m.id.startsWith("factory.kopa."))
-  .map((m) => {
-    const entry = entries.find((candidate) => candidate.id === m.id);
-    const gainDb = entry?.gain ?? 0;
-    const peakDbfs = m.peak > 0 ? 20 * Math.log10(m.peak) : -Infinity;
-    return { id: m.id, peakDbfs, normalizedPeakDbfs: peakDbfs + gainDb };
-  })
-  .filter((m) => Number.isFinite(m.normalizedPeakDbfs));
-if (kopaPeakRows.length > 0) {
-  const highestKopaPeak = kopaPeakRows.reduce((highest, row) =>
-    row.normalizedPeakDbfs > highest.normalizedPeakDbfs ? row : highest,
-  );
-  const min = Math.min(...kopaPeakRows.map((row) => row.normalizedPeakDbfs));
-  const max = highestKopaPeak.normalizedPeakDbfs;
-  console.log(
-    `[preset-loudness] KOPA projected preview peak after normalization: ${min.toFixed(1)}…${max.toFixed(1)} dBFS` +
-      ` · highest ${highestKopaPeak.id}`,
-  );
-}
-
 // Per-useCase-family targets: one global target would fight the instrument
 // families (an 808 sub and an airy pad measure many dB apart under K-
 // weighting BY DESIGN). Consistency is enforced WITHIN a family — "all 808s
@@ -283,6 +259,29 @@ const entries = measured
     return { id: m.id, gain, integrated: round1(m.integrated), peak: m.peak };
   })
   .sort((a, b) => a.id.localeCompare(b.id));
+
+// KOPA is especially transient-heavy: report the projected peak after the
+// loudness correction as well as LUFS, so a good integrated match cannot hide
+// a preset whose transient has no remaining headroom in the audition path.
+const gainById = new Map(entries.map((entry) => [entry.id, entry.gain]));
+const kopaPeakRows = measurements
+  .filter((m) => m.measured && m.id.startsWith("factory.kopa."))
+  .map((m) => {
+    const peakDbfs = m.peak > 0 ? 20 * Math.log10(m.peak) : -Infinity;
+    return { id: m.id, normalizedPeakDbfs: peakDbfs + (gainById.get(m.id) ?? 0) };
+  })
+  .filter((m) => Number.isFinite(m.normalizedPeakDbfs));
+if (kopaPeakRows.length > 0) {
+  const highestKopaPeak = kopaPeakRows.reduce((highest, row) =>
+    row.normalizedPeakDbfs > highest.normalizedPeakDbfs ? row : highest,
+  );
+  const min = Math.min(...kopaPeakRows.map((row) => row.normalizedPeakDbfs));
+  const max = highestKopaPeak.normalizedPeakDbfs;
+  console.log(
+    `[preset-loudness] KOPA projected preview peak after normalization: ${min.toFixed(1)}…${max.toFixed(1)} dBFS` +
+      ` · highest ${highestKopaPeak.id}`,
+  );
+}
 
 const unmeasured = measurements.filter((m) => !m.measured).map((m) => m.id);
 // A probe at or below -70 LUFS auditions as silence: those presets need a

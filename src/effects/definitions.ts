@@ -261,6 +261,7 @@ export const EFFECT_ORDER: EffectType[] = [
   "prud",
   "bassHarmonic",
   "skrutka",
+  "portal",
 ];
 
 export const CORE_EFFECT_ORDER: EffectType[] = [
@@ -280,6 +281,7 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "vowel",
   "duckDelay",
   "multiTapDelay",
+  "portal",
   "tapeSat",
   "vocoder",
   "reverseSwell",
@@ -2573,6 +2575,64 @@ export const kaskadaParams: ParamDef[] = [
 
 /* ---------------- pure registry ---------------- */
 
+/**
+ * PORTAL — spectral delay / resonator (ADR 0038).
+ *
+ * The delay/feedback pair drives the per-bin delay line, `resonance`/`focus`/
+ * `focusWidth` the per-bin one-pole bank, and `shift` which spectral region is
+ * fed back. `mix = 0` is a bit-exact passthrough, and every param below is read
+ * once per block by the processor (k-rate) — see spectral-worklet.entry.js.
+ */
+export const portalParams: ParamDef[] = [
+  {
+    id: "mode",
+    label: "MODE",
+    min: 0,
+    max: 2,
+    default: 0,
+    options: [
+      { value: 0, label: "DELAY" },
+      { value: 1, label: "RESO" },
+      { value: 2, label: "FREEZE" },
+    ],
+  },
+  { id: "time", label: "TIME", min: 20, max: 2000, default: 320, unit: "ms", format: formatMs, taper: "log" },
+  {
+    id: "sync",
+    label: "SYNC",
+    min: 0,
+    max: 5,
+    default: 0,
+    options: [
+      { value: 0, label: "OFF" },
+      { value: 1, label: "1/4" },
+      { value: 2, label: "1/8" },
+      { value: 3, label: "1/8T" },
+      { value: 4, label: "1/16" },
+      { value: 5, label: "1/16T" },
+    ],
+  },
+  { id: "feedback", label: "FDBK", min: 0, max: 1, default: 0.55, format: formatPct },
+  { id: "decay", label: "DECAY", min: 0, max: 1, default: 0.5, format: formatPct },
+  { id: "resonance", label: "RESO", min: 0, max: 1, default: 0.35, format: formatPct },
+  { id: "focus", label: "FOCUS", min: 20, max: 18000, default: 1200, unit: "Hz", format: formatHz, taper: "log" },
+  { id: "focusWidth", label: "WIDTH", min: 0.1, max: 4, default: 1, unit: "oct", format: (v) => `${v.toFixed(1)} oct` },
+  {
+    id: "shift",
+    label: "SHIFT",
+    min: -24,
+    max: 24,
+    default: 0,
+    unit: "st",
+    format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(0)} st`,
+  },
+  { id: "diffuse", label: "DIFF", min: 0, max: 1, default: 0.3, format: formatPct },
+  { id: "freeze", label: "FREEZE", min: 0, max: 1, default: 0, format: formatPct },
+  { id: "drive", label: "DRIVE", min: 0, max: 1, default: 0, format: formatPct },
+  { id: "tone", label: "TONE", min: -24, max: 24, default: 0, unit: "dB", format: formatDb },
+  { id: "mix", label: "MIX", min: 0, max: 1, default: 0.35, format: formatPct },
+];
+
 /** Metadata half of an effect definition (params without the runtime). */
 export interface EffectDefinitionMeta {
   type: EffectType;
@@ -2637,4 +2697,5 @@ export const EFFECT_META: Record<EffectType, EffectDefinitionMeta> = {
   kaskada: { type: "kaskada", name: "RYFT", category: "space", params: kaskadaParams },
   bassHarmonic: { type: "bassHarmonic", name: "KOREŇ", category: "character", params: bassHarmonicParams },
   skrutka: { type: "skrutka", name: "SKRUTKA", category: "character", params: skrutkaParams },
+  portal: { type: "portal", name: "PORTAL", category: "space", params: portalParams },
 };
