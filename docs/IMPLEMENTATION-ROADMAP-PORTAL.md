@@ -160,22 +160,22 @@ FFI to the vendored FFT: `import { fft, hannWindow, isPow2 } from "../ozvena-cor
 Draft values. `ParamDef` lives in `src/effects/types.ts:3-21` (NOT in `definitions.ts`).
 Formatters `formatMs / formatHz / formatDb / formatPct / formatSec` at `definitions.ts:32-46`.
 
-| id           | label    | min |   max | default | unit  | taper | note                                   |
-| ------------ | -------- | --: | ----: | ------: | ----- | ----- | -------------------------------------- |
-| `mode`       | `MODE`   |   0 |     2 |       0 | —     | —     | enum: `DELAY` / `RESONATOR` / `FREEZE` |
-| `time`       | `TIME`   |  20 |  2000 |     320 | `ms`  | `log` | spectral delay length                  |
-| `sync`       | `SYNC`   |   0 |     5 |       0 | —     | —     | enum: off, 1/4, 1/8, 1/8T, 1/16, 1/16T |
-| `feedback`   | `FDBK`   |   0 |     1 |    0.55 | —     | —     | **hard-clamped, see §6.5**             |
-| `decay`      | `DECAY`  |   0 |     1 |     0.5 | —     | —     | per-bin envelope time constant         |
-| `resonance`  | `RES`    |   0 |     1 |    0.35 | —     | —     | resonator Q, mode-gated                |
-| `focus`      | `FOCUS`  |  20 | 18000 |    1200 | `Hz`  | `log` | band the resonator concentrates on     |
-| `focusWidth` | `WIDTH`  | 0.1 |     4 |       1 | `oct` | —     | octaves around focus                   |
-| `shift`      | `SHIFT`  | -24 |    24 |       0 | `st`  | —     | pitch region fed back                  |
-| `diffuse`    | `DIFF`   |   0 |     1 |     0.3 | —     | —     | per-bin random phase drift seed        |
-| `freeze`     | `FREEZE` |   0 |     1 |       0 | —     | —     | hold the current frame                 |
-| `drive`      | `DRIVE`  |   0 |     1 |       0 | —     | —     | post saturation                        |
-| `tone`       | `TONE`   | -24 |    24 |       0 | `dB`  | —     | post tilt                              |
-| `mix`        | `MIX`    |   0 |     1 |    0.35 | —     | —     | wet/dry                                |
+| id           | label    | min |   max | default | unit  | taper | note                                                                                     |
+| ------------ | -------- | --: | ----: | ------: | ----- | ----- | ---------------------------------------------------------------------------------------- |
+| `mode`       | `MODE`   |   0 |     2 |       0 | —     | —     | enum: `DELAY` / `RESONATOR` / `FREEZE`                                                   |
+| `time`       | `TIME`   |  20 |  2000 |     320 | `ms`  | `log` | spectral delay length                                                                    |
+| `sync`       | `SYNC`   |   0 |     5 |       0 | —     | —     | enum: off, 1/4, 1/8, 1/8T, 1/16, 1/16T                                                   |
+| `feedback`   | `FDBK`   |   0 |     1 |    0.55 | —     | —     | **hard-clamped, see §6.5**                                                               |
+| `decay`      | `DECAY`  |   0 |     1 |     0.5 | —     | —     | per-bin envelope time constant                                                           |
+| `resonance`  | `RESO`   |   0 |     1 |    0.35 | —     | —     | resonator Q, mode-gated (label aligned to the 3 other `resonance` params in the catalog) |
+| `focus`      | `FOCUS`  |  20 | 18000 |    1200 | `Hz`  | `log` | band the resonator concentrates on                                                       |
+| `focusWidth` | `WIDTH`  | 0.1 |     4 |       1 | `oct` | —     | octaves around focus                                                                     |
+| `shift`      | `SHIFT`  | -24 |    24 |       0 | `st`  | —     | pitch region fed back                                                                    |
+| `diffuse`    | `DIFF`   |   0 |     1 |     0.3 | —     | —     | per-bin random phase drift seed                                                          |
+| `freeze`     | `FREEZE` |   0 |     1 |       0 | —     | —     | hold the current frame                                                                   |
+| `drive`      | `DRIVE`  |   0 |     1 |       0 | —     | —     | post saturation                                                                          |
+| `tone`       | `TONE`   | -24 |    24 |       0 | `dB`  | —     | post tilt                                                                                |
+| `mix`        | `MIX`    |   0 |     1 |    0.35 | —     | —     | wet/dry                                                                                  |
 
 `diffuse` must not call `Math.random()` directly — see §6.7.
 

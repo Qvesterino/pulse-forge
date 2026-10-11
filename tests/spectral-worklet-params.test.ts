@@ -298,6 +298,70 @@ describe("PORTAL worklet: every rack param is reachable through AudioParams", ()
 });
 
 /* ------------------------------------------------------------------ */
+/* The rack matches the APPROVED design, not just itself             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Every other guard in this file compares the code against the code: the
+ * descriptors against `portalParams`, the shipped bundle against the source.
+ * That is self-consistency, and self-consistency is exactly how the original
+ * defect shipped - a perfectly coherent set of wrong assumptions.
+ *
+ * This block pins the parameter table from docs/IMPLEMENTATION-ROADMAP-PORTAL.md
+ * §5 — the approved design — so `EFFECT_META.portal` is checked against
+ * something external to itself. A range, default or taper edited in
+ * `definitions.ts` without the design changing with it now fails here instead of
+ * quietly reshaping the product.
+ *
+ * It found one real drift on introduction: the `resonance` label in §5 read RES
+ * while the catalog has used RESO for all three other `resonance` params. The
+ * table said "draft values", so the draft was what drifted — the fix went into
+ * the roadmap, not the effect. This file now carries RESO.
+ *
+ * Changing a value here means the DESIGN changed. Update the roadmap row in the
+ * same commit; do not edit this table to make a failing guard go away.
+ */
+const APPROVED_RACK: Array<[string, string, number, number, number, string | undefined, string | undefined]> = [
+  // id, label, min, max, default, unit, taper
+  ["mode", "MODE", 0, 2, 0, undefined, undefined],
+  ["time", "TIME", 20, 2000, 320, "ms", "log"],
+  ["sync", "SYNC", 0, 5, 0, undefined, undefined],
+  ["feedback", "FDBK", 0, 1, 0.55, undefined, undefined],
+  ["decay", "DECAY", 0, 1, 0.5, undefined, undefined],
+  ["resonance", "RESO", 0, 1, 0.35, undefined, undefined],
+  ["focus", "FOCUS", 20, 18000, 1200, "Hz", "log"],
+  ["focusWidth", "WIDTH", 0.1, 4, 1, "oct", undefined],
+  ["shift", "SHIFT", -24, 24, 0, "st", undefined],
+  ["diffuse", "DIFF", 0, 1, 0.3, undefined, undefined],
+  ["freeze", "FREEZE", 0, 1, 0, undefined, undefined],
+  ["drive", "DRIVE", 0, 1, 0, undefined, undefined],
+  ["tone", "TONE", -24, 24, 0, "dB", undefined],
+  ["mix", "MIX", 0, 1, 0.35, undefined, undefined],
+];
+
+describe("PORTAL rack is the design that was approved", () => {
+  it("has exactly the approved parameters, no more and no fewer", () => {
+    expect(
+      EFFECT_META.portal.params.map((p) => p.id),
+      "an added param must be added to the roadmap §5 table too",
+    ).toEqual(APPROVED_RACK.map((r) => r[0]));
+  });
+
+  it("matches the approved label / range / default / unit / taper, per param", () => {
+    const byId = new Map(EFFECT_META.portal.params.map((p) => [p.id, p]));
+    for (const [id, label, min, max, dflt, unit, taper] of APPROVED_RACK) {
+      const p = byId.get(id)!;
+      expect(p.label, `portal.${id} label`).toBe(label);
+      expect(p.min, `portal.${id} min`).toBe(min);
+      expect(p.max, `portal.${id} max`).toBe(max);
+      expect(p.default, `portal.${id} default`).toBe(dflt);
+      expect(p.unit, `portal.${id} unit`).toBe(unit);
+      expect(p.taper, `portal.${id} taper`).toBe(taper);
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /* The SHIPPED artefact, loaded the way AudioWorklet.addModule() does  */
 /* ------------------------------------------------------------------ */
 
