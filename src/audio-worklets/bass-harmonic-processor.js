@@ -121,6 +121,8 @@ const MAX_PARTIALS = 16; // cap for the 2^range ladder (range 4)
 const PARTIAL_FADE_START = 0.42; // fade upper partials before Nyquist
 const PARTIAL_FADE_END = 0.48; // zero before the Nyquist boundary
 const UNTRACKED_RELEASE_PASSES = 2; // ~64 ms at 48 kHz before stale-root generation releases
+const GLIDE_GAIN = 0.6; // per-crossing pull of f0 toward the measured interval
+const GLIDE_CLAMP = 0.35; // reject a measured interval >35% off the current f0
 
 /**
  * YIN-style pitch detection over the whole decimated ring (`bufLen` samples;
@@ -271,6 +273,7 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     this.sinceRetrig = 1e9; // samples since the last accepted note-on reset
     this.keyEnv = 0; // sidechain-key envelope (PUMP/DUCK)
     this.lastKeyGain = 1; // key scaler applied to the last generated sample
+    this.refineAge = 1e9; // samples since the last accepted GLIDE refinement
     this.clarity = 0; // last accepted YIN clarity (telemetry)
     this.harmRatio = 0; // input (2nd+3rd)/fundamental ratio (telemetry)
     this.lastNormScale = 0; // per-block values mirrored for the meter frame
@@ -311,7 +314,20 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     if (result.hz > 0 && result.clarity >= CLARITY_GATE) {
       // One-pole smoothing: YIN re-locks at ~21 ms cadence; the generator's
       // PLL nudge absorbs the small residual frequency error per period.
-      this.f0 = this.f0 > 0 ? this.f0 + 0.5 * (result.hz - this.f0) : result.hz;
+      // While GLIDE crossings are producing accepted measurements they own
+      // fast tracking, so a SMALL YIN disagreement is just the window's lag
+      // over a sweep — pull gently and let the crossings steer; when no
+      // measurement has landed recently (harmonic-spiked intervals keep
+      // rejecting) fall back to the full 0.5 pull. A LARGE disagreement is
+      // an octave/harmonic confusion either way — always pull hard.
+      if (this.f0 > 0) {
+        const yinDelta = result.hz - this.f0;
+        const gentle = this.refineAge <= this.sampleRate * 0.12;
+        const yinPull = Math.abs(yinDelta) > result.hz * 0.15 ? 0.5 : gentle ? 0.15 : 0.5;
+        this.f0 += yinPull * yinDelta;
+      } else {
+        this.f0 = result.hz;
+      }
       this.clarity = result.clarity;
       this.untrackedPasses = 0;
       this.updateDeficit(this.f0);
@@ -504,6 +520,21 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
       this.sinceCross++;
       if (this.lastSign < 0 && sign > 0 && this.sinceCross >= 16) {
         if (this.f0 > 0 && this.sincePll >= (sr / this.f0) * EDGE_MIN_FRAC) {
+          // GLIDE refinement: the interval between ACCEPTED rising edges is
+          // the CURRENT period (phase-locked to the signal), so a pitch sweep
+          // is followed within ~one period instead of the 125 ms YIN window.
+          // YIN still owns octave disambiguation; the plausibility clamp
+          // keeps a harmonic-induced extra edge (or the first edge after a
+          // gap, whose interval spans the silence) from yanking the root —
+          // a rejected measurement simply skips this update and YIN
+          // re-seeds at its own cadence.
+          const measuredHz = sr / this.sincePll;
+          if (Math.abs(measuredHz - this.f0) <= this.f0 * GLIDE_CLAMP) {
+            this.f0 += GLIDE_GAIN * (measuredHz - this.f0);
+            if (this.f0 < fMin) this.f0 = fMin;
+            else if (this.f0 > fMax) this.f0 = fMax;
+            this.refineAge = 0;
+          }
           this.sincePll = 0;
           for (let n = 2; n <= count; n++) {
             let err = this.phase[n];
@@ -609,6 +640,7 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
 
     // Control-rate detector update (block end — the next block generates from
     // the fresh estimate).
+    this.refineAge += len;
     this.detectSince += len;
     if (this.detectSince >= DETECT_HOP) {
       this.detectSince = 0;

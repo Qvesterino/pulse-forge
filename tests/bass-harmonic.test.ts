@@ -24,7 +24,9 @@ class FakePort {
   onmessage: ((e: unknown) => void) | null = null;
   posted: unknown[] = [];
   postMessage(message: unknown) {
-    this.posted.push(message);
+    // The processor reuses its meter frame object — clone on push or every
+    // entry aliases the LAST frame (postMessage clones in the browser).
+    this.posted.push(message && typeof message === "object" ? { ...(message as Record<string, unknown>) } : message);
   }
 }
 class FakeAudioWorkletProcessor {
@@ -641,6 +643,64 @@ describe("GROW node wrapper (key input + telemetry cache)", () => {
     expect(runtime.getMeters!()).toBe(frame);
     runtime.dispose();
     expect(runtime.getMeters!()).toBeNull();
+  });
+});
+
+describe("KOREŇ wave-7 glide tracking (accepted-crossing refinement)", () => {
+  const F0 = 55;
+  const F1 = 75;
+  const T = 0.5;
+  const R = F1 / F0;
+  const trueF = (t: number) => (t < T ? F0 * Math.pow(R, t / T) : F1);
+  const glideInput = (i: number) => {
+    const t = i / SR;
+    const phase =
+      t < T
+        ? 2 * Math.PI * F0 * ((Math.pow(R, t / T) - 1) * (T / Math.log(R)))
+        : 2 * Math.PI * F0 * ((R - 1) * (T / Math.log(R))) + 2 * Math.PI * F1 * (t - T);
+    return 0.5 * Math.sin(phase);
+  };
+
+  it("follows an exponential pitch sweep within a few percent (refinement owns the glide)", () => {
+    const cls = registered.get("bass-harmonic-processor");
+    let proc: any = null;
+    renderProcessor(
+      cls,
+      paramsOf(cls, { drive: 0.9, mix: 1, subAnchor: 0, focusHz: 90, harmonics: 0, range: 1 }),
+      1.2,
+      glideInput,
+      { proc: (p) => (proc = p) },
+    );
+    const frames = proc.port.posted as { type: string; f0: number }[];
+    // Meter frames land every 2432 samples (19 blocks) at 48 kHz.
+    const errors = frames
+      .map((frame, index) => ({ t: ((index + 1) * 2432) / SR, f0: frame.f0 }))
+      .filter(({ t, f0 }) => t > 0.15 && t < 0.5 && f0 > 0)
+      .map(({ t, f0 }) => Math.abs(f0 - trueF(t)) / trueF(t));
+    expect(errors.length).toBeGreaterThan(5);
+    const mean = errors.reduce((a, b) => a + b, 0) / errors.length;
+    const max = Math.max(...errors);
+    // The pre-refinement baseline measured 5.1 % mean / 5.4 % max on this sweep.
+    expect(mean, `mean glide error ${(mean * 100).toFixed(1)} %`).toBeLessThan(0.03);
+    expect(max, `max glide error ${(max * 100).toFixed(1)} %`).toBeLessThan(0.04);
+  });
+
+  it("harmonic-rich input still settles on the true root (refinement never yanks it)", () => {
+    // 55 Hz + a strong 3rd (165) puts extra rising edges in the detection
+    // band; the plausibility clamp must reject those intervals instead of
+    // reporting a harmonic multiple of the root.
+    const cls = registered.get("bass-harmonic-processor");
+    let proc: any = null;
+    renderProcessor(
+      cls,
+      paramsOf(cls, { drive: 0.9, mix: 1, subAnchor: 0, focusHz: 90, harmonics: 0, range: 1 }),
+      1.2,
+      (i) => 0.5 * Math.sin((2 * Math.PI * 55 * i) / SR) + 0.3 * Math.sin((2 * Math.PI * 165 * i) / SR),
+      { proc: (p) => (proc = p) },
+    );
+    const settled = (proc.port.posted as { f0: number }[]).at(-1)!;
+    expect(settled.f0).toBeGreaterThan(54.5);
+    expect(settled.f0).toBeLessThan(55.5);
   });
 });
 

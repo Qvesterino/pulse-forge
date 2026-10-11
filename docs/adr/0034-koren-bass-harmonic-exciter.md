@@ -295,6 +295,24 @@ trades up to 16 partials instead of 10.
    across three reference loops. These are bundle and reference-loop readings,
    not tracker-quality or mono-compatibility evidence on arbitrary sources.
 
+## Addendum 8 (2026-10-11) — GLIDE tracking refinement
+
+YIN owns octave disambiguation but its 125 ms window lags a pitch sweep
+(measured 5.1 % mean / 5.4 % max tracking error on a 55→75 Hz exponential
+glide). The interval between ACCEPTED rising edge pairs is the CURRENT
+period, so the same crossings the PLL already gates now refine f0 between
+YIN updates: `f0 += 0.6 × (sr/sincePll − f0)` on every accepted edge, with a
+±35 % plausibility clamp (a harmonic-spiked interval — or the first edge
+after a gap, whose interval spans the silence — is rejected, and YIN
+re-seeds at its cadence). While measurements are flowing, a small YIN
+disagreement pulls gently (0.15 — it is just window lag) and a large one
+still pulls hard (0.5 — octave/harmonic confusion); when no measurement has
+landed for 120 ms the full 0.5 pull returns, so harmonic-rich material keeps
+the pre-refinement tracking. Measured on the same sweep: **mean 1.9 % / max
+2.5 %** error. Locked by `tests/bass-harmonic.test.ts` (wave-7 block):
+tracker f0 within 3 % mean / 4 % max of the true glide, and a 55 + strong
+165 Hz input still settling on 55.0 (the clamp never yanks the root).
+
 ## Addendum 7 (2026-10-11) — stale-lock release vs RETRIG
 
 The untracked gate (Addendum 6.2) and the RETRIG note-on reset (wave 3)
