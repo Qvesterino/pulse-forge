@@ -70,6 +70,8 @@ interface Voice {
   bodyEnv: number;
   tailEnv: number;
   harmonicEnv: number;
+  /** MIDI velocity is applied once to the complete voice after its shaper. */
+  velocity: number;
   /** Click noise LCG state. */
   noiseLcg: number;
   /** Previous noise value (HP click type). */
@@ -138,6 +140,7 @@ export class KopaProcessor {
       bodyEnv: 0,
       tailEnv: 0,
       harmonicEnv: 0,
+      velocity: 1,
       noiseLcg: (0x9e3779b9 + index * 0x85ebca6b) >>> 0,
       noisePrev: 0,
       gain: 0,
@@ -183,7 +186,11 @@ export class KopaProcessor {
     voice.bodyPhase = 0;
     voice.tailPhase = 0;
     voice.subPhase = 0;
-    voice.clickEnv = clamp(velocity > 0 ? velocity : 1, 0, 1);
+    // Keep velocity separate from envelopes so it scales every layer exactly
+    // once. A zero/invalid velocity keeps the engine's historical default of
+    // one; the event driver uses noteOff for note termination.
+    voice.velocity = clamp(Number.isFinite(velocity) && velocity > 0 ? velocity : 1, 0, 1);
+    voice.clickEnv = 1;
     voice.bodyEnv = 1;
     voice.tailEnv = 1;
     voice.harmonicEnv = 1;
@@ -194,6 +201,9 @@ export class KopaProcessor {
   }
 
   private noteOff(pitch: number): void {
+    // ONE SHOT lets the percussive envelopes finish independently of MIDI note
+    // length. GATED preserves the established noteOff choke behavior.
+    if ((this.params.triggerMode ?? 1) < 0.5) return;
     for (const voice of this.voices) {
       if (!voice.active || !voice.gate) continue;
       if (Number.isFinite(pitch) && voice.pitch !== pitch) continue;
@@ -406,7 +416,11 @@ export class KopaProcessor {
           click = noise - voice.noisePrev;
           voice.noisePrev = noise;
         } else if (clickType === 2) click = Math.sin((twoPi * clickTone * frame) / sr);
-        else click = voice.age <= 2 ? 1 : 0;
+        else {
+          // A short bipolar impulse is keyed to this hit's sample age, never
+          // the monotonic voice-steal order (`age`).
+          click = voice.samples === 0 ? 1 : voice.samples === 1 ? -0.65 : voice.samples === 2 ? 0.25 : 0;
+        }
 
         let sample =
           bodySignal * voice.bodyEnv * 0.9 +
@@ -418,13 +432,11 @@ export class KopaProcessor {
         // --- modulation (AMP destination only) ----------------------------
         const lfo = Math.sin(twoPi * (lfoBase + voice.index * 0.6180339887498949));
         if (modADst === 3) {
-          const src =
-            modASrc === 0 ? voice.bodyEnv : modASrc === 1 ? lfo : modASrc === 2 ? clamp(voice.clickEnv, 0, 1) : 0;
+          const src = modASrc === 0 ? voice.bodyEnv : modASrc === 1 ? lfo : modASrc === 2 ? voice.velocity : 0;
           sample *= 1 + src * modAAmt;
         }
         if (modBDst === 3) {
-          const src =
-            modBSrc === 0 ? voice.bodyEnv : modBSrc === 1 ? lfo : modBSrc === 2 ? clamp(voice.clickEnv, 0, 1) : 0;
+          const src = modBSrc === 0 ? voice.bodyEnv : modBSrc === 1 ? lfo : modBSrc === 2 ? voice.velocity : 0;
           sample *= 1 + src * modBAmt;
         }
 
@@ -433,7 +445,7 @@ export class KopaProcessor {
         const glued = punch > 0 ? driven / (1 + punch * Math.abs(driven) * 1.5) : driven;
 
         voice.gain += ((voice.gate ? 1 : 0) - voice.gain) * gainCoeff;
-        const mono = glued * voice.gain * level;
+        const mono = glued * voice.gain * voice.velocity * level;
         // stereo widens the correlated layers; default 0 keeps the kick mono.
         outL += mono * (1 + stereo * 0.25);
         outR += mono * (1 - stereo * 0.25);

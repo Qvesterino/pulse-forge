@@ -1115,23 +1115,21 @@ function Device({
               />
             )}
             {fx.type === "skrutka" && (
-              <SkrutkaPanel params={fx.params} degraded={!!fallbackReason} docked={devicesMode} />
+              <SkrutkaPanel
+                trackId={track.id}
+                fxId={fx.id}
+                params={fx.params}
+                degraded={!!fallbackReason}
+                docked={devicesMode}
+                onParam={(paramId, value) =>
+                  services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))
+                }
+                onGestureStart={() => services.store.beginUndoFrame("SKRUTKA curve drag")}
+                onGestureEnd={() => services.store.endUndoFrame()}
+              />
             )}
           </Suspense>
-          {fx.type === "morphdynamics" && (
-            <EffectAbControls
-              effectName={def.name}
-              params={fx.params}
-              deviceState={fx.deviceState?.kind === "effect-ab-v1" ? fx.deviceState : undefined}
-              onStateChange={(next: EffectAbState) =>
-                services.store.execute(
-                  setDeviceState(doc, track.id, fx.id, { kind: "effect-ab-v1", data: { ...next } }),
-                )
-              }
-              onLoad={(slot) => services.store.execute(loadEffectAbSlot(doc, track.id, fx.id, slot))}
-            />
-          )}
-          {fx.type === "ozvena" && (
+          {(fx.type === "morphdynamics" || fx.type === "ozvena" || fx.type === "skrutka") && (
             <EffectAbControls
               effectName={def.name}
               params={fx.params}

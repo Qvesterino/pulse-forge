@@ -16,7 +16,8 @@ _Last updated 2026-10-05._
 Sound-engine work (instruments/effects) is tracked separately, not in the AI
 strategy index: `docs/KOPA-KOREN-IMPLEMENTATION-PLAN.md` (KOREŇ bass exciter +
 KOPA kick designer, both shipped 2026-10-10 with ADR 0034/0035) and the
-SKRUTKA phase-dispersion effect (shipped 2026-10-11, ADR 0037).
+SKRUTKA phase-dispersion effect (shipped 2026-10-11, ADR 0037 + v2 addendum:
+DYNAMIC/KEY/MOTION/SHAPE dynamic-phase layer + editable curve panel).
 
 ## Current wave status
 

@@ -314,6 +314,18 @@
 }
 
 /* KOREŇ panel — live visualizer + PHONE CHECK (device editor inline). */
+.kopa-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+.kopa-preview-row .btn {
+  flex: 0 0 auto;
+}
+
 .koren-panel {
   display: flex;
   flex-direction: column;
@@ -336,6 +348,17 @@
   font-family: var(--mono);
   font-size: 12px;
   min-width: 74px;
+}
+.koren-panel .koren-state,
+.koren-panel .koren-confidence {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.koren-panel .koren-state {
+  color: var(--accent);
+  letter-spacing: 0.04em;
 }
 .koren-panel .koren-boost {
   font-family: var(--mono);
@@ -397,6 +420,30 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--bg-raise) 30%, transparent);
+  cursor: crosshair;
+  touch-action: none;
+}
+.skrutka-panel .skrutka-solo {
+  letter-spacing: 0.5px;
+}
+.skrutka-panel .skrutka-solo.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(150, 140, 255, 0.16);
+}
+.skrutka-panel .skrutka-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.skrutka-panel .skrutka-chip {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.4px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -544,4 +544,69 @@ describe("MasterChain limiter delivery", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it("BAND SOLO glides both monitor filters on live contexts and writes nothing offline", () => {
+    class FakeAudioContext {}
+    vi.stubGlobal("AudioContext", FakeAudioContext);
+    const makeFreqParam = (value = 20) => {
+      const calls: { method: string; args: number[] }[] = [];
+      const param = {
+        value,
+        setTargetAtTime: (next: number, time: number, constant: number) =>
+          calls.push({ method: "setTargetAtTime", args: [next, time, constant] }),
+      } as unknown as AudioParam;
+      return { param, calls };
+    };
+    try {
+      const hp = makeFreqParam(20);
+      const lp = makeFreqParam(20000);
+      const liveCtx = Object.assign(new FakeAudioContext(), {
+        currentTime: 2,
+        sampleRate: 48_000,
+      }) as unknown as AudioContext;
+      const chain = new MasterChain({
+        ctx: () => liveCtx,
+        doc: () => ({ master: defaultMasterConfig() }) as ProjectDocument,
+        metering: {} as MeteringRig,
+        masterInsertLatencySec: () => 0,
+      });
+      Object.assign(chain, {
+        monitorHighpass: { frequency: hp.param },
+        monitorLowpass: { frequency: lp.param },
+      });
+
+      chain.setMonitorBand(400);
+      expect(hp.calls.at(-1)).toEqual({ method: "setTargetAtTime", args: [200, 2, 0.02] });
+      expect(lp.calls.at(-1)).toEqual({ method: "setTargetAtTime", args: [800, 2, 0.02] });
+      chain.setMonitorBand(null);
+      expect(hp.calls.at(-1)).toEqual({ method: "setTargetAtTime", args: [20, 2, 0.02] });
+      expect(lp.calls.at(-1)).toEqual({ method: "setTargetAtTime", args: [20000, 2, 0.02] });
+      // Out-of-range input clamps to the 40 Hz band floor (still a valid
+      // audition band); garbage input turns the band OFF.
+      chain.setMonitorBand(5);
+      expect(hp.calls.at(-1)).toEqual({ method: "setTargetAtTime", args: [20, 2, 0.02] });
+      expect(lp.calls.at(-1)).toEqual({ method: "setTargetAtTime", args: [80, 2, 0.02] });
+      chain.setMonitorBand(Number.NaN);
+      expect(lp.calls.at(-1)).toEqual({ method: "setTargetAtTime", args: [20000, 2, 0.02] });
+
+      // Offline/no-context chains never receive the audition write.
+      const idleHp = makeFreqParam(20);
+      const idleLp = makeFreqParam(20000);
+      const offlineChain = new MasterChain({
+        ctx: () => null,
+        doc: () => ({ master: defaultMasterConfig() }) as ProjectDocument,
+        metering: {} as MeteringRig,
+        masterInsertLatencySec: () => 0,
+      });
+      Object.assign(offlineChain, {
+        monitorHighpass: { frequency: idleHp.param },
+        monitorLowpass: { frequency: idleLp.param },
+      });
+      offlineChain.setMonitorBand(400);
+      expect(idleHp.calls).toEqual([]);
+      expect(idleLp.calls).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

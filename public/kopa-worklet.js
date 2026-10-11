@@ -49,6 +49,7 @@
         bodyEnv: 0,
         tailEnv: 0,
         harmonicEnv: 0,
+        velocity: 1,
         noiseLcg: 2654435769 + index * 2246822507 >>> 0,
         noisePrev: 0,
         gain: 0,
@@ -89,7 +90,8 @@
       voice.bodyPhase = 0;
       voice.tailPhase = 0;
       voice.subPhase = 0;
-      voice.clickEnv = clamp(velocity > 0 ? velocity : 1, 0, 1);
+      voice.velocity = clamp(Number.isFinite(velocity) && velocity > 0 ? velocity : 1, 0, 1);
+      voice.clickEnv = 1;
       voice.bodyEnv = 1;
       voice.tailEnv = 1;
       voice.harmonicEnv = 1;
@@ -99,6 +101,7 @@
       voice.samples = 0;
     }
     noteOff(pitch) {
+      if ((this.params.triggerMode ?? 1) < 0.5) return;
       for (const voice of this.voices) {
         if (!voice.active || !voice.gate) continue;
         if (Number.isFinite(pitch) && voice.pitch !== pitch) continue;
@@ -266,21 +269,23 @@
             click = noise - voice.noisePrev;
             voice.noisePrev = noise;
           } else if (clickType === 2) click = Math.sin(twoPi * clickTone * frame / sr);
-          else click = voice.age <= 2 ? 1 : 0;
+          else {
+            click = voice.samples === 0 ? 1 : voice.samples === 1 ? -0.65 : voice.samples === 2 ? 0.25 : 0;
+          }
           let sample = bodySignal * voice.bodyEnv * 0.9 + Math.sin(voice.tailPhase) * voice.tailEnv * tailLevel * 0.9 + subSignal * Math.max(voice.bodyEnv, voice.tailEnv) * subLevel * 0.5 + harmonicSignal * voice.harmonicEnv * harmonicLevel * 0.55 + click * voice.clickEnv * clickLevel;
           const lfo = Math.sin(twoPi * (lfoBase + voice.index * 0.6180339887498949));
           if (modADst === 3) {
-            const src = modASrc === 0 ? voice.bodyEnv : modASrc === 1 ? lfo : modASrc === 2 ? clamp(voice.clickEnv, 0, 1) : 0;
+            const src = modASrc === 0 ? voice.bodyEnv : modASrc === 1 ? lfo : modASrc === 2 ? voice.velocity : 0;
             sample *= 1 + src * modAAmt;
           }
           if (modBDst === 3) {
-            const src = modBSrc === 0 ? voice.bodyEnv : modBSrc === 1 ? lfo : modBSrc === 2 ? clamp(voice.clickEnv, 0, 1) : 0;
+            const src = modBSrc === 0 ? voice.bodyEnv : modBSrc === 1 ? lfo : modBSrc === 2 ? voice.velocity : 0;
             sample *= 1 + src * modBAmt;
           }
           const driven = drive > 0 ? sample * (1 - drive) + driveCurve(sample * (1 + drive), driveType) * drive : sample;
           const glued = punch > 0 ? driven / (1 + punch * Math.abs(driven) * 1.5) : driven;
           voice.gain += ((voice.gate ? 1 : 0) - voice.gain) * gainCoeff;
-          const mono = glued * voice.gain * level;
+          const mono = glued * voice.gain * voice.velocity * level;
           outL += mono * (1 + stereo * 0.25);
           outR += mono * (1 - stereo * 0.25);
           voice.samples += 1;

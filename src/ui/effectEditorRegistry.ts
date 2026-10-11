@@ -27,7 +27,7 @@ const EDITOR_OVERRIDES: Partial<Record<EffectType, Pick<EffectEditorSpec, "prima
   vinyl: { primaryParamIds: ["amount", "crackle", "hiss", "wow"] },
   // KOREŇ: the four controls the "phone speakers" move actually turns —
   // generator strength, tracking focus, sub retention, blend.
-  bassHarmonic: { primaryParamIds: ["drive", "focusHz", "subAnchor", "mix"] },
+  bassHarmonic: { primaryParamIds: ["drive", "focusHz", "presence", "mix"] },
   // SKRUTKA: the character controls first — smear amount, transient tilt,
   // where the hump sits, and stereo split; mix/output live on the details page.
   skrutka: { primaryParamIds: ["dispersion", "punch", "focusHz", "spread"] },

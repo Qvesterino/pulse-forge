@@ -882,6 +882,11 @@ export const KOPA_BODY_WAVE_OPTIONS = [
   { value: 2, label: "SAW" },
 ] as const;
 
+export const KOPA_TRIGGER_MODE_OPTIONS = [
+  { value: 0, label: "ONE SHOT" },
+  { value: 1, label: "GATED" },
+] as const;
+
 export const KOPA_DRIVE_TYPE_OPTIONS = [
   { value: 0, label: "SOFT" },
   { value: 1, label: "TUBE" },
@@ -958,6 +963,14 @@ export const kopaParams: ParamDef[] = [
     default: 0,
     unit: "st",
     format: (v) => `${v > 0 ? "+" : ""}${v.toFixed(0)} st`,
+  },
+  {
+    id: "triggerMode",
+    label: "TRIGGER",
+    min: 0,
+    max: 1,
+    default: 1,
+    options: [...KOPA_TRIGGER_MODE_OPTIONS],
   },
   // SUB
   { id: "subLevel", label: "SUB", min: 0, max: 1, default: 0.3, format: formatPct },

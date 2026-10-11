@@ -5,6 +5,8 @@
 **Východiskový stav v čase písania:** 23 inštrumentov, 52 efektov, `SCHEMA_VERSION = 16`, TSAR T0–T7 a ADR 0023 hotové.
 **Nadväzuje na:** `docs/NEW-EFFECT-CHECKLIST.md` (povinný), ADR 0004 (AudioWorklet boundary), ADR 0003 (project model ↔ runtime), ADR 0023 (worklet lazy-load precedent), `docs/TSAR-IMPLEMENTATION-ROADMAP.md` (§ štýl fáz a brán), `docs/CURRENT-STATE.md` (jediný zdroj počtov).
 
+V1 realizačný checklist je uzavretý; aktuálne úlohy na kvalitatívnu iteráciu sú v [KOPA + KOREŇ V2 backlogu](KOPA-KOREN-V2-ROADMAP.md).
+
 ## Aktuálne rozdelenie KOPA a KOREŇA
 
 KOPA si ponecháva vlastnú vrstvu **KICK HARMONICS**: čiastkové tóny sú fázovo

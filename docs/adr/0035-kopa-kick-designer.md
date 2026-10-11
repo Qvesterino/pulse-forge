@@ -34,14 +34,14 @@ graph cannot express (hundreds of nodes per voice; no hold curves).
    Its own bundle budget row (`KOPA_WORKLET_BUDGET_KB = 32`) — the core
    worklet bundle is untouched.
 4. Fallback without the module is a REAL audible kick (oscillator pitch ramp
-   + noise click through a gain envelope), the `createTsarFallbackRuntime`
-   precedent — never a dead graph.
+   - noise click through a gain envelope), the `createTsarFallbackRuntime`
+     precedent — never a dead graph.
 5. No project schema bump: `InstrumentKind` is additive and `normalizeProject`
    heals unknown kinds; only `INSTRUMENT_NAMES` (schema) and
    `DEFAULT_GM_PROGRAM_BY_INSTRUMENT` (Nexus mapping) are `Record`-complete
    surfaces that must list it.
 6. KOPA joins the **`drums` preset-intent family** (`FAMILY_INSTRUMENTS.drums
-   = new Set(["kopa"])`, v1 only KOPA; `drumsynth` instrument presets stay
+= new Set(["kopa"])`, v1 only KOPA; `drumsynth` instrument presets stay
    outside until they have a kick-designer equivalent). Family-aware track
    resolution lives in `preset-intent.ts`
    (`resolvePresetFamilyTracks`); `resolveExactTargetTracks` is unchanged so
@@ -59,16 +59,27 @@ graph cannot express (hundreds of nodes per voice; no hold curves).
   presets (527 eager + 116 lazy), and the drums family median moved from
   −28.6 to −24.4 LUFS, which clamped four quiet `drumsynth` siblings (pinned
   in the loudness audit inventory — the per-family rebalance is a follow-up).
-- **Known loudness-harness compromise (TSAR precedent, deliberate):**
-  `scripts/measure-preset-loudness.mjs` does not load worklet modules, so the
-  KOPA gains measure the NATIVE FALLBACK voice, not the full worklet engine
-  (the fallback is a real kick, not a bypass). A harness update that loads
-  `loadInstrumentWorklet` + `prepareOfflineRender` is a separate wave; the
-  live worklet path keeps its own audibility gate in `browser-checks.ts`
-  ("KOPA: offline export is audible through the event-queue worklet").
+- **Worklet loudness calibration (2026-10-11):**
+  `scripts/measure-preset-loudness.mjs` loads KOPA's lazy worklet and calls
+  `prepareOfflineRender()` before rendering. All 16 KOPA presets measured
+  −32.6 to −24.8 LUFS before normalization, with generated corrections from
+  −2.5 to +2.6 dB in `src/presets/preset-loudness.generated.ts`. This pins
+  integrated loudness only; peak headroom, fallback parity and practical
+  preset-to-preset usefulness remain follow-up work. The live worklet path
+  keeps its audibility gate in `browser-checks.ts`.
 - Stems route KOPA tracks into the `drums` stem; embed energy classification
   counts KOPA as drums; intent exact parsing maps "kopa"/"kick design" to the
   instrument.
+
+## Addendum — note length versus one-shot decay (2026-10-11)
+
+KOPA now exposes `TRIGGER` with `ONE SHOT` and `GATED` modes. `GATED` remains
+the default to preserve the existing noteOff contract; it intentionally chokes
+the current hit when MIDI noteOff arrives. `ONE SHOT` lets the designed body,
+sub, click and tail envelopes finish regardless of the note's grid duration.
+The native fallback schedules a bounded oscillator lifetime from the longest
+active layer decay, so hosts that omit noteOff cannot leave silent oscillators
+running indefinitely.
 
 ## Validation contract
 

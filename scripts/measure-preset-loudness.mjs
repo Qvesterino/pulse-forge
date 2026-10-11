@@ -12,12 +12,12 @@
  * preset browsing and application land at a consistent loudness.
  *
  * MEASUREMENT CONVENTION (Phase 4 of docs/PLUGIN-AUDIT-FOLLOWUP-ROADMAP.md):
- * this script measures the DETERMINISTIC NATIVE OFFLINE graph — the probe
- * context deliberately loads NO worklet modules, so wavetable/granular render
- * through the native voice graphs instead of the worklet paths. That is the
- * same routing production exports use (offlineRenderContext gate in
- * src/instruments/registry.ts). Live worklet-path audibility is gated
- * SEPARATELY by src/browser-checks.ts ("live worklet-path audibility" check).
+ * most instruments measure the deterministic native offline graph, matching
+ * their production fallback route. KOPA is the deliberate exception: its
+ * event-queue worklet is also the production offline renderer, so this script
+ * loads that module and seeds its queue before startRendering. The KOPA map
+ * must describe the sound users export, not only its emergency fallback.
+ * Live worklet-path audibility is gated separately by src/browser-checks.ts.
  * Every runtime is asserted non-degraded before measuring: a plugin that
  * falls back to a 1:1 bypass would silently produce a bogus loudness entry.
  *
@@ -64,6 +64,7 @@ const measurements = await page.evaluate(async () => {
   const curated = await import("/src/sample-library/curated.ts");
   const quality = await import("/src/presets/audioQuality.ts");
   const loudness = await import("/src/audio-engine/kweighting.ts");
+  const worklets = await import("/src/audio-worklets/loader.ts");
 
   const SR = 44100;
   // Measure on the bank the app actually plays: synth kit + curated layer.
@@ -138,6 +139,12 @@ const measurements = await page.evaluate(async () => {
     let lastError = null;
     for (let pass = 0; pass < 3; pass++) {
       const ctx = new OfflineAudioContext(2, Math.ceil(SR * (durationSec + 0.25)), SR);
+      if (preset.instrument === "kopa") {
+        await worklets.loadInstrumentWorklet(ctx, "kopa");
+        if (!worklets.isWorkletReady("kopa", ctx)) {
+          throw new Error(`${preset.id}: KOPA worklet failed to load — refusing to measure the fallback instead`);
+        }
+      }
       const previewGain = ctx.createGain();
       previewGain.gain.value = 0.78;
       let runtime = null;
@@ -149,8 +156,12 @@ const measurements = await page.evaluate(async () => {
         if (runtime?.degraded) {
           throw new Error(`${preset.id}: runtime reports degraded — refusing to bake a bypass into the loudness map`);
         }
+        if (preset.instrument === "kopa" && typeof runtime.prepareOfflineRender !== "function") {
+          throw new Error(`${preset.id}: KOPA runtime did not select the offline worklet path`);
+        }
         runtime.output.connect(previewGain).connect(ctx.destination);
         runtime.noteOn(60, 0.82, 0.01, durationSec);
+        runtime.prepareOfflineRender?.();
         const buffer = await ctx.startRendering();
         const channels = Array.from({ length: buffer.numberOfChannels }, (_, ch) => buffer.getChannelData(ch));
         readings.push(loudness.analyzeLoudnessBuffer(channels, SR));
@@ -210,6 +221,30 @@ const measured = measurements.filter((m) => m.measured);
 if (measured.length === 0) {
   console.error("[preset-loudness] no preset produced a measurable render");
   process.exit(1);
+}
+
+// KOPA is especially transient-heavy: report the projected peak after the
+// loudness correction as well as LUFS, so a good integrated match cannot hide
+// a preset whose transient has no remaining headroom in the audition path.
+const kopaPeakRows = measurements
+  .filter((m) => m.measured && m.id.startsWith("factory.kopa."))
+  .map((m) => {
+    const entry = entries.find((candidate) => candidate.id === m.id);
+    const gainDb = entry?.gain ?? 0;
+    const peakDbfs = m.peak > 0 ? 20 * Math.log10(m.peak) : -Infinity;
+    return { id: m.id, peakDbfs, normalizedPeakDbfs: peakDbfs + gainDb };
+  })
+  .filter((m) => Number.isFinite(m.normalizedPeakDbfs));
+if (kopaPeakRows.length > 0) {
+  const highestKopaPeak = kopaPeakRows.reduce((highest, row) =>
+    row.normalizedPeakDbfs > highest.normalizedPeakDbfs ? row : highest,
+  );
+  const min = Math.min(...kopaPeakRows.map((row) => row.normalizedPeakDbfs));
+  const max = highestKopaPeak.normalizedPeakDbfs;
+  console.log(
+    `[preset-loudness] KOPA projected preview peak after normalization: ${min.toFixed(1)}…${max.toFixed(1)} dBFS` +
+      ` · highest ${highestKopaPeak.id}`,
+  );
 }
 
 // Per-useCase-family targets: one global target would fight the instrument

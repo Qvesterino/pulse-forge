@@ -647,6 +647,11 @@ export class AudioEngine {
     this.masterChain.setMonitorHighpass(hz);
   }
 
+  /** BAND SOLO — monitor-only band-pass around `centerHz` (SKRUTKA panel). */
+  setMonitorBand(centerHz: number | null): void {
+    this.masterChain.setMonitorBand(centerHz);
+  }
+
   /** Select render-only master limiter quality; does not alter project state. */
   setMasterLimiterOversampling(enabled: boolean): void {
     this.masterChain.setStudioLimiterOversampling(enabled);

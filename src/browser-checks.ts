@@ -1257,6 +1257,67 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
     check("SKRUTKA: lazy worklet shifts the phase of a real render while preserving its level", false, String(error));
   }
 
+  // SKRUTKA v2 — the sidechain KEY input on a real render: PUMP with a key
+  // burst must move the wet output against the same render without the key
+  // (the engine's generic setSidechainInput contract), while the keyless
+  // render stays bit-identical to keyMode 0.
+  try {
+    const renderKeyed = async (keyMode: number, withKey: boolean) => {
+      const ctx = new OfflineAudioContext(1, SR, SR);
+      await loadCoreWorklets(ctx);
+      await loadLazyWorklet(ctx, "skrutka");
+      const rt = EFFECT_DEFS.skrutka.factory(
+        ctx,
+        {
+          id: "check-skrutka-key",
+          type: "skrutka",
+          bypassed: false,
+          params: { ...defaultParamsOf("skrutka"), dispersion: 0.6, focusHz: 90, keyMode, mix: 1 },
+        },
+        { bpm: 124 },
+      );
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = 80;
+      const gain = ctx.createGain();
+      gain.gain.value = 0.4;
+      osc.connect(gain).connect(rt.input);
+      if (withKey) {
+        const keyOsc = ctx.createOscillator();
+        keyOsc.type = "sine";
+        keyOsc.frequency.value = 60;
+        const keyGain = ctx.createGain();
+        keyGain.gain.setValueAtTime(0, 0);
+        keyGain.gain.setValueAtTime(0.8, 0.3);
+        keyGain.gain.setValueAtTime(0, 0.6);
+        keyOsc.connect(keyGain);
+        rt.setSidechainInput?.(keyGain);
+        keyOsc.start(0);
+      }
+      rt.output.connect(ctx.destination);
+      osc.start(0);
+      const buffer = await ctx.startRendering();
+      rt.dispose();
+      return buffer.getChannelData(0);
+    };
+    const keyed = await renderKeyed(1, true);
+    const unkeyed = await renderKeyed(1, false);
+    const plain = await renderKeyed(0, false);
+    let keyDiff = 0;
+    let noKeyDiff = 0;
+    for (let i = 0; i < keyed.length; i++) {
+      keyDiff = Math.max(keyDiff, Math.abs(keyed[i]! - unkeyed[i]!));
+      noKeyDiff = Math.max(noKeyDiff, Math.abs(unkeyed[i]! - plain[i]!));
+    }
+    check(
+      "SKRUTKA: KEY PUMP moves the render on a real key feed (bit-exact without one)",
+      keyDiff > 0.02 && noKeyDiff === 0,
+      `keyDiff=${keyDiff.toFixed(4)} noKeyDiff=${noKeyDiff.toExponential(2)}`,
+    );
+  } catch (error) {
+    check("SKRUTKA: KEY PUMP moves the render on a real key feed (bit-exact without one)", false, String(error));
+  }
+
   // Phase 4 (plugin-audit follow-up) — LIVE worklet-path audibility for the
   // event-queue voice worklets. Offline renders route them through native
   // graphs (determinism fix above); the LIVE path runs the real worklets and

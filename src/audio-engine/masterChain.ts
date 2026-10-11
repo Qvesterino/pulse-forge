@@ -85,6 +85,8 @@ export class MasterChain {
    */
   private monitorHighpass: BiquadFilterNode | null = null;
   private monitorHighpassHz: number | null = null;
+  private monitorLowpass: BiquadFilterNode | null = null;
+  private monitorBandHz: number | null = null;
   /** Aligns the raw audition branch with reported latency in the master path. */
   private masterBypassDelay: DelayNode | null = null;
   /** Mirrors our private wet/dry automation so rapid toggles do not rely on AudioParam.value. */
@@ -347,6 +349,22 @@ export class MasterChain {
     filter.frequency.setTargetAtTime(this.monitorHighpassHz ?? 20, ctx.currentTime, 0.02);
   }
 
+  /**
+   * BAND SOLO — monitor-only band-pass around `centerHz` (SKRUTKA's audition
+   * of what the dispersion hump actually moves). Same live-only contract as
+   * PHONE CHECK: null restores the plain monitor path (and any active
+   * PHONE CHECK corner), garbage clamps to OFF, offline renders never see it.
+   */
+  setMonitorBand(centerHz: number | null): void {
+    this.monitorBandHz = centerHz != null && Number.isFinite(centerHz) ? Math.max(40, Math.min(16000, centerHz)) : null;
+    const ctx = this.deps.ctx();
+    if (!ctx || !isLiveAudioContext(ctx)) return;
+    const highpass = this.monitorBandHz != null ? this.monitorBandHz / 2 : (this.monitorHighpassHz ?? 20);
+    const lowpass = this.monitorBandHz != null ? this.monitorBandHz * 2 : 20000;
+    this.monitorHighpass?.frequency.setTargetAtTime(highpass, ctx.currentTime, 0.02);
+    this.monitorLowpass?.frequency.setTargetAtTime(lowpass, ctx.currentTime, 0.02);
+  }
+
   /** Entry and exit of the user insert slot before the final safety stages. */
   get insertInput(): GainNode | null {
     return this.masterInsertInput;
@@ -398,6 +416,7 @@ export class MasterChain {
       this.masterBypassDry?.disconnect();
       this.monitorBypassOutputGain?.disconnect();
       this.monitorHighpass?.disconnect();
+      this.monitorLowpass?.disconnect();
       this.masterBypassDelay?.disconnect();
     } catch {
       /* already disconnected */
@@ -407,6 +426,7 @@ export class MasterChain {
     this.masterBypassDry = null;
     this.monitorBypassOutputGain = null;
     this.monitorHighpass = null;
+    this.monitorLowpass = null;
     this.masterBypassDelay = null;
     this.monitorBypassAutomation = null;
     this.monitorBypassLatencyWarning = null;
@@ -735,6 +755,11 @@ export class MasterChain {
     // entirely, so exports never inherit an audition filter.
     this.monitorHighpass.frequency.value = this.monitorHighpassHz ?? 20;
     this.monitorHighpass.Q.value = 0.707;
+    // BAND SOLO's lowpass — the mirror half of the monitor band (20 kHz = off).
+    this.monitorLowpass = ctx.createBiquadFilter();
+    this.monitorLowpass.type = "lowpass";
+    this.monitorLowpass.frequency.value = this.monitorBandHz != null ? Math.min(20000, this.monitorBandHz * 2) : 20000;
+    this.monitorLowpass.Q.value = 0.707;
     this.masterBypassDelay = ctx.createDelay(1);
     this.masterBypassDelay.delayTime.value = 0;
     this.masterBypassWet.gain.value = this.masterBypassed ? 0 : 1;
@@ -880,12 +905,13 @@ export class MasterChain {
     // The serial master path and dry monitor-bypass branch share the same safety-limiter input.
     this.masterLimiter.connect(masterAnalyser);
     masterAnalyser.connect(this.monitorBypassOutputGain);
-    // PHONE CHECK lives on the LIVE listening path only; offline renders tap
-    // the same analyser but connect straight to their destination so the
-    // audition highpass can never color an export.
+    // PHONE CHECK / BAND SOLO live on the LIVE listening path only; offline
+    // renders tap the same analyser but connect straight to their destination
+    // so the audition filters can never color an export.
     if (isLiveAudioContext(ctx)) {
       this.monitorBypassOutputGain.connect(this.monitorHighpass);
-      this.monitorHighpass.connect(ctx.destination);
+      this.monitorHighpass.connect(this.monitorLowpass);
+      this.monitorLowpass.connect(ctx.destination);
     } else {
       this.monitorBypassOutputGain.connect(ctx.destination);
     }

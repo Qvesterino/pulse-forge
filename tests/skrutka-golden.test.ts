@@ -76,6 +76,43 @@ describe("SKRUTKA determinism", () => {
   });
 });
 
+describe("SKRUTKA v2 legacy compatibility (v1 renders bit-identically)", () => {
+  it("the v1 parameter set produces the frozen v1 hash (FNV-1a over the Float32 bits)", () => {
+    // Frozen 2026-10-11 from the shipped v1 processor with this exact probe
+    // (see ADR 0037 addendum): dispersion 0.6 / punch 0.4 / focus 320 /
+    // spread 0.5 / mix 0.8 over a 1.2 s tonal + kick probe at 48 kHz.
+    const probe = (i: number) =>
+      0.55 * Math.sin((2 * Math.PI * 55 * i) / SR) +
+      0.12 * Math.sin((2 * Math.PI * 110 * i) / SR) +
+      0.05 * Math.sin((2 * Math.PI * 330 * i) / SR) +
+      (i < 4800 ? 0.3 * Math.exp(-i / 600) * Math.sin((2 * Math.PI * (300 + 200 * Math.exp(-i / 900)) * i) / SR) : 0);
+    const out = render({ dispersion: 0.6, punch: 0.4, focusHz: 320, spread: 0.5, mix: 0.8, output: 0 }, 1.2, probe);
+    let hashL = 2166136261;
+    let hashR = 2166136261;
+    for (let i = 0; i < out.length; i++) {
+      const bytes = new Uint32Array(Float32Array.of(out[i]!).buffer);
+      hashL = Math.imul(hashL ^ bytes[0]!, 16777619) >>> 0;
+      hashR = Math.imul(hashR ^ (bytes[0]! >>> 16), 16777619) >>> 0;
+    }
+    const hash = `${hashL.toString(16).padStart(8, "0")}${hashR.toString(16).padStart(8, "0")}`;
+    expect(hash).toBe("e6cb495b83b6556c");
+    let absSum = 0;
+    for (let i = 0; i < out.length; i++) absSum += Math.abs(out[i]!);
+    expect(absSum).toBeCloseTo(19578.905037, 5);
+  });
+
+  it("v2-only params at their defaults do not change the render (shape 0, dyn 0, key 0, punchHz 0, punchMix 1)", () => {
+    const opts = { dispersion: 0.6, punch: 0.5, focusHz: 240, spread: 0.4, mix: 0.9 };
+    const a = render(opts, 0.8, musicalInput);
+    const b = render(
+      { ...opts, shape: 0, dyn: 0, keyMode: 0, punchHz: 0, punchMix: 1, lfoDepth: 0 },
+      0.8,
+      musicalInput,
+    );
+    expect(a).toEqual(b);
+  });
+});
+
 describe("SKRUTKA transient shaping (all-pass spreads a click, not a tone)", () => {
   it("an impulse spreads: dispersion 1 keeps its energy but pushes it past sample 100", () => {
     const impulse = (i: number) => (i === 0 ? 1 : 0);

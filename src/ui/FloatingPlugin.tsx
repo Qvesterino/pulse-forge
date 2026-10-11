@@ -224,7 +224,7 @@ const HOBBY_PARAMS: Record<string, string[]> = {
   keys: ["tine", "bell", "ratio", "level"],
   pluck: ["pick", "body", "decay", "level"],
   logdrum: ["decay", "tone", "body", "level"],
-  kopa: ["pitchAmount", "harmonicLevel", "bodyDecay", "clickLevel", "drive", "level"],
+  kopa: ["triggerMode", "pitchAmount", "bodyDecay", "clickLevel", "subLevel", "harmonicLevel", "level"],
 };
 
 function InstrumentPluginContent({
@@ -277,6 +277,19 @@ function InstrumentPluginContent({
               {label}
             </button>
           ))}
+        </div>
+      )}
+      {track.instrument === "kopa" && (
+        <div className="kopa-preview-row">
+          <button
+            type="button"
+            className="btn btn-small"
+            onClick={() => services.engine.previewNote(track.id, 36)}
+            title="Audition the current KOPA sound at C2 without adding a note to the project."
+          >
+            PREVIEW C2
+          </button>
+          <span>Auditions the current kick patch without changing the arrangement.</span>
         </div>
       )}
       {(!docked || dockPage === "engine") && track.instrument === "wavetable" && (

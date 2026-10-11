@@ -48,6 +48,60 @@ function makeHarmonicCharacterCurve(character: number): Float32Array<ArrayBuffer
   return curve;
 }
 
+function pitchEnvelopeAt(t: number, curve: number): number {
+  if (curve === 0) return (1 - t) * (1 - t);
+  if (curve === 1) return 1 - t;
+  if (curve === 2) return t < 0.35 ? 1 : 0;
+  return t < 0.15 ? 1 : Math.max(0, 1 - (t - 0.15) / 0.85);
+}
+
+function makePitchCurve(targetHz: number, amount: number, curve: number): Float32Array<ArrayBuffer> {
+  const values = new Float32Array(129);
+  for (let i = 0; i < values.length; i++) {
+    const t = i / (values.length - 1);
+    values[i] = targetHz * Math.pow(2, (amount * pitchEnvelopeAt(t, curve)) / 12);
+  }
+  return values;
+}
+
+function schedulePitchCurve(
+  param: AudioParam,
+  targetHz: number,
+  amount: number,
+  curve: number,
+  when: number,
+  duration: number,
+): void {
+  const values = makePitchCurve(targetHz, amount, curve);
+  if (typeof param.setValueCurveAtTime === "function") {
+    param.setValueCurveAtTime(values, when, duration);
+  } else {
+    // Older/fake AudioParam implementations retain the previous exponential
+    // fallback rather than failing the whole voice graph.
+    param.setValueAtTime(values[0] ?? targetHz, when);
+    param.exponentialRampToValueAtTime(Math.max(10, targetHz), when + duration);
+  }
+}
+
+function makeVoiceDriveCurve(drive: number, type: number, punch: number): Float32Array<ArrayBuffer> {
+  const curve = new Float32Array(2049);
+  for (let i = 0; i < curve.length; i++) {
+    const x = (i / (curve.length - 1)) * 2 - 1;
+    let driven = x;
+    if (drive > 0) {
+      const input = x * (1 + drive);
+      let shaped: number;
+      if (type === 0) shaped = Math.tanh(input * 1.6) * 0.86;
+      else if (type === 1) shaped = Math.tanh(input * 2.4) * 0.72 + Math.tanh(input * 4) * 0.18;
+      else if (type === 2) shaped = clampParam(input * 2.6, -1, 1);
+      else shaped = Math.sin(input * Math.PI);
+      driven = x * (1 - drive) + shaped * drive;
+    }
+    curve[i] = punch > 0 ? driven / (1 + punch * Math.abs(driven) * 1.5) : driven;
+  }
+  return curve;
+}
+
 export interface KopaRuntime extends InstrumentRuntime {
   /** OFFLINE ONLY — build the seeded worklet and connect it into `output`. */
   prepareOfflineRender?: () => void;
@@ -101,8 +155,19 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
       const bodyF = base * Math.pow(2, (params.bodyTune ?? 0) / 12);
       const pitchAmount = params.pitchAmount ?? 24;
       const pitchTime = Math.max(0.005, (params.pitchTime ?? 40) / 1000);
+      const pitchCurve = Math.round(clampParam(params.pitchCurve ?? 0, 0, 3));
       const level = Math.pow(10, (params.level ?? -6) / 20);
-      const vel = velocity > 0 ? velocity : 1;
+      const vel = Number.isFinite(velocity) && velocity > 0 ? clampParam(velocity, 0, 1) : 1;
+      const drive = clampParam(params.drive ?? 0.25, 0, 1);
+      const driveType = Math.round(clampParam(params.driveType ?? 0, 0, 3));
+      const punch = clampParam(params.punch ?? 0.2, 0, 1);
+      const bodyWave = Math.round(clampParam(params.bodyWave ?? 0, 0, 2));
+      const bodyHollow = clampParam(params.bodyHollow ?? 0.25, 0, 1);
+      const bodyDecay = clampParam(params.bodyDecay ?? 0.35, 0.03, 2);
+      const subTune = params.subTune ?? 0;
+      const clickType = Math.round(clampParam(params.clickType ?? 0, 0, 3));
+      const clickTone = clampParam(params.clickTone ?? 2500, 300, 9000);
+      const clickDecay = clampParam(params.clickDecay ?? 3, 0.2, 20) / 1000;
       const harmonicLevel = clampParam(params.harmonicLevel ?? 0.25, 0, 1);
       const harmonicRange = Math.round(clampParam(params.harmonicRange ?? 2, 1, 4));
       const harmonicMaxPartial = Math.pow(2, harmonicRange);
@@ -114,18 +179,40 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
       gain.connect(output);
       gain.gain.setValueAtTime(0.0001, when);
       gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, 0.9 * vel * level), when + 0.002);
+      const voiceInput = ctx.createGain();
+      if (drive > 0 || punch > 0) {
+        const shaper = ctx.createWaveShaper();
+        shaper.curve = makeVoiceDriveCurve(drive, driveType, punch);
+        shaper.oversample = "2x";
+        voiceInput.connect(shaper).connect(gain);
+      } else {
+        voiceInput.connect(gain);
+      }
       const oscs: OscillatorNode[] = [];
       // Body with pitch ramp.
       const body = ctx.createOscillator();
-      body.type = "sine";
-      body.frequency.setValueAtTime(bodyF * Math.pow(2, pitchAmount / 12), when);
-      body.frequency.exponentialRampToValueAtTime(Math.max(10, bodyF), when + pitchTime);
+      body.type = bodyWave === 0 ? "sine" : bodyWave === 1 ? "triangle" : "sawtooth";
+      if (pitchAmount > 0) schedulePitchCurve(body.frequency, bodyF, pitchAmount, pitchCurve, when, pitchTime);
+      else body.frequency.setValueAtTime(Math.max(10, bodyF), when);
       const bodyGain = ctx.createGain();
-      bodyGain.gain.setValueAtTime(0.9, when);
-      bodyGain.gain.setTargetAtTime(0, when, Math.max(0.01, (params.bodyDecay ?? 0.35) * 0.33));
-      body.connect(bodyGain).connect(gain);
+      bodyGain.gain.setValueAtTime(0.9 / (1 + bodyHollow), when);
+      bodyGain.gain.setTargetAtTime(0, when, Math.max(0.01, bodyDecay * 0.33));
+      body.connect(bodyGain).connect(voiceInput);
       body.start(when);
       oscs.push(body);
+      if (bodyHollow > 0.001) {
+        const hollow = ctx.createOscillator();
+        hollow.type = "sine";
+        if (pitchAmount > 0) {
+          schedulePitchCurve(hollow.frequency, bodyF * 2, pitchAmount, pitchCurve, when, pitchTime);
+        } else hollow.frequency.setValueAtTime(Math.max(10, bodyF * 2), when);
+        const hollowGain = ctx.createGain();
+        hollowGain.gain.setValueAtTime((0.9 * bodyHollow) / (1 + bodyHollow), when);
+        hollowGain.gain.setTargetAtTime(0, when, Math.max(0.01, bodyDecay * 0.33));
+        hollow.connect(hollowGain).connect(voiceInput);
+        hollow.start(when);
+        oscs.push(hollow);
+      }
       // Match the KOPA kick-harmonic layer: partials follow the body's pitch sweep,
       // all share its phase, and the fundamental itself is never re-added.
       if (harmonicLevel > 0.001) {
@@ -148,17 +235,19 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
             harmonicBus.connect(harmonicShaper);
           }
           const harmonicEnvelope = ctx.createGain();
-          harmonicEnvelope.gain.setValueAtTime(harmonicLevel * 0.55 * vel, when);
+          // Velocity is already applied once by the voice gain below.
+          harmonicEnvelope.gain.setValueAtTime(harmonicLevel * 0.55, when);
           harmonicEnvelope.gain.setTargetAtTime(0, when, Math.max(0.01, harmonicDecay * 0.33));
           if (harmonicShaper) harmonicShaper.connect(harmonicEnvelope);
           else harmonicBus.connect(harmonicEnvelope);
-          harmonicEnvelope.connect(gain);
+          harmonicEnvelope.connect(voiceInput);
 
           for (const { partial, weight } of partials) {
             const harmonic = ctx.createOscillator();
             harmonic.type = "sine";
-            harmonic.frequency.setValueAtTime(firstBodyF * partial, when);
-            harmonic.frequency.exponentialRampToValueAtTime(bodyF * partial, when + pitchTime);
+            if (pitchAmount > 0) {
+              schedulePitchCurve(harmonic.frequency, bodyF * partial, pitchAmount, pitchCurve, when, pitchTime);
+            } else harmonic.frequency.setValueAtTime(Math.max(10, bodyF * partial), when);
             const partialGain = ctx.createGain();
             partialGain.gain.value = weight / weightSum;
             harmonic.connect(partialGain).connect(harmonicBus);
@@ -172,12 +261,15 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
       if (subLevel > 0.001) {
         const sub = ctx.createOscillator();
         sub.type = "sine";
-        sub.frequency.setValueAtTime(Math.max(10, bodyF / 2), when);
+        const subF = (bodyF / 2) * Math.pow(2, subTune / 12);
+        if (pitchAmount > 0) {
+          schedulePitchCurve(sub.frequency, subF, pitchAmount, pitchCurve, when, pitchTime);
+        } else sub.frequency.setValueAtTime(Math.max(10, subF), when);
         const subGain = ctx.createGain();
         subGain.gain.setValueAtTime(0.0001, when);
         subGain.gain.exponentialRampToValueAtTime(Math.max(0.0001, subLevel * 0.5), when + 0.004);
         subGain.gain.setTargetAtTime(0, when, Math.max(0.01, (params.tailDecay ?? 0.4) * 0.33));
-        sub.connect(subGain).connect(gain);
+        sub.connect(subGain).connect(voiceInput);
         sub.start(when);
         oscs.push(sub);
       }
@@ -190,32 +282,81 @@ export function createKopaFallbackRuntime(ctx: BaseAudioContext, track: Instrume
         const tailGain = ctx.createGain();
         tailGain.gain.setValueAtTime(Math.max(0.0001, tailLevel * 0.9), when);
         tailGain.gain.setTargetAtTime(0, when, Math.max(0.01, (params.tailDecay ?? 0.4) * 0.33));
-        tail.connect(tailGain).connect(gain);
+        tail.connect(tailGain).connect(voiceInput);
         tail.start(when);
         oscs.push(tail);
       }
       // Click.
       const clickLevel = params.clickLevel ?? 0.35;
       if (clickLevel > 0.001) {
-        const length = Math.max(1, Math.round(((params.clickDecay ?? 3) / 1000) * 4 * ctx.sampleRate));
-        const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
-        const data = buffer.getChannelData(0);
-        let seed = (0x9e3779b9 + id * 0x85ebca6b) >>> 0;
-        for (let i = 0; i < length; i++) {
-          seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-          data[i] = ((seed / 0xffffffff) * 2 - 1) * (1 - i / length);
-        }
-        const source = ctx.createBufferSource();
-        source.buffer = buffer;
         const clickGain = ctx.createGain();
-        clickGain.gain.value = clickLevel * vel;
-        source.connect(clickGain).connect(gain);
+        // Velocity is already applied once by the voice gain below.
+        clickGain.gain.value = clickLevel;
+        clickGain.gain.setTargetAtTime(0, when, Math.max(0.001, clickDecay * 0.33));
+        let source: AudioScheduledSourceNode;
+        if (clickType === 2) {
+          const sine = ctx.createOscillator();
+          sine.type = "sine";
+          sine.frequency.setValueAtTime(clickTone, when);
+          source = sine;
+        } else {
+          const impulse = clickType === 3;
+          const length = impulse ? 3 : Math.max(1, Math.round(clickDecay * 4 * ctx.sampleRate));
+          const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+          const data = buffer.getChannelData(0);
+          if (impulse) {
+            data[0] = 1;
+            if (length > 1) data[1] = -0.65;
+            if (length > 2) data[2] = 0.25;
+          } else {
+            let seed = (0x9e3779b9 + id * 0x85ebca6b) >>> 0;
+            for (let i = 0; i < length; i++) {
+              seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+              data[i] = ((seed / 0xffffffff) * 2 - 1) * (1 - i / length);
+            }
+          }
+          const noise = ctx.createBufferSource();
+          noise.buffer = buffer;
+          if (clickType === 1) {
+            const hp = ctx.createBiquadFilter();
+            hp.type = "highpass";
+            hp.frequency.setValueAtTime(clickTone, when);
+            noise.connect(hp).connect(clickGain);
+          } else noise.connect(clickGain);
+          source = noise;
+        }
+        if (clickType === 2) source.connect(clickGain);
+        clickGain.connect(voiceInput);
         source.start(when);
+        if (clickType === 2) source.stop(when + clickDecay * 4 + 0.05);
       }
-      voices.set(id, { osc: oscs, gain });
+      const voice = { osc: oscs, gain };
+      let pendingEnds = oscs.length;
+      for (const osc of oscs) {
+        osc.onended = () => {
+          pendingEnds--;
+          if (pendingEnds <= 0 && voices.get(id) === voice) voices.delete(id);
+        };
+        try {
+          const maxDecay = Math.max(
+            bodyDecay,
+            params.tailLevel === 0 ? 0 : clampParam(params.tailDecay ?? 0.4, 0.05, 3),
+            harmonicLevel === 0 ? 0 : harmonicDecay,
+            clickLevel === 0 ? 0 : clickDecay,
+          );
+          // The fallback is one-shot even when a host omits noteOff. Release
+          // every oscillator after its longest audible envelope has fallen
+          // below the worklet's voice-retirement threshold.
+          osc.stop(when + Math.max(0.03, maxDecay * 4) + 0.05);
+        } catch {
+          /* a source already stopped by a host noteOff */
+        }
+      }
+      voices.set(id, voice);
     },
     noteOff(_pitch, when) {
-      // One-shot kick: noteOff chokes every sounding voice.
+      if ((params.triggerMode ?? 1) < 0.5) return;
+      // GATED mode: MIDI noteOff is an explicit choke for the sounding kick.
       for (const [id] of [...voices]) stopVoice(id, when);
     },
     setParameter(id, value) {
