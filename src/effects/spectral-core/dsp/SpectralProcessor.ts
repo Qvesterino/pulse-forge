@@ -83,6 +83,19 @@ const SMOOTHING_TC = 0.02;
 /** Shift moves across FFT bins; spread automation changes across several spectral frames. */
 const SHIFT_SMOOTHING_TC = 0.03;
 
+/**
+ * Log-spaced band resolution for the panel spectrum. 64 bands across the
+ * display range is the most a 2 px-tall-per-pixel canvas can show anyway;
+ * more would cost messages, not detail.
+ */
+export const SPECTRAL_BANDS = 64;
+
+/** Display floor. 0 dBFS at 255, -84 dB at 0 — below this a band reads silent. */
+const BAND_DB_FLOOR = -84;
+
+/** First displayed frequency. The FOCUS minimum, so no control sits off-axis. */
+const BAND_MIN_HZ = 20;
+
 export interface SpectralMeters {
   /** Peak wet magnitude observed in the analysed spectrum this frame. */
   peak: number;
@@ -94,6 +107,20 @@ export interface SpectralMeters {
   frames: number;
   /** Effective, smoothed spectral shift in semitones. */
   shiftSemitones: number;
+  /**
+   * Log-spaced magnitudes of the spectrum AS ANALYSED, 0..255. This is the
+   * panel's reference trace: what arrived at the device this frame.
+   */
+  bandsIn: Uint8Array;
+  /**
+   * Log-spaced magnitudes of the spectrum AFTER the mode ran, 0..255. The
+   * panel draws this over `bandsIn`, so the gap between them IS the effect —
+   * the feedback tail, the resonance swell, the frozen bed.
+   *
+   * Both are computed from the processor's own bins. A panel that re-derived
+   * either one host-side would draw a spectrum the audio is not producing.
+   */
+  bandsOut: Uint8Array;
 }
 
 export class SpectralProcessor {
@@ -151,7 +178,18 @@ export class SpectralProcessor {
   private lpStateSide = 0;
   private hpStateSide = 0;
 
-  private readonly meters: SpectralMeters = { peak: 0, activity: 0, delaySec: 0, frames: 0, shiftSemitones: 0 };
+  private readonly meters: SpectralMeters = {
+    peak: 0,
+    activity: 0,
+    delaySec: 0,
+    frames: 0,
+    shiftSemitones: 0,
+    bandsIn: new Uint8Array(SPECTRAL_BANDS),
+    bandsOut: new Uint8Array(SPECTRAL_BANDS),
+  };
+
+  /** First bin of each band, plus a terminating edge. Built once in prepare(). */
+  private readonly bandStart = new Int32Array(SPECTRAL_BANDS + 1);
 
   constructor() {
     this.engineMid = new StftEngine(44100, { fftSize: DEFAULT_FFT_SIZE });
@@ -186,6 +224,7 @@ export class SpectralProcessor {
     this.delaySide = new SpectralDelayBank(bins, sampleRate, this.engineSide.hop);
     this.resoMid = new ResonatorBank(bins, sampleRate);
     this.resoSide = new ResonatorBank(bins, sampleRate);
+    this.buildBandEdges(bins);
     this.installFrameCallbacks();
     this.allocateDryDelay();
     this.reset();
@@ -202,6 +241,65 @@ export class SpectralProcessor {
 
   getMeters(): SpectralMeters {
     return { ...this.meters };
+  }
+
+  /**
+   * Map the display range onto FFT bins, once per context.
+   *
+   * Log-spaced, because that is how the panel draws it and how ears judge
+   * spectra. The top band stops at the last real bin — Nyquist itself carries
+   * no energy for a real signal, so letting a band own only bin `binCount-1`
+   * would paint a permanently empty column on the right edge.
+   */
+  private buildBandEdges(bins: number): void {
+    // Two different quantities, and conflating them silently collapses the
+    // whole trace: Nyquist is the top FREQUENCY (24 kHz at 48 k), while
+    // `binWidth` is how many Hz one FFT bin covers (46.9 Hz here). Using the
+    // bin width as the top frequency mapped every band under 47 Hz and left the
+    // entire first 63 bands reading bin 1.
+    const nyquist = this.sampleRate * 0.5;
+    const binWidth = nyquist / Math.max(1, bins - 1);
+    const span = nyquist / BAND_MIN_HZ;
+    for (let b = 0; b <= SPECTRAL_BANDS; b++) {
+      const hz = BAND_MIN_HZ * Math.pow(span, b / SPECTRAL_BANDS);
+      const bin = Math.round(hz / binWidth);
+      // Bin 0 is the DC bin; a band starting there would show a permanent
+      // offset from any DC blocker. Bins are also forced monotonic, because a
+      // narrow high band can round to the same bin as its neighbour.
+      const clamped = Math.max(1, Math.min(bins - 1, bin));
+      this.bandStart[b] = b === 0 ? clamped : Math.max(clamped, this.bandStart[b - 1]!);
+    }
+    this.bandStart[SPECTRAL_BANDS] = bins - 1;
+  }
+
+  /**
+   * Collapse the current bins into `out`. Energy mean, not peak: a single hot
+   * bin would make a narrow resonance look like broadband noise, and the whole
+   * point of the trace is to show which band is actually ringing.
+   */
+  private reduceBands(re: Float64Array, im: Float64Array, out: Uint8Array): void {
+    const start = this.bandStart;
+    for (let b = 0; b < SPECTRAL_BANDS; b++) {
+      const from = start[b]!;
+      const to = Math.max(start[b + 1]!, from + 1);
+      let sum = 0;
+      for (let k = from; k < to; k++) {
+        const r = re[k]!;
+        const m = im[k]!;
+        sum += r * r + m * m;
+      }
+      const mean = Math.sqrt(sum / (to - from));
+      // The FFT is UNNORMALISED: a 0.5-amplitude sine lands at ~N/4 in its bin,
+      // which is 1024/4 = 256 — 48 dB above the 0 dBFS this window assumes and
+      // enough to clamp every loud band to 255. Dividing by `fftSize` puts the
+      // trace back on a 0 dBFS scale, so FOCUS depth and drive actually read.
+      const amplitude = mean / this.fftSize;
+      // dB, then a fixed 0..255 window. A per-frame normalising meter would
+      // always look full and never compare between two frames.
+      const db = 20 * Math.log10(amplitude > 1e-12 ? amplitude : 1e-12);
+      const norm = (db - BAND_DB_FLOOR) / -BAND_DB_FLOOR;
+      out[b] = Number.isFinite(norm) ? Math.max(0, Math.min(255, Math.round(norm * 255))) : 0;
+    }
   }
 
   /** Ring allocation — the soak harness asserts this never changes. */
@@ -427,12 +525,36 @@ export class SpectralProcessor {
    * parameters at frame time, so a knob change needs no re-installation.
    */
   private installFrameCallbacks(): void {
-    this.engineMid.onFrame((re, im, binCount) => this.processFrame(re, im, binCount, this.delayMid, this.resoMid));
-    this.engineSide.onFrame((re, im, binCount) => this.processFrame(re, im, binCount, this.delaySide, this.resoSide));
+    // `primary` marks the MID path. SIDE is the width channel; driving the
+    // panel from it too would cost the same work for a trace that has to read
+    // as one spectrum, and the two would fight each other frame to frame.
+    this.engineMid.onFrame((re, im, binCount) =>
+      this.processFrame(re, im, binCount, this.delayMid, this.resoMid, true),
+    );
+    this.engineSide.onFrame((re, im, binCount) =>
+      this.processFrame(re, im, binCount, this.delaySide, this.resoSide, false),
+    );
   }
 
-  /** One spectral frame: mode dispatch, then the shared magnitude ceiling. */
+  /**
+   * One spectral frame: panel telemetry either side of the mode dispatch, so
+   * the panel can draw the effect rather than a picture of its inputs.
+   */
   private processFrame(
+    re: Float64Array,
+    im: Float64Array,
+    binCount: number,
+    delay: SpectralDelayBank,
+    reso: ResonatorBank,
+    primary: boolean,
+  ): void {
+    if (primary) this.reduceBands(re, im, this.meters.bandsIn);
+    this.runMode(re, im, binCount, delay, reso);
+    if (primary) this.reduceBands(re, im, this.meters.bandsOut);
+  }
+
+  /** Mode dispatch, then the shared magnitude ceiling. */
+  private runMode(
     re: Float64Array,
     im: Float64Array,
     binCount: number,

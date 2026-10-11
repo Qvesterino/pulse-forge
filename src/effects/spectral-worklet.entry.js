@@ -184,12 +184,21 @@ class PortalWorkletProcessor extends AudioWorkletProcessor {
     this.blockCount++;
     if (this.metersEnabled && this.blockCount % METERS_DIVIDER === 0) {
       const m = this.proc.getMeters();
+      // The band arrays are posted WITHOUT transfer. Structured clone copies
+      // them on the RECEIVING side, so the audio thread hands over two live
+      // views (128 bytes total) without allocating or detaching anything.
+      // Transferring would be marginally cheaper on the main thread but would
+      // detach the processor's own buffers and force it to re-allocate on the
+      // audio thread — the one place this codebase must not allocate.
       this.port.postMessage({
         type: "meters",
         peak: m.peak,
         activity: m.activity,
         delaySec: m.delaySec,
         frames: m.frames,
+        shiftSemitones: m.shiftSemitones,
+        bandsIn: m.bandsIn,
+        bandsOut: m.bandsOut,
       });
     }
     return true;

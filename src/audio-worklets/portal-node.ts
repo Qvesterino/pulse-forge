@@ -45,6 +45,39 @@ export interface PortalMeterFrame {
   activity: number;
   delaySec: number;
   frames: number;
+  shiftSemitones: number;
+  /** Log-spaced 0..255 magnitudes as analysed — the panel's reference trace. */
+  bandsIn: Uint8Array;
+  /** Log-spaced 0..255 magnitudes after the mode ran — the effect itself. */
+  bandsOut: Uint8Array;
+}
+
+/** Bands per trace. Must match SPECTRAL_BANDS in spectral-core. */
+export const PORTAL_BANDS = 64;
+
+/**
+ * Copy a band trace off the message.
+ *
+ * The worklet owns the array it posts, and a structured clone is the only thing
+ * standing between the audio thread's buffer and a panel that might keep the
+ * reference. The frame is validated by LENGTH and by every value being an
+ * integer in 0..255 — a wrong-length array would make the canvas read past the
+ * end, and a non-integer means the contract moved without us noticing.
+ *
+ * Returns null rather than a half-trusted array: the panel's documented answer
+ * to a bad frame is "waiting", not a plausible-looking trace.
+ */
+function readBands(value: unknown): Uint8Array | null {
+  if (!ArrayBuffer.isView(value)) return null;
+  const src = value as Uint8Array;
+  if (src.length !== PORTAL_BANDS) return null;
+  const out = new Uint8Array(PORTAL_BANDS);
+  for (let i = 0; i < PORTAL_BANDS; i++) {
+    const v = src[i]!;
+    if (!Number.isInteger(v) || v < 0 || v > 255) return null;
+    out[i] = v;
+  }
+  return out;
 }
 
 /** Algorithm latency in samples, as reported by the processor on construction. */
@@ -82,7 +115,7 @@ export function createPortalNode(ctx: BaseAudioContext, instance: { params: Reco
   // a telemetry frame per hop.
   node.port.postMessage({ type: "setMeters", enabled: false });
   node.port.onmessage = (event) => {
-    const msg = event.data as Partial<Record<"type" | "peak" | "activity" | "delaySec" | "frames", unknown>> | null;
+    const msg = event.data as Record<string, unknown> | null;
     if (!msg || typeof msg !== "object") return;
     const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
     if (msg.type === "latency") {
@@ -96,7 +129,22 @@ export function createPortalNode(ctx: BaseAudioContext, instance: { params: Reco
     }
     if (msg.type !== "meters" || !metersWanted) return;
     if (!finite(msg.peak) || !finite(msg.activity) || !finite(msg.delaySec) || !finite(msg.frames)) return;
-    meters = { peak: msg.peak, activity: msg.activity, delaySec: msg.delaySec, frames: msg.frames };
+    if (!finite(msg.shiftSemitones)) return;
+    const bandsIn = readBands(msg.bandsIn);
+    const bandsOut = readBands(msg.bandsOut);
+    // A frame with unusable traces is dropped whole. Accepting the scalars and
+    // blanking the spectrum would leave the panel drawing a silent device that
+    // is in fact making sound — the worst possible half-truth.
+    if (!bandsIn || !bandsOut) return;
+    meters = {
+      peak: msg.peak,
+      activity: msg.activity,
+      delaySec: msg.delaySec,
+      frames: msg.frames,
+      shiftSemitones: msg.shiftSemitones,
+      bandsIn,
+      bandsOut,
+    };
   };
 
   return {
