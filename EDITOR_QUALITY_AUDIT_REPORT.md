@@ -1409,3 +1409,64 @@ stores, waveform peak caches, the bank and the engine's node graph are not
 observable from a listener count. §35's memory half still wants the real-browser
 pass (`npm run test:browser`), which this wave could not run — see the open
 items below.
+
+---
+
+## Wave 6 — 2026-10-11 — the real-browser attempt, and why it did not produce a verdict
+
+Five waves deferred the browser gates with the excuse that other sessions held
+the repo dirty. That excuse was convenient and mostly true, but it is not a
+finding. This wave actually ran them.
+
+### `npx playwright test 01…04` — 1 passed, 7 failed (4.9 min, Chromium)
+
+| Failure class | Evidence | Owner |
+| --- | --- | --- |
+| `page.goto` timeouts | `02-panel-toggles`: *"navigating to http://127.0.0.1:5199/, waiting until domcontentloaded — Timeout 60000ms exceeded"* | environmental (see below) |
+| Landing CTA copy | `01-landing-to-studio:59` waits for `getByRole('button', { name: /open in studio/i })`; the page renders `Open the studio` (`LandingPage.tsx:160,302`) while `LandingPrompt.tsx:196` still reads `Open in studio →` | not this audit |
+| Dock hit-target | `03-generate-flow` / `04-persistence-roundtrip`: clicking `.pattern-actions button:has-text("GEN")` reports *".dock-resize-handle … intercepts pointer events"* and *"element was detached from the DOM"* | not this audit — see below |
+
+None of these files is touched by this audit's commits (`ArrangementPanel`,
+`clipEditing`, `clipClipboard`, spec files).
+
+### Direct browser probe — attempted, and it is inconclusive
+
+Rather than trust a harness that was already failing on timeouts, I drove the
+app in the in-app browser at 1280×720. Result:
+
+- `navigate` → `BROWSER_OPERATION_TIMEOUT` (the app did eventually load: title
+  `KYX`, **zero console errors**);
+- `inspect` → the page was still on the boot screen, `KYX — loading…`;
+- after a further 25 s wait, a trivial `query(kind: text)` on `body` timed out
+  at **275 s**.
+
+At that point the machine showed **44 `node` processes** and ~1219 s of
+accumulated CPU. That is the honest explanation available, and it is the
+conservative one: a starved renderer looks exactly like a hung one. **I am not
+claiming a boot defect**, and I am equally not claiming a clean browser
+verification. Both statements are unsupported by the evidence I have.
+
+### The one real finding this produced — §33 hit target
+
+`.dock-resize-handle` is a **7px-tall `flex: none` sibling** in the bottom
+dock's column (`12-floating-instrument-plugin-2.css:812`), not an overlay. So
+Playwright's "intercepts pointer events" means the pattern panel's GEN button
+was being **squeezed underneath the splitter** at 1280×720 — the bottom dock is
+tall enough at that viewport that the panel content overflows beneath its own
+resizer. §33 asks that "controls and hit targets must remain aligned and
+usable" at narrow viewports; this is a candidate violation, measured, and it
+needs a responsive browser to root-cause.
+
+**Not fixed here, deliberately.** The CSS is shared dock layout, another session
+may be mid-change on it, and every rule of §41 applies: a blind `z-index` or
+`pointer-events` patch against an unreproduced symptom is exactly the kind of
+false fix the objective forbids. The reproduction is recorded instead — viewport
+1280×720, open the pattern panel, click GEN.
+
+### Net position on the DoD
+
+The jsdom-verified half of the DoD stands (waves 1–5). The browser half does
+not: **playback editing / ghost audio, responsive layout, heap stability, and
+the take-lane click suppression all remain unverified**, and this wave is the
+attempt that did not close them. They should be run on an idle machine before
+the audit can honestly claim completion.
