@@ -73,7 +73,7 @@ import type { MorphScenesState } from "../effects/morph-dynamics-core/contracts/
 import { EffectAbControls, type EffectAbState } from "./EffectAbControls";
 import { DockedPlugin } from "./FloatingPlugin";
 import { INSTRUMENT_DEFS } from "../instruments/registry";
-import { effectEditorSpec } from "./effectEditorRegistry";
+import { effectEditorSpec, portalParamModeHint } from "./effectEditorRegistry";
 import { EffectParameterGrid } from "./EffectParameterGrid";
 import { EffectIntentAssistant } from "./EffectIntentAssistant";
 import { EffectQuickControls, isEffectQuickControlParam } from "./EffectQuickControls";
@@ -657,7 +657,9 @@ function Device({
     Object.keys({ ...defaultParams, ...fx.params }).some(
       (paramId) => (fx.params[paramId] ?? defaultParams[paramId]) !== defaultParams[paramId],
     ) || (fx.outputTrimDb ?? 0) !== 0;
-  const editorSpec = effectEditorSpec(fx.type);
+  const editorSpec = effectEditorSpec(fx.type, fx.params);
+  const contextHint =
+    fx.type === "portal" ? (paramId: string) => portalParamModeHint(paramId, fx.params.mode ?? 0) : undefined;
   const genericParams = devicesMode
     ? fx.type === "fxeq"
       ? def.params.filter((param) => !/^band\d+\./.test(param.id))
@@ -873,6 +875,7 @@ function Device({
             <EffectQuickControls
               params={quickParams}
               values={fx.params}
+              contextHint={contextHint}
               onChange={(paramId, value) =>
                 services.store.execute(
                   fx.type === "morphdynamics"
@@ -1191,6 +1194,7 @@ function Device({
             params={visibleParams}
             values={fx.params}
             paged={devicesMode}
+            contextHint={contextHint}
             onChange={(paramId, value) => services.store.execute(setEffectParam(doc, track.id, fx.id, paramId, value))}
           />
           <div className="fx-output-trim-row" aria-label="Effect output level">

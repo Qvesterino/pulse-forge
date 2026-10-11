@@ -2,7 +2,13 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { EFFECT_DEFS, WORKLET_EFFECTS, defaultParamsOf } from "../src/effects/registry";
 import { EFFECT_META, clampEffectParam } from "../src/effects/definitions";
 import { createSkrutkaNode, type SkrutkaMeterFrame } from "../src/audio-worklets/skrutka-node";
-import { skrutkaFieldAmounts, skrutkaFocusForChannel, skrutkaGroupDelaySamples } from "../src/effects/skrutka-curve";
+import {
+  SKRUTKA_PUNCH_R_HARD_MAX,
+  skrutkaFieldAmounts,
+  skrutkaFocusForChannel,
+  skrutkaGroupDelaySamples,
+  skrutkaPunchFocus,
+} from "../src/effects/skrutka-curve";
 import type { EffectInstance } from "../src/project-model/types";
 
 /**
@@ -525,9 +531,63 @@ describe("TWIST v2.1 (FIELD — M/S dispersion field)", () => {
     const sAtFocus = skrutkaGroupDelaySamples(cp, SR, 300, "S");
     const sFocus = skrutkaFocusForChannel(300, 1, "S");
     expect(mAtFocus).toBeGreaterThan(sAtFocus);
-    expect(Math.abs(skrutkaGroupDelaySamples(cp, SR, sFocus, "M") - skrutkaGroupDelaySamples(cp, SR, sFocus, "S"))).toBeGreaterThan(
-      0.5,
-    );
+    expect(
+      Math.abs(skrutkaGroupDelaySamples(cp, SR, sFocus, "M") - skrutkaGroupDelaySamples(cp, SR, sFocus, "S")),
+    ).toBeGreaterThan(0.5);
+  });
+});
+
+describe("TWIST v2.2 (DYNAMIC PUNCH — envelope-driven punch radius)", () => {
+  const note = (i: number) => {
+    const t = i / SR;
+    return t > 0.05 && t < 0.55 ? 0.4 * Math.sin((2 * Math.PI * 80 * i) / SR) : 0;
+  };
+  const base = { dispersion: 0, punch: 0, focusHz: 220, spread: 0, mix: 1 };
+  const diffEnergy = (dynPunch: number, fromS: number, toS: number) => {
+    const cls = registered.get("skrutka-processor");
+    const reference = renderProcessor(cls, paramsOf(cls, { ...base, dynPunch: 0 }), 0.6, note);
+    const wet = renderProcessor(cls, paramsOf(cls, { ...base, dynPunch }), 0.6, note);
+    let sum = 0;
+    for (let i = Math.round(fromS * SR); i < Math.round(toS * SR); i++) {
+      const d = wet[i]! - reference[i]!;
+      sum += d * d;
+    }
+    return sum;
+  };
+
+  it("dynPunch = +1 opens the punch stage on the onset (even with punch = 0)", () => {
+    const attackEarly = diffEnergy(1, 0.055, 0.095);
+    const attackSettled = diffEnergy(1, 0.35, 0.45);
+    expect(attackEarly).toBeGreaterThan(0.5); // the stage actually opens from zero
+    expect(attackEarly).toBeGreaterThan(attackSettled * 2); // and decays after the onset
+  });
+
+  it("dynPunch = −1 bites on the sustain and leaves the attack alone", () => {
+    const bodyEarly = diffEnergy(-1, 0.055, 0.095);
+    const bodySettled = diffEnergy(-1, 0.35, 0.45);
+    const attackEarly = diffEnergy(1, 0.055, 0.095);
+    const attackSettled = diffEnergy(1, 0.35, 0.45);
+    expect(bodySettled).toBeGreaterThan(0.5);
+    expect(bodySettled).toBeGreaterThan(bodyEarly * 2);
+    // The two directions are complementary, not duplicates.
+    expect(attackEarly).toBeGreaterThan(bodyEarly);
+    expect(bodySettled).toBeGreaterThan(attackSettled);
+  });
+
+  it("dynPunch = 0 changes nothing (v2.1 render bit-exact)", () => {
+    const cls = registered.get("skrutka-processor");
+    const opts = { dispersion: 0.6, punch: 0.5, focusHz: 240, spread: 0.4, mix: 0.9, dyn: 0.5 };
+    const withParam = renderProcessor(cls, paramsOf(cls, { ...opts, dynPunch: 0 }), 0.8, note);
+    const withoutParam = renderProcessor(cls, paramsOf(cls, opts), 0.8, note);
+    expect(withParam).toEqual(withoutParam);
+  });
+
+  it("the model exposes the dynamic punch ceiling", () => {
+    const cp = { dispersion: 0, punch: 1, focusHz: 220, spread: 0 };
+    const f = skrutkaPunchFocus(220, 1, 0, SR);
+    const baseDelay = skrutkaGroupDelaySamples(cp, SR, f, "L");
+    const drivenDelay = skrutkaGroupDelaySamples(cp, SR, f, "L", undefined, SKRUTKA_PUNCH_R_HARD_MAX);
+    expect(drivenDelay).toBeGreaterThan(baseDelay * 1.2);
   });
 });
 

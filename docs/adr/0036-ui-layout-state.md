@@ -130,11 +130,45 @@ them:
    boundary this ADR already established. A saved mix carries audio and musical
    decisions, never someone's window size or palette.
 
+## Vlna B — responsive / fluid layout (2026-10-11)
+
+The tokens the bridge writes are now CONSUMED by the stylesheet.
+
+1. **New sheet `src/styles/24-layout-tokens.css`, appended LAST** in
+   `src/styles/index.css`. Appending rather than editing in place keeps the
+   change auditable and reversible: the old literals stay visible in the earlier
+   files for anyone comparing. Cascade order remains load-bearing and untouched.
+2. **Fluid inspector**: `.workspace` uses
+   `clamp(180px, var(--inspector-width, 280px), 420px)` instead of a fixed
+   `280px` (narrowed to `230px` below 1100px). The clamp means a user width is
+   honoured but can never grow large enough to starve the sequencer.
+3. **Fluid rack**: `.rack` uses `repeat(var(--rack-columns, 8), minmax(0, 1fr))`.
+4. **Typography scale**: `body` uses
+   `calc(13px * var(--type-scale, 1))` — independent of the document zoom, so
+   larger text does not also stretch every panel.
+5. **The user label width is applied as a CLASS, never as an inline custom
+   property.** This is the load-bearing decision of the wave: an inline
+   `--steps-label` on `<html>` outranks every stylesheet rule and would
+   permanently kill the existing 760px media query that narrows the label to
+   112px on phones. `.user-label-width` sets
+   `--steps-label: var(--user-steps-label)` in the sheet, so media queries still
+   win where they have an opinion, and the class is REMOVED when the user
+   returns to the default so no stale override survives.
+6. **`Sequencer.tsx` reads the label width from the layout store.** The old
+   `STEPS_LABEL_PX`-style comment ("MUST mirror `--steps-label`") is gone: the
+   component now consumes the same value the applier writes. The user's width is
+   a BASE, not an override — below 760px the breakpoint value wins, matching
+   what the stylesheet does.
+7. **Density has a third rung**: `.density-dense` adds rules that
+   `.theme-compact` never had. `.theme-compact` is still applied so the existing
+   stylesheet is untouched; comfortable/compact render exactly as before.
+8. **The breakpoint ladder is documented** (520 / 640 / 860 / 1100 / 1450) so
+   new rules stop inventing values. The 860px inspector row-switch stays owned
+   by `01-base.css`; this sheet deliberately does NOT duplicate it.
+
 ## Non-goals for this ADR
 
-No responsive/fluid grid rewrite (Vlna B), no resize grips (Vlna C), no token
-editor UI, no change to `:root` defaults, no bundle-budget change.
-
-The bridge already writes `--inspector-width`, `--steps-label`, `--rack-columns`
-and `--type-scale` to the document root using the CURRENT values, so the tokens
-exist for the CSS that reads them next. Nothing moves until that CSS changes.
+No resize grips (Vlna C), no token editor UI, no change to `:root` defaults, no
+bundle-budget change. `--inspector-width`, `--rack-columns` and `--type-scale`
+are written inline (they have no competing media query today);
+`--steps-label` is class-based precisely because it does.

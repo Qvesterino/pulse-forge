@@ -1,0 +1,108 @@
+/* 24-layout-tokens.css — Vlna B: fluid/responsive layout (ADR 0036)
+ *
+ * Appended to the END of the cascade (src/styles/index.css). That position is
+ * deliberate and load-bearing: these rules must be able to OVERRIDE the
+ * hard-coded literals in 01-base.css (a fixed 280px inspector, repeat(8, 1fr)
+ * rack, 13px body) without editing them. Editing in place would work too, but
+ * appending keeps the change auditable and reversible — the old values are
+ * still in the earlier files, commented below, for anyone comparing.
+ *
+ * The values consumed here are already written by ui/layout.ts:
+ *   --inspector-width, --steps-label, --rack-columns, --type-scale
+ * plus the .density-* / .theme-compact classes it toggles. Before this file
+ * existed those tokens were written and then ignored; now the layout state
+ * actually moves pixels.
+ *
+ * Breakpoint ladder (one scale, documented so new rules stop inventing values):
+ *   520px  — phone
+ *   640px  — small tablet
+ *   860px  — inspector becomes a row below the workspace
+ *   1100px — tablet band
+ *   1450px — large desktop
+ * Anything between steps keeps the previous step's behaviour.
+ */
+
+/* ---------- User label width (class-based, breakpoint-safe) ---------- */
+
+/* ui/layout.ts writes the user's chosen label width to --user-steps-label and
+   toggles .user-label-width. A CLASS is used instead of an inline custom
+   property on purpose: an inline value on <html> outranks every stylesheet
+   rule and would permanently kill the 760px breakpoint in
+   12-floating-instrument-plugin-2.css that narrows the label to 112px on
+   phones. Classes lose to media queries, so the responsive behaviour survives
+   and the user's width applies only where no breakpoint has an opinion. */
+.user-label-width {
+  --steps-label: var(--user-steps-label, 168px);
+}
+
+/* ---------- Fluid inspector ---------- */
+
+/* The old rule was a fixed 280px (01-base.css:532) narrowed to 230px below
+   1100px. clamp() keeps the user's chosen width but never lets it eat the
+   sequencer: on a narrow window the inspector yields to a share of the
+   viewport instead of holding a fixed width that no longer fits. */
+.workspace {
+  grid-template-columns: minmax(0, 1fr) clamp(180px, var(--inspector-width, 280px), 420px);
+}
+
+/* Below the ladder's 860px step the inspector is already a row; the clamp
+   above is overridden by the existing 01-base.css block, which stays as the
+   single owner of that layout switch. */
+
+/* ---------- Fluid rack ---------- */
+
+/* Old: repeat(8, 1fr) hard-coded (01-base.css:632). auto-fill + minmax keeps
+   pads a sensible minimum size and lets the count follow the user's setting —
+   an 8-column rack on a narrow window produced slivers, a 4-column rack on a
+   wide one left the grid stretched. */
+.rack {
+  grid-template-columns: repeat(var(--rack-columns, 8), minmax(0, 1fr));
+}
+
+/* ---------- Typography scale ---------- */
+
+/* --type-scale is independent of the document zoom on purpose: a user who
+   enlarges text should not also stretch every panel. rem keeps nested
+   relative sizing consistent. */
+body {
+  font-size: calc(13px * var(--type-scale, 1));
+}
+
+/* ---------- Density: the third rung ---------- */
+
+/* `.theme-compact` already existed and is still applied (ui/layout.ts keeps it
+   for the current stylesheet). `.density-dense` is the NEW third step — it
+   tightens below compact for small screens and high track counts. It is
+   additive: comfortable/compact render exactly as before. */
+.density-dense .rack {
+  gap: 2px;
+}
+
+.density-dense .pad {
+  min-height: 38px;
+  padding: 5px 6px;
+}
+
+.density-dense .sequencer {
+  padding: 4px 5px 5px;
+}
+
+.density-dense .workspace-main {
+  padding: 8px;
+  gap: 6px;
+}
+
+.density-dense .panel-section {
+  padding: 6px 8px;
+  gap: 5px;
+}
+
+.density-dense .dock-tabs {
+  height: 28px;
+}
+
+/* A denser grid means the pads are shorter, which lets the sequencer breathe
+   more — but only when the user asked for dense. */
+.density-dense .workspace-main > .sequencer {
+  min-height: 0;
+}

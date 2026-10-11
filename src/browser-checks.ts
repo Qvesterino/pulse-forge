@@ -1321,11 +1321,25 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
   // audio — the harmony stack adds energy the dry voice does not have, and a
   // +8 st formant raises the high-band share without moving the pitch.
   //
-  // A sawtooth feeds YIN a harmonic comb to lock onto. A sine would prove the
-  // module loaded, but it proves nothing about the SOLVER — a single pure
-  // tone is exactly the case where "harmony is on but you cannot hear it" is
-  // the most plausible failure.
+  // A voiced, harmonic-rich synthetic vowel gives YIN a pitch to lock onto and
+  // gives the cepstral stage a meaningful vocal-tract envelope to warp. A
+  // sawtooth proves module loading, but its unbounded comb is a poor fixture
+  // for judging the direction of a formant shift.
   try {
+    const vocalSamples = new Float32Array(SR * 2);
+    const harmonicGains = new Float64Array(31);
+    for (let h = 1; h < harmonicGains.length; h++) {
+      const f = 220 * h;
+      const bump = (center: number, width: number, gain: number) => gain * Math.exp(-0.5 * ((f - center) / width) ** 2);
+      harmonicGains[h] = (0.15 + bump(700, 120, 2.3) + bump(1450, 180, 1.9) + bump(2700, 240, 1.0)) / h;
+    }
+    for (let i = 0; i < vocalSamples.length; i++) {
+      const phase = (2 * Math.PI * 220 * i) / SR;
+      let sample = 0;
+      for (let h = 1; h < harmonicGains.length; h++) sample += Math.sin(phase * h) * harmonicGains[h]!;
+      vocalSamples[i] = sample * 0.16;
+    }
+
     const renderRez = async (params: Record<string, number>) => {
       const ctx = new OfflineAudioContext(1, SR * 2, SR);
       await loadCoreWorklets(ctx);
@@ -1340,14 +1354,15 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
         },
         { bpm: 120 },
       );
-      const osc = ctx.createOscillator();
-      osc.type = "sawtooth";
-      osc.frequency.value = 220;
+      const sourceBuffer = ctx.createBuffer(1, vocalSamples.length, SR);
+      sourceBuffer.copyToChannel(vocalSamples, 0);
+      const source = ctx.createBufferSource();
+      source.buffer = sourceBuffer;
       const gain = ctx.createGain();
       gain.gain.value = 0.5;
-      osc.connect(gain).connect(rt.input);
+      source.connect(gain).connect(rt.input);
       rt.output.connect(ctx.destination);
-      osc.start(0);
+      source.start(0);
       const buffer = await ctx.startRendering();
       rt.dispose();
       return { data: buffer.getChannelData(0), ready: isWorkletReady("rezonans", ctx) };
@@ -1373,22 +1388,28 @@ export async function runChecks(onProgress?: (result: CheckResult) => void): Pro
       return highEnergy / Math.max(lowEnergy, 1e-12);
     };
 
-    const noHarmony = await renderRez({ "harmony.mode": 0 });
-    const withHarmony = await renderRez({ "harmony.mode": 2 });
-    const dryFormant = await renderRez({ "harmony.mode": 0, formant: 0 });
-    const raisedFormant = await renderRez({ "harmony.mode": 0, formant: 8 });
+    const unison = {
+      "harmony.mode": 1,
+      "harmony.voices": 1,
+      "voice0.enabled": 1,
+      "voice0.degree": 0,
+    };
+    const unisonRender = await renderRez(unison);
+    const harmonyStack = await renderRez({ "harmony.mode": 2 });
+    const flatFormant = await renderRez({ ...unison, formant: 0 });
+    const raisedFormant = await renderRez({ ...unison, formant: 8 });
 
     let maxDiff = 0;
-    for (let i = 0; i < withHarmony.data.length; i++) {
-      maxDiff = Math.max(maxDiff, Math.abs(withHarmony.data[i]! - noHarmony.data[i]!));
+    for (let i = 0; i < harmonyStack.data.length; i++) {
+      maxDiff = Math.max(maxDiff, Math.abs(harmonyStack.data[i]! - unisonRender.data[i]!));
     }
-    const baseRatio = bandRatio(dryFormant.data);
+    const baseRatio = bandRatio(flatFormant.data);
     const raisedRatio = bandRatio(raisedFormant.data);
 
     check(
       "REZONANS: lazy worklet loads and its harmony stack moves a real render",
-      withHarmony.ready && maxDiff > 0.02,
-      `ready=${withHarmony.ready} maxDiff=${maxDiff.toFixed(4)}`,
+      harmonyStack.ready && maxDiff > 0.02,
+      `ready=${harmonyStack.ready} maxDiff=${maxDiff.toFixed(4)}`,
     );
     check(
       "REZONANS: +8 st formant raises the high-band share on a real render",

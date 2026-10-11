@@ -63,7 +63,8 @@ const R_MAX = 0.985; // hard stability ceiling for the static mapping
 const R_HARD_MAX = 0.995; // ceiling for dynamic/key boosts
 const RESO_R_FLOOR = 0.45; // RESO radius floor (hotter mapping)
 const RESO_R_RANGE = 0.53; // RESO span (0.45 + 0.53 = 0.98 at dispersion = 1)
-const PUNCH_R_MAX = 0.93; // punch pole radius at |punch| = 1
+const PUNCH_R_MAX = 0.93; // punch pole radius at |punch| = 1 (static)
+const PUNCH_R_HARD_MAX = 0.97; // ceiling for the dynamic punch drive
 const PUNCH_BAND_RATIO = 3.5; // AUTO punch center = focus / ratio (positive) or × ratio (negative)
 const PUNCH_FOCUS_MAX_HZ = 6000; // punch center ceiling
 const SPREAD_OFFSET = 0.12; // per-channel focus offset fraction at spread = 1
@@ -96,6 +97,7 @@ const SM_KEYS = [
   "spread",
   "field",
   "dyn",
+  "dynPunch",
   "keyMode",
   "lfoHz",
   "lfoShape",
@@ -149,6 +151,7 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
       { name: "spread", minValue: 0, maxValue: 1, defaultValue: 0 },
       { name: "field", minValue: -1, maxValue: 1, defaultValue: 0 },
       { name: "dyn", minValue: -1, maxValue: 1, defaultValue: 0 },
+      { name: "dynPunch", minValue: -1, maxValue: 1, defaultValue: 0 },
       { name: "keyMode", minValue: 0, maxValue: 2, defaultValue: 0 },
       { name: "lfoHz", minValue: 0, maxValue: 20, defaultValue: 0.5 },
       { name: "lfoShape", minValue: 0, maxValue: 2, defaultValue: 0 },
@@ -177,6 +180,7 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
       spread: 0,
       field: 0,
       dyn: 0,
+      dynPunch: 0,
       keyMode: 0,
       lfoHz: 0.5,
       lfoShape: 0,
@@ -193,6 +197,9 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
     // Glided dynamic/key radius delta (see RADIUS_TAU_S above).
     this.radiusDelta = 0;
     this.radiusPrimed = false;
+    // Glided dynamic PUNCH radius delta (v2.2 DYNAMIC PUNCH).
+    this.punchDelta = 0;
+    this.punchDeltaPrimed = false;
     // LFO phase in [0, 1): free-runs from 0; `lfoPhase` >= 0 snaps it at
     // transport start (host write), -1 (default) means "no anchor".
     this.lfoPhase = 0;
@@ -204,7 +211,7 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
     this.lastBodyness = 0;
     this.lastKeyGain = 1;
     this.meterSamples = 0;
-    this.meterFrame = { type: "skrutka", lfo: 0, env: 0, key: 1, radius: R_FLOOR };
+    this.meterFrame = { type: "skrutka", lfo: 0, env: 0, key: 1, radius: R_FLOOR, punch: 0 };
   }
 
   process(inputs, outputs, parameters) {
@@ -232,6 +239,7 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
       spread: clamp(parameters.spread[0], 0, 1),
       field: clamp(parameters.field[0], -1, 1),
       dyn: clamp(parameters.dyn[0], -1, 1),
+      dynPunch: clamp(parameters.dynPunch[0], -1, 1),
       keyMode: Math.round(clamp(parameters.keyMode[0], 0, 2)),
       lfoHz: Math.max(0, parameters.lfoHz[0]),
       lfoShape: Math.round(clamp(parameters.lfoShape[0], 0, 2)),
@@ -275,6 +283,8 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
 
     // --- dynamic/key radius mapping (control rate) -----------------------
     const dynActive = Math.abs(sm.dyn) > 1e-4;
+    const dynPunchActive = Math.abs(sm.dynPunch) > 1e-4;
+    const envelopesOn = dynActive || dynPunchActive;
     const keyActive = sm.keyMode > 0;
     const reso = sm.shape === 3;
     const rBase = clamp((reso ? RESO_R_FLOOR : R_FLOOR) + (reso ? RESO_R_RANGE : R_RANGE) * sm.dispersion, 0.05, R_MAX);
@@ -319,11 +329,7 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
     const midAmount = sm.field <= 0 ? 1 : 1 - sm.field;
     const sideAmount = sm.field >= 0 ? 1 : 1 + sm.field;
     const focusEff = clamp(sm.focusHz * lfoFactor, FOCUS_MIN_HZ, 4000);
-    const fA = clamp(
-      fieldActive ? focusEff : focusEff * (1 - SPREAD_OFFSET * sm.spread),
-      FOCUS_MIN_HZ,
-      SECTION_MAX_HZ,
-    );
+    const fA = clamp(fieldActive ? focusEff : focusEff * (1 - SPREAD_OFFSET * sm.spread), FOCUS_MIN_HZ, SECTION_MAX_HZ);
     const fB = clamp(focusEff * (1 + SPREAD_OFFSET * sm.spread), FOCUS_MIN_HZ, SECTION_MAX_HZ);
     const cosL = this.cosL;
     const cosR = this.cosR;
@@ -342,8 +348,31 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
     const c2 = radius * radius;
 
     // --- PUNCH coefficients ----------------------------------------------
-    const punchRadius = PUNCH_R_MAX * Math.abs(sm.punch);
-    const punchActive = punchRadius > 1e-4 && sm.punchMix > 1e-4;
+    // The punch radius is the static `punch` mapping plus a DYNAMIC drive:
+    // `dynPunch > 0` deepens it on transients, `dynPunch < 0` on sustain —
+    // the same envelope scores and the same 15 ms glide that guard the long
+    // hump (a dynamic pole radius is a parametric amplifier without it).
+    // With `punch = 0` the drive can still open the stage from zero, so
+    // "only accents get the tilt" is a real patch.
+    const punchBase = PUNCH_R_MAX * Math.abs(sm.punch);
+    let punchDeltaRaw = 0;
+    if (dynPunchActive) {
+      const punchHeadroom = PUNCH_R_HARD_MAX - punchBase;
+      if (sm.dynPunch > 0) punchDeltaRaw = sm.dynPunch * this.lastAttackness * punchHeadroom;
+      else punchDeltaRaw = -sm.dynPunch * this.lastBodyness * punchHeadroom;
+    }
+    const punchDeltaCoef = 1 - Math.exp(-len / (RADIUS_TAU_S * sr));
+    if (!this.punchDeltaPrimed) {
+      this.punchDeltaPrimed = true;
+      this.punchDelta = punchDeltaRaw;
+    } else {
+      this.punchDelta += punchDeltaCoef * (punchDeltaRaw - this.punchDelta);
+    }
+    const punchRadius = clamp(punchBase + this.punchDelta, 0, PUNCH_R_HARD_MAX);
+    // The stage RUNS whenever the drive is armed (no per-block toggling of a
+    // resonant chain while an accent is rising); it is skipped bit-exactly
+    // only when both the static punch and the drive are off.
+    const punchStageOn = (punchBase > 1e-4 || dynPunchActive) && sm.punchMix > 1e-4 && punchRadius > 1e-4;
     const punchCenter =
       sm.punchHz > 0 ? sm.punchHz : sm.punch >= 0 ? focusEff / PUNCH_BAND_RATIO : focusEff * PUNCH_BAND_RATIO;
     const punchFocus = clamp(punchCenter, FOCUS_MIN_HZ, Math.min(PUNCH_FOCUS_MAX_HZ, sr * 0.45));
@@ -369,8 +398,8 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
       const l = inL ? inL[i] : 0;
       const r = inR ? inR[i] : l;
 
-      // --- envelope followers (DYNAMIC) ----------------------------------
-      if (dynActive) {
+      // --- envelope followers (DYNAMIC / DYNAMIC PUNCH) ------------------
+      if (envelopesOn) {
         const absIn = Math.abs((l + r) * 0.5);
         this.envFast += (absIn > this.envFast ? envFastAtk : envFastRel) * (absIn - this.envFast);
         this.envLag += lagCoef * (this.envFast - this.envLag);
@@ -474,7 +503,7 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
       const longR = xr;
 
       // --- PUNCH stage (PUNCH MIX blends against the long output) --------
-      if (punchActive) {
+      if (punchStageOn) {
         const stL = punch[0];
         const px1L = stL.x1;
         const px2L = stL.x2;
@@ -528,9 +557,10 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
       this.meterSamples = 0;
       const frame = this.meterFrame;
       frame.lfo = this.lfoPhase;
-      frame.env = dynActive ? Math.max(this.lastAttackness, this.lastBodyness) : 0;
+      frame.env = envelopesOn ? Math.max(this.lastAttackness, this.lastBodyness) : 0;
       frame.key = this.lastKeyGain;
       frame.radius = this.lastRadius;
+      frame.punch = punchRadius;
       this.port.postMessage(frame);
     }
     return true;

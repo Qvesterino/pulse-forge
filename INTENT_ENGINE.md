@@ -7,7 +7,9 @@
 > s ONNX modelmi toľkými, koľko sa zmestí do browser budgetu.
 >
 > Súvisiace dokumenty: `docs/intent-engine-roadmap.md` (Fázy 0–5 hotové),
-> `docs/intent-engine-ai-ranker-goal.md` (ONNX ranker goal), `VISION.md`.
+> `docs/INTENT-ENGINE-BROWSER-ROADMAP.md` (browser-first intent, modely a
+> kvalitatívne brány), `docs/intent-engine-ai-ranker-goal.md` (ONNX ranker goal),
+> `VISION.md`.
 
 ---
 

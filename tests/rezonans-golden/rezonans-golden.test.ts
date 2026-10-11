@@ -20,15 +20,25 @@ import {
   REZ_PARAM,
   QUALITY_ECONOMY,
   QUALITY_FINE,
+  resolveFormantSemitones,
   voiceParamId,
 } from "../../src/effects/rezonans-core/contracts/parameters.js";
 import { HarmonySolver, type SolverContext } from "../../src/effects/rezonans-core/dsp/solver.js";
-import { nthScaleTone, nearestAllowedPc } from "../../src/effects/rezonans-core/dsp/harmony.js";
+import { midiToHz, nthScaleTone, nearestAllowedPc } from "../../src/effects/rezonans-core/dsp/harmony.js";
 import { CepstralEnvelope, FormantWarp } from "../../src/effects/rezonans-core/dsp/cepstrum.js";
 import { fft, hannWindow } from "../../src/effects/rezonans-core/dsp/fft.js";
 
 const SR = 48000;
 const BLOCK = 128;
+
+describe("REZONANS formant parameter resolution", () => {
+  it("keeps global shift full, scales per-voice shift, and matches the DSP clamp", () => {
+    expect(resolveFormantSemitones(8, 4, 0.5)).toBe(10);
+    expect(resolveFormantSemitones(8, 4, 0)).toBe(8);
+    expect(resolveFormantSemitones(10, 8, 0.5)).toBe(12);
+    expect(resolveFormantSemitones(-10, -8, 0.5)).toBe(-12);
+  });
+});
 
 /** Harmonic-rich, vibrato'd, amplitude-modulated tone — a vocal stand-in. */
 function makeVocal(seconds: number, f0 = 220, sampleRate = SR): Float32Array {
@@ -62,6 +72,7 @@ interface RenderOpts {
 function render(
   input: Float32Array,
   opts: RenderOpts = {},
+  rightInput: Float32Array = input,
 ): { l: Float32Array; r: Float32Array; latency: number; proc: RezonansProcessor } {
   const proc = new RezonansProcessor();
   proc.prepare(SR, 2, BLOCK, opts.bpm ?? 120);
@@ -75,7 +86,7 @@ function render(
   for (let pos = 0; pos < input.length; pos += BLOCK) {
     const frames = Math.min(BLOCK, input.length - pos);
     scratch[0].set(input.subarray(pos, pos + frames));
-    scratch[1].set(input.subarray(pos, pos + frames));
+    scratch[1].set(rightInput.subarray(pos, pos + frames));
     proc.process(scratch, frames);
     l.set(scratch[0].subarray(0, frames), pos);
     r.set(scratch[1].subarray(0, frames), pos);
@@ -226,6 +237,31 @@ describe("REZONANS golden — A2 formant identity (α = 1)", () => {
   });
 });
 
+describe("REZONANS golden — deterministic per-voice humanization", () => {
+  it("HUMANIZE changes the rendered pitch subtly and repeats deterministically", () => {
+    const input = makeVocal(0.6);
+    const params = {
+      [REZ_PARAM.harmonyMode]: 1,
+      [REZ_PARAM.voices]: 1,
+      [REZ_PARAM.mix]: 1,
+      [REZ_PARAM.bodyGate]: 0,
+      [voiceParamId(0, "enabled")]: 1,
+      [voiceParamId(0, "degree")]: 0,
+      [voiceParamId(0, "humanize")]: 0,
+    };
+    const tight = render(input, { params });
+    const expressive = render(input, { params: { ...params, [voiceParamId(0, "humanize")]: 1 } });
+    const repeated = render(input, { params: { ...params, [voiceParamId(0, "humanize")]: 1 } });
+    let maxDiff = 0;
+    for (let i = 0; i < expressive.l.length; i++) {
+      maxDiff = Math.max(maxDiff, Math.abs(expressive.l[i]! - tight.l[i]!));
+    }
+    expect(maxDiff).toBeGreaterThan(0.01);
+    expect(Array.from(expressive.l)).toEqual(Array.from(repeated.l));
+    expect(Array.from(expressive.l).every(Number.isFinite)).toBe(true);
+  });
+});
+
 describe("REZONANS golden — A4 latency contract", () => {
   it("reports N/2 samples and stays far below the 200 ms PDC ceiling", () => {
     for (const [quality, fftSize] of [
@@ -237,6 +273,21 @@ describe("REZONANS golden — A4 latency contract", () => {
       expect(out.latency).toBe(fftSize >> 1);
       expect(out.latency / SR).toBeLessThan(0.2);
     }
+  });
+
+  it("meter latency is expressed against the processor's actual sample rate", () => {
+    const proc = new RezonansProcessor();
+    proc.prepare(44100, 2, 128, 120);
+    const meters = proc.getMeters();
+    expect(meters.sampleRate).toBe(44100);
+    expect(meters.latencySamples / meters.sampleRate).toBeCloseTo(1024 / 44100, 12);
+  });
+
+  it("quality upgrade resizes the voice rings and keeps the fine render finite", () => {
+    const out = render(makeVocal(0.3), { params: { [REZ_PARAM.quality]: QUALITY_FINE } });
+    expect(Array.from(out.l).every(Number.isFinite)).toBe(true);
+    expect(Array.from(out.r).every(Number.isFinite)).toBe(true);
+    expect(rms(out.l)).toBeGreaterThan(0.01);
   });
 });
 
@@ -252,6 +303,64 @@ describe("REZONANS golden — bypass", () => {
     const input = makeVocal(0.3);
     const out = render(input, { params: { [REZ_PARAM.harmonyMode]: 2, [REZ_PARAM.mix]: 0 } });
     expect(Array.from(out.l)).toEqual(Array.from(input));
+  });
+
+  it("preserves an unvoiced consonant at 100% wet after a sung vowel", () => {
+    const input = new Float32Array(SR);
+    const rightInput = new Float32Array(SR);
+    let seedL = 0x7a31c4d9;
+    let seedR = 0x1de42a77;
+    for (let i = 0; i < input.length; i++) {
+      const t = i / SR;
+      if (t >= 0.05 && t < 0.35) {
+        const phase = (2 * Math.PI * 220 * i) / SR;
+        let vowel = 0;
+        for (let h = 1; h <= 12; h++) vowel += Math.sin(phase * h) / h;
+        input[i] = 0.12 * vowel;
+        rightInput[i] = 0.084 * vowel;
+      } else if (t >= 0.35 && t < 0.85) {
+        // Deterministic sibilant-like broadband material, with no periodic
+        // carrier for the pitch detector to lock onto.
+        seedL = (Math.imul(seedL, 1664525) + 1013904223) >>> 0;
+        seedR = (Math.imul(seedR, 1664525) + 1013904223) >>> 0;
+        input[i] = ((seedL / 0x1_0000_0000) * 2 - 1) * 0.16;
+        rightInput[i] = ((seedR / 0x1_0000_0000) * 2 - 1) * 0.16;
+      }
+    }
+    const params: Record<string, number> = {
+      [REZ_PARAM.quality]: QUALITY_ECONOMY,
+      [REZ_PARAM.harmonyMode]: 1,
+      [REZ_PARAM.voices]: 1,
+      [REZ_PARAM.mix]: 1,
+      [REZ_PARAM.bodyGate]: 0,
+      [REZ_PARAM.clarity]: 0.75,
+      [voiceParamId(0, "enabled")]: 1,
+      [voiceParamId(0, "degree")]: 7,
+      [voiceParamId(0, "level")]: 1,
+      [voiceParamId(0, "humanize")]: 0,
+    };
+    const out = render(input, { params }, rightInput);
+
+    // Compare well inside the consonant, after the pitch hold has released.
+    // The dry delay is part of the declared N/2 latency contract.
+    const from = Math.floor(0.55 * SR);
+    const to = Math.floor(0.75 * SR);
+    const assertSourcePass = (rendered: Float32Array, source: Float32Array, channel: string) => {
+      let diff = 0;
+      let ref = 0;
+      for (let i = from; i < to; i++) {
+        const delayed = source[i - out.latency]!;
+        const error = rendered[i]! - delayed;
+        diff += error * error;
+        ref += delayed * delayed;
+      }
+      const errorRms = Math.sqrt(diff / (to - from));
+      const sourceRms = Math.sqrt(ref / (to - from));
+      expect(sourceRms, `${channel} sibilant fixture has energy`).toBeGreaterThan(0.08);
+      expect(errorRms, `${channel} sibilant must survive full-wet harmony`).toBeLessThan(sourceRms * 0.02);
+    };
+    assertSourcePass(out.l, input, "left");
+    assertSourcePass(out.r, rightInput, "right");
   });
 });
 
@@ -283,7 +392,28 @@ describe("REZONANS solver — key and chord", () => {
     expect(((Math.round(solver.lastMidi[0]!) % 12) + 12) % 12).toBe(9);
   });
 
-  it("chordTones lands on a chord tone when chordFollow is 1", () => {
+  it("chordFollow endpoints prefer the advertised candidate when scale and chord differ", () => {
+    const solve = (chordFollow: number) => {
+      const ctx: SolverContext = {
+        mode: "chordTones",
+        keyRootPc: 0,
+        scaleMask: C_MAJOR,
+        chordMask: C_TRIAD,
+        chordFollow,
+      };
+      const solver = new HarmonySolver();
+      // E4: degree 1 selects D4 from C major; the current chord selects E4.
+      // These deliberately differ so a test cannot pass by both candidates
+      // happening to be notes in the same triad.
+      solver.solve(329.6276, ctx, new Float64Array([1, 1, 1, 1]), new Float64Array(4));
+      return ((Math.round(solver.lastMidi[0]!) % 12) + 12) % 12;
+    };
+
+    expect(solve(0)).toBe(2); // SCALE ONLY → D
+    expect(solve(1)).toBe(4); // CHORD ONLY → E
+  });
+
+  it("chordTones preserves the configured scale-degree roles across voices", () => {
     const ctx: SolverContext = {
       mode: "chordTones",
       keyRootPc: 0,
@@ -291,13 +421,12 @@ describe("REZONANS solver — key and chord", () => {
       chordMask: C_TRIAD,
       chordFollow: 1,
     };
-    const degree = new Float64Array([0, 0, 0, 0]);
-    const out = new Float64Array(4);
     const solver = new HarmonySolver();
-    // D4 — not a C major triad tone.
-    solver.solve(293.66, ctx, degree, out);
-    const pc = ((Math.round(solver.lastMidi[0]!) % 12) + 12) % 12;
-    expect((C_TRIAD & (1 << pc)) !== 0).toBe(true);
+    solver.solve(329.6276, ctx, new Float64Array([2, 4, 6, 0]), new Float64Array(4));
+
+    const pitchClasses = Array.from(solver.lastMidi, (midi) => ((Math.round(midi) % 12) + 12) % 12);
+    expect(pitchClasses).toEqual([4, 7, 0, 0]); // E, G, C, C
+    expect(new Set(pitchClasses.slice(0, 3)).size).toBe(3);
   });
 
   it("clamps every ratio into [0.5, 2] (±12 semitones)", () => {
@@ -343,6 +472,17 @@ describe("REZONANS solver — key and chord", () => {
     solver.solve(220, ctx, new Float64Array([12, 7, 0, 0]), out);
     expect(solver.lastMidi[0]! - solver.lastMidi[2]!).toBe(12);
     expect(solver.lastMidi[1]! - solver.lastMidi[2]!).toBe(7);
+  });
+
+  it("interval mode preserves the singer's fractional pitch and vibrato offset", () => {
+    const singerMidi = 60.35;
+    const ctx: SolverContext = { mode: "interval", keyRootPc: 0, scaleMask: C_MAJOR, chordMask: 0, chordFollow: 0 };
+    const out = new Float64Array(4);
+    const solver = new HarmonySolver();
+    solver.solve(midiToHz(singerMidi), ctx, new Float64Array([7, 0, 0, 0]), out);
+
+    expect(solver.lastMidi[0]! - singerMidi).toBeCloseTo(7, 10);
+    expect(out[0]).toBeCloseTo(2 ** (7 / 12), 10);
   });
 });
 

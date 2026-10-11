@@ -34,10 +34,12 @@ export function EffectQuickControls({
   params,
   values,
   onChange,
+  contextHint,
 }: {
   params: readonly ParamDef[];
   values: Record<string, number>;
   onChange: (paramId: string, value: number) => void;
+  contextHint?: (paramId: string) => string | undefined;
 }) {
   const controls = quickControlsOf(params);
   if (controls.length === 0) return null;
@@ -53,6 +55,7 @@ export function EffectQuickControls({
       </div>
       <div className="fx-preset-controls-grid">
         {controls.map(({ param, label }) => {
+          const modeHint = contextHint?.(param.id);
           const options =
             param.options ??
             (param.kind === "toggle"
@@ -63,9 +66,10 @@ export function EffectQuickControls({
               : undefined);
           const value = values[param.id] ?? param.default;
           return options ? (
-            <label key={param.id} className="fx-param-select">
+            <label key={param.id} className="fx-param-select" title={modeHint}>
               <span className="slider-label">{label}</span>
               <select
+                aria-description={modeHint || undefined}
                 aria-label={label}
                 value={options.some((option) => option.value === value) ? value : param.default}
                 onChange={(event) => onChange(param.id, Number(event.target.value))}
@@ -82,6 +86,7 @@ export function EffectQuickControls({
               key={param.id}
               compact
               label={label}
+              hint={modeHint}
               value={value}
               min={param.min}
               max={param.max}

@@ -144,4 +144,14 @@ export function clampParam(id: string, value: number): number {
   return value < def.min ? def.min : value > def.max ? def.max : value;
 }
 
+/** Resolve the bounded total formant shift used by both the DSP and panel. */
+export function resolveFormantSemitones(globalShift: number, voiceShift: number, voiceScale: number): number {
+  const global = clampParam(REZ_PARAM.formant, globalShift);
+  const local = clampParam(voiceParamId(0, "formant"), voiceShift);
+  const scale = clampParam(REZ_PARAM.formantVoiceScale, voiceScale);
+  const sum = global + local * scale;
+  const range = paramDef(REZ_PARAM.formant)!;
+  return Math.max(range.min, Math.min(range.max, sum));
+}
+
 export const REZ_PARAM_COUNT = REZONANS_PARAMS.length;

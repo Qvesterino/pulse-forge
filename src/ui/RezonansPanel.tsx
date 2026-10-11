@@ -4,6 +4,7 @@ import {
   VOICE_COUNT,
   clampParam,
   paramDef,
+  resolveFormantSemitones,
   voiceParamId,
 } from "../effects/rezonans-core/contracts/parameters";
 import { Slider } from "./controls";
@@ -36,6 +37,12 @@ import { useServices } from "./context";
  */
 
 const MODE_LABELS = ["OFF", "INTERVAL", "DEGREES", "CHORD TONES"] as const;
+const MODE_HINTS = [
+  "harmony off",
+  "intervals follow the singer's pitch",
+  "degree selects a key note near the singer",
+  "degree anchors each voice; chord follow pulls it into the chord",
+] as const;
 const QUALITY_LABELS = ["ECONOMY", "BALANCED", "FINE"] as const;
 const NOTE_NAMES = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"] as const;
 
@@ -58,6 +65,14 @@ function pcLabel(pc: number): string {
 function hzToMidiLabel(hz: number): string {
   const midi = Math.round(69 + 12 * Math.log2(hz / 440));
   return `${NOTE_NAMES[((midi % 12) + 12) % 12]!}${Math.floor(midi / 12) - 1}`;
+}
+
+function ordinal(value: number): string {
+  const n = Math.max(1, Math.round(value));
+  const lastTwo = n % 100;
+  const suffix =
+    lastTwo >= 11 && lastTwo <= 13 ? "th" : n % 10 === 1 ? "st" : n % 10 === 2 ? "nd" : n % 10 === 3 ? "rd" : "th";
+  return `${n}${suffix}`;
 }
 
 export function RezonansPanel({
@@ -135,6 +150,7 @@ export function RezonansPanel({
         clarity: num("clarity"),
         chordPc: num("chordPc"),
         latencySamples: num("latencySamples"),
+        sampleRate: num("sampleRate"),
         voiceMidi: midi,
       };
     };
@@ -200,7 +216,7 @@ export function RezonansPanel({
       // One solid line per enabled voice, at its TOTAL displacement.
       for (let i = 0; i < VOICE_COUNT; i++) {
         if ((p[voiceParamId(i, "enabled")] ?? 0) <= 0.5) continue;
-        const total = globalFormant * voiceScale + (p[voiceParamId(i, "formant")] ?? 0);
+        const total = resolveFormantSemitones(globalFormant, p[voiceParamId(i, "formant")] ?? 0, voiceScale);
         const y = yOf(total);
         if (y < 0 || y > warpH) continue;
         c2d.strokeStyle = VOICE_COLORS[i]!;
@@ -318,7 +334,10 @@ export function RezonansPanel({
       if (readoutRef.current) {
         const mode = MODE_LABELS[Math.max(0, Math.min(3, Math.round(p[REZ_PARAM.harmonyMode] ?? 0)))]!;
         const chord = Number.isFinite(chordPc) && chordPc >= 0 ? ` · ${pcLabel(chordPc)}` : "";
-        const latency = m && Number.isFinite(m.latencySamples) ? ` · ${((m.latencySamples / 48000) * 1000) | 0}ms` : "";
+        const latency =
+          m && Number.isFinite(m.latencySamples) && Number.isFinite(m.sampleRate) && m.sampleRate > 0
+            ? ` · ${((m.latencySamples / m.sampleRate) * 1000) | 0}ms`
+            : "";
         readoutRef.current.textContent = voiced
           ? `${f0.toFixed(0)} Hz ${hzToMidiLabel(f0)} · ${mode}${chord}${latency}`
           : degraded
@@ -387,7 +406,9 @@ export function RezonansPanel({
         <span className="rezonans-readout" ref={readoutRef}>
           no pitch
         </span>
-        <span className="rezonans-hint">drag the warp to move the global formant</span>
+        <span className="rezonans-hint" title={`Drag the warp to move the global formant; ${MODE_HINTS[mode]}`}>
+          drag warp = formant · {MODE_HINTS[mode]}
+        </span>
       </div>
       <canvas
         ref={canvasRef}
@@ -438,14 +459,20 @@ export function RezonansPanel({
                   <Slider
                     key={field}
                     compact
-                    label={field}
+                    label={field === "degree" && mode === 1 ? "interval" : field}
                     value={params[id] ?? def.def}
                     min={def.min}
                     max={def.max}
                     defaultValue={def.def}
                     disabled={!enabled}
                     format={(v) =>
-                      field === "degree" ? `${Math.round(v)}st` : field === "pan" ? v.toFixed(2) : v.toFixed(2)
+                      field === "degree"
+                        ? mode === 1
+                          ? `${v > 0 ? "+" : ""}${Math.round(v)}st`
+                          : ordinal(v + 1)
+                        : field === "pan"
+                          ? v.toFixed(2)
+                          : v.toFixed(2)
                     }
                     onCommit={(v) => onParam?.(id, v)}
                     onPreview={(v) => previewParam(id, v)}

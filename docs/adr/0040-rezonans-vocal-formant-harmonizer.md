@@ -74,7 +74,10 @@ that is in key _and_ re-coloured — and every existing tool supplies at most on
 6. **All four voices share one analysis FFT.** They diverge only at synthesis
    (different ratio, different α), so a hop costs 1 FFT + 2 cepstrum transforms
    - 4 IFFT ≈ 660 transforms/s at 2048. Per-voice α is then free, which is what
-     makes "one voice natural, one shifted" cost nothing.
+     makes "one voice natural, one shifted" cost nothing. The total per-voice
+     formant displacement is `clamp(global + voiceShift × voiceScale, −12, +12)`
+     semitones; the DSP and panel use the same resolver so the drawn ladder stays
+     aligned with the rendered warp.
 7. **Ratio is clamped to [0.5, 2.0] (±12 st).** Past that the PV quality and
    vocal intelligibility both fall apart.
 8. **The unvoiced gate reuses MORPH's approach, not a new invention.** Low YIN
@@ -82,10 +85,13 @@ that is in key _and_ re-coloured — and every existing tool supplies at most on
    ~10 ms. The dry is never reconstructed or phase-shifted, so consonants cannot
    comb against the harmony — the invariant MORPH relies on at
    `harmony.ts:33-36`.
-9. **Harmony modes:** `off` (bit-exact bypass), `interval` (fixed semitones),
-   `degrees` (target = key root + scale degree, nearest octave to the detected
-   f0), `chordTones` (nearest chord tone at the current bar, crossfaded with
-   `degrees` by `chordFollow`).
+9. **Harmony modes:** `off` (bit-exact bypass), `interval` (fixed semitones
+   that preserve the singer's fractional pitch), `degrees` (target = key root +
+   scale degree, nearest octave to the detected f0), `chordTones` (each voice's
+   scale-degree target is pulled toward the current chord). `chordFollow = 0`
+   selects the scale target and `1` selects its nearest chord tone; intermediate
+   values use deterministic weighted candidate selection rather than blending
+   two notes into an out-of-tune pitch.
 10. **The key/chord bridge is ONE optional field on `EffectEnv`.** It is already
     `{ bpm, seed }` (`src/effects/types.ts:174-178`) and exists precisely to hand
     factories ambient project context; it gains
@@ -124,10 +130,11 @@ rootPc, chordMask }] }`, populated at the FX-chain build site where `doc` is
     port writes — the flagship `paramAt` contract, for the documented reason that
     offline renders collapse un-timed port writes to the last value. Meters and
     telemetry may use the port; DSP parameters may not.
-14. **Determinism: no RNG in the signal path.** `humanize` varies from a hash of
-    the absolute sample counter and voice index, so it sounds alive and is
-    bit-identical between live and offline. Frame scheduling follows
-    `harmony.ts:119` (absolute counter, never random).
+14. **Determinism: no RNG in the signal path.** Per-voice `humanize` applies a
+    smooth, hashed pitch drift of up to ±15 cents, with new anchors every eight
+    analysis frames. This avoids stepped MIDI-chord motion and keeps repeated
+    live/offline renders bit-identical. Frame scheduling follows the processor's
+    monotonic analysis-frame counter; it never calls `Math.random()`.
 15. **No `SCHEMA_VERSION` bump.** A new `EffectType` is additive; there is no
     effect-type migration branch, and `normalizeEffects` drops instances whose
     type is absent from `EFFECT_META` (`src/project-model/schema.ts:769-775`)
@@ -138,8 +145,9 @@ rootPc, chordMask }] }`, populated at the FX-chain build site where `doc` is
 17. **`interval` mode applies the semitone count directly; `degrees` mode
     resolves a pitch class to its nearest instance.** These are two different
     operations and must not share code. An interval IS a distance, so it is
-    `round(f0_midi) + d`. Degrees and chord tones name a pitch CLASS, and the
-    solver picks the nearest instance of it. Routing both through the
+    `f0_midi + d`, preserving the singer's fractional pitch and vibrato.
+    Degrees and chord tones name a pitch CLASS, and the solver picks the nearest
+    instance of it. Routing both through the
     pitch-class search made "an octave up" resolve to the singer's own note —
     the nearest note carrying the singer's pitch class is the note being sung
     — so the most basic request the mode exists for was silently a unison.

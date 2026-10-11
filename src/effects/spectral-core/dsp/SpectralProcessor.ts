@@ -396,9 +396,9 @@ export class SpectralProcessor {
 
     if (mode === SPECTRAL_MODE_RESONATOR) {
       // The resonator IS the effect here: the delay ring still receives the
-      // spectrum so switching back to DELAY mid-flight has a tail to work with,
-      // but its feedback is closed so it cannot colour the resonant output.
-      delay.process(re, im, binCount, this.delayParams(0, false), this.sampleRate, this.engineMid.hop);
+      // fresh spectrum, but its delayed read must never become an extra hidden
+      // hop of latency or contaminate the resonator mode with DELAY's SHIFT.
+      delay.process(re, im, binCount, this.delayParams(0, false), this.sampleRate, this.engineMid.hop, true);
       reso.process(re, im, binCount, rp, 1);
       clampBinMagnitude(re, im, binCount);
       return;

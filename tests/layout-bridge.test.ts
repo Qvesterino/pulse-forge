@@ -40,15 +40,32 @@ describe("ui/layout · single writer", () => {
   });
 
   it("applies geometry + density + accent to the document root", () => {
-    setLayout({ inspectorWidth: 321, sequencerLabelWidth: 200, rackColumns: 12, typeScale: 1.1, density: "compact" });
+    setLayout({ inspectorWidth: 321, rackColumns: 12, typeScale: 1.1, density: "compact" });
     const root = document.documentElement.style;
     expect(root.getPropertyValue("--inspector-width")).toBe("321px");
-    expect(root.getPropertyValue("--steps-label")).toBe("200px");
     expect(root.getPropertyValue("--rack-columns")).toBe("12");
     expect(root.getPropertyValue("--type-scale")).toBe("1.1");
     expect(document.documentElement.classList.contains("theme-compact")).toBe(true);
     expect(document.documentElement.classList.contains("density-compact")).toBe(true);
     expect(document.documentElement.classList.contains("density-dense")).toBe(false);
+  });
+
+  it("applies a custom label width as a CLASS, not an inline custom property", () => {
+    // An inline --steps-label on <html> outranks every media query and would
+    // permanently kill the 760px phone breakpoint in the stylesheet.
+    setLayout({ sequencerLabelWidth: 200 });
+    expect(document.documentElement.classList.contains("user-label-width")).toBe(true);
+    expect(document.documentElement.style.getPropertyValue("--user-steps-label")).toBe("200px");
+    expect(document.documentElement.style.getPropertyValue("--steps-label")).toBe("");
+  });
+
+  it("removes the label class again when the user returns to the default", () => {
+    setLayout({ sequencerLabelWidth: 200 });
+    expect(document.documentElement.classList.contains("user-label-width")).toBe(true);
+    setLayout({ sequencerLabelWidth: 168 });
+    // A one-way toggle would leave the class behind and keep overriding the
+    // stylesheet default forever.
+    expect(document.documentElement.classList.contains("user-label-width")).toBe(false);
   });
 
   it("a preset switch still clears the previous palette (no leak)", () => {

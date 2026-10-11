@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { EFFECT_DEFS } from "../../src/effects/registry";
 import { assetCategoryOf, categoryColor, moodLabel } from "../../src/ui/kitColors";
 import { getLastPlayActivity, recordPlayActivity, subscribePlayActivity } from "../../src/ui/playActivity";
-import { effectEditorSpec } from "../../src/ui/effectEditorRegistry";
+import { effectEditorSpec, portalParamModeHint } from "../../src/ui/effectEditorRegistry";
 import { gestureMatches, gesturesByArea } from "../../src/ui/helpContent";
 import { FACTORY_ASSETS } from "../../src/sample-library/manifest";
 import type { DrumPad } from "../../src/project-model/types";
@@ -116,6 +116,22 @@ describe("effectEditorRegistry — page-1 controls", () => {
       const spec = effectEditorSpec(type as never);
       expect((spec.primaryParamIds ?? []).length).toBeLessThanOrEqual(4);
     }
+  });
+
+  it("PORTAL puts the active mode's main controls on the first page", () => {
+    expect(effectEditorSpec("portal", { mode: 0 }).primaryParamIds).toEqual(["mode", "time", "feedback", "mix"]);
+    expect(effectEditorSpec("portal", { mode: 1 }).primaryParamIds).toEqual(["mode", "focus", "resonance", "mix"]);
+    expect(effectEditorSpec("portal", { mode: 2 }).primaryParamIds).toEqual(["mode", "feedback", "decay", "mix"]);
+    expect(effectEditorSpec("portal", { mode: Number.NaN }).primaryParamIds).toEqual([
+      "mode",
+      "time",
+      "feedback",
+      "mix",
+    ]);
+    expect(portalParamModeHint("feedback", 1)).toContain("Not used in RESONATOR mode");
+    expect(portalParamModeHint("focus", 0)).toContain("DELAY mode");
+    expect(portalParamModeHint("freeze", 2)).toContain("already holds the spectrum");
+    expect(portalParamModeHint("mix", 1)).toBeUndefined();
   });
 });
 

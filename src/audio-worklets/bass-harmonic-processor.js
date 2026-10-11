@@ -134,6 +134,21 @@ const PARTIAL_FADE_END = 0.48; // zero before the Nyquist boundary
 const UNTRACKED_RELEASE_PASSES = 2; // ~64 ms at 48 kHz before stale-root generation releases
 const GLIDE_GAIN = 0.6; // per-crossing pull of f0 toward the measured interval
 const GLIDE_CLAMP = 0.35; // reject a measured interval >35% off the current f0
+/**
+ * Schroeder-style quadratic PHASE profile over harmonic slots 2..MAX: at
+ * `phase = 1` every partial is offset by a different static phase, so their
+ * zero crossings spread out in time and the stack's impulse-like crest
+ * collapses (same spectrum, ~half the peak) — the classic low-crest-factor
+ * waveform. phase = 0 keeps the legacy aligned stack, bit-exactly.
+ */
+const PSI_BASE = (() => {
+  const table = new Float64Array(MAX_PARTIALS + 1);
+  for (let n = 2; n <= MAX_PARTIALS; n++) {
+    const k = n - 2;
+    table[n] = (Math.PI * k * k) / (MAX_PARTIALS - 1);
+  }
+  return table;
+})();
 
 /**
  * YIN-style pitch detection over the whole decimated ring (`bufLen` samples;
@@ -258,6 +273,8 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
       { name: "sustain", minValue: 0, maxValue: 1, defaultValue: 0 },
       { name: "retrig", minValue: 0, maxValue: 1, defaultValue: 1 },
       { name: "character", minValue: 0, maxValue: 2, defaultValue: 0 },
+      { name: "phase", minValue: 0, maxValue: 1, defaultValue: 0 },
+      { name: "tilt", minValue: -1, maxValue: 1, defaultValue: 0 },
       { name: "width", minValue: 0, maxValue: 1, defaultValue: 0 },
       { name: "presence", minValue: 0, maxValue: 1, defaultValue: 0 },
       { name: "keyMode", minValue: 0, maxValue: 2, defaultValue: 0 },
@@ -316,6 +333,8 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     this.hpX = [0, 0];
     // Phase accumulators for harmonics 2..N (index n, 0/1 unused).
     this.phase = new Float64Array(MAX_PARTIALS + 1);
+    // Per-block phase-profile offsets (phase × the Schroeder table).
+    this.psi = new Float64Array(MAX_PARTIALS + 1);
     // Per-block harmonic weights (preallocated — no allocations in process()).
     this.weights = new Float64Array(MAX_PARTIALS + 1);
   }
@@ -415,6 +434,8 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     const sustain = clamp(parameters.sustain[0], 0, 1);
     const retrig = parameters.retrig[0] >= 0.5;
     const character = Math.round(clamp(parameters.character[0], 0, 2));
+    const phase = clamp(parameters.phase[0], 0, 1);
+    const tilt = clamp(parameters.tilt[0], -1, 1);
     const width = clamp(parameters.width[0], 0, 1);
     const presence = clamp(parameters.presence[0], 0, 1);
     const keyMode = Math.round(clamp(parameters.keyMode[0], 0, 2));
@@ -467,6 +488,7 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     const count = Math.min(MAX_PARTIALS, Math.max(2, Math.round(Math.pow(2, range))));
     const presenceOn = presence > 0 && this.f0 > 0;
     const weights = this.weights;
+    const psi = this.psi;
     for (let n = 0; n <= MAX_PARTIALS; n++) weights[n] = 0;
     let norm = 0;
     for (let n = 2; n <= count; n++) {
@@ -482,8 +504,12 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
         const x = Math.log((n * this.f0) / PRESENCE_CENTER_HZ) / PRESENCE_SIGMA;
         w *= 1 + presence * PRESENCE_BOOST * Math.exp(-0.5 * x * x);
       }
+      // TILT: spectral slope across the stack — +1 flattens toward a saw-like
+      // 1/n tail (buzzier, richer), −1 steepens toward 1/n² (darker, rounder).
+      if (tilt !== 0) w *= Math.pow(n, tilt);
       weights[n] = w;
       norm += w;
+      psi[n] = phase * PSI_BASE[n];
     }
     const normScale = norm > 1e-9 ? 0.9 / norm : 0;
     // Deficit: the input's own partials taper the generated ones (normScale
@@ -622,14 +648,20 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
           if (p >= twoPi) p -= twoPi * Math.floor(p / twoPi);
           this.phase[n] = p;
           const w = weights[n];
+          // The PHASE profile adds a static offset per partial (0 = legacy
+          // aligned stack, bit-exact) — the PLL still locks the accumulators
+          // to the input crossings; only where each partial sits WITHIN the
+          // cycle changes, which reshapes the waveform without touching the
+          // spectrum.
+          const pd = p + psi[n];
           // Mono at/below the crossover (the sub reads center); the upper
           // stack is generated as mid + quadrature side and rotated ±φ per
           // channel, so L and R carry the same partials out of phase.
           if (n * this.f0 <= WIDTH_XOVER_HZ) {
-            mLow += w * Math.sin(p);
+            mLow += w * Math.sin(pd);
           } else {
-            mHigh += w * Math.sin(p);
-            if (widthOn) qHigh += w * Math.cos(p);
+            mHigh += w * Math.sin(pd);
+            if (widthOn) qHigh += w * Math.cos(pd);
           }
         }
         const scaled = normScale * this.envGen * keyGain;

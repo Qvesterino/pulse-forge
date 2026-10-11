@@ -260,17 +260,23 @@ describe("PORTAL worklet: every rack param is reachable through AudioParams", ()
     ).toBe(false);
   });
 
-  it("writing SHIFT changes the spectrum (RESONATOR mode, +12 st)", () => {
+  it("writing SHIFT transposes delay repeats upward and stays out of RESONATOR mode", () => {
     const sig = (i: number) => Math.sin((i / SR) * 2 * Math.PI * 220);
-    const flat = makeSurface(Cls(), { mode: 1, shift: 0, mix: 1, resonance: 0.8 });
-    const up = makeSurface(Cls(), { mode: 1, shift: 12, mix: 1, resonance: 0.8 });
+    const flat = makeSurface(Cls(), { mode: 0, time: 100, feedback: 0.8, diffuse: 0, shift: 0, mix: 1 });
+    const up = makeSurface(Cls(), { mode: 0, time: 100, feedback: 0.8, diffuse: 0, shift: 12, mix: 1 });
     const a = render(flat.instance, flat.params, 400, sig);
     const b = render(up.instance, up.params, 400, sig);
     expect(
       a.every((v, i) => v === b[i]),
-      "SHIFT must move the resonator focus",
+      "SHIFT must move the delayed spectral region",
     ).toBe(false);
     expect(finite(b)).toBe(true);
+
+    const resoFlat = makeSurface(Cls(), { mode: 1, shift: 0, mix: 1, resonance: 0.8 });
+    const resoShifted = makeSurface(Cls(), { mode: 1, shift: 12, mix: 1, resonance: 0.8 });
+    const c = render(resoFlat.instance, resoFlat.params, 400, sig);
+    const d = render(resoShifted.instance, resoShifted.params, 400, sig);
+    expect(c).toEqual(d);
   });
 
   it("stays finite and non-clipping across an extreme knob sweep", () => {

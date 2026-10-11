@@ -32,6 +32,8 @@ export const MAX_DELAY_SEC = 2;
 
 /** Safety margin added to the ring so the write cursor always has a free slot. */
 const RING_MARGIN = 2;
+/** Keep the loop strictly contractive, even at the rack's 100% setting. */
+const MAX_DELAY_FEEDBACK = 0.95;
 
 export interface SpectralDelayParams {
   /** Delay time in seconds (0.02 .. 2). */
@@ -128,6 +130,7 @@ export class SpectralDelayBank {
     params: SpectralDelayParams,
     sampleRate: number,
     hop: number,
+    passInputThrough = false,
   ): void {
     const n = Math.min(binCount, this.binCount);
     const maxFrames = this.maxFrames;
@@ -153,10 +156,14 @@ export class SpectralDelayBank {
       this.frozen = false;
     }
 
-    const feedback = clampBinGain(Math.max(0, params.feedback));
     const writeBase = this.writeFrame * this.binCount;
     const readBase = this.readFrame * this.binCount;
     const shiftRatio = Math.pow(2, clampSemitones(params.shiftSemitones) / 12);
+    // Upward shifts spread each source bin across more output bins. Reduce both
+    // feedback and output by that expansion factor so a high SHIFT cannot build
+    // a brighter but progressively louder spectral staircase.
+    const shiftCompensation = 1 / Math.max(1, shiftRatio);
+    const feedback = Math.min(MAX_DELAY_FEEDBACK, clampBinGain(Math.max(0, params.feedback))) * shiftCompensation;
     const diffuse = params.diffuse;
     const decayShape = params.decay;
 
@@ -167,16 +174,14 @@ export class SpectralDelayBank {
       const srcRe = re[k];
       const srcIm = im[k];
 
-      // Feedback is read from a SHIFTED bin: a positive shift folds the fed-back
-      // region up an octave so a sustained partial keeps rising instead of just
-      // repeating. This is what makes it a spectral delay rather than a comb.
+      // Feedback is read from a transposed source bin. Positive SHIFT moves a
+      // partial upward: output bin k reads the lower source bin k / ratio. A
+      // negative shift maps a partial downward by reading a higher source bin.
       //
-      // Bins that shift ABOVE Nyquist get silence, NOT the last bin. Clamping
-      // `shifted` to `n - 1` would point hundreds of bins at the same state and
-      // pump it hundreds of times over — measured 7030× input peak at +12
-      // semitones. Physically, energy that shifted past Nyquist is simply gone,
-      // so silence is both correct and stable.
-      const shifted = Math.round(k * shiftRatio);
+      // Source mappings beyond Nyquist get silence, NOT the last bin. Clamping
+      // to `n - 1` would point hundreds of bins at the same state and pump it
+      // hundreds of times over — measured 7030× input peak at +12 semitones.
+      const shifted = Math.round(k / shiftRatio);
       const inRange = shifted >= 0 && shifted < n;
       const srcBin = inRange ? shifted : 0;
       const rIdx = readBase + srcBin;
@@ -189,8 +194,8 @@ export class SpectralDelayBank {
       const shape = decayTilt(k, n, decayShape);
       const fbk = feedback * shape;
 
-      let wetRe = dRe;
-      let wetIm = dIm;
+      let shiftedRe = dRe;
+      let shiftedIm = dIm;
 
       // DIFFUSE: a deterministic per-bin phase rotation. The accumulator starts
       // at zero and advances by a fixed increment per frame, so the texture is a
@@ -203,20 +208,24 @@ export class SpectralDelayBank {
         const ang = this.drift[k];
         const c = Math.cos(ang);
         const s = Math.sin(ang);
-        const nr = wetRe * c - wetIm * s;
-        wetIm = wetRe * s + wetIm * c;
-        wetRe = nr;
+        const nr = shiftedRe * c - shiftedIm * s;
+        shiftedIm = shiftedRe * s + shiftedIm * c;
+        shiftedRe = nr;
       }
 
-      // Wet is the delayed signal only; the fresh analysis goes into the ring.
-      // Dry/wet mixing belongs to the processor, one level above the spectrum.
-      re[k] = wetRe;
-      im[k] = wetIm;
+      const wetRe = shiftedRe * shiftCompensation;
+      const wetIm = shiftedIm * shiftCompensation;
+
+      // A mode may keep the delay ring warm while taking its output from a
+      // parallel process (PORTAL's RESONATOR). In that case retain the input
+      // spectrum here, while still writing it into the ring below.
+      re[k] = passInputThrough ? srcRe : wetRe;
+      im[k] = passInputThrough ? srcIm : wetIm;
 
       // Flush BEFORE storing (NEW-EFFECT-CHECKLIST §4): storing the un-flushed
       // value leaves a subnormal in the ring that taxes every following frame.
-      this.re[writeBase + k] = flushDenormal(srcRe + wetRe * fbk);
-      this.im[writeBase + k] = flushDenormal(srcIm + wetIm * fbk);
+      this.re[writeBase + k] = flushDenormal(srcRe + shiftedRe * fbk);
+      this.im[writeBase + k] = flushDenormal(srcIm + shiftedIm * fbk);
 
       const mag = Math.abs(wetRe) + Math.abs(wetIm);
       if (mag > peak) peak = mag;

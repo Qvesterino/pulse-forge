@@ -170,7 +170,7 @@ Formatters `formatMs / formatHz / formatDb / formatPct / formatSec` at `definiti
 | `resonance`  | `RESO`   |   0 |     1 |    0.35 | —     | —     | resonator Q, mode-gated (label aligned to the 3 other `resonance` params in the catalog) |
 | `focus`      | `FOCUS`  |  20 | 18000 |    1200 | `Hz`  | `log` | band the resonator concentrates on                                                       |
 | `focusWidth` | `WIDTH`  | 0.1 |     4 |       1 | `oct` | —     | octaves around focus                                                                     |
-| `shift`      | `SHIFT`  | -24 |    24 |       0 | `st`  | —     | pitch region fed back                                                                    |
+| `shift`      | `SHIFT`  | -24 |    24 |       0 | `st`  | —     | pitch region fed back; positive shifts raise the repeats                                 |
 | `diffuse`    | `DIFF`   |   0 |     1 |     0.3 | —     | —     | per-bin random phase drift seed                                                          |
 | `freeze`     | `FREEZE` |   0 |     1 |       0 | —     | —     | hold the current frame                                                                   |
 | `drive`      | `DRIVE`  |   0 |     1 |       0 | —     | —     | post saturation                                                                          |

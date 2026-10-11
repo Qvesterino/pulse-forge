@@ -2260,6 +2260,14 @@ export const skrutkaParams: ParamDef[] = [
     format: (v) => (Math.abs(v) < 0.005 ? "OFF" : `${v > 0 ? "ATTACK" : "BODY"} ${Math.round(Math.abs(v) * 100)}%`),
   },
   {
+    id: "dynPunch",
+    label: "DYN PUNCH",
+    min: -1,
+    max: 1,
+    default: 0,
+    format: (v) => (Math.abs(v) < 0.005 ? "OFF" : `${v > 0 ? "ATTACK" : "BODY"} ${Math.round(Math.abs(v) * 100)}%`),
+  },
+  {
     id: "keyMode",
     label: "KEY MODE",
     min: 0,

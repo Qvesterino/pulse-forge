@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, screen } from "@testing-library/react";
-import { SkrutkaPanel } from "../../src/ui/SkrutkaPanel";
+import { SkrutkaPanel, skrutkaPanelSampleRate } from "../../src/ui/SkrutkaPanel";
+import { skrutkaPeakDelay } from "../../src/effects/skrutka-curve";
 import { renderWithContext, mockServices } from "../helpers";
 import { createProjectFromTemplate } from "../../src/project-model/templates";
 
@@ -37,6 +38,7 @@ function paramsOf(): Record<string, number> {
     spread: 0,
     field: 0,
     dyn: 0,
+    dynPunch: 0,
     keyMode: 0,
     lfoRate: 0.5,
     lfoSync: 0,
@@ -54,6 +56,46 @@ describe("SkrutkaPanel", () => {
   afterEach(() => {
     vi.useRealTimers();
     cleanup();
+  });
+
+  it("uses the live audio rate for the curve and falls back only for invalid hosts", () => {
+    expect(skrutkaPanelSampleRate(44_100)).toBe(44_100);
+    expect(skrutkaPanelSampleRate(96_000)).toBe(96_000);
+    expect(skrutkaPanelSampleRate(null)).toBe(48_000);
+    expect(skrutkaPanelSampleRate(Number.NaN)).toBe(48_000);
+    expect(skrutkaPanelSampleRate(0)).toBe(48_000);
+  });
+
+  it("draws the delay readout using the active audio context sample rate", () => {
+    const services = mockServices(createProjectFromTemplate("house"));
+    const liveContextSpy = vi
+      .spyOn(services.engine, "getLiveAudioContext")
+      .mockReturnValue({ sampleRate: 44_100 } as AudioContext);
+    const canvasSpy = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(stub2dContext());
+    const params = paramsOf();
+    const cp = {
+      dispersion: params.dispersion!,
+      punch: params.punch!,
+      punchHz: params.punchHz!,
+      punchMix: params.punchMix!,
+      focusHz: params.focusHz!,
+      spread: params.spread!,
+      shape: params.shape!,
+      field: params.field!,
+    };
+
+    const { container } = renderWithContext(<SkrutkaPanel trackId="t1" fxId="fx1" params={params} degraded={false} />, {
+      services,
+    });
+    const peak44100 = skrutkaPeakDelay(cp, 44_100, "L");
+    const peak48000 = skrutkaPeakDelay(cp, 48_000, "L");
+    expect(peak44100.ms).not.toBe(peak48000.ms);
+    expect(container.querySelector(".skrutka-readout")).toHaveTextContent(
+      `+${peak44100.ms.toFixed(1)} ms @ ${Math.round(peak44100.freqHz)} Hz`,
+    );
+
+    canvasSpy.mockRestore();
+    liveContextSpy.mockRestore();
   });
 
   it("BAND SOLO drives the monitor band on/off and releases it on unmount", () => {
@@ -146,6 +188,7 @@ describe("SkrutkaPanel", () => {
     expect(screen.getByText("SHAPE DOUBLE")).toBeInTheDocument();
     expect(screen.getByText("FIELD 60% SIDE")).toBeInTheDocument();
     expect(screen.getByText("DYN ATTACK 50%")).toBeInTheDocument();
+    expect(screen.getByText("PUNCH-DYN OFF")).toBeInTheDocument();
     expect(screen.getByText("KEY PUMP")).toBeInTheDocument();
     expect(screen.getByText("LFO TRI 40%")).toBeInTheDocument();
   });

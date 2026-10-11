@@ -180,3 +180,75 @@ Validation additions (`tests/skrutka.test.ts` v2 block, `tests/skrutka-soak.test
 - 8 new factory presets (Kick Duck Phase / Attack Smear / Tail Liquid /
   LFO Throw / Chirp Rise / Double Gulp / Reso Vowel / Punch Band) — the FX
   loudness map regenerated with all 18 `skrutka-*` entries.
+
+## Addendum 2 (2026-10-11) — v2.1: FIELD (M/S dispersion field) + 300 s hardening
+
+The display name moved to **TWIST** (the effect id stays `skrutka`; see
+`docs/PLUGIN-NAMING-INVENTORY.md`) — identifiers, schema and saved projects
+are untouched. Two additions:
+
+1. **FIELD (`field`, −1..+1, default 0).** The two all-pass chains can now
+   process the MID and SIDE components instead of L/R, with a continuous
+   crossfade: `field = +1` leaves the mid bit-exact dry (sides-only
+   dispersion is **bit-transparent for mono content** — a mono render comes
+   out sample-identical), `field = −1` leaves the side dry (center-phase
+   smear only), and everything between blends each component between dry and
+   dispersed. In FIELD mode SPREAD is repurposed: the SIDE focus takes the
+   offset while the mid stays centered, so the component humps split.
+   `|field| ≤ 1e-4` is the legacy stereo path — bit-exact v1/v2, so the
+   frozen hash and every existing project are untouched. With identical
+   coefficients the M/S topology is mathematically the L/R topology
+   (linearity), which keeps the knob musically continuous.
+2. **300 s flagship hardening** (`tests/skrutka-soak.test.ts`, AGENTS parity
+   with PRISM/VLYX/VØID): a MOTION soak (full cascade + dyn + key + 8 Hz
+   random LFO + FIELD, 300 s) proves zero non-finite, zero subnormals, flat
+   CPU and heap ≤ 6 MB (measured 1.0 MB); a STATIC soak on a strictly
+   periodic musical pattern proves amplitude drift between the 10 s and
+   290 s windows ≤ 0.003 dB (measured 0.00091 dB). The drift gate uses the
+   static patch by design — the motion soak's random LFO is deliberately
+   aperiodic, and its determinism is pinned by the golden tests.
+3. **4 FIELD presets** (Side Shimmer / Center Gulp / Field Wide /
+   Mono-Safe Throw) and FIELD added to the lead/chords role landings —
+   20 `skrutka-*` entries in the regenerated loudness map.
+
+Validation additions: mono transparency at `field = +1` (sample-identical
+output), mid/side isolation at ±1 (the untouched component matches the dry
+render to ≤ 1e-6 while the other moves), the threshold bit-exactness at
+`field = 5e-5`, the model's `skrutkaFieldAmounts` contract and the M/S
+focus split, panel chips for FIELD STEREO/SIDE/MID, and the two 300 s soaks.
+
+## Addendum 3 (2026-10-11) — v2.2: DYNAMIC PUNCH
+
+The DYNAMIC layer gains a second destination: the PUNCH radius.
+
+1. **`dynPunch` (−1..+1, default 0).** The same envelope scores that drive
+   the long hump drive the punch radius: `> 0` deepens it on transients
+   (every accent gets an extra phase-throw, ghosts stay put), `< 0` deepens
+   it on sustain (the click stays razor-sharp, the tail develops a gulp
+   that follows the note's envelope). The radius ceiling is
+   `PUNCH_R_HARD_MAX = 0.97` (slightly above the static 0.93), and the drive
+   rides its own 15 ms glide (`punchDelta`) — the same parametric-pump guard
+   as the hump.
+2. **The stage may open from zero.** With `punch = 0` the drive alone can
+   raise the punch radius, so "only accents get the tilt" is a real patch
+   rather than a punch preset tweak. To avoid per-block toggling of a
+   resonant chain while an accent rises, the stage RUNS whenever the drive
+   is armed; it is skipped bit-exactly only when both the static punch and
+   the drive are off, so the v2.1 render is untouched.
+3. **Panel** — the DYNAMIC PUNCH driven band draws in a cooler hue between
+   the base curve and the punch-radius ceiling curve, and a
+   `PUNCH-DYN OFF/ATTACK/BODY` chip joins the state row. The telemetry frame
+   gains the current punch radius (`punch`).
+4. **The curve model unwraps its phase.** The high-Q punch blend can cross
+   an `atan2` branch between the ±δ neighbours; `skrutkaGroupDelaySamples`
+   now unwraps both against the center value before the central difference
+   (this also hardens the v2.1 model at extreme punch radii).
+5. **4 presets** (Hard Knock / Ghost Tamer / Live Drummer / Tail Breath) —
+   24 `skrutka-*` entries in the regenerated loudness map.
+
+Validation additions: the onset-vs-settle differential at `dynPunch = ±1`
+(the stage opens from `punch = 0`, ATTACK decays after the onset, BODY grows
+on sustain and the two directions are complementary), bit-exactness at
+`dynPunch = 0`, the model's punch-ceiling contract, the panel chip, and the
+motion soak now includes the drive in its worst-case surface (the static
+drift soak keeps it off).

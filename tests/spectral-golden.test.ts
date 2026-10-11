@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { SpectralProcessor, DEFAULT_SPECTRAL_PARAMS } from "../src/effects/spectral-core/dsp/SpectralProcessor";
 import { MAX_BLOCK, StftEngine } from "../src/effects/spectral-core/dsp/stft";
+import { SpectralDelayBank } from "../src/effects/spectral-core/dsp/spectralDelay";
 
 /**
  * PORTAL — bit-exact golden vectors + the determinism contract.
@@ -185,6 +186,28 @@ describe("PORTAL — deterministic golden vectors", () => {
     expect(proc.getMeters().delaySec).toBeCloseTo(delaySec, 3);
   });
 
+  it("positive SHIFT maps a delayed partial up by one octave", () => {
+    const params = { timeSec: 0.02, feedback: 0, decay: 0, shiftSemitones: 0, diffuse: 0, freeze: 0 };
+    const renderOneDelayFrame = (shiftSemitones: number) => {
+      const bank = new SpectralDelayBank(513, SR, 256);
+      const frameParams = { ...params, shiftSemitones };
+      let output = new Float64Array(513);
+      for (let frame = 0; frame < 5; frame++) {
+        const re = new Float64Array(513);
+        const im = new Float64Array(513);
+        if (frame === 0) re[5] = 1;
+        bank.process(re, im, 513, frameParams, SR, 256);
+        if (frame === 4) output = re;
+      }
+      return output;
+    };
+    const flat = renderOneDelayFrame(0);
+    const up = renderOneDelayFrame(12);
+    expect(flat[5]).toBeCloseTo(1, 6);
+    expect(up[10]).toBeCloseTo(0.5, 6);
+    expect(up[5]).toBe(0);
+  });
+
   it("is bit-identical across repeated renders (NEW-EFFECT-CHECKLIST §10)", () => {
     const params = { mode: 0, feedback: 0.7, mix: 1, time: 250, diffuse: 0.8 } as const;
     const a = render({ seconds: 0.3, input: twoTone, params });
@@ -221,7 +244,27 @@ describe("PORTAL — deterministic golden vectors", () => {
       input: twoTone,
       params: { mode: 1, resonance: 0.8, focus: 660, focusWidth: 1, mix: 1 },
     });
-    expect({ peak: q(peakOf(outL)), rms: q(rms(outL, 0, outL.length)) }).toEqual({ peak: 0.48001, rms: 0.181237 });
+    expect({ peak: q(peakOf(outL)), rms: q(rms(outL, 0, outL.length)) }).toEqual({ peak: 0.375493, rms: 0.172423 });
+  });
+
+  it("RESONATOR with zero resonance adds no hidden delay beyond reported STFT latency", () => {
+    const quietTone = (i: number) => twoTone(i) * 0.001;
+    const { outL, proc } = render({ seconds: 0.25, input: quietTone, params: { mode: 1, resonance: 0, mix: 1 } });
+    const referenceEngine = new StftEngine(SR);
+    referenceEngine.onFrame(() => {});
+    const reference = new Float32Array(outL.length);
+    const inputBlock = new Float32Array(MAX_BLOCK);
+    const outputBlock = new Float32Array(MAX_BLOCK);
+    for (let offset = 0; offset < reference.length; offset += MAX_BLOCK) {
+      const len = Math.min(MAX_BLOCK, reference.length - offset);
+      for (let i = 0; i < len; i++) inputBlock[i] = quietTone(offset + i);
+      referenceEngine.processBlock(inputBlock, len, outputBlock);
+      reference.set(outputBlock.subarray(0, len), offset);
+    }
+    let maxError = 0;
+    for (let i = 0; i < outL.length; i++) maxError = Math.max(maxError, Math.abs(outL[i]! - reference[i]!));
+    expect(proc.latencySamples()).toBe(referenceEngine.latencySamples());
+    expect(maxError).toBeLessThan(1e-5);
   });
 
   it("FREEZE golden vector is pinned", () => {

@@ -101,11 +101,11 @@ describe("TWIST v2 legacy compatibility (v1 renders bit-identically)", () => {
     expect(absSum).toBeCloseTo(19578.905037, 5);
   });
 
-  it("v2-only params at their defaults do not change the render (shape 0, dyn 0, key 0, punchHz 0, punchMix 1)", () => {
+  it("v2-only params at their defaults do not change the render (shape 0, dyn 0, dynPunch 0, key 0, punchHz 0, punchMix 1)", () => {
     const opts = { dispersion: 0.6, punch: 0.5, focusHz: 240, spread: 0.4, mix: 0.9 };
     const a = render(opts, 0.8, musicalInput);
     const b = render(
-      { ...opts, shape: 0, dyn: 0, keyMode: 0, punchHz: 0, punchMix: 1, lfoDepth: 0 },
+      { ...opts, shape: 0, dyn: 0, dynPunch: 0, keyMode: 0, punchHz: 0, punchMix: 1, lfoDepth: 0 },
       0.8,
       musicalInput,
     );

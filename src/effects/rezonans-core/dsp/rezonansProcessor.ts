@@ -30,6 +30,7 @@ import {
   buildDefaultParams,
   clampParam,
   hopFor,
+  resolveFormantSemitones,
   voiceParamId,
   VOICE_COUNT,
 } from "../contracts/parameters.js";
@@ -40,6 +41,7 @@ import {
   MAX_RATIO,
   MIN_RATIO,
   clamp,
+  humanizeCents,
   type ChordLaneEntry,
   type HarmonyMode,
 } from "./harmony.js";
@@ -65,6 +67,7 @@ export interface RezMeters {
   bar: number;
   activeVoices: number;
   latencySamples: number;
+  sampleRate: number;
   /** Share of frames that passed the clarity gate (diagnostic, P1 A2). */
   voicedRatio: number;
   claritySum: number;
@@ -113,10 +116,13 @@ export class RezonansProcessor {
   private chordCursor = 0;
   private currentChordPc = -1;
 
-  /** Dry delay line so the wet path's inherent latency is matched. */
-  private dryRing = new Float32Array(0);
+  /** Per-channel dry delay lines keep unvoiced consonants stereo and PDC-aligned. */
+  private dryRingL = new Float32Array(0);
+  private dryRingR = new Float32Array(0);
   private dryMask = 0;
   private dryWrite = 0;
+  /** Crossfade from harmonies to the latency-matched source on transients/unvoiced frames. */
+  private sourcePassGain = 1;
 
   private gate = 1;
   private gateCoef = 0;
@@ -143,6 +149,7 @@ export class RezonansProcessor {
     bar: 0,
     activeVoices: 0,
     latencySamples: 0,
+    sampleRate: 48000,
     voicedRatio: 0,
     claritySum: 0,
     voiceMidi: new Array<number>(VOICE_COUNT).fill(-1),
@@ -169,8 +176,10 @@ export class RezonansProcessor {
     this.ratioSm.fill(1);
     this.alpha.fill(1);
     this.voiceGain.fill(0);
-    this.dryRing?.fill(0);
+    this.dryRingL.fill(0);
+    this.dryRingR.fill(0);
     this.dryWrite = 0;
+    this.sourcePassGain = 1;
     this.gate = 1;
     this.envFast = 0;
     this.envSlow = 0;
@@ -199,8 +208,9 @@ export class RezonansProcessor {
     const latency = this.frame.latencySamples;
     let ringLen = 1;
     while (ringLen < latency + 8) ringLen <<= 1;
-    if (ringLen !== this.dryRing.length) {
-      this.dryRing = new Float32Array(ringLen);
+    if (ringLen !== this.dryRingL.length) {
+      this.dryRingL = new Float32Array(ringLen);
+      this.dryRingR = new Float32Array(ringLen);
       this.dryMask = ringLen - 1;
       this.dryWrite = 0;
     }
@@ -321,6 +331,7 @@ export class RezonansProcessor {
     this.meters.chordPc = this.currentChordPc;
     this.meters.bar = this.clock.bar;
     this.meters.latencySamples = this.getLatencySamples();
+    this.meters.sampleRate = this.sampleRate;
     this.meters.voicedRatio = this.frame.frames > 0 ? this.voicedFrames / this.frame.frames : 0;
     this.meters.claritySum = this.frame.frames > 0 ? this.claritySum / this.frame.frames : 0;
     let active = 0;
@@ -385,26 +396,39 @@ export class RezonansProcessor {
 
       // ── voice gains (unvoiced hold) ──
       const voiced = this.frame.clarity >= (this.params[REZ_PARAM.clarity] ?? 0.75) && this.frame.f0 > 0;
+      let hasVoice = false;
       for (let v = 0; v < VOICE_COUNT; v++) {
         const enabled = this.params[voiceParamId(v, "enabled")]! > 0.5;
         const level = enabled ? (this.params[voiceParamId(v, "level")] ?? 0) * this.gate : 0;
+        if (level > 0.0005) hasVoice = true;
         const g = voiced ? level : 0;
         this.voiceGain[v] = this.voiceGain[v]! + (g - this.voiceGain[v]!) * (1 - this.gateSmCoef);
         this.bus.setVoiceGain(v, this.voiceGain[v]!);
       }
 
+      // Keep consonants and attacks in the wet output. The source path is
+      // latency-matched, so it can crossfade against the harmony voices with
+      // no timing smear. Unvoiced frames pass fully; voiced transients use
+      // the complement of the body gate; a patch with no enabled voice stays
+      // a transparent insert instead of going silent at 100% wet.
+      const sourcePassTarget = !voiced || !hasVoice ? 1 : 1 - this.gate;
+      this.sourcePassGain += (sourcePassTarget - this.sourcePassGain) * (1 - this.gateSmCoef);
+
       // ── dry delay: matches the wet path's inherent latency ──
-      this.dryRing[this.dryWrite & this.dryMask] = mono;
+      const dryWritePos = this.dryWrite & this.dryMask;
+      this.dryRingL[dryWritePos] = l;
+      this.dryRingR[dryWritePos] = r;
       this.dryWrite++;
       const dryPos = (this.dryWrite - 1 - delay) & this.dryMask;
-      const dryDelayed = this.dryRing[dryPos]!;
+      const dryDelayedL = this.dryRingL[dryPos]!;
+      const dryDelayedR = this.dryRingR[dryPos]!;
 
       this.mixSm += (mix - this.mixSm) * (1 - this.mixSmCoef);
 
       const wet = this.out;
       const m = this.mixSm;
-      left[i] = dryDelayed * (1 - m) + wet.l * m;
-      right[i] = dryDelayed * (1 - m) + wet.r * m;
+      left[i] = dryDelayedL * (1 - m) + (wet.l + dryDelayedL * this.sourcePassGain) * m;
+      right[i] = dryDelayedR * (1 - m) + (wet.r + dryDelayedR * this.sourcePassGain) * m;
     }
   }
 
@@ -414,14 +438,13 @@ export class RezonansProcessor {
     const spread = this.params[REZ_PARAM.spread] ?? 1;
     const formantGlobal = this.params[REZ_PARAM.formant] ?? 0;
     const voiceScale = this.params[REZ_PARAM.formantVoiceScale] ?? 1;
-    const globalAlpha = Math.pow(2, formantGlobal / 12);
 
     for (let v = 0; v < VOICE_COUNT; v++) {
       this.degree[v] = this.params[voiceParamId(v, "degree")] ?? 0;
       const vf = this.params[voiceParamId(v, "formant")] ?? 0;
       // Per-voice α is free because the warp is applied during synthesis
       // (ADR 0040 decision 6) — no extra transform, only arithmetic.
-      this.alpha[v] = globalAlpha * Math.pow(2, (vf * clamp(voiceScale, 0, 1)) / 12);
+      this.alpha[v] = Math.pow(2, resolveFormantSemitones(formantGlobal, vf, voiceScale) / 12);
     }
 
     // Chord position is resolved EVERY frame, voiced or not: it is a musical
@@ -441,9 +464,12 @@ export class RezonansProcessor {
       this.ratioSm[v] = this.ratioSm[v]! + (this.ratioTarget[v]! - this.ratioSm[v]!) * (1 - this.glideCoef);
       const ratio = clamp(this.ratioSm[v]!, MIN_RATIO, MAX_RATIO);
       const active = v < voiceCount && this.params[voiceParamId(v, "enabled")]! > 0.5;
+      const humanize = active ? (this.params[voiceParamId(v, "humanize")] ?? 0) : 0;
+      const cents = humanizeCents(this.frame.frames, v, humanize);
+      const renderRatio = clamp(ratio * Math.pow(2, cents / 1200), MIN_RATIO, MAX_RATIO);
       this.bus.setVoiceTargets(
         v,
-        ratio,
+        renderRatio,
         clamp(this.alpha[v]!, 0.5, 2),
         active ? (this.params[voiceParamId(v, "level")] ?? 0) : 0,
         this.params[voiceParamId(v, "pan")] ?? 0,

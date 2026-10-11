@@ -1,6 +1,6 @@
 # KOPA + KOREŇ — V2 backlog
 
-**Stav:** implementácia prebieha; loudness/peak merania prešli, regresné DSP merania ešte zostávajú · **Aktualizované:** 2026-10-11
+**Stav:** cielené DSP/UI regresie 78/78 a typecheck prešli; oba worklety sa zostavili a referenčné loudness merania prešli. Pred V2 zostáva uzavrieť bundle limit (+1 KB v celom DAW builde), tracker/mono/CPU merania a level-matched počúvanie · **Aktualizované:** 2026-10-11
 **Rozsah:** KOPA je kick-design inštrument; KOREŇ je samostatný Bass Harmonic Processor insert.  
 **V1 kontext:** [historický implementačný plán](KOPA-KOREN-IMPLEMENTATION-PLAN.md), [ADR 0034 — KOREŇ](adr/0034-koren-bass-harmonic-exciter.md), [ADR 0035 — KOPA](adr/0035-kopa-kick-designer.md), [ADR 0036 — KOPA harmonics](adr/0036-kopa-bass-harmonic-layer.md).  
 **Povinná DSP brána:** [NEW-EFFECT-CHECKLIST.md](NEW-EFFECT-CHECKLIST.md).

@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useActivePatternId, usePatterns, useServices, useTracks } from "./context";
 import { fireGestureHint } from "./gestureHints";
+import { useLayout } from "./layout";
 import { STEP_TICKS } from "../project-model/types";
 import type { DrumTrack, StepMeta, Track } from "../project-model/types";
 import type { Transport } from "../transport/Transport";
@@ -87,26 +88,44 @@ const OVERSCAN = 5;
    the CSS: .sequencer-row / .sequencer-ruler label track and the grid gap. */
 const COL_GAP = 4;
 const COL_OVERSCAN = 6;
-/** Label column width — MUST mirror --steps-label in src/styles/01-base.css: the row
- *  grid, the playhead offset and this windowing math all share one value. */
+/** Where the phone breakpoint lives: the same 760px the stylesheet uses for the
+ *  `--steps-label` narrowing in 12-floating-instrument-plugin-2.css. */
 const NARROW_QUERY = "(max-width: 760px)";
+const NARROW_LABEL_PX = 112;
+const DEFAULT_LABEL_PX = 168;
 function currentStepsLabelPx(): number {
-  if (typeof window === "undefined" || !window.matchMedia) return 168;
-  return window.matchMedia(NARROW_QUERY).matches ? 112 : 168;
+  if (typeof window === "undefined" || !window.matchMedia) return DEFAULT_LABEL_PX;
+  return window.matchMedia(NARROW_QUERY).matches ? NARROW_LABEL_PX : DEFAULT_LABEL_PX;
 }
 
-/** Reactive label width: re-windows the step grid when the layout breakpoint
- *  flips (resize across 760px, device rotation). */
+/**
+ * Reactive label width: re-windows the step grid when the layout breakpoint
+ * flips (resize across 760px, device rotation) OR the user overrides the label
+ * width in the layout state (ADR 0036 / Vlna B).
+ *
+ * The user setting is a BASE, not an override: on a phone the 760px breakpoint
+ * still narrows the column, because the grid would otherwise be too wide to
+ * scroll usefully. This mirrors the CSS — the stylesheet only applies the
+ * user's width above the breakpoint, and this hook computes the same rule, so
+ * the row grid, the playhead offset and this windowing math share ONE number.
+ */
 function useStepsLabelPx(): number {
-  const [px, setPx] = useState(currentStepsLabelPx);
+  const layout = useLayout();
+  const [breakpointPx, setBreakpointPx] = useState(currentStepsLabelPx);
+
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
     const mq = window.matchMedia(NARROW_QUERY);
-    const onChange = () => setPx(currentStepsLabelPx());
+    const onChange = () => setBreakpointPx(currentStepsLabelPx());
     mq.addEventListener?.("change", onChange);
     return () => mq.removeEventListener?.("change", onChange);
   }, []);
-  return px;
+
+  // A custom label width wins when the viewport is wide (no breakpoint); on a
+  // narrow phone the breakpoint value takes precedence.
+  const userPx = layout.sequencerLabelWidth;
+  if (userPx !== DEFAULT_LABEL_PX && breakpointPx === DEFAULT_LABEL_PX) return userPx;
+  return breakpointPx;
 }
 
 function buildFlatItems(tracks: Track[]): FlatItem[] {

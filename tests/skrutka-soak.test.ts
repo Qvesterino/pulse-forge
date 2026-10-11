@@ -64,6 +64,7 @@ function motionParameters(): Record<string, Float32Array> {
     spread: new Float32Array([1]),
     field: new Float32Array([0.35]),
     dyn: new Float32Array([1]),
+    dynPunch: new Float32Array([1]),
     keyMode: new Float32Array([1]),
     lfoHz: new Float32Array([8]),
     lfoShape: new Float32Array([2]),
@@ -79,6 +80,7 @@ function staticParameters(): Record<string, Float32Array> {
   const p = motionParameters();
   p.lfoDepth = new Float32Array([0]);
   p.dyn = new Float32Array([0]);
+  p.dynPunch = new Float32Array([0]);
   p.keyMode = new Float32Array([0]);
   return p;
 }
@@ -101,7 +103,10 @@ function runSoak(parameters: Record<string, Float32Array>): SoakMetrics {
   const keyR = new Float32Array(BLOCK);
   const outL = new Float32Array(BLOCK);
   const outR = new Float32Array(BLOCK);
-  const inputs: Float32Array[][] = [[inL, inR], [keyL, keyR]];
+  const inputs: Float32Array[][] = [
+    [inL, inR],
+    [keyL, keyR],
+  ];
   const outputs: Float32Array[][] = [[outL, outR]];
 
   // Repeating 2 s musical pattern (never silent): a kick-ish burst, a

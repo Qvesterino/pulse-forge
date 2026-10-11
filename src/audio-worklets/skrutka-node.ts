@@ -41,6 +41,7 @@ const SKRUTKA_PARAMS = [
   "spread",
   "field",
   "dyn",
+  "dynPunch",
   "keyMode",
   "lfoShape",
   "lfoDepth",
@@ -54,6 +55,8 @@ export interface SkrutkaMeterFrame {
   env: number;
   key: number;
   radius: number;
+  /** Current dynamic PUNCH radius (0 = stage off). */
+  punch: number;
 }
 
 export function createSkrutkaNode(
@@ -108,11 +111,18 @@ export function createSkrutkaNode(
       env?: unknown;
       key?: unknown;
       radius?: unknown;
+      punch?: unknown;
     } | null;
     if (msg?.type !== "skrutka") return;
     const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
     if (!finite(msg.lfo) || !finite(msg.env) || !finite(msg.key) || !finite(msg.radius)) return;
-    meters = { lfo: msg.lfo, env: msg.env, key: msg.key, radius: msg.radius };
+    meters = {
+      lfo: msg.lfo,
+      env: msg.env,
+      key: msg.key,
+      radius: msg.radius,
+      punch: finite(msg.punch) ? msg.punch : 0,
+    };
   };
 
   return {

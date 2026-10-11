@@ -27,6 +27,7 @@ export const SKRUTKA_R_HARD_MAX = 0.995;
 export const SKRUTKA_RESO_R_FLOOR = 0.45;
 export const SKRUTKA_RESO_R_RANGE = 0.53;
 export const SKRUTKA_PUNCH_R_MAX = 0.93;
+export const SKRUTKA_PUNCH_R_HARD_MAX = 0.97; // ceiling for the DYNAMIC PUNCH drive
 export const SKRUTKA_PUNCH_BAND_RATIO = 3.5;
 export const SKRUTKA_PUNCH_FOCUS_MAX_HZ = 6000;
 export const SKRUTKA_SPREAD_OFFSET = 0.12;
@@ -107,8 +108,7 @@ export function skrutkaPunchFocus(focusHz: number, punch: number, punchHz: numbe
 export function skrutkaFocusForChannel(focusHz: number, spread: number, channel: SkrutkaChannel): number {
   const f = clamp(focusHz, SKRUTKA_FOCUS_MIN_HZ, SKRUTKA_FOCUS_MAX_HZ);
   const s = clamp(spread, 0, 1);
-  const factor =
-    channel === "M" ? 1 : channel === "L" ? 1 - SKRUTKA_SPREAD_OFFSET * s : 1 + SKRUTKA_SPREAD_OFFSET * s;
+  const factor = channel === "M" ? 1 : channel === "L" ? 1 - SKRUTKA_SPREAD_OFFSET * s : 1 + SKRUTKA_SPREAD_OFFSET * s;
   return clamp(f * factor, SKRUTKA_FOCUS_MIN_HZ, SKRUTKA_SECTION_MAX_HZ);
 }
 
@@ -164,6 +164,7 @@ function skrutkaPhaseAt(
   omega: number,
   channel: SkrutkaChannel,
   radiusOverride?: number,
+  punchRadiusOverride?: number,
 ): number {
   const shape = Math.round(clamp(params.shape ?? 0, 0, 3));
   const radius = radiusOverride ?? skrutkaRadius(params.dispersion, shape);
@@ -178,7 +179,7 @@ function skrutkaPhaseAt(
     const h = biquadAllpassAt(omega, c1, c2);
     phase += Math.atan2(h.im, h.re);
   }
-  const punchRadius = skrutkaPunchRadius(params.punch);
+  const punchRadius = punchRadiusOverride ?? skrutkaPunchRadius(params.punch);
   const punchMix = clamp(params.punchMix ?? 1, 0, 1);
   if (punchRadius > 1e-4 && punchMix > 1e-4) {
     const punchFocus = skrutkaPunchFocus(params.focusHz, params.punch, params.punchHz ?? 0, sampleRate);
@@ -205,17 +206,33 @@ function skrutkaPhaseAt(
 const PHASE_DELTA = 1e-3; // rad, central difference for −dφ/dω
 
 /** Group delay of the full wet chain at `freqHz`, in samples. */
+/**
+ * Group delay of the full wet chain at `freqHz`, in samples. The phase is
+ * evaluated as the sum of principal (`atan2`) phases, so the ±δ neighbours
+ * are unwrapped against the center value before the central difference —
+ * a branch crossing (high-Q punch blend) would otherwise read as a 2π jump.
+ */
 export function skrutkaGroupDelaySamples(
   params: SkrutkaCurveParams,
   sampleRate: number,
   freqHz: number,
   channel: SkrutkaChannel = "L",
   radiusOverride?: number,
+  punchRadiusOverride?: number,
 ): number {
   const omega = clamp((2 * Math.PI * freqHz) / sampleRate, 1e-4, Math.PI - 1e-4);
-  const plus = skrutkaPhaseAt(params, sampleRate, omega + PHASE_DELTA, channel, radiusOverride);
-  const minus = skrutkaPhaseAt(params, sampleRate, omega - PHASE_DELTA, channel, radiusOverride);
-  return -(plus - minus) / (2 * PHASE_DELTA);
+  const phi0 = skrutkaPhaseAt(params, sampleRate, omega, channel, radiusOverride, punchRadiusOverride);
+  const phiPlus = skrutkaPhaseAt(params, sampleRate, omega + PHASE_DELTA, channel, radiusOverride, punchRadiusOverride);
+  const phiMinus = skrutkaPhaseAt(
+    params,
+    sampleRate,
+    omega - PHASE_DELTA,
+    channel,
+    radiusOverride,
+    punchRadiusOverride,
+  );
+  const unwrap = (v: number) => v + 2 * Math.PI * Math.round((phi0 - v) / (2 * Math.PI));
+  return -(unwrap(phiPlus) - unwrap(phiMinus)) / (2 * PHASE_DELTA);
 }
 
 /** Group delay at `freqHz` for a specific pole radius (panel's live dot). */
@@ -269,6 +286,7 @@ export function skrutkaComponentCurve(
   fLo = 30,
   fHi = 16000,
   radiusOverride?: number,
+  punchRadiusOverride?: number,
 ): { freqHz: number; ms: number }[] {
   const out: { freqHz: number; ms: number }[] = [];
   const ratio = Math.log(fHi / fLo);
@@ -276,7 +294,10 @@ export function skrutkaComponentCurve(
     const freqHz = fLo * Math.exp((i / (points - 1)) * ratio);
     out.push({
       freqHz,
-      ms: (skrutkaGroupDelaySamples(params, sampleRate, freqHz, channel, radiusOverride) / sampleRate) * 1000,
+      ms:
+        (skrutkaGroupDelaySamples(params, sampleRate, freqHz, channel, radiusOverride, punchRadiusOverride) /
+          sampleRate) *
+        1000,
     });
   }
   return out;

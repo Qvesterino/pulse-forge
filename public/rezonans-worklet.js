@@ -36,7 +36,12 @@
   }
   var VOICE_DEFAULTS = {
     enabled: [1, 1, 1, 0],
-    degree: [3, 7, 12, 0],
+    // Degrees stay inside a heptatonic scale (0..6). Higher indices are NOT
+    // silently wrong — `nthScaleTone` wraps them — but a default that depends on
+    // the wrap to mean anything is a default the user cannot predict: asking a
+    // 7-note scale for degree 7 lands on degree 0, which is a unison doubling
+    // rather than the octave the number suggests.
+    degree: [2, 4, 6, 0],
     level: [0.7, 0.7, 0.7, 0.7],
     pan: [-0.6, -0.2, 0.2, 0.6],
     formant: [0, 0, 0, 0],
@@ -78,6 +83,9 @@
     ).flat()
   ];
   var BY_ID = new Map(REZONANS_PARAMS.map((p) => [p.id, p]));
+  function paramDef(id) {
+    return BY_ID.get(id);
+  }
   function buildDefaultParams() {
     const out = {};
     for (const p of REZONANS_PARAMS) out[p.id] = p.def;
@@ -88,6 +96,14 @@
     if (!def) return 0;
     if (!Number.isFinite(value)) return def.def;
     return value < def.min ? def.min : value > def.max ? def.max : value;
+  }
+  function resolveFormantSemitones(globalShift, voiceShift, voiceScale) {
+    const global = clampParam(REZ_PARAM.formant, globalShift);
+    const local = clampParam(voiceParamId(0, "formant"), voiceShift);
+    const scale = clampParam(REZ_PARAM.formantVoiceScale, voiceScale);
+    const sum = global + local * scale;
+    const range = paramDef(REZ_PARAM.formant);
+    return Math.max(range.min, Math.min(range.max, sum));
   }
   var REZ_PARAM_COUNT = REZONANS_PARAMS.length;
 
@@ -883,13 +899,21 @@
   function hzToMidi(hz) {
     return 69 + 12 * Math.log2(Math.max(hz, 1e-6) / 440);
   }
+  function maskToneCount(mask) {
+    let n = 0;
+    for (let i = 0; i < 12; i++) if ((mask & 1 << i) !== 0) n++;
+    return n;
+  }
   function nthScaleTone(mask, rootPc, degree) {
     if (mask === 0 || degree < 0) return -1;
+    const tones = maskToneCount(mask);
+    if (tones === 0) return -1;
+    const wrapped = Math.round(degree) % tones;
     let count = 0;
     for (let i = 0; i < 12; i++) {
       const pc = ((rootPc + i) % 12 + 12) % 12;
       if ((mask & 1 << pc) !== 0) {
-        if (count === degree) return pc;
+        if (count === wrapped) return pc;
         count++;
       }
     }
@@ -995,6 +1019,8 @@
       for (let i = 0; i < HARMONY_VOICE_COUNT; i++) {
         if (!this.voices[i]) {
           this.voices[i] = new HarmonyVoice();
+        }
+        if (!this.rings[i] || this.rings[i].length !== ringLen) {
           this.rings[i] = new Float32Array(ringLen);
         }
         this.voices[i].prepare(fftSize, hop);
@@ -1104,6 +1130,22 @@
       this.sideState = 0;
     }
   };
+  function humanizeOffset(frame, voice) {
+    let h = frame * 374761393 + voice * 668265263 | 0;
+    h = (h ^ h >>> 13) * 1274126177;
+    h = h ^ h >>> 16;
+    return (h >>> 0) % 1e5 / 1e5;
+  }
+  function humanizeCents(frame, voice, amount) {
+    const strength = clamp(amount, 0, 1);
+    if (strength === 0) return 0;
+    const position = Math.max(0, Number.isFinite(frame) ? frame : 0) / 8;
+    const anchor = Math.floor(position);
+    const blend = position - anchor;
+    const a = humanizeOffset(anchor, voice) * 2 - 1;
+    const b = humanizeOffset(anchor + 1, voice) * 2 - 1;
+    return (a + (b - a) * blend) * 15 * strength;
+  }
 
   // src/effects/rezonans-core/dsp/solver.ts
   function nearestMidiWithPc(refMidi, pc) {
@@ -1148,8 +1190,7 @@
         let targetMidi;
         switch (ctx.mode) {
           case "interval": {
-            const pc = ((refPc + d) % 12 + 12) % 12;
-            targetMidi = nearestMidiWithPc(refMidi, pc);
+            targetMidi = refMidi + d;
             break;
           }
           case "degrees": {
@@ -1164,10 +1205,12 @@
               targetMidi = scaleMidi;
               break;
             }
-            const chordMidi = nearestMidiWithPc(refMidi, nearestAllowedPc(ctx.chordMask, refPc));
+            const chordAnchorPc = scalePc >= 0 ? scalePc : refPc;
+            const chordPc = nearestAllowedPc(ctx.chordMask, chordAnchorPc);
+            const chordMidi = nearestMidiWithPc(scaleMidi, chordPc);
             const w = Math.max(0, Math.min(1, ctx.chordFollow));
-            const chordScore = Math.abs(chordMidi - refMidi) * w;
-            const scaleScore = Math.abs(scaleMidi - refMidi) * (1 - w);
+            const chordScore = Math.abs(chordMidi - refMidi) * (1 - w);
+            const scaleScore = Math.abs(scaleMidi - refMidi) * w;
             targetMidi = chordScore <= scaleScore ? chordMidi : scaleMidi;
             break;
           }
@@ -1241,6 +1284,7 @@
       bar: 0,
       activeVoices: 0,
       latencySamples: 0,
+      sampleRate: 48e3,
       voicedRatio: 0,
       claritySum: 0,
       voiceMidi: new Array(VOICE_COUNT).fill(-1)
@@ -1383,6 +1427,7 @@
       this.meters.chordPc = this.currentChordPc;
       this.meters.bar = this.clock.bar;
       this.meters.latencySamples = this.getLatencySamples();
+      this.meters.sampleRate = this.sampleRate;
       this.meters.voicedRatio = this.frame.frames > 0 ? this.voicedFrames / this.frame.frames : 0;
       this.meters.claritySum = this.frame.frames > 0 ? this.claritySum / this.frame.frames : 0;
       let active = 0;
@@ -1454,11 +1499,10 @@
       const spread = this.params[REZ_PARAM.spread] ?? 1;
       const formantGlobal = this.params[REZ_PARAM.formant] ?? 0;
       const voiceScale = this.params[REZ_PARAM.formantVoiceScale] ?? 1;
-      const globalAlpha = Math.pow(2, formantGlobal / 12);
       for (let v = 0; v < VOICE_COUNT; v++) {
         this.degree[v] = this.params[voiceParamId(v, "degree")] ?? 0;
         const vf = this.params[voiceParamId(v, "formant")] ?? 0;
-        this.alpha[v] = globalAlpha * Math.pow(2, vf * clamp(voiceScale, 0, 1) / 12);
+        this.alpha[v] = Math.pow(2, resolveFormantSemitones(formantGlobal, vf, voiceScale) / 12);
       }
       this.resolveChord();
       const voiced = this.frame.clarity >= (this.params[REZ_PARAM.clarity] ?? 0.75) && this.frame.f0 > 0;
@@ -1469,9 +1513,12 @@
         this.ratioSm[v] = this.ratioSm[v] + (this.ratioTarget[v] - this.ratioSm[v]) * (1 - this.glideCoef);
         const ratio = clamp(this.ratioSm[v], MIN_RATIO, MAX_RATIO);
         const active = v < voiceCount && this.params[voiceParamId(v, "enabled")] > 0.5;
+        const humanize = active ? this.params[voiceParamId(v, "humanize")] ?? 0 : 0;
+        const cents = humanizeCents(this.frame.frames, v, humanize);
+        const renderRatio = clamp(ratio * Math.pow(2, cents / 1200), MIN_RATIO, MAX_RATIO);
         this.bus.setVoiceTargets(
           v,
-          ratio,
+          renderRatio,
           clamp(this.alpha[v], 0.5, 2),
           active ? this.params[voiceParamId(v, "level")] ?? 0 : 0,
           this.params[voiceParamId(v, "pan")] ?? 0,

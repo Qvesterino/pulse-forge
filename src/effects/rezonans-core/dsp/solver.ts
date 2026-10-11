@@ -74,11 +74,10 @@ export class HarmonySolver {
 
       switch (ctx.mode) {
         case "interval": {
-          // An interval IS a semitone count, so it is applied directly. Going
-          // through the pitch-class search here would make interval 12 return
-          // the singer's OWN note — the nearest note with that pitch class is
-          // the one being sung — so "an octave up" would have been silent.
-          targetMidi = Math.round(refMidi) + d;
+          // An interval is a distance from the singer's current pitch. Keep
+          // the fractional MIDI part so vibrato and expressive intonation pass
+          // through the harmonies instead of being quantized to equal tone.
+          targetMidi = refMidi + d;
           break;
         }
 
@@ -96,15 +95,24 @@ export class HarmonySolver {
             targetMidi = scaleMidi;
             break;
           }
-          const chordMidi = nearestMidiWithPc(refMidi, nearestAllowedPc(ctx.chordMask, refPc));
+          // Keep each voice's configured scale-degree identity when snapping
+          // it into the current chord. Snapping every voice from the singer's
+          // pitch class made all enabled voices choose the same chord member.
+          const chordAnchorPc = scalePc >= 0 ? scalePc : refPc;
+          const chordPc = nearestAllowedPc(ctx.chordMask, chordAnchorPc);
+          const chordMidi = nearestMidiWithPc(scaleMidi, chordPc);
 
-          // `chordFollow` is a proximity-weighted rule, NOT a crossfade: the
-          // chord candidate wins when its distance is smaller after weighting.
-          // A crossfade would need an RNG, and a random choice would break
-          // live/offline parity — so this stays a deterministic decision.
+          // `chordFollow` is a proximity-weighted candidate choice, not a
+          // pitch crossfade. Blending adjacent note targets would create
+          // detuned intermediate pitches; the processor glides the selected
+          // target and this decision remains deterministic offline.
           const w = Math.max(0, Math.min(1, ctx.chordFollow));
-          const chordScore = Math.abs(chordMidi - refMidi) * w;
-          const scaleScore = Math.abs(scaleMidi - refMidi) * (1 - w);
+          // `w = 0` means scale-only and `w = 1` means chord-only. Weight the
+          // candidate being followed DOWN as its preference increases; the
+          // previous polarity made the advertised CHORD FOLLOW setting choose
+          // the scale candidate almost every time.
+          const chordScore = Math.abs(chordMidi - refMidi) * (1 - w);
+          const scaleScore = Math.abs(scaleMidi - refMidi) * w;
           targetMidi = chordScore <= scaleScore ? chordMidi : scaleMidi;
           break;
         }

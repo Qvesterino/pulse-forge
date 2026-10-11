@@ -8,16 +8,19 @@ export function EffectParameterGrid({
   values,
   onChange,
   paged,
+  contextHint,
 }: {
   family: EffectEditorFamily;
   params: ParamDef[];
   values: Record<string, number>;
   onChange: (paramId: string, value: number) => void;
   paged: boolean;
+  contextHint?: (paramId: string) => string | undefined;
 }) {
   return (
     <div className={`fx-device-params${paged ? " is-paged" : ""}`} data-family={family}>
       {params.map((param) => {
+        const modeHint = contextHint?.(param.id);
         const options =
           param.options ??
           (param.kind === "toggle"
@@ -27,9 +30,10 @@ export function EffectParameterGrid({
               ]
             : undefined);
         return options ? (
-          <label key={param.id} className="fx-param-select">
+          <label key={param.id} className="fx-param-select" title={modeHint}>
             <span className="slider-label">{param.label}</span>
             <select
+              aria-description={modeHint || undefined}
               value={
                 options.some((option) => option.value === (values[param.id] ?? param.default))
                   ? (values[param.id] ?? param.default)
@@ -49,7 +53,7 @@ export function EffectParameterGrid({
             key={param.id}
             compact
             label={param.label}
-            hint={`Sweeps ${param.min} … ${param.max} — double-click resets to the factory default (${param.format ? param.format(param.default) : param.default})`}
+            hint={`${modeHint ? `${modeHint} — ` : ""}Sweeps ${param.min} … ${param.max} — double-click resets to the factory default (${param.format ? param.format(param.default) : param.default})`}
             value={values[param.id] ?? param.default}
             min={param.min}
             max={param.max}

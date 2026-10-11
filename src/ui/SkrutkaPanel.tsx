@@ -1,17 +1,28 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { SKRUTKA_LFO_SHAPE_LABELS, SKRUTKA_SHAPE_LABELS } from "../effects/definitions";
 import {
+  SKRUTKA_PUNCH_R_HARD_MAX,
   SKRUTKA_R_HARD_MAX,
   skrutkaComponentCurve,
   skrutkaDelayAt,
   skrutkaDispersionForPeakMs,
+  skrutkaGroupDelaySamples,
   skrutkaLfoFocusRange,
   skrutkaPeakDelay,
+  skrutkaPunchFocus,
   type SkrutkaChannel,
   type SkrutkaCurveParams,
 } from "../effects/skrutka-curve";
 import type { SkrutkaMeterFrame } from "../audio-worklets/skrutka-node";
 import { useServices } from "./context";
+
+const PANEL_SAMPLE_RATE_FALLBACK = 48_000;
+
+export function skrutkaPanelSampleRate(sampleRate: number | null | undefined): number {
+  return typeof sampleRate === "number" && Number.isFinite(sampleRate) && sampleRate > 0
+    ? sampleRate
+    : PANEL_SAMPLE_RATE_FALLBACK;
+}
 
 /**
  * TWIST (skrutka) panel — v2: the group-delay curve that IS the effect,
@@ -101,6 +112,7 @@ export function SkrutkaPanel({
       c2d.setTransform(dpr, 0, 0, dpr, 0, 0);
       c2d.clearRect(0, 0, cw, ch);
 
+      const sampleRate = skrutkaPanelSampleRate(engine.getLiveAudioContext()?.sampleRate);
       const p = paramsRef.current;
       const cp: SkrutkaCurveParams = {
         dispersion: p.dispersion ?? 0.35,
@@ -116,16 +128,21 @@ export function SkrutkaPanel({
       const fieldActive = Math.abs(cp.field ?? 0) > 1e-4;
       const chA: SkrutkaChannel = fieldActive ? "M" : "L";
       const chB: SkrutkaChannel = fieldActive ? "S" : "R";
-      const curveA = skrutkaComponentCurve(cp, 48000, chA, 160, F_LO, F_HI);
-      const curveB = skrutkaComponentCurve(cp, 48000, chB, 160, F_LO, F_HI);
+      const curveA = skrutkaComponentCurve(cp, sampleRate, chA, 160, F_LO, F_HI);
+      const curveB = skrutkaComponentCurve(cp, sampleRate, chB, 160, F_LO, F_HI);
       const dynArmed = Math.abs(p.dyn ?? 0) > 1e-4 || (p.keyMode ?? 0) > 0;
-      const driven = dynArmed
-        ? skrutkaComponentCurve(cp, 48000, chA, 160, F_LO, F_HI, SKRUTKA_R_HARD_MAX)
+      const driven = dynArmed ? skrutkaComponentCurve(cp, sampleRate, chA, 160, F_LO, F_HI, SKRUTKA_R_HARD_MAX) : null;
+      // DYNAMIC PUNCH (v2.2): the punch radius is driven from its static
+      // mapping up to the hard ceiling — its own band when armed.
+      const punchDynArmed = Math.abs(p.dynPunch ?? 0) > 1e-4;
+      const drivenPunch = punchDynArmed
+        ? skrutkaComponentCurve(cp, sampleRate, chA, 160, F_LO, F_HI, undefined, SKRUTKA_PUNCH_R_HARD_MAX)
         : null;
       let maxMs = 0.05;
       for (const point of curveA) maxMs = Math.max(maxMs, point.ms);
       for (const point of curveB) maxMs = Math.max(maxMs, point.ms);
       if (driven) for (const point of driven) maxMs = Math.max(maxMs, point.ms);
+      if (drivenPunch) for (const point of drivenPunch) maxMs = Math.max(maxMs, point.ms);
       maxMs *= 1.12;
 
       const yOf = (ms: number) => ch - (ms / maxMs) * (ch - 6) - 3;
@@ -158,6 +175,18 @@ export function SkrutkaPanel({
         }
         c2d.stroke();
         c2d.setLineDash([]);
+      }
+
+      // DYNAMIC PUNCH driven band (a cooler hue so it reads as the short,
+      // transient-scale stage rather than the long hump).
+      if (drivenPunch) {
+        c2d.fillStyle = "rgba(150, 205, 255, 0.10)";
+        c2d.beginPath();
+        for (let i = 0; i < curveA.length; i++) c2d.lineTo(xOf(curveA[i]!.freqHz, cw), yOf(curveA[i]!.ms));
+        for (let i = drivenPunch.length - 1; i >= 0; i--)
+          c2d.lineTo(xOf(drivenPunch[i]!.freqHz, cw), yOf(drivenPunch[i]!.ms));
+        c2d.closePath();
+        c2d.fill();
       }
 
       // Decade gridlines.
@@ -213,17 +242,29 @@ export function SkrutkaPanel({
               : Math.sin(2 * Math.PI * frame.lfo); // random shape is unknown to the panel
         const fEff = Math.min(4000, Math.max(40, cp.focusHz * Math.pow(2, (p.lfoDepth ?? 0) * wave)));
         const radius = Math.min(SKRUTKA_R_HARD_MAX, Math.max(0.02, frame.radius));
-        const ms = (skrutkaDelayAt(cp, 48000, fEff, radius, chA) / 48000) * 1000;
+        const ms = (skrutkaDelayAt(cp, sampleRate, fEff, radius, chA) / sampleRate) * 1000;
         const x = xOf(fEff, cw);
         const y = yOf(Math.min(ms, maxMs));
         c2d.fillStyle = "rgba(255, 255, 255, 0.92)";
         c2d.beginPath();
         c2d.arc(x, y, 3, 0, Math.PI * 2);
         c2d.fill();
+
+        // The punch stage has its own current-radius meter. Show its live
+        // group-delay point separately so DYNAMIC PUNCH is visible while it moves.
+        if (frame.punch > 1e-4) {
+          const punchFocus = skrutkaPunchFocus(cp.focusHz, cp.punch, cp.punchHz ?? 0, sampleRate);
+          const punchMs =
+            (skrutkaGroupDelaySamples(cp, sampleRate, punchFocus, chA, radius, frame.punch) / sampleRate) * 1000;
+          c2d.fillStyle = "rgba(150, 205, 255, 0.98)";
+          c2d.beginPath();
+          c2d.arc(xOf(punchFocus, cw), yOf(Math.min(punchMs, maxMs)), 2.5, 0, Math.PI * 2);
+          c2d.fill();
+        }
       }
 
       // Readout: base peak.
-      const peak = skrutkaPeakDelay(cp, 48000, chA);
+      const peak = skrutkaPeakDelay(cp, sampleRate, chA);
       if (readoutRef.current) {
         readoutRef.current.textContent =
           peak.ms > 0.01 ? `+${peak.ms.toFixed(1)} ms @ ${Math.round(peak.freqHz)} Hz` : "— no delay hump";
@@ -249,6 +290,7 @@ export function SkrutkaPanel({
               env: typeof raw.env === "number" ? raw.env : 0,
               key: typeof raw.key === "number" ? raw.key : 1,
               radius: raw.radius,
+              punch: typeof raw.punch === "number" && Number.isFinite(raw.punch) ? raw.punch : 0,
             }
           : null;
       draw();
@@ -277,6 +319,7 @@ export function SkrutkaPanel({
     const ch = Math.max(1, rect.height);
     const F_LO = 30;
     const F_HI = 16000;
+    const sampleRate = skrutkaPanelSampleRate(services.engine.getLiveAudioContext()?.sampleRate);
     const x = Math.min(cw, Math.max(0, event.clientX - rect.left));
     const y = Math.min(ch, Math.max(0, event.clientY - rect.top));
     const focus = F_LO * Math.pow(F_HI / F_LO, x / cw);
@@ -293,9 +336,9 @@ export function SkrutkaPanel({
     // The y axis maps to the same normalization the draw uses for the NEW
     // focus/dispersion, so the peak follows the pointer exactly.
     const dragChannel: SkrutkaChannel = Math.abs(cp.field ?? 0) > 1e-4 ? "M" : "L";
-    const maxMs = Math.max(0.05, skrutkaPeakDelay(cp, 48000, dragChannel).ms * 1.12);
+    const maxMs = Math.max(0.05, skrutkaPeakDelay(cp, sampleRate, dragChannel).ms * 1.12);
     const targetMs = Math.max(0, ((ch - 3 - y) / (ch - 6)) * maxMs);
-    const dispersion = skrutkaDispersionForPeakMs(cp, 48000, targetMs);
+    const dispersion = skrutkaDispersionForPeakMs(cp, sampleRate, targetMs);
     onParam("focusHz", Math.round(focus));
     onParam("dispersion", Math.round(dispersion * 1000) / 1000);
   };
@@ -309,6 +352,9 @@ export function SkrutkaPanel({
     Math.abs(params.dyn ?? 0) > 1e-4
       ? `DYN ${(params.dyn ?? 0) > 0 ? "ATTACK" : "BODY"} ${Math.round(Math.abs(params.dyn ?? 0) * 100)}%`
       : "DYN OFF",
+    Math.abs(params.dynPunch ?? 0) > 1e-4
+      ? `PUNCH-DYN ${(params.dynPunch ?? 0) > 0 ? "ATTACK" : "BODY"} ${Math.round(Math.abs(params.dynPunch ?? 0) * 100)}%`
+      : "PUNCH-DYN OFF",
     `KEY ${["OFF", "PUMP", "DUCK"][Math.max(0, Math.min(2, Math.round(params.keyMode ?? 0)))]}`,
     (params.lfoDepth ?? 0) > 1e-4
       ? `LFO ${SKRUTKA_LFO_SHAPE_LABELS[Math.max(0, Math.min(2, Math.round(params.lfoShape ?? 0)))]} ${Math.round((params.lfoDepth ?? 0) * 100)}%`
@@ -323,7 +369,9 @@ export function SkrutkaPanel({
           — no delay hump
         </span>
         <span className="skrutka-hint">
-          {fieldActive ? "drag: focus × dispersion — M solid, S dashed" : "drag: focus × dispersion — L solid, R dashed"}
+          {fieldActive
+            ? "drag: focus × dispersion — M solid, S dashed"
+            : "drag: focus × dispersion — L solid, R dashed"}
         </span>
         <button
           type="button"

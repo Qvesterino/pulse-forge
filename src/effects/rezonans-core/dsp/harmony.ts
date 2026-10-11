@@ -239,6 +239,12 @@ export class HarmonyBus {
     for (let i = 0; i < HARMONY_VOICE_COUNT; i++) {
       if (!this.voices[i]) {
         this.voices[i] = new HarmonyVoice();
+      }
+      // A quality change can resize the OLA ring after voices already exist.
+      // Keep each voice ring in lockstep with ringMask: otherwise a Fine-tier
+      // frame writes past the old Balanced-tier array and adds `undefined`,
+      // which poisons the wet output with NaN.
+      if (!this.rings[i] || this.rings[i]!.length !== ringLen) {
         this.rings[i] = new Float32Array(ringLen);
       }
       this.voices[i]!.prepare(fftSize, hop);
@@ -384,4 +390,20 @@ export function humanizeOffset(frame: number, voice: number): number {
   h = (h ^ (h >>> 13)) * 1274126177;
   h = h ^ (h >>> 16);
   return ((h >>> 0) % 100000) / 100000;
+}
+
+/**
+ * Smooth deterministic pitch drift for one harmony voice. A new hashed anchor
+ * every eight analysis frames avoids both random worklet state and the stepped
+ * "MIDI chorus" sound of changing cents independently on every hop.
+ */
+export function humanizeCents(frame: number, voice: number, amount: number): number {
+  const strength = clamp(amount, 0, 1);
+  if (strength === 0) return 0;
+  const position = Math.max(0, Number.isFinite(frame) ? frame : 0) / 8;
+  const anchor = Math.floor(position);
+  const blend = position - anchor;
+  const a = humanizeOffset(anchor, voice) * 2 - 1;
+  const b = humanizeOffset(anchor + 1, voice) * 2 - 1;
+  return (a + (b - a) * blend) * 15 * strength;
 }

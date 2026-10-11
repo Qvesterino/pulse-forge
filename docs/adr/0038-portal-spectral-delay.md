@@ -131,6 +131,23 @@ _Rationale:_ if PORTAL cannot be described as **selective, partial-level control
 it is a duplicate and should not be built. This constraint binds the ADR, the
 panel copy and `docs/CURRENT-STATE.md`.
 
+### D7 — Modes keep distinct signal paths and honest latency
+
+In DELAY, positive SHIFT transposes feedback upward: output bin `k` reads the
+delayed source at `k / 2^(shift/12)`. In RESONATOR, the delay bank may keep
+recording the input so a mode switch has recent material, but its delayed read
+does not feed the audible resonator path. Every mode therefore has only the
+declared STFT latency (`fftSize - hop`); SHIFT remains a delay-feedback control.
+Upward shifts divide output and recirculated magnitudes by the bin expansion
+factor, and feedback remains below unity even when the rack control is at 100%.
+
+_Rationale:_ routing the delay read into RESONATOR added a hidden hop and made
+SHIFT appear to control the resonator only because the wrong signal path was
+audible. Mode-specific controls must affect the mode they name, and reported PDC
+must include every sample of actual latency. An octave expansion duplicates each
+source bin across more output bins; the gain correction keeps that frequency
+mapping from creating level growth or turning maximum feedback into a runaway.
+
 ---
 
 ## Consequences

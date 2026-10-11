@@ -32,6 +32,9 @@ import { hexOrHslToSoft, PRESET_OWNED_VARS, presetById } from "../shared/theme-d
  * never written back — a user on an older build keeps their preferences.
  */
 
+/** Class the applier toggles when the user overrides the label width. */
+const USER_LABEL_CLASS = "user-label-width";
+
 let state: LayoutState = { ...DEFAULT_LAYOUT_STATE };
 const listeners = new Set<() => void>();
 
@@ -90,11 +93,28 @@ export function applyLayoutToDocument(next: LayoutState): void {
     if (isTokenName(key)) root.style.setProperty(key, value);
   }
 
-  // Layout geometry tokens. Written even when the applier is only a bridge, so
-  // the values exist for the CSS that reads them in the next wave; the current
-  // CSS uses the same numbers, so nothing moves yet.
+  // Layout geometry tokens.
+  //
+  // IMPORTANT: these are written as CLASSES, not as inline custom properties.
+  // An inline `--steps-label: 280px` on <html> OUTRANKS every stylesheet rule,
+  // which would permanently kill the existing 760px media query that narrows
+  // the label to 112px on phones. Classes lose to media queries, so the
+  // responsive behaviour survives while the user's explicit choice still wins
+  // where no breakpoint applies.
+  //
+  // The exact-width class is only attached when the user has moved OFF the
+  // default: at 168px the stylesheet default already applies, so adding a class
+  // would be redundant noise in the DOM.
+  if (next.sequencerLabelWidth === DEFAULT_LAYOUT_STATE.sequencerLabelWidth) {
+    root.classList.remove(USER_LABEL_CLASS);
+  } else {
+    root.classList.add(USER_LABEL_CLASS);
+    root.style.setProperty("--user-steps-label", `${next.sequencerLabelWidth}px`);
+  }
+
+  // These two have no competing media query today, so an inline value is safe
+  // and keeps the value exact.
   root.style.setProperty("--inspector-width", `${next.inspectorWidth}px`);
-  root.style.setProperty("--steps-label", `${next.sequencerLabelWidth}px`);
   root.style.setProperty("--rack-columns", String(next.rackColumns));
   root.style.setProperty("--type-scale", String(next.typeScale));
 
