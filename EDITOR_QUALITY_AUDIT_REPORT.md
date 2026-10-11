@@ -1284,3 +1284,77 @@ effect replaces with a windowed render, and the alternative was an unbounded
 allocation from untrusted document content. Named and bounded rather than
 silent — the shape of clamp that §41 allows, as opposed to the scattered
 clamps it forbids.
+
+---
+
+## Wave 4 — 2026-10-11 — the sanitization boundary, and a hypothesis that measurement killed
+
+Wave 3 fixed the P0 and then went looking for the same pattern elsewhere (§38).
+The sibling hunt turned up something more useful than a second crash: it
+exposed **where malformed project data is actually stopped**, and in the process
+killed a defect I had already written up.
+
+## D13 — FALSIFIED: "a NaN member poisons the whole block move"
+
+The hypothesis, built from D12's root cause: the block move computes its floor
+as `Math.min(...Object.values(origStarts))`, `Math.min` propagates NaN, so one
+non-finite member would make `delta` NaN and the commit would write NaN into
+**every** member — one bad clip becoming many, i.e. §32 corruption arriving
+through the gesture layer instead of a command. Reachable without any trick:
+select-all picks up the bad id, and a clip with no renderable position is
+*culled from the lane*, so the user drags a perfectly healthy neighbour while
+the selection carries the poison.
+
+I wrote the spec, and it failed in the direction that refutes the hypothesis:
+
+```
+the dragged clip must stay a real bar position: expected 7 to be …   ← landed on 7, correct
+one bad clip must stay one bad clip:            expected [] to be ['clip-nan']
+```
+
+The dragged clip landed exactly on the pointer's bar, and after the gesture the
+document contained **no** non-finite position at all. The NaN never reached the
+gesture. Reason: `ProjectStore` runs `normalizeProject` at construction,
+`execute`, `undo`, `redo` and `replaceDoc`, and that sanitizer **drops** a clip
+whose startBar is not a finite number.
+
+The UI spec was deleted rather than kept. A test that passes for a reason
+nobody intended is worse than no test — it would have read as coverage of a
+gesture-corruption bug that does not exist.
+
+## The measured boundary (what replaced it)
+
+`tests/clip-sanitization-boundary.test.ts` — 8 specs pinning the actual table:
+
+| Injected value | Result at the store boundary |
+| --- | --- |
+| `startBar: 4` | kept (control) |
+| `startBar: NaN` / `±Infinity` | **clip dropped** |
+| `lengthBars: 0` / `-2` / `NaN` | **clip dropped** |
+| audio clip `startBar: NaN` | **clip dropped** |
+| **`startBar: 1e308`** | **KEPT** |
+| a command that writes NaN | stripped before it reaches the doc |
+
+The `1e308` row is the whole lesson, and it retroactively sharpens D12: **a
+non-finite position can never reach the timeline, but a large FINITE one sails
+through every sanitizer in the system.** That is exactly why D12 was a
+reachable crash and not a theoretical one — the value that detonates the grid is
+the one class of hostile position the boundary deliberately lets through.
+
+**Falsification:** bypassing the store's normalizer on construction
+(`this.doc_ = initial`) turns **3 of the 8 red**, and the source was restored
+byte-identical afterwards (`git diff` empty). The specs measure the boundary,
+not the fixture.
+
+### Two side-effects worth recording
+
+- **D12's framing is corrected.** Wave 3 reported "NaN silently emptied every
+  grid cell in the document". The probe says otherwise: a NaN clip is dropped
+  before the panel ever sees it. The grid never emptied. The spec stayed in
+  `malformed-clip-render.test.tsx` as a **guard** — green before and after the
+  fix — and the report says so rather than claiming it as a pin.
+- **The paste infinite-loop worry from wave 2 is closed by measurement.**
+  `pasteClips` walks forward by `stored.lengthBars` until it finds a free slot;
+  a zero or negative length would loop forever. Every clip that reaches the
+  clipboard has passed the boundary, which requires `lengthBars > 0`. The
+  loop cannot spin.
