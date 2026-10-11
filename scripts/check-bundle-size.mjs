@@ -192,7 +192,11 @@ const ENTRY_BUDGET_KB = 1070;
 // and REZONANS registration waves plus SKRUTKA v2.2 (DYNAMIC PUNCH: param +
 // panel band, ~2 KB). Boot path 2078/2200 — still the healthy number.
 // Budget raised 5080 → 5120 with a ~34 KB margin.
-const TOTAL_BUDGET_KB = 5120;
+// 2026-10-11 (v2.5): measured 5121 KB after the TWIST scene-pack command
+// (one eager command module) and the in-flight REZONANS/gallery waves; the
+// pack DATA itself stays in the lazy panel chunk (type-only import in the
+// command). Boot path 2100/2200. Budget raised 5120 → 5160.
+const TOTAL_BUDGET_KB = 5160;
 // Local inference runtimes are dynamically loaded inside lazily spawned
 // workers: Transformers.js for semantic embeddings, and ONNX Runtime for the
 // symbolic/ranker workers. Keep these optional runtimes under one existing

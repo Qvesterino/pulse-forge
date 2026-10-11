@@ -325,6 +325,10 @@ export function generatePattern(doc: ProjectDocument, options: GenerateOptions, 
       options.productionProfile,
       undefined,
       options.progression,
+      // An explicit lead scope must never decode to a vanishing lead voice
+      // (D2): the engine thins it, but "lead-only at low energy" cannot
+      // mean "no notes at all".
+      roles?.includes("lead") === true,
     );
     const hasContent = multiVoice.bass.length > 0 || multiVoice.chord.length > 0 || multiVoice.lead.length > 0;
     if (hasContent) {

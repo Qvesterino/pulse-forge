@@ -111,6 +111,15 @@ export function generateMultiVoice(
    * seeded pick, bit-identical to the pre-plan behavior.
    */
   progressionOverride?: string,
+  /**
+   * The caller EXPLICITLY asked for a lead (role scope contains "lead").
+   * The lead voice then exists at ANY energy — it thins to the sparse
+   * rhythm below 0.7 but never vanishes (a lead-only intent that produced
+   * zero notes yielded an all-silent, brief-gate-rejected pattern —
+   * INTENT-AUDIT-2026-10 D2). Implicit full-band generations keep the
+   * legacy energy gate.
+   */
+  leadRequired = false,
 ): MultiVoiceResult {
   const rand = forkRandom(`${seed}|harmony`, "stream");
   const override = progressionOverride !== undefined ? findProgression(genre, progressionOverride) : null;
@@ -230,9 +239,11 @@ export function generateMultiVoice(
   const leadEvents: NoteEvent[] = [];
   const leadOctave = octaveOffsetFor(genre, "lead", productionProfile);
 
-  if (energy > 0.4) {
+  if (energy > 0.4 || leadRequired) {
     // Lead exists only when energy is high enough (P2: the rhythm thins to a
-    // sparse subset below 0.7 instead of vanishing — identity at/above 0.7).
+    // sparse subset below 0.7 instead of vanishing — identity at/above 0.7)
+    // — UNLESS the caller explicitly scoped a lead (leadRequired), in which
+    // case a vanishing voice is a defect, not a taste decision (D2).
     const rhythmSteps = spaceyProfile
       ? energy >= 0.7
         ? [0, 8, 12]

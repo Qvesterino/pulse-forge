@@ -2,7 +2,9 @@ import type { Command } from "./types";
 import type { MacroMapping, ProjectDocument } from "../project-model/types";
 import { clampEffectParam } from "../effects/definitions";
 import { TWIST_CURVES_KIND } from "../effects/skrutka-curves";
-import { twistSceneSlots, type TwistScenePair } from "../effects/skrutka-scene-pack";
+// Type-only: the pack DATA stays in the lazy panel chunk — the eager command
+// barrel must not drag the whole scene pack into the boot graph.
+import type { TwistScenePair } from "../effects/skrutka-scene-pack";
 import { sanitizeDeviceState } from "../project-model/schema";
 import { trackEffectsOf, withTrackEffects } from "./docOps";
 import { snapshot } from "./core";
@@ -49,7 +51,10 @@ export function applyTwistScenePair(
   const fx = trackEffectsOf(doc, trackId).find((candidate) => candidate.id === fxId);
   if (!fx) throw new Error(`Effect ${fxId} not found`);
   if (fx.type !== "skrutka") throw new Error(`Effect ${fxId} is not TWIST`);
-  const state = sanitizeDeviceState({ kind: TWIST_CURVES_KIND, data: { slots: twistSceneSlots(pair) } });
+  const state = sanitizeDeviceState({
+    kind: TWIST_CURVES_KIND,
+    data: { slots: { A: { ...pair.a }, B: { ...pair.b } } },
+  });
   if (!state) throw new Error(`Invalid TWIST scene pair ${pair.id}`);
   // The neutral midpoint: intensity [0..1] swings the base by ±(range/2).
   const morph = clampEffectParam("skrutka", "morph", 0.5);

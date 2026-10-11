@@ -147,4 +147,35 @@ describe("multi-voice orchestrator (harmonic awareness)", () => {
     expect(a.chord.map((n) => [n.pitch, n.start])).toEqual(b.chord.map((n) => [n.pitch, n.start]));
     expect(a.lead.map((n) => [n.pitch, n.start])).toEqual(b.lead.map((n) => [n.pitch, n.start]));
   });
+
+  describe("leadRequired — an explicit lead scope never decodes to silence (D2)", () => {
+    const doc = testDoc();
+
+    it("low energy vanishes the lead only when nobody asked for it", () => {
+      const implicit = generateMultiVoice(doc, "techno", 7, 16, null, 0.3, 0.3);
+      expect(implicit.lead).toEqual([]);
+    });
+
+    it("leadRequired keeps the lead alive at low energy (sparse, not silent)", () => {
+      const forced = generateMultiVoice(
+        doc,
+        "techno",
+        7,
+        16,
+        null,
+        0.3,
+        0.3,
+        0.5,
+        0.5,
+        undefined,
+        undefined,
+        undefined,
+        true,
+      );
+      expect(forced.lead.length).toBeGreaterThan(0);
+      // Sparse tier below 0.7, never the full rhythm.
+      const starts = new Set(forced.lead.map((n) => n.start));
+      expect(starts.size).toBeLessThan(9);
+    });
+  });
 });
