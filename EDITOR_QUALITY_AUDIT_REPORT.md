@@ -1740,7 +1740,7 @@ whole project red; `npm run typecheck` was not run at that boundary.
 
 ---
 
-## Wave 10 — 2026-10-11 — the Browser blocker was not the page. The page was broken.
+## Wave 10 (D14) — the Browser blocker was not the page. The page was broken.
 
 Wave 9 (another session) got a loaded page and immediately found a P1 in the
 arrangement lane. This wave starts where wave 8 stopped: the in-app Browser
@@ -1889,6 +1889,17 @@ width, which is exactly what the 760 px step exists to prevent. Fixed by
 re-declaring the phone step after the class rule, and falsified the same way
 (220 px vs 112 px).
 
+The sweep over that file is **closed**: it holds five rules that touch layout,
+and exactly two of them killed behaviour declared earlier — `.workspace` and
+`.user-label-width`. The other three were checked and are clean: `.rack`
+re-declares the 01-base `repeat(8, 1fr)` with the user's column count and no
+earlier file owns a responsive `.rack`; `body { font-size: calc(13px *
+var(--type-scale, 1)) }` reduces to the same 13 px at the default scale and no
+media query sets a body font-size; and `.density-dense .dock-tabs { height:
+28px }` outranks the 760 px `.dock-tabs` block in `19-dock-chrome.css:210`
+anyway, and that block sets only `position`, `top`, `z-index` and `background`
+— no height to collide with.
+
 ### What this wave does not close
 
 - **The sequencer still gets ~20 px at a 720 px viewport height.** With the
@@ -1904,6 +1915,24 @@ re-declaring the phone step after the class rule, and falsified the same way
   and it is red for that reason, not because of a product defect.
 - **The boot watchdog (§20)** from wave 7 is still open, still an architecture
   decision.
+
+### Gates for this wave — what actually ran
+
+| gate | result |
+| --- | --- |
+| `npx vite build` (production bundle, after each change) | exit 0 |
+| `npm run typecheck` | exit 0 |
+| `npm run format:check` | clean for every file this wave touched; the one remaining warning is `tests/probe-split-undo.test.ts`, which belongs to another session |
+| `npm run test` (vitest) | 906 / 944 files passed, 38 red, 53 tests red — none reachable from this wave: the only source change is one CSS file, and `vitest.config.ts:86` excludes `tests/e2e/**`, so a stylesheet rule and the new Playwright spec cannot produce a vitest failure. The reds are co-tenant work in flight; `npm run test:expectations` is the gate that attributes them |
+| `playwright --project=chromium`, specs 01–08 + 19, production build | **15 passed / 1 failed** (1.7 min), the single red being `07`, which imports `/src/*.ts` and cannot run against a production build at all |
+| falsification runs | pre-fix CSS injected into the built bundle makes 4 of the 5 layout assertions fail with the exact measured symptoms (`columns were "1000px 280px"`, GEN hit test ≠ GEN, sequencer height ≤ 120, `--steps-label` 220px vs 112px, and at 800×900 `columns were "520px 280px"` with 2 tracks instead of 1) |
+
+One guard had to be rewritten because it was **not a guard**: the first version
+of the 860px-ladder test asserted `workspace-main` width, which is true on the
+broken build too (the fluid track lands there either way at that width), and it
+passed against the pre-fix CSS. The discriminator is the track count — 2 on the
+broken cascade, 1 after the fix — plus the Inspector actually moving below the
+sequencer. Rewritten, then falsified.
 
 ## Wave 10 - 2026-10-11 - the rest of the 42 chain, run for real (P1/P2, one new defect)
 
@@ -1996,5 +2025,74 @@ are worth recording because each would have become a false defect report:
 
 Fades/crossfades (§10) need an audio clip; the default template renders one
 scene clip and zero audio clips, so the fade handle was never under the pointer.
-Take lanes need a recorded take. Ripple (§16) has its own toggle and was not
-exercised. These remain open.
+Take lanes need a recorded take. These remain open.
+
+## Wave 11 - 2026-10-11 - §16 ripple, the mode with the largest blast radius
+
+The objective calls ripple out explicitly ("ripple editing has high blast
+radius and should receive especially strict invariant checks"), and it was the
+largest untouched DoD area. New spec: `tests/e2e/ripple-semantics.spec.ts`.
+
+### The contract, taken from the commands rather than from the UI
+
+`src/commands/clipPlayback.ts` states it in two sentences, and the second one is
+the one worth testing:
+
+> `deleteArrangementClipRipple` - "removing a clip closes the gap: every later
+> clip slides left by the deleted length"
+> `resizeArrangementClipRipple` - "growing a clip pushes every later clip right
+> ... **the gaps after the edit stay exactly as before**"
+
+So ripple is not "shift the material left". It is "the tail flows and the
+SPACES inside the tail survive". A shift-everything implementation satisfies the
+first clause perfectly and silently destroys the arrangement's spacing - which
+is why this spec asserts spacing separately from position.
+
+### Measured
+
+```
+before  [{left:0,width:116},{left:120,width:116},{left:240,width:116}]   (bars 0/4/8)
+toggle  RIPPLE ON
+remove the first clip
+after   [{left:0,width:116},{left:120,width:116}]
+shift   120px          jsErrors=0
+undo/redo  positions, lengths and re-application all exact
+```
+
+### An assertion that was wrong, and what the editor actually does
+
+The first version of this spec shifted by `removed.width`, i.e. the clip's
+**rendered** width, and failed:
+
+```
+Error: clip 0: expected 4, got 0
+```
+
+The editor was right and the assertion was wrong. The committed `style.width`
+carries a ~4 px inset (`116px` for a 4-bar clip at `30px/bar` = `120px`), and
+the model flows the tail by **bar length**, not by rendered pixels. The spec now
+states the contract in unit-free terms:
+
+1. **closes the gap** - the clip that followed now starts where the removed one
+   started (`after[0].left === removed.left`);
+2. **uniform flow** - every tail clip moved by the same amount;
+3. **spacing survives** - the offsets between surviving clips are unchanged.
+
+(1) and (2) hold for contiguous material and are what a "delete without
+ripple" run cannot fake; (3) is what a shift-everything run cannot fake.
+
+### Falsification
+
+The same spec with the ripple toggle deliberately left **off**:
+
+```
+before  [{0,116},{120,116},{240,116}]   toggleLabel=RIPPLE OFF
+after   [{left:120,width:116},{left:240,width:116}]
+-> RED on "ripple must close the gap, not just remove the clip"
+```
+
+The tail simply stood still. So the spec is measuring ripple behaviour and not
+"a clip disappeared" - and the editor's ripple is confirmed to actually ripple.
+The temporary env-var switch used for that run was removed afterwards rather
+than committed: a branch no CI run ever exercises is a guard that can only ever
+pass, which is the exact shape this audit keeps refusing.
