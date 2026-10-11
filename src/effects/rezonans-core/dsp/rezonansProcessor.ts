@@ -410,13 +410,16 @@ export class RezonansProcessor {
       this.alpha[v] = globalAlpha * Math.pow(2, (vf * clamp(voiceScale, 0, 1)) / 12);
     }
 
+    // Chord position is resolved EVERY frame, voiced or not: it is a musical
+    // clock question, not an audio question. Gating it on `voiced` left the
+    // panel showing "no chord" through every gap and rest — and it is the
+    // bridge test that caught it.
+    this.resolveChord();
+
     const voiced = this.frame.clarity >= (this.params[REZ_PARAM.clarity] ?? 0.75) && this.frame.f0 > 0;
     this.claritySum += this.frame.clarity;
     if (voiced) this.voicedFrames++;
-    if (voiced) {
-      this.resolveChord();
-      this.solver.solve(this.frame.f0, this.solverCtx, this.degree, this.ratioTarget);
-    }
+    if (voiced) this.solver.solve(this.frame.f0, this.solverCtx, this.degree, this.ratioTarget);
 
     for (let v = 0; v < VOICE_COUNT; v++) {
       // Ratio glide: an abrupt ratio change is a pitch jump, which comb-flares

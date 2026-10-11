@@ -175,6 +175,37 @@ export interface EffectEnv {
   bpm: number;
   /** Stable project/track/effect seed shared by live and offline DSP. */
   seed?: number;
+  /**
+   * REZONANS (ADR 0038 §4.3a): project musical context for key-aware harmony.
+   *
+   * `doc.key` has never reached audio before — its own docstring says
+   * "display + scorepack" and nothing in `src/audio-engine/` reads it. This
+   * field is the whole bridge, and it is deliberately the ONLY engine surface
+   * REZONANS needs: it rides `processorOptions` at construction, so the
+   * scheduler, the automation bridge and the renderer are all untouched.
+   *
+   * Masks are computed HOST-SIDE from `SCALE_INTERVALS` / `CHORD_INTERVALS`;
+   * the worklet receives masks and never a scale table, which is what makes an
+   * arbitrary user scale a parameter change rather than a worklet rebuild.
+   */
+  harmonyContext?: HarmonyContextInit;
+}
+
+/** Host-resolved musical context handed to an effect factory. */
+export interface HarmonyContextInit {
+  /** Key root pitch class 0–11 (0 = C). */
+  keyRootPc: number;
+  /** 12-bit scale mask: bit n set = pitch class n is in the scale. */
+  scaleMask: number;
+  /** Arrangement chord lane, ordered by `startBar`. */
+  chords: ReadonlyArray<{
+    /** Absolute integer bar (ChordEvent.startBar). */
+    startBar: number;
+    lengthBars: number;
+    rootPc: number;
+    /** 12-bit pitch-class mask for this chord. */
+    chordMask: number;
+  }>;
 }
 
 export type EffectFactory = (ctx: BaseAudioContext, instance: EffectInstance, env: EffectEnv) => EffectRuntime;
