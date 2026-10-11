@@ -29,6 +29,7 @@
     "build:skrutka": "node scripts/build-skrutka-worklet.mjs",
     "build:rezonans": "node scripts/build-rezonans-worklet.mjs",
     "benchmark:rezonans": "vite-node scripts/benchmark-rezonans.mts",
+    "benchmark:rezonans:browser": "vite-node scripts/benchmark-rezonans-browser.mts",
     "build:spectral": "node scripts/build-spectral-worklet.mjs",
     "build:fxeq": "node scripts/build-fxeq-worklet.mjs",
     "build:morph-dynamics": "node scripts/build-morph-dynamics-worklet.mjs",
@@ -152,7 +153,8 @@
     "video:agents-vertical": "remotion render remotion/index.ts McpAgentSessionVertical out/mcp-agent-session-vertical.mp4 --codec=h264 --public-dir=./remotion/public",
     "video:beat": "node scripts/make-promo-beat.mjs",
     "video:promo": "remotion render remotion/index.ts PulseForgePromo out/pulse-forge-promo.mp4 --codec=h264 --public-dir=./remotion/public",
-    "video:stills": "remotion still remotion/index.ts PulseForgePromo remotion/qa/preview.png --frame=700 --public-dir=./remotion/public"
+    "video:stills": "remotion still remotion/index.ts PulseForgePromo remotion/qa/preview.png --frame=700 --public-dir=./remotion/public",
+    "verify:intent-model": "node scripts/verify-intent-model-browser.mts"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
