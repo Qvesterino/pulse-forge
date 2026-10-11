@@ -210,6 +210,30 @@ describe("PORTAL — deterministic golden vectors", () => {
     expect(up[5]).toBe(0);
   });
 
+  it("smooths automated SHIFT in audio time but starts static presets at their saved value", () => {
+    const automated = new SpectralProcessor();
+    automated.setParams({ ...DEFAULT_SPECTRAL_PARAMS, mode: 0, shift: 0, mix: 1, feedback: 0, diffuse: 0 });
+    automated.prepare(SR);
+    const input = new Float32Array(BLOCK).fill(0.1);
+    const outL = new Float32Array(BLOCK);
+    const outR = new Float32Array(BLOCK);
+    automated.setParams({ shift: 12 });
+
+    automated.process(input, input, outL, outR, BLOCK);
+    const firstBlockShift = automated.getMeters().shiftSemitones;
+    expect(firstBlockShift).toBeGreaterThan(0);
+    expect(firstBlockShift).toBeLessThan(12);
+
+    for (let block = 0; block < 200; block++) automated.process(input, input, outL, outR, BLOCK);
+    expect(automated.getMeters().shiftSemitones).toBeCloseTo(12, 2);
+
+    const staticPreset = new SpectralProcessor();
+    staticPreset.setParams({ ...DEFAULT_SPECTRAL_PARAMS, mode: 0, shift: 12, mix: 1 });
+    staticPreset.prepare(SR);
+    staticPreset.process(input, input, outL, outR, BLOCK);
+    expect(staticPreset.getMeters().shiftSemitones).toBe(12);
+  });
+
   it("is bit-identical across repeated renders (NEW-EFFECT-CHECKLIST §10)", () => {
     const params = { mode: 0, feedback: 0.7, mix: 1, time: 250, diffuse: 0.8 } as const;
     const a = render({ seconds: 0.3, input: twoTone, params });

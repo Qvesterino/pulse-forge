@@ -9,6 +9,7 @@ import {
   snapshot,
 } from "../commands/commands";
 import { clampEffectParam, EFFECT_META } from "../effects/definitions";
+import { roleOfTrack } from "../effects/role-presets";
 import { FAMILY_REFERENCE } from "../presets/preset-loudness.generated";
 import { SONG_LOUDNESS_TARGET_LUFS, SONG_LOUDNESS_TRIM_LIMIT_DB } from "./genre-reference.generated";
 import { artistMixProfileOf } from "./artist-mix";
@@ -661,7 +662,22 @@ export interface EffectIntent {
    * parsed direction. For direction "set" it is the absolute target level.
    */
   percent?: number;
+  /**
+   * Semantic MOVE — a named, ABSOLUTE re-voicing of the effect ("mono safe",
+   * "wider", "throw", "smear the attack") applied instead of a knob delta.
+   * Moves carry their own param map and can land the FOCUS per track role.
+   */
+  move?: EffectMove;
   detected: string[];
+}
+
+/** A named effect move: absolute params plus an optional per-role FOCUS. */
+export interface EffectMove {
+  id: string;
+  label: string;
+  params: Record<string, number>;
+  /** Per-role FOCUS override so the move lands musically on each target. */
+  focusByTarget?: Partial<Record<"drums" | "bass" | "chords" | "lead", number>>;
 }
 
 /** Primary knob per effect — the one a "more/less X" request turns. */
@@ -698,7 +714,7 @@ const EFFECT_WORDS: ReadonlyArray<readonly [RegExp, EffectType]> = [
   [/\bcompress|\bkompres/, "compressor"],
   [/\bsidechain|\bpump(?:a|e|u)?/, "pump"],
   [/\bbass.?harmon|\bkoren\b|\bharmonik/, "bassHarmonic"],
-  [/\bskrutka|\bdispers/, "skrutka"],
+  [/\bskrutka|\btwist\b|\bdispers/, "skrutka"],
   // Formant is the word beatmakers actually reach for; "harmony" already
   // routes to GROW above, so the match is deliberately vowel-anchored on
   // "rezonan" plus explicit formant/voice words rather than a bare \bharmon.
@@ -720,12 +736,78 @@ const ROLE_TARGETS: Record<string, MixTarget[]> = {
 };
 
 export const TARGET_WORDS: ReadonlyArray<readonly [RegExp, MixTarget]> = [
-  [/\bdrum|\bbic/, "drums"],
+  [/\bdrum|\bbic|\bhats?\b|\bhi.?hat/, "drums"],
   [/\bbass\w*|\bbas(?:a|u|y|i|ou|ov|om)?\b|\b808\w*/, "bass"],
   [/\bchord|\bakord|\bpad/, "chords"],
   [/\blead(?:e|om|u|a)?\b|\bmelod/, "lead"],
   [/\bvocals?\b|\bvok\u00e1l/i, "vocal"],
 ];
+
+/**
+ * SEMANTIC MOVES — named, absolute re-voicings that a producer asks for
+ * without naming a parameter: "wider hats", "make the 808 throw", "mono safe
+ * on the bass". Each move is a small absolute parameter map (clamped on
+ * apply) and can land FOCUS per target role, so the same phrase is musical
+ * on a kick, an 808 or a hat. Moves imply TWIST only when no OTHER effect is
+ * named ("wider reverb" keeps its own path).
+ */
+const TWIST_MOVES: ReadonlyArray<{ re: RegExp; move: EffectMove }> = [
+  {
+    // MONO-SAFE first: it WINS over "wider" when both appear ("wider hats,
+    // mono safe") — sides-only dispersion with a spread split keeps the
+    // width while mono content stays bit-transparent.
+    re: /\bmono\s*-?\s*safe\b|\bmono\s+bezpec/,
+    move: {
+      id: "mono-safe",
+      label: "mono-safe sides",
+      params: { field: 1, spread: 0.6, mix: 0.8 },
+      focusByTarget: { drums: 3200, bass: 900, chords: 1600, lead: 2400 },
+    },
+  },
+  {
+    re: /\bwider?\b|\bsirsie\b|\bsirsi\b/,
+    move: {
+      id: "wider",
+      label: "wider field",
+      params: { field: 0.7, spread: 0.5, mix: 0.7 },
+      focusByTarget: { drums: 3200, bass: 900, chords: 1600, lead: 2400 },
+    },
+  },
+  {
+    re: /\bthrow\b|\bhodi\b|\bhod\b/,
+    move: {
+      id: "throw",
+      label: "throw",
+      params: { dispersion: 0.6, punch: 0.45, punchMix: 1, mix: 1 },
+      focusByTarget: { drums: 250, bass: 90, chords: 700, lead: 1200 },
+    },
+  },
+  {
+    re: /\bsmear\b|\brozmaz/,
+    move: {
+      id: "attack-smear",
+      label: "attack smear",
+      params: { dyn: 0.6, dispersion: 0.5, mix: 1 },
+    },
+  },
+  {
+    re: /\bgulp\b|\bprehlt/,
+    move: {
+      id: "tail-gulp",
+      label: "tail gulp",
+      params: { dyn: -0.6, dispersion: 0.6, mix: 1 },
+    },
+  },
+];
+
+/** The semantic move a text asks for, if any (TWIST only, named or implied). */
+function effectMoveFor(lower: string, named: EffectType | null): { effectType: EffectType; move: EffectMove } | null {
+  if (named && named !== "skrutka") return null; // an explicitly named effect owns the ask
+  for (const { re, move } of TWIST_MOVES) {
+    if (re.test(lower)) return { effectType: "skrutka", move };
+  }
+  return null;
+}
 
 /** De-accented lowercase with boundary padding — shared by all scanners. */
 function deaccentLower(text: string): string {
@@ -758,7 +840,9 @@ const SET_VALUE = /\b(?:to|na)\s*(\d{1,3})\s*(?:%|percent\w*|procent\w*)/;
 /** Parse a TARGETED effect request. Null when no effect×sentence is present. */
 export function parseEffectIntent(text: string): EffectIntent | null {
   const lower = deaccentLower(text);
-  const effectType = effectWordIn(lower);
+  const named = effectWordIn(lower);
+  const moveMatch = effectMoveFor(lower, named);
+  const effectType = moveMatch?.effectType ?? named;
   if (!effectType) return null;
 
   // remove wins over add (explicit "remove X" / "bez X" / "menej X")
@@ -786,6 +870,18 @@ export function parseEffectIntent(text: string): EffectIntent | null {
   // No target word/role ⇒ NOT a targeted effect intent — generic "more
   // reverb" belongs to the mix profile, not a track-scoped change.
   if (targets.size === 0) return null;
+
+  // A semantic MOVE is absolute — it replaces the knob path entirely.
+  if (moveMatch) {
+    return {
+      effectType,
+      targets: [...targets],
+      direction: "more",
+      amount: "medium",
+      move: moveMatch.move,
+      detected: [`move: ${moveMatch.move.label}`, `→ ${[...targets].join("+")}`],
+    };
+  }
 
   // ABSOLUTE SET ("set the lead reverb mix to 25%", "nastav reverb na basi
   // na 25 %") — v1 addresses only the effect's primary knob, and the number
@@ -823,8 +919,10 @@ export function parseEffectIntent(text: string): EffectIntent | null {
 
 const AMOUNT_SCALE: Record<EffectIntent["amount"], number> = { subtle: 0.5, medium: 1, huge: 1.75 };
 
-/** The knob delta for one targeted adjustment (pre-clamp). */
+/** The knob delta for one targeted adjustment (pre-clamp). Moves are
+ * absolute (their own param map), so they never carry a knob delta. */
 export function effectKnobDelta(intent: EffectIntent): number {
+  if (intent.move) return 0;
   if (intent.direction === "set") return 0; // absolute — no delta
   const scale = AMOUNT_SCALE[intent.amount];
   const base = 0.16 * scale;
@@ -879,6 +977,27 @@ export function applyEffectIntent(doc: ProjectDocument, intent: EffectIntent): R
       parts.push(`+${intent.effectType}`);
       updates += 1;
     }
+    // Semantic MOVE: write its absolute param map (clamped), landing FOCUS
+    // per the track's role so the same phrase fits a kick, an 808 or a hat.
+    if (intent.move) {
+      const track = cursor.tracks.find((candidate) => candidate.id === trackId);
+      const role = track ? roleOfTrack(track) : null;
+      const moveParams: Record<string, number> = { ...intent.move.params };
+      if (intent.move.focusByTarget && role) {
+        const focus = intent.move.focusByTarget[role];
+        if (focus !== undefined) moveParams.focusHz = focus;
+      }
+      for (const [paramId, targetValue] of Object.entries(moveParams)) {
+        const paramDef = EFFECT_META[intent.effectType].params.find((param) => param.id === paramId);
+        if (!paramDef) continue;
+        const clamped = clampEffectParam(intent.effectType, paramId, targetValue);
+        if (fx.params[paramId] === clamped) continue;
+        cursor = setEffectParam(cursor, trackId, fx.id, paramId, clamped).execute(cursor);
+        parts.push(`${paramId}=${Math.round(clamped * 100) / 100}`);
+        updates += 1;
+      }
+      continue;
+    }
     const knobDef = EFFECT_META[intent.effectType].params.find((param: { id: string }) => param.id === knob);
     if (!knobDef) continue;
     if (intent.direction === "set") {
@@ -927,8 +1046,12 @@ export function applyEffectIntent(doc: ProjectDocument, intent: EffectIntent): R
  */
 export function effectReadback(before: ProjectDocument, after: ProjectDocument, intent: EffectIntent): string {
   const knob = EFFECT_KNOB[intent.effectType];
-  if (!knob) return "";
-  const knobDef = EFFECT_META[intent.effectType].params.find((param: { id: string }) => param.id === knob);
+  const readbackIds = intent.move
+    ? [...Object.keys(intent.move.params), ...(intent.move.focusByTarget ? ["focusHz"] : [])]
+    : knob
+      ? [knob]
+      : [];
+  if (readbackIds.length === 0) return "";
   const fmt = (value: number): number => Math.round(value * 100) / 100;
   const entries: string[] = [];
   for (const target of intent.targets) {
@@ -946,8 +1069,12 @@ export function effectReadback(before: ProjectDocument, after: ProjectDocument, 
       const beforeFx = before.tracks
         .find((candidate) => candidate.id === trackId)
         ?.effects.find((effect) => effect.type === intent.effectType);
-      const prev = beforeFx?.params[knob] ?? knobDef?.default ?? 0;
-      entries.push(`${knob} ${fmt(prev)}→${fmt(fx.params[knob])} on ${track.name}`);
+      const pairs = readbackIds.map((paramId) => {
+        const def = EFFECT_META[intent.effectType].params.find((param) => param.id === paramId);
+        const prev = beforeFx?.params[paramId] ?? def?.default ?? 0;
+        return `${paramId} ${fmt(prev)}→${fmt(fx.params[paramId] ?? def?.default ?? 0)}`;
+      });
+      if (pairs.length > 0) entries.push(`${pairs.join(", ")} on ${track.name}`);
     }
   }
   if (entries.length > 3) return `${entries.slice(0, 3).join(", ")} +${entries.length - 3}`;

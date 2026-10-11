@@ -9,11 +9,7 @@ import { readFileSync } from "node:fs";
 import { cpus, arch, platform } from "node:os";
 import { performance } from "node:perf_hooks";
 import { RezonansProcessor } from "../src/effects/rezonans-core/dsp/rezonansProcessor.js";
-import {
-  QUALITY_FINE,
-  REZ_PARAM,
-  voiceParamId,
-} from "../src/effects/rezonans-core/contracts/parameters.js";
+import { QUALITY_FINE, REZ_PARAM, voiceParamId } from "../src/effects/rezonans-core/contracts/parameters.js";
 
 const SOURCE_PATH = "tests/fixtures/rezonans-cc0-female-speech.wav";
 const SOURCE_RATE = 24000;
@@ -146,7 +142,8 @@ if (fixture.sampleRate !== SOURCE_RATE) {
   throw new Error(`Expected the pinned ${SOURCE_RATE} Hz fixture, got ${fixture.sampleRate} Hz`);
 }
 const source = resampleLinear(fixture.samples, fixture.sampleRate, TARGET_RATE);
-const results: Array<{ cpuPercent: number; p95BlockMs: number; maxBlockMs: number; peak: number; allFinite: boolean }> = [];
+const results: Array<{ cpuPercent: number; p95BlockMs: number; maxBlockMs: number; peak: number; allFinite: boolean }> =
+  [];
 
 for (let repeat = 0; repeat < REPEATS; repeat++) {
   const processor = makeProcessor();
@@ -180,9 +177,18 @@ const report = {
   warmupSeconds: WARMUP_SECONDS,
   measuredSecondsPerRepeat: MEASURE_SECONDS,
   repeats: REPEATS,
-  cpuPercentMedian: percentile(results.map((r) => r.cpuPercent), 0.5),
-  cpuPercentP95: percentile(results.map((r) => r.cpuPercent), 0.95),
-  blockTimeP95MsMedian: percentile(results.map((r) => r.p95BlockMs), 0.5),
+  cpuPercentMedian: percentile(
+    results.map((r) => r.cpuPercent),
+    0.5,
+  ),
+  cpuPercentP95: percentile(
+    results.map((r) => r.cpuPercent),
+    0.95,
+  ),
+  blockTimeP95MsMedian: percentile(
+    results.map((r) => r.p95BlockMs),
+    0.5,
+  ),
   blockTimeMaxMs: Math.max(...results.map((r) => r.maxBlockMs)),
   audioBlockDeadlineMs: (BLOCK / TARGET_RATE) * 1000,
   allFinite: results.every((r) => r.allFinite),

@@ -130,6 +130,7 @@ function makeRandom(seed) {
 }
 
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 /**
  * Transient score: the fast follower's lead over its 20 ms lag, with a margin
@@ -188,6 +189,26 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
       mix: 1,
       output: 0,
     };
+    // Reused block target: AudioWorklet.process() runs hundreds of times per
+    // second, so keep its parameter mirror allocation-free after construction.
+    this.target = {
+      dispersion: 0.35,
+      punch: 0,
+      punchHz: 0,
+      punchMix: 1,
+      focusHz: 220,
+      shape: 0,
+      spread: 0,
+      field: 0,
+      dyn: 0,
+      dynPunch: 0,
+      keyMode: 0,
+      lfoHz: 0.5,
+      lfoShape: 0,
+      lfoDepth: 0,
+      mix: 1,
+      output: 0,
+    };
     this.primed = false;
     // Envelope followers (dyn) and sidechain key (PUMP/DUCK).
     this.envFast = 0;
@@ -228,25 +249,23 @@ class SkrutkaProcessor extends AudioWorkletProcessor {
     const len = outL.length;
     const sr = globalThis.sampleRate || 44100;
 
-    const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-    const target = {
-      dispersion: clamp(parameters.dispersion[0], 0, 1),
-      punch: clamp(parameters.punch[0], -1, 1),
-      punchHz: clamp(parameters.punchHz[0], 0, 6000),
-      punchMix: clamp(parameters.punchMix[0], 0, 1),
-      focusHz: clamp(parameters.focusHz[0], FOCUS_MIN_HZ, 4000),
-      shape: Math.round(clamp(parameters.shape[0], 0, 3)),
-      spread: clamp(parameters.spread[0], 0, 1),
-      field: clamp(parameters.field[0], -1, 1),
-      dyn: clamp(parameters.dyn[0], -1, 1),
-      dynPunch: clamp(parameters.dynPunch[0], -1, 1),
-      keyMode: Math.round(clamp(parameters.keyMode[0], 0, 2)),
-      lfoHz: Math.max(0, parameters.lfoHz[0]),
-      lfoShape: Math.round(clamp(parameters.lfoShape[0], 0, 2)),
-      lfoDepth: clamp(parameters.lfoDepth[0], 0, 1),
-      mix: clamp(parameters.mix[0], 0, 1),
-      output: clamp(parameters.output[0], -18, 12),
-    };
+    const target = this.target;
+    target.dispersion = clamp(parameters.dispersion[0], 0, 1);
+    target.punch = clamp(parameters.punch[0], -1, 1);
+    target.punchHz = clamp(parameters.punchHz[0], 0, 6000);
+    target.punchMix = clamp(parameters.punchMix[0], 0, 1);
+    target.focusHz = clamp(parameters.focusHz[0], FOCUS_MIN_HZ, 4000);
+    target.shape = Math.round(clamp(parameters.shape[0], 0, 3));
+    target.spread = clamp(parameters.spread[0], 0, 1);
+    target.field = clamp(parameters.field[0], -1, 1);
+    target.dyn = clamp(parameters.dyn[0], -1, 1);
+    target.dynPunch = clamp(parameters.dynPunch[0], -1, 1);
+    target.keyMode = Math.round(clamp(parameters.keyMode[0], 0, 2));
+    target.lfoHz = Math.max(0, parameters.lfoHz[0]);
+    target.lfoShape = Math.round(clamp(parameters.lfoShape[0], 0, 2));
+    target.lfoDepth = clamp(parameters.lfoDepth[0], 0, 1);
+    target.mix = clamp(parameters.mix[0], 0, 1);
+    target.output = clamp(parameters.output[0], -18, 12);
 
     // Block-rate application of per-SAMPLE one-poles (checklist §4).
     const smoothCoef = 1 - Math.exp(-len / (SMOOTH_TAU_S * sr));

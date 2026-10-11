@@ -80,6 +80,8 @@ const TONE_HP_HZ = 200;
 
 /** Smoothing time constant for MIX / TONE / DRIVE, in seconds. */
 const SMOOTHING_TC = 0.02;
+/** Shift moves across FFT bins; spread automation changes across several spectral frames. */
+const SHIFT_SMOOTHING_TC = 0.03;
 
 export interface SpectralMeters {
   /** Peak wet magnitude observed in the analysed spectrum this frame. */
@@ -90,6 +92,8 @@ export interface SpectralMeters {
   delaySec: number;
   /** Frames pushed through the engine — the soak harness reads this. */
   frames: number;
+  /** Effective, smoothed spectral shift in semitones. */
+  shiftSemitones: number;
 }
 
 export class SpectralProcessor {
@@ -139,6 +143,7 @@ export class SpectralProcessor {
   private mixSmooth = DEFAULT_SPECTRAL_PARAMS.mix;
   private toneSmooth = DEFAULT_SPECTRAL_PARAMS.tone;
   private driveSmooth = DEFAULT_SPECTRAL_PARAMS.drive;
+  private shiftSmooth = DEFAULT_SPECTRAL_PARAMS.shift;
 
   // Tone filter state, one pair per path.
   private lpStateMid = 0;
@@ -146,7 +151,7 @@ export class SpectralProcessor {
   private lpStateSide = 0;
   private hpStateSide = 0;
 
-  private readonly meters: SpectralMeters = { peak: 0, activity: 0, delaySec: 0, frames: 0 };
+  private readonly meters: SpectralMeters = { peak: 0, activity: 0, delaySec: 0, frames: 0, shiftSemitones: 0 };
 
   constructor() {
     this.engineMid = new StftEngine(44100, { fftSize: DEFAULT_FFT_SIZE });
@@ -233,6 +238,7 @@ export class SpectralProcessor {
     this.mixSmooth = clamp01(this.params.mix);
     this.toneSmooth = this.params.tone;
     this.driveSmooth = clamp01(this.params.drive);
+    this.shiftSmooth = clampRange(this.params.shift, -24, 24);
     this.lpStateMid = 0;
     this.hpStateMid = 0;
     this.lpStateSide = 0;
@@ -241,6 +247,7 @@ export class SpectralProcessor {
     this.meters.activity = 0;
     this.meters.delaySec = 0;
     this.meters.frames = 0;
+    this.meters.shiftSemitones = this.shiftSmooth;
     this.ready = true;
   }
 
@@ -269,6 +276,10 @@ export class SpectralProcessor {
     const mixTarget = clamp01(this.params.mix);
     this.toneSmooth += (this.params.tone - this.toneSmooth) * mixK;
     this.driveSmooth += (clamp01(this.params.drive) - this.driveSmooth) * mixK;
+    const shiftTarget = clampRange(this.params.shift, -24, 24);
+    const shiftK = blockSmoothingCoefficient(n, SHIFT_SMOOTHING_TC, this.sampleRate);
+    this.shiftSmooth += (shiftTarget - this.shiftSmooth) * shiftK;
+    this.meters.shiftSemitones = this.shiftSmooth;
 
     // Fully closed = pure passthrough, decided on the TARGET mix rather than
     // the smoothed one: a knob dragged to zero must bypass immediately and
@@ -475,7 +486,7 @@ export class SpectralProcessor {
     p.timeSec = delaySec;
     p.feedback = clamp01(this.params.feedback) * (frozen ? 0.85 : 1);
     p.decay = clamp01(this.params.decay);
-    p.shiftSemitones = clampRange(this.params.shift, -24, 24);
+    p.shiftSemitones = this.shiftSmooth;
     p.diffuse = clamp01(this.params.diffuse);
     p.freeze = frozen ? 1 : 0;
     return p;

@@ -1385,7 +1385,8 @@
             "lfoShape": 0,
             "lfoDepth": 0,
             "mix": 1,
-            "output": 0
+            "output": 0,
+            "morph": 0
           }
         },
         {

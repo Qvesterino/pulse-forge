@@ -234,7 +234,10 @@ export class RezonansProcessor {
     // Glide: 0 → 80 ms, 1 → 5 ms.
     const glide = this.params[REZ_PARAM.glide] ?? 0.35;
     const glideTc = 0.08 - 0.075 * clamp(glide, 0, 1);
-    this.glideCoef = Math.exp(-1 / (glideTc * sr));
+    // ratioSm advances once per analysis frame, not once per sample. Scale
+    // the one-pole by the actual hop so the advertised 5–80 ms glide remains
+    // stable across Economy/Balanced/Fine quality settings.
+    this.glideCoef = Math.exp(-this.frame.synthesisHop / (glideTc * sr));
 
     // Body gate envelopes (the transient/body split reused from MORPH).
     this.envCoefFast = Math.exp(-1 / (0.002 * sr));
@@ -258,6 +261,7 @@ export class RezonansProcessor {
       const fftSize = QUALITY_FFT_SIZE[Math.round(v)] ?? 2048;
       if (fftSize !== this.frame.fftSize) {
         this.applyQuality(v);
+        this.recomputeCoefficients();
         this.frame.reset();
         this.bus.reset();
       }
@@ -267,7 +271,8 @@ export class RezonansProcessor {
       id === REZ_PARAM.envelopeSmooth ||
       id === REZ_PARAM.minHz ||
       id === REZ_PARAM.harmonyMode ||
-      id === REZ_PARAM.chordFollow
+      id === REZ_PARAM.chordFollow ||
+      id === REZ_PARAM.glide
     ) {
       this.recomputeCoefficients();
     }
@@ -477,7 +482,7 @@ export class RezonansProcessor {
       );
     }
 
-    this.bus.setBus(voiceCount, 1, this.params[REZ_PARAM.width] ?? 1);
+    this.bus.setBus(1, this.params[REZ_PARAM.width] ?? 1);
     this.bus.renderFrame(
       this.frame.mag,
       this.frame.phase,

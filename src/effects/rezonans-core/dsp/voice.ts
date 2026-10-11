@@ -37,9 +37,12 @@ import { PhaseLocker } from "./phaseLock.js";
 import { hannWindow, ifftInto, princarg } from "./fft.js";
 
 export class HarmonyVoice {
+  private static readonly FORMANT_SMOOTHING_SECONDS = 0.015;
+
   private n = 0;
   private half = 0;
   private hop = 512;
+  private formantSmooth = 0;
   private window: Float32Array = new Float32Array(0);
 
   private outPhase = new Float64Array(0);
@@ -57,10 +60,12 @@ export class HarmonyVoice {
   /** Current pitch ratio (target f0 / detected f0), clamped to ±12 st. */
   private ratio = 1;
   /** Current formant warp factor (1 = identity). */
-  private alpha = 1;
+  private alphaTarget = 1;
+  private alphaSm = 1;
 
-  prepare(fftSize: number, hop: number): void {
+  prepare(fftSize: number, hop: number, sampleRate: number): void {
     this.hop = hop;
+    this.formantSmooth = 1 - Math.exp(-hop / (HarmonyVoice.FORMANT_SMOOTHING_SECONDS * sampleRate));
     if (this.n === fftSize) return;
     this.n = fftSize;
     this.half = fftSize >> 1;
@@ -78,7 +83,7 @@ export class HarmonyVoice {
 
   setTargets(ratio: number, alpha: number): void {
     this.ratio = Math.max(0.5, Math.min(2, Number.isFinite(ratio) ? ratio : 1));
-    this.alpha = Math.max(0.5, Math.min(2, Number.isFinite(alpha) ? alpha : 1));
+    this.alphaTarget = Math.max(0.5, Math.min(2, Number.isFinite(alpha) ? alpha : 1));
   }
 
   /** True once at least one frame has been rendered (phases are usable). */
@@ -89,6 +94,7 @@ export class HarmonyVoice {
   reset(): void {
     this.first = true;
     this.primed = false;
+    this.alphaSm = 1;
     this.outPhase.fill(0);
     this.locker.reset();
   }
@@ -114,8 +120,18 @@ export class HarmonyVoice {
     const half = this.half;
     const hs = this.hop;
 
-    this.warp.update(this.alpha, logEnv);
-    this.warp.renderInto(logEnv, this.envWarp, this.alpha);
+    // Glide the formant warp in semitone space: abrupt automation no longer
+    // rebuilds the spectral map at a single frame, while static presets are
+    // seeded at their saved value on the first frame below.
+    if (this.first) {
+      this.alphaSm = this.alphaTarget;
+    } else {
+      const targetSemitones = 12 * Math.log2(this.alphaTarget);
+      const currentSemitones = 12 * Math.log2(this.alphaSm);
+      this.alphaSm = Math.pow(2, (currentSemitones + (targetSemitones - currentSemitones) * this.formantSmooth) / 12);
+    }
+    this.warp.update(this.alphaSm, logEnv);
+    this.warp.renderInto(logEnv, this.envWarp, this.alphaSm);
 
     const magV = this.magV;
     const outPhase = this.outPhase;
@@ -145,7 +161,7 @@ export class HarmonyVoice {
     // At the exact identity point the unmodified propagated phases are already
     // the correct solution; applying a peak lock there can add needless phase
     // motion to a signal that should round-trip unchanged.
-    if (Math.abs(this.ratio - 1) > 1e-6 || Math.abs(this.alpha - 1) > 1e-6) {
+    if (Math.abs(this.ratio - 1) > 1e-6 || Math.abs(this.alphaSm - 1) > 1e-6) {
       this.locker.findPeaks(magV, half);
       this.locker.applyLock(outPhase, phase, half);
     }

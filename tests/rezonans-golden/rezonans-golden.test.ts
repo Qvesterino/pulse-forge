@@ -192,6 +192,56 @@ function centroid(a: Float32Array, sampleRate = SR): number {
   return den > 0 ? num / den : 0;
 }
 
+/** Hann-windowed single-bin amplitude measurement for a known test pitch. */
+function amplitudeAt(a: Float32Array, start: number, length: number, sampleRate: number, frequency: number): number {
+  let re = 0;
+  let im = 0;
+  let windowSum = 0;
+  for (let i = 0; i < length; i++) {
+    const w = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (length - 1));
+    const phase = (2 * Math.PI * frequency * i) / sampleRate;
+    const s = a[start + i]! * w;
+    re += s * Math.cos(phase);
+    im -= s * Math.sin(phase);
+    windowSum += w;
+  }
+  return (2 * Math.hypot(re, im)) / windowSum;
+}
+
+/** Strongest FFT partial inside a pitch search band; used only by DSP goldens. */
+function peakFrequency(
+  a: Float32Array,
+  start: number,
+  length: number,
+  sampleRate: number,
+  minHz: number,
+  maxHz: number,
+): number {
+  const re = new Float64Array(length);
+  const im = new Float64Array(length);
+  for (let i = 0; i < length; i++) {
+    re[i] = a[start + i]! * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (length - 1)));
+  }
+  fft(re, im);
+  const lo = Math.max(1, Math.ceil((minHz * length) / sampleRate));
+  const hi = Math.min(length >> 1, Math.floor((maxHz * length) / sampleRate));
+  let peak = lo;
+  let peakPower = 0;
+  for (let k = lo; k <= hi; k++) {
+    const power = re[k]! * re[k]! + im[k]! * im[k]!;
+    if (power > peakPower) {
+      peakPower = power;
+      peak = k;
+    }
+  }
+  const left = Math.log(Math.max(1e-30, re[peak - 1]! ** 2 + im[peak - 1]! ** 2));
+  const center = Math.log(Math.max(1e-30, peakPower));
+  const right = Math.log(Math.max(1e-30, re[peak + 1]! ** 2 + im[peak + 1]! ** 2));
+  const denom = left - 2 * center + right;
+  const offset = Math.abs(denom) > 1e-12 ? (0.5 * (left - right)) / denom : 0;
+  return ((peak + offset) * sampleRate) / length;
+}
+
 describe("REZONANS golden — A1 determinism", () => {
   const input = makeVocal(0.6);
 
@@ -484,6 +534,42 @@ describe("REZONANS golden — bypass", () => {
   });
 });
 
+describe("REZONANS rendered harmony pitch", () => {
+  it("renders the solved interval into the wet audio, not just the meter", () => {
+    const sampleRate = 48000;
+    const input = makeVocal(0.8, 220, sampleRate, 0);
+    const params: Record<string, number> = {
+      [REZ_PARAM.harmonyMode]: 1,
+      [REZ_PARAM.voices]: 1,
+      [REZ_PARAM.mix]: 1,
+      [REZ_PARAM.bodyGate]: 1,
+      [REZ_PARAM.clarity]: 0.2,
+      [voiceParamId(0, "enabled")]: 1,
+      [voiceParamId(0, "degree")]: 7,
+      [voiceParamId(0, "level")]: 1,
+      [voiceParamId(0, "humanize")]: 0,
+    };
+    const windowStart = Math.floor(0.4 * sampleRate);
+    const windowLength = 8192;
+    const sourceHz = 220;
+    const expectedHz = sourceHz * Math.pow(2, 7 / 12);
+    for (const quality of [QUALITY_ECONOMY, 1, QUALITY_FINE]) {
+      const out = render(input, { sampleRate, params: { ...params, [REZ_PARAM.quality]: quality } });
+      const wetStart = windowStart + out.latency;
+      const sourceAmp = amplitudeAt(out.l, wetStart, windowLength, sampleRate, sourceHz);
+      const targetAmp = amplitudeAt(out.l, wetStart, windowLength, sampleRate, expectedHz);
+      const peakHz = peakFrequency(out.l, wetStart, windowLength, sampleRate, 250, 400);
+      const debug = out.proc as unknown as { ratioSm: Float64Array };
+      // eslint-disable-next-line no-console
+      console.log(
+        `REZONANS quality ${quality}: ratio=${debug.ratioSm[0]?.toFixed(3)}, peak=${peakHz.toFixed(1)} Hz, ` +
+          `source/target=${sourceAmp}/${targetAmp}`,
+      );
+      expect(targetAmp, `quality ${quality} must render the target pitch`).toBeGreaterThan(sourceAmp * 2);
+    }
+  });
+});
+
 describe("REZONANS real-phrase speech smoke", () => {
   it("tracks and renders a recorded CC0 phrase at its native sample rate", () => {
     // Wikimedia Commons, "Do you mind if I open the window.wav" by Czechcamp.
@@ -494,12 +580,13 @@ describe("REZONANS real-phrase speech smoke", () => {
     const { samples, sampleRate } = decodeMonoPcm16Wav(wav);
     expect(sampleRate).toBe(24000);
 
-    const trace: Array<{ offset: number; f0: number; activeVoices: number }> = [];
+    const trace: Array<{ offset: number; f0: number; activeVoices: number; targetMidi: number }> = [];
     const params: Record<string, number> = {
       [REZ_PARAM.quality]: QUALITY_ECONOMY,
       [REZ_PARAM.harmonyMode]: 1,
       [REZ_PARAM.voices]: 1,
       [REZ_PARAM.mix]: 1,
+      [REZ_PARAM.bodyGate]: 1,
       [voiceParamId(0, "enabled")]: 1,
       [voiceParamId(0, "degree")]: 7,
       [voiceParamId(0, "level")]: 1,
@@ -510,12 +597,29 @@ describe("REZONANS real-phrase speech smoke", () => {
       params,
       onBlock: (processor, offset) => {
         const meters = processor.getMeters();
-        trace.push({ offset, f0: meters.f0, activeVoices: meters.activeVoices });
+        trace.push({ offset, f0: meters.f0, activeVoices: meters.activeVoices, targetMidi: meters.voiceMidi[0]! });
       },
     });
 
     const voicedBlocks = trace.filter((frame) => frame.f0 > 0).length;
     const activeVoiceBlocks = trace.filter((frame) => frame.activeVoices > 0).length;
+    const stablePitchProbes: Array<{ time: number; f0: number; targetHz: number; targetGainDb: number }> = [];
+    for (let start = 0; start + 2048 <= samples.length; start += 512) {
+      const fromFrame = Math.floor(start / BLOCK);
+      const toFrame = Math.min(trace.length, Math.ceil((start + 2048) / BLOCK));
+      const voiced = trace.slice(fromFrame, toFrame).filter((frame) => frame.f0 > 0 && frame.targetMidi > 0);
+      if (voiced.length < 10) continue;
+      const f0s = voiced.map((frame) => frame.f0).sort((a, b) => a - b);
+      const targets = voiced.map((frame) => frame.targetMidi).sort((a, b) => a - b);
+      const medianF0 = f0s[Math.floor(f0s.length / 2)]!;
+      const medianTarget = targets[Math.floor(targets.length / 2)]!;
+      if ((f0s[f0s.length - 1]! - f0s[0]!) / medianF0 > 0.1 || targets[targets.length - 1]! - targets[0]! > 1) continue;
+      const targetHz = midiToHz(medianTarget);
+      const wetTarget = amplitudeAt(out.l, start + out.latency, 2048, sampleRate, targetHz);
+      const dryTarget = amplitudeAt(samples, start, 2048, sampleRate, targetHz);
+      const targetGainDb = 20 * Math.log10((wetTarget + 1e-6) / (dryTarget + 1e-6));
+      stablePitchProbes.push({ time: start / sampleRate, f0: medianF0, targetHz, targetGainDb });
+    }
     const sourceRms = rms(samples);
     const wetRms = rms(out.l);
     const allFinite = Array.from(out.l).every(Number.isFinite) && Array.from(out.r).every(Number.isFinite);
@@ -524,12 +628,44 @@ describe("REZONANS real-phrase speech smoke", () => {
       `REZONANS recorded phrase: source=${sourceRms.toFixed(3)} RMS, wet=${wetRms.toFixed(3)} RMS, ` +
         `voiced blocks=${voicedBlocks}, active voice blocks=${activeVoiceBlocks}, latency=${out.latency} samples @ ${sampleRate} Hz`,
     );
+    const bestTargetGain = Math.max(...stablePitchProbes.map((probe) => probe.targetGainDb));
+    // eslint-disable-next-line no-console
+    console.log(
+      `REZONANS stable voiced windows: ${stablePitchProbes.length}, ` +
+        `best target-band lift=${bestTargetGain.toFixed(1)} dB`,
+    );
     expect(voicedBlocks).toBeGreaterThan(0);
     expect(activeVoiceBlocks).toBeGreaterThan(0);
     expect(sourceRms).toBeGreaterThan(0.02);
     expect(wetRms).toBeGreaterThan(0.02);
     expect(out.latency).toBe(1023);
+    expect(stablePitchProbes.length).toBeGreaterThan(0);
+    expect(bestTargetGain).toBeGreaterThan(6);
     expect(allFinite).toBe(true);
+  });
+});
+
+describe("REZONANS active voice normalization", () => {
+  it("keeps a three-voice mix unchanged when the maximum voice count is four", () => {
+    const input = makeVocal(0.8);
+    const common = {
+      [REZ_PARAM.harmonyMode]: 1,
+      [REZ_PARAM.mix]: 1,
+      [REZ_PARAM.bodyGate]: 0,
+      [REZ_PARAM.clarity]: 0.2,
+      [voiceParamId(0, "enabled")]: 1,
+      [voiceParamId(1, "enabled")]: 1,
+      [voiceParamId(2, "enabled")]: 1,
+      [voiceParamId(3, "enabled")]: 0,
+      [voiceParamId(0, "humanize")]: 0,
+      [voiceParamId(1, "humanize")]: 0,
+      [voiceParamId(2, "humanize")]: 0,
+    };
+    const three = render(input, { params: { ...common, [REZ_PARAM.voices]: 3 } });
+    const fourCeiling = render(input, { params: { ...common, [REZ_PARAM.voices]: 4 } });
+
+    expect(fourCeiling.l).toEqual(three.l);
+    expect(fourCeiling.r).toEqual(three.r);
   });
 });
 

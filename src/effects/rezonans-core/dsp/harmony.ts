@@ -28,21 +28,12 @@ export const MIN_RATIO = 0.5;
 export const MAX_RATIO = 2;
 
 /**
- * Bus trim so that α = 1 / ratio 1 passes at UNITY.
- *
- * Empirical, and deliberately labelled as such. Two things stack above unity
- * in this chain and neither is derivable on paper:
- *   - Hann overlap-add at 75 % overlap sums to 2.0 while sum(w²) is 1.5, so
- *     normalizing by the window sum alone returns +2.5 dB;
- *   - identity phase locking adds bins coherently inside each main lobe,
- *     measured at a further ≈ +1.3 dB.
- *
- * Measured steady-tone pass-through before this trim: 1.555 (+3.83 dB), on a
- * 220 Hz sine at α = 1, ratio 1. `tests/rezonans-golden` pins it back, so a
- * change in the OLA or the locker that moves the level fails loudly instead of
- * quietly shipping a harmoniser that is four decibels hot.
+ * Restore the mono analysis signal to per-channel unity after equal-power pan.
+ * The processor analyses (L + R) / 2 as one voice; a centered equal-power pan
+ * writes that voice at 1/√2 to each output. √2 restores the original level,
+ * while setBus divides by √(actually active voices) for a stable harmony bus.
  */
-export const BUS_UNITY_TRIM = 1 / 1.555;
+export const BUS_UNITY_TRIM = Math.SQRT2;
 
 export type HarmonyMode = "off" | "interval" | "degrees" | "chordTones";
 
@@ -219,6 +210,8 @@ export class HarmonyBus {
   private panL = new Float64Array(HARMONY_VOICE_COUNT);
   private panR = new Float64Array(HARMONY_VOICE_COUNT);
   private gains = new Float64Array(HARMONY_VOICE_COUNT);
+  /** Skip never-enabled voices; once used, keep their streaming phase state warm. */
+  private voiceEverActive = new Uint8Array(HARMONY_VOICE_COUNT);
 
   private busGain = 0;
   private busGainTarget = 0;
@@ -247,9 +240,10 @@ export class HarmonyBus {
       if (!this.rings[i] || this.rings[i]!.length !== ringLen) {
         this.rings[i] = new Float32Array(ringLen);
       }
-      this.voices[i]!.prepare(fftSize, hop);
+      this.voices[i]!.prepare(fftSize, hop, sampleRate);
       this.rings[i]!.fill(0);
       this.gains[i] = 0;
+      this.voiceEverActive[i] = 0;
     }
     this.winRing.fill(0);
     this.outPos = 0;
@@ -267,11 +261,13 @@ export class HarmonyBus {
     this.panL[i] = Math.cos(theta);
     this.panR[i] = Math.sin(theta);
     this.levels[i] = Math.max(0, Math.min(1.5, level));
+    if (this.levels[i]! > 0.0005) this.voiceEverActive[i] = 1;
   }
 
-  setBus(activeVoices: number, mix: number, width: number): void {
-    const n = Math.max(1, Math.min(HARMONY_VOICE_COUNT, Math.floor(activeVoices)));
-    this.busGainTarget = (mix * BUS_UNITY_TRIM) / Math.sqrt(n);
+  setBus(mix: number, width: number): void {
+    let activeVoices = 0;
+    for (let i = 0; i < HARMONY_VOICE_COUNT; i++) if (this.levels[i]! > 0.0005) activeVoices++;
+    this.busGainTarget = (mix * BUS_UNITY_TRIM) / Math.sqrt(Math.max(1, activeVoices));
     this.widthTarget = clamp(width, 0, 2);
   }
 
@@ -286,9 +282,6 @@ export class HarmonyBus {
     envLin: Float64Array,
     logEnv: Float64Array,
   ): void {
-    let active = 0;
-    for (let i = 0; i < HARMONY_VOICE_COUNT; i++) if (this.levels[i] > 0.0005) active++;
-
     // Frame-rate smoothing: the bus gain and width move once per hop, which is
     // ~10.7 ms — smooth enough for automation and free of per-sample cost.
     const smooth = 1 - Math.exp(-this.hop / (0.03 * 48000));
@@ -312,11 +305,11 @@ export class HarmonyBus {
     }
 
     for (let i = 0; i < HARMONY_VOICE_COUNT; i++) {
+      if (!this.voiceEverActive[i]) continue;
       this.voices[i]!.renderFrame(mag, phase, prevPhase, envLin, logEnv, this.rings[i]!, this.outPos, this.ringMask);
     }
     this.outPos = (this.outPos + this.hop) & this.ringMask;
     this.started = true;
-    void active;
   }
 
   /** Read one output sample pair (L, R), clearing the consumed slots. */
@@ -381,6 +374,7 @@ export class HarmonyBus {
     this.widthSm = 1;
     this.widthTarget = 1;
     this.sideState = 0;
+    this.voiceEverActive.fill(0);
   }
 }
 

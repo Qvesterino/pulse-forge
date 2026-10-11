@@ -589,11 +589,21 @@ guessing them is how formant shifters end up shipping wrong:
    de-essed) — the 0.75 figure was calibrated on a clean tone and a chord mush, not on
    a mastered drill vocal.
 4. Peak-locking neighbourhood width: ±2 bins is a starting point, not a result.
-5. **Preliminary CPU measurement recorded; realtime suitability remains open.**
+5. **CPU measurement is inconclusive; realtime suitability remains open.**
    `npm run benchmark:rezonans` on 2026-10-11 (Node 24.11.0, Windows x64,
    Ryzen 7 5800H) processed the pinned CC0 speech fixture at 48 kHz, 4096 FFT,
-   four voices. The four 8-second runs used 18.2–22.8% of one core (18.6%
-   median); median per-run p95 block time was 3.61 ms against a 2.67 ms audio
-   block deadline, with a 9.81 ms maximum. This is a local TypeScript-core
-   measurement, not an AudioWorklet deadline guarantee: validate in Chromium
-   and on a lower-tier device before deciding whether Fine should cap voices.
+   four voices. An earlier four-run sample used 18.2–22.8% of one core (18.6%
+   median), with 3.61 ms median per-run p95 block time and 9.81 ms maximum.
+   A later repeat on the same host measured 34.4–56.1% of one core (43.2%
+   median), 6.23–8.84 ms per-run p95 blocks (7.89 ms median), and a 113.84 ms
+   maximum. The local timing spread is too wide to establish a deadline result.
+   Two Chromium 151 runs on the same host (`npm run benchmark:rezonans:browser`)
+   measured the DSP core in the browser's main JavaScript runtime at 17.6–37.1%
+   of one core (28.9% median across six repeats), or 0.47–0.99 ms per
+   128-sample loop. The spread itself shows sensitivity to host load; this is
+   not audio-thread timing.
+   Chromium's AudioWorkletGlobalScope exposes no `performance.now()`, so a
+   per-quantum wall-clock probe cannot be added honestly inside the processor.
+   Existing browser checks exercise the actual worklet render path, but do not
+   certify deadline headroom. Repeat with lower-tier hardware and an audio
+   underrun/trace monitor before deciding whether Fine should cap voices.

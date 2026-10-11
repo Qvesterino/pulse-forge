@@ -777,10 +777,12 @@
   };
 
   // src/effects/rezonans-core/dsp/voice.ts
-  var HarmonyVoice = class {
+  var HarmonyVoice = class _HarmonyVoice {
+    static FORMANT_SMOOTHING_SECONDS = 0.015;
     n = 0;
     half = 0;
     hop = 512;
+    formantSmooth = 0;
     window = new Float32Array(0);
     outPhase = new Float64Array(0);
     magV = new Float64Array(0);
@@ -794,9 +796,11 @@
     /** Current pitch ratio (target f0 / detected f0), clamped to ±12 st. */
     ratio = 1;
     /** Current formant warp factor (1 = identity). */
-    alpha = 1;
-    prepare(fftSize, hop) {
+    alphaTarget = 1;
+    alphaSm = 1;
+    prepare(fftSize, hop, sampleRate2) {
       this.hop = hop;
+      this.formantSmooth = 1 - Math.exp(-hop / (_HarmonyVoice.FORMANT_SMOOTHING_SECONDS * sampleRate2));
       if (this.n === fftSize) return;
       this.n = fftSize;
       this.half = fftSize >> 1;
@@ -813,7 +817,7 @@
     }
     setTargets(ratio, alpha) {
       this.ratio = Math.max(0.5, Math.min(2, Number.isFinite(ratio) ? ratio : 1));
-      this.alpha = Math.max(0.5, Math.min(2, Number.isFinite(alpha) ? alpha : 1));
+      this.alphaTarget = Math.max(0.5, Math.min(2, Number.isFinite(alpha) ? alpha : 1));
     }
     /** True once at least one frame has been rendered (phases are usable). */
     get started() {
@@ -822,6 +826,7 @@
     reset() {
       this.first = true;
       this.primed = false;
+      this.alphaSm = 1;
       this.outPhase.fill(0);
       this.locker.reset();
     }
@@ -836,8 +841,15 @@
       const n = this.n;
       const half2 = this.half;
       const hs = this.hop;
-      this.warp.update(this.alpha, logEnv);
-      this.warp.renderInto(logEnv, this.envWarp, this.alpha);
+      if (this.first) {
+        this.alphaSm = this.alphaTarget;
+      } else {
+        const targetSemitones = 12 * Math.log2(this.alphaTarget);
+        const currentSemitones = 12 * Math.log2(this.alphaSm);
+        this.alphaSm = Math.pow(2, (currentSemitones + (targetSemitones - currentSemitones) * this.formantSmooth) / 12);
+      }
+      this.warp.update(this.alphaSm, logEnv);
+      this.warp.renderInto(logEnv, this.envWarp, this.alphaSm);
       const magV = this.magV;
       const outPhase = this.outPhase;
       for (let k = 0; k <= half2; k++) {
@@ -854,7 +866,7 @@
       }
       this.primed = true;
       this.first = false;
-      if (Math.abs(this.ratio - 1) > 1e-6 || Math.abs(this.alpha - 1) > 1e-6) {
+      if (Math.abs(this.ratio - 1) > 1e-6 || Math.abs(this.alphaSm - 1) > 1e-6) {
         this.locker.findPeaks(magV, half2);
         this.locker.applyLock(outPhase, phase, half2);
       }
@@ -900,7 +912,7 @@
   var HARMONY_VOICE_COUNT = 4;
   var MIN_RATIO = 0.5;
   var MAX_RATIO = 2;
-  var BUS_UNITY_TRIM = 1 / 1.555;
+  var BUS_UNITY_TRIM = Math.SQRT2;
   function clamp(x, lo, hi) {
     return x < lo ? lo : x > hi ? hi : x;
   }
@@ -1010,6 +1022,8 @@
     panL = new Float64Array(HARMONY_VOICE_COUNT);
     panR = new Float64Array(HARMONY_VOICE_COUNT);
     gains = new Float64Array(HARMONY_VOICE_COUNT);
+    /** Skip never-enabled voices; once used, keep their streaming phase state warm. */
+    voiceEverActive = new Uint8Array(HARMONY_VOICE_COUNT);
     busGain = 0;
     busGainTarget = 0;
     widthSm = 1;
@@ -1031,9 +1045,10 @@
         if (!this.rings[i] || this.rings[i].length !== ringLen) {
           this.rings[i] = new Float32Array(ringLen);
         }
-        this.voices[i].prepare(fftSize, hop);
+        this.voices[i].prepare(fftSize, hop, sampleRate2);
         this.rings[i].fill(0);
         this.gains[i] = 0;
+        this.voiceEverActive[i] = 0;
       }
       this.winRing.fill(0);
       this.outPos = 0;
@@ -1050,10 +1065,12 @@
       this.panL[i] = Math.cos(theta);
       this.panR[i] = Math.sin(theta);
       this.levels[i] = Math.max(0, Math.min(1.5, level));
+      if (this.levels[i] > 5e-4) this.voiceEverActive[i] = 1;
     }
-    setBus(activeVoices, mix, width) {
-      const n = Math.max(1, Math.min(HARMONY_VOICE_COUNT, Math.floor(activeVoices)));
-      this.busGainTarget = mix * BUS_UNITY_TRIM / Math.sqrt(n);
+    setBus(mix, width) {
+      let activeVoices = 0;
+      for (let i = 0; i < HARMONY_VOICE_COUNT; i++) if (this.levels[i] > 5e-4) activeVoices++;
+      this.busGainTarget = mix * BUS_UNITY_TRIM / Math.sqrt(Math.max(1, activeVoices));
       this.widthTarget = clamp(width, 0, 2);
     }
     /**
@@ -1061,8 +1078,6 @@
      * Called when FrameEngine reports a hop boundary.
      */
     renderFrame(mag, phase, prevPhase, envLin, logEnv) {
-      let active = 0;
-      for (let i = 0; i < HARMONY_VOICE_COUNT; i++) if (this.levels[i] > 5e-4) active++;
       const smooth = 1 - Math.exp(-this.hop / (0.03 * 48e3));
       this.busGain += (this.busGainTarget - this.busGain) * smooth;
       this.widthSm += (this.widthTarget - this.widthSm) * smooth;
@@ -1075,11 +1090,11 @@
         this.winRing[pos] = this.winRing[pos] + w * w;
       }
       for (let i = 0; i < HARMONY_VOICE_COUNT; i++) {
+        if (!this.voiceEverActive[i]) continue;
         this.voices[i].renderFrame(mag, phase, prevPhase, envLin, logEnv, this.rings[i], this.outPos, this.ringMask);
       }
       this.outPos = this.outPos + this.hop & this.ringMask;
       this.started = true;
-      void active;
     }
     /** Read one output sample pair (L, R), clearing the consumed slots. */
     read(out) {
@@ -1136,6 +1151,7 @@
       this.widthSm = 1;
       this.widthTarget = 1;
       this.sideState = 0;
+      this.voiceEverActive.fill(0);
     }
   };
   function humanizeOffset(frame, voice) {
@@ -1546,7 +1562,7 @@
           spread
         );
       }
-      this.bus.setBus(voiceCount, 1, this.params[REZ_PARAM.width] ?? 1);
+      this.bus.setBus(1, this.params[REZ_PARAM.width] ?? 1);
       this.bus.renderFrame(
         this.frame.mag,
         this.frame.phase,

@@ -297,3 +297,32 @@ restoring the live knobs, undo/redo re-seeding from the document, perceptual
 frequency interpolation, enum/AUTO midpoint behavior, and the curve-less node
 treating morph as a strict no-op. The `morph` param is context-coupled (audible
 only with a stored curve), the same class as `lfoRate`/`keyMode`.
+
+## Addendum 5 (2026-10-11) — v2.4: PORTAL × TWIST tandem chains + semantic moves
+
+1. **Four tandem chains** (`BEATMAKING_EFFECT_CHAINS`) pair arrival time with
+   spectral time — TWIST shapes WHEN frequencies arrive, PORTAL shapes WHAT
+   rings in the spectrum:
+   - `phase-spectral-throw` — `skrutka-field-wide` → `portal-air-drift`;
+   - `808-space-ladder` — `bassharmonic-808-phone` → `skrutka-kick-duck-phase`
+     → `portal-echo-dive`;
+   - `ghost-pad` — `skrutka-side-shimmer` → `portal-time-cap`;
+   - `hyper-glitch` — `pitchshift-down` → `skrutka-chirp-rise` →
+     `portal-sync-stutter`.
+   Chain trims are measured by the FX loudness harness (13 chains now).
+2. **Semantic MOVES** in the targeted-effect parser (`src/intent/mix.ts`):
+   "make the 808 throw", "wider hats, mono safe", "smear the attack on the
+   lead" resolve to TWIST without naming a parameter or the device. A move is
+   an ABSOLUTE re-voicing (its own clamped param map) that replaces the knob
+   path, and it lands FOCUS per TRACK ROLE through `roleOfTrack` (kick 250,
+   808 90, chords 700, lead 1200 for THROW; 3200/900/1600/2400 for WIDER /
+   MONO-SAFE). MONO-SAFE wins over WIDER when both appear ("wider hats, mono
+   safe" = sides-only dispersion with a spread split). Moves imply TWIST only
+   when no other effect is named — "wider reverb" keeps its own path — and a
+   move without a resolvable target stays declined, never guessed. `hats` /
+   `hi-hat` now resolve to the drums target.
+3. **Validation** — `tests/twist-moves.test.ts` (move parsing EN/SK, no
+   hijack of named effects, decline without a target, role-landed FOCUS on
+   the 808 and drum tracks, mono-safe precedence, one-command replay and
+   read-back) and `tests/fx-chains.test.ts` (the four chains exist with their
+   documented effect order, reference real presets, ids unique).

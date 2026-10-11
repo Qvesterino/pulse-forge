@@ -42,6 +42,44 @@ export const BEATMAKING_EFFECT_CHAINS: BeatmakingEffectChain[] = [
     ],
   },
   {
+    id: "phase-spectral-throw",
+    name: "PHASE-SPECTRAL THROW",
+    description: "Fan the sides with phase dispersion, then drift a short spectral tail behind the hits.",
+    effects: [
+      { type: "skrutka", presetId: "skrutka-field-wide" },
+      { type: "portal", presetId: "portal-air-drift" },
+    ],
+  },
+  {
+    id: "808-space-ladder",
+    name: "808 SPACE LADDER",
+    description: "Phone-ready harmonics, kick-cleared phase, and a sliding spectral echo under the glide.",
+    effects: [
+      { type: "bassHarmonic", presetId: "bassharmonic-808-phone" },
+      { type: "skrutka", presetId: "skrutka-kick-duck-phase" },
+      { type: "portal", presetId: "portal-echo-dive" },
+    ],
+  },
+  {
+    id: "ghost-pad",
+    name: "GHOST PAD",
+    description: "Sides-only shimmer feeding a frozen spectral pad — the mono centre stays solid.",
+    effects: [
+      { type: "skrutka", presetId: "skrutka-side-shimmer" },
+      { type: "portal", presetId: "portal-time-cap" },
+    ],
+  },
+  {
+    id: "hyper-glitch",
+    name: "HYPER GLITCH",
+    description: "Pitch the source, chirp the phase, then gate it through a spectral stutter.",
+    effects: [
+      { type: "pitchShift", presetId: "pitchshift-down" },
+      { type: "skrutka", presetId: "skrutka-chirp-rise" },
+      { type: "portal", presetId: "portal-sync-stutter" },
+    ],
+  },
+  {
     id: "kick-punch",
     name: "KICK PUNCH",
     description: "Bring the transient forward, then catch peaks with a soft ceiling.",

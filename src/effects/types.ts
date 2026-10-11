@@ -59,6 +59,12 @@ export interface EffectRuntime {
    */
   setPattern?(steps: readonly number[]): void;
   /**
+   * TWIST (SKRUTKA): apply the two stored curve snapshots to the live runtime
+   * after a device-state edit. Snapshot data remains outside project params so
+   * the automatable MORPH amount stays a single numeric parameter.
+   */
+  setCurves?(a: Record<string, number> | null, b: Record<string, number> | null): void;
+  /**
    * REZONANS (ADR 0040 §4.3c): re-push the key/chord lane. The context also
    * rides `processorOptions` at construction, so this exists for the LIVE path
    * — a chord edited while playing must reach the worklet without rebuilding
