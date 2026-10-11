@@ -1201,6 +1201,10 @@ export class AudioEngine {
         state.latencySubs.push(rt.onLatencyChange(() => this.syncPdc()));
       }
     }
+    // A held MIDI pitch must survive a chain rebuild (lazy hot-swap, edit):
+    // re-assert the hint on the fresh runtimes at "now" (writes 0 when the
+    // track holds no note — the fresh default anyway).
+    this.applyPitchHint(ownerId, ctx.currentTime);
     // PDC tap: every chain routes through a compensation delay so syncPdc()
     // can align latency-introducing effects (look-ahead limiter) across the
     // graph. delayTime stays 0 when no compensation is needed.
@@ -2018,6 +2022,54 @@ export class AudioEngine {
 
   // ── Trigger engine (Wave 4f) — delegates; public surface unchanged. ──
 
+  /**
+   * Engine pitch hints (GROW/KOREŇ `hintHz`): held MIDI pitches per track,
+   * most-recent last. The host KNOWS which note is playing, so hint-capable
+   * effects skip acquisition latency and octave risk entirely; on release
+   * the stack falls back to the previous held note, then to pure YIN at 0.
+   * `hintHz` is native AudioParam automation (`setValueAtTime` at `when`),
+   * so live and offline renders receive identical hints; effects without
+   * the parameter no-op inside their node wrapper (`safeApplyAudioParam`).
+   */
+  private heldPitches = new Map<string, number[]>();
+
+  /** Write the track's current pitch hint to every insert that accepts it. */
+  private applyPitchHint(trackId: string, when: number): void {
+    const stack = this.heldPitches.get(trackId);
+    const top = stack && stack.length > 0 ? stack[stack.length - 1]! : null;
+    const hz = top == null ? 0 : 440 * Math.pow(2, (top - 69) / 12);
+    const runtimes = this.trackNodes.get(trackId)?.fx.runtimes;
+    if (!runtimes) return;
+    for (const rt of runtimes.values()) rt.setParameterAt?.("hintHz", hz, when);
+  }
+
+  private pushHeldPitch(trackId: string, pitch: number, when: number): void {
+    const stack = this.heldPitches.get(trackId) ?? [];
+    const existing = stack.indexOf(pitch);
+    if (existing >= 0) stack.splice(existing, 1);
+    stack.push(pitch);
+    this.heldPitches.set(trackId, stack);
+    this.applyPitchHint(trackId, when);
+  }
+
+  private releaseHeldPitch(trackId: string, pitch: number, when: number): void {
+    const stack = this.heldPitches.get(trackId);
+    if (!stack) return;
+    const existing = stack.indexOf(pitch);
+    if (existing >= 0) stack.splice(existing, 1);
+    if (stack.length === 0) this.heldPitches.delete(trackId);
+    this.applyPitchHint(trackId, when);
+  }
+
+  /** Panic / stop: the notes are gone — release every hint. `when = null`
+   *  clears the internal state only (no context to write through). */
+  private clearPitchHints(when: number | null): void {
+    for (const trackId of [...this.heldPitches.keys()]) {
+      this.heldPitches.delete(trackId);
+      if (when != null) this.applyPitchHint(trackId, when);
+    }
+  }
+
   noteOn(
     trackId: string,
     pitch: number,
@@ -2029,6 +2081,7 @@ export class AudioEngine {
     locks?: Partial<Record<import("../project-model/types").StepLockKey, number>>,
     slideFromWhen?: number,
   ): void {
+    this.pushHeldPitch(trackId, pitch, when);
     this.triggerEngine.noteOn(
       trackId,
       pitch,
@@ -2090,6 +2143,7 @@ export class AudioEngine {
   }
 
   noteOff(trackId: string, pitch: number, when: number): void {
+    this.releaseHeldPitch(trackId, pitch, when);
     this.triggerEngine.noteOff(trackId, pitch, when);
   }
 
@@ -2470,6 +2524,7 @@ export class AudioEngine {
       this.stopOneShotSources();
       this.warpManager.disposeAllFrozen();
       this.automation.disposeLfos();
+      this.clearPitchHints(null);
       for (const state of this.instruments.values()) {
         try {
           state.runtime.panic();
@@ -2486,6 +2541,7 @@ export class AudioEngine {
     // playing past Stop and old-position cues fire after a seek.
     this.stopOneShotSources();
     const now = ctx.currentTime;
+    this.clearPitchHints(now);
     // Defect 6.1 (lifecycle / leak audit): dispose every LFO and
     // follower modulator BEFORE instrument.panic() so the modulation
     // path stops driving the (about-to-be-silenced) instrument

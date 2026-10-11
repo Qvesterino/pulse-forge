@@ -79,6 +79,17 @@
  *    The `range` ladder now reaches 16 partials (f0=55 → 880 Hz) so there
  *    is something to redistribute. presence = 0 is the legacy curve.
  *
+ * Wave 8 adds the engine-fed pitch HINT:
+ *
+ * 12. `hintHz` (Hz, 0 = none) — the host writes the CURRENT MIDI note of the
+ *    track (0 on note-off / panic) as native AudioParam automation. A hint
+ *    change snaps the tracked root instantly (zero acquisition latency, no
+ *    octave risk), keeps generation alive while the YIN ring refills, and
+ *    refreshes the deficit read at the known pitch; between changes YIN and
+ *    the crossing refinement may still fine-tune toward the AUDIO (detune,
+ *    vibrato, bends). The hint clears to 0 on note-off — pure YIN falls back.
+ *    Not a user knob: absent from EFFECT_META, like kaskada's hidden `bpm`.
+ *
  * Parameter surface: plain AudioParams (M2 pattern, zenit-m2-nodes.ts) —
  * no port messages for parameters, so offline automation works natively via
  * setValueAtTime. All per-sample smoothing uses per-sample coefficients
@@ -250,6 +261,7 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
       { name: "width", minValue: 0, maxValue: 1, defaultValue: 0 },
       { name: "presence", minValue: 0, maxValue: 1, defaultValue: 0 },
       { name: "keyMode", minValue: 0, maxValue: 2, defaultValue: 0 },
+      { name: "hintHz", minValue: 0, maxValue: 2000, defaultValue: 0 },
       { name: "mix", minValue: 0, maxValue: 1, defaultValue: 0.6 },
       { name: "output", minValue: -18, maxValue: 12, defaultValue: 0 },
     ];
@@ -274,13 +286,15 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     this.keyEnv = 0; // sidechain-key envelope (PUMP/DUCK)
     this.lastKeyGain = 1; // key scaler applied to the last generated sample
     this.refineAge = 1e9; // samples since the last accepted GLIDE refinement
+    this.lastHint = 0; // last engine pitch hint seen (0 = none)
+    this.hintActive = false; // a live hint currently owns acquisition
     this.clarity = 0; // last accepted YIN clarity (telemetry)
     this.harmRatio = 0; // input (2nd+3rd)/fundamental ratio (telemetry)
     this.lastNormScale = 0; // per-block values mirrored for the meter frame
     this.lastWeightSum = 0;
     this.meterSamples = 0;
     this.meterPartials = new Float32Array(MAX_PARTIALS - 1);
-    this.meterFrame = { type: "koren", f0: 0, clarity: 0, harm: 0, key: 1, partials: this.meterPartials };
+    this.meterFrame = { type: "koren", f0: 0, clarity: 0, harm: 0, key: 1, hint: 0, partials: this.meterPartials };
     // Decimated detection domain (YIN + deficit share one ring/window).
     this.decRate = sr / DECIM;
     this.decBufLen = Math.min(8192, Math.max(1024, Math.ceil((this.decRate / TRACK_MIN_HZ) * 2.5)));
@@ -311,7 +325,8 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     const minHz = Math.max(TRACK_MIN_HZ, focus * 0.5);
     const maxHz = focus * 2;
     const result = yinDetect(this.decBuf, this.decBufLen, this.decWrite, this.decRate, minHz, maxHz, this.yin);
-    if (result.hz > 0 && result.clarity >= CLARITY_GATE) {
+    const tracked = result.hz > 0 && result.clarity >= CLARITY_GATE;
+    if (tracked) {
       // One-pole smoothing: YIN re-locks at ~21 ms cadence; the generator's
       // PLL nudge absorbs the small residual frequency error per period.
       // While GLIDE crossings are producing accepted measurements they own
@@ -330,17 +345,19 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
       }
       this.clarity = result.clarity;
       this.untrackedPasses = 0;
-      this.updateDeficit(this.f0);
     } else {
       this.untrackedPasses++;
       this.clarity = result.clarity;
       // The generator has already started releasing after two failed windows.
-      // Keep the estimate briefly for the visual HOLD state, then discard it.
-      if (this.untrackedPasses * DETECT_HOP > this.sampleRate * 0.25) {
+      // Keep the estimate briefly for the visual HOLD state, then discard it —
+      // but a live engine HINT is exact knowledge: a missed YIN window is not
+      // lost tracking, and the root stays for the note's duration.
+      if (!this.hintActive && this.untrackedPasses * DETECT_HOP > this.sampleRate * 0.25) {
         this.f0 = 0;
         this.clarity = 0;
       }
     }
+    if (this.f0 > 0 && (tracked || this.hintActive)) this.updateDeficit(this.f0);
   }
 
   /** Harmonic-deficit read at the tracked fundamental (control rate). */
@@ -401,6 +418,7 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     const width = clamp(parameters.width[0], 0, 1);
     const presence = clamp(parameters.presence[0], 0, 1);
     const keyMode = Math.round(clamp(parameters.keyMode[0], 0, 2));
+    const hint = clamp(parameters.hintHz[0], 0, 2000);
     const mix = clamp(parameters.mix[0], 0, 1);
     const outGain = Math.pow(10, clamp(parameters.output[0], -18, 12) / 20);
 
@@ -428,6 +446,18 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     const cosPhase = Math.cos(phaseOff);
     const sinPhase = Math.sin(phaseOff);
     const widthOn = width > 0;
+
+    // Engine pitch HINT (native AudioParam automation): a CHANGE snaps the
+    // root instantly — the host already knows the note, so there is nothing
+    // to acquire and no octave to confuse. Between changes YIN/refinement
+    // may still tune toward the AUDIO (detune, vibrato, bends); 0 releases
+    // the acquisition ownership back to pure YIN.
+    this.hintActive = hint > 0;
+    if (hint > 0 && hint !== this.lastHint) {
+      this.f0 = hint;
+      this.untrackedPasses = 0;
+    }
+    this.lastHint = hint;
 
     // Harmonic stack: n = 2..N (N = 2^range capped at MAX_PARTIALS). Weight
     // blend: `harmonics` 0 → 2nd dominant, 1 → 3rd-lean; n ≥ 4 sit low.
@@ -563,7 +593,9 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
       // untracked gate still mutes gaps with NO note-on (fades, mush).
       const retrigHold = retrig && this.sinceRetrig < sr * 0.15;
       let genTarget =
-        inWindow && (this.untrackedPasses <= UNTRACKED_RELEASE_PASSES || retrigHold) ? drive * this.envLow : 0;
+        inWindow && (this.untrackedPasses <= UNTRACKED_RELEASE_PASSES || retrigHold || this.hintActive)
+          ? drive * this.envLow
+          : 0;
       if (sustain > 0 && genTarget > 0) {
         const curved = Math.pow(genTarget, gamma);
         const fade = Math.min(1, genTarget * susFloorInv);
@@ -667,6 +699,7 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
       frame.clarity = this.f0 > 0 ? this.clarity : 0;
       frame.harm = harmDb;
       frame.key = this.lastKeyGain;
+      frame.hint = this.hintActive ? 1 : 0;
       const partials = this.meterPartials;
       for (let n = 2; n <= MAX_PARTIALS; n++) {
         partials[n - 2] = weights[n] * this.lastNormScale * this.envGen * this.lastKeyGain;

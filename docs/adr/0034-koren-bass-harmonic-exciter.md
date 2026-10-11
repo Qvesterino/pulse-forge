@@ -313,6 +313,50 @@ the pre-refinement tracking. Measured on the same sweep: **mean 1.9 % / max
 tracker f0 within 3 % mean / 4 % max of the true glide, and a 55 + strong
 165 Hz input still settling on 55.0 (the clamp never yanks the root).
 
+## Addendum 9 (2026-10-11) — engine pitch hints (`hintHz`)
+
+The tracker's remaining latency was structural: whatever the input, YIN needs
+2–3 periods of a refilled window before the root is known, and an arbitrary
+input can never be disambiguated at all. But on a MIDI-driven bass the HOST
+already knows the note. The engine now taps its own note funnel:
+
+- `AudioEngine.noteOn/noteOff` maintain a per-track held-pitch stack (most
+  recent wins, duplicates replaced) and write the current pitch as **native
+  AudioParam automation** — `rt.setParameterAt("hintHz", hz, when)` on every
+  insert of the track, at the event's own `when`. Effects without the
+  parameter no-op inside their wrapper (`safeApplyAudioParam`), so no
+  capability list is needed. `panic()` clears the stack (writing 0 when a
+  context exists), and a chain rebuild re-asserts the held hint on the fresh
+  runtimes (lazy hot-swap mid-note).
+- The processor treats a hint CHANGE as exact knowledge: `f0 = hint` snaps
+  instantly, `untrackedPasses` clears, the untracked release and the
+  generation gate stand down while a hint is live, and the deficit read runs
+  at the known pitch. Between changes YIN and the crossing refinement still
+  fine-tune toward the AUDIO (detune, vibrato, bends) — the hint is an
+  initial condition, not a lock.
+- `hintHz = 0` (note-off / release) hands acquisition back to pure YIN.
+- **Live == offline by construction**: `when` is the same scheduled time in
+  both paths and `setValueAtTime` is render-timeline state, so an
+  `OfflineAudioContext` export receives identical hints with no event-queue
+  gating (same contract as the M2 params).
+- Not a user knob: `hintHz` stays out of `EFFECT_META` / `EFFECT_DEFS` (like
+  kaskada's hidden `bpm`), the FULL SWEEP skips extra descriptors, and the
+  telemetry frame gains a `hint` flag for the panel label.
+- Scope: one pitch per track (top of the held stack). Preview auditions and
+  ghost renders also write hints; a stale top-of-stack pitch only biases
+  acquisition while silent audio renders nothing.
+
+Measured: with a 55 Hz hint the generated 2nd is present at working level
+within the first 60 ms (0.118 vs 0.000 without — the untracked gate holds
+YIN-only generation off until ~90 ms); an automated 55→75 Hz hint glide
+tracks with 0.20 % mean error (max 0.76 %); an untrackable 55 + 82.4 Hz
+two-tone still generates at the hinted root (8.6× the YIN-only floor, the
+deficit honestly generating the 2nd — no 110 in the input); clearing the
+hint hands back to YIN with no gap. Locked by
+`tests/audio-engine-pitch-hint.test.ts` (engine write path,
+most-recent-wins, panic clear, safety) and the wave-8 block in
+`tests/bass-harmonic.test.ts`.
+
 ## Addendum 7 (2026-10-11) — stale-lock release vs RETRIG
 
 The untracked gate (Addendum 6.2) and the RETRIG note-on reset (wave 3)

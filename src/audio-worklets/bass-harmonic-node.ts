@@ -38,6 +38,7 @@ const BASS_HARMONIC_PARAMS = [
   "width",
   "presence",
   "keyMode",
+  "hintHz",
   "mix",
   "output",
 ] as const;
@@ -48,6 +49,8 @@ export interface KorenMeterFrame {
   clarity: number;
   harm: number;
   key: number;
+  /** 1 while the engine pitch hint (`hintHz`) owns acquisition. */
+  hint: number;
   partials: Float32Array | null;
 }
 
@@ -87,6 +90,7 @@ export function createBassHarmonicNode(
       clarity?: unknown;
       harm?: unknown;
       key?: unknown;
+      hint?: unknown;
       partials?: unknown;
     } | null;
     if (msg?.type !== "koren") return;
@@ -97,6 +101,7 @@ export function createBassHarmonicNode(
       clarity: msg.clarity,
       harm: msg.harm,
       key: msg.key,
+      hint: finite(msg.hint) ? msg.hint : 0,
       partials: msg.partials instanceof Float32Array ? msg.partials : null,
     };
   };

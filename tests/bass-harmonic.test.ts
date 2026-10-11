@@ -122,25 +122,28 @@ function renderProcessorStereo(
   return { L: outL, R: outR };
 }
 
-/** Render with a per-block automated focusHz (a-rate style values per sample). */
+/** Render with per-block automated focusHz and/or hintHz (a-rate style values per sample). */
 function renderProcessorAutomated(
   cls: any,
   base: Record<string, number>,
   seconds: number,
   input: (i: number) => number,
-  focusAt: (t: number) => number,
+  focusAt?: (t: number) => number,
+  hintAt?: (t: number) => number,
+  onProc?: (proc: any) => void,
 ): Float32Array {
   const proc = new cls();
+  onProc?.(proc);
   const total = Math.ceil(seconds * SR);
   const outAll = new Float32Array(total);
   for (let offset = 0; offset < total; offset += BLOCK) {
     const len = Math.min(BLOCK, total - offset);
     const params: Record<string, Float32Array> = {};
     for (const d of cls.parameterDescriptors as { name: string; defaultValue: number }[]) {
-      params[d.name] =
-        d.name === "focusHz"
-          ? Float32Array.from({ length: len }, (_, i) => focusAt((offset + i) / SR))
-          : Float32Array.from([base[d.name] ?? d.defaultValue]);
+      const automate = d.name === "focusHz" ? focusAt : d.name === "hintHz" ? hintAt : undefined;
+      params[d.name] = automate
+        ? Float32Array.from({ length: len }, (_, i) => automate((offset + i) / SR))
+        : Float32Array.from([base[d.name] ?? d.defaultValue]);
     }
     const inp = [Float32Array.from({ length: len }, (_, i) => input(offset + i))];
     const out = [new Float32Array(len), new Float32Array(len)];
@@ -701,6 +704,76 @@ describe("KOREŇ wave-7 glide tracking (accepted-crossing refinement)", () => {
     const settled = (proc.port.posted as { f0: number }[]).at(-1)!;
     expect(settled.f0).toBeGreaterThan(54.5);
     expect(settled.f0).toBeLessThan(55.5);
+  });
+});
+
+describe("KOREŇ wave-8 engine pitch hint (hintHz)", () => {
+  const base = { drive: 0.9, mix: 1, subAnchor: 0, focusHz: 90, harmonics: 0, range: 1 };
+
+  it("a hint snaps the root with zero acquisition latency", () => {
+    // Without the hint the untracked gate holds generation off until YIN
+    // locks (~90 ms); the hint is exact knowledge, so the attack generates
+    // from the first envelope rise onward.
+    const cls = registered.get("bass-harmonic-processor");
+    const noHint = renderProcessor(cls, paramsOf(cls, base), 1.0, sineAt(55));
+    const hinted = renderProcessor(cls, paramsOf(cls, { ...base, hintHz: 55 }), 1.0, sineAt(55));
+    const earlyNo = goertzelRange(noHint, 110, 0.02, 0.06);
+    const earlyYes = goertzelRange(hinted, 110, 0.02, 0.06);
+    expect(earlyNo).toBeLessThan(0.002);
+    expect(earlyYes).toBeGreaterThan(0.05);
+    expect(earlyYes).toBeGreaterThan(earlyNo * 10);
+    // Already near the settled level — no ramp-in wait.
+    expect(earlyYes).toBeLessThan(goertzelRange(hinted, 110, 0.9, 1.0) * 2);
+  });
+
+  it("hint automation glides the tracked root (MIDI glide)", () => {
+    const cls = registered.get("bass-harmonic-processor");
+    const F0 = 55;
+    const F1 = 75;
+    const T = 0.5;
+    const R = F1 / F0;
+    const trueF = (t: number) => (t < T ? F0 * Math.pow(R, t / T) : F1);
+    const glideInput = (i: number) => {
+      const t = i / SR;
+      const phase =
+        t < T
+          ? 2 * Math.PI * F0 * ((Math.pow(R, t / T) - 1) * (T / Math.log(R)))
+          : 2 * Math.PI * F0 * ((R - 1) * (T / Math.log(R))) + 2 * Math.PI * F1 * (t - T);
+      return 0.5 * Math.sin(phase);
+    };
+    const hintAt = (t: number) => (t < T ? F0 * Math.pow(R, Math.min(t, T) / T) : F1);
+    let proc: any = null;
+    renderProcessorAutomated(cls, base, 0.8, glideInput, undefined, hintAt, (p) => (proc = p));
+    const errors = (proc.port.posted as { f0: number }[])
+      .map((frame, index) => ({ t: ((index + 1) * 2432) / SR, f0: frame.f0 }))
+      .filter(({ t, f0 }) => t > 0.05 && t < 0.7 && f0 > 0)
+      .map(({ t, f0 }) => Math.abs(f0 - trueF(t)) / trueF(t));
+    expect(errors.length).toBeGreaterThan(8);
+    const mean = errors.reduce((a, b) => a + b, 0) / errors.length;
+    // The hint IS the note timeline: the tracker must ride it almost exactly.
+    expect(mean, `mean hint-glide error ${(mean * 100).toFixed(2)} %`).toBeLessThan(0.01);
+    expect(Math.max(...errors)).toBeLessThan(0.02);
+  });
+
+  it("an untrackable two-tone input still generates at the hinted root", () => {
+    // 55 + 82.4 Hz defeats the YIN clarity gate; the hint keeps generation
+    // legitimate — and the deficit stays honest (no 110 Hz in the input, so
+    // the 2nd is generated, not suppressed).
+    const cls = registered.get("bass-harmonic-processor");
+    const twoTone = (i: number) =>
+      0.5 * Math.sin((2 * Math.PI * 55 * i) / SR) + 0.4 * Math.sin((2 * Math.PI * 82.4 * i) / SR);
+    const noHint = renderProcessor(cls, paramsOf(cls, base), 1.2, twoTone);
+    const hinted = renderProcessor(cls, paramsOf(cls, { ...base, hintHz: 55 }), 1.2, twoTone);
+    const hNo = goertzelRange(noHint, 110, 0.6, 1.0);
+    const hYes = goertzelRange(hinted, 110, 0.6, 1.0);
+    expect(hYes).toBeGreaterThan(0.02);
+    expect(hNo).toBeLessThan(hYes * 0.25);
+  });
+
+  it("hint clears back to pure YIN (note-off fallback), no gap", () => {
+    const cls = registered.get("bass-harmonic-processor");
+    const out = renderProcessorAutomated(cls, base, 1.2, sineAt(55), undefined, (t) => (t < 0.5 ? 55 : 0));
+    expect(goertzelRange(out, 110, 0.6, 0.9)).toBeGreaterThan(0.1);
   });
 });
 
