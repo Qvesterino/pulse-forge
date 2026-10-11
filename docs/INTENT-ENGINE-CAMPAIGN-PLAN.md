@@ -186,8 +186,8 @@ deployed smoke URL.
 | ------------------------------ | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | F0 dokumentová pravda          | ✅ HOTOVÉ 2026-10-11 | `INTENT_ENGINE.md` revízia ⟦10-11⟧ (§3 vlny 09/10, §5.20, §7.2 update, T0 8 modelov, crosslink na master doc) + `CURRENT-STATE.md` melodic v3 riadok |
 | F1 zelený baseline             | ✅ HOTOVÉ 2026-10-11 | čistý worktree `D:\pulse-forge-f1` @ 3beef964; detaily nižšie                                                                                        |
-| F2 audit porozumenia + routeru | ⏳ čaká na GO        | 2 podozrivé nálezy z F1 čakajú                                                                                                                       |
-| F3 opravy z auditu             | ⏳                   | —                                                                                                                                                    |
+| F2 audit porozumenia + routeru | ✅ HOTOVÉ 2026-10-11 | `4368577a` — korpus 106 promptov + `docs/INTENT-AUDIT-2026-10.md`; 3× P1 root-caused (D1/D2/D3), detaily nižšie                                      |
+| F3 opravy z auditu             | ⏳ čaká na GO        | poradie: D3 → D1 → D2 → SK vocab (D5/D6/D9) → D7 → D8 (owner)                                                                                        |
 | F4 IntentPanel dekompozícia    | ⏳                   | —                                                                                                                                                    |
 | F5 dáta a retrainty            | ⏳                   | —                                                                                                                                                    |
 | F6 uzavretie slučky            | ⏳                   | —                                                                                                                                                    |
@@ -221,6 +221,28 @@ deployed smoke URL.
   `npm run drift:bless` + review na nej.
 - **Worktree nechávam stáť** (`D:\pulse-forge-f1`, junction na node_modules)
   — F2 ho reuseduje na falsifikáciu.
+
+### F2 výsledky (2026-10-11, full doc: `docs/INTENT-AUDIT-2026-10.md`)
+
+- **Deliverable:** adversariálny korpus `tests/intent-router-corpus.test.ts`
+  (98 očakávaní + 8 pinutých defektov cez `it.fails`, zelený) + audit dokument
+  s P0–P3, každý nález s repro.
+- **Obe F1 stopy root-caused bisectom:**
+  - **D1 (P1):** buildSong fill recept seedovaný náhodným `pattern.id`
+    (`61607f31`) — porušuje determinizmus invariant; build inak dokument
+    nemutuje a harmony plán je čistý.
+  - **D2 (P1):** harmony-first vlna (`3971f0c1`) rozbila lead-only generáciu
+    — 3/3 prázdnych kandidátov, engine gate ich (správne) odmietne,
+    `brief-suite` prechádza vakuovo nad dvoma prázdnymi proposalmi.
+  - **D3 (P1):** rejected výsledok nesie definovaný prázzny proposal — UI
+    aj apply command guardujú len `!proposal` → tichá inštalácia prázdneho
+    patternu je živá cesta. Odporúčané F3 poradie: D3 → D1 → D2.
+- **Router korpus nášiel** D5/D6/D7/D9 (SK slovná zásoba + diakritika +
+  preset router nedosiahnuteľný) a **D8** (dizajnové napätie: komparatívy
+  hijackujú žánrové prompty — dokumentované, čaká owner rozhodnutie).
+- **Čisté:** model route (creative-brief guard 0 volaní, adoptácia, garbage
+  fallback), prioritná reťaz, transport/save/export/record/undo/query/select,
+  brief-gate engine-side enforcement, buildSong purita.
 
 _Celkový odhad: ~8–14 dní fokusnej práce pri plnom prechode; F0+F1 spolu
 jeden dlhší večer. F2/F4/F5 sú navzájom nezávislé — poradie F2→F3→F4→F5
