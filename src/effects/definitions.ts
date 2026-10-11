@@ -1371,6 +1371,11 @@ export const rezonansParams: ParamDef[] = REZONANS_PARAMS.map((p) => {
     default: p.def,
     ...(meta.unit ? { unit: meta.unit } : {}),
     ...(meta.fmt ? { format: meta.fmt } : {}),
+    // Every Hz knob with min > 0 must drag logarithmically — the catalog-wide
+    // contract in tests/slider-taper.test.ts. Derived from the unit rather than
+    // hand-declared per param, so the next Hz parameter added here cannot come
+    // in linear and quietly fail that gate.
+    ...(meta.unit === "Hz" && p.min > 0 ? { taper: "log" as const } : {}),
     ...(options ? { options } : {}),
     kind: options
       ? ("enum" as const)
