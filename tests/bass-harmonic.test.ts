@@ -165,6 +165,42 @@ function goertzelRange(signal: Float32Array, hz: number, fromFrac: number, toFra
   return Math.sqrt(Math.max(0, s1 * s1 + s2 * s2 - coeff * s1 * s2)) / n;
 }
 
+/** RBJ 2nd-order Butterworth highpass — the PHONE CHECK filter shape. */
+function biquadHighpass(signal: Float32Array, freq: number): Float32Array {
+  const w0 = (2 * Math.PI * freq) / SR;
+  const cos = Math.cos(w0);
+  const alpha = Math.sin(w0) / (2 * Math.SQRT1_2);
+  const a0 = 1 + alpha;
+  const b0 = (1 + cos) / 2 / a0;
+  const b1 = -(1 + cos) / a0;
+  const b2 = (1 + cos) / 2 / a0;
+  const a1 = (-2 * cos) / a0;
+  const a2 = (1 - alpha) / a0;
+  const out = new Float32Array(signal.length);
+  let x1 = 0;
+  let x2 = 0;
+  let y1 = 0;
+  let y2 = 0;
+  for (let i = 0; i < signal.length; i++) {
+    const x0 = signal[i]!;
+    const y0 = b0 * x0 + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+    x2 = x1;
+    x1 = x0;
+    y2 = y1;
+    y1 = y0;
+    out[i] = y0;
+  }
+  return out;
+}
+
+/** RMS over the settled tail. */
+function rmsAt(signal: Float32Array, fromFrac = 0.6): number {
+  const from = Math.floor(signal.length * fromFrac);
+  let sum = 0;
+  for (let i = from; i < signal.length; i++) sum += signal[i]! * signal[i]!;
+  return Math.sqrt(sum / (signal.length - from));
+}
+
 function sineAtPhase(hz: number, amp: number, phase: number): (i: number) => number {
   return (i) => amp * Math.sin((2 * Math.PI * hz * i) / SR + phase);
 }
@@ -531,7 +567,7 @@ describe("KOREŇ wave-4 key modes (PUMP / DUCK)", () => {
     expect(settled.clarity).toBeGreaterThan(0.8);
     expect(settled.harm).toBeGreaterThan(6); // pure sine = full harmonic deficit
     expect(settled.key).toBe(1);
-    expect(settled.partials.length).toBe(9);
+    expect(settled.partials.length).toBe(15); // harmonics 2..16
     expect(settled.partials[0]).toBeGreaterThan(0.05); // the generated 2nd
   });
 });
@@ -605,5 +641,58 @@ describe("KOREŇ node wrapper (key input + telemetry cache)", () => {
     expect(runtime.getMeters!()).toBe(frame);
     runtime.dispose();
     expect(runtime.getMeters!()).toBeNull();
+  });
+});
+
+describe("KOREŇ wave-6 presence band (phone readability)", () => {
+  it("PRESENCE redistributes the stack into the phone band (≥385 Hz at f0 = 55)", () => {
+    // range 4 → 16 partials: 55 Hz × 7..16 = 385–880 Hz, inside a phone
+    // speaker's usable band. presence lifts that band >3× while the 2nd
+    // gives way; with the sub anchor in place the total output level is
+    // unchanged (the redistribution is inside the generated layer).
+    const cls = registered.get("bass-harmonic-processor");
+    const render = (presence: number) =>
+      renderProcessor(
+        cls,
+        paramsOf(cls, { drive: 0.9, mix: 1, subAnchor: 0.8, focusHz: 90, harmonics: 0.5, range: 4, presence }),
+        1.5,
+        sineAt(55),
+      );
+    const bandEnergy = (out: Float32Array) => {
+      let acc = 0;
+      for (let n = 7; n <= 16; n++) acc += goertzelAt(out, n * 55) ** 2;
+      return Math.sqrt(acc);
+    };
+    const off = render(0);
+    const on = render(1);
+    expect(bandEnergy(on)).toBeGreaterThan(bandEnergy(off) * 2.5);
+    expect(goertzelAt(on, 110)).toBeLessThan(goertzelAt(off, 110));
+    // Redistribution, not a level change: full-band RMS within ±25 %.
+    expect(rmsAt(on)).toBeGreaterThan(rmsAt(off) * 0.75);
+    expect(rmsAt(on)).toBeLessThan(rmsAt(off) * 1.25);
+  });
+
+  it("through a 350 Hz phone-check highpass, PRESENCE nearly doubles the audible energy", () => {
+    // The 808-phone recipe: the legacy stack (2nd/3rd at 110–220 Hz) sits
+    // under the phone check's highpass; presence puts the energy where a
+    // phone speaker reproduces. Dry = mix 0 (bit-exact passthrough).
+    const cls = registered.get("bass-harmonic-processor");
+    const preset = {
+      drive: 0.7,
+      focusHz: 70,
+      harmonics: 0.4,
+      subAnchor: 0.8,
+      lowCut: 45,
+      range: 4,
+      sustain: 0.45,
+      mix: 0.65,
+    };
+    const render = (presence: number, mix = 0.65) =>
+      renderProcessor(cls, paramsOf(cls, { ...preset, presence, mix }), 1.5, sineAt(55));
+    const dry = rmsAt(biquadHighpass(render(1, 0), 350));
+    const legacy = rmsAt(biquadHighpass(render(0), 350));
+    const presence = rmsAt(biquadHighpass(render(1), 350));
+    expect(presence).toBeGreaterThan(dry * 2.5); // the effect earns its keep
+    expect(presence).toBeGreaterThan(legacy * 1.4); // presence is the fix
   });
 });

@@ -1150,7 +1150,8 @@
             "width": 1,
             "bassMono": 0,
             "ceiling": -1,
-            "limit": 0
+            "limit": 0,
+            "tpSafe": 1
           }
         },
         {
@@ -1313,6 +1314,7 @@
             "retrig": 1,
             "character": 0,
             "width": 0,
+            "presence": 0,
             "keyMode": 0,
             "mix": 0.6,
             "output": 0
@@ -1323,8 +1325,17 @@
           "defaults": {
             "dispersion": 0.35,
             "punch": 0,
+            "punchHz": 0,
+            "punchMix": 1,
             "focusHz": 220,
+            "shape": 0,
             "spread": 0,
+            "dyn": 0,
+            "keyMode": 0,
+            "lfoRate": 0.5,
+            "lfoSync": 0,
+            "lfoShape": 0,
+            "lfoDepth": 0,
             "mix": 1,
             "output": 0
           }

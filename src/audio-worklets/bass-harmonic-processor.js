@@ -68,6 +68,17 @@
  *    and the rack mini meter. Port traffic never touches the sample path;
  *    offline renders post into the void exactly like compressor GR frames.
  *
+ * Wave 6 adds the PRESENCE band — the phone-readability fix:
+ *
+ * 11. PRESENCE (0..1, default 0) — a log-frequency hump centered at 650 Hz
+ *    (±σ in log space) multiplies the partial weights BEFORE normalization,
+ *    so energy is REDISTRIBUTED into 350–1200 Hz — the band a phone speaker
+ *    can actually reproduce. The old stack's 2nd/3rd (110–220 Hz at f0=55)
+ *    sit below the phone check's 350 Hz highpass and vanished in the A/B;
+ *    with presence up the generated envelope peaks where phones listen.
+ *    The `range` ladder now reaches 16 partials (f0=55 → 880 Hz) so there
+ *    is something to redistribute. presence = 0 is the legacy curve.
+ *
  * Parameter surface: plain AudioParams (M2 pattern, zenit-m2-nodes.ts) —
  * no port messages for parameters, so offline automation works natively via
  * setValueAtTime. All per-sample smoothing uses per-sample coefficients
@@ -103,6 +114,13 @@ const KEY_PUMP_MAX = 1; // PUMP bloom on top at full key (×1..2)
 const KEY_DUCK_DEPTH = 0.85; // DUCK floor at full key (×0.15..1)
 const METER_INTERVAL_S = 0.05; // telemetry cadence (~20 Hz)
 const HARM_DB_MAX = 36; // clamp on the "+x dB harmonics" reading
+const PRESENCE_CENTER_HZ = 650; // phone-band hump center (a small speaker's usable band is ~350–1200 Hz)
+const PRESENCE_SIGMA = 0.45; // log-frequency width of the presence hump
+const PRESENCE_BOOST = 10; // linear boost at the hump's center at presence = 1
+const MAX_PARTIALS = 16; // cap for the 2^range ladder (range 4)
+const PARTIAL_FADE_START = 0.42; // fade upper partials before Nyquist
+const PARTIAL_FADE_END = 0.48; // zero before the Nyquist boundary
+const UNTRACKED_RELEASE_PASSES = 2; // ~64 ms at 48 kHz before stale-root generation releases
 
 /**
  * YIN-style pitch detection over the whole decimated ring (`bufLen` samples;
@@ -228,6 +246,7 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
       { name: "retrig", minValue: 0, maxValue: 1, defaultValue: 1 },
       { name: "character", minValue: 0, maxValue: 2, defaultValue: 0 },
       { name: "width", minValue: 0, maxValue: 1, defaultValue: 0 },
+      { name: "presence", minValue: 0, maxValue: 1, defaultValue: 0 },
       { name: "keyMode", minValue: 0, maxValue: 2, defaultValue: 0 },
       { name: "mix", minValue: 0, maxValue: 1, defaultValue: 0.6 },
       { name: "output", minValue: -18, maxValue: 12, defaultValue: 0 },
@@ -257,7 +276,7 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     this.lastNormScale = 0; // per-block values mirrored for the meter frame
     this.lastWeightSum = 0;
     this.meterSamples = 0;
-    this.meterPartials = new Float32Array(9);
+    this.meterPartials = new Float32Array(MAX_PARTIALS - 1);
     this.meterFrame = { type: "koren", f0: 0, clarity: 0, harm: 0, key: 1, partials: this.meterPartials };
     // Decimated detection domain (YIN + deficit share one ring/window).
     this.decRate = sr / DECIM;
@@ -279,9 +298,9 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     this.hpY = [0, 0];
     this.hpX = [0, 0];
     // Phase accumulators for harmonics 2..N (index n, 0/1 unused).
-    this.phase = new Float64Array(11);
+    this.phase = new Float64Array(MAX_PARTIALS + 1);
     // Per-block harmonic weights (preallocated — no allocations in process()).
-    this.weights = new Float64Array(11);
+    this.weights = new Float64Array(MAX_PARTIALS + 1);
   }
 
   /** YIN + deficit update, control rate (once per DETECT_HOP native samples). */
@@ -298,8 +317,9 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
       this.updateDeficit(this.f0);
     } else {
       this.untrackedPasses++;
-      // ~0.25 s of untracked audio releases the estimate (the generator's own
-      // release envelope is the fast mute; this stops stale harmonics).
+      this.clarity = result.clarity;
+      // The generator has already started releasing after two failed windows.
+      // Keep the estimate briefly for the visual HOLD state, then discard it.
       if (this.untrackedPasses * DETECT_HOP > this.sampleRate * 0.25) {
         this.f0 = 0;
         this.clarity = 0;
@@ -363,6 +383,7 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     const retrig = parameters.retrig[0] >= 0.5;
     const character = Math.round(clamp(parameters.character[0], 0, 2));
     const width = clamp(parameters.width[0], 0, 1);
+    const presence = clamp(parameters.presence[0], 0, 1);
     const keyMode = Math.round(clamp(parameters.keyMode[0], 0, 2));
     const mix = clamp(parameters.mix[0], 0, 1);
     const outGain = Math.pow(10, clamp(parameters.output[0], -18, 12) / 20);
@@ -384,28 +405,48 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
     // the noise bottom is not pumped.
     const gamma = 1 - 0.5 * sustain;
     const susFloorInv = 1 / SUSTAIN_FLOOR;
-    // WIDTH: per-channel rotation of the generated upper partials.
+    // WIDTH: per-channel rotation of the generated upper partials. The
+    // quadrature (cos) accumulator is skipped entirely when width = 0 — the
+    // side signal would be multiplied by an exact zero anyway.
     const phaseOff = width * WIDTH_MAX_PHASE;
     const cosPhase = Math.cos(phaseOff);
     const sinPhase = Math.sin(phaseOff);
+    const widthOn = width > 0;
 
-    // Harmonic stack: n = 2..N (N = 2^range capped at 10). Weight blend:
-    // `harmonics` 0 → 2nd dominant, 1 → 3rd-lean; n ≥ 4 sit low.
-    const count = Math.min(10, Math.max(2, Math.round(Math.pow(2, range))));
+    // Harmonic stack: n = 2..N (N = 2^range capped at MAX_PARTIALS). Weight
+    // blend: `harmonics` 0 → 2nd dominant, 1 → 3rd-lean; n ≥ 4 sit low.
+    // PRESENCE multiplies a log-frequency hump (center 600 Hz) into the raw
+    // weights BEFORE normalization, so the total stack level stays bounded
+    // and the energy is redistributed into the phone band instead of added.
+    const count = Math.min(MAX_PARTIALS, Math.max(2, Math.round(Math.pow(2, range))));
+    const presenceOn = presence > 0 && this.f0 > 0;
     const weights = this.weights;
-    for (let n = 0; n <= 10; n++) weights[n] = 0;
+    for (let n = 0; n <= MAX_PARTIALS; n++) weights[n] = 0;
     let norm = 0;
     for (let n = 2; n <= count; n++) {
-      const w = n === 2 ? 1 - harmonics : n === 3 ? harmonics : 0.25 / (n - 1);
+      const partialHz = n * this.f0;
+      const aliasT = clamp(
+        (partialHz - sr * PARTIAL_FADE_START) / (sr * (PARTIAL_FADE_END - PARTIAL_FADE_START)),
+        0,
+        1,
+      );
+      const nyquistFade = 1 - aliasT * aliasT * (3 - 2 * aliasT);
+      let w = (n === 2 ? 1 - harmonics : n === 3 ? harmonics : 0.25 / (n - 1)) * nyquistFade;
+      if (presenceOn) {
+        const x = Math.log((n * this.f0) / PRESENCE_CENTER_HZ) / PRESENCE_SIGMA;
+        w *= 1 + presence * PRESENCE_BOOST * Math.exp(-0.5 * x * x);
+      }
       weights[n] = w;
       norm += w;
     }
     const normScale = norm > 1e-9 ? 0.9 / norm : 0;
     // Deficit: the input's own partials taper the generated ones (normScale
-    // stays on the raw stack — the leftover is headroom, not gain).
+    // stays on the raw stack — the leftover is headroom, not gain). For the
+    // higher partials the LESS-suppressed of the 2nd/3rd deficit reads is the
+    // proxy — a single rich low partial must not kill the whole phone stack.
     let weightSum = 0;
     for (let n = 2; n <= count; n++) {
-      weights[n] *= n === 2 ? this.deficit2 : n === 3 ? this.deficit3 : this.deficit2;
+      weights[n] *= n === 2 ? this.deficit2 : n === 3 ? this.deficit3 : Math.max(this.deficit2, this.deficit3);
       weightSum += weights[n];
     }
     this.lastNormScale = normScale;
@@ -484,7 +525,7 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
       const inWindow = this.f0 >= fMin && this.f0 <= fMax;
 
       // --- generator gain envelope --------------------------------------
-      let genTarget = inWindow ? drive * this.envLow : 0;
+      let genTarget = inWindow && this.untrackedPasses <= UNTRACKED_RELEASE_PASSES ? drive * this.envLow : 0;
       if (sustain > 0 && genTarget > 0) {
         const curved = Math.pow(genTarget, gamma);
         const fade = Math.min(1, genTarget * susFloorInv);
@@ -518,7 +559,7 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
             mLow += w * Math.sin(p);
           } else {
             mHigh += w * Math.sin(p);
-            qHigh += w * Math.cos(p);
+            if (widthOn) qHigh += w * Math.cos(p);
           }
         }
         const scaled = normScale * this.envGen * keyGain;
@@ -588,7 +629,7 @@ class BassHarmonicProcessor extends AudioWorkletProcessor {
       frame.harm = harmDb;
       frame.key = this.lastKeyGain;
       const partials = this.meterPartials;
-      for (let n = 2; n <= 10; n++) {
+      for (let n = 2; n <= MAX_PARTIALS; n++) {
         partials[n - 2] = weights[n] * this.lastNormScale * this.envGen * this.lastKeyGain;
       }
       this.port.postMessage(frame);

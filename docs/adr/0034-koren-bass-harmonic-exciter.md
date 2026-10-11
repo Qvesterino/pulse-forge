@@ -238,3 +238,65 @@ PUMP raises the generated 2nd ×1.78, telemetry reports f0 = 54.9 Hz).
 4. Deliberately NOT built yet: the MATCH-tab owner-strip proposal ("the
    reference bass has more 100–350 Hz — this is a KOREŇ job") waits for the
    match surface's proposal pipeline.
+
+## Addendum 5 (2026-10-10) — the PRESENCE band (the phone-readability fix)
+
+**The finding:** waves 1–4 are tuned for small/laptop speakers, but the
+PHONE CHECK highpass (350 Hz) filtered out almost everything the effect
+adds — the 808 Phone preset shipped `range 2` → partials 110/165/220 Hz, ALL
+below the band a phone speaker can reproduce. Through its own phone check
+the effect was nearly inaudible: the harmonics earn their name only where
+phones listen (~350–1200 Hz).
+
+**The fix:**
+
+1. `presence` (0..1, default 0) — a log-frequency hump (center 650 Hz, σ
+   0.45, ≈+10× at the peak) multiplies the raw partial weights BEFORE
+   normalization, so energy is REDISTRIBUTED into the phone band instead of
+   added; the total stack level is preserved.
+2. The `range` ladder now reaches 16 partials (was capped at 10) — a 55 Hz
+   bass gets partials up to 880 Hz to redistribute.
+3. The deficit proxy for partials ≥ 4 is `max(deficit2, deficit3)` — one
+   rich low partial no longer kills the whole phone stack.
+4. The quadrature (cos) accumulator is skipped when width = 0 — halves the
+   trig cost of the bigger stack, bit-exact.
+5. Preset retune: 808 Phone → range 4 + presence 1; Drill Growl → range 4 +
+   presence 0.6; Subtle Body → range 3 + presence 0.4; Club Sub stays the
+   legacy big-system reference.
+6. Panel: axis to 1400 Hz, a 350 Hz PHONE line, bars to the 16th partial,
+   three-band colours (mono ≤ 120 / laptop 120–350 / phone > 350). The
+   telemetry frame now carries 15 partial amplitudes.
+
+**Measured:** through a 350 Hz 2nd-order highpass (the PHONE CHECK shape)
+the 808-phone recipe's audible energy goes ×1.8 (presence vs legacy, ×3.6 vs
+dry) in the real browser bundle; the summed 7th–16th partial energy rises
+×3.2 in the node harness; full-band RMS moves < 0.5 dB (redistribution, not
+gain). Preset loudness re-measured (`presets:fx-loudness`): 808 Phone gain
+0.9 → 0.7 dB, Drill Growl 3.7 → 3.8 dB. The same blessing picked up the
+committed-but-unblessed `tpSafe` (ZENIT) and SKRUTKA param defaults in the
+domain golden. `presence = 0` keeps the legacy curve; only `range 4` now
+trades up to 16 partials instead of 10.
+
+## Addendum 5 (2026-10-11) — phone presence, stale-lock release and Nyquist taper
+
+1. **`presence` (0..1, default 0)** redistributes the generated partial stack
+   toward a log-frequency hump centered at 650 Hz (σ = 0.45). It multiplies
+   partial weights before normalization, so the control changes where the
+   harmonic energy sits without raising the stack's normalized total. The
+   effect remains opt-in and the default value preserves the previous
+   presence weighting.
+2. **Range 4 reaches 16 partials.** The panel visualizes through 1.4 kHz and
+   marks 350 Hz, the lower edge used by PHONE CHECK. Partial weights fade
+   smoothly from 0.42 to 0.48 × sample rate, before Nyquist, including at
+   low sample rates.
+3. **Stale tracking releases safely.** After two failed detector windows the
+   generator target ramps down; the last f0 remains temporarily available to
+   the UI as HOLD, then clears to SEARCH. Telemetry now exposes confidence
+   beside the LOCKED/HOLD/SEARCH label. Corpus, alias-energy and release-click
+   measurements remain required before calling this behavior regression-
+   validated.
+4. **Measured build footprint (2026-10-11):** KOREŇ's worklet is 9 KB against
+   its 24 KB cap; KOPA's is 16 KB against 32 KB. Factory FX loudness measured
+   all four KOREŇ presets, with generated corrections from −0.6 to +3.5 dB.
+   These are bundle and integrated-loudness readings, not tracker-quality or
+   mono-compatibility evidence.

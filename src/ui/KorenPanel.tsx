@@ -40,6 +40,8 @@ export function KorenPanel({
   const paramsRef = useRef(params);
   paramsRef.current = params;
   const f0Ref = useRef<HTMLSpanElement>(null);
+  const stateRef = useRef<HTMLSpanElement>(null);
+  const confidenceRef = useRef<HTMLSpanElement>(null);
   const harmRef = useRef<HTMLSpanElement>(null);
   const [phoneOn, setPhoneOn] = useState(false);
 
@@ -87,7 +89,7 @@ export function KorenPanel({
       c2d.clearRect(0, 0, cw, ch);
 
       const F_LO = 20;
-      const F_HI = 500;
+      const F_HI = 1400; // covers the 650 Hz presence hump and its 880 Hz tail
       const xOf = (f: number) => (Math.log(Math.min(F_HI, Math.max(F_LO, f)) / F_LO) / Math.log(F_HI / F_LO)) * cw;
 
       const focus = paramsRef.current.focusHz ?? 90;
@@ -118,6 +120,15 @@ export function KorenPanel({
       c2d.stroke();
       c2d.setLineDash([]);
 
+      // PHONE line: a small speaker's usable band starts ~350 Hz (PHONE CHECK's
+      // highpass). Bars right of it are what survives on a phone.
+      const xp = xOf(350);
+      c2d.strokeStyle = "rgba(125, 211, 252, 0.5)";
+      c2d.beginPath();
+      c2d.moveTo(xp, 0);
+      c2d.lineTo(xp, ch);
+      c2d.stroke();
+
       // Tracked fundamental.
       if (f0 > 0) {
         const x = xOf(f0);
@@ -128,19 +139,21 @@ export function KorenPanel({
         c2d.stroke();
       }
 
-      // Generated harmonic bars at n·f0.
+      // Generated harmonic bars at n·f0: green ≤ 120 Hz (mono width split),
+      // amber 120–350 (laptop-band), sky blue > 350 (phones reproduce these).
       const partials = frame?.partials ?? null;
       if (f0 > 0 && partials && partials.length > 0) {
         let maxAmp = 1e-4;
         for (let i = 0; i < partials.length; i++) maxAmp = Math.max(maxAmp, partials[i] ?? 0);
-        for (let n = 2; n <= 10; n++) {
+        for (let n = 2; n <= 16; n++) {
           const amp = partials[n - 2] ?? 0;
           if (amp <= 1e-4) continue;
           const f = n * f0;
           if (f > F_HI * 1.4) continue;
           const x = xOf(f);
           const barH = Math.min(1, amp / maxAmp) * ch * 0.74;
-          c2d.fillStyle = f <= 120 ? "rgba(150, 220, 160, 0.9)" : "rgba(255, 170, 120, 0.9)";
+          c2d.fillStyle =
+            f <= 120 ? "rgba(150, 220, 160, 0.9)" : f <= 350 ? "rgba(255, 170, 120, 0.9)" : "rgba(125, 211, 252, 0.9)";
           c2d.fillRect(x - 2, ch - barH, 4, barH);
         }
       }
@@ -160,6 +173,12 @@ export function KorenPanel({
           : null;
       const frame = frameRef.current;
       const f0 = frame && frame.f0 > 0 ? frame.f0 : 0;
+      if (stateRef.current) {
+        stateRef.current.textContent = f0 > 0 ? ((frame?.clarity ?? 0) >= 0.85 ? "LOCKED" : "HOLD") : "SEARCH";
+      }
+      if (confidenceRef.current) {
+        confidenceRef.current.textContent = f0 > 0 ? `${Math.round((frame?.clarity ?? 0) * 100)}% CONF` : "— CONF";
+      }
       if (f0Ref.current) f0Ref.current.textContent = f0 > 0 ? `${f0.toFixed(1)} Hz` : "— Hz";
       if (harmRef.current) {
         harmRef.current.textContent =
@@ -189,6 +208,12 @@ export function KorenPanel({
       <div className="koren-head">
         <span className="koren-readout" ref={f0Ref}>
           — Hz
+        </span>
+        <span className="koren-state" ref={stateRef} aria-label="Pitch tracking state">
+          SEARCH
+        </span>
+        <span className="koren-confidence" ref={confidenceRef}>
+          — CONF
         </span>
         <span className="koren-boost" ref={harmRef}>
           — dB harmonics
