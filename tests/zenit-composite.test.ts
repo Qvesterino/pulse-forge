@@ -147,11 +147,18 @@ function buildZenit(params: Record<string, number>) {
 }
 
 describe("ZENIT registry hygiene", () => {
-  it("registers exactly once across all order surfaces (55 effects total)", () => {
+  it("registers exactly once across all order surfaces", () => {
     expect(EFFECT_ORDER.filter((t) => t === "zenit")).toHaveLength(1);
     expect(CORE_EFFECT_ORDER.filter((t) => t === "zenit")).toHaveLength(1);
     expect(FLAGSHIP_EFFECT_ORDER).not.toContain("zenit");
-    expect(EFFECT_ORDER).toHaveLength(55);
+    // The ORDER list and the registry must cover the same ground. This used to
+    // pin the literal total ("55 effects"), which went stale the moment any
+    // effect was added and then had to be bumped by hand — the magic number
+    // rotted twice before this line. The actual "how many effects ship" count
+    // lives in docs/CURRENT-STATE.md and is gated by `drift:check` plus the
+    // registry-vs-order audit in plugin-functional-audit; here we only assert
+    // the two surfaces agree.
+    expect(EFFECT_ORDER).toHaveLength(Object.keys(EFFECT_DEFS).length);
     expect(EFFECT_DEFS.zenit.params).toEqual(zenitParams);
   });
 
