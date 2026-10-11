@@ -28,6 +28,11 @@ contextBridge.exposeInMainWorld("kyxDesktop", {
     /** Crash-isolated scan of the standard CLAP directories (probe per file). */
     scan: () => ipcRenderer.invoke("kyx:clap:scan"),
   },
+  vst3: {
+    /** Crash-isolated STRUCTURAL scan of the standard VST3 directories
+     *  (ADR 0035 Wave 1 — layout enumeration, no plugin code runs). */
+    scan: () => ipcRenderer.invoke("kyx:vst3:scan"),
+  },
   asio: {
     /** ASIO discovery (ADR 0017): registry names + best-effort probe details. */
     list: () => ipcRenderer.invoke("kyx:asio:list"),
