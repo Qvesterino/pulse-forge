@@ -35,6 +35,7 @@ function paramsOf(): Record<string, number> {
     focusHz: 220,
     shape: 0,
     spread: 0,
+    field: 0,
     dyn: 0,
     keyMode: 0,
     lfoRate: 0.5,
@@ -130,21 +131,35 @@ describe("SkrutkaPanel", () => {
     expect(onGestureEnd).toHaveBeenCalledTimes(1);
   });
 
-  it("renders the SHAPE / DYN / KEY / LFO state chips", () => {
+  it("renders the SHAPE / FIELD / DYN / KEY / LFO state chips", () => {
     const services = mockServices(createProjectFromTemplate("house"));
     (services.engine as unknown as Record<string, unknown>).getFxMeters = vi.fn(() => null);
     renderWithContext(
       <SkrutkaPanel
         trackId="t1"
         fxId="fx1"
-        params={{ ...paramsOf(), shape: 2, dyn: 0.5, keyMode: 1, lfoDepth: 0.4, lfoShape: 1 }}
+        params={{ ...paramsOf(), shape: 2, field: 0.6, dyn: 0.5, keyMode: 1, lfoDepth: 0.4, lfoShape: 1 }}
         degraded={false}
       />,
       { services },
     );
     expect(screen.getByText("SHAPE DOUBLE")).toBeInTheDocument();
+    expect(screen.getByText("FIELD 60% SIDE")).toBeInTheDocument();
     expect(screen.getByText("DYN ATTACK 50%")).toBeInTheDocument();
     expect(screen.getByText("KEY PUMP")).toBeInTheDocument();
     expect(screen.getByText("LFO TRI 40%")).toBeInTheDocument();
+  });
+
+  it("shows FIELD STEREO / MID variants for the neutral and negative field", () => {
+    const services = mockServices(createProjectFromTemplate("house"));
+    (services.engine as unknown as Record<string, unknown>).getFxMeters = vi.fn(() => null);
+    renderWithContext(<SkrutkaPanel trackId="t1" fxId="fx1" params={paramsOf()} degraded={false} />, { services });
+    expect(screen.getByText("FIELD STEREO")).toBeInTheDocument();
+    cleanup();
+    renderWithContext(
+      <SkrutkaPanel trackId="t1" fxId="fx1" params={{ ...paramsOf(), field: -0.6 }} degraded={false} />,
+      { services },
+    );
+    expect(screen.getByText("FIELD 60% MID")).toBeInTheDocument();
   });
 });

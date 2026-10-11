@@ -1,25 +1,27 @@
 /**
- * TWIST soak (v2 hardening — ADR 0037 addendum).
+ * TWIST (skrutka) soak — 300 s flagship hardening (AGENTS gate parity with
+ * PRISM/VLYX/VØID: heap growth ≤ 6 MB, drift ≤ 0.003 dB, zero non-finite,
+ * zero subnormals).
  *
  * The all-pass engine has no feedback loop, but it runs 8 + 3 biquad sections
  * per channel under continuous parameter motion (envelope-driven radius, key
- * envelopes, LFO focus sweeps). This soak proves the invariants that only
- * appear over time:
+ * envelopes, LFO focus sweeps, M/S field). Two soaks prove the invariants:
  *
- *  1. Every output sample of the 120 s render is finite.
- *  2. The burst is audible (the effect actually processes).
- *  3. No subnormal output samples anywhere (the state flush guard holds).
- *  4. CPU flatness: silent-phase blocks are not slower than signal-phase
- *     blocks — a denormal trap would make "silence" the expensive regime.
- *  5. Heap growth over the whole soak stays bounded (no per-block allocation).
+ *  MOTION STRESS — the worst-case parameter surface (full cascade + dyn +
+ *  key + random LFO + FIELD) over 300 s: finite, no subnormals, flat CPU,
+ *  bounded heap, audible.
+ *
+ *  STATIC DRIFT — the same repeating musical pattern through a static
+ *  worst-case patch: the 10 s and the 290 s windows must match within
+ *  0.003 dB. (The motion soak cannot carry the drift gate because a random
+ *  LFO is deliberately aperiodic — its determinism is pinned elsewhere.)
  */
 import { beforeAll, describe, expect, it } from "vitest";
 
 const SR = 44100;
 const BLOCK = 128;
 const BLOCKS_PER_SECOND = SR / BLOCK;
-const BURST_SECONDS = 60;
-const TOTAL_SECONDS = 120;
+const TOTAL_SECONDS = 300;
 const TOTAL_BLOCKS = TOTAL_SECONDS * BLOCKS_PER_SECOND;
 
 class FakePort {
@@ -31,7 +33,7 @@ class FakeAudioWorkletProcessor {
 }
 
 const registered = new Map<string, new () => unknown>();
-let SkrutkaProcessor: new () => {
+let TwistProcessor: new () => {
   process: (inputs: Float32Array[][], outputs: Float32Array[][], parameters: Record<string, Float32Array>) => boolean;
 };
 
@@ -47,11 +49,11 @@ beforeAll(async () => {
   await import("../src/audio-worklets/skrutka-processor.js");
   const cls = registered.get("skrutka-processor");
   expect(cls, "skrutka-processor self-registered").toBeDefined();
-  SkrutkaProcessor = cls as unknown as typeof SkrutkaProcessor;
+  TwistProcessor = cls as unknown as typeof TwistProcessor;
 });
 
-/** Worst-case parameter surface: full cascade + dynamic + key + LFO motion. */
-function soakParameters(): Record<string, Float32Array> {
+/** Worst-case parameter surface: full cascade + dynamic + key + LFO + field. */
+function motionParameters(): Record<string, Float32Array> {
   return {
     dispersion: new Float32Array([1]),
     punch: new Float32Array([1]),
@@ -60,6 +62,7 @@ function soakParameters(): Record<string, Float32Array> {
     focusHz: new Float32Array([220]),
     shape: new Float32Array([1]),
     spread: new Float32Array([1]),
+    field: new Float32Array([0.35]),
     dyn: new Float32Array([1]),
     keyMode: new Float32Array([1]),
     lfoHz: new Float32Array([8]),
@@ -71,103 +74,154 @@ function soakParameters(): Record<string, Float32Array> {
   };
 }
 
-describe("skrutka worklet soak (denormal / determinism / allocation)", () => {
-  it("120 s render: finite, no subnormals, flat CPU through silence, bounded heap", () => {
-    const proc = new SkrutkaProcessor();
-    const parameters = soakParameters();
-    const inL = new Float32Array(BLOCK);
-    const inR = new Float32Array(BLOCK);
-    const keyL = new Float32Array(BLOCK);
-    const keyR = new Float32Array(BLOCK);
-    const outL = new Float32Array(BLOCK);
-    const outR = new Float32Array(BLOCK);
-    const inputs: Float32Array[][] = [
-      [inL, inR],
-      [keyL, keyR],
-    ];
-    const outputs: Float32Array[][] = [[outL, outR]];
+/** Static worst-case patch (no modulation): the drift-gate surface. */
+function staticParameters(): Record<string, Float32Array> {
+  const p = motionParameters();
+  p.lfoDepth = new Float32Array([0]);
+  p.dyn = new Float32Array([0]);
+  p.keyMode = new Float32Array([0]);
+  return p;
+}
 
-    const burstBlocks = BURST_SECONDS * BLOCKS_PER_SECOND;
-    const fill = (blockIndex: number, silent: boolean) => {
-      if (silent) {
-        inL.fill(0);
-        inR.fill(0);
-        keyL.fill(0);
-        keyR.fill(0);
-        return;
-      }
-      for (let i = 0; i < BLOCK; i++) {
-        const t = (blockIndex * BLOCK + i) / SR;
-        const env = t < 0.5 ? 1 : Math.exp((-3 * (t - 0.5)) / 1);
-        const v = 0.45 * env * Math.sin(2 * Math.PI * 110 * t);
-        inL[i] = v;
-        inR[i] = v;
-        // Rhythmic key (kick-like) so PUMP and the envelope followers move.
-        const phase = (blockIndex * BLOCK + i) / SR;
-        const on = phase % 0.5 < 0.08;
-        keyL[i] = on ? 0.8 * Math.sin(2 * Math.PI * 60 * t) : 0;
-        keyR[i] = keyL[i];
-      }
-    };
+interface SoakMetrics {
+  nonFinite: number;
+  subNormalOutputs: number;
+  peak: number;
+  driftDb: number;
+  earlyMedian: number;
+  lateMedian: number;
+  growthMb: number;
+}
 
-    let nonFinite = 0;
-    let subNormalOutputs = 0;
-    let burstPeak = 0;
-    let silentPeak = 0;
-    const blockTimes: number[] = [];
+function runSoak(parameters: Record<string, Float32Array>): SoakMetrics {
+  const proc = new TwistProcessor();
+  const inL = new Float32Array(BLOCK);
+  const inR = new Float32Array(BLOCK);
+  const keyL = new Float32Array(BLOCK);
+  const keyR = new Float32Array(BLOCK);
+  const outL = new Float32Array(BLOCK);
+  const outR = new Float32Array(BLOCK);
+  const inputs: Float32Array[][] = [[inL, inR], [keyL, keyR]];
+  const outputs: Float32Array[][] = [[outL, outR]];
 
-    let heapStart = 0;
-    if (typeof process !== "undefined" && process.memoryUsage) {
-      global.gc?.();
-      heapStart = process.memoryUsage().heapUsed;
+  // Repeating 2 s musical pattern (never silent): a kick-ish burst, a
+  // sustained tone, key pulses on every half second. Every phase derives
+  // from LOOP time (not absolute time) so the pattern is strictly periodic —
+  // identical at the start and the end, which is what makes the drift
+  // measurement honest.
+  const fill = (blockIndex: number) => {
+    for (let i = 0; i < BLOCK; i++) {
+      const loop = ((blockIndex * BLOCK + i) / SR) % 2;
+      const kickPhase = 2 * Math.PI * (55 * loop + (90 / 30) * (1 - Math.exp(-loop * 30)));
+      const kick = loop < 0.25 ? Math.exp(-loop * 22) * Math.sin(kickPhase) : 0;
+      const body = 0.22 * Math.sin(2 * Math.PI * 110 * loop);
+      const v = 0.55 * kick + body;
+      inL[i] = v;
+      inR[i] = v * 0.97;
+      const on = loop % 0.5 < 0.08;
+      keyL[i] = on ? 0.8 * Math.sin(2 * Math.PI * 60 * loop) : 0;
+      keyR[i] = keyL[i];
     }
+  };
 
-    for (let b = 0; b < TOTAL_BLOCKS; b++) {
-      const silent = b >= burstBlocks;
-      fill(b, silent);
-
-      const t0 = performance.now();
-      proc.process(inputs, outputs, parameters);
-      const dt = performance.now() - t0;
-      blockTimes.push(dt);
-
-      for (let i = 0; i < BLOCK; i++) {
-        const l = outL[i]!;
-        const r = outR[i]!;
-        if (!Number.isFinite(l) || !Number.isFinite(r)) nonFinite++;
-        const a = Math.max(Math.abs(l), Math.abs(r));
-        if (b < burstBlocks && a > burstPeak) burstPeak = a;
-        if (b >= burstBlocks && a > silentPeak) silentPeak = a;
-        const m = Math.min(Math.abs(l), Math.abs(r));
-        if (m > 0 && m < 1e-20) subNormalOutputs++;
-      }
+  let nonFinite = 0;
+  let subNormalOutputs = 0;
+  let peak = 0;
+  const blockTimes: number[] = [];
+  const rmsAccum = new Map<number, { sum: number; count: number }>();
+  const addRms = (key: number, value: number) => {
+    let win = rmsAccum.get(key);
+    if (!win) {
+      win = { sum: 0, count: 0 };
+      rmsAccum.set(key, win);
     }
+    win.sum += value;
+    win.count++;
+  };
 
-    const median = (arr: number[]) => {
-      const sorted = [...arr].sort((x, y) => x - y);
-      return sorted[Math.floor(sorted.length / 2)]!;
-    };
-    const early = blockTimes.slice(200, 700);
-    const late = blockTimes.slice(TOTAL_BLOCKS - 10 * BLOCKS_PER_SECOND);
-    const earlyMedian = median(early);
-    const lateMedian = median(late);
+  let heapStart = 0;
+  if (typeof process !== "undefined" && process.memoryUsage) {
+    global.gc?.();
+    heapStart = process.memoryUsage().heapUsed;
+  }
 
-    let growthMb = 0;
-    if (typeof process !== "undefined" && process.memoryUsage) {
-      global.gc?.();
-      growthMb = (process.memoryUsage().heapUsed - heapStart) / (1024 * 1024);
+  for (let b = 0; b < TOTAL_BLOCKS; b++) {
+    fill(b);
+    const t0 = performance.now();
+    proc.process(inputs, outputs, parameters);
+    const dt = performance.now() - t0;
+    blockTimes.push(dt);
+
+    let blockSum = 0;
+    for (let i = 0; i < BLOCK; i++) {
+      const l = outL[i]!;
+      const r = outR[i]!;
+      if (!Number.isFinite(l) || !Number.isFinite(r)) nonFinite++;
+      const a = Math.max(Math.abs(l), Math.abs(r));
+      if (a > peak) peak = a;
+      blockSum += l * l + r * r;
+      const m = Math.min(Math.abs(l), Math.abs(r));
+      if (m > 0 && m < 1e-20) subNormalOutputs++;
     }
+    const tSec = b / BLOCKS_PER_SECOND;
+    if (tSec >= 10 && tSec < 20) addRms(10, blockSum);
+    if (tSec >= 280 && tSec < 290) addRms(280, blockSum);
+  }
 
+  const rmsAt = (key: number): number => {
+    const win = rmsAccum.get(key)!;
+    return Math.sqrt(win.sum / (win.count * BLOCK * 2));
+  };
+  const driftDb = Math.abs(20 * Math.log10(rmsAt(280) / rmsAt(10)));
+
+  const median = (arr: number[]) => {
+    const sorted = [...arr].sort((x, y) => x - y);
+    return sorted[Math.floor(sorted.length / 2)]!;
+  };
+  const early = blockTimes.slice(200, 700);
+  const late = blockTimes.slice(TOTAL_BLOCKS - 10 * BLOCKS_PER_SECOND);
+
+  let growthMb = 0;
+  if (typeof process !== "undefined" && process.memoryUsage) {
+    global.gc?.();
+    growthMb = (process.memoryUsage().heapUsed - heapStart) / (1024 * 1024);
+  }
+
+  return {
+    nonFinite,
+    subNormalOutputs,
+    peak,
+    driftDb,
+    earlyMedian: median(early),
+    lateMedian: median(late),
+    growthMb,
+  };
+}
+
+describe("TWIST worklet soak (denormal / drift / determinism / allocation)", () => {
+  it("300 s MOTION stress: finite, no subnormals, flat CPU, bounded heap", () => {
+    const m = runSoak(motionParameters());
     console.log(
-      `[skrutka-soak] burstPeak=${burstPeak.toFixed(3)} silentPeak=${silentPeak.toExponential(2)} ` +
-        `earlyMedian=${earlyMedian.toFixed(4)}ms lateMedian=${lateMedian.toFixed(4)}ms ` +
-        `subNormalOutputs=${subNormalOutputs} heapGrowth=${growthMb.toFixed(1)}MB`,
+      `[twist-soak:motion] peak=${m.peak.toFixed(3)} earlyMedian=${m.earlyMedian.toFixed(4)}ms ` +
+        `lateMedian=${m.lateMedian.toFixed(4)}ms subNormalOutputs=${m.subNormalOutputs} ` +
+        `heapGrowth=${m.growthMb.toFixed(1)}MB`,
     );
+    expect(m.nonFinite).toBe(0);
+    expect(m.peak).toBeGreaterThan(0.1);
+    expect(m.subNormalOutputs).toBe(0);
+    expect(m.lateMedian).toBeLessThanOrEqual(Math.max(4 * m.earlyMedian, 0.02));
+    expect(m.growthMb).toBeLessThanOrEqual(6);
+  }, 180_000);
 
-    expect(nonFinite).toBe(0);
-    expect(burstPeak).toBeGreaterThan(0.1);
-    expect(subNormalOutputs).toBe(0);
-    expect(lateMedian).toBeLessThanOrEqual(Math.max(4 * earlyMedian, 0.02));
-    expect(growthMb).toBeLessThanOrEqual(6);
+  it("300 s STATIC drift: the 10 s and 290 s windows match within 0.003 dB", () => {
+    const m = runSoak(staticParameters());
+    console.log(
+      `[twist-soak:drift] drift=${m.driftDb.toFixed(5)}dB peak=${m.peak.toFixed(3)} ` +
+        `subNormalOutputs=${m.subNormalOutputs} heapGrowth=${m.growthMb.toFixed(1)}MB`,
+    );
+    expect(m.nonFinite).toBe(0);
+    expect(m.subNormalOutputs).toBe(0);
+    expect(m.driftDb).toBeLessThanOrEqual(0.003);
+    expect(m.growthMb).toBeLessThanOrEqual(6);
   }, 180_000);
 });

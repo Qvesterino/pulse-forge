@@ -100,8 +100,8 @@ const ROLE_PRESETS: Partial<Record<EffectType, RoleTable>> = {
   skrutka: {
     bass: { dispersion: 0.5, punch: 0.3, focusHz: 110, dyn: 0.35, mix: 1 },
     drums: { dispersion: 0.35, punch: 0.5, focusHz: 350, dyn: 0.45, mix: 0.7 },
-    lead: { dispersion: 0.45, punch: -0.2, focusHz: 1200, spread: 0.4, shape: 1, mix: 0.6 },
-    chords: { dispersion: 0.5, punch: 0, focusHz: 600, spread: 0.5, shape: 3, mix: 0.5 },
+    lead: { dispersion: 0.45, punch: -0.2, focusHz: 1200, spread: 0.4, shape: 1, field: 0.35, mix: 0.6 },
+    chords: { dispersion: 0.5, punch: 0, focusHz: 600, spread: 0.5, shape: 3, field: 0.5, mix: 0.5 },
   },
 };
 

@@ -449,6 +449,88 @@ describe("TWIST v2 (shape / dynamic / key / punch controls / LFO)", () => {
   });
 });
 
+describe("TWIST v2.1 (FIELD — M/S dispersion field)", () => {
+  it("field = +1 is bit-transparent for mono content (sides-only dispersion)", () => {
+    const cls = registered.get("skrutka-processor");
+    const input = (i: number) => 0.4 * Math.sin((2 * Math.PI * 80 * i) / SR) + 0.1 * Math.sin(i / 3);
+    const out = renderProcessorStereo(
+      cls,
+      paramsOf(cls, { field: 1, dispersion: 0.8, focusHz: 90, spread: 0.5, mix: 1 }),
+      0.5,
+      input,
+    );
+    for (let i = 0; i < out.L.length; i++) {
+      expect(out.L[i]).toBe(Math.fround(input(i)));
+      expect(out.R[i]).toBe(Math.fround(input(i)));
+    }
+  });
+
+  it("field = +1 disperses only the side component; field = −1 only the mid", () => {
+    const cls = registered.get("skrutka-processor");
+    const left = (i: number) =>
+      0.3 * Math.sin((2 * Math.PI * 80 * i) / SR) + 0.08 * Math.sin((2 * Math.PI * 2400 * i) / SR);
+    const right = (i: number) =>
+      0.25 * Math.sin((2 * Math.PI * 80 * i) / SR + 0.9) + 0.06 * Math.sin((2 * Math.PI * 3100 * i) / SR);
+    const base = { dispersion: 0.7, punch: 0, focusHz: 200, spread: 0.4, mix: 1 };
+    const dry = renderProcessorStereo(cls, paramsOf(cls, { ...base, mix: 0 }), 0.8, left, right);
+    const sideOnly = renderProcessorStereo(cls, paramsOf(cls, { ...base, field: 1 }), 0.8, left, right);
+    const midOnly = renderProcessorStereo(cls, paramsOf(cls, { ...base, field: -1 }), 0.8, left, right);
+    let midDiffSide = 0;
+    let sideDiffSideOnly = 0;
+    let sideDiffMidOnly = 0;
+    let midDiffMidOnly = 0;
+    for (let i = Math.floor(dry.L.length * 0.3); i < dry.L.length; i++) {
+      midDiffSide = Math.max(
+        midDiffSide,
+        Math.abs((sideOnly.L[i]! + sideOnly.R[i]!) / 2 - (dry.L[i]! + dry.R[i]!) / 2),
+      );
+      sideDiffSideOnly = Math.max(
+        sideDiffSideOnly,
+        Math.abs((sideOnly.L[i]! - sideOnly.R[i]!) / 2 - (dry.L[i]! - dry.R[i]!) / 2),
+      );
+      sideDiffMidOnly = Math.max(
+        sideDiffMidOnly,
+        Math.abs((midOnly.L[i]! - midOnly.R[i]!) / 2 - (dry.L[i]! - dry.R[i]!) / 2),
+      );
+      midDiffMidOnly = Math.max(
+        midDiffMidOnly,
+        Math.abs((midOnly.L[i]! + midOnly.R[i]!) / 2 - (dry.L[i]! + dry.R[i]!) / 2),
+      );
+    }
+    expect(midDiffSide).toBeLessThan(1e-6); // mid stays dry
+    expect(sideDiffSideOnly).toBeGreaterThan(0.01); // side is dispersed
+    expect(sideDiffMidOnly).toBeLessThan(1e-6); // side stays dry
+    expect(midDiffMidOnly).toBeGreaterThan(0.01); // mid is dispersed
+  });
+
+  it("field below the topology threshold is bit-exact legacy", () => {
+    const cls = registered.get("skrutka-processor");
+    const base = { dispersion: 0.6, punch: 0.4, focusHz: 260, spread: 0.5, mix: 0.9 };
+    const legacy = renderProcessor(cls, paramsOf(cls, base), 0.8, sineAt(80, 0.4));
+    const nearZero = renderProcessor(cls, paramsOf(cls, { ...base, field: 0.00005 }), 0.8, sineAt(80, 0.4));
+    expect(nearZero).toEqual(legacy);
+  });
+
+  it("the curve model exposes the FIELD amounts and the M/S focus split", () => {
+    expect(skrutkaFieldAmounts(1)).toEqual({ mid: 0, side: 1 });
+    expect(skrutkaFieldAmounts(-1)).toEqual({ mid: 1, side: 0 });
+    expect(skrutkaFieldAmounts(0.5)).toEqual({ mid: 0.5, side: 1 });
+    expect(skrutkaFieldAmounts(-0.5)).toEqual({ mid: 1, side: 0.5 });
+    expect(skrutkaFocusForChannel(220, 1, "M")).toBeCloseTo(220, 6);
+    expect(skrutkaFocusForChannel(220, 1, "S")).toBeGreaterThan(skrutkaFocusForChannel(220, 1, "M"));
+    // SPREAD splits the component curves: M (centered) and S (offset) carry
+    // measurably different arrival times.
+    const cp = { dispersion: 0.8, punch: 0, focusHz: 300, spread: 1, field: 1 };
+    const mAtFocus = skrutkaGroupDelaySamples(cp, SR, 300, "M");
+    const sAtFocus = skrutkaGroupDelaySamples(cp, SR, 300, "S");
+    const sFocus = skrutkaFocusForChannel(300, 1, "S");
+    expect(mAtFocus).toBeGreaterThan(sAtFocus);
+    expect(Math.abs(skrutkaGroupDelaySamples(cp, SR, sFocus, "M") - skrutkaGroupDelaySamples(cp, SR, sFocus, "S"))).toBeGreaterThan(
+      0.5,
+    );
+  });
+});
+
 describe("TWIST node wrapper (key input + telemetry cache + LFO sync)", () => {
   class FakeParam {
     value = 0;
