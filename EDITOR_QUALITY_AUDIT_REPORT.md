@@ -1147,3 +1147,43 @@ Test Files  10 passed (10)
 A dead duplicate lock check was removed from the scene block commit during this
 final pass — the first `movingHasLocked` branch returns before it, so the second
 was unreachable code left by writing the guard twice.
+
+---
+
+## D11 — Mid-drag zoom re-scaling a live gesture: NOT a defect, and now proven (remaining-risk item #2 closed)
+
+Wave 1 left this as **UNCONFIRMED**: *"Mid-drag zoom or horizontal scroll
+re-scales a live drag."* It is not a defect — and the reason it is not is worth
+writing down, because the failure mode is silent.
+
+`barWidth` is a **render** value (`BASE_BAR_WIDTH * zoom`), and the Ctrl+wheel
+handler is live during a gesture. A drag that read `barWidth` from the render
+would convert its grab position on the old scale and its release position on the
+new one: the delta becomes a difference of two scales, and the clip lands where
+the pointer never was. Every intermediate value is still a legal bar number, so
+nothing throws, nothing looks wrong in the lane, and the commit is wrong.
+
+The prevention is already in the code — `DragState.barWidth` and
+`audioDragRef.barWidth` capture px-per-bar at pointerdown, and both move
+handlers pass the captured value into their converters. What was missing was
+evidence, so this wave adds `tests/ui/drag-zoom-invariance.test.tsx` (3 specs):
+drag → **zoom in mid-gesture** → move again → release, asserting the commit
+equals the gesture's own scale.
+
+**Falsification, both lanes.** Reverting the scene handler to the render scale:
+`1 failed | 2 passed` — the scene spec went red (it would have committed +4 bars
+instead of +7) while the audio spec correctly stayed green, because I had only
+broken the scene converter. Doing the same to `audioBarFromEventAt`:
+`2 failed | 1 passed`. Each spec is sensitive to its own lane and neither is
+decorative.
+
+### What remains open in this item: horizontal scroll
+
+Scrolling the lane mid-drag is **not** the same defect and is not covered here.
+The lane is the wide inner element inside the scroll container, so a scroll
+shifts the lane's own `getBoundingClientRect().left` and the pixel→bar
+conversion picks that up — which is why scrolling does not break the same way
+zoom does. Whether a drag should also freeze the scroll *origin* it grabbed
+against is a genuine product decision (a user who scrolls mid-drag may expect
+either "keep dragging in the original scale" or "follow the new view"), and it
+is recorded for human review rather than decided here.
