@@ -26,7 +26,7 @@
 | D5  | SK exact slovná zásoba: „soluj" neexistuje                                      | P2          | parser vlny                  | ✅ FIX (F3, `42f21c66`/`cf8ad5af`) |
 | D6  | SK diakritika/slovná zásoba nekonzistentná naprieč vrstvami (mix, loudness)     | P2          | parser vlny                  | ✅ FIX (F3, `42f21c66`)            |
 | D7  | Preset intent nedosiahnuteľný z plain textu; `presetUnknown` never fires        | P2          | preset-intent v1             | ✅ FIX (F3, `42f21c66`)            |
-| D8  | Komparatívy hijackujú žánrové prompty („darker techno at 130" → mix)            | P3 (dizajn) | documented §5.7              | ⏳ rozhodnutie ownera              |
+| D8  | Komparatívy hijackujú žánrové prompty („darker techno at 130" → mix)            | P3 (dizajn) | documented §5.7              | ✅ RESOLVED (owner: „genre wins")  |
 | D9  | SK arrange duplicitné synonymá chýbajú úplne                                    | P2          | arrangeWords vlny            | ✅ FIX (F3, `cf8ad5af`)            |
 
 Číslovanie D1–D9 rezervované; D4 bolo v priebehu auditu zlúčené do D2
@@ -166,7 +166,7 @@ frekvencia v UI) — follow-up pre ďalšiu korpusovú vlnu.
 2. D5/D6/D9 (SK vocab vlna, mechanické) → 5. D7 (preset router grammar) →
 3. D8 (owner rozhodnutie, potom pin flip).
 
-## 7. F3 rozuzlenie (2026-10-11) — 7/8 defektov FIX, D8 čaká na ownera
+## 7. F3 rozuzlenie (2026-10-11) — 8/8 defektov resolved (D8 owner rozhodnutím)
 
 - **D3 `9eb9df47`** — `GenerationRanked.proposal` je pri totálnom rejekte
   `null` (+ nové `diagnostics` pole); `resultFromProposal` mapuje na
@@ -194,8 +194,15 @@ frekvencia v UI) — follow-up pre ďalšiu korpusovú vlnu.
   do patternu); teraz try/catch → clarify „banka sa načítava", target-less
   ask → clarify cieľovej rodiny. Warm-bank cesty (preset/presetUnknown) sú
   nezmenené.
-- **D8** ostáva otvorené ako dizajnové rozhodnutie (komparatívy vs. žánrový
-  prompt); korpus pinuje shipped správanie s odkazom sem.
+- **D8 RESOLVED — owner rozhodnutie „genre wins" (2026-10-11):** tone
+  komparatív v žánrovom prompte je popisné prídavné meno → generácia
+  („darker techno at 130" = tmavší NOVÝ beat). Holý komparatív bez žánru
+  ostáva mix; explicitné mix podstatné mená (reverb/punch/pump) ostávajú
+  mix aj so žánrom; revise („more energetic") tiež len bez žánru.
+  Implementácia: `genreSignal` guard nad mix tone-only a revise vetvami v
+  `routeIntentText`. §5.7 veta („komparatívy = mix, period") superseded —
+  aktualizovaná v `INTENT_ENGINE.md`. Korpus: 108/108 (nové piny
+  „tmavší techno"/„more energetic techno" → pattern).
 - **Korpus** po F3: všetkých 8 `it.fails` defekt pinov premenených na
   bežné očakávania, 106/106 zelených.
 - **Follow-up `c71486b9` + `d287f974` (D3 v prirodzenom prostredí):** chord-track a

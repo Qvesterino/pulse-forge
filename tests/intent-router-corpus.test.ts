@@ -181,10 +181,15 @@ const CASES: Case[] = [
   { text: "zníž", kind: "clarify" },
 
   // ── PRIORITY ADJUDICATION — the documented least-destructive chain ─────
-  // "darker techno at 130" mixes: documented semantics (INTENT_ENGINE §5.7)
-  // route comparatives to the mix profile even inside a genre prompt —
-  // recorded as design tension D8 in the audit, asserted as shipped here.
-  { text: "darker techno at 130", kind: "mix" },
+  // D8 RESOLVED (owner decision 2026-10-11, "genre wins"): a tone
+  // comparative inside a genre prompt is a descriptive adjective — the
+  // prompt generates. Bare comparatives (no genre) keep the legacy mix
+  // route; explicit mix nouns (reverb/punch/pump) also stay mix with a
+  // genre. The old §5.7 sentence ("comparatives = mix, period") is
+  // superseded — see INTENT_ENGINE §5.7 and INTENT-AUDIT-2026-10 D8.
+  { text: "darker techno at 130", kind: "pattern" },
+  { text: "tmavší techno", kind: "pattern" },
+  { text: "more energetic techno", kind: "pattern" },
   { text: "more reverb on the drop", kind: "effectIntent", scenes: true },
   { text: "make the drums quieter", kind: "fader" },
   { text: "shorten the intro and more energetic", kind: "arrange", scenes: true },

@@ -611,8 +611,13 @@ Jeden intent → celé zaradielovaná pesnička ako jeden undo krok.
   (rovnaká heuristika ako generátor; "chords"↔"chord" normalizácia).
 - **Mix parser** (`src/intent/route.ts`): mix NOUNS/VERBS + komparatívy
   ("darker/brighter/punchier", "viac dozvuku", "bez pumpy", "tmavší zvuk").
-  Dôležité delenie: obyčajné adjektívy ("dark techno") = pattern intent,
-  komparatívy ("darker") = mix intent.
+  Dôležité delenie (⟦10-11⟧ D8, owner rozhodnutie „genre wins“): obyčajné
+  adjektívy („dark techno“) aj **tone komparatívy v žánrovom prompte**
+  („darker techno at 130“, „tmavší techno“, „more energetic techno“) =
+  pattern intent — prívlastok popisuje generovaný beat. Holý komparatív
+  bez žánru („darker“, „tmavší zvuk“) = mix intent; explicitné mix
+  PODSTATNÉ mená (reverb/punch/pump) ostávajú mix aj so žánrom (priama
+  žiadosť o zvukový zdroj). Revize („more energetic“) tiež len bez žánru.
 - **Unified router** (`routeIntentText`): jeden text → tri executory s
   prioritou 1) ARRANGE (scény existujú + text sa parzuje na ops), 2) MIX
   (explicitná mix slovná zásoba), 3) PATTERN (default). Menej deštruktívna

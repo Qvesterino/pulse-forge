@@ -667,13 +667,22 @@ export function routeIntentText(
   // decision ⇒ fall through to the clarification probe / generation below.
   if (isMixIntentText(text)) {
     const mix = parseMixIntent(text);
-    if (mix.detected.length > 0) {
+    // D8 (owner decision 2026-10-11, "genre wins"): inside a genre prompt a
+    // TONE comparative is a descriptive adjective — "darker techno at 130"
+    // generates a darker beat, it does not re-EQ existing tracks. Explicit
+    // mix NOUNS (reverb/punch/pump — a direct object ask) still route to mix
+    // even with a genre signal, and a bare comparative without a genre keeps
+    // the legacy mix route.
+    const toneOnly = mix.detected.length > 0 && mix.detected.every((entry) => entry.endsWith("tone"));
+    if (mix.detected.length > 0 && !(genreSignal && toneOnly)) {
       return { kind: "mix", overrides: mix.overrides, detected: mix.detected };
     }
   }
-  const revise = parseReviseIntent(text);
-  if (revise) {
-    return { kind: "revise", ...revise };
+  if (!genreSignal) {
+    const revise = parseReviseIntent(text);
+    if (revise) {
+      return { kind: "revise", ...revise };
+    }
   }
   // CLARIFICATION LAYER: the text looks like a DECLINED intent (conflicting
   // fader directions, a direction without a target, an effect ask whose
