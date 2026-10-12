@@ -13,6 +13,7 @@ import {
   useToolStore,
   useTracks,
 } from "./context";
+import { ArrangementViewControls } from "./arrangement/ArrangementViewControls";
 import { ChordProgressionPanel, type ChordGenForm } from "./arrangement/ChordProgressionPanel";
 import { notifyOnboardingProgress } from "./OnboardingHint";
 import { publishSessionRecordingState, IDLE_SESSION_STATE } from "./sessionStateSurface";
@@ -3726,53 +3727,19 @@ export function ArrangementPanel() {
                 {recStorageWarning}
               </span>
             )}
-            <button
-              type="button"
-              className={`btn btn-small${rulerMode === "seconds" ? " active-solo" : ""}`}
-              onClick={() => setRulerMode(rulerMode === "bars" ? "seconds" : "bars")}
-            >
-              {rulerMode === "bars" ? "BARS" : "SECS"}
-            </button>
-            <button
-              type="button"
-              className={`btn btn-small${showIntensity ? " active-solo" : ""}`}
-              aria-pressed={showIntensity}
-              title="Show the scene-intensity lane under the clip lane"
-              onClick={() => setShowIntensity((value) => !value)}
-            >
-              INT
-            </button>
-            <span className="arr-zoom-group" role="group" aria-label="Arrangement zoom">
-              <button
-                type="button"
-                className="btn btn-small"
-                aria-label="Zoom out"
-                onClick={() => setZoom((value) => Math.max(MIN_ZOOM, value / 1.4))}
-              >
-                −
-              </button>
-              <button
-                type="button"
-                className="btn btn-small"
-                aria-label="Fit arrangement"
-                title="Fit the whole arrangement into the view"
-                onClick={() => {
-                  const viewport = scrollRef.current?.clientWidth ?? 800;
-                  setZoom(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, viewport / Math.max(1, totalBars * BASE_BAR_WIDTH))));
-                  if (scrollRef.current) scrollRef.current.scrollLeft = 0;
-                }}
-              >
-                FIT
-              </button>
-              <button
-                type="button"
-                className="btn btn-small"
-                aria-label="Zoom in"
-                onClick={() => setZoom((value) => Math.min(MAX_ZOOM, value * 1.4))}
-              >
-                +
-              </button>
-            </span>
+            <ArrangementViewControls
+              rulerMode={rulerMode}
+              onToggleRulerMode={() => setRulerMode(rulerMode === "bars" ? "seconds" : "bars")}
+              showIntensity={showIntensity}
+              onToggleIntensity={() => setShowIntensity((value) => !value)}
+              onZoomOut={() => setZoom((value) => Math.max(MIN_ZOOM, value / 1.4))}
+              onFit={() => {
+                const viewport = scrollRef.current?.clientWidth ?? 800;
+                setZoom(Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, viewport / Math.max(1, totalBars * BASE_BAR_WIDTH))));
+                if (scrollRef.current) scrollRef.current.scrollLeft = 0;
+              }}
+              onZoomIn={() => setZoom((value) => Math.min(MAX_ZOOM, value * 1.4))}
+            />
             {selectedClip && (
               <label className="arr-clip-secs">
                 SECS
