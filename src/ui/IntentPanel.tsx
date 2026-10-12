@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useSelectionStore, useServices } from "./context";
 import {
   SongDraftPanel,
+  sectionCompareSelection,
   sectionPreferenceOptions,
   type SectionPreferenceTake,
   type SongDraft,
@@ -66,7 +67,7 @@ import { consolidateRangeToAudio } from "../services/rangeConsolidation";
 import { artistMixProfileOf } from "../intent/artist-mix";
 import { morphPatterns } from "../intent/morph";
 import { pushGhost, listGhosts, getGhost, removeGhost, type GhostVersion } from "../intent/versions";
-import { composeFullTrack, type ComposeResult } from "../intent/compose";
+import { composeFullTrack } from "../intent/compose";
 import { buildTheatrePlan, stageLabel, type TheatreRun } from "../intent/producer-theatre";
 import { personaBySlug } from "../intent/producer-personas";
 import { mutateBeat } from "../gallery/lineage";
@@ -140,13 +141,12 @@ import {
   planMixProfile,
   sendReadback,
 } from "../intent/mix";
-import { applyLoudnessIntent, measurePreviewLoudness, type LoudnessRecommendation } from "../intent/loudness";
+import { applyLoudnessIntent, measurePreviewLoudness } from "../intent/loudness";
 import { analyzeLoudnessBuffer } from "../audio-engine/kweighting";
 import {
   reviewSongAudio,
   analyzeSongSections,
   suggestSectionRevivals,
-  type SongAudioReview,
   type SongSectionSuggestion,
 } from "../intent/song-audio-review";
 import { routeIntentText, REVISE_DELTA, type ReviseAttribute, type RoutedIntent } from "../intent/route";
@@ -233,17 +233,9 @@ import {
   listProducerLineageNodes,
   saveProducerLineageDraft,
 } from "../persistence/ProducerLineageRepository";
-import {
-  rankRenderedSongPreferences,
-  songPreferenceCandidate,
-  type SongPreferenceCandidate,
-} from "../intent/song-preferences";
-import { SONG_PREFERENCE_FOCUS_OPTIONS, type SongPreferenceFocus } from "../ai/features/song-dramaturgy-v1";
-import {
-  scoreSectionPreferencePair,
-  sectionPreferenceCandidate,
-  type SectionPreferenceCandidate,
-} from "../intent/section-preferences";
+import { rankRenderedSongPreferences, songPreferenceCandidate } from "../intent/song-preferences";
+import type { SongPreferenceFocus } from "../ai/features/song-dramaturgy-v1";
+import { scoreSectionPreferencePair, sectionPreferenceCandidate } from "../intent/section-preferences";
 
 const BRIEF_CORRECTION_FIELDS: readonly { inputKey: keyof IntentInput; field: ProducerMemoryIntentField }[] = [
   { inputKey: "genre", field: "genre" },
@@ -2908,7 +2900,7 @@ export function IntentPanel() {
       return;
     }
     const options = sectionPreferenceOptions(draft, sectionIndex);
-    const selection = sectionCompareSelection(sectionIndex, options);
+    const selection = sectionCompareSelection(sectionCompareSelections, sectionIndex, options);
     const takes = draft.sectionPreferenceTakes ?? [];
     const takeA = takes.find((take) => take.sectionIndex === sectionIndex && take.id === selection.a);
     const takeB = takes.find((take) => take.sectionIndex === sectionIndex && take.id === selection.b);

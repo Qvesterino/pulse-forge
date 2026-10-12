@@ -108,6 +108,21 @@ export const sectionPreferenceOptions = (draft: SongDraft, sectionIndex: number)
 
 export type SectionCompareSelections = Record<string, { a: string; b: string }>;
 
+/** Currently compared A/B pair for one section, falling back to the first two
+    surviving options. Pure in `selections` so the shell and this renderer agree
+    on which takes a recorded preference refers to. */
+export const sectionCompareSelection = (
+  selections: SectionCompareSelections,
+  sectionIndex: number,
+  options: ReturnType<typeof sectionPreferenceOptions>,
+) => {
+  const stored = selections[String(sectionIndex)];
+  return {
+    a: stored?.a ?? options[0]?.id ?? "",
+    b: stored?.b ?? options[1]?.id ?? "",
+  };
+};
+
 export interface SongDraftPanelProps {
   songDraft: SongDraft | null;
   songBusy: boolean;
@@ -115,7 +130,8 @@ export interface SongDraftPanelProps {
   songPlaying: boolean;
   /** `!songBufferRef.current` in the shell — the auditioned full song exists. */
   songBufferReady: boolean;
-  songDnaTipLane: SearchLane | undefined;
+  /** `undefined` = Producer DNA is off; `null` = no lane tip, use per-section best. */
+  songDnaTipLane: SearchLane | null | undefined;
   songDnaTipLabel: string;
   audioRank: SongPreferenceRank | null;
   learningEnabled: boolean;
@@ -186,16 +202,6 @@ export function SongDraftPanel(props: SongDraftPanelProps): ReactElement | null 
     onBuildFreshSongDraft,
   } = props;
   if (!songDraft) return null;
-  const sectionCompareSelection = (
-    sectionIndex: number,
-    options: ReturnType<typeof sectionPreferenceOptions>,
-  ) => {
-    const stored = sectionCompareSelections[String(sectionIndex)];
-    return {
-      a: stored?.a ?? options[0]?.id ?? "",
-      b: stored?.b ?? options[1]?.id ?? "",
-    };
-  };
   return (
     <div className="intent-song-draft" aria-label="Song draft preview">
       <div className="intent-candidate-row winner">
@@ -214,13 +220,9 @@ export function SongDraftPanel(props: SongDraftPanelProps): ReactElement | null 
             {songDraft.activeBuild.sections.length} sections · {songDraft.activeBuild.totalBars} bars
             {songDraft.lengthNote} · {Math.round(songDraft.activeBuild.resolvedBpm ?? 120)} BPM ·{" "}
             {songDraft.activeBuild.candidateCount} candidates/section
-            {songDraft.activeLane
-              ? ` · ${songDraft.activeLane.toUpperCase()} full-song lane`
-              : " · best per section"}
+            {songDraft.activeLane ? ` · ${songDraft.activeLane.toUpperCase()} full-song lane` : " · best per section"}
             {songDraft.loudnessApplied &&
-              (songDraft.measuredAfter != null
-                ? ` · plays ≈${songDraft.measuredAfter} LUFS`
-                : " · loudness trim set")}
+              (songDraft.measuredAfter != null ? ` · plays ≈${songDraft.measuredAfter} LUFS` : " · loudness trim set")}
           </span>
         </span>
         {!songDraft.loudnessApplied && songDraft.trimDb !== 0 && songDraft.loudnessRecommendation && (
@@ -306,8 +308,7 @@ export function SongDraftPanel(props: SongDraftPanelProps): ReactElement | null 
             );
           })}
           <small>
-            Only complete, musically distinct alternatives are shown. USE stays disabled until a selected lane
-            renders.
+            Only complete, musically distinct alternatives are shown. USE stays disabled until a selected lane renders.
           </small>
           {audioRank ? (
             <>
@@ -328,8 +329,8 @@ export function SongDraftPanel(props: SongDraftPanelProps): ReactElement | null 
             </>
           ) : learningEnabled && songDraft.result.build.recommendedLane !== undefined ? (
             <small>
-              Producer DNA odporúča {songDraft.result.build.recommendedLane?.toUpperCase() ?? "BEST PER SECTION"}{" "}
-              podľa výslovných porovnaní celých skladieb.
+              Producer DNA odporúča {songDraft.result.build.recommendedLane?.toUpperCase() ?? "BEST PER SECTION"} podľa
+              výslovných porovnaní celých skladieb.
             </small>
           ) : null}
         </div>
@@ -453,7 +454,7 @@ export function SongDraftPanel(props: SongDraftPanelProps): ReactElement | null 
           const isPlaying = playingSectionId === id;
           const isRendering = renderingSectionId === id;
           const options = sectionPreferenceOptions(songDraft, sectionIndex);
-          const selection = sectionCompareSelection(sectionIndex, options);
+          const selection = sectionCompareSelection(sectionCompareSelections, sectionIndex, options);
           const takeA = (songDraft.sectionPreferenceTakes ?? []).find(
             (take) => take.sectionIndex === sectionIndex && take.id === selection.a,
           );
@@ -486,14 +487,15 @@ export function SongDraftPanel(props: SongDraftPanelProps): ReactElement | null 
                       <select
                         aria-label={`${section.label} section preference candidate A`}
                         value={selection.a}
-                        onChange={(event) => onSectionCompareSelectionChange(sectionIndex, { ...selection, a: event.target.value })}
+                        onChange={(event) =>
+                          onSectionCompareSelectionChange(sectionIndex, { ...selection, a: event.target.value })
+                        }
                       >
                         {options.map((option) => (
                           <option key={option.id} value={option.id}>
                             {option.label}
                             {(songDraft.sectionPreferenceTakes ?? []).some(
-                              (take) =>
-                                take.sectionIndex === sectionIndex && take.id === option.id && take.auditioned,
+                              (take) => take.sectionIndex === sectionIndex && take.id === option.id && take.auditioned,
                             )
                               ? " · vypočuté"
                               : " · treba vypočuť"}
@@ -518,14 +520,15 @@ export function SongDraftPanel(props: SongDraftPanelProps): ReactElement | null 
                       <select
                         aria-label={`${section.label} section preference candidate B`}
                         value={selection.b}
-                        onChange={(event) => onSectionCompareSelectionChange(sectionIndex, { ...selection, b: event.target.value })}
+                        onChange={(event) =>
+                          onSectionCompareSelectionChange(sectionIndex, { ...selection, b: event.target.value })
+                        }
                       >
                         {options.map((option) => (
                           <option key={option.id} value={option.id}>
                             {option.label}
                             {(songDraft.sectionPreferenceTakes ?? []).some(
-                              (take) =>
-                                take.sectionIndex === sectionIndex && take.id === option.id && take.auditioned,
+                              (take) => take.sectionIndex === sectionIndex && take.id === option.id && take.auditioned,
                             )
                               ? " · vypočuté"
                               : " · treba vypočuť"}
@@ -639,5 +642,5 @@ export function SongDraftPanel(props: SongDraftPanelProps): ReactElement | null 
         After USE: type “make bridge more energetic” + ⚡ DO IT to revise one section in place.
       </div>
     </div>
-  )
+  );
 }
