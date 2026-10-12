@@ -44,8 +44,22 @@ ctest --test-dir $probeBuildDir -C Release --output-on-failure
 & (Join-Path $probeBuildDir 'Release/kyx-windows-audio-probe.exe')
 ```
 
-The CTest targets cover shared-period selection and QPC timestamp conversion
-math only; they do not enumerate devices or initialize an audio stream.
+The CTest targets cover shared-period selection, QPC timestamp conversion and
+loopback-correlation math; they do not enumerate devices or initialize an
+audio stream.
+
+To estimate the shared Windows render-to-loopback path, the explicit command
+below plays one 2.6 ms correlation burst at -32 dBFS, captures the system mix
+through WASAPI loopback for 2–10 seconds, and discards the captured samples
+from memory. The burst may be audible. The estimate uses the loopback frame's
+QPC timestamp and the render queue padding. This measures the Windows digital
+render-to-loopback path; it does **not** measure the DAC, an analog cable path,
+ADC, or physical round-trip latency:
+
+```powershell
+$probe = Join-Path $probeBuildDir 'Release/kyx-windows-audio-probe.exe'
+& $probe --loopback-test '1 - MSI MP273Q E2 (AMD High Definition Audio Device)' 4
+```
 
 To run capture and render at the same time on named endpoints, use the bounded
 shared-mode wrapper. Capture packet samples are discarded and render queues
@@ -75,9 +89,15 @@ requires a separate explicit command-line acknowledgement:
 & $probe --stream-test capture exclusive 'INPUT 1/2 (2- Volt 276)' 10 --exclusive-confirmed
 ```
 
-Do not run the exclusive test while relying on system audio. The command does
-not produce a test tone; a later loopback latency test needs a separate
-user-approved physical routing procedure.
+Do not run the exclusive test while relying on system audio. The exclusive
+stream command sends silence; the separate software-loopback command above
+plays a short test burst. A physical round-trip measurement still needs a
+separately approved analog routing procedure.
 
 The output includes endpoint names, so review it before sharing. Do not add raw
 endpoint IDs or machine-specific probe output to the repository.
+
+WASAPI software loopback captures the system mix from a render endpoint and
+does not require a hardware loopback connector. See Microsoft's [loopback
+recording documentation](https://learn.microsoft.com/en-us/windows/win32/coreaudio/loopback-recording)
+and [`IAudioCaptureClient::GetBuffer` QPC timestamp documentation](https://learn.microsoft.com/en-us/windows/win32/api/audioclient/nf-audioclient-iaudiocaptureclient-getbuffer).

@@ -4,16 +4,20 @@
 #include <mmdeviceapi.h>
 #include <propkeydef.h>
 #include <functiondiscoverykeys_devpkey.h>
+#include <ksmedia.h>
 #include <wrl/client.h>
 #include "capture-start-time.h"
+#include "loopback-correlation.h"
 #include "shared-period-selection.h"
 
+#include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <string>
 #include <chrono>
 #include <algorithm>
 #include <cwchar>
+#include <vector>
 
 using Microsoft::WRL::ComPtr;
 
@@ -217,8 +221,13 @@ struct ScopedMmcssTask {
   }
 };
 
+struct ScopedWaveFormat {
+  WAVEFORMATEX* value = nullptr;
+  ~ScopedWaveFormat() { CoTaskMemFree(value); }
+};
+
 bool prepareStream(IAudioClient3* client, AUDCLNT_SHAREMODE mode, WAVEFORMATEX* format,
-                   UINT32* periodFrames, UINT32* bufferFrames) {
+                   UINT32* periodFrames, UINT32* bufferFrames, DWORD extraStreamFlags = 0) {
   HRESULT hr = AUDCLNT_E_UNSUPPORTED_FORMAT;
   if (mode == AUDCLNT_SHAREMODE_SHARED) {
     AudioClientProperties properties{};
@@ -247,7 +256,8 @@ bool prepareStream(IAudioClient3* client, AUDCLNT_SHAREMODE mode, WAVEFORMATEX* 
       std::wcerr << L"No legal shared period is available within the reported range\n";
       return false;
     }
-    hr = client->InitializeSharedAudioStream(AUDCLNT_STREAMFLAGS_EVENTCALLBACK, *periodFrames, format, nullptr);
+    hr = client->InitializeSharedAudioStream(AUDCLNT_STREAMFLAGS_EVENTCALLBACK | extraStreamFlags, *periodFrames,
+                                             format, nullptr);
   } else {
     REFERENCE_TIME defaultPeriod = 0;
     REFERENCE_TIME minimumPeriod = 0;
@@ -280,6 +290,28 @@ bool prepareStream(IAudioClient3* client, AUDCLNT_SHAREMODE mode, WAVEFORMATEX* 
   if (FAILED(hr)) {
     std::wcerr << L"Stream initialization failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr) << std::dec
                << L")\n";
+    return false;
+  }
+  hr = client->GetBufferSize(bufferFrames);
+  if (FAILED(hr) || *bufferFrames == 0) {
+    std::wcerr << L"GetBufferSize failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr) << std::dec
+               << L")\n";
+    return false;
+  }
+  return true;
+}
+
+bool preparePullLoopbackStream(IAudioClient3* client, WAVEFORMATEX* format, UINT32* bufferFrames) {
+  // Use pull-mode loopback and service it from the render stream's event.
+  // This also works on Windows versions where loopback clients do not receive
+  // their own event notifications.
+  constexpr REFERENCE_TIME kLoopbackBufferDuration100ns = 100'000;  // 10 ms
+  HRESULT hr = client->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK,
+                                  kLoopbackBufferDuration100ns, 0, format, nullptr);
+  if (FAILED(hr)) {
+    std::wcerr << L"Shared loopback stream initialization failed (HRESULT 0x" << std::hex
+               << static_cast<unsigned long>(hr)
+               << std::dec << L")\n";
     return false;
   }
   hr = client->GetBufferSize(bufferFrames);
@@ -588,6 +620,363 @@ bool runSilentRenderStream(IAudioClient3* client, HANDLE eventHandle, UINT32 sec
   return ok && renderedFrames > bufferFrames && eventTimeouts == 0;
 }
 
+bool isFloat32Format(const WAVEFORMATEX* format) {
+  if (!format || format->nChannels == 0 || format->wBitsPerSample != 32) return false;
+  if (format->wFormatTag == WAVE_FORMAT_IEEE_FLOAT) return true;
+  if (format->wFormatTag != WAVE_FORMAT_EXTENSIBLE ||
+      format->cbSize < sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX)) {
+    return false;
+  }
+  const auto* extensible = reinterpret_cast<const WAVEFORMATEXTENSIBLE*>(format);
+  return extensible->Samples.wValidBitsPerSample == 32 &&
+         IsEqualGUID(extensible->SubFormat, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);
+}
+
+bool runLoopbackTest(IMMDeviceEnumerator* enumerator, const std::wstring& exactName, UINT32 seconds) {
+  ComPtr<IMMDeviceCollection> devices;
+  HRESULT hr = enumerator->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, devices.GetAddressOf());
+  if (FAILED(hr)) {
+    std::wcerr << L"Could not enumerate active render endpoints for loopback (HRESULT 0x" << std::hex
+               << static_cast<unsigned long>(hr) << std::dec << L")\n";
+    return false;
+  }
+  UINT count = 0;
+  if (FAILED(hr = devices->GetCount(&count))) return false;
+  ComPtr<IMMDevice> selected;
+  for (UINT index = 0; index < count; ++index) {
+    ComPtr<IMMDevice> candidate;
+    if (SUCCEEDED(devices->Item(index, candidate.GetAddressOf())) && endpointName(candidate.Get()) == exactName) {
+      if (selected) {
+        std::wcerr << L"Render endpoint name is ambiguous; use a unique active endpoint name\n";
+        return false;
+      }
+      selected = candidate;
+    }
+  }
+  if (!selected) {
+    std::wcerr << L"No active render endpoint exactly named '" << exactName << L"'\n";
+    return false;
+  }
+
+  std::wcout << L"\nExplicit WASAPI shared render-loopback test: " << endpointName(selected.Get()) << L" / " << seconds
+             << L" seconds\n"
+             << L"Queues one 2.6 ms, -32 dBFS correlation burst; loopback samples stay in memory and are discarded.\n"
+             << L"This measures the Windows render-to-loopback path, not DAC/ADC or physical round-trip latency.\n";
+
+  ComPtr<IAudioClient3> renderClient;
+  ComPtr<IAudioClient3> loopbackClient;
+  hr = selected->Activate(__uuidof(IAudioClient3), CLSCTX_ALL, nullptr,
+                          reinterpret_cast<void**>(renderClient.GetAddressOf()));
+  if (FAILED(hr)) {
+    std::wcerr << L"Render IAudioClient3 activation failed (HRESULT 0x" << std::hex
+               << static_cast<unsigned long>(hr) << std::dec << L")\n";
+    return false;
+  }
+  hr = selected->Activate(__uuidof(IAudioClient3), CLSCTX_ALL, nullptr,
+                          reinterpret_cast<void**>(loopbackClient.GetAddressOf()));
+  if (FAILED(hr)) {
+    std::wcerr << L"Loopback IAudioClient3 activation failed (HRESULT 0x" << std::hex
+               << static_cast<unsigned long>(hr) << std::dec << L")\n";
+    return false;
+  }
+
+  ScopedWaveFormat renderFormat;
+  hr = renderClient->GetMixFormat(&renderFormat.value);
+  if (FAILED(hr) || !renderFormat.value) {
+    std::wcerr << L"GetMixFormat failed for render client (HRESULT 0x" << std::hex
+               << static_cast<unsigned long>(hr) << std::dec << L")\n";
+    return false;
+  }
+  if (!isFloat32Format(renderFormat.value)) {
+    std::wcerr << L"Loopback correlation currently requires the endpoint shared mix format to be 32-bit float\n";
+    printFormat(L"unsupported shared mix format", renderFormat.value);
+    return false;
+  }
+
+  UINT32 renderBufferFrames = 0;
+  UINT32 loopbackBufferFrames = 0;
+  UINT32 renderPeriodFrames = 0;
+  if (!prepareStream(renderClient.Get(), AUDCLNT_SHAREMODE_SHARED, renderFormat.value, &renderPeriodFrames,
+                     &renderBufferFrames) ||
+      !preparePullLoopbackStream(loopbackClient.Get(), renderFormat.value, &loopbackBufferFrames)) {
+    return false;
+  }
+
+  ComPtr<IAudioRenderClient> render;
+  ComPtr<IAudioCaptureClient> capture;
+  hr = renderClient->GetService(IID_PPV_ARGS(render.GetAddressOf()));
+  if (FAILED(hr)) {
+    std::wcerr << L"Could not acquire IAudioRenderClient (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr)
+               << std::dec << L")\n";
+    return false;
+  }
+  hr = loopbackClient->GetService(IID_PPV_ARGS(capture.GetAddressOf()));
+  if (FAILED(hr)) {
+    std::wcerr << L"Could not acquire loopback IAudioCaptureClient (HRESULT 0x" << std::hex
+               << static_cast<unsigned long>(hr) << std::dec << L")\n";
+    return false;
+  }
+
+  ScopedEvent renderEvent;
+  renderEvent.value = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+  if (!renderEvent.value) {
+    std::wcerr << L"CreateEvent failed (Win32 " << GetLastError() << L")\n";
+    return false;
+  }
+  if (FAILED(renderClient->SetEventHandle(renderEvent.value))) {
+    std::wcerr << L"SetEventHandle failed for render stream\n";
+    return false;
+  }
+
+  const UINT32 sampleRate = renderFormat.value->nSamplesPerSec;
+  const UINT32 channels = renderFormat.value->nChannels;
+  const UINT32 blockAlign = renderFormat.value->nBlockAlign;
+  const DWORD waitMs = std::max<DWORD>(100, static_cast<DWORD>(10'000.0 * renderBufferFrames / sampleRate));
+  std::wcout << L"    shared mix: " << channels << L" ch, " << sampleRate << L" Hz float32; render period="
+             << renderPeriodFrames << L" frames / " << std::fixed << std::setprecision(3)
+             << framesToMs(renderPeriodFrames, sampleRate) << L" ms; render buffer=" << renderBufferFrames
+             << L" frames / " << framesToMs(renderBufferFrames, sampleRate) << L" ms; loopback buffer="
+             << loopbackBufferFrames << L" frames / " << framesToMs(loopbackBufferFrames, sampleRate) << L" ms\n";
+
+  const wchar_t* mmcssTaskName = L"Audio";
+  ScopedMmcssTask mmcssTask;
+  if (!mmcssTask.registerTask(mmcssTaskName)) {
+    std::wcerr << L"AvSetMmThreadCharacteristics failed for MMCSS task '" << mmcssTaskName << L"' (Win32 "
+               << GetLastError() << L")\n";
+    return false;
+  }
+
+  BYTE* initialData = nullptr;
+  hr = render->GetBuffer(renderBufferFrames, &initialData);
+  if (FAILED(hr)) {
+    std::wcerr << L"Render prime GetBuffer failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr)
+               << std::dec << L")\n";
+    return false;
+  }
+  hr = render->ReleaseBuffer(renderBufferFrames, AUDCLNT_BUFFERFLAGS_SILENT);
+  if (FAILED(hr)) {
+    std::wcerr << L"Render prime ReleaseBuffer failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr)
+               << std::dec << L")\n";
+    return false;
+  }
+
+  LARGE_INTEGER qpcFrequency{};
+  if (!QueryPerformanceFrequency(&qpcFrequency) || qpcFrequency.QuadPart <= 0) {
+    std::wcerr << L"QueryPerformanceFrequency failed\n";
+    return false;
+  }
+  hr = loopbackClient->Start();
+  if (FAILED(hr)) {
+    std::wcerr << L"Loopback stream Start failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr)
+               << std::dec << L")\n";
+    return false;
+  }
+  hr = renderClient->Start();
+  if (FAILED(hr)) {
+    loopbackClient->Stop();
+    std::wcerr << L"Render stream Start failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr) << std::dec
+               << L")\n";
+    return false;
+  }
+
+  const auto started = std::chrono::steady_clock::now();
+  const auto deadline = started + std::chrono::seconds(seconds);
+  const auto probe = kyx::audio_probe::makeLoopbackProbe();
+  constexpr float probeLevel = 0.0251189F;  // -32 dBFS
+  const UINT64 targetProbeFrame = sampleRate;
+  std::vector<float> capturedSamples;
+  capturedSamples.reserve(static_cast<std::size_t>(seconds) * sampleRate);
+  UINT64 capturedFrames = 0;
+  UINT64 expectedDevicePosition = 0;
+  UINT64 firstQpcPosition100ns = 0;
+  UINT64 firstPacketDiscontinuities = 0;
+  UINT64 laterDiscontinuities = 0;
+  UINT64 silentPackets = 0;
+  UINT64 timestampErrors = 0;
+  UINT64 devicePositionGaps = 0;
+  UINT64 eventTimeouts = 0;
+  UINT64 renderedFrames = renderBufferFrames;
+  UINT64 renderEvents = 0;
+  bool probeQueued = false;
+  UINT64 framesAheadOfProbe = 0;
+  LARGE_INTEGER probeReleaseQpc{};
+  bool ok = true;
+
+  auto drainLoopback = [&]() {
+    for (;;) {
+      UINT32 packetFrames = 0;
+      BYTE* data = nullptr;
+      DWORD flags = 0;
+      UINT64 devicePosition = 0;
+      UINT64 qpcPosition100ns = 0;
+      hr = capture->GetBuffer(&data, &packetFrames, &flags, &devicePosition, &qpcPosition100ns);
+      if (hr == AUDCLNT_S_BUFFER_EMPTY) return true;
+      if (FAILED(hr)) {
+        std::wcerr << L"Loopback GetBuffer failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr)
+                   << std::dec << L")\n";
+        return false;
+      }
+      const bool firstPacket = capturedFrames == 0;
+      if (flags & AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY) {
+        if (firstPacket) {
+          ++firstPacketDiscontinuities;
+        } else {
+          ++laterDiscontinuities;
+        }
+      }
+      if (flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) ++timestampErrors;
+      if (flags & AUDCLNT_BUFFERFLAGS_SILENT) ++silentPackets;
+      if (firstPacket) {
+        firstQpcPosition100ns = qpcPosition100ns;
+      } else if (devicePosition != expectedDevicePosition) {
+        ++devicePositionGaps;
+      }
+      expectedDevicePosition = devicePosition + packetFrames;
+
+      if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
+        capturedSamples.insert(capturedSamples.end(), packetFrames, 0.0F);
+      } else if (data) {
+        const auto* samples = reinterpret_cast<const float*>(data);
+        for (UINT32 frame = 0; frame < packetFrames; ++frame) {
+          double mono = 0.0;
+          for (UINT32 channel = 0; channel < channels; ++channel) {
+            mono += samples[static_cast<std::size_t>(frame) * channels + channel];
+          }
+          capturedSamples.push_back(static_cast<float>(mono / channels));
+        }
+      } else {
+        capture->ReleaseBuffer(packetFrames);
+        std::wcerr << L"Loopback returned a null non-silent packet\n";
+        return false;
+      }
+      capturedFrames += packetFrames;
+      hr = capture->ReleaseBuffer(packetFrames);
+      if (FAILED(hr)) {
+        std::wcerr << L"Loopback ReleaseBuffer failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr)
+                   << std::dec << L")\n";
+        return false;
+      }
+    }
+  };
+
+  auto renderAvailable = [&]() {
+    UINT32 padding = 0;
+    hr = renderClient->GetCurrentPadding(&padding);
+    if (FAILED(hr) || padding > renderBufferFrames) {
+      std::wcerr << L"Render GetCurrentPadding failed or returned an invalid value (HRESULT 0x" << std::hex
+                 << static_cast<unsigned long>(hr) << std::dec << L")\n";
+      return false;
+    }
+    const UINT32 available = renderBufferFrames - padding;
+    if (available == 0) return true;
+    BYTE* data = nullptr;
+    hr = render->GetBuffer(available, &data);
+    if (FAILED(hr) || !data) {
+      std::wcerr << L"Render GetBuffer failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr) << std::dec
+                 << L")\n";
+      return false;
+    }
+    std::memset(data, 0, static_cast<std::size_t>(available) * blockAlign);
+    auto* samples = reinterpret_cast<float*>(data);
+    const UINT64 bufferStartFrame = renderedFrames;
+    bool bufferContainsProbe = false;
+    UINT32 probeOffsetInBuffer = 0;
+    for (UINT32 frame = 0; frame < available; ++frame) {
+      const UINT64 streamFrame = bufferStartFrame + frame;
+      if (streamFrame < targetProbeFrame || streamFrame >= targetProbeFrame + probe.size()) continue;
+      const std::size_t probeIndex = static_cast<std::size_t>(streamFrame - targetProbeFrame);
+      for (UINT32 channel = 0; channel < channels; ++channel) {
+        samples[static_cast<std::size_t>(frame) * channels + channel] = probe[probeIndex] * probeLevel;
+      }
+      if (!bufferContainsProbe) probeOffsetInBuffer = frame;
+      bufferContainsProbe = true;
+    }
+    if (bufferContainsProbe && !probeQueued) {
+      QueryPerformanceCounter(&probeReleaseQpc);
+      framesAheadOfProbe = static_cast<UINT64>(padding) + probeOffsetInBuffer;
+      probeQueued = true;
+    }
+    const DWORD releaseFlags = bufferContainsProbe ? 0 : AUDCLNT_BUFFERFLAGS_SILENT;
+    hr = render->ReleaseBuffer(available, releaseFlags);
+    if (FAILED(hr)) {
+      std::wcerr << L"Render ReleaseBuffer failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr)
+                 << std::dec << L")\n";
+      return false;
+    }
+    renderedFrames += available;
+    return true;
+  };
+
+  while (std::chrono::steady_clock::now() < deadline) {
+    const DWORD waitResult = WaitForSingleObject(renderEvent.value, waitMs);
+    if (waitResult == WAIT_TIMEOUT) {
+      ++eventTimeouts;
+      if (eventTimeouts >= 3) {
+        std::wcerr << L"Render/loopback events timed out three consecutive times\n";
+        ok = false;
+        break;
+      }
+      continue;
+    }
+    if (waitResult != WAIT_OBJECT_0) {
+      std::wcerr << L"Render event wait failed (Win32 " << GetLastError() << L")\n";
+      ok = false;
+      break;
+    }
+    if (!drainLoopback()) {
+      ok = false;
+      break;
+    }
+    ++renderEvents;
+    if (!renderAvailable()) {
+      ok = false;
+      break;
+    }
+  }
+
+  const HRESULT renderStopHr = renderClient->Stop();
+  const HRESULT loopbackStopHr = loopbackClient->Stop();
+  drainLoopback();
+  const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+  if (FAILED(renderStopHr) || FAILED(loopbackStopHr)) {
+    std::wcerr << L"Stopping render or loopback client failed\n";
+    ok = false;
+  }
+
+  std::size_t matchOffset = 0;
+  double matchCorrelation = 0.0;
+  const bool foundProbe = probeQueued &&
+                         kyx::audio_probe::findLoopbackProbe(capturedSamples, probe, &matchOffset,
+                                                           &matchCorrelation);
+  std::wcout << L"    loopback result: elapsed=" << std::fixed << std::setprecision(2) << elapsed
+             << L" s, render events=" << renderEvents << L", captured=" << capturedFrames << L" frames ("
+             << capturedSamples.size() << L" mono samples), later discontinuities=" << laterDiscontinuities
+             << L", first-packet discontinuities=" << firstPacketDiscontinuities << L", silent packets="
+             << silentPackets << L", timestamp errors=" << timestampErrors << L", device-position gaps="
+             << devicePositionGaps << L", event timeouts=" << eventTimeouts << L"\n";
+  const bool captureTimelineValid = laterDiscontinuities == 0 && timestampErrors == 0 && devicePositionGaps == 0;
+  if (foundProbe && captureTimelineValid && firstQpcPosition100ns > 0 && probeReleaseQpc.QuadPart > 0) {
+    const long double qpcSubmit100ns =
+        static_cast<long double>(probeReleaseQpc.QuadPart) * 10'000'000.0L / qpcFrequency.QuadPart;
+    const long double expectedPresentation100ns =
+        qpcSubmit100ns + 10'000'000.0L * framesAheadOfProbe / sampleRate;
+    const long double loopbackMatch100ns =
+        static_cast<long double>(firstQpcPosition100ns) + 10'000'000.0L * matchOffset / sampleRate;
+    const double renderToLoopbackMs = static_cast<double>(loopbackMatch100ns - expectedPresentation100ns) / 10'000.0;
+    std::wcout << L"    correlation: offset=" << matchOffset << L" frames, normalized=" << std::fixed
+               << std::setprecision(4) << matchCorrelation << L"; estimated render-to-WASAPI-loopback delay="
+               << std::fixed << std::setprecision(3) << renderToLoopbackMs << L" ms\n";
+  } else if (!foundProbe) {
+    std::wcout << L"    correlation: probe not detected (queued=" << (probeQueued ? L"yes" : L"no")
+               << L", best normalized score=" << std::fixed << std::setprecision(4) << matchCorrelation << L")\n";
+  } else {
+    std::wcout << L"    correlation: probe found (normalized=" << std::fixed << std::setprecision(4)
+               << matchCorrelation << L"), but latency was not reported because the capture timeline had errors\n";
+  }
+  return ok && foundProbe && laterDiscontinuities == 0 && timestampErrors == 0 && devicePositionGaps == 0 &&
+         eventTimeouts == 0 && firstQpcPosition100ns > 0 && probeReleaseQpc.QuadPart > 0;
+}
+
 bool runStreamTest(IMMDeviceEnumerator* enumerator, EDataFlow flow, AUDCLNT_SHAREMODE mode,
                    const std::wstring& exactName, UINT32 seconds) {
   ComPtr<IMMDeviceCollection> devices;
@@ -698,6 +1087,11 @@ void printUsage() {
             << L"  Duration is 10 seconds by default and is capped at 30 seconds.\n"
             << L"  Exclusive mode requires --exclusive-confirmed because it can interrupt other apps' audio.\n"
             << L"  Capture packets are discarded; render mode queues silence only. No PCM is saved.\n";
+  std::wcout << L"\nOptional render-loopback check (shared mode only):\n"
+             << L"  kyx-windows-audio-probe.exe --loopback-test \"exact render endpoint name\" [seconds]\n"
+             << L"  Duration is 4 seconds by default and may be set from 2 to 10 seconds.\n"
+             << L"  Plays one short -32 dBFS correlation burst; captured loopback PCM stays in memory and is discarded.\n"
+             << L"  Measures render-to-WASAPI-loopback timing, not physical DAC/ADC round-trip latency.\n";
 }
 
 struct StreamTestOptions {
@@ -741,6 +1135,23 @@ bool parseStreamTestOptions(int argc, wchar_t** argv, StreamTestOptions* options
                                                      : exclusiveConfirmed);
 }
 
+struct LoopbackOptions {
+  std::wstring exactName;
+  UINT32 seconds = 4;
+};
+
+bool parseLoopbackOptions(int argc, wchar_t** argv, LoopbackOptions* options) {
+  if (argc < 3 || argc > 4 || !options) return false;
+  options->exactName = argv[2];
+  if (argc == 4) {
+    wchar_t* end = nullptr;
+    const unsigned long seconds = std::wcstoul(argv[3], &end, 10);
+    if (end == argv[3] || *end != L'\0' || seconds < 2 || seconds > 10) return false;
+    options->seconds = static_cast<UINT32>(seconds);
+  }
+  return !options->exactName.empty();
+}
+
 }  // namespace
 
 int wmain(int argc, wchar_t** argv) {
@@ -750,11 +1161,19 @@ int wmain(int argc, wchar_t** argv) {
     return 0;
   }
   const bool streamMode = argc > 1 && std::wstring(argv[1]) == L"--stream-test";
+  const bool loopbackMode = argc > 1 && std::wstring(argv[1]) == L"--loopback-test";
   StreamTestOptions streamOptions;
+  LoopbackOptions loopbackOptions;
   std::wcout << L"KYX Windows audio capability probe\n";
   if (streamMode) {
     if (!parseStreamTestOptions(argc, argv, &streamOptions)) {
       std::wcerr << L"Invalid stream-test arguments\n";
+      printUsage();
+      return 2;
+    }
+  } else if (loopbackMode) {
+    if (!parseLoopbackOptions(argc, argv, &loopbackOptions)) {
+      std::wcerr << L"Invalid loopback-test arguments\n";
       printUsage();
       return 2;
     }
@@ -787,6 +1206,8 @@ int wmain(int argc, wchar_t** argv) {
                                streamOptions.seconds)
                      ? 0
                      : 1;
+    } else if (loopbackMode) {
+      exitCode = runLoopbackTest(enumerator.Get(), loopbackOptions.exactName, loopbackOptions.seconds) ? 0 : 1;
     } else {
       for (const EDataFlow flow : {eCapture, eRender}) {
         std::wstring defaultId;

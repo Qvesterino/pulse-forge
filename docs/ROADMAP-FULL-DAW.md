@@ -43,7 +43,7 @@ measurements make estimates credible.
 | Order | Milestone | Main deliverable | Exit gate |
 |---|---|---|---|
 | 0 | Lock the reference setup | Confirm the recorded Windows 11 host and UA Volt 276 remain the reference, then publish the driver, channel map, sample rate, buffer settings, and initial Web/Studio support matrix | Another developer can reproduce the setup and the baseline records what is tested versus unverified |
-| 1 | Qualify Windows audio I/O | Corrected shared-WASAPI capture diagnostics with MMCSS; measure a real duplex/loopback path; test the registered ASIO driver; use exclusive mode only if needed and explicitly acknowledged | Raw measurements separate API-reported period from measured round-trip latency; capture/playback stability, channel mapping, dropout and device-loss results support ADR 0016 |
+| 1 | Qualify Windows audio I/O | Corrected shared-WASAPI capture diagnostics with MMCSS; measure software and physical duplex/loopback paths; test the registered ASIO driver; use exclusive mode only if needed and explicitly acknowledged | Raw measurements separate API-reported period and digital loopback estimates from physical round-trip latency; capture/playback stability, channel mapping, dropout and device-loss results support ADR 0016 |
 | 2 | Implement the Studio audio backend | Device selection, explicit channel routing, format negotiation, monitoring, diagnostics, and device-loss recovery behind a typed backend contract | Reference setup passes the 30-minute stream soak; device changes never silently switch the selected input/output |
 | 3 | Certify record → edit → export | Real instrument capture through takes, loop/punch, comping, non-destructive edits, save/reopen, undo/redo, and final export | Phase 3's reference-host channel-count and duration gate passes; edits and project audio survive reload and match the offline export |
 | 4 | Complete release readiness | Explicit product/content/model licensing and privacy inventory, signed installer, update/recovery path, current release report, and published support matrix | A clean release candidate installs, updates, recovers projects, and passes the declared platform, security, licensing, and deployed-smoke gates |
@@ -58,24 +58,27 @@ the Web backend; Studio support is documented separately.
 
 ### Next implementation milestone
 
-Start by confirming the reference setup in Milestone 0. The existing probe has
-already completed metadata checks and preliminary 10-second WASAPI smokes; those
-smokes are not latency or stable-recording certification. Next, rerun shared
-capture with the MMCSS/diagnostic fixes and investigate the reported
-discontinuities, then test actual duplex loopback and the registered ASIO path.
-Use exclusive mode only if a concrete requirement remains unmet, with its
-explicit acknowledgement. Write ADR 0016 from the measured results before
-committing to the native backend. If physical testing is temporarily
-unavailable, continue the remaining software edit/recovery checks without
-claiming hardware certification.
+Start by confirming the reference setup in Milestone 0. The probe now supports
+bounded concurrent shared streams and a short software render-to-WASAPI-loopback
+estimate; those smokes do not measure physical round-trip latency or certify
+recording stability. Next, repeat the corrected capture and loopback checks on
+the reference Volt, verify physical channel routing and round-trip timing, then
+test the registered ASIO path. Use exclusive mode only if a concrete requirement
+remains unmet, with its explicit acknowledgement. Write ADR 0016 from the
+measured results before committing to the native backend. If physical testing is
+temporarily unavailable, continue the remaining software edit/recovery checks
+without claiming hardware certification.
 
-**Execution checkpoint (2026-10-12):** the probe rebuilt successfully and both
-focused CTest cases passed. Ten-second shared capture and render smokes, plus a
-concurrent capture/render smoke, ran on the current host's default endpoints.
-Concurrent stream startup/operation passed; capture QPC shows the first frame
-about 502 ms after `Start` returns on that input. The session does not enumerate
-the UA Volt 276 endpoint, so none of these results qualify the reference
-interface. A bounded rerunnable wrapper is at
+**Execution checkpoint (2026-10-12):** the probe rebuilt successfully and all
+three focused CTest cases passed. Ten-second shared capture/render smokes, a
+concurrent capture/render smoke, and short software render-loopback checks ran
+on the current host's active endpoints. Concurrent stream startup/operation
+passed. Digital render-to-loopback estimates were about 20.7 ms on the MSI
+endpoint and 126.3 ms on Realtek; one Realtek run had a later discontinuity and
+device-position gap, so it failed. Capture QPC shows the first microphone frame
+about 502 ms after `Start` returns. The session does not enumerate the UA Volt
+276 endpoint, so none of these results qualify the reference interface or
+measure physical round-trip latency. A bounded rerunnable wrapper is at
 `native/windows-audio-probe/run-shared-duplex.ps1`. See the [current audio-spike
 recheck](./WINDOWS-AUDIO-SPIKE-2026-09.md#current-execution-recheck--2026-10-12).
 
@@ -133,9 +136,16 @@ live and offline export. Publish the verified Web capability table.
       silent render concurrently on explicitly named endpoints; enforce a
       timeout and stop both probe processes on failure. This verifies concurrent
       stream operation only, not physical signal routing or round-trip latency.
+- [x] Add an explicit WASAPI software render-loopback check: emit a short,
+      low-level correlation burst, detect it from the render system mix, and
+      estimate the digital render-to-loopback timing from QPC plus render queue
+      padding. The result is endpoint-specific and never stands in for DAC/ADC
+      or physical round-trip latency. Current default endpoints yielded
+      preliminary 20.7 ms (MSI) and 126.3 ms (Realtek) estimates; one Realtek
+      smoke failed its discontinuity/position-continuity gate.
 - [ ] Rerun shared capture on the exact endpoint with MMCSS and corrected
       diagnostics; investigate later discontinuities, timestamp errors and
-      device-position gaps. Measure a real duplex/loopback path and test the
+      device-position gaps. Measure physical round-trip latency and test the
       registered ASIO driver. Use exclusive mode only for a concrete unmet
       requirement and preserve its explicit acknowledgement.
 - [ ] Write ADR 0016 after a measured technical spike compares Web Audio,

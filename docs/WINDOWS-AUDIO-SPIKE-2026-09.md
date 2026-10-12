@@ -11,24 +11,29 @@ reference Volt interface; historical Volt capture runs did not use MMCSS.
 ## Current execution recheck — 2026-10-12
 
 The probe was rebuilt from the current source on Windows 11 build 26300 with
-MSVC 19.51 and Windows SDK 10.0.26100. The shared-period and capture-start-time
-CTest cases passed (2/2). A metadata-only enumeration did not find a UA Volt 276
-capture or render endpoint in this execution session. The following short
-shared-mode smokes used the host's current default endpoints; they validate the
-probe on this host, not the Volt reference path:
+MSVC 19.51 and Windows SDK 10.0.26100. The shared-period, capture-start-time
+and loopback-correlation CTest cases passed (3/3). A metadata-only enumeration
+did not find a UA Volt 276 capture or render endpoint in this execution session.
+The following short shared-mode smokes used the current default endpoints plus
+the active Realtek render endpoint; they validate the probe on this host, not
+the Volt reference path:
 
 | Test | Result | Interpretation |
 |---|---|---|
 | Default capture, shared WASAPI, 48 kHz stereo float, 10 s | 10.01 s elapsed; 950 packets / 456,000 frames (9.50 s); first-frame QPC 503.928 ms after `Start` call / 500.568 ms after `Start` returned; one first-packet discontinuity; zero later discontinuities, timestamp errors, device-position gaps, or event timeouts; exit 0 | A 30-second repeat delivered 29.50 s PCM over 30.01 s with the same first-packet-only flag. The first packet begins about 0.5 s after `Start` on this endpoint, consistent with endpoint startup delay; this needs the Volt path to confirm. PCM was inspected only for packet metadata and discarded. This is not a Volt result or latency certification. |
 | Default render, shared WASAPI, 48 kHz stereo float, 10 s | 10.01 s elapsed; 1,002 events / 482,016 frames queued (10.04 s); zero event timeouts; exit 0 | Silence only; no audible fidelity or duplex test. |
 | Default capture + render concurrently, shared WASAPI, 10 s each | Both processes exited 0 in 10.30 s; capture: 950 packets / 456,000 frames (9.50 s), one first-packet discontinuity, zero later discontinuities/timestamp errors/device-position gaps/timeouts; render: 1,002 events / 482,016 frames queued, zero timeouts | Concurrent stream operation passed on the current default endpoints. First capture frame was 505.987 ms after `Start` call / 501.706 ms after return. Capture PCM was discarded; render queued silence. Not the Volt, signal routing, physical loopback, fidelity or round-trip latency. |
+| Default MSI render, shared render → WASAPI software loopback, 5 × 4 s | 48 kHz float32; render buffer 22 ms; loopback buffer 22 ms; correlation 1.0000; estimated delay 20.744–20.779 ms; zero later discontinuities, timestamp errors, device-position gaps or timeouts | Short digital-path smoke only. A recent run had one first-packet discontinuity. One -32 dBFS, 2.6 ms correlation burst was played per run and detected in memory. No DAC/ADC or analog cable path. |
+| Realtek render, shared render → WASAPI software loopback, 3 passing × 4 s | 48 kHz float32; render/loopback buffers 23.458 ms; correlation 0.8180; estimated delay 126.327–126.484 ms; zero later discontinuities, timestamp errors, device-position gaps or timeouts in those passing runs | One other 4 s run failed with one later discontinuity and one device-position gap; its latency was withheld. Not a stability certification or physical round-trip measurement. |
 
 The single-stream capture and render tests reported 0.000 ms WASAPI stream
 latency; that value is not a round-trip measurement. The concurrent smoke also
-reported 0.000 ms for both streams. No Volt stream test, physical channel-map
-verification, analog loopback, or 30-minute soak was run. No PCM file was
-written or transmitted. The September Volt results below remain the only Volt
-stream evidence and are still preliminary.
+reported 0.000 ms for both streams. Software loopback QPC estimates vary by
+render endpoint and include that endpoint's shared-engine/driver path; they do
+not include the DAC, analog cable or ADC. No Volt stream test, physical
+channel-map verification, physical round-trip latency measurement, or 30-minute
+soak was run. No PCM file was written or transmitted. The September Volt
+results below remain the only Volt stream evidence and are still preliminary.
 
 ## Reference endpoints detected in the original 2026-09 session
 
