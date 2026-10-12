@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useSelectionStore, useServices } from "./context";
+import { CandidateBank } from "./intent/CandidateBank";
 import {
   SongDraftPanel,
   sectionCompareSelection,
@@ -183,7 +184,6 @@ import type { Command } from "../commands/types";
 import type { GenerationResult, RankedCandidate } from "../intent/types";
 import type { ArrangementClip, DrumTrack, Pattern, ProjectDocument } from "../project-model/types";
 import { ProducerDnaCompare } from "./ProducerDnaCompare";
-import { CandidateIterationActions } from "./CandidateIterationActions";
 import { CandidateLaneReceipt } from "./CandidateLaneReceipt";
 import { runPersonalTrainingFromShipped } from "../intent/personal-melodic-flow";
 import {
@@ -5410,99 +5410,27 @@ export function IntentPanel() {
           Poradie zohľadňuje plnenie briefu aj mieru hudobnej odlišnosti; nejde o objektívnu známku.
         </div>
       )}
-      {!blindPilotCandidateBankHidden && candidates && candidates.length > 0 && (
-        <div className="intent-candidates" aria-label="Candidate bank">
-          {candidates.map((candidate) => {
-            const isWinner = candidate.candidateIndex === bankResult?.bank?.[0]?.candidateIndex;
-            const isPlaying = playingIndex === candidate.candidateIndex;
-            const isRendering = renderingIndex === candidate.candidateIndex;
-            return (
-              <div key={candidate.candidateIndex} className={`intent-candidate-row${isWinner ? " winner" : ""}`}>
-                <button
-                  type="button"
-                  className="btn btn-small intent-audition-btn"
-                  onClick={() => void toggleAudition(candidate)}
-                  title={isPlaying ? "Stop audition" : "Audition this candidate"}
-                >
-                  {isRendering ? "…" : isPlaying ? "■" : "▶"}
-                </button>
-                <span className="intent-candidate-meta">
-                  <span className="intent-candidate-index">#{candidates.indexOf(candidate) + 1}</span>
-                  <span
-                    className={`intent-candidate-source ${candidate.source}`}
-                    title={
-                      candidate.source === "symbolic-prior"
-                        ? "PRIOR — drums came from the symbolic-prior model (semantic/v2/v3 conditioning on your prompt, falling back to the genre+style one-hot). The model chose the grid."
-                        : "TPL — drums came from the groove template, not the model. Happens when the groove is outside the prior's fixed vocabulary and no semantic conditioning is available; the generator never guesses a grid, it falls back safely."
-                    }
-                  >
-                    {candidate.source === "symbolic-prior" ? "PRIOR" : "TPL"}
-                  </span>
-                  {candidate.search && (
-                    <span
-                      className={`intent-candidate-lane ${candidate.search.lane}`}
-                      title={`Search policy: ${candidate.search.mode}; family: ${candidate.search.family}${
-                        candidate.search.melodyFamily ? `; melody: ${candidate.search.melodyFamily}` : ""
-                      }${candidate.search.family === "personal-groove" ? "; selected for your learned groove preference" : ""}${
-                        candidate.search.grooveId ? ` (${candidate.search.grooveId})` : ""
-                      }${
-                        candidate.search.melodyFamily === "evolving-hook"
-                          ? "; repeating lead motif with alternating cadence space"
-                          : ""
-                      }`}
-                    >
-                      {candidate.search.lane.toUpperCase()}
-                      {candidate.search.grooveId && " · GROOVE"}
-                      {candidate.search.melodyFamily === "repeating-hook" && " · HOOK"}
-                      {candidate.search.melodyFamily === "evolving-hook" && " · HOOK VARIATION"}
-                    </span>
-                  )}
-                  {isWinner && <span className="intent-candidate-win">★ best</span>}
-                  {candidate.status === "repaired" && <span className="intent-candidate-fixed">fixed</span>}
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-small intent-use-btn"
-                  onClick={() => useCandidate(candidate)}
-                  title="Apply this candidate to the project (one undo step)"
-                >
-                  USE
-                </button>
-                <CandidateIterationActions
-                  candidatePosition={candidates.indexOf(candidate)}
-                  onIterate={(prompt) => replacePrompt(prompt, true)}
-                />
-                {!window.kyxDesktop?.isDesktop && (
-                  <button
-                    type="button"
-                    className="btn btn-small"
-                    onClick={() => {
-                      if (!previewDocRef.current || services.store.getDoc() !== previewDocRef.current) {
-                        setError("Návrh je zastaraný — projekt sa zmenil počas náhľadu. Vygeneruj znova.");
-                        return;
-                      }
-                      setAudiotoolExport({
-                        candidateIndex: candidate.candidateIndex,
-                        pattern: candidate.pattern,
-                        sourceDoc: doc,
-                      });
-                    }}
-                    title="Review and explicitly send this exact candidate to an Audiotool project"
-                  >
-                    AUDIOTOOL
-                  </button>
-                )}
-              </div>
-            );
-          })}
-          <p className="intent-candidate-legend">
-            <span className="intent-candidate-source symbolic-prior">PRIOR</span> bicie z modelu
-            {" · "}
-            <span className="intent-candidate-source template">TPL</span> bicie zo šablóny — groove je mimo slovníka
-            prioru a bez sémantického podmienenia. Generátor nikdy nedohaduje mriežku, bezpečne padá späť.
-          </p>
-        </div>
-      )}
+      <CandidateBank
+        hidden={blindPilotCandidateBankHidden}
+        candidates={candidates}
+        bankResult={bankResult}
+        playingIndex={playingIndex}
+        renderingIndex={renderingIndex}
+        onToggleAudition={(candidate) => void toggleAudition(candidate)}
+        onUseCandidate={(candidate) => useCandidate(candidate)}
+        onIterate={(prompt) => replacePrompt(prompt, true)}
+        onSendToAudiotool={(candidate) => {
+          if (!previewDocRef.current || services.store.getDoc() !== previewDocRef.current) {
+            setError("Návrh je zastaraný — projekt sa zmenil počas náhľadu. Vygeneruj znova.");
+            return;
+          }
+          setAudiotoolExport({
+            candidateIndex: candidate.candidateIndex,
+            pattern: candidate.pattern,
+            sourceDoc: doc,
+          });
+        }}
+      />
       {audiotoolExport && (
         <Suspense
           fallback={
