@@ -694,6 +694,13 @@ const MOOD_PHRASES: ReadonlyArray<readonly [RegExp, string]> = [
     /\benergetic\b|\bbright\b|\buplifting\b|\beuphoric\b|\bhappy\b|\bjoyful\b|\bvibrant\b|\bfestive\b|\bcelebrator|\belated\b|\bsvetl|\bvesel|\bradostn|\boslavn|\bsviatocn|\bstastn/,
     "energetic",
   ],
+  // Mood palette wave (2026-10-12): 4 new canonical moods. Deliberately NOT
+  // "minimal" (already a character trait) and NOT "nostalgic" (already the
+  // "classic" trait) — a double-fire would change pinned prompts.
+  [/\bmelancholic\b|\bmelanchol|\bsad\b|\bsorrowful\b|\bwistful\b|\bsmutn|\bzalostn|\blutostn/, "melancholic"],
+  [/\bepic\b|\bepick|\bmonumental\b|\bmonument|\bhymnick|\bvelkolep|\bgrandioz/, "epic"],
+  [/\blush\b|\bluxurious\b|\brich\b|\bbohat|\boplyv|\bplynul/, "lush"],
+  [/\bhypnotic\b|\bhypnotick|\bmesmeriz/, "hypnotic"],
 ];
 
 /** Additional character phrases that only shape sliders (no mood tweaks). */

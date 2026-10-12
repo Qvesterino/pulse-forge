@@ -231,3 +231,26 @@ example), fix the groove AND note the correction here.
    worth more than an ✅ implied.
 4. When two sources disagree, record the disagreement and pick the value the
    stronger source supports (Wikipedia/academic > genre blogs > forums).
+
+## Wave 8 — missing majors + mood palette (2026-10-12)
+
+Artist lanes added with researched tempo pockets (L1: Wikipedia/Beatport/
+SongBPM anchors), mapped onto EXISTING groove styles (L2), sliders as
+estimates (L3 — explicit user words always win):
+
+| Preset       | Genre.style       | BPM pocket | Anchors                                                |
+| ------------ | ----------------- | ---------- | ------------------------------------------------------ |
+| avicii       | house.progressive | 126–128    | "Levels" 126, "Wake Me Up" 126                         |
+| david guetta | house.dancefloor  | 124–128    | "Titanium" 126, club sets 124–128                      |
+| alan walker  | house.progressive | 126–128    | "Faded" 126, "Alone" 126                               |
+| carl cox     | techno.driving    | 128–138    | peak/tech-house sets 128–138                           |
+| kraftwerk    | techno.electro    | 118–132    | "The Robots" 119, "Tour de France" ~131                |
+| boys noize   | techno.electro    | 125–132    | electro/t DJs 125–132                                  |
+| modeselektor | techno.electro    | 130–140    | live sets 130–140                                      |
+| frank ocean  | trap.trapsoul     | 75–95      | "Nights" 70/140 (double-time feel), "Pink + White" ~90 |
+| steve lacy   | house.pop         | 95–110     | "Bad Habit" ~105, lo-fi funk pocket                    |
+
+Mood palette: melancholic / epic / lush / hypnotic joined the canonical
+moods (parser stems EN+SK, mapping deltas, mix tone via moodTone).
+Deliberately NOT added: "minimal" (existing trait) and "nostalgic"
+(existing "classic" trait) — a double-fire would change pinned prompts.

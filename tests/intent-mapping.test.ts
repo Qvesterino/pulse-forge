@@ -62,3 +62,42 @@ describe("intent→engine mapping", () => {
     expect(d.ghostWeight).toBeGreaterThan(c.ghostWeight);
   });
 });
+
+describe("mood palette wave (2026-10-12)", () => {
+  const base = (): typeof DEFAULT_GENERATE_OPTIONS => ({ ...DEFAULT_GENERATE_OPTIONS, seed: "palette", stepCount: 16 });
+  // The reference point must ride the FULL mapping path: with any non-null
+  // mood the energy multiplier applies after the mood tweaks, so the honest
+  // baseline is a mood that matches no branch ("neutral"), not the fast path.
+  const reference = () => mapIntentToOptions(normalizeIntent({ mood: "neutral" }), base());
+  const mappedFor = (mood: string) => mapIntentToOptions(normalizeIntent({ mood }), base());
+
+  it("melancholic: softer velocity, cooler temperature", () => {
+    const m = mappedFor("melancholic");
+    const r = reference();
+    expect(m.velocityVariation).toBeLessThan(r.velocityVariation);
+    expect(m.temperature).toBeLessThan(r.temperature);
+  });
+
+  it("epic: bigger ghosts and velocity, hotter temperature", () => {
+    const m = mappedFor("epic");
+    const r = reference();
+    expect(m.ghostWeight).toBeGreaterThan(r.ghostWeight);
+    expect(m.velocityVariation).toBeGreaterThan(r.velocityVariation);
+    expect(m.temperature).toBeGreaterThan(r.temperature);
+  });
+
+  it("lush: richer micro-texture, slightly cooler temperature", () => {
+    const m = mappedFor("lush");
+    const r = reference();
+    expect(m.microWeight).toBeGreaterThan(r.microWeight);
+    expect(m.temperature).toBeLessThan(r.temperature);
+  });
+
+  it("hypnotic: fewer ghosts, denser micro-grid, steadier velocity", () => {
+    const m = mappedFor("hypnotic");
+    const r = reference();
+    expect(m.ghostWeight).toBeLessThan(r.ghostWeight);
+    expect(m.microWeight).toBeGreaterThan(r.microWeight);
+    expect(m.velocityVariation).toBeLessThan(r.velocityVariation);
+  });
+});

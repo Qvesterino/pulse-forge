@@ -237,3 +237,20 @@ describe("unified router (D3)", () => {
     expect(routeIntentText("remove reverb from the bass", docWithScenes()).kind).toBe("effectIntent");
   });
 });
+
+describe("mood palette tone mapping (2026-10-12)", () => {
+  // Tone surfaces as the MASTER TILT: a new mood must tilt exactly like its
+  // canonical mood sibling (melancholic == dark, epic == bright, lush == warm,
+  // hypnotic == dark) and away from the tone-less baseline.
+  it("new moods carry a mix tone through the master tilt", () => {
+    // detroit is a CHARACTER genre — its masterTiltDb always resolves, so a
+    // mood-driven tone change is visible in the tilt. The canonical siblings
+    // are MOODS, not tone words: energetic carries bright, chill carries warm.
+    const tiltFor = (mood: string) => planMixProfile(normalizeIntent({ genre: "detroit", mood })).masterTiltDb;
+    expect(tiltFor("melancholic")).toBe(tiltFor("dark"));
+    expect(tiltFor("epic")).toBe(tiltFor("energetic"));
+    expect(tiltFor("lush")).toBe(tiltFor("chill"));
+    expect(tiltFor("hypnotic")).toBe(tiltFor("dark"));
+    expect(tiltFor("melancholic")).not.toBe(tiltFor("energetic"));
+  });
+});

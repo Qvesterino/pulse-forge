@@ -116,6 +116,23 @@ export function mapIntentToOptions(intent: IntentSpec, base: GenerateOptions): G
     ghostWeight = clamp01(ghostWeight * 1.1);
     temperature = clamp(0.2, 2, temperature * 1.05);
   }
+  // Mood palette wave: 4 new canonical moods (text-parser MOOD_PHRASES).
+  else if (mood === "melancholic") {
+    ghostWeight = clamp01(ghostWeight * 1.05);
+    velocityVariation = clamp01(velocityVariation * 0.85);
+    temperature = clamp(0.2, 2, temperature * 0.9);
+  } else if (mood === "epic") {
+    ghostWeight = clamp01(ghostWeight * 1.1);
+    velocityVariation = clamp01(velocityVariation * 1.15);
+    temperature = clamp(0.2, 2, temperature * 1.1);
+  } else if (mood === "lush") {
+    microWeight = clamp01(microWeight * 1.15);
+    temperature = clamp(0.2, 2, temperature * 0.95);
+  } else if (mood === "hypnotic") {
+    ghostWeight = clamp01(ghostWeight * 0.9);
+    microWeight = clamp01(microWeight * 1.1);
+    velocityVariation = clamp01(velocityVariation * 0.8);
+  }
 
   return {
     ...baseWithWindow,

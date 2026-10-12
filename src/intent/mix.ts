@@ -85,6 +85,14 @@ const moodTone = (intent: IntentSpec): MixOverrides["tone"] | null => {
       return "bright";
     case "chill":
       return "warm";
+    case "melancholic":
+      return "dark";
+    case "epic":
+      return "bright";
+    case "lush":
+      return "warm";
+    case "hypnotic":
+      return "dark";
     default:
       return null;
   }

@@ -26,7 +26,7 @@ export interface ArtistPreset {
   genre: IntentGenre;
   style?: string;
   productionProfile?: ProductionProfile;
-  mood?: "dark" | "aggressive" | "chill" | "energetic";
+  mood?: "dark" | "aggressive" | "chill" | "energetic" | "melancholic" | "epic" | "lush" | "hypnotic";
   energy?: number;
   density?: number;
   bpmRange?: [number, number];
@@ -825,6 +825,98 @@ export const ARTIST_PRESETS: readonly ArtistPreset[] = decodeArtistPresets([
     d: 0.8,
     b: [126, 130],
     l: "big room",
+  },
+  // ── vocabulary wave 8 (F campaign): missing majors + the new mood palette.
+  // Tempo anchors in docs/GENRE-RESEARCH.md (L1 researched, L2 mapping, L3 sliders).
+  {
+    n: "avicii|tim berg|tim bergling",
+    g: "house",
+    s: "progressive",
+    m: "energetic",
+    e: 0.85,
+    d: 0.65,
+    b: [126, 128],
+    l: "avicii",
+  },
+  {
+    n: "david guetta|guetta",
+    g: "house",
+    s: "dancefloor",
+    m: "energetic",
+    e: 0.85,
+    d: 0.7,
+    b: [124, 128],
+    l: "david guetta",
+  },
+  {
+    n: "alan walker",
+    g: "house",
+    s: "progressive",
+    m: "epic",
+    e: 0.8,
+    d: 0.6,
+    b: [126, 128],
+    l: "alan walker",
+  },
+  {
+    n: "carl cox",
+    g: "techno",
+    s: "driving",
+    m: "energetic",
+    e: 0.9,
+    d: 0.75,
+    b: [128, 138],
+    l: "carl cox",
+  },
+  {
+    n: "kraftwerk",
+    g: "techno",
+    s: "electro",
+    m: "hypnotic",
+    e: 0.6,
+    d: 0.5,
+    b: [118, 132],
+    l: "kraftwerk",
+  },
+  {
+    n: "boys noize",
+    g: "techno",
+    s: "electro",
+    m: "aggressive",
+    e: 0.85,
+    d: 0.7,
+    b: [125, 132],
+    l: "boys noize",
+  },
+  {
+    n: "modeselektor",
+    g: "techno",
+    s: "electro",
+    m: "energetic",
+    e: 0.75,
+    d: 0.55,
+    b: [130, 140],
+    l: "modeselektor",
+  },
+  {
+    n: "frank ocean",
+    g: "trap",
+    s: "trapsoul",
+    m: "melancholic",
+    e: 0.45,
+    d: 0.45,
+    b: [75, 95],
+    l: "frank ocean",
+  },
+  {
+    n: "steve lacy",
+    g: "house",
+    s: "pop",
+    m: "lush",
+    e: 0.55,
+    d: 0.5,
+    b: [95, 110],
+    l: "steve lacy",
   },
   // ── expanded roster (vocabulary wave) ────────────────────────────────────
   // trap / hip-hop

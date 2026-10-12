@@ -756,3 +756,44 @@ describe("vocabulary-gap depth lanes — every phrase resolves to a real groove"
     expect(getGrooveById(`boombap.${boombapLofi.input.style}`)).toBeDefined();
   });
 });
+
+describe("mood palette wave (2026-10-12)", () => {
+  it("parses the 4 new canonical moods in EN", () => {
+    for (const [text, mood] of [
+      ["melancholic deep house", "melancholic"],
+      ["an epic trance", "epic"],
+      ["lush rnb", "lush"],
+      ["hypnotic groove", "hypnotic"],
+    ] as const) {
+      const parsed = parseIntentText(text);
+      expect(parsed.input.mood, text).toBe(mood);
+      expect(parsed.detected).toContain(mood);
+    }
+  });
+
+  it("parses the SK stems", () => {
+    for (const [text, mood] of [
+      ["smutny beat", "melancholic"],
+      ["epicky drop", "epic"],
+      ["bohata skladba", "lush"],
+      ["hypnoticky techno", "hypnotic"],
+    ] as const) {
+      expect(parseIntentText(text).input.mood, text).toBe(mood);
+    }
+  });
+
+  it("minimal stays a TRAIT, never a mood (double-fire regression pin)", () => {
+    const parsed = parseIntentText("minimal techno");
+    expect(parsed.input.mood).toBeUndefined();
+  });
+
+  it("nostalgic stays the classic trait, never a mood", () => {
+    const parsed = parseIntentText("nostalgicky beat");
+    expect(parsed.input.mood).toBeUndefined();
+  });
+
+  it("hypnotic techno keeps its genre routing", () => {
+    const parsed = parseIntentText("hypnotic techno");
+    expect(parsed.input.genre).toBe("techno");
+  });
+});

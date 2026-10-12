@@ -1952,3 +1952,29 @@ describe("vocabulary-gap regression — no artist preset may dangle", () => {
     }
   });
 });
+
+describe("vocabulary wave 8 — missing majors + mood palette (2026-10-12)", () => {
+  it("avicii routes progressive house at his researched pocket", () => {
+    const parsed = parseIntentText("avicii type beat");
+    expect(parsed.input.genre).toBe("house");
+    expect(parsed.input.style).toBe("progressive");
+    expect(parsed.input.mood).toBe("energetic");
+    expect(parsed.input.bpmRange).toEqual([126, 128]);
+  });
+
+  it("kraftwerk is hypnotic electro; frank ocean is melancholic trapsoul", () => {
+    const kraftwerk = matchArtistPreset("kraftwerk beat");
+    expect(kraftwerk?.preset.style).toBe("electro");
+    expect(kraftwerk?.preset.mood).toBe("hypnotic");
+    const frank = matchArtistPreset("frank ocean type beat");
+    expect(frank?.preset.style).toBe("trapsoul");
+    expect(frank?.preset.mood).toBe("melancholic");
+    expect(frank?.preset.energy).toBe(0.45);
+  });
+
+  it("the legacy prodigy mapping survives the wave; new moods survive normalize", () => {
+    expect(parseIntentText("prodigy type beat").input.genre).toBe("techno");
+    expect(normalizeIntent({ mood: "lush" }).mood).toBe("lush");
+    expect(normalizeIntent({ mood: "hypnotic" }).mood).toBe("hypnotic");
+  });
+});
