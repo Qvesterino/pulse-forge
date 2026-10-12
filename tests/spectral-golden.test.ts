@@ -22,6 +22,10 @@ import { SpectralDelayBank } from "../src/effects/spectral-core/dsp/spectralDela
 
 const SR = 48000;
 const BLOCK = 128;
+/** Synthesis hop. A delay can only be resolved to a fraction of this. */
+const HOP_SIZE = 256;
+/** Every DELAY control at zero except TIME, which each case sets explicitly. */
+const NEUTRAL = { feedback: 0, decay: 0, shiftSemitones: 0, diffuse: 0, freeze: 0 };
 
 interface RenderOpts {
   params?: Partial<typeof DEFAULT_SPECTRAL_PARAMS>;
@@ -151,6 +155,111 @@ describe("PORTAL — deterministic golden vectors", () => {
     }
   });
 
+  it("closes the live MIX path without a discontinuity, then reaches exact dry", () => {
+    const params = {
+      ...DEFAULT_SPECTRAL_PARAMS,
+      mode: 1,
+      resonance: 0.9,
+      focus: 660,
+      focusWidth: 0.25,
+      mix: 1,
+    };
+    const proc = new SpectralProcessor();
+    proc.setParams(params);
+    proc.prepare(SR);
+    const expectedDry = render({ seconds: 0.5, input: twoTone, params: { ...params, mix: 0 } });
+    const inL = new Float32Array(BLOCK);
+    const inR = new Float32Array(BLOCK);
+    const outL = new Float32Array(BLOCK);
+    const outR = new Float32Array(BLOCK);
+    const switchBlock = 100;
+    const switchAt = switchBlock * BLOCK;
+    const closeWindow = Math.ceil(0.01 * SR);
+    let previous = 0;
+    let baselineStep = 0;
+    let closeStep = 0;
+    const totalBlocks = 150;
+
+    for (let block = 0; block < totalBlocks; block++) {
+      if (block === switchBlock) proc.setParams({ mix: 0 });
+      const offset = block * BLOCK;
+      for (let i = 0; i < BLOCK; i++) inL[i] = inR[i] = twoTone(offset + i);
+      proc.process(inL, inR, outL, outR, BLOCK);
+      for (let i = 0; i < BLOCK; i++) {
+        const sampleIndex = offset + i;
+        const step = Math.abs(outL[i]! - previous);
+        if (sampleIndex >= switchAt - 10 * BLOCK && sampleIndex < switchAt) baselineStep = Math.max(baselineStep, step);
+        if (sampleIndex >= switchAt && sampleIndex < switchAt + closeWindow) closeStep = Math.max(closeStep, step);
+        if (sampleIndex >= switchAt + closeWindow) expect(outL[i]).toBe(expectedDry.outL[sampleIndex]);
+        previous = outL[i]!;
+      }
+    }
+
+    console.log(`[portal-mix-close] baselineStep=${baselineStep.toFixed(5)} closeStep=${closeStep.toFixed(5)}`);
+    expect(closeStep).toBeLessThanOrEqual(baselineStep * 1.5 + 0.01);
+  });
+
+  it("does not resurrect a frozen DELAY tail after MIX has been fully bypassed", () => {
+    const params = {
+      ...DEFAULT_SPECTRAL_PARAMS,
+      mode: 0,
+      time: 80,
+      feedback: 0.9,
+      decay: 0,
+      diffuse: 0,
+      shift: 0,
+      mix: 1,
+    };
+    const proc = new SpectralProcessor();
+    proc.setParams(params);
+    proc.prepare(SR);
+    const total = Math.floor(1.2 * SR);
+    const output = new Float32Array(total);
+    const inL = new Float32Array(BLOCK);
+    const inR = new Float32Array(BLOCK);
+    const outL = new Float32Array(BLOCK);
+    const outR = new Float32Array(BLOCK);
+    const closeAt = Math.floor((0.4 * SR) / BLOCK) * BLOCK;
+    const reopenAt = Math.floor((0.7 * SR) / BLOCK) * BLOCK;
+
+    for (let offset = 0; offset < total; offset += BLOCK) {
+      if (offset === closeAt) proc.setParams({ mix: 0 });
+      if (offset === reopenAt) proc.setParams({ mix: 1 });
+      for (let i = 0; i < BLOCK; i++) {
+        const sampleIndex = offset + i;
+        const sample = sampleIndex < Math.floor(0.22 * SR) ? twoTone(sampleIndex) : 0;
+        inL[i] = inR[i] = sample;
+      }
+      proc.process(inL, inR, outL, outR, BLOCK);
+      output.set(outL.subarray(0, Math.min(BLOCK, total - offset)), offset);
+    }
+
+    const preCloseTail = rms(output, Math.floor(0.3 * SR), closeAt);
+    const reopenedTail = rms(output, reopenAt + Math.floor(0.1 * SR), Math.floor(1.1 * SR));
+    console.log(`[portal-mix-reopen] preCloseTail=${preCloseTail.toFixed(5)} reopenedTail=${reopenedTail.toFixed(5)}`);
+    expect(preCloseTail).toBeGreaterThan(1e-4);
+    expect(reopenedTail).toBeLessThan(1e-4);
+  });
+
+  it("sanitizes invalid and extreme finite input before the dry and wet paths", () => {
+    const tone = (i: number) => 0.4 * Math.sin((2 * Math.PI * 220 * i) / SR);
+    const left = (i: number) =>
+      i === 1000 ? Number.NaN : i === 1001 ? Number.POSITIVE_INFINITY : i === 1002 ? 1e20 : tone(i);
+    const right = (i: number) =>
+      i === 2000 ? Number.NEGATIVE_INFINITY : i === 2001 ? -1e20 : i === 2002 ? -1e20 : tone(i) * 0.7;
+    const safeLeft = (i: number) => (i === 1000 || i === 1001 ? 0 : i === 1002 ? 1e6 : tone(i));
+    const safeRight = (i: number) => (i === 2000 ? 0 : i === 2001 || i === 2002 ? -1e6 : tone(i) * 0.7);
+
+    for (const mix of [0, 1]) {
+      const actual = render({ seconds: 0.1, input: left, right, params: { mix } });
+      const expected = render({ seconds: 0.1, input: safeLeft, right: safeRight, params: { mix } });
+      expect(actual.outL).toEqual(expected.outL);
+      expect(actual.outR).toEqual(expected.outR);
+      expect(Array.from(actual.outL).every(Number.isFinite)).toBe(true);
+      expect(Array.from(actual.outR).every(Number.isFinite)).toBe(true);
+    }
+  });
+
   it("stays finite across the whole parameter space", () => {
     const extremes: Partial<typeof DEFAULT_SPECTRAL_PARAMS>[] = [
       { feedback: 1, mix: 1, time: 2000, decay: 0, diffuse: 1 },
@@ -188,20 +297,98 @@ describe("PORTAL — deterministic golden vectors", () => {
     expect(proc.getMeters().delaySec).toBeCloseTo(delaySec, 3);
   });
 
+  it("DELAY resolves its time to sub-frame precision", () => {
+    // Why this exists separately from the bit-exact golden above: a golden can
+    // only say "something changed". This says WHICH thing, so rounding the read
+    // back to whole frames cannot be absorbed by re-pinning a number again.
+    //
+    // Method — write one marked frame into the ring, then read it back at a
+    // requested TIME and take the ENERGY-WEIGHTED CENTROID of the impulse
+    // response. The centroid is used rather than a threshold crossing because a
+    // threshold returns an integer position for any response shape, and its
+    // linear 0.5-crossing estimate is biased by a fixed half frame — it cannot
+    // see a sub-frame offset at all. For a linear-interpolation kernel with
+    // weights (1−t, t) the centroid is exactly `whole + t`.
+    const centroidDelayFrames = (timeSec: number): number => {
+      const bank = new SpectralDelayBank(513, SR, 256);
+      const maxFrames = (bank as unknown as { maxFrames: number }).maxFrames;
+      const mark = new Float64Array(513);
+      const markIm = new Float64Array(513);
+      for (let k = 0; k < 513; k++) mark[k] = 1;
+      // passInputThrough keeps `mark` whole in the buffer while the ring still
+      // receives it — with it off the mark would be overwritten by the wet read.
+      bank.process(mark, markIm, 513, { ...NEUTRAL, timeSec: 0 }, SR, 256, true);
+
+      const params = { ...NEUTRAL, timeSec };
+      const buf = new Float64Array(513);
+      const bufIm = new Float64Array(513);
+      // Stop inside the ring: `maxFrames - 1` is the last slot the write head can
+      // reach without wrapping onto the marked slot.
+      const stop = Math.min(maxFrames - 1, Math.ceil((timeSec * SR) / HOP_SIZE + 8));
+      let sum = 0;
+      let moment = 0;
+      for (let i = 1; i <= stop; i++) {
+        buf.fill(0);
+        bufIm.fill(0);
+        bank.process(buf, bufIm, 513, params, SR, 256, false);
+        const v = buf[10]!;
+        sum += v;
+        moment += i * v;
+      }
+      return moment / sum;
+    };
+
+    // Times that land exactly on a whole frame count, and ones that do not —
+    // the whole-frame rows are the instrument's own calibration, so a probe
+    // sitting off by a constant offset in its index convention cannot pass.
+    const points = [{ frames: 3 }, { frames: 37.5 }, { frames: 22.5 }, { frames: 90.13125 }, { frames: 187.33125 }];
+    for (const p of points) {
+      const want = p.frames;
+      const got = centroidDelayFrames((want * HOP_SIZE) / SR);
+      // Quarter-frame: half a hop is 2.67 ms, and the old rounding reached
+      // exactly that. Anything tighter would not survive Float32 ring storage.
+      expect(Math.abs(got - want), `delay at ${want} frames`).toBeLessThan(0.25);
+    }
+
+    // The read must not add or lose energy on the way. Without this, a future
+    // "fix" could hit the right centroid by scaling the output.
+    const bank = new SpectralDelayBank(513, SR, 256);
+    const mark = new Float64Array(513);
+    const markIm = new Float64Array(513);
+    for (let k = 0; k < 513; k++) mark[k] = 1;
+    bank.process(mark, markIm, 513, { ...NEUTRAL, timeSec: 0 }, SR, 256, true);
+    const buf = new Float64Array(513);
+    const bufIm = new Float64Array(513);
+    let energy = 0;
+    for (let i = 1; i <= 60; i++) {
+      buf.fill(0);
+      bufIm.fill(0);
+      bank.process(buf, bufIm, 513, { ...NEUTRAL, timeSec: 0.1373 }, SR, 256, false);
+      energy += buf[10]!;
+    }
+    expect(Math.abs(energy - 1)).toBeLessThan(1e-6);
+  });
+
   it("positive SHIFT maps a delayed partial up by one octave", () => {
     const params = { timeSec: 0.02, feedback: 0, decay: 0, shiftSemitones: 0, diffuse: 0, freeze: 0 };
+    // TIME = 20 ms = 3.75 frames. The read interpolates between the 3rd and 4th
+    // frame back, so the echo comes back spread over TWO frames and never
+    // reaches full amplitude in either one. Sampling a single frame would
+    // therefore assert a property of the delay's fractional part, not of SHIFT.
+    // Summing the whole response is independent of it — and it leaves every
+    // expectation below exactly the number the old one-frame sampling produced.
     const renderOneDelayFrame = (shiftSemitones: number) => {
       const bank = new SpectralDelayBank(513, SR, 256);
       const frameParams = { ...params, shiftSemitones };
-      let output = new Float64Array(513);
-      for (let frame = 0; frame < 5; frame++) {
+      const acc = new Float64Array(513);
+      for (let frame = 0; frame < 8; frame++) {
         const re = new Float64Array(513);
         const im = new Float64Array(513);
         if (frame === 0) re[5] = 1;
         bank.process(re, im, 513, frameParams, SR, 256);
-        if (frame === 4) output = re;
+        for (let k = 0; k < 513; k++) acc[k]! += re[k]!;
       }
-      return output;
+      return acc;
     };
     const flat = renderOneDelayFrame(0);
     const up = renderOneDelayFrame(12);
@@ -212,14 +399,17 @@ describe("PORTAL — deterministic golden vectors", () => {
 
   it("fractional SHIFT interpolates a delayed partial between neighboring bins", () => {
     const params = { timeSec: 0.02, feedback: 0, decay: 0, shiftSemitones: 7, diffuse: 0, freeze: 0 };
+    // Same whole-response sum as above — the 3.75-frame delay returns the
+    // partial as a two-frame triangle, so any single-frame sample would be
+    // measuring the fractional part of the delay rather than the SHIFT.
     const bank = new SpectralDelayBank(513, SR, 256);
-    let output = new Float64Array(513);
-    for (let frame = 0; frame < 5; frame++) {
+    const output = new Float64Array(513);
+    for (let frame = 0; frame < 8; frame++) {
       const re = new Float64Array(513);
       const im = new Float64Array(513);
       if (frame === 0) re[5] = 1;
       bank.process(re, im, 513, params, SR, 256);
-      if (frame === 4) output = re;
+      for (let k = 0; k < 513; k++) output[k]! += re[k]!;
     }
 
     // +7 st maps source bin 5 to 7.4915. Linear complex interpolation splits
@@ -229,6 +419,74 @@ describe("PORTAL — deterministic golden vectors", () => {
     expect(output[7]).toBeGreaterThan(output[8]);
     expect(output[6]).toBeCloseTo(0.003016, 5);
     expect(output[9]).toBe(0);
+  });
+
+  it("glides continuous spectral controls and seeds static presets at their saved values", () => {
+    const initial = {
+      ...DEFAULT_SPECTRAL_PARAMS,
+      mode: 0,
+      time: 200,
+      feedback: 0.1,
+      decay: 0.2,
+      resonance: 0.3,
+      focus: 200,
+      focusWidth: 0.3,
+      diffuse: 0.1,
+      mix: 1,
+    };
+    const proc = new SpectralProcessor();
+    proc.setParams(initial);
+    proc.prepare(SR);
+
+    const input = Float32Array.from({ length: BLOCK }, (_, i) => twoTone(i));
+    const outL = new Float32Array(BLOCK);
+    const outR = new Float32Array(BLOCK);
+    proc.process(input, input, outL, outR, BLOCK);
+    expect(proc.getMeters().delaySec).toBeCloseTo(0.2, 3);
+
+    proc.setParams({
+      time: 1600,
+      feedback: 0.9,
+      decay: 0.8,
+      resonance: 0.9,
+      focus: 8000,
+      focusWidth: 3,
+      diffuse: 0.9,
+    });
+    proc.process(input, input, outL, outR, BLOCK);
+
+    const smooth = proc as unknown as {
+      timeSmooth: number;
+      feedbackSmooth: number;
+      decaySmooth: number;
+      resonanceSmooth: number;
+      focusSmooth: number;
+      focusWidthSmooth: number;
+      diffuseSmooth: number;
+    };
+    expect(smooth.timeSmooth).toBeGreaterThan(200);
+    expect(smooth.timeSmooth).toBeLessThan(1600);
+    expect(smooth.feedbackSmooth).toBeGreaterThan(0.1);
+    expect(smooth.feedbackSmooth).toBeLessThan(0.9);
+    expect(smooth.decaySmooth).toBeGreaterThan(0.2);
+    expect(smooth.decaySmooth).toBeLessThan(0.8);
+    expect(smooth.resonanceSmooth).toBeGreaterThan(0.3);
+    expect(smooth.resonanceSmooth).toBeLessThan(0.9);
+    expect(smooth.focusSmooth).toBeGreaterThan(200);
+    expect(smooth.focusSmooth).toBeLessThan(8000);
+    expect(smooth.focusWidthSmooth).toBeGreaterThan(0.3);
+    expect(smooth.focusWidthSmooth).toBeLessThan(3);
+    expect(smooth.diffuseSmooth).toBeGreaterThan(0.1);
+    expect(smooth.diffuseSmooth).toBeLessThan(0.9);
+    expect(proc.getMeters().delaySec).toBeCloseTo(smooth.timeSmooth / 1000, 5);
+
+    const preset = new SpectralProcessor();
+    preset.setParams(initial);
+    preset.prepare(SR);
+    const seeded = preset as unknown as { timeSmooth: number; feedbackSmooth: number; focusSmooth: number };
+    expect(seeded.timeSmooth).toBe(200);
+    expect(seeded.feedbackSmooth).toBe(0.1);
+    expect(seeded.focusSmooth).toBe(200);
   });
 
   it("smooths automated SHIFT in audio time but starts static presets at their saved value", () => {
@@ -272,14 +530,22 @@ describe("PORTAL — deterministic golden vectors", () => {
       params: { mode: 0, time: 200, feedback: 0.6, decay: 0.5, diffuse: 0, mix: 1 },
     });
     const samples = [0, 1, 2, 10, 100, 1000, 5000, 9000, 11000].map((i) => q(outL[i]));
+    // RE-PINNED, not relaxed. TIME = 200 ms = exactly 37.5 frames. The read used
+    // to round that tie to 38 frames, so this vector encoded a half-frame
+    // (2.67 ms) error that grew with delay length; it now resolves 37.5 exactly.
+    // Only the wet samples move — `frames` and `latency` are unchanged, which is
+    // the check that this is a delay-length change and not a structural one.
+    // See "DELAY resolves its time to sub-frame precision" below for the
+    // measurement that justifies it; this vector exists to catch the NEXT
+    // unintended change, not to certify the current one.
     expect({
       samples,
       peak: q(peakOf(outL)),
       frames: proc.getMeters().frames,
       latency: proc.latencySamples(),
     }).toEqual({
-      samples: [0, 0, 0, 0, 0, 0, 0, 0, 0.120026],
-      peak: 0.494242,
+      samples: [0, 0, 0, 0, 0, 0, 0, 0, 0.127054],
+      peak: 0.372914,
       frames: 46,
       latency: 768,
     });
@@ -335,6 +601,8 @@ describe("PORTAL — deterministic golden vectors", () => {
       input: twoTone,
       params: { mode: 2, feedback: 0.5, time: 120, mix: 1 },
     });
-    expect({ peak: q(peakOf(outL)) }).toEqual({ peak: 0.090957 });
+    // RE-PINNED, not relaxed. TIME = 120 ms = 22.5 frames, so this vector
+    // encoded the same half-frame rounding error as the DELAY vector above.
+    expect({ peak: q(peakOf(outL)) }).toEqual({ peak: 0.09056 });
   });
 });

@@ -67,6 +67,21 @@ export class SpectralDelayBank {
   private writeFrame = 0;
   private readFrame = 0;
   private delayFrames = 1;
+  /**
+   * Fractional part of the delay, and the frame one step further back.
+   *
+   * A spectral frame is `hop` samples long, so rounding the delay to whole
+   * frames quantises TIME — measured at up to half a hop of error (2.67 ms at
+   * 48 kHz / 256), worst exactly where the frame count lands on a .5 tie. It is
+   * also what turns any smooth modulation of TIME into a staircase.
+   *
+   * `readFrame` is the NEARER of the two frames; `readFrameBack` is one frame
+   * older, and `readFrac` is how far between them the true position sits. Both
+   * cursors advance one frame per frame, so a fixed fraction stays a fixed
+   * offset — the tail warps instead of restarting, exactly as before.
+   */
+  private readFrameBack = 0;
+  private readFrac = 0;
 
   /** Frozen spectrum for FREEZE mode — magnitudes and phases held across frames. */
   private readonly frozenRe: Float64Array;
@@ -159,6 +174,11 @@ export class SpectralDelayBank {
 
     const writeBase = this.writeFrame * this.binCount;
     const readBase = this.readFrame * this.binCount;
+    const readBackBase = this.readFrameBack * this.binCount;
+    // Time offset between the two frames being interpolated. 0 means the read
+    // lands exactly on `readFrame` and the second frame is never touched, which
+    // keeps the whole-frame case bit-identical to no interpolation at all.
+    const tFrac = this.readFrac;
     const shiftRatio = Math.pow(2, clampSemitones(params.shiftSemitones) / 12);
     // Upward shifts spread each source bin across more output bins. Reduce both
     // feedback and output by that expansion factor so a high SHIFT cannot build
@@ -193,16 +213,31 @@ export class SpectralDelayBank {
       // move energy smoothly across the spectrum instead of rounding every
       // output bin to the same staircase contour. Exact integer mappings keep
       // frac = 0 and preserve the original value bit-for-bit.
-      const dRe = inRange
+      const dRe0 = inRange
         ? frac === 0
           ? this.re[loIdx]!
           : this.re[loIdx]! + (this.re[hiIdx]! - this.re[loIdx]!) * frac
         : 0;
-      const dIm = inRange
+      const dIm0 = inRange
         ? frac === 0
           ? this.im[loIdx]!
           : this.im[loIdx]! + (this.im[hiIdx]! - this.im[loIdx]!) * frac
         : 0;
+
+      // Second axis: the same shifted bin one frame further back, so the read
+      // can sit BETWEEN two frames. Without this the delay length is quantised
+      // to whole frames — measured at up to half a hop of error — and any smooth
+      // modulation of it becomes a staircase.
+      let dRe = dRe0;
+      let dIm = dIm0;
+      if (tFrac > 0 && inRange) {
+        const backLo = readBackBase + lo;
+        const backHi = readBackBase + hi;
+        const bRe0 = frac === 0 ? this.re[backLo]! : this.re[backLo]! + (this.re[backHi]! - this.re[backLo]!) * frac;
+        const bIm0 = frac === 0 ? this.im[backLo]! : this.im[backLo]! + (this.im[backHi]! - this.im[backLo]!) * frac;
+        dRe = dRe0 + (bRe0 - dRe0) * tFrac;
+        dIm = dIm0 + (bIm0 - dIm0) * tFrac;
+      }
 
       // DECAY shapes the feedback per bin: a one-pole tilt that removes more low
       // end as the control rises, so a long tail thins out into the top rather
@@ -266,9 +301,15 @@ export class SpectralDelayBank {
    */
   private updateDelayLength(timeSec: number, sampleRate: number, hop: number): void {
     const t = Number.isFinite(timeSec) ? Math.min(MAX_DELAY_SEC, Math.max(0, timeSec)) : 0;
-    const frames = Math.round((t * sampleRate) / hop);
-    this.delayFrames = Math.min(this.maxFrames - 1, Math.max(1, frames));
+    // FLOOR, not round: the read sits between `readFrame` (nearer) and
+    // `readFrameBack` (older), weighted by the remainder. Rounding threw the
+    // remainder away and put a whole-frame error under every time change.
+    const exact = (t * sampleRate) / hop;
+    const whole = Math.floor(exact);
+    this.delayFrames = Math.min(this.maxFrames - 1, Math.max(1, whole));
+    this.readFrac = Math.min(1, Math.max(0, exact - whole));
     this.readFrame = (this.writeFrame - this.delayFrames + this.maxFrames) % this.maxFrames;
+    this.readFrameBack = (this.readFrame - 1 + this.maxFrames) % this.maxFrames;
   }
 }
 
