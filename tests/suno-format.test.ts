@@ -37,9 +37,11 @@ describe("parseSunoFormat", () => {
     expect(parsed!.sections[2].lyrics).toEqual(["We are the ones who light the flame"]);
   });
 
-  it("unknown bracket tags become boundaries without a role", () => {
+  it("unknown bracket tags become boundaries — instrumental reads as break", () => {
     const parsed = parseSunoFormat("[Verse]\nla la\n[Instrumental]\n[Chorus]\noh oh");
-    expect(parsed!.sections.map((s) => s.role)).toEqual(["verse", "verse", "chorus"]);
+    // [Instrumental] maps to the break role (an instrumental passage IS a
+    // break-shaped section in the form vocabulary).
+    expect(parsed!.sections.map((s) => s.role)).toEqual(["verse", "break", "chorus"]);
   });
 
   it("non-bracketed text is honest-null (not this format)", () => {
@@ -62,5 +64,48 @@ describe("buildSong with a SUNO prompt", () => {
     // Deterministic rebuild.
     const again = await buildSong(doc, { genre: "rock", seed: "suno-e2e", length: 64 }, { lyrics: PROMPT });
     expect(again.sections.map((s) => s.label)).toEqual(build.sections.map((s) => s.label));
+  });
+});
+
+describe("vocabulary expansion (2026-10-12)", () => {
+  it("reads the extended tag set — pre/post-chorus, interlude, instrumental, solo, spoken, fade", () => {
+    const parsed = parseSunoFormat(
+      [
+        "[Intro]",
+        "[Pre-Chorus]",
+        "building up",
+        "[Chorus]",
+        "we fly",
+        "[Post-Chorus]",
+        "[Interlude]",
+        "[Instrumental]",
+        "[Solo]",
+        "[Spoken Word]",
+        "and then he said",
+        "[Fade Out]",
+      ].join("\n"),
+    )!;
+    expect(parsed.sections.map((s) => s.role)).toEqual([
+      "intro",
+      "build",
+      "chorus",
+      "chorus",
+      "bridge",
+      "break",
+      "bridge",
+      "verse",
+      "outro",
+    ]);
+    expect(parsed.sections[7].lyrics).toEqual(["and then he said"]);
+  });
+
+  it("reads SK tags — sloha, refren, mostik, záver", () => {
+    const parsed = parseSunoFormat("[Intro]\n[Sloha 1]\nnejaky text\n[Refrén]\njo jo\n[Záver]");
+    expect(parsed!.sections.map((s) => s.role)).toEqual(["intro", "verse", "chorus", "outro"]);
+  });
+
+  it("the tag repeat suffix — [Chorus x2] — rides into the section", () => {
+    const parsed = parseSunoFormat("[Chorus x2]\nwe fly\n[Verse 2x]\ntalk");
+    expect(parsed!.sections.map((s) => s.repeats)).toEqual([2, 2]);
   });
 });

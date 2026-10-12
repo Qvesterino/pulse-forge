@@ -234,9 +234,13 @@ const SECTION_TRANSITION_WORDS: ReadonlyArray<readonly [SectionTransitionKind, R
   ["riser", new RegExp("\\bris(?:er|y)?\\b|\\brywajz\\b|\\bbuild[- ]?up\\b")],
   ["break", new RegExp("\\bbreak\\b|\\bbrejk\\b|\\bdropout\\b|\\bticho\\b")],
 ];
-const SECTION_TRANSITION_VERB = new RegExp(
-  "\\b(?:add|pridaj|daj|insert|vkldaj|zapni|put|drop in|give|vlož|vloz|sprav|urob)\\b",
-);
+/**
+ * NOUN PHRASES are self-identifying — they carry the intent without a verb
+ * ("snare roll into the drop"). Bare kind words still require the verb, or
+ * every "break" in every sentence would hijack the route.
+ */
+const SECTION_TRANSITION_NOUN_PHRASES = /\b(?:drum|snare|tom) ?roll\b|\bdrum ?fill\b|\bbuild-?up\b|\bdropout\b/;
+const SECTION_TRANSITION_VERB = new RegExp("\\b(?:add|pridaj|daj|insert|vkldaj|zapni|put|give|vloz|sprav|urob)\\b");
 
 /**
  * STRUCTURAL ARRANGEMENT COMMAND (2026-10-11): "add a fill before every
@@ -248,9 +252,11 @@ const SECTION_TRANSITION_VERB = new RegExp(
  */
 export function parseSectionTransitionIntent(text: string): SectionTransitionParse | null {
   const lower = ` ${text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")} `;
-  if (!SECTION_TRANSITION_VERB.test(lower)) return null;
   const targetRole = reviseRoleIn(lower);
   if (!targetRole) return null;
+  // A noun phrase speaks for itself; a bare kind word needs the verb.
+  const hasNoun = SECTION_TRANSITION_NOUN_PHRASES.test(lower);
+  if (!hasNoun && !SECTION_TRANSITION_VERB.test(lower)) return null;
   for (const [transition, re] of SECTION_TRANSITION_WORDS) {
     if (re.test(lower)) {
       return { targetRole, transition, detected: [`${transition} → ${targetRole} §`] };

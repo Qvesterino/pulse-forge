@@ -96,3 +96,19 @@ describe("reviseSectionTransitions", () => {
     expect(outcome.error).toMatch(/nothing to paint/);
   });
 });
+
+describe("vocabulary expansion (2026-10-12)", () => {
+  it("noun phrases — drum fill / snare roll / build-up — map to treatments", () => {
+    expect(parseSectionTransitionIntent("put a drum fill before the chorus")?.transition).toBe("fill");
+    expect(parseSectionTransitionIntent("snare roll into the drop")?.transition).toBe("fill");
+    expect(parseSectionTransitionIntent("build-up before the last chorus")?.transition).toBe("riser");
+    expect(parseSectionTransitionIntent("dropout before the bridge")?.transition).toBe("break");
+  });
+
+  it("more verbs — put / give / sprav / urob", () => {
+    expect(parseSectionTransitionIntent("put a riser before the chorus")?.transition).toBe("riser");
+    expect(parseSectionTransitionIntent("give me a fill before the hook")?.transition).toBe("fill");
+    expect(parseSectionTransitionIntent("sprav fill pred refren")?.transition).toBe("fill");
+    expect(parseSectionTransitionIntent("urob break pred most")?.transition).toBe("break");
+  });
+});
