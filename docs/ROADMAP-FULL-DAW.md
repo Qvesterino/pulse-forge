@@ -33,6 +33,49 @@ The practical target is selective parity: cover the Music Maker-style
 loop-to-song workflow, and close Samplitude's core recording/editing gaps,
 without claiming identical content libraries or every specialist feature.
 
+## Execution roadmap — recommended order
+
+This is the order for implementation and product decisions. It adds an
+execution path to the phase backlog below; it does not mark work complete.
+Dates are intentionally omitted until the reference hardware and stream
+measurements make estimates credible.
+
+| Order | Milestone | Main deliverable | Exit gate |
+|---|---|---|---|
+| 0 | Lock the reference setup | Confirm the recorded Windows 11 host and UA Volt 276 remain the reference, then publish the driver, channel map, sample rate, buffer settings, and initial Web/Studio support matrix | Another developer can reproduce the setup and the baseline records what is tested versus unverified |
+| 1 | Qualify Windows audio I/O | Corrected shared-WASAPI capture diagnostics with MMCSS; measure a real duplex/loopback path; test the registered ASIO driver; use exclusive mode only if needed and explicitly acknowledged | Raw measurements separate API-reported period from measured round-trip latency; capture/playback stability, channel mapping, dropout and device-loss results support ADR 0016 |
+| 2 | Implement the Studio audio backend | Device selection, explicit channel routing, format negotiation, monitoring, diagnostics, and device-loss recovery behind a typed backend contract | Reference setup passes the 30-minute stream soak; device changes never silently switch the selected input/output |
+| 3 | Certify record → edit → export | Real instrument capture through takes, loop/punch, comping, non-destructive edits, save/reopen, undo/redo, and final export | Phase 3's reference-host channel-count and duration gate passes; edits and project audio survive reload and match the offline export |
+| 4 | Complete release readiness | Explicit product/content/model licensing and privacy inventory, signed installer, update/recovery path, current release report, and published support matrix | A clean release candidate installs, updates, recovers projects, and passes the declared platform, security, licensing, and deployed-smoke gates |
+| 5 | Add the desktop plug-in ecosystem | Isolated VST3 scanning/hosting, saved state, automation, channel layouts, PDC, and offline-render rules | The plug-in project reopens correctly; crashes are contained; latency and real-time/offline behavior are verified on the compatibility set |
+| 6 | Improve first-session speed | Loop discovery, kits/templates, audition, and a short path from a new project to an editable exported beat | A first-time-user pilot completes the loop-to-song path, saves/reopens, and exports without data loss; record time-to-export and observed blockers |
+| 7 | Expand AI assistance against listening evidence | Optional producer/mix assistance with reversible edits and a human blind-listening benchmark | Demonstrated preference or workflow improvement over baseline; unavailable models never block core DAW use |
+
+Release-readiness work (licensing, signing, update/recovery, support claims)
+starts alongside Milestones 0–3 so it does not become a last-minute project.
+Public commercial claims wait for Milestone 4's evidence. Web Audio remains
+the Web backend; Studio support is documented separately.
+
+### Next implementation milestone
+
+Start by confirming the reference setup in Milestone 0. The existing probe has
+already completed metadata checks and preliminary 10-second WASAPI smokes; those
+smokes are not latency or stable-recording certification. Next, rerun shared
+capture with the MMCSS/diagnostic fixes and investigate the reported
+discontinuities, then test actual duplex loopback and the registered ASIO path.
+Use exclusive mode only if a concrete requirement remains unmet, with its
+explicit acknowledgement. Write ADR 0016 from the measured results before
+committing to the native backend. If physical testing is temporarily
+unavailable, continue the remaining software edit/recovery checks without
+claiming hardware certification.
+
+**Execution checkpoint (2026-10-12):** the probe rebuilt successfully and both
+focused CTest cases passed. Ten-second shared capture/render smokes ran on the
+current host's default endpoints; capture QPC shows the first frame about 501 ms
+after `Start` returns on that input. The session does not enumerate the UA Volt
+276 endpoint, so none of those results qualify the reference interface. See the
+[current audio-spike recheck](./WINDOWS-AUDIO-SPIKE-2026-09.md#current-execution-recheck--2026-10-12).
+
 ## Phase 0 — make the target and baseline truthful
 
 - [x] Owner changes the goal from focused beat workstation to full production
@@ -83,8 +126,11 @@ live and offline export. Publish the verified Web capability table.
       bounded to 30 seconds, discards capture packets, renders silence only, and
       requires an extra acknowledgement before exclusive mode. This prepares
       the test harness; it is not evidence that any stream mode has passed.
-- [ ] Run stream-level WASAPI shared/exclusive and ASIO tests with explicit
-      consent to temporarily initialize/use the physical audio endpoint.
+- [ ] Rerun shared capture on the exact endpoint with MMCSS and corrected
+      diagnostics; investigate later discontinuities, timestamp errors and
+      device-position gaps. Measure a real duplex/loopback path and test the
+      registered ASIO driver. Use exclusive mode only for a concrete unmet
+      requirement and preserve its explicit acknowledgement.
 - [ ] Write ADR 0016 after a measured technical spike compares Web Audio,
       WASAPI shared low-period/`IAudioClient3`, WASAPI exclusive and ASIO.
 - [ ] Define a typed audio-device backend contract: enumerate/select device,
@@ -338,35 +384,26 @@ recovery and project interchange proven.
 
 ## Immediate next engineering tasks
 
-1. **Certify remaining editing semantics in software:** verify sample-accurate
-   boundaries, non-destructive fades/gain, warp UI, undo/redo and final export
-   over save/reopen. Synthetic tests cover crossfade implementation and
-   live/offline parity; a captured-PCM Chromium fixture covers a PCM-frame-near
-   UI split and source-window mapping, a crossfaded comp plus repeated region
-   replacement with provenance-preserving undo/redo, context-menu warp-pin
-   creation and drag, then loop-splits another restored PCM fragment through
-   the project commands. PCM/marker persistence, the repeated edit after
-   reopen, advanced loop phase and exact active-comp plus loop-only WAV parity
-   across reopen are covered. Forward warped split mapping is covered at
-   command level, and a ProjectRepository round-trip preserves trimmed loop
-   bounds and phase; other sample-accurate editing and physical hardware takes
-   remain open. The fixed 3 ms warp-segment de-click is separate from musical
-   crossfades.
-2. **Owner/hardware gate:** obtain approval for a Windows reference PC,
-   interface, driver mode and exact device-use window before opening a physical
-   endpoint. Until then, do metadata-only/software work; do not claim measured
-   hardware latency, connector mapping or device-loss behavior.
-3. **Choose and prove the Windows backend:** after approval, run the bounded
-   stream tests, record measurements, compare Web Audio/WASAPI/ASIO, then write
-   ADR 0016 and implement the backend contract. Validate device selection,
-   channel routing, duplex latency, xruns and unplug/reconnect before expanding
-   to multi-stream capture.
-4. **Close the release gaps in dependency order:** complete simultaneous
-   capture and long-session recovery on the chosen backend; then certify the
-   recording/edit/export workflow. Follow with VST3 isolation/state/PDC and
-   mix/export conformance (P1), then loop discovery and fast-start (P2). Keep
-   AI quality work running alongside these tracks, but require blind human
-   evaluation before product-quality claims.
+1. **Lock and publish the reference setup:** record the exact Windows host,
+   interface, driver, channels, sample rate and buffer settings in the support
+   matrix; update the capability audit with evidence and open gaps.
+2. **Run the Windows audio spike:** use the bounded exact-endpoint probe,
+   begin with shared WASAPI, and record latency, xruns/dropouts, channel mapping
+   and device-loss/reconnect results. Compare other modes only for a specific
+   unmet requirement; then write ADR 0016 and choose the backend.
+3. **Build the selected backend and certify real material:** implement the
+   device contract, then verify monitoring, recovery, takes, comp boundaries,
+   non-destructive edits, undo/redo, save/reopen and live/offline export with
+   physical recordings. Keep synthetic-browser evidence clearly labeled as
+   software-path evidence.
+4. **Run release-readiness work in parallel:** decide distribution and content
+   licensing, prepare signed installation and update/recovery, and refresh the
+   release report from a clean candidate. Do not publish platform, latency or
+   commercial support claims without matching evidence.
+5. **Continue in dependency order:** complete the multitrack gate, then VST3
+   isolation/state/PDC and mix/export conformance; improve loop discovery and
+   first-session speed; advance AI only against a human blind-listening
+   benchmark.
 
 Each milestone exits only on its listed evidence and tests, not implementation
 completion alone. Update the capability audit and support matrix when evidence

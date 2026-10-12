@@ -18,7 +18,10 @@ Capture packet servicing is mode-specific: shared mode drains available packets
 with `GetNextPacketSize`; exclusive event mode reads one endpoint buffer per
 event and must not call that shared-mode-only method. The diagnostic reports
 first-packet separately from later discontinuity flags, plus timestamp errors
-and device-position gaps. It registers the service thread with MMCSS: `Audio`
+and device-position gaps. Capture results also relate the first frame's WASAPI
+QPC timestamp to the `Start` call and return, exposing endpoint startup delay
+without treating the reported stream latency as a round-trip measurement. It
+registers the service thread with MMCSS: `Audio`
 for 10 ms-or-longer periods and `Pro Audio` for shorter periods, and fails
 before starting the stream if MMCSS registration fails.
 
@@ -41,8 +44,8 @@ ctest --test-dir $probeBuildDir -C Release --output-on-failure
 & (Join-Path $probeBuildDir 'Release/kyx-windows-audio-probe.exe')
 ```
 
-The CTest target exercises the shared-period selection rules only; it does not
-enumerate devices or initialize an audio stream.
+The CTest targets cover shared-period selection and QPC timestamp conversion
+math only; they do not enumerate devices or initialize an audio stream.
 
 Only after the audio owner approves temporarily opening a physical endpoint,
 run a short stream check by supplying its exact friendly name:

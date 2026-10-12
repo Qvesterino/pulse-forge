@@ -5,6 +5,7 @@
 #include <propkeydef.h>
 #include <functiondiscoverykeys_devpkey.h>
 #include <wrl/client.h>
+#include "capture-start-time.h"
 #include "shared-period-selection.h"
 
 #include <iomanip>
@@ -306,17 +307,24 @@ bool runCaptureStream(IAudioClient3* client, HANDLE eventHandle, AUDCLNT_SHAREMO
                << L")\n";
     return false;
   }
+  LARGE_INTEGER qpcFrequency{};
+  LARGE_INTEGER qpcStartCall{};
+  const bool canMeasureQpcStart = QueryPerformanceFrequency(&qpcFrequency) != 0 &&
+                                  QueryPerformanceCounter(&qpcStartCall) != 0;
   hr = client->Start();
   if (FAILED(hr)) {
     std::wcerr << L"Capture stream Start failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(hr) << std::dec
                << L")\n";
     return false;
   }
+  LARGE_INTEGER qpcStartReturned{};
+  const bool canMeasureQpcReturn = canMeasureQpcStart && QueryPerformanceCounter(&qpcStartReturned) != 0;
 
   UINT64 totalFrames = 0;
   UINT64 firstDevicePosition = 0;
   UINT64 lastDevicePosition = 0;
-  UINT64 lastQpcPosition = 0;
+  UINT64 firstQpcPosition100ns = 0;
+  UINT64 lastQpcPosition100ns = 0;
   UINT64 expectedNextDevicePosition = 0;
   UINT64 packetCount = 0;
   UINT64 discontinuities = 0;
@@ -368,12 +376,13 @@ bool runCaptureStream(IAudioClient3* client, HANDLE eventHandle, AUDCLNT_SHAREMO
     if (flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) ++timestampErrors;
     if (isFirstPacket) {
       firstDevicePosition = devicePosition;
+      firstQpcPosition100ns = qpcPosition;
     } else if (devicePosition != expectedNextDevicePosition) {
       ++devicePositionGaps;
     }
     expectedNextDevicePosition = devicePosition + packetFrames;
     lastDevicePosition = devicePosition;
-    lastQpcPosition = qpcPosition;
+    lastQpcPosition100ns = qpcPosition;
     totalFrames += packetFrames;
     ++packetCount;
     hr = capture->ReleaseBuffer(packetFrames);
@@ -439,10 +448,26 @@ bool runCaptureStream(IAudioClient3* client, HANDLE eventHandle, AUDCLNT_SHAREMO
             << L", exclusive packet-size mismatches=" << exclusivePacketSizeMismatches
             << L", event timeouts=" << eventTimeouts
             << L"\n    device positions: first=" << firstDevicePosition << L", last=" << lastDevicePosition
-            << L", last QPC position=" << lastQpcPosition << L"\n";
+            << L", last packet QPC timestamp=" << lastQpcPosition100ns << L" (100-ns units)\n";
   if (SUCCEEDED(latencyHr)) {
     std::wcout << L"    WASAPI reported stream latency=" << std::fixed << std::setprecision(3)
               << static_cast<double>(streamLatency) / 10'000.0 << L" ms (not round-trip latency)\n";
+  }
+  double firstFrameAfterStartCallMs = 0.0;
+  double firstFrameAfterStartReturnMs = 0.0;
+  if (firstQpcPosition100ns > 0 && canMeasureQpcStart &&
+      qpcRelativeMilliseconds(firstQpcPosition100ns, qpcStartCall.QuadPart, qpcFrequency.QuadPart,
+                              &firstFrameAfterStartCallMs)) {
+    std::wcout << L"    first captured frame QPC: " << std::fixed << std::setprecision(3)
+              << firstFrameAfterStartCallMs << L" ms relative to Start call";
+    if (canMeasureQpcReturn &&
+        qpcRelativeMilliseconds(firstQpcPosition100ns, qpcStartReturned.QuadPart, qpcFrequency.QuadPart,
+                                &firstFrameAfterStartReturnMs)) {
+      std::wcout << L", " << firstFrameAfterStartReturnMs << L" ms relative to Start return";
+    }
+    std::wcout << L"; GetBuffer QPC timestamps are 100-ns units\n";
+  } else {
+    std::wcout << L"    first captured frame QPC: unavailable\n";
   }
   if (FAILED(stopHr)) {
     std::wcerr << L"Capture Stop failed (HRESULT 0x" << std::hex << static_cast<unsigned long>(stopHr) << std::dec

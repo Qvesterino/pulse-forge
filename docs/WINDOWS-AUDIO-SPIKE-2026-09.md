@@ -8,6 +8,26 @@ MMCSS and do not isolate endpoint behavior from scheduling.
 **Probe:** `native/windows-audio-probe`, built from the current source with MSVC
 18.7.8 and Windows SDK 10.0.26100.
 
+## Current execution recheck — 2026-10-12
+
+The probe was rebuilt from the current source on Windows 11 build 26300 with
+MSVC 19.51 and Windows SDK 10.0.26100. The shared-period and capture-start-time
+CTest cases passed (2/2). A metadata-only enumeration did not find a UA Volt 276
+capture or render endpoint in this execution session. The following short
+shared-mode smokes used the host's current default endpoints; they validate the
+probe on this host, not the Volt reference path:
+
+| Test | Result | Interpretation |
+|---|---|---|
+| Default capture, shared WASAPI, 48 kHz stereo float, 10 s | 10.01 s elapsed; 950 packets / 456,000 frames (9.50 s); first-frame QPC 503.928 ms after `Start` call / 500.568 ms after `Start` returned; one first-packet discontinuity; zero later discontinuities, timestamp errors, device-position gaps, or event timeouts; exit 0 | A 30-second repeat delivered 29.50 s PCM over 30.01 s with the same first-packet-only flag. The first packet begins about 0.5 s after `Start` on this endpoint, consistent with endpoint startup delay; this needs the Volt path to confirm. PCM was inspected only for packet metadata and discarded. This is not a Volt result or latency certification. |
+| Default render, shared WASAPI, 48 kHz stereo float, 10 s | 10.01 s elapsed; 1,002 events / 482,016 frames queued (10.04 s); zero event timeouts; exit 0 | Silence only; no audible fidelity or duplex test. |
+
+Both tests reported 0.000 ms WASAPI stream latency; that value is not a
+round-trip measurement. No Volt stream test, simultaneous duplex test, physical
+channel-map verification, or 30-minute soak was run. No PCM file was written
+or transmitted. The September Volt results below remain the only Volt stream
+evidence and are still preliminary.
+
 ## Detected reference endpoints
 
 Windows reports these active Universal Audio endpoints:
@@ -139,4 +159,5 @@ host. Sources: [Steinberg developer portal](https://www.steinberg.net/developers
 [Microsoft `GetNextPacketSize`](https://learn.microsoft.com/en-us/windows/win32/api/audioclient/nf-audioclient-iaudiocaptureclient-getnextpacketsize),
 [Microsoft exclusive-mode MMCSS guidance](https://learn.microsoft.com/en-us/windows/desktop/coreaudio/exclusive-mode-streams),
 [Microsoft capture discontinuity flags](https://learn.microsoft.com/en-us/windows/win32/api/audioclient/ne-audioclient-_audclnt_bufferflags),
+[Microsoft `IAudioCaptureClient::GetBuffer` QPC timestamp units](https://learn.microsoft.com/en-us/windows/win32/api/audioclient/nf-audioclient-iaudiocaptureclient-getbuffer),
 [Microsoft exclusive-mode behavior](https://learn.microsoft.com/en-us/windows/desktop/coreaudio/exclusive-mode-streams).
