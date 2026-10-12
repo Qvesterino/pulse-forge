@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useSelectionStore, useServices } from "./context";
+import { VoiceIdeaControls } from "./intent/VoiceIdeaControls";
 import { AudioRefChip } from "./intent/AudioRefChip";
 import { ProducerSessionHud } from "./intent/ProducerSessionHud";
 import { CandidateBank } from "./intent/CandidateBank";
@@ -5051,33 +5052,15 @@ export function IntentPanel() {
         >
           {mutateBusy ? "MUTATING…" : "🧬 MUTATE"}
         </button>
-        <label
-          className="intent-monitor-toggle"
-          title="Hum & harmonize: the SUNO build stacks diatonic backing vocals (third above + below) under your hummed hook on a 'Hum Harmony' track"
-        >
-          <input type="checkbox" checked={ideaHarmonize} onChange={(event) => setIdeaHarmonize(event.target.checked)} />
-          🎶
-        </label>
-        <label
-          className="intent-monitor-toggle"
-          title="Hear yourself through the app — HEADPHONES ONLY (speakers feed back into the mic)"
-        >
-          <input
-            type="checkbox"
-            checked={ideaMicMonitor}
-            onChange={(event) => setIdeaMicMonitoring(event.target.checked)}
-          />
-          🔊
-        </label>
-        <button
-          type="button"
-          className={`btn intent-idea-btn${ideaRecording ? " recording" : ""}`}
+        <VoiceIdeaControls
+          harmonize={ideaHarmonize}
+          onHarmonizeChange={setIdeaHarmonize}
+          micMonitor={ideaMicMonitor}
+          onMicMonitorChange={setIdeaMicMonitoring}
+          recording={ideaRecording}
+          onToggleRecording={() => void toggleIdeaRecording()}
           disabled={refBusy}
-          onClick={() => void toggleIdeaRecording()}
-          title="Voice idea — record yourself humming/singing the hook; the beat builds around YOUR tempo, key and melody"
-        >
-          {ideaRecording ? "■ STOP" : "🎤 IDEA"}
-        </button>
+        />
         <button
           type="button"
           className="btn intent-ref-btn"
