@@ -4,7 +4,7 @@
 stable-recording certification, guitar test, ASIO test, or backend selection.
 The latest recheck used MMCSS but ran on system-default endpoints without the
 reference Volt interface; historical Volt capture runs did not use MMCSS.
-**Host (original Volt session):** Windows 11 Home 25H2, build 26200.9550, x64.  
+**Host (original Volt session):** Windows 11 Home 25H2, build 26200.9550, x64.
 **Probe:** `native/windows-audio-probe`, built from the current source with MSVC
 18.7.8 and Windows SDK 10.0.26100.
 
