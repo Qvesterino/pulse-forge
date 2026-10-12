@@ -23,6 +23,7 @@ import { refreshPatternQuality } from "./quality";
 import type { RenderCandidateFn } from "./audio-feedback";
 import type { SampleBank } from "../sample-library/factory";
 import { applyTransitionToPattern } from "./transitions";
+import { parseSunoFormat } from "./suno-format";
 import { buildTransitionCueClips, FX_CUE_TRACK_NAME, transitionCueAsset, type TransitionSeam } from "./transition-cues";
 import { applyGenreFeelToDoc, applyGenreKitToDoc } from "./genre-kit";
 import { masterTiltForIntent } from "./mix";
@@ -2404,6 +2405,13 @@ export interface BuildSongOptions {
    */
   development?: boolean;
   /**
+   * SUNO-format compatibility (W4): a bracketed prompt ([Verse]/[Chorus] +
+   * lyric lines). When it parses, the bracket sequence REPLACES the planned
+   * form — bar counts scale with lyric length, section lyrics ride into the
+   * build for the hum→voice wave. Absent = the planned genre form.
+   */
+  lyrics?: string;
+  /**
    * #6 dynamic song form — length words ("short", "radio edit", "extended",
    * "epic journey", "3 minutes", "2:30") scale the core cycles.
    */
@@ -2691,7 +2699,38 @@ export async function buildSong(
   options: BuildSongOptions = {},
 ): Promise<SongBuild> {
   const baseIntent = normalizeIntent(input);
-  const form = planSongForm(baseIntent, options.sections, options.length);
+  // SUNO-format compatibility (W4): a bracketed prompt ([Verse]/[Chorus] +
+  // lyric lines) defines the form ITSELF — the bracket sequence is the
+  // arrangement, bar counts scale with lyric length (2 bars per lyric line,
+  // min 4), and each section's lyrics ride into the build (the hum→voice
+  // wave sings them). Takes precedence over the planned form.
+  const suno = options.lyrics ? parseSunoFormat(options.lyrics) : null;
+  const form: {
+    genre: IntentSpec["genre"];
+    sections: SongSectionSpec[];
+    totalBars: number;
+  } = suno
+    ? {
+        genre: baseIntent.genre,
+        sections: suno.sections.map((section): SongSectionSpec => ({
+          role: section.role,
+          label: section.tag,
+          bars: Math.max(4, section.lyrics.length * 2),
+          intensity: section.role === "chorus" || section.role === "drop" ? 0.9 : 0.65,
+          transitionIn:
+            section.role === "chorus" || section.role === "drop"
+              ? ("fill" as const)
+              : section.role === "bridge"
+                ? ("break" as const)
+                : null,
+          energyDelta: section.role === "chorus" || section.role === "drop" ? 0.3 : 0,
+          densityDelta: section.role === "chorus" || section.role === "drop" ? 0.2 : 0,
+          complexityDelta: 0,
+          instrumentation: ["drums", "bass", "chords", "lead"],
+        })),
+        totalBars: suno.sections.reduce((sum, section) => sum + Math.max(4, section.lyrics.length * 2), 0),
+      }
+    : planSongForm(baseIntent, options.sections, options.length);
   const requestedCandidates = options.candidateCount ?? 1;
   const candidateCount = Number.isFinite(requestedCandidates)
     ? Math.max(1, Math.min(5, Math.floor(requestedCandidates)))
