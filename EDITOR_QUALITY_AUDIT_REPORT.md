@@ -1843,10 +1843,39 @@ does not add specificity either, so the same mistake also killed the
 ### Fix
 
 `24-layout-tokens.css` now declares the three tracks
-(`auto | minmax(0,1fr) | clamp(...)`) and re-declares the ladder's own two
-breakpoints **inside itself**, mirroring `20-control-kit.css:474-484` verbatim.
-Restoring the previous behaviour, not inventing new behaviour. The wrong
-comment is replaced by the measurement.
+(`auto | minmax(0,1fr) | clamp(...)`) — but **scoped to `@media (min-width:
+1101px)`**, not unscoped and not by restating the ladder.
+
+That scope is the actual repair, and the first attempt at it was wrong. The
+first version re-declared the ladder's own two rungs inside this file, which
+worked — and turned `tests/layout-responsive.test.ts` red:
+
+```
+the inspector row-switch below 860px is still owned by the base sheet
+  expect(tokens).not.toMatch(/@media \(max-width: 860px\)/)
+```
+
+That guard is a deliberate contract from an earlier wave, and its comment gives
+the reason: *"24-layout-tokens.css must NOT define its own 860px block that could
+race the existing one — that duplication is how these ladders drift."* Rewriting
+a guard to fit my own patch is the failure mode §57 exists to prevent, and the
+guard had a point I had not measured: the ladder drifts by duplication, not only
+by override.
+
+The duplication-free formulation is better on both counts. A media query adds no
+specificity, so an **unscoped** rule in this last-imported file beats every
+breakpoint an earlier file declares — but a `min-width` rule whose range never
+overlaps theirs cannot. So:
+
+| width | owner of `grid-template-columns` |
+| --- | --- |
+| ≥ 1101px | `24-layout-tokens.css` (`auto | 1fr | clamp(...)`) |
+| 861–1100px | `20-control-kit.css:475` (230 px inspector) |
+| ≤ 860px | `20-control-kit.css:479` (inspector becomes a row) |
+
+One owner per range, no duplicated rung, and the existing guard is satisfied
+rather than rewritten. Same treatment for the label rule below
+(`@media (min-width: 761px)` around `.user-label-width`).
 
 ### Falsification — the guard was made to fail on the old build
 
@@ -1886,8 +1915,9 @@ Scope is narrow and was measured before anything was claimed: `ui/layout.ts`
 only adds the class when the user has changed the label width, so this affects
 that subset, on phones only. But 220 px of a 720 px screen is 30% of the
 width, which is exactly what the 760 px step exists to prevent. Fixed by
-re-declaring the phone step after the class rule, and falsified the same way
-(220 px vs 112 px).
+scoping the class rule to `@media (min-width: 761px)` so
+`12-floating-instrument-plugin-2.css:839` stays the single owner of the phone
+step, and falsified the same way (220 px vs 112 px).
 
 The sweep over that file is **closed**: it holds five rules that touch layout,
 and exactly two of them killed behaviour declared earlier — `.workspace` and
@@ -1899,6 +1929,78 @@ media query sets a body font-size; and `.density-dense .dock-tabs { height:
 28px }` outranks the 760 px `.dock-tabs` block in `19-dock-chrome.css:210`
 anyway, and that block sets only `position`, `top`, `z-index` and `background`
 — no height to collide with.
+
+### §17 — playback, finally measured instead of argued
+
+Waves 6–8 left "playback editing / ghost audio" as the loudest unverified item,
+because neither the dev server nor the in-app Browser could carry the check. With
+the production build drivable it runs, and the evidence is worth stating plainly
+because it is the first hard number this audit has for audio actually happening.
+
+`tests/e2e/20-playback-master-bus.spec.ts` plays the House template and reads the
+master strip's own peak readout (`.master-channel-peak-readout`, rendered by
+`MasterStereoMeters` straight from the engine's master stereo snapshot, in dB,
+`-∞` for silence). Three consecutive independent runs:
+
+| run | transport | master peak | track meters | after stop |
+| --- | --- | --- | --- | --- |
+| 1 | `1.1.3 → 8.2.3` | **−1.3 dBFS** | 100 | **−∞** |
+| 2 | `1.1.3 → 9.2.3` | **−1.3 dBFS** | 100 | **−∞** |
+| 3 | `1.1.2 → 9.4.4` | **−1.3 dBFS** | 100 | **−∞** |
+
+A sampled run of the master peak, 200 ms apart:
+
+```
+-2.4, -4.8, -6.1, -2.7, -9.5, -6.5, -1.3, -1.6, -2.7, -8.9, -3.6, -6.7,
+-2.2, -6.0, -2.3, -5.8, -1.3, -6.1, -2.1, -3.1, -5.0, -4.9, -1.3, -1.3, -1.3
+```
+
+That is a real mix moving between about −9.5 and −1.3 dBFS — not a stuck tone,
+not silence, not clipping. **No ghost audio**: the bus returns to true `-∞`
+after stop, which is the stuck-voice / released-buffer class the objective names,
+and the House template (drums + bass + chords) is exactly the case where one
+would expect.
+
+What the spec deliberately does **not** claim: that the output is pleasant, or
+that the mix is balanced. It measures that audio is produced, that the transport
+advances, and that stop releases the bus. Loudness balance still needs manual
+listening.
+
+Two guards make it a guard rather than a smoke test. The **pre-playback
+baseline** asserts the master is already silent, so the measured signal cannot be
+attributed to ambient meter state — it is caused by the transport press. And the
+console-error filter is scoped by origin rather than filtered blind: this
+environment runs the studio from `vite preview` with no collab server, and the
+refused requests are `http://127.0.0.1:1234/api/intake` (a different origin). A
+refused **same-origin** request means the app failed to load one of its own
+assets, and that stays red.
+
+### §35 — heap stability, measured across lifecycle cycles
+
+Wave 5 measured mount/unmount listener balance in jsdom; heap stability stayed
+unverified because no browser could be driven. `tests/e2e/21-heap-stability.spec.ts`
+runs ten identical panel open/close cycles with `HeapProfiler.collectGarbage`
+before every reading, so the delta is live retention rather than uncollected
+garbage from the cycle itself, and with a warm-up phase first so the first-touch
+allocations (lazy chunks, audio node pools, analyser buffers) are not charged to
+a leak.
+
+```
+run 1  baseline 15.29 MB   samples 14.86 … 15.42   growth -0.22 MB
+run 2  baseline 16.40 MB   samples 15.09 … 16.16   growth -0.24 MB
+```
+
+Flat in both runs, and slightly *down* at the end — there is no per-cycle
+retention in the panel lifecycle to find. The 4 MB bound is derived from those
+measurements rather than chosen in advance: the observed noise band is about
+±0.6 MB, so 4 MB is roughly seven times the band, loose enough not to flake and
+tight enough to catch ~0.4 MB per cycle, which is what an unmounted analyser,
+listener set or worklet buffer would look like. The bound this spec carried
+before the measurement was 12 MB, which would only have noticed at ~1.2 MB per
+cycle.
+
+What it does **not** cover: audio buffer churn during long playback, IR loading,
+or project churn. Those need a longer soak than a CI-shaped run.
 
 ### What this wave does not close
 
@@ -1924,8 +2026,17 @@ anyway, and that block sets only `position`, `top`, `z-index` and `background`
 | `npm run typecheck` | exit 0 |
 | `npm run format:check` | clean for every file this wave touched; the one remaining warning is `tests/probe-split-undo.test.ts`, which belongs to another session |
 | `npm run test` (vitest) | 906 / 944 files passed, 38 red, 53 tests red — none reachable from this wave: the only source change is one CSS file, and `vitest.config.ts:86` excludes `tests/e2e/**`, so a stylesheet rule and the new Playwright spec cannot produce a vitest failure. The reds are co-tenant work in flight; `npm run test:expectations` is the gate that attributes them |
+| `tests/layout-responsive.test.ts` (pre-existing guard for this file) | **15/15** against the final CSS — it was red against the first formulation |
 | `playwright --project=chromium`, specs 01–08 + 19, production build | **15 passed / 1 failed** (1.7 min), the single red being `07`, which imports `/src/*.ts` and cannot run against a production build at all |
-| falsification runs | pre-fix CSS injected into the built bundle makes 4 of the 5 layout assertions fail with the exact measured symptoms (`columns were "1000px 280px"`, GEN hit test ≠ GEN, sequencer height ≤ 120, `--steps-label` 220px vs 112px, and at 800×900 `columns were "520px 280px"` with 2 tracks instead of 1) |
+| `playwright --project=chromium`, specs 01, 03, 04, 05 + 19, production build, **final** CSS | **11 passed / 0 failed** |
+| `playwright --project=chromium`, specs 19 + 20 (§17) + 21 (§35), production build | **7 passed / 0 failed** (1.4 min), §17 reproducing −1.3 dBFS master peak and `-∞` after stop across four independent runs |
+| falsification runs | pre-fix CSS injected into the built bundle makes the layout assertions fail with the exact measured symptoms: at 800×900 `columns were "520px 280px"` (2 tracks, not 1); at 1280×720 `columns were "1000px 280px"` (2 tracks, not 3); GEN hit test `BUTTON.dock-resize-handle` instead of `GEN`; sequencer height 20 instead of >120; `--steps-label` 220px instead of 112px |
+
+**The two browser-verification items this audit inherited as unverified are now
+measured**: §17 playback/ghost audio (§17 section above) and §35 heap stability
+(§35 section above). What is still unverified in a real browser: long-session
+audio-buffer churn, IR/sample loading soak, and the take-lane click suppression
+that wave 1 recorded as fragility without a demonstrated defect.
 
 One guard had to be rewritten because it was **not a guard**: the first version
 of the 860px-ladder test asserted `workspace-main` width, which is true on the
@@ -1933,6 +2044,14 @@ broken build too (the fluid track lands there either way at that width), and it
 passed against the pre-fix CSS. The discriminator is the track count — 2 on the
 broken cascade, 1 after the fix — plus the Inspector actually moving below the
 sequencer. Rewritten, then falsified.
+
+A second guard caught the fix itself. `tests/layout-responsive.test.ts` went
+red on the first formulation, and it was right to: the repo had already decided
+that `24-layout-tokens.css` must not restate the ladder. The `min-width`
+formulation satisfies it without weakening anything — `layout-responsive.test.ts`
+is **15/15 green** against the final CSS. Two editors independently reached for
+the same wrong model of the cascade in this file, and the repo's own test suite
+was carrying the correct one.
 
 ## Wave 10 - 2026-10-11 - the rest of the 42 chain, run for real (P1/P2, one new defect)
 
@@ -2096,3 +2215,62 @@ The tail simply stood still. So the spec is measuring ripple behaviour and not
 The temporary env-var switch used for that run was removed afterwards rather
 than committed: a branch no CI run ever exercises is a guard that can only ever
 pass, which is the exact shape this audit keeps refusing.
+
+## Wave 12 - 2026-10-11 - §18 destructive shortcuts vs focused fields
+
+The objective states the invariant directly: "destructive shortcuts must not fire
+while typing in unrelated controls". New spec: `tests/e2e/keyboard-guards.spec.ts`,
+aimed at the panel's own `SECS` field - a `type="number"` input living inside
+the arrangement toolbar, so every global handler in `App.tsx` is a candidate to
+steal keys from it.
+
+### Measured
+
+```
+selected a clip (the SECS field only renders for a selected clip)
+typed "12"            -> field=12   clips=1
+Delete  in the field  -> clips=1
+Backspace in the field-> clips=1
+Ctrl+Z  in the field  -> clips=1   (no undo leaked into the project stack)
+Escape  in the field  -> draft reverted, field back to 7.74s, clips=1
+POSITIVE CONTROL: Delete with the field NOT focused -> clips 1 -> 0
+jsErrors=0
+```
+
+### Why the control is the falsification here
+
+The negative assertions on their own would also pass on a build where the Delete
+shortcut is dead everywhere - they cannot distinguish "guarded" from "broken".
+The control is what makes them mean something: if `Delete` never removed a clip,
+the control would fail and the spec would go red. So the control is the
+falsifier of vacuity, and it doubles as the within-run A/B: same key, same
+document, same session - only focus differs, and the outcome is opposite.
+
+I did not additionally disable the app's focus guard to watch the negatives go
+red. Doing so would mean editing the very code path the negatives are claiming
+to cover, and the A/B already demonstrates the discrimination the guard exists
+for.
+
+### Also closed in this wave: the drift gate attribution
+
+`npm run drift:check` came back red with two items, and **neither is this
+audit's**:
+
+```
+DRIFT [domain-goldens] tests/domain-goldens/serialization.json: committed artifact is stale
+DRIFT [counts]        docs/CURRENT-STATE.md: Vitest spec files: says 941, live code measures 942
+```
+
+Attribution before touching anything:
+
+- The golden drift travels in one staged change together with
+  `src/project-model/schema.ts` (+38 lines) and `src/project-model/types.ts`
+  (+7) - a concurrent session's schema addition. Blessing it would bake another
+  session's unreviewed schema into a committed artifact, which is exactly what
+  `drift:bless` must not be used for. It clears when that session commits.
+- The counts drift was a mid-flight snapshot: this audit's two new specs
+  (`tests/clip-sanitization-boundary.test.ts`, `tests/ui/mount-unmount-balance.test.tsx`)
+  are already named in the CURRENT-STATE row, and re-measuring after the other
+  sessions settled gives **live 944 = documented 944**.
+
+Neither was blessed, "fixed", or committed by this audit.
