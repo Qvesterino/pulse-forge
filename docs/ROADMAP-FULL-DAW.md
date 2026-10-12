@@ -70,11 +70,14 @@ unavailable, continue the remaining software edit/recovery checks without
 claiming hardware certification.
 
 **Execution checkpoint (2026-10-12):** the probe rebuilt successfully and both
-focused CTest cases passed. Ten-second shared capture/render smokes ran on the
-current host's default endpoints; capture QPC shows the first frame about 501 ms
-after `Start` returns on that input. The session does not enumerate the UA Volt
-276 endpoint, so none of those results qualify the reference interface. See the
-[current audio-spike recheck](./WINDOWS-AUDIO-SPIKE-2026-09.md#current-execution-recheck--2026-10-12).
+focused CTest cases passed. Ten-second shared capture and render smokes, plus a
+concurrent capture/render smoke, ran on the current host's default endpoints.
+Concurrent stream startup/operation passed; capture QPC shows the first frame
+about 502 ms after `Start` returns on that input. The session does not enumerate
+the UA Volt 276 endpoint, so none of these results qualify the reference
+interface. A bounded rerunnable wrapper is at
+`native/windows-audio-probe/run-shared-duplex.ps1`. See the [current audio-spike
+recheck](./WINDOWS-AUDIO-SPIKE-2026-09.md#current-execution-recheck--2026-10-12).
 
 ## Phase 0 — make the target and baseline truthful
 
@@ -126,6 +129,10 @@ live and offline export. Publish the verified Web capability table.
       bounded to 30 seconds, discards capture packets, renders silence only, and
       requires an extra acknowledgement before exclusive mode. This prepares
       the test harness; it is not evidence that any stream mode has passed.
+- [x] Add a bounded shared-mode duplex smoke wrapper that starts capture and
+      silent render concurrently on explicitly named endpoints; enforce a
+      timeout and stop both probe processes on failure. This verifies concurrent
+      stream operation only, not physical signal routing or round-trip latency.
 - [ ] Rerun shared capture on the exact endpoint with MMCSS and corrected
       diagnostics; investigate later discontinuities, timestamp errors and
       device-position gaps. Measure a real duplex/loopback path and test the

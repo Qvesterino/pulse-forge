@@ -47,6 +47,18 @@ ctest --test-dir $probeBuildDir -C Release --output-on-failure
 The CTest targets cover shared-period selection and QPC timestamp conversion
 math only; they do not enumerate devices or initialize an audio stream.
 
+To run capture and render at the same time on named endpoints, use the bounded
+shared-mode wrapper. Capture packet samples are discarded and render queues
+silence. This checks concurrent stream operation, not signal routing or
+round-trip latency:
+
+```powershell
+./native/windows-audio-probe/run-shared-duplex.ps1 `
+  -CaptureEndpoint 'INPUT 1/2 (2- Volt 276)' `
+  -RenderEndpoint 'MONITOR L/R (2- Volt 276)' `
+  -Seconds 10
+```
+
 Only after the audio owner approves temporarily opening a physical endpoint,
 run a short stream check by supplying its exact friendly name:
 

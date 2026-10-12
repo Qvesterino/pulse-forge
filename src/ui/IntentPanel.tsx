@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useSelectionStore, useServices } from "./context";
+import { AudioRefChip } from "./intent/AudioRefChip";
 import { ProducerSessionHud } from "./intent/ProducerSessionHud";
 import { CandidateBank } from "./intent/CandidateBank";
 import {
@@ -5132,30 +5133,12 @@ export function IntentPanel() {
           }}
         />
       </div>
-      {refPatch && (
-        <div className="intent-ref-chip" role="status">
-          <span className="intent-ref-chip-label">🎧 ref: {refSummary ?? "active"}</span>
-          <span className="intent-ref-chip-hint">shapes every generation</span>
-          <button
-            type="button"
-            className="intent-ref-chip-clear"
-            aria-label="Match master EQ to reference"
-            title="Match EQ — measure the mix against the reference and correct the master (znej ako ref)"
-            onClick={handleMatchEq}
-          >
-            🎯
-          </button>
-          <button
-            type="button"
-            className="intent-ref-chip-clear"
-            aria-label="Clear audio reference"
-            title="Clear the reference — back to text-only intent"
-            onClick={clearReference}
-          >
-            ×
-          </button>
-        </div>
-      )}
+      <AudioRefChip
+        active={refPatch !== null}
+        refSummary={refSummary}
+        onMatchEq={handleMatchEq}
+        onClearReference={clearReference}
+      />
       <ProducerSessionHud
         summary={sessionSummary}
         sessionTick={sessionTick}

@@ -1,10 +1,10 @@
 # Windows audio-backend preflight and stream smoke — 2026-09-26
 
-**Status:** metadata preflight and preliminary 10-second WASAPI stream smokes;
-not a latency benchmark, stable-recording certification, guitar test, ASIO test,
-or backend selection. The most recent capture runs used a service thread without
-MMCSS and do not isolate endpoint behavior from scheduling.
-**Host:** Windows 11 Home 25H2, build 26200.9550, x64.  
+**Status:** preliminary 10-second WASAPI stream smokes; not a latency benchmark,
+stable-recording certification, guitar test, ASIO test, or backend selection.
+The latest recheck used MMCSS but ran on system-default endpoints without the
+reference Volt interface; historical Volt capture runs did not use MMCSS.
+**Host (original Volt session):** Windows 11 Home 25H2, build 26200.9550, x64.  
 **Probe:** `native/windows-audio-probe`, built from the current source with MSVC
 18.7.8 and Windows SDK 10.0.26100.
 
@@ -21,16 +21,18 @@ probe on this host, not the Volt reference path:
 |---|---|---|
 | Default capture, shared WASAPI, 48 kHz stereo float, 10 s | 10.01 s elapsed; 950 packets / 456,000 frames (9.50 s); first-frame QPC 503.928 ms after `Start` call / 500.568 ms after `Start` returned; one first-packet discontinuity; zero later discontinuities, timestamp errors, device-position gaps, or event timeouts; exit 0 | A 30-second repeat delivered 29.50 s PCM over 30.01 s with the same first-packet-only flag. The first packet begins about 0.5 s after `Start` on this endpoint, consistent with endpoint startup delay; this needs the Volt path to confirm. PCM was inspected only for packet metadata and discarded. This is not a Volt result or latency certification. |
 | Default render, shared WASAPI, 48 kHz stereo float, 10 s | 10.01 s elapsed; 1,002 events / 482,016 frames queued (10.04 s); zero event timeouts; exit 0 | Silence only; no audible fidelity or duplex test. |
+| Default capture + render concurrently, shared WASAPI, 10 s each | Both processes exited 0 in 10.30 s; capture: 950 packets / 456,000 frames (9.50 s), one first-packet discontinuity, zero later discontinuities/timestamp errors/device-position gaps/timeouts; render: 1,002 events / 482,016 frames queued, zero timeouts | Concurrent stream operation passed on the current default endpoints. First capture frame was 505.987 ms after `Start` call / 501.706 ms after return. Capture PCM was discarded; render queued silence. Not the Volt, signal routing, physical loopback, fidelity or round-trip latency. |
 
-Both tests reported 0.000 ms WASAPI stream latency; that value is not a
-round-trip measurement. No Volt stream test, simultaneous duplex test, physical
-channel-map verification, or 30-minute soak was run. No PCM file was written
-or transmitted. The September Volt results below remain the only Volt stream
-evidence and are still preliminary.
+The single-stream capture and render tests reported 0.000 ms WASAPI stream
+latency; that value is not a round-trip measurement. The concurrent smoke also
+reported 0.000 ms for both streams. No Volt stream test, physical channel-map
+verification, analog loopback, or 30-minute soak was run. No PCM file was
+written or transmitted. The September Volt results below remain the only Volt
+stream evidence and are still preliminary.
 
-## Detected reference endpoints
+## Reference endpoints detected in the original 2026-09 session
 
-Windows reports these active Universal Audio endpoints:
+Windows reported these active Universal Audio endpoints in the original session:
 
 - Capture: `INPUT 1/2 (2- Volt 276)`
 - Render: `MONITOR L/R (2- Volt 276)` (current console default)
