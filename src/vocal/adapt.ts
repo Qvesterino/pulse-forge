@@ -193,3 +193,70 @@ export function applyVocalHookCommand(doc: ProjectDocument, options: VocalHookOp
   };
   return snapshot("applyVocalHook", `Voice hook: ${notes.length} phrase${notes.length === 1 ? "" : "s"}`, doc, next);
 }
+
+/**
+ * HUM→VOICE wiring (W3, 2026-10-12): the voiceified lead — `voiceifyHum`
+ * output staged in the user-sample bank — as a vocalchop "Voice Lead"
+ * track playing the TARGET MELODY's notes (the hum's timbre, the song's
+ * pitches and timing). Same staging contract and re-apply behavior as the
+ * Hook: same melody+buffer reuses the track, otherwise one is created.
+ * ONE undoable snapshot.
+ */
+export interface VoiceLeadOptions {
+  /** The voiceified render's bank id (the caller stages the Float32Array). */
+  bufferId: string;
+  /** The TARGET melody's NoteEvents (hum-to-notes output or the song lead). */
+  notes: NoteEvent[];
+  /** Bank id of the source take — re-apply targets the same Voice Lead track. */
+  takeBufferId?: string;
+  patternId?: string;
+}
+
+export function applyVoiceLeadCommand(doc: ProjectDocument, options: VoiceLeadOptions): Command {
+  if (typeof options.bufferId !== "string" || options.bufferId === "") {
+    throw new Error("The voiceified lead is not staged — stage the voiceify render first");
+  }
+  if (!Array.isArray(options.notes) || options.notes.length === 0) {
+    throw new Error("The voice lead needs the target melody's notes");
+  }
+  const patternId = options.patternId ?? doc.activePatternId;
+  const pattern = doc.patterns.find((p) => p.id === patternId);
+  if (!pattern) throw new Error("No active pattern to plant the voice lead into");
+
+  // Re-apply matches by NAME: the render id changes with every voiceify
+  // pass (it is a new staged buffer), the Voice Lead slot does not.
+  const existing = doc.tracks.find(
+    (t): t is InstrumentTrack =>
+      t.kind === "instrument" && t.instrument === "vocalchop" && t.name === "Voice Lead — hum",
+  );
+  let track: InstrumentTrack;
+  let tracks: ProjectDocument["tracks"];
+  if (existing) {
+    // A re-apply carries a NEW voiceify render (new staged buffer) — the
+    // reused track must point at it, not at the previous pass.
+    track = existing.sampleId === options.bufferId ? existing : { ...existing, sampleId: options.bufferId };
+    tracks = doc.tracks.map((t) => (t.id === track.id ? track : t));
+  } else {
+    const count = doc.tracks.filter((t) => t.kind === "instrument" && t.instrument === "vocalchop").length + 1;
+    track = {
+      ...createInstrumentTrackModel("vocalchop", count),
+      name: "Voice Lead — hum",
+      sampleId: options.bufferId,
+      params: { ...HOOK_PARAMS },
+    };
+    tracks = [...doc.tracks, track];
+  }
+
+  const notes = options.notes.map((note) => ({ ...note, id: note.id || uid("note") }));
+  const next: ProjectDocument = {
+    ...doc,
+    tracks,
+    patterns: doc.patterns.map((p) => (p.id === pattern.id ? { ...p, notes: { ...p.notes, [track.id]: notes } } : p)),
+  };
+  return snapshot(
+    "applyVoiceLead",
+    `Voice lead: your hum plays ${notes.length} note${notes.length === 1 ? "" : "s"}`,
+    doc,
+    next,
+  );
+}
