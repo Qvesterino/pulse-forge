@@ -46,7 +46,7 @@ function artistGrooveLanes(intent: IntentSpec): readonly string[] | null {
  * - energy   → velocityVariation + ghostWeight boost (+ P2 melodic velocity gain)
  * - complexity → microWeight + temperature + syncopation/ratchet hint
  * - variation  → temperature + bar-variation hint
- * - mood     → small tweaks (dark/aggressive/chill)
+ * - mood     → small tweaks — 8 canonical moods (dark/aggressive/chill/energetic + melancholic/epic/lush/hypnotic)
  *
  * The `_dice*` hints are read by generateDrumPattern AND by the melodic
  * consumers (generateMelodicParts, generateMultiVoice) — P2 closed the
