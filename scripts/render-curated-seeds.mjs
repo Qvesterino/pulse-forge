@@ -51,6 +51,13 @@ const CATEGORY_TREATMENT = {
   // the hats — present but not pad-wide. Supersaw is the widest, so a touch
   // more glue drive keeps the seven saws from flapping.
   Lead: { targetLufs: -14, tapeDrive: 0.12, tapeTone: 11000, ceiling: -1.7 },
+  // Field / found-sound pack (2026-10-12): foley and room textures. These sit
+  // far back on purpose — a fridge hum under a mix should be felt, not heard —
+  // and they get almost NO tape drive, because "tape" is the opposite of what a
+  // field recording should sound like: the hiss must stay in the recording, not
+  // be added by the processing chain. Tape tone opens up so a bright clap of
+  // paper still reads.
+  Field: { targetLufs: -22, tapeDrive: 0.02, tapeTone: 16000, ceiling: -3 },
   Tonal: { targetLufs: -16, tapeDrive: 0.16, tapeTone: 9500, ceiling: -1.8 },
   FX: { targetLufs: -13, tapeDrive: 0.16, tapeTone: 10500, ceiling: -1.5 },
 };

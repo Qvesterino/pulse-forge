@@ -11,6 +11,7 @@ export type AssetCategory =
   | "Bass"
   | "Tonal"
   | "Lead"
+  | "Field"
   | "FX";
 
 /** Mood/usage descriptors for curated browsing (FEATURES.md §23 character tags). */
@@ -1216,5 +1217,86 @@ export const FACTORY_ASSETS: FactoryAsset[] = [
     character: "Bell-Pure, Delicate",
     tags: ["mallet", "musicbox", "sparkle"],
     mood: ["bright", "clean"],
+  },
+  /* ── Field / found sounds (2026-10-12) ────────────────────────────────────
+   * The one lane the 142-sample library had no home for: the sound of a PLACE
+   * rather than an instrument. Current production treats found sound as a
+   * first-class voice — room tone under a lo-fi bed, a switch click as a
+   * transient, gravel as percussion — and it is the cheapest way to make a
+   * loop feel recorded instead of generated.
+   *
+   * Every one is synthesized, seeded and deterministic (same seed → same
+   * buffer), sitting far below the drum loudness targets on purpose. */
+  {
+    id: "factory.field.roomtone",
+    name: "Room Tone",
+    category: "Field",
+    character: "Indoor air, 4 s seamless bed",
+    tags: ["field", "ambient", "room", "bed", "lofi"],
+    mood: ["atmosphere", "warm"],
+  },
+  {
+    id: "factory.field.fridge",
+    name: "Fridge Hum",
+    category: "Field",
+    character: "Motor hum with compressor cycle, 4 s bed",
+    tags: ["field", "hum", "appliance", "bed"],
+    mood: ["warm", "deep"],
+  },
+  {
+    id: "factory.field.mains",
+    name: "Mains Buzz",
+    category: "Field",
+    character: "50 Hz mains hum with lamp buzz",
+    tags: ["field", "hum", "electric", "tone"],
+    mood: ["dark", "atmosphere"],
+  },
+  {
+    id: "factory.field.street",
+    name: "Distant Street",
+    category: "Field",
+    character: "Far traffic wash, one pass-by, 4 s bed",
+    tags: ["field", "city", "traffic", "bed", "cinematic"],
+    mood: ["atmosphere", "dark"],
+  },
+  {
+    id: "factory.field.gravel",
+    name: "Gravel Steps",
+    category: "Field",
+    character: "Three boots on loose stone",
+    tags: ["field", "footstep", "gravel", "foley", "perc"],
+    mood: ["warm", "aggressive"],
+  },
+  {
+    id: "factory.field.paper",
+    name: "Paper Turn",
+    category: "Field",
+    character: "Sheet turn with crisp crumple edge",
+    tags: ["field", "paper", "foley", "crackle", "turn"],
+    mood: ["bright", "clean"],
+  },
+  {
+    id: "factory.field.rustle",
+    name: "Cloth Rustle",
+    category: "Field",
+    character: "Fabric movement, soft and close",
+    tags: ["field", "cloth", "foley", "texture"],
+    mood: ["warm", "clean"],
+  },
+  {
+    id: "factory.field.switch",
+    name: "Switch Click",
+    category: "Field",
+    character: "Snap transient with contact tail",
+    tags: ["field", "click", "foley", "transient", "ui"],
+    mood: ["clean", "bright"],
+  },
+  {
+    id: "factory.field.match",
+    name: "Match Strike",
+    category: "Field",
+    character: "Scrape into a soft flame bloom",
+    tags: ["field", "match", "foley", "scrape", "whoosh"],
+    mood: ["warm", "atmosphere"],
   },
 ];

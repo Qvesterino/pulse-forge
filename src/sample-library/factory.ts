@@ -2948,6 +2948,356 @@ function fxSubDrop(): Builder {
   };
 }
 
+/* ═══════════════════════════════════════════════════════════
+ * FIELD / FOUND SOUND PACK (2026-10-12)
+ *
+ * Nine synthesized voices for the one lane the 142-sample library had no home
+ * for: the sound of a PLACE rather than an instrument. Current production uses
+ * found sound as a first-class voice — room tone under a lo-fi bed, a switch
+ * click as a transient, gravel as percussion — and it is the cheapest way to
+ * make a loop feel recorded instead of generated.
+ *
+ * Rules every voice here follows:
+ *  - seeded and deterministic (same seed → byte-identical buffer), so the
+ *    project's determinism invariant holds for factory content too;
+ *  - written straight into a buffer, never an oscillator stack, so the render
+ *    cannot depend on filter phase or graph order;
+ *  - level sits far below the drum targets — a fridge hum should be felt
+ *    under a mix, not fought with;
+ *  - the four BEDS are flat and stationary (no slow LFO sweeps) so they loop
+ *    without a seam, exactly like fxVinyl. Only their INTERNAL texture moves.
+ * ═══════════════════════════════════════════════════════════ */
+
+/** Render one mono buffer of `seconds` and hand it to `dest` through a filter
+ *  chain. Keeps the four beds and five hits visually comparable. */
+function fieldBuffer(
+  ctx: OfflineAudioContext,
+  dest: AudioNode,
+  seconds: number,
+  fill: (data: Float32Array, rand: () => number) => void,
+  seed: number,
+  chain?: (src: AudioBufferSourceNode) => AudioNode,
+): void {
+  const t0 = ctx.currentTime;
+  const buf = ctx.createBuffer(1, Math.floor(seconds * SAMPLE_RATE), SAMPLE_RATE);
+  fill(buf.getChannelData(0), mulberry32(seed));
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(chain ? chain(src) : dest);
+  src.start(t0);
+}
+
+/** Band-limited-ish single-pole lowpass, applied in place. */
+function fieldOnePoleLP(data: Float32Array, cutoffHz: number): void {
+  const dt = 1 / SAMPLE_RATE;
+  const rc = 1 / (2 * Math.PI * cutoffHz);
+  const a = dt / (rc + dt);
+  let y = 0;
+  for (let i = 0; i < data.length; i++) {
+    y += a * (data[i] - y);
+    data[i] = y;
+  }
+}
+
+/** One-pole highpass, in place, reusing the same coefficient maths. */
+function fieldOnePoleHP(data: Float32Array, cutoffHz: number): void {
+  const dt = 1 / SAMPLE_RATE;
+  const rc = 1 / (2 * Math.PI * cutoffHz);
+  const a = rc / (rc + dt);
+  let yPrev = 0;
+  let xPrev = 0;
+  for (let i = 0; i < data.length; i++) {
+    const x = data[i];
+    yPrev = a * (yPrev + x - xPrev);
+    xPrev = x;
+    data[i] = yPrev;
+  }
+}
+
+/** ── BEDS (flat + stationary, 4 s, loop without a seam) ─────────────────── */
+
+/** Room tone — the sound a room makes when nothing is happening in it. Almost
+ *  all energy sits under ~2 kHz with a faint low rumble; a real room also has
+ *  a slow air movement, which here is shaped noise rather than an LFO so the
+ *  buffer stays stationary at the edges. */
+function fieldRoomTone(): Builder {
+  return (ctx, dest) => {
+    fieldBuffer(
+      ctx,
+      dest,
+      4,
+      (data, rand) => {
+        let pink = 0;
+        for (let i = 0; i < data.length; i++) {
+          // Voss-ish pink accumulation, normalized down hard.
+          const white = rand() * 2 - 1;
+          pink = 0.96 * pink + white * 0.04;
+          data[i] = (pink * 2.2 + white * 0.05) * 0.5;
+        }
+        fieldOnePoleHP(data, 45);
+        fieldOnePoleLP(data, 2600);
+      },
+      9101,
+    );
+  };
+}
+
+/** Fridge hum — the compressor motor and its harmonics, with the slow on/off
+ *  cycle of a thermostat modulating the level. 100 Hz is the motor; 50/150/200
+ *  are its mains-locked harmonics, which is why it reads as electrical rather
+ *  than as a played note. */
+function fieldFridge(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const seconds = 4;
+    const buf = ctx.createBuffer(1, Math.floor(seconds * SAMPLE_RATE), SAMPLE_RATE);
+    const data = buf.getChannelData(0);
+    const rand = mulberry32(9102);
+    for (let i = 0; i < data.length; i++) {
+      const t = i / SAMPLE_RATE;
+      const cycle = 0.62 + 0.38 * Math.sin(2 * Math.PI * 0.23 * t);
+      const motor =
+        Math.sin(2 * Math.PI * 100 * t) * 0.5 +
+        Math.sin(2 * Math.PI * 200 * t) * 0.22 +
+        Math.sin(2 * Math.PI * 50 * t) * 0.16 +
+        Math.sin(2 * Math.PI * 300 * t) * 0.08;
+      const air = (rand() * 2 - 1) * 0.035;
+      data[i] = (motor * 0.09 * cycle + air) * 0.7;
+    }
+    fieldOnePoleHP(data, 30);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 2200;
+    src.connect(lp).connect(dest);
+    src.start(t0);
+  };
+}
+
+/** Mains buzz — the pure electrical hum every recording phone picks up. 50 Hz
+ *  plus its 2nd and 3rd harmonics, with a faint 2.4 kHz ballast buzz on top;
+ *  that last tone is what makes it read as "lighting" rather than "note". */
+function fieldMains(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const seconds = 4;
+    const buf = ctx.createBuffer(1, Math.floor(seconds * SAMPLE_RATE), SAMPLE_RATE);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      const t = i / SAMPLE_RATE;
+      data[i] =
+        Math.sin(2 * Math.PI * 50 * t) * 0.5 +
+        Math.sin(2 * Math.PI * 100 * t) * 0.28 +
+        Math.sin(2 * Math.PI * 150 * t) * 0.12 +
+        Math.sin(2 * Math.PI * 2500 * t) * 0.02;
+    }
+    // Scale, not re-shape: the harmonics ARE the identity here.
+    for (let i = 0; i < data.length; i++) data[i] *= 0.11;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 35;
+    src.connect(hp).connect(dest);
+    src.start(t0);
+  };
+}
+
+/** Distant street — far traffic is mostly brown noise (integrated white) with
+ *  a slow swell as one vehicle passes. The pass-by is a deliberate event, not
+ *  a loop: it is the only thing in this pack that changes shape. */
+function fieldStreet(): Builder {
+  return (ctx, dest) => {
+    fieldBuffer(
+      ctx,
+      dest,
+      4,
+      (data, rand) => {
+        let brown = 0;
+        for (let i = 0; i < data.length; i++) {
+          const white = rand() * 2 - 1;
+          brown = (brown + white * 0.02) * 0.997;
+          data[i] = brown * 3.2 + white * 0.012;
+        }
+        // The pass-by: a raised-cosine swell centred at 2.3 s.
+        const pass = Math.floor(2.3 * SAMPLE_RATE);
+        const half = Math.floor(0.75 * SAMPLE_RATE);
+        for (let i = -half; i <= half; i++) {
+          const idx = pass + i;
+          if (idx < 0 || idx >= data.length) continue;
+          data[idx] += (1 - Math.abs(i) / half) * 0.22 * (rand() * 0.6 + 0.7);
+        }
+        fieldOnePoleHP(data, 55);
+        fieldOnePoleLP(data, 1500);
+      },
+      9104,
+    );
+  };
+}
+
+/** ── HITS ──────────────────────────────────────────────────────────────── */
+
+/** Gravel steps — three boots on loose stone. Each footfall is a dense burst
+ *  of tiny independent grains rather than one noise hit, because that
+ *  granularity is exactly what separates gravel from sand or from a shaker. */
+function fieldGravel(): Builder {
+  return (ctx, dest) => {
+    const t0 = ctx.currentTime;
+    const seconds = 1.8;
+    const buf = ctx.createBuffer(1, Math.floor(seconds * SAMPLE_RATE), SAMPLE_RATE);
+    const data = buf.getChannelData(0);
+    const rand = mulberry32(9105);
+    for (let step = 0; step < 3; step++) {
+      const stepAt = Math.floor((0.05 + step * 0.62) * SAMPLE_RATE);
+      const grains = 34 + Math.floor(rand() * 16);
+      for (let g = 0; g < grains; g++) {
+        const at = stepAt + Math.floor(rand() * 0.19 * SAMPLE_RATE);
+        const len = 12 + Math.floor(rand() * 70);
+        const amp = 0.1 + rand() * 0.24;
+        for (let k = 0; k < len && at + k < data.length; k++) {
+          const env = (1 - k / len) ** 2;
+          data[at + k] += (rand() * 2 - 1) * amp * env;
+        }
+      }
+    }
+    fieldOnePoleHP(data, 700);
+    fieldOnePoleLP(data, 9000);
+    for (let i = 0; i < data.length; i++) data[i] *= 0.75;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(dest);
+    src.start(t0);
+  };
+}
+
+/** Paper turn — a sheet lifted and flipped: a soft broadband swell for the
+ *  movement, with crisp grains along the leading edge where it creases. The
+ *  high band is deliberate; paper has almost no body, all transient. */
+function fieldPaper(): Builder {
+  return (ctx, dest) => {
+    fieldBuffer(
+      ctx,
+      dest,
+      1.1,
+      (data, rand) => {
+        // The turn: slow noise swell.
+        for (let i = 0; i < data.length; i++) {
+          const t = i / data.length;
+          const swell = Math.sin(Math.PI * t) ** 1.6;
+          data[i] = (rand() * 2 - 1) * swell * 0.34;
+        }
+        // Crease grains, front-loaded.
+        let i = Math.floor(data.length * 0.12);
+        while (i < data.length) {
+          const len = 8 + Math.floor(rand() * 40);
+          const amp = 0.12 + rand() * 0.3;
+          for (let k = 0; k < len && i + k < data.length; k++) {
+            data[i + k] += (rand() * 2 - 1) * amp * (1 - k / len) ** 1.5;
+          }
+          i += Math.floor((0.004 + rand() * 0.022) * SAMPLE_RATE);
+        }
+        fieldOnePoleHP(data, 1100);
+        fieldOnePoleLP(data, 12000);
+      },
+      9106,
+    );
+  };
+}
+
+/** Cloth rustle — fabric moving close to the mic. Soft, dense, no transients:
+ *  amplitude-modulated lowpassed noise is the whole trick, because a rustle is
+ *  friction, not an impact. */
+function fieldRustle(): Builder {
+  return (ctx, dest) => {
+    fieldBuffer(
+      ctx,
+      dest,
+      0.9,
+      (data, rand) => {
+        let smooth = 0;
+        for (let i = 0; i < data.length; i++) {
+          const t = i / SAMPLE_RATE;
+          const env = Math.sin(Math.PI * (i / data.length)) ** 0.8;
+          // Irregular friction modulation, around 18 Hz.
+          const mod = 0.6 + 0.4 * Math.sin(2 * Math.PI * 18 * t + Math.sin(2 * Math.PI * 5.5 * t));
+          const white = rand() * 2 - 1;
+          smooth += 0.35 * (white - smooth);
+          data[i] = smooth * env * mod;
+        }
+        fieldOnePoleHP(data, 900);
+        fieldOnePoleLP(data, 5200);
+        for (let i = 0; i < data.length; i++) data[i] *= 0.8;
+      },
+      9107,
+    );
+  };
+}
+
+/** Switch click — a snap with a contact tail. This one exists to be a
+ *  transient on another sound, so the first 2 ms matter more than the tail:
+ *  a hard, bright impulse plus a short 1.8 kHz ring. */
+function fieldSwitch(): Builder {
+  return (ctx, dest) => {
+    fieldBuffer(
+      ctx,
+      dest,
+      0.35,
+      (data, rand) => {
+        const clickLen = Math.floor(0.002 * SAMPLE_RATE);
+        for (let i = 0; i < clickLen && i < data.length; i++) {
+          data[i] = (rand() * 2 - 1) * (1 - i / clickLen) ** 3;
+        }
+        // Contact ring.
+        const ringLen = Math.floor(0.09 * SAMPLE_RATE);
+        for (let i = 0; i < ringLen && clickLen + i < data.length; i++) {
+          const env = (1 - i / ringLen) ** 2.4;
+          data[clickLen + i] += Math.sin((2 * Math.PI * 1800 * i) / SAMPLE_RATE) * env * 0.35;
+        }
+        fieldOnePoleHP(data, 420);
+        for (let i = 0; i < data.length; i++) data[i] *= 0.7;
+      },
+      9108,
+    );
+  };
+}
+
+/** Match strike — scrape, then flame. The scrape is a short bright noise
+ *  burst, the flame is a slower lowpassed swell that blooms and fades; the gap
+ *  between them is what makes it read as an ignition rather than a hit. */
+function fieldMatch(): Builder {
+  return (ctx, dest) => {
+    fieldBuffer(
+      ctx,
+      dest,
+      1.4,
+      (data, rand) => {
+        // Scrape.
+        const scrapeLen = Math.floor(0.13 * SAMPLE_RATE);
+        for (let i = 0; i < scrapeLen; i++) {
+          const t = i / scrapeLen;
+          data[i] = (rand() * 2 - 1) * (0.25 + 0.75 * Math.sin(Math.PI * t)) * 0.5;
+        }
+        // Flame bloom, starting just after the scrape.
+        const start = Math.floor(0.1 * SAMPLE_RATE);
+        const flameLen = Math.floor(1.1 * SAMPLE_RATE);
+        let smooth = 0;
+        for (let i = 0; i < flameLen && start + i < data.length; i++) {
+          const t = i / flameLen;
+          const env = Math.sin(Math.PI * Math.pow(t, 0.65)) ** 1.3;
+          const white = rand() * 2 - 1;
+          smooth += 0.12 * (white - smooth);
+          data[start + i] += smooth * env * 2.6;
+        }
+        fieldOnePoleHP(data, 320);
+        fieldOnePoleLP(data, 6500);
+        for (let i = 0; i < data.length; i++) data[i] *= 0.8;
+      },
+      9109,
+    );
+  };
+}
+
 /** Vinyl crackle (library gap: the lo-fi/phonk texture bed) — a dusty
  * surface, not a one-shot: seeded dust ticks (tiny decaying impulses every
  * few ms), rare bigger pops, over a low hiss floor. The envelope is FLAT and
@@ -3968,6 +4318,18 @@ export const BUILDERS: Record<string, Builder> = {
   // phonk beats — flat/stationary so it loops, mid/treble so it never fights
   // the 808.
   "factory.fx.vinyl": fxVinyl(),
+  // Field / found sounds (2026-10-12): the sound of a place rather than an
+  // instrument. Four flat beds meant to sit UNDER a beat, five hits meant to
+  // be used as percussion or as transients on another sound.
+  "factory.field.roomtone": fieldRoomTone(),
+  "factory.field.fridge": fieldFridge(),
+  "factory.field.mains": fieldMains(),
+  "factory.field.street": fieldStreet(),
+  "factory.field.gravel": fieldGravel(),
+  "factory.field.paper": fieldPaper(),
+  "factory.field.rustle": fieldRustle(),
+  "factory.field.switch": fieldSwitch(),
+  "factory.field.match": fieldMatch(),
   "factory.tonal.pluck": pluck(),
   "factory.tonal.stab": stab(),
   "factory.tonal.keys": keys(),
@@ -4248,6 +4610,15 @@ export const DURATIONS: Record<string, number> = {
   "factory.fx.noise-down": 0.95,
   "factory.fx.subdrop": 1.5,
   "factory.fx.vinyl": 4.0,
+  "factory.field.roomtone": 4.0,
+  "factory.field.fridge": 4.0,
+  "factory.field.mains": 4.0,
+  "factory.field.street": 4.0,
+  "factory.field.gravel": 1.8,
+  "factory.field.paper": 1.1,
+  "factory.field.rustle": 0.9,
+  "factory.field.switch": 0.35,
+  "factory.field.match": 1.4,
   "factory.tonal.pluck": 0.5,
   "factory.tonal.stab": 0.5,
   "factory.tonal.keys": 1.1,

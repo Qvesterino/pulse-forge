@@ -90,11 +90,11 @@ export function ResizeGrip({ region, ariaLabel, title, axis = "x", keyboardStep 
       if (!draggingRef.current) return;
       const delta = (axis === "x" ? move.clientX : move.clientY) - startPos;
       // Dragging the boundary LEFT gives the space on its RIGHT more room, for both
-// regions: the inspector sits right of the grip, and in the A/B split slot B
-// sits right of the divider (so slot A's share — the ratio — grows as slot A
-// takes the space slot B gives up). One rule for both, so a grip cannot be
-// "the right way round" in one panel and backwards in the other.
-const signed = -delta;
+      // regions: the inspector sits right of the grip, and in the A/B split slot B
+      // sits right of the divider (so slot A's share — the ratio — grows as slot A
+      // takes the space slot B gives up). One rule for both, so a grip cannot be
+      // "the right way round" in one panel and backwards in the other.
+      const signed = -delta;
       // A ratio is a FRACTION: a pointer delta must be DIVIDED by the dock's
       // approximate width to sweep the ratio smoothly. Multiplying (the earlier
       // bug) sent a 100px drag to ±80000 and slammed the clamp.
@@ -103,7 +103,7 @@ const signed = -delta;
         boundsFor(region).min,
         boundsFor(region).max,
       );
-      preview(boundsFor(region).min); // FALSIFICATION-PROBE
+      preview(next);
     };
     const stop = () => {
       draggingRef.current = false;

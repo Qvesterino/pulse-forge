@@ -16,6 +16,7 @@ const CATEGORY_COLORS: Record<AssetCategory, string> = {
   Tonal: "#22d3ee",
   Lead: "#c084fc",
   FX: "#e879f9",
+  Field: "#7dd3a0",
 };
 
 const MOOD_LABELS: Record<AssetMood, string> = {

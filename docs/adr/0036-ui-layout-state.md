@@ -166,9 +166,75 @@ The tokens the bridge writes are now CONSUMED by the stylesheet.
    new rules stop inventing values. The 860px inspector row-switch stays owned
    by `01-base.css`; this sheet deliberately does NOT duplicate it.
 
+## Vlna C — live resize grips (2026-10-12)
+
+Panels are resized by dragging their edge, not by typing a number into a
+dialog. A slider is a poor fit here: it hides the thing being resized while you
+adjust it.
+
+1. **`src/ui/ResizeGrip.tsx`** extracts the interaction contract the dock grip
+   had already proven (drag, double-click to reset, arrows when focused) into
+   one reusable component driving `inspectorWidth` and `dockSplitRatio` through
+   the layout store. Both regions therefore get identical behaviour and one
+   place to fix a bug.
+2. **The grip is an OVERLAY, never a grid item.** `.workspace` computes the
+   sequencer's width from a two-column `minmax(0,1fr)` grid; a third cell —
+   even a zero-width one — changes that arithmetic and shifts the sequencer.
+   The grip is `position: absolute` against the workspace edge.
+3. **One drag rule for every region**: dragging a boundary LEFT gives the space
+   on its RIGHT more room. The inspector sits right of its grip; in the A/B
+   split, slot B sits right of the divider, so slot A's share grows. Arrow keys
+   mirror the drag exactly (`ArrowLeft` = grow), so keyboard and mouse can
+   never disagree about which way a panel opens.
+4. **A drag writes to the store ONCE, on release.** Mid-drag the value is
+   local component state; `applyLayoutToDocument` re-applies every variable,
+   class and the document zoom, so a per-`pointermove` write would do that 120
+   times a second on the thread that renders the DAW — the exact hazard the
+   dock grip's debounce exists to prevent. The preview still tracks the pointer,
+   so the edge never feels laggy. This is pinned by a test that asserts zero
+   storage writes mid-drag.
+5. **A ratio is divided, not multiplied.** `dockSplitRatio` converts a pixel
+   delta by dividing by the dock's approximate width; multiplying sent a 100px
+   drag to ±80000 and slammed the clamp (the bug this rule replaced).
+6. **Reset targets come from `DEFAULT_LAYOUT_STATE`**, never a literal, so
+   "reset" cannot drift from "default".
+7. Below the 860px row-switch the inspector is no longer a side column, so its
+   grip is hidden rather than left dragging something invisible.
+
+## Token editor (2026-10-12) — the confirmed scope, shipped
+
+The palette presets own eleven variables; the glass layer is not preset-aware
+at all. The token editor is the surface that closes that gap.
+
+1. **`src/ui/tokenCatalog.ts` is an AUTHORIZED list, not a CSS scrape.** A
+   picker needs to know per token whether the value is even a colour:
+   `--elev-1..3` are box-shadows and `--hairline` an alpha, and offering them
+   yields a field the user cannot fill meaningfully. A scraped list would also
+   grow silently on every unrelated CSS edit, so the editable surface would
+   change without anyone deciding it. Fifteen tokens in four groups: SURFACES,
+   TEXT, ACCENT + STATUS, GLASS.
+2. **The catalog is pinned against the real `:root`.** A token that no longer
+   exists fails as a dead row; a new colour token absent from the catalog fails
+   as an unreachable one. Either direction breaks the build rather than
+   shipping an editor that lies about what it controls.
+3. **A per-token reset is part of the contract, not a nicety.** An override the
+   user cannot see or undo is a trap: they tune one colour, later cannot explain
+   why the UI looks off, and the only escape is a global reset that throws away
+   every other setting. The reset appears only for a token that actually
+   carries an override, and clearing one leaves the others untouched.
+4. **Rows read the LIVE document**, so a swatch always shows what the user is
+   looking at — including a preset's value and an existing override — rather
+   than a value re-derived from a table that can drift.
+5. **An unparseable colour is refused, not swallowed.** `sanitizeColorOverrides`
+   would drop it silently; a field that silently swallows input is worse than
+   one that keeps the old value, because the user would believe it applied.
+6. `toHexInput` returns `null` for values a native `<input type="color">`
+   cannot represent (gradients, `currentColor`, `var()`), and the row falls
+   back to a text field instead of showing a swatch that differs from the
+   value.
+
 ## Non-goals for this ADR
 
-No resize grips (Vlna C), no token editor UI, no change to `:root` defaults, no
-bundle-budget change. `--inspector-width`, `--rack-columns` and `--type-scale`
-are written inline (they have no competing media query today);
-`--steps-label` is class-based precisely because it does.
+No change to `:root` defaults, no bundle-budget change. `--inspector-width`,
+`--rack-columns` and `--type-scale` are written inline (they have no competing
+media query today); `--steps-label` is class-based precisely because it does.

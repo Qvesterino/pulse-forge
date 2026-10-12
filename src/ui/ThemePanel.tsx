@@ -1,4 +1,5 @@
 import { THEME_PRESETS, accentOf, resetTheme, setTheme, useTheme } from "./theme";
+import { TokenEditor } from "./TokenEditor";
 import { decodeThemeCode, encodeThemeCode } from "../export/themeCode";
 import { useState } from "react";
 import { TextPromptDialog } from "./TextPromptDialog";
@@ -91,6 +92,12 @@ export function ThemePanel() {
           RESET
         </button>
       </div>
+
+      {/* Per-variable colour editor (ADR 0036). It lives under the presets and
+          the accent/scale rows: those choose a palette, this edits the tokens a
+          palette cannot reach (the glass layer) or a user simply wants
+          different. */}
+      <TokenEditor />
 
       <div className="theme-share">
         <div className="theme-row">

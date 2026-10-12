@@ -104,11 +104,17 @@ describe("Vlna B · responsive behaviour is not silently broken", () => {
   });
 
   it("the inspector row-switch below 860px is still owned by the base sheet", () => {
-    // 24-layout-tokens.css must NOT define its own 860px block that could race
-    // the existing one — that duplication is how these ladders drift.
-    expect(tokens).not.toMatch(/@media \(max-width: 860px\)/);
+    // 24-layout-tokens.css must not re-DECLARE the inspector row-switch; that
+    // duplication is how these ladders drift. The base sheet stays the single
+    // owner of `grid-template-columns: 1fr` at 860px.
     const base = css("01-base.css");
     expect(base).toMatch(/@media \(max-width: 860px\)[\s\S]*grid-template-columns:\s*1fr/);
+    // This sheet may reference 860px only to hide the inspector grip, which is
+    // meaningless once the inspector is a row — never to re-own the switch.
+    const switchesInTokens = tokens.match(/@media \(max-width: 860px\)[\s\S]*?\n\}/g) ?? [];
+    for (const block of switchesInTokens) {
+      expect(block).not.toContain("grid-template-columns");
+    }
   });
 
   it("documents the breakpoint ladder so new rules stop inventing values", () => {
