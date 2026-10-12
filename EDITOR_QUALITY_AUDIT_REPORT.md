@@ -2356,3 +2356,31 @@ belongs to the concurrent reference-map session, not to this audit's files. The
 remaining 50 are attributed by `npm run test:expectations` (the repo's own
 ratchet) rather than by eyeballing, and nothing here was "fixed", skipped or
 weakened on the way.
+
+### What the ratchet actually said
+
+```
+suite run: 947 files · 10358 passed · 52 failed · 128 skipped
+ledger: 22 entries (against 36d3afbb)
+✗ NEW REDS (39) — fix, or classify with owner + reason
+✗ CURED (8)   — ratchet: remove from suite-expectations.json
+```
+
+The committed baseline records **22** known-red entries; the suite now produces
+**52** failures. So the repo has drifted **39 tests away from its own declared
+state**, and 8 of its declared reds have been cured without the ledger being
+updated. Both directions fail the gate, by design — this is the ratchet working,
+not the ratchet breaking.
+
+Checked for this audit's blast radius and found clean: the failures visible in
+the run (`panelTsar → unknown panel "tsar"`, a shortcut table that grew from 35
+to 43 verbs, `symbolic-melodic`, `collab-ydoc-drift`, `midi-io`,
+`bridge-rate-limit`, `multivoice-golden`) are all feature areas owned by
+concurrent sessions. The one file whose failures could plausibly have been mine
+— `tests/ux-audit.test.ts`, which does audit the overlay/panel surface this
+audit changed — was run on its own to confirm: 2 failures, both unrelated to
+`pointer-events` (an unregistered TSAR panel id, and the verb-count drift).
+
+`tests/probe-split-undo.test.ts` is still in the tree as a committed scratch
+probe with one failing test. It is noise in every full-suite run and should be
+deleted by whoever owns it.
