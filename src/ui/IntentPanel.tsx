@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useSelectionStore, useServices } from "./context";
+import { StatusLine } from "./intent/StatusLine";
 import { VoiceIdeaControls } from "./intent/VoiceIdeaControls";
 import { AudioRefChip } from "./intent/AudioRefChip";
 import { ProducerSessionHud } from "./intent/ProducerSessionHud";
@@ -4943,11 +4944,7 @@ export function IntentPanel() {
           ))}
         </div>
       )}
-      {status && (
-        <div className="intent-status" role="status">
-          {status}
-        </div>
-      )}
+      <StatusLine message={status} />
       {songBusy && songProgress && (
         <div
           className="intent-song-progress"
@@ -4968,11 +4965,7 @@ export function IntentPanel() {
           </span>
         </div>
       )}
-      {personalStatus && (
-        <div className="intent-status intent-personal-status" role="status">
-          {personalStatus}
-        </div>
-      )}
+      <StatusLine message={personalStatus} personal />
       {justApplied && (
         <div className="intent-share" aria-label="Share your beat">
           <span className="intent-share-label">Yours. Share it:</span>
