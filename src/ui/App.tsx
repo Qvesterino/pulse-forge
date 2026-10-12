@@ -103,6 +103,7 @@ import {
   type DockState,
 } from "./dockLayout";
 import { DockChrome } from "./DockChrome";
+import { ResizeGrip } from "./ResizeGrip";
 import { BrowserStrip } from "./BrowserStrip";
 import { IoPanel } from "./IoPanel";
 import { isPadKey, padKeysArmed, setPadKeysArmed } from "./padKeys";
@@ -1682,6 +1683,11 @@ export function App({
                     />
                   </ErrorBoundary>
                 </div>
+                <ResizeGrip
+                  region="inspectorWidth"
+                  ariaLabel="Resize inspector panel"
+                  title="Drag to resize the inspector · double-click to reset · ←/→ when focused"
+                />
                 <ErrorBoundary panel="inspector">
                   <Inspector track={track} selectedPadId={padId} onOpenPlugin={openDevicesPanel} />
                 </ErrorBoundary>
@@ -1718,6 +1724,11 @@ export function App({
                     </Suspense>
                   </div>
                 )}
+                <ResizeGrip
+                  region="dockSplitRatio"
+                  ariaLabel="Resize dock split"
+                  title="Drag to change the split · double-click to reset · ←/→ when focused"
+                />
                 {!sheetCollapsed && dock.slotB !== null && (
                   <div
                     className="dock-slot"

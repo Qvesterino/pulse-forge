@@ -13,6 +13,7 @@ import { clampEffectParam, defaultParamsOf, EFFECT_META } from "../effects/defin
 import { targetParamDef } from "../project-model/targets";
 import { CORE_EFFECT_PRESETS } from "../effects/presets";
 import type { BeatmakingEffectChain } from "../effects/chains";
+import { essentialKitChainFor, essentialKitSelection, type EssentialKitSlotId } from "../effects/essentialKit";
 import { clampFxOutputTrimDb, factoryFxChainGainDb, factoryFxPresetGainDb } from "../effects/presetLoudness";
 import { uid } from "../shared/ids";
 import { snapshot } from "./core";
@@ -238,6 +239,40 @@ export function applyEffectChainPreset(
         return next;
       }),
     undo: (d) => withTrackEffects(d, trackId, (effects) => effects.filter((effect) => !ids.has(effect.id))),
+  };
+}
+
+/**
+ * Insert the whole module-first kit (EQ → dynamics → saturation → delay →
+ * reverb) as ONE undoable change, the same way `setEffectMacroParams`
+ * composes single edits: each slot rides `applyEffectChainPreset`, so the
+ * preset factory defaults, clamp and measured factory trim are identical to
+ * the "+ CHAIN" path — the kit adds no insert semantics of its own.
+ */
+export function applyEssentialKit(
+  doc: ProjectDocument,
+  trackId: string,
+  selection: Partial<Readonly<Record<EssentialKitSlotId, string>>> = {},
+  insertAt = trackEffectsOf(doc, trackId).length,
+): Command & { readonly effectIds: readonly string[] } {
+  if (trackId !== MASTER_EFFECT_OWNER_ID && !doc.tracks.some((track) => track.id === trackId))
+    throw new Error(`Track ${trackId} not found`);
+  // Resolve the labels BEFORE touching the document: an unknown variant must
+  // throw with the project untouched, not half-insert four devices.
+  const chain = essentialKitChainFor(essentialKitSelection(selection));
+  const start = Math.max(0, Math.min(trackEffectsOf(doc, trackId).length, Math.floor(insertAt)));
+  let next = doc;
+  const effectIds: string[] = [];
+  // Each slot inserts AT the same anchor, so the chain lands in slot order:
+  // slot 0 at `start`, slot 1 right after it, and so on.
+  for (let i = 0; i < chain.effects.length; i++) {
+    const command = applyEffectChainPreset(next, trackId, { ...chain, effects: [chain.effects[i]] }, start + i);
+    next = command.execute(next);
+    effectIds.push(command.firstEffectId);
+  }
+  return {
+    ...snapshot("applyEssentialKit", `Insert ${chain.name}`, doc, next),
+    effectIds,
   };
 }
 

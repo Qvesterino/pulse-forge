@@ -123,6 +123,110 @@ body {
   font-size: calc(13px * var(--type-scale, 1));
 }
 
+/* ---------- Resize grip (Vlna C) ---------- */
+
+/* The inspector grip sits ON the workspace's right edge as an OVERLAY, not as
+   a grid item. Adding it to the grid would add a phantom column and change the
+   `minmax(0,1fr)` arithmetic — the sequencer's width is computed from two
+   columns, and a third (even zero-width) cell shifts that maths. An absolutely
+   positioned overlay leaves the grid exactly as it was. */
+.workspace {
+  position: relative;
+}
+
+.resize-grip {
+  position: absolute;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: col-resize;
+  touch-action: none; /* a drag must not scroll the page under the pointer */
+}
+
+/* The vertical grip between the sequencer and the inspector: 8px hit area on
+   the workspace's right edge. */
+.resize-grip--x {
+  top: 0;
+  bottom: 0;
+  right: calc(var(--inspector-width, 280px) - 4px);
+  width: 8px;
+}
+
+/* A hairline that brightens on hover/focus so the edge is discoverable without
+   being a permanent visual rail. */
+.resize-grip span {
+  width: 1px;
+  height: 26px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background 0.12s;
+}
+
+.resize-grip:hover span,
+.resize-grip:focus-visible span {
+  background: var(--accent);
+}
+
+.resize-grip:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* The A/B split: slot A takes a share of the width, slot B takes the rest.
+   The ratio comes from the layout state, so a split the user dragged is
+   persisted and shared like every other layout dimension. */
+.bottom-panels.dock-split > .dock-slot:first-of-type {
+  flex: 0 0 calc(var(--dock-split-ratio, 0.5) * 100%);
+  min-width: 0;
+}
+
+.bottom-panels.dock-split > .dock-slot:last-of-type {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* The split grip rides the divider between the two slots — the same edge the
+   border already marks, made draggable. */
+.bottom-panels.dock-split > .resize-grip--x {
+  display: grid;
+  position: static;
+  width: 8px;
+  align-self: stretch;
+  height: auto;
+  cursor: col-resize;
+  background: var(--border-soft);
+}
+
+.bottom-panels.dock-split > .resize-grip--x span {
+  display: none;
+}
+
+/* Horizontal (y-axis) grip used for the A/B dock split. */
+.resize-grip--y {
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 8px;
+  cursor: row-resize;
+}
+
+.resize-grip--y span {
+  width: 26px;
+  height: 1px;
+}
+
+/* Below the 860px row-switch the inspector is no longer a side column, so a
+   horizontal drag on its edge makes no sense — hide the grip. */
+@media (max-width: 860px) {
+  .resize-grip--x {
+    display: none;
+  }
+}
+
 /* ---------- Density: the third rung ---------- */
 
 /* `.theme-compact` already existed and is still applied (ui/layout.ts keeps it

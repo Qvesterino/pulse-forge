@@ -275,6 +275,14 @@ export const CORE_EFFECT_ORDER: EffectType[] = [
   "msEq",
   "multiband",
   "haasWidener",
+  // The four fundamentals. Compressor, saturation, delay and reverb used to
+  // sit only in the "MORE ..." optgroups, which put the most basic devices a
+  // beatmaker needs behind the second menu layer while character effects
+  // (tapeSat, vocoder, drumBuss) stayed in the first one.
+  "compressor",
+  "saturation",
+  "delay",
+  "reverb",
   "transient",
   "limiter",
   "stepGate",

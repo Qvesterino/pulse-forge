@@ -14,6 +14,7 @@ import {
   addEffect,
   applyEffectPreset,
   applyEffectChainPreset,
+  applyEssentialKit,
   applyFxEqPreset,
   moveEffect,
   moveEffectToIndex,
@@ -84,6 +85,8 @@ import { EffectIntentAssistant } from "./EffectIntentAssistant";
 import { EffectQuickControls, isEffectQuickControlParam } from "./EffectQuickControls";
 import { Slider } from "./controls";
 import { SourceMacroDock } from "./SourceMacroDock";
+import { EssentialKitDock } from "./EssentialKitDock";
+import type { EssentialKitSlotId } from "../effects/essentialKit";
 
 type EffectRackProps = {
   track: Track;
@@ -200,6 +203,16 @@ export function EffectRack({
       .filter((edit): edit is { fxId: string; paramId: string; value: number } => edit !== null);
     if (edits.length === 0) return;
     services.store.execute(setEffectMacroParams(services.store.getDoc(), track.id, edits));
+  };
+  // The kit lands in the same anchor as every other insert here — after the
+  // selected device, or at the head when the instrument is the active one.
+  const loadEssentialKit = (selection: Readonly<Record<EssentialKitSlotId, string>>) => {
+    const selectedIndex = track.effects.findIndex((fx) => fx.id === activeDeviceId);
+    const insertionIndex =
+      selectedIndex >= 0 ? selectedIndex + 1 : activeDeviceId === "instrument" ? 0 : track.effects.length;
+    const command = applyEssentialKit(services.store.getDoc(), track.id, selection, insertionIndex);
+    services.store.execute(command);
+    setSelectedDeviceId(command.effectIds.at(-1) ?? null);
   };
 
   // Observer-only poll: degraded fallbacks surface as warning badges, while
@@ -502,6 +515,13 @@ export function EffectRack({
             }}
             onLoadProfile={loadSourceProfile}
             onCommitMacro={commitSourceMacro}
+          />
+        )}
+        {!isMaster && (
+          <EssentialKitDock
+            track={track}
+            installedTypes={track.effects.map((fx) => fx.type)}
+            onLoadKit={loadEssentialKit}
           />
         )}
         <div className="device-surface">
