@@ -204,9 +204,9 @@ teleš a v hlavičkách modulov.
 | --- | --- | --- |
 | `SongDraftPanel.tsx` | 646 | ♪ SONG draft: preview, full-song lanes, per-section A/B učenie, loudness odporúčanie, technický audio review, revise. Aj typy `SongDraft`/`SongPreferenceTake`/`SectionPreferenceTake`/`SongPreferenceRank` a helpery `sectionPreferenceOptions`/`sectionCompareSelection`. |
 | `CandidateBank.tsx` | 124 | ▶/■ audition, PRIOR/TPL badge, search lane, ★ best, USE, iterate, AUDIOTOOL, legenda, blind-pilot guard. |
-| `VoiceIdeaControls.tsx` | 61 | 🎶 harmonize + 🔊 mic monitor + 🎤 IDEA nahrávanie. |
+| `VoiceIdeaControls.tsx` | 57 | 🎶 harmonize + 🔊 mic monitor + 🎤 IDEA nahrávanie. |
 | `ProducerSessionHud.tsx` | 51 | 🎛 session chip, B/C varianty, reset. |
-| `StatusLine.tsx` | 17 | 🤖/⚡ router status + osobný status (jeden komponent, dva call site-y). |
+| `StatusLine.tsx` | 24 | 🤖/⚡ router status + osobný status (jeden komponent, dva call site-y). |
 | `AudioRefChip.tsx` | 46 | 🎧 ref chip, match EQ, clear. |
 
 **Nula zmien správania.** Vyextrahované komponenty sú čisté renderery: žiadne
